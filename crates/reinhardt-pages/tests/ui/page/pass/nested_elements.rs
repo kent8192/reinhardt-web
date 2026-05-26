@@ -8,22 +8,14 @@ fn main() {
 		div {
 			class: "container",
 			header {
-				h1 {
-					"Title"
-				}
+				h1 { "Title" }
 			}
 			main {
-				p {
-					"Content paragraph 1"
-				}
-				p {
-					"Content paragraph 2"
-				}
+				p { "Content paragraph 1" }
+				p { "Content paragraph 2" }
 			}
 			footer {
-				span {
-					"Footer text"
-				}
+				span { "Footer text" }
 			}
 		}
 	});

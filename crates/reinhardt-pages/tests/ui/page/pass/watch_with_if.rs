@@ -12,9 +12,7 @@ fn main() {
 		div {
 			watch {
 				if show.get() {
-					span {
-						"Visible when true"
-					}
+					span { "Visible when true" }
 				}
 			}
 		}
@@ -25,9 +23,7 @@ fn main() {
 		div {
 			watch {
 				if visible {
-					p {
-						"Content is visible"
-					}
+					p { "Content is visible" }
 				}
 			}
 		}

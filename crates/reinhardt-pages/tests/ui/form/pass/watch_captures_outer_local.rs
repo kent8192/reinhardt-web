@@ -17,9 +17,10 @@ fn main() {
 	let _form = form! {
 		name: CaptureWatchForm,
 		action: "/api/capture",
-
-		state: { loading, error },
-
+		state: {
+			loading,
+			error
+		},
 		watch: {
 			// The handler captures `outer_local` from the enclosing scope.
 			// The expression result is used inside the closure body so the
@@ -28,7 +29,6 @@ fn main() {
 				let _captured = outer_local;
 			},
 		},
-
 		fields: {
 			content: CharField { required },
 		},

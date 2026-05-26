@@ -20,9 +20,7 @@ fn main() {
 	let _external_callback = page!(|| {
 		form {
 			@submit: handle_submit,
-			button {
-				"Submit"
-			}
+			button { "Submit" }
 		}
 	});
 
@@ -35,7 +33,7 @@ fn main() {
 				"External"
 			}
 			button {
-				@click: |_| { },
+				@click: |_| {},
 				"Inline"
 			}
 		}

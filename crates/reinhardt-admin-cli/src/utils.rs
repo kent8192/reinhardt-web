@@ -133,7 +133,7 @@ mod tests {
 		std::fs::write(&file1, "modified1").expect("modify file1");
 
 		// Act
-		let errors = rollback_files(&[file1.clone()], &originals);
+		let errors = rollback_files(std::slice::from_ref(&file1), &originals);
 
 		// Assert
 		assert!(errors.is_empty(), "rollback should succeed");

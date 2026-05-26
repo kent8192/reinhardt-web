@@ -17,9 +17,7 @@ fn main() {
 								div {
 									div {
 										div {
-											div {
-												"10 levels deep"
-											}
+											div { "10 levels deep" }
 										}
 									}
 								}
@@ -48,9 +46,7 @@ fn main() {
 														p {
 															a {
 																href: "#",
-																span {
-																	"15 levels deep"
-																}
+																span { "15 levels deep" }
 															}
 														}
 													}
@@ -88,9 +84,7 @@ fn main() {
 																		div {
 																			div {
 																				div {
-																					div {
-																						"Extremely deep"
-																					}
+																					div { "Extremely deep" }
 																				}
 																			}
 																		}

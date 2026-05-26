@@ -43,15 +43,15 @@ fn main() {
 	let _form = form! {
 		name: SuccessUrlCaptureForm,
 		action: "/api/vote",
-
-		state: { loading, error },
-
+		state: {
+			loading,
+			error
+		},
 		fields: {
 			question_id: HiddenField {
 				initial: qid.to_string(),
 			},
 		},
-
 		// The hook that triggered #4605 / #4612. The closure body must be
 		// able to reach `qid` — the lift puts the literal at outer scope.
 		// After the lift, the closure signature is `|form: &Self|` (the

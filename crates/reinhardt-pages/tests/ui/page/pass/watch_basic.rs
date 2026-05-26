@@ -10,9 +10,7 @@ fn main() {
 	let _basic = page!(|| {
 		div {
 			watch {
-				span {
-					"Reactive content"
-				}
+				span { "Reactive content" }
 			}
 		}
 	});
@@ -20,9 +18,7 @@ fn main() {
 	// Watch block with text content
 	let _text = page!(|| {
 		div {
-			watch {
-				"Dynamic text"
-			}
+			watch { "Dynamic text" }
 		}
 	});
 }

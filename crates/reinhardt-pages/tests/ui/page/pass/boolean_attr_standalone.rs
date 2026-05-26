@@ -15,12 +15,8 @@ fn main() {
 			}
 			select {
 				multiple: true,
-				option {
-					"A"
-				}
-				option {
-					"B"
-				}
+				option { "A" }
+				option { "B" }
 			}
 		}
 	});

@@ -22,16 +22,21 @@ fn main() {
 	let _form = form! {
 		name: CaptureFormFourTwoZero,
 		action: "/api/capture-4420",
-
-		state: { loading, error },
-
+		state: {
+			loading,
+			error
+		},
 		fields: {
 			// `initial: <expr>` referencing an outer local — previously emitted
 			// into `fn new()` and produced E0434.
-			counter: HiddenField { initial: outer_initial.to_string() },
-			content: CharField { required, initial: outer_label.clone() },
+			counter: HiddenField {
+				initial: outer_initial.to_string()
+			},
+			content: CharField {
+				required,
+				initial: outer_label.clone()
+			},
 		},
-
 		watch: {
 			// Each of these callbacks invokes a method on `form`. Without the
 			// type-inference fix they fail with E0282 because the closure body

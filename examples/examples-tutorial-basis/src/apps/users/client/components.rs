@@ -28,12 +28,10 @@ pub fn login_form() -> Page {
 		name: LoginForm,
 		server_fn: login,
 		redirect_on_success: "/",
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			username: CharField {
 				label: "Username",
@@ -47,7 +45,6 @@ pub fn login_form() -> Page {
 				class: "form-control",
 			}
 		}
-
 	};
 
 	let loading_signal = login_form.loading().clone();
@@ -71,7 +68,9 @@ pub fn login_form() -> Page {
 						if error_signal.get().is_some() {
 							div {
 								class: "alert-danger mb-3",
-								{ error_signal.get().unwrap_or_default() }
+								{
+									error_signal.get().unwrap_or_default()
+								}
 							}
 						}
 					}
@@ -129,14 +128,11 @@ pub fn logout_form() -> Page {
 		name: LogoutForm,
 		server_fn: logout,
 		redirect_on_success: "/",
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {}
-
 	};
 
 	let error_signal = logout_form.error().clone();
@@ -162,7 +158,9 @@ pub fn logout_form() -> Page {
 						if error_signal.get().is_some() {
 							div {
 								class: "alert-danger mb-3",
-								{ error_signal.get().unwrap_or_default() }
+								{
+									error_signal.get().unwrap_or_default()
+								}
 							}
 						}
 					}
@@ -199,12 +197,10 @@ pub fn signup_form() -> Page {
 		name: SignupForm,
 		server_fn: register,
 		redirect_on_success: "/",
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			username: CharField {
 				label: "Username",
@@ -223,7 +219,6 @@ pub fn signup_form() -> Page {
 				class: "form-control",
 			}
 		}
-
 	};
 
 	let loading_signal = signup_form.loading().clone();
@@ -247,7 +242,9 @@ pub fn signup_form() -> Page {
 						if error_signal.get().is_some() {
 							div {
 								class: "alert-danger mb-3",
-								{ error_signal.get().unwrap_or_default() }
+								{
+									error_signal.get().unwrap_or_default()
+								}
 							}
 						}
 					}

@@ -47,9 +47,9 @@ pub fn header(site_name: &str, user_name: Option<&str>) -> Page {
 			}
 			div {
 				class: "flex items-center gap-2 text-sm text-slate-400",
-				span {
-					{ format!("User: {}", user_display) }
-				}
+				span { {
+					format!("User: {}", user_display)
+				} }
 			}
 		}
 	})()
@@ -149,7 +149,9 @@ pub fn footer(version: &str) -> Page {
 		footer {
 			class: "text-center py-4 text-xs text-slate-400 border-t border-slate-200 animate__animated animate__fadeIn",
 			style: "margin-left: 240px;",
-			{ format!("Reinhardt Admin v{}", version) }
+			{
+				format!("Reinhardt Admin v{}", version)
+			}
 		}
 	})()
 }
