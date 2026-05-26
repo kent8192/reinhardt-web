@@ -164,7 +164,10 @@ mod ssr_tests {
 	fn test_render_with_head_macro() {
 		let page_head = head!(|| {
 			title { "Macro Title" }
-			meta { name: "description", content: "Macro description" }
+			meta {
+				name: "description",
+				content: "Macro description"
+			}
 		});
 
 		let view = PageElement::new("div")

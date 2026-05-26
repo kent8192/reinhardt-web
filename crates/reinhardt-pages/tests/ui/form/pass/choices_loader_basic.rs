@@ -10,7 +10,6 @@ fn main() {
 		name: VotingForm,
 		server_fn: submit_vote,
 		choices_loader: get_poll_choices,
-
 		fields: {
 			_choice: ChoiceField {
 				required,

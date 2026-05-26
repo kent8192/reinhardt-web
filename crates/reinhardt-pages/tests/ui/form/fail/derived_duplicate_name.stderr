@@ -1,5 +1,5 @@
 error: duplicate derived item name: 'value'
-  --> tests/ui/form/fail/derived_duplicate_name.rs:13:4
+  --> tests/ui/form/fail/derived_duplicate_name.rs:12:4
    |
-13 |             value: |form| form.x().get() * form.y().get(),
+12 |             value: |form| form.x().get() * form.y().get(),
    |             ^^^^^

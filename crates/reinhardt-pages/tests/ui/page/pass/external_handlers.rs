@@ -24,9 +24,7 @@ fn main() {
 	let _external_submit = page!(|handle_submit: Callback| {
 		form {
 			@submit: handle_submit,
-			button {
-				"Submit"
-			}
+			button { "Submit" }
 		}
 	})(handle_submit);
 
@@ -39,7 +37,7 @@ fn main() {
 				"External"
 			}
 			button {
-				@click: |_| { },
+				@click: |_| {},
 				"Inline"
 			}
 		}

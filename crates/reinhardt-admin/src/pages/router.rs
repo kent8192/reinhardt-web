@@ -581,9 +581,7 @@ fn not_found_view() -> Page {
 				class: "text-slate-500 mb-6",
 				"The requested page could not be found."
 			}
-			div {
-				{ dashboard_link }
-			}
+			div { { dashboard_link } }
 		}
 	})(dashboard_link)
 }

@@ -373,22 +373,30 @@ fn bottom_navigation(current_path: &str) -> Page {
 			a {
 				href: "/",
 				class: home_class,
-				{ icons::home_icon() }
+				{
+					icons::home_icon()
+				}
 			}
 			a {
 				href: "/explore",
 				class: explore_class,
-				{ icons::search_icon() }
+				{
+					icons::search_icon()
+				}
 			}
 			a {
 				href: "/notifications",
 				class: notif_class,
-				{ icons::bell_icon() }
+				{
+					icons::bell_icon()
+				}
 			}
 			a {
 				href: "/profile",
 				class: profile_class,
-				{ icons::user_icon() }
+				{
+					icons::user_icon()
+				}
 			}
 		}
 	})(
@@ -405,7 +413,9 @@ fn floating_action_button() -> Page {
 			href: "/compose",
 			class: "fab",
 			aria_label: "Compose",
-			{ icons::plus_icon() }
+			{
+				icons::plus_icon()
+			}
 		}
 	})()
 }
@@ -444,9 +454,9 @@ pub fn footer(version: &str) -> Page {
 							"Help Center"
 						}
 					}
-					span {
-						{ format!("Twitter Clone v{} - Built with Reinhardt", version) }
-					}
+					span { {
+						format!("Twitter Clone v{} - Built with Reinhardt", version)
+					} }
 				}
 			}
 		}
