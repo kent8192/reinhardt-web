@@ -20,11 +20,27 @@ fn extract_url_params(pattern: &str) -> Vec<String> {
 			}
 			'}' => {
 				if in_param && !name.is_empty() {
-					// Strip type constraint (e.g., "{id:int}" -> "id")
-					if let Some(pos) = name.find(':') {
-						name.truncate(pos);
+					// Handle typed path parameters in both formats:
+					// - Simple: "{id:int}" -> strip after ':'  -> "id"
+					// - Angle:  "{<int:id>}" -> strip before ':' after '<' -> "id"
+					let param_name = if name.starts_with('<') {
+						// Angle-bracket format: <type:name> or <type:name>
+						// The '>' was consumed as part of the name or is the closing brace
+						let content = name.trim_start_matches('<').trim_end_matches('>');
+						if let Some((_type_part, name_part)) = content.split_once(':') {
+							name_part.to_string()
+						} else {
+							content.to_string()
+						}
+					} else if let Some(pos) = name.find(':') {
+						// Simple format: name:type
+						name[..pos].to_string()
+					} else {
+						name.clone()
+					};
+					if !param_name.is_empty() {
+						params.push(param_name);
 					}
-					params.push(name.clone());
 				}
 				in_param = false;
 			}
