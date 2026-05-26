@@ -349,16 +349,22 @@ impl DependencyRegistry {
 	/// restores the previous factory (or removes the entry entirely if there
 	/// was none) when dropped.
 	///
-	/// Tests using this method **must** run inside the
-	/// `#[serial(di_registry)]` group because the global registry is mutated.
+	/// When called on a **per-context** registry (created via
+	/// `InjectionContextBuilder::with_registry`), each test operates on its
+	/// own isolated registry and `#[serial(di_registry)]` is not required.
+	///
+	/// When called on the **global** registry (`global_registry()`), tests
+	/// **must** run inside the `#[serial(di_registry)]` group because the
+	/// shared registry is mutated non-atomically.
 	///
 	/// # Safety contract
 	///
 	/// This method inserts into two separate `DashMap`s (`factories` and
-	/// `scopes`) non-atomically. Without serialization, another thread can
-	/// observe a torn state where the new factory is paired with the old
-	/// scope (or vice versa). The `#[serial(di_registry)]` requirement is
-	/// what eliminates that window; do not relax it.
+	/// `scopes`) non-atomically. When operating on a shared (global)
+	/// registry, another thread can observe a torn state where the new
+	/// factory is paired with the old scope (or vice versa). The
+	/// `#[serial(di_registry)]` requirement eliminates that window for the
+	/// global registry; per-context registries are isolated by design.
 	///
 	/// # Examples
 	///
@@ -418,9 +424,9 @@ impl DependencyRegistry {
 	/// [`OverrideGuard::drop`](crate::testing::OverrideGuard).
 	///
 	/// Like `register_override`, this performs a non-atomic two-`DashMap`
-	/// mutation, so callers MUST hold the `#[serial(di_registry)]` lock — in
-	/// practice this is enforced by only invoking it from a guard's `Drop`,
-	/// which runs inside the same serialized test scope.
+	/// mutation. For the global registry, callers MUST hold the
+	/// `#[serial(di_registry)]` lock; for per-context registries, isolation
+	/// is guaranteed by design.
 	pub(crate) fn restore_override(
 		&self,
 		type_id: std::any::TypeId,
@@ -433,7 +439,7 @@ impl DependencyRegistry {
 
 	/// Removes an override entry that had no prior registration. Used by
 	/// [`OverrideGuard::drop`](crate::testing::OverrideGuard). Same
-	/// `#[serial(di_registry)]` requirement as `restore_override`.
+	/// serialization requirements as `restore_override`.
 	pub(crate) fn remove_override(&self, type_id: std::any::TypeId) {
 		self.factories.remove(&type_id);
 		self.scopes.remove(&type_id);

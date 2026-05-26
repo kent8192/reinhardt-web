@@ -36,10 +36,6 @@ pub use reinhardt_middleware::CorsMiddleware;
 #[cfg(feature = "middleware-security")]
 pub use reinhardt_middleware::SecurityMiddleware;
 
-#[cfg(feature = "middleware-security")]
-#[allow(deprecated)] // Compatibility re-export; remove when SecurityConfig is dropped from the public facade.
-pub use reinhardt_middleware::SecurityConfig;
-
 #[cfg(any(feature = "standard", feature = "middleware"))]
 pub use reinhardt_middleware::{CspConfig, CspMiddleware, CspNonce};
 

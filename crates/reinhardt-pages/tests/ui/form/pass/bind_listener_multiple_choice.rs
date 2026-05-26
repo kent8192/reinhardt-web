@@ -1,10 +1,10 @@
-//! `MultipleChoiceField<i64>` yields `Signal<Vec<i64>>`.
+//! `MultipleChoiceField<i64>` bind listener iterates `selectedOptions`.
 
 use reinhardt_pages::form;
 
 fn main() {
 	let _ = form! {
-		name: TagForm,
+		name: TagsForm,
 		action: "/api/tags",
 
 		fields: {
