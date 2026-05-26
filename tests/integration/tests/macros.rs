@@ -24,3 +24,9 @@ mod repro_issue_3651;
 
 #[path = "macros/repro_issue_4522.rs"]
 mod repro_issue_4522;
+
+#[path = "macros/model_info_integration.rs"]
+mod model_info_integration;
+
+#[path = "macros/model_info_ui.rs"]
+mod model_info_ui;
