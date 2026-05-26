@@ -102,7 +102,7 @@ pub use registration::ServerFnRegistration;
 pub use registry::{ServerFnHandler, ServerFnRoute};
 #[cfg(native)]
 pub use router_ext::ServerFnRouterExt;
-pub use server_fn_trait::{ServerFn, ServerFnError};
+pub use server_fn_trait::{ServerFn, ServerFnError, parse_server_error_message};
 
 // Re-export the macro for convenience
 pub use reinhardt_pages_macros::server_fn;

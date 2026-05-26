@@ -30,6 +30,7 @@ use crate::shared::types::{ChoiceInfo, QuestionInfo, UserInfo};
 use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
+use reinhardt::pages::parse_server_error_message;
 use reinhardt::pages::reactive::hooks::{Action, use_action, use_effect};
 use reinhardt::pages::resolve_static;
 
@@ -45,33 +46,6 @@ use crate::apps::polls::urls::client_router::urls as links;
 // choice) on the viewer being the question's author (issue #4703). Server-
 // side `require_question_author` checks remain in place as defense in depth.
 use crate::apps::users::server_fn::current_user;
-
-// =========================================================================
-// Error display helpers
-// =========================================================================
-
-/// Extract the human-readable message from a `ServerFnError`-shaped JSON
-/// payload so the alert banner shows prose, not raw JSON (issue #4702).
-///
-/// `ServerFnError` is serialized with serde's externally-tagged format —
-/// e.g. `{"Application":"Invalid choice_id"}` for `ServerFnError::Application`
-/// or `{"Server":{"status":403,"message":"..."}}` for `ServerFnError::Server`.
-/// This helper unwraps the variant tag for display purposes only; the
-/// wire format the server sends is intentionally unchanged.
-fn format_server_error(raw: &str) -> String {
-	if let Ok(value) = serde_json::from_str::<serde_json::Value>(raw)
-		&& let Some(obj) = value.as_object()
-		&& let Some((_, payload)) = obj.iter().next()
-	{
-		if let Some(s) = payload.as_str() {
-			return s.to_string();
-		}
-		if let Some(msg) = payload.get("message").and_then(|v| v.as_str()) {
-			return msg.to_string();
-		}
-	}
-	raw.to_string()
-}
 
 /// Polls index page - List all polls
 ///
@@ -103,7 +77,7 @@ pub fn polls_index() -> Page {
 					div {
 						class: "alert-danger",
 						{
-							format_server_error(&load_questions_error.error().unwrap_or_default())
+							parse_server_error_message(&load_questions_error.error().unwrap_or_default())
 						}
 					}
 				}
@@ -257,7 +231,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 							div {
 								class: "alert-danger mt-3",
 								{
-									format_server_error(&e)
+									parse_server_error_message(&e)
 								}
 							}
 						}
@@ -323,7 +297,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 						div {
 							class: "alert-danger",
 							{
-								format_server_error(&load_detail_signal.error().unwrap_or_default())
+								parse_server_error_message(&load_detail_signal.error().unwrap_or_default())
 							}
 						}
 						a {
@@ -463,7 +437,7 @@ pub fn polls_results(question_id: i64) -> Page {
 						div {
 							class: "alert-danger",
 							{
-								format_server_error(&load_results_signal.error().unwrap_or_default())
+								parse_server_error_message(&load_results_signal.error().unwrap_or_default())
 							}
 						}
 						a {
@@ -634,7 +608,7 @@ pub fn polls_index_with_logo() -> Page {
 					div {
 						class: "alert-danger",
 						{
-							format_server_error(&load_questions_error.error().unwrap_or_default())
+							parse_server_error_message(&load_questions_error.error().unwrap_or_default())
 						}
 					}
 				}
@@ -744,7 +718,7 @@ pub fn question_new() -> Page {
 					div {
 						class: "alert-danger mb-3",
 						{
-							format_server_error(&error_signal.get().unwrap_or_default())
+							parse_server_error_message(&error_signal.get().unwrap_or_default())
 						}
 					}
 				}
@@ -872,7 +846,7 @@ pub fn question_edit(question_id: i64) -> Page {
 						div {
 							class: "alert-danger",
 							{
-								format_server_error(&load_detail_signal.error().unwrap_or_default())
+								parse_server_error_message(&load_detail_signal.error().unwrap_or_default())
 							}
 						}
 						a {
@@ -892,7 +866,7 @@ pub fn question_edit(question_id: i64) -> Page {
 							div {
 								class: "alert-danger mb-3",
 								{
-									format_server_error(&edit_form.error().get().unwrap_or_default())
+									parse_server_error_message(&edit_form.error().get().unwrap_or_default())
 								}
 							}
 						}
@@ -999,7 +973,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 					div {
 						class: "alert-danger",
 						{
-							format_server_error(&load_detail_signal.error().unwrap_or_default())
+							parse_server_error_message(&load_detail_signal.error().unwrap_or_default())
 						}
 					}
 				}
@@ -1009,7 +983,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 					div {
 						class: "alert-danger mt-3",
 						{
-							format_server_error(&error_signal.get().unwrap_or_default())
+							parse_server_error_message(&error_signal.get().unwrap_or_default())
 						}
 					}
 				}
@@ -1118,7 +1092,7 @@ pub fn choice_new(question_id: i64) -> Page {
 					div {
 						class: "alert-danger mb-3",
 						{
-							format_server_error(&error_signal.get().unwrap_or_default())
+							parse_server_error_message(&error_signal.get().unwrap_or_default())
 						}
 					}
 				}
@@ -1204,7 +1178,7 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 					div {
 						class: "alert-danger mb-3",
 						{
-							format_server_error(&error_signal.get().unwrap_or_default())
+							parse_server_error_message(&error_signal.get().unwrap_or_default())
 						}
 					}
 				}
@@ -1288,7 +1262,7 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 					div {
 						class: "alert-danger mt-3",
 						{
-							format_server_error(&error_signal.get().unwrap_or_default())
+							parse_server_error_message(&error_signal.get().unwrap_or_default())
 						}
 					}
 				}
