@@ -8,7 +8,7 @@ fn main() {
 		action: "/api/typed-choice",
 
 		fields: {
-			priority: ChoiceField {
+			priority: ChoiceField<i64> {
 				required,
 				choices_from: "priorities",
 				choice_value: "id",
