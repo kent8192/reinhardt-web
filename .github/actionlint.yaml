@@ -1,0 +1,7 @@
+# Custom self-hosted runner labels used by this repository.
+# actionlint uses this file to suppress "unknown label" warnings.
+self-hosted-runner:
+  labels:
+    - reinhardt-hotpath
+    - reinhardt-ci
+    - mac-local
