@@ -550,37 +550,59 @@ async fn workspace_app_pages_uses_unified_template() {
 	);
 
 	// 5. InstalledApp import uses project_crate_name, not crate::
+	let expected_workspace_import =
+		format!("use {}::config::apps::InstalledApp;", project_name);
 	let server_urls =
 		fs::read_to_string(src.join("urls").join("server_urls.rs")).expect("read server_urls.rs");
-	assert!(
-		!server_urls.contains("use crate::config::apps::InstalledApp"),
+	assert_eq!(
+		server_urls
+			.lines()
+			.any(|l| l.trim() == "use crate::config::apps::InstalledApp;"),
+		false,
 		"workspace server_urls.rs must NOT use crate:: import:\n{server_urls}"
 	);
-	assert!(
-		server_urls.contains("::config::apps::InstalledApp"),
+	assert_eq!(
+		server_urls
+			.lines()
+			.any(|l| l.trim() == expected_workspace_import),
+		true,
 		"workspace server_urls.rs must import InstalledApp from project crate:\n{server_urls}"
 	);
 
 	let client_router = fs::read_to_string(src.join("urls").join("client_router.rs"))
 		.expect("read client_router.rs");
-	assert!(
-		!client_router.contains("use crate::config::apps::InstalledApp"),
+	assert_eq!(
+		client_router
+			.lines()
+			.any(|l| l.trim() == "use crate::config::apps::InstalledApp;"),
+		false,
 		"workspace client_router.rs must NOT use crate:: import:\n{client_router}"
 	);
-	assert!(
-		client_router.contains("::config::apps::InstalledApp"),
+	assert_eq!(
+		client_router
+			.lines()
+			.any(|l| l.trim() == expected_workspace_import),
+		true,
 		"workspace client_router.rs must import InstalledApp from project crate:\n{client_router}"
 	);
 
 	// 6. client/pages.rs imports with_nav from project crate, not crate::
+	let expected_workspace_with_nav =
+		format!("use {}::client::components::nav::with_nav;", project_name);
 	let pages_rs =
 		fs::read_to_string(src.join("client").join("pages.rs")).expect("read client/pages.rs");
-	assert!(
-		!pages_rs.contains("use crate::client::components::nav::with_nav"),
+	assert_eq!(
+		pages_rs
+			.lines()
+			.any(|l| l.trim() == "use crate::client::components::nav::with_nav;"),
+		false,
 		"workspace client/pages.rs must NOT use crate:: for with_nav import:\n{pages_rs}"
 	);
-	assert!(
-		pages_rs.contains("::client::components::nav::with_nav"),
+	assert_eq!(
+		pages_rs
+			.lines()
+			.any(|l| l.trim() == expected_workspace_with_nav),
+		true,
 		"workspace client/pages.rs must import with_nav from project crate:\n{pages_rs}"
 	);
 
@@ -637,14 +659,32 @@ async fn module_app_pages_does_not_generate_workspace_files() {
 	);
 
 	// InstalledApp import uses crate::, not project_crate_name::
+	let expected_module_import = "use crate::config::apps::InstalledApp;";
 	let server_urls = fs::read_to_string(
 		apps.join("baz")
 			.join("urls")
 			.join("server_urls.rs"),
 	)
 	.expect("read server_urls.rs");
-	assert!(
-		server_urls.contains("use crate::config::apps::InstalledApp"),
+	assert_eq!(
+		server_urls
+			.lines()
+			.any(|l| l.trim() == expected_module_import),
+		true,
 		"module server_urls.rs must use crate:: import:\n{server_urls}"
+	);
+
+	let client_router = fs::read_to_string(
+		apps.join("baz")
+			.join("urls")
+			.join("client_router.rs"),
+	)
+	.expect("read client_router.rs");
+	assert_eq!(
+		client_router
+			.lines()
+			.any(|l| l.trim() == expected_module_import),
+		true,
+		"module client_router.rs must use crate:: import:\n{client_router}"
 	);
 }
