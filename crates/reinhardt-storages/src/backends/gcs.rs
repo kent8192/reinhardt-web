@@ -21,7 +21,7 @@ impl GcsStorage {
 	}
 }
 
-#[allow(clippy::todo)] // Phase 2 backend not yet implemented
+#[allow(clippy::unimplemented)] // Phase 2 backend — intentionally not yet implemented
 #[async_trait]
 impl StorageBackend for GcsStorage {
 	async fn save(&self, _name: &str, _content: &[u8]) -> Result<String> {
