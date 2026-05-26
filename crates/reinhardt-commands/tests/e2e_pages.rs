@@ -550,8 +550,7 @@ async fn workspace_app_pages_uses_unified_template() {
 	);
 
 	// 5. InstalledApp import uses project_crate_name, not crate::
-	let expected_workspace_import =
-		format!("use {}::config::apps::InstalledApp;", project_name);
+	let expected_workspace_import = format!("use {}::config::apps::InstalledApp;", project_name);
 	let server_urls =
 		fs::read_to_string(src.join("urls").join("server_urls.rs")).expect("read server_urls.rs");
 	assert!(
@@ -600,7 +599,7 @@ async fn workspace_app_pages_uses_unified_template() {
 		"workspace client/pages.rs must import with_nav from project crate:\n{pages_rs}"
 	);
 
-	// 8. Cargo.toml is valid and references src/lib.rs
+	// 8. Cargo.toml is valid, references src/lib.rs, and depends on parent crate
 	let cargo_content =
 		fs::read_to_string(app_dir.join("Cargo.toml")).expect("read app Cargo.toml");
 	assert!(
@@ -610,6 +609,10 @@ async fn workspace_app_pages_uses_unified_template() {
 	assert!(
 		cargo_content.contains("path = \"src/lib.rs\""),
 		"app Cargo.toml must reference src/lib.rs:\n{cargo_content}"
+	);
+	assert!(
+		cargo_content.contains(&format!("{project_name} = {{ path = \"../..\" }}")),
+		"app Cargo.toml must depend on parent project crate:\n{cargo_content}"
 	);
 
 	// 9. Workspace Cargo.toml has the new member registered
@@ -654,12 +657,8 @@ async fn module_app_pages_does_not_generate_workspace_files() {
 
 	// InstalledApp import uses crate::, not project_crate_name::
 	let expected_module_import = "use crate::config::apps::InstalledApp;";
-	let server_urls = fs::read_to_string(
-		apps.join("baz")
-			.join("urls")
-			.join("server_urls.rs"),
-	)
-	.expect("read server_urls.rs");
+	let server_urls = fs::read_to_string(apps.join("baz").join("urls").join("server_urls.rs"))
+		.expect("read server_urls.rs");
 	assert!(
 		server_urls
 			.lines()
@@ -667,16 +666,23 @@ async fn module_app_pages_does_not_generate_workspace_files() {
 		"module server_urls.rs must use crate:: import:\n{server_urls}"
 	);
 
-	let client_router = fs::read_to_string(
-		apps.join("baz")
-			.join("urls")
-			.join("client_router.rs"),
-	)
-	.expect("read client_router.rs");
+	let client_router = fs::read_to_string(apps.join("baz").join("urls").join("client_router.rs"))
+		.expect("read client_router.rs");
 	assert!(
 		client_router
 			.lines()
 			.any(|l| l.trim() == expected_module_import),
 		"module client_router.rs must use crate:: import:\n{client_router}"
+	);
+
+	// client/pages.rs with_nav import uses crate::, not project_crate_name::
+	let expected_module_with_nav = "use crate::client::components::nav::with_nav;";
+	let pages_rs = fs::read_to_string(apps.join("baz").join("client").join("pages.rs"))
+		.expect("read client/pages.rs");
+	assert!(
+		pages_rs
+			.lines()
+			.any(|l| l.trim() == expected_module_with_nav),
+		"module client/pages.rs must use crate:: for with_nav import:\n{pages_rs}"
 	);
 }

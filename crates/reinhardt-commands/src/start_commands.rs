@@ -478,7 +478,7 @@ async fn create_workspace_app(
 	template_cmd.handle(app_name, Some(&src_target), source.as_ref(), context, ctx)?;
 
 	// Generate workspace infrastructure files at apps/<name>/
-	generate_workspace_cargo_toml(app_name, with_pages, &app_target)?;
+	generate_workspace_cargo_toml(app_name, &project_crate_name, with_pages, &app_target)?;
 	if with_pages {
 		generate_workspace_build_rs(app_name, &app_target)?;
 	}
@@ -490,8 +490,13 @@ async fn create_workspace_app(
 }
 
 /// Generate `Cargo.toml` for a workspace app crate.
+///
+/// The generated manifest includes a path dependency on the parent project
+/// crate (`project_crate_name`) so that workspace app templates can import
+/// types such as `InstalledApp` and shared components from the root crate.
 fn generate_workspace_cargo_toml(
 	app_name: &str,
+	project_crate_name: &str,
 	with_pages: bool,
 	app_dir: &Path,
 ) -> CommandResult<()> {
@@ -520,6 +525,10 @@ fn generate_workspace_cargo_toml(
 		format!("\n[lib]\nname = \"{app_name}\"\npath = \"src/lib.rs\"\n")
 	};
 
+	// The project crate dependency uses a relative path (`../..`) pointing
+	// from `apps/<name>/` back to the workspace root where the parent
+	// project's Cargo.toml lives.
+	let project_pkg = project_crate_name.replace('_', "-");
 	let content = format!(
 		"[package]\n\
 		 name = \"{app_name}\"\n\
@@ -527,6 +536,7 @@ fn generate_workspace_cargo_toml(
 		 edition = \"2024\"\n\
 		 {lib_section}\n\
 		 [dependencies]\n\
+		 {project_pkg} = {{ path = \"../..\" }}\n\
 		 reinhardt-core = {{ workspace = true }}\n\
 		 reinhardt-orm = {{ workspace = true }}\n\
 		 reinhardt-routers = {{ workspace = true }}\n\
@@ -543,18 +553,10 @@ fn generate_workspace_cargo_toml(
 
 	let cargo_path = app_dir.join("Cargo.toml");
 	let mut f = fs::File::create(&cargo_path).map_err(|e| {
-		CommandError::ExecutionError(format!(
-			"Failed to create {}: {}",
-			cargo_path.display(),
-			e
-		))
+		CommandError::ExecutionError(format!("Failed to create {}: {}", cargo_path.display(), e))
 	})?;
 	f.write_all(content.as_bytes()).map_err(|e| {
-		CommandError::ExecutionError(format!(
-			"Failed to write {}: {}",
-			cargo_path.display(),
-			e
-		))
+		CommandError::ExecutionError(format!("Failed to write {}: {}", cargo_path.display(), e))
 	})?;
 
 	Ok(())
@@ -589,18 +591,10 @@ fn generate_workspace_build_rs(app_name: &str, app_dir: &Path) -> CommandResult<
 
 	let build_path = app_dir.join("build.rs");
 	let mut f = fs::File::create(&build_path).map_err(|e| {
-		CommandError::ExecutionError(format!(
-			"Failed to create {}: {}",
-			build_path.display(),
-			e
-		))
+		CommandError::ExecutionError(format!("Failed to create {}: {}", build_path.display(), e))
 	})?;
 	f.write_all(content.as_bytes()).map_err(|e| {
-		CommandError::ExecutionError(format!(
-			"Failed to write {}: {}",
-			build_path.display(),
-			e
-		))
+		CommandError::ExecutionError(format!("Failed to write {}: {}", build_path.display(), e))
 	})?;
 
 	Ok(())
