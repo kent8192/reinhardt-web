@@ -15,8 +15,10 @@
 //!
 //! - `testing` — exposes [`DependencyRegistry::register_override`] and
 //!   [`testing::OverrideGuard`] for use by `reinhardt-testkit` and other
-//!   test harnesses. Tests using these APIs must run inside
-//!   `#[serial(di_registry)]`.
+//!   test harnesses. When operating on a per-context registry (via
+//!   `InjectionContextBuilder::with_registry`), `#[serial(di_registry)]`
+//!   is not required. Direct mutations of the global registry still
+//!   require `#[serial(di_registry)]`.
 //!
 //! ## Development Tools (dev-tools feature)
 //!
