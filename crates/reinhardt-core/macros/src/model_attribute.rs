@@ -199,12 +199,37 @@ pub(crate) fn model_attribute_impl(
 		}
 	}
 
+	// Detect serde derives visible at this point and forward as bare flags.
+	// When `#[model]` appears before `#[derive(Serialize)]` in source, the
+	// attribute macro can see the derive. When `#[derive]` comes first, attrs
+	// will be empty (Rust processes outer attributes top-to-bottom).
+	// The recommended attribute order is `#[model]` first.
+	let has_serialize = has_derive_trait(&input.attrs, "Serialize");
+	let has_deserialize = has_derive_trait(&input.attrs, "Deserialize");
+
+	let serde_flags: TokenStream = {
+		let mut flags = Vec::new();
+		if has_serialize {
+			flags.push(quote!(serde_serialize));
+		}
+		if has_deserialize {
+			flags.push(quote!(serde_deserialize));
+		}
+		if flags.is_empty() {
+			quote! {}
+		} else if args.is_empty() {
+			quote! { #(#flags),* }
+		} else {
+			quote! { , #(#flags),* }
+		}
+	};
+
 	// Create a #[model_config(...)] helper attribute with the arguments
 	// Using model_config instead of model to avoid name collision with the attribute macro
-	let config_attr: Attribute = if args.is_empty() {
+	let config_attr: Attribute = if args.is_empty() && serde_flags.is_empty() {
 		syn::parse_quote! { #[model_config] }
 	} else {
-		syn::parse_quote! { #[model_config(#args)] }
+		syn::parse_quote! { #[model_config(#args #serde_flags)] }
 	};
 
 	// Build derive attribute with Model derive macro

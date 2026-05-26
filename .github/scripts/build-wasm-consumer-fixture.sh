@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Generate a wasm SPA-shaped consumer using reinhardt-admin templates and
-# exercise the four macro re-exports gated by Issue #4161.
+# exercise the macro re-exports gated by Issue #4161.
+#
+# The scaffold itself (`startproject --with-pages` + `startapp --with-pages`)
+# exercises the core re-exports (app_config, routes macro, AppLabel via
+# InstalledApp). The previous augment patch for mode=unified|ws was removed
+# after the URL routing simplification (Issue #4784).
 #
 # Usage:
 #   build-wasm-consumer-fixture.sh                # workspace-path form (CI alpha)
@@ -49,17 +54,7 @@ else
 fi
 echo "::endgroup::"
 
-echo "::group::4) Apply augment patch (#[url_patterns mode=unified|ws])"
-# `git apply` needs to be inside a git repo for context line resolution.
-git init --quiet
-git add -A
-git -c user.name="ci-fixture" -c user.email="ci@local" \
-	commit --quiet -m "snapshot before augment" \
-	--author "ci-fixture <ci@local>"
-git apply "$GITHUB_WORKSPACE/.github/fixtures/wasm-consumer-augment.patch"
-echo "::endgroup::"
-
-echo "::group::5) cargo check --target wasm32-unknown-unknown --lib (the gate)"
+echo "::group::4) cargo check --target wasm32-unknown-unknown --lib (the gate)"
 cargo check --target wasm32-unknown-unknown --lib
 echo "::endgroup::"
 
