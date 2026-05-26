@@ -36,6 +36,7 @@ use std::marker::PhantomData;
 /// # impl Model for User {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = UserFields;
+/// #     type Objects = Manager<Self>;
 /// #     fn app_label() -> &'static str { "app" }
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn new_fields() -> Self::Fields { UserFields }
@@ -46,6 +47,7 @@ use std::marker::PhantomData;
 /// # impl Model for Post {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = PostFields;
+/// #     type Objects = Manager<Self>;
 /// #     fn app_label() -> &'static str { "app" }
 /// #     fn table_name() -> &'static str { "posts" }
 /// #     fn new_fields() -> Self::Fields { PostFields }
@@ -110,6 +112,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
@@ -120,6 +123,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
@@ -170,6 +174,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
@@ -180,6 +185,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
@@ -230,6 +236,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
@@ -240,6 +247,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
@@ -290,6 +298,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
@@ -300,6 +309,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
@@ -351,6 +361,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::orm::Manager;
 	use reinhardt_core::validators::TableName;
 	use serde::{Deserialize, Serialize};
 
@@ -373,6 +384,7 @@ mod tests {
 	impl Model for User {
 		type PrimaryKey = i64;
 		type Fields = UserFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			USER_TABLE.as_str()
@@ -411,6 +423,7 @@ mod tests {
 	impl Model for Post {
 		type PrimaryKey = i64;
 		type Fields = PostFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			POST_TABLE.as_str()

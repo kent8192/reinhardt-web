@@ -52,6 +52,7 @@ impl FieldSelector for TestUserFields {
 impl Model for TestUser {
 	type PrimaryKey = i64;
 	type Fields = TestUserFields;
+	type Objects = reinhardt_db::orm::Manager<Self>;
 
 	fn table_name() -> &'static str {
 		"test_users"
@@ -89,6 +90,7 @@ impl FieldSelector for TestPostFields {
 impl Model for TestPost {
 	type PrimaryKey = i64;
 	type Fields = TestPostFields;
+	type Objects = reinhardt_db::orm::Manager<Self>;
 
 	fn table_name() -> &'static str {
 		"test_posts"
@@ -1193,6 +1195,7 @@ impl FieldSelector for TestAuthorFields {
 impl Model for TestAuthor {
 	type PrimaryKey = i64;
 	type Fields = TestAuthorFields;
+	type Objects = reinhardt_db::orm::Manager<Self>;
 
 	fn table_name() -> &'static str {
 		"test_authors"

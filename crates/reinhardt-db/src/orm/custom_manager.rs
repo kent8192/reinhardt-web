@@ -1,22 +1,22 @@
 //! Custom Object Manager support for the Reinhardt ORM.
 //!
-//! This module provides the [`CustomManager`] trait and the [`HasCustomManager`]
-//! opt-in trait, enabling Django-style customizable object managers without
-//! breaking any existing API.
+//! This module provides the [`CustomManager`] trait, enabling Django-style
+//! customizable object managers.
 //!
 //! Issue: <https://github.com/kent8192/reinhardt-web/issues/3980>
+//! Unified access: <https://github.com/kent8192/reinhardt-web/issues/3984>
 //!
 //! # Design
 //!
-//! The default object accessor `Model::objects()` returns the concrete
-//! [`Manager<Self>`] type, which is stateless. To customize query behavior
-//! per model (default filters, access control hooks, etc.), users implement
-//! the [`CustomManager`] trait on their own type and attach it to a model
-//! using the `#[model(manager = MyManager)]` attribute argument. Access to
-//! the configured manager is then available through `Model::custom_manager()`.
+//! The `Model` trait has an associated type `Objects` that determines which
+//! manager `Model::objects()` returns. By default (when no custom manager is
+//! specified), `type Objects = Manager<Self>`. When a custom manager is
+//! configured via `#[model(manager = MyManager)]`, the macro sets
+//! `type Objects = MyManager`, so `Model::objects()` returns the custom
+//! manager directly.
 //!
 //! All default implementations delegate to the existing inherent methods on
-//! [`Manager<M>`], so the runtime semantics of the standard 53 operations are
+//! [`Manager<M>`], so the runtime semantics of the standard operations are
 //! preserved exactly. The blanket `impl<M: Model> CustomManager for Manager<M>`
 //! ensures that the existing manager continues to satisfy the trait, allowing
 //! generic functions to accept any compatible manager.
@@ -36,11 +36,10 @@
 //! # Quick Start
 //!
 //! Define a custom manager with `Default`, implement [`CustomManager`], and
-//! either implement [`HasCustomManager`] manually or use the
-//! `#[model(manager = ...)]` attribute:
+//! use the `#[model(manager = ...)]` attribute:
 //!
 //! ```ignore
-//! use reinhardt_db::orm::{CustomManager, HasCustomManager};
+//! use reinhardt_db::orm::CustomManager;
 //! use reinhardt_core::exception::Result;
 //!
 //! #[derive(Default)]
@@ -61,24 +60,19 @@
 //!     }
 //! }
 //!
-//! // Option A: macro-generated wiring.
 //! #[reinhardt_macros::model(table_name = "users", manager = ActiveUserManager)]
 //! struct User { /* ... */ }
 //!
-//! // Option B: equivalent manual impl (the macro generates this).
-//! // impl HasCustomManager for User {
-//! //     type Manager = ActiveUserManager;
-//! // }
-//!
-//! let manager = User::custom_manager();
+//! // objects() now returns ActiveUserManager directly
+//! let manager = User::objects();
 //! ```
 //!
-//! # Backward Compatibility
+//! # Blanket Implementation
 //!
 //! The blanket `impl<M: Model> CustomManager for Manager<M>` makes every
 //! existing manager — the value returned by `Model::objects()` — satisfy
-//! [`CustomManager`] automatically. Generic code can therefore accept either
-//! the canonical [`Manager<M>`] or any user-defined manager:
+//! [`CustomManager`] automatically. Generic code can therefore accept any
+//! compatible manager:
 //!
 //! ```
 //! use reinhardt_db::orm::custom_manager::CustomManager;
@@ -98,18 +92,19 @@
 //! impl Model for Article {
 //!     type PrimaryKey = i64;
 //!     type Fields = ArticleFields;
+//!     type Objects = Manager<Self>;
 //!     fn table_name() -> &'static str { "articles" }
 //!     fn new_fields() -> Self::Fields { ArticleFields }
 //!     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 //!     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 //! }
 //!
-//! // Generic helper accepting any CustomManager bound to Article.
+//! // Generic helper accepting any `CustomManager` bound to `Article`.
 //! fn count_filters<M: CustomManager<Model = Article>>(m: &M) -> usize {
 //!     m.all().filters().len()
 //! }
 //!
-//! // Existing Manager<Article> satisfies the trait via blanket impl.
+//! // `Manager<Article>` satisfies the trait via blanket impl.
 //! let m = Manager::<Article>::new();
 //! assert_eq!(count_filters(&m), 0);
 //! ```
@@ -582,37 +577,3 @@ impl<M: Model> CustomManager for Manager<M> {
 	}
 }
 
-/// Marker trait that wires a model to a [`CustomManager`] type, enabling
-/// `Model::custom_manager()`.
-///
-/// This trait is generated automatically by the `#[model(manager = ...)]`
-/// attribute, but it can also be implemented manually for full control.
-///
-/// # Example
-///
-/// ```ignore
-/// use reinhardt_db::orm::{CustomManager, HasCustomManager};
-///
-/// #[derive(Default)]
-/// struct ActiveUserManager;
-///
-/// impl CustomManager for ActiveUserManager {
-///     type Model = User;
-///     fn new() -> Self { Self }
-/// }
-///
-/// impl HasCustomManager for User {
-///     type Manager = ActiveUserManager;
-/// }
-///
-/// let manager = User::custom_manager();
-/// ```
-pub trait HasCustomManager: Model + Sized {
-	/// The custom manager type associated with this model.
-	type Manager: CustomManager<Model = Self> + Default;
-
-	/// Construct the configured custom manager.
-	fn custom_manager() -> Self::Manager {
-		Self::Manager::default()
-	}
-}

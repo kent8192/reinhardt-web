@@ -209,6 +209,7 @@ impl<P: Model, C: Model> Relationship<P, C> {
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	///     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -218,6 +219,7 @@ impl<P: Model, C: Model> Relationship<P, C> {
 	/// impl Model for Post {
 	///     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	///     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -542,6 +544,7 @@ pub enum JoinType {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::orm::Manager;
 	use crate::orm::types::DatabaseDialect;
 	use reinhardt_core::validators::TableName;
 	use serde::{Deserialize, Serialize};
@@ -566,6 +569,7 @@ mod tests {
 	impl Model for User {
 		type PrimaryKey = i64;
 		type Fields = UserFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			USER_TABLE.as_str()
@@ -609,6 +613,7 @@ mod tests {
 	impl Model for Post {
 		type PrimaryKey = i64;
 		type Fields = PostFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			POST_TABLE.as_str()
@@ -651,6 +656,7 @@ mod tests {
 	impl Model for Role {
 		type PrimaryKey = i64;
 		type Fields = RoleFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			ROLE_TABLE.as_str()

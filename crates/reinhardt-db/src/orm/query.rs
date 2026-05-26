@@ -565,6 +565,7 @@ where
 	/// # impl Model for Book {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = BookFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "books" }
 	/// #     fn new_fields() -> Self::Fields { BookFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -648,6 +649,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -663,6 +665,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -717,6 +720,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -732,6 +736,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -786,6 +791,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -801,6 +807,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -855,6 +862,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -870,6 +878,7 @@ where
 	/// # impl Model for Category {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = CategoryFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "categories" }
 	/// #     fn new_fields() -> Self::Fields { CategoryFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -931,6 +940,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -979,6 +989,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -994,6 +1005,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1046,6 +1058,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1061,6 +1074,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1112,6 +1126,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1127,6 +1142,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1194,6 +1210,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1294,6 +1311,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1394,6 +1412,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1486,6 +1505,7 @@ where
 	/// # impl Model for Book {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = BookFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "books" }
 	/// #     fn new_fields() -> Self::Fields { BookFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1517,6 +1537,7 @@ where
 	/// # impl Model for Sale {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = SaleFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "sales" }
 	/// #     fn new_fields() -> Self::Fields { SaleFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1596,6 +1617,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1695,6 +1717,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1790,6 +1813,7 @@ where
 	/// # impl Model for Product {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ProductFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "products" }
 	/// #     fn new_fields() -> Self::Fields { ProductFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1894,6 +1918,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1995,6 +2020,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2072,6 +2098,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2087,6 +2114,7 @@ where
 	/// # impl Model for Book {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = BookFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "books" }
 	/// #     fn new_fields() -> Self::Fields { BookFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2139,6 +2167,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2154,6 +2183,7 @@ where
 	/// # impl Model for Book {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = BookFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "books" }
 	/// #     fn new_fields() -> Self::Fields { BookFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2207,6 +2237,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2222,6 +2253,7 @@ where
 	/// # impl Model for Book {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = BookFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "books" }
 	/// #     fn new_fields() -> Self::Fields { BookFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2274,6 +2306,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2289,6 +2322,7 @@ where
 	/// # impl Model for Book {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = BookFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "books" }
 	/// #     fn new_fields() -> Self::Fields { BookFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2342,6 +2376,7 @@ where
 	/// # impl Model for Employee {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = EmployeeFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "employees" }
 	/// #     fn new_fields() -> Self::Fields { EmployeeFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2400,6 +2435,7 @@ where
 	/// # impl Model for Customer {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = CustomerFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "customers" }
 	/// #     fn new_fields() -> Self::Fields { CustomerFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3037,6 +3073,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3081,6 +3118,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3305,6 +3343,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3351,6 +3390,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3546,6 +3586,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3689,6 +3730,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3740,6 +3782,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3799,6 +3842,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3921,6 +3965,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3973,6 +4018,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4018,6 +4064,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4093,6 +4140,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4137,6 +4185,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4219,6 +4268,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4292,6 +4342,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4357,6 +4408,7 @@ where
 	/// # impl Model for PostTag {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostTagFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "post_tags" }
 	/// #     fn new_fields() -> Self::Fields { PostTagFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { None }
@@ -4501,6 +4553,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4556,6 +4609,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4571,6 +4625,7 @@ where
 	/// # impl Model for Book {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = BookFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "books" }
 	/// #     fn new_fields() -> Self::Fields { BookFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4634,6 +4689,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4649,6 +4705,7 @@ where
 	/// # impl Model for Order {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = OrderFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "orders" }
 	/// #     fn new_fields() -> Self::Fields { OrderFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4953,6 +5010,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5001,6 +5059,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5036,6 +5095,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5083,6 +5143,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5121,6 +5182,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5160,6 +5222,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5200,6 +5263,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5215,6 +5279,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5257,6 +5322,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5298,6 +5364,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5344,6 +5411,7 @@ where
 	/// # impl Model for Article {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ArticleFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "articles" }
 	/// #     fn new_fields() -> Self::Fields { ArticleFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5391,6 +5459,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5438,6 +5507,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5485,6 +5555,7 @@ where
 	/// # impl Model for Product {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ProductFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "products" }
 	/// #     fn new_fields() -> Self::Fields { ProductFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5532,6 +5603,7 @@ where
 	/// # impl Model for Product {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ProductFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "products" }
 	/// #     fn new_fields() -> Self::Fields { ProductFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5579,6 +5651,7 @@ where
 	/// # impl Model for Event {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = EventFields;
+	/// #     type Objects = Manager<Self>;
 	/// #     fn table_name() -> &'static str { "events" }
 	/// #     fn new_fields() -> Self::Fields { EventFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5704,7 +5777,7 @@ fn parse_column_reference(field: &str) -> reinhardt_query::prelude::ColumnRef {
 #[cfg(test)]
 mod tests {
 	use crate::orm::query::UpdateValue;
-	use crate::orm::{FilterOperator, FilterValue, Model, QuerySet, query::Filter};
+	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
@@ -5740,6 +5813,7 @@ mod tests {
 	impl Model for TestUser {
 		type PrimaryKey = i64;
 		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			"test_users"

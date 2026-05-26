@@ -660,6 +660,7 @@ mod tests {
 	impl Model for TestUser {
 		type PrimaryKey = i64;
 		type Fields = TestUserFields;
+		type Objects = reinhardt_db::orm::Manager<Self>;
 
 		fn table_name() -> &'static str {
 			"test_users"

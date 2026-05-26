@@ -297,6 +297,7 @@ impl<L: Model, R: Model> ManyToMany<L, R> {
 	/// impl Model for Student {
 	///     type PrimaryKey = i64;
 	/// #     type Fields = StudentFields;
+	/// #     type Objects = Manager<Self>;
 	///     fn table_name() -> &'static str { "students" }
 	/// #     fn new_fields() -> Self::Fields { StudentFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -306,6 +307,7 @@ impl<L: Model, R: Model> ManyToMany<L, R> {
 	/// impl Model for Course {
 	///     type PrimaryKey = i64;
 	/// #     type Fields = CourseFields;
+	/// #     type Objects = Manager<Self>;
 	///     fn table_name() -> &'static str { "courses" }
 	/// #     fn new_fields() -> Self::Fields { CourseFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -449,6 +451,7 @@ pub fn association_table(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::orm::Manager;
 	use reinhardt_core::validators::TableName;
 	use serde::{Deserialize, Serialize};
 
@@ -471,6 +474,7 @@ mod tests {
 	impl Model for Student {
 		type PrimaryKey = i64;
 		type Fields = StudentFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			STUDENT_TABLE.as_str()
@@ -508,6 +512,7 @@ mod tests {
 	impl Model for Course {
 		type PrimaryKey = i64;
 		type Fields = CourseFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			COURSE_TABLE.as_str()

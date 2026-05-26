@@ -10,7 +10,7 @@
 use crate::core::AdminUser;
 use async_trait::async_trait;
 use reinhardt_auth::BaseUser;
-use reinhardt_db::orm::{DatabaseConnection, Model};
+use reinhardt_db::orm::{CustomManager, DatabaseConnection, Model};
 use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext};
 use reinhardt_http::AuthState;
 use std::future::Future;
@@ -279,7 +279,7 @@ where
 	U: BaseUser + AdminUser + Model + Clone + Send + Sync + 'static,
 	<U as BaseUser>::PrimaryKey: ToString + Send + Sync,
 {
-	use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
+	use reinhardt_db::orm::{CustomManager, Filter, FilterOperator, FilterValue};
 
 	let authenticator: AdminLoginAuthenticatorFn = Arc::new(move |username, password, db| {
 		Box::pin(async move {

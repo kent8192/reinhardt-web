@@ -127,10 +127,10 @@ struct ModelConfig {
 	app_label: String,
 	table_name: String,
 	constraints: Vec<ConstraintSpec>,
-	/// Custom manager type path from `manager = MyManager` (Issue #3980).
+	/// Custom manager type path from `manager = MyManager` (Issue #3980, #3984).
 	///
-	/// When `Some`, the macro emits an `impl HasCustomManager for Self`
-	/// that wires the model to the user-supplied manager type.
+	/// When `Some`, the macro sets `type Objects = MyManager` in the generated
+	/// `Model` impl so that `objects()` returns the custom manager directly.
 	manager: Option<syn::Path>,
 }
 
@@ -2123,17 +2123,13 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		syn::Ident::new(&format!("{}Fields", struct_name), struct_name.span());
 	let field_selector_struct = generate_field_selector_struct(struct_name, &field_infos);
 
-	// Conditionally emit `impl HasCustomManager for ...` when the model
-	// requested a custom manager via `#[model(manager = ...)]` (Issue #3980).
-	// Without this attribute we emit nothing, preserving complete backward
-	// compatibility with existing models.
-	let custom_manager_impl = match &model_config.manager {
-		Some(path) => quote! {
-			impl #generics #orm_crate::HasCustomManager for #struct_name #generics #where_clause {
-				type Manager = #path;
-			}
-		},
-		None => quote! {},
+	// Determine the `type Objects` associated type for the Model impl.
+	// When `#[model(manager = MyManager)]` is specified, `objects()` returns
+	// the custom manager; otherwise it returns the default `Manager<Self>`
+	// (Issue #3984).
+	let objects_type = match &model_config.manager {
+		Some(path) => quote! { #path },
+		None => quote! { #orm_crate::Manager<Self> },
 	};
 
 	// Generate the Model implementation
@@ -2168,6 +2164,7 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		impl #generics #orm_crate::Model for #struct_name #generics #where_clause {
 			type PrimaryKey = #pk_type;
 			type Fields = #field_selector_name;
+			type Objects = #objects_type;
 
 			fn table_name() -> &'static str {
 				#table_name
@@ -2234,9 +2231,6 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			#relationship_metadata
 		}
 
-		// Conditional `impl HasCustomManager` (Issue #3980) — empty when the
-		// model did not opt in to a custom manager.
-		#custom_manager_impl
 
 		#registration_code
 

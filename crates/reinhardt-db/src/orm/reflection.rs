@@ -26,6 +26,7 @@
 //! impl Model for User {
 //!     type PrimaryKey = i64;
 //!     type Fields = UserFields;
+//!     type Objects = Manager<Self>;
 //!
 //!     fn table_name() -> &'static str {
 //!         "users"
@@ -283,6 +284,7 @@ impl FieldInfo {
 /// impl Model for Article {
 ///     type PrimaryKey = i64;
 ///     type Fields = ArticleFields;
+///     type Objects = Manager<Self>;
 ///
 ///     fn table_name() -> &'static str {
 ///         "articles"
@@ -342,6 +344,7 @@ impl ModelReflector {
 	/// impl Model for Product {
 	///     type PrimaryKey = i64;
 	///     type Fields = ProductFields;
+	///     type Objects = Manager<Self>;
 	///
 	///     fn table_name() -> &'static str {
 	///         "products"
@@ -557,6 +560,7 @@ fn json_value_to_field_value(value: serde_json::Value) -> FieldValue {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::orm::Manager;
 	use crate::orm::model::Model;
 	use crate::orm::registry::{ColumnMapping, EntityMapper, registry};
 	use serial_test::serial;
@@ -581,6 +585,7 @@ mod tests {
 	impl Model for TestUser {
 		type PrimaryKey = i64;
 		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			"test_users"
