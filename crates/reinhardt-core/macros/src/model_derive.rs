@@ -5013,35 +5013,6 @@ fn field_has_validation(config: &FieldConfig) -> bool {
 		|| config.max_value.is_some()
 }
 
-/// Check if the input struct has a specific trait in its `#[derive(...)]` attributes.
-///
-/// In the Model derive macro, `DeriveInput.attrs` includes the merged
-/// `#[derive(Model, ...)]` attribute produced by the `#[model]` attribute macro.
-fn has_derive_trait(attrs: &[syn::Attribute], trait_name: &str) -> bool {
-	use syn::{Meta, Token, punctuated::Punctuated};
-
-	for attr in attrs {
-		if !attr.path().is_ident("derive") {
-			continue;
-		}
-		let Meta::List(list) = &attr.meta else {
-			continue;
-		};
-		if let Ok(derives) = syn::parse::Parser::parse2(
-			Punctuated::<syn::Path, Token![,]>::parse_terminated,
-			list.tokens.clone(),
-		) {
-			if derives
-				.iter()
-				.any(|p| p.segments.last().is_some_and(|seg| seg.ident == trait_name))
-			{
-				return true;
-			}
-		}
-	}
-	false
-}
-
 /// Generate a typestate builder for `{Model}Info` with `IntoPrimaryKey` support on FK fields.
 fn generate_info_builder(
 	info_name: &Ident,
