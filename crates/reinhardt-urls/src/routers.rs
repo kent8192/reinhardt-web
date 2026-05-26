@@ -200,19 +200,8 @@ pub use registration::{
 pub use registration::{RouterFactory, UrlPatternsRegistration};
 #[cfg(native)]
 pub use reverse::{
-	ReverseError,
-	ReverseResult,
-	UrlParams,
-	// Type-safe reversal
-	UrlPattern,
-	UrlPatternWithParams,
-	UrlReverser,
-	extract_param_names,
-	reverse,
-	reverse_typed,
-	reverse_typed_with_params,
-	try_reverse_single_pass,
-	try_reverse_with_aho_corasick,
+	ReverseError, ReverseResult, UrlReverser, extract_param_names, reverse,
+	try_reverse_single_pass, try_reverse_with_aho_corasick,
 };
 #[cfg(native)]
 pub use route::Route;
@@ -239,10 +228,9 @@ pub use unified_router::UnifiedRouter;
 // Client router re-exports
 #[cfg(feature = "client-router")]
 pub use client_router::{
-	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, ClientUrlReverser, FromPath,
-	HistoryState, MergeError, NavigationSubscription, NavigationType, ParamContext, Path,
-	RouteHandler, SingleFromPath, clear_client_reverser, get_client_reverser,
-	register_client_reverser,
+	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, FromPath, HistoryState,
+	MergeError, NavigationSubscription, NavigationType, ParamContext, Path, RouteHandler,
+	SingleFromPath,
 };
 pub use resolver::{ClientUrlResolver, WebSocketUrlResolver};
 

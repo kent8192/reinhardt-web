@@ -36,10 +36,12 @@ pub fn routes() -> UnifiedRouter {
 			#[cfg(wasm)]
 			{
 				c.route_path(
+					"profile_edit",
 					"/profile/{user_id}/edit",
 					|ClientPath(user_id): ClientPath<Uuid>| profile_edit_page(user_id),
 				)
 				.route_path(
+					"profile_detail",
 					"/profile/{user_id}",
 					|ClientPath(user_id): ClientPath<Uuid>| profile_page(user_id),
 				)

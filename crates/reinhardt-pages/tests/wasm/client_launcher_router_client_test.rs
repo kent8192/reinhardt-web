@@ -60,8 +60,8 @@ fn router_client_launcher_accepts_configured_router() {
 	let launcher_result = ClientLauncher::new("#app")
 		.router_client(move || {
 			let r = ClientRouter::new()
-				.named_route("home", "/", home)
-				.named_route("about", "/about", about);
+				.route("home", "/", home)
+				.route("about", "/about", about);
 			let _sub = r.on_navigate(move |_, _| {
 				dispatched_clone.set(dispatched_clone.get() + 1);
 			});

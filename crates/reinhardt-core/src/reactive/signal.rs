@@ -52,7 +52,7 @@ use super::runtime::{NodeId, try_with_runtime, with_runtime};
 // required by DI containers that bound resolved types on `Send + Sync + 'static`
 // (see issues #4065 / #4067). The reactive runtime itself is `thread_local!`,
 // so cross-thread mutation will not notify subscribers registered on another
-// thread; this is acceptable for server-side consumers (e.g., `ClientUrlReverser`
+// thread; this is acceptable for server-side consumers (e.g., `UrlReverser`
 // in `reinhardt-urls`) that hold `Signal`s only as route metadata and never
 // subscribe.
 //

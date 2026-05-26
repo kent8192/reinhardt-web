@@ -122,7 +122,7 @@ pub(crate) fn producer_impl(args: TokenStream, input: ItemFn) -> syn::Result<Tok
 	inner_sig.ident = inner_fn_name.clone();
 	inner_sig.inputs = syn::punctuated::Punctuated::from_iter(inner_inputs);
 
-	// Metadata module for ResolvedUrls generation
+	// Metadata module for streaming topic resolution
 	let resolver_mod = syn::Ident::new(
 		&format!("__streaming_resolver_{fn_name}"),
 		Span::call_site(),

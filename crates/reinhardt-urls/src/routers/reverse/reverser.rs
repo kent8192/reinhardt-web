@@ -6,6 +6,9 @@ use super::super::pattern::PathPattern;
 use super::runtime::ReverseResult;
 use reinhardt_core::exception::Error;
 use std::collections::HashMap;
+use std::sync::OnceLock;
+
+static GLOBAL_REVERSER: OnceLock<UrlReverser> = OnceLock::new();
 
 /// URL reverser for resolving names back to URLs
 /// Similar to Django's URLResolver reverse functionality
@@ -98,7 +101,8 @@ impl UrlReverser {
 			(name.to_string(), None)
 		};
 
-		let route = Route::new(path, Arc::new(DummyHandler)).with_name(&route_name);
+		let mut route = Route::new(path, Arc::new(DummyHandler));
+		route.name = Some(route_name.clone());
 
 		let route = if let Some(ns) = namespace {
 			route.with_namespace(&ns)
@@ -148,9 +152,9 @@ impl UrlReverser {
 	/// # }
 	/// let handler = Arc::new(DummyHandler);
 	/// let mut reverser = UrlReverser::new();
-	/// let route = Route::new("/users/{id}/", handler)
-	///     .with_name("detail")
+	/// let mut route = Route::new("/users/{id}/", handler)
 	///     .with_namespace("users");
+	/// route.name = Some("detail".to_string());
 	/// reverser.register(route).unwrap();
 	///
 	/// let mut params = HashMap::new();
@@ -203,8 +207,8 @@ impl UrlReverser {
 	/// # }
 	/// let handler = Arc::new(DummyHandler);
 	/// let mut reverser = UrlReverser::new();
-	/// let route = Route::new("/users/{id}/", handler)
-	///     .with_name("detail");
+	/// let mut route = Route::new("/users/{id}/", handler);
+	/// route.name = Some("detail".to_string());
 	/// reverser.register(route).unwrap();
 	///
 	/// let url = reverser.reverse_with("detail", &[("id", "123")]).unwrap();
@@ -243,6 +247,29 @@ impl UrlReverser {
 	pub fn add_name_alias(&mut self, alias: &str, canonical: &str) {
 		self.aliases
 			.insert(alias.to_string(), canonical.to_string());
+	}
+
+	/// Retrieve the global URL reverser.
+	///
+	/// # Panics
+	///
+	/// Panics if `register_global()` has not been called yet.
+	pub fn from_global() -> &'static UrlReverser {
+		GLOBAL_REVERSER.get().expect(
+			"global URL reverser is not registered. \
+			 Call register_global() before using from_global().",
+		)
+	}
+
+	/// Register this reverser as the global instance.
+	///
+	/// # Panics
+	///
+	/// Panics if a global reverser has already been registered.
+	pub fn register_global(self) {
+		GLOBAL_REVERSER
+			.set(self)
+			.unwrap_or_else(|_| panic!("global URL reverser already registered"));
 	}
 }
 

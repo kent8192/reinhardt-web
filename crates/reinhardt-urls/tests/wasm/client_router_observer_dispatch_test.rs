@@ -29,8 +29,8 @@ fn page_b() -> Page {
 fn push_dispatches_observer_once_inv1_inv5() {
 	// Arrange
 	let router = ClientRouter::new()
-		.named_route("a", "/a", page_a)
-		.named_route("b", "/b", page_b);
+		.route("a", "/a", page_a)
+		.route("b", "/b", page_b);
 	let counter = Rc::new(Cell::new(0u64));
 	let counter_clone = counter.clone();
 	let _sub = router.on_navigate(move |_, _| {

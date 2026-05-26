@@ -27,7 +27,7 @@
 //!     UnifiedRouter::new()
 //!         .mount("/api/", api::routes())  // Returns ServerRouter, not annotated with #[routes]
 //!         .mount("/", web::routes())      // Returns ServerRouter, not annotated with #[routes]
-//!         .client(|c| c.route("/", home_page))
+//!         .client(|c| c.route("home", "/", home_page))
 //! }
 //! ```
 //!
@@ -60,7 +60,7 @@
 //! pub fn routes() -> UnifiedRouter {
 //!     UnifiedRouter::new()
 //!         .server(|s| s.endpoint(views::index))
-//!         .client(|c| c.route("/", home_page))
+//!         .client(|c| c.route("home", "/", home_page))
 //! }
 //! ```
 //!
@@ -355,9 +355,8 @@ mod client_registration {
 		inventory::iter::<ClientRouterRegistration>()
 	}
 
-	/// Iterate inventory, merge every registered `ClientRouter`, register
-	/// the resulting `ClientUrlReverser` globally, and return the merged
-	/// router (or `None` if no entries are registered).
+	/// Iterate inventory, merge every registered `ClientRouter`, and return
+	/// the merged router (or `None` if no entries are registered).
 	///
 	/// `ClientRouter::merge` is `pub(crate)`; this helper lives in the
 	/// same crate so the visibility holds. Refs #4442, #4453.
@@ -370,9 +369,6 @@ mod client_registration {
 				None => r,
 				Some(acc) => acc.merge(r),
 			});
-		}
-		if let Some(ref router) = merged {
-			crate::routers::client_router::register_client_reverser(router.to_reverser());
 		}
 		merged
 	}

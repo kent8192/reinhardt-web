@@ -69,9 +69,9 @@ pub fn start() -> Result<(), JsValue> {
 	ClientLauncher::new("#app")
 		.router_client(|| {
 			ClientRouter::new()
-				.route("/", home_page)
-				.route("/clusters", clusters_page)
-				.route("/login", login_page)
+				.route("home", "/", home_page)
+				.route("clusters", "/clusters", clusters_page)
+				.route("login", "/login", login_page)
 		})
 		.launch()
 }

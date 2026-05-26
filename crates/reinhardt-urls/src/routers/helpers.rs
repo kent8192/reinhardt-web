@@ -36,9 +36,9 @@ use reinhardt_http::Handler;
 /// let route = path("/users/", DummyHandler);
 /// assert_eq!(route.path, "/users/");
 ///
-/// // Path with parameters
-/// let route = path("/users/{id}/", DummyHandler)
-///     .with_name("user-detail");
+/// // Path with parameters and name set directly
+/// let mut route = path("/users/{id}/", DummyHandler);
+/// route.name = Some("user-detail".to_string());
 /// assert_eq!(route.name, Some("user-detail".to_string()));
 /// ```
 pub fn path<H>(pattern: impl Into<String>, handler: H) -> Route
@@ -73,8 +73,8 @@ where
 /// #     }
 /// # }
 /// // Regex with named groups - no Arc::new() needed!
-/// let route = re_path(r"^users/(?P<id>\d+)/$", DummyHandler)
-///     .with_name("user-detail");
+/// let mut route = re_path(r"^users/(?P<id>\d+)/$", DummyHandler);
+/// route.name = Some("user-detail".to_string());
 /// assert_eq!(route.path, "users/{id}/");
 /// assert_eq!(route.name, Some("user-detail".to_string()));
 /// ```
@@ -232,7 +232,9 @@ fn parse_non_group_char(input: &str) -> IResult<&str, char> {
 /// # }
 /// let handler = Arc::new(DummyHandler);
 /// let mut users_router = DefaultRouter::new();
-/// users_router.add_route(path("/", handler.clone()).with_name("list"));
+/// let mut list_route = path("/", handler.clone());
+/// list_route.name = Some("list".to_string());
+/// users_router.add_route(list_route);
 ///
 /// let mut main_router = DefaultRouter::new();
 /// let users_routes = users_router.get_routes().to_vec();
@@ -289,10 +291,11 @@ impl IncludedRouter {
 /// #     }
 /// # }
 /// let handler = Arc::new(DummyHandler);
-/// let user_routes = vec![
-///     path("/", handler.clone()).with_name("list"),
-///     path("/{id}/", handler).with_name("detail"),
-/// ];
+/// let mut list_route = path("/", handler.clone());
+/// list_route.name = Some("list".to_string());
+/// let mut detail_route = path("/{id}/", handler);
+/// detail_route.name = Some("detail".to_string());
+/// let user_routes = vec![list_route, detail_route];
 ///
 /// let included = include_routes("/users", user_routes)
 ///     .with_namespace("users");

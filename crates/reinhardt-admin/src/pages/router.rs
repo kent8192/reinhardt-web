@@ -685,9 +685,9 @@ pub fn init_router() -> ClientRouter {
 	// Login route must be registered before dynamic routes to prevent
 	// /admin/login/ from matching the list route with model="login".
 	ClientRouter::new()
-		.named_route("login", "/admin/login/", login::login_view)
-		.named_route("dashboard", "/admin/", dashboard_view)
-		.named_route("create", "/admin/{model}/add/", || {
+		.route("login", "/admin/login/", login::login_view)
+		.route("dashboard", "/admin/", dashboard_view)
+		.route("create", "/admin/{model}/add/", || {
 			with_router(|router| {
 				let params = router.current_params().get();
 				let model_name = params
@@ -697,7 +697,7 @@ pub fn init_router() -> ClientRouter {
 				create_view_component(model_name)
 			})
 		})
-		.named_route("edit", "/admin/{model}/{id}/change/", || {
+		.route("edit", "/admin/{model}/{id}/change/", || {
 			with_router(|router| {
 				let params = router.current_params().get();
 				let model_name = params
@@ -708,7 +708,7 @@ pub fn init_router() -> ClientRouter {
 				edit_view_component(model_name, record_id)
 			})
 		})
-		.named_route("detail", "/admin/{model}/{id}/", || {
+		.route("detail", "/admin/{model}/{id}/", || {
 			with_router(|router| {
 				let params = router.current_params().get();
 				let model_name = params
@@ -719,7 +719,7 @@ pub fn init_router() -> ClientRouter {
 				detail_view_component(model_name, record_id)
 			})
 		})
-		.named_route("list", "/admin/{model}/", || {
+		.route("list", "/admin/{model}/", || {
 			with_router(|router| {
 				let params = router.current_params().get();
 				let model_name = params

@@ -283,7 +283,8 @@ mod tests {
 
 		let mut router = DefaultRouter::new();
 		let failing = Arc::new(FailingHandler);
-		let route = path("/fail", failing).with_name("fail");
+		let mut route = path("/fail", failing);
+		route.name = Some("fail".to_string());
 		router.add_route(route);
 		let handler = BaseHandler::with_router(Arc::new(router));
 
@@ -362,7 +363,8 @@ mod tests {
 		let test_handler = Arc::new(TestHandler {
 			response_body: "Test response".to_string(),
 		});
-		let route = path("/test", test_handler).with_name("test");
+		let mut route = path("/test", test_handler);
+		route.name = Some("test".to_string());
 		router.add_route(route);
 
 		// Create BaseHandler with router
@@ -417,13 +419,15 @@ mod tests {
 		let hello_handler = Arc::new(TestHandler {
 			response_body: "Hello".to_string(),
 		});
-		let hello_route = path("/hello", hello_handler).with_name("hello");
+		let mut hello_route = path("/hello", hello_handler);
+		hello_route.name = Some("hello".to_string());
 		router.add_route(hello_route);
 
 		let world_handler = Arc::new(TestHandler {
 			response_body: "World".to_string(),
 		});
-		let world_route = path("/world", world_handler).with_name("world");
+		let mut world_route = path("/world", world_handler);
+		world_route.name = Some("world".to_string());
 		router.add_route(world_route);
 
 		let handler = BaseHandler::with_router(Arc::new(router));

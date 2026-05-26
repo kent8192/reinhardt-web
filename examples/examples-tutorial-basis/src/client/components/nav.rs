@@ -6,11 +6,9 @@
 //! the result is bound through `use_action`, so the bar reactively updates
 //! once the WASM client finishes its first roundtrip.
 //!
-//! All `href` values are resolved through the typed `urls` modules emitted
-//! by `#[url_patterns]` (issue #4656): `apps::polls::urls::client_router::urls`
-//! and `apps::users::urls::client_router::urls`. The macro-generated
-//! helpers wrap `ResolvedUrls::from_global()` internally; the reverser is
-//! registered in `client::lib::main`.
+//! All `href` values are resolved through the hand-written `urls`
+//! helper modules at `apps::polls::urls::client_router::urls` and
+//! `apps::users::urls::client_router::urls`.
 use crate::apps::polls::urls::client_router::urls as polls_links;
 use crate::apps::users::server_fn::current_user;
 use crate::apps::users::urls::client_router::urls as users_links;

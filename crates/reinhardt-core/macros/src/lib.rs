@@ -17,7 +17,6 @@ use syn::{ItemFn, ItemStruct, parse_macro_input};
 mod action;
 mod admin;
 mod api_view;
-// client_routes module removed: superseded by #[url_patterns(InstalledApp::<variant>, mode = client)]
 mod app_config_attribute;
 mod app_config_derive;
 mod apply_update_attribute;
@@ -74,11 +73,9 @@ use query_fields::derive_query_fields_impl;
 use receiver::receiver_impl;
 use routes::{delete_impl, get_impl, patch_impl, post_impl, put_impl};
 use routes_registration::routes_impl;
-mod url_patterns;
 mod viewset_macro;
 mod websocket;
 use schema::derive_schema_impl;
-use url_patterns::url_patterns_impl;
 use use_inject::use_inject_impl;
 use user_attribute::user_attribute_impl;
 
@@ -157,7 +154,7 @@ pub fn delete(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # Arguments
 ///
 /// - `topic` — Kafka topic to publish to
-/// - `name` — identifier used in `ResolvedUrls::streaming().<app>().<name>()`
+/// - `name` — handler identifier for topic resolution via `resolve_streaming_topic()`
 ///
 /// # Example
 ///
@@ -181,7 +178,7 @@ pub fn producer(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// - `topic` — Kafka topic to consume from
 /// - `group` — Consumer group id
-/// - `name` — identifier used in `ResolvedUrls::streaming().<app>().<name>()`
+/// - `name` — handler identifier for topic resolution via `resolve_streaming_topic()`
 ///
 /// # Example
 ///
@@ -199,7 +196,7 @@ pub fn consumer(args: TokenStream, input: TokenStream) -> TokenStream {
 		.into()
 }
 
-/// Streaming patterns attribute — generates typed per-app streaming URL accessors.
+/// Streaming patterns attribute — generates per-app streaming topic resolver structs.
 ///
 /// Apply to the function that builds and returns the app's `StreamingRouter`.
 /// The function body must contain `streaming_routes![handler1, handler2, ...]`.
@@ -219,7 +216,6 @@ pub fn consumer(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// After this macro expands:
 /// - `OrdersStreamingUrls` struct is generated with `.create_order()` and `.handle_order()` methods
-/// - `urls.streaming().orders()` returns `OrdersStreamingUrls<'_>` (requires `#[routes]` in same crate)
 /// - Each method returns the Kafka topic name as `&'static str`
 #[proc_macro_attribute]
 pub fn streaming_patterns(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -399,52 +395,12 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 ///
 /// # Arguments
 ///
-/// - `#[routes]` — Default mode. Generates `ResolvedUrls` and `url_prelude`
-///   module with URL resolver traits from all installed apps. Requires
-///   `installed_apps!` to be present in the crate.
-/// - `#[routes(standalone)]` — Standalone mode. Generates `ResolvedUrls` only,
-///   without `url_prelude` module. Use this for projects that don't use
-///   `installed_apps!`.
-/// - `#[routes(client_inventory)]` — Opt into the WASM cross-target
-///   `ClientRouter` `inventory::submit!` registration (see Issue #4453).
+/// The `#[routes]` macro does not accept any arguments. It only emits
+/// `inventory::submit!(UrlPatternsRegistration)` and a linker marker.
 ///
-/// ## Per-mode resolver suppression (Issue #4509)
-///
-/// Plain `#[routes]` unconditionally emits per-app resolver lookups for
-/// three modes (server, client, ws). REST-only apps that do not use
-/// `#[url_patterns(InstalledApp::<app>, mode = client)]` or
-/// `#[url_patterns(InstalledApp::<app>, mode = ws)]` would need to stub
-/// the missing modules. These flags let the macro skip the unused lookups:
-///
-/// - `#[routes(server_only)]` — Shorthand for
-///   `no_client_resolvers, no_ws_resolvers`. The `urls.client()` /
-///   `urls.ws()` gateways are not emitted; only `urls.server().<app>()`
-///   remains. The `ResolvedUrls::<app>()` server-side accessor is
-///   preserved (unlike `standalone`, which suppresses it).
-/// - `#[routes(no_client_resolvers)]` — Skip per-app client resolver
-///   lookups and the `ClientUrls` / `<app>ClientUrls` types.
-/// - `#[routes(no_ws_resolvers)]` — Skip per-app WebSocket resolver
-///   lookups, the `WsUrls` / `<app>WsUrls` types, and the stub
-///   `WebSocketUrlResolver` impl on `ResolvedUrls`.
-///
-/// `client_inventory` is mutually exclusive with the `no_*` flags
-/// (and therefore with `server_only`) — `client_inventory` registers
-/// the very WASM client surface those flags suppress.
-///
-/// ```rust,ignore
-/// // REST-only project with #[url_patterns(InstalledApp::api, mode = server)]
-/// // — no stub client_router.rs / ws_urls.rs needed. `server_only` only
-/// // gates per-app client/ws emission, so the return type stays
-/// // `UnifiedRouter` for consistency with every other `#[routes]` example.
-/// #[routes(server_only)]
-/// pub fn routes() -> UnifiedRouter {
-///     UnifiedRouter::new().mount("/api/", api::urls::url_patterns())
-/// }
-///
-/// // HTTP + WebSocket but no WASM admin: skip client resolvers only.
-/// #[routes(no_client_resolvers)]
-/// pub fn routes() -> UnifiedRouter { ... }
-/// ```
+/// Previous flags (`standalone`, `client_inventory`, `server_only`,
+/// `no_client_resolvers`, `no_ws_resolvers`) were removed as part of
+/// the URL routing simplification (Issue #4784).
 ///
 /// # Notes
 ///
@@ -457,92 +413,6 @@ pub fn routes(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);
 
 	routes_impl(args.into(), input)
-		.unwrap_or_else(|e| e.to_compile_error())
-		.into()
-}
-
-/// Register an app-scoped URL pattern function with the framework and
-/// generate per-mode helper modules from its body.
-///
-/// # Syntax
-///
-/// ```text
-/// #[url_patterns(<InstalledApp::variant>, mode = server|client|unified|ws)]
-/// pub fn url_patterns() -> Router { ... }
-/// ```
-///
-/// The first argument is a path to a variant of an enum implementing
-/// `reinhardt_apps::apps::AppLabel` — normally the `InstalledApp`
-/// enum generated by `installed_apps!`. The macro wraps the original
-/// function so the returned router carries the variant's
-/// `AppLabel::path(&variant)` value as its runtime namespace.
-///
-/// # Modes
-///
-/// | mode      | Router          | Scanned calls                                                            | Modules emitted                                    |
-/// |-----------|-----------------|--------------------------------------------------------------------------|----------------------------------------------------|
-/// | `server`  | `ServerRouter`  | `.endpoint()`, `.viewset()`, `.mount()`                                  | `url_resolvers`                                    |
-/// | `client`  | `ClientRouter`  | `.named_route()` / `.named_route_path*()` family                         | `client_url_resolvers` + `urls` (typed helpers)    |
-/// | `unified` | `UnifiedRouter` | both sides (inside `.server(\|s\| ...)` / `.client(\|c\| ...)` closures) | `url_resolvers` + `client_url_resolvers` + `urls`  |
-/// | `ws`      | `WsRouter`      | `.consumer(...)`                                                         | `ws_url_resolvers`                                 |
-///
-/// # The `urls` module (Issue #4644)
-///
-/// For `mode = client` and the client side of `mode = unified`, the macro
-/// emits a sibling `pub mod urls` whose contents mirror the named routes
-/// declared in the function body. Each named route appears as a free
-/// function whose signature carries the path parameters lifted from the
-/// closure binding:
-///
-/// ```text
-/// // Input
-/// #[url_patterns(InstalledApp::polls, mode = client)]
-/// pub fn client_url_patterns() -> ClientRouter {
-///     ClientRouter::new()
-///         .named_route("index", "/", index_page)
-///         .named_route_path(
-///             "detail",
-///             "/polls/{question_id}/",
-///             |ClientPath(question_id): ClientPath<i64>| polls_detail_page(question_id),
-///         )
-/// }
-///
-/// // Generated (sketch)
-/// pub mod urls {
-///     pub fn index() -> String { /* "polls:index" via global reverser */ }
-///     pub fn detail(question_id: i64) -> String { /* "polls:detail" */ }
-/// }
-/// ```
-///
-/// Each helper resolves through the global `ClientUrlReverser`
-/// (`reinhardt::get_client_reverser()`), so a route-pattern change in the
-/// `#[url_patterns]` body propagates without any call-site edits.
-///
-/// **Extraction rules.** A typed helper is generated when the path
-/// parameter count in the pattern matches the binding count in the
-/// closure, and every binding is shaped `ClientPath(name): ClientPath<T>`:
-///
-/// - `.named_route(name, pattern, component)` — always emits a zero-arg
-///   helper.
-/// - `.named_route_path(name, pattern, |ClientPath(a): ClientPath<A>, …,
-///   ClientPath(n): ClientPath<N>| ...)` — emits
-///   `fn name(a: A, …, n: N) -> String`. Up to **8** path parameters are
-///   supported by the underlying `Handler<Args>` trait (Issue #4637); the
-///   arity is inferred from the closure signature.
-/// - `.named_route_params(...)` / `.named_route_result(...)` — the macro
-///   does not project these into typed helpers today; the route is still
-///   reachable through the stringly-typed
-///   `ResolvedUrls::resolve_client_url(...)` API.
-/// - Routes whose handler is a function reference (not an inline closure)
-///   are silently skipped in the `urls` module for the same reason.
-///
-/// The `urls` module is emitted unconditionally so call sites can write
-/// `use ...::urls;` regardless of which routes happen to be typed; an
-/// empty module is harmless.
-#[doc = include_str!("upstream_workaround_note.md")]
-#[proc_macro_attribute]
-pub fn url_patterns(args: TokenStream, input: TokenStream) -> TokenStream {
-	url_patterns_impl(args.into(), input.into())
 		.unwrap_or_else(|e| e.to_compile_error())
 		.into()
 }
@@ -1324,7 +1194,7 @@ pub fn websocket(args: TokenStream, input: TokenStream) -> TokenStream {
 /// for each `pub mod` declaration, bringing endpoint functions and their
 /// resolver modules into the parent module scope.
 ///
-/// This enables `#[url_patterns]` to discover resolvers using the standard
+/// This enables resolvers to be discovered using the standard
 /// parent-module path convention (e.g., `.endpoint(views::login)`).
 ///
 /// # Usage

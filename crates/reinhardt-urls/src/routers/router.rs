@@ -83,11 +83,10 @@ impl DefaultRouter {
 	/// # }
 	/// let handler = Arc::new(DummyHandler);
 	/// let mut router = DefaultRouter::new();
-	/// router.add_route(
-	///     path("/users/{id}/", handler)
-	///         .with_name("detail")
-	///         .with_namespace("users")
-	/// );
+	/// let mut route = path("/users/{id}/", handler)
+	///     .with_namespace("users");
+	/// route.name = Some("detail".to_string());
+	/// router.add_route(route);
 	///
 	/// let mut params = HashMap::new();
 	/// params.insert("id".to_string(), "123".to_string());
@@ -123,10 +122,9 @@ impl DefaultRouter {
 	/// # }
 	/// let handler = Arc::new(DummyHandler);
 	/// let mut router = DefaultRouter::new();
-	/// router.add_route(
-	///     path("/users/{id}/", handler)
-	///         .with_name("detail")
-	/// );
+	/// let mut route = path("/users/{id}/", handler);
+	/// route.name = Some("detail".to_string());
+	/// router.add_route(route);
 	///
 	/// let url = router.reverse_with("detail", &[("id", "123")]).unwrap();
 	/// assert_eq!(url, "/users/123/");
@@ -175,18 +173,16 @@ impl DefaultRouter {
 		// List/Create endpoint: /prefix/
 		let list_path = format!("/{}/", prefix.trim_matches('/'));
 		let list_handler = ViewSetListHandler::new(viewset.clone());
-		self.add_route(
-			Route::new(list_path.clone(), Arc::new(list_handler))
-				.with_name(format!("{}-list", basename)),
-		);
+		let mut list_route = Route::new(list_path.clone(), Arc::new(list_handler));
+		list_route.name = Some(format!("{}-list", basename));
+		self.add_route(list_route);
 
 		// Detail endpoint: /prefix/{lookup_field}/
 		let detail_path = format!("/{}/{{{}}}/", prefix.trim_matches('/'), lookup_field);
 		let detail_handler = ViewSetDetailHandler::new(viewset.clone());
-		self.add_route(
-			Route::new(detail_path, Arc::new(detail_handler))
-				.with_name(format!("{}-detail", basename)),
-		);
+		let mut detail_route = Route::new(detail_path, Arc::new(detail_handler));
+		detail_route.name = Some(format!("{}-detail", basename));
+		self.add_route(detail_route);
 
 		// Register custom actions from ViewSet
 		let extra_actions = viewset.get_extra_actions();
@@ -226,9 +222,9 @@ impl DefaultRouter {
 			};
 
 			let action_handler = ActionHandlerWrapper::new(action.handler.clone());
-			self.add_route(
-				Route::new(action_path, Arc::new(action_handler)).with_name(action_url_name),
-			);
+			let mut action_route = Route::new(action_path, Arc::new(action_handler));
+			action_route.name = Some(action_url_name);
+			self.add_route(action_route);
 		}
 	}
 	/// Get URL map for a ViewSet's extra actions
@@ -494,10 +490,11 @@ impl Router for DefaultRouter {
 	/// #     }
 	/// # }
 	/// let handler = Arc::new(DummyHandler);
-	/// let users_routes = vec![
-	///     path("/", handler.clone()).with_name("list"),
-	///     path("/{id}/", handler).with_name("detail"),
-	/// ];
+	/// let mut list_route = path("/", handler.clone());
+	/// list_route.name = Some("list".to_string());
+	/// let mut detail_route = path("/{id}/", handler);
+	/// detail_route.name = Some("detail".to_string());
+	/// let users_routes = vec![list_route, detail_route];
 	///
 	/// let mut router = DefaultRouter::new();
 	/// router.mount("/users", users_routes, Some("users".to_string()));

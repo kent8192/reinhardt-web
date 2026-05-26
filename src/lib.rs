@@ -118,7 +118,7 @@ pub mod reinhardt_apps {
 
 // WASM shim for `reinhardt_apps` (Issue #4161).
 //
-// `#[url_patterns(...)]` and `#[app_config(...)]` expand to code that
+// `#[app_config(...)]` expands to code that
 // references `::reinhardt::reinhardt_apps::apps::AppLabel` and
 // `::reinhardt::reinhardt_apps::AppConfig`. The real `reinhardt-apps`
 // crate depends on `tokio` / `reinhardt-server` and is decidedly
@@ -132,9 +132,8 @@ pub mod reinhardt_apps {
 pub mod reinhardt_apps {
 	/// Application label trait (wasm shim).
 	///
-	/// Mirrors the trait emitted by `installed_apps!` and required by
-	/// `#[url_patterns]` expansions. The native build re-exports the real
-	/// trait from `reinhardt-apps`.
+	/// Mirrors the trait emitted by `installed_apps!`. The native build
+	/// re-exports the real trait from `reinhardt-apps`.
 	pub mod apps {
 		pub trait AppLabel {
 			const LABEL: &'static str;
@@ -289,8 +288,8 @@ pub mod urls;
 
 /// WASM shim for the `urls` module (Issue #4161).
 ///
-/// Provides the namespace structure that `#[url_patterns]` and downstream
-/// wasm SPAs reference (`reinhardt::urls::prelude::UnifiedRouter`,
+/// Provides the namespace structure that downstream wasm SPAs reference
+/// (`reinhardt::urls::prelude::UnifiedRouter`,
 /// `reinhardt::urls::proxy`). The real `reinhardt-urls` crate is wasm-safe,
 /// but its `prelude` is gated `#[cfg(all(feature = "routers", native))]`.
 ///
@@ -300,7 +299,7 @@ pub mod urls;
 /// provides the correct closure signatures
 /// (`server: FnOnce(ServerRouterStub) -> ServerRouterStub`,
 /// `client: FnOnce(ClientRouter) -> ClientRouter`) so user-supplied bodies
-/// such as `.client(|c| c.named_route(...))` type-check on wasm.
+/// such as `.client(|c| c.route(...))` type-check on wasm.
 ///
 /// Without `client-router`, an inert stub is exposed so that the path
 /// resolves; user bodies that invoke `.server`/`.client` on the stub are

@@ -778,8 +778,8 @@ fn update_apps_export(app_name: &str, with_pages: bool) -> CommandResult<()> {
 /// Append a new app entry to the `installed_apps! { ... }` block in
 /// `src/config/apps.rs`.
 ///
-/// Issue #3670: the typed `#[url_patterns(InstalledApp::<name>, ...)]`
-/// form requires the app's label to be registered via `installed_apps!`.
+/// Issue #3670: typed route declarations require the app's label to be
+/// registered via `installed_apps!`.
 /// This function is idempotent: if an entry with the same label already
 /// exists, it is left alone.
 ///

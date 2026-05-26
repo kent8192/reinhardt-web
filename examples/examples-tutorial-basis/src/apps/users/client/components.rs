@@ -11,6 +11,7 @@ use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::Signal;
+
 /// Login page: username + password form posting to the `login` server function.
 ///
 /// On success, redirects to the polls index. Field bindings, loading state,

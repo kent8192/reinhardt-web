@@ -108,7 +108,7 @@ pub enum MergeError {
 	///
 	/// The colliding name is reported as-is, after each router's namespace
 	/// prefix (`app:route`) has already been applied by
-	/// `#[url_patterns(InstalledApp::<app>, mode = client)]`.
+	/// `ClientRouter::with_namespace()`.
 	NameCollision {
 		/// The fully-qualified named-route key that exists in both routers.
 		name: String,

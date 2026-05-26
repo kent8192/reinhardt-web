@@ -5,9 +5,6 @@ use super::reverser::UrlReverser;
 use super::runtime::{
 	ReverseError, extract_param_names, try_reverse_single_pass, try_reverse_with_aho_corasick,
 };
-use super::typed::{
-	UrlParams, UrlPattern, UrlPatternWithParams, reverse_typed, reverse_typed_with_params,
-};
 use crate::routers_macros::path;
 use async_trait::async_trait;
 use reinhardt_core::exception::Error;
@@ -30,7 +27,8 @@ impl Handler for TestHandler {
 fn test_reverse_simple_path() {
 	let mut reverser = UrlReverser::new();
 
-	let route = Route::new(path!("/users/"), Arc::new(TestHandler)).with_name("users-list");
+	let mut route = Route::new(path!("/users/"), Arc::new(TestHandler));
+	route.name = Some("users-list".to_string());
 
 	reverser.register(route).unwrap();
 
@@ -42,7 +40,8 @@ fn test_reverse_simple_path() {
 fn test_reverse_with_parameters() {
 	let mut reverser = UrlReverser::new();
 
-	let route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler)).with_name("users-detail");
+	let mut route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler));
+	route.name = Some("users-detail".to_string());
 
 	reverser.register(route).unwrap();
 
@@ -57,9 +56,9 @@ fn test_reverse_with_parameters() {
 fn test_reverse_with_namespace() {
 	let mut reverser = UrlReverser::new();
 
-	let route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler))
-		.with_name("detail")
-		.with_namespace("users");
+	let mut route =
+		Route::new(path!("/users/{id}/"), Arc::new(TestHandler)).with_namespace("users");
+	route.name = Some("detail".to_string());
 
 	reverser.register(route).unwrap();
 
@@ -74,7 +73,8 @@ fn test_reverse_with_namespace() {
 fn test_reverse_missing_parameter() {
 	let mut reverser = UrlReverser::new();
 
-	let route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler)).with_name("users-detail");
+	let mut route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler));
+	route.name = Some("users-detail".to_string());
 
 	reverser.register(route).unwrap();
 
@@ -96,8 +96,8 @@ fn test_reverse_not_found() {
 fn test_reverse_with_helper() {
 	let mut reverser = UrlReverser::new();
 
-	let route = Route::new(path!("/users/{id}/posts/{post_id}/"), Arc::new(TestHandler))
-		.with_name("user-posts");
+	let mut route = Route::new(path!("/users/{id}/posts/{post_id}/"), Arc::new(TestHandler));
+	route.name = Some("user-posts".to_string());
 
 	reverser.register(route).unwrap();
 
@@ -112,119 +112,13 @@ fn test_reverse_with_helper() {
 fn test_has_route() {
 	let mut reverser = UrlReverser::new();
 
-	let route = Route::new(path!("/users/"), Arc::new(TestHandler)).with_name("users-list");
+	let mut route = Route::new(path!("/users/"), Arc::new(TestHandler));
+	route.name = Some("users-list".to_string());
 
 	reverser.register(route).unwrap();
 
 	assert!(reverser.has_route("users-list"));
 	assert!(!reverser.has_route("nonexistent"));
-}
-
-// Type-safe URL reversal tests
-struct HomeUrl;
-impl UrlPattern for HomeUrl {
-	const NAME: &'static str = "home";
-	const PATTERN: &'static str = reinhardt_routers_macros::path!("/");
-}
-
-struct UserListUrl;
-impl UrlPattern for UserListUrl {
-	const NAME: &'static str = "user-list";
-	const PATTERN: &'static str = reinhardt_routers_macros::path!("/users/");
-}
-
-struct UserDetailUrl;
-impl UrlPattern for UserDetailUrl {
-	const NAME: &'static str = "user-detail";
-	const PATTERN: &'static str = reinhardt_routers_macros::path!("/users/{id}/");
-}
-impl UrlPatternWithParams for UserDetailUrl {
-	const PARAMS: &'static [&'static str] = &["id"];
-}
-
-struct PostDetailUrl;
-impl UrlPattern for PostDetailUrl {
-	const NAME: &'static str = "post-detail";
-	const PATTERN: &'static str =
-		reinhardt_routers_macros::path!("/users/{user_id}/posts/{post_id}/");
-}
-impl UrlPatternWithParams for PostDetailUrl {
-	const PARAMS: &'static [&'static str] = &["user_id", "post_id"];
-}
-
-#[rstest]
-fn test_typed_reverse_simple() {
-	let url = reverse_typed::<HomeUrl>();
-	assert_eq!(url, path!("/"));
-}
-
-#[rstest]
-fn test_typed_reverse_user_list() {
-	let url = reverse_typed::<UserListUrl>();
-	assert_eq!(url, path!("/users/"));
-}
-
-#[rstest]
-fn test_typed_reverse_with_params() {
-	let mut params = HashMap::new();
-	params.insert("id", "123");
-
-	let url = reverse_typed_with_params::<UserDetailUrl>(&params).unwrap();
-	assert_eq!(url, "/users/123/");
-}
-
-#[rstest]
-fn test_typed_reverse_with_multiple_params() {
-	let mut params = HashMap::new();
-	params.insert("user_id", "42");
-	params.insert("post_id", "100");
-
-	let url = reverse_typed_with_params::<PostDetailUrl>(&params).unwrap();
-	assert_eq!(url, "/users/42/posts/100/");
-}
-
-#[rstest]
-fn test_typed_reverse_missing_param() {
-	let params = HashMap::new();
-
-	let result = reverse_typed_with_params::<UserDetailUrl>(&params);
-	assert!(result.is_err());
-
-	if let Err(ReverseError::MissingParameter(param)) = result {
-		assert_eq!(param, "id");
-	}
-}
-
-#[rstest]
-fn test_url_params_builder() {
-	let url = UrlParams::<UserDetailUrl>::new()
-		.param("id", "456")
-		.build()
-		.unwrap();
-
-	assert_eq!(url, "/users/456/");
-}
-
-#[rstest]
-fn test_url_params_builder_multiple() {
-	let url = UrlParams::<PostDetailUrl>::new()
-		.param("user_id", "42")
-		.param("post_id", "100")
-		.build()
-		.unwrap();
-
-	assert_eq!(url, "/users/42/posts/100/");
-}
-
-#[rstest]
-fn test_url_params_builder_missing() {
-	let result = UrlParams::<UserDetailUrl>::new().build();
-
-	assert!(result.is_err());
-	assert!(matches!(
-		result.unwrap_err(),
-		ReverseError::MissingParameter(_)
-	));
 }
 
 // Single-pass algorithm tests
@@ -627,7 +521,8 @@ fn test_performance_few_params() {
 fn test_reverser_rejects_path_separator_injection() {
 	// Arrange
 	let mut reverser = UrlReverser::new();
-	let route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler)).with_name("users-detail");
+	let mut route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler));
+	route.name = Some("users-detail".to_string());
 	reverser.register(route).unwrap();
 
 	let mut params = HashMap::new();
@@ -647,7 +542,8 @@ fn test_reverser_rejects_path_separator_injection() {
 fn test_reverser_rejects_query_injection() {
 	// Arrange
 	let mut reverser = UrlReverser::new();
-	let route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler)).with_name("users-detail");
+	let mut route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler));
+	route.name = Some("users-detail".to_string());
 	reverser.register(route).unwrap();
 
 	let mut params = HashMap::new();
@@ -667,7 +563,8 @@ fn test_reverser_rejects_query_injection() {
 fn test_reverser_rejects_fragment_injection() {
 	// Arrange
 	let mut reverser = UrlReverser::new();
-	let route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler)).with_name("users-detail");
+	let mut route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler));
+	route.name = Some("users-detail".to_string());
 	reverser.register(route).unwrap();
 
 	let mut params = HashMap::new();
@@ -684,7 +581,8 @@ fn test_reverser_rejects_fragment_injection() {
 fn test_reverser_rejects_encoded_injection() {
 	// Arrange
 	let mut reverser = UrlReverser::new();
-	let route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler)).with_name("users-detail");
+	let mut route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler));
+	route.name = Some("users-detail".to_string());
 	reverser.register(route).unwrap();
 
 	let mut params = HashMap::new();
@@ -704,7 +602,8 @@ fn test_reverser_rejects_encoded_injection() {
 fn test_reverser_allows_safe_values() {
 	// Arrange
 	let mut reverser = UrlReverser::new();
-	let route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler)).with_name("users-detail");
+	let mut route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler));
+	route.name = Some("users-detail".to_string());
 	reverser.register(route).unwrap();
 
 	let mut params = HashMap::new();
@@ -747,23 +646,11 @@ fn test_aho_corasick_rejects_path_separator() {
 }
 
 #[rstest]
-fn test_typed_reverse_rejects_injection() {
-	// Arrange
-	let mut params = HashMap::new();
-	params.insert("id", "123/admin");
-
-	// Act
-	let result = reverse_typed_with_params::<UserDetailUrl>(&params);
-
-	// Assert
-	assert!(result.is_err(), "Typed reverse should reject injection");
-}
-
-#[rstest]
 fn test_reverse_with_helper_rejects_injection() {
 	// Arrange
 	let mut reverser = UrlReverser::new();
-	let route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler)).with_name("users-detail");
+	let mut route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler));
+	route.name = Some("users-detail".to_string());
 	reverser.register(route).unwrap();
 
 	// Act
@@ -784,8 +671,10 @@ fn test_reverse_with_helper_rejects_injection() {
 fn test_register_duplicate_name_returns_error() {
 	// Arrange
 	let mut reverser = UrlReverser::new();
-	let route_a = Route::new(path!("/users/"), Arc::new(TestHandler)).with_name("users-list");
-	let route_b = Route::new(path!("/people/"), Arc::new(TestHandler)).with_name("users-list");
+	let mut route_a = Route::new(path!("/users/"), Arc::new(TestHandler));
+	route_a.name = Some("users-list".to_string());
+	let mut route_b = Route::new(path!("/people/"), Arc::new(TestHandler));
+	route_b.name = Some("users-list".to_string());
 
 	// Act
 	let first = reverser.register(route_a);
@@ -820,8 +709,10 @@ fn test_register_path_duplicate_name_returns_error() {
 fn test_register_unique_names_succeeds() {
 	// Arrange
 	let mut reverser = UrlReverser::new();
-	let route_a = Route::new(path!("/users/"), Arc::new(TestHandler)).with_name("users-list");
-	let route_b = Route::new(path!("/posts/"), Arc::new(TestHandler)).with_name("posts-list");
+	let mut route_a = Route::new(path!("/users/"), Arc::new(TestHandler));
+	route_a.name = Some("users-list".to_string());
+	let mut route_b = Route::new(path!("/posts/"), Arc::new(TestHandler));
+	route_b.name = Some("posts-list".to_string());
 
 	// Act & Assert
 	assert!(reverser.register(route_a).is_ok());

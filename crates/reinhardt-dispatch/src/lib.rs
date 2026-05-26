@@ -52,7 +52,8 @@
 //! # tokio_test::block_on(async {
 //! // Create a router and register routes
 //! let mut router = DefaultRouter::new();
-//! let route = path("/", Arc::new(HelloHandler)).with_name("index");
+//! let mut route = path("/", Arc::new(HelloHandler));
+//! route.name = Some("index".to_string());
 //! router.add_route(route);
 //!
 //! // Create handler with router
@@ -110,7 +111,8 @@
 //! # tokio_test::block_on(async {
 //! // Setup router
 //! let mut router = DefaultRouter::new();
-//! let api_route = path("/api", Arc::new(ApiHandler)).with_name("api");
+//! let mut api_route = path("/api", Arc::new(ApiHandler));
+//! api_route.name = Some("api".to_string());
 //! router.add_route(api_route);
 //!
 //! // Create base handler with router

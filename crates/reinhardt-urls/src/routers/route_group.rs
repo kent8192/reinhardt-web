@@ -296,8 +296,8 @@ impl RouteGroup {
 	}
 
 	/// Same as [`Self::viewset`] at runtime, but carries a `PhantomData<M>`
-	/// marker that `#[url_patterns]` recovers at expansion time to discover
-	/// `#[action]`-decorated methods on the impl block `M`.
+	/// marker that the route resolver machinery recovers at expansion time
+	/// to discover `#[action]`-decorated methods on the impl block `M`.
 	///
 	/// `M` is purely a name-bearing token. Users write
 	/// `PhantomData::<MyViewSetImpl>` as the third argument. The bound is
@@ -610,7 +610,7 @@ mod viewset_with_actions_tests {
 		}
 	}
 
-	/// Marker type the future `#[url_patterns]` macro will recover at
+	/// Marker type the route resolver machinery recovers at
 	/// expansion time. It carries no runtime state.
 	struct DummyImpl;
 

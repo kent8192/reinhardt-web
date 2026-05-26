@@ -6,11 +6,10 @@
 //! Cloud convention (`auth:login`, `dashboard:home`, etc. — see the
 //! Routes table below for the exact names this fixture registers).
 //!
-//! Tier 1〜3 only exercise anonymous `Router::route(...)` registrations;
+//! Tier 1〜3 use simple route names; Tier 4 uses namespace-style names.
 //! `Router::navigate` writes `route_match.route.name().unwrap_or("")`
-//! into `history.state.route_name`, so an anonymous-only test cannot
-//! observe a regression that loses or skips the `name()` lookup. Tier 4
-//! exists specifically to close that gap and make Inv-5 (history
+//! into `history.state.route_name`. Tier 4
+//! exists specifically to exercise namespaced names and make Inv-5 (history
 //! `route_name` == matched named-route name) and Inv-6 (`__diag_router_id`
 //! invariant across the click/render path) testable.
 //!

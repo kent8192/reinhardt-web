@@ -22,7 +22,6 @@ pub use reinhardt_macros::{api_view, delete, get, patch, post, put};
 #[cfg(native)]
 pub use reinhardt_macros::flatten_imports;
 pub use reinhardt_macros::routes;
-pub use reinhardt_macros::url_patterns;
 #[cfg(native)]
 pub use reinhardt_macros::viewset;
 

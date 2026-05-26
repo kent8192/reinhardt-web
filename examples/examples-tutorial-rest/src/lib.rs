@@ -6,12 +6,11 @@
 //! - Class-based views
 //! - Authentication and permissions
 //! - ViewSets and routers
-//! - Typed `ResolvedUrls` accessors (see [`urls_demo`])
 
 // The `#[reinhardt::viewset]` attribute in `apps/snippets/views.rs` expands
 // into a `macro_rules!` definition that is then referenced through the
-// crate-absolute path `$crate::__for_each_viewset_*!` by sibling macros
-// (`#[url_patterns]`, `#[routes]`). That composition trips the
+// crate-absolute path `$crate::__for_each_viewset_*!` by the `#[routes]`
+// macro. That composition trips the
 // `macro_expanded_macro_exports_accessed_by_absolute_paths` future-incompat
 // lint (rust-lang/rust#52234) which is `deny`-by-default. The framework's
 // own integration tests apply the same crate-level allow (see
@@ -23,4 +22,3 @@
 
 pub mod apps;
 pub mod config;
-pub mod urls_demo;

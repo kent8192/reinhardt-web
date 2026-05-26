@@ -8,19 +8,17 @@
 //! # Architecture
 //!
 //! ```text
-//! #[get("/login/", name = "auth_login")]  →  trait ResolveAuthLogin
-//!     ↓ (blanket impl)
-//! ResolvedUrls: UrlResolver  →  urls.auth_login()
+//! #[get("/login/", name = "auth_login")]
+//!     ↓ (inventory registration)
+//! UrlReverser::from_global().reverse("server:auth:login", &HashMap::new())
 //! ```
 //!
 //! # Usage
 //!
 //! ```rust,ignore
-//! use crate::config::urls::url_prelude::*;
-//!
-//! let urls = ResolvedUrls::from_global();
-//! let login_url = urls.auth_login();           // "/api/auth/login/"
-//! let detail_url = urls.cluster_retrieve("x"); // "/api/clusters/x/"
+//! let reverser = UrlReverser::from_global();
+//! let login_url = reverser.reverse("server:auth:login", &HashMap::new())?;
+//! let detail_url = reverser.reverse_with("server:clusters:retrieve", &[("id", "x")])?;
 //! ```
 
 /// Base trait for type-safe URL resolution.
@@ -55,9 +53,8 @@ pub trait UrlResolver {
 
 	/// Non-panicking variant of `resolve_url`. Default returns `None`.
 	///
-	/// Override in implementations that have a route-lookup table; the
-	/// `ResolvedUrls`-emitted impl uses this to probe candidate namespaces
-	/// for `try_resolve_url` without panicking.
+	/// Override in implementations that have a route-lookup table to probe
+	/// candidate namespaces without panicking.
 	///
 	/// Refs Issue #4507.
 	fn try_resolve_url(&self, _name: &str, _params: &[(&str, &str)]) -> Option<String> {

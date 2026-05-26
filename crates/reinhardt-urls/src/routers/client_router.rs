@@ -24,11 +24,11 @@
 //!
 //! // Create a router with routes
 //! let router = ClientRouter::new()
-//!     .route("/", || home_page())
-//!     .route_path("/users/{id}/", |Path(id): Path<u64>| {
+//!     .route("home", "/", || home_page())
+//!     .route_path("user_detail", "/users/{id}/", |Path(id): Path<u64>| {
 //!         user_page(id)
 //!     })
-//!     .named_route("settings", "/settings/", || settings_page())
+//!     .route("settings", "/settings/", || settings_page())
 //!     .not_found(|| not_found_page());
 //!
 //! // Setup browser history listener
@@ -48,13 +48,13 @@
 //!
 //! ```rust,ignore
 //! // Single parameter
-//! .route_path("/posts/{id}/", |Path(id): Path<i64>| {
+//! .route_path("post_detail", "/posts/{id}/", |Path(id): Path<i64>| {
 //!     post_page(id)
 //! })
 //!
 //! // Multiple parameters — same method, the arity is inferred from
 //! // the closure signature (Issue #4637).
-//! .route_path("/users/{user_id}/posts/{post_id}/",
+//! .route_path("user_post", "/users/{user_id}/posts/{post_id}/",
 //!     |Path(user_id): Path<u64>, Path(post_id): Path<u64>| {
 //!         user_post_page(user_id, post_id)
 //!     })
@@ -75,7 +75,6 @@
 mod core;
 mod error;
 pub mod from_request;
-mod global;
 mod handler;
 // Issue #4217: `history` is exposed publicly so reinhardt-pages can
 // re-export the canonical primitives. The functions inside remain
@@ -84,8 +83,6 @@ mod handler;
 pub mod history;
 mod params;
 mod pattern;
-mod reverser;
-
 // Public re-exports
 pub use core::{ClientRoute, ClientRouteMatch, ClientRouter, NavigationSubscription};
 pub use error::{MergeError, PathError, RouterError};
@@ -93,7 +90,6 @@ pub use error::{MergeError, PathError, RouterError};
 // `client_router` module level so callers can write
 // `use reinhardt_urls::routers::client_router::{FromRequest, ...}`.
 pub use from_request::{ExtractError, FromRequest, PathParam, QueryParam, RouteContext};
-pub use global::{clear_client_reverser, get_client_reverser, register_client_reverser};
 pub use handler::RouteHandler;
 // Issue #4217: drop helper-function re-exports from this module's
 // public surface. Callers should use `Router::push()` / `ClientRouter::push()`
@@ -102,4 +98,3 @@ pub use handler::RouteHandler;
 pub use history::{HistoryState, NavigationType};
 pub use params::{FromPath, ParamContext, Path, SingleFromPath};
 pub use pattern::ClientPathPattern;
-pub use reverser::ClientUrlReverser;
