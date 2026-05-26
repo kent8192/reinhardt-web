@@ -936,26 +936,26 @@ rather than re-registering on the global registry directly.
 
 Rules:
 
-- Apply `#[serial(di_registry)]` to any test that uses the factory form
-  (`=> |ctx| async { ... }`) under `with_di_overrides!`, regardless of
-  scope kind (`singleton`, `request`, or `transient`). The value form
-  (`singleton <Type> <expr>`, `request <Type> <expr>`) does not mutate the
-  global registry and does not require serialization in isolation.
+- `#[serial(di_registry)]` is **NOT** required when using
+  `with_di_overrides!` or `injection_context_with_di_overrides`. Each
+  invocation creates an isolated per-context registry; factory overrides
+  land there instead of the global registry, so tests run in parallel
+  safely.
 - Keep the `DiOverrides` token alive for the entire test scope (`let (_, _di) =
   ...`). Dropping it reverts the overrides.
 - Do **not** call `reinhardt_di::DependencyRegistry::register_override`
   directly outside of the testkit unless writing internal `reinhardt-di`
-  tests; the testkit wrapper handles cleanup and registry acquisition.
+  tests. Direct calls to the global registry still require
+  `#[serial(di_registry)]`; the testkit wrapper handles cleanup and
+  per-context registry isolation.
 
 Example:
 
 ```rust
 use reinhardt_testkit::with_di_overrides;
 use rstest::*;
-use serial_test::serial;
 
 #[rstest]
-#[serial(di_registry)]
 #[tokio::test]
 async fn test_login() {
     let (ctx, _di) = with_di_overrides! {
