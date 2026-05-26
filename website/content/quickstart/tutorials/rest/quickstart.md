@@ -21,7 +21,7 @@ release-plz on each release.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.2"
 ```
 
 **Note:** After installation, the command is `reinhardt-admin`, not `reinhardt-admin-cli`.
