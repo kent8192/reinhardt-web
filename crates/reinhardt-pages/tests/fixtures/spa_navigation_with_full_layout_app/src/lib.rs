@@ -24,7 +24,7 @@
 
 use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
-use reinhardt_urls::routers::ClientRouter;
+use reinhardt_pages::router::ClientRouter;
 use wasm_bindgen::prelude::*;
 
 fn nav_link(href: &'static str, label: &'static str, current: &str) -> PageElement {

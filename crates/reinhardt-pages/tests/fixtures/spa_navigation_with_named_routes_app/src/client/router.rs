@@ -13,7 +13,7 @@
 //! (re-exported from `reinhardt-pages`) to inspect routing state at
 //! render time.
 
-use reinhardt_urls::routers::ClientRouter;
+use reinhardt_pages::router::ClientRouter;
 
 pub use reinhardt_pages::app::with_spa_router;
 

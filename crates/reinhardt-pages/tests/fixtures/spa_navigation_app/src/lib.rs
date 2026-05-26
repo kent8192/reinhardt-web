@@ -10,7 +10,7 @@
 
 use reinhardt_pages::app::ClientLauncher;
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
-use reinhardt_urls::routers::ClientRouter;
+use reinhardt_pages::router::ClientRouter;
 use wasm_bindgen::prelude::*;
 
 fn home_page() -> Page {
