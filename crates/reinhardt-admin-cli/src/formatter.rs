@@ -1,4 +1,4 @@
-//! File collection utilities for the page! macro formatter.
+//! File collection utilities for the Reinhardt DSL formatter.
 //!
 //! This module provides utilities for collecting Rust source files from directories.
 //!

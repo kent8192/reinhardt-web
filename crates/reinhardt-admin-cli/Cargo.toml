@@ -18,14 +18,20 @@ reinhardt-dentdelion = { workspace = true, features = ["cli"] }
 clap = { version = "4.5", features = ["derive", "cargo"] }
 tokio = { workspace = true }
 walkdir = "2.5"
-syn = { version = "2.0", features = ["full", "parsing", "visit"] }
+syn = { version = "2.0", features = ["full", "parsing", "visit-mut"] }
 quote = "1.0"
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
 prettyplease = "0.2"
 colored = { workspace = true }
 ctrlc = "3.4"
 regex = "1.10"
-reinhardt-pages = {workspace = true, features = ["ast"]}
+tree-sitter = "0.26"
+tree-sitter-rust = "0.24.2"
+tree-sitter-reinhardt-page = { workspace = true }
+tree-sitter-reinhardt-form = { workspace = true }
+tree-sitter-reinhardt-head = { workspace = true }
+topiary-core = { workspace = true }
+topiary-tree-sitter-facade = { workspace = true }
 zeroize = "1.8"
 anyhow = { workspace = true }
 

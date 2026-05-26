@@ -1,0 +1,57 @@
+# Patched local copy of topiary-tree-sitter-facade 0.7.3.
+# Keeps upstream source unchanged except for loosening wasm-bindgen exact pins
+# so the workspace can resolve Topiary alongside newer wasm-bindgen releases.
+
+[package]
+edition = "2024"
+name = "topiary-tree-sitter-facade"
+version = "0.7.3"
+authors = ["<herringtondarkholme@users.noreply.github.com>"]
+publish = false
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+description = """
+  Topiary's uniform interface for `tree-sitter` (rust) and `web-tree-sitter` (wasm-bindgen)
+"""
+homepage = "https://topiary.tweag.io"
+documentation = "https://topiary.tweag.io/book"
+readme = "README.md"
+license = "Apache-2.0 WITH LLVM-exception"
+repository = "https://github.com/tweag/topiary"
+resolver = "2"
+
+[lib]
+name = "topiary_tree_sitter_facade"
+path = "src/lib.rs"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.streaming-iterator]
+version = "0.1.9"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.tree-sitter]
+version = "0.26"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.tree-sitter-language]
+version = "0.1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.js-sys]
+version = "0.3"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.topiary-web-tree-sitter-sys]
+version = "0.7.3"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.wasm-bindgen]
+version = "0.2"
+features = ["strict-macro"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+version = "0.3"
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies.wasm-bindgen-futures]
+version = "0.4"
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies.wasm-bindgen-test]
+version = "0.3"

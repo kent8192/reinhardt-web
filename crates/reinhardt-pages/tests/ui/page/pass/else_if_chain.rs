@@ -7,21 +7,13 @@ fn main() {
 	let _else_if = page!(|status: i32| {
 		div {
 			if status == 0 {
-				span {
-					"Pending"
-				}
+				span { "Pending" }
 			} else if status == 1 {
-				span {
-					"Processing"
-				}
+				span { "Processing" }
 			} else if status == 2 {
-				span {
-					"Complete"
-				}
+				span { "Complete" }
 			} else {
-				span {
-					"Unknown"
-				}
+				span { "Unknown" }
 			}
 		}
 	});
@@ -63,21 +55,13 @@ fn main() {
 	let _complex = page!(|a: bool, b: bool| {
 		div {
 			if a &&b {
-				span {
-					"Both true"
-				}
+				span { "Both true" }
 			} else if a {
-				span {
-					"Only A"
-				}
+				span { "Only A" }
 			} else if b {
-				span {
-					"Only B"
-				}
+				span { "Only B" }
 			} else {
-				span {
-					"Neither"
-				}
+				span { "Neither" }
 			}
 		}
 	});

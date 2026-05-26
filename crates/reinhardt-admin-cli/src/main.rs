@@ -28,7 +28,7 @@
 //! reinhardt-admin --help
 //! ```
 
-mod ast_formatter;
+mod format_engine;
 mod formatter;
 mod utils;
 
@@ -168,10 +168,10 @@ enum Commands {
 		subcommand: PluginCommands,
 	},
 
-	/// Format Rust code and page!/form! macro DSL in source files
+	/// Format Rust code and page!/form!/head! macro DSL in source files
 	///
-	/// By default, runs both rustfmt (protecting page! and form! macros) and page!/form! DSL formatting.
-	/// Use --with-rustfmt=false to only format page! and form! macro DSL.
+	/// By default, formats page!/form!/head! DSL macros with Topiary and then runs rustfmt.
+	/// Use --with-rustfmt=false to only format Reinhardt DSL macros.
 	Fmt {
 		/// Path to file or directory to format
 		#[arg(value_name = "PATH")]
@@ -181,7 +181,7 @@ enum Commands {
 		#[arg(long)]
 		check: bool,
 
-		/// Also run rustfmt (with page! macro protection)
+		/// Also run rustfmt after DSL formatting
 		#[arg(long, default_value = "true", action = clap::ArgAction::Set)]
 		with_rustfmt: bool,
 
@@ -211,11 +211,10 @@ enum Commands {
 		backup: bool,
 	},
 
-	/// Format all code: Rust (via rustfmt) + page! DSL (via reinhardt-fmt)
+	/// Format all code: Reinhardt DSL macros via Topiary + Rust via rustfmt
 	///
-	/// This command protects page! macros from rustfmt, runs rustfmt on the
-	/// surrounding Rust code, restores the macros, and then formats them with
-	/// the page! DSL formatter.
+	/// This command formats page!/form!/head! macros first, then runs
+	/// `cargo fmt --all` on the full workspace.
 	///
 	/// Formats all Rust files in the project (searches for Cargo.toml to find project root).
 	FmtAll {
@@ -678,7 +677,7 @@ fn run_fmt(
 	backup: bool,
 	verbosity: u8,
 ) -> CommandResult<()> {
-	use ast_formatter::{AstPageFormatter, RustfmtOptions};
+	use format_engine::{FormatEngine, RustfmtOptions};
 	use formatter::collect_rust_files;
 
 	// Validate config path if provided
@@ -722,11 +721,7 @@ fn run_fmt(
 		println!("Using rustfmt config: {}", display_path(p));
 	}
 
-	let formatter = if let Some(ref config) = resolved_config_path {
-		AstPageFormatter::with_config(config.clone())
-	} else {
-		AstPageFormatter::new()
-	};
+	let formatter = FormatEngine::new();
 	let mut formatted_count = 0;
 	let mut unchanged_count = 0;
 	let mut ignored_count = 0;
@@ -772,14 +767,36 @@ fn run_fmt(
 			continue;
 		}
 
-		// Process the file based on with_rustfmt option
-		let final_result = if with_rustfmt {
-			// Pipeline: protect -> rustfmt -> restore -> page! format
-			// Step 1: Protect page! macros
-			let protect_result = formatter.protect_page_macros(&original_content);
+		let dsl_result = match formatter.format(&original_content) {
+			Ok(result) => {
+				if let Some(reason) = &result.skipped {
+					ignored_count += 1;
+					println!(
+						"{} {} {} ({})",
+						progress.bright_blue(),
+						"Ignored:".yellow(),
+						display_path(file_path),
+						reason
+					);
+					continue;
+				}
+				result.content
+			}
+			Err(e) => {
+				eprintln!(
+					"{} {} {}: {}",
+					progress.bright_blue(),
+					"Error".red(),
+					display_path(file_path),
+					sanitize_error(&e.to_string())
+				);
+				error_count += 1;
+				continue;
+			}
+		};
 
-			// Step 2: Run rustfmt on protected content
-			let rustfmt_output = match run_rustfmt(&protect_result.protected_content, &options) {
+		let final_result = if with_rustfmt {
+			match run_rustfmt(&dsl_result, &options) {
 				Ok(output) => output,
 				Err(e) => {
 					eprintln!(
@@ -792,59 +809,9 @@ fn run_fmt(
 					error_count += 1;
 					continue;
 				}
-			};
-
-			// Step 3: Restore page! macros
-			let restored =
-				AstPageFormatter::restore_page_macros(&rustfmt_output, &protect_result.backups);
-
-			// Step 4: Format page! macros with reinhardt-fmt
-			match formatter.format(&restored) {
-				Ok(result) => result.content,
-				Err(e) => {
-					eprintln!(
-						"{} {} {}: page! format failed: {}",
-						progress.bright_blue(),
-						"Error".red(),
-						display_path(file_path),
-						sanitize_error(&e.to_string())
-					);
-					error_count += 1;
-					continue;
-				}
 			}
 		} else {
-			// Original behavior: page! DSL only
-			match formatter.format(&original_content) {
-				Ok(result) => {
-					// Check if formatting was skipped
-					if let Some(reason) = &result.skipped {
-						// All remaining SkipReason variants represent intentional
-						// ignore directives — log and count them.
-						ignored_count += 1;
-						println!(
-							"{} {} {} ({})",
-							progress.bright_blue(),
-							"Ignored:".yellow(),
-							display_path(file_path),
-							reason
-						);
-						continue;
-					}
-					result.content
-				}
-				Err(e) => {
-					eprintln!(
-						"{} {} {}: {}",
-						progress.bright_blue(),
-						"Error".red(),
-						display_path(file_path),
-						sanitize_error(&e.to_string())
-					);
-					error_count += 1;
-					continue;
-				}
-			}
+			dsl_result
 		};
 
 		// Compare with original
@@ -953,13 +920,7 @@ fn run_fmt(
 	Ok(())
 }
 
-/// Format all code: Rust (via rustfmt) + page! DSL (via reinhardt-fmt)
-///
-/// Pipeline using `cargo fmt --all`:
-/// 1. Protect: page!(...)  → __reinhardt_placeholder__!(/*n*/) (write to disk)
-/// 2. cargo fmt --all: Format Rust code (placeholders are not touched)
-/// 3. Restore: __reinhardt_placeholder__!(/*n*/) → page!(...)
-/// 4. reinhardt-fmt: Format page! macro contents
+/// Format all code: DSL macros via Topiary, then Rust via `cargo fmt --all`.
 #[allow(clippy::too_many_arguments)] // CLI command handler with many options
 fn run_fmt_all(
 	check: bool,
@@ -971,7 +932,7 @@ fn run_fmt_all(
 	backup: bool,
 	verbosity: u8,
 ) -> CommandResult<()> {
-	use ast_formatter::AstPageFormatter;
+	use format_engine::FormatEngine;
 	use formatter::collect_rust_files;
 	use std::collections::HashMap;
 	use std::process::{Command, Stdio};
@@ -1010,7 +971,7 @@ fn run_fmt_all(
 		return Ok(());
 	}
 
-	let formatter = AstPageFormatter::new();
+	let formatter = FormatEngine::new();
 
 	// Acquire a lock file to prevent concurrent format operations (TOCTOU mitigation)
 	let lock_path = project_root.join(".reinhardt-fmt.lock");
@@ -1023,24 +984,22 @@ fn run_fmt_all(
 
 	// Store original contents for comparison and rollback
 	let mut original_contents: HashMap<PathBuf, String> = HashMap::new();
-	// Store backup info for protected files
-	let mut protected_files: Vec<(PathBuf, Vec<ast_formatter::PageMacroBackup>)> = Vec::new();
 
 	let total_files = files.len();
-	let mut page_macro_count = 0;
+	let mut dsl_file_count = 0;
+	let mut error_count = 0;
 
-	// Phase 1: Protect page! macros and write to disk
 	if verbosity > 0 {
 		println!(
-			"{} Phase 1: Protecting page! macros...",
-			"[Step 1/3]".bright_blue()
+			"{} Phase 1: Formatting Reinhardt DSL macros...",
+			"[Step 1/2]".bright_blue()
 		);
 	}
 
 	for file_path in &files {
-		// Check file size before reading to prevent OOM
 		if let Err(e) = check_file_size(file_path, MAX_SOURCE_FILE_SIZE) {
 			eprintln!("{} Skipping oversized file: {}", "Warning:".yellow(), e);
+			error_count += 1;
 			continue;
 		}
 
@@ -1055,52 +1014,40 @@ fn run_fmt_all(
 		// Store original content for comparison
 		original_contents.insert(file_path.clone(), original_content.clone());
 
-		// Skip if ignore-all marker is present
-		if formatter.has_ignore_all_marker(&original_content) {
+		let format_result = match formatter.format(&original_content) {
+			Ok(result) => result,
+			Err(e) => {
+				eprintln!(
+					"{} DSL format failed for {}: {}",
+					"Error:".red(),
+					display_path(file_path),
+					sanitize_error(&e.to_string())
+				);
+				error_count += 1;
+				continue;
+			}
+		};
+
+		if !format_result.contains_dsl_macro || format_result.skipped.is_some() {
 			continue;
 		}
 
-		// Skip files without page!/form! macros (both brace and paren forms)
-		if !original_content.contains("page!(")
-			&& !original_content.contains("form!(")
-			&& !original_content.contains("form!{")
-			&& !original_content.contains("form! {")
-		{
-			continue;
-		}
-
-		let protect_result = formatter.protect_page_macros(&original_content);
-
-		// Only process if there are actual macros to protect
-		if !protect_result.backups.is_empty() {
-			page_macro_count += protect_result.backups.len();
-
-			// Write protected content to disk atomically (cargo fmt will format it)
-			utils::atomic_write(file_path, &protect_result.protected_content).map_err(|e| {
+		if format_result.content != original_content {
+			utils::atomic_write(file_path, &format_result.content).map_err(|e| {
 				reinhardt_commands::CommandError::ExecutionError(format!(
-					"Failed to write protected content to {}: {}",
+					"Failed to write DSL-formatted content to {}: {}",
 					mask_path(file_path),
 					sanitize_error(&e.to_string())
 				))
 			})?;
-
-			protected_files.push((file_path.clone(), protect_result.backups));
+			dsl_file_count += 1;
 		}
 	}
 
 	if verbosity > 0 {
 		println!(
-			"  Protected {} page! macros in {} files",
-			page_macro_count,
-			protected_files.len()
-		);
-	}
-
-	// Phase 2: Run cargo fmt --all
-	if verbosity > 0 {
-		println!(
 			"{} Phase 2: Running cargo fmt --all...",
-			"[Step 2/3]".bright_blue()
+			"[Step 2/2]".bright_blue()
 		);
 	}
 
@@ -1148,10 +1095,6 @@ fn run_fmt_all(
 
 	let cargo_fmt_result = cmd.output();
 
-	// Track files that were actually modified on disk (for targeted rollback)
-	let modified_on_disk: Vec<PathBuf> = protected_files.iter().map(|(p, _)| p.clone()).collect();
-
-	// If cargo fmt fails, restore only modified files
 	let output = match cargo_fmt_result {
 		Ok(output) => output,
 		Err(e) => {
@@ -1160,7 +1103,8 @@ fn run_fmt_all(
 				"Error:".red(),
 				sanitize_error(&e.to_string())
 			);
-			let rollback_errors = utils::rollback_files(&modified_on_disk, &original_contents);
+			let rollback_paths: Vec<PathBuf> = original_contents.keys().cloned().collect();
+			let rollback_errors = utils::rollback_files(&rollback_paths, &original_contents);
 			utils::report_rollback_errors(&rollback_errors);
 			return Err(reinhardt_commands::CommandError::ExecutionError(
 				"cargo fmt failed to execute".to_string(),
@@ -1176,70 +1120,13 @@ fn run_fmt_all(
 			"Error:".red(),
 			sanitized_stderr
 		);
-		let rollback_errors = utils::rollback_files(&modified_on_disk, &original_contents);
+		let rollback_paths: Vec<PathBuf> = original_contents.keys().cloned().collect();
+		let rollback_errors = utils::rollback_files(&rollback_paths, &original_contents);
 		utils::report_rollback_errors(&rollback_errors);
 		return Err(reinhardt_commands::CommandError::ExecutionError(format!(
 			"cargo fmt exited with error: {}",
 			sanitized_stderr
 		)));
-	}
-
-	// Phase 3: Restore page! macros and format DSL
-	if verbosity > 0 {
-		println!(
-			"{} Phase 3: Restoring and formatting page! macros...",
-			"[Step 3/3]".bright_blue()
-		);
-	}
-
-	let mut error_count = 0;
-
-	for (file_path, backups) in &protected_files {
-		// Read the cargo-fmt formatted content
-		let formatted_content = match std::fs::read_to_string(file_path) {
-			Ok(content) => content,
-			Err(e) => {
-				eprintln!(
-					"{} Failed to read {}: {}",
-					"Error:".red(),
-					display_path(file_path),
-					sanitize_error(&e.to_string())
-				);
-				error_count += 1;
-				continue;
-			}
-		};
-
-		// Restore page! macros
-		let restored = AstPageFormatter::restore_page_macros(&formatted_content, backups);
-
-		// Format page! macro DSL
-		let final_result = match formatter.format(&restored) {
-			Ok(result) => result.content,
-			Err(e) => {
-				eprintln!(
-					"{} page! format failed for {}: {}",
-					"Error:".red(),
-					display_path(file_path),
-					sanitize_error(&e.to_string())
-				);
-				error_count += 1;
-				// Write restored content anyway (without DSL formatting), atomically
-				let _ = utils::atomic_write(file_path, &restored);
-				continue;
-			}
-		};
-
-		// Write final result atomically
-		if let Err(e) = utils::atomic_write(file_path, &final_result) {
-			eprintln!(
-				"{} Failed to write {}: {}",
-				"Error:".red(),
-				display_path(file_path),
-				sanitize_error(&e.to_string())
-			);
-			error_count += 1;
-		}
 	}
 
 	// Compare and count changes
@@ -1326,10 +1213,11 @@ fn run_fmt_all(
 	println!();
 	if check {
 		println!(
-			"{}: {} would be formatted, {} unchanged, {} errors",
+			"{}: {} would be formatted, {} unchanged, {} DSL files preformatted, {} errors",
 			"Summary".bright_cyan(),
 			formatted_count.to_string().yellow(),
 			unchanged_count,
+			dsl_file_count,
 			if error_count > 0 {
 				error_count.to_string().red()
 			} else {
@@ -1338,7 +1226,7 @@ fn run_fmt_all(
 		);
 	} else {
 		println!(
-			"{}: {} formatted, {} unchanged, {} errors",
+			"{}: {} formatted, {} unchanged, {} DSL files preformatted, {} errors",
 			"Summary".bright_cyan(),
 			if formatted_count > 0 {
 				formatted_count.to_string().green()
@@ -1346,6 +1234,7 @@ fn run_fmt_all(
 				formatted_count.to_string().dimmed()
 			},
 			unchanged_count,
+			dsl_file_count,
 			if error_count > 0 {
 				error_count.to_string().red()
 			} else {
@@ -1423,7 +1312,7 @@ fn find_rustfmt_config(start_path: &Path) -> Option<PathBuf> {
 }
 
 /// Run rustfmt on content and return formatted output.
-fn run_rustfmt(content: &str, options: &ast_formatter::RustfmtOptions) -> Result<String, String> {
+fn run_rustfmt(content: &str, options: &format_engine::RustfmtOptions) -> Result<String, String> {
 	use std::io::Write;
 	use std::process::{Command, Stdio};
 

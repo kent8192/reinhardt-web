@@ -7,26 +7,24 @@ fn main() {
 	let _simple = page!(|items: Vec<String>| {
 		ul {
 			for item in items {
-				li {
-					{ item }
-				}
+				li { { item } }
 			}
 		}
 	});
 
 	// For loop with nested if
-	let _for_if = page!(|items: Vec<(i32, bool)>| {
+	let _for_if = page!(|items: Vec<(i32, bool) >| {
 		ul {
-			for (num, active) in items {
+			for(num, active)in items {
 				li {
 					if active {
-						strong {
-							{ format!("{}", num) }
-						}
+						strong { {
+							format!("{}", num)
+						} }
 					} else {
-						span {
-							{ format!("{}", num) }
-						}
+						span { {
+							format!("{}", num)
+						} }
 					}
 				}
 			}

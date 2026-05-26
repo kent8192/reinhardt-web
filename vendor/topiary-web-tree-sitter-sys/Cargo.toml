@@ -1,0 +1,48 @@
+# Patched local copy of topiary-web-tree-sitter-sys 0.7.3.
+# Keeps upstream source unchanged except for loosening wasm-bindgen exact pins
+# so the workspace can resolve Topiary alongside newer wasm-bindgen releases.
+
+[package]
+edition = "2024"
+name = "topiary-web-tree-sitter-sys"
+version = "0.7.3"
+authors = ["<silvanshade@users.noreply.github.com>"]
+publish = false
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+description = """
+  Topiary's raw bindings to the tree-sitter-web API
+"""
+homepage = "https://topiary.tweag.io"
+documentation = "https://topiary.tweag.io/book"
+readme = "README.md"
+license = "Apache-2.0 WITH LLVM-exception"
+repository = "https://github.com/tweag/topiary"
+resolver = "2"
+
+[features]
+default = ["web-sys"]
+node = []
+
+[lib]
+name = "topiary_web_tree_sitter_sys"
+path = "src/lib.rs"
+
+[dependencies.js-sys]
+version = "0.3"
+
+[dependencies.wasm-bindgen]
+version = "0.2"
+features = ["strict-macro"]
+
+[dependencies.wasm-bindgen-futures]
+version = "0.4"
+
+[dependencies.web-sys]
+version = "0.3"
+features = ["Window"]
+optional = true
