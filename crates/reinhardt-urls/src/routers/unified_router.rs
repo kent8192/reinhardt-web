@@ -920,7 +920,8 @@ impl UnifiedRouter {
 		self.client
 	}
 
-	/// Registers client router globally and returns it.
+	/// Returns the client router on WASM.
+	/// Global registration is caller-managed.
 	pub fn register_globally(self) -> ClientRouter {
 		self.client
 	}
