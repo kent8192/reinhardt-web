@@ -202,7 +202,7 @@ impl<P: Model> PolymorphicRelation<P> {
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
 	/// #     type Fields = CommentFields;
-	/// #     type Objects = Manager<Self>;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "comments" }
 	/// #     fn new_fields() -> Self::Fields { CommentFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -244,7 +244,7 @@ impl<P: Model> PolymorphicRelation<P> {
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
 	/// #     type Fields = CommentFields;
-	/// #     type Objects = Manager<Self>;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "comments" }
 	/// #     fn new_fields() -> Self::Fields { CommentFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -313,7 +313,7 @@ impl<P: Model> PolymorphicRelation<P> {
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
 	/// #     type Fields = CommentFields;
-	/// #     type Objects = Manager<Self>;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "comments" }
 	/// #     fn new_fields() -> Self::Fields { CommentFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -478,7 +478,7 @@ impl<P: Model> PolymorphicQuery<P> {
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
 	/// #     type Fields = CommentFields;
-	/// #     type Objects = Manager<Self>;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "comments" }
 	/// #     fn new_fields() -> Self::Fields { CommentFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }

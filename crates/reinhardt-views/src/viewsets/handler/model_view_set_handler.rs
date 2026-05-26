@@ -1087,6 +1087,7 @@ mod tests {
 	impl reinhardt_db::orm::Model for TestItem {
 		type PrimaryKey = i64;
 		type Fields = TestItemFields;
+		type Objects = reinhardt_db::orm::Manager<Self>;
 
 		fn table_name() -> &'static str {
 			"test_items"

@@ -167,7 +167,7 @@ impl<T: Model> LoadOptionBuilder<T> {
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
 	///     type Fields = UserFields;
-	///     type Objects = Manager<Self>;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str {
 	///         "users"
 	///     }

@@ -209,7 +209,7 @@ impl<P: Model, C: Model> Relationship<P, C> {
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
-	/// #     type Objects = Manager<Self>;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -219,7 +219,7 @@ impl<P: Model, C: Model> Relationship<P, C> {
 	/// impl Model for Post {
 	///     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
-	/// #     type Objects = Manager<Self>;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }

@@ -25,7 +25,7 @@ use crate::orm::model::Model;
 /// # impl Model for User {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = UserFields;
-/// #     type Objects = Manager<Self>;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn new_fields() -> Self::Fields { UserFields }
 /// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
@@ -66,7 +66,7 @@ pub fn build_count_query<M: Model>() -> SelectStatement {
 /// # impl Model for User {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = UserFields;
-/// #     type Objects = Manager<Self>;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn new_fields() -> Self::Fields { UserFields }
 /// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
@@ -118,7 +118,7 @@ where
 /// # impl Model for User {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = UserFields;
-/// #     type Objects = Manager<Self>;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn new_fields() -> Self::Fields { UserFields }
 /// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
@@ -166,7 +166,7 @@ where
 /// # impl Model for User {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = UserFields;
-/// #     type Objects = Manager<Self>;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn new_fields() -> Self::Fields { UserFields }
 /// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
@@ -235,7 +235,7 @@ pub fn build_insert_query<M: Model>(
 /// # impl Model for User {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = UserFields;
-/// #     type Objects = Manager<Self>;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn new_fields() -> Self::Fields { UserFields }
 /// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
@@ -323,7 +323,7 @@ pub fn build_exists_query(inner: SelectStatement) -> SelectStatement {
 /// # impl Model for User {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = UserFields;
-/// #     type Objects = Manager<Self>;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn new_fields() -> Self::Fields { UserFields }
 /// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }

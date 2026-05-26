@@ -26,7 +26,7 @@
 //! impl Model for User {
 //!     type PrimaryKey = i64;
 //!     type Fields = UserFields;
-//!     type Objects = Manager<Self>;
+//!     type Objects = reinhardt_db::orm::Manager<Self>;
 //!
 //!     fn table_name() -> &'static str {
 //!         "users"
@@ -284,7 +284,7 @@ impl FieldInfo {
 /// impl Model for Article {
 ///     type PrimaryKey = i64;
 ///     type Fields = ArticleFields;
-///     type Objects = Manager<Self>;
+///     type Objects = reinhardt_db::orm::Manager<Self>;
 ///
 ///     fn table_name() -> &'static str {
 ///         "articles"
@@ -344,7 +344,7 @@ impl ModelReflector {
 	/// impl Model for Product {
 	///     type PrimaryKey = i64;
 	///     type Fields = ProductFields;
-	///     type Objects = Manager<Self>;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///
 	///     fn table_name() -> &'static str {
 	///         "products"

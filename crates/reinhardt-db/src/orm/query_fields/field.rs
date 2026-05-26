@@ -47,7 +47,7 @@ impl<M: Model, T> Field<M, T> {
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
 	///     type Fields = UserFields;
-	///     type Objects = Manager<Self>;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str {
 	///         "users"
 	///     }
@@ -196,7 +196,7 @@ impl<M: Model> Field<M, String> {
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
 	///     type Fields = UserFields;
-	///     type Objects = Manager<Self>;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { USER_TABLE.as_str() }
 	///     fn new_fields() -> Self::Fields { UserFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
@@ -237,7 +237,7 @@ impl<M: Model> Field<M, String> {
 	/// impl Model for Product {
 	///     type PrimaryKey = i64;
 	///     type Fields = ProductFields;
-	///     type Objects = Manager<Self>;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { PRODUCT_TABLE.as_str() }
 	///     fn new_fields() -> Self::Fields { ProductFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
@@ -278,7 +278,7 @@ impl<M: Model> Field<M, String> {
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
 	///     type Fields = CommentFields;
-	///     type Objects = Manager<Self>;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { COMMENT_TABLE.as_str() }
 	///     fn new_fields() -> Self::Fields { CommentFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
@@ -320,7 +320,7 @@ impl<M: Model> Field<M, String> {
 	/// impl Model for Post {
 	///     type PrimaryKey = i64;
 	///     type Fields = PostFields;
-	///     type Objects = Manager<Self>;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { POST_TABLE.as_str() }
 	///     fn new_fields() -> Self::Fields { PostFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
