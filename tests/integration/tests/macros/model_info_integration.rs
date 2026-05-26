@@ -97,7 +97,7 @@ fn test_info_debug_clone_partial_eq() {
 
 	// Assert — Debug
 	let debug = format!("{:?}", info);
-	assert!(debug.contains("PersonInfo"));
+	assert_eq!(debug, "PersonInfo { id: Some(1), name: \"Alice\", age: Some(30) }");
 
 	// Assert — Clone
 	let cloned = info.clone();
@@ -128,24 +128,8 @@ fn test_info_serde_mirrored() {
 }
 
 // --- Opt-out ---
-
-#[derive(Serialize, Deserialize)]
-#[model(app_label = "test", table_name = "no_info_items", info = false)]
-struct NoInfoItem {
-	#[field(primary_key = true)]
-	id: Option<i64>,
-
-	#[field(max_length = 50)]
-	name: String,
-}
-
-// test_info_opt_out: `NoInfoItemInfo` should NOT exist.
-// If it did, this would fail to compile due to the static assertion.
-const _: () = {
-	// This function exists only so that the test binary compiles.
-	// The actual assertion is that `NoInfoItemInfo` is *not* defined.
-	fn _no_info_item_info_should_not_exist() {}
-};
+// Compile-fail verification that `info = false` suppresses Info type generation
+// is in model_info_ui.rs (trybuild: tests/macros/ui/fail/info_opt_out_no_type.rs).
 
 // --- Field exclusion ---
 

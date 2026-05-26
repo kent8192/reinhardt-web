@@ -4846,7 +4846,7 @@ fn generate_info_struct(
 	let to_schema_import = if has_any_validation {
 		quote! {
 			#[cfg(native)]
-			#[allow(unused_imports)]
+			#[allow(unused_imports)] // trait import used only under `native` cfg for schema validation
 			use #reinhardt::rest::openapi::ToSchema as _;
 		}
 	} else {
