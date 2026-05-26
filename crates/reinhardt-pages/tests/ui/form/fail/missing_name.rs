@@ -6,7 +6,6 @@ fn main() {
 	// This should fail - 'name' is required
 	let _form = form! {
 		action: "/api/submit",
-
 		fields: {
 			username: CharField { required },
 		},

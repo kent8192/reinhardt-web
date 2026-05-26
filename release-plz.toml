@@ -225,6 +225,10 @@ name = "reinhardt-testkit"
 version_group = "reinhardt"
 
 [[package]]
+name = "reinhardt-testkit-macros"
+version_group = "reinhardt"
+
+[[package]]
 name = "reinhardt-throttling"
 version_group = "reinhardt"
 

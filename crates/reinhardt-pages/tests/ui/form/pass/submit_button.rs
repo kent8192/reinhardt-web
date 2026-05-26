@@ -9,11 +9,20 @@ fn main() {
 	let _login_form = form! {
 		name: LoginForm,
 		action: "/api/login",
-
 		fields: {
-			username: CharField { required, label: "Username" },
-			password: CharField { required, widget: PasswordInput, label: "Password" },
-			submit: SubmitButton { label: "Sign in", class: "btn-primary" },
+			username: CharField {
+				required,
+				label: "Username"
+			},
+			password: CharField {
+				required,
+				widget: PasswordInput,
+				label: "Password"
+			},
+			submit: SubmitButton {
+				label: "Sign in",
+				class: "btn-primary"
+			},
 		},
 	};
 
@@ -21,7 +30,6 @@ fn main() {
 	let _minimal_form = form! {
 		name: MinimalForm,
 		action: "/api/submit",
-
 		fields: {
 			name: CharField { required },
 			submit: SubmitButton {},
@@ -32,10 +40,13 @@ fn main() {
 	let _disabled_form = form! {
 		name: DisabledForm,
 		action: "/api/submit",
-
 		fields: {
 			email: EmailField { required },
-			submit: SubmitButton { label: "Send", id: "submit-btn", disabled },
+			submit: SubmitButton {
+				label: "Send",
+				id: "submit-btn",
+				disabled
+			},
 		},
 	};
 }

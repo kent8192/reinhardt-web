@@ -8,11 +8,9 @@ fn main() {
 		name: DupForm,
 		server_fn: submit,
 		method: Post,
-
 		fields: {
 			payload: CharField { required },
 		},
-
 		strip_arguments: {
 			csrf_token: String::new(),
 			csrf_token: String::from("again"),

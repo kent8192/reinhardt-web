@@ -71,7 +71,9 @@ pub fn dashboard(site_name: &str, models: &[ModelInfo]) -> Page {
 			class: "dashboard animate__animated animate__fadeIn",
 			h1 {
 				class: "font-display text-2xl font-bold text-slate-900 mb-6",
-				{ format!("{} Dashboard", site_name) }
+				{
+					format!("{} Dashboard", site_name)
+				}
 			}
 			{ grid }
 		}
@@ -113,11 +115,15 @@ fn model_card(name: &str, url: &str) -> Page {
 			class: "admin-card p-5 flex flex-col animate__animated animate__fadeInUp",
 			h3 {
 				class: "font-display text-lg font-bold text-slate-900 mb-1",
-				{ name.clone() }
+				{
+					name.clone()
+				}
 			}
 			p {
 				class: "text-sm text-slate-500 mb-4 flex-1",
-				{ format!("Manage {} records", name) }
+				{
+					format!("Manage {} records", name)
+				}
 			}
 			a {
 				class: "admin-btn admin-btn-primary text-center",
@@ -229,23 +235,17 @@ fn data_table(
 		.map(|col| {
 			let label = col.label.clone();
 			page!(|| {
-				th {
-					{ label }
-				}
+				th { { label } }
 			})()
 		})
 		.chain(std::iter::once(page!(|| {
-			th {
-				"Actions"
-			}
+			th { "Actions" }
 		})()))
 		.collect();
 
 	let thead = page!(|| {
 		thead {
-			tr {
-				{ header_cells }
-			}
+			tr { { header_cells } }
 		}
 	})();
 
@@ -255,9 +255,7 @@ fn data_table(
 		.collect();
 
 	let tbody = page!(|| {
-		tbody {
-			{ body_rows }
-		}
+		tbody { { body_rows } }
 	})();
 
 	page!(|| {
@@ -286,9 +284,7 @@ fn table_row(
 				.cloned()
 				.unwrap_or_else(|| "-".to_string());
 			page!(|| {
-				td {
-					{ value }
-				}
+				td { { value } }
 			})()
 		})
 		.collect();
@@ -296,9 +292,7 @@ fn table_row(
 	let record_id = record.get("id").cloned().unwrap_or_else(|| "0".to_string());
 	let actions = action_buttons(model_name, &record_id);
 	let actions_cell = page!(|| {
-		td {
-			{ actions }
-		}
+		td { { actions } }
 	})();
 
 	page!(|| {
@@ -434,9 +428,7 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
 			class: "overflow-x-auto rounded-lg border border-slate-200",
 			table {
 				class: "admin-table",
-				tbody {
-					{ rows }
-				}
+				tbody { { rows } }
 			}
 		}
 	})()
@@ -787,9 +779,7 @@ fn create_filter_select(
 		})
 		.collect();
 	let options_container = page!(|| {
-		span {
-			{ options }
-		}
+		span { { options } }
 	})();
 	let field_str = field.to_string();
 
@@ -798,21 +788,21 @@ fn create_filter_select(
 			class: "admin-select",
 			data_filter_field: field_str.clone(),
 			@change: move |event| {
-						use wasm_bindgen::JsCast;
-						if let Some(target) = event.target() {
-							if let Ok(select_el) = target.dyn_into::<web_sys::HtmlSelectElement>() {
-								let value = select_el.value();
-								let field = field_str.clone();
-								_filters_signal.update(move |map| {
-									if value.is_empty() {
-										map.remove(&field);
-									} else {
-										map.insert(field, value);
-									}
-								});
+				use wasm_bindgen::JsCast;
+				if let Some(target) = event.target() {
+					if let Ok(select_el) = target.dyn_into::<web_sys::HtmlSelectElement>() {
+						let value = select_el.value();
+						let field = field_str.clone();
+						_filters_signal.update(move |map| {
+							if value.is_empty() {
+								map.remove(&field);
+							} else {
+								map.insert(field, value);
 							}
-						}
-					},
+						});
+					}
+				}
+			},
 			{ options_container }
 		}
 	})(field_str, filters_signal)

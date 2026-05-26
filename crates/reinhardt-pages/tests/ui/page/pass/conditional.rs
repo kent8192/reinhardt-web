@@ -7,9 +7,7 @@ fn main() {
 	let _with_if = page!(|show: bool| {
 		div {
 			if show {
-				span {
-					"Visible"
-				}
+				span { "Visible" }
 			}
 		}
 	});
@@ -23,9 +21,7 @@ fn main() {
 					"Admin"
 				}
 			} else {
-				span {
-					"User"
-				}
+				span { "User" }
 			}
 		}
 	});
@@ -35,9 +31,7 @@ fn main() {
 		div {
 			if a {
 				if b {
-					span {
-						"Both true"
-					}
+					span { "Both true" }
 				}
 			}
 		}

@@ -11,9 +11,9 @@ fn main() {
 		ul {
 			watch {
 				for item in items.get().iter() {
-					li {
-						{ item.clone() }
-					}
+					li { {
+						item.clone()
+					} }
 				}
 			}
 		}
@@ -24,15 +24,13 @@ fn main() {
 		div {
 			watch {
 				if data.get().is_empty() {
-					p {
-						"No items"
-					}
+					p { "No items" }
 				} else {
 					ul {
 						for num in data.get().iter() {
-							li {
-								{ num.to_string() }
-							}
+							li { {
+								num.to_string()
+							} }
 						}
 					}
 				}

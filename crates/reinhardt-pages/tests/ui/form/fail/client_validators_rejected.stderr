@@ -20,7 +20,7 @@ error: `client_validators:` was never wired to code generation in any released v
        This custom error is retained through the 0.1.x series. In 0.2.0, the `client_validators` identifier will be removed from the parser and using it will produce a generic `unknown property` error instead.
 
        Tracked by: kent8192/reinhardt-web#3654
-  --> tests/ui/form/fail/client_validators_rejected.rs:17:3
+  --> tests/ui/form/fail/client_validators_rejected.rs:15:3
    |
-17 |         client_validators: {
+15 |         client_validators: {
    |         ^^^^^^^^^^^^^^^^^

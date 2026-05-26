@@ -17,7 +17,7 @@ release-plz on each release.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.1.1"
+cargo install reinhardt-admin-cli --version "0.1.2"
 ```
 
 This installs the `reinhardt-admin` command.
@@ -86,7 +86,7 @@ reinhardt-admin plugin info auth-delion --remote
 
 # Install a plugin
 reinhardt-admin plugin install auth-delion
-reinhardt-admin plugin install auth-delion --version 0.1.1
+reinhardt-admin plugin install auth-delion --version 0.1.2
 
 # Remove a plugin
 reinhardt-admin plugin remove auth-delion
@@ -105,7 +105,9 @@ reinhardt-admin plugin update --all
 
 ### Format All Code
 
-Format all Rust files in the project (Rust + `page!` DSL):
+Format all Rust files in the project. Reinhardt DSL macros are formatted with
+tree-sitter grammars and Topiary queries before `cargo fmt --all` formats the
+surrounding Rust code:
 
 ```bash
 # Format all files in the project
@@ -115,9 +117,9 @@ reinhardt-admin fmt-all
 reinhardt-admin fmt-all --check
 ```
 
-### Format page! Macro DSL
+### Format Reinhardt Macro DSLs
 
-Format `page!` macro DSL in your source files:
+Format `page!`, `form!`, and `head!` macro DSLs in your source files:
 
 ```bash
 # Format all Rust files in the current directory
@@ -135,7 +137,7 @@ reinhardt-admin fmt -v .
 
 #### Ignore Markers
 
-You can control which `page!` macros should be skipped during formatting by using special comment markers:
+You can control which Reinhardt DSL macros should be skipped during formatting by using special comment markers:
 
 ##### File-Wide Ignore
 
@@ -151,7 +153,7 @@ page!(|| { div{bad_format} })  // Will not be formatted
 
 ##### Range Ignore
 
-Skip formatting for multiple macros within a range using `// reinhardt-fmt: off` and `// reinhardt-fmt: on`:
+Skip formatting for multiple DSL macros within a range using `// reinhardt-fmt: off` and `// reinhardt-fmt: on`:
 
 ```rust
 // reinhardt-fmt: off
@@ -164,7 +166,7 @@ page!(|| { p { good } })  // This will be formatted
 
 ##### Individual Macro Ignore
 
-Skip formatting for a specific macro by adding `// reinhardt-fmt: ignore` on the line immediately before it:
+Skip formatting for a specific DSL macro by adding `// reinhardt-fmt: ignore` on the line immediately before it:
 
 ```rust
 // reinhardt-fmt: ignore
@@ -185,7 +187,7 @@ When multiple markers are present, they are applied in this priority order:
 
 - Markers are case-sensitive and spaces are optional (e.g., `//reinhardt-fmt:ignore` also works)
 - Individual markers must be on the line **immediately before** the macro (no blank lines)
-- Range markers can span multiple macros
+- Range markers can span multiple DSL macros
 - Nested `off` markers will generate a warning but use the first `off` position
 - Unclosed ranges (missing `on`) will extend to the end of the file
 

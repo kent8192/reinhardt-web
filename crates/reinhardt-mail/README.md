@@ -13,11 +13,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.1", features = ["mail"] }
+reinhardt = { version = "0.1.2", features = ["mail"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.1", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.1", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.2", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.2", features = ["full"] }      # All features
 ```
 
 Then import mail features:
