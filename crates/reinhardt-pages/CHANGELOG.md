@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.2...reinhardt-pages@v0.1.3) - 2026-05-26
+
+### Added
+
+- *(pages)* add ServerFnError::message() accessor and parse_server_error_message() helper
+- *(pages)* re-export parse_server_error_message from crate root
+
+### Fixed
+
+- *(pages)* handle Display-formatted strings in parse_server_error_message
+- *(pages)* unwrap nested JSON in parse_server_error_message
+- *(pages)* collapse nested if-let and reformat server_fn_trait
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.30...reinhardt-pages@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-pages` as part of the
