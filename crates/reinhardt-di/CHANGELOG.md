@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.2...reinhardt-di@v0.2.0-rc.2) - 2026-05-26
+
+### Added
+
+- *(di)* [**breaking**] remove Injected and OptionalInjected (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(di)* [**breaking**] enforce scope hierarchy at resolution time
+- *(di)* [**breaking**] make InjectionContext registry-aware for per-test isolation
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(di)* delete deprecated Injected<T> and OptionalInjected<T> types
+
+### Documentation
+
+- *(di)* document Injected removal in CHANGELOG and migration guide (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(di)* update public docs to reflect per-context registry isolation
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+- *(di)* enforce scope check on cache-hit path
+- *(di)* enforce scope check on pre-seeded request cache and bypass path
+- *(di)* address Copilot review feedback on scope hierarchy tests
+
+### Styling
+
+- format files from merge resolution
+
 ### Removed
 
 #### BREAKING CHANGES

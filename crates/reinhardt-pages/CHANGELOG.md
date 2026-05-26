@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.2...reinhardt-pages@v0.2.0-rc.2) - 2026-05-26
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(auth,urls,pages)* remove stale references and fix latent clippy lints
+- *(pages)* restore brace-form component invocation tests
+- *(ci)* resolve all pre-existing compilation failures on develop/0.2.0
+
+### Maintenance
+
+- forward merge main v0.1.1 changes into develop 0.2.0
+
+### Styling
+
+- apply formatter fixes across workspace
+- format files from merge resolution
+
 ### Added
 
 - `callback_with_deps` internal helper backing `use_callback` /

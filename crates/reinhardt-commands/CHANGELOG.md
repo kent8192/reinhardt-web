@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.2...reinhardt-commands@v0.2.0-rc.2) - 2026-05-26
+
+### Changed
+
+- *(commands)* [**breaking**] remove workspace templates and consolidate onto non-workspace templates
+- *(commands)* replace loose contains() assertions with exact-line checks
+- *(commands)* simplify assert_eq!(expr, bool) to assert!(expr)
+
+### Fixed
+
+- address CodeRabbit review comments
+- address follow-up CodeRabbit comments
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(commands)* use project_crate_name for with_nav import in workspace pages template
+- *(commands)* add parent project crate dependency to workspace app Cargo.toml
+
+### Maintenance
+
+- forward merge main v0.1.1 changes into develop 0.2.0
+
+### Styling
+
+- apply formatter fixes across workspace
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.30...reinhardt-commands@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-commands` as part of the
