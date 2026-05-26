@@ -1,10 +1,8 @@
 //! Integration tests for Settings System
 //!
 //! These tests verify that reinhardt-conf settings works correctly with loading,
-//! validation, and access patterns. Tests that required the removed `Settings`
-//! struct have been deleted; the struct was removed when the settings system
-//! was refactored to use composable fragments (`CoreSettings`, `CacheSettings`,
-//! etc.) instead of a monolithic type.
+//! validation, and access patterns for composable settings fragments such as
+//! `TemplateConfig` and `DatabaseConfig`.
 
 use reinhardt_conf::settings::TemplateConfig;
 use std::path::PathBuf;
