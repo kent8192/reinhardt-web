@@ -16,17 +16,6 @@ use reinhardt_auth::AuthenticationError;
 use reinhardt_auth::mfa::MFAAuthentication as MfaManager;
 use rstest::*;
 
-/// Simple test user struct for MFA integration tests
-#[allow(dead_code)] // fields used by fixture construction, not all read in every test
-struct TestUser {
-	id: uuid::Uuid,
-	username: String,
-	email: String,
-	is_active: bool,
-	is_admin: bool,
-	is_staff: bool,
-	is_superuser: bool,
-}
 use std::collections::HashSet;
 
 /// Local test user for MFA integration test fixtures.
