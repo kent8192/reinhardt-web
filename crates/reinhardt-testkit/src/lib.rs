@@ -103,9 +103,9 @@ pub use paste;
 #[doc(hidden)]
 pub use reinhardt_db::orm::inspection;
 #[doc(hidden)]
-pub use reinhardt_db::orm::manager::Manager;
-#[doc(hidden)]
 pub use reinhardt_db::orm::relationship;
+#[doc(hidden)]
+pub use reinhardt_db::orm::manager::Manager;
 #[doc(hidden)]
 pub use reinhardt_db::orm::{FieldSelector, Model};
 

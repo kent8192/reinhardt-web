@@ -1329,8 +1329,8 @@ mod tests {
 	use crate::backends::connection::DatabaseConnection as BackendsConnection;
 	use crate::backends::error::Result;
 	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
-	use crate::orm::Manager;
 	use crate::orm::connection::{DatabaseBackend, DatabaseConnection};
+	use crate::orm::Manager;
 	use crate::prelude::Model;
 	use rstest::*;
 	use std::sync::Arc;

@@ -1546,9 +1546,8 @@ mod tests {
 		let router = ClientRouter::new().route("show", "/a/", home_page);
 
 		// Act
-		let _router = router.route_path("show", "/b/{id}/", |Path(_id): Path<i64>| {
-			page_with_text("B")
-		});
+		let _router =
+			router.route_path("show", "/b/{id}/", |Path(_id): Path<i64>| page_with_text("B"));
 	}
 
 	#[rstest]

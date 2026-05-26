@@ -1600,10 +1600,10 @@ impl<M: Model> Default for Manager<M> {
 
 #[cfg(test)]
 mod tests {
-	use super::Manager;
 	use crate::orm::FieldSelector;
 	use crate::orm::Model;
 	use crate::orm::connection::DatabaseBackend;
+	use super::Manager;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
 

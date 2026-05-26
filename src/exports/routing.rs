@@ -38,7 +38,9 @@ pub use reinhardt_urls::routers::resolver::UrlResolver;
 pub use reinhardt_urls::routers::resolver::WebSocketUrlResolver;
 
 #[cfg(native)]
-pub use reinhardt_urls::routers::{UrlReverser, include_routes as include, path, re_path, reverse};
+pub use reinhardt_urls::routers::{
+	UrlReverser, include_routes as include, path, re_path, reverse,
+};
 
 // WebSocket types (native only)
 #[cfg(all(feature = "websockets-pages", native))]

@@ -576,3 +576,4 @@ impl<M: Model> CustomManager for Manager<M> {
 		Manager::new()
 	}
 }
+

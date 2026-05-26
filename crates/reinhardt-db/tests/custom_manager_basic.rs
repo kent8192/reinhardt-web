@@ -98,6 +98,7 @@ impl CustomManager for ActiveArticleManager {
 	}
 }
 
+
 /// Manager that vetoes any save whose title is empty, exercising the
 /// [`CustomManager::before_save`] hook.
 #[derive(Default)]

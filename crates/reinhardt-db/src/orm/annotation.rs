@@ -365,9 +365,9 @@ mod tests {
 #[cfg(test)]
 mod annotation_extended_tests {
 	use super::*;
+	use crate::orm::{Manager, Model};
 	use crate::orm::expressions::Q;
 	use crate::orm::query::{Filter, FilterOperator, FilterValue, QuerySet};
-	use crate::orm::{Manager, Model};
 	use reinhardt_core::validators::TableName;
 	use serde::{Deserialize, Serialize};
 
