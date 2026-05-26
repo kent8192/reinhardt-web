@@ -1,5 +1,5 @@
-//! Smoke tests for the [`CustomManager`] trait, the [`HasCustomManager`]
-//! opt-in trait, and the `#[model(manager = ...)]` attribute (Issue #3980).
+//! Smoke tests for the [`CustomManager`] trait and the `#[model(manager = ...)]`
+//! attribute (Issue #3980, #3984).
 //!
 //! These tests verify three properties:
 //!
@@ -9,9 +9,8 @@
 //!    accept `Manager<M>` from `Model::objects()`.
 //! 2. A user-defined struct implementing [`CustomManager`] interoperates with
 //!    [`QuerySet`] exactly like the canonical [`Manager`].
-//! 3. The `#[model(manager = ...)]` macro argument generates an
-//!    `impl HasCustomManager` that exposes `Model::custom_manager()` returning
-//!    the user-supplied type.
+//! 3. When `type Objects = MyManager` is set on the `Model` trait,
+//!    `Model::objects()` returns the user-supplied manager type directly.
 //!
 //! Database round-trips are covered by the parity test suite under
 //! `tests/integration/tests/orm/custom_manager_*.rs`. This file focuses on
@@ -24,7 +23,7 @@ use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 use reinhardt_db::orm::connection::DatabaseBackend;
-use reinhardt_db::orm::custom_manager::{CustomManager, HasCustomManager};
+use reinhardt_db::orm::custom_manager::CustomManager;
 use reinhardt_db::orm::manager::Manager;
 use reinhardt_db::orm::model::{FieldSelector, Model};
 use reinhardt_db::orm::query::{Filter, FilterOperator, FilterValue, QuerySet};
@@ -55,6 +54,7 @@ impl FieldSelector for ArticleFields {
 impl Model for Article {
 	type PrimaryKey = i64;
 	type Fields = ArticleFields;
+	type Objects = ActiveArticleManager;
 
 	fn table_name() -> &'static str {
 		"articles"
@@ -98,9 +98,6 @@ impl CustomManager for ActiveArticleManager {
 	}
 }
 
-impl HasCustomManager for Article {
-	type Manager = ActiveArticleManager;
-}
 
 /// Manager that vetoes any save whose title is empty, exercising the
 /// [`CustomManager::before_save`] hook.
@@ -198,22 +195,22 @@ fn blanket_impl_get_returns_pk_filtered_queryset() {
 }
 
 // -----------------------------------------------------------------------------
-// Tests: HasCustomManager dispatch
+// Tests: Model::objects() dispatch via type Objects
 // -----------------------------------------------------------------------------
 
 #[rstest]
-fn has_custom_manager_returns_user_supplied_type() {
+fn objects_returns_user_supplied_type() {
 	// Arrange + Act
-	let manager: ActiveArticleManager = <Article as HasCustomManager>::custom_manager();
+	let manager: ActiveArticleManager = Article::objects();
 
 	// Assert: the default-filtered `all()` yields the expected filter.
 	assert_eq!(manager.all().filters().len(), 1);
 }
 
 #[rstest]
-fn has_custom_manager_default_filter_is_applied() {
+fn objects_default_filter_is_applied() {
 	// Arrange
-	let manager = Article::custom_manager();
+	let manager = Article::objects();
 
 	// Act
 	let qs = manager.all();

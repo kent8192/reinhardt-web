@@ -264,6 +264,7 @@ where
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
 	///     type Fields = UserFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "users" }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -310,6 +311,7 @@ where
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
 	///     type Fields = UserFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "users" }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -339,6 +341,7 @@ where
 	/// # impl FieldSelector for ItemFields { fn with_alias(self, _: &str) -> Self { self } }
 	/// # impl Model for Item {
 	/// #     type PrimaryKey = i64; type Fields = ItemFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "items" }
 	/// #     fn primary_key(&self) -> Option<i64> { self.id }
 	/// #     fn set_primary_key(&mut self, v: i64) { self.id = Some(v); }
@@ -375,6 +378,7 @@ where
 	/// # impl FieldSelector for ItemFields { fn with_alias(self, _: &str) -> Self { self } }
 	/// # impl Model for Item {
 	/// #     type PrimaryKey = i64; type Fields = ItemFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "items" }
 	/// #     fn primary_key(&self) -> Option<i64> { self.id }
 	/// #     fn set_primary_key(&mut self, v: i64) { self.id = Some(v); }
@@ -402,6 +406,7 @@ where
 	/// # impl FieldSelector for ItemFields { fn with_alias(self, _: &str) -> Self { self } }
 	/// # impl Model for Item {
 	/// #     type PrimaryKey = i64; type Fields = ItemFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "items" }
 	/// #     fn primary_key(&self) -> Option<i64> { self.id }
 	/// #     fn set_primary_key(&mut self, v: i64) { self.id = Some(v); }
@@ -433,6 +438,7 @@ where
 	/// # impl FieldSelector for ItemFields { fn with_alias(self, _: &str) -> Self { self } }
 	/// # impl Model for Item {
 	/// #     type PrimaryKey = i64; type Fields = ItemFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "items" }
 	/// #     fn primary_key(&self) -> Option<i64> { self.id }
 	/// #     fn set_primary_key(&mut self, v: i64) { self.id = Some(v); }
@@ -599,6 +605,7 @@ where
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
 	///     type Fields = UserFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "users" }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -841,6 +848,7 @@ mod tests {
 	impl Model for DummyModel {
 		type PrimaryKey = i64;
 		type Fields = DummyFields;
+		type Objects = reinhardt_db::orm::Manager<Self>;
 		fn table_name() -> &'static str {
 			"dummy"
 		}

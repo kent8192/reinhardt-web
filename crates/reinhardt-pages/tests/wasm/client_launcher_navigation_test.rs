@@ -230,11 +230,11 @@ async fn client_launcher_re_renders_on_popstate() {
 			// be moved straight into the listener body without an extra
 			// clone.
 			let sub = with_spa_router(move |r| {
-				r.on_navigate(move |path, _params| {
+				r.on_navigate_dyn(Box::new(move |path, _params| {
 					observed_paths_for_listener
 						.borrow_mut()
 						.push(path.to_string());
-				})
+				}))
 			});
 			// Leak the subscription for the lifetime of the test; it is
 			// dropped naturally when the WASM module exits.

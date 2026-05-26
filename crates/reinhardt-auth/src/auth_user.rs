@@ -5,7 +5,7 @@
 
 use crate::BaseUser;
 use async_trait::async_trait;
-use reinhardt_db::orm::{DatabaseConnection, Model};
+use reinhardt_db::orm::{CustomManager, DatabaseConnection, Model};
 use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext};
 use reinhardt_http::AuthState;
 use std::sync::Arc;

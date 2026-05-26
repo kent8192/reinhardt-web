@@ -9,8 +9,8 @@ note: expected this to be `User`
    |
 20 |     type Model = Other;
    |                  ^^^^^
-note: required by a bound in `reinhardt_db::orm::HasCustomManager::Manager`
-  --> $WORKSPACE/crates/reinhardt-db/src/orm/custom_manager.rs
+note: required by a bound in `reinhardt_db::orm::Model::Objects`
+  --> $WORKSPACE/crates/reinhardt-db/src/orm/model.rs
    |
-   |     type Manager: CustomManager<Model = Self> + Default;
-   |                                 ^^^^^^^^^^^^ required by this bound in `HasCustomManager::Manager`
+   |     type Objects: super::custom_manager::CustomManager<Model = Self> + Default;
+   |                                                        ^^^^^^^^^^^^ required by this bound in `Model::Objects`

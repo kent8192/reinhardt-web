@@ -119,6 +119,7 @@ impl reinhardt_db::orm::FieldSelector for AdminRecordFields {
 impl Model for AdminRecord {
 	type PrimaryKey = i64;
 	type Fields = AdminRecordFields;
+	type Objects = reinhardt_db::orm::Manager<Self>;
 
 	fn table_name() -> &'static str {
 		"admin_records"

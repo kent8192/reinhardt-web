@@ -321,6 +321,7 @@ impl<T: Model> SelectExecution<T> {
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
 	///     type Fields = UserFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn app_label() -> &'static str { "app" }
 	///     fn table_name() -> &'static str { "users" }
 	///     fn new_fields() -> Self::Fields { UserFields }
@@ -363,6 +364,7 @@ impl<T: Model> SelectExecution<T> {
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
 	///     type Fields = UserFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn app_label() -> &'static str { "app" }
 	///     fn table_name() -> &'static str { "users" }
 	///     fn new_fields() -> Self::Fields { UserFields }
@@ -783,6 +785,7 @@ impl Default for QueryOptions {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::orm::Manager;
 	use reinhardt_core::validators::TableName;
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
@@ -806,6 +809,7 @@ mod tests {
 	impl Model for User {
 		type PrimaryKey = i64;
 		type Fields = UserFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			USER_TABLE.as_str()

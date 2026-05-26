@@ -103,6 +103,7 @@ fn serialize_via_arena_or_plain<M: Model>(
 /// # impl Model for Post {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = PostFields;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 /// #     fn table_name() -> &'static str { "posts" }
 /// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -117,6 +118,7 @@ fn serialize_via_arena_or_plain<M: Model>(
 /// # impl Model for Author {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = AuthorFields;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 /// #     fn table_name() -> &'static str { "authors" }
 /// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -164,6 +166,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -178,6 +181,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -223,6 +227,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -237,6 +242,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -277,6 +283,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -291,6 +298,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -396,6 +404,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 /// # impl Model for User {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = UserFields;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 /// #     fn table_name() -> &'static str { "users" }
 /// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -587,6 +596,7 @@ impl<M: Model> Serializer for ListSerializer<M> {
 /// # impl Model for Post {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = PostFields;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 /// #     fn table_name() -> &'static str { "posts" }
 /// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -601,6 +611,7 @@ impl<M: Model> Serializer for ListSerializer<M> {
 /// # impl Model for Comment {
 /// #     type PrimaryKey = i64;
 /// #     type Fields = CommentFields;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 /// #     fn table_name() -> &'static str { "comments" }
 /// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }

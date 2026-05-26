@@ -57,7 +57,8 @@ impl Deps {
 	/// Crate-internal convenience used by tests and by hook helpers that
 	/// already hold raw `NodeId`s rather than `Trackable` values.
 	#[allow(dead_code)]
-	pub(crate) fn from_signals(ids: &[NodeId]) -> Self {
+	#[doc(hidden)]
+	pub fn from_signals(ids: &[NodeId]) -> Self {
 		let mut sv = SmallVec::new();
 		sv.extend_from_slice(ids);
 		Deps(sv)
@@ -75,6 +76,12 @@ pub trait IntoDeps {
 impl IntoDeps for () {
 	fn into_deps(self) -> Deps {
 		Deps::empty()
+	}
+}
+
+impl IntoDeps for Deps {
+	fn into_deps(self) -> Deps {
+		self
 	}
 }
 

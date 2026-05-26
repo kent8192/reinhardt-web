@@ -445,3 +445,248 @@ async fn startapp_pages_layout_has_urls_submodule() {
 		);
 	}
 }
+
+/// Helper: build a `CommandContext` with `--with-pages` and `--workspace` options.
+fn pages_workspace_context(args: Vec<String>) -> CommandContext {
+	let mut ctx = CommandContext::new(args);
+	let mut opts = HashMap::new();
+	opts.insert("with-pages".to_string(), vec!["true".to_string()]);
+	opts.insert("workspace".to_string(), vec!["true".to_string()]);
+	ctx = ctx.with_options(opts);
+	ctx
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(cwd)]
+async fn workspace_app_pages_uses_unified_template() {
+	// Arrange — scaffold a pages project, then create a workspace app.
+	let tmp = TempDir::new().unwrap();
+	let project_name = "myproject";
+	scaffold_pages_project(tmp.path(), project_name).await;
+
+	let project_dir = tmp.path().join(project_name);
+	let _cwd_guard = CwdGuard::enter(&project_dir);
+
+	// The project needs a workspace Cargo.toml for `--workspace` to succeed.
+	let cargo_toml = project_dir.join("Cargo.toml");
+	let existing = fs::read_to_string(&cargo_toml).expect("read project Cargo.toml");
+	if !existing.contains("[workspace]") {
+		fs::write(
+			&cargo_toml,
+			format!("{existing}\n[workspace]\nmembers = [\n]\n"),
+		)
+		.expect("append [workspace] to Cargo.toml");
+	}
+
+	// Act
+	let res = StartAppCommand
+		.execute(&pages_workspace_context(vec!["bar".to_string()]))
+		.await;
+
+	// Assert
+	res.expect("startapp --with-pages --workspace must succeed");
+
+	let app_dir = project_dir.join("apps").join("bar");
+
+	// 1. Workspace infrastructure files exist at apps/<name>/
+	assert!(
+		app_dir.join("Cargo.toml").exists(),
+		"apps/bar/Cargo.toml must exist for workspace crate"
+	);
+	assert!(
+		app_dir.join("build.rs").exists(),
+		"apps/bar/build.rs must exist for pages workspace crate"
+	);
+
+	// 2. Source files live under apps/<name>/src/
+	let src = app_dir.join("src");
+	assert!(
+		src.join("lib.rs").exists(),
+		"apps/bar/src/lib.rs must exist"
+	);
+	assert!(
+		src.join("urls.rs").exists(),
+		"apps/bar/src/urls.rs must exist"
+	);
+	assert!(
+		src.join("urls").join("server_urls.rs").exists(),
+		"apps/bar/src/urls/server_urls.rs must exist"
+	);
+	assert!(
+		src.join("urls").join("client_router.rs").exists(),
+		"apps/bar/src/urls/client_router.rs must exist"
+	);
+
+	// 3. The unified template now provides client/ and server_fn modules
+	//    to workspace apps as well (previously absent from the workspace
+	//    template, closing the layout drift noted in #4363).
+	assert!(
+		src.join("client.rs").exists(),
+		"apps/bar/src/client.rs must exist (workspace apps now get full module structure)"
+	);
+	assert!(
+		src.join("client").join("components.rs").exists(),
+		"apps/bar/src/client/components.rs must exist"
+	);
+	assert!(
+		src.join("client").join("pages.rs").exists(),
+		"apps/bar/src/client/pages.rs must exist"
+	);
+	assert!(
+		src.join("server_fn.rs").exists(),
+		"apps/bar/src/server_fn.rs must exist"
+	);
+
+	// 4. lib.rs has cfg gates (shared template, not the old workspace-only version)
+	let lib_rs = fs::read_to_string(src.join("lib.rs")).expect("read lib.rs");
+	assert!(
+		lib_rs.contains("#[cfg(server)]"),
+		"workspace lib.rs must have #[cfg(server)] gates:\n{lib_rs}"
+	);
+	assert!(
+		lib_rs.contains("#[cfg(client)]"),
+		"workspace lib.rs must have #[cfg(client)] gate:\n{lib_rs}"
+	);
+	assert!(
+		lib_rs.contains("crate"),
+		"workspace lib.rs doc comment must say 'crate':\n{lib_rs}"
+	);
+
+	// 5. InstalledApp import uses project_crate_name, not crate::
+	let expected_workspace_import = format!("use {}::config::apps::InstalledApp;", project_name);
+	let server_urls =
+		fs::read_to_string(src.join("urls").join("server_urls.rs")).expect("read server_urls.rs");
+	assert!(
+		!server_urls
+			.lines()
+			.any(|l| l.trim() == "use crate::config::apps::InstalledApp;"),
+		"workspace server_urls.rs must NOT use crate:: import:\n{server_urls}"
+	);
+	assert!(
+		server_urls
+			.lines()
+			.any(|l| l.trim() == expected_workspace_import),
+		"workspace server_urls.rs must import InstalledApp from project crate:\n{server_urls}"
+	);
+
+	let client_router = fs::read_to_string(src.join("urls").join("client_router.rs"))
+		.expect("read client_router.rs");
+	assert!(
+		!client_router
+			.lines()
+			.any(|l| l.trim() == "use crate::config::apps::InstalledApp;"),
+		"workspace client_router.rs must NOT use crate:: import:\n{client_router}"
+	);
+	assert!(
+		client_router
+			.lines()
+			.any(|l| l.trim() == expected_workspace_import),
+		"workspace client_router.rs must import InstalledApp from project crate:\n{client_router}"
+	);
+
+	// 6. client/pages.rs imports with_nav from project crate, not crate::
+	let expected_workspace_with_nav =
+		format!("use {}::client::components::nav::with_nav;", project_name);
+	let pages_rs =
+		fs::read_to_string(src.join("client").join("pages.rs")).expect("read client/pages.rs");
+	assert!(
+		!pages_rs
+			.lines()
+			.any(|l| l.trim() == "use crate::client::components::nav::with_nav;"),
+		"workspace client/pages.rs must NOT use crate:: for with_nav import:\n{pages_rs}"
+	);
+	assert!(
+		pages_rs
+			.lines()
+			.any(|l| l.trim() == expected_workspace_with_nav),
+		"workspace client/pages.rs must import with_nav from project crate:\n{pages_rs}"
+	);
+
+	// 8. Cargo.toml is valid, references src/lib.rs, and depends on parent crate
+	let cargo_content =
+		fs::read_to_string(app_dir.join("Cargo.toml")).expect("read app Cargo.toml");
+	assert!(
+		cargo_content.contains("name = \"bar\""),
+		"app Cargo.toml must name the crate:\n{cargo_content}"
+	);
+	assert!(
+		cargo_content.contains("path = \"src/lib.rs\""),
+		"app Cargo.toml must reference src/lib.rs:\n{cargo_content}"
+	);
+	assert!(
+		cargo_content.contains(&format!("{project_name} = {{ path = \"../..\" }}")),
+		"app Cargo.toml must depend on parent project crate:\n{cargo_content}"
+	);
+
+	// 9. Workspace Cargo.toml has the new member registered
+	let root_cargo = fs::read_to_string(&cargo_toml).expect("read root Cargo.toml");
+	assert!(
+		root_cargo.contains("apps/bar"),
+		"workspace Cargo.toml must list apps/bar as member:\n{root_cargo}"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(cwd)]
+async fn module_app_pages_does_not_generate_workspace_files() {
+	// Arrange
+	let tmp = TempDir::new().unwrap();
+	let project_name = "polls_project";
+	scaffold_pages_project(tmp.path(), project_name).await;
+
+	let project_dir = tmp.path().join(project_name);
+	let _cwd_guard = CwdGuard::enter(&project_dir);
+
+	// Act
+	let res = StartAppCommand
+		.execute(&pages_context(vec!["baz".to_string()]))
+		.await;
+
+	// Assert
+	res.expect("startapp --with-pages must succeed");
+
+	let apps = project_dir.join("src").join("apps");
+
+	// Module apps must NOT have workspace infrastructure files
+	assert!(
+		!apps.join("baz").join("Cargo.toml").exists(),
+		"module app must NOT have its own Cargo.toml"
+	);
+	assert!(
+		!apps.join("baz").join("build.rs").exists(),
+		"module app must NOT have its own build.rs"
+	);
+
+	// InstalledApp import uses crate::, not project_crate_name::
+	let expected_module_import = "use crate::config::apps::InstalledApp;";
+	let server_urls = fs::read_to_string(apps.join("baz").join("urls").join("server_urls.rs"))
+		.expect("read server_urls.rs");
+	assert!(
+		server_urls
+			.lines()
+			.any(|l| l.trim() == expected_module_import),
+		"module server_urls.rs must use crate:: import:\n{server_urls}"
+	);
+
+	let client_router = fs::read_to_string(apps.join("baz").join("urls").join("client_router.rs"))
+		.expect("read client_router.rs");
+	assert!(
+		client_router
+			.lines()
+			.any(|l| l.trim() == expected_module_import),
+		"module client_router.rs must use crate:: import:\n{client_router}"
+	);
+
+	// client/pages.rs with_nav import uses crate::, not project_crate_name::
+	let expected_module_with_nav = "use crate::client::components::nav::with_nav;";
+	let pages_rs = fs::read_to_string(apps.join("baz").join("client").join("pages.rs"))
+		.expect("read client/pages.rs");
+	assert!(
+		pages_rs
+			.lines()
+			.any(|l| l.trim() == expected_module_with_nav),
+		"module client/pages.rs must use crate:: for with_nav import:\n{pages_rs}"
+	);
+}

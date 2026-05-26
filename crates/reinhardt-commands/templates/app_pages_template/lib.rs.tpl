@@ -1,4 +1,4 @@
-//! {{ app_name }} application
+//! {{ app_name }} application {% if is_workspace == "true" %}crate{% else %}module{% endif %}
 //!
 //! A Reinhardt Pages app whose server-side and client-side code both live
 //! under this directory:

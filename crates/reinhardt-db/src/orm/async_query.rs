@@ -59,6 +59,7 @@ impl<T: Model> AsyncQuery<T> {
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str {
 	///         "users"
 	///     }
@@ -267,6 +268,7 @@ impl AsyncSession {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::orm::Manager;
 	use reinhardt_core::validators::TableName;
 	use serde::{Deserialize, Serialize};
 
@@ -293,6 +295,7 @@ mod tests {
 	impl Model for TestModel {
 		type PrimaryKey = i64;
 		type Fields = TestModelFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			TEST_MODEL_TABLE.as_str()

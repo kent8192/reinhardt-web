@@ -365,7 +365,7 @@ mod tests {
 #[cfg(test)]
 mod annotation_extended_tests {
 	use super::*;
-	use crate::orm::Model;
+	use crate::orm::{Manager, Model};
 	use crate::orm::expressions::Q;
 	use crate::orm::query::{Filter, FilterOperator, FilterValue, QuerySet};
 	use reinhardt_core::validators::TableName;
@@ -391,6 +391,7 @@ mod annotation_extended_tests {
 	impl Model for TestModel {
 		type PrimaryKey = i64;
 		type Fields = TestModelFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			TEST_MODEL_TABLE.as_str()
