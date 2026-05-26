@@ -29,8 +29,8 @@
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
-use crate::orm::custom_manager::CustomManager;
 use crate::orm::Model;
+use crate::orm::custom_manager::CustomManager;
 
 /// A set of objects that have a GenericForeignKey pointing to the owner model
 ///

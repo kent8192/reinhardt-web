@@ -15,13 +15,11 @@ fn main() {
 		strip_arguments: {
 			tenant_id: 0u64,
 		},
-
 		fields: {
 			tenant_id: IntegerField {
 				required,
 			}
 		}
-
 	};
 }
 

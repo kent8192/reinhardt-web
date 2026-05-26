@@ -18,7 +18,6 @@ fn main() {
 				choice_label: "choice_text",
 			}
 		}
-
 	};
 }
 

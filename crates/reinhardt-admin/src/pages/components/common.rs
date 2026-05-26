@@ -80,8 +80,8 @@ pub fn button(text: &str, variant: ButtonVariant, disabled: bool, on_click: Sign
 			class: classes,
 			type: "button",
 			@click: move |_| {
-						_on_click.set(true);
-					},
+				_on_click.set(true);
+			},
 			{ text }
 		}
 	})(classes, text, on_click)
@@ -133,9 +133,7 @@ pub fn error_display(message: &str, dismissible: bool) -> Page {
 			div {
 				class: "admin-alert admin-alert-danger flex items-start justify-between animate__animated animate__shakeX",
 				role: "alert",
-				span {
-					{ message }
-				}
+				span { { message } }
 				button {
 					class: "ml-4 text-red-400 hover:text-red-600 cursor-pointer",
 					type: "button",
@@ -247,7 +245,7 @@ where
 			span {
 				class: "admin-page-link admin-page-link-disabled",
 				aria_disabled: "true",
-				tabindex: (- 1_i32).to_string(),
+				tabindex: (-1_i32).to_string(),
 				{ text }
 			}
 		})(text)
@@ -261,13 +259,13 @@ where
 		})(text)
 	} else {
 		let handler: Arc<dyn Fn(Signal<u64>)> = Arc::new(handler);
-		page!(|text: String, _signal: Signal<u64>, _handler: Arc<dyn Fn(Signal<u64>)>| {
+		page!(|text: String, _signal: Signal<u64>, _handler: Arc<dyn Fn(Signal<u64>) >| {
 			a {
 				class: "admin-page-link",
 				href: "#",
 				@click: move |_| {
-							_handler(_signal.clone());
-						},
+					_handler(_signal.clone());
+				},
 				{ text }
 			}
 		})(text, signal, handler)

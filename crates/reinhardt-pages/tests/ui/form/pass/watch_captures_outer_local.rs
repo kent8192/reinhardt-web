@@ -17,23 +17,19 @@ fn main() {
 	let _form = form! {
 		name: CaptureWatchForm,
 		action: "/api/capture",
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			content: CharField {
 				required,
 			}
 		}
-
 		watch: {
 			captured_view: |_form| {
-					let _captured = outer_local;
-				},
+				let _captured = outer_local;
+			},
 		}
-
 	};
 }

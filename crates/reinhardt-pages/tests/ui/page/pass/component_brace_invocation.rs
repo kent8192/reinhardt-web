@@ -14,9 +14,9 @@ struct CardProps {
 fn card(p: CardProps) -> Page {
 	page!(|p: CardProps| {
 		article {
-			h2 {
-				{ p.item.clone() }
-			}
+			h2 { {
+				p.item.clone()
+			} }
 		}
 	})(p)
 }

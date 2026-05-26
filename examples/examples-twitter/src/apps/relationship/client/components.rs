@@ -81,12 +81,12 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 						disabled: { true },
 						aria_label: "Loading",
 						@click: {
-									let toggle_follow = toggle_follow.clone();
-									let is_following_signal = is_following_signal.clone();
-									move |_event| {
-										toggle_follow.dispatch((target_user_id, is_following_signal.get()));
-									}
-								},
+							let toggle_follow = toggle_follow.clone();
+							let is_following_signal = is_following_signal.clone();
+							move |_event| {
+								toggle_follow.dispatch((target_user_id, is_following_signal.get()));
+							}
+						},
 						div {
 							class: "flex items-center gap-2",
 							div {
@@ -99,12 +99,12 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 						type: "button",
 						class: "btn-outline group",
 						@click: {
-									let toggle_follow = toggle_follow.clone();
-									let is_following_signal = is_following_signal.clone();
-									move |_event| {
-										toggle_follow.dispatch((target_user_id, is_following_signal.get()));
-									}
-								},
+							let toggle_follow = toggle_follow.clone();
+							let is_following_signal = is_following_signal.clone();
+							move |_event| {
+								toggle_follow.dispatch((target_user_id, is_following_signal.get()));
+							}
+						},
 						span {
 							class: "group-hover:hidden",
 							"Following"
@@ -119,19 +119,21 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 						type: "button",
 						class: "btn-primary",
 						@click: {
-									let toggle_follow = toggle_follow.clone();
-									let is_following_signal = is_following_signal.clone();
-									move |_event| {
-										toggle_follow.dispatch((target_user_id, is_following_signal.get()));
-									}
-								},
+							let toggle_follow = toggle_follow.clone();
+							let is_following_signal = is_following_signal.clone();
+							move |_event| {
+								toggle_follow.dispatch((target_user_id, is_following_signal.get()));
+							}
+						},
 						"Follow"
 					}
 				}
 				if toggle_follow_for_error.error().is_some() {
 					div {
 						class: "alert-danger mt-2 text-sm",
-						{ toggle_follow_for_error.error().unwrap_or_default() }
+						{
+							toggle_follow_for_error.error().unwrap_or_default()
+						}
 					}
 				}
 			}
@@ -202,7 +204,9 @@ fn user_card(user: &UserInfo) -> Page {
 						{ display_username }
 					}
 				}
-				{ icons::chevron_right_icon() }
+				{
+					icons::chevron_right_icon()
+				}
 			}
 		}
 	})(
@@ -295,7 +299,9 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 					href: "/",
 					class: "btn-icon",
 					aria_label: "Go back home",
-					{ icons::arrow_left_icon() }
+					{
+						icons::arrow_left_icon()
+					}
 				}
 				h2 {
 					class: "text-xl font-bold text-content-primary",
@@ -318,10 +324,12 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 					class: "alert-danger",
 					div {
 						class: "flex items-center gap-2",
-						{ icons::error_circle_icon() }
-						span {
-							{ error_signal.get().unwrap_or_default() }
+						{
+							icons::error_circle_icon()
 						}
+						span { {
+							error_signal.get().unwrap_or_default()
+						} }
 					}
 				}
 			} else if users_signal.get().is_empty() {
@@ -344,15 +352,17 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 					}
 					p {
 						class: "text-content-secondary",
-						{ empty_message.clone() }
+						{
+							empty_message.clone()
+						}
 					}
 				}
 			} else {
 				div {
 					class: "card overflow-hidden",
-					for user in users_signal.get().iter() {
-						{ user_card(user) }
-					}
+					for user in users_signal.get().iter() { {
+						user_card(user)
+					} }
 				}
 			}
 		}

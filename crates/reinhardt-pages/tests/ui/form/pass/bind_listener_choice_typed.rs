@@ -6,7 +6,6 @@ fn main() {
 	let _ = form! {
 		name: TypedChoiceForm,
 		action: "/api/typed-choice",
-
 		fields: {
 			priority: ChoiceField<i64> {
 				required,
@@ -15,6 +14,5 @@ fn main() {
 				choice_label: "name",
 			}
 		}
-
 	};
 }

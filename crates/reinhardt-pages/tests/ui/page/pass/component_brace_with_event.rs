@@ -18,9 +18,9 @@ struct ButtonProps {
 
 fn button(p: ButtonProps) -> Page {
 	page!(|p: ButtonProps| {
-		button {
-			{ p.label.clone() }
-		}
+		button { {
+			p.label.clone()
+		} }
 	})(p)
 }
 
