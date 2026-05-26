@@ -22,6 +22,20 @@ This PR addresses:
 - [ ] CI/CD changes
 - [ ] Other (please describe):
 
+## Breaking Change Assessment
+
+<!-- REQUIRED: Select one. -->
+
+- [ ] **No** - This change is backward compatible
+- [ ] **Yes** - This change breaks existing public API or behavior
+
+<!-- If "Yes", you MUST:
+  1. Fill out the "Breaking Changes" section below with impact and migration guide
+  2. Apply the `breaking-change` label IN ADDITION TO the normal type label (e.g., `enhancement` + `breaking-change`)
+  3. Use `!` in the commit type (e.g., `feat!:` or `fix!:`)
+  4. Ensure this assessment matches the "Type of Change" checkbox above (both must indicate breaking)
+-->
+
 ## Motivation and Context
 
 <!-- Why is this change necessary? What problem does it solve? -->
@@ -64,7 +78,7 @@ Related to: #
 
 -
 
-<!-- If this is NOT a breaking change, you can remove this section. -->
+<!-- REQUIRED if "Yes" is checked in Breaking Change Assessment above. Remove this section otherwise. -->
 
 ## Screenshots
 
@@ -119,7 +133,9 @@ Do NOT modify the checkbox text — CI parses it by exact pattern match. -->
 - [ ] `performance` - Performance improvement
 - [ ] `refactoring` - Code refactoring
 - [ ] `code-quality` - Code quality improvements
-- [ ] `breaking-change` - Breaking change (also select in "Type of Change" above)
+
+### Additional Labels (apply alongside type label when applicable)
+- [ ] `breaking-change` - Breaking change (**MUST** match "Yes" in Breaking Change Assessment above)
 
 ### Scope Label (select all that apply)
 - [ ] `database` - Database layer, schema, migrations

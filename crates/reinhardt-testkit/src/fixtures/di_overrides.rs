@@ -9,13 +9,11 @@
 //! ```rust,no_run
 //! use reinhardt_testkit::with_di_overrides;
 //! use rstest::*;
-//! use serial_test::serial;
 //!
 //! #[derive(Clone, Debug, PartialEq)]
 //! struct Config { url: String }
 //!
 //! #[rstest]
-//! #[serial(di_registry)]
 //! #[tokio::test]
 //! async fn test_my_flow() {
 //!     let (ctx, _di) = with_di_overrides! {
@@ -32,7 +30,6 @@ use std::sync::Arc;
 
 use reinhardt_di::{
 	DependencyRegistry, DependencyScope, DiResult, InjectionContext, OverrideGuard, SingletonScope,
-	global_registry,
 };
 
 /// Holds all `OverrideGuard`s installed during a test. Drop reverts them.
@@ -55,8 +52,8 @@ pub struct DiOverrideBuilder<'a> {
 	// after build, so the values land in `RequestScope` (not `SingletonScope`)
 	// and surface through `ctx.get_request::<T>()`. Held separately from
 	// `guards` because seeds run once at context-build time and are then
-	// dropped, while guards must live for the entire test scope to keep their
-	// `register_override` mutations in effect.
+	// dropped, while guards must live for the entire test scope to keep the
+	// per-context registry overrides in effect.
 	request_seeds: Vec<RequestSeedFn>,
 }
 
@@ -72,9 +69,8 @@ impl<'a> DiOverrideBuilder<'a> {
 
 	/// Override a `Singleton`-scoped type by pre-seeding the singleton scope.
 	///
-	/// No registry mutation. Safe to call without `#[serial(di_registry)]`
-	/// when used in isolation, but the `factory` method on this builder does
-	/// require `#[serial(di_registry)]`.
+	/// No registry mutation — the value is placed directly into the
+	/// per-context singleton scope.
 	pub fn singleton<T: Any + Send + Sync + 'static>(&mut self, value: T) {
 		self.scope.set(value);
 	}
@@ -95,9 +91,10 @@ impl<'a> DiOverrideBuilder<'a> {
 
 	/// Override an arbitrary factory.
 	///
-	/// Mutates the global registry via
-	/// [`DependencyRegistry::register_override`]. Tests calling this method
-	/// **must** be annotated with `#[serial(di_registry)]`.
+	/// Installs the factory into the per-context registry via
+	/// [`DependencyRegistry::register_override`]. Because each test context
+	/// receives its own isolated registry, `#[serial(di_registry)]` is NOT
+	/// required.
 	pub fn factory<T, F, Fut>(&mut self, scope: DependencyScope, factory: F)
 	where
 		T: Any + Send + Sync + 'static,
@@ -118,18 +115,25 @@ impl<'a> DiOverrideBuilder<'a> {
 /// Build an `InjectionContext` with the overrides supplied by the setup
 /// closure. Returns the context plus a `DiOverrides` token that must be kept
 /// alive for the duration of the test (drop reverts all overrides).
+///
+/// Each invocation creates an isolated per-context registry. Factory
+/// overrides installed via [`DiOverrideBuilder::factory`] land in that
+/// registry, not in the global one, so tests can run in parallel without
+/// `#[serial(di_registry)]`.
 pub async fn injection_context_with_di_overrides<F>(setup: F) -> (InjectionContext, DiOverrides)
 where
 	F: FnOnce(&SingletonScope, &mut DiOverrideBuilder<'_>),
 {
 	let scope = Arc::new(SingletonScope::new());
-	let registry = global_registry().clone();
-	let mut builder = DiOverrideBuilder::new(registry, &scope);
+	let per_context_registry = Arc::new(DependencyRegistry::new());
+	let mut builder = DiOverrideBuilder::new(Arc::clone(&per_context_registry), &scope);
 	setup(&scope, &mut builder);
 	// Extract the request-scope seed closures before consuming the builder.
 	let request_seeds = std::mem::take(&mut builder.request_seeds);
 	let overrides = builder.into_overrides();
-	let ctx = InjectionContext::builder(scope).build();
+	let ctx = InjectionContext::builder(scope)
+		.with_registry(per_context_registry)
+		.build();
 	for seed in request_seeds {
 		seed(&ctx);
 	}
@@ -140,7 +144,6 @@ where
 mod tests {
 	use super::*;
 	use rstest::*;
-	use serial_test::serial;
 
 	#[derive(Clone, Debug, PartialEq)]
 	struct Cfg {
@@ -148,7 +151,6 @@ mod tests {
 	}
 
 	#[rstest]
-	#[serial(di_registry)]
 	#[tokio::test]
 	async fn singleton_override_is_visible_via_get_singleton() {
 		// Arrange
@@ -168,7 +170,6 @@ mod tests {
 	struct Counter(u32);
 
 	#[rstest]
-	#[serial(di_registry)]
 	#[tokio::test]
 	async fn factory_override_returns_mock_value() {
 		// Arrange
@@ -192,7 +193,6 @@ mod tests {
 	}
 
 	#[rstest]
-	#[serial(di_registry)]
 	#[tokio::test]
 	async fn request_value_lands_in_request_scope_not_singleton() {
 		// Arrange
@@ -213,7 +213,6 @@ mod tests {
 	}
 
 	#[rstest]
-	#[serial(di_registry)]
 	#[tokio::test]
 	async fn factory_override_reverts_after_di_overrides_drop() {
 		// Arrange -- install a production factory once

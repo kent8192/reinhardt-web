@@ -239,6 +239,7 @@ feat(api)!: change response format to JSON:API specification
 - **Breaking Change Indicator**: Append `!` after type/scope to indicate breaking changes
   - Example: `feat!:` or `feat(api)!:`
   - This is the PREFERRED method for indicating breaking changes
+  - When a commit includes `!`, the corresponding PR and Issue **MUST** also have the `breaking-change` label applied
 - **Description**: Concise summary in English
   - **MUST** start with lowercase letter
   - **MUST** be specific, not vague
