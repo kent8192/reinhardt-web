@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.2...reinhardt-web@v0.1.3) - 2026-05-26
+
+### Documentation
+
+- add release announcement(s)
+
+### Fixed
+
+- *(ci)* add PR checkbox opt-in guard for AWS runner in deploy-website
+- *(ci)* address Copilot review feedback on deploy-website runner selection
+- *(ci)* pin actions/github-script to commit SHA for supply chain security
+- *(admin-cli)* run rustfmt on DSL-skipped files in fmt command
+- *(admin-cli)* pass ignore-all files through rustfmt in fmt command
+
+### Maintenance
+
+- *(deploy-website)* use AWS self-hosted runner for website deployment
+- *(ci)* add actionlint config for custom self-hosted runner labels
+
 ## [0.1.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.1...reinhardt-web@v0.1.2) - 2026-05-25
 
 ### Documentation
