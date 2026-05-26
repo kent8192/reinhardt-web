@@ -1,8 +1,7 @@
-//! Pass case: `#[model(manager = MyManager)]` generates a valid
-//! `impl HasCustomManager` and `Model::custom_manager()` resolves to the
-//! user-supplied type. Issue #3980.
+//! Pass case: `#[model(manager = MyManager)]` sets `type Objects` so that
+//! `Model::objects()` resolves to the user-supplied type. Issue #3980, #3984.
 
-use reinhardt::db::orm::custom_manager::{CustomManager, HasCustomManager};
+use reinhardt::db::orm::custom_manager::CustomManager;
 use reinhardt::model;
 use serde::{Deserialize, Serialize};
 
@@ -27,5 +26,5 @@ pub(crate) struct User {
 }
 
 fn main() {
-	let _: ActiveUserManager = User::custom_manager();
+	let _: ActiveUserManager = User::objects();
 }

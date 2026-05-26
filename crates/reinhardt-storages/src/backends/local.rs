@@ -29,11 +29,11 @@ fn validate_path(name: &str) -> Result<&str> {
 
 	// Reject Windows drive-letter absolute paths on all platforms for
 	// consistent behavior (on Unix, `Path::is_absolute` misses these).
-	if name.as_bytes().get(1..).is_some_and(|rest| {
-		name.as_bytes()[0].is_ascii_alphabetic()
-			&& rest.first() == Some(&b':')
-			&& rest.get(1).is_some_and(|&b| b == b'/' || b == b'\\')
-	}) {
+	if let Some(rest) = name.as_bytes().get(1..)
+		&& name.as_bytes()[0].is_ascii_alphabetic()
+		&& rest.first() == Some(&b':')
+		&& rest.get(1).is_some_and(|&b| b == b'/' || b == b'\\')
+	{
 		return Err(StorageError::InvalidPath(format!(
 			"absolute paths are not allowed: {name}"
 		)));

@@ -210,6 +210,7 @@ impl<M: Model> Lookup<M> {
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }

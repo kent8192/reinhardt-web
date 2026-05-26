@@ -11,10 +11,8 @@ Expands into a call to `reinhardt-testkit`'s `injection_context_with_di_override
 ```rust,ignore
 use reinhardt_testkit::with_di_overrides;
 use rstest::*;
-use serial_test::serial;
 
 #[rstest]
-#[serial(di_registry)]
 #[tokio::test]
 async fn test_login_flow() {
     let (ctx, _di) = with_di_overrides! {

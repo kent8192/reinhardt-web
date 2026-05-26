@@ -105,6 +105,8 @@ pub use reinhardt_db::orm::inspection;
 #[doc(hidden)]
 pub use reinhardt_db::orm::relationship;
 #[doc(hidden)]
+pub use reinhardt_db::orm::manager::Manager;
+#[doc(hidden)]
 pub use reinhardt_db::orm::{FieldSelector, Model};
 
 pub use assertions::*;
@@ -371,6 +373,7 @@ macro_rules! impl_test_model {
 			impl $crate::Model for $model {
 				type PrimaryKey = $pk;
 				type Fields = [<$model Fields>];
+				type Objects = $crate::Manager<Self>;
 
 				fn table_name() -> &'static str {
 					$table
@@ -459,6 +462,7 @@ macro_rules! impl_test_model {
 			impl $crate::Model for $model {
 				type PrimaryKey = $pk;
 				type Fields = [<$model Fields>];
+				type Objects = $crate::Manager<Self>;
 
 				fn table_name() -> &'static str {
 					$table
@@ -528,6 +532,7 @@ macro_rules! impl_test_model {
 			impl $crate::Model for $model {
 				type PrimaryKey = $pk;
 				type Fields = [<$model Fields>];
+				type Objects = $crate::Manager<Self>;
 
 				fn table_name() -> &'static str {
 					$table
@@ -589,6 +594,7 @@ macro_rules! impl_test_model {
 			impl $crate::Model for $model {
 				type PrimaryKey = $pk;
 				type Fields = [<$model Fields>];
+				type Objects = $crate::Manager<Self>;
 
 				fn table_name() -> &'static str {
 					$table
@@ -640,6 +646,7 @@ macro_rules! impl_test_model {
 			impl $crate::Model for $model {
 				type PrimaryKey = $pk;
 				type Fields = [<$model Fields>];
+				type Objects = $crate::Manager<Self>;
 
 				fn table_name() -> &'static str {
 					$table

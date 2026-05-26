@@ -38,6 +38,7 @@ impl FieldSelector for ArticleFields {
 impl Model for Article {
 	type PrimaryKey = i64;
 	type Fields = ArticleFields;
+	type Objects = reinhardt_db::orm::Manager<Self>;
 
 	fn table_name() -> &'static str {
 		"articles"

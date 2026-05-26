@@ -465,7 +465,7 @@ impl QueryFieldCompiler {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::orm::Model;
+	use crate::orm::{Manager, Model};
 	use crate::orm::query_fields::field::Field;
 	use reinhardt_core::validators::TableName;
 
@@ -490,6 +490,7 @@ mod tests {
 	impl Model for TestUser {
 		type PrimaryKey = i64;
 		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
 		fn table_name() -> &'static str {
 			TEST_USER_TABLE.as_str()
 		}

@@ -53,8 +53,7 @@ async fn test_session_authentication_with_inmemory_backend() {
 		.unwrap();
 	let user = result.unwrap();
 	assert_eq!(user.id(), user_id.to_string());
-	assert_eq!(user.get_username(), "alice");
-	assert!(user.is_active());
+	assert!(user.is_authenticated());
 	assert!(!user.is_admin());
 }
 

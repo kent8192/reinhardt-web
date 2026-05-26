@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use hyper::Method;
 use reinhardt_core::exception::{Error, Result};
-use reinhardt_db::orm::{Filter, FilterOperator, FilterValue, Manager, Model, QuerySet};
+use reinhardt_db::orm::{CustomManager, Filter, FilterOperator, FilterValue, Model, QuerySet};
 use reinhardt_http::{Request, Response};
 use reinhardt_rest::serializers::Serializer;
 use serde::{Deserialize, Serialize};
@@ -49,6 +49,7 @@ use crate::core::View;
 /// impl Model for Article {
 ///     type PrimaryKey = i64;
 ///     type Fields = ArticleFields;
+///     type Objects = reinhardt_db::orm::Manager<Self>;
 ///     fn table_name() -> &'static str { "articles" }
 ///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -93,6 +94,7 @@ where
 	/// # impl Model for Article {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ArticleFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "articles" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -135,6 +137,7 @@ where
 	/// # impl Model for Article {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ArticleFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "articles" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -237,7 +240,7 @@ where
 		}
 
 		// Update using Manager
-		let manager = Manager::<M>::new();
+		let manager = M::objects();
 		manager
 			.update(&object)
 			.await

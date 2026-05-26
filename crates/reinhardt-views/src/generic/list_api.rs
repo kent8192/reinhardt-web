@@ -50,6 +50,7 @@ use crate::core::View;
 /// impl Model for Article {
 ///     type PrimaryKey = i64;
 ///     type Fields = ArticleFields;
+///     type Objects = reinhardt_db::orm::Manager<Self>;
 ///     fn table_name() -> &'static str { "articles" }
 ///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -96,6 +97,7 @@ where
 	/// # impl Model for Article {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ArticleFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "articles" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -133,6 +135,7 @@ where
 	/// # impl Model for Article {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ArticleFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "articles" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -167,6 +170,7 @@ where
 	/// # impl Model for Article {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ArticleFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "articles" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -203,6 +207,7 @@ where
 	/// # impl Model for Article {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ArticleFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "articles" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -238,6 +243,7 @@ where
 	/// # impl Model for Article {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ArticleFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "articles" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }

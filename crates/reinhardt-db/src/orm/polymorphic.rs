@@ -202,6 +202,7 @@ impl<P: Model> PolymorphicRelation<P> {
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
 	/// #     type Fields = CommentFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "comments" }
 	/// #     fn new_fields() -> Self::Fields { CommentFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -243,6 +244,7 @@ impl<P: Model> PolymorphicRelation<P> {
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
 	/// #     type Fields = CommentFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "comments" }
 	/// #     fn new_fields() -> Self::Fields { CommentFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -311,6 +313,7 @@ impl<P: Model> PolymorphicRelation<P> {
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
 	/// #     type Fields = CommentFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "comments" }
 	/// #     fn new_fields() -> Self::Fields { CommentFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -475,6 +478,7 @@ impl<P: Model> PolymorphicQuery<P> {
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
 	/// #     type Fields = CommentFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "comments" }
 	/// #     fn new_fields() -> Self::Fields { CommentFields }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -546,6 +550,7 @@ pub fn polymorphic_registry() -> &'static parking_lot::RwLock<PolymorphicRegistr
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::orm::Manager;
 	use reinhardt_core::validators::TableName;
 	use serde::{Deserialize, Serialize};
 
@@ -571,6 +576,7 @@ mod tests {
 	impl Model for Comment {
 		type PrimaryKey = i64;
 		type Fields = CommentFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			COMMENT_TABLE.as_str()
@@ -617,6 +623,7 @@ mod tests {
 	impl Model for Post {
 		type PrimaryKey = i64;
 		type Fields = PostFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			POST_TABLE.as_str()

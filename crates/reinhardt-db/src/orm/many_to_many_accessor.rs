@@ -778,6 +778,7 @@ mod tests {
 	impl Model for TestUser {
 		type PrimaryKey = i64;
 		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			"users"
@@ -821,6 +822,7 @@ mod tests {
 	impl Model for TestGroup {
 		type PrimaryKey = i64;
 		type Fields = TestGroupFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			"groups"

@@ -322,6 +322,7 @@ impl reinhardt_db::orm::FieldSelector for SessionModelFields {
 impl Model for SessionModel {
 	type PrimaryKey = String;
 	type Fields = SessionModelFields;
+	type Objects = reinhardt_db::orm::Manager<Self>;
 
 	fn table_name() -> &'static str {
 		"sessions"
