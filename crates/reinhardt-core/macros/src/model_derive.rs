@@ -5074,13 +5074,20 @@ fn generate_info_builder(
 				})
 				.collect();
 
+			// Only include state params that are NOT pinned (exclude the one at idx)
+			let free_state_params: Vec<&Ident> = state_names
+				.iter()
+				.enumerate()
+				.filter_map(|(i, s)| if i != idx { Some(s) } else { None })
+				.collect();
+
 			let field_name_str = name.to_string();
 
 			// Check if this field is an FK _id field
 			if let Some(target_type) = fk_target_map.get(&field_name_str) {
 				// FK field: accept impl IntoPrimaryKey<TargetModel>
 				quote! {
-					impl<#(#state_names),*> #builder_name<#(#input_states),*> {
+					impl<#(#free_state_params),*> #builder_name<#(#input_states),*> {
 						pub fn #name<__FkArg>(mut self, value: __FkArg)
 							-> #builder_name<#(#output_states),*>
 						where
@@ -5099,7 +5106,7 @@ fn generate_info_builder(
 				let is_string = matches!(ty, Type::Path(p) if p.path.segments.last().is_some_and(|s| s.ident == "String"));
 				if is_string {
 					quote! {
-						impl<#(#state_names),*> #builder_name<#(#input_states),*> {
+						impl<#(#free_state_params),*> #builder_name<#(#input_states),*> {
 							pub fn #name(mut self, value: impl ::std::convert::Into<String>)
 								-> #builder_name<#(#output_states),*>
 							{
@@ -5113,7 +5120,7 @@ fn generate_info_builder(
 					}
 				} else {
 					quote! {
-						impl<#(#state_names),*> #builder_name<#(#input_states),*> {
+						impl<#(#free_state_params),*> #builder_name<#(#input_states),*> {
 							pub fn #name(mut self, value: #ty)
 								-> #builder_name<#(#output_states),*>
 							{
