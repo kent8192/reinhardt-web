@@ -1,5 +1,5 @@
 error[E0412]: cannot find type `NoInfoItemInfo` in this scope
-  --> tests/macros/ui/fail/info_opt_out_no_type.rs:20:13
+  --> tests/macros/ui/fail/info_opt_out_no_type.rs:19:13
    |
-20 |     let _x: NoInfoItemInfo;
+19 |     let _x: NoInfoItemInfo;
    |             ^^^^^^^^^^^^^^ not found in this scope
