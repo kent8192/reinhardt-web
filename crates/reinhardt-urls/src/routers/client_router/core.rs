@@ -391,9 +391,36 @@ impl ClientRouter {
 		self
 	}
 
+	/// Insert a named route into the lookup table, panicking on duplicates.
+	///
+	/// All individual route registration methods (`route`, `route_params`,
+	/// `route_result`, `page`, `route_path`) delegate to this helper so
+	/// that a duplicate name is caught immediately at registration time
+	/// rather than causing silent reverse/match drift at runtime.
+	///
+	/// The `merge` and `with_namespace` methods intentionally bypass this
+	/// check: `merge` documents last-wins semantics, and `with_namespace`
+	/// re-keys existing entries without introducing new names.
+	///
+	/// # Panics
+	///
+	/// Panics if `name` is already registered.
+	fn insert_named_route(&mut self, name: &str, index: usize) {
+		if self.named_routes.insert(name.to_string(), index).is_some() {
+			panic!(
+				"Duplicate client route name '{}': a route with this name is already registered",
+				name,
+			);
+		}
+	}
+
 	/// Adds a named route to the router.
 	///
 	/// Every route requires a unique `name` for reverse URL lookup.
+	///
+	/// # Panics
+	///
+	/// Panics if `name` duplicates an already-registered route name.
 	pub fn route<F>(mut self, name: &str, pattern: &str, component: F) -> Self
 	where
 		F: Fn() -> Page + Send + Sync + 'static,
@@ -401,11 +428,15 @@ impl ClientRouter {
 		let index = self.routes.len();
 		self.routes
 			.push(ClientRoute::named(name, pattern, component));
-		self.named_routes.insert(name.to_string(), index);
+		self.insert_named_route(name, index);
 		self
 	}
 
 	/// Adds a named route with typed path parameters.
+	///
+	/// # Panics
+	///
+	/// Panics if `name` duplicates an already-registered route name.
 	pub fn route_params<F, T>(mut self, name: &str, pattern: &str, handler: F) -> Self
 	where
 		F: Fn(Path<T>) -> Page + Send + Sync + 'static,
@@ -419,11 +450,15 @@ impl ClientRouter {
 			handler: with_params_handler(handler),
 			guard: None,
 		});
-		self.named_routes.insert(name.to_string(), index);
+		self.insert_named_route(name, index);
 		self
 	}
 
-	/// Adds a named route with typed path parameters that returns a Result.
+	/// Adds a named route with typed path parameters that returns a `Result`.
+	///
+	/// # Panics
+	///
+	/// Panics if `name` duplicates an already-registered route name.
 	pub fn route_result<F, T, E>(mut self, name: &str, pattern: &str, handler: F) -> Self
 	where
 		F: Fn(Path<T>) -> Result<Page, E> + Send + Sync + 'static,
@@ -438,7 +473,7 @@ impl ClientRouter {
 			handler: result_handler(handler),
 			guard: None,
 		});
-		self.named_routes.insert(name.to_string(), index);
+		self.insert_named_route(name, index);
 		self
 	}
 
@@ -484,7 +519,8 @@ impl ClientRouter {
 	///
 	/// Panics if the pattern is invalid (exceeds length/segment limits
 	/// or invalid regex). Use [`ClientPathPattern::new`] directly for
-	/// fallible construction.
+	/// fallible construction. Also panics if `name` duplicates an
+	/// already-registered route name.
 	pub fn page<F, P>(mut self, name: &str, pattern: &str, handler: F) -> Self
 	where
 		F: Fn(P) -> Page + Send + Sync + 'static,
@@ -498,7 +534,7 @@ impl ClientRouter {
 			handler: from_request_handler(handler, pattern.to_string()),
 			guard: None,
 		});
-		self.named_routes.insert(name.to_string(), index);
+		self.insert_named_route(name, index);
 		self
 	}
 
@@ -546,6 +582,11 @@ impl ClientRouter {
 	///     },
 	/// );
 	/// ```
+	///
+	/// # Panics
+	///
+	/// Panics if the pattern is invalid or if `name` duplicates an
+	/// already-registered route name.
 	pub fn route_path<H, Args>(mut self, name: &str, pattern: &str, handler: H) -> Self
 	where
 		H: Handler<Args>,
@@ -558,7 +599,7 @@ impl ClientRouter {
 			handler: handler.into_route_handler(),
 			guard: None,
 		});
-		self.named_routes.insert(name.to_string(), index);
+		self.insert_named_route(name, index);
 		self
 	}
 
@@ -1472,5 +1513,53 @@ mod tests {
 		};
 		let text = err.to_string();
 		assert!(text.contains("polls:detail"));
+	}
+
+	// ----- duplicate route name detection ------------------------------------
+
+	#[rstest]
+	#[should_panic(expected = "Duplicate client route name 'home'")]
+	fn route_panics_on_duplicate_name() {
+		// Arrange — a router with an existing "home" route
+		let router = ClientRouter::new().route("home", "/", home_page);
+
+		// Act — registering the same name again must panic
+		let _router = router.route("home", "/other/", user_page);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "Duplicate client route name 'detail'")]
+	fn route_params_panics_on_duplicate_name() {
+		// Arrange
+		let router = ClientRouter::new().route("detail", "/items/{id}/", home_page);
+
+		// Act
+		let _router = router.route_params("detail", "/users/{id}/", |Path(_id): Path<i64>| {
+			page_with_text("User")
+		});
+	}
+
+	#[rstest]
+	#[should_panic(expected = "Duplicate client route name 'show'")]
+	fn route_path_panics_on_duplicate_name() {
+		// Arrange
+		let router = ClientRouter::new().route("show", "/a/", home_page);
+
+		// Act
+		let _router =
+			router.route_path("show", "/b/{id}/", |Path(_id): Path<i64>| page_with_text("B"));
+	}
+
+	#[rstest]
+	fn merge_does_not_panic_on_duplicate_name() {
+		// Arrange — merge intentionally uses last-wins semantics
+		let first = ClientRouter::new().route("shared", "/a/", || page_with_text("first"));
+		let second = ClientRouter::new().route("shared", "/b/", || page_with_text("second"));
+
+		// Act — must NOT panic (last-wins is the documented contract)
+		let merged = first.merge(second);
+
+		// Assert — the second route wins
+		assert_eq!(merged.reverse("shared", &[]).unwrap(), "/b/");
 	}
 }

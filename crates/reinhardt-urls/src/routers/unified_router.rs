@@ -1059,7 +1059,7 @@ mod tests {
 		assert_eq!(merged.client_ref().route_count(), 2);
 
 		assert_eq!(
-			merged.client_ref().reverse("login_page", &[]),
+			merged.client_ref().reverse("login_page", &[]).ok(),
 			Some("/login/".to_string()),
 			"merged client routes must be resolvable on native"
 		);
@@ -1085,7 +1085,7 @@ mod tests {
 			"namespaced child client routes must survive native mount_unified"
 		);
 		assert_eq!(
-			merged.client_ref().reverse("auth:login_page", &[]),
+			merged.client_ref().reverse("auth:login_page", &[]).ok(),
 			Some("/login/".to_string())
 		);
 	}
