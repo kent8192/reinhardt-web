@@ -3640,6 +3640,7 @@ mod tests {
 mod scope_tests {
 	use super::*;
 	use crate::core::{ClientTrigger, ValidatorRule, ValidatorScope};
+	use quote::quote;
 	use rstest::*;
 
 	/// Wrapper that parses `[ ... ]` as a rules list via `parse_validator_rules`.
