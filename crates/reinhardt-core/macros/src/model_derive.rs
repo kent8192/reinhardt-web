@@ -29,7 +29,7 @@ use std::collections::HashMap;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, GenericArgument, PathArguments, Result, Type, parse_quote};
-use syn::{Ident, LitStr, bracketed, parenthesized};
+use syn::{Ident, LitBool, LitStr, bracketed, parenthesized};
 
 use crate::crate_paths::{
 	get_linkme_crate, get_reinhardt_core_crate, get_reinhardt_crate,
@@ -56,6 +56,9 @@ struct ModelAttributesParsed {
 	unique_together: Vec<Vec<String>>, // Multiple Django-style unique_together constraints
 	/// Optional custom manager path: `manager = MyManager` (Issue #3980).
 	manager: Option<syn::Path>,
+	/// Whether to generate Info companion struct (Issue #4194).
+	/// `None` means not specified (defaults to `true` in `ModelConfig`).
+	info: Option<bool>,
 }
 
 /// Validate a raw SQL expression to reject dangerous patterns.
@@ -132,6 +135,9 @@ struct ModelConfig {
 	/// When `Some`, the macro emits an `impl HasCustomManager for Self`
 	/// that wires the model to the user-supplied manager type.
 	manager: Option<syn::Path>,
+	/// Whether to generate an `{Model}Info` companion struct (Issue #4194).
+	/// Defaults to `true`. Set `#[model(info = false)]` to opt out.
+	info: bool,
 }
 
 impl ModelConfig {
@@ -141,6 +147,7 @@ impl ModelConfig {
 		let mut table_name = None;
 		let mut constraints = Vec::new();
 		let mut manager: Option<syn::Path> = None;
+		let mut info: Option<bool> = None;
 
 		for attr in attrs {
 			// Accept both #[model(...)] and #[model_config(...)] helper attributes
@@ -183,6 +190,9 @@ impl ModelConfig {
 				}
 				manager = Some(m);
 			}
+			if let Some(i) = model_attr.info {
+				info = Some(i);
+			}
 		}
 
 		let table_name = table_name.ok_or_else(|| {
@@ -197,6 +207,7 @@ impl ModelConfig {
 			table_name,
 			constraints,
 			manager,
+			info: info.unwrap_or(true),
 		})
 	}
 
@@ -209,6 +220,7 @@ impl ModelConfig {
 		let mut constraints = None;
 		let mut unique_together = Vec::new();
 		let mut manager: Option<syn::Path> = None;
+		let mut info: Option<bool> = None;
 
 		while !input.is_empty() {
 			let ident: Ident = input.parse()?;
@@ -224,6 +236,9 @@ impl ModelConfig {
 				// Custom object manager type: `manager = MyManager` (Issue #3980).
 				let path: syn::Path = input.parse()?;
 				manager = Some(path);
+			} else if ident == "info" {
+				let value: LitBool = input.parse()?;
+				info = Some(value.value());
 			} else if ident == "unique_together" {
 				// Tuple syntax: unique_together = ("field1", "field2")
 				use syn::punctuated::Punctuated;
@@ -269,6 +284,7 @@ impl ModelConfig {
 			constraints,
 			unique_together,
 			manager,
+			info,
 		})
 	}
 
@@ -471,6 +487,11 @@ struct FieldConfig {
 	/// Initialized with `Default::default()` in constructor. Implies `skip_getter = true`.
 	/// Used by `#[user]` macro for non-DB cache fields (e.g., `Vec<String>` permissions).
 	skip: bool,
+
+	/// Exclude this field from the generated Info companion struct (Issue #4194).
+	/// The field remains in the model but does not appear in `{Model}Info`.
+	/// In `From<{Model}Info> for {Model}`, the excluded field uses `Default::default()`.
+	skip_info: bool,
 
 	// Constructor generation control
 	/// Whether to include this field in the new() function arguments
@@ -859,6 +880,9 @@ impl FieldConfig {
 					Ok(())
 				} else if meta.path.is_ident("skip") {
 					config.skip = meta.value()?.parse::<syn::LitBool>()?.value();
+					Ok(())
+				} else if meta.path.is_ident("skip_info") {
+					config.skip_info = meta.value()?.parse::<syn::LitBool>()?.value();
 					Ok(())
 				} else {
 					Err(meta.error("unsupported field attribute"))
@@ -2123,6 +2147,19 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		syn::Ident::new(&format!("{}Fields", struct_name), struct_name.span());
 	let field_selector_struct = generate_field_selector_struct(struct_name, &field_infos);
 
+	// Conditionally generate Info companion struct (Issue #4194)
+	let info_struct = if model_config.info {
+		generate_info_struct(
+			struct_name,
+			generics,
+			&field_infos,
+			&fk_field_infos,
+			&input.attrs,
+		)?
+	} else {
+		quote! {}
+	};
+
 	// Conditionally emit `impl HasCustomManager for ...` when the model
 	// requested a custom manager via `#[model(manager = ...)]` (Issue #3980).
 	// Without this attribute we emit nothing, preserving complete backward
@@ -2245,6 +2282,9 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 		// Generate field selector struct for type-safe JOIN/GROUP BY/HAVING operations
 		#field_selector_struct
+
+		// Generate Info companion struct (Issue #4194)
+		#info_struct
 	};
 
 	Ok(expanded)
@@ -4721,6 +4761,407 @@ fn generate_field_selector_struct(
 			}
 		}
 	}
+}
+
+/// Generate the `{Model}Info` companion struct with `From` conversions (Issue #4194).
+///
+/// The Info struct is a plain data carrier mirroring the model's data fields
+/// without ORM coupling. Relationship marker types are excluded; auto-generated
+/// FK `_id` fields are included.
+fn generate_info_struct(
+	struct_name: &Ident,
+	generics: &syn::Generics,
+	field_infos: &[FieldInfo],
+	fk_field_infos: &[ForeignKeyFieldInfo],
+	input_attrs: &[syn::Attribute],
+) -> Result<TokenStream> {
+	let orm_crate = get_reinhardt_orm_crate();
+	let reinhardt = get_reinhardt_crate();
+
+	let info_name = Ident::new(&format!("{}Info", struct_name), struct_name.span());
+	let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+	// Determine which fields to include in Info
+	let info_fields: Vec<&FieldInfo> = field_infos
+		.iter()
+		.filter(|f| {
+			!f.config.skip
+				&& !f.config.skip_info
+				&& !is_relationship_field_type(&f.ty)
+				&& !is_many_to_many_field_type(&f.ty)
+		})
+		.collect();
+
+	// Build a map from FK _id field name to target model type
+	let fk_target_map: HashMap<String, &Type> = fk_field_infos
+		.iter()
+		.map(|fk| (format!("{}_id", fk.field_name), &fk.target_type))
+		.collect();
+
+	// Generate Info struct fields with optional validate attributes
+	let info_field_defs: Vec<TokenStream> = info_fields
+		.iter()
+		.map(|f| {
+			let name = &f.name;
+			let ty = &f.ty;
+			let validate_attrs = generate_validate_attrs(&f.config);
+			quote! {
+				#(#validate_attrs)*
+				pub #name: #ty,
+			}
+		})
+		.collect();
+
+	// Detect serde derives on the original model
+	let has_serialize = has_derive_trait(input_attrs, "Serialize");
+	let has_deserialize = has_derive_trait(input_attrs, "Deserialize");
+
+	let mut extra_derives = Vec::new();
+	if has_serialize {
+		extra_derives.push(quote!(serde::Serialize));
+	}
+	if has_deserialize {
+		extra_derives.push(quote!(serde::Deserialize));
+	}
+
+	let extra_derives_tokens = if extra_derives.is_empty() {
+		quote! {}
+	} else {
+		quote! { , #(#extra_derives),* }
+	};
+
+	// Conditionally add Validate/Schema derives if any field has validation
+	let has_any_validation = info_fields
+		.iter()
+		.any(|f| field_has_validation(&f.config));
+
+	let validate_derive = if has_any_validation {
+		quote! {
+			#[cfg_attr(native, derive(#reinhardt::Validate, #reinhardt::rest::openapi::Schema))]
+		}
+	} else {
+		quote! {}
+	};
+
+	let to_schema_import = if has_any_validation {
+		quote! {
+			#[cfg(native)]
+			#[allow(unused_imports)] // trait import used only under `native` cfg for schema validation
+			use #reinhardt::rest::openapi::ToSchema as _;
+		}
+	} else {
+		quote! {}
+	};
+
+	// Generate From<Model> for Info
+	let model_to_info_fields: Vec<TokenStream> = info_fields
+		.iter()
+		.map(|f| {
+			let name = &f.name;
+			quote! { #name: model.#name, }
+		})
+		.collect();
+
+	// Generate From<Info> for Model — all model fields, with defaults for excluded ones
+	let info_to_model_fields: Vec<TokenStream> = field_infos
+		.iter()
+		.map(|f| {
+			let name = &f.name;
+			let is_included = info_fields.iter().any(|inf| inf.name == f.name);
+			if is_included {
+				quote! { #name: info.#name, }
+			} else {
+				quote! { #name: ::std::default::Default::default(), }
+			}
+		})
+		.collect();
+
+	// Generate builder for Info with IntoPrimaryKey support on FK fields
+	let info_builder = generate_info_builder(
+		&info_name,
+		generics,
+		&info_fields,
+		&fk_target_map,
+		&orm_crate,
+	)?;
+
+	Ok(quote! {
+		#[derive(Debug, Clone, PartialEq #extra_derives_tokens)]
+		#validate_derive
+		pub struct #info_name #impl_generics #where_clause {
+			#(#info_field_defs)*
+		}
+
+		impl #impl_generics ::std::convert::From<#struct_name #ty_generics> for #info_name #ty_generics #where_clause {
+			fn from(model: #struct_name #ty_generics) -> Self {
+				Self {
+					#(#model_to_info_fields)*
+				}
+			}
+		}
+
+		impl #impl_generics ::std::convert::From<#info_name #ty_generics> for #struct_name #ty_generics #where_clause {
+			fn from(info: #info_name #ty_generics) -> Self {
+				Self {
+					#(#info_to_model_fields)*
+				}
+			}
+		}
+
+		#info_builder
+
+		#to_schema_import
+	})
+}
+
+/// Generate `#[validate(...)]` attributes from `FieldConfig` metadata.
+fn generate_validate_attrs(config: &FieldConfig) -> Vec<TokenStream> {
+	let mut attrs = Vec::new();
+
+	// Length validation: combine min_length and max_length
+	let has_length = config.min_length.is_some() || config.max_length.is_some();
+	if has_length {
+		let mut parts = Vec::new();
+		if let Some(min) = config.min_length {
+			parts.push(quote!(min = #min));
+		}
+		if let Some(max) = config.max_length {
+			parts.push(quote!(max = #max));
+		}
+		attrs.push(quote! {
+			#[cfg_attr(native, validate(length(#(#parts),*)))]
+		});
+	}
+
+	// Email validation
+	if config.email == Some(true) {
+		attrs.push(quote! {
+			#[cfg_attr(native, validate(email))]
+		});
+	}
+
+	// URL validation
+	if config.url == Some(true) {
+		attrs.push(quote! {
+			#[cfg_attr(native, validate(url))]
+		});
+	}
+
+	// Range validation: combine min_value and max_value
+	let has_range = config.min_value.is_some() || config.max_value.is_some();
+	if has_range {
+		let mut parts = Vec::new();
+		if let Some(min) = config.min_value {
+			parts.push(quote!(min = #min));
+		}
+		if let Some(max) = config.max_value {
+			parts.push(quote!(max = #max));
+		}
+		attrs.push(quote! {
+			#[cfg_attr(native, validate(range(#(#parts),*)))]
+		});
+	}
+
+	attrs
+}
+
+/// Check if a `FieldConfig` has any validation metadata.
+fn field_has_validation(config: &FieldConfig) -> bool {
+	config.min_length.is_some()
+		|| config.max_length.is_some()
+		|| config.email == Some(true)
+		|| config.url == Some(true)
+		|| config.min_value.is_some()
+		|| config.max_value.is_some()
+}
+
+/// Check if the input struct has a specific trait in its `#[derive(...)]` attributes.
+fn has_derive_trait(attrs: &[syn::Attribute], trait_name: &str) -> bool {
+	use syn::{Meta, Token, punctuated::Punctuated};
+
+	for attr in attrs {
+		if !attr.path().is_ident("derive") {
+			continue;
+		}
+		let Meta::List(list) = &attr.meta else {
+			continue;
+		};
+		if let Ok(derives) =
+			syn::parse::Parser::parse2(Punctuated::<syn::Path, Token![,]>::parse_terminated, list.tokens.clone())
+		{
+			if derives
+				.iter()
+				.any(|p| p.segments.last().is_some_and(|seg| seg.ident == trait_name))
+			{
+				return true;
+			}
+		}
+	}
+	false
+}
+
+/// Generate a typestate builder for `{Model}Info` with `IntoPrimaryKey` support on FK fields.
+fn generate_info_builder(
+	info_name: &Ident,
+	generics: &syn::Generics,
+	info_fields: &[&FieldInfo],
+	fk_target_map: &HashMap<String, &Type>,
+	orm_crate: &TokenStream,
+) -> Result<TokenStream> {
+	let builder_name = Ident::new(&format!("{}Builder", info_name), info_name.span());
+	let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+	// State marker types: one per required field
+	let state_names: Vec<Ident> = info_fields
+		.iter()
+		.enumerate()
+		.map(|(i, _)| Ident::new(&format!("__S{}", i), info_name.span()))
+		.collect();
+
+	let field_names: Vec<&Ident> = info_fields.iter().map(|f| &f.name).collect();
+
+	// Marker types
+	let unset_marker = quote!(());
+	let set_marker = quote!(((),));
+
+	// Initial state: all unset
+	let initial_states: Vec<TokenStream> = state_names.iter().map(|_| quote!(())).collect();
+
+	// Final state: all set
+	let final_states: Vec<TokenStream> = state_names.iter().map(|_| quote!(((),))).collect();
+
+	// Builder struct fields: Option<T> for each field
+	let builder_fields: Vec<TokenStream> = info_fields
+		.iter()
+		.zip(state_names.iter())
+		.map(|(f, _)| {
+			let name = &f.name;
+			let ty = &f.ty;
+			quote! { #name: ::std::option::Option<#ty>, }
+		})
+		.collect();
+
+	// Generate setter methods
+	let setter_methods: Vec<TokenStream> = info_fields
+		.iter()
+		.enumerate()
+		.map(|(idx, f)| {
+			let name = &f.name;
+			let ty = &f.ty;
+
+			// States for this setter: all same except idx goes unset→set
+			let input_states: Vec<TokenStream> = state_names
+				.iter()
+				.enumerate()
+				.map(|(i, s)| {
+					if i == idx {
+						quote!(#unset_marker)
+					} else {
+						quote!(#s)
+					}
+				})
+				.collect();
+
+			let output_states: Vec<TokenStream> = state_names
+				.iter()
+				.enumerate()
+				.map(|(i, s)| {
+					if i == idx {
+						quote!(#set_marker)
+					} else {
+						quote!(#s)
+					}
+				})
+				.collect();
+
+			// Only include state params that are NOT pinned (exclude the one at idx)
+			let free_state_params: Vec<&Ident> = state_names
+				.iter()
+				.enumerate()
+				.filter_map(|(i, s)| if i != idx { Some(s) } else { None })
+				.collect();
+
+			let field_name_str = name.to_string();
+
+			// Check if this field is an FK _id field
+			if let Some(target_type) = fk_target_map.get(&field_name_str) {
+				// FK field: accept impl IntoPrimaryKey<TargetModel>
+				quote! {
+					impl<#(#free_state_params),*> #builder_name<#(#input_states),*> {
+						pub fn #name<__FkArg>(mut self, value: __FkArg)
+							-> #builder_name<#(#output_states),*>
+						where
+							__FkArg: #orm_crate::IntoPrimaryKey<#target_type>,
+						{
+							self.#name = ::std::option::Option::Some(value.into_primary_key());
+							#builder_name {
+								#(#field_names: self.#field_names,)*
+								_state: ::std::marker::PhantomData,
+							}
+						}
+					}
+				}
+			} else {
+				// Regular field: accept Into<T> for String, exact type otherwise
+				let is_string = matches!(ty, Type::Path(p) if p.path.segments.last().is_some_and(|s| s.ident == "String"));
+				if is_string {
+					quote! {
+						impl<#(#free_state_params),*> #builder_name<#(#input_states),*> {
+							pub fn #name(mut self, value: impl ::std::convert::Into<String>)
+								-> #builder_name<#(#output_states),*>
+							{
+								self.#name = ::std::option::Option::Some(value.into());
+								#builder_name {
+									#(#field_names: self.#field_names,)*
+									_state: ::std::marker::PhantomData,
+								}
+							}
+						}
+					}
+				} else {
+					quote! {
+						impl<#(#free_state_params),*> #builder_name<#(#input_states),*> {
+							pub fn #name(mut self, value: #ty)
+								-> #builder_name<#(#output_states),*>
+							{
+								self.#name = ::std::option::Option::Some(value);
+								#builder_name {
+									#(#field_names: self.#field_names,)*
+									_state: ::std::marker::PhantomData,
+								}
+							}
+						}
+					}
+				}
+			}
+		})
+		.collect();
+
+	Ok(quote! {
+		pub struct #builder_name<#(#state_names = ()),*> {
+			#(#builder_fields)*
+			_state: ::std::marker::PhantomData<(#(#state_names),*)>,
+		}
+
+		impl #info_name #ty_generics #where_clause {
+			pub fn build() -> #builder_name<#(#initial_states),*> {
+				#builder_name {
+					#(#field_names: ::std::option::Option::None,)*
+					_state: ::std::marker::PhantomData,
+				}
+			}
+		}
+
+		#(#setter_methods)*
+
+		impl #builder_name<#(#final_states),*> {
+			pub fn finish(self) -> #info_name #ty_generics #where_clause {
+				#info_name {
+					#(#field_names: self.#field_names.unwrap(),)*
+				}
+			}
+		}
+	})
 }
 
 #[cfg(test)]
