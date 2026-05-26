@@ -1645,7 +1645,8 @@ fn generate_field_view(
 	let custom_attrs = generate_custom_attrs(&field.custom_attrs);
 
 	// Generate event listener for two-way binding
-	let event_listener = generate_bind_listener(signal_ident, &field.widget, pages_crate);
+	let event_listener =
+		generate_bind_listener(signal_ident, &field.widget, &field.field_type, pages_crate);
 
 	// Generate input element based on widget type
 	let input_element = match &field.widget {
@@ -1898,39 +1899,40 @@ fn generate_custom_attrs(attrs: &[TypedCustomAttr]) -> TokenStream {
 /// - Select, checkbox, radio: "change" event
 ///
 /// The generated code handles both WASM and non-WASM environments using conditional
-/// compilation. In WASM, it extracts the value from the DOM element. In non-WASM,
-/// the handler is a no-op for type compatibility.
+/// compilation. In WASM, it extracts the value from the DOM element and converts it
+/// to the signal's inner Rust type. In non-WASM, the handler is a no-op for type
+/// compatibility.
 fn generate_bind_listener(
 	signal_ident: Option<&syn::Ident>,
 	widget: &TypedWidget,
+	field_type: &TypedFieldType,
 	pages_crate: &TokenStream,
 ) -> TokenStream {
 	let Some(signal_ident) = signal_ident else {
 		return TokenStream::new();
 	};
 
+	if matches!(field_type, TypedFieldType::MultipleChoiceField { .. }) {
+		return generate_multi_select_listener(signal_ident, field_type, pages_crate);
+	}
+
 	// Determine event type and element type based on widget
-	let (event_name, element_type, value_getter) = match widget {
-		TypedWidget::Textarea => ("input", "HtmlTextAreaElement", quote! { textarea.value() }),
-		TypedWidget::Select | TypedWidget::SelectMultiple => {
-			("change", "HtmlSelectElement", quote! { select.value() })
-		}
-		TypedWidget::CheckboxInput => (
-			"change",
-			"HtmlInputElement",
-			quote! { input.checked().to_string() },
-		),
-		TypedWidget::RadioSelect => ("change", "HtmlInputElement", quote! { input.value() }),
-		_ => ("input", "HtmlInputElement", quote! { input.value() }),
+	let (event_name, element_type) = match widget {
+		TypedWidget::Textarea => ("input", "HtmlTextAreaElement"),
+		TypedWidget::Select | TypedWidget::SelectMultiple => ("change", "HtmlSelectElement"),
+		TypedWidget::CheckboxInput => ("change", "HtmlInputElement"),
+		TypedWidget::RadioSelect => ("change", "HtmlInputElement"),
+		_ => ("input", "HtmlInputElement"),
 	};
 
-	// Create element type identifiers for WASM code
 	let element_type_ident = quote::format_ident!("{}", element_type);
 	let element_var = match widget {
 		TypedWidget::Textarea => quote::format_ident!("textarea"),
 		TypedWidget::Select | TypedWidget::SelectMultiple => quote::format_ident!("select"),
 		_ => quote::format_ident!("input"),
 	};
+
+	let conversion = generate_value_conversion(field_type, widget, &element_var);
 
 	quote! {
 		.listener(#event_name, {
@@ -1941,7 +1943,181 @@ fn generate_bind_listener(
 					use wasm_bindgen::JsCast;
 					if let Some(target) = event.target() {
 						if let Ok(#element_var) = target.dyn_into::<web_sys::#element_type_ident>() {
-							signal.set(#value_getter);
+							#conversion
+						}
+					}
+				}
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+				{
+					let _ = event;
+					let _ = &#pages_crate::component::DummyEvent;
+				}
+			}
+		})
+	}
+}
+
+/// Generates the value conversion code that transforms a DOM element value into
+/// the appropriate Rust type for the signal. Parse failures are silently ignored,
+/// preserving the previous signal value.
+fn generate_value_conversion(
+	field_type: &TypedFieldType,
+	widget: &TypedWidget,
+	element_var: &syn::Ident,
+) -> TokenStream {
+	match field_type {
+		// String fields: direct assignment
+		TypedFieldType::CharField
+		| TypedFieldType::TextField
+		| TypedFieldType::EmailField
+		| TypedFieldType::PasswordField
+		| TypedFieldType::UrlField
+		| TypedFieldType::SlugField => {
+			quote! { signal.set(#element_var.value()); }
+		}
+
+		// BooleanField with CheckboxInput: use .checked() directly
+		TypedFieldType::BooleanField if matches!(widget, TypedWidget::CheckboxInput) => {
+			quote! { signal.set(#element_var.checked()); }
+		}
+
+		// BooleanField with other widgets (e.g. select "true"/"false")
+		TypedFieldType::BooleanField => {
+			quote! {
+				if let Ok(v) = #element_var.value().parse::<bool>() {
+					signal.set(v);
+				}
+			}
+		}
+
+		// Numeric types
+		TypedFieldType::IntegerField => {
+			quote! {
+				if let Ok(v) = #element_var.value().parse::<i64>() {
+					signal.set(v);
+				}
+			}
+		}
+		TypedFieldType::FloatField | TypedFieldType::DecimalField => {
+			quote! {
+				if let Ok(v) = #element_var.value().parse::<f64>() {
+					signal.set(v);
+				}
+			}
+		}
+
+		// Option-wrapped types: empty string → None, otherwise parse to Some
+		TypedFieldType::DateField => {
+			quote! {
+				let raw = #element_var.value();
+				if raw.is_empty() {
+					signal.set(::core::option::Option::None);
+				} else if let Ok(v) = raw.parse::<chrono::NaiveDate>() {
+					signal.set(::core::option::Option::Some(v));
+				}
+			}
+		}
+		TypedFieldType::TimeField => {
+			quote! {
+				let raw = #element_var.value();
+				if raw.is_empty() {
+					signal.set(::core::option::Option::None);
+				} else if let Ok(v) = raw.parse::<chrono::NaiveTime>() {
+					signal.set(::core::option::Option::Some(v));
+				}
+			}
+		}
+		TypedFieldType::DateTimeField => {
+			quote! {
+				let raw = #element_var.value();
+				if raw.is_empty() {
+					signal.set(::core::option::Option::None);
+				} else if let Ok(v) = raw.parse::<chrono::NaiveDateTime>() {
+					signal.set(::core::option::Option::Some(v));
+				}
+			}
+		}
+		TypedFieldType::UuidField => {
+			quote! {
+				let raw = #element_var.value();
+				if raw.is_empty() {
+					signal.set(::core::option::Option::None);
+				} else if let Ok(v) = raw.parse::<uuid::Uuid>() {
+					signal.set(::core::option::Option::Some(v));
+				}
+			}
+		}
+		TypedFieldType::IpAddressField => {
+			quote! {
+				let raw = #element_var.value();
+				if raw.is_empty() {
+					signal.set(::core::option::Option::None);
+				} else if let Ok(v) = raw.parse::<::std::net::IpAddr>() {
+					signal.set(::core::option::Option::Some(v));
+				}
+			}
+		}
+
+		// Generic-capable fields using FromStr
+		TypedFieldType::HiddenField { inner } | TypedFieldType::ChoiceField { inner } => {
+			quote! {
+				if let Ok(v) = #element_var.value().parse::<#inner>() {
+					signal.set(v);
+				}
+			}
+		}
+
+		// JsonField: use serde_json (FromStr not required)
+		TypedFieldType::JsonField { inner } => {
+			quote! {
+				if let Ok(v) = ::serde_json::from_str::<#inner>(&#element_var.value()) {
+					signal.set(v);
+				}
+			}
+		}
+
+		// MultipleChoiceField handled separately in generate_multi_select_listener
+		TypedFieldType::MultipleChoiceField { .. } => {
+			unreachable!("MultipleChoiceField is handled by generate_multi_select_listener")
+		}
+
+		// FileField / ImageField: file inputs use different event patterns (out of scope)
+		TypedFieldType::FileField | TypedFieldType::ImageField => TokenStream::new(),
+	}
+}
+
+/// Generates the complete listener block for `MultipleChoiceField<T>`, which
+/// iterates over `selectedOptions` and parses each value via `FromStr`.
+fn generate_multi_select_listener(
+	signal_ident: &syn::Ident,
+	field_type: &TypedFieldType,
+	pages_crate: &TokenStream,
+) -> TokenStream {
+	let TypedFieldType::MultipleChoiceField { inner } = field_type else {
+		unreachable!("generate_multi_select_listener called with non-MultipleChoiceField");
+	};
+
+	quote! {
+		.listener("change", {
+			let signal = #signal_ident.clone();
+			move |event| {
+				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+				{
+					use wasm_bindgen::JsCast;
+					if let Some(target) = event.target() {
+						if let Ok(select) = target.dyn_into::<web_sys::HtmlSelectElement>() {
+							let options = select.selected_options();
+							let mut values = ::std::vec::Vec::new();
+							for i in 0..options.length() {
+								if let Some(opt) = options.item(i) {
+									if let Ok(opt_el) = opt.dyn_into::<web_sys::HtmlOptionElement>() {
+										if let Ok(v) = opt_el.value().parse::<#inner>() {
+											values.push(v);
+										}
+									}
+								}
+							}
+							signal.set(values);
 						}
 					}
 				}
@@ -3121,7 +3297,23 @@ fn type_is_string(ty: &syn::Type) -> bool {
 fn build_typed_field_where_clause(all_fields: &[&TypedFormFieldDef]) -> TokenStream {
 	let mut bounds: Vec<TokenStream> = Vec::new();
 	let mut seen: ::std::collections::HashSet<String> = ::std::collections::HashSet::new();
+	let mut needs_from_str: ::std::collections::HashSet<String> =
+		::std::collections::HashSet::new();
 
+	// First pass: collect which types need FromStr (used by non-JsonField generics)
+	for field in all_fields {
+		let inner = match &field.field_type {
+			TypedFieldType::HiddenField { inner }
+			| TypedFieldType::ChoiceField { inner }
+			| TypedFieldType::MultipleChoiceField { inner } => Some(inner),
+			_ => None,
+		};
+		if let Some(ty) = inner {
+			needs_from_str.insert(quote!(#ty).to_string());
+		}
+	}
+
+	// Second pass: emit bounds for all generic-capable fields
 	for field in all_fields {
 		let inner = match &field.field_type {
 			TypedFieldType::HiddenField { inner }
@@ -3132,16 +3324,27 @@ fn build_typed_field_where_clause(all_fields: &[&TypedFormFieldDef]) -> TokenStr
 		};
 		if let Some(ty) = inner {
 			let key = quote!(#ty).to_string();
-			if seen.insert(key) {
-				bounds.push(quote! {
-					#ty: ::serde::Serialize
-						+ ::serde::de::DeserializeOwned
-						+ ::core::clone::Clone
-						+ ::core::fmt::Display
-						+ ::core::str::FromStr
-						+ ::core::default::Default
-						+ 'static
-				});
+			if seen.insert(key.clone()) {
+				if needs_from_str.contains(&key) {
+					bounds.push(quote! {
+						#ty: ::serde::Serialize
+							+ ::serde::de::DeserializeOwned
+							+ ::core::clone::Clone
+							+ ::core::fmt::Display
+							+ ::core::str::FromStr
+							+ ::core::default::Default
+							+ 'static
+					});
+				} else {
+					bounds.push(quote! {
+						#ty: ::serde::Serialize
+							+ ::serde::de::DeserializeOwned
+							+ ::core::clone::Clone
+							+ ::core::fmt::Display
+							+ ::core::default::Default
+							+ 'static
+					});
+				}
 			}
 		}
 	}
