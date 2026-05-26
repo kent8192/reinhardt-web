@@ -187,8 +187,8 @@ pub mod reinhardt_commands {
 #[cfg(native)]
 #[doc(hidden)]
 pub mod reinhardt_core {
-	pub use reinhardt_core::*;
 	pub use reinhardt_core::endpoint::EndpointMetadata;
+	pub use reinhardt_core::*;
 }
 
 #[cfg(native)]

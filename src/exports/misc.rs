@@ -19,7 +19,7 @@ pub use reinhardt_utils::cache::RedisCache;
 // used independently of the auth module)
 #[cfg(feature = "sessions")]
 pub use reinhardt_auth::sessions::{
-    CacheSessionBackend, InMemorySessionBackend, Session, SessionBackend, SessionError,
+	CacheSessionBackend, InMemorySessionBackend, Session, SessionBackend, SessionError,
 };
 
 #[cfg(all(feature = "sessions", feature = "middleware"))]

@@ -11,8 +11,8 @@ pub use reinhardt_middleware::{CookieSessionAuthMiddleware, CookieSessionConfig}
 
 #[cfg(all(feature = "sessions", feature = "middleware"))]
 pub use reinhardt_middleware::session::{
-    OptionalSessionValue, SessionAuthExt, SessionKey, SessionValue, SessionValueNamed,
-    USER_ID_SESSION_KEY, UserIdKey,
+	OptionalSessionValue, SessionAuthExt, SessionKey, SessionValue, SessionValueNamed,
+	USER_ID_SESSION_KEY, UserIdKey,
 };
 
 #[cfg(all(feature = "session-redis", feature = "middleware"))]

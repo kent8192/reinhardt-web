@@ -1,7 +1,7 @@
 //! View and shortcut re-exports.
 
 pub use reinhardt_views::{
-    Context, DetailView, ListView, MultipleObjectMixin, SingleObjectMixin, View,
+	Context, DetailView, ListView, MultipleObjectMixin, SingleObjectMixin, View,
 };
 
 #[cfg(feature = "shortcuts")]

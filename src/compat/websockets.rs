@@ -11,35 +11,35 @@
 //! pattern.
 
 pub struct WebSocketRouter {
-    _private: (),
+	_private: (),
 }
 
 impl WebSocketRouter {
-    pub fn new() -> Self {
-        Self { _private: () }
-    }
+	pub fn new() -> Self {
+		Self { _private: () }
+	}
 
-    pub fn with_namespace(self, _namespace: impl Into<String>) -> Self {
-        self
-    }
+	pub fn with_namespace(self, _namespace: impl Into<String>) -> Self {
+		self
+	}
 
-    /// Inert wasm counterpart of `WebSocketRouter::consumer`.
-    ///
-    /// The native variant requires `C: WebSocketEndpointInfo`, but that
-    /// trait lives behind `#[cfg(native)]` in `reinhardt-core::ws`. To
-    /// keep `#[url_patterns(.., mode = ws)]` user bodies such as
-    /// `.consumer(chat_ws)` compiling on wasm, this stub accepts any
-    /// factory `Fn() -> C` with no further bounds and discards it.
-    pub fn consumer<C, F>(self, _f: F) -> Self
-    where
-        F: Fn() -> C,
-    {
-        self
-    }
+	/// Inert wasm counterpart of `WebSocketRouter::consumer`.
+	///
+	/// The native variant requires `C: WebSocketEndpointInfo`, but that
+	/// trait lives behind `#[cfg(native)]` in `reinhardt-core::ws`. To
+	/// keep `#[url_patterns(.., mode = ws)]` user bodies such as
+	/// `.consumer(chat_ws)` compiling on wasm, this stub accepts any
+	/// factory `Fn() -> C` with no further bounds and discards it.
+	pub fn consumer<C, F>(self, _f: F) -> Self
+	where
+		F: Fn() -> C,
+	{
+		self
+	}
 }
 
 impl Default for WebSocketRouter {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
