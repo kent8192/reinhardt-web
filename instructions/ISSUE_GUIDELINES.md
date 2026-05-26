@@ -160,7 +160,12 @@ Issue titles MUST be:
 | `performance` | #fbca04 | Performance-related issues |
 | `ci-cd` | #2cbe4e | CI/CD workflow issues |
 | `security` | #ee0701 | Security vulnerabilities or concerns |
-| `breaking-change` | #ededed | Breaking changes that require migration |
+
+**Additional labels (apply alongside the type label above, not as a replacement):**
+
+| Label | Color | Description |
+|-------|-------|-------------|
+| `breaking-change` | #ededed | Breaking changes that require migration (MUST be combined with a type label) |
 
 ### IL-2 (SHOULD): Apply Priority and Scope Labels
 

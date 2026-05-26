@@ -230,7 +230,12 @@ stateDiagram-v2
 | Documentation | `documentation` | - |
 | Dependency updates | `dependencies` | - |
 | Release preparation | `release` | **CRITICAL** - See special notes below |
-| Breaking changes | `breaking-change` | **MUST** apply for any breaking change PR |
+
+**Additional Labels (apply alongside the type label above):**
+
+| Condition | Additional Label | Note |
+|-----------|-----------------|------|
+| Breaking change | `breaking-change` | **MUST** apply *in addition to* the normal type label (e.g., `enhancement` + `breaking-change`) |
 
 **Common Labels:**
 
