@@ -21,8 +21,6 @@
 
 use reinhardt::ClientRouter;
 use reinhardt::pages::ClientLauncher;
-#[allow(unused_imports)] // Used once a per-app router is wired below.
-use reinhardt::register_client_reverser;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
@@ -31,9 +29,7 @@ pub fn main() -> Result<(), JsValue> {
 		// Replace this empty router with your app's client routes once a
 		// Pages app exists. Example:
 		//   .router_client(|| {
-		//       let router = crate::apps::<your_app>::urls::client_router::client_url_patterns();
-		//       register_client_reverser(router.to_reverser());
-		//       router
+		//       crate::apps::<your_app>::urls::client_router::client_url_patterns()
 		//   })
 		.router_client(ClientRouter::new)
 		.launch()
