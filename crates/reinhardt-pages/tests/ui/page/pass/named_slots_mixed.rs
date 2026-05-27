@@ -20,5 +20,5 @@ fn main() {
 				div { "Sidebar content" }
 			}
 		}
-	});
+	})();
 }

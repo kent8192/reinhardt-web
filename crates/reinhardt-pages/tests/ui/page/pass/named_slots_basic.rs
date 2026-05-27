@@ -22,5 +22,5 @@ fn main() {
 				div { "Content" }
 			}
 		}
-	});
+	})();
 }

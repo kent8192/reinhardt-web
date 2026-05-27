@@ -5194,7 +5194,7 @@ mod tests {
 	#[test]
 	fn test_fields_are_private() {
 		let input = quote! {
-			#[model(app_label = "test", table_name = "test")]
+			#[model(app_label = "test", table_name = "test", info = false)]
 			pub struct TestModel {
 				#[field(primary_key = true)]
 				pub id: i64,

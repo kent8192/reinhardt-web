@@ -11,8 +11,6 @@ use reinhardt_pages::page;
 #[derive(bon::Builder)]
 struct ButtonProps {
 	label: String,
-	// `Option<_>` is implicitly optional under `bon::Builder` — no
-	// `#[builder(default)]` needed (bon rejects it as redundant).
 	on_click: Option<Callback<DummyEvent, ()>>,
 }
 
@@ -27,7 +25,10 @@ fn button(p: ButtonProps) -> Page {
 fn main() {
 	let _ = page!(|| {
 		div {
-			Button(label: "click me".to_string())
+			Button {
+				label: "click me".to_string(),
+				@click: Callback::new(|_: DummyEvent| {}),
+			}
 		}
 	});
 }

@@ -1067,28 +1067,6 @@ mod tests {
 	}
 
 	#[test]
-	fn fn_form_marks_legacy_blanket_trait_as_deprecated() {
-		// Arrange
-		let input = quote! {
-			pub fn viewset() -> ModelViewSet<Snippet, S> {
-				ModelViewSet::new("snippet")
-			}
-		};
-
-		// Act
-		let out_s = viewset_macro_impl(quote! {}, input).unwrap().to_string();
-
-		// Assert: #[deprecated] appears on both list and detail traits AND
-		// their methods (trait + method for list and detail => >= 4).
-		let occurrences =
-			out_s.matches("# [deprecated").count() + out_s.matches("#[deprecated").count();
-		assert!(
-			occurrences >= 4,
-			"expected >= 4 #[deprecated] markers (trait+method for list+detail), got {occurrences}; out={out_s}"
-		);
-	}
-
-	#[test]
 	fn fn_form_emits_deprecation_when_basename_arg_absent() {
 		// Arrange: bare `#[viewset]` triggers the legacy body-walker
 		// fallback path that the Issue #4549 deprecation flow targets.
@@ -1160,11 +1138,11 @@ mod tests {
 
 		// Assert
 		assert!(
-			out_s.contains("__url_resolver_snippet_list"),
+			out_s.contains("__url_resolver_meta_viewset_snippet_list"),
 			"explicit basename must drive the list resolver mod name; got: {out_s}"
 		);
 		assert!(
-			!out_s.contains("__url_resolver_auto_snippet_list"),
+			!out_s.contains("__url_resolver_meta_viewset_auto_snippet_list"),
 			"body-walker result must be ignored when basename is explicit; got: {out_s}"
 		);
 	}
