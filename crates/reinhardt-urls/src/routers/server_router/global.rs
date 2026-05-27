@@ -41,7 +41,7 @@ pub fn register_router(mut router: ServerRouter) {
 	for error in &errors {
 		tracing::warn!("{}", error);
 	}
-	set_global_reverser(router.reverser.clone());
+	// register_router_arc handles global reverser population internally
 	register_router_arc(Arc::new(router));
 }
 
@@ -53,7 +53,13 @@ pub fn register_router(mut router: ServerRouter) {
 /// **Important:** Unlike [`register_router()`], this function does **not** call
 /// `register_all_routes()` because `Arc<ServerRouter>` cannot be mutated.
 /// Callers must ensure routes have been registered before wrapping in `Arc`.
+///
+/// The global [`UrlReverser`](crate::routers::UrlReverser) is also populated
+/// from the router's internal reverser. Callers must ensure
+/// `register_all_routes()` was called before wrapping in `Arc` for the
+/// reverser to contain routes.
 pub fn register_router_arc(router: Arc<ServerRouter>) {
+	set_global_reverser(router.reverser.clone());
 	let cell = GLOBAL_ROUTER.get_or_init(|| StdRwLock::new(None));
 	let mut guard = cell.write().unwrap_or_else(PoisonError::into_inner);
 	*guard = Some(router);
