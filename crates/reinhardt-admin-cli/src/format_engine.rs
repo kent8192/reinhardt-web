@@ -145,9 +145,14 @@ impl FormatEngine {
 			.take(50)
 			.take_while(|line| {
 				let trimmed = line.trim();
-				trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("/*")
+				trimmed.is_empty()
+					|| trimmed.starts_with("//")
+					|| trimmed.starts_with("/*")
+					|| trimmed.starts_with("#![")
 			})
-			.any(|line| marker_matches(line, "reinhardt-fmt:ignore-all"))
+			.any(|line| {
+				marker_matches(line, "reinhardt-fmt:ignore-all") || rustfmt_skip_attr_matches(line)
+			})
 	}
 
 	/// Format all supported DSL macros in a Rust source string.
@@ -564,6 +569,13 @@ fn marker_matches(line: &str, compact_marker: &str) -> bool {
 		.contains(compact_marker)
 }
 
+fn rustfmt_skip_attr_matches(line: &str) -> bool {
+	line.chars()
+		.filter(|ch| !ch.is_whitespace())
+		.collect::<String>()
+		.contains("#![rustfmt::skip]")
+}
+
 #[cfg(test)]
 mod tests {
 	use rstest::rstest;
@@ -850,6 +862,19 @@ mod tests {
 
 // reinhardt-fmt: ignore-all
 fn main() {}";
+
+		// Act
+		let result = formatter.has_ignore_all_marker(content);
+
+		// Assert
+		assert!(result);
+	}
+
+	#[rstest]
+	fn has_ignore_all_marker_accepts_rustfmt_skip_inner_attr() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let content = "#![rustfmt::skip]\nfn main() {\n\tpage!(|| { div { \"x\" } });\n}";
 
 		// Act
 		let result = formatter.has_ignore_all_marker(content);

@@ -1,3 +1,4 @@
+#![rustfmt::skip]
 use reinhardt_pages::reactive::hooks::use_effect;
 use reinhardt_pages::reactive::Signal;
 

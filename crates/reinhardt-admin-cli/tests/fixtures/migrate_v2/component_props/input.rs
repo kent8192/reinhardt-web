@@ -1,3 +1,4 @@
+#![rustfmt::skip]
 #[derive(Default)]
 struct CardProps {
 	item: Item,

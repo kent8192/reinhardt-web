@@ -1,5 +1,5 @@
 error: expected at least one type argument inside `<...>`
-  --> tests/ui/form/fail/hidden_field_zero_args.rs:14:17
+  --> tests/ui/form/fail/hidden_field_zero_args.rs:13:17
    |
-14 |             question_id: HiddenField<> { },
+13 |             question_id: HiddenField<> {},
    |                          ^^^^^^^^^^^

@@ -1,3 +1,12 @@
+error[E0308]: mismatched types
+ --> tests/ui/hooks/fail/missing_deps_use_effect.rs:9:24
+  |
+9 |     let _ = use_effect(|| {});
+  |                           ^^ expected `Option<_>`, found `()`
+  |
+  = note:   expected enum `Option<_>`
+          found unit type `()`
+
 error[E0061]: this function takes 2 arguments but 1 argument was supplied
  --> tests/ui/hooks/fail/missing_deps_use_effect.rs:9:10
   |
@@ -7,7 +16,7 @@ error[E0061]: this function takes 2 arguments but 1 argument was supplied
 note: function defined here
  --> src/reactive/hooks/effect.rs
   |
-  | pub fn use_effect<F, D>(f: F, deps: D) -> Effect
+  | pub fn use_effect<F, C, D>(f: F, deps: D) -> Effect
   |        ^^^^^^^^^^
 help: provide the argument
   |
