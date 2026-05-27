@@ -153,7 +153,7 @@ export STORAGE_BACKEND=s3  # or: local, gcs, azure
 # S3 Configuration
 export S3_BUCKET=my-bucket
 export S3_REGION=us-east-1
-export S3_ENDPOINT=http://localhost:4566  # Optional (for LocalStack)
+export S3_ENDPOINT=http://localhost:4566  # Optional (for S3-compatible servers)
 export S3_PREFIX=uploads/                  # Optional
 
 # Local Configuration
@@ -232,7 +232,7 @@ cargo test
 # Local storage tests only
 cargo test --test local_storage
 
-# S3 integration tests (requires Docker for LocalStack)
+# S3 integration tests (uses wiremock mock server, no Docker required)
 cargo test --test s3_storage
 ```
 

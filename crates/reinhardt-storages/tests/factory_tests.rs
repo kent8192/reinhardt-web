@@ -80,7 +80,7 @@ mod backend_creation_tests {
 			prefix: None,
 		});
 
-		// This will fail without LocalStack running, but we're testing the factory pattern
+		// This may fail without an S3-compatible server, but we're testing the factory pattern
 		let result = create_storage(config).await;
 		// We expect either success or network error (not config error)
 		match result {
@@ -88,7 +88,7 @@ mod backend_creation_tests {
 				// Success - backend created
 			}
 			Err(StorageError::NetworkError(_)) => {
-				// Expected if LocalStack is not running
+				// Expected if no S3-compatible server is running
 			}
 			Err(StorageError::ConfigError(_)) => {
 				panic!("Should not get ConfigError for valid config");
@@ -129,7 +129,7 @@ mod backend_creation_tests {
 				// Success
 			}
 			Err(StorageError::NetworkError(_)) => {
-				// Expected if LocalStack is not running
+				// Expected if no S3-compatible server is running
 			}
 			Err(e) => {
 				panic!("Unexpected error: {:?}", e);
@@ -296,7 +296,7 @@ mod s3_feature_tests {
 				// Success
 			}
 			Err(StorageError::NetworkError(_)) => {
-				// Expected if LocalStack is not running
+				// Expected if no S3-compatible server is running
 			}
 			Err(StorageError::ConfigError(_)) => {
 				panic!("Should not get ConfigError - S3 feature should be enabled");
