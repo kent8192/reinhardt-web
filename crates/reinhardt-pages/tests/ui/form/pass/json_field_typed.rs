@@ -31,12 +31,10 @@ fn main() {
 	let _ = form! {
 		name: PrefsForm,
 		action: "/api/prefs",
-
 		fields: {
 			prefs: JsonField {
 				initial: UserPrefs::default(),
 			}
 		}
-
 	};
 }

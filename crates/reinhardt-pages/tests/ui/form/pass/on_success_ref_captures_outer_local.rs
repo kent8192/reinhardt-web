@@ -41,16 +41,14 @@ fn main() {
 	let _form = form! {
 		name: ProfileForm,
 		server_fn: update_profile,
-
 		fields: {
 			name: CharField {
 				required,
 			}
 		}
-
-		on_success_ref: |_form, _updated: &i64| {
-				let _captured = user_id;
-			},
-
+		on_success_ref: |_form,
+		_updated: &i64| {
+			let _captured = user_id;
+		},
 	};
 }

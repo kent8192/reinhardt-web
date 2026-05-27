@@ -7,7 +7,6 @@ fn main() {
 	let _login_form = form! {
 		name: LoginForm,
 		action: "/api/login",
-
 		fields: {
 			username: CharField {
 				required,
@@ -17,6 +16,5 @@ fn main() {
 				widget: PasswordInput,
 			}
 		}
-
 	};
 }

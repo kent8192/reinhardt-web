@@ -9,9 +9,8 @@ fn main() {
 	let _ = form! {
 		name: BadForm,
 		action: "/x",
-
 		fields: {
-			question_id: HiddenField<> { },
+			question_id: HiddenField<> {},
 		},
 	};
 }

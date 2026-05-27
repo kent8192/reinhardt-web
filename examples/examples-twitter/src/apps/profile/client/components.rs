@@ -93,10 +93,12 @@ pub fn profile_view(user_id: Uuid) -> Page {
 						role: "alert",
 						div {
 							class: "flex items-center gap-2",
-							{ icons::error_circle_icon() }
-							span {
-								{ error_signal.get().unwrap_or_default() }
+							{
+								icons::error_circle_icon()
 							}
+							span { {
+								error_signal.get().unwrap_or_default()
+							} }
 						}
 					}
 				}
@@ -112,9 +114,7 @@ pub fn profile_view(user_id: Uuid) -> Page {
 							class: "flex justify-between items-end -mt-12 sm:-mt-16 mb-4",
 							div {
 								class: "avatar-xl sm:w-32 sm:h-32 rounded-full border-4 border-surface-primary bg-surface-tertiary flex items-center justify-center text-3xl sm:text-4xl font-bold text-content-secondary",
-								span {
-									"👤"
-								}
+								span { "👤" }
 							}
 							a {
 								href: format!("/profile/{}/edit", user_id_str),
@@ -133,7 +133,9 @@ pub fn profile_view(user_id: Uuid) -> Page {
 							if data.bio.is_some() {
 								p {
 									class: "text-content-primary mb-4 whitespace-pre-wrap",
-									{ data.bio.clone().unwrap_or_default() }
+									{
+										data.bio.clone().unwrap_or_default()
+									}
 								}
 							}
 						}
@@ -143,10 +145,12 @@ pub fn profile_view(user_id: Uuid) -> Page {
 								if data.location.is_some() {
 									div {
 										class: "flex items-center gap-1",
-										{ icons::location_pin_icon() }
-										span {
-											{ data.location.clone().unwrap_or_default() }
+										{
+											icons::location_pin_icon()
 										}
+										span { {
+											data.location.clone().unwrap_or_default()
+										} }
 									}
 								}
 								if data.website.is_some() {
@@ -155,10 +159,12 @@ pub fn profile_view(user_id: Uuid) -> Page {
 										href: data.website.clone().unwrap_or_default(),
 										target: "_blank",
 										rel: "noopener noreferrer",
-										{ icons::link_icon() }
-										span {
-											{ data.website.clone().unwrap_or_default() }
+										{
+											icons::link_icon()
 										}
+										span { {
+											data.website.clone().unwrap_or_default()
+										} }
 									}
 								}
 							}
@@ -209,13 +215,11 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 	let profile_form = form! {
 		name: ProfileEditForm,
 		server_fn: update_profile_form,
-
 		state: {
 			loading,
 			error,
 			success,
 		}
-
 		fields: {
 			avatar_url: UrlField {
 				label: "Avatar URL",
@@ -294,7 +298,6 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 				class: "form-input pl-10",
 			}
 		}
-
 	};
 	let load_profile =
 		use_action(
@@ -337,7 +340,9 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 					a {
 						href: format!("/profile/{}", user_id_str.clone()),
 						class: "btn-icon",
-						{ icons::arrow_left_icon() }
+						{
+							icons::arrow_left_icon()
+						}
 					}
 					h1 {
 						class: "text-xl font-bold",
@@ -352,10 +357,10 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 							role: "alert",
 							div {
 								class: "flex items-center gap-2",
-								{ icons::success_check_icon() }
-								span {
-									"Profile updated successfully! Redirecting..."
+								{
+									icons::success_check_icon()
 								}
+								span { "Profile updated successfully! Redirecting..." }
 							}
 						}
 					}
@@ -365,10 +370,12 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 							role: "alert",
 							div {
 								class: "flex items-center gap-2",
-								{ icons::error_circle_icon() }
-								span {
-									{ error_signal.get().unwrap_or_default() }
+								{
+									icons::error_circle_icon()
 								}
+								span { {
+									error_signal.get().unwrap_or_default()
+								} }
 							}
 						}
 					}

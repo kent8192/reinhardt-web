@@ -8,8 +8,6 @@ use reinhardt_pages::page;
 
 fn main() {
 	let _ = page!(|name: String| {
-		div {
-			{ name }
-		}
+		div { { name } }
 	})(String::from("world"));
 }

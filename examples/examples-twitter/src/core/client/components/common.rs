@@ -113,12 +113,21 @@ pub fn button_with_size(
 	#[cfg(wasm)]
 	{
 		let on_click_clone = on_click.clone();
-		page!(
-			| class : String, text : String, disabled : bool | { button { class : class,
-			type : "button", disabled : disabled, @ click : { let { on_click } =
-			on_click_clone.clone(); move | _event | { on_click.set(true); } }, { { text }
-			} } }
-		)(class, text, disabled)
+		page!(| class : String, text : String, disabled : bool | {
+			button {
+				class : class,
+				type : "button",
+				disabled : disabled,
+				@ click : {
+					let { on_click }
+					=on_click_clone.clone();
+					move | _event | {
+						on_click.set(true);
+					}
+				},
+				{ { text } }
+			}
+		})(class, text, disabled)
 	}
 	#[cfg(native)]
 	{
@@ -186,7 +195,9 @@ pub fn error_alert(message: &str, dismissible: bool) -> Page {
 				role: "alert",
 				div {
 					class: "flex items-start gap-3",
-					{ icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5") }
+					{
+						icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5")
+					}
 					span {
 						class: "flex-1",
 						{ { message } }
@@ -195,7 +206,9 @@ pub fn error_alert(message: &str, dismissible: bool) -> Page {
 						type: "button",
 						class: "btn-icon text-danger hover:bg-red-100 dark:hover:bg-red-900/30 -mr-2 -mt-1",
 						aria_label: "Close",
-						{ icons::close_icon() }
+						{
+							icons::close_icon()
+						}
 					}
 				}
 			}
@@ -207,10 +220,10 @@ pub fn error_alert(message: &str, dismissible: bool) -> Page {
 				role: "alert",
 				div {
 					class: "flex items-start gap-3",
-					{ icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5") }
-					span {
-						{ message }
+					{
+						icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5")
 					}
+					span { { message } }
 				}
 			}
 		})(message)
@@ -231,10 +244,10 @@ pub fn success_alert(message: &str) -> Page {
 			role: "alert",
 			div {
 				class: "flex items-start gap-3",
-				{ icons::success_check_icon() }
-				span {
-					{ message }
+				{
+					icons::success_check_icon()
 				}
+				span { { message } }
 			}
 		}
 	})(message)
@@ -248,10 +261,10 @@ pub fn warning_alert(message: &str) -> Page {
 			role: "alert",
 			div {
 				class: "flex items-start gap-3",
-				{ icons::warning_icon() }
-				span {
-					{ message }
+				{
+					icons::warning_icon()
 				}
+				span { { message } }
 			}
 		}
 	})(message)
@@ -284,18 +297,36 @@ pub fn text_input(
 	#[cfg(wasm)]
 	{
 		let value_clone = value.clone();
-		page!(
-			| id_owned : String, label_owned : String, input_type_owned : String,
-			placeholder_owned : String, value_signal : Signal < String >, required : bool
-			| { div { class : "mb-4", label { for : id_owned.clone(), class :
-			"form-label", { { label_owned } } } input { type : input_type_owned.clone(),
-			class : "form-input", id : id_owned.clone(), name : id_owned.clone(),
-			placeholder : placeholder_owned.clone(), value : value_signal.get(), required
-			: required, @ input : { let { value } = value_clone.clone(); move | event :
-			web_sys::Event | { if let Some(target) = event.target() { if let Ok(input_el)
-			= target.dyn_into::< web_sys::HtmlInputElement > () { value.set(input_el
-			.value()); } } } }, } } }
-		)(
+		page!(| id_owned : String, label_owned : String, input_type_owned : String, placeholder_owned : String, value_signal : Signal < String >, required : bool| {
+			div {
+				class : "mb-4",
+				label {
+					for : id_owned.clone(),
+					class : "form-label",
+					{ { label_owned } }
+				}
+				input {
+					type : input_type_owned.clone(),
+					class : "form-input",
+					id : id_owned.clone(),
+					name : id_owned.clone(),
+					placeholder : placeholder_owned.clone(),
+					value : value_signal.get(),
+					required: required,
+					@ input : {
+						let { value }
+						= value_clone.clone();
+						move | event :web_sys::Event | {
+							if let Some(target) = event.target() {
+								if let Ok(input_el) = target.dyn_into::< web_sys::HtmlInputElement >() {
+									value.set(input_el.value());
+								}
+							}
+						}
+					},
+				}
+			}
+		})(
 			id_owned,
 			label_owned,
 			input_type_owned,
@@ -310,17 +341,29 @@ pub fn text_input(
 			div {
 				class: "mb-4",
 				label {
-					for: { id_owned.clone() },
+					for: {
+						id_owned.clone()
+					},
 					class: "form-label",
 					{ { label_owned } }
 				}
 				input {
-					type: { input_type_owned.clone() },
+					type: {
+						input_type_owned.clone()
+					},
 					class: "form-input",
-					id: { id_owned.clone() },
-					name: { id_owned.clone() },
-					placeholder: { placeholder_owned.clone() },
-					value: { value_signal.get() },
+					id: {
+						id_owned.clone()
+					},
+					name: {
+						id_owned.clone()
+					},
+					placeholder: {
+						placeholder_owned.clone()
+					},
+					value: {
+						value_signal.get()
+					},
 					required: required,
 					data_reactive: "true",
 				}
@@ -370,24 +413,50 @@ pub fn textarea(
 	#[cfg(wasm)]
 	{
 		let value_clone = value.clone();
-		page!(
-			| id_owned : String, label_owned : String, rows_str : String,
-			placeholder_owned : String, value_signal : Signal < String >,
-			value_signal_for_count : Signal < String >, maxlength_attr : String,
-			show_count : bool, max_length : usize | { div { class : "mb-4", label { for :
-			id_owned.clone(), class : "form-label", { { label_owned } } } textarea {
-			class : "form-textarea", id : id_owned.clone(), name : id_owned.clone(), rows
-			: rows_str.clone(), placeholder : placeholder_owned.clone(), maxlength :
-			maxlength_attr.clone(), @ input : { let { value } = value_clone.clone(); move
-			| event : web_sys::Event | { if let Some(target) = event.target() { if let
-			Ok(textarea_el) = target.dyn_into::< web_sys::HtmlTextAreaElement > () {
-			value.set(textarea_el.value()); } } } }, { value_signal.get() } } if
-			show_count { div { class : "flex justify-end mt-1", span { class : if
-			value_signal_for_count.get().len() > max_length { "text-danger font-medium" }
-			else if value_signal_for_count.get().len() > { max_length } * 9 / 10 {
-			"text-warning font-medium" } else { "text-content-tertiary" }, {
-			format!("{}/{}", value_signal_for_count.get().len(), max_length) } } } } } }
-		)(
+		page!(| id_owned : String, label_owned : String, rows_str : String, placeholder_owned : String, value_signal : Signal < String >, value_signal_for_count : Signal < String >, maxlength_attr : String, show_count : bool, max_length : usize | {
+			div {
+				class : "mb-4",
+				label {
+					for :id_owned.clone(),
+					class : "form-label",
+					{ { label_owned } }
+				}
+				textarea {
+					class : "form-textarea",
+					id : id_owned.clone(),
+					name : id_owned.clone(),
+					rows: rows_str.clone(),
+					placeholder : placeholder_owned.clone(),
+					maxlength :maxlength_attr.clone(),
+					@ input : {
+						let { value }
+						= value_clone.clone();
+						move| event : web_sys::Event | {
+							if let Some(target) = event.target() {
+								if letOk(textarea_el) = target.dyn_into::< web_sys::HtmlTextAreaElement >() {
+									value.set(textarea_el.value());
+								}
+							}
+						}
+					},
+					{
+						value_signal.get()
+					}
+				}
+				ifshow_count {
+					div {
+						class : "flex justify-end mt-1",
+						span {
+							class : ifvalue_signal_for_count.get().len() > max_length { "text-danger font-medium" } else if value_signal_for_count.get().len() > { max_length }
+							* 9 / 10 { "text-warning font-medium" } else { "text-content-tertiary" },
+							{
+								format!("{}/{}", value_signal_for_count.get().len(), max_length)
+							}
+						}
+					}
+				}
+			}
+		})(
 			id_owned,
 			label_owned,
 			rows_str,
@@ -401,22 +470,58 @@ pub fn textarea(
 	}
 	#[cfg(native)]
 	{
-		page!(
-			| id_owned : String, label_owned : String, rows_str : String,
-			placeholder_owned : String, value_signal : Signal < String >, maxlength_attr
-			: String, show_count : bool, max_length : usize | { div { class : "mb-4",
-			label { for : { id_owned.clone() }, class : "form-label", { { label_owned } }
-			} textarea { class : "form-textarea", id : { id_owned.clone() }, name : {
-			id_owned.clone() }, rows : { rows_str.clone() }, placeholder : {
-			placeholder_owned.clone() }, maxlength : { maxlength_attr.clone() },
-			data_reactive : "true", { value_signal.get() } } if show_count { let {
-			char_count } = value_signal.get().len(); let { count_class } = if {
-			char_count } > max_length { "text-danger font-medium" } else if { char_count
-			} > { max_length } * 9 / 10 { "text-warning font-medium" } else {
-			"text-content-tertiary" }; let { count_text } = format!("{}/{}", char_count,
-			max_length); div { class : "flex justify-end mt-1", span { class : { {
-			count_class } }, { { count_text } } } } } } }
-		)(
+		page!(| id_owned : String, label_owned : String, rows_str : String, placeholder_owned : String, value_signal : Signal < String >, maxlength_attr: String, show_count : bool, max_length : usize | {
+			div {
+				class : "mb-4",
+				label {
+					for : {
+						id_owned.clone()
+					},
+					class : "form-label",
+					{ { label_owned } }
+				}
+				textarea {
+					class : "form-textarea",
+					id : {
+						id_owned.clone()
+					},
+					name : {
+						id_owned.clone()
+					},
+					rows : {
+						rows_str.clone()
+					},
+					placeholder : {
+						placeholder_owned.clone()
+					},
+					maxlength : {
+						maxlength_attr.clone()
+					},
+					data_reactive : "true",
+					{
+						value_signal.get()
+					}
+				}
+				if show_count {
+					let { char_count }
+					= value_signal.get().len();
+					let { count_class }
+					= if { char_count }
+					> max_length { "text-danger font-medium" } else if { char_count }
+					> { max_length }
+					* 9 / 10 { "text-warning font-medium" } else { "text-content-tertiary" };
+					let { count_text }
+					= format!("{}/{}", char_count, max_length);
+					div {
+						class : "flex justify-end mt-1",
+						span {
+							class : { { count_class } },
+							{ { count_text } }
+						}
+					}
+				}
+			}
+		})(
 			id_owned,
 			label_owned,
 			rows_str,
@@ -508,8 +613,12 @@ pub fn theme_toggle() -> Page {
 			type: "button",
 			id: "theme-toggle-btn",
 			aria_label: "Toggle theme",
-			{ icons::sun_icon() }
-			{ icons::moon_icon() }
+			{
+				icons::sun_icon()
+			}
+			{
+				icons::moon_icon()
+			}
 		}
 	})()
 }
@@ -517,7 +626,9 @@ pub fn theme_toggle() -> Page {
 ///
 /// Displays an empty div (useful for conditional rendering).
 pub fn empty() -> Page {
-	page!(|| { div {} })()
+	page!(|| {
+		div {}
+	})()
 }
 /// Divider component
 pub fn divider() -> Page {

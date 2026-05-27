@@ -17,7 +17,6 @@ fn main() {
 		strip_arguments: {
 			csrf_token: String::new(),
 		},
-
 		fields: {
 			_question_id: IntegerField {
 				widget: HiddenInput,
@@ -26,7 +25,6 @@ fn main() {
 				required,
 			}
 		}
-
 	};
 
 	// Multiple stripped arguments append in source order.
@@ -38,13 +36,11 @@ fn main() {
 			csrf_token: String::new(),
 			tenant_id: 0u64,
 		},
-
 		fields: {
 			_payload: CharField {
 				required,
 			}
 		}
-
 	};
 }
 

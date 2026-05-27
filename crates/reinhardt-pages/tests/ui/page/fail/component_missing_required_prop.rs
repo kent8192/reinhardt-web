@@ -19,7 +19,9 @@ struct CardProps {
 
 fn card(p: CardProps) -> Page {
 	let _ = p;
-	page!(|| { div {} })()
+	page!(|| {
+		div {}
+	})()
 }
 
 fn main() {
