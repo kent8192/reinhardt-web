@@ -69,6 +69,8 @@
 - Check Obsidian MCP availability before attempting wiki updates; skip entirely if unavailable (OW-2, OW-3)
 - Read `wiki/hot.md` before creating new pages to avoid duplicates (OW-2)
 - Update all three meta pages (`wiki/index.md`, `wiki/hot.md`, `wiki/log.md`) after every wiki page creation or update (OW-2)
+- Use `/wiki-query` to retrieve existing wiki knowledge before answering questions or making decisions (OW-5)
+- Dual-write: when saving to any memory system (claude-mem, auto-memory, Serena), simultaneously `/wiki-ingest` to the Obsidian wiki (OW-6)
 - Use worktree-based merge strategy for PR conflict resolution (NOT rebase/force-push)
 - Apply `migration-approved` label to develop/* → main PRs (requires maintainer approval for version transition)
 - Apply `agent-suspect` label to all agent-detected bug Issues

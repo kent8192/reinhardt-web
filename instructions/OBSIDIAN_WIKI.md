@@ -92,6 +92,33 @@ When skipping, do NOT:
 
 ---
 
+## Wiki Query and Knowledge Retrieval (OW-5)
+
+Before answering questions or making decisions that may benefit from prior knowledge, query the wiki to improve response quality:
+
+1. Use `/wiki-query` to search for relevant existing knowledge in the vault
+2. Incorporate retrieved context into the current response or decision
+
+This enables accumulated project knowledge to inform ongoing work, reducing repeated investigation and improving consistency.
+
+---
+
+## Wiki Ingest — Synchronized Knowledge Capture (OW-6)
+
+When saving knowledge to any memory system (claude-mem, Claude Code auto-memory, Serena, or equivalent), **simultaneously** invoke `/wiki-ingest` to persist the same knowledge in the Obsidian wiki.
+
+**Trigger conditions (save to wiki at the same time as memory):**
+- claude-mem `memory_add` or `observation_add` — also `/wiki-ingest`
+- Claude Code auto-memory write (`Write` to `~/.claude/projects/.../memory/`) — also `/wiki-ingest`
+- Serena `write_memory` — also `/wiki-ingest`
+- Any other memory persistence operation
+
+**Rationale:** Memory systems are conversation-scoped or tool-scoped. The Obsidian wiki provides a durable, cross-session, human-browsable knowledge base. Dual-writing ensures knowledge is never siloed in a single system.
+
+**Skip conditions:** Same as OW-3 (MCP unavailable, trivial, emergency, or explicitly disabled). If Obsidian MCP is unavailable, proceed with the memory save alone — do NOT block it.
+
+---
+
 ## Quality Standards (OW-4)
 
 ### Content Quality
@@ -118,6 +145,8 @@ When skipping, do NOT:
 - Include YAML frontmatter on all wiki pages (OW-2)
 - Focus on actionable knowledge with "why" and "how" (OW-4)
 - Reference GitHub Issues/PRs for traceability (OW-4)
+- Use `/wiki-query` to retrieve existing knowledge before answering questions or making decisions (OW-5)
+- Dual-write: when saving to any memory system (claude-mem, auto-memory, Serena), simultaneously `/wiki-ingest` to the Obsidian wiki (OW-6)
 
 ### NEVER DO
 - Block primary work due to Obsidian MCP unavailability (OW-3)
@@ -125,3 +154,4 @@ When skipping, do NOT:
 - Duplicate information already in CLAUDE.md or `instructions/` (OW-4)
 - Record user interactions or conversation details in the wiki (OW-4)
 - Perform partial meta-page updates (update all three or none) (OW-2)
+- Save knowledge to a memory system without simultaneously writing to the wiki (OW-6), unless Obsidian MCP is unavailable

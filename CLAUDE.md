@@ -331,13 +331,16 @@ See instructions/RELEASE_PROCESS.md for detailed release procedures.
 At the end of a meaningful work unit (architectural decision, new pattern, troubleshooting solution, lesson learned), update the Obsidian wiki:
 
 1. Check Obsidian MCP availability — if unavailable, **skip entirely** (do NOT block primary work)
-2. Read `wiki/hot.md` to check for duplicates
-3. Create/update pages under the appropriate category
-4. Update meta pages: `wiki/index.md`, `wiki/hot.md`, `wiki/log.md`
+2. Use `/wiki-query` to retrieve relevant existing knowledge before answering or deciding (OW-5)
+3. Read `wiki/hot.md` to check for duplicates
+4. Create/update pages under the appropriate category
+5. Update meta pages: `wiki/index.md`, `wiki/hot.md`, `wiki/log.md`
+
+**Dual-write rule (OW-6):** When saving to any memory system (claude-mem, auto-memory, Serena), simultaneously invoke `/wiki-ingest` to persist the same knowledge in the Obsidian wiki.
 
 **Skip when:** MCP unavailable, trivial changes, work in progress, or emergency/hotfix work.
 
-See instructions/OBSIDIAN_WIKI.md for detailed standards (OW-1 ~ OW-4).
+See instructions/OBSIDIAN_WIKI.md for detailed standards (OW-1 ~ OW-6).
 
 ### Workflow Best Practices
 
