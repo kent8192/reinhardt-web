@@ -107,11 +107,15 @@ if [ "$CHANGED" -eq 0 ]; then
 	exit 2
 fi
 echo "Done: $CHANGED Cargo.toml file(s) bumped to '$NEW'."
+
+# Update version-sync markers (website/config.toml, docs, README, etc.)
+# so the first push includes website/ changes and triggers deploy-website.yml.
+echo
+echo "Updating version-sync markers to '$NEW' ..."
+"$SCRIPT_DIR/update-version-refs.sh" "$NEW"
+
 echo
 echo "Next steps:"
 echo "  1. Review the diff:    git diff"
 echo "  2. Commit:             git commit -am 'chore(release): initialize $EXPECTED_BRANCH at $NEW'"
 echo "  3. Push:               git push -u origin $EXPECTED_BRANCH"
-echo
-echo "After push, the deploy-website workflow will automatically update"
-echo "the rc.reinhardt-web.dev CNAME to point to this branch."
