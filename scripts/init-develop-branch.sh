@@ -112,3 +112,32 @@ echo "Next steps:"
 echo "  1. Review the diff:    git diff"
 echo "  2. Commit:             git commit -am 'chore(release): initialize $EXPECTED_BRANCH at $NEW'"
 echo "  3. Push:               git push -u origin $EXPECTED_BRANCH"
+
+# --- Update rc.reinhardt-web.dev CNAME to point to new develop branch ---
+if [ -n "${CF_API_TOKEN:-}" ] && [ -n "${CF_ZONE_ID:-}" ]; then
+  BRANCH_SLUG=$(echo "develop/${TARGET}" | tr '/' '-' | tr '.' '-')
+  CNAME_TARGET="${BRANCH_SLUG}.reinhardt-web.pages.dev"
+
+  echo "Updating rc.reinhardt-web.dev CNAME → ${CNAME_TARGET} ..."
+
+  RECORD_ID=$(curl -sf \
+    -H "Authorization: Bearer ${CF_API_TOKEN}" \
+    "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records?name=rc.reinhardt-web.dev&type=CNAME" \
+    | jq -r '.result[0].id // empty')
+
+  if [ -n "$RECORD_ID" ]; then
+    curl -sf -X PATCH \
+      "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records/${RECORD_ID}" \
+      -H "Authorization: Bearer ${CF_API_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d "{\"content\":\"${CNAME_TARGET}\",\"proxied\":true}" \
+      | jq -r '"  CNAME updated: \(.result.name) → \(.result.content)"'
+  else
+    echo "  Warning: CNAME record for rc.reinhardt-web.dev not found."
+    echo "  Create it manually in Cloudflare Dashboard first."
+  fi
+else
+  echo
+  echo "Skipping rc.reinhardt-web.dev CNAME update (CF_API_TOKEN or CF_ZONE_ID not set)."
+  echo "To enable, export CF_API_TOKEN and CF_ZONE_ID before running this script."
+fi
