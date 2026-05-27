@@ -1,0 +1,14 @@
+error[E0425]: cannot find function, tuple struct or tuple variant `Card` in this scope
+  --> tests/ui/page/fail/component_missing_required_prop.rs:31:4
+   |
+20 | fn card(p: CardProps) -> Page {
+   | ----------------------------- similarly named function `card` defined here
+...
+31 |             Card()
+   |             ^^^^
+   |
+help: a function with a similar name exists (notice the capitalization)
+   |
+31 -             Card()
+31 +             card()
+   |

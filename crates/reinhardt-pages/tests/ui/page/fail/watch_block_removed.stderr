@@ -1,0 +1,13 @@
+error: `watch { ... }` is removed in v2 — every `{expr}` and control-flow block is now auto-wrapped. Unwrap the watch braces: the body of `watch` can be moved out as-is (codemod available: `cargo make migrate-manouche-v2`).
+ --> tests/ui/page/fail/watch_block_removed.rs:7:4
+  |
+7 |             watch {
+  |             ^^^^^
+
+warning: unused import: `reinhardt_pages::reactive::Signal`
+ --> tests/ui/page/fail/watch_block_removed.rs:2:5
+  |
+2 | use reinhardt_pages::reactive::Signal;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
