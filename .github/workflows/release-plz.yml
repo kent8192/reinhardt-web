@@ -225,23 +225,26 @@ jobs:
 
   release-plz-release:
     name: Release
-    # On main, always run on push — the existing two-stage workflow with
-    # release_always=true (KI-5 phantom-version-bump fix) means release-plz
-    # itself decides whether to publish based on Cargo.toml vs crates.io.
+    # Publish only after a verified Release PR merge. The release-plz-pr job
+    # above still runs on every main/develop push, so routine feature merges
+    # keep the next Release PR up to date without entering the publish path.
     #
-    # On develop/**, only squash-merge Release PR commits ("chore: release")
-    # trigger the job. The merge-commit trigger is intentionally NOT included
-    # because startsWith(commit.message, 'Merge pull request #') would also
-    # match regular feature-PR merges on develop/**, which would then fail
-    # at the branch-name verification step. Release-plz PRs should be
-    # squash-merged (MP-2), producing "chore: release" covered here.
-    #
-    # release-plz-pr (above) still runs on every develop/** push, so the
-    # next Release PR is always kept up to date.
+    # Accepted Release PR merge shapes:
+    # - merge commit from release-plz-* or develop-release-plz-* branch
+    # - squash commit titled "chore: release (#N)"
     if: |
       github.event_name == 'push' && (
-        github.ref == 'refs/heads/main' ||
-        startsWith(github.event.head_commit.message, 'chore: release')
+        (
+          startsWith(github.event.head_commit.message, 'Merge pull request #') &&
+          (
+            contains(github.event.head_commit.message, '/release-plz-') ||
+            contains(github.event.head_commit.message, '/develop-release-plz-')
+          )
+        ) ||
+        (
+          startsWith(github.event.head_commit.message, 'chore: release ') &&
+          contains(github.event.head_commit.message, '(#')
+        )
       )
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
     timeout-minutes: 360
@@ -309,14 +312,19 @@ jobs:
           esac
 
       - name: Verify release PR label
-        if: "startsWith(github.event.head_commit.message, 'Merge pull request #')"
+        if: "startsWith(github.event.head_commit.message, 'Merge pull request #') || (startsWith(github.event.head_commit.message, 'chore: release ') && contains(github.event.head_commit.message, '(#'))"
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |
-          # Extract PR number from merge commit message.
-          # Format: "Merge pull request #N from owner/BRANCH_NAME"
+          # Extract PR number from merge-commit or squash-merge commit message.
+          # Formats:
+          # - "Merge pull request #N from owner/BRANCH_NAME"
+          # - "chore: release (#N)"
           PR_NUMBER=$(echo "$COMMIT_MSG" | grep -oP '^Merge pull request #\K\d+' || true)
+          if [ -z "$PR_NUMBER" ]; then
+            PR_NUMBER=$(printf '%s\n' "$COMMIT_MSG" | head -n1 | sed -nE 's/^chore: release \(#([0-9]+)\).*$/\1/p')
+          fi
           if [ -z "$PR_NUMBER" ]; then
             echo "::error::Could not extract PR number from commit message"
             exit 1
@@ -329,6 +337,18 @@ jobs:
             exit 1
           fi
           echo "PR #$PR_NUMBER has the 'release' label — proceeding with publish"
+
+          MERGE_COMMIT_SHA=$(gh pr view "$PR_NUMBER" --json mergeCommit --jq '.mergeCommit.oid // ""' 2>/dev/null || echo "")
+          if [ -z "$MERGE_COMMIT_SHA" ]; then
+            echo "::error::Could not determine merge commit SHA for PR #$PR_NUMBER"
+            exit 1
+          fi
+          if [ "$MERGE_COMMIT_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::Pushed SHA $GITHUB_SHA does not match release PR #$PR_NUMBER merge commit $MERGE_COMMIT_SHA"
+            echo "::error::Refusing to publish from an unverified release commit."
+            exit 1
+          fi
+          echo "Pushed SHA matches PR #$PR_NUMBER merge commit — proceeding with publish"
 
       # Workaround for gix slotmap overflow (GitoxideLabs/gitoxide#1788)
       - name: Clear cargo registry git index cache
