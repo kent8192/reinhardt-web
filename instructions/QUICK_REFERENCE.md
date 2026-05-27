@@ -25,6 +25,7 @@
 - Use `security` type for security vulnerability fixes (dedicated CHANGELOG section)
 - Use `deprecated` type for marking features/APIs as deprecated (dedicated CHANGELOG section)
 - Review Release PRs created by release-plz before merging
+- Fix Release PR issues via a `fix/`/`hotfix/` branch targeting the Release PR's base branch (e.g., `main` or `develop/*`), not by pushing to the release-plz branch directly
 - Verify no circular dev-dependency chains exist before publishing (functional crates must not dev-depend on other Reinhardt crates)
 - Include `version` field in `reinhardt-test` workspace dependency (published crate, same as others)
 - Follow RP-1 procedure in instructions/RELEASE_PROCESS.md for partial release failures
@@ -49,6 +50,9 @@
 - Specify language for code blocks: ` ```rust `, NOT ` ``` `
 - Wrap bracket patterns in backticks: `` `array[0]` ``, NOT `array[0]`
 - Use backticks (not intra-doc links) for feature-gated types: `` `FeatureType` ``, NOT `` [`FeatureType`] ``
+- Do not write redundant explicit link targets in intra-doc links: `` [`Foo`] ``, NOT `` [`Foo`](crate::Foo) `` when the label already resolves (instructions/DOCUMENTATION_STANDARDS.md § RD-8)
+- Use backticks (not intra-doc links) for removed/deprecated items: `` `RemovedType` ``, NOT `` [`RemovedType`] `` (instructions/DOCUMENTATION_STANDARDS.md § RD-9)
+- Use backticks (not intra-doc links) for private/`pub(crate)` items in public docs: `` `InternalType` ``, NOT `` [`InternalType`] `` (instructions/DOCUMENTATION_STANDARDS.md § RD-10)
 - Avoid starting continuation lines of `//` and `///` comments with a Rust keyword or trigger macro — restructure prose so the token is wrapped in backticks or appears mid-line (Semgrep `rust-commented-out-code` rule trips otherwise; canonical token list in instructions/DOCUMENTATION_STANDARDS.md § RD-7)
 - Use Mermaid diagrams (via `aquamarine`) for architecture documentation instead of ASCII art
 - Ensure `.stderr` files in trybuild tests contain only single error type (no warning/error mixing)
@@ -64,6 +68,12 @@
 - Run `cargo doc --no-deps` locally before pushing doc-related fixes
 - Run `cargo make semver-check` locally and post the output as a PR comment with the `<!-- local-semver-check -->` marker before converting Draft → Ready on any PR touching public API (see instructions/PR_GUIDELINE.md § RP-1a)
 - Execute merge/conflict resolution and straightforward operations immediately without Plan Mode
+- Update Obsidian wiki after meaningful work units (architectural decisions, new patterns, troubleshooting solutions) (OW-1)
+- Check Obsidian MCP availability before attempting wiki updates; skip entirely if unavailable (OW-2, OW-3)
+- Read `wiki/hot.md` before creating new pages to avoid duplicates (OW-2)
+- Update all three meta pages (`wiki/index.md`, `wiki/hot.md`, `wiki/log.md`) after every wiki page creation or update (OW-2)
+- Use `/wiki-query` to retrieve existing wiki knowledge before answering questions or making decisions (OW-5)
+- Dual-write: when saving to any memory system (claude-mem, auto-memory, Serena), simultaneously `/wiki-ingest` to the Obsidian wiki (OW-6)
 - Use worktree-based merge strategy for PR conflict resolution (NOT rebase/force-push)
 - Apply `migration-approved` label to develop/* → main PRs (requires maintainer approval for version transition)
 - Apply `agent-suspect` label to all agent-detected bug Issues
@@ -119,6 +129,7 @@
 - Use `reinhardt-test = { workspace = true }` in functional crate `[dev-dependencies]` (workspace deps include version, causing publish failures; use optional dep or path-only dev-dep instead)
 - Omit `version` field from `reinhardt-test` workspace dependency (causes publish failure for dependents)
 - Change `pr_branch_prefix` from `"release-plz-"` on `main` (breaks two-step release workflow); on `develop/*` the prefix MUST be `"develop-release-plz-"` to prevent cross-branch PR closure
+- Push code fixes directly to release-plz branches (`release-plz-*` or `develop-release-plz-*`) — create a fix/hotfix branch targeting the base branch instead (CHANGELOG/version edits via GitHub UI are acceptable)
 - Merge Release PR without rolling back unpublished crate versions after partial release failure
 - Write vague commit descriptions that are unclear as CHANGELOG entries (e.g., "fix issue", "update code")
 - Start commit description with uppercase letter
@@ -144,6 +155,9 @@
 - Write macro attributes without backticks in doc comments (causes unresolved link warnings)
 - Write bare URLs in doc comments (causes bare URL warnings)
 - Use intra-doc links for feature-gated items (causes unresolved link warnings)
+- Write redundant explicit link targets in intra-doc links: `` [`Foo`](crate::Foo) `` when `` [`Foo`] `` suffices (nightly `redundant_explicit_links` warning; § RD-8)
+- Use intra-doc links for removed/deprecated items (causes `broken_intra_doc_links` error; use backticks — § RD-9)
+- Use intra-doc links for `pub(crate)` or private items in public docs (causes `private_intra_doc_links` error; use backticks — § RD-10)
 - Start a continuation line of a `//` or `///` comment with a Rust keyword or trigger macro — Semgrep flags the line as commented-out code and blocks the TODO Check CI; wrap the token in backticks or move it mid-line (canonical token list in instructions/DOCUMENTATION_STANDARDS.md § RD-7)
 - Create new ASCII art diagrams in doc comments (use Mermaid instead)
 - Mix warnings and errors in trybuild `.stderr` files
@@ -179,6 +193,10 @@
 - Create upstream issues without corresponding reinhardt-web tracking issues (UR-4)
 - Apply `good first issue` to security, breaking-change, agent-suspect, or high/critical priority issues (GFI-2)
 - Apply `good first issue` without verifying issue description has sufficient guidance for new contributors (GFI-4)
+- Block primary work due to Obsidian MCP unavailability (OW-3)
+- Create wiki pages for trivial changes or operational records (OW-1)
+- Duplicate information already in CLAUDE.md or `instructions/` in the wiki (OW-4)
+- Perform partial meta-page updates (update all three meta pages or none) (OW-2)
 
 ### 📚 Detailed Standards
 
@@ -199,6 +217,7 @@ For comprehensive guidelines, see:
 - **Upstream Issue Reporting**: instructions/UPSTREAM_ISSUE_REPORTING.md
 - **GitHub Interactions**: instructions/GITHUB_INTERACTION.md
 - **Copilot Review Handling**: instructions/GITHUB_INTERACTION.md (CR-1 ~ CR-5)
+- **Obsidian Wiki Maintenance**: instructions/OBSIDIAN_WIKI.md (OW-1 ~ OW-6)
 - **GitHub Discussions**: https://github.com/kent8192/reinhardt-web/discussions
 - **Security Policy**: SECURITY.md
 - **Code of Conduct**: CODE_OF_CONDUCT.md
