@@ -1,3 +1,4 @@
+#![rustfmt::skip]
 #[derive(bon::Builder)]
 struct CardProps {
     item: Item,

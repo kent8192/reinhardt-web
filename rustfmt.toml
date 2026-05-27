@@ -73,6 +73,3 @@ force_explicit_abi = true
 # show_parse_errors = true
 # error_on_line_overflow = false
 # error_on_unformatted = true
-ignore = [
-	"crates/reinhardt-admin-cli/tests/fixtures/",
-]

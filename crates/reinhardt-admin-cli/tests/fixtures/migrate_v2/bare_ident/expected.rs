@@ -1,3 +1,4 @@
+#![rustfmt::skip]
 use reinhardt_pages::page;
 fn render(name: String) {
     let _ = page!(

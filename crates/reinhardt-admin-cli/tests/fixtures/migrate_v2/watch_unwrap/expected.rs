@@ -1,3 +1,4 @@
+#![rustfmt::skip]
 use reinhardt_pages::page;
 use reinhardt_pages::reactive::Signal;
 fn r(count: Signal<i32>) {
