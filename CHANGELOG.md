@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.2...reinhardt-web@v0.1.3) - 2026-05-27
+
+### Documentation
+
+- add release announcement(s)
+- add Obsidian wiki maintenance instructions (OW-1 ~ OW-4)
+- prohibit direct pushes to release-plz branches
+- clarify release-plz branch policy — code fixes vs CHANGELOG edits
+- add wiki-query retrieval and dual-write ingest rules (OW-5, OW-6)
+
+### Fixed
+
+- *(ci)* add PR checkbox opt-in guard for AWS runner in deploy-website
+- *(ci)* address Copilot review feedback on deploy-website runner selection
+- *(ci)* pin actions/github-script to commit SHA for supply chain security
+- *(admin-cli)* run rustfmt on DSL-skipped files in fmt command
+- *(admin-cli)* pass ignore-all files through rustfmt in fmt command
+- *(docs)* address Copilot review feedback on OBSIDIAN_WIKI.md
+- *(docs)* replace user-specific skip wording with neutral language
+- *(admin-cli)* traverse past sub-crate Cargo.toml when searching for rustfmt config
+- *(docs)* neutralize user-specific wording in OBSIDIAN_WIKI.md
+- *(docs)* replace absolute user path with ~ in Obsidian vault references
+- *(docs)* resolve vault path via Obsidian MCP instead of hardcoding
+
+### Maintenance
+
+- *(deploy-website)* use AWS self-hosted runner for website deployment
+- *(ci)* add actionlint config for custom self-hosted runner labels
+
+### Styling
+
+- *(examples)* format examples-twitter common.rs with reinhardt-admin fmt
+- *(examples)* expand page! macros to multi-line in examples-twitter
+
 ## [0.1.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.1...reinhardt-web@v0.1.2) - 2026-05-25
 
 ### Documentation
