@@ -569,7 +569,7 @@ cat .testcontainers.properties
 
 **CI Failure Diagnosis (Known Patterns):**
 - Check these recurring patterns first:
-  1. rustdoc intra-doc link errors with `-D warnings`
+  1. rustdoc intra-doc link errors with `-D warnings` (broken links, redundant explicit targets, private item links — see RD-8/RD-9/RD-10 in instructions/DOCUMENTATION_STANDARDS.md)
   2. docs.rs build issues from empty code blocks
   3. SemVer compatibility with `cargo-semver-checks`
   4. Windows CI-specific failures

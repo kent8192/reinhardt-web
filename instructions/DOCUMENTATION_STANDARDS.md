@@ -608,6 +608,55 @@ docker run --rm -w /src -v "$(pwd):/src" semgrep/semgrep \
 
 The explicit `-w /src` ensures `--config .semgrep/` resolves relative to the mounted repo regardless of the image's default `WORKDIR`.
 
+#### RD-8: Do Not Write Redundant Explicit Link Targets
+
+When an intra-doc link label already resolves to the correct item, do not add an explicit `(crate::...)` target. Nightly rustdoc warns `redundant_explicit_links` (promoted to error by `-D warnings`).
+
+```rust
+// ✅ CORRECT (label resolves on its own)
+/// has no [`ParamContext`] attached.
+/// Wraps the underlying [`params::ParamError`].
+
+// ❌ INCORRECT (explicit target duplicates what the label already resolves to)
+/// has no [`ParamContext`](crate::ParamContext) attached.
+/// Wraps the underlying [`params::ParamError`](crate::params::ParamError).
+```
+
+**When to use explicit targets:**
+- Only when the label text differs from the path: `` [`short name`](crate::long::path::ActualType) ``
+- If label and target resolve to the same item, drop the target
+
+#### RD-9: Removed or Deprecated Items Must Use Backticks
+
+Items that have been removed from the crate (e.g., deprecated and deleted types) cannot be linked via intra-doc links. Use plain backticks instead.
+
+```rust
+// ✅ CORRECT (User was removed — use backtick, not link)
+/// Replacement for the deprecated `User` trait.
+
+// ❌ INCORRECT (causes "unresolved link" error)
+/// Replacement for the deprecated [`User`](crate::User) trait.
+/// Replacement for the deprecated [`User`] trait.
+```
+
+**Rule:** If a type/function/module no longer exists in the crate, any doc reference to it MUST use backticks (`` `RemovedType` ``), not intra-doc link syntax (`` [`RemovedType`] ``).
+
+#### RD-10: Private or Crate-Internal Items Must Use Backticks in Public Docs
+
+Public documentation must not link to `pub(crate)` or private items. Nightly rustdoc warns `private_intra_doc_links` (promoted to error by `-D warnings`). Use plain backticks instead.
+
+```rust
+// ✅ CORRECT (InternalUser is pub(crate) — use backtick)
+/// Creates `InternalUser` instances on-the-fly.
+
+// ❌ INCORRECT (causes "public documentation links to private item" error)
+/// Creates [`InternalUser`] instances on-the-fly.
+```
+
+**Rule:** If an item's visibility is less than `pub` (i.e., `pub(crate)`, `pub(super)`, or private), references from public doc comments MUST use backticks, not intra-doc links.
+
+**Scope awareness:** Intra-doc links resolve relative to the current module scope. A type re-exported at the crate root (e.g., `pub use base_user::BaseUser`) may not resolve when referenced from a deeply nested module. When unsure whether a cross-module link will resolve, prefer backticks for safety.
+
 #### Quick Reference Table
 
 | Pattern | Incorrect | Correct |
@@ -619,6 +668,9 @@ The explicit `-w /src` ensures `--config .semgrep/` resolves relative to the mou
 | Array access | `arr[0]` | `` `arr[0]` `` |
 | Feature-gated items | `` [`TypeName`] `` | `` `TypeName` `` |
 | Keyword-led continuation | `// impl Foo for Bar ...` or `/// fn foo(` | `` // The `impl Foo for Bar` ... `` or `` /// The `fn foo()` ... `` |
+| Redundant explicit target | `` [`Foo`](crate::Foo) `` | `` [`Foo`] `` |
+| Removed/deprecated items | `` [`RemovedType`] `` | `` `RemovedType` `` |
+| Private/internal items | `` [`InternalType`] `` | `` `InternalType` `` |
 
 #### Verification
 

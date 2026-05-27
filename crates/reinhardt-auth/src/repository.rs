@@ -38,7 +38,7 @@ pub trait UserRepository: Send + Sync {
 
 /// Simple in-memory user repository
 ///
-/// Creates [`InternalUser`] instances on-the-fly without database access.
+/// Creates `InternalUser` instances on-the-fly without database access.
 /// Suitable for testing and development environments.
 ///
 /// # Examples
