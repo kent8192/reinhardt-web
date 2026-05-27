@@ -2,7 +2,7 @@ name: Deploy Website
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'develop/**']
     paths:
       - "website/**"
   pull_request:
@@ -118,9 +118,46 @@ jobs:
         with:
           tool: zola@0.22.1
 
+      - name: Configure version switcher
+        working-directory: website
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION=$(grep 'reinhardt_version' config.toml | sed 's/.*= *"\(.*\)"/\1/')
+          if [[ "$REF_NAME" == develop/* ]]; then
+            CURRENT_LABEL="v${VERSION} (Dev)"
+            IS_STABLE="false"
+          else
+            CURRENT_LABEL="v${VERSION}"
+            IS_STABLE="true"
+          fi
+          sed -i '/^\[extra\.version_switcher\]/,$d' config.toml
+          cat >> config.toml << TOML
+
+          [extra.version_switcher]
+          current_label = "${CURRENT_LABEL}"
+          current_is_stable = ${IS_STABLE}
+
+          [[extra.version_switcher.versions]]
+          label = "Stable"
+          url = "https://reinhardt-web.dev"
+
+          [[extra.version_switcher.versions]]
+          label = "Dev"
+          url = "https://rc.reinhardt-web.dev"
+          TOML
+          echo "Version switcher configured: ${CURRENT_LABEL} (stable=${IS_STABLE})"
+
       - name: Build
         working-directory: website
-        run: zola build
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$REF_NAME" == develop/* ]]; then
+            zola build --base-url "https://rc.reinhardt-web.dev"
+          else
+            zola build
+          fi
 
       - name: Set production branch via Cloudflare API
         if: github.ref == 'refs/heads/main'
@@ -146,6 +183,45 @@ jobs:
             pages deploy website/public
             --project-name=reinhardt-web
             --branch=${{ github.head_ref || github.ref_name }}
+
+      - name: Update rc.reinhardt-web.dev CNAME
+        if: github.event_name == 'push' && startsWith(github.ref_name, 'develop/')
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          BRANCH_SLUG=$(echo "$REF_NAME" | tr '/' '-' | tr '.' '-')
+          CNAME_TARGET="${BRANCH_SLUG}.reinhardt-web.pages.dev"
+
+          ZONE_ID=$(curl -sf \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/zones?name=reinhardt-web.dev&account.id=${CF_ACCOUNT_ID}" \
+            | jq -r '.result[0].id // empty')
+
+          if [ -z "$ZONE_ID" ]; then
+            echo "Warning: could not resolve zone ID for reinhardt-web.dev"
+            exit 0
+          fi
+
+          echo "Updating rc.reinhardt-web.dev CNAME → ${CNAME_TARGET} ..."
+
+          RECORD_ID=$(curl -sf \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records?name=rc.reinhardt-web.dev&type=CNAME" \
+            | jq -r '.result[0].id // empty')
+
+          if [ -n "$RECORD_ID" ]; then
+            curl -sf -X PATCH \
+              "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${RECORD_ID}" \
+              -H "Authorization: Bearer ${CF_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{\"content\":\"${CNAME_TARGET}\",\"proxied\":true}" \
+              | jq -r '"  CNAME updated: \(.result.name) → \(.result.content)"'
+          else
+            echo "Warning: CNAME record for rc.reinhardt-web.dev not found."
+            echo "Create it manually in Cloudflare Dashboard first."
+          fi
 
       - name: Comment preview URL on PR
         if: github.event_name == 'pull_request'
