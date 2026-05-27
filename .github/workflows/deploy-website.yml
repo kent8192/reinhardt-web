@@ -135,6 +135,14 @@ jobs:
             -d '{"production_branch": "main"}' \
             | jq -r '"Production branch set to: \(.result.production_branch)"'
 
+      # The AWS Packer AMI does not put Node.js/npm on PATH. The runner agent's
+      # bundled Node only executes JS actions, so Wrangler's npm-based install
+      # needs an explicit Node setup. Issue #4694.
+      - name: Setup Node.js for Wrangler
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       # NOTE: Still on Node.js 20 - update when Node.js 24 version becomes available
       - name: Deploy to Cloudflare Pages
         id: deploy
