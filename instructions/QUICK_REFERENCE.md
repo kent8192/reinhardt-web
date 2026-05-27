@@ -64,6 +64,10 @@
 - Run `cargo doc --no-deps` locally before pushing doc-related fixes
 - Run `cargo make semver-check` locally and post the output as a PR comment with the `<!-- local-semver-check -->` marker before converting Draft → Ready on any PR touching public API (see instructions/PR_GUIDELINE.md § RP-1a)
 - Execute merge/conflict resolution and straightforward operations immediately without Plan Mode
+- Update Obsidian wiki after meaningful work units (architectural decisions, new patterns, troubleshooting solutions) (OW-1)
+- Check Obsidian MCP availability before attempting wiki updates; skip entirely if unavailable (OW-2, OW-3)
+- Read `wiki/hot.md` before creating new pages to avoid duplicates (OW-2)
+- Update all three meta pages (`wiki/index.md`, `wiki/hot.md`, `wiki/log.md`) after every wiki page creation (OW-2)
 - Use worktree-based merge strategy for PR conflict resolution (NOT rebase/force-push)
 - Apply `migration-approved` label to develop/* → main PRs (requires maintainer approval for version transition)
 - Apply `agent-suspect` label to all agent-detected bug Issues
@@ -173,6 +177,10 @@
 - Create upstream issues without corresponding reinhardt-web tracking issues (UR-4)
 - Apply `good first issue` to security, breaking-change, agent-suspect, or high/critical priority issues (GFI-2)
 - Apply `good first issue` without verifying issue description has sufficient guidance for new contributors (GFI-4)
+- Block primary work due to Obsidian MCP unavailability (OW-3)
+- Create wiki pages for trivial changes or operational records (OW-1)
+- Duplicate information already in CLAUDE.md or `instructions/` in the wiki (OW-4)
+- Perform partial meta-page updates (update all three meta pages or none) (OW-2)
 
 ### 📚 Detailed Standards
 
@@ -193,6 +201,7 @@ For comprehensive guidelines, see:
 - **Upstream Issue Reporting**: instructions/UPSTREAM_ISSUE_REPORTING.md
 - **GitHub Interactions**: instructions/GITHUB_INTERACTION.md
 - **Copilot Review Handling**: instructions/GITHUB_INTERACTION.md (CR-1 ~ CR-5)
+- **Obsidian Wiki Maintenance**: instructions/OBSIDIAN_WIKI.md (OW-1 ~ OW-4)
 - **GitHub Discussions**: https://github.com/kent8192/reinhardt-web/discussions
 - **Security Policy**: SECURITY.md
 - **Code of Conduct**: CODE_OF_CONDUCT.md

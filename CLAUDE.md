@@ -323,6 +323,21 @@ This project uses [release-plz](https://release-plz.ieni.dev/) for automated rel
 
 See instructions/RELEASE_PROCESS.md for detailed release procedures.
 
+### Obsidian Wiki Maintenance
+
+**Vault:** `/Users/kent8192/obsidian/reinhardt-wiki` (Obsidian MCP: `obsidian-vault`)
+
+At the end of a meaningful work unit (architectural decision, new pattern, troubleshooting solution, lesson learned), update the Obsidian wiki:
+
+1. Check Obsidian MCP availability — if unavailable, **skip entirely** (do NOT block primary work)
+2. Read `wiki/hot.md` to check for duplicates
+3. Create/update pages under the appropriate category
+4. Update meta pages: `wiki/index.md`, `wiki/hot.md`, `wiki/log.md`
+
+**Skip when:** MCP unavailable, trivial changes, work in progress, or user requests skip.
+
+See instructions/OBSIDIAN_WIKI.md for detailed standards (OW-1 ~ OW-4).
+
 ### Workflow Best Practices
 
 - Run dry-run for ALL batch operations before actual execution
