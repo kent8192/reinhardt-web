@@ -68,7 +68,7 @@
 - Update Obsidian wiki after meaningful work units (architectural decisions, new patterns, troubleshooting solutions) (OW-1)
 - Check Obsidian MCP availability before attempting wiki updates; skip entirely if unavailable (OW-2, OW-3)
 - Read `wiki/hot.md` before creating new pages to avoid duplicates (OW-2)
-- Update all three meta pages (`wiki/index.md`, `wiki/hot.md`, `wiki/log.md`) after every wiki page creation (OW-2)
+- Update all three meta pages (`wiki/index.md`, `wiki/hot.md`, `wiki/log.md`) after every wiki page creation or update (OW-2)
 - Use worktree-based merge strategy for PR conflict resolution (NOT rebase/force-push)
 - Apply `migration-approved` label to develop/* → main PRs (requires maintainer approval for version transition)
 - Apply `agent-suspect` label to all agent-detected bug Issues
