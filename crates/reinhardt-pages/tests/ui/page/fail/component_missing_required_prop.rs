@@ -23,10 +23,9 @@ fn card(p: CardProps) -> Page {
 
 fn main() {
 	// Missing required `item` prop — bon must reject `.build()` at compile time.
-	let props = CardProps::builder().build();
-	let _ = page!(|props: CardProps| {
+	let _ = page!(|| {
 		div {
-			card(props)
+			Card {}
 		}
 	});
 }
