@@ -326,7 +326,7 @@ See instructions/RELEASE_PROCESS.md for detailed release procedures.
 
 ### Obsidian Wiki Maintenance
 
-**Vault:** `/Users/kent8192/obsidian/reinhardt-wiki` (Obsidian MCP: `obsidian-vault`)
+**Vault:** Discovered via Obsidian MCP server (`obsidian-vault`). Call `obsidian_list_files_in_vault` to verify connectivity and resolve the vault root.
 
 At the end of a meaningful work unit (architectural decision, new pattern, troubleshooting solution, lesson learned), update the Obsidian wiki:
 
