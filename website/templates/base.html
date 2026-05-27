@@ -6,6 +6,9 @@
 	<title>{% block title %}{{ config.title }}{% endblock %} — Reinhardt&#8482;</title>
 	<meta name="description" content="{% block description %}{{ config.description }}{% endblock %}">
 	<meta name="theme-color" content="#ce422b" id="meta-theme-color">
+	{% if not config.extra.version_switcher.current_is_stable %}
+	<meta name="robots" content="noindex, nofollow">
+	{% endif %}
 	<link rel="canonical" href="{{ current_url | safe }}">
 
 	{# OGP #}
@@ -103,6 +106,13 @@
 			</button>
 		</nav>
 	</header>
+
+	{% if not config.extra.version_switcher.current_is_stable %}
+	<div class="dev-banner" role="alert">
+		⚠ This is documentation for an unreleased version.
+		<a href="https://reinhardt-web.dev">View stable docs →</a>
+	</div>
+	{% endif %}
 
 	<main id="main-content">
 		{% block content %}{% endblock %}
