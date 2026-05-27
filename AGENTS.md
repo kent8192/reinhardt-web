@@ -303,9 +303,10 @@ This project uses [release-plz](https://release-plz.ieni.dev/) for automated rel
 4. Review and merge Release PR
 5. release-plz publishes to crates.io and creates Git tags
 
-**Manual Intervention:**
-- Edit Release PR to adjust CHANGELOG entries or versions if needed
-- Release PRs can be modified before merging
+**Release PR Branch Policy:**
+- **NEVER** push code fixes directly to a release-plz branch (`release-plz-*` or `develop-release-plz-*`) — direct pushes bypass review and may be overwritten when release-plz regenerates the PR
+- If a code fix is needed before merging a Release PR, create a `fix/` or `hotfix/` branch from the Release PR's **base branch** (e.g., `main` or `develop/*`), open a PR targeting that base branch, and merge it — release-plz will regenerate the Release PR automatically
+- CHANGELOG or version edits on the Release PR branch are acceptable via GitHub UI when done immediately before merging (these are release metadata adjustments, not code changes)
 
 **Critical Rules:**
 - **MUST** use conventional commit format for proper version detection
@@ -322,6 +323,24 @@ This project uses [release-plz](https://release-plz.ieni.dev/) for automated rel
 - `publish_no_verify = true` is required because dev-dependencies reference unpublished workspace crates
 
 See instructions/RELEASE_PROCESS.md for detailed release procedures.
+
+### Obsidian Wiki Maintenance
+
+**Vault:** `/Users/kent8192/obsidian/reinhardt-wiki` (Obsidian MCP: `obsidian-vault`)
+
+At the end of a meaningful work unit (architectural decision, new pattern, troubleshooting solution, lesson learned), update the Obsidian wiki:
+
+1. Check Obsidian MCP availability — if unavailable, **skip entirely** (do NOT block primary work)
+2. Use `/wiki-query` to retrieve relevant existing knowledge before answering or deciding (OW-5)
+3. Read `wiki/hot.md` to check for duplicates
+4. Create/update pages under the appropriate category
+5. Update meta pages: `wiki/index.md`, `wiki/hot.md`, `wiki/log.md`
+
+**Dual-write rule (OW-6):** When saving to any memory system (claude-mem, auto-memory, Serena), simultaneously invoke `/wiki-ingest` to persist the same knowledge in the Obsidian wiki.
+
+**Skip when:** MCP unavailable, trivial changes, work in progress, or emergency/hotfix work.
+
+See instructions/OBSIDIAN_WIKI.md for detailed standards (OW-1 ~ OW-6).
 
 ### Workflow Best Practices
 
