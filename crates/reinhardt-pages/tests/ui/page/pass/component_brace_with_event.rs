@@ -11,7 +11,6 @@ use reinhardt_pages::page;
 #[derive(bon::Builder)]
 struct ButtonProps {
 	label: String,
-	#[builder(default)]
 	on_click: Option<Callback<DummyEvent, ()>>,
 }
 
