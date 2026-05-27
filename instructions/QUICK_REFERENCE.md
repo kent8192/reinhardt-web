@@ -49,6 +49,9 @@
 - Specify language for code blocks: ` ```rust `, NOT ` ``` `
 - Wrap bracket patterns in backticks: `` `array[0]` ``, NOT `array[0]`
 - Use backticks (not intra-doc links) for feature-gated types: `` `FeatureType` ``, NOT `` [`FeatureType`] ``
+- Do not write redundant explicit link targets in intra-doc links: `` [`Foo`] ``, NOT `` [`Foo`](crate::Foo) `` when the label already resolves (instructions/DOCUMENTATION_STANDARDS.md § RD-8)
+- Use backticks (not intra-doc links) for removed/deprecated items: `` `RemovedType` ``, NOT `` [`RemovedType`] `` (instructions/DOCUMENTATION_STANDARDS.md § RD-9)
+- Use backticks (not intra-doc links) for private/`pub(crate)` items in public docs: `` `InternalType` ``, NOT `` [`InternalType`] `` (instructions/DOCUMENTATION_STANDARDS.md § RD-10)
 - Avoid starting continuation lines of `//` and `///` comments with a Rust keyword or trigger macro — restructure prose so the token is wrapped in backticks or appears mid-line (Semgrep `rust-commented-out-code` rule trips otherwise; canonical token list in instructions/DOCUMENTATION_STANDARDS.md § RD-7)
 - Use Mermaid diagrams (via `aquamarine`) for architecture documentation instead of ASCII art
 - Ensure `.stderr` files in trybuild tests contain only single error type (no warning/error mixing)
@@ -144,6 +147,9 @@
 - Write macro attributes without backticks in doc comments (causes unresolved link warnings)
 - Write bare URLs in doc comments (causes bare URL warnings)
 - Use intra-doc links for feature-gated items (causes unresolved link warnings)
+- Write redundant explicit link targets in intra-doc links: `` [`Foo`](crate::Foo) `` when `` [`Foo`] `` suffices (nightly `redundant_explicit_links` warning; § RD-8)
+- Use intra-doc links for removed/deprecated items (causes `broken_intra_doc_links` error; use backticks — § RD-9)
+- Use intra-doc links for `pub(crate)` or private items in public docs (causes `private_intra_doc_links` error; use backticks — § RD-10)
 - Start a continuation line of a `//` or `///` comment with a Rust keyword or trigger macro — Semgrep flags the line as commented-out code and blocks the TODO Check CI; wrap the token in backticks or move it mid-line (canonical token list in instructions/DOCUMENTATION_STANDARDS.md § RD-7)
 - Create new ASCII art diagrams in doc comments (use Mermaid instead)
 - Mix warnings and errors in trybuild `.stderr` files
