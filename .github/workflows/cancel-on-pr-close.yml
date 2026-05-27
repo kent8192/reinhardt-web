@@ -40,7 +40,9 @@ jobs:
               });
 
               const staleRuns = data.workflow_runs.filter(r =>
-                r.status !== 'completed'
+                r.status !== 'completed' &&
+                Array.isArray(r.pull_requests) &&
+                r.pull_requests.some(p => p.number === pr.number)
               );
 
               for (const run of staleRuns) {
