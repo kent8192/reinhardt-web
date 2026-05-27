@@ -390,7 +390,7 @@ pub enum DiError {
 	Authentication(String),
 
 	/// An extractor requires HTTP request data, but the `InjectionContext`
-	/// has no [`ParamContext`](crate::ParamContext) attached.
+	/// has no [`ParamContext`] attached.
 	///
 	/// Occurs when a factory or handler takes a request-scoped extractor
 	/// (`Path<T>`, `Query<T>`, `Json<T>`, …) but the DI container was built
@@ -409,7 +409,7 @@ pub enum DiError {
 
 	/// A request-scoped extractor failed during HTTP parameter extraction.
 	///
-	/// Wraps the underlying [`params::ParamError`](crate::params::ParamError)
+	/// Wraps the underlying [`params::ParamError`]
 	/// so that callers can `match` on the inner variant (`MissingParameter`,
 	/// `ParseError`, `DeserializationError`, `Authentication`, …) without
 	/// duplicating the parameter-error taxonomy on `DiError`.
