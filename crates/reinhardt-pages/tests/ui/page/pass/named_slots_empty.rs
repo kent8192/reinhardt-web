@@ -16,5 +16,5 @@ fn main() {
 		Table(args: 1) {
 			$header {}
 		}
-	});
+	})();
 }

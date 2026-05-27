@@ -44,10 +44,9 @@ fn brace_invocation_compiles_and_renders() {
 		}
 	})();
 
-	// Assert — uses Debug formatting with substring assertions intentionally;
-	// Debug output is not stable, so these must not be converted to exact-string
-	// checks. The same pattern applies throughout this file.
-	let s = format!("{v:?}");
+	// Assert — uses render_to_string() to evaluate reactive closures
+	// and produce HTML output suitable for substring assertions.
+	let s = v.render_to_string();
 	assert!(
 		s.contains("hello"),
 		"render output should contain `hello`, got: {s}"
@@ -67,7 +66,7 @@ fn brace_invocation_with_single_child() {
 	})();
 
 	// Assert
-	let s = format!("{v:?}");
+	let s = v.render_to_string();
 	assert!(
 		s.contains("outer") && s.contains("inner"),
 		"render output should contain both `outer` and `inner`, got: {s}"
@@ -88,7 +87,7 @@ fn brace_invocation_with_multiple_children() {
 	})();
 
 	// Assert: spec §3.5.3 — ≥2 children are wrapped in Page::fragment.
-	let s = format!("{v:?}");
+	let s = v.render_to_string();
 	assert!(
 		s.contains("outer") && s.contains("one") && s.contains("two"),
 		"render output should contain `outer`, `one`, and `two`, got: {s}"
@@ -132,7 +131,7 @@ fn nested_component_inside_for_loop() {
 		}
 	})(titles);
 
-	let s = format!("{v:?}");
+	let s = v.render_to_string();
 	for t in ["a", "b", "c"] {
 		assert!(s.contains(t), "missing {t} in render output: {s}");
 	}

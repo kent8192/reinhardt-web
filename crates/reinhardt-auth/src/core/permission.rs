@@ -130,7 +130,7 @@ impl Permission for AllowAny {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_auth::{Permission, IsAuthenticated, PermissionContext, SimpleUser, User};
+/// use reinhardt_auth::{Permission, IsAuthenticated, ManagedUser, PermissionContext};
 /// use reinhardt_http::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
@@ -158,7 +158,7 @@ impl Permission for AllowAny {
 /// assert!(!permission.has_permission(&context).await);
 ///
 /// // Authenticated user - permission granted
-/// let user = SimpleUser {
+/// let user = ManagedUser {
 ///     id: Uuid::now_v7(),
 ///     username: "alice".to_string(),
 ///     email: "alice@example.com".to_string(),
@@ -192,7 +192,7 @@ impl Permission for IsAuthenticated {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_auth::{Permission, IsAdminUser, PermissionContext, SimpleUser, User};
+/// use reinhardt_auth::{Permission, IsAdminUser, ManagedUser, PermissionContext};
 /// use reinhardt_http::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
@@ -210,7 +210,7 @@ impl Permission for IsAuthenticated {
 ///     .unwrap();
 ///
 /// // Non-admin user - permission denied
-/// let user = SimpleUser {
+/// let user = ManagedUser {
 ///     id: Uuid::now_v7(),
 ///     username: "alice".to_string(),
 ///     email: "alice@example.com".to_string(),
@@ -229,7 +229,7 @@ impl Permission for IsAuthenticated {
 /// assert!(!permission.has_permission(&context).await);
 ///
 /// // Admin user - permission granted
-/// let admin = SimpleUser {
+/// let admin = ManagedUser {
 ///     id: Uuid::now_v7(),
 ///     username: "admin".to_string(),
 ///     email: "admin@example.com".to_string(),

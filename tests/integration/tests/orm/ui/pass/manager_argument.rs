@@ -1,3 +1,4 @@
+#![allow(unexpected_cfgs)]
 //! Pass case: `#[model(manager = MyManager)]` sets `type Objects` so that
 //! `Model::objects()` resolves to the user-supplied type. Issue #3980, #3984.
 
