@@ -29,16 +29,18 @@ fn test_client_url_reverser_round_trip_via_client_router() {
 		);
 
 	// Act & Assert
-	assert_eq!(router.reverse("app:home", &[]), Some("/".to_string()));
+	assert_eq!(router.reverse("app:home", &[]).ok(), Some("/".to_string()));
 	assert_eq!(
-		router.reverse("app:user_detail", &[("id", "42")]),
+		router.reverse("app:user_detail", &[("id", "42")]).ok(),
 		Some("/users/42/".to_string())
 	);
 	assert_eq!(
-		router.reverse("app:user_posts", &[("user_id", "5"), ("post_id", "10")]),
+		router
+			.reverse("app:user_posts", &[("user_id", "5"), ("post_id", "10")])
+			.ok(),
 		Some("/users/5/posts/10/".to_string())
 	);
-	assert_eq!(router.reverse("nonexistent", &[]), None);
+	assert!(router.reverse("nonexistent", &[]).is_err());
 }
 
 /// Test that ClientUrlResolver trait works with ClientRouter
@@ -58,7 +60,7 @@ fn test_client_url_resolver_trait_impl() {
 		fn resolve_client_url(&self, name: &str, params: &[(&str, &str)]) -> String {
 			self.router
 				.reverse(name, params)
-				.unwrap_or_else(|| panic!("Route '{}' not found", name))
+				.unwrap_or_else(|_| panic!("Route '{}' not found", name))
 		}
 	}
 
@@ -86,7 +88,7 @@ fn test_client_url_resolver_panics_on_unknown_route() {
 		fn resolve_client_url(&self, name: &str, params: &[(&str, &str)]) -> String {
 			self.router
 				.reverse(name, params)
-				.unwrap_or_else(|| panic!("Route '{}' not found", name))
+				.unwrap_or_else(|_| panic!("Route '{}' not found", name))
 		}
 	}
 
