@@ -8,8 +8,8 @@ This file defines the policy for maintaining the Reinhardt project knowledge bas
 
 ## Vault Reference
 
-**Vault Path:** `~/obsidian/reinhardt-wiki`
 **Access Method:** Obsidian MCP server (`obsidian-vault`)
+**Vault Discovery:** The vault path is managed by the Obsidian MCP server configuration — do NOT hardcode paths. Use `obsidian_list_files_in_vault` to verify connectivity and discover vault contents.
 **Vault CLAUDE.md:** Contains structure, conventions, and operation instructions
 
 ---

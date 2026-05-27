@@ -326,7 +326,7 @@ See instructions/RELEASE_PROCESS.md for detailed release procedures.
 
 ### Obsidian Wiki Maintenance
 
-**Vault:** `~/obsidian/reinhardt-wiki` (Obsidian MCP: `obsidian-vault`)
+**Access:** Obsidian MCP server (`obsidian-vault`) — vault path is resolved by the MCP server, not hardcoded
 
 At the end of a meaningful work unit (architectural decision, new pattern, troubleshooting solution, lesson learned), update the Obsidian wiki:
 
