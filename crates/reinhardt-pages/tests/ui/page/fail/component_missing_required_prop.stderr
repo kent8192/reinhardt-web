@@ -1,0 +1,26 @@
+error: expected `:`
+  --> tests/ui/page/fail/component_missing_required_prop.rs:29:14
+   |
+29 |             card(props)
+   |                       ^
+
+error[E0277]: the member `Unset<item>` was not set, but this method requires it to be set
+  --> tests/ui/page/fail/component_missing_required_prop.rs:26:35
+   |
+26 |     let props = CardProps::builder().build();
+   |                                      ^^^^^ the member `Unset<item>` was not set, but this method requires it to be set
+   |
+   = help: the trait `IsSet` is not implemented for `Unset<item>`
+note: required for `card_props_builder::Empty` to implement `IsComplete`
+  --> tests/ui/page/fail/component_missing_required_prop.rs:10:10
+   |
+10 | #[derive(bon::Builder)]
+   |          ^^^^^^^^^^^^ unsatisfied trait bound introduced in this `derive` macro
+note: required by a bound in `CardPropsBuilder::<S>::build`
+  --> tests/ui/page/fail/component_missing_required_prop.rs:10:10
+   |
+10 | #[derive(bon::Builder)]
+   |          ^^^^^^^^^^^^ required by this bound in `CardPropsBuilder::<S>::build`
+11 | struct CardProps {
+   |        --------- required by a bound in this associated function
+   = note: this error originates in the derive macro `bon::Builder` (in Nightly builds, run with -Z macro-backtrace for more info)
