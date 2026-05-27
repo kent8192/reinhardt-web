@@ -188,22 +188,32 @@ jobs:
         if: github.event_name == 'push' && startsWith(github.ref_name, 'develop/')
         env:
           CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CF_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           BRANCH_SLUG=$(echo "$REF_NAME" | tr '/' '-' | tr '.' '-')
           CNAME_TARGET="${BRANCH_SLUG}.reinhardt-web.pages.dev"
 
+          ZONE_ID=$(curl -sf \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/zones?name=reinhardt-web.dev&account.id=${CF_ACCOUNT_ID}" \
+            | jq -r '.result[0].id // empty')
+
+          if [ -z "$ZONE_ID" ]; then
+            echo "Warning: could not resolve zone ID for reinhardt-web.dev"
+            exit 0
+          fi
+
           echo "Updating rc.reinhardt-web.dev CNAME → ${CNAME_TARGET} ..."
 
           RECORD_ID=$(curl -sf \
             -H "Authorization: Bearer ${CF_API_TOKEN}" \
-            "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records?name=rc.reinhardt-web.dev&type=CNAME" \
+            "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records?name=rc.reinhardt-web.dev&type=CNAME" \
             | jq -r '.result[0].id // empty')
 
           if [ -n "$RECORD_ID" ]; then
             curl -sf -X PATCH \
-              "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records/${RECORD_ID}" \
+              "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${RECORD_ID}" \
               -H "Authorization: Bearer ${CF_API_TOKEN}" \
               -H "Content-Type: application/json" \
               -d "{\"content\":\"${CNAME_TARGET}\",\"proxied\":true}" \
