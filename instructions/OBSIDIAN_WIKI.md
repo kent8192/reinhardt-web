@@ -72,7 +72,7 @@ After creating or updating pages, update these meta pages:
 
 1. **`wiki/index.md`** — Add new page entries under the appropriate section
 2. **`wiki/hot.md`** — Refresh the "Recent Changes" and "Key Recent Facts" sections
-3. **`wiki/log.md`** — Append a new entry at the TOP with: date, mode, pages created/updated, sources
+3. **`wiki/log.md`** — Prepend a new entry at the TOP with: date, mode, pages created/updated, sources
 
 ---
 
@@ -114,7 +114,7 @@ When skipping, do NOT:
 - Check Obsidian MCP availability before attempting wiki updates (OW-2)
 - Skip wiki update entirely if MCP is unavailable (OW-3)
 - Read `wiki/hot.md` before creating new pages to avoid duplicates (OW-2)
-- Update `wiki/index.md`, `wiki/hot.md`, and `wiki/log.md` after every page creation (OW-2)
+- Update `wiki/index.md`, `wiki/hot.md`, and `wiki/log.md` after every page creation or update (OW-2)
 - Include YAML frontmatter on all wiki pages (OW-2)
 - Focus on actionable knowledge with "why" and "how" (OW-4)
 - Reference GitHub Issues/PRs for traceability (OW-4)
