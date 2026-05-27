@@ -1,10 +1,10 @@
-//! Integration tests for S3 storage backend using LocalStack.
+//! Integration tests for S3 storage backend using wiremock mock server.
 
 mod fixtures;
 mod utils;
 
 use fixtures::{
-	S3TestContainer, generate_unique_name, s3_backend, s3_backend_with_prefix, s3_container,
+	MockS3Server, generate_unique_name, s3_backend, s3_backend_with_prefix, s3_container,
 };
 use reinhardt_storages::{StorageBackend, StorageError};
 use rstest::rstest;
@@ -339,7 +339,7 @@ mod prefix_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_prefix_trailing_slash(#[future(awt)] s3_container: S3TestContainer) {
+	async fn test_prefix_trailing_slash(#[future(awt)] s3_container: MockS3Server) {
 		// Create a new backend with trailing slash in prefix
 		let container = s3_container;
 		let backend = container
