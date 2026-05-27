@@ -2,7 +2,7 @@ name: Deploy Website
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'develop/**']
     paths:
       - "website/**"
   pull_request:
@@ -118,9 +118,45 @@ jobs:
         with:
           tool: zola@0.22.1
 
+      - name: Configure version switcher
+        working-directory: website
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION=$(grep 'reinhardt_version' config.toml | sed 's/.*= *"\(.*\)"/\1/')
+          if [[ "$REF_NAME" == develop/* ]]; then
+            CURRENT_LABEL="v${VERSION} (Dev)"
+            IS_STABLE="false"
+          else
+            CURRENT_LABEL="v${VERSION}"
+            IS_STABLE="true"
+          fi
+          cat >> config.toml << TOML
+
+          [extra.version_switcher]
+          current_label = "${CURRENT_LABEL}"
+          current_is_stable = ${IS_STABLE}
+
+          [[extra.version_switcher.versions]]
+          label = "Stable"
+          url = "https://reinhardt-web.dev"
+
+          [[extra.version_switcher.versions]]
+          label = "Dev"
+          url = "https://rc.reinhardt-web.dev"
+          TOML
+          echo "Version switcher configured: ${CURRENT_LABEL} (stable=${IS_STABLE})"
+
       - name: Build
         working-directory: website
-        run: zola build
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$REF_NAME" == develop/* ]]; then
+            zola build --base-url "https://rc.reinhardt-web.dev"
+          else
+            zola build
+          fi
 
       - name: Set production branch via Cloudflare API
         if: github.ref == 'refs/heads/main'
