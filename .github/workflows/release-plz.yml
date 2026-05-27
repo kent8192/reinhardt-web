@@ -229,23 +229,22 @@ jobs:
 
   release-plz-release:
     name: Release
-    # On main, always run on push — the existing two-stage workflow with
-    # release_always=true (KI-5 phantom-version-bump fix) means release-plz
-    # itself decides whether to publish based on Cargo.toml vs crates.io.
+    # Publish only after a verified Release PR merge. The release-plz-pr job
+    # above still runs on every main/develop push, so routine feature merges
+    # keep the next Release PR up to date without entering the publish path.
     #
-    # On develop/**, only squash-merge Release PR commits with a PR number
-    # ("chore: release (#N)") trigger the job. The merge-commit trigger is
-    # intentionally NOT included because startsWith(commit.message,
-    # 'Merge pull request #') would also match regular feature-PR merges on
-    # develop/**, which would then fail at the branch-name verification step.
-    # Release-plz PRs should be squash-merged (MP-2), producing the numbered
-    # "chore: release (#N)" shape covered here.
-    #
-    # release-plz-pr (above) still runs on every develop/** push, so the
-    # next Release PR is always kept up to date.
+    # Accepted Release PR merge shapes:
+    # - merge commit from release-plz-* or develop-release-plz-* branch
+    # - squash commit titled "chore: release (#N)"
     if: |
       github.event_name == 'push' && (
-        github.ref == 'refs/heads/main' ||
+        (
+          startsWith(github.event.head_commit.message, 'Merge pull request #') &&
+          (
+            contains(github.event.head_commit.message, '/release-plz-') ||
+            contains(github.event.head_commit.message, '/develop-release-plz-')
+          )
+        ) ||
         (
           startsWith(github.event.head_commit.message, 'chore: release ') &&
           contains(github.event.head_commit.message, '(#')
