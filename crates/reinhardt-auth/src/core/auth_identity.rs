@@ -1,8 +1,8 @@
-/// Authentication identity trait - replacement for the deprecated [`User`](crate::User) trait.
+/// Authentication identity trait - replacement for the deprecated `User` trait.
 ///
 /// Provides identity and authentication status methods. Use with
-/// [`BaseUser`](crate::BaseUser)/[`FullUser`](crate::FullUser) +
-/// [`PermissionsMixin`](crate::PermissionsMixin) for full user functionality.
+/// `BaseUser`/`FullUser` +
+/// `PermissionsMixin` for full user functionality.
 ///
 /// # Examples
 ///
