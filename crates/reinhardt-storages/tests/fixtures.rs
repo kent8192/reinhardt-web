@@ -6,18 +6,15 @@
 #![allow(dead_code)]
 #![allow(unreachable_pub)]
 
-use aws_config::Region;
-use aws_sdk_s3::config::Credentials;
+use chrono::{DateTime, Utc};
 use reinhardt_storages::{StorageBackend, StorageConfig};
 use rstest::fixture;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
-use testcontainers::{
-	ContainerAsync, GenericImage,
-	core::{IntoContainerPort, WaitFor},
-	runners::AsyncRunner,
-};
+use wiremock::matchers::any;
+use wiremock::{Mock, MockServer, Respond, ResponseTemplate};
 
 // ============================================================================
 // Test Data (inline to avoid super::utils dependency issues)
@@ -167,8 +164,6 @@ impl LocalTestDir {
 /// This is acceptable for test code since OS cleans up temp directories.
 #[fixture]
 pub async fn local_backend() -> Arc<dyn StorageBackend> {
-	// Use keep() to prevent automatic cleanup when TempDir is dropped.
-	// This ensures the directory stays alive for the entire test.
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let base_path_str = temp_dir.path().to_str().unwrap().to_string();
 	let _ = temp_dir.keep();
@@ -189,63 +184,178 @@ pub async fn local_temp_dir() -> LocalTestDir {
 }
 
 // ============================================================================
-// S3 Storage Fixtures (using LocalStack)
+// S3 Storage Fixtures (using wiremock Mock S3 Server)
 // ============================================================================
 
-/// S3 test container wrapper.
-pub struct S3TestContainer {
-	/// LocalStack container
-	#[allow(dead_code)]
-	container: ContainerAsync<GenericImage>,
-	/// S3 endpoint URL
-	pub endpoint: String,
-	/// S3 bucket name
-	pub bucket: String,
-	/// AWS region
-	pub region: String,
+/// An object stored in the mock S3 server.
+struct StoredObject {
+	content: Vec<u8>,
+	last_modified: DateTime<Utc>,
 }
 
-impl S3TestContainer {
-	/// Create a new S3 test container with LocalStack.
-	///
-	/// This starts a LocalStack container and creates a test bucket.
-	pub async fn new() -> Self {
-		// Use LocalStack image
-		let container = GenericImage::new("localstack/localstack", "latest")
-			.with_exposed_port(4566.tcp())
-			.with_wait_for(WaitFor::message_on_stdout("Ready."))
-			.start()
-			.await
-			.expect("Failed to start LocalStack container");
+/// In-memory state for the mock S3 server.
+struct MockS3State {
+	objects: HashMap<String, StoredObject>,
+	buckets: HashSet<String>,
+}
 
-		let port = container
-			.get_host_port_ipv4(4566)
-			.await
-			.expect("Failed to get host port");
-		let endpoint = format!("http://localhost:{}", port);
+/// Stateful responder that mimics the AWS S3 REST API.
+///
+/// Routes requests based on HTTP method and URL path (path-style addressing):
+/// - `PUT /{bucket}` -> CreateBucket
+/// - `PUT /{bucket}/{key}` -> PutObject
+/// - `GET /{bucket}/{key}` -> GetObject
+/// - `HEAD /{bucket}/{key}` -> HeadObject
+/// - `DELETE /{bucket}/{key}` -> DeleteObject
+struct MockS3Responder {
+	state: Arc<Mutex<MockS3State>>,
+}
+
+/// Parse a path-style S3 URL path into (bucket, optional key).
+fn parse_s3_path(path: &str) -> (String, Option<String>) {
+	let trimmed = path.trim_start_matches('/');
+	if let Some(idx) = trimmed.find('/') {
+		let bucket = trimmed[..idx].to_string();
+		let key = trimmed[idx + 1..].to_string();
+		(bucket, Some(key))
+	} else {
+		(trimmed.to_string(), None)
+	}
+}
+
+impl Respond for MockS3Responder {
+	fn respond(&self, request: &wiremock::Request) -> ResponseTemplate {
+		let path = request.url.path();
+		let (bucket, key) = parse_s3_path(&path);
+		let method = request.method.as_str();
+
+		match (method, key) {
+			("PUT", None) => {
+				// CreateBucket
+				let mut state = self.state.lock().unwrap();
+				state.buckets.insert(bucket.clone());
+				ResponseTemplate::new(200).insert_header("Location", format!("/{}", bucket))
+			}
+			("PUT", Some(key)) => {
+				// PutObject
+				let full_key = format!("{}/{}", bucket, key);
+				let mut state = self.state.lock().unwrap();
+				state.objects.insert(
+					full_key,
+					StoredObject {
+						content: request.body.clone(),
+						last_modified: Utc::now(),
+					},
+				);
+				ResponseTemplate::new(200)
+					.insert_header("ETag", "\"mock-etag\"")
+					.insert_header("Content-Length", "0")
+			}
+			("GET", Some(key)) => {
+				// GetObject
+				let full_key = format!("{}/{}", bucket, key);
+				let state = self.state.lock().unwrap();
+				match state.objects.get(&full_key) {
+					Some(obj) => {
+						let last_modified = obj.last_modified.format("%a, %d %b %Y %H:%M:%S GMT");
+						ResponseTemplate::new(200)
+							.set_body_bytes(obj.content.clone())
+							.insert_header("Content-Length", obj.content.len().to_string())
+							.insert_header("Content-Type", "application/octet-stream")
+							.insert_header("ETag", "\"mock-etag\"")
+							.insert_header("Last-Modified", last_modified.to_string())
+							.insert_header("Accept-Ranges", "bytes")
+					}
+					None => {
+						let xml = format!(
+							"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+							<Error>\
+								<Code>NoSuchKey</Code>\
+								<Message>The specified key does not exist.</Message>\
+								<Key>{}</Key>\
+							</Error>",
+							key
+						);
+						ResponseTemplate::new(404)
+							.set_body_string(xml)
+							.insert_header("Content-Type", "application/xml")
+					}
+				}
+			}
+			("HEAD", Some(key)) => {
+				// HeadObject
+				let full_key = format!("{}/{}", bucket, key);
+				let state = self.state.lock().unwrap();
+				match state.objects.get(&full_key) {
+					Some(obj) => {
+						let last_modified = obj.last_modified.format("%a, %d %b %Y %H:%M:%S GMT");
+						ResponseTemplate::new(200)
+							.insert_header("Content-Length", obj.content.len().to_string())
+							.insert_header("Content-Type", "application/octet-stream")
+							.insert_header("ETag", "\"mock-etag\"")
+							.insert_header("Last-Modified", last_modified.to_string())
+							.insert_header("Accept-Ranges", "bytes")
+					}
+					None => ResponseTemplate::new(404),
+				}
+			}
+			("DELETE", Some(key)) => {
+				// DeleteObject
+				let full_key = format!("{}/{}", bucket, key);
+				let mut state = self.state.lock().unwrap();
+				state.objects.remove(&full_key);
+				ResponseTemplate::new(204)
+			}
+			_ => ResponseTemplate::new(400).set_body_string("Bad Request"),
+		}
+	}
+}
+
+/// Mock S3 server using wiremock with AWS S3-standard responses.
+///
+/// Replaces the previous LocalStack-based `S3TestContainer`.
+/// The actual `S3Storage` production code is exercised end-to-end through
+/// this mock server, without requiring Docker.
+pub struct MockS3Server {
+	// Kept alive so wiremock continues serving HTTP requests for the test duration.
+	#[allow(dead_code)]
+	server: MockServer,
+	// Kept alive so the MockS3Responder's Arc reference remains valid.
+	#[allow(dead_code)]
+	state: Arc<Mutex<MockS3State>>,
+	endpoint: String,
+	bucket: String,
+	region: String,
+}
+
+impl MockS3Server {
+	/// Create a new mock S3 server with a pre-created test bucket.
+	pub async fn new() -> Self {
+		let server = MockServer::start().await;
+		let endpoint = server.uri();
 		let bucket = "test-bucket".to_string();
 		let region = "us-east-1".to_string();
 
-		// Create the bucket using AWS SDK
-		let credentials = Credentials::new("test", "test", None, None, "test");
-		let s3_config = aws_sdk_s3::Config::builder()
-			.behavior_version_latest()
-			.region(Region::new(region.clone()))
-			.endpoint_url(&endpoint)
-			.credentials_provider(credentials)
-			.force_path_style(true)
-			.build();
-		let s3_client = aws_sdk_s3::Client::from_conf(s3_config);
+		let mut buckets = HashSet::new();
+		buckets.insert(bucket.clone());
 
-		s3_client
-			.create_bucket()
-			.bucket(&bucket)
-			.send()
-			.await
-			.expect("Failed to create test bucket");
+		let state = Arc::new(Mutex::new(MockS3State {
+			objects: HashMap::new(),
+			buckets,
+		}));
+
+		let responder = MockS3Responder {
+			state: Arc::clone(&state),
+		};
+
+		Mock::given(any())
+			.respond_with(responder)
+			.mount(&server)
+			.await;
 
 		Self {
-			container,
+			server,
+			state,
 			endpoint,
 			bucket,
 			region,
@@ -267,7 +377,7 @@ impl S3TestContainer {
 		&self.region
 	}
 
-	/// Create S3 storage backend from this container.
+	/// Create S3 storage backend from this mock server.
 	pub async fn create_backend(&self) -> Arc<dyn StorageBackend> {
 		// SAFETY: Setting environment variables for test-only AWS credentials.
 		// These tests run serially and the env vars are required by aws-config
@@ -289,7 +399,7 @@ impl S3TestContainer {
 			.expect("Failed to create S3 backend")
 	}
 
-	/// Create S3 storage backend with prefix from this container.
+	/// Create S3 storage backend with prefix from this mock server.
 	pub async fn create_backend_with_prefix(&self, prefix: &str) -> Arc<dyn StorageBackend> {
 		// SAFETY: Setting environment variables for test-only AWS credentials.
 		// These tests run serially and the env vars are required by aws-config
@@ -312,33 +422,43 @@ impl S3TestContainer {
 	}
 }
 
-/// S3 backend fixture using LocalStack container.
-///
-/// This fixture creates a new LocalStack container for each test.
-/// Note: The container is leaked to keep it alive for the duration of the test.
+/// Owns a `MockS3Server` alongside the backend it created, keeping the
+/// mock HTTP server alive for the test lifetime without leaking memory.
+pub struct S3BackendOwner {
+	pub backend: Arc<dyn StorageBackend>,
+	#[allow(dead_code)]
+	// Dropped at end of test, cleaning up the wiremock listener.
+	mock: MockS3Server,
+}
+
+impl std::ops::Deref for S3BackendOwner {
+	type Target = dyn StorageBackend;
+
+	fn deref(&self) -> &Self::Target {
+		&*self.backend
+	}
+}
+
+/// S3 backend fixture using wiremock mock server.
 #[fixture]
-pub async fn s3_backend() -> Arc<dyn StorageBackend> {
-	// Leak the container to keep it alive for the entire test.
-	// Without this, the container would be stopped when it goes out of scope,
-	// causing network errors when the backend tries to communicate with S3.
-	let container = Box::leak(Box::new(S3TestContainer::new().await));
-	container.create_backend().await
+pub async fn s3_backend() -> S3BackendOwner {
+	let mock = MockS3Server::new().await;
+	let backend = mock.create_backend().await;
+	S3BackendOwner { backend, mock }
 }
 
 /// S3 backend fixture with path prefix.
-///
-/// Note: The container is leaked to keep it alive for the duration of the test.
 #[fixture]
-pub async fn s3_backend_with_prefix() -> Arc<dyn StorageBackend> {
-	// Leak the container to keep it alive for the entire test.
-	let container = Box::leak(Box::new(S3TestContainer::new().await));
-	container.create_backend_with_prefix("test-prefix").await
+pub async fn s3_backend_with_prefix() -> S3BackendOwner {
+	let mock = MockS3Server::new().await;
+	let backend = mock.create_backend_with_prefix("test-prefix").await;
+	S3BackendOwner { backend, mock }
 }
 
-/// S3 test container fixture.
+/// Mock S3 server fixture.
 #[fixture]
-pub async fn s3_container() -> S3TestContainer {
-	S3TestContainer::new().await
+pub async fn s3_container() -> MockS3Server {
+	MockS3Server::new().await
 }
 
 // ============================================================================
@@ -437,8 +557,12 @@ mod tests {
 	// S3 fixture tests
 	#[tokio::test]
 	async fn test_s3_container_creation() {
-		let container = S3TestContainer::new().await;
-		assert!(container.endpoint().contains("localhost"));
+		let container = MockS3Server::new().await;
+		assert!(
+			container.endpoint().starts_with("http://127.0.0.1:"),
+			"endpoint should bind to 127.0.0.1: {}",
+			container.endpoint()
+		);
 		assert_eq!(container.bucket(), "test-bucket");
 		assert_eq!(container.region(), "us-east-1");
 	}

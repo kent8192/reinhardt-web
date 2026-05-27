@@ -1,7 +1,7 @@
 //! Reinhardt Storages Test Suite
 //!
 //! Comprehensive tests for the reinhardt-storages crate covering:
-//! - S3 backend (with LocalStack/MinIO via TestContainers)
+//! - S3 backend (with wiremock mock S3 server)
 //! - Local filesystem backend
 //! - Configuration parsing
 //! - Factory pattern
