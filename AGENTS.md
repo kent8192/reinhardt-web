@@ -335,7 +335,7 @@ At the end of a meaningful work unit (architectural decision, new pattern, troub
 3. Create/update pages under the appropriate category
 4. Update meta pages: `wiki/index.md`, `wiki/hot.md`, `wiki/log.md`
 
-**Skip when:** MCP unavailable, trivial changes, work in progress, or user requests skip.
+**Skip when:** MCP unavailable, trivial changes, work in progress, or emergency/hotfix work.
 
 See instructions/OBSIDIAN_WIKI.md for detailed standards (OW-1 ~ OW-4).
 

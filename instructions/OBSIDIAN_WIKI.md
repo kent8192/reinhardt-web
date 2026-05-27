@@ -83,7 +83,7 @@ The wiki update MUST be skipped entirely (no partial updates) when ANY of these 
 - Obsidian MCP server is unavailable or returns connection errors
 - The current work is trivial (no new knowledge generated)
 - The session is focused on emergency/hotfix work where speed is critical
-- The user explicitly requests skipping wiki updates
+- Wiki updates are explicitly disabled via configuration or skip flag
 
 When skipping, do NOT:
 - Report the skip as an error or warning
