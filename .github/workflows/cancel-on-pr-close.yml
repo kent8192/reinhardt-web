@@ -1,4 +1,4 @@
-name: Cancel Stale Runs on PR Close
+name: Cancel Stale Runs on PR Close/Merge
 
 on:
   pull_request:
@@ -23,8 +23,11 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const branch = context.payload.pull_request.head.ref;
-            const targetWorkflows = ['ci.yml', 'examples-test-standalone.yml'];
+            const pr = context.payload.pull_request;
+            const branch = pr.head.ref;
+            const merged = pr.merged;
+            console.log(`PR #${pr.number} ${merged ? 'merged' : 'closed'} — cancelling stale runs on branch: ${branch}`);
+            const targetWorkflows = ['ci.yml', 'examples-test-standalone.yml', 'semver-check-standalone.yml'];
 
             // Phase 1: Find and cancel all non-completed runs
             const cancelledRunIds = [];
