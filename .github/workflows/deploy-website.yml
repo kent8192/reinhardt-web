@@ -131,6 +131,7 @@ jobs:
             CURRENT_LABEL="v${VERSION}"
             IS_STABLE="true"
           fi
+          sed -i '/^\[extra\.version_switcher\]/,$d' config.toml
           cat >> config.toml << TOML
 
           [extra.version_switcher]
