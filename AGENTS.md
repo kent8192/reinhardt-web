@@ -307,6 +307,11 @@ This project uses [release-plz](https://release-plz.ieni.dev/) for automated rel
 - Edit Release PR to adjust CHANGELOG entries or versions if needed
 - Release PRs can be modified before merging
 
+**Release PR Branch Policy:**
+- **NEVER** push fixes or changes directly to a release-plz branch (`release-plz-*` or `develop-release-plz-*`)
+- If a fix is needed before merging a Release PR, create a `fix/` or `hotfix/` branch from the Release PR's **base branch** (e.g., `main` or `develop/*`), open a PR targeting that base branch, and merge it — release-plz will regenerate the Release PR automatically
+- Direct pushes to release-plz branches bypass the normal review workflow and may be overwritten when release-plz regenerates the PR
+
 **Critical Rules:**
 - **MUST** use conventional commit format for proper version detection
 - **MUST** review Release PRs before merging
