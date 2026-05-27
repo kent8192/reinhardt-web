@@ -101,6 +101,26 @@
 					</a>
 				</li>
 			</ul>
+			{% if config.extra.version_switcher.versions | length > 0 %}
+			<div class="version-selector">
+				<button class="version-btn" type="button"
+								aria-expanded="false" aria-controls="version-menu"
+								aria-label="Switch documentation version">
+					{{ config.extra.version_switcher.current_label }} ▾
+				</button>
+				<ul class="version-menu" id="version-menu" role="list">
+					{% for v in config.extra.version_switcher.versions %}
+					<li>
+						<a class="version-item{% if current_url is starting_with(v.url) %} version-current{% endif %}"
+							 href="{{ v.url }}"
+							 {% if current_url is starting_with(v.url) %}aria-current="true"{% endif %}>
+							{{ v.label }}
+						</a>
+					</li>
+					{% endfor %}
+				</ul>
+			</div>
+			{% endif %}
 			<button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode">
 				<span aria-hidden="true">☾</span>
 			</button>
@@ -335,6 +355,31 @@
 				if (!btn.contains(e.target) && !nav.contains(e.target)) {
 					btn.setAttribute('aria-expanded', 'false');
 					nav.classList.remove('nav-open');
+				}
+			});
+		})();
+	</script>
+	<script>
+		(function() {
+			var btn = document.querySelector('.version-btn');
+			var menu = document.getElementById('version-menu');
+			if (!btn || !menu) return;
+			btn.addEventListener('click', function() {
+				var expanded = btn.getAttribute('aria-expanded') === 'true';
+				btn.setAttribute('aria-expanded', String(!expanded));
+				menu.classList.toggle('version-menu-open');
+			});
+			document.addEventListener('click', function(e) {
+				if (!btn.contains(e.target) && !menu.contains(e.target)) {
+					btn.setAttribute('aria-expanded', 'false');
+					menu.classList.remove('version-menu-open');
+				}
+			});
+			document.addEventListener('keydown', function(e) {
+				if (e.key === 'Escape' && menu.classList.contains('version-menu-open')) {
+					btn.setAttribute('aria-expanded', 'false');
+					menu.classList.remove('version-menu-open');
+					btn.focus();
 				}
 			});
 		})();
