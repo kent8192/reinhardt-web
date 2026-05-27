@@ -7,7 +7,7 @@
 //!
 //! This middleware can send email notifications to managers when broken links are
 //! detected. The canonical entry point is
-//! [`BrokenLinkEmailsMiddleware::from_settings`], which copies
+//! `BrokenLinkEmailsMiddleware::from_settings`, which copies
 //! `Settings::managers` into [`BrokenLinkConfig::managers`] once at middleware
 //! construction time. When no `Settings` instance is available, callers may
 //! configure recipients directly via [`BrokenLinkConfig::with_emails`]; the
@@ -39,7 +39,7 @@ pub struct BrokenLinkConfig {
 	/// Managers to notify when a broken link is detected
 	///
 	/// Resolved from `Settings::managers` at middleware construction time via
-	/// [`BrokenLinkConfig::from_settings`]. When empty, the middleware falls
+	/// `BrokenLinkConfig::from_settings`. When empty, the middleware falls
 	/// back to converting [`BrokenLinkConfig::email_addresses`] into anonymous
 	/// `Contact` entries.
 	pub managers: Vec<settings::Contact>,
