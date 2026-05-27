@@ -1,5 +1,6 @@
 //! Global router registry for URL inspection (showurls command)
 
+use crate::routers::reverse::{clear_global_reverser, set_global_reverser};
 use crate::routers::server_router::ServerRouter;
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
@@ -40,6 +41,7 @@ pub fn register_router(mut router: ServerRouter) {
 	for error in &errors {
 		tracing::warn!("{}", error);
 	}
+	set_global_reverser(router.reverser.clone());
 	register_router_arc(Arc::new(router));
 }
 
@@ -160,6 +162,7 @@ pub fn clear_router() {
 		let mut guard = cell.write().unwrap_or_else(PoisonError::into_inner);
 		*guard = None;
 	}
+	clear_global_reverser();
 }
 
 #[cfg(test)]
@@ -232,5 +235,72 @@ mod tests {
 		let value = ctx.singleton_scope().get::<u32>();
 		assert!(value.is_some());
 		assert_eq!(*value.unwrap(), 42);
+	}
+
+	#[rstest]
+	#[serial_test::serial(global_router)]
+	fn global_reverser_populated_after_register_router(_env: TeardownGuard<CleanGlobalRouter>) {
+		// Arrange
+		let router = crate::routers::ServerRouter::new().function_named(
+			"/users/{id}/",
+			hyper::Method::GET,
+			"user-detail",
+			dummy_handler,
+		);
+
+		// Act
+		register_router(router);
+
+		// Assert
+		let reverser = crate::routers::UrlReverser::try_from_global();
+		assert!(reverser.is_some());
+		let reverser = reverser.unwrap();
+		assert!(reverser.has_route("user-detail"));
+	}
+
+	#[rstest]
+	#[serial_test::serial(global_router)]
+	fn global_reverser_cleared_on_clear_router(_env: TeardownGuard<CleanGlobalRouter>) {
+		// Arrange
+		let router = crate::routers::ServerRouter::new().function_named(
+			"/health/",
+			hyper::Method::GET,
+			"health-check",
+			dummy_handler,
+		);
+		register_router(router);
+		assert!(crate::routers::UrlReverser::try_from_global().is_some());
+
+		// Act
+		clear_router();
+
+		// Assert
+		assert!(crate::routers::UrlReverser::try_from_global().is_none());
+	}
+
+	#[rstest]
+	#[serial_test::serial(global_router)]
+	fn server_router_reverse_works_after_global_population(_env: TeardownGuard<CleanGlobalRouter>) {
+		// Arrange
+		let router = crate::routers::ServerRouter::new().function_named(
+			"/users/{id}/",
+			hyper::Method::GET,
+			"user-detail",
+			dummy_handler,
+		);
+		register_router(router);
+
+		// Act
+		let router = get_router().unwrap();
+		let url = router.reverse("user-detail", &[("id", "42")]);
+
+		// Assert
+		assert_eq!(url, Some("/users/42/".to_string()));
+	}
+
+	async fn dummy_handler(
+		_req: reinhardt_http::Request,
+	) -> reinhardt_core::exception::Result<reinhardt_http::Response> {
+		Ok(reinhardt_http::Response::ok())
 	}
 }

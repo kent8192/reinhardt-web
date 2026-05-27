@@ -241,6 +241,14 @@ impl ServerRouter {
 		}
 	}
 
+	/// Returns a reference to the internal URL reverser.
+	///
+	/// The reverser is populated after [`register_all_routes()`](Self::register_all_routes)
+	/// has been called.
+	pub fn reverser(&self) -> &crate::routers::UrlReverser {
+		&self.reverser
+	}
+
 	/// Register an alias for a route name in this router's reverser.
 	///
 	/// See `UrlReverser::add_name_alias` for details.
