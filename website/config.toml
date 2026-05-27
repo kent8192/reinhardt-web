@@ -28,3 +28,11 @@ changelog   = "https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md"
 deepwiki    = "https://deepwiki.com/kent8192/reinhardt-web"
 # reinhardt-version-sync
 reinhardt_version = "0.1.0-rc.30"
+
+# Populated at build time by deploy-website.yml.
+# Local dev: no version selector is shown (empty versions list).
+# MUST remain the last section: deploy-website.yml deletes from here to EOF.
+[extra.version_switcher]
+current_label = "Local Dev"
+current_is_stable = true
+versions = []

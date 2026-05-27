@@ -107,6 +107,13 @@ if [ "$CHANGED" -eq 0 ]; then
 	exit 2
 fi
 echo "Done: $CHANGED Cargo.toml file(s) bumped to '$NEW'."
+
+# Update version-sync markers (website/config.toml, docs, README, etc.)
+# so the first push includes website/ changes and triggers deploy-website.yml.
+echo
+echo "Updating version-sync markers to '$NEW' ..."
+"$SCRIPT_DIR/update-version-refs.sh" "$NEW"
+
 echo
 echo "Next steps:"
 echo "  1. Review the diff:    git diff"

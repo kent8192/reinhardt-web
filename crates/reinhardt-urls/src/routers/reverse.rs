@@ -16,6 +16,7 @@ mod runtime;
 mod tests;
 
 pub use reverser::{UrlReverser, reverse};
+pub(crate) use reverser::{clear_global_reverser, set_global_reverser};
 pub use runtime::{
 	ReverseError, ReverseResult, extract_param_names, try_reverse_single_pass,
 	try_reverse_with_aho_corasick,
