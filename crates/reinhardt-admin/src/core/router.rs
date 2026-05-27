@@ -275,8 +275,8 @@ pub fn admin_static_routes() -> ServerRouter {
 
 	#[cfg(server)]
 	let router = router
-		.function("/{*path}", hyper::Method::GET, admin_static_file_handler)
-		.function("/{*path}", hyper::Method::HEAD, admin_static_file_handler);
+		.register_function("/{*path}", hyper::Method::GET, "__admin_static", admin_static_file_handler)
+		.register_function("/{*path}", hyper::Method::HEAD, "__admin_static_head", admin_static_file_handler);
 
 	router
 }
@@ -363,8 +363,8 @@ fn build_admin_router(
 			.server_fn(import_data::marker)
 			.server_fn(admin_login::marker)
 			.server_fn(admin_logout::marker)
-			.function("/", hyper::Method::GET, admin_spa_handler)
-			.function("/{*tail}", hyper::Method::GET, admin_spa_handler)
+			.register_function("/", hyper::Method::GET, "__admin_spa", admin_spa_handler)
+			.register_function("/{*tail}", hyper::Method::GET, "__admin_spa_catchall", admin_spa_handler)
 	};
 
 	router

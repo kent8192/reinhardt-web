@@ -17,7 +17,7 @@ async fn test_content_negotiation_json() {
 	let mut router = Router::new();
 
 	// Register handler that responds based on Accept header
-	router = router.function("/api/data", Method::GET, |req: Request| async move {
+	router = router.register_function("/api/data", Method::GET, "content_negotiation_json", |req: Request| async move {
 		let accept = req
 			.headers
 			.get("accept")
@@ -71,7 +71,7 @@ async fn test_content_negotiation_json() {
 async fn test_content_negotiation_wildcard() {
 	let mut router = Router::new();
 
-	router = router.function("/api/resource", Method::GET, |req: Request| async move {
+	router = router.register_function("/api/resource", Method::GET, "content_negotiation_wildcard", |req: Request| async move {
 		let accept = req
 			.headers
 			.get("accept")
@@ -109,7 +109,7 @@ async fn test_content_negotiation_wildcard() {
 async fn test_streaming_response() {
 	let mut router = Router::new();
 
-	router = router.function("/stream", Method::GET, |_req: Request| async move {
+	router = router.register_function("/stream", Method::GET, "streaming_response", |_req: Request| async move {
 		// Create streaming-like data (combined chunks)
 		let data = vec![
 			Bytes::from("chunk1"),
@@ -151,7 +151,7 @@ async fn test_streaming_response() {
 async fn test_large_streaming_response() {
 	let mut router = Router::new();
 
-	router = router.function("/large-stream", Method::GET, |_req: Request| async move {
+	router = router.register_function("/large-stream", Method::GET, "large_streaming_response", |_req: Request| async move {
 		// Generate 1000 chunks and combine them
 		let chunks: Vec<String> = (0..1000).map(|i| format!("chunk{:04}", i)).collect();
 
@@ -182,7 +182,7 @@ async fn test_large_streaming_response() {
 async fn test_request_response_post_roundtrip() {
 	let mut router = Router::new();
 
-	router = router.function("/echo", Method::POST, |req: Request| async move {
+	router = router.register_function("/echo", Method::POST, "echo_request_body", |req: Request| async move {
 		// Echo back request body with added metadata
 		let content_type = req
 			.headers
@@ -239,7 +239,7 @@ async fn test_request_response_post_roundtrip() {
 async fn test_request_response_error_handling() {
 	let mut router = Router::new();
 
-	router = router.function("/error", Method::GET, |_req: Request| async move {
+	router = router.register_function("/error", Method::GET, "error_handling", |_req: Request| async move {
 		// Return error response
 		let response = Response::internal_server_error()
 			.with_header("Content-Type", "application/json")
@@ -263,7 +263,7 @@ async fn test_request_response_error_handling() {
 async fn test_multiple_accept_headers() {
 	let mut router = Router::new();
 
-	router = router.function("/formats", Method::GET, |req: Request| async move {
+	router = router.register_function("/formats", Method::GET, "multiple_accept_formats", |req: Request| async move {
 		let accept = req
 			.headers
 			.get("accept")
@@ -320,7 +320,7 @@ async fn test_multiple_accept_headers() {
 async fn test_request_response_query_params() {
 	let mut router = Router::new();
 
-	router = router.function("/search", Method::GET, |req: Request| async move {
+	router = router.register_function("/search", Method::GET, "search_with_query_params", |req: Request| async move {
 		let query = req.query_params.get("q").map(|s| s.as_str()).unwrap_or("");
 		let limit = req
 			.query_params

@@ -35,7 +35,7 @@ async fn test_router_404_gets_xframe_header() {
 	// Arrange
 	let router = ServerRouter::new()
 		.with_middleware(XFrameOptionsMiddleware::new(XFrameOptions::Deny))
-		.route("/api/users/", Method::GET, ok_handler);
+		.register_function("/api/users/", Method::GET, "test_err_mw", ok_handler);
 
 	// Act
 	let request = create_test_request(Method::GET, "/nonexistent");
@@ -60,7 +60,7 @@ async fn test_router_405_gets_xframe_header() {
 	// Arrange
 	let router = ServerRouter::new()
 		.with_middleware(XFrameOptionsMiddleware::new(XFrameOptions::Deny))
-		.route("/api/users/", Method::GET, ok_handler);
+		.register_function("/api/users/", Method::GET, "test_err_mw", ok_handler);
 
 	// Act: POST to a GET-only route
 	let request = create_test_request(Method::POST, "/api/users/");

@@ -75,14 +75,16 @@ impl DeeplinkRouter {
 
 			// Register at both paths (some tools expect .json extension)
 			server = server
-				.handler_with_method(
+				.register_handler_route(
 					"/apple-app-site-association",
 					Method::GET,
+					"__deeplink_aasa",
 					aasa_handler.clone(),
 				)
-				.handler_with_method(
+				.register_handler_route(
 					"/apple-app-site-association.json",
 					Method::GET,
+					"__deeplink_aasa_json",
 					aasa_handler,
 				);
 		}
@@ -90,8 +92,12 @@ impl DeeplinkRouter {
 		// Register Android App Links endpoint
 		if let Some(android_config) = &config.android {
 			let assetlinks_handler = AssetLinksHandler::new(android_config.clone())?;
-			server =
-				server.handler_with_method("/assetlinks.json", Method::GET, assetlinks_handler);
+			server = server.register_handler_route(
+				"/assetlinks.json",
+				Method::GET,
+				"__deeplink_assetlinks",
+				assetlinks_handler,
+			);
 		}
 
 		Ok(Self { config, server })

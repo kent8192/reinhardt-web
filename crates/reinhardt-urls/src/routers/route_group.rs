@@ -14,27 +14,33 @@ pub type RouteInfo = Vec<(String, Option<String>, Option<String>, Vec<hyper::Met
 ///
 /// # Examples
 ///
-/// ```
+/// ```rust,no_run
 /// use reinhardt_urls::routers::RouteGroup;
 /// use reinhardt_urls::routers::ServerRouter;
 /// use reinhardt_middleware::LoggingMiddleware;
-/// use hyper::Method;
-/// # use reinhardt_http::{Request, Response, Result};
-///
-/// # async fn users_list(_req: Request) -> Result<Response> {
-/// #     Ok(Response::ok())
+/// # use reinhardt_core::endpoint::EndpointInfo;
+/// # use reinhardt_http::{Handler, Request, Response};
+/// # use hyper::Method;
+/// # struct ListUsers;
+/// # impl EndpointInfo for ListUsers {
+/// #     fn path() -> &'static str { "/users" }
+/// #     fn method() -> Method { Method::GET }
+/// #     fn name() -> &'static str { "list_users" }
 /// # }
-/// # async fn users_detail(_req: Request) -> Result<Response> {
-/// #     Ok(Response::ok())
+/// # #[async_trait::async_trait]
+/// # impl Handler for ListUsers {
+/// #     async fn handle(&self, _req: Request) -> Result<Response, reinhardt_http::Error> {
+/// #         Ok(Response::ok())
+/// #     }
 /// # }
+/// # fn list_users() -> ListUsers { ListUsers }
 ///
-/// let mut group = RouteGroup::new()
+/// let group = RouteGroup::new()
 ///     .with_prefix("/api/v1")
 ///     .with_middleware(LoggingMiddleware::new());
 ///
 /// let router = group
-///     .function("/users", Method::GET, users_list)
-///     .function("/users/{id}", Method::GET, users_detail)
+///     .endpoint(list_users)
 ///     .build();
 ///
 /// // Verify router configuration
@@ -110,158 +116,47 @@ impl RouteGroup {
 		self
 	}
 
-	/// Add a function-based route
+	/// Add an endpoint (a function decorated with `#[get]`, `#[post]`, etc.)
 	///
-	/// # Examples
+	/// This is the primary way to register routes in a `RouteGroup`. The endpoint
+	/// carries its path, HTTP method, and name via the [`EndpointInfo`] trait,
+	/// which is automatically implemented by the route attribute macros.
 	///
-	/// ```
-	/// use reinhardt_urls::routers::RouteGroup;
-	/// use hyper::Method;
-	/// # use reinhardt_http::{Request, Response, Result};
-	///
-	/// # async fn health(_req: Request) -> Result<Response> {
-	/// #     Ok(Response::ok())
-	/// # }
-	/// let group = RouteGroup::new()
-	///     .function("/health", Method::GET, health);
-	///
-	/// // Router is built successfully
-	/// let router = group.build();
-	/// assert!(!router.get_all_routes().is_empty());
-	/// ```
-	pub fn function<F, Fut>(mut self, path: &str, method: hyper::Method, func: F) -> Self
-	where
-		F: Fn(reinhardt_http::Request) -> Fut + Send + Sync + 'static,
-		Fut: std::future::Future<
-				Output = reinhardt_core::exception::Result<reinhardt_http::Response>,
-			> + Send
-			+ 'static,
-	{
-		self.router = self.router.function(path, method, func);
-		self
-	}
-
-	/// Add a route with a Handler trait implementation and HTTP method
+	/// [`EndpointInfo`]: reinhardt_core::endpoint::EndpointInfo
 	///
 	/// # Examples
 	///
 	/// ```rust,no_run
 	/// use reinhardt_urls::routers::RouteGroup;
-	/// use hyper::Method;
-	/// use reinhardt_http::{Request, Response, Result};
-	/// use reinhardt_http::Handler;
-	/// use async_trait::async_trait;
-	///
-	/// #[derive(Clone)]
-	/// struct ArticleHandler;
-	///
-	/// #[async_trait]
-	/// impl Handler for ArticleHandler {
-	///     async fn handle(&self, _request: Request) -> Result<Response> {
-	///         Ok(Response::ok())
-	///     }
-	/// }
-	///
-	/// let group = RouteGroup::new()
-	///     .handler_with_method("/articles", Method::GET, ArticleHandler);
-	/// ```
-	pub fn handler_with_method<H: reinhardt_http::Handler + 'static>(
-		mut self,
-		path: &str,
-		method: hyper::Method,
-		handler: H,
-	) -> Self {
-		self.router = self.router.handler_with_method(path, method, handler);
-		self
-	}
-
-	/// Add a named function-based route
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_urls::routers::RouteGroup;
-	/// use hyper::Method;
-	/// # use reinhardt_http::{Request, Response, Result};
-	///
-	/// # async fn health(_req: Request) -> Result<Response> {
-	/// #     Ok(Response::ok())
+	/// # use reinhardt_core::endpoint::EndpointInfo;
+	/// # use reinhardt_http::{Handler, Request, Response};
+	/// # use hyper::Method;
+	/// # struct ListUsers;
+	/// # impl EndpointInfo for ListUsers {
+	/// #     fn path() -> &'static str { "/users" }
+	/// #     fn method() -> Method { Method::GET }
+	/// #     fn name() -> &'static str { "list_users" }
 	/// # }
-	/// let group = RouteGroup::new()
-	///     .function_named("/health", Method::GET, "health", health);
+	/// # #[async_trait::async_trait]
+	/// # impl Handler for ListUsers {
+	/// #     async fn handle(&self, _req: Request) -> Result<Response, reinhardt_http::Error> {
+	/// #         Ok(Response::ok())
+	/// #     }
+	/// # }
+	/// # fn list_users() -> ListUsers { ListUsers }
 	///
-	/// // Router is built successfully with named route
+	/// let group = RouteGroup::new()
+	///     .endpoint(list_users);
+	///
 	/// let router = group.build();
-	/// let routes = router.get_all_routes();
-	/// assert!(!routes.is_empty());
-	/// assert!(routes.len() >= 1);
+	/// assert!(!router.get_all_routes().is_empty());
 	/// ```
-	#[deprecated(
-		since = "0.2.0",
-		note = "Use `#[get(\"/path\", name = \"name\")]` + `.endpoint()` instead"
-	)]
-	pub fn function_named<F, Fut>(
-		mut self,
-		path: &str,
-		method: hyper::Method,
-		name: &str,
-		func: F,
-	) -> Self
+	pub fn endpoint<F, E>(mut self, f: F) -> Self
 	where
-		F: Fn(reinhardt_http::Request) -> Fut + Send + Sync + 'static,
-		Fut: std::future::Future<
-				Output = reinhardt_core::exception::Result<reinhardt_http::Response>,
-			> + Send
-			+ 'static,
+		F: FnOnce() -> E,
+		E: reinhardt_core::endpoint::EndpointInfo + reinhardt_http::Handler + 'static,
 	{
-		#[allow(deprecated)]
-		{
-			self.router = self.router.function_named(path, method, name, func);
-		}
-		self
-	}
-
-	/// Add a named route with a Handler trait implementation and HTTP method
-	///
-	/// # Examples
-	///
-	/// ```rust
-	/// use reinhardt_urls::routers::RouteGroup;
-	/// use hyper::Method;
-	/// use reinhardt_http::{Request, Response, Result};
-	/// use reinhardt_http::Handler;
-	/// use async_trait::async_trait;
-	///
-	/// #[derive(Clone)]
-	/// struct ArticleHandler;
-	///
-	/// #[async_trait]
-	/// impl Handler for ArticleHandler {
-	///     async fn handle(&self, _request: Request) -> Result<Response> {
-	///         Ok(Response::ok())
-	///     }
-	/// }
-	///
-	/// let group = RouteGroup::new()
-	///     .handler_with_method_named("/articles", Method::GET, "list_articles", ArticleHandler);
-	/// ```
-	#[deprecated(
-		since = "0.2.0",
-		note = "Use `#[get(\"/path\", name = \"name\")]` + `.endpoint()` instead"
-	)]
-	pub fn handler_with_method_named<H: reinhardt_http::Handler + 'static>(
-		mut self,
-		path: &str,
-		method: hyper::Method,
-		name: &str,
-		handler: H,
-	) -> Self {
-		#[allow(deprecated)]
-		{
-			self.router = self
-				.router
-				.handler_with_method_named(path, method, name, handler);
-		}
+		self.router = self.router.endpoint(f);
 		self
 	}
 
@@ -356,42 +251,6 @@ impl RouteGroup {
 		self
 	}
 
-	/// Add a named class-based view
-	///
-	/// # Examples
-	///
-	/// ```rust
-	/// use reinhardt_urls::routers::RouteGroup;
-	/// # use reinhardt_http::{Handler, {Request, Response, Result}};
-	/// # use async_trait::async_trait;
-	/// # struct ArticleListView;
-	/// # #[async_trait]
-	/// # impl Handler for ArticleListView {
-	/// #     async fn handle(&self, _req: Request) -> Result<Response> {
-	/// #         Ok(Response::ok())
-	/// #     }
-	/// # }
-	///
-	/// let group = RouteGroup::new()
-	///     .view_named("/articles", "list", ArticleListView);
-	///
-	/// // RouteGroup created successfully
-	/// ```
-	#[deprecated(
-		since = "0.2.0",
-		note = "Use `#[get(\"/path\", name = \"name\")]` + `.endpoint()` instead"
-	)]
-	pub fn view_named<V>(mut self, path: &str, name: &str, view: V) -> Self
-	where
-		V: reinhardt_http::Handler + 'static,
-	{
-		#[allow(deprecated)]
-		{
-			self.router = self.router.view_named(path, name, view);
-		}
-		self
-	}
-
 	/// Add a child group (nested group)
 	///
 	/// # Examples
@@ -472,17 +331,28 @@ impl RouteGroup {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```rust,no_run
 	/// use reinhardt_urls::routers::RouteGroup;
-	/// use hyper::Method;
-	/// # use reinhardt_http::{Request, Response, Result};
-	///
-	/// # async fn health(_req: Request) -> Result<Response> {
-	/// #     Ok(Response::ok())
+	/// # use reinhardt_core::endpoint::EndpointInfo;
+	/// # use reinhardt_http::{Handler, Request, Response};
+	/// # use hyper::Method;
+	/// # struct Health;
+	/// # impl EndpointInfo for Health {
+	/// #     fn path() -> &'static str { "/health" }
+	/// #     fn method() -> Method { Method::GET }
+	/// #     fn name() -> &'static str { "health" }
 	/// # }
+	/// # #[async_trait::async_trait]
+	/// # impl Handler for Health {
+	/// #     async fn handle(&self, _req: Request) -> Result<Response, reinhardt_http::Error> {
+	/// #         Ok(Response::ok())
+	/// #     }
+	/// # }
+	/// # fn health() -> Health { Health }
+	///
 	/// let group = RouteGroup::new()
 	///     .with_prefix("/api")
-	///     .function("/health", Method::GET, health);
+	///     .endpoint(health);
 	///
 	/// let routes = group.get_all_routes();
 	/// assert!(!routes.is_empty());
@@ -515,12 +385,18 @@ impl Default for RouteGroup {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use hyper::Method;
-	use reinhardt_http::{Request, Response, Result};
+	use async_trait::async_trait;
+	use reinhardt_http::{Handler, Request, Response, Result};
 	use reinhardt_middleware::LoggingMiddleware;
 
-	async fn test_handler(_req: Request) -> Result<Response> {
-		Ok(Response::ok())
+	#[derive(Clone)]
+	struct TestView;
+
+	#[async_trait]
+	impl Handler for TestView {
+		async fn handle(&self, _req: Request) -> Result<Response> {
+			Ok(Response::ok())
+		}
 	}
 
 	#[test]
@@ -552,8 +428,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_route_group_function() {
-		let group = RouteGroup::new().function("/health", Method::GET, test_handler);
+	fn test_route_group_view() {
+		let group = RouteGroup::new().view("/health", TestView);
 		let _router = group.build();
 		// Routes are correctly added, verified in integration tests
 	}
@@ -563,7 +439,7 @@ mod tests {
 		let auth_group =
 			RouteGroup::new()
 				.with_prefix("/auth/")
-				.function("/login", Method::POST, test_handler);
+				.view("/login", TestView);
 
 		let group = RouteGroup::new().with_prefix("/api/").nest(auth_group);
 
@@ -576,7 +452,7 @@ mod tests {
 		let group = RouteGroup::new()
 			.with_middleware(LoggingMiddleware::new())
 			.with_middleware(LoggingMiddleware::new())
-			.function("/test", Method::GET, test_handler);
+			.view("/test", TestView);
 
 		let _router = group.build();
 		// Verify that multiple middleware are correctly added in integration tests

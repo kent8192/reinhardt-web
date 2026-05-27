@@ -20,13 +20,12 @@
 //! ```rust,ignore
 //! use reinhardt_urls::routers::UnifiedRouter;
 //! use reinhardt_core::page::Page;
-//! use hyper::Method;
 //!
 //! let router = UnifiedRouter::new()
 //!     .server(|s| s
 //!         .with_prefix("/api/v1")
-//!         .function("/users", Method::GET, list_users)
-//!         .function("/users", Method::POST, create_user))
+//!         .endpoint(list_users)
+//!         .endpoint(create_user))
 //!     .client(|c| c
 //!         .route("home", "/", || home_page())
 //!         .route_path("user_detail", "/users/{id}", |Path(id): Path<i64>| user_page(id)));
@@ -46,17 +45,9 @@ use crate::routers::server_router::ServerRouter;
 use crate::routers::client_router::ClientRouter;
 
 #[cfg(native)]
-use hyper::Method;
-#[cfg(native)]
-use reinhardt_core::exception::Result;
-#[cfg(native)]
 use reinhardt_di::InjectionContext;
 #[cfg(native)]
-use reinhardt_http::{Request, Response};
-#[cfg(native)]
 use reinhardt_middleware::Middleware;
-#[cfg(native)]
-use std::future::Future;
 #[cfg(native)]
 use std::sync::Arc;
 
@@ -77,7 +68,7 @@ use std::sync::Arc;
 /// use reinhardt_core::page::Page;
 ///
 /// let router = UnifiedRouter::new()
-///     .server(|s| s.function("/api/health", Method::GET, health_handler))
+///     .server(|s| s.endpoint(health_handler))
 ///     .client(|c| c.route("home", "/", || home_page()));
 /// ```
 ///
@@ -117,7 +108,7 @@ impl UnifiedRouter {
 	/// let router = UnifiedRouter::new()
 	///     .server(|s| s
 	///         .with_prefix("/api")
-	///         .function("/users", Method::GET, list_users));
+	///         .endpoint(list_users));
 	/// ```
 	pub fn server<F>(mut self, f: F) -> Self
 	where
@@ -253,7 +244,7 @@ impl UnifiedRouter {
 	///
 	/// ```rust,ignore
 	/// let client = UnifiedRouter::new()
-	///     .server(|s| s.function("/api/data", Method::GET, handler))
+	///     .server(|s| s.endpoint(data_handler))
 	///     .client(|c| c.route("home", "/", || home_page()))
 	///     .register_globally();
 	///
@@ -381,37 +372,6 @@ impl UnifiedRouter {
 		self.server = self.server.endpoint(f);
 		self
 	}
-
-	/// Register a function-based route on server router.
-	///
-	/// This is a convenience method that delegates to [`ServerRouter::function`].
-	pub fn function<F, Fut>(mut self, path: &str, method: Method, func: F) -> Self
-	where
-		F: Fn(Request) -> Fut + Send + Sync + 'static,
-		Fut: Future<Output = Result<Response>> + Send + 'static,
-	{
-		self.server = self.server.function(path, method, func);
-		self
-	}
-
-	/// Register a named function-based route on server router.
-	///
-	/// This is a convenience method that delegates to [`ServerRouter::function_named`].
-	#[deprecated(
-		since = "0.2.0",
-		note = "Use `#[get(\"/path\", name = \"name\")]` + `.endpoint()` instead"
-	)]
-	pub fn function_named<F, Fut>(mut self, path: &str, method: Method, name: &str, func: F) -> Self
-	where
-		F: Fn(Request) -> Fut + Send + Sync + 'static,
-		Fut: Future<Output = Result<Response>> + Send + 'static,
-	{
-		#[allow(deprecated)]
-		{
-			self.server = self.server.function_named(path, method, name, func);
-		}
-		self
-	}
 }
 
 #[cfg(all(feature = "client-router", native))]
@@ -453,7 +413,7 @@ impl Default for UnifiedRouter {
 /// use reinhardt_urls::routers::UnifiedRouter;
 ///
 /// let router = UnifiedRouter::new()
-///     .server(|s| s.function("/api/health", Method::GET, health_handler));
+///     .server(|s| s.endpoint(health_handler));
 /// ```
 #[cfg(not(feature = "client-router"))]
 pub struct UnifiedRouter {
@@ -609,33 +569,6 @@ impl UnifiedRouter {
 		self.server = self.server.endpoint(f);
 		self
 	}
-
-	/// Register a function-based route on server router.
-	pub fn function<F, Fut>(mut self, path: &str, method: Method, func: F) -> Self
-	where
-		F: Fn(Request) -> Fut + Send + Sync + 'static,
-		Fut: Future<Output = Result<Response>> + Send + 'static,
-	{
-		self.server = self.server.function(path, method, func);
-		self
-	}
-
-	/// Register a named function-based route on server router.
-	#[deprecated(
-		since = "0.2.0",
-		note = "Use `#[get(\"/path\", name = \"name\")]` + `.endpoint()` instead"
-	)]
-	pub fn function_named<F, Fut>(mut self, path: &str, method: Method, name: &str, func: F) -> Self
-	where
-		F: Fn(Request) -> Fut + Send + Sync + 'static,
-		Fut: Future<Output = Result<Response>> + Send + 'static,
-	{
-		#[allow(deprecated)]
-		{
-			self.server = self.server.function_named(path, method, name, func);
-		}
-		self
-	}
 }
 
 #[cfg(not(feature = "client-router"))]
@@ -738,23 +671,25 @@ impl ServerRouterStub {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::function`.
-	pub fn function<M, F>(self, _path: &str, _method: M, _func: F) -> Self {
+	/// No-op stub for `ServerRouter::register_function`.
+	pub fn register_function<M, F>(
+		self,
+		_path: &str,
+		_method: M,
+		_name: &str,
+		_func: F,
+	) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::function_named`.
-	pub fn function_named<M, F>(self, _path: &str, _method: M, _name: &str, _func: F) -> Self {
-		self
-	}
-
-	/// No-op stub for `ServerRouter::route`.
-	pub fn route<M, F>(self, _path: &str, _method: M, _func: F) -> Self {
-		self
-	}
-
-	/// No-op stub for `ServerRouter::route_named`.
-	pub fn route_named<M, F>(self, _path: &str, _method: M, _name: &str, _func: F) -> Self {
+	/// No-op stub for `ServerRouter::register_handler_route`.
+	pub fn register_handler_route<M, H>(
+		self,
+		_path: &str,
+		_method: M,
+		_name: &str,
+		_handler: H,
+	) -> Self {
 		self
 	}
 
@@ -768,29 +703,8 @@ impl ServerRouterStub {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::handler_with_method`.
-	pub fn handler_with_method<M, H>(self, _path: &str, _method: M, _handler: H) -> Self {
-		self
-	}
-
-	/// No-op stub for `ServerRouter::handler_with_method_named`.
-	pub fn handler_with_method_named<M, H>(
-		self,
-		_path: &str,
-		_method: M,
-		_name: &str,
-		_handler: H,
-	) -> Self {
-		self
-	}
-
 	/// No-op stub for `ServerRouter::view`.
 	pub fn view<V>(self, _path: &str, _view: V) -> Self {
-		self
-	}
-
-	/// No-op stub for `ServerRouter::view_named`.
-	pub fn view_named<V>(self, _path: &str, _name: &str, _view: V) -> Self {
 		self
 	}
 
@@ -849,16 +763,11 @@ const _: fn() = || {
 				.exclude("/internal")
 				.mount("/v1/", ServerRouterStub::new())
 				.group(Vec::<ServerRouterStub>::new())
-				.function("/f", (), || ())
-				.function_named("/f", (), "f", || ())
-				.route("/r", (), || ())
-				.route_named("/r", (), "r", || ())
+				.register_function("/f", (), "f", || ())
+				.register_handler_route("/h", (), "h", ())
 				.handler("/h", ())
 				.handler_arc("/h", ())
-				.handler_with_method("/h", (), ())
-				.handler_with_method_named("/h", (), "h", ())
 				.view("/v", ())
-				.view_named("/v", "v", ())
 				.viewset("/vs/", ())
 				.endpoint(|| ())
 				.server_fn(())
@@ -1244,12 +1153,8 @@ mod tests {
 		fn into_server_registers_routes_for_reverse() {
 			// Arrange
 			let router = UnifiedRouter::new().server(|s| {
-				s.with_namespace("api").function_named(
-					"/health",
-					Method::GET,
-					"health",
-					dummy_handler,
-				)
+				s.with_namespace("api")
+					.register_function("/health", Method::GET, "health", dummy_handler)
 			});
 
 			// Act
@@ -1265,12 +1170,8 @@ mod tests {
 		fn into_parts_registers_routes_for_reverse() {
 			// Arrange
 			let router = UnifiedRouter::new().server(|s| {
-				s.with_namespace("api").function_named(
-					"/health",
-					Method::GET,
-					"health",
-					dummy_handler,
-				)
+				s.with_namespace("api")
+					.register_function("/health", Method::GET, "health", dummy_handler)
 			});
 
 			// Act

@@ -235,11 +235,11 @@ async fn test_restful_api_full_workflow() {
 
 	// Register routes with Handler trait implementation
 	let router = Router::new()
-		.handler_with_method("/articles", Method::POST, CreateArticleHandler)
-		.handler_with_method("/articles", Method::GET, ListArticlesHandler)
-		.handler_with_method("/articles/{id}", Method::GET, GetArticleHandler)
-		.handler_with_method("/articles/{id}", Method::PUT, UpdateArticleHandler)
-		.handler_with_method("/articles/{id}", Method::DELETE, DeleteArticleHandler);
+		.register_handler_route("/articles", Method::POST, "create_article", CreateArticleHandler)
+		.register_handler_route("/articles", Method::GET, "list_articles", ListArticlesHandler)
+		.register_handler_route("/articles/{id}", Method::GET, "get_article", GetArticleHandler)
+		.register_handler_route("/articles/{id}", Method::PUT, "update_article", UpdateArticleHandler)
+		.register_handler_route("/articles/{id}", Method::DELETE, "delete_article", DeleteArticleHandler);
 
 	let server = test_server_guard(router).await;
 	let client = APIClient::with_base_url(&server.url);
@@ -429,8 +429,8 @@ async fn test_file_upload_download() {
 
 	// Register routes with Handler trait implementation
 	let router = Router::new()
-		.handler_with_method("/upload", Method::POST, UploadFileHandler)
-		.handler_with_method("/download/{filename}", Method::GET, DownloadFileHandler);
+		.register_handler_route("/upload", Method::POST, "upload_file", UploadFileHandler)
+		.register_handler_route("/download/{filename}", Method::GET, "download_file", DownloadFileHandler);
 
 	let server = test_server_guard(router).await;
 	let client = APIClient::with_base_url(&server.url);
@@ -1057,9 +1057,9 @@ async fn test_session_management() {
 
 	// Register routes with Handler trait implementation
 	let router = Router::new()
-		.handler_with_method("/login", Method::POST, LoginHandler)
-		.handler_with_method("/protected", Method::GET, ProtectedHandler)
-		.handler_with_method("/logout", Method::POST, LogoutHandler);
+		.register_handler_route("/login", Method::POST, "login", LoginHandler)
+		.register_handler_route("/protected", Method::GET, "protected_resource", ProtectedHandler)
+		.register_handler_route("/logout", Method::POST, "logout", LogoutHandler);
 
 	let server = test_server_guard(router).await;
 

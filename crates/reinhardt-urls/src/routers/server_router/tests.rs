@@ -164,7 +164,7 @@ fn test_register_all_routes_with_namespace() {
 	}
 
 	// Arrange
-	let mut router = ServerRouter::new().with_namespace("api").function_named(
+	let mut router = ServerRouter::new().with_namespace("api").register_function(
 		"/health",
 		Method::GET,
 		"health",
@@ -190,12 +190,9 @@ fn test_nested_namespace_registration() {
 	}
 
 	// Arrange
-	let users = ServerRouter::new().with_namespace("users").function_named(
-		"/list",
-		Method::GET,
-		"list",
-		dummy_handler,
-	);
+	let users = ServerRouter::new()
+		.with_namespace("users")
+		.register_function("/list", Method::GET, "list", dummy_handler);
 
 	let mut api = ServerRouter::new()
 		.with_namespace("v1")
@@ -274,9 +271,10 @@ async fn test_route_matching_performance_many_routes() {
 	// Arrange
 	let mut router = ServerRouter::new();
 	for i in 0..1000 {
-		router = router.function(
+		router = router.register_function(
 			&format!("/api/resource{}/action", i),
 			Method::GET,
+			"perf-resource-action",
 			dummy_handler,
 		);
 	}
@@ -308,11 +306,17 @@ async fn test_route_matching_correctness() {
 
 	// Arrange
 	let router = ServerRouter::new()
-		.function("/users/{id}", Method::GET, dummy_handler)
-		.function("/users/{id}/posts", Method::GET, dummy_handler)
-		.function(
+		.register_function("/users/{id}", Method::GET, "user-detail", dummy_handler)
+		.register_function(
+			"/users/{id}/posts",
+			Method::GET,
+			"user-posts",
+			dummy_handler,
+		)
+		.register_function(
 			"/posts/{post_id}/comments/{comment_id}",
 			Method::GET,
+			"post-comments",
 			dummy_handler,
 		);
 	router.compile_routes();
@@ -360,9 +364,10 @@ async fn test_route_matching_preserves_url_pattern_order_issue_4013() {
 
 	// Arrange: alphabetical order would put `cluster_id` before `org`,
 	// but URL declaration order is `org` first, `cluster_id` second.
-	let router = ServerRouter::new().function(
+	let router = ServerRouter::new().register_function(
 		"/orgs/{org}/clusters/{cluster_id}/",
 		Method::GET,
+		"org-cluster-detail",
 		dummy_handler,
 	);
 	router.compile_routes();
@@ -397,8 +402,8 @@ async fn test_route_matching_different_methods() {
 
 	// Arrange
 	let router = ServerRouter::new()
-		.function("/users", Method::GET, get_handler)
-		.function("/users", Method::POST, post_handler);
+		.register_function("/users", Method::GET, "users-get", get_handler)
+		.register_function("/users", Method::POST, "users-post", post_handler);
 	router.compile_routes();
 
 	// Act & Assert - GET method
@@ -424,8 +429,18 @@ fn test_validate_routes_success() {
 
 	// Arrange
 	let router = ServerRouter::new()
-		.function("/users/{id}", Method::GET, dummy_handler)
-		.function("/posts", Method::POST, dummy_handler);
+		.register_function(
+			"/users/{id}",
+			Method::GET,
+			"validate-user-detail",
+			dummy_handler,
+		)
+		.register_function(
+			"/posts",
+			Method::POST,
+			"validate-create-post",
+			dummy_handler,
+		);
 
 	// Act
 	let result = router.validate_routes();
@@ -447,8 +462,8 @@ fn test_compile_routes_returns_errors_for_duplicate_routes() {
 
 	// Arrange - register duplicate paths for the same method
 	let router = ServerRouter::new()
-		.function("/users", Method::GET, handler_a)
-		.function("/users", Method::GET, handler_b);
+		.register_function("/users", Method::GET, "dupe-users-a", handler_a)
+		.register_function("/users", Method::GET, "dupe-users-b", handler_b);
 
 	// Act
 	let errors = router.compile_routes();
@@ -471,8 +486,8 @@ fn test_validate_routes_returns_errors_for_invalid_patterns() {
 
 	// Arrange - duplicate routes cause matchit compilation errors
 	let router = ServerRouter::new()
-		.function("/items", Method::GET, handler_a)
-		.function("/items", Method::GET, handler_b);
+		.register_function("/items", Method::GET, "invalid-items-a", handler_a)
+		.register_function("/items", Method::GET, "invalid-items-b", handler_b);
 
 	// Act
 	let result = router.validate_routes();
@@ -492,7 +507,12 @@ fn test_router_recovers_from_poisoned_rwlock() {
 	}
 
 	// Arrange
-	let router = ServerRouter::new().function("/health", Method::GET, dummy_handler);
+	let router = ServerRouter::new().register_function(
+		"/health",
+		Method::GET,
+		"poison-health",
+		dummy_handler,
+	);
 
 	// Poison the routes_compiled RwLock by panicking while holding write guard
 	let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -518,7 +538,12 @@ fn test_route_matching_recovers_from_poisoned_method_router() {
 	}
 
 	// Arrange
-	let router = ServerRouter::new().function("/health", Method::GET, dummy_handler);
+	let router = ServerRouter::new().register_function(
+		"/health",
+		Method::GET,
+		"poison-method-health",
+		dummy_handler,
+	);
 	router.compile_routes();
 
 	// Poison the get_router RwLock
@@ -654,7 +679,12 @@ async fn test_404_response_gets_middleware_headers() {
 	// Arrange: router with middleware and a registered route
 	let router = ServerRouter::new()
 		.with_middleware(SecurityHeaderTestMiddleware)
-		.route("/api/users/", Method::GET, dummy_handler);
+		.register_function(
+			"/api/users/",
+			Method::GET,
+			"middleware-404-users",
+			dummy_handler,
+		);
 
 	// Act: request a non-existent path
 	let request = create_test_request("/nonexistent");
@@ -678,7 +708,12 @@ async fn test_405_response_gets_middleware_headers() {
 	// Arrange: router with middleware and a GET-only route
 	let router = ServerRouter::new()
 		.with_middleware(SecurityHeaderTestMiddleware)
-		.route("/api/users/", Method::GET, dummy_handler);
+		.register_function(
+			"/api/users/",
+			Method::GET,
+			"middleware-405-users",
+			dummy_handler,
+		);
 
 	// Act: send POST to a GET-only route
 	let request = reinhardt_http::Request::builder()
@@ -707,7 +742,12 @@ async fn test_405_response_gets_middleware_headers() {
 #[tokio::test]
 async fn test_404_without_middleware_returns_error() {
 	// Arrange: router with no middleware
-	let router = ServerRouter::new().route("/api/users/", Method::GET, dummy_handler);
+	let router = ServerRouter::new().register_function(
+		"/api/users/",
+		Method::GET,
+		"no-middleware-users",
+		dummy_handler,
+	);
 
 	// Act: request a non-existent path
 	let request = create_test_request("/nonexistent");
@@ -724,7 +764,12 @@ async fn test_404_respects_middleware_exclusions() {
 	let router = ServerRouter::new()
 		.with_middleware(SecurityHeaderTestMiddleware)
 		.exclude("/admin/")
-		.route("/api/users/", Method::GET, dummy_handler);
+		.register_function(
+			"/api/users/",
+			Method::GET,
+			"middleware-excluded-users",
+			dummy_handler,
+		);
 
 	// Act: request non-existent path under excluded prefix
 	let request = create_test_request("/admin/nonexistent");
@@ -745,9 +790,10 @@ async fn test_404_respects_middleware_exclusions() {
 async fn test_function_route_with_prefix_strips_prefix_during_compilation() {
 	// Arrange: register a route whose path already contains the prefix,
 	// simulating server function registration (e.g., ServerFnRegistration::PATH)
-	let router = ServerRouter::new().with_prefix("/api").function(
+	let router = ServerRouter::new().with_prefix("/api").register_function(
 		"/api/server_fn/test",
 		Method::POST,
+		"server-fn-prefix",
 		dummy_handler,
 	);
 
@@ -765,10 +811,12 @@ async fn test_function_route_with_prefix_strips_prefix_during_compilation() {
 #[tokio::test]
 async fn test_function_route_post_with_prefix_no_405() {
 	// Arrange: register a POST route with a path that includes the prefix
-	let router =
-		ServerRouter::new()
-			.with_prefix("/api")
-			.function("/api/users", Method::POST, dummy_handler);
+	let router = ServerRouter::new().with_prefix("/api").register_function(
+		"/api/users",
+		Method::POST,
+		"api-users-post",
+		dummy_handler,
+	);
 
 	// Act: resolve POST request (verifies no 405 Method Not Allowed)
 	let result = router.resolve("/api/users", &Method::POST);
@@ -791,10 +839,12 @@ async fn test_function_route_post_with_prefix_no_405() {
 #[tokio::test]
 async fn test_function_route_without_prefix_overlap_still_works() {
 	// Arrange: route path does not start with the prefix
-	let router =
-		ServerRouter::new()
-			.with_prefix("/api")
-			.function("/health", Method::GET, dummy_handler);
+	let router = ServerRouter::new().with_prefix("/api").register_function(
+		"/health",
+		Method::GET,
+		"prefix-overlap-health",
+		dummy_handler,
+	);
 
 	// Act: resolve a path under the prefix
 	let result = router.resolve("/api/health", &Method::GET);
@@ -904,9 +954,10 @@ fn test_strip_prefix_normalized_result_always_starts_with_slash() {
 #[tokio::test]
 async fn test_resolve_trailing_slash_prefix_child_router_matches() {
 	// Arrange: parent with trailing-slash prefix, child with its own prefix
-	let child = ServerRouter::new().with_prefix("/auth/").function(
+	let child = ServerRouter::new().with_prefix("/auth/").register_function(
 		"/auth/register/",
 		Method::POST,
+		"auth-register",
 		dummy_handler,
 	);
 	let parent = ServerRouter::new()
@@ -929,9 +980,10 @@ async fn test_resolve_no_trailing_slash_with_prefix_child_router_matches() {
 	// Arrange: parent with_prefix (no trailing slash) + child mounted with trailing slash
 	// Note: mount() requires trailing-slash prefix (Django convention),
 	// but with_prefix() allows non-trailing-slash prefix
-	let child = ServerRouter::new().with_prefix("/auth/").function(
+	let child = ServerRouter::new().with_prefix("/auth/").register_function(
 		"/auth/login/",
 		Method::POST,
+		"auth-login",
 		dummy_handler,
 	);
 	let parent = ServerRouter::new()
@@ -952,15 +1004,15 @@ async fn test_resolve_no_trailing_slash_with_prefix_child_router_matches() {
 #[tokio::test]
 async fn test_resolve_multiple_children_with_trailing_slash_prefix() {
 	// Arrange: parent with trailing-slash prefix, multiple children
-	let auth = ServerRouter::new().with_prefix("/auth/").function(
+	let auth = ServerRouter::new().with_prefix("/auth/").register_function(
 		"/auth/login/",
 		Method::POST,
+		"multi-auth-login",
 		dummy_handler,
 	);
-	let users =
-		ServerRouter::new()
-			.with_prefix("/users/")
-			.function("/users/", Method::GET, dummy_handler);
+	let users = ServerRouter::new()
+		.with_prefix("/users/")
+		.register_function("/users/", Method::GET, "multi-users-index", dummy_handler);
 	let parent = ServerRouter::new()
 		.with_prefix("/api/")
 		.mount("/auth/", auth)
@@ -981,11 +1033,9 @@ async fn test_resolve_multiple_children_with_trailing_slash_prefix() {
 #[tokio::test]
 async fn test_resolve_child_root_route_with_trailing_slash_prefix() {
 	// Arrange: child's own root route (prefix stripped → "/")
-	let child = ServerRouter::new().with_prefix("/dashboard/").function(
-		"/dashboard/",
-		Method::GET,
-		dummy_handler,
-	);
+	let child = ServerRouter::new()
+		.with_prefix("/dashboard/")
+		.register_function("/dashboard/", Method::GET, "dashboard-index", dummy_handler);
 	let parent = ServerRouter::new()
 		.with_prefix("/app/")
 		.mount("/dashboard/", child);
@@ -1004,14 +1054,20 @@ async fn test_resolve_child_root_route_with_trailing_slash_prefix() {
 #[tokio::test]
 async fn test_resolve_parent_own_route_still_works_with_trailing_slash_prefix() {
 	// Arrange: parent has both own routes and children
-	let child = ServerRouter::new().with_prefix("/sub/").function(
+	let child = ServerRouter::new().with_prefix("/sub/").register_function(
 		"/sub/action/",
 		Method::POST,
+		"sub-action",
 		dummy_handler,
 	);
 	let parent = ServerRouter::new()
 		.with_prefix("/api/")
-		.function("/api/health", Method::GET, dummy_handler)
+		.register_function(
+			"/api/health",
+			Method::GET,
+			"parent-api-health",
+			dummy_handler,
+		)
 		.mount("/sub/", child);
 
 	// Act & Assert
@@ -1031,11 +1087,9 @@ async fn test_resolve_parent_own_route_still_works_with_trailing_slash_prefix() 
 #[tokio::test]
 async fn test_resolve_deeply_nested_trailing_slash_prefixes() {
 	// Arrange: 3 levels of trailing-slash prefixes
-	let grandchild = ServerRouter::new().with_prefix("/profile/").function(
-		"/profile/",
-		Method::GET,
-		dummy_handler,
-	);
+	let grandchild = ServerRouter::new()
+		.with_prefix("/profile/")
+		.register_function("/profile/", Method::GET, "profile-index", dummy_handler);
 	let child = ServerRouter::new()
 		.with_prefix("/users/")
 		.mount("/profile/", grandchild);
@@ -1057,10 +1111,9 @@ async fn test_resolve_deeply_nested_trailing_slash_prefixes() {
 #[tokio::test]
 async fn test_resolve_mixed_trailing_and_non_trailing_slash_nesting() {
 	// Arrange: with_prefix uses non-trailing slash, mount uses trailing slash
-	let grandchild =
-		ServerRouter::new()
-			.with_prefix("/detail")
-			.function("/detail/", Method::GET, dummy_handler);
+	let grandchild = ServerRouter::new()
+		.with_prefix("/detail")
+		.register_function("/detail/", Method::GET, "mixed-detail", dummy_handler);
 	let child = ServerRouter::new()
 		.with_prefix("/items/")
 		.mount("/detail/", grandchild);
@@ -1084,9 +1137,10 @@ async fn test_resolve_mixed_trailing_and_non_trailing_slash_nesting() {
 #[tokio::test]
 async fn test_resolve_path_not_matching_parent_prefix() {
 	// Arrange
-	let child = ServerRouter::new().with_prefix("/auth/").function(
+	let child = ServerRouter::new().with_prefix("/auth/").register_function(
 		"/auth/login/",
 		Method::POST,
+		"no-match-auth-login",
 		dummy_handler,
 	);
 	let parent = ServerRouter::new()
@@ -1107,9 +1161,10 @@ async fn test_resolve_path_not_matching_parent_prefix() {
 #[tokio::test]
 async fn test_resolve_path_matches_parent_but_not_child() {
 	// Arrange
-	let child = ServerRouter::new().with_prefix("/auth/").function(
+	let child = ServerRouter::new().with_prefix("/auth/").register_function(
 		"/auth/login/",
 		Method::POST,
+		"parent-no-child-auth-login",
 		dummy_handler,
 	);
 	let parent = ServerRouter::new()
@@ -1130,9 +1185,10 @@ async fn test_resolve_path_matches_parent_but_not_child() {
 #[tokio::test]
 async fn test_resolve_wrong_method_through_child_with_trailing_slash_prefix() {
 	// Arrange: child only has POST route
-	let child = ServerRouter::new().with_prefix("/auth/").function(
+	let child = ServerRouter::new().with_prefix("/auth/").register_function(
 		"/auth/login/",
 		Method::POST,
+		"wrong-method-auth-login",
 		dummy_handler,
 	);
 	let parent = ServerRouter::new()
@@ -1155,10 +1211,9 @@ async fn test_resolve_wrong_method_through_child_with_trailing_slash_prefix() {
 #[tokio::test]
 async fn test_path_exists_with_trailing_slash_prefix_and_child() {
 	// Arrange
-	let child =
-		ServerRouter::new()
-			.with_prefix("/users/")
-			.function("/users/", Method::GET, dummy_handler);
+	let child = ServerRouter::new()
+		.with_prefix("/users/")
+		.register_function("/users/", Method::GET, "path-exists-users", dummy_handler);
 	let parent = ServerRouter::new()
 		.with_prefix("/api/")
 		.mount("/users/", child);
@@ -1177,10 +1232,9 @@ async fn test_path_exists_with_trailing_slash_prefix_and_child() {
 #[tokio::test]
 async fn test_path_exists_nonexistent_path_with_trailing_slash_prefix() {
 	// Arrange
-	let child =
-		ServerRouter::new()
-			.with_prefix("/users/")
-			.function("/users/", Method::GET, dummy_handler);
+	let child = ServerRouter::new()
+		.with_prefix("/users/")
+		.register_function("/users/", Method::GET, "path-noexist-users", dummy_handler);
 	let parent = ServerRouter::new()
 		.with_prefix("/api/")
 		.mount("/users/", child);
@@ -1199,10 +1253,9 @@ async fn test_path_exists_nonexistent_path_with_trailing_slash_prefix() {
 #[tokio::test]
 async fn test_path_exists_wrong_prefix_returns_false() {
 	// Arrange
-	let child =
-		ServerRouter::new()
-			.with_prefix("/users/")
-			.function("/users/", Method::GET, dummy_handler);
+	let child = ServerRouter::new()
+		.with_prefix("/users/")
+		.register_function("/users/", Method::GET, "wrong-prefix-users", dummy_handler);
 	let parent = ServerRouter::new()
 		.with_prefix("/api/")
 		.mount("/users/", child);
@@ -1221,10 +1274,12 @@ async fn test_path_exists_wrong_prefix_returns_false() {
 #[tokio::test]
 async fn test_path_exists_deeply_nested_with_trailing_slash_prefix() {
 	// Arrange: 3-level nesting
-	let grandchild =
-		ServerRouter::new()
-			.with_prefix("/edit/")
-			.function("/edit/", Method::PUT, dummy_handler);
+	let grandchild = ServerRouter::new().with_prefix("/edit/").register_function(
+		"/edit/",
+		Method::PUT,
+		"edit-deep",
+		dummy_handler,
+	);
 	let child = ServerRouter::new()
 		.with_prefix("/items/")
 		.mount("/edit/", grandchild);
@@ -1248,9 +1303,10 @@ async fn test_path_exists_deeply_nested_with_trailing_slash_prefix() {
 #[tokio::test]
 async fn test_function_route_with_trailing_slash_prefix_compiles_correctly() {
 	// Arrange: route path includes prefix with trailing slash
-	let router = ServerRouter::new().with_prefix("/api/").function(
+	let router = ServerRouter::new().with_prefix("/api/").register_function(
 		"/api/server_fn/test",
 		Method::POST,
+		"trailing-slash-server-fn",
 		dummy_handler,
 	);
 
@@ -1268,7 +1324,12 @@ async fn test_function_route_with_trailing_slash_prefix_compiles_correctly() {
 #[should_panic(expected = "URL route prefix cannot be an empty string")]
 fn test_mount_with_empty_prefix_panics() {
 	// Arrange & Act: mounting with empty prefix should panic
-	let child = ServerRouter::new().function("/catch/", Method::GET, dummy_handler);
+	let child = ServerRouter::new().register_function(
+		"/catch/",
+		Method::GET,
+		"empty-prefix-catch",
+		dummy_handler,
+	);
 	let _parent = ServerRouter::new().with_prefix("/api/").mount("", child);
 }
 
@@ -1276,10 +1337,12 @@ fn test_mount_with_empty_prefix_panics() {
 #[tokio::test]
 async fn test_resolve_child_with_slash_prefix_under_trailing_slash_parent() {
 	// Arrange: child router with "/" prefix under parent with trailing-slash prefix
-	let child =
-		ServerRouter::new()
-			.with_prefix("/")
-			.function("/catch/", Method::GET, dummy_handler);
+	let child = ServerRouter::new().with_prefix("/").register_function(
+		"/catch/",
+		Method::GET,
+		"slash-prefix-catch",
+		dummy_handler,
+	);
 	let parent = ServerRouter::new().with_prefix("/api/").mount("/", child);
 
 	// Act
@@ -1308,8 +1371,8 @@ fn test_register_all_routes_detects_duplicate_names() {
 	// Arrange — two routes with the same name in the same router
 	let mut router = ServerRouter::new()
 		.with_namespace("api")
-		.function_named("/users", Method::GET, "list", handler_a)
-		.function_named("/items", Method::GET, "list", handler_b);
+		.register_function("/users", Method::GET, "list", handler_a)
+		.register_function("/items", Method::GET, "list", handler_b);
 
 	// Act
 	let errors = router.register_all_routes();
@@ -1331,8 +1394,8 @@ fn test_validate_route_names_succeeds_with_unique_names() {
 	// Arrange
 	let router = ServerRouter::new()
 		.with_namespace("api")
-		.function_named("/users", Method::GET, "users-list", handler_a)
-		.function_named("/items", Method::GET, "items-list", handler_b);
+		.register_function("/users", Method::GET, "users-list", handler_a)
+		.register_function("/items", Method::GET, "items-list", handler_b);
 
 	// Act
 	let result = router.validate_route_names();
@@ -1353,8 +1416,8 @@ fn test_validate_routes_includes_name_errors() {
 	// Arrange — duplicate name
 	let router = ServerRouter::new()
 		.with_namespace("api")
-		.function_named("/users", Method::GET, "list", handler_a)
-		.function_named("/items", Method::GET, "list", handler_b);
+		.register_function("/users", Method::GET, "list", handler_a)
+		.register_function("/items", Method::GET, "list", handler_b);
 
 	// Act
 	let result = router.validate_routes();

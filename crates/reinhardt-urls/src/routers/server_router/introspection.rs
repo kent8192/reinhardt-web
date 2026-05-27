@@ -279,17 +279,16 @@ impl ServerRouter {
 
 		// Collect function routes
 		for func_route in &self.functions {
-			if let Some(ref name) = func_route.name {
-				let qualified_name = if let Some(ref ns) = full_namespace {
-					format!("{}:{}", ns, name)
-				} else {
-					name.clone()
-				};
+			let name = &func_route.name;
+			let qualified_name = if let Some(ref ns) = full_namespace {
+				format!("{}:{}", ns, name)
+			} else {
+				name.clone()
+			};
 
-				let full_path =
-					crate::routers::path_utils::join_prefix_path(&current_prefix, &func_route.path);
-				registrations.push((qualified_name, full_path));
-			}
+			let full_path =
+				crate::routers::path_utils::join_prefix_path(&current_prefix, &func_route.path);
+			registrations.push((qualified_name, full_path));
 		}
 
 		// Collect view routes

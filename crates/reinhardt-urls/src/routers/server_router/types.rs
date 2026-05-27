@@ -136,7 +136,7 @@ pub(crate) struct FunctionRoute {
 	pub path: String,
 	pub method: Method,
 	pub handler: Arc<dyn Handler>,
-	pub name: Option<String>,
+	pub name: String,
 	/// Middleware stack for this route
 	pub middleware: Vec<Arc<dyn Middleware>>,
 }

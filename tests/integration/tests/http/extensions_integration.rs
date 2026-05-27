@@ -28,7 +28,7 @@ struct RequestMetadata {
 async fn test_extensions_request_response_sharing() {
 	let mut router = Router::new();
 
-	router = router.function("/user-info", Method::GET, |req: Request| async move {
+	router = router.register_function("/user-info", Method::GET, "test_extensions_request_response", |req: Request| async move {
 		// Simulate middleware inserting user ID into extensions
 		req.extensions.insert(UserId(12345));
 		req.extensions.insert(SessionToken("abc123".to_string()));
@@ -65,7 +65,7 @@ async fn test_extensions_request_response_sharing() {
 async fn test_extensions_type_safety() {
 	let mut router = Router::new();
 
-	router = router.function("/type-check", Method::POST, |req: Request| async move {
+	router = router.register_function("/type-check", Method::POST, "test_extensions_type_safety", |req: Request| async move {
 		// Insert different types
 		req.extensions.insert(42u32);
 		req.extensions.insert("test string".to_string());
@@ -118,7 +118,7 @@ async fn test_extensions_type_safety() {
 async fn test_extensions_lifecycle() {
 	let mut router = Router::new();
 
-	router = router.function("/lifecycle", Method::GET, |_req: Request| async move {
+	router = router.register_function("/lifecycle", Method::GET, "test_extensions_lifecycle", |_req: Request| async move {
 		let extensions = Extensions::new();
 
 		// Insert
@@ -189,7 +189,7 @@ async fn test_extensions_lifecycle() {
 async fn test_extensions_complex_types() {
 	let mut router = Router::new();
 
-	router = router.function("/complex", Method::POST, |req: Request| async move {
+	router = router.register_function("/complex", Method::POST, "test_extensions_complex_types", |req: Request| async move {
 		// Insert complex type
 		let metadata = RequestMetadata {
 			client_ip: "192.168.1.1".to_string(),
@@ -236,7 +236,7 @@ async fn test_extensions_complex_types() {
 async fn test_extensions_cloning() {
 	let mut router = Router::new();
 
-	router = router.function("/clone", Method::GET, |_req: Request| async move {
+	router = router.register_function("/clone", Method::GET, "test_extensions_cloning", |_req: Request| async move {
 		let ext1 = Extensions::new();
 		ext1.insert(UserId(999));
 
@@ -291,9 +291,10 @@ async fn test_extensions_cloning() {
 async fn test_extensions_middleware_chain() {
 	let mut router = Router::new();
 
-	router = router.function(
+	router = router.register_function(
 		"/middleware-chain",
 		Method::GET,
+		"test_extensions_middleware_chain",
 		|req: Request| async move {
 			// Simulate Layer 1: Authentication middleware
 			req.extensions.insert(UserId(555));
@@ -358,7 +359,7 @@ async fn test_extensions_middleware_chain() {
 async fn test_extensions_request_isolation() {
 	let mut router = Router::new();
 
-	router = router.function("/isolated", Method::POST, |req: Request| async move {
+	router = router.register_function("/isolated", Method::POST, "test_extensions_request_isolation", |req: Request| async move {
 		// Extract request-specific ID from body
 		let body_str = String::from_utf8_lossy(req.body());
 		let request_id: u64 = body_str.parse().unwrap_or(0);
@@ -409,7 +410,7 @@ async fn test_extensions_request_isolation() {
 async fn test_extensions_missing_type_handling() {
 	let mut router = Router::new();
 
-	router = router.function("/missing-type", Method::GET, |req: Request| async move {
+	router = router.register_function("/missing-type", Method::GET, "test_extensions_missing_type", |req: Request| async move {
 		// Try to get a type that was never inserted
 		let missing_user = req.extensions.get::<UserId>();
 		let has_user = req.extensions.contains::<UserId>();

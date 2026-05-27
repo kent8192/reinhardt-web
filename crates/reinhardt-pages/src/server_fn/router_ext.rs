@@ -132,6 +132,6 @@ impl ServerFnRouterExt for ServerRouter {
 			})
 		};
 
-		self.function(path, Method::POST, wrapper)
+		self.register_function(path, Method::POST, name, wrapper)
 	}
 }
