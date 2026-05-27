@@ -22,12 +22,10 @@ fn main() {
 	let _ = form! {
 		name: MetadataForm,
 		action: "/api/metadata",
-
 		fields: {
 			data: JsonField {
 				initial: Metadata::default(),
 			}
 		}
-
 	};
 }

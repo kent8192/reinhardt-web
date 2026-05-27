@@ -84,70 +84,69 @@ pub fn polls_index() -> Page {
 	let load_questions_signal = load_questions.clone();
 	let new_question_href = links::question_new();
 
-	page!(
-		| load_questions_error : Action<Vec<QuestionInfo>, String>,
-		load_questions_signal : Action<Vec<QuestionInfo>, String>,
-		new_question_href : String | {
+	page!(| load_questions_error : Action<Vec<QuestionInfo>, String>, load_questions_signal : Action<Vec<QuestionInfo>, String>, new_question_href : String | {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
 			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
+				class: "flex justify-between items-center mb-4",
+				h1 { "Polls" }
+				a {
+					href: new_question_href,
+					class: "btn-primary",
+					"New Question"
+				}
+			}
+			if load_questions_error.error().is_some() {
 				div {
-					class: "flex justify-between items-center mb-4",
-					h1 {
-						"Polls"
-					}
-					a {
-						href: new_question_href,
-						class: "btn-primary",
-						"New Question"
+					class: "alert-danger",
+					{
+						format_server_error(&load_questions_error.error().unwrap_or_default())
 					}
 				}
-				if load_questions_error.error().is_some() {
+			}
+			if load_questions_signal.is_pending() {
+				div {
+					class: "text-center",
 					div {
-						class: "alert-danger",
-						{ format_server_error(&load_questions_error.error().unwrap_or_default()) }
-					}
-				}
-				if load_questions_signal.is_pending() {
-					div {
-						class: "text-center",
-						div {
-							class: "spinner w-8 h-8",
-							role: "status",
-							span {
-								class: "sr-only",
-								"Loading..."
-							}
+						class: "spinner w-8 h-8",
+						role: "status",
+						span {
+							class: "sr-only",
+							"Loading..."
 						}
 					}
-				} else if load_questions_signal.result().unwrap_or_default().is_empty() {
-					p {
-						class: "text-muted",
-						"No polls are available."
-					}
-				} else {
-					div {
-						class: "space-y-2",
-						for { question } in load_questions_signal.result().unwrap_or_default() {
-							a {
-								href: links::detail(question.id),
-								class: "block p-4 border border-border rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors",
-								div {
-									class: "flex w-full justify-between",
-									h5 {
-										class: "mb-1",
-										{ question.question_text.clone() }
-									}
-									small {
-										{ question.pub_date.format("%Y-%m-%d %H:%M").to_string() }
+				}
+			} else if load_questions_signal.result().unwrap_or_default().is_empty() {
+				p {
+					class: "text-muted",
+					"No polls are available."
+				}
+			} else {
+				div {
+					class: "space-y-2",
+					for { question }
+					in load_questions_signal.result().unwrap_or_default() {
+						a {
+							href: links::detail(question.id),
+							class: "block p-4 border border-border rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors",
+							div {
+								class: "flex w-full justify-between",
+								h5 {
+									class: "mb-1",
+									{
+										question.question_text.clone()
 									}
 								}
+								small { {
+									question.pub_date.format("%Y-%m-%d %H:%M").to_string()
+								} }
 							}
 						}
 					}
 				}
 			}
 		}
-	)(
+	})(
 		load_questions_error,
 		load_questions_signal,
 		new_question_href,
@@ -204,12 +203,10 @@ pub fn polls_detail(question_id: i64) -> Page {
 		strip_arguments: {
 			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
 		},
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			question_id: HiddenField {
 				initial: qid.to_string(),
@@ -224,41 +221,43 @@ pub fn polls_detail(question_id: i64) -> Page {
 				choice_label: "choice_text",
 			}
 		}
-
 		watch: {
 			submit_button: |form| {
-					let is_loading = form.loading().get();
-					let back_href = links::index();
-					page!(|is_loading: bool, back_href: String| {
-						div {
-							class: "mt-3",
-							button {
-								type: "submit",
-								class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
-								disabled: is_loading,
-								{ if is_loading { "Voting..." } else { "Vote" } }
-							}
-							a {
-								href: back_href,
-								class: "btn-secondary ml-2",
-								"Back to Polls"
+				let is_loading = form.loading().get();
+				let back_href = links::index();
+				page!(|is_loading: bool, back_href: String| {
+					div {
+						class: "mt-3",
+						button {
+							type: "submit",
+							class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
+							disabled: is_loading,
+							{
+								if is_loading { "Voting..." } else { "Vote" }
 							}
 						}
-					})(is_loading, back_href)
-				},
+						a {
+							href: back_href,
+							class: "btn-secondary ml-2",
+							"Back to Polls"
+						}
+					}
+				})(is_loading, back_href)
+			},
 			error_display: |form| {
-					let err = form.error().get();
-					page!(|err: Option<String>| {
-						if let Some(e) = err.clone() {
-							div {
-								class: "alert-danger mt-3",
-								{ format_server_error(&e) }
+				let err = form.error().get();
+				page!(|err: Option<String>| {
+					if let Some(e) = err.clone() {
+						div {
+							class: "alert-danger mt-3",
+							{
+								format_server_error(&e)
 							}
 						}
-					})(err)
-				},
+					}
+				})(err)
+			},
 		}
-
 	};
 
 	// Bridge load_detail results to form choices via use_effect
@@ -296,120 +295,119 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// `RadioSelect` group for choiceless questions, so any submit emitted
 	// `choice_id=""` and `submit_vote` rejected the request with the
 	// runtime `Invalid choice_id` application error.
-	page!(
-		| load_detail_signal : Action<(QuestionInfo, Vec<ChoiceInfo>), String>,
-		load_current_user_signal : Action<Option<UserInfo>, String>, question_id : i64 | {
-			div {
-				if load_detail_signal.is_pending() {
+	page!(| load_detail_signal : Action<(QuestionInfo, Vec<ChoiceInfo>), String>, load_current_user_signal : Action<Option<UserInfo>, String>, question_id : i64 | {
+		div {
+			if load_detail_signal.is_pending() {
+				div {
+					class: "max-w-4xl mx-auto px-4 mt-12 text-center",
 					div {
-						class: "max-w-4xl mx-auto px-4 mt-12 text-center",
-						div {
-							class: "spinner w-8 h-8",
-							role: "status",
-							span {
-								class: "sr-only",
-								"Loading..."
-							}
+						class: "spinner w-8 h-8",
+						role: "status",
+						span {
+							class: "sr-only",
+							"Loading..."
 						}
 					}
-				} else if load_detail_signal.error().is_some() {
+				}
+			} else if load_detail_signal.error().is_some() {
+				div {
+					class: "max-w-4xl mx-auto px-4 mt-12",
 					div {
-						class: "max-w-4xl mx-auto px-4 mt-12",
-						div {
-							class: "alert-danger",
-							{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
-						}
-						a {
-							href: links::detail(question_id),
-							class: "btn-secondary",
-							"Try Again"
-						}
-						a {
-							href: links::index(),
-							class: "btn-primary ml-2",
-							"Back to Polls"
+						class: "alert-danger",
+						{
+							format_server_error(&load_detail_signal.error().unwrap_or_default())
 						}
 					}
-				} else if let Some((ref q, ref choices)) = load_detail_signal.result() {
-					// Bind the result once: `Action::result()` clones the
-					// underlying `(QuestionInfo, Vec<ChoiceInfo>)` on every
-					// call, so reusing `q`/`choices` here avoids redundant
-					// allocations on each reactive render.
-					//
-					// Owner-only controls (Edit / Delete / Add choice) are
-					// hidden for non-authors and unauthenticated viewers
-					// (issue #4703). The `current_user` action returns
-					// `Ok(None)` when no session user is present; any
-					// non-`Some(Some(u))` shape (pending, error, or
-					// unauthenticated) leaves `is_author` as `false`.
-					let is_author = match load_current_user_signal.result() {
-						Some(Some(ref u)) => u.id == q.author_id,
-						_ => false,
-					};
+					a {
+						href: links::detail(question_id),
+						class: "btn-secondary",
+						"Try Again"
+					}
+					a {
+						href: links::index(),
+						class: "btn-primary ml-2",
+						"Back to Polls"
+					}
+				}
+			} else if let Some((ref q, ref choices)) = load_detail_signal.result() {
+				// Bind the result once: `Action::result()` clones the
+				// underlying `(QuestionInfo, Vec<ChoiceInfo>)` on every
+				// call, so reusing `q`/`choices` here avoids redundant
+				// allocations on each reactive render.
+				//
+				// Owner-only controls (Edit / Delete / Add choice) are
+				// hidden for non-authors and unauthenticated viewers
+				// (issue #4703). The `current_user` action returns
+				// `Ok(None)` when no session user is present; any
+				// non-`Some(Some(u))` shape (pending, error, or
+				// unauthenticated) leaves `is_author` as `false`.
+				let is_author = match load_current_user_signal.result() {
+					Some(Some(ref u)) => u.id == q.author_id,
+					_ => false,
+				};
+				div {
+					class: "max-w-4xl mx-auto px-4 mt-12",
 					div {
-						class: "max-w-4xl mx-auto px-4 mt-12",
+						class: "flex justify-between items-center mb-4",
+						h1 { {
+							q.question_text.clone()
+						} }
 						div {
-							class: "flex justify-between items-center mb-4",
-							h1 {
-								{ q.question_text.clone() }
+							class: "flex gap-2",
+							a {
+								href: links::results(question_id),
+								class: "btn-secondary",
+								"View results"
 							}
-							div {
-								class: "flex gap-2",
+							if is_author {
 								a {
-									href: links::results(question_id),
+									href: links::question_edit(question_id),
 									class: "btn-secondary",
-									"View results"
+									"Edit"
 								}
-								if is_author {
-									a {
-										href: links::question_edit(question_id),
-										class: "btn-secondary",
-										"Edit"
-									}
-									a {
-										href: links::question_delete(question_id),
-										class: "btn-danger",
-										"Delete"
-									}
-								}
-							}
-						}
-						if ! choices.is_empty() {
-							{ voting_form.clone().into_page() }
-						} else {
-							div {
-								class: "alert-warning",
-								"This question has no choices yet. Add one below to start voting."
-							}
-						}
-						if is_author {
-							div {
-								class: "mt-4",
 								a {
-									href: links::choice_new(question_id),
-									class: "btn-secondary",
-									"Add choice"
+									href: links::question_delete(question_id),
+									class: "btn-danger",
+									"Delete"
 								}
 							}
 						}
 					}
-				} else {
-					div {
-						class: "max-w-4xl mx-auto px-4 mt-12",
+					if ! choices.is_empty() { {
+						voting_form.clone().into_page()
+					} } else {
 						div {
 							class: "alert-warning",
-							"Question not found"
+							"This question has no choices yet. Add one below to start voting."
 						}
-						a {
-							href: links::index(),
-							class: "btn-primary",
-							"Back to Polls"
+					}
+					if is_author {
+						div {
+							class: "mt-4",
+							a {
+								href: links::choice_new(question_id),
+								class: "btn-secondary",
+								"Add choice"
+							}
 						}
+					}
+				}
+			} else {
+				div {
+					class: "max-w-4xl mx-auto px-4 mt-12",
+					div {
+						class: "alert-warning",
+						"Question not found"
+					}
+					a {
+						href: links::index(),
+						class: "btn-primary",
+						"Back to Polls"
 					}
 				}
 			}
 		}
-	)(load_detail_signal, load_current_user_signal, question_id)
+	})(load_detail_signal, load_current_user_signal, question_id)
 }
 
 /// Poll results page - Show voting results
@@ -435,182 +433,161 @@ pub fn polls_results(question_id: i64) -> Page {
 	let load_results_signal = load_results.clone();
 	let load_current_user_signal = load_current_user.clone();
 
-	page!(
-		| load_results_signal : Action<(QuestionInfo, Vec<ChoiceInfo>, i32), String>,
-		load_current_user_signal : Action<Option<UserInfo>, String>, question_id : i64 | {
-			div {
-				if load_results_signal.is_pending() {
+	page!(| load_results_signal : Action<(QuestionInfo, Vec<ChoiceInfo>, i32), String>, load_current_user_signal : Action<Option<UserInfo>, String>, question_id : i64 | {
+		div {
+			if load_results_signal.is_pending() {
+				div {
+					class: "max-w-4xl mx-auto px-4 mt-12 text-center",
 					div {
-						class: "max-w-4xl mx-auto px-4 mt-12 text-center",
-						div {
-							class: "spinner w-8 h-8",
-							role: "status",
-							span {
-								class: "sr-only",
-								"Loading..."
-							}
+						class: "spinner w-8 h-8",
+						role: "status",
+						span {
+							class: "sr-only",
+							"Loading..."
 						}
 					}
-				} else if load_results_signal.error().is_some() {
+				}
+			} else if load_results_signal.error().is_some() {
+				div {
+					class: "max-w-4xl mx-auto px-4 mt-12",
 					div {
-						class: "max-w-4xl mx-auto px-4 mt-12",
-						div {
-							class: "alert-danger",
-							{ format_server_error(&load_results_signal.error().unwrap_or_default()) }
-						}
-						a {
-							href: links::index(),
-							class: "btn-primary",
-							"Back to Polls"
+						class: "alert-danger",
+						{
+							format_server_error(&load_results_signal.error().unwrap_or_default())
 						}
 					}
-				} else if load_results_signal.result().is_some() {
-					// Owner-only controls (Edit / Delete) are hidden for
-					// non-authors and unauthenticated viewers (issue #4703).
-					// `current_user` returns `Ok(None)` when no session user
-					// is present; any non-`Some(Some(u))` shape (pending,
-					// error, or unauthenticated) leaves `is_author` as
-					// `false`. Server-side `require_question_author` still
-					// rejects unauthorized mutations as defense in depth.
-					let is_author = match (
-						load_results_signal.result(),
-						load_current_user_signal.result(),
-					) {
-						(Some((ref q, _, _)), Some(Some(ref u))) => u.id == q.author_id,
-						_ => false,
-					};
-					div {
-						class: "max-w-4xl mx-auto px-4 mt-12",
-						h1 {
-							class: "mb-4",
-							{
-								load_results_signal
-										.result()
-										.map(| (q, _, _) | q.question_text.clone())
-										.unwrap_or_default()
-							}
+					a {
+						href: links::index(),
+						class: "btn-primary",
+						"Back to Polls"
+					}
+				}
+			} else if load_results_signal.result().is_some() {
+				// Owner-only controls (Edit / Delete) are hidden for
+				// non-authors and unauthenticated viewers (issue #4703).
+				// `current_user` returns `Ok(None)` when no session user
+				// is present; any non-`Some(Some(u))` shape (pending,
+				// error, or unauthenticated) leaves `is_author` as
+				// `false`. Server-side `require_question_author` still
+				// rejects unauthorized mutations as defense in depth.
+				let is_author = match(load_results_signal.result(), load_current_user_signal.result(), ) {
+					(Some((ref q, _, _)), Some(Some(ref u))) => u.id == q.author_id,
+					_ => false,
+				};
+				div {
+					class: "max-w-4xl mx-auto px-4 mt-12",
+					h1 {
+						class: "mb-4",
+						{
+							load_results_signal.result().map(|(q, _, _)| q.question_text.clone()).unwrap_or_default()
 						}
+					}
+					div {
+						class: "card",
 						div {
-							class: "card",
+							class: "card-body",
+							h5 {
+								class: "text-xl font-bold",
+								"Results"
+							}
 							div {
-								class: "card-body",
-								h5 {
-									class: "text-xl font-bold",
-									"Results"
-								}
-								div {
-									class: "divide-y divide-border",
-									{
-										if let Some((_, choices, total)) = load_results_signal.result() {
-												page!(
-													| choices : Vec<ChoiceInfo>, total : i32 | {
-														for choice in choices {
-															{
+								class: "divide-y divide-border",
+								{
+									if let Some((_, choices, total)) = load_results_signal.result() {
+										page!(| choices : Vec<ChoiceInfo>, total : i32 | {
+											for choice in choices { { {
+												let percentage = if total > 0 {
+													(choice.votes as f64 / total as f64 * 100.0) as i32
+												} else { 0 };
+												page!(| choice : ChoiceInfo, percentage : i32 | {
+													div {
+														class: "py-4",
+														div {
+															class: "flex justify-between items-center mb-2",
+															strong { {
+																choice.choice_text.clone()
+															} }
+															span {
+																class: "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
 																{
-																		let percentage = if total > 0 {
-																			(choice.votes as f64 / total as f64 * 100.0) as i32
-																		} else {
-																			0
-																		};
-																		page!(
-																			| choice : ChoiceInfo, percentage : i32 | {
-																				div {
-																					class: "py-4",
-																					div {
-																						class: "flex justify-between items-center mb-2",
-																						strong {
-																							{ choice.choice_text.clone() }
-																						}
-																						span {
-																							class: "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
-																							{ format!("{} votes", choice.votes) }
-																						}
-																					}
-																					div {
-																						class: "w-full bg-surface-tertiary rounded-full h-2.5",
-																						div {
-																							class: "bg-brand h-2.5 rounded-full",
-																							role: "progressbar",
-																							style: format!("width: {}%", percentage),
-																							aria_valuenow: percentage.to_string(),
-																							aria_valuemin: "0",
-																							aria_valuemax: "100",
-																							{ format!("{}%", percentage) }
-																						}
-																					}
-																				}
-																			}
-																		)(choice, percentage)
-																	}
+																	format!("{} votes", choice.votes)
+																}
+															}
+														}
+														div {
+															class: "w-full bg-surface-tertiary rounded-full h-2.5",
+															div {
+																class: "bg-brand h-2.5 rounded-full",
+																role: "progressbar",
+																style: format!("width: {}%", percentage),
+																aria_valuenow: percentage.to_string(),
+																aria_valuemin: "0",
+																aria_valuemax: "100",
+																{
+																	format!("{}%", percentage)
+																}
 															}
 														}
 													}
-												)(choices, total)
-											} else {
-												Page::Empty
-											}
+												})(choice, percentage)
+											} } }
+										})(choices, total)
+									} else { Page::Empty }
+								}
+							}
+							div {
+								class: "mt-3",
+								p {
+									class: "text-muted",
+									{
+										format!("Total votes: {}", load_results_signal.result().map(|(_, _, total)| total).unwrap_or(0))
 									}
 								}
-								div {
-									class: "mt-3",
-									p {
-										class: "text-muted",
-										{
-											format!(
-													"Total votes: {}",
-													load_results_signal
-														.result()
-														.map(| (_, _, total) | total)
-														.unwrap_or(0)
-												)
-										}
-									}
-								}
-							}
-						}
-						div {
-							class: "mt-3 flex flex-wrap gap-2",
-							a {
-								href: links::detail(question_id),
-								class: "btn-primary",
-								"Vote Again"
-							}
-							if is_author {
-								a {
-									href: links::question_edit(question_id),
-									class: "btn-secondary",
-									"Edit question"
-								}
-								a {
-									href: links::question_delete(question_id),
-									class: "btn-danger",
-									"Delete question"
-								}
-							}
-							a {
-								href: links::index(),
-								class: "btn-secondary",
-								"Back to Polls"
 							}
 						}
 					}
-				} else {
 					div {
-						class: "max-w-4xl mx-auto px-4 mt-12",
-						div {
-							class: "alert-warning",
-							"Question not found"
+						class: "mt-3 flex flex-wrap gap-2",
+						a {
+							href: links::detail(question_id),
+							class: "btn-primary",
+							"Vote Again"
+						}
+						if is_author {
+							a {
+								href: links::question_edit(question_id),
+								class: "btn-secondary",
+								"Edit question"
+							}
+							a {
+								href: links::question_delete(question_id),
+								class: "btn-danger",
+								"Delete question"
+							}
 						}
 						a {
 							href: links::index(),
-							class: "btn-primary",
+							class: "btn-secondary",
 							"Back to Polls"
 						}
 					}
 				}
+			} else {
+				div {
+					class: "max-w-4xl mx-auto px-4 mt-12",
+					div {
+						class: "alert-warning",
+						"Question not found"
+					}
+					a {
+						href: links::index(),
+						class: "btn-primary",
+						"Back to Polls"
+					}
+				}
 			}
 		}
-	)(load_results_signal, load_current_user_signal, question_id)
+	})(load_results_signal, load_current_user_signal, question_id)
 }
 
 /// Example component demonstrating static URL resolution
@@ -626,78 +603,80 @@ pub fn polls_index_with_logo() -> Page {
 	let load_questions_error = load_questions.clone();
 	let load_questions_signal = load_questions.clone();
 
-	page!(
-		| load_questions_error : Action<Vec<QuestionInfo>, String>,
-		load_questions_signal : Action<Vec<QuestionInfo>, String> | {
+	page!(| load_questions_error : Action<Vec<QuestionInfo>, String>, load_questions_signal : Action<Vec<QuestionInfo>, String> | {
+		div {
+			class: "max-w-4xl mx-auto px-4 mt-12",
 			div {
-				class: "max-w-4xl mx-auto px-4 mt-12",
+				class: "text-center mb-6",
+				img {
+					src: resolve_static("images/poll-icon.svg"),
+					alt: "Polls App",
+					class: "mx-auto w-16 h-16",
+				}
+			}
+			h1 {
+				class: "mb-4 text-center",
+				"Polls"
+			}
+			if load_questions_error.error().is_some() {
 				div {
-					class: "text-center mb-6",
-					img {
-						src: resolve_static("images/poll-icon.svg"),
-						alt: "Polls App",
-						class: "mx-auto w-16 h-16",
+					class: "alert-danger",
+					{
+						format_server_error(&load_questions_error.error().unwrap_or_default())
 					}
 				}
-				h1 {
-					class: "mb-4 text-center",
-					"Polls"
-				}
-				if load_questions_error.error().is_some() {
+			}
+			if load_questions_signal.is_pending() {
+				div {
+					class: "text-center",
 					div {
-						class: "alert-danger",
-						{ format_server_error(&load_questions_error.error().unwrap_or_default()) }
-					}
-				}
-				if load_questions_signal.is_pending() {
-					div {
-						class: "text-center",
-						div {
-							class: "spinner w-8 h-8",
-							role: "status",
-							span {
-								class: "sr-only",
-								"Loading..."
-							}
+						class: "spinner w-8 h-8",
+						role: "status",
+						span {
+							class: "sr-only",
+							"Loading..."
 						}
 					}
-				} else if load_questions_signal.result().unwrap_or_default().is_empty() {
-					p {
-						class: "text-muted",
-						"No polls are available."
-					}
-				} else {
-					div {
-						class: "space-y-2",
-						for { question } in load_questions_signal.result().unwrap_or_default() {
-							a {
-								href: format!("/polls/{}/", question.id),
-								class: "block p-4 border border-border rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors",
+				}
+			} else if load_questions_signal.result().unwrap_or_default().is_empty() {
+				p {
+					class: "text-muted",
+					"No polls are available."
+				}
+			} else {
+				div {
+					class: "space-y-2",
+					for { question }
+					in load_questions_signal.result().unwrap_or_default() {
+						a {
+							href: format!("/polls/{}/", question.id),
+							class: "block p-4 border border-border rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors",
+							div {
+								class: "flex w-full justify-between items-center",
+								img {
+									src: resolve_static("images/poll-icon.svg"),
+									alt: "Poll",
+									class: "w-8 h-8 mr-3",
+								}
 								div {
-									class: "flex w-full justify-between items-center",
-									img {
-										src: resolve_static("images/poll-icon.svg"),
-										alt: "Poll",
-										class: "w-8 h-8 mr-3",
-									}
-									div {
-										class: "flex-1",
-										h5 {
-											class: "mb-1",
-											{ question.question_text.clone() }
+									class: "flex-1",
+									h5 {
+										class: "mb-1",
+										{
+											question.question_text.clone()
 										}
 									}
-									small {
-										{ question.pub_date.format("%Y-%m-%d %H:%M").to_string() }
-									}
 								}
+								small { {
+									question.pub_date.format("%Y-%m-%d %H:%M").to_string()
+								} }
 							}
 						}
 					}
 				}
 			}
 		}
-	)(load_questions_error, load_questions_signal)
+	})(load_questions_error, load_questions_signal)
 }
 
 // =========================================================================
@@ -720,12 +699,10 @@ pub fn question_new() -> Page {
 		strip_arguments: {
 			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
 		},
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			question_text: CharField {
 				label: "Question",
@@ -734,7 +711,6 @@ pub fn question_new() -> Page {
 				class: "form-control",
 			}
 		}
-
 	};
 
 	let loading_signal = new_form.loading().clone();
@@ -752,7 +728,9 @@ pub fn question_new() -> Page {
 			if error_signal.get().is_some() {
 				div {
 					class: "alert-danger mb-3",
-					{ format_server_error(&error_signal.get().unwrap_or_default()) }
+					{
+						format_server_error(&error_signal.get().unwrap_or_default())
+					}
 				}
 			}
 			{ form_view }
@@ -806,12 +784,10 @@ pub fn question_edit(question_id: i64) -> Page {
 		strip_arguments: {
 			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
 		},
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			question_id: HiddenField {
 				initial: qid.to_string(),
@@ -823,7 +799,6 @@ pub fn question_edit(question_id: i64) -> Page {
 				class: "form-control",
 			}
 		}
-
 	};
 
 	// Prefill the question_text input once the load_detail action resolves.
@@ -877,7 +852,9 @@ pub fn question_edit(question_id: i64) -> Page {
 					class: "max-w-4xl mx-auto px-4 mt-12",
 					div {
 						class: "alert-danger",
-						{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
+						{
+							format_server_error(&load_detail_signal.error().unwrap_or_default())
+						}
 					}
 					a {
 						href: links::index(),
@@ -895,10 +872,14 @@ pub fn question_edit(question_id: i64) -> Page {
 					if edit_form.error().get().is_some() {
 						div {
 							class: "alert-danger mb-3",
-							{ format_server_error(&edit_form.error().get().unwrap_or_default()) }
+							{
+								format_server_error(&edit_form.error().get().unwrap_or_default())
+							}
 						}
 					}
-					{ edit_form.clone().into_page() }
+					{
+						edit_form.clone().into_page()
+					}
 					div {
 						class: "mt-3",
 						if edit_form.loading().get() {
@@ -947,18 +928,15 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 		strip_arguments: {
 			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
 		},
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			question_id: HiddenField {
 				initial: qid.to_string(),
 			}
 		}
-
 	};
 
 	let loading_signal = delete_form.loading().clone();
@@ -990,20 +968,26 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 						}
 						blockquote {
 							class: "border-l-4 border-border-secondary pl-4 italic my-3",
-							{ q.question_text.clone() }
+							{
+								q.question_text.clone()
+							}
 						}
 					}
 				}
 			} else if load_detail_signal.error().is_some() {
 				div {
 					class: "alert-danger",
-					{ format_server_error(&load_detail_signal.error().unwrap_or_default()) }
+					{
+						format_server_error(&load_detail_signal.error().unwrap_or_default())
+					}
 				}
 			}
 			if error_signal.get().is_some() {
 				div {
 					class: "alert-danger mt-3",
-					{ format_server_error(&error_signal.get().unwrap_or_default()) }
+					{
+						format_server_error(&error_signal.get().unwrap_or_default())
+					}
 				}
 			}
 			{ form_view }
@@ -1069,9 +1053,11 @@ pub fn choice_new(question_id: i64) -> Page {
 		name: NewChoiceForm,
 		server_fn: create_choice,
 		method: Post,
-		state: { loading, error },
+		state: {
+			loading,
+			error
+		},
 		redirect_on_success: links::detail(qid),
-
 		fields: {
 			question_id: HiddenField {
 				initial: qid_str,
@@ -1084,10 +1070,8 @@ pub fn choice_new(question_id: i64) -> Page {
 				class: "form-control",
 			},
 		},
-
 		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
-				.unwrap_or_default(),
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
 		},
 	};
 
@@ -1106,7 +1090,9 @@ pub fn choice_new(question_id: i64) -> Page {
 			if error_signal.get().is_some() {
 				div {
 					class: "alert-danger mb-3",
-					{ format_server_error(&error_signal.get().unwrap_or_default()) }
+					{
+						format_server_error(&error_signal.get().unwrap_or_default())
+					}
 				}
 			}
 			{ form_view }
@@ -1155,12 +1141,10 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 		strip_arguments: {
 			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
 		},
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			choice_id: HiddenField {
 				initial: cid_str,
@@ -1172,7 +1156,6 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 				class: "form-control",
 			}
 		}
-
 	};
 
 	let loading_signal = edit_form.loading().clone();
@@ -1189,7 +1172,9 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 			if error_signal.get().is_some() {
 				div {
 					class: "alert-danger mb-3",
-					{ format_server_error(&error_signal.get().unwrap_or_default()) }
+					{
+						format_server_error(&error_signal.get().unwrap_or_default())
+					}
 				}
 			}
 			{ form_view }
@@ -1238,18 +1223,15 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 		strip_arguments: {
 			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
 		},
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			choice_id: HiddenField {
 				initial: cid_str,
 			}
 		}
-
 	};
 
 	let loading_signal = delete_form.loading().clone();
@@ -1270,7 +1252,9 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 			if error_signal.get().is_some() {
 				div {
 					class: "alert-danger mt-3",
-					{ format_server_error(&error_signal.get().unwrap_or_default()) }
+					{
+						format_server_error(&error_signal.get().unwrap_or_default())
+					}
 				}
 			}
 			{ form_view }

@@ -26,10 +26,8 @@ fn main() {
 	let _ = form! {
 		name: BadForm,
 		action: "/x",
-
 		fields: {
 			data: HiddenField,
 		}
-
 	};
 }

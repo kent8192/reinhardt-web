@@ -6,8 +6,8 @@ fn main() {
 	let _ = page!(|| {
 		button {
 			@click: |_| {
-						let _ = outer.get();
-					},
+				let _ = outer.get();
+			},
 			"x"
 		}
 	});

@@ -6,7 +6,6 @@ fn main() {
 	let _ = form! {
 		name: TagForm,
 		action: "/api/tags",
-
 		fields: {
 			tag_ids: MultipleChoiceField<i64> {
 				choices_from: "tags",
@@ -14,6 +13,5 @@ fn main() {
 				choice_label: "name",
 			}
 		}
-
 	};
 }

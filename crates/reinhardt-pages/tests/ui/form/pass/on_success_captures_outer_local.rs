@@ -29,7 +29,6 @@ fn main() {
 	let _form = form! {
 		name: OnSuccessCaptureForm,
 		server_fn: submit_vote,
-
 		fields: {
 			_question_id: IntegerField {
 				widget: HiddenInput,
@@ -38,11 +37,9 @@ fn main() {
 				required,
 			}
 		}
-
 		on_success: |_value: i64| {
-				let _captured = target_id;
-			},
-
+			let _captured = target_id;
+		},
 	};
 }
 

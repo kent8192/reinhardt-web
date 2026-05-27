@@ -22,12 +22,10 @@ fn main() {
 	let _form = form! {
 		name: CaptureFormFourTwoZero,
 		action: "/api/capture-4420",
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			counter: HiddenField {
 				initial: outer_initial.to_string(),
@@ -37,19 +35,17 @@ fn main() {
 				initial: outer_label.clone(),
 			}
 		}
-
 		watch: {
 			submit_button: |form| {
-					let _is_loading = form.loading().get();
-				},
+				let _is_loading = form.loading().get();
+			},
 			error_display: |form| {
-					let _err = form.error().get();
-				},
+				let _err = form.error().get();
+			},
 			success_navigation: |form| {
-					let _is_loading = form.loading().get();
-					let _captured = outer_label.clone();
-				},
+				let _is_loading = form.loading().get();
+				let _captured = outer_label.clone();
+			},
 		}
-
 	};
 }

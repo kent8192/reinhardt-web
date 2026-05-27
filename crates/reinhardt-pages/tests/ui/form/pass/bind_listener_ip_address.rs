@@ -6,10 +6,8 @@ fn main() {
 	let _ = form! {
 		name: NetworkForm,
 		action: "/api/network",
-
 		fields: {
 			server_ip: IpAddressField,
 		}
-
 	};
 }
