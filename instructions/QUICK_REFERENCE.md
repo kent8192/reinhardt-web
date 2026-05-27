@@ -211,7 +211,7 @@ For comprehensive guidelines, see:
 - **Upstream Issue Reporting**: instructions/UPSTREAM_ISSUE_REPORTING.md
 - **GitHub Interactions**: instructions/GITHUB_INTERACTION.md
 - **Copilot Review Handling**: instructions/GITHUB_INTERACTION.md (CR-1 ~ CR-5)
-- **Obsidian Wiki Maintenance**: instructions/OBSIDIAN_WIKI.md (OW-1 ~ OW-4)
+- **Obsidian Wiki Maintenance**: instructions/OBSIDIAN_WIKI.md (OW-1 ~ OW-6)
 - **GitHub Discussions**: https://github.com/kent8192/reinhardt-web/discussions
 - **Security Policy**: SECURITY.md
 - **Code of Conduct**: CODE_OF_CONDUCT.md
