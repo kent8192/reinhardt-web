@@ -1,17 +1,25 @@
 //! Runtime [`UrlReverser`] for name-to-URL lookup, plus the top-level
 //! [`reverse`] convenience function.
+//!
+//! The global reverser singleton is automatically populated when
+//! [`register_router()`](crate::routers::register_router) is called,
+//! making [`UrlReverser::from_global()`] available without manual wiring.
 
 use super::super::Route;
 use super::super::pattern::PathPattern;
 use super::runtime::ReverseResult;
+use once_cell::sync::OnceCell;
 use reinhardt_core::exception::Error;
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::Arc;
+use std::sync::PoisonError;
+use std::sync::RwLock as StdRwLock;
 
-static GLOBAL_REVERSER: OnceLock<UrlReverser> = OnceLock::new();
+static GLOBAL_REVERSER: OnceCell<StdRwLock<Option<Arc<UrlReverser>>>> = OnceCell::new();
 
 /// URL reverser for resolving names back to URLs
 /// Similar to Django's URLResolver reverse functionality
+#[derive(Clone)]
 pub struct UrlReverser {
 	/// Map of route names (including namespace) to routes
 	routes: HashMap<String, Route>,
@@ -78,7 +86,6 @@ impl UrlReverser {
 		// Create a dummy handler for the route
 		// The handler is never used for URL reversal
 		use reinhardt_http::Handler;
-		use std::sync::Arc;
 
 		#[derive(Clone)]
 		struct DummyHandler;
@@ -251,25 +258,60 @@ impl UrlReverser {
 
 	/// Retrieve the global URL reverser.
 	///
+	/// The global reverser is automatically populated when
+	/// [`register_router()`](crate::routers::register_router) is called.
+	///
 	/// # Panics
 	///
-	/// Panics if `register_global()` has not been called yet.
-	pub fn from_global() -> &'static UrlReverser {
-		GLOBAL_REVERSER.get().expect(
+	/// Panics if no router has been registered yet.
+	pub fn from_global() -> Arc<UrlReverser> {
+		Self::try_from_global().expect(
 			"global URL reverser is not registered. \
-			 Call register_global() before using from_global().",
+			 Call register_router() before using from_global().",
 		)
 	}
 
+	/// Retrieve the global URL reverser, returning `None` if not yet registered.
+	///
+	/// Non-panicking variant of [`from_global()`](Self::from_global).
+	pub fn try_from_global() -> Option<Arc<UrlReverser>> {
+		GLOBAL_REVERSER
+			.get()
+			.and_then(|cell| cell.read().unwrap_or_else(PoisonError::into_inner).clone())
+	}
+
 	/// Register this reverser as the global instance.
+	///
+	/// In most cases you do not need to call this manually —
+	/// [`register_router()`](crate::routers::register_router) does it
+	/// automatically. Use this only when building a reverser independently
+	/// of the router system.
 	///
 	/// # Panics
 	///
 	/// Panics if a global reverser has already been registered.
 	pub fn register_global(self) {
-		GLOBAL_REVERSER
-			.set(self)
-			.unwrap_or_else(|_| panic!("global URL reverser already registered"));
+		let cell = GLOBAL_REVERSER.get_or_init(|| StdRwLock::new(None));
+		let mut guard = cell.write().unwrap_or_else(PoisonError::into_inner);
+		if guard.is_some() {
+			panic!("global URL reverser already registered");
+		}
+		*guard = Some(Arc::new(self));
+	}
+}
+
+/// Set the global reverser, overwriting any previous value.
+pub(crate) fn set_global_reverser(reverser: UrlReverser) {
+	let cell = GLOBAL_REVERSER.get_or_init(|| StdRwLock::new(None));
+	let mut guard = cell.write().unwrap_or_else(PoisonError::into_inner);
+	*guard = Some(Arc::new(reverser));
+}
+
+/// Clear the global reverser (for test cleanup).
+pub(crate) fn clear_global_reverser() {
+	if let Some(cell) = GLOBAL_REVERSER.get() {
+		let mut guard = cell.write().unwrap_or_else(PoisonError::into_inner);
+		*guard = None;
 	}
 }
 
