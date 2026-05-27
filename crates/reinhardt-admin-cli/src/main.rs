@@ -1298,7 +1298,8 @@ fn find_project_root() -> Option<PathBuf> {
 /// Find rustfmt.toml by searching upward from a path.
 ///
 /// Uses `std::fs::metadata` instead of `Path::exists()` to avoid TOCTOU
-/// race conditions in the existence check.
+/// race conditions in the existence check. Traversal is bounded to
+/// `MAX_PROJECT_ROOT_DEPTH` levels to prevent finding unrelated configs.
 fn find_rustfmt_config(start_path: &Path) -> Option<PathBuf> {
 	let mut current = if start_path.is_file() {
 		start_path.parent()
@@ -1306,7 +1307,7 @@ fn find_rustfmt_config(start_path: &Path) -> Option<PathBuf> {
 		Some(start_path)
 	}?;
 
-	loop {
+	for _ in 0..MAX_PROJECT_ROOT_DEPTH {
 		let config = current.join("rustfmt.toml");
 		if std::fs::metadata(&config).is_ok() {
 			return Some(config);
@@ -1314,9 +1315,6 @@ fn find_rustfmt_config(start_path: &Path) -> Option<PathBuf> {
 		let hidden_config = current.join(".rustfmt.toml");
 		if std::fs::metadata(&hidden_config).is_ok() {
 			return Some(hidden_config);
-		}
-		if std::fs::metadata(current.join("Cargo.toml")).is_ok() {
-			break;
 		}
 		current = current.parent()?;
 	}
