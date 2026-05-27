@@ -10,6 +10,8 @@ use reinhardt_pages::page;
 #[derive(bon::Builder)]
 struct CardProps {
 	// `item` is required because there is no `#[builder(default)]`.
+	// `dead_code` is allowed because this is a compile-fail test that validates
+	// builder trait bounds; the field is intentionally never read.
 	#[allow(dead_code)]
 	item: String,
 }
