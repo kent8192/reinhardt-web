@@ -25,7 +25,7 @@
 - Use `security` type for security vulnerability fixes (dedicated CHANGELOG section)
 - Use `deprecated` type for marking features/APIs as deprecated (dedicated CHANGELOG section)
 - Review Release PRs created by release-plz before merging
-- Fix Release PR issues via a `fix/`/`hotfix/` branch targeting the Release PR's base branch (e.g., `main`), not by pushing to the release-plz branch directly
+- Fix Release PR issues via a `fix/`/`hotfix/` branch targeting the Release PR's base branch (e.g., `main` or `develop/*`), not by pushing to the release-plz branch directly
 - Verify no circular dev-dependency chains exist before publishing (functional crates must not dev-depend on other Reinhardt crates)
 - Include `version` field in `reinhardt-test` workspace dependency (published crate, same as others)
 - Follow RP-1 procedure in instructions/RELEASE_PROCESS.md for partial release failures
