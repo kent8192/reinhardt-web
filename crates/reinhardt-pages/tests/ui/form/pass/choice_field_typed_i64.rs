@@ -6,7 +6,6 @@ fn main() {
 	let _ = form! {
 		name: ChoiceForm,
 		action: "/api/choice",
-
 		fields: {
 			choice_id: ChoiceField<i64> {
 				required,
@@ -15,6 +14,5 @@ fn main() {
 				choice_label: "label",
 			}
 		}
-
 	};
 }

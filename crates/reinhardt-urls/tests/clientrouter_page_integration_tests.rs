@@ -68,7 +68,7 @@ fn page_text(page: &Page) -> String {
 #[rstest]
 fn page_method_registers_and_renders_with_path_param() {
 	// Arrange
-	let router = ClientRouter::new().page("/users/{id}/", user_page);
+	let router = ClientRouter::new().page("user-detail", "/users/{id}/", user_page);
 
 	// Act
 	let view = router_render(&router, "/users/42/");
@@ -81,7 +81,7 @@ fn page_method_registers_and_renders_with_path_param() {
 #[rstest]
 fn page_method_extracts_query_param() {
 	// Arrange
-	let router = ClientRouter::new().page("/search/", search_page);
+	let router = ClientRouter::new().page("search", "/search/", search_page);
 
 	// Act — drive with a query string. The router's `match_path` ignores
 	// the `?...` suffix; the extractor parses it from `RouteContext::query`.
@@ -95,7 +95,7 @@ fn page_method_extracts_query_param() {
 #[rstest]
 fn page_method_surfaces_extract_error_as_page_text() {
 	// Arrange — path matches but `id` cannot parse as i32
-	let router = ClientRouter::new().page("/users/{id}/", user_page);
+	let router = ClientRouter::new().page("user-detail-err", "/users/{id}/", user_page);
 
 	// Act
 	let view = router_render(&router, "/users/abc/");
@@ -112,7 +112,7 @@ fn page_method_surfaces_extract_error_as_page_text() {
 #[rstest]
 fn page_method_returns_not_found_for_unmatched_path() {
 	// Arrange
-	let router = ClientRouter::new().page("/users/{id}/", user_page);
+	let router = ClientRouter::new().page("user-detail-nf", "/users/{id}/", user_page);
 
 	// Act
 	let view = router_render(&router, "/nope/");
@@ -136,7 +136,7 @@ fn props_struct_can_be_constructed_directly_for_component_use() {
 	let props = UserPageProps::from_request(&ctx).expect("FromRequest must succeed");
 	let view_as_component = user_page(props);
 
-	let router = ClientRouter::new().page("/users/{id}/", user_page);
+	let router = ClientRouter::new().page("user-detail-component", "/users/{id}/", user_page);
 	let view_as_page = router_render(&router, "/users/7/");
 
 	// Assert — both paths render identically. This is spec §4.3's

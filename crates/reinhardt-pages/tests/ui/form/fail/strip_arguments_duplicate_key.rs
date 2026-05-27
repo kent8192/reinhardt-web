@@ -12,13 +12,11 @@ fn main() {
 			csrf_token: String::new(),
 			csrf_token: String::from("again"),
 		},
-
 		fields: {
 			payload: CharField {
 				required,
 			}
 		}
-
 	};
 }
 

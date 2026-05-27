@@ -62,7 +62,9 @@ pub fn nav_bar() -> Page {
 					class: "flex items-center gap-3",
 					span {
 						class: "text-sm text-muted",
-						{ format!("Signed in as {}", user.username) }
+						{
+							format!("Signed in as {}", user.username)
+						}
 					}
 					a {
 						href: logout_href.clone(),
@@ -102,7 +104,9 @@ pub fn nav_bar() -> Page {
 /// their return value the same way.
 pub fn with_nav(body: Page) -> Page {
 	page!(|body: Page| {
-		{ nav_bar() }
+		{
+			nav_bar()
+		}
 		{ body }
 	})(body)
 }

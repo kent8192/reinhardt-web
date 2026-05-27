@@ -3,4 +3,6 @@ fn main() {
 	println!(
 		"cargo:rustc-check-cfg=cfg(feature, values(\"hot-reload\", \"caching\", \"source-maps\", \"image-optimization\", \"graphql\"))"
 	);
+	println!("cargo::rustc-check-cfg=cfg(wasm)");
+	println!("cargo::rustc-check-cfg=cfg(native)");
 }

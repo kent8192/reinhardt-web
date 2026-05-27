@@ -13,7 +13,6 @@ fn main() {
 				required,
 			}
 		}
-
 	};
 
 	// PUT form also includes CSRF token
@@ -26,7 +25,6 @@ fn main() {
 				required,
 			}
 		}
-
 	};
 
 	// PATCH form includes CSRF token
@@ -39,7 +37,6 @@ fn main() {
 				required,
 			}
 		}
-
 	};
 
 	// DELETE form includes CSRF token
@@ -52,7 +49,6 @@ fn main() {
 				required,
 			}
 		}
-
 	};
 
 	// GET form does NOT include CSRF token (safe method)
@@ -65,6 +61,5 @@ fn main() {
 				required,
 			}
 		}
-
 	};
 }

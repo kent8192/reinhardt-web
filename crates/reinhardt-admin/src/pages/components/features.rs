@@ -71,7 +71,9 @@ pub fn dashboard(site_name: &str, models: &[ModelInfo]) -> Page {
 			class: "dashboard animate__animated animate__fadeIn",
 			h1 {
 				class: "font-display text-2xl font-bold text-slate-900 mb-6",
-				{ format!("{} Dashboard", site_name) }
+				{
+					format!("{} Dashboard", site_name)
+				}
 			}
 			{ grid }
 		}
@@ -230,23 +232,17 @@ fn data_table(
 		.map(|col| {
 			let label = col.label.clone();
 			page!(|label: String| {
-				th {
-					{ label }
-				}
+				th { { label } }
 			})(label)
 		})
 		.chain(std::iter::once(page!(|| {
-			th {
-				"Actions"
-			}
+			th { "Actions" }
 		})()))
 		.collect();
 
 	let thead = page!(|header_cells: Vec<Page>| {
 		thead {
-			tr {
-				{ header_cells }
-			}
+			tr { { header_cells } }
 		}
 	})(header_cells);
 
@@ -256,9 +252,7 @@ fn data_table(
 		.collect();
 
 	let tbody = page!(|body_rows: Vec<Page>| {
-		tbody {
-			{ body_rows }
-		}
+		tbody { { body_rows } }
 	})(body_rows);
 
 	page!(|thead: Page, tbody: Page| {
@@ -287,9 +281,7 @@ fn table_row(
 				.cloned()
 				.unwrap_or_else(|| "-".to_string());
 			page!(|value: String| {
-				td {
-					{ value }
-				}
+				td { { value } }
 			})(value)
 		})
 		.collect();
@@ -297,9 +289,7 @@ fn table_row(
 	let record_id = record.get("id").cloned().unwrap_or_else(|| "0".to_string());
 	let actions = action_buttons(model_name, &record_id);
 	let actions_cell = page!(|actions: Page| {
-		td {
-			{ actions }
-		}
+		td { { actions } }
 	})(actions);
 
 	page!(|data_cells: Vec<Page>, actions_cell: Page| {
@@ -435,9 +425,7 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
 			class: "overflow-x-auto rounded-lg border border-slate-200",
 			table {
 				class: "admin-table",
-				tbody {
-					{ rows }
-				}
+				tbody { { rows } }
 			}
 		}
 	})(rows)
@@ -788,9 +776,7 @@ fn create_filter_select(
 		})
 		.collect();
 	let options_container = page!(|options: Vec<Page>| {
-		span {
-			{ options }
-		}
+		span { { options } }
 	})(options);
 	let field_str = field.to_string();
 
@@ -799,21 +785,21 @@ fn create_filter_select(
 			class: "admin-select",
 			data_filter_field: field_str.clone(),
 			@change: move |event| {
-						use wasm_bindgen::JsCast;
-						if let Some(target) = event.target() {
-							if let Ok(select_el) = target.dyn_into::<web_sys::HtmlSelectElement>() {
-								let value = select_el.value();
-								let field = field_str.clone();
-								_filters_signal.update(move |map| {
-									if value.is_empty() {
-										map.remove(&field);
-									} else {
-										map.insert(field, value);
-									}
-								});
+				use wasm_bindgen::JsCast;
+				if let Some(target) = event.target() {
+					if let Ok(select_el) = target.dyn_into::<web_sys::HtmlSelectElement>() {
+						let value = select_el.value();
+						let field = field_str.clone();
+						_filters_signal.update(move |map| {
+							if value.is_empty() {
+								map.remove(&field);
+							} else {
+								map.insert(field, value);
 							}
-						}
-					},
+						});
+					}
+				}
+			},
 			{ options_container }
 		}
 	})(field_str, filters_signal, options_container)

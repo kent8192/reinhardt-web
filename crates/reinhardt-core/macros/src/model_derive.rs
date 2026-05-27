@@ -4923,7 +4923,11 @@ fn generate_info_struct(
 		&orm_crate,
 	)?;
 
+	let info_doc = format!("Data-transfer companion for [`{}`].", struct_name);
+
 	Ok(quote! {
+		#[doc = #info_doc]
+		#[allow(missing_docs)]
 		#[derive(Debug, Clone, PartialEq #extra_derives_tokens)]
 		#validate_derive
 		pub struct #info_name #impl_generics #where_clause {
@@ -5100,6 +5104,7 @@ fn generate_info_builder(
 			if let Some(target_type) = fk_target_map.get(&field_name_str) {
 				// FK field: accept impl IntoPrimaryKey<TargetModel>
 				quote! {
+					#[allow(missing_docs)]
 					impl<#(#free_state_params),*> #builder_name<#(#input_states),*> {
 						pub fn #name<__FkArg>(mut self, value: __FkArg)
 							-> #builder_name<#(#output_states),*>
@@ -5119,6 +5124,7 @@ fn generate_info_builder(
 				let is_string = matches!(ty, Type::Path(p) if p.path.segments.last().is_some_and(|s| s.ident == "String"));
 				if is_string {
 					quote! {
+						#[allow(missing_docs)]
 						impl<#(#free_state_params),*> #builder_name<#(#input_states),*> {
 							pub fn #name(mut self, value: impl ::std::convert::Into<String>)
 								-> #builder_name<#(#output_states),*>
@@ -5133,6 +5139,7 @@ fn generate_info_builder(
 					}
 				} else {
 					quote! {
+						#[allow(missing_docs)]
 						impl<#(#free_state_params),*> #builder_name<#(#input_states),*> {
 							pub fn #name(mut self, value: #ty)
 								-> #builder_name<#(#output_states),*>
@@ -5151,11 +5158,13 @@ fn generate_info_builder(
 		.collect();
 
 	Ok(quote! {
+		#[allow(missing_docs)]
 		pub struct #builder_name<#(#state_names = ()),*> {
 			#(#builder_fields)*
 			_state: ::std::marker::PhantomData<(#(#state_names),*)>,
 		}
 
+		#[allow(missing_docs)]
 		impl #info_name #ty_generics #where_clause {
 			pub fn build() -> #builder_name<#(#initial_states),*> {
 				#builder_name {
@@ -5167,6 +5176,7 @@ fn generate_info_builder(
 
 		#(#setter_methods)*
 
+		#[allow(missing_docs)]
 		impl #builder_name<#(#final_states),*> {
 			pub fn finish(self) -> #info_name #ty_generics #where_clause {
 				#info_name {

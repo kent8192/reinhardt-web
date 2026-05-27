@@ -6,12 +6,10 @@ fn main() {
 	let _ = form! {
 		name: ToggleForm,
 		action: "/api/toggle",
-
 		fields: {
 			enabled: BooleanField {
 				initial: false,
 			}
 		}
-
 	};
 }

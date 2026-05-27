@@ -8,7 +8,9 @@ mod settings;
 #[cfg(all(feature = "conf", native))]
 pub use settings::*;
 
+#[cfg(native)]
 mod core_types;
+#[cfg(native)]
 pub use core_types::*;
 
 #[cfg(all(feature = "database", native))]

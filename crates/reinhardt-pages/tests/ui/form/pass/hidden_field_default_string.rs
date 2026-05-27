@@ -7,12 +7,10 @@ fn main() {
 	let _ = form! {
 		name: LegacyForm,
 		action: "/api/legacy",
-
 		fields: {
 			note: HiddenField {
 				initial: "hello".to_string(),
 			}
 		}
-
 	};
 }

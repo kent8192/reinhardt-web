@@ -25,6 +25,5 @@ fn main() {
 				required,
 			}
 		}
-
 	};
 }

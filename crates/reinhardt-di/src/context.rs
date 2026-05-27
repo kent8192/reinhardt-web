@@ -602,10 +602,10 @@ impl InjectionContext {
 	)> {
 		use crate::registry::global_registry;
 
-		if let Some(ref reg) = self.registry {
-			if let Some(scope) = reg.get_scope::<T>() {
-				return Some((scope, reg));
-			}
+		if let Some(ref reg) = self.registry
+			&& let Some(scope) = reg.get_scope::<T>()
+		{
+			return Some((scope, reg));
 		}
 		let global = global_registry();
 		global.get_scope::<T>().map(|scope| (scope, global))

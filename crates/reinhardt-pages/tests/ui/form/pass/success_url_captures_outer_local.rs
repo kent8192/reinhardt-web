@@ -44,18 +44,15 @@ fn main() {
 		name: SuccessUrlCaptureForm,
 		action: "/api/vote",
 		success_url: |_form| format!("/polls/{qid}/results/"),
-
 		state: {
 			loading,
 			error,
 		}
-
 		fields: {
 			question_id: HiddenField {
 				initial: qid.to_string(),
 			}
 		}
-
 	};
 }
 
