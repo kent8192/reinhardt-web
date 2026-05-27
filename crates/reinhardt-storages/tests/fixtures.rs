@@ -317,8 +317,10 @@ impl Respond for MockS3Responder {
 /// The actual `S3Storage` production code is exercised end-to-end through
 /// this mock server, without requiring Docker.
 pub struct MockS3Server {
+	// Kept alive so wiremock continues serving HTTP requests for the test duration.
 	#[allow(dead_code)]
 	server: MockServer,
+	// Kept alive so the MockS3Responder's Arc reference remains valid.
 	#[allow(dead_code)]
 	state: Arc<Mutex<MockS3State>>,
 	endpoint: String,
@@ -420,23 +422,37 @@ impl MockS3Server {
 	}
 }
 
+/// Owns a `MockS3Server` alongside the backend it created, keeping the
+/// mock HTTP server alive for the test lifetime without leaking memory.
+pub struct S3BackendOwner {
+	pub backend: Arc<dyn StorageBackend>,
+	#[allow(dead_code)]
+	// Dropped at end of test, cleaning up the wiremock listener.
+	mock: MockS3Server,
+}
+
+impl std::ops::Deref for S3BackendOwner {
+	type Target = dyn StorageBackend;
+
+	fn deref(&self) -> &Self::Target {
+		&*self.backend
+	}
+}
+
 /// S3 backend fixture using wiremock mock server.
-///
-/// This fixture creates a new mock S3 server for each test.
-/// Note: The server is leaked to keep it alive for the duration of the test.
 #[fixture]
-pub async fn s3_backend() -> Arc<dyn StorageBackend> {
-	let mock = Box::leak(Box::new(MockS3Server::new().await));
-	mock.create_backend().await
+pub async fn s3_backend() -> S3BackendOwner {
+	let mock = MockS3Server::new().await;
+	let backend = mock.create_backend().await;
+	S3BackendOwner { backend, mock }
 }
 
 /// S3 backend fixture with path prefix.
-///
-/// Note: The server is leaked to keep it alive for the duration of the test.
 #[fixture]
-pub async fn s3_backend_with_prefix() -> Arc<dyn StorageBackend> {
-	let mock = Box::leak(Box::new(MockS3Server::new().await));
-	mock.create_backend_with_prefix("test-prefix").await
+pub async fn s3_backend_with_prefix() -> S3BackendOwner {
+	let mock = MockS3Server::new().await;
+	let backend = mock.create_backend_with_prefix("test-prefix").await;
+	S3BackendOwner { backend, mock }
 }
 
 /// Mock S3 server fixture.
@@ -542,7 +558,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_s3_container_creation() {
 		let container = MockS3Server::new().await;
-		assert!(container.endpoint().contains("127.0.0.1"));
+		assert!(
+			container.endpoint().starts_with("http://127.0.0.1:"),
+			"endpoint should bind to 127.0.0.1: {}",
+			container.endpoint()
+		);
 		assert_eq!(container.bucket(), "test-bucket");
 		assert_eq!(container.region(), "us-east-1");
 	}
