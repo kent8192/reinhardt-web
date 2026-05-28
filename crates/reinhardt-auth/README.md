@@ -12,7 +12,7 @@ password hashing with Argon2.
 
 Add `reinhardt-auth` to your `Cargo.toml`:
 
-<!-- reinhardt-version-sync:3 -->
+<!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
 reinhardt-auth = "0.1.2"

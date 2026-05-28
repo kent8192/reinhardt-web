@@ -12,7 +12,7 @@ migrations, static file collection, development server, and more.
 
 Add `reinhardt` to your `Cargo.toml`:
 
-<!-- reinhardt-version-sync:3 -->
+<!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
 reinhardt = { version = "0.1.2", features = ["commands"] }
