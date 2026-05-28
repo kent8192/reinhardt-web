@@ -120,6 +120,29 @@ fn classify_injection_type(ty: &Type) -> Option<InjectionType> {
 			return Some(InjectionType::Depends(inner_ty.clone()));
 		}
 
+		// Check for DependsResult<T, E> (sugar for Depends<Result<T, E>>)
+		if ident == "DependsResult"
+			&& is_likely_reinhardt_di_path(segments)
+			&& let PathArguments::AngleBracketed(args) = &last_segment.arguments
+			&& args.args.len() == 2
+		{
+			let mut iter = args.args.iter();
+			let t = iter.next()?;
+			let e = iter.next()?;
+			let inner: Type = syn::parse_quote! { ::core::result::Result<#t, #e> };
+			return Some(InjectionType::Depends(inner));
+		}
+
+		// Check for DependsOption<T> (sugar for Depends<Option<T>>)
+		if ident == "DependsOption"
+			&& is_likely_reinhardt_di_path(segments)
+			&& let PathArguments::AngleBracketed(args) = &last_segment.arguments
+			&& let Some(GenericArgument::Type(inner_ty)) = args.args.first()
+		{
+			let inner: Type = syn::parse_quote! { ::core::option::Option<#inner_ty> };
+			return Some(InjectionType::Depends(inner));
+		}
+
 		// Check for Option<Injected<T>> or Option<Depends<T>>
 		if ident == "Option"
 			&& let PathArguments::AngleBracketed(args) = &last_segment.arguments
@@ -220,7 +243,7 @@ pub(crate) fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<T
 				let injection_type = classify_injection_type(ty).ok_or_else(|| {
 					syn::Error::new_spanned(
 						field,
-						"#[inject] field must have type Depends<T>, Option<Depends<T>>, Injected<T>, or OptionalInjected<T>",
+						"#[inject] field must have type Depends<T>, DependsResult<T, E>, DependsOption<T>, Option<Depends<T>>, Injected<T>, or OptionalInjected<T>",
 					)
 				})?;
 
