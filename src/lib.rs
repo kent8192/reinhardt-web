@@ -1196,8 +1196,8 @@ pub use reinhardt_di::injected::{Injected, OptionalInjected};
 pub use reinhardt_di::scope::{RequestScope, Scope, SingletonScope};
 #[cfg(all(feature = "di", native))]
 pub use reinhardt_di::{
-	Depends, DependsBuilder, DiError, DiResult, Injectable, InjectionContext,
-	InjectionContextBuilder, InjectionMetadata, RequestContext,
+	Depends, DependsBuilder, DependsOption, DependsResult, DiError, DiResult, Injectable,
+	InjectionContext, InjectionContextBuilder, InjectionMetadata, RequestContext,
 };
 
 // Re-export DI params - available in minimal, standard, and di features

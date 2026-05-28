@@ -302,7 +302,7 @@ pub use override_registry::OverrideRegistry;
 
 #[cfg(feature = "params")]
 pub use context::{ParamContext, Request};
-pub use depends::{Depends, DependsBuilder};
+pub use depends::{Depends, DependsBuilder, DependsOption, DependsResult};
 pub use injectable::Injectable;
 #[allow(deprecated)]
 pub use injected::{
