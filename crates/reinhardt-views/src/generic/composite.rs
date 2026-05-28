@@ -113,7 +113,7 @@ where
 
 	/// Gets the queryset, creating a default one if not set
 	fn get_queryset(&self) -> QuerySet<M> {
-		self.queryset.clone().unwrap_or_default()
+		self.queryset.clone().unwrap_or_else(|| M::objects().all())
 	}
 
 	/// Builds a filtered queryset with ordering applied, before pagination.
@@ -404,7 +404,7 @@ where
 
 	/// Gets the queryset, creating a default one if not set
 	fn get_queryset(&self) -> QuerySet<M> {
-		self.queryset.clone().unwrap_or_default()
+		self.queryset.clone().unwrap_or_else(|| M::objects().all())
 	}
 
 	/// Gets a single object by lookup field value from request path params
@@ -605,7 +605,7 @@ where
 
 	/// Gets the queryset, creating a default one if not set
 	fn get_queryset(&self) -> QuerySet<M> {
-		self.queryset.clone().unwrap_or_default()
+		self.queryset.clone().unwrap_or_else(|| M::objects().all())
 	}
 
 	/// Gets a single object by lookup field value from request path params
@@ -748,7 +748,7 @@ where
 
 	/// Gets the queryset, creating a default one if not set
 	fn get_queryset(&self) -> QuerySet<M> {
-		self.queryset.clone().unwrap_or_default()
+		self.queryset.clone().unwrap_or_else(|| M::objects().all())
 	}
 
 	/// Gets a single object by lookup field value from request path params
@@ -787,6 +787,62 @@ where
 {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::generic::test_support::{
+		ManagedArticle, assert_default_manager_queryset, assert_explicit_queryset,
+		explicit_queryset,
+	};
+	use reinhardt_rest::serializers::JsonSerializer;
+
+	#[test]
+	fn list_create_default_queryset_uses_model_objects() {
+		let view = ListCreateAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new();
+
+		assert_default_manager_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn list_create_explicit_queryset_overrides_model_objects() {
+		let view = ListCreateAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new()
+			.with_queryset(explicit_queryset());
+
+		assert_explicit_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn retrieve_update_default_queryset_uses_model_objects() {
+		let view = RetrieveUpdateAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new();
+
+		assert_default_manager_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn retrieve_destroy_default_queryset_uses_model_objects() {
+		let view = RetrieveDestroyAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new();
+
+		assert_default_manager_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn retrieve_update_destroy_default_queryset_uses_model_objects() {
+		let view =
+			RetrieveUpdateDestroyAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new();
+
+		assert_default_manager_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn retrieve_update_destroy_explicit_queryset_overrides_model_objects() {
+		let view =
+			RetrieveUpdateDestroyAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new()
+				.with_queryset(explicit_queryset());
+
+		assert_explicit_queryset(view.get_queryset());
 	}
 }
 
