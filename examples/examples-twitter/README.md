@@ -645,10 +645,10 @@ CREATE INDEX idx_relationships_following ON relationships(following_id);
 
 ### JWT Authentication
 
-Uses `reinhardt-auth` with JWT token authentication:
+Uses Reinhardt's auth facade with JWT token authentication:
 
 ```rust
-use reinhardt_auth::{JwtAuth, User};
+use reinhardt::JwtAuth;
 
 // Token generation on signin
 let jwt_auth = JwtAuth::new(secret_key.as_bytes());
@@ -669,7 +669,7 @@ let user = User::find_by_id(&db, &claims.user_id).await?;
 Uses Argon2 for secure password hashing:
 
 ```rust
-use reinhardt_auth::{Argon2Hasher, PasswordHasher};
+use reinhardt::{Argon2Hasher, PasswordHasher};
 
 let hasher = Argon2Hasher::new();
 let password_hash = hasher.hash("user_password")?;

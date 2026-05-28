@@ -174,7 +174,7 @@ flowchart LR
 
 ## Configuring `settings/base.toml`
 
-`settings/base.toml` holds the always-loaded base layer of your settings. Open it and confirm it contains at least the keys consumed by the `[core]` settings fragment and the top-level `[database]` section used by the database connection loader:
+`settings/base.toml` holds the always-loaded base layer of your settings. Open it and confirm it contains at least the keys consumed by the `[core]` settings fragment and the top-level `[database]` section used by this quickstart's database connection loader:
 
 ```toml
 [core]
@@ -201,6 +201,7 @@ name = "db.sqlite3"
 A few things worth knowing as you edit:
 
 - `TomlFileSource::new(path)` applies `${VAR}` interpolation **by default**. If you want a literal `${...}` to survive the load, opt out per file with `.without_interpolation()`.
+- This quickstart intentionally uses the legacy top-level `[database]` schema consumed by `reinhardt_db::connection::get_database_url_from_env_or_settings`. Fragment-based settings used elsewhere store the same default database under `[core.databases.default]`.
 - The JSON file source (`JsonFileSource`, `auto_source`) is deprecated and will be removed in 0.2.0. Stick to TOML.
 - For local-only overrides (e.g., a real `DATABASE_URL`), copy `settings/local.example.toml` to `settings/local.toml` and edit there — it is gitignored.
 
@@ -259,7 +260,7 @@ pub fn get_settings() -> ProjectSettings {
 }
 ```
 
-> Need a project-specific setting beyond `CoreSettings`? You can compose fragments with `|`, e.g., `#[settings(CoreSettings | CacheSettings | EmailSettings)] pub struct ProjectSettings;`. The tutorial's runtime database URL is still read from the top-level `[database]` section by the database connection loader.
+> Need a project-specific setting beyond `CoreSettings`? You can compose fragments with `|`, e.g., `#[settings(CoreSettings | CacheSettings | EmailSettings)] pub struct ProjectSettings;`. Fragment-based configuration maps the default database to `[core.databases.default]`, while this tutorial's runtime database URL is still read from the legacy top-level `[database]` section by the database connection loader.
 
 ## Configuring `installed_apps!`
 

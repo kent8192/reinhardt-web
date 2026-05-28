@@ -25,8 +25,9 @@ Before you begin, make sure you have:
 
 ### Step 1: Install Reinhardt Admin
 
-Install the latest stable CLI, or keep `--version` as a reproducibility pin.
-The literal below is auto-bumped by release-plz on each release.
+The command below pins the CLI version for reproducibility. Omit `--version`
+to install the latest stable release. The literal below is auto-bumped by
+release-plz on each release.
 
 <!-- reinhardt-version-sync -->
 ```bash

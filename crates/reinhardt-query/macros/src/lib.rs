@@ -33,10 +33,17 @@
 //!
 //! ## Enum with custom identifier
 //!
-//! ```rust,ignore
+//! ```rust
+//! # mod reinhardt_query {
+//! #     pub mod types {
+//! #         pub trait Iden: std::fmt::Debug + std::fmt::Display {
+//! #             fn unquoted(&self, s: &mut dyn std::fmt::Write);
+//! #         }
+//! #     }
+//! # }
 //! use reinhardt_query::types::Iden;
 //!
-//! #[derive(Debug, Iden)]
+//! #[derive(Debug, reinhardt_query_macros::Iden)]
 //! enum Users {
 //!     Table,           // -> "users"
 //!     #[iden = "primary_key"]
@@ -57,10 +64,17 @@
 //!
 //! ## Struct with custom identifier
 //!
-//! ```rust,ignore
+//! ```rust
+//! # mod reinhardt_query {
+//! #     pub mod types {
+//! #         pub trait Iden: std::fmt::Debug + std::fmt::Display {
+//! #             fn unquoted(&self, s: &mut dyn std::fmt::Write);
+//! #         }
+//! #     }
+//! # }
 //! use reinhardt_query::types::Iden;
 //!
-//! #[derive(Debug, Iden)]
+//! #[derive(Debug, reinhardt_query_macros::Iden)]
 //! #[iden = "customer_id"]
 //! struct Customer;
 //!
@@ -70,10 +84,17 @@
 //!
 //! ## Struct with default identifier
 //!
-//! ```rust,ignore
+//! ```rust
+//! # mod reinhardt_query {
+//! #     pub mod types {
+//! #         pub trait Iden: std::fmt::Debug + std::fmt::Display {
+//! #             fn unquoted(&self, s: &mut dyn std::fmt::Write);
+//! #         }
+//! #     }
+//! # }
 //! use reinhardt_query::types::Iden;
 //!
-//! #[derive(Debug, Iden)]
+//! #[derive(Debug, reinhardt_query_macros::Iden)]
 //! struct User;
 //!
 //! let user = User;
@@ -186,10 +207,17 @@ fn extract_custom_name(attrs: &[syn::Attribute]) -> Result<Option<String>, syn::
 ///
 /// ## Enum with custom identifier
 ///
-/// ```rust,ignore
+/// ```rust
+/// # mod reinhardt_query {
+/// #     pub mod types {
+/// #         pub trait Iden: std::fmt::Debug + std::fmt::Display {
+/// #             fn unquoted(&self, s: &mut dyn std::fmt::Write);
+/// #         }
+/// #     }
+/// # }
 /// use reinhardt_query::types::Iden;
 ///
-/// #[derive(Debug, Iden)]
+/// #[derive(Debug, reinhardt_query_macros::Iden)]
 /// enum Users {
 ///     Table,           // -> "users"
 ///     #[iden = "primary_key"]
@@ -210,10 +238,17 @@ fn extract_custom_name(attrs: &[syn::Attribute]) -> Result<Option<String>, syn::
 ///
 /// ## Struct with custom identifier
 ///
-/// ```rust,ignore
+/// ```rust
+/// # mod reinhardt_query {
+/// #     pub mod types {
+/// #         pub trait Iden: std::fmt::Debug + std::fmt::Display {
+/// #             fn unquoted(&self, s: &mut dyn std::fmt::Write);
+/// #         }
+/// #     }
+/// # }
 /// use reinhardt_query::types::Iden;
 ///
-/// #[derive(Debug, Iden)]
+/// #[derive(Debug, reinhardt_query_macros::Iden)]
 /// #[iden = "customer_id"]
 /// struct Customer;
 ///
@@ -223,8 +258,17 @@ fn extract_custom_name(attrs: &[syn::Attribute]) -> Result<Option<String>, syn::
 ///
 /// ## Struct with default identifier
 ///
-/// ```rust,ignore
-/// #[derive(Debug, Iden)]
+/// ```rust
+/// # mod reinhardt_query {
+/// #     pub mod types {
+/// #         pub trait Iden: std::fmt::Debug + std::fmt::Display {
+/// #             fn unquoted(&self, s: &mut dyn std::fmt::Write);
+/// #         }
+/// #     }
+/// # }
+/// use reinhardt_query::types::Iden;
+///
+/// #[derive(Debug, reinhardt_query_macros::Iden)]
 /// struct User;
 ///
 /// let user = User;
