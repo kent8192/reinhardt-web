@@ -54,7 +54,7 @@
 //! - `middleware-security` - Security headers (HSTS, XSS Protection, etc.)
 //! - `middleware-rate-limit` - Rate limiting and throttling
 //!
-//! See [Cargo.toml feature definitions](https://github.com/kent8192/reinhardt/blob/main/Cargo.toml) for detailed documentation.
+//! See [Cargo.toml feature definitions](https://github.com/kent8192/reinhardt-web/blob/main/Cargo.toml) for detailed documentation.
 //!
 //! ## Quick Example
 //!

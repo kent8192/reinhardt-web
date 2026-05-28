@@ -318,7 +318,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'cargo run --bin runserver',
+    command: 'cargo run --bin examples-twitter -- runserver',
     url: 'http://localhost:8000',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000, // 2 minutes

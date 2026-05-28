@@ -126,7 +126,7 @@ reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", default-fea
 
 All features enabled (batteries-included).
 
-**Includes**: `standard` + admin, graphql, websockets, cache, i18n, mail, sessions, static-files, storage
+**Includes**: `standard` + conf, admin, graphql, websockets, cache, i18n, mail, sessions, static-files, storage, commands, test, dispatch, grpc, dentdelion, deeplink, openapi-router, and the crate-level `*-full` feature sets.
 
 {% versioned_code(lang="toml") %}
 reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", features = ["full"] }
@@ -147,8 +147,8 @@ Reinhardt implements a **recursive feature flag system** where each crate level 
 **Three-Level Architecture:**
 
 1. **Sub-Crate Level**: Individual `full` features
-   - Example: `reinhardt-orm/full`, `reinhardt-sessions/full`
-   - Aggregates all features within that specific sub-crate
+   - Example: `reinhardt-admin/full`, `reinhardt-commands/full`
+   - Aggregates all features within that specific crate
 
 2. **Parent Crate Level**: Module-specific `{module}-full` features
    - Example: `reinhardt-db/database-full`, `reinhardt-core/core-full`, `reinhardt-rest/rest-full`
@@ -166,14 +166,15 @@ reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", features = 
 # ↓ enables
 # reinhardt-db/database-full
 # ↓ enables
-# reinhardt-orm/full, reinhardt-migrations/full, etc.
+# backends, backends-settings, di, pool, orm, migrations,
+# hybrid, associations, contenttypes, all-databases, full
 {% end %}
 
 **Parent Crate `-full` Features:**
 
 | Parent Crate | Full Feature | Includes |
 |--------------|--------------|----------|
-| `reinhardt-db` | `database-full` | All 8 database sub-crates with their `full` features |
+| `reinhardt-db` | `database-full` | `backends`, `backends-settings`, `di`, `pool`, `orm`, `migrations`, `hybrid`, `associations`, `contenttypes`, `all-databases`, and `full` |
 | `reinhardt-core` | `core-full` | All 11 core sub-crates with their `full` features |
 | `reinhardt-rest` | `rest-full` | All 9 REST sub-crates with their `full` features |
 | `reinhardt-pages` | `pages-full` | SSR, renderers, and component sub-crates with their `full` features |
@@ -397,7 +398,7 @@ reinhardt-admin startapp myfeature --template pages
 
 **Key Features:**
 - Reactive UI components
-- Conditional compilation (`cfg(target_arch = "wasm32")`)
+- Conditional compilation (`cfg(all(target_family = "wasm", target_os = "unknown"))`)
 - Single-server architecture (API + static files from same server)
 - Bootstrap UI integration
 - History API routing
@@ -408,16 +409,16 @@ reinhardt-admin startapp myfeature --template pages
 
 {% versioned_code(lang="toml") %}
 [dependencies]
-reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", features = ["admin"] }
+reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web", features = ["pages"] }
 
 [lib]
 crate-type = ["cdylib", "rlib"]  # cdylib for WASM, rlib for server
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = ["Window", "Document", "Element"] }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 tokio = { version = "1", features = ["full"] }
 {% end %}
 
@@ -626,7 +627,7 @@ Reinhardt provides **60+ features** with **3 granularity levels** (bundle, group
 
 **Default**: `standard` bundle
 
-**Key bundles**: `minimal` (microservice), `standard` (balanced), `full` (all features, default), `api-only`, `graphql-server`, `cli-tools`
+**Key bundles**: `minimal` (microservice), `standard` (balanced default), `full` (all features, opt-in), `api-only`, `graphql-server`, `cli-tools`
 
 **Auto-enabled dependencies**: `di` → `reinhardt-di/params`, `reinhardt-db?/di`; `middleware` → `sessions`, `reinhardt-auth/middleware`; `auth-session` → `sessions`
 

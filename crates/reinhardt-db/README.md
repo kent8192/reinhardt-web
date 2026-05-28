@@ -143,10 +143,11 @@ Advanced features for specific use cases:
   - **When to use**: Polymorphic relationships (comments, tags, etc.)
 
 - **`nosql` module**: NoSQL database support
-  - MongoDB integration (implemented)
+  - Core NoSQL traits and BSON document support
+  - MongoDB integration behind the `mongodb` feature
   - Unified NoSQL backend traits
   - Document, Key-Value, Column-Family, Graph paradigms
-  - **When to use**: Working with NoSQL databases like MongoDB
+  - **When to use**: Working with NoSQL abstractions, or enable `mongodb` / `nosql-document` / `nosql-all` for concrete MongoDB support
 
 ## Installation
 
@@ -179,7 +180,9 @@ Available features:
 - `associations` (default): Relationship management
 - `sqlite`: SQLite support
 - `mysql`: MySQL support
-- `nosql`: NoSQL database support (MongoDB)
+- `nosql`: Core NoSQL/BSON support
+- `mongodb`: MongoDB backend support
+- `nosql-document` / `nosql-all`: Aggregate NoSQL backend presets
 - `di`: DI integration for `DatabaseConnection`
 - `contenttypes`: Generic relations support
 - `all-databases`: All database backends

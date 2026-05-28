@@ -25,11 +25,9 @@ Before you begin, make sure you have:
 
 ### Step 1: Install Reinhardt Admin
 
-While Reinhardt is on a pre-release (`-rc.*` / `-alpha.*`),
-`cargo install` requires an explicit `--version` because pre-releases are
-not selected by default. Once `0.1.0` stable ships, omit `--version` to
-pull the latest stable (or keep `--version` as an opt-in reproducibility
-pin). The literal below is auto-bumped by release-plz on each release.
+The command below pins the CLI version for reproducibility. Omit `--version`
+to install the latest stable release. The literal below is auto-bumped by
+release-plz on each release.
 
 <!-- reinhardt-version-sync -->
 ```bash
@@ -42,8 +40,8 @@ cargo install reinhardt-admin-cli --version "0.1.2"
 ### Step 2: Create a New Project
 
 ```bash
-# Create a RESTful API project (default)
-reinhardt-admin startproject my-api
+# Create a RESTful API project
+reinhardt-admin startproject my-api --with-rest
 cd my-api
 ```
 
@@ -143,7 +141,7 @@ Balanced setup for most production projects:
 
 {% versioned_code(lang="toml") %}
 [dependencies]
-# Default behavior - all features enabled
+# Default behavior - standard bundle enabled
 reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }

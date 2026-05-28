@@ -56,8 +56,8 @@ fn main() {
     println!("cargo::rustc-check-cfg=cfg(native)");
 
     cfg_aliases! {
-        wasm: { target_arch = "wasm32" },
-        native: { not(target_arch = "wasm32") },
+        wasm: { all(target_family = "wasm", target_os = "unknown") },
+        native: { not(all(target_family = "wasm", target_os = "unknown")) },
     }
 }
 ```
@@ -73,12 +73,12 @@ Now you can use shorter cfg attributes:
 
 ```rust
 // Before:
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 // After:
 #[cfg(wasm)]
 
 // Before:
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 // After:
 #[cfg(native)]
 ```
@@ -105,7 +105,7 @@ fn my_button(on_click: Signal<bool>) -> View {
 
 **Before** (manual conditional compilation):
 ```rust
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 {
     page!(|| {
         button {
@@ -114,7 +114,7 @@ fn my_button(on_click: Signal<bool>) -> View {
         }
     })
 }
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 {
     let _ = on_click; // suppress warning
     page!(|| {
@@ -316,14 +316,21 @@ fn counter() -> View {
 
 | Feature | Description |
 |---------|-------------|
+| `console_error_panic_hook` | Install the browser panic hook for easier WASM debugging |
 | `msgpack` | MessagePack serialization support |
-| `pages-full` | All features enabled (`msgpack` + `web-sys-full`) |
+| `testing` | Marker feature for internal test-only code paths |
+| `msw` | Generate MockableServerFn support for MSW-style WASM tests |
+| `pages-full` | Aggregate of `msgpack` and `web-sys-full` |
 | `static` | Static file serving |
 | `urls` | URL routing integration |
 | `debug-hooks` | Debug hooks for development |
 | `uuid` | UUID type support |
 | `chrono` | Chrono date/time type support |
 | `ast` | AST processing support |
+| `e2e-cdp-test` | Marker feature for Chrome DevTools Protocol E2E tests |
+| `wasm-diag-test` | Marker feature for WASM diagnostic tests |
+| `nav-diag-dom` | Expose SPA navigation diagnostics on the DOM |
+| `hmr` | Hot-module-reload support for development |
 | `web-sys-full` | All required web-sys features for WASM applications |
 
 ## License

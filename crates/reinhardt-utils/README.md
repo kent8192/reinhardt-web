@@ -10,28 +10,28 @@ Includes date/time utilities, string manipulation, encoding/decoding, and other 
 
 ## Installation
 
-Add `reinhardt` to your `Cargo.toml`:
+Add `reinhardt-utils` directly, or enable one of the root features that re-export a utility area:
 
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.2", features = ["utils"] }
+reinhardt-utils = "0.1.2"
 
-# Or use a preset:
-# reinhardt = { version = "0.1.2", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.2", features = ["full"] }      # All features
+# Root facade examples:
+# reinhardt = { version = "0.1.2", package = "reinhardt-web", features = ["cache"] }
+# reinhardt = { version = "0.1.2", package = "reinhardt-web", features = ["static-files", "storage"] }
 ```
 
 Then import utility features:
 
 ```rust
-use reinhardt::utils::cache::{Cache, InMemoryCache};
-use reinhardt::utils::logging::{Logger, LogLevel};
-use reinhardt::utils::storage::{Storage, LocalStorage};
-use reinhardt::utils::core::html::{escape, unescape};
+use reinhardt_utils::cache::{Cache, InMemoryCache};
+use reinhardt_utils::logging::{LogLevel, Logger};
+use reinhardt_utils::storage::{LocalStorage, Storage};
+use reinhardt_utils::html::{escape, unescape};
 ```
 
-**Note:** Utility features are included in the `standard` and `full` feature presets.
+**Note:** There is no root `utils` feature. The root facade exposes specific utility areas through features such as `cache`, `redis-backend`, `static-files`, and `storage`; the `full` preset enables the broad utility surface.
 
 ## Features
 
