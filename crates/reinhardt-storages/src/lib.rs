@@ -41,8 +41,19 @@ pub mod backends;
 pub mod config;
 pub mod error;
 pub mod factory;
+pub mod settings;
 
 pub use backend::StorageBackend;
-pub use config::StorageConfig;
+#[allow(deprecated)] // Re-export keeps the compatibility API discoverable during the 0.2 line.
+pub use config::{BackendType, StorageConfig};
 pub use error::{Result, StorageError};
-pub use factory::create_storage;
+pub use factory::{create_storage, create_storage_from_settings};
+#[cfg(feature = "azure")]
+pub use settings::AzureStorageSettings;
+#[cfg(feature = "gcs")]
+pub use settings::GcsStorageSettings;
+#[cfg(feature = "local")]
+pub use settings::LocalStorageSettings;
+#[cfg(feature = "s3")]
+pub use settings::S3StorageSettings;
+pub use settings::StorageSettings;

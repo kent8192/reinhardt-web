@@ -1,6 +1,11 @@
 //! Factory pattern tests for creating storage backends.
 
-use reinhardt_storages::{StorageBackend, StorageConfig, StorageError, create_storage};
+#![allow(deprecated)] // Tests cover legacy factory config until removal.
+
+use reinhardt_storages::{
+	StorageBackend, StorageConfig, StorageError, StorageSettings, create_storage,
+	create_storage_from_settings,
+};
 use rstest::rstest;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -36,6 +41,42 @@ mod backend_creation_tests {
 
 		// Cleanup
 		backend.delete("test.txt").await.ok();
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_create_storage_from_settings_local_backend() {
+		let temp_dir = TempDir::new().expect("Failed to create temp dir");
+		let base_path = temp_dir.path().to_str().unwrap().to_string();
+		let raw = format!(
+			r#"
+backend = "local"
+
+[local]
+base_path = "{}"
+"#,
+			base_path
+		);
+		let settings: StorageSettings = toml::from_str(&raw).unwrap();
+
+		let backend = create_storage_from_settings(&settings)
+			.await
+			.expect("Failed to create local backend from settings");
+
+		assert!(!backend.exists("missing.txt").await.unwrap());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	#[cfg(feature = "gcs")]
+	async fn test_create_storage_from_settings_rejects_missing_backend_section() {
+		let settings: StorageSettings = toml::from_str(r#"backend = "gcs""#).unwrap();
+
+		let result = create_storage_from_settings(&settings).await;
+
+		assert!(
+			matches!(result, Err(StorageError::ConfigError(message)) if message.contains("storage.gcs"))
+		);
 	}
 
 	#[rstest]
