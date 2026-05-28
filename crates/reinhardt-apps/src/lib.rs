@@ -73,11 +73,11 @@
 //!
 //! This crate re-exports commonly used types from other Reinhardt crates:
 //!
-//! - From `reinhardt-http`: [`Request`], [`Response`], [`StreamBody`]
-//! - From `reinhardt-conf`: [`Settings`], [`DatabaseConfig`], [`MiddlewareConfig`]
-//! - From `reinhardt-core::exception`: [`Error`], [`Result`]
-//! - From `reinhardt-server`: [`HttpServer`], [`serve`]
-//! - From `reinhardt-http`: [`Handler`], [`Middleware`], [`MiddlewareChain`]
+//! - From `reinhardt-http`: `Request`, `Response`, `StreamBody`
+//! - From `reinhardt-conf`: `Settings`, `DatabaseConfig`, `MiddlewareConfig`
+//! - From `reinhardt-core::exception`: `Error`, `Result`
+//! - From `reinhardt-server`: `HttpServer`, `serve`
+//! - From `reinhardt-http`: `Handler`, `Middleware`, `MiddlewareChain`
 
 #![warn(missing_docs)]
 
