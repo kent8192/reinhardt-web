@@ -756,7 +756,7 @@ pub enum TypedFieldType {
 	/// UuidField -> `Signal<Option<Uuid>>`
 	UuidField,
 
-	/// HiddenField<T> -> `Signal<T>`. Default `T = String` when no generic.
+	/// `HiddenField<T>` -> `Signal<T>`. Default `T = String` when no generic.
 	HiddenField {
 		/// The concrete inner type substituted into `Signal<T>` for this
 		/// field. Populated from the `<T>` on the field-type identifier in
@@ -764,21 +764,21 @@ pub enum TypedFieldType {
 		/// validator when no generic argument is supplied.
 		inner: syn::Type,
 	},
-	/// ChoiceField<T> -> `Signal<T>`. Default `T = String` when no generic.
+	/// `ChoiceField<T>` -> `Signal<T>`. Default `T = String` when no generic.
 	ChoiceField {
 		/// The concrete inner type substituted into `Signal<T>` and into
 		/// the typed choices store `Signal<Vec<(T, String)>>` for this
 		/// field. Default `::std::string::String` when no generic argument.
 		inner: syn::Type,
 	},
-	/// MultipleChoiceField<T> -> `Signal<Vec<T>>`. Default `T = String`.
+	/// `MultipleChoiceField<T>` -> `Signal<Vec<T>>`. Default `T = String`.
 	MultipleChoiceField {
 		/// The concrete per-item type. The field's signal is
 		/// `Signal<Vec<T>>` and the choices store is
 		/// `Signal<Vec<(T, String)>>`. Default `::std::string::String`.
 		inner: syn::Type,
 	},
-	/// JsonField<T> -> `Signal<T>`. Default `T = ::std::string::String`.
+	/// `JsonField<T>` -> `Signal<T>`. Default `T = ::std::string::String`.
 	JsonField {
 		/// The concrete JSON-shaped type. Default `::std::string::String`
 		/// when no generic argument is supplied.
