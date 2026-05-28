@@ -22,7 +22,7 @@ use reinhardt_http::{
 /// authorization is delegated to endpoint-level guards
 /// (`Guard<P>`, `Public`).
 ///
-/// This is the JWT counterpart to the session-based [`AuthenticationMiddleware`](crate::AuthenticationMiddleware).
+/// This is the JWT counterpart to the session-based `AuthenticationMiddleware`.
 ///
 /// # Examples
 ///

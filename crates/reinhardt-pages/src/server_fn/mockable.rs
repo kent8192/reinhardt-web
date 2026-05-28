@@ -7,7 +7,7 @@
 //!
 //! Constants common to every target (`PATH`, `NAME`, `CODEC`,
 //! `INJECTED_PARAMS`) are inherited from the cross-target supertrait
-//! [`ServerFnMetadata`](super::metadata::ServerFnMetadata) — they are not
+//! [`ServerFnMetadata`] — they are not
 //! duplicated here.
 
 use serde::Serialize;

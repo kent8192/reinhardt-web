@@ -203,7 +203,7 @@ impl<M: Model> Manager<M> {
 	/// The intended call style is the fluent builder produced by the
 	/// `#[model]`-generated field accessors (`FieldRef::eq()` / `.gt()` / ...)
 	/// or the parallel `Field::eq()` builder, which returns a `Lookup<M>`
-	/// (convertible into [`Filter`] via its `Into` impl).
+	/// (convertible into `Filter` via its `Into` impl).
 	///
 	/// # Examples
 	///

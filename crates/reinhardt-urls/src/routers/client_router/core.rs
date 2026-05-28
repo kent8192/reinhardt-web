@@ -554,7 +554,7 @@ impl ClientRouter {
 	///
 	/// The handler closure may take any number of `Path<T>` arguments from 1
 	/// to 8. The compiler infers the arity from the closure signature via the
-	/// sealed [`Handler<Args>`] trait, so the same method name covers every
+	/// sealed `Handler<Args>` trait, so the same method name covers every
 	/// supported arity. Refs Issue #4637.
 	///
 	/// # Examples

@@ -109,8 +109,8 @@ impl LoginRequiredConfig {
 /// [`LoginRequiredMiddleware`](https://docs.djangoproject.com/en/5.1/ref/middleware/#django.contrib.auth.middleware.LoginRequiredMiddleware).
 ///
 /// The middleware checks the `AuthState` in request extensions (set by
-/// [`AuthenticationMiddleware`](crate::AuthenticationMiddleware) or
-/// [`JwtAuthMiddleware`](crate::jwt_auth::JwtAuthMiddleware)). If the
+/// `AuthenticationMiddleware` or
+/// `JwtAuthMiddleware`). If the
 /// user is not authenticated and the path is not exempt, the middleware
 /// returns a 302 redirect to the configured login URL with the original
 /// path as a query parameter.
