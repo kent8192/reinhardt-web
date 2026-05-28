@@ -15,18 +15,12 @@
 //! - **FileTypeValidator**: MIME type and extension validation
 //! - **CustomRegexValidator**: User-defined regex pattern validation
 //!
-//! ## Available Backend Implementations
+//! ## Related Backend Crates
 //!
-//! The backends crate provides multiple backend implementations:
-//! - **Cache Backends**: Redis (✅), DynamoDB (✅), Memcached (✅)
-//! - **Email Backends**: SMTP (✅), SendGrid (✅), AWS SES (✅), Mailgun (✅)
-//! - **Queue Backends**: Redis (✅), RabbitMQ (✅), AWS SQS (✅)
-//! - **Session Backends**: JWT (✅), Database (✅), Redis (✅), Cookie (✅), File (✅)
-//! - **Storage Backends**: S3 (✅), Azure Blob (✅), GCS (✅), FileSystem (✅), Memory (✅)
-//!
-//! For detailed implementation and usage information, see the individual
-//! crate documentation in `reinhardt-db`, `reinhardt-auth`, `reinhardt-mail`,
-//! and `reinhardt-tasks`.
+//! Backend integrations live in focused crates rather than in `reinhardt-core`.
+//! See `reinhardt-db`, `reinhardt-auth`, `reinhardt-mail`,
+//! `reinhardt-tasks`, and `reinhardt-utils` for database, auth, mail,
+//! queue, cache, and storage integrations.
 //!
 //! ## Quick Start
 //!
@@ -45,7 +39,7 @@
 //! - [`exception`]: Typed error hierarchy for HTTP and application-level errors
 //! - [`types`]: Fundamental types (URL, money, phone number, color, coordinates)
 //! - [`signals`]: Django-style signal/slot system for decoupled event handling
-//! - [`security`]: Password hashing, CSRF, XSS prevention, and security utilities
+//! - [`security`]: CSRF, XSS prevention, security headers, HSTS, IP filtering, redirect validation, and resource limits
 //! - [`validators`]: Comprehensive input validation (IP, IBAN, phone, credit card)
 //! - [`serializers`]: Data serialization and deserialization framework
 //! - [`pagination`]: Cursor, page number, and limit-offset pagination strategies
@@ -60,7 +54,7 @@
 //! | `exception` | enabled | Error hierarchy and HTTP status mapping |
 //! | `signals` | enabled | Async signal/slot system |
 //! | `macros` | enabled | Procedural macros re-export |
-//! | `security` | enabled | Password hashing and security utilities |
+//! | `security` | enabled | CSRF, XSS prevention, headers, HSTS, IP filtering, redirects, and resource limits |
 //! | `validators` | enabled | Comprehensive input validation |
 //! | `serializers` | enabled | Data serialization framework |
 //! | `parsers` | disabled | Request body parsers |
@@ -101,7 +95,7 @@ pub mod rate_limit;
 /// Reactive state management primitives.
 #[cfg(feature = "reactive")]
 pub mod reactive;
-/// Security utilities (password hashing, CSRF, etc.).
+/// Security utilities (CSRF, XSS prevention, headers, HSTS, IP filtering, redirects, and resource limits).
 #[cfg(feature = "security")]
 pub mod security;
 /// Data serialization framework.

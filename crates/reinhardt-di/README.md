@@ -38,9 +38,9 @@ use reinhardt::di::{Injected, OptionalInjected, SingletonScope};
 - **Request Scope**: Dependencies cached per request (default)
 - **Singleton Scope**: Dependencies shared across the entire application
 
-### Automatic Injection
+### Injectable Types
 
-Types implementing `Default + Clone + Send + Sync + 'static` automatically implement the `Injectable` trait and can be used as dependencies.
+Types must implement `Injectable` to be resolved from the container. Use `#[injectable]` for user-owned service types, write a manual `impl Injectable` for custom construction logic, or rely on the provided wrapper implementations for `Arc<T>`, `Depends<T>`, and `Option<T>`.
 
 ## Implemented Features ✓
 
@@ -73,8 +73,9 @@ Types implementing `Default + Clone + Send + Sync + 'static` automatically imple
 **Recommendation**: Use `Depends<T>` for most cases (more ergonomic). Use `Injected<T>` when you need direct control or metadata access.
 
 - ✓ **Injectable Trait**: Define types that can be injected as dependencies
-  - Auto-implementation: For types implementing `Default + Clone + Send + Sync + 'static`
-  - Custom implementation: When complex initialization logic is needed
+  - Macro implementation: Use `#[injectable]` on user-owned service types
+  - Wrapper implementation: `Arc<T>`, `Depends<T>`, and `Option<T>` compose over existing injectables
+  - Manual implementation: Use when complex initialization logic is needed
 
 - ✓ **InjectionContext**: Context for dependency resolution
   - Builder pattern for context creation: `InjectionContext::builder(singleton).build()`
