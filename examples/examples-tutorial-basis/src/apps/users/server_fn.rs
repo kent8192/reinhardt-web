@@ -12,7 +12,7 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
 #[cfg(native)]
 use {
-	crate::apps::users::models::{User, UserManager},
+	crate::apps::users::models::{AuthUserManager, User},
 	reinhardt::BaseUser,
 	reinhardt::DatabaseConnection,
 	reinhardt::Validate,
@@ -110,7 +110,7 @@ pub async fn register(
 	password: String,
 	password_confirmation: String,
 	_csrf_token: String,
-	#[inject] user_manager: Depends<UserManager>,
+	#[inject] user_manager: Depends<AuthUserManager>,
 	#[inject] session: SessionData,
 	#[inject] store: SessionStoreRef,
 ) -> std::result::Result<UserInfo, ServerFnError> {
@@ -136,18 +136,18 @@ pub async fn register(
 		.validate_passwords_match()
 		.map_err(ServerFnError::application)?;
 
-	// Delegate to `UserManager` — it owns the "validate + hash + persist"
-	// pipeline so this server function stays focused on session handling.
-	// Username length, uniqueness, and password strength are all enforced
-	// inside `create_user`; any failure surfaces as a `reinhardt::Error`
-	// that maps to a 400 via `ServerFnError::application`.
+	// Delegate to `AuthUserManager` — it owns the "validate + hash +
+	// persist" pipeline so this server function stays focused on session
+	// handling. Username length, uniqueness, and password strength are all
+	// enforced inside `create_user`; any failure surfaces as a
+	// `reinhardt::Error` that maps to a 400 via `ServerFnError::application`.
 	//
 	// `BaseUserManager::create_user` takes `&mut self`, but DI hands us a
-	// shared `Depends<UserManager>` (an `Arc` under the hood). Clone the
-	// inner manager — its only field is another `Depends<DatabaseConnection>`,
-	// which is itself an `Arc` clone — so this is cheap and gives us the
-	// `&mut` access the trait method needs.
-	let mut user_manager: UserManager = (*user_manager).clone();
+	// shared `Depends<AuthUserManager>` (an `Arc` under the hood). Clone
+	// the inner manager — its only field is another
+	// `Depends<DatabaseConnection>`, which is itself an `Arc` clone — so
+	// this is cheap and gives us the `&mut` access the trait method needs.
+	let mut user_manager: AuthUserManager = (*user_manager).clone();
 	let saved = user_manager
 		.create_user(
 			request.username.trim(),
