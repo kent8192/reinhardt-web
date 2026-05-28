@@ -281,7 +281,7 @@ pub async fn delete(Path(snippet_id): Path<i64>) -> ViewResult<Response> {
 /// Unlike the function-based views above (which fall back to in-memory
 /// `get_sample_snippets()` data for demonstration), the ViewSet path will
 /// observe an empty list until rows are inserted into the `snippets` table.
-#[reinhardt::viewset]
+#[reinhardt::viewset(basename = "snippet")]
 pub fn viewset() -> reinhardt::ModelViewSet<Snippet, SnippetSerializer> {
 	use reinhardt::ModelViewSet;
 	use reinhardt::views::viewsets::{FilterConfig, OrderingConfig, PaginationConfig};
