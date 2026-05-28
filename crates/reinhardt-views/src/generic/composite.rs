@@ -795,7 +795,7 @@ mod tests {
 	use super::*;
 	use crate::generic::test_support::{
 		ManagedArticle, assert_default_manager_queryset, assert_explicit_queryset,
-		explicit_queryset,
+		assert_manager_and_request_filters, explicit_queryset,
 	};
 	use reinhardt_rest::serializers::JsonSerializer;
 
@@ -812,6 +812,19 @@ mod tests {
 			.with_queryset(explicit_queryset());
 
 		assert_explicit_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn list_create_filtered_queryset_preserves_model_objects_filters() {
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/managed-articles?tenant_id=7")
+			.build()
+			.unwrap();
+		let view = ListCreateAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new()
+			.with_filter_config(FilterConfig::new().with_filterable_fields(vec!["tenant_id"]));
+
+		assert_manager_and_request_filters(view.get_filtered_queryset(&request));
 	}
 
 	#[test]

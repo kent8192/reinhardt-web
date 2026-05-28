@@ -94,3 +94,22 @@ pub(crate) fn assert_explicit_queryset(queryset: QuerySet<ManagedArticle>) {
 		"expected Integer(42) value, got: {debug}"
 	);
 }
+
+pub(crate) fn assert_manager_and_request_filters(queryset: QuerySet<ManagedArticle>) {
+	let filters = queryset.filters();
+	assert_eq!(filters.len(), 2);
+	assert_eq!(filters[0].field, "is_archived");
+	assert_eq!(filters[1].field, "tenant_id");
+
+	let manager_debug = format!("{:?}", filters[0]);
+	assert!(
+		manager_debug.contains("Boolean(false)"),
+		"expected manager filter value Boolean(false), got: {manager_debug}"
+	);
+
+	let request_debug = format!("{:?}", filters[1]);
+	assert!(
+		request_debug.contains("String(\"7\")"),
+		"expected request filter value String(\"7\"), got: {request_debug}"
+	);
+}
