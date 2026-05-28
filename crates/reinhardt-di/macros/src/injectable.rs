@@ -36,6 +36,11 @@ enum InjectionType {
 	Depends(Type),
 	/// `Option<Depends<T>>` - optional dependency
 	OptionalDepends(Type),
+	/// `DependsResult<T, E>` / `DependsOption<T>` - factory-produced inner type
+	/// (`Result<T, E>` / `Option<T>`) resolved from the registry only. These
+	/// inner types are produced by `#[injectable_factory]` and never implement
+	/// `Injectable`, so resolution must NOT require `T: Injectable`.
+	DependsFromRegistry(Type),
 }
 
 /// Check whether a type path likely originates from the `reinhardt_di` crate.
@@ -97,7 +102,9 @@ fn classify_injection_type(ty: &Type) -> Option<InjectionType> {
 			return Some(InjectionType::Depends(inner_ty.clone()));
 		}
 
-		// Check for DependsResult<T, E> (sugar for Depends<Result<T, E>>)
+		// Check for DependsResult<T, E> (sugar for Depends<Result<T, E>>).
+		// The inner Result<T, E> is factory-produced and never Injectable, so
+		// it must resolve from the registry only (DependsFromRegistry).
 		if ident == "DependsResult"
 			&& is_likely_reinhardt_di_path(segments)
 			&& let PathArguments::AngleBracketed(args) = &last_segment.arguments
@@ -107,17 +114,19 @@ fn classify_injection_type(ty: &Type) -> Option<InjectionType> {
 			let t = iter.next()?;
 			let e = iter.next()?;
 			let inner: Type = syn::parse_quote! { ::core::result::Result<#t, #e> };
-			return Some(InjectionType::Depends(inner));
+			return Some(InjectionType::DependsFromRegistry(inner));
 		}
 
-		// Check for DependsOption<T> (sugar for Depends<Option<T>>)
+		// Check for DependsOption<T> (sugar for Depends<Option<T>>).
+		// The inner Option<T> is factory-produced and never Injectable, so
+		// it must resolve from the registry only (DependsFromRegistry).
 		if ident == "DependsOption"
 			&& is_likely_reinhardt_di_path(segments)
 			&& let PathArguments::AngleBracketed(args) = &last_segment.arguments
 			&& let Some(GenericArgument::Type(inner_ty)) = args.args.first()
 		{
 			let inner: Type = syn::parse_quote! { ::core::option::Option<#inner_ty> };
-			return Some(InjectionType::Depends(inner));
+			return Some(InjectionType::DependsFromRegistry(inner));
 		}
 
 		// Check for Option<Depends<T>>
@@ -234,6 +243,15 @@ pub(crate) fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<T
 								#di_crate::Depends::<#inner_ty>::resolve(__di_ctx, false)
 									.await?
 							}
+						}
+					}
+					InjectionType::DependsFromRegistry(inner_ty) => {
+						// resolve_from_registry has no `T: Injectable` bound, so it
+						// works for factory-produced inner types (Result<T, E> /
+						// Option<T>) that are registered without an Injectable impl.
+						quote! {
+							#di_crate::Depends::<#inner_ty>::resolve_from_registry(__di_ctx, #use_cache)
+								.await?
 						}
 					}
 					InjectionType::OptionalDepends(inner_ty) => {
