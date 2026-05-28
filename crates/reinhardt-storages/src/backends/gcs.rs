@@ -4,9 +4,16 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use google_cloud_auth::credentials::{
+	Builder as GoogleCredentialsBuilder, service_account::Builder as ServiceAccountBuilder,
+};
+use google_cloud_auth::signer::Signer;
+use google_cloud_storage::builder::storage::SignedUrlBuilder;
 use google_cloud_storage::client::{Storage, StorageControl};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use reinhardt_conf::settings::secret_types::SecretString;
 use serde::Deserialize;
+use std::time::Duration;
 
 use crate::config::GcsConfig;
 use crate::{Result, StorageBackend, StorageError};
@@ -23,32 +30,69 @@ pub struct GcsStorage {
 	config: GcsConfig,
 	storage: Option<Storage>,
 	control: Option<StorageControl>,
+	signer: Option<Signer>,
 	http: reqwest::Client,
 }
 
 impl GcsStorage {
 	/// Create a new GCS storage backend.
 	pub async fn new(config: GcsConfig) -> Result<Self> {
-		let (storage, control) = if config.endpoint.is_some() {
-			(None, None)
+		let (storage, control, signer) = if config.endpoint.is_some() {
+			(None, None, None)
 		} else {
-			let storage = Storage::builder()
+			let service_account_key = Self::service_account_key(&config.service_account_json)?;
+			let signer = Self::build_signer(service_account_key.as_ref())?;
+			let mut storage_builder = Storage::builder();
+			let mut control_builder = StorageControl::builder();
+
+			if let Some(service_account_key) = service_account_key {
+				let credentials = ServiceAccountBuilder::new(service_account_key)
+					.build()
+					.map_err(|err| StorageError::ConfigError(err.to_string()))?;
+				storage_builder = storage_builder.with_credentials(credentials.clone());
+				control_builder = control_builder.with_credentials(credentials);
+			}
+
+			let storage = storage_builder
 				.build()
 				.await
 				.map_err(|err| StorageError::ConfigError(err.to_string()))?;
-			let control = StorageControl::builder()
+			let control = control_builder
 				.build()
 				.await
 				.map_err(|err| StorageError::ConfigError(err.to_string()))?;
-			(Some(storage), Some(control))
+			(Some(storage), Some(control), Some(signer))
 		};
 
 		Ok(Self {
 			config,
 			storage,
 			control,
+			signer,
 			http: reqwest::Client::new(),
 		})
+	}
+
+	fn service_account_key(secret: &Option<SecretString>) -> Result<Option<serde_json::Value>> {
+		secret
+			.as_ref()
+			.map(|json| {
+				serde_json::from_str(json.expose_secret()).map_err(|err| {
+					StorageError::ConfigError(format!("Invalid GCS service account JSON: {err}"))
+				})
+			})
+			.transpose()
+	}
+
+	fn build_signer(service_account_key: Option<&serde_json::Value>) -> Result<Signer> {
+		match service_account_key {
+			Some(service_account_key) => ServiceAccountBuilder::new(service_account_key.clone())
+				.build_signer()
+				.map_err(|err| StorageError::ConfigError(err.to_string())),
+			None => GoogleCredentialsBuilder::default()
+				.build_signer()
+				.map_err(|err| StorageError::ConfigError(err.to_string())),
+		}
 	}
 
 	fn object_name(&self, name: &str) -> String {
@@ -111,7 +155,9 @@ impl GcsStorage {
 		} else if status.is_server_error() {
 			StorageError::NetworkError(format!("GCS service error {status} for object: {name}"))
 		} else {
-			StorageError::Other(format!("GCS request failed with status {status} for object: {name}"))
+			StorageError::Other(format!(
+				"GCS request failed with status {status} for object: {name}"
+			))
 		}
 	}
 
@@ -324,9 +370,16 @@ impl StorageBackend for GcsStorage {
 			));
 		}
 
-		Err(StorageError::ConfigError(
-			"GCS signed URL generation requires explicit signing credentials".to_string(),
-		))
+		let signer = self
+			.signer
+			.as_ref()
+			.ok_or_else(|| StorageError::ConfigError("GCS signer is not configured".to_string()))?;
+
+		SignedUrlBuilder::for_object(self.bucket_resource(), object)
+			.with_expiration(Duration::from_secs(expiry_secs))
+			.sign_with(signer)
+			.await
+			.map_err(|err| StorageError::ConfigError(err.to_string()))
 	}
 
 	async fn size(&self, name: &str) -> Result<u64> {
@@ -347,14 +400,16 @@ impl StorageBackend for GcsStorage {
 			return Self::metadata_updated(&metadata);
 		}
 		let metadata = self.sdk_metadata(&object).await?;
-		let timestamp = metadata.finalize_time.or(metadata.create_time).ok_or_else(|| {
-			StorageError::Other("GCS object metadata did not include timestamp".to_string())
-		})?;
+		let timestamp = metadata
+			.finalize_time
+			.or(metadata.create_time)
+			.ok_or_else(|| {
+				StorageError::Other("GCS object metadata did not include timestamp".to_string())
+			})?;
 		let nanos = u32::try_from(timestamp.nanos()).map_err(|err| {
 			StorageError::Other(format!("Invalid GCS timestamp nanoseconds: {err}"))
 		})?;
-		DateTime::from_timestamp(timestamp.seconds(), nanos).ok_or_else(|| {
-			StorageError::Other("Invalid GCS object metadata timestamp".to_string())
-		})
+		DateTime::from_timestamp(timestamp.seconds(), nanos)
+			.ok_or_else(|| StorageError::Other("Invalid GCS object metadata timestamp".to_string()))
 	}
 }

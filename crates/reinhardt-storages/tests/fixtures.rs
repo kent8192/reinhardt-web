@@ -565,9 +565,8 @@ pub async fn azure_fixture() -> AzureFixture {
 
 	let image = GenericImage::new("mcr.microsoft.com/azure-storage/azurite", "3.35.0")
 		.with_exposed_port(ContainerPort::Tcp(10000))
-		.with_wait_for(WaitFor::message_on_stdout(
-			"Azurite Blob service is successfully listening",
-		))
+		.with_wait_for(WaitFor::seconds(1))
+		.with_startup_timeout(std::time::Duration::from_secs(120))
 		.with_cmd(vec!["azurite-blob", "--blobHost", "0.0.0.0"]);
 
 	let container = image.start().await.expect("Failed to start Azurite");

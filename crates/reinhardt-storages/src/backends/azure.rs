@@ -124,8 +124,8 @@ impl AzureStorage {
 	}
 
 	fn canonicalized_resource(&self, url: &str) -> Result<String> {
-		let parsed = reqwest::Url::parse(url)
-			.map_err(|err| StorageError::ConfigError(err.to_string()))?;
+		let parsed =
+			reqwest::Url::parse(url).map_err(|err| StorageError::ConfigError(err.to_string()))?;
 		let mut resource = format!("/{}{}", self.config.account, parsed.path());
 
 		let mut query: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -215,7 +215,10 @@ impl AzureStorage {
 
 		let content_length = body.as_ref().map(Vec::len);
 		let url = self.append_sas(url);
-		let mut request = self.http.request(method.clone(), &url).headers(headers.clone());
+		let mut request = self
+			.http
+			.request(method.clone(), &url)
+			.headers(headers.clone());
 		if let Some(content_type) = content_type {
 			request = request.header("content-type", content_type);
 		}
@@ -262,7 +265,9 @@ impl AzureStorage {
 		} else if status.is_server_error() {
 			StorageError::NetworkError(format!("Azure service error {status} for blob: {name}"))
 		} else {
-			StorageError::Other(format!("Azure request failed with status {status} for blob: {name}"))
+			StorageError::Other(format!(
+				"Azure request failed with status {status} for blob: {name}"
+			))
 		}
 	}
 
@@ -410,7 +415,9 @@ impl StorageBackend for AzureStorage {
 			.get("content-length")
 			.and_then(|value| value.to_str().ok())
 			.ok_or_else(|| {
-				StorageError::Other("Azure blob metadata did not include content-length".to_string())
+				StorageError::Other(
+					"Azure blob metadata did not include content-length".to_string(),
+				)
 			})?
 			.parse::<u64>()
 			.map_err(|err| StorageError::Other(err.to_string()))

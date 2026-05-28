@@ -141,12 +141,12 @@ impl Default for StorageSettings {
 
 impl SettingsValidation for StorageSettings {
 	fn validate(&self, _profile: &Profile) -> ValidationResult {
-		self.to_config().map(|_| ()).map_err(|err| {
-			ValidationError::InvalidValue {
+		self.to_config()
+			.map(|_| ())
+			.map_err(|err| ValidationError::InvalidValue {
 				key: "storage.backend".to_string(),
 				message: err.to_string(),
-			}
-		})
+			})
 	}
 }
 
