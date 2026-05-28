@@ -141,8 +141,9 @@ let users = User::objects()
 let user = User::objects().get(123).await?;
 
 // Create
-let user = User::new();
-user.username = "alice".to_string();
+let user = User::build()
+    .username("alice")
+    .finish();
 user.save().await?;
 
 // Update
@@ -318,9 +319,10 @@ async fn create_user(Json(form): Json<UserForm>) -> Response {
             .unwrap();
     }
 
-    let user = User::new();
-    user.username = form.username;
-    user.email = form.email;
+    let user = User::build()
+        .username(form.username)
+        .email(form.email)
+        .finish();
     user.save().await?;
 
     Response::created().with_json(&user).unwrap()

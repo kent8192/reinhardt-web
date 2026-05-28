@@ -37,20 +37,28 @@ pub struct Person {
 }
 ```
 
-### MU-2 (MUST): Initialize via the Macro-Generated Constructor
+### MU-2 (MUST): Initialize via the Macro-Generated Builder
 
-The `#[model(...)]` macro generates a `new(...)` associated function on the annotated struct. This generated constructor is the canonical initialization path.
+The `#[model(...)]` macro generates a typestate builder. `Model::build()` is the canonical initialization path; `Model::new()` is a zero-argument alias for `Model::build()`.
 
 **Rule:**
-- Initialize `#[model(...)]` structs using the macro-generated `new(...)` function.
-- Do not initialize them via struct literals (`Person { id: 0, name: ... }`) when the macro-generated `new` is available.
+- Initialize `#[model(...)]` structs using the macro-generated `build()` builder or zero-argument `new()` alias.
+- Do not call a positional constructor such as `Person::new(id, name)`. The generated `new()` accepts no arguments.
+- Do not initialize them via struct literals (`Person { id: 0, name: ... }`) when the macro-generated builder is available.
 - Exception: struct-literal syntax may be used in tests when a test specifically needs to set fields that the constructor auto-fills (e.g., to inject a fixed primary key). Document the reason with a comment.
 
 **Examples:**
 
 ```rust
-// ✅ Correct — use macro-generated constructor
-let person = Person::new(1, "Alice".to_string());
+// ✅ Correct — use the macro-generated builder
+let person = Person::build()
+    .name("Alice")
+    .finish();
+
+// ✅ Also correct — new() is a zero-argument alias of build()
+let person = Person::new()
+    .name("Alice")
+    .finish();
 
 // ❌ Incorrect — bypasses macro-generated initialization
 let person = Person {
@@ -60,18 +68,13 @@ let person = Person {
 ```
 
 **Rationale:**
-- The generated `new` accepts only the fields the user must supply and auto-fills macro-managed fields (auto-generated primary keys, foreign-key id columns, defaulted fields). Struct-literal initialization forces the caller to spell out every field, including those `new` would have filled — which is brittle.
-- Centralizing initialization through `new` keeps call sites stable as the macro evolves: when future macro versions add fields or validation, struct-literal call sites break or silently bypass the new guarantees, while `new(...)` call sites adapt automatically.
-- Today the generated `new` does not perform validation; this rule is about future-proofing and field coverage, not about a current invariant guarantee.
+- The generated builder accepts only the fields the user must supply and auto-fills macro-managed fields (auto-generated primary keys, foreign-key id columns, timestamps, relationship markers). Struct-literal initialization forces the caller to spell out every field, including those the builder would have filled — which is brittle.
+- Centralizing initialization through the builder keeps call sites stable as the macro evolves: adding a required field surfaces as a named setter instead of changing positional argument order.
+- Today the generated builder does not perform validation; this rule is about future-proofing and field coverage, not about a current invariant guarantee.
 
-### MU-3 (SHOULD): Prefer `Model::build()` for Forward-Compatible Call Sites
+### MU-3 (SHOULD): Prefer `Model::build()` over `Model::new()`
 
-Alongside the positional `Model::new(...)` constructor described in MU-2,
-`#[model(...)]` also generates a typestate builder `Model::build()` (issue
-#4400). Both entry points construct the same model; the builder trades a few
-extra characters at the call site for the property that adding a required
-field to the model becomes a **non-breaking** change for every caller that
-used `build()`.
+`Model::new()` remains available as a zero-argument alias for `Model::build()` (issue #4401). Both entry points return the same typestate builder. Prefer `build()` in examples and application code because it names the construction pattern directly.
 
 **When to prefer `build()`:**
 
@@ -79,28 +82,28 @@ used `build()`.
   is expected to evolve. Adding a new required field surfaces as a new setter
   rather than a new positional parameter that breaks every caller in
   lock-step.
-- Call sites with three or more required fields where positional arguments
-  start to obscure intent.
 - Code that benefits from passing related models by reference: FK setters
   accept any `IntoPrimaryKey<Related>` value (see #4398), so
   `.author(&user)` is exactly as valid as `.author(user_id)`.
 
-**When `new(...)` is still appropriate:**
+**When `new()` is still appropriate:**
 
-- One-shot test fixtures and tight, internal call sites where positional
-  arguments are unambiguous.
-- Performance-sensitive hot paths (the builder is a thin compile-time
-  abstraction, but `new(...)` is the most direct form).
+- One-shot test fixtures and tight, internal call sites where the shorter alias
+  is clearer.
+- Migration windows where existing zero-argument construction examples already
+  read naturally.
 
 **Examples:**
 
 ```rust
-// ✅ Positional constructor — concise but order-sensitive.
-let question = Question::new("What's your favorite color?".to_string());
-
 // ✅ Typestate builder — each required field named, ordering free, and
 // adding a new required field to `Question` keeps this call site compiling.
 let question = Question::build()
+    .question_text("What's your favorite color?")
+    .finish();
+
+// ✅ Zero-argument alias — returns the same builder.
+let question = Question::new()
     .question_text("What's your favorite color?")
     .finish();
 
@@ -119,10 +122,9 @@ let choice = Choice::build()
 - `finish()` is only available when every required slot is `Set`. Calling
   `finish()` with any remaining required setter unused is a **compile-time
   error**, not a runtime panic.
-- Optional fields (`Option<T>`, `default = ...`, `auto_now_add`, FK relation
-  fields, identity / auto-increment primary keys) are filled in by
-  `finish()` using the same expressions `new(...)` uses — no setter call is
-  required.
+- Macro-managed fields (`auto_now_add`, FK relation fields, identity /
+  auto-increment primary keys) are filled in by `finish()` using the
+  macro-managed default expressions — no setter call is required.
 
 **Rationale:**
 
@@ -197,19 +199,19 @@ Validation attributes are derived from `#[field(...)]` config and emitted as `#[
 ---
 
 ### ✅ MUST DO
-- Initialize `#[model(...)]` structs via the macro-generated `new(...)` or `build()` constructor
+- Initialize `#[model(...)]` structs via the macro-generated `build()` builder or zero-argument `new()` alias
 - Add unrelated derives (e.g., `Debug`, `Clone`) via a separate `#[derive(...)]`
 
 ### ✅ SHOULD DO
 - Use `#[model(...)]` alone (do not also write `#[derive(Model)]`) — the attribute applies the derive for you
-- Prefer `Model::build()` over `Model::new(...)` in tutorials, examples, and call sites where the model schema is expected to evolve (MU-3)
+- Prefer `Model::build()` over the zero-argument `Model::new()` alias in tutorials, examples, and call sites where the model schema is expected to evolve (MU-3)
 - Pass FK values via `.<related>(&model)` in `build()` setters when the related instance is already in scope (composes with #4398)
 - Use `{Model}Info` for API DTOs and cross-layer data transfer instead of hand-writing parallel structs (MU-4)
 - Use `#[field(skip_info = true)]` to exclude sensitive fields (e.g., password hashes) from the Info struct
 - Use `#[model(info = false)]` only when the Info struct would be genuinely unused
 
 ### ❌ NEVER DO
-- Initialize `#[model(...)]` structs via struct-literal syntax in production code (use `new(...)` or `build()`)
+- Initialize `#[model(...)]` structs via struct-literal syntax in production code (use `build()` or zero-argument `new()`)
 
 ---
 

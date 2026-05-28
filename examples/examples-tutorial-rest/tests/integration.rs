@@ -48,11 +48,11 @@ mod tests {
 		use examples_tutorial_rest::apps::snippets::models::Snippet;
 
 		// Arrange / Act
-		let snippet = Snippet::new(
-			"Hello World".to_string(),
-			"println!(\"Hello, world!\");".to_string(),
-			"rust".to_string(),
-		);
+		let snippet = Snippet::build()
+			.title("Hello World")
+			.code("println!(\"Hello, world!\");")
+			.language("rust")
+			.finish();
 
 		// Assert
 		assert_eq!(snippet.title, "Hello World");

@@ -45,7 +45,7 @@ fn test_info_struct_generated() {
 #[test]
 fn test_info_from_model() {
 	// Arrange
-	let person = Person::new("Alice", Some(30));
+	let person = Person::build().name("Alice").age(Some(30)).finish();
 
 	// Act
 	let info: PersonInfo = person.into();
@@ -75,7 +75,7 @@ fn test_info_into_model() {
 #[test]
 fn test_info_roundtrip() {
 	// Arrange
-	let person = Person::new("Charlie", Some(40));
+	let person = Person::build().name("Charlie").age(Some(40)).finish();
 
 	// Act — Model → Info → Model
 	let info: PersonInfo = person.into();
