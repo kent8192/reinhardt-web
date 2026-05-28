@@ -1,40 +1,46 @@
 //! # reinhardt-storages
 //!
-//! Cloud storage backend abstraction for Reinhardt framework.
+//! Cloud storage backend abstraction for the Reinhardt framework.
 //!
 //! This crate provides a unified interface for interacting with multiple cloud storage
 //! providers (Amazon S3, Google Cloud Storage, Azure Blob Storage) and local file system.
 //!
 //! ## Features
 //!
-//! - **Unified API**: Single `` `StorageBackend` `` trait for all storage providers
+//! - **Unified API**: Single `StorageBackend` trait for all storage providers
+//! - **Settings-first configuration**: `StorageSettings` composes with the
+//!   Reinhardt `#[settings]` macro
 //! - **Async I/O**: All operations are asynchronous using Tokio
 //! - **Feature Flags**: Enable only the backends you need
-//! - **Presigned URLs**: Generate temporary access URLs for secure file sharing
+//! - **Temporary URLs**: Generate S3 presigned URLs, GCS V4 signed URLs, and
+//!   Azure SAS URLs for secure file sharing
 //!
 //! ## Example
 //!
 //! ```rust,no_run
-//! use reinhardt_storages::{StorageBackend, create_storage, StorageConfig};
+//! use reinhardt_storages::{StorageSettings, create_storage_from_settings};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Load configuration from environment
-//!     let config = StorageConfig::from_env()?;
+//!     let settings: StorageSettings = toml::from_str(r#"
+//! backend = "local"
 //!
-//!     // Create storage backend
-//!     let storage = create_storage(config).await?;
+//! [local]
+//! base_path = "media"
+//! "#)?;
 //!
-//!     // Save a file
-//!     let data = b"Hello, world!";
-//!     storage.save("example.txt", data).await?;
-//!
-//!     // Read a file
+//!     let storage = create_storage_from_settings(&settings).await?;
+//!     storage.save("example.txt", b"Hello, world!").await?;
 //!     let content = storage.open("example.txt").await?;
 //!
 //!     Ok(())
 //! }
 //! ```
+//!
+//! ## Compatibility
+//!
+//! `StorageConfig` and provider-specific `XxxConfig` structs are deprecated.
+//! Use `StorageSettings` with `create_storage_from_settings()` for new code.
 
 pub mod backend;
 pub mod backends;
