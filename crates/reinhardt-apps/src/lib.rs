@@ -34,8 +34,8 @@
 //! // Build an application with multiple apps
 //! let app = ApplicationBuilder::new()
 //!     .add_setting("DEBUG", "true")
-//!     .add_app(AppConfig::new("users", "myproject.users"))
-//!     .add_app(AppConfig::new("blog", "myproject.blog"))
+//!     .add_app(AppConfig::new("myproject.users", "users"))
+//!     .add_app(AppConfig::new("myproject.blog", "blog"))
 //!     .build()
 //!     .expect("Failed to build application");
 //!

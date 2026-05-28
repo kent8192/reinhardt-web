@@ -253,14 +253,14 @@ cargo run -- --port 3000
 
 ```bash
 # Database migrations
-cargo run --bin manage makemigrations
-cargo run --bin manage migrate
+cargo run --bin examples-twitter -- makemigrations
+cargo run --bin examples-twitter -- migrate
 
 # Create new app
-cargo run --bin manage startapp myapp --restful
+cargo run --bin examples-twitter -- startapp myapp --restful
 
 # Development server
-cargo run --bin manage runserver
+cargo run --bin examples-twitter -- runserver
 ```
 
 ## Testing
@@ -283,11 +283,11 @@ docker ps
 # Run all tests (requires Docker)
 cargo test
 
-# Run tests for specific app
-cargo test --package examples-twitter --test auth_integration
-cargo test --package examples-twitter --test dm_integration
-cargo test --package examples-twitter --test profile_integration
-cargo test --package examples-twitter --test relationship_integration
+# Run package tests
+cargo test --package examples-twitter
+
+# Run WASM browser tests through the configured wasm-pack task
+cargo make wasm-test
 
 # Run with test output
 cargo test -- --nocapture
@@ -332,28 +332,19 @@ cargo test -- --nocapture
 
 This example uses standard fixtures from `reinhardt-test`:
 
-```rust
+```rust,ignore
 use reinhardt::test::fixtures::postgres_with_migrations_from;
-use rstest::*;
 
-#[rstest]
 #[tokio::test]
-async fn test_with_database(
-    #[future] postgres_with_migrations_from: (
-        ContainerAsync<GenericImage>,
-        Arc<PgPool>,
-        u16,
-        String,
-        Vec<Box<dyn Migration>>,
-    ),
-) {
-    let (_container, pool, _port, _database_url, _migrations) =
-        postgres_with_migrations_from.await;
+async fn test_with_database() -> Result<(), Box<dyn std::error::Error>> {
+    let (_container, db) =
+        postgres_with_migrations_from::<MyappMigrations>().await?;
 
-    // Use pool for database operations
+    // Use db for database operations
     // Migrations are already applied
 
     // Container is automatically cleaned up when dropped
+    Ok(())
 }
 ```
 
@@ -657,11 +648,16 @@ CREATE INDEX idx_relationships_following ON relationships(following_id);
 Uses `reinhardt-auth` with JWT token authentication:
 
 ```rust
-use reinhardt::auth::{JwtAuth, BaseUser};
+use reinhardt_auth::{JwtAuth, User};
 
 // Token generation on signin
 let jwt_auth = JwtAuth::new(secret_key.as_bytes());
-let token = jwt_auth.generate_token(&user)?;
+let token = jwt_auth.generate_token(
+    user.id(),
+    user.username().to_string(),
+    user.is_staff(),
+    user.is_superuser(),
+)?;
 
 // Token verification in protected routes
 let claims = jwt_auth.verify_token(&token)?;
@@ -673,11 +669,11 @@ let user = User::find_by_id(&db, &claims.user_id).await?;
 Uses Argon2 for secure password hashing:
 
 ```rust
-use reinhardt::auth::hasher::Argon2Hasher;
+use reinhardt_auth::{Argon2Hasher, PasswordHasher};
 
 let hasher = Argon2Hasher::new();
-let password_hash = hasher.hash_password("user_password")?;
-let is_valid = hasher.verify_password("user_password", &password_hash)?;
+let password_hash = hasher.hash("user_password")?;
+let is_valid = hasher.verify("user_password", &password_hash)?;
 ```
 
 ### Database Transactions
@@ -702,18 +698,16 @@ transaction(&db, |_tx| async move {
 
 Uses `reinhardt-test` standard fixtures:
 
-```rust
+```rust,ignore
 use reinhardt::test::fixtures::postgres_with_migrations_from;
 
-#[rstest]
 #[tokio::test]
-async fn test_feature(
-    #[future] postgres_with_migrations_from: DatabaseFixture,
-) {
-    let (_container, pool, _port, _url, _migrations) =
-        postgres_with_migrations_from.await;
+async fn test_feature() -> Result<(), Box<dyn std::error::Error>> {
+    let (_container, db) =
+        postgres_with_migrations_from::<MyappMigrations>().await?;
 
     // Test with real database and migrations
+    Ok(())
 }
 ```
 
@@ -739,10 +733,10 @@ cat ../../../.testcontainers.properties
 
 ```bash
 # Reset database and rerun migrations
-cargo run --bin manage migrate --reset
+cargo run --bin examples-twitter -- migrate --reset
 
 # Create fresh migration
-cargo run --bin manage makemigrations --name initial_schema
+cargo run --bin examples-twitter -- makemigrations --name initial_schema
 ```
 
 ### Test Failures
@@ -765,7 +759,7 @@ cargo test --package examples-twitter test_user_registration -- --exact --nocapt
 
 ```bash
 cd examples/examples-twitter
-cargo run -- runserver --with-pages
+cargo run --bin examples-twitter -- runserver --with-pages
 ```
 
 **Solution 2**: Specify absolute path

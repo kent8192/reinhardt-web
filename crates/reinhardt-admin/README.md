@@ -44,7 +44,7 @@ Then import admin features:
 
 ```rust
 use reinhardt::admin::{AdminSite, ModelAdmin};
-use reinhardt::admin::types::{ListQueryParams, AdminError};
+use reinhardt::admin::{AdminError, ListQueryParams};
 ```
 
 ## Quick Start
@@ -54,12 +54,17 @@ use reinhardt::admin::types::{ListQueryParams, AdminError};
 Register models with `AdminSite` in a dedicated configuration function:
 
 ```rust
-use reinhardt::admin::{AdminSite, ModelAdmin};
+use reinhardt::admin::{AdminSite, ModelAdminConfig};
 
-fn configure_admin() -> AdminSite {
-	let mut site = AdminSite::new("My Admin");
-	site.register::<User>(UserAdmin::default());
-	site
+fn configure_admin() -> reinhardt::admin::AdminResult<AdminSite> {
+	let site = AdminSite::new("My Admin");
+	let user_admin = ModelAdminConfig::builder()
+		.model_name("User")
+		.table_name("users")
+		.list_display(vec!["id", "username", "email"])
+		.build()?;
+	site.register("User", user_admin)?;
+	Ok(site)
 }
 ```
 
@@ -134,7 +139,7 @@ The admin panel is built on several key components:
 
 Advanced filtering and query building with reinhardt-query integration:
 
-- **FilterOperator**: Eq, Ne, Gt, Gte, Lt, Lte, Contains, StartsWith, EndsWith, In, NotIn, Between, Regex
+- **FilterOperator**: Eq, Ne, Gt, Gte, Lt, Lte, Contains, StartsWith, EndsWith, In, NotIn, IsNull, IsNotNull, plus array, full-text, JSONB, and range operators
 - **FilterCondition**: AND/OR conditions for complex queries
 - **FilterValue**: Type-safe value representation (String, Int, Float, Bool, Array)
 

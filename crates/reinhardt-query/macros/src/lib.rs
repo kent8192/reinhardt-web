@@ -34,7 +34,9 @@
 //! ## Enum with custom identifier
 //!
 //! ```rust,ignore
-//! #[derive(Iden)]
+//! use reinhardt_query::types::Iden;
+//!
+//! #[derive(Debug, Iden)]
 //! enum Users {
 //!     Table,           // -> "users"
 //!     #[iden = "primary_key"]
@@ -44,44 +46,38 @@
 //!     Email,           // -> "email_address"
 //! }
 //!
-//! let users = Users::Table;
-//! assert_eq!(users.iden(), "users");
-//! assert_eq!(users.id(), "id");
-//! assert_eq!(users.first_name.iden(), "first_name");
-//! assert_eq!(users.email_address.iden(), "email_address");
+//! assert_eq!(Users::Table.to_string(), "users");
+//! assert_eq!(Users::Id.to_string(), "primary_key");
+//! assert_eq!(Users::FirstName.to_string(), "first_name");
+//! assert_eq!(Users::Email.to_string(), "email_address");
+//! let mut raw = String::new();
+//! Users::Email.unquoted(&mut raw);
+//! assert_eq!(raw, "email_address");
 //! ```
 //!
 //! ## Struct with custom identifier
 //!
 //! ```rust,ignore
-//! #[derive(Iden)]
-//! struct Customer {
-//!     #[iden = "customer_id"]
-//!     Id,
-//!     Name,
-//! }
+//! use reinhardt_query::types::Iden;
 //!
-//! let customer = Customer::Iden;
-//! assert_eq!(customer.iden(), "customer_id");
+//! #[derive(Debug, Iden)]
+//! #[iden = "customer_id"]
+//! struct Customer;
+//!
+//! let customer = Customer;
+//! assert_eq!(customer.to_string(), "customer_id");
 //! ```
 //!
-//! ## Struct with named fields
+//! ## Struct with default identifier
 //!
 //! ```rust,ignore
-//! #[derive(Iden)]
-//! struct User {
-//!     Id,
-//!     #[iden = "uuid"]
-//!     ExternalId,
-//!     Email,
-//!     Verified,
-//! }
+//! use reinhardt_query::types::Iden;
 //!
-//! let user = User::Iden;
-//! assert_eq!(user.iden(), "uuid");
-//! assert_eq!(user.external_iden(), "external_id");
-//! assert_eq!(user.emailen(), "email");
-//! assert_eq!(user.verifieden(), "verified");
+//! #[derive(Debug, Iden)]
+//! struct User;
+//!
+//! let user = User;
+//! assert_eq!(user.to_string(), "user");
 //! ```
 
 use heck::ToSnakeCase;
@@ -191,54 +187,48 @@ fn extract_custom_name(attrs: &[syn::Attribute]) -> Result<Option<String>, syn::
 /// ## Enum with custom identifier
 ///
 /// ```rust,ignore
-/// #[derive(Iden)]
+/// use reinhardt_query::types::Iden;
+///
+/// #[derive(Debug, Iden)]
 /// enum Users {
 ///     Table,           // -> "users"
 ///     #[iden = "primary_key"]
-///     Id,              // -> "id"
+///     Id,              // -> "primary_key"
 ///     FirstName,       // -> "first_name"
 ///     #[iden("email_address")]
 ///     Email,           // -> "email_address"
 /// }
 ///
-/// let users = Users::Table;
-/// assert_eq!(users.iden(), "users");
-/// assert_eq!(users.id(), "id");
-/// assert_eq!(users.first_name.iden(), "first_name");
-/// assert_eq!(users.email_address.iden(), "email_address");
+/// assert_eq!(Users::Table.to_string(), "users");
+/// assert_eq!(Users::Id.to_string(), "primary_key");
+/// assert_eq!(Users::FirstName.to_string(), "first_name");
+/// assert_eq!(Users::Email.to_string(), "email_address");
+/// let mut raw = String::new();
+/// Users::Email.unquoted(&mut raw);
+/// assert_eq!(raw, "email_address");
 /// ```
 ///
 /// ## Struct with custom identifier
 ///
 /// ```rust,ignore
-/// #[derive(Iden)]
-/// struct Customer {
-///     #[iden = "customer_id"]
-///     Id,
-///     Name,
-/// }
+/// use reinhardt_query::types::Iden;
 ///
-/// let customer = Customer::Iden;
-/// assert_eq!(customer.iden(), "customer_id");
+/// #[derive(Debug, Iden)]
+/// #[iden = "customer_id"]
+/// struct Customer;
+///
+/// let customer = Customer;
+/// assert_eq!(customer.to_string(), "customer_id");
 /// ```
 ///
-/// ## Struct with named fields
+/// ## Struct with default identifier
 ///
 /// ```rust,ignore
-/// #[derive(Iden)]
-/// struct User {
-///     Id,
-///     #[iden = "uuid"]
-///     ExternalId,
-///     Email,
-///     Verified,
-/// }
+/// #[derive(Debug, Iden)]
+/// struct User;
 ///
-/// let user = User::Iden;
-/// assert_eq!(user.iden(), "uuid");
-/// assert_eq!(user.external_iden(), "external_id");
-/// assert_eq!(user.emailen(), "email");
-/// assert_eq!(user.verifieden(), "verified");
+/// let user = User;
+/// assert_eq!(user.to_string(), "user");
 /// ```
 #[proc_macro_derive(Iden, attributes(iden))]
 pub fn derive_iden(input: TokenStream) -> TokenStream {

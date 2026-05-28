@@ -17,9 +17,8 @@ Add `reinhardt` to your `Cargo.toml`:
 [dependencies]
 reinhardt = { version = "0.1.2", features = ["commands"] }
 
-# Or use a preset:
-# reinhardt = { version = "0.1.2", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.2", features = ["full"] }      # All features
+# Or use the broad preset:
+# reinhardt = { version = "0.1.2", features = ["full"] }      # Includes commands
 ```
 
 Then import command features:
@@ -28,7 +27,7 @@ Then import command features:
 use reinhardt::commands::{BaseCommand, CommandRegistry};
 ```
 
-**Note:** Command features are included in the `standard` and `full` feature presets.
+**Note:** The root `commands` feature is opt-in. It is included in the `full` preset, but not in the default `standard` preset.
 
 ### As a global CLI tool
 
@@ -233,7 +232,7 @@ Projects using `collect_migrations!` must add `linkme` as a dependency:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.2", features = ["standard"] }
+reinhardt = { version = "0.1.2", features = ["commands"] }
 linkme = "0.3"
 ```
 

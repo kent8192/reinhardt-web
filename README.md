@@ -447,19 +447,20 @@ For a complete step-by-step guide, see [Getting Started](https://reinhardt-web.d
 
 ### With Database
 
-Configure database in `settings/base.toml`:
+Configure database aliases in `settings/base.toml`:
 
 ```toml
+[core]
 debug = true
 secret_key = "your-secret-key-for-development"
 
-[database]
+[core.databases.default]
 engine = "postgresql"
-host = "localhost"
-port = 5432
 name = "mydb"
 user = "postgres"
 password = "postgres"
+host = "localhost"
+port = 5432
 ```
 
 Settings are automatically loaded in `src/config/settings.rs`:
@@ -468,21 +469,20 @@ Settings are automatically loaded in `src/config/settings.rs`:
 // src/config/settings.rs
 use reinhardt::prelude::*;
 
-// Compose built-in settings fragments with | — field names are inferred from type names
-// (e.g., CoreSettings → core, AuthSettings → auth, DatabaseSettings → database)
-#[settings(CoreSettings | AuthSettings | DatabaseSettings)]
+// Compose built-in settings fragments with | - field names are inferred from type names
+// (e.g., CoreSettings -> core, CacheSettings -> cache, EmailSettings -> email)
+#[settings(CoreSettings | CacheSettings | EmailSettings)]
 pub struct ProjectSettings;
 ```
 
 The `|` syntax composes settings fragments into `ProjectSettings`. Each type must be a `#[settings(fragment = true, ...)]` struct. Built-in fragments:
-- **`CoreSettings`** — `debug`, `secret_key`, `language_code`, `time_zone`, `allowed_hosts`
-- **`AuthSettings`** — `jwt_secret`, `token_expiry`, `password_hashers`
-- **`DatabaseSettings`** — `engine`, `host`, `port`, `name`, `user`, `password`
+- **`CoreSettings`** - `base_dir`, `secret_key`, `debug`, `allowed_hosts`, `databases`, `security`, `middleware`, `root_urlconf`, and `installed_apps`
+- **`CacheSettings`**, **`ContactSettings`**, **`CorsSettings`**, **`EmailSettings`**, **`I18nSettings`**, **`LoggingSettings`**, **`MediaSettings`**, **`SecuritySettings`**, **`SessionSettings`**, **`StaticSettings`**, and **`TemplateSettings`** - optional framework sections
 
 Add project-specific fragments with explicit field names using `key: Type` syntax:
 
 ```rust
-#[settings(CoreSettings | AuthSettings | DatabaseSettings | mail: MailSettings)]
+#[settings(CoreSettings | CacheSettings | mail: MailSettings)]
 pub struct ProjectSettings;
 ```
 
@@ -498,7 +498,7 @@ normal Reinhardt model:
 ```rust
 // users/models.rs
 use reinhardt::prelude::*;
-use reinhardt::auth::Argon2Hasher;
+use reinhardt::Argon2Hasher;
 
 #[user(hasher = Argon2Hasher, username_field = "username", full = true)]
 #[model(app_label = "users", table_name = "users")]
@@ -693,13 +693,13 @@ password-management workflow, groups, and object-level permissions on top.
 **User lifecycle example:**
 
 For a custom user, implement `BaseUserManager<User>` (see
-`reinhardt::auth::BaseUserManager`). The signature required is:
+`reinhardt_auth::BaseUserManager`). The signature required is:
 
 ```rust
 use std::collections::HashMap;
 use async_trait::async_trait;
-use reinhardt::auth::{BaseUserManager, Argon2Hasher, PasswordHasher};
 use reinhardt::prelude::*;
+use reinhardt_auth::{Argon2Hasher, BaseUserManager, PasswordHasher};
 use serde_json::Value;
 use crate::models::User;
 
@@ -751,7 +751,7 @@ let alice = users
 instantiated directly:
 
 ```rust
-use reinhardt::auth::{GroupManager, CreateGroupData, ObjectPermissionManager};
+use reinhardt::{CreateGroupData, GroupManager, ObjectPermissionManager};
 
 let mut groups = GroupManager::new();
 let editors = groups
@@ -766,8 +766,7 @@ Use JWT authentication in your app's `views/profile.rs`:
 
 ```rust
 // users/views/profile.rs
-use reinhardt::{Response, StatusCode, ViewResult, get};
-use reinhardt::auth::AuthUser;
+use reinhardt::{AuthUser, Response, StatusCode, ViewResult, get};
 use crate::models::User;
 
 // JwtAuthMiddleware must be registered in urls.rs to populate AuthState in request extensions
@@ -836,23 +835,29 @@ registration entry (via `inventory::submit!`) so the type resolves from
 
 #### 2. `#[injectable_factory]` — the pseudo orphan rule
 
-Rust's orphan rule forbids `impl Injectable for SomeForeignType`. For those
-cases — database connections, `Arc<dyn Trait>`, third-party handles — Reinhardt
-offers `#[injectable_factory]`. You write an async function whose return type
-is the type to register; the macro wraps it, submits an `inventory` entry, and
-hands the returned value to the DI container:
+Rust's orphan rule forbids `impl Injectable for SomeForeignType`. For user-owned
+adapters around third-party handles, Reinhardt offers `#[injectable_factory]`.
+You write an async function whose return type is the type to register; the macro
+wraps it, submits an `inventory` entry, and hands the returned value to the DI
+container:
 
 ```rust
 use reinhardt::db::DatabaseConnection;
 use reinhardt::di::{Depends, injectable_factory};
 
+#[derive(Clone)]
+pub struct AppDatabase {
+    pub connection: DatabaseConnection,
+}
+
 #[injectable_factory(scope = "singleton")]
-async fn database_connection(
+async fn app_database(
     #[inject] config: Depends<Config>,
-) -> DatabaseConnection {
-    DatabaseConnection::connect(&config.database_url)
+) -> AppDatabase {
+    let connection = DatabaseConnection::connect(&config.database_url)
         .await
-        .expect("failed to open database connection")
+        .expect("failed to open database connection");
+    AppDatabase { connection }
 }
 ```
 
@@ -870,6 +875,10 @@ inside that crate. This emulates the orphan rule across the DI boundary: foreign
 types are fair game, framework types are not. The validator lives in
 [`crates/reinhardt-di/src/validation.rs`](crates/reinhardt-di/src/validation.rs)
 (`check_framework_type_override`, lines 51–129).
+
+Framework-owned types such as `DatabaseConnection` should use the injectable
+implementation provided by the framework, or be wrapped in a project-owned type
+like `AppDatabase` when you need project-specific construction.
 
 #### 3. `#[inject]` + `Depends<T>` in handlers
 

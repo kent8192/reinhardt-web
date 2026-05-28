@@ -93,11 +93,7 @@ default = ["with-reinhardt", "client-router"]
 # client-router: Enable client-side routing support (required for #[routes] macro with UnifiedRouter)
 client-router = []
 with-reinhardt = []
-# `msw` is forwarded to the facade so `#[server_fn]` generates the
-# `MockableServerFn` markers consumed by `tests/wasm/polls_mock_test.rs`.
-# This feature only resolves once the framework `msw` facade flag ships
-# (tracked in #4287 / PR #4288); until then, leaving it absent makes the
-# typed MSW test target skip cleanly via its `required-features = ["msw"]`.
+# msw: Local feature gate for typed WASM mock-server tests.
 msw = []
 
 [[test]]
@@ -113,9 +109,7 @@ name = "polls_mock_test"
 path = "tests/wasm/polls_mock_test.rs"
 required-features = ["msw"]
 
-# Mirror of `polls_mock_test` for the users (authentication) app. Same
-# `msw` feature gate — the typed MSW target compiles only once upstream
-# #4287 / PR #4288 lands and this project flips on the framework facade.
+# Mirror of `polls_mock_test` for the users (authentication) app.
 [[test]]
 name = "users_mock_test"
 path = "tests/wasm/users_mock_test.rs"
