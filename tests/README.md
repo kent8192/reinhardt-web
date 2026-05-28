@@ -1,4 +1,4 @@
-# reinhardt-integration-tests
+# reinhardt-test-support
 
 Integration tests for Reinhardt framework
 

@@ -10,14 +10,13 @@ HTTP request dispatching and handler system for the Reinhardt framework.
 
 Add `reinhardt` to your `Cargo.toml`:
 
-<!-- reinhardt-version-sync:3 -->
+<!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
 reinhardt = { version = "0.1.2", features = ["dispatch"] }
 
-# Or use a preset:
-# reinhardt = { version = "0.1.2", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.2", features = ["full"] }      # All features
+# Or use the broad preset:
+# reinhardt = { version = "0.1.2", features = ["full"] }      # Includes dispatch
 ```
 
 Then import dispatch features:
@@ -26,7 +25,7 @@ Then import dispatch features:
 use reinhardt::dispatch::{BaseHandler, MiddlewareChain, Dispatcher};
 ```
 
-**Note:** Dispatch features are included in the `standard` and `full` feature presets.
+**Note:** The root `dispatch` feature is opt-in. It is included in the `full` preset, but not in the default `standard` preset.
 
 ## Features
 

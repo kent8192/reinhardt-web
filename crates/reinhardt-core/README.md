@@ -4,7 +4,7 @@ Core components for Reinhardt framework
 
 ## Overview
 
-`reinhardt-core` provides the fundamental building blocks for the Reinhardt framework. It contains essential types, traits, error handling, signals, security primitives, validators, and backend abstractions that other crates depend on.
+`reinhardt-core` provides the fundamental building blocks for the Reinhardt framework. It contains essential types, traits, error handling, signals, security primitives, validators, serializers, parsers, pagination, and content-negotiation utilities that other crates depend on.
 
 This crate serves as the foundation for the entire Reinhardt ecosystem, providing core abstractions and utilities used throughout the framework.
 
@@ -40,11 +40,10 @@ This crate provides the following modules:
   - Note: `#[injectable]` is provided by `reinhardt-di`
 
 - **Security**: Security primitives and utilities
-  - Password hashing and verification
   - CSRF protection
   - XSS prevention
-  - Secure random generation
-  - Constant-time comparisons
+  - Security headers and HSTS helpers
+  - IP filtering, redirect validation, and resource limits
 
 - **Validators**: Data validation utilities
   - Email validation
@@ -165,7 +164,7 @@ fn validate_user(authenticated: bool, authorized: bool) -> Result<()> {
 ### Signals
 
 ```rust
-use reinhardt::core::signals::{Signal, SignalDispatcher};
+use reinhardt::core::signals::{Signal, SignalDispatcher, SignalName};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -175,7 +174,7 @@ struct User {
 
 // Connect a receiver to the signal
 async fn setup_signal() {
-    let signal = Signal::<User>::new();
+    let signal = Signal::<User>::new(SignalName::custom("user.created"));
 
     signal.connect(|user: Arc<User>| async move {
         println!("User created: {}", user.name);
@@ -199,7 +198,7 @@ async fn setup_signal() {
 - `` `macros` `` - Procedural macros for code generation
 
 ### Utility Modules
-- `` `security` `` - Security primitives (hashing, CSRF, XSS)
+- `` `security` `` - CSRF, XSS prevention, security headers, HSTS, IP filtering, redirect validation, and resource limits
 - `` `validators` `` - Data validation utilities
 - `` `serializers` `` - Serialization and deserialization
 - `` `messages` `` - Flash messages and user notifications
