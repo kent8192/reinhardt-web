@@ -87,7 +87,7 @@ examples-tutorial-basis/
 │   │   │   ├── admin.rs       # #[admin(model, for = Question, …)] QuestionAdmin / ChoiceAdmin
 │   │   │   └── serializers.rs # QuestionSerializer / ChoiceSerializer with #[validate(...)]
 │   │   └── users/
-│   │       ├── models.rs      # #[user(...)] + #[model] User + project-local UserManager (#[injectable_factory])
+│   │       ├── models.rs      # #[user(...)] + #[model] User + project-local AuthUserManager (#[injectable_factory])
 │   │       ├── server_fn.rs   # #[server_fn] login / register / logout / current_user (session cookie based)
 │   │       └── urls/          # server_urls.rs (empty router) + client_router.rs (login / logout / signup pages)
 │   └── client/                # WASM-only UI layer (declared in crate root via `pub mod client;` under cfg)
@@ -119,7 +119,7 @@ Three rules keep this structure predictable:
 ### [Part 2: Models and Database](2-models-and-database/)
 
 - Define `Question` and `Choice` under `src/apps/polls/models.rs` with `#[model(app_label = "polls", table_name = "...")]`, using `#[field(...)]` and `#[rel(foreign_key, related_name = "...")]` to wire `Question.author -> User` and `Choice.question -> Question`
-- Introduce the `users` app and the `User` model defined with `#[user(hasher = Argon2Hasher, username_field = "username", manager = false)] + #[model(...)]`, plus a project-local `UserManager` registered via `#[injectable_factory(scope = "transient")]`
+- Introduce the `users` app and the `User` model defined with `#[user(hasher = Argon2Hasher, username_field = "username", manager = false)] + #[model(...)]`, plus a project-local `AuthUserManager` registered via `#[injectable_factory(scope = "transient")]`
 - Register both apps in `src/config/apps.rs` via `installed_apps! { polls: "polls", users: "users" }`
 - Generate and apply migrations with `cargo make makemigrations` and `cargo make migrate`
 
