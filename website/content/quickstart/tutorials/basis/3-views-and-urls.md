@@ -291,7 +291,7 @@ function in this section follows the same five conventions:
 - Parameters marked `#[inject]` are resolved by the DI container before
   the body runs. Common injections are `reinhardt::DatabaseConnection`,
   `SessionData`, `Depends<SessionStore>`, and project-local services like
-  `Depends<UserManager>`.
+  `Depends<AuthUserManager>`.
 - The body is implicitly `#[cfg(native)]` — the macro generates a typed
   client stub for the WASM side so callers only see the signature.
 - DTOs at the boundary come from `src/shared/types.rs`, so renaming a
@@ -557,7 +557,7 @@ ships — for example:
 ///       question_text: String,
 ///       _csrf_token: String,
 ///       #[inject] _db: reinhardt::DatabaseConnection,
-///       #[inject] session_user: Depends<SessionUser>,
+///       #[inject] session_user: Depends<Result<User, SessionError>>,
 ///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
 ```
 
@@ -565,41 +565,70 @@ This is the workaround comment convention the project uses everywhere:
 the ideal code is written next to the workaround so that the upgrade path
 is obvious when the upstream issue resolves.
 
-### `SessionUser`: the DI-resolved 401 gate
+### `SessionError`: the DI-resolved 401/403/500 gate
 
 Every authenticated mutation needs the same three steps: pull `user_id`
 out of the session, look up the row, check `is_active`. Putting that
 inline at the top of every handler would be noisy and easy to skip, so
 the project pushes the "load user_id from session, look up the row,
-classify as Anonymous / Authenticated / Unavailable" pipeline into a
-**DI factory** that lives in `apps::polls::di::SessionUser`. Each
-authenticated handler then receives `Depends<SessionUser>` from the DI
-container and calls `.require_active()?` to surface the 401/403:
+classify as `Ok(user)` / `Anonymous` / `Inactive` / `Unavailable`"
+pipeline into a **DI factory** that lives in `apps::polls::di`. The
+factory returns `Result<User, SessionError>`, so each authenticated
+handler receives `Depends<Result<User, SessionError>>` from the DI
+container and calls `(*session_user).as_ref().map_err(ServerFnError::from)?`
+to surface the 401/403/500:
 
 ```rust
 // src/apps/polls/di.rs (excerpt)
 //
 // The factory is registered with `#[injectable_factory(scope = "request")]`
-// so each request resolves its own `SessionUser` once. The classification
-// closes over `SessionData` (cookie-loaded) and `DatabaseConnection` (DI
-// resolved), and returns one of:
+// so each request resolves its own `Result<User, SessionError>` once. The
+// classification closes over `SessionData` (cookie-loaded) and looks the
+// row up through the ORM, returning one of:
 //
-//   - SessionUser::Anonymous            — no `user_id` in session
-//   - SessionUser::Authenticated(User)  — row exists and `is_active`
-//   - SessionUser::Inactive(User)       — row exists but `is_active == false`
-//   - SessionUser::Unavailable          — DB lookup failed (surfaces 503,
-//                                         distinct from "no user")
+//   - Ok(user)                       — row exists and `is_active`
+//   - Err(SessionError::Anonymous)   — no `user_id` in session, or the row
+//                                      no longer exists (surfaces 401)
+//   - Err(SessionError::Inactive)    — row exists but `is_active == false`
+//                                      (surfaces 403)
+//   - Err(SessionError::Unavailable) — DB lookup query failed (surfaces
+//                                      500, distinct from "no user" so an
+//                                      outage is not rewritten into a fake
+//                                      401)
 //
-// `require_active()` returns `Result<User, ServerFnError>` and is what the
-// handlers below call.
+// `From<&SessionError> for ServerFnError` maps each variant to the right
+// HTTP status, and handlers convert via
+// `(*session_user).as_ref().map_err(ServerFnError::from)?`.
+pub enum SessionError {
+	Anonymous,
+	Inactive,
+	Unavailable(String),
+}
+
+impl From<&SessionError> for ServerFnError {
+	fn from(err: &SessionError) -> Self {
+		match err {
+			SessionError::Anonymous => ServerFnError::server(401, "Authentication required"),
+			SessionError::Inactive => ServerFnError::server(403, "User account is inactive"),
+			SessionError::Unavailable(_) => {
+				ServerFnError::server(500, "User lookup temporarily unavailable")
+			}
+		}
+	}
+}
 ```
+
+The three variants keep the "DB outage" branch (`Unavailable`) separate
+from "user is anonymous" (`Anonymous`) so an availability problem cannot
+be silently rewritten into a fake 401: `Unavailable` surfaces a **500**
+while a missing/deleted user surfaces a **401**.
 
 `create_question`, `update_question`, `delete_question`, `create_choice`,
 `update_choice`, and `delete_choice` all start with the same two lines:
-`#[inject] session_user: Depends<SessionUser>` in the signature,
-`let user = session_user.require_active()?;` as the first statement. The
-Question CUD handlers additionally enforce that the caller authored the
-row:
+`#[inject] session_user: Depends<Result<User, SessionError>>` in the
+signature, `let user = (*session_user).as_ref().map_err(ServerFnError::from)?;`
+as the first statement. The Question CUD handlers additionally enforce
+that the caller authored the row:
 
 ```rust
 /// Update a question's text. Only the author may update.
@@ -609,11 +638,11 @@ pub async fn update_question(
 	question_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUser>,
+	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
 	use crate::apps::polls::models::Question;
 
-	let user = session_user.require_active()?;
+	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 
 	let question_id: i64 = question_id
 		.parse()
@@ -680,7 +709,7 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
 #[cfg(native)]
 use {
-	crate::apps::users::models::{User, UserManager},
+	crate::apps::users::models::{AuthUserManager, User},
 	reinhardt::BaseUser,
 	reinhardt::DatabaseConnection,
 	reinhardt::Validate,
@@ -763,7 +792,7 @@ pub async fn login(
 ```
 
 `register` follows the same shape and delegates to the project-local
-`UserManager` introduced in Part 2:
+`AuthUserManager` introduced in Part 2:
 
 ```rust
 #[server_fn]
@@ -772,7 +801,7 @@ pub async fn register(
 	password: String,
 	password_confirmation: String,
 	_csrf_token: String,
-	#[inject] user_manager: Depends<UserManager>,
+	#[inject] user_manager: Depends<AuthUserManager>,
 	#[inject] session: SessionData,
 	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<UserInfo, ServerFnError> {
@@ -795,11 +824,11 @@ pub async fn register(
 		.map_err(ServerFnError::application)?;
 
 	// `BaseUserManager::create_user` takes `&mut self`, but DI hands us a
-	// shared `Depends<UserManager>` (an `Arc` under the hood). Clone the
+	// shared `Depends<AuthUserManager>` (an `Arc` under the hood). Clone the
 	// inner manager — its only field is another `Depends<DatabaseConnection>`,
 	// which is itself an `Arc` clone — so this is cheap and gives us the
 	// `&mut` access the trait method needs.
-	let mut user_manager: UserManager = (*user_manager).clone();
+	let mut user_manager: AuthUserManager = (*user_manager).clone();
 	let saved = user_manager
 		.create_user(
 			request.username.trim(),
@@ -1839,9 +1868,10 @@ the polling application:
   client will call lives in `src/apps/<app>/server_fn.rs`. The DI
   container injects `DatabaseConnection`, `SessionData`,
   `Depends<SessionStore>`, and (for the polls mutations)
-  `Depends<SessionUser>`; `session_user.require_active()?` is the shared
-  401 gate, layered on the `SessionUser` factory in
-  `apps::polls::di`; `atomic(&db, || async { … })` guards
+  `Depends<Result<User, SessionError>>`;
+  `(*session_user).as_ref().map_err(ServerFnError::from)?` is the shared
+  401/403/500 gate, layered on the `Result<User, SessionError>` factory
+  in `apps::polls::di`; `atomic(&db, || async { … })` guards
   read-modify-write; the trailing `_csrf_token: String` parameter is
   verified by middleware before the handler runs.
 - **Server-rendered REST endpoints.** `src/apps/polls/views.rs` exposes
