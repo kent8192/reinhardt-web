@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.2...reinhardt-pages@v0.2.0-rc.2) - 2026-05-28
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(auth,urls,pages)* remove stale references and fix latent clippy lints
+- *(pages)* restore brace-form component invocation tests
+- *(ci)* resolve all pre-existing compilation failures on develop/0.2.0
+- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
+- *(pages)* remove redundant #[builder(default)] from Option field
+- *(pages)* add missing and regenerate stale trybuild .stderr files
+- *(pages)* remove component_missing_required_prop compile-fail test
+- *(pages)* correct component_missing_required_prop compile-fail test
+- *(pages)* use brace-form Card {} inside page! for required-prop test
+- *(pages)* document #[allow(dead_code)] on CardProps::item in compile-fail test
+- *(docs)* resolve rustdoc intra-doc link errors on develop/0.2.0
+- *(docs)* resolve additional rustdoc link errors for feature-gated types
+
+### Maintenance
+
+- forward merge main v0.1.1 changes into develop 0.2.0
+- forward merge main v0.1.2 changes into develop 0.2.0
+
+### Other
+
+- resolve conflicts with develop/0.2.0
+
+### Styling
+
+- apply formatter fixes across workspace
+- format files from merge resolution
+- apply rustfmt to non-DSL files on develop/0.2.0
+
 ### Added
 
 - `callback_with_deps` internal helper backing `use_callback` /

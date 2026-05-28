@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.2...reinhardt-shortcuts@v0.2.0-rc.2) - 2026-05-28
+
+### Added
+
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-rc.30...reinhardt-shortcuts@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-shortcuts` as part of the
