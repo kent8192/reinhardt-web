@@ -570,10 +570,12 @@ fn marker_matches(line: &str, compact_marker: &str) -> bool {
 }
 
 fn rustfmt_skip_attr_matches(line: &str) -> bool {
-	line.chars()
-		.filter(|ch| !ch.is_whitespace())
-		.collect::<String>()
-		.contains("#![rustfmt::skip]")
+	let trimmed = line.trim_start();
+	if !trimmed.starts_with("#![") {
+		return false;
+	}
+	let compact: String = trimmed.chars().filter(|ch| !ch.is_whitespace()).collect();
+	compact.starts_with("#![rustfmt::skip]")
 }
 
 #[cfg(test)]
@@ -802,6 +804,70 @@ mod tests {
 	}
 
 	// -----------------------------------------------------------------------
+	// rustfmt_skip_attr_matches tests
+	// -----------------------------------------------------------------------
+
+	#[rstest]
+	fn rustfmt_skip_attr_matches_true_for_actual_attribute() {
+		// Arrange
+		let line = "#![rustfmt::skip]";
+
+		// Act
+		let result = rustfmt_skip_attr_matches(line);
+
+		// Assert
+		assert!(result);
+	}
+
+	#[rstest]
+	fn rustfmt_skip_attr_matches_true_for_indented_attribute() {
+		// Arrange
+		let line = "  #![rustfmt::skip]";
+
+		// Act
+		let result = rustfmt_skip_attr_matches(line);
+
+		// Assert
+		assert!(result);
+	}
+
+	#[rstest]
+	fn rustfmt_skip_attr_matches_false_for_line_comment() {
+		// Arrange
+		let line = "// #![rustfmt::skip]";
+
+		// Act
+		let result = rustfmt_skip_attr_matches(line);
+
+		// Assert
+		assert!(!result);
+	}
+
+	#[rstest]
+	fn rustfmt_skip_attr_matches_false_for_block_comment() {
+		// Arrange
+		let line = "/* #![rustfmt::skip] */";
+
+		// Act
+		let result = rustfmt_skip_attr_matches(line);
+
+		// Assert
+		assert!(!result);
+	}
+
+	#[rstest]
+	fn rustfmt_skip_attr_matches_false_for_empty_line() {
+		// Arrange
+		let line = "";
+
+		// Act
+		let result = rustfmt_skip_attr_matches(line);
+
+		// Assert
+		assert!(!result);
+	}
+
+	// -----------------------------------------------------------------------
 	// has_ignore_all_marker tests
 	// -----------------------------------------------------------------------
 
@@ -881,6 +947,19 @@ fn main() {}";
 
 		// Assert
 		assert!(result);
+	}
+
+	#[rstest]
+	fn has_ignore_all_marker_rejects_commented_out_rustfmt_skip() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let content = "// #![rustfmt::skip]\nfn main() {\n\tpage!(|| { div { \"x\" } });\n}";
+
+		// Act
+		let result = formatter.has_ignore_all_marker(content);
+
+		// Assert
+		assert!(!result);
 	}
 
 	// -----------------------------------------------------------------------
