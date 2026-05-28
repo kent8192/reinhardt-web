@@ -42,7 +42,7 @@
 //!     )
 //! }
 //!
-//! let _router = ClientRouter::new().page("/users/{id}/", user_page);
+//! let _router = ClientRouter::new().page("user", "/users/{id}/", user_page);
 //! ```
 
 use std::collections::HashMap;

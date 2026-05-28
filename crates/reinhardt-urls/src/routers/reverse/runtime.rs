@@ -109,7 +109,7 @@ pub fn try_reverse_with_aho_corasick(
 	Ok(result)
 }
 
-/// Fallible variant of [`reverse_single_pass`].
+/// Fallible variant of `reverse_single_pass`.
 ///
 /// Returns `Err(ReverseError::Validation(..))` instead of panicking when any
 /// parameter value is rejected by `validate_reverse_param`. Behavior is

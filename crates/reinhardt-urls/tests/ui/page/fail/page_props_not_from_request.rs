@@ -11,5 +11,5 @@ fn handler(_p: WhateverProps) -> Page {
 }
 
 fn main() {
-	let _ = ClientRouter::new().page("/x/", handler);
+	let _ = ClientRouter::new().page("x", "/x/", handler);
 }
