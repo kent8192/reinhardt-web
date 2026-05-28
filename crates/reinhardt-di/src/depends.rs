@@ -386,6 +386,36 @@ impl<T: Clone + Send + Sync + 'static> Depends<T> {
 	}
 }
 
+/// Sugar for `Depends<Result<T, E>>` — commonly used with
+/// `#[injectable_factory]` factories that return `Result<T, E>` to maintain
+/// a distinct DI registry key from `T`.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// // Before: verbose inner type
+/// #[inject] session_user: Depends<Result<User, SessionError>>
+///
+/// // After: sugar alias
+/// #[inject] session_user: DependsResult<User, SessionError>
+/// ```
+pub type DependsResult<T, E> = Depends<Result<T, E>>;
+
+/// Sugar for `Depends<Option<T>>` — used with `#[injectable_factory]`
+/// factories that return `Option<T>` to represent an optionally-available
+/// dependency with a distinct DI registry key from `T`.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// // Before: verbose inner type
+/// #[inject] cache: Depends<Option<CacheBackend>>
+///
+/// // After: sugar alias
+/// #[inject] cache: DependsOption<CacheBackend>
+/// ```
+pub type DependsOption<T> = Depends<Option<T>>;
+
 /// Builder for Depends to support FastAPI-style API.
 pub struct DependsBuilder<T: Send + Sync + 'static> {
 	use_cache: bool,
@@ -929,5 +959,60 @@ mod tests {
 				prefix: "/api".to_string()
 			}
 		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_depends_result_type_alias_ok_variant() {
+		// Arrange
+		let ok_value: Result<String, String> = Ok("success".to_string());
+
+		// Act
+		let depends: DependsResult<String, String> = Depends::from_value(ok_value);
+
+		// Assert
+		assert!(depends.is_ok());
+		assert_eq!(depends.as_ref().as_ref().unwrap(), "success");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_depends_result_type_alias_err_variant() {
+		// Arrange
+		let err_value: Result<String, String> = Err("failure".to_string());
+
+		// Act
+		let depends: DependsResult<String, String> = Depends::from_value(err_value);
+
+		// Assert
+		assert!(depends.is_err());
+		assert_eq!(depends.as_ref().as_ref().unwrap_err(), "failure");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_depends_option_type_alias_some_variant() {
+		// Arrange
+		let some_value: Option<String> = Some("present".to_string());
+
+		// Act
+		let depends: DependsOption<String> = Depends::from_value(some_value);
+
+		// Assert
+		assert!(depends.is_some());
+		assert_eq!(depends.as_ref().as_ref().unwrap(), "present");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_depends_option_type_alias_none_variant() {
+		// Arrange
+		let none_value: Option<String> = None;
+
+		// Act
+		let depends: DependsOption<String> = Depends::from_value(none_value);
+
+		// Assert
+		assert!(depends.is_none());
 	}
 }
