@@ -427,7 +427,7 @@ impl ClientLauncher {
 	/// The callback receives a [`PathCtx`] with the current document and
 	/// path; for exact-match registrations, `params()` is always empty.
 	///
-	/// Internally each registration becomes a leaked [`Router::on_navigate`]
+	/// Internally each registration becomes a leaked `Router::on_navigate`
 	/// listener; the callback fires when the application enters the matching
 	/// path and is independent of the reactive `Effect` / `Signal`
 	/// auto-tracking system. It does **not** fire on repeated navigations

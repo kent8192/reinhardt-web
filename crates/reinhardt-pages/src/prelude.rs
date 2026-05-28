@@ -50,7 +50,7 @@
 //! - [`Document`], [`Element`], [`EventHandle`], [`EventType`], [`document`](fn@document)
 //!
 //! ## Routing
-//! - [`Link`], [`Router`], [`Route`], [`RouterOutlet`], [`PathPattern`]
+//! - [`Link`], `Router`, `Route`, `RouterOutlet`, `PathPattern`
 //!
 //! ## Macros
 //! - [`page`] - Component DSL for defining views
