@@ -9,17 +9,17 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 // at the call site — see the per-handler `use` blocks below for examples.
 #[cfg(native)]
 use {
-	crate::apps::polls::di::SessionUser, crate::apps::users::models::User, reinhardt::Model,
+	crate::apps::polls::di::SessionError, crate::apps::users::models::User, reinhardt::Model,
 	reinhardt::di::Depends,
 };
 
 // The previous request-scoped helper `require_user(&session)` has been
-// replaced by the `SessionUser` factory in `apps::polls::di`. Each
-// authenticated handler now receives `Depends<SessionUser>` from the DI
-// container and calls `.require_active()?` to surface 401/403. The factory
-// also documents the path to `reinhardt_auth::AuthUser<User>` once #4652
-// (the `CurrentUser` → `AuthUser` unification + `SessionMiddleware` →
-// `AuthState` bridge) lands.
+// replaced by the session-user factory in `apps::polls::di`. Each
+// authenticated handler now receives `Depends<Result<User, SessionError>>`
+// from the DI container and calls `.as_ref().map_err(ServerFnError::from)?`
+// to surface 401/403/500. The factory also documents the path to
+// `reinhardt_auth::AuthUser<User>` once #4652 (the `CurrentUser` →
+// `AuthUser` unification + `SessionMiddleware` → `AuthState` bridge) lands.
 
 // WASM-only imports
 // (None needed - all forms logic is server-side)
@@ -240,9 +240,10 @@ async fn vote_internal(
 //   handler. The trailing `_csrf_token: String` parameter is appended by the
 //   `form!` macro for non-GET forms; the CSRF middleware verifies it before
 //   the handler runs.
-// * Authentication is required: `Depends<SessionUser>` is resolved by the
-//   request-scoped factory in `apps::polls::di` and exposes
-//   `.require_active()?` for the 401/403 surface.
+// * Authentication is required: `Depends<Result<User, SessionError>>` is
+//   resolved by the request-scoped factory in `apps::polls::di` and
+//   exposes `.as_ref().map_err(ServerFnError::from)?` for the 401/403/500
+//   surface.
 // * For `update_question` and `delete_question`, ownership is enforced by
 //   comparing `question.author_id()` with the current user's id; mismatched
 //   ownership returns a 403.
@@ -254,18 +255,18 @@ async fn vote_internal(
 ///       question_text: String,
 ///       _csrf_token: String,
 ///       #[inject] _db: reinhardt::DatabaseConnection,
-///       #[inject] session_user: Depends<SessionUser>,
+///       #[inject] session_user: Depends<Result<User, SessionError>>,
 ///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
 #[server_fn]
 pub async fn create_question(
 	question_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUser>,
+	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
 	use crate::apps::polls::models::Question;
 
-	let user = session_user.require_active()?;
+	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 
 	let trimmed = question_text.trim();
 	if trimmed.is_empty() || trimmed.len() > 200 {
@@ -303,11 +304,11 @@ pub async fn update_question(
 	question_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUser>,
+	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
 	use crate::apps::polls::models::Question;
 
-	let user = session_user.require_active()?;
+	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 
 	let question_id: i64 = question_id
 		.parse()
@@ -359,11 +360,11 @@ pub async fn delete_question(
 	question_id: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUser>,
+	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<(), ServerFnError> {
 	use crate::apps::polls::models::Question;
 
-	let user = session_user.require_active()?;
+	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 
 	let question_id: i64 = question_id
 		.parse()
@@ -435,11 +436,11 @@ pub async fn create_choice(
 	choice_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUser>,
+	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	use crate::apps::polls::models::Choice;
 
-	let user = session_user.require_active()?;
+	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 	let question_id: i64 = question_id
 		.parse()
 		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
@@ -474,11 +475,11 @@ pub async fn update_choice(
 	choice_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUser>,
+	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	use crate::apps::polls::models::Choice;
 
-	let user = session_user.require_active()?;
+	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 	let choice_id: i64 = choice_id
 		.parse()
 		.map_err(|_| ServerFnError::application("Invalid choice_id"))?;
@@ -516,11 +517,11 @@ pub async fn delete_choice(
 	choice_id: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUser>,
+	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<(), ServerFnError> {
 	use crate::apps::polls::models::Choice;
 
-	let user = session_user.require_active()?;
+	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 	let choice_id: i64 = choice_id
 		.parse()
 		.map_err(|_| ServerFnError::application("Invalid choice_id"))?;
