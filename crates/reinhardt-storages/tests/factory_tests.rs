@@ -78,7 +78,8 @@ base_path = "{}"
 			Err(StorageError::ConfigError(message)) => {
 				assert_eq!(message, "Selected backend requires [storage.gcs] settings");
 			}
-			other => panic!("Expected ConfigError, got {other:?}"),
+			Err(other) => panic!("Expected ConfigError, got {other:?}"),
+			Ok(_) => panic!("Expected ConfigError, but a storage backend was created"),
 		}
 	}
 
