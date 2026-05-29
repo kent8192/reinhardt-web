@@ -27,7 +27,7 @@ ast = []
 # Enables the `tests/integration/spa_navigation_e2e_test.rs` integration
 # test (Refs #4088). This is a marker feature: the actual test deps
 # (`reinhardt-test`, `axum`, `tower-http`) live as native-only path
-# dev-dependencies (see `[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]`).
+# dev-dependencies (see `[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]`).
 # Per CLAUDE.md KI-2, `reinhardt-test` is a path-only dev-dep here to avoid
 # both cyclic publishable dependencies and release-plz publish ordering
 # breakage. Cargo dev-dependencies cannot be optional, so feature gating
@@ -243,12 +243,12 @@ tempfile = { workspace = true }
 # `chrono` resolvable in the generated fixture binary.
 chrono = { workspace = true }
 
-[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
 # Used by tests/wasm/client_launcher_navigation_test.rs (Refs #4075) to
 # yield to the reactive scheduler between `Router::push` calls.
 gloo-timers = { version = "0.3", features = ["futures"] }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
 criterion = { workspace = true }
 proptest = { workspace = true }
 hyper-util = { workspace = true }
