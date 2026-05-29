@@ -4,9 +4,11 @@
 #[cfg(native)]
 pub use async_trait::async_trait;
 // `serde` is not a direct dependency of this crate; it is re-exported through
-// `reinhardt_core::serde` (gated by reinhardt-core's `serde` feature), which is
-// surfaced as `crate::core` only when the `core` feature is enabled.
-#[cfg(feature = "core")]
+// `crate::core::serde`. The `crate::core` module is gated by
+// `all(feature = "core", native)` (see lib.rs), so this re-export must use the
+// same gate — otherwise it fails to compile on WASM, where `crate::core` is
+// absent even when the `core` feature is enabled.
+#[cfg(all(feature = "core", native))]
 pub use crate::core::serde::{Deserialize, Serialize};
 
 #[cfg(feature = "tasks")]
