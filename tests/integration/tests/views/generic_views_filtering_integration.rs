@@ -57,6 +57,22 @@ struct Product {
 	created_at: Option<DateTime<Utc>>,
 }
 
+fn product(
+	name: impl Into<String>,
+	category: impl Into<String>,
+	price: i32,
+	stock: i32,
+	created_at: Option<DateTime<Utc>>,
+) -> Product {
+	Product::build()
+		.name(name)
+		.category(category)
+		.price(price)
+		.stock(stock)
+		.created_at(created_at)
+		.finish()
+}
+
 // ============================================================================
 // Table Identifiers (for reinhardt-query operations)
 // ============================================================================
@@ -143,13 +159,7 @@ async fn products_with_data(#[future] products_table: Arc<PgPool>) -> Arc<PgPool
 	];
 
 	for (name, category, price, stock) in products_data {
-		let product = Product::new(
-			name.to_string(),
-			category.to_string(),
-			price,
-			stock,
-			Some(Utc::now()),
-		);
+		let product = product(name, category, price, stock, Some(Utc::now()));
 
 		let sql = "INSERT INTO products (name, category, price, stock, created_at) VALUES ($1, $2, $3, $4, $5)";
 		sqlx::query(sql)

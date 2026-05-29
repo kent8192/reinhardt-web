@@ -1,6 +1,6 @@
 /// Trait for types that can be converted into a model's primary key.
 ///
-/// This trait enables flexible function signatures in generated `new()` methods,
+/// This trait enables flexible function signatures in generated builder setters,
 /// allowing both model instances and raw primary key values to be passed.
 ///
 /// # Examples
@@ -11,11 +11,18 @@
 ///
 /// // Pass a primary key value directly
 /// let user_id = Uuid::now_v7();
-/// let message = DMMessage::new(room_id, user_id, "Hello".to_string());
+/// let message = DMMessage::build()
+///     .room(room_id)
+///     .sender(user_id)
+///     .content("Hello")
+///     .finish();
 ///
-/// // Pass a model instance
-/// let user = User::new(...);
-/// let message = DMMessage::new(room_id, &user, "Hello".to_string());
+/// // Pass model instances by reference
+/// let message = DMMessage::build()
+///     .room(&room)
+///     .sender(&user)
+///     .content("Hello")
+///     .finish();
 /// ```
 pub trait IntoPrimaryKey<T: super::Model> {
 	/// Convert this value into the primary key of model `T`.
@@ -26,8 +33,8 @@ pub trait IntoPrimaryKey<T: super::Model> {
 impl<T: super::Model> IntoPrimaryKey<T> for &T {
 	fn into_primary_key(self) -> T::PrimaryKey {
 		self.primary_key().expect(
-			"Model instance passed to new() must have a primary key set. \
-			         Ensure the model was created with new() or loaded from database.",
+			"Model instance must have a primary key set. \
+			         Ensure the model was loaded from database or constructed with a PK.",
 		)
 	}
 }
