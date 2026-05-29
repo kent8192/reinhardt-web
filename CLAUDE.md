@@ -50,6 +50,7 @@ See instructions/MODULE_SYSTEM.md for comprehensive module system standards incl
 - NO relative paths beyond `../` (use absolute paths)
 - Mark ALL placeholders with `todo!()` or `// TODO:` comment
 - Document ALL `#[allow(...)]` attributes with explanatory comments (see @instructions/ANTI_PATTERNS.md)
+- **MUST manage all resources via RAII** (Drop-based guard types); NO manual `close()`/`release()`/`cleanup()` that can be skipped on an early `return`, `?`, or panic; NO `mem::forget` / `ManuallyDrop` / immediate-drop `let _ = lock()` without a justifying comment (see @instructions/ANTI_PATTERNS.md)
 
 **Unimplemented Features Notation:**
 - `todo!()` - Features that WILL be implemented
