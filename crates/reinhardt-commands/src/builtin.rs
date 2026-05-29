@@ -49,6 +49,16 @@ impl BaseCommand for MigrateCommand {
 				"fake-initial",
 				"Skip initial migration if tables exist",
 			),
+			CommandOption::flag(
+				None,
+				"plan",
+				"Preview the migration plan without applying or rolling back",
+			),
+			CommandOption::option(
+				None,
+				"migrations-dir",
+				"Root directory containing migration files (default: ./migrations)",
+			),
 			CommandOption::option(Some('d'), "database", "Database to migrate")
 				.with_default("default"),
 		]
@@ -58,16 +68,17 @@ impl BaseCommand for MigrateCommand {
 		ctx.info("Running migrations...");
 
 		let app_label = ctx.arg(0).map(|s| s.to_string());
-		let _migration_name = ctx.arg(1).map(|s| s.to_string());
+		let target = ctx.arg(1).map(|s| s.to_string());
 		let is_fake = ctx.has_option("fake");
 		let _is_fake_initial = ctx.has_option("fake-initial");
+		let is_plan = ctx.has_option("plan");
 		let _database = ctx
 			.option("database")
 			.map(|s| s.to_string())
 			.unwrap_or_else(|| "default".to_string());
 
 		if let Some(ref app_name) = app_label {
-			if let Some(ref migration) = _migration_name {
+			if let Some(ref migration) = target {
 				ctx.verbose(&format!("Migrating {} to {}", app_name, migration));
 			} else {
 				ctx.verbose(&format!("Migrating app: {}", app_name));
@@ -91,7 +102,10 @@ impl BaseCommand for MigrateCommand {
 			use tokio::sync::Mutex;
 
 			ctx.verbose("Loading migrations from disk...");
-			let migrations_dir = PathBuf::from("migrations");
+			let migrations_dir = ctx
+				.option("migrations-dir")
+				.map(PathBuf::from)
+				.unwrap_or_else(|| PathBuf::from("migrations"));
 
 			let source = Arc::new(FilesystemSource::new(migrations_dir.clone()));
 			let repository: Arc<Mutex<dyn reinhardt_db::migrations::MigrationRepository>> =
@@ -176,6 +190,276 @@ impl BaseCommand for MigrateCommand {
 					e
 				))
 			})?;
+
+			// 4.5. Direction detection (Django-style migrate-with-target semantics).
+			//
+			// `manage migrate <app> <target>` expresses both apply and unapply in a
+			// single command; the direction is resolved by comparing `<target>`
+			// against the currently applied state for `<app>`:
+			//
+			//   * `<target> == "zero"`  -> unapply ALL migrations for `<app>`.
+			//   * `<target>` is currently applied -> roll back every migration
+			//                            applied AFTER it (backward).
+			//   * `<target>` is NOT applied        -> apply `<target>` and its
+			//                            intra-app dependency closure (forward).
+			//
+			// `--plan` previews the action without touching the database. On a fresh
+			// database the bookkeeping table is created lazily for real execution but
+			// NEVER for `--plan`, preserving the dry-run "leave the DB untouched"
+			// contract.
+			if let Some(target_name) = target.as_deref() {
+				use reinhardt_db::migrations::DatabaseMigrationRecorder;
+				use std::collections::HashSet;
+
+				let app = app_label.as_ref().ok_or_else(|| {
+					crate::CommandError::InvalidArguments(
+						"<migration> requires <app>; usage: `migrate <app> <target>` or `migrate <app> zero`"
+							.to_string(),
+					)
+				})?;
+
+				let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
+				// For real execution, ensure the recorder table exists so the rollback
+				// can persist its unapply records (`apply_migrations` does the same
+				// before recording). For `--plan` we must NOT create the table: a
+				// missing table on a fresh DB means the applied set is empty, so we
+				// swallow the query failure and treat it as "nothing applied"; a real
+				// connectivity error would still surface on a non-plan re-run.
+				let applied = if is_plan {
+					recorder.get_applied_migrations().await.unwrap_or_default()
+				} else {
+					recorder.ensure_schema_table().await.map_err(|e| {
+						crate::CommandError::ExecutionError(format!(
+							"Failed to ensure migration recorder table: {}",
+							e
+						))
+					})?;
+					recorder.get_applied_migrations().await.map_err(|e| {
+						crate::CommandError::ExecutionError(format!(
+							"Failed to query applied migrations: {}",
+							e
+						))
+					})?
+				};
+				let applied_for_app: Vec<_> =
+					applied.iter().filter(|r| r.app == *app).cloned().collect();
+
+				// Branch (a): `migrate <app> zero` -> unapply ALL applied migrations.
+				if target_name == "zero" {
+					if applied_for_app.is_empty() {
+						ctx.info(&format!(
+							"No applied migrations for app '{}'; nothing to do.",
+							app
+						));
+						return Ok(());
+					}
+
+					let mut to_rollback = Vec::with_capacity(applied_for_app.len());
+					for r in &applied_for_app {
+						let migration = all_migrations
+							.iter()
+							.find(|m| m.app_label == r.app && m.name == r.name)
+							.cloned()
+							.ok_or_else(|| {
+								crate::CommandError::ExecutionError(format!(
+									"Migration {}:{} is recorded as applied but its file was not found on disk",
+									r.app, r.name
+								))
+							})?;
+						to_rollback.push(migration);
+					}
+
+					if is_plan {
+						ctx.info(&format!(
+							"[plan] Would unapply {} migration(s) for app '{}':",
+							to_rollback.len(),
+							app
+						));
+						for migration in to_rollback.iter().rev() {
+							ctx.info(&format!(
+								"  - {}:{} (unapply)",
+								migration.app_label, migration.name
+							));
+						}
+						return Ok(());
+					}
+
+					let mut executor = DatabaseMigrationExecutor::new(connection);
+					let result = executor
+						.rollback_migrations(&to_rollback)
+						.await
+						.map_err(|e| {
+							crate::CommandError::ExecutionError(format!(
+								"Failed to roll back migrations: {:?}",
+								e
+							))
+						})?;
+					for id in &result.applied {
+						ctx.success(&format!("  ✓ Rolled back: {}", id));
+					}
+					ctx.success(&format!(
+						"Rolled back {} migration(s) for app '{}'",
+						result.applied.len(),
+						app
+					));
+					return Ok(());
+				}
+
+				// Branch (b): target is currently applied -> roll back everything after it.
+				if let Some(pos) = applied_for_app.iter().position(|r| r.name == target_name) {
+					let to_rollback_records = &applied_for_app[pos + 1..];
+					if to_rollback_records.is_empty() {
+						ctx.info(&format!(
+							"Already at {}:{}; nothing to do.",
+							app, target_name
+						));
+						return Ok(());
+					}
+
+					let mut to_rollback = Vec::with_capacity(to_rollback_records.len());
+					for r in to_rollback_records {
+						let migration = all_migrations
+							.iter()
+							.find(|m| m.app_label == r.app && m.name == r.name)
+							.cloned()
+							.ok_or_else(|| {
+								crate::CommandError::ExecutionError(format!(
+									"Migration {}:{} is recorded as applied but its file was not found on disk",
+									r.app, r.name
+								))
+							})?;
+						to_rollback.push(migration);
+					}
+
+					if is_plan {
+						ctx.info(&format!(
+							"[plan] Would unapply {} migration(s) for app '{}' to reach target '{}':",
+							to_rollback.len(),
+							app,
+							target_name
+						));
+						for migration in to_rollback.iter().rev() {
+							ctx.info(&format!(
+								"  - {}:{} (unapply)",
+								migration.app_label, migration.name
+							));
+						}
+						return Ok(());
+					}
+
+					let mut executor = DatabaseMigrationExecutor::new(connection);
+					let result = executor
+						.rollback_migrations(&to_rollback)
+						.await
+						.map_err(|e| {
+							crate::CommandError::ExecutionError(format!(
+								"Failed to roll back migrations: {:?}",
+								e
+							))
+						})?;
+					for id in &result.applied {
+						ctx.success(&format!("  ✓ Rolled back: {}", id));
+					}
+					ctx.success(&format!(
+						"Rolled back to {}:{} ({} migration(s) unapplied)",
+						app,
+						target_name,
+						result.applied.len()
+					));
+					return Ok(());
+				}
+
+				// Branch (c): target is NOT currently applied -> forward to target.
+				// Validate the target exists on disk first.
+				let target_on_disk = all_migrations
+					.iter()
+					.any(|m| m.app_label == *app && m.name == target_name);
+				if !target_on_disk {
+					return Err(crate::CommandError::ExecutionError(format!(
+						"Migration {}:{} does not exist on disk",
+						app, target_name
+					)));
+				}
+
+				// Applying "to target" means applying the target plus every migration
+				// it transitively depends on within the same app. `apply_migrations`
+				// re-sorts the slice topologically and skips already-applied entries,
+				// so we only need to hand it the correct *set* of migrations. Cross-app
+				// prerequisites are managed by their own `migrate <other_app>` run,
+				// mirroring the app-scoped behavior of the apply-all path below.
+				let mut needed: HashSet<(String, String)> = HashSet::new();
+				let mut stack: Vec<(String, String)> = vec![(app.clone(), target_name.to_string())];
+				while let Some((dep_app, dep_name)) = stack.pop() {
+					if !needed.insert((dep_app.clone(), dep_name.clone())) {
+						continue;
+					}
+					if let Some(migration) = all_migrations
+						.iter()
+						.find(|m| m.app_label == dep_app && m.name == dep_name)
+					{
+						for (da, dn) in &migration.dependencies {
+							if *da == *app {
+								stack.push((da.clone(), dn.clone()));
+							}
+						}
+					}
+				}
+
+				let to_apply: Vec<_> = all_migrations
+					.iter()
+					.filter(|m| needed.contains(&(m.app_label.clone(), m.name.clone())))
+					.cloned()
+					.collect();
+
+				let applied_names: HashSet<&str> =
+					applied_for_app.iter().map(|r| r.name.as_str()).collect();
+				let pending: Vec<_> = to_apply
+					.iter()
+					.filter(|m| !applied_names.contains(m.name.as_str()))
+					.collect();
+
+				if pending.is_empty() {
+					ctx.info(&format!(
+						"Already at or past {}:{}; nothing to apply.",
+						app, target_name
+					));
+					return Ok(());
+				}
+
+				if is_plan {
+					ctx.info(&format!(
+						"[plan] Would apply {} migration(s) for app '{}' to reach target '{}':",
+						pending.len(),
+						app,
+						target_name
+					));
+					for migration in &pending {
+						ctx.info(&format!(
+							"  - {}:{} (apply)",
+							migration.app_label, migration.name
+						));
+					}
+					return Ok(());
+				}
+
+				let mut executor = DatabaseMigrationExecutor::new(connection);
+				let result = executor.apply_migrations(&to_apply).await.map_err(|e| {
+					crate::CommandError::ExecutionError(format!(
+						"Failed to apply migrations: {:?}",
+						e
+					))
+				})?;
+				for id in &result.applied {
+					ctx.success(&format!("  ✓ Applied: {}", id));
+				}
+				ctx.success(&format!(
+					"Applied {} migration(s) to reach {}:{}",
+					result.applied.len(),
+					app,
+					target_name
+				));
+				return Ok(());
+			}
 
 			// 5. Filter and check migrations
 			let migrations_to_apply: Vec<_> = if let Some(ref app) = app_label {
