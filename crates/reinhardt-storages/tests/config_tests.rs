@@ -1,5 +1,7 @@
 //! Configuration and environment parsing tests.
 
+#![allow(deprecated)] // Tests cover legacy environment config until removal.
+
 use reinhardt_storages::{StorageConfig, StorageError};
 use rstest::rstest;
 use serial_test::serial;

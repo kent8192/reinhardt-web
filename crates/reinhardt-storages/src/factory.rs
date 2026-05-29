@@ -1,34 +1,19 @@
-//! Factory function for creating storage backends.
+//! Factory functions for creating storage backends.
 
-use crate::{Result, StorageBackend, StorageConfig, StorageError};
+#![allow(deprecated)] // Public compatibility factory accepts StorageConfig until removal.
+
+use crate::{Result, StorageBackend, StorageConfig, StorageError, StorageSettings};
 use std::sync::Arc;
 
-/// Create a storage backend from configuration.
-///
-/// This factory function creates the appropriate storage backend based on
-/// the provided configuration.
-///
-/// # Arguments
-///
-/// * `config` - Storage configuration
-///
-/// # Returns
-///
-/// A boxed trait object implementing `` `StorageBackend` ``.
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// use reinhardt_storages::{create_storage, StorageConfig};
-///
-/// #[tokio::main]
-/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     let config = StorageConfig::from_env()?;
-///     let storage = create_storage(config).await?;
-///     Ok(())
-/// }
-/// ```
-#[allow(clippy::todo)] // GCS and Azure backends not yet implemented (Phase 2)
+/// Create a storage backend from settings.
+pub async fn create_storage_from_settings(
+	settings: &StorageSettings,
+) -> Result<Arc<dyn StorageBackend>> {
+	let config = settings.to_config()?;
+	create_storage(config).await
+}
+
+/// Create a storage backend from compatibility configuration.
 pub async fn create_storage(config: StorageConfig) -> Result<Arc<dyn StorageBackend>> {
 	match config {
 		#[cfg(feature = "s3")]
@@ -37,12 +22,14 @@ pub async fn create_storage(config: StorageConfig) -> Result<Arc<dyn StorageBack
 			Ok(Arc::new(storage))
 		}
 		#[cfg(feature = "gcs")]
-		StorageConfig::Gcs(_gcs_config) => {
-			todo!("GCS backend not yet implemented")
+		StorageConfig::Gcs(gcs_config) => {
+			let storage = crate::backends::gcs::GcsStorage::new(gcs_config).await?;
+			Ok(Arc::new(storage))
 		}
 		#[cfg(feature = "azure")]
-		StorageConfig::Azure(_azure_config) => {
-			todo!("Azure backend not yet implemented")
+		StorageConfig::Azure(azure_config) => {
+			let storage = crate::backends::azure::AzureStorage::new(azure_config).await?;
+			Ok(Arc::new(storage))
 		}
 		#[cfg(feature = "local")]
 		StorageConfig::Local(local_config) => {
