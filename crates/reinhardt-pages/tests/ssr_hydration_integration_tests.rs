@@ -197,8 +197,8 @@ fn test_hydration_marker_ids_reset_for_each_render_context() {
 
 	assert_eq!(first_counter, second_counter);
 	assert_eq!(first_card, second_card);
-	assert!(first_counter.contains(r#"data-rh-id="rh-0""#));
-	assert!(first_card.contains(r#"data-rh-id="rh-1""#));
+	assert_eq!(first_counter.matches(r#"data-rh-id="rh-0""#).count(), 1);
+	assert_eq!(first_card.matches(r#"data-rh-id="rh-1""#).count(), 1);
 }
 
 /// Success Criterion 3: SSR renderer without hydration markers
