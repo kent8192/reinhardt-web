@@ -222,6 +222,56 @@ cargo run --bin manage makemigrations --force-empty-state
 cargo run --bin manage makemigrations --force-empty-state --dry-run
 ```
 
+### `migrate` Command Options
+
+The `migrate` command applies and unapplies migrations using Django-style
+*migrate-with-target* semantics: a single command expresses both directions and
+the direction is resolved from the currently applied state.
+
+| Flag / Option | Description |
+|---------------|-------------|
+| `<APP_LABEL>` | App to migrate (positional, optional) |
+| `<MIGRATION_NAME>` | Target migration, or the special token `zero` (positional, optional) |
+| `--fake` | Mark migrations as applied without executing them |
+| `--fake-initial` | Skip the initial migration if the tables already exist |
+| `--plan` | Preview the migration plan without applying or rolling back |
+| `--migrations-dir <DIR>` | Root directory containing migration files (default: `./migrations`) |
+| `-d`, `--database <URL>` | Database connection string (falls back to `DATABASE_URL`) |
+
+#### Migrate to a Target
+
+When a `<MIGRATION_NAME>` is given, the direction is auto-detected by comparing
+the target against the migrations currently applied for `<APP_LABEL>`:
+
+```bash
+# Apply every unapplied migration for the app (no target)
+cargo run --bin manage migrate myapp
+
+# Forward: apply up to and including 0003_third (and its dependencies)
+cargo run --bin manage migrate myapp 0003_third
+
+# Backward: roll back every migration applied after 0001_initial
+cargo run --bin manage migrate myapp 0001_initial
+
+# Unapply ALL migrations for the app (Django's special `zero` token)
+cargo run --bin manage migrate myapp zero
+
+# Preview any of the above without touching the database
+cargo run --bin manage migrate myapp 0001_initial --plan
+```
+
+The resolution rules are:
+
+- `<target> == "zero"` — unapply **all** migrations for the app.
+- `<target>` is currently applied — roll back every migration applied **after**
+  it (backward). When `<target>` is already the latest applied migration this is
+  a no-op.
+- `<target>` is **not** applied — apply `<target>` and its intra-app dependency
+  closure (forward), skipping anything already applied.
+
+`--plan` never mutates the database, including the migration bookkeeping table:
+on a fresh database a dry-run leaves it uncreated.
+
 ### `collect_migrations!` Macro and `linkme` Dependency
 
 The `collect_migrations!` macro registers migration modules for runtime
@@ -260,6 +310,8 @@ time.
 | --------------------------------- | --------------------------------------- |
 | `python manage.py makemigrations` | `cargo run --bin manage makemigrations` |
 | `python manage.py migrate`        | `cargo run --bin manage migrate`        |
+| `python manage.py migrate app 0001` | `cargo run --bin manage migrate app 0001` |
+| `python manage.py migrate app zero` | `cargo run --bin manage migrate app zero` |
 | `python manage.py runserver`      | `cargo run --bin manage runserver`      |
 | `python manage.py shell`          | `cargo run --bin manage shell`          |
 | `python manage.py check`          | `cargo run --bin manage check`          |
