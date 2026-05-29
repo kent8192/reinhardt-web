@@ -17,9 +17,12 @@ fn my_button(label: String, disabled: bool) -> Page {
 }
 
 fn main() {
+	// `page!` forbids implicit captures of single-segment value identifiers
+	// (spec §3.7). Free functions are still callable via a qualified item path
+	// (`self::my_button`), which the capture-discipline check exempts.
 	let _ = page!(|| {
 		div { {
-			my_button("click".to_string(), false)
+			self::my_button("click".to_string(), false)
 		} }
 	});
 }
