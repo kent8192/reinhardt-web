@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.2...reinhardt-macros@v0.2.0-rc.2) - 2026-05-29
+
+### Added
+
+- *(core)* [**breaking**] remove 0.1.0-rc deprecated URL resolver codegen (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(macros)* [**breaking**] generate Info companion type via #[model] macro
+- *(model)* [**breaking**] make new an alias for build
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(core)* drop leftover empty test definition in viewset_macro tests (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(core)* address Copilot review feedback on PR [[#4713](https://github.com/kent8192/reinhardt-web/issues/4713)](https://github.com/kent8192/reinhardt-web/issues/4713)
+- *(ci)* recover develop release-plz prerelease
+- *(macros)* exclude pinned state params from builder impl generics
+- *(macros)* address CodeRabbit review on model Info generation
+- *(macros)* propagate serde derives to Info companion struct via model_config
+- *(macros)* remove unused has_derive_trait from model_derive
+- *(macros)* suppress missing_docs on generated Info companion types
+- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
+
+### Other
+
+- resolve conflicts with develop/0.2.0
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.30...reinhardt-macros@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-macros` as part of the
