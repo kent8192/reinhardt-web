@@ -1097,7 +1097,7 @@ are unconditional:
   the user function body and emits
   `inventory::submit!(ClientRouterRegistration)` on
   `wasm32-unknown-unknown`. The body therefore MUST compile on both
-  targets — `.server(|s| ...)` (where `s` is a `ServerRouterStub` on
+  targets — `.server(|s| ...)` (where `s` is a no-op `ServerRouter` on
   wasm) and the `#[cfg(wasm)]` aggregation block below ensure that.
 - `standalone` suppresses generation of `crate::urls::url_prelude` and
   the `ResolvedUrls::<app>()` accessor methods. This project does not
@@ -1193,12 +1193,12 @@ fn create_session_middleware() -> SessionMiddleware {
 #[routes(standalone, client_inventory)]
 pub fn routes() -> UnifiedRouter {
 	let router = UnifiedRouter::new().server(|s| {
-		// On wasm the `s` parameter is a `ServerRouterStub` and every
-		// builder call inside this closure is absorbed by the stub
-		// (see `reinhardt_urls::routers::unified_router::ServerRouterStub`),
-		// so the `server_fn` markers do not need to compile on wasm. We
-		// still gate the marker references on `#[cfg(native)]` because
-		// the `server_fn` marker modules themselves are native-only.
+		// On wasm the `s` parameter is a no-op `ServerRouter` and every
+		// builder call inside this closure is absorbed by it
+		// (see `reinhardt_urls::routers::ServerRouter`), so the `server_fn`
+		// markers do not need to compile on wasm. We still gate the marker
+		// references on `#[cfg(native)]` because the `server_fn` marker
+		// modules themselves are native-only.
 		#[cfg(native)]
 		{
 			s.server_fn(get_questions::marker)
