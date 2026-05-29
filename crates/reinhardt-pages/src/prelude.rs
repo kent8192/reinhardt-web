@@ -41,6 +41,7 @@
 //! ## Component System
 //! - [`Component`], [`PageElement`], [`IntoPage`], [`Page`], [`Props`]
 //! - [`PageEventHandler`]
+//! - [`SuspenseBoundary`], [`ErrorBoundary`], [`BoundaryError`]
 //!
 //! ## Events and Callbacks
 //! - [`Callback`], [`IntoEventHandler`], [`into_event_handler`]
@@ -94,8 +95,9 @@ pub use crate::reactive::{create_resource, create_resource_with_deps};
 // ============================================================================
 
 pub use crate::component::{
-	Component, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, PageEventHandler, PageExt,
-	Props, ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary,
+	BoundaryError, Component, ErrorBoundary, ErrorTracker, Head, IntoPage, LinkTag, MetaTag, Page,
+	PageElement, PageEventHandler, PageExt, Props, ResourceTracker, ScriptTag, StyleTag,
+	SuspenseBoundary,
 };
 
 // ============================================================================

@@ -14,23 +14,23 @@
 //! ## Usage
 //!
 //! ```ignore
-//! use reinhardt_pages::router::{Router, Link, RouterOutlet};
-//! use std::sync::Arc;
+//! use reinhardt_pages::router::{Link, RouterOutlet};
+//! use reinhardt_urls::routers::ClientRouter;
 //!
 //! // Create a router
-//! let router = Arc::new(Router::new()
+//! let router = ClientRouter::new()
 //!     .route("home", "/", home_page)
 //!     .route("user_list", "/users/", user_list)
-//!     .route("user_detail", "/users/{id}/", user_detail));
-//!
-//! // Create a router outlet to render current route
-//! let outlet = RouterOutlet::new(router.clone());
+//!     .route("user_detail", "/users/{id}/", user_detail);
 //!
 //! // Navigate programmatically
 //! router.push("/users/42/");
 //!
 //! // Reverse URL lookup
 //! let url = router.reverse("user_detail", &[("id", "42")]);
+//!
+//! // Create a router outlet to render current route
+//! let outlet = RouterOutlet::new(router);
 //! ```
 //!
 //! # Migration to `urls::ClientRouter`
@@ -102,7 +102,7 @@ pub mod request {
 	};
 }
 
-pub use components::{Link, Redirect, guard, guard_or};
+pub use components::{Link, Redirect, RouterOutlet, guard, guard_or};
 pub use history::{HistoryState, NavigationType};
 pub use navigate::navigate;
 pub use reinhardt_urls::routers::ClientRouter;

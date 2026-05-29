@@ -254,6 +254,10 @@ fn reconcile_at_path(
 			path,
 		),
 		Page::Fragment(views) => reconcile_children_at_path(element, views, path),
+		Page::KeyedFragment(views) => {
+			let child_views: Vec<Page> = views.iter().map(|(_, view)| view.clone()).collect();
+			reconcile_children_at_path(element, &child_views, path)
+		}
 		Page::Empty => Ok(()),
 		Page::WithHead { view, .. } => {
 			// Head section is handled separately during SSR
@@ -328,6 +332,28 @@ fn reconcile_dom_node_at_path(
 			} else {
 				let mut expected_children = Vec::new();
 				collect_expected_children(views, &path, &mut expected_children);
+				if expected_children.len() == 1 {
+					reconcile_dom_node_at_path(
+						node,
+						&expected_children[0].1,
+						expected_children[0].0.clone(),
+					)
+				} else {
+					Err(ReconcileError::ChildCountMismatch {
+						path,
+						expected: expected_children.len(),
+						actual: 1,
+					})
+				}
+			}
+		}
+		Page::KeyedFragment(views) => {
+			let child_views: Vec<Page> = views.iter().map(|(_, view)| view.clone()).collect();
+			if let Some(element) = node.dyn_ref::<web_sys::Element>() {
+				reconcile_children_at_path(&Element::new(element.clone()), &child_views, path)
+			} else {
+				let mut expected_children = Vec::new();
+				collect_expected_children(&child_views, &path, &mut expected_children);
 				if expected_children.len() == 1 {
 					reconcile_dom_node_at_path(
 						node,
@@ -481,6 +507,11 @@ fn collect_expected_child(
 				children.push((path, Page::Text(text.clone())));
 			}
 		}
+		Page::KeyedFragment(keyed_children) => {
+			let child_views: Vec<Page> =
+				keyed_children.iter().map(|(_, view)| view.clone()).collect();
+			collect_expected_children(&child_views, &path, children);
+		}
 		_ => children.push((path, view.clone())),
 	}
 }
@@ -612,9 +643,14 @@ fn reconcile_options_children_at_path(
 	options: &ReconcileOptions,
 	path: ReconcilePath,
 ) -> Result<(), ReconcileError> {
-	let child_views = match view {
+	let keyed_child_views;
+	let child_views: &[Page] = match view {
 		Page::Element(el_view) => el_view.child_views(),
 		Page::Fragment(views) => views,
+		Page::KeyedFragment(views) => {
+			keyed_child_views = views.iter().map(|(_, view)| view.clone()).collect::<Vec<_>>();
+			&keyed_child_views
+		}
 		Page::WithHead { view, .. } => {
 			return reconcile_options_children_at_path(element, view, options, path);
 		}
@@ -823,6 +859,15 @@ fn compare_recursive(element: &Element, view: &Page, path: &str, differences: &m
 		Page::Fragment(views) => {
 			let children = element.children();
 			for (i, child_view) in views.iter().enumerate() {
+				let child_path = format!("{}/{}", path, i);
+				if i < children.len() {
+					compare_recursive(&children[i], child_view, &child_path, differences);
+				}
+			}
+		}
+		Page::KeyedFragment(views) => {
+			let children = element.children();
+			for (i, (_, child_view)) in views.iter().enumerate() {
 				let child_path = format!("{}/{}", path, i);
 				if i < children.len() {
 					compare_recursive(&children[i], child_view, &child_path, differences);
