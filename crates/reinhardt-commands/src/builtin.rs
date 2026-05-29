@@ -218,7 +218,7 @@ impl BaseCommand for MigrateCommand {
 					)
 				})?;
 
-				let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
+				let recorder = DatabaseMigrationRecorder::new(connection.clone());
 				// For real execution, ensure the recorder table exists so the rollback
 				// can persist its unapply records (`apply_migrations` does the same
 				// before recording). For `--plan` we must NOT create the table: a

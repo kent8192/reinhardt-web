@@ -111,6 +111,7 @@ fn test_commands_migrate_parse_minimal() {
 		fake: false,
 		fake_initial: false,
 		plan: false,
+		migrations_dir: None,
 	};
 
 	// Verify all fields are default
@@ -122,6 +123,7 @@ fn test_commands_migrate_parse_minimal() {
 			fake,
 			fake_initial,
 			plan,
+			migrations_dir: _,
 		} => {
 			assert!(app_label.is_none(), "app_label should be None by default");
 			assert!(
@@ -151,6 +153,7 @@ fn test_commands_migrate_parse_all_options() {
 		fake: true,
 		fake_initial: true,
 		plan: true,
+		migrations_dir: None,
 	};
 
 	match cmd {
@@ -161,6 +164,7 @@ fn test_commands_migrate_parse_all_options() {
 			fake,
 			fake_initial,
 			plan,
+			migrations_dir: _,
 		} => {
 			assert_eq!(app_label, Some("myapp".to_string()));
 			assert_eq!(migration_name, Some("0001_initial".to_string()));
@@ -530,6 +534,7 @@ fn test_unicode_in_arguments() {
 		fake: false,
 		fake_initial: false,
 		plan: false,
+		migrations_dir: None,
 	};
 
 	match cmd {
@@ -629,6 +634,7 @@ fn test_very_long_argument_values() {
 		fake: false,
 		fake_initial: false,
 		plan: false,
+		migrations_dir: None,
 	};
 
 	match cmd {
@@ -834,6 +840,7 @@ fn test_cli_commands_sanity() {
 			fake: false,
 			fake_initial: false,
 			plan: false,
+			migrations_dir: None,
 		},
 		create_runserver_default(),
 		Commands::Shell { command: None },
@@ -1150,6 +1157,7 @@ fn test_database_url_special_chars() {
 		fake: false,
 		fake_initial: false,
 		plan: false,
+		migrations_dir: None,
 	};
 
 	match cmd {
@@ -1234,6 +1242,7 @@ fn test_all_command_variants_creatable() {
 		fake: true,
 		fake_initial: true,
 		plan: true,
+		migrations_dir: None,
 	};
 
 	let runserver =

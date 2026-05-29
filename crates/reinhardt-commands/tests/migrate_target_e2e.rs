@@ -166,7 +166,7 @@ async fn applied_for_app(url: &str, app: &str) -> Vec<String> {
 	let connection = DatabaseConnection::connect_postgres(url)
 		.await
 		.expect("re-connect to test Postgres");
-	let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
+	let recorder = DatabaseMigrationRecorder::new(connection.clone());
 	let applied = recorder
 		.get_applied_migrations()
 		.await
@@ -339,7 +339,7 @@ async fn plan_on_fresh_db_does_not_create_recorder_table(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("re-connect to test Postgres");
-	let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
+	let recorder = DatabaseMigrationRecorder::new(connection.clone());
 	let result = recorder.get_applied_migrations().await;
 	assert!(
 		result.is_err(),
@@ -516,7 +516,7 @@ async fn forward_to_target_plan_does_not_modify_db(
 	let connection = DatabaseConnection::connect_postgres(&url)
 		.await
 		.expect("re-connect to test Postgres");
-	let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
+	let recorder = DatabaseMigrationRecorder::new(connection.clone());
 	let result = recorder.get_applied_migrations().await;
 	assert!(
 		result.is_err(),
