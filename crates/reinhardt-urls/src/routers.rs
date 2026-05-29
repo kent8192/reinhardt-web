@@ -221,6 +221,13 @@ pub use server_router::{
 	take_di_registrations,
 };
 
+// On WASM with `client-router`, `ServerRouter` is the no-op builder defined in
+// `unified_router`. Re-exported here so `reinhardt_urls::routers::ServerRouter`
+// resolves uniformly on both targets (issue #4569). The native re-export above
+// and this one are gated on mutually exclusive cfgs, so exactly one is active.
+#[cfg(all(wasm, feature = "client-router"))]
+pub use unified_router::ServerRouter;
+
 // Unified router (closure-based API combining server and client routers)
 #[cfg(any(native, feature = "client-router"))]
 pub use unified_router::UnifiedRouter;
