@@ -3,11 +3,11 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use reinhardt_pages::reactive::{Effect, Signal, batch, with_runtime};
+use reinhardt_pages::reactive::{Effect, Signal, batch};
 use serial_test::serial;
 
 #[test]
-#[serial]
+#[serial(action_batching)]
 fn test_batch_defers_effect_until_outer_batch_completes() {
 	let count = Signal::new(0);
 	let log = Rc::new(RefCell::new(Vec::new()));
@@ -24,12 +24,13 @@ fn test_batch_defers_effect_until_outer_batch_completes() {
 		assert_eq!(*log.borrow(), vec![0]);
 	});
 
-	with_runtime(|rt| rt.flush_updates());
+	// `batch` flushes pending updates when the outermost guard is dropped,
+	// so the deferred effect must have run by the time `batch` returns.
 	assert_eq!(*log.borrow(), vec![0, 2]);
 }
 
 #[test]
-#[serial]
+#[serial(action_batching)]
 fn test_nested_batch_flushes_after_outer_batch() {
 	let count = Signal::new(0);
 	let log = Rc::new(RefCell::new(Vec::new()));
@@ -48,6 +49,7 @@ fn test_nested_batch_flushes_after_outer_batch() {
 		assert_eq!(*log.borrow(), vec![0]);
 	});
 
-	with_runtime(|rt| rt.flush_updates());
+	// Nested batches only flush once the outermost guard drops, so the
+	// deferred effect must have run by the time the outer `batch` returns.
 	assert_eq!(*log.borrow(), vec![0, 2]);
 }
