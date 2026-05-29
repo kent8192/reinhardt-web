@@ -55,7 +55,7 @@ impl FromStr for BackendType {
 #[cfg(feature = "s3")]
 #[deprecated(
 	since = "0.2.0",
-	note = "Use StorageSettings with the #[settings] macro instead."
+	note = "Use `StorageSettings` with the `#[settings]` macro instead."
 )]
 #[derive(Debug, Clone)]
 pub struct S3Config {
@@ -73,7 +73,7 @@ pub struct S3Config {
 #[cfg(feature = "gcs")]
 #[deprecated(
 	since = "0.2.0",
-	note = "Use StorageSettings with the #[settings] macro instead."
+	note = "Use `StorageSettings` with the `#[settings]` macro instead."
 )]
 #[derive(Debug, Clone)]
 pub struct GcsConfig {
@@ -91,7 +91,7 @@ pub struct GcsConfig {
 #[cfg(feature = "azure")]
 #[deprecated(
 	since = "0.2.0",
-	note = "Use StorageSettings with the #[settings] macro instead."
+	note = "Use `StorageSettings` with the `#[settings]` macro instead."
 )]
 #[derive(Debug, Clone)]
 pub struct AzureConfig {
@@ -115,7 +115,7 @@ pub struct AzureConfig {
 #[cfg(feature = "local")]
 #[deprecated(
 	since = "0.2.0",
-	note = "Use StorageSettings with the #[settings] macro instead."
+	note = "Use `StorageSettings` with the `#[settings]` macro instead."
 )]
 #[derive(Debug, Clone)]
 pub struct LocalConfig {
@@ -126,7 +126,7 @@ pub struct LocalConfig {
 /// Compatibility storage configuration.
 #[deprecated(
 	since = "0.2.0",
-	note = "Use StorageSettings with the #[settings] macro instead."
+	note = "Use `StorageSettings` with the `#[settings]` macro instead."
 )]
 #[derive(Debug, Clone)]
 pub enum StorageConfig {
@@ -179,7 +179,7 @@ impl StorageConfig {
 	/// - `LOCAL_BASE_PATH`: Base directory path (required)
 	#[deprecated(
 		since = "0.2.0",
-		note = "Use StorageSettings with the #[settings] macro instead."
+		note = "Use `StorageSettings` with the `#[settings]` macro instead."
 	)]
 	pub fn from_env() -> Result<Self> {
 		let backend_type = env::var("STORAGE_BACKEND").map_err(|_| {
