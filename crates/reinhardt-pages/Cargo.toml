@@ -238,6 +238,10 @@ serial_test = "3"
 trybuild = "1.0"
 rstest = { workspace = true }
 tempfile = { workspace = true }
+# `form!`'s `DateField` / `TimeField` / `DateTimeField` codegen emits bare
+# `chrono::Naive*` paths, so trybuild fixtures exercising those fields need
+# `chrono` resolvable in the generated fixture binary.
+chrono = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 # Used by tests/wasm/client_launcher_navigation_test.rs (Refs #4075) to
