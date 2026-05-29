@@ -26,11 +26,11 @@
 //! // Navigate programmatically
 //! router.push("/users/42/");
 //!
-//! // Create a router outlet to render current route
-//! let outlet = RouterOutlet::new(router);
-//!
 //! // Reverse URL lookup
 //! let url = router.reverse("user_detail", &[("id", "42")]);
+//!
+//! // Create a router outlet to render current route
+//! let outlet = RouterOutlet::new(router);
 //! ```
 //!
 //! # Migration to `urls::ClientRouter`
