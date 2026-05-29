@@ -32,7 +32,7 @@ use std::sync::Arc;
 
 use crate::component::PageEventHandler;
 #[cfg(wasm)]
-use crate::spawn::spawn_task;
+use crate::platform::spawn_task;
 
 #[cfg(wasm)]
 type EventArg = web_sys::Event;

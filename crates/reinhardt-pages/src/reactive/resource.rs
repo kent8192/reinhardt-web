@@ -11,7 +11,7 @@ use std::fmt;
 use std::rc::Rc;
 
 #[cfg(wasm)]
-use crate::spawn::{defer_yield, spawn_task};
+use crate::platform::{defer_yield, spawn_task};
 
 /// Type alias for the refetch callback function
 ///

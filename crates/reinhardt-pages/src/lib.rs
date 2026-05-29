@@ -180,10 +180,28 @@ pub mod callback;
 pub mod dom;
 pub mod logging;
 pub mod reactive;
-pub mod spawn;
 
-// Platform abstraction (unified types for WASM and native)
+// Platform abstraction (unified types and task spawning for WASM and native)
 pub mod platform;
+
+/// Backward-compatibility re-export of task-spawning utilities.
+///
+/// Task spawning moved into `platform` (#4362). This deprecated module
+/// keeps existing `reinhardt_pages::spawn::*` imports working for the
+/// remainder of the 0.x line.
+pub mod spawn {
+	/// Deprecated: use `spawn_task` from `reinhardt_pages::prelude` instead.
+	#[deprecated(
+		note = "moved to reinhardt_pages::platform; use spawn_task from reinhardt_pages::prelude instead"
+	)]
+	pub use crate::platform::spawn_task;
+
+	/// Deprecated: use `defer_yield` from `reinhardt_pages::prelude` instead.
+	#[deprecated(
+		note = "moved to reinhardt_pages::platform; use defer_yield from reinhardt_pages::prelude instead"
+	)]
+	pub use crate::platform::defer_yield;
+}
 
 // Unified prelude for simplified imports
 pub mod prelude;
@@ -230,7 +248,7 @@ pub mod testing;
 pub mod static_resolver;
 
 // Hot Module Replacement (server-side only, feature-gated)
-#[cfg(all(not(target_arch = "wasm32"), feature = "hmr"))]
+#[cfg(all(native, feature = "hmr"))]
 pub mod hmr;
 
 // Table utilities (django-tables2 equivalent)
@@ -308,10 +326,11 @@ pub mod __private {
 
 	// `tracing` is enabled for all targets *except* browser wasm (wasm32-unknown-unknown).
 	// Browser wasm uses a different logging mechanism, so tracing is intentionally excluded there.
-	// The cfg condition `not(all(target_family = "wasm", target_os = "unknown"))` precisely
-	// targets browser wasm, which reports target_family = "wasm" and target_os = "unknown".
-	// This is intentionally different from the `reqwest` cfg above.
-	#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+	// The `native` cfg alias (defined in build.rs as
+	// `not(all(target_family = "wasm", target_os = "unknown"))`) precisely targets every
+	// non-browser-wasm platform.
+	// This is intentionally different from the `reqwest` cfg above, which spans all wasm targets.
+	#[cfg(native)]
 	pub use tracing;
 }
 

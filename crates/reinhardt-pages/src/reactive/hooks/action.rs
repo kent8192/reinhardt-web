@@ -87,7 +87,7 @@ impl<T: Clone + 'static> Clone for OptimisticState<T> {
 ///         likes.update_optimistic(likes.get() + 1);
 ///
 ///         // Perform async operation
-///         spawn_local({
+///         spawn_task({
 ///             let likes = likes.clone();
 ///             async move {
 ///                 match api_like_post().await {

@@ -182,7 +182,7 @@ impl SuspenseBoundary {
 	/// On non-WASM targets (SSR), this always returns the content,
 	/// since the server can pre-fetch data before rendering.
 	pub fn render(&self) -> Page {
-		#[cfg(target_arch = "wasm32")]
+		#[cfg(wasm)]
 		{
 			if self.any_loading() {
 				return self.render_fallback();
@@ -190,7 +190,7 @@ impl SuspenseBoundary {
 			self.render_content()
 		}
 
-		#[cfg(not(target_arch = "wasm32"))]
+		#[cfg(native)]
 		{
 			// SSR: always render the actual content (server pre-fetches data)
 			self.render_content()
@@ -198,7 +198,7 @@ impl SuspenseBoundary {
 	}
 
 	/// Renders the fallback wrapped in a marker div.
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(wasm)]
 	fn render_fallback(&self) -> Page {
 		let fallback = (self.fallback_fn)();
 		PageElement::new("div")

@@ -61,6 +61,10 @@
 //! - [`resolve_static`] - Resolve static file URLs
 //! - [`init_static_resolver`] - Initialize the static resolver
 //! - [`is_initialized`] - Check if static resolver is initialized
+//!
+//! ## Task Spawning
+//! - [`spawn_task`], [`defer_yield`] - cross-target async task spawning
+//!   (no-op on native; replaces the deprecated `spawn_local` re-export)
 
 // ============================================================================
 // Reactive System
@@ -108,6 +112,9 @@ pub use crate::callback::{Callback, IntoEventHandler, into_event_handler};
 
 // Platform-agnostic Event type
 pub use crate::platform::Event;
+
+// Platform-agnostic task spawning (cross-target)
+pub use crate::platform::{defer_yield, spawn_task};
 
 // ============================================================================
 // DOM
@@ -183,5 +190,9 @@ pub use crate::page;
 /// Spawn a local async task (WASM only).
 ///
 /// This is a convenience re-export from `wasm_bindgen_futures`.
+///
+/// Deprecated in favor of [`spawn_task`], which is cross-target (a no-op on
+/// native) and does not require a `#[cfg(wasm)]` guard at the call site.
 #[cfg(wasm)]
+#[deprecated(note = "use spawn_task from reinhardt_pages::prelude instead")]
 pub use wasm_bindgen_futures::spawn_local;

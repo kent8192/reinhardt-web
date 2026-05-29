@@ -440,7 +440,7 @@ fn test_attach_options_full_hydration() {
 	assert!(!options.skip_static);
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 #[test]
 fn test_attach_events_recursive_non_wasm() {
 	let mut registry = EventRegistry::new();
@@ -453,7 +453,7 @@ fn test_attach_events_recursive_non_wasm() {
 	assert!(result.is_ok());
 	assert!(!registry.is_empty());
 }
-#[cfg(all(test, not(target_arch = "wasm32")))]
+#[cfg(all(test, native))]
 mod tests {
 	use super::*;
 

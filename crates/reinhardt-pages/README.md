@@ -59,8 +59,9 @@ fn main() {
     println!("cargo::rustc-check-cfg=cfg(native)");
 
     cfg_aliases! {
-        wasm: { target_arch = "wasm32" },
-        native: { not(target_arch = "wasm32") },
+        // Browser-WASM only (wasm32-unknown-unknown); excludes WASI / emscripten.
+        wasm: { all(target_family = "wasm", target_os = "unknown") },
+        native: { not(all(target_family = "wasm", target_os = "unknown")) },
     }
 }
 ```
@@ -294,8 +295,11 @@ The prelude includes:
 ### Macros
 - `page!`
 
+### Task spawning (cross-target)
+- `spawn_task`, `defer_yield` (no-op on native)
+
 ### WASM-specific
-- `spawn_local` (re-exported from wasm_bindgen_futures)
+- `spawn_local` (re-exported from wasm_bindgen_futures; **deprecated** — use `spawn_task`)
 - `create_resource`, `create_resource_with_deps`
 
 ## Example
