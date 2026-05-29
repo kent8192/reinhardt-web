@@ -22,14 +22,24 @@ jobs:
     if: github.event_name == 'pull_request'
     uses: ./.github/workflows/detect-affected-packages.yml
 
+  # Select the runner the same way ci.yml does (Mac local -> AWS Spot ->
+  # GitHub-hosted, with fork exclusion and budget circuit breaker) so example
+  # tests run on a self-hosted runner when one is available and safe, falling
+  # back to ubuntu-latest otherwise.
+  determine-runner:
+    name: Determine Runner
+    uses: ./.github/workflows/determine-runner.yml
+
   examples-test:
     name: Examples Tests
-    needs: [detect-affected]
+    needs: [detect-affected, determine-runner]
     if: |
       always() &&
       (github.event_name != 'pull_request' || needs.detect-affected.outputs.run-examples == 'true')
     uses: ./.github/workflows/examples-test.yml
     secrets: inherit
     with:
-      runner: '"ubuntu-latest"'
-      cargo-build-jobs: '1'
+      # Fall back to GitHub-hosted defaults if determine-runner was skipped or
+      # failed, so the example tests never run with an empty runner label.
+      runner: ${{ needs.determine-runner.outputs.runner || '"ubuntu-latest"' }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs || '1' }}
