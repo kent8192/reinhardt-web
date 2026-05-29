@@ -1,4 +1,8 @@
 //! Integration tests for Azure Blob Storage using Azurite.
+//!
+//! Gated on the `azure` feature: the fixtures and assertions used here are only
+//! compiled when `azure` is enabled, so the whole test binary is conditional.
+#![cfg(feature = "azure")]
 
 mod fixtures;
 mod utils;

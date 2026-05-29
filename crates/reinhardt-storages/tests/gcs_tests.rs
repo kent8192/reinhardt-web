@@ -1,4 +1,8 @@
 //! Integration tests for Google Cloud Storage using fake-gcs-server.
+//!
+//! Gated on the `gcs` feature: the fixtures and assertions used here are only
+//! compiled when `gcs` is enabled, so the whole test binary is conditional.
+#![cfg(feature = "gcs")]
 
 mod fixtures;
 mod utils;
