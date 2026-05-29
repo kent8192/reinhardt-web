@@ -178,6 +178,40 @@ fn test_commands_migrate_parse_all_options() {
 	}
 }
 
+/// Test: Parse Migrate command `--migrations-dir` flag from CLI args
+///
+/// Category: Happy Path
+/// Verifies that the `--migrations-dir` flag is wired through clap parsing and
+/// surfaces on the `Commands::Migrate` variant (guards the flag wiring against
+/// regressions; the struct-construction test above never exercises parsing).
+#[rstest]
+fn test_commands_migrate_parse_migrations_dir() {
+	let cmd = Cli::parse_from([
+		"manage",
+		"migrate",
+		"myapp",
+		"0001_initial",
+		"--migrations-dir",
+		"/tmp/migs",
+	])
+	.command;
+
+	match cmd {
+		Commands::Migrate {
+			app_label,
+			migration_name,
+			migrations_dir,
+			..
+		} => {
+			assert_eq!(app_label, Some("myapp".to_string()));
+			assert_eq!(migration_name, Some("0001_initial".to_string()));
+			assert_eq!(migrations_dir, Some(PathBuf::from("/tmp/migs")));
+		}
+		#[allow(unreachable_patterns)]
+		_ => panic!("Expected Commands::Migrate variant"),
+	}
+}
+
 // ============================================================================
 // Happy Path Tests - Makemigrations Command Parsing
 // ============================================================================
