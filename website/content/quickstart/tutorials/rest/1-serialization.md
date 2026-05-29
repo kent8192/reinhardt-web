@@ -160,14 +160,13 @@ use reinhardt::prelude::*;
 let serializer = JsonSerializer::<Snippet>::new();
 
 // Serialize to JSON
-// #[model] generates Snippet::new(title, code, language) — primary key and
-// auto_now_add fields are populated automatically and omitted from the
-// constructor signature.
-let snippet = Snippet::new(
-    "Hello World".to_string(),
-    "print('hello')".to_string(),
-    "python".to_string(),
-);
+// #[model] generates Snippet::build() — primary key and auto_now_add fields
+// are populated automatically and omitted from the required builder setters.
+let snippet = Snippet::build()
+    .title("Hello World")
+    .code("print('hello')")
+    .language("python")
+    .finish();
 
 let json_bytes = serializer.serialize(&snippet).unwrap();
 let json_str = String::from_utf8(json_bytes).unwrap();
@@ -522,13 +521,13 @@ async fn create_snippet(
     // let snippet = Manager::<Snippet>::new().create(...).await?;
 
     // Demo mode: construct a mock snippet via the macro-generated
-    // constructor. In production the record would be created through
+    // builder. In production the record would be created through
     // Manager::<Snippet>::new().create(...).
-    let snippet = Snippet::new(
-        serializer.title.clone(),
-        serializer.code.clone(),
-        serializer.language.clone(),
-    );
+    let snippet = Snippet::build()
+        .title(serializer.title.clone())
+        .code(serializer.code.clone())
+        .language(serializer.language.clone())
+        .finish();
 
     // 3. Return response with created status
     let response_data = json!({

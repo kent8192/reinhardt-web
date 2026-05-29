@@ -102,12 +102,12 @@ pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Res
 	//     created_at: Utc::now(),
 	// }).await?;
 
-	// Demo mode: construct a mock snippet via the macro-generated constructor.
-	let snippet = Snippet::new(
-		serializer.title.clone(),
-		serializer.code.clone(),
-		serializer.language.clone(),
-	);
+	// Demo mode: construct a mock snippet via the macro-generated builder.
+	let snippet = Snippet::build()
+		.title(serializer.title.clone())
+		.code(serializer.code.clone())
+		.language(serializer.language.clone())
+		.finish();
 
 	let response_data = json!({
 		"message": "Snippet created",
@@ -192,14 +192,14 @@ pub async fn update(
 		}
 	};
 
-	// Build the updated snippet via the macro-generated constructor, then
+	// Build the updated snippet via the macro-generated builder, then
 	// preserve the original identifier and creation timestamp so the mock
 	// response remains consistent with the stored record.
-	let mut updated_snippet = Snippet::new(
-		serializer.title.clone(),
-		serializer.code.clone(),
-		serializer.language.clone(),
-	);
+	let mut updated_snippet = Snippet::build()
+		.title(serializer.title.clone())
+		.code(serializer.code.clone())
+		.language(serializer.language.clone())
+		.finish();
 	updated_snippet.id = existing.id;
 	updated_snippet.created_at = existing.created_at;
 
