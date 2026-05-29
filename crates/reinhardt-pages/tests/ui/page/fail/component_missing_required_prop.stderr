@@ -1,12 +1,12 @@
 error[E0277]: the member `Unset<item>` was not set, but this method requires it to be set
-  --> tests/ui/page/fail/component_missing_required_prop.rs:26:10
+  --> tests/ui/page/fail/component_missing_required_prop.rs:28:10
    |
-26 |       let _ = page!(|| {
+28 |       let _ = page!(|| {
    |  _____________^
-27 | |         div {
-28 | |             Card {}
-29 | |         }
-30 | |     });
+29 | |         div {
+30 | |             Card {}
+31 | |         }
+32 | |     });
    | |______^ the member `Unset<item>` was not set, but this method requires it to be set
    |
    = help: the trait `IsSet` is not implemented for `Unset<item>`
