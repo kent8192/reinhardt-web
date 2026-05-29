@@ -30,6 +30,12 @@ pub fn login_form() -> Page {
 	let login_form = form! {
 		name: LoginForm,
 		server_fn: login,
+		method: Post,
+		// Route the CSRF token to `login`'s trailing `_csrf_token: String`
+		// argument (server-side middleware performs the actual verification).
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
 		redirect_on_success: "/timeline",
 		state: {
 			loading,
@@ -114,21 +120,27 @@ pub fn login_form() -> Page {
 					class: "card animate-fade-in",
 					div {
 						class: "card-body p-6 sm:p-8",
-						if error_signal.get().is_some() {
-							div {
-								class: "alert-danger mb-4",
-								div {
-									class: "flex items-center gap-2",
-									{
-										icons::error_circle_icon()
+						{
+							error_signal.get().map(|error_message| {
+								page!(|error_message: String| {
+									div {
+										class: "alert-danger mb-4",
+										div {
+											class: "flex items-center gap-2",
+											{
+												icons::error_circle_icon()
+											}
+											span { {
+												error_message.clone()
+											} }
+										}
 									}
-									span { {
-										error_signal.get().unwrap_or_default()
-									} }
-								}
-							}
+								})(error_message)
+							}).unwrap_or_else(Page::empty)
 						}
-						{ { form_view } }
+						{ {
+							form_view.clone()
+						} }
 						div {
 							class: "flex items-center justify-between mt-4",
 							label {
@@ -204,6 +216,12 @@ pub fn register_form() -> Page {
 	let register_form = form! {
 		name: RegisterForm,
 		server_fn: register,
+		method: Post,
+		// Route the CSRF token to `register`'s trailing `_csrf_token: String`
+		// argument (server-side middleware performs the actual verification).
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
 		redirect_on_success: "/login",
 		state: {
 			loading,
@@ -326,21 +344,27 @@ pub fn register_form() -> Page {
 					class: "card animate-fade-in",
 					div {
 						class: "card-body p-6 sm:p-8",
-						if error_signal.get().is_some() {
-							div {
-								class: "alert-danger mb-4",
-								div {
-									class: "flex items-center gap-2",
-									{
-										icons::error_circle_icon()
+						{
+							error_signal.get().map(|error_message| {
+								page!(|error_message: String| {
+									div {
+										class: "alert-danger mb-4",
+										div {
+											class: "flex items-center gap-2",
+											{
+												icons::error_circle_icon()
+											}
+											span { {
+												error_message.clone()
+											} }
+										}
 									}
-									span { {
-										error_signal.get().unwrap_or_default()
-									} }
-								}
-							}
+								})(error_message)
+							}).unwrap_or_else(Page::empty)
 						}
-						{ { form_view } }
+						{ {
+							form_view.clone()
+						} }
 						div {
 							class: "flex items-start gap-2 mt-4",
 							input {

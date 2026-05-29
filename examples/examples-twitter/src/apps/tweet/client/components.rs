@@ -28,66 +28,82 @@ use crate::apps::tweet::shared::server_fn::{create_tweet, delete_tweet};
 /// This function is separated from tweet_card to avoid nested watch block issues
 /// with closure ownership in the page! macro.
 fn like_button(liked: Signal<bool>, like_count: Signal<i32>) -> Page {
-	// Clone signals for the watch block
-	let liked_signal = liked.clone();
-	let like_count_signal = like_count.clone();
-	let like_count_signal_else = like_count.clone();
 	// Clone signals for event handlers
 	let liked_for_click_if = liked.clone();
 	let like_count_for_click_if = like_count.clone();
 	let liked_for_click_else = liked.clone();
 	let like_count_for_click_else = like_count.clone();
 
-	page!(|liked_signal: Signal<bool>, like_count_signal: Signal<i32>, like_count_signal_else: Signal<i32>, liked_for_click_if: Signal<bool>, like_count_for_click_if: Signal<i32>, liked_for_click_else: Signal<bool>, like_count_for_click_else: Signal<i32>| {
-		if liked_signal.get() {
-			button {
-				class: "tweet-action-btn text-danger",
-				type: "button",
-				aria_label: "Like",
-				@click: {
-					let liked_for_click = liked_for_click_if.clone();
-					let like_count_for_click = like_count_for_click_if.clone();
-					move |_event| {
-						let current_liked = liked_for_click.get();
-						let current_count = like_count_for_click.get();
-						liked_for_click.set(!current_liked);
-						like_count_for_click.set(if current_liked { current_count - 1 } else { current_count + 1 });
+	page!(|liked: Signal<bool>,
+	       like_count: Signal<i32>,
+	       liked_for_click_if: Signal<bool>,
+	       like_count_for_click_if: Signal<i32>,
+	       liked_for_click_else: Signal<bool>,
+	       like_count_for_click_else: Signal<i32>| {
+		{
+			// Read the Copy signal values to local Copy values once in this
+			// single reactive scope, then build the markup via an inner
+			// `page!` that receives the Copy values and handler-signal clones.
+			let is_liked = liked.get();
+			let count = like_count.get();
+			page!(|is_liked: bool, count: i32, liked_for_click_if: Signal<bool>, like_count_for_click_if: Signal<i32>, liked_for_click_else: Signal<bool>, like_count_for_click_else: Signal<i32>| {
+				if is_liked {
+					button {
+						class: "tweet-action-btn text-danger",
+						type: "button",
+						aria_label: "Like",
+						@click: {
+							let liked_for_click = liked_for_click_if.clone();
+							let like_count_for_click = like_count_for_click_if.clone();
+							move |_event| {
+								let current_liked = liked_for_click.get();
+								let current_count = like_count_for_click.get();
+								liked_for_click.set(!current_liked);
+								like_count_for_click.set(if current_liked { current_count - 1 } else { current_count + 1 });
+							}
+						},
+						{
+							icons::heart_icon_filled()
+						}
+						span { {
+							format!("{}", count)
+						} }
 					}
-				},
-				{
-					icons::heart_icon_filled()
-				}
-				span { {
-					format!("{}", like_count_signal.get())
-				} }
-			}
-		} else {
-			button {
-				class: "tweet-action-btn hover:text-danger",
-				type: "button",
-				aria_label: "Like",
-				@click: {
-					let liked_for_click = liked_for_click_else.clone();
-					let like_count_for_click = like_count_for_click_else.clone();
-					move |_event| {
-						let current_liked = liked_for_click.get();
-						let current_count = like_count_for_click.get();
-						liked_for_click.set(!current_liked);
-						like_count_for_click.set(if current_liked { current_count - 1 } else { current_count + 1 });
+				} else {
+					button {
+						class: "tweet-action-btn hover:text-danger",
+						type: "button",
+						aria_label: "Like",
+						@click: {
+							let liked_for_click = liked_for_click_else.clone();
+							let like_count_for_click = like_count_for_click_else.clone();
+							move |_event| {
+								let current_liked = liked_for_click.get();
+								let current_count = like_count_for_click.get();
+								liked_for_click.set(!current_liked);
+								like_count_for_click.set(if current_liked { current_count - 1 } else { current_count + 1 });
+							}
+						},
+						{
+							icons::heart_icon_outline()
+						}
+						span { {
+							format!("{}", count)
+						} }
 					}
-				},
-				{
-					icons::heart_icon_outline()
 				}
-				span { {
-					format!("{}", like_count_signal_else.get())
-				} }
-			}
+			})(
+				is_liked,
+				count,
+				liked_for_click_if.clone(),
+				like_count_for_click_if.clone(),
+				liked_for_click_else.clone(),
+				like_count_for_click_else.clone(),
+			)
 		}
 	})(
-		liked_signal,
-		like_count_signal,
-		like_count_signal_else,
+		liked,
+		like_count,
 		liked_for_click_if,
 		like_count_for_click_if,
 		liked_for_click_else,
@@ -126,120 +142,153 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 	// Clone for error display watch block (separate closure from main watch block)
 	let delete_action_for_error = delete_action.clone();
 
-	page!(|delete_action: Action<(), String>, show_delete: bool, username: String, content: String, created_at: String, tweet_id: Uuid, liked_signal: Signal<bool>, like_count_signal: Signal<i32>, delete_action_for_click: Action<(), String>, delete_action_for_error: Action<(), String>| {
-		if delete_action.is_success() {
-			div {
-				class: "hidden",
-			}
-		} else {
-			div {
-				class: "tweet-card animate-fade-in",
-				div {
-					class: "flex gap-3",
+	page!(|delete_action: Action<(), String>,
+	       show_delete: bool,
+	       username: String,
+	       content: String,
+	       created_at: String,
+	       tweet_id: Uuid,
+	       liked_signal: Signal<bool>,
+	       like_count_signal: Signal<i32>,
+	       delete_action_for_click: Action<(), String>,
+	       delete_action_for_error: Action<(), String>| {
+		// Main card body: a single reactive scope that reads the Copy
+		// `is_success` flag once and builds each branch via an inner
+		// `page!`, passing the owned String/Signal/Action values as the
+		// inner closure's own parameters (avoids E0507 from nested scopes).
+		{
+			if delete_action.is_success() {
+				page!(|| { div { class: "hidden" } })()
+			} else {
+				page!(|show_delete: bool, username_avatar: String, username_name: String, username_handle: String, content: String, created_at: String, tweet_id: Uuid, liked_signal: Signal<bool>, like_count_signal: Signal<i32>, delete_action_for_click: Action<(), String>| {
 					div {
-						class: "flex-shrink-0",
+						class: "tweet-card animate-fade-in",
 						div {
-							class: "tweet-avatar bg-surface-tertiary flex items-center justify-center text-content-secondary font-semibold",
-							{
-								username.clone().chars().next().unwrap_or('U').to_uppercase().to_string()
-							}
-						}
-					}
-					div {
-						class: "flex-1 min-w-0",
-						div {
-							class: "flex items-center justify-between gap-2",
+							class: "flex gap-3",
 							div {
-								class: "flex items-center gap-1 min-w-0",
-								span {
-									class: "tweet-username truncate",
+								class: "flex-shrink-0",
+								div {
+									class: "tweet-avatar bg-surface-tertiary flex items-center justify-center text-content-secondary font-semibold",
 									{
-										username.clone()
-									}
-								}
-								span {
-									class: "tweet-handle truncate",
-									{
-										format!("@{}", username.clone())
-									}
-								}
-								span {
-									class: "text-content-tertiary",
-									"·"
-								}
-								span {
-									class: "tweet-time",
-									{
-										created_at.clone()
+										username_avatar.clone().chars().next().unwrap_or('U').to_uppercase().to_string()
 									}
 								}
 							}
-							if show_delete {
-								button {
-									class: "btn-ghost btn-sm text-danger hover:bg-danger/10",
-									type: "button",
-									aria_label: "Delete tweet",
-									@click: {
-										let delete_action = delete_action_for_click.clone();
-										move |_event| {
-											delete_action.dispatch(tweet_id);
+							div {
+								class: "flex-1 min-w-0",
+								div {
+									class: "flex items-center justify-between gap-2",
+									div {
+										class: "flex items-center gap-1 min-w-0",
+										span {
+											class: "tweet-username truncate",
+											{
+												username_name.clone()
+											}
 										}
-									},
-									{
-										icons::trash_icon()
+										span {
+											class: "tweet-handle truncate",
+											{
+												format!("@{}", username_handle.clone())
+											}
+										}
+										span {
+											class: "text-content-tertiary",
+											"·"
+										}
+										span {
+											class: "tweet-time",
+											{
+												created_at.clone()
+											}
+										}
+									}
+									if show_delete {
+										button {
+											class: "btn-ghost btn-sm text-danger hover:bg-danger/10",
+											type: "button",
+											aria_label: "Delete tweet",
+											@click: {
+												let delete_action = delete_action_for_click.clone();
+												move |_event| {
+													delete_action.dispatch(tweet_id);
+												}
+											},
+											{
+												icons::trash_icon()
+											}
+										}
 									}
 								}
-							}
-						}
-						p {
-							class: "tweet-content",
-							{
-								content.clone()
-							}
-						}
-						div {
-							class: "tweet-actions",
-							button {
-								class: "tweet-action-btn hover:text-brand",
-								type: "button",
-								aria_label: "Reply",
-								{
-									icons::chat_bubble_icon()
+								p {
+									class: "tweet-content",
+									{
+										content.clone()
+									}
 								}
-								span { "0" }
-							}
-							button {
-								class: "tweet-action-btn hover:text-success",
-								type: "button",
-								aria_label: "Retweet",
-								{
-									icons::retweet_icon()
-								}
-								span { "0" }
-							}
-							{
-								like_button(liked_signal.clone(), like_count_signal.clone())
-							}
-							button {
-								class: "tweet-action-btn hover:text-brand",
-								type: "button",
-								aria_label: "Share",
-								{
-									icons::share_icon()
+								div {
+									class: "tweet-actions",
+									button {
+										class: "tweet-action-btn hover:text-brand",
+										type: "button",
+										aria_label: "Reply",
+										{
+											icons::chat_bubble_icon()
+										}
+										span { "0" }
+									}
+									button {
+										class: "tweet-action-btn hover:text-success",
+										type: "button",
+										aria_label: "Retweet",
+										{
+											icons::retweet_icon()
+										}
+										span { "0" }
+									}
+									{
+										self::like_button(liked_signal.clone(), like_count_signal.clone())
+									}
+									button {
+										class: "tweet-action-btn hover:text-brand",
+										type: "button",
+										aria_label: "Share",
+										{
+											icons::share_icon()
+										}
+									}
 								}
 							}
 						}
 					}
-				}
+				})(
+					show_delete,
+					username.clone(),
+					username.clone(),
+					username.clone(),
+					content.clone(),
+					created_at.clone(),
+					tweet_id,
+					liked_signal.clone(),
+					like_count_signal.clone(),
+					delete_action_for_click.clone(),
+				)
 			}
-		}
-		if delete_action_for_error.error().is_some() {
-			div {
-				class: "alert-danger mt-3",
-				{
-					delete_action_for_error.error().unwrap_or_default()
-				}
-			}
+		} // Error alert: a single optional banner built via `.map(...)`.
+		{
+			delete_action_for_error
+				.error()
+				.map(|error_message| {
+					page!(|error_message: String| {
+						div {
+							class: "alert-danger mt-3",
+							{ {
+								error_message.clone()
+							} }
+						}
+					})(error_message)
+				})
+				.unwrap_or_else(Page::empty)
 		}
 	})(
 		delete_action,
@@ -273,6 +322,11 @@ pub fn tweet_form() -> Page {
 		name: TweetFormInner,
 		server_fn: create_tweet,
 		method: Post,
+		// Route the CSRF token to `create_tweet`'s trailing `_csrf_token: String`
+		// argument (server-side middleware performs the actual verification).
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
 		state: {
 			loading,
 			error,
@@ -434,55 +488,70 @@ pub fn tweet_list(user_id: Option<Uuid>) -> Page {
 
 	page!(|tweets_signal: Signal<Vec<TweetInfo>>, loading_signal: Signal<bool>, error_signal: Signal<Option<String>>| {
 		div {
-			if loading_signal.get() {
-				div {
-					class: "flex flex-col items-center justify-center py-12",
-					div {
-						class: "spinner-lg mb-4",
-					}
-					p {
-						class: "text-content-secondary text-sm",
-						"Loading tweets..."
-					}
-				}
-			} else if error_signal.get().is_some() {
-				div {
-					class: "alert-danger",
-					role: "alert",
-					div {
-						class: "flex items-center gap-2",
-						{
-							icons::error_circle_icon()
+			// Single reactive scope: read the signals via `.get()` once,
+			// then build each branch from a fresh inner `page!` that
+			// receives its values as its own parameters. This avoids the
+			// nested-reactive-scope E0507 that arises when captured
+			// `Signal`/`Vec`/`String` values are consumed in child nodes.
+			{
+				if loading_signal.get() {
+					page!(|| {
+						div {
+							class: "flex flex-col items-center justify-center py-12",
+							div {
+								class: "spinner-lg mb-4",
+							}
+							p {
+								class: "text-content-secondary text-sm",
+								"Loading tweets..."
+							}
 						}
-						span { {
-							error_signal.get().unwrap_or_default()
-						} }
-					}
-				}
-			} else if tweets_signal.get().is_empty() {
-				div {
-					class: "flex flex-col items-center justify-center py-16 text-center",
-					div {
-						class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
-						{
-							icons::chat_bubble_icon_lg()
+					})()
+				} else if let Some(error_message) = error_signal.get() {
+					page!(|error_message: String| {
+						div {
+							class: "alert-danger",
+							role: "alert",
+							div {
+								class: "flex items-center gap-2",
+								{
+									icons::error_circle_icon()
+								}
+								span { { {
+									error_message.clone()
+								} } }
+							}
 						}
-					}
-					h3 {
-						class: "text-lg font-semibold text-content-primary mb-1",
-						"No tweets yet"
-					}
-					p {
-						class: "text-content-secondary",
-						"Be the first to share something!"
-					}
-				}
-			} else {
-				div {
-					class: "card overflow-hidden",
-					for tweet in tweets_signal.get().iter() { {
-						tweet_card(tweet, false)
-					} }
+					})(error_message)
+				} else if tweets_signal.get().is_empty() {
+					page!(|| {
+						div {
+							class: "flex flex-col items-center justify-center py-16 text-center",
+							div {
+								class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
+								{
+									icons::chat_bubble_icon_lg()
+								}
+							}
+							h3 {
+								class: "text-lg font-semibold text-content-primary mb-1",
+								"No tweets yet"
+							}
+							p {
+								class: "text-content-secondary",
+								"Be the first to share something!"
+							}
+						}
+					})()
+				} else {
+					page!(|tweets: Vec<TweetInfo>| {
+						div {
+							class: "card overflow-hidden",
+							for tweet in tweets.clone() { {
+								self::tweet_card(&tweet, false)
+							} }
+						}
+					})(tweets_signal.get())
 				}
 			}
 		}

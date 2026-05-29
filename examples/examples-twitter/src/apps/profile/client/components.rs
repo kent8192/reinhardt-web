@@ -74,128 +74,144 @@ pub fn profile_view(user_id: Uuid) -> Page {
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, profile_signal: Signal<Option<ProfileResponse>>, user_id_str: String| {
 		div {
 			class: "max-w-2xl mx-auto",
-			if loading_signal.get() {
-				div {
-					class: "flex flex-col items-center justify-center py-16",
-					div {
-						class: "spinner-lg mb-4",
-					}
-					p {
-						class: "text-content-secondary text-sm",
-						"Loading profile..."
-					}
-				}
-			} else if error_signal.get().is_some() {
-				div {
-					class: "p-4",
-					div {
-						class: "alert-danger",
-						role: "alert",
+			{
+				if loading_signal.get() {
+					page!(|| {
 						div {
-							class: "flex items-center gap-2",
-							{
-								icons::error_circle_icon()
-							}
-							span { {
-								error_signal.get().unwrap_or_default()
-							} }
-						}
-					}
-				}
-			} else if profile_signal.get().is_some() {
-				div {
-					class: "card overflow-hidden animate-fade-in",
-					div {
-						class: "h-32 sm:h-48 bg-gradient-to-r from-brand to-brand-dark relative",
-					}
-					div {
-						class: "px-4 pb-4",
-						div {
-							class: "flex justify-between items-end -mt-12 sm:-mt-16 mb-4",
+							class: "flex flex-col items-center justify-center py-16",
 							div {
-								class: "avatar-xl sm:w-32 sm:h-32 rounded-full border-4 border-surface-primary bg-surface-tertiary flex items-center justify-center text-3xl sm:text-4xl font-bold text-content-secondary",
-								span { "👤" }
+								class: "spinner-lg mb-4",
 							}
-							a {
-								href: format!("/profile/{}/edit", user_id_str),
-								class: "btn-outline",
-								"Edit profile"
+							p {
+								class: "text-content-secondary text-sm",
+								"Loading profile..."
 							}
 						}
+					})()
+				} else if let Some(error_message) = error_signal.get() {
+					page!(|error_message: String| {
 						div {
-							class: "mb-4",
-							h1 {
-								class: "text-xl font-bold text-content-primary",
-								"@user"
-							}
-						}
-						if let Some(ref data) = profile_signal.get() {
-							if data.bio.is_some() {
-								p {
-									class: "text-content-primary mb-4 whitespace-pre-wrap",
+							class: "p-4",
+							div {
+								class: "alert-danger",
+								role: "alert",
+								div {
+									class: "flex items-center gap-2",
 									{
-										data.bio.clone().unwrap_or_default()
+										icons::error_circle_icon()
 									}
+									span { {
+										error_message.clone()
+									} }
 								}
 							}
 						}
+					})(error_message)
+				} else if let Some(profile) = profile_signal.get() {
+					page!(|bio: Option<String>, location: Option<String>, website: Option<String>, user_id_str: String| {
 						div {
-							class: "flex flex-wrap gap-4 text-content-secondary text-sm",
-							if let Some(ref data) = profile_signal.get() {
-								if data.location.is_some() {
+							class: "card overflow-hidden animate-fade-in",
+							div {
+								class: "h-32 sm:h-48 bg-gradient-to-r from-brand to-brand-dark relative",
+							}
+							div {
+								class: "px-4 pb-4",
+								div {
+									class: "flex justify-between items-end -mt-12 sm:-mt-16 mb-4",
+									div {
+										class: "avatar-xl sm:w-32 sm:h-32 rounded-full border-4 border-surface-primary bg-surface-tertiary flex items-center justify-center text-3xl sm:text-4xl font-bold text-content-secondary",
+										span { "👤" }
+									}
+									a {
+										href: format!("/profile/{}/edit", user_id_str),
+										class: "btn-outline",
+										"Edit profile"
+									}
+								}
+								div {
+									class: "mb-4",
+									h1 {
+										class: "text-xl font-bold text-content-primary",
+										"@user"
+									}
+								}
+								{
+									bio.clone().map(|bio| {
+										page!(|bio: String| {
+											p {
+												class: "text-content-primary mb-4 whitespace-pre-wrap",
+												{ {
+													bio.clone()
+												} }
+											}
+										})(bio)
+									}).unwrap_or(Page::Empty)
+								}
+								div {
+									class: "flex flex-wrap gap-4 text-content-secondary text-sm",
+									{
+										location.clone().map(|location| {
+											page!(|location: String| {
+												div {
+													class: "flex items-center gap-1",
+													{
+														icons::location_pin_icon()
+													}
+													span { { {
+														location.clone()
+													} } }
+												}
+											})(location)
+										}).unwrap_or(Page::Empty)
+									}
+									{
+										website.clone().map(|website| {
+											page!(|website: String| {
+												a {
+													class: "flex items-center gap-1 text-brand hover:underline",
+													href: website.clone(),
+													target: "_blank",
+													rel: "noopener noreferrer",
+													{
+														icons::link_icon()
+													}
+													span { { {
+														website.clone()
+													} } }
+												}
+											})(website)
+										}).unwrap_or(Page::Empty)
+									}
+								}
+								div {
+									class: "flex gap-6 mt-4 pt-4 border-t border-border",
 									div {
 										class: "flex items-center gap-1",
-										{
-											icons::location_pin_icon()
+										span {
+											class: "font-bold text-content-primary",
+											"0"
 										}
-										span { {
-											data.location.clone().unwrap_or_default()
-										} }
+										span {
+											class: "text-content-secondary text-sm",
+											"Following"
+										}
 									}
-								}
-								if data.website.is_some() {
-									a {
-										class: "flex items-center gap-1 text-brand hover:underline",
-										href: data.website.clone().unwrap_or_default(),
-										target: "_blank",
-										rel: "noopener noreferrer",
-										{
-											icons::link_icon()
+									div {
+										class: "flex items-center gap-1",
+										span {
+											class: "font-bold text-content-primary",
+											"0"
 										}
-										span { {
-											data.website.clone().unwrap_or_default()
-										} }
+										span {
+											class: "text-content-secondary text-sm",
+											"Followers"
+										}
 									}
 								}
 							}
 						}
-						div {
-							class: "flex gap-6 mt-4 pt-4 border-t border-border",
-							div {
-								class: "flex items-center gap-1",
-								span {
-									class: "font-bold text-content-primary",
-									"0"
-								}
-								span {
-									class: "text-content-secondary text-sm",
-									"Following"
-								}
-							}
-							div {
-								class: "flex items-center gap-1",
-								span {
-									class: "font-bold text-content-primary",
-									"0"
-								}
-								span {
-									class: "text-content-secondary text-sm",
-									"Followers"
-								}
-							}
-						}
-					}
-				}
+					})(profile.bio.clone(), profile.location.clone(), profile.website.clone(), user_id_str.clone())
+				} else { Page::Empty }
 			}
 		}
 	})(loading_signal, error_signal, profile_signal, user_id_str)
@@ -215,6 +231,12 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 	let profile_form = form! {
 		name: ProfileEditForm,
 		server_fn: update_profile_form,
+		method: Post,
+		// Route the CSRF token to `update_profile_form`'s trailing
+		// `_csrf_token: String` argument (server-side middleware verifies it).
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
 		state: {
 			loading,
 			error,
@@ -351,35 +373,45 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 				}
 				div {
 					class: "card-body",
-					if success_signal.get() {
-						div {
-							class: "alert-success mb-4",
-							role: "alert",
-							div {
-								class: "flex items-center gap-2",
-								{
-									icons::success_check_icon()
+					{
+						if success_signal.get() {
+							page!(|| {
+								div {
+									class: "alert-success mb-4",
+									role: "alert",
+									div {
+										class: "flex items-center gap-2",
+										{
+											icons::success_check_icon()
+										}
+										span { "Profile updated successfully! Redirecting..." }
+									}
 								}
-								span { "Profile updated successfully! Redirecting..." }
-							}
-						}
+							})()
+						} else { Page::Empty }
 					}
-					if error_signal.get().is_some() {
-						div {
-							class: "alert-danger mb-4",
-							role: "alert",
-							div {
-								class: "flex items-center gap-2",
-								{
-									icons::error_circle_icon()
+					{
+						error_signal.get().map(|error_message| {
+							page!(|error_message: String| {
+								div {
+									class: "alert-danger mb-4",
+									role: "alert",
+									div {
+										class: "flex items-center gap-2",
+										{
+											icons::error_circle_icon()
+										}
+										span { {
+											error_message.clone()
+										} }
+									}
 								}
-								span { {
-									error_signal.get().unwrap_or_default()
-								} }
-							}
-						}
+							})(error_message)
+						}).unwrap_or(Page::Empty)
 					}
-					{ form_view }
+					{ {
+						form_view.clone()
+					} }
 					div {
 						class: "flex justify-end gap-3 pt-4 border-t border-border mt-5",
 						a {

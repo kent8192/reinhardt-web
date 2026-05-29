@@ -21,20 +21,26 @@ fn message_input(
 	let input_for_display = input_signal.clone();
 	let input_for_change = input_signal.clone();
 	let input_for_click = input_signal.clone();
-	page!(| input_for_display : Signal < String >, input_for_change : Signal < String >, input_for_click : Signal < String >| {
+	// Box the caller-supplied callback into a concrete `Rc<dyn Fn(String)>`
+	// so it can flow into `page!` as a typed parameter. `impl Fn(..)` is not
+	// expressible as a `page!` closure-parameter type, and the macro forbids
+	// implicit captures, so the callback must be passed explicitly. `Rc` is
+	// `Clone`, matching the `Fn` closure that `page!` generates (WASM is
+	// single-threaded, so `Rc` is sufficient).
+	let send_callback: std::rc::Rc<dyn Fn(String)> = std::rc::Rc::new(send_callback);
+	page!(|input_for_display: Signal<String>, input_for_change: Signal<String>, input_for_click: Signal<String>, send_callback: std::rc::Rc<dyn Fn(String) >| {
 		div {
-			class : "dm-input-container flex gap-2 p-4 border-t border-surface-tertiary",
+			class: "dm-input-container flex gap-2 p-4 border-t border-surface-tertiary",
 			input {
-				type : "text",
-				class : "form-control flex-1",
-				placeholder : "Type a message...",
-				value : input_for_display.get(),
-				@ input : {
-					let { input_signal }
-					=input_for_change.clone();
-					move | event : web_sys::Event | {
-						if let Some(target) =event.target() {
-							if let Ok(input) = target.dyn_into::< web_sys::HtmlInputElement>() {
+				type: "text",
+				class: "form-control flex-1",
+				placeholder: "Type a message...",
+				value: input_for_display.get(),
+				@input: {
+					let input_signal = input_for_change.clone();
+					move |event: web_sys::Event| {
+						if let Some(target) = event.target() {
+							if let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() {
 								input_signal.set(input.value());
 							}
 						}
@@ -42,18 +48,15 @@ fn message_input(
 				},
 			}
 			button {
-				class : "btn-primary",
-				type : "button",
-				@ click : {
-					let { input_signal }
-					=input_for_click.clone();
-					let { send_callback }
-					= send_callback.clone();
-					move |_event | {
-						let { content }
-						= input_signal.get();
-						if ! content.trim().is_empty() {
-							send_callback(content);
+				class: "btn-primary",
+				type: "button",
+				@click: {
+					let input_signal = input_for_click.clone();
+					let send_callback = send_callback.clone();
+					move |_event| {
+						let content = input_signal.get();
+						if !content.trim().is_empty() {
+							(*send_callback)(content);
 							input_signal.set(String::new());
 						}
 					}
@@ -61,7 +64,12 @@ fn message_input(
 				"Send"
 			}
 		}
-	})(input_for_display, input_for_change, input_for_click)
+	})(
+		input_for_display,
+		input_for_change,
+		input_for_click,
+		send_callback,
+	)
 }
 /// Single message display component
 fn message_item(message: &MessageInfo, is_own_message: bool) -> Page {
@@ -83,19 +91,29 @@ fn message_item(message: &MessageInfo, is_own_message: bool) -> Page {
 			class: align_class,
 			div {
 				class: bubble_class,
-				if ! is_own_message {
-					div {
-						class: "text-xs font-medium text-content-secondary mb-1",
-						{ { sender } }
-					}
+				{
+					if ! is_own_message {
+						page!(|sender: String| {
+							div {
+								class: "text-xs font-medium text-content-secondary mb-1",
+								{ {
+									sender.clone()
+								} }
+							}
+						})(sender.clone())
+					} else { Page::Empty }
 				}
 				p {
 					class: "text-sm break-words",
-					{ { content } }
+					{ {
+						content.clone()
+					} }
 				}
 				div {
 					class: if is_own_message { "text-xs text-white/70 mt-1 text-right" } else { "text-xs text-content-tertiary mt-1" },
-					{ { timestamp } }
+					{ {
+						timestamp.clone()
+					} }
 				}
 			}
 		}
@@ -150,7 +168,7 @@ pub fn dm_chat(room_id: Uuid, current_user_id: Option<Uuid>) -> Page {
 	let ws_state = chat.ws.connection_state();
 	let input_signal = input.clone();
 	let chat_for_send = chat.clone();
-	page!(|messages_signal: Signal<Vec<MessageInfo>>, is_loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, ws_state: Signal<ConnectionState>, input_signal: Signal<String>, current_user_id: Option<Uuid>, _room_id: Uuid| {
+	page!(|messages_signal: Signal<Vec<MessageInfo>>, is_loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, ws_state: Signal<ConnectionState>, input_signal: Signal<String>, current_user_id: Option<Uuid>, chat_for_send: crate::apps::dm::client::hooks::DmChatHandle, _room_id: Uuid| {
 		div {
 			class: "dm-chat-container flex flex-col h-full",
 			div {
@@ -160,60 +178,76 @@ pub fn dm_chat(room_id: Uuid, current_user_id: Option<Uuid>) -> Page {
 					"Direct Messages"
 				}
 				{
-					connection_status(matches!(ws_state.get(), ConnectionState::Open))
+					self::connection_status(matches!(ws_state.get(), ConnectionState::Open))
 				}
 			}
 			div {
 				class: "dm-messages flex-1 overflow-y-auto p-4 space-y-3",
-				if is_loading_signal.get() {
-					div {
-						class: "flex flex-col items-center justify-center py-12",
-						div {
-							class: "spinner-lg mb-4",
-						}
-						p {
-							class: "text-content-secondary text-sm",
-							"Loading messages..."
-						}
-					}
-				} else if error_signal.get().is_some() {
-					div {
-						class: "alert-danger",
-						role: "alert",
-						{
-							error_signal.get().unwrap_or_default()
-						}
-					}
-				} else if messages_signal.get().is_empty() {
-					div {
-						class: "flex flex-col items-center justify-center py-16 text-center",
-						div {
-							class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
-							{
-								icons::chat_bubble_icon_lg()
+				{
+					// Single reactive scope: signals are borrowed via `.get()`,
+					// and each branch builds its sub-tree with a fresh inner
+					// `page!`. This avoids the nested-reactive-scope move chain
+					// (E0507) that arises when a signal is read inside a `for`
+					// nested in an outer reactive `if`/`else` block.
+					if is_loading_signal.get() {
+						page!(|| {
+							div {
+								class: "flex flex-col items-center justify-center py-12",
+								div {
+									class: "spinner-lg mb-4",
+								}
+								p {
+									class: "text-content-secondary text-sm",
+									"Loading messages..."
+								}
 							}
-						}
-						h3 {
-							class: "text-lg font-semibold text-content-primary mb-1",
-							"No messages yet"
-						}
-						p {
-							class: "text-content-secondary",
-							"Send a message to start the conversation!"
-						}
-					}
-				} else {
-					div {
-						class: "space-y-3",
-						for m in messages_signal.get().iter() { { {
-							let is_own = current_user_id.map(|uid| m.sender_id == uid).unwrap_or(false);
-							message_item(m, is_own)
-						} } }
+						})()
+					} else if let Some(error_message) = error_signal.get() {
+						page!(|error_message: String| {
+							div {
+								class: "alert-danger",
+								role: "alert",
+								{ {
+									error_message.clone()
+								} }
+							}
+						})(error_message)
+					} else if messages_signal.get().is_empty() {
+						page!(|| {
+							div {
+								class: "flex flex-col items-center justify-center py-16 text-center",
+								div {
+									class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
+									{
+										icons::chat_bubble_icon_lg()
+									}
+								}
+								h3 {
+									class: "text-lg font-semibold text-content-primary mb-1",
+									"No messages yet"
+								}
+								p {
+									class: "text-content-secondary",
+									"Send a message to start the conversation!"
+								}
+							}
+						})()
+					} else {
+						page!(|messages: Vec<MessageInfo>, current_user_id: Option<Uuid>| {
+							div {
+								class: "space-y-3",
+								for m in messages.clone() { { {
+									let is_own = current_user_id.map(|uid| m.sender_id == uid).unwrap_or(false);
+									self::message_item(&m, is_own)
+								} } }
+							}
+						})(messages_signal.get(), current_user_id)
 					}
 				}
 			}
 			{
-				message_input(input_signal.clone(), move |content| {
+				let chat_for_send = chat_for_send.clone();
+				self::message_input(input_signal.clone(), move |content| {
 					chat_for_send.send_message(content);
 				})
 			}
@@ -225,69 +259,88 @@ pub fn dm_chat(room_id: Uuid, current_user_id: Option<Uuid>) -> Page {
 		ws_state.clone(),
 		input_signal,
 		current_user_id,
+		chat_for_send,
 		room_id,
 	)
 }
 /// Single room item in the list
-fn room_item(room: &RoomInfo, on_select: impl Fn(Uuid) + Clone + 'static) -> Page {
+fn room_item(room: &RoomInfo, on_select: std::rc::Rc<dyn Fn(Uuid)>) -> Page {
 	let room_id = room.id;
-	let name = room.name.clone();
+	// `name` is rendered in two independent reactive scopes (the avatar
+	// initial and the username label). Each `page!` reactive `{ }` node lowers
+	// to its own `move ||` closure, so a single non-`Copy` `String` parameter
+	// cannot be shared across both without an E0382 use-after-move. Pass two
+	// independent clones as separate parameters (same pattern as the
+	// `input_for_*` split in `message_input`).
+	let name_initial = room.name.clone();
+	let name_label = room.name.clone();
 	let last_message = room.last_message.clone();
 	let last_activity = room.last_activity.clone();
 	let unread_count = room.unread_count;
-	page!(| room_id : Uuid, name : String, last_message : Option < String >, last_activity: Option < String >, unread_count : i32 | {
+	// `on_select` already arrives as a concrete `Rc<dyn Fn(Uuid)>` so it can
+	// flow into `page!` as a typed parameter (`impl Fn(..)` is not a valid
+	// `page!` closure-parameter type and implicit captures are forbidden). The
+	// inner `@click` handler invokes it via deref (`(*on_select)(..)`) because
+	// `Rc<dyn Fn(..)>` is not itself callable, but the `dyn Fn` behind it is.
+	page!(|room_id: Uuid, name_initial: String, name_label: String, last_message: Option<String>, last_activity: Option<String>, unread_count: i32, on_select: std::rc::Rc<dyn Fn(Uuid) >| {
 		div {
-			class : "room-item flex items-center gap-3 p-4 hover:bg-surface-secondary cursor-pointer transition-colors border-b border-surface-tertiary",
-			@ click : {
-				let { on_select }
-				= on_select.clone();
-				move | _event | {
-					on_select(room_id);
+			class: "room-item flex items-center gap-3 p-4 hover:bg-surface-secondary cursor-pointer transition-colors border-b border-surface-tertiary",
+			@click: {
+				let on_select = on_select.clone();
+				move |_event| {
+					(*on_select)(room_id);
 				}
 			},
 			div {
-				class : "flex-shrink-0",
+				class: "flex-shrink-0",
 				div {
-					class : "w-12 h-12 rounded-full bg-brand/20 flex items-center justify-center text-brand font-semibold",
+					class: "w-12 h-12 rounded-full bg-brand/20 flex items-center justify-center text-brand font-semibold",
 					{
-						name.chars().next().unwrap_or('?').to_uppercase().to_string()
+						name_initial.chars().next().unwrap_or('?').to_uppercase().to_string()
 					}
 				}
 			}
 			div {
 				class: "flex-1 min-w-0",
 				div {
-					class : "flex items-center justify-between",
+					class: "flex items-center justify-between",
 					span {
-						class : "font-semibold text-content-primary truncate",
+						class: "font-semibold text-content-primary truncate",
 						{
-							name.clone()
+							name_label.clone()
 						}
 					}
-					iflast_activity.is_some() {
-						span {
-							class : "text-xs text-content-tertiary",
-							{
-								last_activity.clone().unwrap_or_default()
-							}
-						}
+					{
+						last_activity.clone().map(|last_activity| {
+							page!(|last_activity: String| {
+								span {
+									class: "text-xs text-content-tertiary",
+									{
+										last_activity.clone()
+									}
+								}
+							})(last_activity)
+						}).unwrap_or(Page::Empty)
 					}
 				}
-				if last_message.is_some() {
-					p {
-						class : "text-sm text-content-secondary truncate mt-1",
-						{
-							last_message.clone().unwrap_or_default()
-						}
-					}
+				{
+					last_message.clone().map(|last_message| {
+						page!(|last_message: String| {
+							p {
+								class: "text-sm text-content-secondary truncate mt-1",
+								{
+									last_message.clone()
+								}
+							}
+						})(last_message)
+					}).unwrap_or(Page::Empty)
 				}
 			}
-			if { unread_count }
-			> 0 {
+			if unread_count > 0 {
 				div {
-					class : "flex-shrink-0",
+					class: "flex-shrink-0",
 					span {
-						class : "inline-flex items-center justify-center w-6 h-6 text-xs font-bold text-white bg-brand rounded-full",
+						class: "inline-flex items-center justify-center w-6 h-6 text-xs font-bold text-white bg-brand rounded-full",
 						{
 							format!("{}", unread_count.min(99))
 						}
@@ -295,7 +348,15 @@ fn room_item(room: &RoomInfo, on_select: impl Fn(Uuid) + Clone + 'static) -> Pag
 				}
 			}
 		}
-	})(room_id, name, last_message, last_activity, unread_count)
+	})(
+		room_id,
+		name_initial,
+		name_label,
+		last_message,
+		last_activity,
+		unread_count,
+		on_select,
+	)
 }
 /// DM room list component
 ///
@@ -316,7 +377,11 @@ pub fn dm_room_list(on_room_select: impl Fn(Uuid) + Clone + 'static) -> Page {
 	let rooms_signal = room_list.rooms.clone();
 	let is_loading_signal = room_list.is_loading.clone();
 	let error_signal = room_list.error.clone();
-	page!(|rooms_signal: Signal<Vec<RoomInfo>>, is_loading_signal: Signal<bool>, error_signal: Signal<Option<String>>| {
+	// Box the selection callback into a concrete `Rc<dyn Fn(Uuid)>` so it can
+	// flow into `page!` as a typed parameter (`impl Fn(..)` is not a valid
+	// `page!` closure-parameter type and implicit captures are forbidden).
+	let on_room_select: std::rc::Rc<dyn Fn(Uuid)> = std::rc::Rc::new(on_room_select);
+	page!(|rooms_signal: Signal<Vec<RoomInfo>>, is_loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, on_room_select: std::rc::Rc<dyn Fn(Uuid) >| {
 		div {
 			class: "dm-room-list h-full flex flex-col",
 			div {
@@ -328,54 +393,67 @@ pub fn dm_room_list(on_room_select: impl Fn(Uuid) + Clone + 'static) -> Page {
 			}
 			div {
 				class: "flex-1 overflow-y-auto",
-				if is_loading_signal.get() {
-					div {
-						class: "flex flex-col items-center justify-center py-12",
-						div {
-							class: "spinner-lg mb-4",
-						}
-						p {
-							class: "text-content-secondary text-sm",
-							"Loading conversations..."
-						}
-					}
-				} else if error_signal.get().is_some() {
-					div {
-						class: "p-4",
-						div {
-							class: "alert-danger",
-							role: "alert",
-							{
-								error_signal.get().unwrap_or_default()
+				{
+					if is_loading_signal.get() {
+						page!(|| {
+							div {
+								class: "flex flex-col items-center justify-center py-12",
+								div {
+									class: "spinner-lg mb-4",
+								}
+								p {
+									class: "text-content-secondary text-sm",
+									"Loading conversations..."
+								}
 							}
-						}
-					}
-				} else if rooms_signal.get().is_empty() {
-					div {
-						class: "flex flex-col items-center justify-center py-16 text-center px-4",
-						div {
-							class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
-							{
-								icons::chat_multi_icon_lg()
+						})()
+					} else if let Some(error_message) = error_signal.get() {
+						page!(|error_message: String| {
+							div {
+								class: "p-4",
+								div {
+									class: "alert-danger",
+									role: "alert",
+									{
+										error_message.clone()
+									}
+								}
 							}
-						}
-						h3 {
-							class: "text-lg font-semibold text-content-primary mb-1",
-							"No conversations yet"
-						}
-						p {
-							class: "text-content-secondary",
-							"Start a new conversation with someone!"
-						}
-					}
-				} else {
-					div {
-						for r in rooms_signal.get().iter() { {
-							room_item(r, on_room_select.clone())
-						} }
+						})(error_message)
+					} else if rooms_signal.get().is_empty() {
+						page!(|| {
+							div {
+								class: "flex flex-col items-center justify-center py-16 text-center px-4",
+								div {
+									class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
+									{
+										icons::chat_multi_icon_lg()
+									}
+								}
+								h3 {
+									class: "text-lg font-semibold text-content-primary mb-1",
+									"No conversations yet"
+								}
+								p {
+									class: "text-content-secondary",
+									"Start a new conversation with someone!"
+								}
+							}
+						})()
+					} else {
+						page!(|rooms: Vec<RoomInfo>, on_room_select: std::rc::Rc<dyn Fn(Uuid) >| {
+							div { {
+								Page::fragment(rooms.iter().map(|r| self::room_item(r, on_room_select.clone())), )
+							} }
+						})(rooms_signal.get(), on_room_select.clone())
 					}
 				}
 			}
 		}
-	})(rooms_signal, is_loading_signal, error_signal)
+	})(
+		rooms_signal,
+		is_loading_signal,
+		error_signal,
+		on_room_select,
+	)
 }
