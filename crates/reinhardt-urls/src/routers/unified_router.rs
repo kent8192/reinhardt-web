@@ -432,6 +432,22 @@ impl Default for UnifiedRouter {
 	}
 }
 
+// Cross-target signature unification assertion (issue #4569).
+//
+// Proves that a free function `fn(ServerRouter) -> ServerRouter` is accepted
+// by `UnifiedRouter::server` on the native target, mirroring the WASM arm in
+// the `#[cfg(all(wasm, feature = "client-router"))]` block. Because the
+// closure parameter type is now `ServerRouter` on both targets, the same
+// delegate can be passed cross-target without `#[cfg]` at the call site.
+#[cfg(all(native, feature = "client-router"))]
+#[doc(hidden)]
+const _: fn() = || {
+	fn delegate(s: ServerRouter) -> ServerRouter {
+		s
+	}
+	let _ = UnifiedRouter::new().server(delegate).client(|c| c);
+};
+
 // Note: Handler is not yet implemented for UnifiedRouter when client-router is enabled.
 // As of #4065 / #4067, ClientRouter is Send + Sync on native targets (Signal<T> is backed
 // by Arc<RwLock<T>>), so the previous Sync blocker no longer applies. A Handler impl can
@@ -668,112 +684,110 @@ impl reinhardt_http::Handler for UnifiedRouter {
 // WASM target with client-router feature
 // ============================================================================
 
-/// Stub type used in place of `ServerRouter` on WASM targets.
+/// No-op `ServerRouter` used on WASM targets.
 ///
-/// On WASM, server-side routing is not available. This stub allows
-/// `UnifiedRouter::server()` closures to compile by accepting and
-/// ignoring the server configuration closure.
+/// On WASM, server-side routing is not available, so this is the WASM
+/// counterpart of the native [`ServerRouter`](crate::routers::ServerRouter):
+/// it presents the same builder surface, but every method is a no-op that
+/// consumes `self`, drops its arguments, and returns `Self`. The result is
+/// ultimately discarded by [`UnifiedRouter::server`] on WASM.
 ///
-/// The stub mirrors the public builder surface of
-/// [`ServerRouter`](crate::routers::ServerRouter): every builder method
-/// has a same-named no-op counterpart that consumes `self`, drops its
-/// arguments, and returns `Self`. This lets the same
-/// `.server(|s| s.with_prefix(...).endpoint(...).function(...))` body
-/// emitted by unified/server route declarations compile
-/// uniformly on both native and WASM targets — the result is discarded
-/// by [`UnifiedRouter::server`] on WASM.
+/// Because the type and its builder methods share their names with the
+/// native `ServerRouter`, the same
+/// `.server(|s| s.with_prefix(...).endpoint(...).function(...))` closure body
+/// compiles uniformly on both native and WASM targets (issue #4569).
 ///
-/// Generic bounds from `ServerRouter` are intentionally relaxed here:
-/// many of the upstream bound types (`Handler`, `Middleware`, `ViewSet`,
-/// `InjectionContext`, `Method`, …) live behind `#[cfg(native)]` and
-/// would not resolve on WASM. The stub only needs call-site arity to
-/// match.
-#[cfg(wasm)]
-pub struct ServerRouterStub;
+/// Generic bounds from the native `ServerRouter` are intentionally relaxed
+/// here: many upstream bound types (`Handler`, `Middleware`, `ViewSet`,
+/// `InjectionContext`, `Method`, …) live behind `#[cfg(native)]` and would
+/// not resolve on WASM, so the no-op methods only reproduce the call-site
+/// arity.
+#[cfg(all(wasm, feature = "client-router"))]
+pub struct ServerRouter;
 
-#[cfg(wasm)]
-impl ServerRouterStub {
-	/// Construct a new stub. No-op on WASM.
+#[cfg(all(wasm, feature = "client-router"))]
+impl ServerRouter {
+	/// Construct a new no-op `ServerRouter` (WASM).
 	pub fn new() -> Self {
 		Self
 	}
 
-	/// No-op stub for `ServerRouter::with_prefix`.
+	/// No-op for `ServerRouter::with_prefix`.
 	pub fn with_prefix(self, _prefix: impl Into<String>) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::with_namespace`.
+	/// No-op for `ServerRouter::with_namespace`.
 	pub fn with_namespace(self, _namespace: impl Into<String>) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::with_di_context`.
+	/// No-op for `ServerRouter::with_di_context`.
 	pub fn with_di_context<C>(self, _ctx: C) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::with_middleware`.
+	/// No-op for `ServerRouter::with_middleware`.
 	pub fn with_middleware<M>(self, _middleware: M) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::with_route_middleware`.
+	/// No-op for `ServerRouter::with_route_middleware`.
 	pub fn with_route_middleware<M>(self, _middleware: M) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::exclude`.
+	/// No-op for `ServerRouter::exclude`.
 	pub fn exclude(self, _pattern: &str) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::mount`.
+	/// No-op for `ServerRouter::mount`.
 	pub fn mount<R>(self, _prefix: &str, _child: R) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::group`.
+	/// No-op for `ServerRouter::group`.
 	pub fn group<R>(self, _routers: Vec<R>) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::function`.
+	/// No-op for `ServerRouter::function`.
 	pub fn function<M, F>(self, _path: &str, _method: M, _func: F) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::function_named`.
+	/// No-op for `ServerRouter::function_named`.
 	pub fn function_named<M, F>(self, _path: &str, _method: M, _name: &str, _func: F) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::route`.
+	/// No-op for `ServerRouter::route`.
 	pub fn route<M, F>(self, _path: &str, _method: M, _func: F) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::route_named`.
+	/// No-op for `ServerRouter::route_named`.
 	pub fn route_named<M, F>(self, _path: &str, _method: M, _name: &str, _func: F) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::handler`.
+	/// No-op for `ServerRouter::handler`.
 	pub fn handler<H>(self, _path: &str, _handler: H) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::handler_arc`.
+	/// No-op for `ServerRouter::handler_arc`.
 	pub fn handler_arc<H>(self, _path: &str, _handler: H) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::handler_with_method`.
+	/// No-op for `ServerRouter::handler_with_method`.
 	pub fn handler_with_method<M, H>(self, _path: &str, _method: M, _handler: H) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::handler_with_method_named`.
+	/// No-op for `ServerRouter::handler_with_method_named`.
 	pub fn handler_with_method_named<M, H>(
 		self,
 		_path: &str,
@@ -784,43 +798,43 @@ impl ServerRouterStub {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::view`.
+	/// No-op for `ServerRouter::view`.
 	pub fn view<V>(self, _path: &str, _view: V) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::view_named`.
+	/// No-op for `ServerRouter::view_named`.
 	pub fn view_named<V>(self, _path: &str, _name: &str, _view: V) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::viewset`.
+	/// No-op for `ServerRouter::viewset`.
 	pub fn viewset<V>(self, _prefix: &str, _viewset: V) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerRouter::endpoint`.
+	/// No-op for `ServerRouter::endpoint`.
 	pub fn endpoint<F>(self, _f: F) -> Self {
 		self
 	}
 
-	/// No-op stub for `ServerFnRouterExt::server_fn` on the WASM side.
+	/// No-op for `ServerFnRouterExt::server_fn` on the WASM side.
 	///
 	/// `server_fn` is provided to native `ServerRouter` by the
 	/// `ServerFnRouterExt` extension trait in `reinhardt-pages`. That trait
 	/// (and its `ServerFnRegistration` bound) is a native-only concern, so
-	/// the stub absorbs the call as a free-standing inherent method without
-	/// any trait bound. This lets cross-target builder chains such as
-	/// `UnifiedRouter::new().server(|s| s.server_fn(marker))` compile on
-	/// `wasm32-unknown-unknown` without `#[cfg(native)]` gates at the call
+	/// the no-op `ServerRouter` absorbs the call as a free-standing inherent
+	/// method without any trait bound. This lets cross-target builder chains
+	/// such as `UnifiedRouter::new().server(|s| s.server_fn(marker))` compile
+	/// on `wasm32-unknown-unknown` without `#[cfg(native)]` gates at the call
 	/// site.
 	pub fn server_fn<S>(self, _marker: S) -> Self {
 		self
 	}
 }
 
-#[cfg(wasm)]
-impl Default for ServerRouterStub {
+#[cfg(all(wasm, feature = "client-router"))]
+impl Default for ServerRouter {
 	fn default() -> Self {
 		Self::new()
 	}
@@ -830,12 +844,12 @@ impl Default for ServerRouterStub {
 //
 // Unified/server route declarations re-emit the user-supplied
 // `.server(|s| ...)` closure body verbatim on WASM, so every builder
-// method called inside that closure must exist on `ServerRouterStub`.
-// The `const _` below type-checks the canonical builder chain on every
-// `cargo check --target wasm32-unknown-unknown`; if a future change
-// drops a stub method while the corresponding `ServerRouter` builder
-// still exists on native, this assertion fails to compile and CI
-// catches the drift.
+// method called inside that closure must exist on the no-op WASM
+// `ServerRouter`. The `const _` below type-checks the canonical builder
+// chain on every `cargo check --target wasm32-unknown-unknown`; if a future
+// change drops a no-op method while the corresponding native `ServerRouter`
+// builder still exists, this assertion fails to compile and CI catches the
+// drift.
 #[cfg(all(wasm, feature = "client-router"))]
 #[doc(hidden)]
 const _: fn() = || {
@@ -847,8 +861,8 @@ const _: fn() = || {
 				.with_middleware(())
 				.with_route_middleware(())
 				.exclude("/internal")
-				.mount("/v1/", ServerRouterStub::new())
-				.group(Vec::<ServerRouterStub>::new())
+				.mount("/v1/", ServerRouter::new())
+				.group(Vec::<ServerRouter>::new())
 				.function("/f", (), || ())
 				.function_named("/f", (), "f", || ())
 				.route("/r", (), || ())
@@ -864,6 +878,22 @@ const _: fn() = || {
 				.server_fn(())
 		})
 		.client(|c| c);
+};
+
+// Cross-target signature unification assertion (issue #4569).
+//
+// Proves that a free function `fn(ServerRouter) -> ServerRouter` is accepted
+// by `UnifiedRouter::server` on the WASM target, mirroring the native arm in
+// the `#[cfg(all(native, feature = "client-router"))]` block. The closure
+// parameter type is now uniform across targets, so the same delegate compiles
+// on both.
+#[cfg(all(wasm, feature = "client-router"))]
+#[doc(hidden)]
+const _: fn() = || {
+	fn delegate(s: ServerRouter) -> ServerRouter {
+		s
+	}
+	let _ = UnifiedRouter::new().server(delegate).client(|c| c);
 };
 
 /// Unified router for WASM targets with client-side routing.
@@ -887,11 +917,12 @@ impl UnifiedRouter {
 
 	/// Accept and discard server-side routing configuration.
 	///
-	/// On WASM, server routing is not available. The closure is called
-	/// with a [`ServerRouterStub`] but its result is discarded.
+	/// On WASM, server routing is not available. The closure is called with a
+	/// no-op [`ServerRouter`](crate::routers::ServerRouter) but its result is
+	/// discarded.
 	pub fn server<F>(self, _f: F) -> Self
 	where
-		F: FnOnce(ServerRouterStub) -> ServerRouterStub,
+		F: FnOnce(ServerRouter) -> ServerRouter,
 	{
 		self
 	}
