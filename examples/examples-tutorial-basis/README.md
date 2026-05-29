@@ -361,7 +361,7 @@ The `mode = client` macro namespaces every `named_route` under `polls:`, so SPA 
 
 ## Testing
 
-Tests are split between native (`tests/integration.rs`) and WASM (`tests/wasm/polls_mock_test.rs`). The native integration target is gated by `required-features = ["with-reinhardt"]` and the WASM mock target by `required-features = ["msw"]` — Cargo cannot auto-discover test files under `tests/<subdir>/`, hence the explicit `[[test]]` declarations in `Cargo.toml`. Run them through `cargo make`:
+Tests are split between native (`tests/integration.rs`) and WASM (`tests/wasm/polls_mock_test.rs`, `tests/wasm/users_mock_test.rs`). The native integration target is gated by `required-features = ["with-reinhardt"]`; the WASM mock targets are gated by the local `msw` feature and use the framework `client-router` support declared in the WASM dependency set. Cargo cannot auto-discover test files under `tests/<subdir>/`, hence the explicit `[[test]]` declarations in `Cargo.toml`. Run them through `cargo make`:
 
 ```bash
 # All tests (native lib + integration; forwards --all-features)
@@ -377,7 +377,7 @@ cargo make test-unit
 cargo make wasm-test
 ```
 
-The `msw` feature is forwarded to the `reinhardt` facade so `#[server_fn]` generates the `MockableServerFn` markers that `tests/wasm/polls_mock_test.rs` consumes; until that facade flag ships upstream, the WASM mock target skips cleanly via its `required-features`.
+The local `msw` feature gates the typed mock-server tests. The WASM dependency set enables `pages` and `client-router` on the `reinhardt` facade, which is the feature combination used by the route and server-function macros in these targets.
 
 ## Next Steps
 

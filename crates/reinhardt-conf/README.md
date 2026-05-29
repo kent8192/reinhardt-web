@@ -26,24 +26,23 @@ This crate provides the following modules:
 
 Add `reinhardt` to your `Cargo.toml`:
 
-<!-- reinhardt-version-sync:3 -->
+<!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
 reinhardt = { version = "0.1.2", features = ["conf"] }
 
-# Or use a preset:
-# reinhardt = { version = "0.1.2", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.2", features = ["full"] }      # All features
+# Or use the broad preset:
+# reinhardt = { version = "0.1.2", features = ["full"] }      # Includes conf
 ```
 
 Then import configuration features:
 
 ```rust
-use reinhardt::conf::settings::{SettingsBuilder, Settings};
-use reinhardt::conf::settings::sources::ConfigSource;
+use reinhardt::conf::settings::{Settings, SettingsBuilder};
+use reinhardt::conf::settings::sources::{EnvSource, TomlFileSource};
 ```
 
-**Note:** Configuration features are included in the `standard` and `full` feature presets.
+**Note:** The root `conf` feature is opt-in. It is included in the `full` preset, but not in the default `standard` preset.
 
 ### Optional Features
 
@@ -51,14 +50,14 @@ Enable specific features based on your needs:
 
 <!-- reinhardt-version-sync:3 -->
 ```toml
-# With async support
-reinhardt = { version = "0.1.2", features = ["conf", "async"] }
+# With async support from the direct crate
+reinhardt-conf = { version = "0.1.2", features = ["async"] }
 
-# With encryption
-reinhardt = { version = "0.1.2", features = ["conf", "encryption"] }
+# With encryption from the direct crate
+reinhardt-conf = { version = "0.1.2", features = ["encryption"] }
 
-# With Vault integration
-reinhardt = { version = "0.1.2", features = ["conf", "vault"] }
+# With Vault integration from the direct crate
+reinhardt-conf = { version = "0.1.2", features = ["vault"] }
 ```
 
 Available features:
@@ -77,12 +76,12 @@ Available features:
 
 ```rust
 use reinhardt::conf::settings::SettingsBuilder;
-use reinhardt::conf::settings::sources::ConfigSource;
+use reinhardt::conf::settings::sources::{EnvSource, TomlFileSource};
 
 // Basic usage
 let settings = SettingsBuilder::new()
-    .add_source(ConfigSource::File("config.toml"))
-    .add_source(ConfigSource::Environment)
+    .add_source(TomlFileSource::new("config.toml"))
+    .add_source(EnvSource::new())
     .build()?;
 
 // Access settings
@@ -180,7 +179,7 @@ db_password = "${DB_PASSWORD:?Set DB_PASSWORD via direnv or 1Password CLI}"
 
 ## Field Status
 
-The `Settings` struct contains fields that are either actively consumed by the framework or reserved for future implementation.
+The legacy `Settings` struct exposes these fields at the top level. Composable settings generated with `#[settings(CoreSettings | ...)]` nest the same core fields under `settings.core`.
 
 ### Active Fields
 

@@ -23,7 +23,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
-reinhardt-test = { version = "0.1.0-rc.19", features = ["testcontainers"] }
+reinhardt-test = { version = "0.1.2", features = ["testcontainers"] }
 ```
 
 ### 2. Basic Usage
@@ -192,8 +192,8 @@ cargo test --features testcontainers -- --ignored
 # Run specific test
 cargo test --features testcontainers test_with_postgres -- --ignored
 
-# Run the example
-cargo test --example testcontainer_usage --features testcontainers -- --ignored
+# Run integration tests that use the testcontainers fixtures
+cargo test --package reinhardt-integration-tests --features testcontainers
 ```
 
 ## CI/CD Integration
@@ -275,7 +275,7 @@ cargo nextest run --features testcontainers
 
 ## Examples
 
-See [`examples/testcontainer_usage.rs`](examples/testcontainer_usage.rs) for comprehensive examples.
+See the fixture implementations in `reinhardt-testkit`'s `fixtures/testcontainers.rs`, re-exported through `reinhardt_test::fixtures`, for comprehensive examples.
 
 ## License
 

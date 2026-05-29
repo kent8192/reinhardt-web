@@ -29,7 +29,7 @@ pub static REDOC_UI: LazyLock<Arc<RedocUI>> = LazyLock::new(|| {
 
 /// Build the complete OpenAPI schema for the Twitter API
 ///
-/// Note: This function is currently not used when running via `cargo run --bin manage runserver`.
+/// Note: This function is currently not used when running via `cargo run --bin examples-twitter -- runserver`.
 /// The runserver command uses `OpenApiRouter::wrap()` which calls `generate_openapi_schema()`
 /// from `reinhardt-openapi/src/endpoints.rs` instead.
 ///

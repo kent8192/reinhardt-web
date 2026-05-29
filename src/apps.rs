@@ -8,7 +8,7 @@
 //! ```rust,ignore
 //! use reinhardt::apps::AppConfig;
 //!
-//! let app_config = AppConfig::new("myapp");
+//! let app_config = AppConfig::new("myapp", "myapp");
 //! ```
 
 // Re-export from reinhardt-apps crate

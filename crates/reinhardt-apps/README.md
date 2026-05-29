@@ -19,27 +19,27 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.2", package = "reinhardt-web", features = ["apps"] }
+reinhardt = { version = "0.1.2", package = "reinhardt-web", features = ["core"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.2", package = "reinhardt-web", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.2", package = "reinhardt-web" }  # default standard preset
 # reinhardt = { version = "0.1.2", package = "reinhardt-web", features = ["full"] }      # All features
 ```
 
 Then import app features:
 
 ```rust
-use reinhardt::apps::{AppConfig, installed_apps};
+use reinhardt::{installed_apps, AppConfig};
 ```
 
-**Note:** App features are included in the `standard` and `full` feature presets.
+**Note:** App support is exposed by the root `core` feature. The default `standard` preset includes `core`; there is no separate root `apps` feature.
 
 ## Usage
 
 Define installed apps using the `installed_apps!` macro:
 
 ```rust
-use reinhardt::apps::installed_apps;
+use reinhardt::installed_apps;
 
 installed_apps! {
 	users: "users",

@@ -654,7 +654,7 @@ Client-side hydration to make server-rendered HTML interactive.
 
 **Example:**
 ```rust
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 use reinhardt::pages::hydration::hydrate;
 
 #[wasm_bindgen(start)]
@@ -802,17 +802,17 @@ async fn increment_on_server(amount: i32) -> Result<i32, ServerFnError> {
 }
 
 // Server-side rendering
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 fn render_page() -> String {
-    let renderer = SsrRenderer::new(SsrOptions::default());
-    renderer.render_page(App).unwrap()
+	let renderer = SsrRenderer::new(SsrOptions::default());
+	renderer.render_page(App).unwrap()
 }
 
 // Client-side hydration
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 #[wasm_bindgen(start)]
 pub fn main() {
-    hydrate(App);
+	hydrate(App);
 }
 ```
 
