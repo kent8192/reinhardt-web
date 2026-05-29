@@ -12,10 +12,11 @@
 use reinhardt_pages::form;
 
 mod server_fns {
-	// Stub server_fn body. The signature must match what `form!` would
-	// generate at the call site: one positional arg per form field
-	// (`name: String` from the `CharField`) plus a trailing CSRF token
-	// arg (auto-injected for the default POST method). Returns an
+	// Stub server_fn body. The signature must match what the
+	// `on_success_ref:` type-safety probe generates: one positional arg per
+	// form field (`name: String` from the `CharField`). The probe is the only
+	// host-compiled reference to the server_fn arity — the wasm onsubmit call
+	// is `cfg`-gated out here. Returns an
 	// `impl Future<Output = Result<T, E>>` so the compile-time
 	// type-safety guard inside the `on_success_ref:` lift (#4624) can
 	// extract `T = i64` and force-unify it with the user closure's
@@ -23,7 +24,6 @@ mod server_fns {
 	// same shape.
 	pub async fn update_profile(
 		_name: ::std::string::String,
-		_csrf: ::std::string::String,
 	) -> ::core::result::Result<i64, ::core::convert::Infallible> {
 		::core::result::Result::Ok(0)
 	}
