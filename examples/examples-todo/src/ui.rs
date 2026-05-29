@@ -80,7 +80,7 @@ pub fn todo_page(filter: TodoFilter) -> Page {
 	let todo_list = Page::Fragment(
 		current_todos
 			.into_iter()
-			.map(|todo| crate::ui::todo_row(todo, todos_for_rows.clone()))
+			.map(|todo| crate::ui::todo_row(todo, todos_for_rows.clone(), filter))
 			.collect(),
 	);
 	let is_loading = loading.get();
@@ -235,7 +235,11 @@ pub(crate) fn filter_link(filter: TodoFilter, current: TodoFilter) -> Page {
 	})(filter, class)
 }
 
-pub(crate) fn todo_row(todo: TodoItem, todos: Signal<Vec<TodoItem>>) -> Page {
+pub(crate) fn todo_row(
+	todo: TodoItem,
+	todos: Signal<Vec<TodoItem>>,
+	current_filter: TodoFilter,
+) -> Page {
 	let id = todo.id;
 	let completed = todo.completed;
 	let title = todo.title.clone();
@@ -250,6 +254,7 @@ pub(crate) fn todo_row(todo: TodoItem, todos: Signal<Vec<TodoItem>>) -> Page {
 	       completed: bool,
 	       title: String,
 	       row_class: &'static str,
+	       current_filter: TodoFilter,
 	       todos_for_toggle: Signal<Vec<TodoItem>>,
 	       todos_for_delete: Signal<Vec<TodoItem>>| {
 		li {
@@ -272,8 +277,15 @@ pub(crate) fn todo_row(todo: TodoItem, todos: Signal<Vec<TodoItem>>) -> Page {
 									// Reflect the new completion state locally so the
 									// row updates without waiting for the next reload.
 									let mut next = todos.get();
-									if let Some(item) = next.iter_mut().find(|item| item.id == id) {
-										item.completed = next_completed;
+									if let Some(pos) = next.iter().position(|item| item.id == id) {
+										next[pos].completed = next_completed;
+										// Drop the row when it no longer matches the
+										// active filter (e.g. completing a todo while
+										// viewing Active), so the filtered view stays
+										// consistent instead of showing a stale item.
+										if !current_filter.matches(&next[pos]) {
+											next.remove(pos);
+										}
 									}
 									todos.set(next);
 								}
@@ -310,6 +322,7 @@ pub(crate) fn todo_row(todo: TodoItem, todos: Signal<Vec<TodoItem>>) -> Page {
 		completed,
 		title,
 		row_class,
+		current_filter,
 		todos_for_toggle,
 		todos_for_delete,
 	)
