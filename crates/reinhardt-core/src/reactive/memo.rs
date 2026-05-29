@@ -526,7 +526,19 @@ impl<T: Clone + 'static> Memo<T> {
 
 impl<T: Clone + 'static> Drop for Memo<T> {
 	fn drop(&mut self) {
-		self.dispose();
+		// Only dispose when this is the last live clone. `Memo<T>` is `Clone`
+		// and every clone shares the same `disposed` Rc (and the same `id` /
+		// global storage entry). Disposing on every clone drop would set the
+		// shared `disposed` flag and clear `MEMO_FUNCTIONS` / `MEMO_VALUES`
+		// while sibling clones are still in use, causing a spurious
+		// "Attempted to access a disposed Memo" panic on the next `get()`.
+		//
+		// `strong_count == 1` means this is the only remaining reference, so
+		// cleanup is safe. Mirrors the last-clone-cleanup guard in
+		// `Signal<T>`'s `Drop` impl.
+		if Rc::strong_count(&self.disposed) == 1 {
+			self.dispose();
+		}
 	}
 }
 

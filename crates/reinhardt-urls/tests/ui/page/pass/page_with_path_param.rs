@@ -25,5 +25,5 @@ fn user_page(props: UserPageProps) -> Page {
 }
 
 fn main() {
-	let _ = ClientRouter::new().page("/users/{id}/", user_page);
+	let _ = ClientRouter::new().page("user", "/users/{id}/", user_page);
 }

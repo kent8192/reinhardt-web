@@ -634,7 +634,7 @@ pub fn empty() -> Page {
 pub fn divider() -> Page {
 	page!(|| {
 		div {
-			class: "divider",
+			class: "divider"
 		}
 	})()
 }

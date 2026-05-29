@@ -5,7 +5,7 @@
 //! and wasm targets without any feature flag.
 //!
 //! `ServerFnRegistration` (native, in [`super::registration`]) and
-//! `MockableServerFn` (msw feature, in [`super::mockable`]) extend this
+//! `MockableServerFn` (msw feature, in `super::mockable`) extend this
 //! trait to add the target-specific entry points — the native HTTP
 //! handler and the MSW mock dispatch types respectively. Constants live
 //! here in one place; the supertraits inherit them.
