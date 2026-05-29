@@ -1,0 +1,5 @@
+error: expected parentheses
+ --> tests/ui/page/fail/keyed_for_missing_expr.rs:8:27
+  |
+8 |             for item in items @key {
+  |                                    ^

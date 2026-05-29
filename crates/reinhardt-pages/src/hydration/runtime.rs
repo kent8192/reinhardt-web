@@ -300,6 +300,14 @@ pub(crate) fn attach_events_recursive(
 				}
 			}
 		}
+		Page::KeyedFragment(views) => {
+			let children = element.children();
+			for (i, (_, child_view)) in views.iter().enumerate() {
+				if i < children.len() {
+					attach_events_recursive(&children[i], child_view, registry)?;
+				}
+			}
+		}
 		Page::Text(_) | Page::Empty => {
 			// No events to attach
 		}

@@ -583,12 +583,22 @@ fn generate_for(for_node: &TypedPageFor, pages_crate: &TokenStream) -> TokenStre
 	let iter = &for_node.iter;
 	let body = generate_if_branch(&for_node.body, pages_crate);
 
-	quote! {
-		#pages_crate::component::Page::fragment(
-			(#iter).into_iter().map(|#pat| {
-				#body
-			}).collect::<::std::vec::Vec<_>>()
-		)
+	if let Some(key) = &for_node.key {
+		quote! {
+			#pages_crate::component::Page::keyed_fragment(
+				(#iter).clone().into_iter().map(|#pat| {
+					(#key, #body)
+				}).collect::<::std::vec::Vec<_>>()
+			)
+		}
+	} else {
+		quote! {
+			#pages_crate::component::Page::fragment(
+				(#iter).clone().into_iter().map(|#pat| {
+					#body
+				}).collect::<::std::vec::Vec<_>>()
+			)
+		}
 	}
 }
 

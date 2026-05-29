@@ -31,6 +31,21 @@
 //!    The codemod `cargo make migrate-manouche-v2` (PR3) rewrites existing
 //!    sources mechanically.
 //!
+//! `for` blocks may attach a stable reconciliation key with `@key(expr)`.
+//! The key expression is evaluated for each item and stored in a
+//! `Page::KeyedFragment`; unkeyed `for` blocks keep producing regular
+//! fragments.
+//!
+//! ```ignore
+//! page!(|todos: Vec<Todo>| {
+//!     ul {
+//!         for todo in todos @key(todo.id.clone()) {
+//!             li { { todo.title.clone() } }
+//!         }
+//!     }
+//! });
+//! ```
+//!
 //! ## Example
 //!
 //! ```ignore
