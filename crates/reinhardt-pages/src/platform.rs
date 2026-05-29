@@ -31,11 +31,24 @@ pub use native::*;
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use std::cell::Cell;
+	use std::rc::Rc;
 
+	/// `spawn_task` must never poll the future inline: on native it drops the
+	/// future (there is no event loop), and on WASM it only schedules the
+	/// future on the browser event loop. Either way, the body must not have
+	/// run by the time `spawn_task` returns.
 	#[test]
-	fn test_spawn_task_compiles() {
-		spawn_task(async {
-			// Task body
+	fn spawn_task_does_not_run_body_synchronously() {
+		let runs = Rc::new(Cell::new(0_usize));
+		let counter = Rc::clone(&runs);
+		spawn_task(async move {
+			counter.set(counter.get() + 1);
 		});
+		assert_eq!(
+			runs.get(),
+			0,
+			"spawn_task must not execute the future body synchronously"
+		);
 	}
 }
