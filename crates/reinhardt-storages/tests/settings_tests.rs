@@ -46,7 +46,10 @@ fn rejects_selected_backend_without_matching_nested_settings() {
 
 	match result {
 		Err(StorageError::ConfigError(message)) => {
-			assert_eq!(message, "Selected backend requires [storage.azure] settings");
+			assert_eq!(
+				message,
+				"Selected backend requires [storage.azure] settings"
+			);
 		}
 		other => panic!("Expected ConfigError, got {other:?}"),
 	}
