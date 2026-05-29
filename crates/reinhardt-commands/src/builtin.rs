@@ -221,12 +221,12 @@ impl BaseCommand for MigrateCommand {
 				let recorder = DatabaseMigrationRecorder::new(connection.clone());
 				// For real execution, ensure the recorder table exists so the rollback
 				// can persist its unapply records (`apply_migrations` does the same
-				// before recording). For `--plan` we must NOT create the table: a
-				// missing table on a fresh DB means the applied set is empty, so we
-				// swallow the query failure and treat it as "nothing applied"; a real
-				// connectivity error would still surface on a non-plan re-run.
+				// before recording). For `--plan` we must NOT create the table; instead
+				// `plan_applied_migrations` probes for it: a missing table on a fresh DB
+				// degrades to an empty set, while a genuine DB error fails fast so the
+				// preview never misreports the applied state.
 				let applied = if is_plan {
-					recorder.get_applied_migrations().await.unwrap_or_default()
+					plan_applied_migrations(&connection, &recorder).await?
 				} else {
 					recorder.ensure_schema_table().await.map_err(|e| {
 						crate::CommandError::ExecutionError(format!(
@@ -555,12 +555,13 @@ impl BaseCommand for MigrateCommand {
 
 			// 5.5. `--plan` previews the apply-all set without mutating the database.
 			// Query the recorder to show only not-yet-applied migrations; on a fresh
-			// DB the table may not exist, so treat a query failure as "nothing applied"
-			// and do NOT create the table (dry-run contract).
+			// DB the table may not exist (treated as "nothing applied"), but a real DB
+			// error must fail fast rather than masquerade as an empty set. The table is
+			// never created here (dry-run contract).
 			if is_plan {
 				use reinhardt_db::migrations::DatabaseMigrationRecorder;
 				let recorder = DatabaseMigrationRecorder::new(connection.clone());
-				let applied = recorder.get_applied_migrations().await.unwrap_or_default();
+				let applied = plan_applied_migrations(&connection, &recorder).await?;
 				let pending: Vec<_> = migrations_to_apply
 					.iter()
 					.filter(|m| {
@@ -646,6 +647,54 @@ impl BaseCommand for MigrateCommand {
 			ctx.info("To use migrate, enable the 'migrations' feature");
 			Ok(())
 		}
+	}
+}
+
+/// Resolve the applied-migration set for a `--plan` preview without creating the
+/// recorder table.
+///
+/// Dry-run contract: a missing recorder table on a fresh database means nothing
+/// has been applied yet, so its absence degrades to an empty set. A genuine
+/// database error (permissions, connectivity, malformed query) must NOT be
+/// silently swallowed — doing so would print a plan that wrongly claims nothing
+/// is applied. The existence probe therefore distinguishes "table missing" from
+/// "real failure" and fails fast on the latter.
+#[cfg(feature = "migrations")]
+async fn plan_applied_migrations(
+	connection: &DatabaseConnection,
+	recorder: &reinhardt_db::migrations::DatabaseMigrationRecorder,
+) -> CommandResult<Vec<reinhardt_db::migrations::recorder::MigrationRecord>> {
+	use reinhardt_db::migrations::SchemaEditor;
+
+	// Non-atomic editor: a pure existence probe issuing a single SELECT, with no
+	// transaction and no DDL, so the dry-run contract (never mutate in `--plan`)
+	// is preserved.
+	let mut editor = SchemaEditor::new(connection.clone(), false, connection.database_type())
+		.await
+		.map_err(|e| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to inspect migration recorder table in --plan mode: {}",
+				e
+			))
+		})?;
+
+	if editor
+		.table_exists("reinhardt_migrations")
+		.await
+		.map_err(|e| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to check migration recorder table existence in --plan mode: {}",
+				e
+			))
+		})? {
+		recorder.get_applied_migrations().await.map_err(|e| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to query applied migrations in --plan mode: {}",
+				e
+			))
+		})
+	} else {
+		Ok(Vec::new())
 	}
 }
 
