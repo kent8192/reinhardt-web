@@ -327,7 +327,7 @@ where
 
 			#[cfg(wasm)]
 			{
-				use crate::spawn::spawn_task;
+				use crate::platform::spawn_task;
 				let on_error = Rc::clone(&on_error_for_dispatch);
 				let on_success = Rc::clone(&on_success_for_dispatch);
 				let state = state.clone();

@@ -294,8 +294,11 @@ The prelude includes:
 ### Macros
 - `page!`
 
+### Task spawning (cross-target)
+- `spawn_task`, `defer_yield` (no-op on native)
+
 ### WASM-specific
-- `spawn_local` (re-exported from wasm_bindgen_futures)
+- `spawn_local` (re-exported from wasm_bindgen_futures; **deprecated** — use `spawn_task`)
 - `create_resource`, `create_resource_with_deps`
 
 ## Example

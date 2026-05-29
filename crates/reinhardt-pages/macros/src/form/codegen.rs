@@ -1433,7 +1433,7 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 								// Clone loading/error signals for async block if they exist
 								#async_signal_clones
 
-								#pages_crate::spawn::spawn_task(async move {
+								#pages_crate::platform::spawn_task(async move {
 									match #server_fn_call {
 										Ok(_value) => {
 											// Order matters: on_success_ref

@@ -1997,7 +1997,7 @@ pub fn head(input: TokenStream) -> TokenStream {
 /// #[cfg(all(target_family = "wasm", target_os = "unknown"))]
 /// {
 ///     let form_clone = voting_form.clone();
-///     spawn_local(async move {
+///     spawn_task(async move {
 ///         match get_question_detail(question_id).await {
 ///             Ok((question, choices)) => {
 ///                 // Convert to (value, label) tuples

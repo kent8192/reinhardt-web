@@ -56,7 +56,7 @@ use crate::dom::{Document, Element};
 use crate::reactive::Effect;
 use crate::reactive::Signal;
 #[cfg(wasm)]
-use crate::spawn::spawn_task;
+use crate::platform::spawn_task;
 #[cfg(wasm)]
 use js_sys::Function;
 #[cfg(wasm)]
