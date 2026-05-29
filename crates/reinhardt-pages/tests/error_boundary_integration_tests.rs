@@ -49,11 +49,9 @@ fn test_error_boundary_renders_resource_error() {
 				.into_page()
 		});
 
-	assert!(
-		boundary
-			.into_page()
-			.render_to_string()
-			.contains("load failed")
+	assert_eq!(
+		boundary.into_page().render_to_string(),
+		r#"<div data-rh-error-boundary="error"><p>load failed</p></div>"#
 	);
 }
 

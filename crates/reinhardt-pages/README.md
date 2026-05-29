@@ -257,7 +257,7 @@ The prelude includes:
 
 ### Component System
 - `Component`, `ElementView`, `IntoView`, `View`, `Props`, `ViewEventHandler`
-- `SuspenseBoundary`, `ErrorBoundary`, `BoundaryError`
+- `SuspenseBoundary`, `ErrorBoundary`, `BoundaryError`, `ErrorTracker`
 
 ### Events and Callbacks
 - `Callback`, `IntoEventHandler`, `into_event_handler`
