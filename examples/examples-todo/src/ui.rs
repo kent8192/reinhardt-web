@@ -76,7 +76,13 @@ pub fn todo_page(filter: TodoFilter) -> Page {
 	let input_view = todo_input(draft.clone(), draft.clone());
 	let current_todos = todos.get();
 	let has_todos = !current_todos.is_empty();
-	let todo_list = Page::Fragment(current_todos.into_iter().map(crate::ui::todo_row).collect());
+	let todos_for_rows = todos.clone();
+	let todo_list = Page::Fragment(
+		current_todos
+			.into_iter()
+			.map(|todo| crate::ui::todo_row(todo, todos_for_rows.clone()))
+			.collect(),
+	);
 	let is_loading = loading.get();
 	let error_message = create_action.error().or_else(|| error.get());
 	let has_error = error_message.is_some();
@@ -122,6 +128,7 @@ pub fn todo_page(filter: TodoFilter) -> Page {
 							todos_for_create,
 							draft_for_submit,
 							create_for_submit,
+							filter,
 						)),
 				)
 				.child(crate::ui::filter_nav(filter))
@@ -134,6 +141,7 @@ fn add_button(
 	todos: Signal<Vec<TodoItem>>,
 	draft: Signal<String>,
 	action: Action<TodoItem, String>,
+	current_filter: TodoFilter,
 ) -> PageElement {
 	let disabled = action.is_pending();
 	PageElement::new("button")
@@ -146,8 +154,14 @@ fn add_button(
 			}
 			let mut next = todos.get();
 			let optimistic_id = next.iter().map(|todo| todo.id).max().unwrap_or(0) + 1;
-			next.push(TodoItem::new(optimistic_id, title.clone()));
-			todos.set(next);
+			// Only show the optimistic item when the active filter would include
+			// it; otherwise a freshly created (incomplete) todo would appear under
+			// the Completed view until the next reload.
+			let optimistic = TodoItem::new(optimistic_id, title.clone());
+			if current_filter.matches(&optimistic) {
+				next.push(optimistic);
+				todos.set(next);
+			}
 			draft.set(String::new());
 			action.dispatch(title);
 		})
@@ -210,9 +224,8 @@ pub(crate) fn filter_link(filter: TodoFilter, current: TodoFilter) -> Page {
 		"todo-filter is-active"
 	} else {
 		"todo-filter"
-	}
-	.to_string();
-	page!(|filter: TodoFilter, class: String| {
+	};
+	page!(|filter: TodoFilter, class: &'static str| {
 		a {
 			href: filter.path(),
 			class: class,
@@ -222,7 +235,7 @@ pub(crate) fn filter_link(filter: TodoFilter, current: TodoFilter) -> Page {
 	})(filter, class)
 }
 
-pub(crate) fn todo_row(todo: TodoItem) -> Page {
+pub(crate) fn todo_row(todo: TodoItem, todos: Signal<Vec<TodoItem>>) -> Page {
 	let id = todo.id;
 	let completed = todo.completed;
 	let title = todo.title.clone();
@@ -230,9 +243,15 @@ pub(crate) fn todo_row(todo: TodoItem) -> Page {
 		"todo-row is-completed"
 	} else {
 		"todo-row"
-	}
-	.to_string();
-	page!(|id: u64, completed: bool, title: String, row_class: String| {
+	};
+	let todos_for_toggle = todos.clone();
+	let todos_for_delete = todos;
+	page!(|id: u64,
+	       completed: bool,
+	       title: String,
+	       row_class: &'static str,
+	       todos_for_toggle: Signal<Vec<TodoItem>>,
+	       todos_for_delete: Signal<Vec<TodoItem>>| {
 		li {
 			class: row_class,
 			label {
@@ -242,9 +261,22 @@ pub(crate) fn todo_row(todo: TodoItem) -> Page {
 					checked: completed,
 					@change: {
 						let next_completed = !completed;
+						let todos = todos_for_toggle.clone();
 						move |_event| {
+							let todos = todos.clone();
 							reinhardt::pages::spawn::spawn_task(async move {
-								let _ = crate::server_fn::set_todo_completed(id, next_completed).await;
+								if crate::server_fn::set_todo_completed(id, next_completed)
+									.await
+									.is_ok()
+								{
+									// Reflect the new completion state locally so the
+									// row updates without waiting for the next reload.
+									let mut next = todos.get();
+									if let Some(item) = next.iter_mut().find(|item| item.id == id) {
+										item.completed = next_completed;
+									}
+									todos.set(next);
+								}
 							});
 						}
 					},
@@ -256,16 +288,31 @@ pub(crate) fn todo_row(todo: TodoItem) -> Page {
 				type: "button",
 				aria_label: "Delete Todo",
 				@click: {
+					let todos = todos_for_delete.clone();
 					move |_event| {
+						let todos = todos.clone();
 						reinhardt::pages::spawn::spawn_task(async move {
-							let _ = crate::server_fn::delete_todo(id).await;
+							if crate::server_fn::delete_todo(id).await.is_ok() {
+								// Drop the removed item locally so the row disappears
+								// immediately instead of lingering until reload.
+								let mut next = todos.get();
+								next.retain(|item| item.id != id);
+								todos.set(next);
+							}
 						});
 					}
 				},
 				"Remove"
 			}
 		}
-	})(id, completed, title, row_class)
+	})(
+		id,
+		completed,
+		title,
+		row_class,
+		todos_for_toggle,
+		todos_for_delete,
+	)
 }
 
 pub(crate) fn empty_message(filter: TodoFilter) -> &'static str {
