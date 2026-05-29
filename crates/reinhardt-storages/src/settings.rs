@@ -15,7 +15,35 @@ use reinhardt_core::macros::settings;
 use serde::{Deserialize, Serialize};
 
 fn default_backend() -> BackendType {
-	BackendType::Local
+	// Pick a backend that is actually compiled in, so `StorageSettings::default()`
+	// stays convertible via `to_config()` even when the `local` feature is disabled.
+	// The cfg arms are mutually exclusive and collectively exhaustive, so exactly one
+	// is the tail expression in any feature combination.
+	#[cfg(feature = "local")]
+	{
+		BackendType::Local
+	}
+	#[cfg(all(not(feature = "local"), feature = "s3"))]
+	{
+		BackendType::S3
+	}
+	#[cfg(all(not(feature = "local"), not(feature = "s3"), feature = "gcs"))]
+	{
+		BackendType::Gcs
+	}
+	#[cfg(all(
+		not(feature = "local"),
+		not(feature = "s3"),
+		not(feature = "gcs"),
+		feature = "azure"
+	))]
+	{
+		BackendType::Azure
+	}
+	#[cfg(not(any(feature = "local", feature = "s3", feature = "gcs", feature = "azure")))]
+	{
+		BackendType::Local
+	}
 }
 
 /// Storage configuration fragment.
