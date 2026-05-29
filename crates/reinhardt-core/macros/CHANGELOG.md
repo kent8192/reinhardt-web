@@ -24,8 +24,7 @@ Per-prerelease history is preserved in the
 
 ### Capabilities at 0.1.0
 
-- **`#[model]` with typestate `Model::build()`** — alongside the
-  classic `Model::new()` constructor, models now expose a typestate
+- **`#[model]` with typestate `Model::build()`** — models expose a typestate
   builder whose setters carry `ForeignKeyField<T>` for FK columns,
   doc-comments per generated setter, and a hardened reserved-ident
   set (notably excluding `extern`). `#[field(skip = true)]` lets

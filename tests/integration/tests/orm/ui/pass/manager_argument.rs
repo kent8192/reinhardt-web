@@ -2,6 +2,7 @@
 //! Pass case: `#[model(manager = MyManager)]` sets `type Objects` so that
 //! `Model::objects()` resolves to the user-supplied type. Issue #3980, #3984.
 
+use reinhardt::Model;
 use reinhardt::db::orm::custom_manager::CustomManager;
 use reinhardt::model;
 use serde::{Deserialize, Serialize};

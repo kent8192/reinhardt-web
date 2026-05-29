@@ -8,7 +8,7 @@ sidebar_weight = 20
 
 # Part 2: Models and Database
 
-Part 1 generated the pages project layout and started the dev server against an empty database. In this chapter we fill in the model layer that backs the rest of the tutorial: the `polls` app with `Question` and `Choice`, the `users` app with a session-aware `User` and a project-local `UserManager`, and the migration workflow that turns those Rust definitions into a SQLite schema.
+Part 1 generated the pages project layout and started the dev server against an empty database. In this chapter we fill in the model layer that backs the rest of the tutorial: the `polls` app with `Question` and `Choice`, the `users` app with a session-aware `User` and a project-local `AuthUserManager`, and the migration workflow that turns those Rust definitions into a SQLite schema.
 
 By the end of the chapter your `src/apps/` tree will match [`examples/examples-tutorial-basis/src/apps/`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/apps) — same files, same attributes, same builder shape. Part 3 plugs server functions on top of these models, so resist the urge to skip ahead and "just add the views"; getting the model layer right is what makes the typed `#[server_fn]` story click later.
 
@@ -21,7 +21,7 @@ flowchart LR
     Settings["settings/base.toml<br/>[database]"] -->|loaded by| ConfigSettings["src/config/settings.rs<br/>ProjectSettings"]
     ConfigSettings -->|opens| DB[(SQLite<br/>db.sqlite3)]
     PollsApp["src/apps/polls/models.rs<br/>Question, Choice"] -->|"#[model] schema"| Migrations["migrations/<br/>(generated)"]
-    UsersApp["src/apps/users/models.rs<br/>User + UserManager"] -->|"#[model] schema"| Migrations
+    UsersApp["src/apps/users/models.rs<br/>User + AuthUserManager"] -->|"#[model] schema"| Migrations
     Migrations -->|cargo make migrate| DB
     AppsConfig["src/config/apps.rs<br/>installed_apps!"] -->|InstalledApp enum| PollsApp
     AppsConfig --> UsersApp
@@ -297,7 +297,7 @@ Create `src/apps/users/models.rs`:
 //! both the schema and the SignupForm small.
 //!
 //! All registration / authentication-state changes from application code
-//! go through [`UserManager`] (a project-local implementation of
+//! go through [`AuthUserManager`] (a project-local implementation of
 //! `BaseUserManager<User>`) rather than constructing `User` instances
 //! by hand — see the `register` server function in
 //! `crate::apps::users::server_fn`.
@@ -309,7 +309,7 @@ Create `src/apps/users/models.rs`:
 //! the framework discovers at startup), which calls
 //! `User::objects().create(&user)` directly. That path therefore
 //! **bypasses** the password-length / username trim / uniqueness checks
-//! that [`UserManager::build_user`] performs for the application signup
+//! that [`AuthUserManager::build_user`] performs for the application signup
 //! flow. Acceptable for the tutorial CLI. Auto-registration for minimal
 //! user models without `full = true` is the resolution of
 //! reinhardt-web#4522 — no manual `SuperuserInit` impl or
@@ -321,9 +321,9 @@ use reinhardt::macros::user;
 use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
 
-// `manager = false` opts out of the auto-generated `UserManager` that
+// `manager = false` opts out of the auto-generated manager that
 // `#[user(...)]` emits by default since reinhardt-web#4451 — the tutorial
-// keeps its own DB-backed `UserManager` below (registered via
+// keeps its own DB-backed `AuthUserManager` below (registered via
 // `#[injectable_factory]`) which would otherwise be shadowed. The
 // auto-manager is also gated to `Uuid` / `Option<Uuid>` primary keys
 // (issue #4455), and this model uses `i64` to demonstrate auto-increment
@@ -377,7 +377,7 @@ There is one new attribute macro and a handful of new field options. Let's unpac
 - `username_field = "username"` — which field is the identity column. The framework needs to know this so session-based authentication can look users up by username.
 - `manager = false` — **opt out of the auto-generated `UserManager`.** This is the critical flag for the tutorial. Reinhardt-web#4451 added a default `UserManager` so simple projects don't need to write one, but if we want to layer custom validation (username trimming, password length, uniqueness checks) and register the manager through the DI container, the auto-generated manager would shadow ours. Setting `manager = false` makes room for the project-local one we're about to write.
 
-`#[derive(Default, Clone, Serialize, Deserialize)]` is needed for a few reasons: `Default` lets the framework construct a stand-in `User` for the request extensions when no user is logged in; `Clone` lets server functions pull an owned `UserManager` out of `Depends<_>` later; `Serialize`/`Deserialize` are for the DTO conversion in `src/shared/types.rs` (Part 3).
+`#[derive(Default, Clone, Serialize, Deserialize)]` is needed for a few reasons: `Default` lets the framework construct a stand-in `User` for the request extensions when no user is logged in; `Clone` lets server functions pull an owned `AuthUserManager` out of `Depends<_>` later; `Serialize`/`Deserialize` are for the DTO conversion in `src/shared/types.rs` (Part 3).
 
 Notice that we did **not** pass `full = true`. The `full` flag would also implement `FullUser`, which requires `email`, `first_name`, `last_name`, `is_staff`, and `date_joined` fields. The tutorial keeps the schema small on purpose: fewer signup fields, fewer migration columns, less to explain. The doc comment in the example file calls this out explicitly.
 
@@ -395,16 +395,16 @@ Notice that we did **not** pass `full = true`. The `full` flag would also implem
 
 ### How `createsuperuser` Finds This Model
 
-The `cargo run --bin manage createsuperuser` command needs a way to construct a `User` from `(username, email)` without running the application-side `UserManager` validation. That constructor is the `SuperuserInit` trait, and since [reinhardt-web#4522](https://github.com/kent8192/reinhardt-web/pull/4522) the `#[user] + #[model]` macro pair **auto-generates** the `impl SuperuserInit for User` block plus the matching `inventory::submit!(SuperuserCreatorRegistration)` entry. You do not write either by hand.
+The `cargo run --bin manage createsuperuser` command needs a way to construct a `User` from `(username, email)` without running the application-side `AuthUserManager` validation. That constructor is the `SuperuserInit` trait, and since [reinhardt-web#4522](https://github.com/kent8192/reinhardt-web/pull/4522) the `#[user] + #[model]` macro pair **auto-generates** the `impl SuperuserInit for User` block plus the matching `inventory::submit!(SuperuserCreatorRegistration)` entry. You do not write either by hand.
 
 Two details worth knowing:
 
 - The generated `init_superuser(username, _email)` intentionally drops `email` because the tutorial's minimal `User` has no `email` column — the macro inspects the struct fields and only writes back the ones that exist. `full = true` would add the column; we opted out of that on purpose.
 - The primary key is left as `Default::default()` (`0` for `i64`). The database fills it in on insert thanks to `auto_increment`.
 
-The `createsuperuser` path **bypasses** the password-length / username-trim / uniqueness checks that `UserManager::build_user` (below) performs for the application signup flow. That is acceptable for the tutorial CLI, where the operator is trusted.
+The `createsuperuser` path **bypasses** the password-length / username-trim / uniqueness checks that `AuthUserManager::build_user` (below) performs for the application signup flow. That is acceptable for the tutorial CLI, where the operator is trusted.
 
-### The Project-Local `UserManager`
+### The Project-Local `AuthUserManager`
 
 The example file follows the model struct with a `#[cfg(native)] mod manager { ... }` block. The full source is long; here is the shape, with the key registration call highlighted:
 
@@ -424,17 +424,21 @@ mod manager {
     use std::collections::HashMap;
 
     /// Project-local `BaseUserManager<User>` implementation.
+    ///
+    /// Named `AuthUserManager` (rather than `UserManager`) to avoid
+    /// confusion with the auto-generated manager that `#[user(...)]` can
+    /// emit — the tutorial opts out via `manager = false`.
     #[derive(Clone)]
-    pub struct UserManager {
+    pub struct AuthUserManager {
         db: DatabaseConnection,
     }
 
     #[injectable_factory(scope = "transient")]
-    async fn user_manager_factory(#[inject] db: Depends<DatabaseConnection>) -> UserManager {
-        UserManager { db: (*db).clone() }
+    async fn auth_user_manager_factory(#[inject] db: Depends<DatabaseConnection>) -> AuthUserManager {
+        AuthUserManager { db: (*db).clone() }
     }
 
-    impl UserManager {
+    impl AuthUserManager {
         async fn build_user(
             &self,
             username: &str,
@@ -458,7 +462,7 @@ mod manager {
     }
 
     #[async_trait]
-    impl BaseUserManager<User> for UserManager {
+    impl BaseUserManager<User> for AuthUserManager {
         async fn create_user(
             &mut self,
             username: &str,
@@ -489,7 +493,7 @@ mod manager {
 }
 
 #[cfg(native)]
-pub use manager::UserManager;
+pub use manager::AuthUserManager;
 ```
 
 You should copy the manager block verbatim from [`examples/examples-tutorial-basis/src/apps/users/models.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/apps/users/models.rs) — the validation logic (`username.is_empty()`, `chars().count() > 150`, password length checks) is what the `register` server function in Part 3 relies on.
@@ -498,16 +502,16 @@ The mechanism worth understanding here is the registration line:
 
 ```rust
 #[injectable_factory(scope = "transient")]
-async fn user_manager_factory(#[inject] db: Depends<DatabaseConnection>) -> UserManager {
-    UserManager { db: (*db).clone() }
+async fn auth_user_manager_factory(#[inject] db: Depends<DatabaseConnection>) -> AuthUserManager {
+    AuthUserManager { db: (*db).clone() }
 }
 ```
 
-`#[injectable_factory]` is the dependency-injection primitive that makes `UserManager` accessible to server functions. The macro registers the factory at compile time (via `inventory::submit!`), and at request time the DI container resolves any handler parameter declared as `#[inject] um: Depends<UserManager>` by calling this function — which in turn requests a `Depends<DatabaseConnection>`. The chain composes itself; you never write `let db = ctx.get::<DatabaseConnection>();` by hand.
+`#[injectable_factory]` is the dependency-injection primitive that makes `AuthUserManager` accessible to server functions. The macro registers the factory at compile time (via `inventory::submit!`), and at request time the DI container resolves any handler parameter declared as `#[inject] um: Depends<AuthUserManager>` by calling this function — which in turn requests a `Depends<DatabaseConnection>`. The chain composes itself; you never write `let db = ctx.get::<DatabaseConnection>();` by hand.
 
 Two details worth knowing:
 
-- `scope = "transient"` — a fresh `UserManager` per resolution. `BaseUserManager::create_user(&mut self, …)` needs unique mutable access, so we cannot share an `Arc` across requests. Transient is the right scope; the manager itself only holds a cloned `DatabaseConnection` (which is internally an `Arc` over a connection pool), so the cost is trivial.
+- `scope = "transient"` — a fresh `AuthUserManager` per resolution. `BaseUserManager::create_user(&mut self, …)` needs unique mutable access, so we cannot share an `Arc` across requests. Transient is the right scope; the manager itself only holds a cloned `DatabaseConnection` (which is internally an `Arc` over a connection pool), so the cost is trivial.
 - **Why factory, not `#[injectable]` on the struct?** The doc comment on the example calls it out. `#[injectable]` emits `#[async_trait::async_trait]` directly, which would force the consuming crate to add `async-trait` to its `Cargo.toml`. That breaks examples-project rule DM-1 ("Reinhardt Dependencies Only"). `#[injectable_factory]` does not have that requirement. Until reinhardt-web#4445 reworks the macro, the factory form is the right pick for project code.
 
 ## Registering Both Apps in `installed_apps!`
@@ -605,7 +609,7 @@ In this chapter you learned:
 - How `#[model(app_label = ..., table_name = ...)]` plus `#[field(...)]` plus `#[rel(foreign_key, related_name = ...)]` define `Question` and `Choice`, including the rule that `related_name` is required
 - How the `#[model]`-generated typestate `build()` constructor (`Question::build()...finish()`, `Choice::build()...finish()`) keeps call sites stable as the schema grows
 - How `#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]` layers auth traits on top of `#[model]`, and why `manager = false` is the right pick when you have a project-local manager
-- How the `#[user] + #[model]` macro pair auto-generates the `SuperuserInit` impl (plus its `inventory` registration) that makes `cargo run --bin manage createsuperuser` work, and why that path intentionally bypasses the application-side `UserManager` validation
-- How a project-local `UserManager` is registered with the DI container through `#[injectable_factory(scope = "transient")]`, and why the factory form sidesteps the `async-trait` dependency that `#[injectable]` would otherwise force
+- How the `#[user] + #[model]` macro pair auto-generates the `SuperuserInit` impl (plus its `inventory` registration) that makes `cargo run --bin manage createsuperuser` work, and why that path intentionally bypasses the application-side `AuthUserManager` validation
+- How a project-local `AuthUserManager` is registered with the DI container through `#[injectable_factory(scope = "transient")]`, and why the factory form sidesteps the `async-trait` dependency that `#[injectable]` would otherwise force
 - How `installed_apps! { polls: "polls", users: "users" }` generates the typed `InstalledApp::polls` and `InstalledApp::users` identifiers that Part 3 will hand to `#[url_patterns(InstalledApp::<app>, mode = ...)]`
 - How `cargo make makemigrations` + `cargo make migrate` (with `cargo make showurls` as the inspection tool) compile and apply the schema to `db.sqlite3`

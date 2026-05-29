@@ -1,5 +1,5 @@
 error: CharField does not accept a type parameter
-  --> tests/ui/form/fail/char_field_with_generic.rs:12:14
+  --> tests/ui/form/fail/char_field_with_generic.rs:11:14
    |
-12 |             username: CharField<i32> { },
+11 |             username: CharField<i32> { },
    |                       ^^^^^^^^^
