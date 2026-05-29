@@ -382,7 +382,44 @@ fn parse_condition(input: ParseStream) -> Result<Expr> {
 	syn::parse2(tokens)
 }
 
-/// Parses a for node: `for pat in iter { ... }`
+/// Parses a for iterator expression (stops at `@key(...)` or opening brace).
+fn parse_for_iter(input: ParseStream) -> Result<Expr> {
+	let mut tokens = proc_macro2::TokenStream::new();
+
+	while !input.is_empty() && !input.peek(token::Brace) && !input.peek(Token![@]) {
+		let tt: proc_macro2::TokenTree = input.parse()?;
+		tokens.extend(std::iter::once(tt));
+	}
+
+	syn::parse2(tokens)
+}
+
+/// Parses an optional keyed-list marker: `@key(expr)`.
+fn parse_optional_for_key(input: ParseStream) -> Result<Option<Expr>> {
+	if !input.peek(Token![@]) {
+		return Ok(None);
+	}
+
+	input.parse::<Token![@]>()?;
+	let key_ident: Ident = input.parse()?;
+	if key_ident != "key" {
+		return Err(syn::Error::new(
+			key_ident.span(),
+			"expected `key` after `@` in for loop",
+		));
+	}
+
+	let content;
+	parenthesized!(content in input);
+	let key = content.parse::<Expr>()?;
+	if !content.is_empty() {
+		return Err(content.error("unexpected tokens after keyed for expression"));
+	}
+
+	Ok(Some(key))
+}
+
+/// Parses a for node: `for pat in iter [@key(expr)] { ... }`
 ///
 /// The `depth` parameter limits recursion to prevent stack overflow. (Fixes #824)
 fn parse_for_node(input: ParseStream, depth: usize) -> Result<PageNode> {
@@ -394,8 +431,9 @@ fn parse_for_node(input: ParseStream, depth: usize) -> Result<PageNode> {
 
 	input.parse::<Token![in]>()?;
 
-	// Parse iterator expression (until brace)
-	let iter = parse_condition(input)?;
+	// Parse iterator expression and optional stable key.
+	let iter = parse_for_iter(input)?;
+	let key = parse_optional_for_key(input)?;
 
 	// Parse body
 	let content;
@@ -405,6 +443,7 @@ fn parse_for_node(input: ParseStream, depth: usize) -> Result<PageNode> {
 	Ok(PageNode::For(PageFor {
 		pat,
 		iter,
+		key,
 		body,
 		span,
 	}))
@@ -681,6 +720,24 @@ mod tests {
 
 		match &result.body.nodes[0] {
 			PageNode::For(for_node) => {
+				assert_eq!(for_node.body.len(), 1);
+			}
+			_ => panic!("expected For"),
+		}
+	}
+
+	#[test]
+	fn test_parse_keyed_for_node() {
+		let input = quote!(|| {
+			for item in items @key(item.id.clone()) {
+				li { item.name }
+			}
+		});
+		let result: PageMacro = syn::parse2(input).unwrap();
+
+		match &result.body.nodes[0] {
+			PageNode::For(for_node) => {
+				assert!(for_node.key.is_some());
 				assert_eq!(for_node.body.len(), 1);
 			}
 			_ => panic!("expected For"),
