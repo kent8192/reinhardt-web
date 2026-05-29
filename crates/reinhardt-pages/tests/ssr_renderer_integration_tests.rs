@@ -400,8 +400,8 @@ fn test_multiple_components_different_markers() {
 	let html2 = renderer.render_with_marker(&counter2);
 
 	// Both should have markers but with different IDs
-	assert!(html1.contains("data-rh-id"));
-	assert!(html2.contains("data-rh-id"));
+	assert_eq!(html1.matches(r#"data-rh-id="rh-0""#).count(), 1);
+	assert_eq!(html2.matches(r#"data-rh-id="rh-1""#).count(), 1);
 }
 
 // ============================================================================

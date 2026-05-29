@@ -13,8 +13,13 @@ mod utils;
 // Comprehensive test modules
 mod config_tests;
 mod factory_tests;
+#[cfg(feature = "gcs")]
+mod gcs_tests;
 mod local_tests;
 mod s3_tests;
+mod settings_tests;
+#[cfg(feature = "azure")]
+mod azure_tests;
 
 // Legacy basic tests (kept for compatibility)
 mod local_storage;

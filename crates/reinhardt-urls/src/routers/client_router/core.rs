@@ -101,12 +101,65 @@ pub struct ClientRouteMatch {
 	pub query: Option<String>,
 }
 
+/// Route-level metadata exposed alongside matched client routes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RouteMetadata {
+	/// Browser/document title associated with the route.
+	title: Option<String>,
+	/// Human-readable breadcrumb label associated with the route.
+	breadcrumb: Option<String>,
+	/// Whether this route should be treated as authentication-protected.
+	requires_auth: bool,
+}
+
+impl RouteMetadata {
+	/// Creates empty route metadata.
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	/// Sets the route title.
+	pub fn with_title(mut self, title: impl Into<String>) -> Self {
+		self.title = Some(title.into());
+		self
+	}
+
+	/// Sets the breadcrumb label.
+	pub fn with_breadcrumb(mut self, breadcrumb: impl Into<String>) -> Self {
+		self.breadcrumb = Some(breadcrumb.into());
+		self
+	}
+
+	/// Sets whether the route requires authentication.
+	pub fn with_requires_auth(mut self, requires_auth: bool) -> Self {
+		self.requires_auth = requires_auth;
+		self
+	}
+
+	/// Returns the route title, if configured.
+	pub fn title(&self) -> Option<&str> {
+		self.title.as_deref()
+	}
+
+	/// Returns the breadcrumb label, if configured.
+	pub fn breadcrumb(&self) -> Option<&str> {
+		self.breadcrumb.as_deref()
+	}
+
+	/// Returns whether the route requires authentication.
+	pub fn requires_auth(&self) -> bool {
+		self.requires_auth
+	}
+}
+
 /// A single route definition.
 pub struct ClientRoute {
 	/// The path pattern.
 	pattern: ClientPathPattern,
 	/// Optional route name for reverse lookups.
 	name: Option<String>,
+	/// Route-level metadata.
+	metadata: RouteMetadata,
 	/// The route handler.
 	handler: Arc<dyn RouteHandler>,
 	/// Optional guard function.
@@ -118,6 +171,7 @@ impl Clone for ClientRoute {
 		Self {
 			pattern: self.pattern.clone(),
 			name: self.name.clone(),
+			metadata: self.metadata.clone(),
 			handler: Arc::clone(&self.handler),
 			guard: self.guard.clone(),
 		}
@@ -129,6 +183,7 @@ impl std::fmt::Debug for ClientRoute {
 		f.debug_struct("ClientRoute")
 			.field("pattern", &self.pattern)
 			.field("name", &self.name)
+			.field("metadata", &self.metadata)
 			.field("has_guard", &self.guard.is_some())
 			.finish()
 	}
@@ -149,6 +204,7 @@ impl ClientRoute {
 			pattern: ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
 			name: None,
+			metadata: RouteMetadata::default(),
 			handler: no_params_handler(component),
 			guard: None,
 		}
@@ -168,6 +224,7 @@ impl ClientRoute {
 			pattern: ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
 			name: Some(name.into()),
+			metadata: RouteMetadata::default(),
 			handler: no_params_handler(component),
 			guard: None,
 		}
@@ -182,6 +239,12 @@ impl ClientRoute {
 		self
 	}
 
+	/// Adds route-level metadata to this route.
+	pub fn with_metadata(mut self, metadata: RouteMetadata) -> Self {
+		self.metadata = metadata;
+		self
+	}
+
 	/// Returns the route name.
 	pub fn name(&self) -> Option<&str> {
 		self.name.as_deref()
@@ -190,6 +253,11 @@ impl ClientRoute {
 	/// Returns the pattern.
 	pub fn pattern(&self) -> &ClientPathPattern {
 		&self.pattern
+	}
+
+	/// Returns route-level metadata.
+	pub fn metadata(&self) -> &RouteMetadata {
+		&self.metadata
 	}
 
 	/// Checks if the guard allows access.
@@ -414,6 +482,22 @@ impl ClientRouter {
 		}
 	}
 
+	/// Adds metadata to an already-registered named route.
+	///
+	/// # Panics
+	///
+	/// Panics if `name` is not registered.
+	pub fn with_route_metadata(mut self, name: &str, metadata: RouteMetadata) -> Self {
+		let index = *self.named_routes.get(name).unwrap_or_else(|| {
+			panic!(
+				"Unknown client route name '{}': cannot attach metadata",
+				name
+			)
+		});
+		self.routes[index] = self.routes[index].clone().with_metadata(metadata);
+		self
+	}
+
 	/// Adds a named route to the router.
 	///
 	/// Every route requires a unique `name` for reverse URL lookup.
@@ -447,6 +531,7 @@ impl ClientRouter {
 			pattern: ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
 			name: Some(name.to_string()),
+			metadata: RouteMetadata::default(),
 			handler: with_params_handler(handler),
 			guard: None,
 		});
@@ -470,6 +555,7 @@ impl ClientRouter {
 			pattern: ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
 			name: Some(name.to_string()),
+			metadata: RouteMetadata::default(),
 			handler: result_handler(handler),
 			guard: None,
 		});
@@ -531,6 +617,7 @@ impl ClientRouter {
 			pattern: ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
 			name: Some(name.to_string()),
+			metadata: RouteMetadata::default(),
 			handler: from_request_handler(handler, pattern.to_string()),
 			guard: None,
 		});
@@ -596,6 +683,7 @@ impl ClientRouter {
 			pattern: ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
 			name: Some(name.to_string()),
+			metadata: RouteMetadata::default(),
 			handler: handler.into_route_handler(),
 			guard: None,
 		});

@@ -9,6 +9,7 @@
 //! - **Component trait**: Define reusable UI components
 //! - **Page enum**: Unified representation of DOM elements, text, and fragments
 //! - **Props system**: Type-safe component properties
+//! - **Boundaries**: Suspense and error boundary components
 //!
 //! ## Usage
 //!
@@ -28,6 +29,7 @@
 //! let html = page.render_to_string();
 //! ```
 
+pub mod error_boundary;
 mod into_page;
 mod props;
 pub(crate) mod reactive_if;
@@ -35,6 +37,7 @@ pub mod suspense;
 mod r#trait;
 
 // Re-export Page types (originally from into_page, now from reinhardt-types via into_page)
+pub use error_boundary::{BoundaryError, ErrorBoundary, ErrorTracker};
 #[cfg(native)]
 pub use into_page::DummyEvent;
 pub use into_page::PageExt;

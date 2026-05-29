@@ -1,5 +1,7 @@
 //! Local file system storage backend implementation.
 
+#![allow(deprecated)] // Backend constructor keeps accepting legacy config during compatibility.
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::path::{Component, Path, PathBuf};

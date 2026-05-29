@@ -126,13 +126,13 @@ async fn posts_with_data(#[future] posts_table: Arc<PgPool>) -> Arc<PgPool> {
 
 	// Insert 25 posts for pagination testing
 	for i in 1..=25 {
-		let post = Post::new(
-			format!("Post {}", i),
-			format!("Content for post {}", i),
-			format!("Author {}", (i % 5) + 1), // 5 different authors
-			i % 2 == 0,                        // alternating published status
-			Some(Utc::now()),
-		);
+		let post = Post::build()
+			.title(format!("Post {}", i))
+			.content(format!("Content for post {}", i))
+			.author(format!("Author {}", (i % 5) + 1)) // 5 different authors
+			.published(i % 2 == 0) // alternating published status
+			.created_at(Some(Utc::now()))
+			.finish();
 
 		let sql = "INSERT INTO posts (title, content, author, published, created_at) VALUES ($1, $2, $3, $4, $5)";
 		sqlx::query(sql)
@@ -442,13 +442,13 @@ async fn test_pagination_single_item(#[future] posts_table: Arc<PgPool>) {
 	let pool = posts_table.await;
 
 	// Insert exactly one post
-	let post = Post::new(
-		"Single Post".to_string(),
-		"Only one post".to_string(),
-		"Author".to_string(),
-		true,
-		Some(Utc::now()),
-	);
+	let post = Post::build()
+		.title("Single Post")
+		.content("Only one post")
+		.author("Author")
+		.published(true)
+		.created_at(Some(Utc::now()))
+		.finish();
 
 	let sql = "INSERT INTO posts (title, content, author, published, created_at) VALUES ($1, $2, $3, $4, $5)";
 	sqlx::query(sql)
