@@ -36,12 +36,11 @@ pub type HtmlButtonElement = web_sys::HtmlButtonElement;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
 /// use reinhardt_pages::prelude::spawn_task;
 ///
 /// spawn_task(async move {
-///     let data = fetch_data().await;
-///     process(data);
+///     // async work
 /// });
 /// ```
 pub fn spawn_task<F>(fut: F)
