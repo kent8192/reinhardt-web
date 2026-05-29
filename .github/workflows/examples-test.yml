@@ -138,21 +138,29 @@ jobs:
         if: ${{ matrix.needs-wasm }}
         run: cargo check --target wasm32-unknown-unknown -p reinhardt-core -p reinhardt-urls --features reinhardt-core/full,reinhardt-urls/client-router
 
+      # Headless-Chrome WASM tests run on GitHub-hosted x86_64 only:
+      # browser-actions/setup-chrome does not support ARM64 Linux, so on the
+      # self-hosted ARM64 runner it fails with "Unsupported platform: linux
+      # arm64". This mirrors wasm-check.yml's wasm-test job, which is pinned to
+      # ubuntu-latest for the same reason (Fixes #3491). The wasm32 compilation
+      # check above is browser-independent and still runs on every runner.
+      # Example WASM browser tests therefore execute on GitHub-hosted PR runs;
+      # self-hosted runs (release-plz / opted-in PRs) skip them.
       - name: Install Chrome
-        if: ${{ matrix.needs-wasm }}
+        if: ${{ matrix.needs-wasm && !contains(inputs.runner, 'self-hosted') }}
         uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
           install-chromedriver: true
 
       - name: Install wasm-pack
-        if: ${{ matrix.needs-wasm }}
+        if: ${{ matrix.needs-wasm && !contains(inputs.runner, 'self-hosted') }}
         uses: taiki-e/install-action@v2
         with:
           tool: wasm-pack
 
       - name: Run WASM tests
-        if: ${{ matrix.needs-wasm }}
+        if: ${{ matrix.needs-wasm && !contains(inputs.runner, 'self-hosted') }}
         working-directory: examples/${{ matrix.example }}
         run: cargo make wasm-test || echo "No WASM tests found, skipping"
 
