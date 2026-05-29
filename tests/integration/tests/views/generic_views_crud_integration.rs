@@ -61,6 +61,22 @@ struct Article {
 	created_at: Option<DateTime<Utc>>,
 }
 
+fn article(
+	title: impl Into<String>,
+	content: impl Into<String>,
+	published: bool,
+	view_count: i32,
+	created_at: Option<DateTime<Utc>>,
+) -> Article {
+	Article::build()
+		.title(title)
+		.content(content)
+		.published(published)
+		.view_count(view_count)
+		.created_at(created_at)
+		.finish()
+}
+
 // ============================================================================
 // Table Identifiers (for reinhardt-query operations)
 // ============================================================================
@@ -154,7 +170,7 @@ async fn insert_test_articles(pool: &PgPool, count: usize) -> Vec<Article> {
 	let mut articles = Vec::new();
 
 	for i in 1..=count {
-		let article = Article::new(
+		let article = article(
 			format!("Article {}", i),
 			format!("Content for article {}", i),
 			i % 2 == 0, // Even articles are published
@@ -600,7 +616,7 @@ async fn test_default_ordering(#[future] articles_table: Arc<PgPool>) {
 	let mut articles = Vec::new();
 	for i in 1..=3 {
 		let created_at = Utc::now() - chrono::Duration::seconds((3 - i) as i64);
-		let article = Article::new(
+		let article = article(
 			format!("Article {}", i),
 			format!("Content {}", i),
 			true,

@@ -48,7 +48,21 @@ struct PropertyItem {
 	created_at: Option<DateTime<Utc>>,
 }
 
-// Note: The #[model] macro automatically generates a new() function
+fn property_item(
+	name: impl Into<String>,
+	value: i32,
+	score: f64,
+	active: bool,
+	created_at: Option<DateTime<Utc>>,
+) -> PropertyItem {
+	PropertyItem::build()
+		.name(name)
+		.value(value)
+		.score(score)
+		.active(active)
+		.created_at(created_at)
+		.finish()
+}
 
 /// Iden enum for property_items table
 #[derive(Debug, Clone, Copy, Iden)]
@@ -139,16 +153,10 @@ async fn test_property_valid_input_valid_output(#[future] setup_property: PgPool
 
 	// Test with various valid inputs
 	let test_inputs = vec![
-		PropertyItem::new("Item A".to_string(), 1, 1.0, true, Some(Utc::now())),
-		PropertyItem::new("Item B".to_string(), -100, -50.5, false, Some(Utc::now())),
-		PropertyItem::new(
-			"Item C".to_string(),
-			1000000,
-			999.999,
-			true,
-			Some(Utc::now()),
-		),
-		PropertyItem::new("X".to_string(), 0, 0.0, false, None),
+		property_item("Item A", 1, 1.0, true, Some(Utc::now())),
+		property_item("Item B", -100, -50.5, false, Some(Utc::now())),
+		property_item("Item C", 1000000, 999.999, true, Some(Utc::now())),
+		property_item("X", 0, 0.0, false, None),
 	];
 
 	for item in test_inputs {
@@ -199,7 +207,7 @@ async fn test_property_idempotent_delete(#[future] setup_property: PgPool) {
 	let pool = setup_property.await;
 
 	// Insert item using direct sqlx query with proper parameter binding
-	let item = PropertyItem::new("To Delete".to_string(), 42, 3.14, true, Some(Utc::now()));
+	let item = property_item("To Delete", 42, 3.14, true, Some(Utc::now()));
 
 	let row = sqlx::query(
 		"INSERT INTO property_items (name, value, score, active, created_at)
@@ -253,7 +261,7 @@ async fn test_property_ordering_consistency(#[future] setup_property: PgPool) {
 
 	// Insert items with different values using direct sqlx query
 	for i in 1..=10 {
-		let item = PropertyItem::new(
+		let item = property_item(
 			format!("Item {}", i),
 			i * 10,
 			(i as f64) * 1.5,
@@ -319,7 +327,7 @@ async fn test_property_filter_subset(#[future] setup_property: PgPool) {
 
 	// Insert mixed data using direct sqlx query
 	for i in 1..=20 {
-		let item = PropertyItem::new(
+		let item = property_item(
 			format!("Item {}", i),
 			i * 5,
 			(i as f64) * 2.5,
@@ -390,8 +398,8 @@ async fn test_property_search_subset(#[future] setup_property: PgPool) {
 	];
 
 	for (index, name) in names.iter().enumerate() {
-		let item = PropertyItem::new(
-			String::from(*name),
+		let item = property_item(
+			*name,
 			(index as i32) + 1,
 			(index as f64) + 1.0,
 			true,
@@ -438,7 +446,7 @@ async fn test_property_pagination_boundaries(#[future] setup_property: PgPool) {
 
 	// Insert 25 items using direct sqlx query
 	for i in 1..=25 {
-		let item = PropertyItem::new(format!("Item {}", i), i, i as f64, true, Some(Utc::now()));
+		let item = property_item(format!("Item {}", i), i, i as f64, true, Some(Utc::now()));
 
 		sqlx::query(
 			"INSERT INTO property_items (name, value, score, active, created_at)
@@ -493,9 +501,9 @@ async fn test_property_serialization_roundtrip(#[future] setup_property: PgPool)
 
 	// Test various items for round-trip property
 	let test_items = vec![
-		PropertyItem::new("Test 1".to_string(), 1, 1.1, true, Some(Utc::now())),
-		PropertyItem::new("Test 2".to_string(), -999, -99.99, false, None),
-		PropertyItem::new("Test 3".to_string(), 0, 0.0, true, Some(Utc::now())),
+		property_item("Test 1", 1, 1.1, true, Some(Utc::now())),
+		property_item("Test 2", -999, -99.99, false, None),
+		property_item("Test 3", 0, 0.0, true, Some(Utc::now())),
 	];
 
 	for original_item in test_items {

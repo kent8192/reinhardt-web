@@ -123,14 +123,14 @@ pub async fn register(
 	}
 
 	// Create new user
-	let mut new_user = User::new(
-		request.username.trim().to_string(),
-		request.email.trim().to_string(),
-		None,  // password_hash (set below)
-		true,  // is_active
-		false, // is_superuser
-		None,  // bio
-	);
+	let mut new_user = User::build()
+		.username(request.username.trim())
+		.email(request.email.trim())
+		.password_hash(None)
+		.is_active(true)
+		.is_superuser(false)
+		.bio(None)
+		.finish();
 
 	// Set password
 	new_user
