@@ -294,12 +294,13 @@ pub mod urls;
 /// but its `prelude` is gated `#[cfg(all(feature = "routers", native))]`.
 ///
 /// When the `client-router` feature is enabled (the realistic configuration
-/// for wasm consumers that use `mode = unified`), this re-exports the real
+/// for wasm consumers that use `#[routes]`), this re-exports the real
 /// wasm-side `UnifiedRouter` from `reinhardt_urls::routers`. That type
 /// provides the correct closure signatures
-/// (`server: FnOnce(ServerRouterStub) -> ServerRouterStub`,
+/// (`server: FnOnce(ServerRouter) -> ServerRouter`,
 /// `client: FnOnce(ClientRouter) -> ClientRouter`) so user-supplied bodies
-/// such as `.client(|c| c.route(...))` type-check on wasm.
+/// such as `.client(|c| c.route(...))` type-check on wasm. On wasm the
+/// `ServerRouter` is a no-op builder whose result is discarded (issue #4569).
 ///
 /// Without `client-router`, an inert stub is exposed so that the path
 /// resolves; user bodies that invoke `.server`/`.client` on the stub are
@@ -309,17 +310,15 @@ pub mod urls {
 	/// Wasm-side stub mirroring `reinhardt_urls::prelude`.
 	pub mod prelude {
 		#[cfg(feature = "client-router")]
-		pub use reinhardt_urls::routers::unified_router::ServerRouterStub;
-		#[cfg(feature = "client-router")]
-		pub use reinhardt_urls::routers::{ClientRouter, UnifiedRouter};
+		pub use reinhardt_urls::routers::{ClientRouter, ServerRouter, UnifiedRouter};
 
 		#[cfg(not(feature = "client-router"))]
 		pub use stub::*;
 
 		#[cfg(not(feature = "client-router"))]
 		mod stub {
-			/// Empty stand-in for `reinhardt_urls::routers::ServerRouterStub`.
-			pub struct ServerRouterStub;
+			/// Empty stand-in for `reinhardt_urls::routers::ServerRouter`.
+			pub struct ServerRouter;
 			/// Empty stand-in for `reinhardt_urls::routers::client_router::ClientRouter`.
 			pub struct ClientRouter;
 
@@ -338,7 +337,7 @@ pub mod urls {
 
 				pub fn server<F>(self, _f: F) -> Self
 				where
-					F: FnOnce(ServerRouterStub) -> ServerRouterStub,
+					F: FnOnce(ServerRouter) -> ServerRouter,
 				{
 					self
 				}

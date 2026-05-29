@@ -53,12 +53,12 @@ fn create_session_middleware() -> SessionMiddleware {
 #[routes]
 pub fn routes() -> UnifiedRouter {
 	let router = UnifiedRouter::new().server(|s| {
-		// On wasm the `s` parameter is a `ServerRouterStub` and every
-		// builder call inside this closure is absorbed by the stub
-		// (see `reinhardt_urls::routers::unified_router::ServerRouterStub`),
-		// so the `server_fn` markers do not need to compile on wasm. We
-		// still gate the marker references on `#[cfg(native)]` because
-		// the `server_fn` marker modules themselves are native-only.
+		// On wasm the `s` parameter is a no-op `ServerRouter` and every
+		// builder call inside this closure is absorbed by it
+		// (see `reinhardt_urls::routers::ServerRouter`), so the `server_fn`
+		// markers do not need to compile on wasm. We still gate the marker
+		// references on `#[cfg(native)]` because the `server_fn` marker
+		// modules themselves are native-only.
 		#[cfg(native)]
 		{
 			s.server_fn(get_questions::marker)
