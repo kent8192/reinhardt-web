@@ -1,0 +1,5 @@
+# Local development settings. Do not put production secrets here.
+
+[core]
+debug = true
+secret_key = "local-development-secret-key"

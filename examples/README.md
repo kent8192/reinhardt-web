@@ -44,6 +44,7 @@ cargo run
 
 | Example | Description | Features |
 |---------|-------------|----------|
+| `examples-todo` | Canonical Todo app | Pages, Signals, Server Functions, WASM |
 | `examples-tutorial-basis` | Polling app tutorial (basis) | Pages, Forms, Database, WASM |
 | `examples-tutorial-rest` | REST API tutorial (snippets) | REST, Viewsets, Database |
 | `examples-twitter` | Full Twitter-like application | Full-stack, WebSockets, Auth, WASM |

@@ -1,0 +1,5 @@
+# CI settings for examples-todo.
+
+[core]
+debug = false
+secret_key = "ci-testing-secret-key-not-for-production"
