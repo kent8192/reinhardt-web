@@ -84,7 +84,9 @@ pub mod history;
 mod params;
 mod pattern;
 // Public re-exports
-pub use core::{ClientRoute, ClientRouteMatch, ClientRouter, NavigationSubscription};
+pub use core::{
+	ClientRoute, ClientRouteMatch, ClientRouter, NavigationSubscription, RouteMetadata,
+};
 pub use error::{MergeError, PathError, RouterError};
 // Re-export the `FromRequest` building blocks at the
 // `client_router` module level so callers can write

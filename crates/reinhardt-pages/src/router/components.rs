@@ -4,6 +4,7 @@
 //! declarative navigation in component trees.
 
 use crate::component::{Component, IntoPage, Page, PageElement};
+use reinhardt_urls::routers::ClientRouter;
 
 /// A link component that navigates without full page reload.
 ///
@@ -119,6 +120,44 @@ impl Component for Link {
 
 	fn name() -> &'static str {
 		"Link"
+	}
+}
+
+/// Renders the current route from a [`ClientRouter`].
+///
+/// `RouterOutlet` is a component-level adapter for embedding the canonical
+/// `reinhardt-urls` client router in a pages component tree.
+#[derive(Debug, Clone)]
+pub struct RouterOutlet {
+	/// Router used to resolve and render the current client-side route.
+	router: ClientRouter,
+}
+
+impl RouterOutlet {
+	/// Creates a new router outlet backed by `router`.
+	pub fn new(router: ClientRouter) -> Self {
+		Self { router }
+	}
+
+	/// Returns the router backing this outlet.
+	pub fn router(&self) -> &ClientRouter {
+		&self.router
+	}
+}
+
+impl Component for RouterOutlet {
+	fn render(&self) -> Page {
+		self.router.render_current()
+	}
+
+	fn name() -> &'static str {
+		"RouterOutlet"
+	}
+}
+
+impl IntoPage for RouterOutlet {
+	fn into_page(self) -> Page {
+		self.render()
 	}
 }
 
