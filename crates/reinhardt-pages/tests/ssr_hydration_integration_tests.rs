@@ -181,6 +181,26 @@ fn test_ssr_renderer_with_hydration_markers() {
 	assert!(html.contains("Count: 10"));
 }
 
+/// Regression test for #4972: hydration IDs must be deterministic per render.
+#[test]
+fn test_hydration_marker_ids_reset_for_each_render_context() {
+	let counter = Counter::new(7);
+	let card = UserCard::new("Alice", "alice@example.com");
+
+	let mut first_renderer = SsrRenderer::new();
+	let first_counter = first_renderer.render_with_marker(&counter);
+	let first_card = first_renderer.render_with_marker(&card);
+
+	let mut second_renderer = SsrRenderer::new();
+	let second_counter = second_renderer.render_with_marker(&counter);
+	let second_card = second_renderer.render_with_marker(&card);
+
+	assert_eq!(first_counter, second_counter);
+	assert_eq!(first_card, second_card);
+	assert!(first_counter.contains(r#"data-rh-id="rh-0""#));
+	assert!(first_card.contains(r#"data-rh-id="rh-1""#));
+}
+
 /// Success Criterion 3: SSR renderer without hydration markers
 #[test]
 fn test_ssr_renderer_without_hydration_markers() {

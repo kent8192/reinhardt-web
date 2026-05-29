@@ -246,9 +246,12 @@ impl HydrationMarkerBuilder {
 
 #[cfg(test)]
 mod tests {
+	use serial_test::serial;
+
 	use super::*;
 
 	#[test]
+	#[serial]
 	fn test_generate_hydration_id() {
 		reset_hydration_counter();
 		let id1 = generate_hydration_id();
@@ -258,6 +261,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_hydration_marker_new() {
 		reset_hydration_counter();
 		let marker = HydrationMarker::new();
@@ -267,6 +271,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_hydration_marker_with_component() {
 		reset_hydration_counter();
 		let marker = HydrationMarker::with_component("MyComponent");
@@ -274,6 +279,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_hydration_marker_with_props() {
 		reset_hydration_counter();
 		let marker = HydrationMarker::new().with_props(r#"{"count":42}"#);
@@ -281,6 +287,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_hydration_marker_to_attrs() {
 		reset_hydration_counter();
 		let marker = HydrationMarker::with_component("Test").with_props(r#"{"x":1}"#);
@@ -291,6 +298,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_hydration_marker_to_attr_string() {
 		reset_hydration_counter();
 		let marker = HydrationMarker::new();
@@ -320,6 +328,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_hydration_marker_with_strategy() {
 		reset_hydration_counter();
 		let marker = HydrationMarker::new().with_strategy(HydrationStrategy::Island);
@@ -327,6 +336,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_hydration_marker_island() {
 		reset_hydration_counter();
 		let marker = HydrationMarker::island();
@@ -336,6 +346,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_hydration_marker_static() {
 		reset_hydration_counter();
 		let marker = HydrationMarker::static_content();
@@ -345,6 +356,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_hydration_marker_full_no_special_attr() {
 		reset_hydration_counter();
 		let marker = HydrationMarker::new(); // Default is Full
@@ -354,6 +366,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_hydration_marker_builder_basic() {
 		reset_hydration_counter();
 		let marker = HydrationMarkerBuilder::new().build();
@@ -362,6 +375,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_hydration_marker_builder_with_component() {
 		reset_hydration_counter();
 		let marker = HydrationMarkerBuilder::new()
@@ -371,6 +385,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_hydration_marker_builder_with_props() {
 		reset_hydration_counter();
 		let marker = HydrationMarkerBuilder::new()
@@ -380,6 +395,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_hydration_marker_builder_island() {
 		reset_hydration_counter();
 		let marker = HydrationMarkerBuilder::new()
@@ -391,6 +407,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_hydration_marker_builder_static() {
 		reset_hydration_counter();
 		let marker = HydrationMarkerBuilder::new()
@@ -401,6 +418,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_hydration_marker_builder_complete() {
 		reset_hydration_counter();
 		let marker = HydrationMarkerBuilder::new()
