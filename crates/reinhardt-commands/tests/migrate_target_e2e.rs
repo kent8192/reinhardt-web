@@ -525,3 +525,129 @@ async fn forward_to_target_plan_does_not_modify_db(
 		result.ok()
 	);
 }
+
+#[rstest]
+#[tokio::test]
+#[serial(migrate_target_e2e)]
+async fn fake_rollback_updates_recorder_without_loading_files(
+	#[future] migration_executor: MigrationExecutorFixture,
+) {
+	// Arrange — record 0001/0002/0003 as applied, but only 0001 and 0002 exist
+	// on disk (0003's file is intentionally absent). A *real* rollback to
+	// 0001_first fails because it cannot load 0003's reverse SQL (see
+	// `rollback_with_missing_reverse_sql_fails_loudly`). A `--fake` rollback must
+	// succeed: it only updates the recorder and never loads the file or runs SQL.
+	let (mut executor, _container, _pool, _port, url) = migration_executor.await;
+	let tempdir = tempfile::tempdir().expect("create tempdir");
+	let migrations_root = tempdir.path().join("migrations");
+	write_test_migration(&migrations_root, "myapp", "0001_first", &[]).unwrap();
+	write_test_migration(
+		&migrations_root,
+		"myapp",
+		"0002_second",
+		&[("myapp", "0001_first")],
+	)
+	.unwrap();
+	// Note: 0003_third is intentionally NOT written to disk.
+
+	let recorder = DatabaseMigrationRecorder::new(executor.connection().clone());
+	recorder.ensure_schema_table().await.unwrap();
+	for name in ["0001_first", "0002_second", "0003_third"] {
+		executor.record_migration("myapp", name).await.unwrap();
+	}
+
+	// Act — `migrate myapp 0001_first --fake` unapplies 0002 and 0003 in the
+	// recorder without touching the (missing) files.
+	let mut ctx = build_ctx(
+		&migrations_root,
+		&url,
+		Some("myapp"),
+		Some("0001_first"),
+		false,
+	);
+	ctx.set_option("fake".to_string(), "true".to_string());
+	MigrateCommand
+		.execute(&ctx)
+		.await
+		.expect("fake rollback must succeed even when a later migration file is missing");
+
+	// Assert — only 0001_first remains applied.
+	let remaining = applied_for_app(&url, "myapp").await;
+	assert_eq!(
+		remaining,
+		vec!["0001_first".to_string()],
+		"fake rollback should leave only the target applied"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(migrate_target_e2e)]
+async fn fake_forward_records_target_closure(
+	#[future] migration_executor: MigrationExecutorFixture,
+) {
+	// Arrange — three migrations on disk, NONE applied.
+	let (_executor, _container, _pool, _port, url) = migration_executor.await;
+	let (_tempdir, migrations_root) = write_three_migrations();
+
+	// Act — `migrate myapp 0002_second --fake` records 0001 and 0002 as applied
+	// without running their operations.
+	let mut ctx = build_ctx(
+		&migrations_root,
+		&url,
+		Some("myapp"),
+		Some("0002_second"),
+		false,
+	);
+	ctx.set_option("fake".to_string(), "true".to_string());
+	MigrateCommand
+		.execute(&ctx)
+		.await
+		.expect("fake forward should succeed");
+
+	// Assert — exactly 0001 and 0002 are recorded.
+	let applied = applied_for_app(&url, "myapp").await;
+	assert_eq!(
+		applied.len(),
+		2,
+		"exactly two migrations should be recorded"
+	);
+	assert!(applied.iter().any(|n| n == "0001_first"));
+	assert!(applied.iter().any(|n| n == "0002_second"));
+	assert!(
+		!applied.iter().any(|n| n == "0003_third"),
+		"0003_third is past the target and must not be recorded"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(migrate_target_e2e)]
+async fn plan_apply_all_does_not_modify_db(#[future] migration_executor: MigrationExecutorFixture) {
+	// Arrange — one migration on disk, fresh database, no target argument.
+	let (_executor, _container, _pool, _port, url) = migration_executor.await;
+	let tempdir = tempfile::tempdir().expect("create tempdir");
+	let migrations_root = tempdir.path().join("migrations");
+	write_test_migration(&migrations_root, "myapp", "0001_first", &[]).unwrap();
+
+	// Act — `migrate myapp --plan` (no target) must preview the apply-all set
+	// without touching the database.
+	let ctx = build_ctx(&migrations_root, &url, Some("myapp"), None, true);
+	MigrateCommand
+		.execute(&ctx)
+		.await
+		.expect("apply-all `--plan` on a fresh DB must succeed without modifying state");
+
+	// Assert — the recorder table was not created as a side effect.
+	let connection = DatabaseConnection::connect_postgres(&url)
+		.await
+		.expect("re-connect to test Postgres");
+	let recorder = DatabaseMigrationRecorder::new(connection.clone());
+	let result = recorder.get_applied_migrations().await;
+	assert!(
+		result.is_err(),
+		"apply-all `--plan` must NOT create the recorder table; \
+		 got Ok({:?}) — table appears to exist after dry-run",
+		result.ok()
+	);
+}

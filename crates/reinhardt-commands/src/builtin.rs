@@ -254,6 +254,43 @@ impl BaseCommand for MigrateCommand {
 						return Ok(());
 					}
 
+					// `applied_for_app` is ASC by applied time; rollback unapplies the
+					// newest first. Plan and `--fake` operate purely on recorder records
+					// and never load files; only a real rollback needs the on-disk
+					// reverse SQL.
+					if is_plan {
+						ctx.info(&format!(
+							"[plan] Would unapply {} migration(s) for app '{}':",
+							applied_for_app.len(),
+							app
+						));
+						for r in applied_for_app.iter().rev() {
+							ctx.info(&format!("  - {}:{} (unapply)", r.app, r.name));
+						}
+						return Ok(());
+					}
+
+					if is_fake {
+						ctx.info(
+							"Faking rollback (updating recorder without executing reverse SQL):",
+						);
+						for r in applied_for_app.iter().rev() {
+							recorder.unapply(&r.app, &r.name).await.map_err(|e| {
+								crate::CommandError::ExecutionError(format!(
+									"Failed to unapply {}:{}: {}",
+									r.app, r.name, e
+								))
+							})?;
+							ctx.success(&format!("  ✓ Faked rollback: {}:{}", r.app, r.name));
+						}
+						ctx.success(&format!(
+							"Faked rollback of {} migration(s) for app '{}'",
+							applied_for_app.len(),
+							app
+						));
+						return Ok(());
+					}
+
 					let mut to_rollback = Vec::with_capacity(applied_for_app.len());
 					for r in &applied_for_app {
 						let migration = all_migrations
@@ -267,21 +304,6 @@ impl BaseCommand for MigrateCommand {
 								))
 							})?;
 						to_rollback.push(migration);
-					}
-
-					if is_plan {
-						ctx.info(&format!(
-							"[plan] Would unapply {} migration(s) for app '{}':",
-							to_rollback.len(),
-							app
-						));
-						for migration in to_rollback.iter().rev() {
-							ctx.info(&format!(
-								"  - {}:{} (unapply)",
-								migration.app_label, migration.name
-							));
-						}
-						return Ok(());
 					}
 
 					let mut executor = DatabaseMigrationExecutor::new(connection);
@@ -316,6 +338,43 @@ impl BaseCommand for MigrateCommand {
 						return Ok(());
 					}
 
+					// Plan and `--fake` operate purely on recorder records; only a real
+					// rollback loads the on-disk reverse SQL.
+					if is_plan {
+						ctx.info(&format!(
+							"[plan] Would unapply {} migration(s) for app '{}' to reach target '{}':",
+							to_rollback_records.len(),
+							app,
+							target_name
+						));
+						for r in to_rollback_records.iter().rev() {
+							ctx.info(&format!("  - {}:{} (unapply)", r.app, r.name));
+						}
+						return Ok(());
+					}
+
+					if is_fake {
+						ctx.info(
+							"Faking rollback (updating recorder without executing reverse SQL):",
+						);
+						for r in to_rollback_records.iter().rev() {
+							recorder.unapply(&r.app, &r.name).await.map_err(|e| {
+								crate::CommandError::ExecutionError(format!(
+									"Failed to unapply {}:{}: {}",
+									r.app, r.name, e
+								))
+							})?;
+							ctx.success(&format!("  ✓ Faked rollback: {}:{}", r.app, r.name));
+						}
+						ctx.success(&format!(
+							"Faked rollback to {}:{} ({} migration(s) unapplied)",
+							app,
+							target_name,
+							to_rollback_records.len()
+						));
+						return Ok(());
+					}
+
 					let mut to_rollback = Vec::with_capacity(to_rollback_records.len());
 					for r in to_rollback_records {
 						let migration = all_migrations
@@ -329,22 +388,6 @@ impl BaseCommand for MigrateCommand {
 								))
 							})?;
 						to_rollback.push(migration);
-					}
-
-					if is_plan {
-						ctx.info(&format!(
-							"[plan] Would unapply {} migration(s) for app '{}' to reach target '{}':",
-							to_rollback.len(),
-							app,
-							target_name
-						));
-						for migration in to_rollback.iter().rev() {
-							ctx.info(&format!(
-								"  - {}:{} (unapply)",
-								migration.app_label, migration.name
-							));
-						}
-						return Ok(());
 					}
 
 					let mut executor = DatabaseMigrationExecutor::new(connection);
@@ -442,6 +485,32 @@ impl BaseCommand for MigrateCommand {
 					return Ok(());
 				}
 
+				if is_fake {
+					ctx.info("Faking migrations (marking as applied without executing):");
+					for migration in &pending {
+						recorder
+							.record_applied(&migration.app_label, &migration.name)
+							.await
+							.map_err(|e| {
+								crate::CommandError::ExecutionError(format!(
+									"Failed to record fake migration {}:{}: {}",
+									migration.app_label, migration.name, e
+								))
+							})?;
+						ctx.success(&format!(
+							"  ✓ Faked: {}:{}",
+							migration.app_label, migration.name
+						));
+					}
+					ctx.success(&format!(
+						"Faked {} migration(s) to reach {}:{}",
+						pending.len(),
+						app,
+						target_name
+					));
+					return Ok(());
+				}
+
 				let mut executor = DatabaseMigrationExecutor::new(connection);
 				let result = executor.apply_migrations(&to_apply).await.map_err(|e| {
 					crate::CommandError::ExecutionError(format!(
@@ -483,6 +552,39 @@ impl BaseCommand for MigrateCommand {
 				"Found {} migration(s) to apply",
 				migrations_to_apply.len()
 			));
+
+			// 5.5. `--plan` previews the apply-all set without mutating the database.
+			// Query the recorder to show only not-yet-applied migrations; on a fresh
+			// DB the table may not exist, so treat a query failure as "nothing applied"
+			// and do NOT create the table (dry-run contract).
+			if is_plan {
+				use reinhardt_db::migrations::DatabaseMigrationRecorder;
+				let recorder = DatabaseMigrationRecorder::new(connection.clone());
+				let applied = recorder.get_applied_migrations().await.unwrap_or_default();
+				let pending: Vec<_> = migrations_to_apply
+					.iter()
+					.filter(|m| {
+						!applied
+							.iter()
+							.any(|r| r.app == m.app_label && r.name == m.name)
+					})
+					.collect();
+				if pending.is_empty() {
+					ctx.info("[plan] No unapplied migrations.");
+					return Ok(());
+				}
+				ctx.info(&format!(
+					"[plan] Would apply {} migration(s):",
+					pending.len()
+				));
+				for migration in &pending {
+					ctx.info(&format!(
+						"  - {}:{} (apply)",
+						migration.app_label, migration.name
+					));
+				}
+				return Ok(());
+			}
 
 			// 6. Apply migrations (or fake them
 			if is_fake {

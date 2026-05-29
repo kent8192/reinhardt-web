@@ -232,7 +232,7 @@ the direction is resolved from the currently applied state.
 |---------------|-------------|
 | `<APP_LABEL>` | App to migrate (positional, optional) |
 | `<MIGRATION_NAME>` | Target migration, or the special token `zero` (positional, optional) |
-| `--fake` | Mark migrations as applied without executing them |
+| `--fake` | Update the recorder (mark applied for forward, unapplied for rollback) without executing migration SQL |
 | `--fake-initial` | Skip the initial migration if the tables already exist |
 | `--plan` | Preview the migration plan without applying or rolling back |
 | `--migrations-dir <DIR>` | Root directory containing migration files (default: `./migrations`) |
