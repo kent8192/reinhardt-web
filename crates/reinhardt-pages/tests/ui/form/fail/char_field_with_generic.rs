@@ -8,7 +8,7 @@ fn main() {
 		name: BadForm,
 		action: "/x",
 		fields: {
-			username: CharField<i32> { },
+			username: CharField<i32> {},
 		}
 	};
 }

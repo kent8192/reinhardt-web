@@ -508,8 +508,10 @@ fn collect_expected_child(
 			}
 		}
 		Page::KeyedFragment(keyed_children) => {
-			let child_views: Vec<Page> =
-				keyed_children.iter().map(|(_, view)| view.clone()).collect();
+			let child_views: Vec<Page> = keyed_children
+				.iter()
+				.map(|(_, view)| view.clone())
+				.collect();
 			collect_expected_children(&child_views, &path, children);
 		}
 		_ => children.push((path, view.clone())),
@@ -646,7 +648,10 @@ fn reconcile_options_children_at_path(
 		Page::Element(el_view) => el_view.child_views(),
 		Page::Fragment(views) => views,
 		Page::KeyedFragment(views) => {
-			keyed_child_views = views.iter().map(|(_, view)| view.clone()).collect::<Vec<_>>();
+			keyed_child_views = views
+				.iter()
+				.map(|(_, view)| view.clone())
+				.collect::<Vec<_>>();
 			&keyed_child_views
 		}
 		Page::WithHead { view, .. } => {

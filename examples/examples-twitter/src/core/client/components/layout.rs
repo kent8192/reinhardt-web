@@ -95,9 +95,9 @@ pub fn header(site_name: &str, current_user: Option<&UserInfo>, nav_items: &[Nav
 		})
 		.collect();
 	let nav_links_view = page!(|nav_links: Vec<Page>| {
-		for link in nav_links.clone() {
-			{ link.clone() }
-		}
+		for link in nav_links.clone() { {
+			link.clone()
+		} }
 	})(nav_links);
 	let brand_link = Link::new("/".to_string(), site_name.to_string())
 		.class("text-xl font-bold text-content-primary hover:text-brand transition-colors")
@@ -229,9 +229,9 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 		})()
 	} else {
 		page!(|topics_list: Vec<Page>| {
-			for topic in topics_list.clone() {
-				{ topic.clone() }
-			}
+			for topic in topics_list.clone() { {
+				topic.clone()
+			} }
 		})(topics_list)
 	};
 	let users_list: Vec<Page> = suggested_users
@@ -303,9 +303,9 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 		})()
 	} else {
 		page!(|users_list: Vec<Page>| {
-			for user in users_list.clone() {
-				{ user.clone() }
-			}
+			for user in users_list.clone() { {
+				user.clone()
+			} }
 		})(users_list)
 	};
 	page!(|topics_view: Page, users_view: Page| {
