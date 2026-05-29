@@ -184,6 +184,24 @@ pub mod reactive;
 // Platform abstraction (unified types and task spawning for WASM and native)
 pub mod platform;
 
+// Backward-compatibility re-export of task-spawning utilities. The
+// implementation moved into `platform` (#4362); this deprecated module
+// keeps existing `reinhardt_pages::spawn::*` imports working for the
+// 0.x line.
+pub mod spawn {
+	/// Deprecated: use `spawn_task` from `reinhardt_pages::prelude` instead.
+	#[deprecated(
+		note = "moved to reinhardt_pages::platform; use spawn_task from reinhardt_pages::prelude instead"
+	)]
+	pub use crate::platform::spawn_task;
+
+	/// Deprecated: use `defer_yield` from `reinhardt_pages::prelude` instead.
+	#[deprecated(
+		note = "moved to reinhardt_pages::platform; use defer_yield from reinhardt_pages::prelude instead"
+	)]
+	pub use crate::platform::defer_yield;
+}
+
 // Unified prelude for simplified imports
 pub mod prelude;
 
