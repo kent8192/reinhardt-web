@@ -166,6 +166,8 @@ pub struct Runtime {
 	pub(crate) pending_updates: RefCell<Vec<NodeId>>,
 	/// Whether an update is currently scheduled
 	pub(crate) update_scheduled: RefCell<bool>,
+	/// Active explicit batch nesting depth.
+	pub(crate) batch_depth: RefCell<usize>,
 }
 
 impl Runtime {
@@ -176,6 +178,7 @@ impl Runtime {
 			dependency_graph: RefCell::new(BTreeMap::new()),
 			pending_updates: RefCell::new(Vec::new()),
 			update_scheduled: RefCell::new(false),
+			batch_depth: RefCell::new(0),
 		}
 	}
 
@@ -280,6 +283,11 @@ impl Runtime {
 		let mut pending = self.pending_updates.borrow_mut();
 		if !pending.contains(&node_id) {
 			pending.push(node_id);
+		}
+		drop(pending);
+
+		if *self.batch_depth.borrow() > 0 {
+			return;
 		}
 
 		// Schedule flush if not already scheduled
@@ -431,6 +439,38 @@ where
 	F: FnOnce(&Runtime) -> R,
 {
 	RUNTIME.with(f)
+}
+
+/// Execute multiple reactive writes as a single update cycle.
+///
+/// Updates scheduled while the batch is active are queued, then flushed once
+/// the outermost batch exits. Nested batches share the same queue.
+pub fn batch<R>(f: impl FnOnce() -> R) -> R {
+	struct BatchGuard;
+
+	impl Drop for BatchGuard {
+		fn drop(&mut self) {
+			let _ = try_with_runtime(|rt| {
+				let should_flush = {
+					let mut depth = rt.batch_depth.borrow_mut();
+					debug_assert!(*depth > 0, "reactive batch depth underflow");
+					*depth -= 1;
+					*depth == 0 && !rt.pending_updates.borrow().is_empty()
+				};
+
+				if should_flush {
+					rt.flush_updates();
+				}
+			});
+		}
+	}
+
+	with_runtime(|rt| {
+		*rt.batch_depth.borrow_mut() += 1;
+	});
+
+	let _guard = BatchGuard;
+	f()
 }
 
 /// Try to access the global runtime (safe version for Drop implementations)
