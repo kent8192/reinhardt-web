@@ -8,11 +8,6 @@ mod native {
 
 	#[tokio::main]
 	pub(super) async fn main() {
-		// SAFETY: Set once at process startup before tasks are spawned.
-		unsafe {
-			std::env::set_var("REINHARDT_SETTINGS_MODULE", "examples_todo.config.settings");
-		}
-
 		if let Err(error) = execute_from_command_line().await {
 			eprintln!("Error: {error}");
 			process::exit(1);
@@ -22,6 +17,12 @@ mod native {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
+	// SAFETY: Executed before the Tokio runtime is created and before any
+	// additional threads are spawned, so the process environment is mutated
+	// while the program is still single-threaded.
+	unsafe {
+		std::env::set_var("REINHARDT_SETTINGS_MODULE", "examples_todo.config.settings");
+	}
 	native::main();
 }
 
