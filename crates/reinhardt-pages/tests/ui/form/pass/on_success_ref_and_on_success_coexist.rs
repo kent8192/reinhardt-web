@@ -9,13 +9,13 @@
 use reinhardt_pages::form;
 
 mod server_fns {
-	// Signature mirrors what `form!` calls at runtime: one positional
-	// arg per field + a trailing CSRF arg (auto-injected for POST).
-	// Returns a Future-of-Result so the on_success_ref type-safety
-	// guard can extract `T = i64`.
+	// Signature mirrors the `on_success_ref:` type-safety probe, which calls
+	// the server_fn with one positional arg per form field (the only
+	// host-compiled reference to the server_fn arity; the wasm onsubmit call
+	// is `cfg`-gated out here). Returns a Future-of-Result so the probe can
+	// extract `T = i64`.
 	pub async fn update_profile(
 		_name: ::std::string::String,
-		_csrf: ::std::string::String,
 	) -> ::core::result::Result<i64, ::core::convert::Infallible> {
 		::core::result::Result::Ok(0)
 	}

@@ -58,6 +58,10 @@ struct Item {
 	value: i32,
 }
 
+fn item(name: impl Into<String>, value: i32) -> Item {
+	Item::build().name(name).value(value).finish()
+}
+
 // ============================================================================
 // Table Identifiers (for reinhardt-query operations)
 // ============================================================================
@@ -119,7 +123,7 @@ async fn items_with_data(#[future] items_table: Arc<PgPool>) -> Arc<PgPool> {
 
 	// Insert sample items
 	for i in 1..=3 {
-		let item = Item::new(format!("Item {}", i), i * 10);
+		let item = item(format!("Item {}", i), i * 10);
 
 		let sql = "INSERT INTO items (name, value) VALUES ($1, $2)";
 		sqlx::query(sql)

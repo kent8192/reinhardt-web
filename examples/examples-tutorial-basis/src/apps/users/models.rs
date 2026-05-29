@@ -9,7 +9,7 @@
 //! both the schema and the SignupForm small.
 //!
 //! All registration / authentication-state changes from application code
-//! go through [`UserManager`] (a project-local implementation of
+//! go through [`AuthUserManager`] (a project-local implementation of
 //! `BaseUserManager<User>`) rather than constructing `User` instances
 //! by hand — see the `register` server function in
 //! `crate::apps::users::server_fn`.
@@ -21,7 +21,7 @@
 //! the framework discovers at startup), which calls
 //! `User::objects().create(&user)` directly. That path therefore
 //! **bypasses** the password-length / username trim / uniqueness checks
-//! that [`UserManager::build_user`] performs for the application signup
+//! that [`AuthUserManager::build_user`] performs for the application signup
 //! flow. Acceptable for the tutorial CLI. Auto-registration for minimal
 //! user models without `full = true` is the resolution of
 //! reinhardt-web#4522 — no manual `SuperuserInit` impl or
@@ -33,9 +33,9 @@ use reinhardt::macros::user;
 use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
 
-// `manager = false` opts out of the auto-generated `UserManager` that
+// `manager = false` opts out of the auto-generated manager that
 // `#[user(...)]` emits by default since reinhardt-web#4451 — the tutorial
-// keeps its own DB-backed `UserManager` below (registered via
+// keeps its own DB-backed `AuthUserManager` below (registered via
 // `#[injectable_factory]`) which would otherwise be shadowed. The
 // auto-manager is also gated to `Uuid` / `Option<Uuid>` primary keys
 // (issue #4455), and this model uses `i64` to demonstrate auto-increment
@@ -90,9 +90,13 @@ mod manager {
 
 	/// Project-local `BaseUserManager<User>` implementation.
 	///
+	/// Named `AuthUserManager` (rather than `UserManager`) to avoid
+	/// confusion with the auto-generated manager that `#[user(...)]` can
+	/// emit — the tutorial opts out via `manager = false`.
+	///
 	/// Encapsulates the "create + hash + persist" pipeline for the tutorial
 	/// `User`. Server functions receive an injected instance via
-	/// `#[inject] um: Depends<UserManager>` and delegate to `create_user`
+	/// `#[inject] um: Depends<AuthUserManager>` and delegate to `create_user`
 	/// / `create_superuser` so password hashing, uniqueness checks, and
 	/// saves stay in a single place.
 	///
@@ -102,7 +106,7 @@ mod manager {
 	/// shadow this hand-written one — and because the auto-manager is gated
 	/// to `Uuid` / `Option<Uuid>` primary keys (issue #4455) whereas this
 	/// model uses `i64`. `Clone` is derived so a server function can pull an
-	/// owned `UserManager` out of `Depends<_>` and invoke the
+	/// owned `AuthUserManager` out of `Depends<_>` and invoke the
 	/// `BaseUserManager::create_user(&mut self, …)` trait method without
 	/// fighting `Arc` mutability.
 	///
@@ -113,16 +117,16 @@ mod manager {
 	/// `examples/CLAUDE.md` DM-1 ("Reinhardt Dependencies Only"); the
 	/// `#[injectable_factory]` path does not have this issue. See #4445.
 	#[derive(Clone)]
-	pub struct UserManager {
+	pub struct AuthUserManager {
 		db: DatabaseConnection,
 	}
 
 	#[injectable_factory(scope = "transient")]
-	async fn user_manager_factory(#[inject] db: Depends<DatabaseConnection>) -> UserManager {
-		UserManager { db: (*db).clone() }
+	async fn auth_user_manager_factory(#[inject] db: Depends<DatabaseConnection>) -> AuthUserManager {
+		AuthUserManager { db: (*db).clone() }
 	}
 
-	impl UserManager {
+	impl AuthUserManager {
 		async fn build_user(
 			&self,
 			username: &str,
@@ -178,7 +182,7 @@ mod manager {
 	}
 
 	#[async_trait]
-	impl BaseUserManager<User> for UserManager {
+	impl BaseUserManager<User> for AuthUserManager {
 		async fn create_user(
 			&mut self,
 			username: &str,
@@ -209,4 +213,4 @@ mod manager {
 }
 
 #[cfg(native)]
-pub use manager::UserManager;
+pub use manager::AuthUserManager;

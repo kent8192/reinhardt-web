@@ -1,5 +1,14 @@
-error[E0412]: cannot find type `NoInfoItemInfo` in this scope
+error[E0425]: cannot find type `NoInfoItemInfo` in this scope
   --> tests/macros/ui/fail/info_opt_out_no_type.rs:19:13
    |
+10 | struct NoInfoItem {
+   | ----------------- similarly named struct `NoInfoItem` defined here
+...
 19 |     let _x: NoInfoItemInfo;
-   |             ^^^^^^^^^^^^^^ not found in this scope
+   |             ^^^^^^^^^^^^^^
+   |
+help: a struct with a similar name exists
+   |
+19 -     let _x: NoInfoItemInfo;
+19 +     let _x: NoInfoItem;
+   |

@@ -12,7 +12,7 @@ use bytes::Bytes;
 use hyper::{HeaderMap, Method, Version, header};
 use reinhardt_di::params::{Json, ParamContext, Path, Query};
 use reinhardt_di::{
-	Depends, DiError, Injectable, InjectionContext, Request, SingletonScope, global_registry,
+	DiError, Injectable, InjectionContext, Request, SingletonScope, global_registry,
 	injectable_factory,
 };
 use reinhardt_http::PathParams;
@@ -239,8 +239,19 @@ async fn injectable_factory_can_consume_path_extractor() {
 	);
 }
 
-// Combined extractor + Depends — proves that the macro fallback path keeps
-// working alongside the new Injectable impls.
+// Combined extractor + Injectable dependency — proves that the macro's
+// `Injectable::inject` fallback path keeps working alongside the new
+// extractor `Injectable` impls.
+//
+// `AppContext` exposes its DI surface through a manual `impl Injectable`
+// only (it is never registered in the global registry). Per the
+// `#[injectable_factory]` contract (kent8192/reinhardt-web#4685), a
+// manually-Injectable, unregistered type MUST be requested via the
+// non-`Depends` `#[inject] T` form, which resolves through
+// `Depends::<T>::resolve` (registry-first + `T::inject` fallback). The
+// `Depends<T>` form is reserved for factory-produced types that resolve via
+// the registry only (`resolve_from_registry`, no `Injectable` bound) — see
+// `injectable_factory_inject_fallback_tests.rs`.
 
 #[derive(Clone, Debug, PartialEq)]
 struct AppContext {
@@ -263,7 +274,7 @@ struct AuthoredItemWithCtx {
 #[injectable_factory(scope = "request")]
 async fn authored_item_with_ctx(
 	#[inject] path: Path<i64>,
-	#[inject] app: Depends<AppContext>,
+	#[inject] app: AppContext,
 ) -> AuthoredItemWithCtx {
 	AuthoredItemWithCtx {
 		id: path.0,

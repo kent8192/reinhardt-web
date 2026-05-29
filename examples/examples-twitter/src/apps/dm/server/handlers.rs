@@ -141,9 +141,11 @@ impl DMHandler {
 			.map_err(|e| WebSocketError::Internal(format!("Invalid sender_id: {}", e)))?;
 
 		// Create and persist the message to database
-		// Note: DMMessage::new arguments order is (content, room_id, sender_id)
-		// ForeignKeyField parameters come after non-FK fields
-		let message = DMMessage::new(content.to_string(), room_uuid, sender_uuid);
+		let message = DMMessage::build()
+			.content(content)
+			.room(room_uuid)
+			.sender(sender_uuid)
+			.finish();
 
 		// Save message using create_with_conn
 		DMMessage::objects()
