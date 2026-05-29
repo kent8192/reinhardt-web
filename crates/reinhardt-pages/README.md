@@ -11,6 +11,9 @@ WASM-based reactive frontend framework for Reinhardt with Django-like API.
 - **Security First**: Built-in CSRF protection, XSS prevention, and session management
 - **Simplified Conditional Compilation**: `cfg_aliases` integration and automatic event handler handling
 
+For a React concept mapping, see
+[Reinhardt Pages for React developers](docs/react_to_reinhardt.md).
+
 ## Quick Start
 
 ### Using the Prelude (Recommended)
@@ -272,6 +275,7 @@ The prelude includes:
 - `ApiModel`, `ApiQuerySet`, `Filter`, `FilterOp`
 - `ServerFn`, `ServerFnError`
 - See [Server Function Macro Guide](docs/server_fn_macro.md) for detailed usage and migration information
+- See [React-to-Reinhardt Guide](docs/react_to_reinhardt.md) for React hooks, JSX, actions, routing, SSR, and hydration mappings
 
 ### Authentication and Security
 - `AuthData`, `AuthError`, `AuthState`, `auth_state`
