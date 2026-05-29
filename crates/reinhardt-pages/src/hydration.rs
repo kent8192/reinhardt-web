@@ -33,7 +33,9 @@ mod runtime;
 pub use events::{
 	AttachOptions, EventBinding, EventRegistry, attach_event, attach_events_recursive,
 };
-pub use reconcile::{ReconcileError, ReconcileOptions, reconcile, reconcile_with_options};
+pub use reconcile::{
+	ReconcileError, ReconcileOptions, ReconcilePath, reconcile, reconcile_with_options,
+};
 pub use runtime::{
 	HydrationContext, HydrationError, hydrate, hydrate_root, init_hydration_state,
 	is_hydration_complete, on_hydration_complete,

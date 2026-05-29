@@ -171,7 +171,7 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 
 	// 3. Reconcile DOM structure
 	reconcile(root, &view)
-		.map_err(|e| HydrationError::StateParseError(format!("Reconciliation failed: {:?}", e)))?;
+		.map_err(|e| HydrationError::StateParseError(format!("Reconciliation failed: {}", e)))?;
 	web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
 
 	// 4. Attach event handlers
