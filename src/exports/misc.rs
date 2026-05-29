@@ -3,7 +3,11 @@
 // Third-party trait re-exports for user convenience
 #[cfg(native)]
 pub use async_trait::async_trait;
-pub use serde::{Deserialize, Serialize};
+// `serde` is not a direct dependency of this crate; it is re-exported through
+// `reinhardt_core::serde` (gated by reinhardt-core's `serde` feature), which is
+// surfaced as `crate::core` only when the `core` feature is enabled.
+#[cfg(feature = "core")]
+pub use crate::core::serde::{Deserialize, Serialize};
 
 #[cfg(feature = "tasks")]
 pub use reinhardt_tasks::{Scheduler, Task, TaskExecutor, TaskQueue};
