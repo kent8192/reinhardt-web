@@ -183,18 +183,18 @@ impl<T: Clone + 'static> Memo<T> {
 		let id = NodeId::new();
 		let disposed = Rc::new(RefCell::new(false));
 
-		// Store the computation function
-		let disposed_clone = disposed.clone();
+		// Store the computation function.
+		//
+		// The stored closure must NOT capture a clone of `disposed`. `Drop`
+		// uses `Rc::strong_count(&self.disposed) == 1` to detect the last live
+		// clone; a strong reference held by this long-lived closure would keep
+		// the count above 1 forever, so `dispose()` would never run and the
+		// memo node would leak in the runtime. `dispose()` removes the
+		// `MEMO_FUNCTIONS` entry, so this closure is never invoked after
+		// disposal and needs no disposed-flag guard.
 		MEMO_FUNCTIONS.with(|storage| {
 			let mut storage = storage.borrow_mut();
-			let boxed: Box<dyn core::any::Any> = Box::new(Box::new(move || {
-				if !*disposed_clone.borrow() {
-					f()
-				} else {
-					// Return default value if disposed (this should never be called)
-					panic!("Attempted to compute a disposed Memo");
-				}
-			}) as MemoFn<T>);
+			let boxed: Box<dyn core::any::Any> = Box::new(Box::new(f) as MemoFn<T>);
 			storage.insert(id, boxed);
 		});
 
@@ -244,16 +244,11 @@ impl<T: Clone + 'static> Memo<T> {
 		// requires Signal reads inside f to NOT auto-subscribe. The
 		// `run_without_observer` call detaches the stack for the duration
 		// of f.
-		let disposed_for_closure = disposed.clone();
-		let f_wrapped = move || {
-			if *disposed_for_closure.borrow() {
-				// Compute MUST NOT happen after dispose; the call site of
-				// `compute_value` is guarded by EFFECT_TIMING / MEMO_VALUES
-				// presence so this branch is defensive only.
-				panic!("Attempted to compute a disposed Memo");
-			}
-			super::runtime::run_without_observer(&mut f)
-		};
+		// See `Memo::new`: the wrapped closure must not hold a strong clone of
+		// `disposed`, or `Drop`'s `strong_count == 1` last-clone check can
+		// never fire. `dispose()` removes the `MEMO_FUNCTIONS` entry, so this
+		// closure is never run after disposal.
+		let f_wrapped = move || super::runtime::run_without_observer(&mut f);
 
 		MEMO_FUNCTIONS.with(|storage| {
 			let boxed: Box<dyn core::any::Any> = Box::new(Box::new(f_wrapped) as MemoFn<T>);
