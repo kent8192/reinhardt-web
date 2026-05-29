@@ -508,8 +508,10 @@ fn collect_expected_child(
 			}
 		}
 		Page::KeyedFragment(keyed_children) => {
-			let child_views: Vec<Page> =
-				keyed_children.iter().map(|(_, view)| view.clone()).collect();
+			let child_views: Vec<Page> = keyed_children
+				.iter()
+				.map(|(_, view)| view.clone())
+				.collect();
 			collect_expected_children(&child_views, &path, children);
 		}
 		_ => children.push((path, view.clone())),
@@ -613,10 +615,8 @@ fn reconcile_with_options_at_path(
 	};
 
 	// Perform reconciliation if applicable
-	if should_reconcile {
-		if let Err(err) = reconcile_at_path(element, view, path.clone()) {
-			handle_reconcile_error(err, options)?;
-		}
+	if should_reconcile && let Err(err) = reconcile_at_path(element, view, path.clone()) {
+		handle_reconcile_error(err, options)?;
 	}
 
 	// Recursively process children, unless this is an island boundary
@@ -648,7 +648,10 @@ fn reconcile_options_children_at_path(
 		Page::Element(el_view) => el_view.child_views(),
 		Page::Fragment(views) => views,
 		Page::KeyedFragment(views) => {
-			keyed_child_views = views.iter().map(|(_, view)| view.clone()).collect::<Vec<_>>();
+			keyed_child_views = views
+				.iter()
+				.map(|(_, view)| view.clone())
+				.collect::<Vec<_>>();
 			&keyed_child_views
 		}
 		Page::WithHead { view, .. } => {
@@ -696,12 +699,11 @@ fn reconcile_options_children_at_path(
 				options,
 				child_path.clone(),
 			)?;
-		} else if matches!(child_view, Page::Element(_)) {
-			if let Err(err) =
+		} else if matches!(child_view, Page::Element(_))
+			&& let Err(err) =
 				reconcile_dom_node_at_path(actual_node, child_view, child_path.clone())
-			{
-				handle_reconcile_error(err, options)?;
-			}
+		{
+			handle_reconcile_error(err, options)?;
 		}
 	}
 

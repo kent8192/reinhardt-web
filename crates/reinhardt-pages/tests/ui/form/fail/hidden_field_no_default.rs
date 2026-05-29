@@ -27,7 +27,7 @@ fn main() {
 		name: BadForm,
 		action: "/x",
 		fields: {
-			data: HiddenField<NoDefault> { },
+			data: HiddenField<NoDefault> {},
 		}
 	};
 }

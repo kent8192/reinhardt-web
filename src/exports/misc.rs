@@ -11,27 +11,37 @@ pub use async_trait::async_trait;
 #[cfg(all(feature = "core", native))]
 pub use crate::core::serde::{Deserialize, Serialize};
 
-#[cfg(feature = "tasks")]
+// `reinhardt-tasks`, `reinhardt-test`, `reinhardt-utils`, and `reinhardt-auth`
+// are declared as dependencies only under
+// `[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]`
+// (see Cargo.toml), i.e. they are native-only crates. Their feature flags
+// (`tasks`, `test`, `storage`, `cache`, `sessions`, ...) can still be enabled on
+// WASM, so each re-export below must be gated by `native` in addition to its
+// feature — otherwise the path resolves to an unlinked crate and the build fails
+// on `wasm32-unknown-unknown` (regression guarded by the WASM consumer fixture,
+// reinhardt-web#4161).
+#[cfg(all(feature = "tasks", native))]
 pub use reinhardt_tasks::{Scheduler, Task, TaskExecutor, TaskQueue};
 
-#[cfg(feature = "test")]
+#[cfg(all(feature = "test", native))]
 pub use reinhardt_test::{APIClient, APIRequestFactory, APITestCase, TestResponse};
 
-#[cfg(feature = "storage")]
+#[cfg(all(feature = "storage", native))]
 pub use reinhardt_utils::storage::{InMemoryStorage, LocalStorage, Storage};
 
-#[cfg(feature = "cache")]
+#[cfg(all(feature = "cache", native))]
 pub use reinhardt_utils::cache::{Cache, CacheKeyBuilder, InMemoryCache};
 
-#[cfg(all(feature = "cache", feature = "redis-backend"))]
+#[cfg(all(feature = "cache", feature = "redis-backend", native))]
 pub use reinhardt_utils::cache::RedisCache;
 
 // Sessions (gated by `sessions` feature, NOT `auth` — sessions can be
-// used independently of the auth module)
-#[cfg(feature = "sessions")]
+// used independently of the auth module). Still native-only: `reinhardt-auth`
+// is a native-only dependency (see the note above).
+#[cfg(all(feature = "sessions", native))]
 pub use reinhardt_auth::sessions::{
 	CacheSessionBackend, InMemorySessionBackend, Session, SessionBackend, SessionError,
 };
 
-#[cfg(all(feature = "sessions", feature = "middleware"))]
+#[cfg(all(feature = "sessions", feature = "middleware", native))]
 pub use reinhardt_auth::sessions::{HttpSessionConfig, SameSite, SessionMiddleware};
