@@ -46,6 +46,11 @@ jobs:
           - example: examples-twitter
             needs-docker: true
             needs-wasm: true
+            # Build the example's own WASM library (not just the framework
+            # crates) to catch client-SPA drift from the page!/form! API
+            # (reinhardt-web#4995). Scoped to examples-twitter for now; other
+            # WASM examples can opt in once their client code is verified.
+            wasm-lib-check: true
 
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -137,6 +142,11 @@ jobs:
       - name: Check WASM compilation (framework crates)
         if: ${{ matrix.needs-wasm }}
         run: cargo check --target wasm32-unknown-unknown -p reinhardt-core -p reinhardt-urls --features reinhardt-core/full,reinhardt-urls/client-router
+
+      - name: Check WASM compilation (example library)
+        if: ${{ matrix.wasm-lib-check }}
+        working-directory: examples/${{ matrix.example }}
+        run: cargo check --target wasm32-unknown-unknown --lib
 
       - name: Install Chrome
         if: ${{ matrix.needs-wasm }}
