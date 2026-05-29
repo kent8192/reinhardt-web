@@ -40,6 +40,9 @@ async fn gcs_overwrites_and_handles_empty_files() {
 
 	assert_eq!(fixture.backend.open(name).await.unwrap(), Vec::<u8>::new());
 	assert_eq!(fixture.backend.size(name).await.unwrap(), 0);
+
+	// Cleanup
+	fixture.backend.delete(name).await.unwrap();
 }
 
 #[tokio::test]
@@ -88,4 +91,7 @@ async fn gcs_generates_signed_url_shape() {
 		response.status()
 	);
 	assert_eq!(response.bytes().await.unwrap().as_ref(), b"signed content");
+
+	// Cleanup
+	fixture.backend.delete(name).await.unwrap();
 }

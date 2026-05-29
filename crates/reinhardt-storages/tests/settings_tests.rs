@@ -44,9 +44,12 @@ fn rejects_selected_backend_without_matching_nested_settings() {
 
 	let result = settings.to_config();
 
-	assert!(
-		matches!(result, Err(StorageError::ConfigError(message)) if message.contains("storage.azure"))
-	);
+	match result {
+		Err(StorageError::ConfigError(message)) => {
+			assert_eq!(message, "Selected backend requires [storage.azure] settings");
+		}
+		other => panic!("Expected ConfigError, got {other:?}"),
+	}
 }
 
 #[test]

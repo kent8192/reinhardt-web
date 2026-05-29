@@ -74,9 +74,12 @@ base_path = "{}"
 
 		let result = create_storage_from_settings(&settings).await;
 
-		assert!(
-			matches!(result, Err(StorageError::ConfigError(message)) if message.contains("storage.gcs"))
-		);
+		match result {
+			Err(StorageError::ConfigError(message)) => {
+				assert_eq!(message, "Selected backend requires [storage.gcs] settings");
+			}
+			other => panic!("Expected ConfigError, got {other:?}"),
+		}
 	}
 
 	#[rstest]
