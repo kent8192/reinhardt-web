@@ -835,10 +835,26 @@ mod tests {
 	}
 
 	#[test]
+	fn retrieve_update_explicit_queryset_overrides_model_objects() {
+		let view = RetrieveUpdateAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new()
+			.with_queryset(explicit_queryset());
+
+		assert_explicit_queryset(view.get_queryset());
+	}
+
+	#[test]
 	fn retrieve_destroy_default_queryset_uses_model_objects() {
 		let view = RetrieveDestroyAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new();
 
 		assert_default_manager_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn retrieve_destroy_explicit_queryset_overrides_model_objects() {
+		let view = RetrieveDestroyAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new()
+			.with_queryset(explicit_queryset());
+
+		assert_explicit_queryset(view.get_queryset());
 	}
 
 	#[test]

@@ -342,24 +342,25 @@ Every test in `mod server_fn_tests` that calls `reinitialize_database` carries `
 
 ### Pattern C — authorization tests with no schema
 
-The third module, `auth_tests`, demonstrates that not every native integration test needs a full schema. The CUD `#[server_fn]`s in `apps::polls::server_fn` all start with a `session_user.require_active()?` gate (resolved from the `Depends<SessionUser>` DI factory in `apps::polls::di`); if the session is empty the factory yields `SessionUser::Anonymous` and `require_active()` returns 401 *before* the handler touches the database, so the fixture is an empty SQLite file:
+The third module, `auth_tests`, demonstrates that not every native integration test needs a full schema. The CUD `#[server_fn]`s in `apps::polls::server_fn` all start with a `(*session_user).as_ref().map_err(ServerFnError::from)?` gate (resolved from the `Depends<Result<User, SessionError>>` DI factory in `apps::polls::di`); when the session is empty the factory yields `Err(SessionError::Anonymous)` and the `From<&SessionError> for ServerFnError` conversion returns 401 *before* the handler touches the database, so the fixture is an empty SQLite file:
 
 ```rust
 #[cfg(with_reinhardt)]
 mod auth_tests {
+    use examples_tutorial_basis::apps::polls::di::SessionError;
     use examples_tutorial_basis::apps::polls::server_fn::{
         create_choice, create_question, delete_choice, delete_question, update_choice,
         update_question,
     };
+    use examples_tutorial_basis::apps::users::models::User;
     use reinhardt::DatabaseConnection;
-    use reinhardt::middleware::session::SessionData;
+    use reinhardt::di::Depends;
     use rstest::*;
-    use std::time::Duration;
     use tempfile::NamedTempFile;
 
     /// Fixture: an empty SQLite database + DatabaseConnection wired through
     /// reinhardt-orm. No tables are created; the authorization tests below
-    /// short-circuit on `session_user.require_active()` before any query runs.
+    /// short-circuit on the `SessionError` gate before any query runs.
     #[fixture]
     async fn empty_db_conn() -> (NamedTempFile, DatabaseConnection) {
         let temp_file = NamedTempFile::new().expect("Failed to create temp file");
@@ -371,11 +372,15 @@ mod auth_tests {
         (temp_file, db_conn)
     }
 
-    /// Empty (anonymous) session — has no `user_id` key, so the
-    /// `SessionUser` DI factory resolves to `SessionUser::Anonymous`
-    /// and every `session_user.require_active()` call rejects it with 401.
-    fn anonymous_session() -> SessionData {
-        SessionData::new(Duration::from_secs(60))
+    /// Anonymous session error wrapped in `Depends<Result<User, SessionError>>`
+    /// — the same value the request-scoped `session_user_factory` in
+    /// `apps::polls::di` would produce for a `SessionData` without a
+    /// `user_id` key. We construct it directly with `Depends::from_value`
+    /// so the test does not need to spin up the middleware stack or the DI
+    /// container; the gate under test is `From<&SessionError> for
+    /// ServerFnError`, not the factory itself.
+    fn anonymous_session_user() -> Depends<Result<User, SessionError>> {
+        Depends::from_value(Err(SessionError::Anonymous))
     }
 
     #[rstest]
@@ -385,14 +390,14 @@ mod auth_tests {
     ) {
         // Arrange
         let (_file, db_conn) = empty_db_conn.await;
-        let session = anonymous_session();
+        let session_user = anonymous_session_user();
 
         // Act
         let result = create_question(
             "Anonymous attempt".to_string(),
             "csrf-token-ignored".to_string(),
             db_conn,
-            session,
+            session_user,
         )
         .await;
 
@@ -405,7 +410,7 @@ mod auth_tests {
 }
 ```
 
-This is the canonical example of a test that follows AAA explicitly: three lines for Arrange, one block for Act, one line for Assert. The named `anonymous_session()` helper hides the only piece of setup shared across all six tests in this module.
+This is the canonical example of a test that follows AAA explicitly: three lines for Arrange, one block for Act, one line for Assert. The named `anonymous_session_user()` helper hides the only piece of setup shared across all six tests in this module.
 
 The `assert_unauthorized` helper near the top of the module shows how to keep brittle string-matching contained:
 
@@ -417,10 +422,11 @@ fn assert_unauthorized<T>(
     let err = result
         .err()
         .unwrap_or_else(|| panic!("{} should reject anonymous callers", operation));
-    // The `SessionUser::require_active()` gate emits
-    // `ServerFnError::server(401, ...)`. We match on the rendered Display
-    // because ServerFnError does not expose the inner status as a typed
-    // accessor in the public API.
+    // The `From<&SessionError>` impl emits
+    // `ServerFnError::server(401, ...)`. We match on the Debug-formatted
+    // output because `ServerFnError` does not expose the inner status as
+    // a typed accessor in the public API, and its `Debug` impl is the
+    // most stable representation that includes the numeric status.
     let rendered = format!("{:?}", err);
     assert!(
         rendered.contains("401") || rendered.contains("Authentication required"),
@@ -635,7 +641,7 @@ A few things from earlier drafts of this chapter are intentionally absent:
 You now have three concentric rings of test coverage:
 
 1. **Inline `#[rstest]` blocks** for the small things — typestate builders, form metadata, anything pure-Rust that does not need a database. They live in the same file as the code, and `cargo make test-unit` runs them.
-2. **`tests/integration.rs`** for the things that need state — raw `sqlx` for full schema control, the reinhardt ORM via `DatabaseConnection::connect_sqlite` for real `#[server_fn]` invocation, `serial_test` to serialise tests that touch `reinitialize_database` or any other process-global, and a deliberately schema-less module for the `SessionUser` DI factory's 401 gate. `cargo make test` and `cargo make test-integration` run it.
+2. **`tests/integration.rs`** for the things that need state — raw `sqlx` for full schema control, the reinhardt ORM via `DatabaseConnection::connect_sqlite` for real `#[server_fn]` invocation, `serial_test` to serialise tests that touch `reinitialize_database` or any other process-global, and a deliberately schema-less module for the session-user DI factory's 401 gate (the `From<&SessionError>` conversion on an `Err(SessionError::Anonymous)`). `cargo make test` and `cargo make test-integration` run it.
 3. **`tests/wasm/polls_mock_test.rs`** for the typed client stubs — MSW intercepts the `window.fetch()` call from `get_questions` / `get_question_detail` / `get_question_results` / `vote`, the test asserts on the typed return value, and the polls components are mounted in headless Chrome to confirm they construct without panicking. `cargo make wasm-test` runs it.
 
 If you change a server function signature, the native integration tests notice. If you change a DTO field, the WASM mock tests notice. If you change a typestate builder field, the in-file unit tests notice. Each ring catches a different class of regression, and the `Cargo.toml` feature flags make sure they only ever compile for the target they belong to.

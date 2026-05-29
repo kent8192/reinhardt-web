@@ -5,6 +5,7 @@
 
 #![allow(dead_code)]
 #![allow(unreachable_pub)]
+#![allow(deprecated)] // Fixtures still cover compatibility config until removal.
 
 use chrono::{DateTime, Utc};
 use reinhardt_storages::{StorageBackend, StorageConfig};
@@ -459,6 +460,142 @@ pub async fn s3_backend_with_prefix() -> S3BackendOwner {
 #[fixture]
 pub async fn s3_container() -> MockS3Server {
 	MockS3Server::new().await
+}
+
+// ============================================================================
+// GCS and Azure Emulator Fixtures
+// ============================================================================
+
+#[cfg(feature = "gcs")]
+pub struct GcsFixture {
+	pub _container: testcontainers::ContainerAsync<testcontainers::GenericImage>,
+	pub backend: Arc<dyn StorageBackend>,
+	pub endpoint: String,
+	pub bucket: String,
+}
+
+#[cfg(feature = "gcs")]
+pub async fn gcs_fixture() -> GcsFixture {
+	use testcontainers::core::{ContainerPort, WaitFor};
+	use testcontainers::{GenericImage, ImageExt, runners::AsyncRunner};
+
+	let image = GenericImage::new("fsouza/fake-gcs-server", "1.52.2")
+		.with_exposed_port(ContainerPort::Tcp(4443))
+		.with_wait_for(WaitFor::seconds(1))
+		.with_startup_timeout(std::time::Duration::from_secs(120))
+		.with_cmd(vec!["-scheme", "http", "-port", "4443"]);
+
+	let container = image
+		.start()
+		.await
+		.expect("Failed to start fake-gcs-server");
+	let port = container
+		.get_host_port_ipv4(4443)
+		.await
+		.expect("Failed to get fake-gcs-server port");
+	let endpoint = format!("http://127.0.0.1:{}", port);
+	let bucket = generate_unique_name("reinhardt-gcs");
+
+	let client = reqwest::Client::new();
+	let mut last_error = None;
+	for _ in 0..20 {
+		match client
+			.post(format!("{}/storage/v1/b?project=test-project", endpoint))
+			.json(&serde_json::json!({ "name": bucket }))
+			.send()
+			.await
+		{
+			Ok(response) if response.status().is_success() => {
+				last_error = None;
+				break;
+			}
+			Ok(response) => {
+				last_error = Some(response.status().to_string());
+			}
+			Err(error) => {
+				last_error = Some(error.to_string());
+			}
+		}
+
+		tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+	}
+	assert!(
+		last_error.is_none(),
+		"fake GCS bucket creation failed: {}",
+		last_error.unwrap_or_else(|| "unknown error".to_string())
+	);
+
+	let config = StorageConfig::Gcs(reinhardt_storages::config::GcsConfig {
+		bucket: bucket.clone(),
+		prefix: None,
+		endpoint: Some(endpoint.clone()),
+		service_account_json: None,
+	});
+	let backend = reinhardt_storages::create_storage(config)
+		.await
+		.expect("Failed to create GCS backend");
+
+	GcsFixture {
+		_container: container,
+		backend,
+		endpoint,
+		bucket,
+	}
+}
+
+#[cfg(feature = "azure")]
+pub const AZURITE_ACCOUNT: &str = "devstoreaccount1";
+
+#[cfg(feature = "azure")]
+pub const AZURITE_KEY: &str =
+	"Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==";
+
+#[cfg(feature = "azure")]
+pub struct AzureFixture {
+	pub _container: testcontainers::ContainerAsync<testcontainers::GenericImage>,
+	pub backend: Arc<dyn StorageBackend>,
+	pub endpoint: String,
+	pub container_name: String,
+}
+
+#[cfg(feature = "azure")]
+pub async fn azure_fixture() -> AzureFixture {
+	use testcontainers::core::{ContainerPort, WaitFor};
+	use testcontainers::{GenericImage, ImageExt, runners::AsyncRunner};
+
+	let image = GenericImage::new("mcr.microsoft.com/azure-storage/azurite", "3.35.0")
+		.with_exposed_port(ContainerPort::Tcp(10000))
+		.with_wait_for(WaitFor::seconds(1))
+		.with_startup_timeout(std::time::Duration::from_secs(120))
+		.with_cmd(vec!["azurite-blob", "--blobHost", "0.0.0.0"]);
+
+	let container = image.start().await.expect("Failed to start Azurite");
+	let port = container
+		.get_host_port_ipv4(10000)
+		.await
+		.expect("Failed to get Azurite port");
+	let endpoint = format!("http://127.0.0.1:{}/{}", port, AZURITE_ACCOUNT);
+	let container_name = generate_unique_name("reinhardt").replace('_', "-");
+
+	let config = StorageConfig::Azure(reinhardt_storages::config::AzureConfig {
+		account: AZURITE_ACCOUNT.to_string(),
+		container: container_name.clone(),
+		prefix: None,
+		endpoint: Some(endpoint.clone()),
+		access_key: Some(AZURITE_KEY.into()),
+		sas_token: None,
+		connection_string: None,
+	});
+	let backend = reinhardt_storages::create_storage(config)
+		.await
+		.expect("Failed to create Azure backend");
+
+	AzureFixture {
+		_container: container,
+		backend,
+		endpoint,
+		container_name,
+	}
 }
 
 // ============================================================================

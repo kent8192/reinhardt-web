@@ -23,7 +23,7 @@ fn main() {
 		name: MetadataForm,
 		action: "/api/metadata",
 		fields: {
-			data: JsonField {
+			data: JsonField<Metadata> {
 				initial: Metadata::default(),
 			}
 		}
