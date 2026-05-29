@@ -32,7 +32,7 @@ fn main() {
 		name: PrefsForm,
 		action: "/api/prefs",
 		fields: {
-			prefs: JsonField {
+			prefs: JsonField<UserPrefs> {
 				initial: UserPrefs::default(),
 			}
 		}

@@ -7,7 +7,7 @@ fn main() {
 		name: NumericForm,
 		action: "/api/numeric",
 		fields: {
-			question_id: HiddenField {
+			question_id: HiddenField<i64> {
 				initial: 42i64,
 			}
 		}
