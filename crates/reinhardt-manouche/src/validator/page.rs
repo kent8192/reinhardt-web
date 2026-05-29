@@ -145,6 +145,7 @@ fn transform_for(for_node: &PageFor, parent_tags: &[String]) -> Result<TypedPage
 	Ok(TypedPageFor {
 		pat: for_node.pat.clone(),
 		iter: for_node.iter.clone(),
+		key: for_node.key.clone(),
 		body,
 		span: for_node.span,
 	})

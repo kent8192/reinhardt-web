@@ -44,13 +44,13 @@ pub async fn create_tweet(
 	// AuthUser(user) destructuring guarantees authenticated user
 	let user_id = user.id();
 
-	// Create Tweet model using new() method
-	let tweet = Tweet::new(
-		request.content.clone(),
-		0,       // like_count
-		0,       // retweet_count
-		user_id, // ForeignKeyField parameter (Uuid)
-	);
+	// Create Tweet model using the generated builder.
+	let tweet = Tweet::build()
+		.content(request.content.clone())
+		.like_count(0)
+		.retweet_count(0)
+		.user(user_id)
+		.finish();
 
 	// Save to database
 	Tweet::objects()

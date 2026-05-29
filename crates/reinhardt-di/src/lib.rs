@@ -306,7 +306,7 @@ pub use override_registry::OverrideRegistry;
 
 #[cfg(feature = "params")]
 pub use context::{ParamContext, Request};
-pub use depends::{Depends, DependsBuilder};
+pub use depends::{Depends, DependsBuilder, DependsOption, DependsResult};
 pub use injectable::Injectable;
 pub use injected::{DependencyScope as InjectedScope, InjectionMetadata};
 pub use provider::{Provider, ProviderFn};

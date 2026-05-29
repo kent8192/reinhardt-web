@@ -4,11 +4,18 @@
 //! This is designed for handling async operations like API calls, form submissions,
 //! and other side effects that return a `Result`.
 
+use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
 
+use super::action::OptimisticState;
 use crate::reactive::Signal;
 use reinhardt_core::reactive::deps::Trackable;
+
+type ErrorCallback = Rc<dyn Fn()>;
+type SuccessCallback<T> = Rc<dyn Fn(&T)>;
+type SharedErrorCallback = Rc<RefCell<ErrorCallback>>;
+type SharedSuccessCallback<T> = Rc<RefCell<SuccessCallback<T>>>;
 
 /// Represents the current phase of an async action.
 ///
@@ -111,6 +118,8 @@ pub struct Action<T: Clone + 'static, E: Clone + 'static> {
 	dispatch_fn: Rc<dyn Fn()>,
 	/// Stores the payload setter so dispatch can pass payload before triggering.
 	payload_setter: Rc<dyn Fn(Box<dyn std::any::Any>)>,
+	on_error: SharedErrorCallback,
+	on_success: SharedSuccessCallback<T>,
 }
 
 impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
@@ -159,6 +168,41 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	pub fn reset(&self) {
 		self.state.set(ActionPhase::Idle);
 	}
+
+	/// Connects this action to an optimistic state.
+	///
+	/// Successful completions confirm the optimistic value with the action
+	/// result; failures revert it to the last confirmed value.
+	pub fn with_optimistic(self, optimistic: OptimisticState<T>) -> Self {
+		let optimistic_for_error = optimistic.clone();
+		*self.on_error.borrow_mut() = Rc::new(move || {
+			optimistic_for_error.revert();
+		});
+
+		*self.on_success.borrow_mut() = Rc::new(move |value: &T| {
+			optimistic.confirm(value.clone());
+		});
+
+		self
+	}
+
+	#[cfg(test)]
+	fn force_error_for_test(&self, err: E) {
+		let on_error = self.on_error.borrow().clone();
+		crate::reactive::batch(|| {
+			on_error();
+			self.state.set(ActionPhase::Error(err));
+		});
+	}
+
+	#[cfg(test)]
+	fn force_success_for_test(&self, value: T) {
+		let on_success = self.on_success.borrow().clone();
+		crate::reactive::batch(|| {
+			on_success(&value);
+			self.state.set(ActionPhase::Success(value));
+		});
+	}
 }
 
 impl<T: Clone + 'static, E: Clone + 'static> Clone for Action<T, E> {
@@ -167,6 +211,8 @@ impl<T: Clone + 'static, E: Clone + 'static> Clone for Action<T, E> {
 			state: self.state.clone(),
 			dispatch_fn: Rc::clone(&self.dispatch_fn),
 			payload_setter: Rc::clone(&self.payload_setter),
+			on_error: Rc::clone(&self.on_error),
+			on_success: Rc::clone(&self.on_success),
 		}
 	}
 }
@@ -247,10 +293,11 @@ where
 	Fut: Future<Output = Result<T, E>> + 'static,
 {
 	let state = Signal::new(ActionPhase::Idle);
+	let on_error: SharedErrorCallback = Rc::new(RefCell::new(Rc::new(|| {})));
+	let on_success: SharedSuccessCallback<T> = Rc::new(RefCell::new(Rc::new(|_: &T| {})));
 
 	// Store the payload in a shared cell so dispatch_fn can access it
-	let payload_cell: Rc<std::cell::RefCell<Option<Box<dyn std::any::Any>>>> =
-		Rc::new(std::cell::RefCell::new(None));
+	let payload_cell: Rc<RefCell<Option<Box<dyn std::any::Any>>>> = Rc::new(RefCell::new(None));
 
 	let payload_setter: Rc<dyn Fn(Box<dyn std::any::Any>)> = {
 		let payload_cell = Rc::clone(&payload_cell);
@@ -258,6 +305,11 @@ where
 			*payload_cell.borrow_mut() = Some(payload);
 		})
 	};
+
+	#[cfg(wasm)]
+	let on_error_for_dispatch = Rc::clone(&on_error);
+	#[cfg(wasm)]
+	let on_success_for_dispatch = Rc::clone(&on_success);
 
 	let dispatch_fn: Rc<dyn Fn()> = {
 		let state = state.clone();
@@ -276,12 +328,26 @@ where
 			#[cfg(wasm)]
 			{
 				use crate::spawn::spawn_task;
+				let on_error = Rc::clone(&on_error_for_dispatch);
+				let on_success = Rc::clone(&on_success_for_dispatch);
 				let state = state.clone();
 				let fut = action_fn(*payload);
 				spawn_task(async move {
 					match fut.await {
-						Ok(val) => state.set(ActionPhase::Success(val)),
-						Err(err) => state.set(ActionPhase::Error(err)),
+						Ok(val) => {
+							let on_success = on_success.borrow().clone();
+							crate::reactive::batch(|| {
+								on_success(&val);
+								state.set(ActionPhase::Success(val));
+							});
+						}
+						Err(err) => {
+							let on_error = on_error.borrow().clone();
+							crate::reactive::batch(|| {
+								on_error();
+								state.set(ActionPhase::Error(err));
+							});
+						}
 					}
 				});
 			}
@@ -299,6 +365,8 @@ where
 		state,
 		dispatch_fn,
 		payload_setter,
+		on_error,
+		on_success,
 	}
 }
 
@@ -415,5 +483,39 @@ mod tests {
 		// Assert
 		assert!(action.is_idle());
 		assert_eq!(action.phase(), ActionPhase::Idle);
+	}
+
+	#[rstest]
+	fn test_action_with_optimistic_reverts_on_error() {
+		// Arrange
+		let optimistic = super::super::action::use_optimistic(10);
+		optimistic.update_optimistic(20);
+		let action = use_action(|_: ()| async { Err::<i32, String>("fail".to_string()) })
+			.with_optimistic(optimistic.clone());
+
+		// Act
+		action.force_error_for_test("fail".to_string());
+
+		// Assert
+		assert_eq!(optimistic.get(), 10);
+		assert!(!optimistic.is_optimistic());
+		assert_eq!(action.phase(), ActionPhase::Error("fail".to_string()));
+	}
+
+	#[rstest]
+	fn test_action_with_optimistic_confirms_on_success() {
+		// Arrange
+		let optimistic = super::super::action::use_optimistic(10);
+		optimistic.update_optimistic(20);
+		let action =
+			use_action(|_: ()| async { Ok::<i32, String>(25) }).with_optimistic(optimistic.clone());
+
+		// Act
+		action.force_success_for_test(25);
+
+		// Assert
+		assert_eq!(optimistic.get(), 25);
+		assert!(!optimistic.is_optimistic());
+		assert_eq!(action.phase(), ActionPhase::Success(25));
 	}
 }
