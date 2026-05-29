@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use hyper::Method;
 use reinhardt_core::exception::{Error, Result};
-use reinhardt_db::orm::{Filter, FilterOperator, FilterValue, Model, QuerySet};
+use reinhardt_db::orm::{CustomManager, Filter, FilterOperator, FilterValue, Model, QuerySet};
 use reinhardt_http::{Request, Response};
 use reinhardt_rest::serializers::Serializer;
 use serde::{Deserialize, Serialize};
@@ -151,7 +151,7 @@ where
 
 	/// Gets the queryset, creating a default one if not set
 	fn get_queryset(&self) -> QuerySet<M> {
-		self.queryset.clone().unwrap_or_default()
+		self.queryset.clone().unwrap_or_else(|| M::objects().all())
 	}
 
 	/// Gets a single object by lookup field value from request path params
@@ -190,6 +190,31 @@ where
 {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+#[cfg(test)]
+mod queryset_tests {
+	use super::*;
+	use crate::generic::test_support::{
+		ManagedArticle, assert_default_manager_queryset, assert_explicit_queryset,
+		explicit_queryset,
+	};
+	use reinhardt_rest::serializers::JsonSerializer;
+
+	#[test]
+	fn default_queryset_uses_model_objects() {
+		let view = RetrieveAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new();
+
+		assert_default_manager_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn explicit_queryset_overrides_model_objects() {
+		let view = RetrieveAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new()
+			.with_queryset(explicit_queryset());
+
+		assert_explicit_queryset(view.get_queryset());
 	}
 }
 
