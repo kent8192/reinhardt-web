@@ -3,6 +3,11 @@
 //! A Django-inspired frontend framework for Reinhardt that preserves the benefits of
 //! Django templates while leveraging WebAssembly for modern interactivity.
 //!
+//! Use [`reactive::batch`] to group related reactive writes into one update
+//! cycle. Async [`Action`] handles can be connected to [`OptimisticState`] with
+//! [`Action::with_optimistic`] so failed mutations automatically roll back
+//! optimistic UI state.
+//!
 //! ## Features
 //!
 //! - **Fine-grained Reactivity**: Leptos/Solid.js-style Signal system with React-aligned hooks

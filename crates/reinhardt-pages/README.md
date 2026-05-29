@@ -248,12 +248,13 @@ The prelude includes:
 ### Reactive System
 - `Signal`, `Effect`, `Memo`, `Resource`, `ResourceState`
 - Context: `Context`, `ContextGuard`, `create_context`, `get_context`, `provide_context`, `remove_context`
+- Explicit batching: `reinhardt_pages::reactive::batch`
 
 ### Hooks
 - `use_state`, `use_effect`, `use_memo`, `use_callback`, `use_context`
 - `use_ref`, `use_reducer`, `use_transition`, `use_deferred_value`
 - `use_id`, `use_layout_effect`, `use_effect_event`, `use_debug_value`
-- `use_optimistic`, `use_action_state`, `use_shared_state`, `use_sync_external_store`
+- `use_optimistic`, `use_action`, `Action::with_optimistic`, `use_shared_state`, `use_sync_external_store`
 
 ### Component System
 - `Component`, `ElementView`, `IntoView`, `View`, `Props`, `ViewEventHandler`
