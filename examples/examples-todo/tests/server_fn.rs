@@ -56,7 +56,7 @@ async fn create_todo_rejects_blank_title() {
 fn todo_page_renders_route_filters_and_empty_state() {
 	let html = todo_page(TodoFilter::All).render_to_string();
 
-	assert!(html.contains("href=\"/active/\""));
-	assert!(html.contains("href=\"/completed/\""));
-	assert!(html.contains("No todos yet."));
+	assert_eq!(html.matches("href=\"/active/\"").count(), 1);
+	assert_eq!(html.matches("href=\"/completed/\"").count(), 1);
+	assert_eq!(html.matches("No todos yet.").count(), 1);
 }
