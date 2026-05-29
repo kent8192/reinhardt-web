@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.2...reinhardt-di-macros@v0.1.3) - 2026-05-29
+
+### Added
+
+- *(di)* add DependsResult and DependsOption sugar type aliases
+
+### Fixed
+
+- *(di)* resolve DependsResult/DependsOption field injection from registry
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.0-rc.30...reinhardt-di-macros@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-di-macros` as part of the

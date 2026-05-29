@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.2...reinhardt-db@v0.1.3) - 2026-05-29
+
+### Documentation
+
+- align documentation with current APIs
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-rc.30...reinhardt-db@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-db` as part of the reinhardt-web
