@@ -238,6 +238,10 @@ the direction is resolved from the currently applied state.
 | `--migrations-dir <DIR>` | Root directory containing migration files (default: `./migrations`) |
 | `-d`, `--database <URL>` | Database connection string (falls back to `DATABASE_URL`) |
 
+**Note:** Although `<APP_LABEL>` and `<MIGRATION_NAME>` are each individually
+optional, supplying a `<MIGRATION_NAME>` requires `<APP_LABEL>` to be given as
+well; otherwise the command fails with `<migration> requires <app>`.
+
 #### Migrate to a Target
 
 When a `<MIGRATION_NAME>` is given, the direction is auto-detected by comparing
