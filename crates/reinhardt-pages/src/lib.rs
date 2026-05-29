@@ -248,7 +248,7 @@ pub mod testing;
 pub mod static_resolver;
 
 // Hot Module Replacement (server-side only, feature-gated)
-#[cfg(all(not(target_arch = "wasm32"), feature = "hmr"))]
+#[cfg(all(native, feature = "hmr"))]
 pub mod hmr;
 
 // Table utilities (django-tables2 equivalent)
@@ -326,10 +326,11 @@ pub mod __private {
 
 	// `tracing` is enabled for all targets *except* browser wasm (wasm32-unknown-unknown).
 	// Browser wasm uses a different logging mechanism, so tracing is intentionally excluded there.
-	// The cfg condition `not(all(target_family = "wasm", target_os = "unknown"))` precisely
-	// targets browser wasm, which reports target_family = "wasm" and target_os = "unknown".
-	// This is intentionally different from the `reqwest` cfg above.
-	#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+	// The `native` cfg alias (defined in build.rs as
+	// `not(all(target_family = "wasm", target_os = "unknown"))`) precisely targets every
+	// non-browser-wasm platform.
+	// This is intentionally different from the `reqwest` cfg above, which spans all wasm targets.
+	#[cfg(native)]
 	pub use tracing;
 }
 

@@ -59,8 +59,9 @@ fn main() {
     println!("cargo::rustc-check-cfg=cfg(native)");
 
     cfg_aliases! {
-        wasm: { target_arch = "wasm32" },
-        native: { not(target_arch = "wasm32") },
+        // Browser-WASM only (wasm32-unknown-unknown); excludes WASI / emscripten.
+        wasm: { all(target_family = "wasm", target_os = "unknown") },
+        native: { not(all(target_family = "wasm", target_os = "unknown")) },
     }
 }
 ```
