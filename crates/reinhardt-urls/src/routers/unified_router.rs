@@ -917,9 +917,10 @@ impl UnifiedRouter {
 
 	/// Accept and discard server-side routing configuration.
 	///
-	/// On WASM, server routing is not available. The closure is called with a
-	/// no-op [`ServerRouter`](crate::routers::ServerRouter) but its result is
-	/// discarded.
+	/// On WASM, server routing is not available. The closure is accepted for
+	/// cross-target type-checking — its `ServerRouter` parameter type is unified
+	/// with the native arm — and then discarded without being invoked, so the
+	/// shared route definitions compile on both targets at zero WASM runtime cost.
 	pub fn server<F>(self, _f: F) -> Self
 	where
 		F: FnOnce(ServerRouter) -> ServerRouter,
