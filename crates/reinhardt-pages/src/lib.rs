@@ -3,11 +3,17 @@
 //! A Django-inspired frontend framework for Reinhardt that preserves the benefits of
 //! Django templates while leveraging WebAssembly for modern interactivity.
 //!
+//! Use [`reactive::batch`] to group related reactive writes into one update
+//! cycle. Async [`Action`] handles can be connected to [`OptimisticState`] with
+//! [`Action::with_optimistic`] so failed mutations automatically roll back
+//! optimistic UI state.
+//!
 //! ## Features
 //!
 //! - **Fine-grained Reactivity**: Leptos/Solid.js-style Signal system with React-aligned hooks
 //! - **Hybrid Rendering**: SSR + Client-side Hydration for optimal performance and SEO
 //! - **Django-like API**: Familiar patterns for Reinhardt developers
+//! - **Boundaries**: Suspense and error boundaries for async UI states
 //!
 //! ## React-aligned hook signatures (v0.2, Refs #4195)
 //!
@@ -245,8 +251,8 @@ pub use component::DummyEvent;
 #[cfg(wasm)]
 pub use component::cleanup_reactive_nodes;
 pub use component::{
-	Component, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, PageExt, Props,
-	ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary,
+	BoundaryError, Component, ErrorBoundary, ErrorTracker, Head, IntoPage, LinkTag, MetaTag, Page,
+	PageElement, PageExt, Props, ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary,
 };
 pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{Document, Element, EventHandle, EventType, document};

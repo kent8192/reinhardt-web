@@ -120,7 +120,10 @@ pub async fn create_room(
 		}
 	});
 
-	let room = DMRoom::new(Some(room_name), is_group);
+	let room = DMRoom::build()
+		.name(Some(room_name))
+		.is_group(is_group)
+		.finish();
 
 	// Save room to database
 	DMRoom::objects()
@@ -294,9 +297,11 @@ pub async fn send_message(
 	}
 
 	// Create message
-	// Note: DMMessage::new arguments order is (content, room_id, sender_id)
-	// ForeignKeyField parameters come after non-FK fields
-	let message = DMMessage::new(content.trim().to_string(), room_id, current_user.id());
+	let message = DMMessage::build()
+		.content(content.trim())
+		.room(room_id)
+		.sender(current_user.id())
+		.finish();
 
 	// Save message
 	DMMessage::objects()

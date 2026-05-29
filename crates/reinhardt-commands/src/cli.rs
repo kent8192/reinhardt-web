@@ -118,6 +118,10 @@ pub enum Commands {
 		/// Show migration plan without applying
 		#[arg(long)]
 		plan: bool,
+
+		/// Root directory containing migration files (default: ./migrations)
+		#[arg(long, value_name = "DIR")]
+		migrations_dir: Option<PathBuf>,
 	},
 
 	/// Start the development server
@@ -540,6 +544,7 @@ pub async fn run_command_with_registry(
 			fake,
 			fake_initial,
 			plan,
+			migrations_dir,
 		} => {
 			execute_migrate(MigrateParams {
 				app_label,
@@ -548,6 +553,7 @@ pub async fn run_command_with_registry(
 				fake,
 				fake_initial,
 				plan,
+				migrations_dir,
 				verbosity,
 			})
 			.await
@@ -769,6 +775,7 @@ struct MigrateParams {
 	fake: bool,
 	fake_initial: bool,
 	plan: bool,
+	migrations_dir: Option<PathBuf>,
 	verbosity: u8,
 }
 
@@ -795,6 +802,12 @@ async fn execute_migrate(params: MigrateParams) -> Result<(), Box<dyn std::error
 	}
 	if let Some(db) = params.database {
 		ctx.set_option("database".to_string(), db);
+	}
+	if let Some(dir) = params.migrations_dir {
+		ctx.set_option(
+			"migrations-dir".to_string(),
+			dir.to_string_lossy().to_string(),
+		);
 	}
 
 	let cmd = MigrateCommand;
@@ -1445,6 +1458,7 @@ mod tests {
 			fake: false,
 			fake_initial: false,
 			plan: false,
+			migrations_dir: None,
 		};
 
 		// Act
@@ -1905,6 +1919,7 @@ mod tests {
 			fake: false,
 			fake_initial: false,
 			plan: false,
+			migrations_dir: None,
 		};
 
 		// Act

@@ -300,6 +300,11 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 				nodes.extend(mount_before_marker(marker, child));
 			}
 		}
+		Page::KeyedFragment(children) => {
+			for (_, child) in children {
+				nodes.extend(mount_before_marker(marker, child));
+			}
+		}
 		Page::Empty => {}
 		Page::WithHead { view, .. } => {
 			// Head is handled separately; just mount the content

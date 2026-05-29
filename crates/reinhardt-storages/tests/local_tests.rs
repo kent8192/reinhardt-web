@@ -1,5 +1,7 @@
 //! Integration tests for LocalStorage backend.
 
+#![allow(deprecated)] // Tests cover legacy local config until removal.
+
 mod fixtures;
 mod utils;
 

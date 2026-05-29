@@ -1,5 +1,7 @@
 //! Amazon S3 storage backend implementation.
 
+#![allow(deprecated)] // Backend constructor keeps accepting legacy config during compatibility.
+
 use async_trait::async_trait;
 use aws_config::Region;
 use aws_sdk_s3::{Client, primitives::ByteStream};

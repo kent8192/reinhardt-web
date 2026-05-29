@@ -95,9 +95,7 @@ pub fn header(site_name: &str, current_user: Option<&UserInfo>, nav_items: &[Nav
 		})
 		.collect();
 	let nav_links_view = page!(|nav_links: Vec<Page>| {
-		for link in nav_links {
-			{ link }
-		}
+		for link in nav_links { { link } }
 	})(nav_links);
 	let brand_link = Link::new("/".to_string(), site_name.to_string())
 		.class("text-xl font-bold text-content-primary hover:text-brand transition-colors")
@@ -207,9 +205,7 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 		})()
 	} else {
 		page!(|topics_list: Vec<Page>| {
-			for topic in topics_list {
-				{ topic }
-			}
+			for topic in topics_list { { topic } }
 		})(topics_list)
 	};
 	let users_list: Vec<Page> = suggested_users
@@ -274,9 +270,7 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 		})()
 	} else {
 		page!(|users_list: Vec<Page>| {
-			for user in users_list {
-				{ user }
-			}
+			for user in users_list { { user } }
 		})(users_list)
 	};
 	page!(|topics_view: Page, users_view: Page| {

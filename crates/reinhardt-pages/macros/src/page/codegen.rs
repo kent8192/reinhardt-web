@@ -578,17 +578,37 @@ fn generate_if_branch(nodes: &[TypedPageNode], pages_crate: &TokenStream) -> Tok
 }
 
 /// Generates code for a for node.
+///
+/// The iterator expression is cloned before iteration because the enclosing
+/// `Page::reactive(move || ...)` (spec §4.1 auto-wrap) re-runs on every
+/// tracked change and must not consume the captured iterator. The iterator
+/// expression is therefore required to implement `Clone` (e.g. `Vec<T>`,
+/// `&[T]`, or any `Clone` collection); a non-`Clone` iterator is rejected at
+/// compile time. The keyed branch yields `(#key, #body)` tuples that align
+/// with `Page::keyed_fragment<K: Into<String>, V: IntoPage>`, and the unkeyed
+/// branch yields `#body` (`Page`, which implements `IntoPage`) for
+/// `Page::fragment`.
 fn generate_for(for_node: &TypedPageFor, pages_crate: &TokenStream) -> TokenStream {
 	let pat = &for_node.pat;
 	let iter = &for_node.iter;
 	let body = generate_if_branch(&for_node.body, pages_crate);
 
-	quote! {
-		#pages_crate::component::Page::fragment(
-			(#iter).into_iter().map(|#pat| {
-				#body
-			}).collect::<::std::vec::Vec<_>>()
-		)
+	if let Some(key) = &for_node.key {
+		quote! {
+			#pages_crate::component::Page::keyed_fragment(
+				(#iter).clone().into_iter().map(|#pat| {
+					(#key, #body)
+				}).collect::<::std::vec::Vec<_>>()
+			)
+		}
+	} else {
+		quote! {
+			#pages_crate::component::Page::fragment(
+				(#iter).clone().into_iter().map(|#pat| {
+					#body
+				}).collect::<::std::vec::Vec<_>>()
+			)
+		}
 	}
 }
 

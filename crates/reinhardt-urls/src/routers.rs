@@ -230,7 +230,7 @@ pub use unified_router::UnifiedRouter;
 pub use client_router::{
 	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, FromPath, HistoryState,
 	MergeError, NavigationSubscription, NavigationType, ParamContext, Path, RouteHandler,
-	SingleFromPath,
+	RouteMetadata, SingleFromPath,
 };
 pub use resolver::{ClientUrlResolver, WebSocketUrlResolver};
 

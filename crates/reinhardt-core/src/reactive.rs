@@ -67,5 +67,5 @@ pub use context::{
 pub use deps::{Deps, IntoDeps, Trackable};
 pub use effect::Effect;
 pub use memo::Memo;
-pub use runtime::{EffectTiming, NodeId, NodeType, Observer, Runtime, with_runtime};
+pub use runtime::{EffectTiming, NodeId, NodeType, Observer, Runtime, batch, with_runtime};
 pub use signal::Signal;

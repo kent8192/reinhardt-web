@@ -136,8 +136,8 @@ mod postgres_tests {
 		// No CREATE TABLE - migration handles it
 
 		// Insert data with ORM
-		let alice = TestModel::new("Alice".to_string());
-		let bob = TestModel::new("Bob".to_string());
+		let alice = TestModel::build().name("Alice").finish();
+		let bob = TestModel::build().name("Bob").finish();
 
 		let manager = TestModel::objects();
 		manager
@@ -180,7 +180,7 @@ mod postgres_tests {
 		// No CREATE TABLE - migration handles it
 
 		// Insert data with ORM
-		let test_model = TestModel::new("Test".to_string());
+		let test_model = TestModel::build().name("Test").finish();
 
 		let manager = TestModel::objects();
 		manager.create(&test_model).await.expect("Insert failed");
