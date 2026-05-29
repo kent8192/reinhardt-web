@@ -16,6 +16,7 @@
 - Convert Draft PRs to Ready for Review autonomously once the implementation is complete (CI completion is NOT required under the Autonomous Operation Policy) OR upon explicit user instruction (see instructions/PR_GUIDELINE.md § PC-4a)
 - Mark placeholders with `todo!()` or `// TODO:`
 - Use `#[serial(group_name)]` for global state tests
+- Manage all resources via RAII (Drop-based guards) — wrap locks, files, DB transactions, spawned tasks, temp dirs, and FFI handles in guard types (see instructions/ANTI_PATTERNS.md)
 - Split commits by specific intent, not features
 - Follow Conventional Commits v1.0.0 format: `<type>[scope]: <description>`
 - Start commit description with lowercase letter (e.g., `feat: add feature`)
@@ -120,6 +121,8 @@
 - Create circular dependencies
 - Leave unmarked placeholder implementations
 - Use `#[allow(...)]` without explanatory comments
+- Release resources manually in a way that can be skipped on an early `return` / `?` / panic (use RAII Drop instead)
+- Bypass Drop with `mem::forget` / `ManuallyDrop` / immediate-drop `let _ = lock()` without a justifying comment
 - Use alternative TODO notations (`FIXME:`, `NOTE:` for unimplemented features)
 - Create batch commits without user confirmation
 - Use relative paths beyond `../`

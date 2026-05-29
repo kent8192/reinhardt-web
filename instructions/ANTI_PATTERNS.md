@@ -22,6 +22,11 @@ mindmap
       Alternative TODO notations
       Undocumented allow attrs
       cfg(any()) gate
+    Resource Management
+      Manual cleanup
+      mem::forget leaks
+      Immediate-drop guard
+      Missing Drop impl
     Testing
       Skeleton tests
       No Reinhardt components
@@ -431,6 +436,110 @@ suppression must be justified with a clear comment explaining:
    requirements
 5. **Intentionally Excluded**: Features marked with `unimplemented!()` for
    architectural reasons
+
+---
+
+## Resource Management Anti-Patterns
+
+### ❌ Manual Resource Cleanup Instead of RAII
+
+**MUST: All resources MUST be managed via the RAII pattern** — acquiring a
+resource binds it to a value whose `Drop` implementation releases it. Manual
+release that can be skipped on an early `return`, a `?` propagation, or a panic
+is forbidden.
+
+Resources that MUST be wrapped in an RAII guard type include:
+
+- Locks and guards (`Mutex`, `RwLock`, semaphores)
+- Open files and file descriptors
+- Database connections and **transactions** (roll back on drop unless committed)
+- Spawned tasks, threads, and `JoinHandle`s that require teardown
+- Temporary files and directories
+- FFI / raw OS handles, sockets
+- Any external resource that needs an explicit `release`/`close`/`cleanup` step
+
+**DON'T** (manual cleanup leaks on early return / `?` / panic):
+
+```rust
+let conn = pool.acquire().await?;
+conn.begin().await?;
+do_work(&conn).await?;   // ❌ on Err, control returns here — commit/release never run
+conn.commit().await?;
+conn.release();          // ❌ unreachable on the error path -> leaked transaction
+```
+
+**DO** (RAII guarantees release via `Drop`):
+
+```rust
+let mut tx = pool.begin().await?;  // guard: Drop rolls back if not committed
+do_work(&mut tx).await?;           // ✅ early return still rolls back via Drop
+tx.commit().await?;                // explicit success path
+// connection is returned to the pool when `tx` is dropped
+```
+
+**Why?** Rust enforces RAII through ownership and `Drop`; manual cleanup throws
+that guarantee away and reintroduces the leak-on-error class of bugs.
+
+### ❌ Dropping a Guard Immediately with `let _ =`
+
+```rust
+let _ = mutex.lock().unwrap();  // ❌ guard dropped at end of statement — lock released at once
+shared.modify();                // ❌ NOT protected by the lock
+```
+
+**DO** — bind the guard to a named variable so it lives to the end of the scope:
+
+```rust
+let _guard = mutex.lock().unwrap();  // ✅ held until `_guard` leaves scope
+shared.modify();                     // ✅ protected
+```
+
+**Why?** `let _ = expr;` discards the value at the end of the statement. For a
+guard, that releases the resource on the next line. Use a named binding such as
+`let _guard = ...` to hold it.
+
+### ❌ Bypassing `Drop` with `mem::forget` / `ManuallyDrop` / `Box::leak`
+
+`std::mem::forget`, `ManuallyDrop`, and `Box::leak` skip `Drop` and leak the
+resource. They are FORBIDDEN unless ownership is genuinely transferred elsewhere
+(e.g., handing a buffer to FFI). Every use MUST carry a comment stating **why**
+`Drop` must be skipped and **where** the resource is actually released.
+
+```rust
+// ❌ Silent leak — no justification
+std::mem::forget(file);
+```
+
+```rust
+// ✅ Ownership transferred to the C side, which releases it on shutdown.
+// Dropping here would double-free. See ffi::register_handle.
+std::mem::forget(handle);
+```
+
+### ❌ Owning an External Resource Without a `Drop` impl
+
+A type that owns an external resource (raw handle, connection, spawned task,
+temporary path) MUST implement `Drop` to release it. Do not rely on callers to
+remember a `close()` / `shutdown()` call.
+
+```rust
+// ❌ Caller must remember `.shutdown()` — easy to forget, skipped on panic
+struct Worker { handle: RawHandle }
+```
+
+```rust
+// ✅ Release is automatic and panic-safe
+struct Worker { handle: RawHandle }
+impl Drop for Worker {
+    fn drop(&mut self) {
+        // SAFETY: `handle` is owned and released exactly once here.
+        unsafe { release_handle(self.handle) };
+    }
+}
+```
+
+**Exceptions:** Any deviation from RAII MUST be documented with a comment that
+explains why RAII is not used and how release is otherwise guaranteed.
 
 ---
 
