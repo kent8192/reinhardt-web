@@ -74,11 +74,15 @@ pub(crate) fn assert_default_manager_queryset(queryset: QuerySet<ManagedArticle>
 	assert_eq!(filters.len(), 1);
 	assert_eq!(filters[0].field, "is_archived");
 
-	let debug = format!("{:?}", filters[0]);
-	assert!(debug.contains("Eq"), "expected Eq operator, got: {debug}");
 	assert!(
-		debug.contains("Boolean(false)"),
-		"expected Boolean(false) value, got: {debug}"
+		matches!(filters[0].operator, FilterOperator::Eq),
+		"expected Eq operator, got: {:?}",
+		filters[0].operator
+	);
+	assert!(
+		matches!(filters[0].value, FilterValue::Boolean(false)),
+		"expected Boolean(false) value, got: {:?}",
+		filters[0].value
 	);
 }
 
@@ -87,10 +91,14 @@ pub(crate) fn assert_explicit_queryset(queryset: QuerySet<ManagedArticle>) {
 	assert_eq!(filters.len(), 1);
 	assert_eq!(filters[0].field, "tenant_id");
 
-	let debug = format!("{:?}", filters[0]);
-	assert!(debug.contains("Eq"), "expected Eq operator, got: {debug}");
 	assert!(
-		debug.contains("Integer(42)"),
-		"expected Integer(42) value, got: {debug}"
+		matches!(filters[0].operator, FilterOperator::Eq),
+		"expected Eq operator, got: {:?}",
+		filters[0].operator
+	);
+	assert!(
+		matches!(filters[0].value, FilterValue::Integer(42)),
+		"expected Integer(42) value, got: {:?}",
+		filters[0].value
 	);
 }
