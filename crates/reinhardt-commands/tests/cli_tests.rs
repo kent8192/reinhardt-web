@@ -207,7 +207,6 @@ fn test_commands_migrate_parse_migrations_dir() {
 			assert_eq!(migration_name, Some("0001_initial".to_string()));
 			assert_eq!(migrations_dir, Some(PathBuf::from("/tmp/migs")));
 		}
-		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Migrate variant"),
 	}
 }
