@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.2...reinhardt-urls@v0.2.0-rc.2) - 2026-05-29
+
+### Added
+
+- *(urls)* [**breaking**] remove panicking reverse_* variants and UrlResolverUnprefixed (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(urls)* auto-populate global UrlReverser in register_router()
+- *(urls)* [**breaking**] unify UnifiedRouter::server closure type to ServerRouter on wasm
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Documentation
+
+- *(urls)* align WASM UnifiedRouter::server doc with no-invoke behavior
+
+### Fixed
+
+- *(urls)* fix broken intra-doc link in try_reverse_single_pass doc
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(auth,urls,pages)* remove stale references and fix latent clippy lints
+- *(urls)* migrate reverse tests from removed panicking helpers to try_ variants
+- *(urls)* resolve UrlReverser Debug trait bound and dead code errors
+- *(urls)* correct WASM register_globally doc comment
+- *(urls)* panic on duplicate client route name registration
+- *(urls)* update tests for page() and reverse() API changes
+- *(urls)* populate global UrlReverser in register_router_arc() too
+- *(docs)* resolve rustdoc intra-doc link errors on develop/0.2.0
+- *(docs)* resolve remaining rustdoc doctest failures
+
+### Maintenance
+
+- resolve merge conflict in reinhardt-urls CHANGELOG.md (develop/0.2.0)
+
+### Styling
+
+- apply formatter fixes across workspace
+- format files from merge resolution
+- apply rustfmt to non-DSL files on develop/0.2.0
+
 ### Changed
 
 - **[breaking]** Collapse `ClientRouter::route_pathN` / `named_route_pathN`
