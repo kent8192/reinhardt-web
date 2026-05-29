@@ -33,11 +33,11 @@ impl Snippet {
 	/// ```no_run
 	/// use examples_tutorial_rest::apps::snippets::models::Snippet;
 	///
-	/// let snippet = Snippet::new(
-	///     "Hello World".to_string(),
-	///     "fn main() { println!(\"Hello!\"); }".to_string(),
-	///     "rust".to_string(),
-	/// );
+	/// let snippet = Snippet::build()
+	///     .title("Hello World")
+	///     .code("fn main() { println!(\"Hello!\"); }")
+	///     .language("rust")
+	///     .finish();
 	/// let html = snippet.highlighted();
 	/// assert!(html.contains("<span"));
 	/// ```
@@ -67,15 +67,23 @@ mod tests {
 	use super::*;
 	use rstest::rstest;
 
+	fn snippet(
+		title: impl Into<String>,
+		code: impl Into<String>,
+		language: impl Into<String>,
+	) -> Snippet {
+		Snippet::build()
+			.title(title)
+			.code(code)
+			.language(language)
+			.finish()
+	}
+
 	/// Test that Snippet can be created with valid data
 	#[rstest]
 	fn test_snippet_creation() {
 		// Arrange / Act
-		let snippet = Snippet::new(
-			"Hello World".to_string(),
-			"fn main() { println!(\"Hello!\"); }".to_string(),
-			"rust".to_string(),
-		);
+		let snippet = snippet("Hello World", "fn main() { println!(\"Hello!\"); }", "rust");
 
 		// Assert
 		assert_eq!(snippet.title, "Hello World");
@@ -85,11 +93,7 @@ mod tests {
 	/// Test highlighted() method produces HTML with syntax highlighting for Rust
 	#[rstest]
 	fn test_highlighted_rust_code() {
-		let snippet = Snippet::new(
-			"Rust Example".to_string(),
-			"fn main() { println!(\"Hello!\"); }".to_string(),
-			"rust".to_string(),
-		);
+		let snippet = snippet("Rust Example", "fn main() { println!(\"Hello!\"); }", "rust");
 
 		let html = snippet.highlighted();
 
@@ -106,11 +110,7 @@ mod tests {
 	/// Test highlighted() method works for Python language
 	#[rstest]
 	fn test_highlighted_python_code() {
-		let snippet = Snippet::new(
-			"Python Example".to_string(),
-			"def hello():\n    print('Hello!')".to_string(),
-			"python".to_string(),
-		);
+		let snippet = snippet("Python Example", "def hello():\n    print('Hello!')", "python");
 
 		let html = snippet.highlighted();
 
@@ -125,10 +125,10 @@ mod tests {
 	/// Test highlighted() method falls back to plain text for unknown languages
 	#[rstest]
 	fn test_highlighted_unknown_language() {
-		let snippet = Snippet::new(
-			"Unknown Language".to_string(),
-			"some unknown syntax here".to_string(),
-			"unknown_lang_xyz".to_string(),
+		let snippet = snippet(
+			"Unknown Language",
+			"some unknown syntax here",
+			"unknown_lang_xyz",
 		);
 
 		let html = snippet.highlighted();
@@ -147,7 +147,7 @@ mod tests {
 	/// Test highlighted() method handles empty code gracefully
 	#[rstest]
 	fn test_highlighted_empty_code() {
-		let snippet = Snippet::new("Empty Code".to_string(), String::new(), "rust".to_string());
+		let snippet = snippet("Empty Code", "", "rust");
 
 		let html = snippet.highlighted();
 
@@ -160,15 +160,14 @@ mod tests {
 	/// Test highlighted() method handles multiline code correctly
 	#[rstest]
 	fn test_highlighted_multiline_code() {
-		let snippet = Snippet::new(
-			"Multiline Rust".to_string(),
-			r#"fn main() {
+	let snippet = snippet(
+		"Multiline Rust",
+		r#"fn main() {
     let x = 42;
     println!("{}", x);
-}"#
-			.to_string(),
-			"rust".to_string(),
-		);
+}"#,
+		"rust",
+	);
 
 		let html = snippet.highlighted();
 

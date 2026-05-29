@@ -320,7 +320,7 @@ pub enum PageElse {
 /// # Example
 ///
 /// ```text
-/// for item in items {
+/// for item in items @key(item.id) {
 ///     li { item.name }
 /// }
 /// ```
@@ -330,6 +330,8 @@ pub struct PageFor {
 	pub pat: Pat,
 	/// Iterator expression
 	pub iter: Expr,
+	/// Optional stable key expression for identity-preserving reconciliation.
+	pub key: Option<Expr>,
 	/// Body nodes (rendered for each item)
 	pub body: Vec<PageNode>,
 	/// Span for error reporting

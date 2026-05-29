@@ -16,7 +16,7 @@ use std::sync::Arc;
 /// User model for GraphQL testing.
 ///
 /// This model uses the `#[model(...)]` macro which automatically derives
-/// `Model` trait. The `Model::new()` function is used for initialization.
+/// `Model` trait. The `Model::build()` builder is used for initialization.
 #[model(table_name = "users")]
 pub struct User {
 	#[field(primary_key = true)]
@@ -33,14 +33,15 @@ pub struct User {
 }
 
 impl User {
-	/// Create a new User instance using `Model::new()` pattern.
-	pub fn new(id: i32, name: String, email: String) -> Self {
-		Self {
-			id,
-			name,
-			email,
-			is_active: true,
-		}
+	/// Create a fixture User instance with an explicit database id.
+	pub fn fixture(id: i32, name: impl Into<String>, email: impl Into<String>) -> Self {
+		let mut user = Self::build()
+			.name(name)
+			.email(email)
+			.is_active(true)
+			.finish();
+		user.id = id;
+		user
 	}
 }
 
@@ -60,14 +61,20 @@ pub struct Post {
 }
 
 impl Post {
-	/// Create a new Post instance.
-	pub fn new(id: i32, title: String, content: String, author_id: i32) -> Self {
-		Self {
-			id,
-			title,
-			content,
-			author_id,
-		}
+	/// Create a fixture Post instance with an explicit database id.
+	pub fn fixture(
+		id: i32,
+		title: impl Into<String>,
+		content: impl Into<String>,
+		author_id: i32,
+	) -> Self {
+		let mut post = Self::build()
+			.title(title)
+			.content(content)
+			.author_id(author_id)
+			.finish();
+		post.id = id;
+		post
 	}
 }
 
@@ -171,7 +178,7 @@ async fn create_test_user_with_query(pool: &PgPool) -> User {
 		.await
 		.expect("Failed to create test user");
 
-	User::new(id, name.to_string(), email.to_string())
+	User::fixture(id, name, email)
 }
 
 /// Create a test post in the database using reinhardt-query.
@@ -195,7 +202,7 @@ async fn create_test_post_with_query(pool: &PgPool, author_id: i32) -> Post {
 		.await
 		.expect("Failed to create test post");
 
-	Post::new(id, title.to_string(), content.to_string(), author_id)
+	Post::fixture(id, title, content, author_id)
 }
 
 /// Creates multiple test users for batch testing.

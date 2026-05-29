@@ -62,6 +62,22 @@ pub(crate) struct TestComment {
 	content: String,
 }
 
+fn test_post(user_id: i32, title: impl Into<String>, content: impl Into<String>) -> TestPost {
+	TestPost::build()
+		.user_id(user_id)
+		.title(title)
+		.content(content)
+		.finish()
+}
+
+fn test_comment(post_id: i32, user_id: i32, content: impl Into<String>) -> TestComment {
+	TestComment::build()
+		.post_id(post_id)
+		.user_id(user_id)
+		.content(content)
+		.finish()
+}
+
 // ============================================================================
 // Custom Fixture
 // ============================================================================
@@ -125,19 +141,25 @@ async fn test_composite_unique_constraint_validation(
 
 	// Insert test users using ORM
 	let user1_id = {
-		let user = TestUser::new("alice".to_string(), "alice@example.com".to_string());
+		let user = TestUser::build()
+			.username("alice")
+			.email("alice@example.com")
+			.finish();
 		let manager = TestUser::objects();
 		manager.create(&user).await.unwrap().id()
 	};
 	let user2_id = {
-		let user = TestUser::new("bob".to_string(), "bob@example.com".to_string());
+		let user = TestUser::build()
+			.username("bob")
+			.email("bob@example.com")
+			.finish();
 		let manager = TestUser::objects();
 		manager.create(&user).await.unwrap().id()
 	};
 
 	// Insert first post by alice using ORM
 	let post1_id = {
-		let post = TestPost::new(user1_id, "First Post".to_string(), "Content 1".to_string());
+		let post = test_post(user1_id, "First Post", "Content 1");
 		let manager = TestPost::objects();
 		manager.create(&post).await.unwrap().id()
 	};
@@ -145,11 +167,7 @@ async fn test_composite_unique_constraint_validation(
 
 	// Attempt to insert duplicate (user_id, title) by same user - should fail
 	let duplicate_result = {
-		let post = TestPost::new(
-			user1_id,
-			"First Post".to_string(),
-			"Different content".to_string(),
-		);
+		let post = test_post(user1_id, "First Post", "Different content");
 		let manager = TestPost::objects();
 		manager.create(&post).await
 	};
@@ -164,11 +182,7 @@ async fn test_composite_unique_constraint_validation(
 
 	// Different user can use same title - should succeed
 	let post2_id = {
-		let post = TestPost::new(
-			user2_id,
-			"First Post".to_string(),
-			"Bob's content".to_string(),
-		);
+		let post = test_post(user2_id, "First Post", "Bob's content");
 		let manager = TestPost::objects();
 		manager.create(&post).await.unwrap().id()
 	};
@@ -176,7 +190,7 @@ async fn test_composite_unique_constraint_validation(
 
 	// Same user can use different title - should succeed
 	let post3_id = {
-		let post = TestPost::new(user1_id, "Second Post".to_string(), "Content 2".to_string());
+		let post = test_post(user1_id, "Second Post", "Content 2");
 		let manager = TestPost::objects();
 		manager.create(&post).await.unwrap().id()
 	};
@@ -243,12 +257,12 @@ async fn test_check_constraint_integration(
 	assert!(stock_validator.validate(&valid_stock).is_ok());
 
 	let product_id = {
-		let product = TestProduct::new(
-			"Laptop".to_string(),
-			"PROD001".to_string(),
-			valid_price,
-			valid_stock,
-		);
+		let product = TestProduct::build()
+			.name("Laptop")
+			.code("PROD001")
+			.price(valid_price)
+			.stock(valid_stock)
+			.finish();
 		let manager = TestProduct::objects();
 		manager.create(&product).await.unwrap().id()
 	};
@@ -340,7 +354,10 @@ async fn test_cascade_delete_validation(
 
 	// Setup: Create user, post, and comments
 	let user_id = {
-		let user = TestUser::new("charlie".to_string(), "charlie@example.com".to_string());
+		let user = TestUser::build()
+			.username("charlie")
+			.email("charlie@example.com")
+			.finish();
 		let manager = TestUser::objects();
 		manager
 			.create(&user)
@@ -350,7 +367,7 @@ async fn test_cascade_delete_validation(
 	};
 
 	let post_id = {
-		let post = TestPost::new(user_id, "Test Post".to_string(), "Content".to_string());
+		let post = test_post(user_id, "Test Post", "Content");
 		let manager = TestPost::objects();
 		manager
 			.create(&post)
@@ -361,9 +378,9 @@ async fn test_cascade_delete_validation(
 
 	// Insert multiple comments on the post
 	let comment_manager = TestComment::objects();
-	let comment1 = TestComment::new(post_id, user_id, "Comment 1".to_string());
-	let comment2 = TestComment::new(post_id, user_id, "Comment 2".to_string());
-	let comment3 = TestComment::new(post_id, user_id, "Comment 3".to_string());
+	let comment1 = test_comment(post_id, user_id, "Comment 1");
+	let comment2 = test_comment(post_id, user_id, "Comment 2");
+	let comment3 = test_comment(post_id, user_id, "Comment 3");
 
 	let comment1_id = comment_manager
 		.create(&comment1)
@@ -580,12 +597,12 @@ async fn test_partial_update_validation(
 
 	// Insert initial product
 	let product_id = {
-		let product = TestProduct::new(
-			"Original Product".to_string(),
-			"PROD001".to_string(),
-			100.0,
-			50,
-		);
+		let product = TestProduct::build()
+			.name("Original Product")
+			.code("PROD001")
+			.price(100.0)
+			.stock(50)
+			.finish();
 		let manager = TestProduct::objects();
 		manager
 			.create(&product)

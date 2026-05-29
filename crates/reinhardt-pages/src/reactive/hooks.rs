@@ -106,6 +106,8 @@ pub mod transition;
 pub mod websocket;
 
 // Re-export all hooks
+pub use reinhardt_core::reactive::batch;
+
 pub use action::{OptimisticState, use_optimistic};
 pub use async_action::{Action, ActionPhase, use_action};
 pub use context::use_context;

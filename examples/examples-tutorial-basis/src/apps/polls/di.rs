@@ -7,7 +7,7 @@
 //! lets `server_fn.rs` stay focused on handler bodies and gives every
 //! DI contribution a single, greppable home per app.
 //!
-//! ## Why a hand-rolled `SessionUser` instead of `reinhardt_auth::AuthUser<User>`?
+//! ## Why a hand-rolled session-user factory instead of `reinhardt_auth::AuthUser<User>`?
 //!
 //! `AuthUser<U>`
 //! (`crates/reinhardt-auth/src/auth_user.rs:43`) is the **canonical
@@ -37,34 +37,20 @@
 //! Both gaps are tracked as a `rc-migration` proposal in
 //! [#4652](https://github.com/kent8192/reinhardt-web/issues/4652).
 //! Once that ships, this whole module collapses — handlers swap
-//! `#[inject] session_user: Depends<SessionUser>` /
-//! `session_user.require_active()?` for the upstream
-//! `#[inject] AuthUser(user): AuthUser<User>` (plus an inline
+//! `#[inject] user: Depends<Result<User, SessionError>>` /
+//! `let user = user.as_ref().map_err(ServerFnError::from)?` for the
+//! upstream `#[inject] AuthUser(user): AuthUser<User>` (plus an inline
 //! `is_active` check) and `apps/polls/di.rs` is deleted entirely.
 //!
-//! The type is named `SessionUser` (not `CurrentUser`) for two reasons:
-//!
-//! - **Name-clash avoidance** — `reinhardt_auth::CurrentUser<U>` is
-//!   `#[deprecated]` and scheduled to become `pub type CurrentUser<U> =
-//!   AuthUser<U>` in 0.2.0
-//!   (`crates/reinhardt-auth/src/current_user.rs:53-56`). Reusing the
-//!   name would shadow that alias once #4652 lands.
-//! - **Honest intent** — this factory is explicitly *session-derived*.
-//!   The `SessionUser` name signals that it is the session-only fallback
-//!   for the `AuthUser`-shaped story.
-//!
-//! ## Why not `Result<SessionUser, ServerFnError>` as the factory return?
+//! ## Factory return type: `Result<User, SessionError>`
 //!
 //! `#[injectable_factory]` registers its **literal return type** as the
 //! DI key (`crates/reinhardt-di/macros/src/injectable_factory.rs:182`
-//! `register_async::<#return_type, _, _>`). Returning
-//! `Result<SessionUser, ServerFnError>` would force every handler's
-//! `#[inject]` parameter to spell out
-//! `Depends<Result<SessionUser, ServerFnError>>`, which is bulky and
-//! moves error semantics into the type signature. Instead we use a
-//! four-state enum (`Authenticated` / `Inactive` / `Anonymous` /
-//! `Unavailable`) — handlers spell `Depends<SessionUser>` and dispatch
-//! with a single `.require_active()?` call, and the enum keeps the
+//! `register_async::<#return_type, _, _>`). The factory returns
+//! `Result<User, SessionError>`, so handlers spell
+//! `Depends<Result<User, SessionError>>` and convert to a
+//! `ServerFnError` via `From<&SessionError>`. The three `SessionError`
+//! variants (`Anonymous` / `Inactive` / `Unavailable`) keep the
 //! "DB outage" branch separate from "user is anonymous" so an
 //! availability problem cannot be silently rewritten into a fake 401.
 //!
@@ -116,59 +102,58 @@ use reinhardt::pages::server_fn::ServerFnError;
 #[cfg(native)]
 use crate::apps::users::models::User;
 
-/// Request-scoped wrapper around the user resolved from the session,
-/// mirroring Django's `request.user`.
+/// Error variants for the session-based user lookup factory.
 ///
-/// Four states are surfaced so handlers can distinguish the kind of
-/// failure without re-running session/database lookups *and* so that an
-/// operational outage (DB connection drop, query timeout) does not get
-/// silently rewritten into a fake 401:
+/// Three failure modes are distinguished so handlers can surface the
+/// correct HTTP status *and* so that an operational outage (DB
+/// connection drop, query timeout) does not get silently rewritten into
+/// a fake 401:
 ///
-/// - [`SessionUser::Authenticated`] — a row exists for the session's
-///   `user_id` and `is_active = true`.
-/// - [`SessionUser::Inactive`] — a row exists but `is_active = false`.
-///   Surfaced as **403** by [`SessionUser::require_active`].
-/// - [`SessionUser::Anonymous`] — no `user_id` in the session, or the
-///   row has been deleted between login and request. Surfaced as **401**.
-/// - [`SessionUser::Unavailable`] — the user-lookup query itself failed
+/// - [`SessionError::Anonymous`] — no `user_id` in the session, or the
+///   row has been deleted between login and request. Surfaced as **401**
+///   via `From<&SessionError> for ServerFnError`.
+/// - [`SessionError::Inactive`] — a row exists but `is_active = false`.
+///   Surfaced as **403**.
+/// - [`SessionError::Unavailable`] — the user-lookup query itself failed
 ///   (DB down, pool exhausted, schema mismatch, …). Surfaced as **500**
-///   by [`SessionUser::require_active`] so the client sees an operational
-///   error instead of being pushed into a misleading re-auth loop.
+///   so the client sees an operational error instead of being pushed
+///   into a misleading re-auth loop.
 ///
 /// The split between `Anonymous` and `Unavailable` matters: collapsing a
 /// DB error into `Anonymous` would hide the outage from monitoring, and
 /// the recommended client behaviour (a redirect to the login page) would
 /// punish callers for an availability problem on the server.
 ///
-/// `Clone` is derived so handlers can pull an owned `SessionUser` out of
-/// `Depends<_>` with `(*session_user).clone()` when needed.
+/// `Clone` and `Debug` are derived so handlers can inspect and clone the
+/// error out of `Depends<Result<User, SessionError>>` when needed.
 #[cfg(native)]
-#[derive(Clone)]
-pub enum SessionUser {
-	Authenticated(User),
-	Inactive(User),
+#[derive(Clone, Debug)]
+pub enum SessionError {
 	Anonymous,
+	Inactive,
 	/// User-lookup query failed at the database layer. The wrapped
 	/// `String` is the underlying error message — the factory keeps it
-	/// for logging / future propagation; `require_active()` does not
-	/// echo it to the client (only the 500 status + a generic message
-	/// reaches the response body) to avoid leaking schema details.
+	/// for logging / future propagation; the `From<&SessionError>` impl
+	/// does not echo it to the client (only the 500 status + a generic
+	/// message reaches the response body) to avoid leaking schema
+	/// details.
 	Unavailable(String),
 }
 
+/// Convert a `SessionError` reference to a `ServerFnError` with the
+/// appropriate HTTP status code.
+///
+/// Handlers use this via `user.as_ref().map_err(ServerFnError::from)?`
+/// to surface a 401, 403, or 500 depending on the failure mode.
 #[cfg(native)]
-impl SessionUser {
-	/// Borrow the active authenticated user, or surface a 401/403/500
-	/// `ServerFnError`.
-	pub fn require_active(&self) -> std::result::Result<&User, ServerFnError> {
-		match self {
-			Self::Authenticated(u) => Ok(u),
-			Self::Inactive(_) => Err(ServerFnError::server(403, "User account is inactive")),
-			Self::Anonymous => Err(ServerFnError::server(401, "Authentication required")),
-			Self::Unavailable(_) => Err(ServerFnError::server(
-				500,
-				"User lookup temporarily unavailable",
-			)),
+impl From<&SessionError> for ServerFnError {
+	fn from(err: &SessionError) -> Self {
+		match err {
+			SessionError::Anonymous => ServerFnError::server(401, "Authentication required"),
+			SessionError::Inactive => ServerFnError::server(403, "User account is inactive"),
+			SessionError::Unavailable(_) => {
+				ServerFnError::server(500, "User lookup temporarily unavailable")
+			}
 		}
 	}
 }
@@ -189,9 +174,11 @@ impl SessionUser {
 /// > [#4646](https://github.com/kent8192/reinhardt-web/issues/4646).
 #[cfg(native)]
 #[injectable_factory(scope = "request")]
-async fn session_user_factory(#[inject] session: SessionData) -> SessionUser {
+async fn session_user_factory(
+	#[inject] session: SessionData,
+) -> Result<User, SessionError> {
 	let Some(user_id) = session.get::<i64>(USER_ID_SESSION_KEY) else {
-		return SessionUser::Anonymous;
+		return Err(SessionError::Anonymous);
 	};
 
 	// Distinguish the three outcomes explicitly:
@@ -201,38 +188,39 @@ async fn session_user_factory(#[inject] session: SessionData) -> SessionUser {
 	// - `Ok(None)` — the session points at a user_id that no longer
 	//   exists (deleted account, GDPR purge, …). The session itself
 	//   has outlived the user, so the right behaviour is to force
-	//   re-auth → **`Anonymous` (401)**.
+	//   re-auth → **`Err(Anonymous)` (401)**.
 	// - `Err(e)` — the lookup query itself failed (DB outage, pool
 	//   exhaustion, schema drift, etc.). This is an *availability*
 	//   problem, not an *authentication* problem, so collapsing it
 	//   into `Anonymous` would (a) hide the outage from monitoring
 	//   and (b) push callers into a misleading "log in again" loop.
-	//   Surface it as **`Unavailable` (500)** instead.
+	//   Surface it as **`Err(Unavailable)` (500)** instead.
 	//
 	// `tracing::warn!` logs the underlying error for observability
-	// while `require_active()` echoes only a generic 500 message to
-	// the client, so schema details do not leak via error bodies.
+	// while the `From<&SessionError>` impl echoes only a generic 500
+	// message to the client, so schema details do not leak via error
+	// bodies.
 	let user = match User::objects()
 		.filter(User::field_id().eq(user_id))
 		.first()
 		.await
 	{
 		Ok(Some(u)) => u,
-		Ok(None) => return SessionUser::Anonymous,
+		Ok(None) => return Err(SessionError::Anonymous),
 		Err(e) => {
 			::tracing::warn!(
 				user_id = user_id,
 				error = %e,
 				"session_user_factory: user lookup failed"
 			);
-			return SessionUser::Unavailable(e.to_string());
+			return Err(SessionError::Unavailable(e.to_string()));
 		}
 	};
 
 	if user.is_active {
-		SessionUser::Authenticated(user)
+		Ok(user)
 	} else {
-		SessionUser::Inactive(user)
+		Err(SessionError::Inactive)
 	}
 }
 

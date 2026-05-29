@@ -767,8 +767,8 @@ tags: Vec<String>,
 
 **Supported DBMS**: All **Feature Flag**: None
 
-Controls whether this field is included in the auto-generated `new()`
-constructor.
+Controls whether this field is included in the required setters generated for
+the `build()` builder and zero-argument `new()` alias.
 
 ```rust
 #[field(include_in_new = false)]

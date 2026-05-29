@@ -1,18 +1,22 @@
 # reinhardt-storages
 
-Cloud storage backend abstraction for the Reinhardt framework, inspired by [django-storages](https://django-storages.readthedocs.io/).
+Cloud storage backend abstraction for the Reinhardt framework, inspired by
+[django-storages](https://django-storages.readthedocs.io/).
 
 ## Features
 
-- **Unified API**: Single `` `StorageBackend` `` trait for all storage providers
-- **Async I/O**: All operations are asynchronous using Tokio
-- **Feature Flags**: Enable only the backends you need
-- **Presigned URLs**: Generate temporary access URLs for secure file sharing
-- **Multiple Backends**:
-  - Amazon S3 (✅ Implemented)
-  - Google Cloud Storage (🚧 Planned)
-  - Azure Blob Storage (🚧 Planned)
-  - Local File System (✅ Implemented)
+- **Unified API**: single `StorageBackend` trait for all providers
+- **Settings-first configuration**: `StorageSettings` composes with the
+  Reinhardt `#[settings]` macro
+- **Async I/O**: all storage operations are asynchronous
+- **Feature flags**: enable only the providers your application uses
+- **Temporary URLs**: presigned URLs for S3, V4 signed URLs for GCS, and SAS
+  URLs for Azure Blob Storage
+- **Backends**:
+  - Amazon S3
+  - Google Cloud Storage
+  - Azure Blob Storage
+  - Local file system
 
 ## Installation
 
@@ -20,68 +24,63 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-reinhardt-storages = "0.1.0"
+reinhardt-storages = "0.2.0-rc.2"
 ```
 
 ### Feature Flags
 
-By default, `reinhardt-storages` enables `s3` and `local` backends. You can customize this:
+By default, `reinhardt-storages` enables the `s3` and `local` backends.
 
 ```toml
 [dependencies]
 # Only local storage
-reinhardt-storages = { version = "0.1.0", default-features = false, features = ["local"] }
+reinhardt-storages = { version = "0.2.0-rc.2", default-features = false, features = ["local"] }
 
 # S3 only
-reinhardt-storages = { version = "0.1.0", default-features = false, features = ["s3"] }
+reinhardt-storages = { version = "0.2.0-rc.2", default-features = false, features = ["s3"] }
 
 # All available backends
-reinhardt-storages = { version = "0.1.0", features = ["all"] }
+reinhardt-storages = { version = "0.2.0-rc.2", features = ["all"] }
 ```
 
 Available features:
+
 - `default`: `["s3", "local"]`
 - `s3`: Amazon S3 support
-- `gcs`: Google Cloud Storage support (not yet implemented)
-- `azure`: Azure Blob Storage support (not yet implemented)
-- `local`: Local file system support
-- `all`: All backends
+- `gcs`: Google Cloud Storage support
+- `azure`: Azure Blob Storage support
+- `local`: local file system support
+- `all`: all backends
 
 ## Usage
 
-### Basic Example
+### Settings-First Example
 
 ```rust
-use reinhardt_storages::{StorageBackend, create_storage, StorageConfig};
+use reinhardt_storages::{StorageSettings, create_storage_from_settings};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load configuration from environment
-    let config = StorageConfig::from_env()?;
+    let settings: StorageSettings = toml::from_str(r#"
+backend = "local"
 
-    // Create storage backend
-    let storage = create_storage(config).await?;
+[local]
+base_path = "media"
+"#)?;
 
-    // Save a file
-    let data = b"Hello, world!";
-    let path = storage.save("example.txt", data).await?;
-    println!("File saved to: {}", path);
+    let storage = create_storage_from_settings(&settings).await?;
 
-    // Read a file
+    storage.save("example.txt", b"Hello, world!").await?;
     let content = storage.open("example.txt").await?;
     println!("File content: {}", String::from_utf8_lossy(&content));
 
-    // Check if file exists
     if storage.exists("example.txt").await? {
-        // Get file size
         let size = storage.size("example.txt").await?;
-        println!("File size: {} bytes", size);
+        println!("File size: {size} bytes");
 
-        // Get presigned URL (valid for 1 hour)
         let url = storage.url("example.txt", 3600).await?;
-        println!("Presigned URL: {}", url);
+        println!("Temporary URL: {url}");
 
-        // Delete the file
         storage.delete("example.txt").await?;
     }
 
@@ -89,162 +88,167 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-### Using Local Storage
+### Composed Application Settings
+
+`StorageSettings` is a fragment for the `[storage]` section. Applications can
+compose it with other settings fragments through `#[settings]`.
 
 ```rust
-use reinhardt_storages::{StorageBackend, StorageConfig};
-use reinhardt_storages::config::LocalConfig;
-use reinhardt_storages::backends::local::LocalStorage;
+use reinhardt_core::macros::settings;
+use reinhardt_storages::StorageSettings;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create local storage backend
-    let config = LocalConfig {
-        base_path: "/tmp/storage".to_string(),
-    };
-    let storage = LocalStorage::new(config)?;
-
-    // Use the storage
-    storage.save("test.txt", b"Hello!").await?;
-
-    Ok(())
-}
+#[settings(storage: StorageSettings)]
+pub struct AppSettings {}
 ```
 
-### Using S3 Storage
+Example TOML for Google Cloud Storage:
+
+```toml
+[storage]
+backend = "gcs"
+
+[storage.gcs]
+bucket = "my-bucket"
+prefix = "uploads/"
+service_account_json = { secret = "{\"client_email\":\"storage@example.com\"}" }
+```
+
+Example TOML for Azure Blob Storage:
+
+```toml
+[storage]
+backend = "azure"
+
+[storage.azure]
+account = "myaccount"
+container = "media"
+prefix = "uploads/"
+access_key = { secret = "base64-account-key" }
+```
+
+Example TOML for local storage:
+
+```toml
+[storage]
+backend = "local"
+
+[storage.local]
+base_path = "media"
+```
+
+## Backend Settings
+
+### S3
+
+```toml
+[storage]
+backend = "s3"
+
+[storage.s3]
+bucket = "my-bucket"
+region = "us-east-1"
+endpoint = "http://localhost:4566"
+prefix = "uploads/"
+```
+
+`endpoint` and `prefix` are optional. Without `endpoint`, the AWS SDK default
+endpoint and credential chain are used.
+
+### Google Cloud Storage
+
+```toml
+[storage]
+backend = "gcs"
+
+[storage.gcs]
+bucket = "my-bucket"
+prefix = "uploads/"
+service_account_json = { secret = "{\"type\":\"service_account\"}" }
+```
+
+`endpoint` is available for emulators such as fake-gcs-server. Without
+`endpoint`, the Google Cloud SDK client is used. `service_account_json` is
+optional and can provide explicit credentials and local signing material for
+V4 signed URLs; otherwise Application Default Credentials are used.
+
+### Azure Blob Storage
+
+```toml
+[storage]
+backend = "azure"
+
+[storage.azure]
+account = "myaccount"
+container = "media"
+prefix = "uploads/"
+access_key = { secret = "base64-account-key" }
+```
+
+`endpoint` is available for Azurite or custom endpoints. Temporary URLs use a
+configured `sas_token` when present, otherwise `access_key` or
+`connection_string` is used to generate a service SAS URL.
+
+### Local
+
+```toml
+[storage]
+backend = "local"
+
+[storage.local]
+base_path = "/var/storage"
+```
+
+## Compatibility API
+
+`StorageConfig`, `S3Config`, `GcsConfig`, `AzureConfig`, `LocalConfig`, and
+`StorageConfig::from_env()` are deprecated in favor of `StorageSettings`.
+They remain available during the compatibility window so existing applications
+can migrate incrementally.
 
 ```rust
-use reinhardt_storages::{StorageBackend, StorageConfig};
-use reinhardt_storages::config::S3Config;
-use reinhardt_storages::backends::s3::S3Storage;
+use reinhardt_storages::{StorageSettings, create_storage_from_settings};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create S3 storage backend
-    let config = S3Config {
-        bucket: "my-bucket".to_string(),
-        region: Some("us-east-1".to_string()),
-        endpoint: None, // Use default AWS endpoint
-        prefix: Some("uploads/".to_string()), // Optional path prefix
-    };
-    let storage = S3Storage::new(config).await?;
-
-    // Use the storage
-    storage.save("file.txt", b"Hello from S3!").await?;
-
-    // Generate presigned URL (valid for 1 hour)
-    let url = storage.url("file.txt", 3600).await?;
-    println!("Download URL: {}", url);
-
-    Ok(())
-}
-```
-
-## Configuration
-
-### Environment Variables
-
-`reinhardt-storages` supports loading configuration from environment variables:
-
-```bash
-# Backend selection
-export STORAGE_BACKEND=s3  # or: local, gcs, azure
-
-# S3 Configuration
-export S3_BUCKET=my-bucket
-export S3_REGION=us-east-1
-export S3_ENDPOINT=http://localhost:4566  # Optional (for S3-compatible servers)
-export S3_PREFIX=uploads/                  # Optional
-
-# Local Configuration
-export LOCAL_BASE_PATH=/var/storage
-
-# GCS Configuration (not yet implemented)
-export GCS_BUCKET=my-bucket
-export GCS_PREFIX=uploads/
-
-# Azure Configuration (not yet implemented)
-export AZURE_ACCOUNT=myaccount
-export AZURE_CONTAINER=mycontainer
-export AZURE_PREFIX=uploads/
-```
-
-Then load the configuration:
-
-```rust
-use reinhardt_storages::{StorageConfig, create_storage};
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = StorageConfig::from_env()?;
-    let storage = create_storage(config).await?;
+async fn build_storage(settings: &StorageSettings) -> reinhardt_storages::Result<()> {
+    let storage = create_storage_from_settings(settings).await?;
+    storage.save("example.txt", b"content").await?;
     Ok(())
 }
 ```
 
 ## API Reference
 
-### `StorageBackend` Trait
-
-All storage backends implement this trait:
+All storage backends implement `StorageBackend`:
 
 ```rust
-#[async_trait]
+#[async_trait::async_trait]
 pub trait StorageBackend: Send + Sync {
-    /// Save a file to storage
     async fn save(&self, name: &str, content: &[u8]) -> Result<String>;
-
-    /// Open (read) a file from storage
     async fn open(&self, name: &str) -> Result<Vec<u8>>;
-
-    /// Delete a file from storage
     async fn delete(&self, name: &str) -> Result<()>;
-
-    /// Check if a file exists
     async fn exists(&self, name: &str) -> Result<bool>;
-
-    /// Generate a URL for accessing the file
     async fn url(&self, name: &str, expiry_secs: u64) -> Result<String>;
-
-    /// Get the file size in bytes
     async fn size(&self, name: &str) -> Result<u64>;
-
-    /// Get the file's last modified timestamp
     async fn get_modified_time(&self, name: &str) -> Result<DateTime<Utc>>;
 }
 ```
-
-## Development Status
-
-- ✅ **Local Storage**: Fully implemented
-- ✅ **S3 Storage**: Fully implemented
-- 🚧 **Google Cloud Storage**: Planned for Phase 2
-- 🚧 **Azure Blob Storage**: Planned for Phase 2
 
 ## Testing
 
 Run tests with:
 
 ```bash
-# All tests
-cargo test
+# All storage tests
+cargo test -p reinhardt-storages --all-features
 
-# Local storage tests only
-cargo test --test local_storage
+# GCS emulator tests with fake-gcs-server
+cargo test -p reinhardt-storages --features gcs,local --test gcs_tests -- --nocapture
 
-# S3 integration tests (uses wiremock mock server, no Docker required)
-cargo test --test s3_storage
+# Azure emulator tests with Azurite
+cargo test -p reinhardt-storages --features azure,local --test azure_tests -- --nocapture
 ```
+
+GCS and Azure emulator tests use TestContainers and require Docker.
 
 ## License
 
-Licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](../../LICENSE-APACHE))
-- MIT license ([LICENSE-MIT](../../LICENSE-MIT))
-
-at your option.
-
-## Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](../../CONTRIBUTING.md) for guidelines.
+MIT OR Apache-2.0
