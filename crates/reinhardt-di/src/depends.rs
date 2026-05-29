@@ -392,12 +392,17 @@ impl<T: Clone + Send + Sync + 'static> Depends<T> {
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```rust
+/// use reinhardt_di::{Depends, DependsResult};
+///
+/// struct User;
+/// struct SessionError;
+///
 /// // Before: verbose inner type
-/// #[inject] session_user: Depends<Result<User, SessionError>>
+/// let _session_user: Depends<Result<User, SessionError>>;
 ///
 /// // After: sugar alias
-/// #[inject] session_user: DependsResult<User, SessionError>
+/// let _session_user: DependsResult<User, SessionError>;
 /// ```
 pub type DependsResult<T, E> = Depends<Result<T, E>>;
 
@@ -407,12 +412,16 @@ pub type DependsResult<T, E> = Depends<Result<T, E>>;
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```rust
+/// use reinhardt_di::{Depends, DependsOption};
+///
+/// struct CacheBackend;
+///
 /// // Before: verbose inner type
-/// #[inject] cache: Depends<Option<CacheBackend>>
+/// let _cache: Depends<Option<CacheBackend>>;
 ///
 /// // After: sugar alias
-/// #[inject] cache: DependsOption<CacheBackend>
+/// let _cache: DependsOption<CacheBackend>;
 /// ```
 pub type DependsOption<T> = Depends<Option<T>>;
 
