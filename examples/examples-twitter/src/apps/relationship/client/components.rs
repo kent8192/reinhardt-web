@@ -72,13 +72,13 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 
 		let toggle_follow_for_error = toggle_follow.clone();
 
-		page!(|is_following_signal: Signal<bool>, toggle_follow: Action<(), String>, toggle_follow_for_error: Action<(), String>| {
+		page!(|target_user_id: Uuid, is_following_signal: Signal<bool>, toggle_follow: Action<(), String>, toggle_follow_for_error: Action<(), String>| {
 			div {
 				if toggle_follow.is_pending() {
 					button {
 						type: "button",
 						class: "btn-secondary opacity-50 cursor-not-allowed",
-						disabled: { true },
+						disabled: true,
 						aria_label: "Loading",
 						@click: {
 							let toggle_follow = toggle_follow.clone();
@@ -128,16 +128,25 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> Page {
 						"Follow"
 					}
 				}
-				if toggle_follow_for_error.error().is_some() {
-					div {
-						class: "alert-danger mt-2 text-sm",
-						{
-							toggle_follow_for_error.error().unwrap_or_default()
-						}
-					}
+				{
+					toggle_follow_for_error.error().map(|error_message| {
+						page!(|error_message: String| {
+							div {
+								class: "alert-danger mt-2 text-sm",
+								{
+									error_message.clone()
+								}
+							}
+						})(error_message)
+					}).unwrap_or_else(Page::empty)
 				}
 			}
-		})(is_following_signal, toggle_follow, toggle_follow_for_error)
+		})(
+			target_user_id,
+			is_following_signal,
+			toggle_follow,
+			toggle_follow_for_error,
+		)
 	}
 
 	#[cfg(native)]
@@ -305,64 +314,76 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 				}
 				h2 {
 					class: "text-xl font-bold text-content-primary",
-					{ title }
+					{
+						title.clone()
+					}
 				}
 			}
-			if loading_signal.get() {
-				div {
-					class: "flex flex-col items-center justify-center py-12",
-					div {
-						class: "spinner-lg mb-4",
-					}
-					p {
-						class: "text-content-secondary text-sm",
-						"Loading..."
-					}
-				}
-			} else if error_signal.get().is_some() {
-				div {
-					class: "alert-danger",
-					div {
-						class: "flex items-center gap-2",
-						{
-							icons::error_circle_icon()
-						}
-						span { {
-							error_signal.get().unwrap_or_default()
-						} }
-					}
-				}
-			} else if users_signal.get().is_empty() {
-				div {
-					class: "flex flex-col items-center justify-center py-16 text-center",
-					div {
-						class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
-						svg {
-							class: "w-8 h-8 text-content-tertiary",
-							fill: "none",
-							stroke: "currentColor",
-							viewBox: "0 0 24 24",
-							path {
-								stroke_linecap: "round",
-								stroke_linejoin: "round",
-								stroke_width: "1.5",
-								d: empty_icon.clone(),
+			{
+				if loading_signal.get() {
+					page!(|| {
+						div {
+							class: "flex flex-col items-center justify-center py-12",
+							div {
+								class: "spinner-lg mb-4",
+							}
+							p {
+								class: "text-content-secondary text-sm",
+								"Loading..."
 							}
 						}
-					}
-					p {
-						class: "text-content-secondary",
-						{
-							empty_message.clone()
+					})()
+				} else if let Some(error_message) = error_signal.get() {
+					page!(|error_message: String| {
+						div {
+							class: "alert-danger",
+							div {
+								class: "flex items-center gap-2",
+								{
+									icons::error_circle_icon()
+								}
+								span { {
+									error_message.clone()
+								} }
+							}
 						}
-					}
-				}
-			} else {
-				div {
-					class: "card overflow-hidden",
-					for user in users_signal.get().iter() { {
-						user_card(user)
-					} }
+					})(error_message)
+				} else if users_signal.get().is_empty() {
+					page!(|empty_message: String, empty_icon: String| {
+						div {
+							class: "flex flex-col items-center justify-center py-16 text-center",
+							div {
+								class: "w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4",
+								svg {
+									class: "w-8 h-8 text-content-tertiary",
+									fill: "none",
+									stroke: "currentColor",
+									viewBox: "0 0 24 24",
+									path {
+										stroke_linecap: "round",
+										stroke_linejoin: "round",
+										stroke_width: "1.5",
+										d: empty_icon.clone(),
+									}
+								}
+							}
+							p {
+								class: "text-content-secondary",
+								{
+									empty_message.clone()
+								}
+							}
+						}
+					})(empty_message.clone(), empty_icon.clone())
+				} else {
+					page!(|users: Vec<UserInfo>| {
+						div {
+							class: "card overflow-hidden",
+							for user in users.clone() { {
+								self::user_card(&user)
+							} }
+						}
+					})(users_signal.get())
 				}
 			}
 		}

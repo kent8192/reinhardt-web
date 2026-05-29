@@ -95,7 +95,9 @@ pub fn header(site_name: &str, current_user: Option<&UserInfo>, nav_items: &[Nav
 		})
 		.collect();
 	let nav_links_view = page!(|nav_links: Vec<Page>| {
-		for link in nav_links { { link } }
+		for link in nav_links.clone() {
+			{ link.clone() }
+		}
 	})(nav_links);
 	let brand_link = Link::new("/".to_string(), site_name.to_string())
 		.class("text-xl font-bold text-content-primary hover:text-brand transition-colors")
@@ -111,9 +113,13 @@ pub fn header(site_name: &str, current_user: Option<&UserInfo>, nav_items: &[Nav
 				class: "flex items-center gap-3",
 				span {
 					class: "text-content-secondary text-sm hidden md:block",
-					{ { username } }
+					{ {
+						username.clone()
+					} }
 				}
-				{ { profile_link } }
+				{ {
+					profile_link.clone()
+				} }
 				a {
 					href: "/logout",
 					class: "btn-outline btn-sm",
@@ -131,8 +137,12 @@ pub fn header(site_name: &str, current_user: Option<&UserInfo>, nav_items: &[Nav
 		page!(|login_link: Page, register_link: Page| {
 			div {
 				class: "flex items-center gap-2",
-				{ { login_link } }
-				{ { register_link } }
+				{ {
+					login_link.clone()
+				} }
+				{ {
+					register_link.clone()
+				} }
 			}
 		})(login_link, register_link)
 	};
@@ -145,16 +155,24 @@ pub fn header(site_name: &str, current_user: Option<&UserInfo>, nav_items: &[Nav
 					class: "flex items-center justify-between h-14",
 					div {
 						class: "flex items-center gap-6",
-						{ { brand_link } }
+						{ {
+							brand_link.clone()
+						} }
 						nav {
 							class: "hidden md:flex items-center gap-1",
-							{ { nav_links_view } }
+							{ {
+								nav_links_view.clone()
+							} }
 						}
 					}
 					div {
 						class: "flex items-center gap-2",
-						{ { theme_toggle_view } }
-						{ { user_menu } }
+						{ {
+							theme_toggle_view.clone()
+						} }
+						{ {
+							user_menu.clone()
+						} }
 					}
 				}
 			}
@@ -181,15 +199,21 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 					class: "sidebar-item block",
 					div {
 						class: "text-content-tertiary text-xs mb-0.5",
-						{ { category } }
+						{ {
+							category.clone()
+						} }
 					}
 					div {
 						class: "font-semibold text-content-primary",
-						{ { name } }
+						{ {
+							name.clone()
+						} }
 					}
 					div {
 						class: "text-content-tertiary text-xs mt-0.5",
-						{ { tweets_text } }
+						{ {
+							tweets_text.clone()
+						} }
 					}
 				}
 			})(href, name, category, tweets_text)
@@ -205,7 +229,9 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 		})()
 	} else {
 		page!(|topics_list: Vec<Page>| {
-			for topic in topics_list { { topic } }
+			for topic in topics_list.clone() {
+				{ topic.clone() }
+			}
 		})(topics_list)
 	};
 	let users_list: Vec<Page> = suggested_users
@@ -213,8 +239,6 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 		.map(|user| {
 			let profile_href = format!("/profile/{}", user.id);
 			let username = format!("@{}", user.username);
-			let has_bio = user.bio.is_some();
-			let bio_text = user.bio.clone().unwrap_or_default();
 			let avatar_initial = user
 				.username
 				.chars()
@@ -222,28 +246,43 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 				.unwrap_or('U')
 				.to_uppercase()
 				.to_string();
-			page!(|profile_href: String, username: String, has_bio: bool, bio_text: String, avatar_initial: String| {
+			// Build the optional bio paragraph in this once-evaluated scope so the
+			// reactive page! body only needs to interpolate a ready-made `Page`.
+			let bio_view = if let Some(bio_text) = user.bio.clone() {
+				page!(|bio_text: String| {
+					p {
+						class: "text-content-tertiary text-xs truncate",
+						{ {
+							bio_text.clone()
+						} }
+					}
+				})(bio_text)
+			} else {
+				Page::empty()
+			};
+			page!(|profile_href: String, username: String, avatar_initial: String, bio_view: Page| {
 				div {
 					class: "sidebar-item",
 					div {
 						class: "flex items-center gap-3",
 						div {
 							class: "w-10 h-10 rounded-full bg-surface-tertiary flex items-center justify-center text-content-secondary font-semibold text-sm",
-							{ { avatar_initial } }
+							{ {
+								avatar_initial.clone()
+							} }
 						}
 						div {
 							class: "flex-1 min-w-0",
 							a {
 								href: profile_href,
 								class: "font-semibold text-content-primary hover:underline block truncate",
-								{ { username } }
+								{ {
+									username.clone()
+								} }
 							}
-							if has_bio {
-								p {
-									class: "text-content-tertiary text-xs truncate",
-									{ { bio_text } }
-								}
-							}
+							{ {
+								bio_view.clone()
+							} }
 						}
 						button {
 							class: "btn-outline btn-sm flex-shrink-0",
@@ -251,13 +290,7 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 						}
 					}
 				}
-			})(
-				profile_href,
-				username,
-				has_bio,
-				bio_text,
-				avatar_initial,
-			)
+			})(profile_href, username, avatar_initial, bio_view)
 		})
 		.collect();
 	let users_empty = users_list.is_empty();
@@ -270,7 +303,9 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 		})()
 	} else {
 		page!(|users_list: Vec<Page>| {
-			for user in users_list { { user } }
+			for user in users_list.clone() {
+				{ user.clone() }
+			}
 		})(users_list)
 	};
 	page!(|topics_view: Page, users_view: Page| {
@@ -282,7 +317,9 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 					class: "sidebar-header",
 					"Trending"
 				}
-				{ { topics_view } }
+				{ {
+					topics_view.clone()
+				} }
 				a {
 					href: "/explore",
 					class: "block px-4 py-3 text-brand text-sm hover:bg-surface-secondary transition-colors",
@@ -295,7 +332,9 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 					class: "sidebar-header",
 					"Who to follow"
 				}
-				{ { users_view } }
+				{ {
+					users_view.clone()
+				} }
 				a {
 					href: "/explore/users",
 					class: "block px-4 py-3 text-brand text-sm hover:bg-surface-secondary transition-colors",
@@ -495,17 +534,27 @@ pub fn main_layout(
 	page!(|header_view: Page, main_content: Page, footer_view: Page, bottom_nav: Page, fab: Page| {
 		div {
 			class: "layout-main bg-surface-secondary",
-			{ { header_view } }
+			{ {
+				header_view.clone()
+			} }
 			main {
 				class: "flex-1 pt-4 pb-20 md:pb-4",
 				div {
 					class: "layout-container",
-					{ { main_content } }
+					{ {
+						main_content.clone()
+					} }
 				}
 			}
-			{ { footer_view } }
-			{ { bottom_nav } }
-			{ { fab } }
+			{ {
+				footer_view.clone()
+			} }
+			{ {
+				bottom_nav.clone()
+			} }
+			{ {
+				fab.clone()
+			} }
 		}
 	})(header_view, main_content, footer_view, bottom_nav, fab)
 }
@@ -518,18 +567,24 @@ pub fn simple_layout(site_name: &str, nav_items: &[NavItem], content: Page, vers
 	page!(|header_view: Page, content: Page, footer_view: Page| {
 		div {
 			class: "layout-main bg-surface-secondary",
-			{ { header_view } }
+			{ {
+				header_view.clone()
+			} }
 			main {
 				class: "flex-1 py-8",
 				div {
 					class: "layout-container",
 					div {
 						class: "max-w-md mx-auto",
-						{ { content } }
+						{ {
+							content.clone()
+						} }
 					}
 				}
 			}
-			{ { footer_view } }
+			{ {
+				footer_view.clone()
+			} }
 		}
 	})(header_view, content, footer_view)
 }

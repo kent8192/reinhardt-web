@@ -113,32 +113,37 @@ pub fn button_with_size(
 	#[cfg(wasm)]
 	{
 		let on_click_clone = on_click.clone();
-		page!(| class : String, text : String, disabled : bool | {
+		page!(| class : String, text : String, disabled : bool, on_click_clone : Signal < bool > | {
 			button {
 				class : class,
 				type : "button",
 				disabled : disabled,
 				@ click : {
-					let { on_click }
-					=on_click_clone.clone();
+					let on_click = on_click_clone.clone();
 					move | _event | {
 						on_click.set(true);
 					}
 				},
-				{ { text } }
+				{ {
+					text.clone()
+				} }
 			}
-		})(class, text, disabled)
+		})(class, text, disabled, on_click_clone)
 	}
 	#[cfg(native)]
 	{
 		let _ = on_click;
 		page!(|class: String, text: String, disabled: bool| {
 			button {
-				class: { { class } },
+				class: { {
+					class.clone()
+				} },
 				type: "button",
 				disabled: disabled,
 				data_reactive: "true",
-				{ { text } }
+				{ {
+					text.clone()
+				} }
 			}
 		})(class, text, disabled)
 	}
@@ -173,7 +178,9 @@ pub fn loading_spinner_large(message: &str) -> Page {
 			}
 			p {
 				class: "text-content-secondary text-sm",
-				{ { message } }
+				{ {
+					message.clone()
+				} }
 			}
 		}
 	})(message)
@@ -200,7 +207,9 @@ pub fn error_alert(message: &str, dismissible: bool) -> Page {
 					}
 					span {
 						class: "flex-1",
-						{ { message } }
+						{ {
+							message.clone()
+						} }
 					}
 					button {
 						type: "button",
@@ -223,7 +232,9 @@ pub fn error_alert(message: &str, dismissible: bool) -> Page {
 					{
 						icons::error_circle_icon_with_class("w-5 h-5 flex-shrink-0 mt-0.5")
 					}
-					span { { message } }
+					span { {
+						message.clone()
+					} }
 				}
 			}
 		})(message)
@@ -247,7 +258,9 @@ pub fn success_alert(message: &str) -> Page {
 				{
 					icons::success_check_icon()
 				}
-				span { { message } }
+				span { {
+					message.clone()
+				} }
 			}
 		}
 	})(message)
@@ -264,7 +277,9 @@ pub fn warning_alert(message: &str) -> Page {
 				{
 					icons::warning_icon()
 				}
-				span { { message } }
+				span { {
+					message.clone()
+				} }
 			}
 		}
 	})(message)
@@ -297,13 +312,15 @@ pub fn text_input(
 	#[cfg(wasm)]
 	{
 		let value_clone = value.clone();
-		page!(| id_owned : String, label_owned : String, input_type_owned : String, placeholder_owned : String, value_signal : Signal < String >, required : bool| {
+		page!(| id_owned : String, label_owned : String, input_type_owned : String, placeholder_owned : String, value_signal : Signal < String >, required : bool, value_clone : Signal < String > | {
 			div {
 				class : "mb-4",
 				label {
 					for : id_owned.clone(),
 					class : "form-label",
-					{ { label_owned } }
+					{ {
+						label_owned.clone()
+					} }
 				}
 				input {
 					type : input_type_owned.clone(),
@@ -314,9 +331,8 @@ pub fn text_input(
 					value : value_signal.get(),
 					required: required,
 					@ input : {
-						let { value }
-						= value_clone.clone();
-						move | event :web_sys::Event | {
+						let value = value_clone.clone();
+						move | event : web_sys::Event | {
 							if let Some(target) = event.target() {
 								if let Ok(input_el) = target.dyn_into::< web_sys::HtmlInputElement >() {
 									value.set(input_el.value());
@@ -333,6 +349,7 @@ pub fn text_input(
 			placeholder_owned,
 			value_signal,
 			required,
+			value_clone,
 		)
 	}
 	#[cfg(native)]
@@ -345,7 +362,9 @@ pub fn text_input(
 						id_owned.clone()
 					},
 					class: "form-label",
-					{ { label_owned } }
+					{ {
+						label_owned.clone()
+					} }
 				}
 				input {
 					type: {
@@ -413,27 +432,28 @@ pub fn textarea(
 	#[cfg(wasm)]
 	{
 		let value_clone = value.clone();
-		page!(| id_owned : String, label_owned : String, rows_str : String, placeholder_owned : String, value_signal : Signal < String >, value_signal_for_count : Signal < String >, maxlength_attr : String, show_count : bool, max_length : usize | {
+		page!(| id_owned : String, label_owned : String, rows_str : String, placeholder_owned : String, value_signal : Signal < String >, value_signal_for_count : Signal < String >, maxlength_attr : String, show_count : bool, max_length : usize, value_clone : Signal < String > | {
 			div {
 				class : "mb-4",
 				label {
-					for :id_owned.clone(),
+					for : id_owned.clone(),
 					class : "form-label",
-					{ { label_owned } }
+					{ {
+						label_owned.clone()
+					} }
 				}
 				textarea {
 					class : "form-textarea",
 					id : id_owned.clone(),
 					name : id_owned.clone(),
-					rows: rows_str.clone(),
+					rows : rows_str.clone(),
 					placeholder : placeholder_owned.clone(),
-					maxlength :maxlength_attr.clone(),
+					maxlength : maxlength_attr.clone(),
 					@ input : {
-						let { value }
-						= value_clone.clone();
-						move| event : web_sys::Event | {
+						let value = value_clone.clone();
+						move | event : web_sys::Event | {
 							if let Some(target) = event.target() {
-								if letOk(textarea_el) = target.dyn_into::< web_sys::HtmlTextAreaElement >() {
+								if let Ok(textarea_el) = target.dyn_into::< web_sys::HtmlTextAreaElement >() {
 									value.set(textarea_el.value());
 								}
 							}
@@ -443,16 +463,24 @@ pub fn textarea(
 						value_signal.get()
 					}
 				}
-				ifshow_count {
-					div {
-						class : "flex justify-end mt-1",
-						span {
-							class : ifvalue_signal_for_count.get().len() > max_length { "text-danger font-medium" } else if value_signal_for_count.get().len() > { max_length }
-							* 9 / 10 { "text-warning font-medium" } else { "text-content-tertiary" },
-							{
-								format!("{}/{}", value_signal_for_count.get().len(), max_length)
+				{
+					if show_count {
+						let char_count = value_signal_for_count.get().len();
+						page!(| char_count : usize, max_length : usize | {
+							div {
+								class : "flex justify-end mt-1",
+								span {
+									class : {
+										if char_count > max_length { "text-danger font-medium" } else if char_count > max_length * 9 / 10 { "text-warning font-medium" } else { "text-content-tertiary" }
+									},
+									{ {
+										format!("{}/{}", char_count, max_length)
+									} }
+								}
 							}
-						}
+						})(char_count, max_length)
+					} else {
+						Page::empty()
 					}
 				}
 			}
@@ -466,11 +494,12 @@ pub fn textarea(
 			maxlength_attr,
 			show_count,
 			max_length,
+			value_clone,
 		)
 	}
 	#[cfg(native)]
 	{
-		page!(| id_owned : String, label_owned : String, rows_str : String, placeholder_owned : String, value_signal : Signal < String >, maxlength_attr: String, show_count : bool, max_length : usize | {
+		page!(| id_owned : String, label_owned : String, rows_str : String, placeholder_owned : String, value_signal : Signal < String >, value_signal_for_count : Signal < String >, maxlength_attr : String, show_count : bool, max_length : usize | {
 			div {
 				class : "mb-4",
 				label {
@@ -478,7 +507,9 @@ pub fn textarea(
 						id_owned.clone()
 					},
 					class : "form-label",
-					{ { label_owned } }
+					{ {
+						label_owned.clone()
+					} }
 				}
 				textarea {
 					class : "form-textarea",
@@ -502,22 +533,24 @@ pub fn textarea(
 						value_signal.get()
 					}
 				}
-				if show_count {
-					let { char_count }
-					= value_signal.get().len();
-					let { count_class }
-					= if { char_count }
-					> max_length { "text-danger font-medium" } else if { char_count }
-					> { max_length }
-					* 9 / 10 { "text-warning font-medium" } else { "text-content-tertiary" };
-					let { count_text }
-					= format!("{}/{}", char_count, max_length);
-					div {
-						class : "flex justify-end mt-1",
-						span {
-							class : { { count_class } },
-							{ { count_text } }
-						}
+				{
+					if show_count {
+						let char_count = value_signal_for_count.get().len();
+						page!(| char_count : usize, max_length : usize | {
+							div {
+								class : "flex justify-end mt-1",
+								span {
+									class : {
+										if char_count > max_length { "text-danger font-medium" } else if char_count > max_length * 9 / 10 { "text-warning font-medium" } else { "text-content-tertiary" }
+									},
+									{ {
+										format!("{}/{}", char_count, max_length)
+									} }
+								}
+							}
+						})(char_count, max_length)
+					} else {
+						Page::empty()
 					}
 				}
 			}
@@ -527,6 +560,7 @@ pub fn textarea(
 			rows_str,
 			placeholder_owned,
 			value_signal,
+			value_signal_for_count,
 			maxlength_attr,
 			show_count,
 			max_length,
@@ -626,17 +660,11 @@ pub fn theme_toggle() -> Page {
 ///
 /// Displays an empty div (useful for conditional rendering).
 pub fn empty() -> Page {
-	page!(|| {
-		div {}
-	})()
+	page!(|| { div {} })()
 }
 /// Divider component
 pub fn divider() -> Page {
-	page!(|| {
-		div {
-			class: "divider"
-		}
-	})()
+	page!(|| { div { class: "divider" } })()
 }
 /// Badge component
 pub fn badge(text: &str, primary: bool) -> Page {
@@ -650,7 +678,9 @@ pub fn badge(text: &str, primary: bool) -> Page {
 	page!(|text: String, class: String| {
 		span {
 			class: class,
-			{ { text } }
+			{ {
+				text.clone()
+			} }
 		}
 	})(text, class)
 }
