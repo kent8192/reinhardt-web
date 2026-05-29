@@ -22,6 +22,17 @@ pub use reinhardt_urls::routers::{
 	ClientRouterRegistration, collect_client_router_from_inventory, iter_registered_client_routers,
 };
 
+// On wasm with `client-router`, `ServerRouter` is the no-op builder (issue
+// #4569). Re-export it at the crate root so `reinhardt::ServerRouter` resolves
+// uniformly with native, enabling cross-target route-delegate signatures such
+// as `fn(ServerRouter) -> ServerRouter`.
+#[cfg(all(
+	target_family = "wasm",
+	target_os = "unknown",
+	feature = "client-router"
+))]
+pub use reinhardt_urls::routers::ServerRouter;
+
 #[cfg(feature = "client-router")]
 pub use reinhardt_urls::routers::{
 	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, FromPath, HistoryState,
