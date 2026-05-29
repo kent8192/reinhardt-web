@@ -93,7 +93,11 @@ mod tests {
 	/// Test highlighted() method produces HTML with syntax highlighting for Rust
 	#[rstest]
 	fn test_highlighted_rust_code() {
-		let snippet = snippet("Rust Example", "fn main() { println!(\"Hello!\"); }", "rust");
+		let snippet = snippet(
+			"Rust Example",
+			"fn main() { println!(\"Hello!\"); }",
+			"rust",
+		);
 
 		let html = snippet.highlighted();
 
@@ -110,7 +114,11 @@ mod tests {
 	/// Test highlighted() method works for Python language
 	#[rstest]
 	fn test_highlighted_python_code() {
-		let snippet = snippet("Python Example", "def hello():\n    print('Hello!')", "python");
+		let snippet = snippet(
+			"Python Example",
+			"def hello():\n    print('Hello!')",
+			"python",
+		);
 
 		let html = snippet.highlighted();
 
@@ -160,14 +168,14 @@ mod tests {
 	/// Test highlighted() method handles multiline code correctly
 	#[rstest]
 	fn test_highlighted_multiline_code() {
-	let snippet = snippet(
-		"Multiline Rust",
-		r#"fn main() {
+		let snippet = snippet(
+			"Multiline Rust",
+			r#"fn main() {
     let x = 42;
     println!("{}", x);
 }"#,
-		"rust",
-	);
+			"rust",
+		);
 
 		let html = snippet.highlighted();
 
