@@ -36,9 +36,15 @@
 //! `Page::KeyedFragment`; unkeyed `for` blocks keep producing regular
 //! fragments.
 //!
+//! Because every `for` block is auto-wrapped in `Page::reactive(move || ...)`
+//! (rule 2 above), the iterator expression is cloned on each reactive re-run.
+//! The iterator expression must therefore implement `Clone` (e.g. `Vec<T>`,
+//! `&[T]`, or any `Clone` collection).
+//!
 //! ```ignore
 //! page!(|todos: Vec<Todo>| {
 //!     ul {
+//!         // Iterator expression `todos` must implement `Clone`.
 //!         for todo in todos @key(todo.id.clone()) {
 //!             li { { todo.title.clone() } }
 //!         }
