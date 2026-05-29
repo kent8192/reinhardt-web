@@ -721,7 +721,18 @@ impl BaseUserManager<User> for UserManager {
 		password: Option<&str>,
 		extra: HashMap<String, Value>,
 	) -> Result<User, reinhardt::Error> {
-		let mut user = User::new(username.to_string(), /* email */ String::new());
+		let mut user = User::build()
+			.username(username)
+			.email("")
+			.password_hash(None)
+			.first_name("")
+			.last_name("")
+			.is_active(true)
+			.is_staff(false)
+			.is_superuser(false)
+			.last_login(None)
+			.phone_number(None)
+			.finish();
 		if let Some(pw) = password {
 			user.set_password(pw)?;
 		}
@@ -1106,8 +1117,19 @@ pub async fn create_user(
 ) -> ViewResult<Response> {
 	// Json<T> deserializes the body; Validated<T> runs #[validate] rules and yields the validated value
 
-	// Create user using the auto-generated new() function from #[user] + #[model]
-	let mut user = User::new(create_req.username, create_req.email);
+	// Create user using the auto-generated builder from #[user] + #[model]
+	let mut user = User::build()
+		.username(create_req.username)
+		.email(create_req.email)
+		.password_hash(None)
+		.first_name("")
+		.last_name("")
+		.is_active(true)
+		.is_staff(false)
+		.is_superuser(false)
+		.last_login(None)
+		.phone_number(None)
+		.finish();
 
 	// Hash and set password using BaseUser trait
 	user.set_password(&create_req.password)?;

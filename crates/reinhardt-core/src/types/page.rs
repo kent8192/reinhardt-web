@@ -206,6 +206,8 @@ pub enum Page {
 	Text(Cow<'static, str>),
 	/// A fragment containing multiple views (no wrapper element).
 	Fragment(Vec<Page>),
+	/// A fragment whose children have stable identity keys.
+	KeyedFragment(Vec<(String, Page)>),
 	/// An empty view (renders nothing).
 	Empty,
 	/// A view with associated head section.
@@ -483,6 +485,20 @@ impl Page {
 		Self::Fragment(children.into_iter().map(|c| c.into_page()).collect())
 	}
 
+	/// Creates a keyed fragment view.
+	pub fn keyed_fragment<K, V>(children: impl IntoIterator<Item = (K, V)>) -> Self
+	where
+		K: Into<String>,
+		V: IntoPage,
+	{
+		Self::KeyedFragment(
+			children
+				.into_iter()
+				.map(|(key, child)| (key.into(), child.into_page()))
+				.collect(),
+		)
+	}
+
 	/// Creates an empty view.
 	pub fn empty() -> Self {
 		Self::Empty
@@ -633,6 +649,9 @@ impl Page {
 		match self {
 			Page::WithHead { head, .. } => Some(head),
 			Page::Fragment(children) => children.iter().find_map(|v| v.find_topmost_head()),
+			Page::KeyedFragment(children) => {
+				children.iter().find_map(|(_, v)| v.find_topmost_head())
+			}
 			_ => None,
 		}
 	}
@@ -683,6 +702,11 @@ impl Page {
 			}
 			Page::Fragment(children) => {
 				for child in children {
+					child.render_to_string_inner(output);
+				}
+			}
+			Page::KeyedFragment(children) => {
+				for (_, child) in children {
 					child.render_to_string_inner(output);
 				}
 			}
@@ -891,6 +915,12 @@ mod tests {
 	fn test_render_fragment() {
 		let view = Page::fragment(["One", "Two", "Three"]);
 		assert_eq!(view.render_to_string(), "OneTwoThree");
+	}
+
+	#[test]
+	fn test_render_keyed_fragment() {
+		let view = Page::keyed_fragment([("first", "One"), ("second", "Two")]);
+		assert_eq!(view.render_to_string(), "OneTwo");
 	}
 
 	#[test]

@@ -77,7 +77,7 @@ impl TestDatabase {
 		username: &str,
 		email: &str,
 	) -> Result<i32, Box<dyn std::error::Error>> {
-		let user = TestUser::new(username.to_string(), email.to_string());
+		let user = TestUser::build().username(username).email(email).finish();
 		let manager = TestUser::objects();
 		let created = manager.create(&user).await?;
 		Ok(created.id())
@@ -122,7 +122,12 @@ impl TestDatabase {
 		price: f64,
 		stock: i32,
 	) -> Result<i32, Box<dyn std::error::Error>> {
-		let product = TestProduct::new(name.to_string(), code.to_string(), price, stock);
+		let product = TestProduct::build()
+			.name(name)
+			.code(code)
+			.price(price)
+			.stock(stock)
+			.finish();
 		let manager = TestProduct::objects();
 		let created = manager.create(&product).await?;
 		Ok(created.id())
@@ -166,7 +171,11 @@ impl TestDatabase {
 		product_id: i32,
 		quantity: i32,
 	) -> Result<i32, Box<dyn std::error::Error>> {
-		let order = TestOrder::new(user_id, product_id, quantity);
+		let order = TestOrder::build()
+			.user_id(user_id)
+			.product_id(product_id)
+			.quantity(quantity)
+			.finish();
 		let manager = TestOrder::objects();
 		let created = manager.create(&order).await?;
 		Ok(created.id())

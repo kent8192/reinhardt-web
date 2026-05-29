@@ -203,6 +203,15 @@ pub fn reconcile(element: &Element, view: &Page) -> Result<(), ReconcileError> {
 			}
 			Ok(())
 		}
+		Page::KeyedFragment(views) => {
+			let children = element.children();
+			for (i, (_, child_view)) in views.iter().enumerate() {
+				if i < children.len() {
+					reconcile(&children[i], child_view)?;
+				}
+			}
+			Ok(())
+		}
 		Page::Empty => Ok(()),
 		Page::WithHead { view, .. } => {
 			// Head section is handled separately during SSR
@@ -317,6 +326,14 @@ pub fn reconcile_with_options(
 			let children = element.children();
 
 			for (i, child_view) in views.iter().enumerate() {
+				if i < children.len() {
+					reconcile_with_options(&children[i], child_view, options)?;
+				}
+			}
+		} else if let Page::KeyedFragment(views) = view {
+			let children = element.children();
+
+			for (i, (_, child_view)) in views.iter().enumerate() {
 				if i < children.len() {
 					reconcile_with_options(&children[i], child_view, options)?;
 				}
@@ -453,6 +470,15 @@ fn compare_recursive(element: &Element, view: &Page, path: &str, differences: &m
 		Page::Fragment(views) => {
 			let children = element.children();
 			for (i, child_view) in views.iter().enumerate() {
+				let child_path = format!("{}/{}", path, i);
+				if i < children.len() {
+					compare_recursive(&children[i], child_view, &child_path, differences);
+				}
+			}
+		}
+		Page::KeyedFragment(views) => {
+			let children = element.children();
+			for (i, (_, child_view)) in views.iter().enumerate() {
 				let child_path = format!("{}/{}", path, i);
 				if i < children.len() {
 					compare_recursive(&children[i], child_view, &child_path, differences);

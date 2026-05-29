@@ -167,6 +167,8 @@ pub struct TypedPageFor {
 	pub pat: Pat,
 	/// Iterator expression
 	pub iter: Expr,
+	/// Optional stable key expression for identity-preserving reconciliation.
+	pub key: Option<Expr>,
 	/// Validated body nodes (rendered for each item)
 	pub body: Vec<TypedPageNode>,
 	/// Span for error reporting
