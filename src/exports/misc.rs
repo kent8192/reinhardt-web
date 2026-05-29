@@ -1,5 +1,10 @@
 //! Miscellaneous re-exports (tasks, test, storage, cache).
 
+// Third-party trait re-exports for user convenience
+#[cfg(native)]
+pub use async_trait::async_trait;
+pub use serde::{Deserialize, Serialize};
+
 #[cfg(feature = "tasks")]
 pub use reinhardt_tasks::{Scheduler, Task, TaskExecutor, TaskQueue};
 

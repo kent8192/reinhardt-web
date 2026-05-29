@@ -51,9 +51,7 @@ mod di;
 #[cfg(native)]
 pub use di::*;
 
-#[cfg(native)]
 mod misc;
-#[cfg(native)]
 pub use misc::*;
 
 // Disambiguate names that appear in multiple export modules via glob.
