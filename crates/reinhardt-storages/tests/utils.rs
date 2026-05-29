@@ -193,6 +193,46 @@ pub fn assert_presigned_url(url: &str) -> Result<(), AssertionError> {
 	Ok(())
 }
 
+/// Assert that a GCS signed URL has provider-specific query parameters.
+pub fn assert_gcs_signed_url(url: &str) -> Result<(), AssertionError> {
+	if !url.starts_with("http://") && !url.starts_with("https://") {
+		return Err(AssertionError::new(format!(
+			"GCS signed URL should start with http:// or https://: {}",
+			url
+		)));
+	}
+
+	if !url.contains("X-Goog-") {
+		return Err(AssertionError::new(format!(
+			"GCS signed URL should contain Google signing params: {}",
+			url
+		)));
+	}
+
+	Ok(())
+}
+
+/// Assert that an Azure SAS URL has provider-specific query parameters.
+pub fn assert_azure_signed_url(url: &str) -> Result<(), AssertionError> {
+	if !url.starts_with("http://") && !url.starts_with("https://") {
+		return Err(AssertionError::new(format!(
+			"Azure SAS URL should start with http:// or https://: {}",
+			url
+		)));
+	}
+
+	for required in ["sv=", "se=", "sr=", "sig="] {
+		if !url.contains(required) {
+			return Err(AssertionError::new(format!(
+				"Azure SAS URL missing query parameter {}: {}",
+				required, url
+			)));
+		}
+	}
+
+	Ok(())
+}
+
 /// Assert that local file URL is valid.
 pub fn assert_file_url(url: &str) -> Result<(), AssertionError> {
 	if !url.starts_with("file://") {

@@ -1,5 +1,7 @@
 //! Integration tests for LocalStorage backend.
 
+#![allow(deprecated)] // Tests cover legacy local config until removal.
+
 use reinhardt_storages::StorageBackend;
 use reinhardt_storages::backends::local::LocalStorage;
 use reinhardt_storages::config::LocalConfig;

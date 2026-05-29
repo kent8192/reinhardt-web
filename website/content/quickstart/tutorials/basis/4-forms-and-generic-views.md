@@ -520,7 +520,7 @@ pub async fn submit_vote(
 
 ## Question CUD via `form!`
 
-The voting form is the headline use case, but the same pattern composes naturally for create / update / delete. The Question CUD handlers in `src/apps/polls/server_fn.rs` show what an authenticated mutation looks like when stitched together with the `String`-based ABI and the `SessionUser` DI factory (see Part 3 for the factory definition):
+The voting form is the headline use case, but the same pattern composes naturally for create / update / delete. The Question CUD handlers in `src/apps/polls/server_fn.rs` show what an authenticated mutation looks like when stitched together with the `String`-based ABI and the session-user DI factory (see Part 3 for the factory definition):
 
 ```rust
 // src/apps/polls/server_fn.rs
@@ -538,9 +538,10 @@ The voting form is the headline use case, but the same pattern composes naturall
 //   handler. The trailing `_csrf_token: String` parameter is appended by the
 //   `form!` macro for non-GET forms; the CSRF middleware verifies it before
 //   the handler runs.
-// * Authentication is required: `Depends<SessionUser>` is resolved by the
-//   DI container from `apps::polls::di::SessionUser`, and each handler
-//   calls `.require_active()?` for the 401/403 surface.
+// * Authentication is required: `Depends<Result<User, SessionError>>` is
+//   resolved by the request-scoped factory in `apps::polls::di` and
+//   exposes `.as_ref().map_err(ServerFnError::from)?` for the 401/403/500
+//   surface.
 // * For `update_question` and `delete_question`, ownership is enforced by
 //   comparing `question.author_id()` with the current user's id; mismatched
 //   ownership returns a 403.
@@ -552,18 +553,18 @@ The voting form is the headline use case, but the same pattern composes naturall
 ///       question_text: String,
 ///       _csrf_token: String,
 ///       #[inject] _db: reinhardt::DatabaseConnection,
-///       #[inject] session_user: Depends<SessionUser>,
+///       #[inject] session_user: Depends<Result<User, SessionError>>,
 ///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
 #[server_fn]
 pub async fn create_question(
 	question_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUser>,
+	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
 	use crate::apps::polls::models::Question;
 
-	let user = session_user.require_active()?;
+	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 
 	let trimmed = question_text.trim();
 	if trimmed.is_empty() || trimmed.len() > 200 {
@@ -587,36 +588,54 @@ pub async fn create_question(
 }
 ```
 
-`session_user.require_active()?` is the shared 401/403 gate, layered on the `SessionUser` DI factory in `apps::polls::di`. The factory does the "load user_id from session, fetch the row, classify Anonymous / Authenticated / Inactive / Unavailable" dance once per request; each authenticated handler just consumes the result:
+`(*session_user).as_ref().map_err(ServerFnError::from)?` is the shared 401/403/500 gate, layered on the session-user DI factory in `apps::polls::di`. The factory does the "load user_id from session, fetch the row, classify Anonymous / active / Inactive / Unavailable" dance once per request and returns a `Result<User, SessionError>`; each authenticated handler just borrows the result and converts the error via `From<&SessionError>`:
 
 ```rust
 // src/apps/polls/di.rs (extract)
 
-/// Snapshot of the user the current session points at. Carries one of four
-/// states so handlers can decide how to react:
+/// Error variants for the session-based user lookup factory.
 ///
-/// - `Anonymous` — no `user_id` in the session (no cookie / signed out).
-/// - `Authenticated(User)` — user row loaded and `is_active`.
-/// - `Inactive(User)` — user row loaded but `is_active == false`.
-/// - `Unavailable` — the DB lookup itself failed; surfaces a 503 (distinct
-///   from "no user").
+/// Three failure modes are distinguished so handlers can surface the
+/// correct HTTP status *and* so that an operational outage (DB
+/// connection drop, query timeout) does not get silently rewritten into
+/// a fake 401:
 ///
-/// `require_active()` is the convenience accessor every authenticated
-/// mutation calls — it folds the four-way enum into `Result<User, ServerFnError>`
-/// with the appropriate 401 / 403 / 503 codes.
-#[derive(Clone)]
-pub enum SessionUser {
+/// - `Anonymous` — no `user_id` in the session, or the row has been
+///   deleted between login and request. Surfaced as **401** via
+///   `From<&SessionError> for ServerFnError`.
+/// - `Inactive` — a row exists but `is_active = false`. Surfaced as **403**.
+/// - `Unavailable` — the user-lookup query itself failed (DB down, pool
+///   exhausted, schema mismatch, …). Surfaced as **500** so the client sees
+///   an operational error instead of being pushed into a misleading re-auth
+///   loop.
+#[derive(Clone, Debug)]
+pub enum SessionError {
 	Anonymous,
-	Authenticated(User),
-	Inactive(User),
-	Unavailable,
+	Inactive,
+	Unavailable(String),
+}
+
+/// Convert a `SessionError` reference to a `ServerFnError` with the
+/// appropriate HTTP status code.
+///
+/// Handlers use this via `user.as_ref().map_err(ServerFnError::from)?`
+/// to surface a 401, 403, or 500 depending on the failure mode.
+impl From<&SessionError> for ServerFnError {
+	fn from(err: &SessionError) -> Self {
+		match err {
+			SessionError::Anonymous => ServerFnError::server(401, "Authentication required"),
+			SessionError::Inactive => ServerFnError::server(403, "User account is inactive"),
+			SessionError::Unavailable(_) => {
+				ServerFnError::server(500, "User lookup temporarily unavailable")
+			}
+		}
+	}
 }
 
 #[injectable_factory(scope = "request")]
 async fn session_user_factory(
 	#[inject] session: SessionData,
-	#[inject] db: Depends<DatabaseConnection>,
-) -> SessionUser { /* ... */ }
+) -> Result<User, SessionError> { /* ... */ }
 ```
 
 `update_question` and `delete_question` follow the same shape; the only difference is the ownership check after loading the row:
@@ -639,11 +658,11 @@ pub async fn update_question(
 	question_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUser>,
+	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
 	use crate::apps::polls::models::Question;
 
-	let user = session_user.require_active()?;
+	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 
 	let question_id: i64 = question_id
 		.parse()
@@ -695,11 +714,11 @@ pub async fn delete_question(
 	question_id: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUser>,
+	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<(), ServerFnError> {
 	use crate::apps::polls::models::Question;
 
-	let user = session_user.require_active()?;
+	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 
 	let question_id: i64 = question_id
 		.parse()
@@ -855,15 +874,15 @@ pub async fn create_choice(
 	choice_text: String,
 	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUser>,
+	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	use crate::apps::polls::models::Choice;
 
-	let user = session_user.require_active()?;
+	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 	let question_id: i64 = question_id
 		.parse()
 		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
-	let question = require_question_author(question_id, &user).await?;
+	let question = require_question_author(question_id, user).await?;
 
 	let trimmed = choice_text.trim();
 	if trimmed.is_empty() || trimmed.len() > 200 {
@@ -890,7 +909,7 @@ pub async fn create_choice(
 
 Read this top-to-bottom and the layering becomes obvious:
 
-1. `session_user.require_active()?` — authentication, resolved via the `Depends<SessionUser>` DI factory.
+1. `(*session_user).as_ref().map_err(ServerFnError::from)?` — authentication, resolved via the `Depends<Result<User, SessionError>>` DI factory.
 2. `question_id.parse()?` — workaround for the `String`-only ABI.
 3. `require_question_author(question_id, &user).await?` — authorization, *through the parent row*.
 4. Local content validation (length).
@@ -918,7 +937,7 @@ You now have everything Part 4 set out to deliver:
 - DTO field-level validation lives in `src/shared/types.rs`, with `#[dto]` emitting `derive(Validate)` (and OpenAPI `Schema`) behind `cfg(native)` so the WASM bundle stays small.
 - The voting form's metadata + CSRF token are emitted by the `form!` macro itself at expansion time on the client side; the server-only `create_vote_form()` in `src/shared/forms.rs` exists so the same shape can be unit-tested (`test_vote_form_metadata`) without compiling the macro, and the `strip_arguments: { csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token() … }` clause pulls the per-request CSRF token from the page-level helper.
 - The `form!` macro in `src/client/components/polls.rs` declares the UI, dispatches to `submit_vote`, serialises every field as `String`, appends the CSRF token through `strip_arguments`, and surfaces success/error reactively through `state: { loading, error }` and matching `watch` blocks.
-- Question and Choice CUD reuse the same `form!` + `#[server_fn]` shape, composing `session_user.require_active()?` (authentication, via the `Depends<SessionUser>` DI factory) and `require_question_author` (authorization) on top of typed model builders.
+- Question and Choice CUD reuse the same `form!` + `#[server_fn]` shape, composing `(*session_user).as_ref().map_err(ServerFnError::from)?` (authentication, via the `Depends<Result<User, SessionError>>` DI factory) and `require_question_author` (authorization) on top of typed model builders.
 - "Generic views" are not a separate concept in the pages template — they are the page factory functions you already have, glued together with the reactive primitives above.
 
 In the next chapter we put this layer under test: native integration tests with `rstest` + `reinhardt-test` + `sqlx` + `tempfile`, plus a WASM-only target that mocks the server function HTTP calls with MSW.

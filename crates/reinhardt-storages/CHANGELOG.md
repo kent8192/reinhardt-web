@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Implemented Google Cloud Storage and Azure Blob Storage backends.
+- Added `StorageSettings` as the primary `#[settings]` fragment for storage configuration.
+- Added `create_storage_from_settings(&StorageSettings)` for settings-first backend construction.
+- Added fake-gcs-server and Azurite integration coverage for cloud backend behavior.
+
+### Deprecated
+- Deprecated `StorageConfig` and provider-specific `XxxConfig` structs in favor of `StorageSettings`.
+- Deprecated `StorageConfig::from_env()` in favor of composed settings loading.
+
 ## [0.1.0] - 2026-01-24
 
 ### Added
@@ -29,4 +39,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - File metadata operations (size, modified time)
 
 ### Notes
-- Google Cloud Storage and Azure Blob Storage backends are planned for future releases
+- Google Cloud Storage and Azure Blob Storage backends were introduced after this release
