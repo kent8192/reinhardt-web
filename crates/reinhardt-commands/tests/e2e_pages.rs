@@ -553,21 +553,20 @@ async fn workspace_app_pages_uses_unified_template() {
 		"workspace lib.rs doc comment must say 'crate':\n{lib_rs}"
 	);
 
-	// 5. InstalledApp import uses project_crate_name, not crate::
-	let expected_workspace_import = format!("use {}::config::apps::InstalledApp;", project_name);
+	// 5. No `InstalledApp` import is generated. Since the `#[url_patterns]`
+	//    attribute macro was removed (feat!: remove #[url_patterns]), the
+	//    generated routers no longer reference `InstalledApp`, so neither the
+	//    `crate::` form nor the project-crate form is emitted (an unused import
+	//    would otherwise fail to compile under `-D warnings`).
+	let crate_import = "use crate::config::apps::InstalledApp;";
+	let project_import = format!("use {}::config::apps::InstalledApp;", project_name);
 	let server_urls =
 		fs::read_to_string(src.join("urls").join("server_urls.rs")).expect("read server_urls.rs");
 	assert!(
 		!server_urls
 			.lines()
-			.any(|l| l.trim() == "use crate::config::apps::InstalledApp;"),
-		"workspace server_urls.rs must NOT use crate:: import:\n{server_urls}"
-	);
-	assert!(
-		server_urls
-			.lines()
-			.any(|l| l.trim() == expected_workspace_import),
-		"workspace server_urls.rs must import InstalledApp from project crate:\n{server_urls}"
+			.any(|l| l.trim() == crate_import || l.trim() == project_import),
+		"workspace server_urls.rs must NOT import InstalledApp:\n{server_urls}"
 	);
 
 	let client_router = fs::read_to_string(src.join("urls").join("client_router.rs"))
@@ -575,14 +574,8 @@ async fn workspace_app_pages_uses_unified_template() {
 	assert!(
 		!client_router
 			.lines()
-			.any(|l| l.trim() == "use crate::config::apps::InstalledApp;"),
-		"workspace client_router.rs must NOT use crate:: import:\n{client_router}"
-	);
-	assert!(
-		client_router
-			.lines()
-			.any(|l| l.trim() == expected_workspace_import),
-		"workspace client_router.rs must import InstalledApp from project crate:\n{client_router}"
+			.any(|l| l.trim() == crate_import || l.trim() == project_import),
+		"workspace client_router.rs must NOT import InstalledApp:\n{client_router}"
 	);
 
 	// 6. client/pages.rs imports with_nav from project crate, not crate::
@@ -659,24 +652,27 @@ async fn module_app_pages_does_not_generate_workspace_files() {
 		"module app must NOT have its own build.rs"
 	);
 
-	// InstalledApp import uses crate::, not project_crate_name::
-	let expected_module_import = "use crate::config::apps::InstalledApp;";
+	// No `InstalledApp` import is generated. The `#[url_patterns]` attribute
+	// macro that previously consumed `InstalledApp` was removed, so the module
+	// app routers no longer reference it (an unused import would otherwise fail
+	// to compile under `-D warnings`).
+	let unwanted_module_import = "use crate::config::apps::InstalledApp;";
 	let server_urls = fs::read_to_string(apps.join("baz").join("urls").join("server_urls.rs"))
 		.expect("read server_urls.rs");
 	assert!(
-		server_urls
+		!server_urls
 			.lines()
-			.any(|l| l.trim() == expected_module_import),
-		"module server_urls.rs must use crate:: import:\n{server_urls}"
+			.any(|l| l.trim() == unwanted_module_import),
+		"module server_urls.rs must NOT import InstalledApp:\n{server_urls}"
 	);
 
 	let client_router = fs::read_to_string(apps.join("baz").join("urls").join("client_router.rs"))
 		.expect("read client_router.rs");
 	assert!(
-		client_router
+		!client_router
 			.lines()
-			.any(|l| l.trim() == expected_module_import),
-		"module client_router.rs must use crate:: import:\n{client_router}"
+			.any(|l| l.trim() == unwanted_module_import),
+		"module client_router.rs must NOT import InstalledApp:\n{client_router}"
 	);
 
 	// client/pages.rs with_nav import uses crate::, not project_crate_name::

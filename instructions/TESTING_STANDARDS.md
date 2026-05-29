@@ -47,7 +47,10 @@ fn test_always_passes() {
 ```rust
 #[test]
 fn test_user_creation() {
-    let user = User::new("Alice", "alice@example.com");
+    let user = User::build()
+        .name("Alice")
+        .email("alice@example.com")
+        .finish();
     assert_eq!(user.name, "Alice");
     assert_eq!(user.email, "alice@example.com");
 }

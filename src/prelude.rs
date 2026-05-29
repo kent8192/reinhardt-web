@@ -13,13 +13,8 @@
 /// the `client-router` feature; the module is empty when that feature is
 /// disabled). Native builds keep using the full server-side prelude below.
 #[cfg(all(not(native), target_family = "wasm"))]
-mod wasm {
-	#[cfg(feature = "client-router")]
-	pub use crate::urls::prelude::UnifiedRouter;
-}
-
-#[cfg(all(not(native), target_family = "wasm"))]
-pub use wasm::*;
+#[cfg(feature = "client-router")]
+pub use crate::urls::prelude::UnifiedRouter;
 
 #[cfg(native)]
 mod server {

@@ -138,6 +138,7 @@ impl SsrOptions {
 pub struct SsrRenderer {
 	options: SsrOptions,
 	state: SsrState,
+	hydration_marker_counter: u64,
 }
 
 impl Default for SsrRenderer {
@@ -152,6 +153,7 @@ impl SsrRenderer {
 		Self {
 			options: SsrOptions::default(),
 			state: SsrState::new(),
+			hydration_marker_counter: 0,
 		}
 	}
 
@@ -160,6 +162,7 @@ impl SsrRenderer {
 		Self {
 			options,
 			state: SsrState::new(),
+			hydration_marker_counter: 0,
 		}
 	}
 
@@ -188,6 +191,12 @@ impl SsrRenderer {
 	/// Renders a View to an HTML string.
 	pub fn render_view(&self, view: &Page) -> String {
 		view.render_to_string()
+	}
+
+	fn next_hydration_marker_id(&mut self) -> String {
+		let id = self.hydration_marker_counter;
+		self.hydration_marker_counter += 1;
+		format!("rh-{}", id)
 	}
 
 	/// Renders a component to a full HTML page.
@@ -410,11 +419,16 @@ impl SsrRenderer {
 
 	/// Renders a component with hydration marker.
 	pub fn render_with_marker<C: Component>(&mut self, component: &C) -> String {
-		let marker = HydrationMarker::with_component(C::name());
 		let view = component.render();
 		let content = view.render_to_string();
 
 		if self.options.include_hydration_markers {
+			let marker = HydrationMarker {
+				id: self.next_hydration_marker_id(),
+				component_name: Some(C::name().to_string()),
+				props: None,
+				strategy: HydrationStrategy::default(),
+			};
 			format!("<div {}>{}</div>", marker.to_attr_string(), content)
 		} else {
 			content
