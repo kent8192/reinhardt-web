@@ -1,0 +1,114 @@
+name: Determine Runner
+
+# Reusable workflow that selects the runner type and the cargo build
+# parallelism for downstream CI jobs. Extracted from ci.yml so that every
+# workflow needing a runner decision (ci.yml, examples-test-standalone.yml,
+# ...) shares a single source of truth instead of duplicating the selection
+# logic.
+#
+# Priority: Mac local -> AWS Spot (opt-in) -> GitHub-hosted (fallback)
+#
+# Mac local: auto-assigned when MAC_RUNNER_ENABLED=true and actor is trusted.
+#   Trusted = repo owner, release-plz branch, workflow_dispatch.
+#   Fork PRs are always excluded (security: untrusted code on local machine).
+#
+# AWS Spot: opt-in via PR checkbox when SELF_HOSTED_ENABLED=true.
+#   Budget circuit breaker sets SELF_HOSTED_ENABLED to "false" when exceeded.
+#
+# GitHub-hosted: fallback for fork PRs or when self-hosted is unavailable.
+
+on:
+  workflow_call:
+    outputs:
+      runner:
+        description: "Runner label JSON for downstream jobs (e.g. '\"ubuntu-latest\"')"
+        value: ${{ jobs.determine-runner.outputs.runner }}
+      cargo-build-jobs:
+        description: "Parallel cargo build jobs (1=GitHub-hosted OOM safe, 4=Mac, 8=AWS Spot)"
+        value: ${{ jobs.determine-runner.outputs.cargo-build-jobs }}
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  determine-runner:
+    name: Determine Runner
+    timeout-minutes: 360
+    # See infra/github-runners/hotpath-runner-userdata.sh for the canonical hotpath runner labels.
+    runs-on: [self-hosted, linux, arm64, reinhardt-hotpath]
+    outputs:
+      runner: ${{ steps.set-runner.outputs.runner }}
+      cargo-build-jobs: ${{ steps.set-runner.outputs.cargo-build-jobs }}
+    steps:
+      - name: Parse PR checkbox for self-hosted
+        if: github.event_name == 'pull_request'
+        id: parse-checkbox
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const body = context.payload.pull_request.body || '';
+            // Default: false (when checkbox is missing or unchecked)
+            const checked = /- \[x\] I use self-hosted runner/i.test(body);
+            core.setOutput('self-hosted-requested', checked.toString());
+
+      - name: Set runner configuration
+        id: set-runner
+        env:
+          ACTOR: ${{ github.actor }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          SELF_HOSTED_ENABLED: ${{ vars.SELF_HOSTED_ENABLED }}
+          EVENT_NAME: ${{ github.event_name }}
+          SELF_HOSTED_REQUESTED: ${{ steps.parse-checkbox.outputs.self-hosted-requested }}
+          HEAD_REF: ${{ github.head_ref }}
+          MAC_RUNNER_ENABLED: ${{ vars.MAC_RUNNER_ENABLED }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+        run: |
+          USE_MAC=false
+          USE_AWS=false
+
+          # --- Mac local runner selection ---
+          # Security: only trusted actors can use Mac runner.
+          # Fork PRs are ALWAYS excluded regardless of actor.
+          if [[ "$MAC_RUNNER_ENABLED" == "true" ]] && [[ "$IS_FORK" != "true" ]]; then
+            if [[ "$EVENT_NAME" == "workflow_dispatch" ]] && [[ "$ACTOR" == "$REPO_OWNER" ]]; then
+              USE_MAC=true
+            elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+              # release-plz PRs: trusted (only push-access users create these branches)
+              if [[ "$HEAD_REF" == release-plz-* ]]; then
+                USE_MAC=true
+              # Repo owner PRs: trusted
+              elif [[ "$ACTOR" == "$REPO_OWNER" ]]; then
+                USE_MAC=true
+              fi
+              # Other contributors: never use Mac runner
+            fi
+          fi
+
+          # --- AWS Spot runner selection (opt-in) ---
+          if [[ "$USE_MAC" == "false" ]] && [[ "$SELF_HOSTED_ENABLED" == "true" ]]; then
+            if [[ "$HEAD_REF" == release-plz-* ]]; then
+              USE_AWS=true
+            elif [[ "$ACTOR" == "$REPO_OWNER" ]]; then
+              if [[ "$EVENT_NAME" == "pull_request" ]]; then
+                if [[ "$SELF_HOSTED_REQUESTED" == "true" ]]; then
+                  USE_AWS=true
+                fi
+              else
+                USE_AWS=true
+              fi
+            fi
+          fi
+
+          # --- Output runner configuration ---
+          if [[ "$USE_MAC" == "true" ]]; then
+            echo 'runner=["self-hosted","linux","arm64","mac-local"]' >> "$GITHUB_OUTPUT"
+            echo 'cargo-build-jobs=4' >> "$GITHUB_OUTPUT"
+          elif [[ "$USE_AWS" == "true" ]]; then
+            echo 'runner=["self-hosted","linux","arm64","reinhardt-ci"]' >> "$GITHUB_OUTPUT"
+            echo 'cargo-build-jobs=8' >> "$GITHUB_OUTPUT"
+          else
+            # GitHub-hosted: free, slower; CARGO_BUILD_JOBS=1 prevents OOM on 7GB RAM
+            echo 'runner="ubuntu-latest"' >> "$GITHUB_OUTPUT"
+            echo 'cargo-build-jobs=1' >> "$GITHUB_OUTPUT"
+          fi
