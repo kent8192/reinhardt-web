@@ -153,16 +153,21 @@ impl Default for LocalStorageSettings {
 
 impl Default for StorageSettings {
 	fn default() -> Self {
+		// Populate the selected backend's settings so the default value is convertible
+		// via `to_config()` in every feature configuration. `default_backend()` only
+		// returns a backend whose feature (and therefore whose settings field) is
+		// compiled in, so the matching field below is always present and gets `Some`.
+		let backend = default_backend();
 		Self {
-			backend: default_backend(),
+			backend,
 			#[cfg(feature = "s3")]
-			s3: None,
+			s3: matches!(backend, BackendType::S3).then(S3StorageSettings::default),
 			#[cfg(feature = "gcs")]
-			gcs: None,
+			gcs: matches!(backend, BackendType::Gcs).then(GcsStorageSettings::default),
 			#[cfg(feature = "azure")]
-			azure: None,
+			azure: matches!(backend, BackendType::Azure).then(AzureStorageSettings::default),
 			#[cfg(feature = "local")]
-			local: Some(LocalStorageSettings::default()),
+			local: matches!(backend, BackendType::Local).then(LocalStorageSettings::default),
 		}
 	}
 }
@@ -244,4 +249,30 @@ impl StorageSettings {
 
 fn missing_section(section: &str) -> StorageError {
 	StorageError::ConfigError(format!("Selected backend requires [{section}] settings"))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	// `StorageSettings::default()` must be convertible via `to_config()` for whichever
+	// backend `default_backend()` selects, including non-local builds where `local` is
+	// disabled. This exercises the S3/Gcs/Azure default-backend paths under those
+	// feature sets, not just the `Local` path.
+	#[test]
+	#[cfg(any(feature = "s3", feature = "gcs", feature = "azure", feature = "local"))]
+	fn default_is_convertible_in_every_backend_feature_set() {
+		// Arrange
+		let settings = StorageSettings::default();
+
+		// Act
+		let result = settings.to_config();
+
+		// Assert
+		assert!(
+			result.is_ok(),
+			"default StorageSettings must convert when a backend feature is enabled, got {:?}",
+			result.err()
+		);
+	}
 }
