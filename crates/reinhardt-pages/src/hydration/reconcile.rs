@@ -7,12 +7,64 @@ use crate::component::Page;
 
 #[cfg(wasm)]
 use crate::dom::Element;
+#[cfg(wasm)]
+use reinhardt_core::types::page::{BOOLEAN_ATTRS, PageElement, is_boolean_attr_truthy};
+#[cfg(wasm)]
+use wasm_bindgen::JsCast;
+
+/// Breadcrumb context for hydration reconciliation diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ReconcilePath {
+	component: Option<String>,
+	segments: Vec<String>,
+}
+
+impl ReconcilePath {
+	/// Creates a root reconciliation path.
+	pub fn root() -> Self {
+		Self::default()
+	}
+
+	/// Adds or replaces the component name for this path.
+	pub fn with_component(mut self, component: impl Into<String>) -> Self {
+		self.component = Some(component.into());
+		self
+	}
+
+	/// Appends a child-index segment to this path.
+	pub fn with_child(mut self, index: usize) -> Self {
+		self.segments.push(format!("child[{}]", index));
+		self
+	}
+
+	/// Appends an element-tag segment to this path.
+	pub fn with_element(mut self, tag: impl Into<String>) -> Self {
+		self.segments.push(tag.into());
+		self
+	}
+
+	fn describe(&self) -> String {
+		let path = if self.segments.is_empty() {
+			"root".to_string()
+		} else {
+			self.segments.join(" > ")
+		};
+
+		if let Some(component) = &self.component {
+			format!("in {} at {}", component, path)
+		} else {
+			format!("at {}", path)
+		}
+	}
+}
 
 /// Errors that can occur during reconciliation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReconcileError {
 	/// Tag name mismatch.
 	TagMismatch {
+		/// Path to the mismatched node.
+		path: ReconcilePath,
 		/// Expected tag name.
 		expected: String,
 		/// Actual tag name.
@@ -20,6 +72,8 @@ pub enum ReconcileError {
 	},
 	/// Child count mismatch.
 	ChildCountMismatch {
+		/// Path to the mismatched node.
+		path: ReconcilePath,
 		/// Expected count.
 		expected: usize,
 		/// Actual count.
@@ -27,6 +81,8 @@ pub enum ReconcileError {
 	},
 	/// Text content mismatch.
 	TextMismatch {
+		/// Path to the mismatched node.
+		path: ReconcilePath,
 		/// Expected text.
 		expected: String,
 		/// Actual text.
@@ -34,6 +90,8 @@ pub enum ReconcileError {
 	},
 	/// Attribute mismatch.
 	AttributeMismatch {
+		/// Path to the mismatched node.
+		path: ReconcilePath,
 		/// Attribute name.
 		name: String,
 		/// Expected value.
@@ -43,6 +101,8 @@ pub enum ReconcileError {
 	},
 	/// Element not found at expected position.
 	ElementNotFound {
+		/// Path to the parent node.
+		path: ReconcilePath,
 		/// Position index.
 		index: usize,
 	},
@@ -51,40 +111,67 @@ pub enum ReconcileError {
 impl std::fmt::Display for ReconcileError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Self::TagMismatch { expected, actual } => {
+			Self::TagMismatch {
+				path,
+				expected,
+				actual,
+			} => {
 				write!(
 					f,
-					"Tag mismatch: expected '{}', found '{}'",
-					expected, actual
+					"Hydration mismatch {}: tag expected '{}', found '{}'",
+					path.describe(),
+					expected,
+					actual
 				)
 			}
-			Self::ChildCountMismatch { expected, actual } => {
+			Self::ChildCountMismatch {
+				path,
+				expected,
+				actual,
+			} => {
 				write!(
 					f,
-					"Child count mismatch: expected {}, found {}",
-					expected, actual
+					"Hydration mismatch {}: child count expected {}, found {}",
+					path.describe(),
+					expected,
+					actual
 				)
 			}
-			Self::TextMismatch { expected, actual } => {
+			Self::TextMismatch {
+				path,
+				expected,
+				actual,
+			} => {
 				write!(
 					f,
-					"Text mismatch: expected '{}', found '{}'",
-					expected, actual
+					"Hydration mismatch {}: text expected '{}', found '{}'",
+					path.describe(),
+					expected,
+					actual
 				)
 			}
 			Self::AttributeMismatch {
+				path,
 				name,
 				expected,
 				actual,
 			} => {
 				write!(
 					f,
-					"Attribute '{}' mismatch: expected {:?}, found {:?}",
-					name, expected, actual
+					"Hydration mismatch {}: attribute '{}' expected {:?}, found {:?}",
+					path.describe(),
+					name,
+					expected,
+					actual
 				)
 			}
-			Self::ElementNotFound { index } => {
-				write!(f, "Element not found at index {}", index)
+			Self::ElementNotFound { path, index } => {
+				write!(
+					f,
+					"Hydration mismatch {}: element not found at index {}",
+					path.describe(),
+					index
+				)
 			}
 		}
 	}
@@ -146,68 +233,36 @@ impl ReconcileOptions {
 /// Reconciles the existing DOM with the expected Page structure.
 ///
 /// This function verifies that the SSR-rendered HTML matches what
-/// the component would render, issuing warnings for mismatches
-/// but generally allowing hydration to proceed.
+/// the component would render, returning detailed mismatch diagnostics
+/// so callers can decide whether to fail or warn.
 #[cfg(wasm)]
 pub fn reconcile(element: &Element, view: &Page) -> Result<(), ReconcileError> {
+	reconcile_at_path(element, view, ReconcilePath::root())
+}
+
+#[cfg(wasm)]
+fn reconcile_at_path(
+	element: &Element,
+	view: &Page,
+	path: ReconcilePath,
+) -> Result<(), ReconcileError> {
 	match view {
-		Page::Element(el_view) => {
-			// Check tag name
-			let actual_tag = element.tag_name().to_lowercase();
-			let expected_tag = el_view.tag_name().to_lowercase();
-			if actual_tag != expected_tag {
-				return Err(ReconcileError::TagMismatch {
-					expected: expected_tag,
-					actual: actual_tag,
-				});
-			}
-
-			// Check children count (with some tolerance for whitespace text nodes)
-			let children = element.children();
-			let view_children = el_view.child_views();
-
-			// Recursively check children
-			for (i, child_view) in view_children.iter().enumerate() {
-				if i < children.len() {
-					reconcile(&children[i], child_view)?;
-				}
-			}
-
-			Ok(())
-		}
-		Page::Text(expected_text) => {
-			let actual_text = element.text_content().unwrap_or_default();
-			// Normalize whitespace for comparison
-			let expected_normalized = normalize_whitespace(expected_text);
-			let actual_normalized = normalize_whitespace(&actual_text);
-
-			if expected_normalized != actual_normalized {
-				// Log warning but don't fail - text content can have minor differences
-				#[cfg(debug_assertions)]
-				web_sys::console::warn_1(
-					&format!(
-						"Text content mismatch: expected '{}', found '{}'",
-						expected_text, actual_text
-					)
-					.into(),
-				);
-			}
-			Ok(())
-		}
-		Page::Fragment(views) => {
-			let children = element.children();
-			for (i, child_view) in views.iter().enumerate() {
-				if i < children.len() {
-					reconcile(&children[i], child_view)?;
-				}
-			}
-			Ok(())
+		Page::Element(el_view) => reconcile_element_at_path(element, el_view, path),
+		Page::Text(expected_text) => reconcile_text_at_path(
+			element.text_content().unwrap_or_default(),
+			expected_text,
+			path,
+		),
+		Page::Fragment(views) => reconcile_children_at_path(element, views, path),
+		Page::KeyedFragment(views) => {
+			let child_views: Vec<Page> = views.iter().map(|(_, view)| view.clone()).collect();
+			reconcile_children_at_path(element, &child_views, path)
 		}
 		Page::Empty => Ok(()),
 		Page::WithHead { view, .. } => {
 			// Head section is handled separately during SSR
 			// For hydration, just reconcile the inner view
-			reconcile(element, view)
+			reconcile_at_path(element, view, path)
 		}
 		Page::ReactiveIf(reactive_if) => {
 			// For hydration, evaluate the condition and reconcile the rendered branch.
@@ -217,14 +272,284 @@ pub fn reconcile(element: &Element, view: &Page) -> Result<(), ReconcileError> {
 			} else {
 				reactive_if.else_view()
 			};
-			reconcile(element, &branch_view)
+			reconcile_at_path(element, &branch_view, path)
 		}
 		Page::Reactive(reactive) => {
 			// For hydration, evaluate the render closure and reconcile the resulting view.
 			// SSR rendered the initial view from the closure.
 			let rendered_view = reactive.render();
-			reconcile(element, &rendered_view)
+			reconcile_at_path(element, &rendered_view, path)
 		}
+	}
+}
+
+#[cfg(wasm)]
+fn reconcile_element_at_path(
+	element: &Element,
+	el_view: &PageElement,
+	path: ReconcilePath,
+) -> Result<(), ReconcileError> {
+	let actual_tag = element.tag_name().to_lowercase();
+	let expected_tag = el_view.tag_name().to_lowercase();
+	let element_path = path_with_dom_component(element, path).with_element(expected_tag.clone());
+
+	if actual_tag != expected_tag {
+		return Err(ReconcileError::TagMismatch {
+			path: element_path,
+			expected: expected_tag,
+			actual: actual_tag,
+		});
+	}
+
+	reconcile_attrs_at_path(element, el_view, element_path.clone())?;
+	reconcile_children_at_path(element, el_view.child_views(), element_path)
+}
+
+#[cfg(wasm)]
+fn reconcile_dom_node_at_path(
+	node: &web_sys::Node,
+	view: &Page,
+	path: ReconcilePath,
+) -> Result<(), ReconcileError> {
+	match view {
+		Page::Element(el_view) => {
+			if let Some(element) = node.dyn_ref::<web_sys::Element>() {
+				reconcile_element_at_path(&Element::new(element.clone()), el_view, path)
+			} else {
+				Err(ReconcileError::TagMismatch {
+					path,
+					expected: el_view.tag_name().to_lowercase(),
+					actual: node.node_name().to_lowercase(),
+				})
+			}
+		}
+		Page::Text(expected_text) => {
+			reconcile_text_at_path(node.text_content().unwrap_or_default(), expected_text, path)
+		}
+		Page::Fragment(views) => {
+			if let Some(element) = node.dyn_ref::<web_sys::Element>() {
+				reconcile_children_at_path(&Element::new(element.clone()), views, path)
+			} else {
+				let mut expected_children = Vec::new();
+				collect_expected_children(views, &path, &mut expected_children);
+				if expected_children.len() == 1 {
+					reconcile_dom_node_at_path(
+						node,
+						&expected_children[0].1,
+						expected_children[0].0.clone(),
+					)
+				} else {
+					Err(ReconcileError::ChildCountMismatch {
+						path,
+						expected: expected_children.len(),
+						actual: 1,
+					})
+				}
+			}
+		}
+		Page::KeyedFragment(views) => {
+			let child_views: Vec<Page> = views.iter().map(|(_, view)| view.clone()).collect();
+			if let Some(element) = node.dyn_ref::<web_sys::Element>() {
+				reconcile_children_at_path(&Element::new(element.clone()), &child_views, path)
+			} else {
+				let mut expected_children = Vec::new();
+				collect_expected_children(&child_views, &path, &mut expected_children);
+				if expected_children.len() == 1 {
+					reconcile_dom_node_at_path(
+						node,
+						&expected_children[0].1,
+						expected_children[0].0.clone(),
+					)
+				} else {
+					Err(ReconcileError::ChildCountMismatch {
+						path,
+						expected: expected_children.len(),
+						actual: 1,
+					})
+				}
+			}
+		}
+		Page::Empty => Ok(()),
+		Page::WithHead { view, .. } => reconcile_dom_node_at_path(node, view, path),
+		Page::ReactiveIf(reactive_if) => {
+			let branch_view = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			reconcile_dom_node_at_path(node, &branch_view, path)
+		}
+		Page::Reactive(reactive) => {
+			let rendered_view = reactive.render();
+			reconcile_dom_node_at_path(node, &rendered_view, path)
+		}
+	}
+}
+
+#[cfg(wasm)]
+fn reconcile_attrs_at_path(
+	element: &Element,
+	el_view: &PageElement,
+	path: ReconcilePath,
+) -> Result<(), ReconcileError> {
+	for (name, value) in el_view.attrs() {
+		let name_str = name.as_ref();
+		let expected = expected_dom_attr_value(name_str, value.as_ref());
+		let actual = element.get_attribute(name_str);
+
+		if actual != expected {
+			return Err(ReconcileError::AttributeMismatch {
+				path,
+				name: name_str.to_string(),
+				expected,
+				actual,
+			});
+		}
+	}
+
+	Ok(())
+}
+
+#[cfg(wasm)]
+fn reconcile_children_at_path(
+	element: &Element,
+	child_views: &[Page],
+	path: ReconcilePath,
+) -> Result<(), ReconcileError> {
+	let actual_nodes = relevant_child_nodes(element);
+	let mut expected_children = Vec::new();
+	collect_expected_children(child_views, &path, &mut expected_children);
+
+	for (index, (child_path, child_view)) in expected_children.iter().enumerate() {
+		let Some(actual_node) = actual_nodes.get(index) else {
+			return Err(ReconcileError::ElementNotFound { path, index });
+		};
+		reconcile_dom_node_at_path(actual_node, child_view, child_path.clone())?;
+	}
+
+	if actual_nodes.len() != expected_children.len() {
+		return Err(ReconcileError::ChildCountMismatch {
+			path,
+			expected: expected_children.len(),
+			actual: actual_nodes.len(),
+		});
+	}
+
+	Ok(())
+}
+
+#[cfg(wasm)]
+fn reconcile_text_at_path(
+	actual_text: String,
+	expected_text: &str,
+	path: ReconcilePath,
+) -> Result<(), ReconcileError> {
+	let expected_normalized = normalize_whitespace(expected_text);
+	let actual_normalized = normalize_whitespace(&actual_text);
+
+	if expected_normalized != actual_normalized {
+		return Err(ReconcileError::TextMismatch {
+			path,
+			expected: expected_text.to_string(),
+			actual: actual_text,
+		});
+	}
+
+	Ok(())
+}
+
+// Allow dead_code: native library builds do not execute wasm reconciliation, but
+// this helper is used by wasm runtime reconciliation and native regression tests.
+#[allow(dead_code)]
+fn collect_expected_children(
+	views: &[Page],
+	parent_path: &ReconcilePath,
+	children: &mut Vec<(ReconcilePath, Page)>,
+) {
+	for (index, view) in views.iter().enumerate() {
+		let child_path = parent_path.clone().with_child(index);
+		collect_expected_child(view, child_path, children);
+	}
+}
+
+// Allow dead_code: native library builds do not execute wasm reconciliation, but
+// this helper is used by wasm runtime reconciliation and native regression tests.
+#[allow(dead_code)]
+fn collect_expected_child(
+	view: &Page,
+	path: ReconcilePath,
+	children: &mut Vec<(ReconcilePath, Page)>,
+) {
+	match view {
+		Page::Empty => {}
+		Page::Fragment(fragment_children) => {
+			collect_expected_children(fragment_children, &path, children);
+		}
+		Page::WithHead { view, .. } => {
+			collect_expected_child(view, path, children);
+		}
+		Page::ReactiveIf(reactive_if) => {
+			let branch_view = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			collect_expected_child(&branch_view, path, children);
+		}
+		Page::Reactive(reactive) => {
+			let rendered_view = reactive.render();
+			collect_expected_child(&rendered_view, path, children);
+		}
+		Page::Text(text) => {
+			if let Some((_, Page::Text(previous_text))) = children.last_mut() {
+				*previous_text = format!("{}{}", previous_text.as_ref(), text.as_ref()).into();
+			} else {
+				children.push((path, Page::Text(text.clone())));
+			}
+		}
+		Page::KeyedFragment(keyed_children) => {
+			let child_views: Vec<Page> =
+				keyed_children.iter().map(|(_, view)| view.clone()).collect();
+			collect_expected_children(&child_views, &path, children);
+		}
+		_ => children.push((path, view.clone())),
+	}
+}
+
+#[cfg(wasm)]
+fn relevant_child_nodes(element: &Element) -> Vec<web_sys::Node> {
+	let child_nodes = element.as_web_sys().child_nodes();
+	(0..child_nodes.length())
+		.filter_map(|index| child_nodes.item(index))
+		.filter(is_relevant_child_node)
+		.collect()
+}
+
+#[cfg(wasm)]
+fn is_relevant_child_node(node: &web_sys::Node) -> bool {
+	match node.node_type() {
+		web_sys::Node::ELEMENT_NODE => true,
+		web_sys::Node::TEXT_NODE => {
+			!normalize_whitespace(&node.text_content().unwrap_or_default()).is_empty()
+		}
+		_ => false,
+	}
+}
+
+#[cfg(wasm)]
+fn path_with_dom_component(element: &Element, path: ReconcilePath) -> ReconcilePath {
+	match element.get_attribute("data-rh-component") {
+		Some(component) if !component.is_empty() => path.with_component(component),
+		_ => path,
+	}
+}
+
+#[cfg(wasm)]
+fn expected_dom_attr_value(name: &str, value: &str) -> Option<String> {
+	if BOOLEAN_ATTRS.contains(&name) && !is_boolean_attr_truthy(value) {
+		None
+	} else {
+		Some(value.to_string())
 	}
 }
 
@@ -254,6 +579,16 @@ pub fn reconcile_with_options(
 	view: &Page,
 	options: &ReconcileOptions,
 ) -> Result<(), ReconcileError> {
+	reconcile_with_options_at_path(element, view, options, ReconcilePath::root())
+}
+
+#[cfg(wasm)]
+fn reconcile_with_options_at_path(
+	element: &Element,
+	view: &Page,
+	options: &ReconcileOptions,
+	path: ReconcilePath,
+) -> Result<(), ReconcileError> {
 	// Check if this element should be skipped
 	let should_skip = if options.skip_static {
 		element.get_attribute("data-rh-static").as_deref() == Some("true")
@@ -279,17 +614,8 @@ pub fn reconcile_with_options(
 
 	// Perform reconciliation if applicable
 	if should_reconcile {
-		match reconcile(element, view) {
-			Ok(_) => {}
-			Err(err) => {
-				if options.warn_on_mismatch {
-					// Log warning instead of failing
-					#[cfg(debug_assertions)]
-					web_sys::console::warn_1(&format!("Reconciliation warning: {}", err).into());
-				} else {
-					return Err(err);
-				}
-			}
+		if let Err(err) = reconcile_at_path(element, view, path.clone()) {
+			handle_reconcile_error(err, options)?;
 		}
 	}
 
@@ -304,27 +630,107 @@ pub fn reconcile_with_options(
 	};
 
 	if should_recurse {
-		if let Page::Element(el_view) = view {
-			let children = element.children();
-			let view_children = el_view.child_views();
+		reconcile_options_children_at_path(element, view, options, path)?;
+	}
 
-			for (i, child_view) in view_children.iter().enumerate() {
-				if i < children.len() {
-					reconcile_with_options(&children[i], child_view, options)?;
-				}
-			}
-		} else if let Page::Fragment(views) = view {
-			let children = element.children();
+	Ok(())
+}
 
-			for (i, child_view) in views.iter().enumerate() {
-				if i < children.len() {
-					reconcile_with_options(&children[i], child_view, options)?;
-				}
+#[cfg(wasm)]
+fn reconcile_options_children_at_path(
+	element: &Element,
+	view: &Page,
+	options: &ReconcileOptions,
+	path: ReconcilePath,
+) -> Result<(), ReconcileError> {
+	let keyed_child_views;
+	let child_views: &[Page] = match view {
+		Page::Element(el_view) => el_view.child_views(),
+		Page::Fragment(views) => views,
+		Page::KeyedFragment(views) => {
+			keyed_child_views = views.iter().map(|(_, view)| view.clone()).collect::<Vec<_>>();
+			&keyed_child_views
+		}
+		Page::WithHead { view, .. } => {
+			return reconcile_options_children_at_path(element, view, options, path);
+		}
+		Page::ReactiveIf(reactive_if) => {
+			let branch_view = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			return reconcile_options_children_at_path(element, &branch_view, options, path);
+		}
+		Page::Reactive(reactive) => {
+			let rendered_view = reactive.render();
+			return reconcile_options_children_at_path(element, &rendered_view, options, path);
+		}
+		Page::Text(_) | Page::Empty => return Ok(()),
+	};
+
+	let actual_nodes = relevant_child_nodes(element);
+	let mut expected_children = Vec::new();
+	let path = path_with_dom_component(element, path);
+	let parent_path = match view {
+		Page::Element(el_view) => path.with_element(el_view.tag_name().to_lowercase()),
+		_ => path,
+	};
+	collect_expected_children(child_views, &parent_path, &mut expected_children);
+
+	for (index, (child_path, child_view)) in expected_children.iter().enumerate() {
+		let Some(actual_node) = actual_nodes.get(index) else {
+			return handle_reconcile_error(
+				ReconcileError::ElementNotFound {
+					path: parent_path,
+					index,
+				},
+				options,
+			);
+		};
+
+		if let Some(child_element) = actual_node.dyn_ref::<web_sys::Element>() {
+			reconcile_with_options_at_path(
+				&Element::new(child_element.clone()),
+				child_view,
+				options,
+				child_path.clone(),
+			)?;
+		} else if matches!(child_view, Page::Element(_)) {
+			if let Err(err) =
+				reconcile_dom_node_at_path(actual_node, child_view, child_path.clone())
+			{
+				handle_reconcile_error(err, options)?;
 			}
 		}
 	}
 
+	if actual_nodes.len() > expected_children.len() {
+		handle_reconcile_error(
+			ReconcileError::ChildCountMismatch {
+				path: parent_path,
+				expected: expected_children.len(),
+				actual: actual_nodes.len(),
+			},
+			options,
+		)?;
+	}
+
 	Ok(())
+}
+
+#[cfg(wasm)]
+fn handle_reconcile_error(
+	err: ReconcileError,
+	options: &ReconcileOptions,
+) -> Result<(), ReconcileError> {
+	if options.warn_on_mismatch {
+		#[cfg(debug_assertions)]
+		web_sys::console::warn_1(&format!("Reconciliation warning: {}", err).into());
+		Ok(())
+	} else {
+		Err(err)
+	}
 }
 
 /// Non-WASM version for testing.
@@ -459,6 +865,15 @@ fn compare_recursive(element: &Element, view: &Page, path: &str, differences: &m
 				}
 			}
 		}
+		Page::KeyedFragment(views) => {
+			let children = element.children();
+			for (i, (_, child_view)) in views.iter().enumerate() {
+				let child_path = format!("{}/{}", path, i);
+				if i < children.len() {
+					compare_recursive(&children[i], child_view, &child_path, differences);
+				}
+			}
+		}
 		Page::WithHead { view, .. } => {
 			// Head section is handled separately during SSR
 			// For comparison, just compare the inner view
@@ -531,28 +946,141 @@ fn test_reconcile_with_options_non_wasm() {
 }
 #[cfg(test)]
 mod tests {
+	use crate::component::{Head, PageElement};
+
 	use super::*;
+
+	fn assert_text_child(child: &(ReconcilePath, Page), expected_text: &str) {
+		match &child.1 {
+			Page::Text(text) => assert_eq!(text.as_ref(), expected_text),
+			other => panic!("expected text child, found {other:?}"),
+		}
+	}
 
 	#[test]
 	fn test_reconcile_error_display() {
 		let err = ReconcileError::TagMismatch {
+			path: ReconcilePath::root(),
 			expected: "div".to_string(),
 			actual: "span".to_string(),
 		};
-		assert!(err.to_string().contains("Tag mismatch"));
-		assert!(err.to_string().contains("div"));
-		assert!(err.to_string().contains("span"));
+		assert_eq!(
+			err.to_string(),
+			"Hydration mismatch at root: tag expected 'div', found 'span'"
+		);
+	}
+
+	#[test]
+	fn test_reconcile_error_display_includes_path_context() {
+		let err = ReconcileError::AttributeMismatch {
+			path: ReconcilePath::root()
+				.with_component("TodoList")
+				.with_child(3)
+				.with_element("li")
+				.with_element("input"),
+			name: "checked".to_string(),
+			expected: Some("true".to_string()),
+			actual: None,
+		};
+
+		assert_eq!(
+			err.to_string(),
+			"Hydration mismatch in TodoList at child[3] > li > input: attribute 'checked' expected Some(\"true\"), found None"
+		);
 	}
 
 	#[test]
 	fn test_child_count_mismatch_display() {
 		let err = ReconcileError::ChildCountMismatch {
+			path: ReconcilePath::root()
+				.with_component("TodoList")
+				.with_element("ul"),
 			expected: 3,
 			actual: 2,
 		};
-		assert!(err.to_string().contains("Child count mismatch"));
-		assert!(err.to_string().contains('3'));
-		assert!(err.to_string().contains('2'));
+		assert_eq!(
+			err.to_string(),
+			"Hydration mismatch in TodoList at ul: child count expected 3, found 2"
+		);
+	}
+
+	#[test]
+	fn test_text_mismatch_display_includes_path_context() {
+		let err = ReconcileError::TextMismatch {
+			path: ReconcilePath::root()
+				.with_component("TodoItem")
+				.with_child(1),
+			expected: "Buy milk".to_string(),
+			actual: "Buy bread".to_string(),
+		};
+		assert_eq!(
+			err.to_string(),
+			"Hydration mismatch in TodoItem at child[1]: text expected 'Buy milk', found 'Buy bread'"
+		);
+	}
+
+	#[test]
+	fn test_element_not_found_display_includes_path_context() {
+		let err = ReconcileError::ElementNotFound {
+			path: ReconcilePath::root()
+				.with_component("TodoList")
+				.with_element("ul"),
+			index: 4,
+		};
+		assert_eq!(
+			err.to_string(),
+			"Hydration mismatch in TodoList at ul: element not found at index 4"
+		);
+	}
+
+	#[test]
+	fn test_collect_expected_children_skips_reactive_empty_branch() {
+		let views = vec![
+			Page::reactive_if(|| false, || Page::text("visible"), Page::empty),
+			Page::text("after"),
+		];
+		let mut children = Vec::new();
+
+		collect_expected_children(&views, &ReconcilePath::root(), &mut children);
+
+		assert_eq!(children.len(), 1);
+		assert_eq!(children[0].0, ReconcilePath::root().with_child(1));
+		assert_text_child(&children[0], "after");
+	}
+
+	#[test]
+	fn test_collect_expected_children_flattens_wrappers_and_coalesces_adjacent_text() {
+		let views = vec![
+			Page::fragment([Page::text("a"), Page::text("b")]).with_head(Head::new()),
+			Page::reactive(|| Page::fragment([Page::text("c"), Page::text("d")])),
+		];
+		let mut children = Vec::new();
+
+		collect_expected_children(&views, &ReconcilePath::root(), &mut children);
+
+		assert_eq!(children.len(), 1);
+		assert_eq!(
+			children[0].0,
+			ReconcilePath::root().with_child(0).with_child(0)
+		);
+		assert_text_child(&children[0], "abcd");
+	}
+
+	#[test]
+	fn test_collect_expected_children_does_not_coalesce_text_across_elements() {
+		let views = vec![
+			Page::text("before"),
+			Page::Element(PageElement::new("span")),
+			Page::text("after"),
+		];
+		let mut children = Vec::new();
+
+		collect_expected_children(&views, &ReconcilePath::root(), &mut children);
+
+		assert_eq!(children.len(), 3);
+		assert_text_child(&children[0], "before");
+		assert!(matches!(children[1].1, Page::Element(_)));
+		assert_text_child(&children[2], "after");
 	}
 
 	#[test]

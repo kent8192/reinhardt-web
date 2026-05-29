@@ -20,9 +20,9 @@ type EventArg = crate::component::DummyEvent;
 /// This is the React-like equivalent of `useMemo`. The calculation is re-run
 /// only when its reactive dependencies change.
 ///
-/// Unlike React's useMemo, dependencies are automatically tracked - you don't
-/// need to specify a dependency array. Any Signal accessed inside the calculation
-/// will be tracked as a dependency.
+/// Reinhardt Pages uses an explicit dependency tuple instead of a React
+/// dependency array. Signal reads inside the calculation do not subscribe
+/// implicitly; the tuple passed as `deps` determines when the memo re-runs.
 ///
 /// # Type Parameters
 ///
@@ -32,6 +32,7 @@ type EventArg = crate::component::DummyEvent;
 /// # Arguments
 ///
 /// * `f` - A function that performs the calculation
+/// * `deps` - Explicit dependency tuple; pass `()` for mount-only memoization
 ///
 /// # Returns
 ///
@@ -46,16 +47,19 @@ type EventArg = crate::component::DummyEvent;
 /// let (filter, set_filter) = use_state(2);
 ///
 /// // Expensive filtering operation - only re-runs when items or filter change
-/// let filtered = use_memo({
-///     let items = items.clone();
-///     let filter = filter.clone();
-///     move || {
-///         items.get()
-///             .into_iter()
-///             .filter(|&x| x > filter.get())
-///             .collect::<Vec<_>>()
-///     }
-/// });
+/// let filtered = use_memo(
+///     {
+///         let items = items.clone();
+///         let filter = filter.clone();
+///         move || {
+///             items.get()
+///                 .into_iter()
+///                 .filter(|&x| x > filter.get())
+///                 .collect::<Vec<_>>()
+///         }
+///     },
+///     (items.clone(), filter.clone()),
+/// );
 ///
 /// // Reading the memoized value
 /// let result = filtered.get();

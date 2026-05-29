@@ -11,6 +11,9 @@ WASM-based reactive frontend framework for Reinhardt with Django-like API.
 - **Security First**: Built-in CSRF protection, XSS prevention, and session management
 - **Simplified Conditional Compilation**: `cfg_aliases` integration and automatic event handler handling
 
+For a React concept mapping, see
+[Reinhardt Pages for React developers](docs/react_to_reinhardt.md).
+
 ## Quick Start
 
 ### Using the Prelude (Recommended)
@@ -248,15 +251,17 @@ The prelude includes:
 ### Reactive System
 - `Signal`, `Effect`, `Memo`, `Resource`, `ResourceState`
 - Context: `Context`, `ContextGuard`, `create_context`, `get_context`, `provide_context`, `remove_context`
+- Explicit batching: `reinhardt_pages::reactive::batch`
 
 ### Hooks
 - `use_state`, `use_effect`, `use_memo`, `use_callback`, `use_context`
 - `use_ref`, `use_reducer`, `use_transition`, `use_deferred_value`
 - `use_id`, `use_layout_effect`, `use_effect_event`, `use_debug_value`
-- `use_optimistic`, `use_action_state`, `use_shared_state`, `use_sync_external_store`
+- `use_optimistic`, `use_action`, `Action::with_optimistic`, `use_shared_state`, `use_sync_external_store`
 
 ### Component System
 - `Component`, `ElementView`, `IntoView`, `View`, `Props`, `ViewEventHandler`
+- `SuspenseBoundary`, `ErrorBoundary`, `BoundaryError`, `ErrorTracker`
 
 ### Events and Callbacks
 - `Callback`, `IntoEventHandler`, `into_event_handler`
@@ -272,6 +277,7 @@ The prelude includes:
 - `ApiModel`, `ApiQuerySet`, `Filter`, `FilterOp`
 - `ServerFn`, `ServerFnError`
 - See [Server Function Macro Guide](docs/server_fn_macro.md) for detailed usage and migration information
+- See [React-to-Reinhardt Guide](docs/react_to_reinhardt.md) for React hooks, JSX, actions, routing, SSR, and hydration mappings
 
 ### Authentication and Security
 - `AuthData`, `AuthError`, `AuthState`, `auth_state`
