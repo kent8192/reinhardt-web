@@ -22,7 +22,8 @@ async fn main() {
 	// Execute command from command line, handing the project's composed
 	// settings to the runtime so database-requiring commands resolve the
 	// connection from settings/*.toml (`[core.databases.default]`).
-	if let Err(e) = execute_from_command_line_with_settings(config::settings::get_settings()).await {
+	if let Err(e) = execute_from_command_line_with_settings(config::settings::get_settings()).await
+	{
 		eprintln!("Error: {}", e);
 		process::exit(1);
 	}

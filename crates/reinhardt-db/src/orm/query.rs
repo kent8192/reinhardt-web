@@ -3598,11 +3598,11 @@ where
 	///
 	/// // Fetch filtered users with eager loading
 	/// let active_users = User::objects()
-	///     .filter(
+	///     .filter(Filter::new(
 	///         "is_active",
 	///         FilterOperator::Eq,
 	///         FilterValue::Boolean(true),
-	///     )
+	///     ))
 	///     .select_related(&["profile"])
 	///     .all()
 	///     .await?;
@@ -3739,11 +3739,11 @@ where
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Fetch first active user
 	/// let user = User::objects()
-	///     .filter(
+	///     .filter(Filter::new(
 	///         "is_active",
 	///         FilterOperator::Eq,
 	///         FilterValue::Boolean(true),
-	///     )
+	///     ))
 	///     .first()
 	///     .await?;
 	///
@@ -3770,7 +3770,7 @@ where
 	///
 	/// ```no_run
 	/// # use reinhardt_db::orm::Model;
-	/// # use reinhardt_db::orm::{FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64>, email: String }
@@ -3791,11 +3791,11 @@ where
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Fetch user with specific email (must be unique)
 	/// let user = User::objects()
-	///     .filter(
+	///     .filter(Filter::new(
 	///         "email",
 	///         FilterOperator::Eq,
 	///         FilterValue::String("alice@example.com".to_string()),
-	///     )
+	///     ))
 	///     .get()
 	///     .await?;
 	/// # Ok(())
@@ -3975,7 +3975,7 @@ where
 	/// # let user_id = 1;
 	/// let db = reinhardt_db::orm::manager::get_connection().await?;
 	/// let user = User::objects()
-	///     .filter("id", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::Integer(user_id))
+	///     .filter(reinhardt_db::orm::Filter::new("id", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::Integer(user_id)))
 	///     .get_with_db(&db)
 	///     .await?;
 	/// # Ok(())
@@ -4027,7 +4027,7 @@ where
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let db = reinhardt_db::orm::manager::get_connection().await?;
 	/// let user = User::objects()
-	///     .filter("status", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::String("active".to_string()))
+	///     .filter(reinhardt_db::orm::Filter::new("status", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::String("active".to_string())))
 	///     .first_with_db(&db)
 	///     .await?;
 	/// # Ok(())
@@ -4073,11 +4073,11 @@ where
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Count active users
 	/// let count = User::objects()
-	///     .filter(
+	///     .filter(Filter::new(
 	///         "is_active",
 	///         FilterOperator::Eq,
 	///         FilterValue::Boolean(true),
-	///     )
+	///     ))
 	///     .count()
 	///     .await?;
 	///
@@ -4149,11 +4149,11 @@ where
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Check if any admin users exist
 	/// let has_admin = User::objects()
-	///     .filter(
+	///     .filter(Filter::new(
 	///         "role",
 	///         FilterOperator::Eq,
 	///         FilterValue::String("admin".to_string()),
-	///     )
+	///     ))
 	///     .exists()
 	///     .await?;
 	///
@@ -4276,7 +4276,7 @@ where
 	/// # }
 	/// use std::collections::HashMap;
 	/// let queryset = User::objects()
-	///     .filter("id", FilterOperator::Eq, FilterValue::Integer(1));
+	///     .filter(Filter::new("id", FilterOperator::Eq, FilterValue::Integer(1)));
 	///
 	/// let mut updates = HashMap::new();
 	/// updates.insert("name".to_string(), UpdateValue::String("Alice".to_string()));
@@ -4349,7 +4349,7 @@ where
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// # }
 	/// let queryset = User::objects()
-	///     .filter("id", FilterOperator::Eq, FilterValue::Integer(1));
+	///     .filter(Filter::new("id", FilterOperator::Eq, FilterValue::Integer(1)));
 	///
 	/// let (sql, params) = queryset.delete_sql();
 	/// // sql: "DELETE FROM users WHERE id = $1"
@@ -5026,7 +5026,7 @@ where
 	///
 	/// // Combine with filters
 	/// let active_user_names = User::objects()
-	///     .filter("is_active", FilterOperator::Eq, FilterValue::Boolean(true))
+	///     .filter(Filter::new("is_active", FilterOperator::Eq, FilterValue::Boolean(true)))
 	///     .values(&["username"])
 	///     .all()
 	///     .await?;
@@ -5287,14 +5287,14 @@ where
 	/// # }
 	/// // Use in IN clause
 	/// let active_user_ids = User::objects()
-	///     .filter("is_active", FilterOperator::Eq, FilterValue::Bool(true))
+	///     .filter(Filter::new("is_active", FilterOperator::Eq, FilterValue::Bool(true)))
 	///     .values(&["id"])
 	///     .as_subquery();
 	/// // Generates: (SELECT id FROM users WHERE is_active = $1)
 	///
 	/// // Use as derived table
 	/// let subquery = Post::objects()
-	///     .filter("published", FilterOperator::Eq, FilterValue::Bool(true))
+	///     .filter(Filter::new("published", FilterOperator::Eq, FilterValue::Bool(true)))
 	///     .as_subquery();
 	/// // Generates: (SELECT * FROM posts WHERE published = $1)
 	/// ```
