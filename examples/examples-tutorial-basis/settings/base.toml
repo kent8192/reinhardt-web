@@ -22,8 +22,11 @@ session_cookie_secure = false
 csrf_cookie_secure = false
 append_slash = true
 
-# Top-level [database] is the canonical schema consumed by
-# `reinhardt_db::connection::get_database_url_from_env_or_settings`.
+# `[core.databases.default]` is the canonical database schema: it is consumed
+# by the composed `ProjectSettings` (`#[settings(core: CoreSettings)]`, where
+# `CoreSettings` is registered under section "core"), and the management
+# runtime resolves the connection from it via
+# `reinhardt_db::backends::DatabaseConnection::database_url_from`.
 # See README "With Database" section and reinhardt_conf::settings::DatabaseConfig.
 #
 # The example targets the disposable PostgreSQL container provisioned by
@@ -31,7 +34,7 @@ append_slash = true
 # `migrate`). Override the credentials in `settings/local.toml` if you
 # point this crate at an existing Postgres instance instead.
 
-[database]
+[core.databases.default]
 engine = "postgresql"
 host = "localhost"
 port = 5432
