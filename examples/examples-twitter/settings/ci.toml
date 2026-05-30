@@ -3,6 +3,8 @@
 debug = false
 secret_key = "ci-testing-secret-key-not-for-production"
 
-[database]
+# Deep-merges onto base.toml's `[core.databases.default]` Postgres config,
+# switching the engine to an in-memory SQLite database for CI.
+[core.databases.default]
 engine = "sqlite"
 name = ":memory:"
