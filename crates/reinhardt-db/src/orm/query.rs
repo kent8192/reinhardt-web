@@ -3975,7 +3975,7 @@ where
 	/// # let user_id = 1;
 	/// let db = reinhardt_db::orm::manager::get_connection().await?;
 	/// let user = User::objects()
-	///     .filter(Filter::new("id", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::Integer(user_id)))
+	///     .filter(reinhardt_db::orm::Filter::new("id", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::Integer(user_id)))
 	///     .get_with_db(&db)
 	///     .await?;
 	/// # Ok(())
@@ -4027,7 +4027,7 @@ where
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let db = reinhardt_db::orm::manager::get_connection().await?;
 	/// let user = User::objects()
-	///     .filter(Filter::new("status", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::String("active".to_string())))
+	///     .filter(reinhardt_db::orm::Filter::new("status", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::String("active".to_string())))
 	///     .first_with_db(&db)
 	///     .await?;
 	/// # Ok(())
