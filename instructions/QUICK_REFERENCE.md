@@ -69,12 +69,14 @@
 - Run `cargo doc --no-deps` locally before pushing doc-related fixes
 - Run `cargo make semver-check` locally and post the output as a PR comment with the `<!-- local-semver-check -->` marker before converting Draft → Ready on any PR touching public API (see instructions/PR_GUIDELINE.md § RP-1a)
 - Execute merge/conflict resolution and straightforward operations immediately without Plan Mode
-- Update Obsidian wiki after meaningful work units (architectural decisions, new patterns, troubleshooting solutions) (OW-1)
+- Update the Obsidian wiki frequently and proactively — at the end of every meaningful work unit and whenever you learn, decide, or discover something worth preserving; when in doubt, write a short page (OW-1)
 - Check Obsidian MCP availability before attempting wiki updates; skip entirely if unavailable (OW-2, OW-3)
 - Read `wiki/hot.md` before creating new pages to avoid duplicates (OW-2)
 - Update all three meta pages (`wiki/index.md`, `wiki/hot.md`, `wiki/log.md`) after every wiki page creation or update (OW-2)
 - Use `/wiki-query` to retrieve existing wiki knowledge before answering questions or making decisions (OW-5)
 - Dual-write: when saving to any memory system (claude-mem, auto-memory, Serena), simultaneously `/wiki-ingest` to the Obsidian wiki (OW-6)
+- Route each wiki page to the most specific category and use the full vault category set, not just `knowledge/` (OW-2, OW-7)
+- Spread wiki knowledge across categories — split one work unit into multiple cross-linked pages and populate under-used categories (`modules/`, `components/`, `flows/`, `concepts/`, `entities/`, `comparisons/`, `questions/`) (OW-7)
 - Use worktree-based merge strategy for PR conflict resolution (NOT rebase/force-push)
 - Apply `migration-approved` label to develop/* → main PRs (requires maintainer approval for version transition)
 - Apply `agent-suspect` label to all agent-detected bug Issues
@@ -197,6 +199,7 @@
 - Apply `good first issue` to security, breaking-change, agent-suspect, or high/critical priority issues (GFI-2)
 - Apply `good first issue` without verifying issue description has sufficient guidance for new contributors (GFI-4)
 - Block primary work due to Obsidian MCP unavailability (OW-3)
+- Default every wiki page to `wiki/knowledge/troubleshooting/` or let one category dominate the vault (OW-7)
 - Create wiki pages for trivial changes or operational records (OW-1)
 - Duplicate information already in CLAUDE.md or `instructions/` in the wiki (OW-4)
 - Perform partial meta-page updates (update all three meta pages or none) (OW-2)
