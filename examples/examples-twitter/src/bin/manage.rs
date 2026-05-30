@@ -1,7 +1,8 @@
 //! Reinhardt Project Management CLI for examples-twitter
 
 use examples_twitter as _;
-use reinhardt::commands::execute_from_command_line;
+use examples_twitter::config::settings::get_settings;
+use reinhardt::commands::execute_from_command_line_with_settings;
 use std::process;
 
 #[tokio::main]
@@ -14,7 +15,7 @@ async fn main() {
 		);
 	}
 
-	if let Err(e) = execute_from_command_line().await {
+	if let Err(e) = execute_from_command_line_with_settings(get_settings()).await {
 		eprintln!("Error: {e}");
 		process::exit(1);
 	}

@@ -220,7 +220,8 @@ pub use builtin::{CheckCommand, CheckDiCommand, MigrateCommand, RunServerCommand
 pub use cli::start_server;
 pub use cli::{
 	Cli, Commands, auto_register_router, execute_from_command_line,
-	execute_from_command_line_with_registry, run_command, run_command_with_registry,
+	execute_from_command_line_with_registry, execute_from_command_line_with_registry_and_settings,
+	execute_from_command_line_with_settings, run_command, run_command_with_registry,
 };
 pub use collectstatic::{CollectStaticCommand, CollectStaticOptions, CollectStaticStats};
 pub use context::CommandContext;

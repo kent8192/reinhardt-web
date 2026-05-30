@@ -17,8 +17,13 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
+	// Force-link the parent library so its `#[routes]` / `#[model]`
+	// `inventory::submit!` registrations survive dead-code elimination.
+	// Referencing `get_settings` alone does not guarantee the whole crate
+	// (and thus every inventory entry) is linked.
 	use {{ crate_name }} as _;
-	use reinhardt::commands::execute_from_command_line;
+	use {{ crate_name }}::config::settings::get_settings;
+	use reinhardt::commands::execute_from_command_line_with_settings;
 	use std::process;
 
 	#[tokio::main]
@@ -29,9 +34,13 @@ mod native {
 			std::env::set_var("REINHARDT_SETTINGS_MODULE", "{{ project_name }}.config.settings");
 		}
 
-		// Router registration happens automatically inside execute_from_command_line()
-		// via the #[routes] attribute macro in src/config/urls.rs
-		if let Err(e) = execute_from_command_line().await {
+		// Hand the project's composed settings to the runtime so that
+		// database-requiring commands (migrate, makemigrations, runserver,
+		// createsuperuser) resolve the connection from settings/*.toml
+		// (`[core.databases.default]`) without requiring DATABASE_URL.
+		// Router registration still happens automatically inside the runtime
+		// via the #[routes] attribute macro in src/config/urls.rs.
+		if let Err(e) = execute_from_command_line_with_settings(get_settings()).await {
 			eprintln!("Error: {}", e);
 			process::exit(1);
 		}

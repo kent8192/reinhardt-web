@@ -447,13 +447,14 @@ For a complete step-by-step guide, see [Getting Started](https://reinhardt-web.d
 
 ### With Database
 
-Configure database in `settings/base.toml`:
+Configure the database in `settings/base.toml` under `[core.databases.default]`:
 
 ```toml
+[core]
 debug = true
 secret_key = "your-secret-key-for-development"
 
-[database]
+[core.databases.default]
 engine = "postgresql"
 host = "localhost"
 port = 5432
@@ -462,27 +463,28 @@ user = "postgres"
 password = "postgres"
 ```
 
-Settings are automatically loaded in `src/config/settings.rs`:
+Settings are automatically composed in `src/config/settings.rs` — this is what
+`reinhardt-admin startproject` generates:
 
 ```rust
 // src/config/settings.rs
 use reinhardt::prelude::*;
 
-// Compose built-in settings fragments with | — field names are inferred from type names
-// (e.g., CoreSettings → core, AuthSettings → auth, DatabaseSettings → database)
-#[settings(CoreSettings | AuthSettings | DatabaseSettings)]
+// `CoreSettings` is registered under the `core` section, so its fields —
+// including the `[core.databases.default]` connection that `migrate` /
+// `runserver` resolve — live under `[core]` in the TOML above.
+#[settings(core: CoreSettings)]
 pub struct ProjectSettings;
 ```
 
-The `|` syntax composes settings fragments into `ProjectSettings`. Each type must be a `#[settings(fragment = true, ...)]` struct. Built-in fragments:
-- **`CoreSettings`** — `debug`, `secret_key`, `language_code`, `time_zone`, `allowed_hosts`
-- **`AuthSettings`** — `jwt_secret`, `token_expiry`, `password_hashers`
-- **`DatabaseSettings`** — `engine`, `host`, `port`, `name`, `user`, `password`
-
-Add project-specific fragments with explicit field names using `key: Type` syntax:
+`#[settings(...)]` composes settings fragments into `ProjectSettings` using the
+`key: Type` syntax. Each fragment is a `#[settings(fragment = true, section = "...")]`
+struct mounted under its declared section. `CoreSettings` (section `core`) carries
+`debug`, `secret_key`, `allowed_hosts`, the `databases` map, and `security`. Add
+project-specific fragments the same way:
 
 ```rust
-#[settings(CoreSettings | AuthSettings | DatabaseSettings | mail: MailSettings)]
+#[settings(core: CoreSettings | cache: CacheSettings)]
 pub struct ProjectSettings;
 ```
 

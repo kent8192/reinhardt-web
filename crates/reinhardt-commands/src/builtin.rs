@@ -1234,11 +1234,19 @@ impl BaseCommand for MakeMigrationsCommand {
 
 			let is_verbose = ctx.has_option("verbose");
 
-			// Get database URL from context option or environment
+			// Get database URL from context option or environment, falling back
+			// to the project's composed settings (`[core.databases.default]`)
+			// when neither is provided (#5042). An empty string preserves the
+			// TestContainers `from_state` path for offline runs.
 			let database_url = ctx
 				.option("database")
 				.map(|s| s.to_string())
 				.or_else(|| std::env::var("DATABASE_URL").ok())
+				.or_else(|| {
+					ctx.settings
+						.as_ref()
+						.and_then(|s| DatabaseConnection::database_url_from(s.as_ref(), None).ok())
+				})
 				.unwrap_or_default();
 
 			// 2. Build from_state from database history or TestContainers
@@ -3474,11 +3482,15 @@ pub(crate) async fn initialize_orm_database(
 			.map_err(|e| {
 				crate::CommandError::ExecutionError(format!("Failed to get database URL: {}", e))
 			})?,
-			None => env_database_url.clone().ok_or_else(|| {
-				crate::CommandError::ExecutionError(
-					"No database URL available. Set DATABASE_URL environment variable.".to_string(),
-				)
-			})?,
+			None => match env_database_url.clone() {
+				Some(url) => url,
+				// No `ctx.settings` and no `DATABASE_URL`: fall back to the disk
+				// loader that reads `settings/*.toml` directly. This restores
+				// parity with the pre-refactor behaviour and is symmetric with
+				// `sync_database_url_to_env`, which already re-resolves from
+				// settings on its `None` arm (#5042).
+				None => get_database_url_from_settings()?,
+			},
 		};
 
 	sync_database_url_to_env(env_database_url.as_deref(), &url, ctx);
@@ -3547,9 +3559,19 @@ pub(crate) fn get_database_url_from_settings() -> Result<String, crate::CommandE
 			crate::CommandError::ExecutionError(format!("Failed to load settings: {}", e))
 		})?;
 
-	// Extract database configuration from settings
-	let db_config: reinhardt_conf::settings::DatabaseConfig =
-		if let Some(db_val) = merged.get_raw("database") {
+	// Locate the database configuration. Prefer the legacy/Django-style
+	// top-level `[database]` block, then fall back to the canonical
+	// `[core.databases.default]` nested schema so this disk loader understands
+	// the same shape `database_url_from` reads from composed settings (#5042).
+	let db_val = merged.get_raw("database").or_else(|| {
+		merged
+			.get_raw("core")
+			.and_then(|core| core.get("databases"))
+			.and_then(|databases| databases.get("default"))
+	});
+
+	let db_config: reinhardt_conf::settings::DatabaseConfig = db_val
+		.and_then(|db_val| {
 			serde_json::from_value(db_val.clone()).ok().or_else(|| {
 				if let serde_json::Value::Object(db_map) = db_val {
 					let engine = db_map
@@ -3581,9 +3603,7 @@ pub(crate) fn get_database_url_from_settings() -> Result<String, crate::CommandE
 					None
 				}
 			})
-		} else {
-			None
-		}
+		})
 		.ok_or_else(|| {
 			crate::CommandError::ExecutionError(
 				"No database configuration found in settings files".to_string(),
@@ -4494,6 +4514,62 @@ port = 5432
 				url
 			);
 			assert!(url.contains("testdb"), "URL should contain database name");
+
+			// Cleanup
+			if let Some(db_url) = original_db_url {
+				unsafe { std::env::set_var("DATABASE_URL", db_url) };
+			}
+			std::env::set_current_dir(original_dir).unwrap();
+		}
+
+		#[rstest]
+		#[serial(env_database_url)]
+		fn test_get_database_url_from_settings_with_core_databases_default() {
+			// Arrange: the canonical nested schema (`[core.databases.default]`)
+			// rather than the legacy flat top-level `[database]` block (#5042).
+			let temp_dir = tempfile::TempDir::new().unwrap();
+			let settings_dir = temp_dir.path().join("settings");
+			std::fs::create_dir_all(&settings_dir).unwrap();
+
+			let toml_content = r#"
+[core]
+secret_key = "test-secret"
+
+[core.databases.default]
+engine = "postgresql"
+name = "nesteddb"
+user = "testuser"
+password = "testpass"
+host = "localhost"
+port = 5432
+"#;
+			std::fs::write(settings_dir.join("base.toml"), toml_content).unwrap();
+			std::fs::write(settings_dir.join("local.toml"), "").unwrap();
+
+			// Change to the temp directory
+			let original_dir = std::env::current_dir().unwrap();
+			std::env::set_current_dir(temp_dir.path()).unwrap();
+
+			// Remove DATABASE_URL to ensure settings-only resolution
+			let original_db_url = std::env::var("DATABASE_URL").ok();
+			unsafe { std::env::remove_var("DATABASE_URL") };
+
+			// Act
+			let result = get_database_url_from_settings();
+
+			// Assert
+			assert!(
+				result.is_ok(),
+				"get_database_url_from_settings failed for nested schema: {:?}",
+				result.err()
+			);
+			let url = result.unwrap();
+			assert!(
+				url.starts_with("postgresql://"),
+				"Expected postgresql:// URL, got: {}",
+				url
+			);
+			assert!(url.contains("nesteddb"), "URL should contain database name");
 
 			// Cleanup
 			if let Some(db_url) = original_db_url {
