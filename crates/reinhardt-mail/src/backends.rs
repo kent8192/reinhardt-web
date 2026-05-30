@@ -1,3 +1,8 @@
+// `SmtpConfig` is deprecated in favour of the `EmailSettings` fragment, but this
+// module still defines, constructs, and bridges to it during the compatibility
+// window. Allow deprecated usages crate-internally so `-D warnings` stays clean.
+#![allow(deprecated)]
+
 use crate::headers::{
 	ListUnsubscribe, ListUnsubscribePost, Precedence, XEntityRefId, XMailer, XPriority,
 };
@@ -248,6 +253,16 @@ pub enum SmtpAuthMechanism {
 }
 
 /// Configuration for SMTP backend
+///
+/// Deprecated: configure the SMTP backend through the
+/// [`EmailSettings`](reinhardt_conf::settings::EmailSettings) fragment and the
+/// `#[settings]` macro instead. Use [`create_smtp_backend_from_settings`] (or
+/// [`backend_from_settings`]) to build a backend from settings, or
+/// `SmtpConfig::from(&settings)` for the bridge.
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `EmailSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone)]
 pub struct SmtpConfig {
 	/// SMTP server hostname.
@@ -333,6 +348,51 @@ impl SmtpConfig {
 	}
 }
 
+/// Build an [`SmtpConfig`] from an [`EmailSettings`] fragment.
+///
+/// This mirrors the SMTP branch of [`backend_from_settings`]: the security mode
+/// is derived from the `use_tls`/`use_ssl` flags, the timeout defaults to 60
+/// seconds when unset, and credentials are populated only when both username and
+/// password are present.
+impl From<&reinhardt_conf::settings::EmailSettings> for SmtpConfig {
+	fn from(settings: &reinhardt_conf::settings::EmailSettings) -> Self {
+		let security = match (settings.use_tls, settings.use_ssl) {
+			(true, _) => SmtpSecurity::StartTls,
+			(_, true) => SmtpSecurity::Tls,
+			_ => SmtpSecurity::None,
+		};
+
+		let timeout = settings
+			.timeout
+			.map(Duration::from_secs)
+			.unwrap_or_else(|| Duration::from_secs(60));
+
+		let mut config = SmtpConfig::new(&settings.host, settings.port)
+			.with_security(security)
+			.with_timeout(timeout);
+
+		if let (Some(username), Some(password)) = (&settings.username, &settings.password) {
+			config = config.with_credentials(username.clone(), password.clone());
+		}
+
+		config
+	}
+}
+
+/// Build an [`SmtpBackend`] from an [`EmailSettings`] fragment.
+///
+/// This is the settings-first entry point for constructing an SMTP backend.
+/// Prefer it over building an [`SmtpConfig`] manually.
+///
+/// # Errors
+/// Returns [`EmailError`] if the resulting configuration fails validation (for
+/// example, an email-formatted username that is not a valid address).
+pub fn create_smtp_backend_from_settings(
+	settings: &reinhardt_conf::settings::EmailSettings,
+) -> EmailResult<SmtpBackend> {
+	SmtpBackend::new(SmtpConfig::from(settings))
+}
+
 /// Zeroize SMTP credentials on drop to prevent sensitive data from lingering in memory.
 ///
 /// This ensures that username and password fields are securely erased when
@@ -354,6 +414,7 @@ impl Drop for SmtpConfig {
 /// # Examples
 ///
 /// ```rust,no_run
+/// # #![allow(deprecated)]
 /// # use reinhardt_mail::{SmtpBackend, SmtpConfig, SmtpSecurity};
 /// # use std::time::Duration;
 /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
