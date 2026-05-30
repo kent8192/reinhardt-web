@@ -1,4 +1,5 @@
 #![warn(missing_docs)]
+#![allow(deprecated)]
 
 //! Deeplink support for Reinhardt framework.
 //!
@@ -11,6 +12,7 @@
 //! # Quick Start
 //!
 //! ```rust
+//! # #![allow(deprecated)]
 //! use reinhardt_deeplink::{DeeplinkConfig, IosConfig, AndroidConfig};
 //!
 //! let config = DeeplinkConfig::builder()
@@ -45,8 +47,10 @@ pub mod config;
 pub mod endpoints;
 pub mod error;
 pub mod router;
+pub mod settings;
 
 // Re-export main types for convenience
+#[allow(deprecated)]
 pub use config::{
 	AndroidConfig, AndroidConfigBuilder, AppClipsConfig, AppLinkComponent, AppLinkDetail,
 	AppLinksConfig, AssetStatement, AssetTarget, CustomScheme, CustomSchemeBuilder,
@@ -59,6 +63,10 @@ pub use error::{
 	validate_package_name, validate_scheme_name,
 };
 pub use router::{DeeplinkRouter, DeeplinkRouterExt};
+pub use settings::{
+	AndroidSettings, CustomSchemeSettings, DeeplinkSettings, IosSettings,
+	create_deeplink_config_from_settings,
+};
 
 /// Result type for deeplink operations.
 pub type DeeplinkResult<T> = Result<T, DeeplinkError>;
