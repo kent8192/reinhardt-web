@@ -3,6 +3,8 @@
 //! This module provides router types and extension traits for integrating
 //! deeplink handlers with the Reinhardt routing system.
 
+#![allow(deprecated)]
+
 use hyper::Method;
 use reinhardt_urls::routers::{ServerRouter, UnifiedRouter};
 
@@ -21,6 +23,7 @@ use crate::error::DeeplinkError;
 /// # Example
 ///
 /// ```rust
+/// # #![allow(deprecated)]
 /// use reinhardt_deeplink::{DeeplinkRouter, DeeplinkConfig, IosConfig, AndroidConfig};
 ///
 /// let config = DeeplinkConfig::builder()

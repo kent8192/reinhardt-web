@@ -7,6 +7,8 @@
 //! - [`CustomSchemeConfig`] - Custom URL scheme configuration
 //! - [`DeeplinkConfig`] - Unified configuration combining all platforms
 
+#![allow(deprecated)]
+
 pub mod android;
 pub mod custom;
 pub mod ios;
@@ -26,6 +28,7 @@ pub use ios::{
 /// # Example
 ///
 /// ```rust
+/// # #![allow(deprecated)]
 /// use reinhardt_deeplink::{DeeplinkConfig, IosConfig, AndroidConfig};
 ///
 /// let config = DeeplinkConfig::builder()
@@ -46,6 +49,10 @@ pub use ios::{
 ///
 /// assert!(config.is_configured());
 /// ```
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `DeeplinkSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone, Default)]
 pub struct DeeplinkConfig {
 	/// iOS Universal Links configuration.
