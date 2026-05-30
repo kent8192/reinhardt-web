@@ -628,11 +628,14 @@ fn generate_view_type(
 		None => quote! {},
 	};
 
-	// Generate inventory submission for endpoint metadata
-	let metadata_name = if metadata_clean.is_empty() {
-		quote! { None }
-	} else {
+	// Generate inventory submission for endpoint metadata. Strip the `!`
+	// exemption sigil from the metadata name (Issue #4901); unnamed handlers
+	// keep their `None` metadata name (mirrors the simple-path logic so both
+	// codegen paths produce identical EndpointMetadata.name behavior).
+	let metadata_name = if options.name.is_some() {
 		quote! { Some(#metadata_clean) }
+	} else {
+		quote! { None }
 	};
 
 	// Extract request body information
