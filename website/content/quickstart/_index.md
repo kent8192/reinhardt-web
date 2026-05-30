@@ -16,7 +16,7 @@ The literal below is auto-bumped by release-plz on each release.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.1.2"
+cargo install reinhardt-admin-cli --version "0.1.3"
 ```
 
 ## 2. Create your project
