@@ -1,5 +1,5 @@
 error: IpAddressField does not accept a type parameter
   --> tests/ui/form/fail/ip_address_with_generic.rs:11:15
    |
-11 |             client_ip: IpAddressField<i32> { },
+11 |             client_ip: IpAddressField<i32> {},
    |                        ^^^^^^^^^^^^^^
