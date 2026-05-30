@@ -80,7 +80,7 @@ pub struct CustomSchemeSettings {
 /// a single loadable section and replaces the deprecated
 /// [`crate::config::DeeplinkConfig`].
 #[settings(fragment = true, section = "deeplink_app")]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeeplinkSettings {
 	/// iOS Universal Links configuration (optional).
 	#[serde(default, skip_serializing_if = "Option::is_none")]
@@ -91,16 +91,6 @@ pub struct DeeplinkSettings {
 	/// Custom URL scheme configurations.
 	#[serde(default)]
 	pub custom_schemes: Vec<CustomSchemeSettings>,
-}
-
-impl Default for DeeplinkSettings {
-	fn default() -> Self {
-		Self {
-			ios: None,
-			android: None,
-			custom_schemes: Vec::new(),
-		}
-	}
 }
 
 impl IosSettings {
