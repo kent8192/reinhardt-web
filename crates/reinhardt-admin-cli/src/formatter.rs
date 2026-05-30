@@ -116,8 +116,8 @@ pub(crate) fn nested_workspace_roots(project_root: &Path) -> Vec<PathBuf> {
 		}
 
 		let path = entry.path();
-		let is_manifest = path.is_file()
-			&& path.file_name().and_then(|name| name.to_str()) == Some("Cargo.toml");
+		let is_manifest =
+			path.is_file() && path.file_name().and_then(|name| name.to_str()) == Some("Cargo.toml");
 		if !is_manifest {
 			continue;
 		}
