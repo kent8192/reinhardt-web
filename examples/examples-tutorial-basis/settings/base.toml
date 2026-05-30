@@ -48,3 +48,11 @@ password = "reinhardt"
 # is started for parity with the wider Reinhardt-family stack
 # (reinhardt-cloud, examples-twitter).
 redis_url = "redis://localhost:6379/0"
+
+# Contacts fragment (admins/managers). Required because `ProjectSettings`
+# composes `ContactSettings` (`#[settings(core: CoreSettings | contacts:
+# ContactSettings)]`) to satisfy the `HasCommonSettings` bound on
+# `execute_from_command_line_with_settings`. Empty lists are valid defaults.
+[contacts]
+admins = []
+managers = []
