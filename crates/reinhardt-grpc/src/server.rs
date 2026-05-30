@@ -59,6 +59,10 @@
 //!     .await?;
 //! ```
 
+// The builder, impls, trait, doctests, and tests in this module all name the
+// deprecated `GrpcServerConfig` during the 0.2 compatibility window.
+#![allow(deprecated)]
+
 use std::time::Duration;
 
 /// Default maximum decoding (incoming) message size: 4MB
@@ -108,6 +112,10 @@ const DEFAULT_MAX_CONCURRENT_CONNECTIONS: usize = 1000;
 /// assert_eq!(config.request_timeout(), Duration::from_secs(60));
 /// assert_eq!(config.max_concurrent_connections(), 500);
 /// ```
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `GrpcServerSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone)]
 pub struct GrpcServerConfig {
 	max_decoding_message_size: usize,
