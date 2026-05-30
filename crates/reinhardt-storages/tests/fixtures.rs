@@ -563,9 +563,16 @@ pub async fn azure_fixture() -> AzureFixture {
 	use testcontainers::core::{ContainerPort, WaitFor};
 	use testcontainers::{GenericImage, ImageExt, runners::AsyncRunner};
 
+	// Wait for Azurite's readiness log line instead of a fixed delay: a flat
+	// `WaitFor::seconds(1)` races the blob endpoint and intermittently yields
+	// `NetworkError` when `create_storage` issues the container-create request
+	// before Azurite is listening. Azurite 3.35.0 prints this on stdout once
+	// the blob service is accepting connections.
 	let image = GenericImage::new("mcr.microsoft.com/azure-storage/azurite", "3.35.0")
 		.with_exposed_port(ContainerPort::Tcp(10000))
-		.with_wait_for(WaitFor::seconds(1))
+		.with_wait_for(WaitFor::message_on_stdout(
+			"Azurite Blob service successfully listens",
+		))
 		.with_startup_timeout(std::time::Duration::from_secs(120))
 		.with_cmd(vec!["azurite-blob", "--blobHost", "0.0.0.0"]);
 

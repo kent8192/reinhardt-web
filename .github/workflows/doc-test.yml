@@ -78,6 +78,42 @@ jobs:
         with:
           tool: cargo-make
 
+      # Doc tests are dominated by linking: rustdoc compiles each doctest into
+      # its own binary that links the full (all-features) crate, so the default
+      # bfd/lld linker is the bottleneck. mold cuts that link time the same way
+      # unit-test.yml already does for the test binaries.
+      - name: Install mold linker and build dependencies
+        run: |
+          sudo systemctl stop unattended-upgrades || true
+          sudo apt-get update -o DPkg::Lock::Timeout=120
+          sudo apt-get install -y -o DPkg::Lock::Timeout=120 mold clang lld build-essential
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+
+      # Scope mold to the host target only. A global `RUSTFLAGS=...-fuse-ld=mold`
+      # leaks into wasm32 builds and clang rejects `-fuse-ld=mold` for that
+      # target. See reinhardt-web#4147. `RUSTDOCFLAGS` carries the linker into
+      # the rustdoc doctest compilation, which is where the doc-test link cost
+      # actually lives (cargo does not forward the target linker to rustdoc).
+      - name: Configure mold linker (host target only)
+        run: |
+          cat > /tmp/clang-mold-wrapper << 'WRAPPER'
+          #!/bin/sh
+          exec clang -fuse-ld=mold "$@"
+          WRAPPER
+          chmod +x /tmp/clang-mold-wrapper
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "aarch64" ]; then
+            ENV_KEY="CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER"
+          elif [ "$ARCH" = "x86_64" ]; then
+            ENV_KEY="CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER"
+          else
+            echo "Unsupported architecture for mold linker configuration: $ARCH" >&2
+            exit 1
+          fi
+          echo "${ENV_KEY}=/tmp/clang-mold-wrapper" >> "$GITHUB_ENV"
+          echo "RUSTDOCFLAGS=-Clinker=/tmp/clang-mold-wrapper" >> "$GITHUB_ENV"
+
       - name: Additional disk cleanup before tests
         if: ${{ !contains(inputs.runner, 'self-hosted') }}
         run: |
