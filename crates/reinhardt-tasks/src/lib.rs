@@ -89,6 +89,8 @@ pub mod result;
 pub mod retry;
 /// Cron-like task scheduling.
 pub mod scheduler;
+/// Settings-first configuration fragments.
+pub mod settings;
 /// Task trait and execution lifecycle.
 pub mod task;
 /// Webhook notifications for task completion events.
@@ -108,10 +110,16 @@ pub use backends::RedisTaskBackend;
 pub use backends::SqliteBackend;
 
 #[cfg(feature = "sqs-backend")]
-pub use backends::{SqsBackend, SqsConfig};
+pub use backends::SqsBackend;
+#[cfg(feature = "sqs-backend")]
+#[allow(deprecated)] // SqsConfig is deprecated in favor of SqsSettings.
+pub use backends::SqsConfig;
 
 #[cfg(feature = "rabbitmq-backend")]
-pub use backends::{RabbitMQBackend, RabbitMQConfig};
+pub use backends::RabbitMQBackend;
+#[cfg(feature = "rabbitmq-backend")]
+#[allow(deprecated)] // RabbitMQConfig is deprecated in favor of RabbitMQSettings.
+pub use backends::RabbitMQConfig;
 pub use chain::{ChainStatus, TaskChain, TaskChainBuilder};
 pub use dag::{TaskDAG, TaskNode, TaskNodeStatus};
 pub use load_balancer::{LoadBalancer, LoadBalancingStrategy, WorkerId, WorkerInfo, WorkerMetrics};
@@ -121,7 +129,9 @@ pub use locking::{LockToken, MemoryTaskLock, TaskLock};
 pub use locking::RedisTaskLock;
 pub use metrics::{MetricsSnapshot, TaskCounts, TaskMetrics, WorkerStats};
 pub use priority_queue::{Priority, PriorityTaskQueue};
-pub use queue::{QueueConfig, TaskQueue};
+#[allow(deprecated)] // QueueConfig is deprecated in favor of QueueSettings.
+pub use queue::QueueConfig;
+pub use queue::TaskQueue;
 pub use registry::{SerializedTask, TaskFactory, TaskRegistry};
 pub use result::{
 	MemoryResultBackend, ResultBackend, TaskOutput, TaskResult as TaskResultBackend,
@@ -143,10 +153,25 @@ pub use task::{
 	TaskPriority, TaskStatus,
 };
 pub use webhook::{
-	HttpWebhookSender, RetryConfig, TaskStatus as WebhookTaskStatus, WebhookConfig, WebhookError,
-	WebhookEvent, WebhookSender, is_blocked_ip, validate_resolved_ips, validate_webhook_url,
+	HttpWebhookSender, TaskStatus as WebhookTaskStatus, WebhookError, WebhookEvent, WebhookSender,
+	is_blocked_ip, validate_resolved_ips, validate_webhook_url,
 };
-pub use worker::{Worker, WorkerConfig};
+#[allow(deprecated)]
+// RetryConfig/WebhookConfig are deprecated in favor of the *Settings fragments.
+pub use webhook::{RetryConfig, WebhookConfig};
+pub use worker::Worker;
+#[allow(deprecated)] // WorkerConfig is deprecated in favor of WorkerSettings.
+pub use worker::WorkerConfig;
+
+// Settings-first configuration API (preferred over the deprecated `*Config` types).
+pub use settings::{
+	QueueSettings, WebhookRetrySettings, WebhookSettings, WorkerSettings,
+	create_queue_from_settings, create_webhook_sender_from_settings, create_worker_from_settings,
+};
+#[cfg(feature = "rabbitmq-backend")]
+pub use settings::{RabbitMQSettings, create_rabbitmq_backend_from_settings};
+#[cfg(feature = "sqs-backend")]
+pub use settings::{SqsSettings, create_sqs_backend_from_settings};
 
 use thiserror::Error;
 
