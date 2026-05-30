@@ -136,7 +136,7 @@ examples-tutorial-basis/
 │   ├── bin/
 │   │   └── manage.rs               # Native CLI; `required-features = ["with-reinhardt"]`
 │   ├── config/
-│   │   ├── settings.rs             # `#[settings(core: CoreSettings)] ProjectSettings`
+│   │   ├── settings.rs             # `#[settings(core: CoreSettings | contacts: ContactSettings)] ProjectSettings`
 │   │   │                           # + `SettingsBuilder` composition
 │   │   ├── apps.rs                 # `installed_apps! { polls: "polls", users: "users" }`
 │   │   ├── urls.rs                 # `#[routes(standalone)] routes()` — registers every
@@ -353,7 +353,7 @@ The `mode = client` macro namespaces every `named_route` under `polls:`, so SPA 
 
 ### 4. Configuration (`src/config/*`)
 
-- **`settings.rs`** — `#[settings(core: CoreSettings)] ProjectSettings` composed via `SettingsBuilder` from `DefaultSource`, `LowPriorityEnvSource`, and `TomlFileSource` overlays (`base.toml` + a profile-specific file).
+- **`settings.rs`** — `#[settings(core: CoreSettings | contacts: ContactSettings)] ProjectSettings` composed via `SettingsBuilder` from `DefaultSource`, `LowPriorityEnvSource`, and `TomlFileSource` overlays (`base.toml` + a profile-specific file).
 - **`apps.rs`** — `installed_apps! { polls: "polls", users: "users" }` generates the `InstalledApp` enum consumed by every `#[url_patterns(InstalledApp::<app>, …)]`.
 - **`urls.rs`** — `#[routes(standalone)] routes()` registers all server functions, mounts `/admin/` and `/static/admin/`, and applies `SessionMiddleware` with a two-week TTL.
 - **`wasm.rs`** — submits an `AppStaticFilesConfig` pointing at `dist-wasm/` so `cargo make collectstatic` picks up the WASM bundle.
