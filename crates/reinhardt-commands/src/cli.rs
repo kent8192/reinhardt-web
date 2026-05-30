@@ -370,8 +370,20 @@ pub async fn execute_from_command_line() -> Result<(), Box<dyn std::error::Error
 ///
 /// ```rust,no_run
 /// use reinhardt_commands::execute_from_command_line_with_settings;
-/// # use reinhardt_conf::HasCommonSettings;
-/// # fn get_settings() -> impl HasCommonSettings + 'static { unimplemented!() }
+/// # use reinhardt_conf::settings::contacts::ContactSettings;
+/// # use reinhardt_conf::settings::core_settings::CoreSettings;
+/// # use reinhardt_conf::settings::fragment::HasSettings;
+/// # // Stands in for the project's `#[settings(...)]`-generated `ProjectSettings`.
+/// # struct ProjectSettings { core: CoreSettings, contacts: ContactSettings }
+/// # impl HasSettings<CoreSettings> for ProjectSettings {
+/// #     fn get_settings(&self) -> &CoreSettings { &self.core }
+/// # }
+/// # impl HasSettings<ContactSettings> for ProjectSettings {
+/// #     fn get_settings(&self) -> &ContactSettings { &self.contacts }
+/// # }
+/// # fn get_settings() -> ProjectSettings {
+/// #     ProjectSettings { core: CoreSettings::default(), contacts: ContactSettings::default() }
+/// # }
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
