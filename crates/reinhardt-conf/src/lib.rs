@@ -70,7 +70,12 @@ pub mod settings;
 
 // Re-export commonly used types at the crate root for convenience
 #[cfg(feature = "settings")]
-pub use settings::{DatabaseConfig, MiddlewareConfig, TemplateConfig};
+pub use settings::{DatabaseConfig, MiddlewareConfig};
+// `TemplateConfig` is deprecated in favor of the `TemplateSettings` fragment;
+// keep the re-export discoverable during the compatibility window.
+#[cfg(feature = "settings")]
+#[allow(deprecated)]
+pub use settings::TemplateConfig;
 
 // Re-export third-party types used in macro-generated code.
 // The `#[settings(...)]` composition macro generates `ComposedSettings` impls

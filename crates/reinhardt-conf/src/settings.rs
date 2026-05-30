@@ -3,6 +3,10 @@
 //! Django-inspired settings system for Reinhardt projects.
 //! This module provides configuration management for Reinhardt applications.
 
+// The `From<&FragmentTemplateConfig>` bridge below names the deprecated
+// `TemplateConfig` during the 0.2 compatibility window.
+#![allow(deprecated)]
+
 pub mod advanced;
 pub mod builder;
 pub mod cache;
@@ -129,6 +133,15 @@ pub use composed::ComposedSettings;
 pub use builder::MergeStrategy;
 
 /// Template engine configuration
+///
+/// Deprecated in favor of the [`TemplateSettings`](template_settings::TemplateSettings)
+/// fragment (and its nested [`FragmentTemplateConfig`](template_settings::FragmentTemplateConfig)
+/// value object), which compose with the `#[settings]` macro. A
+/// [`From<&FragmentTemplateConfig>`] bridge is provided for migration.
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `TemplateSettings` with the `#[settings]` macro instead."
+)]
 #[non_exhaustive]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TemplateConfig {
@@ -206,6 +219,31 @@ impl Default for TemplateConfig {
 			options,
 		}
 	}
+}
+
+impl From<&template_settings::FragmentTemplateConfig> for TemplateConfig {
+	/// Bridge a settings-fragment template config into the deprecated
+	/// compatibility [`TemplateConfig`] during the 0.2 migration window.
+	fn from(settings: &template_settings::FragmentTemplateConfig) -> Self {
+		Self {
+			backend: settings.backend.clone(),
+			dirs: settings.dirs.clone(),
+			app_dirs: settings.app_dirs,
+			options: settings.options.clone(),
+		}
+	}
+}
+
+/// Build the deprecated [`TemplateConfig`] list from a [`TemplateSettings`]
+/// fragment.
+///
+/// Prefer the [`TemplateSettings`](template_settings::TemplateSettings) fragment
+/// directly in new code; this helper exists to ease migration off the legacy
+/// `TemplateConfig` type.
+pub fn create_template_configs_from_settings(
+	settings: &template_settings::TemplateSettings,
+) -> Vec<TemplateConfig> {
+	settings.configs.iter().map(TemplateConfig::from).collect()
 }
 
 /// Middleware configuration
