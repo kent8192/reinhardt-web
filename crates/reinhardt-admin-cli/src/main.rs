@@ -214,9 +214,13 @@ enum Commands {
 	/// Format all code: Reinhardt DSL macros via Topiary + Rust via rustfmt
 	///
 	/// This command formats page!/form!/head! macros first, then runs
-	/// `cargo fmt --all` on the full workspace.
+	/// `cargo fmt --all` on the root workspace.
 	///
-	/// Formats all Rust files in the project (searches for Cargo.toml to find project root).
+	/// Files that belong to a separate (nested) cargo workspace, such as
+	/// `examples/` or the trybuild fixture crates, are skipped. `cargo fmt
+	/// --all` only formats the root workspace, so formatting their DSL macros
+	/// without the rustfmt pass would leave them inconsistent. Format those
+	/// sub-workspaces with their own task (e.g. `cargo make fmt-check-examples`).
 	FmtAll {
 		/// Check if files are formatted without modifying them
 		#[arg(long)]
@@ -945,7 +949,7 @@ fn run_fmt_all(
 	verbosity: u8,
 ) -> CommandResult<()> {
 	use format_engine::FormatEngine;
-	use formatter::collect_rust_files;
+	use formatter::{collect_rust_files, nested_workspace_roots};
 	use std::collections::HashMap;
 	use std::process::{Command, Stdio};
 
@@ -975,6 +979,18 @@ fn run_fmt_all(
 			sanitize_error(&e)
 		))
 	})?;
+
+	// Exclude files that belong to a separate (nested) cargo workspace such as
+	// `examples/` or the trybuild fixture crates. The `cargo fmt --all` pass
+	// below only formats the root workspace, so applying just the DSL pass to
+	// these files would leave them rustfmt-unformatted and contradict their own
+	// `fmt`/`cargo fmt` tasks (e.g. `cargo make fmt-check-examples`). Each
+	// sub-workspace is formatted by its dedicated task instead. Refs #5051.
+	let nested_roots = nested_workspace_roots(&project_root);
+	let files: Vec<PathBuf> = files
+		.into_iter()
+		.filter(|file| !nested_roots.iter().any(|root| file.starts_with(root)))
+		.collect();
 
 	if files.is_empty() {
 		if verbosity > 0 {
