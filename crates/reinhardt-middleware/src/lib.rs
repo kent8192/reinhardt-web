@@ -208,7 +208,10 @@ pub use conditional::ConditionalGetMiddleware;
 #[cfg(feature = "sessions")]
 pub use cookie_session_auth::{CookieSessionAuthMiddleware, CookieSessionConfig};
 #[cfg(feature = "cors")]
-pub use cors::CorsMiddleware;
+#[allow(deprecated)]
+pub use cors::CorsConfig;
+#[cfg(feature = "cors")]
+pub use cors::{CorsMiddleware, create_cors_middleware_from_settings};
 pub use csp::{CspConfig, CspMiddleware, CspNonce};
 pub use csp_helpers::{csp_nonce_attr, get_csp_nonce};
 pub use csrf::{
@@ -256,6 +259,8 @@ pub use xframe::{XFrameOptions, XFrameOptionsMiddleware};
 pub use xss::{XssConfig, XssError, XssProtector};
 
 #[cfg(all(test, feature = "cors"))]
+// The deprecated `CorsConfig` is exercised here during the compatibility window.
+#[allow(deprecated)]
 mod tests {
 	use super::*;
 	use bytes::Bytes;

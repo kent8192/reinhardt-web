@@ -10,6 +10,9 @@
 //!
 //! Run with all features: `cargo test --features full`
 
+// The deprecated `CorsConfig` is exercised here during the compatibility window.
+#![allow(deprecated)]
+
 mod fixtures;
 
 use bytes::Bytes;

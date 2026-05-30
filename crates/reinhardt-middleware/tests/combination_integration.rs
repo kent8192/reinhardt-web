@@ -11,6 +11,9 @@
 //! - Protection stacks (RateLimit + CircuitBreaker)
 //! - Observability stacks (Logging + Tracing + Metrics)
 
+// The deprecated `CorsConfig` is exercised here during the compatibility window.
+#![allow(deprecated)]
+
 mod fixtures;
 
 use fixtures::{ConfigurableTestHandler, create_request_with_headers, create_test_request};
