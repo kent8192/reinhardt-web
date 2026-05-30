@@ -99,7 +99,20 @@ pub fn action(args: TokenStream, input: TokenStream) -> TokenStream {
 		.into()
 }
 
-/// GET method decorator
+/// GET method decorator.
+///
+/// # Route name (`name = "..."`)
+///
+/// The optional `name` selects the identifier used for URL reversal
+/// (`reverse(...)`). Prefer kebab-case (e.g. `name = "users-list"`) to match
+/// ViewSet-generated names; a non-kebab name (snake_case / camelCase) emits a
+/// warning at compile time and again when routes are registered. Prefix the
+/// name with `!` (e.g. `name = "!legacy_name"`) to opt out — the sigil is
+/// stripped before storage, so reverse lookups use the clean name — or set
+/// `REINHARDT_URL_NAME_WARNINGS=0` to silence all such warnings. When omitted,
+/// the route name defaults to the function name and is exempt from the warning.
+/// The same convention applies to `#[post]`, `#[put]`, `#[patch]`, and
+/// `#[delete]`. Refs Issue #4901.
 #[proc_macro_attribute]
 pub fn get(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);
