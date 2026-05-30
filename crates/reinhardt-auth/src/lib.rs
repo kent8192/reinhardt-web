@@ -174,6 +174,9 @@ pub mod token_storage;
 /// User CRUD management.
 pub mod user_management;
 
+/// Settings fragments for authentication backends.
+pub mod settings;
+
 pub use advanced_permissions::{ObjectPermission as AdvancedObjectPermission, RoleBasedPermission};
 pub use base_user_manager::BaseUserManager;
 pub use basic::BasicAuthentication as HttpBasicAuth;
@@ -234,7 +237,17 @@ pub use token_blacklist::{
 	InMemoryTokenBlacklist, RefreshToken, RefreshTokenStore, TokenBlacklist, TokenRotationManager,
 };
 #[cfg(any(feature = "jwt", feature = "token"))]
+#[allow(deprecated)] // Re-export keeps the compatibility API discoverable during the 0.2 line.
 pub use token_rotation::{AutoTokenRotationManager, TokenRotationConfig, TokenRotationRecord};
+
+#[cfg(feature = "sessions")]
+pub use settings::SessionSettings;
+
+#[cfg(feature = "jwt")]
+pub use settings::{JwtSessionSettings, create_jwt_session_backend_from_settings};
+
+#[cfg(feature = "token")]
+pub use settings::{TokenRotationSettings, create_token_rotation_manager_from_settings};
 #[cfg(all(feature = "database", any(feature = "jwt", feature = "token")))]
 pub use token_storage::DatabaseTokenStorage;
 #[cfg(any(feature = "jwt", feature = "token"))]
