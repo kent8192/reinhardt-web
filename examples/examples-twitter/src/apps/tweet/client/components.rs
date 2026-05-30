@@ -34,74 +34,60 @@ fn like_button(liked: Signal<bool>, like_count: Signal<i32>) -> Page {
 	let liked_for_click_else = liked.clone();
 	let like_count_for_click_else = like_count.clone();
 
-	page!(|liked: Signal<bool>,
-	       like_count: Signal<i32>,
-	       liked_for_click_if: Signal<bool>,
-	       like_count_for_click_if: Signal<i32>,
-	       liked_for_click_else: Signal<bool>,
-	       like_count_for_click_else: Signal<i32>| {
-		{
-			// Read the Copy signal values to local Copy values once in this
-			// single reactive scope, then build the markup via an inner
-			// `page!` that receives the Copy values and handler-signal clones.
-			let is_liked = liked.get();
-			let count = like_count.get();
-			page!(|is_liked: bool, count: i32, liked_for_click_if: Signal<bool>, like_count_for_click_if: Signal<i32>, liked_for_click_else: Signal<bool>, like_count_for_click_else: Signal<i32>| {
-				if is_liked {
-					button {
-						class: "tweet-action-btn text-danger",
-						type: "button",
-						aria_label: "Like",
-						@click: {
-							let liked_for_click = liked_for_click_if.clone();
-							let like_count_for_click = like_count_for_click_if.clone();
-							move |_event| {
-								let current_liked = liked_for_click.get();
-								let current_count = like_count_for_click.get();
-								liked_for_click.set(!current_liked);
-								like_count_for_click.set(if current_liked { current_count - 1 } else { current_count + 1 });
-							}
-						},
-						{
-							icons::heart_icon_filled()
+	page!(|liked: Signal<bool>, like_count: Signal<i32>, liked_for_click_if: Signal<bool>, like_count_for_click_if: Signal<i32>, liked_for_click_else: Signal<bool>, like_count_for_click_else: Signal<i32>| { {
+		// Read the Copy signal values to local Copy values once in this
+		// single reactive scope, then build the markup via an inner
+		// `page!` that receives the Copy values and handler-signal clones.
+		let is_liked = liked.get();
+		let count = like_count.get();
+		page!(|is_liked: bool, count: i32, liked_for_click_if: Signal<bool>, like_count_for_click_if: Signal<i32>, liked_for_click_else: Signal<bool>, like_count_for_click_else: Signal<i32>| {
+			if is_liked {
+				button {
+					class: "tweet-action-btn text-danger",
+					type: "button",
+					aria_label: "Like",
+					@click: {
+						let liked_for_click = liked_for_click_if.clone();
+						let like_count_for_click = like_count_for_click_if.clone();
+						move |_event| {
+							let current_liked = liked_for_click.get();
+							let current_count = like_count_for_click.get();
+							liked_for_click.set(!current_liked);
+							like_count_for_click.set(if current_liked { current_count - 1 } else { current_count + 1 });
 						}
-						span { {
-							format!("{}", count)
-						} }
+					},
+					{
+						icons::heart_icon_filled()
 					}
-				} else {
-					button {
-						class: "tweet-action-btn hover:text-danger",
-						type: "button",
-						aria_label: "Like",
-						@click: {
-							let liked_for_click = liked_for_click_else.clone();
-							let like_count_for_click = like_count_for_click_else.clone();
-							move |_event| {
-								let current_liked = liked_for_click.get();
-								let current_count = like_count_for_click.get();
-								liked_for_click.set(!current_liked);
-								like_count_for_click.set(if current_liked { current_count - 1 } else { current_count + 1 });
-							}
-						},
-						{
-							icons::heart_icon_outline()
-						}
-						span { {
-							format!("{}", count)
-						} }
-					}
+					span { {
+						format!("{}", count)
+					} }
 				}
-			})(
-				is_liked,
-				count,
-				liked_for_click_if.clone(),
-				like_count_for_click_if.clone(),
-				liked_for_click_else.clone(),
-				like_count_for_click_else.clone(),
-			)
-		}
-	})(
+			} else {
+				button {
+					class: "tweet-action-btn hover:text-danger",
+					type: "button",
+					aria_label: "Like",
+					@click: {
+						let liked_for_click = liked_for_click_else.clone();
+						let like_count_for_click = like_count_for_click_else.clone();
+						move |_event| {
+							let current_liked = liked_for_click.get();
+							let current_count = like_count_for_click.get();
+							liked_for_click.set(!current_liked);
+							like_count_for_click.set(if current_liked { current_count - 1 } else { current_count + 1 });
+						}
+					},
+					{
+						icons::heart_icon_outline()
+					}
+					span { {
+						format!("{}", count)
+					} }
+				}
+			}
+		})(is_liked, count, liked_for_click_if.clone(), like_count_for_click_if.clone(), liked_for_click_else.clone(), like_count_for_click_else.clone(), )
+	} })(
 		liked,
 		like_count,
 		liked_for_click_if,
@@ -142,23 +128,18 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 	// Clone for error display watch block (separate closure from main watch block)
 	let delete_action_for_error = delete_action.clone();
 
-	page!(|delete_action: Action<(), String>,
-	       show_delete: bool,
-	       username: String,
-	       content: String,
-	       created_at: String,
-	       tweet_id: Uuid,
-	       liked_signal: Signal<bool>,
-	       like_count_signal: Signal<i32>,
-	       delete_action_for_click: Action<(), String>,
-	       delete_action_for_error: Action<(), String>| {
+	page!(|delete_action: Action<(), String>, show_delete: bool, username: String, content: String, created_at: String, tweet_id: Uuid, liked_signal: Signal<bool>, like_count_signal: Signal<i32>, delete_action_for_click: Action<(), String>, delete_action_for_error: Action<(), String>| {
 		// Main card body: a single reactive scope that reads the Copy
 		// `is_success` flag once and builds each branch via an inner
 		// `page!`, passing the owned String/Signal/Action values as the
 		// inner closure's own parameters (avoids E0507 from nested scopes).
 		{
 			if delete_action.is_success() {
-				page!(|| { div { class: "hidden" } })()
+				page!(|| {
+					div {
+						class: "hidden"
+					}
+				})()
 			} else {
 				page!(|show_delete: bool, username_avatar: String, username_name: String, username_handle: String, content: String, created_at: String, tweet_id: Uuid, liked_signal: Signal<bool>, like_count_signal: Signal<i32>, delete_action_for_click: Action<(), String>| {
 					div {
@@ -261,34 +242,20 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 							}
 						}
 					}
-				})(
-					show_delete,
-					username.clone(),
-					username.clone(),
-					username.clone(),
-					content.clone(),
-					created_at.clone(),
-					tweet_id,
-					liked_signal.clone(),
-					like_count_signal.clone(),
-					delete_action_for_click.clone(),
-				)
+				})(show_delete, username.clone(), username.clone(), username.clone(), content.clone(), created_at.clone(), tweet_id, liked_signal.clone(), like_count_signal.clone(), delete_action_for_click.clone(), )
 			}
-		} // Error alert: a single optional banner built via `.map(...)`.
+		}// Error alert: a single optional banner built via `.map(...)`.
 		{
-			delete_action_for_error
-				.error()
-				.map(|error_message| {
-					page!(|error_message: String| {
-						div {
-							class: "alert-danger mt-3",
-							{ {
-								error_message.clone()
-							} }
-						}
-					})(error_message)
-				})
-				.unwrap_or_else(Page::empty)
+			delete_action_for_error.error().map(|error_message| {
+				page!(|error_message: String| {
+					div {
+						class: "alert-danger mt-3",
+						{ {
+							error_message.clone()
+						} }
+					}
+				})(error_message)
+			}).unwrap_or_else(Page::empty)
 		}
 	})(
 		delete_action,
