@@ -902,3 +902,82 @@ fn test_try_reverse_single_pass_ok_on_valid_params() {
 	// Assert
 	assert_eq!(result, "/users/123/");
 }
+
+#[rstest]
+fn register_path_accepts_non_kebab_name_and_reverses() {
+	// Arrange
+	let mut reverser = UrlReverser::new();
+
+	// Act
+	// A snake_case name emits a (non-fatal) kebab-case warning but is still
+	// registered and reversible under its given name.
+	reverser
+		.register_path("user_detail", "/users/{id}/")
+		.unwrap();
+	let url = reverser
+		.reverse_with("user_detail", &[("id", "42")])
+		.unwrap();
+
+	// Assert
+	assert!(reverser.has_route("user_detail"));
+	assert_eq!(url, "/users/42/");
+}
+
+#[rstest]
+fn register_path_strips_optout_sigil_from_name() {
+	// Arrange
+	let mut reverser = UrlReverser::new();
+
+	// Act
+	reverser
+		.register_path("!user_detail", "/users/{id}/")
+		.unwrap();
+	let url = reverser
+		.reverse_with("user_detail", &[("id", "7")])
+		.unwrap();
+
+	// Assert
+	assert!(reverser.has_route("user_detail"));
+	assert!(!reverser.has_route("!user_detail"));
+	assert_eq!(url, "/users/7/");
+}
+
+#[rstest]
+fn register_path_strips_optout_sigil_from_namespaced_name() {
+	// Arrange
+	let mut reverser = UrlReverser::new();
+
+	// Act
+	// Only the segment after the last ':' carries the opt-out sigil; the
+	// namespace prefix is preserved.
+	reverser
+		.register_path("v1:users:!detail", "/api/v1/users/{id}/")
+		.unwrap();
+	let url = reverser
+		.reverse_with("v1:users:detail", &[("id", "9")])
+		.unwrap();
+
+	// Assert
+	assert!(reverser.has_route("v1:users:detail"));
+	assert!(!reverser.has_route("v1:users:!detail"));
+	assert_eq!(url, "/api/v1/users/9/");
+}
+
+#[rstest]
+fn register_route_strips_optout_sigil_from_name() {
+	// Arrange
+	let mut reverser = UrlReverser::new();
+	let mut route = Route::new(path!("/users/{id}/"), Arc::new(TestHandler));
+	route.name = Some("!user_detail".to_string());
+
+	// Act
+	reverser.register(route).unwrap();
+	let url = reverser
+		.reverse_with("user_detail", &[("id", "3")])
+		.unwrap();
+
+	// Assert
+	assert!(reverser.has_route("user_detail"));
+	assert!(!reverser.has_route("!user_detail"));
+	assert_eq!(url, "/users/3/");
+}
