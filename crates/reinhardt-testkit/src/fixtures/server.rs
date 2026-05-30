@@ -3,6 +3,10 @@
 //! This module provides rstest fixtures for testing HTTP servers with automatic
 //! cleanup via RAII pattern.
 
+// `RateLimitConfig` is deprecated in favor of the `RateLimitSettings` fragment;
+// these fixtures still build it directly during the 0.2 compatibility window.
+#![allow(deprecated)]
+
 use reinhardt_di::InjectionContext;
 use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
