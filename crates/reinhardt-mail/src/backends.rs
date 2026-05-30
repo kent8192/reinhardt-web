@@ -348,7 +348,7 @@ impl SmtpConfig {
 	}
 }
 
-/// Build an [`SmtpConfig`] from an [`EmailSettings`] fragment.
+/// Build an [`SmtpConfig`] from an [`EmailSettings`](reinhardt_conf::settings::EmailSettings) fragment.
 ///
 /// This mirrors the SMTP branch of [`backend_from_settings`]: the security mode
 /// is derived from the `use_tls`/`use_ssl` flags, the timeout defaults to 60
@@ -379,7 +379,7 @@ impl From<&reinhardt_conf::settings::EmailSettings> for SmtpConfig {
 	}
 }
 
-/// Build an [`SmtpBackend`] from an [`EmailSettings`] fragment.
+/// Build an [`SmtpBackend`] from an [`EmailSettings`](reinhardt_conf::settings::EmailSettings) fragment.
 ///
 /// This is the settings-first entry point for constructing an SMTP backend.
 /// Prefer it over building an [`SmtpConfig`] manually.

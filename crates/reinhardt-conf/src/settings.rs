@@ -234,8 +234,8 @@ impl From<&template_settings::FragmentTemplateConfig> for TemplateConfig {
 	}
 }
 
-/// Build the deprecated [`TemplateConfig`] list from a [`TemplateSettings`]
-/// fragment.
+/// Build the deprecated [`TemplateConfig`] list from a
+/// [`TemplateSettings`](template_settings::TemplateSettings) fragment.
 ///
 /// Prefer the [`TemplateSettings`](template_settings::TemplateSettings) fragment
 /// directly in new code; this helper exists to ease migration off the legacy
