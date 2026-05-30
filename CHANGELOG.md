@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.2...reinhardt-web@v0.1.3) - 2026-05-30
+
+### Added
+
+- *(di)* add DependsResult and DependsOption sugar type aliases
+
+### Documentation
+
+- add release announcement(s)
+- add Obsidian wiki maintenance instructions (OW-1 ~ OW-4)
+- prohibit direct pushes to release-plz branches
+- clarify release-plz branch policy — code fixes vs CHANGELOG edits
+- add wiki-query retrieval and dual-write ingest rules (OW-5, OW-6)
+- *(wiki)* distribute Obsidian pages across categories and raise capture frequency
+- *(wiki)* sync CLAUDE.md/AGENTS.md Obsidian section with OW-7 policy
+
+### Fixed
+
+- *(ci)* add PR checkbox opt-in guard for AWS runner in deploy-website
+- *(ci)* address Copilot review feedback on deploy-website runner selection
+- *(ci)* pin actions/github-script to commit SHA for supply chain security
+- *(admin-cli)* run rustfmt on DSL-skipped files in fmt command
+- *(admin-cli)* pass ignore-all files through rustfmt in fmt command
+- *(docs)* address Copilot review feedback on OBSIDIAN_WIKI.md
+- *(docs)* replace user-specific skip wording with neutral language
+- *(admin-cli)* traverse past sub-crate Cargo.toml when searching for rustfmt config
+- *(ci)* cancel semver-check and examples-test on merged PRs
+- *(ci)* install node before website deploy
+- *(ci)* gate release-plz publish on release PR merges
+- *(di)* resolve DependsResult/DependsOption field injection from registry
+- *(di)* resolve DependsResult macro injection
+- *(ci)* skip arm64 browser WASM steps in examples-test
+- *(admin-cli)* skip nested workspaces in fmt-all
+
+### Maintenance
+
+- *(deploy-website)* use AWS self-hosted runner for website deployment
+- *(ci)* add actionlint config for custom self-hosted runner labels
+- run Examples Tests on self-hosted runner via shared determine-runner
+
+### Styling
+
+- *(examples)* format examples-twitter common.rs with reinhardt-admin fmt
+- *(examples)* expand page! macros to multi-line in examples-twitter
+- *(examples)* format twitter common components
+- *(examples)* apply reinhardt-admin fmt to satisfy fmt-check
+- *(examples)* format twitter common page components
+- *(examples)* expand twitter common page! bodies to satisfy fmt-all
+- *(examples)* collapse twitter common page! bodies to match formatter
+- *(admin-cli)* wrap is_manifest binding to satisfy rustfmt
+
 ## [0.1.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.1...reinhardt-web@v0.1.2) - 2026-05-25
 
 ### Documentation
