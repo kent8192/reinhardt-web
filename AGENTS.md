@@ -329,19 +329,21 @@ See instructions/RELEASE_PROCESS.md for detailed release procedures.
 
 **Access:** Obsidian MCP server (`obsidian-vault`) — vault path is resolved by the MCP server, not hardcoded
 
-At the end of a meaningful work unit (architectural decision, new pattern, troubleshooting solution, lesson learned), update the Obsidian wiki:
+Update the Obsidian wiki **frequently and proactively** — at the end of every meaningful work unit (architectural decision, new pattern, troubleshooting solution, lesson learned, module/component studied, dependency assessed, flow traced, concept clarified, options compared, question answered) and whenever you learn something worth preserving. When in doubt, write a short page (OW-1):
 
 1. Check Obsidian MCP availability — if unavailable, **skip entirely** (do NOT block primary work)
 2. Use `/wiki-query` to retrieve relevant existing knowledge before answering or deciding (OW-5)
 3. Read `wiki/hot.md` to check for duplicates
-4. Create/update pages under the appropriate category
+4. Create/update pages under the **most specific** category, drawing on the vault's full category set (`modules/`, `components/`, `knowledge/{patterns,troubleshooting,learnings}/`, `decisions/`, `dependencies/`, `flows/`, `concepts/`, `entities/`, `domains/`, `comparisons/`, `questions/`) — never default everything to `knowledge/troubleshooting/` (OW-2, OW-7)
 5. Update meta pages: `wiki/index.md`, `wiki/hot.md`, `wiki/log.md`
+
+**Distribute (OW-7):** Spread knowledge across categories — a single work unit often yields several cross-linked pages. Proactively populate under-used categories instead of concentrating in one.
 
 **Dual-write rule (OW-6):** When saving to any memory system (claude-mem, auto-memory, Serena), simultaneously invoke `/wiki-ingest` to persist the same knowledge in the Obsidian wiki.
 
 **Skip when:** MCP unavailable, trivial changes, work in progress, or emergency/hotfix work.
 
-See instructions/OBSIDIAN_WIKI.md for detailed standards (OW-1 ~ OW-6).
+See instructions/OBSIDIAN_WIKI.md for detailed standards (OW-1 ~ OW-7).
 
 ### Workflow Best Practices
 
