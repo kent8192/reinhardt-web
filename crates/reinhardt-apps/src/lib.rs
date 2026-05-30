@@ -115,6 +115,7 @@ pub use reinhardt_http::{Request, Response, StreamBody, StreamingResponse};
 pub use reinhardt_conf::settings::{DatabaseConfig, MiddlewareConfig};
 // `TemplateConfig` is deprecated in favor of the `TemplateSettings` fragment;
 // keep the re-export available during the 0.2 compatibility window.
+#[cfg(native)]
 #[allow(deprecated)]
 pub use reinhardt_conf::settings::TemplateConfig;
 

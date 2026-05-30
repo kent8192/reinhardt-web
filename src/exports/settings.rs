@@ -8,6 +8,9 @@ pub use reinhardt_conf::settings::profile::Profile;
 pub use reinhardt_conf::settings::sources::{
 	DefaultSource, EnvSource, LowPriorityEnvSource, TomlFileSource,
 };
+// This block re-exports the deprecated `TemplateConfig` during the 0.2
+// compatibility window; the settings-first replacement is `TemplateSettings`.
+#[allow(deprecated)]
 pub use reinhardt_conf::settings::{
 	CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings, MediaSettings,
 	MiddlewareConfig, SessionSettings, SettingsError, StaticSettings, TemplateConfig,
