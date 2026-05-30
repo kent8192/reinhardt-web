@@ -112,7 +112,11 @@ pub use reinhardt_http::{Request, Response, StreamBody, StreamingResponse};
 
 // Re-export from reinhardt-conf (native-only: pulls in tokio runtime).
 #[cfg(native)]
-pub use reinhardt_conf::settings::{DatabaseConfig, MiddlewareConfig, TemplateConfig};
+pub use reinhardt_conf::settings::{DatabaseConfig, MiddlewareConfig};
+// `TemplateConfig` is deprecated in favor of the `TemplateSettings` fragment;
+// keep the re-export available during the 0.2 compatibility window.
+#[allow(deprecated)]
+pub use reinhardt_conf::settings::TemplateConfig;
 
 // Re-export from reinhardt-core::exception (cross-target).
 pub use reinhardt_core::exception::{Error, Result};
