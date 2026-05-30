@@ -16,21 +16,33 @@ This file defines the policy for maintaining the Reinhardt project knowledge bas
 
 ## When to Update (OW-1)
 
-Update the Obsidian wiki at the **end of a meaningful work unit** — after committing or completing a logical chunk of work. A "meaningful work unit" includes:
+Update the Obsidian wiki **frequently and proactively**. The goal is a steadily growing, well-distributed knowledge base, so **err on the side of capturing**: whenever you learn, decide, or discover something a future contributor would want to know, write a page. When in doubt, write it — a short, focused page is far better than a lost insight.
 
-| Trigger | Example |
-|---------|---------|
-| Architectural decision made | Chose `Arc<dyn Trait>` over generic parameter for DI container |
-| New pattern discovered | Dead-code typecheck pattern for type-erased closures |
-| Troubleshooting solution found | CI OOM caused by arm64 runner memory limits |
-| Lesson learned from incident | Partial release failure recovery procedure |
-| Cross-cutting knowledge gained | Semgrep false-positive triggers on comment continuation lines |
+Update at the **end of every meaningful work unit** (after committing or completing a logical chunk) and, in addition, the moment any trigger below occurs — even mid-task, as soon as the knowledge is stable enough to record. A single work unit frequently yields **several** pages spread across different categories (see OW-2 and OW-7); capture each one rather than collapsing them into a single note.
 
-**DO NOT update for:**
-- Trivial changes (typo fixes, formatting, import reordering)
-- Work still in progress (uncommitted, untested)
-- Information already captured in the wiki (check `wiki/hot.md` first)
+| Trigger | Example | Typical Category |
+|---------|---------|------------------|
+| Architectural decision made | Chose `Arc<dyn Trait>` over a generic parameter for the DI container | `decisions/` |
+| New pattern / idiom discovered | Dead-code typecheck pattern for type-erased closures | `knowledge/patterns/` |
+| Troubleshooting solution found | CI OOM caused by arm64 runner memory limits | `knowledge/troubleshooting/` |
+| Lesson learned from an incident | Partial release failure recovery procedure | `knowledge/learnings/` |
+| Crate / module understood in depth | Responsibilities and public surface of `reinhardt-query` | `modules/` |
+| Reusable component studied | How the `#[model]` macro expands and what it generates | `components/` |
+| External dependency assessed | Why `reinhardt-query` replaced direct SeaQuery usage | `dependencies/` |
+| Data / control flow traced | Request → router → handler → response path | `flows/` |
+| Concept / idea clarified | What "CoC is a right, not an obligation" means in practice | `concepts/` |
+| Entity worth tracking identified | An upstream repo, tool, crate, or external project | `entities/` |
+| Topic area mapped | Overview of the authentication subsystem | `domains/` |
+| Options compared | `Arc<dyn Trait>` vs. generics for DI, with trade-offs | `comparisons/` |
+| Non-trivial question answered | "Why are there two `DatabaseConnection` types?" | `questions/` |
+
+**DO NOT create a page for:**
+- Purely mechanical changes that produce no reusable knowledge (typo fixes, formatting, import reordering)
+- Work still in progress (uncommitted, untested) — wait until it is stable, then capture it
+- Knowledge already captured in the wiki — **update** the existing page instead (check `wiki/hot.md` and `wiki/index.md` first)
 - Operational records (PR creation logs, CI re-run triggers, review thread replies)
+
+Everything else is fair game. "It feels small" is **not** a reason to skip — record it as a short page and cross-link it.
 
 ---
 
@@ -51,15 +63,25 @@ Attempt to call an Obsidian MCP tool (e.g., `obsidian_list_files_in_vault`).
 
 ### Step 3: Create or Update Pages
 
-Create new pages or update existing ones under the appropriate category:
+Create new pages or update existing ones under the **most specific** category. The vault provides a rich category set — use its full range instead of defaulting everything to `knowledge/` (see OW-7):
 
-| Knowledge Type | Wiki Location | Template |
-|---------------|---------------|----------|
-| Code pattern / idiom | `wiki/knowledge/patterns/` | Pattern template |
-| Bug fix / workaround | `wiki/knowledge/troubleshooting/` | Troubleshooting template |
-| Lesson learned | `wiki/knowledge/learnings/` | Learning template |
-| Architecture decision | `wiki/decisions/` | ADR template |
-| Domain overview | `wiki/domains/` | Domain template |
+| Knowledge Type | Wiki Location |
+|---------------|---------------|
+| Crate / module overview | `wiki/modules/` |
+| Reusable component (macro, trait, abstraction) | `wiki/components/` |
+| Code pattern / idiom / convention | `wiki/knowledge/patterns/` |
+| Bug fix / workaround / recurring issue | `wiki/knowledge/troubleshooting/` |
+| Lesson learned / post-mortem | `wiki/knowledge/learnings/` |
+| Architecture decision (ADR) | `wiki/decisions/` |
+| External dependency assessment | `wiki/dependencies/` |
+| Data flow / request path / macro expansion | `wiki/flows/` |
+| Concept / idea / framework | `wiki/concepts/` |
+| Entity (person, org, product, repo) | `wiki/entities/` |
+| Top-level topic area / domain overview | `wiki/domains/` |
+| Side-by-side comparison | `wiki/comparisons/` |
+| Filed answer to a user query | `wiki/questions/` |
+
+If the target category directory does not exist yet, create it alongside the page — populating under-used categories is encouraged (OW-7). When a category has an `_index.md`, add the new page to it.
 
 **Page Requirements:**
 - YAML frontmatter: `type`, `status`, `created`, `updated`, `tags` (minimum)
@@ -119,6 +141,18 @@ When saving knowledge to any memory system (claude-mem, Claude Code auto-memory,
 
 ---
 
+## Distribute Across Categories (OW-7)
+
+Knowledge MUST be spread across the full category set, never concentrated in a single directory. Historically, pages piled up in `wiki/knowledge/troubleshooting/` while `concepts/`, `entities/`, `components/`, `flows/`, and `comparisons/` stayed empty. Counter this actively:
+
+- **Pick the most specific category.** `knowledge/troubleshooting/` is for bug fixes and recurring issues only — it is **not** a catch-all. A reusable technique belongs in `patterns/`, a design rationale in `decisions/`, an explanation of an idea in `concepts/`.
+- **One work unit → multiple pages.** A single fix often produces a `troubleshooting/` page (symptom + fix), a `patterns/` page (the reusable technique), and sometimes a `concepts/` or `components/` page. Create them all and cross-link with `[[Wikilink]]`.
+- **Seed under-used categories.** Touching a crate → a `modules/` page; studying a macro or trait → a `components/` page; tracing a request → a `flows/` page; weighing options → a `comparisons/` page; answering a "why" question → a `questions/` page.
+- **Prefer many small, focused, cross-linked pages** over one large catch-all page.
+- **Check balance periodically.** When reviewing `wiki/index.md`, if one category dominates, look for knowledge that belongs in the empty ones and split it out.
+
+---
+
 ## Quality Standards (OW-4)
 
 ### Content Quality
@@ -147,9 +181,15 @@ When saving knowledge to any memory system (claude-mem, Claude Code auto-memory,
 - Reference GitHub Issues/PRs for traceability (OW-4)
 - Use `/wiki-query` to retrieve existing knowledge before answering questions or making decisions (OW-5)
 - Dual-write: when saving to any memory system (claude-mem, auto-memory, Serena), simultaneously `/wiki-ingest` to the Obsidian wiki (OW-6)
+- Create pages frequently and proactively — when in doubt, write a short focused page rather than skip it (OW-1)
+- Route each page to the **most specific** category, using the full category set rather than just `knowledge/` (OW-2, OW-7)
+- Split a single work unit into multiple cross-linked pages across categories when applicable (OW-7)
+- Proactively populate under-used categories (`modules/`, `components/`, `dependencies/`, `flows/`, `concepts/`, `entities/`, `comparisons/`, `questions/`) (OW-7)
 
 ### NEVER DO
 - Block primary work due to Obsidian MCP unavailability (OW-3)
+- Default every page to `wiki/knowledge/troubleshooting/`, or let one category dominate the vault (OW-7)
+- Skip capturing reusable knowledge merely because it seems small (OW-1)
 - Create wiki pages for trivial changes or operational records (OW-1)
 - Duplicate information already in CLAUDE.md or `instructions/` (OW-4)
 - Record conversation details or session-specific interactions in the wiki (OW-4)
