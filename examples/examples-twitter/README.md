@@ -222,7 +222,7 @@ cargo make dev
 ```bash
 # Database connection. The `cargo make` tasks resolve this automatically from
 # settings/<profile>.toml via scripts/db_url.sh; set it manually only when you
-# invoke `cargo run --bin manage ...` (or `cargo run`) directly.
+# invoke `cargo run --bin examples-twitter ...` (or `cargo run`) directly.
 export DATABASE_URL="postgres://postgres:password@localhost:5432/twitter_dev"
 
 # JWT secret (for token signing)
@@ -267,7 +267,7 @@ cargo make migrate
 
 # Create new app (no cargo-make task; resolve DATABASE_URL first)
 eval "$(bash scripts/db_url.sh)"
-cargo run --bin manage startapp myapp --restful
+cargo run --bin examples-twitter startapp myapp --restful
 
 # Development server
 cargo make runserver
@@ -750,11 +750,11 @@ cat ../../../.testcontainers.properties
 ```bash
 # Reset database and rerun migrations (resolve DATABASE_URL first)
 eval "$(bash scripts/db_url.sh)"
-cargo run --bin manage migrate --reset
+cargo run --bin examples-twitter migrate --reset
 
 # Create fresh migration (resolve DATABASE_URL first)
 eval "$(bash scripts/db_url.sh)"
-cargo run --bin manage makemigrations --name initial_schema
+cargo run --bin examples-twitter makemigrations --name initial_schema
 ```
 
 ### Test Failures
