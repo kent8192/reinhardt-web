@@ -176,7 +176,7 @@ impl<T: Clone + 'static> Memo<T> {
 	/// let doubled = Memo::new(move || count_clone.get() * 2);
 	/// assert_eq!(doubled.get(), 10);
 	/// ```
-	pub fn new<F>(mut f: F) -> Self
+	pub fn new<F>(f: F) -> Self
 	where
 		F: FnMut() -> T + 'static,
 	{

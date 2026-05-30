@@ -122,7 +122,9 @@ mod manager {
 	}
 
 	#[injectable_factory(scope = "transient")]
-	async fn auth_user_manager_factory(#[inject] db: Depends<DatabaseConnection>) -> AuthUserManager {
+	async fn auth_user_manager_factory(
+		#[inject] db: Depends<DatabaseConnection>,
+	) -> AuthUserManager {
 		AuthUserManager { db: (*db).clone() }
 	}
 
