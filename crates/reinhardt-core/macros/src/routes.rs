@@ -201,14 +201,6 @@ fn validate_extractors(extractors: &[ExtractorInfo]) -> Result<()> {
 	Ok(())
 }
 
-/// Convert `Option<String>` to TokenStream for `Option<&'static str>` literal
-fn option_to_lit(opt: &Option<String>) -> TokenStream {
-	match opt {
-		Some(s) => quote! { Some(#s) },
-		None => quote! { None },
-	}
-}
-
 /// Result of auth parameter detection for a handler.
 struct AuthDetection {
 	/// The detected protection level for the endpoint.
@@ -598,7 +590,6 @@ fn generate_view_type(
 	input: &ItemFn,
 	method: &str,
 	path: &str,
-	route_name: &str,
 	extractors: &[ExtractorInfo],
 	inject_params: &[InjectInfo],
 	options: &RouteOptions,
@@ -628,11 +619,23 @@ fn generate_view_type(
 
 	let route_doc = format!("Route: {} {}", method, path);
 
-	// Generate inventory submission for endpoint metadata
-	let metadata_name = if route_name.is_empty() {
-		quote! { None }
+	// Resolve the reverse name (carries the `!` exemption sigil) and the clean
+	// metadata name, and emit a compile-time kebab-case warning for an explicit
+	// non-kebab name (Issue #4901).
+	let (name_method_value, metadata_clean) = resolve_route_names(&options.name, fn_name);
+	let kebab_name_warning = match &options.name {
+		Some(name) => emit_non_kebab_name_warning(fn_name, name),
+		None => quote! {},
+	};
+
+	// Generate inventory submission for endpoint metadata. Strip the `!`
+	// exemption sigil from the metadata name (Issue #4901); unnamed handlers
+	// keep their `None` metadata name (mirrors the simple-path logic so both
+	// codegen paths produce identical EndpointMetadata.name behavior).
+	let metadata_name = if options.name.is_some() {
+		quote! { Some(#metadata_clean) }
 	} else {
-		quote! { Some(#route_name) }
+		quote! { None }
 	};
 
 	// Extract request body information
@@ -666,12 +669,12 @@ fn generate_view_type(
 		}
 	};
 
-	let url_resolver_tokens =
-		generate_url_resolver_tokens(&options.name, &fn_name.to_string(), path, &reinhardt_crate);
-
 	Ok(quote! {
 		// Submit endpoint metadata to global inventory
 		#metadata_submission
+
+		// Compile-time kebab-case warning marker (empty unless triggered).
+		#kebab_name_warning
 
 		#original_fn
 
@@ -689,7 +692,7 @@ fn generate_view_type(
 			}
 
 			fn name() -> &'static str {
-				#route_name
+				#name_method_value
 			}
 		}
 
@@ -714,8 +717,6 @@ fn generate_view_type(
 		#fn_vis fn #fn_name() -> #view_type_name {
 			#view_type_name
 		}
-
-		#url_resolver_tokens
 	})
 }
 
@@ -768,92 +769,114 @@ pub(crate) fn extract_url_params(path: &str) -> Vec<String> {
 	params
 }
 
-/// Generate per-endpoint URL resolver metadata tokens.
-///
-/// Each endpoint gets a uniquely named `__url_resolver_<fn_name>` module that
-/// contains a metadata macro consumed by the
-/// `__for_each_url_resolver!` / `__build_namespaced_resolvers!` machinery.
-/// The resolver modules are referenced by deriving the module name from
-/// the last segment of the endpoint path.
-///
-/// The legacy per-route resolver trait surface was removed (refs #4520); only
-/// the metadata macro/module remains.
-///
-/// Returns empty tokens if:
-/// - No route name is set
-/// - The path contains a wildcard
-fn generate_url_resolver_tokens(
-	route_name: &Option<String>,
-	fn_name: &str,
-	path: &str,
-	_reinhardt_crate: &TokenStream,
-) -> TokenStream {
-	let Some(name) = route_name.as_ref() else {
-		return quote! {};
-	};
+/// Returns `true` when `name` follows the kebab-case convention used by reverse
+/// URL names: no underscores and no ASCII-uppercase letters. Mirrors the runtime
+/// `is_kebab_case` helper in `reinhardt-urls` (a proc-macro crate cannot depend
+/// on it, so the small check is duplicated). Refs Issue #4901.
+fn is_kebab_route_name(name: &str) -> bool {
+	!name.chars().any(|c| c == '_' || c.is_ascii_uppercase())
+}
 
-	// Skip wildcard routes
-	if path.contains('*') {
-		return quote! {};
-	}
-
-	// Validate that the route name is a valid Rust identifier before creating
-	// Ident values. `syn::Ident::new` panics on invalid identifiers, so we
-	// catch that early and emit a readable compile error instead.
-	if syn::parse_str::<syn::Ident>(name).is_err() {
-		let msg = format!(
-			"Route name `{name}` is not a valid Rust identifier. \
-			 Route names used with url-resolver must be valid identifiers \
-			 (no hyphens, dots, or leading digits)."
-		);
-		return quote! { ::core::compile_error!(#msg); };
-	}
-
-	let method_ident = syn::Ident::new(name, Span::call_site());
-	let resolver_mod_ident =
-		syn::Ident::new(&format!("__url_resolver_{fn_name}"), Span::call_site());
-	let meta_macro_ident =
-		syn::Ident::new(&format!("__url_resolver_meta_{fn_name}"), Span::call_site());
-	let params = extract_url_params(path);
-	let param_strs: Vec<&str> = params.iter().map(|s| s.as_str()).collect();
-
-	// Gate with raw platform check (not `native` alias) because this code
-	// expands in consuming crates that do not have cfg_aliases.
-	//
-	// Emits only the metadata macro consumed by `__for_each_url_resolver`
-	// → `__build_namespaced_resolvers` (Issue #3526). The deprecated flat
-	// per-route resolver trait (`Resolve<Name>`) that produced
-	// `urls.<name>(...)` accessors was removed in 0.2.0 per Issue #4520.
-	if params.is_empty() {
-		quote! {
-			#[doc(hidden)]
-			pub mod #resolver_mod_ident {
-				// Metadata macro for per-app resolver struct generation (Issue #3526).
-				// Consumed by __for_each_url_resolver! → __build_namespaced_resolvers!
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				macro_rules! #meta_macro_ident {
-					($callback:ident, $app:ident) => {
-						$callback!($app, #method_ident, #name, );
-					};
-				}
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				pub(crate) use #meta_macro_ident;
+/// Convert a snake_case / camelCase / PascalCase `name` to kebab-case for the
+/// non-kebab-case warning suggestion. Mirrors the runtime `to_kebab_case` helper
+/// in `reinhardt-urls`. Refs Issue #4901.
+fn suggest_kebab_route_name(name: &str) -> String {
+	let mut out = String::with_capacity(name.len() + 4);
+	// Treat the start as a boundary so we never emit a leading '-'.
+	let mut prev_is_boundary = true;
+	for c in name.chars() {
+		if c == '_' || c == '-' {
+			if !prev_is_boundary {
+				out.push('-');
+				prev_is_boundary = true;
 			}
+		} else if c.is_ascii_uppercase() {
+			if !prev_is_boundary {
+				out.push('-');
+			}
+			out.push(c.to_ascii_lowercase());
+			prev_is_boundary = false;
+		} else {
+			out.push(c);
+			prev_is_boundary = false;
 		}
-	} else {
-		quote! {
-			#[doc(hidden)]
-			pub mod #resolver_mod_ident {
-				// Metadata macro for per-app resolver struct generation (Issue #3526).
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				macro_rules! #meta_macro_ident {
-					($callback:ident, $app:ident) => {
-						$callback!($app, #method_ident, #name, #(#param_strs),* );
-					};
-				}
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				pub(crate) use #meta_macro_ident;
-			}
+	}
+	out
+}
+
+/// Whether the kebab-case URL-name warning is enabled at macro-expansion time.
+///
+/// Honors the same `REINHARDT_URL_NAME_WARNINGS` global toggle as the runtime
+/// reverser (`0`/`false`/`off`/`no` disables it). Note: cargo may cache
+/// proc-macro output, so toggling this env var might not re-trigger expansion —
+/// the per-route `!` opt-out sigil is the robust, build-cache-independent
+/// control. Refs Issue #4901.
+fn url_name_warnings_enabled() -> bool {
+	match std::env::var("REINHARDT_URL_NAME_WARNINGS") {
+		Ok(v) => !matches!(
+			v.trim().to_ascii_lowercase().as_str(),
+			"0" | "false" | "off" | "no"
+		),
+		Err(_) => true,
+	}
+}
+
+/// Resolve the route-name strings for a generated endpoint (Issue #4901).
+///
+/// Returns `(reverse_name, metadata_name)`:
+/// - `reverse_name` is what `EndpointInfo::name()` returns and what the URL
+///   reverser registers. It carries the `!` exemption sigil so the runtime
+///   kebab-case warning is suppressed for auto-derived (fn-name) defaults — the
+///   user did not choose those names — and for explicit opt-outs. The reverser
+///   strips the sigil before storage, so reverse lookups use the clean name.
+/// - `metadata_name` is the clean name (sigil stripped) used for endpoint
+///   metadata such as OpenAPI.
+fn resolve_route_names(explicit: &Option<String>, fn_name: &syn::Ident) -> (String, String) {
+	match explicit {
+		Some(name) => {
+			let clean = name.strip_prefix('!').unwrap_or(name).to_string();
+			(name.clone(), clean)
+		}
+		None => {
+			let derived = fn_name.to_string();
+			(format!("!{derived}"), derived)
+		}
+	}
+}
+
+/// Emit a compile-time `deprecated`-lint warning when an explicit route `name`
+/// is not kebab-case (Issue #4901).
+///
+/// The marker reuses the const-read-of-`#[deprecated]` pattern from
+/// `viewset_macro::emit_basename_fallback_deprecation` (Issue #4549) — the only
+/// stable way to surface a non-error warning from a proc-macro. A leading `!`
+/// opts out (and is consumed by the runtime reverser). Returns empty tokens when
+/// the name is exempt, already kebab-case, or warnings are globally disabled.
+fn emit_non_kebab_name_warning(fn_name: &syn::Ident, name: &str) -> TokenStream {
+	if name.starts_with('!') || is_kebab_route_name(name) || !url_name_warnings_enabled() {
+		return quote! {};
+	}
+	let suggestion = suggest_kebab_route_name(name);
+	let note = format!(
+		"URL name \"{name}\" is not kebab-case; prefer \"{suggestion}\" to match \
+		 ViewSet-generated names (e.g. \"users-list\"). Prefix the name with '!' \
+		 (name = \"!{name}\") to opt out, or set REINHARDT_URL_NAME_WARNINGS=0."
+	);
+	let module_ident = syn::Ident::new(
+		&format!("__non_kebab_url_name_{fn_name}"),
+		Span::call_site(),
+	);
+	quote! {
+		#[doc(hidden)]
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+		#[allow(non_snake_case)]
+		mod #module_ident {
+			#[deprecated(note = #note)]
+			pub const REASON: () = ();
+			// Reading the `#[deprecated]` const is what fires the lint at the
+			// route macro's call site.
+			#[allow(deprecated_in_future, clippy::no_effect)]
+			const _: () = REASON;
 		}
 	}
 }
@@ -1014,16 +1037,10 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 			.as_ref()
 			.map(|(p, _)| p.clone())
 			.unwrap_or_else(|| "/".to_string());
-		let route_name = options
-			.name
-			.clone()
-			.unwrap_or_else(|| input.sig.ident.to_string());
-
 		return generate_view_type(
 			&input,
 			method,
 			&path_str,
-			&route_name,
 			&extractors,
 			&inject_params,
 			&options,
@@ -1045,7 +1062,14 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 		.as_ref()
 		.map(|(p, _)| p.clone())
 		.unwrap_or_else(|| "/".to_string());
-	let route_name = options.name.clone().unwrap_or_else(|| fn_name.to_string());
+	// Resolve the reverse name (carries the `!` exemption sigil) and the clean
+	// metadata name, and emit a compile-time kebab-case warning for an explicit
+	// non-kebab name (Issue #4901).
+	let (name_method_value, metadata_clean) = resolve_route_names(&options.name, fn_name);
+	let kebab_name_warning = match &options.name {
+		Some(name) => emit_non_kebab_name_warning(fn_name, name),
+		None => quote! {},
+	};
 	let view_type_name =
 		syn::Ident::new(&fn_name_to_view_type(&fn_name.to_string()), fn_name.span());
 	let method_ident = syn::Ident::new(method, Span::call_site());
@@ -1069,8 +1093,14 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 		)
 	};
 
-	// Generate inventory submission for endpoint metadata
-	let metadata_name = option_to_lit(&options.name);
+	// Generate inventory submission for endpoint metadata. Strip the `!`
+	// exemption sigil from the metadata name (Issue #4901); unnamed handlers
+	// keep their `None` metadata name.
+	let metadata_name = if options.name.is_some() {
+		quote! { Some(#metadata_clean) }
+	} else {
+		quote! { None }
+	};
 
 	// Extract request body information
 	let (request_body_type, request_content_type) = extract_request_body_info(&input.sig.inputs)
@@ -1103,16 +1133,12 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 		}
 	};
 
-	let url_resolver_tokens = generate_url_resolver_tokens(
-		&options.name,
-		&fn_name.to_string(),
-		&path_str,
-		&reinhardt_crate,
-	);
-
 	Ok(quote! {
 		// Submit endpoint metadata to global inventory
 		#metadata_submission
+
+		// Compile-time kebab-case warning marker (empty unless triggered).
+		#kebab_name_warning
 
 		// Original function (renamed, private)
 		#(#fn_attrs)*
@@ -1134,7 +1160,7 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 			}
 
 			fn name() -> &'static str {
-				#route_name
+				#name_method_value
 			}
 		}
 
@@ -1159,8 +1185,6 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 		#fn_vis fn #fn_name() -> #view_type_name {
 			#view_type_name
 		}
-
-		#url_resolver_tokens
 	})
 }
 
@@ -1234,5 +1258,75 @@ mod url_resolver_tests {
 			to_resolver_trait_name("deployment_logs"),
 			"ResolveDeploymentLogs"
 		);
+	}
+
+	// --- Kebab-case URL name convention (Issue #4901) ---
+
+	fn ident(name: &str) -> syn::Ident {
+		syn::Ident::new(name, Span::call_site())
+	}
+
+	#[test]
+	fn is_kebab_route_name_classifies_names() {
+		assert!(is_kebab_route_name("users-list"));
+		assert!(is_kebab_route_name("detail"));
+		assert!(is_kebab_route_name("v2"));
+		assert!(!is_kebab_route_name("user_detail"));
+		assert!(!is_kebab_route_name("userDetail"));
+		assert!(!is_kebab_route_name("UserDetail"));
+	}
+
+	#[test]
+	fn suggest_kebab_route_name_converts_names() {
+		assert_eq!(suggest_kebab_route_name("user_detail"), "user-detail");
+		assert_eq!(suggest_kebab_route_name("userDetail"), "user-detail");
+		assert_eq!(suggest_kebab_route_name("UserDetail"), "user-detail");
+		assert_eq!(suggest_kebab_route_name("users-list"), "users-list");
+	}
+
+	#[test]
+	fn resolve_route_names_marks_fallback_and_strips_optout() {
+		// Explicit name: reverse name kept verbatim, metadata identical.
+		assert_eq!(
+			resolve_route_names(&Some("users-list".to_string()), &ident("list_users")),
+			("users-list".to_string(), "users-list".to_string())
+		);
+		// Explicit opt-out: `!` kept on the reverse name, stripped for metadata.
+		assert_eq!(
+			resolve_route_names(&Some("!user_detail".to_string()), &ident("get_user")),
+			("!user_detail".to_string(), "user_detail".to_string())
+		);
+		// Fallback to fn name: reverse name is exempt (`!`-prefixed), metadata clean.
+		assert_eq!(
+			resolve_route_names(&None, &ident("get_user")),
+			("!get_user".to_string(), "get_user".to_string())
+		);
+	}
+
+	#[test]
+	fn emit_non_kebab_name_warning_is_empty_for_exempt_names() {
+		// Already kebab-case: no marker regardless of the global toggle.
+		assert!(
+			emit_non_kebab_name_warning(&ident("list_users"), "users-list")
+				.to_string()
+				.is_empty()
+		);
+		// Explicit opt-out: no marker.
+		assert!(
+			emit_non_kebab_name_warning(&ident("get_user"), "!user_detail")
+				.to_string()
+				.is_empty()
+		);
+	}
+
+	#[test]
+	fn emit_non_kebab_name_warning_emits_marker_for_snake_case() {
+		// The marker only fires when warnings are enabled (default unless the
+		// REINHARDT_URL_NAME_WARNINGS toggle disables them in this environment).
+		if url_name_warnings_enabled() {
+			let marker = emit_non_kebab_name_warning(&ident("get_user"), "user_detail").to_string();
+			assert!(marker.contains("deprecated"));
+			assert!(marker.contains("user-detail"));
+		}
 	}
 }

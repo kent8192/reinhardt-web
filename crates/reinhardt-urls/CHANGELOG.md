@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [#4637](https://github.com/kent8192/reinhardt-web/issues/4637).
 ### Added
 
+- Emit a `tracing::warn!` when a route name registered for URL reversal is not
+  kebab-case (e.g. `user_detail`), suggesting the kebab-case form
+  (`user-detail`) to match ViewSet-generated names. The warning is advisory, not
+  an error: prefix the route-name segment with `!` to opt out (the sigil is
+  stripped before storage, so reverse lookups use the clean name) or set
+  `REINHARDT_URL_NAME_WARNINGS=0` to silence it globally. Refs
+  [#4901](https://github.com/kent8192/reinhardt-web/issues/4901).
 - `ClientRouter::page<F, P>(pattern, handler)` and
   `ClientRouter::named_page<F, P>(name, pattern, handler)` accepting any
   handler `Fn(P) -> Page` where `P: FromRequest`. The same Props struct

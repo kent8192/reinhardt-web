@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The HTTP route macros (`#[get]`, `#[post]`, `#[put]`, `#[patch]`,
+  `#[delete]`) now emit a compile-time warning when an explicit `name = "..."`
+  is not kebab-case, suggesting the kebab-case form to match ViewSet-generated
+  names. Prefix the name with `!` to opt out, or set
+  `REINHARDT_URL_NAME_WARNINGS=0` to silence it. Names that default to the
+  function identifier are exempt. Refs
+  [#4901](https://github.com/kent8192/reinhardt-web/issues/4901).
+
+### Removed
+
+- Removed the vestigial per-route URL-resolver metadata codegen
+  (`generate_url_resolver_tokens` / `__url_resolver_meta_*`) from the HTTP route
+  macros. Its consumer (`ResolvedUrls` / `__for_each_url_resolver`) was removed
+  with the URL routing simplification (#4784), and the leftover codegen also
+  rejected hyphenated (kebab-case) route names with a hard `compile_error!`.
+  Route names passed to `#[get]` and friends may now be kebab-case. Refs
+  [#4901](https://github.com/kent8192/reinhardt-web/issues/4901).
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.30...reinhardt-macros@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-macros` as part of the
