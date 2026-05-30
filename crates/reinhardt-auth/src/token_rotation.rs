@@ -3,6 +3,8 @@
 //! Provides automatic token rotation capabilities to enhance security
 //! by regularly refreshing authentication tokens.
 
+#![allow(deprecated)] // AutoTokenRotationManager holds a TokenRotationConfig during the compatibility window.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,6 +21,10 @@ use tokio::sync::RwLock;
 ///     .rotation_interval(3600)  // 1 hour
 ///     .grace_period(300);       // 5 minutes
 /// ```
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `TokenRotationSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenRotationConfig {
 	/// Interval in seconds between rotations
