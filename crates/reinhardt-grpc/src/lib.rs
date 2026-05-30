@@ -67,6 +67,7 @@ pub mod adapter;
 pub mod depth_limit;
 pub mod error;
 pub mod server;
+pub mod settings;
 pub mod validation;
 
 #[cfg(feature = "di")]
@@ -92,7 +93,10 @@ pub mod proto {
 pub use adapter::{GrpcServiceAdapter, GrpcSubscriptionAdapter};
 pub use depth_limit::{DepthLimitError, DepthLimitedDecoder};
 pub use error::{ErrorSanitizer, GrpcError, GrpcResult};
-pub use server::{GrpcServerConfig, GrpcServerConfigBuilder, MessageSizeLimiter};
+#[allow(deprecated)] // Re-export keeps the compatibility API discoverable during the 0.2 line.
+pub use server::GrpcServerConfig;
+pub use server::{GrpcServerConfigBuilder, MessageSizeLimiter};
+pub use settings::{GrpcServerSettings, create_grpc_server_config_from_settings};
 pub use validation::{FieldRule, ProtoValidator, ValidationError, ValidationRuleSet};
 
 #[cfg(feature = "di")]
