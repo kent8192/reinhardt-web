@@ -88,6 +88,82 @@ pub(crate) fn collect_rust_files(path: &PathBuf) -> Result<Vec<PathBuf>, String>
 	Ok(files)
 }
 
+/// Find separate (nested) cargo workspace roots beneath `project_root`.
+///
+/// A directory qualifies as a nested workspace root when it contains a
+/// `Cargo.toml` that declares its own `[workspace]` table and is not
+/// `project_root` itself, for example `examples/` and the trybuild fixture
+/// crates.
+///
+/// The `fmt-all` command runs `cargo fmt --all` only over the root workspace,
+/// so these independent workspaces never receive the rustfmt pass. Formatting
+/// only their DSL macros (and skipping rustfmt) diverges from the output of
+/// their own `fmt`/`cargo fmt` tasks (such as `fmt-check-examples`), which
+/// yields contradictory results between `fmt-all` and per-workspace formatting.
+/// Callers rely on this list to exclude those files so that each sub-workspace
+/// is formatted solely by its dedicated task.
+pub(crate) fn nested_workspace_roots(project_root: &Path) -> Vec<PathBuf> {
+	let mut roots = Vec::new();
+
+	for entry in WalkDir::new(project_root)
+		.follow_links(false)
+		.into_iter()
+		.filter_map(Result::ok)
+	{
+		// Symlinked entries are ignored, mirroring `collect_rust_files`.
+		if entry.path_is_symlink() {
+			continue;
+		}
+
+		let path = entry.path();
+		let is_manifest =
+			path.is_file() && path.file_name().and_then(|name| name.to_str()) == Some("Cargo.toml");
+		if !is_manifest {
+			continue;
+		}
+
+		// Build output and VCS metadata never hold workspace roots of interest.
+		if path
+			.components()
+			.any(|component| component.as_os_str() == "target" || component.as_os_str() == ".git")
+		{
+			continue;
+		}
+
+		let Some(dir) = path.parent() else {
+			continue;
+		};
+
+		// The root workspace itself is not a nested workspace.
+		if dir == project_root {
+			continue;
+		}
+
+		if manifest_declares_workspace(path) {
+			roots.push(dir.to_path_buf());
+		}
+	}
+
+	roots
+}
+
+/// Returns `true` when the given `Cargo.toml` declares a `[workspace]` table.
+///
+/// Only workspace root manifests contain a `[workspace]` (or `[workspace.*]`)
+/// table; member crates reference the workspace through `workspace = true`
+/// keys without declaring the table. This distinction reliably separates a
+/// nested workspace root from an ordinary member crate.
+fn manifest_declares_workspace(manifest: &Path) -> bool {
+	let Ok(content) = std::fs::read_to_string(manifest) else {
+		return false;
+	};
+
+	content.lines().any(|line| {
+		let trimmed = line.trim_start();
+		trimmed == "[workspace]" || trimmed.starts_with("[workspace.")
+	})
+}
+
 /// Sanitize a path for error messages to prevent information leakage.
 ///
 /// Returns only the filename to avoid exposing full file system paths.
@@ -212,5 +288,52 @@ mod tests {
 		// Assert
 		assert!(result.is_err());
 		assert!(result.unwrap_err().contains("symlink"));
+	}
+
+	#[rstest]
+	fn nested_workspace_roots_flags_only_separate_workspaces() {
+		// Arrange
+		use std::io::Write;
+		let temp_dir = tempfile::TempDir::new().unwrap();
+		let root = temp_dir.path();
+
+		// Root workspace manifest (must never be reported as nested).
+		{
+			let mut file = std::fs::File::create(root.join("Cargo.toml")).unwrap();
+			writeln!(file, "[workspace]\nmembers = [\"member-crate\"]").unwrap();
+		}
+
+		// An ordinary member crate (no `[workspace]` table) must not be flagged.
+		let member = root.join("member-crate");
+		std::fs::create_dir_all(&member).unwrap();
+		{
+			let mut file = std::fs::File::create(member.join("Cargo.toml")).unwrap();
+			writeln!(file, "[package]\nname = \"member-crate\"").unwrap();
+		}
+
+		// A separate nested workspace (examples-like) must be flagged.
+		let examples = root.join("examples");
+		std::fs::create_dir_all(&examples).unwrap();
+		{
+			let mut file = std::fs::File::create(examples.join("Cargo.toml")).unwrap();
+			writeln!(file, "[workspace]\nmembers = [\"demo\"]").unwrap();
+		}
+
+		// A workspace root declared only via `[workspace.dependencies]`.
+		let tooling = root.join("tooling");
+		std::fs::create_dir_all(&tooling).unwrap();
+		{
+			let mut file = std::fs::File::create(tooling.join("Cargo.toml")).unwrap();
+			writeln!(file, "[workspace.dependencies]\nserde = \"1\"").unwrap();
+		}
+
+		// Act
+		let mut roots = nested_workspace_roots(root);
+		roots.sort();
+
+		// Assert
+		let mut expected = vec![examples, tooling];
+		expected.sort();
+		assert_eq!(roots, expected);
 	}
 }
