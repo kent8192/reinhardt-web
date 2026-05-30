@@ -40,7 +40,7 @@ use reinhardt::settings;
 use std::env;
 use std::path::PathBuf;
 
-#[settings(core: CoreSettings)]
+#[settings(core: CoreSettings | contacts: ContactSettings)]
 pub struct ProjectSettings;
 
 /// Get the active environment profile name.
