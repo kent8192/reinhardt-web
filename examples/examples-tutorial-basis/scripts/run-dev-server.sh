@@ -22,5 +22,10 @@ if [ "$CURRENT_DIR" != "examples-tutorial-basis" ]; then
 	exit 1
 fi
 
+# Resolve DATABASE_URL the same way the `migrate` / `runserver` tasks do: the
+# management CLI cannot read settings/*.toml for an example crate, so it needs
+# the connection string from the environment (see scripts/db_url.sh).
+eval "$(bash "$(dirname "${BASH_SOURCE[0]}")/db_url.sh")"
+
 echo "🚀 Starting development server with WASM frontend..."
 cargo run --bin manage -- runserver --with-pages --noreload --no-override-wasm

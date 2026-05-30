@@ -61,7 +61,7 @@ cargo test
 ### Run the Development Server
 
 ```bash
-cargo run --bin manage runserver
+cargo make runserver
 ```
 
 The server will start at `http://127.0.0.1:8000/`.
@@ -347,7 +347,7 @@ cargo test -- --nocapture
 This example demonstrates both function-based views (Tutorial 1-5) and ViewSet-based views (Tutorial 6). **Both are mounted simultaneously** on the same running server — there is no toggle between them. The two endpoint sets coexist under separate URL prefixes:
 
 ```bash
-cargo run --bin manage runserver
+cargo make runserver
 
 # Function-based endpoints (Tutorial 1-5)
 curl http://127.0.0.1:8000/api/snippets/
@@ -365,8 +365,8 @@ The Bruno collection under `bruno/` contains a `Snippets CRUD` folder for the fu
 > first:
 >
 > ```bash
-> cargo run --bin manage -- migrate
-> cargo run --bin manage runserver
+> cargo make migrate
+> cargo make runserver
 > ```
 >
 > Until rows are inserted, the `/api/snippets-viewset/` endpoints will
