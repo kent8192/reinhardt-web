@@ -22,6 +22,8 @@
 //! }
 //! ```
 
+#![allow(deprecated)] // `ReconnectionConfig` is deprecated but still used internally during the compatibility window.
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -54,6 +56,10 @@ pub enum ReconnectionState {
 }
 
 /// Reconnection configuration
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `ReconnectionSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone)]
 pub struct ReconnectionConfig {
 	/// Maximum number of reconnection attempts (None for unlimited)

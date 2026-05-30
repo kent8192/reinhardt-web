@@ -1,5 +1,7 @@
 //! WebSocket handler
 
+#![allow(deprecated)] // `ReconnectionConfig` is deprecated but still named here during the compatibility window.
+
 use crate::connection::Message;
 use crate::connection::WebSocketResult;
 use crate::reconnection::ReconnectionConfig;

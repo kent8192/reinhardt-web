@@ -1,3 +1,5 @@
+#![allow(deprecated)] // `ConnectionConfig` is deprecated but still used internally during the compatibility window.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -145,6 +147,10 @@ impl PingPongConfig {
 /// assert_eq!(config.handshake_timeout(), Duration::from_secs(10));
 /// assert_eq!(config.cleanup_interval(), Duration::from_secs(30));
 /// ```
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `ConnectionSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone)]
 pub struct ConnectionConfig {
 	idle_timeout: Duration,

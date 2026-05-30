@@ -180,6 +180,8 @@ pub mod redis_channel;
 pub mod room;
 /// URL-based WebSocket endpoint routing.
 pub mod routing;
+/// Settings-first configuration fragments.
+pub mod settings;
 /// Connection and message rate limiting.
 pub mod throttling;
 
@@ -196,9 +198,11 @@ pub use compression::{
 	CompressionCodec, CompressionConfig, compress_message, decompress_message,
 	decompress_message_with_config,
 };
+#[allow(deprecated)] // `ConnectionConfig` is deprecated in favor of `ConnectionSettings`.
+pub use connection::ConnectionConfig;
 pub use connection::{
-	ConnectionConfig, ConnectionTimeoutMonitor, HeartbeatConfig, HeartbeatMonitor, Message,
-	PingPongConfig, WebSocketConnection, WebSocketError, WebSocketResult,
+	ConnectionTimeoutMonitor, HeartbeatConfig, HeartbeatMonitor, Message, PingPongConfig,
+	WebSocketConnection, WebSocketError, WebSocketResult,
 };
 pub use consumers::{
 	BroadcastConsumer, ConsumerChain, ConsumerContext, EchoConsumer, JsonConsumer,
@@ -216,26 +220,41 @@ pub use middleware::{
 	MessageMiddleware, MessageSizeLimitMiddleware, MiddlewareChain, MiddlewareError,
 	MiddlewareResult,
 };
-pub use origin::{
-	OriginPolicy, OriginValidationConfig, OriginValidationMiddleware, validate_origin,
-};
+#[allow(deprecated)]
+// `OriginValidationConfig` is deprecated in favor of `OriginValidationSettings`.
+pub use origin::OriginValidationConfig;
+pub use origin::{OriginPolicy, OriginValidationMiddleware, validate_origin};
 pub use protocol::{
 	DEFAULT_MAX_FRAME_SIZE, DEFAULT_MAX_MESSAGE_SIZE, default_websocket_config,
 	websocket_config_with_limits,
 };
-pub use reconnection::{
-	AutoReconnectHandler, ReconnectionConfig, ReconnectionState, ReconnectionStrategy,
-};
+#[allow(deprecated)] // `ReconnectionConfig` is deprecated in favor of `ReconnectionSettings`.
+pub use reconnection::ReconnectionConfig;
+pub use reconnection::{AutoReconnectHandler, ReconnectionState, ReconnectionStrategy};
 #[cfg(feature = "redis-channel")]
-pub use redis_channel::{RedisChannelLayer, RedisConfig};
+pub use redis_channel::RedisChannelLayer;
+#[cfg(feature = "redis-channel")]
+#[allow(deprecated)] // `RedisConfig` is deprecated in favor of `RedisChannelSettings`.
+pub use redis_channel::RedisConfig;
 pub use room::{BroadcastResult, Room, RoomError, RoomManager, RoomResult};
 pub use routing::{
 	RouteError, RouteResult, WebSocketRoute, WebSocketRouter, clear_websocket_router,
 	get_websocket_router, register_websocket_router, reverse_websocket_url,
 };
+pub use settings::{
+	ConnectionSettings, OriginPolicySettings, OriginValidationSettings, RateLimitSettings,
+	ReconnectionSettings, create_connection_config_from_settings,
+	create_origin_validation_config_from_settings, create_rate_limit_config_from_settings,
+	create_reconnection_config_from_settings,
+};
+#[cfg(feature = "redis-channel")]
+pub use settings::{RedisChannelSettings, create_redis_config_from_settings};
+#[allow(deprecated)]
+// `WebSocketRateLimitConfig` is deprecated in favor of `RateLimitSettings`.
+pub use throttling::WebSocketRateLimitConfig;
 pub use throttling::{
 	CombinedThrottler, ConnectionRateLimiter, ConnectionThrottler, RateLimitConfig,
-	RateLimitMiddleware, RateLimiter, ThrottleError, ThrottleResult, WebSocketRateLimitConfig,
+	RateLimitMiddleware, RateLimiter, ThrottleError, ThrottleResult,
 };
 
 #[cfg(test)]
