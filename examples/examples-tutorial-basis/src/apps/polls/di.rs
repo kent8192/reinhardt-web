@@ -174,9 +174,7 @@ impl From<&SessionError> for ServerFnError {
 /// > [#4646](https://github.com/kent8192/reinhardt-web/issues/4646).
 #[cfg(native)]
 #[injectable_factory(scope = "request")]
-async fn session_user_factory(
-	#[inject] session: SessionData,
-) -> Result<User, SessionError> {
+async fn session_user_factory(#[inject] session: SessionData) -> Result<User, SessionError> {
 	let Some(user_id) = session.get::<i64>(USER_ID_SESSION_KEY) else {
 		return Err(SessionError::Anonymous);
 	};
