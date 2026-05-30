@@ -1234,11 +1234,19 @@ impl BaseCommand for MakeMigrationsCommand {
 
 			let is_verbose = ctx.has_option("verbose");
 
-			// Get database URL from context option or environment
+			// Get database URL from context option or environment, falling back
+			// to the project's composed settings (`[core.databases.default]`)
+			// when neither is provided (#5042). An empty string preserves the
+			// TestContainers `from_state` path for offline runs.
 			let database_url = ctx
 				.option("database")
 				.map(|s| s.to_string())
 				.or_else(|| std::env::var("DATABASE_URL").ok())
+				.or_else(|| {
+					ctx.settings
+						.as_ref()
+						.and_then(|s| DatabaseConnection::database_url_from(s.as_ref(), None).ok())
+				})
 				.unwrap_or_default();
 
 			// 2. Build from_state from database history or TestContainers
@@ -3474,11 +3482,15 @@ pub(crate) async fn initialize_orm_database(
 			.map_err(|e| {
 				crate::CommandError::ExecutionError(format!("Failed to get database URL: {}", e))
 			})?,
-			None => env_database_url.clone().ok_or_else(|| {
-				crate::CommandError::ExecutionError(
-					"No database URL available. Set DATABASE_URL environment variable.".to_string(),
-				)
-			})?,
+			None => match env_database_url.clone() {
+				Some(url) => url,
+				// No `ctx.settings` and no `DATABASE_URL`: fall back to the disk
+				// loader that reads `settings/*.toml` directly. This restores
+				// parity with the pre-refactor behaviour and is symmetric with
+				// `sync_database_url_to_env`, which already re-resolves from
+				// settings on its `None` arm (#5042).
+				None => get_database_url_from_settings()?,
+			},
 		};
 
 	sync_database_url_to_env(env_database_url.as_deref(), &url, ctx);
