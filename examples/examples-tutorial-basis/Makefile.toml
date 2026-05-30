@@ -51,8 +51,15 @@ dependencies = ["infra-down", "infra-up"]
 [tasks.runserver]
 description = "Start the development server (auto-reloads on changes). Forwards extra args, e.g. `cargo make runserver -- -vv` for verbose output. Auto-starts PostgreSQL/Redis via `infra-up` (transitively through `migrate`)."
 dependencies = ["migrate"]
-command = "cargo"
-args = ["run", "--bin", "manage", "--", "runserver", "--with-pages", "${@}"]
+# `DATABASE_URL` is resolved via `db_url.sh` because the management CLI cannot
+# read `settings/*.toml` for an example crate (its command context has no
+# settings). See scripts/db_url.sh for the full rationale.
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+eval "$(bash scripts/db_url.sh)"
+cargo run --bin manage -- runserver --with-pages "${@}"
+'''
 
 # ============================================================================
 # Database Migrations
@@ -60,14 +67,30 @@ args = ["run", "--bin", "manage", "--", "runserver", "--with-pages", "${@}"]
 
 [tasks.makemigrations]
 description = "Create new migrations based on model changes"
-command = "cargo"
-args = ["run", "--bin", "manage", "makemigrations"]
+# `DATABASE_URL` is resolved via `db_url.sh` (see scripts/db_url.sh): the
+# management CLI has no project settings in its command context, so it relies
+# on the env var for the connection string.
+dependencies = ["infra-up"]
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+eval "$(bash scripts/db_url.sh)"
+cargo run --bin manage makemigrations
+'''
 
 [tasks.migrate]
 description = "Apply database migrations (auto-starts PostgreSQL/Redis via `infra-up`)"
 dependencies = ["infra-up"]
-command = "cargo"
-args = ["run", "--bin", "manage", "migrate"]
+# `DATABASE_URL` is resolved via `db_url.sh` (see scripts/db_url.sh): the
+# management CLI has no project settings in its command context, so the
+# connection string must be supplied through the environment. `infra-up`
+# provisions the container from the same settings, so the credentials match.
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+eval "$(bash scripts/db_url.sh)"
+cargo run --bin manage migrate
+'''
 
 # ============================================================================
 # Static Files
