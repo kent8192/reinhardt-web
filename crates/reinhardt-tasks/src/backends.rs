@@ -27,9 +27,11 @@ pub use redis::RedisTaskBackend;
 pub use sqlite::SqliteBackend;
 
 #[cfg(feature = "sqs-backend")]
+#[allow(deprecated)] // SqsConfig is deprecated in favor of SqsSettings.
 pub use sqs::{SqsBackend, SqsConfig};
 
 #[cfg(feature = "rabbitmq-backend")]
+#[allow(deprecated)] // RabbitMQConfig is deprecated in favor of RabbitMQSettings.
 pub use rabbitmq::{RabbitMQBackend, RabbitMQConfig};
 
 #[cfg(feature = "kafka-backend")]

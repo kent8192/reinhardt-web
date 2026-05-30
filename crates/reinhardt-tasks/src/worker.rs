@@ -1,5 +1,7 @@
 //! Task worker
 
+#![allow(deprecated)] // WorkerConfig/WebhookConfig are deprecated; still constructed internally.
+
 use crate::{
 	TaskBackend, TaskStatus,
 	locking::TaskLock,
@@ -29,6 +31,10 @@ use tokio::sync::{Semaphore, broadcast};
 /// assert_eq!(config.name, "my-worker");
 /// assert_eq!(config.concurrency, 8);
 /// ```
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `WorkerSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone)]
 pub struct WorkerConfig {
 	/// Name of this worker instance.

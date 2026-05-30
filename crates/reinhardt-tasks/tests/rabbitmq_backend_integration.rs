@@ -1,3 +1,5 @@
+#![allow(deprecated)] // Exercises the deprecated XxxConfig compatibility API.
+
 //! RabbitMQ backend integration tests
 //!
 //! Tests task enqueue/dequeue, durability, message persistence, and RabbitMQ-specific features.

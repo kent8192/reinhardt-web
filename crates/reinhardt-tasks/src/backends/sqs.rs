@@ -1,5 +1,7 @@
 //! AWS SQS-based task backend implementation
 
+#![allow(deprecated)] // SqsConfig is deprecated; it is still constructed internally.
+
 use crate::{
 	Task, TaskExecutionError, TaskId, TaskStatus, registry::SerializedTask, result::ResultBackend,
 	result::TaskResultMetadata,
@@ -30,6 +32,10 @@ struct TaskMetadata {
 ///
 /// let config = SqsConfig::new("https://sqs.us-east-1.amazonaws.com/123456789012/my-queue");
 /// ```
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `SqsSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone)]
 pub struct SqsConfig {
 	/// SQS queue URL

@@ -1,3 +1,5 @@
+#![allow(deprecated)] // Exercises the deprecated XxxConfig compatibility API.
+
 //! Task queue management tests
 //!
 //! Tests QueueConfig and TaskQueue implementations.
