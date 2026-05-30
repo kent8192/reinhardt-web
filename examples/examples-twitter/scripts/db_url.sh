@@ -6,7 +6,7 @@
 # `DatabaseConnection::database_url_from(ctx.settings, $DATABASE_URL)`. For an
 # example crate `ctx.settings` is always `None` — the framework does not wire
 # the project's own `get_settings()` into the command context (tracked in
-# kent8192/reinhardt-web#5040; the management runtime would otherwise read
+# kent8192/reinhardt-web#5042; the management runtime would otherwise read
 # `settings/*.toml` directly). The CLI therefore falls back to the `DATABASE_URL` environment
 # variable, which nothing sets, producing:
 #   "No database URL available. Set DATABASE_URL environment variable."
