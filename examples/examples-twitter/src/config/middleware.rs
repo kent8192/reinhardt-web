@@ -3,7 +3,7 @@
 //! Production-ready middleware stack for the Twitter clone example.
 
 use reinhardt::SecuritySettings;
-use reinhardt::middleware::cors::CorsConfig;
+use reinhardt::middleware::cors::CorsSettings;
 use reinhardt::middleware::security_middleware::SecurityMiddleware;
 use reinhardt::middleware::session::{SessionConfig, SessionMiddleware};
 use reinhardt::middleware::{CorsMiddleware, LoggingMiddleware};
@@ -24,16 +24,16 @@ use std::time::Duration;
 /// - Supports all standard HTTP methods including OPTIONS
 /// - Includes CSRF token header for security
 pub fn create_cors_middleware() -> CorsMiddleware {
-	let mut config = CorsConfig::default();
-	config.allow_origins = vec!["*".to_string()]; // Development
-	config.allow_methods = vec![
+	let mut config = CorsSettings::default();
+	config.allowed_origins = vec!["*".to_string()]; // Development
+	config.allowed_methods = vec![
 		"GET".to_string(),
 		"POST".to_string(),
 		"PUT".to_string(),
 		"DELETE".to_string(),
 		"OPTIONS".to_string(),
 	];
-	config.allow_headers = vec![
+	config.allowed_headers = vec![
 		"Content-Type".to_string(),
 		"Authorization".to_string(),
 		"X-CSRF-Token".to_string(),
