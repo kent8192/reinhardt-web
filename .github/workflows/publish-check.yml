@@ -80,16 +80,6 @@ jobs:
             | jq -r '.packages[] | select(.publish == [] or .publish == ["!crates-io"]) | "--exclude \(.name)"' \
             | tr '\n' ' ')
 
-          # Workaround for topiary/topiary#1246 (tracked in reinhardt-web#4827).
-          # cargo package ignores [patch.crates-io], so crates.io's
-          # topiary-tree-sitter-facade (wasm-bindgen = "=0.2.100") conflicts
-          # with js-sys (wasm-bindgen = "=0.2.106").
-          # Remove this exclusion when Topiary publishes relaxed wasm-bindgen constraints.
-          #
-          # Ideal implementation (without workaround):
-          #   (no additional EXCLUDES line)
-          EXCLUDES="$EXCLUDES --exclude reinhardt-admin-cli"
-
           eval cargo package --workspace --no-verify --allow-dirty $EXCLUDES
           echo ""
           echo "=== All crates passed packaging check ==="

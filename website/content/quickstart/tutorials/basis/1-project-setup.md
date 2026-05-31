@@ -111,7 +111,7 @@ Three rules keep this layout predictable:
 | `cargo make wasm-test` | Run WASM tests under `wasm-pack test --headless --chrome` (passes `--no-default-features` so the `manage` binary is skipped) |
 | `cargo make showurls` | Print every registered URL pattern |
 | `cargo make check` | Project self-check (Django-style `check`) |
-| `cargo make fmt-check` / `fmt-fix` | `reinhardt-admin fmt` for the `page!` DSL + rustfmt |
+| `cargo make fmt-check` / `fmt-fix` | `reinhardt-formatter fmt` for the `page!` DSL + rustfmt |
 | `cargo make clippy-check` / `clippy-fix` | Clippy with `-D warnings` |
 | `cargo make quality` / `quality-fix` | Run both `fmt-*` and `clippy-*` |
 
