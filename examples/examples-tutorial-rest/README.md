@@ -173,12 +173,12 @@ pub struct SnippetSerializer {
 // available since rc.5). The macro extracts `Json<SnippetSerializer>`, calls
 // `Validate::validate` on the dereferenced value, and returns HTTP 400 with
 // JSON error details on failure — all before this function body runs.
-#[get("/snippets/", name = "snippets-list")]
+#[get("/snippets/", name = "snippets_list")]
 pub async fn list() -> ViewResult<Response> {
     // List all snippets — return JSON via `Response::new(StatusCode::OK).with_body(...)`.
 }
 
-#[post("/snippets/", name = "snippets-create", pre_validate = true)]
+#[post("/snippets/", name = "snippets_create", pre_validate = true)]
 pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Response> {
     // `serializer` is already validated. Just persist and return 201.
 }
@@ -191,7 +191,7 @@ The snippets app exposes a single `url_patterns()` entry point in
 `#[url_patterns(InstalledApp::snippets, mode = server)]` macro (rc.18+,
 discussion #3770), which binds the router to its owning app at compile
 time via the `AppLabel` trait and applies `.with_namespace("snippets")`
-for URL reversal (e.g. `"snippets:snippets-list"`) without changing the
+for URL reversal (e.g. `"snippets:snippets_list"`) without changing the
 request path. Both the function-based endpoints (Tutorial 1-5) and the
 ViewSet endpoints (Tutorial 6) are registered on the same router:
 
@@ -321,7 +321,7 @@ pub struct SnippetSerializer { /* ... */ }
 // Manual `serializer.validate()?` is no longer needed inside the handler
 // body — the macro generates the call for you and converts failures into
 // a HTTP 400 JSON response.
-#[post("/snippets/", name = "snippets-create", pre_validate = true)]
+#[post("/snippets/", name = "snippets_create", pre_validate = true)]
 pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Response> {
     /* serializer is already validated here */
 }
