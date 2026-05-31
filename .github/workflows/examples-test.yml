@@ -114,6 +114,9 @@ jobs:
       - name: Install reinhardt-admin
         run: cargo install --path crates/reinhardt-admin-cli
 
+      - name: Install reinhardt-formatter
+        run: cargo install --path crates/reinhardt-formatter
+
       - name: Setup local development config
         run: cp examples/.cargo/config.local.toml examples/.cargo/config.toml
 
