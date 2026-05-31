@@ -41,6 +41,8 @@ use reinhardt_manouche::core::{
 	TypedPageNode, TypedPageWatch, types::AttrValue,
 };
 
+use super::scope_utils::collect_pat_idents;
+
 /// Check if a URL is safe (no dangerous schemes like javascript:).
 ///
 /// Inlined from `reinhardt_core::security::xss::is_safe_url` to avoid
@@ -361,44 +363,6 @@ fn is_value_ident(name: &str) -> bool {
 		.chars()
 		.all(|c| c.is_ascii_uppercase() || c == '_' || c.is_ascii_digit());
 	starts_lowercase && !all_screaming
-}
-
-/// Recursively collects identifier names bound by a pattern.
-fn collect_pat_idents(p: &syn::Pat, out: &mut HashSet<String>) {
-	match p {
-		syn::Pat::Ident(pi) => {
-			out.insert(pi.ident.to_string());
-		}
-		syn::Pat::Tuple(t) => {
-			for el in &t.elems {
-				collect_pat_idents(el, out);
-			}
-		}
-		syn::Pat::TupleStruct(ts) => {
-			for el in &ts.elems {
-				collect_pat_idents(el, out);
-			}
-		}
-		syn::Pat::Struct(ps) => {
-			for f in &ps.fields {
-				collect_pat_idents(&f.pat, out);
-			}
-		}
-		syn::Pat::Reference(r) => collect_pat_idents(&r.pat, out),
-		syn::Pat::Type(t) => collect_pat_idents(&t.pat, out),
-		syn::Pat::Or(o) => {
-			for case in &o.cases {
-				collect_pat_idents(case, out);
-			}
-		}
-		syn::Pat::Slice(s) => {
-			for el in &s.elems {
-				collect_pat_idents(el, out);
-			}
-		}
-		syn::Pat::Paren(p) => collect_pat_idents(&p.pat, out),
-		_ => {}
-	}
 }
 
 /// Builds the canonical §3.7 diagnostic for an undeclared identifier.

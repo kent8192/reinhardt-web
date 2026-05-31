@@ -15,6 +15,11 @@
 //! - Worker load balancing (Round-robin, Least-connections, Weighted, Random)
 //! - Webhook notifications for task completion
 //!
+//! ## Planned
+//!
+//! - Apply queue-level settings (`name`, `max_retries` from `QueueSettings`)
+//!   to a running queue. Deferred to the post-deprecation queue model, since
+//!   the current `TaskQueue` is a stateless, zero-sized delegator.
 //!
 //! ## Example
 //!
@@ -166,7 +171,7 @@ pub use worker::WorkerConfig;
 // Settings-first configuration API (preferred over the deprecated `*Config` types).
 pub use settings::{
 	QueueSettings, WebhookRetrySettings, WebhookSettings, WorkerSettings,
-	create_queue_from_settings, create_webhook_sender_from_settings, create_worker_from_settings,
+	create_webhook_sender_from_settings, create_worker_from_settings,
 };
 #[cfg(feature = "rabbitmq-backend")]
 pub use settings::{RabbitMQSettings, create_rabbitmq_backend_from_settings};
