@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 description = "Formatter for Reinhardt page!, form!, and head! DSL macros"
-publish = false
+publish = true
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
