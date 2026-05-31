@@ -1,5 +1,16 @@
 use reinhardt::db::migrations::FieldType;
 use reinhardt::db::migrations::prelude::*;
+
+// The `auth_group.name` unique key is already created by `0001_initial.rs`
+// (its `CreateTable` carries a named `Constraint::Unique`
+// "auth_group_name_uniq" on the `name` column). The redundant
+// `Operation::AddConstraint` that `makemigrations` previously emitted here
+// (generator bug reinhardt-web#4448, since fixed) is removed so a fresh
+// migration run does not abort with
+// `relation "auth_group_name_uniq" already exists` on PostgreSQL
+// (reinhardt-web#5045). These files were generated before #4448 was fixed;
+// dropping the duplicate matches what current `makemigrations` produces,
+// mirroring the same correction already applied in `migrations/users/0002_*`.
 pub fn migration() -> Migration {
 	Migration {
 		app_label: "auth".to_string(),
@@ -34,10 +45,6 @@ pub fn migration() -> Migration {
 					default: None,
 				},
 				mysql_options: None,
-			},
-			Operation::AddConstraint {
-				table: "auth_group".to_string(),
-				constraint_sql: "CONSTRAINT auth_group_name_uniq UNIQUE (name)".to_string(),
 			},
 		],
 		dependencies: vec![("auth".to_string(), "0001_initial".to_string())],
