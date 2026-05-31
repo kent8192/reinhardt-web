@@ -3,6 +3,8 @@
 //! This module provides router types and extension traits for integrating
 //! deeplink handlers with the Reinhardt routing system.
 
+// The router stores and consumes the deprecated `DeeplinkConfig` during the 0.2
+// compatibility window. Remove this allowance once `DeeplinkConfig` is deleted.
 #![allow(deprecated)]
 
 use hyper::Method;

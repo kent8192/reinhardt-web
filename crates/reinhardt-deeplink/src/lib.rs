@@ -1,4 +1,8 @@
 #![warn(missing_docs)]
+// The deprecated `DeeplinkConfig` is re-exported (`pub use`) and referenced
+// throughout this crate during the 0.2 compatibility window; a crate-level
+// allowance keeps the re-export and the per-module definitions warning-free
+// until the type is removed.
 #![allow(deprecated)]
 
 //! Deeplink support for Reinhardt framework.

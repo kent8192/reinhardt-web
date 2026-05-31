@@ -7,6 +7,9 @@
 //! can be loaded from configuration files, environment variables, and other
 //! sources via the `#[settings]` macro.
 
+// The conversions in this module bridge the `#[settings]` fragments into the
+// deprecated `DeeplinkConfig` for backward compatibility during the 0.2 window.
+// Remove this allowance once `DeeplinkConfig` is deleted.
 #![allow(deprecated)]
 
 use reinhardt_core::macros::settings;
