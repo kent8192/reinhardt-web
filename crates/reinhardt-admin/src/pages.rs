@@ -15,7 +15,7 @@
 //!
 //! All components are built using reinhardt-pages' reactive system with:
 //! - `Signal<T>` for reactive state
-//! - `create_resource` for Server Function calls
+//! - `use_resource` for Server Function calls
 //! - `view!` macro for declarative UI
 //!
 //! # Example
