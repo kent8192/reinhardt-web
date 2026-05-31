@@ -1,0 +1,8 @@
+error: `count` is read inside this hook closure but is not listed in its deps tuple.
+
+       help: add `count.clone()` to the deps tuple, e.g. `(count.clone(),)`
+       note: if this read is intentional and should NOT trigger re-runs, use `count.get_untracked()` (or `with_untracked`) to opt out of dependency tracking.
+  --> tests/ui/hooks/fail/missing_deps_inside_page.rs:20:14
+   |
+20 |                     let _ = count.get();
+   |                             ^^^^^
