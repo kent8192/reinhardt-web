@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.1.3...reinhardt-websockets@v0.2.0-rc.2) - 2026-05-31
+
+### Added
+
+- *(websockets)* add settings fragments for connection, reconnection, origin, rate limit, and redis
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Deprecated
+
+- *(websockets)* deprecate ad-hoc XxxConfig structs in favor of settings fragments
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
+### Maintenance
+
+- *(websockets)* depend on reinhardt-conf for settings fragments
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.1.0-rc.30...reinhardt-websockets@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-websockets` as part of the
