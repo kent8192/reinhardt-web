@@ -7,6 +7,136 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.2...reinhardt-web@v0.2.0-rc.2) - 2026-05-31
+
+### Added
+
+- *(storages)* [**breaking**] add #[non_exhaustive] to StorageError
+- *(tasks)* add settings fragments and settings-first constructors
+- *(server)* add RateLimitSettings fragment
+- *(grpc)* add GrpcServerSettings fragment for the grpc_server section
+- *(deeplink)* add DeeplinkSettings fragment
+- *(websockets)* add settings fragments for connection, reconnection, origin, rate limit, and redis
+- *(auth)* add settings fragments for session, jwt, token rotation
+- *(middleware)* bridge CorsConfig to CorsSettings fragment
+
+### Changed
+
+- *(pages)* unify spawn into platform/, expose spawn_task from prelude
+
+### Deprecated
+
+- *(tasks)* deprecate config structs in favor of settings fragments
+- *(conf)* deprecate TemplateConfig in favor of TemplateSettings fragment
+- *(server)* deprecate RateLimitConfig in favor of RateLimitSettings
+- *(grpc)* deprecate GrpcServerConfig in favor of GrpcServerSettings
+- *(deeplink)* deprecate DeeplinkConfig in favor of DeeplinkSettings
+- *(websockets)* deprecate ad-hoc XxxConfig structs in favor of settings fragments
+- *(auth)* deprecate SessionConfig, JwtConfig, TokenRotationConfig
+- bridge SmtpConfig to the EmailSettings fragment
+- shield smtp_integration test from SmtpConfig deprecation
+
+### Documentation
+
+- *(storages)* update test documentation to reflect wiremock replacement
+- *(admin)* remove broken DefaultUser intra-doc links
+- *(pages)* document spawn compat shim module
+- *(pages)* make wasm spawn_task example testable (ignore -> no_run)
+- mandate RAII pattern for resource management
+- *(wiki)* distribute Obsidian pages across categories and raise capture frequency
+- *(wiki)* sync CLAUDE.md/AGENTS.md Obsidian section with OW-7 policy
+- *(reinhardt-db)* fix QuerySet doctests for single-argument filter() API
+- *(reinhardt-db)* qualify Filter path in with_db doctests
+- *(mail,conf)* fix unresolved intra-doc links to settings fragments
+- *(deeplink)* document #![allow(deprecated)] allowances
+- *(tasks)* note that create_queue_from_settings does not retain settings
+- *(tasks)* correct tracking issue reference to [[#5068](https://github.com/kent8192/reinhardt-web/issues/5068)](https://github.com/kent8192/reinhardt-web/issues/5068)
+
+### Fixed
+
+- address CodeRabbit review comments
+- address remaining CodeRabbit comments
+- address Copilot review comments
+- address follow-up CodeRabbit comments
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+- *(auth)* migrate integration tests from removed auth types
+- *(auth)* replace non-existent BackendError with DatabaseError in tests
+- *(auth)* address CodeRabbit review feedback
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(auth,urls,pages)* remove stale references and fix latent clippy lints
+- *(urls)* migrate reverse tests from removed panicking helpers to try_ variants
+- *(pages)* restore brace-form component invocation tests
+- *(templates)* restore breaking change dropdowns to issue templates
+- *(ci)* resolve all pre-existing compilation failures on develop/0.2.0
+- *(tests)* remove duplicate TestUser definition in mfa_integration
+- *(admin-cli)* restore Topiary formatter wiring from main
+- *(admin-cli)* run rustfmt on DSL-skipped files in fmt command
+- *(admin-cli)* pass ignore-all files through rustfmt in fmt command
+- *(macros)* propagate serde derives to Info companion struct via model_config
+- *(ci)* update WASM consumer fixture for URL routing simplification
+- *(macros)* remove unused has_derive_trait from model_derive
+- *(ci)* guard WASM-unused exports and restrict compat visibility
+- *(di)* collapse nested if-let into let-chain
+- *(urls)* update tests for page() and reverse() API changes
+- *(macros)* suppress missing_docs on generated Info companion types
+- *(storages)* replace LocalStack with wiremock mock S3 server
+- *(storages)* address CodeRabbit review feedback
+- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
+- *(pages)* remove redundant #[builder(default)] from Option field
+- *(ci)* gate develop release-plz publish on release PR merges
+- *(admin-cli)* revert rustfmt-damaged migrate_v2 fixtures
+- *(admin-cli)* update migrate_v2 expected fixtures to match prettyplease output
+- *(pages)* add missing and regenerate stale trybuild .stderr files
+- *(test)* regenerate manager_wrong_model trybuild stderr
+- *(pages)* remove component_missing_required_prop compile-fail test
+- *(pages)* correct component_missing_required_prop compile-fail test
+- *(pages)* use brace-form Card {} inside page! for required-prop test
+- *(admin-cli)* preserve migrate_v2 fixtures during fmt-all
+- *(pages)* document #[allow(dead_code)] on CardProps::item in compile-fail test
+- *(core)* dispose Memo only on last clone drop
+- *(pages)* make SSR hydration IDs render-scoped
+- *(examples-twitter)* import serde directly in WASM-reachable pagination
+- *(examples-twitter)* align client SPA with develop/0.2.0 page!/form! API
+- *(pages)* keep deprecated reinhardt_pages::spawn re-export shim
+- *(storages)* escape #[settings] in deprecation notes for rustdoc
+- *(storages)* gate gcs/azure integration tests behind their features
+- *(web)* restore #[cfg(native)] gating on the misc export module
+- shield downstream consumers of newly deprecated config types
+- complete downstream shielding for deprecated config re-exports
+- *(deeplink)* derive Default for DeeplinkSettings
+- *(testkit)* shield server fixtures from deprecated RateLimitConfig
+
+### Maintenance
+
+- forward merge main v0.1.1 changes into develop 0.2.0
+- include all main v0.1.1 PR changes
+- forward merge main v0.1.2 changes into develop 0.2.0
+- *(examples)* WASM-build the example library to catch client SPA drift
+- *(tasks)* add reinhardt-conf and reinhardt-core dependencies for settings
+- add reinhardt-conf and serde deps for rate-limit settings
+- *(grpc)* add reinhardt-conf, reinhardt-core, serde deps for settings fragment
+- *(deeplink)* add reinhardt-conf dependency for settings fragments
+- *(websockets)* depend on reinhardt-conf for settings fragments
+- *(auth)* add reinhardt-conf dependency for settings fragments
+
+### Other
+
+- resolve conflicts with develop/0.2.0
+
+### Styling
+
+- apply formatter fixes across workspace
+- format files from merge resolution
+- apply rustfmt to non-DSL files on develop/0.2.0
+- apply rustfmt to non-DSL files on develop/0.2.0
+- *(pages)* reorder form component imports to satisfy rustfmt
+
+### Testing
+
+- *(pages)* address CodeRabbit review on hydration tests
+- *(pages)* replace skeleton spawn_task test with behavior assertion
+
 ## [0.1.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.1...reinhardt-web@v0.1.2) - 2026-05-25
 
 ### Documentation

@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.2...reinhardt-tasks@v0.2.0-rc.2) - 2026-05-31
+
+### Added
+
+- *(tasks)* add settings fragments and settings-first constructors
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Deprecated
+
+- *(tasks)* deprecate config structs in favor of settings fragments
+
+### Documentation
+
+- *(tasks)* note that create_queue_from_settings does not retain settings
+- *(tasks)* correct tracking issue reference to [[#5068](https://github.com/kent8192/reinhardt-web/issues/5068)](https://github.com/kent8192/reinhardt-web/issues/5068)
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
+### Maintenance
+
+- *(tasks)* add reinhardt-conf and reinhardt-core dependencies for settings
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-rc.30...reinhardt-tasks@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-tasks` as part of the
