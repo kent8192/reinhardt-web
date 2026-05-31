@@ -34,7 +34,7 @@ use rstest::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(wasm)]
-use reinhardt_pages::reactive::{Resource, Signal, create_resource, create_resource_with_deps};
+use reinhardt_pages::reactive::{Resource, Signal, use_resource};
 
 #[cfg(wasm)]
 use wasm_bindgen_test::*;
@@ -128,8 +128,10 @@ fn test_resource_state_error_basic() {
 #[cfg(wasm)]
 #[wasm_bindgen_test]
 async fn test_resource_fetch_error() {
-	let resource: Resource<User, String> =
-		create_resource(|| async { Err::<User, String>("Network timeout".to_string()) });
+	let resource: Resource<User, String> = use_resource(
+		|| async { Err::<User, String>("Network timeout".to_string()) },
+		(),
+	);
 
 	// Wait for async operation to complete
 	wasm_bindgen_futures::JsFuture::from(js_sys::Promise::new(&mut |resolve, _reject| {
@@ -208,13 +210,16 @@ async fn test_resource_manual_refetch() {
 	let counter = Rc::new(RefCell::new(0));
 	let counter_clone = Rc::clone(&counter);
 
-	let resource: Resource<u32, String> = create_resource(move || {
-		let counter = Rc::clone(&counter_clone);
-		async move {
-			*counter.borrow_mut() += 1;
-			Ok::<u32, String>(*counter.borrow())
-		}
-	});
+	let resource: Resource<u32, String> = use_resource(
+		move || {
+			let counter = Rc::clone(&counter_clone);
+			async move {
+				*counter.borrow_mut() += 1;
+				Ok::<u32, String>(*counter.borrow())
+			}
+		},
+		(),
+	);
 
 	// Wait for initial fetch
 	wasm_bindgen_futures::JsFuture::from(js_sys::Promise::new(&mut |resolve, _reject| {
@@ -253,10 +258,13 @@ async fn test_resource_manual_refetch() {
 #[wasm_bindgen_test]
 async fn test_resource_use_case_api_call(test_user: User) {
 	let user = test_user.clone();
-	let resource: Resource<User, String> = create_resource(move || {
-		let user = user.clone();
-		async move { Ok::<User, String>(user) }
-	});
+	let resource: Resource<User, String> = use_resource(
+		move || {
+			let user = user.clone();
+			async move { Ok::<User, String>(user) }
+		},
+		(),
+	);
 
 	// Wait for fetch
 	wasm_bindgen_futures::JsFuture::from(js_sys::Promise::new(&mut |resolve, _reject| {
@@ -314,10 +322,16 @@ fn test_resource_refetch_idempotency_property() {
 async fn test_resource_with_signal_dependency() {
 	let user_id = Signal::new(1u32);
 
-	let resource: Resource<String, String> =
-		create_resource_with_deps(user_id.clone(), |id| async move {
-			Ok::<String, String>(format!("User {}", id))
-		});
+	let resource: Resource<String, String> = use_resource(
+		{
+			let user_id = user_id.clone();
+			move || {
+				let id = user_id.get();
+				async move { Ok::<String, String>(format!("User {}", id)) }
+			}
+		},
+		(user_id.clone(),),
+	);
 
 	// Wait for initial fetch
 	wasm_bindgen_futures::JsFuture::from(js_sys::Promise::new(&mut |resolve, _reject| {

@@ -833,4 +833,55 @@ mod tests {
 		let recorded = log.borrow().clone();
 		assert_eq!(recorded, alloc::vec!["run", "cleanup", "run"]);
 	}
+
+	#[test]
+	#[serial]
+	fn new_with_deps_effect_in_rc_survives_until_rc_dropped() {
+		// Regression for the resource dependency-tracking lifetime invariant.
+		// `use_resource` stores its `new_with_deps` Effect inside an `Rc<Effect>`
+		// (`Resource::effect_guard`) so dependency-change refetch keeps firing for
+		// the Resource's lifetime. An Effect disposes on drop, so a handle that is
+		// created and immediately dropped — the original `create_resource_with_deps`
+		// bug — would stop tracking right after its first run.
+		let s = Signal::new(0_i32);
+		let runs = Rc::new(RefCell::new(0_i32));
+		let runs_for_effect = runs.clone();
+		let s_for_effect = s.clone();
+		let deps = crate::reactive::deps::Deps::from_signals(&[s.id()]);
+
+		let effect = Effect::new_with_deps::<_, fn()>(
+			move || {
+				let _ = s_for_effect.get();
+				*runs_for_effect.borrow_mut() += 1;
+				None
+			},
+			deps,
+		);
+		// Mirror `Resource::effect_guard`: move the Effect into an Rc keep-alive anchor.
+		let guard = Rc::new(effect);
+		assert_eq!(*runs.borrow(), 1, "effect runs once on creation");
+
+		// While the Rc is held, listed-dep changes keep re-running the effect.
+		s.set(1);
+		with_runtime(|rt| rt.flush_updates());
+		assert_eq!(
+			*runs.borrow(),
+			2,
+			"effect held via Rc must re-run on dependency change"
+		);
+
+		s.set(2);
+		with_runtime(|rt| rt.flush_updates());
+		assert_eq!(*runs.borrow(), 3, "effect held via Rc must keep re-running");
+
+		// Dropping the only Rc disposes the Effect; further dep changes do nothing.
+		drop(guard);
+		s.set(3);
+		with_runtime(|rt| rt.flush_updates());
+		assert_eq!(
+			*runs.borrow(),
+			3,
+			"disposed effect must not re-run after its Rc anchor is dropped"
+		);
+	}
 }

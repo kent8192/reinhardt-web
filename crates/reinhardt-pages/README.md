@@ -259,6 +259,7 @@ The prelude includes:
 - `use_ref`, `use_reducer`, `use_transition`, `use_deferred_value`
 - `use_id`, `use_layout_effect`, `use_effect_event`, `use_debug_value`
 - `use_optimistic`, `use_action`, `Action::with_optimistic`, `use_shared_state`, `use_sync_external_store`
+- `use_resource` (async data fetching; `use_resource(fetcher, deps)` with `()` = fetch once, cross-target with an SSR loading no-op)
 
 ### Component System
 - `Component`, `ElementView`, `IntoView`, `View`, `Props`, `ViewEventHandler`
@@ -300,7 +301,7 @@ The prelude includes:
 
 ### WASM-specific
 - `spawn_local` (re-exported from wasm_bindgen_futures; **deprecated** — use `spawn_task`)
-- `create_resource`, `create_resource_with_deps`
+- `create_resource`, `create_resource_with_deps` (**deprecated** — use the cross-target `use_resource`)
 
 ## Example
 

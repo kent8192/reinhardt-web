@@ -90,8 +90,14 @@ pub use crate::reactive::{
 	use_state, use_sync_external_store, use_transition,
 };
 
-// WASM-only resource creation functions
+// Unified resource hook (available on all targets)
+pub use crate::reactive::use_resource;
+// Deprecated resource constructors, kept until removal in v0.3.0
 #[cfg(wasm)]
+#[allow(
+	deprecated,
+	reason = "re-export kept until removal in v0.3.0; use use_resource instead"
+)]
 pub use crate::reactive::{create_resource, create_resource_with_deps};
 
 // ============================================================================
