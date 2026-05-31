@@ -94,7 +94,7 @@ impl From<&QueueSettings> for QueueConfig {
 ///
 /// Note: [`TaskQueue`] is currently a zero-sized, stateless delegator, so the
 /// queue-level settings (`name`, `max_retries`) are not yet retained or applied
-/// at runtime. Tracked in reinhardt-web#5067.
+/// at runtime. Tracked in reinhardt-web#5068.
 pub fn create_queue_from_settings(settings: &QueueSettings) -> TaskQueue {
 	TaskQueue::with_config(QueueConfig::from(settings))
 }
