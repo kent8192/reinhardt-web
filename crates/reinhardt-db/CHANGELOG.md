@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.3...reinhardt-db@v0.2.0-rc.2) - 2026-05-31
+
+### Added
+
+- *(db)* introduce type-safe nullable field on FieldMetadata
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+- *(model)* [**breaking**] make new an alias for build
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Documentation
+
+- *(reinhardt-db)* fix QuerySet doctests for single-argument filter() API
+- *(reinhardt-db)* qualify Filter path in with_db doctests
+
+### Fixed
+
+- *(db)* address CodeRabbit review on CHANGELOG and with_param normalization
+- *(ci)* recover develop release-plz prerelease
+- *(db)* qualify Manager in rustdoc examples and add missing Objects type
+- *(docs)* resolve remaining cross-crate intra-doc link errors
+
+### Styling
+
+- apply formatter fixes across workspace
+- apply rustfmt to non-DSL files on develop/0.2.0
+
 ### Breaking Changes
 
 - **`FieldMetadata` gains type-safe `nullable: bool` field** ([#4439](https://github.com/kent8192/reinhardt-web/issues/4439)).

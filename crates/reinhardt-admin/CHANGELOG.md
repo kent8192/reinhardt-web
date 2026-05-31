@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.3...reinhardt-admin@v0.2.0-rc.2) - 2026-05-31
+
+### Added
+
+- *(db)* introduce type-safe nullable field on FieldMetadata
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(admin)* migrate create_resource to use_resource
+
+### Documentation
+
+- *(admin)* remove broken DefaultUser intra-doc links
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+
+### Maintenance
+
+- include all main v0.1.1 PR changes
+- forward merge main v0.1.2 changes into develop 0.2.0
+
+### Other
+
+- resolve conflicts with develop/0.2.0
+
+### Styling
+
+- apply formatter fixes across workspace
+- apply rustfmt to non-DSL files on develop/0.2.0
+
 ### Removed
 
 #### BREAKING CHANGES
