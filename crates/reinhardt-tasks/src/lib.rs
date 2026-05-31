@@ -166,7 +166,7 @@ pub use worker::WorkerConfig;
 // Settings-first configuration API (preferred over the deprecated `*Config` types).
 pub use settings::{
 	QueueSettings, WebhookRetrySettings, WebhookSettings, WorkerSettings,
-	create_queue_from_settings, create_webhook_sender_from_settings, create_worker_from_settings,
+	create_webhook_sender_from_settings, create_worker_from_settings,
 };
 #[cfg(feature = "rabbitmq-backend")]
 pub use settings::{RabbitMQSettings, create_rabbitmq_backend_from_settings};
