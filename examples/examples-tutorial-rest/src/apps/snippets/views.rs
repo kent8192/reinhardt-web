@@ -56,7 +56,7 @@ fn get_sample_snippets() -> Vec<Snippet> {
 ///
 /// GET /snippets/
 /// Success response: 200 OK with array of snippets
-#[get("/snippets/", name = "snippets_list")]
+#[get("/snippets/", name = "snippets-list")]
 pub async fn list() -> ViewResult<Response> {
 	// Production ORM usage:
 	// let snippets = Manager::<Snippet>::new().all().await?;
@@ -85,7 +85,7 @@ pub async fn list() -> ViewResult<Response> {
 /// - 400 Bad Request: Validation errors (emitted by the `pre_validate = true`
 ///   macro option below — the macro returns HTTP 400 with a JSON error body
 ///   before this function body runs)
-#[post("/snippets/", name = "snippets_create", pre_validate = true)]
+#[post("/snippets/", name = "snippets-create", pre_validate = true)]
 pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Response> {
 	// `pre_validate = true` on the route macro extracts `Json<SnippetSerializer>`
 	// into a temporary, calls `Validate::validate(&__tmp)`, then re-destructures
@@ -126,7 +126,7 @@ pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Res
 /// Success response: 200 OK with snippet data
 /// Error responses:
 /// - 404 Not Found: Snippet not found
-#[get("/snippets/{id}/", name = "snippets_retrieve")]
+#[get("/snippets/{id}/", name = "snippets-retrieve")]
 pub async fn retrieve(Path(snippet_id): Path<i64>) -> ViewResult<Response> {
 	// Production ORM usage:
 	// let snippet = Manager::<Snippet>::new().get(snippet_id).await?;
@@ -164,7 +164,7 @@ pub async fn retrieve(Path(snippet_id): Path<i64>) -> ViewResult<Response> {
 ///   below — `pre_validate = true` would force `Path<i64>` through `Validate`
 ///   as well, which `i64` does not implement; see the module-level comment
 ///   on the `Validate` import for details)
-#[put("/snippets/{id}/", name = "snippets_update")]
+#[put("/snippets/{id}/", name = "snippets-update")]
 pub async fn update(
 	Path(snippet_id): Path<i64>,
 	Json(serializer): Json<SnippetSerializer>,
@@ -220,7 +220,7 @@ pub async fn update(
 /// Success response: 204 No Content
 /// Error responses:
 /// - 404 Not Found: Snippet not found
-#[delete("/snippets/{id}/", name = "snippets_delete")]
+#[delete("/snippets/{id}/", name = "snippets-delete")]
 pub async fn delete(Path(snippet_id): Path<i64>) -> ViewResult<Response> {
 	// Production ORM usage:
 	// Manager::<Snippet>::new().delete(snippet_id).await?;
