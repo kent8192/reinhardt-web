@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.1.3...reinhardt-server@v0.2.0-rc.2) - 2026-05-31
+
+### Added
+
+- *(server)* add RateLimitSettings fragment
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Deprecated
+
+- *(server)* deprecate RateLimitConfig in favor of RateLimitSettings
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
+### Maintenance
+
+- add reinhardt-conf and serde deps for rate-limit settings
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.1.0-rc.30...reinhardt-server@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-server` as part of the
