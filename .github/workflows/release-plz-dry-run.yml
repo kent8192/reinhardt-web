@@ -71,10 +71,46 @@ jobs:
             sudo -E apt-get -o DPkg::Lock::Timeout=120 install -y gh
           fi
 
-      - name: Run release-plz release (dry-run)
-        uses: release-plz/action@v0.5
+      - name: Install release-plz
+        uses: taiki-e/install-action@ec28e287910af896fd98e04056d31fa68607e7ad
         with:
-          command: release
-          dry_run: true
+          tool: release-plz
+
+      - name: Run release-plz release (dry-run)
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          log="$RUNNER_TEMP/release-plz-dry-run.log"
+          release-plz release \
+            --dry-run \
+            --no-verify \
+            --git-token "$GITHUB_TOKEN" \
+            --repo-url "https://github.com/${GITHUB_REPOSITORY}" \
+            >"$log" 2>&1
+          status=$?
+          cat "$log"
+
+          if [[ $status -eq 0 ]]; then
+            exit 0
+          fi
+
+          # Workaround for release-plz/release-plz#2878 (tracked in reinhardt-web#5089).
+          # In dry-run mode, release-plz skips uploading a same-release workspace
+          # dependency, so the next dependent crate can fail registry resolution
+          # even though a real release would publish the dependency first.
+          # Remove this workaround when release-plz can simulate same-release
+          # workspace dependencies during `release --dry-run`.
+          #
+          # Ideal implementation (without workaround):
+          #   release-plz release --dry-run --no-verify --git-token "$GITHUB_TOKEN"
+          if grep -Fq 'reinhardt-grpc-macros 0.1.3: due to dry, skipping' "$log" \
+            && grep -Fq 'failed to publish reinhardt-grpc' "$log" \
+            && grep -Fq 'failed to select a version for the requirement `reinhardt-grpc-macros = "^0.1.3"`' "$log"
+          then
+            echo "::warning::Ignoring known release-plz dry-run same-release dependency false positive (release-plz/release-plz#2878, reinhardt-web#5089)."
+            exit 0
+          fi
+
+          exit "$status"

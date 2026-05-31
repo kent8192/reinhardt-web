@@ -45,12 +45,12 @@ args = ["clean"]
 [tasks.fmt-check]
 description = "Check all code formatting (Rust + page! DSL)"
 command = "cargo"
-args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt-all", "--check"]
+args = ["run", "-p", "reinhardt-formatter", "--", "fmt-all", "--check"]
 
 [tasks.fmt-fix]
 description = "Auto-fix all code formatting (Rust + page! DSL)"
 command = "cargo"
-args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt-all"]
+args = ["run", "-p", "reinhardt-formatter", "--", "fmt-all"]
 
 [tasks.fmt-rust-only]
 description = "Format Rust code only (without page! macro protection)"
@@ -173,7 +173,7 @@ docker run --rm -v "$(pwd):/src" semgrep/semgrep \
 [tasks.fmt-page-only]
 description = "Format page! macro DSL only (without rustfmt)"
 command = "cargo"
-args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", "."]
+args = ["run", "-p", "reinhardt-formatter", "--", "fmt", "."]
 
 # The `examples/` directory is an independent cargo workspace (excluded from
 # the root workspace), so the root `fmt-*` / `clippy-*` tasks above do not
@@ -183,14 +183,14 @@ args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", "."]
 # Refs #4302.
 
 [tasks.fmt-check-examples]
-description = "Check formatting of the examples/ sub-workspace (Rust + page! DSL via reinhardt-admin-cli)"
+description = "Check formatting of the examples/ sub-workspace (Rust + page! DSL via reinhardt-formatter)"
 command = "cargo"
-args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", "examples", "--check"]
+args = ["run", "-p", "reinhardt-formatter", "--", "fmt", "examples", "--check"]
 
 [tasks.fmt-fix-examples]
-description = "Auto-fix formatting of the examples/ sub-workspace (Rust + page! DSL via reinhardt-admin-cli)"
+description = "Auto-fix formatting of the examples/ sub-workspace (Rust + page! DSL via reinhardt-formatter)"
 command = "cargo"
-args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", "examples"]
+args = ["run", "-p", "reinhardt-formatter", "--", "fmt", "examples"]
 
 [tasks.clippy-check-examples]
 description = "Run clippy on the examples/ sub-workspace"

@@ -388,6 +388,7 @@ members = [
   "crates/reinhardt-auth/macros",
   "crates/reinhardt-admin",                            # Admin panel functionality
   "crates/reinhardt-admin-cli",                        # Admin CLI tool
+  "crates/reinhardt-formatter",                        # DSL formatter tool
   "crates/reinhardt-grpc",
   "crates/reinhardt-grpc/macros",
   "crates/reinhardt-commands",
@@ -478,6 +479,7 @@ reinhardt-auth = { path = "crates/reinhardt-auth", version = "0.1.3" }
 reinhardt-auth-macros = { path = "crates/reinhardt-auth/macros", version = "0.1.3" }
 reinhardt-admin = { path = "crates/reinhardt-admin", version = "0.1.3" }
 reinhardt-admin-cli = { path = "crates/reinhardt-admin-cli", version = "0.1.3" }
+reinhardt-formatter = { path = "crates/reinhardt-formatter", version = "0.1.3" }
 tree-sitter-reinhardt-page = { path = "crates/tree-sitter-reinhardt-page", version = "0.1.1" }
 tree-sitter-reinhardt-form = { path = "crates/tree-sitter-reinhardt-form", version = "0.1.1" }
 tree-sitter-reinhardt-head = { path = "crates/tree-sitter-reinhardt-head", version = "0.1.1" }

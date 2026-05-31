@@ -250,6 +250,11 @@ version_group = "reinhardt"
 
 # Non-published packages (tests, examples, internal tools)
 [[package]]
+name = "reinhardt-formatter"
+release = false
+publish = false
+
+[[package]]
 name = "reinhardt-test-support"
 release = false
 publish = false

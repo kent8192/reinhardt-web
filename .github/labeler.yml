@@ -42,6 +42,7 @@ admin:
       - any-glob-to-any-file:
           - crates/reinhardt-admin/**
           - crates/reinhardt-admin-cli/**
+          - crates/reinhardt-formatter/**
 
 forms:
   - changed-files:
