@@ -835,7 +835,7 @@ mod tests {
 	}
 
 	#[test]
-	#[serial]
+	#[serial(reactive_runtime)]
 	fn new_with_deps_effect_in_rc_survives_until_rc_dropped() {
 		// Regression for the resource dependency-tracking lifetime invariant.
 		// `use_resource` stores its `new_with_deps` Effect inside an `Rc<Effect>`
