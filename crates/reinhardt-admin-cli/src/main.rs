@@ -28,13 +28,16 @@
 //! reinhardt-admin --help
 //! ```
 
+#[cfg(any())]
 mod format_engine;
+#[cfg(any())]
 mod formatter;
+#[cfg(any())]
 mod utils;
 
 use reinhardt_admin_cli::migrate_v2;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use colored::Colorize;
@@ -44,7 +47,6 @@ use reinhardt_commands::{
 	PluginSearchCommand, PluginUpdateCommand, StartAppCommand, StartProjectCommand,
 };
 use std::process;
-use zeroize::Zeroize;
 
 /// Project/app architecture type used with `--template`.
 #[derive(Clone, Debug, ValueEnum)]
@@ -170,8 +172,7 @@ enum Commands {
 
 	/// Format Rust code and page!/form!/head! macro DSL in source files
 	///
-	/// By default, formats page!/form!/head! DSL macros with Topiary and then runs rustfmt.
-	/// Use --with-rustfmt=false to only format Reinhardt DSL macros.
+	/// This recovery build does not include the DSL formatter backend.
 	Fmt {
 		/// Path to file or directory to format
 		#[arg(value_name = "PATH")]
@@ -211,10 +212,9 @@ enum Commands {
 		backup: bool,
 	},
 
-	/// Format all code: Reinhardt DSL macros via Topiary + Rust via rustfmt
+	/// Format all code: Reinhardt DSL macros plus Rust via rustfmt
 	///
-	/// This command formats page!/form!/head! macros first, then runs
-	/// `cargo fmt --all` on the root workspace.
+	/// This recovery build does not include the DSL formatter backend.
 	///
 	/// Files that belong to a separate (nested) cargo workspace, such as
 	/// `examples/` or the trybuild fixture crates, are skipped. `cargo fmt
@@ -669,6 +669,7 @@ async fn run_plugin(subcommand: PluginCommands, verbosity: u8) -> CommandResult<
 }
 
 #[allow(clippy::too_many_arguments)] // CLI command handler with many options
+#[cfg(any())]
 fn run_fmt(
 	path: PathBuf,
 	check: bool,
@@ -936,8 +937,39 @@ fn run_fmt(
 	Ok(())
 }
 
+#[allow(clippy::too_many_arguments)] // CLI command handler with many options
+fn run_fmt(
+	path: PathBuf,
+	check: bool,
+	with_rustfmt: bool,
+	config_path: Option<PathBuf>,
+	edition: Option<String>,
+	style_edition: Option<String>,
+	config: Option<String>,
+	color: String,
+	backup: bool,
+	verbosity: u8,
+) -> CommandResult<()> {
+	let _ = (
+		path,
+		check,
+		with_rustfmt,
+		config_path,
+		edition,
+		style_edition,
+		config,
+		color,
+		backup,
+		verbosity,
+	);
+	Err(reinhardt_commands::CommandError::ExecutionError(
+		"reinhardt-admin-cli was built without the dsl-format feature".to_string(),
+	))
+}
+
 /// Format all code: DSL macros via Topiary, then Rust via `cargo fmt --all`.
 #[allow(clippy::too_many_arguments)] // CLI command handler with many options
+#[cfg(any())]
 fn run_fmt_all(
 	check: bool,
 	config_path: Option<PathBuf>,
@@ -1287,10 +1319,37 @@ fn run_fmt_all(
 	Ok(())
 }
 
+#[allow(clippy::too_many_arguments)] // CLI command handler with many options
+fn run_fmt_all(
+	check: bool,
+	config_path: Option<PathBuf>,
+	edition: Option<String>,
+	style_edition: Option<String>,
+	config: Option<String>,
+	color: String,
+	backup: bool,
+	verbosity: u8,
+) -> CommandResult<()> {
+	let _ = (
+		check,
+		config_path,
+		edition,
+		style_edition,
+		config,
+		color,
+		backup,
+		verbosity,
+	);
+	Err(reinhardt_commands::CommandError::ExecutionError(
+		"reinhardt-admin-cli was built without the dsl-format feature".to_string(),
+	))
+}
+
 /// Maximum number of parent directories to traverse when searching for project root.
 ///
 /// Prevents unbounded traversal to the filesystem root, which could
 /// find an unrelated `Cargo.toml` from a different project.
+#[cfg(any())]
 const MAX_PROJECT_ROOT_DEPTH: usize = 10;
 
 /// Find the project root by searching upward for Cargo.toml.
@@ -1298,6 +1357,7 @@ const MAX_PROJECT_ROOT_DEPTH: usize = 10;
 /// Uses `std::fs::metadata` instead of `Path::exists()` to avoid TOCTOU
 /// race conditions in the existence check. Traversal is bounded to
 /// `MAX_PROJECT_ROOT_DEPTH` levels to prevent finding unrelated projects.
+#[cfg(any())]
 fn find_project_root() -> Option<PathBuf> {
 	let current_dir = std::env::current_dir().ok()?;
 	let mut current = current_dir.as_path();
@@ -1316,6 +1376,7 @@ fn find_project_root() -> Option<PathBuf> {
 /// Uses `std::fs::metadata` instead of `Path::exists()` to avoid TOCTOU
 /// race conditions in the existence check. Traversal is bounded to
 /// `MAX_PROJECT_ROOT_DEPTH` levels to prevent finding unrelated configs.
+#[cfg(any())]
 fn find_rustfmt_config(start_path: &Path) -> Option<PathBuf> {
 	let mut current = if start_path.is_file() {
 		start_path.parent()
@@ -1338,6 +1399,7 @@ fn find_rustfmt_config(start_path: &Path) -> Option<PathBuf> {
 }
 
 /// Run rustfmt on content and return formatted output.
+#[cfg(any())]
 fn run_rustfmt(content: &str, options: &format_engine::RustfmtOptions) -> Result<String, String> {
 	use std::io::Write;
 	use std::process::{Command, Stdio};
@@ -1382,6 +1444,7 @@ fn run_rustfmt(content: &str, options: &format_engine::RustfmtOptions) -> Result
 /// Sets file permissions to 0600 (read/write for owner only) to prevent
 /// unauthorized access to backup files which may contain sensitive code.
 #[cfg(unix)]
+#[cfg(any())]
 fn create_secure_backup(source: &Path, backup_path: &Path) -> Result<(), std::io::Error> {
 	use std::fs::OpenOptions;
 	use std::io::Read;
@@ -1415,6 +1478,7 @@ fn create_secure_backup(source: &Path, backup_path: &Path) -> Result<(), std::io
 /// On non-Unix systems, this creates the backup file normally with default permissions.
 /// A warning is logged recommending Unix for production deployments.
 #[cfg(not(unix))]
+#[cfg(any())]
 fn create_secure_backup(source: &Path, backup_path: &Path) -> Result<(), std::io::Error> {
 	use std::io::Read;
 
@@ -1440,6 +1504,7 @@ fn create_secure_backup(source: &Path, backup_path: &Path) -> Result<(), std::io
 /// backup files from being committed or exposed in the project tree.
 /// Uses a deterministic name based on the source file name so the backup
 /// can be identified if cleanup is interrupted.
+#[cfg(any())]
 fn create_temp_backup_path(source: &Path) -> PathBuf {
 	let file_name = source
 		.file_name()
@@ -1452,6 +1517,7 @@ fn create_temp_backup_path(source: &Path) -> PathBuf {
 ///
 /// Returns a masked version of the path that only shows the filename,
 /// preventing full path disclosure in error output.
+#[cfg(any())]
 fn mask_path(path: &Path) -> String {
 	path.file_name()
 		.map(|name| format!("<...>/{}", name.to_string_lossy()))
@@ -1462,6 +1528,7 @@ fn mask_path(path: &Path) -> String {
 ///
 /// Attempts to strip the current working directory prefix to show a relative path.
 /// Falls back to showing only the filename via `mask_path` if relativization fails.
+#[cfg(any())]
 fn display_path(path: &Path) -> String {
 	if let Ok(cwd) = std::env::current_dir()
 		&& let Ok(relative) = path.strip_prefix(&cwd)
@@ -1475,6 +1542,7 @@ fn display_path(path: &Path) -> String {
 ///
 /// Removes absolute file system paths and sensitive patterns from error messages
 /// to prevent exposing internal system structure to end users.
+#[cfg(any())]
 fn sanitize_error(error: &str) -> String {
 	use std::sync::LazyLock;
 
@@ -1512,6 +1580,7 @@ fn sanitize_error(error: &str) -> String {
 ///
 /// Uses zeroize to overwrite string values in memory before dropping,
 /// preventing sensitive data from remaining in memory.
+#[cfg(any())]
 fn secure_clear_hashmap(map: &mut std::collections::HashMap<PathBuf, String>) {
 	for (_, value) in map.iter_mut() {
 		value.zeroize();
@@ -1527,6 +1596,7 @@ fn secure_clear_hashmap(map: &mut std::collections::HashMap<PathBuf, String>) {
 /// - Verifies the path exists and is a regular file (not a directory, device, etc.)
 /// - Rejects symlinks to prevent symlink-based attacks
 /// - Rejects special device paths (e.g., `/dev/stdin`, `/dev/null`)
+#[cfg(any())]
 fn validate_config_path(path: &Path) -> Result<(), String> {
 	// Check for path traversal sequences
 	let path_str = path.to_string_lossy();
@@ -1577,11 +1647,13 @@ fn validate_config_path(path: &Path) -> Result<(), String> {
 /// Maximum file size for configuration files (10 MB).
 ///
 /// Prevents OOM from processing extremely large files.
+#[cfg(any())]
 const MAX_CONFIG_FILE_SIZE: u64 = 10 * 1024 * 1024;
 
 /// Maximum file size for Rust source files (5 MB).
 ///
 /// Prevents OOM from processing extremely large source files.
+#[cfg(any())]
 const MAX_SOURCE_FILE_SIZE: u64 = 5 * 1024 * 1024;
 
 /// Check file size before reading to prevent OOM.
@@ -1589,6 +1661,7 @@ const MAX_SOURCE_FILE_SIZE: u64 = 5 * 1024 * 1024;
 /// # Errors
 ///
 /// Returns an error if the file exceeds the given maximum size.
+#[cfg(any())]
 fn check_file_size(path: &Path, max_size: u64) -> Result<(), String> {
 	match std::fs::metadata(path) {
 		Ok(metadata) => {
@@ -1622,6 +1695,7 @@ fn check_file_size(path: &Path, max_size: u64) -> Result<(), String> {
 ///
 /// Returns an error if the lock file already exists (another operation is in progress)
 /// or if the file cannot be created.
+#[cfg(any())]
 fn acquire_format_lock(lock_path: &Path) -> Result<FormatLockGuard, std::io::Error> {
 	use std::fs::OpenOptions;
 
@@ -1642,10 +1716,12 @@ fn acquire_format_lock(lock_path: &Path) -> Result<FormatLockGuard, std::io::Err
 }
 
 /// RAII guard that removes the lock file on drop.
+#[cfg(any())]
 struct FormatLockGuard {
 	path: PathBuf,
 }
 
+#[cfg(any())]
 impl Drop for FormatLockGuard {
 	fn drop(&mut self) {
 		let _ = std::fs::remove_file(&self.path);
