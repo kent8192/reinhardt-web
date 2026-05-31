@@ -1,6 +1,6 @@
 use reinhardt::db::migrations::FieldType;
 use reinhardt::db::migrations::prelude::*;
-pub(super) fn migration() -> Migration {
+pub fn migration() -> Migration {
 	Migration {
 		app_label: "tweet".to_string(),
 		name: "0001_initial".to_string(),
@@ -10,7 +10,7 @@ pub(super) fn migration() -> Migration {
 				ColumnDefinition {
 					name: "content".to_string(),
 					type_definition: FieldType::VarChar(280u32),
-					not_null: false,
+					not_null: true,
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
@@ -19,7 +19,7 @@ pub(super) fn migration() -> Migration {
 				ColumnDefinition {
 					name: "created_at".to_string(),
 					type_definition: FieldType::TimestampTz,
-					not_null: false,
+					not_null: true,
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
@@ -37,25 +37,25 @@ pub(super) fn migration() -> Migration {
 				ColumnDefinition {
 					name: "like_count".to_string(),
 					type_definition: FieldType::Integer,
-					not_null: false,
+					not_null: true,
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
-					default: None,
+					default: Some("0".to_string()),
 				},
 				ColumnDefinition {
 					name: "retweet_count".to_string(),
 					type_definition: FieldType::Integer,
-					not_null: false,
+					not_null: true,
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
-					default: None,
+					default: Some("0".to_string()),
 				},
 				ColumnDefinition {
 					name: "updated_at".to_string(),
 					type_definition: FieldType::TimestampTz,
-					not_null: false,
+					not_null: true,
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
@@ -64,7 +64,7 @@ pub(super) fn migration() -> Migration {
 				ColumnDefinition {
 					name: "user_id".to_string(),
 					type_definition: FieldType::Uuid,
-					not_null: false,
+					not_null: true,
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
@@ -79,6 +79,10 @@ pub(super) fn migration() -> Migration {
 		dependencies: vec![],
 		atomic: true,
 		replaces: vec![],
-		..Default::default()
+		initial: Some(true),
+		state_only: false,
+		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
 	}
 }

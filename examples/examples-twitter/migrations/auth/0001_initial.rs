@@ -1,17 +1,101 @@
 use reinhardt::db::migrations::FieldType;
 use reinhardt::db::migrations::prelude::*;
-pub(super) fn migration() -> Migration {
+pub fn migration() -> Migration {
 	Migration {
 		app_label: "auth".to_string(),
 		name: "0001_initial".to_string(),
 		operations: vec![
+			Operation::CreateTable {
+				name: "auth_permission".to_string(),
+				columns: vec![
+					ColumnDefinition {
+						name: "app_label".to_string(),
+						type_definition: FieldType::VarChar(100u32),
+						not_null: true,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "codename".to_string(),
+						type_definition: FieldType::VarChar(100u32),
+						not_null: true,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "id".to_string(),
+						type_definition: FieldType::Uuid,
+						not_null: true,
+						unique: false,
+						primary_key: true,
+						auto_increment: false,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "name".to_string(),
+						type_definition: FieldType::VarChar(255u32),
+						not_null: true,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+				],
+				constraints: vec![],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			},
+			Operation::CreateTable {
+				name: "auth_group".to_string(),
+				columns: vec![
+					ColumnDefinition {
+						name: "description".to_string(),
+						type_definition: FieldType::VarChar(500u32),
+						not_null: false,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "id".to_string(),
+						type_definition: FieldType::Uuid,
+						not_null: true,
+						unique: false,
+						primary_key: true,
+						auto_increment: false,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "name".to_string(),
+						type_definition: FieldType::VarChar(150u32),
+						not_null: true,
+						unique: true,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+				],
+				constraints: vec![Constraint::Unique {
+					name: "auth_group_name_uniq".to_string(),
+					columns: vec!["name".to_string()],
+				}],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			},
 			Operation::CreateTable {
 				name: "auth_password_reset_token".to_string(),
 				columns: vec![
 					ColumnDefinition {
 						name: "created_at".to_string(),
 						type_definition: FieldType::TimestampTz,
-						not_null: false,
+						not_null: true,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
@@ -20,7 +104,7 @@ pub(super) fn migration() -> Migration {
 					ColumnDefinition {
 						name: "expires_at".to_string(),
 						type_definition: FieldType::TimestampTz,
-						not_null: false,
+						not_null: true,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
@@ -38,16 +122,16 @@ pub(super) fn migration() -> Migration {
 					ColumnDefinition {
 						name: "is_used".to_string(),
 						type_definition: FieldType::Boolean,
-						not_null: false,
+						not_null: true,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
-						default: None,
+						default: Some("false".to_string()),
 					},
 					ColumnDefinition {
 						name: "token".to_string(),
 						type_definition: FieldType::VarChar(255u32),
-						not_null: false,
+						not_null: true,
 						unique: true,
 						primary_key: false,
 						auto_increment: false,
@@ -56,7 +140,7 @@ pub(super) fn migration() -> Migration {
 					ColumnDefinition {
 						name: "user_id".to_string(),
 						type_definition: FieldType::Uuid,
-						not_null: false,
+						not_null: true,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
@@ -86,7 +170,7 @@ pub(super) fn migration() -> Migration {
 					ColumnDefinition {
 						name: "created_at".to_string(),
 						type_definition: FieldType::TimestampTz,
-						not_null: false,
+						not_null: true,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
@@ -95,7 +179,7 @@ pub(super) fn migration() -> Migration {
 					ColumnDefinition {
 						name: "email".to_string(),
 						type_definition: FieldType::VarChar(255u32),
-						not_null: false,
+						not_null: true,
 						unique: true,
 						primary_key: false,
 						auto_increment: false,
@@ -113,21 +197,15 @@ pub(super) fn migration() -> Migration {
 					ColumnDefinition {
 						name: "is_active".to_string(),
 						type_definition: FieldType::Boolean,
-						not_null: false,
+						not_null: true,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
-						default: None,
+						default: Some("true".to_string()),
 					},
 					ColumnDefinition {
 						name: "is_superuser".to_string(),
 						type_definition: FieldType::Boolean,
-						// The Rust model declares `pub is_superuser: bool`
-						// (non-optional) with `#[field(default = false)]`,
-						// so the schema must mirror that contract: NOT NULL
-						// with a database-level default of `false`. Allowing
-						// NULL would let the column decode into a state the
-						// Rust type cannot represent.
 						not_null: true,
 						unique: false,
 						primary_key: false,
@@ -155,7 +233,7 @@ pub(super) fn migration() -> Migration {
 					ColumnDefinition {
 						name: "username".to_string(),
 						type_definition: FieldType::VarChar(150u32),
-						not_null: false,
+						not_null: true,
 						unique: true,
 						primary_key: false,
 						auto_increment: false,
@@ -180,7 +258,7 @@ pub(super) fn migration() -> Migration {
 				name: "auth_user_blocked_users".to_string(),
 				columns: vec![
 					ColumnDefinition {
-						name: "from_user_id".to_string(),
+						name: "from_auth_user_id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: true,
 						unique: false,
@@ -198,7 +276,7 @@ pub(super) fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "to_user_id".to_string(),
+						name: "to_auth_user_id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: true,
 						unique: false,
@@ -209,8 +287,8 @@ pub(super) fn migration() -> Migration {
 				],
 				constraints: vec![
 					Constraint::ForeignKey {
-						name: "fk_auth_user_blocked_users_from_user_id".to_string(),
-						columns: vec!["from_user_id".to_string()],
+						name: "fk_auth_user_blocked_users_from_auth_user_id".to_string(),
+						columns: vec!["from_auth_user_id".to_string()],
 						referenced_table: "auth_user".to_string(),
 						referenced_columns: vec!["id".to_string()],
 						on_delete: ForeignKeyAction::Cascade,
@@ -218,8 +296,8 @@ pub(super) fn migration() -> Migration {
 						deferrable: None,
 					},
 					Constraint::ForeignKey {
-						name: "fk_auth_user_blocked_users_to_user_id".to_string(),
-						columns: vec!["to_user_id".to_string()],
+						name: "fk_auth_user_blocked_users_to_auth_user_id".to_string(),
+						columns: vec!["to_auth_user_id".to_string()],
 						referenced_table: "auth_user".to_string(),
 						referenced_columns: vec!["id".to_string()],
 						on_delete: ForeignKeyAction::Cascade,
@@ -228,7 +306,10 @@ pub(super) fn migration() -> Migration {
 					},
 					Constraint::Unique {
 						name: "auth_user_blocked_users_unique".to_string(),
-						columns: vec!["from_user_id".to_string(), "to_user_id".to_string()],
+						columns: vec![
+							"from_auth_user_id".to_string(),
+							"to_auth_user_id".to_string(),
+						],
 					},
 				],
 				without_rowid: None,
@@ -239,7 +320,7 @@ pub(super) fn migration() -> Migration {
 				name: "auth_user_following".to_string(),
 				columns: vec![
 					ColumnDefinition {
-						name: "from_user_id".to_string(),
+						name: "from_auth_user_id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: true,
 						unique: false,
@@ -257,7 +338,7 @@ pub(super) fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "to_user_id".to_string(),
+						name: "to_auth_user_id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: true,
 						unique: false,
@@ -268,8 +349,8 @@ pub(super) fn migration() -> Migration {
 				],
 				constraints: vec![
 					Constraint::ForeignKey {
-						name: "fk_auth_user_following_from_user_id".to_string(),
-						columns: vec!["from_user_id".to_string()],
+						name: "fk_auth_user_following_from_auth_user_id".to_string(),
+						columns: vec!["from_auth_user_id".to_string()],
 						referenced_table: "auth_user".to_string(),
 						referenced_columns: vec!["id".to_string()],
 						on_delete: ForeignKeyAction::Cascade,
@@ -277,8 +358,8 @@ pub(super) fn migration() -> Migration {
 						deferrable: None,
 					},
 					Constraint::ForeignKey {
-						name: "fk_auth_user_following_to_user_id".to_string(),
-						columns: vec!["to_user_id".to_string()],
+						name: "fk_auth_user_following_to_auth_user_id".to_string(),
+						columns: vec!["to_auth_user_id".to_string()],
 						referenced_table: "auth_user".to_string(),
 						referenced_columns: vec!["id".to_string()],
 						on_delete: ForeignKeyAction::Cascade,
@@ -287,7 +368,134 @@ pub(super) fn migration() -> Migration {
 					},
 					Constraint::Unique {
 						name: "auth_user_following_unique".to_string(),
-						columns: vec!["from_user_id".to_string(), "to_user_id".to_string()],
+						columns: vec![
+							"from_auth_user_id".to_string(),
+							"to_auth_user_id".to_string(),
+						],
+					},
+				],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			},
+			Operation::CreateTable {
+				name: "auth_user_blocked_users".to_string(),
+				columns: vec![
+					ColumnDefinition {
+						name: "id".to_string(),
+						type_definition: FieldType::Integer,
+						not_null: true,
+						unique: false,
+						primary_key: true,
+						auto_increment: true,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "from_auth_user_id".to_string(),
+						type_definition: FieldType::Uuid,
+						not_null: true,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "to_auth_user_id".to_string(),
+						type_definition: FieldType::Uuid,
+						not_null: true,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+				],
+				constraints: vec![
+					Constraint::ForeignKey {
+						name: "fk_auth_user_blocked_users_from_auth_user_id".to_string(),
+						columns: vec!["from_auth_user_id".to_string()],
+						referenced_table: "auth_user".to_string(),
+						referenced_columns: vec!["id".to_string()],
+						on_delete: ForeignKeyAction::Cascade,
+						on_update: ForeignKeyAction::Cascade,
+						deferrable: None,
+					},
+					Constraint::ForeignKey {
+						name: "fk_auth_user_blocked_users_to_auth_user_id".to_string(),
+						columns: vec!["to_auth_user_id".to_string()],
+						referenced_table: "auth_user".to_string(),
+						referenced_columns: vec!["id".to_string()],
+						on_delete: ForeignKeyAction::Cascade,
+						on_update: ForeignKeyAction::Cascade,
+						deferrable: None,
+					},
+					Constraint::Unique {
+						name: "auth_user_blocked_users_unique".to_string(),
+						columns: vec![
+							"from_auth_user_id".to_string(),
+							"to_auth_user_id".to_string(),
+						],
+					},
+				],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			},
+			Operation::CreateTable {
+				name: "auth_user_following".to_string(),
+				columns: vec![
+					ColumnDefinition {
+						name: "id".to_string(),
+						type_definition: FieldType::Integer,
+						not_null: true,
+						unique: false,
+						primary_key: true,
+						auto_increment: true,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "from_auth_user_id".to_string(),
+						type_definition: FieldType::Uuid,
+						not_null: true,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+					ColumnDefinition {
+						name: "to_auth_user_id".to_string(),
+						type_definition: FieldType::Uuid,
+						not_null: true,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
+				],
+				constraints: vec![
+					Constraint::ForeignKey {
+						name: "fk_auth_user_following_from_auth_user_id".to_string(),
+						columns: vec!["from_auth_user_id".to_string()],
+						referenced_table: "auth_user".to_string(),
+						referenced_columns: vec!["id".to_string()],
+						on_delete: ForeignKeyAction::Cascade,
+						on_update: ForeignKeyAction::Cascade,
+						deferrable: None,
+					},
+					Constraint::ForeignKey {
+						name: "fk_auth_user_following_to_auth_user_id".to_string(),
+						columns: vec!["to_auth_user_id".to_string()],
+						referenced_table: "auth_user".to_string(),
+						referenced_columns: vec!["id".to_string()],
+						on_delete: ForeignKeyAction::Cascade,
+						on_update: ForeignKeyAction::Cascade,
+						deferrable: None,
+					},
+					Constraint::Unique {
+						name: "auth_user_following_unique".to_string(),
+						columns: vec![
+							"from_auth_user_id".to_string(),
+							"to_auth_user_id".to_string(),
+						],
 					},
 				],
 				without_rowid: None,
@@ -298,6 +506,10 @@ pub(super) fn migration() -> Migration {
 		dependencies: vec![],
 		atomic: true,
 		replaces: vec![],
-		..Default::default()
+		initial: Some(true),
+		state_only: false,
+		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
 	}
 }

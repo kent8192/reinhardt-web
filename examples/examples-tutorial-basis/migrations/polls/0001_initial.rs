@@ -28,8 +28,8 @@ pub fn migration() -> Migration {
 					},
 					ColumnDefinition {
 						name: "question_id".to_string(),
-						type_definition: FieldType::Uuid,
-						not_null: false,
+						type_definition: FieldType::BigInteger,
+						not_null: true,
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
@@ -42,7 +42,7 @@ pub fn migration() -> Migration {
 						unique: false,
 						primary_key: false,
 						auto_increment: false,
-						default: None,
+						default: Some("0".to_string()),
 					},
 				],
 				constraints: vec![],
@@ -53,6 +53,15 @@ pub fn migration() -> Migration {
 			Operation::CreateTable {
 				name: "questions".to_string(),
 				columns: vec![
+					ColumnDefinition {
+						name: "author_id".to_string(),
+						type_definition: FieldType::BigInteger,
+						not_null: true,
+						unique: false,
+						primary_key: false,
+						auto_increment: false,
+						default: None,
+					},
 					ColumnDefinition {
 						name: "id".to_string(),
 						type_definition: FieldType::BigInteger,
