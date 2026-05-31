@@ -98,11 +98,7 @@ jobs:
              | {name: .name,
                 version: .version,
                 manifest_path: (.manifest_path | sub("^" + $ws + "/"; ""))}]
-            # Workaround for topiary/topiary#1246 (tracked in reinhardt-web#4827).
-            # cargo-semver-checks runs cargo update without [patch.crates-io],
-            # causing wasm-bindgen version conflict. Remove reinhardt-admin-cli
-            # exclusion when Topiary publishes relaxed wasm-bindgen constraints.
-            | map(select(.name == "reinhardt-web" or .name == "reinhardt-pages" or .name == "reinhardt-admin-cli" | not))
+            | map(select(.name == "reinhardt-web" or .name == "reinhardt-pages" | not))
             | sort_by(.name)')
 
           # CRATES projects to name+manifest_path for the matrix payload.

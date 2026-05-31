@@ -122,12 +122,12 @@ args = ["nextest", "run", "--test", "*", "--all-features"]
 
 [tasks.fmt-check]
 description = "Check code formatting (rustfmt + page! DSL)"
-command = "reinhardt-admin"
+command = "reinhardt-formatter"
 args = ["fmt", ".", "--check"]
 
 [tasks.fmt-fix]
 description = "Fix code formatting (rustfmt + page! DSL)"
-command = "reinhardt-admin"
+command = "reinhardt-formatter"
 args = ["fmt", "."]
 
 [tasks.clippy-check]

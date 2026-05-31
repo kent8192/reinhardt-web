@@ -105,16 +105,16 @@ reinhardt-admin plugin update --all
 
 ### Format All Code
 
-Format all Rust files in the project. Reinhardt DSL macros are formatted with
-tree-sitter grammars and Topiary queries before `cargo fmt --all` formats the
-surrounding Rust code:
+Use `reinhardt-formatter` to format all Rust files in the project. Reinhardt
+DSL macros are formatted with tree-sitter grammars and Topiary queries before
+`cargo fmt --all` formats the surrounding Rust code:
 
 ```bash
 # Format all files in the project
-reinhardt-admin fmt-all
+reinhardt-formatter fmt-all
 
 # Check formatting without modifying files
-reinhardt-admin fmt-all --check
+reinhardt-formatter fmt-all --check
 ```
 
 ### Format Reinhardt Macro DSLs
@@ -123,16 +123,16 @@ Format `page!`, `form!`, and `head!` macro DSLs in your source files:
 
 ```bash
 # Format all Rust files in the current directory
-reinhardt-admin fmt .
+reinhardt-formatter fmt .
 
 # Format a specific file
-reinhardt-admin fmt src/main.rs
+reinhardt-formatter fmt src/main.rs
 
 # Check formatting without modifying files
-reinhardt-admin fmt --check .
+reinhardt-formatter fmt --check .
 
 # Show all files (including unchanged)
-reinhardt-admin fmt -v .
+reinhardt-formatter fmt -v .
 ```
 
 #### Ignore Markers
@@ -209,7 +209,7 @@ When multiple markers are present, they are applied in this priority order:
 #### Example Output
 
 ```bash
-$ reinhardt-admin fmt .
+$ reinhardt-formatter fmt .
 [1/47] Formatted: src/main.rs
 [2/47] Formatted: src/config/settings.rs
 [3/47] Error src/broken.rs: Parse error
