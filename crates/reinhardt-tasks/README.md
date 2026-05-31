@@ -80,8 +80,7 @@ use reinhardt::tasks::backend::{TaskBackend, RedisTaskBackend};
 - **TaskQueue**: Task queue management
   - Stateless delegator that enqueues tasks through a backend
 - **QueueSettings**: `[tasks_queue]` settings fragment
-  - Defines the queue name and max-retries fields (section definition only;
-    applying these to a running queue is deferred to the post-deprecation queue model)
+  - Defines the queue name and max-retries fields
 
 #### Task Scheduling
 

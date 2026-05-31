@@ -15,6 +15,11 @@
 //! - Worker load balancing (Round-robin, Least-connections, Weighted, Random)
 //! - Webhook notifications for task completion
 //!
+//! ## Planned
+//!
+//! - Apply queue-level settings (`name`, `max_retries` from `QueueSettings`)
+//!   to a running queue. Deferred to the post-deprecation queue model, since
+//!   the current `TaskQueue` is a stateless, zero-sized delegator.
 //!
 //! ## Example
 //!
