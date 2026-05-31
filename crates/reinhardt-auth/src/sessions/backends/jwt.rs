@@ -44,6 +44,8 @@
 //! # }
 //! ```
 
+#![allow(deprecated)] // JwtSessionBackend holds a JwtConfig during the compatibility window.
+
 use async_trait::async_trait;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
@@ -128,6 +130,10 @@ fn validate_hmac_key_length(algorithm: Algorithm, secret: &str) -> Result<(), Jw
 ///     .with_issuer("my-app".to_string())
 ///     .with_audience("web-users".to_string());
 /// ```
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `JwtSessionSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Clone, PartialEq, Eq)]
 pub struct JwtConfig {
 	/// Secret key for signing tokens (for HS256, HS512, etc.)

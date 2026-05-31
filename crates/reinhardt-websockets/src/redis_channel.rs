@@ -23,6 +23,8 @@
 //! # });
 //! ```
 
+#![allow(deprecated)] // `RedisConfig` is deprecated but still used internally during the compatibility window.
+
 #[cfg(feature = "redis-channel")]
 use crate::channels::{ChannelError, ChannelLayer, ChannelMessage, ChannelResult};
 #[cfg(feature = "redis-channel")]
@@ -36,6 +38,10 @@ use tracing::warn;
 
 /// Redis channel layer configuration
 #[cfg(feature = "redis-channel")]
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `RedisChannelSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone)]
 pub struct RedisConfig {
 	/// Redis connection URL

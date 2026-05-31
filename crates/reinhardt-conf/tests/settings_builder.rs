@@ -2,6 +2,10 @@
 // Covers: default values, overrides, validation, database config, middleware config,
 // installed apps, profile, and error cases.
 
+// `TemplateConfig` is deprecated in favor of the `TemplateSettings` fragment;
+// these tests still exercise the legacy type during the compatibility window.
+#![allow(deprecated)]
+
 use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::profile::Profile;
 use reinhardt_conf::settings::sources::DefaultSource;

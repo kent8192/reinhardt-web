@@ -25,7 +25,11 @@ pub use super::validation::{
 	ChoiceValidator, PatternValidator, RangeValidator, RequiredValidator, SecurityValidator,
 	SettingsValidator, ValidationError, ValidationResult, Validator,
 };
-pub use super::{DatabaseConfig, MiddlewareConfig, TemplateConfig};
+pub use super::{DatabaseConfig, MiddlewareConfig};
+// `TemplateConfig` is deprecated in favor of the `TemplateSettings` fragment;
+// keep it in the prelude for the compatibility window.
+#[allow(deprecated)]
+pub use super::TemplateConfig;
 
 // Dynamic settings (async feature)
 #[cfg(feature = "async")]

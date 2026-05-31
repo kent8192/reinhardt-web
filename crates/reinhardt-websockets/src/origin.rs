@@ -18,6 +18,8 @@
 //! );
 //! ```
 
+#![allow(deprecated)] // `OriginValidationConfig` is deprecated but still used internally during the compatibility window.
+
 use crate::connection::WebSocketConnection;
 use crate::middleware::{
 	ConnectionContext, ConnectionMiddleware, MiddlewareError, MiddlewareResult,
@@ -38,6 +40,10 @@ pub enum OriginPolicy {
 }
 
 /// Configuration for Origin validation behavior
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `OriginValidationSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone)]
 pub struct OriginValidationConfig {
 	/// The origin policy to apply

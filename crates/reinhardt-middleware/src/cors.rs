@@ -1,8 +1,21 @@
+// The deprecated `CorsConfig` is still referenced internally (constructor,
+// `Default`, bridge, and tests) during the compatibility window.
+#![allow(deprecated)]
+
 use async_trait::async_trait;
+use reinhardt_conf::CorsSettings;
 use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
-/// CORS middleware configuration
+/// CORS middleware configuration.
+///
+/// Deprecated in favor of the [`CorsSettings`] fragment (the `[cors]` settings
+/// section). Construct middleware from settings with
+/// [`create_cors_middleware_from_settings`].
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `CorsSettings` with the `#[settings]` macro instead."
+)]
 #[non_exhaustive]
 pub struct CorsConfig {
 	/// Origins allowed to make cross-origin requests (e.g., `"*"` or specific domains).
@@ -34,6 +47,28 @@ impl Default for CorsConfig {
 			max_age: Some(3600),
 		}
 	}
+}
+
+impl From<&CorsSettings> for CorsConfig {
+	fn from(settings: &CorsSettings) -> Self {
+		Self {
+			allow_origins: settings.allow_origins.clone(),
+			allow_methods: settings.allow_methods.clone(),
+			allow_headers: settings.allow_headers.clone(),
+			allow_credentials: settings.allow_credentials,
+			// `CorsSettings::max_age` is a required `u64`; the legacy config
+			// models the absence of a max-age as `None`.
+			max_age: Some(settings.max_age),
+		}
+	}
+}
+
+/// Build a [`CorsMiddleware`] from a [`CorsSettings`] fragment.
+///
+/// This is the settings-first entry point for CORS middleware. It maps the
+/// `[cors]` settings section onto the middleware configuration.
+pub fn create_cors_middleware_from_settings(settings: &CorsSettings) -> CorsMiddleware {
+	CorsMiddleware::new(CorsConfig::from(settings))
 }
 
 /// CORS middleware

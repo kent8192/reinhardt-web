@@ -3,6 +3,11 @@
 //! Tests SMTP email sending with Mailpit container, covering basic send, authentication,
 //! TLS, attachments, HTML email, encoding, error handling, retry, queue, and BCC/CC.
 
+// These tests exercise the legacy `SmtpConfig` builder API directly, which is
+// deprecated in favour of the `EmailSettings` fragment. Allow deprecated usage
+// so `clippy --all-targets -D warnings` stays clean.
+#![allow(deprecated)]
+
 use reinhardt_mail::{EmailBackend, EmailMessage, SmtpBackend, SmtpConfig, SmtpSecurity};
 use reinhardt_testkit::containers::MailpitContainer;
 use rstest::*;

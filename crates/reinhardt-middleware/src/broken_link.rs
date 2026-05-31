@@ -300,6 +300,10 @@ impl BrokenLinkEmailsMiddleware {
 				// Schedule email sending in a separate task to avoid blocking
 				// Note: Uses default SMTP config (localhost:25). Configure via SmtpConfig for production.
 				tokio::spawn(async move {
+					// `SmtpConfig` is deprecated in favor of the `EmailSettings`
+					// fragment; this placeholder default is kept during the 0.2
+					// compatibility window.
+					#[allow(deprecated)]
 					let config = reinhardt_mail::SmtpConfig::default();
 					let backend = match reinhardt_mail::SmtpBackend::new(config) {
 						Ok(backend) => backend,

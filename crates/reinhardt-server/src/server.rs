@@ -39,6 +39,8 @@ pub mod http;
 pub mod http2;
 /// Rate limiting handler for controlling request throughput.
 pub mod rate_limit;
+/// Settings-first configuration fragment for rate limiting.
+pub mod rate_limit_settings;
 /// Graceful shutdown coordination for server instances.
 pub mod shutdown;
 /// Request timeout handler for enforcing maximum execution time.
@@ -54,7 +56,13 @@ pub mod websocket;
 
 pub use http::{HttpServer, serve, serve_with_shutdown};
 pub use http2::{Http2Server, serve_http2, serve_http2_with_shutdown};
-pub use rate_limit::{RateLimitConfig, RateLimitHandler, RateLimitStrategy};
+#[allow(deprecated)] // Re-export keeps the compatibility API discoverable during the 0.2 line.
+pub use rate_limit::RateLimitConfig;
+pub use rate_limit::{RateLimitHandler, RateLimitStrategy};
+// Settings-first configuration API (preferred over the deprecated `RateLimitConfig`).
+pub use rate_limit_settings::{
+	RateLimitSettings, RateLimitStrategyKind, create_rate_limit_handler_from_settings,
+};
 pub use shutdown::{ShutdownCoordinator, shutdown_signal, with_shutdown};
 pub use timeout::TimeoutHandler;
 

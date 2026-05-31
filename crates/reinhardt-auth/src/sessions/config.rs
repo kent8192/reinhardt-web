@@ -29,6 +29,8 @@
 //! assert!(config.cookie_secure());
 //! ```
 
+#![allow(deprecated)] // SessionConfigBuilder builds the deprecated SessionConfig during the compatibility window.
+
 use std::time::Duration;
 
 /// SameSite cookie attribute
@@ -104,6 +106,10 @@ impl SameSite {
 ///     .cookie_secure(true)
 ///     .build();
 /// ```
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `SessionSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone)]
 pub struct SessionConfig {
 	/// Name of the session cookie

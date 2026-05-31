@@ -35,6 +35,8 @@
 //! # }
 //! ```
 
+#![allow(deprecated)] // RabbitMQConfig is deprecated; it is still constructed internally.
+
 use crate::{
 	Task, TaskId, TaskStatus,
 	backend::{TaskBackend, TaskExecutionError},
@@ -67,6 +69,10 @@ struct QueueMessage {
 ///
 /// let config = RabbitMQConfig::new("amqp://localhost:5672/%2f");
 /// ```
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `RabbitMQSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone)]
 pub struct RabbitMQConfig {
 	/// AMQP connection URL (e.g., "amqp://localhost:5672/%2f")

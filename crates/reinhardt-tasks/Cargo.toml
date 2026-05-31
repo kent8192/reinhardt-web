@@ -10,6 +10,8 @@ authors.workspace = true
 
 [dependencies]
 
+reinhardt-core = { workspace = true }
+reinhardt-conf = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }

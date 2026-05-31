@@ -7,6 +7,11 @@
 //! - [`CustomSchemeConfig`] - Custom URL scheme configuration
 //! - [`DeeplinkConfig`] - Unified configuration combining all platforms
 
+// `DeeplinkConfig` (defined below) is deprecated in favor of the `#[settings]`
+// fragments but is still defined and constructed in this module during the 0.2
+// compatibility window. Remove this allowance once `DeeplinkConfig` is deleted.
+#![allow(deprecated)]
+
 pub mod android;
 pub mod custom;
 pub mod ios;
@@ -26,6 +31,7 @@ pub use ios::{
 /// # Example
 ///
 /// ```rust
+/// # #![allow(deprecated)]
 /// use reinhardt_deeplink::{DeeplinkConfig, IosConfig, AndroidConfig};
 ///
 /// let config = DeeplinkConfig::builder()
@@ -46,6 +52,10 @@ pub use ios::{
 ///
 /// assert!(config.is_configured());
 /// ```
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `DeeplinkSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone, Default)]
 pub struct DeeplinkConfig {
 	/// iOS Universal Links configuration.

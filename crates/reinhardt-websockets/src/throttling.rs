@@ -17,6 +17,8 @@
 //! These can be composed via [`WebSocketRateLimitConfig`] and applied as middleware
 //! through [`RateLimitMiddleware`].
 
+#![allow(deprecated)] // `WebSocketRateLimitConfig` is deprecated but still used internally during the compatibility window.
+
 use crate::connection::{Message, WebSocketConnection};
 use crate::middleware::{
 	ConnectionContext, ConnectionMiddleware, MessageMiddleware, MiddlewareError, MiddlewareResult,
@@ -515,6 +517,10 @@ impl ConnectionRateLimiter {
 /// assert_eq!(config.max_connections_per_window(), 50);
 /// assert_eq!(config.max_messages_per_window(), 200);
 /// ```
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `RateLimitSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone)]
 pub struct WebSocketRateLimitConfig {
 	/// Maximum new connections per IP within the connection window

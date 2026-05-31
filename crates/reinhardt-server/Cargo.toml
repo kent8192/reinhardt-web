@@ -10,8 +10,10 @@ description = "HTTP server implementation for Reinhardt framework"
 
 [dependencies]
 reinhardt-core = { workspace = true, features = ["exception", "types"] }
+reinhardt-conf = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-di = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 bytes = { workspace = true }
 hyper = { workspace = true }
@@ -44,5 +46,4 @@ reqwest = { workspace = true }
 async-graphql = "7.0"
 tokio-tungstenite = "0.28.0"
 futures-util = "0.3"
-serde = { workspace = true }
 serde_json = { workspace = true }

@@ -4,6 +4,11 @@
 //! bulk email sending operations, reducing the overhead of establishing
 //! new SMTP connections for each message.
 
+// The pool and batch sender embed the deprecated `SmtpConfig` directly; the
+// settings-first surface lives in `backends`. Allow deprecated usages here so
+// `-D warnings` stays clean during the compatibility window.
+#![allow(deprecated)]
+
 use crate::backends::{EmailBackend, SmtpBackend, SmtpConfig};
 use crate::message::EmailMessage;
 use crate::{EmailError, EmailResult};
@@ -65,6 +70,7 @@ impl PoolConfig {
 /// # Examples
 ///
 /// ```rust,no_run
+/// # #![allow(deprecated)]
 /// use reinhardt_mail::pooling::{EmailPool, PoolConfig};
 /// use reinhardt_mail::{SmtpConfig, EmailMessage};
 ///
@@ -212,6 +218,7 @@ impl EmailPool {
 /// # Examples
 ///
 /// ```rust,no_run
+/// # #![allow(deprecated)]
 /// use reinhardt_mail::pooling::{BatchSender, PoolConfig};
 /// use reinhardt_mail::{SmtpConfig, EmailMessage};
 /// use std::time::Duration;
