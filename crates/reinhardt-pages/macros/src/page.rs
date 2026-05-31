@@ -119,6 +119,7 @@
 mod codegen;
 pub(crate) mod hook_deps_validator;
 pub(crate) mod html_spec;
+mod scope_utils;
 mod validator;
 
 use proc_macro::TokenStream;
@@ -141,11 +142,10 @@ pub(crate) fn page_impl(input: TokenStream) -> TokenStream {
 		Err(err) => return err.to_compile_error().into(),
 	};
 
-	// 1a. Hook deps verification (pre-codegen pass, Refs #4195).
-	// Today this emits an empty TokenStream; once the follow-up
-	// implementation lands, it will surface `compile_error!` for any
-	// Signal read inside a hook closure that is missing from the
-	// hook's deps tuple.
+	// 1a. Hook deps verification (pre-codegen pass, Refs #4195 / #4721 / #4746).
+	// Emits a `compile_error!` for every Signal read inside a hook closure
+	// (written directly in this `page!` body) that is missing from the hook's
+	// deps tuple. Empty when no such mistake is found.
 	let hook_deps_diagnostics = hook_deps_validator::verify_hook_deps(&untyped_ast);
 
 	// 2. Validate + Transform: Untyped AST → Typed AST
@@ -157,11 +157,20 @@ pub(crate) fn page_impl(input: TokenStream) -> TokenStream {
 	// 3. Codegen: Typed AST → Rust code
 	let codegen_output = codegen::generate(&typed_ast);
 
-	// 4. Concatenate verification diagnostics with the codegen output so
-	// any `compile_error!` invocations land in the user's source location.
-	let combined = quote::quote! {
-		#hook_deps_diagnostics
-		#codegen_output
+	// 4. Combine verification diagnostics with the codegen output. The codegen
+	// output is a block expression, so when diagnostics are present we wrap
+	// both in an outer block — this keeps the `compile_error!` invocation in a
+	// valid statement position even when `page!` is used in expression
+	// position, and lands the error at the user's call site.
+	let combined = if hook_deps_diagnostics.is_empty() {
+		codegen_output
+	} else {
+		quote::quote! {
+			{
+				#hook_deps_diagnostics
+				#codegen_output
+			}
+		}
 	};
 
 	combined.into()
