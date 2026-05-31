@@ -121,6 +121,10 @@ name = "reinhardt-forms"
 version_group = "reinhardt"
 
 [[package]]
+name = "reinhardt-formatter"
+version_group = "reinhardt"
+
+[[package]]
 name = "reinhardt-graphql"
 version_group = "reinhardt"
 
@@ -249,11 +253,6 @@ name = "reinhardt-websockets"
 version_group = "reinhardt"
 
 # Non-published packages (tests, examples, internal tools)
-[[package]]
-name = "reinhardt-formatter"
-release = false
-publish = false
-
 [[package]]
 name = "reinhardt-test-support"
 release = false
