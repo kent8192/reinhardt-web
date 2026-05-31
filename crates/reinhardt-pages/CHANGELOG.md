@@ -63,6 +63,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `reinhardt_pages::router::PathParam` (deprecated since `0.1.0-rc.27`)
   is unrelated and remains in place during its deprecation cycle.
   (Refs #4668)
+- `use_resource(fetcher, deps)` — unified async data-fetching hook, the
+  resource counterpart of `use_effect`. `()` deps fetch once on mount; listed
+  `Trackable` deps (`Signal` / `Memo` / `Resource`) drive automatic refetch.
+  Available on all targets: the native/SSR path renders the `Loading` state and
+  the client performs the real fetch after hydration, mirroring `use_action`.
+  Supersedes the deprecated `create_resource` / `create_resource_with_deps`.
 
 ### Changed (BREAKING)
 
@@ -103,6 +109,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   auto-tracking. Use `use_callback(f, deps)` for stable identity, or
   read latest values via `.get_untracked()` inside the closure.
   Scheduled for removal in v0.3.0.
+- `create_resource` and `create_resource_with_deps` are deprecated in favor of
+  the unified, cross-target `use_resource(fetcher, deps)` (`()` deps = fetch
+  once; `(signal,)` deps = refetch on change). Thin forwarding shims are kept;
+  scheduled for removal in v0.3.0.
 
 ### Removed
 
@@ -133,6 +143,18 @@ Removed in this PR (8 items):
   (PathPattern). Use `reinhardt_urls::routers::ClientPathPattern`.
 - **`src/router/params.rs`** (1 item, `0.1.0-rc.27`) — `Path` extractor.
   Use `reinhardt_urls::routers::Path`.
+
+### Fixed
+
+- Resource dependency-change refetch now actually fires. The old
+  `create_resource_with_deps` dropped its tracking `Effect` handle immediately
+  after creation, so the `Effect` was disposed and never re-ran — automatic
+  refetch on dependency change silently never happened (and the only covering
+  test was excluded on every target by a contradictory `cfg`). The unified
+  `use_resource` stores the `Effect` inside the returned `Resource` so it stays
+  alive for the Resource's lifetime, and applies the `defer_yield` microtask
+  deferral (#3316) on the dependency-driven path as well, not only the
+  fetch-once path.
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.30...reinhardt-pages@v0.1.0) - 2026-05-22
 

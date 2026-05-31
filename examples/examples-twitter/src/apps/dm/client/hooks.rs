@@ -119,14 +119,17 @@ pub fn use_dm_chat(room_id: Uuid) -> DmChatHandle {
 	let (is_loading, set_loading) = use_state(true);
 	let (error, set_error) = use_state(None::<String>);
 
-	// Initial message loading via create_resource
+	// Initial message loading via use_resource
 	#[cfg(wasm)]
 	{
-		let initial_messages = reinhardt::pages::create_resource(move || async move {
-			crate::apps::dm::shared::server_fn::list_messages(room_id, Some(50), None)
-				.await
-				.map_err(|e| format!("Failed to load messages: {}", e))
-		});
+		let initial_messages = reinhardt::pages::use_resource(
+			move || async move {
+				crate::apps::dm::shared::server_fn::list_messages(room_id, Some(50), None)
+					.await
+					.map_err(|e| format!("Failed to load messages: {}", e))
+			},
+			(),
+		);
 
 		let set_messages_for_resource = set_messages.clone();
 		let set_loading_for_resource = set_loading.clone();
@@ -245,14 +248,17 @@ pub fn use_dm_room_list() -> DmRoomListHandle {
 	let (is_loading, set_loading) = use_state(true);
 	let (error, set_error) = use_state(None::<String>);
 
-	// Initial room list loading via create_resource
+	// Initial room list loading via use_resource
 	#[cfg(wasm)]
 	{
-		let initial_rooms = reinhardt::pages::create_resource(move || async move {
-			crate::apps::dm::shared::server_fn::list_rooms()
-				.await
-				.map_err(|e| format!("Failed to load rooms: {}", e))
-		});
+		let initial_rooms = reinhardt::pages::use_resource(
+			move || async move {
+				crate::apps::dm::shared::server_fn::list_rooms()
+					.await
+					.map_err(|e| format!("Failed to load rooms: {}", e))
+			},
+			(),
+		);
 
 		let set_rooms_for_resource = set_rooms.clone();
 		let set_loading_for_resource = set_loading.clone();

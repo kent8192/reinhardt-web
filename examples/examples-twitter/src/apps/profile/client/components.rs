@@ -22,8 +22,8 @@ use uuid::Uuid;
 #[cfg(wasm)]
 use {
 	crate::apps::profile::shared::server_fn::{fetch_profile, update_profile_form},
-	reinhardt::pages::create_resource,
 	reinhardt::pages::reactive::ResourceState,
+	reinhardt::pages::use_resource,
 };
 /// Profile view component using hooks
 ///
@@ -36,9 +36,10 @@ pub fn profile_view(user_id: Uuid) -> Page {
 	let (error, _set_error) = use_state(None::<String>);
 	#[cfg(wasm)]
 	{
-		let resource = create_resource(move || async move {
-			fetch_profile(user_id).await.map_err(|e| e.to_string())
-		});
+		let resource = use_resource(
+			move || async move { fetch_profile(user_id).await.map_err(|e| e.to_string()) },
+			(),
+		);
 		let profile_setter = _set_profile.clone();
 		let loading_setter = _set_loading.clone();
 		let error_setter = _set_error.clone();

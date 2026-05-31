@@ -78,12 +78,9 @@ use reinhardt::tasks::backend::{TaskBackend, RedisTaskBackend};
 #### Task Queue
 
 - **TaskQueue**: Task queue management
-  - Configurable queue name
-  - Retry count configuration (default: 3)
-  - Task enqueuing via backend
-- **QueueConfig**: Queue configuration
-  - Customizable queue name
-  - Maximum retry count setting
+  - Stateless delegator that enqueues tasks through a backend
+- **QueueSettings**: `[tasks_queue]` settings fragment
+  - Defines the queue name and max-retries fields
 
 #### Task Scheduling
 

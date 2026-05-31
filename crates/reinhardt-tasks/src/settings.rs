@@ -15,7 +15,6 @@ use std::time::Duration;
 use reinhardt_core::macros::settings;
 use serde::{Deserialize, Serialize};
 
-use crate::queue::{QueueConfig, TaskQueue};
 use crate::webhook::{HttpWebhookSender, RetryConfig, WebhookConfig};
 use crate::worker::{Worker, WorkerConfig};
 
@@ -59,7 +58,11 @@ fn default_retry_backoff_multiplier() -> f64 {
 
 /// Task queue settings fragment.
 ///
-/// Maps to the `[tasks_queue]` section.
+/// Maps to the `[tasks_queue]` section. This fragment defines the queue
+/// configuration section; applying `name` / `max_retries` to a running
+/// queue is deferred to the post-deprecation queue model, because the
+/// current `TaskQueue` is a stateless, zero-sized delegator. See
+/// reinhardt-web#5068 for the rationale.
 #[settings(fragment = true, section = "tasks_queue")]
 #[non_exhaustive]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -79,24 +82,6 @@ impl Default for QueueSettings {
 			max_retries: default_max_retries(),
 		}
 	}
-}
-
-impl From<&QueueSettings> for QueueConfig {
-	fn from(settings: &QueueSettings) -> Self {
-		Self {
-			name: settings.name.clone(),
-			max_retries: settings.max_retries,
-		}
-	}
-}
-
-/// Build a [`TaskQueue`] from a [`QueueSettings`] fragment.
-///
-/// Note: [`TaskQueue`] is currently a zero-sized, stateless delegator, so the
-/// queue-level settings (`name`, `max_retries`) are not yet retained or applied
-/// at runtime. Tracked in reinhardt-web#5068.
-pub fn create_queue_from_settings(settings: &QueueSettings) -> TaskQueue {
-	TaskQueue::with_config(QueueConfig::from(settings))
 }
 
 // --- webhook --------------------------------------------------------------
@@ -403,16 +388,13 @@ mod tests {
 	}
 
 	#[rstest::rstest]
-	fn queue_settings_default_converts_to_config() {
+	fn queue_settings_default_has_expected_values() {
 		// Arrange
 		let settings = QueueSettings::default();
 
-		// Act
-		let config = QueueConfig::from(&settings);
-
-		// Assert
-		assert_eq!(config.name, "default");
-		assert_eq!(config.max_retries, 3);
+		// Act / Assert
+		assert_eq!(settings.name, "default");
+		assert_eq!(settings.max_retries, 3);
 	}
 
 	#[rstest::rstest]

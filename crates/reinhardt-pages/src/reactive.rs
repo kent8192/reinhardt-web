@@ -106,9 +106,13 @@ pub mod trackable;
 
 pub use trackable::Trackable;
 
-// Re-export resource types
-pub use resource::{Resource, ResourceState};
+// Re-export resource types and the unified hook (available on all targets)
+pub use resource::{Resource, ResourceState, use_resource};
 #[cfg(wasm)]
+#[allow(
+	deprecated,
+	reason = "re-export kept until removal in v0.3.0; use use_resource instead"
+)]
 pub use resource::{create_resource, create_resource_with_deps};
 
 // Re-export hooks

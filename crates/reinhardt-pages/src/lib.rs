@@ -279,8 +279,12 @@ pub use form::{FormBinding, FormComponent};
 // Static form metadata types (always available, used by form! macro)
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use hydration::{HydrationContext, HydrationError, hydrate};
-pub use reactive::{Effect, Memo, Resource, ResourceState, Signal};
+pub use reactive::{Effect, Memo, Resource, ResourceState, Signal, use_resource};
 #[cfg(wasm)]
+#[allow(
+	deprecated,
+	reason = "re-export kept until removal in v0.3.0; use use_resource instead"
+)]
 pub use reactive::{create_resource, create_resource_with_deps};
 // Re-export Context system
 pub use reactive::{

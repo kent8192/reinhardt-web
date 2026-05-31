@@ -16,8 +16,8 @@ use uuid::Uuid;
 #[cfg(wasm)]
 use {
 	crate::apps::tweet::shared::server_fn::{create_tweet, delete_tweet, list_tweets},
-	reinhardt::pages::create_resource,
 	reinhardt::pages::reactive::ResourceState,
+	reinhardt::pages::use_resource,
 };
 
 #[cfg(native)]
@@ -447,9 +447,10 @@ pub fn tweet_list(user_id: Option<Uuid>) -> Page {
 
 	#[cfg(wasm)]
 	{
-		let resource = create_resource(move || async move {
-			list_tweets(user_id, 0).await.map_err(|e| e.to_string())
-		});
+		let resource = use_resource(
+			move || async move { list_tweets(user_id, 0).await.map_err(|e| e.to_string()) },
+			(),
+		);
 
 		// Bridge resource state to individual signals for page! macro compatibility
 		let tweets_setter = _set_tweets.clone();
