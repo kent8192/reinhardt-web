@@ -14,9 +14,9 @@ use {
 	crate::apps::relationship::shared::server_fn::{
 		fetch_followers, fetch_following, follow_user, unfollow_user,
 	},
-	reinhardt::pages::create_resource,
 	reinhardt::pages::reactive::ResourceState,
 	reinhardt::pages::reactive::hooks::{Action, use_action, use_effect},
+	reinhardt::pages::use_resource,
 };
 
 /// Type of user list to display
@@ -239,13 +239,16 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> Page {
 
 	#[cfg(wasm)]
 	{
-		let resource = create_resource(move || async move {
-			let result = match list_type {
-				UserListType::Followers => fetch_followers(user_id).await,
-				UserListType::Following => fetch_following(user_id).await,
-			};
-			result.map_err(|e| e.to_string())
-		});
+		let resource = use_resource(
+			move || async move {
+				let result = match list_type {
+					UserListType::Followers => fetch_followers(user_id).await,
+					UserListType::Following => fetch_following(user_id).await,
+				};
+				result.map_err(|e| e.to_string())
+			},
+			(),
+		);
 
 		let users_clone = users.clone();
 		let loading_clone = loading.clone();
