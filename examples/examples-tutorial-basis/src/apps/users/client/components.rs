@@ -20,7 +20,11 @@ pub fn login_form() -> Page {
 	let login_form = form! {
 		name: LoginForm,
 		server_fn: login,
+		method: Post,
 		redirect_on_success: "/",
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
 		state: {
 			loading,
 			error,
@@ -44,6 +48,7 @@ pub fn login_form() -> Page {
 	let form_view = login_form.into_page();
 	let polls_index_href = polls_links::index();
 	let signup_href = links::signup();
+
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, signup_href: String| {
 		div {
 			class: "max-w-md mx-auto px-4 mt-12",
@@ -55,32 +60,32 @@ pub fn login_form() -> Page {
 						class: "card-title",
 						"Sign in"
 					}
-					if error_signal.get().is_some() {
-						div {
-							class: "alert-danger mb-3",
-							{
-								error_signal.get().unwrap_or_default()
+					{
+						error_signal.get().map(|message| page!(|message: String| {
+							div {
+								class: "alert-danger mb-3",
+								{ message }
 							}
-						}
+						})(message)).unwrap_or(Page::Empty)
 					}
-					{ { form_view } }
+					{ form_view }
 					div {
 						class: "mt-4",
-						if loading_signal.get() {
-							button {
-								type: "submit",
-								class: "btn-primary w-full",
-								disabled: loading_signal.get(),
-								form: "login-form",
-								"Signing in..."
-							}
-						} else {
-							button {
-								type: "submit",
-								class: "btn-primary w-full",
-								form: "login-form",
-								"Sign in"
-							}
+						{
+							let is_loading = loading_signal.get();
+							page!(|is_loading: bool| {
+								button {
+									type: "submit",
+									class: if is_loading {
+										"btn-primary w-full opacity-50 cursor-not-allowed"
+									} else {
+										"btn-primary w-full"
+									},
+									disabled: is_loading,
+									form: "login-form",
+									{ if is_loading { "Signing in..." } else { "Sign in" } }
+								}
+							})(is_loading)
 						}
 					}
 				}
@@ -113,7 +118,11 @@ pub fn logout_form() -> Page {
 	let logout_form = form! {
 		name: LogoutForm,
 		server_fn: logout,
+		method: Post,
 		redirect_on_success: "/",
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
 		state: {
 			loading,
 			error,
@@ -123,6 +132,7 @@ pub fn logout_form() -> Page {
 	let error_signal = logout_form.error().clone();
 	let form_view = logout_form.into_page();
 	let polls_index_href = polls_links::index();
+
 	page!(|error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String| {
 		div {
 			class: "max-w-md mx-auto px-4 mt-12",
@@ -138,15 +148,15 @@ pub fn logout_form() -> Page {
 						class: "text-muted mb-4",
 						"Click the button below to end your session."
 					}
-					if error_signal.get().is_some() {
-						div {
-							class: "alert-danger mb-3",
-							{
-								error_signal.get().unwrap_or_default()
+					{
+						error_signal.get().map(|message| page!(|message: String| {
+							div {
+								class: "alert-danger mb-3",
+								{ message }
 							}
-						}
+						})(message)).unwrap_or(Page::Empty)
 					}
-					{ { form_view } }
+					{ form_view }
 					button {
 						type: "submit",
 						class: "btn-secondary w-full",
@@ -177,7 +187,11 @@ pub fn signup_form() -> Page {
 	let signup_form = form! {
 		name: SignupForm,
 		server_fn: register,
+		method: Post,
 		redirect_on_success: "/",
+		strip_arguments: {
+			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
 		state: {
 			loading,
 			error,
@@ -206,6 +220,7 @@ pub fn signup_form() -> Page {
 	let form_view = signup_form.into_page();
 	let polls_index_href = polls_links::index();
 	let login_href = links::login();
+
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, login_href: String| {
 		div {
 			class: "max-w-md mx-auto px-4 mt-12",
@@ -217,32 +232,32 @@ pub fn signup_form() -> Page {
 						class: "card-title",
 						"Create account"
 					}
-					if error_signal.get().is_some() {
-						div {
-							class: "alert-danger mb-3",
-							{
-								error_signal.get().unwrap_or_default()
+					{
+						error_signal.get().map(|message| page!(|message: String| {
+							div {
+								class: "alert-danger mb-3",
+								{ message }
 							}
-						}
+						})(message)).unwrap_or(Page::Empty)
 					}
-					{ { form_view } }
+					{ form_view }
 					div {
 						class: "mt-4",
-						if loading_signal.get() {
-							button {
-								type: "submit",
-								class: "btn-primary w-full",
-								disabled: loading_signal.get(),
-								form: "signup-form",
-								"Creating account..."
-							}
-						} else {
-							button {
-								type: "submit",
-								class: "btn-primary w-full",
-								form: "signup-form",
-								"Create account"
-							}
+						{
+							let is_loading = loading_signal.get();
+							page!(|is_loading: bool| {
+								button {
+									type: "submit",
+									class: if is_loading {
+										"btn-primary w-full opacity-50 cursor-not-allowed"
+									} else {
+										"btn-primary w-full"
+									},
+									disabled: is_loading,
+									form: "signup-form",
+									{ if is_loading { "Creating account..." } else { "Create account" } }
+								}
+							})(is_loading)
 						}
 					}
 				}

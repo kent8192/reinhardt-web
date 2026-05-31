@@ -105,7 +105,7 @@ pub fn nav_bar() -> Page {
 pub fn with_nav(body: Page) -> Page {
 	page!(|body: Page| {
 		{
-			nav_bar()
+			self::nav_bar()
 		}
 		{ body }
 	})(body)

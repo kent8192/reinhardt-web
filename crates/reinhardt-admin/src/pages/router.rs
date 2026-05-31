@@ -26,7 +26,7 @@ use reinhardt_pages::component::{Component, Page};
 use reinhardt_pages::page;
 use reinhardt_pages::router::Link;
 #[cfg(client)]
-use reinhardt_pages::{ResourceState, create_resource};
+use reinhardt_pages::{ResourceState, use_resource};
 use reinhardt_urls::routers::ClientRouter;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -170,8 +170,10 @@ where
 /// Dashboard view component for router
 #[cfg(client)]
 fn dashboard_view() -> Page {
-	let dashboard_resource =
-		create_resource(|| async { get_dashboard().await.map_err(|e| e.to_string()) });
+	let dashboard_resource = use_resource(
+		|| async { get_dashboard().await.map_err(|e| e.to_string()) },
+		(),
+	);
 
 	let reactive_content = Page::reactive({
 		let resource = dashboard_resource.clone();
@@ -221,15 +223,18 @@ fn dashboard_view() -> Page {
 fn list_view_component(model_name: String) -> Page {
 	use reinhardt_pages::use_effect;
 
-	let list_resource = create_resource(move || {
-		let model_name = model_name.clone();
-		async move {
-			let params = ListQueryParams::default();
-			get_list(model_name, params)
-				.await
-				.map_err(|e| e.to_string())
-		}
-	});
+	let list_resource = use_resource(
+		move || {
+			let model_name = model_name.clone();
+			async move {
+				let params = ListQueryParams::default();
+				get_list(model_name, params)
+					.await
+					.map_err(|e| e.to_string())
+			}
+		},
+		(),
+	);
 
 	// Create signals outside the reactive closure so they persist across re-renders
 	let page_signal = Signal::new(1u64);
@@ -348,15 +353,18 @@ fn list_view_component(model_name: String) -> Page {
 fn detail_view_component(model_name: String, record_id: String) -> Page {
 	let model_name_for_view = model_name.clone();
 	let record_id_for_view = record_id.clone();
-	let detail_resource = create_resource(move || {
-		let model_name = model_name.clone();
-		let record_id = record_id.clone();
-		async move {
-			get_detail(model_name, record_id)
-				.await
-				.map_err(|e| e.to_string())
-		}
-	});
+	let detail_resource = use_resource(
+		move || {
+			let model_name = model_name.clone();
+			let record_id = record_id.clone();
+			async move {
+				get_detail(model_name, record_id)
+					.await
+					.map_err(|e| e.to_string())
+			}
+		},
+		(),
+	);
 
 	let reactive_content = Page::reactive({
 		let resource = detail_resource.clone();
@@ -399,14 +407,17 @@ fn detail_view_component(model_name: String, record_id: String) -> Page {
 #[cfg(client)]
 fn create_view_component(model_name: String) -> Page {
 	let model_name_for_view = model_name.clone();
-	let fields_resource = create_resource(move || {
-		let model_name = model_name.clone();
-		async move {
-			get_fields(model_name, None)
-				.await
-				.map_err(|e| e.to_string())
-		}
-	});
+	let fields_resource = use_resource(
+		move || {
+			let model_name = model_name.clone();
+			async move {
+				get_fields(model_name, None)
+					.await
+					.map_err(|e| e.to_string())
+			}
+		},
+		(),
+	);
 
 	let reactive_content = Page::reactive({
 		let resource = fields_resource.clone();
@@ -472,15 +483,18 @@ fn create_view_component(model_name: String) -> Page {
 fn edit_view_component(model_name: String, record_id: String) -> Page {
 	let model_name_for_view = model_name.clone();
 	let record_id_for_view = record_id.clone();
-	let fields_resource = create_resource(move || {
-		let model_name = model_name.clone();
-		let record_id = record_id.clone();
-		async move {
-			get_fields(model_name, Some(record_id))
-				.await
-				.map_err(|e| e.to_string())
-		}
-	});
+	let fields_resource = use_resource(
+		move || {
+			let model_name = model_name.clone();
+			let record_id = record_id.clone();
+			async move {
+				get_fields(model_name, Some(record_id))
+					.await
+					.map_err(|e| e.to_string())
+			}
+		},
+		(),
+	);
 
 	let reactive_content = Page::reactive({
 		let resource = fields_resource.clone();
