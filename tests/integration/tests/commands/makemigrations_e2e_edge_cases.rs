@@ -53,7 +53,7 @@ fn create_valid_migration_file(
 	let content = format!(
 		r#"use reinhardt_db::migrations::{{Migration, Operation}};
 
-pub fn migration() -> Migration {{
+pub(super) fn migration() -> Migration {{
 	Migration {{
 		app_label: "{}".to_string(),
 		name: "{}".to_string(),
@@ -114,7 +114,7 @@ async fn ec_mm_01_01_japanese_table_names() {
 	let content = r##"
 use reinhardt_db::migrations::{Migration, Operation};
 
-pub fn migration() -> Migration {
+pub(super) fn migration() -> Migration {
     Migration {
         app_label: "unicode_app".to_string(),
         name: "0001_initial".to_string(),
@@ -190,7 +190,7 @@ async fn ec_mm_01_02_emoji_column_names() {
 		r##"
 use reinhardt_db::migrations::{{Migration, Operation}};
 
-pub fn migration() -> Migration {{
+pub(super) fn migration() -> Migration {{
     Migration {{
         app_label: "emoji_app".to_string(),
         name: "0001_emoji_columns".to_string(),
@@ -262,7 +262,7 @@ async fn ec_mm_01_03_mixed_unicode_identifiers() {
 		r##"
 use reinhardt_db::migrations::{{Migration, Operation}};
 
-pub fn migration() -> Migration {{
+pub(super) fn migration() -> Migration {{
     Migration {{
         app_label: "mixed_unicode".to_string(),
         name: "0001_mixed_unicode".to_string(),
@@ -838,7 +838,7 @@ async fn ec_mm_05_01_invalid_rust_syntax() {
 	let content = r#"
 use reinhardt_db::migrations::{Migration, Operation};
 
-pub fn migration() -> Migration {
+pub(super) fn migration() -> Migration {
     Migration {
         app_label: "corrupted_app".to_string(),
         name: "0001_invalid_syntax".to_string(),
@@ -894,7 +894,7 @@ async fn ec_mm_05_02_missing_required_fields() {
 	let content = r#"
 use reinhardt_db::migrations::{Migration, Operation};
 
-pub fn migration() -> Migration {
+pub(super) fn migration() -> Migration {
     Migration {
         app_label: "".to_string(),  // Empty app_label
         name: "0001_missing_fields".to_string(),
@@ -939,7 +939,7 @@ async fn ec_mm_05_03_circular_dependency() {
 	let content_a = r#"
 use reinhardt_db::migrations::{Migration, Operation};
 
-pub fn migration() -> Migration {
+pub(super) fn migration() -> Migration {
     Migration {
         app_label: "circular_app".to_string(),
         name: "0001_migration_a".to_string(),
@@ -960,7 +960,7 @@ pub fn migration() -> Migration {
 	let content_b = r#"
 use reinhardt_db::migrations::{Migration, Operation};
 
-pub fn migration() -> Migration {
+pub(super) fn migration() -> Migration {
     Migration {
         app_label: "circular_app".to_string(),
         name: "0002_migration_b".to_string(),
@@ -981,7 +981,7 @@ pub fn migration() -> Migration {
 	let content_c = r#"
 use reinhardt_db::migrations::{Migration, Operation};
 
-pub fn migration() -> Migration {
+pub(super) fn migration() -> Migration {
     Migration {
         app_label: "circular_app".to_string(),
         name: "0003_migration_c".to_string(),

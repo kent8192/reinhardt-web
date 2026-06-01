@@ -15,7 +15,7 @@ fn create_migration_file(migrations_dir: &std::path::Path, app: &str, name: &str
 	let app_dir = migrations_dir.join(app);
 	fs::create_dir_all(&app_dir).unwrap();
 	let content = format!(
-		"// Auto-generated migration\nuse reinhardt_db::migrations::Migration;\n\npub fn migration() -> Migration {{\n\tMigration::new(\"{}\", \"{}\")\n}}\n",
+		"// Auto-generated migration\nuse reinhardt_db::migrations::Migration;\n\npub(super) fn migration() -> Migration {{\n\tMigration::new(\"{}\", \"{}\")\n}}\n",
 		name, app
 	);
 	fs::write(app_dir.join(format!("{}.rs", name)), content).unwrap();

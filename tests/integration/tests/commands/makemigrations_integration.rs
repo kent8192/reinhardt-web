@@ -21,7 +21,7 @@ fn temp_migration_dir_with_files(temp_migration_dir: TempMigrationDir) -> TempMi
 		r#"
 use reinhardt_db::migrations::{Migration, MigrationOperation};
 
-pub fn migration() -> Migration {
+pub(super) fn migration() -> Migration {
     Migration {
         app_label: "auth".to_string(),
         name: "0001_initial".to_string(),
