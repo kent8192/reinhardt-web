@@ -13,7 +13,6 @@ use reinhardt_admin::pages::components::features::{
 use reinhardt_admin::pages::components::login::login_form;
 use reinhardt_admin::types::{FormFieldSpec, ModelInfo};
 use reinhardt_pages::Signal;
-use reinhardt_test::fixtures::wasm::*;
 use std::collections::HashMap;
 use wasm_bindgen_test::*;
 
@@ -25,7 +24,6 @@ wasm_bindgen_test_configure!(run_in_browser);
 
 #[wasm_bindgen_test]
 fn test_login_form_renders_username_and_password_fields() {
-	let screen = screen();
 	let page = login_form(None);
 	let html = page.render_to_string();
 
@@ -133,7 +131,6 @@ fn test_model_form_create_mode() {
 		},
 		required: true,
 		value: String::new(),
-		values: Vec::new(),
 	}];
 
 	let page = model_form("User", &fields, None);
@@ -158,7 +155,6 @@ fn test_model_form_edit_mode() {
 		},
 		required: true,
 		value: "john_doe".to_string(),
-		values: Vec::new(),
 	}];
 
 	let page = model_form("User", &fields, Some("42"));
@@ -326,7 +322,6 @@ fn textarea_renders_as_textarea_element() {
 		spec: FormFieldSpec::TextArea,
 		required: false,
 		value: "hello world".to_string(),
-		values: Vec::new(),
 	}];
 
 	// Act
@@ -360,7 +355,6 @@ fn textarea_required_renders_required_attr() {
 		spec: FormFieldSpec::TextArea,
 		required: true,
 		value: String::new(),
-		values: Vec::new(),
 	}];
 
 	// Act
@@ -395,7 +389,6 @@ fn select_renders_options_with_selected_current_value() {
 		},
 		required: false,
 		value: "published".to_string(),
-		values: Vec::new(),
 	}];
 
 	// Act
@@ -462,7 +455,6 @@ fn select_required_renders_required_attr() {
 		},
 		required: true,
 		value: String::new(),
-		values: Vec::new(),
 	}];
 
 	// Act
@@ -496,7 +488,6 @@ fn multiselect_renders_as_select_with_multiple_attr() {
 		},
 		required: false,
 		value: String::new(),
-		values: Vec::new(),
 	}];
 
 	// Act
@@ -535,7 +526,6 @@ fn multiselect_required_renders_required_attr() {
 		},
 		required: true,
 		value: String::new(),
-		values: Vec::new(),
 	}];
 
 	// Act

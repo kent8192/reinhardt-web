@@ -140,7 +140,7 @@ fn referer_matches_host(referer: &str, host: &str) -> bool {
 	referer_host == host
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use bytes::Bytes;

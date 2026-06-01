@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 use reinhardt_di::SingletonScope;
 #[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRouterExt;
@@ -451,7 +451,7 @@ pub fn admin_routes_with_di(
 	)
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use rstest::rstest;

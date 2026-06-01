@@ -332,7 +332,7 @@ pub fn get_field_metadata(table_name: &str, field_name: &str) -> Option<FieldMet
 	find_model_by_table_name(table_name).and_then(|m| m.fields.get(field_name).cloned())
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 

@@ -182,7 +182,7 @@ fn validate_value_size(field_name: &str, value: &serde_json::Value) -> Result<()
 	Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use crate::core::ModelAdminConfig;
