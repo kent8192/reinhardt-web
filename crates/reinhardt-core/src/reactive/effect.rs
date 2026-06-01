@@ -41,6 +41,9 @@ use super::runtime::{EffectTiming, NodeId, NodeType, Observer, try_with_runtime,
 /// Type alias for effect functions
 type EffectFn = Box<dyn FnMut() + 'static>;
 
+/// Type alias for stored effect slots.
+type EffectSlot = Option<EffectFn>;
+
 /// Type alias for the cleanup slot shared between Effect instances and closures
 type CleanupSlot = Rc<RefCell<Option<Box<dyn FnOnce()>>>>;
 
@@ -48,7 +51,7 @@ type CleanupSlot = Rc<RefCell<Option<Box<dyn FnOnce()>>>>;
 //
 // This stores the closures for all Effects so they can be re-executed when dependencies change.
 thread_local! {
-	static EFFECT_FUNCTIONS: RefCell<BTreeMap<NodeId, EffectFn>> = RefCell::new(BTreeMap::new());
+	static EFFECT_FUNCTIONS: RefCell<BTreeMap<NodeId, EffectSlot>> = RefCell::new(BTreeMap::new());
 }
 
 // Global storage for Effect timing information
@@ -140,11 +143,11 @@ impl Effect {
 		EFFECT_FUNCTIONS.with(|storage| {
 			storage.borrow_mut().insert(
 				id,
-				Box::new(move || {
+				Some(Box::new(move || {
 					if !*disposed_clone.borrow() {
 						f();
 					}
-				}),
+				})),
 			);
 		});
 
@@ -197,11 +200,11 @@ impl Effect {
 		EFFECT_FUNCTIONS.with(|storage| {
 			storage.borrow_mut().insert(
 				id,
-				Box::new(move || {
+				Some(Box::new(move || {
 					if !*disposed_clone.borrow() {
 						f();
 					}
-				}),
+				})),
 			);
 		});
 
@@ -267,7 +270,8 @@ impl Effect {
 				return;
 			}
 			// Flush any cleanup from the previous run before re-executing.
-			if let Some(prev) = cleanup_for_closure.borrow_mut().take() {
+			let previous_cleanup = { cleanup_for_closure.borrow_mut().take() };
+			if let Some(prev) = previous_cleanup {
 				prev();
 			}
 			// Run the user's closure with the Observer stack detached so
@@ -283,7 +287,7 @@ impl Effect {
 		};
 
 		EFFECT_FUNCTIONS.with(|storage| {
-			storage.borrow_mut().insert(id, Box::new(wrapped));
+			storage.borrow_mut().insert(id, Some(Box::new(wrapped)));
 		});
 
 		// Insert timing *before* initial execution so the first
@@ -362,7 +366,7 @@ impl Effect {
 					EFFECT_TIMING.with(|storage| storage.borrow().contains_key(&self.effect_id));
 				if still_alive && let Some(f) = self.effect_fn.take() {
 					EFFECT_FUNCTIONS.with(|storage| {
-						storage.borrow_mut().insert(self.effect_id, f);
+						storage.borrow_mut().insert(self.effect_id, Some(f));
 					});
 				}
 			}
@@ -370,7 +374,12 @@ impl Effect {
 
 		let mut guard = EffectFnGuard {
 			effect_id,
-			effect_fn: EFFECT_FUNCTIONS.with(|storage| storage.borrow_mut().remove(&effect_id)),
+			effect_fn: EFFECT_FUNCTIONS.with(|storage| {
+				storage
+					.borrow_mut()
+					.get_mut(&effect_id)
+					.and_then(Option::take)
+			}),
 		};
 		if let Some(ref mut f) = guard.effect_fn {
 			f();
@@ -395,7 +404,8 @@ impl Effect {
 
 		// Flush any pending cleanup from new_with_deps before tearing down
 		// runtime state, matching React's "cleanup runs on unmount" semantics.
-		if let Some(c) = self.cleanup_slot.borrow_mut().take() {
+		let cleanup = { self.cleanup_slot.borrow_mut().take() };
+		if let Some(c) = cleanup {
 			c();
 		}
 
@@ -403,9 +413,13 @@ impl Effect {
 		let _ = try_with_runtime(|rt| rt.remove_node(self.id));
 
 		// Remove from storage (ignore if TLS is destroyed)
+		let mut effect_fn = None;
 		let _ = EFFECT_FUNCTIONS.try_with(|storage| {
-			storage.borrow_mut().remove(&self.id);
+			let mut functions = storage.borrow_mut();
+			effect_fn = functions.get_mut(&self.id).and_then(Option::take);
+			functions.remove(&self.id);
 		});
+		drop(effect_fn);
 
 		// Remove timing entry so the RAII guard in execute_effect() knows not to reinsert
 		let _ = EFFECT_TIMING.try_with(|storage| {
@@ -832,6 +846,63 @@ mod tests {
 		// Assert — sequence should be: run, cleanup, run.
 		let recorded = log.borrow().clone();
 		assert_eq!(recorded, alloc::vec!["run", "cleanup", "run"]);
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn new_with_deps_cleanup_can_dispose_same_effect_without_reentrant_borrow() {
+		let s = Signal::new(0_i32);
+		let runs = Rc::new(RefCell::new(0_i32));
+		let effect_holder: Rc<RefCell<Option<Effect>>> = Rc::new(RefCell::new(None));
+		let runs_for_effect = runs.clone();
+		let holder_for_effect = effect_holder.clone();
+		let s_for_effect = s.clone();
+		let deps = crate::reactive::deps::Deps::from_signals(&[s.id()]);
+
+		let effect = Effect::new_with_deps(
+			move || {
+				let _ = s_for_effect.get();
+				*runs_for_effect.borrow_mut() += 1;
+				let holder_for_cleanup = holder_for_effect.clone();
+				Some(move || {
+					if let Some(effect) = holder_for_cleanup.borrow().as_ref() {
+						effect.dispose();
+					}
+				})
+			},
+			deps,
+		);
+		*effect_holder.borrow_mut() = Some(effect);
+
+		s.set(1);
+		with_runtime(|rt| rt.flush_updates());
+		assert_eq!(
+			*runs.borrow(),
+			2,
+			"Refs #5104: cleanup-triggered self-dispose must not panic before the rerun body"
+		);
+
+		s.set(2);
+		with_runtime(|rt| rt.flush_updates());
+		assert_eq!(
+			*runs.borrow(),
+			2,
+			"effect disposed during cleanup must not be reinserted"
+		);
+
+		let effect_to_drop = { effect_holder.borrow_mut().take() };
+		drop(effect_to_drop);
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn dispose_can_drop_nested_effect_function_without_reentrant_storage_borrow() {
+		let inner = Effect::new(|| {});
+		let outer = Effect::new(move || {
+			let _ = inner.id();
+		});
+
+		outer.dispose();
 	}
 
 	#[test]
