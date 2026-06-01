@@ -22,7 +22,7 @@
 
 use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
-use reinhardt_pages::reactive::with_runtime;
+use reinhardt_pages::reactive::{Signal, with_runtime};
 use reinhardt_urls::routers::ClientRouter;
 use wasm_bindgen_test::*;
 
@@ -50,6 +50,27 @@ fn page_b() -> Page {
 		.attr("id", "route-b")
 		.child("ROUTE-B-CONTENT")
 		.into_page()
+}
+
+fn page_with_reentrant_nested_reactive() -> Page {
+	let trigger = Signal::new(0_i32);
+	let trigger_for_outer = trigger.clone();
+
+	Page::reactive(move || {
+		let _ = trigger_for_outer.get();
+		let trigger_for_inner = trigger_for_outer.clone();
+
+		Page::reactive(move || {
+			if trigger_for_inner.get_untracked() == 0 {
+				trigger_for_inner.set(1);
+			}
+
+			PageElement::new("div")
+				.attr("id", "route-reentrant")
+				.child("ROUTE-REENTRANT-CONTENT")
+				.into_page()
+		})
+	})
 }
 
 fn install_app_root() -> web_sys::Element {
@@ -348,4 +369,32 @@ async fn client_launcher_handles_back_to_back_navigations() {
 			root.inner_html()
 		);
 	}
+}
+
+#[wasm_bindgen_test]
+async fn client_launcher_handles_reentrant_reactive_mount_during_navigation() {
+	let root = install_app_root();
+
+	ClientLauncher::new("#app")
+		.router_client(|| {
+			ClientRouter::new().route("root", "/", page_root).route(
+				"reentrant",
+				"/reentrant",
+				page_with_reentrant_nested_reactive,
+			)
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+
+	with_spa_router(|r| r.push("/reentrant")).expect("push /reentrant");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+
+	let html = root.inner_html();
+	assert!(
+		html.contains("ROUTE-REENTRANT-CONTENT"),
+		"expected reentrant route to render without RefCell reentry panic, got: {html}"
+	);
 }

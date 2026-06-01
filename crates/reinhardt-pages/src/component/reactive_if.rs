@@ -118,9 +118,14 @@ impl ReactiveIfNode {
 				*last = Some(new_condition);
 				drop(last);
 
-				// Remove old nodes
-				let mut nodes = current_nodes_clone.borrow_mut();
-				for node in nodes.drain(..) {
+				// Refs #5100: remove old nodes before mounting the replacement view. The
+				// mount path may synchronously run layout effects, so do not
+				// hold this RefCell borrow across `mount_before_marker`.
+				let old_nodes = {
+					let mut nodes = current_nodes_clone.borrow_mut();
+					nodes.drain(..).collect::<Vec<_>>()
+				};
+				for node in old_nodes {
 					if let Some(parent_node) = node.parent_node() {
 						let _ = parent_node.remove_child(&node);
 					}
@@ -135,7 +140,7 @@ impl ReactiveIfNode {
 
 				// Mount new nodes before the marker
 				let new_nodes = mount_before_marker(&marker_clone, view);
-				*nodes = new_nodes;
+				*current_nodes_clone.borrow_mut() = new_nodes;
 			},
 			EffectTiming::Layout, // Use Layout timing for synchronous DOM updates
 		);
@@ -205,9 +210,14 @@ impl ReactiveNode {
 				// Render the view (this tracks Signal dependencies)
 				let view = render();
 
-				// Remove old nodes
-				let mut nodes = current_nodes_clone.borrow_mut();
-				for node in nodes.drain(..) {
+				// Refs #5100: remove old nodes before mounting the replacement view. The
+				// mount path may synchronously run layout effects, so do not
+				// hold this RefCell borrow across `mount_before_marker`.
+				let old_nodes = {
+					let mut nodes = current_nodes_clone.borrow_mut();
+					nodes.drain(..).collect::<Vec<_>>()
+				};
+				for node in old_nodes {
 					if let Some(parent_node) = node.parent_node() {
 						let _ = parent_node.remove_child(&node);
 					}
@@ -215,7 +225,7 @@ impl ReactiveNode {
 
 				// Mount new nodes before the marker
 				let new_nodes = mount_before_marker(&marker_clone, view);
-				*nodes = new_nodes;
+				*current_nodes_clone.borrow_mut() = new_nodes;
 			},
 			EffectTiming::Layout, // Use Layout timing for synchronous DOM updates
 		);
