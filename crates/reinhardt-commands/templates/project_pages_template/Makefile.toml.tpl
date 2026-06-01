@@ -16,7 +16,7 @@ skip_core_tasks = true
 # Use local target directory for each example (independent from workspace)
 CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = ["CARGO_TARGET_DIR"] } }
 WASM_TARGET = "wasm32-unknown-unknown"
-WASM_BINDGEN_VERSION = "0.2.100"
+WASM_BINDGEN_VERSION = "0.2.122"
 
 # ============================================================================
 # Development Server
@@ -33,10 +33,29 @@ dependencies = ["wasm-build-dev"]
 # WASM Build
 # ============================================================================
 
+[tasks.wasm-bindgen-check]
+description = "Check wasm-bindgen-cli version"
+script = '''
+if ! command -v wasm-bindgen >/dev/null 2>&1; then
+	echo "❌ wasm-bindgen-cli not installed"
+	echo "Run: cargo install wasm-bindgen-cli --version ${WASM_BINDGEN_VERSION}"
+	exit 1
+fi
+
+ACTUAL_VERSION=$(wasm-bindgen --version | awk '{print $2}')
+if [ "$ACTUAL_VERSION" != "${WASM_BINDGEN_VERSION}" ]; then
+	echo "❌ wasm-bindgen-cli version mismatch"
+	echo "Rust dependencies use wasm-bindgen ${WASM_BINDGEN_VERSION}, but installed wasm-bindgen-cli is ${ACTUAL_VERSION}"
+	echo "Run: cargo install -f wasm-bindgen-cli --version ${WASM_BINDGEN_VERSION}"
+	exit 1
+fi
+'''
+
 [tasks.wasm-compile-dev]
 description = "Compile WASM binary (debug mode)"
 command = "cargo"
 args = ["build", "--target", "wasm32-unknown-unknown"]
+dependencies = ["wasm-bindgen-check"]
 
 [tasks.collectstatic-wasm]
 description = "Collect static files to dist/ for WASM frontend"
@@ -73,6 +92,7 @@ dependencies = ["wasm-finalize-dev"]
 description = "Compile WASM binary (release mode)"
 command = "cargo"
 args = ["build", "--target", "wasm32-unknown-unknown", "--release"]
+dependencies = ["wasm-bindgen-check"]
 
 [tasks.wasm-bindgen-release]
 description = "Generate WASM bindings (release mode)"
