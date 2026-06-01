@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.3...reinhardt-pages-ast@v0.2.0-rc.2) - 2026-06-01
+
+### Added
+
+- *(pages)* support keyed page list rendering
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-rc.30...reinhardt-pages-ast@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-pages-ast` as part of the
