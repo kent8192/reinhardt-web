@@ -292,7 +292,7 @@ A subtle point: under `cargo make dev`, the server is *not* serving from `static
 
 ## `index.html`: The SPA Shell
 
-`index.html` lives at the project root and is copied (verbatim) into the directory that the dev server serves at `/`. It is what the browser fetches when a user visits `http://127.0.0.1:8000/` for the first time. The file is longer than a textbook SPA shell because it also wires up CDN integrity hints, a pre-render theme detector, the UnoCSS configuration, and a `MutationObserver`-based theme-toggle handler — every piece below is loaded directly from `examples/examples-tutorial-basis/index.html`:
+`index.html` lives at the project root and is copied (verbatim) into the directory that the dev server serves at `/`. It is what the browser fetches when a user visits `http://127.0.0.1:8000/` for the first time. The file is longer than a textbook SPA shell because it also wires up CDN integrity hints, a pre-render theme detector, and the UnoCSS configuration — every piece below is loaded directly from `examples/examples-tutorial-basis/index.html`:
 
 ```html
 <!DOCTYPE html>
@@ -305,8 +305,8 @@ A subtle point: under `cargo make dev`, the server is *not* serving from `static
 
 	<!-- UnoCSS Reset (pinned + SRI) -->
 	<link rel="stylesheet"
-		href="https://cdn.jsdelivr.net/npm/@unocss/reset@66.0.0/tailwind.min.css"
-		integrity="sha384-LGhsJsqCgUoTJMa7Fmn8Q0Q5/3WY9D96e4lfXpNTzs54EqijDEpPD13nfjueItEK"
+		href="https://cdn.jsdelivr.net/npm/@unocss/reset@66.7.0/tailwind.min.css"
+		integrity="sha384-T4Gl/JcT72kX7H+XBooHT+j5VH/xPcLgHXROFmUj1HF77ctera3Pu1390b73is5o"
 		crossorigin="anonymous">
 
 	<!-- Hand-written base styles + fallback component CSS.
@@ -406,55 +406,9 @@ A subtle point: under `cargo make dev`, the server is *not* serving from `static
 
 	<!-- UnoCSS Runtime (pinned + SRI) -->
 	<script
-		src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.0.0"
-		integrity="sha384-LYmmhezFyzRAT4ivJD/xzz7PEZ3b+pHHgxsOuSVPG8wKScOK2Bx+itfNE+ziDDEv"
+		src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.7.0"
+		integrity="sha384-N01yk5TWd3fjp79erm4HVUYQXHk88RIDoYnTenU6JEnUSeIGyR37ZEcN1OQnG0U6"
 		crossorigin="anonymous"></script>
-
-	<!-- Theme toggle handler -->
-	<script>
-	function toggleTheme() {
-		var html = document.documentElement;
-		var current = html.getAttribute('data-theme');
-		var next = current === 'dark' ? 'light' : 'dark';
-		html.setAttribute('data-theme', next);
-		html.classList.toggle('dark', next === 'dark');
-		try {
-			localStorage.setItem('theme', next);
-		} catch (e) {
-			// Persisting the preference is best-effort; ignore storage
-			// failures (private mode, sandboxed iframe, disabled storage).
-		}
-	}
-
-	// Attach to any #theme-toggle-btn rendered by WASM via MutationObserver.
-	// The observer disconnects itself as soon as the button is found and
-	// wired up, so it does not keep reacting to unrelated DOM changes.
-	window.addEventListener('load', function() {
-		function tryAttach() {
-			var btn = document.getElementById('theme-toggle-btn');
-			if (btn && !btn.hasAttribute('data-theme-attached')) {
-				btn.setAttribute('data-theme-attached', 'true');
-				btn.addEventListener('click', toggleTheme);
-				return true;
-			}
-			return false;
-		}
-
-		// Button may already be present (SSR / fast WASM mount).
-		if (tryAttach()) {
-			return;
-		}
-
-		var observer = new MutationObserver(function() {
-			if (tryAttach()) {
-				observer.disconnect();
-			}
-		});
-		if (document.body) {
-			observer.observe(document.body, { childList: true, subtree: true });
-		}
-	});
-	</script>
 </head>
 <body>
 	<div id="root">
@@ -475,9 +429,9 @@ First, the `#root` `<div>` is where the SPA mounts. Recall from Part 3 that `src
 
 Second, there is no explicit `<script type="module">` here that imports the WASM bundle. The pages template's `ClientLauncher` is responsible for locating and instantiating `examples_tutorial_basis.js` and `examples_tutorial_basis_bg.wasm` from the same origin — the SPA shell does not need to hand-wire `init(wasmUrl)`. This is deliberate: the shell stays static while the framework controls how the bundle is loaded.
 
-Third, UnoCSS is delivered straight from a CDN but with the URL **pinned to `@66.0.0`** and protected by **Subresource Integrity (SRI)** hashes on both the reset stylesheet and the runtime script — `integrity="sha384-…"` + `crossorigin="anonymous"`. The browser refuses to apply or execute either resource if the bytes do not match, which keeps the SPA shell reproducible across visits even though the framework itself never bundles the CDN payload. The accompanying `window.__unocss` configuration pre-declares the `brand`, `surface`, `content`, `success`, `danger`, `warning`, and `border` colour tokens (most of which proxy through `var(--…)` CSS custom properties so light/dark mode flips in one place) plus a richer shortcut catalogue — `layout-container`, `btn-*`, `card`, `card-body`, `card-title`, `form-control`, `form-check`, `form-label`, `alert-*`, `nav-bar`, `spinner`, `text-muted`. Those shortcuts are exactly the class names the `page!` macros in `src/client/components/` reach for, so adding a new shortcut here is the quickest way to keep the markup terse without writing custom CSS files.
+Third, UnoCSS is delivered straight from a CDN but with the URL **pinned to `@66.7.0`** and protected by **Subresource Integrity (SRI)** hashes on both the reset stylesheet and the runtime script — `integrity="sha384-…"` + `crossorigin="anonymous"`. The browser refuses to apply or execute either resource if the bytes do not match, which keeps the SPA shell reproducible across visits even though the framework itself never bundles the CDN payload. The accompanying `window.__unocss` configuration pre-declares the `brand`, `surface`, `content`, `success`, `danger`, `warning`, and `border` colour tokens (most of which proxy through `var(--…)` CSS custom properties so light/dark mode flips in one place) plus a richer shortcut catalogue — `layout-container`, `btn-*`, `card`, `card-body`, `card-title`, `form-control`, `form-check`, `form-label`, `alert-*`, `nav-bar`, `spinner`, `text-muted`. Those shortcuts are exactly the class names the `page!` macros in `src/client/components/` reach for, so adding a new shortcut here is the quickest way to keep the markup terse without writing custom CSS files.
 
-Fourth, the shell preloads `/static/css/style.css` via `<link rel="stylesheet" href="/static/css/style.css">` *before* the blocking UnoCSS runtime script. That file lives at `static/css/style.css` in the example crate (defining the `--bg-primary`, `--text-primary`, `--brand-primary` … CSS custom properties referenced by the `surface-*` / `content-*` / `border` tokens above) and is what gives the first paint a fully-styled view even before the runtime script has had a chance to process the WASM-mounted DOM nodes. One caveat that the "What This Chapter Does Not Cover" section below makes explicit: the project-level `static/` directory is **not** registered with `collectstatic` in the example, so this preload resolves only because `cargo make dev`'s runserver falls back to the source tree — a real production deployment that serves `STATIC_ROOT` alone would return `404` for `/static/css/style.css` until you add an `AppStaticFilesConfig` for `static/`. A short inline `<script>` block higher up reads `localStorage.getItem('theme')` (falling back to `prefers-color-scheme`) and sets `data-theme` + the `dark` class on `<html>` *before* the first render, which is what avoids the flash-of-unstyled-content when the user has chosen dark mode. A second script block at the bottom installs a `MutationObserver` that wires a click handler onto whatever `#theme-toggle-btn` the WASM bundle eventually renders, then disconnects itself.
+Fourth, the shell preloads `/static/css/style.css` via `<link rel="stylesheet" href="/static/css/style.css">` *before* the blocking UnoCSS runtime script. That file lives at `static/css/style.css` in the example crate (defining the `--bg-primary`, `--text-primary`, `--brand-primary` … CSS custom properties referenced by the `surface-*` / `content-*` / `border` tokens above) and is what gives the first paint a fully-styled view even before the runtime script has had a chance to process the WASM-mounted DOM nodes. One caveat that the "What This Chapter Does Not Cover" section below makes explicit: the project-level `static/` directory is **not** registered with `collectstatic` in the example, so this preload resolves only because `cargo make dev`'s runserver falls back to the source tree — a real production deployment that serves `STATIC_ROOT` alone would return `404` for `/static/css/style.css` until you add an `AppStaticFilesConfig` for `static/`. A short inline `<script>` block higher up reads `localStorage.getItem('theme')` (falling back to `prefers-color-scheme`) and sets `data-theme` + the `dark` class on `<html>` *before* the first render, which is what avoids the flash-of-unstyled-content when the user has chosen dark mode.
 
 ## The `msw` Feature
 
