@@ -90,7 +90,7 @@ pub fn polls_index() -> Page {
 				a {
 					href: new_question_href,
 					class: "btn-primary",
-					"New Question"
+					"Create new poll"
 				}
 			}
 			{
