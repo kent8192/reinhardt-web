@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.3...reinhardt-test@v0.2.0-rc.2) - 2026-06-01
+
+### Added
+
+- *(test)* [**breaking**] gate MockFetch and TestUser behind cfg(any()) (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(pages)* delete deprecated mock_server_fn and use_action_state APIs
+
+### Fixed
+
+- delete gated items instead of cfg-gating, update callers
+- *(test)* restore missing pub use prefix in wasm mock re-export
+- *(ci)* recover develop release-plz prerelease
+- *(admin)* compile admin wasm browser tests
+
+### Styling
+
+- apply formatter fixes across workspace
+
 ### Removed
 
 #### BREAKING CHANGES
