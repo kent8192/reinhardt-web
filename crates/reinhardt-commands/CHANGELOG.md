@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.3...reinhardt-commands@v0.2.0-rc.2) - 2026-06-01
+
+### Added
+
+- *(commands)* add migrate-with-target direction detection
+- *(commands)* pass get_settings() from generated manage.rs templates
+
+### Changed
+
+- *(commands)* [**breaking**] remove workspace templates and consolidate onto non-workspace templates
+- *(commands)* replace loose contains() assertions with exact-line checks
+- *(commands)* simplify assert_eq!(expr, bool) to assert!(expr)
+
+### Documentation
+
+- *(commands)* document migrate-with-target semantics
+- *(commands)* clarify APP_LABEL/MIGRATION_NAME dependency
+- *(commands)* make execute_from_command_line_with_settings doc example compile
+
+### Fixed
+
+- address CodeRabbit review comments
+- address follow-up CodeRabbit comments
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(commands)* use project_crate_name for with_nav import in workspace pages template
+- *(commands)* add parent project crate dependency to workspace app Cargo.toml
+- *(ci)* update WASM consumer fixture for URL routing simplification
+- *(commands)* compile migrate-with-target target handling
+- *(commands)* honor --fake and --plan on migrate-with-target paths
+- *(commands)* fail fast on recorder errors in migrate --plan
+- *(commands)* resolve management-command database URL from project settings
+- *(commands)* read [core.databases.default] in the settings disk loader
+- *(commands)* update pages template CDN
+- *(commands)* align wasm bindgen template
+
+### Maintenance
+
+- forward merge main v0.1.1 changes into develop 0.2.0
+
+### Other
+
+- resolve conflicts with develop/0.2.0
+
+### Styling
+
+- apply formatter fixes across workspace
+
+### Testing
+
+- *(commands)* drop stale InstalledApp import assertions in e2e_pages
+- *(commands)* add migrate-with-target E2E coverage
+- *(commands)* cover migrate --migrations-dir flag parsing
+- *(commands)* drop needless #[allow(unreachable_patterns)] in migrate parse test
+- *(commands)* cover settings-based database URL resolution
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.30...reinhardt-commands@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-commands` as part of the

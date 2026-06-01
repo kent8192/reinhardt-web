@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit-macros@v0.1.3...reinhardt-testkit-macros@v0.2.0-rc.2) - 2026-06-01
+
+### Documentation
+
+- *(di)* update public docs to reflect per-context registry isolation
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit-macros@v0.1.0-rc.30...reinhardt-testkit-macros@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-testkit-macros` as part of the
