@@ -151,31 +151,7 @@ pub fn polls_index() -> Page {
 	})(load_questions, new_question_href)
 }
 
-/// Poll detail page - Show question and voting form
-///
-/// Displays a question with its choices and allows the user to vote.
-/// Uses form! macro with Dynamic ChoiceField for declarative form handling.
-/// CSRF protection is automatically injected for POST method.
-pub fn polls_detail(question_id: i64) -> Page {
-	let qid = question_id;
-
-	// Load the question detail once on mount.
-	let load_detail = use_resource(
-		move || async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
-		(),
-	);
-
-	// Resolve the viewer so the render branch can hide owner-only controls
-	// (Edit / Delete / Add choice) for non-authors and unauthenticated
-	// viewers (issue #4703). `current_user` returns `Ok(None)` when the
-	// session has no authenticated user, so any non-`Some(Some(u))` shape
-	// disables the controls. Server-side `require_question_author` still
-	// rejects unauthorized mutations as defense in depth.
-	let load_current_user = use_resource(
-		|| async move { current_user().await.map_err(|e| e.to_string()) },
-		(),
-	);
-
+fn build_voting_form_page(qid: i64, choices: &[ChoiceInfo]) -> Page {
 	// Voting form via the `form!` macro.
 	//
 	// - `server_fn: submit_vote` binds the form to the server function whose
@@ -259,35 +235,43 @@ pub fn polls_detail(question_id: i64) -> Page {
 		}
 	};
 
-	// Bridge load_detail results to the form's choices, re-running whenever the
-	// `load_detail` resource state changes.
-	{
-		let load_detail_for_effect = load_detail.clone();
-		let load_detail_for_deps = load_detail.clone();
-		let voting_form_for_effect = voting_form.clone();
-		use_effect(
-			move || {
-				if let ResourceState::Success((_, choices)) = load_detail_for_effect.get() {
-					let choice_options: Vec<(String, String)> = choices
-						.iter()
-						.map(|c| (c.id.to_string(), c.choice_text.clone()))
-						.collect();
-					voting_form_for_effect
-						.choice_id_choices()
-						.set(choice_options);
-				}
-				None::<fn()>
-			},
-			(load_detail_for_deps,),
-		);
-	}
+	let choice_options: Vec<(String, String)> = choices
+		.iter()
+		.map(|c| (c.id.to_string(), c.choice_text.clone()))
+		.collect();
+	voting_form.choice_id_choices().set(choice_options);
 
-	let voting_form_page = voting_form.into_page();
+	voting_form.into_page()
+}
+
+/// Poll detail page - Show question and voting form
+///
+/// Displays a question with its choices and allows the user to vote.
+/// Uses form! macro with Dynamic ChoiceField for declarative form handling.
+/// CSRF protection is automatically injected for POST method.
+pub fn polls_detail(question_id: i64) -> Page {
+	let qid = question_id;
+
+	// Load the question detail once on mount.
+	let load_detail = use_resource(
+		move || async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
+		(),
+	);
+
+	// Resolve the viewer so the render branch can hide owner-only controls
+	// (Edit / Delete / Add choice) for non-authors and unauthenticated
+	// viewers (issue #4703). `current_user` returns `Ok(None)` when the
+	// session has no authenticated user, so any non-`Some(Some(u))` shape
+	// disables the controls. Server-side `require_question_author` still
+	// rejects unauthorized mutations as defense in depth.
+	let load_current_user = use_resource(
+		|| async move { current_user().await.map_err(|e| e.to_string()) },
+		(),
+	);
 
 	// Render reactively in the canonical shape (see module-level docs):
 	// outer `div` + single `watch{}` block + the `Action<..>` signal and
-	// the route id flow into `page!` as typed parameters. The voting form
-	// is captured by the watch closure's implicit `move`.
+	// the route id flow into `page!` as typed parameters.
 	//
 	// The `load_detail_signal.result().is_some()` branch renders either the
 	// voting form or an empty-state message, depending on whether the
@@ -296,7 +280,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// `RadioSelect` group for choiceless questions, so any submit emitted
 	// `choice_id=""` and `submit_vote` rejected the request with the
 	// runtime `Invalid choice_id` application error.
-	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>, load_current_user: Resource<Option<UserInfo>, String>, voting_form_page: Page, question_id: i64| {
+	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>, load_current_user: Resource<Option<UserInfo>, String>, question_id: i64| {
 		div { {
 			match load_detail.get() {
 				ResourceState::Loading => page!(|| {
@@ -348,7 +332,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 							}
 						})()
 					} else {
-						voting_form_page.clone()
+						self::build_voting_form_page(question_id, &choices)
 					};
 					page!(|q: QuestionInfo, is_author: bool, choices_view: Page, question_id: i64| {
 						div {
@@ -395,12 +379,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 				}
 			}
 		} }
-	})(
-		load_detail,
-		load_current_user,
-		voting_form_page,
-		question_id,
-	)
+	})(load_detail, load_current_user, question_id)
 }
 
 /// Poll results page - Show voting results

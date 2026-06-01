@@ -281,7 +281,7 @@ pub mod streaming;
 pub mod tasks;
 #[cfg(all(feature = "templates", native))]
 pub mod template;
-#[cfg(all(feature = "test", native))]
+#[cfg(feature = "test")]
 pub mod test;
 #[cfg(native)]
 pub mod urls;

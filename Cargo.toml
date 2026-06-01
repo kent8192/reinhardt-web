@@ -287,6 +287,7 @@ middleware-auth-jwt = [
 # WASM-compatible dependencies (always included)
 reinhardt-pages = { workspace = true, optional = true }
 reinhardt-urls = { workspace = true }
+reinhardt-test = { workspace = true, optional = true }
 
 reinhardt-core = {workspace = true, features = ["types"]}
 
@@ -315,7 +316,6 @@ reinhardt-db = { workspace = true, optional = true }
 
 # External crates re-exported for macros
 inventory = { workspace = true, optional = true }
-reinhardt-test = { workspace = true, optional = true }
 reinhardt-rest = { workspace = true, optional = true }
 reinhardt-auth = { workspace = true, optional = true }
 

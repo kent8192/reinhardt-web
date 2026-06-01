@@ -94,11 +94,8 @@ default = ["with-reinhardt", "client-router"]
 client-router = []
 with-reinhardt = []
 # `msw` is forwarded to the facade so `#[server_fn]` generates the
-# `MockableServerFn` markers consumed by `tests/wasm/polls_mock_test.rs`.
-# This feature only resolves once the framework `msw` facade flag ships
-# (tracked in #4287 / PR #4288); until then, leaving it absent makes the
-# typed MSW test target skip cleanly via its `required-features = ["msw"]`.
-msw = []
+# `MockableServerFn` markers consumed by the WASM mock test targets.
+msw = ["reinhardt/msw"]
 
 [[test]]
 name = "integration"

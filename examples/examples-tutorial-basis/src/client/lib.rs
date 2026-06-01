@@ -7,7 +7,7 @@
 use reinhardt::pages::ClientLauncher;
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen(start)]
+#[cfg_attr(not(feature = "msw"), wasm_bindgen(start))]
 pub fn main() -> Result<(), JsValue> {
 	ClientLauncher::new("#root")
 		.register_routes_from_inventory()
