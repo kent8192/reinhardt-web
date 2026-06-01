@@ -28,6 +28,7 @@ The example exposes the same business logic through two layers:
 
 - **Server-rendered REST endpoints** in `src/apps/polls/views.rs` — `#[get]` / `#[post]` handlers that take `Path<i64>` / `Json<VoteRequest>` and return JSON. Mounted by `apps/polls/urls/server_urls.rs::server_url_patterns()`.
 - **Typed RPC server functions** in `src/apps/<app>/server_fn.rs` — `#[server_fn]` functions (`get_questions`, `get_question_detail`, `vote`, `create_question`, …, plus `login` / `logout` / `register` / `current_user` for the `users` app). The macro generates a typed client stub for WASM and a server-side handler for native; dependencies are resolved positionally with `#[inject]` (`DatabaseConnection`, `SessionData`, …).
+- **Dynamic WASM forms** in `src/apps/polls/client/components.rs` — the poll detail route builds its `RadioSelect` voting form from the choices returned by `get_question_detail`, so each loaded choice becomes a submitted `choice_id` option.
 
 ### URL Structure
 

@@ -2,7 +2,7 @@
 //!
 //! These functions provide the server-side API for the polling application.
 
-use crate::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
+use crate::shared::types::{ChoiceInfo, QuestionInfo};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
 // Server-only imports. Each addition here MUST also be wired in `[cfg(native)]`
@@ -127,7 +127,7 @@ pub async fn get_question_results(
 /// Increments the vote count for the selected choice.
 #[server_fn]
 pub async fn vote(
-	request: VoteRequest,
+	request: crate::shared::types::VoteRequest,
 	#[inject] db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	vote_internal(request, db).await
@@ -157,7 +157,7 @@ pub async fn submit_vote(
 		.parse()
 		.map_err(|_| ServerFnError::application("Invalid choice_id"))?;
 
-	let request = VoteRequest {
+	let request = crate::shared::types::VoteRequest {
 		question_id,
 		choice_id,
 	};
@@ -169,7 +169,7 @@ pub async fn submit_vote(
 /// Internal vote implementation (shared between vote and submit_vote)
 #[cfg(native)]
 async fn vote_internal(
-	request: VoteRequest,
+	request: crate::shared::types::VoteRequest,
 	db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	use crate::apps::polls::models::Choice;

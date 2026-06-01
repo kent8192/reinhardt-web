@@ -19,7 +19,7 @@
 //! `msw` feature so the test target is skipped on toolchains without the
 //! framework MSW facade (tracked in upstream #4287 / PR #4288).
 
-#![cfg(wasm)]
+#![cfg(all(target_family = "wasm", target_os = "unknown"))]
 
 use wasm_bindgen_test::*;
 
@@ -45,7 +45,7 @@ fn mock_user() -> UserInfo {
 	UserInfo {
 		id: 1,
 		username: "alice".to_string(),
-		email: "alice@example.com".to_string(),
+		is_active: true,
 	}
 }
 
@@ -64,14 +64,10 @@ fn test_login_form_renders() {
 #[wasm_bindgen_test]
 fn test_login_form_has_fields() {
 	let view = login_form();
-	if let Page::Element(element) = view {
-		let html = element.to_html();
-		assert!(html.contains("Username"), "expected Username label");
-		assert!(html.contains("Password"), "expected Password label");
-		assert!(html.contains("Sign in"), "expected submit affordance");
-	} else {
-		panic!("Expected Page::Element");
-	}
+	let html = view.render_to_string();
+	assert!(html.contains("Username"), "expected Username label");
+	assert!(html.contains("Password"), "expected Password label");
+	assert!(html.contains("Sign in"), "expected submit affordance");
 }
 
 // ============================================================================
@@ -89,21 +85,17 @@ fn test_signup_form_renders() {
 #[wasm_bindgen_test]
 fn test_signup_form_has_required_fields() {
 	let view = signup_form();
-	if let Page::Element(element) = view {
-		let html = element.to_html();
-		assert!(html.contains("Username"), "expected Username label");
-		assert!(html.contains("Password"), "expected Password label");
-		assert!(
-			html.contains("Confirm password"),
-			"expected password confirmation label"
-		);
-		assert!(
-			html.contains("Create account"),
-			"expected create-account submit affordance"
-		);
-	} else {
-		panic!("Expected Page::Element");
-	}
+	let html = view.render_to_string();
+	assert!(html.contains("Username"), "expected Username label");
+	assert!(html.contains("Password"), "expected Password label");
+	assert!(
+		html.contains("Confirm password"),
+		"expected password confirmation label"
+	);
+	assert!(
+		html.contains("Create account"),
+		"expected create-account submit affordance"
+	);
 }
 
 // ============================================================================
@@ -121,15 +113,11 @@ fn test_logout_form_renders() {
 #[wasm_bindgen_test]
 fn test_logout_form_has_submit() {
 	let view = logout_form();
-	if let Page::Element(element) = view {
-		let html = element.to_html();
-		assert!(
-			html.contains("Sign out"),
-			"expected sign-out submit affordance"
-		);
-	} else {
-		panic!("Expected Page::Element");
-	}
+	let html = view.render_to_string();
+	assert!(
+		html.contains("Sign out"),
+		"expected sign-out submit affordance"
+	);
 }
 
 // ============================================================================
@@ -269,7 +257,10 @@ async fn test_current_user_returns_authenticated_user() {
 
 	let user = current_user().await.expect("current_user should succeed");
 
-	assert_eq!(user, Some(mocked));
+	let user = user.expect("authenticated session should return a user");
+	assert_eq!(user.id, mocked.id);
+	assert_eq!(user.username, mocked.username);
+	assert_eq!(user.is_active, mocked.is_active);
 	worker
 		.calls_to_server_fn::<current_user::marker>()
 		.assert_called();
@@ -339,5 +330,7 @@ fn test_user_info_round_trip() {
 	let original = mock_user();
 	let json = serde_json::to_string(&original).expect("UserInfo should serialize");
 	let parsed: UserInfo = serde_json::from_str(&json).expect("UserInfo should deserialize");
-	assert_eq!(parsed, original);
+	assert_eq!(parsed.id, original.id);
+	assert_eq!(parsed.username, original.username);
+	assert_eq!(parsed.is_active, original.is_active);
 }

@@ -194,7 +194,7 @@ impl UserEvent {
 	/// * `element` - The element to blur
 	pub fn blur(element: &Element) {
 		if let Some(html_element) = element.dyn_ref::<web_sys::HtmlElement>() {
-			html_element.blur();
+			let _ = html_element.blur();
 		}
 		fire_event::blur(element);
 	}
@@ -403,10 +403,10 @@ pub mod fire_event {
 
 	/// Fire a mousedown event with a specific button.
 	pub fn mouse_down_button(element: &Element, button: i16) {
-		let mut init = MouseEventInit::new();
-		init.bubbles(true);
-		init.cancelable(true);
-		init.button(button);
+		let init = MouseEventInit::new();
+		init.set_bubbles(true);
+		init.set_cancelable(true);
+		init.set_button(button);
 		let event = MouseEvent::new_with_mouse_event_init_dict("mousedown", &init).unwrap();
 		dispatch(element, &event);
 	}
@@ -418,10 +418,10 @@ pub mod fire_event {
 
 	/// Fire a mouseup event with a specific button.
 	pub fn mouse_up_button(element: &Element, button: i16) {
-		let mut init = MouseEventInit::new();
-		init.bubbles(true);
-		init.cancelable(true);
-		init.button(button);
+		let init = MouseEventInit::new();
+		init.set_bubbles(true);
+		init.set_cancelable(true);
+		init.set_button(button);
 		let event = MouseEvent::new_with_mouse_event_init_dict("mouseup", &init).unwrap();
 		dispatch(element, &event);
 	}
@@ -452,9 +452,9 @@ pub mod fire_event {
 
 	/// Fire a focus event.
 	pub fn focus(element: &Element) {
-		let mut init = FocusEventInit::new();
-		init.bubbles(false);
-		init.cancelable(false);
+		let init = FocusEventInit::new();
+		init.set_bubbles(false);
+		init.set_cancelable(false);
 		let event = FocusEvent::new_with_focus_event_init_dict("focus", &init).unwrap();
 		dispatch(element, &event);
 	}
@@ -466,20 +466,20 @@ pub mod fire_event {
 
 	/// Fire a blur event.
 	pub fn blur(element: &Element) {
-		let mut init = FocusEventInit::new();
-		init.bubbles(false);
-		init.cancelable(false);
+		let init = FocusEventInit::new();
+		init.set_bubbles(false);
+		init.set_cancelable(false);
 		let event = FocusEvent::new_with_focus_event_init_dict("blur", &init).unwrap();
 		dispatch(element, &event);
 	}
 
 	/// Fire an input event.
 	pub fn input(element: &Element, value: &str) {
-		let mut init = InputEventInit::new();
-		init.bubbles(true);
-		init.cancelable(false);
-		init.data(Some(value));
-		init.input_type("insertText");
+		let init = InputEventInit::new();
+		init.set_bubbles(true);
+		init.set_cancelable(false);
+		init.set_data(Some(value));
+		init.set_input_type("insertText");
 		let event = InputEvent::new_with_event_init_dict("input", &init).unwrap();
 		dispatch(element, &event);
 	}
@@ -491,9 +491,9 @@ pub mod fire_event {
 
 	/// Fire a change event.
 	pub fn change(element: &Element) {
-		let mut init = EventInit::new();
-		init.bubbles(true);
-		init.cancelable(false);
+		let init = EventInit::new();
+		init.set_bubbles(true);
+		init.set_cancelable(false);
 		let event = Event::new_with_event_init_dict("change", &init).unwrap();
 		dispatch(element, &event);
 	}
@@ -523,20 +523,20 @@ pub mod fire_event {
 
 	/// Fire a submit event on a form.
 	pub fn submit(form: &HtmlFormElement) {
-		let mut init = EventInit::new();
-		init.bubbles(true);
-		init.cancelable(true);
+		let init = EventInit::new();
+		init.set_bubbles(true);
+		init.set_cancelable(true);
 		let event = Event::new_with_event_init_dict("submit", &init).unwrap();
 		let _ = form.dispatch_event(&event);
 	}
 
 	/// Fire a custom event.
 	pub fn custom(element: &Element, event_type: &str, detail: Option<&wasm_bindgen::JsValue>) {
-		let mut init = CustomEventInit::new();
-		init.bubbles(true);
-		init.cancelable(true);
+		let init = CustomEventInit::new();
+		init.set_bubbles(true);
+		init.set_cancelable(true);
 		if let Some(d) = detail {
-			init.detail(d);
+			init.set_detail(d);
 		}
 		let event = CustomEvent::new_with_event_init_dict(event_type, &init).unwrap();
 		dispatch(element, &event);
@@ -545,10 +545,10 @@ pub mod fire_event {
 	// Helper functions
 
 	fn create_mouse_event(event_type: &str, bubbles: bool, cancelable: bool) -> MouseEvent {
-		let mut init = MouseEventInit::new();
-		init.bubbles(bubbles);
-		init.cancelable(cancelable);
-		init.button(0);
+		let init = MouseEventInit::new();
+		init.set_bubbles(bubbles);
+		init.set_cancelable(cancelable);
+		init.set_button(0);
 		MouseEvent::new_with_mouse_event_init_dict(event_type, &init).unwrap()
 	}
 
@@ -557,15 +557,15 @@ pub mod fire_event {
 		key: &str,
 		modifiers: KeyModifiers,
 	) -> KeyboardEvent {
-		let mut init = KeyboardEventInit::new();
-		init.bubbles(true);
-		init.cancelable(true);
-		init.key(key);
-		init.code(&key_to_code(key));
-		init.ctrl_key(modifiers.ctrl);
-		init.shift_key(modifiers.shift);
-		init.alt_key(modifiers.alt);
-		init.meta_key(modifiers.meta);
+		let init = KeyboardEventInit::new();
+		init.set_bubbles(true);
+		init.set_cancelable(true);
+		init.set_key(key);
+		init.set_code(&key_to_code(key));
+		init.set_ctrl_key(modifiers.ctrl);
+		init.set_shift_key(modifiers.shift);
+		init.set_alt_key(modifiers.alt);
+		init.set_meta_key(modifiers.meta);
 		KeyboardEvent::new_with_keyboard_event_init_dict(event_type, &init).unwrap()
 	}
 

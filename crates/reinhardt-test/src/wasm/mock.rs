@@ -24,8 +24,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use wasm_bindgen::prelude::*;
-
 // Re-export server function mocking from reinhardt-pages
 pub use reinhardt_pages::testing::{
 	MockResponse, assert_server_fn_call_count, assert_server_fn_called,
