@@ -474,7 +474,7 @@ impl ClientLauncher {
 impl ClientLauncher {
 	/// Render the current route into the given root element.
 	///
-	/// Performs `Router::render_current` -> `cleanup_reactive_nodes` ->
+	/// Performs `cleanup_reactive_nodes` -> `Router::render_current` ->
 	/// clears `innerHTML` -> `view.mount`. Used by `launch()` for both
 	/// the initial mount (called inline in Phase B) and every
 	/// subsequent re-mount (called from a `Router::on_navigate`
@@ -483,8 +483,13 @@ impl ClientLauncher {
 	/// Refs #4101.
 	fn render_and_mount(root_el: &web_sys::Element) -> Result<(), crate::component::MountError> {
 		RENDER_COUNT.with(|c| c.set(c.get() + 1));
-		let view = with_spa_router(|r| r.render_current());
+		// Refs #5104: tear down the previous route's reactive graph before
+		// constructing the next route. Route construction can create forms,
+		// resources, and reactive blocks that synchronously touch signals; if
+		// stale route effects are still alive, those signal notifications can
+		// re-enter the runtime and abort the navigation before DOM remount.
 		crate::component::cleanup_reactive_nodes();
+		let view = with_spa_router(|r| r.render_current());
 		root_el.set_inner_html("");
 		let wrapper = crate::dom::Element::new(root_el.clone());
 		view.mount(&wrapper)
@@ -520,7 +525,7 @@ impl ClientLauncher {
 	///    `document` when `intercept_links` is `true` (the default).
 	///
 	/// 2. **Phase B — Initial mount.** Inline (no `Effect`):
-	///    `Router::render_current()` -> `cleanup_reactive_nodes()` ->
+	///    `cleanup_reactive_nodes()` -> `Router::render_current()` ->
 	///    clears `innerHTML` -> `view.mount()`. On mount failure
 	///    `launch()` returns `Err` and Phase C is skipped.
 	///

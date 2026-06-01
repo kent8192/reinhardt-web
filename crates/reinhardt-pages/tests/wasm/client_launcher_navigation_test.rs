@@ -24,6 +24,7 @@ use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
 use reinhardt_pages::reactive::{Signal, with_runtime};
 use reinhardt_urls::routers::ClientRouter;
+use wasm_bindgen::JsCast;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -42,6 +43,19 @@ fn page_a() -> Page {
 	PageElement::new("div")
 		.attr("id", "route-a")
 		.child("ROUTE-A-CONTENT")
+		.into_page()
+}
+
+fn page_with_anchor_to_b() -> Page {
+	PageElement::new("div")
+		.attr("id", "route-a")
+		.child("ROUTE-A-CONTENT")
+		.child(
+			PageElement::new("a")
+				.attr("id", "link-to-b")
+				.attr("href", "/b")
+				.child("Go to B"),
+		)
 		.into_page()
 }
 
@@ -142,6 +156,58 @@ async fn client_launcher_re_renders_on_router_push() {
 	assert!(
 		!html_after_b.contains("ROUTE-A-CONTENT"),
 		"expected /a view absent after push('/b'), got: {html_after_b}"
+	);
+}
+
+#[wasm_bindgen_test]
+async fn client_launcher_re_renders_after_intercepted_anchor_click() {
+	let root = install_app_root();
+
+	ClientLauncher::new("#app")
+		.router_client(|| {
+			ClientRouter::new()
+				.route("root", "/", page_root)
+				.route("a", "/a", page_with_anchor_to_b)
+				.route("b", "/b", page_b)
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+
+	with_spa_router(|r| r.push("/a")).expect("push /a");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+	assert!(
+		root.inner_html().contains("ROUTE-A-CONTENT"),
+		"setup precondition: expected /a before clicking link, got: {}",
+		root.inner_html()
+	);
+
+	let document = web_sys::window().unwrap().document().unwrap();
+	let anchor: web_sys::HtmlElement = document
+		.get_element_by_id("link-to-b")
+		.expect("link-to-b exists")
+		.dyn_into()
+		.expect("link-to-b is HtmlElement");
+	anchor.click();
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+
+	let path = web_sys::window()
+		.unwrap()
+		.location()
+		.pathname()
+		.expect("location pathname");
+	let html_after_click = root.inner_html();
+	assert_eq!(path, "/b");
+	assert!(
+		html_after_click.contains("ROUTE-B-CONTENT"),
+		"Refs #5104: intercepted anchor click changed the URL but did not rerender /b, got: {html_after_click}"
+	);
+	assert!(
+		!html_after_click.contains("ROUTE-A-CONTENT"),
+		"Refs #5104: previous /a view should be gone after anchor navigation, got: {html_after_click}"
 	);
 }
 
