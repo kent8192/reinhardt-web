@@ -26,7 +26,7 @@ serde_json = "1.0"
 inventory = "0.3"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2"
+wasm-bindgen = "=0.2.122"
 web-sys = { version = "0.3", features = [
 	"Window",
 	"Document",

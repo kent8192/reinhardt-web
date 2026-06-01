@@ -638,23 +638,69 @@ pub fn avatar_sized(url: Option<&str>, alt: &str, size: AvatarSize) -> Page {
 /// Theme toggle button component
 ///
 /// Displays a button to toggle between light and dark mode.
-/// Uses JavaScript to toggle the theme and persist to localStorage.
-/// The click event is attached via JavaScript in index.html.
+/// Uses a Pages click handler to toggle the theme and persist to localStorage.
 pub fn theme_toggle() -> Page {
-	page!(|| {
-		button {
-			class: "theme-toggle",
-			type: "button",
-			id: "theme-toggle-btn",
-			aria_label: "Toggle theme",
-			{
-				icons::sun_icon()
+	#[cfg(wasm)]
+	{
+		page!(|| {
+			button {
+				class: "theme-toggle",
+				type: "button",
+				id: "theme-toggle-btn",
+				aria_label: "Toggle theme",
+				@click: move |_event| {
+					toggle_theme();
+				},
+				{
+					icons::sun_icon()
+				}
+				{
+					icons::moon_icon()
+				}
 			}
-			{
-				icons::moon_icon()
+		})()
+	}
+	#[cfg(native)]
+	{
+		page!(|| {
+			button {
+				class: "theme-toggle",
+				type: "button",
+				id: "theme-toggle-btn",
+				aria_label: "Toggle theme",
+				{
+					icons::sun_icon()
+				}
+				{
+					icons::moon_icon()
+				}
 			}
-		}
-	})()
+		})()
+	}
+}
+
+#[cfg(wasm)]
+fn toggle_theme() {
+	let Some(window) = web_sys::window() else {
+		return;
+	};
+	let Some(document) = window.document() else {
+		return;
+	};
+	let Some(html) = document.document_element() else {
+		return;
+	};
+
+	let current = html
+		.get_attribute("data-theme")
+		.unwrap_or_else(|| "light".to_string());
+	let next = if current == "dark" { "light" } else { "dark" };
+
+	let _ = html.set_attribute("data-theme", next);
+	let _ = html.class_list().toggle_with_force("dark", next == "dark");
+	if let Ok(Some(storage)) = window.local_storage() {
+		let _ = storage.set_item("theme", next);
+	}
 }
 /// Empty placeholder component
 ///

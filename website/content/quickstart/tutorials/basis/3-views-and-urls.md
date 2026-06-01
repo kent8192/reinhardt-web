@@ -1642,8 +1642,8 @@ worth seeing once in full:
 
 	<!-- UnoCSS Reset (pinned + SRI) -->
 	<link rel="stylesheet"
-		href="https://cdn.jsdelivr.net/npm/@unocss/reset@66.0.0/tailwind.min.css"
-		integrity="sha384-LGhsJsqCgUoTJMa7Fmn8Q0Q5/3WY9D96e4lfXpNTzs54EqijDEpPD13nfjueItEK"
+		href="https://cdn.jsdelivr.net/npm/@unocss/reset@66.7.0/tailwind.min.css"
+		integrity="sha384-T4Gl/JcT72kX7H+XBooHT+j5VH/xPcLgHXROFmUj1HF77ctera3Pu1390b73is5o"
 		crossorigin="anonymous">
 
 	<!-- Hand-written base styles + fallback component CSS.
@@ -1743,55 +1743,9 @@ worth seeing once in full:
 
 	<!-- UnoCSS Runtime (pinned + SRI) -->
 	<script
-		src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.0.0"
-		integrity="sha384-LYmmhezFyzRAT4ivJD/xzz7PEZ3b+pHHgxsOuSVPG8wKScOK2Bx+itfNE+ziDDEv"
+		src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.7.0"
+		integrity="sha384-N01yk5TWd3fjp79erm4HVUYQXHk88RIDoYnTenU6JEnUSeIGyR37ZEcN1OQnG0U6"
 		crossorigin="anonymous"></script>
-
-	<!-- Theme toggle handler -->
-	<script>
-	function toggleTheme() {
-		var html = document.documentElement;
-		var current = html.getAttribute('data-theme');
-		var next = current === 'dark' ? 'light' : 'dark';
-		html.setAttribute('data-theme', next);
-		html.classList.toggle('dark', next === 'dark');
-		try {
-			localStorage.setItem('theme', next);
-		} catch (e) {
-			// Persisting the preference is best-effort; ignore storage
-			// failures (private mode, sandboxed iframe, disabled storage).
-		}
-	}
-
-	// Attach to any #theme-toggle-btn rendered by WASM via MutationObserver.
-	// The observer disconnects itself as soon as the button is found and
-	// wired up, so it does not keep reacting to unrelated DOM changes.
-	window.addEventListener('load', function() {
-		function tryAttach() {
-			var btn = document.getElementById('theme-toggle-btn');
-			if (btn && !btn.hasAttribute('data-theme-attached')) {
-				btn.setAttribute('data-theme-attached', 'true');
-				btn.addEventListener('click', toggleTheme);
-				return true;
-			}
-			return false;
-		}
-
-		// Button may already be present (SSR / fast WASM mount).
-		if (tryAttach()) {
-			return;
-		}
-
-		var observer = new MutationObserver(function() {
-			if (tryAttach()) {
-				observer.disconnect();
-			}
-		});
-		if (document.body) {
-			observer.observe(document.body, { childList: true, subtree: true });
-		}
-	});
-	</script>
 </head>
 <body>
 	<div id="root">

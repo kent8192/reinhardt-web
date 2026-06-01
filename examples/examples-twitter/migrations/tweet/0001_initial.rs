@@ -1,6 +1,6 @@
 use reinhardt::db::migrations::FieldType;
 use reinhardt::db::migrations::prelude::*;
-pub fn migration() -> Migration {
+pub(super) fn migration() -> Migration {
 	Migration {
 		app_label: "tweet".to_string(),
 		name: "0001_initial".to_string(),

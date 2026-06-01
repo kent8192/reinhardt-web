@@ -76,14 +76,12 @@ pub fn login_form() -> Page {
 							page!(|is_loading: bool| {
 								button {
 									type: "submit",
-									class: if is_loading {
-										"btn-primary w-full opacity-50 cursor-not-allowed"
-									} else {
-										"btn-primary w-full"
-									},
+									class: if is_loading { "btn-primary w-full opacity-50 cursor-not-allowed" } else { "btn-primary w-full" },
 									disabled: is_loading,
 									form: "login-form",
-									{ if is_loading { "Signing in..." } else { "Sign in" } }
+									{
+										if is_loading { "Signing in..." } else { "Sign in" }
+									}
 								}
 							})(is_loading)
 						}
@@ -248,14 +246,12 @@ pub fn signup_form() -> Page {
 							page!(|is_loading: bool| {
 								button {
 									type: "submit",
-									class: if is_loading {
-										"btn-primary w-full opacity-50 cursor-not-allowed"
-									} else {
-										"btn-primary w-full"
-									},
+									class: if is_loading { "btn-primary w-full opacity-50 cursor-not-allowed" } else { "btn-primary w-full" },
 									disabled: is_loading,
 									form: "signup-form",
-									{ if is_loading { "Creating account..." } else { "Create account" } }
+									{
+										if is_loading { "Creating account..." } else { "Create account" }
+									}
 								}
 							})(is_loading)
 						}

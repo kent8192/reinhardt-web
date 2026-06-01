@@ -1042,21 +1042,17 @@ impl ProjectState {
 		// Determine the primary key type for the source and target from the registry
 		let source_pk_type = self.get_primary_key_type(source_app_label, source_model_name);
 		// Extract target app_label from to_model (may be in "app.Model" format)
-		let (target_app, target_model) = if m2m.to_model.contains('.') {
-			let parts: Vec<&str> = m2m.to_model.split('.').collect();
-			(parts[0], parts[1])
-		} else {
-			(source_app_label, m2m.to_model.as_str())
-		};
+		let (target_app, target_model) =
+			self.resolve_model_reference(&m2m.to_model, source_app_label);
 
-		let target_pk_type = self.get_primary_key_type(target_app, target_model);
+		let target_pk_type = self.get_primary_key_type(&target_app, &target_model);
 
 		// Resolve the target table name from ProjectState, falling back to the
 		// `app_label`-prefixed snake_case form as a last-resort heuristic.
 		let target_table_name = self
-			.get_model(target_app, target_model)
+			.get_model(&target_app, &target_model)
 			.map(|m| m.table_name.clone())
-			.unwrap_or_else(|| format!("{}_{}", target_app, to_snake_case(target_model)));
+			.unwrap_or_else(|| format!("{}_{}", target_app, to_snake_case(&target_model)));
 
 		// Default FK column names come from the canonical convention in
 		// `crate::m2m_naming::default_m2m_columns` (single source of truth,
@@ -1113,6 +1109,36 @@ impl ProjectState {
 		model_state.constraints.push(unique_constraint);
 
 		model_state
+	}
+
+	fn resolve_model_reference(&self, reference: &str, current_app: &str) -> (String, String) {
+		let parts: Vec<&str> = reference.split('.').collect();
+		match parts.as_slice() {
+			[app, model] => (app.to_string(), model.to_string()),
+			[model] => {
+				let model = model.to_string();
+				if self.get_model(current_app, &model).is_some() {
+					(current_app.to_string(), model)
+				} else {
+					let app = self
+						.models
+						.keys()
+						.find_map(|(app_label, model_name)| {
+							(model_name == &model).then(|| app_label.clone())
+						})
+						.or_else(|| {
+							super::model_registry::global_registry()
+								.get_models()
+								.iter()
+								.find(|metadata| metadata.model_name == model)
+								.map(|metadata| metadata.app_label.clone())
+						})
+						.unwrap_or_else(|| current_app.to_string());
+					(app, model)
+				}
+			}
+			_ => (current_app.to_string(), reference.to_string()),
+		}
 	}
 
 	/// Load ProjectState from a list of migrations
@@ -5319,9 +5345,8 @@ impl MigrationAutodetector {
 			// "app.Model" string as the model name, miss every
 			// to_state/registry entry, and produce defaults like
 			// "app.model_id".
-			let (parsed_target_app, parsed_target_model) = self
-				.parse_model_reference(&m2m.to_model, app_label)
-				.unwrap_or_else(|| (app_label.to_string(), m2m.to_model.clone()));
+			let (parsed_target_app, parsed_target_model) =
+				self.resolve_model_reference(&m2m.to_model, app_label);
 
 			// Resolve target table name: prefer to_state, then global registry,
 			// finally fall back to the canonical `{app}_{model_lower}` form
@@ -5612,8 +5637,9 @@ impl MigrationAutodetector {
 					.from_state
 					.find_model_by_table(&through_table)
 					.is_some();
+				let exists_in_to = self.to_state.find_model_by_table(&through_table).is_some();
 
-				if !exists_in_from {
+				if !exists_in_from && !exists_in_to {
 					// Add to created_many_to_many
 					changes.created_many_to_many.push((
 						app_label.clone(),
@@ -5835,6 +5861,26 @@ impl MigrationAutodetector {
 			}
 			// Invalid format
 			_ => None,
+		}
+	}
+
+	fn resolve_model_reference(&self, reference: &str, current_app: &str) -> (String, String) {
+		let parts: Vec<&str> = reference.split('.').collect();
+		match parts.as_slice() {
+			[app, model] => (app.to_string(), model.to_string()),
+			[model] => {
+				let model = model.to_string();
+				if self.to_state.get_model(current_app, &model).is_some() {
+					(current_app.to_string(), model)
+				} else {
+					(
+						self.find_model_app(&model)
+							.unwrap_or_else(|| current_app.to_string()),
+						model,
+					)
+				}
+			}
+			_ => (current_app.to_string(), reference.to_string()),
 		}
 	}
 
@@ -6395,6 +6441,98 @@ mod tests {
 			changes.created_many_to_many.is_empty(),
 			"M2M through table already exists in from_state; expected no \
 			 created_many_to_many, got {:?}",
+			changes.created_many_to_many
+		);
+	}
+
+	#[rstest]
+	fn generate_migrations_resolves_unqualified_many_to_many_target_across_apps() {
+		use super::super::Operation;
+		use super::super::model_registry::ManyToManyMetadata;
+		use super::super::operations::Constraint;
+
+		let auth_user =
+			build_model_state_with_table_name("auth", "User", "auth_user", sample_fields());
+		let mut dm_room =
+			build_model_state_with_table_name("dm", "DMRoom", "dm_room", sample_fields());
+		dm_room
+			.many_to_many_fields
+			.push(ManyToManyMetadata::new("members", "User"));
+		let to_state = build_project_state(vec![
+			(("auth".to_string(), "User".to_string()), auth_user),
+			(("dm".to_string(), "DMRoom".to_string()), dm_room),
+		]);
+		let detector = MigrationAutodetector::new(ProjectState::new(), to_state);
+
+		let migrations = detector.generate_migrations();
+		let dm_migration = migrations
+			.iter()
+			.find(|migration| migration.app_label == "dm")
+			.expect("dm migration should be generated");
+		let Operation::CreateTable {
+			name, constraints, ..
+		} = dm_migration
+			.operations
+			.iter()
+			.find(|operation| {
+				matches!(
+					operation,
+					Operation::CreateTable { name, .. } if name == "dm_room_members"
+				)
+			})
+			.expect("dm_room_members through table should be generated")
+		else {
+			panic!("expected CreateTable operation");
+		};
+		assert_eq!(name, "dm_room_members");
+
+		let target_fk = constraints
+			.iter()
+			.find_map(|constraint| match constraint {
+				Constraint::ForeignKey {
+					columns,
+					referenced_table,
+					..
+				} if columns == &vec!["auth_user_id".to_string()] => Some(referenced_table),
+				_ => None,
+			})
+			.expect("auth_user_id foreign key should be generated");
+		assert_eq!(target_fk, "auth_user");
+	}
+
+	#[rstest]
+	fn detect_created_many_to_many_skips_existing_to_state_through_table() {
+		use super::super::model_registry::ManyToManyMetadata;
+
+		let auth_user =
+			build_model_state_with_table_name("auth", "User", "auth_user", sample_fields());
+		let mut dm_room =
+			build_model_state_with_table_name("dm", "DMRoom", "dm_room", sample_fields());
+		dm_room
+			.many_to_many_fields
+			.push(ManyToManyMetadata::new("members", "User"));
+		let dm_room_members = build_model_state_with_table_name(
+			"dm",
+			"DMRoomMembers",
+			"dm_room_members",
+			sample_fields(),
+		);
+		let to_state = build_project_state(vec![
+			(("auth".to_string(), "User".to_string()), auth_user),
+			(("dm".to_string(), "DMRoom".to_string()), dm_room),
+			(
+				("dm".to_string(), "DMRoomMembers".to_string()),
+				dm_room_members,
+			),
+		]);
+		let detector = MigrationAutodetector::new(ProjectState::new(), to_state);
+
+		let changes = detector.detect_changes();
+
+		assert!(
+			changes.created_many_to_many.is_empty(),
+			"to_state already contains the through table model; expected no \
+			 synthetic created_many_to_many, got {:?}",
 			changes.created_many_to_many
 		);
 	}

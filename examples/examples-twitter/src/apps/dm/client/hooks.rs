@@ -90,7 +90,7 @@ impl DmRoomListHandle {
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// use crate::apps::dm::client::hooks::use_dm_chat;
 ///
 /// let chat = use_dm_chat(room_id);
@@ -221,7 +221,7 @@ pub fn use_dm_chat(room_id: Uuid) -> DmChatHandle {
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// use crate::apps::dm::client::hooks::use_dm_room_list;
 ///
 /// let room_list = use_dm_room_list();

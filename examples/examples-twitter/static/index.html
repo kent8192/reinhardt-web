@@ -5,14 +5,23 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Twitter Clone - Reinhardt Pages</title>
 
-	<!-- UnoCSS Reset -->
-	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@unocss/reset/tailwind.min.css">
+	<!-- UnoCSS Reset (pinned + SRI) -->
+	<link rel="stylesheet"
+		href="https://cdn.jsdelivr.net/npm/@unocss/reset@66.7.0/tailwind.min.css"
+		integrity="sha384-T4Gl/JcT72kX7H+XBooHT+j5VH/xPcLgHXROFmUj1HF77ctera3Pu1390b73is5o"
+		crossorigin="anonymous">
 
 	<!-- UnoCSS Runtime -->
 	<script>
 	// Theme detection and toggle support
 	(function() {
-		const stored = localStorage.getItem('theme');
+		let stored = null;
+		try {
+			stored = localStorage.getItem('theme');
+		} catch (e) {
+			// localStorage may be unavailable (private mode, sandboxed iframe,
+			// storage disabled by user). Fall back to OS preference below.
+		}
 		const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 		const theme = stored || (prefersDark ? 'dark' : 'light');
 		document.documentElement.setAttribute('data-theme', theme);
@@ -140,38 +149,13 @@
 		],
 	};
 	</script>
-	<script src="https://cdn.jsdelivr.net/npm/@unocss/runtime"></script>
+	<script
+		src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.7.0"
+		integrity="sha384-N01yk5TWd3fjp79erm4HVUYQXHk88RIDoYnTenU6JEnUSeIGyR37ZEcN1OQnG0U6"
+		crossorigin="anonymous"></script>
 
 	<!-- Custom styles -->
 	<link rel="stylesheet" href="/css/style.css">
-
-	<!-- Theme toggle script -->
-	<script>
-	function toggleTheme() {
-		const html = document.documentElement;
-		const current = html.getAttribute('data-theme');
-		const next = current === 'dark' ? 'light' : 'dark';
-		html.setAttribute('data-theme', next);
-		html.classList.toggle('dark', next === 'dark');
-		localStorage.setItem('theme', next);
-	}
-
-	// Attach click event to theme toggle button (using MutationObserver for dynamic content)
-	// Use load event instead of DOMContentLoaded to ensure body is fully available
-	window.addEventListener('load', function() {
-		const observer = new MutationObserver(function(mutations) {
-			const btn = document.getElementById('theme-toggle-btn');
-			if (btn && !btn.hasAttribute('data-theme-attached')) {
-				btn.setAttribute('data-theme-attached', 'true');
-				btn.addEventListener('click', toggleTheme);
-			}
-		});
-		// document.body is guaranteed to exist after load event
-		if (document.body) {
-			observer.observe(document.body, { childList: true, subtree: true });
-		}
-	});
-	</script>
 </head>
 <body class="bg-surface-secondary text-content-primary antialiased" un-cloak>
 	<div id="root">
