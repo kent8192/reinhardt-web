@@ -111,10 +111,12 @@ pub fn polls_index() -> Page {
 					ResourceState::Error(error) => page!(|error: String| {
 						div {
 							class: "alert-danger",
-							{ self::format_server_error(&error) }
+							{
+								self::format_server_error(&error)
+							}
 						}
 					})(error),
-					ResourceState::Success(questions) if questions.is_empty() => page!(|| {
+					ResourceState::Success(questions)if questions.is_empty() => page!(|| {
 						p {
 							class: "text-muted",
 							"No polls are available."
@@ -131,7 +133,9 @@ pub fn polls_index() -> Page {
 										class: "flex w-full justify-between",
 										h5 {
 											class: "mb-1",
-											{ question.question_text.clone() }
+											{
+												question.question_text.clone()
+											}
 										}
 										small { {
 											question.pub_date.format("%Y-%m-%d %H:%M").to_string()
@@ -241,16 +245,16 @@ pub fn polls_detail(question_id: i64) -> Page {
 			},
 			error_display: |form| {
 				let err = form.error().get();
-				page!(|err: Option<String>| {
-					{
-						err.clone().map(|e| page!(|e: String| {
-							div {
-								class: "alert-danger mt-3",
-								{ self::format_server_error(&e) }
+				page!(|err: Option<String>| { {
+					err.clone().map(|e| page!(|e: String| {
+						div {
+							class: "alert-danger mt-3",
+							{
+								self::format_server_error(&e)
 							}
-						})(e)).unwrap_or(Page::Empty)
-					}
-				})(err)
+						}
+					})(e)).unwrap_or(Page::Empty)
+				} })(err)
 			},
 		}
 	};
@@ -293,105 +297,104 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// `choice_id=""` and `submit_vote` rejected the request with the
 	// runtime `Invalid choice_id` application error.
 	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>, load_current_user: Resource<Option<UserInfo>, String>, voting_form_page: Page, question_id: i64| {
-		div {
-			{
-				match load_detail.get() {
-					ResourceState::Loading => page!(|| {
+		div { {
+			match load_detail.get() {
+				ResourceState::Loading => page!(|| {
+					div {
+						class: "max-w-4xl mx-auto px-4 mt-12 text-center",
 						div {
-							class: "max-w-4xl mx-auto px-4 mt-12 text-center",
-							div {
-								class: "spinner w-8 h-8",
-								role: "status",
-								span {
-									class: "sr-only",
-									"Loading..."
-								}
+							class: "spinner w-8 h-8",
+							role: "status",
+							span {
+								class: "sr-only",
+								"Loading..."
 							}
 						}
-					})(),
-					ResourceState::Error(error) => page!(|error: String, question_id: i64| {
+					}
+				})(),
+				ResourceState::Error(error) => page!(|error: String, question_id: i64| {
+					div {
+						class: "max-w-4xl mx-auto px-4 mt-12",
+						div {
+							class: "alert-danger",
+							{
+								self::format_server_error(&error)
+							}
+						}
+						a {
+							href: links::detail(question_id),
+							class: "btn-secondary",
+							"Try Again"
+						}
+						a {
+							href: links::index(),
+							class: "btn-primary ml-2",
+							"Back to Polls"
+						}
+					}
+				})(error, question_id),
+				ResourceState::Success((q, choices)) => {
+					// Owner-only controls (Edit / Delete / Add choice) are hidden for
+					// non-authors and unauthenticated viewers (issue #4703). Any
+					// non-`Success(Some(u))` shape leaves `is_author` as `false`.
+					let is_author = matches!(load_current_user.get(), ResourceState::Success(Some(ref u))if u.id == q.author_id);
+					// Render the voting form only when the question has choices;
+					// otherwise show an empty-state prompt (reinhardt-web#4686).
+					let choices_view = if choices.is_empty() {
+						page!(|| {
+							div {
+								class: "alert-warning",
+								"This question has no choices yet. Add one below to start voting."
+							}
+						})()
+					} else {
+						voting_form_page.clone()
+					};
+					page!(|q: QuestionInfo, is_author: bool, choices_view: Page, question_id: i64| {
 						div {
 							class: "max-w-4xl mx-auto px-4 mt-12",
 							div {
-								class: "alert-danger",
-								{ self::format_server_error(&error) }
+								class: "flex justify-between items-center mb-4",
+								h1 { {
+									q.question_text.clone()
+								} }
+								div {
+									class: "flex gap-2",
+									a {
+										href: links::results(question_id),
+										class: "btn-secondary",
+										"View results"
+									}
+									if is_author {
+										a {
+											href: links::question_edit(question_id),
+											class: "btn-secondary",
+											"Edit"
+										}
+										a {
+											href: links::question_delete(question_id),
+											class: "btn-danger",
+											"Delete"
+										}
+									}
+								}
 							}
-							a {
-								href: links::detail(question_id),
-								class: "btn-secondary",
-								"Try Again"
-							}
-							a {
-								href: links::index(),
-								class: "btn-primary ml-2",
-								"Back to Polls"
+							{ choices_view }
+							if is_author {
+								div {
+									class: "mt-4",
+									a {
+										href: links::choice_new(question_id),
+										class: "btn-secondary",
+										"Add choice"
+									}
+								}
 							}
 						}
-					})(error, question_id),
-					ResourceState::Success((q, choices)) => {
-						// Owner-only controls (Edit / Delete / Add choice) are hidden for
-						// non-authors and unauthenticated viewers (issue #4703). Any
-						// non-`Success(Some(u))` shape leaves `is_author` as `false`.
-						let is_author = matches!(
-							load_current_user.get(),
-							ResourceState::Success(Some(ref u)) if u.id == q.author_id
-						);
-						// Render the voting form only when the question has choices;
-						// otherwise show an empty-state prompt (reinhardt-web#4686).
-						let choices_view = if choices.is_empty() {
-							page!(|| {
-								div {
-									class: "alert-warning",
-									"This question has no choices yet. Add one below to start voting."
-								}
-							})()
-						} else {
-							voting_form_page.clone()
-						};
-						page!(|q: QuestionInfo, is_author: bool, choices_view: Page, question_id: i64| {
-							div {
-								class: "max-w-4xl mx-auto px-4 mt-12",
-								div {
-									class: "flex justify-between items-center mb-4",
-									h1 { { q.question_text.clone() } }
-									div {
-										class: "flex gap-2",
-										a {
-											href: links::results(question_id),
-											class: "btn-secondary",
-											"View results"
-										}
-										if is_author {
-											a {
-												href: links::question_edit(question_id),
-												class: "btn-secondary",
-												"Edit"
-											}
-											a {
-												href: links::question_delete(question_id),
-												class: "btn-danger",
-												"Delete"
-											}
-										}
-									}
-								}
-								{ choices_view }
-								if is_author {
-									div {
-										class: "mt-4",
-										a {
-											href: links::choice_new(question_id),
-											class: "btn-secondary",
-											"Add choice"
-										}
-									}
-								}
-							}
-						})(q, is_author, choices_view, question_id)
-					}
+					})(q, is_author, choices_view, question_id)
 				}
 			}
-		}
+		} }
 	})(
 		load_detail,
 		load_current_user,
@@ -424,135 +427,138 @@ pub fn polls_results(question_id: i64) -> Page {
 	);
 
 	page!(|load_results: Resource<(QuestionInfo, Vec<ChoiceInfo>, i32), String>, load_current_user: Resource<Option<UserInfo>, String>, question_id: i64| {
-		div {
-			{
-				match load_results.get() {
-					ResourceState::Loading => page!(|| {
+		div { {
+			match load_results.get() {
+				ResourceState::Loading => page!(|| {
+					div {
+						class: "max-w-4xl mx-auto px-4 mt-12 text-center",
 						div {
-							class: "max-w-4xl mx-auto px-4 mt-12 text-center",
-							div {
-								class: "spinner w-8 h-8",
-								role: "status",
-								span {
-									class: "sr-only",
-									"Loading..."
-								}
+							class: "spinner w-8 h-8",
+							role: "status",
+							span {
+								class: "sr-only",
+								"Loading..."
 							}
 						}
-					})(),
-					ResourceState::Error(error) => page!(|error: String| {
+					}
+				})(),
+				ResourceState::Error(error) => page!(|error: String| {
+					div {
+						class: "max-w-4xl mx-auto px-4 mt-12",
+						div {
+							class: "alert-danger",
+							{
+								self::format_server_error(&error)
+							}
+						}
+						a {
+							href: links::index(),
+							class: "btn-primary",
+							"Back to Polls"
+						}
+					}
+				})(error),
+				ResourceState::Success((q, choices, total)) => {
+					// Owner-only controls (Edit / Delete) are hidden for non-authors
+					// and unauthenticated viewers (issue #4703).
+					let is_author = matches!(load_current_user.get(), ResourceState::Success(Some(ref u))if u.id == q.author_id);
+					page!(|q: QuestionInfo, choices: Vec<ChoiceInfo>, total: i32, is_author: bool, question_id: i64| {
 						div {
 							class: "max-w-4xl mx-auto px-4 mt-12",
-							div {
-								class: "alert-danger",
-								{ self::format_server_error(&error) }
-							}
-							a {
-								href: links::index(),
-								class: "btn-primary",
-								"Back to Polls"
-							}
-						}
-					})(error),
-					ResourceState::Success((q, choices, total)) => {
-						// Owner-only controls (Edit / Delete) are hidden for non-authors
-						// and unauthenticated viewers (issue #4703).
-						let is_author = matches!(
-							load_current_user.get(),
-							ResourceState::Success(Some(ref u)) if u.id == q.author_id
-						);
-						page!(|q: QuestionInfo, choices: Vec<ChoiceInfo>, total: i32, is_author: bool, question_id: i64| {
-							div {
-								class: "max-w-4xl mx-auto px-4 mt-12",
-								h1 {
-									class: "mb-4",
-									{ q.question_text.clone() }
+							h1 {
+								class: "mb-4",
+								{
+									q.question_text.clone()
 								}
+							}
+							div {
+								class: "card",
 								div {
-									class: "card",
+									class: "card-body",
+									h5 {
+										class: "text-xl font-bold",
+										"Results"
+									}
 									div {
-										class: "card-body",
-										h5 {
-											class: "text-xl font-bold",
-											"Results"
-										}
-										div {
-											class: "divide-y divide-border",
-											for choice in choices {
-												{
-													let percentage = if total > 0 {
-														(choice.votes as f64 / total as f64 * 100.0) as i32
-													} else {
-														0
-													};
-													page!(|choice: ChoiceInfo, percentage: i32| {
-														div {
-															class: "py-4",
-															div {
-																class: "flex justify-between items-center mb-2",
-																strong { { choice.choice_text.clone() } }
-																span {
-																	class: "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
-																	{ format!("{} votes", choice.votes) }
-																}
-															}
-															div {
-																class: "w-full bg-surface-tertiary rounded-full h-2.5",
-																div {
-																	class: "bg-brand h-2.5 rounded-full",
-																	role: "progressbar",
-																	style: format!("width: {}%", percentage),
-																	aria_valuenow: percentage.to_string(),
-																	aria_valuemin: "0",
-																	aria_valuemax: "100",
-																	{ format!("{}%", percentage) }
-																}
+										class: "divide-y divide-border",
+										for choice in choices { {
+											let percentage = if total > 0 {
+												(choice.votes as f64 / total as f64 * 100.0) as i32
+											} else { 0 };
+											page!(|choice: ChoiceInfo, percentage: i32| {
+												div {
+													class: "py-4",
+													div {
+														class: "flex justify-between items-center mb-2",
+														strong { {
+															choice.choice_text.clone()
+														} }
+														span {
+															class: "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
+															{
+																format!("{} votes", choice.votes)
 															}
 														}
-													})(choice.clone(), percentage)
+													}
+													div {
+														class: "w-full bg-surface-tertiary rounded-full h-2.5",
+														div {
+															class: "bg-brand h-2.5 rounded-full",
+															role: "progressbar",
+															style: format!("width: {}%", percentage),
+															aria_valuenow: percentage.to_string(),
+															aria_valuemin: "0",
+															aria_valuemax: "100",
+															{
+																format!("{}%", percentage)
+															}
+														}
+													}
 												}
+											})(choice.clone(), percentage)
+										} }
+									}
+									div {
+										class: "mt-3",
+										p {
+											class: "text-muted",
+											{
+												format!("Total votes: {}", total)
 											}
 										}
-										div {
-											class: "mt-3",
-											p {
-												class: "text-muted",
-												{ format!("Total votes: {}", total) }
-											}
-										}
-									}
-								}
-								div {
-									class: "mt-3 flex flex-wrap gap-2",
-									a {
-										href: links::detail(question_id),
-										class: "btn-primary",
-										"Vote Again"
-									}
-									if is_author {
-										a {
-											href: links::question_edit(question_id),
-											class: "btn-secondary",
-											"Edit question"
-										}
-										a {
-											href: links::question_delete(question_id),
-											class: "btn-danger",
-											"Delete question"
-										}
-									}
-									a {
-										href: links::index(),
-										class: "btn-secondary",
-										"Back to Polls"
 									}
 								}
 							}
-						})(q, choices, total, is_author, question_id)
-					}
+							div {
+								class: "mt-3 flex flex-wrap gap-2",
+								a {
+									href: links::detail(question_id),
+									class: "btn-primary",
+									"Vote Again"
+								}
+								if is_author {
+									a {
+										href: links::question_edit(question_id),
+										class: "btn-secondary",
+										"Edit question"
+									}
+									a {
+										href: links::question_delete(question_id),
+										class: "btn-danger",
+										"Delete question"
+									}
+								}
+								a {
+									href: links::index(),
+									class: "btn-secondary",
+									"Back to Polls"
+								}
+							}
+						}
+					})(q, choices, total, is_author, question_id)
 				}
 			}
-		}
+		} }
 	})(load_results, load_current_user, question_id)
 }
 
@@ -600,10 +606,12 @@ pub fn polls_index_with_logo() -> Page {
 					ResourceState::Error(error) => page!(|error: String| {
 						div {
 							class: "alert-danger",
-							{ self::format_server_error(&error) }
+							{
+								self::format_server_error(&error)
+							}
 						}
 					})(error),
-					ResourceState::Success(questions) if questions.is_empty() => page!(|| {
+					ResourceState::Success(questions)if questions.is_empty() => page!(|| {
 						p {
 							class: "text-muted",
 							"No polls are available."
@@ -627,7 +635,9 @@ pub fn polls_index_with_logo() -> Page {
 											class: "flex-1",
 											h5 {
 												class: "mb-1",
-												{ question.question_text.clone() }
+												{
+													question.question_text.clone()
+												}
 											}
 										}
 										small { {
@@ -694,7 +704,9 @@ pub fn question_new() -> Page {
 				error_signal.get().map(|message| page!(|message: String| {
 					div {
 						class: "alert-danger mb-3",
-						{ self::format_server_error(&message) }
+						{
+							self::format_server_error(&message)
+						}
 					}
 				})(message)).unwrap_or(Page::Empty)
 			}
@@ -709,7 +721,9 @@ pub fn question_new() -> Page {
 							class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
 							disabled: is_loading,
 							form: "new-question-form",
-							{ if is_loading { "Creating..." } else { "Create" } }
+							{
+								if is_loading { "Creating..." } else { "Create" }
+							}
 						}
 					})(is_loading)
 				}
@@ -796,7 +810,9 @@ pub fn question_edit(question_id: i64) -> Page {
 				edit_form_error.get().map(|message| page!(|message: String| {
 					div {
 						class: "alert-danger mb-3",
-						{ self::format_server_error(&message) }
+						{
+							self::format_server_error(&message)
+						}
 					}
 				})(message)).unwrap_or(Page::Empty)
 			}
@@ -811,7 +827,9 @@ pub fn question_edit(question_id: i64) -> Page {
 							class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
 							disabled: is_loading,
 							form: "edit-question-form",
-							{ if is_loading { "Saving..." } else { "Save" } }
+							{
+								if is_loading { "Saving..." } else { "Save" }
+							}
 						}
 						a {
 							href: links::detail(question_id),
@@ -830,40 +848,40 @@ pub fn question_edit(question_id: i64) -> Page {
 	);
 
 	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>, edit_form_view: Page, question_id: i64| {
-		div {
-			{
-				match load_detail.get() {
-					ResourceState::Loading => page!(|| {
+		div { {
+			match load_detail.get() {
+				ResourceState::Loading => page!(|| {
+					div {
+						class: "max-w-4xl mx-auto px-4 mt-12 text-center",
 						div {
-							class: "max-w-4xl mx-auto px-4 mt-12 text-center",
-							div {
-								class: "spinner w-8 h-8",
-								role: "status",
-								span {
-									class: "sr-only",
-									"Loading..."
-								}
+							class: "spinner w-8 h-8",
+							role: "status",
+							span {
+								class: "sr-only",
+								"Loading..."
 							}
 						}
-					})(),
-					ResourceState::Error(error) => page!(|error: String| {
+					}
+				})(),
+				ResourceState::Error(error) => page!(|error: String| {
+					div {
+						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
-							class: "max-w-4xl mx-auto px-4 mt-12",
-							div {
-								class: "alert-danger",
-								{ self::format_server_error(&error) }
-							}
-							a {
-								href: links::index(),
-								class: "btn-primary",
-								"Back to Polls"
+							class: "alert-danger",
+							{
+								self::format_server_error(&error)
 							}
 						}
-					})(error),
-					ResourceState::Success(_) => edit_form_view.clone(),
-				}
+						a {
+							href: links::index(),
+							class: "btn-primary",
+							"Back to Polls"
+						}
+					}
+				})(error),
+				ResourceState::Success(_) => edit_form_view.clone(),
 			}
-		}
+		} }
 	})(load_detail, edit_form_view, question_id)
 }
 
@@ -926,7 +944,9 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 								}
 								blockquote {
 									class: "border-l-4 border-border-secondary pl-4 italic my-3",
-									{ q.question_text.clone() }
+									{
+										q.question_text.clone()
+									}
 								}
 							}
 						}
@@ -934,7 +954,9 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 					ResourceState::Error(error) => page!(|error: String| {
 						div {
 							class: "alert-danger",
-							{ self::format_server_error(&error) }
+							{
+								self::format_server_error(&error)
+							}
 						}
 					})(error),
 				}
@@ -943,7 +965,9 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 				error_signal.get().map(|message| page!(|message: String| {
 					div {
 						class: "alert-danger mt-3",
-						{ self::format_server_error(&message) }
+						{
+							self::format_server_error(&message)
+						}
 					}
 				})(message)).unwrap_or(Page::Empty)
 			}
@@ -958,7 +982,9 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 							class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-danger" },
 							disabled: is_loading,
 							form: "delete-question-form",
-							{ if is_loading { "Deleting..." } else { "Delete" } }
+							{
+								if is_loading { "Deleting..." } else { "Delete" }
+							}
 						}
 						a {
 							href: cancel_href,
@@ -1044,7 +1070,9 @@ pub fn choice_new(question_id: i64) -> Page {
 				error_signal.get().map(|message| page!(|message: String| {
 					div {
 						class: "alert-danger mb-3",
-						{ self::format_server_error(&message) }
+						{
+							self::format_server_error(&message)
+						}
 					}
 				})(message)).unwrap_or(Page::Empty)
 			}
@@ -1059,7 +1087,9 @@ pub fn choice_new(question_id: i64) -> Page {
 							class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
 							disabled: is_loading,
 							form: "new-choice-form",
-							{ if is_loading { "Adding..." } else { "Add Choice" } }
+							{
+								if is_loading { "Adding..." } else { "Add Choice" }
+							}
 						}
 					})(is_loading)
 				}
@@ -1122,7 +1152,9 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 				error_signal.get().map(|message| page!(|message: String| {
 					div {
 						class: "alert-danger mb-3",
-						{ self::format_server_error(&message) }
+						{
+							self::format_server_error(&message)
+						}
 					}
 				})(message)).unwrap_or(Page::Empty)
 			}
@@ -1137,7 +1169,9 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 							class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-primary" },
 							disabled: is_loading,
 							form: "edit-choice-form",
-							{ if is_loading { "Saving..." } else { "Save" } }
+							{
+								if is_loading { "Saving..." } else { "Save" }
+							}
 						}
 					})(is_loading)
 				}
@@ -1198,7 +1232,9 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 				error_signal.get().map(|message| page!(|message: String| {
 					div {
 						class: "alert-danger mt-3",
-						{ self::format_server_error(&message) }
+						{
+							self::format_server_error(&message)
+						}
 					}
 				})(message)).unwrap_or(Page::Empty)
 			}
@@ -1213,7 +1249,9 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 							class: if is_loading { "btn-primary opacity-50 cursor-not-allowed" } else { "btn-danger" },
 							disabled: is_loading,
 							form: "delete-choice-form",
-							{ if is_loading { "Deleting..." } else { "Delete" } }
+							{
+								if is_loading { "Deleting..." } else { "Delete" }
+							}
 						}
 					})(is_loading)
 				}

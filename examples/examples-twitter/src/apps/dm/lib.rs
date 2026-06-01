@@ -18,7 +18,7 @@ pub mod client;
 #[cfg(native)]
 pub mod server;
 
-#[cfg(test)]
+#[cfg(all(test, native))]
 pub mod tests;
 
 // DM WebSocket routes are intentionally NOT registered via a `urls/ws_urls.rs`
