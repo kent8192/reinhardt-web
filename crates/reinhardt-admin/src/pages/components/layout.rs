@@ -204,7 +204,7 @@ pub fn main_layout(
 	})(header_page, sidebar_page, outlet, footer_page)
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use rstest::rstest;
 

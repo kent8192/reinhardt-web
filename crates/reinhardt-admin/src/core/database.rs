@@ -1293,7 +1293,7 @@ reinhardt_di::inventory::submit! {
 	)
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use reinhardt_db::orm::annotation::Expression;

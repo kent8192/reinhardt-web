@@ -261,7 +261,7 @@ fn emit_audit_log(entry: &AuditEntry) {
 #[cfg(client)]
 fn emit_audit_log(_entry: &AuditEntry) {}
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use rstest::rstest;

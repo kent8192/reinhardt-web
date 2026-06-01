@@ -83,7 +83,7 @@ pub async fn get_dashboard(
 	})
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use crate::types::ModelInfo;

@@ -103,7 +103,7 @@ impl Middleware for AdminCookieAuthMiddleware {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use crate::server::security::ADMIN_AUTH_COOKIE_NAME;

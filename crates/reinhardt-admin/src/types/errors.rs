@@ -33,7 +33,7 @@ pub enum AdminError {
 /// Result type for admin panel operations
 pub type AdminResult<T> = Result<T, AdminError>;
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use rstest::rstest;

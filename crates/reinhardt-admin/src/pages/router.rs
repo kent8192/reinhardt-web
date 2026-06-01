@@ -744,7 +744,7 @@ pub fn init_router() -> ClientRouter {
 		.not_found(not_found_view)
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 
