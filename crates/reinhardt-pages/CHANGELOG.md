@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.3...reinhardt-pages@v0.2.0-rc.2) - 2026-06-01
+
+### Added
+
+- *(pages)* unify resource hooks into use_resource(fetcher, deps)
+
+### Changed
+
+- *(pages)* unify spawn into platform/, expose spawn_task from prelude
+
+### Documentation
+
+- *(pages)* document spawn compat shim module
+- *(pages)* make wasm spawn_task example testable (ignore -> no_run)
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(auth,urls,pages)* remove stale references and fix latent clippy lints
+- *(pages)* restore brace-form component invocation tests
+- *(ci)* resolve all pre-existing compilation failures on develop/0.2.0
+- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
+- *(pages)* remove redundant #[builder(default)] from Option field
+- *(pages)* add missing and regenerate stale trybuild .stderr files
+- *(pages)* remove component_missing_required_prop compile-fail test
+- *(pages)* correct component_missing_required_prop compile-fail test
+- *(pages)* use brace-form Card {} inside page! for required-prop test
+- *(pages)* document #[allow(dead_code)] on CardProps::item in compile-fail test
+- *(docs)* resolve rustdoc intra-doc link errors on develop/0.2.0
+- *(docs)* resolve additional rustdoc link errors for feature-gated types
+- *(pages)* make SSR hydration IDs render-scoped
+- *(pages)* keep deprecated reinhardt_pages::spawn re-export shim
+- *(pages)* address CodeRabbit use_resource review
+- *(pages)* avoid reentrant reactive mount borrow
+- *(pages)* rerender SPA links after cleanup
+
+### Maintenance
+
+- forward merge main v0.1.1 changes into develop 0.2.0
+- forward merge main v0.1.2 changes into develop 0.2.0
+
+### Other
+
+- resolve conflicts with develop/0.2.0
+
+### Styling
+
+- apply formatter fixes across workspace
+- format files from merge resolution
+- apply rustfmt to non-DSL files on develop/0.2.0
+- *(pages)* reorder form component imports to satisfy rustfmt
+
+### Testing
+
+- *(pages)* address CodeRabbit review on hydration tests
+- *(pages)* replace skeleton spawn_task test with behavior assertion
+- *(pages)* sync trybuild .stderr with rustfmt-collapsed empty braces
+
 ### Added
 
 - `callback_with_deps` internal helper backing `use_callback` /
