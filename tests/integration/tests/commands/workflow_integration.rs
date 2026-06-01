@@ -311,7 +311,7 @@ fn test_workflow_complete_setup(temp_migration_dir: TempMigrationDir) {
 		r#"
 use reinhardt_db::migrations::{Migration, MigrationOperation};
 
-pub fn migration() -> Migration {
+pub(super) fn migration() -> Migration {
     Migration {
         app_label: "myapp".to_string(),
         name: "0001_initial".to_string(),
