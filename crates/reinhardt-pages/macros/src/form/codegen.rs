@@ -1357,6 +1357,48 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 				quote! {}
 			};
 
+			let success_url_outer_clones = if macro_ast.success_url.is_some() {
+				quote! {
+					let __success_url_handler_clone = self.__success_url_handler.clone();
+					let __form_clone_for_success_url = self.clone();
+				}
+			} else {
+				quote! {}
+			};
+			let success_url_event_clones = if macro_ast.success_url.is_some() {
+				quote! {
+					let __success_url_handler_for_submit =
+						__success_url_handler_clone.clone();
+					let __form_clone_for_success_url =
+						__form_clone_for_success_url.clone();
+				}
+			} else {
+				quote! {}
+			};
+			let success_url_invocation = if macro_ast.success_url.is_some() {
+				quote! {
+					if let ::core::option::Option::Some(__handler) =
+						__success_url_handler_for_submit.as_ref()
+					{
+						let __url = __handler(&__form_clone_for_success_url);
+						if #pages_crate::navigate(
+							__url.clone(),
+							#pages_crate::NavigationType::Push,
+						)
+						.is_err()
+						{
+							if let ::core::option::Option::Some(window) =
+								::web_sys::window()
+							{
+								let _ = window.location().set_href(&__url);
+							}
+						}
+					}
+				}
+			} else {
+				quote! {}
+			};
+
 			// Generate on_error callback if present
 			let on_error_code = if let Some(callback) = &callbacks.on_error {
 				quote! { (#callback)(e.clone()); }
@@ -1401,6 +1443,7 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 				// for the async block (#4624). Both must live in the outer
 				// scope so `async move` can capture them.
 				#on_success_ref_outer_clones
+				#success_url_outer_clones
 
 				let form_element = PageElement::new("form")
 					.attr("id", #form_id_str)
@@ -1432,6 +1475,7 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 
 								// Clone loading/error signals for async block if they exist
 								#async_signal_clones
+								#success_url_event_clones
 
 								#pages_crate::platform::spawn_task(async move {
 									match #server_fn_call {
@@ -1442,6 +1486,7 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 											#on_success_ref_invocation
 											#on_success_code
 											#redirect_code
+											#success_url_invocation
 										}
 										Err(e) => {
 											#on_error_code
@@ -1687,6 +1732,52 @@ fn generate_field_view(
 					.bool_attr("required", #required)
 					#custom_attrs
 					#event_listener
+			}
+		}
+		TypedWidget::RadioSelect if field.choices_config.is_some() => {
+			let choices_name =
+				syn::Ident::new(&format!("{}_choices", field.name), field.name.span());
+			let checked_attr = signal_ident.map(|signal_ident| {
+				quote! {
+					.bool_attr(
+						"checked",
+						#signal_ident.get().to_string() == choice_value.to_string(),
+					)
+				}
+			});
+			quote! {
+				{
+					let __choices_signal = self.#choices_name.clone();
+					#pages_crate::component::Page::reactive(move || {
+						let __choices = __choices_signal.get();
+						let mut __children = ::std::vec::Vec::new();
+						for (i, (choice_value, choice_label)) in
+							__choices.into_iter().enumerate()
+						{
+							let __choice_id =
+								::std::format!("{}_{}", #field_name_str, i);
+							__children.push(
+								PageElement::new("label")
+									.attr("for", __choice_id.clone())
+									.child(
+										PageElement::new("input")
+											.attr("type", "radio")
+											.attr("name", #field_name_str)
+											.attr("id", __choice_id)
+											.attr("value", choice_value.to_string())
+											.attr("class", #input_class)
+											.bool_attr("required", #required)
+											#checked_attr
+											#custom_attrs
+											#event_listener
+									)
+									.child(choice_label)
+									.into_page(),
+							);
+						}
+						#pages_crate::component::Page::Fragment(__children)
+					})
+				}
 			}
 		}
 		TypedWidget::RadioSelect => {
@@ -4481,6 +4572,38 @@ mod tests {
 	}
 
 	#[rstest::rstest]
+	fn test_generate_dynamic_radio_select_renders_choice_inputs() {
+		let input = quote! {
+			name: DynamicRadioForm,
+			server_fn: submit_vote,
+
+			fields: {
+				choice_id: ChoiceField {
+					widget: RadioSelect,
+					required,
+					label: "Select your choice",
+					class: "form-check",
+					choices_from: "choices",
+					choice_value: "id",
+					choice_label: "choice_text",
+				},
+			},
+		};
+
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		assert!(output_str.contains("Page :: reactive"));
+		assert!(output_str.contains("let __choices_signal = self . choice_id_choices . clone ()"));
+		assert!(output_str.contains("__choices_signal . get ()"));
+		assert!(output_str.contains("for (i , (choice_value , choice_label)) in"));
+		assert!(output_str.contains(". attr (\"type\" , \"radio\")"));
+		assert!(output_str.contains(". attr (\"value\" , choice_value . to_string ())"));
+		assert!(output_str.contains(". child (choice_label)"));
+		assert!(output_str.contains(". listener (\"change\""));
+	}
+
+	#[rstest::rstest]
 	fn test_generate_bind_checkbox_uses_change_event() {
 		let input = quote! {
 			name: CheckboxBindForm,
@@ -4840,6 +4963,31 @@ mod tests {
 		assert!(output_str.contains("__success"));
 		assert!(output_str.contains("/success"));
 		assert!(output_str.contains("set_href"));
+	}
+
+	#[rstest::rstest]
+	fn test_generate_success_url_runs_from_onsubmit_path() {
+		let input = quote! {
+			name: SuccessUrlSubmitForm,
+			server_fn: submit_form,
+			success_url: |_form| "/done",
+
+			fields: {
+				name: CharField { required },
+			},
+		};
+
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		assert!(
+			output_str.contains(
+				"let __success_url_handler_clone = self . __success_url_handler . clone ()"
+			)
+		);
+		assert!(output_str.contains("let __url = __handler (& __form_clone_for_success_url)"));
+		assert!(output_str.contains("NavigationType :: Push"));
+		assert!(output_str.contains("set_href (& __url)"));
 	}
 
 	#[rstest::rstest]

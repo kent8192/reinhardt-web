@@ -146,6 +146,10 @@ Removed in this PR (8 items):
 
 ### Fixed
 
+- Dynamic `ChoiceField { widget: RadioSelect, choices_from: ... }` forms now
+  render one radio input per loaded choice, including labels and submitted
+  `value` attributes. Client-side `form!` submissions also honor
+  `success_url:` after successful server function calls (#5109).
 - Resource dependency-change refetch now actually fires. The old
   `create_resource_with_deps` dropped its tracking `Effect` handle immediately
   after creation, so the `Effect` was disposed and never re-ran — automatic
