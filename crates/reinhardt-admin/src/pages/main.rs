@@ -13,7 +13,7 @@ use web_sys::{Event, HtmlElement, window};
 /// It initializes the application and mounts it to the DOM.
 #[allow(clippy::main_recursion)]
 #[wasm_bindgen(start)]
-pub fn main() -> Result<(), JsValue> {
+pub fn start() -> Result<(), JsValue> {
 	// Set up panic hook for better error messages in console
 	#[cfg(feature = "console_error_panic_hook")]
 	console_error_panic_hook::set_once();

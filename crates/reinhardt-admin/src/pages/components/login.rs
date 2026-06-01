@@ -79,6 +79,9 @@ fn build_login_form() -> Page {
 		name: AdminLoginForm,
 		server_fn: admin_login,
 		method: Post,
+		strip_arguments: {
+			csrf_token: reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		},
 		fields: {
 			username: CharField {
 				required,
@@ -146,7 +149,7 @@ pub fn login_view() -> Page {
 	login_form(None)
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use rstest::rstest;

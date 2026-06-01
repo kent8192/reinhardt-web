@@ -894,7 +894,7 @@ pub fn filters(
 	})(filter_controls)
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::detail_table;
 	use rstest::rstest;

@@ -486,7 +486,7 @@ impl ModelAdminConfigBuilder {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use rstest::rstest;

@@ -37,7 +37,7 @@ pub const MAX_PAGE_SIZE: u64 = 500;
 /// Default page size when not specified
 pub const DEFAULT_PAGE_SIZE: u64 = 25;
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use rstest::rstest;
