@@ -50,22 +50,17 @@ cargo run
 
 ## Dependency Management
 
-By default, examples use **crates.io published versions** of Reinhardt.
+By default, examples use the parent Reinhardt checkout through the
+`examples/Cargo.toml` workspace dependency. This lets example builds validate
+the current release candidate before that version exists on crates.io.
 
-### Local Development (for framework contributors)
+### Local Development
 
-To test examples against your local Reinhardt workspace:
+Run the examples directly from this repository:
 
 ```bash
-# Copy the local development config template
-cp .cargo/config.local.toml .cargo/config.toml
-
-# Build/test with local reinhardt
 cargo build --workspace
 cargo nextest run --workspace
-
-# Clean up when done
-rm -f .cargo/config.toml
 ```
 
 Or use the Makefile.toml task from the main repo:
@@ -77,9 +72,9 @@ cargo make local-examples-test
 
 ### How It Works
 
-- `.cargo/config.local.toml`: Pre-configured template with `[patch.crates-io]` overrides
-- When copied to `.cargo/config.toml`, Cargo uses local workspace paths instead of crates.io
-- `.cargo/config.toml` is gitignored so it won't be committed
+- `examples/Cargo.toml` declares `reinhardt` with `path = ".."` and the expected version
+- Cargo uses the local checkout while still checking that the example version stays in sync
+- `.cargo/config.local.toml` remains as a compatibility template for workflows that need an explicit `[patch.crates-io]` override
 
 ## Testing
 
