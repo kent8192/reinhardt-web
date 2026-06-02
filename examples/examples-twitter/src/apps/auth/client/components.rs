@@ -11,11 +11,27 @@ use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::Signal;
+use reinhardt::pages::{FormOptions, FormValues, use_form};
 #[cfg(wasm)]
 use {
 	crate::apps::auth::client::state::set_current_user,
 	crate::apps::auth::shared::server_fn::{login, register},
 };
+
+#[derive(Clone, PartialEq, FormValues)]
+struct LoginFormValues {
+	email: String,
+	password: String,
+}
+
+#[derive(Clone, PartialEq, FormValues)]
+struct RegisterFormValues {
+	username: String,
+	email: String,
+	password: String,
+	password_confirmation: String,
+}
+
 /// Login form component using form! macro
 ///
 /// Uses the `form!` macro for:
@@ -27,15 +43,16 @@ use {
 /// - `on_success` callback for setting current user
 /// - `redirect_on_success` for navigation after login
 pub fn login_form() -> Page {
+	let login_runtime = use_form(FormOptions::new(LoginFormValues {
+		email: String::new(),
+		password: String::new(),
+	}));
+	let _initial_login_values = login_runtime.values();
+
 	let login_form = form! {
 		name: LoginForm,
 		server_fn: login,
 		method: Post,
-		// Route the CSRF token to `login`'s trailing `_csrf_token: String`
-		// argument (server-side middleware performs the actual verification).
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		redirect_on_success: "/timeline",
 		state: {
 			loading,
@@ -213,15 +230,18 @@ pub fn login_form() -> Page {
 /// - Server function integration via `server_fn`
 /// - `redirect_on_success` for navigation after registration
 pub fn register_form() -> Page {
+	let register_runtime = use_form(FormOptions::new(RegisterFormValues {
+		username: String::new(),
+		email: String::new(),
+		password: String::new(),
+		password_confirmation: String::new(),
+	}));
+	let _initial_register_values = register_runtime.values();
+
 	let register_form = form! {
 		name: RegisterForm,
 		server_fn: register,
 		method: Post,
-		// Route the CSRF token to `register`'s trailing `_csrf_token: String`
-		// argument (server-side middleware performs the actual verification).
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		redirect_on_success: "/login",
 		state: {
 			loading,

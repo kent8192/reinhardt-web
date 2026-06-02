@@ -79,9 +79,6 @@ fn build_login_form() -> Page {
 		name: AdminLoginForm,
 		server_fn: admin_login,
 		method: Post,
-		strip_arguments: {
-			csrf_token: reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		fields: {
 			username: CharField {
 				required,

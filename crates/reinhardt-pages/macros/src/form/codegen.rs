@@ -44,14 +44,15 @@
 //! ```
 
 use proc_macro2::TokenStream;
-use quote::{ToTokens, quote};
+use quote::{ToTokens, format_ident, quote};
 
 use crate::crate_paths::get_reinhardt_pages_crate_info;
 use reinhardt_manouche::core::{
-	FormMethod, TypedCustomAttr, TypedFieldType, TypedFormAction, TypedFormCallbacks,
-	TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro,
-	TypedFormSlots, TypedFormState, TypedFormWatch, TypedIcon, TypedIconChild, TypedIconPosition,
-	TypedSubmitButtonDef, TypedValidatorRule, TypedWidget, TypedWrapper,
+	AmbientArgumentsSource, FormMethod, TypedCustomAttr, TypedFieldType, TypedFormAction,
+	TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry,
+	TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState, TypedFormWatch, TypedIcon,
+	TypedIconChild, TypedIconPosition, TypedSubmitButtonDef, TypedValidatorRule, TypedWidget,
+	TypedWrapper,
 };
 
 /// Collects all fields from field entries, flattening groups.
@@ -72,6 +73,212 @@ fn collect_all_fields(entries: &[TypedFormFieldEntry]) -> Vec<&TypedFormFieldDef
 	fields
 }
 
+fn generate_ambient_argument_deprecation_markers(macro_ast: &TypedFormMacro) -> TokenStream {
+	let legacy_marker = if matches!(
+		macro_ast.ambient_arguments_source,
+		Some(AmbientArgumentsSource::StripArguments)
+	) {
+		let ident = format_ident!(
+			"__REINHARDT_{}_STRIP_ARGUMENTS_DEPRECATED",
+			upper_snake_ident_fragment(&macro_ast.name)
+		);
+		quote! {
+			#[deprecated(
+				note = "`strip_arguments` was renamed to `ambient_arguments`; use `ambient_arguments` for values supplied from ambient context"
+			)]
+			const #ident: () = ();
+			let _ = #ident;
+		}
+	} else {
+		quote! {}
+	};
+
+	let has_csrf_ambient_arg = macro_ast.strip_arguments.iter().any(|arg| {
+		matches!(
+			arg.name.to_string().as_str(),
+			"csrf_token" | "_csrf_token" | "csrfmiddlewaretoken"
+		)
+	});
+	let csrf_marker = if has_csrf_ambient_arg {
+		let ident = format_ident!(
+			"__REINHARDT_{}_CSRF_AMBIENT_DEPRECATED",
+			upper_snake_ident_fragment(&macro_ast.name)
+		);
+		quote! {
+			#[deprecated(
+				note = "CSRF should be supplied by #[server_fn] client stubs via the X-CSRFToken header, not as a server_fn business argument"
+			)]
+			const #ident: () = ();
+			let _ = #ident;
+		}
+	} else {
+		quote! {}
+	};
+
+	quote! {
+		#legacy_marker
+		#csrf_marker
+	}
+}
+
+fn upper_snake_ident_fragment(ident: &syn::Ident) -> String {
+	let mut out = String::new();
+	for (index, ch) in ident.to_string().chars().enumerate() {
+		if ch.is_ascii_uppercase() && index > 0 {
+			out.push('_');
+		}
+		out.push(ch.to_ascii_uppercase());
+	}
+	out
+}
+
+fn should_pass_csrf_as_business_argument(macro_ast: &TypedFormMacro) -> bool {
+	macro_ast.strip_arguments.iter().any(|arg| {
+		matches!(
+			arg.name.to_string().as_str(),
+			"csrf_token" | "_csrf_token" | "csrfmiddlewaretoken"
+		)
+	})
+}
+
+fn generate_form_values_and_fields(
+	macro_ast: &TypedFormMacro,
+	pages_crate: &TokenStream,
+) -> TokenStream {
+	let values_ident = format_ident!("{}Values", macro_ast.name);
+	let fields_ident = format_ident!("{}Fields", macro_ast.name);
+	let all_fields = collect_all_fields(&macro_ast.fields);
+	if all_fields
+		.iter()
+		.any(|field| !supports_generated_form_values(&field.field_type))
+	{
+		return quote! {};
+	}
+
+	let value_fields: Vec<TokenStream> = all_fields
+		.iter()
+		.map(|field| {
+			let name = &field.name;
+			let ty = field_type_to_value_type(&field.field_type);
+			quote! { #name: #ty, }
+		})
+		.collect();
+
+	let signal_fields: Vec<TokenStream> = all_fields
+		.iter()
+		.map(|field| {
+			let name = &field.name;
+			let ty = field_type_to_value_type(&field.field_type);
+			quote! { #name: #pages_crate::reactive::Signal<#ty>, }
+		})
+		.collect();
+
+	let values_fields: Vec<TokenStream> = all_fields
+		.iter()
+		.map(|field| {
+			let name = &field.name;
+			quote! { #name: self.#name.get(), }
+		})
+		.collect();
+
+	let from_values_fields: Vec<TokenStream> = all_fields
+		.iter()
+		.map(|field| {
+			let name = &field.name;
+			quote! { #name: #pages_crate::reactive::Signal::new(values.#name.clone()), }
+		})
+		.collect();
+
+	let apply_values_fields: Vec<TokenStream> = all_fields
+		.iter()
+		.map(|field| {
+			let name = &field.name;
+			quote! { self.#name.set(values.#name.clone()); }
+		})
+		.collect();
+
+	let field_names: Vec<String> = all_fields
+		.iter()
+		.map(|field| field.name.to_string())
+		.collect();
+
+	quote! {
+		#[derive(Clone, PartialEq)]
+		struct #values_ident {
+			#(#value_fields)*
+		}
+
+		#[derive(Clone)]
+		struct #fields_ident {
+			#(#signal_fields)*
+		}
+
+		impl #pages_crate::FormFields for #fields_ident {
+			type Values = #values_ident;
+
+			fn from_values(values: &Self::Values) -> Self {
+				Self {
+					#(#from_values_fields)*
+				}
+			}
+
+			fn values(&self) -> Self::Values {
+				#values_ident {
+					#(#values_fields)*
+				}
+			}
+
+			fn apply_values(&self, values: &Self::Values) {
+				#(#apply_values_fields)*
+			}
+		}
+
+		impl #pages_crate::FormValues for #values_ident {
+			type Fields = #fields_ident;
+
+			fn field_names() -> &'static [&'static str] {
+				&[#(#field_names),*]
+			}
+		}
+
+		let _ = ::core::mem::size_of::<#values_ident>();
+		let _ = ::core::mem::size_of::<#fields_ident>();
+	}
+}
+
+fn supports_generated_form_values(field_type: &TypedFieldType) -> bool {
+	match field_type {
+		TypedFieldType::JsonField { .. }
+		| TypedFieldType::FileField
+		| TypedFieldType::ImageField => false,
+		TypedFieldType::HiddenField { inner }
+		| TypedFieldType::ChoiceField { inner }
+		| TypedFieldType::MultipleChoiceField { inner } => is_basic_form_value_type(inner),
+		_ => true,
+	}
+}
+
+fn is_basic_form_value_type(ty: &syn::Type) -> bool {
+	let syn::Type::Path(path) = ty else {
+		return false;
+	};
+	let Some(segment) = path.path.segments.last() else {
+		return false;
+	};
+	matches!(
+		segment.ident.to_string().as_str(),
+		"String"
+			| "bool" | "i8"
+			| "i16" | "i32"
+			| "i64" | "i128"
+			| "isize" | "u8"
+			| "u16" | "u32"
+			| "u64" | "u128"
+			| "usize" | "f32"
+			| "f64"
+	)
+}
+
 /// Generates the complete code for a form! macro invocation.
 ///
 /// This function generates conditional code that works for both WASM and server builds.
@@ -81,6 +288,10 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 	let pages_crate = &crate_info.ident;
 
 	let struct_name = &macro_ast.name;
+	let ambient_argument_deprecation_markers =
+		generate_ambient_argument_deprecation_markers(macro_ast);
+	let form_values_and_fields = generate_form_values_and_fields(macro_ast, pages_crate);
+	let _should_pass_csrf_as_business_argument = should_pass_csrf_as_business_argument(macro_ast);
 
 	let effective_state: Option<TypedFormState> = if macro_ast.success_url.is_some() {
 		let mut s = macro_ast
@@ -217,6 +428,8 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 	quote! {
 		{
 			#use_statement
+			#ambient_argument_deprecation_markers
+			#form_values_and_fields
 
 			#[derive(Clone)]
 			struct #struct_name
@@ -1191,12 +1404,12 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 	// Determine if CSRF protection is needed (non-GET methods)
 	let needs_csrf = !matches!(macro_ast.method, FormMethod::Get);
 
-	// Check if CSRF token should be auto-injected as a server_fn argument.
-	// This is needed when: non-GET method, using server_fn, and no explicit csrf_token field.
+	// Check if CSRF token was explicitly supplied as a server_fn business argument.
 	let has_explicit_csrf_field = all_fields.iter().any(|f| f.name == "csrf_token");
-	let auto_csrf_arg = needs_csrf
+	let csrf_business_arg = needs_csrf
 		&& matches!(macro_ast.action, TypedFormAction::ServerFn(_))
-		&& !has_explicit_csrf_field;
+		&& !has_explicit_csrf_field
+		&& should_pass_csrf_as_business_argument(macro_ast);
 
 	// Generate CSRF token injection for non-GET methods
 	let csrf_injection = if needs_csrf {
@@ -1263,15 +1476,19 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 				})
 				.collect();
 
-			// Generate server_fn call expression (with auto CSRF token if needed)
-			let server_fn_call = if auto_csrf_arg {
-				quote! {
-					{
-						let __csrf_token = #pages_crate::csrf::get_csrf_token()
-							.unwrap_or_default();
-						#server_fn_ident(#(#field_names,)* __csrf_token).await
-					}
-				}
+			let strip_arg_exprs: Vec<&syn::Expr> = macro_ast
+				.strip_arguments
+				.iter()
+				.map(|arg| &arg.value)
+				.collect();
+
+			// Legacy compatibility: old form! server_fn bindings could append
+			// CSRF as a business argument through strip_arguments /
+			// ambient_arguments. New use_form-based lowering should not use this
+			// path; CSRF belongs in the X-CSRFToken header injected by
+			// #[server_fn] client stubs.
+			let server_fn_call = if csrf_business_arg || !strip_arg_exprs.is_empty() {
+				quote! { #server_fn_ident(#(#field_names,)* #(#strip_arg_exprs),*).await }
 			} else {
 				quote! { #server_fn_ident(#(#field_names),*).await }
 			};
@@ -2312,7 +2529,7 @@ fn generate_submit_method(
 				.collect();
 
 			let submit_server_fn_call = if !strip_arg_exprs.is_empty() {
-				// Explicit strip_arguments path: append exactly the user-supplied
+				// Explicit ambient_arguments path: append exactly the user-supplied
 				// expressions positionally after the form-field arguments.
 				quote! {
 					{
@@ -3230,6 +3447,48 @@ fn generate_redirect_code(redirect: &Option<String>, pages_crate: &TokenStream) 
 				let _ = __window.location().set_href(#url);
 			}
 		}
+	}
+}
+
+/// Converts field type to its value type.
+fn field_type_to_value_type(field_type: &TypedFieldType) -> TokenStream {
+	match field_type {
+		// Inherently String-shaped (always String, no generic accepted)
+		TypedFieldType::CharField
+		| TypedFieldType::TextField
+		| TypedFieldType::EmailField
+		| TypedFieldType::PasswordField
+		| TypedFieldType::UrlField
+		| TypedFieldType::SlugField => quote!(::std::string::String),
+
+		// Primitive typed
+		TypedFieldType::IntegerField => quote!(i64),
+		TypedFieldType::FloatField | TypedFieldType::DecimalField => quote!(f64),
+		TypedFieldType::BooleanField => quote!(bool),
+
+		// Date / Time
+		TypedFieldType::DateField => quote!(::core::option::Option<chrono::NaiveDate>),
+		TypedFieldType::TimeField => quote!(::core::option::Option<chrono::NaiveTime>),
+		TypedFieldType::DateTimeField => {
+			quote!(::core::option::Option<chrono::NaiveDateTime>)
+		}
+
+		// File-like
+		TypedFieldType::FileField | TypedFieldType::ImageField => {
+			quote!(::core::option::Option<web_sys::File>)
+		}
+
+		// Misc
+		TypedFieldType::UuidField => quote!(::core::option::Option<uuid::Uuid>),
+
+		// Generic-capable: substitute the inner type recorded by the validator
+		TypedFieldType::HiddenField { inner } => quote!(#inner),
+		TypedFieldType::ChoiceField { inner } => quote!(#inner),
+		TypedFieldType::MultipleChoiceField { inner } => quote!(::std::vec::Vec<#inner>),
+		TypedFieldType::JsonField { inner } => quote!(#inner),
+
+		// Specialized
+		TypedFieldType::IpAddressField => quote!(::core::option::Option<::std::net::IpAddr>),
 	}
 }
 

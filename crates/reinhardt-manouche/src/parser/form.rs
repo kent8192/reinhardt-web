@@ -11,10 +11,10 @@ use syn::{
 };
 
 use crate::{
-	ClientTrigger, CustomAttr, FormAction, FormDerived, FormDerivedItem, FormFieldDef,
-	FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormSlots, FormState,
-	FormStateField, FormSubmitButtonDef, FormValidator, FormWatch, FormWatchItem, IconAttr,
-	IconChild, IconElement, IconPosition, StripArgument, ValidatorRule, ValidatorScope,
+	AmbientArgumentsSource, ClientTrigger, CustomAttr, FormAction, FormDerived, FormDerivedItem,
+	FormFieldDef, FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormSlots,
+	FormState, FormStateField, FormSubmitButtonDef, FormValidator, FormWatch, FormWatchItem,
+	IconAttr, IconChild, IconElement, IconPosition, StripArgument, ValidatorRule, ValidatorScope,
 	WrapperAttr, WrapperElement,
 };
 
@@ -58,6 +58,7 @@ impl Parse for FormMacro {
 	fn parse(input: ParseStream) -> Result<Self> {
 		let span = input.span();
 		let mut form = FormMacro::new(None, span);
+		let mut ambient_arguments_clause: Option<&'static str> = None;
 
 		// Parse key-value pairs until we hit fields or validators
 		while !input.is_empty() {
@@ -183,17 +184,39 @@ impl Parse for FormMacro {
 				"client_validators" => {
 					return Err(reject_client_validators_with_guidance(&key));
 				}
+				"ambient_arguments" => {
+					let content;
+					braced!(content in input);
+					if ambient_arguments_clause.is_some() {
+						return Err(syn::Error::new(
+							key.span(),
+							"form! cannot specify both `ambient_arguments` and deprecated `strip_arguments`; use `ambient_arguments`",
+						));
+					}
+					ambient_arguments_clause = Some("ambient_arguments");
+					form.strip_arguments = parse_ambient_arguments(&content)?;
+					form.ambient_arguments_source = Some(AmbientArgumentsSource::AmbientArguments);
+					parse_optional_comma(input)?;
+				}
 				"strip_arguments" => {
 					let content;
 					braced!(content in input);
+					if ambient_arguments_clause.is_some() {
+						return Err(syn::Error::new(
+							key.span(),
+							"form! cannot specify both `ambient_arguments` and deprecated `strip_arguments`; use `ambient_arguments`",
+						));
+					}
+					ambient_arguments_clause = Some("strip_arguments");
 					form.strip_arguments = parse_strip_arguments(&content)?;
+					form.ambient_arguments_source = Some(AmbientArgumentsSource::StripArguments);
 					parse_optional_comma(input)?;
 				}
 				_ => {
 					return Err(syn::Error::new(
 						key.span(),
 						format!(
-							"Unknown form property: '{}'. Expected: name, action, server_fn, method, class, state, on_submit, on_success, on_success_ref, on_error, on_loading, watch, redirect_on_success, success_url, initial_loader, choices_loader, slots, fields, validators, derived, strip_arguments",
+							"Unknown form property: '{}'. Expected: name, action, server_fn, method, class, state, on_submit, on_success, on_success_ref, on_error, on_loading, watch, redirect_on_success, success_url, initial_loader, choices_loader, slots, fields, validators, derived, ambient_arguments, strip_arguments",
 							key
 						),
 					));
@@ -621,7 +644,7 @@ fn parse_icon_child(tag: Ident, input: ParseStream, span: Span) -> Result<IconCh
 	})
 }
 
-/// Parses strip_arguments inside the `strip_arguments: { ... }` block.
+/// Parses ambient arguments inside the `ambient_arguments: { ... }` block.
 ///
 /// Format: `arg_name: <expression>,` repeated. Each entry binds one
 /// server_fn argument name to an expression evaluated at submit time on the
@@ -629,6 +652,13 @@ fn parse_icon_child(tag: Ident, input: ParseStream, span: Span) -> Result<IconCh
 /// call after all regular form-field arguments.
 ///
 /// Tracked under reinhardt-web#3971.
+fn parse_ambient_arguments(input: ParseStream) -> Result<Vec<StripArgument>> {
+	parse_strip_arguments(input)
+}
+
+/// Parses legacy strip_arguments inside the `strip_arguments: { ... }` block.
+///
+/// `strip_arguments` is a deprecated alias for `ambient_arguments`.
 fn parse_strip_arguments(input: ParseStream) -> Result<Vec<StripArgument>> {
 	let mut args = Vec::new();
 

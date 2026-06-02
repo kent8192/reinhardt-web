@@ -18,6 +18,7 @@ use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::Signal;
 use reinhardt::pages::reactive::hooks::{use_action, use_effect, use_state};
+use reinhardt::pages::{FormOptions, FormValues, use_form};
 use uuid::Uuid;
 #[cfg(wasm)]
 use {
@@ -25,6 +26,15 @@ use {
 	reinhardt::pages::reactive::ResourceState,
 	reinhardt::pages::use_resource,
 };
+
+#[derive(Clone, PartialEq, FormValues)]
+struct ProfileEditFormValues {
+	avatar_url: String,
+	bio: String,
+	location: String,
+	website: String,
+}
+
 /// Profile view component using hooks
 ///
 /// Displays user profile information with modern SNS design.
@@ -229,15 +239,18 @@ pub fn profile_view(user_id: Uuid) -> Page {
 /// The form uses custom UnoCSS styling and card layout through page! macro,
 /// while form! handles all Signal management and form submission logic.
 pub fn profile_edit(user_id: Uuid) -> Page {
+	let profile_runtime = use_form(FormOptions::new(ProfileEditFormValues {
+		avatar_url: String::new(),
+		bio: String::new(),
+		location: String::new(),
+		website: String::new(),
+	}));
+	let _initial_profile_values = profile_runtime.values();
+
 	let profile_form = form! {
 		name: ProfileEditForm,
 		server_fn: update_profile_form,
 		method: Post,
-		// Route the CSRF token to `update_profile_form`'s trailing
-		// `_csrf_token: String` argument (server-side middleware verifies it).
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		state: {
 			loading,
 			error,

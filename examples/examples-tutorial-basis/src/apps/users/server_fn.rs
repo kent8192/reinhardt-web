@@ -27,13 +27,12 @@ use {
 
 /// Authenticate a user by username/password and persist the session.
 ///
-/// `_csrf_token` is appended by `form!` for non-GET forms (reinhardt-web#3337);
-/// CSRF is verified by middleware before this handler runs.
+/// CSRF is supplied by the `#[server_fn]` client stub through `X-CSRFToken`
+/// and verified by middleware before this handler runs.
 #[server_fn]
 pub async fn login(
 	username: String,
 	password: String,
-	_csrf_token: String,
 	#[inject] _db: DatabaseConnection,
 	#[inject] session: SessionData,
 	#[inject] store: Depends<SessionStore>,
@@ -86,8 +85,8 @@ pub async fn login(
 /// Mirrors `login`'s session-handling: on success the session id is rotated
 /// (fixation prevention) and `user_id` is persisted so the caller is logged
 /// in immediately — typical "sign-up then continue" UX for tutorials. The
-/// trailing `_csrf_token: String` is supplied by `form!`'s `strip_arguments`
-/// (reinhardt-web#3971); CSRF is verified by middleware before this runs.
+/// CSRF is supplied by the `#[server_fn]` client stub through `X-CSRFToken`
+/// and verified by middleware before this runs.
 ///
 /// We invoke `request.validate()` manually rather than using
 /// `#[server_fn(pre_validate = true)]` because that flag only triggers when
@@ -95,7 +94,7 @@ pub async fn login(
 /// (e.g. `body: Json<RegisterRequest>` — see
 /// `tests/integration/src/pre_validate.rs`). The `form!` macro sends the
 /// HTML form's fields as individual `String` params to keep its
-/// `strip_arguments` flow working, so the macro-generated synthetic
+/// `form!` flow working, so the macro-generated synthetic
 /// `Args` struct only derives `Deserialize` — there is nothing on the
 /// auto-path that knows the field-level `#[validate(...)]` attributes on
 /// `RegisterRequest`. Building the DTO by hand and validating it
@@ -105,7 +104,6 @@ pub async fn register(
 	username: String,
 	password: String,
 	password_confirmation: String,
-	_csrf_token: String,
 	#[inject] user_manager: Depends<AuthUserManager>,
 	#[inject] session: SessionData,
 	#[inject] store: Depends<SessionStore>,
@@ -165,10 +163,9 @@ pub async fn register(
 
 /// Clear the active session.
 ///
-/// `_csrf_token` is appended by `form!` for non-GET forms; see [`login`].
+/// CSRF is supplied by the `#[server_fn]` client stub; see [`login`].
 #[server_fn]
 pub async fn logout(
-	_csrf_token: String,
 	#[inject] session: SessionData,
 	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<(), ServerFnError> {

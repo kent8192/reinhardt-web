@@ -53,6 +53,7 @@
 //! - [`builder`]: HTML element builder API
 //! - [`component`]: Component system with IntoPage trait, Head management
 //! - [`form`](mod@form): Django Form integration
+//! - [`form_state`]: Typed `use_form` runtime state
 //! - [`csrf`]: CSRF protection
 //! - [`auth`]: Authentication integration
 //! - [`api`]: API client with Django QuerySet-like interface
@@ -61,6 +62,36 @@
 //! - [`hydration`]: Client-side hydration
 //! - [`router`]: Client-side routing (reinhardt-urls compatible)
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
+//!
+//! ## Forms
+//!
+//! `form!` owns static form definition: field names, widgets, labels,
+//! rendering metadata, and server function binding. [`use_form`] owns typed
+//! runtime behavior: value signals, dirty/touched state, validation errors,
+//! loading/success state, reset, and submit orchestration.
+//!
+//! Derive [`FormValues`] for the value struct and initialize runtime state with
+//! [`FormOptions`]:
+//!
+//! ```ignore
+//! use reinhardt_pages::{FormOptions, FormValues, use_form};
+//!
+//! #[derive(Clone, PartialEq, FormValues)]
+//! struct LoginFormValues {
+//!     username: String,
+//!     password: String,
+//! }
+//!
+//! let form = use_form(FormOptions::new(LoginFormValues {
+//!     username: String::new(),
+//!     password: String::new(),
+//! }));
+//! ```
+//!
+//! Use `ambient_arguments` for non-field values supplied from surrounding
+//! context. The old `strip_arguments` DSL name remains as a deprecated alias.
+//! CSRF should be supplied by `#[server_fn]` client stubs through the
+//! `X-CSRFToken` header rather than as a server function business argument.
 //!
 //! ## Macros
 //!
@@ -214,6 +245,8 @@ pub mod auth;
 pub mod csrf;
 // Static form metadata types for form! macro (WASM-compatible)
 pub mod form_generated;
+// Typed form runtime state (WASM-compatible)
+pub mod form_state;
 // FormComponent requires reinhardt-forms which is not WASM-compatible yet
 // For now, client-side forms should use PageElement
 #[cfg(native)]
@@ -278,6 +311,10 @@ pub use dom::{Document, Element, EventHandle, EventType, document};
 pub use form::{FormBinding, FormComponent};
 // Static form metadata types (always available, used by form! macro)
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
+pub use form_state::{
+	FieldErrors, FormFields, FormHandle, FormOptions, FormValidate, FormValidationError,
+	FormValues, use_form,
+};
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use reactive::{Effect, Memo, Resource, ResourceState, Signal, use_resource};
 #[cfg(wasm)]
@@ -316,6 +353,7 @@ pub use ssr::{SsrOptions, SsrRenderer, SsrState};
 pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
 
 // Re-export procedural macros
+pub use reinhardt_pages_macros::FormValues;
 pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
 pub use reinhardt_pages_macros::page;

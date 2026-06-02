@@ -138,6 +138,35 @@ page!(|| {
 })
 ```
 
+### Forms: Static Definition and Dynamic Behavior
+
+`form!` defines static form structure: field names, widgets, labels,
+validation metadata, server function binding, and rendering. `use_form` owns
+typed runtime behavior: values, field signals, dirty/touched state, validation
+errors, loading, success, reset, and submit orchestration.
+
+For value structs, derive `FormValues` and initialize a runtime handle:
+
+```rust
+use reinhardt_pages::{FormOptions, FormValues, use_form};
+
+#[derive(Clone, PartialEq, FormValues)]
+struct LoginFormValues {
+    username: String,
+    password: String,
+}
+
+let form = use_form(FormOptions::new(LoginFormValues {
+    username: String::new(),
+    password: String::new(),
+}));
+```
+
+Arguments supplied from ambient context use `ambient_arguments`. The old
+`strip_arguments` name remains as a deprecated alias. CSRF should stay at the
+transport layer: `#[server_fn]` client stubs attach `X-CSRFToken`, while
+non-WASM forms still render the hidden CSRF input for traditional posts.
+
 ### Reactive Conditional Rendering with `watch`
 
 The `watch { expr }` syntax enables reactive re-rendering when Signal dependencies change. Unlike static `if` conditions that are evaluated only at render time, `watch` blocks automatically re-evaluate and update the DOM when their Signal dependencies change.

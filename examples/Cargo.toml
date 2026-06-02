@@ -42,6 +42,7 @@ anyhow = "1.0.100"
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
 	'cfg(native)',
+	'cfg(server)',
 	'cfg(wasm)',
 	'cfg(with_reinhardt)',
 ] }

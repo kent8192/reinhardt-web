@@ -108,6 +108,8 @@ pub struct FormMacro {
 	///
 	/// See `StripArgument` for details. Tracked under reinhardt-web#3971.
 	pub strip_arguments: Vec<StripArgument>,
+	/// Source syntax used to populate `strip_arguments`.
+	pub ambient_arguments_source: Option<AmbientArgumentsSource>,
 	/// Span for error reporting
 	pub span: Span,
 }
@@ -737,8 +739,10 @@ pub struct ValidatorRule {
 /// to the underlying server_fn at submit time.
 ///
 /// Useful for values like CSRF tokens or other ambient context that should not
-/// be exposed as user-editable form fields, but must appear in the server_fn
-/// signature.
+/// Argument supplied from ambient context rather than from the user-facing form.
+///
+/// The legacy `strip_arguments` DSL name is kept as a deprecated alias for
+/// `ambient_arguments`.
 ///
 /// ## Behavior
 ///
@@ -754,7 +758,7 @@ pub struct ValidatorRule {
 ///
 /// Prior to reinhardt-web#3971 the `form!` macro silently appended a
 /// `__csrf_token: String` argument to every `method != Get` server_fn call.
-/// `strip_arguments` makes that injection explicit and generalizes it to any
+/// `ambient_arguments` makes that injection explicit and generalizes it to any
 /// argument the user wants to supply outside the form's field surface.
 ///
 /// ## Example DSL
@@ -763,7 +767,7 @@ pub struct ValidatorRule {
 /// form! {
 ///     server_fn: submit_vote,
 ///     method: Post,
-///     strip_arguments: {
+///     ambient_arguments: {
 ///         csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
 ///             .unwrap_or_default(),
 ///     },
@@ -778,6 +782,15 @@ pub struct StripArgument {
 	pub value: Expr,
 	/// Span for error reporting.
 	pub span: Span,
+}
+
+/// Source syntax used for arguments supplied outside the user-facing form.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AmbientArgumentsSource {
+	/// Current `ambient_arguments: { ... }` syntax.
+	AmbientArguments,
+	/// Deprecated `strip_arguments: { ... }` alias.
+	StripArguments,
 }
 
 /// Form submission callbacks configuration.
@@ -1131,6 +1144,7 @@ impl FormMacro {
 			fields: Vec::new(),
 			validators: Vec::new(),
 			strip_arguments: Vec::new(),
+			ambient_arguments_source: None,
 			span,
 		}
 	}

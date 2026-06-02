@@ -11,6 +11,7 @@ use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::{Action, use_action, use_effect, use_state};
+use reinhardt::pages::{FormOptions, FormValues, use_form};
 use uuid::Uuid;
 
 #[cfg(wasm)]
@@ -22,6 +23,11 @@ use {
 
 #[cfg(native)]
 use crate::apps::tweet::shared::server_fn::{create_tweet, delete_tweet};
+
+#[derive(Clone, PartialEq, FormValues)]
+struct TweetFormValues {
+	content: String,
+}
 
 /// Like button component (extracted to avoid nested watch blocks)
 ///
@@ -317,16 +323,16 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 /// - `state` block: Automatic loading/error signal management
 /// - `on_success` callback: Page reload after successful submission
 pub fn tweet_form() -> Page {
+	let tweet_runtime = use_form(FormOptions::new(TweetFormValues {
+		content: String::new(),
+	}));
+	let _initial_tweet_values = tweet_runtime.values();
+
 	// Define the form using form! macro with derived signals
 	let tweet_form_instance = form! {
 		name: TweetFormInner,
 		server_fn: create_tweet,
 		method: Post,
-		// Route the CSRF token to `create_tweet`'s trailing `_csrf_token: String`
-		// argument (server-side middleware performs the actual verification).
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		state: {
 			loading,
 			error,

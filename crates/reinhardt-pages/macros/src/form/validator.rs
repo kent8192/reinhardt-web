@@ -205,6 +205,7 @@ pub(super) fn validate(ast: &FormMacro) -> Result<TypedFormMacro> {
 		fields,
 		validators,
 		strip_arguments,
+		ambient_arguments_source: ast.ambient_arguments_source,
 		span: ast.span,
 	})
 }
@@ -1385,7 +1386,7 @@ fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoic
 	})
 }
 
-/// Transforms `strip_arguments` entries into their typed form.
+/// Transforms ambient argument entries into their typed form.
 ///
 /// Validates two constraints:
 /// 1. No duplicate argument names (each server_fn parameter may only be supplied once).
@@ -1406,7 +1407,7 @@ fn transform_strip_arguments(
 			return Err(Error::new(
 				arg.span,
 				format!(
-					"duplicate strip_arguments entry '{name_str}': each server_fn argument may only appear once"
+					"duplicate ambient_arguments entry '{name_str}': each server_fn argument may only appear once"
 				),
 			));
 		}
@@ -1415,7 +1416,7 @@ fn transform_strip_arguments(
 			return Err(Error::new(
 				arg.span,
 				format!(
-					"strip_arguments key '{name_str}' collides with a declared form field; either rename the field or remove this strip entry"
+					"ambient_arguments key '{name_str}' collides with a declared form field; either rename the field or remove this ambient entry"
 				),
 			));
 		}

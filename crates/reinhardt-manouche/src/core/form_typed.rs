@@ -33,7 +33,7 @@
 use proc_macro2::Span;
 use syn::{ExprClosure, Ident, Path};
 
-use super::form_node::ValidatorScope;
+use super::form_node::{AmbientArgumentsSource, ValidatorScope};
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// The top-level typed AST node representing a validated form! macro invocation.
@@ -128,6 +128,8 @@ pub struct TypedFormMacro {
 	/// Keys must not collide with declared form field names. See
 	/// `TypedStripArgument` for details. Tracked under reinhardt-web#3971.
 	pub strip_arguments: Vec<TypedStripArgument>,
+	/// Source syntax used to populate `strip_arguments`.
+	pub ambient_arguments_source: Option<AmbientArgumentsSource>,
 	/// Span for error reporting
 	pub span: Span,
 }
@@ -1098,7 +1100,7 @@ pub struct TypedValidatorRule {
 	pub span: Span,
 }
 
-/// Typed argument stripped from the surface form fields and appended to the
+/// Typed ambient argument omitted from the surface form fields and appended to the
 /// server_fn call at submit time.
 ///
 /// See `crate::core::form_node::StripArgument` for the source AST and
@@ -1384,6 +1386,7 @@ impl TypedFormMacro {
 			fields: Vec::new(),
 			validators: Vec::new(),
 			strip_arguments: Vec::new(),
+			ambient_arguments_source: None,
 			span,
 		}
 	}

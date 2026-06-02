@@ -22,14 +22,12 @@ use {
 
 /// Login user, persist session, and return user info
 ///
-/// `_csrf_token` is auto-appended by the `form!` macro for non-GET forms
-/// (commit 0fd5bf1e1 / #3337). CSRF is enforced by middleware, so we accept
-/// and ignore it here. See #3825.
+/// CSRF is supplied by the `#[server_fn]` client stub through `X-CSRFToken`
+/// and verified by middleware before this handler runs.
 #[server_fn]
 pub async fn login(
 	email: String,
 	password: String,
-	_csrf_token: String,
 	#[inject] _db: DatabaseConnection,
 	#[inject] session: SessionData,
 	#[inject] store: Depends<SessionStore>,
@@ -81,14 +79,13 @@ pub async fn login(
 
 /// Register new user
 ///
-/// `_csrf_token` is auto-appended by the `form!` macro; see [`login`] for details.
+/// CSRF is supplied by the `#[server_fn]` client stub; see [`login`] for details.
 #[server_fn]
 pub async fn register(
 	username: String,
 	email: String,
 	password: String,
 	password_confirmation: String,
-	_csrf_token: String,
 	#[inject] db: DatabaseConnection,
 ) -> std::result::Result<(), ServerFnError> {
 	// Construct request from parameters
