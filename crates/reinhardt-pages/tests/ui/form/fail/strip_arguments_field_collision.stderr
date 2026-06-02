@@ -1,4 +1,4 @@
-error: ambient_arguments key 'tenant_id' collides with a declared form field; either rename the field or remove this ambient entry
+error: strip_arguments key 'tenant_id' collides with a declared form field; either rename the field or remove this strip entry; use ambient_arguments for new code
   --> tests/ui/form/fail/strip_arguments_field_collision.rs:16:4
    |
 16 |             tenant_id: 0u64,

@@ -3,6 +3,8 @@
 //! Provides tweet card, tweet form, and tweet list components.
 //! tweet_form uses the form! macro with derived blocks for computed signals,
 //! while tweet_card and tweet_list use page! macro with hooks-styled state management.
+//! `use_form` value structs keep the examples on the typed runtime contract
+//! while `form!` remains the static renderer.
 
 use crate::apps::tweet::shared::types::TweetInfo;
 use crate::core::client::components::icons;

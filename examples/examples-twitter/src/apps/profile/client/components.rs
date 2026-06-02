@@ -9,6 +9,8 @@
 //! - Two-way binding (bind: true by default)
 //! - SVG icons with custom positioning
 //! - Server function integration for form submission
+//! `use_form` value structs keep the examples on the typed runtime contract
+//! while `form!` remains the static renderer.
 #[cfg(native)]
 use crate::apps::profile::shared::server_fn::fetch_profile;
 use crate::apps::profile::shared::types::ProfileResponse;

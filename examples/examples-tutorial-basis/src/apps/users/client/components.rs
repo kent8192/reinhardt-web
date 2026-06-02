@@ -3,6 +3,8 @@
 //! Provides minimal login / logout / sign-up pages backed by the `users`
 //! server functions. Every form uses the `form!` macro to define static fields
 //! while `#[server_fn]` client stubs attach the CSRF header automatically.
+//! `use_form` value structs keep the examples on the typed runtime contract
+//! while `form!` remains the static renderer.
 use crate::apps::polls::urls::client_router::urls as polls_links;
 #[cfg(wasm)]
 use crate::apps::users::server_fn::{login, logout, register};

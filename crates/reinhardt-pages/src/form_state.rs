@@ -135,6 +135,11 @@ where
 	}
 
 	/// Sets the async submit action.
+	///
+	/// On `wasm`, [`FormHandle::submit`] awaits the returned future through the
+	/// platform task spawner and updates loading/success/error signals from the
+	/// result. On `native`, submit still runs synchronous validation but does not
+	/// await this future; the async body is not executed.
 	pub fn on_submit<F, Fut, E>(mut self, on_submit: F) -> Self
 	where
 		F: Fn(V) -> Fut + 'static,
@@ -237,7 +242,6 @@ where
 
 	/// Returns whether current values differ from the initial values.
 	pub fn dirty(&self) -> Signal<bool> {
-		self.dirty.set(self.values() != self.initial_values);
 		self.dirty.clone()
 	}
 
@@ -300,6 +304,11 @@ where
 	}
 
 	/// Runs validation and starts the submit action when validation passes.
+	///
+	/// On `wasm`, the async submit action runs in the platform task spawner and
+	/// updates loading/success/error when it completes. On `native`, the
+	/// returned future is created and immediately dropped, so only synchronous
+	/// validation state is observable.
 	pub fn submit(&self) {
 		self.submit_error.set(None);
 		self.success.set(false);

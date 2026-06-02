@@ -17,15 +17,16 @@ use std::collections::HashSet;
 use syn::{Error, Result};
 
 use crate::core::{
-	FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry, FormFieldGroup,
-	FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState, FormSubmitButtonDef,
-	FormValidator, FormWatch, IconAttr, IconChild, IconPosition, StripArgument, TypedChoicesConfig,
-	TypedCustomAttr, TypedDerivedItem, TypedFieldDisplay, TypedFieldStyling, TypedFieldType,
-	TypedFieldValidation, TypedFormAction, TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef,
-	TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState,
-	TypedFormStyling, TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon,
-	TypedIconAttr, TypedIconChild, TypedIconPosition, TypedStripArgument, TypedSubmitButtonDef,
-	TypedValidatorRule, TypedWidget, TypedWrapper, TypedWrapperAttr, ValidatorRule,
+	AmbientArgumentsSource, FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry,
+	FormFieldGroup, FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState,
+	FormSubmitButtonDef, FormValidator, FormWatch, IconAttr, IconChild, IconPosition,
+	StripArgument, TypedChoicesConfig, TypedCustomAttr, TypedDerivedItem, TypedFieldDisplay,
+	TypedFieldStyling, TypedFieldType, TypedFieldValidation, TypedFormAction, TypedFormCallbacks,
+	TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro,
+	TypedFormSlots, TypedFormState, TypedFormStyling, TypedFormValidator, TypedFormWatch,
+	TypedFormWatchItem, TypedIcon, TypedIconAttr, TypedIconChild, TypedIconPosition,
+	TypedStripArgument, TypedSubmitButtonDef, TypedValidatorRule, TypedWidget, TypedWrapper,
+	TypedWrapperAttr, ValidatorRule,
 };
 
 /// Validates and transforms the FormMacro AST into a typed AST.
@@ -81,7 +82,11 @@ pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
 	let validators = transform_validators(&ast.validators, &ast.fields)?;
 
 	// Transform stripped server_fn arguments (reinhardt-web#3971).
-	let strip_arguments = transform_strip_arguments(&ast.strip_arguments, &ast.fields)?;
+	let strip_arguments = transform_strip_arguments(
+		&ast.strip_arguments,
+		&ast.fields,
+		ast.ambient_arguments_source,
+	)?;
 
 	// The parser guarantees that `name` is Some after successful parsing.
 	let name = ast
@@ -1312,9 +1317,13 @@ fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoic
 fn transform_strip_arguments(
 	args: &[StripArgument],
 	fields: &[FormFieldEntry],
+	source: Option<AmbientArgumentsSource>,
 ) -> Result<Vec<TypedStripArgument>> {
 	let mut seen = HashSet::new();
 	let mut typed = Vec::with_capacity(args.len());
+	let keyword = ambient_arguments_keyword(source);
+	let canonical_suffix = ambient_arguments_canonical_suffix(source);
+	let collision_entry = ambient_arguments_collision_entry(source);
 
 	for arg in args {
 		let name_str = arg.name.to_string();
@@ -1323,7 +1332,7 @@ fn transform_strip_arguments(
 			return Err(Error::new(
 				arg.span,
 				format!(
-					"duplicate ambient_arguments entry '{name_str}': each server_fn argument may only appear once"
+					"duplicate {keyword} entry '{name_str}': each server_fn argument may only appear once{canonical_suffix}"
 				),
 			));
 		}
@@ -1332,7 +1341,7 @@ fn transform_strip_arguments(
 			return Err(Error::new(
 				arg.span,
 				format!(
-					"ambient_arguments key '{name_str}' collides with a declared form field; either rename the field or remove this ambient entry"
+					"{keyword} key '{name_str}' collides with a declared form field; either rename the field or remove this {collision_entry} entry{canonical_suffix}"
 				),
 			));
 		}
@@ -1345,6 +1354,27 @@ fn transform_strip_arguments(
 	}
 
 	Ok(typed)
+}
+
+fn ambient_arguments_keyword(source: Option<AmbientArgumentsSource>) -> &'static str {
+	match source {
+		Some(AmbientArgumentsSource::StripArguments) => "strip_arguments",
+		_ => "ambient_arguments",
+	}
+}
+
+fn ambient_arguments_canonical_suffix(source: Option<AmbientArgumentsSource>) -> &'static str {
+	match source {
+		Some(AmbientArgumentsSource::StripArguments) => "; use ambient_arguments for new code",
+		_ => "",
+	}
+}
+
+fn ambient_arguments_collision_entry(source: Option<AmbientArgumentsSource>) -> &'static str {
+	match source {
+		Some(AmbientArgumentsSource::StripArguments) => "strip",
+		_ => "ambient",
+	}
 }
 
 /// Checks if a field with the given name exists in the field entries.

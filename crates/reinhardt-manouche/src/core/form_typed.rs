@@ -79,6 +79,7 @@ use super::form_node::{AmbientArgumentsSource, ValidatorScope};
 ///     }
 /// ```
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct TypedFormMacro {
 	/// Form struct name (validated identifier)
 	pub name: Ident,

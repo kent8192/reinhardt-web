@@ -12,7 +12,7 @@ use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 #[cfg(server)]
 use super::admin_auth::AdminLoginAuthenticator;
 #[cfg(server)]
-use super::security::{build_admin_auth_cookie, require_csrf_header};
+use super::security::{build_admin_auth_cookie, require_csrf_header, require_csrf_token};
 #[cfg(server)]
 use crate::adapters::AdminSite;
 #[cfg(server)]
@@ -58,6 +58,7 @@ use reinhardt_pages::server_fn::ServerFnRequest;
 /// let response = admin_login(
 ///     "admin".to_string(),
 ///     "password123".to_string(),
+///     csrf_token.to_string(),
 /// ).await?;
 /// // No need to store token — browser handles it via cookie
 /// ```
@@ -65,14 +66,42 @@ use reinhardt_pages::server_fn::ServerFnRequest;
 pub async fn admin_login(
 	username: String,
 	password: String,
+	csrf_token: String,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] db: Depends<DatabaseConnection>,
 	#[inject] site: Depends<AdminSite>,
 	#[inject] authenticator: Depends<AdminLoginAuthenticator>,
 ) -> Result<LoginResponse, ServerFnError> {
 	// Validate CSRF token
+	require_csrf_token(&csrf_token, &http_request.inner().headers)?;
+
+	complete_admin_login(username, password, http_request, db, site, authenticator).await
+}
+
+/// Authenticate an admin user using CSRF supplied through `X-CSRFToken`.
+#[server_fn]
+pub async fn admin_login_with_header(
+	username: String,
+	password: String,
+	#[inject] http_request: ServerFnRequest,
+	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] site: Depends<AdminSite>,
+	#[inject] authenticator: Depends<AdminLoginAuthenticator>,
+) -> Result<LoginResponse, ServerFnError> {
 	require_csrf_header(&http_request.inner().headers)?;
 
+	complete_admin_login(username, password, http_request, db, site, authenticator).await
+}
+
+#[cfg(server)]
+async fn complete_admin_login(
+	username: String,
+	password: String,
+	http_request: ServerFnRequest,
+	db: Depends<DatabaseConnection>,
+	site: Depends<AdminSite>,
+	authenticator: Depends<AdminLoginAuthenticator>,
+) -> Result<LoginResponse, ServerFnError> {
 	// Verify JWT secret is configured
 	let jwt_secret = site.jwt_secret().ok_or_else(|| {
 		::tracing::error!("admin_login: JWT secret not configured on AdminSite");

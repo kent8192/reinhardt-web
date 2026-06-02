@@ -93,12 +93,10 @@ fn generate_ambient_argument_deprecation_markers(macro_ast: &TypedFormMacro) -> 
 		quote! {}
 	};
 
-	let has_csrf_ambient_arg = macro_ast.strip_arguments.iter().any(|arg| {
-		matches!(
-			arg.name.to_string().as_str(),
-			"csrf_token" | "_csrf_token" | "csrfmiddlewaretoken"
-		)
-	});
+	let has_csrf_ambient_arg = macro_ast
+		.strip_arguments
+		.iter()
+		.any(|arg| is_csrf_argument_name(&arg.name));
 	let csrf_marker = if has_csrf_ambient_arg {
 		let ident = format_ident!(
 			"__REINHARDT_{}_CSRF_AMBIENT_DEPRECATED",
@@ -133,12 +131,17 @@ fn upper_snake_ident_fragment(ident: &syn::Ident) -> String {
 }
 
 fn should_pass_csrf_as_business_argument(macro_ast: &TypedFormMacro) -> bool {
-	macro_ast.strip_arguments.iter().any(|arg| {
-		matches!(
-			arg.name.to_string().as_str(),
-			"csrf_token" | "_csrf_token" | "csrfmiddlewaretoken"
-		)
-	})
+	macro_ast
+		.strip_arguments
+		.iter()
+		.any(|arg| is_csrf_argument_name(&arg.name))
+}
+
+fn is_csrf_argument_name(name: &syn::Ident) -> bool {
+	matches!(
+		name.to_string().as_str(),
+		"csrf_token" | "_csrf_token" | "csrfmiddlewaretoken"
+	)
 }
 
 fn generate_form_values_and_fields(
@@ -291,7 +294,6 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 	let ambient_argument_deprecation_markers =
 		generate_ambient_argument_deprecation_markers(macro_ast);
 	let form_values_and_fields = generate_form_values_and_fields(macro_ast, pages_crate);
-	let _should_pass_csrf_as_business_argument = should_pass_csrf_as_business_argument(macro_ast);
 
 	let effective_state: Option<TypedFormState> = if macro_ast.success_url.is_some() {
 		let mut s = macro_ast

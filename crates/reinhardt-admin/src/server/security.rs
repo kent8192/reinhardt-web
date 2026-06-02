@@ -438,7 +438,9 @@ pub fn require_csrf_header(
 		reinhardt_pages::server_fn::ServerFnError::server(403, "CSRF token missing from header")
 	})?;
 
-	let expected_token = extract_csrf_cookie(headers).unwrap_or_else(|| header_token.clone());
+	let expected_token = extract_csrf_cookie(headers).ok_or_else(|| {
+		reinhardt_pages::server_fn::ServerFnError::server(403, "CSRF token missing from cookie")
+	})?;
 	if !validate_csrf_token(&header_token, &expected_token) {
 		return Err(reinhardt_pages::server_fn::ServerFnError::server(
 			403,
@@ -1246,6 +1248,27 @@ mod tests {
 			reinhardt_pages::server_fn::ServerFnError::Server { status, message } => {
 				assert_eq!(status, 403);
 				assert_eq!(message, "CSRF token validation failed");
+			}
+			other => panic!("Expected Server error with status 403, got: {:?}", other),
+		}
+	}
+
+	#[rstest]
+	fn test_require_csrf_header_rejects_missing_cookie() {
+		// Arrange
+		let token = generate_csrf_token();
+		let mut headers = hyper::HeaderMap::new();
+		headers.insert("X-CSRFToken", token.parse().unwrap());
+
+		// Act
+		let result = require_csrf_header(&headers);
+
+		// Assert
+		let err = result.unwrap_err();
+		match err {
+			reinhardt_pages::server_fn::ServerFnError::Server { status, message } => {
+				assert_eq!(status, 403);
+				assert_eq!(message, "CSRF token missing from cookie");
 			}
 			other => panic!("Expected Server error with status 403, got: {:?}", other),
 		}

@@ -49,6 +49,7 @@ use syn::{Expr, ExprClosure, Ident, LitStr, Path};
 /// Represents the entire `form! { ... }` invocation with support for
 /// SSR and CSR rendering targets.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct FormMacro {
 	/// Form struct name (required, e.g., `name: LoginForm`).
 	///

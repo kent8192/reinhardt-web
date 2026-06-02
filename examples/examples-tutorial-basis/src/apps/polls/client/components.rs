@@ -24,6 +24,9 @@
 //!   path (`self::format_server_error`, `links::detail`). Form sub-views that
 //!   depend on the form's `error` / `loading` signals are rendered inline as
 //!   `{ .. }` blocks that read each signal exactly once.
+//! - `use_form` value structs keep examples on the typed runtime contract while
+//!   `form!` remains the static renderer until macro lowering delegates runtime
+//!   state.
 
 use crate::shared::types::{ChoiceInfo, QuestionInfo, UserInfo};
 use reinhardt::pages::component::Page;

@@ -6,6 +6,8 @@
 //! - Two-way binding (bind: true by default)
 //! - Server function integration for form submission
 //! - Automatic redirect on success
+//! `use_form` value structs keep the examples on the typed runtime contract
+//! while `form!` remains the static renderer.
 use crate::core::client::components::icons;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
