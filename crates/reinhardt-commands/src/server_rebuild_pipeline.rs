@@ -4,9 +4,15 @@
 //! server child process for a freshly spawned one. Emits the structured
 //! `[hot-reload] ...` log lines the watcher contract requires.
 
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use std::time::{Duration, Instant};
 
 use tokio::process::{Child, Command};
+use tokio::time::{sleep, timeout};
+
+const READINESS_TIMEOUT: Duration = Duration::from_secs(5);
+const READINESS_INTERVAL: Duration = Duration::from_millis(50);
+const CONNECT_TIMEOUT: Duration = Duration::from_millis(200);
 
 /// Outcome of a single server rebuild attempt triggered by the hot-reload loop.
 #[derive(Debug)]
@@ -48,6 +54,31 @@ impl ServerRebuildPipeline {
 		bin_name: &str,
 		current_child: &mut Child,
 		respawn: impl FnOnce() -> std::io::Result<Child>,
+	) -> (ServerRebuildOutcome, Option<Child>) {
+		Self::run_inner(bin_name, current_child, respawn, None).await
+	}
+
+	/// Run `cargo build --bin <bin_name>`, swap the child, then wait until
+	/// the advertised server address accepts TCP connections.
+	///
+	/// If the new child starts but never becomes reachable, the failure is
+	/// reported as `SpawnFailed` while the child is still returned so the
+	/// watcher can keep owning and eventually replace or kill it.
+	pub async fn run_with_readiness(
+		bin_name: &str,
+		current_child: &mut Child,
+		respawn: impl FnOnce() -> std::io::Result<Child>,
+		address: &str,
+	) -> (ServerRebuildOutcome, Option<Child>) {
+		let readiness = ServerReadinessProbe::new(address);
+		Self::run_inner(bin_name, current_child, respawn, Some(readiness)).await
+	}
+
+	async fn run_inner(
+		bin_name: &str,
+		current_child: &mut Child,
+		respawn: impl FnOnce() -> std::io::Result<Child>,
+		readiness: Option<ServerReadinessProbe>,
 	) -> (ServerRebuildOutcome, Option<Child>) {
 		let start = Instant::now();
 
@@ -106,6 +137,19 @@ impl ServerRebuildPipeline {
 
 		match respawn() {
 			Ok(new_child) => {
+				if let Some(readiness) = readiness
+					&& let Err(e) = readiness.wait_until_ready().await
+				{
+					let duration = start.elapsed();
+					let outcome = ServerRebuildOutcome::SpawnFailed {
+						duration,
+						message: format!("server did not become reachable: {}", e),
+					};
+					eprintln!("{}", Self::format_log_line(&outcome));
+					eprintln!("[hot-reload] watching for next change...");
+					return (outcome, Some(new_child));
+				}
+
 				let duration = start.elapsed();
 				let outcome = ServerRebuildOutcome::Ok { duration };
 				eprintln!("{}", Self::format_log_line(&outcome));
@@ -153,6 +197,87 @@ impl ServerRebuildPipeline {
 		let lines: Vec<&str> = stderr.split('\n').collect();
 		let start = lines.len().saturating_sub(n);
 		lines[start..].join("\n")
+	}
+}
+
+struct ServerReadinessProbe {
+	address: String,
+	timeout: Duration,
+	interval: Duration,
+	connect_timeout: Duration,
+}
+
+impl ServerReadinessProbe {
+	fn new(address: &str) -> Self {
+		Self {
+			address: address.to_string(),
+			timeout: READINESS_TIMEOUT,
+			interval: READINESS_INTERVAL,
+			connect_timeout: CONNECT_TIMEOUT,
+		}
+	}
+
+	async fn wait_until_ready(&self) -> std::io::Result<()> {
+		let addrs = Self::probe_addrs(&self.address)?;
+		let deadline = Instant::now() + self.timeout;
+		let mut last_error = String::from("no connection attempt made");
+
+		loop {
+			for addr in &addrs {
+				match timeout(self.connect_timeout, tokio::net::TcpStream::connect(addr)).await {
+					Ok(Ok(_stream)) => return Ok(()),
+					Ok(Err(e)) => {
+						last_error = format!("connect to {} failed: {}", addr, e);
+					}
+					Err(_) => {
+						last_error = format!("connect to {} timed out", addr);
+					}
+				}
+			}
+
+			if Instant::now() >= deadline {
+				return Err(std::io::Error::new(
+					std::io::ErrorKind::TimedOut,
+					format!(
+						"{} did not accept connections within {}; {}",
+						self.address,
+						format_duration(self.timeout),
+						last_error
+					),
+				));
+			}
+
+			sleep(self.interval).await;
+		}
+	}
+
+	fn probe_addrs(address: &str) -> std::io::Result<Vec<SocketAddr>> {
+		let addrs: Vec<SocketAddr> = address
+			.to_socket_addrs()?
+			.map(|addr| {
+				if addr.ip().is_unspecified() {
+					match addr {
+						SocketAddr::V4(addr) => {
+							SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), addr.port())
+						}
+						SocketAddr::V6(addr) => {
+							SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), addr.port())
+						}
+					}
+				} else {
+					addr
+				}
+			})
+			.collect();
+
+		if addrs.is_empty() {
+			return Err(std::io::Error::new(
+				std::io::ErrorKind::InvalidInput,
+				format!("server address {address:?} did not resolve to any socket addresses"),
+			));
+		}
+
+		Ok(addrs)
 	}
 }
 
@@ -219,5 +344,23 @@ mod tests {
 
 		// Assert
 		assert_eq!(tail, "only-line-1\nonly-line-2");
+	}
+
+	#[test]
+	fn readiness_probe_rewrites_unspecified_ipv4_to_loopback() {
+		// Act
+		let addrs = ServerReadinessProbe::probe_addrs("0.0.0.0:8000").unwrap();
+
+		// Assert
+		assert_eq!(addrs, vec!["127.0.0.1:8000".parse().unwrap()]);
+	}
+
+	#[test]
+	fn readiness_probe_rewrites_unspecified_ipv6_to_loopback() {
+		// Act
+		let addrs = ServerReadinessProbe::probe_addrs("[::]:8000").unwrap();
+
+		// Assert
+		assert_eq!(addrs, vec!["[::1]:8000".parse().unwrap()]);
 	}
 }

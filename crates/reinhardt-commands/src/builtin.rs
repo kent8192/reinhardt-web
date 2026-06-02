@@ -2657,6 +2657,7 @@ impl RunServerCommand {
 
 		let cfg = crate::debounced_watcher::WatcherConfig {
 			bin_name,
+			address: address.to_string(),
 			roots,
 			no_wasm_rebuild,
 			#[cfg(feature = "pages")]
