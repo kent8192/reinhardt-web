@@ -284,7 +284,9 @@ cargo run --bin manage -- runserver --with-pages
 Edit any Rust source file (server-side or wasm-side) and the bundle
 plus the server are rebuilt in place. Pass `--noreload` to disable
 auto-reload entirely, or `--no-wasm-rebuild` to keep server reload
-but manage the wasm build yourself.
+but manage the wasm build yourself. A successful server restart log is
+emitted only after the respawned child accepts connections at the
+advertised development address.
 
 ### 4. Create Your First App
 

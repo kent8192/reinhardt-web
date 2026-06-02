@@ -649,7 +649,7 @@ pub fn theme_toggle() -> Page {
 				id: "theme-toggle-btn",
 				aria_label: "Toggle theme",
 				@click: move |_event| {
-					toggle_theme();
+					self::toggle_theme();
 				},
 				{
 					icons::sun_icon()
