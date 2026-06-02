@@ -190,7 +190,9 @@ fn build_voting_form_page(qid: i64, choices: &[ChoiceInfo]) -> Page {
 				widget: RadioSelect,
 				required,
 				label: "Select your choice",
-				class: "form-check",
+				class: "poll-choice-input",
+				wrapper_class: "poll-choice-field",
+				label_class: "poll-choice-label",
 				choices_from: "choices",
 				choice_value: "id",
 				choice_label: "choice_text",
@@ -464,37 +466,42 @@ pub fn polls_results(question_id: i64) -> Page {
 											let percentage = if total > 0 {
 												(choice.votes as f64 / total as f64 * 100.0) as i32
 											} else { 0 };
-											page!(|choice: ChoiceInfo, percentage: i32| {
+											let choice_text = choice.choice_text.clone();
+											let votes = choice.votes;
+											let progress_label = format!("{} received {} percent of votes", choice_text, percentage);
+											page!(|choice_text: String, votes: i32, percentage: i32, progress_label: String| {
 												div {
 													class: "py-4",
 													div {
 														class: "flex justify-between items-center mb-2",
-														strong { {
-															choice.choice_text.clone()
-														} }
+														strong { { choice_text } }
 														span {
 															class: "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white",
 															{
-																format!("{} votes", choice.votes)
+																format!("{} votes", votes)
 															}
 														}
 													}
 													div {
-														class: "w-full bg-surface-tertiary rounded-full h-2.5",
+														class: "poll-result-meter-row",
 														div {
-															class: "bg-brand h-2.5 rounded-full",
+															class: "poll-result-meter",
 															role: "progressbar",
+															aria_label: progress_label,
 															style: format!("width: {}%", percentage),
 															aria_valuenow: percentage.to_string(),
 															aria_valuemin: "0",
 															aria_valuemax: "100",
+														}
+														span {
+															class: "poll-result-percent",
 															{
 																format!("{}%", percentage)
 															}
 														}
 													}
 												}
-											})(choice.clone(), percentage)
+											})(choice_text, votes, percentage, progress_label)
 										} }
 									}
 									div {
