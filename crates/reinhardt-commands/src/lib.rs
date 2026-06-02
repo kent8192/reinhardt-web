@@ -115,7 +115,8 @@
 //! Edit any Rust source file (server-side or wasm-side) and the bundle plus
 //! the server are rebuilt in place. Pass `--noreload` to disable auto-reload
 //! entirely, or `--no-wasm-rebuild` to keep server reload but manage the wasm
-//! build yourself.
+//! build yourself. The server restart success log is emitted only after the
+//! respawned child accepts connections at the advertised development address.
 //!
 //! See [`runserver_hooks`] for the full hot-reload runbook and failure modes.
 

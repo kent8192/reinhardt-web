@@ -101,6 +101,8 @@ pub async fn debounce_next(rx: &mut Receiver<Event>, window: Duration) -> Option
 pub struct WatcherConfig {
 	/// Bin name passed to `cargo build --bin`.
 	pub bin_name: String,
+	/// Advertised runserver address that must be reachable after restart.
+	pub address: String,
 	/// Source directories and manifest files to subscribe to.
 	pub roots: SourceRoots,
 	/// When `true`, suppress the WASM rebuild pipeline.
@@ -222,10 +224,11 @@ pub async fn run_watcher(
 						}
 					}
 				};
-				let server_fut = crate::server_rebuild_pipeline::ServerRebuildPipeline::run(
+				let server_fut = crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
 					&config.bin_name,
 					&mut current_child,
 					&respawn,
+					&config.address,
 				);
 				let ((), (_outcome, new_child)) = tokio::join!(wasm_fut, server_fut);
 				if let Some(child) = new_child {
