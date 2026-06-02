@@ -11,6 +11,7 @@
 //! - `screen`: DOM query interface for finding elements
 //! - `mock_storage`: Mock localStorage/sessionStorage
 //! - `mock_cookies`: Mock document.cookie
+//! - `mock_fetch`: Mock-aware fetch helpers for server function tests
 //!
 //! # Example
 //!
@@ -33,6 +34,7 @@
 use rstest::*;
 
 use crate::wasm::{MockCookies, MockStorage, Screen};
+pub use reinhardt_pages::testing::mock_fetch;
 
 // ============================================================================
 // Screen / Query Fixtures

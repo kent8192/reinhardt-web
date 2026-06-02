@@ -345,7 +345,7 @@ where
 	AdminLoginAuthenticator(authenticator)
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use reinhardt_di::SingletonScope;

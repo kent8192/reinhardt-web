@@ -126,7 +126,7 @@ pub async fn admin_login(
 	})
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 

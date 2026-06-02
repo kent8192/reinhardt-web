@@ -585,7 +585,7 @@ pub fn extract_admin_auth_cookie(headers: &hyper::HeaderMap) -> Option<String> {
 		})
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use rstest::rstest;
