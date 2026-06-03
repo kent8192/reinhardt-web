@@ -1098,7 +1098,7 @@ pub struct TypedValidatorRule {
 	pub span: Span,
 }
 
-/// Typed argument stripped from the surface form fields and appended to the
+/// Typed ambient argument omitted from the surface form fields and appended to the
 /// server_fn call at submit time.
 ///
 /// See `crate::core::form_node::StripArgument` for the source AST and

@@ -138,16 +138,12 @@ pub async fn vote(
 /// Wrapper function that accepts individual field values from form! macro's submit.
 /// Converts String field values to the required types and calls the underlying vote function.
 ///
-/// The trailing `_csrf_token: String` argument is supplied by `form!`'s
-/// `strip_arguments` block (reinhardt-web#3971). Actual CSRF verification is
-/// performed by the server-side CSRF middleware before this handler runs;
-/// receiving the value here keeps the WASM client stub's positional argument
-/// list aligned with the server signature.
+/// CSRF is supplied by the `#[server_fn]` client stub through `X-CSRFToken`
+/// and verified by middleware before this handler runs.
 #[server_fn]
 pub async fn submit_vote(
 	question_id: String,
 	choice_id: String,
-	_csrf_token: String,
 	#[inject] db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	let question_id: i64 = question_id
@@ -220,9 +216,8 @@ async fn vote_internal(
 //   serializes all fields as strings on submit. This is tracked upstream as
 //   reinhardt-web#4397 — once that ships, the `String` + `.parse()` dance
 //   below can be replaced with the typed signatures shown next to each
-//   handler. The trailing `_csrf_token: String` parameter is appended by the
-//   `form!` macro for non-GET forms; the CSRF middleware verifies it before
-//   the handler runs.
+//   handler. CSRF is supplied by the `#[server_fn]` client stub through
+//   `X-CSRFToken` and verified by middleware.
 // * Authentication is required: `Depends<Result<User, SessionError>>` is
 //   resolved by the request-scoped factory in `apps::polls::di` and
 //   exposes `.as_ref().map_err(ServerFnError::from)?` for the 401/403/500
@@ -236,14 +231,12 @@ async fn vote_internal(
 /// Ideal implementation (without the form! String workaround tracked in #4397):
 ///   pub async fn create_question(
 ///       question_text: String,
-///       _csrf_token: String,
 ///       #[inject] _db: reinhardt::DatabaseConnection,
 ///       #[inject] session_user: Depends<Result<User, SessionError>>,
 ///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
 #[server_fn]
 pub async fn create_question(
 	question_text: String,
-	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
@@ -278,14 +271,12 @@ pub async fn create_question(
 ///   pub async fn update_question(
 ///       question_id: i64,
 ///       question_text: String,
-///       _csrf_token: String,
 ///       ...
 ///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
 #[server_fn]
 pub async fn update_question(
 	question_id: String,
 	question_text: String,
-	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
@@ -335,13 +326,11 @@ pub async fn update_question(
 /// Ideal implementation (without the form! String workaround tracked in #4397):
 ///   pub async fn delete_question(
 ///       question_id: i64,
-///       _csrf_token: String,
 ///       ...
 ///   ) -> std::result::Result<(), ServerFnError> { ... }
 #[server_fn]
 pub async fn delete_question(
 	question_id: String,
-	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<(), ServerFnError> {
@@ -417,7 +406,6 @@ async fn require_question_author(
 pub async fn create_choice(
 	question_id: String,
 	choice_text: String,
-	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
@@ -456,7 +444,6 @@ pub async fn create_choice(
 pub async fn update_choice(
 	choice_id: String,
 	choice_text: String,
-	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
@@ -498,7 +485,6 @@ pub async fn update_choice(
 #[server_fn]
 pub async fn delete_choice(
 	choice_id: String,
-	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<(), ServerFnError> {

@@ -16,6 +16,7 @@ use {
 	crate::apps::auth::client::state::set_current_user,
 	crate::apps::auth::shared::server_fn::{login, register},
 };
+
 /// Login form component using form! macro
 ///
 /// Uses the `form!` macro for:
@@ -31,11 +32,6 @@ pub fn login_form() -> Page {
 		name: LoginForm,
 		server_fn: login,
 		method: Post,
-		// Route the CSRF token to `login`'s trailing `_csrf_token: String`
-		// argument (server-side middleware performs the actual verification).
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		redirect_on_success: "/timeline",
 		state: {
 			loading,
@@ -217,11 +213,6 @@ pub fn register_form() -> Page {
 		name: RegisterForm,
 		server_fn: register,
 		method: Post,
-		// Route the CSRF token to `register`'s trailing `_csrf_token: String`
-		// argument (server-side middleware performs the actual verification).
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		redirect_on_success: "/login",
 		state: {
 			loading,

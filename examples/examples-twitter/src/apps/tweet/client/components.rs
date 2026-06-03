@@ -322,11 +322,6 @@ pub fn tweet_form() -> Page {
 		name: TweetFormInner,
 		server_fn: create_tweet,
 		method: Post,
-		// Route the CSRF token to `create_tweet`'s trailing `_csrf_token: String`
-		// argument (server-side middleware performs the actual verification).
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		state: {
 			loading,
 			error,

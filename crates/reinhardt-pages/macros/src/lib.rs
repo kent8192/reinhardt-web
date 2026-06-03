@@ -7,7 +7,20 @@
 //! - `page!` - Anonymous component DSL macro
 //! - `head!` - HTML head section DSL macro
 //! - `form!` - Type-safe form component macro with reactive bindings
+//! - `#[derive(FormValues)]` - Typed value/field signal derivation for `use_form`
 //! - `#[server_fn]` - Server Functions (RPC) macro
+//!
+//! ## Form Design
+//!
+//! `form!` defines static form structure: field names, widgets, labels,
+//! rendering metadata, and server function binding. Runtime behavior belongs to
+//! `use_form`, whose value structs can derive `FormValues`.
+//!
+//! `ambient_arguments` supplies server function arguments from surrounding
+//! context rather than from user-facing fields. The old `strip_arguments` name
+//! remains accepted as a deprecated alias. CSRF should be transported through
+//! the `X-CSRFToken` header injected by `#[server_fn]` client stubs, not as a
+//! server function business argument.
 //!
 //! ## page! Macro Example
 //!
@@ -51,6 +64,7 @@ use proc_macro::TokenStream;
 
 mod crate_paths;
 mod form;
+mod form_values;
 mod head;
 mod page;
 mod server_fn;
@@ -86,6 +100,12 @@ mod server_fn;
 #[proc_macro_attribute]
 pub fn server_fn(args: TokenStream, input: TokenStream) -> TokenStream {
 	server_fn::server_fn_impl(args, input)
+}
+
+/// Derives typed field signals and form traits for a form values struct.
+#[proc_macro_derive(FormValues)]
+pub fn derive_form_values(input: TokenStream) -> TokenStream {
+	form_values::derive_form_values(input)
 }
 
 /// Page component macro

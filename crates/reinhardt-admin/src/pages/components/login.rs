@@ -65,7 +65,7 @@ pub fn login_form(error_message: Option<&str>) -> Page {
 /// Builds the login form HTML structure using the `form!` macro.
 ///
 /// The struct name `AdminLoginForm` generates `id="admin-login-form"` on the
-/// form element. The `server_fn: admin_login` directive auto-generates the
+/// form element. The `server_fn: admin_login_with_header` directive auto-generates the
 /// submit handler, replacing the manual `setup_login_handler()`.
 ///
 /// The `on_success` callback updates the auth state and navigates to the
@@ -73,15 +73,12 @@ pub fn login_form(error_message: Option<&str>) -> Page {
 /// so no client-side token storage is needed.
 fn build_login_form() -> Page {
 	#[allow(unused_imports)]
-	use crate::server::login::admin_login;
+	use crate::server::login::admin_login_with_header;
 
 	let login_form = form! {
 		name: AdminLoginForm,
-		server_fn: admin_login,
+		server_fn: admin_login_with_header,
 		method: Post,
-		strip_arguments: {
-			csrf_token: reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		fields: {
 			username: CharField {
 				required,

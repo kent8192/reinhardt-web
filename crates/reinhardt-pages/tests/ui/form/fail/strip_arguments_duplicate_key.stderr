@@ -1,4 +1,4 @@
-error: duplicate strip_arguments entry 'csrf_token': each server_fn argument may only appear once
+error: duplicate strip_arguments entry 'csrf_token': each server_fn argument may only appear once; use ambient_arguments for new code
   --> tests/ui/form/fail/strip_arguments_duplicate_key.rs:13:4
    |
 13 |             csrf_token: String::from("again"),

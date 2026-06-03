@@ -155,13 +155,10 @@ fn build_voting_form_page(qid: i64, choices: &[ChoiceInfo]) -> Page {
 	// Voting form via the `form!` macro.
 	//
 	// - `server_fn: submit_vote` binds the form to the server function whose
-	//   typed signature is `(question_id, choice_id, csrf_token)`.
+	//   typed signature is `(question_id, choice_id)`.
 	// - `method: Post` enables CSRF hidden-input rendering for non-WASM submits.
-	// - `strip_arguments: { csrf_token: ... }` routes the CSRF token to the
-	//   trailing server_fn argument — the macro then strips it from the
-	//   client-side argument list so the form only owns `question_id` and
-	//   `choice_id`. CSRF verification still happens server-side in the CSRF
-	//   middleware before this handler runs.
+	// - The `#[server_fn]` client stub attaches `X-CSRFToken` for WASM submits,
+	//   so CSRF stays transport-level rather than becoming a business argument.
 	// - `state: { loading, error }` exposes per-field signals to drive the
 	//   submit button and error banner below.
 	// - `success_url: |_form| ...` triggers an in-SPA navigation to the results
@@ -175,9 +172,6 @@ fn build_voting_form_page(qid: i64, choices: &[ChoiceInfo]) -> Page {
 		server_fn: submit_vote,
 		method: Post,
 		success_url: |_form| links::results(qid),
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		state: {
 			loading,
 			error,
@@ -657,9 +651,6 @@ pub fn question_new() -> Page {
 		server_fn: create_question,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		state: {
 			loading,
 			error,
@@ -730,7 +721,6 @@ pub fn question_new() -> Page {
 /// only the author can submit successfully.
 pub fn question_edit(question_id: i64) -> Page {
 	let qid = question_id;
-
 	let load_detail = use_resource(
 		move || async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
 		(),
@@ -741,9 +731,6 @@ pub fn question_edit(question_id: i64) -> Page {
 		server_fn: update_question,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		state: {
 			loading,
 			error,
@@ -874,7 +861,6 @@ pub fn question_edit(question_id: i64) -> Page {
 /// Delete confirmation page (`/polls/{question_id}/delete/`).
 pub fn question_delete_confirm(question_id: i64) -> Page {
 	let qid = question_id;
-
 	let load_detail = use_resource(
 		move || async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
 		(),
@@ -885,9 +871,6 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 		server_fn: delete_question,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		state: {
 			loading,
 			error,
@@ -1035,9 +1018,6 @@ pub fn choice_new(question_id: i64) -> Page {
 				class: "form-control",
 			},
 		},
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 	};
 
 	let loading_signal = new_form.loading().clone();
@@ -1103,9 +1083,6 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 		server_fn: update_choice,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		state: {
 			loading,
 			error,
@@ -1185,9 +1162,6 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 		server_fn: delete_choice,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		state: {
 			loading,
 			error,

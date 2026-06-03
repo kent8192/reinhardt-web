@@ -909,13 +909,7 @@ mod auth_tests {
 		let session_user = anonymous_session_user();
 
 		// Act
-		let result = create_question(
-			"Anonymous attempt".to_string(),
-			"csrf-token-ignored".to_string(),
-			db_conn,
-			session_user,
-		)
-		.await;
+		let result = create_question("Anonymous attempt".to_string(), db_conn, session_user).await;
 
 		// Assert
 		assert_unauthorized(result, "create_question");
@@ -932,7 +926,6 @@ mod auth_tests {
 		let result = update_question(
 			"1".to_string(),
 			"New text".to_string(),
-			"csrf".to_string(),
 			db_conn,
 			session_user,
 		)
@@ -949,8 +942,7 @@ mod auth_tests {
 		let (_file, db_conn) = empty_db_conn.await;
 		let session_user = anonymous_session_user();
 
-		let result =
-			delete_question("1".to_string(), "csrf".to_string(), db_conn, session_user).await;
+		let result = delete_question("1".to_string(), db_conn, session_user).await;
 
 		assert_unauthorized(result, "delete_question");
 	}
@@ -966,7 +958,6 @@ mod auth_tests {
 		let result = create_choice(
 			"1".to_string(),
 			"Anonymous choice".to_string(),
-			"csrf".to_string(),
 			db_conn,
 			session_user,
 		)
@@ -983,14 +974,8 @@ mod auth_tests {
 		let (_file, db_conn) = empty_db_conn.await;
 		let session_user = anonymous_session_user();
 
-		let result = update_choice(
-			"1".to_string(),
-			"Hijack".to_string(),
-			"csrf".to_string(),
-			db_conn,
-			session_user,
-		)
-		.await;
+		let result =
+			update_choice("1".to_string(), "Hijack".to_string(), db_conn, session_user).await;
 
 		assert_unauthorized(result, "update_choice");
 	}
@@ -1003,8 +988,7 @@ mod auth_tests {
 		let (_file, db_conn) = empty_db_conn.await;
 		let session_user = anonymous_session_user();
 
-		let result =
-			delete_choice("1".to_string(), "csrf".to_string(), db_conn, session_user).await;
+		let result = delete_choice("1".to_string(), db_conn, session_user).await;
 
 		assert_unauthorized(result, "delete_choice");
 	}

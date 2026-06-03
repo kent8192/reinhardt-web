@@ -1,8 +1,8 @@
 //! Authentication UI components for the tutorial-basis example.
 //!
 //! Provides minimal login / logout / sign-up pages backed by the `users`
-//! server functions. Every form uses the `form!` macro to bind fields and
-//! attach the CSRF token automatically.
+//! server functions. Every form uses the `form!` macro to define static fields
+//! while `#[server_fn]` client stubs attach the CSRF header automatically.
 use crate::apps::polls::urls::client_router::urls as polls_links;
 #[cfg(wasm)]
 use crate::apps::users::server_fn::{login, logout, register};
@@ -15,16 +15,13 @@ use reinhardt::pages::reactive::Signal;
 /// Login page: username + password form posting to the `login` server function.
 ///
 /// On success, redirects to the polls index. Field bindings, loading state,
-/// and CSRF token are managed by the `form!` macro.
+/// and CSRF header plumbing are managed by the form/server_fn integration.
 pub fn login_form() -> Page {
 	let login_form = form! {
 		name: LoginForm,
 		server_fn: login,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		state: {
 			loading,
 			error,
@@ -118,9 +115,6 @@ pub fn logout_form() -> Page {
 		server_fn: logout,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		state: {
 			loading,
 			error,
@@ -180,16 +174,13 @@ pub fn logout_form() -> Page {
 /// On success, the server rotates the session and persists `user_id`, so the
 /// new account is logged in immediately; `redirect_on_success: "/"` then
 /// hands the user to the polls index. Field bindings, loading state, and
-/// CSRF token plumbing are handled by the `form!` macro.
+/// CSRF header plumbing is handled by the form/server_fn integration.
 pub fn signup_form() -> Page {
 	let signup_form = form! {
 		name: SignupForm,
 		server_fn: register,
 		method: Post,
 		redirect_on_success: "/",
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		state: {
 			loading,
 			error,

@@ -17,15 +17,16 @@ use std::collections::HashSet;
 use syn::{Error, Result};
 
 use crate::core::{
-	FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry, FormFieldGroup,
-	FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState, FormSubmitButtonDef,
-	FormValidator, FormWatch, IconAttr, IconChild, IconPosition, StripArgument, TypedChoicesConfig,
-	TypedCustomAttr, TypedDerivedItem, TypedFieldDisplay, TypedFieldStyling, TypedFieldType,
-	TypedFieldValidation, TypedFormAction, TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef,
-	TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState,
-	TypedFormStyling, TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon,
-	TypedIconAttr, TypedIconChild, TypedIconPosition, TypedStripArgument, TypedSubmitButtonDef,
-	TypedValidatorRule, TypedWidget, TypedWrapper, TypedWrapperAttr, ValidatorRule,
+	AmbientArgumentsSource, FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry,
+	FormFieldGroup, FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState,
+	FormSubmitButtonDef, FormValidator, FormWatch, IconAttr, IconChild, IconPosition,
+	StripArgument, TypedChoicesConfig, TypedCustomAttr, TypedDerivedItem, TypedFieldDisplay,
+	TypedFieldStyling, TypedFieldType, TypedFieldValidation, TypedFormAction, TypedFormCallbacks,
+	TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro,
+	TypedFormSlots, TypedFormState, TypedFormStyling, TypedFormValidator, TypedFormWatch,
+	TypedFormWatchItem, TypedIcon, TypedIconAttr, TypedIconChild, TypedIconPosition,
+	TypedStripArgument, TypedSubmitButtonDef, TypedValidatorRule, TypedWidget, TypedWrapper,
+	TypedWrapperAttr, ValidatorRule,
 };
 
 /// Validates and transforms the FormMacro AST into a typed AST.
@@ -36,6 +37,19 @@ use crate::core::{
 ///
 /// Returns a compilation error if any validation rule is violated.
 pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
+	validate_form_with_ambient_arguments_source(ast, ast.ambient_arguments_source)
+}
+
+/// Validates and transforms the FormMacro AST into a typed AST with the source
+/// syntax used for ambient arguments.
+///
+/// # Errors
+///
+/// Returns a compilation error if any validation rule is violated.
+pub fn validate_form_with_ambient_arguments_source(
+	ast: &FormMacro,
+	ambient_arguments_source: Option<AmbientArgumentsSource>,
+) -> Result<TypedFormMacro> {
 	// Validate unique field names
 	validate_unique_field_names(&ast.fields)?;
 
@@ -64,6 +78,15 @@ pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
 	let redirect_on_success = transform_redirect(&ast.redirect_on_success)?;
 
 	let success_url = ast.success_url.clone();
+	if let (Some(_), Some(url_expr)) = (ast.redirect_on_success.as_ref(), success_url.as_ref()) {
+		return Err(Error::new_spanned(
+			url_expr,
+			"form! cannot specify both `redirect_on_success` and `success_url`: each generates an \
+			 SPA navigation on successful submit, so combining them would push two history \
+			 entries and fire two observer cycles. Use `redirect_on_success` for a static URL or \
+			 `success_url` for a dynamically-computed one, not both.",
+		));
+	}
 
 	// Transform initial_loader (pass through the Path)
 	let initial_loader = ast.initial_loader.clone();
@@ -81,7 +104,8 @@ pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
 	let validators = transform_validators(&ast.validators, &ast.fields)?;
 
 	// Transform stripped server_fn arguments (reinhardt-web#3971).
-	let strip_arguments = transform_strip_arguments(&ast.strip_arguments, &ast.fields)?;
+	let strip_arguments =
+		transform_strip_arguments(&ast.strip_arguments, &ast.fields, ambient_arguments_source)?;
 
 	// The parser guarantees that `name` is Some after successful parsing.
 	let name = ast
@@ -341,6 +365,16 @@ fn transform_derived(derived: &Option<FormDerived>) -> Result<Option<TypedFormDe
 /// - Supports `{param}` syntax for dynamic parameters
 /// - Rejects dangerous schemes (javascript:, data:, vbscript:, file:)
 fn transform_redirect(redirect: &Option<syn::LitStr>) -> Result<Option<String>> {
+	validate_redirect_on_success(redirect)
+}
+
+/// Validates and normalizes a `redirect_on_success` literal.
+///
+/// # Errors
+///
+/// Returns a compilation error when the redirect path is empty, uses an
+/// unsafe URL scheme, or is neither a relative path nor an HTTPS URL.
+pub fn validate_redirect_on_success(redirect: &Option<syn::LitStr>) -> Result<Option<String>> {
 	let Some(redirect) = redirect else {
 		return Ok(None);
 	};
@@ -1301,7 +1335,7 @@ fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoic
 	})
 }
 
-/// Transforms `strip_arguments` entries into their typed form.
+/// Transforms ambient argument entries into their typed form.
 ///
 /// Validates two constraints:
 /// 1. No duplicate argument names (each server_fn parameter may only be supplied once).
@@ -1311,9 +1345,13 @@ fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoic
 fn transform_strip_arguments(
 	args: &[StripArgument],
 	fields: &[FormFieldEntry],
+	source: Option<AmbientArgumentsSource>,
 ) -> Result<Vec<TypedStripArgument>> {
 	let mut seen = HashSet::new();
 	let mut typed = Vec::with_capacity(args.len());
+	let keyword = ambient_arguments_keyword(source);
+	let canonical_suffix = ambient_arguments_canonical_suffix(source);
+	let collision_entry = ambient_arguments_collision_entry(source);
 
 	for arg in args {
 		let name_str = arg.name.to_string();
@@ -1322,7 +1360,7 @@ fn transform_strip_arguments(
 			return Err(Error::new(
 				arg.span,
 				format!(
-					"duplicate strip_arguments entry '{name_str}': each server_fn argument may only appear once"
+					"duplicate {keyword} entry '{name_str}': each server_fn argument may only appear once{canonical_suffix}"
 				),
 			));
 		}
@@ -1331,7 +1369,7 @@ fn transform_strip_arguments(
 			return Err(Error::new(
 				arg.span,
 				format!(
-					"strip_arguments key '{name_str}' collides with a declared form field; either rename the field or remove this strip entry"
+					"{keyword} key '{name_str}' collides with a declared form field; either rename the field or remove this {collision_entry} entry{canonical_suffix}"
 				),
 			));
 		}
@@ -1344,6 +1382,27 @@ fn transform_strip_arguments(
 	}
 
 	Ok(typed)
+}
+
+fn ambient_arguments_keyword(source: Option<AmbientArgumentsSource>) -> &'static str {
+	match source {
+		Some(AmbientArgumentsSource::StripArguments) => "strip_arguments",
+		_ => "ambient_arguments",
+	}
+}
+
+fn ambient_arguments_canonical_suffix(source: Option<AmbientArgumentsSource>) -> &'static str {
+	match source {
+		Some(AmbientArgumentsSource::StripArguments) => "; use ambient_arguments for new code",
+		_ => "",
+	}
+}
+
+fn ambient_arguments_collision_entry(source: Option<AmbientArgumentsSource>) -> &'static str {
+	match source {
+		Some(AmbientArgumentsSource::StripArguments) => "strip",
+		_ => "ambient",
+	}
 }
 
 /// Checks if a field with the given name exists in the field entries.

@@ -25,6 +25,7 @@ use {
 	reinhardt::pages::reactive::ResourceState,
 	reinhardt::pages::use_resource,
 };
+
 /// Profile view component using hooks
 ///
 /// Displays user profile information with modern SNS design.
@@ -233,11 +234,6 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 		name: ProfileEditForm,
 		server_fn: update_profile_form,
 		method: Post,
-		// Route the CSRF token to `update_profile_form`'s trailing
-		// `_csrf_token: String` argument (server-side middleware verifies it).
-		strip_arguments: {
-			csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
-		},
 		state: {
 			loading,
 			error,

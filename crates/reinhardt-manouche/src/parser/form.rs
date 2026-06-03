@@ -3,7 +3,7 @@
 //! This module provides the `Parse` trait implementation for `FormMacro`,
 //! allowing it to be parsed from a `TokenStream`.
 
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::{Span, TokenStream, TokenTree};
 use syn::{
 	Expr, ExprClosure, Ident, LitStr, Path, Result, Token, braced,
 	parse::{Parse, ParseStream},
@@ -11,10 +11,10 @@ use syn::{
 };
 
 use crate::{
-	ClientTrigger, CustomAttr, FormAction, FormDerived, FormDerivedItem, FormFieldDef,
-	FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormSlots, FormState,
-	FormStateField, FormSubmitButtonDef, FormValidator, FormWatch, FormWatchItem, IconAttr,
-	IconChild, IconElement, IconPosition, StripArgument, ValidatorRule, ValidatorScope,
+	AmbientArgumentsSource, ClientTrigger, CustomAttr, FormAction, FormDerived, FormDerivedItem,
+	FormFieldDef, FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormSlots,
+	FormState, FormStateField, FormSubmitButtonDef, FormValidator, FormWatch, FormWatchItem,
+	IconAttr, IconChild, IconElement, IconPosition, StripArgument, ValidatorRule, ValidatorScope,
 	WrapperAttr, WrapperElement,
 };
 
@@ -25,6 +25,31 @@ use crate::{
 /// Returns a `syn::Error` if the input is not valid form! syntax.
 pub fn parse_form(input: TokenStream) -> syn::Result<FormMacro> {
 	syn::parse2(input)
+}
+
+/// Detects whether the top-level form DSL uses `ambient_arguments` or the
+/// deprecated `strip_arguments` alias.
+#[must_use]
+pub fn detect_ambient_arguments_source(input: &TokenStream) -> Option<AmbientArgumentsSource> {
+	let mut tokens = input.clone().into_iter().peekable();
+
+	while let Some(token) = tokens.next() {
+		let TokenTree::Ident(ident) = token else {
+			continue;
+		};
+
+		let source = match ident.to_string().as_str() {
+			"ambient_arguments" => AmbientArgumentsSource::AmbientArguments,
+			"strip_arguments" => AmbientArgumentsSource::StripArguments,
+			_ => continue,
+		};
+
+		if matches!(tokens.peek(), Some(TokenTree::Punct(punct)) if punct.as_char() == ':') {
+			return Some(source);
+		}
+	}
+
+	None
 }
 
 /// Parses an optional generic-argument list of the form `<T1, T2, ...>` that may
@@ -58,6 +83,7 @@ impl Parse for FormMacro {
 	fn parse(input: ParseStream) -> Result<Self> {
 		let span = input.span();
 		let mut form = FormMacro::new(None, span);
+		let mut ambient_arguments_clause: Option<&'static str> = None;
 
 		// Parse key-value pairs until we hit fields or validators
 		while !input.is_empty() {
@@ -183,9 +209,49 @@ impl Parse for FormMacro {
 				"client_validators" => {
 					return Err(reject_client_validators_with_guidance(&key));
 				}
+				"ambient_arguments" => {
+					let content;
+					braced!(content in input);
+					match ambient_arguments_clause {
+						Some("ambient_arguments") => {
+							return Err(syn::Error::new(
+								key.span(),
+								"duplicate `ambient_arguments` property",
+							));
+						}
+						Some("strip_arguments") => {
+							return Err(syn::Error::new(
+								key.span(),
+								"form! cannot specify both `ambient_arguments` and deprecated `strip_arguments`; use `ambient_arguments`",
+							));
+						}
+						_ => {}
+					}
+					ambient_arguments_clause = Some("ambient_arguments");
+					form.ambient_arguments_source = Some(AmbientArgumentsSource::AmbientArguments);
+					form.strip_arguments = parse_ambient_arguments(&content)?;
+					parse_optional_comma(input)?;
+				}
 				"strip_arguments" => {
 					let content;
 					braced!(content in input);
+					match ambient_arguments_clause {
+						Some("strip_arguments") => {
+							return Err(syn::Error::new(
+								key.span(),
+								"duplicate `strip_arguments` property",
+							));
+						}
+						Some("ambient_arguments") => {
+							return Err(syn::Error::new(
+								key.span(),
+								"form! cannot specify both `ambient_arguments` and deprecated `strip_arguments`; use `ambient_arguments`",
+							));
+						}
+						_ => {}
+					}
+					ambient_arguments_clause = Some("strip_arguments");
+					form.ambient_arguments_source = Some(AmbientArgumentsSource::StripArguments);
 					form.strip_arguments = parse_strip_arguments(&content)?;
 					parse_optional_comma(input)?;
 				}
@@ -193,7 +259,7 @@ impl Parse for FormMacro {
 					return Err(syn::Error::new(
 						key.span(),
 						format!(
-							"Unknown form property: '{}'. Expected: name, action, server_fn, method, class, state, on_submit, on_success, on_success_ref, on_error, on_loading, watch, redirect_on_success, success_url, initial_loader, choices_loader, slots, fields, validators, derived, strip_arguments",
+							"Unknown form property: '{}'. Expected: name, action, server_fn, method, class, state, on_submit, on_success, on_success_ref, on_error, on_loading, watch, redirect_on_success, success_url, initial_loader, choices_loader, slots, fields, validators, derived, ambient_arguments, strip_arguments",
 							key
 						),
 					));
@@ -621,7 +687,7 @@ fn parse_icon_child(tag: Ident, input: ParseStream, span: Span) -> Result<IconCh
 	})
 }
 
-/// Parses strip_arguments inside the `strip_arguments: { ... }` block.
+/// Parses ambient arguments inside the `ambient_arguments: { ... }` block.
 ///
 /// Format: `arg_name: <expression>,` repeated. Each entry binds one
 /// server_fn argument name to an expression evaluated at submit time on the
@@ -629,6 +695,13 @@ fn parse_icon_child(tag: Ident, input: ParseStream, span: Span) -> Result<IconCh
 /// call after all regular form-field arguments.
 ///
 /// Tracked under reinhardt-web#3971.
+fn parse_ambient_arguments(input: ParseStream) -> Result<Vec<StripArgument>> {
+	parse_strip_arguments(input)
+}
+
+/// Parses legacy strip_arguments inside the `strip_arguments: { ... }` block.
+///
+/// `strip_arguments` is a deprecated alias for `ambient_arguments`.
 fn parse_strip_arguments(input: ParseStream) -> Result<Vec<StripArgument>> {
 	let mut args = Vec::new();
 

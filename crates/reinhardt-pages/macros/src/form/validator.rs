@@ -17,14 +17,14 @@ use std::collections::HashSet;
 use syn::{Error, Result};
 
 use reinhardt_manouche::core::{
-	FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry, FormFieldGroup,
-	FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState, FormSubmitButtonDef,
-	FormValidator, FormWatch, IconPosition, StripArgument, TypedChoicesConfig, TypedCustomAttr,
-	TypedDerivedItem, TypedFieldDisplay, TypedFieldStyling, TypedFieldType, TypedFieldValidation,
-	TypedFormAction, TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry,
-	TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState, TypedFormStyling,
-	TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon, TypedIconAttr,
-	TypedIconChild, TypedIconPosition, TypedStripArgument, TypedSubmitButtonDef,
+	AmbientArgumentsSource, FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry,
+	FormFieldGroup, FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState,
+	FormSubmitButtonDef, FormValidator, FormWatch, IconPosition, StripArgument, TypedChoicesConfig,
+	TypedCustomAttr, TypedDerivedItem, TypedFieldDisplay, TypedFieldStyling, TypedFieldType,
+	TypedFieldValidation, TypedFormAction, TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef,
+	TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState,
+	TypedFormStyling, TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon,
+	TypedIconAttr, TypedIconChild, TypedIconPosition, TypedStripArgument, TypedSubmitButtonDef,
 	TypedValidatorRule, TypedWidget, TypedWrapper, TypedWrapperAttr, ValidatorRule,
 };
 
@@ -118,7 +118,10 @@ fn validate_safe_tag(tag: &str, context: &str, span: Span) -> Result<()> {
 /// # Errors
 ///
 /// Returns a compilation error if any validation rule is violated.
-pub(super) fn validate(ast: &FormMacro) -> Result<TypedFormMacro> {
+pub(super) fn validate(
+	ast: &FormMacro,
+	ambient_arguments_source: Option<AmbientArgumentsSource>,
+) -> Result<TypedFormMacro> {
 	// Validate unique field names
 	validate_unique_field_names(&ast.fields)?;
 
@@ -180,7 +183,8 @@ pub(super) fn validate(ast: &FormMacro) -> Result<TypedFormMacro> {
 	let validators = transform_validators(&ast.validators, &ast.fields)?;
 
 	// Transform stripped server_fn arguments (reinhardt-web#3971).
-	let strip_arguments = transform_strip_arguments(&ast.strip_arguments, &ast.fields)?;
+	let strip_arguments =
+		transform_strip_arguments(&ast.strip_arguments, &ast.fields, ambient_arguments_source)?;
 
 	// The parser guarantees that `name` is Some after successful parsing.
 	let name = ast
@@ -188,25 +192,23 @@ pub(super) fn validate(ast: &FormMacro) -> Result<TypedFormMacro> {
 		.clone()
 		.expect("form name must be set after parsing");
 
-	Ok(TypedFormMacro {
-		name,
-		action,
-		method,
-		styling,
-		state,
-		callbacks,
-		watch,
-		derived,
-		redirect_on_success,
-		success_url,
-		initial_loader,
-		choices_loader,
-		slots,
-		fields,
-		validators,
-		strip_arguments,
-		span: ast.span,
-	})
+	let mut typed = TypedFormMacro::new(name, action, ast.span);
+	typed.method = method;
+	typed.styling = styling;
+	typed.state = state;
+	typed.callbacks = callbacks;
+	typed.watch = watch;
+	typed.derived = derived;
+	typed.redirect_on_success = redirect_on_success;
+	typed.success_url = success_url;
+	typed.initial_loader = initial_loader;
+	typed.choices_loader = choices_loader;
+	typed.slots = slots;
+	typed.fields = fields;
+	typed.validators = validators;
+	typed.strip_arguments = strip_arguments;
+
+	Ok(typed)
 }
 
 /// Validates that all field names are unique.
@@ -439,38 +441,7 @@ fn transform_derived(derived: &Option<FormDerived>) -> Result<Option<TypedFormDe
 /// - Or is a valid URL pattern
 /// - Supports `{param}` syntax for dynamic parameters
 fn transform_redirect(redirect: &Option<syn::LitStr>) -> Result<Option<String>> {
-	let Some(redirect) = redirect else {
-		return Ok(None);
-	};
-
-	let path = redirect.value();
-
-	// Validate path format
-	if path.is_empty() {
-		return Err(Error::new(
-			redirect.span(),
-			"redirect_on_success path cannot be empty",
-		));
-	}
-
-	// Reject insecure HTTP URLs - redirect may leak credentials or session tokens
-	if path.starts_with("http://") {
-		return Err(Error::new(
-			redirect.span(),
-			"redirect_on_success rejects insecure HTTP URLs to prevent credential leakage; \
-			 use HTTPS or a relative path instead",
-		));
-	}
-
-	// Path must start with / or be a valid HTTPS URL
-	if !path.starts_with('/') && !path.starts_with("https://") {
-		return Err(Error::new(
-			redirect.span(),
-			"redirect_on_success path must start with '/' or be a full HTTPS URL (https://)",
-		));
-	}
-
-	Ok(Some(path))
+	reinhardt_manouche::validator::validate_redirect_on_success(redirect)
 }
 
 /// Transforms FormSlots to TypedFormSlots.
@@ -1385,7 +1356,7 @@ fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoic
 	})
 }
 
-/// Transforms `strip_arguments` entries into their typed form.
+/// Transforms ambient argument entries into their typed form.
 ///
 /// Validates two constraints:
 /// 1. No duplicate argument names (each server_fn parameter may only be supplied once).
@@ -1395,9 +1366,13 @@ fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoic
 fn transform_strip_arguments(
 	args: &[StripArgument],
 	fields: &[FormFieldEntry],
+	source: Option<AmbientArgumentsSource>,
 ) -> Result<Vec<TypedStripArgument>> {
 	let mut seen = HashSet::new();
 	let mut typed = Vec::with_capacity(args.len());
+	let keyword = ambient_arguments_keyword(source);
+	let canonical_suffix = ambient_arguments_canonical_suffix(source);
+	let collision_entry = ambient_arguments_collision_entry(source);
 
 	for arg in args {
 		let name_str = arg.name.to_string();
@@ -1406,7 +1381,7 @@ fn transform_strip_arguments(
 			return Err(Error::new(
 				arg.span,
 				format!(
-					"duplicate strip_arguments entry '{name_str}': each server_fn argument may only appear once"
+					"duplicate {keyword} entry '{name_str}': each server_fn argument may only appear once{canonical_suffix}"
 				),
 			));
 		}
@@ -1415,7 +1390,7 @@ fn transform_strip_arguments(
 			return Err(Error::new(
 				arg.span,
 				format!(
-					"strip_arguments key '{name_str}' collides with a declared form field; either rename the field or remove this strip entry"
+					"{keyword} key '{name_str}' collides with a declared form field; either rename the field or remove this {collision_entry} entry{canonical_suffix}"
 				),
 			));
 		}
@@ -1428,6 +1403,27 @@ fn transform_strip_arguments(
 	}
 
 	Ok(typed)
+}
+
+fn ambient_arguments_keyword(source: Option<AmbientArgumentsSource>) -> &'static str {
+	match source {
+		Some(AmbientArgumentsSource::StripArguments) => "strip_arguments",
+		_ => "ambient_arguments",
+	}
+}
+
+fn ambient_arguments_canonical_suffix(source: Option<AmbientArgumentsSource>) -> &'static str {
+	match source {
+		Some(AmbientArgumentsSource::StripArguments) => "; use ambient_arguments for new code",
+		_ => "",
+	}
+}
+
+fn ambient_arguments_collision_entry(source: Option<AmbientArgumentsSource>) -> &'static str {
+	match source {
+		Some(AmbientArgumentsSource::StripArguments) => "strip",
+		_ => "ambient",
+	}
 }
 
 /// Checks if a field with the given name exists in the field entries.
@@ -1649,11 +1645,73 @@ fn extract_string_value_from_expr(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use quote::quote;
+	use quote::{ToTokens, quote};
 
 	fn parse_and_validate(input: proc_macro2::TokenStream) -> Result<TypedFormMacro> {
+		let ambient_arguments_source =
+			reinhardt_manouche::parser::detect_ambient_arguments_source(&input);
 		let ast: FormMacro = syn::parse2(input)?;
-		validate(&ast)
+		validate(&ast, ambient_arguments_source)
+	}
+
+	fn assert_validator_parity(
+		input: proc_macro2::TokenStream,
+		mutate_ast: impl FnOnce(&mut FormMacro),
+	) {
+		let ambient_arguments_source =
+			reinhardt_manouche::parser::detect_ambient_arguments_source(&input);
+		let mut ast: FormMacro = syn::parse2(input).expect("form input must parse");
+		mutate_ast(&mut ast);
+
+		let macro_result = validate(&ast, ambient_arguments_source);
+		let manouche_result =
+			reinhardt_manouche::validator::validate_form_with_ambient_arguments_source(
+				&ast,
+				ambient_arguments_source,
+			);
+
+		match (macro_result, manouche_result) {
+			(Ok(macro_typed), Ok(manouche_typed)) => {
+				assert_eq!(macro_typed.name, manouche_typed.name);
+				assert_eq!(
+					macro_typed.redirect_on_success,
+					manouche_typed.redirect_on_success
+				);
+				assert_eq!(
+					macro_typed.success_url.is_some(),
+					manouche_typed.success_url.is_some()
+				);
+				assert_eq!(
+					strip_argument_signatures(&macro_typed.strip_arguments),
+					strip_argument_signatures(&manouche_typed.strip_arguments)
+				);
+				assert_eq!(macro_typed.fields.len(), manouche_typed.fields.len());
+			}
+			(Err(macro_err), Err(manouche_err)) => {
+				assert_eq!(macro_err.to_string(), manouche_err.to_string());
+			}
+			(Ok(_), Err(err)) => {
+				panic!("macros validator accepted input rejected by manouche: {err}");
+			}
+			(Err(err), Ok(_)) => {
+				panic!("macros validator rejected input accepted by manouche: {err}");
+			}
+		}
+	}
+
+	fn assert_validator_parity_for(input: proc_macro2::TokenStream) {
+		assert_validator_parity(input, |_| {});
+	}
+
+	fn strip_argument_signatures(args: &[TypedStripArgument]) -> Vec<(String, String)> {
+		args.iter()
+			.map(|arg| {
+				(
+					arg.name.to_string(),
+					arg.value.to_token_stream().to_string(),
+				)
+			})
+			.collect()
 	}
 
 	#[rstest::rstest]
@@ -3855,8 +3913,10 @@ mod tests {
 		let lit = syn::LitStr::new("ftp://example.com/file", proc_macro2::Span::call_site());
 		let result = transform_redirect(&Some(lit));
 		assert!(result.is_err());
-		let err = result.unwrap_err().to_string();
-		assert!(err.contains("must start with '/'"));
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"redirect_on_success path must be a relative path (starting with '/', './', or '../') or an HTTPS URL"
+		);
 	}
 
 	#[test]
@@ -3910,7 +3970,7 @@ mod tests {
 		);
 
 		// Act
-		let result = validate(&ast);
+		let result = validate(&ast, None);
 
 		// Assert — strict equality on the full diagnostic so any wording
 		// change forces an intentional test update (CLAUDE.md: prefer
@@ -3924,6 +3984,78 @@ mod tests {
 			 entries and fire two observer cycles. Use `redirect_on_success` for a static URL or \
 			 `success_url` for a dynamically-computed one, not both."
 		);
+	}
+
+	#[rstest::rstest]
+	fn validator_parity_rejects_ambient_argument_duplicate_with_same_diagnostic() {
+		let input = quote! {
+			name: VoteForm,
+			server_fn: submit_vote,
+			ambient_arguments: {
+				csrf_token: csrf_a(),
+				csrf_token: csrf_b(),
+			},
+			fields: {
+				choice_id: IntegerField { required },
+			},
+		};
+
+		assert_validator_parity_for(input);
+	}
+
+	#[rstest::rstest]
+	fn validator_parity_rejects_strip_argument_collision_with_same_diagnostic() {
+		let input = quote! {
+			name: VoteForm,
+			server_fn: submit_vote,
+			strip_arguments: {
+				choice_id: ambient_choice_id(),
+			},
+			fields: {
+				choice_id: IntegerField { required },
+			},
+		};
+
+		assert_validator_parity_for(input);
+	}
+
+	#[rstest::rstest]
+	fn validator_parity_rejects_simultaneous_redirect_and_success_url() {
+		let input = quote! {
+			name: VoteForm,
+			action: "/api/vote",
+			redirect_on_success: "/thanks",
+
+			fields: {
+				choice_id: IntegerField { required },
+			},
+		};
+
+		assert_validator_parity(input, |ast| {
+			ast.success_url = Some(
+				syn::parse_str::<syn::Expr>("|_form| String::from(\"/thanks-too\")")
+					.expect("success_url expression must parse"),
+			);
+		});
+	}
+
+	#[rstest::rstest]
+	#[case::dot_relative("./success")]
+	#[case::double_dot_relative("../home")]
+	#[case::mixed_case_https("HTTPS://EXAMPLE.COM/success")]
+	fn validator_parity_accepts_redirect_variants(#[case] redirect: &str) {
+		let redirect = syn::LitStr::new(redirect, proc_macro2::Span::call_site());
+		let input = quote! {
+			name: RedirectForm,
+			action: "/test",
+			redirect_on_success: #redirect,
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		assert_validator_parity_for(input);
 	}
 
 	#[rstest::rstest]

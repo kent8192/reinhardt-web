@@ -61,6 +61,8 @@ mod validator;
 /// 3. Generate: TypedFormMacro → TokenStream (Rust code)
 pub(crate) fn form_impl(input: TokenStream) -> TokenStream {
 	let input2 = TokenStream2::from(input);
+	let ambient_arguments_source =
+		reinhardt_manouche::parser::detect_ambient_arguments_source(&input2);
 
 	// Stage 1: Parse untyped AST
 	let untyped_ast = match syn::parse2::<reinhardt_manouche::core::FormMacro>(input2) {
@@ -69,11 +71,11 @@ pub(crate) fn form_impl(input: TokenStream) -> TokenStream {
 	};
 
 	// Stage 2: Validate and transform to typed AST
-	let typed_ast = match validator::validate(&untyped_ast) {
+	let typed_ast = match validator::validate(&untyped_ast, ambient_arguments_source) {
 		Ok(ast) => ast,
 		Err(e) => return e.to_compile_error().into(),
 	};
 
 	// Stage 3: Generate code
-	codegen::generate(&typed_ast).into()
+	codegen::generate(&typed_ast, ambient_arguments_source).into()
 }
