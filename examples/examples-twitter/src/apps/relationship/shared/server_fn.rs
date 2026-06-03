@@ -4,7 +4,6 @@
 
 use crate::apps::auth::shared::types::UserInfo;
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
-use uuid::Uuid;
 
 // Server-only imports
 #[cfg(native)]
@@ -18,7 +17,7 @@ use {
 /// Follow a user
 #[server_fn]
 pub async fn follow_user(
-	target_user_id: Uuid,
+	target_user_id: ::uuid::Uuid,
 	#[inject] db: DatabaseConnection,
 	#[inject] AuthUser(follower): AuthUser<User>,
 ) -> std::result::Result<(), ServerFnError> {
@@ -43,7 +42,7 @@ pub async fn follow_user(
 /// Unfollow a user
 #[server_fn]
 pub async fn unfollow_user(
-	target_user_id: Uuid,
+	target_user_id: ::uuid::Uuid,
 	#[inject] db: DatabaseConnection,
 	#[inject] AuthUser(follower): AuthUser<User>,
 ) -> std::result::Result<(), ServerFnError> {
@@ -68,7 +67,7 @@ pub async fn unfollow_user(
 /// Fetch followers of a user
 #[server_fn]
 pub async fn fetch_followers(
-	user_id: Uuid,
+	user_id: ::uuid::Uuid,
 	#[inject] db: DatabaseConnection,
 ) -> std::result::Result<Vec<UserInfo>, ServerFnError> {
 	let user = User::objects()
@@ -93,7 +92,7 @@ pub async fn fetch_followers(
 /// Fetch users that the specified user is following
 #[server_fn]
 pub async fn fetch_following(
-	user_id: Uuid,
+	user_id: ::uuid::Uuid,
 	#[inject] db: DatabaseConnection,
 ) -> std::result::Result<Vec<UserInfo>, ServerFnError> {
 	// Load target user

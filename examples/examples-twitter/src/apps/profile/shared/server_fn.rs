@@ -4,7 +4,6 @@
 
 use crate::apps::profile::shared::types::{ProfileResponse, UpdateProfileRequest};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
-use uuid::Uuid;
 
 // Server-only imports
 #[cfg(native)]
@@ -59,7 +58,7 @@ async fn update_profile_internal(
 /// Fetch user profile
 #[server_fn]
 pub async fn fetch_profile(
-	user_id: Uuid,
+	user_id: ::uuid::Uuid,
 	#[inject] _db: DatabaseConnection,
 ) -> std::result::Result<ProfileResponse, ServerFnError> {
 	let profile = Profile::objects()
@@ -75,7 +74,7 @@ pub async fn fetch_profile(
 /// Update user profile
 #[server_fn]
 pub async fn update_profile(
-	request: UpdateProfileRequest,
+	request: crate::apps::profile::shared::UpdateProfileRequest,
 	#[inject] db: DatabaseConnection,
 	#[inject] AuthUser(user): AuthUser<User>,
 ) -> std::result::Result<ProfileResponse, ServerFnError> {
