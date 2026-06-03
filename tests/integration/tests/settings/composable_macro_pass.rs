@@ -135,6 +135,25 @@ fn fragment_generates_has_trait() {
 }
 
 #[rstest]
+fn fragment_implements_generic_has_settings_for_itself() {
+	// Arrange
+	let settings = CustomDbSettings {
+		host: "localhost".to_string(),
+		port: 5432,
+	};
+
+	// Act
+	let db = settings.custom_db();
+
+	// Assert
+	assert_eq!(
+		db.host, "localhost",
+		"Fragment should implement HasSettings<Self> without a public blanket impl"
+	);
+	assert_eq!(db.port, 5432);
+}
+
+#[rstest]
 fn fragment_auto_derives_clone_debug_serde() {
 	// Arrange
 	let original = CustomDbSettings {

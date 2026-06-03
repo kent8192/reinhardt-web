@@ -388,6 +388,12 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 			}
 		}
 
+		impl #conf_crate::settings::fragment::HasSettings<#struct_name> for #struct_name {
+			fn get_settings(&self) -> &#struct_name {
+				self
+			}
+		}
+
 		/// Trait for accessing the settings fragment from a composed settings type.
 		#vis trait #trait_name {
 			/// Get a reference to the settings fragment.
