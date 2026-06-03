@@ -151,6 +151,12 @@ pub trait HasSettings<F: SettingsFragment> {
 	fn get_settings(&self) -> &F;
 }
 
+impl<F: SettingsFragment> HasSettings<F> for F {
+	fn get_settings(&self) -> &F {
+		self
+	}
+}
+
 /// Marker trait bundling the commonly required fragment accessors used by
 /// management commands and the database layer.
 ///

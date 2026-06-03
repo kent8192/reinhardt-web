@@ -210,9 +210,8 @@ pub mod validation;
 use thiserror::Error;
 
 pub use backends::{
-	ConsoleBackend, EmailBackend, EmailSettingsSource, FileBackend, MemoryBackend,
-	SmtpAuthMechanism, SmtpBackend, SmtpSecurity, backend_from_settings,
-	create_smtp_backend_from_settings,
+	ConsoleBackend, EmailBackend, FileBackend, MemoryBackend, SmtpAuthMechanism, SmtpBackend,
+	SmtpSecurity, backend_from_settings, create_smtp_backend_from_settings,
 };
 // `SmtpConfig` is deprecated in favour of the `EmailSettings` fragment; re-export
 // it separately so the deprecation lint is suppressed only at the re-export site.

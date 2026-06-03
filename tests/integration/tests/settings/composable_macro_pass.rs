@@ -11,7 +11,7 @@
 //! referencing `reinhardt_conf`, which is not available in the macro crate's
 //! dev-dependencies due to circular dependency constraints.
 
-use reinhardt_conf::settings::cache::{CacheSettings, HasCacheSettings};
+use reinhardt_conf::settings::cache::HasCacheSettings;
 use reinhardt_conf::settings::core_settings::{CoreSettings, HasCoreSettings};
 use reinhardt_conf::settings::email::EmailSettings as FragmentEmailSettings;
 use reinhardt_conf::settings::fragment::SettingsFragment;
@@ -298,13 +298,19 @@ fn composed_email_fragment_builds_smtp_backend() {
 	};
 
 	// Act
-	let result = reinhardt_mail::create_smtp_backend_from_settings(&settings.email);
+	let fragment_result = reinhardt_mail::create_smtp_backend_from_settings(&settings.email);
+	let composed_result = reinhardt_mail::create_smtp_backend_from_settings(&settings);
 
 	// Assert
 	assert!(
-		result.is_ok(),
+		fragment_result.is_ok(),
 		"SMTP backend helper must accept the #[settings] EmailSettings fragment: {:?}",
-		result.err()
+		fragment_result.err()
+	);
+	assert!(
+		composed_result.is_ok(),
+		"SMTP backend helper must accept composed settings via HasSettings<EmailSettings>: {:?}",
+		composed_result.err()
 	);
 }
 

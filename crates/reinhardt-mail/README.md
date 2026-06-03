@@ -63,7 +63,7 @@ use reinhardt::mail::backends::{SmtpBackend, ConsoleBackend};
 
 - **backend_from_settings**: Backend initialization from the `EmailSettings` fragment
 - **create_smtp_backend_from_settings**: SMTP backend initialization from composed settings
-- **EmailSettingsSource**: Read-only adapter for the `#[settings]` email fragment and legacy settings
+- Helpers accept any type implementing `HasSettings<EmailSettings>`, including the fragment itself and composed `#[settings]` structs
 - Integration with reinhardt-conf for email configuration
   - Admin and manager email lists
   - Subject prefix configuration

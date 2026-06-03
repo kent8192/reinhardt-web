@@ -2,10 +2,9 @@
 //!
 //! Helper functions for sending emails quickly.
 
-use crate::{
-	EmailMessage, EmailResult,
-	backends::{EmailBackend, EmailSettingsSource},
-};
+use crate::{EmailMessage, EmailResult, backends::EmailBackend};
+use reinhardt_conf::settings::email::EmailSettings;
+use reinhardt_conf::settings::fragment::HasSettings;
 
 /// Send a simple email using the configured backend from settings.
 ///
@@ -42,7 +41,7 @@ use crate::{
 /// # Ok(())
 /// # }
 /// ```
-pub async fn send_mail<S: EmailSettingsSource + ?Sized>(
+pub async fn send_mail<S: HasSettings<EmailSettings> + ?Sized>(
 	settings: &S,
 	subject: impl Into<String>,
 	message: impl Into<String>,
@@ -50,13 +49,14 @@ pub async fn send_mail<S: EmailSettingsSource + ?Sized>(
 	html_message: Option<String>,
 ) -> EmailResult<()> {
 	let backend = crate::backends::backend_from_settings(settings)?;
+	let email_settings = settings.get_settings();
 
 	let recipients: Vec<String> = recipient_list.into_iter().map(|r| r.into()).collect();
 
 	let mut email_builder = EmailMessage::builder()
 		.subject(subject)
 		.body(message)
-		.from(settings.from_email())
+		.from(&email_settings.from_email)
 		.to(recipients);
 
 	if let Some(html) = html_message {
@@ -192,15 +192,16 @@ pub async fn send_mass_mail(
 /// # Ok(())
 /// # }
 /// ```
-pub async fn mail_admins<S: EmailSettingsSource + ?Sized>(
+pub async fn mail_admins<S: HasSettings<EmailSettings> + ?Sized>(
 	settings: &S,
 	subject: impl Into<String>,
 	message: impl Into<String>,
 	fail_silently: bool,
 	backend: &dyn EmailBackend,
 ) -> EmailResult<()> {
+	let email_settings = settings.get_settings();
 	send_to_role(
-		settings.admins(),
+		&email_settings.admins,
 		"admins",
 		settings,
 		subject,
@@ -246,15 +247,16 @@ pub async fn mail_admins<S: EmailSettingsSource + ?Sized>(
 /// # Ok(())
 /// # }
 /// ```
-pub async fn mail_managers<S: EmailSettingsSource + ?Sized>(
+pub async fn mail_managers<S: HasSettings<EmailSettings> + ?Sized>(
 	settings: &S,
 	subject: impl Into<String>,
 	message: impl Into<String>,
 	fail_silently: bool,
 	backend: &dyn EmailBackend,
 ) -> EmailResult<()> {
+	let email_settings = settings.get_settings();
 	send_to_role(
-		settings.managers(),
+		&email_settings.managers,
 		"managers",
 		settings,
 		subject,
@@ -271,12 +273,13 @@ pub async fn mail_managers<S: EmailSettingsSource + ?Sized>(
 async fn send_to_role(
 	recipients: &[(String, String)],
 	role_name: &str,
-	settings: &(impl EmailSettingsSource + ?Sized),
+	settings: &(impl HasSettings<EmailSettings> + ?Sized),
 	subject: impl Into<String>,
 	message: impl Into<String>,
 	fail_silently: bool,
 	backend: &dyn EmailBackend,
 ) -> EmailResult<()> {
+	let email_settings = settings.get_settings();
 	if recipients.is_empty() {
 		if fail_silently {
 			return Ok(());
@@ -288,16 +291,16 @@ async fn send_to_role(
 	let emails: Vec<String> = recipients.iter().map(|(_, email)| email.clone()).collect();
 
 	let subject_str = subject.into();
-	let final_subject = if !settings.subject_prefix().is_empty() {
-		format!("{} {}", settings.subject_prefix(), subject_str)
+	let final_subject = if !email_settings.subject_prefix.is_empty() {
+		format!("{} {}", email_settings.subject_prefix, subject_str)
 	} else {
 		subject_str
 	};
 
-	let from_email = if !settings.server_email().is_empty() {
-		settings.server_email().to_string()
+	let from_email = if !email_settings.server_email.is_empty() {
+		email_settings.server_email.clone()
 	} else {
-		settings.from_email().to_string()
+		email_settings.from_email.clone()
 	};
 
 	let result =
