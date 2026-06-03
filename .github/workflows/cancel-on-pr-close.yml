@@ -1,21 +1,24 @@
-name: Cancel Stale Runs on PR Close/Merge
+name: Cancel Stale PR Runs Sweep
 
 on:
-  pull_request:
-    types: [closed]
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
 
 concurrency:
-  group: "${{ github.workflow }}-${{ github.ref }}"
+  group: "${{ github.workflow }}"
   cancel-in-progress: true
 
 permissions:
   actions: write
+  contents: read
+  pull-requests: read
 
 jobs:
-  cancel-stale-runs:
-    name: Cancel Stale Workflow Runs
-    runs-on: [self-hosted, linux, arm64, reinhardt-hotpath]
-    timeout-minutes: 360
+  sweep-stale-runs:
+    name: Sweep Stale PR Workflow Runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Cancel and force-cancel stale runs
         uses: actions/github-script@v8
@@ -23,38 +26,148 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const pr = context.payload.pull_request;
-            const branch = pr.head.ref;
-            const merged = pr.merged;
-            console.log(`PR #${pr.number} ${merged ? 'merged' : 'closed'} — cancelling stale runs on branch: ${branch}`);
             const targetWorkflows = ['ci.yml', 'examples-test-standalone.yml', 'semver-check-standalone.yml'];
+            const activeStatuses = ['queued', 'in_progress', 'waiting', 'requested'];
 
-            // Phase 1: Find and cancel all non-completed runs
+            const prCache = new Map();
+            const branchPrCache = new Map();
+            const staleRuns = new Map();
             const cancelledRunIds = [];
 
-            for (const wf of targetWorkflows) {
-              const { data } = await github.rest.actions.listWorkflowRuns({
-                owner, repo,
-                workflow_id: wf,
-                branch,
-              });
+            async function getPullRequest(number) {
+              if (prCache.has(number)) {
+                return prCache.get(number);
+              }
 
-              const staleRuns = data.workflow_runs.filter(r =>
-                r.status !== 'completed' &&
-                Array.isArray(r.pull_requests) &&
-                r.pull_requests.some(p => p.number === pr.number)
+              try {
+                const { data: pr } = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: number,
+                });
+                prCache.set(number, pr);
+                return pr;
+              } catch (e) {
+                core.warning(`Could not inspect PR #${number}: ${e.message}`);
+                prCache.set(number, null);
+                return null;
+              }
+            }
+
+            async function listPullRequestsForBranch(run) {
+              const headBranch = run.head_branch;
+              const headRepo = run.head_repository?.full_name || `${owner}/${repo}`;
+              const headOwner = run.head_repository?.owner?.login || headRepo.split('/')[0] || owner;
+
+              if (!headBranch || !headOwner) {
+                return [];
+              }
+
+              const cacheKey = `${headOwner}:${headBranch}`;
+              if (!branchPrCache.has(cacheKey)) {
+                const prs = await github.paginate(github.rest.pulls.list, {
+                  owner,
+                  repo,
+                  state: 'all',
+                  head: cacheKey,
+                  sort: 'updated',
+                  direction: 'desc',
+                  per_page: 100,
+                });
+                branchPrCache.set(cacheKey, prs);
+              }
+
+              return branchPrCache.get(cacheKey).filter(pr =>
+                pr.head?.ref === headBranch &&
+                pr.head?.repo?.full_name === headRepo
               );
+            }
 
-              for (const run of staleRuns) {
-                try {
-                  console.log(`Cancelling ${wf} run #${run.id} (status: ${run.status})`);
-                  await github.rest.actions.cancelWorkflowRun({
-                    owner, repo, run_id: run.id,
-                  });
-                  cancelledRunIds.push({ id: run.id, workflow: wf });
-                } catch (e) {
-                  console.log(`Failed to cancel run #${run.id}: ${e.message}`);
+            async function findClosedPullRequestForRun(run) {
+              if (Array.isArray(run.pull_requests) && run.pull_requests.length > 0) {
+                const prs = [];
+                for (const prRef of run.pull_requests) {
+                  const pr = await getPullRequest(prRef.number);
+                  if (pr) {
+                    prs.push(pr);
+                  }
                 }
+
+                if (prs.some(pr => pr.state !== 'closed')) {
+                  return null;
+                }
+
+                const closedPrs = prs.filter(pr => pr.state === 'closed');
+                if (closedPrs.length === 1) {
+                  return closedPrs[0];
+                }
+
+                if (closedPrs.length > 1) {
+                  core.warning(`Could not uniquely match run #${run.id} to a closed PR`);
+                }
+                return null;
+              }
+
+              const candidates = await listPullRequestsForBranch(run);
+              const exactShaMatches = candidates.filter(pr => pr.head?.sha === run.head_sha);
+              const candidatesToCheck = exactShaMatches.length > 0 ? exactShaMatches : candidates;
+
+              if (candidatesToCheck.some(pr => pr.state !== 'closed')) {
+                return null;
+              }
+
+              const closedCandidates = candidatesToCheck.filter(pr => pr.state === 'closed');
+              if (closedCandidates.length === 1) {
+                return closedCandidates[0];
+              }
+
+              if (closedCandidates.length > 1) {
+                core.warning(`Could not uniquely match run #${run.id} on ${run.head_branch} to a closed PR`);
+              }
+              return null;
+            }
+
+            // Phase 1: Find and cancel active workflow runs attached to closed PRs.
+            for (const wf of targetWorkflows) {
+              for (const status of activeStatuses) {
+                const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                  owner,
+                  repo,
+                  workflow_id: wf,
+                  status,
+                  per_page: 100,
+                });
+
+                for (const run of runs) {
+                  if (staleRuns.has(run.id)) {
+                    continue;
+                  }
+
+                  const pr = await findClosedPullRequestForRun(run);
+                  if (pr) {
+                    staleRuns.set(run.id, {
+                      id: run.id,
+                      workflow: wf,
+                      status: run.status,
+                      prNumber: pr.number,
+                      headBranch: run.head_branch,
+                    });
+                  }
+                }
+              }
+            }
+
+            for (const run of staleRuns.values()) {
+              try {
+                console.log(`Cancelling ${run.workflow} run #${run.id} for closed PR #${run.prNumber} on ${run.headBranch} (status: ${run.status})`);
+                await github.rest.actions.cancelWorkflowRun({
+                  owner,
+                  repo,
+                  run_id: run.id,
+                });
+                cancelledRunIds.push({ id: run.id, workflow: run.workflow });
+              } catch (e) {
+                console.log(`Failed to cancel run #${run.id}: ${e.message}`);
               }
             }
 
@@ -63,7 +176,7 @@ jobs:
               return;
             }
 
-            // Phase 2: Poll up to 5 minutes, then force-cancel
+            // Phase 2: Poll up to 5 minutes, then force-cancel.
             const maxWaitMs = 5 * 60 * 1000;
             const pollIntervalMs = 30 * 1000;
             const startTime = Date.now();
@@ -73,11 +186,19 @@ jobs:
 
               let allDone = true;
               for (const { id } of cancelledRunIds) {
-                const { data: run } = await github.rest.actions.getWorkflowRun({
-                  owner, repo, run_id: id,
-                });
-                if (run.status !== 'completed') {
+                try {
+                  const { data: run } = await github.rest.actions.getWorkflowRun({
+                    owner,
+                    repo,
+                    run_id: id,
+                  });
+                  if (run.status !== 'completed') {
+                    allDone = false;
+                    break;
+                  }
+                } catch (e) {
                   allDone = false;
+                  core.warning(`Could not inspect cancelled run #${id}: ${e.message}`);
                   break;
                 }
               }
@@ -88,22 +209,26 @@ jobs:
               }
             }
 
-            // Phase 3: Force-cancel any remaining runs (#3543)
+            // Phase 3: Force-cancel any remaining runs (#3543).
             let forceCancelFailed = 0;
             for (const { id, workflow } of cancelledRunIds) {
-              const { data: run } = await github.rest.actions.getWorkflowRun({
-                owner, repo, run_id: id,
-              });
-              if (run.status !== 'completed') {
-                console.log(`Force-cancelling ${workflow} run #${id}`);
-                try {
+              try {
+                const { data: run } = await github.rest.actions.getWorkflowRun({
+                  owner,
+                  repo,
+                  run_id: id,
+                });
+                if (run.status !== 'completed') {
+                  console.log(`Force-cancelling ${workflow} run #${id}`);
                   await github.request('POST /repos/{owner}/{repo}/actions/runs/{run_id}/force-cancel', {
-                    owner, repo, run_id: id,
+                    owner,
+                    repo,
+                    run_id: id,
                   });
-                } catch (e) {
-                  forceCancelFailed++;
-                  core.warning(`Failed to force-cancel ${workflow} run #${id}: ${e.message}`);
                 }
+              } catch (e) {
+                forceCancelFailed++;
+                core.warning(`Failed to force-cancel ${workflow} run #${id}: ${e.message}`);
               }
             }
 
