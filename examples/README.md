@@ -24,29 +24,12 @@ cd examples-tutorial-basis
 cargo run
 ```
 
-### Examples with PostgreSQL
-
-For examples that require PostgreSQL (`examples-twitter`):
-
-```bash
-cd reinhardt-web/examples/examples-twitter
-
-# Start PostgreSQL
-docker compose up -d
-
-# Create local settings file for local-only overrides
-
-# Run the example
-cargo run
-```
-
 ## Examples
 
 | Example | Description | Features |
 |---------|-------------|----------|
 | `examples-tutorial-basis` | Polling app tutorial (basis) | Pages, Forms, Database, WASM |
 | `examples-tutorial-rest` | REST API tutorial (snippets) | REST, Viewsets, Database |
-| `examples-twitter` | Full Twitter-like application | Full-stack, WebSockets, Auth, WASM |
 
 ## Dependency Management
 
