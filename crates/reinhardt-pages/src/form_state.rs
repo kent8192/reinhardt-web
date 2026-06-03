@@ -1,40 +1,86 @@
-//! Typed form state runtime API.
+//! Runtime behavior for `form!` generated forms.
 
-use std::cell::Cell;
+use std::any::{Any, type_name};
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
-use std::rc::Rc;
+use std::fmt::Debug;
+use std::hash::Hash;
+use std::rc::{Rc, Weak};
 
-use crate::reactive::{Effect, EffectTiming, Signal};
+use crate::reactive::Signal;
 
-/// Field-level validation errors keyed by form field name.
-pub type FieldErrors = HashMap<String, Vec<String>>;
+/// Default reset behavior when runtime dependencies change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResetOnDeps {
+	/// Keep dirty field values and update pristine fields from new defaults.
+	KeepDirtyValues,
+	/// Replace every value with the new defaults.
+	ResetAll,
+	/// Record the dependency change without changing values.
+	ExplicitOnly,
+}
 
-type SubmitFuture = Pin<Box<dyn Future<Output = Result<(), String>>>>;
-type SubmitHandler<V> = Rc<dyn Fn(V) -> SubmitFuture>;
-type ValidateHandler<V> = Rc<dyn Fn(&V) -> Result<(), FormValidationError>>;
+/// Validation timing for runtime-managed forms.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RevalidateOn {
+	/// Do not revalidate automatically.
+	Submit,
+	/// Revalidate when dependencies change.
+	DepsChange,
+	/// Revalidate whenever values are written through the runtime handle.
+	Change,
+}
 
-/// Validation failure emitted by typed form validation.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct FormValidationError {
-	field_errors: FieldErrors,
+/// No dependency marker for `use_form(&form).build()`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NoDeps;
+
+/// A field-level error.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FieldError {
+	message: String,
+}
+
+impl FieldError {
+	/// Creates a field error from a displayable message.
+	pub fn new(message: impl Into<String>) -> Self {
+		Self {
+			message: message.into(),
+		}
+	}
+
+	/// Returns the error message.
+	pub fn message(&self) -> &str {
+		&self.message
+	}
+}
+
+/// Validation failure for a generated form.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FormValidationError<Field>
+where
+	Field: Copy + Eq + Hash,
+{
+	field_errors: HashMap<Field, FieldError>,
 	form_error: Option<String>,
 }
 
-impl FormValidationError {
+impl<Field> FormValidationError<Field>
+where
+	Field: Copy + Eq + Hash,
+{
 	/// Creates an empty validation error.
 	pub fn new() -> Self {
-		Self::default()
+		Self {
+			field_errors: HashMap::new(),
+			form_error: None,
+		}
 	}
 
-	/// Creates a validation error for one field.
-	pub fn field(field: impl Into<String>, message: impl Into<String>) -> Self {
-		let mut field_errors = FieldErrors::new();
-		field_errors
-			.entry(field.into())
-			.or_default()
-			.push(message.into());
+	/// Creates a field validation error.
+	pub fn field(field: Field, message: impl Into<String>) -> Self {
+		let mut field_errors = HashMap::new();
+		field_errors.insert(field, FieldError::new(message));
 		Self {
 			field_errors,
 			form_error: None,
@@ -44,409 +90,678 @@ impl FormValidationError {
 	/// Creates a form-level validation error.
 	pub fn form(message: impl Into<String>) -> Self {
 		Self {
-			field_errors: FieldErrors::new(),
+			field_errors: HashMap::new(),
 			form_error: Some(message.into()),
 		}
 	}
 
-	/// Returns field-level validation errors.
-	pub fn field_errors(&self) -> &FieldErrors {
+	/// Returns field errors.
+	pub fn field_errors(&self) -> &HashMap<Field, FieldError> {
 		&self.field_errors
 	}
 
-	/// Returns the form-level validation error, if any.
+	/// Returns the form-level error, if any.
 	pub fn form_error(&self) -> Option<&str> {
 		self.form_error.as_deref()
 	}
 
-	fn first_message_for<V>(&self) -> Option<String>
-	where
-		V: FormValues,
-	{
-		for field_name in V::field_names() {
-			if let Some(message) = self
-				.field_errors
-				.get(*field_name)
-				.and_then(|messages| messages.first())
-			{
-				return Some(message.clone());
-			}
-		}
+	/// Adds or replaces one field validation error.
+	pub fn add_field_error(&mut self, field: Field, message: impl Into<String>) {
+		self.field_errors.insert(field, FieldError::new(message));
+	}
 
-		self.field_errors
-			.values()
-			.find_map(|messages| messages.first().cloned())
-			.or_else(|| self.form_error.clone())
+	/// Sets the form-level validation error.
+	pub fn set_form_error(&mut self, message: impl Into<String>) {
+		self.form_error = Some(message.into());
+	}
+
+	/// Returns whether this error contains no field or form error.
+	pub fn is_empty(&self) -> bool {
+		self.field_errors.is_empty() && self.form_error.is_none()
 	}
 }
 
-/// Typed field signal container used by [`use_form`].
-pub trait FormFields: Clone + 'static {
-	/// Value struct represented by this field signal container.
+impl<Field> Default for FormValidationError<Field>
+where
+	Field: Copy + Eq + Hash,
+{
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+/// Aggregate state for a runtime form.
+#[derive(Clone)]
+pub struct FormState<Field>
+where
+	Field: Copy + Eq + Hash + 'static,
+{
+	/// Whether current values differ from defaults.
+	pub is_dirty: Signal<bool>,
+	/// Whether any value was changed through the runtime.
+	pub is_touched: Signal<bool>,
+	/// Field-level errors.
+	pub field_errors: Signal<HashMap<Field, FieldError>>,
+	/// Form-level validation error.
+	pub form_error: Signal<Option<String>>,
+	/// Last submit-level error.
+	pub submit_error: Signal<Option<String>>,
+	/// First visible validation or submit error.
+	pub error: Signal<Option<String>>,
+	/// Whether submit is pending.
+	pub is_submitting: Signal<bool>,
+	/// Whether the last submit succeeded.
+	pub is_submit_successful: Signal<bool>,
+}
+
+/// Snapshot for one generated field.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FieldState {
+	/// Whether this field differs from its default value.
+	pub is_dirty: bool,
+	/// Whether this field was changed through the runtime.
+	pub is_touched: bool,
+	/// Current field-level error.
+	pub error: Option<FieldError>,
+}
+
+/// Form runtime event sent to subscribers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FormEvent<Form>
+where
+	Form: FormRuntimeSource,
+{
+	/// A field value changed through the runtime handle.
+	ValueChanged {
+		/// Field whose value changed.
+		field: Form::Field,
+	},
+	/// Validation was run.
+	Validated,
+	/// Submit started.
+	SubmitStarted,
+	/// Submit completed successfully.
+	Submitted,
+	/// Submit failed before dispatch or during validation.
+	SubmitFailed,
+	/// Runtime dependencies changed.
+	DepsChanged,
+}
+
+/// Result of `UseFormReturn::handle_submit`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UseFormSubmitOutcome {
+	/// Submit was accepted.
+	Submitted,
+	/// Submit was rejected because another submit is pending.
+	AlreadyPending,
+	/// Submit was rejected by validation.
+	ValidationFailed,
+}
+
+/// Error returned by focus operations.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FocusError {
+	/// Focus is not available for the active target.
+	Unsupported,
+	/// The generated form does not expose a focus target for the field.
+	MissingTarget,
+}
+
+/// Trait implemented by `form!` generated forms.
+pub trait FormRuntimeSource: Clone + 'static {
+	/// Generated value struct for this form.
 	type Values: Clone + PartialEq + 'static;
+	/// Generated field token enum for this form.
+	type Field: Copy + Eq + Hash + Debug + 'static;
 
-	/// Creates field signals from an initial value struct.
-	fn from_values(values: &Self::Values) -> Self;
+	/// Returns current defaults captured by the form definition.
+	fn runtime_initial_values(&self) -> Self::Values;
 
-	/// Reads the current typed values from field signals.
-	fn values(&self) -> Self::Values;
+	/// Reads current values from generated field controls.
+	fn runtime_current_values(&self) -> Self::Values;
 
-	/// Applies typed values to the field signals.
-	fn apply_values(&self, values: &Self::Values);
-}
+	/// Applies all values to generated field controls.
+	fn runtime_apply_values(&self, values: &Self::Values);
 
-/// Typed value struct used by [`use_form`].
-pub trait FormValues: Clone + PartialEq + 'static {
-	/// Field signal struct for this value type.
-	type Fields: FormFields<Values = Self>;
+	/// Applies one typed value to one generated field.
+	fn runtime_set_field_value<T>(&self, field: Self::Field, value: T)
+	where
+		T: Any + 'static;
 
-	/// Stable field names in source order.
-	fn field_names() -> &'static [&'static str];
-}
+	/// Applies the matching value from `values` to one generated field.
+	fn runtime_apply_field_value(&self, field: Self::Field, values: &Self::Values);
 
-/// Validation hook for typed form values.
-pub trait FormValidate {
-	/// Validates the current form values.
-	fn validate(&self) -> Result<(), FormValidationError> {
+	/// Returns whether one field differs between `current` and `defaults`.
+	fn runtime_field_is_dirty(
+		&self,
+		field: Self::Field,
+		current: &Self::Values,
+		defaults: &Self::Values,
+	) -> bool;
+
+	/// Returns the generated signal for a field when `T` matches the field type.
+	fn runtime_watch_field<T>(&self, field: Self::Field) -> Option<Signal<T>>
+	where
+		T: Clone + 'static;
+
+	/// Runs generated validation.
+	fn runtime_validate(&self) -> Result<(), FormValidationError<Self::Field>> {
 		Ok(())
 	}
+
+	/// Attempts to focus a generated field.
+	fn runtime_set_focus(&self, _field: Self::Field) -> Result<(), FocusError> {
+		Err(FocusError::Unsupported)
+	}
+
+	/// Returns generated field tokens in source order.
+	fn runtime_fields(&self) -> &'static [Self::Field];
 }
 
-/// Builder options for [`use_form`].
-pub struct FormOptions<V>
+/// Builder returned by `use_form(&form)`.
+pub struct UseFormBuilder<Form, Deps = NoDeps>
 where
-	V: FormValues,
+	Form: FormRuntimeSource,
+	Deps: Clone + PartialEq + 'static,
 {
-	initial_values: V,
-	on_submit: Option<SubmitHandler<V>>,
-	validate: Option<ValidateHandler<V>>,
+	form: Form,
+	deps: Deps,
+	reset_on_deps: ResetOnDeps,
+	keep_errors: bool,
+	revalidate_on: RevalidateOn,
+	on_submit_start: Option<SubmitCallback<Form, Deps>>,
+	on_submit_success: Option<SubmitCallback<Form, Deps>>,
+	on_submit_error: Option<SubmitCallback<Form, Deps>>,
 }
 
-impl<V> FormOptions<V>
+type SubmitCallback<Form, Deps> = Rc<dyn Fn(&UseFormReturn<Form, Deps>)>;
+type Subscriber<Form> = Rc<dyn Fn(FormEvent<Form>)>;
+type SubscriberSlots<Form> = Rc<RefCell<Vec<Option<Subscriber<Form>>>>>;
+
+impl<Form> UseFormBuilder<Form, NoDeps>
 where
-	V: FormValues,
+	Form: FormRuntimeSource,
 {
-	/// Creates typed form options with initial values.
-	pub fn new(initial_values: V) -> Self {
-		Self {
-			initial_values,
-			on_submit: None,
-			validate: None,
+	/// Sets runtime dependencies.
+	pub fn deps<Deps>(self, deps: Deps) -> UseFormBuilder<Form, Deps>
+	where
+		Deps: Clone + PartialEq + 'static,
+	{
+		UseFormBuilder {
+			form: self.form,
+			deps,
+			reset_on_deps: self.reset_on_deps,
+			keep_errors: self.keep_errors,
+			revalidate_on: self.revalidate_on,
+			on_submit_start: None,
+			on_submit_success: None,
+			on_submit_error: None,
 		}
 	}
-
-	/// Sets the async submit action.
-	///
-	/// On `wasm`, [`FormHandle::submit`] awaits the returned future through the
-	/// platform task spawner and updates loading/success/error signals from the
-	/// result. On `native`, submit still runs synchronous validation but does not
-	/// await this future; the async body is not executed.
-	pub fn on_submit<F, Fut, E>(mut self, on_submit: F) -> Self
-	where
-		F: Fn(V) -> Fut + 'static,
-		Fut: Future<Output = Result<(), E>> + 'static,
-		E: Into<String> + 'static,
-	{
-		self.on_submit = Some(Rc::new(move |values| {
-			let fut = on_submit(values);
-			Box::pin(async move { fut.await.map_err(Into::into) })
-		}));
-		self
-	}
-
-	/// Sets an additional sync validation action.
-	pub fn validate<F>(mut self, validate: F) -> Self
-	where
-		F: Fn(&V) -> Result<(), FormValidationError> + 'static,
-	{
-		self.validate = Some(Rc::new(validate));
-		self
-	}
 }
 
-/// Runtime handle returned by [`use_form`].
-pub struct FormHandle<V>
+impl<Form, Deps> UseFormBuilder<Form, Deps>
 where
-	V: FormValues,
+	Form: FormRuntimeSource,
+	Deps: Clone + PartialEq + 'static,
 {
-	initial_values: V,
-	fields: V::Fields,
-	on_submit: Option<SubmitHandler<V>>,
-	validate: Option<ValidateHandler<V>>,
-	dirty: Signal<bool>,
-	touched: Signal<bool>,
-	field_errors: Signal<FieldErrors>,
-	form_error: Signal<Option<String>>,
-	submit_error: Signal<Option<String>>,
-	error: Signal<Option<String>>,
-	loading: Signal<bool>,
-	success: Signal<bool>,
-	suppress_touch: Rc<Cell<bool>>,
-	_dirty_effect: Rc<Effect>,
+	/// Sets dependency reset behavior.
+	pub fn reset_on_deps(mut self, policy: ResetOnDeps) -> Self {
+		self.reset_on_deps = policy;
+		self
+	}
+
+	/// Sets whether dependency changes keep existing errors.
+	pub fn keep_errors(mut self, keep: bool) -> Self {
+		self.keep_errors = keep;
+		self
+	}
+
+	/// Sets revalidation timing.
+	pub fn revalidate_on(mut self, timing: RevalidateOn) -> Self {
+		self.revalidate_on = timing;
+		self
+	}
+
+	/// Registers a submit-start callback.
+	pub fn on_submit_start<Callback>(mut self, callback: Callback) -> Self
+	where
+		Callback: Fn(&UseFormReturn<Form, Deps>) + 'static,
+	{
+		self.on_submit_start = Some(Rc::new(callback));
+		self
+	}
+
+	/// Registers a submit-success callback.
+	pub fn on_submit_success<Callback>(mut self, callback: Callback) -> Self
+	where
+		Callback: Fn(&UseFormReturn<Form, Deps>) + 'static,
+	{
+		self.on_submit_success = Some(Rc::new(callback));
+		self
+	}
+
+	/// Registers a submit-error callback.
+	pub fn on_submit_error<Callback>(mut self, callback: Callback) -> Self
+	where
+		Callback: Fn(&UseFormReturn<Form, Deps>) + 'static,
+	{
+		self.on_submit_error = Some(Rc::new(callback));
+		self
+	}
+
+	/// Builds the runtime form handle.
+	pub fn build(self) -> UseFormReturn<Form, Deps> {
+		let default_values = self.form.runtime_initial_values();
+		let current_values = self.form.runtime_current_values();
+		let is_dirty = current_values != default_values;
+		UseFormReturn {
+			form: self.form,
+			default_values: Rc::new(RefCell::new(default_values)),
+			deps: Rc::new(RefCell::new(self.deps)),
+			reset_on_deps: self.reset_on_deps,
+			keep_errors: self.keep_errors,
+			revalidate_on: self.revalidate_on,
+			state: FormState {
+				is_dirty: Signal::new(is_dirty),
+				is_touched: Signal::new(false),
+				field_errors: Signal::new(HashMap::new()),
+				form_error: Signal::new(None),
+				submit_error: Signal::new(None),
+				error: Signal::new(None),
+				is_submitting: Signal::new(false),
+				is_submit_successful: Signal::new(false),
+			},
+			touched_fields: Rc::new(RefCell::new(HashMap::new())),
+			values_signal: Signal::new(current_values),
+			subscribers: Rc::new(RefCell::new(Vec::new())),
+			on_submit_start: self.on_submit_start,
+			on_submit_success: self.on_submit_success,
+			on_submit_error: self.on_submit_error,
+		}
+	}
 }
 
-impl<V> Clone for FormHandle<V>
+/// Dynamic behavior handle for a `form!` generated form.
+pub struct UseFormReturn<Form, Deps = NoDeps>
 where
-	V: FormValues,
+	Form: FormRuntimeSource,
+	Deps: Clone + PartialEq + 'static,
+{
+	form: Form,
+	default_values: Rc<RefCell<Form::Values>>,
+	deps: Rc<RefCell<Deps>>,
+	reset_on_deps: ResetOnDeps,
+	keep_errors: bool,
+	revalidate_on: RevalidateOn,
+	state: FormState<Form::Field>,
+	touched_fields: Rc<RefCell<HashMap<Form::Field, bool>>>,
+	values_signal: Signal<Form::Values>,
+	subscribers: SubscriberSlots<Form>,
+	on_submit_start: Option<SubmitCallback<Form, Deps>>,
+	on_submit_success: Option<SubmitCallback<Form, Deps>>,
+	on_submit_error: Option<SubmitCallback<Form, Deps>>,
+}
+
+impl<Form, Deps> Clone for UseFormReturn<Form, Deps>
+where
+	Form: FormRuntimeSource,
+	Deps: Clone + PartialEq + 'static,
 {
 	fn clone(&self) -> Self {
 		Self {
-			initial_values: self.initial_values.clone(),
-			fields: self.fields.clone(),
-			on_submit: self.on_submit.clone(),
-			validate: self.validate.clone(),
-			dirty: self.dirty.clone(),
-			touched: self.touched.clone(),
-			field_errors: self.field_errors.clone(),
-			form_error: self.form_error.clone(),
-			submit_error: self.submit_error.clone(),
-			error: self.error.clone(),
-			loading: self.loading.clone(),
-			success: self.success.clone(),
-			suppress_touch: Rc::clone(&self.suppress_touch),
-			_dirty_effect: Rc::clone(&self._dirty_effect),
+			form: self.form.clone(),
+			default_values: Rc::clone(&self.default_values),
+			deps: Rc::clone(&self.deps),
+			reset_on_deps: self.reset_on_deps,
+			keep_errors: self.keep_errors,
+			revalidate_on: self.revalidate_on,
+			state: self.state.clone(),
+			touched_fields: Rc::clone(&self.touched_fields),
+			values_signal: self.values_signal.clone(),
+			subscribers: Rc::clone(&self.subscribers),
+			on_submit_start: self.on_submit_start.clone(),
+			on_submit_success: self.on_submit_success.clone(),
+			on_submit_error: self.on_submit_error.clone(),
 		}
 	}
 }
 
-impl<V> FormHandle<V>
+impl<Form, Deps> UseFormReturn<Form, Deps>
 where
-	V: FormValues,
+	Form: FormRuntimeSource,
+	Deps: Clone + PartialEq + 'static,
 {
-	/// Returns typed field signals.
-	pub fn fields(&self) -> V::Fields {
-		self.fields.clone()
+	/// Returns a signal containing the current value struct.
+	pub fn watch(&self) -> Signal<Form::Values> {
+		self.values_signal.clone()
+	}
+
+	/// Returns a typed field signal.
+	pub fn watch_field<T>(&self, field: Form::Field) -> Signal<T>
+	where
+		T: Clone + 'static,
+	{
+		self.form.runtime_watch_field(field).unwrap_or_else(|| {
+			panic!(
+				"field {:?} is not compatible with requested Signal<{}>",
+				field,
+				type_name::<T>()
+			)
+		})
 	}
 
 	/// Returns current typed values.
-	pub fn values(&self) -> V {
-		self.fields.values()
+	pub fn get_values(&self) -> Form::Values {
+		self.form.runtime_current_values()
 	}
 
-	/// Applies new typed values to the form fields.
-	pub fn set_values(&self, values: V) {
-		self.fields.apply_values(&values);
-		self.dirty.set(values != self.initial_values);
-		self.touched.set(true);
+	/// Returns current default values.
+	pub fn default_values(&self) -> Form::Values {
+		self.default_values.borrow().clone()
 	}
 
-	/// Restores the initial values and clears transient state.
+	/// Returns state for one field.
+	pub fn get_field_state(&self, field: Form::Field) -> FieldState {
+		let current = self.get_values();
+		let defaults = self.default_values.borrow();
+		let errors = self.state.field_errors.get();
+		FieldState {
+			is_dirty: self.form.runtime_field_is_dirty(field, &current, &defaults),
+			is_touched: self
+				.touched_fields
+				.borrow()
+				.get(&field)
+				.copied()
+				.unwrap_or(false),
+			error: errors.get(&field).cloned(),
+		}
+	}
+
+	/// Applies one typed field value.
+	pub fn set_value<T>(&self, field: Form::Field, value: T)
+	where
+		T: Any + 'static,
+	{
+		self.form.runtime_set_field_value(field, value);
+		self.touched_fields.borrow_mut().insert(field, true);
+		self.refresh_dirty();
+		self.values_signal.set(self.get_values());
+		if self.revalidate_on == RevalidateOn::Change {
+			let _ = self.trigger();
+		}
+		self.notify(FormEvent::ValueChanged { field });
+	}
+
+	/// Applies all typed values.
+	pub fn set_values(&self, values: Form::Values) {
+		self.form.runtime_apply_values(&values);
+		self.state.is_touched.set(true);
+		self.refresh_dirty();
+		self.values_signal.set(values);
+		if self.revalidate_on == RevalidateOn::Change {
+			let _ = self.trigger();
+		}
+	}
+
+	/// Sets one field error.
+	pub fn set_error(&self, field: Form::Field, error: FieldError) {
+		let mut errors = self.state.field_errors.get();
+		errors.insert(field, error);
+		self.state.field_errors.set(errors);
+		self.sync_first_error();
+	}
+
+	/// Clears all validation and submit errors.
+	pub fn clear_errors(&self) {
+		self.state.field_errors.set(HashMap::new());
+		self.state.form_error.set(None);
+		self.state.submit_error.set(None);
+		self.state.error.set(None);
+	}
+
+	/// Clears one field error.
+	pub fn clear_field_error(&self, field: Form::Field) {
+		let mut errors = self.state.field_errors.get();
+		errors.remove(&field);
+		self.state.field_errors.set(errors);
+		self.sync_first_error();
+	}
+
+	/// Runs generated validation.
+	pub fn trigger(&self) -> Result<(), FormValidationError<Form::Field>> {
+		let result = self.form.runtime_validate();
+		self.apply_validation_result(&result);
+		self.notify(FormEvent::Validated);
+		result
+	}
+
+	/// Runs validation and returns whether one field remains error-free.
+	pub fn trigger_field(
+		&self,
+		field: Form::Field,
+	) -> Result<(), FormValidationError<Form::Field>> {
+		let result = self.trigger();
+		if self.state.field_errors.get().contains_key(&field) {
+			result
+		} else {
+			Ok(())
+		}
+	}
+
+	/// Returns aggregate form state signals.
+	pub fn form_state(&self) -> FormState<Form::Field> {
+		self.state.clone()
+	}
+
+	/// Resets all values to current defaults.
 	pub fn reset(&self) {
-		let was_pristine = self.values() == self.initial_values;
-		self.suppress_touch.set(true);
-		self.fields.apply_values(&self.initial_values);
-		self.dirty.set(false);
-		self.touched.set(false);
-		if was_pristine {
-			self.suppress_touch.set(false);
-		}
-		self.field_errors.set(FieldErrors::new());
-		self.form_error.set(None);
-		self.submit_error.set(None);
-		self.error.set(None);
-		self.loading.set(false);
-		self.success.set(false);
+		let defaults = self.default_values.borrow().clone();
+		self.form.runtime_apply_values(&defaults);
+		self.touched_fields.borrow_mut().clear();
+		self.state.is_touched.set(false);
+		self.state.is_dirty.set(false);
+		self.state.is_submitting.set(false);
+		self.state.is_submit_successful.set(false);
+		self.clear_errors();
+		self.values_signal.set(defaults);
 	}
 
-	/// Returns whether current values differ from the initial values.
-	pub fn dirty(&self) -> Signal<bool> {
-		self.dirty.clone()
+	/// Resets one field to its current default value.
+	pub fn reset_field(&self, field: Form::Field) {
+		let defaults = self.default_values.borrow();
+		self.form.runtime_apply_field_value(field, &defaults);
+		self.touched_fields.borrow_mut().remove(&field);
+		self.refresh_dirty();
+		self.values_signal.set(self.get_values());
 	}
 
-	/// Returns whether the form has been changed since creation or reset.
-	pub fn touched(&self) -> Signal<bool> {
-		self.touched.clone()
+	/// Makes the current values the defaults and clears dirty state.
+	pub fn reset_default_values(&self) {
+		*self.default_values.borrow_mut() = self.get_values();
+		self.state.is_dirty.set(false);
 	}
 
-	/// Returns field-level validation errors.
-	pub fn field_errors(&self) -> Signal<FieldErrors> {
-		self.field_errors.clone()
+	/// Attempts to focus one field.
+	pub fn set_focus(&self, field: Form::Field) -> Result<(), FocusError> {
+		self.form.runtime_set_focus(field)
 	}
 
-	/// Returns the form-level validation error.
-	pub fn form_error(&self) -> Signal<Option<String>> {
-		self.form_error.clone()
-	}
-
-	/// Returns the last submit error.
-	pub fn submit_error(&self) -> Signal<Option<String>> {
-		self.submit_error.clone()
-	}
-
-	/// Returns the first visible validation or submit error.
-	pub fn error(&self) -> Signal<Option<String>> {
-		self.error.clone()
-	}
-
-	/// Returns whether an async submit action is running.
-	pub fn loading(&self) -> Signal<bool> {
-		self.loading.clone()
-	}
-
-	/// Returns whether the last async submit action succeeded.
-	pub fn success(&self) -> Signal<bool> {
-		self.success.clone()
-	}
-
-	/// Runs synchronous validation and updates error signals.
-	pub fn validate(&self) -> Result<(), FormValidationError> {
-		let values = self.values();
-		let result = match &self.validate {
-			Some(validate) => validate(&values),
-			None => Ok(()),
-		};
-
-		match result {
-			Ok(()) => {
-				self.field_errors.set(FieldErrors::new());
-				self.form_error.set(None);
-				self.sync_error();
-				Ok(())
-			}
-			Err(error) => {
-				self.apply_validation_error(&error);
-				self.success.set(false);
-				Err(error)
-			}
+	/// Subscribes to runtime form events.
+	pub fn subscribe<Callback>(&self, callback: Callback) -> FormSubscription<Form>
+	where
+		Callback: Fn(FormEvent<Form>) + 'static,
+	{
+		let mut subscribers = self.subscribers.borrow_mut();
+		let index = subscribers.len();
+		subscribers.push(Some(Rc::new(callback)));
+		FormSubscription {
+			index,
+			subscribers: Rc::downgrade(&self.subscribers),
 		}
 	}
 
-	/// Runs validation and starts the submit action when validation passes.
-	///
-	/// On `wasm`, the async submit action runs in the platform task spawner and
-	/// updates loading/success/error when it completes. On `native`, the
-	/// returned future is created and immediately dropped, so only synchronous
-	/// validation state is observable.
-	pub fn submit(&self) {
-		self.submit_error.set(None);
-		self.success.set(false);
-		self.sync_error();
+	/// Runs validation and submit lifecycle callbacks.
+	pub fn handle_submit(&self) -> UseFormSubmitOutcome {
+		if self.state.is_submitting.get() {
+			return UseFormSubmitOutcome::AlreadyPending;
+		}
 
-		if self.validate().is_err() {
-			self.loading.set(false);
+		self.state.is_submitting.set(true);
+		self.state.is_submit_successful.set(false);
+		self.state.submit_error.set(None);
+		self.notify(FormEvent::SubmitStarted);
+		if let Some(callback) = &self.on_submit_start {
+			callback(self);
+		}
+
+		if self.trigger().is_err() {
+			self.state.is_submitting.set(false);
+			if let Some(callback) = &self.on_submit_error {
+				callback(self);
+			}
+			self.notify(FormEvent::SubmitFailed);
+			return UseFormSubmitOutcome::ValidationFailed;
+		}
+
+		self.state.is_submitting.set(false);
+		self.state.is_submit_successful.set(true);
+		if let Some(callback) = &self.on_submit_success {
+			callback(self);
+		}
+		self.notify(FormEvent::Submitted);
+		UseFormSubmitOutcome::Submitted
+	}
+
+	/// Reconciles values and defaults from a newly generated form instance.
+	pub fn reconcile_from(&self, form: &Form, deps: Deps) {
+		self.reconcile_defaults(form.runtime_initial_values(), deps);
+	}
+
+	/// Reconciles values and defaults from a new default value struct.
+	pub fn reconcile_defaults(&self, new_defaults: Form::Values, deps: Deps) {
+		if *self.deps.borrow() == deps {
 			return;
 		}
+		*self.deps.borrow_mut() = deps;
 
-		let Some(on_submit) = &self.on_submit else {
-			self.loading.set(false);
-			self.success.set(true);
-			self.sync_error();
-			return;
-		};
+		let old_defaults = self.default_values.borrow().clone();
+		let current = self.get_values();
 
-		let values = self.values();
-
-		#[cfg(native)]
-		{
-			let _future = on_submit(values);
-			self.loading.set(false);
-		}
-
-		#[cfg(wasm)]
-		{
-			let on_submit = Rc::clone(on_submit);
-			let loading = self.loading.clone();
-			let success = self.success.clone();
-			let submit_error = self.submit_error.clone();
-			let error = self.error.clone();
-			loading.set(true);
-			crate::platform::spawn_task(async move {
-				match on_submit(values).await {
-					Ok(()) => {
-						loading.set(false);
-						success.set(true);
-						submit_error.set(None);
-						error.set(None);
-					}
-					Err(message) => {
-						loading.set(false);
-						success.set(false);
-						submit_error.set(Some(message.clone()));
-						error.set(Some(message));
+		match self.reset_on_deps {
+			ResetOnDeps::KeepDirtyValues => {
+				for field in self.form.runtime_fields() {
+					let field = *field;
+					if !self
+						.form
+						.runtime_field_is_dirty(field, &current, &old_defaults)
+					{
+						self.form.runtime_apply_field_value(field, &new_defaults);
 					}
 				}
-			});
+			}
+			ResetOnDeps::ResetAll => {
+				self.form.runtime_apply_values(&new_defaults);
+				self.touched_fields.borrow_mut().clear();
+			}
+			ResetOnDeps::ExplicitOnly => {}
+		}
+
+		*self.default_values.borrow_mut() = new_defaults;
+		if !self.keep_errors {
+			self.clear_errors();
+		}
+		self.refresh_dirty();
+		self.values_signal.set(self.get_values());
+		if self.revalidate_on == RevalidateOn::DepsChange {
+			let _ = self.trigger();
+		}
+		self.notify(FormEvent::DepsChanged);
+	}
+
+	fn apply_validation_result(&self, result: &Result<(), FormValidationError<Form::Field>>) {
+		match result {
+			Ok(()) => {
+				self.state.field_errors.set(HashMap::new());
+				self.state.form_error.set(None);
+				self.sync_first_error();
+			}
+			Err(error) => {
+				self.state.field_errors.set(error.field_errors().clone());
+				self.state
+					.form_error
+					.set(error.form_error().map(str::to_string));
+				self.sync_first_error();
+			}
 		}
 	}
 
-	fn apply_validation_error(&self, validation_error: &FormValidationError) {
-		self.field_errors
-			.set(validation_error.field_errors().clone());
-		self.form_error
-			.set(validation_error.form_error().map(str::to_string));
-		self.error.set(validation_error.first_message_for::<V>());
+	fn refresh_dirty(&self) {
+		let current = self.get_values();
+		self.state
+			.is_dirty
+			.set(current != *self.default_values.borrow());
+		self.state.is_touched.set(true);
 	}
 
-	fn sync_error(&self) {
-		let field_errors = self.field_errors.get();
-		let form_error = self.form_error.get();
-		let submit_error = self.submit_error.get();
-		let validation_error = FormValidationError {
-			field_errors,
-			form_error,
-		};
-		self.error
-			.set(validation_error.first_message_for::<V>().or(submit_error));
+	fn sync_first_error(&self) {
+		let first_field_error = self
+			.state
+			.field_errors
+			.get()
+			.values()
+			.next()
+			.map(|error| error.message().to_string());
+		self.state.error.set(
+			first_field_error
+				.or_else(|| self.state.form_error.get())
+				.or_else(|| self.state.submit_error.get()),
+		);
+	}
+
+	fn notify(&self, event: FormEvent<Form>) {
+		for subscriber in self.subscribers.borrow().iter().flatten() {
+			subscriber(event.clone());
+		}
 	}
 }
 
-/// Creates a typed form runtime handle.
-pub fn use_form<V>(options: FormOptions<V>) -> FormHandle<V>
+/// RAII subscription guard returned by `UseFormReturn::subscribe`.
+pub struct FormSubscription<Form>
 where
-	V: FormValues,
+	Form: FormRuntimeSource,
 {
-	let fields = V::Fields::from_values(&options.initial_values);
-	let dirty = Signal::new(false);
-	let touched = Signal::new(false);
-	let field_errors = Signal::new(FieldErrors::new());
-	let form_error = Signal::new(None);
-	let submit_error = Signal::new(None);
-	let error = Signal::new(None);
-	let loading = Signal::new(false);
-	let success = Signal::new(false);
-	let suppress_touch = Rc::new(Cell::new(false));
+	index: usize,
+	subscribers: Weak<RefCell<Vec<Option<Subscriber<Form>>>>>,
+}
 
-	let fields_for_effect = fields.clone();
-	let initial_values_for_effect = options.initial_values.clone();
-	let dirty_for_effect = dirty.clone();
-	let touched_for_effect = touched.clone();
-	let suppress_touch_for_effect = Rc::clone(&suppress_touch);
-	let mut first_run = true;
-	let dirty_effect = Effect::new_with_timing(
-		move || {
-			let values = fields_for_effect.values();
-			let is_dirty = values != initial_values_for_effect;
-			dirty_for_effect.set(is_dirty);
-			if first_run {
-				first_run = false;
-			} else if suppress_touch_for_effect.get() {
-				if is_dirty {
-					touched_for_effect.set(true);
-				} else {
-					touched_for_effect.set(false);
-				}
-				suppress_touch_for_effect.set(false);
-			} else {
-				touched_for_effect.set(true);
-			}
-		},
-		EffectTiming::Layout,
-	);
+impl<Form> Drop for FormSubscription<Form>
+where
+	Form: FormRuntimeSource,
+{
+	fn drop(&mut self) {
+		if let Some(subscribers) = self.subscribers.upgrade()
+			&& let Some(slot) = subscribers.borrow_mut().get_mut(self.index)
+		{
+			*slot = None;
+		}
+	}
+}
 
-	FormHandle {
-		initial_values: options.initial_values,
-		fields,
-		on_submit: options.on_submit,
-		validate: options.validate,
-		dirty,
-		touched,
-		field_errors,
-		form_error,
-		submit_error,
-		error,
-		loading,
-		success,
-		suppress_touch,
-		_dirty_effect: Rc::new(dirty_effect),
+/// Starts a runtime builder for a generated form.
+pub fn use_form<Form>(form: &Form) -> UseFormBuilder<Form, NoDeps>
+where
+	Form: FormRuntimeSource,
+{
+	UseFormBuilder {
+		form: form.clone(),
+		deps: NoDeps,
+		reset_on_deps: ResetOnDeps::KeepDirtyValues,
+		keep_errors: false,
+		revalidate_on: RevalidateOn::Submit,
+		on_submit_start: None,
+		on_submit_success: None,
+		on_submit_error: None,
 	}
 }

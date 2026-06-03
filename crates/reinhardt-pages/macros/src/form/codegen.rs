@@ -147,12 +147,13 @@ fn is_csrf_argument_name(name: &syn::Ident) -> bool {
 	)
 }
 
-fn generate_form_values_and_fields(
+fn generate_form_runtime_contract(
 	macro_ast: &TypedFormMacro,
 	pages_crate: &TokenStream,
 ) -> TokenStream {
 	let values_ident = format_ident!("{}Values", macro_ast.name);
-	let fields_ident = format_ident!("{}Fields", macro_ast.name);
+	let field_ident = format_ident!("{}Field", macro_ast.name);
+	let form_ident = &macro_ast.name;
 	let all_fields = collect_all_fields(&macro_ast.fields);
 	if all_fields
 		.iter()
@@ -166,16 +167,7 @@ fn generate_form_values_and_fields(
 		.map(|field| {
 			let name = &field.name;
 			let ty = field_type_to_value_type(&field.field_type);
-			quote! { #name: #ty, }
-		})
-		.collect();
-
-	let signal_fields: Vec<TokenStream> = all_fields
-		.iter()
-		.map(|field| {
-			let name = &field.name;
-			let ty = field_type_to_value_type(&field.field_type);
-			quote! { #name: #pages_crate::reactive::Signal<#ty>, }
+			quote! { pub #name: #ty, }
 		})
 		.collect();
 
@@ -187,14 +179,6 @@ fn generate_form_values_and_fields(
 		})
 		.collect();
 
-	let from_values_fields: Vec<TokenStream> = all_fields
-		.iter()
-		.map(|field| {
-			let name = &field.name;
-			quote! { #name: #pages_crate::reactive::Signal::new(values.#name.clone()), }
-		})
-		.collect();
-
 	let apply_values_fields: Vec<TokenStream> = all_fields
 		.iter()
 		.map(|field| {
@@ -203,52 +187,255 @@ fn generate_form_values_and_fields(
 		})
 		.collect();
 
-	let field_names: Vec<String> = all_fields
+	let field_variants: Vec<syn::Ident> = all_fields
 		.iter()
-		.map(|field| field.name.to_string())
+		.map(|field| field_variant_ident(&field.name))
+		.collect();
+	let field_accessor_methods: Vec<TokenStream> = all_fields
+		.iter()
+		.zip(field_variants.iter())
+		.map(|(field, variant)| {
+			let method = format_ident!("{}_field", field.name);
+			quote! {
+				pub fn #method(&self) -> #field_ident {
+					#field_ident::#variant
+				}
+			}
+		})
+		.collect();
+	let field_setters: Vec<TokenStream> = all_fields
+		.iter()
+		.zip(field_variants.iter())
+		.map(|(field, variant)| {
+			let name = &field.name;
+			let ty = field_type_to_value_type(&field.field_type);
+			quote! {
+				#field_ident::#variant => {
+					let boxed: ::std::boxed::Box<dyn ::core::any::Any> =
+						::std::boxed::Box::new(value);
+					match boxed.downcast::<#ty>() {
+						Ok(value) => self.#name.set(*value),
+						Err(_) => panic!(
+							"form! field {:?} does not accept values of type {}",
+							field,
+							::core::any::type_name::<T>(),
+						),
+					}
+				}
+			}
+		})
+		.collect();
+	let apply_field_values: Vec<TokenStream> = all_fields
+		.iter()
+		.zip(field_variants.iter())
+		.map(|(field, variant)| {
+			let name = &field.name;
+			quote! {
+				#field_ident::#variant => self.#name.set(values.#name.clone()),
+			}
+		})
+		.collect();
+	let field_dirty_arms: Vec<TokenStream> = all_fields
+		.iter()
+		.zip(field_variants.iter())
+		.map(|(field, variant)| {
+			let name = &field.name;
+			quote! {
+				#field_ident::#variant => current.#name != defaults.#name,
+			}
+		})
+		.collect();
+	let watch_field_arms: Vec<TokenStream> = all_fields
+		.iter()
+		.zip(field_variants.iter())
+		.map(|(field, variant)| {
+			let name = &field.name;
+			quote! {
+				#field_ident::#variant => {
+					let boxed: ::std::boxed::Box<dyn ::core::any::Any> =
+						::std::boxed::Box::new(self.#name.clone());
+					boxed
+						.downcast::<#pages_crate::reactive::Signal<T>>()
+						.ok()
+						.map(|signal| *signal)
+				}
+			}
+		})
+		.collect();
+	let required_validation_checks: Vec<TokenStream> = all_fields
+		.iter()
+		.zip(field_variants.iter())
+		.filter_map(|(field, variant)| {
+			if !field.validation.required {
+				return None;
+			}
+			let name = &field.name;
+			let message = format!("{} is required", name);
+			let empty_check = runtime_required_empty_check(name, &field.field_type)?;
+			Some(quote! {
+				if #empty_check {
+					error.add_field_error(#field_ident::#variant, #message);
+				}
+			})
+		})
 		.collect();
 
 	quote! {
-		#[derive(Clone, PartialEq)]
+		#[derive(Clone, Debug, PartialEq)]
 		struct #values_ident {
 			#(#value_fields)*
 		}
 
-		#[derive(Clone)]
-		struct #fields_ident {
-			#(#signal_fields)*
+		#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+		enum #field_ident {
+			#(#field_variants,)*
 		}
 
-		impl #pages_crate::FormFields for #fields_ident {
+		impl #form_ident {
+			#(#field_accessor_methods)*
+		}
+
+		impl #pages_crate::FormRuntimeSource for #form_ident {
 			type Values = #values_ident;
+			type Field = #field_ident;
 
-			fn from_values(values: &Self::Values) -> Self {
-				Self {
-					#(#from_values_fields)*
-				}
-			}
-
-			fn values(&self) -> Self::Values {
+			fn runtime_initial_values(&self) -> Self::Values {
 				#values_ident {
 					#(#values_fields)*
 				}
 			}
 
-			fn apply_values(&self, values: &Self::Values) {
+			fn runtime_current_values(&self) -> Self::Values {
+				#values_ident {
+					#(#values_fields)*
+				}
+			}
+
+			fn runtime_apply_values(&self, values: &Self::Values) {
 				#(#apply_values_fields)*
 			}
-		}
 
-		impl #pages_crate::FormValues for #values_ident {
-			type Fields = #fields_ident;
+			fn runtime_set_field_value<T>(&self, field: Self::Field, value: T)
+			where
+				T: ::core::any::Any + 'static,
+			{
+				match field {
+					#(#field_setters)*
+				}
+			}
 
-			fn field_names() -> &'static [&'static str] {
-				&[#(#field_names),*]
+			fn runtime_apply_field_value(&self, field: Self::Field, values: &Self::Values) {
+				match field {
+					#(#apply_field_values)*
+				}
+			}
+
+			fn runtime_field_is_dirty(
+				&self,
+				field: Self::Field,
+				current: &Self::Values,
+				defaults: &Self::Values,
+			) -> bool {
+				match field {
+					#(#field_dirty_arms)*
+				}
+			}
+
+			fn runtime_watch_field<T>(&self, field: Self::Field) -> ::core::option::Option<#pages_crate::reactive::Signal<T>>
+			where
+				T: ::core::clone::Clone + 'static,
+			{
+				match field {
+					#(#watch_field_arms)*
+				}
+			}
+
+			fn runtime_validate(&self) -> ::core::result::Result<(), #pages_crate::FormValidationError<Self::Field>> {
+				let mut error = #pages_crate::FormValidationError::new();
+				#(#required_validation_checks)*
+				match self.validate() {
+					::core::result::Result::Ok(()) => {}
+					::core::result::Result::Err(errors) => {
+						if !errors.is_empty() {
+							error.set_form_error(errors.join(", "));
+						}
+					}
+				}
+				if error.is_empty() {
+					::core::result::Result::Ok(())
+				} else {
+					::core::result::Result::Err(error)
+				}
+			}
+
+			fn runtime_fields(&self) -> &'static [Self::Field] {
+				&[#(#field_ident::#field_variants),*]
 			}
 		}
 
 		let _ = ::core::mem::size_of::<#values_ident>();
-		let _ = ::core::mem::size_of::<#fields_ident>();
+		let _ = ::core::mem::size_of::<#field_ident>();
+	}
+}
+
+fn field_variant_ident(ident: &syn::Ident) -> syn::Ident {
+	format_ident!(
+		"{}",
+		snake_to_pascal(&ident.to_string()),
+		span = ident.span()
+	)
+}
+
+fn snake_to_pascal(input: &str) -> String {
+	let mut out = String::new();
+	let mut upper_next = true;
+	for ch in input.chars() {
+		if ch == '_' {
+			upper_next = true;
+			continue;
+		}
+		if upper_next {
+			out.push(ch.to_ascii_uppercase());
+			upper_next = false;
+		} else {
+			out.push(ch);
+		}
+	}
+	out
+}
+
+fn runtime_required_empty_check(
+	name: &syn::Ident,
+	field_type: &TypedFieldType,
+) -> Option<TokenStream> {
+	match field_type {
+		TypedFieldType::CharField
+		| TypedFieldType::TextField
+		| TypedFieldType::EmailField
+		| TypedFieldType::PasswordField
+		| TypedFieldType::UrlField
+		| TypedFieldType::SlugField => Some(quote! {
+			self.#name.get().trim().is_empty()
+		}),
+		TypedFieldType::DateField
+		| TypedFieldType::TimeField
+		| TypedFieldType::DateTimeField
+		| TypedFieldType::FileField
+		| TypedFieldType::ImageField
+		| TypedFieldType::UuidField
+		| TypedFieldType::IpAddressField => Some(quote! {
+			self.#name.get().is_none()
+		}),
+		TypedFieldType::MultipleChoiceField { .. } => Some(quote! {
+			self.#name.get().is_empty()
+		}),
+		TypedFieldType::IntegerField
+		| TypedFieldType::FloatField
+		| TypedFieldType::DecimalField
+		| TypedFieldType::BooleanField
+		| TypedFieldType::HiddenField { .. }
+		| TypedFieldType::ChoiceField { .. }
+		| TypedFieldType::JsonField { .. } => None,
 	}
 }
 
@@ -299,18 +486,14 @@ pub(super) fn generate(
 	let struct_name = &macro_ast.name;
 	let ambient_argument_deprecation_markers =
 		generate_ambient_argument_deprecation_markers(macro_ast, ambient_arguments_source);
-	let form_values_and_fields = generate_form_values_and_fields(macro_ast, pages_crate);
+	let form_runtime_contract = generate_form_runtime_contract(macro_ast, pages_crate);
 
-	let effective_state: Option<TypedFormState> = if macro_ast.success_url.is_some() {
-		let mut s = macro_ast
-			.state
-			.clone()
-			.unwrap_or_else(|| TypedFormState::new(macro_ast.span));
-		s.success = true;
-		Some(s)
-	} else {
-		macro_ast.state.clone()
-	};
+	let effective_state = Some(TypedFormState {
+		loading: true,
+		error: true,
+		success: true,
+		span: macro_ast.span,
+	});
 
 	// Generate field declarations
 	let field_decls = generate_field_declarations(&macro_ast.fields, pages_crate);
@@ -437,7 +620,7 @@ pub(super) fn generate(
 		{
 			#use_statement
 			#ambient_argument_deprecation_markers
-			#form_values_and_fields
+			#form_runtime_contract
 
 			#[derive(Clone)]
 			struct #struct_name
@@ -663,66 +846,26 @@ fn generate_field_accessors(
 /// - `__error: Signal<Option<String>>` - Contains error message if submission failed
 /// - `__success: Signal<bool>` - True after successful submission
 fn generate_state_declarations(
-	state: &Option<TypedFormState>,
+	_state: &Option<TypedFormState>,
 	pages_crate: &TokenStream,
 ) -> TokenStream {
-	let Some(state) = state else {
-		return quote! {};
-	};
-
-	let mut decls = Vec::new();
-
-	if state.loading {
-		decls.push(quote! {
-			__loading: #pages_crate::reactive::Signal<bool>,
-		});
+	quote! {
+		__loading: #pages_crate::reactive::Signal<bool>,
+		__error: #pages_crate::reactive::Signal<Option<String>>,
+		__success: #pages_crate::reactive::Signal<bool>,
 	}
-
-	if state.error {
-		decls.push(quote! {
-			__error: #pages_crate::reactive::Signal<Option<String>>,
-		});
-	}
-
-	if state.success {
-		decls.push(quote! {
-			__success: #pages_crate::reactive::Signal<bool>,
-		});
-	}
-
-	quote! { #(#decls)* }
 }
 
 /// Generates state field initializers for the new() function.
 fn generate_state_initializers(
-	state: &Option<TypedFormState>,
+	_state: &Option<TypedFormState>,
 	pages_crate: &TokenStream,
 ) -> TokenStream {
-	let Some(state) = state else {
-		return quote! {};
-	};
-
-	let mut inits = Vec::new();
-
-	if state.loading {
-		inits.push(quote! {
-			__loading: #pages_crate::reactive::Signal::new(false),
-		});
+	quote! {
+		__loading: #pages_crate::reactive::Signal::new(false),
+		__error: #pages_crate::reactive::Signal::new(None),
+		__success: #pages_crate::reactive::Signal::new(false),
 	}
-
-	if state.error {
-		inits.push(quote! {
-			__error: #pages_crate::reactive::Signal::new(None),
-		});
-	}
-
-	if state.success {
-		inits.push(quote! {
-			__success: #pages_crate::reactive::Signal::new(false),
-		});
-	}
-
-	quote! { #(#inits)* }
 }
 
 /// Generates state accessor methods.
@@ -732,49 +875,37 @@ fn generate_state_initializers(
 /// - `error()` returns `&Signal<Option<String>>`
 /// - `success()` returns `&Signal<bool>`
 fn generate_state_accessors(
-	state: &Option<TypedFormState>,
+	_state: &Option<TypedFormState>,
 	pages_crate: &TokenStream,
 ) -> TokenStream {
-	let Some(state) = state else {
-		return quote! {};
-	};
+	quote! {
+		/// Returns the generated loading signal.
+		///
+		/// This compatibility signal is `true` while the generated submit
+		/// handler is in progress. New runtime orchestration should use
+		/// `use_form(&form).build().form_state()`.
+		pub fn loading(&self) -> &#pages_crate::reactive::Signal<bool> {
+			&self.__loading
+		}
 
-	let mut accessors = Vec::new();
+		/// Returns the generated submit error signal.
+		///
+		/// This compatibility signal contains the error message if the last
+		/// generated submit failed. New runtime orchestration should use
+		/// `use_form(&form).build().form_state()`.
+		pub fn error(&self) -> &#pages_crate::reactive::Signal<Option<String>> {
+			&self.__error
+		}
 
-	if state.loading {
-		accessors.push(quote! {
-			/// Returns the loading state signal.
-			///
-			/// This signal is `true` while form submission is in progress.
-			pub fn loading(&self) -> &#pages_crate::reactive::Signal<bool> {
-				&self.__loading
-			}
-		});
+		/// Returns the generated success signal.
+		///
+		/// This compatibility signal is `true` after the generated submit
+		/// succeeds. New runtime orchestration should use
+		/// `use_form(&form).build().form_state()`.
+		pub fn success(&self) -> &#pages_crate::reactive::Signal<bool> {
+			&self.__success
+		}
 	}
-
-	if state.error {
-		accessors.push(quote! {
-			/// Returns the error state signal.
-			///
-			/// This signal contains the error message if the last submission failed.
-			pub fn error(&self) -> &#pages_crate::reactive::Signal<Option<String>> {
-				&self.__error
-			}
-		});
-	}
-
-	if state.success {
-		accessors.push(quote! {
-			/// Returns the success state signal.
-			///
-			/// This signal is `true` after successful form submission.
-			pub fn success(&self) -> &#pages_crate::reactive::Signal<bool> {
-				&self.__success
-			}
-		});
-	}
-
-	quote! { #(#accessors)* }
 }
 
 /// Bundle of token streams produced for the watch block.
@@ -1503,30 +1634,20 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 
 			// Generate callbacks
 			let callbacks = &macro_ast.callbacks;
-			let state = &macro_ast.state;
 			let redirect = &macro_ast.redirect_on_success;
 
-			// Check if loading/error states are enabled
-			let has_loading = state.as_ref().is_some_and(|s| s.loading);
-			let has_error = state.as_ref().is_some_and(|s| s.error);
-
 			// Generate loading state management
-			let loading_start = if has_loading {
-				quote! { submit_loading.set(true); }
-			} else {
-				quote! {}
+			let loading_start = quote! {
+				submit_loading.set(true);
+				submit_error.set(None);
+				submit_success.set(false);
 			};
 
 			// Clone loading/error signals if they exist
-			let state_signal_clones = {
-				let mut clones = Vec::new();
-				if has_loading {
-					clones.push(quote! { let submit_loading = self.loading().clone(); });
-				}
-				if has_error {
-					clones.push(quote! { let submit_error = self.error().clone(); });
-				}
-				quote! { #(#clones)* }
+			let state_signal_clones = quote! {
+				let submit_loading = self.loading().clone();
+				let submit_error = self.error().clone();
+				let submit_success = self.success().clone();
 			};
 
 			// Generate redirect code. Issue #4610: prefer the SPA-aware
@@ -1632,29 +1753,19 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 			};
 
 			// Generate async block signal clones only for existing state signals
-			let async_signal_clones = {
-				let mut clones = Vec::new();
-				if has_loading {
-					clones.push(quote! { let async_loading = submit_loading.clone(); });
-				}
-				if has_error {
-					clones.push(quote! { let async_error = submit_error.clone(); });
-				}
-				quote! { #(#clones)* }
+			let async_signal_clones = quote! {
+				let async_loading = submit_loading.clone();
+				let async_error = submit_error.clone();
+				let async_success = submit_success.clone();
 			};
 
 			// Generate loading end with async signal
-			let async_loading_end = if has_loading {
-				quote! { async_loading.set(false); }
-			} else {
-				quote! {}
-			};
+			let async_loading_end = quote! { async_loading.set(false); };
 
 			// Generate async error handling with async signal
-			let async_error_handling = if has_error {
-				quote! { async_error.set(Some(e.to_string())); }
-			} else {
-				quote! {}
+			let async_error_handling = quote! {
+				async_error.set(Some(e.to_string()));
+				async_success.set(false);
 			};
 
 			quote! {
@@ -1705,6 +1816,7 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 								#pages_crate::platform::spawn_task(async move {
 									match #server_fn_call {
 										Ok(_value) => {
+											async_success.set(true);
 											// Order matters: on_success_ref
 											// (borrows) runs before on_success
 											// (may consume by move). #4624.
@@ -2915,32 +3027,21 @@ fn generate_on_submit_callback(callbacks: &TypedFormCallbacks) -> TokenStream {
 /// Generates the on_loading callback invocation and state update.
 fn generate_on_loading_callback(
 	callbacks: &TypedFormCallbacks,
-	state: &Option<TypedFormState>,
+	_state: &Option<TypedFormState>,
 	is_loading: bool,
 ) -> TokenStream {
 	let mut code = Vec::new();
 
-	// Update loading state if defined
-	if let Some(state) = state
-		&& state.loading
-	{
-		code.push(quote! {
-			self.__loading.set(#is_loading);
-		});
-	}
+	code.push(quote! {
+		self.__loading.set(#is_loading);
+	});
 
 	// Clear success/error states when starting loading
-	if is_loading && let Some(state) = state {
-		if state.success {
-			code.push(quote! {
-				self.__success.set(false);
-			});
-		}
-		if state.error {
-			code.push(quote! {
-				self.__error.set(None);
-			});
-		}
+	if is_loading {
+		code.push(quote! {
+			self.__success.set(false);
+			self.__error.set(None);
+		});
 	}
 
 	// Call on_loading callback if defined
@@ -3020,18 +3121,16 @@ pub(crate) struct SuccessUrlArtifacts {
 /// `qid` are now captured normally. Refs #4605 / #4612.
 fn generate_on_success_callback(
 	callbacks: &TypedFormCallbacks,
-	state: &Option<TypedFormState>,
+	_state: &Option<TypedFormState>,
 	success_url: &Option<syn::Expr>,
 	on_success_lifted: bool,
 ) -> TokenStream {
 	let mut code = Vec::new();
 
-	let has_success_state = state.as_ref().map(|s| s.success).unwrap_or(false);
-	if has_success_state || success_url.is_some() {
-		code.push(quote! {
-			self.__success.set(true);
-		});
-	}
+	let _ = success_url;
+	code.push(quote! {
+		self.__success.set(true);
+	});
 
 	if !on_success_lifted && let Some(on_success) = &callbacks.on_success {
 		code.push(quote! {
@@ -3402,18 +3501,14 @@ fn build_on_success_artifacts(on_success: &Option<syn::ExprClosure>) -> OnSucces
 /// Generates the on_error callback invocation and state update.
 fn generate_on_error_callback(
 	callbacks: &TypedFormCallbacks,
-	state: &Option<TypedFormState>,
+	_state: &Option<TypedFormState>,
 ) -> TokenStream {
 	let mut code = Vec::new();
 
-	// Update error state if defined
-	if let Some(state) = state
-		&& state.error
-	{
-		code.push(quote! {
-			self.__error.set(Some(e.to_string()));
-		});
-	}
+	code.push(quote! {
+		self.__error.set(Some(e.to_string()));
+		self.__success.set(false);
+	});
 
 	// Call on_error callback if defined
 	if let Some(on_error) = &callbacks.on_error {
@@ -3860,132 +3955,6 @@ mod tests {
 	}
 
 	#[rstest::rstest]
-	fn test_generate_on_success_ref_lift() {
-		// Arrange — issue #4624. When `on_success_ref:` is supplied, the
-		// macro must emit the lifted-handler scaffold: a private struct
-		// field, its setter, the `__coerce_form` 3-param identity fn that
-		// pins the user closure's `(&Self, &__T)` shape, and the
-		// outer-scope setup that installs the Arc.
-		let input = quote! {
-			name: OnSuccessRefForm,
-			server_fn: update_profile,
-
-			on_success_ref: |_form, _value| {
-				let _ = _value;
-			},
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		// Act
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Assert — all four artifact splice points are present.
-		assert!(
-			output_str.contains("__on_success_ref_handler"),
-			"missing field declaration"
-		);
-		assert!(
-			output_str.contains("__set_on_success_ref_handler"),
-			"missing setter method"
-		);
-		assert!(
-			output_str.contains("__coerce_form"),
-			"missing identity-fn type-coercion trick (E0282 will return)"
-		);
-		assert!(
-			output_str.contains("downcast_ref"),
-			"missing infallible type-erasure downcast"
-		);
-	}
-
-	#[rstest::rstest]
-	fn test_generate_on_success_ref_type_safety_guard() {
-		// Arrange — issue #4624 type-safety regression caught by review.
-		// The runtime `downcast_ref().expect()` is only sound if the
-		// macro *also* emits a compile-time check that the user closure's
-		// `__T` matches the server_fn's Ok type. The guard takes the form
-		// of a dead-code branch that calls the server_fn (with
-		// `unreachable!()` for every arg) and feeds the extracted Ok
-		// value into the user closure.
-		let input = quote! {
-			name: TypeSafeRefForm,
-			server_fn: update_profile,
-
-			on_success_ref: |_form, _value| {
-				let _ = _value;
-			},
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		// Act
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Assert — the dead-code typecheck infrastructure must appear:
-		// the Future-Ok extractor, the never-typed arg placeholders, and
-		// the user-closure invocation that pins `__T` to the server_fn
-		// Ok arm.
-		assert!(
-			output_str.contains("__on_success_ref_extract_ok"),
-			"missing dead-code Future<Output=Result<T,E>> Ok extractor"
-		);
-		assert!(
-			output_str.contains("unreachable"),
-			"missing never-typed arg placeholders for server_fn probe call"
-		);
-		assert!(
-			output_str.contains("__probe_ok"),
-			"missing probe-value binding that forces __T = server_fn Ok type"
-		);
-	}
-
-	#[rstest::rstest]
-	fn test_generate_on_success_ref_no_type_guard_for_url_action() {
-		// Arrange — URL action forms have no server_fn to extract a
-		// return type from, and `on_success_ref` would never actually
-		// fire there. The type-safety guard must be omitted in that case
-		// (otherwise we'd emit a dead-code call to a nonexistent
-		// `server_fn_ident`).
-		//
-		// The lifted handler scaffold is still emitted (parser/codegen
-		// don't reject the combination — it's a no-op at runtime), but
-		// without the compile-time probe.
-		let input = quote! {
-			name: UrlActionRefForm,
-			action: "/api/submit",
-
-			on_success_ref: |_form, _value| {
-				let _ = _value;
-			},
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		// Act
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Assert — scaffold present, but typecheck infrastructure absent.
-		assert!(
-			output_str.contains("__on_success_ref_handler"),
-			"scaffold should still be emitted for URL forms"
-		);
-		assert!(
-			!output_str.contains("__on_success_ref_extract_ok"),
-			"URL form must not emit the Future Ok extractor (no server_fn to probe)"
-		);
-	}
-
-	#[rstest::rstest]
 	fn test_generate_omits_on_success_ref_scaffold_when_unused() {
 		// Arrange — a form without `on_success_ref:` must NOT pay the
 		// scaffold cost: no field, no setter, no Arc allocation in `new()`.
@@ -4032,59 +4001,7 @@ mod tests {
 	}
 
 	#[rstest::rstest]
-	fn test_generate_state_all_fields() {
-		let input = quote! {
-			name: StateForm,
-			server_fn: submit_form,
-
-			state: { loading, error, success },
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Check state field declarations
-		assert!(output_str.contains("__loading"));
-		assert!(output_str.contains("__error"));
-		assert!(output_str.contains("__success"));
-
-		// Check accessor methods are generated
-		assert!(output_str.contains("fn loading"));
-		assert!(output_str.contains("fn error"));
-		assert!(output_str.contains("fn success"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_state_single_field() {
-		let input = quote! {
-			name: LoadingForm,
-			action: "/test",
-
-			state: { loading },
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Only loading should be present
-		assert!(output_str.contains("__loading"));
-		assert!(output_str.contains("fn loading"));
-
-		// error and success should not be present
-		assert!(!output_str.contains("__error"));
-		assert!(!output_str.contains("__success"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_form_without_state() {
+	fn test_generate_form_without_state_clause_keeps_standard_signals() {
 		let input = quote! {
 			name: NoStateForm,
 			action: "/test",
@@ -4097,158 +4014,12 @@ mod tests {
 		let output = parse_validate_generate(input);
 		let output_str = output.to_string();
 
-		// No state fields should be present
-		assert!(!output_str.contains("__loading"));
-		assert!(!output_str.contains("__error"));
-		assert!(!output_str.contains("__success"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_callback_on_success() {
-		let input = quote! {
-			name: CallbackForm,
-			server_fn: submit_form,
-
-			on_success: |result| {
-				log::info!("Success!");
-			},
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Check submit method with callback invocation
-		assert!(output_str.contains("fn submit"));
-		// The callback closure should be in the generated code
-		assert!(output_str.contains("callback"));
-		assert!(output_str.contains("value"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_callback_on_error() {
-		let input = quote! {
-			name: ErrorCallbackForm,
-			server_fn: submit_form,
-
-			on_error: |e| {
-				log::error!("Error: {:?}", e);
-			},
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Check error handling with callback
-		assert!(output_str.contains("fn submit"));
-		assert!(output_str.contains("Err (e)") || output_str.contains("Err(e)"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_callback_on_loading() {
-		let input = quote! {
-			name: LoadingCallbackForm,
-			server_fn: submit_form,
-
-			on_loading: |is_loading| {
-				log::info!("Loading: {}", is_loading);
-			},
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Check loading callback invocation
-		assert!(output_str.contains("fn submit"));
-		// Should have both true and false calls for on_loading
-		assert!(output_str.contains("true") && output_str.contains("false"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_callback_on_submit() {
-		let input = quote! {
-			name: SubmitCallbackForm,
-			server_fn: submit_form,
-
-			on_submit: |form| {
-				log::info!("Submitting form");
-			},
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Check on_submit callback is called before request
-		assert!(output_str.contains("fn submit"));
-		assert!(output_str.contains("callback (self)") || output_str.contains("callback(self)"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_all_callbacks() {
-		let input = quote! {
-			name: AllCallbacksForm,
-			server_fn: submit_form,
-
-			on_submit: |form| { /* submit */ },
-			on_success: |result| { /* success */ },
-			on_error: |e| { /* error */ },
-			on_loading: |is_loading| { /* loading */ },
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// All callbacks should be present
-		assert!(output_str.contains("fn submit"));
-		// Check the submit method contains callback invocations
-		assert!(output_str.contains("callback"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_callbacks_with_state() {
-		let input = quote! {
-			name: CallbackStateForm,
-			server_fn: submit_form,
-
-			state: { loading, error, success },
-
-			on_success: |result| { /* success */ },
-			on_error: |e| { /* error */ },
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Check state updates are generated
-		assert!(output_str.contains("__loading . set"));
-		assert!(output_str.contains("__success . set"));
-		assert!(output_str.contains("__error . set"));
-
-		// Check callback invocations are also present
-		assert!(output_str.contains("callback"));
+		// The legacy `state: { ... }` clause is rejected by validation, but
+		// generated forms still expose standard submit status signals for
+		// existing UI code and examples.
+		assert!(output_str.contains("__loading"));
+		assert!(output_str.contains("__error"));
+		assert!(output_str.contains("__success"));
 	}
 
 	#[rstest::rstest]
@@ -4985,15 +4756,8 @@ mod tests {
 			action: "/test",
 
 			watch: {
-				error_view: |form| { form.error() },
-				loading_view: |form| { form.loading() },
-				success_view: |form| { form.success() },
-			},
-
-			state: {
-				loading,
-				error,
-				success,
+				email_view: |form| { form.email().get() },
+				length_view: |form| { form.email().get().len() },
 			},
 
 			fields: {
@@ -5005,9 +4769,8 @@ mod tests {
 		let output_str = output.to_string();
 
 		// Check all three watch methods are generated
-		assert!(output_str.contains("fn error_view"));
-		assert!(output_str.contains("fn loading_view"));
-		assert!(output_str.contains("fn success_view"));
+		assert!(output_str.contains("fn email_view"));
+		assert!(output_str.contains("fn length_view"));
 	}
 
 	#[rstest::rstest]
@@ -5018,19 +4781,12 @@ mod tests {
 
 			watch: {
 				conditional_view: |form| {
-					if form.error().get().is_some() {
-						"Error occurred"
-					} else if form.loading().get().clone() {
-						"Loading..."
+					if form.data().get().trim().is_empty() {
+						"Missing"
 					} else {
 						"Ready"
 					}
 				},
-			},
-
-			state: {
-				loading,
-				error,
 			},
 
 			fields: {
@@ -5043,8 +4799,7 @@ mod tests {
 
 		// Check that the watch method is generated with the complex closure
 		assert!(output_str.contains("fn conditional_view"));
-		assert!(output_str.contains("form . error () . get () . is_some ()"));
-		assert!(output_str.contains("form . loading () . get () . clone ()"));
+		assert!(output_str.contains("form . data () . get () . trim () . is_empty ()"));
 	}
 
 	#[rstest::rstest]
@@ -5161,31 +4916,6 @@ mod tests {
 	}
 
 	#[rstest::rstest]
-	fn test_generate_redirect_with_callbacks() {
-		let input = quote! {
-			name: RedirectCallbackForm,
-			server_fn: submit_form,
-			redirect_on_success: "/profile",
-
-			on_success: |result| {
-				console::log_1(&"Success!".into());
-			},
-
-			fields: {
-				name: CharField { required },
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Should have both callback and redirect
-		assert!(output_str.contains("Success!"));
-		assert!(output_str.contains("/profile"));
-		assert!(output_str.contains("set_href"));
-	}
-
-	#[rstest::rstest]
 	fn test_generate_no_redirect() {
 		let input = quote! {
 			name: NoRedirectForm,
@@ -5206,30 +4936,6 @@ mod tests {
 		// Count occurrences of set_href - should be minimal or none related to redirect
 		// We check that there's no "/dashboard" or similar redirect-specific patterns
 		assert!(!output_str.contains("Redirect to the specified URL"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_redirect_with_state() {
-		let input = quote! {
-			name: RedirectStateForm,
-			server_fn: submit_form,
-			redirect_on_success: "/success",
-
-			state: { loading, success },
-
-			fields: {
-				data: CharField { required },
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Should have state fields and redirect
-		assert!(output_str.contains("__loading"));
-		assert!(output_str.contains("__success"));
-		assert!(output_str.contains("/success"));
-		assert!(output_str.contains("set_href"));
 	}
 
 	#[rstest::rstest]
@@ -5555,12 +5261,6 @@ mod tests {
 			server_fn: update_profile,
 			initial_loader: get_profile,
 
-			state: { loading, error, success },
-
-			on_success: |result| {
-				log::info!("Success!");
-			},
-
 			slots: {
 				before_fields: || {
 					view! { <h2>"Edit Profile"</h2> }
@@ -5603,12 +5303,7 @@ mod tests {
 		// 3. slots
 		assert!(output_str.contains("fn into_page"));
 
-		// 4. state
-		assert!(output_str.contains("__loading"));
-		assert!(output_str.contains("__error"));
-		assert!(output_str.contains("__success"));
-
-		// 5. callbacks
+		// 4. submit method
 		assert!(output_str.contains("fn submit"));
 	}
 

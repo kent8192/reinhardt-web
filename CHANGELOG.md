@@ -120,9 +120,11 @@ follow the **Migration Guide** below for the most disruptive moves.
 
 ### Migration Guide
 
-The 0.1.0 stable release consolidates 19 alpha and 30 rc prereleases.
-Notable breaking changes since 0.1.0-rc.1 are summarized below; the
-complete list is in the **Breaking Changes** section above.
+The 0.1.0 stable release consolidates the alpha line and the yanked rc
+stabilization snapshots. Treat the rc line as unreleased for migration
+purposes. Notable breaking changes accumulated during stabilization are
+summarized below; the complete list is in the **Breaking Changes** section
+above.
 
 - **Typed URL routing** ([#3770](https://github.com/kent8192/reinhardt-web/discussions/3770)):
   replace string-based `#[url_patterns]` with
@@ -368,5 +370,5 @@ For the complete per-PR change list, see the
 
 For per-prerelease detail, see the
 [Release-category Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release)
-(rc.1 through rc.30 plus the alpha.7 / alpha.8 / alpha.9 announcement
-posts).
+(historical rc snapshots plus the alpha.7 / alpha.8 / alpha.9 announcement
+posts). The rc snapshots are not treated as released versions.

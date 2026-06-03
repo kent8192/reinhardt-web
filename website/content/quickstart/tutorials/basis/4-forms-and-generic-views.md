@@ -256,13 +256,11 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// - strip_arguments: explicitly routes the CSRF token to the trailing
 	//   server_fn argument (reinhardt-web#3971), replacing the implicit
 	//   auto-injection that broke when server_fn signatures evolved.
-	// - state: loading/error signals for form submission feedback
 	// - watch blocks for reactive UI updates
 	let voting_form = form! {
 		name: VotingForm,
 		server_fn: submit_vote,
 		method: Post,
-		state: { loading, error },
 
 		fields: {
 			question_id: HiddenField {
@@ -376,7 +374,6 @@ The block above is doing six things; the cleanest way to internalise `form!` is 
 | `name: VotingForm` | Names the generated struct (`VotingForm`) and DOM id (`voting-form`). Used by `<button form="…">` references later. |
 | `server_fn: submit_vote` | Picks the `#[server_fn]` this form submits to. The macro generates a client-side call to it on submit. |
 | `method: Post` | Tells the macro this is a mutating form. That decision enables CSRF hidden-input rendering and the `_csrf_token` argument convention discussed below. |
-| `state: { loading, error }` | Requests the standard reactive signals `form.loading()` (`Signal<bool>`) and `form.error()` (`Signal<Option<String>>`). |
 | `fields: { … }` | Declares the form fields. `HiddenField`, `CharField`, `ChoiceField`, etc., correspond to widget builders the macro knows about. |
 | `strip_arguments: { csrf_token: … }` | Explicitly tells `form!` how to supply the trailing `_csrf_token: String` argument of the server function (see below). |
 | `watch: { … }` | Reactive view fragments — small `page!` blocks whose output is re-evaluated whenever the signals they capture change. |
@@ -763,7 +760,6 @@ pub fn question_new() -> Page {
 		name: NewQuestionForm,
 		server_fn: create_question,
 		method: Post,
-		state: { loading, error },
 		redirect_on_success: "/",
 
 		fields: {
@@ -936,7 +932,7 @@ You now have everything Part 4 set out to deliver:
 
 - DTO field-level validation lives in `src/shared/types.rs`, with `#[dto]` emitting `derive(Validate)` (and OpenAPI `Schema`) behind `cfg(native)` so the WASM bundle stays small.
 - The voting form's metadata + CSRF token are emitted by the `form!` macro itself at expansion time on the client side; the server-only `create_vote_form()` in `src/shared/forms.rs` exists so the same shape can be unit-tested (`test_vote_form_metadata`) without compiling the macro, and the `strip_arguments: { csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token() … }` clause pulls the per-request CSRF token from the page-level helper.
-- The `form!` macro in `src/client/components/polls.rs` declares the UI, dispatches to `submit_vote`, serialises every field as `String`, appends the CSRF token through `strip_arguments`, and surfaces success/error reactively through `state: { loading, error }` and matching `watch` blocks.
+- The `form!` macro in `src/client/components/polls.rs` declares the UI, dispatches to `submit_vote`, serialises every field as `String`, appends the CSRF token through `strip_arguments`, and surfaces success/error reactively through the generated `loading()` / `error()` signals and matching `watch` blocks.
 - Question and Choice CUD reuse the same `form!` + `#[server_fn]` shape, composing `(*session_user).as_ref().map_err(ServerFnError::from)?` (authentication, via the `Depends<Result<User, SessionError>>` DI factory) and `require_question_author` (authorization) on top of typed model builders.
 - "Generic views" are not a separate concept in the pages template — they are the page factory functions you already have, glued together with the reactive primitives above.
 

@@ -1,31 +1,21 @@
 //! Authentication components using form! macro
 //!
-//! Provides login and registration form components with form! macro for:
-//! - Declarative field definitions with reactive Signal management
-//! - UI state management (loading, error)
-//! - Two-way binding (bind: true by default)
-//! - Server function integration for form submission
-//! - Automatic redirect on success
+//! Provides login and registration form components with the `form!` macro.
 use crate::core::client::components::icons;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::Signal;
 #[cfg(wasm)]
-use {
-	crate::apps::auth::client::state::set_current_user,
-	crate::apps::auth::shared::server_fn::{login, register},
-};
+use crate::apps::auth::shared::server_fn::{login, register};
 
 /// Login form component using form! macro
 ///
 /// Uses the `form!` macro for:
 /// - Declarative field definitions (email, password)
-/// - UI state management via `state: { loading, error }`
 /// - Two-way binding via `bind: true` (default)
 /// - SVG icons via `icon` property
 /// - Server function integration via `server_fn`
-/// - `on_success` callback for setting current user
 /// - `redirect_on_success` for navigation after login
 pub fn login_form() -> Page {
 	let login_form = form! {
@@ -33,10 +23,6 @@ pub fn login_form() -> Page {
 		server_fn: login,
 		method: Post,
 		redirect_on_success: "/timeline",
-		state: {
-			loading,
-			error,
-		}
 		fields: {
 			email: EmailField {
 				label: "Email",
@@ -81,11 +67,6 @@ pub fn login_form() -> Page {
 				class: "form-input pl-10",
 			}
 		}
-		on_success: |user_info| {
-			#[cfg(wasm)] {
-				set_current_user(Some(user_info));
-			}
-		},
 	};
 	let loading_signal = login_form.loading().clone();
 	let error_signal = login_form.error().clone();
@@ -203,7 +184,6 @@ pub fn login_form() -> Page {
 ///
 /// Uses the `form!` macro for:
 /// - Declarative field definitions (username, email, password, password_confirmation)
-/// - UI state management via `state: { loading, error }`
 /// - Two-way binding via `bind: true` (default)
 /// - SVG icons via `icon` property
 /// - Server function integration via `server_fn`
@@ -214,10 +194,6 @@ pub fn register_form() -> Page {
 		server_fn: register,
 		method: Post,
 		redirect_on_success: "/login",
-		state: {
-			loading,
-			error,
-		}
 		fields: {
 			username: CharField {
 				label: "Username",

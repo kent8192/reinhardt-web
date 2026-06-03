@@ -582,37 +582,11 @@ pub struct ClientValidatorRule {
 	pub span: Span,
 }
 
-/// Form submission callbacks configuration.
+/// Parsed form submission callbacks configuration.
 ///
-/// Allows defining custom behavior at different stages of form submission:
-/// - Before submission starts
-/// - On successful submission
-/// - On error
-/// - When loading state changes
-///
-/// ## Example DSL
-///
-/// ```ignore
-/// form! {
-///     name: ProfileForm,
-///     server_fn: update_profile,
-///
-///     on_submit: |form| {
-///         // Called before submission starts
-///     },
-///     on_success: |result| {
-///         // Called when server_fn returns successfully
-///     },
-///     on_error: |e| {
-///         // Called when submission fails
-///     },
-///     on_loading: |is_loading| {
-///         // Called when loading state changes
-///     },
-///
-///     fields: { ... }
-/// }
-/// ```
+/// These legacy `form!` runtime callback clauses are retained in the parsed AST
+/// so older source can produce a targeted validation error. They are rejected by
+/// validation; use `use_form(&form)` for runtime behavior.
 #[derive(Debug, Clone, Default)]
 pub struct FormCallbacks {
 	/// Callback called before form submission starts.
@@ -665,24 +639,11 @@ impl FormCallbacks {
 	}
 }
 
-/// UI state configuration for form submission.
+/// Parsed form submission state configuration.
 ///
-/// Defines which state signals (loading, error, success) are enabled for the form.
-/// These signals are automatically managed during form submission lifecycle.
-///
-/// ## Example DSL
-///
-/// ```no_run
-/// state: { loading, error, success },
-/// ```
-///
-/// ## Available State Fields
-///
-/// | Field | Signal Type | Description |
-/// |-------|-------------|-------------|
-/// | `loading` | `Signal<bool>` | True during form submission |
-/// | `error` | `Signal<Option<String>>` | Contains error message if submission failed |
-/// | `success` | `Signal<bool>` | True after successful submission |
+/// This legacy `form! state: { ... }` clause is retained in the parsed AST so
+/// older source can produce a targeted validation error. It is rejected by
+/// validation; use `use_form(&form).build().form_state()` for runtime state.
 #[derive(Debug, Clone)]
 pub struct FormState {
 	/// List of enabled state fields

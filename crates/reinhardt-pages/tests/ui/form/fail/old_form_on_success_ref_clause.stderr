@@ -1,0 +1,5 @@
+error: `form!` runtime callback clauses were removed; configure submit lifecycle through `use_form(&form)`
+  --> tests/ui/form/fail/old_form_on_success_ref_clause.rs:16:3
+   |
+16 |         on_success_ref: |_form,
+   |         ^^^^^^^^^^^^^^

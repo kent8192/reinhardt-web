@@ -145,21 +145,23 @@ validation metadata, server function binding, and rendering. `use_form` owns
 typed runtime behavior: values, field signals, dirty/touched state, validation
 errors, loading, success, reset, and submit orchestration.
 
-For value structs, derive `FormValues` and initialize a runtime handle:
+Create the form with `form!`, then attach runtime behavior to that generated
+form:
 
 ```rust
-use reinhardt_pages::{FormOptions, FormValues, use_form};
+use reinhardt_pages::{form, use_form};
 
-#[derive(Clone, PartialEq, FormValues)]
-struct LoginFormValues {
-    username: String,
-    password: String,
-}
+let login_form = form! {
+    name: LoginForm,
+    action: "/login",
+    fields: {
+        username: CharField { initial: String::new() }
+        password: CharField { initial: String::new() }
+    }
+};
 
-let form = use_form(FormOptions::new(LoginFormValues {
-    username: String::new(),
-    password: String::new(),
-}));
+let runtime = use_form(&login_form).build();
+runtime.set_value(login_form.username_field(), "ada".to_string());
 ```
 
 Arguments supplied from ambient context use `ambient_arguments`. The old

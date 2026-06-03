@@ -5,11 +5,6 @@
 use reinhardt_pages::component::Page;
 use reinhardt_pages::form;
 use reinhardt_pages::page;
-// Used in form! macro closure type annotations (WASM-only codegen)
-#[cfg(client)]
-use crate::types::responses::LoginResponse;
-#[cfg(client)]
-use reinhardt_pages::ServerFnError;
 
 /// Login form component
 ///
@@ -68,9 +63,8 @@ pub fn login_form(error_message: Option<&str>) -> Page {
 /// form element. The `server_fn: admin_login_with_header` directive auto-generates the
 /// submit handler, replacing the manual `setup_login_handler()`.
 ///
-/// The `on_success` callback updates the auth state and navigates to the
-/// dashboard. JWT token storage is handled server-side via HTTP-Only cookie,
-/// so no client-side token storage is needed.
+/// JWT token storage is handled server-side via HTTP-Only cookie, so no
+/// client-side token storage is needed.
 fn build_login_form() -> Page {
 	#[allow(unused_imports)]
 	use crate::server::login::admin_login_with_header;
@@ -79,6 +73,7 @@ fn build_login_form() -> Page {
 		name: AdminLoginForm,
 		server_fn: admin_login_with_header,
 		method: Post,
+		redirect_on_success: "/admin/",
 		fields: {
 			username: CharField {
 				required,
@@ -101,23 +96,6 @@ fn build_login_form() -> Page {
 				placeholder: "Enter your password",
 			}
 		}
-		on_success: |response: LoginResponse| {
-			use reinhardt_pages::auth::auth_state;
-			let auth = auth_state();
-			auth.login_full(response.user_id.clone(), &response.username, None, response.is_staff, response.is_superuser, );
-			crate::pages::router::with_router(|r| {
-				let _ = r.push("/admin/");
-			});
-		},
-		on_error: |e: ServerFnError| {
-			let error_msg = e.to_string();
-			if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
-				if let Some(error_div) = doc.get_element_by_id("login-error") {
-					let _ = error_div.class_list().remove_1("hidden");
-					error_div.set_text_content(Some(if error_msg.contains("401") { "Invalid username or password" } else { "Login failed. Please try again." }));
-				}
-			}
-		},
 		slots: {
 			after_fields: | | page!(|| {
 				div {

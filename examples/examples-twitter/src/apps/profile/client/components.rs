@@ -218,11 +218,10 @@ pub fn profile_view(user_id: Uuid) -> Page {
 		}
 	})(loading_signal, error_signal, profile_signal, user_id_str)
 }
-/// Profile edit component using form! macro with state management
+/// Profile edit component using form! macro.
 ///
 /// Uses the `form!` macro for:
 /// - Declarative field definitions (avatar_url, bio, location, website)
-/// - UI state management via `state: { loading, error, success }`
 /// - Two-way binding via `bind: true` (default)
 /// - SVG icons via `icon` property
 /// - Server function integration via `server_fn`
@@ -234,11 +233,6 @@ pub fn profile_edit(user_id: Uuid) -> Page {
 		name: ProfileEditForm,
 		server_fn: update_profile_form,
 		method: Post,
-		state: {
-			loading,
-			error,
-			success,
-		}
 		fields: {
 			avatar_url: UrlField {
 				label: "Avatar URL",

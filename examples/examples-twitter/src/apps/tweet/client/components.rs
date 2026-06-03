@@ -314,18 +314,14 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 /// # Features demonstrated
 /// - `derived` block: Automatically computes `char_count` from content
 /// - `watch` block with match expressions: 4-level character counter styling
-/// - `state` block: Automatic loading/error signal management
-/// - `on_success` callback: Page reload after successful submission
+/// - `redirect_on_success` for navigation after successful submission
 pub fn tweet_form() -> Page {
 	// Define the form using form! macro with derived signals
 	let tweet_form_instance = form! {
 		name: TweetFormInner,
 		server_fn: create_tweet,
 		method: Post,
-		state: {
-			loading,
-			error,
-		}
+		redirect_on_success: "/timeline",
 		fields: {
 			content: TextField {
 				widget: Textarea,
@@ -337,13 +333,6 @@ pub fn tweet_form() -> Page {
 				rows: 3,
 			}
 		}
-		on_success: |_result| {
-			#[cfg(wasm)] {
-				if let Some(window) = web_sys::window() {
-					let _ = window.location().reload();
-				}
-			}
-		},
 		watch: {
 			char_counter: |form| {
 				let char_count = form.content().get().len();

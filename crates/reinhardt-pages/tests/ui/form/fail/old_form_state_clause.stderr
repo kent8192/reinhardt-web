@@ -1,0 +1,5 @@
+error: `form! state: { ... }` was removed; use `use_form(&form).build().form_state()` for runtime form state
+ --> tests/ui/form/fail/old_form_state_clause.rs:8:4
+  |
+8 |             loading,
+  |             ^^^^^^^

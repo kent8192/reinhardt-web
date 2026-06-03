@@ -159,8 +159,6 @@ fn build_voting_form_page(qid: i64, choices: &[ChoiceInfo]) -> Page {
 	// - `method: Post` enables CSRF hidden-input rendering for non-WASM submits.
 	// - The `#[server_fn]` client stub attaches `X-CSRFToken` for WASM submits,
 	//   so CSRF stays transport-level rather than becoming a business argument.
-	// - `state: { loading, error }` exposes per-field signals to drive the
-	//   submit button and error banner below.
 	// - `success_url: |_form| ...` triggers an in-SPA navigation to the results
 	//   page after a successful vote. The closure captures `qid` from the
 	//   outer scope; the macro stores it on the generated form struct and the
@@ -172,10 +170,6 @@ fn build_voting_form_page(qid: i64, choices: &[ChoiceInfo]) -> Page {
 		server_fn: submit_vote,
 		method: Post,
 		success_url: |_form| links::results(qid),
-		state: {
-			loading,
-			error,
-		}
 		fields: {
 			question_id: HiddenField {
 				initial: qid.to_string(),
@@ -651,10 +645,6 @@ pub fn question_new() -> Page {
 		server_fn: create_question,
 		method: Post,
 		redirect_on_success: "/",
-		state: {
-			loading,
-			error,
-		}
 		fields: {
 			question_text: CharField {
 				label: "Question",
@@ -731,10 +721,6 @@ pub fn question_edit(question_id: i64) -> Page {
 		server_fn: update_question,
 		method: Post,
 		redirect_on_success: "/",
-		state: {
-			loading,
-			error,
-		}
 		fields: {
 			question_id: HiddenField {
 				initial: qid.to_string(),
@@ -871,10 +857,6 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 		server_fn: delete_question,
 		method: Post,
 		redirect_on_success: "/",
-		state: {
-			loading,
-			error,
-		}
 		fields: {
 			question_id: HiddenField {
 				initial: qid.to_string(),
@@ -1001,10 +983,6 @@ pub fn choice_new(question_id: i64) -> Page {
 		name: NewChoiceForm,
 		server_fn: create_choice,
 		method: Post,
-		state: {
-			loading,
-			error
-		},
 		success_url: |_form| links::detail(qid),
 		fields: {
 			question_id: HiddenField {
@@ -1083,10 +1061,6 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 		server_fn: update_choice,
 		method: Post,
 		redirect_on_success: "/",
-		state: {
-			loading,
-			error,
-		}
 		fields: {
 			choice_id: HiddenField {
 				initial: cid_str,
@@ -1162,10 +1136,6 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 		server_fn: delete_choice,
 		method: Post,
 		redirect_on_success: "/",
-		state: {
-			loading,
-			error,
-		}
 		fields: {
 			choice_id: HiddenField {
 				initial: cid_str,
