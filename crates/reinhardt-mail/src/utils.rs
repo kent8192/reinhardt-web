@@ -2,8 +2,10 @@
 //!
 //! Helper functions for sending emails quickly.
 
-use crate::{EmailMessage, EmailResult, backends::EmailBackend};
-use reinhardt_conf::settings::EmailSettings;
+use crate::{
+	EmailMessage, EmailResult,
+	backends::{EmailBackend, EmailSettingsSource},
+};
 
 /// Send a simple email using the configured backend from settings.
 ///
@@ -23,7 +25,7 @@ use reinhardt_conf::settings::EmailSettings;
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use reinhardt_mail::send_mail;
-/// use reinhardt_conf::settings::EmailSettings;
+/// use reinhardt_conf::EmailSettings;
 ///
 /// let mut settings = EmailSettings::default();
 /// settings.backend = "smtp".to_string();
@@ -40,8 +42,8 @@ use reinhardt_conf::settings::EmailSettings;
 /// # Ok(())
 /// # }
 /// ```
-pub async fn send_mail(
-	settings: &reinhardt_conf::settings::EmailSettings,
+pub async fn send_mail<S: EmailSettingsSource + ?Sized>(
+	settings: &S,
 	subject: impl Into<String>,
 	message: impl Into<String>,
 	recipient_list: Vec<impl Into<String>>,
@@ -54,7 +56,7 @@ pub async fn send_mail(
 	let mut email_builder = EmailMessage::builder()
 		.subject(subject)
 		.body(message)
-		.from(&settings.from_email)
+		.from(settings.from_email())
 		.to(recipients);
 
 	if let Some(html) = html_message {
@@ -163,7 +165,7 @@ pub async fn send_mass_mail(
 ///
 /// ```rust,no_run
 /// use reinhardt_mail::{mail_admins, MemoryBackend};
-/// use reinhardt_conf::settings::EmailSettings;
+/// use reinhardt_conf::EmailSettings;
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -190,15 +192,15 @@ pub async fn send_mass_mail(
 /// # Ok(())
 /// # }
 /// ```
-pub async fn mail_admins(
-	settings: &EmailSettings,
+pub async fn mail_admins<S: EmailSettingsSource + ?Sized>(
+	settings: &S,
 	subject: impl Into<String>,
 	message: impl Into<String>,
 	fail_silently: bool,
 	backend: &dyn EmailBackend,
 ) -> EmailResult<()> {
 	send_to_role(
-		&settings.admins,
+		settings.admins(),
 		"admins",
 		settings,
 		subject,
@@ -217,7 +219,7 @@ pub async fn mail_admins(
 ///
 /// ```rust,no_run
 /// use reinhardt_mail::{mail_managers, MemoryBackend};
-/// use reinhardt_conf::settings::EmailSettings;
+/// use reinhardt_conf::EmailSettings;
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -244,15 +246,15 @@ pub async fn mail_admins(
 /// # Ok(())
 /// # }
 /// ```
-pub async fn mail_managers(
-	settings: &EmailSettings,
+pub async fn mail_managers<S: EmailSettingsSource + ?Sized>(
+	settings: &S,
 	subject: impl Into<String>,
 	message: impl Into<String>,
 	fail_silently: bool,
 	backend: &dyn EmailBackend,
 ) -> EmailResult<()> {
 	send_to_role(
-		&settings.managers,
+		settings.managers(),
 		"managers",
 		settings,
 		subject,
@@ -269,7 +271,7 @@ pub async fn mail_managers(
 async fn send_to_role(
 	recipients: &[(String, String)],
 	role_name: &str,
-	settings: &EmailSettings,
+	settings: &(impl EmailSettingsSource + ?Sized),
 	subject: impl Into<String>,
 	message: impl Into<String>,
 	fail_silently: bool,
@@ -286,16 +288,16 @@ async fn send_to_role(
 	let emails: Vec<String> = recipients.iter().map(|(_, email)| email.clone()).collect();
 
 	let subject_str = subject.into();
-	let final_subject = if !settings.subject_prefix.is_empty() {
-		format!("{} {}", settings.subject_prefix, subject_str)
+	let final_subject = if !settings.subject_prefix().is_empty() {
+		format!("{} {}", settings.subject_prefix(), subject_str)
 	} else {
 		subject_str
 	};
 
-	let from_email = if !settings.server_email.is_empty() {
-		settings.server_email.clone()
+	let from_email = if !settings.server_email().is_empty() {
+		settings.server_email().to_string()
 	} else {
-		settings.from_email.clone()
+		settings.from_email().to_string()
 	};
 
 	let result =

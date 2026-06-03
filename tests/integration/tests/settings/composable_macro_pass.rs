@@ -13,6 +13,7 @@
 
 use reinhardt_conf::settings::cache::{CacheSettings, HasCacheSettings};
 use reinhardt_conf::settings::core_settings::{CoreSettings, HasCoreSettings};
+use reinhardt_conf::settings::email::EmailSettings as FragmentEmailSettings;
 use reinhardt_conf::settings::fragment::SettingsFragment;
 use reinhardt_conf::settings::openapi::{HasOpenApiSettings, OpenApiSettings};
 use reinhardt_conf::settings::policy::FieldRequirement;
@@ -190,6 +191,10 @@ struct NoCoreSettings;
 #[settings(core: CoreSettings)]
 struct CoreOnlySettings;
 
+/// Compose the built-in email fragment as downstream projects do.
+#[settings(core: CoreSettings | email: FragmentEmailSettings)]
+struct MailProjectSettings;
+
 #[rstest]
 fn compose_single_fragment_has_core_and_custom() {
 	// Arrange
@@ -282,6 +287,25 @@ fn compose_core_only_has_core() {
 		"Explicit CoreSettings should be the only fragment"
 	);
 	assert!(core.debug, "CoreSettings default debug should be true");
+}
+
+#[rstest]
+fn composed_email_fragment_builds_smtp_backend() {
+	// Arrange
+	let settings = MailProjectSettings {
+		core: CoreSettings::default(),
+		email: FragmentEmailSettings::default(),
+	};
+
+	// Act
+	let result = reinhardt_mail::create_smtp_backend_from_settings(&settings.email);
+
+	// Assert
+	assert!(
+		result.is_ok(),
+		"SMTP backend helper must accept the #[settings] EmailSettings fragment: {:?}",
+		result.err()
+	);
 }
 
 #[rstest]

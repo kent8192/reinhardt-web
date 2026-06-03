@@ -13,6 +13,7 @@ use lettre::message::{Mailbox, MultiPart, SinglePart, header};
 use lettre::transport::smtp::authentication::{Credentials, Mechanism};
 use lettre::transport::smtp::client::{Tls, TlsParameters};
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
+use std::path::Path;
 use std::time::Duration;
 use zeroize::Zeroize;
 
@@ -22,6 +23,106 @@ pub trait EmailBackend: Send + Sync {
 	/// Send one or more email messages, returning the number of messages sent successfully.
 	async fn send_messages(&self, messages: &[EmailMessage]) -> EmailResult<usize>;
 }
+
+/// Read-only SMTP/email settings accepted by mail helper constructors.
+///
+/// Implemented for both the composable `#[settings]` email fragment and the
+/// legacy advanced settings type so migration helpers can accept either shape.
+pub trait EmailSettingsSource {
+	/// Email backend type (for example, `"smtp"`, `"console"`, `"file"`, or `"memory"`).
+	fn backend(&self) -> &str;
+	/// SMTP server hostname.
+	fn host(&self) -> &str;
+	/// SMTP server port number.
+	fn port(&self) -> u16;
+	/// Optional SMTP authentication username.
+	fn username(&self) -> Option<&str>;
+	/// Optional SMTP authentication password.
+	fn password(&self) -> Option<&str>;
+	/// Whether to use STARTTLS for the SMTP connection.
+	fn use_tls(&self) -> bool;
+	/// Whether to use direct TLS/SSL for the SMTP connection.
+	fn use_ssl(&self) -> bool;
+	/// Default sender email address for outgoing emails.
+	fn from_email(&self) -> &str;
+	/// Site administrators notified by helper functions.
+	fn admins(&self) -> &[(String, String)];
+	/// Site managers notified by helper functions.
+	fn managers(&self) -> &[(String, String)];
+	/// Server error sender address.
+	fn server_email(&self) -> &str;
+	/// Prefix for notification email subjects.
+	fn subject_prefix(&self) -> &str;
+	/// Connection timeout in seconds.
+	fn timeout(&self) -> Option<u64>;
+	/// Directory path for the file-based email backend.
+	fn file_path(&self) -> Option<&Path>;
+}
+
+macro_rules! impl_email_settings_source {
+	($settings_ty:path) => {
+		impl EmailSettingsSource for $settings_ty {
+			fn backend(&self) -> &str {
+				&self.backend
+			}
+
+			fn host(&self) -> &str {
+				&self.host
+			}
+
+			fn port(&self) -> u16 {
+				self.port
+			}
+
+			fn username(&self) -> Option<&str> {
+				self.username.as_deref()
+			}
+
+			fn password(&self) -> Option<&str> {
+				self.password.as_deref()
+			}
+
+			fn use_tls(&self) -> bool {
+				self.use_tls
+			}
+
+			fn use_ssl(&self) -> bool {
+				self.use_ssl
+			}
+
+			fn from_email(&self) -> &str {
+				&self.from_email
+			}
+
+			fn admins(&self) -> &[(String, String)] {
+				&self.admins
+			}
+
+			fn managers(&self) -> &[(String, String)] {
+				&self.managers
+			}
+
+			fn server_email(&self) -> &str {
+				&self.server_email
+			}
+
+			fn subject_prefix(&self) -> &str {
+				&self.subject_prefix
+			}
+
+			fn timeout(&self) -> Option<u64> {
+				self.timeout
+			}
+
+			fn file_path(&self) -> Option<&Path> {
+				self.file_path.as_deref()
+			}
+		}
+	};
+}
+
+impl_email_settings_source!(reinhardt_conf::settings::email::EmailSettings);
+impl_email_settings_source!(reinhardt_conf::settings::EmailSettings);
 
 /// Creates an email backend from settings configuration.
 ///
@@ -35,33 +136,33 @@ pub trait EmailBackend: Send + Sync {
 /// Returns EmailError if:
 /// - Unknown backend type
 /// - Missing required fields (e.g., file_path for FileBackend)
-pub fn backend_from_settings(
-	settings: &reinhardt_conf::settings::EmailSettings,
+pub fn backend_from_settings<S: EmailSettingsSource + ?Sized>(
+	settings: &S,
 ) -> crate::EmailResult<Box<dyn EmailBackend>> {
 	// Validate from_email if configured
-	if !settings.from_email.is_empty() {
-		crate::validation::validate_email(&settings.from_email)?;
+	if !settings.from_email().is_empty() {
+		crate::validation::validate_email(settings.from_email())?;
 	}
 
-	match settings.backend.to_lowercase().as_str() {
+	match settings.backend().to_lowercase().as_str() {
 		"smtp" => {
-			let security = match (settings.use_tls, settings.use_ssl) {
+			let security = match (settings.use_tls(), settings.use_ssl()) {
 				(true, _) => SmtpSecurity::StartTls,
 				(_, true) => SmtpSecurity::Tls,
 				_ => SmtpSecurity::None,
 			};
 
 			let timeout = settings
-				.timeout
+				.timeout()
 				.map(std::time::Duration::from_secs)
 				.unwrap_or(std::time::Duration::from_secs(60));
 
-			let mut config = SmtpConfig::new(&settings.host, settings.port)
+			let mut config = SmtpConfig::new(settings.host(), settings.port())
 				.with_security(security)
 				.with_timeout(timeout);
 
-			if let (Some(username), Some(password)) = (&settings.username, &settings.password) {
-				config = config.with_credentials(username.clone(), password.clone());
+			if let (Some(username), Some(password)) = (settings.username(), settings.password()) {
+				config = config.with_credentials(username.to_string(), password.to_string());
 			}
 
 			let backend = SmtpBackend::new(config)?;
@@ -70,8 +171,8 @@ pub fn backend_from_settings(
 		"console" => Ok(Box::new(ConsoleBackend)),
 		"file" => {
 			let directory = settings
-				.file_path
-				.clone()
+				.file_path()
+				.map(Path::to_path_buf)
 				.ok_or_else(|| crate::EmailError::MissingField("file_path".to_string()))?;
 			Ok(Box::new(FileBackend::new(directory)))
 		}
@@ -255,7 +356,7 @@ pub enum SmtpAuthMechanism {
 /// Configuration for SMTP backend
 ///
 /// Deprecated: configure the SMTP backend through the
-/// [`EmailSettings`](reinhardt_conf::settings::EmailSettings) fragment and the
+/// [`EmailSettings`](reinhardt_conf::settings::email::EmailSettings) fragment and the
 /// `#[settings]` macro instead. Use [`create_smtp_backend_from_settings`] (or
 /// [`backend_from_settings`]) to build a backend from settings, or
 /// `SmtpConfig::from(&settings)` for the bridge.
@@ -348,38 +449,38 @@ impl SmtpConfig {
 	}
 }
 
-/// Build an [`SmtpConfig`] from an [`EmailSettings`](reinhardt_conf::settings::EmailSettings) fragment.
+/// Build an [`SmtpConfig`] from an email settings source.
 ///
 /// This mirrors the SMTP branch of [`backend_from_settings`]: the security mode
 /// is derived from the `use_tls`/`use_ssl` flags, the timeout defaults to 60
 /// seconds when unset, and credentials are populated only when both username and
 /// password are present.
-impl From<&reinhardt_conf::settings::EmailSettings> for SmtpConfig {
-	fn from(settings: &reinhardt_conf::settings::EmailSettings) -> Self {
-		let security = match (settings.use_tls, settings.use_ssl) {
+impl<S: EmailSettingsSource + ?Sized> From<&S> for SmtpConfig {
+	fn from(settings: &S) -> Self {
+		let security = match (settings.use_tls(), settings.use_ssl()) {
 			(true, _) => SmtpSecurity::StartTls,
 			(_, true) => SmtpSecurity::Tls,
 			_ => SmtpSecurity::None,
 		};
 
 		let timeout = settings
-			.timeout
+			.timeout()
 			.map(Duration::from_secs)
 			.unwrap_or_else(|| Duration::from_secs(60));
 
-		let mut config = SmtpConfig::new(&settings.host, settings.port)
+		let mut config = SmtpConfig::new(settings.host(), settings.port())
 			.with_security(security)
 			.with_timeout(timeout);
 
-		if let (Some(username), Some(password)) = (&settings.username, &settings.password) {
-			config = config.with_credentials(username.clone(), password.clone());
+		if let (Some(username), Some(password)) = (settings.username(), settings.password()) {
+			config = config.with_credentials(username.to_string(), password.to_string());
 		}
 
 		config
 	}
 }
 
-/// Build an [`SmtpBackend`] from an [`EmailSettings`](reinhardt_conf::settings::EmailSettings) fragment.
+/// Build an [`SmtpBackend`] from an email settings source.
 ///
 /// This is the settings-first entry point for constructing an SMTP backend.
 /// Prefer it over building an [`SmtpConfig`] manually.
@@ -387,8 +488,8 @@ impl From<&reinhardt_conf::settings::EmailSettings> for SmtpConfig {
 /// # Errors
 /// Returns [`EmailError`] if the resulting configuration fails validation (for
 /// example, an email-formatted username that is not a valid address).
-pub fn create_smtp_backend_from_settings(
-	settings: &reinhardt_conf::settings::EmailSettings,
+pub fn create_smtp_backend_from_settings<S: EmailSettingsSource + ?Sized>(
+	settings: &S,
 ) -> EmailResult<SmtpBackend> {
 	SmtpBackend::new(SmtpConfig::from(settings))
 }
@@ -719,5 +820,56 @@ impl EmailBackend for SmtpBackend {
 		}
 
 		Ok(sent_count)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn smtp_config_from_fragment_email_settings() {
+		// Arrange
+		let mut settings = reinhardt_conf::EmailSettings::default();
+		settings.host = "smtp.example.com".to_string();
+		settings.port = 587;
+		settings.username = Some("user@example.com".to_string());
+		settings.password = Some("secret".to_string());
+		settings.use_tls = true;
+		settings.timeout = Some(45);
+
+		// Act
+		let config = SmtpConfig::from(&settings);
+
+		// Assert
+		assert_eq!(config.host, "smtp.example.com");
+		assert_eq!(config.port, 587);
+		assert_eq!(config.username.as_deref(), Some("user@example.com"));
+		assert_eq!(config.password.as_deref(), Some("secret"));
+		assert!(matches!(config.security, SmtpSecurity::StartTls));
+		assert_eq!(config.timeout, Duration::from_secs(45));
+	}
+
+	#[test]
+	fn smtp_config_from_legacy_email_settings() {
+		// Arrange
+		let mut settings = reinhardt_conf::settings::EmailSettings::default();
+		settings.host = "smtp.example.com".to_string();
+		settings.port = 465;
+		settings.username = Some("user@example.com".to_string());
+		settings.password = Some("secret".to_string());
+		settings.use_ssl = true;
+		settings.timeout = Some(30);
+
+		// Act
+		let config = SmtpConfig::from(&settings);
+
+		// Assert
+		assert_eq!(config.host, "smtp.example.com");
+		assert_eq!(config.port, 465);
+		assert_eq!(config.username.as_deref(), Some("user@example.com"));
+		assert_eq!(config.password.as_deref(), Some("secret"));
+		assert!(matches!(config.security, SmtpSecurity::Tls));
+		assert_eq!(config.timeout, Duration::from_secs(30));
 	}
 }

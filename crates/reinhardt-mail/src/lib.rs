@@ -52,7 +52,7 @@
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use reinhardt_mail::send_mail;
-//! use reinhardt_conf::settings::EmailSettings;
+//! use reinhardt_conf::EmailSettings;
 //!
 //! let mut settings = EmailSettings::default();
 //! settings.backend = "console".to_string();
@@ -139,7 +139,7 @@
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use reinhardt_mail::{create_smtp_backend_from_settings, EmailMessage};
-//! use reinhardt_conf::settings::EmailSettings;
+//! use reinhardt_conf::EmailSettings;
 //!
 //! let mut settings = EmailSettings::default();
 //! settings.host = "smtp.gmail.com".to_string();
@@ -210,8 +210,9 @@ pub mod validation;
 use thiserror::Error;
 
 pub use backends::{
-	ConsoleBackend, EmailBackend, FileBackend, MemoryBackend, SmtpAuthMechanism, SmtpBackend,
-	SmtpSecurity, backend_from_settings, create_smtp_backend_from_settings,
+	ConsoleBackend, EmailBackend, EmailSettingsSource, FileBackend, MemoryBackend,
+	SmtpAuthMechanism, SmtpBackend, SmtpSecurity, backend_from_settings,
+	create_smtp_backend_from_settings,
 };
 // `SmtpConfig` is deprecated in favour of the `EmailSettings` fragment; re-export
 // it separately so the deprecation lint is suppressed only at the re-export site.
