@@ -68,7 +68,6 @@ pub fn generate_openapi_schema() -> OpenApiSchema {
 
 	// NOTE: Server function endpoints should be registered explicitly in each project's
 	// config/urls.rs and config/openapi.rs using the `.server_fn(fn_name::marker)` pattern.
-	// See examples-twitter/src/config/openapi.rs for reference.
 
 	generator
 		.generate()
