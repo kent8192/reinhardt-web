@@ -52,7 +52,7 @@
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use reinhardt_mail::send_mail;
-//! use reinhardt_conf::settings::EmailSettings;
+//! use reinhardt_conf::EmailSettings;
 //!
 //! let mut settings = EmailSettings::default();
 //! settings.backend = "console".to_string();
@@ -139,7 +139,7 @@
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use reinhardt_mail::{create_smtp_backend_from_settings, EmailMessage};
-//! use reinhardt_conf::settings::EmailSettings;
+//! use reinhardt_conf::EmailSettings;
 //!
 //! let mut settings = EmailSettings::default();
 //! settings.host = "smtp.gmail.com".to_string();

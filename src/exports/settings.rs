@@ -11,7 +11,8 @@ pub use reinhardt_conf::settings::sources::{
 // This block re-exports the deprecated `TemplateConfig` during the 0.2
 // compatibility window; the settings-first replacement is `TemplateSettings`.
 #[allow(deprecated)]
-pub use reinhardt_conf::settings::{
-	CacheSettings, CorsSettings, DatabaseConfig, EmailSettings, LoggingSettings, MediaSettings,
-	MiddlewareConfig, SessionSettings, SettingsError, StaticSettings, TemplateConfig,
+pub use reinhardt_conf::settings::{DatabaseConfig, MiddlewareConfig, TemplateConfig};
+pub use reinhardt_conf::{
+	CacheSettings, CorsSettings, EmailSettings, LoggingSettings, MediaSettings, SessionSettings,
+	StaticSettings,
 };
