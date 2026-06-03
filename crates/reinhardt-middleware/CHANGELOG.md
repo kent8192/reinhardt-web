@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.3...reinhardt-middleware@v0.2.0-rc.2) - 2026-06-03
+
+### Added
+
+- *(middleware)* [**breaking**] migrate session DI from Arc<SessionStore> to Depends<SessionStore>
+- *(middleware)* bridge CorsConfig to CorsSettings fragment
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(conf)* delete deprecated Settings, AdvancedSettings, JsonFileSource, and related APIs
+- *(middleware)* [**breaking**] replace deprecated SecurityConfig with builder pattern on SecurityMiddleware
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+- *(auth)* address CodeRabbit review feedback
+- *(docs)* resolve rustdoc intra-doc link errors on develop/0.2.0
+- *(docs)* resolve additional rustdoc link errors for feature-gated types
+- complete downstream shielding for deprecated config re-exports
+
+### Maintenance
+
+- *(examples)* remove examples-twitter
+
+### Styling
+
+- apply formatter fixes across workspace
+
 ### Changed
 
 - [**breaking**] Migrate session DI resolution from `Arc<SessionStore>` to the
