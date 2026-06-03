@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.3...reinhardt-conf@v0.2.0-rc.2) - 2026-06-03
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(conf)* delete deprecated Settings, AdvancedSettings, JsonFileSource, and related APIs
+
+### Deprecated
+
+- *(conf)* deprecate TemplateConfig in favor of TemplateSettings fragment
+
+### Documentation
+
+- *(mail,conf)* fix unresolved intra-doc links to settings fragments
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+- *(ci)* resolve all pre-existing compilation failures on develop/0.2.0
+- *(conf)* [**breaking**] remove legacy advanced settings types
+- *(conf)* emit fragment self settings impls
+
+### Styling
+
+- apply formatter fixes across workspace
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.30...reinhardt-conf@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-conf` as part of the reinhardt-web

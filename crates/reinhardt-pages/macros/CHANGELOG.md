@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.3...reinhardt-pages-macros@v0.2.0-rc.2) - 2026-06-03
+
+### Added
+
+- *(pages-macros)* add typed value conversion in WASM bind listener
+- *(pages)* support keyed page list rendering
+- *(pages-macros)* [**breaking**] implement compile-time hook deps verification
+- *(forms)* add typed use_form ergonomics
+
+### Changed
+
+- *(pages)* unify spawn into platform/, expose spawn_task from prelude
+
+### Documentation
+
+- *(pages)* document Clone requirement for keyed for iterators
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(pages)* render dynamic radio choices
+- *(forms)* address review and CI failures
+- *(forms)* stabilize form runtime and validator parity
+- *(forms)* address review feedback
+
+### Maintenance
+
+- forward merge main v0.1.1 changes into develop 0.2.0
+
 ### Changed
 
 - `#[server_fn]` now emits the `marker` module on wasm
