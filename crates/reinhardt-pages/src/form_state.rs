@@ -232,11 +232,14 @@ where
 
 	/// Restores the initial values and clears transient state.
 	pub fn reset(&self) {
+		let was_pristine = self.values() == self.initial_values;
 		self.suppress_touch.set(true);
 		self.fields.apply_values(&self.initial_values);
 		self.dirty.set(false);
 		self.touched.set(false);
-		self.suppress_touch.set(false);
+		if was_pristine {
+			self.suppress_touch.set(false);
+		}
 		self.field_errors.set(FieldErrors::new());
 		self.form_error.set(None);
 		self.submit_error.set(None);
@@ -412,10 +415,18 @@ where
 	let dirty_effect = Effect::new_with_timing(
 		move || {
 			let values = fields_for_effect.values();
-			dirty_for_effect.set(values != initial_values_for_effect);
+			let is_dirty = values != initial_values_for_effect;
+			dirty_for_effect.set(is_dirty);
 			if first_run {
 				first_run = false;
-			} else if !suppress_touch_for_effect.get() {
+			} else if suppress_touch_for_effect.get() {
+				if is_dirty {
+					touched_for_effect.set(true);
+				} else {
+					touched_for_effect.set(false);
+				}
+				suppress_touch_for_effect.set(false);
+			} else {
 				touched_for_effect.set(true);
 			}
 		},

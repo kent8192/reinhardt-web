@@ -37,7 +37,7 @@ use crate::core::{
 ///
 /// Returns a compilation error if any validation rule is violated.
 pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
-	validate_form_with_ambient_arguments_source(ast, None)
+	validate_form_with_ambient_arguments_source(ast, ast.ambient_arguments_source)
 }
 
 /// Validates and transforms the FormMacro AST into a typed AST with the source

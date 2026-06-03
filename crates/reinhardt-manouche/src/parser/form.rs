@@ -212,26 +212,46 @@ impl Parse for FormMacro {
 				"ambient_arguments" => {
 					let content;
 					braced!(content in input);
-					if ambient_arguments_clause.is_some() {
-						return Err(syn::Error::new(
-							key.span(),
-							"form! cannot specify both `ambient_arguments` and deprecated `strip_arguments`; use `ambient_arguments`",
-						));
+					match ambient_arguments_clause {
+						Some("ambient_arguments") => {
+							return Err(syn::Error::new(
+								key.span(),
+								"duplicate `ambient_arguments` property",
+							));
+						}
+						Some("strip_arguments") => {
+							return Err(syn::Error::new(
+								key.span(),
+								"form! cannot specify both `ambient_arguments` and deprecated `strip_arguments`; use `ambient_arguments`",
+							));
+						}
+						_ => {}
 					}
 					ambient_arguments_clause = Some("ambient_arguments");
+					form.ambient_arguments_source = Some(AmbientArgumentsSource::AmbientArguments);
 					form.strip_arguments = parse_ambient_arguments(&content)?;
 					parse_optional_comma(input)?;
 				}
 				"strip_arguments" => {
 					let content;
 					braced!(content in input);
-					if ambient_arguments_clause.is_some() {
-						return Err(syn::Error::new(
-							key.span(),
-							"form! cannot specify both `ambient_arguments` and deprecated `strip_arguments`; use `ambient_arguments`",
-						));
+					match ambient_arguments_clause {
+						Some("strip_arguments") => {
+							return Err(syn::Error::new(
+								key.span(),
+								"duplicate `strip_arguments` property",
+							));
+						}
+						Some("ambient_arguments") => {
+							return Err(syn::Error::new(
+								key.span(),
+								"form! cannot specify both `ambient_arguments` and deprecated `strip_arguments`; use `ambient_arguments`",
+							));
+						}
+						_ => {}
 					}
 					ambient_arguments_clause = Some("strip_arguments");
+					form.ambient_arguments_source = Some(AmbientArgumentsSource::StripArguments);
 					form.strip_arguments = parse_strip_arguments(&content)?;
 					parse_optional_comma(input)?;
 				}

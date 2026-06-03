@@ -183,11 +183,8 @@ pub(super) fn validate(
 	let validators = transform_validators(&ast.validators, &ast.fields)?;
 
 	// Transform stripped server_fn arguments (reinhardt-web#3971).
-	let strip_arguments = transform_strip_arguments(
-		&ast.strip_arguments,
-		&ast.fields,
-		ambient_arguments_source,
-	)?;
+	let strip_arguments =
+		transform_strip_arguments(&ast.strip_arguments, &ast.fields, ambient_arguments_source)?;
 
 	// The parser guarantees that `name` is Some after successful parsing.
 	let name = ast
@@ -1648,7 +1645,7 @@ fn extract_string_value_from_expr(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use quote::quote;
+	use quote::{ToTokens, quote};
 
 	fn parse_and_validate(input: proc_macro2::TokenStream) -> Result<TypedFormMacro> {
 		let ambient_arguments_source =
@@ -1667,10 +1664,11 @@ mod tests {
 		mutate_ast(&mut ast);
 
 		let macro_result = validate(&ast, ambient_arguments_source);
-		let manouche_result = reinhardt_manouche::validator::validate_form_with_ambient_arguments_source(
-			&ast,
-			ambient_arguments_source,
-		);
+		let manouche_result =
+			reinhardt_manouche::validator::validate_form_with_ambient_arguments_source(
+				&ast,
+				ambient_arguments_source,
+			);
 
 		match (macro_result, manouche_result) {
 			(Ok(macro_typed), Ok(manouche_typed)) => {
@@ -1684,8 +1682,8 @@ mod tests {
 					manouche_typed.success_url.is_some()
 				);
 				assert_eq!(
-					macro_typed.strip_arguments.len(),
-					manouche_typed.strip_arguments.len()
+					strip_argument_signatures(&macro_typed.strip_arguments),
+					strip_argument_signatures(&manouche_typed.strip_arguments)
 				);
 				assert_eq!(macro_typed.fields.len(), manouche_typed.fields.len());
 			}
@@ -1703,6 +1701,17 @@ mod tests {
 
 	fn assert_validator_parity_for(input: proc_macro2::TokenStream) {
 		assert_validator_parity(input, |_| {});
+	}
+
+	fn strip_argument_signatures(args: &[TypedStripArgument]) -> Vec<(String, String)> {
+		args.iter()
+			.map(|arg| {
+				(
+					arg.name.to_string(),
+					arg.value.to_token_stream().to_string(),
+				)
+			})
+			.collect()
 	}
 
 	#[rstest::rstest]
@@ -3904,8 +3913,10 @@ mod tests {
 		let lit = syn::LitStr::new("ftp://example.com/file", proc_macro2::Span::call_site());
 		let result = transform_redirect(&Some(lit));
 		assert!(result.is_err());
-		let err = result.unwrap_err().to_string();
-		assert!(err.contains("relative path") || err.contains("HTTPS URL"));
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"redirect_on_success path must be a relative path (starting with '/', './', or '../') or an HTTPS URL"
+		);
 	}
 
 	#[test]

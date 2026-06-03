@@ -108,6 +108,8 @@ pub struct FormMacro {
 	///
 	/// See `StripArgument` for details. Tracked under reinhardt-web#3971.
 	pub strip_arguments: Vec<StripArgument>,
+	/// Source syntax used for `strip_arguments`.
+	pub ambient_arguments_source: Option<AmbientArgumentsSource>,
 	/// Span for error reporting
 	pub span: Span,
 }
@@ -1142,6 +1144,7 @@ impl FormMacro {
 			fields: Vec::new(),
 			validators: Vec::new(),
 			strip_arguments: Vec::new(),
+			ambient_arguments_source: None,
 			span,
 		}
 	}
