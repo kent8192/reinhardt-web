@@ -5915,9 +5915,8 @@ mod tests {
 	fn from_field_state_non_optional_non_bool() {
 		// Arrange
 		// Models a Rust field declared as `pub username: String` with no
-		// default. This confirms the fix is type-agnostic (not bool-only) —
-		// the broader symptom in `examples-twitter/migrations/auth/0001_initial.rs`
-		// where `username`, `bio`, `email`, etc. were all silently NULLABLE.
+		// default. This confirms the fix is type-agnostic (not bool-only) and
+		// prevents required string fields from being emitted as NULLABLE.
 		let field_state = FieldState::new("username", FieldType::VarChar(150), false);
 
 		// Act

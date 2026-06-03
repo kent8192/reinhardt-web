@@ -32,7 +32,7 @@ use std::time::Duration;
 
 /// Build the session middleware with a two-week TTL and Lax SameSite.
 ///
-/// Mirrors the production defaults used in `examples-twitter/src/config/middleware.rs`.
+/// Uses the production-oriented defaults shared by the tutorial examples.
 #[cfg(native)]
 fn create_session_middleware() -> SessionMiddleware {
 	let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(1_209_600))

@@ -20,7 +20,7 @@ Two database schemas are accepted (in priority order):
    `reinhardt_conf::settings::DatabaseConfig` (examples-tutorial-basis,
    examples-tutorial-rest).
 2. ``[core.databases.default]`` -- the Django-style multi-database
-   layout exposed through `CoreSettings` (examples-twitter).
+   layout exposed through `CoreSettings`.
 
 The second form is a fallback so that a `base.toml` carrying only the
 runtime-shape schema still satisfies the provisioning script when the
@@ -99,10 +99,9 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 def _resolve_database(data: dict) -> dict | None:
 	# Prefer the canonical top-level `[database]` schema. Fall back to
-	# the Django-style `[core.databases.default]` layout used by
-	# examples-twitter so that selecting `base.toml` directly still
-	# yields provisionable credentials even when only the runtime-shape
-	# schema is present.
+	# the Django-style `[core.databases.default]` layout so that selecting
+	# `base.toml` directly still yields provisionable credentials even when
+	# only the runtime-shape schema is present.
 	candidate = data.get("database")
 	if isinstance(candidate, dict):
 		return candidate

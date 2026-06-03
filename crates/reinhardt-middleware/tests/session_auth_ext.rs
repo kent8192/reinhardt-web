@@ -90,8 +90,7 @@ async fn logout_rotates_id_drops_user_id_and_keeps_other_keys() {
 
 #[tokio::test]
 async fn login_round_trip_uuid_primary_key() {
-	// Mirror the examples-twitter case where `PrimaryKey = Uuid`. The
-	// helper must be primary-key-shape agnostic — anything `Serialize` works.
+	// The helper must be primary-key-shape agnostic — anything `Serialize` works.
 	use uuid::Uuid;
 
 	let (store, mut session) = make_store_and_session();

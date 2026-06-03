@@ -1153,7 +1153,7 @@ pub async fn create_user(
 | Your Goal | Start Here |
 |-----------|-----------|
 | **Full-stack REST API** | [Getting Started Guide](#getting-started-guide) |
-| **Full-stack with Pages (WASM + SSR)** | [Twitter Demo](examples/examples-twitter/) |
+| **Full-stack with Pages (WASM + SSR)** | [Basis Tutorial](examples/examples-tutorial-basis/) |
 | **Lightweight DI-focused API** | [Minimal Installation](#option-2-microservices-minimal-setup) |
 
 > **Standalone DI for existing Axum apps** is planned for a future release.
