@@ -144,8 +144,8 @@ pub trait SettingsFragment:
 /// using fully-qualified paths, so users do not need to manually
 /// import individual `Has*Settings` traits.
 ///
-/// Blanket implementations bridge `HasSettings<F>` to the specific
-/// `Has*Settings` traits for each built-in fragment.
+/// Fragment macros bridge `HasSettings<F>` to the specific
+/// `Has*Settings` traits for each generated fragment.
 pub trait HasSettings<F: SettingsFragment> {
 	/// Returns a reference to the contained fragment.
 	fn get_settings(&self) -> &F;

@@ -11,8 +11,9 @@
 //! referencing `reinhardt_conf`, which is not available in the macro crate's
 //! dev-dependencies due to circular dependency constraints.
 
-use reinhardt_conf::settings::cache::{CacheSettings, HasCacheSettings};
+use reinhardt_conf::settings::cache::HasCacheSettings;
 use reinhardt_conf::settings::core_settings::{CoreSettings, HasCoreSettings};
+use reinhardt_conf::settings::email::EmailSettings as FragmentEmailSettings;
 use reinhardt_conf::settings::fragment::SettingsFragment;
 use reinhardt_conf::settings::openapi::{HasOpenApiSettings, OpenApiSettings};
 use reinhardt_conf::settings::policy::FieldRequirement;
@@ -134,6 +135,25 @@ fn fragment_generates_has_trait() {
 }
 
 #[rstest]
+fn fragment_implements_generic_has_settings_for_itself() {
+	// Arrange
+	let settings = CustomDbSettings {
+		host: "localhost".to_string(),
+		port: 5432,
+	};
+
+	// Act
+	let db = settings.custom_db();
+
+	// Assert
+	assert_eq!(
+		db.host, "localhost",
+		"Fragment should implement HasSettings<Self> without a public blanket impl"
+	);
+	assert_eq!(db.port, 5432);
+}
+
+#[rstest]
 fn fragment_auto_derives_clone_debug_serde() {
 	// Arrange
 	let original = CustomDbSettings {
@@ -189,6 +209,10 @@ struct NoCoreSettings;
 /// Compose with only CoreSettings (explicit declaration required).
 #[settings(core: CoreSettings)]
 struct CoreOnlySettings;
+
+/// Compose the built-in email fragment as downstream projects do.
+#[settings(core: CoreSettings | email: FragmentEmailSettings)]
+struct MailProjectSettings;
 
 #[rstest]
 fn compose_single_fragment_has_core_and_custom() {
@@ -282,6 +306,31 @@ fn compose_core_only_has_core() {
 		"Explicit CoreSettings should be the only fragment"
 	);
 	assert!(core.debug, "CoreSettings default debug should be true");
+}
+
+#[rstest]
+fn composed_email_fragment_builds_smtp_backend() {
+	// Arrange
+	let settings = MailProjectSettings {
+		core: CoreSettings::default(),
+		email: FragmentEmailSettings::default(),
+	};
+
+	// Act
+	let fragment_result = reinhardt_mail::create_smtp_backend_from_settings(&settings.email);
+	let composed_result = reinhardt_mail::create_smtp_backend_from_settings(&settings);
+
+	// Assert
+	assert!(
+		fragment_result.is_ok(),
+		"SMTP backend helper must accept the #[settings] EmailSettings fragment: {:?}",
+		fragment_result.err()
+	);
+	assert!(
+		composed_result.is_ok(),
+		"SMTP backend helper must accept composed settings via HasSettings<EmailSettings>: {:?}",
+		composed_result.err()
+	);
 }
 
 #[rstest]
