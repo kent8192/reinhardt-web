@@ -33,7 +33,7 @@
 use proc_macro2::Span;
 use syn::{ExprClosure, Ident, Path};
 
-use super::form_node::{AmbientArgumentsSource, ValidatorScope};
+use super::form_node::ValidatorScope;
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// The top-level typed AST node representing a validated form! macro invocation.
@@ -79,7 +79,6 @@ use super::form_node::{AmbientArgumentsSource, ValidatorScope};
 ///     }
 /// ```
 #[derive(Debug)]
-#[non_exhaustive]
 pub struct TypedFormMacro {
 	/// Form struct name (validated identifier)
 	pub name: Ident,
@@ -129,8 +128,6 @@ pub struct TypedFormMacro {
 	/// Keys must not collide with declared form field names. See
 	/// `TypedStripArgument` for details. Tracked under reinhardt-web#3971.
 	pub strip_arguments: Vec<TypedStripArgument>,
-	/// Source syntax used to populate `strip_arguments`.
-	pub ambient_arguments_source: Option<AmbientArgumentsSource>,
 	/// Span for error reporting
 	pub span: Span,
 }
@@ -1387,7 +1384,6 @@ impl TypedFormMacro {
 			fields: Vec::new(),
 			validators: Vec::new(),
 			strip_arguments: Vec::new(),
-			ambient_arguments_source: None,
 			span,
 		}
 	}

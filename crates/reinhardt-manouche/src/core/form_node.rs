@@ -49,7 +49,6 @@ use syn::{Expr, ExprClosure, Ident, LitStr, Path};
 /// Represents the entire `form! { ... }` invocation with support for
 /// SSR and CSR rendering targets.
 #[derive(Debug, Clone)]
-#[non_exhaustive]
 pub struct FormMacro {
 	/// Form struct name (required, e.g., `name: LoginForm`).
 	///
@@ -109,8 +108,6 @@ pub struct FormMacro {
 	///
 	/// See `StripArgument` for details. Tracked under reinhardt-web#3971.
 	pub strip_arguments: Vec<StripArgument>,
-	/// Source syntax used to populate `strip_arguments`.
-	pub ambient_arguments_source: Option<AmbientArgumentsSource>,
 	/// Span for error reporting
 	pub span: Span,
 }
@@ -1145,7 +1142,6 @@ impl FormMacro {
 			fields: Vec::new(),
 			validators: Vec::new(),
 			strip_arguments: Vec::new(),
-			ambient_arguments_source: None,
 			span,
 		}
 	}

@@ -3,7 +3,7 @@
 //! This module provides the `Parse` trait implementation for `FormMacro`,
 //! allowing it to be parsed from a `TokenStream`.
 
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::{Span, TokenStream, TokenTree};
 use syn::{
 	Expr, ExprClosure, Ident, LitStr, Path, Result, Token, braced,
 	parse::{Parse, ParseStream},
@@ -25,6 +25,31 @@ use crate::{
 /// Returns a `syn::Error` if the input is not valid form! syntax.
 pub fn parse_form(input: TokenStream) -> syn::Result<FormMacro> {
 	syn::parse2(input)
+}
+
+/// Detects whether the top-level form DSL uses `ambient_arguments` or the
+/// deprecated `strip_arguments` alias.
+#[must_use]
+pub fn detect_ambient_arguments_source(input: &TokenStream) -> Option<AmbientArgumentsSource> {
+	let mut tokens = input.clone().into_iter().peekable();
+
+	while let Some(token) = tokens.next() {
+		let TokenTree::Ident(ident) = token else {
+			continue;
+		};
+
+		let source = match ident.to_string().as_str() {
+			"ambient_arguments" => AmbientArgumentsSource::AmbientArguments,
+			"strip_arguments" => AmbientArgumentsSource::StripArguments,
+			_ => continue,
+		};
+
+		if matches!(tokens.peek(), Some(TokenTree::Punct(punct)) if punct.as_char() == ':') {
+			return Some(source);
+		}
+	}
+
+	None
 }
 
 /// Parses an optional generic-argument list of the form `<T1, T2, ...>` that may
@@ -195,7 +220,6 @@ impl Parse for FormMacro {
 					}
 					ambient_arguments_clause = Some("ambient_arguments");
 					form.strip_arguments = parse_ambient_arguments(&content)?;
-					form.ambient_arguments_source = Some(AmbientArgumentsSource::AmbientArguments);
 					parse_optional_comma(input)?;
 				}
 				"strip_arguments" => {
@@ -209,7 +233,6 @@ impl Parse for FormMacro {
 					}
 					ambient_arguments_clause = Some("strip_arguments");
 					form.strip_arguments = parse_strip_arguments(&content)?;
-					form.ambient_arguments_source = Some(AmbientArgumentsSource::StripArguments);
 					parse_optional_comma(input)?;
 				}
 				_ => {

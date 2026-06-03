@@ -1,11 +1,12 @@
 //! Typed form state runtime API.
 
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
 
-use crate::reactive::{Effect, Signal};
+use crate::reactive::{Effect, EffectTiming, Signal};
 
 /// Field-level validation errors keyed by form field name.
 pub type FieldErrors = HashMap<String, Vec<String>>;
@@ -180,6 +181,7 @@ where
 	error: Signal<Option<String>>,
 	loading: Signal<bool>,
 	success: Signal<bool>,
+	suppress_touch: Rc<Cell<bool>>,
 	_dirty_effect: Rc<Effect>,
 }
 
@@ -201,6 +203,7 @@ where
 			error: self.error.clone(),
 			loading: self.loading.clone(),
 			success: self.success.clone(),
+			suppress_touch: Rc::clone(&self.suppress_touch),
 			_dirty_effect: Rc::clone(&self._dirty_effect),
 		}
 	}
@@ -229,9 +232,11 @@ where
 
 	/// Restores the initial values and clears transient state.
 	pub fn reset(&self) {
+		self.suppress_touch.set(true);
 		self.fields.apply_values(&self.initial_values);
 		self.dirty.set(false);
 		self.touched.set(false);
+		self.suppress_touch.set(false);
 		self.field_errors.set(FieldErrors::new());
 		self.form_error.set(None);
 		self.submit_error.set(None);
@@ -396,21 +401,26 @@ where
 	let error = Signal::new(None);
 	let loading = Signal::new(false);
 	let success = Signal::new(false);
+	let suppress_touch = Rc::new(Cell::new(false));
 
 	let fields_for_effect = fields.clone();
 	let initial_values_for_effect = options.initial_values.clone();
 	let dirty_for_effect = dirty.clone();
 	let touched_for_effect = touched.clone();
+	let suppress_touch_for_effect = Rc::clone(&suppress_touch);
 	let mut first_run = true;
-	let dirty_effect = Effect::new(move || {
-		let values = fields_for_effect.values();
-		dirty_for_effect.set(values != initial_values_for_effect);
-		if first_run {
-			first_run = false;
-		} else {
-			touched_for_effect.set(true);
-		}
-	});
+	let dirty_effect = Effect::new_with_timing(
+		move || {
+			let values = fields_for_effect.values();
+			dirty_for_effect.set(values != initial_values_for_effect);
+			if first_run {
+				first_run = false;
+			} else if !suppress_touch_for_effect.get() {
+				touched_for_effect.set(true);
+			}
+		},
+		EffectTiming::Layout,
+	);
 
 	FormHandle {
 		initial_values: options.initial_values,
@@ -425,6 +435,7 @@ where
 		error,
 		loading,
 		success,
+		suppress_touch,
 		_dirty_effect: Rc::new(dirty_effect),
 	}
 }

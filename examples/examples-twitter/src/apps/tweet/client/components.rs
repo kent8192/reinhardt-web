@@ -3,8 +3,6 @@
 //! Provides tweet card, tweet form, and tweet list components.
 //! tweet_form uses the form! macro with derived blocks for computed signals,
 //! while tweet_card and tweet_list use page! macro with hooks-styled state management.
-//! `use_form` value structs keep the examples on the typed runtime contract
-//! while `form!` remains the static renderer.
 
 use crate::apps::tweet::shared::types::TweetInfo;
 use crate::core::client::components::icons;
@@ -13,7 +11,6 @@ use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::{Action, use_action, use_effect, use_state};
-use reinhardt::pages::{FormOptions, FormValues, use_form};
 use uuid::Uuid;
 
 #[cfg(wasm)]
@@ -25,11 +22,6 @@ use {
 
 #[cfg(native)]
 use crate::apps::tweet::shared::server_fn::{create_tweet, delete_tweet};
-
-#[derive(Clone, PartialEq, FormValues)]
-struct TweetFormValues {
-	content: String,
-}
 
 /// Like button component (extracted to avoid nested watch blocks)
 ///
@@ -325,11 +317,6 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> Page {
 /// - `state` block: Automatic loading/error signal management
 /// - `on_success` callback: Page reload after successful submission
 pub fn tweet_form() -> Page {
-	let tweet_runtime = use_form(FormOptions::new(TweetFormValues {
-		content: String::new(),
-	}));
-	let _initial_tweet_values = tweet_runtime.values();
-
 	// Define the form using form! macro with derived signals
 	let tweet_form_instance = form! {
 		name: TweetFormInner,

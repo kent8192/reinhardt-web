@@ -88,6 +88,7 @@ fn use_form_reset_restores_initial_values() {
 
 	form.fields().choice_id.set(42);
 	assert!(form.dirty().get());
+	assert!(form.touched().get());
 
 	form.reset();
 
@@ -99,6 +100,7 @@ fn use_form_reset_restores_initial_values() {
 		}
 	);
 	assert!(!form.dirty().get());
+	assert!(!form.touched().get());
 }
 
 #[test]

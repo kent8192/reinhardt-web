@@ -6,33 +6,16 @@
 //! - Two-way binding (bind: true by default)
 //! - Server function integration for form submission
 //! - Automatic redirect on success
-//! `use_form` value structs keep the examples on the typed runtime contract
-//! while `form!` remains the static renderer.
 use crate::core::client::components::icons;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::Signal;
-use reinhardt::pages::{FormOptions, FormValues, use_form};
 #[cfg(wasm)]
 use {
 	crate::apps::auth::client::state::set_current_user,
 	crate::apps::auth::shared::server_fn::{login, register},
 };
-
-#[derive(Clone, PartialEq, FormValues)]
-struct LoginFormValues {
-	email: String,
-	password: String,
-}
-
-#[derive(Clone, PartialEq, FormValues)]
-struct RegisterFormValues {
-	username: String,
-	email: String,
-	password: String,
-	password_confirmation: String,
-}
 
 /// Login form component using form! macro
 ///
@@ -45,12 +28,6 @@ struct RegisterFormValues {
 /// - `on_success` callback for setting current user
 /// - `redirect_on_success` for navigation after login
 pub fn login_form() -> Page {
-	let login_runtime = use_form(FormOptions::new(LoginFormValues {
-		email: String::new(),
-		password: String::new(),
-	}));
-	let _initial_login_values = login_runtime.values();
-
 	let login_form = form! {
 		name: LoginForm,
 		server_fn: login,
@@ -232,14 +209,6 @@ pub fn login_form() -> Page {
 /// - Server function integration via `server_fn`
 /// - `redirect_on_success` for navigation after registration
 pub fn register_form() -> Page {
-	let register_runtime = use_form(FormOptions::new(RegisterFormValues {
-		username: String::new(),
-		email: String::new(),
-		password: String::new(),
-		password_confirmation: String::new(),
-	}));
-	let _initial_register_values = register_runtime.values();
-
 	let register_form = form! {
 		name: RegisterForm,
 		server_fn: register,

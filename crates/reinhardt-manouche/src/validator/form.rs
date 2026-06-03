@@ -37,6 +37,19 @@ use crate::core::{
 ///
 /// Returns a compilation error if any validation rule is violated.
 pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
+	validate_form_with_ambient_arguments_source(ast, None)
+}
+
+/// Validates and transforms the FormMacro AST into a typed AST with the source
+/// syntax used for ambient arguments.
+///
+/// # Errors
+///
+/// Returns a compilation error if any validation rule is violated.
+pub fn validate_form_with_ambient_arguments_source(
+	ast: &FormMacro,
+	ambient_arguments_source: Option<AmbientArgumentsSource>,
+) -> Result<TypedFormMacro> {
 	// Validate unique field names
 	validate_unique_field_names(&ast.fields)?;
 
@@ -65,6 +78,15 @@ pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
 	let redirect_on_success = transform_redirect(&ast.redirect_on_success)?;
 
 	let success_url = ast.success_url.clone();
+	if let (Some(_), Some(url_expr)) = (ast.redirect_on_success.as_ref(), success_url.as_ref()) {
+		return Err(Error::new_spanned(
+			url_expr,
+			"form! cannot specify both `redirect_on_success` and `success_url`: each generates an \
+			 SPA navigation on successful submit, so combining them would push two history \
+			 entries and fire two observer cycles. Use `redirect_on_success` for a static URL or \
+			 `success_url` for a dynamically-computed one, not both.",
+		));
+	}
 
 	// Transform initial_loader (pass through the Path)
 	let initial_loader = ast.initial_loader.clone();
@@ -82,11 +104,8 @@ pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
 	let validators = transform_validators(&ast.validators, &ast.fields)?;
 
 	// Transform stripped server_fn arguments (reinhardt-web#3971).
-	let strip_arguments = transform_strip_arguments(
-		&ast.strip_arguments,
-		&ast.fields,
-		ast.ambient_arguments_source,
-	)?;
+	let strip_arguments =
+		transform_strip_arguments(&ast.strip_arguments, &ast.fields, ambient_arguments_source)?;
 
 	// The parser guarantees that `name` is Some after successful parsing.
 	let name = ast
@@ -111,7 +130,6 @@ pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
 		fields,
 		validators,
 		strip_arguments,
-		ambient_arguments_source: ast.ambient_arguments_source,
 		span: ast.span,
 	})
 }
@@ -347,6 +365,16 @@ fn transform_derived(derived: &Option<FormDerived>) -> Result<Option<TypedFormDe
 /// - Supports `{param}` syntax for dynamic parameters
 /// - Rejects dangerous schemes (javascript:, data:, vbscript:, file:)
 fn transform_redirect(redirect: &Option<syn::LitStr>) -> Result<Option<String>> {
+	validate_redirect_on_success(redirect)
+}
+
+/// Validates and normalizes a `redirect_on_success` literal.
+///
+/// # Errors
+///
+/// Returns a compilation error when the redirect path is empty, uses an
+/// unsafe URL scheme, or is neither a relative path nor an HTTPS URL.
+pub fn validate_redirect_on_success(redirect: &Option<syn::LitStr>) -> Result<Option<String>> {
 	let Some(redirect) = redirect else {
 		return Ok(None);
 	};

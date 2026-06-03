@@ -73,9 +73,12 @@ fn collect_all_fields(entries: &[TypedFormFieldEntry]) -> Vec<&TypedFormFieldDef
 	fields
 }
 
-fn generate_ambient_argument_deprecation_markers(macro_ast: &TypedFormMacro) -> TokenStream {
+fn generate_ambient_argument_deprecation_markers(
+	macro_ast: &TypedFormMacro,
+	ambient_arguments_source: Option<AmbientArgumentsSource>,
+) -> TokenStream {
 	let legacy_marker = if matches!(
-		macro_ast.ambient_arguments_source,
+		ambient_arguments_source,
 		Some(AmbientArgumentsSource::StripArguments)
 	) {
 		let ident = format_ident!(
@@ -285,14 +288,17 @@ fn is_basic_form_value_type(ty: &syn::Type) -> bool {
 /// Generates the complete code for a form! macro invocation.
 ///
 /// This function generates conditional code that works for both WASM and server builds.
-pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
+pub(super) fn generate(
+	macro_ast: &TypedFormMacro,
+	ambient_arguments_source: Option<AmbientArgumentsSource>,
+) -> TokenStream {
 	let crate_info = get_reinhardt_pages_crate_info();
 	let use_statement = &crate_info.use_statement;
 	let pages_crate = &crate_info.ident;
 
 	let struct_name = &macro_ast.name;
 	let ambient_argument_deprecation_markers =
-		generate_ambient_argument_deprecation_markers(macro_ast);
+		generate_ambient_argument_deprecation_markers(macro_ast, ambient_arguments_source);
 	let form_values_and_fields = generate_form_values_and_fields(macro_ast, pages_crate);
 
 	let effective_state: Option<TypedFormState> = if macro_ast.success_url.is_some() {
@@ -3796,8 +3802,8 @@ mod tests {
 		use reinhardt_manouche::core::FormMacro;
 
 		let untyped_ast: FormMacro = syn::parse2(input).unwrap();
-		let typed_ast = crate::form::validator::validate(&untyped_ast).unwrap();
-		generate(&typed_ast)
+		let typed_ast = crate::form::validator::validate(&untyped_ast, None).unwrap();
+		generate(&typed_ast, None)
 	}
 
 	#[rstest::rstest]

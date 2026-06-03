@@ -24,9 +24,6 @@
 //!   path (`self::format_server_error`, `links::detail`). Form sub-views that
 //!   depend on the form's `error` / `loading` signals are rendered inline as
 //!   `{ .. }` blocks that read each signal exactly once.
-//! - `use_form` value structs keep examples on the typed runtime contract while
-//!   `form!` remains the static renderer until macro lowering delegates runtime
-//!   state.
 
 use crate::shared::types::{ChoiceInfo, QuestionInfo, UserInfo};
 use reinhardt::pages::component::Page;
@@ -34,7 +31,6 @@ use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::use_effect;
 use reinhardt::pages::reactive::{Resource, ResourceState, Signal, use_resource};
-use reinhardt::pages::{FormOptions, FormValues, use_form};
 
 // Alias the `urls` module as `links` to keep call sites concise.
 use crate::apps::polls::server_fn::{
@@ -46,45 +42,6 @@ use crate::apps::polls::urls::client_router::urls as links;
 // choice) on the viewer being the question's author (issue #4703). Server-
 // side `require_question_author` checks remain in place as defense in depth.
 use crate::apps::users::server_fn::current_user;
-
-#[derive(Clone, PartialEq, FormValues)]
-struct VotingFormValues {
-	question_id: String,
-	choice_id: String,
-}
-
-#[derive(Clone, PartialEq, FormValues)]
-struct QuestionFormValues {
-	question_text: String,
-}
-
-#[derive(Clone, PartialEq, FormValues)]
-struct EditQuestionFormValues {
-	question_id: String,
-	question_text: String,
-}
-
-#[derive(Clone, PartialEq, FormValues)]
-struct DeleteQuestionFormValues {
-	question_id: String,
-}
-
-#[derive(Clone, PartialEq, FormValues)]
-struct NewChoiceFormValues {
-	question_id: String,
-	choice_text: String,
-}
-
-#[derive(Clone, PartialEq, FormValues)]
-struct EditChoiceFormValues {
-	choice_id: String,
-	choice_text: String,
-}
-
-#[derive(Clone, PartialEq, FormValues)]
-struct DeleteChoiceFormValues {
-	choice_id: String,
-}
 
 // =========================================================================
 // Error display helpers
@@ -195,12 +152,6 @@ pub fn polls_index() -> Page {
 }
 
 fn build_voting_form_page(qid: i64, choices: &[ChoiceInfo]) -> Page {
-	let voting_runtime = use_form(FormOptions::new(VotingFormValues {
-		question_id: qid.to_string(),
-		choice_id: String::new(),
-	}));
-	let _initial_voting_values = voting_runtime.values();
-
 	// Voting form via the `form!` macro.
 	//
 	// - `server_fn: submit_vote` binds the form to the server function whose
@@ -695,11 +646,6 @@ pub fn polls_index_with_logo() -> Page {
 
 /// New question page (`/polls/new/`).
 pub fn question_new() -> Page {
-	let question_runtime = use_form(FormOptions::new(QuestionFormValues {
-		question_text: String::new(),
-	}));
-	let _initial_question_values = question_runtime.values();
-
 	let new_form = form! {
 		name: NewQuestionForm,
 		server_fn: create_question,
@@ -775,12 +721,6 @@ pub fn question_new() -> Page {
 /// only the author can submit successfully.
 pub fn question_edit(question_id: i64) -> Page {
 	let qid = question_id;
-	let question_runtime = use_form(FormOptions::new(EditQuestionFormValues {
-		question_id: qid.to_string(),
-		question_text: String::new(),
-	}));
-	let _initial_question_values = question_runtime.values();
-
 	let load_detail = use_resource(
 		move || async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
 		(),
@@ -921,11 +861,6 @@ pub fn question_edit(question_id: i64) -> Page {
 /// Delete confirmation page (`/polls/{question_id}/delete/`).
 pub fn question_delete_confirm(question_id: i64) -> Page {
 	let qid = question_id;
-	let question_runtime = use_form(FormOptions::new(DeleteQuestionFormValues {
-		question_id: qid.to_string(),
-	}));
-	let _initial_question_values = question_runtime.values();
-
 	let load_detail = use_resource(
 		move || async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
 		(),
@@ -1051,11 +986,6 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 pub fn choice_new(question_id: i64) -> Page {
 	let qid = question_id;
 	let qid_str = qid.to_string();
-	let choice_runtime = use_form(FormOptions::new(NewChoiceFormValues {
-		question_id: qid_str.clone(),
-		choice_text: String::new(),
-	}));
-	let _initial_choice_values = choice_runtime.values();
 
 	// `redirect_on_success` (issue #4700): without it the form submits
 	// successfully but the client stays on `/polls/{qid}/choices/new/`
@@ -1147,11 +1077,6 @@ pub fn choice_new(question_id: i64) -> Page {
 pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 	let cid_str = choice_id.to_string();
 	let cancel_href = links::detail(question_id);
-	let choice_runtime = use_form(FormOptions::new(EditChoiceFormValues {
-		choice_id: cid_str.clone(),
-		choice_text: String::new(),
-	}));
-	let _initial_choice_values = choice_runtime.values();
 
 	let edit_form = form! {
 		name: EditChoiceForm,
@@ -1231,10 +1156,6 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 	let cid_str = choice_id.to_string();
 	let cancel_href = links::detail(question_id);
-	let choice_runtime = use_form(FormOptions::new(DeleteChoiceFormValues {
-		choice_id: cid_str.clone(),
-	}));
-	let _initial_choice_values = choice_runtime.values();
 
 	let delete_form = form! {
 		name: DeleteChoiceForm,

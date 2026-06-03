@@ -9,8 +9,6 @@
 //! - Two-way binding (bind: true by default)
 //! - SVG icons with custom positioning
 //! - Server function integration for form submission
-//! `use_form` value structs keep the examples on the typed runtime contract
-//! while `form!` remains the static renderer.
 #[cfg(native)]
 use crate::apps::profile::shared::server_fn::fetch_profile;
 use crate::apps::profile::shared::types::ProfileResponse;
@@ -20,7 +18,6 @@ use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::Signal;
 use reinhardt::pages::reactive::hooks::{use_action, use_effect, use_state};
-use reinhardt::pages::{FormOptions, FormValues, use_form};
 use uuid::Uuid;
 #[cfg(wasm)]
 use {
@@ -28,14 +25,6 @@ use {
 	reinhardt::pages::reactive::ResourceState,
 	reinhardt::pages::use_resource,
 };
-
-#[derive(Clone, PartialEq, FormValues)]
-struct ProfileEditFormValues {
-	avatar_url: String,
-	bio: String,
-	location: String,
-	website: String,
-}
 
 /// Profile view component using hooks
 ///
@@ -241,14 +230,6 @@ pub fn profile_view(user_id: Uuid) -> Page {
 /// The form uses custom UnoCSS styling and card layout through page! macro,
 /// while form! handles all Signal management and form submission logic.
 pub fn profile_edit(user_id: Uuid) -> Page {
-	let profile_runtime = use_form(FormOptions::new(ProfileEditFormValues {
-		avatar_url: String::new(),
-		bio: String::new(),
-		location: String::new(),
-		website: String::new(),
-	}));
-	let _initial_profile_values = profile_runtime.values();
-
 	let profile_form = form! {
 		name: ProfileEditForm,
 		server_fn: update_profile_form,
