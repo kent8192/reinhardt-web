@@ -101,6 +101,133 @@ fn use_form_tracks_field_updates_errors_and_resets() {
 }
 
 #[test]
+fn use_form_keeps_generated_initial_defaults_separate_from_live_signals() {
+	let profile = form! {
+		name: ProfileForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada",
+			}
+		}
+	};
+
+	profile.display_name().set("Grace".to_string());
+	let runtime = use_form(&profile).build();
+
+	assert_eq!(runtime.default_values().display_name, "Ada".to_string());
+	assert_eq!(runtime.get_values().display_name, "Grace".to_string());
+	assert!(runtime.form_state().is_dirty.get());
+	assert!(
+		runtime
+			.get_field_state(profile.display_name_field())
+			.is_dirty
+	);
+}
+
+#[test]
+fn use_form_maps_generated_validator_errors_to_field_state() {
+	let profile = form! {
+		name: ProfileForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada",
+			}
+		}
+		validators: {
+			display_name: [|v| v == "Ada" =>"display name must remain Ada", ],
+		}
+	};
+	let runtime = use_form(&profile).build();
+
+	runtime.set_value(profile.display_name_field(), "Grace".to_string());
+	let result = runtime.trigger();
+
+	assert!(result.is_err());
+	assert_eq!(runtime.form_state().form_error.get(), None);
+	assert_eq!(
+		runtime
+			.get_field_state(profile.display_name_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("display name must remain Ada")
+	);
+}
+
+#[test]
+fn use_form_syncs_direct_generated_signal_changes() {
+	let profile = form! {
+		name: ProfileForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada",
+			}
+		}
+		validators: {
+			display_name: [|v| v == "Ada" =>"display name must remain Ada", ],
+		}
+	};
+	let runtime = use_form(&profile)
+		.revalidate_on(RevalidateOn::Change)
+		.build();
+	let values = runtime.watch();
+	let event_count = Rc::new(Cell::new(0));
+	let event_count_for_subscription = Rc::clone(&event_count);
+	let _subscription = runtime.subscribe(move |event| match event {
+		FormEvent::ValueChanged { .. } | FormEvent::Validated => {
+			event_count_for_subscription.set(event_count_for_subscription.get() + 1);
+		}
+		_ => {}
+	});
+
+	profile.display_name().set("Grace".to_string());
+
+	assert_eq!(runtime.get_values().display_name, "Grace".to_string());
+	assert_eq!(values.get().display_name, "Grace".to_string());
+	assert!(runtime.form_state().is_dirty.get());
+	assert!(runtime.form_state().is_touched.get());
+	assert!(
+		runtime
+			.get_field_state(profile.display_name_field())
+			.is_touched
+	);
+	assert_eq!(
+		runtime
+			.get_field_state(profile.display_name_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("display name must remain Ada")
+	);
+	assert_eq!(event_count.get(), 2);
+}
+
+#[test]
+fn use_form_accepts_json_field_runtime_contracts() {
+	let settings = form! {
+		name: SettingsForm,
+		action: "/settings",
+		fields: {
+			payload: JsonField<::serde_json::Value> {
+				initial: ::serde_json::json!({
+					"theme": "dark"
+				}),
+			}
+		}
+	};
+
+	let runtime = use_form(&settings).build();
+
+	assert_eq!(
+		runtime.get_values().payload,
+		::serde_json::json!({"theme": "dark"})
+	);
+}
+
+#[test]
 fn deps_reconciliation_keeps_dirty_values_and_updates_pristine_values() {
 	let profile = form! {
 		name: ProfileForm,
@@ -260,4 +387,30 @@ fn submit_callbacks_run_in_order_after_dependencies_are_configured() {
 
 	assert_eq!(runtime.handle_submit(), UseFormSubmitOutcome::Submitted);
 	assert_eq!(order.get(), 2);
+}
+
+#[test]
+fn submit_callbacks_survive_deps_configured_after_callback_registration() {
+	let profile = form! {
+		name: ProfileForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada",
+			}
+		}
+	};
+	let success_count = Rc::new(Cell::new(0));
+	let success_count_for_callback = Rc::clone(&success_count);
+
+	let runtime = use_form(&profile)
+		.on_submit_success(move |handle| {
+			assert_eq!(handle.get_values().display_name, "Ada".to_string());
+			success_count_for_callback.set(success_count_for_callback.get() + 1);
+		})
+		.deps(("tenant-a",))
+		.build();
+
+	assert_eq!(runtime.handle_submit(), UseFormSubmitOutcome::Submitted);
+	assert_eq!(success_count.get(), 1);
 }

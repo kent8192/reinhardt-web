@@ -3942,6 +3942,40 @@ mod tests {
 	}
 
 	#[rstest::rstest]
+	fn validator_parity_rejects_removed_state_clause() {
+		let input = quote! {
+			name: StateForm,
+			server_fn: submit_form,
+
+			state: { loading, error, success },
+
+			fields: {
+				data: CharField {},
+			},
+		};
+
+		assert_validator_parity_for(input);
+	}
+
+	#[rstest::rstest]
+	fn validator_parity_rejects_removed_runtime_callback_clauses() {
+		let input = quote! {
+			name: CallbackForm,
+			server_fn: submit_form,
+
+			on_success: |result| { let _ = result; },
+			on_error: |error| { let _ = error; },
+			on_loading: |loading| { let _ = loading; },
+
+			fields: {
+				data: CharField {},
+			},
+		};
+
+		assert_validator_parity_for(input);
+	}
+
+	#[rstest::rstest]
 	fn validator_parity_rejects_ambient_argument_duplicate_with_same_diagnostic() {
 		let input = quote! {
 			name: VoteForm,

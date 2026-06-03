@@ -1,13 +1,14 @@
 //! Runtime behavior for `form!` generated forms.
 
 use std::any::{Any, type_name};
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::rc::{Rc, Weak};
 
-use crate::reactive::Signal;
+use crate::reactive::{Effect, EffectTiming, Signal};
 
 /// Default reset behavior when runtime dependencies change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -279,6 +280,136 @@ type SubmitCallback<Form, Deps> = Rc<dyn Fn(&UseFormReturn<Form, Deps>)>;
 type Subscriber<Form> = Rc<dyn Fn(FormEvent<Form>)>;
 type SubscriberSlots<Form> = Rc<RefCell<Vec<Option<Subscriber<Form>>>>>;
 
+#[allow(
+	clippy::too_many_arguments,
+	reason = "The sync effect needs the independent form state handles it updates atomically."
+)]
+fn build_signal_sync_effect<Form>(
+	form: Form,
+	default_values: Rc<RefCell<Form::Values>>,
+	state: FormState<Form::Field>,
+	touched_fields: Rc<RefCell<HashMap<Form::Field, bool>>>,
+	values_signal: Signal<Form::Values>,
+	subscribers: SubscriberSlots<Form>,
+	observed_values: Rc<RefCell<Form::Values>>,
+	signal_sync_suppressed: Rc<Cell<bool>>,
+	revalidate_on: RevalidateOn,
+) -> Rc<Effect>
+where
+	Form: FormRuntimeSource,
+{
+	Rc::new(Effect::new_with_timing(
+		move || {
+			let current = form.runtime_current_values();
+			let previous = observed_values.borrow().clone();
+			let changed_fields: Vec<Form::Field> = form
+				.runtime_fields()
+				.iter()
+				.copied()
+				.filter(|field| form.runtime_field_is_dirty(*field, &current, &previous))
+				.collect();
+			*observed_values.borrow_mut() = current.clone();
+
+			if signal_sync_suppressed.get() || changed_fields.is_empty() {
+				return;
+			}
+
+			for field in &changed_fields {
+				touched_fields.borrow_mut().insert(*field, true);
+			}
+			state.is_touched.set(true);
+			state.is_dirty.set(current != *default_values.borrow());
+			values_signal.set(current);
+
+			if revalidate_on == RevalidateOn::Change {
+				let result = form.runtime_validate();
+				apply_validation_result_to_state(&state, &result);
+				notify_subscribers(&subscribers, FormEvent::Validated);
+			}
+			for field in changed_fields {
+				notify_subscribers(&subscribers, FormEvent::ValueChanged { field });
+			}
+		},
+		EffectTiming::Layout,
+	))
+}
+
+fn adapt_no_deps_callback<Form, Deps>(
+	callback: SubmitCallback<Form, NoDeps>,
+) -> SubmitCallback<Form, Deps>
+where
+	Form: FormRuntimeSource,
+	Deps: Clone + PartialEq + 'static,
+{
+	Rc::new(move |handle| {
+		let no_deps_handle = UseFormReturn {
+			form: handle.form.clone(),
+			default_values: Rc::clone(&handle.default_values),
+			deps: Rc::new(RefCell::new(NoDeps)),
+			reset_on_deps: handle.reset_on_deps,
+			keep_errors: handle.keep_errors,
+			revalidate_on: handle.revalidate_on,
+			state: handle.state.clone(),
+			touched_fields: Rc::clone(&handle.touched_fields),
+			values_signal: handle.values_signal.clone(),
+			subscribers: Rc::clone(&handle.subscribers),
+			observed_values: Rc::clone(&handle.observed_values),
+			signal_sync_suppressed: Rc::clone(&handle.signal_sync_suppressed),
+			_signal_sync_effect: Rc::clone(&handle._signal_sync_effect),
+			on_submit_start: None,
+			on_submit_success: None,
+			on_submit_error: None,
+		};
+		callback(&no_deps_handle);
+	})
+}
+
+fn apply_validation_result_to_state<Field>(
+	state: &FormState<Field>,
+	result: &Result<(), FormValidationError<Field>>,
+) where
+	Field: Copy + Eq + Hash + 'static,
+{
+	match result {
+		Ok(()) => {
+			state.field_errors.set(HashMap::new());
+			state.form_error.set(None);
+			sync_first_error_in_state(state);
+		}
+		Err(error) => {
+			state.field_errors.set(error.field_errors().clone());
+			state.form_error.set(error.form_error().map(str::to_string));
+			sync_first_error_in_state(state);
+		}
+	}
+}
+
+fn sync_first_error_in_state<Field>(state: &FormState<Field>)
+where
+	Field: Copy + Eq + Hash + 'static,
+{
+	let first_field_error = state
+		.field_errors
+		.get()
+		.values()
+		.next()
+		.map(|error| error.message().to_string());
+	state.error.set(
+		first_field_error
+			.or_else(|| state.form_error.get())
+			.or_else(|| state.submit_error.get()),
+	);
+}
+
+fn notify_subscribers<Form>(subscribers: &SubscriberSlots<Form>, event: FormEvent<Form>)
+where
+	Form: FormRuntimeSource,
+{
+	for subscriber in subscribers.borrow().iter().flatten() {
+		subscriber(event.clone());
+	}
+}
+
 impl<Form> UseFormBuilder<Form, NoDeps>
 where
 	Form: FormRuntimeSource,
@@ -294,9 +425,9 @@ where
 			reset_on_deps: self.reset_on_deps,
 			keep_errors: self.keep_errors,
 			revalidate_on: self.revalidate_on,
-			on_submit_start: None,
-			on_submit_success: None,
-			on_submit_error: None,
+			on_submit_start: self.on_submit_start.map(adapt_no_deps_callback),
+			on_submit_success: self.on_submit_success.map(adapt_no_deps_callback),
+			on_submit_error: self.on_submit_error.map(adapt_no_deps_callback),
 		}
 	}
 }
@@ -356,26 +487,49 @@ where
 		let default_values = self.form.runtime_initial_values();
 		let current_values = self.form.runtime_current_values();
 		let is_dirty = current_values != default_values;
+		let form = self.form;
+		let default_values = Rc::new(RefCell::new(default_values));
+		let deps = Rc::new(RefCell::new(self.deps));
+		let state = FormState {
+			is_dirty: Signal::new(is_dirty),
+			is_touched: Signal::new(false),
+			field_errors: Signal::new(HashMap::new()),
+			form_error: Signal::new(None),
+			submit_error: Signal::new(None),
+			error: Signal::new(None),
+			is_submitting: Signal::new(false),
+			is_submit_successful: Signal::new(false),
+		};
+		let touched_fields = Rc::new(RefCell::new(HashMap::new()));
+		let values_signal = Signal::new(current_values.clone());
+		let subscribers = Rc::new(RefCell::new(Vec::new()));
+		let observed_values = Rc::new(RefCell::new(current_values));
+		let signal_sync_suppressed = Rc::new(Cell::new(false));
+		let signal_sync_effect = build_signal_sync_effect(
+			form.clone(),
+			Rc::clone(&default_values),
+			state.clone(),
+			Rc::clone(&touched_fields),
+			values_signal.clone(),
+			Rc::clone(&subscribers),
+			Rc::clone(&observed_values),
+			Rc::clone(&signal_sync_suppressed),
+			self.revalidate_on,
+		);
 		UseFormReturn {
-			form: self.form,
-			default_values: Rc::new(RefCell::new(default_values)),
-			deps: Rc::new(RefCell::new(self.deps)),
+			form,
+			default_values,
+			deps,
 			reset_on_deps: self.reset_on_deps,
 			keep_errors: self.keep_errors,
 			revalidate_on: self.revalidate_on,
-			state: FormState {
-				is_dirty: Signal::new(is_dirty),
-				is_touched: Signal::new(false),
-				field_errors: Signal::new(HashMap::new()),
-				form_error: Signal::new(None),
-				submit_error: Signal::new(None),
-				error: Signal::new(None),
-				is_submitting: Signal::new(false),
-				is_submit_successful: Signal::new(false),
-			},
-			touched_fields: Rc::new(RefCell::new(HashMap::new())),
-			values_signal: Signal::new(current_values),
-			subscribers: Rc::new(RefCell::new(Vec::new())),
+			state,
+			touched_fields,
+			values_signal,
+			subscribers,
+			observed_values,
+			signal_sync_suppressed,
+			_signal_sync_effect: signal_sync_effect,
 			on_submit_start: self.on_submit_start,
 			on_submit_success: self.on_submit_success,
 			on_submit_error: self.on_submit_error,
@@ -399,6 +553,9 @@ where
 	touched_fields: Rc<RefCell<HashMap<Form::Field, bool>>>,
 	values_signal: Signal<Form::Values>,
 	subscribers: SubscriberSlots<Form>,
+	observed_values: Rc<RefCell<Form::Values>>,
+	signal_sync_suppressed: Rc<Cell<bool>>,
+	_signal_sync_effect: Rc<Effect>,
 	on_submit_start: Option<SubmitCallback<Form, Deps>>,
 	on_submit_success: Option<SubmitCallback<Form, Deps>>,
 	on_submit_error: Option<SubmitCallback<Form, Deps>>,
@@ -421,6 +578,9 @@ where
 			touched_fields: Rc::clone(&self.touched_fields),
 			values_signal: self.values_signal.clone(),
 			subscribers: Rc::clone(&self.subscribers),
+			observed_values: Rc::clone(&self.observed_values),
+			signal_sync_suppressed: Rc::clone(&self.signal_sync_suppressed),
+			_signal_sync_effect: Rc::clone(&self._signal_sync_effect),
 			on_submit_start: self.on_submit_start.clone(),
 			on_submit_success: self.on_submit_success.clone(),
 			on_submit_error: self.on_submit_error.clone(),
@@ -484,10 +644,13 @@ where
 	where
 		T: Any + 'static,
 	{
+		let _guard = self.suppress_signal_sync();
 		self.form.runtime_set_field_value(field, value);
 		self.touched_fields.borrow_mut().insert(field, true);
+		self.state.is_touched.set(true);
 		self.refresh_dirty();
 		self.values_signal.set(self.get_values());
+		self.sync_observed_values();
 		if self.revalidate_on == RevalidateOn::Change {
 			let _ = self.trigger();
 		}
@@ -496,10 +659,12 @@ where
 
 	/// Applies all typed values.
 	pub fn set_values(&self, values: Form::Values) {
+		let _guard = self.suppress_signal_sync();
 		self.form.runtime_apply_values(&values);
 		self.state.is_touched.set(true);
 		self.refresh_dirty();
 		self.values_signal.set(values);
+		self.sync_observed_values();
 		if self.revalidate_on == RevalidateOn::Change {
 			let _ = self.trigger();
 		}
@@ -558,6 +723,7 @@ where
 	/// Resets all values to current defaults.
 	pub fn reset(&self) {
 		let defaults = self.default_values.borrow().clone();
+		let _guard = self.suppress_signal_sync();
 		self.form.runtime_apply_values(&defaults);
 		self.touched_fields.borrow_mut().clear();
 		self.state.is_touched.set(false);
@@ -566,15 +732,18 @@ where
 		self.state.is_submit_successful.set(false);
 		self.clear_errors();
 		self.values_signal.set(defaults);
+		self.sync_observed_values();
 	}
 
 	/// Resets one field to its current default value.
 	pub fn reset_field(&self, field: Form::Field) {
 		let defaults = self.default_values.borrow();
+		let _guard = self.suppress_signal_sync();
 		self.form.runtime_apply_field_value(field, &defaults);
 		self.touched_fields.borrow_mut().remove(&field);
 		self.refresh_dirty();
 		self.values_signal.set(self.get_values());
+		self.sync_observed_values();
 	}
 
 	/// Makes the current values the defaults and clears dirty state.
@@ -651,6 +820,7 @@ where
 
 		match self.reset_on_deps {
 			ResetOnDeps::KeepDirtyValues => {
+				let _guard = self.suppress_signal_sync();
 				for field in self.form.runtime_fields() {
 					let field = *field;
 					if !self
@@ -662,6 +832,7 @@ where
 				}
 			}
 			ResetOnDeps::ResetAll => {
+				let _guard = self.suppress_signal_sync();
 				self.form.runtime_apply_values(&new_defaults);
 				self.touched_fields.borrow_mut().clear();
 			}
@@ -674,6 +845,7 @@ where
 		}
 		self.refresh_dirty();
 		self.values_signal.set(self.get_values());
+		self.sync_observed_values();
 		if self.revalidate_on == RevalidateOn::DepsChange {
 			let _ = self.trigger();
 		}
@@ -724,6 +896,27 @@ where
 		for subscriber in self.subscribers.borrow().iter().flatten() {
 			subscriber(event.clone());
 		}
+	}
+
+	fn suppress_signal_sync(&self) -> SignalSyncGuard {
+		self.signal_sync_suppressed.set(true);
+		SignalSyncGuard {
+			suppressed: Rc::clone(&self.signal_sync_suppressed),
+		}
+	}
+
+	fn sync_observed_values(&self) {
+		*self.observed_values.borrow_mut() = self.get_values();
+	}
+}
+
+struct SignalSyncGuard {
+	suppressed: Rc<Cell<bool>>,
+}
+
+impl Drop for SignalSyncGuard {
+	fn drop(&mut self) {
+		self.suppressed.set(false);
 	}
 }
 

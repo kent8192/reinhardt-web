@@ -1379,7 +1379,7 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///     pub fn metadata(&self) -> StaticFormMetadata { ... }
 ///
 ///     /// Validates all fields
-///     pub fn validate(&self) -> Result<(), Vec<String>> { ... }
+///     pub fn validate(&self) -> Result<(), Vec<(&'static str, String)>> { ... }
 ///
 ///     /// Submits the form (async on WASM, no-op on server)
 ///     pub fn submit(&self) -> impl Future<Output = Result<(), ServerFnError>> { ... }
@@ -1407,9 +1407,10 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///
 /// ## Runtime State
 ///
-/// `form!` no longer owns submit lifecycle state such as loading, error, or
-/// success signals. Define static fields and rendering metadata in `form!`,
-/// then attach dynamic behavior with `use_form(&form).build()`.
+/// Runtime orchestration moved to `use_form(&form).build()`. Generated forms
+/// still emit compatibility submit lifecycle signals (`loading()`, `error()`,
+/// and `success()`) so existing render-only `watch` blocks can react to
+/// submissions while new runtime state is managed by `use_form`.
 ///
 /// ## Two-way Binding
 ///

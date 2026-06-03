@@ -4,7 +4,6 @@
 
 use crate::apps::dm::shared::types::{MessageInfo, RoomInfo};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
-use uuid::Uuid;
 
 // Server-only imports
 #[cfg(native)]
@@ -14,6 +13,7 @@ use {
 	reinhardt::DatabaseConnection,
 	reinhardt::db::orm::{Filter, FilterOperator, FilterValue, ManyToManyAccessor, Model},
 	std::collections::{HashMap, HashSet},
+	uuid::Uuid,
 };
 
 /// Helper to check if user is a member of a room
@@ -35,7 +35,7 @@ async fn is_room_member(
 /// Create a new DM room
 #[server_fn]
 pub async fn create_room(
-	participant_ids: Vec<Uuid>,
+	participant_ids: Vec<::uuid::Uuid>,
 	name: Option<String>,
 	#[inject] db: DatabaseConnection,
 	#[inject] reinhardt::AuthUser(current_user): reinhardt::AuthUser<
@@ -231,7 +231,7 @@ pub async fn list_rooms(
 /// Get details of a specific DM room
 #[server_fn]
 pub async fn get_room(
-	room_id: Uuid,
+	room_id: ::uuid::Uuid,
 	#[inject] db: DatabaseConnection,
 	#[inject] reinhardt::AuthUser(current_user): reinhardt::AuthUser<
 		crate::apps::auth::models::User,
@@ -263,7 +263,7 @@ pub async fn get_room(
 /// Send a message to a DM room
 #[server_fn]
 pub async fn send_message(
-	room_id: Uuid,
+	room_id: ::uuid::Uuid,
 	content: String,
 	#[inject] db: DatabaseConnection,
 	#[inject] reinhardt::AuthUser(current_user): reinhardt::AuthUser<
@@ -323,9 +323,9 @@ pub async fn send_message(
 /// List messages in a DM room with pagination
 #[server_fn]
 pub async fn list_messages(
-	room_id: Uuid,
+	room_id: ::uuid::Uuid,
 	limit: Option<i32>,
-	before: Option<Uuid>,
+	before: Option<::uuid::Uuid>,
 	#[inject] db: DatabaseConnection,
 	#[inject] reinhardt::AuthUser(current_user): reinhardt::AuthUser<
 		crate::apps::auth::models::User,
@@ -414,7 +414,7 @@ pub async fn list_messages(
 /// Mark all messages in a room as read for the current user
 #[server_fn]
 pub async fn mark_as_read(
-	room_id: Uuid,
+	room_id: ::uuid::Uuid,
 	#[inject] db: DatabaseConnection,
 	#[inject] reinhardt::AuthUser(current_user): reinhardt::AuthUser<
 		crate::apps::auth::models::User,

@@ -120,11 +120,11 @@ follow the **Migration Guide** below for the most disruptive moves.
 
 ### Migration Guide
 
-The 0.1.0 stable release consolidates the alpha line and the yanked rc
-stabilization snapshots. Treat the rc line as unreleased for migration
-purposes. Notable breaking changes accumulated during stabilization are
-summarized below; the complete list is in the **Breaking Changes** section
-above.
+The 0.1.0 stable release consolidates the alpha line and the historical rc
+snapshots. For migration purposes, users on any rc version should follow the
+guide below as if migrating from pre-release code. Notable breaking changes
+accumulated during stabilization are summarized below; the complete list is in
+the **Breaking Changes** section above.
 
 - **Typed URL routing** ([#3770](https://github.com/kent8192/reinhardt-web/discussions/3770)):
   replace string-based `#[url_patterns]` with

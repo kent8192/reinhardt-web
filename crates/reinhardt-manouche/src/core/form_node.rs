@@ -73,7 +73,8 @@ pub struct FormMacro {
 	/// Redirect URL on successful form submission
 	///
 	/// Supports static paths (`"/profile"`) or dynamic paths with parameter expansion (`"/profile/{id}"`).
-	/// The redirect is triggered after `on_success` callback (if any) completes.
+	/// Runs after a successful generated submit; custom runtime behavior belongs
+	/// in `use_form(&form)`.
 	pub redirect_on_success: Option<LitStr>,
 	/// Redirect URL expression on successful form submission
 	///
@@ -800,35 +801,15 @@ pub enum AmbientArgumentsSource {
 /// validation; use `use_form(&form)` for runtime behavior.
 #[derive(Debug, Clone, Default)]
 pub struct FormCallbacks {
-	/// Callback called before form submission starts.
-	/// Signature: `|form: &FormName| { ... }`
+	/// Legacy callback clause retained for targeted validation errors.
 	pub on_submit: Option<ExprClosure>,
-	/// Callback called when submission succeeds.
-	/// Receives the server_fn return value.
-	/// Signature: `|result: T| { ... }`
+	/// Legacy callback clause retained for targeted validation errors.
 	pub on_success: Option<ExprClosure>,
-	/// Lifted variant of `on_success` that captures outer-scope locals.
-	///
-	/// Unlike `on_success` (which is expanded inside the generated `fn submit()`
-	/// body and therefore cannot see enclosing-scope locals like `user_id`),
-	/// `on_success_ref` is expanded at the outer construction block. This lets
-	/// the user closure capture locals from the surrounding function scope.
-	///
-	/// The closure receives the server_fn return value by reference (`&T`)
-	/// instead of by move (`T`); for callbacks that must *consume* the value
-	/// (e.g., `set_current_user(Some(value))`), keep using `on_success`.
-	///
-	/// Both may be supplied together. Execution order: `on_success_ref` runs
-	/// first (receives `&value`), then `on_success` runs (receives `value` by
-	/// move).
-	///
-	/// Signature: `|form: &Self, result: &T| { ... }`
+	/// Legacy callback clause retained for targeted validation errors.
 	pub on_success_ref: Option<ExprClosure>,
-	/// Callback called when submission fails.
-	/// Signature: `|error: ServerFnError| { ... }`
+	/// Legacy callback clause retained for targeted validation errors.
 	pub on_error: Option<ExprClosure>,
-	/// Callback called when loading state changes.
-	/// Signature: `|is_loading: bool| { ... }`
+	/// Legacy callback clause retained for targeted validation errors.
 	pub on_loading: Option<ExprClosure>,
 	/// Span for error reporting (from first callback parsed)
 	pub span: Option<Span>,

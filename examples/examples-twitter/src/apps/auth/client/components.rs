@@ -1,13 +1,13 @@
 //! Authentication components using form! macro
 //!
 //! Provides login and registration form components with the `form!` macro.
+#[cfg(wasm)]
+use crate::apps::auth::shared::server_fn::{login, register};
 use crate::core::client::components::icons;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::Signal;
-#[cfg(wasm)]
-use crate::apps::auth::shared::server_fn::{login, register};
 
 /// Login form component using form! macro
 ///

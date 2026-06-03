@@ -96,13 +96,23 @@ fn build_login_form() -> Page {
 				placeholder: "Enter your password",
 			}
 		}
+		watch: {
+			login_error: |form| {
+				let error = form.error().get();
+				let has_error = error.is_some();
+				let error_message = error.unwrap_or_default();
+				page!(|has_error: bool, error_message: String| {
+					div {
+						id : "login-error",
+						class : if has_error { "admin-alert admin-alert-danger mb-4" } else { "hidden" },
+						role : "alert",
+						{ error_message }
+					}
+				})(has_error, error_message)
+			},
+		}
 		slots: {
 			after_fields: | | page!(|| {
-				div {
-					id : "login-error",
-					class : "admin-alert admin-alert-danger hidden mb-4",
-					role : "alert",
-				}
 				button {
 					type : "submit",
 					class : "admin-btn admin-btn-primary w-full py-2.5 text-base",

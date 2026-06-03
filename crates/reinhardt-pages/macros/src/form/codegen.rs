@@ -155,11 +155,25 @@ fn generate_form_runtime_contract(
 	let field_ident = format_ident!("{}Field", macro_ast.name);
 	let form_ident = &macro_ast.name;
 	let all_fields = collect_all_fields(&macro_ast.fields);
-	if all_fields
+	let unsupported_fields: Vec<String> = all_fields
 		.iter()
-		.any(|field| !supports_generated_form_values(&field.field_type))
-	{
-		return quote! {};
+		.filter(|field| !supports_generated_form_values(&field.field_type))
+		.map(|field| {
+			format!(
+				"{} ({})",
+				field.name,
+				field_type_to_string(&field.field_type)
+			)
+		})
+		.collect();
+	if !unsupported_fields.is_empty() {
+		let message = format!(
+			"form! cannot generate a use_form runtime contract for unsupported field(s): {}. FileField and ImageField are not supported by use_form(&form) yet.",
+			unsupported_fields.join(", ")
+		);
+		return quote! {
+			compile_error!(#message);
+		};
 	}
 
 	let value_fields: Vec<TokenStream> = all_fields
@@ -176,6 +190,14 @@ fn generate_form_runtime_contract(
 		.map(|field| {
 			let name = &field.name;
 			quote! { #name: self.#name.get(), }
+		})
+		.collect();
+	let initial_values_fields: Vec<TokenStream> = all_fields
+		.iter()
+		.map(|field| {
+			let name = &field.name;
+			let init = field_type_default_value(&field.field_type);
+			quote! { #name: #init, }
 		})
 		.collect();
 
@@ -245,6 +267,16 @@ fn generate_form_runtime_contract(
 			}
 		})
 		.collect();
+	let field_focus_arms: Vec<TokenStream> = all_fields
+		.iter()
+		.zip(field_variants.iter())
+		.map(|(field, variant)| {
+			let field_id = field.name.to_string();
+			quote! {
+				#field_ident::#variant => #field_id,
+			}
+		})
+		.collect();
 	let watch_field_arms: Vec<TokenStream> = all_fields
 		.iter()
 		.zip(field_variants.iter())
@@ -281,7 +313,7 @@ fn generate_form_runtime_contract(
 		.collect();
 
 	quote! {
-		#[derive(Clone, Debug, PartialEq)]
+		#[derive(Clone, PartialEq)]
 		struct #values_ident {
 			#(#value_fields)*
 		}
@@ -300,9 +332,7 @@ fn generate_form_runtime_contract(
 			type Field = #field_ident;
 
 			fn runtime_initial_values(&self) -> Self::Values {
-				#values_ident {
-					#(#values_fields)*
-				}
+				self.__initial_values.borrow().clone()
 			}
 
 			fn runtime_current_values(&self) -> Self::Values {
@@ -356,8 +386,15 @@ fn generate_form_runtime_contract(
 				match self.validate() {
 					::core::result::Result::Ok(()) => {}
 					::core::result::Result::Err(errors) => {
-						if !errors.is_empty() {
-							error.set_form_error(errors.join(", "));
+						for (field, message) in errors {
+							match field {
+								#(
+									stringify!(#field_variants) => {
+										error.add_field_error(#field_ident::#field_variants, message);
+									}
+								)*
+								_ => error.set_form_error(message),
+							}
 						}
 					}
 				}
@@ -371,8 +408,40 @@ fn generate_form_runtime_contract(
 			fn runtime_fields(&self) -> &'static [Self::Field] {
 				&[#(#field_ident::#field_variants),*]
 			}
+
+			fn runtime_set_focus(&self, field: Self::Field) -> ::core::result::Result<(), #pages_crate::FocusError> {
+				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+				{
+					let field_id = match field {
+						#(#field_focus_arms)*
+					};
+					let window = ::web_sys::window()
+						.ok_or(#pages_crate::FocusError::MissingTarget)?;
+					let document = window
+						.document()
+						.ok_or(#pages_crate::FocusError::MissingTarget)?;
+					let element = document
+						.get_element_by_id(field_id)
+						.ok_or(#pages_crate::FocusError::MissingTarget)?;
+					use ::wasm_bindgen::JsCast;
+					let element = element
+						.dyn_into::<::web_sys::HtmlElement>()
+						.map_err(|_| #pages_crate::FocusError::Unsupported)?;
+					element
+						.focus()
+						.map_err(|_| #pages_crate::FocusError::Unsupported)
+				}
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+				{
+					let _ = field;
+					::core::result::Result::Err(#pages_crate::FocusError::Unsupported)
+				}
+			}
 		}
 
+		let _ = #values_ident {
+			#(#initial_values_fields)*
+		};
 		let _ = ::core::mem::size_of::<#values_ident>();
 		let _ = ::core::mem::size_of::<#field_ident>();
 	}
@@ -441,14 +510,18 @@ fn runtime_required_empty_check(
 
 fn supports_generated_form_values(field_type: &TypedFieldType) -> bool {
 	match field_type {
-		TypedFieldType::JsonField { .. }
-		| TypedFieldType::FileField
-		| TypedFieldType::ImageField => false,
+		TypedFieldType::FileField | TypedFieldType::ImageField => false,
 		TypedFieldType::HiddenField { inner }
 		| TypedFieldType::ChoiceField { inner }
 		| TypedFieldType::MultipleChoiceField { inner } => is_basic_form_value_type(inner),
 		_ => true,
 	}
+}
+
+fn supports_form_runtime_contract(entries: &[TypedFormFieldEntry]) -> bool {
+	collect_all_fields(entries)
+		.iter()
+		.all(|field| supports_generated_form_values(&field.field_type))
 }
 
 fn is_basic_form_value_type(ty: &syn::Type) -> bool {
@@ -487,6 +560,42 @@ pub(super) fn generate(
 	let ambient_argument_deprecation_markers =
 		generate_ambient_argument_deprecation_markers(macro_ast, ambient_arguments_source);
 	let form_runtime_contract = generate_form_runtime_contract(macro_ast, pages_crate);
+	let runtime_contract_supported = supports_form_runtime_contract(&macro_ast.fields);
+	let values_ident = format_ident!("{}Values", macro_ast.name);
+	let runtime_initial_values_field_decl = if runtime_contract_supported {
+		quote! {
+			__initial_values: ::std::rc::Rc<::std::cell::RefCell<#values_ident>>,
+		}
+	} else {
+		quote! {}
+	};
+	let runtime_initial_values_field_default_init = if runtime_contract_supported {
+		let initial_fields: Vec<TokenStream> = collect_all_fields(&macro_ast.fields)
+			.iter()
+			.map(|field| {
+				let name = &field.name;
+				let init = field_type_default_value(&field.field_type);
+				quote! { #name: #init, }
+			})
+			.collect();
+		quote! {
+			__initial_values: ::std::rc::Rc::new(
+				::std::cell::RefCell::new(#values_ident {
+					#(#initial_fields)*
+				}),
+			),
+		}
+	} else {
+		quote! {}
+	};
+	let runtime_initial_values_outer_refresh = if runtime_contract_supported {
+		quote! {
+			*__reinhardt_form.__initial_values.borrow_mut() =
+				#pages_crate::FormRuntimeSource::runtime_current_values(&__reinhardt_form);
+		}
+	} else {
+		quote! {}
+	};
 
 	let effective_state = Some(TypedFormState {
 		loading: true,
@@ -599,7 +708,8 @@ pub(super) fn generate(
 	let validate_method = generate_validate_method(macro_ast, pages_crate);
 
 	// Generate load_initial_values method if initial_loader is specified
-	let load_initial_method = generate_load_initial_values(macro_ast, pages_crate);
+	let load_initial_method =
+		generate_load_initial_values(macro_ast, pages_crate, runtime_contract_supported);
 
 	// Generate load_choices method if choices_loader is specified
 	let load_choices_method = generate_load_choices(macro_ast, pages_crate);
@@ -625,10 +735,11 @@ pub(super) fn generate(
 			#[derive(Clone)]
 			struct #struct_name
 			#where_clause
-			{
-				#field_decls
-				#state_decls
-				#watch_field_decls
+				{
+					#field_decls
+					#runtime_initial_values_field_decl
+					#state_decls
+					#watch_field_decls
 				#success_url_field_decl
 				#on_success_field_decl
 				#on_success_ref_field_decl
@@ -638,9 +749,10 @@ pub(super) fn generate(
 			#where_clause
 			{
 				fn new() -> Self {
-					Self {
-						#field_inits
-						#state_inits
+						Self {
+							#field_inits
+							#runtime_initial_values_field_default_init
+							#state_inits
 						#watch_field_default_inits
 						#success_url_field_default_init
 						#on_success_field_default_init
@@ -672,9 +784,10 @@ pub(super) fn generate(
 			// (issue #4605 / #4612), what makes `on_success:` capture outer
 			// locals when the user closure is annotated (issue #4624), and
 			// what makes `on_success_ref:` capture outer locals (issue #4624).
-			let mut __reinhardt_form = #struct_name::new();
-			#initial_outer_setup
-			#watch_outer_setup
+				let mut __reinhardt_form = #struct_name::new();
+				#initial_outer_setup
+				#runtime_initial_values_outer_refresh
+				#watch_outer_setup
 			#success_url_outer_setup
 			#on_success_outer_setup
 			#on_success_ref_outer_setup
@@ -2572,16 +2685,16 @@ fn generate_validate_method(macro_ast: &TypedFormMacro, _pages_crate: &TokenStre
 
 	if validators.is_empty() {
 		quote! {
-			pub fn validate(&self) -> Result<(), Vec<String>> {
+			pub fn validate(&self) -> Result<(), Vec<(&'static str, String)>> {
 				Ok(())
 			}
 		}
 	} else {
 		quote! {
-			pub fn validate(&self) -> Result<(), Vec<String>> {
-				let mut errors = Vec::new();
-				#(#validators)*
-				if errors.is_empty() {
+				pub fn validate(&self) -> Result<(), Vec<(&'static str, String)>> {
+					let mut errors = Vec::new();
+					#(#validators)*
+					if errors.is_empty() {
 					Ok(())
 				} else {
 					Err(errors)
@@ -2605,12 +2718,12 @@ fn generate_server_validator_rules(
 		.map(|rule| {
 			let condition = &rule.condition;
 			let message = &rule.message;
-			let field_name_str = field_name.to_string();
+			let field_variant = field_variant_ident(field_name);
 			quote! {
 				{
 					let v = self.#field_name.get();
 					if !(#condition) {
-						errors.push(format!("{}: {}", #field_name_str, #message));
+						errors.push((stringify!(#field_variant), (#message).to_string()));
 					}
 				}
 			}
@@ -2829,6 +2942,7 @@ fn generate_submit_method(
 fn generate_load_initial_values(
 	macro_ast: &TypedFormMacro,
 	pages_crate: &TokenStream,
+	runtime_contract_supported: bool,
 ) -> TokenStream {
 	// Return empty if no initial_loader is specified
 	let Some(initial_loader) = &macro_ast.initial_loader else {
@@ -2849,6 +2963,14 @@ fn generate_load_initial_values(
 			})
 		})
 		.collect();
+	let runtime_initial_values_refresh = if runtime_contract_supported {
+		quote! {
+			*self.__initial_values.borrow_mut() =
+				#pages_crate::FormRuntimeSource::runtime_current_values(self);
+		}
+	} else {
+		quote! {}
+	};
 
 	// If no fields have initial_from, just call the loader but don't set anything
 	if field_setters.is_empty() {
@@ -2877,11 +2999,12 @@ fn generate_load_initial_values(
 			/// Calls the configured initial_loader and populates fields
 			/// that have `initial_from` specified with values from the result.
 			#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-			pub async fn load_initial_values(&self) -> Result<(), #pages_crate::ServerFnError> {
-				let data = #initial_loader().await?;
-				#(#field_setters)*
-				Ok(())
-			}
+				pub async fn load_initial_values(&self) -> Result<(), #pages_crate::ServerFnError> {
+					let data = #initial_loader().await?;
+					#(#field_setters)*
+					#runtime_initial_values_refresh
+					Ok(())
+				}
 
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			pub async fn load_initial_values(&self) -> Result<(), #pages_crate::ServerFnError> {
@@ -3780,21 +3903,23 @@ fn build_typed_field_where_clause(all_fields: &[&TypedFormFieldDef]) -> TokenStr
 			if seen.insert(key.clone()) {
 				if needs_from_str.contains(&key) {
 					bounds.push(quote! {
-						#ty: ::serde::Serialize
-							+ ::serde::de::DeserializeOwned
-							+ ::core::clone::Clone
-							+ ::core::fmt::Display
-							+ ::core::str::FromStr
-							+ ::core::default::Default
+							#ty: ::serde::Serialize
+								+ ::serde::de::DeserializeOwned
+								+ ::core::clone::Clone
+								+ ::core::cmp::PartialEq
+								+ ::core::fmt::Display
+								+ ::core::str::FromStr
+								+ ::core::default::Default
 							+ 'static
 					});
 				} else {
 					bounds.push(quote! {
-						#ty: ::serde::Serialize
-							+ ::serde::de::DeserializeOwned
-							+ ::core::clone::Clone
-							+ ::core::fmt::Display
-							+ ::core::default::Default
+							#ty: ::serde::Serialize
+								+ ::serde::de::DeserializeOwned
+								+ ::core::clone::Clone
+								+ ::core::cmp::PartialEq
+								+ ::core::fmt::Display
+								+ ::core::default::Default
 							+ 'static
 					});
 				}
