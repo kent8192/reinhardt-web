@@ -1,12 +1,13 @@
 //! `JsonField<T>` with a user-supplied struct as the inner type.
 //!
 //! The where clause emitted in Task 9 requires `T: Serialize +
-//! DeserializeOwned + Clone + Display + FromStr + Default + 'static`.
-//! `UserPrefs` below satisfies all of those.
+//! DeserializeOwned + Clone + PartialEq + Display + Default + 'static`.
+//! `UserPrefs` also implements `FromStr` to cover the broader typed-field
+//! fixture contract.
 
 use reinhardt_pages::form;
 
-#[derive(Clone, Default, ::serde::Serialize, ::serde::Deserialize)]
+#[derive(Clone, Default, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 struct UserPrefs {
 	theme: String,
 }

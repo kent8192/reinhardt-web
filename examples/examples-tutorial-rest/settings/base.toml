@@ -44,8 +44,7 @@ password = "reinhardt"
 # Redis URL consumed by `scripts/parse_local_toml.py` so the same
 # disposable infra script can provision a Redis container alongside
 # Postgres. The example itself does not yet use Redis, but the container
-# is started for parity with the wider Reinhardt-family stack
-# (reinhardt-cloud, examples-twitter).
+# is started for parity with the wider Reinhardt-family stack.
 redis_url = "redis://localhost:6379/0"
 
 # Contacts fragment (admins/managers). Required because `ProjectSettings`

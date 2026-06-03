@@ -53,7 +53,7 @@ pub struct LoginRequest {
 /// `request.validate()`; the password-confirmation equality check is
 /// expressed as a dedicated [`RegisterRequest::validate_passwords_match`]
 /// helper because the validator crate's `must_match` is brittle across
-/// versions (mirroring the pattern in `examples-twitter`).
+/// versions (mirroring the pattern used across the tutorial examples).
 #[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterRequest {

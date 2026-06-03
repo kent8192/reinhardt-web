@@ -140,7 +140,6 @@ Examples are excluded from the main workspace and form their own independent wor
 | `examples/examples-database-integration/` | `examples-database-integration` |
 | `examples/examples-di-showcase/` | `examples-di-showcase` |
 | `examples/examples-github-issues/` | `examples-github-issues` |
-| `examples/examples-twitter/` | `examples-twitter` |
 
 ## Physical Structure
 

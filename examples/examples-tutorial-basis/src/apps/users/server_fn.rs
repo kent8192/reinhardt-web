@@ -1,7 +1,7 @@
 //! User authentication server functions
 //!
 //! Provides session-cookie-based login/logout and current-user lookup.
-//! Follows the examples-twitter pattern: `SessionData` + `Depends<SessionStore>`
+//! Follows the session-auth pattern: `SessionData` + `Depends<SessionStore>`
 //! are injected, the session ID is regenerated on successful login
 //! (fixation prevention), and `user_id` is persisted in the session map.
 
