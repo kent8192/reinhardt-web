@@ -70,22 +70,23 @@
 //! runtime behavior: value signals, dirty/touched state, validation errors,
 //! loading/success state, reset, and submit orchestration.
 //!
-//! Derive [`FormValues`] for the value struct and initialize runtime state with
-//! [`FormOptions`]:
+//! Create a `form!` generated form and attach runtime behavior with
+//! [`use_form`]:
 //!
 //! ```ignore
-//! use reinhardt_pages::{FormOptions, FormValues, use_form};
+//! use reinhardt_pages::{form, use_form};
 //!
-//! #[derive(Clone, PartialEq, FormValues)]
-//! struct LoginFormValues {
-//!     username: String,
-//!     password: String,
-//! }
+//! let login_form = form! {
+//!     name: LoginForm,
+//!     action: "/login",
+//!     fields: {
+//!         username: CharField { initial: String::new() }
+//!         password: CharField { initial: String::new() }
+//!     }
+//! };
 //!
-//! let form = use_form(FormOptions::new(LoginFormValues {
-//!     username: String::new(),
-//!     password: String::new(),
-//! }));
+//! let runtime = use_form(&login_form).build();
+//! runtime.set_value(login_form.username_field(), "ada".to_string());
 //! ```
 //!
 //! Use `ambient_arguments` for non-field values supplied from surrounding
@@ -312,8 +313,9 @@ pub use form::{FormBinding, FormComponent};
 // Static form metadata types (always available, used by form! macro)
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use form_state::{
-	FieldErrors, FormFields, FormHandle, FormOptions, FormValidate, FormValidationError,
-	FormValues, use_form,
+	FieldError, FieldState, FocusError, FormEvent, FormRuntimeSource, FormState, FormSubscription,
+	FormValidationError, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder, UseFormReturn,
+	UseFormSubmitOutcome, use_form,
 };
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use reactive::{Effect, Memo, Resource, ResourceState, Signal, use_resource};
@@ -353,7 +355,6 @@ pub use ssr::{SsrOptions, SsrRenderer, SsrState};
 pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
 
 // Re-export procedural macros
-pub use reinhardt_pages_macros::FormValues;
 pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
 pub use reinhardt_pages_macros::page;

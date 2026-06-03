@@ -1,5 +1,0 @@
-error: FormValues can only be derived for structs with named fields
- --> tests/ui/form_values/fail/enum.rs:4:6
-  |
-4 | enum BadFormValues {
-  |      ^^^^^^^^^^^^^

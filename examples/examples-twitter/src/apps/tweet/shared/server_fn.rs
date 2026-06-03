@@ -4,7 +4,6 @@
 
 use crate::apps::tweet::shared::types::TweetInfo;
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
-use uuid::Uuid;
 
 // Server-only imports
 #[cfg(native)]
@@ -72,7 +71,7 @@ pub async fn create_tweet(
 /// List tweets
 #[server_fn]
 pub async fn list_tweets(
-	user_id: Option<Uuid>,
+	user_id: Option<::uuid::Uuid>,
 	page: u32,
 	#[inject] db: DatabaseConnection,
 ) -> std::result::Result<Vec<TweetInfo>, ServerFnError> {
@@ -150,7 +149,7 @@ pub async fn list_tweets(
 /// Delete a tweet
 #[server_fn]
 pub async fn delete_tweet(
-	tweet_id: Uuid,
+	tweet_id: ::uuid::Uuid,
 	#[inject] db: DatabaseConnection,
 	#[inject] AuthUser(user): AuthUser<User>,
 ) -> std::result::Result<(), ServerFnError> {

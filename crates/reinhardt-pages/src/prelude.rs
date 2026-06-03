@@ -63,7 +63,7 @@
 //! - [`is_initialized`] - Check if static resolver is initialized
 //!
 //! ## Typed Forms
-//! - [`use_form`], [`FormHandle`], [`FormOptions`]
+//! - [`use_form`], [`UseFormReturn`], [`UseFormBuilder`]
 //!
 //! ## Task Spawning
 //! - [`spawn_task`], [`defer_yield`] - cross-target async task spawning
@@ -176,10 +176,10 @@ pub use crate::static_resolver::{init_static_resolver, is_initialized, resolve_s
 // ============================================================================
 
 pub use crate::form_state::{
-	FieldErrors, FormFields, FormHandle, FormOptions, FormValidate, FormValidationError,
-	FormValues, use_form,
+	FieldError, FieldState, FocusError, FormEvent, FormRuntimeSource, FormState, FormSubscription,
+	FormValidationError, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder, UseFormReturn,
+	UseFormSubmitOutcome, use_form,
 };
-pub use reinhardt_pages_macros::FormValues;
 
 #[cfg(native)]
 pub use crate::form::{FormBinding, FormComponent};

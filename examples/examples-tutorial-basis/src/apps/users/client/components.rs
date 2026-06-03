@@ -14,18 +14,14 @@ use reinhardt::pages::reactive::Signal;
 
 /// Login page: username + password form posting to the `login` server function.
 ///
-/// On success, redirects to the polls index. Field bindings, loading state,
-/// and CSRF header plumbing are managed by the form/server_fn integration.
+/// On success, redirects to the polls index. Field bindings and CSRF header
+/// plumbing are managed by the form/server_fn integration.
 pub fn login_form() -> Page {
 	let login_form = form! {
 		name: LoginForm,
 		server_fn: login,
 		method: Post,
 		redirect_on_success: "/",
-		state: {
-			loading,
-			error,
-		}
 		fields: {
 			username: CharField {
 				label: "Username",
@@ -115,10 +111,6 @@ pub fn logout_form() -> Page {
 		server_fn: logout,
 		method: Post,
 		redirect_on_success: "/",
-		state: {
-			loading,
-			error,
-		}
 		fields: {}
 	};
 	let error_signal = logout_form.error().clone();
@@ -173,18 +165,14 @@ pub fn logout_form() -> Page {
 ///
 /// On success, the server rotates the session and persists `user_id`, so the
 /// new account is logged in immediately; `redirect_on_success: "/"` then
-/// hands the user to the polls index. Field bindings, loading state, and
-/// CSRF header plumbing is handled by the form/server_fn integration.
+/// hands the user to the polls index. Field bindings and CSRF header plumbing
+/// are handled by the form/server_fn integration.
 pub fn signup_form() -> Page {
 	let signup_form = form! {
 		name: SignupForm,
 		server_fn: register,
 		method: Post,
 		redirect_on_success: "/",
-		state: {
-			loading,
-			error,
-		}
 		fields: {
 			username: CharField {
 				label: "Username",

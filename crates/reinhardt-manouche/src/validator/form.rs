@@ -228,39 +228,16 @@ fn transform_form_styling(ast: &FormMacro) -> Result<TypedFormStyling> {
 	})
 }
 
-/// Valid state field names for form UI state management.
-const VALID_STATE_FIELDS: &[&str] = &["loading", "error", "success"];
-
-/// Transforms FormState to TypedFormState with validation.
-///
-/// Validates that all state field names are valid (`loading`, `error`, `success`).
+/// Rejects removed form-level runtime state clauses.
 fn transform_state(state: &Option<FormState>) -> Result<Option<TypedFormState>> {
 	let Some(form_state) = state else {
 		return Ok(None);
 	};
 
-	let mut typed_state = TypedFormState::new(form_state.span);
-
-	for field in &form_state.fields {
-		let name = field.name.to_string();
-		match name.as_str() {
-			"loading" => typed_state.loading = true,
-			"error" => typed_state.error = true,
-			"success" => typed_state.success = true,
-			_ => {
-				return Err(Error::new(
-					field.span,
-					format!(
-						"invalid state field: '{}'. Expected one of: {}",
-						name,
-						VALID_STATE_FIELDS.join(", ")
-					),
-				));
-			}
-		}
-	}
-
-	Ok(Some(typed_state))
+	Err(Error::new(
+		form_state.span,
+		"`form! state: { ... }` was removed; use `use_form(&form).build().form_state()` for runtime form state",
+	))
 }
 
 /// Transforms FormCallbacks to TypedFormCallbacks.
@@ -268,6 +245,18 @@ fn transform_state(state: &Option<FormState>) -> Result<Option<TypedFormState>> 
 /// For callbacks, we simply pass through the closure expressions since
 /// type checking is done by the Rust compiler during code generation.
 fn transform_callbacks(callbacks: &FormCallbacks) -> Result<TypedFormCallbacks> {
+	if callbacks.on_submit.is_some()
+		|| callbacks.on_success.is_some()
+		|| callbacks.on_success_ref.is_some()
+		|| callbacks.on_error.is_some()
+		|| callbacks.on_loading.is_some()
+	{
+		return Err(Error::new(
+			callbacks.span.unwrap_or_else(Span::call_site),
+			"`form!` runtime callback clauses were removed; configure submit lifecycle through `use_form(&form)`",
+		));
+	}
+
 	Ok(TypedFormCallbacks {
 		on_submit: callbacks.on_submit.clone(),
 		on_success: callbacks.on_success.clone(),
@@ -1747,12 +1736,13 @@ mod tests {
 		let result = parse_and_validate(input);
 
 		// Assert
-		assert!(result.is_ok());
-		let typed = result.unwrap();
-		let state = typed.state.expect("state should be Some");
-		assert!(state.has_loading());
-		assert!(state.has_error());
-		assert!(state.has_success());
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("`form! state: { ... }` was removed")
+		);
 	}
 
 	#[rstest]
@@ -1773,12 +1763,13 @@ mod tests {
 		let result = parse_and_validate(input);
 
 		// Assert
-		assert!(result.is_ok());
-		let typed = result.unwrap();
-		let state = typed.state.expect("state should be Some");
-		assert!(state.has_loading());
-		assert!(!state.has_error());
-		assert!(!state.has_success());
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("`form! state: { ... }` was removed")
+		);
 	}
 
 	#[rstest]
@@ -1804,7 +1795,7 @@ mod tests {
 			result
 				.unwrap_err()
 				.to_string()
-				.contains("invalid state field")
+				.contains("`form! state: { ... }` was removed")
 		);
 	}
 
@@ -1850,13 +1841,13 @@ mod tests {
 		let result = parse_and_validate(input);
 
 		// Assert
-		assert!(result.is_ok());
-		let typed = result.unwrap();
-		assert!(typed.callbacks.has_any());
-		assert!(typed.callbacks.has_on_submit());
-		assert!(typed.callbacks.has_on_success());
-		assert!(typed.callbacks.has_on_error());
-		assert!(typed.callbacks.has_on_loading());
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("runtime callback clauses were removed")
+		);
 	}
 
 	#[rstest]
@@ -1879,13 +1870,13 @@ mod tests {
 		let result = parse_and_validate(input);
 
 		// Assert
-		assert!(result.is_ok());
-		let typed = result.unwrap();
-		assert!(typed.callbacks.has_any());
-		assert!(!typed.callbacks.has_on_submit());
-		assert!(typed.callbacks.has_on_success());
-		assert!(!typed.callbacks.has_on_error());
-		assert!(!typed.callbacks.has_on_loading());
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("runtime callback clauses were removed")
+		);
 	}
 
 	#[rstest]
@@ -1934,21 +1925,13 @@ mod tests {
 		let result = parse_and_validate(input);
 
 		// Assert
-		assert!(result.is_ok());
-		let typed = result.unwrap();
-
-		// Check state
-		assert!(typed.state.is_some());
-		let state = typed.state.as_ref().unwrap();
-		assert!(state.has_loading());
-		assert!(state.has_error());
-		assert!(state.has_success());
-
-		// Check callbacks
-		assert!(typed.callbacks.has_on_success());
-		assert!(typed.callbacks.has_on_error());
-		assert!(!typed.callbacks.has_on_submit());
-		assert!(!typed.callbacks.has_on_loading());
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("`form! state: { ... }` was removed")
+		);
 	}
 
 	#[rstest]
@@ -2642,8 +2625,6 @@ mod tests {
 			server_fn: update_data,
 			initial_loader: fetch_data,
 
-			on_success: |result| { /* handle success */ },
-
 			fields: {
 				name: CharField { required },
 			},
@@ -2656,7 +2637,7 @@ mod tests {
 		assert!(result.is_ok());
 		let typed = result.unwrap();
 		assert!(typed.initial_loader.is_some());
-		assert!(typed.callbacks.has_on_success());
+		assert!(!typed.callbacks.has_any());
 	}
 
 	// =========================================================================
@@ -2950,10 +2931,6 @@ mod tests {
 			name: FullFeaturedForm,
 			server_fn: submit_data,
 
-			state: { loading, error },
-
-			on_success: |result| { /* handle */ },
-
 			slots: {
 				before_fields: || {
 					view! { <h2>"Enter Information"</h2> }
@@ -2974,14 +2951,8 @@ mod tests {
 		// Assert
 		assert!(result.is_ok());
 		let typed = result.unwrap();
-		// Check state
-		assert!(typed.state.is_some());
-		let state = typed.state.as_ref().unwrap();
-		assert!(state.has_loading());
-		assert!(state.has_error());
-
-		// Check callbacks
-		assert!(typed.callbacks.has_on_success());
+		assert!(typed.state.is_none());
+		assert!(!typed.callbacks.has_any());
 
 		// Check slots
 		assert!(typed.slots.is_some());
@@ -2997,12 +2968,6 @@ mod tests {
 			name: CompleteStep9Form,
 			server_fn: update_profile,
 			initial_loader: get_profile,
-
-			state: { loading, error, success },
-
-			on_success: |result| {
-				navigate("/profile");
-			},
 
 			slots: {
 				before_fields: || {
@@ -3047,10 +3012,10 @@ mod tests {
 		assert!(typed.initial_loader.is_some());
 
 		// Check state
-		assert!(typed.state.is_some());
+		assert!(typed.state.is_none());
 
 		// Check callbacks
-		assert!(typed.callbacks.has_on_success());
+		assert!(!typed.callbacks.has_any());
 
 		// Check slots
 		assert!(typed.slots.is_some());
@@ -3621,8 +3586,6 @@ mod tests {
 			name: CompleteForm,
 			server_fn: create_tweet,
 
-			state: { loading, error },
-
 			derived: {
 				char_count: |form| form.content().get().len(),
 				is_valid: |form| form.char_count().get() <= 280,
@@ -3647,10 +3610,7 @@ mod tests {
 		let typed = result.unwrap();
 
 		// Check state
-		assert!(typed.state.is_some());
-		let state = typed.state.as_ref().unwrap();
-		assert!(state.has_loading());
-		assert!(state.has_error());
+		assert!(typed.state.is_none());
 
 		// Check derived
 		assert!(typed.derived.is_some());
