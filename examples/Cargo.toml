@@ -3,7 +3,6 @@ resolver = "2"
 members = [
 	"examples-tutorial-basis",
 	"examples-tutorial-rest",
-	"examples-twitter",
 ]
 
 # Note: Each example has a binary named "manage"

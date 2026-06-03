@@ -62,7 +62,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(admin-cli)* apply rustfmt to migrate_v2 codemod tests
 - apply fmt-all with updated formatter
 - apply fmt-all to convert page!/form! blocks to DSL syntax
-- *(examples)* apply reinhardt-admin fmt-all to twitter example
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-rc.30...reinhardt-web@v0.1.0) - 2026-05-22
 
 First stable release of `reinhardt-web`, after 19 alpha and 30 rc

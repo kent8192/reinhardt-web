@@ -131,7 +131,7 @@ Visit `http://127.0.0.1:8000/` in your browser.
 - `cargo make wasm-build-dev` - Build WASM only (debug)
 - `cargo make wasm-build-release` - Build WASM only (release, with wasm-opt)
 
-See [examples/examples-twitter](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-twitter) for a complete implementation.
+See [examples/examples-tutorial-basis](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis) for a complete implementation.
 
 ### Step 3: Choose Your Flavor
 
