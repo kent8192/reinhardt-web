@@ -263,7 +263,7 @@ pub enum SmtpAuthMechanism {
 /// Configuration for SMTP backend
 ///
 /// Deprecated: configure the SMTP backend through the
-/// [`EmailSettings`](reinhardt_conf::settings::email::EmailSettings) fragment and the
+/// [`EmailSettings`] fragment and the
 /// `#[settings]` macro instead. Use [`create_smtp_backend_from_settings`] (or
 /// [`backend_from_settings`]) to build a backend from settings, or
 /// `SmtpConfig::from(&settings)` for the bridge.

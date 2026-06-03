@@ -438,7 +438,7 @@ fn transform_derived(derived: &Option<FormDerived>) -> Result<Option<TypedFormDe
 ///
 /// Validates that the redirect path:
 /// - Starts with `/` (relative paths)
-/// - Or is a valid URL pattern
+/// - Or is an HTTPS URL
 /// - Supports `{param}` syntax for dynamic parameters
 fn transform_redirect(redirect: &Option<syn::LitStr>) -> Result<Option<String>> {
 	reinhardt_manouche::validator::validate_redirect_on_success(redirect)
@@ -3874,7 +3874,10 @@ mod tests {
 		let result = transform_redirect(&Some(lit));
 		assert!(result.is_err());
 		let err = result.unwrap_err().to_string();
-		assert!(err.contains("insecure HTTP"));
+		assert_eq!(
+			err,
+			"redirect_on_success rejects HTTP URLs for security. Use HTTPS URL instead."
+		);
 	}
 
 	#[test]
