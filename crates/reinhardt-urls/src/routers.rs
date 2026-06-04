@@ -173,8 +173,8 @@ pub mod versioned;
 #[cfg(native)]
 pub mod visualization;
 
-// Re-export the path! macro for compile-time path validation
-#[cfg(native)]
+// Re-export the path! macro for compile-time path validation.
+#[cfg(all(native, feature = "routers-macros"))]
 pub use reinhardt_routers_macros::path;
 
 #[cfg(native)]
