@@ -26,7 +26,7 @@ versioning = []
 metadata = []
 negotiation = []
 browsable-api = ["dep:tera"]
-openapi = ["dep:reinhardt-openapi-macros", "dep:utoipa"]
+openapi = ["dep:reinhardt-openapi-macros", "dep:tera", "dep:utoipa"]
 openapi-swagger-ui = ["openapi", "dep:utoipa-swagger-ui"]
 
 # Aggregate all REST features

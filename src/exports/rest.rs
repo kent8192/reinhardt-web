@@ -1,19 +1,36 @@
 //! REST framework re-exports.
 
+#[cfg(any(
+	feature = "api",
+	feature = "api-only",
+	feature = "standard",
+	feature = "full"
+))]
 pub use reinhardt_rest::serializers::{Deserializer, JsonSerializer, Serializer};
 
 pub use reinhardt_rest::pagination::{
 	CursorPagination, LimitOffsetPagination, PageNumberPagination, PaginatedResponse, Paginator,
 };
 
-pub use reinhardt_rest::filters::{
-	FieldOrderingExt, FilterBackend, FilterError, FilterResult, MultiTermSearch,
-};
+#[cfg(any(
+	feature = "api",
+	feature = "api-only",
+	feature = "standard",
+	feature = "full"
+))]
+pub use reinhardt_rest::filters::{FieldOrderingExt, MultiTermSearch};
+pub use reinhardt_rest::filters::{FilterBackend, FilterError, FilterResult};
 
 pub use reinhardt_rest::throttling::{
 	AnonRateThrottle, ScopedRateThrottle, Throttle, UserRateThrottle,
 };
 
+#[cfg(any(
+	feature = "api-only",
+	feature = "compressed-parsers",
+	feature = "standard",
+	feature = "full"
+))]
 pub use reinhardt_rest::parsers::{
 	FileUploadParser, FormParser, JSONParser, MediaType, MultiPartParser, ParseError, ParseResult,
 	Parser,
@@ -30,12 +47,31 @@ pub use reinhardt_rest::metadata::{
 	MetadataOptions, MetadataResponse, SimpleMetadata,
 };
 
+#[cfg(feature = "openapi")]
+pub use reinhardt_rest::negotiation::MediaType;
 pub use reinhardt_rest::negotiation::*;
 
-pub use reinhardt_rest::{
-	filters, metadata, negotiation, pagination, parsers, serializers, throttling, versioning,
-};
+#[cfg(any(
+	feature = "api-only",
+	feature = "compressed-parsers",
+	feature = "standard",
+	feature = "full"
+))]
+pub use reinhardt_rest::parsers;
+#[cfg(any(
+	feature = "api",
+	feature = "api-only",
+	feature = "standard",
+	feature = "full"
+))]
+pub use reinhardt_rest::serializers;
+pub use reinhardt_rest::{filters, metadata, negotiation, pagination, throttling, versioning};
 
+#[cfg(any(
+	feature = "browsable-api",
+	feature = "full",
+	feature = "reinhardt-browsable-api"
+))]
 pub use reinhardt_rest::browsable_api;
 
 #[cfg(feature = "openapi")]
