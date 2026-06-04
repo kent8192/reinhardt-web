@@ -510,6 +510,13 @@ async fn factory_function(#[inject] dep: Arc<Dependency>) -> ReturnType {
 }
 ```
 
+When initialization can fail, prefer `Result<T, E>` as the return type. `T` is
+the dependency you want, and `E` should be an error type used only by that
+factory. Reinhardt registers the literal return type, so `Result<T, E1>` and
+`Result<T, E2>` have different `TypeId` values even when `T` is the same.
+Consumers can request the factory output as `DependsResult<T, E>` or
+`Depends<Result<T, E>>`.
+
 **Attributes:**
 
 Scope is passed as a macro argument in key-value form.
@@ -524,13 +531,30 @@ supplied.
 **Example:**
 ```rust
 use reinhardt::di::macros::injectable_factory;
+use reinhardt::di::DependsResult;
+use reinhardt::{get, Response, StatusCode, ViewResult};
 use std::sync::Arc;
 
+#[derive(Debug)]
+struct DatabaseConnectionError;
+
 #[injectable_factory(scope = "singleton")]
-async fn create_database(#[inject] config: Arc<Config>) -> DatabaseConnection {
+async fn create_database(
+    #[inject] config: Arc<Config>,
+) -> Result<DatabaseConnection, DatabaseConnectionError> {
     DatabaseConnection::connect(&config.database_url)
         .await
-        .expect("Failed to connect to database")
+        .map_err(|_| DatabaseConnectionError)
+}
+
+#[get("/database/health", name = "database_health")]
+async fn database_health(
+    #[inject] db: DependsResult<DatabaseConnection, DatabaseConnectionError>,
+) -> ViewResult<Response> {
+    match db.into_inner() {
+        Ok(_) => Ok(Response::new(StatusCode::OK)),
+        Err(_) => Ok(Response::new(StatusCode::SERVICE_UNAVAILABLE)),
+    }
 }
 ```
 
