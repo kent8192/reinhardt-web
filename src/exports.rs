@@ -33,12 +33,20 @@ mod middleware_exports;
 #[cfg(all(any(feature = "standard", feature = "middleware"), native))]
 pub use middleware_exports::*;
 
+#[cfg(feature = "routing")]
 mod routing;
+#[cfg(feature = "routing")]
 pub use routing::*;
 
-#[cfg(all(any(feature = "api", feature = "standard", feature = "api-only"), native))]
+#[cfg(all(
+	any(feature = "api", feature = "standard", feature = "api-only"),
+	native
+))]
 mod views;
-#[cfg(all(any(feature = "api", feature = "standard", feature = "api-only"), native))]
+#[cfg(all(
+	any(feature = "api", feature = "standard", feature = "api-only"),
+	native
+))]
 pub use views::*;
 
 #[cfg(all(feature = "forms", native))]

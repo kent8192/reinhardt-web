@@ -29,6 +29,7 @@ default = ["standard"]
 # Provides routing, DI, parameter extraction, HTTP server, and core functionality
 minimal = [
   "core",   # Core types, macros, HTTP
+  "routing", # URL routing
   "di",     # Dependency injection
   "server", # HTTP server
 ]
@@ -154,7 +155,8 @@ reinhardt-browsable-api = ["reinhardt-rest", "reinhardt-rest/browsable-api"]
 browsable-api = ["reinhardt-browsable-api"]
 # Client-router feature: Enables UnifiedRouter<V> with both .server() and .client() methods
 # Required for unified client/server routing in WASM applications
-client-router = ["reinhardt-urls/client-router"]
+client-router = ["routing", "reinhardt-urls/client-router"]
+routing = ["dep:reinhardt-urls"]
 
 # Plugin system
 dentdelion = ["reinhardt-dentdelion"]
@@ -289,7 +291,7 @@ middleware-auth-jwt = [
 [dependencies]
 # WASM-compatible dependencies (always included)
 reinhardt-pages = { workspace = true, optional = true }
-reinhardt-urls = { workspace = true }
+reinhardt-urls = { workspace = true, optional = true }
 reinhardt-test = { workspace = true, optional = true }
 
 reinhardt-core = {workspace = true, features = ["types"]}

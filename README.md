@@ -427,12 +427,12 @@ framework for discovery via the `inventory` crate.
 **Note:** The `reinhardt::prelude` includes commonly used types. Key exports include:
 
 **Always Available:**
-- Core routing and views: `Router`, `DefaultRouter`, `ServerRouter`, `View`, `ListView`, `DetailView`
-- ViewSets: `ViewSet`, `ModelViewSet`, `ReadOnlyModelViewSet`
 - HTTP: `StatusCode`
 
 **Feature-Dependent:**
 - **`core` feature**: `Request`, `Response`, `Handler`, `Middleware`, Signals (`post_save`, `pre_save`, etc.)
+- **`routing` feature**: `Router`, `DefaultRouter`, `ServerRouter`
+- **`api`, `standard`, or `api-only` features**: `View`, `ListView`, `DetailView`, `ViewSet`, `ModelViewSet`, `ReadOnlyModelViewSet`
 - **`database` feature**: `Model`, `DatabaseConnection`, `F`, `Q`, `Transaction`, `atomic`, Database functions (`Concat`, `Upper`, `Lower`, `Now`, `CurrentDate`), Window functions (`Window`, `RowNumber`, `Rank`, `DenseRank`), Constraints (`UniqueConstraint`, `CheckConstraint`, `ForeignKeyConstraint`)
 - **`auth` feature**: `BaseUser`, `FullUser`, `PermissionsMixin`, `BaseUserManager`, `Argon2Hasher`, `GroupManager`, `CreateGroupData`, `Permission`, `ObjectPermission`, `ObjectPermissionManager`
 - **`minimal`, `standard`, or `di` features**: `Body`, `Cookie`, `Header`, `Json`, `Path`, `Query`
