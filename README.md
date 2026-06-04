@@ -116,7 +116,9 @@ The full lifecycle policy lives in
 
 Reinhardt is a modular framework. Choose your starting point:
 
-> **New here?** Start with the default standard setup. Use `full` if you need all features, or `minimal` for lightweight APIs.
+> **New here?** Start with the default standard setup. Use `minimal` plus explicit opt-in features for lightweight APIs. `full` remains available as the exhaustive flagship preset, but it is not the recommended starting point for normal applications.
+
+Feature presets are layered. `full`, `standard`, and `minimal` are top-level presets; each preset enables lower-level feature groups, and those groups enable atom feature flags such as `viewset-routing`, `signals`, `image-validation`, `compressed-parsers`, `commands-autoreload`, `browsable-api`, and `openapi-swagger-ui`. External dependencies are attached at the atom feature boundary wherever possible, so choosing `minimal` or `standard` does not implicitly import every dependency carried by `full`.
 
 ### Default: Standard Setup (Balanced) ⚠️ Default Preset
 
@@ -132,6 +134,8 @@ reinhardt = { version = "0.2.0-rc.2", package = "reinhardt-web" }
 
 **Includes:** Core, Database (PostgreSQL), REST API (serializers, parsers, pagination, filters, throttling, versioning, metadata, content negotiation), Auth, Middleware (sessions), Pages (WASM Frontend with SSR), Signals
 
+**Opt-in atoms:** OpenAPI generation/UI, browsable API templates, compressed request parsers, static-file compression, and image validation are intentionally outside `standard`. Add `openapi`, `openapi-swagger-ui`, `browsable-api`, `compressed-parsers`, `middleware-compression`, or `image-validation` when an application needs them.
+
 **Binary**: ~20-30 MB | **Compile**: Medium
 
 Then use in your code:
@@ -140,9 +144,9 @@ use reinhardt::prelude::*;
 use reinhardt::{Request, Response, StatusCode};
 ```
 
-### Option 1: Full-Featured (All Batteries Included)
+### Option 1: Full-Featured (Exhaustive Flagship)
 
-For projects that need every available component:
+For compatibility checks, framework development, and projects that intentionally need every available component:
 
 <!-- reinhardt-version-sync -->
 ```toml
@@ -152,7 +156,7 @@ reinhardt = { version = "0.2.0-rc.2", package = "reinhardt-web", default-feature
 
 **Includes:** Everything in Standard, plus Admin, GraphQL, WebSockets, Cache, i18n, Mail, Static Files, Storage, and more
 
-**Binary**: ~50+ MB | **Compile**: Slower, but everything works out of the box
+**Binary**: ~50+ MB | **Compile**: Slowest, because this preset intentionally pulls the complete dependency graph
 
 ### Option 2: Microservices (Minimal Setup)
 
@@ -427,12 +431,12 @@ framework for discovery via the `inventory` crate.
 **Note:** The `reinhardt::prelude` includes commonly used types. Key exports include:
 
 **Always Available:**
-- Core routing and views: `Router`, `DefaultRouter`, `ServerRouter`, `View`, `ListView`, `DetailView`
-- ViewSets: `ViewSet`, `ModelViewSet`, `ReadOnlyModelViewSet`
 - HTTP: `StatusCode`
 
 **Feature-Dependent:**
 - **`core` feature**: `Request`, `Response`, `Handler`, `Middleware`, Signals (`post_save`, `pre_save`, etc.)
+- **`routing` feature**: `Router`, `DefaultRouter`, `ServerRouter`
+- **`api`, `standard`, or `api-only` features**: `View`, `ListView`, `DetailView`, `ViewSet`, `ModelViewSet`, `ReadOnlyModelViewSet`
 - **`database` feature**: `Model`, `DatabaseConnection`, `F`, `Q`, `Transaction`, `atomic`, Database functions (`Concat`, `Upper`, `Lower`, `Now`, `CurrentDate`), Window functions (`Window`, `RowNumber`, `Rank`, `DenseRank`), Constraints (`UniqueConstraint`, `CheckConstraint`, `ForeignKeyConstraint`)
 - **`auth` feature**: `BaseUser`, `FullUser`, `PermissionsMixin`, `BaseUserManager`, `Argon2Hasher`, `GroupManager`, `CreateGroupData`, `Permission`, `ObjectPermission`, `ObjectPermissionManager`
 - **`minimal`, `standard`, or `di` features**: `Body`, `Cookie`, `Header`, `Json`, `Path`, `Query`

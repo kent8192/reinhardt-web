@@ -28,17 +28,30 @@ mod rest;
 #[cfg(all(feature = "rest", native))]
 pub use rest::*;
 
-#[cfg(native)]
+#[cfg(all(any(feature = "standard", feature = "middleware"), native))]
 mod middleware_exports;
-#[cfg(native)]
+#[cfg(all(any(feature = "standard", feature = "middleware"), native))]
 pub use middleware_exports::*;
 
+#[cfg(feature = "routing")]
 mod routing;
+#[cfg(feature = "routing")]
 pub use routing::*;
 
-#[cfg(native)]
+#[cfg(all(feature = "websockets", native))]
+mod websockets;
+#[cfg(all(feature = "websockets", native))]
+pub use websockets::*;
+
+#[cfg(all(
+	any(feature = "api", feature = "standard", feature = "api-only"),
+	native
+))]
 mod views;
-#[cfg(native)]
+#[cfg(all(
+	any(feature = "api", feature = "standard", feature = "api-only"),
+	native
+))]
 pub use views::*;
 
 #[cfg(all(feature = "forms", native))]
@@ -46,9 +59,9 @@ mod forms;
 #[cfg(all(feature = "forms", native))]
 pub use forms::*;
 
-#[cfg(native)]
+#[cfg(all(any(feature = "minimal", feature = "standard", feature = "di"), native))]
 mod di;
-#[cfg(native)]
+#[cfg(all(any(feature = "minimal", feature = "standard", feature = "di"), native))]
 pub use di::*;
 
 #[cfg(native)]

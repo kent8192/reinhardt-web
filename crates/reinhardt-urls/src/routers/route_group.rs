@@ -286,6 +286,7 @@ impl RouteGroup {
 	/// let group = RouteGroup::new()
 	///     .viewset("/users", UserViewSet);
 	/// ```
+	#[cfg(feature = "viewsets")]
 	pub fn viewset<V: reinhardt_views::viewsets::ViewSet + 'static>(
 		mut self,
 		prefix: &str,
@@ -310,6 +311,7 @@ impl RouteGroup {
 	/// slot so `ViewSet::get_extra_actions` finds them at dispatch time.
 	///
 	/// Refs Issue #4507.
+	#[cfg(feature = "viewsets")]
 	pub fn viewset_with_actions<V, M>(
 		self,
 		prefix: &str,
@@ -583,7 +585,7 @@ mod tests {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "viewsets"))]
 mod viewset_with_actions_tests {
 	use super::*;
 	use async_trait::async_trait;

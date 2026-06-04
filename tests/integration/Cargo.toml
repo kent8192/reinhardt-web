@@ -50,7 +50,7 @@ reinhardt-openapi-macros = { workspace = true }
 reinhardt-throttling = { workspace = true }
 reinhardt-shortcuts = { workspace = true, features = ["database"] }
 reinhardt-forms = { workspace = true }
-reinhardt-utils = { workspace = true, features = ["cache", "logging", "staticfiles", "storage", "memcached-backend", "redis-backend", "redis-sentinel"] }
+reinhardt-utils = { workspace = true, features = ["cache", "compression", "logging", "staticfiles", "storage", "memcached-backend", "redis-backend", "redis-sentinel"] }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
 reinhardt-urls = { workspace = true }
 reinhardt-conf = { workspace = true }

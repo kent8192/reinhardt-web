@@ -19,7 +19,6 @@ use hyper::header::{REFERER, USER_AGENT};
 use regex::Regex;
 use reinhardt_conf::settings;
 use reinhardt_http::{Handler, Middleware, Request, Response, Result};
-use reinhardt_mail;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -280,7 +279,7 @@ impl BrokenLinkEmailsMiddleware {
 			)
 		};
 
-		// Send email notifications to managers
+		#[cfg(feature = "broken-link-email")]
 		if !managers.is_empty() {
 			let subject = format!("Broken link detected: {}", path);
 			let body = format!(
@@ -334,6 +333,13 @@ impl BrokenLinkEmailsMiddleware {
 					}
 				});
 			}
+		}
+
+		#[cfg(not(feature = "broken-link-email"))]
+		if !managers.is_empty() {
+			log::debug!(
+				"Broken link email notification skipped because the broken-link-email feature is disabled"
+			);
 		}
 	}
 }

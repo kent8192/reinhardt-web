@@ -2,15 +2,19 @@
 
 use async_trait::async_trait;
 use reinhardt_http::{Handler, Request, Response, Result};
+#[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::{Action, ViewSet};
+#[cfg(feature = "viewsets")]
 use std::sync::Arc;
 
 /// Handler adapter for ViewSets
+#[cfg(feature = "viewsets")]
 pub(crate) struct ViewSetHandler {
 	pub viewset: Arc<dyn ViewSet>,
 	pub action: Action,
 }
 
+#[cfg(feature = "viewsets")]
 #[async_trait]
 impl Handler for ViewSetHandler {
 	async fn handle(&self, req: Request) -> Result<Response> {

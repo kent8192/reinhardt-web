@@ -13,9 +13,10 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-default = ["serializers", "parsers"]
+default = ["serializers", "parsers", "compressed-parsers", "browsable-api"]
 serializers = ["reinhardt-core/serializers", "dep:reinhardt-db"]
 parsers = []
+compressed-parsers = ["parsers", "reinhardt-core/compressed-parsers"]
 jwt = ["reinhardt-auth/jwt"]
 # Subcrate features (always enabled as non-optional dependencies, but exposed as features for compatibility)
 pagination = []
@@ -24,13 +25,15 @@ throttling = []
 versioning = []
 metadata = []
 negotiation = []
-browsable-api = []
-openapi = []
+browsable-api = ["dep:tera"]
+openapi = ["dep:reinhardt-openapi-macros", "dep:tera", "dep:utoipa"]
+openapi-swagger-ui = ["openapi", "dep:utoipa-swagger-ui"]
 
 # Aggregate all REST features
 rest-full = [
   "serializers",
   "parsers",
+  "compressed-parsers",
   "jwt",
   "pagination",
   "filters",
@@ -38,8 +41,9 @@ rest-full = [
   "versioning",
   "metadata",
   "negotiation",
-  "browsable-api",
-  "openapi",
+	"browsable-api",
+	"openapi",
+  "openapi-swagger-ui",
 ]
 full = ["caching", "database-optimization", "geo-limiting", "json", "pages", "redis-backend", "serializers", "xml", "yaml"]
 caching = ["dep:reinhardt-utils"]
@@ -53,12 +57,12 @@ geo-limiting = ["reinhardt-throttling/geo-limiting"]
 
 [dependencies]
 # Core dependencies
-reinhardt-core = { workspace = true, features = ["exception", "macros", "negotiation", "pagination", "parsers", "serializers", "types"] }
+reinhardt-core = { workspace = true, default-features = false, features = ["exception", "macros", "negotiation", "pagination", "parsers", "serializers", "types"] }
 reinhardt-conf = { workspace = true, features = ["settings"] }
-reinhardt-db = { workspace = true, optional = true, features = ["backends", "orm", "pool"] }
+reinhardt-db = { workspace = true, default-features = false, optional = true, features = ["backends", "orm", "pool"] }
 
 # Authentication (required for auth types re-export)
-reinhardt-auth = { workspace = true }
+reinhardt-auth = { workspace = true, default-features = false, features = ["params"] }
 
 # Throttling framework
 reinhardt-throttling = { workspace = true }
@@ -100,8 +104,8 @@ multer = "3.0"
 # Rendering
 quick-xml = { version = "0.38.3", features = ["serialize"] }
 csv = "1.3"
-utoipa = { version = "5.4", features = ["url", "uuid", "yaml"] }
-tera = { workspace = true }
+utoipa = { version = "5.4", features = ["url", "uuid", "yaml"], optional = true }
+tera = { workspace = true, optional = true }
 anyhow = { workspace = true }
 reinhardt-utils = { workspace = true, optional = true, features = ["cache"] }
 regex = "1.10"
@@ -111,13 +115,13 @@ hex = "0.4"
 reinhardt-query = { workspace = true }
 log = "0.4"
 tracing = { workspace = true }
-reinhardt-openapi-macros = { workspace = true }
+reinhardt-openapi-macros = { workspace = true, optional = true }
 indexmap = { version = "2.0", features = ["serde"] }
 http = "1.3.1"
 uuid = { workspace = true }
 utoipa-swagger-ui = { version = "^9.0.2", default-features = false, features = [
     "vendored",
-] }
+], optional = true }
 once_cell = { workspace = true }
 base64 = { workspace = true }
 inventory = "0.3"

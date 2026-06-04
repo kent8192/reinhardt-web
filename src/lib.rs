@@ -190,7 +190,7 @@ pub mod reinhardt_core {
 	pub use reinhardt_core::*;
 }
 
-#[cfg(native)]
+#[cfg(all(feature = "core", native))]
 #[doc(hidden)]
 pub mod reinhardt_http {
 	pub use reinhardt_http::*;
@@ -261,7 +261,7 @@ pub mod forms;
 pub mod graphql;
 #[cfg(all(feature = "grpc", native))]
 pub mod grpc;
-#[cfg(native)]
+#[cfg(all(feature = "core", native))]
 pub mod http;
 #[cfg(all(feature = "i18n", native))]
 pub mod i18n;
@@ -283,7 +283,7 @@ pub mod tasks;
 pub mod template;
 #[cfg(feature = "test")]
 pub mod test;
-#[cfg(native)]
+#[cfg(all(feature = "routing", native))]
 pub mod urls;
 
 /// WASM shim for the `urls` module (Issue #4161).
@@ -305,7 +305,7 @@ pub mod urls;
 /// Without `client-router`, an inert stub is exposed so that the path
 /// resolves; user bodies that invoke `.server`/`.client` on the stub are
 /// expected to be no-ops in that minimal configuration.
-#[cfg(not(native))]
+#[cfg(all(feature = "routing", not(native)))]
 pub mod urls {
 	/// Wasm-side stub mirroring `reinhardt_urls::prelude`.
 	pub mod prelude {
@@ -363,9 +363,15 @@ pub mod urls {
 	pub mod proxy {}
 }
 
-#[cfg(native)]
+#[cfg(all(
+	any(feature = "cache", feature = "static-files", feature = "storage"),
+	native
+))]
 pub mod utils;
-#[cfg(native)]
+#[cfg(all(
+	any(feature = "api", feature = "standard", feature = "api-only"),
+	native
+))]
 pub mod views;
 
 // ============================================================================
@@ -395,10 +401,11 @@ pub mod macros {
 #[doc(hidden)]
 pub use inventory;
 
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[cfg(all(feature = "routing", target_family = "wasm", target_os = "unknown"))]
 #[doc(hidden)]
 pub use reinhardt_urls::inventory;
 
+#[cfg(feature = "routing")]
 #[doc(hidden)]
 pub use ::reinhardt_urls;
 

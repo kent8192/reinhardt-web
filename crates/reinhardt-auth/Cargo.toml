@@ -13,18 +13,19 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-default = ["params"]
+default = ["params", "basic"]
 
 # Parameter extraction support for CurrentUser DI
 params = ["reinhardt-di/params"]
 
 # Fine-grained authentication features
-jwt = []
-sessions = []
+jwt = ["dep:jsonwebtoken"]
+sessions = ["dep:jsonwebtoken"]
 oauth = []
 token = []
-argon2-hasher = []
-social = ["p256"]
+basic = ["dep:argon2", "dep:password-hash"]
+argon2-hasher = ["basic"]
+social = ["dep:jsonwebtoken", "p256"]
 
 # Database and session storage (ORM model support)
 database = ["ctor", "reinhardt-apps", "reinhardt-query", "sqlx"]
@@ -68,15 +69,15 @@ full = [
 [dependencies]
 reinhardt-auth-macros = { workspace = true }
 reinhardt-conf = { workspace = true }
-reinhardt-core = { workspace = true, features = ["exception", "macros", "types"] }
+reinhardt-core = { workspace = true, default-features = false, features = ["exception", "macros", "types"] }
 reinhardt-di = { workspace = true }
 reinhardt-db = { workspace = true, features = ["migrations", "orm"] }
 reinhardt-http = { workspace = true }
 hyper = { workspace = true }
-argon2 = { workspace = true }
-password-hash = { workspace = true }
+argon2 = { workspace = true, optional = true }
+password-hash = { workspace = true, optional = true }
 rand = { workspace = true }
-jsonwebtoken = { workspace = true }
+jsonwebtoken = { workspace = true, optional = true }
 p256 = { version = "0.13", optional = true }
 clap = { version = "4.5", features = ["derive"] }
 console = "0.16.1"

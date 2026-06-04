@@ -59,6 +59,7 @@
 //! This crate contains unit tests for the integrated modules.
 //! Integration tests are located in `tests/integration/`.
 
+#[cfg(feature = "browsable-api")]
 pub mod browsable_api;
 pub mod filters;
 pub mod metadata;
@@ -101,6 +102,7 @@ pub use authentication::{Claims, JwtAuth};
 pub use response::{ApiResponse, IntoApiResponse, PaginatedResponse, ResponseBuilder};
 
 // Re-export from specialized crates
+#[cfg(feature = "browsable-api")]
 pub use crate::browsable_api::*;
 
 // Re-export integrated modules at top level for convenience

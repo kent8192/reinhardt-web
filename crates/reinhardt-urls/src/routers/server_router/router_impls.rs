@@ -5,6 +5,7 @@
 //! `ViewSetBuilder`.
 
 use super::ServerRouter;
+#[cfg(feature = "viewsets")]
 use super::types::ViewRoute;
 use async_trait::async_trait;
 use reinhardt_http::{Error, Handler, MiddlewareChain, Request, Response, Result};
@@ -12,11 +13,14 @@ use std::sync::Arc;
 
 impl std::fmt::Debug for ServerRouter {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("ServerRouter")
+		let mut debug = f.debug_struct("ServerRouter");
+		debug
 			.field("prefix", &self.prefix)
 			.field("namespace", &self.namespace)
-			.field("routes", &self.routes.len())
-			.field("viewsets", &self.viewsets.len())
+			.field("routes", &self.routes.len());
+		#[cfg(feature = "viewsets")]
+		debug.field("viewsets", &self.viewsets.len());
+		debug
 			.field("functions", &self.functions.len())
 			.field("views", &self.views.len())
 			.field("children", &self.children.len())
@@ -112,6 +116,7 @@ impl Handler for ServerRouter {
 /// Implement RegisterViewSet trait for ServerRouter
 ///
 /// This allows ViewSetBuilder to directly register handlers to the router.
+#[cfg(feature = "viewsets")]
 impl reinhardt_views::viewsets::RegisterViewSet for ServerRouter {
 	fn register_handler(&mut self, path: &str, handler: Arc<dyn Handler>) {
 		self.views.push(ViewRoute {
