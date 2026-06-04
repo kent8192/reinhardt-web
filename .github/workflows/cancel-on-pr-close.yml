@@ -26,7 +26,13 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const targetWorkflows = ['ci.yml', 'examples-test-standalone.yml', 'semver-check-standalone.yml'];
+            const targetWorkflows = [
+              'ci.yml',
+              'examples-test.yml',
+              'examples-test-standalone.yml',
+              'semver-check.yml',
+              'semver-check-standalone.yml',
+            ];
             const activeStatuses = ['queued', 'in_progress', 'waiting', 'requested'];
 
             const prCache = new Map();
