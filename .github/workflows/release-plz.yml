@@ -27,6 +27,9 @@ on:
         default: release
   pull_request:
     types: [closed]
+    branches:
+      - main
+      - 'develop/**'
     paths: ['announcements/**']
 
 # Serialize per-base-branch but never cancel an in-flight release-plz run;
@@ -737,9 +740,16 @@ jobs:
 
   post-announcement:
     name: Post Announcement to Discussions
+    # Announcement PRs may be reviewed and merged on either stable main or an
+    # active develop release train. Keep this aligned with the pull_request
+    # trigger branch filter above.
     if: >
       github.event_name == 'pull_request' &&
       github.event.pull_request.merged == true &&
+      (
+        github.event.pull_request.base.ref == 'main' ||
+        startsWith(github.event.pull_request.base.ref, 'develop/')
+      ) &&
       contains(github.event.pull_request.labels.*.name, 'announcement')
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
     timeout-minutes: 10
