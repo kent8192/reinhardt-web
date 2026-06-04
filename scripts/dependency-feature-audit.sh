@@ -43,9 +43,9 @@ cd "${root}"
 declare -A max_crates=(
   ["facade-no-default"]=200
   ["facade-core"]=320
-  ["facade-minimal"]=330
-  ["facade-default"]=700
-  ["facade-standard"]=700
+  ["facade-minimal"]=310
+  ["facade-default"]=610
+  ["facade-standard"]=610
   ["facade-database"]=470
   ["facade-db-postgres"]=470
   ["facade-db-sqlite"]=470

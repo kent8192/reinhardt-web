@@ -86,7 +86,7 @@ aes-gcm = { workspace = true }
 sha2 = { workspace = true }
 rand = { workspace = true }
 image = { workspace = true, optional = true }
-flate2 = { workspace = true }
+flate2 = { workspace = true, optional = true }
 phonenumber = { workspace = true }
 smallvec = "1.13"
 paste = "1.0"
@@ -101,6 +101,7 @@ default = [
   "hybrid",
   "associations",
   "image-fields",
+  "compressed-fields",
 ]
 
 # Module features (conditionally compiled when feature is enabled)
@@ -113,6 +114,7 @@ hybrid = []
 associations = []
 contenttypes = []
 image-fields = ["dep:image"]
+compressed-fields = ["dep:flate2"]
 nosql = ["dep:bson"]
 backends-settings = ["backends"]
 
@@ -130,6 +132,7 @@ database-full = [
   "hybrid",
   "associations",
   "contenttypes",
+  "compressed-fields",
   "image-fields",
   "all-databases",
   "full",

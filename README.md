@@ -118,7 +118,7 @@ Reinhardt is a modular framework. Choose your starting point:
 
 > **New here?** Start with the default standard setup. Use `minimal` plus explicit opt-in features for lightweight APIs. `full` remains available as the exhaustive flagship preset, but it is not the recommended starting point for normal applications.
 
-Feature presets are layered. `full`, `standard`, and `minimal` are top-level presets; each preset enables lower-level feature groups, and those groups enable atom feature flags such as `viewset-routing`, `signals`, `image-validation`, `commands-autoreload`, and `openapi-swagger-ui`. External dependencies are attached at the atom feature boundary wherever possible, so choosing `minimal` or `standard` does not implicitly import every dependency carried by `full`.
+Feature presets are layered. `full`, `standard`, and `minimal` are top-level presets; each preset enables lower-level feature groups, and those groups enable atom feature flags such as `viewset-routing`, `signals`, `image-validation`, `compressed-parsers`, `commands-autoreload`, `browsable-api`, and `openapi-swagger-ui`. External dependencies are attached at the atom feature boundary wherever possible, so choosing `minimal` or `standard` does not implicitly import every dependency carried by `full`.
 
 ### Default: Standard Setup (Balanced) ⚠️ Default Preset
 
@@ -133,6 +133,8 @@ reinhardt = { version = "0.2.0-rc.2", package = "reinhardt-web" }
 ```
 
 **Includes:** Core, Database (PostgreSQL), REST API (serializers, parsers, pagination, filters, throttling, versioning, metadata, content negotiation), Auth, Middleware (sessions), Pages (WASM Frontend with SSR), Signals
+
+**Opt-in atoms:** OpenAPI generation/UI, browsable API templates, compressed request parsers, static-file compression, and image validation are intentionally outside `standard`. Add `openapi`, `openapi-swagger-ui`, `browsable-api`, `compressed-parsers`, `middleware-compression`, or `image-validation` when an application needs them.
 
 **Binary**: ~20-30 MB | **Compile**: Medium
 

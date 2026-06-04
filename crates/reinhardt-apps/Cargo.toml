@@ -39,8 +39,6 @@ tokio = { workspace = true }
 hyper = { workspace = true }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = { workspace = true }
-flate2 = { workspace = true }
-brotli = { workspace = true }
 reqwest = { workspace = true }
 
 [features]

@@ -35,8 +35,8 @@ futures-util = "0.3"
 urlencoding = "2.1"
 quick-xml = { version = "0.38.3", optional = true }
 serde_yaml = { workspace = true, optional = true }
-flate2 = { workspace = true }
-brotli = { workspace = true }
+flate2 = { workspace = true, optional = true }
+brotli = { workspace = true, optional = true }
 rmp-serde = { workspace = true }
 prost = { workspace = true }
 serial_test = { workspace = true, optional = true }
@@ -96,6 +96,7 @@ serializers = ["serde"]
 messages = ["serde"]
 negotiation = []
 parsers = []
+compressed-parsers = ["parsers", "dep:brotli", "dep:flate2"]
 pagination = ["serde"]
 reactive = []
 
@@ -117,6 +118,7 @@ core-full = [
   "messages",
   "negotiation",
   "parsers",
+  "compressed-parsers",
   "pagination",
   "reactive",
   "full",
@@ -124,7 +126,7 @@ core-full = [
 ]
 
 # Full feature with all optional functionality
-full = ["i18n", "image-validation", "json", "jsonschema", "page", "parallel", "serde", "std", "xml", "yaml"]
+full = ["compressed-parsers", "i18n", "image-validation", "json", "jsonschema", "page", "parallel", "serde", "std", "xml", "yaml"]
 std = []
 json = []
 xml = ["dep:quick-xml", "dep:serde-xml-rs"]

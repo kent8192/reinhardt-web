@@ -105,6 +105,7 @@ templates = ["reinhardt-pages"]
 # pages + web-sys full features for WASM applications
 pages-web-sys-full = ["pages", "reinhardt-pages/web-sys-full"]
 image-validation = ["reinhardt-core/image-validation"]
+compressed-parsers = ["core", "reinhardt-core/compressed-parsers", "reinhardt-rest?/compressed-parsers"]
 # Opt-in DOM-based navigation diagnostic for SPA navigation regression
 # debugging. When enabled, the framework writes the most recent SPA
 # navigation site to `document.body.dataset.reinhardtNavSite`, bypassing
@@ -155,10 +156,10 @@ server-fn-test = ["test", "reinhardt-test/server-fn-test"]
 # `reinhardt::test::msw::MockServiceWorker` and triggers `MockableServerFn`
 # impl generation for `#[server_fn]` in downstream crates.
 msw = ["test", "pages", "reinhardt-test/msw", "reinhardt-pages/msw"]
-openapi = ["reinhardt-rest", "reinhardt-rest/openapi", "rest", "dep:inventory"]
+openapi = ["reinhardt-rest", "reinhardt-rest/openapi", "reinhardt-views?/openapi", "rest", "dep:inventory"]
 openapi-swagger-ui = ["openapi", "reinhardt-rest/openapi-swagger-ui"]
 openapi-router = ["reinhardt-openapi", "openapi", "reinhardt-commands/openapi-router"]
-reinhardt-browsable-api = ["reinhardt-rest", "reinhardt-rest/browsable-api"]
+reinhardt-browsable-api = ["reinhardt-rest", "reinhardt-rest/browsable-api", "reinhardt-views?/browsable-api"]
 browsable-api = ["reinhardt-browsable-api"]
 # Client-router feature: Enables UnifiedRouter<V> with both .server() and .client() methods
 # Required for unified client/server routing in WASM applications
@@ -482,7 +483,7 @@ reinhardt-core = { path = "crates/reinhardt-core", version = "0.2.0-rc.2", defau
 reinhardt-di = { path = "crates/reinhardt-di", version = "0.2.0-rc.2" }
 reinhardt-http = { path = "crates/reinhardt-http", version = "0.2.0-rc.2" }
 reinhardt-server = { path = "crates/reinhardt-server", version = "0.2.0-rc.2" }
-reinhardt-views = { path = "crates/reinhardt-views", version = "0.2.0-rc.2" }
+reinhardt-views = { path = "crates/reinhardt-views", version = "0.2.0-rc.2", default-features = false }
 reinhardt-urls = { path = "crates/reinhardt-urls", version = "0.2.0-rc.2", default-features = false }
 reinhardt-router = { path = "crates/reinhardt-router", version = "0.2.0-rc.2" }
 reinhardt-middleware = { path = "crates/reinhardt-middleware", version = "0.2.0-rc.2", default-features = false }

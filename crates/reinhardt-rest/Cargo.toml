@@ -13,9 +13,10 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-default = ["serializers", "parsers"]
+default = ["serializers", "parsers", "compressed-parsers", "browsable-api"]
 serializers = ["reinhardt-core/serializers", "dep:reinhardt-db"]
 parsers = []
+compressed-parsers = ["parsers", "reinhardt-core/compressed-parsers"]
 jwt = ["reinhardt-auth/jwt"]
 # Subcrate features (always enabled as non-optional dependencies, but exposed as features for compatibility)
 pagination = []
@@ -24,14 +25,15 @@ throttling = []
 versioning = []
 metadata = []
 negotiation = []
-browsable-api = []
-openapi = []
+browsable-api = ["dep:tera"]
+openapi = ["dep:reinhardt-openapi-macros", "dep:utoipa"]
 openapi-swagger-ui = ["openapi", "dep:utoipa-swagger-ui"]
 
 # Aggregate all REST features
 rest-full = [
   "serializers",
   "parsers",
+  "compressed-parsers",
   "jwt",
   "pagination",
   "filters",
@@ -102,8 +104,8 @@ multer = "3.0"
 # Rendering
 quick-xml = { version = "0.38.3", features = ["serialize"] }
 csv = "1.3"
-utoipa = { version = "5.4", features = ["url", "uuid", "yaml"] }
-tera = { workspace = true }
+utoipa = { version = "5.4", features = ["url", "uuid", "yaml"], optional = true }
+tera = { workspace = true, optional = true }
 anyhow = { workspace = true }
 reinhardt-utils = { workspace = true, optional = true, features = ["cache"] }
 regex = "1.10"
@@ -113,7 +115,7 @@ hex = "0.4"
 reinhardt-query = { workspace = true }
 log = "0.4"
 tracing = { workspace = true }
-reinhardt-openapi-macros = { workspace = true }
+reinhardt-openapi-macros = { workspace = true, optional = true }
 indexmap = { version = "2.0", features = ["serde"] }
 http = "1.3.1"
 uuid = { workspace = true }
