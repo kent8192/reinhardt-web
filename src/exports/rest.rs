@@ -3,6 +3,7 @@
 #[cfg(any(
 	feature = "api",
 	feature = "api-only",
+	feature = "rest",
 	feature = "standard",
 	feature = "full"
 ))]
@@ -15,6 +16,7 @@ pub use reinhardt_rest::pagination::{
 #[cfg(any(
 	feature = "api",
 	feature = "api-only",
+	feature = "rest",
 	feature = "standard",
 	feature = "full"
 ))]
@@ -28,6 +30,7 @@ pub use reinhardt_rest::throttling::{
 #[cfg(any(
 	feature = "api-only",
 	feature = "compressed-parsers",
+	feature = "rest",
 	feature = "standard",
 	feature = "full"
 ))]
@@ -54,6 +57,7 @@ pub use reinhardt_rest::negotiation::*;
 #[cfg(any(
 	feature = "api-only",
 	feature = "compressed-parsers",
+	feature = "rest",
 	feature = "standard",
 	feature = "full"
 ))]
@@ -61,6 +65,7 @@ pub use reinhardt_rest::parsers;
 #[cfg(any(
 	feature = "api",
 	feature = "api-only",
+	feature = "rest",
 	feature = "standard",
 	feature = "full"
 ))]

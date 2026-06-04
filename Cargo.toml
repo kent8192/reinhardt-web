@@ -141,8 +141,14 @@ introspect = ["reinhardt-commands/introspect"]
 
 # Parent crate features (new module structure)
 conf = ["reinhardt-conf"]
-core = ["reinhardt-apps", "dep:reinhardt-http", "dep:inventory"]
-rest = ["reinhardt-rest"]
+core = [
+  "reinhardt-core/exception",
+  "reinhardt-core/validators",
+  "reinhardt-apps",
+  "dep:reinhardt-http",
+  "dep:inventory",
+]
+rest = ["reinhardt-rest", "reinhardt-rest/serializers", "reinhardt-rest/parsers"]
 messages = ["reinhardt-core/messages"]
 signals = ["reinhardt-core/signals"]
 # DI feature: Uses reinhardt-core/di which internally enables reinhardt-di/params
