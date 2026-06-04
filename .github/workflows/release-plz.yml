@@ -462,16 +462,23 @@ jobs:
 
   release-announcement-pr:
     name: Create Release Announcement PR
-    # Announcements are produced only for releases originating from main.
-    # Pre-release tags from develop/** push are skipped by the branch guard
-    # below (github.ref == 'refs/heads/main'). The previous stable-only tag
-    # filter was removed in #4692 because the branch guard already enforces
-    # the intent of #4541, and the regex also prevented legitimate RC
-    # releases on main (e.g. v0.1.0-rc.30) from receiving announcements.
+    # Announcements are produced for release tags originating from stable main
+    # and active develop release trains. Other branch pushes are skipped by the
+    # branch guard below. The previous stable-only tag filter was removed in
+    # #4692 because branch origin is the intent boundary for announcements, and
+    # the regex also prevented legitimate RC releases from receiving
+    # announcements.
     if: |
       always() &&
       (
-        (github.event_name == 'push' && needs.release-plz-release.outputs.released == 'true' && github.ref == 'refs/heads/main') ||
+        (
+          github.event_name == 'push' &&
+          needs.release-plz-release.outputs.released == 'true' &&
+          (
+            github.ref == 'refs/heads/main' ||
+            startsWith(github.ref, 'refs/heads/develop/')
+          )
+        ) ||
         (github.event_name == 'workflow_dispatch')
       )
     needs: [release-plz-release]
