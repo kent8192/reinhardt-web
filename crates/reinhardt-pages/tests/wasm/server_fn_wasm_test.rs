@@ -12,6 +12,7 @@ use wasm_bindgen_test::*;
 wasm_bindgen_test_configure!(run_in_browser);
 
 use reinhardt_pages::csrf::{CSRF_HEADER_NAME, csrf_headers};
+use reinhardt_pages::server_fn::resolve_endpoint;
 use reinhardt_pages::testing::{cleanup_csrf_fixtures, setup_csrf_cookie, setup_csrf_meta_tag};
 
 // ============================================================================
@@ -133,6 +134,23 @@ fn test_csrf_headers_fallback_to_meta() {
 // ============================================================================
 // Server Function Client Stub Verification
 // ============================================================================
+
+#[wasm_bindgen_test]
+fn test_resolve_endpoint_absolutizes_wasm_path() {
+	let endpoint = resolve_endpoint("/api/server_fn/example");
+	assert!(
+		web_sys::Url::new(&endpoint).is_ok(),
+		"endpoint should be absolute for reqwest: {endpoint}"
+	);
+	assert!(
+		endpoint.starts_with("http://") || endpoint.starts_with("https://"),
+		"endpoint should include a browser HTTP origin: {endpoint}"
+	);
+	assert!(
+		endpoint.ends_with("/api/server_fn/example"),
+		"endpoint should preserve the server_fn path: {endpoint}"
+	);
+}
 
 /// Test that automatic CSRF injection produces valid header format
 ///
