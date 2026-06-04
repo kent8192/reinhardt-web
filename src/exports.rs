@@ -38,6 +38,11 @@ mod routing;
 #[cfg(feature = "routing")]
 pub use routing::*;
 
+#[cfg(all(feature = "websockets", native))]
+mod websockets;
+#[cfg(all(feature = "websockets", native))]
+pub use websockets::*;
+
 #[cfg(all(
 	any(feature = "api", feature = "standard", feature = "api-only"),
 	native
