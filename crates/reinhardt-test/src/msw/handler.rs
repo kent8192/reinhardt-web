@@ -185,18 +185,7 @@ impl<S: MockableServerFn> ErasedHandler for ServerFnHandler<S> {
 					body,
 				})
 			}
-			Err(err) => {
-				let body = serde_json::to_string(&err).unwrap_or_default();
-				Some(MockResponse {
-					status: 500,
-					headers: {
-						let mut h = HashMap::new();
-						h.insert("content-type".to_string(), "application/json".to_string());
-						h
-					},
-					body,
-				})
-			}
+			Err(err) => Some(server_fn_error_response(err)),
 		}
 	}
 
@@ -269,18 +258,7 @@ impl<S: MockableServerFn> ErasedHandler for ServerFnContextHandler<S> {
 					body,
 				})
 			}
-			Err(err) => {
-				let body = serde_json::to_string(&err).unwrap_or_default();
-				Some(MockResponse {
-					status: 500,
-					headers: {
-						let mut h = HashMap::new();
-						h.insert("content-type".to_string(), "application/json".to_string());
-						h
-					},
-					body,
-				})
-			}
+			Err(err) => Some(server_fn_error_response(err)),
 		}
 	}
 
@@ -294,6 +272,22 @@ impl<S: MockableServerFn> ErasedHandler for ServerFnContextHandler<S> {
 
 	fn is_network_error(&self) -> bool {
 		false
+	}
+}
+
+fn server_fn_error_response(err: ServerFnError) -> MockResponse {
+	let (status, body) = match err {
+		ServerFnError::Server { status, message } => (status, message),
+		other => (500, other.message().to_string()),
+	};
+	MockResponse {
+		status,
+		headers: {
+			let mut h = HashMap::new();
+			h.insert("content-type".to_string(), "text/plain".to_string());
+			h
+		},
+		body,
 	}
 }
 

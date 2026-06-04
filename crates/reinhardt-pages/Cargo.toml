@@ -85,6 +85,7 @@ web-sys-full = [
 	"web-sys/HtmlDocument",
 	"web-sys/History",
 	"web-sys/Location",
+	"web-sys/Url",
 	"web-sys/WebSocket",
 	"web-sys/MessageEvent",
 	"web-sys/CloseEvent",
@@ -180,6 +181,7 @@ web-sys = { version = "0.3.83", features = [
 	# History API (for router)
 	"History",
 	"Location",
+	"Url",
 	# Storage API (for JWT token management)
 	"Storage",
 	# WebSocket API
