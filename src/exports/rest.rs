@@ -34,9 +34,27 @@ pub use reinhardt_rest::throttling::{
 	feature = "standard",
 	feature = "full"
 ))]
+pub use reinhardt_rest::parsers::MediaType as ParserMediaType;
+#[cfg(all(
+	any(
+		feature = "api-only",
+		feature = "compressed-parsers",
+		feature = "rest",
+		feature = "standard",
+		feature = "full"
+	),
+	not(feature = "openapi")
+))]
+pub use reinhardt_rest::parsers::MediaType;
+#[cfg(any(
+	feature = "api-only",
+	feature = "compressed-parsers",
+	feature = "rest",
+	feature = "standard",
+	feature = "full"
+))]
 pub use reinhardt_rest::parsers::{
-	FileUploadParser, FormParser, JSONParser, MediaType, MultiPartParser, ParseError, ParseResult,
-	Parser,
+	FileUploadParser, FormParser, JSONParser, MultiPartParser, ParseError, ParseResult, Parser,
 };
 
 pub use reinhardt_rest::versioning::{
@@ -52,7 +70,10 @@ pub use reinhardt_rest::metadata::{
 
 #[cfg(feature = "openapi")]
 pub use reinhardt_rest::negotiation::MediaType;
-pub use reinhardt_rest::negotiation::*;
+pub use reinhardt_rest::negotiation::{
+	BaseContentNegotiation, BaseNegotiator, ContentNegotiator, NegotiationError, RendererInfo,
+	accept, cache, detector, encoding, language, media_type, negotiator, prelude,
+};
 
 #[cfg(any(
 	feature = "api-only",
