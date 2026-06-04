@@ -1,5 +1,0 @@
-error: #[dto] cannot be combined with unconditional `#[derive(Schema)]`. Remove the derive so #[dto] can emit it as `cfg_attr(native, ...)` for you, or replace it with `#[cfg_attr(native, derive(Schema))]`.
-  --> tests/ui/dto/fail/unconditional_schema.rs:16:1
-   |
-16 | #[derive(Schema)]
-   | ^^^^^^^^^^^^^^^^^

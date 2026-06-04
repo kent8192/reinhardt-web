@@ -1,3 +1,4 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
 //! # Reinhardt Middleware
 //!
 //! Comprehensive HTTP middleware collection for the Reinhardt framework.
