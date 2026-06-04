@@ -11,7 +11,7 @@ repository.workspace = true
 [dependencies]
 # Cross-target (wasm + native): pure data / trait dependencies only.
 reinhardt-http = { workspace = true }
-reinhardt-core = { workspace = true, features = ["types"] }
+reinhardt-core = { workspace = true, default-features = false, features = ["types"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }

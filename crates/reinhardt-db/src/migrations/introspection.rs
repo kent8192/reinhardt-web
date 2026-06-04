@@ -6,7 +6,9 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
 
-use super::{MigrationError, Result};
+#[cfg(any(feature = "mysql", feature = "postgres", feature = "sqlite"))]
+use super::MigrationError;
+use super::Result;
 
 /// Schema information extracted from a database
 #[derive(Debug, Clone, PartialEq)]

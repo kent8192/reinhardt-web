@@ -26,6 +26,7 @@ metadata = []
 negotiation = []
 browsable-api = []
 openapi = []
+openapi-swagger-ui = ["openapi", "dep:utoipa-swagger-ui"]
 
 # Aggregate all REST features
 rest-full = [
@@ -38,8 +39,9 @@ rest-full = [
   "versioning",
   "metadata",
   "negotiation",
-  "browsable-api",
-  "openapi",
+	"browsable-api",
+	"openapi",
+  "openapi-swagger-ui",
 ]
 full = ["caching", "database-optimization", "geo-limiting", "json", "pages", "redis-backend", "serializers", "xml", "yaml"]
 caching = ["dep:reinhardt-utils"]
@@ -53,12 +55,12 @@ geo-limiting = ["reinhardt-throttling/geo-limiting"]
 
 [dependencies]
 # Core dependencies
-reinhardt-core = { workspace = true, features = ["exception", "macros", "negotiation", "pagination", "parsers", "serializers", "types"] }
+reinhardt-core = { workspace = true, default-features = false, features = ["exception", "macros", "negotiation", "pagination", "parsers", "serializers", "types"] }
 reinhardt-conf = { workspace = true, features = ["settings"] }
-reinhardt-db = { workspace = true, optional = true, features = ["backends", "orm", "pool"] }
+reinhardt-db = { workspace = true, default-features = false, optional = true, features = ["backends", "orm", "pool"] }
 
 # Authentication (required for auth types re-export)
-reinhardt-auth = { workspace = true }
+reinhardt-auth = { workspace = true, default-features = false, features = ["params"] }
 
 # Throttling framework
 reinhardt-throttling = { workspace = true }
@@ -117,7 +119,7 @@ http = "1.3.1"
 uuid = { workspace = true }
 utoipa-swagger-ui = { version = "^9.0.2", default-features = false, features = [
     "vendored",
-] }
+], optional = true }
 once_cell = { workspace = true }
 base64 = { workspace = true }
 inventory = "0.3"

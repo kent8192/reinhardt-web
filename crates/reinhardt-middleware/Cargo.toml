@@ -13,15 +13,16 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-default = []
+default = ["broken-link-email"]
 
 # Fine-grained middleware features
 cors = []
 compression = []
 security = []
 rate-limit = []
-sessions = []
-auth-jwt = ["reinhardt-auth/jwt"]
+sessions = ["dep:reinhardt-auth", "reinhardt-auth/sessions"]
+auth-jwt = ["dep:reinhardt-auth", "reinhardt-auth/jwt"]
+broken-link-email = ["dep:reinhardt-mail"]
 
 # Database support for certain middleware
 sqlx = ["dep:sqlx"]
@@ -30,7 +31,7 @@ sqlx = ["dep:sqlx"]
 session-redis = ["sessions", "dep:redis"]
 
 # Aggregate all middleware features
-full = ["cors", "compression", "security", "rate-limit", "sessions", "auth-jwt", "sqlx", "session-redis"]
+full = ["broken-link-email", "cors", "compression", "security", "rate-limit", "sessions", "auth-jwt", "sqlx", "session-redis"]
 
 # Test-only fixtures shared between the in-crate unit tests and external
 # integration tests (Issue #4462). Enabled implicitly when `cargo make test`
@@ -39,14 +40,14 @@ full = ["cors", "compression", "security", "rate-limit", "sessions", "auth-jwt",
 test-support = []
 
 [dependencies]
-reinhardt-core = { workspace = true, features = [
+reinhardt-core = { workspace = true, default-features = false, features = [
     "types",
     "exception",
     "security",
 ] }
 reinhardt-http = { workspace = true }
-reinhardt-auth = { workspace = true, features = ["sessions"] }
-reinhardt-mail = { workspace = true }
+reinhardt-auth = { workspace = true, default-features = false, optional = true }
+reinhardt-mail = { workspace = true, optional = true }
 reinhardt-conf = { workspace = true, features = ["settings"] }
 reinhardt-di = { workspace = true }
 async-trait = { workspace = true }

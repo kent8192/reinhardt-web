@@ -116,7 +116,9 @@ The full lifecycle policy lives in
 
 Reinhardt is a modular framework. Choose your starting point:
 
-> **New here?** Start with the default standard setup. Use `full` if you need all features, or `minimal` for lightweight APIs.
+> **New here?** Start with the default standard setup. Use `minimal` plus explicit opt-in features for lightweight APIs. `full` remains available as the exhaustive flagship preset, but it is not the recommended starting point for normal applications.
+
+Feature presets are layered. `full`, `standard`, and `minimal` are top-level presets; each preset enables lower-level feature groups, and those groups enable atom feature flags such as `viewset-routing`, `signals`, `image-validation`, `commands-autoreload`, and `openapi-swagger-ui`. External dependencies are attached at the atom feature boundary wherever possible, so choosing `minimal` or `standard` does not implicitly import every dependency carried by `full`.
 
 ### Default: Standard Setup (Balanced) ⚠️ Default Preset
 
@@ -140,9 +142,9 @@ use reinhardt::prelude::*;
 use reinhardt::{Request, Response, StatusCode};
 ```
 
-### Option 1: Full-Featured (All Batteries Included)
+### Option 1: Full-Featured (Exhaustive Flagship)
 
-For projects that need every available component:
+For compatibility checks, framework development, and projects that intentionally need every available component:
 
 <!-- reinhardt-version-sync -->
 ```toml
@@ -152,7 +154,7 @@ reinhardt = { version = "0.2.0-rc.2", package = "reinhardt-web", default-feature
 
 **Includes:** Everything in Standard, plus Admin, GraphQL, WebSockets, Cache, i18n, Mail, Static Files, Storage, and more
 
-**Binary**: ~50+ MB | **Compile**: Slower, but everything works out of the box
+**Binary**: ~50+ MB | **Compile**: Slowest, because this preset intentionally pulls the complete dependency graph
 
 ### Option 2: Microservices (Minimal Setup)
 

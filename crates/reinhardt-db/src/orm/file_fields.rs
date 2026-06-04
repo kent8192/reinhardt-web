@@ -358,6 +358,7 @@ impl ImageField {
 	/// let (width, height) = field.validate_image(&content).unwrap();
 	/// assert!(width > 0 && height > 0);
 	/// ```
+	#[cfg(feature = "image-fields")]
 	pub fn validate_image(&self, content: &[u8]) -> Result<(u32, u32), FileFieldError> {
 		let img = image::load_from_memory(content)
 			.map_err(|e| FileFieldError::InvalidImage(format!("Failed to load image: {}", e)))?;
@@ -379,6 +380,7 @@ impl ImageField {
 	/// assert!(path.contains("uploads/images/photo.png"));
 	/// assert!(width > 0 && height > 0);
 	/// ```
+	#[cfg(feature = "image-fields")]
 	pub fn save(
 		&self,
 		file_name: &str,
@@ -512,6 +514,7 @@ impl ImageField {
 	/// let content = std::fs::read("photo.jpg").unwrap();
 	/// let resized = field.resize(&content, 800, 600).unwrap();
 	/// ```
+	#[cfg(feature = "image-fields")]
 	pub fn resize(
 		&self,
 		content: &[u8],
@@ -545,6 +548,7 @@ impl ImageField {
 	/// let content = std::fs::read("photo.jpg").unwrap();
 	/// let cropped = field.crop(&content, 100, 100, 400, 300).unwrap();
 	/// ```
+	#[cfg(feature = "image-fields")]
 	pub fn crop(
 		&self,
 		content: &[u8],
@@ -581,6 +585,7 @@ impl ImageField {
 	/// let content = std::fs::read("photo.png").unwrap();
 	/// let jpeg = field.convert_format(&content, ImageFormat::Jpeg).unwrap();
 	/// ```
+	#[cfg(feature = "image-fields")]
 	pub fn convert_format(
 		&self,
 		content: &[u8],
@@ -607,6 +612,7 @@ impl ImageField {
 	/// let content = std::fs::read("photo.jpg").unwrap();
 	/// let thumbnail = field.thumbnail(&content, 150, 150).unwrap();
 	/// ```
+	#[cfg(feature = "image-fields")]
 	pub fn thumbnail(
 		&self,
 		content: &[u8],

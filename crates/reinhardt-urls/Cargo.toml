@@ -11,7 +11,7 @@ description = "URL routing and proxy utilities for Reinhardt framework"
 [dependencies]
 # Re-export internal crates
 reinhardt-routers-macros = { workspace = true, optional = true }
-reinhardt-core = { workspace = true, features = ["exception", "page", "reactive", "types"] }
+reinhardt-core = { workspace = true, default-features = false, features = ["exception", "page", "reactive", "types"] }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -35,11 +35,11 @@ inventory = "0.3"
 
 # Server-only dependencies (not available on WASM)
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
-reinhardt-db = { workspace = true, features = ["orm"] }
+reinhardt-db = { workspace = true, default-features = false, features = ["orm"], optional = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
 tracing = { workspace = true }
-reinhardt-views = { workspace = true, features = ["viewsets"] }
+reinhardt-views = { workspace = true, features = ["viewsets"], optional = true }
 reinhardt-middleware = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-di = { workspace = true }
@@ -55,16 +55,17 @@ inventory = "0.3"
 reinhardt-streaming = { workspace = true, optional = true }
 
 [features]
-default = ["routers", "routers-macros", "proxy"]
+default = ["routers", "routers-macros", "proxy", "viewsets"]
 
 # Module features (modules are always compiled, features for backwards compatibility)
 routers = []
 routers-macros = ["dep:reinhardt-routers-macros"]
-proxy = []
+proxy = ["dep:reinhardt-db"]
+viewsets = ["dep:reinhardt-views"]
 database = []
 client-router = ["reinhardt-core/reactive", "routers"]
 streaming = ["dep:reinhardt-streaming"]
-urls-full = ["routers", "routers-macros", "proxy"]
+urls-full = ["routers", "routers-macros", "proxy", "viewsets"]
 full = ["database", "unified-router"]
 unified-router = []
 # Marker feature for wasm-bindgen-test diagnostic suite that asserts

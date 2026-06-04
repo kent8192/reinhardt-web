@@ -141,6 +141,7 @@
 #![warn(missing_docs)]
 pub mod allowed_hosts;
 /// Session-based authentication middleware (requires `sessions` feature).
+#[cfg(feature = "sessions")]
 pub mod auth;
 pub mod broken_link;
 #[cfg(feature = "compression")]
@@ -181,6 +182,7 @@ pub mod redirect_fallback;
 #[cfg(feature = "session-redis")]
 pub mod redis_session;
 /// Reverse proxy remote user authentication middleware (requires `sessions` feature).
+#[cfg(feature = "sessions")]
 pub mod remote_user;
 pub mod request_id;
 #[cfg(feature = "security")]

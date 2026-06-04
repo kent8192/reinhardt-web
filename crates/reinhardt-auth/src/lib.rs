@@ -124,6 +124,7 @@ pub mod advanced_permissions;
 /// Base user manager trait for CRUD operations.
 pub mod base_user_manager;
 /// HTTP Basic authentication backend.
+#[cfg(feature = "basic")]
 pub mod basic;
 /// Group management (create, delete, assign users).
 pub mod group_management;
@@ -179,6 +180,7 @@ pub mod settings;
 
 pub use advanced_permissions::{ObjectPermission as AdvancedObjectPermission, RoleBasedPermission};
 pub use base_user_manager::BaseUserManager;
+#[cfg(feature = "basic")]
 pub use basic::BasicAuthentication as HttpBasicAuth;
 pub use group_management::{
 	CreateGroupData, Group, GroupManagementError, GroupManagementResult, GroupManager,

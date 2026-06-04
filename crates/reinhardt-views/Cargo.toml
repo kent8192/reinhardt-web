@@ -9,8 +9,8 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-reinhardt-core = { workspace = true, features = ["exception", "macros", "pagination", "serializers", "serde", "types", "security"] }
-reinhardt-db = { workspace = true, features = ["orm", "di"] }
+reinhardt-core = { workspace = true, default-features = false, features = ["exception", "macros", "pagination", "serializers", "serde", "types", "security"] }
+reinhardt-db = { workspace = true, default-features = false, features = ["orm", "di"] }
 reinhardt-di = { workspace = true }
 reinhardt-http = { workspace = true }
 async-trait = { workspace = true }
@@ -28,8 +28,8 @@ syntect = { workspace = true }
 once_cell = { workspace = true }
 
 # REST framework for filters/serializers
-reinhardt-rest = {workspace = true, features = ["filters", "serializers", "openapi"]}
-reinhardt-auth = { workspace = true }
+reinhardt-rest = {workspace = true, default-features = false, features = ["filters", "serializers", "openapi"]}
+reinhardt-auth = { workspace = true, default-features = false, features = ["params"] }
 reinhardt-utils = { workspace = true, features = ["cache"] }
 uuid = { workspace = true }
 sqlx = { workspace = true, features = [

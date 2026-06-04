@@ -9,6 +9,7 @@ mkdir -p "${out_dir}"
 heavy_pattern='(^| )((sqlx|sqlx-core|sqlx-mysql|sqlx-postgres|sqlx-sqlite|utoipa|utoipa-gen|utoipa-swagger-ui|tera|lettre|argon2|jsonwebtoken|image|image-webp|aws-config|aws-sdk-[^ ]+|mongodb|redis|wasm-bindgen|web-sys|quick-xml|multer|rskafka|tonic|tonic-prost-build|notify|oxc_[^ ]+|oxipng|webp) v)'
 
 combos=(
+  "facade-no-default|reinhardt-web|--no-default-features"
   "facade-core|reinhardt-web|--no-default-features --features core"
   "facade-minimal|reinhardt-web|--no-default-features --features minimal"
   "facade-default|reinhardt-web|"
@@ -39,6 +40,19 @@ printf "combo\tpackage\tcrate_count\theavy_count\theavy_crates\n" > "${summary}"
 
 cd "${root}"
 
+declare -A max_crates=(
+  ["facade-no-default"]=200
+  ["facade-core"]=320
+  ["facade-minimal"]=330
+  ["facade-default"]=700
+  ["facade-standard"]=700
+  ["facade-database"]=470
+  ["facade-db-postgres"]=470
+  ["facade-db-sqlite"]=470
+  ["facade-pages"]=470
+)
+failures=()
+
 for combo in "${combos[@]}"; do
   IFS='|' read -r name pkg flags <<< "${combo}"
   tree_file="${out_dir}/${name}.tree"
@@ -55,6 +69,16 @@ for combo in "${combos[@]}"; do
 
   printf "%s\t%s\t%s\t%s\t%s\n" \
     "${name}" "${pkg}" "${crate_count}" "${heavy_count}" "${heavy_crates}" >> "${summary}"
+
+  if [[ -n "${max_crates[$name]:-}" ]] && (( crate_count > max_crates[$name] )); then
+    failures+=("${name}: crate_count ${crate_count} exceeds max ${max_crates[$name]}")
+  fi
 done
 
 echo "Summary: ${summary}"
+
+if (( ${#failures[@]} > 0 )); then
+  printf "Dependency feature audit failed:\n" >&2
+  printf "  - %s\n" "${failures[@]}" >&2
+  exit 1
+fi

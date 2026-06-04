@@ -85,7 +85,7 @@ refinery = { workspace = true, optional = true }
 aes-gcm = { workspace = true }
 sha2 = { workspace = true }
 rand = { workspace = true }
-image = { workspace = true }
+image = { workspace = true, optional = true }
 flate2 = { workspace = true }
 phonenumber = { workspace = true }
 smallvec = "1.13"
@@ -100,17 +100,19 @@ default = [
   "migrations",
   "hybrid",
   "associations",
+  "image-fields",
 ]
 
 # Module features (conditionally compiled when feature is enabled)
-backends = []
-backends-pool = []
+backends = ["pool"]
+backends-pool = ["pool"]
 pool = []
-orm = []
+orm = ["backends", "hybrid"]
 migrations = ["refinery"]
 hybrid = []
 associations = []
 contenttypes = []
+image-fields = ["dep:image"]
 nosql = ["dep:bson"]
 backends-settings = ["backends"]
 
@@ -128,6 +130,7 @@ database-full = [
   "hybrid",
   "associations",
   "contenttypes",
+  "image-fields",
   "all-databases",
   "full",
 ]
