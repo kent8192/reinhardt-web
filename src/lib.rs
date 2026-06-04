@@ -190,7 +190,7 @@ pub mod reinhardt_core {
 	pub use reinhardt_core::*;
 }
 
-#[cfg(native)]
+#[cfg(all(feature = "core", native))]
 #[doc(hidden)]
 pub mod reinhardt_http {
 	pub use reinhardt_http::*;
@@ -261,7 +261,7 @@ pub mod forms;
 pub mod graphql;
 #[cfg(all(feature = "grpc", native))]
 pub mod grpc;
-#[cfg(native)]
+#[cfg(all(feature = "core", native))]
 pub mod http;
 #[cfg(all(feature = "i18n", native))]
 pub mod i18n;
@@ -363,9 +363,9 @@ pub mod urls {
 	pub mod proxy {}
 }
 
-#[cfg(native)]
+#[cfg(all(any(feature = "cache", feature = "static-files", feature = "storage"), native))]
 pub mod utils;
-#[cfg(native)]
+#[cfg(all(any(feature = "api", feature = "standard", feature = "api-only"), native))]
 pub mod views;
 
 // ============================================================================

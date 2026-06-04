@@ -1,6 +1,6 @@
 //! Routing, URL, and client-router re-exports.
 
-#[cfg(native)]
+#[cfg(all(any(feature = "api", feature = "standard", feature = "api-only"), native))]
 pub use reinhardt_views::viewsets::{
 	Action, ActionType, CreateMixin, DestroyMixin, GenericViewSet, ListMixin, ModelViewSet,
 	ReadOnlyModelViewSet, RetrieveMixin, UpdateMixin, ViewSet,

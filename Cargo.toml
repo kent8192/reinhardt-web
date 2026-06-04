@@ -40,6 +40,7 @@ standard = [
   "db-postgres",                   # Default database backend
   "reinhardt-rest",
   "reinhardt-rest/serializers",
+  "dep:reinhardt-views",
   "reinhardt-views/viewsets",
   "reinhardt-auth",
   "reinhardt-middleware",
@@ -72,6 +73,7 @@ api = [
   "rest",
   "reinhardt-rest",
   "reinhardt-rest/serializers",
+  "dep:reinhardt-views",
   "reinhardt-views/viewsets",
 ]
 auth = ["reinhardt-auth", "reinhardt-commands?/auth"]
@@ -109,7 +111,7 @@ uuid = ["reinhardt-pages/uuid"]
 chrono = ["reinhardt-pages/chrono"]
 websockets = ["reinhardt-websockets"]
 websockets-pages = ["websockets", "reinhardt-websockets/pages-integration"]
-cache = ["reinhardt-utils/cache"]
+cache = ["dep:reinhardt-utils", "reinhardt-utils/cache"]
 redis-backend = ["cache", "reinhardt-utils/redis-backend"]
 i18n = ["reinhardt-i18n"]
 mail = ["reinhardt-mail"]
@@ -121,8 +123,8 @@ middleware = [
   "sessions",
   "reinhardt-auth/middleware",
 ]
-static-files = ["reinhardt-utils/staticfiles"]
-storage = ["reinhardt-utils/storage"]
+static-files = ["dep:reinhardt-utils", "reinhardt-utils/staticfiles"]
+storage = ["dep:reinhardt-utils", "reinhardt-utils/storage"]
 shortcuts = ["reinhardt-shortcuts"]
 tasks = ["reinhardt-tasks"]
 streaming = ["dep:reinhardt-streaming", "reinhardt-streaming/kafka"]
@@ -132,7 +134,7 @@ introspect = ["reinhardt-commands/introspect"]
 
 # Parent crate features (new module structure)
 conf = ["reinhardt-conf"]
-core = ["reinhardt-core", "reinhardt-apps", "dep:inventory"]
+core = ["reinhardt-core", "reinhardt-apps", "dep:reinhardt-http", "dep:inventory"]
 rest = ["reinhardt-rest"]
 messages = ["reinhardt-core/messages"]
 # DI feature: Uses reinhardt-core/di which internally enables reinhardt-di/params
@@ -219,6 +221,7 @@ api-only = [
   "minimal",
   "reinhardt-rest",
   "reinhardt-rest/serializers",
+  "dep:reinhardt-views",
   "reinhardt-views/viewsets",
   "reinhardt-auth",
   "reinhardt-rest/parsers",
@@ -239,7 +242,7 @@ websocket-server = [
   "minimal",
   "reinhardt-auth",
   "websockets",
-  "reinhardt-utils/cache",
+  "cache",
 ]
 
 # CLI/Background jobs preset
@@ -298,9 +301,9 @@ reinhardt-macros = { workspace = true }
 # Server-side dependencies (NOT for WASM)
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 # Core dependencies
-reinhardt-utils = { workspace = true }
-reinhardt-views = { workspace = true }
-reinhardt-http = { workspace = true }
+reinhardt-utils = { workspace = true, optional = true }
+reinhardt-views = { workspace = true, optional = true }
+reinhardt-http = { workspace = true, optional = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 hyper = { workspace = true }
