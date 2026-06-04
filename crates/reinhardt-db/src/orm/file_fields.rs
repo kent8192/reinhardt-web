@@ -877,6 +877,7 @@ mod tests {
 		);
 	}
 
+	#[cfg(feature = "image-fields")]
 	#[test]
 	fn test_image_field_validate_image_invalid() {
 		let field = ImageField::new("uploads/images");
@@ -885,6 +886,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[cfg(feature = "image-fields")]
 	#[test]
 	fn test_image_field_resize() {
 		use image::{ImageBuffer, Rgb};
@@ -909,6 +911,7 @@ mod tests {
 		assert_eq!(resized_img.height(), 50);
 	}
 
+	#[cfg(feature = "image-fields")]
 	#[test]
 	fn test_image_field_crop() {
 		use image::{ImageBuffer, Rgb};
@@ -939,6 +942,7 @@ mod tests {
 		assert_eq!(cropped_img.height(), 50);
 	}
 
+	#[cfg(feature = "image-fields")]
 	#[test]
 	fn test_image_field_convert_format() {
 		use image::{ImageBuffer, ImageFormat, Rgb};
@@ -960,6 +964,7 @@ mod tests {
 		assert_eq!(jpeg_img.height(), 50);
 	}
 
+	#[cfg(feature = "image-fields")]
 	#[test]
 	fn test_image_field_thumbnail() {
 		use image::{ImageBuffer, Rgb};
@@ -984,6 +989,7 @@ mod tests {
 		assert_eq!(thumbnail_img.height(), 40);
 	}
 
+	#[cfg(feature = "image-fields")]
 	#[test]
 	fn test_image_field_resize_invalid_content() {
 		let field = ImageField::new("uploads/images");
@@ -992,6 +998,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[cfg(feature = "image-fields")]
 	#[test]
 	fn test_image_field_crop_invalid_content() {
 		let field = ImageField::new("uploads/images");
@@ -1000,6 +1007,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[cfg(feature = "image-fields")]
 	#[test]
 	fn test_image_field_convert_format_invalid_content() {
 		let field = ImageField::new("uploads/images");

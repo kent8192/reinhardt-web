@@ -141,6 +141,7 @@
 #![warn(missing_docs)]
 pub mod allowed_hosts;
 /// Session-based authentication middleware (requires `sessions` feature).
+#[cfg_attr(docsrs, doc(cfg(feature = "sessions")))]
 #[cfg(feature = "sessions")]
 pub mod auth;
 pub mod broken_link;
@@ -182,6 +183,7 @@ pub mod redirect_fallback;
 #[cfg(feature = "session-redis")]
 pub mod redis_session;
 /// Reverse proxy remote user authentication middleware (requires `sessions` feature).
+#[cfg_attr(docsrs, doc(cfg(feature = "sessions")))]
 #[cfg(feature = "sessions")]
 pub mod remote_user;
 pub mod request_id;

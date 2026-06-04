@@ -62,7 +62,15 @@ for combo in "${combos[@]}"; do
   # shellcheck disable=SC2086
   cargo tree -p "${pkg}" ${flags} -e normal --prefix none > "${tree_file}"
 
-  sort -u "${tree_file}" | rg "${heavy_pattern}" > "${heavy_file}" || true
+  if sort -u "${tree_file}" | rg "${heavy_pattern}" > "${heavy_file}"; then
+    :
+  else
+    status=$?
+    if [[ "${status}" -ne 1 ]]; then
+      echo "heavy dependency scan failed for ${name} (rg exit ${status})" >&2
+      exit "${status}"
+    fi
+  fi
   crate_count="$(sort -u "${tree_file}" | wc -l | tr -d ' ')"
   heavy_count="$(wc -l < "${heavy_file}" | tr -d ' ')"
   heavy_crates="$(cut -d' ' -f1 "${heavy_file}" | sort -u | paste -sd ',' -)"

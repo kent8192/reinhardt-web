@@ -141,7 +141,7 @@ introspect = ["reinhardt-commands/introspect"]
 
 # Parent crate features (new module structure)
 conf = ["reinhardt-conf"]
-core = ["reinhardt-core", "reinhardt-apps", "dep:reinhardt-http", "dep:inventory"]
+core = ["reinhardt-apps", "dep:reinhardt-http", "dep:inventory"]
 rest = ["reinhardt-rest"]
 messages = ["reinhardt-core/messages"]
 signals = ["reinhardt-core/signals"]
@@ -333,7 +333,6 @@ paste = "1.0"
 # Parent crate dependencies (new module structure)
 reinhardt-apps = { workspace = true, optional = true }
 reinhardt-conf = { workspace = true, optional = true }
-reinhardt-core = { workspace = true, default-features = false, features = ["types"], optional = true }
 reinhardt-db = { workspace = true, optional = true }
 
 # External crates re-exported for macros
