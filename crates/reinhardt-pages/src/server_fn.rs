@@ -156,10 +156,11 @@ pub fn resolve_endpoint(path: &str) -> String {
 			let prefix = prefix.trim_end_matches('/');
 			format!("{}{}", prefix, path)
 		};
-		// reqwest requires absolute URLs; prepend the page origin for WASM.
+
 		web_sys::window()
-			.and_then(|w| w.location().origin().ok())
-			.map(|origin| format!("{}{}", origin, relative))
+			.and_then(|w| w.location().href().ok())
+			.and_then(|base| web_sys::Url::new_with_base(&relative, &base).ok())
+			.map(|url| url.href())
 			.unwrap_or(relative)
 	})
 }

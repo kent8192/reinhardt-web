@@ -45,7 +45,7 @@ mod wasm_impl {
 			let original = original_for_passthrough.clone();
 
 			wasm_bindgen_futures::future_to_promise(async move {
-				let intercepted = extract_request_info(&input, &init)?;
+				let intercepted = extract_request_info(&input, &init).await?;
 
 				// Record the request
 				recorder.borrow_mut().record(RecordedRequest {
@@ -79,7 +79,7 @@ mod wasm_impl {
 						if let Some(duration) = delay {
 							gloo_timers::future::sleep(duration).await;
 						}
-						build_js_response(&mock_response)
+						build_js_response(&mock_response, &intercepted.url)
 					}
 					Some((false, _, None)) => {
 						let error_response = MockResponse {
@@ -97,7 +97,7 @@ mod wasm_impl {
 								intercepted.method, intercepted.url
 							),
 						};
-						build_js_response(&error_response)
+						build_js_response(&error_response, &intercepted.url)
 					}
 					None => match policy {
 						UnhandledPolicy::Error => {
@@ -138,7 +138,7 @@ mod wasm_impl {
 			.expect("MSW: failed to restore window.fetch");
 	}
 
-	fn extract_request_info(
+	async fn extract_request_info(
 		input: &JsValue,
 		init: &JsValue,
 	) -> Result<InterceptedRequest, JsValue> {
@@ -152,7 +152,7 @@ mod wasm_impl {
 					.ok()
 					.and_then(|b| b.as_string())
 			} else {
-				None
+				read_request_body(&request).await?
 			};
 			(url, method, headers, body)
 		} else {
@@ -216,6 +216,12 @@ mod wasm_impl {
 		})
 	}
 
+	async fn read_request_body(request: &Request) -> Result<Option<String>, JsValue> {
+		let request = request.clone()?;
+		let text = JsFuture::from(request.text()?).await?;
+		Ok(text.as_string())
+	}
+
 	fn extract_headers(headers: &Headers) -> std::collections::HashMap<String, String> {
 		let mut map = std::collections::HashMap::new();
 		for name in [
@@ -232,7 +238,7 @@ mod wasm_impl {
 		map
 	}
 
-	fn build_js_response(mock: &MockResponse) -> Result<JsValue, JsValue> {
+	fn build_js_response(mock: &MockResponse, url: &str) -> Result<JsValue, JsValue> {
 		let init = ResponseInit::new();
 		init.set_status(mock.status);
 
@@ -251,7 +257,19 @@ mod wasm_impl {
 			&init,
 		)?;
 
+		define_response_url(&response, url)?;
+
 		Ok(response.into())
+	}
+
+	fn define_response_url(response: &Response, url: &str) -> Result<(), JsValue> {
+		let descriptor = js_sys::Object::new();
+		Reflect::set(&descriptor, &"value".into(), &JsValue::from_str(url))?;
+		Reflect::set(&descriptor, &"configurable".into(), &JsValue::TRUE)?;
+		Reflect::set(&descriptor, &"enumerable".into(), &JsValue::FALSE)?;
+		let response_obj: &js_sys::Object = response.unchecked_ref();
+		js_sys::Object::define_property(response_obj, &"url".into(), &descriptor);
+		Ok(())
 	}
 
 	async fn call_original_fetch(
