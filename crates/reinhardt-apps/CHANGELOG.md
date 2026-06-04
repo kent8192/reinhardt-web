@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.2.0-rc.2...reinhardt-apps@v0.2.0-rc.3) - 2026-06-04
+
+### Performance
+
+- atomize facade dependency feature gates
+- trim standard facade feature dependencies
+
 ## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.1.3...reinhardt-apps@v0.2.0-rc.2) - 2026-06-03
 
 ### Changed
