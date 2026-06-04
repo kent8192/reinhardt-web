@@ -12,6 +12,7 @@ use wasm_bindgen_futures::JsFuture;
 use wasm_bindgen_test::*;
 use web_sys::{RequestInit, Response};
 
+use reinhardt_pages::server_fn::{ServerFnError, ServerFnMetadata, server_fn};
 use reinhardt_test::msw::MockResponse;
 use reinhardt_test::msw::MockServiceWorker;
 use reinhardt_test::msw::UnhandledPolicy;
@@ -19,9 +20,14 @@ use reinhardt_test::msw::rest;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
+#[server_fn]
+async fn msw_echo(value: String) -> Result<String, ServerFnError> {
+	Ok(value)
+}
+
 async fn do_fetch(url: &str, method: &str, body: Option<&str>) -> (u16, String) {
 	let window = web_sys::window().unwrap();
-	let mut opts = RequestInit::new();
+	let opts = RequestInit::new();
 	opts.set_method(method);
 	if let Some(b) = body {
 		opts.set_body(&JsValue::from_str(b));
@@ -42,7 +48,7 @@ async fn do_fetch(url: &str, method: &str, body: Option<&str>) -> (u16, String) 
 
 async fn do_fetch_expect_error(url: &str, method: &str) {
 	let window = web_sys::window().unwrap();
-	let mut opts = RequestInit::new();
+	let opts = RequestInit::new();
 	opts.set_method(method);
 	let result = JsFuture::from(window.fetch_with_str_and_init(url, &opts)).await;
 	assert!(
@@ -181,6 +187,69 @@ async fn msw_integration_tests() {
 
 		let (status, _) = do_fetch("/api/once", "GET", None).await;
 		assert_eq!(status, 200);
+		worker.stop().await;
+	}
+
+	// === Scenario 10: Starting a new worker recovers stale global fetch state ===
+	{
+		let stale = MockServiceWorker::new();
+		stale.handle(rest::get("/api/stale").respond(MockResponse::text("stale")));
+		stale.start().await;
+
+		let replacement = MockServiceWorker::new();
+		replacement.handle(rest::get("/api/recovered").respond(MockResponse::text("recovered")));
+		replacement.start().await;
+
+		let (status, body) = do_fetch("/api/recovered", "GET", None).await;
+		assert_eq!(status, 200);
+		assert_eq!(body, "recovered");
+		replacement.stop().await;
+	}
+
+	// === Scenario 11: Generated server_fn clients reach MSW with absolute URLs ===
+	{
+		let worker = MockServiceWorker::new();
+		worker.handle_server_fn::<msw_echo::marker>(|args| Ok(args.value));
+		worker.start().await;
+
+		let endpoint = reinhardt_pages::server_fn::resolve_endpoint(
+			<msw_echo::marker as ServerFnMetadata>::PATH,
+		);
+		assert!(
+			web_sys::Url::new(&endpoint).is_ok(),
+			"resolved server_fn endpoint should be absolute: {endpoint}"
+		);
+		assert!(
+			endpoint.starts_with("http://") || endpoint.starts_with("https://"),
+			"resolved server_fn endpoint should include browser HTTP origin: {endpoint}"
+		);
+
+		let manual_response = reinhardt_pages::__private::reqwest::Client::new()
+			.post(&endpoint)
+			.header("Content-Type", "application/json")
+			.body(r#"{"value":"manual"}"#)
+			.send()
+			.await
+			.expect("manual reqwest POST should accept resolved endpoint");
+		assert!(manual_response.status().is_success());
+
+		let response = msw_echo("pong".to_string())
+			.await
+			.expect("server_fn should be handled by MSW");
+		assert_eq!(response, "pong");
+
+		let calls = worker.all_calls();
+		assert_eq!(calls.len(), 2);
+		assert!(
+			calls[0]
+				.url
+				.ends_with(<msw_echo::marker as ServerFnMetadata>::PATH)
+		);
+		assert!(
+			web_sys::Url::new(&calls[0].url).is_ok(),
+			"recorded server_fn URL should be absolute: {}",
+			calls[0].url
+		);
 		worker.stop().await;
 	}
 }

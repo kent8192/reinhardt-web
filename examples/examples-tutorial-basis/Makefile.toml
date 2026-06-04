@@ -212,7 +212,7 @@ args = ["clean"]
 [tasks.wasm-test]
 description = "Run WASM tests in headless Chrome"
 command = "wasm-pack"
-args = ["test", "--headless", "--chrome", "--", "--no-default-features", "--features", "client-router"]
+args = ["test", "--headless", "--chrome", "--", "--no-default-features", "--features", "client-router,msw"]
 
 [tasks.wasm-compile-dev]
 description = "Compile WASM binary (debug mode)"

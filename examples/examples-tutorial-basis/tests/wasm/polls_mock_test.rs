@@ -32,6 +32,7 @@ use reinhardt::pages::prelude::defer_yield;
 use reinhardt::pages::server_fn::ServerFnError;
 use reinhardt::pages::{Element as DomElement, document};
 use reinhardt::test::msw::MockServiceWorker;
+use wasm_bindgen::JsCast;
 
 // ============================================================================
 // Test Fixtures
@@ -447,6 +448,46 @@ async fn test_polls_detail_renders_loaded_choice_radios() {
 	worker
 		.calls_to_server_fn::<get_question_detail::marker>()
 		.assert_called();
+}
+
+/// Selecting a poll choice must survive the reactive re-render triggered by the
+/// form field signal update.
+#[wasm_bindgen_test]
+async fn test_polls_detail_keeps_clicked_radio_checked() {
+	let worker = MockServiceWorker::new();
+	worker.handle_server_fn::<get_question_detail::marker>(|_args| {
+		Ok((mock_question(), mock_choices()))
+	});
+	worker.handle_server_fn::<current_user::marker>(|_args| Ok(None));
+	worker.start().await;
+
+	let root = install_poll_test_root();
+	polls_detail(1).mount(&root).expect("mount polls detail");
+
+	let selector = "input[type='radio'][name='choice_id'][value='1']";
+	let input = await_selector(selector)
+		.await
+		.as_web_sys()
+		.clone()
+		.dyn_into::<web_sys::HtmlInputElement>()
+		.expect("choice radio should be an input element");
+	input.click();
+
+	defer_yield().await;
+	defer_yield().await;
+
+	let current_input = document()
+		.query_selector(selector)
+		.expect("query selected radio")
+		.expect("selected radio should still exist")
+		.as_web_sys()
+		.clone()
+		.dyn_into::<web_sys::HtmlInputElement>()
+		.expect("current choice radio should be an input element");
+	assert!(
+		current_input.checked(),
+		"clicked choice radio should stay checked after reactive update"
+	);
 }
 
 /// `polls_results(qid)` constructs cleanly with MSW intercepting

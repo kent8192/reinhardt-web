@@ -139,13 +139,9 @@ async fn test_login_returns_mocked_user() {
 	});
 	worker.start().await;
 
-	let user = login(
-		"alice".to_string(),
-		"hunter2".to_string(),
-		String::new(), // csrf token; verified by middleware before handler
-	)
-	.await
-	.expect("login should succeed");
+	let user = login("alice".to_string(), "hunter2".to_string())
+		.await
+		.expect("login should succeed");
 
 	assert_eq!(user.id, mocked.id);
 	assert_eq!(user.username, "alice");
@@ -161,7 +157,7 @@ async fn test_login_surfaces_invalid_credentials() {
 	});
 	worker.start().await;
 
-	let err = login("alice".to_string(), "wrong".to_string(), String::new())
+	let err = login("alice".to_string(), "wrong".to_string())
 		.await
 		.expect_err("expected invalid-credentials error");
 	match err {
@@ -191,7 +187,6 @@ async fn test_register_returns_mocked_user() {
 		"alice".to_string(),
 		"hunter2".to_string(),
 		"hunter2".to_string(),
-		String::new(),
 	)
 	.await
 	.expect("register should succeed");
@@ -216,7 +211,6 @@ async fn test_register_surfaces_validation_error() {
 		"alice".to_string(),
 		"hunter2".to_string(),
 		"hunter2".to_string(),
-		String::new(),
 	)
 	.await
 	.expect_err("expected validation error");
@@ -238,7 +232,7 @@ async fn test_logout_succeeds() {
 	worker.handle_server_fn::<logout::marker>(|_args| Ok(()));
 	worker.start().await;
 
-	logout(String::new()).await.expect("logout should succeed");
+	logout().await.expect("logout should succeed");
 	worker
 		.calls_to_server_fn::<logout::marker>()
 		.assert_called();
