@@ -875,6 +875,42 @@ async fn database_connection(
 with `#[inject]`.** There is no way to pass runtime arguments; factories only
 compose over other injectables.
 
+When a factory can fail, prefer returning `Result<T, E>` where `T` is the
+dependency you want and `E` is an error type used only by that factory. The DI
+registry key is the literal return type's `TypeId`, so `Result<T,
+DatabaseConnectionError>` and `Result<T, OtherFactoryError>` are distinct even
+when both factories produce the same successful `T`. Inject that dependency as
+`DependsResult<T, E>` (or `Depends<Result<T, E>>`) and handle the factory-local
+error at the call site.
+
+```rust
+use reinhardt::db::DatabaseConnection;
+use reinhardt::{get, Response, StatusCode, ViewResult};
+use reinhardt::di::{Depends, DependsResult, injectable_factory};
+
+#[derive(Debug)]
+struct DatabaseConnectionError;
+
+#[injectable_factory(scope = "singleton")]
+async fn database_connection_result(
+    #[inject] config: Depends<Config>,
+) -> Result<DatabaseConnection, DatabaseConnectionError> {
+    DatabaseConnection::connect(&config.database_url)
+        .await
+        .map_err(|_| DatabaseConnectionError)
+}
+
+#[get("/database/health", name = "database_health")]
+async fn database_health(
+    #[inject] db: DependsResult<DatabaseConnection, DatabaseConnectionError>,
+) -> ViewResult<Response> {
+    match db.into_inner() {
+        Ok(_) => Ok(Response::new(StatusCode::OK)),
+        Err(_) => Ok(Response::new(StatusCode::SERVICE_UNAVAILABLE)),
+    }
+}
+```
+
 **The pseudo orphan rule.** To prevent user factories from silently shadowing
 framework-owned types (e.g., `reinhardt_di::InjectionContext`, routers,
 middleware bindings), Reinhardt validates every registered factory at startup.
