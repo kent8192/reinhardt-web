@@ -346,7 +346,8 @@ fn serde_key(field: &syn::Field) -> Result<Option<String>> {
 			}
 
 			if meta.path.is_ident("rename") {
-				if let Ok(value) = meta.value() {
+				if meta.input.peek(syn::Token![=]) {
+					let value = meta.value()?;
 					let lit: LitStr = value.parse()?;
 					key = Some(lit.value());
 					return Ok(());
@@ -356,16 +357,30 @@ fn serde_key(field: &syn::Field) -> Result<Option<String>> {
 					if nested.path.is_ident("deserialize") {
 						let lit: LitStr = nested.value()?.parse()?;
 						key = Some(lit.value());
+					} else {
+						consume_serde_meta(nested)?;
 					}
 					Ok(())
 				})?;
+				return Ok(());
 			}
 
+			consume_serde_meta(meta)?;
 			Ok(())
 		})?;
 	}
 
 	Ok(key)
+}
+
+fn consume_serde_meta(meta: syn::meta::ParseNestedMeta<'_>) -> Result<()> {
+	if meta.input.peek(syn::Token![=]) {
+		let value = meta.value()?;
+		let _: syn::Expr = value.parse()?;
+	} else if meta.input.peek(syn::token::Paren) {
+		meta.parse_nested_meta(consume_serde_meta)?;
+	}
+	Ok(())
 }
 
 fn analyze_type(ty: &syn::Type) -> TypeShape {
@@ -414,7 +429,7 @@ fn analyze_type(ty: &syn::Type) -> TypeShape {
 		_ => {}
 	}
 
-	if segment_name.ends_with("Settings") || segment_name.ends_with("Config") {
+	if segment_name.ends_with("Settings") {
 		TypeShape::Node { ty: ty.clone() }
 	} else {
 		TypeShape::Leaf {
@@ -527,4 +542,81 @@ fn schema_ref_init(
 fn schema_builder_init(shape: &TypeShape, conf_crate: &TokenStream) -> TokenStream {
 	let init = schema_ref_init(shape, quote! { path }, conf_crate);
 	quote! { |path| #init }
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn parse_single_field(input: ItemStruct) -> ParsedField {
+		parse_fields(&input)
+			.expect("settings fields should parse")
+			.into_iter()
+			.next()
+			.expect("test struct should have one field")
+	}
+
+	#[test]
+	fn parse_fields_accepts_serde_default_value() {
+		let input: ItemStruct = syn::parse_quote! {
+			struct TestSettings {
+				#[serde(default = "default_value")]
+				value: String,
+			}
+		};
+
+		let field = parse_single_field(input);
+
+		assert_eq!(field.key, "value");
+		assert!(field.has_serde_default);
+	}
+
+	#[test]
+	fn parse_fields_uses_deserialize_rename_key() {
+		let input: ItemStruct = syn::parse_quote! {
+			struct TestSettings {
+				#[serde(rename(deserialize = "wire-key", serialize = "wireKey"))]
+				value: String,
+			}
+		};
+
+		let field = parse_single_field(input);
+
+		assert_eq!(field.key, "wire-key");
+	}
+
+	#[test]
+	fn parse_fields_rejects_serde_flatten() {
+		let input: ItemStruct = syn::parse_quote! {
+			struct TestSettings {
+				#[serde(flatten)]
+				value: NestedSettings,
+			}
+		};
+
+		let err = parse_fields(&input).expect_err("serde flatten should be rejected");
+
+		assert_eq!(
+			err.to_string(),
+			"`serde(flatten)` is not supported inside settings nodes"
+		);
+	}
+
+	#[test]
+	fn analyze_type_treats_config_suffix_as_leaf() {
+		let ty: syn::Type = syn::parse_quote! { DatabaseConfig };
+
+		let shape = analyze_type(&ty);
+
+		assert!(matches!(shape, TypeShape::Leaf { .. }));
+	}
+
+	#[test]
+	fn analyze_type_treats_settings_suffix_as_node() {
+		let ty: syn::Type = syn::parse_quote! { DatabaseSettings };
+
+		let shape = analyze_type(&ty);
+
+		assert!(matches!(shape, TypeShape::Node { .. }));
+	}
 }
