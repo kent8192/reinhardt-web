@@ -36,6 +36,27 @@
 //! session_cookie_secure = true
 //! ```
 //!
+//! # Typed schema references
+//!
+//! Composed settings expose a typed schema through `ProjectSettings::schema()`.
+//! Embedded settings nodes can be followed with field access, for example
+//! `ProjectSettings::schema().database.default.password`. The rendered path is
+//! composed from the root composition key, the embedded field key, and serde
+//! rename attributes, such as `database.default.db-password`.
+//!
+//! Schema generation peels semantically agnostic wrappers when producing nested
+//! references: `Option<T>`, `Vec<T>`, `HashMap<String, T>`,
+//! `BTreeMap<String, T>`, `IndexMap<String, T>`, and `Box<T>`.
+//! `#[setting(node)]` forces a nested settings node, while `#[setting(leaf)]`
+//! keeps a field as a leaf. Without a shape hint, `*Config` types may infer node
+//! behavior; `*Settings` types should be annotated explicitly unless they are
+//! built-in fragments annotated by the crate.
+//!
+//! Recursive required-field validation reports missing nested required leaves as
+//! [`BuildError::MissingRequiredPath`](super::builder::BuildError::MissingRequiredPath).
+//! A missing direct field on the fragment section remains
+//! [`BuildError::MissingRequiredField`](super::builder::BuildError::MissingRequiredField).
+//!
 //! # Merge semantics
 //!
 //! When multiple TOML files are merged (e.g., `base.toml` + `local.toml`),

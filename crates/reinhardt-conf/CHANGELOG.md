@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Typed settings schema references now expose embedded settings nodes, including
+  wrapper-aware paths for `Option`, `Vec`, `HashMap<String, _>`,
+  `BTreeMap<String, _>`, `IndexMap<String, _>`, and `Box`.
+
+### Fixed
+
+- Required-field validation now reports missing nested required leaves as
+  `BuildError::MissingRequiredPath` while preserving
+  `BuildError::MissingRequiredField` for missing direct section fields.
+
 ## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.3...reinhardt-conf@v0.2.0-rc.2) - 2026-06-03
 
 ### Changed

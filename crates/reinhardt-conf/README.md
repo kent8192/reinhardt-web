@@ -178,6 +178,40 @@ db_password = "${DB_PASSWORD:?Set DB_PASSWORD via direnv or 1Password CLI}"
   port = "${PORT:-5432}"
   ```
 
+## Typed Settings Schemas
+
+Composed settings expose typed schema references through `ProjectSettings::schema()`.
+Embedded settings nodes are addressable with normal field access:
+
+```rust,ignore
+let password = ProjectSettings::schema().database.default.password;
+assert_eq!(password.path().to_string(), "database.default.db-password");
+```
+
+The path is derived from the root composition key, the embedded field key, and
+serde rename attributes. For example, `#[settings(database: DatabaseSettings)]`,
+`DatabaseSettings { default: DatabaseConfig }`, and
+`#[serde(rename = "db-password")] password` produce
+`database.default.db-password`. Type-only composition still uses the fragment's
+section hint for the root path.
+
+Schema generation peels semantically agnostic wrappers before building nested
+references: `Option<T>`, `Vec<T>`, `HashMap<String, T>`,
+`BTreeMap<String, T>`, `IndexMap<String, T>`, and `Box<T>`. Optional refs expose
+`.some()`, sequence refs expose `.any()`, map refs expose `.any()` and
+`.entry(key)`, and boxed values are transparent.
+
+Use `#[setting(node)]` to force a field to be treated as an embedded settings
+node and `#[setting(leaf)]` to force leaf behavior. The default inference is
+conservative: types ending in `Config` may infer node behavior, while types
+ending in `Settings` should be annotated explicitly unless they are built-in
+fragments already annotated by the crate.
+
+Required validation descends into embedded nodes after the direct section field
+exists. A missing nested required leaf reports
+`BuildError::MissingRequiredPath` with the full schema path. A missing direct
+required field on the section still reports `BuildError::MissingRequiredField`.
+
 ## Field Status
 
 The `Settings` struct contains fields that are either actively consumed by the framework or reserved for future implementation.

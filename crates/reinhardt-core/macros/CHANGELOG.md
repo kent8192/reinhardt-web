@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The `#[settings]` macro now generates typed embedded settings node schemas,
+  supports `#[setting(node)]` and `#[setting(leaf)]` shape hints, and peels
+  `Option`, `Vec`, `HashMap<String, _>`, `BTreeMap<String, _>`,
+  `IndexMap<String, _>`, and `Box` wrappers for schema reference generation.
+
 ## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.3...reinhardt-macros@v0.2.0-rc.2) - 2026-06-03
 
 ### Added
