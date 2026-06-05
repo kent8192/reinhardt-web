@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.2.0-rc.2...reinhardt-rest@v0.2.0-rc.3) - 2026-06-05
+
+### Fixed
+
+- keep openapi facade feature standalone
+
+### Performance
+
+- atomize facade dependency feature gates
+- trim standard facade feature dependencies
+
 ## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.3...reinhardt-rest@v0.2.0-rc.2) - 2026-06-03
 
 ### Added
