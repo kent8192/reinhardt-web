@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.2.0-rc.2...reinhardt-pages@v0.2.0-rc.3) - 2026-06-05
+
+### Fixed
+
+- *(pages)* enable security feature for WASM builds
+
+### Performance
+
+- atomize facade dependency feature gates
+
 ## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.3...reinhardt-pages@v0.2.0-rc.2) - 2026-06-03
 
 ### Added

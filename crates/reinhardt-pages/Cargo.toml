@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-pages"
-version = "0.2.0-rc.2"
+version = "0.2.0-rc.3"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -193,7 +193,7 @@ web-sys = { version = "0.3.83", features = [
 ] }
 
 # Async support for WASM
-reinhardt-core = {workspace = true, default-features = false, features = ["reactive", "page"]}
+reinhardt-core = {workspace = true, default-features = false, features = ["reactive", "page", "security"]}
 smallvec = { workspace = true }
 syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
 quote = "1.0"
