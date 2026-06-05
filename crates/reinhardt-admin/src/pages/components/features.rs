@@ -422,8 +422,7 @@ pub fn detail_view(
 					type: "button",
 					class: "admin-btn admin-btn-danger",
 					@click: move |_| {
-						#[cfg(client)]
-						crate::pages::components::features::delete_model_record(delete_model.clone(), delete_id.clone(), delete_return_url.clone());
+						#[cfg(client)]crate::pages::components::features::delete_model_record(delete_model.clone(), delete_id.clone(), delete_return_url.clone());
 					},
 					"Delete"
 				}
@@ -551,13 +550,7 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 				action: action_url,
 				@submit: move |event| {
 					event.prevent_default();
-					#[cfg(client)]
-					crate::pages::components::features::submit_model_form(
-						event,
-						submit_model.clone(),
-						submit_record_id.clone(),
-						submit_return_url.clone(),
-					);
+					#[cfg(client)]crate::pages::components::features::submit_model_form(event, submit_model.clone(), submit_record_id.clone(), submit_return_url.clone(), );
 				},
 				{ form_groups }
 				div {
