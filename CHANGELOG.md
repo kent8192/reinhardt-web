@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0-rc.2...reinhardt-web@v0.2.0-rc.3) - 2026-06-05
+
+### Fixed
+
+- *(ci)* stop masking release-plz 422 failures
+- *(pages)* enable security feature for WASM builds
+
+### Maintenance
+
+- remove examples-twitter from examples test workflow
+- create release announcement PRs for develop trains
+- run announcement posts for develop merges
+- cancel stale reusable workflow runs
+
 ## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.3...reinhardt-web@v0.2.0-rc.2) - 2026-06-03
 
 ### Added
