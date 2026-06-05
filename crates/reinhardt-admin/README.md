@@ -155,7 +155,7 @@ individual modules under `src/server/`:
 - `bulk_delete_records` — bulk delete operations
 - `export_data` — export data (CSV, JSON, XML)
 - `import_data` — import data
-- `admin_login` — admin authentication
+- `admin_login` / `admin_login_with_header` — admin authentication
 - `admin_logout` — admin session termination
 
 ### Routing
@@ -189,6 +189,7 @@ let router = UnifiedRouter::new()
 // POST   /admin/api/server_fn/export_data
 // POST   /admin/api/server_fn/import_data
 // POST   /admin/api/server_fn/admin_login
+// POST   /admin/api/server_fn/admin_login_with_header
 // POST   /admin/api/server_fn/admin_logout
 // GET    /admin/              (SPA shell)
 // GET    /admin/{*tail}       (SPA client-side routing)

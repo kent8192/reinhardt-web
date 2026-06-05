@@ -329,7 +329,21 @@ pub fn find_model_by_table_name(table_name: &str) -> Option<ModelMetadata> {
 /// }
 /// ```
 pub fn get_field_metadata(table_name: &str, field_name: &str) -> Option<FieldMetadata> {
-	find_model_by_table_name(table_name).and_then(|m| m.fields.get(field_name).cloned())
+	find_model_by_table_name(table_name).and_then(|m| {
+		if let Some(meta) = m.fields.get(field_name) {
+			return Some(meta.clone());
+		}
+
+		let relation_name = field_name.strip_suffix("_id")?;
+		let mut meta = m.fields.get(relation_name)?.clone();
+		match meta.field_type {
+			DbFieldType::ForeignKey { .. } | DbFieldType::OneToOne { .. } => {
+				meta.field_type = DbFieldType::BigInteger;
+				Some(meta)
+			}
+			_ => None,
+		}
+	})
 }
 
 #[cfg(all(test, server))]

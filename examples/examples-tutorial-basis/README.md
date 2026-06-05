@@ -358,7 +358,7 @@ The `mode = client` macro namespaces every `named_route` under `polls:`, so SPA 
 - **`apps.rs`** — `installed_apps! { polls: "polls", users: "users" }` generates the `InstalledApp` enum consumed by every `#[url_patterns(InstalledApp::<app>, …)]`.
 - **`urls.rs`** — `#[routes(standalone)] routes()` registers all server functions, mounts `/admin/` and `/static/admin/`, and applies `SessionMiddleware` with a two-week TTL.
 - **`wasm.rs`** — submits an `AppStaticFilesConfig` pointing at `dist-wasm/` so `cargo make collectstatic` picks up the WASM bundle.
-- **`admin.rs`** — `AdminSite::new("Polls Tutorial Admin")` configured with `QuestionAdmin` and `ChoiceAdmin`.
+- **`admin.rs`** — `AdminSite::new("Polls Tutorial Admin")` configured with `QuestionAdmin` and `ChoiceAdmin`, using the tutorial `User` model for admin authentication.
 
 ## Testing
 
