@@ -47,7 +47,6 @@ pub(crate) enum TypeShape {
 		inner: Box<TypeShape>,
 	},
 	Transparent {
-		original: syn::Type,
 		inner: Box<TypeShape>,
 	},
 }
@@ -204,7 +203,7 @@ pub(crate) fn value_schema_tokens(shape: &TypeShape, conf_crate: &TokenStream) -
 				}
 			}
 		}
-		TypeShape::Transparent { inner, .. } => value_schema_tokens(inner, conf_crate),
+		TypeShape::Transparent { inner } => value_schema_tokens(inner, conf_crate),
 	}
 }
 
@@ -219,6 +218,7 @@ pub(crate) fn schema_struct_fields(
 			let vis = &field.vis;
 			let ty = schema_ref_type(&field.shape, conf_crate);
 			quote! {
+				#[doc = "Typed schema reference for this settings field."]
 				#vis #ident: #ty
 			}
 		})
@@ -425,7 +425,6 @@ fn analyze_type(ty: &syn::Type) -> TypeShape {
 		"Box" => {
 			if let Some(inner_ty) = single_type_arg(args) {
 				return TypeShape::Transparent {
-					original: ty.clone(),
 					inner: Box::new(analyze_type(inner_ty)),
 				};
 			}
@@ -507,7 +506,7 @@ fn schema_ref_type(shape: &TypeShape, conf_crate: &TokenStream) -> TokenStream {
 			let inner_ref = schema_ref_type(inner, conf_crate);
 			quote! { #conf_crate::settings::schema::MapRef<Root, #original, #inner_ref> }
 		}
-		TypeShape::Transparent { inner, .. } => schema_ref_type(inner, conf_crate),
+		TypeShape::Transparent { inner } => schema_ref_type(inner, conf_crate),
 	}
 }
 
@@ -539,7 +538,7 @@ fn schema_ref_init(
 			let inner_init = schema_builder_init(inner, conf_crate);
 			quote! { #conf_crate::settings::schema::MapRef::new(#path_tokens, #inner_init) }
 		}
-		TypeShape::Transparent { inner, .. } => schema_ref_init(inner, path_tokens, conf_crate),
+		TypeShape::Transparent { inner } => schema_ref_init(inner, path_tokens, conf_crate),
 	}
 }
 

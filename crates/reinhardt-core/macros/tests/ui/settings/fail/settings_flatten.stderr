@@ -1,0 +1,5 @@
+error: `serde(flatten)` is not supported inside settings nodes
+ --> tests/ui/settings/fail/settings_flatten.rs:5:10
+  |
+5 |     #[serde(flatten)]
+  |             ^^^^^^^
