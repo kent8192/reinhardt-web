@@ -316,7 +316,11 @@ fn has_serde_default(field: &syn::Field) -> bool {
 		let _ = attr.parse_nested_meta(|meta| {
 			if meta.path.is_ident("default") {
 				found = true;
-				let _ = meta.value().and_then(|value| value.parse::<LitStr>());
+				if meta.input.peek(syn::Token![=]) {
+					consume_serde_meta(meta)?;
+				}
+			} else {
+				consume_serde_meta(meta)?;
 			}
 			Ok(())
 		});
@@ -583,6 +587,21 @@ mod tests {
 		let field = parse_single_field(input);
 
 		assert_eq!(field.key, "wire-key");
+	}
+
+	#[test]
+	fn parse_fields_detects_default_after_nested_serde_meta() {
+		let input: ItemStruct = syn::parse_quote! {
+			struct TestSettings {
+				#[serde(rename(deserialize = "wire-key"), default = "default_value")]
+				value: String,
+			}
+		};
+
+		let field = parse_single_field(input);
+
+		assert_eq!(field.key, "wire-key");
+		assert!(field.has_serde_default);
 	}
 
 	#[test]
