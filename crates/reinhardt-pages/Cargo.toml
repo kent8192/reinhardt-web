@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-pages"
-version = "0.2.0-rc.2"
+version = "0.2.0-rc.3"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -85,6 +85,7 @@ web-sys-full = [
 	"web-sys/HtmlDocument",
 	"web-sys/History",
 	"web-sys/Location",
+	"web-sys/Url",
 	"web-sys/WebSocket",
 	"web-sys/MessageEvent",
 	"web-sys/CloseEvent",
@@ -180,6 +181,7 @@ web-sys = { version = "0.3.83", features = [
 	# History API (for router)
 	"History",
 	"Location",
+	"Url",
 	# Storage API (for JWT token management)
 	"Storage",
 	# WebSocket API
@@ -191,7 +193,7 @@ web-sys = { version = "0.3.83", features = [
 ] }
 
 # Async support for WASM
-reinhardt-core = {workspace = true, features = ["reactive", "page"]}
+reinhardt-core = {workspace = true, default-features = false, features = ["reactive", "page", "security"]}
 smallvec = { workspace = true }
 syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
 quote = "1.0"
@@ -205,7 +207,7 @@ uuid = { version = "1.7", features = ["v7", "js"] }
 # `client_router::history` primitives (deduplicates with the server-side
 # dep below). Server-only deps inside reinhardt-urls are gated by the
 # wasm target, so the default features are safe on wasm.
-reinhardt-urls = { workspace = true, features = ["client-router"] }
+reinhardt-urls = { workspace = true, default-features = false, features = ["client-router"] }
 
 # Server-side only dependencies (DI, HTTP, Forms, Server Function Registry)
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
@@ -213,7 +215,7 @@ reinhardt-forms = { workspace = true }
 reinhardt-di = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-middleware = { workspace = true }
-reinhardt-urls = { workspace = true, features = ["routers", "client-router"] }
+reinhardt-urls = { workspace = true, default-features = false, features = ["routers", "client-router"] }
 reinhardt-server = { workspace = true }
 reinhardt-utils = { workspace = true, features = ["staticfiles"] }
 hyper = { workspace = true }

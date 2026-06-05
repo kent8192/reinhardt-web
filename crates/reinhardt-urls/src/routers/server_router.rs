@@ -49,6 +49,7 @@ use crate::routers::UrlReverser;
 use matchit::Router as MatchitRouter;
 use reinhardt_di::InjectionContext;
 use reinhardt_middleware::Middleware;
+#[cfg(feature = "viewsets")]
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -129,6 +130,7 @@ pub struct ServerRouter {
 	pub(crate) routes: Vec<crate::routers::Route>,
 
 	/// ViewSet registrations
+	#[cfg(feature = "viewsets")]
 	pub(crate) viewsets: HashMap<String, Arc<dyn reinhardt_views::viewsets::ViewSet>>,
 
 	/// Function-based routes

@@ -41,7 +41,7 @@
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-#[cfg(native)]
+#[cfg(all(feature = "proxy", native))]
 pub mod proxy;
 pub mod routers;
 

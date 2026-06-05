@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-test"
-version = "0.2.0-rc.2"
+version = "0.2.0-rc.3"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -106,6 +106,7 @@ web-sys = { version = "0.3.83", optional = true, features = [
   "Attr",
   "HtmlDocument",
   "Location",
+  "Url",
   "History",
   "Headers",
   "Request",

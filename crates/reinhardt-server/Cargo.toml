@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-server"
-version = "0.2.0-rc.2"
+version = "0.2.0-rc.3"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -9,7 +9,7 @@ authors.workspace = true
 description = "HTTP server implementation for Reinhardt framework"
 
 [dependencies]
-reinhardt-core = { workspace = true, features = ["exception", "types"] }
+reinhardt-core = { workspace = true, default-features = false, features = ["exception", "types"] }
 reinhardt-conf = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-di = { workspace = true }

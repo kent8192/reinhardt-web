@@ -47,6 +47,7 @@ pub mod existence;
 pub mod file_type;
 pub mod iban;
 pub mod identifier;
+#[cfg(feature = "image-validation")]
 pub mod image;
 pub mod ip_address;
 pub mod numeric;
@@ -82,6 +83,7 @@ pub use existence::ExistsValidator;
 pub use file_type::{FileSizeValidator, FileTypeValidator};
 pub use iban::IBANValidator;
 pub use identifier::{ConstraintName, FieldName, IdentifierValidationError, TableName};
+#[cfg(feature = "image-validation")]
 pub use image::ImageDimensionValidator;
 pub use ip_address::IPAddressValidator;
 pub use numeric::{MaxValueValidator, MinValueValidator, RangeValidator};
@@ -114,6 +116,7 @@ pub mod prelude {
 	pub use super::file_type::{FileSizeValidator, FileTypeValidator};
 	pub use super::iban::IBANValidator;
 	pub use super::identifier::{ConstraintName, FieldName, IdentifierValidationError, TableName};
+	#[cfg(feature = "image-validation")]
 	pub use super::image::ImageDimensionValidator;
 	pub use super::ip_address::IPAddressValidator;
 	pub use super::numeric::{MaxValueValidator, MinValueValidator, RangeValidator};

@@ -1,4 +1,5 @@
 #![warn(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 //! # Reinhardt Auth
 //!
 //! Authentication and authorization system for Reinhardt framework.
@@ -124,6 +125,8 @@ pub mod advanced_permissions;
 /// Base user manager trait for CRUD operations.
 pub mod base_user_manager;
 /// HTTP Basic authentication backend.
+#[cfg_attr(docsrs, doc(cfg(feature = "basic")))]
+#[cfg(feature = "basic")]
 pub mod basic;
 /// Group management (create, delete, assign users).
 pub mod group_management;
@@ -179,6 +182,8 @@ pub mod settings;
 
 pub use advanced_permissions::{ObjectPermission as AdvancedObjectPermission, RoleBasedPermission};
 pub use base_user_manager::BaseUserManager;
+#[cfg_attr(docsrs, doc(cfg(feature = "basic")))]
+#[cfg(feature = "basic")]
 pub use basic::BasicAuthentication as HttpBasicAuth;
 pub use group_management::{
 	CreateGroupData, Group, GroupManagementError, GroupManagementResult, GroupManager,

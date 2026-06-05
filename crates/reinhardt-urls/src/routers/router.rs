@@ -1,8 +1,11 @@
 use super::{PathMatcher, PathPattern, Route};
 use async_trait::async_trait;
 use reinhardt_http::{Handler, Request, Response, Result};
+#[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::ViewSet;
+#[cfg(feature = "viewsets")]
 use std::collections::HashMap;
+#[cfg(feature = "viewsets")]
 use std::sync::Arc;
 
 /// Router trait - composes routes together
@@ -166,6 +169,7 @@ impl DefaultRouter {
 	// - /users/{id}/ for detail actions
 	/// assert_eq!(router.get_routes().len(), 2);
 	/// ```
+	#[cfg(feature = "viewsets")]
 	pub fn register_viewset<V: ViewSet + 'static>(&mut self, prefix: &str, viewset: Arc<V>) {
 		let basename = viewset.get_basename();
 		let lookup_field = viewset.get_lookup_field();
@@ -257,6 +261,7 @@ impl DefaultRouter {
 	/// // The ViewSet has no extra actions, so the map will be empty
 	/// assert!(url_map.is_empty());
 	/// ```
+	#[cfg(feature = "viewsets")]
 	pub fn get_action_url_map<V: ViewSet>(
 		&self,
 		viewset: &V,
@@ -575,10 +580,12 @@ impl Handler for DefaultRouter {
 }
 
 /// Handler wrapper for ViewSet list actions
+#[cfg(feature = "viewsets")]
 struct ViewSetListHandler<V> {
 	viewset: Arc<V>,
 }
 
+#[cfg(feature = "viewsets")]
 impl<V> ViewSetListHandler<V> {
 	fn new(viewset: Arc<V>) -> Self {
 		Self { viewset }
@@ -586,6 +593,7 @@ impl<V> ViewSetListHandler<V> {
 }
 
 #[async_trait]
+#[cfg(feature = "viewsets")]
 impl<V: ViewSet + 'static> Handler for ViewSetListHandler<V> {
 	async fn handle(&self, request: Request) -> Result<Response> {
 		let action = reinhardt_views::viewsets::Action::list();
@@ -594,10 +602,12 @@ impl<V: ViewSet + 'static> Handler for ViewSetListHandler<V> {
 }
 
 /// Handler wrapper for ViewSet detail actions
+#[cfg(feature = "viewsets")]
 struct ViewSetDetailHandler<V> {
 	viewset: Arc<V>,
 }
 
+#[cfg(feature = "viewsets")]
 impl<V> ViewSetDetailHandler<V> {
 	fn new(viewset: Arc<V>) -> Self {
 		Self { viewset }
@@ -605,6 +615,7 @@ impl<V> ViewSetDetailHandler<V> {
 }
 
 #[async_trait]
+#[cfg(feature = "viewsets")]
 impl<V: ViewSet + 'static> Handler for ViewSetDetailHandler<V> {
 	async fn handle(&self, request: Request) -> Result<Response> {
 		// Determine action based on HTTP method
@@ -624,10 +635,12 @@ impl<V: ViewSet + 'static> Handler for ViewSetDetailHandler<V> {
 }
 
 /// Handler wrapper for custom ViewSet actions
+#[cfg(feature = "viewsets")]
 struct ActionHandlerWrapper {
 	handler: Arc<dyn reinhardt_views::viewsets::ActionHandler>,
 }
 
+#[cfg(feature = "viewsets")]
 impl ActionHandlerWrapper {
 	fn new(handler: Arc<dyn reinhardt_views::viewsets::ActionHandler>) -> Self {
 		Self { handler }
@@ -635,6 +648,7 @@ impl ActionHandlerWrapper {
 }
 
 #[async_trait]
+#[cfg(feature = "viewsets")]
 impl Handler for ActionHandlerWrapper {
 	async fn handle(&self, request: Request) -> Result<Response> {
 		self.handler.handle(request).await

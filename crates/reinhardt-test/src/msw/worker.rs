@@ -16,11 +16,43 @@ use super::interceptor;
 use super::matcher::UrlMatcher;
 use super::recorder::{CallQuery, RecordedRequest, RequestRecorder, ServerFnCallQuery};
 
-// Global guard to prevent multiple concurrent MockServiceWorker instances from
-// overriding `window.fetch`. Without this, a second worker would capture the
-// *already-overridden* fetch as its "original", leading to incorrect restoration.
+struct ActiveInterceptor {
+	owner_id: u64,
+	original_fetch: JsValue,
+	_closure: Closure<dyn FnMut(JsValue, JsValue) -> Promise>,
+}
+
 thread_local! {
-	static ACTIVE_WORKER_COUNT: Cell<u32> = const { Cell::new(0) };
+	static NEXT_WORKER_ID: Cell<u64> = const { Cell::new(1) };
+	static ACTIVE_INTERCEPTOR: RefCell<Option<ActiveInterceptor>> = const { RefCell::new(None) };
+}
+
+fn next_worker_id() -> u64 {
+	NEXT_WORKER_ID.with(|next| {
+		let id = next.get();
+		next.set(id.wrapping_add(1).max(1));
+		id
+	})
+}
+
+fn restore_active_interceptor() {
+	ACTIVE_INTERCEPTOR.with(|active| {
+		if let Some(active) = active.borrow_mut().take() {
+			interceptor::restore_fetch(&active.original_fetch);
+		}
+	});
+}
+
+fn restore_interceptor_if_owned(owner_id: u64) {
+	ACTIVE_INTERCEPTOR.with(|active| {
+		let should_restore = active
+			.borrow()
+			.as_ref()
+			.is_some_and(|active| active.owner_id == owner_id);
+		if should_restore && let Some(active) = active.borrow_mut().take() {
+			interceptor::restore_fetch(&active.original_fetch);
+		}
+	});
 }
 
 /// Policy for requests that don't match any registered handler.
@@ -62,14 +94,11 @@ impl From<&UnhandledPolicy> for interceptor::UnhandledPolicy {
 /// // worker.stop() called automatically on drop
 /// ```
 pub struct MockServiceWorker {
+	worker_id: u64,
 	handlers: Rc<RefCell<Vec<Box<dyn ErasedHandler>>>>,
 	recorder: Rc<RefCell<RequestRecorder>>,
 	unhandled_policy: UnhandledPolicy,
 	active: Cell<bool>,
-	original_fetch: RefCell<Option<JsValue>>,
-	#[allow(clippy::type_complexity)]
-	// Store the closure to prevent deallocation while the override is active
-	closure: RefCell<Option<Closure<dyn FnMut(JsValue, JsValue) -> Promise>>>,
 }
 
 impl MockServiceWorker {
@@ -81,12 +110,11 @@ impl MockServiceWorker {
 	/// Create a new worker with a custom unhandled request policy.
 	pub fn with_policy(policy: UnhandledPolicy) -> Self {
 		Self {
+			worker_id: next_worker_id(),
 			handlers: Rc::new(RefCell::new(Vec::new())),
 			recorder: Rc::new(RefCell::new(RequestRecorder::new())),
 			unhandled_policy: policy,
 			active: Cell::new(false),
-			original_fetch: RefCell::new(None),
-			closure: RefCell::new(None),
 		}
 	}
 
@@ -101,15 +129,7 @@ impl MockServiceWorker {
 			"MockServiceWorker: already started. Call stop() before starting again."
 		);
 
-		ACTIVE_WORKER_COUNT.with(|count| {
-			assert!(
-				count.get() == 0,
-				"MockServiceWorker: another worker is already active. \
-				 Only one MockServiceWorker can override window.fetch at a time. \
-				 Call stop() on the existing worker first."
-			);
-			count.set(count.get() + 1);
-		});
+		restore_active_interceptor();
 
 		let original = interceptor::save_original_fetch();
 		let closure = interceptor::install_fetch_override(
@@ -119,22 +139,21 @@ impl MockServiceWorker {
 			original.clone(),
 		);
 
-		*self.original_fetch.borrow_mut() = Some(original);
-		*self.closure.borrow_mut() = Some(closure);
+		ACTIVE_INTERCEPTOR.with(|active| {
+			*active.borrow_mut() = Some(ActiveInterceptor {
+				owner_id: self.worker_id,
+				original_fetch: original,
+				_closure: closure,
+			});
+		});
 		self.active.set(true);
 	}
 
 	/// Restore original `window.fetch` and clean up.
 	pub async fn stop(&self) {
 		if self.active.get() {
-			if let Some(original) = self.original_fetch.borrow().as_ref() {
-				interceptor::restore_fetch(original);
-			}
-			self.closure.borrow_mut().take();
+			restore_interceptor_if_owned(self.worker_id);
 			self.active.set(false);
-			ACTIVE_WORKER_COUNT.with(|count| {
-				count.set(count.get().saturating_sub(1));
-			});
 		}
 	}
 
@@ -212,12 +231,7 @@ impl MockServiceWorker {
 impl Drop for MockServiceWorker {
 	fn drop(&mut self) {
 		if self.active.get() {
-			if let Some(original) = self.original_fetch.borrow().as_ref() {
-				interceptor::restore_fetch(original);
-			}
-			ACTIVE_WORKER_COUNT.with(|count| {
-				count.set(count.get().saturating_sub(1));
-			});
+			restore_interceptor_if_owned(self.worker_id);
 		}
 	}
 }

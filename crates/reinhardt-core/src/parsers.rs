@@ -40,6 +40,7 @@
 //! ```
 
 /// Compressed request body parser (gzip, deflate, brotli).
+#[cfg(feature = "compressed-parsers")]
 pub mod compressed;
 /// File upload parser.
 pub mod file;
@@ -66,6 +67,7 @@ pub mod xml;
 #[cfg(feature = "yaml")]
 pub mod yaml;
 
+#[cfg(feature = "compressed-parsers")]
 pub use compressed::{CompressedParser, CompressionEncoding};
 pub use file::FileUploadParser;
 pub use form::FormParser;

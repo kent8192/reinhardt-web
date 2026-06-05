@@ -52,9 +52,12 @@ pub mod viewsets;
 
 // Module declarations from merged views-core
 pub mod admin;
+#[cfg(feature = "browsable-api")]
 pub mod browsable_api;
 pub mod generic;
+#[cfg(feature = "openapi")]
 pub mod openapi;
+#[cfg(feature = "openapi")]
 pub mod openapi_inspector;
 
 // Module declarations

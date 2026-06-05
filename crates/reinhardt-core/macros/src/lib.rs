@@ -1018,15 +1018,14 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 ///
 /// The macro:
 ///
-/// 1. Emits `#[cfg_attr(native, derive(::reinhardt::Validate, ::reinhardt::rest::openapi::Schema))]`
-///    on the struct so the server build gets validation and OpenAPI schema
-///    generation, while the wasm build sees a plain serializable type.
+/// 1. Emits `#[cfg_attr(native, derive(::reinhardt::Validate))]`
+///    on the struct so the server build gets validation while the wasm build
+///    sees a plain serializable type.
 /// 2. Wraps every `#[validate(...)]` field attribute in `#[cfg_attr(native, ...)]`
 ///    so the same source compiles unchanged for `wasm32-unknown-unknown`.
 /// 3. Is idempotent: if the user already wrote
-///    `#[cfg_attr(native, derive(Validate))]` or
-///    `#[cfg_attr(native, derive(Schema))]` on the struct, that derive is not
-///    duplicated.
+///    `#[cfg_attr(native, derive(Validate))]` on the struct, that derive is
+///    not duplicated.
 ///
 /// # `#[dto]` vs [`macro@model`]
 ///
@@ -1038,7 +1037,7 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 /// | What | A persistent record | A wire-level data shape |
 /// | Where it lives | `apps/<app>/models/*.rs` | `apps/<app>/shared/types.rs` |
 /// | Where it runs | Server only (`native`) | Both server (`native`) and client (`wasm`) |
-/// | What it adds | Table mapping, primary key, FK fields, migrations | Validate + OpenAPI `Schema` derives (native-only), wraps `#[validate(...)]` |
+/// | What it adds | Table mapping, primary key, FK fields, migrations | `Validate` derive (native-only), wraps `#[validate(...)]` |
 /// | Boundary it crosses | Rust ↔ database | Server ↔ client (via `#[server_fn]`, REST handlers, WebSocket payloads) |
 ///
 /// "DTO" is the industry-standard term for the second row — a data-transfer
@@ -1065,7 +1064,7 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 /// Expands (conceptually) to:
 ///
 /// ```rust,ignore
-/// #[cfg_attr(native, derive(::reinhardt::Validate, ::reinhardt::rest::openapi::Schema))]
+/// #[cfg_attr(native, derive(::reinhardt::Validate))]
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// pub struct LoginRequest {
 ///     #[cfg_attr(native, validate(email(message = "Invalid email address")))]
@@ -1078,20 +1077,20 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 ///
 /// # Requirements
 ///
-/// - The consumer crate's **native** build of `reinhardt` MUST enable the
-///   `rest` feature — the macro expansion references
-///   `::reinhardt::rest::openapi::Schema`.
+/// - OpenAPI schema generation is not implicit. If a DTO should be part of
+///   generated OpenAPI documentation, explicitly add a `Schema` derive in a
+///   build that enables the OpenAPI feature graph.
 /// - Applies only to `struct` items (named, tuple, or unit). Enums and unions
 ///   produce a compile error.
 /// - Does not accept arguments in this version. Passing any tokens (e.g.
 ///   `#[dto(no_schema)]`) is a compile error.
-/// - Unconditional `#[derive(Validate)]` or `#[derive(Schema)]` on the same
-///   struct is a compile error. Both traits live behind the `native` cfg, so
-///   an unconditional derive cannot resolve on wasm and would duplicate the
-///   macro's emission on native. Either delete the derive (and let `#[dto]`
-///   emit it) or wrap it in `#[cfg_attr(native, derive(...))]` yourself.
-/// - Any pre-existing `#[cfg_attr(native, derive(Validate))]` or
-///   `#[cfg_attr(native, derive(Schema))]` MUST be written *below* `#[dto]`,
+/// - Unconditional `#[derive(Validate)]` on the same struct is a compile
+///   error. `Validate` lives behind the `native` cfg, so an unconditional
+///   derive cannot resolve on wasm and would duplicate the macro's emission on
+///   native. Either delete the derive (and let `#[dto]` emit it) or wrap it in
+///   `#[cfg_attr(native, derive(Validate))]` yourself.
+/// - Any pre-existing `#[cfg_attr(native, derive(Validate))]` MUST be written
+///   *below* `#[dto]`,
 ///   not above it. Attribute proc macros only observe attributes that appear
 ///   under them in source order, so a `cfg_attr` placed above `#[dto]` is
 ///   invisible to the macro and would cause `#[dto]` to emit a duplicate
@@ -1100,7 +1099,7 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 ///
 /// ```rust,ignore
 /// #[dto]
-/// #[cfg_attr(native, derive(Schema))]
+/// #[cfg_attr(native, derive(Validate))]
 /// pub struct LoginRequest { /* ... */ }
 /// ```
 #[proc_macro_attribute]

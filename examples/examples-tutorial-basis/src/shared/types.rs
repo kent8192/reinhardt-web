@@ -23,10 +23,9 @@ pub struct UserInfo {
 ///
 /// Sent from the WASM client to the server when submitting the login form.
 ///
-/// The `#[dto]` macro emits `Validate` (and an OpenAPI `Schema`)
-/// derive behind `cfg(native)` so the WASM client does not pull in the
-/// validator-crate machinery — the server is the only side that runs
-/// `request.validate()` before hitting the database.
+/// The `#[dto]` macro emits `Validate` behind `cfg(native)` so the WASM client
+/// does not pull in the validator-crate machinery — the server is the only
+/// side that runs `request.validate()` before hitting the database.
 #[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginRequest {

@@ -483,6 +483,7 @@ impl From<&str> for Error {
 	}
 }
 
+#[cfg(feature = "validators")]
 impl From<crate::validators::ValidationErrors> for Error {
 	fn from(err: crate::validators::ValidationErrors) -> Self {
 		Error::Validation(format!("Validation failed: {}", err))

@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-db"
-version = "0.2.0-rc.2"
+version = "0.2.0-rc.3"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -85,8 +85,8 @@ refinery = { workspace = true, optional = true }
 aes-gcm = { workspace = true }
 sha2 = { workspace = true }
 rand = { workspace = true }
-image = { workspace = true }
-flate2 = { workspace = true }
+image = { workspace = true, optional = true }
+flate2 = { workspace = true, optional = true }
 phonenumber = { workspace = true }
 smallvec = "1.13"
 paste = "1.0"
@@ -100,17 +100,21 @@ default = [
   "migrations",
   "hybrid",
   "associations",
+  "image-fields",
+  "compressed-fields",
 ]
 
 # Module features (conditionally compiled when feature is enabled)
-backends = []
-backends-pool = []
+backends = ["pool"]
+backends-pool = ["pool"]
 pool = []
-orm = []
+orm = ["backends", "hybrid"]
 migrations = ["refinery"]
 hybrid = []
 associations = []
 contenttypes = []
+image-fields = ["dep:image"]
+compressed-fields = ["dep:flate2"]
 nosql = ["dep:bson"]
 backends-settings = ["backends"]
 
@@ -128,6 +132,8 @@ database-full = [
   "hybrid",
   "associations",
   "contenttypes",
+  "compressed-fields",
+  "image-fields",
   "all-databases",
   "full",
 ]

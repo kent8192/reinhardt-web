@@ -46,7 +46,7 @@ If you have written `ModelSerializer` or `Depends()` before, Reinhardt will feel
 
 <!-- reinhardt-version-sync -->
 ```bash
-# Currently a pre-release: --version is required. Once 0.2.0-rc.2 stable ships,
+# Currently a pre-release: --version is required. Once 0.2.0-rc.3 stable ships,
 # --version becomes optional (and acts as an opt-in reproducibility pin).
 cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
 
@@ -103,7 +103,7 @@ Reinhardt follows a **three-phase lifecycle** for every crate:
 | **Stable** (`0.x.0`) | Full SemVer 2.0 guarantees. |
 
 <!-- reinhardt-version-sync -->
-**Current status:** Reinhardt is at `0.2.0-rc.2`. From `0.1.0` onward, all
+**Current status:** Reinhardt is at `0.2.0-rc.3`. From `0.1.0` onward, all
 public APIs follow SemVer 2.0; breaking changes ship in a future
 `0.2.0-rc.N` series coordinated through the `develop/0.2.0` branch.
 
@@ -116,7 +116,9 @@ The full lifecycle policy lives in
 
 Reinhardt is a modular framework. Choose your starting point:
 
-> **New here?** Start with the default standard setup. Use `full` if you need all features, or `minimal` for lightweight APIs.
+> **New here?** Start with the default standard setup. Use `minimal` plus explicit opt-in features for lightweight APIs. `full` remains available as the exhaustive flagship preset, but it is not the recommended starting point for normal applications.
+
+Feature presets are layered. `full`, `standard`, and `minimal` are top-level presets; each preset enables lower-level feature groups, and those groups enable atom feature flags such as `viewset-routing`, `signals`, `image-validation`, `compressed-parsers`, `commands-autoreload`, `browsable-api`, and `openapi-swagger-ui`. External dependencies are attached at the atom feature boundary wherever possible, so choosing `minimal` or `standard` does not implicitly import every dependency carried by `full`.
 
 ### Default: Standard Setup (Balanced) ⚠️ Default Preset
 
@@ -127,10 +129,12 @@ Get a well-balanced feature set with zero configuration:
 [dependencies]
 # Import as 'reinhardt', published as 'reinhardt-web'
 # Default enables the "standard" preset (balanced feature set)
-reinhardt = { version = "0.2.0-rc.2", package = "reinhardt-web" }
+reinhardt = { version = "0.2.0-rc.3", package = "reinhardt-web" }
 ```
 
 **Includes:** Core, Database (PostgreSQL), REST API (serializers, parsers, pagination, filters, throttling, versioning, metadata, content negotiation), Auth, Middleware (sessions), Pages (WASM Frontend with SSR), Signals
+
+**Opt-in atoms:** OpenAPI generation/UI, browsable API templates, compressed request parsers, static-file compression, and image validation are intentionally outside `standard`. Add `openapi`, `openapi-swagger-ui`, `browsable-api`, `compressed-parsers`, `middleware-compression`, or `image-validation` when an application needs them.
 
 **Binary**: ~20-30 MB | **Compile**: Medium
 
@@ -140,19 +144,19 @@ use reinhardt::prelude::*;
 use reinhardt::{Request, Response, StatusCode};
 ```
 
-### Option 1: Full-Featured (All Batteries Included)
+### Option 1: Full-Featured (Exhaustive Flagship)
 
-For projects that need every available component:
+For compatibility checks, framework development, and projects that intentionally need every available component:
 
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.2.0-rc.2", package = "reinhardt-web", default-features = false, features = ["full"] }
+reinhardt = { version = "0.2.0-rc.3", package = "reinhardt-web", default-features = false, features = ["full"] }
 ```
 
 **Includes:** Everything in Standard, plus Admin, GraphQL, WebSockets, Cache, i18n, Mail, Static Files, Storage, and more
 
-**Binary**: ~50+ MB | **Compile**: Slower, but everything works out of the box
+**Binary**: ~50+ MB | **Compile**: Slowest, because this preset intentionally pulls the complete dependency graph
 
 ### Option 2: Microservices (Minimal Setup)
 
@@ -161,7 +165,7 @@ Lightweight and fast, perfect for simple APIs:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.2.0-rc.2", package = "reinhardt-web", default-features = false, features = ["minimal"] }
+reinhardt = { version = "0.2.0-rc.3", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 ```
 
 **Includes:** HTTP, routing, DI, parameter extraction, server
@@ -176,24 +180,24 @@ Install only the components you need:
 ```toml
 [dependencies]
 # Core components
-reinhardt-http = "0.2.0-rc.2"
-reinhardt-urls = "0.2.0-rc.2"
+reinhardt-http = "0.2.0-rc.3"
+reinhardt-urls = "0.2.0-rc.3"
 
 # Optional: Database
-reinhardt-db = "0.2.0-rc.2"
+reinhardt-db = "0.2.0-rc.3"
 
 # Optional: Authentication
-reinhardt-auth = "0.2.0-rc.2"
+reinhardt-auth = "0.2.0-rc.3"
 
 # Optional: REST API features
-reinhardt-rest = "0.2.0-rc.2"
+reinhardt-rest = "0.2.0-rc.3"
 
 # Optional: Admin panel
-reinhardt-admin = "0.2.0-rc.2"
+reinhardt-admin = "0.2.0-rc.3"
 
 # Optional: Advanced features
-reinhardt-graphql = "0.2.0-rc.2"
-reinhardt-websockets = "0.2.0-rc.2"
+reinhardt-graphql = "0.2.0-rc.3"
+reinhardt-websockets = "0.2.0-rc.3"
 ```
 
 **Note on Crate Naming:**
@@ -213,7 +217,7 @@ below is auto-bumped by release-plz on each release.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.0-rc.2"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.3"
 ```
 
 ### 2. Create a New Project
@@ -427,12 +431,12 @@ framework for discovery via the `inventory` crate.
 **Note:** The `reinhardt::prelude` includes commonly used types. Key exports include:
 
 **Always Available:**
-- Core routing and views: `Router`, `DefaultRouter`, `ServerRouter`, `View`, `ListView`, `DetailView`
-- ViewSets: `ViewSet`, `ModelViewSet`, `ReadOnlyModelViewSet`
 - HTTP: `StatusCode`
 
 **Feature-Dependent:**
 - **`core` feature**: `Request`, `Response`, `Handler`, `Middleware`, Signals (`post_save`, `pre_save`, etc.)
+- **`routing` feature**: `Router`, `DefaultRouter`, `ServerRouter`
+- **`api`, `standard`, or `api-only` features**: `View`, `ListView`, `DetailView`, `ViewSet`, `ModelViewSet`, `ReadOnlyModelViewSet`
 - **`database` feature**: `Model`, `DatabaseConnection`, `F`, `Q`, `Transaction`, `atomic`, Database functions (`Concat`, `Upper`, `Lower`, `Now`, `CurrentDate`), Window functions (`Window`, `RowNumber`, `Rank`, `DenseRank`), Constraints (`UniqueConstraint`, `CheckConstraint`, `ForeignKeyConstraint`)
 - **`auth` feature**: `BaseUser`, `FullUser`, `PermissionsMixin`, `BaseUserManager`, `Argon2Hasher`, `GroupManager`, `CreateGroupData`, `Permission`, `ObjectPermission`, `ObjectPermissionManager`
 - **`minimal`, `standard`, or `di` features**: `Body`, `Cookie`, `Header`, `Json`, `Path`, `Query`

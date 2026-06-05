@@ -4691,22 +4691,14 @@ fn generate_info_struct(
 		quote! { , #(#extra_derives),* }
 	};
 
-	// Conditionally add Validate/Schema derives if any field has validation
+	// Conditionally add Validate derive if any field has validation. OpenAPI
+	// Schema remains explicit so non-OpenAPI REST users do not pull the OpenAPI
+	// feature graph through generated companion structs.
 	let has_any_validation = info_fields.iter().any(|f| field_has_validation(&f.config));
 
 	let validate_derive = if has_any_validation {
 		quote! {
-			#[cfg_attr(native, derive(#reinhardt::Validate, #reinhardt::rest::openapi::Schema))]
-		}
-	} else {
-		quote! {}
-	};
-
-	let to_schema_import = if has_any_validation {
-		quote! {
-			#[cfg(native)]
-			#[allow(unused_imports)] // trait import used only under `native` cfg for schema validation
-			use #reinhardt::rest::openapi::ToSchema as _;
+			#[cfg_attr(native, derive(#reinhardt::Validate))]
 		}
 	} else {
 		quote! {}
@@ -4772,8 +4764,6 @@ fn generate_info_struct(
 		}
 
 		#info_builder
-
-		#to_schema_import
 	})
 }
 

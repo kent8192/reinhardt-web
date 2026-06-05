@@ -12,6 +12,7 @@ use hyper::Method;
 use reinhardt_core::endpoint::EndpointInfo;
 use reinhardt_http::{Handler, Request, Response, Result};
 use reinhardt_middleware::Middleware;
+#[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::ViewSet;
 use std::sync::Arc;
 
@@ -271,6 +272,7 @@ impl ServerRouter {
 	/// let router = ServerRouter::new()
 	///     .viewset("/users", UserViewSet);
 	/// ```
+	#[cfg(feature = "viewsets")]
 	pub fn viewset<V: ViewSet + 'static>(mut self, prefix: &str, viewset: V) -> Self {
 		self.viewsets.insert(prefix.to_string(), Arc::new(viewset));
 		self
@@ -303,6 +305,7 @@ impl ServerRouter {
 	/// (gated by `#[cfg(not(target_family = "wasm"))]` at the emitter site).
 	///
 	/// Refs Issue #4507.
+	#[cfg(feature = "viewsets")]
 	pub fn viewset_with_actions<V, M>(
 		self,
 		prefix: &str,
@@ -538,7 +541,7 @@ impl ServerRouter {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "viewsets"))]
 mod viewset_with_actions_tests {
 	use super::*;
 	use async_trait::async_trait;
