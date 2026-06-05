@@ -849,6 +849,22 @@ mod tests {
 	}
 
 	#[test]
+	fn test_reverse_url_create() {
+		let router = init_router();
+		let url = router.reverse("create", &[("model", "users")]).unwrap();
+		assert_eq!(url, "/admin/users/add/");
+	}
+
+	#[test]
+	fn test_reverse_url_edit() {
+		let router = init_router();
+		let url = router
+			.reverse("edit", &[("model", "users"), ("id", "42")])
+			.unwrap();
+		assert_eq!(url, "/admin/users/42/change/");
+	}
+
+	#[test]
 	fn test_init_global_router() {
 		init_global_router();
 

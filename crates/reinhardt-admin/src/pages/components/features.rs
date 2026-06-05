@@ -11,41 +11,25 @@
 #[cfg(client)]
 use crate::server::{create_record, delete_record, update_record};
 use crate::types::{FilterInfo, FilterType, ModelInfo};
-use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use reinhardt_pages::Signal;
 use reinhardt_pages::component::Page;
 use reinhardt_pages::page;
 use std::collections::HashMap;
 
-/// Characters that must be percent-encoded in URL path segments.
-///
-/// This set encodes characters that are unsafe or reserved in URL paths,
-/// while preserving RFC 3986 unreserved characters (`A-Z`, `a-z`, `0-9`, `-`, `_`, `.`, `~`).
-/// Encoded characters: space, `"`, `#`, `%`, `/`, `<`, `>`, `?`, `[`, `]`, `^`, `` ` ``, `{`, `|`, `}`.
-const PATH_SEGMENT_ENCODE_SET: &AsciiSet = &CONTROLS
-	.add(b' ')
-	.add(b'"')
-	.add(b'#')
-	.add(b'%')
-	.add(b'/')
-	.add(b'<')
-	.add(b'>')
-	.add(b'?')
-	.add(b'[')
-	.add(b']')
-	.add(b'^')
-	.add(b'`')
-	.add(b'{')
-	.add(b'|')
-	.add(b'}');
+fn reverse_admin_url(route_name: &str, params: &[(&str, &str)]) -> String {
+	crate::pages::router::try_with_router(|router| router.reverse(route_name, params))
+		.unwrap_or_else(|| crate::pages::router::init_router().reverse(route_name, params))
+		.unwrap_or_else(|err| panic!("failed to reverse admin route `{}`: {}", route_name, err))
+}
 
-/// Percent-encode a string for safe use in URL path segments.
-///
-/// Encodes characters that are unsafe for URL path segments while preserving
-/// RFC 3986 unreserved characters (`-`, `_`, `.`, `~`) to avoid unnecessarily
-/// mangling valid route segments such as `user-management`.
-fn encode_path_segment(s: &str) -> String {
-	utf8_percent_encode(s, PATH_SEGMENT_ENCODE_SET).to_string()
+fn admin_model_url(route_name: &str, model_name: &str) -> String {
+	let model = model_name.to_lowercase();
+	reverse_admin_url(route_name, &[("model", &model)])
+}
+
+fn admin_record_url(route_name: &str, model_name: &str, record_id: &str) -> String {
+	let model = model_name.to_lowercase();
+	reverse_admin_url(route_name, &[("model", &model), ("id", record_id)])
 }
 
 /// Dashboard component
@@ -204,10 +188,7 @@ pub fn list_view(
 	let table_page = data_table(&data.columns, &data.records, &data.model_name);
 	let pagination_page =
 		crate::pages::components::common::pagination(current_page_signal, data.total_pages);
-	let add_url = format!(
-		"/admin/{}/add/",
-		encode_path_segment(&data.model_name.to_lowercase())
-	);
+	let add_url = admin_model_url("create", &data.model_name);
 	let add_label = format!("Add {}", data.model_name);
 	let add_link = {
 		use reinhardt_pages::component::Component;
@@ -330,10 +311,8 @@ fn action_buttons(model_name: &str, record_id: &str) -> Page {
 	use reinhardt_pages::component::Component;
 	use reinhardt_pages::router::Link;
 
-	let encoded_model = encode_path_segment(&model_name.to_lowercase());
-	let encoded_id = encode_path_segment(record_id);
-	let detail_url = format!("/admin/{}/{}/", encoded_model, encoded_id);
-	let edit_url = format!("/admin/{}/{}/change/", encoded_model, encoded_id);
+	let detail_url = admin_record_url("detail", model_name, record_id);
+	let edit_url = admin_record_url("edit", model_name, record_id);
 
 	let view_link = Link::new(detail_url, "View")
 		.class("admin-btn admin-btn-outline admin-btn-sm")
@@ -389,10 +368,8 @@ pub fn detail_view(
 	use reinhardt_pages::component::Component;
 	use reinhardt_pages::router::Link;
 
-	let encoded_model = encode_path_segment(&model_name.to_lowercase());
-	let encoded_id = encode_path_segment(record_id);
-	let edit_url = format!("/admin/{}/{}/change/", encoded_model, encoded_id);
-	let list_url = format!("/admin/{}/", encoded_model);
+	let edit_url = admin_record_url("edit", model_name, record_id);
+	let list_url = admin_model_url("list", model_name);
 
 	let title = format!("{} Detail", model_name);
 	let table_page = detail_table(record);
@@ -507,22 +484,12 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 	};
 
 	let action_url = if let Some(rid) = record_id {
-		format!(
-			"/admin/{}/{}/change/",
-			encode_path_segment(&model_name.to_lowercase()),
-			encode_path_segment(rid)
-		)
+		admin_record_url("edit", model_name, rid)
 	} else {
-		format!(
-			"/admin/{}/add/",
-			encode_path_segment(&model_name.to_lowercase())
-		)
+		admin_model_url("create", model_name)
 	};
 
-	let list_url = format!(
-		"/admin/{}/",
-		encode_path_segment(&model_name.to_lowercase())
-	);
+	let list_url = admin_model_url("list", model_name);
 
 	let form_fields: Vec<Page> = fields.iter().map(form_group).collect();
 	let form_groups = page!(|form_fields: Vec<Page>| {
