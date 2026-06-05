@@ -5,11 +5,23 @@ use quote::{format_ident, quote};
 use syn::spanned::Spanned;
 use syn::{Fields, ItemStruct, LitStr, Result};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SettingAttr {
 	Required,
 	Optional,
 	Default(String),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ShapeHint {
+	Node,
+	Leaf,
+}
+
+#[derive(Debug)]
+struct ParsedSettingAttr {
+	requirement: Option<SettingAttr>,
+	shape_hint: Option<ShapeHint>,
 }
 
 #[derive(Debug)]
@@ -20,6 +32,8 @@ pub(crate) struct ParsedField {
 	pub ty: syn::Type,
 	pub vis: syn::Visibility,
 	pub setting_attr: Option<SettingAttr>,
+	#[cfg(test)]
+	pub shape_hint: Option<ShapeHint>,
 	pub has_serde_default: bool,
 	pub cleaned_attrs: Vec<syn::Attribute>,
 	pub shape: TypeShape,
@@ -142,16 +156,19 @@ pub(crate) fn parse_fields(input: &ItemStruct) -> Result<Vec<ParsedField>> {
 				.clone()
 				.expect("named settings fields must have identifiers");
 			let rust_name = ident.to_string();
+			let setting_attr = parse_setting_attr(field)?;
 			Ok(ParsedField {
 				ident,
 				key: serde_key(field)?.unwrap_or_else(|| rust_name.clone()),
 				rust_name,
 				ty: field.ty.clone(),
 				vis: field.vis.clone(),
-				setting_attr: parse_setting_attr(field)?,
+				setting_attr: setting_attr.requirement,
+				#[cfg(test)]
+				shape_hint: setting_attr.shape_hint,
 				has_serde_default: has_serde_default(field),
 				cleaned_attrs: strip_setting_attrs(&field.attrs),
-				shape: analyze_type(&field.ty),
+				shape: analyze_type(&field.ty, setting_attr.shape_hint),
 			})
 		})
 		.collect()
@@ -242,10 +259,12 @@ pub(crate) fn schema_struct_inits(
 		.collect()
 }
 
-fn parse_setting_attr(field: &syn::Field) -> Result<Option<SettingAttr>> {
+fn parse_setting_attr(field: &syn::Field) -> Result<ParsedSettingAttr> {
 	let mut has_required = false;
 	let mut has_optional = false;
 	let mut has_default = false;
+	let mut has_node = false;
+	let mut has_leaf = false;
 	let mut default_expr: Option<String> = None;
 
 	for attr in &field.attrs {
@@ -260,6 +279,12 @@ fn parse_setting_attr(field: &syn::Field) -> Result<Option<SettingAttr>> {
 			} else if meta.path.is_ident("optional") {
 				has_optional = true;
 				Ok(())
+			} else if meta.path.is_ident("node") {
+				has_node = true;
+				Ok(())
+			} else if meta.path.is_ident("leaf") {
+				has_leaf = true;
+				Ok(())
 			} else if meta.path.is_ident("default") {
 				has_default = true;
 				let lit: LitStr = meta.value()?.parse()?;
@@ -267,7 +292,7 @@ fn parse_setting_attr(field: &syn::Field) -> Result<Option<SettingAttr>> {
 				Ok(())
 			} else {
 				Err(meta.error(
-					"unknown setting attribute, expected one of: `required`, `optional`, `default`",
+					"unknown setting attribute, expected one of: `required`, `optional`, `default`, `node`, `leaf`",
 				))
 			}
 		})?;
@@ -287,15 +312,35 @@ fn parse_setting_attr(field: &syn::Field) -> Result<Option<SettingAttr>> {
 		));
 	}
 
-	if has_required {
-		Ok(Some(SettingAttr::Required))
-	} else if has_default {
-		Ok(Some(SettingAttr::Default(default_expr.unwrap())))
-	} else if has_optional {
-		Ok(Some(SettingAttr::Optional))
-	} else {
-		Ok(None)
+	if has_node && has_leaf {
+		return Err(syn::Error::new(
+			setting_attr_span(field),
+			"`node` and `leaf` are mutually exclusive in `#[setting(...)]`",
+		));
 	}
+
+	let requirement = if has_required {
+		Some(SettingAttr::Required)
+	} else if has_default {
+		Some(SettingAttr::Default(default_expr.unwrap()))
+	} else if has_optional {
+		Some(SettingAttr::Optional)
+	} else {
+		None
+	};
+
+	let shape_hint = if has_node {
+		Some(ShapeHint::Node)
+	} else if has_leaf {
+		Some(ShapeHint::Leaf)
+	} else {
+		None
+	};
+
+	Ok(ParsedSettingAttr {
+		requirement,
+		shape_hint,
+	})
 }
 
 fn setting_attr_span(field: &syn::Field) -> proc_macro2::Span {
@@ -387,7 +432,7 @@ fn consume_serde_meta(meta: syn::meta::ParseNestedMeta<'_>) -> Result<()> {
 	Ok(())
 }
 
-fn analyze_type(ty: &syn::Type) -> TypeShape {
+fn analyze_type(ty: &syn::Type, shape_hint: Option<ShapeHint>) -> TypeShape {
 	let Some((last_segment, args)) = type_last_segment(ty) else {
 		return TypeShape::Leaf {
 			ty: ty.clone(),
@@ -402,7 +447,7 @@ fn analyze_type(ty: &syn::Type) -> TypeShape {
 			if let Some(inner_ty) = single_type_arg(args) {
 				return TypeShape::Optional {
 					original: ty.clone(),
-					inner: Box::new(analyze_type(inner_ty)),
+					inner: Box::new(analyze_type(inner_ty, shape_hint)),
 				};
 			}
 		}
@@ -410,7 +455,7 @@ fn analyze_type(ty: &syn::Type) -> TypeShape {
 			if let Some(inner_ty) = single_type_arg(args) {
 				return TypeShape::Sequence {
 					original: ty.clone(),
-					inner: Box::new(analyze_type(inner_ty)),
+					inner: Box::new(analyze_type(inner_ty, shape_hint)),
 				};
 			}
 		}
@@ -418,21 +463,23 @@ fn analyze_type(ty: &syn::Type) -> TypeShape {
 			if let Some(inner_ty) = second_type_arg(args) {
 				return TypeShape::Map {
 					original: ty.clone(),
-					inner: Box::new(analyze_type(inner_ty)),
+					inner: Box::new(analyze_type(inner_ty, shape_hint)),
 				};
 			}
 		}
 		"Box" => {
 			if let Some(inner_ty) = single_type_arg(args) {
 				return TypeShape::Transparent {
-					inner: Box::new(analyze_type(inner_ty)),
+					inner: Box::new(analyze_type(inner_ty, shape_hint)),
 				};
 			}
 		}
 		_ => {}
 	}
 
-	if segment_name.ends_with("Settings") || segment_name.ends_with("Config") {
+	if shape_hint == Some(ShapeHint::Node)
+		|| (shape_hint.is_none() && segment_name.ends_with("Config"))
+	{
 		TypeShape::Node { ty: ty.clone() }
 	} else {
 		TypeShape::Leaf {
@@ -621,20 +668,57 @@ mod tests {
 	}
 
 	#[test]
+	fn parse_fields_accepts_optional_node_hint() {
+		let input: ItemStruct = syn::parse_quote! {
+			struct TestSettings {
+				#[setting(optional, node)]
+				value: Option<NestedSettings>,
+			}
+		};
+
+		let field = parse_single_field(input);
+
+		assert_eq!(field.setting_attr, Some(SettingAttr::Optional));
+		assert_eq!(field.shape_hint, Some(ShapeHint::Node));
+		assert!(matches!(
+			field.shape,
+			TypeShape::Optional { ref inner, .. }
+				if matches!(inner.as_ref(), TypeShape::Node { .. })
+		));
+	}
+
+	#[test]
+	fn parse_fields_rejects_node_and_leaf_hints() {
+		let input: ItemStruct = syn::parse_quote! {
+			struct TestSettings {
+				#[setting(node, leaf)]
+				value: NestedSettings,
+			}
+		};
+
+		let err = parse_fields(&input).expect_err("node and leaf should conflict");
+
+		assert_eq!(
+			err.to_string(),
+			"`node` and `leaf` are mutually exclusive in `#[setting(...)]`"
+		);
+	}
+
+	#[test]
 	fn analyze_type_treats_config_suffix_as_node() {
 		let ty: syn::Type = syn::parse_quote! { DatabaseConfig };
 
-		let shape = analyze_type(&ty);
+		let shape = analyze_type(&ty, None);
 
 		assert!(matches!(shape, TypeShape::Node { .. }));
 	}
 
 	#[test]
-	fn analyze_type_treats_settings_suffix_as_node() {
+	fn analyze_type_treats_settings_suffix_as_leaf_without_hint() {
 		let ty: syn::Type = syn::parse_quote! { DatabaseSettings };
 
-		let shape = analyze_type(&ty);
+		let shape = analyze_type(&ty, None);
 
-		assert!(matches!(shape, TypeShape::Node { .. }));
+		assert!(matches!(shape, TypeShape::Leaf { .. }));
 	}
 }
