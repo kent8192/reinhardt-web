@@ -401,12 +401,21 @@ impl SettingsNodeSchema {
 		self.validate_required_map_at(map, SettingsPathBuf::new())
 	}
 
+	/// Validate required fields in a JSON object map rooted at the given path.
+	pub fn validate_required_map_at(
+		&self,
+		map: &serde_json::Map<String, Value>,
+		base_path: SettingsPathBuf,
+	) -> Result<(), BuildError> {
+		self.validate_required_map_inner(map, base_path)
+	}
+
 	/// Collect all secret paths reachable from this node.
 	pub fn collect_secret_paths(&self, output: &mut Vec<SettingsPathBuf>) {
 		self.collect_secret_paths_at(SettingsPathBuf::new(), output);
 	}
 
-	fn validate_required_map_at(
+	fn validate_required_map_inner(
 		&self,
 		map: &serde_json::Map<String, Value>,
 		base_path: SettingsPathBuf,
@@ -455,7 +464,12 @@ pub trait HasSettingsSchema {
 	type Schema;
 
 	/// Build root schema references.
-	fn schema() -> Self::Schema;
+	fn settings_schema() -> Self::Schema;
+
+	/// Build root schema references.
+	fn schema() -> Self::Schema {
+		Self::settings_schema()
+	}
 }
 
 /// Return the primary or fallback object section from merged settings.
