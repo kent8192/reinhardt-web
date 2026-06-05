@@ -384,10 +384,10 @@ fn event_type_from_string(s: &str) -> Option<EventType> {
 		"error" => Some(EventType::Error),
 		"scroll" => Some(EventType::Scroll),
 		"resize" => Some(EventType::Resize),
-		unknown => {
+		_unknown => {
 			crate::warn_log!(
 				"Unknown event type '{}' encountered during hydration, skipping",
-				unknown
+				_unknown
 			);
 			None
 		}
