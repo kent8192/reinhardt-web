@@ -15,11 +15,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.2.0-rc.3", features = ["utils"] }
+reinhardt = { version = "0.2.0-rc.4", features = ["utils"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.2.0-rc.3", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.2.0-rc.3", features = ["full"] }      # All features
+# reinhardt = { version = "0.2.0-rc.4", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.2.0-rc.4", features = ["full"] }      # All features
 ```
 
 Then import utility features:
@@ -323,7 +323,7 @@ logger.log_security_error(&SecurityError::CsrfViolation);  // ERROR level
 logger.log_csrf_violation("http://evil.com");
 
 // Log rate limit exceeded
-logger.log_rate_limit_exceeded("0.2.0-rc.3", 100);
+logger.log_rate_limit_exceeded("0.2.0-rc.4", 100);
 
 // Log suspicious file operations
 logger.log_suspicious_file_operation("delete", Path::new("/etc/passwd"));
