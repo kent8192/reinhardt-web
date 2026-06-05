@@ -15,7 +15,9 @@ pub trait ComposedSettings: Sized + DeserializeOwned {
 	///
 	/// The merged data is a flat `IndexMap<String, Value>` from `MergedSettings`.
 	/// Field names are looked up as top-level keys (due to `#[serde(flatten)]`).
-	/// The `section()` value is used only for error messages.
+	/// Generated composed settings preserve legacy root-direct
+	/// `BuildError::MissingRequiredField` diagnostics and validate nested nodes
+	/// with full `SettingsPathBuf` paths.
 	fn validate_requirements(merged: &IndexMap<String, Value>) -> Result<(), BuildError>;
 
 	/// Run all fragment `validate()` methods.

@@ -694,6 +694,16 @@ pub enum BuildError {
 		field: &'static str,
 	},
 
+	/// A required nested settings path was not provided by any configuration source.
+	#[error(
+		"missing required settings path `{path}`. \
+		 Provide it via TOML, environment variable, or .set()"
+	)]
+	MissingRequiredPath {
+		/// The full settings path that is missing.
+		path: crate::settings::schema::SettingsPathBuf,
+	},
+
 	/// Failed to deserialize merged settings into the target type.
 	#[error("settings deserialization failed: {0}")]
 	Deserialization(String),

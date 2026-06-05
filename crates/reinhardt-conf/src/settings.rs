@@ -30,6 +30,8 @@ pub mod openapi;
 pub mod policy;
 pub mod prelude;
 pub mod profile;
+/// Typed settings schema references and recursive settings metadata.
+pub mod schema;
 pub mod secret_types;
 pub mod security;
 pub mod session;
