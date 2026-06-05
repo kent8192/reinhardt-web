@@ -107,11 +107,11 @@ pub(crate) fn camel_to_snake(s: &str) -> String {
 		if ch.is_uppercase() {
 			if i > 0 {
 				let prev = chars[i - 1];
-				if prev.is_lowercase() || prev.is_ascii_digit() {
-					result.push('_');
-				} else if prev.is_uppercase()
-					&& chars.get(i + 1).is_some_and(|next| next.is_lowercase())
-				{
+				let needs_separator = prev.is_lowercase()
+					|| prev.is_ascii_digit()
+					|| (prev.is_uppercase()
+						&& chars.get(i + 1).is_some_and(|next| next.is_lowercase()));
+				if needs_separator {
 					result.push('_');
 				}
 			}
