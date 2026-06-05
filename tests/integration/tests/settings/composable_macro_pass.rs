@@ -22,7 +22,9 @@ use reinhardt_conf::settings::fragment::SettingsFragment;
 use reinhardt_conf::settings::openapi::{HasOpenApiSettings, OpenApiSettings};
 use reinhardt_conf::settings::policy::FieldRequirement;
 use reinhardt_conf::settings::profile::Profile;
-use reinhardt_conf::settings::schema::{HasSettingsSchema, SettingsNode, SettingsValueSchema};
+use reinhardt_conf::settings::schema::{
+	HasSettingsSchema, SecretFieldRef, SettingsNode, SettingsValueSchema,
+};
 use reinhardt_conf::settings::secret_types::SecretString;
 use reinhardt_conf::settings::sources::DefaultSource;
 use reinhardt_macros::settings;
@@ -984,6 +986,13 @@ fn schema_fluent_refs_render_nested_paths() {
 		matches!(leaf_schema.value, SettingsValueSchema::Leaf { .. }),
 		"`#[setting(leaf)]` should prevent a *Config field from becoming a settings node"
 	);
+}
+
+#[rstest]
+fn schema_secret_refs_are_typed() {
+	// Arrange / Act
+	let schema = SchemaProjectSettings::schema();
+	let _: SecretFieldRef<SchemaProjectSettings, SecretString> = schema.database.default.password;
 }
 
 #[rstest]
