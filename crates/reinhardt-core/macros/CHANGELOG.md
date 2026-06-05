@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.2.0-rc.3...reinhardt-macros@v0.2.0-rc.4) - 2026-06-05
+
+### Added
+
+- *(settings)* generate embedded node schemas
+- *(settings)* expose composed schema roots
+
+### Changed
+
+- *(settings)* share schema macro analysis
+- *(auth)* make CurrentUser canonical extractor
+
+### Documentation
+
+- *(settings)* document embedded schema nodes
+
+### Fixed
+
+- *(settings)* harden schema macro parsing
+- *(settings)* detect serde defaults in schema fields
+- *(settings)* classify embedded config nodes
+- *(settings)* require explicit nested settings nodes
+- *(settings)* keep schema accessor compatibility
+- *(settings)* simplify schema case conversion
+- *(settings)* preserve cfg gates in schema generation
+
 ### Added
 
 - The `#[settings]` macro now generates typed embedded settings node schemas,

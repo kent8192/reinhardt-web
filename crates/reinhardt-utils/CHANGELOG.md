@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.2.0-rc.3...reinhardt-utils@v0.2.0-rc.4) - 2026-06-05
+
+### Fixed
+
+- *(staticfiles)* inject wasm loader for directory index
+- *(staticfiles)* preserve raw index in non-spa mode
+- *(staticfiles)* inject wasm loader for directory index without spa mode
+
 ## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.2.0-rc.2...reinhardt-utils@v0.2.0-rc.3) - 2026-06-05
 
 ### Performance
