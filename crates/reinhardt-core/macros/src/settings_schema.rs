@@ -432,7 +432,7 @@ fn analyze_type(ty: &syn::Type) -> TypeShape {
 		_ => {}
 	}
 
-	if segment_name.ends_with("Settings") {
+	if segment_name.ends_with("Settings") || segment_name.ends_with("Config") {
 		TypeShape::Node { ty: ty.clone() }
 	} else {
 		TypeShape::Leaf {
@@ -621,12 +621,12 @@ mod tests {
 	}
 
 	#[test]
-	fn analyze_type_treats_config_suffix_as_leaf() {
+	fn analyze_type_treats_config_suffix_as_node() {
 		let ty: syn::Type = syn::parse_quote! { DatabaseConfig };
 
 		let shape = analyze_type(&ty);
 
-		assert!(matches!(shape, TypeShape::Leaf { .. }));
+		assert!(matches!(shape, TypeShape::Node { .. }));
 	}
 
 	#[test]

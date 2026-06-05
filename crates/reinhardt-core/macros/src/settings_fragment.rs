@@ -62,7 +62,14 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 	let struct_name = &input.ident;
 	let vis = &input.vis;
 	let trait_name = format_ident!("Has{}", struct_name);
-	let method_name = format_ident!("{}", section);
+	let method_name: syn::Ident = syn::parse_str(&section).map_err(|_| {
+		syn::Error::new(
+			struct_name.span(),
+			format!(
+				"`section` must be a valid Rust method identifier for the generated settings accessor; got `{section}`"
+			),
+		)
+	})?;
 
 	// Check if derives are already present
 	let has_derive = input.attrs.iter().any(|a| a.path().is_ident("derive"));

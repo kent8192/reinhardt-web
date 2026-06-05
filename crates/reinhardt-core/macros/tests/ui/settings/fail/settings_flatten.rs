@@ -1,6 +1,6 @@
 use reinhardt_macros::settings;
 
-#[settings(fragment = true, section = "bad")]
+#[settings(fragment = true)]
 struct BadSettings {
 	#[serde(flatten)]
 	pub nested: NestedSettings,
