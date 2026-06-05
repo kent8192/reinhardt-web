@@ -90,6 +90,7 @@ impl Default for QueueSettings {
 ///
 /// This is not an independently loadable section; it is nested under
 /// `[tasks_webhook.retry]`.
+#[settings(fragment = true)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WebhookRetrySettings {
 	/// Maximum number of retry attempts.
@@ -148,6 +149,7 @@ pub struct WebhookSettings {
 	#[serde(default = "default_webhook_timeout_secs")]
 	pub timeout_secs: u64,
 	/// Retry policy.
+	#[setting(node)]
 	#[serde(default)]
 	pub retry: WebhookRetrySettings,
 }
@@ -200,6 +202,7 @@ pub struct WorkerSettings {
 	#[serde(default = "default_poll_interval_ms")]
 	pub poll_interval_ms: u64,
 	/// Webhook delivery targets for task completion notifications.
+	#[setting(node)]
 	#[serde(default)]
 	pub webhooks: Vec<WebhookSettings>,
 }

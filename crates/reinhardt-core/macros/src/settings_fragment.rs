@@ -1,127 +1,9 @@
 //! Handler for `#[settings(fragment = true, section = "...")]`
 
+use crate::settings_schema::{self, SettingAttr};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::spanned::Spanned;
-use syn::{Fields, ItemStruct, LitStr, Result};
-
-/// Parsed content of a `#[setting(...)]` field attribute.
-#[derive(Debug)]
-enum SettingAttr {
-	/// `#[setting(required)]`
-	Required,
-	/// `#[setting(optional)]`
-	Optional,
-	/// `#[setting(default = "expr")]`
-	Default(String),
-}
-
-/// Parse `#[setting(...)]` attributes from a single field.
-///
-/// Returns `None` if no `#[setting(...)]` attribute is present.
-/// Returns a compile error for invalid combinations or unknown attributes.
-fn parse_setting_attr(field: &syn::Field) -> Result<Option<SettingAttr>> {
-	let mut result: Option<SettingAttr> = None;
-	let mut has_required = false;
-	let mut has_optional = false;
-	let mut has_default = false;
-	let mut default_expr: Option<String> = None;
-
-	for attr in &field.attrs {
-		if !attr.path().is_ident("setting") {
-			continue;
-		}
-
-		attr.parse_nested_meta(|meta| {
-			if meta.path.is_ident("required") {
-				has_required = true;
-				Ok(())
-			} else if meta.path.is_ident("optional") {
-				has_optional = true;
-				Ok(())
-			} else if meta.path.is_ident("default") {
-				has_default = true;
-				let lit: LitStr = meta.value()?.parse()?;
-				default_expr = Some(lit.value());
-				Ok(())
-			} else {
-				Err(meta.error(
-					"unknown setting attribute, expected one of: `required`, `optional`, `default`",
-				))
-			}
-		})?;
-	}
-
-	// Validate mutually exclusive combinations
-	if has_required && has_default {
-		let span = field
-			.attrs
-			.iter()
-			.find(|a| a.path().is_ident("setting"))
-			.map(|a| a.path().span())
-			.unwrap_or_else(proc_macro2::Span::call_site);
-		return Err(syn::Error::new(
-			span,
-			"`required` and `default` are mutually exclusive in `#[setting(...)]`",
-		));
-	}
-
-	if has_required && has_optional {
-		let span = field
-			.attrs
-			.iter()
-			.find(|a| a.path().is_ident("setting"))
-			.map(|a| a.path().span())
-			.unwrap_or_else(proc_macro2::Span::call_site);
-		return Err(syn::Error::new(
-			span,
-			"`required` and `optional` are mutually exclusive in `#[setting(...)]`",
-		));
-	}
-
-	if has_required {
-		result = Some(SettingAttr::Required);
-	} else if has_default {
-		result = Some(SettingAttr::Default(default_expr.unwrap()));
-	} else if has_optional {
-		result = Some(SettingAttr::Optional);
-	}
-
-	Ok(result)
-}
-
-/// Check if a field already has a `#[serde(default)]` or `#[serde(default = "...")]` attribute.
-fn has_serde_default(field: &syn::Field) -> bool {
-	for attr in &field.attrs {
-		if !attr.path().is_ident("serde") {
-			continue;
-		}
-		// Check if the serde attribute contains "default"
-		let mut found = false;
-		let _ = attr.parse_nested_meta(|meta| {
-			if meta.path.is_ident("default") {
-				found = true;
-			}
-			// Consume value if present (e.g., `default = "fn_name"`)
-			if meta.path.is_ident("default") {
-				let _ = meta.value().and_then(|v| v.parse::<LitStr>());
-			}
-			Ok(())
-		});
-		if found {
-			return true;
-		}
-	}
-	false
-}
-
-/// Strip `#[setting(...)]` attributes from field attrs, returning cleaned attrs.
-fn strip_setting_attrs(attrs: &[syn::Attribute]) -> Vec<&syn::Attribute> {
-	attrs
-		.iter()
-		.filter(|a| !a.path().is_ident("setting"))
-		.collect()
-}
+use syn::{ItemStruct, LitStr, Result};
 
 /// Implementation for `#[settings(fragment = true, section = "...")]`.
 pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Result<TokenStream> {
@@ -164,12 +46,12 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 
 	syn::parse::Parser::parse2(parser, args)?;
 
-	let section = section.ok_or_else(|| {
-		syn::Error::new(
-			proc_macro2::Span::call_site(),
-			"`section = \"...\"` is required for `#[settings(fragment = true)]`",
-		)
-	})?;
+	let parsed_fields = settings_schema::parse_fields(&input)?;
+
+	let section = section.unwrap_or_else(|| {
+		settings_schema::infer_type_key(&input.ident.to_string())
+			.unwrap_or_else(|_| settings_schema::camel_to_snake(&input.ident.to_string()))
+	});
 
 	// Default policy: "optional" for backward compatibility
 	let default_policy_is_required = default_policy.as_deref() == Some("required");
@@ -180,7 +62,14 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 	let struct_name = &input.ident;
 	let vis = &input.vis;
 	let trait_name = format_ident!("Has{}", struct_name);
-	let method_name = format_ident!("{}", section);
+	let method_name: syn::Ident = syn::parse_str(&section).map_err(|_| {
+		syn::Error::new(
+			struct_name.span(),
+			format!(
+				"`section` must be a valid Rust method identifier for the generated settings accessor; got `{section}`"
+			),
+		)
+	})?;
 
 	// Check if derives are already present
 	let has_derive = input.attrs.iter().any(|a| a.path().is_ident("derive"));
@@ -197,44 +86,75 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 
 	// Process fields: parse #[setting(...)] attrs, generate field_policies, strip attrs
 	let mut field_policy_entries = Vec::new();
+	let mut node_field_schema_entries = Vec::new();
 	let mut default_fn_defs = Vec::new();
 	let mut new_fields = Vec::new();
 
-	// Settings fragments must use named fields (braced structs)
-	match &input.fields {
-		Fields::Unnamed(unnamed) => {
-			return Err(syn::Error::new(
-				unnamed.paren_token.span.join(),
-				"tuple structs are not supported for `#[settings(fragment = true)]`. \
-				 Use a named-field struct instead.",
-			));
-		}
-		Fields::Unit => {
-			return Err(syn::Error::new(
-				input.ident.span(),
-				"unit structs are not supported for `#[settings(fragment = true)]`. \
-				 Use a named-field struct instead.",
-			));
-		}
-		Fields::Named(_) => {}
-	}
+	for field in &parsed_fields {
+		let field_name = &field.ident;
+		let field_name_str = &field.rust_name;
+		let field_key_str = &field.key;
+		let setting_attr = &field.setting_attr;
+		let already_has_serde_default = field.has_serde_default;
+		let cfg_attrs = &field.cfg_attrs;
 
-	if let Fields::Named(ref named) = input.fields {
-		for field in &named.named {
-			let field_name = field.ident.as_ref().unwrap();
-			let field_name_str = field_name.to_string();
+		// Determine requirement and has_default based on setting attr + default_policy
+		let (requirement_tokens, has_default, serde_default_tokens) = match setting_attr {
+			Some(SettingAttr::Required) => (
+				quote! { #conf_crate::settings::policy::FieldRequirement::Required },
+				false,
+				quote! {},
+			),
+			Some(SettingAttr::Optional) => {
+				let serde_tokens = if already_has_serde_default {
+					quote! {}
+				} else {
+					quote! { #[serde(default)] }
+				};
+				(
+					quote! { #conf_crate::settings::policy::FieldRequirement::Optional },
+					true,
+					serde_tokens,
+				)
+			}
+			Some(SettingAttr::Default(expr)) => {
+				// Include struct name in generated function to avoid collisions
+				// between multiple fragment structs in the same module
+				let fn_name = format_ident!("__default_{}_{}", struct_name, field_name);
+				let field_ty = &field.ty;
+				let expr_tokens: TokenStream = expr.parse().map_err(|e| {
+					syn::Error::new(
+						field.ident.span(),
+						format!("invalid default expression: {e}"),
+					)
+				})?;
 
-			let setting_attr = parse_setting_attr(field)?;
-			let already_has_serde_default = has_serde_default(field);
+				default_fn_defs.push(quote! {
+					fn #fn_name() -> #field_ty {
+						#expr_tokens
+					}
+				});
 
-			// Determine requirement and has_default based on setting attr + default_policy
-			let (requirement_tokens, has_default, serde_default_tokens) = match &setting_attr {
-				Some(SettingAttr::Required) => (
-					quote! { #conf_crate::settings::policy::FieldRequirement::Required },
-					false,
-					quote! {},
-				),
-				Some(SettingAttr::Optional) => {
+				let fn_name_str = fn_name.to_string();
+				let serde_tokens = if already_has_serde_default {
+					quote! {}
+				} else {
+					quote! { #[serde(default = #fn_name_str)] }
+				};
+				(
+					quote! { #conf_crate::settings::policy::FieldRequirement::Optional },
+					true,
+					serde_tokens,
+				)
+			}
+			None => {
+				if default_policy_is_required {
+					(
+						quote! { #conf_crate::settings::policy::FieldRequirement::Required },
+						false,
+						quote! {},
+					)
+				} else {
 					let serde_tokens = if already_has_serde_default {
 						quote! {}
 					} else {
@@ -246,80 +166,67 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 						serde_tokens,
 					)
 				}
-				Some(SettingAttr::Default(expr)) => {
-					// Include struct name in generated function to avoid collisions
-					// between multiple fragment structs in the same module
-					let fn_name = format_ident!("__default_{}_{}", struct_name, field_name);
-					let field_ty = &field.ty;
-					let expr_tokens: TokenStream = expr.parse().map_err(|e| {
-						syn::Error::new(
-							field.ident.as_ref().unwrap().span(),
-							format!("invalid default expression: {e}"),
-						)
-					})?;
+			}
+		};
 
-					default_fn_defs.push(quote! {
-						fn #fn_name() -> #field_ty {
-							#expr_tokens
-						}
-					});
+		let value_schema = settings_schema::value_schema_tokens(&field.shape, &conf_crate);
 
-					let fn_name_str = fn_name.to_string();
-					let serde_tokens = if already_has_serde_default {
-						quote! {}
-					} else {
-						quote! { #[serde(default = #fn_name_str)] }
-					};
-					(
-						quote! { #conf_crate::settings::policy::FieldRequirement::Optional },
-						true,
-						serde_tokens,
-					)
-				}
-				None => {
-					if default_policy_is_required {
-						(
-							quote! { #conf_crate::settings::policy::FieldRequirement::Required },
-							false,
-							quote! {},
-						)
-					} else {
-						let serde_tokens = if already_has_serde_default {
-							quote! {}
-						} else {
-							quote! { #[serde(default)] }
-						};
-						(
-							quote! { #conf_crate::settings::policy::FieldRequirement::Optional },
-							true,
-							serde_tokens,
-						)
-					}
-				}
-			};
+		field_policy_entries.push(quote! {
+			#(#cfg_attrs)*
+			#conf_crate::settings::policy::FieldPolicy {
+				name: #field_name_str,
+				requirement: #requirement_tokens,
+				has_default: #has_default,
+			}
+		});
 
-			field_policy_entries.push(quote! {
-				#conf_crate::settings::policy::FieldPolicy {
+		node_field_schema_entries.push(quote! {
+			#(#cfg_attrs)*
+			#conf_crate::settings::schema::SettingsFieldSchema {
+				rust_name: #field_name_str,
+				key: #field_key_str,
+				policy: #conf_crate::settings::policy::FieldPolicy {
 					name: #field_name_str,
 					requirement: #requirement_tokens,
 					has_default: #has_default,
-				}
-			});
+				},
+				value: #value_schema,
+			}
+		});
 
-			// Rebuild field without #[setting(...)] attrs, with added serde default
-			let cleaned_attrs = strip_setting_attrs(&field.attrs);
-			let field_vis = &field.vis;
-			let field_ty = &field.ty;
+		// Rebuild field without #[setting(...)] attrs, with added serde default.
+		let cleaned_attrs = &field.cleaned_attrs;
+		let field_vis = &field.vis;
+		let field_ty = &field.ty;
 
-			new_fields.push(quote! {
-				#(#cleaned_attrs)*
-				#serde_default_tokens
-				#field_vis #field_name: #field_ty
-			});
-		}
+		new_fields.push(quote! {
+			#(#cleaned_attrs)*
+			#serde_default_tokens
+			#field_vis #field_name: #field_ty
+		});
 	}
 
-	// Handle both named and unit structs
+	let schema_name = settings_schema::schema_type_name(struct_name);
+	let schema_fields = settings_schema::schema_struct_fields(&parsed_fields, &conf_crate);
+	let schema_inits = settings_schema::schema_struct_inits(&parsed_fields, &conf_crate);
+
+	let schema_root_marker_field = if schema_fields.is_empty() {
+		quote! {
+			__root: ::std::marker::PhantomData<fn() -> Root>,
+		}
+	} else {
+		quote! {}
+	};
+
+	let schema_root_marker_init = if schema_fields.is_empty() {
+		quote! {
+			__root: ::std::marker::PhantomData,
+		}
+	} else {
+		quote! {}
+	};
+
+	// Rebuild the validated named-field struct.
 	let struct_body = if semi_token.is_some() {
 		quote! { ; }
 	} else {
@@ -329,8 +236,6 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 			}
 		}
 	};
-
-	let field_count = field_policy_entries.len();
 
 	// Conditionally generate SettingsValidation impl and validate bridge.
 	//
@@ -371,6 +276,53 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 
 		#validation_impl
 
+		#[doc = "Typed schema references for this settings fragment."]
+		#[derive(Clone, Debug)]
+		#vis struct #schema_name<Root> {
+			__path: #conf_crate::settings::schema::SettingsPathBuf,
+			#schema_root_marker_field
+			#(#schema_fields,)*
+		}
+
+		impl<Root> #schema_name<Root> {
+			fn __from_path(path: #conf_crate::settings::schema::SettingsPathBuf) -> Self {
+				Self {
+					__path: path.clone(),
+					#schema_root_marker_init
+					#(#schema_inits,)*
+				}
+			}
+
+			#[must_use]
+			#[doc = "Return secret field references reachable from this settings fragment."]
+			pub fn secret_fields(&self) -> ::std::vec::Vec<#conf_crate::settings::schema::SecretFieldRef<Root, ()>> {
+				let mut paths = ::std::vec::Vec::new();
+				<#struct_name as #conf_crate::settings::schema::SettingsNode>::node_schema()
+					.collect_secret_paths(&mut paths);
+				paths
+					.into_iter()
+					.map(|path| #conf_crate::settings::schema::SecretFieldRef::<Root, ()>::new(self.__path.clone().extend(path)))
+					.collect()
+			}
+		}
+
+		impl #conf_crate::settings::schema::SettingsNode for #struct_name {
+			type Schema<Root> = #schema_name<Root>;
+
+			fn schema_at<Root>(
+				path: #conf_crate::settings::schema::SettingsPathBuf,
+			) -> Self::Schema<Root> {
+				#schema_name::__from_path(path)
+			}
+
+			fn node_schema() -> #conf_crate::settings::schema::SettingsNodeSchema {
+				#conf_crate::settings::schema::SettingsNodeSchema {
+					type_name: ::std::any::type_name::<#struct_name>(),
+					fields: ::std::vec![#(#node_field_schema_entries),*],
+				}
+			}
+		}
+
 		impl #conf_crate::settings::fragment::SettingsFragment for #struct_name {
 			type Accessor = dyn #trait_name;
 
@@ -381,10 +333,10 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 			#validate_override
 
 			fn field_policies() -> &'static [#conf_crate::settings::policy::FieldPolicy] {
-				static POLICIES: [#conf_crate::settings::policy::FieldPolicy; #field_count] = [
+				static POLICIES: &[#conf_crate::settings::policy::FieldPolicy] = &[
 					#(#field_policy_entries),*
 				];
-				&POLICIES
+				POLICIES
 			}
 		}
 

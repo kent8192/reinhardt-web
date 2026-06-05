@@ -48,6 +48,7 @@ mod schema;
 mod settings_compose;
 mod settings_fragment;
 pub(crate) mod settings_parser;
+mod settings_schema;
 mod streaming;
 mod streaming_patterns;
 mod use_inject;

@@ -4,6 +4,7 @@
 //! configuring database connections in Reinhardt settings files.
 
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
+use reinhardt_core::macros::settings;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -20,6 +21,7 @@ const USERINFO_ENCODE_SET: &AsciiSet = &NON_ALPHANUMERIC
 	.remove(b'~');
 
 /// Database configuration
+#[settings(fragment = true, default_policy = "required")]
 #[non_exhaustive]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DatabaseConfig {
@@ -30,18 +32,23 @@ pub struct DatabaseConfig {
 	pub name: String,
 
 	/// Database user (if applicable)
+	#[setting(optional)]
 	pub user: Option<String>,
 
 	/// Database password (if applicable) - stored as `SecretString` to prevent accidental exposure
+	#[setting(optional)]
 	pub password: Option<SecretString>,
 
 	/// Database host (if applicable)
+	#[setting(optional)]
 	pub host: Option<String>,
 
 	/// Database port (if applicable)
+	#[setting(optional)]
 	pub port: Option<u16>,
 
 	/// Additional options
+	#[setting(optional)]
 	#[serde(default)]
 	pub options: HashMap<String, String>,
 }

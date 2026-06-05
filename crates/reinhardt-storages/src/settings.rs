@@ -59,58 +59,71 @@ pub struct StorageSettings {
 	pub backend: BackendType,
 	/// Amazon S3 backend settings.
 	#[cfg(feature = "s3")]
+	#[setting(node)]
 	#[serde(default)]
 	pub s3: Option<S3StorageSettings>,
 	/// Google Cloud Storage backend settings.
 	#[cfg(feature = "gcs")]
+	#[setting(node)]
 	#[serde(default)]
 	pub gcs: Option<GcsStorageSettings>,
 	/// Azure Blob Storage backend settings.
 	#[cfg(feature = "azure")]
+	#[setting(node)]
 	#[serde(default)]
 	pub azure: Option<AzureStorageSettings>,
 	/// Local filesystem backend settings.
 	#[cfg(feature = "local")]
+	#[setting(node)]
 	#[serde(default)]
 	pub local: Option<LocalStorageSettings>,
 }
 
 /// Amazon S3 settings.
 #[cfg(feature = "s3")]
+#[settings(fragment = true, default_policy = "required")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct S3StorageSettings {
 	/// S3 bucket name.
 	pub bucket: String,
 	/// AWS region.
+	#[setting(optional)]
 	#[serde(default)]
 	pub region: Option<String>,
 	/// Custom S3-compatible endpoint.
+	#[setting(optional)]
 	#[serde(default)]
 	pub endpoint: Option<String>,
 	/// Object key prefix.
+	#[setting(optional)]
 	#[serde(default)]
 	pub prefix: Option<String>,
 }
 
 /// Google Cloud Storage settings.
 #[cfg(feature = "gcs")]
+#[settings(fragment = true, default_policy = "required")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GcsStorageSettings {
 	/// GCS bucket name.
 	pub bucket: String,
 	/// Object name prefix.
+	#[setting(optional)]
 	#[serde(default)]
 	pub prefix: Option<String>,
 	/// Custom endpoint, primarily for fake-gcs-server.
+	#[setting(optional)]
 	#[serde(default)]
 	pub endpoint: Option<String>,
 	/// Service account JSON for explicit credentials and signed URLs.
+	#[setting(optional)]
 	#[serde(default)]
 	pub service_account_json: Option<SecretString>,
 }
 
 /// Azure Blob Storage settings.
 #[cfg(feature = "azure")]
+#[settings(fragment = true, default_policy = "required")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct AzureStorageSettings {
 	/// Storage account name.
@@ -118,24 +131,30 @@ pub struct AzureStorageSettings {
 	/// Blob container name.
 	pub container: String,
 	/// Blob name prefix.
+	#[setting(optional)]
 	#[serde(default)]
 	pub prefix: Option<String>,
 	/// Custom blob endpoint, primarily for Azurite.
+	#[setting(optional)]
 	#[serde(default)]
 	pub endpoint: Option<String>,
 	/// Account access key used for Shared Key and SAS signing.
+	#[setting(optional)]
 	#[serde(default)]
 	pub access_key: Option<SecretString>,
 	/// Pre-generated SAS token.
+	#[setting(optional)]
 	#[serde(default)]
 	pub sas_token: Option<SecretString>,
 	/// Azure Storage connection string.
+	#[setting(optional)]
 	#[serde(default)]
 	pub connection_string: Option<SecretString>,
 }
 
 /// Local filesystem settings.
 #[cfg(feature = "local")]
+#[settings(fragment = true, default_policy = "required")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LocalStorageSettings {
 	/// Base directory path for stored files.

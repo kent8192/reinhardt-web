@@ -11,6 +11,10 @@
 //! referencing `reinhardt_conf`, which is not available in the macro crate's
 //! dev-dependencies due to circular dependency constraints.
 
+use std::collections::{BTreeMap, HashMap};
+
+use reinhardt_conf::indexmap::IndexMap;
+use reinhardt_conf::settings::builder::{BuildError, SettingsBuilder};
 use reinhardt_conf::settings::cache::HasCacheSettings;
 use reinhardt_conf::settings::core_settings::{CoreSettings, HasCoreSettings};
 use reinhardt_conf::settings::email::EmailSettings as FragmentEmailSettings;
@@ -18,8 +22,14 @@ use reinhardt_conf::settings::fragment::SettingsFragment;
 use reinhardt_conf::settings::openapi::{HasOpenApiSettings, OpenApiSettings};
 use reinhardt_conf::settings::policy::FieldRequirement;
 use reinhardt_conf::settings::profile::Profile;
+use reinhardt_conf::settings::schema::{
+	HasSettingsSchema, SecretFieldRef, SettingsNode, SettingsValueSchema,
+};
+use reinhardt_conf::settings::secret_types::SecretString;
+use reinhardt_conf::settings::sources::DefaultSource;
 use reinhardt_macros::settings;
 use rstest::rstest;
+use serde_json::json;
 
 // ============================================================================
 // Fragment macro pass tests
@@ -822,4 +832,255 @@ fn compose_openapi_type_only_syntax() {
 
 	// Assert
 	assert_eq!(openapi.title, "Type-Only Test");
+}
+
+// ============================================================================
+// Embedded settings node schema tests
+// ============================================================================
+
+#[settings(
+	fragment = true,
+	section = "schema_database_config",
+	default_policy = "required"
+)]
+struct SchemaDatabaseConfig {
+	pub engine: String,
+	pub host: String,
+	#[serde(rename = "db-password")]
+	pub password: SecretString,
+}
+
+impl Default for SchemaDatabaseConfig {
+	fn default() -> Self {
+		Self {
+			engine: String::new(),
+			host: String::new(),
+			password: SecretString::new(""),
+		}
+	}
+}
+
+#[settings(fragment = true, section = "schema_leaf_config")]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, Default)]
+struct SchemaLeafConfig {
+	pub label: String,
+}
+
+#[settings(fragment = true, section = "database")]
+struct SchemaDatabaseSettings {
+	#[setting(required)]
+	pub default: SchemaDatabaseConfig,
+	pub replica: Option<SchemaDatabaseConfig>,
+	pub pools: HashMap<String, SchemaDatabaseConfig>,
+	pub ordered: BTreeMap<String, SchemaDatabaseConfig>,
+	pub indexed: IndexMap<String, SchemaDatabaseConfig>,
+	pub shards: Vec<SchemaDatabaseConfig>,
+	pub boxed: Box<SchemaDatabaseConfig>,
+	pub tokens: Vec<SecretString>,
+	pub optional_token: Option<SecretString>,
+	#[setting(leaf)]
+	pub leaf: SchemaLeafConfig,
+}
+
+#[settings(database: SchemaDatabaseSettings)]
+struct SchemaProjectSettings;
+
+#[settings(SchemaDatabaseSettings)]
+struct TypeOnlySchemaProjectSettings;
+
+fn schema_database_config(host: &str) -> SchemaDatabaseConfig {
+	SchemaDatabaseConfig {
+		engine: "postgres".to_string(),
+		host: host.to_string(),
+		password: SecretString::new(format!("{host}-password")),
+	}
+}
+
+fn schema_database_settings() -> SchemaDatabaseSettings {
+	let mut pools = HashMap::new();
+	pools.insert("main".to_string(), schema_database_config("pool-main"));
+
+	let mut ordered = BTreeMap::new();
+	ordered.insert("east".to_string(), schema_database_config("ordered-east"));
+
+	let mut indexed = IndexMap::new();
+	indexed.insert("west".to_string(), schema_database_config("indexed-west"));
+
+	SchemaDatabaseSettings {
+		default: schema_database_config("primary.host"),
+		replica: Some(schema_database_config("replica.host")),
+		pools,
+		ordered,
+		indexed,
+		shards: vec![schema_database_config("shard.host")],
+		boxed: Box::new(schema_database_config("boxed.host")),
+		tokens: vec![SecretString::new("token")],
+		optional_token: Some(SecretString::new("optional-token")),
+		leaf: SchemaLeafConfig {
+			label: "leaf".to_string(),
+		},
+	}
+}
+
+#[rstest]
+fn schema_fluent_refs_render_nested_paths() {
+	// Arrange / Act
+	let schema = SchemaProjectSettings::schema();
+
+	// Assert
+	assert_eq!(
+		schema.database.default.password.path().to_string(),
+		"database.default.db-password"
+	);
+	assert_eq!(
+		schema.database.replica.some().password.path().to_string(),
+		"database.replica.db-password"
+	);
+	assert_eq!(
+		schema
+			.database
+			.pools
+			.entry("main")
+			.password
+			.path()
+			.to_string(),
+		"database.pools.main.db-password"
+	);
+	assert_eq!(
+		schema.database.pools.any().password.path().to_string(),
+		"database.pools.*.db-password"
+	);
+	assert_eq!(
+		schema.database.ordered.any().password.path().to_string(),
+		"database.ordered.*.db-password"
+	);
+	assert_eq!(
+		schema.database.indexed.any().password.path().to_string(),
+		"database.indexed.*.db-password"
+	);
+	assert_eq!(
+		schema.database.shards.any().password.path().to_string(),
+		"database.shards.*.db-password"
+	);
+	assert_eq!(
+		schema.database.boxed.password.path().to_string(),
+		"database.boxed.db-password"
+	);
+	assert_eq!(
+		schema.database.tokens.any().path().to_string(),
+		"database.tokens.*"
+	);
+	assert_eq!(
+		schema.database.optional_token.some().path().to_string(),
+		"database.optional_token"
+	);
+	assert_eq!(schema.database.leaf.path().to_string(), "database.leaf");
+
+	let database_schema = <SchemaDatabaseSettings as SettingsNode>::node_schema();
+	let leaf_schema = database_schema
+		.fields
+		.iter()
+		.find(|field| field.rust_name == "leaf")
+		.expect("leaf field should be present in schema metadata");
+	assert!(
+		matches!(leaf_schema.value, SettingsValueSchema::Leaf { .. }),
+		"`#[setting(leaf)]` should prevent a *Config field from becoming a settings node"
+	);
+}
+
+#[rstest]
+fn schema_secret_refs_are_typed() {
+	// Arrange / Act
+	let schema = SchemaProjectSettings::schema();
+	let _: SecretFieldRef<SchemaProjectSettings, SecretString> = schema.database.default.password;
+}
+
+#[rstest]
+fn schema_type_only_root_uses_section_hint() {
+	// Arrange / Act
+	let schema = TypeOnlySchemaProjectSettings::schema();
+	let settings = TypeOnlySchemaProjectSettings {
+		schema_database: schema_database_settings(),
+	};
+
+	// Assert
+	assert_eq!(SchemaDatabaseSettings::section(), "database");
+	assert_eq!(
+		schema.schema_database.default.host.path().to_string(),
+		"database.default.host"
+	);
+	assert_eq!(settings.schema_database.default.host, "primary.host");
+}
+
+#[rstest]
+fn build_composed_reports_missing_nested_required_path() {
+	// Arrange / Act
+	let result = SettingsBuilder::new()
+		.add_source(DefaultSource::new().with_value(
+			"database",
+			json!({
+				"default": {
+					"engine": "postgres",
+					"host": "db.local"
+				}
+			}),
+		))
+		.build_composed::<SchemaProjectSettings>();
+
+	// Assert
+	match result {
+		Err(BuildError::MissingRequiredPath { path }) => {
+			assert_eq!(path.to_string(), "database.default.db-password");
+		}
+		other => panic!("expected MissingRequiredPath for nested database password, got {other:?}"),
+	}
+}
+
+#[rstest]
+fn build_composed_preserves_direct_missing_required_field() {
+	// Arrange / Act
+	let result = SettingsBuilder::new()
+		.add_source(DefaultSource::new().with_value("database", json!({})))
+		.build_composed::<SchemaProjectSettings>();
+
+	// Assert
+	match result {
+		Err(BuildError::MissingRequiredField { section, field }) => {
+			assert_eq!(section, "database");
+			assert_eq!(field, "default");
+		}
+		other => {
+			panic!("expected MissingRequiredField for direct database.default miss, got {other:?}")
+		}
+	}
+}
+
+#[rstest]
+fn schema_secret_fields_include_supported_wrappers() {
+	// Arrange
+	let schema = SchemaProjectSettings::schema();
+	let mut paths = schema
+		.database
+		.secret_fields()
+		.into_iter()
+		.map(|field| field.path().to_string())
+		.collect::<Vec<_>>();
+	let mut expected = vec![
+		"database.default.db-password".to_string(),
+		"database.replica.db-password".to_string(),
+		"database.pools.*.db-password".to_string(),
+		"database.ordered.*.db-password".to_string(),
+		"database.indexed.*.db-password".to_string(),
+		"database.shards.*.db-password".to_string(),
+		"database.boxed.db-password".to_string(),
+		"database.tokens.*".to_string(),
+		"database.optional_token".to_string(),
+	];
+
+	// Act
+	paths.sort();
+	expected.sort();
+
+	// Assert
+	assert_eq!(paths, expected);
 }

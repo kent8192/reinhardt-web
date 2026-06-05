@@ -25,6 +25,7 @@ use crate::config::{
 /// loaded from its own configuration section. Its fields mirror the inputs
 /// accepted by [`IosConfigBuilder`], and it is converted into an [`IosConfig`]
 /// through that builder.
+#[settings(fragment = true)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct IosSettings {
 	/// The app identifier in the format `TEAMID.BUNDLEID`.
@@ -50,6 +51,7 @@ pub struct IosSettings {
 /// loaded from its own configuration section. Its fields mirror the inputs
 /// accepted by [`AndroidConfigBuilder`], and it is converted into an
 /// [`AndroidConfig`] through that builder.
+#[settings(fragment = true)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AndroidSettings {
 	/// The Android app package name (e.g., `com.example.app`).
@@ -64,6 +66,7 @@ pub struct AndroidSettings {
 ///
 /// This is a nested value object embedded in [`DeeplinkSettings`]; it is never
 /// loaded from its own configuration section.
+#[settings(fragment = true)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct CustomSchemeSettings {
 	/// The scheme name (e.g., `myapp`).
@@ -86,12 +89,15 @@ pub struct CustomSchemeSettings {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeeplinkSettings {
 	/// iOS Universal Links configuration (optional).
+	#[setting(node)]
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub ios: Option<IosSettings>,
 	/// Android App Links configuration (optional).
+	#[setting(node)]
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub android: Option<AndroidSettings>,
 	/// Custom URL scheme configurations.
+	#[setting(node)]
 	#[serde(default)]
 	pub custom_schemes: Vec<CustomSchemeSettings>,
 }

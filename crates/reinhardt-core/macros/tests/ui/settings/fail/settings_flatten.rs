@@ -1,7 +1,12 @@
 use reinhardt_macros::settings;
 
 #[settings(fragment = true)]
-pub struct BadSettings {
+struct BadSettings {
+	#[serde(flatten)]
+	pub nested: NestedSettings,
+}
+
+struct NestedSettings {
 	pub value: String,
 }
 

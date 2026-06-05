@@ -8,17 +8,21 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Template engine configuration for a single backend.
+#[settings(fragment = true, default_policy = "required")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FragmentTemplateConfig {
 	/// Template backend identifier.
 	pub backend: String,
 	/// Template search directories.
+	#[setting(optional)]
 	#[serde(default)]
 	pub dirs: Vec<PathBuf>,
 	/// Whether to search app directories for templates.
+	#[setting(optional)]
 	#[serde(default)]
 	pub app_dirs: bool,
 	/// Backend-specific options.
+	#[setting(optional)]
 	#[serde(default)]
 	pub options: HashMap<String, serde_json::Value>,
 }

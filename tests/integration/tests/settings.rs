@@ -12,3 +12,6 @@ mod composable_use_cases;
 
 #[path = "settings/composable_macro_pass.rs"]
 mod composable_macro_pass;
+
+#[path = "settings/schema_trybuild.rs"]
+mod schema_trybuild;
