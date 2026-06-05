@@ -638,15 +638,42 @@ fn collect_form_control_value(
 	if let Some(select) = element.dyn_ref::<web_sys::HtmlSelectElement>() {
 		let name = select.name();
 		if !name.is_empty() {
-			data.insert(
-				name.clone(),
-				form_value_to_json(&name, &select.value(), false),
-			);
+			data.insert(name.clone(), select_value_to_json(select, &name));
 		}
 	}
 }
 
 #[cfg(client)]
+fn select_value_to_json(select: &web_sys::HtmlSelectElement, name: &str) -> serde_json::Value {
+	use wasm_bindgen::JsCast;
+
+	if !select.multiple() {
+		return form_value_to_json(name, &select.value(), false);
+	}
+
+	let options = select.options();
+	let values: Vec<String> = (0..options.length())
+		.filter_map(|index| {
+			let option = options.item(index)?;
+			let option = option.dyn_into::<web_sys::HtmlOptionElement>().ok()?;
+			option.selected().then(|| option.value())
+		})
+		.collect();
+
+	form_values_to_json_array(name, &values)
+}
+
+#[cfg(any(client, test))]
+fn form_values_to_json_array(name: &str, values: &[String]) -> serde_json::Value {
+	serde_json::Value::Array(
+		values
+			.iter()
+			.map(|value| form_value_to_json(name, value, false))
+			.collect(),
+	)
+}
+
+#[cfg(any(client, test))]
 fn form_value_to_json(name: &str, value: &str, prefer_number: bool) -> serde_json::Value {
 	if prefer_number || name.ends_with("_id") {
 		if value.trim().is_empty() {
@@ -1061,8 +1088,9 @@ pub fn filters(
 
 #[cfg(all(test, server))]
 mod tests {
-	use super::detail_table;
+	use super::{detail_table, form_value_to_json, form_values_to_json_array};
 	use rstest::rstest;
+	use serde_json::json;
 	use std::collections::HashMap;
 
 	/// Verifies that detail_table renders fields in alphabetical order regardless
@@ -1118,6 +1146,30 @@ mod tests {
 		assert!(
 			html.contains("john@example.com"),
 			"value 'john@example.com' must appear in output"
+		);
+	}
+
+	#[rstest]
+	fn test_form_value_to_json_converts_id_values() {
+		assert_eq!(form_value_to_json("owner_id", "42", false), json!(42));
+		assert_eq!(
+			form_value_to_json("owner_id", "", false),
+			serde_json::Value::Null
+		);
+		assert_eq!(form_value_to_json("title", "42", false), json!("42"));
+	}
+
+	#[rstest]
+	fn test_form_values_to_json_array_preserves_all_values() {
+		let values = vec![
+			"read".to_string(),
+			"write".to_string(),
+			"delete".to_string(),
+		];
+
+		assert_eq!(
+			form_values_to_json_array("permissions", &values),
+			json!(["read", "write", "delete"])
 		);
 	}
 }
