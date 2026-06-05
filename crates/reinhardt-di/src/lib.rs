@@ -231,7 +231,7 @@
 //! specific DI context configuration. Understanding these requirements is essential
 //! for proper authentication integration.
 //!
-//! ### `AuthUser<U>` (recommended)
+//! ### `CurrentUser<U>` (recommended)
 //!
 //! Loads the full user model from the database. Requires:
 //!
@@ -242,12 +242,12 @@
 //! Returns an injection error if any requirement is missing (fail-fast behavior).
 //!
 //! ```ignore
-//! use reinhardt_auth::AuthUser;
+//! use reinhardt_auth::CurrentUser;
 //! use reinhardt_auth::DefaultUser;
 //!
 //! #[get("/profile/")]
 //! pub async fn profile(
-//!     #[inject] AuthUser(user): AuthUser<DefaultUser>,
+//!     #[inject] CurrentUser(user): CurrentUser<DefaultUser>,
 //! ) -> ViewResult<Response> {
 //!     let username = user.get_username();
 //!     // ...
@@ -261,10 +261,11 @@
 //! - **`AuthState`** present in request extensions (set by authentication middleware)
 //! - No `DatabaseConnection` needed
 //!
-//! ### `CurrentUser<U>` (deprecated)
+//! ### `AuthUser<U>` (deprecated)
 //!
-//! Deprecated in favor of `AuthUser<U>`. Unlike `AuthUser<U>`, missing context
-//! causes silent fallback to anonymous instead of returning an error.
+//! Deprecated in favor of `CurrentUser<U>` and scheduled for removal in 0.3.
+//! It retains the same fail-fast behavior as `CurrentUser<U>` for 0.2
+//! compatibility.
 //!
 //! ### Startup Validation
 //!

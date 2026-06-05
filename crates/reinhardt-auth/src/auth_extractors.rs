@@ -13,7 +13,7 @@ use reinhardt_di::InjectionContext;
 ///
 /// # Checks
 ///
-/// - `DatabaseConnection` is registered as a singleton (required for `AuthUser<U>`)
+/// - `DatabaseConnection` is registered as a singleton (required for `CurrentUser<U>`)
 /// - `AuthInfo` does not require additional DI setup (only needs auth middleware)
 ///
 /// # Example
@@ -27,12 +27,12 @@ use reinhardt_di::InjectionContext;
 pub fn validate_auth_extractors(ctx: &InjectionContext) {
 	if ctx.get_singleton::<DatabaseConnection>().is_some() {
 		::tracing::info!(
-			"AuthExtractors: DatabaseConnection registered — AuthUser<U> injection available"
+			"AuthExtractors: DatabaseConnection registered — CurrentUser<U> injection available"
 		);
 	} else {
 		::tracing::warn!(
 			"AuthExtractors: DatabaseConnection not registered as singleton. \
-			 AuthUser<U> injection will fail at request time. \
+			 CurrentUser<U> injection will fail at request time. \
 			 AuthInfo will still work (no DB required)."
 		);
 	}

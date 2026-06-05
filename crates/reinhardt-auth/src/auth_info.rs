@@ -1,6 +1,6 @@
 //! Lightweight authentication extractor that reads from request extensions.
 //!
-//! Does NOT perform a database query. Use [`AuthUser`](crate::AuthUser) when the full
+//! Does NOT perform a database query. Use [`CurrentUser`](crate::CurrentUser) when the full
 //! user model object is needed.
 
 use async_trait::async_trait;

@@ -4,7 +4,7 @@
 //! particularly the `params` feature for auth extractors.
 //!
 //! `AuthInfo` is tested directly because it has no generic type parameters.
-//! `CurrentUser<U>` and `AuthUser<U>` require `BaseUser + Model` bounds which
+//! `CurrentUser<U>` requires `BaseUser + Model` bounds which
 //! depend on the `argon2-hasher` feature, so their fallback behavior is
 //! verified via `cargo make feature-check` compilation checks.
 

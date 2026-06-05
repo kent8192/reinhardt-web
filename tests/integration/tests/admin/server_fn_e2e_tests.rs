@@ -11,7 +11,7 @@
 //! - Issue #3046: DI resolution pipeline verification for all 10 admin handlers
 //! - Issue #3049: CSRF cookie-to-header parsing and auth middleware E2E verification
 //!
-//! All tests exercise `AuthUser<AdminDefaultUser>` DB lookup through the full
+//! All tests exercise `CurrentUser<AdminDefaultUser>` DB lookup through the full
 //! DI pipeline, including ORM deserialization from the `auth_user` table.
 
 use super::server_fn_helpers::{
@@ -47,7 +47,7 @@ async fn insert_test_record(db: &Depends<AdminDatabase>, name: &str, status: &st
 // ==================== Category 1: DI Resolution Pipeline Tests (#3046) ====================
 
 /// Verify get_dashboard resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Depends<AdminSite>, ServerFnRequest (no AuthUser — no DB lookup needed)
+/// Injects: Depends<AdminSite>, ServerFnRequest (no CurrentUser — no DB lookup needed)
 #[rstest]
 #[tokio::test]
 async fn test_e2e_get_dashboard_resolves_di(
@@ -75,7 +75,7 @@ async fn test_e2e_get_dashboard_resolves_di(
 }
 
 /// Verify get_list resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, CurrentUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_get_list_resolves_di(
@@ -110,7 +110,7 @@ async fn test_e2e_get_list_resolves_di(
 }
 
 /// Verify get_detail resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, CurrentUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_get_detail_resolves_di(
@@ -146,7 +146,7 @@ async fn test_e2e_get_detail_resolves_di(
 }
 
 /// Verify get_fields resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, CurrentUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_get_fields_resolves_di(
@@ -181,7 +181,7 @@ async fn test_e2e_get_fields_resolves_di(
 }
 
 /// Verify create_record resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, CurrentUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_create_record_resolves_di(
@@ -225,7 +225,7 @@ async fn test_e2e_create_record_resolves_di(
 }
 
 /// Verify update_record resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, CurrentUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_update_record_resolves_di(
@@ -271,7 +271,7 @@ async fn test_e2e_update_record_resolves_di(
 }
 
 /// Verify delete_record resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, CurrentUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_delete_record_resolves_di(
@@ -309,7 +309,7 @@ async fn test_e2e_delete_record_resolves_di(
 }
 
 /// Verify bulk_delete_records resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, CurrentUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_bulk_delete_resolves_di(
@@ -349,7 +349,7 @@ async fn test_e2e_bulk_delete_resolves_di(
 }
 
 /// Verify export_data resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, CurrentUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_export_data_resolves_di(
@@ -384,7 +384,7 @@ async fn test_e2e_export_data_resolves_di(
 }
 
 /// Verify import_data resolves all DI dependencies through the HTTP pipeline.
-/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, AuthUser<AdminDefaultUser>
+/// Injects: Depends<AdminSite>, Depends<AdminDatabase>, ServerFnRequest, CurrentUser<AdminDefaultUser>
 #[rstest]
 #[tokio::test]
 async fn test_e2e_import_data_resolves_di(
@@ -776,7 +776,7 @@ async fn test_e2e_create_record_fails_without_database_connection(
 
 /// Verify get_dashboard behavior when DatabaseConnection is missing.
 /// get_dashboard injects Depends<AdminSite> and ServerFnRequest but NOT AdminDatabase
-/// or AuthUser, so it may still succeed depending on its DI requirements.
+/// or CurrentUser, so it may still succeed depending on its DI requirements.
 #[rstest]
 #[tokio::test]
 async fn test_e2e_get_dashboard_without_database_connection(

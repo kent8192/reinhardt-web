@@ -842,7 +842,7 @@ HTTP request and routing it through `ServerRouter::handle()`.
 
 The `#[server_fn]` macro strips `#[inject]` attributes from the underlying
 function definition, so direct calls are just normal `async fn` invocations.
-Test fixtures can build the `DatabaseConnection`, `Depends<T>`, `AuthUser<U>`,
+Test fixtures can build the `DatabaseConnection`, `Depends<T>`, `CurrentUser<U>`,
 session/store handles, etc. once and pass them in.
 
 **When to use direct invocation (default):**
