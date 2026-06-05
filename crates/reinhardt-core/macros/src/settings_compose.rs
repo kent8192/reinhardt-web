@@ -379,7 +379,7 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 		impl #conf_crate::settings::schema::HasSettingsSchema for #struct_name {
 			type Schema = #schema_name;
 
-			fn settings_schema() -> Self::Schema {
+			fn schema() -> Self::Schema {
 				#schema_name {
 					#(#schema_field_inits,)*
 				}
@@ -395,7 +395,7 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 
 			/// Build typed schema references for this composed settings root.
 			pub fn settings_schema() -> #schema_name {
-				<Self as #conf_crate::settings::schema::HasSettingsSchema>::settings_schema()
+				<Self as #conf_crate::settings::schema::HasSettingsSchema>::schema()
 			}
 
 			/// Validate all fragments against the given profile.

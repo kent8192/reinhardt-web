@@ -464,15 +464,16 @@ pub trait HasSettingsSchema {
 	type Schema;
 
 	/// Build root schema references.
-	fn settings_schema() -> Self::Schema;
+	fn schema() -> Self::Schema;
 
 	/// Build root schema references.
-	fn schema() -> Self::Schema {
-		Self::settings_schema()
+	fn settings_schema() -> Self::Schema {
+		Self::schema()
 	}
 }
 
-/// Return the primary or fallback object section from merged settings.
+/// Generated-code support for selecting composed root sections.
+#[doc(hidden)]
 pub fn root_section<'a>(
 	merged: &'a IndexMap<String, Value>,
 	primary_key: &'static str,
