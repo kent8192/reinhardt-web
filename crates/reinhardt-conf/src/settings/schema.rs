@@ -466,6 +466,58 @@ pub fn root_section<'a>(
 ) -> Option<&'a serde_json::Map<String, Value>> {
 	merged
 		.get(primary_key)
+		.or_else(|| {
+			if primary_key == fallback_key {
+				None
+			} else {
+				merged.get(fallback_key)
+			}
+		})
 		.and_then(Value::as_object)
-		.or_else(|| merged.get(fallback_key).and_then(Value::as_object))
+}
+
+#[cfg(test)]
+mod tests {
+	use indexmap::IndexMap;
+	use serde_json::{Value, json};
+
+	use super::root_section;
+
+	#[test]
+	fn root_section_primary_object_wins_over_fallback_object() {
+		let mut merged = IndexMap::new();
+		merged.insert("primary".to_string(), json!({ "source": "primary" }));
+		merged.insert("fallback".to_string(), json!({ "source": "fallback" }));
+
+		let section = root_section(&merged, "primary", "fallback").expect("primary object");
+
+		assert_eq!(
+			section.get("source"),
+			Some(&Value::String("primary".into()))
+		);
+	}
+
+	#[test]
+	fn root_section_uses_fallback_object_when_primary_absent() {
+		let mut merged = IndexMap::new();
+		merged.insert("fallback".to_string(), json!({ "source": "fallback" }));
+
+		let section = root_section(&merged, "primary", "fallback").expect("fallback object");
+
+		assert_eq!(
+			section.get("source"),
+			Some(&Value::String("fallback".into()))
+		);
+	}
+
+	#[test]
+	fn root_section_malformed_primary_scalar_does_not_fall_back() {
+		let mut merged = IndexMap::new();
+		merged.insert("primary".to_string(), json!("malformed"));
+		merged.insert("fallback".to_string(), json!({ "source": "fallback" }));
+
+		let section = root_section(&merged, "primary", "fallback");
+
+		assert!(section.is_none());
+	}
 }
