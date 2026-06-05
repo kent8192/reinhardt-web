@@ -18,8 +18,8 @@ use {
 // authenticated handler now receives `Depends<Result<User, SessionError>>`
 // from the DI container and calls `.as_ref().map_err(ServerFnError::from)?`
 // to surface 401/403/500. The factory also documents the path to
-// `reinhardt_auth::AuthUser<User>` once #4652 (the `CurrentUser` →
-// `AuthUser` unification + `SessionMiddleware` → `AuthState` bridge) lands.
+// `reinhardt_auth::CurrentUser<User>` once the `SessionMiddleware` →
+// `AuthState` bridge lands.
 
 // WASM-only imports
 // (None needed - all forms logic is server-side)

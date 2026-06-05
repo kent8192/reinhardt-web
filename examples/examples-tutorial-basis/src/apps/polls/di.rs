@@ -7,23 +7,23 @@
 //! lets `server_fn.rs` stay focused on handler bodies and gives every
 //! DI contribution a single, greppable home per app.
 //!
-//! ## Why a hand-rolled session-user factory instead of `reinhardt_auth::AuthUser<User>`?
+//! ## Why a hand-rolled session-user factory instead of `reinhardt_auth::CurrentUser<User>`?
 //!
-//! `AuthUser<U>`
+//! `CurrentUser<U>`
 //! (`crates/reinhardt-auth/src/auth_user.rs:43`) is the **canonical
 //! authenticated-user extractor** — handler signatures spell
-//! `#[inject] AuthUser(user): AuthUser<User>` and the framework loads
+//! `#[inject] CurrentUser(user): CurrentUser<User>` and the framework loads
 //! the row from `AuthState` in request extensions. It is the long-term
 //! target for this tutorial.
 //!
-//! But `AuthUser<U>`'s `Injectable` impl
+//! But `CurrentUser<U>`'s `Injectable` impl
 //! (`auth_user.rs:54-122`) reads `AuthState` from
 //! `request.extensions`. `AuthState` is only populated when an auth
 //! middleware writes it there
 //! (`crates/reinhardt-middleware/src/cookie_session_auth.rs:209`,
 //! `…/auth.rs`). This tutorial currently wires up
 //! `SessionMiddleware` alone — it manages session cookies + store but
-//! does not insert `AuthState`. Adopting `AuthUser<User>` therefore
+//! does not insert `AuthState`. Adopting `CurrentUser<User>` therefore
 //! requires either:
 //!
 //! 1. A bridge middleware (`CookieSessionAuthMiddleware`) — but its
@@ -39,7 +39,7 @@
 //! Once that ships, this whole module collapses — handlers swap
 //! `#[inject] user: Depends<Result<User, SessionError>>` /
 //! `let user = user.as_ref().map_err(ServerFnError::from)?` for the
-//! upstream `#[inject] AuthUser(user): AuthUser<User>` (plus an inline
+//! upstream `#[inject] CurrentUser(user): CurrentUser<User>` (plus an inline
 //! `is_active` check) and `apps/polls/di.rs` is deleted entirely.
 //!
 //! ## Factory return type: `Result<User, SessionError>`

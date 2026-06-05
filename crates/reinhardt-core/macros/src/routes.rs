@@ -226,7 +226,7 @@ enum AuthProtectionKind {
 /// The first matching rule wins (rules are checked in priority order):
 ///
 /// - Contains `"Guard"` → `Protected`; also captures `guard_description`
-/// - Contains `"AuthUser"` → `Protected`
+/// - Contains `"CurrentUser"` or `"AuthUser"` → `Protected`
 /// - Contains both `"Option"` and `"AuthInfo"` → `Optional`
 /// - Contains `"AuthInfo"` (alone) → `Protected`
 /// - Contains `"Public"` → `Public`
@@ -250,7 +250,7 @@ fn detect_auth_from_type_strings(type_strings: &[String]) -> AuthDetection {
 			continue;
 		}
 
-		if ty_str.contains("AuthUser") {
+		if ty_str.contains("CurrentUser") || ty_str.contains("AuthUser") {
 			found_protected = true;
 			continue;
 		}
@@ -1328,5 +1328,27 @@ mod url_resolver_tests {
 			assert!(marker.contains("deprecated"));
 			assert!(marker.contains("user-detail"));
 		}
+	}
+
+	#[test]
+	fn detect_auth_marks_current_user_as_protected() {
+		let detection = detect_auth_from_type_strings(&["CurrentUser < User >".to_string()]);
+
+		assert!(matches!(
+			detection.protection,
+			AuthProtectionKind::Protected
+		));
+		assert!(detection.guard_description.is_none());
+	}
+
+	#[test]
+	fn detect_auth_keeps_auth_user_compatibility_as_protected() {
+		let detection = detect_auth_from_type_strings(&["AuthUser < User >".to_string()]);
+
+		assert!(matches!(
+			detection.protection,
+			AuthProtectionKind::Protected
+		));
+		assert!(detection.guard_description.is_none());
 	}
 }

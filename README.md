@@ -786,15 +786,15 @@ Use JWT authentication in your app's `views/profile.rs`:
 ```rust
 // users/views/profile.rs
 use reinhardt::{Response, StatusCode, ViewResult, get};
-use reinhardt::auth::AuthUser;
+use reinhardt::auth::CurrentUser;
 use crate::models::User;
 
 // JwtAuthMiddleware must be registered in urls.rs to populate AuthState in request extensions
 #[get("/profile", name = "get_profile")]
 pub async fn get_profile(
-	#[inject] AuthUser(user): AuthUser<User>,
+	#[inject] CurrentUser(user): CurrentUser<User>,
 ) -> ViewResult<Response> {
-	// AuthUser<U> loads the full user model from the database using the AuthState
+	// CurrentUser<U> loads the full user model from the database using the AuthState
 	// set by authentication middleware. Returns an injection error if unauthenticated.
 	if !user.is_active() {
 		return Err("User account is inactive".into());

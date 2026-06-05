@@ -63,14 +63,6 @@ pub mod sessions;
 // Core authentication types and traits (migrated from reinhardt-core-auth)
 pub mod core;
 
-// `CurrentUser` (struct) and the `current_user` module were removed in
-// 0.2.0 per Issue #4520 (closes #4652). The wrapper coexisted with the
-// canonical `AuthUser<U>` extractor during the RC cycle; use `AuthUser<U>`
-// directly. `CurrentUser` could not be retained as a type alias because
-// its on-the-wire shape (`Option<U>` + `Option<Uuid>`) differs from
-// `AuthUser`'s tuple-struct shape — a type alias would break pattern-
-// matching call sites.
-
 // AuthInfo lightweight auth extractor
 pub mod auth_info;
 pub use auth_info::AuthInfo;
@@ -83,9 +75,10 @@ pub use guard::{All, Any, Guard, Not, Public};
 // Re-export guard!() macro from reinhardt-auth-macros
 pub use reinhardt_auth_macros::guard;
 
-// AuthUser authenticated user extractor
+// Authenticated user extractors
 pub mod auth_user;
-pub use auth_user::AuthUser;
+#[allow(deprecated)]
+pub use auth_user::{AuthUser, CurrentUser};
 
 // Startup validation for auth extractors
 pub mod auth_extractors;

@@ -611,7 +611,7 @@ pub async fn e2e_router_context(
 	// Create test_models table (same as server_fn_context)
 	setup_test_models_table(&pool).await;
 
-	// Create auth_user table for AuthUser::inject() DB lookup.
+	// Create auth_user table for CurrentUser::inject() DB lookup.
 	// DROP and re-create to ensure schema matches AdminDefaultUser fields exactly.
 	let drop_sql = Query::drop_table()
 		.table(Alias::new("auth_user"))
@@ -663,7 +663,7 @@ pub async fn e2e_router_context(
 	.await
 	.expect("Failed to insert non-staff test user");
 
-	// Build DatabaseConnection (shared between AdminDatabase and AuthUser injection)
+	// Build DatabaseConnection (shared between AdminDatabase and CurrentUser injection)
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
 	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);

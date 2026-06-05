@@ -15,31 +15,29 @@ Companion: [#4652](https://github.com/kent8192/reinhardt-web/issues/4652).
 
 ## reinhardt-auth (closes #4652)
 
-### `CurrentUser<U>` → `AuthUser<U>` (closes #4652)
+### `AuthUser<U>` → `CurrentUser<U>`
 
-Deprecated since `0.1.0-rc.12`. The `current_user` module is removed
-entirely. **`CurrentUser` is not a type alias** — its shape differs
-from `AuthUser`, so pattern-match call sites need restructuring.
+`CurrentUser<U>` is the recommended authenticated-user extractor. `AuthUser<U>`
+remains available in 0.2 as a deprecated compatibility wrapper and is scheduled
+for removal in 0.3.
 
 ```rust
 // Before
-async fn handler(current_user: CurrentUser<DefaultUser>) -> Response {
-    if current_user.is_authenticated() {
-        let user = current_user.user()?;
-        let id = current_user.id()?;
-        // ...
-    }
-}
-
-// After
 async fn handler(auth_user: AuthUser<MyUser>) -> Response {
     let user: &MyUser = &auth_user.0;
     let id = user.id();
     // ...
 }
+
+// After
+async fn handler(current_user: CurrentUser<MyUser>) -> Response {
+    let user: &MyUser = &current_user.0;
+    let id = user.id();
+    // ...
+}
 ```
 
-For anonymous-user handling, branch on the `AuthUser<U>` extractor
+For anonymous-user handling, branch on the `CurrentUser<U>` extractor
 result at the framework level (return 401 / redirect via guards)
 rather than carrying an `Option<U>` payload inside the extractor.
 

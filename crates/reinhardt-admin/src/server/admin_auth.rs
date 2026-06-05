@@ -40,7 +40,7 @@ pub(crate) struct AdminUserLoader(pub(crate) AdminUserLoaderFn);
 
 /// Type-erased authenticated admin user.
 ///
-/// This replaces the hardcoded `AuthUser<AdminDefaultUser>` in admin server
+/// This replaces the hardcoded `CurrentUser<AdminDefaultUser>` in admin server
 /// functions. It loads the user from the database using whichever concrete
 /// user type was registered via [`AdminSite::set_user_type`]. If no custom
 /// type was registered, [`AdminDefaultUser`] is used as a fallback.
@@ -156,7 +156,7 @@ impl Injectable for AdminAuthenticatedUser {
 /// Creates an [`AdminUserLoader`] that queries user type `U` from the database.
 ///
 /// The returned loader captures the concrete type `U` in a closure, replicating
-/// the same database query logic as [`AuthUser<U>::inject`] but returning a
+/// the same database query logic as [`CurrentUser<U>::inject`] but returning a
 /// type-erased `Arc<dyn AdminUser>`.
 ///
 /// # Type requirements
@@ -165,7 +165,7 @@ impl Injectable for AdminAuthenticatedUser {
 /// Types with `FullUser` satisfy `AdminUser` automatically via the blanket impl.
 /// Simpler `BaseUser`-only models can manually implement `AdminUser`.
 ///
-/// [`AuthUser<U>::inject`]: reinhardt_auth::AuthUser
+/// [`CurrentUser<U>::inject`]: reinhardt_auth::CurrentUser
 pub(crate) fn create_admin_user_loader<U>() -> AdminUserLoader
 where
 	U: BaseUser + AdminUser + Model + Clone + Send + Sync + 'static,

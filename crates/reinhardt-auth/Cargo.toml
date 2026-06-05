@@ -15,7 +15,7 @@ repository.workspace = true
 [features]
 default = ["params", "basic"]
 
-# Parameter extraction support for CurrentUser DI
+# Parameter extraction support for auth extractor DI
 params = ["reinhardt-di/params"]
 
 # Fine-grained authentication features
