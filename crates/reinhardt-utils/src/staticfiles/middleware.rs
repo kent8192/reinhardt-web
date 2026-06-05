@@ -468,6 +468,17 @@ impl StaticFilesMiddleware {
 	async fn try_serve(&self, path: &str) -> Option<Response> {
 		match self.handler.serve(path).await {
 			Ok(file) => {
+				// Refs #5186: directory index responses must receive the same
+				// WASM bootstrap as SPA fallback responses.
+				if file
+					.path
+					.file_name()
+					.and_then(|n| n.to_str())
+					.is_some_and(|name| name == "index.html")
+				{
+					return self.build_spa_response(file.content, &file.path);
+				}
+
 				let mut response = Response::ok()
 					.with_header("Content-Type", &file.mime_type)
 					.with_header("ETag", &file.etag());
@@ -1500,6 +1511,33 @@ mod tests {
 		assert!(body.contains("await import('/my_app.js')"));
 		assert!(body.contains("await init({ module_or_path: '/my_app_bg.wasm' })"));
 		assert!(body.contains("</body></html>"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_try_serve_directory_index_auto_injects_wasm() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::write(
+			dir.path().join("index.html"),
+			"<html><body><h1>App</h1></body></html>",
+		)
+		.unwrap();
+		std::fs::write(dir.path().join("my_app.js"), "// js").unwrap();
+		std::fs::write(dir.path().join("my_app_bg.wasm"), [0u8; 4]).unwrap();
+
+		let config = StaticFilesConfig::new(dir.path());
+		let middleware = StaticFilesMiddleware::new(config);
+
+		// Act
+		let response = middleware.try_serve("/").await;
+
+		// Assert
+		let response = response.expect("directory index should be served");
+		let body = std::str::from_utf8(&response.body).unwrap();
+		assert!(body.contains("<!-- Reinhardt WASM Auto-Loader -->"));
+		assert!(body.contains("await import('/my_app.js')"));
+		assert!(body.contains("await init({ module_or_path: '/my_app_bg.wasm' })"));
 	}
 
 	#[rstest]
