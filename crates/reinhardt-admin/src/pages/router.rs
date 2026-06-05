@@ -20,6 +20,7 @@ pub use crate::pages::components::login;
 use crate::server::{get_dashboard, get_detail, get_fields, get_list};
 #[cfg(client)]
 use crate::types::ListQueryParams;
+#[cfg(server)]
 use crate::types::ModelInfo;
 use reinhardt_pages::Signal;
 use reinhardt_pages::component::{Component, Page};
@@ -28,6 +29,7 @@ use reinhardt_pages::router::Link;
 #[cfg(client)]
 use reinhardt_pages::{ResourceState, use_resource};
 use reinhardt_urls::routers::ClientRouter;
+use reinhardt_urls::routers::client_router::Path;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -71,6 +73,22 @@ pub enum AdminRoute {
 // Initialized by init_global_router() and accessed via with_router()
 thread_local! {
 	static ROUTER: RefCell<Option<ClientRouter>> = const { RefCell::new(None) };
+}
+
+#[cfg(any(client, test))]
+fn json_value_to_display_string(value: &serde_json::Value) -> String {
+	match value {
+		serde_json::Value::String(value) => value.clone(),
+		serde_json::Value::Number(value) => value.to_string(),
+		serde_json::Value::Bool(value) => value.to_string(),
+		serde_json::Value::Null => String::new(),
+		serde_json::Value::Array(values) => values
+			.iter()
+			.map(json_value_to_display_string)
+			.collect::<Vec<_>>()
+			.join(", "),
+		serde_json::Value::Object(_) => value.to_string(),
+	}
 }
 
 /// Admin URL configuration loaded from server at runtime.
@@ -293,7 +311,7 @@ fn list_view_component(model_name: String) -> Page {
 						.map(|record| {
 							record
 								.into_iter()
-								.map(|(k, v)| (k, v.as_str().unwrap_or("").to_string()))
+								.map(|(k, v)| (k, json_value_to_display_string(&v)))
 								.collect()
 						})
 						.collect(),
@@ -376,7 +394,7 @@ fn detail_view_component(model_name: String, record_id: String) -> Page {
 				let data: std::collections::HashMap<String, String> = response
 					.data
 					.iter()
-					.map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+					.map(|(k, v)| (k.clone(), json_value_to_display_string(v)))
 					.collect();
 				detail_view(&model_name, &record_id, &data)
 			}
@@ -515,12 +533,12 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 									.as_array()
 									.map(|arr| {
 										arr.iter()
-											.filter_map(|x| x.as_str().map(str::to_string))
+											.map(json_value_to_display_string)
 											.collect::<Vec<_>>()
 											.join(", ")
 									})
 									.unwrap_or_default(),
-								Some(v) => v.as_str().unwrap_or("").to_string(),
+								Some(v) => json_value_to_display_string(v),
 								None => String::new(),
 							}
 						} else {
@@ -627,8 +645,6 @@ fn loading_view() -> Page {
 /// token and redirects to the login page.
 #[cfg(client)]
 fn error_view(message: &str) -> Page {
-	use reinhardt_pages::component::IntoPage;
-
 	// Detect 401 Unauthorized — clear token and redirect to login
 	if message.contains("401") {
 		reinhardt_pages::auth::clear_jwt_token();
@@ -699,48 +715,30 @@ pub fn init_router() -> ClientRouter {
 	ClientRouter::new()
 		.route("login", "/admin/login/", login::login_view)
 		.route("dashboard", "/admin/", dashboard_view)
-		.route("create", "/admin/{model}/add/", || {
-			with_router(|router| {
-				let params = router.current_params().get();
-				let model_name = params
-					.get("model")
-					.cloned()
-					.unwrap_or_else(|| "unknown".to_string());
-				create_view_component(model_name)
-			})
-		})
-		.route("edit", "/admin/{model}/{id}/change/", || {
-			with_router(|router| {
-				let params = router.current_params().get();
-				let model_name = params
-					.get("model")
-					.cloned()
-					.unwrap_or_else(|| "unknown".to_string());
-				let record_id = params.get("id").cloned().unwrap_or_else(|| "0".to_string());
+		.route_path(
+			"create",
+			"/admin/{model}/add/",
+			|Path(model_name): Path<String>| create_view_component(model_name),
+		)
+		.route_path(
+			"edit",
+			"/admin/{model}/{id}/change/",
+			|Path(model_name): Path<String>, Path(record_id): Path<String>| {
 				edit_view_component(model_name, record_id)
-			})
-		})
-		.route("detail", "/admin/{model}/{id}/", || {
-			with_router(|router| {
-				let params = router.current_params().get();
-				let model_name = params
-					.get("model")
-					.cloned()
-					.unwrap_or_else(|| "unknown".to_string());
-				let record_id = params.get("id").cloned().unwrap_or_else(|| "0".to_string());
+			},
+		)
+		.route_path(
+			"detail",
+			"/admin/{model}/{id}/",
+			|Path(model_name): Path<String>, Path(record_id): Path<String>| {
 				detail_view_component(model_name, record_id)
-			})
-		})
-		.route("list", "/admin/{model}/", || {
-			with_router(|router| {
-				let params = router.current_params().get();
-				let model_name = params
-					.get("model")
-					.cloned()
-					.unwrap_or_else(|| "unknown".to_string());
-				list_view_component(model_name)
-			})
-		})
+			},
+		)
+		.route_path(
+			"list",
+			"/admin/{model}/",
+			|Path(model_name): Path<String>| list_view_component(model_name),
+		)
 		.not_found(not_found_view)
 }
 
@@ -851,6 +849,22 @@ mod tests {
 	}
 
 	#[test]
+	fn test_reverse_url_create() {
+		let router = init_router();
+		let url = router.reverse("create", &[("model", "users")]).unwrap();
+		assert_eq!(url, "/admin/users/add/");
+	}
+
+	#[test]
+	fn test_reverse_url_edit() {
+		let router = init_router();
+		let url = router
+			.reverse("edit", &[("model", "users"), ("id", "42")])
+			.unwrap();
+		assert_eq!(url, "/admin/users/42/change/");
+	}
+
+	#[test]
 	fn test_init_global_router() {
 		init_global_router();
 
@@ -908,6 +922,33 @@ mod tests {
 		// Verify basic rendering succeeds
 		let html = view.render_to_string();
 		assert!(html.contains("users") || html.contains("List"));
+	}
+
+	#[test]
+	fn test_direct_list_route_extracts_model_name() {
+		let router = init_router();
+
+		router.push("/admin/question/").unwrap();
+		let html = router.render_current().render_to_string();
+
+		assert!(
+			html.contains("question"),
+			"Direct list route render should pass the model path segment to the view"
+		);
+	}
+
+	#[test]
+	fn test_json_value_to_display_string_preserves_non_string_scalars() {
+		assert_eq!(json_value_to_display_string(&serde_json::json!(42)), "42");
+		assert_eq!(
+			json_value_to_display_string(&serde_json::json!(true)),
+			"true"
+		);
+		assert_eq!(json_value_to_display_string(&serde_json::Value::Null), "");
+		assert_eq!(
+			json_value_to_display_string(&serde_json::json!([1, "two", false])),
+			"1, two, false"
+		);
 	}
 
 	#[test]
