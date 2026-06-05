@@ -96,6 +96,7 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 		let field_key_str = &field.key;
 		let setting_attr = &field.setting_attr;
 		let already_has_serde_default = field.has_serde_default;
+		let cfg_attrs = &field.cfg_attrs;
 
 		// Determine requirement and has_default based on setting attr + default_policy
 		let (requirement_tokens, has_default, serde_default_tokens) = match setting_attr {
@@ -171,6 +172,7 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 		let value_schema = settings_schema::value_schema_tokens(&field.shape, &conf_crate);
 
 		field_policy_entries.push(quote! {
+			#(#cfg_attrs)*
 			#conf_crate::settings::policy::FieldPolicy {
 				name: #field_name_str,
 				requirement: #requirement_tokens,
@@ -179,6 +181,7 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 		});
 
 		node_field_schema_entries.push(quote! {
+			#(#cfg_attrs)*
 			#conf_crate::settings::schema::SettingsFieldSchema {
 				rust_name: #field_name_str,
 				key: #field_key_str,
@@ -233,8 +236,6 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 			}
 		}
 	};
-
-	let field_count = field_policy_entries.len();
 
 	// Conditionally generate SettingsValidation impl and validate bridge.
 	//
@@ -332,10 +333,10 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 			#validate_override
 
 			fn field_policies() -> &'static [#conf_crate::settings::policy::FieldPolicy] {
-				static POLICIES: [#conf_crate::settings::policy::FieldPolicy; #field_count] = [
+				static POLICIES: &[#conf_crate::settings::policy::FieldPolicy] = &[
 					#(#field_policy_entries),*
 				];
-				&POLICIES
+				POLICIES
 			}
 		}
 

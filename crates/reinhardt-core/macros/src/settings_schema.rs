@@ -36,6 +36,7 @@ pub(crate) struct ParsedField {
 	pub shape_hint: Option<ShapeHint>,
 	pub has_serde_default: bool,
 	pub cleaned_attrs: Vec<syn::Attribute>,
+	pub cfg_attrs: Vec<syn::Attribute>,
 	pub shape: TypeShape,
 }
 
@@ -168,6 +169,7 @@ pub(crate) fn parse_fields(input: &ItemStruct) -> Result<Vec<ParsedField>> {
 				shape_hint: setting_attr.shape_hint,
 				has_serde_default: has_serde_default(field),
 				cleaned_attrs: strip_setting_attrs(&field.attrs),
+				cfg_attrs: cfg_attrs(&field.attrs),
 				shape: analyze_type(&field.ty, setting_attr.shape_hint),
 			})
 		})
@@ -234,8 +236,10 @@ pub(crate) fn schema_struct_fields(
 			let ident = &field.ident;
 			let vis = &field.vis;
 			let ty = schema_ref_type(&field.shape, conf_crate);
+			let cfg_attrs = &field.cfg_attrs;
 			quote! {
 				#[doc = "Typed schema reference for this settings field."]
+				#(#cfg_attrs)*
 				#vis #ident: #ty
 			}
 		})
@@ -252,7 +256,9 @@ pub(crate) fn schema_struct_inits(
 			let ident = &field.ident;
 			let key = &field.key;
 			let init = schema_ref_init(&field.shape, quote! { path.with_key(#key) }, conf_crate);
+			let cfg_attrs = &field.cfg_attrs;
 			quote! {
+				#(#cfg_attrs)*
 				#ident: #init
 			}
 		})
@@ -377,6 +383,14 @@ fn strip_setting_attrs(attrs: &[syn::Attribute]) -> Vec<syn::Attribute> {
 	attrs
 		.iter()
 		.filter(|attr| !attr.path().is_ident("setting"))
+		.cloned()
+		.collect()
+}
+
+fn cfg_attrs(attrs: &[syn::Attribute]) -> Vec<syn::Attribute> {
+	attrs
+		.iter()
+		.filter(|attr| attr.path().is_ident("cfg"))
 		.cloned()
 		.collect()
 }
