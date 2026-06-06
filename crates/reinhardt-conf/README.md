@@ -134,6 +134,31 @@ port = "${REINHARDT_DB_PORT:-5432}"
 db_password = "${DB_PASSWORD:?Set DB_PASSWORD via direnv or 1Password CLI}"
 ```
 
+Secret fields backed by `SecretString` also accept explicit source maps:
+
+```toml
+[database.default]
+engine = "postgresql"
+host = "localhost"
+port = 5432
+name = "app"
+user = "app"
+password = { env = "DATABASE_PASSWORD" }
+
+[database.replica]
+engine = "postgresql"
+host = "replica.internal"
+port = 5432
+name = "app"
+user = "readonly"
+password = { file = "/run/secrets/db-replica-password" }
+```
+
+Use `{ secret = "literal" }` for inline values, `{ env = "NAME" }` for process
+environment variables, and `{ file = "path" }` for file-backed secrets. File
+sources trim trailing CR/LF so Docker/Kubernetes-style secret files work without
+leaking the final newline into connection strings.
+
 #### Behavior Notes
 
 - **Strict empty handling**: an empty environment-variable value is treated identically
