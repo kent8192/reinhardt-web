@@ -7,8 +7,8 @@
 use crate::apps::polls::admin::{ChoiceAdmin, QuestionAdmin};
 use crate::apps::users::models::User;
 use crate::config::settings::get_settings;
-use reinhardt::admin::AdminSite;
 use reinhardt::HasCoreSettings;
+use reinhardt::admin::AdminSite;
 
 /// Configure the admin site and register all polls-app model admins.
 ///
