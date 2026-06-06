@@ -36,6 +36,7 @@
 //! - `auth-jwt` - JWT authentication
 //! - `auth-session` - Session-based authentication
 //! - `auth-oauth` - OAuth2 support
+//! - `auth-social` - Social authentication providers
 //! - `auth-token` - Token authentication
 //!
 //! #### Database Backends ✅
