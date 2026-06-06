@@ -137,6 +137,7 @@ streaming = ["dep:reinhardt-streaming", "reinhardt-streaming/kafka"]
 server = ["reinhardt-server"]
 commands = ["reinhardt-commands", "reinhardt-commands/migrations"]
 commands-autoreload = ["commands", "reinhardt-commands/autoreload"]
+commands-server = ["commands", "reinhardt-commands/server"]
 introspect = ["reinhardt-commands/introspect"]
 
 # Parent crate features (new module structure)
@@ -286,6 +287,7 @@ test-utils = ["reinhardt-test", "reinhardt-test/testcontainers", "database"]
 auth-jwt = ["auth", "reinhardt-auth/jwt"]
 auth-session = ["auth", "reinhardt-auth/sessions", "sessions"]
 auth-oauth = ["auth", "reinhardt-auth/oauth"]
+auth-social = ["auth-oauth", "reinhardt-auth/social"]
 auth-token = ["auth", "reinhardt-auth/token"]
 
 # Fine-grained database support
