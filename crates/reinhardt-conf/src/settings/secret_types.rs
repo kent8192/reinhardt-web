@@ -25,7 +25,7 @@ impl<'de> Deserialize<'de> for SecretString {
 			type Value = SecretString;
 
 			fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-				formatter.write_str("a string or a map with a 'secret' key")
+				formatter.write_str("a string or a map with a 'secret', 'env', or 'file' key")
 			}
 
 			fn visit_str<E>(self, value: &str) -> Result<SecretString, E>
@@ -43,20 +43,77 @@ impl<'de> Deserialize<'de> for SecretString {
 			{
 				let mut secret = None;
 				while let Some(key) = map.next_key::<String>()? {
-					if key == "secret" {
-						secret = Some(map.next_value::<String>()?);
-					} else {
-						let _ = map.next_value::<serde::de::IgnoredAny>()?;
+					match key.as_str() {
+						"secret" => {
+							set_secret_source(&mut secret, map.next_value::<String>()?)?;
+						}
+						"env" => {
+							let name = map.next_value::<String>()?;
+							ensure_no_secret_source(&secret)?;
+							let value = std::env::var(&name).map_err(|error| {
+								serde::de::Error::custom(format!(
+									"failed to read secret from environment variable `{name}`: {error}"
+								))
+							})?;
+							set_secret_source(&mut secret, value)?;
+						}
+						"file" => {
+							let path = map.next_value::<String>()?;
+							ensure_no_secret_source(&secret)?;
+							let value = std::fs::read_to_string(&path).map_err(|error| {
+								serde::de::Error::custom(format!(
+									"failed to read secret from file `{path}`: {error}"
+								))
+							})?;
+							set_secret_source(&mut secret, trim_secret_file_newline(value))?;
+						}
+						_ => {
+							let _ = map.next_value::<serde::de::IgnoredAny>()?;
+						}
 					}
 				}
 				secret
 					.map(|s| SecretString { inner: s })
-					.ok_or_else(|| serde::de::Error::missing_field("secret"))
+					.ok_or_else(|| serde::de::Error::missing_field("secret, env, or file"))
 			}
 		}
 
 		deserializer.deserialize_any(SecretStringVisitor)
 	}
+}
+
+fn ensure_no_secret_source<E>(secret: &Option<String>) -> Result<(), E>
+where
+	E: serde::de::Error,
+{
+	if secret.is_some() {
+		return Err(duplicate_secret_source_error());
+	}
+	Ok(())
+}
+
+fn set_secret_source<E>(secret: &mut Option<String>, value: String) -> Result<(), E>
+where
+	E: serde::de::Error,
+{
+	if secret.replace(value).is_some() {
+		return Err(duplicate_secret_source_error());
+	}
+	Ok(())
+}
+
+fn duplicate_secret_source_error<E>() -> E
+where
+	E: serde::de::Error,
+{
+	E::custom("secret source maps must contain only one of `secret`, `env`, or `file`")
+}
+
+fn trim_secret_file_newline(mut value: String) -> String {
+	while value.ends_with('\n') || value.ends_with('\r') {
+		value.pop();
+	}
+	value
 }
 
 impl Serialize for SecretString {
@@ -216,6 +273,7 @@ impl<T: Zeroize + AsRef<[u8]> + Eq> Eq for SecretValue<T> {}
 mod tests {
 	use super::*;
 	use rstest::rstest;
+	use serial_test::serial;
 
 	#[rstest]
 	fn test_secret_string_debug() {
@@ -316,6 +374,47 @@ mod tests {
 		let json = r#"{"secret":"test-secret"}"#;
 		let deserialized: SecretString = serde_json::from_str(json).unwrap();
 		assert_eq!(deserialized.expose_secret(), "test-secret");
+	}
+
+	#[rstest]
+	#[serial(env)]
+	fn test_secret_string_deserializes_from_env_source() {
+		// SAFETY: This test is serialized with other environment-mutating tests.
+		unsafe { std::env::set_var("REINHARDT_TEST_SECRET_SOURCE", "env-secret") };
+		let json = r#"{"env":"REINHARDT_TEST_SECRET_SOURCE"}"#;
+
+		let deserialized: SecretString = serde_json::from_str(json).unwrap();
+
+		assert_eq!(deserialized.expose_secret(), "env-secret");
+		// SAFETY: This test is serialized with other environment-mutating tests.
+		unsafe { std::env::remove_var("REINHARDT_TEST_SECRET_SOURCE") };
+	}
+
+	#[rstest]
+	fn test_secret_string_deserializes_from_file_source() {
+		let temp_file = tempfile::NamedTempFile::new().unwrap();
+		std::fs::write(temp_file.path(), "file-secret\n").unwrap();
+		let json = serde_json::json!({
+			"file": temp_file.path().to_string_lossy(),
+		})
+		.to_string();
+
+		let deserialized: SecretString = serde_json::from_str(&json).unwrap();
+
+		assert_eq!(deserialized.expose_secret(), "file-secret");
+	}
+
+	#[rstest]
+	fn test_secret_string_rejects_multiple_sources() {
+		let json = r#"{"secret":"inline","env":"IGNORED"}"#;
+
+		let error = serde_json::from_str::<SecretString>(json).unwrap_err();
+
+		assert!(
+			error
+				.to_string()
+				.contains("must contain only one of `secret`, `env`, or `file`")
+		);
 	}
 
 	#[rstest]

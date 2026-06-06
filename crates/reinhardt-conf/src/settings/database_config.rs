@@ -377,6 +377,7 @@ pub fn validate_database_url_scheme(url: &str) -> Result<(), String> {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+	use serial_test::serial;
 
 	#[rstest]
 	fn test_settings_db_config_sqlite() {
@@ -545,6 +546,55 @@ mod tests {
 		assert_eq!(password.expose_secret(), "my-secret-pw");
 		// Display should not reveal the password
 		assert_eq!(format!("{}", password), "[REDACTED]");
+	}
+
+	#[rstest]
+	#[serial(env)]
+	fn test_database_password_deserializes_from_secret_sources() {
+		let temp_file = tempfile::NamedTempFile::new().unwrap();
+		std::fs::write(temp_file.path(), "replica-secret\n").unwrap();
+		// SAFETY: This test is serialized with other environment-mutating tests.
+		unsafe { std::env::set_var("REINHARDT_DEFAULT_DB_PASSWORD", "default-secret") };
+		let file_path = temp_file.path().to_string_lossy().replace('\\', "\\\\");
+		let toml = format!(
+			r#"
+[default]
+engine = "postgresql"
+host = "localhost"
+port = 5432
+name = "app"
+user = "app"
+password = {{ env = "REINHARDT_DEFAULT_DB_PASSWORD" }}
+
+[replica]
+engine = "postgresql"
+host = "replica.internal"
+port = 5432
+name = "app"
+user = "readonly"
+password = {{ file = "{}" }}
+"#,
+			file_path
+		);
+
+		let databases: HashMap<String, DatabaseConfig> = toml::from_str(&toml).unwrap();
+
+		assert_eq!(
+			databases["default"]
+				.password
+				.as_ref()
+				.map(|password| password.expose_secret()),
+			Some("default-secret")
+		);
+		assert_eq!(
+			databases["replica"]
+				.password
+				.as_ref()
+				.map(|password| password.expose_secret()),
+			Some("replica-secret")
+		);
+		// SAFETY: This test is serialized with other environment-mutating tests.
+		unsafe { std::env::remove_var("REINHARDT_DEFAULT_DB_PASSWORD") };
 	}
 
 	#[rstest]
