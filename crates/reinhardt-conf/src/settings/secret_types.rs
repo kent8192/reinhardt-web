@@ -394,7 +394,10 @@ mod tests {
 	fn test_secret_string_deserializes_from_file_source() {
 		let temp_file = tempfile::NamedTempFile::new().unwrap();
 		std::fs::write(temp_file.path(), "file-secret\n").unwrap();
-		let json = format!(r#"{{"file":"{}"}}"#, temp_file.path().display());
+		let json = serde_json::json!({
+			"file": temp_file.path().to_string_lossy(),
+		})
+		.to_string();
 
 		let deserialized: SecretString = serde_json::from_str(&json).unwrap();
 

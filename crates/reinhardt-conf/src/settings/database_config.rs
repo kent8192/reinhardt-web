@@ -555,6 +555,7 @@ mod tests {
 		std::fs::write(temp_file.path(), "replica-secret\n").unwrap();
 		// SAFETY: This test is serialized with other environment-mutating tests.
 		unsafe { std::env::set_var("REINHARDT_DEFAULT_DB_PASSWORD", "default-secret") };
+		let file_path = temp_file.path().to_string_lossy().replace('\\', "\\\\");
 		let toml = format!(
 			r#"
 [default]
@@ -573,7 +574,7 @@ name = "app"
 user = "readonly"
 password = {{ file = "{}" }}
 "#,
-			temp_file.path().display()
+			file_path
 		);
 
 		let databases: HashMap<String, DatabaseConfig> = toml::from_str(&toml).unwrap();
