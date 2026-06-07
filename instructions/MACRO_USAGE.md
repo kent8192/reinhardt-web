@@ -60,6 +60,13 @@ let person = Person::new()
     .name("Alice")
     .finish();
 
+// ✅ Correct — opt in to overriding a macro-managed field when importing or
+// bridging an externally supplied identity.
+let person = Person::build()
+    .id(existing_id)
+    .name("Alice")
+    .finish();
+
 // ❌ Incorrect — bypasses macro-generated initialization
 let person = Person {
     id: 1,
@@ -69,6 +76,7 @@ let person = Person {
 
 **Rationale:**
 - The generated builder accepts only the fields the user must supply and auto-fills macro-managed fields (auto-generated primary keys, foreign-key id columns, timestamps, relationship markers). Struct-literal initialization forces the caller to spell out every field, including those the builder would have filled — which is brittle.
+- Macro-managed database fields also get optional builder setters. Call those setters only when the caller intentionally needs to preserve an externally supplied value, such as an imported primary key or fixed timestamp; omitting the setter keeps the normal generated/default path.
 - Centralizing initialization through the builder keeps call sites stable as the macro evolves: adding a required field surfaces as a named setter instead of changing positional argument order.
 - Today the generated builder does not perform validation; this rule is about future-proofing and field coverage, not about a current invariant guarantee.
 
