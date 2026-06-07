@@ -173,6 +173,11 @@ pub mod reinhardt_di {
 }
 
 #[cfg(all(feature = "auth", native))]
+pub mod auth {
+	pub use reinhardt_auth::*;
+}
+
+#[cfg(all(feature = "auth", native))]
 #[doc(hidden)]
 pub mod reinhardt_auth {
 	pub use reinhardt_auth::*;
