@@ -119,17 +119,38 @@ jobs:
           tool: zola@0.22.1
 
       - name: Configure version switcher
+        id: website-config
         working-directory: website
         env:
+          EVENT_NAME: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           VERSION=$(grep 'reinhardt_version' config.toml | sed 's/.*= *"\(.*\)"/\1/')
-          if [[ "$REF_NAME" == develop/* ]]; then
+          BRANCH_NAME="${HEAD_REF:-$REF_NAME}"
+          BRANCH_SLUG=$(echo "$BRANCH_NAME" | tr '/' '-' | tr '.' '-')
+          PREVIEW_URL="https://${BRANCH_SLUG}.reinhardt-web.pages.dev"
+          STABLE_URL="https://reinhardt-web.dev"
+          DEV_URL="https://rc.reinhardt-web.dev"
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            CURRENT_LABEL="v${VERSION} (Preview)"
+            IS_STABLE="false"
+            CHANNEL_LABEL="Preview"
+            CURRENT_URL="${PREVIEW_URL}"
+            BUILD_BASE_URL="${PREVIEW_URL}"
+          elif [[ "$REF_NAME" == develop/* ]]; then
             CURRENT_LABEL="v${VERSION} (Dev)"
             IS_STABLE="false"
+            CHANNEL_LABEL="Dev"
+            CURRENT_URL="${DEV_URL}"
+            BUILD_BASE_URL="${DEV_URL}"
           else
             CURRENT_LABEL="v${VERSION}"
             IS_STABLE="true"
+            CHANNEL_LABEL="Dev"
+            CURRENT_URL="${STABLE_URL}"
+            BUILD_BASE_URL="${STABLE_URL}"
           fi
           sed -i '/^\[extra\.version_switcher\]/,$d' config.toml
           cat >> config.toml << TOML
@@ -140,24 +161,21 @@ jobs:
 
           [[extra.version_switcher.versions]]
           label = "Stable"
-          url = "https://reinhardt-web.dev"
+          url = "${STABLE_URL}"
 
           [[extra.version_switcher.versions]]
-          label = "Dev"
-          url = "https://rc.reinhardt-web.dev"
+          label = "${CHANNEL_LABEL}"
+          url = "${CURRENT_URL}"
           TOML
-          echo "Version switcher configured: ${CURRENT_LABEL} (stable=${IS_STABLE})"
+          echo "build_base_url=${BUILD_BASE_URL}" >> "$GITHUB_OUTPUT"
+          echo "Version switcher configured: ${CURRENT_LABEL} (stable=${IS_STABLE}, url=${CURRENT_URL})"
 
       - name: Build
         working-directory: website
         env:
-          REF_NAME: ${{ github.ref_name }}
+          BUILD_BASE_URL: ${{ steps.website-config.outputs.build_base_url }}
         run: |
-          if [[ "$REF_NAME" == develop/* ]]; then
-            zola build --base-url "https://rc.reinhardt-web.dev"
-          else
-            zola build
-          fi
+          zola build --base-url "${BUILD_BASE_URL}"
 
       - name: Set production branch via Cloudflare API
         if: github.ref == 'refs/heads/main'
