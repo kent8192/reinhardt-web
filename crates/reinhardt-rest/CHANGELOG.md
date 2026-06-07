@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.2.0-rc.3...reinhardt-rest@v0.2.0-rc.4) - 2026-06-07
+
+### Documentation
+
+- update version references to v0.2.0-rc.4
+
 ## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.2.0-rc.2...reinhardt-rest@v0.2.0-rc.3) - 2026-06-05
 
 ### Fixed
