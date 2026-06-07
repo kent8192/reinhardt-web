@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.2.0-rc.3...reinhardt-admin@v0.2.0-rc.4) - 2026-06-06
+
+### Changed
+
+- *(auth)* make CurrentUser canonical extractor
+
+### Fixed
+
+- *(admin)* enable tutorial admin CRUD
+- *(admin)* build CRUD URLs with router reverse
+- *(admin)* preserve multi-select mutation values
+
+### Styling
+
+- *(admin)* format admin feature controls
+
 ## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.3...reinhardt-admin@v0.2.0-rc.2) - 2026-06-03
 
 ### Added
