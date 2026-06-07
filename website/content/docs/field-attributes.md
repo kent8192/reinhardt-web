@@ -775,6 +775,19 @@ the `build()` builder and zero-argument `new()` alias.
 internal_state: i32,
 ```
 
+Fields excluded from the required builder path remain available as optional
+builder overrides. If the setter is omitted, `finish()` uses the normal
+macro-managed default. If the setter is called, the supplied value is stored in
+the model; manager create paths that serialize the model include that explicit
+value instead of falling back to the generated/default value.
+
+```rust
+let imported = ImportedAccount::build()
+    .id(existing_id)
+    .internal_state(restored_state)
+    .finish();
+```
+
 #### `skip_getter: bool`
 
 **Supported DBMS**: All **Feature Flag**: None

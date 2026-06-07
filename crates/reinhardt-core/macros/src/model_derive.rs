@@ -3850,6 +3850,25 @@ fn is_auto_generated_field(field: &FieldInfo) -> bool {
 	false
 }
 
+/// Determine whether an auto-generated field should get an optional builder setter.
+fn is_builder_optional_auto_field(field: &FieldInfo) -> bool {
+	if !is_auto_generated_field(field) {
+		return false;
+	}
+	if field.config.skip || field.is_fk_id_field {
+		return false;
+	}
+	if is_many_to_many_field_type(&field.ty) || is_relationship_field_type(&field.ty) {
+		return false;
+	}
+	if let Some(rel) = &field.rel
+		&& matches!(rel.rel_type, crate::rel::RelationType::ManyToMany)
+	{
+		return false;
+	}
+	true
+}
+
 /// Get the default value expression for an auto-generated field
 fn get_auto_field_default_value(field: &FieldInfo) -> TokenStream {
 	let config = &field.config;
@@ -4004,9 +4023,10 @@ fn generate_new_alias(
 /// FK setters accept any `IntoPrimaryKey<Related>` value — callers can pass
 /// `&user` (the FK shortcut from #4398) or a raw primary-key value.
 ///
-/// Auto-generated fields (`auto_now_add`, integer/UUID primary keys, FK relation
-/// fields, etc.) and fields with `include_in_new = false` are filled in by
-/// `finish()` — they require no setter.
+/// Auto-generated fields (`auto_now_add`, integer/UUID primary keys, identity
+/// columns, generated columns, etc.) and fields with `include_in_new = false`
+/// are optional builder inputs: omitting them uses the macro-managed default,
+/// while calling their named setter stores the supplied value.
 fn generate_build_function(
 	struct_name: &syn::Ident,
 	field_infos: &[FieldInfo],
@@ -4024,6 +4044,12 @@ fn generate_build_function(
 	let auto_fields: Vec<_> = field_infos
 		.iter()
 		.filter(|f| is_auto_generated_field(f))
+		.collect();
+
+	let optional_auto_fields: Vec<_> = auto_fields
+		.iter()
+		.copied()
+		.filter(|f| is_builder_optional_auto_field(f))
 		.collect();
 
 	// Map of `*_id` (in field_infos / fk_id_field_names) -> related FK field name
@@ -4184,13 +4210,22 @@ fn generate_build_function(
 		.map(|i| syn::Ident::new(&format!("B{}", i), struct_name.span()))
 		.collect();
 
-	// Builder struct fields: one Option<StorageTy> per required field, plus the
-	// PhantomData state marker.
+	// Builder struct fields: one Option<StorageTy> per required field, one
+	// Option<StorageTy> per optional auto-generated field, plus the PhantomData
+	// state marker.
 	let builder_struct_fields: Vec<TokenStream> = required
 		.iter()
 		.map(|r| {
 			let name = &r.storage_name;
 			let ty = r.storage_ty;
+			quote! { #name: ::std::option::Option<#ty> }
+		})
+		.collect();
+	let optional_builder_struct_fields: Vec<TokenStream> = optional_auto_fields
+		.iter()
+		.map(|f| {
+			let name = &f.name;
+			let ty = &f.ty;
 			quote! { #name: ::std::option::Option<#ty> }
 		})
 		.collect();
@@ -4200,6 +4235,13 @@ fn generate_build_function(
 		.iter()
 		.map(|r| {
 			let name = &r.storage_name;
+			quote! { #name: ::std::option::Option::None }
+		})
+		.collect();
+	let optional_init_struct_field_assignments: Vec<TokenStream> = optional_auto_fields
+		.iter()
+		.map(|f| {
+			let name = &f.name;
 			quote! { #name: ::std::option::Option::None }
 		})
 		.collect();
@@ -4255,6 +4297,13 @@ fn generate_build_function(
 				} else {
 					quote! { #n: self.#n, }
 				}
+			})
+			.collect();
+		let optional_copy_fields: Vec<TokenStream> = optional_auto_fields
+			.iter()
+			.map(|f| {
+				let name = &f.name;
+				quote! { #name: self.#name, }
 			})
 			.collect();
 
@@ -4328,6 +4377,7 @@ fn generate_build_function(
 				{
 					#builder_name {
 						#(#copy_fields)*
+						#(#optional_copy_fields)*
 						#storage_name: ::std::option::Option::Some(#value_expr),
 						__state: ::std::marker::PhantomData,
 					}
@@ -4405,7 +4455,11 @@ fn generate_build_function(
 		.map(|f| {
 			let name = &f.name;
 			let default_value = get_auto_field_default_value(f);
-			quote! { #name: #default_value }
+			if is_builder_optional_auto_field(f) {
+				quote! { #name: self.#name.unwrap_or_else(|| #default_value) }
+			} else {
+				quote! { #name: #default_value }
+			}
 		})
 		.collect();
 
@@ -4422,6 +4476,25 @@ fn generate_build_function(
 	} else {
 		quote! { <#(#state_params),*> }
 	};
+	let optional_setter_impls: Vec<TokenStream> = optional_auto_fields
+		.iter()
+		.map(|f| {
+			let name = &f.name;
+			let ty = &f.ty;
+			quote! {
+				impl #state_param_list #builder_name #state_param_list {
+					/// Override this macro-managed field for this builder instance.
+					///
+					/// If this setter is not called, `finish()` uses the field's
+					/// macro-managed default value.
+					pub fn #name(mut self, value: #ty) -> Self {
+						self.#name = ::std::option::Option::Some(value);
+						self
+					}
+				}
+			}
+		})
+		.collect();
 	let initial_unset_states: Vec<TokenStream> = state_params
 		.iter()
 		.map(|_| quote! { #unset_marker })
@@ -4472,6 +4545,7 @@ fn generate_build_function(
 		#allow_dead
 		pub struct #builder_name #state_param_list {
 			#(#builder_struct_fields,)*
+			#(#optional_builder_struct_fields,)*
 			__state: ::std::marker::PhantomData<#phantom_tuple_ty>,
 		}
 
@@ -4486,20 +4560,22 @@ fn generate_build_function(
 			pub fn build() -> #initial_builder_type {
 				#builder_name {
 					#(#init_struct_field_assignments,)*
+					#(#optional_init_struct_field_assignments,)*
 					__state: ::std::marker::PhantomData,
 				}
 			}
 		}
 
 		#(#setter_impls)*
+		#(#optional_setter_impls)*
 
 		impl #all_set_builder_type {
 			/// Finalize the builder and construct the model instance.
 			///
 			/// Auto-generated fields (`auto_now_add` timestamps, UUID / integer
-			/// primary keys, identity columns, FK relation fields, etc.) are
-			/// initialized by the same macro-managed defaults used for every
-			/// builder construction path.
+			/// primary keys, identity columns, generated columns, etc.) are
+			/// initialized by their macro-managed defaults unless their optional
+			/// builder setter supplied an explicit value.
 			pub fn finish(self) -> #struct_name {
 				#struct_name {
 					#(#user_field_assignments,)*
@@ -5104,5 +5180,52 @@ mod tests {
 		assert!(output_str.contains("pub fn new () -> EmptyRequiredModelBuilder"));
 		assert!(output_str.contains("pub fn build () -> EmptyRequiredModelBuilder"));
 		assert!(!output_str.contains("EmptyRequiredModelBuilder < >"));
+	}
+
+	#[test]
+	fn test_builder_optional_auto_field_setters_do_not_affect_typestate() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "test")]
+			pub struct TestModel {
+				#[field(primary_key = true, include_in_new = false)]
+				pub id: Uuid,
+				#[field(max_length = 255)]
+				pub name: String,
+				#[field(auto_now_add = true)]
+				pub created_at: DateTime<Utc>,
+				#[field(include_in_new = false)]
+				pub external_state: i32,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_str = output.to_string();
+
+		assert!(output_str.contains("id : :: std :: option :: Option < Uuid >"));
+		assert!(output_str.contains("pub fn id (mut self , value : Uuid) -> Self"));
+		assert!(
+			output_str.contains("pub fn created_at (mut self , value : DateTime < Utc >) -> Self")
+		);
+		assert!(output_str.contains("pub fn external_state (mut self , value : i32) -> Self"));
+		assert!(
+			output_str
+				.contains("id : self . id . unwrap_or_else (|| :: uuid :: Uuid :: now_v7 ())")
+		);
+		assert!(output_str.contains(
+			"created_at : self . created_at . unwrap_or_else (|| :: chrono :: Utc :: now ())"
+		));
+		assert!(output_str.contains(
+			"external_state : self . external_state . unwrap_or_else (|| :: std :: default :: Default :: default ())"
+		));
+
+		assert!(
+			output_str.contains("pub fn build () -> TestModelBuilder < TestModelBuilderUnset >")
+		);
+		assert!(
+			!output_str
+				.contains("TestModelBuilder < TestModelBuilderUnset , TestModelBuilderUnset")
+		);
+		assert!(!output_str.contains("pub fn set_id"));
+		assert!(!output_str.contains("pub fn set_created_at"));
 	}
 }
