@@ -13,8 +13,9 @@ sidebar_weight = 10
 
 Welcome to the Reinhardt API reference documentation. This guide provides comprehensive information about Reinhardt's APIs, modules, and components.
 
-> **Note**: Full API documentation will be available at [docs.rs/reinhardt-web](https://docs.rs/reinhardt-web) once published to crates.io.
-> In the meantime, comprehensive documentation is available in each crate's `lib.rs` file.
+<!-- reinhardt-version-sync -->
+> **Note**: Full API documentation for this release is available at [docs.rs/reinhardt-web](https://docs.rs/reinhardt-web/0.2.0-rc.4/reinhardt/).
+> Comprehensive documentation is also available in each crate's `lib.rs` file.
 
 ## Reinhardt Crate Structure
 
@@ -938,7 +939,8 @@ Main package that re-exports all components based on feature flags.
 
 **Documentation:**
 
-- [Main documentation](https://docs.rs/reinhardt-web) (available after crates.io publish)
+<!-- reinhardt-version-sync -->
+- [Main documentation](https://docs.rs/reinhardt-web/0.2.0-rc.4/reinhardt/)
 - [Feature Flags Guide](/docs/feature-flags/)
 
 ## Common Patterns
@@ -1003,4 +1005,5 @@ Found an error in the documentation? Want to improve it?
 
 ---
 
-**Note**: This is a high-level overview. Full API documentation will be available at [docs.rs/reinhardt-web](https://docs.rs/reinhardt-web) once published to crates.io. In the meantime, comprehensive documentation is available in each crate's `lib.rs` file.
+<!-- reinhardt-version-sync -->
+**Note**: This is a high-level overview. Full API documentation for this release is available at [docs.rs/reinhardt-web](https://docs.rs/reinhardt-web/0.2.0-rc.4/reinhardt/). Comprehensive documentation is also available in each crate's `lib.rs` file.

@@ -224,4 +224,23 @@ run_case "06 counter marker default N=1" \
 	"0.1.0-rc.99" \
 	"counter1.md"
 
+# Fixture 07: docs.rs URL keeps the package path and rewrites only the version
+cat > "$fx_dir/07-input.toml" <<'EOF'
+[extra]
+# reinhardt-version-sync
+docs_rs = "https://docs.rs/reinhardt-web/0.2.0-rc.4/reinhardt/"
+EOF
+
+cat > "$fx_dir/07-expected.toml" <<'EOF'
+[extra]
+# reinhardt-version-sync
+docs_rs = "https://docs.rs/reinhardt-web/0.2.0-rc.5/reinhardt/"
+EOF
+
+run_case "07 docs.rs versioned URL" \
+	"$fx_dir/07-input.toml" \
+	"$fx_dir/07-expected.toml" \
+	"0.2.0-rc.5" \
+	"website/config.toml"
+
 exit "$FAIL"
