@@ -44,11 +44,11 @@ If you have written `ModelSerializer` or `Depends()` before, Reinhardt will feel
 
 ## Quick Start
 
-<!-- reinhardt-version-sync -->
+<!-- reinhardt-version-sync:2 -->
 ```bash
 # Currently a pre-release: --version is required. Once 0.2.0-rc.4 stable ships,
 # --version becomes optional (and acts as an opt-in reproducibility pin).
-cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.4"
 
 reinhardt-admin startproject my-api && cd my-api
 cargo run --bin manage runserver  # Visit http://127.0.0.1:8000
