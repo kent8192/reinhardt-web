@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.2.0-rc.3...reinhardt-conf@v0.2.0-rc.4) - 2026-06-06
+
+### Added
+
+- *(settings)* add typed schema primitives
+- *(settings)* expose composed schema roots
+
+### Documentation
+
+- *(settings)* document embedded schema nodes
+
+### Fixed
+
+- *(settings)* preserve root section precedence
+- *(settings)* classify embedded config nodes
+- *(settings)* require explicit nested settings nodes
+- *(settings)* keep schema accessor compatibility
+- *(conf)* support secret source maps
+- *(conf)* escape secret source test paths
+
 ### Added
 
 - Typed settings schema references now expose embedded settings nodes, including

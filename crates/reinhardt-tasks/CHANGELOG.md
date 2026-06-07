@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.2.0-rc.3...reinhardt-tasks@v0.2.0-rc.4) - 2026-06-06
+
+### Fixed
+
+- *(settings)* require explicit nested settings nodes
+
 ## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.3...reinhardt-tasks@v0.2.0-rc.2) - 2026-06-03
 
 ### Added
