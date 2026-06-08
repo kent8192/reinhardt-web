@@ -149,7 +149,7 @@ jobs:
             CURRENT_LABEL="v${VERSION}"
             IS_STABLE="true"
             CHANNEL_LABEL="Dev"
-            CURRENT_URL="${STABLE_URL}"
+            CURRENT_URL="${DEV_URL}"
             BUILD_BASE_URL="${STABLE_URL}"
           fi
           sed -i '/^\[extra\.version_switcher\]/,$d' config.toml
