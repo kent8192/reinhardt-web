@@ -141,6 +141,31 @@ run_case "03 multi-version block" \
 	"0.1.0-rc.99" \
 	"multi.md"
 
+# Fixture 04: Markdown marker outside a bash block updates comment and command
+cat > "$fx_dir/04-input.md" <<'MD_EOF'
+<!-- reinhardt-version-sync:2 -->
+```bash
+# Pre-release: --version is required. Once 0.1.0-rc.17 stable ships, --version
+# becomes optional. The literal below is auto-bumped by release-plz.
+cargo install reinhardt-admin-cli --version "0.1.0-rc.17"
+```
+MD_EOF
+
+cat > "$fx_dir/04-expected.md" <<'MD_EOF'
+<!-- reinhardt-version-sync:2 -->
+```bash
+# Pre-release: --version is required. Once 0.1.0-rc.99 stable ships, --version
+# becomes optional. The literal below is auto-bumped by release-plz.
+cargo install reinhardt-admin-cli --version "0.1.0-rc.99"
+```
+MD_EOF
+
+run_case "04 markdown bash block counted marker" \
+	"$fx_dir/04-input.md" \
+	"$fx_dir/04-expected.md" \
+	"0.1.0-rc.99" \
+	"install.md"
+
 # Orphan marker case (expects non-zero exit)
 
 run_orphan_case() {
@@ -170,16 +195,16 @@ run_orphan_case() {
 	rm -rf "$tmpdir"
 }
 
-# Fixture 04: marker with no following version
-cat > "$fx_dir/04-input.md" <<'MD_EOF'
+# Fixture 05: marker with no following version
+cat > "$fx_dir/05-input.md" <<'MD_EOF'
 <!-- reinhardt-version-sync -->
 This paragraph has no version on the next line.
 MD_EOF
 
-run_orphan_case "04 orphan marker" "$fx_dir/04-input.md" "bad.md"
+run_orphan_case "05 orphan marker" "$fx_dir/05-input.md" "bad.md"
 
-# Fixture 05: counter marker N=3 — HTML comment arms three replacements
-cat > "$fx_dir/05-input.md" <<'MD_EOF'
+# Fixture 06: counter marker N=3 — HTML comment arms three replacements
+cat > "$fx_dir/06-input.md" <<'MD_EOF'
 <!-- reinhardt-version-sync:3 -->
 ```toml
 reinhardt-http = "0.1.0-rc.17"
@@ -188,7 +213,7 @@ reinhardt-db   = "0.1.0-rc.17"
 ```
 MD_EOF
 
-cat > "$fx_dir/05-expected.md" <<'MD_EOF'
+cat > "$fx_dir/06-expected.md" <<'MD_EOF'
 <!-- reinhardt-version-sync:3 -->
 ```toml
 reinhardt-http = "0.1.0-rc.99"
@@ -197,31 +222,50 @@ reinhardt-db   = "0.1.0-rc.99"
 ```
 MD_EOF
 
-run_case "05 counter marker N=3" \
-	"$fx_dir/05-input.md" \
-	"$fx_dir/05-expected.md" \
+run_case "06 counter marker N=3" \
+	"$fx_dir/06-input.md" \
+	"$fx_dir/06-expected.md" \
 	"0.1.0-rc.99" \
 	"counter3.md"
 
-# Fixture 06: counter marker default (N=1, no colon) — equivalent to original HTML marker
-cat > "$fx_dir/06-input.md" <<'MD_EOF'
+# Fixture 07: counter marker default (N=1, no colon) — equivalent to original HTML marker
+cat > "$fx_dir/07-input.md" <<'MD_EOF'
 <!-- reinhardt-version-sync -->
 ```toml
 reinhardt = { version = "0.1.0-rc.17", package = "reinhardt-web" }
 ```
 MD_EOF
 
-cat > "$fx_dir/06-expected.md" <<'MD_EOF'
+cat > "$fx_dir/07-expected.md" <<'MD_EOF'
 <!-- reinhardt-version-sync -->
 ```toml
 reinhardt = { version = "0.1.0-rc.99", package = "reinhardt-web" }
 ```
 MD_EOF
 
-run_case "06 counter marker default N=1" \
-	"$fx_dir/06-input.md" \
-	"$fx_dir/06-expected.md" \
+run_case "07 counter marker default N=1" \
+	"$fx_dir/07-input.md" \
+	"$fx_dir/07-expected.md" \
 	"0.1.0-rc.99" \
 	"counter1.md"
+
+# Fixture 08: docs.rs URL keeps the package path and rewrites only the version
+cat > "$fx_dir/08-input.toml" <<'EOF'
+[extra]
+# reinhardt-version-sync
+docs_rs = "https://docs.rs/reinhardt-web/0.2.0-rc.4/reinhardt/"
+EOF
+
+cat > "$fx_dir/08-expected.toml" <<'EOF'
+[extra]
+# reinhardt-version-sync
+docs_rs = "https://docs.rs/reinhardt-web/0.2.0-rc.5/reinhardt/"
+EOF
+
+run_case "08 docs.rs versioned URL" \
+	"$fx_dir/08-input.toml" \
+	"$fx_dir/08-expected.toml" \
+	"0.2.0-rc.5" \
+	"website/config.toml"
 
 exit "$FAIL"
