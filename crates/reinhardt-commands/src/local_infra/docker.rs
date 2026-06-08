@@ -26,7 +26,7 @@ impl From<BollardError> for DockerError {
 }
 
 /// Result type for Docker API operations.
-pub type DockerResult<T> = Result<T, DockerError>;
+pub(crate) type DockerResult<T> = Result<T, DockerError>;
 
 /// Runtime request for a detached local infrastructure container.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,11 +47,20 @@ pub struct DockerRunSpec {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DockerCall {
 	/// Container existence lookup.
-	ContainerExists { name: String },
+	ContainerExists {
+		/// Container name.
+		name: String,
+	},
 	/// Forced container removal.
-	RemoveContainer { name: String },
+	RemoveContainer {
+		/// Container name.
+		name: String,
+	},
 	/// Detached container creation and start.
-	RunDetached { spec: DockerRunSpec },
+	RunDetached {
+		/// Detached container run request.
+		spec: DockerRunSpec,
+	},
 }
 
 /// Docker backend used by local infrastructure commands.

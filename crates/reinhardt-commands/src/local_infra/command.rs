@@ -4,10 +4,11 @@ use clap::Subcommand;
 use reinhardt_conf::HasCommonSettings;
 use std::error::Error;
 use std::path::Path;
+use std::process::Command;
 
 use super::{
 	BollardDockerEngine, DatabaseInfraInput, DockerEngine, DockerRunSpec, LocalInfraConfig,
-	LocalInfraSettingsSource, LocalInfraState, PortAllocator, ServiceSpec, StateStore,
+	LocalInfraState, PortAllocator, ServiceSpec, StateStore,
 };
 
 /// Management subcommands for local infrastructure.
@@ -91,6 +92,9 @@ impl InfraCommand {
 					.await
 					.map(|_| ())
 			}
+			InfraSubcommand::Run { command } => {
+				Self::run_with_local_env(project_root, command, settings)
+			}
 			other => Self::execute_with_runner(other, project_root, docker).await,
 		}
 	}
@@ -138,7 +142,7 @@ impl InfraCommand {
 				Err("infra up/reset require resolved settings".into())
 			}
 			InfraSubcommand::Run { .. } => {
-				Err("infra run must be dispatched through a settings factory".into())
+				Err("infra run requires resolved settings for secret interpolation".into())
 			}
 		}
 	}
@@ -196,15 +200,97 @@ impl InfraCommand {
 		Ok(state)
 	}
 
-	/// Load persisted local infrastructure state as a settings source.
-	pub fn settings_source_from_state(
+	fn run_with_local_env(
 		project_root: &Path,
-	) -> Result<LocalInfraSettingsSource, Box<dyn Error>> {
+		args: Vec<String>,
+		settings: Option<&dyn HasCommonSettings>,
+	) -> Result<(), Box<dyn Error>> {
 		let state = StateStore::new(project_root)
 			.load()?
 			.ok_or("local infrastructure state does not exist; run `manage infra up` first")?;
-		Ok(LocalInfraSettingsSource::from_state(state))
+		let current_exe = std::env::current_exe()?;
+		let status = Command::new(current_exe)
+			.args(args)
+			.envs(Self::environment_from_state(&state, settings))
+			.status()?;
+
+		if status.success() {
+			Ok(())
+		} else {
+			Err(format!("local infrastructure command exited with {status}").into())
+		}
 	}
+
+	/// Build process environment overrides from persisted local infrastructure state.
+	pub fn environment_from_state(
+		state: &LocalInfraState,
+		settings: Option<&dyn HasCommonSettings>,
+	) -> Vec<(String, String)> {
+		local_infra_env(state, settings)
+	}
+}
+
+fn local_infra_env(
+	state: &LocalInfraState,
+	settings: Option<&dyn HasCommonSettings>,
+) -> Vec<(String, String)> {
+	let mut env = Vec::new();
+
+	for service in &state.services {
+		match service.name.as_str() {
+			"postgres" => {
+				let database = service
+					.metadata
+					.get("database")
+					.and_then(serde_json::Value::as_str)
+					.unwrap_or("postgres");
+				let user = service
+					.metadata
+					.get("user")
+					.and_then(serde_json::Value::as_str)
+					.unwrap_or("postgres");
+				let password = settings
+					.and_then(|settings| settings.core().databases.get("default"))
+					.and_then(|database| database.password.as_ref())
+					.map(|password| password.expose_secret())
+					.unwrap_or("postgres");
+				env.push((
+					"DATABASE_URL".to_string(),
+					postgres_url(user, password, &service.host, service.host_port, database),
+				));
+			}
+			"redis" => {
+				let database = service
+					.metadata
+					.get("database")
+					.and_then(serde_json::Value::as_u64)
+					.unwrap_or(0);
+				let url = format!(
+					"redis://{}:{}/{}",
+					service.host, service.host_port, database
+				);
+				env.push(("REDIS_URL".to_string(), url.clone()));
+				env.push(("REINHARDT_REDIS_URL".to_string(), url));
+			}
+			_ => {}
+		}
+	}
+
+	env
+}
+
+fn postgres_url(user: &str, password: &str, host: &str, port: u16, database: &str) -> String {
+	let mut url = url::Url::parse("postgresql://localhost/").expect("static URL is valid");
+	url.set_username(user)
+		.expect("postgres URL supports usernames");
+	url.set_password(Some(password))
+		.expect("postgres URL supports passwords");
+	url.set_host(Some(host))
+		.expect("local host is valid in URL");
+	url.set_port(Some(port))
+		.expect("postgres URL supports ports");
+	url.set_path(database);
+	url.to_string()
 }
 
 fn derive_config(

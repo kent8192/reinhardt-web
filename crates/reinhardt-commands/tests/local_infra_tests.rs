@@ -1,9 +1,8 @@
 use reinhardt_commands::local_infra::{
 	DatabaseInfraInput, DockerCall, DockerEngine, FakeDockerEngine, InfraCommand, LocalInfraConfig,
-	LocalInfraSettingsSource, LocalInfraState, LocalServiceState, PortAllocator, RedisInfraInput,
-	ServiceRuntimeStatus, StateStore,
+	LocalInfraState, LocalServiceState, PortAllocator, RedisInfraInput, ServiceRuntimeStatus,
+	StateStore,
 };
-use reinhardt_conf::settings::sources::ConfigSource;
 use tempfile::TempDir;
 
 #[test]
@@ -45,7 +44,7 @@ fn state_store_missing_file_returns_none() {
 }
 
 #[test]
-fn settings_overlay_maps_postgres_and_redis_state_to_settings_keys() {
+fn infra_run_environment_maps_postgres_and_redis_state_to_process_env() {
 	let state = LocalInfraState {
 		project_id: "project123".to_string(),
 		profile: "local".to_string(),
@@ -77,25 +76,19 @@ fn settings_overlay_maps_postgres_and_redis_state_to_settings_keys() {
 		],
 	};
 
-	let loaded = LocalInfraSettingsSource::from_state(state).load().unwrap();
-	let core = loaded.get("core").unwrap();
-	let cache = loaded.get("cache").unwrap();
+	let env = InfraCommand::environment_from_state(&state, None);
 
 	assert_eq!(
-		core["databases"]["default"]["host"],
-		serde_json::json!("127.0.0.1")
+		env.iter()
+			.find(|(key, _)| key == "DATABASE_URL")
+			.map(|(_, value)| value.as_str()),
+		Some("postgresql://postgres:postgres@127.0.0.1:55432/app")
 	);
 	assert_eq!(
-		core["databases"]["default"]["port"],
-		serde_json::json!(55432)
-	);
-	assert_eq!(
-		cache["location"],
-		serde_json::json!("redis://127.0.0.1:56379/1")
-	);
-	assert_eq!(
-		loaded.get("redis_url").unwrap(),
-		&serde_json::json!("redis://127.0.0.1:56379/1")
+		env.iter()
+			.find(|(key, _)| key == "REDIS_URL")
+			.map(|(_, value)| value.as_str()),
+		Some("redis://127.0.0.1:56379/1")
 	);
 }
 
@@ -224,34 +217,4 @@ async fn infra_up_writes_state_for_started_services() {
 	let state = StateStore::new(temp.path()).load().unwrap().unwrap();
 	assert_eq!(state.services.len(), 1);
 	assert_eq!(state.services[0].name, "postgres");
-}
-
-#[test]
-fn infra_run_loads_state_as_local_infra_settings_source() {
-	let temp = TempDir::new().unwrap();
-	let store = StateStore::new(temp.path());
-	store
-		.save(&LocalInfraState {
-			project_id: "project123".to_string(),
-			profile: "local".to_string(),
-			services: vec![LocalServiceState {
-				name: "redis".to_string(),
-				container_name: "redis".to_string(),
-				image: "redis:7-alpine".to_string(),
-				host: "127.0.0.1".to_string(),
-				host_port: 56379,
-				container_port: 6379,
-				status: ServiceRuntimeStatus::Running,
-				metadata: serde_json::json!({"database": 0}),
-			}],
-		})
-		.unwrap();
-
-	let source = InfraCommand::settings_source_from_state(temp.path()).unwrap();
-	let loaded = source.load().unwrap();
-
-	assert_eq!(
-		loaded.get("redis_url").unwrap(),
-		&serde_json::json!("redis://127.0.0.1:56379/0")
-	);
 }

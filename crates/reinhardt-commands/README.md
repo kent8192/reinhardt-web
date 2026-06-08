@@ -187,9 +187,10 @@ cargo run --bin manage runserver
 ### `infra` Command
 
 The `infra` command manages project-local Docker containers derived from the
-resolved Reinhardt settings. The generated `manage.rs` entrypoint builds
-settings through a factory so `infra run` can overlay local container endpoints
-without permanently changing `settings/*.toml`.
+resolved Reinhardt settings. `infra run` restarts the current `manage` binary
+as a child process with local infrastructure values in its environment, so
+commands can use container endpoints without permanently changing
+`settings/*.toml`.
 
 ```bash
 # Start containers for services inferred from settings
@@ -207,8 +208,8 @@ cargo run --bin manage infra down
 ```
 
 State is stored under `.reinhardt/local-infra.json` in the project directory.
-Runtime overlays have higher priority than TOML files and lower priority than
-explicit `REINHARDT_` environment variables.
+The child process receives `DATABASE_URL`, `REDIS_URL`, and compatible
+`REINHARDT_` environment variables for discovered local services.
 
 ### `makemigrations` Command Options
 

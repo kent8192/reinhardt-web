@@ -16,9 +16,7 @@ use clap::{Parser, Subcommand};
 use reinhardt_conf::HasCommonSettings;
 use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::profile::Profile;
-use reinhardt_conf::settings::sources::{
-	ConfigSource, DefaultSource, LowPriorityEnvSource, TomlFileSource,
-};
+use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
 use reinhardt_utils::staticfiles::StaticFilesConfig;
 use serde_json::Value;
 use std::env;
@@ -413,48 +411,6 @@ where
 	execute_from_command_line_with_registry_and_settings(CommandRegistry::new(), settings).await
 }
 
-/// Extra settings sources supplied by command wrappers such as `manage infra run`.
-pub type ExtraSettingsSources = Vec<Box<dyn ConfigSource>>;
-
-/// Factory that can rebuild composed settings with extra sources.
-pub trait SettingsFactory<S>: Send + Sync + 'static {
-	/// Build settings with extra configuration sources.
-	fn build(&self, extra_sources: ExtraSettingsSources) -> Result<S, Box<dyn std::error::Error>>;
-}
-
-impl<S, F> SettingsFactory<S> for F
-where
-	F: Fn(ExtraSettingsSources) -> Result<S, Box<dyn std::error::Error>> + Send + Sync + 'static,
-{
-	fn build(&self, extra_sources: ExtraSettingsSources) -> Result<S, Box<dyn std::error::Error>> {
-		self(extra_sources)
-	}
-}
-
-/// Execute commands from CLI args using a settings factory.
-pub async fn execute_from_command_line_with_settings_factory<F, S>(
-	factory: F,
-) -> Result<(), Box<dyn std::error::Error>>
-where
-	F: SettingsFactory<S>,
-	S: HasCommonSettings + 'static,
-{
-	execute_from_command_line_with_registry_and_settings_factory(CommandRegistry::new(), factory)
-		.await
-}
-
-/// Execute commands from CLI args using a custom registry and settings factory.
-pub async fn execute_from_command_line_with_registry_and_settings_factory<F, S>(
-	registry: CommandRegistry,
-	factory: F,
-) -> Result<(), Box<dyn std::error::Error>>
-where
-	F: SettingsFactory<S>,
-	S: HasCommonSettings + 'static,
-{
-	execute_with_registry_and_settings_factory(registry, factory).await
-}
-
 /// Execute commands from command-line arguments with a custom command registry.
 ///
 /// This entry point works like [`execute_from_command_line`] but additionally
@@ -569,103 +525,6 @@ async fn execute_with_registry_and_optional_settings(
 	reinhardt_auth::auto_register_superuser_creator();
 
 	run_command_core(command, verbosity, registry, settings).await
-}
-
-async fn execute_with_registry_and_settings_factory<F, S>(
-	registry: CommandRegistry,
-	factory: F,
-) -> Result<(), Box<dyn std::error::Error>>
-where
-	F: SettingsFactory<S>,
-	S: HasCommonSettings + 'static,
-{
-	let (command, verbosity) = parse_cli_or_custom(&registry);
-
-	match command {
-		Commands::Infra {
-			command: crate::local_infra::InfraSubcommand::Run { command },
-		} => execute_infra_run_with_factory(command, verbosity, registry, factory).await,
-		Commands::Infra { command } => {
-			let settings = if matches!(
-				command,
-				crate::local_infra::InfraSubcommand::Down { .. }
-					| crate::local_infra::InfraSubcommand::Status { .. }
-			) {
-				None
-			} else {
-				Some(Arc::new(factory.build(Vec::new())?) as Arc<dyn HasCommonSettings>)
-			};
-			return crate::local_infra::InfraCommand::execute(
-				command,
-				&std::env::current_dir()?,
-				settings.as_deref(),
-			)
-			.await;
-		}
-		command => {
-			let settings = factory.build(Vec::new())?;
-			let settings = Arc::new(settings) as Arc<dyn HasCommonSettings>;
-
-			if requires_router(&command) {
-				auto_register_router().await?;
-			}
-
-			#[cfg(feature = "auth")]
-			reinhardt_auth::auto_register_superuser_creator();
-
-			run_command_core(command, verbosity, registry, Some(settings)).await
-		}
-	}
-}
-
-fn parse_cli_or_custom(registry: &CommandRegistry) -> (Commands, u8) {
-	match Cli::try_parse() {
-		Ok(cli) => (cli.command, cli.verbosity),
-		Err(clap_err) => {
-			if !is_unknown_subcommand(&clap_err) {
-				clap_err.exit();
-			}
-
-			let raw_args: Vec<String> = env::args().collect();
-			match resolve_custom_command(&raw_args, registry) {
-				Some((name, args, verbosity)) => (Commands::Custom { name, args }, verbosity),
-				None => {
-					clap_err.exit();
-				}
-			}
-		}
-	}
-}
-
-async fn execute_infra_run_with_factory<F, S>(
-	args: Vec<String>,
-	verbosity: u8,
-	registry: CommandRegistry,
-	factory: F,
-) -> Result<(), Box<dyn std::error::Error>>
-where
-	F: SettingsFactory<S>,
-	S: HasCommonSettings + 'static,
-{
-	let project_root = std::env::current_dir()?;
-	let source = crate::local_infra::InfraCommand::settings_source_from_state(&project_root)?;
-	let settings = factory.build(vec![Box::new(source)])?;
-	let mut argv = Vec::with_capacity(args.len() + 1);
-	argv.push("manage".to_string());
-	argv.extend(args);
-	let cli = Cli::try_parse_from(argv)?;
-	if requires_router(&cli.command) {
-		auto_register_router().await?;
-	}
-	#[cfg(feature = "auth")]
-	reinhardt_auth::auto_register_superuser_creator();
-	run_command_core(
-		cli.command,
-		verbosity,
-		registry,
-		Some(Arc::new(settings) as Arc<dyn HasCommonSettings>),
-	)
-	.await
 }
 
 /// Returns `true` for commands that need URL patterns registered **before**
