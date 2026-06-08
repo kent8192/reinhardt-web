@@ -107,6 +107,9 @@ settings/*.toml
 .env.local
 .env.*.local
 
+# Local infrastructure state
+local-infra.json
+
 # IDE
 .idea/
 .vscode/
