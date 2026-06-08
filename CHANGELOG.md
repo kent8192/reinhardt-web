@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0-rc.4...reinhardt-web@v0.2.0-rc.5) - 2026-06-08
+
+### Added
+
+- *(commands)* add local infra management
+
+### Fixed
+
+- *(commands)* avoid manage template infra wiring
+- *(commands)* separate local infra from runserver
+- *(commands)* address CodeRabbit local infra review
+
 ## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0-rc.3...reinhardt-web@v0.2.0-rc.4) - 2026-06-06
 
 ### Changed
