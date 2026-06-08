@@ -46,9 +46,9 @@ If you have written `ModelSerializer` or `Depends()` before, Reinhardt will feel
 
 <!-- reinhardt-version-sync:2 -->
 ```bash
-# Currently a pre-release: --version is required. Once 0.2.0-rc.4 stable ships,
+# Currently a pre-release: --version is required. Once 0.2.0-rc.5 stable ships,
 # --version becomes optional (and acts as an opt-in reproducibility pin).
-cargo install reinhardt-admin-cli --version "0.2.0-rc.4"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.5"
 
 reinhardt-admin startproject my-api && cd my-api
 cargo run --bin manage runserver  # Visit http://127.0.0.1:8000
@@ -103,7 +103,7 @@ Reinhardt follows a **three-phase lifecycle** for every crate:
 | **Stable** (`0.x.0`) | Full SemVer 2.0 guarantees. |
 
 <!-- reinhardt-version-sync -->
-**Current status:** Reinhardt is at `0.2.0-rc.4`. From `0.1.0` onward, all
+**Current status:** Reinhardt is at `0.2.0-rc.5`. From `0.1.0` onward, all
 public APIs follow SemVer 2.0; breaking changes ship in a future
 `0.2.0-rc.N` series coordinated through the `develop/0.2.0` branch.
 
@@ -129,7 +129,7 @@ Get a well-balanced feature set with zero configuration:
 [dependencies]
 # Import as 'reinhardt', published as 'reinhardt-web'
 # Default enables the "standard" preset (balanced feature set)
-reinhardt = { version = "0.2.0-rc.4", package = "reinhardt-web" }
+reinhardt = { version = "0.2.0-rc.5", package = "reinhardt-web" }
 ```
 
 **Includes:** Core, Database (PostgreSQL), REST API (serializers, parsers, pagination, filters, throttling, versioning, metadata, content negotiation), Auth, Middleware (sessions), Pages (WASM Frontend with SSR), Signals
@@ -151,7 +151,7 @@ For compatibility checks, framework development, and projects that intentionally
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.2.0-rc.4", package = "reinhardt-web", default-features = false, features = ["full"] }
+reinhardt = { version = "0.2.0-rc.5", package = "reinhardt-web", default-features = false, features = ["full"] }
 ```
 
 **Includes:** Everything in Standard, plus Admin, GraphQL, WebSockets, Cache, i18n, Mail, Static Files, Storage, and more
@@ -165,7 +165,7 @@ Lightweight and fast, perfect for simple APIs:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.2.0-rc.4", package = "reinhardt-web", default-features = false, features = ["minimal"] }
+reinhardt = { version = "0.2.0-rc.5", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 ```
 
 **Includes:** HTTP, routing, DI, parameter extraction, server
@@ -180,24 +180,24 @@ Install only the components you need:
 ```toml
 [dependencies]
 # Core components
-reinhardt-http = "0.2.0-rc.4"
-reinhardt-urls = "0.2.0-rc.4"
+reinhardt-http = "0.2.0-rc.5"
+reinhardt-urls = "0.2.0-rc.5"
 
 # Optional: Database
-reinhardt-db = "0.2.0-rc.4"
+reinhardt-db = "0.2.0-rc.5"
 
 # Optional: Authentication
-reinhardt-auth = "0.2.0-rc.4"
+reinhardt-auth = "0.2.0-rc.5"
 
 # Optional: REST API features
-reinhardt-rest = "0.2.0-rc.4"
+reinhardt-rest = "0.2.0-rc.5"
 
 # Optional: Admin panel
-reinhardt-admin = "0.2.0-rc.4"
+reinhardt-admin = "0.2.0-rc.5"
 
 # Optional: Advanced features
-reinhardt-graphql = "0.2.0-rc.4"
-reinhardt-websockets = "0.2.0-rc.4"
+reinhardt-graphql = "0.2.0-rc.5"
+reinhardt-websockets = "0.2.0-rc.5"
 ```
 
 **Note on Crate Naming:**
@@ -217,7 +217,7 @@ below is auto-bumped by release-plz on each release.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.0-rc.4"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.5"
 ```
 
 ### 2. Create a New Project
