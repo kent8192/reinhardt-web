@@ -183,6 +183,14 @@ impl SettingsBuilder {
 		self.sources.push(Box::new(source));
 		self
 	}
+	/// Add a boxed configuration source.
+	///
+	/// This is useful when callers construct an extension source dynamically and
+	/// cannot name its concrete type in the builder chain.
+	pub fn add_boxed_source(mut self, source: Box<dyn ConfigSource>) -> Self {
+		self.sources.push(source);
+		self
+	}
 	/// Add environment variable source with optional prefix
 	///
 	/// # Examples

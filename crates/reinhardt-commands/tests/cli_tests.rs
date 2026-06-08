@@ -211,6 +211,51 @@ fn test_commands_migrate_parse_migrations_dir() {
 	}
 }
 
+#[rstest]
+fn test_commands_infra_up_parse_minimal() {
+	let cmd = Cli::parse_from(["manage", "infra", "up"]).command;
+
+	match cmd {
+		Commands::Infra { command } => match command {
+			reinhardt_commands::local_infra::InfraSubcommand::Up {
+				profile,
+				json,
+				print_env,
+			} => {
+				assert!(profile.is_none());
+				assert!(!json);
+				assert!(!print_env);
+			}
+			other => panic!("Expected infra up, got {other:?}"),
+		},
+		other => panic!("Expected Commands::Infra, got {other:?}"),
+	}
+}
+
+#[rstest]
+fn test_commands_infra_run_preserves_command_args_after_separator() {
+	let cmd = Cli::parse_from([
+		"manage",
+		"infra",
+		"run",
+		"--",
+		"runserver",
+		"--with-pages",
+		"127.0.0.1:9000",
+	])
+	.command;
+
+	match cmd {
+		Commands::Infra { command } => match command {
+			reinhardt_commands::local_infra::InfraSubcommand::Run { command } => {
+				assert_eq!(command, vec!["runserver", "--with-pages", "127.0.0.1:9000"]);
+			}
+			other => panic!("Expected infra run, got {other:?}"),
+		},
+		other => panic!("Expected Commands::Infra, got {other:?}"),
+	}
+}
+
 // ============================================================================
 // Happy Path Tests - Makemigrations Command Parsing
 // ============================================================================

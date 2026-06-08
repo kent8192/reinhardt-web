@@ -59,6 +59,7 @@ details.
 - **makemigrations** - Create new database migrations based on model changes
 - **migrate** - Apply database migrations
 - **runserver** - Start the development server
+- **infra** - Start, stop, inspect, and use local development infrastructure
 - **shell** - Run an interactive REPL
 - **check** - Check the project for common issues
 - **collectstatic** - Collect static files into `STATIC_ROOT`
@@ -182,6 +183,32 @@ cargo run --bin manage makemigrations
 cargo run --bin manage migrate
 cargo run --bin manage runserver
 ```
+
+### `infra` Command
+
+The `infra` command manages project-local Docker containers derived from the
+resolved Reinhardt settings. The generated `manage.rs` entrypoint builds
+settings through a factory so `infra run` can overlay local container endpoints
+without permanently changing `settings/*.toml`.
+
+```bash
+# Start containers for services inferred from settings
+cargo run --bin manage infra up
+
+# Print the resolved state as JSON
+cargo run --bin manage infra up --json
+
+# Run another management command with local infrastructure settings applied
+cargo run --bin manage infra run -- migrate
+
+# Inspect or stop the persisted local infrastructure state
+cargo run --bin manage infra status
+cargo run --bin manage infra down
+```
+
+State is stored under `.reinhardt/local-infra.json` in the project directory.
+Runtime overlays have higher priority than TOML files and lower priority than
+explicit `REINHARDT_` environment variables.
 
 ### `makemigrations` Command Options
 

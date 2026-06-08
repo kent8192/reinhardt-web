@@ -1,0 +1,297 @@
+//! Command definitions for local infrastructure management.
+
+use clap::Subcommand;
+use reinhardt_conf::HasCommonSettings;
+use std::error::Error;
+use std::path::Path;
+
+use super::{
+	BollardDockerEngine, DatabaseInfraInput, DockerEngine, DockerRunSpec, LocalInfraConfig,
+	LocalInfraSettingsSource, LocalInfraState, PortAllocator, ServiceSpec, StateStore,
+};
+
+/// Management subcommands for local infrastructure.
+#[derive(Debug, Clone, Subcommand)]
+pub enum InfraSubcommand {
+	/// Start local infrastructure containers.
+	Up {
+		/// Settings profile to resolve before deriving services.
+		#[arg(long)]
+		profile: Option<String>,
+		/// Print machine-readable JSON output.
+		#[arg(long)]
+		json: bool,
+		/// Print shell-compatible environment assignments.
+		#[arg(long = "print-env")]
+		print_env: bool,
+	},
+	/// Stop local infrastructure containers.
+	Down {
+		/// Settings profile whose state should be stopped.
+		#[arg(long)]
+		profile: Option<String>,
+	},
+	/// Stop and recreate local infrastructure containers.
+	Reset {
+		/// Settings profile to reset.
+		#[arg(long)]
+		profile: Option<String>,
+	},
+	/// Show local infrastructure status.
+	Status {
+		/// Settings profile whose state should be inspected.
+		#[arg(long)]
+		profile: Option<String>,
+		/// Print machine-readable JSON output.
+		#[arg(long)]
+		json: bool,
+	},
+	/// Run a management command with local infrastructure settings applied.
+	Run {
+		/// Command and arguments to dispatch after `--`.
+		#[arg(last = true, required = true)]
+		command: Vec<String>,
+	},
+}
+
+/// Executor for the `manage infra` command group.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct InfraCommand;
+
+impl InfraCommand {
+	/// Execute an infrastructure command with the local Docker Engine API.
+	pub async fn execute(
+		command: InfraSubcommand,
+		project_root: &Path,
+		settings: Option<&dyn HasCommonSettings>,
+	) -> Result<(), Box<dyn Error>> {
+		let docker = BollardDockerEngine::local()?;
+		match command {
+			InfraSubcommand::Up {
+				profile,
+				json,
+				print_env,
+			} => {
+				let config = derive_config(project_root, profile, settings)?;
+				let state = Self::up_with_config(project_root, config, docker).await?;
+				print_up_result(&state, json, print_env)?;
+				Ok(())
+			}
+			InfraSubcommand::Reset { profile } => {
+				Self::execute_with_runner(
+					InfraSubcommand::Down {
+						profile: profile.clone(),
+					},
+					project_root,
+					docker.clone(),
+				)
+				.await?;
+				let config = derive_config(project_root, profile, settings)?;
+				Self::up_with_config(project_root, config, docker)
+					.await
+					.map(|_| ())
+			}
+			other => Self::execute_with_runner(other, project_root, docker).await,
+		}
+	}
+
+	/// Execute an infrastructure command with an injected Docker engine.
+	pub async fn execute_with_runner<R>(
+		command: InfraSubcommand,
+		project_root: &Path,
+		docker: R,
+	) -> Result<(), Box<dyn Error>>
+	where
+		R: DockerEngine,
+	{
+		let store = StateStore::new(project_root);
+
+		match command {
+			InfraSubcommand::Down { profile: _ } => {
+				if let Some(state) = store.load()? {
+					for service in state.services {
+						docker.remove_container(&service.container_name).await?;
+					}
+				}
+				store.remove()?;
+				Ok(())
+			}
+			InfraSubcommand::Status { profile: _, json } => {
+				let state = store.load()?;
+				if json {
+					println!("{}", serde_json::to_string_pretty(&state)?);
+				} else if let Some(state) = state {
+					for service in state.services {
+						let status = if docker.container_exists(&service.container_name).await? {
+							"running"
+						} else {
+							"missing"
+						};
+						println!("{} {} {}", service.name, service.container_name, status);
+					}
+				} else {
+					println!("No local infrastructure state found.");
+				}
+				Ok(())
+			}
+			InfraSubcommand::Up { .. } | InfraSubcommand::Reset { .. } => {
+				Err("infra up/reset require resolved settings".into())
+			}
+			InfraSubcommand::Run { .. } => {
+				Err("infra run must be dispatched through a settings factory".into())
+			}
+		}
+	}
+
+	/// Start services from a pre-derived local infrastructure config.
+	pub async fn up_with_config<R>(
+		project_root: &Path,
+		config: LocalInfraConfig,
+		runner: R,
+	) -> Result<LocalInfraState, Box<dyn Error>>
+	where
+		R: DockerEngine,
+	{
+		let docker = runner;
+		let ports = PortAllocator;
+		let mut states = Vec::new();
+
+		for service in &config.services {
+			let host_port = ports.select_port(service.requested_port())?;
+			let container_name =
+				stable_container_name(&config.project_id, &config.profile, service.name());
+			let env = match service {
+				ServiceSpec::Postgres(pg) => vec![
+					("POSTGRES_USER", pg.user.as_str()),
+					(
+						"POSTGRES_PASSWORD",
+						pg.password.as_deref().unwrap_or("postgres"),
+					),
+					("POSTGRES_DB", pg.database.as_str()),
+				],
+				ServiceSpec::Redis(_) => Vec::new(),
+			};
+			docker.remove_container(&container_name).await?;
+			docker
+				.run_detached(DockerRunSpec {
+					name: container_name.clone(),
+					image: service.image().to_string(),
+					host_port,
+					container_port: service.container_port(),
+					env: env
+						.into_iter()
+						.map(|(key, value)| (key.to_string(), value.to_string()))
+						.collect(),
+				})
+				.await?;
+			states.push(service.to_state(container_name, host_port));
+		}
+
+		let state = LocalInfraState {
+			project_id: config.project_id,
+			profile: config.profile,
+			services: states,
+		};
+		StateStore::new(project_root).save(&state)?;
+		Ok(state)
+	}
+
+	/// Load persisted local infrastructure state as a settings source.
+	pub fn settings_source_from_state(
+		project_root: &Path,
+	) -> Result<LocalInfraSettingsSource, Box<dyn Error>> {
+		let state = StateStore::new(project_root)
+			.load()?
+			.ok_or("local infrastructure state does not exist; run `manage infra up` first")?;
+		Ok(LocalInfraSettingsSource::from_state(state))
+	}
+}
+
+fn derive_config(
+	project_root: &Path,
+	profile: Option<String>,
+	settings: Option<&dyn HasCommonSettings>,
+) -> Result<LocalInfraConfig, Box<dyn Error>> {
+	let project_id = project_id(project_root);
+	let profile = profile
+		.or_else(|| std::env::var("REINHARDT_ENV").ok())
+		.unwrap_or_else(|| "local".to_string());
+	let database = settings
+		.and_then(|settings| settings.core().databases.get("default"))
+		.map(|database| DatabaseInfraInput {
+			engine: database.engine.clone(),
+			host: database
+				.host
+				.clone()
+				.unwrap_or_else(|| "127.0.0.1".to_string()),
+			port: database.port.unwrap_or(5432),
+			name: database.name.clone(),
+			user: database
+				.user
+				.clone()
+				.unwrap_or_else(|| "postgres".to_string()),
+			password: database
+				.password
+				.as_ref()
+				.map(|password| password.expose_secret().to_string()),
+		});
+
+	LocalInfraConfig::derive(project_id, profile, database, None).map_err(Into::into)
+}
+
+fn project_id(project_root: &Path) -> String {
+	use sha2::{Digest, Sha256};
+
+	let mut hasher = Sha256::new();
+	hasher.update(project_root.to_string_lossy().as_bytes());
+	let digest = hasher.finalize();
+	format!("{:x}", digest)[..12].to_string()
+}
+
+fn stable_container_name(project_id: &str, profile: &str, service: &str) -> String {
+	format!("reinhardt-{project_id}-{profile}-{service}")
+}
+
+fn print_up_result(
+	state: &LocalInfraState,
+	json: bool,
+	print_env: bool,
+) -> Result<(), Box<dyn Error>> {
+	if json {
+		println!("{}", serde_json::to_string_pretty(state)?);
+	}
+	if print_env {
+		for service in &state.services {
+			match service.name.as_str() {
+				"postgres" => {
+					println!("REINHARDT_CORE__DATABASES__DEFAULT__HOST={}", service.host);
+					println!(
+						"REINHARDT_CORE__DATABASES__DEFAULT__PORT={}",
+						service.host_port
+					);
+				}
+				"redis" => {
+					let database = service
+						.metadata
+						.get("database")
+						.and_then(serde_json::Value::as_u64)
+						.unwrap_or(0);
+					println!(
+						"REDIS_URL=redis://{}:{}/{}",
+						service.host, service.host_port, database
+					);
+				}
+				_ => {}
+			}
+		}
+	}
+	if !json && !print_env {
+		for service in &state.services {
+			println!(
+				"{} {}:{} -> {}",
+				service.name, service.host, service.host_port, service.container_port
+			);
+		}
+	}
+	Ok(())
+}

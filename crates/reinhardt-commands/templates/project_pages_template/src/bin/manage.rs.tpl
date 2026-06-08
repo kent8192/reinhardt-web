@@ -22,8 +22,8 @@ mod native {
 	// Referencing `get_settings` alone does not guarantee the whole crate
 	// (and thus every inventory entry) is linked.
 	use {{ crate_name }} as _;
-	use {{ crate_name }}::config::settings::get_settings;
-	use reinhardt::commands::execute_from_command_line_with_settings;
+	use {{ crate_name }}::config::settings::get_settings_with_sources;
+	use reinhardt::commands::execute_from_command_line_with_settings_factory;
 	use std::process;
 
 	#[tokio::main]
@@ -40,7 +40,10 @@ mod native {
 		// (`[core.databases.default]`) without requiring DATABASE_URL.
 		// Router registration still happens automatically inside the runtime
 		// via the #[routes] attribute macro in src/config/urls.rs.
-		if let Err(e) = execute_from_command_line_with_settings(get_settings()).await {
+		let factory = |extra_sources| -> Result<_, Box<dyn std::error::Error>> {
+			Ok(get_settings_with_sources(extra_sources))
+		};
+		if let Err(e) = execute_from_command_line_with_settings_factory(factory).await {
 			eprintln!("Error: {}", e);
 			process::exit(1);
 		}

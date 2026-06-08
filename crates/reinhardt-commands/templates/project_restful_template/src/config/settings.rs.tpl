@@ -13,10 +13,11 @@
 //! ## Priority Order
 //!
 //! Settings are merged with the following priority (highest to lowest):
-//! 1. Environment-specific TOML file (e.g., `production.toml`)
-//! 2. Base TOML file (`base.toml`)
-//! 3. Environment variables with `REINHARDT_` prefix
-//! 4. Default values
+//! 1. Environment variables with `REINHARDT_` prefix
+//! 2. Extra runtime sources, such as `manage infra run` overrides
+//! 3. Environment-specific TOML file (e.g., `production.toml`)
+//! 4. Base TOML file (`base.toml`)
+//! 5. Default values
 //!
 //! ## Environment Selection
 //!
@@ -43,7 +44,9 @@
 
 use reinhardt::conf::settings::builder::SettingsBuilder;
 use reinhardt::conf::settings::profile::Profile;
-use reinhardt::conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
+use reinhardt::conf::settings::sources::{
+	ConfigSource, DefaultSource, HighPriorityEnvSource, TomlFileSource,
+};
 use reinhardt::settings;
 use std::env;
 
@@ -71,6 +74,11 @@ pub struct ProjectSettings;
 /// - Settings cannot be deserialized
 /// - Required settings are missing
 pub fn get_settings() -> ProjectSettings {
+	get_settings_with_sources(Vec::new())
+}
+
+/// Get settings with additional high-priority configuration sources.
+pub fn get_settings_with_sources(extra_sources: Vec<Box<dyn ConfigSource>>) -> ProjectSettings {
 	let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
 	let profile = Profile::parse(&profile_str);
 
@@ -82,18 +90,24 @@ pub fn get_settings() -> ProjectSettings {
 	// `build_composed::<T>()` uses `MergeStrategy::Deep` by default, so a
 	// single key in `production.toml` overrides only that key — sibling
 	// entries inside the same nested table inherit from `base.toml`.
-	SettingsBuilder::new()
+	let mut builder = SettingsBuilder::new()
 		.profile(profile)
 		// Lowest priority: Default values
 		.add_source(DefaultSource::new())
-		// Low priority: Environment variables (for container overrides)
-		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
 		// Medium priority: Base TOML file
 		.add_source(TomlFileSource::new(settings_dir.join("base.toml")))
-		// Highest priority: Environment-specific TOML file
+		// Profile priority: Environment-specific TOML file
 		.add_source(TomlFileSource::new(
 			settings_dir.join(format!("{}.toml", profile_str)),
-		))
+		));
+
+	for source in extra_sources {
+		builder = builder.add_boxed_source(source);
+	}
+
+	builder
+		// Highest priority: explicit process environment overrides
+		.add_source(HighPriorityEnvSource::new().with_prefix("REINHARDT_"))
 		.build_composed::<ProjectSettings>()
 		.unwrap_or_else(|err| {
 			panic!("Failed to build/compose settings for profile `{profile_str}`: {err}")
