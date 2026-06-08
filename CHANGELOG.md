@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0-rc.4...reinhardt-web@v0.2.0-rc.5) - 2026-06-08
+
+### Documentation
+
+- add release announcement(s)
+- align RC website docs.rs links
+- align CLI install version examples
+
+### Fixed
+
+- *(website)* treat PR previews as preview channel
+- *(website)* point stable selector to dev channel
+
 ## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0-rc.3...reinhardt-web@v0.2.0-rc.4) - 2026-06-06
 
 ### Changed
