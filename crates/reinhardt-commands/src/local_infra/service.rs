@@ -55,7 +55,7 @@ impl ServiceSpec {
 				image: self.image().to_string(),
 				host: "127.0.0.1".to_string(),
 				host_port,
-				container_port: 5432,
+				container_port: self.container_port(),
 				status: ServiceRuntimeStatus::Running,
 				metadata: json!({
 					"database": service.database.clone(),
@@ -68,7 +68,7 @@ impl ServiceSpec {
 				image: self.image().to_string(),
 				host: "127.0.0.1".to_string(),
 				host_port,
-				container_port: 6379,
+				container_port: self.container_port(),
 				status: ServiceRuntimeStatus::Running,
 				metadata: json!({"database": service.database}),
 			},

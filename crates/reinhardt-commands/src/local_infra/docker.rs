@@ -94,7 +94,7 @@ impl BollardDockerEngine {
 impl DockerEngine for BollardDockerEngine {
 	async fn container_exists(&self, name: &str) -> DockerResult<bool> {
 		let mut filters = HashMap::new();
-		filters.insert("name".to_string(), vec![name.to_string()]);
+		filters.insert("name", vec![name]);
 		let containers = self
 			.docker
 			.list_containers(Some(
@@ -130,7 +130,12 @@ impl DockerEngine for BollardDockerEngine {
 				),
 			)
 			.await
-			.map_err(DockerError::from)
+			.or_else(|err| match err {
+				BollardError::DockerResponseServerError {
+					status_code: 404, ..
+				} => Ok(()),
+				err => Err(DockerError::from(err)),
+			})
 	}
 
 	async fn run_detached(&self, spec: DockerRunSpec) -> DockerResult<()> {

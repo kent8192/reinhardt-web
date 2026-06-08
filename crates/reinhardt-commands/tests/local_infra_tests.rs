@@ -76,7 +76,7 @@ fn infra_run_environment_maps_postgres_and_redis_state_to_process_env() {
 		],
 	};
 
-	let env = InfraCommand::environment_from_state(&state, None);
+	let env = InfraCommand::environment_from_state(&state, None).unwrap();
 
 	assert_eq!(
 		env.iter()

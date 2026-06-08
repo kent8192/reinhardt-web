@@ -212,7 +212,7 @@ impl InfraCommand {
 		let current_exe = std::env::current_exe()?;
 		let status = Command::new(current_exe)
 			.args(args)
-			.envs(Self::environment_from_state(&state, settings))
+			.envs(Self::environment_from_state(&state, settings)?)
 			.status()?;
 
 		if status.success() {
@@ -226,7 +226,7 @@ impl InfraCommand {
 	pub fn environment_from_state(
 		state: &LocalInfraState,
 		settings: Option<&dyn HasCommonSettings>,
-	) -> Vec<(String, String)> {
+	) -> Result<Vec<(String, String)>, Box<dyn Error>> {
 		local_infra_env(state, settings)
 	}
 
@@ -245,7 +245,7 @@ impl InfraCommand {
 fn local_infra_env(
 	state: &LocalInfraState,
 	settings: Option<&dyn HasCommonSettings>,
-) -> Vec<(String, String)> {
+) -> Result<Vec<(String, String)>, Box<dyn Error>> {
 	let mut env = Vec::new();
 
 	for service in &state.services {
@@ -268,7 +268,7 @@ fn local_infra_env(
 					.unwrap_or("postgres");
 				env.push((
 					"DATABASE_URL".to_string(),
-					postgres_url(user, password, &service.host, service.host_port, database),
+					postgres_url(user, password, &service.host, service.host_port, database)?,
 				));
 			}
 			"redis" => {
@@ -288,21 +288,26 @@ fn local_infra_env(
 		}
 	}
 
-	env
+	Ok(env)
 }
 
-fn postgres_url(user: &str, password: &str, host: &str, port: u16, database: &str) -> String {
-	let mut url = url::Url::parse("postgresql://localhost/").expect("static URL is valid");
+fn postgres_url(
+	user: &str,
+	password: &str,
+	host: &str,
+	port: u16,
+	database: &str,
+) -> Result<String, Box<dyn Error>> {
+	let mut url = url::Url::parse("postgresql://localhost/")?;
 	url.set_username(user)
-		.expect("postgres URL supports usernames");
+		.map_err(|_| "postgres URL rejected username")?;
 	url.set_password(Some(password))
-		.expect("postgres URL supports passwords");
-	url.set_host(Some(host))
-		.expect("local host is valid in URL");
+		.map_err(|_| "postgres URL rejected password")?;
+	url.set_host(Some(host))?;
 	url.set_port(Some(port))
-		.expect("postgres URL supports ports");
+		.map_err(|_| "postgres URL rejected port")?;
 	url.set_path(database);
-	url.to_string()
+	Ok(url.to_string())
 }
 
 fn derive_config(
@@ -360,7 +365,7 @@ fn print_up_result(
 		println!("{}", serde_json::to_string_pretty(state)?);
 	}
 	if print_env {
-		for (key, value) in local_infra_env(state, settings) {
+		for (key, value) in local_infra_env(state, settings)? {
 			println!("{key}={}", shell_quote(&value));
 		}
 	}
