@@ -35,11 +35,11 @@ use reinhardt::commands::{BaseCommand, CommandRegistry};
 For creating new projects and apps, use the separate `reinhardt-admin-cli`
 package:
 
-<!-- reinhardt-version-sync -->
+<!-- reinhardt-version-sync:2 -->
 ```bash
 # Pre-release: --version is required. Once 0.2.0-rc.4 stable ships, --version
 # becomes optional. The literal below is auto-bumped by release-plz.
-cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.4"
 ```
 
 This installs the `reinhardt-admin` command:
