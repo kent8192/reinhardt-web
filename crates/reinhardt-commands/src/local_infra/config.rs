@@ -47,15 +47,15 @@ impl LocalInfraConfig {
 	) -> Result<Self, String> {
 		let mut services = Vec::new();
 
-		if let Some(database) = database {
-			if database.engine.contains("postgres") {
-				services.push(ServiceSpec::Postgres(PostgresService {
-					port: database.port,
-					database: database.name,
-					user: database.user,
-					password: database.password,
-				}));
-			}
+		if let Some(database) = database
+			&& database.engine.contains("postgres")
+		{
+			services.push(ServiceSpec::Postgres(PostgresService {
+				port: database.port,
+				database: database.name,
+				user: database.user,
+				password: database.password,
+			}));
 		}
 
 		if let Some(redis) = redis {

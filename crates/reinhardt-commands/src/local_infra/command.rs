@@ -75,7 +75,7 @@ impl InfraCommand {
 			} => {
 				let config = derive_config(project_root, profile, settings)?;
 				let state = Self::up_with_config(project_root, config, docker).await?;
-				print_up_result(&state, json, print_env)?;
+				print_up_result(&state, json, print_env, settings)?;
 				Ok(())
 			}
 			InfraSubcommand::Reset { profile } => {
@@ -205,6 +205,7 @@ impl InfraCommand {
 		args: Vec<String>,
 		settings: Option<&dyn HasCommonSettings>,
 	) -> Result<(), Box<dyn Error>> {
+		Self::validate_run_command(&args)?;
 		let state = StateStore::new(project_root)
 			.load()?
 			.ok_or("local infrastructure state does not exist; run `manage infra up` first")?;
@@ -227,6 +228,17 @@ impl InfraCommand {
 		settings: Option<&dyn HasCommonSettings>,
 	) -> Vec<(String, String)> {
 		local_infra_env(state, settings)
+	}
+
+	/// Validate a command targeted by `infra run`.
+	pub fn validate_run_command(args: &[String]) -> Result<(), Box<dyn Error>> {
+		match args.first().map(String::as_str) {
+			Some("runserver") => Err(
+				"`manage infra run -- runserver` is intentionally unsupported. Run `manage infra up --print-env`, export the printed variables, then run `manage runserver` separately."
+					.into(),
+			),
+			_ => Ok(()),
+		}
 	}
 }
 
@@ -342,33 +354,14 @@ fn print_up_result(
 	state: &LocalInfraState,
 	json: bool,
 	print_env: bool,
+	settings: Option<&dyn HasCommonSettings>,
 ) -> Result<(), Box<dyn Error>> {
 	if json {
 		println!("{}", serde_json::to_string_pretty(state)?);
 	}
 	if print_env {
-		for service in &state.services {
-			match service.name.as_str() {
-				"postgres" => {
-					println!("REINHARDT_CORE__DATABASES__DEFAULT__HOST={}", service.host);
-					println!(
-						"REINHARDT_CORE__DATABASES__DEFAULT__PORT={}",
-						service.host_port
-					);
-				}
-				"redis" => {
-					let database = service
-						.metadata
-						.get("database")
-						.and_then(serde_json::Value::as_u64)
-						.unwrap_or(0);
-					println!(
-						"REDIS_URL=redis://{}:{}/{}",
-						service.host, service.host_port, database
-					);
-				}
-				_ => {}
-			}
+		for (key, value) in local_infra_env(state, settings) {
+			println!("{key}={}", shell_quote(&value));
 		}
 	}
 	if !json && !print_env {
@@ -380,4 +373,17 @@ fn print_up_result(
 		}
 	}
 	Ok(())
+}
+
+fn shell_quote(value: &str) -> String {
+	if value.is_empty() {
+		return "''".to_string();
+	}
+	if value
+		.chars()
+		.all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '@'))
+	{
+		return value.to_string();
+	}
+	format!("'{}'", value.replace('\'', "'\\''"))
 }

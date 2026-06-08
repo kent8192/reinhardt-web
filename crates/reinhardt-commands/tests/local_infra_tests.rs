@@ -93,6 +93,19 @@ fn infra_run_environment_maps_postgres_and_redis_state_to_process_env() {
 }
 
 #[test]
+fn infra_run_rejects_runserver_target() {
+	let args = vec!["runserver".to_string()];
+
+	let result = InfraCommand::validate_run_command(&args);
+
+	assert!(result.is_err());
+	assert!(
+		result.unwrap_err().to_string().contains("manage runserver"),
+		"error should direct users to the separate runserver command"
+	);
+}
+
+#[test]
 fn port_allocator_uses_fallback_when_requested_port_is_occupied() {
 	let allocator = PortAllocator;
 	let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
