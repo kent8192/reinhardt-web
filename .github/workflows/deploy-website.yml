@@ -5,10 +5,12 @@ on:
     branches: [main, 'develop/**']
     paths:
       - "website/**"
+      - ".github/workflows/deploy-website.yml"
   pull_request:
     types: [opened, synchronize, reopened, closed]
     paths:
       - "website/**"
+      - ".github/workflows/deploy-website.yml"
   schedule:
     - cron: '0 */6 * * *'
   workflow_dispatch:
