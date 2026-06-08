@@ -29,6 +29,7 @@ chrono = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true, features = ["signal", "process", "fs"] }
 async-trait = { workspace = true }
+bollard = "0.20"
 thiserror = { workspace = true }
 colored = { workspace = true }
 console = "0.16.1"
@@ -67,6 +68,7 @@ reinhardt-rest = {workspace = true, features = ["openapi"], optional = true}
 reinhardt-openapi = { workspace = true, optional = true }
 cargo_metadata = { workspace = true, optional = true }
 serde_yaml = { workspace = true, optional = true }
+url = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["signal"] }

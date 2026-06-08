@@ -146,6 +146,8 @@ pub mod i18n_commands;
 /// Project introspection command for platform metadata discovery.
 #[cfg(feature = "introspect")]
 pub mod introspect;
+/// Local development infrastructure management.
+pub mod local_infra;
 /// Email testing command.
 pub mod mail_commands;
 /// Terminal output wrapper with styling support.

@@ -13,9 +13,9 @@
 //! ## Priority Order
 //!
 //! Settings are merged with the following priority (highest to lowest):
-//! 1. Environment-specific TOML file (e.g., `production.toml`)
-//! 2. Base TOML file (`base.toml`)
-//! 3. Environment variables with `REINHARDT_` prefix
+//! 1. Environment variables with `REINHARDT_` prefix
+//! 2. Environment-specific TOML file (e.g., `production.toml`)
+//! 3. Base TOML file (`base.toml`)
 //! 4. Default values
 //!
 //! ## Environment Selection
@@ -43,7 +43,9 @@
 
 use reinhardt::conf::settings::builder::SettingsBuilder;
 use reinhardt::conf::settings::profile::Profile;
-use reinhardt::conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
+use reinhardt::conf::settings::sources::{
+	DefaultSource, HighPriorityEnvSource, TomlFileSource,
+};
 use reinhardt::settings;
 use std::env;
 
@@ -86,14 +88,14 @@ pub fn get_settings() -> ProjectSettings {
 		.profile(profile)
 		// Lowest priority: Default values
 		.add_source(DefaultSource::new())
-		// Low priority: Environment variables (for container overrides)
-		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
 		// Medium priority: Base TOML file
 		.add_source(TomlFileSource::new(settings_dir.join("base.toml")))
-		// Highest priority: Environment-specific TOML file
+		// Profile priority: Environment-specific TOML file
 		.add_source(TomlFileSource::new(
 			settings_dir.join(format!("{}.toml", profile_str)),
 		))
+		// Highest priority: explicit process environment overrides
+		.add_source(HighPriorityEnvSource::new().with_prefix("REINHARDT_"))
 		.build_composed::<ProjectSettings>()
 		.unwrap_or_else(|err| {
 			panic!("Failed to build/compose settings for profile `{profile_str}`: {err}")
