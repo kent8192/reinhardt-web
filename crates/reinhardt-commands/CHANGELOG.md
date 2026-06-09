@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.0-rc.4...reinhardt-commands@v0.2.0-rc.5) - 2026-06-09
+
+### Added
+
+- *(commands)* add interactive dependency configuration
+
+### Documentation
+
+- align CLI install version examples
+
+### Fixed
+
+- *(ci)* repair admin dependency config checks
+- *(build)* address CodeRabbit review feedback
+- *(commands)* adapt hot reload tests for develop
+- *(build)* port Codex review follow-ups
+
+### Maintenance
+
+- *(commands)* ignore local infra state in templates
+
+### Performance
+
+- *(commands)* skip unrelated hot reload rebuilds
+- *(commands)* notify browsers after hot reload rebuilds
+- *(commands)* use staleness check for pages wasm reuse
+- *(pages)* hot patch static page edits
+- *(build)* tune dev profile for hot reload
+
+### Testing
+
+- *(commands)* verify hmr reload after rebuild
+- *(ci)* refresh release CI expectations
+
 ## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.0-rc.3...reinhardt-commands@v0.2.0-rc.4) - 2026-06-06
 
 ### Changed
