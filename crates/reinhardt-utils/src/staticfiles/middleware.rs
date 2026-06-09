@@ -430,8 +430,7 @@ impl StaticFilesMiddleware {
 			 </script>\n"
 		);
 
-		// Case-insensitive search for </body>
-		if let Some(pos) = html.to_lowercase().rfind("</body>") {
+		if let Some(pos) = Self::find_body_close_tag_pos(html) {
 			let mut result = String::with_capacity(html.len() + script.len());
 			result.push_str(&html[..pos]);
 			result.push_str(&script);
@@ -445,9 +444,16 @@ impl StaticFilesMiddleware {
 		}
 	}
 
+	fn find_body_close_tag_pos(html: &str) -> Option<usize> {
+		let needle = b"</body>";
+		html.as_bytes()
+			.windows(needle.len())
+			.rposition(|window| window.eq_ignore_ascii_case(needle))
+	}
+
 	/// Inject a trusted HTML fragment before `</body>`, or append when absent.
 	fn inject_trusted_html_fragment(html: &str, fragment: &str) -> String {
-		if let Some(pos) = html.to_lowercase().rfind("</body>") {
+		if let Some(pos) = Self::find_body_close_tag_pos(html) {
 			let mut result = String::with_capacity(html.len() + fragment.len());
 			result.push_str(&html[..pos]);
 			result.push_str(fragment);
@@ -1430,6 +1436,23 @@ mod tests {
 	}
 
 	#[rstest]
+	fn test_inject_wasm_script_unicode_before_uppercase_body() {
+		// Arrange
+		let html = "<html><body><h1>İstanbul</h1></BODY></html>";
+		let entry = WasmEntry {
+			js_file: "app.js".to_string(),
+			wasm_file: "app_bg.wasm".to_string(),
+		};
+
+		// Act
+		let result = StaticFilesMiddleware::inject_wasm_script(html, &entry, "/", None);
+
+		// Assert
+		assert!(result.contains("<h1>İstanbul</h1>\n<!-- Reinhardt WASM Auto-Loader -->"));
+		assert!(result.contains("</BODY></html>"));
+	}
+
+	#[rstest]
 	fn test_inject_wasm_script_no_body_tag_appends() {
 		// Arrange
 		let html = "<html><h1>No body tag</h1></html>";
@@ -1459,6 +1482,22 @@ mod tests {
 		assert_eq!(
 			result,
 			"<html><body><h1>Hello</h1>\n<script>window.__hmr = true;</script>\n</body></html>"
+		);
+	}
+
+	#[rstest]
+	fn test_inject_trusted_html_fragment_unicode_before_uppercase_body() {
+		// Arrange
+		let html = "<html><body><h1>İstanbul</h1></BODY></html>";
+		let fragment = "\n<script>window.__hmr = true;</script>\n";
+
+		// Act
+		let result = StaticFilesMiddleware::inject_trusted_html_fragment(html, fragment);
+
+		// Assert
+		assert_eq!(
+			result,
+			"<html><body><h1>İstanbul</h1>\n<script>window.__hmr = true;</script>\n</BODY></html>"
 		);
 	}
 

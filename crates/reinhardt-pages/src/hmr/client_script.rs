@@ -88,7 +88,14 @@ pub const HMR_CLIENT_SCRIPT: &str = r#"
   }
 
   function replaceHtml(selector, html) {
-    var target = document.querySelector(selector);
+    var target;
+    try {
+      target = document.querySelector(selector);
+    } catch (e) {
+      console.warn("[HMR] Invalid selector, reloading:", selector, e);
+      window.location.reload();
+      return;
+    }
     if (!target) {
       console.log("[HMR] HTML target not found, reloading:", selector);
       window.location.reload();

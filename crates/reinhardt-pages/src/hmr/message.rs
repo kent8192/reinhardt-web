@@ -92,9 +92,10 @@ mod tests {
 
 		// Assert
 		assert_eq!(msg, deserialized);
-		assert!(json.contains("\"type\":\"html_replace\""));
-		assert!(json.contains("\"selector\":\"#app\""));
-		assert!(json.contains("Updated"));
+		let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+		assert_eq!(value["type"], "html_replace");
+		assert_eq!(value["selector"], "#app");
+		assert_eq!(value["html"], "<div id=\"app\">Updated</div>");
 	}
 
 	#[rstest]

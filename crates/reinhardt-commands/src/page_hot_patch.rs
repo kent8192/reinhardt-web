@@ -36,7 +36,17 @@ fn render_static_page_source(source: &str) -> Option<String> {
 }
 
 fn find_static_page_body(source: &str) -> Option<&str> {
-	let page_start = source.find("page!")?;
+	let mut bodies = source
+		.match_indices("page!")
+		.filter_map(|(page_start, _)| parse_static_page_body_at(source, page_start));
+	let body = bodies.next()?;
+	if bodies.next().is_some() {
+		return None;
+	}
+	Some(body)
+}
+
+fn parse_static_page_body_at(source: &str, page_start: usize) -> Option<&str> {
 	let after_macro = source[page_start + "page!".len()..].trim_start();
 	let inner = after_macro.strip_prefix('(')?;
 	let closure_start = inner.find("||")?;
@@ -299,6 +309,25 @@ mod tests {
 			html,
 			r#"<div id="route-home"><a href="/login" id="go-to-login">Go to login</a></div>"#
 		);
+	}
+
+	#[rstest]
+	fn rejects_multiple_static_page_macros() {
+		let source = r#"
+			fn home_page() -> Page {
+				page!(|| {
+					div { "Home" }
+				})()
+			}
+
+			fn about_page() -> Page {
+				page!(|| {
+					div { "About" }
+				})()
+			}
+		"#;
+
+		assert!(render_static_page_source(source).is_none());
 	}
 
 	#[rstest]

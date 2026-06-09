@@ -38,12 +38,13 @@ wasm = [
   "dep:js-sys",
   "dep:gloo-timers",
   "dep:regex",
+  "reinhardt-pages/testing",
 ]
 wasm-full = ["wasm", "reinhardt-pages/web-sys-full"]
 # MSW-style network-level request interception (requires wasm)
 msw = ["wasm", "reinhardt-pages/msw"]
 # Server function testing utilities
-server-fn-test = []
+server-fn-test = ["reinhardt-pages/testing"]
 # E2E browser testing via WebDriver (fantoccini)
 e2e = ["dep:fantoccini", "dep:url"]
 # E2E browser testing via Chrome DevTools Protocol (chromiumoxide) + containerized Chrome
