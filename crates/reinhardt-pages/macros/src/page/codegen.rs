@@ -170,7 +170,18 @@ fn generate_element(elem: &TypedPageElement, pages_crate: &TokenStream) -> Token
 	let tag = elem.tag.to_string();
 
 	// Generate attributes
-	let attrs: Vec<TokenStream> = elem.attrs.iter().map(generate_attr).collect();
+	let regular_attrs: Vec<TokenStream> = elem
+		.attrs
+		.iter()
+		.filter(|attr| !BOOLEAN_ATTRS.contains(&attr.html_name().as_str()))
+		.map(generate_regular_attr_pair)
+		.collect();
+	let bool_attrs: Vec<TokenStream> = elem
+		.attrs
+		.iter()
+		.filter(|attr| BOOLEAN_ATTRS.contains(&attr.html_name().as_str()))
+		.map(generate_bool_attr_pair)
+		.collect();
 
 	// Generate children
 	let children: Vec<TokenStream> = elem
@@ -184,11 +195,15 @@ fn generate_element(elem: &TypedPageElement, pages_crate: &TokenStream) -> Token
 		#pages_crate::component::PageElement::new(#tag)
 	};
 
-	// Add attributes
-	for attr in &attrs {
+	if !regular_attrs.is_empty() {
 		base_builder = quote! {
-			#base_builder
-			#attr
+			#base_builder.with_attrs([#(#regular_attrs),*])
+		};
+	}
+
+	if !bool_attrs.is_empty() {
+		base_builder = quote! {
+			#base_builder.with_bool_attrs([#(#bool_attrs),*])
 		};
 	}
 
@@ -299,21 +314,9 @@ const BOOLEAN_ATTRS: &[&str] = &[
 	"truespeed",
 ];
 
-/// Generates code for an attribute.
-fn generate_attr(attr: &TypedPageAttr) -> TokenStream {
+/// Generates code for a regular attribute pair.
+fn generate_regular_attr_pair(attr: &TypedPageAttr) -> TokenStream {
 	let name_str = attr.html_name();
-
-	// Check if this is a boolean attribute
-	if BOOLEAN_ATTRS.contains(&name_str.as_str()) {
-		// Boolean attributes use .bool_attr() which handles true/false values
-		let value_expr = attr.value.to_expr();
-		return quote! {
-			.bool_attr(#name_str, #value_expr)
-		};
-	}
-
-	// Use name_str for regular attributes as well
-	let name = &name_str;
 
 	// Handle different attribute value types
 	// IntLit and FloatLit need to be converted to strings
@@ -334,7 +337,19 @@ fn generate_attr(attr: &TypedPageAttr) -> TokenStream {
 	};
 
 	quote! {
-		.attr(#name, #value_expr)
+		(
+			::std::borrow::Cow::Borrowed(#name_str),
+			::std::borrow::Cow::from(#value_expr)
+		)
+	}
+}
+
+/// Generates code for a boolean attribute pair.
+fn generate_bool_attr_pair(attr: &TypedPageAttr) -> TokenStream {
+	let name_str = attr.html_name();
+	let value_expr = attr.value.to_expr();
+	quote! {
+		(::std::borrow::Cow::Borrowed(#name_str), #value_expr)
 	}
 }
 
