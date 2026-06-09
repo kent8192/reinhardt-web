@@ -281,7 +281,7 @@ fn notify_static_page_patch(
 		return false;
 	};
 	let msg = reinhardt_pages::hmr::HmrMessage::HtmlReplace {
-		selector: "body".to_string(),
+		selector: "#app".to_string(),
 		html,
 	};
 	if let Ok(json) = msg.to_json() {
@@ -370,6 +370,8 @@ pub async fn run_rebuild_for_paths(
 				"Rust rebuild completed successfully",
 			);
 		}
+		#[cfg(not(feature = "pages"))]
+		let _ = (wasm_ok, server_ready);
 	} else if targets.wasm {
 		let wasm_ok = wasm_fut.await;
 		#[cfg(feature = "pages")]
@@ -379,6 +381,8 @@ pub async fn run_rebuild_for_paths(
 				"WASM rebuild completed successfully",
 			);
 		}
+		#[cfg(not(feature = "pages"))]
+		let _ = wasm_ok;
 	} else {
 		let (server_outcome, new_child) =
 			crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
@@ -404,6 +408,8 @@ pub async fn run_rebuild_for_paths(
 				"Server rebuild completed successfully",
 			);
 		}
+		#[cfg(not(feature = "pages"))]
+		let _ = server_ready;
 	}
 	// Pipeline failures are recorded as log lines and never propagate as Err;
 	// the caller's loop continues unconditionally.
@@ -769,7 +775,7 @@ mod tests {
 		assert_eq!(
 			message,
 			reinhardt_pages::hmr::HmrMessage::HtmlReplace {
-				selector: "body".to_string(),
+				selector: "#app".to_string(),
 				html: r#"<div id="route-home">Updated</div>"#.to_string(),
 			}
 		);

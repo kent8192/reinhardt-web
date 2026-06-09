@@ -82,7 +82,7 @@ mod tests {
 	fn test_html_replace_serialization() {
 		// Arrange
 		let msg = HmrMessage::HtmlReplace {
-			selector: "body".to_string(),
+			selector: "#app".to_string(),
 			html: "<div id=\"app\">Updated</div>".to_string(),
 		};
 
@@ -93,7 +93,7 @@ mod tests {
 		// Assert
 		assert_eq!(msg, deserialized);
 		assert!(json.contains("\"type\":\"html_replace\""));
-		assert!(json.contains("\"selector\":\"body\""));
+		assert!(json.contains("\"selector\":\"#app\""));
 		assert!(json.contains("Updated"));
 	}
 

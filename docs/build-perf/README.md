@@ -62,6 +62,10 @@ For Issue #5218, the target loops are:
 
 The current script covers the Rust build side of those loops, including
 separate Pages WASM, native server, shared/core, and proc-macro scenarios.
+The dev profile is optimized for hot-reload throughput with `debug = 0` and
+`codegen-units = 16`; the test profile keeps `debug = 1` for debuggable test
+artifacts. Changing these profile settings causes a one-time rebuild of
+affected dev artifacts; compare warmed edit loops after that rebuild.
 The Pages WASM build scenario currently measures Cargo's library artifact only;
 it does not run `wasm-bindgen` against a browser-loadable `cdylib` fixture.
 Add that fixture-level scenario before claiming end-to-end browser artifact
@@ -84,12 +88,13 @@ address to become reachable. Runtime measurements still need to be added before
 claiming browser-visible latency numbers.
 
 Static `page!(|| { ... })` edits under WASM-owned client source paths can use
-the compile-free development hot patch path. Dynamic Rust expressions, event
-handlers, control flow, components, and shared/server-owned files still fall
-back to the normal rebuild path. The Pages macro also emits batched attribute
-builders instead of one chained method call per generated attribute, which
-reduces generated Rust for attribute-heavy templates when a rebuild is still
-required.
+the compile-free development hot patch path. The HMR payload replaces `#app`
+contents, preserving the development script and page shell. Dynamic Rust
+expressions, event handlers, control flow, components, and shared/server-owned
+files still fall back to the normal rebuild path. The Pages macro also emits
+batched attribute builders instead of one chained method call per generated
+attribute, which reduces generated Rust for attribute-heavy templates when a
+rebuild is still required.
 
 ## Hot-Reload Target Selection
 
