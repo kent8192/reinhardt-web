@@ -13,9 +13,11 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use notify::Event;
+#[cfg(feature = "pages")]
+use tokio::sync::broadcast;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::oneshot;
-use tokio::time::{Instant, timeout_at};
+use tokio::time::{Instant, sleep, timeout_at};
 
 use crate::CommandContext;
 use crate::source_roots::SourceRoots;
@@ -120,11 +122,18 @@ pub struct WatcherConfig {
 	pub address: String,
 	/// Source directories and manifest files to subscribe to.
 	pub roots: SourceRoots,
+	/// HTTP address used by the child server. When set, browser reloads that
+	/// depend on a server respawn wait briefly for this address to accept TCP.
+	pub server_address: Option<String>,
 	/// When `true`, suppress the WASM rebuild pipeline.
 	pub no_wasm_rebuild: bool,
 	/// When `true`, the project has the pages feature enabled.
 	#[cfg(feature = "pages")]
 	pub pages_enabled: bool,
+	/// Browser HMR channel used to reload connected Pages clients after a
+	/// successful rebuild. `None` keeps the watcher in compile-only mode.
+	#[cfg(feature = "pages")]
+	pub hmr_tx: Option<broadcast::Sender<String>>,
 }
 
 /// Select rebuild pipelines for a debounced path batch.
@@ -209,6 +218,54 @@ fn classify_pages_path(path: &std::path::Path) -> PagesPathClass {
 
 fn normalized_path(path: &std::path::Path) -> String {
 	path.to_string_lossy().replace('\\', "/")
+}
+
+#[cfg(feature = "pages")]
+fn wasm_rebuild_succeeded(outcome: &crate::wasm_rebuild_pipeline::WasmRebuildOutcome) -> bool {
+	matches!(
+		outcome,
+		crate::wasm_rebuild_pipeline::WasmRebuildOutcome::Ok { .. }
+			| crate::wasm_rebuild_pipeline::WasmRebuildOutcome::Skipped
+	)
+}
+
+fn server_rebuild_succeeded(
+	outcome: &crate::server_rebuild_pipeline::ServerRebuildOutcome,
+) -> bool {
+	matches!(
+		outcome,
+		crate::server_rebuild_pipeline::ServerRebuildOutcome::Ok { .. }
+	)
+}
+
+async fn wait_for_server_ready(address: Option<&str>) -> bool {
+	let Some(address) = address else {
+		return true;
+	};
+
+	let deadline = Instant::now() + Duration::from_secs(2);
+	loop {
+		if tokio::net::TcpStream::connect(address).await.is_ok() {
+			return true;
+		}
+		if Instant::now() >= deadline {
+			return false;
+		}
+		sleep(Duration::from_millis(50)).await;
+	}
+}
+
+#[cfg(feature = "pages")]
+fn notify_browser_reload(hmr_tx: Option<&broadcast::Sender<String>>, reason: &str) {
+	let Some(tx) = hmr_tx else {
+		return;
+	};
+	let msg = reinhardt_pages::hmr::HmrMessage::FullReload {
+		reason: reason.to_string(),
+	};
+	if let Ok(json) = msg.to_json() {
+		let _ = tx.send(json);
+	}
 }
 
 /// Run the hot-reload watcher loop until shutdown.
@@ -321,8 +378,10 @@ pub async fn run_watcher(
 									eprintln!("[hot-reload] watching for next change...");
 								}
 							}
+							return wasm_rebuild_succeeded(&outcome);
 						}
 					}
+					true
 				};
 
 					if targets.server && targets.wasm {
@@ -337,14 +396,35 @@ pub async fn run_watcher(
 								&respawn,
 								&config.address,
 							);
-						let ((), (_outcome, new_child)) = tokio::join!(wasm_fut, server_fut);
+						let (wasm_ok, (server_outcome, new_child)) =
+							tokio::join!(wasm_fut, server_fut);
+						let server_ok = server_rebuild_succeeded(&server_outcome);
 						if let Some(child) = new_child {
 							current_child = child;
 						}
+						let server_ready = if server_ok {
+							wait_for_server_ready(config.server_address.as_deref()).await
+						} else {
+							false
+						};
+						#[cfg(feature = "pages")]
+						if wasm_ok && server_ready {
+							notify_browser_reload(
+								config.hmr_tx.as_ref(),
+								"Rust rebuild completed successfully",
+							);
+						}
 					} else if targets.wasm {
-						wasm_fut.await;
+						let wasm_ok = wasm_fut.await;
+						#[cfg(feature = "pages")]
+						if wasm_ok {
+							notify_browser_reload(
+								config.hmr_tx.as_ref(),
+								"WASM rebuild completed successfully",
+							);
+						}
 					} else {
-						let (_outcome, new_child) =
+						let (server_outcome, new_child) =
 							crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
 								&config.bin_name,
 								&mut current_child,
@@ -352,11 +432,24 @@ pub async fn run_watcher(
 								&config.address,
 							)
 							.await;
+						let server_ok = server_rebuild_succeeded(&server_outcome);
 						if let Some(child) = new_child {
 							current_child = child;
 						}
+						let server_ready = if server_ok {
+							wait_for_server_ready(config.server_address.as_deref()).await
+						} else {
+							false
+						};
+						#[cfg(feature = "pages")]
+						if server_ready {
+							notify_browser_reload(
+								config.hmr_tx.as_ref(),
+								"Server rebuild completed successfully",
+							);
+						}
 					}
-				// Pipeline failures are recorded as log lines and never
+					// Pipeline failures are recorded as log lines and never
 				// propagate as Err — the loop continues unconditionally.
 			}
 		}
@@ -478,8 +571,10 @@ mod tests {
 				manifest_files: vec![PathBuf::from("/project/Cargo.toml")],
 				lockfile: Some(PathBuf::from("/project/Cargo.lock")),
 			},
+			server_address: None,
 			no_wasm_rebuild,
 			pages_enabled: true,
+			hmr_tx: None,
 		}
 	}
 
@@ -553,5 +648,33 @@ mod tests {
 				wasm: false,
 			},
 		);
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn notify_browser_reload_sends_full_reload_message() {
+		// Arrange
+		let (tx, mut rx) = broadcast::channel::<String>(8);
+
+		// Act
+		notify_browser_reload(Some(&tx), "WASM rebuild completed successfully");
+
+		// Assert
+		let json = rx.try_recv().expect("reload message should be broadcast");
+		let message: reinhardt_pages::hmr::HmrMessage =
+			serde_json::from_str(&json).expect("message should be valid HMR JSON");
+		assert_eq!(
+			message,
+			reinhardt_pages::hmr::HmrMessage::FullReload {
+				reason: "WASM rebuild completed successfully".to_string()
+			}
+		);
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn notify_browser_reload_without_channel_is_noop() {
+		// Act & Assert
+		notify_browser_reload(None, "Server rebuild completed successfully");
 	}
 }

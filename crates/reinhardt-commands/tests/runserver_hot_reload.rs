@@ -407,8 +407,10 @@ async fn hr_3_no_wasm_rebuild_flag_skips_wasm_pipeline() {
 			manifest_files: Vec::new(),
 			lockfile: None,
 		},
+		server_address: None,
 		no_wasm_rebuild: true,
 		pages_enabled: true,
+		hmr_tx: None,
 	};
 
 	// Act: read the flag back.
@@ -624,8 +626,10 @@ async fn hr_7_run_watcher_processes_events() {
 			manifest_files: vec![fixture.path().join("Cargo.toml")],
 			lockfile: None,
 		},
+		server_address: None,
 		no_wasm_rebuild: true,
 		pages_enabled: false,
+		hmr_tx: None,
 	};
 
 	let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();

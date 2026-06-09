@@ -19,6 +19,10 @@ successful builds, or isolated code review alone.
    can invalidate a much larger part of the dependency graph than leaf edits.
 5. For Pages hot-reload work, verify browser-visible behavior with runtime
    evidence. A successful compile or HTTP 200 response is not enough.
+6. Do not count `page!` edits as compile-free unless a separate dev-mode
+   template/runtime path bypasses Rust macro recompilation. HMR reload
+   notifications only reduce browser reflection delay after successful
+   rebuilds.
 
 ## Prevention Guidelines
 
@@ -30,3 +34,5 @@ successful builds, or isolated code review alone.
   the shared hot path.
 - Keep server-only, WASM-only, and pure UI/template hot-reload paths separate
   so unrelated targets are not rebuilt.
+- Keep browser reload notifications success-gated: failed rebuilds should not
+  force browsers to reload into stale or missing artifacts.

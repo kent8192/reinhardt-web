@@ -78,6 +78,29 @@ impl HmrServer {
 		Ok(bound_addr)
 	}
 
+	/// Starts only the WebSocket listener.
+	///
+	/// This mode is used by outer build loops that already own file watching
+	/// and want to broadcast only after their rebuild pipeline succeeds.
+	pub async fn start_listener_only(&self) -> Result<std::net::SocketAddr, std::io::Error> {
+		if !self.config.enabled {
+			let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
+			return listener.local_addr();
+		}
+
+		let addr = format!("127.0.0.1:{}", self.config.ws_port);
+		let listener = TcpListener::bind(&addr).await?;
+		let bound_addr = listener.local_addr()?;
+
+		let tx = self.tx.clone();
+		let client_count = self.client_count.clone();
+		tokio::spawn(async move {
+			Self::accept_connections(listener, tx, client_count).await;
+		});
+
+		Ok(bound_addr)
+	}
+
 	/// Accepts incoming WebSocket connections and forwards broadcast messages.
 	async fn accept_connections(
 		listener: TcpListener,
@@ -342,6 +365,21 @@ mod tests {
 
 		// Assert
 		assert_ne!(addr.port(), 0);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_hmr_server_start_listener_only_binds_port() {
+		// Arrange
+		let config = HmrConfig::builder().ws_port(0).build();
+		let server = HmrServer::new(config);
+
+		// Act
+		let addr = server.start_listener_only().await.unwrap();
+
+		// Assert
+		assert_ne!(addr.port(), 0);
+		assert_eq!(server.client_count().await, 0);
 	}
 
 	// --- Additional notify_change variant coverage ---
