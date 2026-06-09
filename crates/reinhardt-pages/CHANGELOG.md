@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.3...reinhardt-pages@v0.1.4) - 2026-06-09
+
+### Fixed
+
+- *(build)* address CodeRabbit review feedback
+
+### Performance
+
+- *(commands)* notify browsers after hot reload rebuilds
+- *(pages)* batch generated page attributes
+- *(pages)* prune unused runtime parser deps
+- *(pages)* trim wasm dependency graph
+- *(pages)* gate non-browser wasm modules
+- *(pages)* hot patch static page edits
+- *(build)* tune dev profile for hot reload
+- *(build)* measure cold workspace build
+
 ## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.2...reinhardt-pages@v0.1.3) - 2026-05-31
 
 ### Added

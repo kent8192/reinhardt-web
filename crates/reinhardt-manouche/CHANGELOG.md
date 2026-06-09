@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.3...reinhardt-manouche@v0.1.4) - 2026-06-09
+
+### Performance
+
+- *(pages)* trim wasm dependency graph
+
 ## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.2...reinhardt-manouche@v0.1.3) - 2026-05-31
 
 ### Documentation
