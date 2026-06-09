@@ -727,7 +727,7 @@ async fn hr_9_run_watcher_broadcasts_reload_after_server_rebuild() {
 	let saved_cwd = std::env::current_dir().expect("current dir");
 	std::env::set_current_dir(fixture.path()).expect("set fixture cwd");
 
-	let bin_path = fixture_manage_bin(&fixture);
+	let bin_path = fixture.manage_bin();
 	let respawn_count = Arc::new(AtomicUsize::new(0));
 	let respawn_count_for_closure = Arc::clone(&respawn_count);
 	let respawn = move || -> std::io::Result<tokio::process::Child> {
@@ -741,6 +741,7 @@ async fn hr_9_run_watcher_broadcasts_reload_after_server_rebuild() {
 	let ctx = CommandContext::default();
 	let config = WatcherConfig {
 		bin_name: "manage".to_string(),
+		address: "127.0.0.1:0".to_string(),
 		roots: SourceRoots {
 			src_dirs: vec![fixture.path().join("src")],
 			manifest_files: vec![fixture.path().join("Cargo.toml")],

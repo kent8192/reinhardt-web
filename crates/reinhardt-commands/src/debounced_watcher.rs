@@ -613,6 +613,7 @@ mod tests {
 	fn pages_config(no_wasm_rebuild: bool) -> WatcherConfig {
 		WatcherConfig {
 			bin_name: "manage".to_string(),
+			address: "127.0.0.1:8000".to_string(),
 			roots: SourceRoots {
 				src_dirs: vec![PathBuf::from("/project/src")],
 				manifest_files: vec![PathBuf::from("/project/Cargo.toml")],
