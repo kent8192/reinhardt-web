@@ -71,6 +71,7 @@ impl BaseCommand for MigrateCommand {
 		let target = ctx.arg(1).map(|s| s.to_string());
 		let is_fake = ctx.has_option("fake");
 		let _is_fake_initial = ctx.has_option("fake-initial");
+		#[cfg_attr(not(feature = "migrations"), allow(unused_variables))]
 		let is_plan = ctx.has_option("plan");
 		let _database = ctx
 			.option("database")
@@ -1942,9 +1943,15 @@ impl BaseCommand for RunServerCommand {
 		}
 
 		let address = ctx.arg(0).map(|s| s.as_str()).unwrap_or("127.0.0.1:8000");
+		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let noreload = ctx.has_option("noreload");
+		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let no_wasm_rebuild = ctx.has_option("no-wasm-rebuild");
 		let insecure = ctx.has_option("insecure");
+		#[cfg_attr(
+			not(any(feature = "server", feature = "openapi-router")),
+			allow(unused_variables)
+		)]
 		let no_docs = ctx.has_option("no_docs");
 		let with_pages = ctx.has_option("with-pages");
 		let static_dir_raw = ctx
@@ -1952,6 +1959,7 @@ impl BaseCommand for RunServerCommand {
 			.map(|s| s.to_string())
 			.unwrap_or_else(|| "dist".to_string());
 		let no_spa = ctx.has_option("no-spa");
+		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let no_project_static = ctx.has_option("no-project-static");
 		// Build WASM frontend if --with-pages and not --no-wasm
 		#[cfg(feature = "pages")]

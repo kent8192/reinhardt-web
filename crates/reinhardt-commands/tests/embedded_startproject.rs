@@ -149,4 +149,5 @@ async fn startproject_pages_adds_required_pages_features() {
 	let cargo_toml =
 		std::fs::read_to_string(tmp.path().join("pages_feature_proj/Cargo.toml")).unwrap();
 	assert!(cargo_toml.contains("features = [\"minimal\", \"pages\", \"admin\"]"));
+	assert_manifest_parses(&tmp.path().join("pages_feature_proj/Cargo.toml"));
 }

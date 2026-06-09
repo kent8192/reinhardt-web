@@ -300,6 +300,22 @@ enum Commands {
 	MigrateManoucheV2(migrate_v2::MigrateV2Args),
 }
 
+#[derive(Debug)]
+struct DependencyOptions {
+	reinhardt_version: Option<String>,
+	feature: Vec<String>,
+	features: Option<String>,
+	default_features: Option<bool>,
+	no_interactive: bool,
+}
+
+#[derive(Debug)]
+struct ProjectTypeOptions {
+	template: Option<TemplateType>,
+	with_pages: bool,
+	with_rest: bool,
+}
+
 /// Plugin management subcommands
 #[derive(Subcommand)]
 enum PluginCommands {
@@ -446,18 +462,24 @@ async fn main() {
 			default_features,
 			no_interactive,
 		} => {
-			run_startproject(
-				name,
-				directory,
+			let project_type_options = ProjectTypeOptions {
 				template,
 				with_pages,
 				with_rest,
-				template_dir,
+			};
+			let dependency_options = DependencyOptions {
 				reinhardt_version,
 				feature,
 				features,
 				default_features,
 				no_interactive,
+			};
+			run_startproject(
+				name,
+				directory,
+				project_type_options,
+				template_dir,
+				dependency_options,
 				cli.verbosity,
 			)
 			.await
@@ -490,16 +512,14 @@ async fn main() {
 			default_features,
 			no_interactive,
 		} => {
-			run_configure(
-				directory,
+			let dependency_options = DependencyOptions {
 				reinhardt_version,
 				feature,
 				features,
 				default_features,
 				no_interactive,
-				cli.verbosity,
-			)
-			.await
+			};
+			run_configure(directory, dependency_options, cli.verbosity).await
 		}
 		Commands::Fmt {
 			path,
@@ -559,15 +579,9 @@ async fn main() {
 async fn run_startproject(
 	name: String,
 	directory: Option<String>,
-	template: Option<TemplateType>,
-	with_pages: bool,
-	with_rest: bool,
+	project_type_options: ProjectTypeOptions,
 	template_dir: Option<String>,
-	reinhardt_version: Option<String>,
-	feature: Vec<String>,
-	features: Option<String>,
-	default_features: Option<bool>,
-	no_interactive: bool,
+	dependency_options: DependencyOptions,
 	verbosity: u8,
 ) -> CommandResult<()> {
 	let mut ctx = CommandContext::default();
@@ -576,9 +590,13 @@ async fn run_startproject(
 	if let Some(dir) = directory {
 		ctx.add_arg(dir);
 	}
-	let project_type = match resolve_project_type(template, with_pages, with_rest) {
+	let project_type = match resolve_project_type(
+		project_type_options.template,
+		project_type_options.with_pages,
+		project_type_options.with_rest,
+	) {
 		Some(project_type) => project_type,
-		None if should_prompt(no_interactive) => prompt_project_type()?,
+		None if should_prompt(dependency_options.no_interactive) => prompt_project_type()?,
 		None => ResolvedProjectType::Rest,
 	};
 	match project_type {
@@ -588,14 +606,7 @@ async fn run_startproject(
 	if let Some(td) = template_dir {
 		ctx.set_option("template-dir".to_string(), td);
 	}
-	push_dependency_options(
-		&mut ctx,
-		reinhardt_version,
-		feature,
-		features,
-		default_features,
-		no_interactive,
-	);
+	push_dependency_options(&mut ctx, dependency_options);
 
 	let cmd = StartProjectCommand;
 	cmd.execute(&ctx).await
@@ -635,11 +646,7 @@ async fn run_startapp(
 
 async fn run_configure(
 	directory: Option<String>,
-	reinhardt_version: Option<String>,
-	feature: Vec<String>,
-	features: Option<String>,
-	default_features: Option<bool>,
-	no_interactive: bool,
+	dependency_options: DependencyOptions,
 	verbosity: u8,
 ) -> CommandResult<()> {
 	let mut ctx = CommandContext::default();
@@ -647,39 +654,25 @@ async fn run_configure(
 	if let Some(directory) = directory {
 		ctx.add_arg(directory);
 	}
-	push_dependency_options(
-		&mut ctx,
-		reinhardt_version,
-		feature,
-		features,
-		default_features,
-		no_interactive,
-	);
+	push_dependency_options(&mut ctx, dependency_options);
 
 	ConfigureCommand.execute(&ctx).await
 }
 
-fn push_dependency_options(
-	ctx: &mut CommandContext,
-	reinhardt_version: Option<String>,
-	feature: Vec<String>,
-	features: Option<String>,
-	default_features: Option<bool>,
-	no_interactive: bool,
-) {
-	if let Some(version) = reinhardt_version {
+fn push_dependency_options(ctx: &mut CommandContext, options: DependencyOptions) {
+	if let Some(version) = options.reinhardt_version {
 		ctx.set_option("reinhardt-version".to_string(), version);
 	}
-	if !feature.is_empty() {
-		ctx.set_option_multi("feature".to_string(), feature);
+	if !options.feature.is_empty() {
+		ctx.set_option_multi("feature".to_string(), options.feature);
 	}
-	if let Some(features) = features {
+	if let Some(features) = options.features {
 		ctx.set_option("features".to_string(), features);
 	}
-	if let Some(default_features) = default_features {
+	if let Some(default_features) = options.default_features {
 		ctx.set_option("default-features".to_string(), default_features.to_string());
 	}
-	if no_interactive {
+	if options.no_interactive {
 		ctx.set_option("no-interactive".to_string(), "true".to_string());
 	}
 }
