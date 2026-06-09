@@ -55,7 +55,7 @@ mod tests {
 	use crate::template_source::EmbeddedSource;
 	use rstest::*;
 	use std::fs;
-	use std::path::{Path, PathBuf};
+	use std::path::Path;
 	use tempfile::TempDir;
 
 	struct Harness {
@@ -95,7 +95,7 @@ mod tests {
 		let candidates = embedded.list_entries(Path::new("")).unwrap();
 		let missing_in_primary = candidates
 			.iter()
-			.find(|e| !e.is_dir && e.rel_path != PathBuf::from("README.md"))
+			.find(|e| !e.is_dir && e.rel_path.as_path() != Path::new("README.md"))
 			.expect("embedded has more than README.md");
 
 		// Act
@@ -118,7 +118,7 @@ mod tests {
 		assert!(
 			entries
 				.iter()
-				.any(|e| e.rel_path == PathBuf::from("README.md"))
+				.any(|e| e.rel_path.as_path() == Path::new("README.md"))
 		);
 		// Every embedded entry must also appear
 		let embedded = EmbeddedSource::new("project_restful_template");

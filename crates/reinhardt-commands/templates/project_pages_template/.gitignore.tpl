@@ -107,7 +107,8 @@ settings/*.toml
 .env.local
 .env.*.local
 
-# Local infrastructure state
+# Local Reinhardt runtime state
+.reinhardt/
 local-infra.json
 
 # IDE
