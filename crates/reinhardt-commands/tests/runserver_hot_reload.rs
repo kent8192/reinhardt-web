@@ -43,8 +43,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use reinhardt_commands::__hot_reload_test_api::{
-	DEBOUNCE_WINDOW, ServerRebuildOutcome, ServerRebuildPipeline, SourceRoots, WatcherConfig,
-	is_relevant_change, run_watcher,
+	DEBOUNCE_WINDOW, RebuildTargets, ServerRebuildOutcome, ServerRebuildPipeline, SourceRoots,
+	WatcherConfig, is_relevant_change, rebuild_targets_for_paths, run_watcher,
 };
 use reinhardt_commands::{
 	CommandContext, RunserverContext, RunserverHook, RunserverHookRegistration, WasmBuildConfig,
@@ -284,10 +284,9 @@ async fn hr_2_server_change_triggers_server_rebuild() {
 // HR-3: --no-wasm-rebuild flag plumbing skips the WASM pipeline.
 //
 // This test asserts the dispatch-time configuration the watcher reads:
-// `WatcherConfig.no_wasm_rebuild` round-trips the flag, and the path filter
-// still recognises Rust source edits as relevant. Behavioural verification
-// (no WASM log line appears under the flag) lives in the unit tests of
-// `debounced_watcher`, where the dispatch branch is observable.
+// `WatcherConfig.no_wasm_rebuild` round-trips the flag, the path filter still
+// recognises Rust source edits as relevant, and the classifier does not route
+// client-only edits into an unnecessary native server rebuild.
 // ---------------------------------------------------------------------------
 #[tokio::test(flavor = "multi_thread")]
 async fn hr_3_no_wasm_rebuild_flag_skips_wasm_pipeline() {
@@ -325,6 +324,22 @@ async fn hr_3_no_wasm_rebuild_flag_skips_wasm_pipeline() {
 			"/p/src/lib.rs",
 		)),
 		"a .rs edit must still pass the relevance filter (server pipeline still runs)"
+	);
+	assert_eq!(
+		rebuild_targets_for_paths(&[PathBuf::from("/p/src/lib.rs")], &config),
+		RebuildTargets {
+			server: true,
+			wasm: false,
+		},
+		"shared Rust edits must still rebuild the server when WASM rebuild is disabled"
+	);
+	assert_eq!(
+		rebuild_targets_for_paths(&[PathBuf::from("/p/src/client/page.rs")], &config),
+		RebuildTargets {
+			server: false,
+			wasm: false,
+		},
+		"client-only edits must not force a native rebuild when WASM rebuild is disabled"
 	);
 	assert_eq!(DEBOUNCE_WINDOW, Duration::from_millis(300));
 }
