@@ -109,6 +109,7 @@ settings/*.toml
 
 # Local Reinhardt runtime state
 .reinhardt/
+local-infra.json
 
 # IDE
 .idea/
