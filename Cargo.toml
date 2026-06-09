@@ -48,7 +48,7 @@ standard = [
   "reinhardt-rest/filters",
   "reinhardt-rest/throttling",
   "core",
-  "reinhardt-core/signals",
+  "signals",
   "reinhardt-rest/parsers",
   "reinhardt-pages",
   "reinhardt-rest/versioning",
@@ -134,6 +134,7 @@ conf = ["reinhardt-conf"]
 core = ["reinhardt-core", "reinhardt-apps", "dep:inventory"]
 rest = ["reinhardt-rest"]
 messages = ["reinhardt-core/messages"]
+signals = ["reinhardt-core/signals"]
 # DI feature: Uses reinhardt-core/di which internally enables reinhardt-di/params
 # Also directly enables reinhardt-di/params for macro support (extern crate reinhardt_di)
 # reinhardt-db/di enables Injectable implementation for DatabaseConnection
