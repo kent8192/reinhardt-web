@@ -67,7 +67,10 @@ claiming browser-visible latency numbers.
 
 Pure `page!` edits still compile as Rust today. A compile-free dev-mode
 template path is a separate architecture change and should not be implied by
-the current HMR notification channel.
+the current HMR notification channel. The Pages macro now emits batched
+attribute builders instead of one chained method call per generated attribute,
+which reduces generated Rust for attribute-heavy templates but does not remove
+the Rust compilation step.
 
 ## Hot-Reload Target Selection
 
