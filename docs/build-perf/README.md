@@ -42,6 +42,8 @@ environment variables.
 | `incremental-pages-wasm-check` | A Pages runtime WASM check loop |
 | `incremental-pages-wasm-build` | A Pages runtime WASM build/codegen loop |
 | `incremental-server-build` | A server crate native build loop |
+| `incremental-hot-reload-client-legacy-both-build` | Legacy Pages client-edit hot-reload work shape: WASM build plus native server build |
+| `incremental-hot-reload-server-legacy-both-build` | Legacy server-edit hot-reload work shape: native server build plus WASM build |
 | `incremental-leaf-build` | Incremental build/link cost for a low-fan-out crate |
 
 ## Interpreting Results
