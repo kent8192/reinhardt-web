@@ -16,6 +16,9 @@ Scenarios:
   incremental-page-macro-check
   incremental-pages-wasm-check
   incremental-pages-wasm-build
+  incremental-pages-fixture-wasm-build
+  incremental-pages-fixture-hot-patch
+  incremental-pages-fixture-hot-reload-legacy-both-build
   incremental-server-build
   incremental-hot-reload-client-legacy-both-build
   incremental-hot-reload-server-legacy-both-build

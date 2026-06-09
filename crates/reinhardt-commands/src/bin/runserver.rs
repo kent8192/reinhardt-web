@@ -15,6 +15,7 @@ use hyper::{Request, Response, StatusCode, body::Incoming};
 use hyper_util::rt::TokioIo;
 use reinhardt_commands::WelcomePage;
 use reinhardt_commands::{CollectStaticCommand, CollectStaticOptions};
+#[cfg(any(feature = "admin", feature = "pages"))]
 use reinhardt_commands::{
 	WasmBuildConfig, WasmBuilder, detect_cdylib_in_cargo_toml, is_wasm_stale,
 };
@@ -715,6 +716,10 @@ fn build_wasm_targets(no_wasm: bool, no_override_wasm: bool, force_wasm_legacy: 
 		);
 	}
 
+	#[cfg(not(any(feature = "admin", feature = "pages")))]
+	let _ = no_override_wasm;
+
+	#[cfg(any(feature = "admin", feature = "pages"))]
 	let force = !no_override_wasm;
 
 	#[cfg(feature = "admin")]
