@@ -40,7 +40,8 @@ brotli = { workspace = true }
 rmp-serde = { workspace = true }
 prost = { workspace = true }
 serial_test = { workspace = true, optional = true }
-aquamarine = { workspace = true }
+aquamarine = { workspace = true, optional = true }
+image = { version = "0.25", optional = true }
 sha2 = "0.10"
 hmac = "0.12"
 hex = "0.4"
@@ -54,7 +55,6 @@ serde-xml-rs = { version = "0.8.1", optional = true }
 parking_lot = "0.12"
 tracing = { workspace = true }
 fluent-bundle = { version = "0.15", optional = true }
-image = "0.25"
 
 # Server-side dependencies (not available on WASM)
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
@@ -80,15 +80,17 @@ default = [
   "macros",
   "security",
   "validators",
+  "image-validation",
   "serializers",
 ]
 
 # Module features (conditionally compiled when feature is enabled)
 types = []
-exception = []
+exception = ["validators"]
 signals = ["serde"]
 security = []
 validators = ["serde"]
+image-validation = ["dep:image"]
 serializers = ["serde"]
 messages = ["serde"]
 negotiation = []
@@ -110,6 +112,7 @@ core-full = [
   "macros",
   "security",
   "validators",
+  "image-validation",
   "serializers",
   "messages",
   "negotiation",
@@ -130,6 +133,7 @@ serde = ["dep:serde"]
 jsonschema = ["dep:jsonschema"]
 parallel = ["dep:rayon"]
 i18n = ["dep:fluent-bundle", "dep:unic-langid"]
+doc-diagrams = ["dep:aquamarine"]
 
 [build-dependencies]
 cfg_aliases = "0.2"
