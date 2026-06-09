@@ -22,9 +22,14 @@ The Reinhardt workspace has grown to **40 crates**, with `reinhardt-core` alone 
 
 Build performance is also a public-facing concern: any project that depends on `reinhardt = "..."` inherits the framework's compile cost. Improvements to the framework's internal structure propagate to user projects automatically.
 
-A diagnostic pass on the current state surfaced several "free wins" that have not yet been claimed:
+A diagnostic pass on the current state surfaced several possible optimization
+areas. Not every configuration-looking change is a free win; local benchmark
+results must decide:
 
-- `[profile.dev]` carries only `debug = 1`. No `codegen-units` tuning, no `split-debuginfo`, no `incremental` declaration.
+- `[profile.dev]` carries only `debug = 1`. An attempted
+  `line-tables-only` / `split-debuginfo` / `codegen-units = 256` profile
+  change was measured locally for Issue #5218 and rejected because it worsened
+  the target loops.
 - `.cargo/config.toml` has no linker configuration; macOS uses Apple `ld`, Ubuntu CI uses default `ld`.
 - `sccache` is configured globally in `~/.cargo/config.toml`, but **its Rust cache hit rate is 0.32 %** (1 hit out of 310 cacheable Rust compile requests, plus an additional 409 invocations marked `non-cacheable due to: incremental` that bypass the cache entirely). It is effectively unused.
 - 10 proc-macro crates exist; their generated-code sizes have not been audited.
@@ -61,7 +66,9 @@ Targets are placeholders; they are recalibrated against the actual Phase 0 basel
 ### 2.4 Top risks
 
 1. macOS `lld` switch breaks proc-macro / dylib linking. Mitigation: gate behind a spike PR with a measure-then-decide criterion; default remains Apple `ld`.
-2. `codegen-units = 256` triggers a latent optimizer-related bug. Mitigation: full `cargo test --workspace --all-features` after the change.
+2. Profile tuning can regress the measured loops even when it looks like a
+   generic Cargo best practice. Mitigation: keep `debug = 1` unless a future
+   benchmark proves the alternative across the target scenarios.
 3. sccache strategy revision invalidates existing CI caches. Mitigation: rotate cache key once, document the regeneration cost.
 
 ## 3. Considered approaches
@@ -125,19 +132,19 @@ All Phase A items are configuration changes. None modify Rust source code. Each 
 
 ```toml
 [profile.dev]
-debug = "line-tables-only"
-split-debuginfo = "unpacked"
-codegen-units = 256
-incremental = true
+debug = 1
 
 [profile.test]
-debug = "line-tables-only"
-split-debuginfo = "unpacked"
-codegen-units = 256
-incremental = true
+debug = 1
 ```
 
-Rationale: 256 codegen-units enables maximum parallel codegen of the leaf crate being edited. `line-tables-only` keeps panic backtraces useful while shrinking debuginfo. `split-debuginfo = "unpacked"` is the macOS default, made explicit; on Linux CI it reduces final-link work.
+Verdict: rejected for the current repository state. Issue #5218 measured the
+experimental profile (`line-tables-only`, `split-debuginfo = "unpacked"`,
+`codegen-units = 256`, explicit `incremental = true`) against `origin/main`
+with `hyperfine --warmup 1 --runs 2`. The branch became slower on the measured
+incremental loops before the profile was reverted. Keep `debug = 1` unless a
+future benchmark proves a different profile is faster across the target
+scenarios.
 
 #### A-2: Optimize dependencies in dev profile
 
@@ -204,7 +211,7 @@ This caches `target/` and `~/.cargo/{registry,git}` separately from sccache (whi
 
 | PR | Branch | Scope | Depends on |
 |---|---|---|---|
-| PR-A1 | `feature/issue-XXXX-profile-dev-tuning` | A-1 | Phase 0 complete |
+| PR-A1 | `feature/issue-XXXX-profile-dev-recheck` | A-1 recheck only | New benchmark evidence, not assumed |
 | PR-A2 | `feature/issue-XXXX-deps-opt-level` | A-2 | PR-A1 |
 | PR-A3a | `feature/issue-XXXX-linker-mold-ci` | A-3a | Phase 0 complete |
 | PR-A3b | `feature/issue-XXXX-linker-lld-macos-spike` | A-3b | Phase 0 complete (parallel with A-3a) |
@@ -373,7 +380,7 @@ Decision criteria for entering Phase C will incorporate the actual numbers produ
 ```text
 Phase 0 (1 PR)              Phase A (6 PRs)                   Phase B (8 PRs)
 ─────────────              ─────────────────                  ─────────────────
-PR-0  baseline      ──┬──▶  PR-A1  profile-dev          ──▶  PR-B1a  monomorph-analysis
+PR-0  baseline      ──┬──▶  PR-A1  profile-dev-recheck  ──▶  PR-B1a  monomorph-analysis
                       │      PR-A2  deps-opt-level             PR-B1b  monomorph-reduction
                       │      PR-A3a linker-mold-ci             PR-B2a  macro-expand-analysis
                       │      PR-A3b linker-lld-spike (║)       PR-B2b  thin-macro
@@ -398,7 +405,7 @@ PR-0  baseline      ──┬──▶  PR-A1  profile-dev          ──▶  P
 |---|---|---|
 | Parent | `epic: build time reduction (Phase 0/A/B)` | `enhancement`, `performance`, `high` |
 | #0 | `Phase 0: build performance measurement infrastructure` | `enhancement`, `ci-cd` |
-| #A-1 | `Phase A-1: tune [profile.dev] for codegen-units / debuginfo` | `enhancement`, `performance` |
+| #A-1 | `Phase A-1: recheck [profile.dev] alternatives before changing defaults` | `enhancement`, `performance` |
 | #A-2 | `Phase A-2: opt-level=1 for dev-profile dependencies` | `enhancement`, `performance` |
 | #A-3a | `Phase A-3a: switch CI linker to mold (Ubuntu)` | `enhancement`, `ci-cd`, `performance` |
 | #A-3b | `Phase A-3b: spike LLD linker on macOS Apple Silicon` | `enhancement`, `performance` |

@@ -299,6 +299,20 @@ impl PageElement {
 		self
 	}
 
+	/// Adds multiple attributes.
+	pub fn with_attrs<N, V>(mut self, attrs: impl IntoIterator<Item = (N, V)>) -> Self
+	where
+		N: Into<Cow<'static, str>>,
+		V: Into<Cow<'static, str>>,
+	{
+		self.attrs.extend(
+			attrs
+				.into_iter()
+				.map(|(name, value)| (name.into(), value.into())),
+		);
+		self
+	}
+
 	/// Adds a boolean attribute.
 	///
 	/// Boolean attributes in HTML are either present (true) or absent (false).
@@ -323,6 +337,20 @@ impl PageElement {
 		} else {
 			self
 		}
+	}
+
+	/// Adds multiple boolean attributes.
+	pub fn with_bool_attrs<N>(mut self, attrs: impl IntoIterator<Item = (N, bool)>) -> Self
+	where
+		N: Into<Cow<'static, str>>,
+	{
+		for (name, value) in attrs {
+			if value {
+				let name = name.into();
+				self.attrs.push((name.clone(), name));
+			}
+		}
+		self
 	}
 
 	/// Adds a child view.
@@ -853,6 +881,25 @@ mod tests {
 			.attr("class", "container")
 			.attr("id", "main");
 		assert_eq!(el.attrs.len(), 2);
+	}
+
+	#[test]
+	fn test_element_with_batch_attrs() {
+		let el = PageElement::new("div").with_attrs([("class", "container"), ("id", "main")]);
+		assert_eq!(el.attrs.len(), 2);
+		assert_eq!(el.attrs[0].0, "class");
+		assert_eq!(el.attrs[0].1, "container");
+		assert_eq!(el.attrs[1].0, "id");
+		assert_eq!(el.attrs[1].1, "main");
+	}
+
+	#[test]
+	fn test_element_with_batch_bool_attrs() {
+		let el =
+			PageElement::new("button").with_bool_attrs([("disabled", true), ("hidden", false)]);
+		assert_eq!(el.attrs.len(), 1);
+		assert_eq!(el.attrs[0].0, "disabled");
+		assert_eq!(el.attrs[0].1, "disabled");
 	}
 
 	#[test]

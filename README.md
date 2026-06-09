@@ -308,6 +308,11 @@ but manage the wasm build yourself. A successful server restart log is
 emitted only after the respawned child accepts connections at the
 advertised development address.
 
+For build-loop performance work, use `cargo make bench-builds-dry-run`
+to inspect the benchmark commands and `cargo make bench-builds` to write
+a reproducible report under `docs/build-perf/`. See
+[Build Performance](instructions/BUILD_PERFORMANCE.md) for details.
+
 ### 4. Create Your First App
 
 ```bash

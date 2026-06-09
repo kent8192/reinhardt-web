@@ -94,9 +94,6 @@ web-sys-full = [
 ]
 
 [dependencies]
-# Documentation
-aquamarine = "0.5"
-
 # Builder generator for `Component { ... }` invocation form (spec §3.5.2).
 # Used as a runtime dep so user code can `#[derive(bon::Builder)]` on
 # component prop structs. Staged for removal under spec §10.
@@ -195,12 +192,9 @@ web-sys = { version = "0.3.83", features = [
 # Async support for WASM
 reinhardt-core = {workspace = true, default-features = false, features = ["reactive", "page", "security"]}
 smallvec = { workspace = true }
-syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
-quote = "1.0"
-proc-macro2 = "1.0"
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 wasm-bindgen-futures = "0.4.56"
-reqwest = { workspace = true }
+reqwest = { workspace = true, default-features = false, features = ["json"] }
 getrandom = { version = "0.3", features = ["wasm_js"] }
 uuid = { version = "1.7", features = ["v7", "js"] }
 # Issue #4217: depend on reinhardt-urls on wasm to consume the canonical

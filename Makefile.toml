@@ -38,6 +38,22 @@ description = "Clean build artifacts"
 command = "cargo"
 args = ["clean"]
 
+[tasks.bench-builds]
+description = "Measure standard build-loop scenarios with hyperfine"
+script_runner = "sh"
+script = '''
+set -e
+scripts/bench-build.sh
+'''
+
+[tasks.bench-builds-dry-run]
+description = "Print standard build-loop benchmark commands without running them"
+script_runner = "sh"
+script = '''
+set -e
+scripts/bench-build.sh --dry-run
+'''
+
 # ============================================================================
 # Code Quality Tasks
 # ============================================================================

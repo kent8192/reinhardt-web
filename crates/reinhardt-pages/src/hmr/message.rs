@@ -11,6 +11,13 @@ pub enum HmrMessage {
 		/// The path of the changed CSS file, relative to the project root.
 		path: String,
 	},
+	/// Static HTML was updated and can be patched without rebuilding WASM.
+	HtmlReplace {
+		/// CSS selector for the element whose contents should be replaced.
+		selector: String,
+		/// Replacement HTML for the selected element.
+		html: String,
+	},
 	/// A non-CSS file was changed - the client should perform a full page reload.
 	FullReload {
 		/// Human-readable reason for the reload.
@@ -69,6 +76,26 @@ mod tests {
 		assert_eq!(msg, deserialized);
 		assert!(json.contains("\"type\":\"full_reload\""));
 		assert!(json.contains("\"reason\":\"Rust source changed\""));
+	}
+
+	#[rstest]
+	fn test_html_replace_serialization() {
+		// Arrange
+		let msg = HmrMessage::HtmlReplace {
+			selector: "#app".to_string(),
+			html: "<div id=\"app\">Updated</div>".to_string(),
+		};
+
+		// Act
+		let json = msg.to_json().unwrap();
+		let deserialized = HmrMessage::from_json(&json).unwrap();
+
+		// Assert
+		assert_eq!(msg, deserialized);
+		let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+		assert_eq!(value["type"], "html_replace");
+		assert_eq!(value["selector"], "#app");
+		assert_eq!(value["html"], "<div id=\"app\">Updated</div>");
 	}
 
 	#[rstest]

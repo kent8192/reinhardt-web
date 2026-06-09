@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 default-run = "manage"
 
+[profile.dev]
+codegen-units = 16
+debug = 0
+
 [lib]
 crate-type = ["cdylib", "rlib"]  # cdylib for WASM, rlib for server
 

@@ -3,6 +3,10 @@ name = "{{ project_name }}"
 version = "0.1.0"
 edition = "2024"
 
+[profile.dev]
+codegen-units = 16
+debug = 0
+
 [[bin]]
 name = "manage"
 path = "src/bin/manage.rs"

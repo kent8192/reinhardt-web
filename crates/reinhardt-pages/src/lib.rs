@@ -276,6 +276,7 @@ pub mod integ;
 // Layer 1: server_fn unit tests (server-side only)
 // Layer 2: Component + server_fn mock tests (WASM)
 // Layer 3: E2E tests (both platforms)
+#[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
 // Static file URL resolver
@@ -351,7 +352,9 @@ pub use router::Link;
 pub use reactive::hooks::router::{NavigateError, RouterHandle, use_router};
 pub use router::{NavigationType, navigate};
 pub use server_fn::{ServerFn, ServerFnError, parse_server_error_message};
-pub use ssr::{SsrOptions, SsrRenderer, SsrState};
+pub use ssr::SsrState;
+#[cfg(native)]
+pub use ssr::{SsrOptions, SsrRenderer};
 pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
 
 // Re-export procedural macros
