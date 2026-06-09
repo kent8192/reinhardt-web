@@ -431,6 +431,7 @@ flowchart TD
     B -->|Partial failure| E["RP-1: Identify published/unpublished<br/>rollback unpublished versions<br/>new Release PR and merge"]
     B -->|gix cache panic| F["RP-3: Re-run release-plz<br/>(transient error)"]
     B -->|Phantom version bump| G["KI-5: Set release_always = true"]
+    B -->|Dry-run same-release dep false positive| H["KI-7: release-plz dry-run<br/>workspace dependency limitation"]
 ```
 
 ### KI-1: Circular Publish Dependencies
@@ -549,6 +550,25 @@ exceeds the burst limit, resulting in HTTP 429 errors.
 - Alternatively, increase the delay or add more retry rounds
 
 **Reference**: `<https://github.com/rust-lang/crates.io/issues/1643>`
+
+### KI-7: release-plz Dry-Run Same-Release Dependency Limitation
+
+**Status**: Mitigated in CI; upstream issue remains open.
+
+**Problem**: `release-plz release --dry-run` can fail when a workspace crate
+depends on another workspace crate at the same not-yet-published version. In a
+real release, release-plz publishes the dependency first. During dry-run, that
+upload is skipped, so the dependent crate may still resolve the version from
+crates.io and fail.
+
+**Mitigation**: `release-plz-dry-run.yml` treats this specific upstream false
+positive as a warning only when the log shows both:
+- a Reinhardt workspace crate skipped because of dry-run mode
+- a later failed requirement for the same skipped crate and version
+
+All other release-plz dry-run failures remain hard CI failures.
+
+**Tracking**: [release-plz#2878](https://github.com/release-plz/release-plz/issues/2878), [reinhardt-web#5089](https://github.com/kent8192/reinhardt-web/issues/5089)
 
 ---
 
