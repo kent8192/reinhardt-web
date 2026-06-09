@@ -54,6 +54,9 @@
 //! - `middleware-security` - Security headers (HSTS, XSS Protection, etc.)
 //! - `middleware-rate-limit` - Rate limiting and throttling
 //!
+//! #### Core Extensions
+//! - `signals` - Django-style model lifecycle signals
+//!
 //! See [Cargo.toml feature definitions](https://github.com/kent8192/reinhardt-web/blob/main/Cargo.toml) for detailed documentation.
 //!
 //! ## Quick Example
@@ -1042,7 +1045,7 @@ pub use reinhardt_rest::throttling::{
 };
 
 // Re-export signals
-#[cfg(all(feature = "core", native))]
+#[cfg(all(feature = "signals", native))]
 pub use reinhardt_core::signals::{
 	M2MAction, M2MChangeEvent, Signal, m2m_changed, post_delete, post_save, pre_delete, pre_save,
 };
@@ -1278,12 +1281,11 @@ pub mod prelude {
 	#[cfg(feature = "core")]
 	pub use crate::core::serde::{Deserialize, Serialize};
 
-	// Core feature - types, signals, etc.
+	// Core feature - types, middleware, and request/response primitives.
 	#[cfg(feature = "core")]
-	pub use crate::{
-		Error, Handler, Middleware, MiddlewareChain, Request, Response, Result, Signal,
-		m2m_changed, post_delete, post_save, pre_delete, pre_save,
-	};
+	pub use crate::{Error, Handler, Middleware, MiddlewareChain, Request, Response, Result};
+	#[cfg(feature = "signals")]
+	pub use crate::{Signal, m2m_changed, post_delete, post_save, pre_delete, pre_save};
 
 	// HTTP method macros - always available
 	pub use crate::{api_view, delete, get, patch, post, put};
