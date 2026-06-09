@@ -2614,16 +2614,23 @@ impl RunServerCommand {
 		};
 
 		let js_name = crate_name.replace('-', "_");
-		let artifact = cwd.join("dist").join(format!("{}.js", js_name));
-		if artifact.exists() && !force {
-			ctx.info(&format!(
-				"Pages WASM: --no-override-wasm set and dist/{}.js exists, skipping build",
-				js_name
-			));
+		let artifact = cwd.join("dist").join(format!("{}_bg.wasm", js_name));
+		if !force && !crate::wasm_builder::is_wasm_stale(&cwd, &artifact) {
+			ctx.info("Pages WASM: artifacts up to date, skipping build (--no-override-wasm)");
 			return Ok(());
 		}
 
-		ctx.info(&format!("Building pages WASM for {}...", crate_name));
+		let reason = if force {
+			"forced rebuild"
+		} else if artifact.exists() {
+			"source changed since last build"
+		} else {
+			"no existing artifact"
+		};
+		ctx.info(&format!(
+			"Building pages WASM for {} ({})...",
+			crate_name, reason
+		));
 		let config = crate::wasm_builder::WasmBuildConfig::new(".").output_dir("dist");
 		match crate::wasm_builder::WasmBuilder::new(config).build() {
 			Ok(_) => {

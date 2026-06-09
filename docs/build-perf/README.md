@@ -91,3 +91,8 @@ for the change batch succeed:
 - Shared edits reload only after both selected pipelines succeed and the
   respawned server is reachable.
 - Failed rebuilds keep the old page running and wait for the next change.
+
+`runserver --with-pages --no-override-wasm` reuses existing Pages artifacts
+only when `dist/<crate>_bg.wasm` is newer than tracked source files. A plain
+`dist/<crate>.js` existence check is not enough: it can serve stale WASM after a
+Rust edit and hides the real feedback-loop cost.
