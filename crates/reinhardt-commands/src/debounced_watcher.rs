@@ -282,11 +282,11 @@ fn notify_static_page_patch(
 		selector: "#app".to_string(),
 		html,
 	};
-	if let Ok(json) = msg.to_json() {
-		if let Some(tx) = hmr_tx {
-			let _ = tx.send(json);
-			return true;
-		}
+	if let Ok(json) = msg.to_json()
+		&& let Some(tx) = hmr_tx
+	{
+		let _ = tx.send(json);
+		return true;
 	}
 	false
 }
