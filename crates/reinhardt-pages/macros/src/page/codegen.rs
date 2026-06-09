@@ -946,7 +946,7 @@ mod tests {
 		let output_str = output.to_string();
 
 		// TokenStream stringification adds spaces between tokens
-		assert!(output_str.contains(". attr"));
+		assert!(output_str.contains(". with_attrs"));
 		assert!(output_str.contains("\"class\""));
 		assert!(output_str.contains("\"container\""));
 	}

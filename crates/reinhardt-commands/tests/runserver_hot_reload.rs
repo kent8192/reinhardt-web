@@ -723,17 +723,21 @@ async fn hr_9_run_watcher_broadcasts_reload_after_server_rebuild() {
 	// Arrange: fixture + initial server child + cwd switched so cargo
 	// resolves the fixture's manifest. Mirrors `run_server_pipeline`.
 	let fixture = Fixture::new("hr9_fixture", 900);
-	let initial_child = spawn_long_running_child(&fixture).await;
+	let addr = reserve_loopback_addr();
+	let initial_child = spawn_listening_child(&fixture, &addr).await;
+	assert_addr_reachable(&addr).await;
 	let saved_cwd = std::env::current_dir().expect("current dir");
 	std::env::set_current_dir(fixture.path()).expect("set fixture cwd");
 
 	let bin_path = fixture.manage_bin();
 	let respawn_count = Arc::new(AtomicUsize::new(0));
 	let respawn_count_for_closure = Arc::clone(&respawn_count);
+	let respawn_addr = addr.clone();
 	let respawn = move || -> std::io::Result<tokio::process::Child> {
 		respawn_count_for_closure.fetch_add(1, Ordering::SeqCst);
 		tokio::process::Command::new(&bin_path)
 			.kill_on_drop(true)
+			.env("HOT_RELOAD_LISTEN_ADDR", &respawn_addr)
 			.spawn()
 	};
 
@@ -741,13 +745,13 @@ async fn hr_9_run_watcher_broadcasts_reload_after_server_rebuild() {
 	let ctx = CommandContext::default();
 	let config = WatcherConfig {
 		bin_name: "manage".to_string(),
-		address: "127.0.0.1:0".to_string(),
+		address: addr.clone(),
 		roots: SourceRoots {
 			src_dirs: vec![fixture.path().join("src")],
 			manifest_files: vec![fixture.path().join("Cargo.toml")],
 			lockfile: None,
 		},
-		server_address: None,
+		server_address: Some(addr),
 		no_wasm_rebuild: true,
 		pages_enabled: true,
 		hmr_tx: Some(hmr_tx),
