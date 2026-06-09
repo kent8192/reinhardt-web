@@ -12,7 +12,8 @@ Environment:
 - Host: macOS on `aarch64-apple-darwin`
 - Rust: `rustc 1.94.1 (e408947bf 2026-03-25)`
 - Tool: `hyperfine`; leaf/core scenarios used `--warmup 1 --runs 2`, latest
-  Pages/WASM and server scenarios used `--warmup 2 --runs 5`
+  Pages/WASM and server scenarios used `--warmup 2 --runs 5`; static
+  `page!` hot-patch fixture scenarios used `--warmup 3 --runs 12`
 
 ## Results
 
@@ -56,6 +57,26 @@ touch crates/reinhardt-server/src/server.rs && cargo build -p reinhardt-server &
 touch crates/reinhardt-server/src/server.rs && cargo build -p reinhardt-server
 ```
 
+### App-Side `page!` Fixture Loops
+
+These measurements use the detached `spa_navigation_app` browser fixture after
+moving its `page!` bodies under `src/client.rs`, which matches the watcher
+ownership boundary for WASM-only client source.
+
+| Scenario | Mean | Change vs legacy both-target |
+|---|---:|---:|
+| Static `page!` hot patch | 0.005s | 99.8% faster |
+| Fixture WASM build | 2.292s | 19.1% faster |
+| Legacy fixture WASM + server build | 2.832s | baseline |
+
+Raw command shapes:
+
+```bash
+touch crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs && ./target/debug/examples/page_hot_patch_probe crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs >/dev/null
+touch crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs && cargo build --manifest-path crates/reinhardt-pages/tests/fixtures/spa_navigation_app/Cargo.toml --target wasm32-unknown-unknown
+touch crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs && cargo build --manifest-path crates/reinhardt-pages/tests/fixtures/spa_navigation_app/Cargo.toml --target wasm32-unknown-unknown && cargo build -p reinhardt-server
+```
+
 ## Interpretation
 
 The shared/core edit loop currently lands inside the expected 30-60% reduction
@@ -89,6 +110,12 @@ The earlier experimental profile change (`line-tables-only`,
 reverted. Keep the default `debug = 1` profile unless a future benchmark proves
 a different profile is faster across the target scenarios.
 
-These measurements do not prove compile-free `page!` editing. Inline `page!`
-macro edits still compile as Rust; compile-free template edits require a
-separate dev-mode runtime/template architecture.
+Static `page!(|| { ... })` edits now have a compile-free development path when
+the changed file is owned by the Pages client side (`src/client.rs`,
+`src/client/**`, or `src/apps/*/client/**`) and the parser can render the page
+body without dynamic Rust. That path reaches the original 80-98% pure
+`page!` edit target in the fixture run, measuring 99.8% faster than the legacy
+both-target rebuild shape. Dynamic Rust expressions, event handlers, control
+flow, components, and shared/server-owned files intentionally fall back to
+normal rebuilds, so the broader WASM-side Rust logic target remains unmet by
+this hot-patch path.

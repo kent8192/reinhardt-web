@@ -8,39 +8,6 @@
 //!
 //! Refs #4088.
 
-use reinhardt_pages::app::ClientLauncher;
-use reinhardt_pages::component::{IntoPage, Page, PageElement};
-use reinhardt_pages::router::ClientRouter;
-use wasm_bindgen::prelude::*;
+mod client;
 
-fn home_page() -> Page {
-	PageElement::new("div")
-		.attr("id", "route-home")
-		.child(
-			PageElement::new("a")
-				.attr("href", "/login")
-				.attr("id", "go-to-login")
-				.child("Go to login"),
-		)
-		.into_page()
-}
-
-fn login_page() -> Page {
-	PageElement::new("div")
-		.attr("id", "route-login")
-		.child("LOGIN VIEW")
-		.into_page()
-}
-
-#[wasm_bindgen(start)]
-pub fn start() -> Result<(), JsValue> {
-	console_error_panic_hook::set_once();
-
-	ClientLauncher::new("#app")
-		.router_client(|| {
-			ClientRouter::new()
-				.route("home", "/", home_page)
-				.route("login", "/login", login_page)
-		})
-		.launch()
-}
+pub use client::start;

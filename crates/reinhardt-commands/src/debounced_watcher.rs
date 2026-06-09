@@ -268,6 +268,31 @@ fn notify_browser_reload(hmr_tx: Option<&broadcast::Sender<String>>, reason: &st
 	}
 }
 
+#[cfg(feature = "pages")]
+fn notify_static_page_patch(
+	hmr_tx: Option<&broadcast::Sender<String>>,
+	paths: &[PathBuf],
+	targets: RebuildTargets,
+) -> bool {
+	if hmr_tx.is_none() || targets.server || !targets.wasm {
+		return false;
+	}
+	let Some(html) = crate::page_hot_patch::render_static_page_patch(paths) else {
+		return false;
+	};
+	let msg = reinhardt_pages::hmr::HmrMessage::HtmlReplace {
+		selector: "body".to_string(),
+		html,
+	};
+	if let Ok(json) = msg.to_json() {
+		if let Some(tx) = hmr_tx {
+			let _ = tx.send(json);
+			return true;
+		}
+	}
+	false
+}
+
 /// Dispatch one debounced path batch through the selected rebuild pipelines.
 ///
 /// This is split out from [`run_watcher`] so tests can validate the
@@ -287,6 +312,11 @@ pub async fn run_rebuild_for_paths(
 	let targets = rebuild_targets_for_paths(&paths, config);
 	if !targets.has_work() {
 		ctx.info("[hot-reload] no rebuild target matched; waiting for next change");
+		return;
+	}
+	#[cfg(feature = "pages")]
+	if notify_static_page_patch(config.hmr_tx.as_ref(), &paths, targets) {
+		ctx.info("[hot-reload] static page patch sent without rebuilding WASM");
 		return;
 	}
 
@@ -687,5 +717,81 @@ mod tests {
 	fn notify_browser_reload_without_channel_is_noop() {
 		// Act & Assert
 		notify_browser_reload(None, "Server rebuild completed successfully");
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn notify_static_page_patch_sends_html_replace_for_wasm_only_static_page() {
+		// Arrange
+		let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+		let client_path = temp_dir.path().join("src").join("client.rs");
+		std::fs::create_dir_all(
+			client_path
+				.parent()
+				.expect("client path should have parent"),
+		)
+		.expect("client dir should be created");
+		std::fs::write(
+			&client_path,
+			r#"
+				use reinhardt_pages::page;
+
+				fn home_page() -> Page {
+					page!(|| {
+						div {
+							id: "route-home",
+							"Updated"
+						}
+					})()
+				}
+			"#,
+		)
+		.expect("client page fixture should be written");
+		let (tx, mut rx) = broadcast::channel::<String>(8);
+
+		// Act
+		let sent = notify_static_page_patch(
+			Some(&tx),
+			&[client_path],
+			RebuildTargets {
+				server: false,
+				wasm: true,
+			},
+		);
+
+		// Assert
+		assert!(sent, "static page patch should be sent");
+		let json = rx
+			.try_recv()
+			.expect("html patch message should be broadcast");
+		let message: reinhardt_pages::hmr::HmrMessage =
+			serde_json::from_str(&json).expect("message should be valid HMR JSON");
+		assert_eq!(
+			message,
+			reinhardt_pages::hmr::HmrMessage::HtmlReplace {
+				selector: "body".to_string(),
+				html: r#"<div id="route-home">Updated</div>"#.to_string(),
+			}
+		);
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn notify_static_page_patch_falls_back_for_server_target() {
+		// Arrange
+		let (tx, _rx) = broadcast::channel::<String>(8);
+
+		// Act
+		let sent = notify_static_page_patch(
+			Some(&tx),
+			&[PathBuf::from("/project/src/lib.rs")],
+			RebuildTargets {
+				server: true,
+				wasm: true,
+			},
+		);
+
+		// Assert
+		assert!(!sent, "shared files must keep the rebuild path");
 	}
 }

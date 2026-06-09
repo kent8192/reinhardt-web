@@ -84,6 +84,9 @@ if [ "${#requested[@]}" -eq 0 ]; then
     incremental-page-macro-check
     incremental-pages-wasm-check
     incremental-pages-wasm-build
+    incremental-pages-fixture-wasm-build
+    incremental-pages-fixture-hot-patch
+    incremental-pages-fixture-hot-reload-legacy-both-build
     incremental-server-build
     incremental-hot-reload-client-legacy-both-build
     incremental-hot-reload-server-legacy-both-build
@@ -124,6 +127,15 @@ scenario_command() {
       ;;
     incremental-pages-wasm-build)
       printf '%s\n' 'touch crates/reinhardt-pages/src/component.rs && cargo build -p reinhardt-pages --target wasm32-unknown-unknown --features pages-full'
+      ;;
+    incremental-pages-fixture-wasm-build)
+      printf '%s\n' 'touch crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs && cargo build --manifest-path crates/reinhardt-pages/tests/fixtures/spa_navigation_app/Cargo.toml --target wasm32-unknown-unknown'
+      ;;
+    incremental-pages-fixture-hot-patch)
+      printf '%s\n' 'test -x ./target/debug/examples/page_hot_patch_probe || cargo build -q -p reinhardt-commands --features pages,autoreload --example page_hot_patch_probe; touch crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs && ./target/debug/examples/page_hot_patch_probe crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs >/dev/null'
+      ;;
+    incremental-pages-fixture-hot-reload-legacy-both-build)
+      printf '%s\n' 'touch crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs && cargo build --manifest-path crates/reinhardt-pages/tests/fixtures/spa_navigation_app/Cargo.toml --target wasm32-unknown-unknown && cargo build -p reinhardt-server'
       ;;
     incremental-server-build)
       printf '%s\n' 'touch crates/reinhardt-server/src/server.rs && cargo build -p reinhardt-server'

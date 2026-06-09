@@ -41,6 +41,9 @@ environment variables.
 | `incremental-page-macro-check` | A Pages macro fan-out edit loop |
 | `incremental-pages-wasm-check` | A Pages runtime WASM check loop |
 | `incremental-pages-wasm-build` | A Pages runtime WASM library build loop |
+| `incremental-pages-fixture-wasm-build` | A detached browser app fixture build after editing `page!` source |
+| `incremental-pages-fixture-hot-patch` | Compile-free static `page!` hot patch loop for the detached browser fixture |
+| `incremental-pages-fixture-hot-reload-legacy-both-build` | Legacy detached browser app `page!` edit work shape: fixture WASM build plus native server build |
 | `incremental-server-build` | A server crate native build loop |
 | `incremental-hot-reload-client-legacy-both-build` | Legacy Pages client-edit hot-reload work shape: WASM build plus native server build |
 | `incremental-hot-reload-server-legacy-both-build` | Legacy server-edit hot-reload work shape: native server build plus WASM build |
@@ -63,6 +66,11 @@ The Pages WASM build scenario currently measures Cargo's library artifact only;
 it does not run `wasm-bindgen` against a browser-loadable `cdylib` fixture.
 Add that fixture-level scenario before claiming end-to-end browser artifact
 latency.
+Use `incremental-pages-fixture-wasm-build` when the claim is specifically
+about app-side `page!` edits rather than framework runtime edits.
+Use `incremental-pages-fixture-hot-patch` for static `page!(|| { ... })`
+edits that can be parsed and broadcast through the development HMR channel
+without rebuilding the WASM artifact.
 When reducing this scenario, prefer removing non-browser modules from the
 WASM compilation graph before changing Cargo profiles: profile changes measured
 noisy or slower locally, while feature/target gating gives a direct dependency
@@ -75,12 +83,13 @@ depend on a native server respawn also wait briefly for the child server TCP
 address to become reachable. Runtime measurements still need to be added before
 claiming browser-visible latency numbers.
 
-Pure `page!` edits still compile as Rust today. A compile-free dev-mode
-template path is a separate architecture change and should not be implied by
-the current HMR notification channel. The Pages macro now emits batched
-attribute builders instead of one chained method call per generated attribute,
-which reduces generated Rust for attribute-heavy templates but does not remove
-the Rust compilation step.
+Static `page!(|| { ... })` edits under WASM-owned client source paths can use
+the compile-free development hot patch path. Dynamic Rust expressions, event
+handlers, control flow, components, and shared/server-owned files still fall
+back to the normal rebuild path. The Pages macro also emits batched attribute
+builders instead of one chained method call per generated attribute, which
+reduces generated Rust for attribute-heavy templates when a rebuild is still
+required.
 
 ## Hot-Reload Target Selection
 
