@@ -1448,8 +1448,8 @@ mod tests {
 		let result = StaticFilesMiddleware::inject_wasm_script(html, &entry, "/", None);
 
 		// Assert
-		assert!(result.contains("<h1>İstanbul</h1>\n<!-- Reinhardt WASM Auto-Loader -->"));
-		assert!(result.contains("</BODY></html>"));
+		let expected = "<html><body><h1>İstanbul</h1>\n<!-- Reinhardt WASM Auto-Loader -->\n<script type=\"module\">\nconst { default: init } = await import('/app.js');\nawait init({ module_or_path: '/app_bg.wasm' });\n</script>\n</BODY></html>";
+		assert_eq!(result, expected);
 	}
 
 	#[rstest]
