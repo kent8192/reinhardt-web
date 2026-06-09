@@ -38,12 +38,20 @@ fn render_static_page_source(source: &str) -> Option<String> {
 fn find_static_page_body(source: &str) -> Option<&str> {
 	let mut bodies = source
 		.match_indices("page!")
+		.filter(|(page_start, _)| is_page_macro_boundary(source, *page_start))
 		.filter_map(|(page_start, _)| parse_static_page_body_at(source, page_start));
 	let body = bodies.next()?;
 	if bodies.next().is_some() {
 		return None;
 	}
 	Some(body)
+}
+
+fn is_page_macro_boundary(source: &str, page_start: usize) -> bool {
+	source[..page_start]
+		.chars()
+		.next_back()
+		.is_none_or(|ch| !is_ident_continue(ch))
 }
 
 fn parse_static_page_body_at(source: &str, page_start: usize) -> Option<&str> {
@@ -328,6 +336,27 @@ mod tests {
 		"#;
 
 		assert!(render_static_page_source(source).is_none());
+	}
+
+	#[rstest]
+	fn ignores_page_macro_substrings_inside_identifiers() {
+		let source = r#"
+			fn helper() {
+				mypage!(|| {
+					div { "Not a page macro" }
+				});
+			}
+
+			fn home_page() -> Page {
+				page!(|| {
+					div { "Home" }
+				})()
+			}
+		"#;
+
+		let html = render_static_page_source(source).expect("static page should render");
+
+		assert_eq!(html, r#"<div>Home</div>"#);
 	}
 
 	#[rstest]
