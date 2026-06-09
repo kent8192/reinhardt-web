@@ -19,9 +19,9 @@ Environment:
 |---|---:|---:|---:|
 | `incremental-leaf-check` | 0.389s | 0.512s | 31.4% slower |
 | `incremental-core-check` | 50.022s | 31.875s | 36.3% faster |
-| `incremental-pages-wasm-check` | 1.528s | 1.354s | 11.4% faster |
-| `incremental-pages-wasm-build` | 1.933s | 2.032s | 5.1% slower |
-| `incremental-server-build` | 0.947s | 1.035s | 9.3% slower |
+| `incremental-pages-wasm-check` | 1.528s | 1.242s | 18.7% faster |
+| `incremental-pages-wasm-build` | 1.933s | 1.876s | 2.9% faster |
+| `incremental-server-build` | 0.947s | 0.905s | 4.4% faster |
 
 Raw command shapes:
 
@@ -41,8 +41,8 @@ the PR branch targeted rebuild shape.
 
 | Scenario | Legacy both-target mean | Targeted mean | Change |
 |---|---:|---:|---:|
-| Pages client edit | 2.402s | 1.863s | 22.4% faster |
-| Server-only edit | 1.253s | 0.854s | 31.9% faster |
+| Pages client edit | 2.302s | 1.837s | 20.2% faster |
+| Server-only edit | 1.212s | 0.884s | 27.1% faster |
 
 Raw command shapes:
 
@@ -59,11 +59,12 @@ The shared/core edit loop currently lands inside the expected 30-60% reduction
 range. The leaf package check does not: it is slower in this local run, so PR
 #5220 must not claim a universal incremental-check improvement.
 
-The targeted server-only hot-reload work shape lands just inside the expected
-30-60% reduction range. The targeted Pages/WASM client-edit work shape does
-not: it improves by 22.4%, below the expected 40-70% range. Direct WASM build
-also did not improve, so further work must reduce the WASM build/bindgen path
-itself rather than only skipping unrelated native server work.
+The targeted server-only hot-reload work shape is close to, but still below,
+the expected 30-60% reduction range in the latest local run. The targeted
+Pages/WASM client-edit work shape does not land in the expected 40-70% range:
+it improves by 20.2%. Direct WASM build improves only 2.9%, so further work
+must reduce the WASM build/bindgen path itself rather than only skipping
+unrelated native server work.
 
 The earlier experimental profile change (`line-tables-only`,
 `split-debuginfo = "unpacked"`, `codegen-units = 256`, explicit
