@@ -14,6 +14,9 @@ Scenarios:
   incremental-core-check
   incremental-db-macro-check
   incremental-page-macro-check
+  incremental-pages-wasm-check
+  incremental-pages-wasm-build
+  incremental-server-build
   incremental-leaf-build
 
 The script records reproducible build-loop timings for Reinhardt Pages and
@@ -77,6 +80,9 @@ if [ "${#requested[@]}" -eq 0 ]; then
     incremental-core-check
     incremental-db-macro-check
     incremental-page-macro-check
+    incremental-pages-wasm-check
+    incremental-pages-wasm-build
+    incremental-server-build
     incremental-leaf-build
   )
 fi
@@ -108,6 +114,15 @@ scenario_command() {
       ;;
     incremental-page-macro-check)
       printf '%s\n' 'touch crates/reinhardt-pages/macros/src/lib.rs && cargo check --workspace'
+      ;;
+    incremental-pages-wasm-check)
+      printf '%s\n' 'touch crates/reinhardt-pages/src/component.rs && cargo check -p reinhardt-pages --target wasm32-unknown-unknown --features pages-full'
+      ;;
+    incremental-pages-wasm-build)
+      printf '%s\n' 'touch crates/reinhardt-pages/src/component.rs && cargo build -p reinhardt-pages --target wasm32-unknown-unknown --features pages-full'
+      ;;
+    incremental-server-build)
+      printf '%s\n' 'touch crates/reinhardt-server/src/server.rs && cargo build -p reinhardt-server'
       ;;
     incremental-leaf-build)
       printf '%s\n' 'touch crates/reinhardt-throttling/src/lib.rs && cargo build -p reinhardt-throttling'
