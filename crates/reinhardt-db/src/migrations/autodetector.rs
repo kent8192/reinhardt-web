@@ -4593,6 +4593,15 @@ impl MigrationAutodetector {
 					if Self::single_field_unique_already_present(to_constraint, from_model) {
 						continue;
 					}
+					if Self::added_single_field_unique_preserved_by_rename(
+						changes,
+						app_label,
+						model_name,
+						to_constraint,
+						from_model,
+					) {
+						continue;
+					}
 					changes.added_constraints.push((
 						app_label.clone(),
 						model_name.clone(),
@@ -4635,6 +4644,15 @@ impl MigrationAutodetector {
 					if Self::single_field_unique_already_present(from_constraint, to_model) {
 						continue;
 					}
+					if Self::removed_single_field_unique_preserved_by_rename(
+						changes,
+						app_label,
+						model_name,
+						to_model,
+						from_constraint,
+					) {
+						continue;
+					}
 					changes.removed_constraints.push((
 						app_label.clone(),
 						model_name.clone(),
@@ -4663,19 +4681,61 @@ impl MigrationAutodetector {
 			return false;
 		}
 		let column = &candidate.fields[0];
-		let covered_by_constraint = other_side
+		Self::single_field_unique_column_already_present(other_side, column)
+	}
+
+	fn single_field_unique_column_already_present(model: &ModelState, column: &str) -> bool {
+		let covered_by_constraint = model
 			.constraints
 			.iter()
-			.any(|c| is_single_field_unique(c) && &c.fields[0] == column);
+			.any(|c| is_single_field_unique(c) && c.fields[0] == column);
 		if covered_by_constraint {
 			return true;
 		}
-		other_side
+		model
 			.fields
 			.get(column)
 			.and_then(|f| f.params.get("unique"))
 			.map(String::as_str)
 			== Some("true")
+	}
+
+	fn added_single_field_unique_preserved_by_rename(
+		changes: &DetectedChanges,
+		app_label: &str,
+		model_name: &str,
+		to_constraint: &ConstraintDefinition,
+		from_model: &ModelState,
+	) -> bool {
+		if !is_single_field_unique(to_constraint) {
+			return false;
+		}
+		let new_column = &to_constraint.fields[0];
+		changes.renamed_fields.iter().any(|(app, model, old, new)| {
+			app == app_label
+				&& model == model_name
+				&& new == new_column
+				&& Self::single_field_unique_column_already_present(from_model, old)
+		})
+	}
+
+	fn removed_single_field_unique_preserved_by_rename(
+		changes: &DetectedChanges,
+		app_label: &str,
+		from_model_name: &str,
+		to_model: &ModelState,
+		from_constraint: &ConstraintDefinition,
+	) -> bool {
+		if !is_single_field_unique(from_constraint) {
+			return false;
+		}
+		let old_column = &from_constraint.fields[0];
+		changes.renamed_fields.iter().any(|(app, model, old, new)| {
+			app == app_label
+				&& (model == from_model_name || model == &to_model.name)
+				&& old == old_column
+				&& Self::single_field_unique_column_already_present(to_model, new)
+		})
 	}
 
 	/// Final-pass dedup: drop redundant single-column `AddConstraint UNIQUE`
@@ -6186,6 +6246,78 @@ mod tests {
 				&& old_name == "app_name"
 				&& new_name == "project_name"
 		));
+	}
+
+	#[rstest]
+	fn generate_operations_renames_unique_column_without_constraint_churn() {
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let old_slug_field =
+			FieldState::new("old_slug", super::super::FieldType::VarChar(255), false);
+		let new_slug_field = FieldState::new("slug", super::super::FieldType::VarChar(255), false);
+		let from_unique = ConstraintDefinition {
+			name: "deployments_deployment_old_slug_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["old_slug".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let to_unique = ConstraintDefinition {
+			name: "deployments_deployment_slug_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["slug".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let from_model = build_model_state(
+			"deployments",
+			"Deployment",
+			vec![id_field.clone(), old_slug_field],
+			Vec::new(),
+			vec![from_unique],
+		);
+		let to_model = build_model_state(
+			"deployments",
+			"Deployment",
+			vec![id_field, new_slug_field],
+			Vec::new(),
+			vec![to_unique],
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("deployments".to_string(), "Deployment".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("deployments".to_string(), "Deployment".to_string()),
+				to_model,
+			)]),
+		);
+
+		let operations = detector
+			.try_generate_operations()
+			.expect("unique column rename should generate operations");
+
+		assert_eq!(operations.len(), 1, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::RenameColumn {
+				table,
+				old_name,
+				new_name
+			} if table == "deployments_deployment"
+				&& old_name == "old_slug"
+				&& new_name == "slug"
+		));
+		assert!(
+			operations.iter().all(|op| {
+				!matches!(
+					op,
+					super::super::Operation::AddConstraint { .. }
+						| super::super::Operation::DropConstraint { .. }
+				)
+			}),
+			"expected no AddConstraint/DropConstraint for unique rename, got: {operations:?}"
+		);
 	}
 
 	#[rstest]
