@@ -12,7 +12,7 @@ categories = ["parser-implementations", "development-tools::procedural-macro-hel
 
 [dependencies]
 # Documentation
-aquamarine = { workspace = true }
+aquamarine = { workspace = true, optional = true }
 
 # Parsing and AST manipulation
 syn = { workspace = true, features = ["full", "extra-traits", "visit-mut"] }
@@ -24,6 +24,10 @@ darling = "0.20"
 
 # Case conversion for identifiers
 convert_case = "0.6"
+
+[features]
+default = []
+doc-diagrams = ["dep:aquamarine"]
 
 [dev-dependencies]
 rstest = { workspace = true }

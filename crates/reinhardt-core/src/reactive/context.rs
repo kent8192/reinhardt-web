@@ -39,7 +39,7 @@ use alloc::vec::Vec;
 /// Global counter for generating unique context IDs.
 static CONTEXT_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-#[cfg_attr(doc, aquamarine::aquamarine)]
+#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// A type-safe context identifier.
 ///
 /// Each Context has a unique ID that is used to look up values in the context stack.

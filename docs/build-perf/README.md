@@ -40,7 +40,7 @@ environment variables.
 | `incremental-db-macro-check` | A proc-macro fan-out edit loop |
 | `incremental-page-macro-check` | A Pages macro fan-out edit loop |
 | `incremental-pages-wasm-check` | A Pages runtime WASM check loop |
-| `incremental-pages-wasm-build` | A Pages runtime WASM build/codegen loop |
+| `incremental-pages-wasm-build` | A Pages runtime WASM library build loop |
 | `incremental-server-build` | A server crate native build loop |
 | `incremental-hot-reload-client-legacy-both-build` | Legacy Pages client-edit hot-reload work shape: WASM build plus native server build |
 | `incremental-hot-reload-server-legacy-both-build` | Legacy server-edit hot-reload work shape: native server build plus WASM build |
@@ -59,6 +59,10 @@ For Issue #5218, the target loops are:
 
 The current script covers the Rust build side of those loops, including
 separate Pages WASM, native server, shared/core, and proc-macro scenarios.
+The Pages WASM build scenario currently measures Cargo's library artifact only;
+it does not run `wasm-bindgen` against a browser-loadable `cdylib` fixture.
+Add that fixture-level scenario before claiming end-to-end browser artifact
+latency.
 Browser-visible hot-reload now has a success-gated HMR notification channel for Pages
 `runserver --with-pages`: the autoreload parent keeps a WebSocket listener
 alive, the child injects the HMR client into SPA HTML, and the watcher sends a

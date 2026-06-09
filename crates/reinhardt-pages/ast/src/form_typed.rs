@@ -33,7 +33,7 @@
 use proc_macro2::Span;
 use syn::{ExprClosure, Ident, Path};
 
-#[cfg_attr(doc, aquamarine::aquamarine)]
+#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// The top-level typed AST node representing a validated form! macro invocation.
 ///
 /// This is the result of successful validation and transformation of an untyped
