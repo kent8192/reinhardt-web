@@ -34,11 +34,14 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use colored::Colorize;
+use dialoguer::Select;
 use reinhardt_commands::{
-	BaseCommand, CommandContext, CommandResult, PluginDisableCommand, PluginEnableCommand,
-	PluginInfoCommand, PluginInstallCommand, PluginListCommand, PluginRemoveCommand,
-	PluginSearchCommand, PluginUpdateCommand, StartAppCommand, StartProjectCommand,
+	BaseCommand, CommandContext, CommandResult, ConfigureCommand, PluginDisableCommand,
+	PluginEnableCommand, PluginInfoCommand, PluginInstallCommand, PluginListCommand,
+	PluginRemoveCommand, PluginSearchCommand, PluginUpdateCommand, StartAppCommand,
+	StartProjectCommand,
 };
+use std::io::IsTerminal;
 use std::process;
 
 /// Project/app architecture type used with `--template`.
@@ -67,12 +70,11 @@ fn resolve_project_type(
 	template: Option<TemplateType>,
 	with_pages: bool,
 	with_rest: bool,
-) -> ResolvedProjectType {
+) -> Option<ResolvedProjectType> {
 	match (template, with_pages, with_rest) {
-		(Some(TemplateType::Pages), _, _) | (_, true, _) => ResolvedProjectType::Pages,
-		(Some(TemplateType::Rest), _, _) | (_, _, true) => ResolvedProjectType::Rest,
-		// ArgGroup required=true guarantees one branch above is taken (#3842)
-		_ => unreachable!(),
+		(Some(TemplateType::Pages), _, _) | (_, true, _) => Some(ResolvedProjectType::Pages),
+		(Some(TemplateType::Rest), _, _) | (_, _, true) => Some(ResolvedProjectType::Rest),
+		_ => None,
 	}
 }
 
@@ -94,7 +96,6 @@ enum Commands {
 	/// Create a new Reinhardt project
 	#[command(group(
 		clap::ArgGroup::new("project_type")
-			.required(true)
 			.args(["template", "with_pages", "with_rest"])
 	))]
 	Startproject {
@@ -122,6 +123,26 @@ enum Commands {
 		/// Also reads the REINHARDT_TEMPLATE_DIR environment variable.
 		#[arg(long, value_name = "DIR")]
 		template_dir: Option<String>,
+
+		/// Reinhardt version requirement to write into Cargo.toml.
+		#[arg(long, value_name = "VERSION")]
+		reinhardt_version: Option<String>,
+
+		/// Reinhardt feature to enable. Can be repeated.
+		#[arg(long = "feature", value_name = "FEATURE")]
+		feature: Vec<String>,
+
+		/// Comma-separated Reinhardt features to enable.
+		#[arg(long, value_name = "CSV")]
+		features: Option<String>,
+
+		/// Whether to keep Cargo default features enabled for the Reinhardt dependency.
+		#[arg(long, action = clap::ArgAction::Set)]
+		default_features: Option<bool>,
+
+		/// Disable prompts and use deterministic defaults for omitted choices.
+		#[arg(long)]
+		no_interactive: bool,
 	},
 
 	/// Create a new Reinhardt app
@@ -161,6 +182,33 @@ enum Commands {
 	Plugin {
 		#[command(subcommand)]
 		subcommand: PluginCommands,
+	},
+
+	/// Configure Reinhardt version and features in an existing project
+	Configure {
+		/// Project directory containing Cargo.toml (defaults to current directory)
+		#[arg(value_name = "DIRECTORY")]
+		directory: Option<String>,
+
+		/// Reinhardt version requirement to write into Cargo.toml.
+		#[arg(long, value_name = "VERSION")]
+		reinhardt_version: Option<String>,
+
+		/// Reinhardt feature to enable. Can be repeated.
+		#[arg(long = "feature", value_name = "FEATURE")]
+		feature: Vec<String>,
+
+		/// Comma-separated Reinhardt features to enable.
+		#[arg(long, value_name = "CSV")]
+		features: Option<String>,
+
+		/// Whether to keep Cargo default features enabled for the Reinhardt dependency.
+		#[arg(long, action = clap::ArgAction::Set)]
+		default_features: Option<bool>,
+
+		/// Disable prompts and use deterministic defaults for omitted choices.
+		#[arg(long)]
+		no_interactive: bool,
 	},
 
 	/// Format Rust code and page!/form!/head! macro DSL in source files
@@ -392,6 +440,11 @@ async fn main() {
 			with_pages,
 			with_rest,
 			template_dir,
+			reinhardt_version,
+			feature,
+			features,
+			default_features,
+			no_interactive,
 		} => {
 			run_startproject(
 				name,
@@ -400,6 +453,11 @@ async fn main() {
 				with_pages,
 				with_rest,
 				template_dir,
+				reinhardt_version,
+				feature,
+				features,
+				default_features,
+				no_interactive,
 				cli.verbosity,
 			)
 			.await
@@ -424,6 +482,25 @@ async fn main() {
 			.await
 		}
 		Commands::Plugin { subcommand } => run_plugin(subcommand, cli.verbosity).await,
+		Commands::Configure {
+			directory,
+			reinhardt_version,
+			feature,
+			features,
+			default_features,
+			no_interactive,
+		} => {
+			run_configure(
+				directory,
+				reinhardt_version,
+				feature,
+				features,
+				default_features,
+				no_interactive,
+				cli.verbosity,
+			)
+			.await
+		}
 		Commands::Fmt {
 			path,
 			check,
@@ -486,6 +563,11 @@ async fn run_startproject(
 	with_pages: bool,
 	with_rest: bool,
 	template_dir: Option<String>,
+	reinhardt_version: Option<String>,
+	feature: Vec<String>,
+	features: Option<String>,
+	default_features: Option<bool>,
+	no_interactive: bool,
 	verbosity: u8,
 ) -> CommandResult<()> {
 	let mut ctx = CommandContext::default();
@@ -494,13 +576,26 @@ async fn run_startproject(
 	if let Some(dir) = directory {
 		ctx.add_arg(dir);
 	}
-	match resolve_project_type(template, with_pages, with_rest) {
+	let project_type = match resolve_project_type(template, with_pages, with_rest) {
+		Some(project_type) => project_type,
+		None if should_prompt(no_interactive) => prompt_project_type()?,
+		None => ResolvedProjectType::Rest,
+	};
+	match project_type {
 		ResolvedProjectType::Pages => ctx.set_option("with-pages".to_string(), "true".to_string()),
 		ResolvedProjectType::Rest => ctx.set_option("restful".to_string(), "true".to_string()),
 	}
 	if let Some(td) = template_dir {
 		ctx.set_option("template-dir".to_string(), td);
 	}
+	push_dependency_options(
+		&mut ctx,
+		reinhardt_version,
+		feature,
+		features,
+		default_features,
+		no_interactive,
+	);
 
 	let cmd = StartProjectCommand;
 	cmd.execute(&ctx).await
@@ -522,8 +617,13 @@ async fn run_startapp(
 		ctx.add_arg(dir);
 	}
 	match resolve_project_type(template, with_pages, with_rest) {
-		ResolvedProjectType::Pages => ctx.set_option("with-pages".to_string(), "true".to_string()),
-		ResolvedProjectType::Rest => ctx.set_option("restful".to_string(), "true".to_string()),
+		Some(ResolvedProjectType::Pages) => {
+			ctx.set_option("with-pages".to_string(), "true".to_string())
+		}
+		Some(ResolvedProjectType::Rest) => {
+			ctx.set_option("restful".to_string(), "true".to_string())
+		}
+		None => unreachable!("clap requires a startapp project type"),
 	}
 	if let Some(td) = template_dir {
 		ctx.set_option("template-dir".to_string(), td);
@@ -531,6 +631,81 @@ async fn run_startapp(
 
 	let cmd = StartAppCommand;
 	cmd.execute(&ctx).await
+}
+
+async fn run_configure(
+	directory: Option<String>,
+	reinhardt_version: Option<String>,
+	feature: Vec<String>,
+	features: Option<String>,
+	default_features: Option<bool>,
+	no_interactive: bool,
+	verbosity: u8,
+) -> CommandResult<()> {
+	let mut ctx = CommandContext::default();
+	ctx.set_verbosity(verbosity);
+	if let Some(directory) = directory {
+		ctx.add_arg(directory);
+	}
+	push_dependency_options(
+		&mut ctx,
+		reinhardt_version,
+		feature,
+		features,
+		default_features,
+		no_interactive,
+	);
+
+	ConfigureCommand.execute(&ctx).await
+}
+
+fn push_dependency_options(
+	ctx: &mut CommandContext,
+	reinhardt_version: Option<String>,
+	feature: Vec<String>,
+	features: Option<String>,
+	default_features: Option<bool>,
+	no_interactive: bool,
+) {
+	if let Some(version) = reinhardt_version {
+		ctx.set_option("reinhardt-version".to_string(), version);
+	}
+	if !feature.is_empty() {
+		ctx.set_option_multi("feature".to_string(), feature);
+	}
+	if let Some(features) = features {
+		ctx.set_option("features".to_string(), features);
+	}
+	if let Some(default_features) = default_features {
+		ctx.set_option("default-features".to_string(), default_features.to_string());
+	}
+	if no_interactive {
+		ctx.set_option("no-interactive".to_string(), "true".to_string());
+	}
+}
+
+fn should_prompt(no_interactive: bool) -> bool {
+	!cfg!(test)
+		&& !no_interactive
+		&& std::env::var("REINHARDT_TEST_MODE").is_err()
+		&& std::io::stdin().is_terminal()
+}
+
+fn prompt_project_type() -> CommandResult<ResolvedProjectType> {
+	let choices = ["RESTful API", "Pages (WASM + SSR)"];
+	let selected = Select::new()
+		.with_prompt("Select Reinhardt project type")
+		.items(choices)
+		.default(0)
+		.interact()
+		.map_err(|error| {
+			reinhardt_commands::CommandError::ExecutionError(format!("Prompt failed: {error}"))
+		})?;
+	if selected == 1 {
+		Ok(ResolvedProjectType::Pages)
+	} else {
+		Ok(ResolvedProjectType::Rest)
+	}
 }
 
 async fn run_plugin(subcommand: PluginCommands, verbosity: u8) -> CommandResult<()> {
@@ -765,7 +940,7 @@ mod resolve_project_type_tests {
 	fn with_pages_bool_resolves_to_pages() {
 		assert!(matches!(
 			resolve_project_type(None, true, false),
-			ResolvedProjectType::Pages
+			Some(ResolvedProjectType::Pages)
 		));
 	}
 
@@ -773,7 +948,7 @@ mod resolve_project_type_tests {
 	fn with_rest_bool_resolves_to_rest() {
 		assert!(matches!(
 			resolve_project_type(None, false, true),
-			ResolvedProjectType::Rest
+			Some(ResolvedProjectType::Rest)
 		));
 	}
 
@@ -781,7 +956,7 @@ mod resolve_project_type_tests {
 	fn template_pages_resolves_to_pages() {
 		assert!(matches!(
 			resolve_project_type(Some(TemplateType::Pages), false, false),
-			ResolvedProjectType::Pages
+			Some(ResolvedProjectType::Pages)
 		));
 	}
 
@@ -789,7 +964,7 @@ mod resolve_project_type_tests {
 	fn template_rest_resolves_to_rest() {
 		assert!(matches!(
 			resolve_project_type(Some(TemplateType::Rest), false, false),
-			ResolvedProjectType::Rest
+			Some(ResolvedProjectType::Rest)
 		));
 	}
 
@@ -798,7 +973,7 @@ mod resolve_project_type_tests {
 		// --template pages takes precedence, both bools false
 		assert!(matches!(
 			resolve_project_type(Some(TemplateType::Pages), false, false),
-			ResolvedProjectType::Pages
+			Some(ResolvedProjectType::Pages)
 		));
 	}
 
@@ -807,16 +982,19 @@ mod resolve_project_type_tests {
 		// --template rest takes precedence, both bools false
 		assert!(matches!(
 			resolve_project_type(Some(TemplateType::Rest), false, false),
-			ResolvedProjectType::Rest
+			Some(ResolvedProjectType::Rest)
 		));
+	}
+
+	#[test]
+	fn omitted_type_resolves_to_none() {
+		assert!(resolve_project_type(None, false, false).is_none());
 	}
 }
 
 #[cfg(test)]
 mod arg_group_tests {
 	use super::*;
-	use clap::error::ErrorKind;
-
 	fn try_parse(args: &[&str]) -> Result<Cli, clap::Error> {
 		Cli::try_parse_from(args)
 	}
@@ -868,13 +1046,9 @@ mod arg_group_tests {
 	}
 
 	#[test]
-	fn startproject_missing_type_is_error() {
+	fn startproject_missing_type_is_accepted_for_interactive_or_default() {
 		let result = try_parse(&["reinhardt-admin", "startproject", "myproj"]);
-		assert!(result.is_err(), "expected Err when type flag omitted");
-		assert_eq!(
-			result.err().unwrap().kind(),
-			ErrorKind::MissingRequiredArgument
-		);
+		assert!(result.is_ok(), "type flag can be omitted");
 	}
 
 	#[test]
@@ -922,7 +1096,24 @@ mod arg_group_tests {
 		assert!(result.is_err(), "expected Err when type flag omitted");
 		assert_eq!(
 			result.err().unwrap().kind(),
-			ErrorKind::MissingRequiredArgument
+			clap::error::ErrorKind::MissingRequiredArgument
+		);
+	}
+
+	#[test]
+	fn configure_dependency_flags_are_accepted() {
+		assert!(
+			try_parse(&[
+				"reinhardt-admin",
+				"configure",
+				"--reinhardt-version",
+				"0.2.0-rc.4",
+				"--features",
+				"minimal,db-sqlite",
+				"--no-interactive",
+			])
+			.is_ok(),
+			"configure dependency flags should parse"
 		);
 	}
 }

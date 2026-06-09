@@ -27,8 +27,8 @@ This installs the `reinhardt-admin` command.
 ### Create a New Project
 
 ```bash
-# Create a RESTful API project
-reinhardt-admin startproject myproject --with-rest
+# Create a RESTful API project (default in non-interactive shells)
+reinhardt-admin startproject myproject
 
 # Create a Pages (WASM + SSR) project
 reinhardt-admin startproject myproject --with-pages
@@ -39,6 +39,29 @@ reinhardt-admin startproject myproject --template pages
 
 # Create project in a specific directory
 reinhardt-admin startproject myproject --with-rest /path/to/directory
+
+# Pin the generated Reinhardt dependency
+reinhardt-admin startproject myproject --with-rest \
+  --reinhardt-version 0.2.0-rc.4 \
+  --features standard,admin \
+  --no-interactive
+```
+
+When run from an interactive terminal, `startproject` prompts for the
+project type, Reinhardt version, and feature flags when those choices are
+not provided as flags. Non-interactive runs use deterministic defaults.
+
+### Configure an Existing Project
+
+```bash
+# Interactively update ./Cargo.toml
+reinhardt-admin configure
+
+# Update a project without prompts
+reinhardt-admin configure /path/to/project \
+  --reinhardt-version 0.2.0-rc.4 \
+  --features minimal,db-sqlite \
+  --no-interactive
 ```
 
 ### Create a New App

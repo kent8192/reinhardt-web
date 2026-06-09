@@ -153,6 +153,8 @@ pub mod output;
 /// Plugin management commands.
 #[cfg(feature = "plugins")]
 pub mod plugin_commands;
+/// Project dependency configuration commands.
+pub mod project_config;
 /// Command registry for discovery and dispatch.
 pub mod registry;
 /// Runserver lifecycle hooks for concurrent services and pre-listen validation.
@@ -231,6 +233,7 @@ pub use i18n_commands::{CompileMessagesCommand, MakeMessagesCommand};
 pub use introspect::IntrospectCommand;
 pub use mail_commands::SendTestEmailCommand;
 pub use output::OutputWrapper;
+pub use project_config::{ConfigureCommand, ReinhardtDependencySelection};
 pub use registry::CommandRegistry;
 #[cfg(feature = "server")]
 pub use runserver_hooks::{RunserverContext, RunserverHook, RunserverHookRegistration};

@@ -442,6 +442,21 @@ impl BaseCommand for PluginInstallCommand {
 
 ```bash
 reinhardt-admin startproject myproject --template rest
+reinhardt-admin startproject myproject --template pages
+reinhardt-admin startproject myproject --features standard,admin --no-interactive
+```
+
+Interactive terminals can choose the project type, Reinhardt version, and
+feature flags during `startproject`. Use `--reinhardt-version`,
+`--feature`, `--features`, `--default-features`, and `--no-interactive`
+for reproducible scripts.
+
+Existing projects can update their `reinhardt` dependency through the same
+selection flow:
+
+```bash
+reinhardt-admin configure
+reinhardt-admin configure /path/to/project --features minimal,db-sqlite --no-interactive
 ```
 
 ### App Templates
