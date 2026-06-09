@@ -185,7 +185,7 @@ web-sys = { version = "0.3.83", features = [
 reinhardt-core = { workspace = true, features = ["reactive", "page", "security"] }
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 wasm-bindgen-futures = "0.4.56"
-reqwest = { version = "0.13.2", default-features = false, features = ["json"] }
+reqwest = { workspace = true, default-features = false, features = ["json"] }
 getrandom = { version = "0.3", features = ["wasm_js"] }
 uuid = { version = "1.7", features = ["v7", "js"] }
 # Issue #4217: depend on reinhardt-urls on wasm to consume the canonical
