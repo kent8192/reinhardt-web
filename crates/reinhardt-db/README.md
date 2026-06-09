@@ -799,7 +799,10 @@ Optimize how related objects are loaded:
   - `MigrationAutodetector`: Detects differences between states
   - Model creation/deletion detection
   - Field addition/removal/modification detection
-  - Smart rename detection for models and fields
+  - Smart rename detection for models and fields, including `RenameColumn` for
+    unambiguous compatible field renames
+  - Ambiguous rename-like field changes are rejected by fallible generation APIs
+    instead of silently producing destructive add/drop operations
   - Index and constraint change detection
 
 - **Migration Execution**

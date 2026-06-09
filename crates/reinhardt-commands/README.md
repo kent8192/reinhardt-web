@@ -202,6 +202,12 @@ By default, `makemigrations` builds the current project state by replaying
 existing migrations using TestContainers (or a real database with `--from-db`).
 If neither is available, the command fails.
 
+When model changes look like compatible field renames, `makemigrations`
+emits `RenameColumn` for unambiguous one-to-one matches. If multiple old and
+new fields are compatible and the rename intent is ambiguous, the command
+stops instead of generating destructive `AddColumn` + `DropColumn`
+operations.
+
 The `--force-empty-state` flag overrides this behavior by assuming an empty
 starting state, which is useful in the following scenarios:
 
