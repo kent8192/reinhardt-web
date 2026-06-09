@@ -285,8 +285,7 @@ fn notify_static_page_patch(
 	if let Ok(json) = msg.to_json()
 		&& let Some(tx) = hmr_tx
 	{
-		let _ = tx.send(json);
-		return true;
+		return tx.send(json).is_ok();
 	}
 	false
 }
@@ -795,5 +794,50 @@ mod tests {
 
 		// Assert
 		assert!(!sent, "shared files must keep the rebuild path");
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn notify_static_page_patch_falls_back_without_hmr_receiver() {
+		// Arrange
+		let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+		let client_path = temp_dir.path().join("src").join("client.rs");
+		std::fs::create_dir_all(
+			client_path
+				.parent()
+				.expect("client path should have parent"),
+		)
+		.expect("client dir should be created");
+		std::fs::write(
+			&client_path,
+			r#"
+				use reinhardt_pages::page;
+
+				fn home_page() -> Page {
+					page!(|| {
+						div { "Updated" }
+					})()
+				}
+			"#,
+		)
+		.expect("client page fixture should be written");
+		let (tx, rx) = broadcast::channel::<String>(8);
+		drop(rx);
+
+		// Act
+		let sent = notify_static_page_patch(
+			Some(&tx),
+			&[client_path],
+			RebuildTargets {
+				server: false,
+				wasm: true,
+			},
+		);
+
+		// Assert
+		assert!(
+			!sent,
+			"hot patch must fall back to WASM rebuild when no browser receives it"
+		);
 	}
 }

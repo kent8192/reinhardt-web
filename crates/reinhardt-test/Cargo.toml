@@ -54,7 +54,7 @@ full = ["testcontainers", "static", "websockets", "graphql", "property-based", "
 [dependencies]
 # Cross-platform dependencies
 reinhardt-pages = { workspace = true }
-reinhardt-core = { workspace = true }
+reinhardt-core = { workspace = true, features = ["security"] }
 
 # Testing framework dependencies (proc-macro, compiles on host)
 rstest = "0.26.1"

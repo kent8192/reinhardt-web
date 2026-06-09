@@ -10,7 +10,7 @@ authors.workspace = true
 
 [dependencies]
 # Core framework
-reinhardt-core = { workspace = true }
+reinhardt-core = { workspace = true, features = ["exception"] }
 reinhardt-http = { workspace = true }
 reinhardt-urls = { workspace = true }
 
