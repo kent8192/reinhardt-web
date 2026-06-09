@@ -14,9 +14,22 @@ Environment:
 - Tool: `hyperfine`; leaf/core scenarios used `--warmup 1 --runs 2`, latest
   Pages/WASM and server scenarios used `--warmup 2` with 5-8 runs; static
   `page!` hot-patch fixture scenarios used `--warmup 3 --runs 12` initially
-  and `--warmup 2 --runs 8` after the dev-profile update
+  and `--warmup 2 --runs 8` after the dev-profile update; cold standard
+  workspace builds used `/usr/bin/time -p` with one clean run per branch
 
 ## Results
+
+### Cold Workspace Builds
+
+| Scenario | `origin/main` wall time | PR branch wall time | Change |
+|---|---:|---:|---:|
+| `cold-build-standard` | 283.30s | 234.83s | 17.1% faster |
+
+Raw command shape:
+
+```bash
+cargo clean && cargo build --workspace
+```
 
 ### Direct Cargo Loops
 
@@ -84,6 +97,10 @@ The shared/core edit loop lands inside the expected 30-60% reduction range.
 The leaf package check does not: it is slower in this local run, so PR #5220
 must not claim a universal incremental-check improvement.
 
+The cold standard workspace build improves by 17.1%. That is a real reduction,
+but it is below the original 25-40% cold build/check target, so the cold target
+should remain tracked separately from this hot-reload-focused PR.
+
 The targeted server-only hot-reload work shape now reaches the lower end of
 the expected 30-60% range. The app-side fixture WASM build improves from the
 pre-profile 1.725-1.739s range to 0.564s, which lands in the expected 40-70%
@@ -92,11 +109,12 @@ WASM-side Rust range for downstream-style app code. Direct framework
 still below the broader Pages/WASM target.
 
 The latest Pages/WASM dependency pruning keeps internal Reinhardt dependencies
-on `workspace = true` and moves `reinhardt-core`'s heavy image validator and
-documentation diagrams behind explicit features. This removes `image`,
-`ravif`, `tiff`, `exr`, and `aquamarine` from the Pages/WASM normal dependency
-tree, but the warmed incremental build loop is still dominated by recompiling
-the WASM crate artifact.
+on `workspace = true`, inherits `reqwest` through the workspace dependency
+table, and moves `reinhardt-core`'s heavy image validator and documentation
+diagrams behind explicit features. This removes `image`, `ravif`, `tiff`,
+`exr`, and `aquamarine` from the Pages/WASM normal dependency tree, but the
+warmed incremental build loop is still dominated by recompiling the WASM crate
+artifact.
 
 The latest Pages module gating keeps `testing` behind the existing `testing`
 feature/test cfg and compiles `SsrRenderer`/`SsrOptions` only on native targets.
