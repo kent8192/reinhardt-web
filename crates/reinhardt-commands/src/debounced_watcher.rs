@@ -268,6 +268,117 @@ fn notify_browser_reload(hmr_tx: Option<&broadcast::Sender<String>>, reason: &st
 	}
 }
 
+/// Dispatch one debounced path batch through the selected rebuild pipelines.
+///
+/// This is split out from [`run_watcher`] so tests can validate the
+/// rebuild-to-HMR contract deterministically without depending on OS file
+/// notification timing.
+pub async fn run_rebuild_for_paths(
+	ctx: &CommandContext,
+	config: &WatcherConfig,
+	paths: Vec<PathBuf>,
+	current_child: &mut tokio::process::Child,
+	respawn: &(impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync),
+) {
+	ctx.info(&format!(
+		"[hot-reload] change detected ({} path(s))",
+		paths.len()
+	));
+	let targets = rebuild_targets_for_paths(&paths, config);
+	if !targets.has_work() {
+		ctx.info("[hot-reload] no rebuild target matched; waiting for next change");
+		return;
+	}
+
+	let wasm_fut = async {
+		#[cfg(feature = "pages")]
+		{
+			if targets.wasm {
+				let outcome = crate::wasm_rebuild_pipeline::WasmRebuildPipeline::run(ctx).await;
+				if let Some(line) =
+					crate::wasm_rebuild_pipeline::WasmRebuildPipeline::format_log_line(&outcome)
+				{
+					eprintln!("{}", line);
+					if matches!(
+						outcome,
+						crate::wasm_rebuild_pipeline::WasmRebuildOutcome::Failed { .. }
+					) {
+						eprintln!("[hot-reload] watching for next change...");
+					}
+				}
+				return wasm_rebuild_succeeded(&outcome);
+			}
+		}
+		true
+	};
+
+	if targets.server && targets.wasm {
+		// Spec §4: run wasm + server pipelines in parallel. They touch
+		// disjoint cargo target directories (`wasm32-unknown-unknown` vs
+		// `debug`) and the wasm pipeline does not interact with the running
+		// child process, so concurrent execution is safe.
+		let server_fut = crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
+			&config.bin_name,
+			current_child,
+			respawn,
+			&config.address,
+		);
+		let (wasm_ok, (server_outcome, new_child)) = tokio::join!(wasm_fut, server_fut);
+		let server_ok = server_rebuild_succeeded(&server_outcome);
+		if let Some(child) = new_child {
+			*current_child = child;
+		}
+		let server_ready = if server_ok {
+			wait_for_server_ready(config.server_address.as_deref()).await
+		} else {
+			false
+		};
+		#[cfg(feature = "pages")]
+		if wasm_ok && server_ready {
+			notify_browser_reload(
+				config.hmr_tx.as_ref(),
+				"Rust rebuild completed successfully",
+			);
+		}
+	} else if targets.wasm {
+		let wasm_ok = wasm_fut.await;
+		#[cfg(feature = "pages")]
+		if wasm_ok {
+			notify_browser_reload(
+				config.hmr_tx.as_ref(),
+				"WASM rebuild completed successfully",
+			);
+		}
+	} else {
+		let (server_outcome, new_child) =
+			crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
+				&config.bin_name,
+				current_child,
+				respawn,
+				&config.address,
+			)
+			.await;
+		let server_ok = server_rebuild_succeeded(&server_outcome);
+		if let Some(child) = new_child {
+			*current_child = child;
+		}
+		let server_ready = if server_ok {
+			wait_for_server_ready(config.server_address.as_deref()).await
+		} else {
+			false
+		};
+		#[cfg(feature = "pages")]
+		if server_ready {
+			notify_browser_reload(
+				config.hmr_tx.as_ref(),
+				"Server rebuild completed successfully",
+			);
+		}
+	}
+	// Pipeline failures are recorded as log lines and never propagate as Err;
+	// the caller's loop continues unconditionally.
+}
+
 /// Run the hot-reload watcher loop until shutdown.
 ///
 /// The loop handles three concerns:
@@ -342,116 +453,16 @@ pub async fn run_watcher(
 				let _ = current_child.wait().await;
 				return Ok(());
 			}
-			debounced = debounce_next(&mut rx, DEBOUNCE_WINDOW) => {
-				let Some(paths) = debounced else {
-					// Channel closed: the watcher dropped or the OS torn
-					// the subscription down. Treat as graceful shutdown.
-					let _ = current_child.kill().await;
-					let _ = current_child.wait().await;
-					return Ok(());
-				};
-				ctx.info(&format!(
-					"[hot-reload] change detected ({} path(s))",
-					paths.len()
-				));
-				let targets = rebuild_targets_for_paths(&paths, config);
-				if !targets.has_work() {
-					ctx.info("[hot-reload] no rebuild target matched; waiting for next change");
-					continue;
+				debounced = debounce_next(&mut rx, DEBOUNCE_WINDOW) => {
+					let Some(paths) = debounced else {
+						// Channel closed: the watcher dropped or the OS torn
+						// the subscription down. Treat as graceful shutdown.
+						let _ = current_child.kill().await;
+						let _ = current_child.wait().await;
+						return Ok(());
+					};
+					run_rebuild_for_paths(ctx, config, paths, &mut current_child, &respawn).await;
 				}
-
-				let wasm_fut = async {
-					#[cfg(feature = "pages")]
-					{
-						if targets.wasm {
-							let outcome =
-								crate::wasm_rebuild_pipeline::WasmRebuildPipeline::run(ctx).await;
-							if let Some(line) =
-								crate::wasm_rebuild_pipeline::WasmRebuildPipeline::format_log_line(
-									&outcome,
-								) {
-								eprintln!("{}", line);
-								if matches!(
-									outcome,
-									crate::wasm_rebuild_pipeline::WasmRebuildOutcome::Failed { .. }
-								) {
-									eprintln!("[hot-reload] watching for next change...");
-								}
-							}
-							return wasm_rebuild_succeeded(&outcome);
-						}
-					}
-					true
-				};
-
-					if targets.server && targets.wasm {
-						// Spec §4: run wasm + server pipelines in parallel. They
-						// touch disjoint cargo target directories (`wasm32-unknown-unknown`
-						// vs `debug`) and the wasm pipeline does not interact with the
-						// running child process, so concurrent execution is safe.
-						let server_fut =
-							crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
-								&config.bin_name,
-								&mut current_child,
-								&respawn,
-								&config.address,
-							);
-						let (wasm_ok, (server_outcome, new_child)) =
-							tokio::join!(wasm_fut, server_fut);
-						let server_ok = server_rebuild_succeeded(&server_outcome);
-						if let Some(child) = new_child {
-							current_child = child;
-						}
-						let server_ready = if server_ok {
-							wait_for_server_ready(config.server_address.as_deref()).await
-						} else {
-							false
-						};
-						#[cfg(feature = "pages")]
-						if wasm_ok && server_ready {
-							notify_browser_reload(
-								config.hmr_tx.as_ref(),
-								"Rust rebuild completed successfully",
-							);
-						}
-					} else if targets.wasm {
-						let wasm_ok = wasm_fut.await;
-						#[cfg(feature = "pages")]
-						if wasm_ok {
-							notify_browser_reload(
-								config.hmr_tx.as_ref(),
-								"WASM rebuild completed successfully",
-							);
-						}
-					} else {
-						let (server_outcome, new_child) =
-							crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
-								&config.bin_name,
-								&mut current_child,
-								&respawn,
-								&config.address,
-							)
-							.await;
-						let server_ok = server_rebuild_succeeded(&server_outcome);
-						if let Some(child) = new_child {
-							current_child = child;
-						}
-						let server_ready = if server_ok {
-							wait_for_server_ready(config.server_address.as_deref()).await
-						} else {
-							false
-						};
-						#[cfg(feature = "pages")]
-						if server_ready {
-							notify_browser_reload(
-								config.hmr_tx.as_ref(),
-								"Server rebuild completed successfully",
-							);
-						}
-					}
-					// Pipeline failures are recorded as log lines and never
-				// propagate as Err — the loop continues unconditionally.
-			}
 		}
 	}
 }
