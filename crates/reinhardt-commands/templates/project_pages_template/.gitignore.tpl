@@ -107,6 +107,9 @@ settings/*.toml
 .env.local
 .env.*.local
 
+# Local Reinhardt runtime state
+.reinhardt/
+
 # IDE
 .idea/
 .vscode/
