@@ -33,6 +33,7 @@
 //! ```
 
 mod markers;
+#[cfg(native)]
 mod renderer;
 mod state;
 
@@ -40,5 +41,6 @@ pub use markers::{
 	HYDRATION_ATTR_ID, HYDRATION_ATTR_PROPS, HydrationMarker, HydrationMarkerBuilder,
 	HydrationStrategy,
 };
+#[cfg(native)]
 pub use renderer::{SsrOptions, SsrRenderer};
 pub use state::{SsrState, StateEntry};

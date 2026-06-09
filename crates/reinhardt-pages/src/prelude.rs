@@ -163,7 +163,9 @@ pub use crate::hydration::{
 
 #[cfg(wasm)]
 pub use crate::hydration::mark_hydration_complete;
-pub use crate::ssr::{SsrOptions, SsrRenderer, SsrState};
+pub use crate::ssr::SsrState;
+#[cfg(native)]
+pub use crate::ssr::{SsrOptions, SsrRenderer};
 
 // ============================================================================
 // Static File URL Resolver

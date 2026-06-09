@@ -63,6 +63,10 @@ The Pages WASM build scenario currently measures Cargo's library artifact only;
 it does not run `wasm-bindgen` against a browser-loadable `cdylib` fixture.
 Add that fixture-level scenario before claiming end-to-end browser artifact
 latency.
+When reducing this scenario, prefer removing non-browser modules from the
+WASM compilation graph before changing Cargo profiles: profile changes measured
+noisy or slower locally, while feature/target gating gives a direct dependency
+and codegen reduction.
 Browser-visible hot-reload now has a success-gated HMR notification channel for Pages
 `runserver --with-pages`: the autoreload parent keeps a WebSocket listener
 alive, the child injects the HMR client into SPA HTML, and the watcher sends a
