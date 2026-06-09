@@ -191,7 +191,7 @@ pub mod welcome_page;
 pub mod __hot_reload_test_api {
 	pub use crate::debounced_watcher::{
 		DEBOUNCE_WINDOW, RebuildTargets, WatcherConfig, debounce_next, is_relevant_change,
-		rebuild_targets_for_paths, run_watcher,
+		rebuild_targets_for_paths, run_rebuild_for_paths, run_watcher,
 	};
 	pub use crate::server_rebuild_pipeline::{ServerRebuildOutcome, ServerRebuildPipeline};
 	pub use crate::source_roots::SourceRoots;
