@@ -149,6 +149,9 @@ pub mod introspect;
 pub mod mail_commands;
 /// Terminal output wrapper with styling support.
 pub mod output;
+/// Compile-free static Pages hot patch support.
+#[cfg(feature = "pages")]
+mod page_hot_patch;
 /// Plugin management commands.
 #[cfg(feature = "plugins")]
 pub mod plugin_commands;
@@ -193,6 +196,8 @@ pub mod __hot_reload_test_api {
 		DEBOUNCE_WINDOW, RebuildTargets, WatcherConfig, debounce_next, is_relevant_change,
 		rebuild_targets_for_paths, run_rebuild_for_paths, run_watcher,
 	};
+	#[cfg(feature = "pages")]
+	pub use crate::page_hot_patch::render_static_page_patch;
 	pub use crate::server_rebuild_pipeline::{ServerRebuildOutcome, ServerRebuildPipeline};
 	pub use crate::source_roots::SourceRoots;
 	#[cfg(feature = "pages")]

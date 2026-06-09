@@ -38,6 +38,9 @@ pub const HMR_CLIENT_SCRIPT: &str = r#"
         case "css_update":
           hotSwapCss(msg.path);
           break;
+        case "html_replace":
+          replaceHtml(msg.selector, msg.html);
+          break;
         case "full_reload":
           console.log("[HMR] Full reload:", msg.reason);
           window.location.reload();
@@ -84,6 +87,17 @@ pub const HMR_CLIENT_SCRIPT: &str = r#"
     }
   }
 
+  function replaceHtml(selector, html) {
+    var target = document.querySelector(selector);
+    if (!target) {
+      console.log("[HMR] HTML target not found, reloading:", selector);
+      window.location.reload();
+      return;
+    }
+    target.innerHTML = html;
+    console.log("[HMR] HTML replaced:", selector);
+  }
+
   connect();
 })();
 "#;
@@ -105,6 +119,7 @@ mod tests {
 		// Assert
 		assert!(HMR_CLIENT_SCRIPT.contains("WebSocket"));
 		assert!(HMR_CLIENT_SCRIPT.contains("css_update"));
+		assert!(HMR_CLIENT_SCRIPT.contains("html_replace"));
 		assert!(HMR_CLIENT_SCRIPT.contains("full_reload"));
 		assert!(HMR_CLIENT_SCRIPT.contains("connected"));
 		assert!(HMR_CLIENT_SCRIPT.contains("__HMR_WS_PORT__"));
@@ -152,6 +167,14 @@ mod tests {
 		assert!(HMR_CLIENT_SCRIPT.contains("hotSwapCss"));
 		assert!(HMR_CLIENT_SCRIPT.contains("cacheBust"));
 		assert!(HMR_CLIENT_SCRIPT.contains("stylesheet"));
+	}
+
+	#[rstest]
+	fn test_hmr_client_script_has_html_replace() {
+		// Assert
+		assert!(HMR_CLIENT_SCRIPT.contains("replaceHtml"));
+		assert!(HMR_CLIENT_SCRIPT.contains("querySelector"));
+		assert!(HMR_CLIENT_SCRIPT.contains("innerHTML"));
 	}
 
 	// --- Boundary values ---
