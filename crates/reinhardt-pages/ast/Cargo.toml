@@ -15,7 +15,7 @@ categories = ["parser-implementations", "wasm"]
 reinhardt-manouche = { workspace = true }
 
 # Documentation
-aquamarine = { workspace = true }
+aquamarine = { workspace = true, optional = true }
 
 # Parsing and AST manipulation
 syn = { workspace = true, features = ["full", "extra-traits", "visit-mut"] }
@@ -27,3 +27,7 @@ darling = "0.20"
 
 # Case conversion for identifiers
 convert_case = "0.6"
+
+[features]
+default = []
+doc-diagrams = ["dep:aquamarine"]

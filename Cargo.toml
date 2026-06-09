@@ -454,7 +454,7 @@ reinhardt = { path = ".", package = "reinhardt-web", version = "0.1.3" }
 # Internal crates
 reinhardt-apps = { path = "crates/reinhardt-apps", version = "0.1.3" }
 reinhardt-conf = { path = "crates/reinhardt-conf", version = "0.1.3" }
-reinhardt-core = { path = "crates/reinhardt-core", version = "0.1.3" }
+reinhardt-core = { path = "crates/reinhardt-core", version = "0.1.3", default-features = false }
 reinhardt-di = { path = "crates/reinhardt-di", version = "0.1.3" }
 reinhardt-http = { path = "crates/reinhardt-http", version = "0.1.3" }
 reinhardt-server = { path = "crates/reinhardt-server", version = "0.1.3" }
@@ -530,7 +530,7 @@ hyper = { version = "1.9.0", features = ["full"] }
 hyper-util = { version = "0.1.20", features = ["full"] }
 http = "1.4.0"
 http-body-util = "0.1.3"
-reqwest = { version = "0.13.2", features = ["json", "form"] }
+reqwest = { version = "0.13.2", default-features = false, features = ["http2", "json", "form", "rustls"] }
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
@@ -691,7 +691,8 @@ topiary-web-tree-sitter-sys = { path = "vendor/topiary-web-tree-sitter-sys" }
 # (private vec macro issue, see https://github.com/rust-lang/rust/issues/120192)
 
 [profile.dev]
-debug = 1
+codegen-units = 16
+debug = 0
 
 [profile.test]
 debug = 1

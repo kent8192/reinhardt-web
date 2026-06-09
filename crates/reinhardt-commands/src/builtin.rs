@@ -2020,6 +2020,12 @@ impl RunServerCommand {
 				static_config = static_config.cache_config(CacheControlConfig::disabled());
 			}
 
+			#[cfg(feature = "pages")]
+			if let Some(hmr_port) = Self::autoreload_hmr_port_from_env(ctx) {
+				static_config = static_config
+					.trusted_html_injection(reinhardt_pages::hmr::hmr_script_tag(hmr_port));
+			}
+
 			// Resolve index file for SPA fallback (only when SPA mode is enabled)
 			// Refs #2869: Separate index.html (source) from dist/ (build output)
 			if !no_spa {
@@ -2091,6 +2097,75 @@ impl RunServerCommand {
 				.listen_with_shutdown(addr, ShutdownCoordinator::clone(&coordinator))
 				.await
 				.map_err(|e| crate::CommandError::ExecutionError(e.to_string()))
+		}
+	}
+
+	/// Start the browser-facing HMR WebSocket listener for autoreload mode.
+	#[cfg(all(feature = "server", feature = "autoreload", feature = "pages"))]
+	async fn start_autoreload_hmr(
+		ctx: &CommandContext,
+		with_pages: bool,
+	) -> CommandResult<Option<(reinhardt_pages::hmr::HmrServer, u16)>> {
+		if !with_pages {
+			return Ok(None);
+		}
+
+		let requested_port = std::env::var("REINHARDT_HMR_PORT")
+			.ok()
+			.and_then(|raw| raw.parse::<u16>().ok())
+			.unwrap_or(35729);
+
+		let server = reinhardt_pages::hmr::HmrServer::new(
+			reinhardt_pages::hmr::HmrConfig::builder()
+				.ws_port(requested_port)
+				.build(),
+		);
+
+		let addr = match server.start_listener_only().await {
+			Ok(addr) => addr,
+			Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+				ctx.warning(&format!(
+					"[hot-reload] HMR port {} is in use, using an ephemeral port",
+					requested_port
+				));
+				let fallback = reinhardt_pages::hmr::HmrServer::new(
+					reinhardt_pages::hmr::HmrConfig::builder()
+						.ws_port(0)
+						.build(),
+				);
+				let addr = fallback.start_listener_only().await.map_err(|err| {
+					crate::CommandError::ExecutionError(format!(
+						"Failed to start HMR WebSocket listener: {}",
+						err
+					))
+				})?;
+				ctx.info(&format!("[hot-reload] HMR websocket: ws://{}/hmr", addr));
+				return Ok(Some((fallback, addr.port())));
+			}
+			Err(e) => {
+				return Err(crate::CommandError::ExecutionError(format!(
+					"Failed to start HMR WebSocket listener: {}",
+					e
+				)));
+			}
+		};
+
+		ctx.info(&format!("[hot-reload] HMR websocket: ws://{}/hmr", addr));
+		Ok(Some((server, addr.port())))
+	}
+
+	#[cfg(all(feature = "server", feature = "pages"))]
+	fn autoreload_hmr_port_from_env(ctx: &CommandContext) -> Option<u16> {
+		let raw = std::env::var("REINHARDT_HMR_PORT").ok()?;
+		match raw.parse::<u16>() {
+			Ok(port) => Some(port),
+			Err(_) => {
+				ctx.warning(&format!(
+					"Ignoring invalid REINHARDT_HMR_PORT value: {}",
+					raw
+				));
+				None
+			}
 		}
 	}
 
@@ -2193,6 +2268,14 @@ impl RunServerCommand {
 		let address_owned = address.to_string();
 		let static_dir_owned = static_dir.to_string();
 		let index_owned = index.map(|s| s.to_string());
+		#[cfg(feature = "pages")]
+		let hmr = Self::start_autoreload_hmr(ctx, with_pages).await?;
+		#[cfg(feature = "pages")]
+		let hmr_port = hmr.as_ref().map(|(_, port)| *port);
+		#[cfg(not(feature = "pages"))]
+		let hmr_port: Option<u16> = None;
+		#[cfg(feature = "pages")]
+		let hmr_tx = hmr.as_ref().map(|(server, _)| server.sender());
 
 		let respawn = move || -> std::io::Result<tokio::process::Child> {
 			Self::spawn_server_process(
@@ -2204,6 +2287,7 @@ impl RunServerCommand {
 				no_spa,
 				no_project_static,
 				index_owned.as_deref(),
+				hmr_port,
 			)
 			.map_err(|e| std::io::Error::other(e.to_string()))
 		};
@@ -2217,9 +2301,12 @@ impl RunServerCommand {
 		let cfg = crate::debounced_watcher::WatcherConfig {
 			bin_name,
 			roots,
+			server_address: Some(address.to_string()),
 			no_wasm_rebuild,
 			#[cfg(feature = "pages")]
 			pages_enabled: with_pages,
+			#[cfg(feature = "pages")]
+			hmr_tx,
 		};
 
 		crate::debounced_watcher::run_watcher(ctx, &cfg, shutdown_rx, child, respawn)
@@ -2401,6 +2488,7 @@ impl RunServerCommand {
 		no_spa: bool,
 		no_project_static: bool,
 		index: Option<&str>,
+		hmr_port: Option<u16>,
 	) -> CommandResult<tokio::process::Child> {
 		let current_exe = std::env::current_exe().map_err(|e| {
 			crate::CommandError::ExecutionError(format!("Failed to get current executable: {}", e))
@@ -2446,6 +2534,9 @@ impl RunServerCommand {
 		}
 		if let Some(index_path) = index {
 			cmd.arg("--index").arg(index_path);
+		}
+		if let Some(port) = hmr_port {
+			cmd.env("REINHARDT_HMR_PORT", port.to_string());
 		}
 
 		// Set environment variable to indicate this is a child process (prevent log duplication, etc.)
@@ -2525,16 +2616,23 @@ impl RunServerCommand {
 		};
 
 		let js_name = crate_name.replace('-', "_");
-		let artifact = cwd.join("dist").join(format!("{}.js", js_name));
-		if artifact.exists() && !force {
-			ctx.info(&format!(
-				"Pages WASM: --no-override-wasm set and dist/{}.js exists, skipping build",
-				js_name
-			));
+		let artifact = cwd.join("dist").join(format!("{}_bg.wasm", js_name));
+		if !force && !crate::wasm_builder::is_wasm_stale(&cwd, &artifact) {
+			ctx.info("Pages WASM: artifacts up to date, skipping build (--no-override-wasm)");
 			return Ok(());
 		}
 
-		ctx.info(&format!("Building pages WASM for {}...", crate_name));
+		let reason = if force {
+			"forced rebuild"
+		} else if artifact.exists() {
+			"source changed since last build"
+		} else {
+			"no existing artifact"
+		};
+		ctx.info(&format!(
+			"Building pages WASM for {} ({})...",
+			crate_name, reason
+		));
 		let config = crate::wasm_builder::WasmBuildConfig::new(".").output_dir("dist");
 		match crate::wasm_builder::WasmBuilder::new(config).build() {
 			Ok(_) => {

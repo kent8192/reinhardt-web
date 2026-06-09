@@ -80,6 +80,11 @@ pub struct StaticFilesConfig {
 	pub wasm_entry: Option<String>,
 	/// Manifest mapping original filenames to hashed filenames
 	pub wasm_manifest: Option<HashMap<String, String>>,
+	/// Trusted HTML fragments appended to SPA HTML responses.
+	///
+	/// These fragments are not escaped. They are intended for framework-owned
+	/// development scripts such as hot-reload clients, not user input.
+	pub trusted_html_injections: Vec<String>,
 }
 
 impl Default for StaticFilesConfig {
@@ -97,6 +102,7 @@ impl Default for StaticFilesConfig {
 			auto_inject_wasm: true,
 			wasm_entry: None,
 			wasm_manifest: None,
+			trusted_html_injections: Vec::new(),
 		}
 	}
 }
@@ -225,6 +231,20 @@ impl StaticFilesConfig {
 	/// Set the WASM manifest for filename resolution (e.g., hashed filenames).
 	pub fn wasm_manifest(mut self, manifest: HashMap<String, String>) -> Self {
 		self.wasm_manifest = Some(manifest);
+		self
+	}
+
+	/// Add a trusted HTML fragment to inject into SPA fallback responses.
+	///
+	/// The fragment is inserted before `</body>` when present, otherwise it is
+	/// appended to the end of the HTML document.
+	pub fn trusted_html_injection(mut self, fragment: impl Into<String>) -> Self {
+		let fragment = fragment.into();
+		assert!(
+			!fragment.is_empty(),
+			"trusted_html_injection must not be empty"
+		);
+		self.trusted_html_injections.push(fragment);
 		self
 	}
 }
@@ -410,8 +430,7 @@ impl StaticFilesMiddleware {
 			 </script>\n"
 		);
 
-		// Case-insensitive search for </body>
-		if let Some(pos) = html.to_lowercase().rfind("</body>") {
+		if let Some(pos) = Self::find_body_close_tag_pos(html) {
 			let mut result = String::with_capacity(html.len() + script.len());
 			result.push_str(&html[..pos]);
 			result.push_str(&script);
@@ -421,6 +440,29 @@ impl StaticFilesMiddleware {
 			let mut result = String::with_capacity(html.len() + script.len());
 			result.push_str(html);
 			result.push_str(&script);
+			result
+		}
+	}
+
+	fn find_body_close_tag_pos(html: &str) -> Option<usize> {
+		let needle = b"</body>";
+		html.as_bytes()
+			.windows(needle.len())
+			.rposition(|window| window.eq_ignore_ascii_case(needle))
+	}
+
+	/// Inject a trusted HTML fragment before `</body>`, or append when absent.
+	fn inject_trusted_html_fragment(html: &str, fragment: &str) -> String {
+		if let Some(pos) = Self::find_body_close_tag_pos(html) {
+			let mut result = String::with_capacity(html.len() + fragment.len());
+			result.push_str(&html[..pos]);
+			result.push_str(fragment);
+			result.push_str(&html[pos..]);
+			result
+		} else {
+			let mut result = String::with_capacity(html.len() + fragment.len());
+			result.push_str(html);
+			result.push_str(fragment);
 			result
 		}
 	}
@@ -527,30 +569,37 @@ impl StaticFilesMiddleware {
 			.and_then(|n| n.to_str())
 			.unwrap_or("index.html");
 
-		// Apply WASM injection if entry is detected
-		let final_content = if let Some(ref entry) = self.wasm_entry {
-			match String::from_utf8(content) {
-				Ok(html) => {
-					let injected = Self::inject_wasm_script(
-						&html,
-						entry,
-						&self.config.url_prefix,
-						self.config.wasm_manifest.as_ref(),
-					);
-					tracing::debug!("injected WASM auto-loader into SPA response");
-					injected.into_bytes()
+		// Apply WASM and trusted development-script injections if needed.
+		let final_content =
+			if self.wasm_entry.is_some() || !self.config.trusted_html_injections.is_empty() {
+				match String::from_utf8(content) {
+					Ok(html) => {
+						let mut injected = html;
+						if let Some(ref entry) = self.wasm_entry {
+							injected = Self::inject_wasm_script(
+								&injected,
+								entry,
+								&self.config.url_prefix,
+								self.config.wasm_manifest.as_ref(),
+							);
+							tracing::debug!("injected WASM auto-loader into SPA response");
+						}
+						for fragment in &self.config.trusted_html_injections {
+							injected = Self::inject_trusted_html_fragment(&injected, fragment);
+						}
+						injected.into_bytes()
+					}
+					Err(e) => {
+						tracing::warn!(
+							"SPA fallback is not valid UTF-8, serving raw content: {}",
+							e
+						);
+						e.into_bytes()
+					}
 				}
-				Err(e) => {
-					tracing::warn!(
-						"SPA fallback is not valid UTF-8, serving raw content: {}",
-						e
-					);
-					e.into_bytes()
-				}
-			}
-		} else {
-			content
-		};
+			} else {
+				content
+			};
 
 		// Generate ETag from final content (post-injection)
 		let etag = {
@@ -698,6 +747,7 @@ mod tests {
 		assert_eq!(config.url_prefix, "/");
 		assert!(config.spa_mode);
 		assert_eq!(config.index_files, vec!["index.html".to_string()]);
+		assert!(config.trusted_html_injections.is_empty());
 	}
 
 	#[test]
@@ -1375,6 +1425,23 @@ mod tests {
 	}
 
 	#[rstest]
+	fn test_inject_wasm_script_unicode_before_uppercase_body() {
+		// Arrange
+		let html = "<html><body><h1>İstanbul</h1></BODY></html>";
+		let entry = WasmEntry {
+			js_file: "app.js".to_string(),
+			wasm_file: "app_bg.wasm".to_string(),
+		};
+
+		// Act
+		let result = StaticFilesMiddleware::inject_wasm_script(html, &entry, "/", None);
+
+		// Assert
+		let expected = "<html><body><h1>İstanbul</h1>\n<!-- Reinhardt WASM Auto-Loader -->\n<script type=\"module\">\nconst { default: init } = await import('/app.js');\nawait init({ module_or_path: '/app_bg.wasm' });\n</script>\n</BODY></html>";
+		assert_eq!(result, expected);
+	}
+
+	#[rstest]
 	fn test_inject_wasm_script_no_body_tag_appends() {
 		// Arrange
 		let html = "<html><h1>No body tag</h1></html>";
@@ -1389,6 +1456,54 @@ mod tests {
 		// Assert — generated HTML with dynamic URLs
 		assert!(result.ends_with("</script>\n"));
 		assert!(result.contains("<!-- Reinhardt WASM Auto-Loader -->"));
+	}
+
+	#[rstest]
+	fn test_inject_trusted_html_fragment_before_body() {
+		// Arrange
+		let html = "<html><body><h1>Hello</h1></body></html>";
+		let fragment = "\n<script>window.__hmr = true;</script>\n";
+
+		// Act
+		let result = StaticFilesMiddleware::inject_trusted_html_fragment(html, fragment);
+
+		// Assert
+		assert_eq!(
+			result,
+			"<html><body><h1>Hello</h1>\n<script>window.__hmr = true;</script>\n</body></html>"
+		);
+	}
+
+	#[rstest]
+	fn test_inject_trusted_html_fragment_unicode_before_uppercase_body() {
+		// Arrange
+		let html = "<html><body><h1>İstanbul</h1></BODY></html>";
+		let fragment = "\n<script>window.__hmr = true;</script>\n";
+
+		// Act
+		let result = StaticFilesMiddleware::inject_trusted_html_fragment(html, fragment);
+
+		// Assert
+		assert_eq!(
+			result,
+			"<html><body><h1>İstanbul</h1>\n<script>window.__hmr = true;</script>\n</BODY></html>"
+		);
+	}
+
+	#[rstest]
+	fn test_inject_trusted_html_fragment_appends_without_body() {
+		// Arrange
+		let html = "<html><h1>Hello</h1></html>";
+		let fragment = "\n<script>window.__hmr = true;</script>\n";
+
+		// Act
+		let result = StaticFilesMiddleware::inject_trusted_html_fragment(html, fragment);
+
+		// Assert
+		assert_eq!(
+			result,
+			"<html><h1>Hello</h1></html>\n<script>window.__hmr = true;</script>\n"
+		);
 	}
 
 	#[rstest]

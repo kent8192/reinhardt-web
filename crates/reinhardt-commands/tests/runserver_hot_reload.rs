@@ -43,8 +43,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use reinhardt_commands::__hot_reload_test_api::{
-	DEBOUNCE_WINDOW, ServerRebuildOutcome, ServerRebuildPipeline, SourceRoots, WatcherConfig,
-	is_relevant_change, run_watcher,
+	DEBOUNCE_WINDOW, RebuildTargets, ServerRebuildOutcome, ServerRebuildPipeline, SourceRoots,
+	WatcherConfig, is_relevant_change, rebuild_targets_for_paths, run_rebuild_for_paths,
+	run_watcher,
 };
 use reinhardt_commands::{
 	CommandContext, RunserverContext, RunserverHook, RunserverHookRegistration, WasmBuildConfig,
@@ -284,10 +285,9 @@ async fn hr_2_server_change_triggers_server_rebuild() {
 // HR-3: --no-wasm-rebuild flag plumbing skips the WASM pipeline.
 //
 // This test asserts the dispatch-time configuration the watcher reads:
-// `WatcherConfig.no_wasm_rebuild` round-trips the flag, and the path filter
-// still recognises Rust source edits as relevant. Behavioural verification
-// (no WASM log line appears under the flag) lives in the unit tests of
-// `debounced_watcher`, where the dispatch branch is observable.
+// `WatcherConfig.no_wasm_rebuild` round-trips the flag, the path filter still
+// recognises Rust source edits as relevant, and the classifier does not route
+// client-only edits into an unnecessary native server rebuild.
 // ---------------------------------------------------------------------------
 #[tokio::test(flavor = "multi_thread")]
 async fn hr_3_no_wasm_rebuild_flag_skips_wasm_pipeline() {
@@ -299,8 +299,10 @@ async fn hr_3_no_wasm_rebuild_flag_skips_wasm_pipeline() {
 			manifest_files: Vec::new(),
 			lockfile: None,
 		},
+		server_address: None,
 		no_wasm_rebuild: true,
 		pages_enabled: true,
+		hmr_tx: None,
 	};
 
 	// Act: read the flag back.
@@ -325,6 +327,22 @@ async fn hr_3_no_wasm_rebuild_flag_skips_wasm_pipeline() {
 			"/p/src/lib.rs",
 		)),
 		"a .rs edit must still pass the relevance filter (server pipeline still runs)"
+	);
+	assert_eq!(
+		rebuild_targets_for_paths(&[PathBuf::from("/p/src/lib.rs")], &config),
+		RebuildTargets {
+			server: true,
+			wasm: false,
+		},
+		"shared Rust edits must still rebuild the server when WASM rebuild is disabled"
+	);
+	assert_eq!(
+		rebuild_targets_for_paths(&[PathBuf::from("/p/src/client/page.rs")], &config),
+		RebuildTargets {
+			server: false,
+			wasm: false,
+		},
+		"client-only edits must not force a native rebuild when WASM rebuild is disabled"
 	);
 	assert_eq!(DEBOUNCE_WINDOW, Duration::from_millis(300));
 }
@@ -499,8 +517,10 @@ async fn hr_7_run_watcher_processes_events() {
 			manifest_files: vec![fixture.path().join("Cargo.toml")],
 			lockfile: None,
 		},
+		server_address: None,
 		no_wasm_rebuild: true,
 		pages_enabled: false,
+		hmr_tx: None,
 	};
 
 	let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -571,6 +591,92 @@ async fn hr_7_run_watcher_processes_events() {
 	assert!(
 		watcher_result.is_ok(),
 		"watcher must return Ok on graceful shutdown, got {watcher_result:?}"
+	);
+}
+
+// ---------------------------------------------------------------------------
+// HR-9: the watcher rebuild dispatcher broadcasts a browser reload after a
+// successful server rebuild.
+//
+// This drives the same rebuild dispatcher used by the notify-backed watcher
+// loop, without depending on OS file notification timing. The test keeps WASM
+// rebuilding disabled so the assertion is specifically about the server
+// rebuild path: classified edit -> cargo build --bin manage -> respawn -> HMR
+// full_reload.
+// ---------------------------------------------------------------------------
+#[tokio::test(flavor = "multi_thread")]
+#[serial(server_pipeline)]
+async fn hr_9_run_watcher_broadcasts_reload_after_server_rebuild() {
+	use std::sync::Arc;
+	use std::sync::atomic::{AtomicUsize, Ordering};
+
+	// Arrange: fixture + initial server child + cwd switched so cargo
+	// resolves the fixture's manifest. Mirrors `run_server_pipeline`.
+	let fixture = Fixture::new("hr9_fixture", 900);
+	let initial_child = spawn_long_running_child(&fixture).await;
+	let saved_cwd = std::env::current_dir().expect("current dir");
+	std::env::set_current_dir(fixture.path()).expect("set fixture cwd");
+
+	let bin_path = fixture_manage_bin(&fixture);
+	let respawn_count = Arc::new(AtomicUsize::new(0));
+	let respawn_count_for_closure = Arc::clone(&respawn_count);
+	let respawn = move || -> std::io::Result<tokio::process::Child> {
+		respawn_count_for_closure.fetch_add(1, Ordering::SeqCst);
+		tokio::process::Command::new(&bin_path)
+			.kill_on_drop(true)
+			.spawn()
+	};
+
+	let (hmr_tx, mut hmr_rx) = tokio::sync::broadcast::channel::<String>(8);
+	let ctx = CommandContext::default();
+	let config = WatcherConfig {
+		bin_name: "manage".to_string(),
+		roots: SourceRoots {
+			src_dirs: vec![fixture.path().join("src")],
+			manifest_files: vec![fixture.path().join("Cargo.toml")],
+			lockfile: None,
+		},
+		server_address: None,
+		no_wasm_rebuild: true,
+		pages_enabled: true,
+		hmr_tx: Some(hmr_tx),
+	};
+
+	// Act: edit the server source. With no_wasm_rebuild=true, this should
+	// rebuild and respawn only the native server and then notify browsers.
+	let mut child = initial_child;
+	fixture.restore_server(901);
+	run_rebuild_for_paths(
+		&ctx,
+		&config,
+		vec![fixture.path().join("src/main.rs")],
+		&mut child,
+		&respawn,
+	)
+	.await;
+	let json = tokio::time::timeout(Duration::from_secs(5), hmr_rx.recv())
+		.await
+		.expect("server rebuild should broadcast a reload")
+		.expect("HMR channel should remain open");
+
+	let _ = child.kill().await;
+
+	// Cleanup: restore cwd before any assertion can panic.
+	std::env::set_current_dir(&saved_cwd).expect("restore cwd");
+
+	assert_eq!(
+		respawn_count.load(Ordering::SeqCst),
+		1,
+		"successful server rebuild must respawn exactly once"
+	);
+
+	let message: reinhardt_pages::hmr::HmrMessage =
+		serde_json::from_str(&json).expect("HMR reload payload must parse");
+	assert_eq!(
+		message,
+		reinhardt_pages::hmr::HmrMessage::FullReload {
+			reason: "Server rebuild completed successfully".to_string()
+		}
 	);
 }
 

@@ -92,9 +92,6 @@ web-sys-full = [
 ]
 
 [dependencies]
-# Documentation
-aquamarine = "0.5"
-
 # Constant-time comparison for CSRF token verification
 subtle = { workspace = true }
 
@@ -185,13 +182,10 @@ web-sys = { version = "0.3.83", features = [
 ] }
 
 # Async support for WASM
-reinhardt-core = {workspace = true, features = ["reactive", "page"]}
-syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
-quote = "1.0"
-proc-macro2 = "1.0"
+reinhardt-core = { workspace = true, features = ["reactive", "page", "security"] }
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 wasm-bindgen-futures = "0.4.56"
-reqwest = { workspace = true }
+reqwest = { workspace = true, default-features = false, features = ["json"] }
 getrandom = { version = "0.3", features = ["wasm_js"] }
 uuid = { version = "1.7", features = ["v7", "js"] }
 # Issue #4217: depend on reinhardt-urls on wasm to consume the canonical

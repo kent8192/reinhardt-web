@@ -9,7 +9,7 @@ authors.workspace = true
 description = "Django-style shortcut functions for redirects, rendering, and 404 error handling"
 
 [dependencies]
-reinhardt-core = { workspace = true }
+reinhardt-core = { workspace = true, features = ["security"] }
 reinhardt-http = { workspace = true }
 reinhardt-views = { workspace = true }
 reinhardt-db = { workspace = true, optional = true }

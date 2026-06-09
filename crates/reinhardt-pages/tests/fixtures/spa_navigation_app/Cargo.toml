@@ -10,6 +10,10 @@ publish = false
 # pattern for nested-but-detached crates.
 [workspace]
 
+[profile.dev]
+codegen-units = 16
+debug = 0
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
