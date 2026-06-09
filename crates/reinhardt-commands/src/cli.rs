@@ -7,6 +7,7 @@
 use crate::MakeMigrationsCommand;
 use crate::base::BaseCommand;
 use crate::collectstatic::{CollectStaticCommand, CollectStaticOptions};
+use crate::local_infra::InfraSubcommand;
 use crate::registry::CommandRegistry;
 use crate::{CheckCommand, CommandContext, MigrateCommand, RunServerCommand, ShellCommand};
 #[cfg(feature = "introspect")]
@@ -124,6 +125,13 @@ pub enum Commands {
 		/// Root directory containing migration files (default: ./migrations)
 		#[arg(long, value_name = "DIR")]
 		migrations_dir: Option<PathBuf>,
+	},
+
+	/// Manage local development infrastructure containers
+	Infra {
+		/// Infrastructure subcommand to execute
+		#[command(subcommand)]
+		command: InfraSubcommand,
 	},
 
 	/// Start the development server
@@ -685,6 +693,14 @@ async fn run_command_core(
 				migrations_dir,
 				verbosity,
 			})
+			.await
+		}
+		Commands::Infra { command } => {
+			crate::local_infra::InfraCommand::execute(
+				command,
+				&std::env::current_dir()?,
+				settings.as_deref(),
+			)
 			.await
 		}
 		Commands::Runserver {

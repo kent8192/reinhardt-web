@@ -4120,7 +4120,7 @@ mod tests {
 		// Create a temporary directory for migrations
 		let temp_dir = TempDir::new().unwrap();
 		let migrations_dir = temp_dir.path();
-		std::fs::create_dir_all(&migrations_dir).unwrap();
+		std::fs::create_dir_all(migrations_dir).unwrap();
 
 		// Register a test model
 		let registry = global_registry();
@@ -4175,7 +4175,7 @@ mod tests {
 		// Create a temporary directory for migrations
 		let temp_dir = TempDir::new().unwrap();
 		let migrations_dir = temp_dir.path();
-		std::fs::create_dir_all(&migrations_dir).unwrap();
+		std::fs::create_dir_all(migrations_dir).unwrap();
 
 		// Register a test model
 		let registry = global_registry();

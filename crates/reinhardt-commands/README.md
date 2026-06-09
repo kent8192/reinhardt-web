@@ -59,6 +59,7 @@ details.
 - **makemigrations** - Create new database migrations based on model changes
 - **migrate** - Apply database migrations
 - **runserver** - Start the development server
+- **infra** - Start, stop, inspect, and use local development infrastructure
 - **shell** - Run an interactive REPL
 - **check** - Check the project for common issues
 - **collectstatic** - Collect static files into `STATIC_ROOT`
@@ -182,6 +183,38 @@ cargo run --bin manage makemigrations
 cargo run --bin manage migrate
 cargo run --bin manage runserver
 ```
+
+### `infra` Command
+
+The `infra` command manages project-local Docker containers derived from the
+resolved Reinhardt settings. Use `infra run` for short-lived management
+commands that need local infrastructure values. Keep long-running server
+processes on the normal `manage runserver` entrypoint.
+
+```bash
+# Start containers for services inferred from settings
+cargo run --bin manage infra up
+
+# Print the resolved state as JSON
+cargo run --bin manage infra up --json
+
+# Run a short-lived management command with local infrastructure settings applied
+cargo run --bin manage infra run -- migrate
+
+# Run the development server separately after exporting local infrastructure env
+eval "$(cargo run --bin manage infra up --print-env)"
+cargo run --bin manage runserver
+
+# Inspect or stop the persisted local infrastructure state
+cargo run --bin manage infra status
+cargo run --bin manage infra down
+```
+
+State is stored under `.reinhardt/local-infra.json` in the project directory.
+The child process receives `DATABASE_URL`, `REDIS_URL`, and compatible
+`REINHARDT_` environment variables for discovered local services.
+`infra run -- runserver` is intentionally unsupported; start infrastructure
+first, then run `manage runserver` as its own process.
 
 ### `makemigrations` Command Options
 
