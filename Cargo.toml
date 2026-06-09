@@ -691,7 +691,13 @@ topiary-web-tree-sitter-sys = { path = "vendor/topiary-web-tree-sitter-sys" }
 # (private vec macro issue, see https://github.com/rust-lang/rust/issues/120192)
 
 [profile.dev]
-debug = 1
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+codegen-units = 256
+incremental = true
 
 [profile.test]
-debug = 1
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+codegen-units = 256
+incremental = true
