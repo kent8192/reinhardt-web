@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.2.0-rc.4...reinhardt-dentdelion@v0.2.0-rc.5) - 2026-06-09
+
+### Maintenance
+
+- update Cargo.toml dependencies
+
 ## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.3...reinhardt-dentdelion@v0.2.0-rc.2) - 2026-06-03
 
 ### Changed

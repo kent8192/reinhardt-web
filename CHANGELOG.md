@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0-rc.4...reinhardt-web@v0.2.0-rc.5) - 2026-06-09
+
+### Added
+
+- *(commands)* add interactive dependency configuration
+
+### Documentation
+
+- add release announcement(s)
+- align RC website docs.rs links
+- align CLI install version examples
+- *(build)* update wasm loop measurements
+
+### Fixed
+
+- *(website)* treat PR previews as preview channel
+- *(website)* point stable selector to dev channel
+- *(ci)* install node before website deploy
+- *(ci)* repair admin dependency config checks
+- *(build)* address CodeRabbit review feedback
+- *(commands)* adapt hot reload tests for develop
+- *(build)* port Codex review follow-ups
+- *(build)* port strict hot patch regression assertion
+
+### Maintenance
+
+- trigger website deploy workflow changes
+- *(commands)* ignore local infra state in templates
+
+### Performance
+
+- *(build)* add build-loop benchmark harness
+- *(build)* tune dev profile for incremental builds
+- *(commands)* skip unrelated hot reload rebuilds
+- *(commands)* notify browsers after hot reload rebuilds
+- *(build)* keep measured dev profile defaults
+- *(commands)* use staleness check for pages wasm reuse
+- *(build)* measure pages wasm and server loops
+- *(pages)* batch generated page attributes
+- *(build)* measure hot reload target selection
+- *(pages)* prune unused runtime parser deps
+- *(pages)* trim wasm dependency graph
+- *(pages)* gate non-browser wasm modules
+- *(pages)* hot patch static page edits
+- *(build)* tune dev profile for hot reload
+- *(build)* measure cold workspace build
+
+### Testing
+
+- *(commands)* verify hmr reload after rebuild
+
 ## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0-rc.3...reinhardt-web@v0.2.0-rc.4) - 2026-06-06
 
 ### Changed
