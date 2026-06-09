@@ -66,6 +66,38 @@ async fn startproject_restful_from_embedded_only() {
 #[rstest]
 #[tokio::test]
 #[serial(cwd)]
+async fn startproject_restful_honors_dependency_selection_flags() {
+	let tmp = TempDir::new().unwrap();
+	let prev = std::env::current_dir().unwrap();
+	std::env::set_current_dir(tmp.path()).unwrap();
+
+	let mut ctx = CommandContext::new(vec!["feature_proj".to_string()]);
+	let mut opts = HashMap::new();
+	opts.insert("restful".to_string(), vec!["true".to_string()]);
+	opts.insert(
+		"reinhardt-version".to_string(),
+		vec!["0.2.0-rc.4".to_string()],
+	);
+	opts.insert(
+		"features".to_string(),
+		vec!["minimal,db-sqlite".to_string()],
+	);
+	opts.insert("no-interactive".to_string(), vec!["true".to_string()]);
+	ctx = ctx.with_options(opts);
+
+	let res = StartProjectCommand.execute(&ctx).await;
+
+	std::env::set_current_dir(prev).unwrap();
+	res.expect("startproject succeeds with dependency selection flags");
+	let cargo_toml = std::fs::read_to_string(tmp.path().join("feature_proj/Cargo.toml")).unwrap();
+	assert!(cargo_toml.contains("version = \"0.2.0-rc.4\""));
+	assert!(cargo_toml.contains("default-features = false"));
+	assert!(cargo_toml.contains("features = [\"minimal\", \"db-sqlite\"]"));
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(cwd)]
 async fn startproject_pages_from_embedded_only() {
 	// Arrange
 	let tmp = TempDir::new().unwrap();
@@ -93,4 +125,29 @@ async fn startproject_pages_from_embedded_only() {
 		"src/ directory must be generated"
 	);
 	assert_manifest_parses(&generated.join("Cargo.toml"));
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(cwd)]
+async fn startproject_pages_adds_required_pages_features() {
+	let tmp = TempDir::new().unwrap();
+	let prev = std::env::current_dir().unwrap();
+	std::env::set_current_dir(tmp.path()).unwrap();
+
+	let mut ctx = CommandContext::new(vec!["pages_feature_proj".to_string()]);
+	let mut opts = HashMap::new();
+	opts.insert("with-pages".to_string(), vec!["true".to_string()]);
+	opts.insert("features".to_string(), vec!["minimal".to_string()]);
+	opts.insert("no-interactive".to_string(), vec!["true".to_string()]);
+	ctx = ctx.with_options(opts);
+
+	let res = StartProjectCommand.execute(&ctx).await;
+
+	std::env::set_current_dir(prev).unwrap();
+	res.expect("startproject --with-pages succeeds with dependency selection flags");
+	let cargo_toml =
+		std::fs::read_to_string(tmp.path().join("pages_feature_proj/Cargo.toml")).unwrap();
+	assert!(cargo_toml.contains("features = [\"minimal\", \"pages\", \"admin\"]"));
+	assert_manifest_parses(&tmp.path().join("pages_feature_proj/Cargo.toml"));
 }

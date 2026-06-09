@@ -57,6 +57,9 @@ Per-prerelease history is in the [Release Discussions](https://github.com/kent81
   new Reinhardt project (matching the per-app layout from
   [#4476](https://github.com/kent8192/reinhardt-web/discussions/4476)), `startapp` adds an application module, and both
   accept `--template-dir` to override the embedded templates.
+- **Interactive dependency selection** — `startproject` can prompt
+  for the Reinhardt version and feature flags, and `configure`
+  applies the same dependency selection to an existing project.
 - **Template selection via `ArgGroup`** — `--template /
   --with-pages / --with-rest` replaces the previous
   `--template-type` flag; the selection is enforced by a `clap`

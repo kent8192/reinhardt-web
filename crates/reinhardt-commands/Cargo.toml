@@ -34,12 +34,14 @@ thiserror = { workspace = true }
 colored = { workspace = true }
 console = "0.16.1"
 dialoguer = "0.12.0"
+crates_io_api = "0.12.0"
 hyper = { workspace = true }
 hyper-util = { workspace = true }
 http-body-util = { workspace = true }
 tera = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml_edit = "0.25.10"
 walkdir = "2.5"
 rand = { workspace = true }
 regex = { workspace = true }

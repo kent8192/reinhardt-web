@@ -12,10 +12,7 @@ name = "manage"
 path = "src/bin/manage.rs"
 
 [dependencies]
-reinhardt = { version = "{{ reinhardt_version }}", package = "reinhardt-web", features = [
-	"full",
-	"admin",  # Admin panel functionality (includes reinhardt-pages)
-] }
+reinhardt = { version = "{{ reinhardt_version }}", package = "reinhardt-web", default-features = {{ reinhardt_default_features }}, features = {{ reinhardt_features_toml }} }
 
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.11", features = ["v4", "serde"] }

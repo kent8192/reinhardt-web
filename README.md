@@ -228,6 +228,22 @@ reinhardt-admin startproject my-api
 cd my-api
 ```
 
+Interactive terminals can choose the Reinhardt version and feature flags
+during project creation. Scripts can pass them explicitly:
+
+```bash
+reinhardt-admin startproject my-api \
+  --reinhardt-version "0.2.0-rc.4" \
+  --features standard,admin \
+  --no-interactive
+```
+
+For an existing project, update the `reinhardt` dependency in `Cargo.toml`:
+
+```bash
+reinhardt-admin configure --features minimal,db-sqlite --no-interactive
+```
+
 This generates a complete project structure:
 
 ```

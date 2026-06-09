@@ -9,7 +9,7 @@
 use crate::template_source::{EmbeddedSource, FilesystemSource, MergedSource, TemplateSource};
 use crate::{
 	BaseCommand, CommandArgument, CommandContext, CommandError, CommandOption, CommandResult,
-	TemplateCommand, TemplateContext, generate_secret_key, to_camel_case,
+	TemplateCommand, TemplateContext, generate_secret_key, project_config, to_camel_case,
 };
 use async_trait::async_trait;
 use std::env;
@@ -120,6 +120,13 @@ impl BaseCommand for StartProjectCommand {
 
 		// Generate a random secret key
 		let secret_key = format!("insecure-{}", generate_secret_key());
+		let required_features = if with_pages {
+			&["pages", "admin"][..]
+		} else {
+			&[][..]
+		};
+		let dependency_selection =
+			project_config::resolve_dependency_selection(ctx, required_features).await?;
 
 		// Prepare template context
 		let mut context = TemplateContext::new();
@@ -131,7 +138,15 @@ impl BaseCommand for StartProjectCommand {
 			"CHANGE_THIS_IN_PRODUCTION_MUST_BE_KEPT_SECRET",
 		)?;
 		context.insert("camel_case_project_name", to_camel_case(&project_name))?;
-		context.insert("reinhardt_version", env!("CARGO_PKG_VERSION"))?;
+		context.insert("reinhardt_version", &dependency_selection.version)?;
+		context.insert(
+			"reinhardt_default_features",
+			dependency_selection.default_features,
+		)?;
+		context.insert(
+			"reinhardt_features_toml",
+			dependency_selection.features_toml(),
+		)?;
 		context.insert("is_restful", if !with_pages { "true" } else { "false" })?;
 		context.insert("with_pages", if with_pages { "true" } else { "false" })?;
 
