@@ -26,6 +26,8 @@ Scenarios:
 
 The script records reproducible build-loop timings for Reinhardt Pages and
 workspace build-performance work. It requires hyperfine unless --dry-run is set.
+Incremental scenarios assume a pre-built workspace; run a cold scenario first
+or ensure the matching cargo build/check command has already succeeded.
 USAGE
 }
 

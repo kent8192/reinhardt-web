@@ -1,7 +1,7 @@
 # Issue #5218 Incremental Check Measurements
 
 These measurements compare `origin/main` at
-`3016d326de63950ac553cd2246d02a0315bd7f06` with PR #5220 at the current
+`3016d326de63950ac553cd2246d02a0315bd7f06` with PR `#5220` at the current
 branch. The PR branch prunes Pages/WASM dependencies through workspace feature
 boundaries, gates dev/test/native-only Pages modules out of browser WASM
 builds, and uses a narrower dev profile (`debug = 0`, `codegen-units = 16`)
@@ -94,7 +94,7 @@ touch crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs && 
 ## Interpretation
 
 The shared/core edit loop lands inside the expected 30-60% reduction range.
-The leaf package check does not: it is slower in this local run, so PR #5220
+The leaf package check does not: it is slower in this local run, so PR `#5220`
 must not claim a universal incremental-check improvement.
 
 The cold standard workspace build improves by 17.1%. That is a real reduction,
