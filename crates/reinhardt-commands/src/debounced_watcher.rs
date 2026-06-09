@@ -97,6 +97,21 @@ pub async fn debounce_next(rx: &mut Receiver<Event>, window: Duration) -> Option
 	Some(paths.into_iter().collect())
 }
 
+/// Rebuild pipelines selected for a debounced change batch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RebuildTargets {
+	/// Rebuild and respawn the native server binary.
+	pub server: bool,
+	/// Rebuild the Pages WASM bundle.
+	pub wasm: bool,
+}
+
+impl RebuildTargets {
+	fn has_work(self) -> bool {
+		self.server || self.wasm
+	}
+}
+
 /// Configuration for `run_watcher`.
 pub struct WatcherConfig {
 	/// Bin name passed to `cargo build --bin`.
@@ -110,6 +125,90 @@ pub struct WatcherConfig {
 	/// When `true`, the project has the pages feature enabled.
 	#[cfg(feature = "pages")]
 	pub pages_enabled: bool,
+}
+
+/// Select rebuild pipelines for a debounced path batch.
+///
+/// The classifier is deliberately conservative. It only suppresses a
+/// pipeline for generated Pages paths whose ownership is stable:
+/// `src/client.rs`, `src/client/**`, and `src/apps/*/client/**` are WASM-only;
+/// `src/bin/**` and server process configuration are native-only. Shared code,
+/// manifests, and lockfiles still rebuild both sides.
+pub fn rebuild_targets_for_paths(paths: &[PathBuf], config: &WatcherConfig) -> RebuildTargets {
+	#[cfg(feature = "pages")]
+	let pages_enabled = config.pages_enabled;
+	#[cfg(not(feature = "pages"))]
+	let pages_enabled = false;
+
+	if !pages_enabled {
+		return RebuildTargets {
+			server: !paths.is_empty(),
+			wasm: false,
+		};
+	}
+
+	let wasm_enabled = !config.no_wasm_rebuild;
+	let mut targets = RebuildTargets {
+		server: false,
+		wasm: false,
+	};
+
+	for path in paths {
+		match classify_pages_path(path) {
+			PagesPathClass::WasmOnly => {
+				targets.wasm |= wasm_enabled;
+			}
+			PagesPathClass::ServerOnly => {
+				targets.server = true;
+			}
+			PagesPathClass::Both => {
+				targets.server = true;
+				targets.wasm |= wasm_enabled;
+			}
+		}
+	}
+
+	targets
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PagesPathClass {
+	ServerOnly,
+	WasmOnly,
+	Both,
+}
+
+fn classify_pages_path(path: &std::path::Path) -> PagesPathClass {
+	let normalized = normalized_path(path);
+	let wrapped = format!("/{normalized}");
+
+	if wrapped.ends_with("/Cargo.toml") || wrapped.ends_with("/Cargo.lock") {
+		return PagesPathClass::Both;
+	}
+
+	if wrapped.ends_with("/src/client.rs")
+		|| wrapped.contains("/src/client/")
+		|| (wrapped.contains("/src/apps/") && wrapped.contains("/client/"))
+	{
+		return PagesPathClass::WasmOnly;
+	}
+
+	if wrapped.contains("/src/bin/")
+		|| wrapped.ends_with("/src/config/apps.rs")
+		|| wrapped.ends_with("/src/config/settings.rs")
+	{
+		return PagesPathClass::ServerOnly;
+	}
+
+	if wrapped.ends_with(".toml") {
+		return PagesPathClass::ServerOnly;
+	}
+
+	PagesPathClass::Both
+}
+
+fn normalized_path(path: &std::path::Path) -> String {
+	path.to_string_lossy().replace('\\', "/")
 }
 
 /// Run the hot-reload watcher loop until shutdown.
@@ -195,18 +294,19 @@ pub async fn run_watcher(
 					return Ok(());
 				};
 				ctx.info(&format!(
-					"[hot-reload] change detected ({} path(s)), rebuilding...",
+					"[hot-reload] change detected ({} path(s))",
 					paths.len()
 				));
+				let targets = rebuild_targets_for_paths(&paths, config);
+				if !targets.has_work() {
+					ctx.info("[hot-reload] no rebuild target matched; waiting for next change");
+					continue;
+				}
 
-				// Spec §4: run wasm + server pipelines in parallel. They
-				// touch disjoint cargo target directories (`wasm32-unknown-unknown`
-				// vs `debug`) and the wasm pipeline does not interact with the
-				// running child process, so concurrent execution is safe.
 				let wasm_fut = async {
 					#[cfg(feature = "pages")]
 					{
-						if config.pages_enabled && !config.no_wasm_rebuild {
+						if targets.wasm {
 							let outcome =
 								crate::wasm_rebuild_pipeline::WasmRebuildPipeline::run(ctx).await;
 							if let Some(line) =
@@ -224,16 +324,38 @@ pub async fn run_watcher(
 						}
 					}
 				};
-				let server_fut = crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
-					&config.bin_name,
-					&mut current_child,
-					&respawn,
-					&config.address,
-				);
-				let ((), (_outcome, new_child)) = tokio::join!(wasm_fut, server_fut);
-				if let Some(child) = new_child {
-					current_child = child;
-				}
+
+					if targets.server && targets.wasm {
+						// Spec §4: run wasm + server pipelines in parallel. They
+						// touch disjoint cargo target directories (`wasm32-unknown-unknown`
+						// vs `debug`) and the wasm pipeline does not interact with the
+						// running child process, so concurrent execution is safe.
+						let server_fut =
+							crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
+								&config.bin_name,
+								&mut current_child,
+								&respawn,
+								&config.address,
+							);
+						let ((), (_outcome, new_child)) = tokio::join!(wasm_fut, server_fut);
+						if let Some(child) = new_child {
+							current_child = child;
+						}
+					} else if targets.wasm {
+						wasm_fut.await;
+					} else {
+						let (_outcome, new_child) =
+							crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
+								&config.bin_name,
+								&mut current_child,
+								&respawn,
+								&config.address,
+							)
+							.await;
+						if let Some(child) = new_child {
+							current_child = child;
+						}
+					}
 				// Pipeline failures are recorded as log lines and never
 				// propagate as Err — the loop continues unconditionally.
 			}
@@ -345,5 +467,91 @@ mod tests {
 
 		// Assert
 		assert!(result.is_none());
+	}
+
+	#[cfg(feature = "pages")]
+	fn pages_config(no_wasm_rebuild: bool) -> WatcherConfig {
+		WatcherConfig {
+			bin_name: "manage".to_string(),
+			roots: SourceRoots {
+				src_dirs: vec![PathBuf::from("/project/src")],
+				manifest_files: vec![PathBuf::from("/project/Cargo.toml")],
+				lockfile: Some(PathBuf::from("/project/Cargo.lock")),
+			},
+			no_wasm_rebuild,
+			pages_enabled: true,
+		}
+	}
+
+	#[cfg(feature = "pages")]
+	#[rstest]
+	#[case::root_client_rs("/project/src/client.rs", false, true)]
+	#[case::root_client_dir("/project/src/client/pages.rs", false, true)]
+	#[case::app_client_dir("/project/src/apps/polls/client/page.rs", false, true)]
+	#[case::bin_manage("/project/src/bin/manage.rs", true, false)]
+	#[case::settings_config("/project/src/config/settings.rs", true, false)]
+	#[case::shared_types("/project/src/shared/types.rs", true, true)]
+	#[case::server_fn_boundary("/project/src/apps/polls/server_fn.rs", true, true)]
+	#[case::manifest("/project/Cargo.toml", true, true)]
+	#[case::lockfile("/project/Cargo.lock", true, true)]
+	fn rebuild_targets_classify_pages_paths(
+		#[case] path: &str,
+		#[case] expected_server: bool,
+		#[case] expected_wasm: bool,
+	) {
+		// Arrange
+		let config = pages_config(false);
+
+		// Act
+		let actual = rebuild_targets_for_paths(&[PathBuf::from(path)], &config);
+
+		// Assert
+		assert_eq!(
+			actual,
+			RebuildTargets {
+				server: expected_server,
+				wasm: expected_wasm,
+			},
+			"unexpected rebuild targets for {path}"
+		);
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn rebuild_targets_keep_client_only_noop_when_wasm_rebuild_disabled() {
+		// Arrange
+		let config = pages_config(true);
+
+		// Act
+		let actual =
+			rebuild_targets_for_paths(&[PathBuf::from("/project/src/client/page.rs")], &config);
+
+		// Assert
+		assert_eq!(
+			actual,
+			RebuildTargets {
+				server: false,
+				wasm: false,
+			},
+		);
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn rebuild_targets_keep_shared_server_rebuild_when_wasm_rebuild_disabled() {
+		// Arrange
+		let config = pages_config(true);
+
+		// Act
+		let actual = rebuild_targets_for_paths(&[PathBuf::from("/project/src/lib.rs")], &config);
+
+		// Assert
+		assert_eq!(
+			actual,
+			RebuildTargets {
+				server: true,
+				wasm: false,
+			},
+		);
 	}
 }

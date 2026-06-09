@@ -55,3 +55,12 @@ For Issue #5218, the target loops are:
 The current script covers the Rust build side of those loops. Browser-visible
 hot-reload latency still needs a runtime benchmark once the reload notification
 channel and dev-mode `page!` path exist.
+
+## Hot-Reload Target Selection
+
+The autoreload watcher classifies debounced paths before dispatching rebuilds.
+For Pages projects, `src/client.rs`, `src/client/**`, and
+`src/apps/*/client/**` are treated as WASM-only; `src/bin/**` plus server
+process configuration are treated as server-only; shared code, manifests, and
+lockfiles still rebuild both sides. Keep this conservative unless a new path is
+proved to be target-specific by generated project structure and tests.
