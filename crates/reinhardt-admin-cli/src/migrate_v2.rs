@@ -185,10 +185,31 @@ fn find_item_in_source(src: &str, search_from: usize, item_tokens: &str) -> (usi
 		Some(pos) => search_from + pos,
 		None => return (search_from, search_from),
 	};
+	let start = find_item_start_with_prefix(src, search_from, start);
 
 	let after_start = &src[start..];
 	let end_offset = find_item_end_offset(after_start);
 	(start, start + end_offset)
+}
+
+fn find_item_start_with_prefix(src: &str, search_from: usize, item_start: usize) -> usize {
+	let mut start = line_start(src, item_start);
+	while start > search_from {
+		let previous_end = start.saturating_sub(1);
+		let previous_start = line_start(src, previous_end);
+		let line = &src[previous_start..start];
+		let trimmed = line.trim();
+		if trimmed.starts_with("#[") || trimmed.starts_with("///") {
+			start = previous_start;
+		} else {
+			break;
+		}
+	}
+	start
+}
+
+fn line_start(src: &str, pos: usize) -> usize {
+	src[..pos].rfind('\n').map_or(0, |idx| idx + 1)
 }
 
 /// Find the byte offset past the end of an item starting at `src[0]`.

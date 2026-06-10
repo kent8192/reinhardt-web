@@ -99,6 +99,7 @@ jobs:
           elif [ -n "${FEATURES}" ]; then
             FLAGS="${FLAGS} --features ${FEATURES}"
           fi
+          # shellcheck disable=SC2086
           cargo check --target wasm32-unknown-unknown ${FLAGS} --quiet
 
   # Run clippy against wasm32-unknown-unknown for the same targets as wasm-check.
@@ -162,6 +163,7 @@ jobs:
           # Scope to library targets only. Test targets in dependent crates
           # (e.g. mio via tokio) do not compile to wasm32-unknown-unknown,
           # so --all-targets would always fail compile before lint stage.
+          # shellcheck disable=SC2086
           cargo clippy \
             --target wasm32-unknown-unknown \
             -p "${TARGET_PACKAGE}" \
@@ -230,7 +232,7 @@ jobs:
         working-directory: crates/reinhardt-pages
         # Run lib-level wasm_bindgen_test tests via wasm-pack.
         # This also caches the wasm-bindgen-test-runner binary for the next step.
-        run: wasm-pack test --headless --chrome --lib
+        run: wasm-pack test --headless --chrome --lib --features testing
 
       - name: Run WASM integration tests (reinhardt-pages)
         working-directory: crates/reinhardt-pages

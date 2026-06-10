@@ -325,7 +325,35 @@ jobs:
             ARGS+=(--release-type "$RELEASE_TYPE")
           fi
           echo "::notice::cargo semver-checks ${ARGS[*]}"
-          cargo semver-checks "${ARGS[@]}"
+          LOG_FILE="${RUNNER_TEMP:-/tmp}/cargo-semver-checks-${CRATE_NAME}.log"
+          if cargo semver-checks "${ARGS[@]}" 2>&1 | tee "$LOG_FILE"; then
+            exit 0
+          fi
+
+          if grep -Fq "SemverViolation" "$LOG_FILE"; then
+            exit 1
+          fi
+
+          # cargo-semver-checks cannot compare APIs when the baseline crate
+          # itself fails rustdoc. That is a baseline build problem, not a
+          # SemVer regression in the current PR.
+          if grep -Eq "Building .*\\(baseline\\)" "$LOG_FILE" \
+            && grep -Fq "failed to build rustdoc for crate" "$LOG_FILE"; then
+            echo "::warning::Skipping SemVer comparison for ${CRATE_NAME}: baseline rustdoc build failed at ${BASELINE_REV}."
+            exit 0
+          fi
+
+          # cargo metadata can fail before API comparison when the baseline
+          # dependency graph resolves to a transient upstream cycle. Keep true
+          # SemVerViolation failures hard-failing above.
+          if grep -Fq 'cargo metadata` exited with an error' "$LOG_FILE" \
+            && grep -Fq 'cyclic package dependency: package `js-sys' "$LOG_FILE" \
+            && grep -Fq 'depends on itself' "$LOG_FILE"; then
+            echo "::warning::Skipping SemVer comparison for ${CRATE_NAME}: baseline dependency resolution hit js-sys self-cycle at ${BASELINE_REV}."
+            exit 0
+          fi
+
+          exit 1
 
   # Aggregator job so downstream branch protection / required-check gates can
   # depend on a single status instead of pinning every matrix shard. Treats
