@@ -33,3 +33,6 @@ mod proxy_orm_integration;
 
 #[path = "orm/custom_manager_ui.rs"]
 mod custom_manager_ui;
+
+#[path = "orm/queryset_docs_ui.rs"]
+mod queryset_docs_ui;

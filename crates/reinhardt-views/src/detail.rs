@@ -446,11 +446,7 @@ where
 
 			let results = queryset
 				.clone()
-				.filter(Filter {
-					field: pk_field.to_string(),
-					operator: FilterOperator::Eq,
-					value: filter_value,
-				})
+				.filter(Filter::new(pk_field, FilterOperator::Eq, filter_value))
 				.all()
 				.await?;
 
@@ -463,11 +459,11 @@ where
 		if let Some(slug_value) = request.path_params.get(slug_kwarg) {
 			let results = queryset
 				.clone()
-				.filter(Filter {
-					field: self.get_slug_field().to_string(),
-					operator: FilterOperator::Eq,
-					value: FilterValue::String(slug_value.clone()),
-				})
+				.filter(Filter::new(
+					self.get_slug_field(),
+					FilterOperator::Eq,
+					FilterValue::String(slug_value.clone()),
+				))
 				.all()
 				.await?;
 
