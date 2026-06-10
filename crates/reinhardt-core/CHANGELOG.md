@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.3...reinhardt-core@v0.1.4) - 2026-06-10
+
+### Performance
+
+- *(pages)* batch generated page attributes
+- *(pages)* trim wasm dependency graph
+- *(build)* measure cold workspace build
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.30...reinhardt-core@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-core` as part of the reinhardt-web
