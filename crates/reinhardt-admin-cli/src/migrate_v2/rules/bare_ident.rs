@@ -257,13 +257,74 @@ fn push_statement_until_semicolon(
 	iter: &mut Peekable<proc_macro2::token_stream::IntoIter>,
 	out: &mut Vec<TokenTree>,
 ) {
+	let mut initializer: Vec<TokenTree> = Vec::new();
+	let mut in_initializer = false;
+
 	for next in iter.by_ref() {
 		let is_semicolon = matches!(&next, TokenTree::Punct(p) if p.as_char() == ';');
+		let is_assignment = matches!(&next, TokenTree::Punct(p) if p.as_char() == '=');
+
+		if in_initializer {
+			if is_semicolon {
+				out.extend(rewrite_let_initializer(initializer.into_iter().collect()));
+				out.push(next);
+				return;
+			}
+			initializer.push(next);
+			continue;
+		}
+
 		out.push(next);
+		if is_assignment {
+			in_initializer = true;
+		}
 		if is_semicolon {
 			return;
 		}
 	}
+
+	if in_initializer {
+		out.extend(rewrite_let_initializer(initializer.into_iter().collect()));
+	}
+}
+
+fn rewrite_let_initializer(input: TokenStream) -> TokenStream {
+	let mut out: Vec<TokenTree> = Vec::new();
+	let mut previous_token_can_own_brace_body = false;
+
+	for tt in input {
+		match tt {
+			TokenTree::Group(g) if g.delimiter() == Delimiter::Brace => {
+				let inner = if previous_token_can_own_brace_body {
+					rewrite_brace_body(g.stream())
+				} else {
+					rewrite_let_initializer(g.stream())
+				};
+				out.push(TokenTree::Group(Group::new(Delimiter::Brace, inner)));
+				previous_token_can_own_brace_body = false;
+			}
+			TokenTree::Group(g) => {
+				let delimiter = g.delimiter();
+				let inner = rewrite_let_initializer(g.stream());
+				out.push(TokenTree::Group(Group::new(delimiter, inner)));
+				previous_token_can_own_brace_body = false;
+			}
+			other => {
+				previous_token_can_own_brace_body = token_can_own_let_initializer_body(&other);
+				out.push(other);
+			}
+		}
+	}
+
+	out.into_iter().collect()
+}
+
+fn token_can_own_let_initializer_body(tt: &TokenTree) -> bool {
+	matches!(
+		tt,
+		TokenTree::Ident(id)
+			if starts_lowercase(&id.to_string()) && !is_reserved_keyword(&id.to_string())
+	)
 }
 
 fn push_immediate_body_if_present(

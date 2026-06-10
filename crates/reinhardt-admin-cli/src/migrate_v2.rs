@@ -199,7 +199,7 @@ fn find_item_start_with_prefix(src: &str, search_from: usize, item_start: usize)
 		let previous_start = line_start(src, previous_end);
 		let line = &src[previous_start..start];
 		let trimmed = line.trim();
-		if trimmed.starts_with("#[") || trimmed.starts_with("///") || trimmed.starts_with("//!") {
+		if trimmed.starts_with("#[") || trimmed.starts_with("///") {
 			start = previous_start;
 		} else {
 			break;

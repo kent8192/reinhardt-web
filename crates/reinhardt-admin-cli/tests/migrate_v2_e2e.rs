@@ -173,6 +173,33 @@ pub struct CardProps {
 }
 
 #[rstest]
+fn preserves_inner_module_docs_when_rewriting_first_item() {
+	let tmp = TempDir::new().expect("tempdir");
+	let file = tmp.path().join("page.rs");
+	write(
+		&file,
+		r#"//! Module docs stay outside the rewritten item.
+fn view(title: String) {
+    page! { div { title } };
+}
+"#,
+	);
+
+	let output = run_migrate(tmp.path(), &[]);
+	assert_success(&output);
+
+	let after = fs::read_to_string(&file).expect("read rewritten file");
+	assert!(
+		after.starts_with("//! Module docs stay outside the rewritten item."),
+		"inner module docs should not be replaced with the first item:\n{after}"
+	);
+	assert!(
+		compact_ws(&after).contains("{title}"),
+		"first item should still be migrated:\n{after}"
+	);
+}
+
+#[rstest]
 fn dry_run_reports_changes_without_writing_files() {
 	let tmp = TempDir::new().expect("tempdir");
 	let file = tmp.path().join("page.rs");
@@ -360,13 +387,15 @@ fn match_patterns_and_let_statements_are_not_wrapped_as_page_children() {
 	write(
 		&file,
 		r#"
-fn view(value: Option<String>, fallback: String) {
+fn view(value: Option<String>, fallback: String, title: String) {
     page! {
         section {
             match value {
                 item => div { fallback }
             }
             let local = fallback;
+            let child = div { title };
+            child
         }
     };
 }
@@ -387,8 +416,20 @@ fn view(value: Option<String>, fallback: String) {
 		"let binding pattern should not be wrapped:\n{after_first}"
 	);
 	assert!(
+		!compact.contains("let{child}="),
+		"let binding with element initializer should not be wrapped:\n{after_first}"
+	);
+	assert!(
 		compact.contains("div{{fallback}}") || compact.contains("div{{{fallback}}}"),
 		"match arm page body should still be migrated:\n{after_first}"
+	);
+	assert!(
+		compact.contains("div{{title}}"),
+		"let initializer element body should still be migrated:\n{after_first}"
+	);
+	assert!(
+		compact.contains("{child}"),
+		"page child following let statement should still be migrated:\n{after_first}"
 	);
 
 	let second = run_migrate(tmp.path(), &[]);
