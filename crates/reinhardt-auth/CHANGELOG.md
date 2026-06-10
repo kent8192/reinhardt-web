@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.2.0-rc.4...reinhardt-auth@v0.2.0-rc.5) - 2026-06-10
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+
+### Testing
+
+- *(auth)* remove time-based permission clock flake
+
 ## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.2.0-rc.3...reinhardt-auth@v0.2.0-rc.4) - 2026-06-06
 
 ### Changed

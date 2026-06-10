@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.2.0-rc.4...reinhardt-admin@v0.2.0-rc.5) - 2026-06-10
+
+### Added
+
+- *(orm)* add Django-like lookup helpers
+
+### Fixed
+
+- *(orm)* address lookup review edge cases
+
 ## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.2.0-rc.3...reinhardt-admin@v0.2.0-rc.4) - 2026-06-06
 
 ### Changed
