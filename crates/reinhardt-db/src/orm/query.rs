@@ -128,7 +128,7 @@ pub enum FilterValue {
 
 #[derive(Debug, Clone)]
 enum FilterField {
-	Column(String),
+	Column,
 	Expression(String),
 }
 
@@ -149,11 +149,21 @@ impl Filter {
 	pub fn new(field: impl Into<String>, operator: FilterOperator, value: FilterValue) -> Self {
 		let field = field.into();
 		Self {
-			field: field.clone(),
-			field_source: FilterField::Column(field),
+			field,
+			field_source: FilterField::Column,
 			operator,
 			value,
 		}
+	}
+
+	/// Returns the SQL expression used on the left side of this filter.
+	pub fn lhs_expr(&self) -> Expr {
+		filter_lhs_expr(self)
+	}
+
+	/// Returns the SQL text used on the left side of this filter.
+	pub fn lhs_sql(&self) -> String {
+		filter_lhs_sql(self)
 	}
 
 	/// Combine this filter with another condition using AND.
@@ -615,6 +625,12 @@ where
 	/// Returns composite filter conditions applied to this `QuerySet`.
 	pub fn filter_conditions(&self) -> &[FilterCondition] {
 		&self.filter_conditions
+	}
+
+	fn has_where_predicates(&self) -> bool {
+		!(self.filters.is_empty()
+			&& self.filter_conditions.is_empty()
+			&& self.subquery_conditions.is_empty())
 	}
 
 	/// Create a QuerySet from a subquery (FROM clause subquery / derived table)
@@ -2570,12 +2586,9 @@ where
 	}
 
 	/// Build WHERE condition using reinhardt-query from accumulated filters
-	fn build_where_condition(&self) -> Option<Condition> {
-		if self.filters.is_empty()
-			&& self.filter_conditions.is_empty()
-			&& self.subquery_conditions.is_empty()
-		{
-			return None;
+	fn build_where_condition(&self) -> reinhardt_core::exception::Result<Option<Condition>> {
+		if !self.has_where_predicates() {
+			return Ok(None);
 		}
 
 		let mut cond = Condition::all();
@@ -2684,26 +2697,35 @@ where
 						.map(Self::filter_value_to_sea_value)
 						.collect::<Vec<_>>(),
 				),
-				(FilterOperator::Contains, FilterValue::String(s)) => col.like(format!("%{}%", s)),
+				(FilterOperator::Contains, FilterValue::String(s)) => {
+					Self::like_expr(filter, s, LikePattern::Contains, false)
+				}
 				(FilterOperator::IContains, FilterValue::String(s)) => {
 					Self::like_expr(filter, s, LikePattern::Contains, true)
 				}
 				(FilterOperator::Contains, FilterValue::Array(arr)) => {
-					col.like(format!("%{}%", arr.first().unwrap_or(&String::new())))
+					let value = arr.first().map(String::as_str).unwrap_or("");
+					Self::like_expr(filter, value, LikePattern::Contains, false)
 				}
-				(FilterOperator::StartsWith, FilterValue::String(s)) => col.like(format!("{}%", s)),
+				(FilterOperator::StartsWith, FilterValue::String(s)) => {
+					Self::like_expr(filter, s, LikePattern::StartsWith, false)
+				}
 				(FilterOperator::IStartsWith, FilterValue::String(s)) => {
 					Self::like_expr(filter, s, LikePattern::StartsWith, true)
 				}
 				(FilterOperator::StartsWith, FilterValue::Array(arr)) => {
-					col.like(format!("{}%", arr.first().unwrap_or(&String::new())))
+					let value = arr.first().map(String::as_str).unwrap_or("");
+					Self::like_expr(filter, value, LikePattern::StartsWith, false)
 				}
-				(FilterOperator::EndsWith, FilterValue::String(s)) => col.like(format!("%{}", s)),
+				(FilterOperator::EndsWith, FilterValue::String(s)) => {
+					Self::like_expr(filter, s, LikePattern::EndsWith, false)
+				}
 				(FilterOperator::IEndsWith, FilterValue::String(s)) => {
 					Self::like_expr(filter, s, LikePattern::EndsWith, true)
 				}
 				(FilterOperator::EndsWith, FilterValue::Array(arr)) => {
-					col.like(format!("%{}", arr.first().unwrap_or(&String::new())))
+					let value = arr.first().map(String::as_str).unwrap_or("");
+					Self::like_expr(filter, value, LikePattern::EndsWith, false)
 				}
 				(FilterOperator::Regex, FilterValue::String(pattern)) => Expr::cust_with_values(
 					format!("{} ~ ?", Self::filter_lhs_sql(filter)),
@@ -2815,7 +2837,7 @@ where
 					Expr::cust_with_values(
 						format!(
 							"{} @> ARRAY[{}]",
-							quote_identifier(&filter.field),
+							Self::filter_lhs_sql(filter),
 							placeholders
 						),
 						arr.iter().cloned(),
@@ -2828,7 +2850,7 @@ where
 					Expr::cust_with_values(
 						format!(
 							"{} <@ ARRAY[{}]",
-							quote_identifier(&filter.field),
+							Self::filter_lhs_sql(filter),
 							placeholders
 						),
 						arr.iter().cloned(),
@@ -2841,7 +2863,7 @@ where
 					Expr::cust_with_values(
 						format!(
 							"{} && ARRAY[{}]",
-							quote_identifier(&filter.field),
+							Self::filter_lhs_sql(filter),
 							placeholders
 						),
 						arr.iter().cloned(),
@@ -2854,7 +2876,7 @@ where
 					Expr::cust_with_values(
 						format!(
 							"{} @@ plainto_tsquery('english', ?)",
-							quote_identifier(&filter.field)
+							Self::filter_lhs_sql(filter)
 						),
 						[query.clone()],
 					)
@@ -2864,7 +2886,7 @@ where
 				(FilterOperator::JsonbContains, FilterValue::String(json)) => {
 					// field @> ?::jsonb - parameterized
 					Expr::cust_with_values(
-						format!("{} @> ?::jsonb", quote_identifier(&filter.field)),
+						format!("{} @> ?::jsonb", Self::filter_lhs_sql(filter)),
 						[json.clone()],
 					)
 					.into_simple_expr()
@@ -2872,14 +2894,14 @@ where
 				(FilterOperator::JsonbContainedBy, FilterValue::String(json)) => {
 					// field <@ ?::jsonb - parameterized
 					Expr::cust_with_values(
-						format!("{} <@ ?::jsonb", quote_identifier(&filter.field)),
+						format!("{} <@ ?::jsonb", Self::filter_lhs_sql(filter)),
 						[json.clone()],
 					)
 					.into_simple_expr()
 				}
 				(FilterOperator::JsonbKeyExists, FilterValue::String(key)) => {
 					// field ? 'key' - using PgBinOper for safe parameterization
-					Expr::cust(quote_identifier(&filter.field))
+					Expr::cust(Self::filter_lhs_sql(filter))
 						.into_simple_expr()
 						.binary(
 							BinOper::PgOperator(PgBinOper::JsonContainsKey),
@@ -2894,7 +2916,7 @@ where
 						keys.iter().cloned(),
 					)
 					.into_simple_expr();
-					Expr::cust(quote_identifier(&filter.field))
+					Expr::cust(Self::filter_lhs_sql(filter))
 						.into_simple_expr()
 						.binary(
 							BinOper::PgOperator(PgBinOper::JsonContainsAnyKey),
@@ -2909,7 +2931,7 @@ where
 						keys.iter().cloned(),
 					)
 					.into_simple_expr();
-					Expr::cust(quote_identifier(&filter.field))
+					Expr::cust(Self::filter_lhs_sql(filter))
 						.into_simple_expr()
 						.binary(
 							BinOper::PgOperator(PgBinOper::JsonContainsAllKeys),
@@ -2919,7 +2941,7 @@ where
 				(FilterOperator::JsonbPathExists, FilterValue::String(path)) => {
 					// field @? ? - parameterized
 					Expr::cust_with_values(
-						format!("{} @? ?", quote_identifier(&filter.field)),
+						format!("{} @? ?", Self::filter_lhs_sql(filter)),
 						[path.clone()],
 					)
 					.into_simple_expr()
@@ -2927,17 +2949,16 @@ where
 				// PostgreSQL Range operators
 				(FilterOperator::RangeContains, v) => {
 					// field @> ? - parameterized
-					let val = Self::filter_value_to_sql_string(v);
 					Expr::cust_with_values(
-						format!("{} @> ?", quote_identifier(&filter.field)),
-						[val],
+						format!("{} @> ?", Self::filter_lhs_sql(filter)),
+						[Self::filter_value_to_sea_value(v)],
 					)
 					.into_simple_expr()
 				}
 				(FilterOperator::RangeContainedBy, FilterValue::String(range)) => {
 					// field <@ ? - parameterized
 					Expr::cust_with_values(
-						format!("{} <@ ?", quote_identifier(&filter.field)),
+						format!("{} <@ ?", Self::filter_lhs_sql(filter)),
 						[range.clone()],
 					)
 					.into_simple_expr()
@@ -2945,7 +2966,7 @@ where
 				(FilterOperator::RangeOverlaps, FilterValue::String(range)) => {
 					// field && ? - parameterized
 					Expr::cust_with_values(
-						format!("{} && ?", quote_identifier(&filter.field)),
+						format!("{} && ?", Self::filter_lhs_sql(filter)),
 						[range.clone()],
 					)
 					.into_simple_expr()
@@ -2962,7 +2983,7 @@ where
 		}
 
 		for filter_condition in &self.filter_conditions {
-			if let Some(expr) = Self::build_filter_condition(filter_condition, 0) {
+			if let Some(expr) = Self::build_filter_condition(filter_condition, 0)? {
 				cond = cond.add(expr);
 				added = true;
 			}
@@ -2995,18 +3016,18 @@ where
 			added = true;
 		}
 
-		added.then_some(cond)
+		Ok(added.then_some(cond))
 	}
 
 	fn build_filter_condition(
 		filter_condition: &FilterCondition,
 		depth: usize,
-	) -> Option<Condition> {
+	) -> reinhardt_core::exception::Result<Option<Condition>> {
 		if depth >= MAX_FILTER_CONDITION_DEPTH {
-			panic!(
+			return Err(reinhardt_core::exception::Error::Validation(format!(
 				"Filter condition exceeded maximum depth of {} levels",
 				MAX_FILTER_CONDITION_DEPTH
-			);
+			)));
 		}
 
 		match filter_condition {
@@ -3019,27 +3040,39 @@ where
 				let mut condition = Condition::all();
 				let mut added = false;
 				for item in conditions {
-					if let Some(sub_condition) = Self::build_filter_condition(item, depth + 1) {
+					if let Some(sub_condition) = Self::build_filter_condition(item, depth + 1)? {
 						condition = condition.add(sub_condition);
 						added = true;
 					}
 				}
-				added.then_some(condition)
+				Ok(added.then_some(condition))
 			}
 			FilterCondition::Or(conditions) => {
 				let mut condition = Condition::any();
 				let mut added = false;
 				for item in conditions {
-					if let Some(sub_condition) = Self::build_filter_condition(item, depth + 1) {
+					if let Some(sub_condition) = Self::build_filter_condition(item, depth + 1)? {
 						condition = condition.add(sub_condition);
 						added = true;
 					}
 				}
-				added.then_some(condition)
+				Ok(added.then_some(condition))
 			}
 			FilterCondition::Not(condition) => {
-				Self::build_filter_condition(condition, depth + 1).map(|condition| condition.not())
+				Ok(Self::build_filter_condition(condition, depth + 1)?
+					.map(|condition| condition.not()))
 			}
+		}
+	}
+
+	fn false_condition() -> Condition {
+		Condition::all().add(Expr::cust("FALSE").into_simple_expr())
+	}
+
+	fn build_where_condition_or_false(&self) -> Option<Condition> {
+		match self.build_where_condition() {
+			Ok(condition) => condition,
+			Err(_) => Some(Self::false_condition()),
 		}
 	}
 
@@ -3108,17 +3141,11 @@ where
 	}
 
 	fn filter_lhs_expr(filter: &Filter) -> Expr {
-		match &filter.field_source {
-			FilterField::Column(field) => Expr::col(parse_column_reference(field)),
-			FilterField::Expression(sql) => Expr::cust(sql),
-		}
+		filter_lhs_expr(filter)
 	}
 
 	fn filter_lhs_sql(filter: &Filter) -> String {
-		match &filter.field_source {
-			FilterField::Column(field) => quote_identifier(field),
-			FilterField::Expression(sql) => sql.clone(),
-		}
+		filter_lhs_sql(filter)
 	}
 
 	fn like_expr(
@@ -3171,43 +3198,6 @@ where
 			FilterValue::FieldRef(f) => f.field.clone().into(),
 			FilterValue::Expression(expr) => expr.to_sql().into(),
 			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone().into(),
-		}
-	}
-
-	/// Convert FilterValue to SQL-safe string representation
-	/// Used for custom SQL expressions (PostgreSQL operators)
-	fn filter_value_to_sql_string(v: &FilterValue) -> String {
-		match v {
-			FilterValue::String(s) => format!("'{}'", s.replace('\'', "''")),
-			FilterValue::Integer(i) | FilterValue::Int(i) => i.to_string(),
-			FilterValue::Float(f) => f.to_string(),
-			FilterValue::Boolean(b) | FilterValue::Bool(b) => {
-				if *b { "TRUE" } else { "FALSE" }.to_string()
-			}
-			FilterValue::Null => "NULL".to_string(),
-			FilterValue::Array(arr) => {
-				// Format as PostgreSQL array literal
-				let elements = arr
-					.iter()
-					.map(|s| format!("'{}'", s.replace('\'', "''")))
-					.collect::<Vec<_>>();
-				format!("ARRAY[{}]", elements.join(", "))
-			}
-			FilterValue::List(values) => {
-				let elements = values
-					.iter()
-					.map(Self::filter_value_to_sql_string)
-					.collect::<Vec<_>>();
-				format!("({})", elements.join(", "))
-			}
-			FilterValue::Range(start, end) => format!(
-				"{} AND {}",
-				Self::filter_value_to_sql_string(start),
-				Self::filter_value_to_sql_string(end)
-			),
-			FilterValue::FieldRef(f) => f.field.clone(),
-			FilterValue::Expression(expr) => expr.to_sql(),
-			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone(),
 		}
 	}
 
@@ -3315,7 +3305,7 @@ where
 	// Allow dead_code: backward-compatible string-based WHERE clause builder for legacy code paths
 	#[allow(dead_code)]
 	fn build_where_clause(&self) -> (String, Vec<String>) {
-		if self.filters.is_empty() {
+		if !self.has_where_predicates() {
 			return (String::new(), Vec::new());
 		}
 
@@ -3323,7 +3313,7 @@ where
 		let mut stmt = Query::select();
 		stmt.from(Alias::new("dummy"));
 
-		if let Some(cond) = self.build_where_condition() {
+		if let Some(cond) = self.build_where_condition_or_false() {
 			stmt.cond_where(cond);
 		}
 
@@ -3507,7 +3497,7 @@ where
 		}
 
 		// Apply WHERE conditions
-		if let Some(cond) = self.build_where_condition() {
+		if let Some(cond) = self.build_where_condition_or_false() {
 			stmt.cond_where(cond);
 		}
 
@@ -3950,7 +3940,7 @@ where
 				stmt.column(ColumnRef::Asterisk);
 			}
 
-			if let Some(cond) = self.build_where_condition() {
+			if let Some(cond) = self.build_where_condition()? {
 				stmt.cond_where(cond);
 			}
 
@@ -4191,7 +4181,7 @@ where
 				stmt.column(ColumnRef::Asterisk);
 			}
 
-			if let Some(cond) = self.build_where_condition() {
+			if let Some(cond) = self.build_where_condition()? {
 				stmt.cond_where(cond);
 			}
 
@@ -4394,7 +4384,7 @@ where
 			.expr(Func::count(Expr::asterisk().into_simple_expr()));
 
 		// Add WHERE conditions
-		if let Some(cond) = self.build_where_condition() {
+		if let Some(cond) = self.build_where_condition()? {
 			stmt.cond_where(cond);
 		}
 
@@ -4538,7 +4528,7 @@ where
 		}
 
 		// Add WHERE conditions
-		if let Some(cond) = self.build_where_condition() {
+		if let Some(cond) = self.build_where_condition_or_false() {
 			stmt.cond_where(cond);
 		}
 
@@ -4655,7 +4645,7 @@ where
 	/// ```
 	/// Generate DELETE statement using reinhardt-query
 	pub fn delete_query(&self) -> reinhardt_query::prelude::DeleteStatement {
-		if self.filters.is_empty() {
+		if !self.has_where_predicates() {
 			panic!(
 				"DELETE without WHERE clause is not allowed. Use .filter() to specify which rows to delete."
 			);
@@ -4665,7 +4655,7 @@ where
 		stmt.from_table(Alias::new(T::table_name()));
 
 		// Add WHERE conditions
-		if let Some(cond) = self.build_where_condition() {
+		if let Some(cond) = self.build_where_condition_or_false() {
 			stmt.cond_where(cond);
 		}
 
@@ -5125,7 +5115,7 @@ where
 			}
 
 			// Apply WHERE conditions
-			if let Some(cond) = self.build_where_condition() {
+			if let Some(cond) = self.build_where_condition_or_false() {
 				stmt.cond_where(cond);
 			}
 
@@ -6023,6 +6013,22 @@ pub(crate) fn quote_identifier(field: &str) -> String {
 	}
 }
 
+fn filter_lhs_expr(filter: &Filter) -> Expr {
+	match &filter.field_source {
+		FilterField::Column => Expr::col(parse_column_reference(&filter.field)),
+		FilterField::Expression(sql) if filter.field == *sql => Expr::cust(sql.clone()),
+		FilterField::Expression(_) => Expr::col(parse_column_reference(&filter.field)),
+	}
+}
+
+fn filter_lhs_sql(filter: &Filter) -> String {
+	match &filter.field_source {
+		FilterField::Column => quote_identifier(&filter.field),
+		FilterField::Expression(sql) if filter.field == *sql => sql.clone(),
+		FilterField::Expression(_) => quote_identifier(&filter.field),
+	}
+}
+
 /// Parse field reference into reinhardt-query column expression
 ///
 /// Handles both qualified (`table.column`) and unqualified (`column`) references.
@@ -6105,6 +6111,7 @@ fn escape_like_pattern(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+	use super::{FilterCondition, MAX_FILTER_CONDITION_DEPTH};
 	use crate::orm::query::UpdateValue;
 	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
 	use rstest::rstest;
@@ -7031,6 +7038,47 @@ mod tests {
 	}
 
 	#[rstest]
+	fn test_composite_only_filter_is_recognized_by_delete_sql() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(
+			TestUser::field_username()
+				.exact("alice")
+				.or(TestUser::field_email().icontains("example.com")),
+		);
+
+		// Act
+		let (sql, params) = queryset.delete_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"DELETE FROM "test_users" WHERE ("username" = $1 OR "email" ILIKE $2 ESCAPE '\')"#
+		);
+		assert_eq!(params, vec!["alice", "%example.com%"]);
+	}
+
+	#[rstest]
+	fn test_over_deep_filter_condition_returns_error_and_to_sql_stays_safe() {
+		// Arrange
+		let mut condition = FilterCondition::Single(TestUser::field_username().exact("alice"));
+		for _ in 0..=MAX_FILTER_CONDITION_DEPTH {
+			condition = FilterCondition::not(condition);
+		}
+		let queryset = QuerySet::<TestUser>::new().filter(condition);
+
+		// Act
+		let result = queryset.build_where_condition();
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(reinhardt_core::exception::Error::Validation(_))
+		));
+		assert_eq!(sql, r#"SELECT * FROM "test_users" WHERE FALSE"#);
+	}
+
+	#[rstest]
 	#[case(
 		Filter::new("email", FilterOperator::IContains, FilterValue::String("100%_match\\".to_string())),
 		r#"SELECT * FROM "test_users" WHERE "email" ILIKE '%100\%\_match\\%' ESCAPE '\'"#
@@ -7040,6 +7088,33 @@ mod tests {
 		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'alice\_admin' ESCAPE '\'"#
 	)]
 	fn test_django_style_case_insensitive_like_filters_escape_metacharacters(
+		#[case] filter: Filter,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(filter);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(sql, expected);
+	}
+
+	#[rstest]
+	#[case(
+		Filter::new("email", FilterOperator::Contains, FilterValue::String("100%_match\\".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "email" LIKE '%100\%\_match\\%' ESCAPE '\'"#
+	)]
+	#[case(
+		Filter::new("username", FilterOperator::StartsWith, FilterValue::String("alice_admin".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" LIKE 'alice\_admin%' ESCAPE '\'"#
+	)]
+	#[case(
+		Filter::new("username", FilterOperator::EndsWith, FilterValue::String("100%".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" LIKE '%100\%' ESCAPE '\'"#
+	)]
+	fn test_django_style_case_sensitive_like_filters_escape_metacharacters(
 		#[case] filter: Filter,
 		#[case] expected: &str,
 	) {
@@ -7130,6 +7205,41 @@ mod tests {
 	}
 
 	#[rstest]
+	fn test_public_column_filter_uses_mutated_field_consistently() {
+		// Arrange
+		let mut filter = Filter::new(
+			"username",
+			FilterOperator::Eq,
+			FilterValue::String("alice".into()),
+		);
+		filter.field = "email".to_string();
+		let queryset = QuerySet::<TestUser>::new().filter(filter);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(sql, r#"SELECT * FROM "test_users" WHERE "email" = 'alice'"#);
+	}
+
+	#[rstest]
+	fn test_mutated_transformed_filter_field_falls_back_to_quoted_column() {
+		// Arrange
+		let mut filter = TestUser::field_created_at().year().eq(2026);
+		filter.field = "EXTRACT(MONTH FROM \"created_at\")".to_string();
+		let queryset = QuerySet::<TestUser>::new().filter(filter);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "EXTRACT(MONTH FROM ""created_at"")" = 2026"#
+		);
+	}
+
+	#[rstest]
 	fn test_field_accessor_lookup_helpers_generate_expected_sql() {
 		// Arrange
 		let queryset = QuerySet::<TestUser>::new()
@@ -7184,7 +7294,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("username" LIKE '%lic%' AND "username" LIKE 'a%' AND "username" LIKE '%e' AND "username" ILIKE 'AL%' ESCAPE '\' AND "username" ILIKE '%CE' ESCAPE '\' AND "username" ~ '^a.*e$' AND "username" ~* '^A.*E$')"#
+			r#"SELECT * FROM "test_users" WHERE ("username" LIKE '%lic%' ESCAPE '\' AND "username" LIKE 'a%' ESCAPE '\' AND "username" LIKE '%e' ESCAPE '\' AND "username" ILIKE 'AL%' ESCAPE '\' AND "username" ILIKE '%CE' ESCAPE '\' AND "username" ~ '^a.*e$' AND "username" ~* '^A.*E$')"#
 		);
 	}
 
@@ -7271,7 +7381,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE "age_range" @> '''25'''"#
+			r#"SELECT * FROM "test_users" WHERE "age_range" @> '25'"#
 		);
 	}
 

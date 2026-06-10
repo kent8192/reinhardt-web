@@ -351,30 +351,11 @@ fn escape_like_pattern(input: &str) -> String {
 		.replace('_', "\\_")
 }
 
-fn quote_identifier(field: &str) -> String {
-	if field.contains('\0') {
-		panic!("SQL identifier must not contain null bytes");
-	}
-
-	fn quote_single(name: &str) -> String {
-		format!("\"{}\"", name.replace('"', "\"\""))
-	}
-
-	if field.contains('.') {
-		field
-			.split('.')
-			.map(quote_single)
-			.collect::<Vec<_>>()
-			.join(".")
-	} else {
-		quote_single(field)
-	}
-}
-
 /// Build a SimpleExpr from a single Filter
 #[doc(hidden)]
 pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
-	let col = Expr::col(Alias::new(&filter.field));
+	let col = filter.lhs_expr();
+	let lhs_sql = filter.lhs_sql();
 
 	let expr = match (&filter.operator, &filter.value) {
 		// Null handling (must come before generic patterns)
@@ -463,18 +444,14 @@ pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 			BinOper::ILike,
 			SimpleExpr::from(format!("%{}", escape_like_pattern(s))),
 		),
-		(FilterOperator::Regex, FilterValue::String(pattern)) => Expr::cust_with_values(
-			format!("{} ~ ?", quote_identifier(&filter.field)),
-			[pattern.clone()],
-		)
-		.into(),
-		(FilterOperator::IRegex, FilterValue::String(pattern)) => Expr::cust_with_values(
-			format!("{} ~* ?", quote_identifier(&filter.field)),
-			[pattern.clone()],
-		)
-		.into(),
+		(FilterOperator::Regex, FilterValue::String(pattern)) => {
+			Expr::cust_with_values(format!("{} ~ ?", lhs_sql), [pattern.clone()]).into()
+		}
+		(FilterOperator::IRegex, FilterValue::String(pattern)) => {
+			Expr::cust_with_values(format!("{} ~* ?", lhs_sql), [pattern.clone()]).into()
+		}
 		(FilterOperator::Range, FilterValue::Range(start, end)) => Expr::cust_with_values(
-			format!("{} BETWEEN ? AND ?", quote_identifier(&filter.field)),
+			format!("{} BETWEEN ? AND ?", lhs_sql),
 			[
 				filter_value_to_sea_value(start),
 				filter_value_to_sea_value(end),
@@ -1806,6 +1783,29 @@ mod tests {
 				op
 			);
 		}
+	}
+
+	#[test]
+	fn test_build_single_filter_expr_uses_transformed_filter_lhs() {
+		// Arrange
+		let filter = reinhardt_db::orm::expressions::FieldRef::<(), i64>::new("created_at")
+			.year()
+			.range(2024, 2026);
+
+		// Act
+		let result = build_single_filter_expr(&filter);
+
+		// Assert
+		assert!(result.is_some());
+		let query = Query::select()
+			.from(Alias::new("users"))
+			.column(ColumnRef::Asterisk)
+			.cond_where(Condition::all().add(result.unwrap()))
+			.to_string(PostgresQueryBuilder);
+		assert_eq!(
+			query,
+			r#"SELECT * FROM "users" WHERE EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026"#
+		);
 	}
 
 	#[test]
