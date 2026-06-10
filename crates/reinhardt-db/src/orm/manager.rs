@@ -199,11 +199,10 @@ impl<M: Model> Manager<M> {
 
 	/// Filter records by a typed filter expression.
 	///
-	/// Accepts any value convertible into a [`Filter`](super::query::Filter).
+	/// Accepts any value convertible into a [`FilterCondition`](super::query::FilterCondition).
 	/// The intended call style is the fluent builder produced by the
 	/// `#[model]`-generated field accessors (`FieldRef::eq()` / `.gt()` / ...)
-	/// or the parallel `Field::eq()` builder, which returns a `Lookup<M>`
-	/// (convertible into `Filter` via its `Into` impl).
+	/// or a composite condition built with `.and()`, `.or()`, and `.not()`.
 	///
 	/// # Examples
 	///
@@ -221,7 +220,7 @@ impl<M: Model> Manager<M> {
 	///     .all()
 	///     .await?;
 	/// ```
-	pub fn filter(&self, filter: impl Into<super::query::Filter>) -> QuerySet<M> {
+	pub fn filter(&self, filter: impl Into<super::query::FilterCondition>) -> QuerySet<M> {
 		QuerySet::new().filter(filter)
 	}
 

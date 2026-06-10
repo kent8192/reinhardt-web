@@ -2,9 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::marker::PhantomData;
 
-use crate::orm::query::{
-	Filter, FilterOperator, FilterValue, REINHARDT_FILTER_EXPR_PREFIX, quote_identifier,
-};
+use crate::orm::query::{Filter, FilterOperator, FilterValue, quote_identifier};
 
 /// F expression - represents a database field reference
 /// Similar to Django's F() objects for database-side operations
@@ -681,11 +679,7 @@ impl<M> TransformedFieldRef<M> {
 	}
 
 	fn filter<V: Into<FilterValue>>(&self, operator: FilterOperator, value: V) -> Filter {
-		Filter::new(
-			format!("{}{}", REINHARDT_FILTER_EXPR_PREFIX, self.sql),
-			operator,
-			value.into(),
-		)
+		Filter::expression(self.sql.clone(), operator, value.into())
 	}
 
 	/// Create an equality filter on the transformed value.
@@ -734,8 +728,8 @@ impl<M> TransformedFieldRef<M> {
 		I: IntoIterator<Item = V>,
 		V: Into<FilterValue>,
 	{
-		Filter::new(
-			format!("{}{}", REINHARDT_FILTER_EXPR_PREFIX, self.sql),
+		Filter::expression(
+			self.sql.clone(),
 			FilterOperator::In,
 			FilterValue::List(values.into_iter().map(Into::into).collect()),
 		)
@@ -743,8 +737,8 @@ impl<M> TransformedFieldRef<M> {
 
 	/// Create a BETWEEN filter on the transformed value.
 	pub fn range<V: Into<FilterValue>>(&self, start: V, end: V) -> Filter {
-		Filter::new(
-			format!("{}{}", REINHARDT_FILTER_EXPR_PREFIX, self.sql),
+		Filter::expression(
+			self.sql.clone(),
 			FilterOperator::Range,
 			FilterValue::Range(Box::new(start.into()), Box::new(end.into())),
 		)
@@ -764,7 +758,7 @@ impl<M, T> fmt::Display for FieldRef<M, T> {
 
 // Allow conversion from FieldRef to String for general string-context use
 // (logging, error messages, custom query builders). `Manager::filter` /
-// `QuerySet::filter` now take `impl Into<Filter>` (Issue #4650), so they
+// `QuerySet::filter` now take `impl Into<FilterCondition>` (Issue #4650), so they
 // no longer rely on this conversion.
 impl<M, T> From<FieldRef<M, T>> for String {
 	fn from(field_ref: FieldRef<M, T>) -> Self {
@@ -1386,7 +1380,7 @@ mod tests {
 		assert_eq!(year.to_sql(), "EXTRACT(YEAR FROM \"created_at\")");
 
 		let filter = year.gte(2026);
-		assert!(filter.field.starts_with(REINHARDT_FILTER_EXPR_PREFIX));
+		assert_eq!(filter.field, "EXTRACT(YEAR FROM \"created_at\")");
 		assert!(matches!(filter.operator, FilterOperator::Gte));
 		assert!(matches!(filter.value, FilterValue::Integer(2026)));
 	}

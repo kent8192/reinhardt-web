@@ -224,15 +224,22 @@ ORM layer for database abstraction with Reinhardt's own query builder (reinhardt
 **Example (Current API):**
 
 ```rust
+use chrono::{DateTime, Utc};
+use reinhardt::model;
 use reinhardt::db::orm::Model;
+use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize)]
 #[model(table_name = "users")]
 struct User {
+    #[field(primary_key = true)]
     id: i64,
+    #[field(max_length = 255)]
     username: String,
+    #[field(max_length = 255)]
     email: String,
     age: i32,
-    created_at: DateTime,
+    created_at: DateTime<Utc>,
 }
 
 let users = User::objects()
@@ -240,8 +247,17 @@ let users = User::objects()
     .filter(User::field_email().icontains("example.com"))
     .filter(User::field_id().is_in([1_i64, 2, 3]))
     .filter(User::field_created_at().year().gte(2026))
-    .order_by("-created_at")
+    .order_by(&["-created_at"])
     .limit(10)
+    .all()
+    .await?;
+
+let matching_users = User::objects()
+    .filter(
+        User::field_username()
+            .iexact("admin")
+            .or(User::field_email().icontains("example.com").not()),
+    )
     .all()
     .await?;
 ```

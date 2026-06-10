@@ -127,10 +127,17 @@ pub enum FilterValue {
 }
 
 #[derive(Debug, Clone)]
+enum FilterField {
+	Column(String),
+	Expression(String),
+}
+
+#[derive(Debug, Clone)]
 /// Represents a filter.
 pub struct Filter {
 	/// The field.
 	pub field: String,
+	field_source: FilterField,
 	/// The operator.
 	pub operator: FilterOperator,
 	/// The value.
@@ -140,8 +147,42 @@ pub struct Filter {
 impl Filter {
 	/// Creates a new instance.
 	pub fn new(field: impl Into<String>, operator: FilterOperator, value: FilterValue) -> Self {
+		let field = field.into();
 		Self {
-			field: field.into(),
+			field: field.clone(),
+			field_source: FilterField::Column(field),
+			operator,
+			value,
+		}
+	}
+
+	/// Combine this filter with another condition using AND.
+	pub fn and(self, other: impl Into<FilterCondition>) -> FilterCondition {
+		FilterCondition::And(vec![FilterCondition::from(self), other.into()])
+	}
+
+	/// Combine this filter with another condition using OR.
+	pub fn or(self, other: impl Into<FilterCondition>) -> FilterCondition {
+		FilterCondition::Or(vec![FilterCondition::from(self), other.into()])
+	}
+
+	/// Negate this filter.
+	// This method mirrors Django-style query combinators and returns FilterCondition,
+	// so implementing std::ops::Not would not provide the same fluent API.
+	#[allow(clippy::should_implement_trait)]
+	pub fn not(self) -> FilterCondition {
+		FilterCondition::not(self)
+	}
+
+	pub(crate) fn expression(
+		sql: impl Into<String>,
+		operator: FilterOperator,
+		value: FilterValue,
+	) -> Self {
+		let sql = sql.into();
+		Self {
+			field: sql.clone(),
+			field_source: FilterField::Expression(sql),
 			operator,
 			value,
 		}
@@ -200,14 +241,11 @@ pub enum UpdateValue {
 /// ]);
 ///
 /// // Complex nested condition: (status = 'active') AND (name LIKE '%alice%' OR email LIKE '%alice%')
-/// let complex = FilterCondition::And(vec![
-///     FilterCondition::Single(Filter::new(
-///         "status".to_string(),
-///         FilterOperator::Eq,
-///         FilterValue::String("active".to_string()),
-///     )),
-///     search,
-/// ]);
+/// let complex = Filter::new(
+///     "status".to_string(),
+///     FilterOperator::Eq,
+///     FilterValue::String("active".to_string()),
+/// ).and(search);
 /// ```
 #[derive(Debug, Clone)]
 pub enum FilterCondition {
@@ -244,20 +282,33 @@ impl FilterCondition {
 	/// ```
 	/// use reinhardt_db::orm::{Filter, FilterCondition, FilterOperator, FilterValue};
 	///
-	/// let condition = FilterCondition::not(
-	///     FilterCondition::Single(Filter::new(
-	///         "is_active".to_string(),
-	///         FilterOperator::Eq,
-	///         FilterValue::Boolean(true),
-	///     ))
-	/// );
+	/// let condition = Filter::new(
+	///     "is_active".to_string(),
+	///     FilterOperator::Eq,
+	///     FilterValue::Boolean(true),
+	/// ).not();
 	/// ```
 	// This method is intentionally named `not` for API consistency with Django's Q object.
 	// It does not implement std::ops::Not because it constructs a FilterCondition variant,
 	// not a boolean negation.
 	#[allow(clippy::should_implement_trait)]
-	pub fn not(condition: FilterCondition) -> Self {
-		Self::Not(Box::new(condition))
+	pub fn not(condition: impl Into<FilterCondition>) -> Self {
+		Self::Not(Box::new(condition.into()))
+	}
+
+	/// Create an AND condition from multiple conditions.
+	pub fn all(conditions: Vec<FilterCondition>) -> Self {
+		Self::and(conditions)
+	}
+
+	/// Create an OR condition from multiple conditions.
+	pub fn any(conditions: Vec<FilterCondition>) -> Self {
+		Self::or(conditions)
+	}
+
+	/// Create a NOT condition that negates the given condition.
+	pub fn negate(condition: impl Into<FilterCondition>) -> Self {
+		Self::not(condition)
 	}
 
 	/// Create an OR condition from multiple filters (convenience method for search)
@@ -293,6 +344,12 @@ impl FilterCondition {
 			}
 			FilterCondition::Not(condition) => condition.is_empty(),
 		}
+	}
+}
+
+impl From<Filter> for FilterCondition {
+	fn from(filter: Filter) -> Self {
+		Self::Single(filter)
 	}
 }
 
@@ -443,6 +500,8 @@ enum SubqueryCondition {
 	NotExists { subquery: String },
 }
 
+const MAX_FILTER_CONDITION_DEPTH: usize = 64;
+
 #[derive(Clone)]
 /// Represents a query set.
 pub struct QuerySet<T>
@@ -451,6 +510,7 @@ where
 {
 	_phantom: std::marker::PhantomData<T>,
 	filters: SmallVec<[Filter; 10]>,
+	filter_conditions: SmallVec<[FilterCondition; 4]>,
 	select_related_fields: Vec<String>,
 	prefetch_related_fields: Vec<String>,
 	order_by_fields: Vec<String>,
@@ -482,6 +542,7 @@ where
 		Self {
 			_phantom: std::marker::PhantomData,
 			filters: SmallVec::new(),
+			filter_conditions: SmallVec::new(),
 			select_related_fields: Vec::new(),
 			prefetch_related_fields: Vec::new(),
 			order_by_fields: Vec::new(),
@@ -508,6 +569,7 @@ where
 		Self {
 			_phantom: std::marker::PhantomData,
 			filters: SmallVec::new(),
+			filter_conditions: SmallVec::new(),
 			select_related_fields: Vec::new(),
 			prefetch_related_fields: Vec::new(),
 			order_by_fields: Vec::new(),
@@ -531,13 +593,14 @@ where
 
 	/// Appends a filter expression to this `QuerySet`.
 	///
-	/// Accepts any value convertible into [`Filter`] — typically the fluent
-	/// builder produced by `FieldRef::eq()` / `.gt()` / ... or the typed
-	/// `Field::eq()` builder (which is convertible into [`Filter`]).
-	/// Passing a `Filter` directly is also supported via the blanket identity
-	/// `impl From<Filter> for Filter`.
-	pub fn filter(mut self, filter: impl Into<Filter>) -> Self {
-		self.filters.push(filter.into());
+	/// Accepts any value convertible into [`FilterCondition`] — typically a
+	/// [`Filter`] from `FieldRef::eq()` / `.gt()` / ... or a composite condition
+	/// built with [`Filter::and`], [`Filter::or`], and [`Filter::not`].
+	pub fn filter(mut self, filter: impl Into<FilterCondition>) -> Self {
+		match filter.into() {
+			FilterCondition::Single(filter) => self.filters.push(filter),
+			condition => self.filter_conditions.push(condition),
+		}
 		self
 	}
 
@@ -547,6 +610,11 @@ where
 	/// observe or assert on the active filter chain (Issue #3980).
 	pub fn filters(&self) -> &[Filter] {
 		&self.filters
+	}
+
+	/// Returns composite filter conditions applied to this `QuerySet`.
+	pub fn filter_conditions(&self) -> &[FilterCondition] {
+		&self.filter_conditions
 	}
 
 	/// Create a QuerySet from a subquery (FROM clause subquery / derived table)
@@ -617,6 +685,7 @@ where
 		Self {
 			_phantom: std::marker::PhantomData,
 			filters: SmallVec::new(),
+			filter_conditions: SmallVec::new(),
 			select_related_fields: Vec::new(),
 			prefetch_related_fields: Vec::new(),
 			order_by_fields: Vec::new(),
@@ -2502,15 +2571,18 @@ where
 
 	/// Build WHERE condition using reinhardt-query from accumulated filters
 	fn build_where_condition(&self) -> Option<Condition> {
-		// Early return only if both filters and subquery_conditions are empty
-		if self.filters.is_empty() && self.subquery_conditions.is_empty() {
+		if self.filters.is_empty()
+			&& self.filter_conditions.is_empty()
+			&& self.subquery_conditions.is_empty()
+		{
 			return None;
 		}
 
 		let mut cond = Condition::all();
+		let mut added = false;
 
 		for filter in &self.filters {
-			let col = Self::filter_lhs_expr(&filter.field);
+			let col = Self::filter_lhs_expr(filter);
 
 			let expr = match (&filter.operator, &filter.value) {
 				// Field-to-field comparisons (must come before generic patterns)
@@ -2576,7 +2648,7 @@ where
 				(FilterOperator::Eq, FilterValue::Null) => col.is_null(),
 				(FilterOperator::Ne, FilterValue::Null) => col.is_not_null(),
 				(FilterOperator::IExact, FilterValue::String(s)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(s.clone()))
+					Self::like_expr(filter, s, LikePattern::Exact, true)
 				}
 				(FilterOperator::IExact, v) => col.eq(Self::filter_value_to_sea_value(v)),
 				// Generic value comparisons (catch-all for other FilterValue types)
@@ -2614,37 +2686,37 @@ where
 				),
 				(FilterOperator::Contains, FilterValue::String(s)) => col.like(format!("%{}%", s)),
 				(FilterOperator::IContains, FilterValue::String(s)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}%", s)))
+					Self::like_expr(filter, s, LikePattern::Contains, true)
 				}
 				(FilterOperator::Contains, FilterValue::Array(arr)) => {
 					col.like(format!("%{}%", arr.first().unwrap_or(&String::new())))
 				}
 				(FilterOperator::StartsWith, FilterValue::String(s)) => col.like(format!("{}%", s)),
 				(FilterOperator::IStartsWith, FilterValue::String(s)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("{}%", s)))
+					Self::like_expr(filter, s, LikePattern::StartsWith, true)
 				}
 				(FilterOperator::StartsWith, FilterValue::Array(arr)) => {
 					col.like(format!("{}%", arr.first().unwrap_or(&String::new())))
 				}
 				(FilterOperator::EndsWith, FilterValue::String(s)) => col.like(format!("%{}", s)),
 				(FilterOperator::IEndsWith, FilterValue::String(s)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}", s)))
+					Self::like_expr(filter, s, LikePattern::EndsWith, true)
 				}
 				(FilterOperator::EndsWith, FilterValue::Array(arr)) => {
 					col.like(format!("%{}", arr.first().unwrap_or(&String::new())))
 				}
 				(FilterOperator::Regex, FilterValue::String(pattern)) => Expr::cust_with_values(
-					format!("{} ~ ?", Self::filter_lhs_sql(&filter.field)),
+					format!("{} ~ ?", Self::filter_lhs_sql(filter)),
 					[pattern.clone()],
 				)
 				.into_simple_expr(),
 				(FilterOperator::IRegex, FilterValue::String(pattern)) => Expr::cust_with_values(
-					format!("{} ~* ?", Self::filter_lhs_sql(&filter.field)),
+					format!("{} ~* ?", Self::filter_lhs_sql(filter)),
 					[pattern.clone()],
 				)
 				.into_simple_expr(),
 				(FilterOperator::Range, FilterValue::Range(start, end)) => Expr::cust_with_values(
-					format!("{} BETWEEN ? AND ?", Self::filter_lhs_sql(&filter.field)),
+					format!("{} BETWEEN ? AND ?", Self::filter_lhs_sql(filter)),
 					[
 						Self::filter_value_to_sea_value(start),
 						Self::filter_value_to_sea_value(end),
@@ -2886,6 +2958,14 @@ where
 			};
 
 			cond = cond.add(expr);
+			added = true;
+		}
+
+		for filter_condition in &self.filter_conditions {
+			if let Some(expr) = Self::build_filter_condition(filter_condition, 0) {
+				cond = cond.add(expr);
+				added = true;
+			}
 		}
 
 		// Add subquery conditions
@@ -2912,9 +2992,55 @@ where
 			};
 
 			cond = cond.add(expr);
+			added = true;
 		}
 
-		Some(cond)
+		added.then_some(cond)
+	}
+
+	fn build_filter_condition(
+		filter_condition: &FilterCondition,
+		depth: usize,
+	) -> Option<Condition> {
+		if depth >= MAX_FILTER_CONDITION_DEPTH {
+			panic!(
+				"Filter condition exceeded maximum depth of {} levels",
+				MAX_FILTER_CONDITION_DEPTH
+			);
+		}
+
+		match filter_condition {
+			FilterCondition::Single(filter) => {
+				let mut queryset = Self::new();
+				queryset.filters.push(filter.clone());
+				queryset.build_where_condition()
+			}
+			FilterCondition::And(conditions) => {
+				let mut condition = Condition::all();
+				let mut added = false;
+				for item in conditions {
+					if let Some(sub_condition) = Self::build_filter_condition(item, depth + 1) {
+						condition = condition.add(sub_condition);
+						added = true;
+					}
+				}
+				added.then_some(condition)
+			}
+			FilterCondition::Or(conditions) => {
+				let mut condition = Condition::any();
+				let mut added = false;
+				for item in conditions {
+					if let Some(sub_condition) = Self::build_filter_condition(item, depth + 1) {
+						condition = condition.add(sub_condition);
+						added = true;
+					}
+				}
+				added.then_some(condition)
+			}
+			FilterCondition::Not(condition) => {
+				Self::build_filter_condition(condition, depth + 1).map(|condition| condition.not())
+			}
+		}
 	}
 
 	/// Convert FilterValue to reinhardt_query::value::Value
@@ -2981,20 +3107,36 @@ where
 		value.to_sql()
 	}
 
-	fn filter_lhs_expr(field: &str) -> Expr {
-		if let Some(sql) = field.strip_prefix(REINHARDT_FILTER_EXPR_PREFIX) {
-			Expr::cust(sql)
-		} else {
-			Expr::col(parse_column_reference(field))
+	fn filter_lhs_expr(filter: &Filter) -> Expr {
+		match &filter.field_source {
+			FilterField::Column(field) => Expr::col(parse_column_reference(field)),
+			FilterField::Expression(sql) => Expr::cust(sql),
 		}
 	}
 
-	fn filter_lhs_sql(field: &str) -> String {
-		if let Some(sql) = field.strip_prefix(REINHARDT_FILTER_EXPR_PREFIX) {
-			sql.to_string()
-		} else {
-			quote_identifier(field)
+	fn filter_lhs_sql(filter: &Filter) -> String {
+		match &filter.field_source {
+			FilterField::Column(field) => quote_identifier(field),
+			FilterField::Expression(sql) => sql.clone(),
 		}
+	}
+
+	fn like_expr(
+		filter: &Filter,
+		value: &str,
+		pattern: LikePattern,
+		case_insensitive: bool,
+	) -> SimpleExpr {
+		let operator = if case_insensitive { "ILIKE" } else { "LIKE" };
+		Expr::cust_with_values(
+			format!(
+				"{} {} ? ESCAPE '\\'",
+				Self::filter_lhs_sql(filter),
+				operator
+			),
+			[pattern.apply(value)],
+		)
+		.into_simple_expr()
 	}
 
 	fn filter_value_to_sea_value(v: &FilterValue) -> reinhardt_query::value::Value {
@@ -5858,8 +6000,6 @@ impl FilterValue {
 // Helper Functions
 // ============================================================================
 
-pub(crate) const REINHARDT_FILTER_EXPR_PREFIX: &str = "__reinhardt_filter_expr:";
-
 /// Quote a SQL identifier to prevent injection via field names.
 /// Uses PostgreSQL double-quote escaping (also valid for SQLite).
 /// Handles dot-separated qualified names (e.g., "table.column" becomes "table"."column").
@@ -5930,6 +6070,37 @@ fn parse_column_reference(field: &str) -> reinhardt_query::prelude::ColumnRef {
 		// Simple column reference
 		ColumnRef::column(Alias::new(field))
 	}
+}
+
+#[derive(Debug, Clone, Copy)]
+enum LikePattern {
+	Exact,
+	Contains,
+	StartsWith,
+	EndsWith,
+}
+
+impl LikePattern {
+	fn apply(self, value: &str) -> String {
+		let escaped = escape_like_pattern(value);
+		match self {
+			Self::Exact => escaped,
+			Self::Contains => format!("%{}%", escaped),
+			Self::StartsWith => format!("{}%", escaped),
+			Self::EndsWith => format!("%{}", escaped),
+		}
+	}
+}
+
+fn escape_like_pattern(value: &str) -> String {
+	let mut escaped = String::with_capacity(value.len());
+	for ch in value.chars() {
+		if matches!(ch, '\\' | '%' | '_') {
+			escaped.push('\\');
+		}
+		escaped.push(ch);
+	}
+	escaped
 }
 
 #[cfg(test)]
@@ -6774,19 +6945,19 @@ mod tests {
 	#[rstest]
 	#[case(
 		Filter::new("username", FilterOperator::IExact, FilterValue::String("Alice".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'Alice'"#
+		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'Alice' ESCAPE '\'"#
 	)]
 	#[case(
 		Filter::new("email", FilterOperator::IContains, FilterValue::String("example.com".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "email" ILIKE '%example.com%'"#
+		r#"SELECT * FROM "test_users" WHERE "email" ILIKE '%example.com%' ESCAPE '\'"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IStartsWith, FilterValue::String("ali".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'ali%'"#
+		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'ali%' ESCAPE '\'"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IEndsWith, FilterValue::String("ice".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ILIKE '%ice'"#
+		r#"SELECT * FROM "test_users" WHERE "username" ILIKE '%ice' ESCAPE '\'"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::Regex, FilterValue::String("^a".to_string())),
@@ -6797,6 +6968,81 @@ mod tests {
 		r#"SELECT * FROM "test_users" WHERE "username" ~* '^a'"#
 	)]
 	fn test_django_style_string_lookup_filters(#[case] filter: Filter, #[case] expected: &str) {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(filter);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(sql, expected);
+	}
+
+	#[rstest]
+	fn test_filter_or_chain_generates_expected_sql() {
+		// Arrange
+		let condition = TestUser::field_username()
+			.exact("alice")
+			.or(TestUser::field_email().icontains("example.com"));
+		let queryset = QuerySet::<TestUser>::new().filter(condition);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' OR "email" ILIKE '%example.com%' ESCAPE '\')"#
+		);
+	}
+
+	#[rstest]
+	fn test_filter_and_chain_generates_expected_sql() {
+		// Arrange
+		let condition = TestUser::field_username()
+			.exact("alice")
+			.and(TestUser::field_id().gte(10));
+		let queryset = QuerySet::<TestUser>::new().filter(condition);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' AND "id" >= 10)"#
+		);
+	}
+
+	#[rstest]
+	fn test_filter_not_chain_generates_expected_sql() {
+		// Arrange
+		let condition = TestUser::field_username().exact("alice").not();
+		let queryset = QuerySet::<TestUser>::new().filter(condition);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE NOT "username" = 'alice'"#
+		);
+	}
+
+	#[rstest]
+	#[case(
+		Filter::new("email", FilterOperator::IContains, FilterValue::String("100%_match\\".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "email" ILIKE '%100\%\_match\\%' ESCAPE '\'"#
+	)]
+	#[case(
+		Filter::new("username", FilterOperator::IExact, FilterValue::String("alice_admin".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'alice\_admin' ESCAPE '\'"#
+	)]
+	fn test_django_style_case_insensitive_like_filters_escape_metacharacters(
+		#[case] filter: Filter,
+		#[case] expected: &str,
+	) {
 		// Arrange
 		let queryset = QuerySet::<TestUser>::new().filter(filter);
 
@@ -6848,11 +7094,8 @@ mod tests {
 	#[rstest]
 	fn test_django_style_date_part_filter_expression() {
 		// Arrange
-		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
-			format!(
-				"{}EXTRACT(YEAR FROM \"created_at\")",
-				super::REINHARDT_FILTER_EXPR_PREFIX
-			),
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::expression(
+			"EXTRACT(YEAR FROM \"created_at\")",
 			FilterOperator::Eq,
 			FilterValue::Integer(2026),
 		));
@@ -6864,6 +7107,25 @@ mod tests {
 		assert_eq!(
 			sql,
 			r#"SELECT * FROM "test_users" WHERE EXTRACT(YEAR FROM "created_at") = 2026"#
+		);
+	}
+
+	#[rstest]
+	fn test_public_filter_new_treats_expression_like_field_as_quoted_column() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			"__reinhardt_filter_expr:EXTRACT(YEAR FROM \"created_at\")",
+			FilterOperator::Eq,
+			FilterValue::Integer(2026),
+		));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "__reinhardt_filter_expr:EXTRACT(YEAR FROM ""created_at"")" = 2026"#
 		);
 	}
 
@@ -6882,7 +7144,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' AND "email" ILIKE '%example.com%' AND "id" IN (1, 2, 3) AND EXTRACT(YEAR FROM "created_at") >= 2026)"#
+			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' AND "email" ILIKE '%example.com%' ESCAPE '\' AND "id" IN (1, 2, 3) AND EXTRACT(YEAR FROM "created_at") >= 2026)"#
 		);
 	}
 
@@ -6922,7 +7184,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("username" LIKE '%lic%' AND "username" LIKE 'a%' AND "username" LIKE '%e' AND "username" ILIKE 'AL%' AND "username" ILIKE '%CE' AND "username" ~ '^a.*e$' AND "username" ~* '^A.*E$')"#
+			r#"SELECT * FROM "test_users" WHERE ("username" LIKE '%lic%' AND "username" LIKE 'a%' AND "username" LIKE '%e' AND "username" ILIKE 'AL%' ESCAPE '\' AND "username" ILIKE '%CE' ESCAPE '\' AND "username" ~ '^a.*e$' AND "username" ~* '^A.*E$')"#
 		);
 	}
 
@@ -6990,7 +7252,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT DISTINCT * FROM "test_users" WHERE ("email" ILIKE '%example.com%' AND "username" IS NOT NULL AND EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026) ORDER BY "created_at" DESC, "username" ASC LIMIT 25 OFFSET 50"#
+			r#"SELECT DISTINCT * FROM "test_users" WHERE ("email" ILIKE '%example.com%' ESCAPE '\' AND "username" IS NOT NULL AND EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026) ORDER BY "created_at" DESC, "username" ASC LIMIT 25 OFFSET 50"#
 		);
 	}
 
