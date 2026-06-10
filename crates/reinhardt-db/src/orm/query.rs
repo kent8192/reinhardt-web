@@ -6357,8 +6357,8 @@ mod tests {
 		let (sql, params) = queryset.update_sql(&updates);
 
 		// HashMap iteration order is not guaranteed, so we check both possible orderings
-		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4)";
-		let valid_sql_2 = "UPDATE \"test_users\" SET \"email\" = $1, \"username\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4)";
+		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4 ESCAPE '\\')";
+		let valid_sql_2 = "UPDATE \"test_users\" SET \"email\" = $1, \"username\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4 ESCAPE '\\')";
 		assert!(
 			sql == valid_sql_1 || sql == valid_sql_2,
 			"Generated SQL '{}' does not match either expected pattern",
@@ -6405,7 +6405,7 @@ mod tests {
 
 		assert_eq!(
 			sql,
-			"DELETE FROM \"test_users\" WHERE (\"username\" = $1 AND \"email\" LIKE $2)"
+			"DELETE FROM \"test_users\" WHERE (\"username\" = $1 AND \"email\" LIKE $2 ESCAPE '\\')"
 		);
 		assert_eq!(params, vec!["alice", "alice@%"]);
 	}
