@@ -586,7 +586,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_permission_has_permission() {
-		let permission = TimeBasedPermission::new().add_time_window("00:00", "23:59");
+		let permission = TimeBasedPermission::new();
 
 		let request = Request::builder()
 			.method(Method::GET)
