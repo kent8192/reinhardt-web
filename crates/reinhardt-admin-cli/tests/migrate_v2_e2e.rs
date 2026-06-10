@@ -1,0 +1,348 @@
+//! End-to-end tests for the `migrate-manouche-v2` command.
+//!
+//! These tests spawn the compiled `reinhardt-admin` binary and inspect real
+//! files on disk, covering command-line behavior that rule-level snapshot
+//! tests cannot validate.
+
+use rstest::rstest;
+use std::fs;
+use std::path::Path;
+use std::process::{Command, Output};
+use tempfile::TempDir;
+
+const REINHARDT_ADMIN: &str = env!("CARGO_BIN_EXE_reinhardt-admin");
+
+fn run_migrate(root: &Path, args: &[&str]) -> Output {
+	Command::new(REINHARDT_ADMIN)
+		.arg("migrate-manouche-v2")
+		.args(args)
+		.arg(root)
+		.output()
+		.expect("failed to spawn reinhardt-admin migrate-manouche-v2")
+}
+
+fn stdout(output: &Output) -> String {
+	String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+fn stderr(output: &Output) -> String {
+	String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+fn assert_success(output: &Output) {
+	assert!(
+		output.status.success(),
+		"command failed with exit {:?}\nstdout:\n{}\nstderr:\n{}",
+		output.status.code(),
+		stdout(output),
+		stderr(output)
+	);
+}
+
+fn assert_failure(output: &Output) {
+	assert!(
+		!output.status.success(),
+		"command unexpectedly succeeded\nstdout:\n{}\nstderr:\n{}",
+		stdout(output),
+		stderr(output)
+	);
+}
+
+fn write(path: &Path, content: &str) {
+	if let Some(parent) = path.parent() {
+		fs::create_dir_all(parent).expect("create parent dir");
+	}
+	fs::write(path, content).expect("write fixture");
+}
+
+#[rstest]
+fn rewrites_multiple_files_and_reports_changed_count() {
+	let tmp = TempDir::new().expect("tempdir");
+	let page_file = tmp.path().join("src/page.rs");
+	let props_file = tmp.path().join("src/components.rs");
+
+	write(
+		&page_file,
+		r#"
+fn view(name: String, count: usize) {
+    page! {
+        div {
+            name
+            watch {
+                span { count }
+            }
+        }
+    };
+    use_effect(move || {
+        let _ = count;
+    });
+}
+"#,
+	);
+	write(
+		&props_file,
+		r#"
+#[derive(Clone, Default)]
+pub struct CardProps {
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub count: usize,
+}
+"#,
+	);
+
+	let output = run_migrate(tmp.path(), &[]);
+	assert_success(&output);
+
+	let page = fs::read_to_string(&page_file).expect("read page file");
+	let props = fs::read_to_string(&props_file).expect("read props file");
+	assert!(
+		page.contains("{ name }") || page.contains("{name}"),
+		"bare identifier was not wrapped:\n{page}"
+	);
+	assert!(
+		!page.contains("watch"),
+		"watch wrapper should be removed:\n{page}"
+	);
+	assert!(
+		page.contains("compile_error!"),
+		"use_effect placeholder deps were not inserted:\n{page}"
+	);
+	assert!(
+		props.contains("bon::Builder"),
+		"Props derive was not migrated:\n{props}"
+	);
+	assert!(
+		props.contains("#[builder(default)]"),
+		"default builder attributes were not inserted:\n{props}"
+	);
+	assert!(
+		stdout(&output).contains("Done. 2 file(s) changed."),
+		"unexpected stdout:\n{}",
+		stdout(&output)
+	);
+}
+
+#[rstest]
+fn dry_run_reports_changes_without_writing_files() {
+	let tmp = TempDir::new().expect("tempdir");
+	let file = tmp.path().join("page.rs");
+	let original = r#"
+fn view(name: String) {
+    page! { div { name } };
+}
+"#;
+	write(&file, original);
+
+	let output = run_migrate(tmp.path(), &["--dry-run"]);
+	assert_success(&output);
+
+	let after = fs::read_to_string(&file).expect("read file after dry-run");
+	assert_eq!(after, original, "dry-run must not rewrite files");
+	assert!(
+		stdout(&output).contains("would rewrite:"),
+		"dry-run should list pending rewrite:\n{}",
+		stdout(&output)
+	);
+	assert!(
+		stdout(&output).contains("Done. 1 file(s) would change."),
+		"unexpected stdout:\n{}",
+		stdout(&output)
+	);
+}
+
+#[rstest]
+fn skip_rule_leaves_that_rule_unapplied_but_runs_others() {
+	let tmp = TempDir::new().expect("tempdir");
+	let file = tmp.path().join("page.rs");
+	write(
+		&file,
+		r#"
+fn view(name: String, count: usize) {
+    page! {
+        div {
+            name
+            watch { span { count } }
+        }
+    };
+}
+"#,
+	);
+
+	let output = run_migrate(tmp.path(), &["--skip", "bare_ident"]);
+	assert_success(&output);
+
+	let after = fs::read_to_string(&file).expect("read rewritten file");
+	assert!(
+		after.contains("name"),
+		"source should still contain the bare identifier:\n{after}"
+	);
+	assert!(
+		!after.contains("{ name }") && !after.contains("{name}"),
+		"bare_ident should have been skipped:\n{after}"
+	);
+	assert!(
+		!after.contains("watch"),
+		"watch_unwrap should still run when bare_ident is skipped:\n{after}"
+	);
+}
+
+#[rstest]
+fn rerunning_on_migrated_tree_is_idempotent() {
+	let tmp = TempDir::new().expect("tempdir");
+	let file = tmp.path().join("page.rs");
+	write(
+		&file,
+		r#"
+fn view(name: String) {
+    page! { div { name } };
+}
+"#,
+	);
+
+	let first = run_migrate(tmp.path(), &[]);
+	assert_success(&first);
+	let after_first = fs::read_to_string(&file).expect("read after first run");
+
+	let second = run_migrate(tmp.path(), &[]);
+	assert_success(&second);
+	let after_second = fs::read_to_string(&file).expect("read after second run");
+
+	assert_eq!(after_second, after_first, "second run changed the file");
+	assert!(
+		stdout(&second).contains("Done. 0 file(s) changed."),
+		"unexpected stdout:\n{}",
+		stdout(&second)
+	);
+}
+
+#[rstest]
+fn unknown_skip_rule_fails() {
+	let tmp = TempDir::new().expect("tempdir");
+	write(&tmp.path().join("page.rs"), "fn view() {}\n");
+
+	let output = run_migrate(tmp.path(), &["--skip", "not_a_rule"]);
+	assert_failure(&output);
+	assert!(
+		stderr(&output).contains("unknown --skip rule(s): not_a_rule"),
+		"unexpected stderr:\n{}",
+		stderr(&output)
+	);
+}
+
+#[rstest]
+fn missing_path_fails() {
+	let tmp = TempDir::new().expect("tempdir");
+	let missing = tmp.path().join("does-not-exist");
+
+	let output = run_migrate(&missing, &[]);
+	assert_failure(&output);
+	assert!(
+		stderr(&output).contains("No such file")
+			|| stderr(&output).contains("does-not-exist")
+			|| stderr(&output).contains("not found"),
+		"unexpected stderr:\n{}",
+		stderr(&output)
+	);
+}
+
+#[rstest]
+fn invalid_rust_file_is_skipped_while_valid_files_are_rewritten() {
+	let tmp = TempDir::new().expect("tempdir");
+	let valid = tmp.path().join("valid.rs");
+	let invalid = tmp.path().join("invalid.rs");
+	let invalid_source = "fn broken(\n";
+	write(
+		&valid,
+		r#"
+fn view(name: String) {
+    page! { div { name } };
+}
+"#,
+	);
+	write(&invalid, invalid_source);
+
+	let output = run_migrate(tmp.path(), &[]);
+	assert_success(&output);
+
+	let valid_after = fs::read_to_string(&valid).expect("read valid file");
+	let invalid_after = fs::read_to_string(&invalid).expect("read invalid file");
+	assert!(
+		valid_after.contains("{ name }") || valid_after.contains("{name}"),
+		"valid file was not rewritten:\n{valid_after}"
+	);
+	assert_eq!(
+		invalid_after, invalid_source,
+		"invalid Rust file should be skipped unchanged"
+	);
+	assert!(
+		stdout(&output).contains("Done. 1 file(s) changed."),
+		"unexpected stdout:\n{}",
+		stdout(&output)
+	);
+}
+
+#[rstest]
+fn skips_target_and_hidden_directories() {
+	let tmp = TempDir::new().expect("tempdir");
+	let source = tmp.path().join("src/page.rs");
+	let target = tmp.path().join("target/generated.rs");
+	let hidden = tmp.path().join(".git/ignored.rs");
+	let body = r#"
+fn view(name: String) {
+    page! { div { name } };
+}
+"#;
+	write(&source, body);
+	write(&target, body);
+	write(&hidden, body);
+
+	let output = run_migrate(tmp.path(), &[]);
+	assert_success(&output);
+
+	let source_after = fs::read_to_string(&source).expect("read source file");
+	let target_after = fs::read_to_string(&target).expect("read target file");
+	let hidden_after = fs::read_to_string(&hidden).expect("read hidden file");
+	assert!(
+		source_after.contains("{ name }") || source_after.contains("{name}"),
+		"source file should be rewritten:\n{source_after}"
+	);
+	assert_eq!(target_after, body, "target/ file should be skipped");
+	assert_eq!(
+		hidden_after, body,
+		"hidden directory file should be skipped"
+	);
+	assert!(
+		stdout(&output).contains("Done. 1 file(s) changed."),
+		"unexpected stdout:\n{}",
+		stdout(&output)
+	);
+}
+
+#[rstest]
+fn single_rs_file_path_is_rewritten() {
+	let tmp = TempDir::new().expect("tempdir");
+	let file = tmp.path().join("single.rs");
+	write(
+		&file,
+		r#"
+fn view(name: String) {
+    page! { div { name } };
+}
+"#,
+	);
+
+	let output = run_migrate(&file, &[]);
+	assert_success(&output);
+
+	let after = fs::read_to_string(&file).expect("read rewritten file");
+	assert!(
+		after.contains("{ name }") || after.contains("{name}"),
+		"single file path was not rewritten:\n{after}"
+	);
+	assert!(
+		stdout(&output).contains("Done. 1 file(s) changed."),
+		"unexpected stdout:\n{}",
+		stdout(&output)
+	);
+}

@@ -63,6 +63,7 @@ fn rewrite_page_body(input: TokenStream) -> TokenStream {
 fn rewrite_brace_body(input: TokenStream) -> TokenStream {
 	let mut out: Vec<TokenTree> = Vec::new();
 	let mut iter = input.into_iter().peekable();
+	let mut previous_token_can_own_brace_body = false;
 
 	while let Some(tt) = iter.next() {
 		// Look for `Ident` followed by something that is NOT one of:
@@ -96,44 +97,37 @@ fn rewrite_brace_body(input: TokenStream) -> TokenStream {
 				let ident = id.clone();
 				let wrapped = quote! { #ident };
 				out.push(TokenTree::Group(Group::new(Delimiter::Brace, wrapped)));
+				previous_token_can_own_brace_body = false;
 				continue;
 			}
 		}
 
 		// Recurse into any nested braced group (could be a child element body) —
-		// UNLESS the group is already in v2 expression-slot shape (`{ expr }`
-		// where the inner stream is itself wrapped in a single brace group).
-		// Recursing into such a body would re-wrap the inner ident on every
-		// pass, breaking idempotency.
+		// UNLESS it is a standalone expression slot created by a prior run.
+		// Element/control-flow bodies are owned by the previous token, while
+		// expression slots appear as standalone brace groups in child position.
 		if let TokenTree::Group(g) = &tt
 			&& g.delimiter() == Delimiter::Brace
 		{
-			if is_already_wrapped_expression_slot(&g.stream()) {
-				out.push(tt);
-			} else {
+			if previous_token_can_own_brace_body {
 				let inner = rewrite_brace_body(g.stream());
 				out.push(TokenTree::Group(Group::new(Delimiter::Brace, inner)));
+			} else {
+				out.push(tt);
 			}
+			previous_token_can_own_brace_body = false;
 			continue;
 		}
 
+		previous_token_can_own_brace_body = match &tt {
+			TokenTree::Ident(id) => !is_reserved_keyword(&id.to_string()),
+			TokenTree::Punct(p) => matches!(p.as_char(), ')' | ']'),
+			_ => false,
+		};
 		out.push(tt);
 	}
 
 	out.into_iter().collect()
-}
-
-/// True when a brace body's entire contents are themselves a single brace
-/// group — i.e. the surrounding braces are already the v2 expression-slot
-/// wrapping (`{ {expr} }`) introduced by a prior run of this rule.
-fn is_already_wrapped_expression_slot(stream: &TokenStream) -> bool {
-	let mut iter = stream.clone().into_iter();
-	let first = iter.next();
-	let rest = iter.next();
-	match (first, rest) {
-		(Some(TokenTree::Group(g)), None) => g.delimiter() == Delimiter::Brace,
-		_ => false,
-	}
 }
 
 fn starts_lowercase(s: &str) -> bool {

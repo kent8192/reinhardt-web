@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- *(admin-cli)* keep `migrate-manouche-v2` idempotent for already wrapped page expression slots.
+
 ## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.3...reinhardt-admin-cli@v0.2.0-rc.2) - 2026-06-03
 
 ### Fixed
