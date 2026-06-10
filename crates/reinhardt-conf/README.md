@@ -237,6 +237,48 @@ exists. A missing nested required leaf reports
 `BuildError::MissingRequiredPath` with the full schema path. A missing direct
 required field on the section still reports `BuildError::MissingRequiredField`.
 
+### Embedded-Only Settings Nodes
+
+Use `#[settings(fragment = true)]` without a `section = "..."` argument for a
+settings struct that should participate in schema metadata and validation below
+a root fragment, but should not become a top-level TOML section by itself.
+
+```rust,ignore
+#[settings(fragment = true, section = "database")]
+pub struct DatabaseSettings {
+    pub default: DatabaseConfig,
+    pub replica: Option<DatabaseConfig>,
+}
+
+#[settings(fragment = true, default_policy = "required")]
+pub struct DatabaseConfig {
+    pub engine: DatabaseEngine,
+    pub host: String,
+    pub port: u16,
+    pub name: String,
+    pub user: String,
+    pub password: SecretString,
+}
+```
+
+The corresponding TOML still nests the embedded node under the root fragment:
+
+```toml
+[database.default]
+engine = "postgresql"
+host = "localhost"
+port = 5432
+name = "app"
+user = "app"
+password = { env = "DATABASE_PASSWORD" }
+```
+
+A root fragment with `section = "..."` implements `SettingsFragment` and can be
+used in composed project settings. An embedded-only node implements
+`SettingsNode` for recursive schema and validation support, but does not
+implement `SettingsFragment`, expose `section()`, or register as a root
+composition section.
+
 ## Field Status
 
 The `Settings` struct contains fields that are either actively consumed by the framework or reserved for future implementation.
