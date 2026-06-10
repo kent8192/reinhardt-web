@@ -7,6 +7,8 @@ on:
       - "website/**"
   pull_request:
     types: [opened, synchronize, reopened, closed]
+    branches-ignore:
+      - "develop/**"
     paths:
       - "website/**"
   schedule:
@@ -107,7 +109,11 @@ jobs:
     name: Build & Deploy
     needs: [determine-runner]
     timeout-minutes: 360
-    if: github.event.action != 'closed'
+    # Never deploy website changes from develop/* release branches.
+    if: >-
+      github.event.action != 'closed' &&
+      !(github.event_name == 'pull_request' && startsWith(github.base_ref, 'develop/')) &&
+      !(github.event_name == 'workflow_dispatch' && startsWith(github.ref_name, 'develop/'))
     runs-on: ${{ fromJSON(needs.determine-runner.outputs.runner) }}
     steps:
       - name: Checkout
@@ -168,7 +174,10 @@ jobs:
     name: Cleanup Preview
     needs: [determine-runner]
     timeout-minutes: 360
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      !startsWith(github.base_ref, 'develop/')
     runs-on: ${{ fromJSON(needs.determine-runner.outputs.runner) }}
     steps:
       - name: Delete preview deployments
