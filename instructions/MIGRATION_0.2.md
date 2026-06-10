@@ -24,6 +24,21 @@ This guide covers only the delta from the public 0.1.x line to the final
 5. Regenerate migrations and review the diff.
 6. Run the verification commands at the end of this guide.
 
+## PR coverage
+
+This guide was audited against every merge PR reachable on
+`develop/0.2.0` after the public `reinhardt-web@v0.1.3` line. Related PRs are
+grouped by migration surface rather than listed in merge order.
+
+| Area | PRs | Migration action |
+|---|---|---|
+| URL routing, typed URL removal, URL names, SPA navigation | #5072, #5073, #5101, #5107, #5171, #5187 | Follow "URL routing and reverse lookup"; use kebab-case route names, explicit `reverse`, and MSW/server-fn WASM test setup. |
+| Pages, forms, hooks, resources, HMR | #5074, #5077, #5110, #5114, #5118, #5124, #5133, #5139, #5179, #5222, #5226 | Follow "Pages and forms"; update hook deps, `use_resource`, `use_form`, dynamic radio fields, and hot-reload template wiring. |
+| Settings, secrets, task queues, mail, local infra, admin dependency config | #5071, #5129, #5182, #5195, #5211, #5219 | Follow "Settings fragments"; move ad-hoc config to settings fragments and generated project settings. |
+| Auth, admin, facade exports, feature gates, WASM checks | #5113, #5168, #5170, #5180, #5192, #5196, #5203, #5239, #5240 | Follow "Auth extractor contract" and "Facade feature flags"; audit `default-features = false` consumers. |
+| ORM, model builders, makemigrations, generated migrations | #5083, #5106, #5205, #5212 | Follow "ORM and query changes" and "Database migrations"; regenerate migrations after compiling. |
+| Formatter, command runner, examples, release, CI, docs, announcements | #5088, #5094, #5099, #5120, #5123, #5134, #5137, #5140, #5141, #5142, #5163, #5164, #5165, #5172, #5174, #5181, #5184, #5189, #5191, #5194, #5197, #5204, #5208, #5209, #5215 | No direct source migration for application code. Re-run formatter/check commands and refresh generated templates if the project vendors them. |
+
 ## Removed API (already deprecated)
 
 These APIs were deprecated during the 0.1.x line and are removed in 0.2.0.
@@ -32,11 +47,13 @@ surface any surrounding type changes.
 
 | Crate | Removed API | Replacement |
 |---|---|---|
-| `reinhardt-core` / macros | flat `#[routes]` and `#[viewset]` reverse accessors such as `urls.article_detail(id)` and `urls.article_list()` | namespaced accessors such as `urls.server().blog().article_detail(id)` |
-| `reinhardt-core` / `reinhardt-urls` | `UrlResolverUnprefixed` | remove the bound/import; use namespaced reverse accessors |
+| `reinhardt-core` / macros | typed URL helper generation from `#[routes]`, including `ResolvedUrls`, `url_prelude`, and generated reverse accessor traits | use `ServerRouter::reverse`, `ClientRouter::reverse`, `UrlReverser::from_global()`, or app-local helper functions |
+| `reinhardt-core` / macros | `#[routes(...)]` flags such as `standalone`, `client_inventory`, `server_only`, `no_client_resolvers`, and `no_ws_resolvers` | use plain `#[routes]` on a function returning `UnifiedRouter` |
+| `reinhardt-core` / macros | flat `#[routes]` and `#[viewset]` reverse accessors such as `urls.article_detail(id)` and `urls.article_list()` | explicit reverse lookup or app-local helper functions |
+| `reinhardt-core` / `reinhardt-urls` | `UrlResolverUnprefixed` | remove the bound/import; use explicit named-route reverse lookup |
 | `reinhardt-urls` | `reverse_single_pass` | `try_reverse_single_pass` |
 | `reinhardt-urls` | `reverse_with_aho_corasick` | `try_reverse_with_aho_corasick` |
-| `reinhardt-urls` | `ClientRouter::route_pathN` / `named_route_pathN` | `route_path` / `named_route_path` |
+| `reinhardt-urls` | `ClientRouter::route_pathN` / `named_route_pathN` | `route_path`; route names are passed as the first argument |
 | `reinhardt-query` | `SeaRc<T>` | `SharedRc<T>` |
 | `reinhardt-di` | `Injected<T>` | `Depends<T>` |
 | `reinhardt-di` | `OptionalInjected<T>` | `Option<Depends<T>>` |
@@ -63,10 +80,95 @@ surface any surrounding type changes.
 Quick scan:
 
 ```bash
-rg -n "UrlResolverUnprefixed|reverse_single_pass|reverse_with_aho_corasick|route_path[0-9]|named_route_path[0-9]" src crates examples
+rg -n "ResolvedUrls|url_prelude|UrlResolverUnprefixed|#\\[routes\\([^]]|reverse_single_pass|reverse_with_aho_corasick|route_path[0-9]|named_route_path[0-9]" src crates examples
 rg -n "SeaRc|Injected|OptionalInjected|AdvancedSettings|JsonFileSource|auto_source|OpenApiConfig" src crates examples
 rg -n "SessionStoreRef|DefaultUser|SimpleUser|AnonymousUser|get_database_url_from_env_or_settings|MockFetch|force_authenticate|with_authenticated_user" src crates examples
 rg -n "watch \\{|use_action_state|reinhardt_pages::router::(Path|ClientRouter|ClientRoute|ClientRouteMatch|PathError|RouterError)" src crates examples
+```
+
+## URL routing and reverse lookup
+
+0.2 removes the typed URL helper surface that `#[routes]` used to generate.
+That includes `ResolvedUrls`, `url_prelude`, flat route accessors, and the
+`UrlResolverUnprefixed` fallback. The `#[routes]` macro is now only an
+inventory registration macro for a `UnifiedRouter` factory.
+
+### Project routes
+
+Drop all `#[routes(...)]` flags and return a `UnifiedRouter` directly. Compose
+server and client routers in the function body.
+
+```rust
+// Before
+#[routes(standalone, client_inventory)]
+pub fn routes() -> UnifiedRouter {
+    UnifiedRouter::new()
+}
+
+// After
+#[routes]
+pub fn routes() -> UnifiedRouter {
+    UnifiedRouter::new()
+        .server(|s| s)
+        .client(|c| c)
+}
+```
+
+### Server URLs
+
+Replace generated typed accessors with reverse lookup against the registered
+route name. Use the router when you already have it; use the global reverser
+after framework startup has registered the router.
+
+```rust
+// Before
+let urls = ResolvedUrls::from_global();
+let detail = urls.server().snippets().snippet_detail("42");
+
+// After: local router
+let detail = router.reverse("snippets:snippet-detail", &[("id", "42")])?;
+
+// After: global reverser
+let mut params = std::collections::HashMap::new();
+params.insert("id".to_string(), "42".to_string());
+let detail = UrlReverser::from_global().reverse("snippets:snippet-detail", &params)?;
+```
+
+### Client URLs
+
+For SPA routes, register named routes on `ClientRouter` and call
+`ClientRouter::reverse`. If components should not handle stringly route names,
+keep a small app-local `urls` module that wraps `reverse` or formats the route.
+Prefer kebab-case route names for new server routes; old snake_case names still
+work but may warn during registration.
+
+```rust
+// Before
+let href = ResolvedUrls::from_global().resolve_client_url(
+    "polls:detail",
+    &[("question_id", "42")],
+);
+
+// After
+let href = client_router.reverse("polls:detail", &[("question_id", "42")])?;
+```
+
+The numeric client path helpers were also collapsed. Rename
+`route_path1`, `route_path2`, and `route_path3` style calls to `route_path`;
+the closure signature now determines arity.
+
+```rust
+// Before
+.route_path2("choice-edit", "/polls/{question_id}/choices/{choice_id}/edit/", handler)
+
+// After
+.route_path(
+    "choice-edit",
+    "/polls/{question_id}/choices/{choice_id}/edit/",
+    |Path(question_id): Path<i64>, Path(choice_id): Path<i64>| {
+        choice_edit_page(question_id, choice_id)
+    },
+)
 ```
 
 ## Auth extractor contract
@@ -106,10 +208,14 @@ a single value that converts into `Filter`.
 
 ```rust
 // Before
-let users = User::objects().filter("email", "contains", "example.com");
+let users = User::objects().filter(
+	"email",
+	FilterOperator::Eq,
+	FilterValue::String("alice@example.com".to_string()),
+);
 
 // After
-let users = User::objects().filter(User::fields().email.contains("example.com"));
+let users = User::objects().filter(User::field_email().eq("alice@example.com"));
 ```
 
 ### Custom managers
@@ -165,13 +271,53 @@ These are 0.2 behavior changes, not the removed-deprecated list above:
 - `page!` body identifiers must be declared as closure parameters or qualified
   as paths such as `self::helper`,
 - bare identifier shorthand in element bodies is removed; write `{name}`,
-- `form!` fields can carry typed generic parameters for server function values.
+- `form!` fields can carry typed generic parameters for server function values,
+- `create_resource` / `create_resource_with_deps` call sites should move to
+  `use_resource(fetcher, deps)`,
+- `use_form` now starts from a generated form definition and returns a runtime
+  builder; do not build runtime state from `FormOptions::new(...)`.
 
 Use the project codemod for mechanical page-body rewrites when available:
 
 ```bash
 cargo make migrate-manouche-v2
 ```
+
+Resource hook migration:
+
+```rust
+// Before
+let questions = create_resource_with_deps(fetch_questions, (page,));
+
+// After
+let questions = use_resource(fetch_questions, (page,));
+```
+
+Form runtime migration:
+
+```rust
+// Before
+let runtime = use_form(FormOptions::new(ProfileFormValues {
+    display_name: String::new(),
+}));
+
+// After
+let profile_form = form! {
+    name: ProfileForm,
+    action: "/profile",
+    fields: {
+        display_name: CharField {
+            initial: String::new(),
+            required,
+        }
+    }
+};
+let runtime = use_form(&profile_form).build();
+```
+
+Dynamic choice fields and `success_url` can capture outer locals in the current
+form runtime. If a migrated form still formats URLs manually in a callback,
+prefer the URL migration patterns above.
 
 ## Settings fragments
 
@@ -190,11 +336,14 @@ feature crates. For touched code, prefer the settings-first API.
 | task queue config structs | task settings fragments |
 | storage config structs | `StorageSettings` and provider settings |
 
+Embedded settings nodes must be explicit fields in the composed settings type.
+Do not rely on a fragment implicitly reaching into root-level settings.
+
 Example composed settings:
 
 ```rust
 use reinhardt::settings;
-use reinhardt_conf::{CoreSettings, TemplateSettings};
+use reinhardt_conf::{CoreSettings, EmailSettings, TemplateSettings};
 use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::openapi::OpenApiSettings;
 use reinhardt_conf::settings::sources::TomlFileSource;
@@ -204,6 +353,7 @@ pub struct ProjectSettings {
     pub core: CoreSettings,
     pub templates: TemplateSettings,
     pub openapi: OpenApiSettings,
+    pub email: EmailSettings,
 }
 
 let settings = SettingsBuilder::new()
@@ -219,6 +369,10 @@ let url = DatabaseConnection::database_url_from(&settings, None)?;
 
 Management commands should read database configuration through
 `CommandContext::settings`, not by reloading settings files.
+
+If a project uses the generated local-infra helpers, re-run the 0.2 template or
+copy the new `.gitignore` and `settings.rs` local-infra sections. Existing
+hand-written Docker Compose or database startup scripts can stay as-is.
 
 ## Database migrations
 
@@ -243,10 +397,24 @@ depending on implementation crates directly:
 
 - `auth-social`
 - `commands-server`
+- WASM/server-fn/MSW test support through the corresponding `pages`,
+  `test`, and `server-fn` feature combinations
 
 If a downstream crate uses `default-features = false`, audit its feature list
 after the version bump. Missing feature flags often appear as unresolved facade
-imports.
+imports. Re-run both native and WASM checks for crates that expose pages,
+admin UI, server functions, or MSW tests.
+
+## Formatter and generated examples
+
+The formatter was split into `reinhardt-formatter` and the command templates
+were refreshed. Application code does not need a semantic migration, but
+projects that vendor the example templates should refresh these files:
+
+- `Cargo.toml` / `Makefile.toml` formatter tasks,
+- `index.html` WASM bootstrap and static index injection,
+- generated migrations and `src/migrations.rs`,
+- project `.gitignore` entries for local infra state.
 
 ## Verification
 
@@ -254,10 +422,10 @@ Run focused scans until they are empty or only hit deliberate compatibility
 uses:
 
 ```bash
-rg -n "UrlResolverUnprefixed|reverse_single_pass|reverse_with_aho_corasick|route_path[0-9]|named_route_path[0-9]" src crates examples
+rg -n "ResolvedUrls|url_prelude|UrlResolverUnprefixed|#\\[routes\\([^]]|reverse_single_pass|reverse_with_aho_corasick|route_path[0-9]|named_route_path[0-9]" src crates examples
 rg -n "SeaRc|Injected|OptionalInjected|AdvancedSettings|JsonFileSource|auto_source|OpenApiConfig" src crates examples
 rg -n "SessionStoreRef|DefaultUser|SimpleUser|AnonymousUser|get_database_url_from_env_or_settings|MockFetch|force_authenticate|with_authenticated_user" src crates examples
-rg -n "watch \\{|use_action_state|reinhardt_pages::router::(Path|ClientRouter|ClientRoute|ClientRouteMatch|PathError|RouterError)" src crates examples
+rg -n "watch \\{|use_action_state|create_resource|create_resource_with_deps|FormOptions::new|reinhardt_pages::router::(Path|ClientRouter|ClientRoute|ClientRouteMatch|PathError|RouterError)" src crates examples
 rg -n "Operation::to_reverse_sql|HasCustomManager|\\.filter\\([^)]*,[^)]*,|AuthUser" src crates examples
 ```
 
