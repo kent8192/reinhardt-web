@@ -26,6 +26,8 @@
 //! | `(A \| B) & C` | Parenthesized grouping |
 //! | `mod::Type` | Qualified type paths |
 
+#![warn(missing_docs)]
+
 mod guard_codegen;
 mod guard_parser;
 

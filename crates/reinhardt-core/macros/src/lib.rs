@@ -11,6 +11,8 @@
 //! - `#[permission_required]` - Permission decorator
 //!
 
+#![warn(missing_docs)]
+
 use proc_macro::TokenStream;
 use syn::{ItemFn, ItemStruct, parse_macro_input};
 

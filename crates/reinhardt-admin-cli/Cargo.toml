@@ -44,3 +44,4 @@ path = "src/lib.rs"
 [[bin]]
 name = "reinhardt-admin"
 path = "src/main.rs"
+doc = false

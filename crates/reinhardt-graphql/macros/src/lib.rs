@@ -3,6 +3,8 @@
 //! This crate provides derive macros to simplify gRPC ↔ GraphQL integration
 //! and dependency injection support.
 
+#![warn(missing_docs)]
+
 use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};
 

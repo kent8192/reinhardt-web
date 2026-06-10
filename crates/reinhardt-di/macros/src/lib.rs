@@ -4,6 +4,8 @@
 //! - `#[injectable]` - Mark a struct as injectable with automatic registration
 //! - `#[injectable_factory]` - Mark an async function as a dependency factory
 
+#![warn(missing_docs)]
+
 use proc_macro::TokenStream;
 use syn::{DeriveInput, ItemFn, parse_macro_input};
 

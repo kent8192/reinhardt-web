@@ -12,6 +12,11 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[[bin]]
+name = "createsuperuser"
+path = "src/bin/createsuperuser.rs"
+doc = false
+
 [features]
 default = ["params", "basic"]
 

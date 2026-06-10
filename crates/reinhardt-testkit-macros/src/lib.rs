@@ -3,6 +3,8 @@
 //! See `crates/reinhardt-testkit/src/fixtures/di_overrides.rs` for the
 //! runtime types used by the macros in this crate.
 
+#![warn(missing_docs)]
+
 mod with_di_overrides;
 
 use proc_macro::TokenStream;

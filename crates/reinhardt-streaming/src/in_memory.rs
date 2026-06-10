@@ -11,6 +11,7 @@ pub struct InMemoryStreamingBackend {
 }
 
 impl InMemoryStreamingBackend {
+	/// Create an empty in-memory backend.
 	pub fn new() -> Self {
 		Self {
 			queues: Mutex::new(HashMap::new()),

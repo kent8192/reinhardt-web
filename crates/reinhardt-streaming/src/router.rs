@@ -3,16 +3,22 @@ use std::sync::Arc;
 /// Whether a streaming handler produces or consumes messages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StreamingHandlerKind {
+	/// Handler that publishes messages to a topic.
 	Producer,
+	/// Handler that consumes messages from a topic.
 	Consumer,
 }
 
 /// A registered streaming handler (producer or consumer).
 #[derive(Clone)]
 pub struct StreamingHandlerRegistration {
+	/// Topic associated with the handler.
 	pub topic: &'static str,
+	/// Consumer group for consumer handlers.
 	pub group: Option<&'static str>,
+	/// Logical handler name used for registration and lookup.
 	pub name: &'static str,
+	/// Handler direction.
 	pub kind: StreamingHandlerKind,
 	/// Factory for spawning consumer tasks. `None` for producers.
 	pub consumer_factory: Option<Arc<dyn ConsumerFactory>>,
@@ -20,6 +26,7 @@ pub struct StreamingHandlerRegistration {
 
 /// Factory that spawns a Kafka consumer task for a topic.
 pub trait ConsumerFactory: Send + Sync {
+	/// Spawn a consumer task for the supplied brokers, topic, and group.
 	fn spawn(&self, brokers: Vec<String>, topic: &'static str, group: &'static str);
 }
 
@@ -32,6 +39,7 @@ pub struct StreamingRouter {
 }
 
 impl StreamingRouter {
+	/// Create an empty streaming router.
 	pub fn new() -> Self {
 		Self {
 			handlers: Vec::new(),

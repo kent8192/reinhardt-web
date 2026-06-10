@@ -42,6 +42,8 @@
 //! `StorageConfig` and provider-specific `XxxConfig` structs are deprecated.
 //! Use `StorageSettings` with `create_storage_from_settings()` for new code.
 
+#![warn(missing_docs)]
+
 pub mod backend;
 pub mod backends;
 pub mod config;
