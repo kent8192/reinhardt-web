@@ -32,7 +32,7 @@ grouped by migration surface rather than listed in merge order.
 
 | Area | PRs | Migration action |
 |---|---|---|
-| URL routing, typed URL removal, URL names, SPA navigation | #5072, #5073, #5101, #5107, #5171, #5187 | Follow "URL routing and reverse lookup"; use kebab-case route names, explicit `reverse`, and MSW/server-fn WASM test setup. |
+| URL routing, typed URL removal, URL names, SPA navigation | #5072, #5073, #5101, #5107, #5171, #5187 | Follow "URL routing and reverse lookup"; use kebab-case route names, fully qualified `reverse("<type>:<app>:<name>", params)` calls, and MSW/server-fn WASM test setup. |
 | Pages, forms, hooks, resources, HMR | #5074, #5077, #5110, #5114, #5118, #5124, #5133, #5139, #5179, #5222, #5226 | Follow "Pages and forms"; update hook deps, `use_resource`, `use_form`, dynamic radio fields, and hot-reload template wiring. |
 | Settings, secrets, task queues, mail, local infra, admin dependency config | #5071, #5129, #5182, #5195, #5211, #5219 | Follow "Settings fragments"; move ad-hoc config to settings fragments and generated project settings. |
 | Auth, admin, facade exports, feature gates, WASM checks | #5113, #5168, #5170, #5180, #5192, #5196, #5203, #5239, #5240 | Follow "Auth extractor contract" and "Facade feature flags"; audit `default-features = false` consumers. |
@@ -47,10 +47,10 @@ surface any surrounding type changes.
 
 | Crate | Removed API | Replacement |
 |---|---|---|
-| `reinhardt-core` / macros | typed URL helper generation from `#[routes]`, including `ResolvedUrls`, `url_prelude`, and generated reverse accessor traits | use `ServerRouter::reverse`, `ClientRouter::reverse`, `UrlReverser::from_global()`, or app-local helper functions |
+| `reinhardt-core` / macros | typed URL helper generation from `#[routes]`, including `ResolvedUrls`, `url_prelude`, and generated reverse accessor traits | use explicit `reverse("<type>:<app>:<name>", params)` calls through `ServerRouter`, `ClientRouter`, `UrlReverser::from_global()`, or app-local helper functions |
 | `reinhardt-core` / macros | `#[routes(...)]` flags such as `standalone`, `client_inventory`, `server_only`, `no_client_resolvers`, and `no_ws_resolvers` | use plain `#[routes]` on a function returning `UnifiedRouter` |
-| `reinhardt-core` / macros | flat `#[routes]` and `#[viewset]` reverse accessors such as `urls.article_detail(id)` and `urls.article_list()` | explicit reverse lookup or app-local helper functions |
-| `reinhardt-core` / `reinhardt-urls` | `UrlResolverUnprefixed` | remove the bound/import; use explicit named-route reverse lookup |
+| `reinhardt-core` / macros | flat `#[routes]` and `#[viewset]` reverse accessors such as `urls.article_detail(id)` and `urls.article_list()` | explicit fully qualified reverse lookup or app-local helper functions |
+| `reinhardt-core` / `reinhardt-urls` | `UrlResolverUnprefixed` | remove the bound/import; use explicit fully qualified reverse lookup |
 | `reinhardt-urls` | `reverse_single_pass` | `try_reverse_single_pass` |
 | `reinhardt-urls` | `reverse_with_aho_corasick` | `try_reverse_with_aho_corasick` |
 | `reinhardt-urls` | `ClientRouter::route_pathN` / `named_route_pathN` | `route_path`; route names are passed as the first argument |
@@ -116,9 +116,11 @@ pub fn routes() -> UnifiedRouter {
 
 ### Server URLs
 
-Replace generated typed accessors with reverse lookup against the registered
-route name. Use the router when you already have it; use the global reverser
-after framework startup has registered the router.
+Replace generated typed accessors with reverse lookup against the fully
+qualified route name. The route name format is `<type>:<app>:<name>`, for
+example `server:snippets:snippet-detail` or `client:polls:detail`. Use the
+router when you already have it; use the global reverser after framework
+startup has registered the router.
 
 ```rust
 // Before
@@ -126,21 +128,23 @@ let urls = ResolvedUrls::from_global();
 let detail = urls.server().snippets().snippet_detail("42");
 
 // After: local router
-let detail = router.reverse("snippets:snippet-detail", &[("id", "42")])?;
+let params = [("id", "42")];
+let detail = router.reverse("server:snippets:snippet-detail", &params)?;
 
 // After: global reverser
-let mut params = std::collections::HashMap::new();
-params.insert("id".to_string(), "42".to_string());
-let detail = UrlReverser::from_global().reverse("snippets:snippet-detail", &params)?;
+let params = [("id", "42")];
+let detail =
+    UrlReverser::from_global().reverse_with("server:snippets:snippet-detail", &params)?;
 ```
 
 ### Client URLs
 
 For SPA routes, register named routes on `ClientRouter` and call
-`ClientRouter::reverse`. If components should not handle stringly route names,
-keep a small app-local `urls` module that wraps `reverse` or formats the route.
-Prefer kebab-case route names for new server routes; old snake_case names still
-work but may warn during registration.
+`ClientRouter::reverse` with the `client:<app>:<name>` route name. If
+components should not handle stringly route names, keep a small app-local
+`urls` module that wraps `reverse` or formats the route. Prefer kebab-case
+route names for new server routes; old snake_case names still work but may warn
+during registration.
 
 ```rust
 // Before
@@ -150,7 +154,8 @@ let href = ResolvedUrls::from_global().resolve_client_url(
 );
 
 // After
-let href = client_router.reverse("polls:detail", &[("question_id", "42")])?;
+let params = [("question_id", "42")];
+let href = client_router.reverse("client:polls:detail", &params)?;
 ```
 
 The numeric client path helpers were also collapsed. Rename
