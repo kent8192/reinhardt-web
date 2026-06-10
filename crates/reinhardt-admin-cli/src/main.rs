@@ -28,13 +28,18 @@
 //! reinhardt-admin --help
 //! ```
 
+#[cfg(feature = "dsl-format")]
 mod format_engine;
+#[cfg(feature = "dsl-format")]
 mod formatter;
+#[cfg(feature = "dsl-format")]
 mod utils;
 
 use reinhardt_admin_cli::migrate_v2;
 
-use std::path::{Path, PathBuf};
+#[cfg(feature = "dsl-format")]
+use std::path::Path;
+use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use colored::Colorize;
@@ -44,6 +49,7 @@ use reinhardt_commands::{
 	PluginSearchCommand, PluginUpdateCommand, StartAppCommand, StartProjectCommand,
 };
 use std::process;
+#[cfg(feature = "dsl-format")]
 use zeroize::Zeroize;
 
 /// Project/app architecture type used with `--template`.
