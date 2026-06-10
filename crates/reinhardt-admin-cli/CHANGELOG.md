@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.2.0-rc.4...reinhardt-admin-cli@v0.2.0-rc.5) - 2026-06-10
+
+### Added
+
+- *(commands)* add interactive dependency configuration
+
+### Fixed
+
+- *(ci)* repair admin dependency config checks
+
 ## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.3...reinhardt-admin-cli@v0.2.0-rc.2) - 2026-06-03
 
 ### Fixed

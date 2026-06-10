@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.2.0-rc.4...reinhardt-macros@v0.2.0-rc.5) - 2026-06-10
+
+### Added
+
+- *(orm)* allow builder overrides for generated fields
+
 ## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.2.0-rc.3...reinhardt-macros@v0.2.0-rc.4) - 2026-06-06
 
 ### Added
