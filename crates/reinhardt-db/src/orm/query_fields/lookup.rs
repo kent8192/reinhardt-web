@@ -261,8 +261,8 @@ impl<M: Model> Lookup<M> {
 //
 // goes through the `#[model]`-generated `FieldRef<M, T>::eq()`, which
 // already returns a `Filter` (see `crate::orm::expressions`). That
-// `Filter` flows directly into `Manager::filter(impl Into<Filter>)` /
-// `QuerySet::filter(impl Into<Filter>)`.
+// `Filter` flows directly into `Manager::filter(impl Into<FilterCondition>)` /
+// `QuerySet::filter(impl Into<FilterCondition>)`.
 //
 // The parallel `Field<M, T>::eq()` builder in this module returns a
 // `Lookup<M>` and is currently used only internally by

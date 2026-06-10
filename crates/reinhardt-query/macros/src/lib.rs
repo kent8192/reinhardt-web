@@ -84,6 +84,8 @@
 //! assert_eq!(user.verifieden(), "verified");
 //! ```
 
+#![warn(missing_docs)]
+
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::quote;

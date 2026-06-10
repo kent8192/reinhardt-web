@@ -31,6 +31,7 @@ anyhow = { workspace = true }
 [dev-dependencies]
 tempfile = "3.8"
 rstest = { workspace = true }
+proptest = { workspace = true }
 walkdir = "2.5"
 
 [features]
@@ -43,3 +44,4 @@ path = "src/lib.rs"
 [[bin]]
 name = "reinhardt-admin"
 path = "src/main.rs"
+doc = false

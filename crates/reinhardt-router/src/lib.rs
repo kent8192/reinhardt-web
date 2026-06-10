@@ -13,6 +13,7 @@
 //! See <https://github.com/kent8192/reinhardt-web/issues/4321>.
 
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod router;

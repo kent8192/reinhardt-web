@@ -12,6 +12,7 @@ description = "Dependency injection system for Reinhardt, inspired by FastAPI"
 [[bin]]
 name = "check-di"
 path = "src/bin/check-di.rs"
+doc = false
 
 [dependencies]
 reinhardt-http = { workspace = true }

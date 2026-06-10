@@ -3,7 +3,9 @@ use std::{num::NonZeroU16, time::Duration};
 /// Configuration for connecting to a Kafka cluster.
 #[derive(Debug, Clone)]
 pub struct KafkaConfig {
+	/// Bootstrap broker addresses used to connect to Kafka.
 	pub brokers: Vec<String>,
+	/// Kafka client identifier used by producer and consumer clients.
 	pub client_id: String,
 	/// Number of partitions to use when creating topics through this config.
 	///
@@ -26,6 +28,7 @@ pub struct KafkaConfig {
 }
 
 impl KafkaConfig {
+	/// Create a Kafka configuration with the supplied broker addresses.
 	pub fn new(brokers: impl IntoIterator<Item = impl Into<String>>) -> Self {
 		Self {
 			brokers: brokers.into_iter().map(Into::into).collect(),
@@ -36,6 +39,7 @@ impl KafkaConfig {
 		}
 	}
 
+	/// Set the Kafka client identifier.
 	pub fn with_client_id(mut self, id: impl Into<String>) -> Self {
 		self.client_id = id.into();
 		self

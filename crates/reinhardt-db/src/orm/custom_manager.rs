@@ -120,7 +120,7 @@ use super::connection::{DatabaseBackend, DatabaseConnection};
 use super::cte::CTE;
 use super::manager::Manager;
 use super::model::Model;
-use super::query::{Filter, QuerySet};
+use super::query::{FilterCondition, QuerySet};
 
 /// Trait that exposes the full surface area of an object manager and provides
 /// extension hooks for custom behavior.
@@ -164,10 +164,10 @@ pub trait CustomManager: Sized + Send + Sync {
 
 	/// Filter records by a typed filter expression.
 	///
-	/// Accepts any value convertible into [`Filter`]. See
+	/// Accepts any value convertible into [`FilterCondition`]. See
 	/// [`Manager::filter`] for the recommended fluent builder form
-	/// (`Model::field_x().eq(value)`).
-	fn filter(&self, filter: impl Into<Filter>) -> QuerySet<Self::Model> {
+	/// (`Model::field_x().eq(value)`) and composite conditions.
+	fn filter(&self, filter: impl Into<FilterCondition>) -> QuerySet<Self::Model> {
 		Manager::<Self::Model>::new().filter(filter)
 	}
 

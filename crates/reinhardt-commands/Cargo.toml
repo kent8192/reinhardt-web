@@ -8,6 +8,11 @@ repository.workspace = true
 authors.workspace = true
 description = "Django-style management command framework for Reinhardt"
 
+[[bin]]
+name = "runserver"
+path = "src/bin/runserver.rs"
+doc = false
+
 [dependencies]
 reinhardt-apps = { workspace = true }
 reinhardt-mail = { workspace = true }

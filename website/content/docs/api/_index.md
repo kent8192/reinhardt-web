@@ -219,55 +219,45 @@ ORM layer for database abstraction with Reinhardt's own query builder (reinhardt
 - ✅ Basic CRUD operations (implemented)
 - ✅ Relationship definitions (implemented)
 - ✅ `#[model(...)]` attribute macro (implemented - automatically applies Model trait)
-- 🚧 Django-style `filter(age__gte=18)` syntax (planned)
+- ✅ Django-style lookup helpers on generated field accessors
 
 **Example (Current API):**
 
 ```rust
+use chrono::{DateTime, Utc};
+use reinhardt::model;
 use reinhardt::db::orm::Model;
-use reinhardt::query::prelude::{Query, Expr, PostgresQueryBuilder};
+use serde::{Deserialize, Serialize};
 
-// Model definition (currently manual implementation)
+#[derive(Serialize, Deserialize)]
+#[model(table_name = "users")]
 struct User {
+    #[field(primary_key = true)]
     id: i64,
+    #[field(max_length = 255)]
     username: String,
+    #[field(max_length = 255)]
     email: String,
     age: i32,
+    created_at: DateTime<Utc>,
 }
 
-// Query using Reinhardt's own query builder
-let query = Query::select()
-    .from(User::table_name())
-    .column(User::id)
-    .column(User::username)
-    .column(User::email)
-    .and_where(Expr::col(User::age).gte(18))
-    .order_by(User::created, reinhardt::query::prelude::Order::Desc)
-    .limit(10)
-    .to_owned();
-
-let sql = query.to_string(PostgresQueryBuilder);
-// Execute SQL to fetch users
-```
-
-**Planned API (Future Implementation):**
-
-```rust
-// Planned Django-style API
-use reinhardt::db::orm::{Model, QuerySet};
-
-#[model(table_name = "users")]  // Macro is planned
-struct User {
-    id: i64,
-    username: String,
-    email: String,
-}
-
-// Future planned API
 let users = User::objects()
-    .filter(age__gte = 18)
-    .order_by("-created")
+    .filter(User::field_age().gte(18))
+    .filter(User::field_email().icontains("example.com"))
+    .filter(User::field_id().is_in([1_i64, 2, 3]))
+    .filter(User::field_created_at().year().gte(2026))
+    .order_by(&["-created_at"])
     .limit(10)
+    .all()
+    .await?;
+
+let matching_users = User::objects()
+    .filter(
+        User::field_username()
+            .iexact("admin")
+            .or(User::field_email().icontains("example.com").not()),
+    )
     .all()
     .await?;
 ```

@@ -242,22 +242,35 @@ For a complete list of field attributes, see the `#[field(...)]` macro documenta
 ### Query with QuerySet
 
 ```rust
-use reinhardt_db::orm::{QuerySet, Model};
+use reinhardt_db::orm::Model;
 
 // Get all users
 let users = User::objects().all().await?;
 
 // Filter users
 let adults = User::objects()
-    .filter("age__gte", 18)
+    .filter(User::field_age().gte(18))
     .order_by("-created_at")
     .all()
     .await?;
 
 // Get a single user
 let user = User::objects()
-    .filter("username", "john")
+    .filter(User::field_username().exact("john"))
     .first()
+    .await?;
+
+// Django-style lookup helpers on generated field accessors
+let matching = User::objects()
+    .filter(User::field_email().icontains("example.com"))
+    .filter(User::field_id().is_in([1_i64, 2, 3]))
+    .filter(User::field_deleted_at().is_null())
+    .all()
+    .await?;
+
+let recent = User::objects()
+    .filter(User::field_created_at().year().gte(2026))
+    .all()
     .await?;
 ```
 

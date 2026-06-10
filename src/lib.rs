@@ -89,6 +89,7 @@
 //!     .with_middleware(Arc::new(CorsMiddleware::permissive()));
 //! ```
 
+#![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 // ============================================================================
@@ -173,6 +174,7 @@ pub mod reinhardt_di {
 }
 
 #[cfg(all(feature = "auth", native))]
+/// Authentication and authorization APIs re-exported by the facade crate.
 pub mod auth {
 	pub use reinhardt_auth::*;
 }

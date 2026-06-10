@@ -4,6 +4,7 @@
 //!
 //! This crate now re-exports types from `reinhardt-manouche` for backward compatibility.
 
+#![warn(missing_docs)]
 #![deprecated(
 	since = "0.1.0-alpha.2",
 	note = "Use reinhardt-manouche instead. This crate will be removed in a future version."
