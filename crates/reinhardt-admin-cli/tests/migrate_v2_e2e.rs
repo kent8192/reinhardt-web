@@ -29,6 +29,10 @@ fn stderr(output: &Output) -> String {
 	String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
+fn compact_ws(input: &str) -> String {
+	input.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
 fn assert_success(output: &Output) {
 	assert!(
 		output.status.success(),
@@ -209,6 +213,154 @@ fn view(name: String) {
 	let after_second = fs::read_to_string(&file).expect("read after second run");
 
 	assert_eq!(after_second, after_first, "second run changed the file");
+	assert!(
+		stdout(&second).contains("Done. 0 file(s) changed."),
+		"unexpected stdout:\n{}",
+		stdout(&second)
+	);
+}
+
+#[rstest]
+fn complex_page_syntax_rewrites_nested_control_flow_without_rewrapping_expression_slots() {
+	let tmp = TempDir::new().expect("tempdir");
+	let file = tmp.path().join("complex_page.rs");
+	write(
+		&file,
+		r#"
+fn view(
+    ready: bool,
+    title: String,
+    fallback_name: String,
+    already_wrapped: String,
+    items: Vec<Item>,
+    count: usize,
+) {
+    page! {
+        section {
+            { already_wrapped }
+            if (ready) {
+                h1 { title }
+            } else {
+                p { fallback_name }
+            }
+            for item in items {
+                Row {
+                    item_name
+                    span { count }
+                }
+            }
+            loop {
+                span { count }
+                break;
+            }
+        }
+    };
+}
+"#,
+	);
+
+	let first = run_migrate(tmp.path(), &[]);
+	assert_success(&first);
+	let after_first = fs::read_to_string(&file).expect("read after first run");
+	let compact = compact_ws(&after_first);
+
+	assert!(
+		compact.contains("{already_wrapped}"),
+		"existing expression slot should remain a single expression slot:\n{after_first}"
+	);
+	assert!(
+		compact.contains("{title}"),
+		"bare identifier inside parenthesized if body was not wrapped:\n{after_first}"
+	);
+	assert!(
+		compact.contains("{fallback_name}"),
+		"bare identifier inside else body was not wrapped:\n{after_first}"
+	);
+	assert!(
+		compact.contains("{item_name}"),
+		"bare identifier inside component body was not wrapped:\n{after_first}"
+	);
+	assert!(
+		!after_first.contains("for { item } in"),
+		"for-loop pattern variable should not be treated as a page child:\n{after_first}"
+	);
+	assert!(
+		compact.contains("{count}"),
+		"bare identifier inside loop or nested element body was not wrapped:\n{after_first}"
+	);
+	assert!(
+		after_first.contains("break"),
+		"reserved control-flow keyword should not be wrapped:\n{after_first}"
+	);
+
+	let second = run_migrate(tmp.path(), &[]);
+	assert_success(&second);
+	let after_second = fs::read_to_string(&file).expect("read after second run");
+
+	assert_eq!(
+		after_second, after_first,
+		"complex migrated page changed on rerun"
+	);
+	assert!(
+		stdout(&second).contains("Done. 0 file(s) changed."),
+		"unexpected stdout:\n{}",
+		stdout(&second)
+	);
+}
+
+#[rstest]
+fn complex_props_migration_preserves_non_default_derives_and_existing_builder_defaults() {
+	let tmp = TempDir::new().expect("tempdir");
+	let file = tmp.path().join("props.rs");
+	write(
+		&file,
+		r#"
+#[repr(C)]
+#[derive(Clone)]
+#[derive(Debug, Default, PartialEq)]
+pub struct PanelProps {
+    pub id: String,
+    #[builder(default)]
+    pub existing: Option<String>,
+    pub count: usize,
+    pub subtitle: Option<String>,
+}
+"#,
+	);
+
+	let first = run_migrate(tmp.path(), &[]);
+	assert_success(&first);
+	let after_first = fs::read_to_string(&file).expect("read after first run");
+
+	assert!(
+		after_first.contains("#[repr(C)]"),
+		"non-derive attributes should be preserved:\n{after_first}"
+	);
+	assert!(
+		after_first.contains("Clone")
+			&& after_first.contains("Debug")
+			&& after_first.contains("PartialEq")
+			&& after_first.contains("bon::Builder"),
+		"derive list should preserve non-Default derives and add bon::Builder:\n{after_first}"
+	);
+	assert!(
+		!after_first.contains("Default"),
+		"Default derive should be removed:\n{after_first}"
+	);
+	let builder_default_count = after_first.matches("#[builder(default)]").count();
+	assert_eq!(
+		builder_default_count, 3,
+		"expected exactly one builder default for existing, count, and subtitle:\n{after_first}"
+	);
+
+	let second = run_migrate(tmp.path(), &[]);
+	assert_success(&second);
+	let after_second = fs::read_to_string(&file).expect("read after second run");
+
+	assert_eq!(
+		after_second, after_first,
+		"complex Props migration changed on rerun"
+	);
 	assert!(
 		stdout(&second).contains("Done. 0 file(s) changed."),
 		"unexpected stdout:\n{}",

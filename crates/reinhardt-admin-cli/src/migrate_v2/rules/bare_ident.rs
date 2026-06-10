@@ -7,6 +7,7 @@
 
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 use quote::quote;
+use std::iter::Peekable;
 use syn::visit_mut::{self, VisitMut};
 
 use crate::migrate_v2::rewriter::FileRewriter;
@@ -66,6 +67,38 @@ fn rewrite_brace_body(input: TokenStream) -> TokenStream {
 	let mut previous_token_can_own_brace_body = false;
 
 	while let Some(tt) = iter.next() {
+		if let TokenTree::Ident(id) = &tt {
+			match id.to_string().as_str() {
+				"if" | "for" | "match" | "while" => {
+					out.push(tt);
+					push_control_prefix_and_rewrite_body(&mut iter, &mut out);
+					previous_token_can_own_brace_body = false;
+					continue;
+				}
+				"else" => {
+					out.push(tt);
+					if let Some(TokenTree::Ident(next)) = iter.peek()
+						&& next == "if"
+					{
+						let if_token = iter.next().expect("peeked token disappeared");
+						out.push(if_token);
+						push_control_prefix_and_rewrite_body(&mut iter, &mut out);
+					} else {
+						push_immediate_body_if_present(&mut iter, &mut out);
+					}
+					previous_token_can_own_brace_body = false;
+					continue;
+				}
+				"loop" | "unsafe" | "async" => {
+					out.push(tt);
+					push_immediate_body_if_present(&mut iter, &mut out);
+					previous_token_can_own_brace_body = false;
+					continue;
+				}
+				_ => {}
+			}
+		}
+
 		// Look for `Ident` followed by something that is NOT one of:
 		//   `{` — element body
 		//   `(` — component call or function call
@@ -128,6 +161,38 @@ fn rewrite_brace_body(input: TokenStream) -> TokenStream {
 	}
 
 	out.into_iter().collect()
+}
+
+fn push_control_prefix_and_rewrite_body(
+	iter: &mut Peekable<proc_macro2::token_stream::IntoIter>,
+	out: &mut Vec<TokenTree>,
+) {
+	for next in iter.by_ref() {
+		if let TokenTree::Group(g) = &next
+			&& g.delimiter() == Delimiter::Brace
+		{
+			let inner = rewrite_brace_body(g.stream());
+			out.push(TokenTree::Group(Group::new(Delimiter::Brace, inner)));
+			return;
+		}
+		out.push(next);
+	}
+}
+
+fn push_immediate_body_if_present(
+	iter: &mut Peekable<proc_macro2::token_stream::IntoIter>,
+	out: &mut Vec<TokenTree>,
+) {
+	if let Some(TokenTree::Group(g)) = iter.peek()
+		&& g.delimiter() == Delimiter::Brace
+	{
+		let body = match iter.next() {
+			Some(TokenTree::Group(g)) => g,
+			_ => unreachable!("peek matched but next did not"),
+		};
+		let inner = rewrite_brace_body(body.stream());
+		out.push(TokenTree::Group(Group::new(Delimiter::Brace, inner)));
+	}
 }
 
 fn starts_lowercase(s: &str) -> bool {
