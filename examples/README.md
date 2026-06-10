@@ -35,7 +35,7 @@ cargo run
 
 By default, examples use the parent Reinhardt checkout through the
 `examples/Cargo.toml` workspace dependency. This lets example builds validate
-the current release candidate before that version exists on crates.io.
+the checked-out release line against the local source.
 
 ### Local Development
 

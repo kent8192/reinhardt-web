@@ -24,7 +24,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-reinhardt-storages = "0.2.0-rc.2"
+reinhardt-storages = "0.2.0"
 ```
 
 ### Feature Flags
@@ -34,13 +34,13 @@ By default, `reinhardt-storages` enables the `s3` and `local` backends.
 ```toml
 [dependencies]
 # Only local storage
-reinhardt-storages = { version = "0.2.0-rc.2", default-features = false, features = ["local"] }
+reinhardt-storages = { version = "0.2.0", default-features = false, features = ["local"] }
 
 # S3 only
-reinhardt-storages = { version = "0.2.0-rc.2", default-features = false, features = ["s3"] }
+reinhardt-storages = { version = "0.2.0", default-features = false, features = ["s3"] }
 
 # All available backends
-reinhardt-storages = { version = "0.2.0-rc.2", features = ["all"] }
+reinhardt-storages = { version = "0.2.0", features = ["all"] }
 ```
 
 Available features:

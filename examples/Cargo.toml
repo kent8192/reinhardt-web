@@ -12,7 +12,7 @@ members = [
 #   cd examples-database-integration && cargo run
 #
 # Resolve Reinhardt from the parent checkout so examples validate the current
-# release candidate before it is published to crates.io.
+# checked-out release line against local source.
 
 [workspace.dependencies]
 # Reinhardt framework from this repository.

@@ -8,16 +8,13 @@ Global command-line tool for Reinhardt project management.
 
 ## Installation
 
-Install globally using cargo. While Reinhardt is on a pre-release
-(`-rc.*` / `-alpha.*`), `cargo install` requires an explicit `--version`
-because pre-releases are not selected by default. Once `0.1.0` stable
-ships, omit `--version` to pull the latest stable (or keep `--version`
-as an opt-in reproducibility pin). The literal below is auto-bumped by
-release-plz on each release.
+Install globally using Cargo. The command below pins to the 0.2.0 stable
+release for reproducibility; omit `--version` to install the latest stable
+release instead.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.0-rc.4"
+cargo install reinhardt-admin-cli --version "0.2.0"
 ```
 
 This installs the `reinhardt-admin` command.
@@ -42,7 +39,7 @@ reinhardt-admin startproject myproject --with-rest /path/to/directory
 
 # Pin the generated Reinhardt dependency
 reinhardt-admin startproject myproject --with-rest \
-  --reinhardt-version 0.2.0-rc.4 \
+  --reinhardt-version 0.2.0 \
   --features standard,admin \
   --no-interactive
 ```
@@ -59,7 +56,7 @@ reinhardt-admin configure
 
 # Update a project without prompts
 reinhardt-admin configure /path/to/project \
-  --reinhardt-version 0.2.0-rc.4 \
+  --reinhardt-version 0.2.0 \
   --features minimal,db-sqlite \
   --no-interactive
 ```
@@ -109,7 +106,7 @@ reinhardt-admin plugin info auth-delion --remote
 
 # Install a plugin
 reinhardt-admin plugin install auth-delion
-reinhardt-admin plugin install auth-delion --version 0.2.0-rc.4
+reinhardt-admin plugin install auth-delion --version 0.2.0
 
 # Remove a plugin
 reinhardt-admin plugin remove auth-delion

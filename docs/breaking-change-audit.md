@@ -1,7 +1,7 @@
 # Breaking Change Audit
 
 This document records the results of the 5-pass breaking change audit performed
-for the RC release. The audit follows the methodology recommended by the
+for the 0.2.0 release. The audit follows the methodology recommended by the
 [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/).
 
 ## Audit Methodology
@@ -58,7 +58,7 @@ targeting `main`. See `.github/workflows/semver-check.yml`.
 
 ## Findings Summary
 
-- No breaking changes detected in current RC audit
+- No breaking changes detected in the current 0.2.0 audit
 - `#[non_exhaustive]` added to public error enums and config structs as
   a preventative measure (not yet applied to all public structs such as
   data transfer types and manager types)
