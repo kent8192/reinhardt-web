@@ -69,9 +69,21 @@ fn rewrite_brace_body(input: TokenStream) -> TokenStream {
 	while let Some(tt) = iter.next() {
 		if let TokenTree::Ident(id) = &tt {
 			match id.to_string().as_str() {
-				"if" | "for" | "match" | "while" => {
+				"if" | "for" | "while" => {
 					out.push(tt);
 					push_control_prefix_and_rewrite_body(&mut iter, &mut out);
+					previous_token_can_own_brace_body = false;
+					continue;
+				}
+				"match" => {
+					out.push(tt);
+					push_match_prefix_and_rewrite_body(&mut iter, &mut out);
+					previous_token_can_own_brace_body = false;
+					continue;
+				}
+				"let" => {
+					out.push(tt);
+					push_statement_until_semicolon(&mut iter, &mut out);
 					previous_token_can_own_brace_body = false;
 					continue;
 				}
@@ -176,6 +188,81 @@ fn push_control_prefix_and_rewrite_body(
 			return;
 		}
 		out.push(next);
+	}
+}
+
+fn push_match_prefix_and_rewrite_body(
+	iter: &mut Peekable<proc_macro2::token_stream::IntoIter>,
+	out: &mut Vec<TokenTree>,
+) {
+	for next in iter.by_ref() {
+		if let TokenTree::Group(g) = &next
+			&& g.delimiter() == Delimiter::Brace
+		{
+			let inner = rewrite_match_body(g.stream());
+			out.push(TokenTree::Group(Group::new(Delimiter::Brace, inner)));
+			return;
+		}
+		out.push(next);
+	}
+}
+
+fn rewrite_match_body(input: TokenStream) -> TokenStream {
+	let mut out: Vec<TokenTree> = Vec::new();
+	let mut arm_value: Vec<TokenTree> = Vec::new();
+	let mut iter = input.into_iter().peekable();
+	let mut in_arm_value = false;
+
+	while let Some(tt) = iter.next() {
+		if !in_arm_value {
+			if is_fat_arrow_start(&tt, iter.peek()) {
+				out.push(tt);
+				if let Some(next) = iter.next() {
+					out.push(next);
+				}
+				in_arm_value = true;
+			} else {
+				out.push(tt);
+			}
+			continue;
+		}
+
+		if is_top_level_comma(&tt) {
+			out.extend(rewrite_brace_body(arm_value.into_iter().collect()));
+			arm_value = Vec::new();
+			out.push(tt);
+			in_arm_value = false;
+		} else {
+			arm_value.push(tt);
+		}
+	}
+
+	if in_arm_value {
+		out.extend(rewrite_brace_body(arm_value.into_iter().collect()));
+	}
+
+	out.into_iter().collect()
+}
+
+fn is_fat_arrow_start(tt: &TokenTree, next: Option<&TokenTree>) -> bool {
+	matches!(tt, TokenTree::Punct(p) if p.as_char() == '=')
+		&& matches!(next, Some(TokenTree::Punct(p)) if p.as_char() == '>')
+}
+
+fn is_top_level_comma(tt: &TokenTree) -> bool {
+	matches!(tt, TokenTree::Punct(p) if p.as_char() == ',')
+}
+
+fn push_statement_until_semicolon(
+	iter: &mut Peekable<proc_macro2::token_stream::IntoIter>,
+	out: &mut Vec<TokenTree>,
+) {
+	for next in iter.by_ref() {
+		let is_semicolon = matches!(&next, TokenTree::Punct(p) if p.as_char() == ';');
+		out.push(next);
+		if is_semicolon {
+			return;
+		}
 	}
 }
 

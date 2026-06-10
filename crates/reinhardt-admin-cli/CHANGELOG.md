@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(admin-cli)* keep `migrate-manouche-v2` idempotent for already wrapped page expression slots.
 - *(admin-cli)* preserve item attributes when `migrate-manouche-v2` rewrites attributed items.
 - *(admin-cli)* avoid treating control-flow syntax variables as page children in `migrate-manouche-v2`.
+- *(admin-cli)* keep `migrate-manouche-v2` from rewriting `match` patterns and `let` bindings as page children.
 
 ## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.3...reinhardt-admin-cli@v0.2.0-rc.2) - 2026-06-03
 

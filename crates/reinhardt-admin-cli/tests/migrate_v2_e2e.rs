@@ -4,6 +4,7 @@
 //! files on disk, covering command-line behavior that rule-level snapshot
 //! tests cannot validate.
 
+use proptest::prelude::*;
 use rstest::rstest;
 use std::fs;
 use std::path::Path;
@@ -57,6 +58,50 @@ fn write(path: &Path, content: &str) {
 		fs::create_dir_all(parent).expect("create parent dir");
 	}
 	fs::write(path, content).expect("write fixture");
+}
+
+fn generated_control_flow_page() -> impl Strategy<Value = String> {
+	let match_body = prop_oneof![
+		Just("match value { item => div { title } }"),
+		Just("match value { Some(entry) => div { title }, None => span { fallback } }"),
+		Just(
+			"match result { Ok(entry) if ready => div { title }, Err(error_name) => span { fallback } }"
+		),
+		Just(
+			"match value { Some(entry) => if (ready) { h1 { title } } else { p { fallback } }, None => span { fallback } }"
+		),
+	];
+
+	(
+		match_body,
+		prop::sample::select(vec![
+			"for item in items { Row { title } }",
+			"while (ready) { span { title } break; }",
+			"loop { span { fallback } break; }",
+		]),
+	)
+		.prop_map(|(match_body, loop_body)| {
+			format!(
+				r#"
+fn view(
+    value: Option<String>,
+    result: Result<String, String>,
+    ready: bool,
+    title: String,
+    fallback: String,
+    items: Vec<String>,
+) {{
+    page! {{
+        section {{
+            let local_value = fallback;
+            {match_body}
+            {loop_body}
+        }}
+    }};
+}}
+"#
+			)
+		})
 }
 
 #[rstest]
@@ -306,6 +351,116 @@ fn view(
 		"unexpected stdout:\n{}",
 		stdout(&second)
 	);
+}
+
+#[rstest]
+fn match_patterns_and_let_statements_are_not_wrapped_as_page_children() {
+	let tmp = TempDir::new().expect("tempdir");
+	let file = tmp.path().join("match_and_let.rs");
+	write(
+		&file,
+		r#"
+fn view(value: Option<String>, fallback: String) {
+    page! {
+        section {
+            match value {
+                item => div { fallback }
+            }
+            let local = fallback;
+        }
+    };
+}
+"#,
+	);
+
+	let first = run_migrate(tmp.path(), &[]);
+	assert_success(&first);
+	let after_first = fs::read_to_string(&file).expect("read after first run");
+	let compact = compact_ws(&after_first);
+
+	assert!(
+		!compact.contains("{{item}}=>") && !compact.contains("{item}=>"),
+		"match arm pattern should not be wrapped:\n{after_first}"
+	);
+	assert!(
+		!compact.contains("let{local}="),
+		"let binding pattern should not be wrapped:\n{after_first}"
+	);
+	assert!(
+		compact.contains("div{{fallback}}") || compact.contains("div{{{fallback}}}"),
+		"match arm page body should still be migrated:\n{after_first}"
+	);
+
+	let second = run_migrate(tmp.path(), &[]);
+	assert_success(&second);
+	let after_second = fs::read_to_string(&file).expect("read after second run");
+	assert_eq!(
+		after_second, after_first,
+		"match and let migration changed on rerun"
+	);
+}
+
+proptest! {
+	#![proptest_config(ProptestConfig::with_cases(24))]
+
+	#[test]
+	fn fuzz_migrate_page_control_syntax_preserves_rust_patterns_and_is_idempotent(
+		source in generated_control_flow_page(),
+	) {
+		let tmp = TempDir::new().expect("tempdir");
+		let file = tmp.path().join("fuzz_page.rs");
+		write(&file, &source);
+
+		let first = run_migrate(tmp.path(), &[]);
+		prop_assert!(
+			first.status.success(),
+			"command failed with exit {:?}\nstdout:\n{}\nstderr:\n{}\nsource:\n{}",
+			first.status.code(),
+			stdout(&first),
+			stderr(&first),
+			source
+		);
+		let after_first = fs::read_to_string(&file).expect("read after first run");
+		let compact = compact_ws(&after_first);
+
+		prop_assert!(
+			!compact.contains("let{local_value}="),
+			"let binding was wrapped as a page child:\n{after_first}"
+		);
+		for invalid in [
+			"{item}=>",
+			"{entry}=>",
+			"{entry}ifready=>",
+			"{ready}=>",
+			"{error_name}=>",
+			"for{item}in",
+		] {
+			prop_assert!(
+				!compact.contains(invalid),
+				"Rust pattern/control syntax was wrapped as a page child ({invalid}):\n{after_first}"
+			);
+		}
+		prop_assert!(
+			compact.contains("{title}") || compact.contains("{fallback}"),
+			"generated page children were not migrated:\n{after_first}"
+		);
+
+		let second = run_migrate(tmp.path(), &[]);
+		prop_assert!(
+			second.status.success(),
+			"second command failed with exit {:?}\nstdout:\n{}\nstderr:\n{}\nsource:\n{}",
+			second.status.code(),
+			stdout(&second),
+			stderr(&second),
+			source
+		);
+		let after_second = fs::read_to_string(&file).expect("read after second run");
+		prop_assert_eq!(
+			after_second,
+			after_first,
+			"fuzz-generated page changed on rerun"
+		);
+	}
 }
 
 #[rstest]
