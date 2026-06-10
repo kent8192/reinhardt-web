@@ -13,7 +13,7 @@ use reinhardt_db::orm::{
 };
 use reinhardt_di::{DiResult, Injectable, InjectionContext};
 use reinhardt_query::prelude::{
-	Alias, CaseStatement, ColumnRef, Condition, Expr, ExprTrait, IntoValue, Order,
+	Alias, BinOper, CaseStatement, ColumnRef, Condition, Expr, ExprTrait, IntoValue, Order,
 	PostgresQueryBuilder, Query, QueryStatementBuilder, SimpleExpr, Value,
 };
 use serde::{Deserialize, Serialize};
@@ -200,6 +200,7 @@ pub fn filter_value_to_sea_value(v: &FilterValue) -> Value {
 		// in build_single_filter_expr(). Return None-string as fallback
 		// for unexpected scalar contexts.
 		FilterValue::Array(_) => Value::String(None),
+		FilterValue::List(_) | FilterValue::Range(_, _) => Value::String(None),
 		FilterValue::FieldRef(f) => {
 			// FieldRef generates column reference, not scalar value.
 			// For Value context, return field name as string.
@@ -350,6 +351,26 @@ fn escape_like_pattern(input: &str) -> String {
 		.replace('_', "\\_")
 }
 
+fn quote_identifier(field: &str) -> String {
+	if field.contains('\0') {
+		panic!("SQL identifier must not contain null bytes");
+	}
+
+	fn quote_single(name: &str) -> String {
+		format!("\"{}\"", name.replace('"', "\"\""))
+	}
+
+	if field.contains('.') {
+		field
+			.split('.')
+			.map(quote_single)
+			.collect::<Vec<_>>()
+			.join(".")
+	} else {
+		quote_single(field)
+	}
+}
+
 /// Build a SimpleExpr from a single Filter
 #[doc(hidden)]
 pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
@@ -359,6 +380,10 @@ pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 		// Null handling (must come before generic patterns)
 		(FilterOperator::Eq, FilterValue::Null) => col.is_null(),
 		(FilterOperator::Ne, FilterValue::Null) => col.is_not_null(),
+		(FilterOperator::IExact, FilterValue::String(s)) => {
+			col.binary(BinOper::ILike, SimpleExpr::from(s.clone()))
+		}
+		(FilterOperator::IExact, v) => col.eq(filter_value_to_sea_value(v)),
 
 		// FieldRef: Column-to-column comparisons
 		(FilterOperator::Eq, FilterValue::FieldRef(f)) => col.eq(Expr::col(Alias::new(&f.field))),
@@ -420,12 +445,42 @@ pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 		(FilterOperator::Contains, FilterValue::String(s)) => {
 			col.like(format!("%{}%", escape_like_pattern(s)))
 		}
+		(FilterOperator::IContains, FilterValue::String(s)) => col.binary(
+			BinOper::ILike,
+			SimpleExpr::from(format!("%{}%", escape_like_pattern(s))),
+		),
 		(FilterOperator::StartsWith, FilterValue::String(s)) => {
 			col.like(format!("{}%", escape_like_pattern(s)))
 		}
+		(FilterOperator::IStartsWith, FilterValue::String(s)) => col.binary(
+			BinOper::ILike,
+			SimpleExpr::from(format!("{}%", escape_like_pattern(s))),
+		),
 		(FilterOperator::EndsWith, FilterValue::String(s)) => {
 			col.like(format!("%{}", escape_like_pattern(s)))
 		}
+		(FilterOperator::IEndsWith, FilterValue::String(s)) => col.binary(
+			BinOper::ILike,
+			SimpleExpr::from(format!("%{}", escape_like_pattern(s))),
+		),
+		(FilterOperator::Regex, FilterValue::String(pattern)) => Expr::cust_with_values(
+			format!("{} ~ ?", quote_identifier(&filter.field)),
+			[pattern.clone()],
+		)
+		.into(),
+		(FilterOperator::IRegex, FilterValue::String(pattern)) => Expr::cust_with_values(
+			format!("{} ~* ?", quote_identifier(&filter.field)),
+			[pattern.clone()],
+		)
+		.into(),
+		(FilterOperator::Range, FilterValue::Range(start, end)) => Expr::cust_with_values(
+			format!("{} BETWEEN ? AND ?", quote_identifier(&filter.field)),
+			[
+				filter_value_to_sea_value(start),
+				filter_value_to_sea_value(end),
+			],
+		)
+		.into(),
 		// Array-based In/NotIn: convert each element to a Value
 		(FilterOperator::In, FilterValue::Array(arr)) => {
 			if arr.is_empty() {
@@ -440,6 +495,28 @@ pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 			}
 			let values: Vec<Value> = arr.iter().map(|v| v.as_str().into_value()).collect();
 			col.is_not_in(values)
+		}
+		(FilterOperator::In, FilterValue::List(values)) => {
+			if values.is_empty() {
+				return None;
+			}
+			col.is_in(
+				values
+					.iter()
+					.map(filter_value_to_sea_value)
+					.collect::<Vec<_>>(),
+			)
+		}
+		(FilterOperator::NotIn, FilterValue::List(values)) => {
+			if values.is_empty() {
+				return None;
+			}
+			col.is_not_in(
+				values
+					.iter()
+					.map(filter_value_to_sea_value)
+					.collect::<Vec<_>>(),
+			)
 		}
 
 		(FilterOperator::In, FilterValue::String(s)) => {

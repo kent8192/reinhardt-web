@@ -25,6 +25,8 @@ use uuid::Uuid;
 pub enum FilterOperator {
 	/// Eq variant.
 	Eq,
+	/// Case-insensitive exact match.
+	IExact,
 	/// Ne variant.
 	Ne,
 	/// Gt variant.
@@ -41,10 +43,22 @@ pub enum FilterOperator {
 	NotIn,
 	/// Contains variant.
 	Contains,
+	/// Case-insensitive contains variant.
+	IContains,
 	/// StartsWith variant.
 	StartsWith,
+	/// Case-insensitive starts-with variant.
+	IStartsWith,
 	/// EndsWith variant.
 	EndsWith,
+	/// Case-insensitive ends-with variant.
+	IEndsWith,
+	/// Regular expression match.
+	Regex,
+	/// Case-insensitive regular expression match.
+	IRegex,
+	/// BETWEEN range lookup.
+	Range,
 	// PostgreSQL array operators
 	/// Array contains all elements (@>)
 	ArrayContains,
@@ -100,6 +114,10 @@ pub enum FilterValue {
 	Null,
 	/// Array variant.
 	Array(Vec<String>),
+	/// Typed list variant for IN and NOT IN lookups.
+	List(Vec<FilterValue>),
+	/// Two-value range for BETWEEN lookups.
+	Range(Box<FilterValue>, Box<FilterValue>),
 	/// Field reference for field-to-field comparisons (e.g., WHERE discount_price < total_price)
 	FieldRef(super::expressions::F),
 	/// Arithmetic expression (e.g., WHERE total != unit_price * quantity)
@@ -2492,7 +2510,7 @@ where
 		let mut cond = Condition::all();
 
 		for filter in &self.filters {
-			let col = Expr::col(parse_column_reference(&filter.field));
+			let col = Self::filter_lhs_expr(&filter.field);
 
 			let expr = match (&filter.operator, &filter.value) {
 				// Field-to-field comparisons (must come before generic patterns)
@@ -2557,6 +2575,10 @@ where
 				// NULL checks
 				(FilterOperator::Eq, FilterValue::Null) => col.is_null(),
 				(FilterOperator::Ne, FilterValue::Null) => col.is_not_null(),
+				(FilterOperator::IExact, FilterValue::String(s)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(s.clone()))
+				}
+				(FilterOperator::IExact, v) => col.eq(Self::filter_value_to_sea_value(v)),
 				// Generic value comparisons (catch-all for other FilterValue types)
 				(FilterOperator::Eq, v) => col.eq(Self::filter_value_to_sea_value(v)),
 				(FilterOperator::Ne, v) => col.ne(Self::filter_value_to_sea_value(v)),
@@ -2571,6 +2593,12 @@ where
 				(FilterOperator::In, FilterValue::Array(arr)) => {
 					col.is_in(arr.iter().map(|s| s.as_str()).collect::<Vec<_>>())
 				}
+				(FilterOperator::In, FilterValue::List(values)) => col.is_in(
+					values
+						.iter()
+						.map(Self::filter_value_to_sea_value)
+						.collect::<Vec<_>>(),
+				),
 				(FilterOperator::NotIn, FilterValue::String(s)) => {
 					let values = Self::parse_array_string(s);
 					col.is_not_in(values)
@@ -2578,43 +2606,112 @@ where
 				(FilterOperator::NotIn, FilterValue::Array(arr)) => {
 					col.is_not_in(arr.iter().map(|s| s.as_str()).collect::<Vec<_>>())
 				}
+				(FilterOperator::NotIn, FilterValue::List(values)) => col.is_not_in(
+					values
+						.iter()
+						.map(Self::filter_value_to_sea_value)
+						.collect::<Vec<_>>(),
+				),
 				(FilterOperator::Contains, FilterValue::String(s)) => col.like(format!("%{}%", s)),
+				(FilterOperator::IContains, FilterValue::String(s)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}%", s)))
+				}
 				(FilterOperator::Contains, FilterValue::Array(arr)) => {
 					col.like(format!("%{}%", arr.first().unwrap_or(&String::new())))
 				}
 				(FilterOperator::StartsWith, FilterValue::String(s)) => col.like(format!("{}%", s)),
+				(FilterOperator::IStartsWith, FilterValue::String(s)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("{}%", s)))
+				}
 				(FilterOperator::StartsWith, FilterValue::Array(arr)) => {
 					col.like(format!("{}%", arr.first().unwrap_or(&String::new())))
 				}
 				(FilterOperator::EndsWith, FilterValue::String(s)) => col.like(format!("%{}", s)),
+				(FilterOperator::IEndsWith, FilterValue::String(s)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}", s)))
+				}
 				(FilterOperator::EndsWith, FilterValue::Array(arr)) => {
 					col.like(format!("%{}", arr.first().unwrap_or(&String::new())))
 				}
+				(FilterOperator::Regex, FilterValue::String(pattern)) => Expr::cust_with_values(
+					format!("{} ~ ?", Self::filter_lhs_sql(&filter.field)),
+					[pattern.clone()],
+				)
+				.into_simple_expr(),
+				(FilterOperator::IRegex, FilterValue::String(pattern)) => Expr::cust_with_values(
+					format!("{} ~* ?", Self::filter_lhs_sql(&filter.field)),
+					[pattern.clone()],
+				)
+				.into_simple_expr(),
+				(FilterOperator::Range, FilterValue::Range(start, end)) => Expr::cust_with_values(
+					format!("{} BETWEEN ? AND ?", Self::filter_lhs_sql(&filter.field)),
+					[
+						Self::filter_value_to_sea_value(start),
+						Self::filter_value_to_sea_value(end),
+					],
+				)
+				.into_simple_expr(),
 				// Handle Integer, Float, Boolean for text operators
 				(FilterOperator::Contains, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.like(format!("%{}%", i))
 				}
+				(FilterOperator::IContains, FilterValue::Integer(i) | FilterValue::Int(i)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}%", i)))
+				}
 				(FilterOperator::Contains, FilterValue::Float(f)) => col.like(format!("%{}%", f)),
+				(FilterOperator::IContains, FilterValue::Float(f)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}%", f)))
+				}
 				(FilterOperator::Contains, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
 					col.like(format!("%{}%", b))
 				}
+				(FilterOperator::IContains, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}%", b)))
+				}
 				(FilterOperator::Contains, FilterValue::Null) => col.like("%"),
+				(FilterOperator::IContains, FilterValue::Null) => {
+					col.binary(BinOper::ILike, SimpleExpr::from("%"))
+				}
 				(FilterOperator::StartsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.like(format!("{}%", i))
 				}
+				(FilterOperator::IStartsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("{}%", i)))
+				}
 				(FilterOperator::StartsWith, FilterValue::Float(f)) => col.like(format!("{}%", f)),
+				(FilterOperator::IStartsWith, FilterValue::Float(f)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("{}%", f)))
+				}
 				(FilterOperator::StartsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
 					col.like(format!("{}%", b))
 				}
+				(FilterOperator::IStartsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("{}%", b)))
+				}
 				(FilterOperator::StartsWith, FilterValue::Null) => col.like("%"),
+				(FilterOperator::IStartsWith, FilterValue::Null) => {
+					col.binary(BinOper::ILike, SimpleExpr::from("%"))
+				}
 				(FilterOperator::EndsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.like(format!("%{}", i))
 				}
+				(FilterOperator::IEndsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}", i)))
+				}
 				(FilterOperator::EndsWith, FilterValue::Float(f)) => col.like(format!("%{}", f)),
+				(FilterOperator::IEndsWith, FilterValue::Float(f)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}", f)))
+				}
 				(FilterOperator::EndsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
 					col.like(format!("%{}", b))
 				}
+				(FilterOperator::IEndsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}", b)))
+				}
 				(FilterOperator::EndsWith, FilterValue::Null) => col.like("%"),
+				(FilterOperator::IEndsWith, FilterValue::Null) => {
+					col.binary(BinOper::ILike, SimpleExpr::from("%"))
+				}
 				// Handle In/NotIn for non-String types
 				(FilterOperator::In, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.is_in(vec![*i])
@@ -2884,6 +2981,22 @@ where
 		value.to_sql()
 	}
 
+	fn filter_lhs_expr(field: &str) -> Expr {
+		if let Some(sql) = field.strip_prefix(REINHARDT_FILTER_EXPR_PREFIX) {
+			Expr::cust(sql)
+		} else {
+			Expr::col(parse_column_reference(field))
+		}
+	}
+
+	fn filter_lhs_sql(field: &str) -> String {
+		if let Some(sql) = field.strip_prefix(REINHARDT_FILTER_EXPR_PREFIX) {
+			sql.to_string()
+		} else {
+			quote_identifier(field)
+		}
+	}
+
 	fn filter_value_to_sea_value(v: &FilterValue) -> reinhardt_query::value::Value {
 		match v {
 			FilterValue::String(s) => {
@@ -2899,6 +3012,18 @@ where
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => (*b).into(),
 			FilterValue::Null => reinhardt_query::value::Value::Int(None),
 			FilterValue::Array(arr) => arr.join(",").into(),
+			FilterValue::List(values) => values
+				.iter()
+				.map(Self::value_to_string)
+				.collect::<Vec<_>>()
+				.join(",")
+				.into(),
+			FilterValue::Range(start, end) => format!(
+				"{},{}",
+				Self::value_to_string(start),
+				Self::value_to_string(end)
+			)
+			.into(),
 			// FieldRef, Expression, and OuterRef are typically handled separately
 			// in build_where_condition(), but provide proper conversion as fallback
 			FilterValue::FieldRef(f) => f.field.clone().into(),
@@ -2926,6 +3051,18 @@ where
 					.collect::<Vec<_>>();
 				format!("ARRAY[{}]", elements.join(", "))
 			}
+			FilterValue::List(values) => {
+				let elements = values
+					.iter()
+					.map(Self::filter_value_to_sql_string)
+					.collect::<Vec<_>>();
+				format!("({})", elements.join(", "))
+			}
+			FilterValue::Range(start, end) => format!(
+				"{} AND {}",
+				Self::filter_value_to_sql_string(start),
+				Self::filter_value_to_sql_string(end)
+			),
 			FilterValue::FieldRef(f) => f.field.clone(),
 			FilterValue::Expression(expr) => expr.to_sql(),
 			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone(),
@@ -2943,6 +3080,18 @@ where
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => b.to_string(),
 			FilterValue::Null => String::new(),
 			FilterValue::Array(arr) => arr.join(","),
+			FilterValue::List(values) => values
+				.iter()
+				.map(Self::value_to_string)
+				.collect::<Vec<_>>()
+				.join(","),
+			FilterValue::Range(start, end) => {
+				format!(
+					"{},{}",
+					Self::value_to_string(start),
+					Self::value_to_string(end)
+				)
+			}
 			FilterValue::FieldRef(f) => f.field.clone(),
 			FilterValue::Expression(expr) => expr.to_sql(),
 			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone(),
@@ -2998,6 +3147,13 @@ where
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => vec![(*b).into()],
 			FilterValue::Null => vec![reinhardt_query::value::Value::Int(None)],
 			FilterValue::Array(arr) => arr.iter().map(|s| s.clone().into()).collect(),
+			FilterValue::List(values) => {
+				values.iter().map(Self::filter_value_to_sea_value).collect()
+			}
+			FilterValue::Range(start, end) => vec![
+				Self::filter_value_to_sea_value(start),
+				Self::filter_value_to_sea_value(end),
+			],
 			FilterValue::FieldRef(f) => vec![f.field.clone().into()],
 			FilterValue::Expression(expr) => vec![expr.to_sql().into()],
 			FilterValue::OuterRef(outer) => vec![outer.field.clone().into()],
@@ -5702,6 +5858,8 @@ impl FilterValue {
 // Helper Functions
 // ============================================================================
 
+pub(crate) const REINHARDT_FILTER_EXPR_PREFIX: &str = "__reinhardt_filter_expr:";
+
 /// Quote a SQL identifier to prevent injection via field names.
 /// Uses PostgreSQL double-quote escaping (also valid for SQLite).
 /// Handles dot-separated qualified names (e.g., "table.column" becomes "table"."column").
@@ -5798,6 +5956,34 @@ mod tests {
 				username,
 				email,
 			}
+		}
+
+		const fn field_id() -> crate::orm::expressions::FieldRef<TestUser, i64> {
+			crate::orm::expressions::FieldRef::new("id")
+		}
+
+		const fn field_username() -> crate::orm::expressions::FieldRef<TestUser, String> {
+			crate::orm::expressions::FieldRef::new("username")
+		}
+
+		const fn field_email() -> crate::orm::expressions::FieldRef<TestUser, String> {
+			crate::orm::expressions::FieldRef::new("email")
+		}
+
+		const fn field_created_at() -> crate::orm::expressions::FieldRef<TestUser, String> {
+			crate::orm::expressions::FieldRef::new("created_at")
+		}
+
+		const fn field_tags() -> crate::orm::expressions::FieldRef<TestUser, Vec<String>> {
+			crate::orm::expressions::FieldRef::new("tags")
+		}
+
+		const fn field_metadata() -> crate::orm::expressions::FieldRef<TestUser, String> {
+			crate::orm::expressions::FieldRef::new("metadata")
+		}
+
+		const fn field_active_period() -> crate::orm::expressions::FieldRef<TestUser, String> {
+			crate::orm::expressions::FieldRef::new("active_period")
 		}
 	}
 
@@ -6582,6 +6768,229 @@ mod tests {
 		assert_eq!(
 			sql,
 			r#"SELECT * FROM "test_users" WHERE "metadata" @'$.key' "#
+		);
+	}
+
+	#[rstest]
+	#[case(
+		Filter::new("username", FilterOperator::IExact, FilterValue::String("Alice".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'Alice'"#
+	)]
+	#[case(
+		Filter::new("email", FilterOperator::IContains, FilterValue::String("example.com".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "email" ILIKE '%example.com%'"#
+	)]
+	#[case(
+		Filter::new("username", FilterOperator::IStartsWith, FilterValue::String("ali".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'ali%'"#
+	)]
+	#[case(
+		Filter::new("username", FilterOperator::IEndsWith, FilterValue::String("ice".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" ILIKE '%ice'"#
+	)]
+	#[case(
+		Filter::new("username", FilterOperator::Regex, FilterValue::String("^a".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" ~ '^a'"#
+	)]
+	#[case(
+		Filter::new("username", FilterOperator::IRegex, FilterValue::String("^a".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" ~* '^a'"#
+	)]
+	fn test_django_style_string_lookup_filters(#[case] filter: Filter, #[case] expected: &str) {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(filter);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(sql, expected);
+	}
+
+	#[rstest]
+	fn test_django_style_is_in_filter_accepts_typed_values() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			"id",
+			FilterOperator::In,
+			FilterValue::List(vec![FilterValue::Integer(1), FilterValue::Integer(2)]),
+		));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(sql, r#"SELECT * FROM "test_users" WHERE "id" IN (1, 2)"#);
+	}
+
+	#[rstest]
+	fn test_django_style_between_range_filter() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			"id",
+			FilterOperator::Range,
+			FilterValue::Range(
+				Box::new(FilterValue::Integer(10)),
+				Box::new(FilterValue::Integer(20)),
+			),
+		));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "id" BETWEEN 10 AND 20"#
+		);
+	}
+
+	#[rstest]
+	fn test_django_style_date_part_filter_expression() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			format!(
+				"{}EXTRACT(YEAR FROM \"created_at\")",
+				super::REINHARDT_FILTER_EXPR_PREFIX
+			),
+			FilterOperator::Eq,
+			FilterValue::Integer(2026),
+		));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE EXTRACT(YEAR FROM "created_at") = 2026"#
+		);
+	}
+
+	#[rstest]
+	fn test_field_accessor_lookup_helpers_generate_expected_sql() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new()
+			.filter(TestUser::field_username().exact("alice"))
+			.filter(TestUser::field_email().icontains("example.com"))
+			.filter(TestUser::field_id().is_in([1_i64, 2, 3]))
+			.filter(TestUser::field_created_at().year().gte(2026));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' AND "email" ILIKE '%example.com%' AND "id" IN (1, 2, 3) AND EXTRACT(YEAR FROM "created_at") >= 2026)"#
+		);
+	}
+
+	#[rstest]
+	fn test_field_accessor_null_not_in_and_range_helpers_generate_expected_sql() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new()
+			.filter(TestUser::field_email().is_not_null())
+			.filter(TestUser::field_id().not_in([10_i64, 20]))
+			.filter(TestUser::field_id().range(100_i64, 200));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE ("email" IS NOT NULL AND "id" NOT IN (10, 20) AND "id" BETWEEN 100 AND 200)"#
+		);
+	}
+
+	#[rstest]
+	fn test_field_accessor_string_lookup_variants_generate_expected_sql() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new()
+			.filter(TestUser::field_username().contains("lic"))
+			.filter(TestUser::field_username().starts_with("a"))
+			.filter(TestUser::field_username().ends_with("e"))
+			.filter(TestUser::field_username().istarts_with("AL"))
+			.filter(TestUser::field_username().iends_with("CE"))
+			.filter(TestUser::field_username().regex("^a.*e$"))
+			.filter(TestUser::field_username().iregex("^A.*E$"));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE ("username" LIKE '%lic%' AND "username" LIKE 'a%' AND "username" LIKE '%e' AND "username" ILIKE 'AL%' AND "username" ILIKE '%CE' AND "username" ~ '^a.*e$' AND "username" ~* '^A.*E$')"#
+		);
+	}
+
+	#[rstest]
+	#[case(TestUser::field_created_at().date().eq("2026-06-10"), r#"SELECT * FROM "test_users" WHERE DATE("created_at") = '2026-06-10'"#)]
+	#[case(TestUser::field_created_at().time().eq("05:00:00"), r#"SELECT * FROM "test_users" WHERE TIME("created_at") = '05:00:00'"#)]
+	#[case(TestUser::field_created_at().month().eq(6), r#"SELECT * FROM "test_users" WHERE EXTRACT(MONTH FROM "created_at") = 6"#)]
+	#[case(TestUser::field_created_at().day().eq(10), r#"SELECT * FROM "test_users" WHERE EXTRACT(DAY FROM "created_at") = 10"#)]
+	#[case(TestUser::field_created_at().week().eq(24), r#"SELECT * FROM "test_users" WHERE EXTRACT(WEEK FROM "created_at") = 24"#)]
+	#[case(TestUser::field_created_at().week_day().eq(4), r#"SELECT * FROM "test_users" WHERE (EXTRACT(DOW FROM "created_at") + 1) = 4"#)]
+	#[case(TestUser::field_created_at().iso_week_day().eq(3), r#"SELECT * FROM "test_users" WHERE EXTRACT(ISODOW FROM "created_at") = 3"#)]
+	#[case(TestUser::field_created_at().quarter().eq(2), r#"SELECT * FROM "test_users" WHERE EXTRACT(QUARTER FROM "created_at") = 2"#)]
+	#[case(TestUser::field_created_at().hour().gte(5), r#"SELECT * FROM "test_users" WHERE EXTRACT(HOUR FROM "created_at") >= 5"#)]
+	#[case(TestUser::field_created_at().minute().lt(30), r#"SELECT * FROM "test_users" WHERE EXTRACT(MINUTE FROM "created_at") < 30"#)]
+	#[case(TestUser::field_created_at().second().lte(59), r#"SELECT * FROM "test_users" WHERE EXTRACT(SECOND FROM "created_at") <= 59"#)]
+	fn test_field_accessor_date_time_transforms_generate_expected_sql(
+		#[case] filter: Filter,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(filter);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(sql, expected);
+	}
+
+	#[rstest]
+	fn test_field_accessor_postgres_array_jsonb_and_range_helpers_generate_expected_sql() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new()
+			.filter(TestUser::field_tags().array_contains(["rust", "async"]))
+			.filter(TestUser::field_tags().array_overlap(["web", "orm"]))
+			.filter(TestUser::field_metadata().jsonb_contains(r#"{"active": true}"#))
+			.filter(TestUser::field_metadata().jsonb_has_any_keys(["tier", "plan"]))
+			.filter(TestUser::field_active_period().range_overlaps("[2026-01-01,2027-01-01)"));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE ("tags" @> ARRAY['rust', 'async'] AND "tags" && ARRAY['web', 'orm'] AND "metadata" @> '{"active": true}'::jsonb AND "metadata" ?| array['tier', 'plan'] AND "active_period" && '[2026-01-01,2027-01-01)')"#
+		);
+	}
+
+	#[rstest]
+	fn test_complex_django_style_lookup_query_combines_order_distinct_and_limit() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new()
+			.filter(TestUser::field_email().icontains("example.com"))
+			.filter(TestUser::field_username().is_not_null())
+			.filter(TestUser::field_created_at().year().range(2024, 2026))
+			.distinct()
+			.order_by(&["-created_at", "username"])
+			.limit(25)
+			.offset(50);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT DISTINCT * FROM "test_users" WHERE ("email" ILIKE '%example.com%' AND "username" IS NOT NULL AND EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026) ORDER BY "created_at" DESC, "username" ASC LIMIT 25 OFFSET 50"#
 		);
 	}
 
