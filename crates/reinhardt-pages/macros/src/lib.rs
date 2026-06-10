@@ -59,6 +59,8 @@
 //! // On server, this expands to a route handler
 //! ```
 
+#![warn(missing_docs)]
+
 use proc_macro::TokenStream;
 
 mod crate_paths;
