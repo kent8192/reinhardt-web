@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.3...reinhardt-pages-ast@v0.1.4) - 2026-06-10
+
+### Performance
+
+- *(pages)* trim wasm dependency graph
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-rc.30...reinhardt-pages-ast@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-pages-ast` as part of the
