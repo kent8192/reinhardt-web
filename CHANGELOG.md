@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.3...reinhardt-web@v0.1.4) - 2026-06-10
+
+### Documentation
+
+- add release announcement(s)
+- *(build)* update wasm loop measurements
+
+### Fixed
+
+- *(build)* address CodeRabbit review feedback
+- *(ci)* satisfy clippy for hot reload notification
+- *(build)* address CodeRabbit hot patch feedback
+- *(build)* address Codex review follow-ups
+- *(features)* gate signals facade exports
+- *(ci)* unblock release wasm and semver checks
+- *(ci)* tolerate semver baseline rustdoc failures
+
+### Performance
+
+- *(build)* add build-loop benchmark harness
+- *(build)* tune dev profile for incremental builds
+- *(commands)* skip unrelated hot reload rebuilds
+- *(commands)* notify browsers after hot reload rebuilds
+- *(build)* keep measured dev profile defaults
+- *(commands)* use staleness check for pages wasm reuse
+- *(build)* measure pages wasm and server loops
+- *(pages)* batch generated page attributes
+- *(build)* measure hot reload target selection
+- *(pages)* prune unused runtime parser deps
+- *(pages)* trim wasm dependency graph
+- *(pages)* gate non-browser wasm modules
+- *(pages)* hot patch static page edits
+- *(build)* tune dev profile for hot reload
+- *(build)* measure cold workspace build
+
+### Testing
+
+- *(commands)* verify hmr reload after rebuild
+
 ## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.2...reinhardt-web@v0.1.3) - 2026-05-31
 
 ### Added
