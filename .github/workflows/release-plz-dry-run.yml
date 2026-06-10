@@ -105,10 +105,25 @@ jobs:
           #
           # Ideal implementation (without workaround):
           #   release-plz release --dry-run --no-verify --git-token "$GITHUB_TOKEN"
-          if grep -Fq 'reinhardt-grpc-macros 0.1.3: due to dry, skipping' "$log" \
-            && grep -Fq 'failed to publish reinhardt-grpc' "$log" \
-            && grep -Fq 'failed to select a version for the requirement `reinhardt-grpc-macros = "^0.1.3"`' "$log"
-          then
+          declare -A dry_skipped_crates=()
+          while IFS= read -r line; do
+            if [[ "$line" =~ ^(reinhardt-[A-Za-z0-9_-]+)[[:space:]]+([^:[:space:]]+):[[:space:]]+due[[:space:]]+to[[:space:]]+dry,[[:space:]]+skipping ]]; then
+              dry_skipped_crates["${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"]=1
+            fi
+          done < "$log"
+
+          known_same_release_dependency_failure=false
+          while IFS= read -r requirement; do
+            if [[ "$requirement" =~ ^(reinhardt-[A-Za-z0-9_-]+)[[:space:]]*=[[:space:]]*\"\^?([^\"]+)\"$ ]] \
+              && [[ -n "${dry_skipped_crates["${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"]+set}" ]]
+            then
+              known_same_release_dependency_failure=true
+              echo "::warning::release-plz dry-run skipped ${BASH_REMATCH[1]} ${BASH_REMATCH[2]} and later failed to resolve that same-release workspace dependency."
+              break
+            fi
+          done < <(sed -nE 's/.*failed to select a version for the requirement `([^`]+)`.*/\1/p' "$log")
+
+          if [[ "$known_same_release_dependency_failure" == "true" ]]; then
             echo "::warning::Ignoring known release-plz dry-run same-release dependency false positive (release-plz/release-plz#2878, reinhardt-web#5089)."
             exit 0
           fi
