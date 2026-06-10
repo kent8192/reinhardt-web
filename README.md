@@ -617,12 +617,8 @@ impl User {
 use reinhardt::prelude::*;
 use crate::models::User;
 
-// Django-style F/Q object queries with type-safe field references
+// Django-style lookup helpers with type-safe field references
 async fn complex_user_query() -> Result<Vec<User>, Box<dyn std::error::Error>> {
-	// Q objects for building complex conditions
-	let active_query = Q::new("is_active", "=", "true")
-		.and(Q::new("date_joined", ">=", "NOW()"));
-
 	// Database functions with type-safe field references
 	let email_lower = Lower::new(User::field_email().into());
 	let username_upper = Upper::new(User::field_username().into());
@@ -639,7 +635,10 @@ async fn complex_user_query() -> Result<Vec<User>, Box<dyn std::error::Error>> {
 
 	// Build and execute the query using QuerySet
 	let users = User::objects()
-		.filter(active_query)
+		.filter(User::field_is_active().exact(true))
+		.filter(User::field_email().icontains("example.com"))
+		.filter(User::field_id().is_in([1_i64, 2, 3]))
+		.filter(User::field_date_joined().year().gte(2026))
 		.annotate("email_lower", email_lower)
 		.annotate("username_upper", username_upper)
 		.annotate("rank", rank_by_join_date)
