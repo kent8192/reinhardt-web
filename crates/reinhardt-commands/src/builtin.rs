@@ -1730,6 +1730,23 @@ impl ShellCommand {
 /// Development server command
 pub struct RunServerCommand;
 
+#[cfg(all(feature = "server", feature = "autoreload"))]
+struct AutoreloadChildOptions<'a> {
+	address: &'a str,
+	insecure: bool,
+	no_docs: bool,
+	with_pages: bool,
+	static_dir: &'a str,
+	no_spa: bool,
+	no_project_static: bool,
+	index: Option<&'a str>,
+	hmr_port: Option<u16>,
+	no_wasm: bool,
+	no_override_wasm: bool,
+	force_wasm: bool,
+	wasm_optional: bool,
+}
+
 impl RunServerCommand {
 	/// Consume `UrlPatternsRegistration` `inventory` entries and install the
 	/// merged `ServerRouter` as the process-wide HTTP router.
@@ -1961,20 +1978,20 @@ impl BaseCommand for RunServerCommand {
 		let no_spa = ctx.has_option("no-spa");
 		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let no_project_static = ctx.has_option("no-project-static");
+		let no_wasm = ctx.has_option("no-wasm");
+		let no_override_wasm = ctx.has_option("no-override-wasm");
+		let force_wasm_legacy = ctx.has_option("force-wasm");
+		let wasm_optional = ctx.has_option("wasm-optional");
 		// Build WASM frontend if --with-pages and not --no-wasm
 		#[cfg(feature = "pages")]
 		{
-			let no_wasm = ctx.has_option("no-wasm");
-			let no_override_wasm = ctx.has_option("no-override-wasm");
-			let force_wasm_legacy = ctx.has_option("force-wasm");
 			if force_wasm_legacy {
-				ctx.warning(
-					"--force-wasm is now the default behavior; this flag is deprecated. \
-					 Use --no-override-wasm to opt out of rebuilds.",
-				);
+				ctx.warning(concat!(
+					"--force-wasm is now the default behavior; this flag is deprecated. ",
+					"Use --no-override-wasm to opt out of rebuilds."
+				));
 			}
 			let force = !no_override_wasm;
-			let wasm_optional = ctx.has_option("wasm-optional");
 			if with_pages
 				&& !no_wasm && let Err(e) = Self::build_pages_wasm(ctx, force)
 			{
@@ -2166,6 +2183,10 @@ impl BaseCommand for RunServerCommand {
 					no_project_static,
 					index_raw.as_deref(),
 					no_wasm_rebuild,
+					no_wasm,
+					no_override_wasm,
+					force_wasm_legacy,
+					wasm_optional,
 				)
 				.await;
 			}
@@ -2183,6 +2204,10 @@ impl BaseCommand for RunServerCommand {
 				&static_dir_raw,
 				no_spa,
 				no_project_static,
+				no_wasm,
+				no_override_wasm,
+				force_wasm_legacy,
+				wasm_optional,
 			)
 			.await
 		}
@@ -2268,6 +2293,10 @@ impl RunServerCommand {
 		static_dir: &str,
 		no_spa: bool,
 		no_project_static: bool,
+		no_wasm: bool,
+		no_override_wasm: bool,
+		force_wasm: bool,
+		wasm_optional: bool,
 	) -> CommandResult<()> {
 		use reinhardt_server::{HttpServer, ShutdownCoordinator};
 
@@ -2531,6 +2560,10 @@ impl RunServerCommand {
 					no_project_static,
 					index_raw.as_deref(),
 					no_wasm_rebuild,
+					no_wasm,
+					no_override_wasm,
+					force_wasm,
+					wasm_optional,
 				)
 				.await
 			}
@@ -2637,6 +2670,10 @@ impl RunServerCommand {
 		no_project_static: bool,
 		index: Option<&str>,
 		no_wasm_rebuild: bool,
+		no_wasm: bool,
+		no_override_wasm: bool,
+		force_wasm: bool,
+		wasm_optional: bool,
 	) -> CommandResult<()> {
 		// Resolve the cargo metadata for the current working directory.
 		let metadata = cargo_metadata::MetadataCommand::new().exec().map_err(|e| {
@@ -2737,6 +2774,10 @@ impl RunServerCommand {
 				no_project_static,
 				index_owned.as_deref(),
 				hmr_port,
+				no_wasm,
+				no_override_wasm,
+				force_wasm,
+				wasm_optional,
 			)
 			.map_err(|e| std::io::Error::other(e.to_string()))
 		};
@@ -2939,6 +2980,10 @@ impl RunServerCommand {
 		no_project_static: bool,
 		index: Option<&str>,
 		hmr_port: Option<u16>,
+		no_wasm: bool,
+		no_override_wasm: bool,
+		force_wasm: bool,
+		wasm_optional: bool,
 	) -> CommandResult<tokio::process::Child> {
 		let current_exe = std::env::current_exe().map_err(|e| {
 			crate::CommandError::ExecutionError(format!("Failed to get current executable: {}", e))
@@ -2962,30 +3007,23 @@ impl RunServerCommand {
 		};
 
 		let mut cmd = tokio::process::Command::new(&current_exe);
-		cmd.arg("runserver").arg(address).arg("--noreload");
-
-		if insecure {
-			cmd.arg("--insecure");
-		}
-		if no_docs {
-			cmd.arg("--no-docs");
-		}
-		if with_pages {
-			cmd.arg("--with-pages");
-		}
-		if !static_dir.is_empty() {
-			cmd.arg("--static-dir").arg(static_dir);
-		}
-		if no_spa {
-			cmd.arg("--no-spa");
-		}
-		if no_project_static {
-			cmd.arg("--no-project-static");
-		}
-		if let Some(index_path) = index {
-			cmd.arg("--index").arg(index_path);
-		}
-		if let Some(port) = hmr_port {
+		let child_options = AutoreloadChildOptions {
+			address,
+			insecure,
+			no_docs,
+			with_pages,
+			static_dir,
+			no_spa,
+			no_project_static,
+			index,
+			hmr_port,
+			no_wasm,
+			no_override_wasm,
+			force_wasm,
+			wasm_optional,
+		};
+		cmd.args(Self::build_autoreload_child_args(&child_options));
+		if let Some(port) = child_options.hmr_port {
 			cmd.env("REINHARDT_HMR_PORT", port.to_string());
 		}
 
@@ -3013,6 +3051,53 @@ impl RunServerCommand {
 				diag,
 			))
 		})
+	}
+
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn build_autoreload_child_args(options: &AutoreloadChildOptions<'_>) -> Vec<String> {
+		let mut args = vec![
+			"runserver".to_string(),
+			options.address.to_string(),
+			"--noreload".to_string(),
+		];
+
+		if options.insecure {
+			args.push("--insecure".to_string());
+		}
+		if options.no_docs {
+			args.push("--no-docs".to_string());
+		}
+		if options.with_pages {
+			args.push("--with-pages".to_string());
+		}
+		if !options.static_dir.is_empty() {
+			args.push("--static-dir".to_string());
+			args.push(options.static_dir.to_string());
+		}
+		if options.no_spa {
+			args.push("--no-spa".to_string());
+		}
+		if options.no_project_static {
+			args.push("--no-project-static".to_string());
+		}
+		if let Some(index_path) = options.index {
+			args.push("--index".to_string());
+			args.push(index_path.to_string());
+		}
+		if options.no_wasm {
+			args.push("--no-wasm".to_string());
+		}
+		if options.no_override_wasm {
+			args.push("--no-override-wasm".to_string());
+		}
+		if options.force_wasm {
+			args.push("--force-wasm".to_string());
+		}
+		if options.wasm_optional {
+			args.push("--wasm-optional".to_string());
+		}
+
+		args
 	}
 
 	/// Build the pages WASM bundle from the current project (if it declares cdylib).
@@ -4475,6 +4560,70 @@ mod tests {
 			"--force-wasm must remain registered (deprecated alias)"
 		);
 		assert!(option_names.contains(&"no-wasm"));
+	}
+
+	#[test]
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn test_autoreload_child_args_forward_wasm_startup_flags() {
+		let args = RunServerCommand::build_autoreload_child_args(&AutoreloadChildOptions {
+			address: "127.0.0.1:8000",
+			insecure: true,
+			no_docs: true,
+			with_pages: true,
+			static_dir: "dist",
+			no_spa: true,
+			no_project_static: true,
+			index: Some("index.html"),
+			hmr_port: Some(35729),
+			no_wasm: true,
+			no_override_wasm: true,
+			force_wasm: true,
+			wasm_optional: true,
+		});
+
+		assert_eq!(
+			args,
+			vec![
+				"runserver",
+				"127.0.0.1:8000",
+				"--noreload",
+				"--insecure",
+				"--no-docs",
+				"--with-pages",
+				"--static-dir",
+				"dist",
+				"--no-spa",
+				"--no-project-static",
+				"--index",
+				"index.html",
+				"--no-wasm",
+				"--no-override-wasm",
+				"--force-wasm",
+				"--wasm-optional",
+			]
+		);
+	}
+
+	#[test]
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn test_autoreload_child_args_omit_disabled_wasm_startup_flags() {
+		let args = RunServerCommand::build_autoreload_child_args(&AutoreloadChildOptions {
+			address: "127.0.0.1:8000",
+			insecure: false,
+			no_docs: false,
+			with_pages: false,
+			static_dir: "",
+			no_spa: false,
+			no_project_static: false,
+			index: None,
+			hmr_port: None,
+			no_wasm: false,
+			no_override_wasm: false,
+			force_wasm: false,
+			wasm_optional: false,
+		});
+
+		assert_eq!(args, vec!["runserver", "127.0.0.1:8000", "--noreload"]);
 	}
 
 	#[test]
