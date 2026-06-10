@@ -15,10 +15,10 @@ Add `reinhardt-auth` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt-auth = "0.1.3"
+reinhardt-auth = "0.1.4"
 
 # Optional APIs:
-# reinhardt-auth = { version = "0.1.3", features = ["jwt", "argon2-hasher"] }
+# reinhardt-auth = { version = "0.1.4", features = ["jwt", "argon2-hasher"] }
 ```
 
 Then import authentication features:
