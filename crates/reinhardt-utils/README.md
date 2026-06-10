@@ -15,11 +15,11 @@ Add `reinhardt-utils` directly, or enable one of the root features that re-expor
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt-utils = "0.1.3"
+reinhardt-utils = "0.1.4"
 
 # Root facade examples:
-# reinhardt = { version = "0.1.3", package = "reinhardt-web", features = ["cache"] }
-# reinhardt = { version = "0.1.3", package = "reinhardt-web", features = ["static-files", "storage"] }
+# reinhardt = { version = "0.1.4", package = "reinhardt-web", features = ["cache"] }
+# reinhardt = { version = "0.1.4", package = "reinhardt-web", features = ["static-files", "storage"] }
 ```
 
 Then import utility features:
@@ -323,7 +323,7 @@ logger.log_security_error(&SecurityError::CsrfViolation);  // ERROR level
 logger.log_csrf_violation("http://evil.com");
 
 // Log rate limit exceeded
-logger.log_rate_limit_exceeded("0.1.3", 100);
+logger.log_rate_limit_exceeded("0.1.4", 100);
 
 // Log suspicious file operations
 logger.log_suspicious_file_operation("delete", Path::new("/etc/passwd"));
