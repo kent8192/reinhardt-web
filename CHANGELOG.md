@@ -7,6 +7,151 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.3...reinhardt-web@v0.2.0) - 2026-06-11
+
+Stable 0.2.0 release of `reinhardt-web`. This entry consolidates the
+full `0.2.0-rc.2` through `0.2.0-rc.5` train into a release-level
+summary; the original RC entries remain below as detailed history.
+
+### Highlights
+
+- **0.1.x deprecations removed deliberately**: the 0.2 line removes
+  compatibility APIs that were already deprecated in the 0.1 line,
+  especially typed URL resolver codegen, legacy DI wrappers, legacy auth
+  user contracts, old query aliases, and old test helpers.
+- **Manouche v2 pages and forms**: `page!`, hooks, resources, component
+  invocation, typed form fields, and dynamic form rendering now share the
+  explicit dependency and reactive-rendering model used by the final
+  0.2 APIs.
+- **Explicit routing and reverse lookup**: URL generation moves away from
+  broad generated resolver traits toward explicit fully qualified route
+  names and app-local helper functions.
+- **Typed settings fragments**: task queues, auth, mail, deeplink, gRPC,
+  websockets, server rate limits, CORS, and template settings now compose
+  through generated settings fragments instead of ad-hoc config structs.
+- **ORM/query and migration hardening**: filter construction, model
+  builders, generated Info DTOs, and backend-specific migration SQL were
+  aligned with the 0.2 contracts.
+- **Release and developer-loop polish**: formatter publication, local
+  project templates, hot reload target selection, wasm build boundaries,
+  release automation, and documentation gates were tightened for the
+  stable train.
+
+### Breaking Changes
+
+- **URL routing**: typed URL helper generation from `#[routes]`,
+  `ResolvedUrls`, `url_prelude`, `UrlResolverUnprefixed`, flat route
+  accessor traits, and numbered client route helpers are removed. Use
+  explicit reverse lookups such as `reverse("server:app:name", params)`
+  and app-local wrappers.
+- **Pages and forms**: `page!` now wraps dynamic expressions reactively,
+  rejects implicit outer captures, removes bare-identifier shorthand,
+  and expects explicit dependency tuples for React-style hooks.
+  `create_resource*` is superseded by `use_resource(fetcher, deps)`,
+  and `use_form` is routed through form definitions.
+- **Dependency injection**: `Injected<T>` and `OptionalInjected<T>` are
+  removed in favor of `Depends<T>` and `Option<Depends<T>>`.
+- **Authentication**: old `User`, `SimpleUser`, `AnonymousUser`,
+  `DefaultUser`, and compatibility extractor shapes are removed. Use
+  application-owned `#[user]` models, `AuthIdentity`, `BaseUser` /
+  `FullUser`, `PermissionsMixin`, and `CurrentUser<U>`.
+- **Configuration**: legacy `Settings`, `AdvancedSettings`,
+  `JsonFileSource`, `auto_source`, and mutable interpolation APIs are
+  removed in favor of composed settings structs and `TomlFileSource`.
+- **Database/query**: filter APIs take a single filter expression,
+  `SeaRc<T>` is replaced by `SharedRc<T>`, and reverse migration SQL may
+  return multiple statements.
+- **Testing**: old fetch/server-function mocks, built-in `TestUser`,
+  `force_authenticate`, and global-registry migration fixtures are
+  replaced by MSW-backed mocks, test-local users, fluent auth helpers,
+  and directory-backed migration fixtures.
+- **Storage**: `StorageError` is non-exhaustive; downstream matches need
+  wildcard arms.
+
+### Migration Guide
+
+Follow [`instructions/MIGRATION_0.2.md`](instructions/MIGRATION_0.2.md)
+as the canonical 0.1.x to 0.2.0 checklist. The safest order is: update
+dependencies, remove deprecated API references, update ORM/query calls,
+migrate touched config to settings fragments, regenerate and review
+database migrations, then run the verification commands in the guide.
+
+### Added
+
+- Django-like ORM lookup helpers and composite filter combinators.
+- Settings fragments and settings-first constructors across auth, tasks,
+  server, gRPC, deeplink, websockets, middleware, mail, and templates.
+- Manouche v2 component syntax, typed form field generics, `use_resource`,
+  hook dependency tracking, and server-function metadata available across
+  targets.
+- Storage backends and test coverage for local, S3-compatible, GCS, and
+  Azure-style storage flows.
+- Interactive admin dependency configuration and refreshed project
+  templates for 0.2.0 projects.
+
+### Changed
+
+- URL routing now prefers explicit route names and reverse lookup over
+  generated typed resolver surfaces.
+- Auth extraction standardizes on `CurrentUser<U>` while keeping
+  `AuthUser<U>` as a deprecated 0.2 compatibility wrapper.
+- `Model::new()` and generated model builders align with the final 0.2
+  model-construction contract.
+- Formatter responsibilities are split out of the admin CLI and routed
+  through the published `reinhardt-formatter` crate.
+
+### Deprecated
+
+- Compatibility wrappers that still exist for the 0.2 cycle are retained
+  only as migration aids and are documented for removal in a later train.
+- Legacy config structs are deprecated where settings fragments provide
+  the final contract.
+
+### Fixed
+
+- WASM and feature-boundary failures in pages, auth, urls, test support,
+  and release fixtures.
+- Form runtime parity, dynamic radio choices, SPA link rerendering, SSR
+  hydration IDs, and reactive mount borrow handling.
+- Admin formatter wiring, migration fixture preservation, and project
+  template dependency wiring.
+- Migration generation, model companion derives, query expectations, and
+  backend-specific SQL behavior.
+
+### Security
+
+- Storage integration tests moved away from LocalStack-only assumptions
+  and now use deterministic mock servers where appropriate.
+- Auth permission tests no longer depend on minute-precision wall-clock
+  boundaries.
+- URL, redirect, CSRF, and HTML-safety primitives from the 0.1 line remain
+  part of the stable security surface.
+
+### Performance
+
+- Hot reload skips unrelated rebuilds, reuses pages wasm artifacts when
+  stale checks allow it, and notifies browsers after rebuilds.
+- Generated page attributes are batched, unused runtime parser dependencies
+  are pruned, and non-browser wasm modules are feature-gated out.
+- Build-loop, pages wasm, server-loop, hot reload, and cold workspace
+  measurements informed the final dev-profile defaults.
+
+### Maintenance
+
+- Release-plz handling for develop trains, branch naming, publish checks,
+  stale generated release branches, and release announcements was hardened.
+- Public API documentation coverage, docs.rs links, website channel routing,
+  and release website deployment were aligned for stable publication.
+- Examples and generated templates were refreshed against the local 0.2.0
+  workspace instead of published RC assumptions.
+
+### Testing
+
+- Release CI expectations, WASM fixtures, trybuild output, migration
+  boundaries, HMR reload behavior, and auth clock-boundary tests were
+  refreshed for the stable line.
+
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0-rc.4...reinhardt-web@v0.2.0-rc.5) - 2026-06-11
 
 ### Added

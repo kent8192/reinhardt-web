@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.3...reinhardt-pages-ast@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-pages-ast` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Review the breaking changes listed below before upgrading from 0.1.x.
+- See the root CHANGELOG and `instructions/MIGRATION_0.2.md` for cross-crate migration guidance.
+
+### Breaking Changes
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Added
+
+- *(pages)* support keyed page list rendering
+- feat!(forms): route use_form through form definitions
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Performance
+
+- *(pages)* trim wasm dependency graph
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.2.0-rc.4...reinhardt-pages-ast@v0.2.0-rc.5) - 2026-06-11
 
 ### Documentation

@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/releases/tag/reinhardt-storages@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-storages` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Treat `StorageError` as non-exhaustive and keep wildcard match arms in
+  downstream code.
+- Move storage configuration to the settings-first `StorageSettings` surface.
+- Use the wiremock-backed S3 test setup instead of LocalStack-only assumptions.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- *(storages)* [**breaking**] add #[non_exhaustive] to StorageError
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Added
+
+- *(storages)* add reinhardt-storages crate for cloud storage backends
+- *(storages)* add Display trait implementation for BackendType
+- *(storages)* add cloud storage settings and backends
+- local, S3-compatible, GCS, and Azure backend feature surfaces for storage
+  integrations.
+
+### Changed
+
+- *(storages)* consolidate test fixture submodules into single file
+- *(storages)* consolidate test utility submodules into single file
+- storage configuration now follows the explicit nested settings-node model.
+
+### Fixed
+
+- *(settings)* require explicit nested settings nodes
+- *(storages)* fix config test compilation and environment access safety
+- *(storages)* fix type annotations and content dereference in factory tests
+- *(storages)* fix local storage test module imports and async fixture usage
+- *(storages)* fix S3 storage test module imports and async fixture usage
+- *(storages)* set AWS credentials in S3 test fixture backend creation
+- *(storages)* enforce NotFound contract in S3 delete and url methods
+- *(storages)* reject path traversal in LocalStorage
+- *(storages)* reject Windows drive-letter absolute paths in validate_path
+- *(storages)* replace LocalStack with wiremock mock S3 server
+- *(storages)* finalize cloud backend verification
+- *(storages)* make default_backend feature-aware
+- *(storages)* make StorageSettings::default() convertible in non-local builds
+- *(storages)* escape #[settings] in deprecation notes for rustdoc
+- *(storages)* gate gcs/azure integration tests behind their features
+
+### Security
+
+- *(storages)* reject path traversal in LocalStorage
+- *(storages)* reject Windows drive-letter absolute paths in validate_path
+
+### Documentation
+
+- *(storages)* update test documentation to reflect wiremock replacement
+- *(storages)* document settings-first cloud storage
+- *(release)* enforce public API doc coverage
+
+### Maintenance
+
+- updated the following local packages: reinhardt-core, reinhardt-conf
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.0-rc.4...reinhardt-storages@v0.2.0-rc.5) - 2026-06-11
 
 ### Documentation

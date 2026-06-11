@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.3...reinhardt-commands@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-commands` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Regenerate or review project templates so dependency configuration, local infra state, and wasm-bindgen wiring match 0.2.0.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- *(commands)* [**breaking**] remove workspace templates and consolidate onto non-workspace templates
+
+### Added
+
+- *(commands)* add interactive dependency configuration
+- *(commands)* add migrate-with-target direction detection
+- *(commands)* pass get_settings() from generated manage.rs templates
+
+### Changed
+
+- *(auth)* make CurrentUser canonical extractor
+- *(commands)* [**breaking**] remove workspace templates and consolidate onto non-workspace templates
+- *(commands)* replace loose contains() assertions with exact-line checks
+- *(commands)* simplify assert_eq!(expr, bool) to assert!(expr)
+
+### Fixed
+
+- *(ci)* repair admin dependency config checks
+- *(commands)* adapt hot reload tests for develop
+- *(build)* port Codex review follow-ups
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(commands)* use project_crate_name for with_nav import in workspace pages template
+- *(commands)* add parent project crate dependency to workspace app Cargo.toml
+- *(ci)* update WASM consumer fixture for URL routing simplification
+- *(commands)* compile migrate-with-target target handling
+- *(commands)* honor --fake and --plan on migrate-with-target paths
+- *(commands)* fail fast on recorder errors in migrate --plan
+- *(commands)* resolve management-command database URL from project settings
+- *(commands)* read [core.databases.default] in the settings disk loader
+- *(commands)* update pages template CDN
+- *(commands)* align wasm bindgen template
+- *(commands)* verify runserver reachability after hot reload
+
+### Performance
+
+- *(commands)* skip unrelated hot reload rebuilds
+- *(commands)* notify browsers after hot reload rebuilds
+- *(commands)* use staleness check for pages wasm reuse
+- *(pages)* hot patch static page edits
+- *(build)* tune dev profile for hot reload
+
+### Documentation
+
+- align CLI install version examples
+- *(release)* enforce public API doc coverage
+- *(commands)* document migrate-with-target semantics
+- *(commands)* clarify APP_LABEL/MIGRATION_NAME dependency
+- *(commands)* make execute_from_command_line_with_settings doc example compile
+
+### Maintenance
+
+- *(commands)* ignore local infra state in templates
+
+### Testing
+
+- *(commands)* verify hmr reload after rebuild
+- *(ci)* refresh release CI expectations
+- *(commands)* drop stale InstalledApp import assertions in e2e_pages
+- *(commands)* add migrate-with-target E2E coverage
+- *(commands)* cover migrate --migrations-dir flag parsing
+- *(commands)* drop needless #[allow(unreachable_patterns)] in migrate parse test
+- *(commands)* cover settings-based database URL resolution
+
+### Styling
+
+- apply formatter fixes across workspace
+
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.0-rc.4...reinhardt-commands@v0.2.0-rc.5) - 2026-06-11
 
 ### Added

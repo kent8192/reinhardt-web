@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.3...reinhardt-manouche@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-manouche` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Added
+
+- *(pages)* support keyed page list rendering
+- *(forms)* add typed use_form ergonomics
+- feat!(forms): route use_form through form definitions
+
+### Fixed
+
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(docs)* resolve remaining rustdoc doctest failures
+- *(forms)* address review and CI failures
+- *(forms)* stabilize form runtime and validator parity
+
+### Performance
+
+- *(pages)* trim wasm dependency graph
+
+### Styling
+
+- apply formatter fixes across workspace
+
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.2.0-rc.4...reinhardt-manouche@v0.2.0-rc.5) - 2026-06-11
 
 ### Performance

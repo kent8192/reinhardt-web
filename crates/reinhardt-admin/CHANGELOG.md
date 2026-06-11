@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.3...reinhardt-admin@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-admin` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Replace the removed `reinhardt_admin::core::vendor` shim with `reinhardt_utils::staticfiles::vendor`.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Added
+
+- *(orm)* add Django-like lookup helpers
+- *(db)* introduce type-safe nullable field on FieldMetadata
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+- *(forms)* add typed use_form ergonomics
+- feat!(forms): route use_form through form definitions
+
+### Changed
+
+- *(auth)* make CurrentUser canonical extractor
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(admin)* migrate create_resource to use_resource
+
+### Removed
+
+- **`reinhardt-admin::core::vendor`** module gated with `#![cfg(any())]`
+  — contains the deprecated `VendorAsset`, `Verbosity`,
+  `verify_integrity`, `download_vendor_assets`,
+  `ensure_vendor_assets`, `admin_vendor_assets` (all deprecated since
+  `0.1.0-rc.27`). All items moved to
+  `reinhardt_utils::staticfiles::vendor`. Admin's own assets are
+  declared via `inventory::submit!` in `crates/reinhardt-admin/src/lib.rs`.
+
+### Fixed
+
+- *(orm)* address lookup review edge cases
+- *(admin)* enable tutorial admin CRUD
+- *(admin)* build CRUD URLs with router reverse
+- *(admin)* preserve multi-select mutation values
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(admin)* compile admin wasm browser tests
+- *(forms)* address review and CI failures
+
+### Documentation
+
+- *(admin)* remove broken DefaultUser intra-doc links
+
+### Maintenance
+
+- include all main v0.1.1 PR changes
+
+### Styling
+
+- *(admin)* format admin feature controls
+- apply formatter fixes across workspace
+
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.2.0-rc.4...reinhardt-admin@v0.2.0-rc.5) - 2026-06-11
 
 ### Added

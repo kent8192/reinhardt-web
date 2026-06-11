@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.3...reinhardt-rest@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-rest` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Replace `OpenApiConfig` with `OpenApiSettings` and review versioning settings fragments.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+- *(rest)* [**breaking**] remove deprecated OpenApiConfig struct (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Added
+
+- *(rest)* [**breaking**] remove deprecated OpenApiConfig struct (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Removed
+
+- **`OpenApiConfig` struct** (`src/openapi/config.rs`, deprecated since
+  `0.1.0-rc.16`) — removed per STABILITY_POLICY § SP-4. Use
+  `OpenApiSettings` from `reinhardt_conf::settings::openapi` instead.
+  Refs [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
+
+### Fixed
+
+- keep openapi facade feature standalone
+- *(rest)* remove deletion-history comments from openapi.rs
+- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+
+### Performance
+
+- atomize facade dependency feature gates
+- trim standard facade feature dependencies
+
+### Documentation
+
+- *(reinhardt-rest)* fix ModelSerializer doctests after DefaultUser removal
+
+### Maintenance
+
+- update Cargo.toml dependencies
+- *(examples)* remove examples-twitter
+
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.2.0-rc.4...reinhardt-rest@v0.2.0-rc.5) - 2026-06-11
 
 ### Maintenance

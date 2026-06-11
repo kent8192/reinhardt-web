@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.1.3...reinhardt-di-macros@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-di-macros` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Update macro consumers to the `Depends<T>` dependency contract.
+- See [`instructions/MIGRATION_0.2.md`](../../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- *(di)* [**breaking**] remove Injected and OptionalInjected (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Added
+
+- *(di)* [**breaking**] remove Injected and OptionalInjected (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(di)* add DependsResult and DependsOption sugar type aliases
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(di)* delete deprecated Injected<T> and OptionalInjected<T> types
+
+### Fixed
+
+- *(di)* resolve DependsResult/DependsOption field injection from registry
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+- recommend Result return types for injectable factories
+
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.2.0-rc.4...reinhardt-di-macros@v0.2.0-rc.5) - 2026-06-11
 
 ### Documentation

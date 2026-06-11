@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi@v0.1.3...reinhardt-openapi@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-openapi` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Follow the `reinhardt-rest` settings-fragment migration for OpenAPI configuration.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+
 ## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi@v0.1.3...reinhardt-openapi@v0.2.0-rc.2) - 2026-06-03
 
 ### Changed
