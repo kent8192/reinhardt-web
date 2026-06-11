@@ -25,13 +25,15 @@ Before you begin, make sure you have:
 
 ### Step 1: Install Reinhardt Admin
 
-Install the stable CLI with Cargo. The command below pins this guide to the
-0.2.0 release for reproducibility; omit `--version` to install the latest
-stable release instead.
+While Reinhardt is on a pre-release (`-rc.*` / `-alpha.*`),
+`cargo install` requires an explicit `--version` because pre-releases are
+not selected by default. Once `0.1.0` stable ships, omit `--version` to
+pull the latest stable (or keep `--version` as an opt-in reproducibility
+pin). The literal below is auto-bumped by release-plz on each release.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.0"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.4"
 ```
 
 **Note:** After installation, the command is `reinhardt-admin`, not
@@ -383,7 +385,7 @@ Check out the [ORM documentation](/docs/api/) for more details.
 ## Getting Help
 
 <!-- reinhardt-version-sync -->
-- 📖 [API Reference](https://docs.rs/reinhardt-web/0.2.0/reinhardt/)
+- 📖 [API Reference](https://docs.rs/reinhardt-web/0.2.0-rc.4/reinhardt/)
 - 🗺️ [DeepWiki](https://deepwiki.com/kent8192/reinhardt-web) - AI-generated codebase documentation
 - 💬 [GitHub Discussions](https://github.com/kent8192/reinhardt-web/discussions)
 - 🐛 [Report Issues](https://github.com/kent8192/reinhardt-web/issues)
