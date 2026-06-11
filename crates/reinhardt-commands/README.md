@@ -35,10 +35,10 @@ use reinhardt::commands::{BaseCommand, CommandRegistry};
 For creating new projects and apps, use the separate `reinhardt-admin-cli`
 package:
 
-<!-- reinhardt-version-sync:2 -->
+<!-- reinhardt-version-sync -->
 ```bash
-# Pre-release: --version is required. Once 0.2.0-rc.5 stable ships, --version
-# becomes optional. The literal below is auto-bumped by release-plz.
+# Pin the documented Reinhardt release for reproducibility.
+# Omit --version to let Cargo choose the latest stable release.
 cargo install reinhardt-admin-cli --version "0.2.0-rc.5"
 ```
 
