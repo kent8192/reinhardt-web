@@ -33,7 +33,7 @@ pin). The literal below is auto-bumped by release-plz on each release.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.0-rc.4"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.5"
 ```
 
 **Note:** After installation, the command is `reinhardt-admin`, not
@@ -385,7 +385,7 @@ Check out the [ORM documentation](/docs/api/) for more details.
 ## Getting Help
 
 <!-- reinhardt-version-sync -->
-- 📖 [API Reference](https://docs.rs/reinhardt-web/0.2.0-rc.4/reinhardt/)
+- 📖 [API Reference](https://docs.rs/reinhardt-web/0.2.0-rc.5/reinhardt/)
 - 🗺️ [DeepWiki](https://deepwiki.com/kent8192/reinhardt-web) - AI-generated codebase documentation
 - 💬 [GitHub Discussions](https://github.com/kent8192/reinhardt-web/discussions)
 - 🐛 [Report Issues](https://github.com/kent8192/reinhardt-web/issues)
