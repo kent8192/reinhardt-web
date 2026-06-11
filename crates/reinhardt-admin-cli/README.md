@@ -8,12 +8,9 @@ Global command-line tool for Reinhardt project management.
 
 ## Installation
 
-Install globally using cargo. While Reinhardt is on a pre-release
-(`-rc.*` / `-alpha.*`), `cargo install` requires an explicit `--version`
-because pre-releases are not selected by default. Once `0.1.0` stable
-ships, omit `--version` to pull the latest stable (or keep `--version`
-as an opt-in reproducibility pin). The literal below is auto-bumped by
-release-plz on each release.
+Install globally using Cargo. The command below pins this guide to the
+documented release for reproducibility; omit `--version` to let Cargo choose
+the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
@@ -26,6 +23,7 @@ This installs the `reinhardt-admin` command.
 
 ### Create a New Project
 
+<!-- reinhardt-version-sync -->
 ```bash
 # Create a RESTful API project (default in non-interactive shells)
 reinhardt-admin startproject myproject
@@ -53,6 +51,7 @@ not provided as flags. Non-interactive runs use deterministic defaults.
 
 ### Configure an Existing Project
 
+<!-- reinhardt-version-sync -->
 ```bash
 # Interactively update ./Cargo.toml
 reinhardt-admin configure

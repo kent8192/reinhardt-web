@@ -44,10 +44,10 @@ If you have written `ModelSerializer` or `Depends()` before, Reinhardt will feel
 
 ## Quick Start
 
-<!-- reinhardt-version-sync:2 -->
+<!-- reinhardt-version-sync -->
 ```bash
-# Currently a pre-release: --version is required. Once 0.2.0-rc.4 stable ships,
-# --version becomes optional (and acts as an opt-in reproducibility pin).
+# Pin the documented Reinhardt release for reproducibility.
+# Omit --version to let Cargo choose the latest stable release.
 cargo install reinhardt-admin-cli --version "0.2.0-rc.4"
 
 reinhardt-admin startproject my-api && cd my-api
@@ -103,9 +103,9 @@ Reinhardt follows a **three-phase lifecycle** for every crate:
 | **Stable** (`0.x.0`) | Full SemVer 2.0 guarantees. |
 
 <!-- reinhardt-version-sync -->
-**Current status:** Reinhardt is at `0.2.0-rc.4`. From `0.1.0` onward, all
-public APIs follow SemVer 2.0; breaking changes ship in a future
-`0.2.0-rc.N` series coordinated through the `develop/0.2.0` branch.
+**Current release line:** Reinhardt documentation tracks `0.2.0-rc.4`. From
+`0.1.0` onward, all public APIs follow SemVer 2.0; future breaking changes
+move through the documented alpha and RC lifecycle before stable publication.
 
 For per-release detail (changelog summary, upgrade notes, known issues),
 see the [Release category in GitHub Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
@@ -209,11 +209,9 @@ The main Reinhardt crate is published on crates.io as `reinhardt-web`, but you i
 
 ### 1. Install Reinhardt Admin Tool
 
-While Reinhardt is on a pre-release (`-rc.*` / `-alpha.*`), `cargo install`
-requires an explicit `--version` because pre-releases are not selected by
-default. Once `0.1.0` stable ships, omit `--version` to pull the latest
-stable (or keep `--version` as an opt-in reproducibility pin). The literal
-below is auto-bumped by release-plz on each release.
+Install the CLI with Cargo. The command below pins this guide to the
+documented release for reproducibility; omit `--version` to let Cargo choose
+the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
@@ -231,6 +229,7 @@ cd my-api
 Interactive terminals can choose the Reinhardt version and feature flags
 during project creation. Scripts can pass them explicitly:
 
+<!-- reinhardt-version-sync -->
 ```bash
 reinhardt-admin startproject my-api \
   --reinhardt-version "0.2.0-rc.4" \

@@ -22,7 +22,7 @@ examples/
 
 ### Example Projects
 
-Each `examples-*` directory is an independent Cargo project demonstrating specific Reinhardt features. By default, examples resolve Reinhardt from the parent checkout so release candidate examples can be tested before publication.
+Each `examples-*` directory is an independent Cargo project demonstrating specific Reinhardt features. By default, examples resolve Reinhardt from the parent checkout so release-line examples can be tested before and after publication.
 
 ---
 

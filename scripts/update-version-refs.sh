@@ -58,6 +58,7 @@ else
 	TARGETS=(
 		"README.md"
 		"examples/Cargo.toml"
+		"examples/AGENTS.md"
 		"examples/CLAUDE.md"
 		"website/config.toml"
 		"crates/reinhardt-admin-cli/src/main.rs"
