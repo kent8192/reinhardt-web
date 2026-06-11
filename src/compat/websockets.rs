@@ -10,15 +10,18 @@
 //! `WebSocketRouter::new().consumer(my_ws).consumer(other_ws)` body
 //! pattern.
 
+/// WASM-only no-op stand-in for native `WebSocketRouter`.
 pub struct WebSocketRouter {
 	_private: (),
 }
 
 impl WebSocketRouter {
+	/// Creates an empty no-op WebSocket router.
 	pub fn new() -> Self {
 		Self { _private: () }
 	}
 
+	/// Accepts a route namespace and returns the unchanged no-op router.
 	pub fn with_namespace(self, _namespace: impl Into<String>) -> Self {
 		self
 	}
