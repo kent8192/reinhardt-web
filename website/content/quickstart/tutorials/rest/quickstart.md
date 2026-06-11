@@ -18,7 +18,7 @@ the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.0-rc.4"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.5"
 ```
 
 **Note:** After installation, the command is `reinhardt-admin`, not `reinhardt-admin-cli`.

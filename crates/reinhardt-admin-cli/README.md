@@ -14,7 +14,7 @@ the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.0-rc.4"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.5"
 ```
 
 This installs the `reinhardt-admin` command.
@@ -108,7 +108,7 @@ reinhardt-admin plugin info auth-delion --remote
 
 # Install a plugin
 reinhardt-admin plugin install auth-delion
-reinhardt-admin plugin install auth-delion --version 0.2.0-rc.4
+reinhardt-admin plugin install auth-delion --version 0.2.0-rc.5
 
 # Remove a plugin
 reinhardt-admin plugin remove auth-delion
