@@ -330,19 +330,23 @@ pub mod urls {
 			/// Empty stand-in for `reinhardt_urls::routers::client_router::ClientRouter`.
 			pub struct ClientRouter;
 
+			/// WASM-only no-op stand-in for `reinhardt_urls::routers::UnifiedRouter`.
 			pub struct UnifiedRouter {
 				_private: (),
 			}
 
 			impl UnifiedRouter {
+				/// Creates an empty no-op router builder.
 				pub fn new() -> Self {
 					Self { _private: () }
 				}
 
+				/// Accepts a route namespace and returns the unchanged no-op router.
 				pub fn with_namespace(self, _namespace: impl Into<String>) -> Self {
 					self
 				}
 
+				/// Accepts a server router closure and discards its no-op result.
 				pub fn server<F>(self, _f: F) -> Self
 				where
 					F: FnOnce(ServerRouter) -> ServerRouter,
@@ -350,6 +354,7 @@ pub mod urls {
 					self
 				}
 
+				/// Accepts a client router closure and discards its no-op result.
 				pub fn client<F>(self, _f: F) -> Self
 				where
 					F: FnOnce(ClientRouter) -> ClientRouter,
