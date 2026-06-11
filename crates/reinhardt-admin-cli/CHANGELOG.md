@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.2.0-rc.4...reinhardt-admin-cli@v0.2.0-rc.5) - 2026-06-11
+
+### Added
+
+- *(commands)* add interactive dependency configuration
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+
+### Fixed
+
+- *(ci)* repair admin dependency config checks
+
 ### Fixed
 
 - *(admin-cli)* keep `migrate-manouche-v2` idempotent for already wrapped page expression slots.
