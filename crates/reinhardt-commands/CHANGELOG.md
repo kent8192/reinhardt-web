@@ -37,13 +37,10 @@ RC entries remain below as detailed history.
 
 ### Fixed
 
-- *(ci)* repair admin dependency config checks
 - *(commands)* adapt hot reload tests for develop
-- *(build)* port Codex review follow-ups
 - *(auth)* replace InternalUser in UserManager public API with ManagedUser
 - *(commands)* use project_crate_name for with_nav import in workspace pages template
 - *(commands)* add parent project crate dependency to workspace app Cargo.toml
-- *(ci)* update WASM consumer fixture for URL routing simplification
 - *(commands)* compile migrate-with-target target handling
 - *(commands)* honor --fake and --plan on migrate-with-target paths
 - *(commands)* fail fast on recorder errors in migrate --plan
@@ -76,16 +73,11 @@ RC entries remain below as detailed history.
 ### Testing
 
 - *(commands)* verify hmr reload after rebuild
-- *(ci)* refresh release CI expectations
 - *(commands)* drop stale InstalledApp import assertions in e2e_pages
 - *(commands)* add migrate-with-target E2E coverage
 - *(commands)* cover migrate --migrations-dir flag parsing
 - *(commands)* drop needless #[allow(unreachable_patterns)] in migrate parse test
 - *(commands)* cover settings-based database URL resolution
-
-### Styling
-
-- apply formatter fixes across workspace
 
 
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.0-rc.4...reinhardt-commands@v0.2.0-rc.5) - 2026-06-11

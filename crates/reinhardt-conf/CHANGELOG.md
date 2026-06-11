@@ -21,7 +21,6 @@ RC entries remain below as detailed history.
 ### Breaking Changes
 
 - *(conf)* [**breaking**] remove legacy advanced settings types
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Added
 
@@ -33,7 +32,6 @@ RC entries remain below as detailed history.
 
 ### Changed
 
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 - *(conf)* delete deprecated Settings, AdvancedSettings, JsonFileSource, and related APIs
 
 ### Deprecated
@@ -63,10 +61,6 @@ RC entries remain below as detailed history.
 - *(conf)* document embedded settings nodes
 - *(settings)* document embedded schema nodes
 - *(mail,conf)* fix unresolved intra-doc links to settings fragments
-
-### Styling
-
-- apply formatter fixes across workspace
 
 
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.2.0-rc.4...reinhardt-conf@v0.2.0-rc.5) - 2026-06-11

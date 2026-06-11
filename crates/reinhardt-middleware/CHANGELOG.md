@@ -22,7 +22,6 @@ RC entries remain below as detailed history.
 
 - *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
 - *(middleware)* [**breaking**] migrate session DI from Arc<SessionStore> to Depends<SessionStore>
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 - *(middleware)* [**breaking**] replace deprecated SecurityConfig with builder pattern on SecurityMiddleware
 - [**breaking**] Migrate session DI resolution from `Arc<SessionStore>` to the
   canonical `Depends<SessionStore>` shape, aligning session middleware with the
@@ -52,7 +51,6 @@ RC entries remain below as detailed history.
 
 ### Changed
 
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 - *(conf)* delete deprecated Settings, AdvancedSettings, JsonFileSource, and related APIs
 - *(middleware)* [**breaking**] replace deprecated SecurityConfig with builder pattern on SecurityMiddleware
 - [**breaking**] Migrate session DI resolution from `Arc<SessionStore>` to the
@@ -92,10 +90,6 @@ RC entries remain below as detailed history.
 ### Maintenance
 
 - *(examples)* remove examples-twitter
-
-### Styling
-
-- apply formatter fixes across workspace
 
 
 ## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.2.0-rc.2...reinhardt-middleware@v0.2.0-rc.3) - 2026-06-05

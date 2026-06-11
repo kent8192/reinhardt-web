@@ -23,7 +23,6 @@ RC entries remain below as detailed history.
 
 - *(testkit)* [**breaking**] gate 9 RC-deprecated items behind cfg(any()) (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
 - *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Added
 
@@ -32,7 +31,6 @@ RC entries remain below as detailed history.
 
 ### Changed
 
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 - *(testkit)* remove residual doc references to deleted deprecated APIs
 
 ### Removed

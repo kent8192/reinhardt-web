@@ -32,7 +32,6 @@ RC entries remain below as detailed history.
 
 ### Fixed
 
-- *(ci)* repair admin dependency config checks
 - *(admin-cli)* keep `migrate-manouche-v2` idempotent for already wrapped page expression slots.
 - *(admin-cli)* preserve item attributes when `migrate-manouche-v2` rewrites attributed items.
 - *(admin-cli)* avoid treating control-flow syntax variables as page children in `migrate-manouche-v2`.

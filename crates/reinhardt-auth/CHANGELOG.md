@@ -21,9 +21,7 @@ RC entries remain below as detailed history.
 
 ### Breaking Changes
 
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 - *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
-- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
 - *(auth)* [**breaking**] remove RC-deprecated CurrentUser, DefaultUser, and User trait (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520), closes [[#4652](https://github.com/kent8192/reinhardt-web/issues/4652)](https://github.com/kent8192/reinhardt-web/issues/4652))
 - *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
 - *(model)* [**breaking**] make new an alias for build
@@ -38,7 +36,6 @@ RC entries remain below as detailed history.
 ### Changed
 
 - *(auth)* make CurrentUser canonical extractor
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Deprecated
 
@@ -70,9 +67,7 @@ RC entries remain below as detailed history.
 - stop implicit openapi schema macro output
 - *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
 - *(auth)* replace InternalUser in UserManager public API with ManagedUser
-- *(auth,urls,pages)* remove stale references and fix latent clippy lints
 - *(macros)* suppress missing_docs on generated Info companion types
-- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
 
 ### Performance
 
@@ -91,10 +86,6 @@ RC entries remain below as detailed history.
 ### Testing
 
 - *(auth)* remove time-based permission clock flake
-
-### Styling
-
-- apply formatter fixes across workspace
 
 
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.2.0-rc.4...reinhardt-auth@v0.2.0-rc.5) - 2026-06-11

@@ -24,7 +24,6 @@ RC entries remain below as detailed history.
 ### Breaking Changes
 
 - *(storages)* [**breaking**] add #[non_exhaustive] to StorageError
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Added
 

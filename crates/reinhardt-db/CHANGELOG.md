@@ -28,7 +28,6 @@ RC entries remain below as detailed history.
   `to_model_state()` no longer copies `"null"` into `FieldState.params`.
 - *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
 - *(model)* [**breaking**] make new an alias for build
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Added
 
@@ -37,10 +36,6 @@ RC entries remain below as detailed history.
 - *(db)* introduce type-safe nullable field on FieldMetadata
 - *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
 - *(model)* [**breaking**] make new an alias for build
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Removed
 
@@ -73,10 +68,6 @@ RC entries remain below as detailed history.
 ### Maintenance
 
 - *(examples)* remove examples-twitter
-
-### Styling
-
-- apply formatter fixes across workspace
 
 
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.0-rc.4...reinhardt-db@v0.2.0-rc.5) - 2026-06-11

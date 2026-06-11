@@ -9,33 +9,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.3...reinhardt-web@v0.2.0) - 2026-06-11
 
-Stable 0.2.0 release of `reinhardt-web`. This entry consolidates the
-full `0.2.0-rc.2` through `0.2.0-rc.5` train into a release-level
-summary; the original RC entries remain below as detailed history.
+Stable 0.2.0 is the first release of the Reinhardt 0.2 line. It
+promotes the `0.2.0-rc.2` through `0.2.0-rc.5` train into one upgrade
+story: remove the 0.1.x compatibility layer, adopt the final Manouche
+v2 page/form model, move application configuration to typed settings
+fragments, and make routing, testing, and local development more
+explicit.
 
-### Highlights
+This release is not a patch-style rollup. It is a migration release for
+applications that stayed on 0.1.x while the 0.2 APIs stabilized. The RC
+entries below preserve the detailed history; this section is the
+upgrade-oriented summary.
 
-- **0.1.x deprecations removed deliberately**: the 0.2 line removes
-  compatibility APIs that were already deprecated in the 0.1 line,
-  especially typed URL resolver codegen, legacy DI wrappers, legacy auth
-  user contracts, old query aliases, and old test helpers.
-- **Manouche v2 pages and forms**: `page!`, hooks, resources, component
-  invocation, typed form fields, and dynamic form rendering now share the
-  explicit dependency and reactive-rendering model used by the final
-  0.2 APIs.
-- **Explicit routing and reverse lookup**: URL generation moves away from
-  broad generated resolver traits toward explicit fully qualified route
-  names and app-local helper functions.
-- **Typed settings fragments**: task queues, auth, mail, deeplink, gRPC,
-  websockets, server rate limits, CORS, and template settings now compose
-  through generated settings fragments instead of ad-hoc config structs.
-- **ORM/query and migration hardening**: filter construction, model
-  builders, generated Info DTOs, and backend-specific migration SQL were
-  aligned with the 0.2 contracts.
-- **Release and developer-loop polish**: formatter publication, local
-  project templates, hot reload target selection, wasm build boundaries,
-  release automation, and documentation gates were tightened for the
-  stable train.
+### Upgrade Impact
+
+| Area | What changes for application maintainers |
+|---|---|
+| Pages and forms | Update `page!` bodies, hooks, `use_resource`, `use_form`, dynamic fields, and component invocation to the Manouche v2 contract. |
+| Routing | Replace generated typed URL resolver surfaces with explicit named reverse lookups and app-local URL helpers. |
+| Auth and DI | Move to application-owned `#[user]` models, `CurrentUser<U>`, `Depends<T>`, and final auth identity traits. |
+| Settings | Replace ad-hoc `XxxConfig` / legacy settings APIs with composed `#[settings(fragment = true)]` structures. |
+| ORM and migrations | Update filter calls, model builders, generated Info DTO usage, and migration review expectations. |
+| Test support | Move server-function and auth tests to MSW-backed mocks, fluent auth helpers, and directory-backed migration fixtures. |
+
+### Release Highlights
+
+- **Manouche v2 becomes the stable page/form model.** `page!` now wraps
+  expressions and control flow reactively, hooks use explicit dependency
+  tuples, component invocation uses the brace syntax, `use_resource`
+  replaces the split resource-hook surface, and `use_form` is driven by
+  form definitions.
+- **Routing is intentionally more explicit.** The old generated
+  `ResolvedUrls` / resolver trait surface is removed in favor of
+  fully-qualified route names, `reverse(...)`, and small app-local
+  wrapper functions. Client route helpers collapse to arity-inferred
+  `route_path`.
+- **Settings fragments are the configuration contract.** Auth, tasks,
+  server, gRPC, deeplink, websockets, middleware, mail, templates, and
+  embedded settings nodes now compose through typed fragments. Secret
+  fields accept environment and file-backed source maps.
+- **ORM and migration APIs are stricter but easier to compose.**
+  Query filters take one filter expression, Django-style lookup helpers
+  and composite combinators are available, generated model builders can
+  override macro-managed fields where needed, and reverse migration SQL
+  can emit multiple backend-specific statements.
+- **The browser and WASM testing surface is more realistic.** WASM
+  server-function tests resolve endpoints against the browser document
+  URL, the MSW harness matches reqwest's WASM backend behavior, SPA link
+  rerendering and dynamic radio choices are fixed, and admin browser CRUD
+  is wired through the tutorial app.
+- **The local development loop is materially faster.** Hot reload now
+  chooses the rebuild target from the changed files, static page edits
+  can hot-patch without a full rebuild, browsers reload only after a
+  successful rebuild, and build-loop benchmarks track cold, server,
+  Pages WASM, and HMR paths.
+- **Project scaffolding is closer to real projects.** `startproject`
+  supports interactive Reinhardt version and feature selection,
+  `reinhardt-admin configure` can update facade dependency settings, and
+  `manage infra` can provision local PostgreSQL and Redis containers
+  while keeping `.reinhardt/local-infra.json` out of generated projects.
 
 ### Breaking Changes
 

@@ -21,7 +21,6 @@ RC entries remain below as detailed history.
 ### Breaking Changes
 
 - *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Added
 
@@ -34,7 +33,6 @@ RC entries remain below as detailed history.
 ### Changed
 
 - *(auth)* make CurrentUser canonical extractor
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 - *(admin)* migrate create_resource to use_resource
 
 ### Removed
@@ -55,7 +53,6 @@ RC entries remain below as detailed history.
 - *(admin)* preserve multi-select mutation values
 - *(auth)* replace InternalUser in UserManager public API with ManagedUser
 - *(admin)* compile admin wasm browser tests
-- *(forms)* address review and CI failures
 
 ### Documentation
 
@@ -64,11 +61,6 @@ RC entries remain below as detailed history.
 ### Maintenance
 
 - include all main v0.1.1 PR changes
-
-### Styling
-
-- *(admin)* format admin feature controls
-- apply formatter fixes across workspace
 
 
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.2.0-rc.4...reinhardt-admin@v0.2.0-rc.5) - 2026-06-11

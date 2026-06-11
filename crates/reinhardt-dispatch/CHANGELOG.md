@@ -21,15 +21,10 @@ RC entries remain below as detailed history.
 ### Breaking Changes
 
 - [**breaking**] remove Route::with_name() builder method
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Added
 
 - [**breaking**] remove Route::with_name() builder method
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 
 ## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.3...reinhardt-dispatch@v0.2.0-rc.2) - 2026-06-03

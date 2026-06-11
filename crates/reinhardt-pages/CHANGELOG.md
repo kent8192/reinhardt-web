@@ -158,7 +158,6 @@ RC entries remain below as detailed history.
 
 - *(pages)* enable security feature for WASM builds
 - *(auth)* replace InternalUser in UserManager public API with ManagedUser
-- *(auth,urls,pages)* remove stale references and fix latent clippy lints
 - *(pages)* restore brace-form component invocation tests
 - *(pages)* remove redundant #[builder(default)] from Option field
 - *(pages)* add missing and regenerate stale trybuild .stderr files
@@ -173,7 +172,6 @@ RC entries remain below as detailed history.
 - *(pages)* avoid reentrant reactive mount borrow
 - *(pages)* rerender SPA links after cleanup
 - *(pages)* render dynamic radio choices
-- *(forms)* address review and CI failures
 - *(forms)* stabilize form runtime and validator parity
 - Dynamic `ChoiceField { widget: RadioSelect, choices_from: ... }` forms now
   render one radio input per loaded choice, including labels and submitted
@@ -209,14 +207,8 @@ RC entries remain below as detailed history.
 
 ### Testing
 
-- *(ci)* refresh release CI expectations
 - *(pages)* replace skeleton spawn_task test with behavior assertion
 - *(forms)* align form runtime UI fixtures
-
-### Styling
-
-- apply formatter fixes across workspace
-- *(pages)* reorder form component imports to satisfy rustfmt
 
 
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.2.0-rc.4...reinhardt-pages@v0.2.0-rc.5) - 2026-06-11

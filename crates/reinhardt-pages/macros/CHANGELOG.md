@@ -53,7 +53,6 @@ RC entries remain below as detailed history.
 
 - *(auth)* replace InternalUser in UserManager public API with ManagedUser
 - *(pages)* render dynamic radio choices
-- *(forms)* address review and CI failures
 - *(forms)* stabilize form runtime and validator parity
 
 ### Performance
@@ -64,10 +63,6 @@ RC entries remain below as detailed history.
 
 - *(release)* enforce public API doc coverage
 - *(pages)* document Clone requirement for keyed for iterators
-
-### Testing
-
-- *(ci)* refresh release CI expectations
 
 
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.2.0-rc.4...reinhardt-pages-macros@v0.2.0-rc.5) - 2026-06-11

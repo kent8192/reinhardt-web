@@ -21,15 +21,10 @@ RC entries remain below as detailed history.
 ### Breaking Changes
 
 - *(query)* [**breaking**] remove SeaRc type alias (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Added
 
 - *(query)* [**breaking**] remove SeaRc type alias (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Removed
 

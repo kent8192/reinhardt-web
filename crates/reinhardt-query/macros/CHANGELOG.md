@@ -18,14 +18,6 @@ RC entries remain below as detailed history.
 - Regenerate query macro output after replacing removed query aliases.
 - See [`instructions/MIGRATION_0.2.md`](../../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
 
-### Breaking Changes
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-
 ### Documentation
 
 - *(release)* enforce public API doc coverage

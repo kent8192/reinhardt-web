@@ -22,9 +22,7 @@ RC entries remain below as detailed history.
 ### Breaking Changes
 
 - *(core)* scaffold MIGRATION_0.2.md and document BREAKING CHANGES (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
 - *(core)* [**breaking**] remove 0.1.0-rc deprecated URL resolver codegen (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Added
 
@@ -43,10 +41,6 @@ RC entries remain below as detailed history.
   invalidation by a hidden Layout-timing Effect that subscribes to the deps.
 - `impl Trackable for Signal<T>` and `impl Trackable for Memo<T>`, enabling
   these primitives to participate in hook deps tuples.
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Removed
 
@@ -83,7 +77,6 @@ RC entries remain below as detailed history.
 - *(macros)* propagate serde derives to Info companion struct via model_config
 - *(macros)* remove unused has_derive_trait from model_derive
 - *(macros)* suppress missing_docs on generated Info companion types
-- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
 - *(core)* dispose Memo only on last clone drop
 - *(core)* drop disposed-flag clone from Memo compute closure
 - *(core)* drop unused mut on Memo::new parameter

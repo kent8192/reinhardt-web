@@ -20,7 +20,6 @@ RC entries remain below as detailed history.
 
 ### Breaking Changes
 
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 - *(di)* [**breaking**] remove Injected and OptionalInjected (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
 - *(di)* [**breaking**] enforce scope hierarchy at resolution time
 - *(di)* [**breaking**] make InjectionContext registry-aware for per-test isolation
@@ -35,7 +34,6 @@ RC entries remain below as detailed history.
 ### Changed
 
 - *(auth)* make CurrentUser canonical extractor
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 - *(di)* delete deprecated Injected<T> and OptionalInjected<T> types
 
 ### Removed

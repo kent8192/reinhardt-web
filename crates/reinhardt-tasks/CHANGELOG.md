@@ -21,15 +21,10 @@ RC entries remain below as detailed history.
 ### Breaking Changes
 
 - *(tasks)* [**breaking**] remove misleading create_queue_from_settings API
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Added
 
 - *(tasks)* add settings fragments and settings-first constructors
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Deprecated
 

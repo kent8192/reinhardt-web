@@ -21,17 +21,12 @@ RC entries remain below as detailed history.
 ### Breaking Changes
 
 - *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 - *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
 
 ### Added
 
 - *(orm)* support composite filter combinators
 - *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Fixed
 
@@ -48,10 +43,6 @@ RC entries remain below as detailed history.
 
 - *(views)* assert filter operator and value with matches! instead of Debug substring
 - *(views)* cover explicit queryset override on retrieve-update and retrieve-destroy views
-
-### Styling
-
-- apply formatter fixes across workspace
 
 
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.2.0-rc.4...reinhardt-views@v0.2.0-rc.5) - 2026-06-11

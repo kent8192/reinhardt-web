@@ -23,7 +23,6 @@ RC entries remain below as detailed history.
 
 - *(urls)* [**breaking**] remove panicking reverse_* variants and UrlResolverUnprefixed (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
 - *(urls)* [**breaking**] unify UnifiedRouter::server closure type to ServerRouter on wasm
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 - **[breaking]** Collapse `ClientRouter::route_pathN` / `named_route_pathN`
   into a single arity-generic `route_path` / `named_route_path` driven by
   a sealed `Handler<Args>` trait. The arity is inferred from the closure
@@ -68,7 +67,6 @@ RC entries remain below as detailed history.
 
 ### Changed
 
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 - **[breaking]** Collapse `ClientRouter::route_pathN` / `named_route_pathN`
   into a single arity-generic `route_path` / `named_route_path` driven by
   a sealed `Handler<Args>` trait. The arity is inferred from the closure
@@ -87,7 +85,6 @@ RC entries remain below as detailed history.
 - align urls routers macro feature graph
 - *(urls)* fix broken intra-doc link in try_reverse_single_pass doc
 - *(auth)* replace InternalUser in UserManager public API with ManagedUser
-- *(auth,urls,pages)* remove stale references and fix latent clippy lints
 - *(urls)* migrate reverse tests from removed panicking helpers to try_ variants
 - *(urls)* resolve UrlReverser Debug trait bound and dead code errors
 - *(urls)* correct WASM register_globally doc comment
@@ -104,14 +101,6 @@ RC entries remain below as detailed history.
 ### Documentation
 
 - *(urls)* align WASM UnifiedRouter::server doc with no-invoke behavior
-
-### Maintenance
-
-- resolve merge conflict in reinhardt-urls CHANGELOG.md (develop/0.2.0)
-
-### Styling
-
-- apply formatter fixes across workspace
 
 
 ## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.2.0-rc.2...reinhardt-urls@v0.2.0-rc.3) - 2026-06-05

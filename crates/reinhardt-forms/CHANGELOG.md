@@ -18,14 +18,6 @@ RC entries remain below as detailed history.
 - Route form UI through `use_form` and form definitions; update typed field generics where server functions expect non-string values.
 - See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
 
-### Breaking Changes
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-
 
 ## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.3...reinhardt-forms@v0.2.0-rc.2) - 2026-06-03
 

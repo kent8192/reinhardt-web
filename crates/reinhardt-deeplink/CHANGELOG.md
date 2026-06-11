@@ -18,17 +18,9 @@ RC entries remain below as detailed history.
 - Review the breaking changes listed below before upgrading from 0.1.x.
 - See the root CHANGELOG and `instructions/MIGRATION_0.2.md` for cross-crate migration guidance.
 
-### Breaking Changes
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-
 ### Added
 
 - *(deeplink)* add DeeplinkSettings fragment
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Deprecated
 
@@ -36,7 +28,6 @@ RC entries remain below as detailed history.
 
 ### Fixed
 
-- *(build)* port Codex review follow-ups
 - *(settings)* require explicit nested settings nodes
 - *(deeplink)* derive Default for DeeplinkSettings
 

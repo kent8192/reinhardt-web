@@ -20,12 +20,7 @@ RC entries remain below as detailed history.
 
 ### Breaking Changes
 
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 - *(conf)* [**breaking**] remove legacy advanced settings types
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Deprecated
 
@@ -36,7 +31,6 @@ RC entries remain below as detailed history.
 
 - *(mail)* accept settings email fragments
 - *(conf)* [**breaking**] remove legacy advanced settings types
-- *(ci)* unblock release docs and form tests
 
 ### Documentation
 

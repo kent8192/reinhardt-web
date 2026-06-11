@@ -21,7 +21,6 @@ RC entries remain below as detailed history.
 ### Breaking Changes
 
 - *(test)* [**breaking**] gate MockFetch and TestUser behind cfg(any()) (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Added
 
@@ -29,7 +28,6 @@ RC entries remain below as detailed history.
 
 ### Changed
 
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 - *(pages)* delete deprecated mock_server_fn and use_action_state APIs
 
 ### Removed
@@ -39,17 +37,12 @@ RC entries remain below as detailed history.
 
 ### Fixed
 
-- *(build)* port Codex review follow-ups
 - *(test)* stabilize WASM MSW server_fn transport
 - delete gated items instead of cfg-gating, update callers
 - *(test)* restore missing pub use prefix in wasm mock re-export
 - *(examples)* render basis tutorial vote choices
 - Exposed `reinhardt::test::msw::MockServiceWorker` for WASM consumers that
   enable the root `msw` facade feature.
-
-### Styling
-
-- apply formatter fixes across workspace
 
 
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.2.0-rc.4...reinhardt-test@v0.2.0-rc.5) - 2026-06-11
