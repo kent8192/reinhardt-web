@@ -12,12 +12,9 @@ Create a simple API for administrators to view and edit users and groups in the 
 
 ## Project Setup
 
-First, install the global tool. While Reinhardt is on a pre-release
-(`-rc.*` / `-alpha.*`), `cargo install` requires an explicit `--version`
-because pre-releases are not selected by default. Once `0.1.0` stable
-ships, omit `--version` to pull the latest stable (or keep `--version`
-as an opt-in reproducibility pin). The literal below is auto-bumped by
-release-plz on each release.
+First, install the global tool. The command below pins this tutorial to the
+documented release for reproducibility; omit `--version` to let Cargo choose
+the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash

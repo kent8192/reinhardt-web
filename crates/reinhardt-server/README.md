@@ -71,7 +71,6 @@ use reinhardt::server::graphql_handler;  // GraphQL
 
 ### Basic HTTP Server
 
-<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::server::{serve, HttpServer};
 use reinhardt::http::{Request, Response};
@@ -85,14 +84,13 @@ async fn my_handler(req: Request) -> Result<Response, Error> {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handler = Arc::new(my_handler);
-    serve("0.2.0-rc.5:8000", handler).await?;
+    serve("127.0.0.1:8000", handler).await?;
     Ok(())
 }
 ```
 
 ### HTTP Server with Middleware
 
-<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::server::HttpServer;
 use reinhardt::http::{Handler, Middleware, Request, Response};
@@ -128,14 +126,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let server = HttpServer::new(handler)
         .with_middleware(middleware);
 
-    server.listen("0.2.0-rc.5:8000".parse()?).await?;
+    server.listen("127.0.0.1:8000".parse()?).await?;
     Ok(())
 }
 ```
 
 ### WebSocket Server
 
-<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::server::{WebSocketServer, WebSocketHandler};
 use std::sync::Arc;
@@ -161,14 +158,13 @@ impl WebSocketHandler for EchoHandler {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handler = Arc::new(EchoHandler);
     let server = WebSocketServer::new(handler);
-    server.listen("0.2.0-rc.5:9001".parse()?).await?;
+    server.listen("127.0.0.1:9001".parse()?).await?;
     Ok(())
 }
 ```
 
 ### WebSocket Server with Broadcast
 
-<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::server::{WebSocketServer, WebSocketHandler};
 use std::sync::Arc;
@@ -199,14 +195,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    server.listen("0.2.0-rc.5:9001".parse()?).await?;
+    server.listen("127.0.0.1:9001".parse()?).await?;
     Ok(())
 }
 ```
 
 ### GraphQL Server
 
-<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::server::graphql_handler;
 use async_graphql::{Object, Schema, EmptyMutation, EmptySubscription};
@@ -226,7 +221,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .finish();
 
     let handler = graphql_handler(schema);
-    serve("0.2.0-rc.5:8000", handler).await?;
+    serve("127.0.0.1:8000", handler).await?;
     Ok(())
 }
 ```

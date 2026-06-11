@@ -306,7 +306,6 @@ use reinhardt::utils::core::html::{escape, unescape};
 
 **Usage Example**:
 
-<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::utils::logging::security::{SecurityLogger, SecurityError};
 
@@ -323,7 +322,7 @@ logger.log_security_error(&SecurityError::CsrfViolation);  // ERROR level
 logger.log_csrf_violation("http://evil.com");
 
 // Log rate limit exceeded
-logger.log_rate_limit_exceeded("0.2.0-rc.5", 100);
+logger.log_rate_limit_exceeded("192.0.2.10", 100);
 
 // Log suspicious file operations
 logger.log_suspicious_file_operation("delete", Path::new("/etc/passwd"));

@@ -101,7 +101,8 @@ use reinhardt::views::viewsets::{ViewSet, ModelViewSet};
 - **RetrieveUpdateDestroyAPIView** - Combined retrieve/update/delete endpoint
   - GET/HEAD/PUT/PATCH/DELETE request support (stub)
 
-**Note**: Full ORM integration pending for create/update/delete operations.
+**Note**: Create, update, and delete views provide request/response scaffolding;
+applications wire persistence behavior through their serializers and managers.
 
 #### OpenAPI Schema Generation
 
