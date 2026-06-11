@@ -7,6 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.3...reinhardt-macros@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-macros` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Drop removed `#[routes(...)]` compatibility flags and use plain `#[routes]` factories returning `UnifiedRouter`.
+- Replace generated flat route accessors with explicit reverse lookups.
+- See [`instructions/MIGRATION_0.2.md`](../../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- *(core)* [**breaking**] remove 0.1.0-rc deprecated URL resolver codegen (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(macros)* [**breaking**] generate Info companion type via #[model] macro
+- *(model)* [**breaking**] make new an alias for build
+
+### Added
+
+- *(orm)* allow builder overrides for generated fields
+- *(settings)* generate embedded node schemas
+- *(settings)* expose composed schema roots
+- The `#[settings]` macro now generates typed embedded settings node schemas,
+  supports `#[setting(node)]` and `#[setting(leaf)]` shape hints, and peels
+  `Option`, `Vec`, `HashMap<String, _>`, `BTreeMap<String, _>`,
+  `IndexMap<String, _>`, and `Box` wrappers for schema reference generation.
+- *(core)* [**breaking**] remove 0.1.0-rc deprecated URL resolver codegen (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(macros)* [**breaking**] generate Info companion type via #[model] macro
+- *(model)* [**breaking**] make new an alias for build
+- *(macros)* compile-time kebab-case URL-name warning; drop dead url-resolver codegen
+- The HTTP route macros (`#[get]`, `#[post]`, `#[put]`, `#[patch]`,
+  `#[delete]`) now emit a compile-time warning when an explicit `name = "..."`
+  is not kebab-case, suggesting the kebab-case form to match ViewSet-generated
+  names. Prefix the name with `!` to opt out, or set
+  `REINHARDT_URL_NAME_WARNINGS=0` to silence it. Names that default to the
+  function identifier are exempt. Refs
+  [#4901](https://github.com/kent8192/reinhardt-web/issues/4901).
+
+### Changed
+
+- *(settings)* share schema macro analysis
+- *(auth)* make CurrentUser canonical extractor
+
+### Removed
+
+- Removed the vestigial per-route URL-resolver metadata codegen
+  (`generate_url_resolver_tokens` / `__url_resolver_meta_*`) from the HTTP route
+  macros. Its consumer (`ResolvedUrls` / `__for_each_url_resolver`) was removed
+  with the URL routing simplification (#4784), and the leftover codegen also
+  rejected hyphenated (kebab-case) route names with a hard `compile_error!`.
+  Route names passed to `#[get]` and friends may now be kebab-case. Refs
+  [#4901](https://github.com/kent8192/reinhardt-web/issues/4901).
+
+### Fixed
+
+- *(settings)* harden schema macro parsing
+- *(settings)* detect serde defaults in schema fields
+- *(settings)* classify embedded config nodes
+- *(settings)* require explicit nested settings nodes
+- *(settings)* keep schema accessor compatibility
+- *(settings)* simplify schema case conversion
+- *(settings)* preserve cfg gates in schema generation
+- stop implicit openapi schema macro output
+- *(core)* drop leftover empty test definition in viewset_macro tests (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(macros)* exclude pinned state params from builder impl generics
+- *(macros)* propagate serde derives to Info companion struct via model_config
+- *(macros)* remove unused has_derive_trait from model_derive
+- *(macros)* suppress missing_docs on generated Info companion types
+- *(macros)* keep unnamed EndpointMetadata.name None across codegen paths
+- *(conf)* emit fragment self settings impls
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+- *(settings)* document embedded schema nodes
+
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.2.0-rc.4...reinhardt-macros@v0.2.0-rc.5) - 2026-06-11
 
 ### Added

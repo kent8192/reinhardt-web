@@ -7,6 +7,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.3...reinhardt-urls@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-urls` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Replace `reverse_single_pass` and `reverse_with_aho_corasick` with their `try_` variants.
+- Use `route_path` with closure arity instead of numbered `route_pathN` helpers.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- *(urls)* [**breaking**] remove panicking reverse_* variants and UrlResolverUnprefixed (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(urls)* [**breaking**] unify UnifiedRouter::server closure type to ServerRouter on wasm
+- **[breaking]** Collapse `ClientRouter::route_pathN` / `named_route_pathN`
+  into a single arity-generic `route_path` / `named_route_path` driven by
+  a sealed `Handler<Args>` trait. The arity is inferred from the closure
+  signature (1..=8 `Path<T>` extractors supported). Migration is a
+  mechanical rename: drop the numeric suffix on every call site. Refs
+  [#4637](https://github.com/kent8192/reinhardt-web/issues/4637).
+
+### Added
+
+- *(urls)* [**breaking**] remove panicking reverse_* variants and UrlResolverUnprefixed (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(urls)* auto-populate global UrlReverser in register_router()
+- *(urls)* [**breaking**] unify UnifiedRouter::server closure type to ServerRouter on wasm
+- *(urls)* warn when a reverse URL name is not kebab-case
+- Emit a `tracing::warn!` when a route name registered for URL reversal is not
+  kebab-case (e.g. `user_detail`), suggesting the kebab-case form
+  (`user-detail`) to match ViewSet-generated names. The warning is advisory, not
+  an error: prefix the route-name segment with `!` to opt out (the sigil is
+  stripped before storage, so reverse lookups use the clean name) or set
+  `REINHARDT_URL_NAME_WARNINGS=0` to silence it globally. Refs
+  [#4901](https://github.com/kent8192/reinhardt-web/issues/4901).
+- `ClientRouter::page<F, P>(pattern, handler)` and
+  `ClientRouter::named_page<F, P>(name, pattern, handler)` accepting any
+  handler `Fn(P) -> Page` where `P: FromRequest`. The same Props struct
+  can be used both as a Component prop bag (Manouche DSL v2 spec §4.3)
+  and as a page function — "every page is a component." Path / query
+  extraction errors surface as a `Page::Text` at the router boundary
+  rather than panicking. (Refs #4668)
+- `reinhardt_urls::routers::client_router::from_request` module
+  exposing `FromRequest`, `RouteContext`, `ExtractError`,
+  `PathParam<T>`, and `QueryParam<T>` — the manual building blocks for
+  `ClientRouter::page` handlers. `#[derive(FromRequest)]` and
+  `#[derive(PageProps)]` proc-macros are deferred to spec §10.
+- `ClientRouteMatch::query: Option<String>` — populated by `match_path`
+  after stripping an optional `?query` suffix from the path before
+  pattern matching. Required for `QueryParam<T>` to see the query under
+  real routing.
+- `ParamContext::with_query(...)` / `ParamContext::query()` /
+  `ParamContext::params()` — `render_current` threads the captured
+  query through to the `RouteHandler` trait. Backward-compatible:
+  existing `ParamContext::new(...)` keeps the previous signature and
+  defaults the new field to `None`.
+
+### Changed
+
+- **[breaking]** Collapse `ClientRouter::route_pathN` / `named_route_pathN`
+  into a single arity-generic `route_path` / `named_route_path` driven by
+  a sealed `Handler<Args>` trait. The arity is inferred from the closure
+  signature (1..=8 `Path<T>` extractors supported). Migration is a
+  mechanical rename: drop the numeric suffix on every call site. Refs
+  [#4637](https://github.com/kent8192/reinhardt-web/issues/4637).
+
+### Removed
+
+- **`reverse_with_aho_corasick(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_with_aho_corasick` (the fallible variant).
+- **`reverse_single_pass(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_single_pass`.
+- **`UrlResolverUnprefixed` trait** (`src/routers/resolver.rs`, deprecated `0.1.0-rc.29`, refs #4507 defect #2) — only supported the removed flat ViewSet trait accessors emitted by `#[viewset]`. Prefer `urls.server().<app>().<route>()`.
+
+### Fixed
+
+- align urls routers macro feature graph
+- *(urls)* fix broken intra-doc link in try_reverse_single_pass doc
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(urls)* migrate reverse tests from removed panicking helpers to try_ variants
+- *(urls)* resolve UrlReverser Debug trait bound and dead code errors
+- *(urls)* correct WASM register_globally doc comment
+- *(urls)* panic on duplicate client route name registration
+- *(urls)* update tests for page() and reverse() API changes
+- *(urls)* populate global UrlReverser in register_router_arc() too
+- *(docs)* resolve rustdoc intra-doc link errors on develop/0.2.0
+- *(docs)* resolve remaining rustdoc doctest failures
+
+### Performance
+
+- atomize facade dependency feature gates
+
+### Documentation
+
+- *(urls)* align WASM UnifiedRouter::server doc with no-invoke behavior
+
+
 ## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.2.0-rc.2...reinhardt-urls@v0.2.0-rc.3) - 2026-06-05
 
 ### Fixed

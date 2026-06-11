@@ -7,6 +7,210 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.3...reinhardt-pages@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-pages` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Update hook call sites to pass explicit dependency tuples, using `()` for mount-only effects.
+- Replace `create_resource*` with `use_resource(fetcher, deps)` and remove `watch { ... }` page bodies.
+- Pass page macro captures through closure parameters or qualify free functions with multi-segment paths.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- `use_effect`, `use_layout_effect`, `use_memo`, `use_callback`, and
+  `use_callback_with` now take an explicit dependency tuple as the second
+  argument, aligning with React.js semantics (#4195, Manouche v2 Layer ②).
+  The closure type for `use_effect` / `use_layout_effect` is now
+  `FnMut() -> Option<C>` so cleanup functions can be returned, matching
+  React `useEffect(() => () => cleanup())`. Pass `()` for mount-only.
+- Hook closures now run with no active reactive Observer ("Option A"),
+  so `Signal::get` inside the closure does NOT auto-subscribe.
+  Subscriptions derive exclusively from the deps tuple.
+- `impl Trackable for Resource<T, E>` lets `Resource` participate in
+  hook deps tuples alongside `Signal` and `Memo`.
+- `ServerFnRegistration` (native) and `MockableServerFn` (msw) now
+  extend `ServerFnMetadata` instead of declaring `PATH`, `NAME`, and
+  `CODEC` themselves. Existing consumers reach the constants through
+  supertrait inheritance with no source change required
+  ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
+- **BREAKING**: `page!` macro now unconditionally wraps every `{expr}` and
+  every `if` / `for` / `match` control-flow block in `Page::reactive(move || ...)`.
+  Helper-routed Signal reads (`{helper(&signal)}`) re-render correctly without
+  any opt-in. Spec §4.1. Resolves #4515.
+- **BREAKING**: `page!` body identifiers must be declared in the closure
+  parameter list. Implicit captures of outer Signal bindings are a hard
+  compile error. Spec §3.7. Migration: pass the binding as a closure param
+  or qualify free function calls with `self::` so the path is multi-segment.
+- **BREAKING**: `page!` no longer accepts bare-identifier shorthand in
+  element bodies (`div { name }`). Always use the explicit braced form:
+  `div { {name} }`. Spec §3.6. Migration: codemod `cargo make
+  migrate-manouche-v2` (PR3) handles this mechanically.
+- **BREAKING**: `watch { ... }` block is removed. The body of `watch` can be
+  inlined as-is; the new auto-wrap subsumes it. The validator emits a
+  pointer at the `cargo make migrate-manouche-v2` codemod when it sees a
+  surviving `watch` block.
+
+### Added
+
+- *(pages)* unify resource hooks into use_resource(fetcher, deps)
+- *(forms)* add typed use_form ergonomics
+- feat!(forms): route use_form through form definitions
+- `callback_with_deps` internal helper backing `use_callback` /
+  `use_callback_with`. Maintains stable `Arc<dyn Fn>` identity across
+  re-entries at the same call site while listed deps are unchanged,
+  matching React `useCallback`.
+- "Reactivity semantics" rustdoc section on 8 closure-taking hooks
+  (`use_reducer`, `use_action`, `use_action_state`,
+  `use_sync_external_store{,_with_server}`, `use_transition`,
+  `use_debug_value_with`, `use_websocket`) documenting that their
+  closures run outside any active Observer by construction.
+- Cross-hook integration test suite at
+  `tests/hooks_deps_integration.rs` covering Memo→Effect propagation,
+  unlisted-Signal isolation, cleanup ordering, and empty-deps
+  mount-only behavior.
+- Scaffolded `page!` macro pre-codegen pass `hook_deps_validator` (in
+  the `macros` crate). Full Signal-read detection against Manouche's
+  `PageBody` AST is deferred to a follow-up issue; the runtime contract
+  is already enforced by the `*::new_with_deps` constructors.
+- `ServerFnMetadata` cross-target supertrait carrying `PATH`, `NAME`,
+  `CODEC`, and `INJECTED_PARAMS` for every `#[server_fn]`. Available
+  on both native and wasm targets without any feature flag, so a
+  `#[url_patterns(mode = unified)]` aggregator can name
+  `my_fn::marker` from a closure body that compiles on either side
+  of the cfg boundary ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
+- `pub trait Trackable` in `reinhardt-pages::reactive` (re-exported as
+  `reinhardt_pages::reactive::Trackable`). Implemented for `Signal<T>` and
+  `Memo<T>`; consumed by the new auto-wrap visitor and the upcoming hook
+  deps-tuple machinery (#4195).
+- `NodeId::as_u64()` accessor in `reinhardt-core` so external callers (such
+  as `Trackable::signal_id`) can obtain the underlying counter value.
+- New `Component { prop: val, @event: handler, child_element { ... } }`
+  invocation syntax inside `page!` bodies. Components are functions
+  matching `fn <name>(props: <NameProps>) -> Page` where `<NameProps>`
+  derives `bon::Builder`. The legacy positional form
+  `{component_fn(args)}` continues to work unchanged. Spec §3.5.
+- `bon` added as a `reinhardt-pages` runtime dependency. Staged for
+  removal under spec §10 once `#[derive(PageProps)]` /
+  `#[component]` proc-macros take over the prop-struct generation.
+- `form!` macro fields now accept optional generic type parameters
+  (`HiddenField<i64>`, `ChoiceField<bool>`, `MultipleChoiceField<String>`,
+  `JsonField<MyStruct>`) to forward typed values to `#[server_fn]` handlers
+  instead of always stringifying them (#4397)
+- `IpAddressField` is now specialized to `Option<IpAddr>` in generated code
+- Fields without a generic parameter default to `String` for backward
+  compatibility
+- `reinhardt_pages::router::request` submodule re-exports the
+  Manouche DSL v2 spec §4.3 `FromRequest` building blocks
+  (`FromRequest`, `RouteContext`, `ExtractError`, `PathParam<T>`,
+  `QueryParam<T>`) from `reinhardt_urls::routers::client_router::from_request`
+  so application code can write
+  `use reinhardt_pages::router::request::FromRequest;` matching the
+  spec's namespace. The legacy non-generic `PathParam` re-exported at
+  `reinhardt_pages::router::PathParam` (deprecated since `0.1.0-rc.27`)
+  is unrelated and remains in place during its deprecation cycle.
+  (Refs #4668)
+- `use_resource(fetcher, deps)` — unified async data-fetching hook, the
+  resource counterpart of `use_effect`. `()` deps fetch once on mount; listed
+  `Trackable` deps (`Signal` / `Memo` / `Resource`) drive automatic refetch.
+  Available on all targets: the native/SSR path renders the `Loading` state and
+  the client performs the real fetch after hydration, mirroring `use_action`.
+  Supersedes the deprecated `create_resource` / `create_resource_with_deps`.
+
+### Changed
+
+- *(pages)* unify spawn into platform/, expose spawn_task from prelude
+
+### Deprecated
+
+- `use_effect_event` and `use_effect_event_with` are deprecated.
+  Option A semantics make them structurally redundant — the wrapped
+  closure of `use_effect`/`use_layout_effect` already runs without
+  auto-tracking. Use `use_callback(f, deps)` for stable identity, or
+  read latest values via `.get_untracked()` inside the closure.
+  Scheduled for removal in v0.3.0.
+- `create_resource` and `create_resource_with_deps` are deprecated in favor of
+  the unified, cross-target `use_resource(fetcher, deps)` (`()` deps = fetch
+  once; `(signal,)` deps = refetch on change). Thin forwarding shims are kept;
+  scheduled for removal in v0.3.0.
+
+### Removed
+
+- **BREAKING**: `watch { ... }` block is removed. The body of `watch` can be
+  inlined as-is; the new auto-wrap subsumes it. The validator emits a
+  pointer at the `cargo make migrate-manouche-v2` codemod when it sees a
+  surviving `watch` block.
+- **`src/router/core.rs`** (6 items, all deprecated `0.1.0-rc.27`,
+  refs #4234 / cloud#578) — `PathError`, `RouterError`,
+  `ClientRouteMatch` (RouteMatch), `ClientRoute` (Route),
+  `ClientRouter` (Router), `NavigationSubscription`. All relocated
+  to `reinhardt_urls::routers`.
+- **`src/router/pattern.rs`** (1 item, `0.1.0-rc.27`) — `ClientPathPattern`
+  (PathPattern). Use `reinhardt_urls::routers::ClientPathPattern`.
+- **`src/router/params.rs`** (1 item, `0.1.0-rc.27`) — `Path` extractor.
+  Use `reinhardt_urls::routers::Path`.
+
+### Fixed
+
+- *(pages)* enable security feature for WASM builds
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(pages)* restore brace-form component invocation tests
+- *(pages)* remove redundant #[builder(default)] from Option field
+- *(pages)* add missing and regenerate stale trybuild .stderr files
+- *(pages)* remove component_missing_required_prop compile-fail test
+- *(pages)* correct component_missing_required_prop compile-fail test
+- *(pages)* use brace-form Card {} inside page! for required-prop test
+- *(pages)* document #[allow(dead_code)] on CardProps::item in compile-fail test
+- *(docs)* resolve rustdoc intra-doc link errors on develop/0.2.0
+- *(docs)* resolve additional rustdoc link errors for feature-gated types
+- *(pages)* make SSR hydration IDs render-scoped
+- *(pages)* keep deprecated reinhardt_pages::spawn re-export shim
+- *(pages)* avoid reentrant reactive mount borrow
+- *(pages)* rerender SPA links after cleanup
+- *(pages)* render dynamic radio choices
+- *(forms)* stabilize form runtime and validator parity
+- Dynamic `ChoiceField { widget: RadioSelect, choices_from: ... }` forms now
+  render one radio input per loaded choice, including labels and submitted
+  `value` attributes. Client-side `form!` submissions also honor
+  `success_url:` after successful server function calls (#5109).
+- Resource dependency-change refetch now actually fires. The old
+  `create_resource_with_deps` dropped its tracking `Effect` handle immediately
+  after creation, so the `Effect` was disposed and never re-ran — automatic
+  refetch on dependency change silently never happened (and the only covering
+  test was excluded on every target by a contradictory `cfg`). The unified
+  `use_resource` stores the `Effect` inside the returned `Resource` so it stays
+  alive for the Resource's lifetime, and applies the `defer_yield` microtask
+  deferral (#3316) on the dependency-driven path as well, not only the
+  fetch-once path.
+
+### Performance
+
+- *(commands)* notify browsers after hot reload rebuilds
+- *(pages)* batch generated page attributes
+- *(pages)* prune unused runtime parser deps
+- *(pages)* trim wasm dependency graph
+- *(pages)* gate non-browser wasm modules
+- *(pages)* hot patch static page edits
+- *(build)* tune dev profile for hot reload
+- *(build)* measure cold workspace build
+- atomize facade dependency feature gates
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+- *(pages)* document spawn compat shim module
+- *(pages)* make wasm spawn_task example testable (ignore -> no_run)
+
+### Testing
+
+- *(pages)* replace skeleton spawn_task test with behavior assertion
+- *(forms)* align form runtime UI fixtures
+
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.2.0-rc.4...reinhardt-pages@v0.2.0-rc.5) - 2026-06-11
 
 ### Documentation

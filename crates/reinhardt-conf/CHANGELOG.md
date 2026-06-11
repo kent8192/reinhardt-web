@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.3...reinhardt-conf@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-conf` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Replace legacy `Settings`, `AdvancedSettings`, `JsonFileSource`, and `auto_source` usage with composed settings fragments and `TomlFileSource`.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- *(conf)* [**breaking**] remove legacy advanced settings types
+
+### Added
+
+- *(settings)* add typed schema primitives
+- *(settings)* expose composed schema roots
+- Typed settings schema references now expose embedded settings nodes, including
+  wrapper-aware paths for `Option`, `Vec`, `HashMap<String, _>`,
+  `BTreeMap<String, _>`, `IndexMap<String, _>`, and `Box`.
+
+### Changed
+
+- *(conf)* delete deprecated Settings, AdvancedSettings, JsonFileSource, and related APIs
+
+### Deprecated
+
+- *(conf)* deprecate TemplateConfig in favor of TemplateSettings fragment
+
+### Fixed
+
+- *(settings)* preserve root section precedence
+- *(settings)* classify embedded config nodes
+- *(settings)* require explicit nested settings nodes
+- *(settings)* keep schema accessor compatibility
+- *(conf)* support secret source maps
+- *(conf)* escape secret source test paths
+- Required-field validation now reports missing nested required leaves as
+  `BuildError::MissingRequiredPath` while preserving
+  `BuildError::MissingRequiredField` for missing direct section fields.
+- *(conf)* [**breaking**] remove legacy advanced settings types
+- *(conf)* emit fragment self settings impls
+
+### Performance
+
+- atomize facade dependency feature gates
+
+### Documentation
+
+- *(conf)* document embedded settings nodes
+- *(settings)* document embedded schema nodes
+- *(mail,conf)* fix unresolved intra-doc links to settings fragments
+
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.2.0-rc.4...reinhardt-conf@v0.2.0-rc.5) - 2026-06-11
 
 ### Documentation

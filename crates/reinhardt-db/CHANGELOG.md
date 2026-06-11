@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.3...reinhardt-db@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-db` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Update query/filter calls to the single-argument `Filter` contract and review generated migration diffs.
+- Handle reverse migration SQL as `Vec<String>` where rollback may need multiple statements.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- **`FieldMetadata` gains type-safe `nullable: bool` field** ([#4439](https://github.com/kent8192/reinhardt-web/issues/4439)).
+  `is_nullable()` reads the struct field. `with_nullable()` sets it as
+  the canonical source of truth. `with_param("null", ...)` still works
+  (auto-syncs the struct field) but should migrate to `with_nullable()`.
+  `to_model_state()` no longer copies `"null"` into `FieldState.params`.
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+- *(model)* [**breaking**] make new an alias for build
+
+### Added
+
+- *(orm)* add Django-like lookup helpers
+- *(orm)* support composite filter combinators
+- *(db)* introduce type-safe nullable field on FieldMetadata
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+- *(model)* [**breaking**] make new an alias for build
+
+### Removed
+
+- **`DatabaseConnection::get_database_url_from_env_or_settings(base_dir)`**
+  (deprecated since `0.1.0-rc.29`) — removed per STABILITY_POLICY § SP-4
+  and umbrella Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
+  The function reloaded `settings/<profile>.toml` from disk on every
+  call, duplicating the framework's settings-loading logic. Use
+  `DatabaseConnection::database_url_from(settings, env_override)` with
+  a pre-built `ProjectSettings` instead.
+
+### Fixed
+
+- *(orm)* address lookup review edge cases
+- *(db)* align LIKE escape SQL expectations
+- *(db)* qualify Manager in rustdoc examples and add missing Objects type
+- *(docs)* resolve remaining cross-crate intra-doc link errors
+- repair release examples tests
+
+### Performance
+
+- atomize facade dependency feature gates
+- trim standard facade feature dependencies
+
+### Documentation
+
+- *(reinhardt-db)* fix QuerySet doctests for single-argument filter() API
+- *(reinhardt-db)* qualify Filter path in with_db doctests
+
+### Maintenance
+
+- *(examples)* remove examples-twitter
+
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.0-rc.4...reinhardt-db@v0.2.0-rc.5) - 2026-06-11
 
 ### Added
