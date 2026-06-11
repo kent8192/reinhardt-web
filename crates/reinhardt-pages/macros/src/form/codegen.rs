@@ -311,6 +311,32 @@ fn generate_form_runtime_contract(
 			})
 		})
 		.collect();
+	let wasm_focus_body = if all_fields.is_empty() {
+		quote! {
+			match field {}
+		}
+	} else {
+		quote! {
+			let field_id = match field {
+				#(#field_focus_arms)*
+			};
+			let window = ::web_sys::window()
+				.ok_or(#pages_crate::FocusError::MissingTarget)?;
+			let document = window
+				.document()
+				.ok_or(#pages_crate::FocusError::MissingTarget)?;
+			let element = document
+				.get_element_by_id(field_id)
+				.ok_or(#pages_crate::FocusError::MissingTarget)?;
+			use ::wasm_bindgen::JsCast;
+			let element = element
+				.dyn_into::<::web_sys::HtmlElement>()
+				.map_err(|_| #pages_crate::FocusError::Unsupported)?;
+			element
+				.focus()
+				.map_err(|_| #pages_crate::FocusError::Unsupported)
+		}
+	};
 
 	quote! {
 		#[derive(Clone, PartialEq)]
@@ -412,24 +438,7 @@ fn generate_form_runtime_contract(
 			fn runtime_set_focus(&self, field: Self::Field) -> ::core::result::Result<(), #pages_crate::FocusError> {
 				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 				{
-					let field_id = match field {
-						#(#field_focus_arms)*
-					};
-					let window = ::web_sys::window()
-						.ok_or(#pages_crate::FocusError::MissingTarget)?;
-					let document = window
-						.document()
-						.ok_or(#pages_crate::FocusError::MissingTarget)?;
-					let element = document
-						.get_element_by_id(field_id)
-						.ok_or(#pages_crate::FocusError::MissingTarget)?;
-					use ::wasm_bindgen::JsCast;
-					let element = element
-						.dyn_into::<::web_sys::HtmlElement>()
-						.map_err(|_| #pages_crate::FocusError::Unsupported)?;
-					element
-						.focus()
-						.map_err(|_| #pages_crate::FocusError::Unsupported)
+					#wasm_focus_body
 				}
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				{
@@ -4993,6 +5002,23 @@ mod tests {
 
 		// No watch methods should be generated for empty block
 		assert!(!output_str.contains("__watch_closure"));
+	}
+
+	#[rstest::rstest]
+	fn test_generate_empty_fields_focus_omits_unreachable_dom_path() {
+		let input = quote! {
+			name: EmptyFieldsForm,
+			action: "/test",
+
+			fields: {},
+		};
+
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		assert!(output_str.contains("fn runtime_set_focus"));
+		assert!(output_str.contains("match field { }"));
+		assert!(!output_str.contains("let field_id = match field { }"));
 	}
 
 	// ===== Redirect Code Generation Tests =====
