@@ -63,13 +63,13 @@ examples-tutorial-basis/
 │   ├── apps.rs                # pub mod polls; pub mod users;
 │   ├── config.rs              # pub mod admin/settings/wasm (cfg native); apps / urls compile both targets
 │   ├── shared.rs              # pub mod forms (cfg native); pub mod types (both targets)
-│   ├── client.rs              # pub mod lib / pages / components / links (wasm-only via crate root)
+│   ├── client.rs              # pub mod lib / pages / components (wasm-only via crate root)
 │   ├── bin/
 │   │   └── manage.rs          # CLI binary (manage.py equivalent), required-features = ["with-reinhardt"]
 │   ├── config/
 │   │   ├── settings.rs        # #[settings(core: CoreSettings)] ProjectSettings + SettingsBuilder + profile loading
 │   │   ├── apps.rs            # installed_apps! { polls: "polls", users: "users" }
-│   │   ├── urls.rs            # #[routes(standalone)] routes() -> UnifiedRouter (server_fn registration, admin mount, session middleware)
+│   │   ├── urls.rs            # #[routes] routes() -> UnifiedRouter (server_fn registration, admin mount, session middleware, client-router aggregation)
 │   │   ├── wasm.rs            # AppStaticFilesConfig for dist-wasm/, registered via inventory::submit!
 │   │   └── admin.rs           # configure_admin() -> AdminSite + register Question/Choice admins
 │   ├── shared/
@@ -78,12 +78,13 @@ examples-tutorial-basis/
 │   ├── apps/
 │   │   ├── polls/
 │   │   │   ├── models.rs      # #[model] Question (author FK to User), Choice (question FK)
+│   │   │   ├── client.rs      # wasm-only app UI module
+│   │   │   ├── di.rs          # request-scoped auth/ownership factories used by server_fn.rs
 │   │   │   ├── server_fn.rs   # #[server_fn] get_questions / get_question_detail / vote / submit_vote / create_question / …
-│   │   │   ├── views.rs       # #[get]/#[post] server-rendered JSON endpoints (index, detail, results, vote)
 │   │   │   ├── urls.rs        # declares urls/server_urls.rs (cfg native) + urls/client_router.rs (cfg wasm)
 │   │   │   ├── urls/
-│   │   │   │   ├── server_urls.rs   # #[url_patterns(InstalledApp::polls, mode = server)] -> ServerRouter
-│   │   │   │   └── client_router.rs # #[url_patterns(InstalledApp::polls, mode = client)] -> ClientRouter (named routes)
+│   │   │   │   ├── server_urls.rs   # ServerRouter (empty today)
+│   │   │   │   └── client_router.rs # ClientRouter (.route / .route_path + app-local urls helpers)
 │   │   │   ├── admin.rs       # #[admin(model, for = Question, …)] QuestionAdmin / ChoiceAdmin
 │   │   │   └── serializers.rs # QuestionSerializer / ChoiceSerializer with #[validate(...)]
 │   │   └── users/
@@ -93,9 +94,8 @@ examples-tutorial-basis/
 │   └── client/                # WASM-only UI layer (declared in crate root via `pub mod client;` under cfg)
 │       ├── lib.rs             # #[wasm_bindgen(start)] main(); ClientLauncher::new("#root").register_routes_from_inventory().launch()
 │       ├── pages.rs           # Page factory functions; wraps body components in with_nav(...)
-│       ├── components.rs      # pub mod nav; polls; users;
-│       ├── components/        # nav.rs / polls.rs / users.rs — page! + watch + form! components
-│       └── links.rs           # Typed wrappers around ResolvedUrls::resolve_client_url(...) for every named route
+│       ├── components.rs      # pub mod nav;
+│       └── components/        # nav.rs — shared navigation shell
 └── tests/
     ├── integration.rs          # native; required-features = ["with-reinhardt"]; rstest + serial_test + sqlx + tempfile
     └── wasm/polls_mock_test.rs # WASM-only; required-features = ["msw"]; wasm-bindgen-test
@@ -103,9 +103,9 @@ examples-tutorial-basis/
 
 Three rules keep this structure predictable:
 
-1. **Native vs WASM** — `#[cfg(native)]` code runs on the server (models, views, server function bodies, forms, admin). `#[cfg(wasm)]` code runs in the browser (everything under `src/client/`). Code under `src/shared/types.rs` compiles on both so DTOs stay in sync, and each app declares its `server_fn` and `urls` so the typed `#[server_fn]` client stubs work in the browser.
-2. **Server functions are the bridge, and they live per-app** — anything the WASM client needs from the database goes through a `#[server_fn]` defined in `src/apps/<app>/server_fn.rs` (so they sit alongside that app's models, views, and admin), and the result is returned as a DTO from `src/shared/types.rs`. There is no top-level `src/server_fn/` directory.
-3. **Routing is also per-app, with a typed `urls/` directory module** — each app exposes `src/apps/<app>/urls/server_urls.rs` (`#[url_patterns(InstalledApp::<app>, mode = server)] -> ServerRouter`) and `src/apps/<app>/urls/client_router.rs` (`#[url_patterns(InstalledApp::<app>, mode = client)] -> ClientRouter`). The framework auto-mounts them by inventory using the typed `InstalledApp::<app>` identifier; the project-level `src/config/urls.rs` only registers `#[server_fn]` entries, mounts `/admin/`, and applies middleware.
+1. **Native vs WASM** — `#[cfg(native)]` code runs on the server (models, server function bodies, forms, admin). `#[cfg(wasm)]` code runs in the browser (`src/client/` plus each app's `client` module). Code under `src/shared/types.rs` compiles on both so DTOs stay in sync, and each app declares its `server_fn` and `urls` so the typed `#[server_fn]` client stubs work in the browser.
+2. **Server functions are the bridge, and they live per-app** — anything the WASM client needs from the database goes through a `#[server_fn]` defined in `src/apps/<app>/server_fn.rs` (so it sits alongside that app's models, DI helpers, client UI, and admin), and the result is returned as a DTO from `src/shared/types.rs`. There is no top-level `src/server_fn/` directory.
+3. **Routing is also per-app, with a `urls/` directory module** — each app exposes `src/apps/<app>/urls/server_urls.rs` (`ServerRouter`) and `src/apps/<app>/urls/client_router.rs` (`ClientRouter`). In the current example both app-side server routers are intentionally empty; the dynamic backend surface is registered through `#[server_fn]` markers in `src/config/urls.rs`, while the WASM route tables are aggregated there with `UnifiedRouter::mount_unified`.
 
 ## Tutorial Structure
 
@@ -123,19 +123,19 @@ Three rules keep this structure predictable:
 - Register both apps in `src/config/apps.rs` via `installed_apps! { polls: "polls", users: "users" }`
 - Generate and apply migrations with `cargo make makemigrations` and `cargo make migrate`
 
-### [Part 3: Server Functions, Views, and URLs](3-views-and-urls/)
+### [Part 3: Server Functions and URLs](3-views-and-urls/)
 
 - Write **server functions** under `src/apps/polls/server_fn.rs` and `src/apps/users/server_fn.rs` — this is the "views" layer for the WASM client
-- Write **server-rendered HTTP endpoints** under `src/apps/polls/views.rs` for clients that want a plain JSON API
-- Split routing into `src/apps/<app>/urls/server_urls.rs` (`ServerRouter`) and `src/apps/<app>/urls/client_router.rs` (`ClientRouter`), both registered via `#[url_patterns(InstalledApp::<app>, mode = ...)]`
-- Register server functions in `src/config/urls.rs` with `UnifiedRouter::new().server(|s| s.server_fn(name::marker)...)` — app routers are mounted automatically
-- Bootstrap the SPA in `src/client/lib.rs` with `ClientLauncher::new("#root").register_routes_from_inventory().launch()`; the `#[routes(standalone, client_inventory)]` aggregator in `src/config/urls.rs` composes each app's client router via `UnifiedRouter::mount_unified` and submits the result into `inventory`, which the launcher then collects (PR #4453)
+- Keep app-side `server_urls.rs` files as explicit empty `ServerRouter` aggregators so future native HTTP endpoints have a discoverable home
+- Split routing into `src/apps/<app>/urls/server_urls.rs` (`ServerRouter`) and `src/apps/<app>/urls/client_router.rs` (`ClientRouter`)
+- Register server functions in `src/config/urls.rs` with `UnifiedRouter::new().server(|s| s.server_fn(name::marker)...)` and aggregate client routers with `mount_unified`
+- Bootstrap the SPA in `src/client/lib.rs` with `ClientLauncher::new("#root").register_routes_from_inventory().launch()`; the `#[routes]` aggregator in `src/config/urls.rs` composes each app's client router via `UnifiedRouter::mount_unified`, which the launcher then collects
 
 ### [Part 4: Forms and Generic Views](4-forms-and-generic-views/)
 
 - Define `create_vote_form()` in `src/shared/forms.rs` (server-only, behind `#[cfg(native)]`) using `Form::new().add_field(CharField::new(...).with_widget(Widget::HiddenInput))`
 - Let the client-side `form!` macro emit the matching `FormMetadata` (incl. CSRF token) at expansion time — the `strip_arguments: { csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default() }` clause forwards the per-request token to the trailing server-fn parameter
-- Build the voting UI in `src/client/components/polls.rs` with the **`form!` macro** + `watch { ... }` blocks inside a `page!` component
+- Build the voting UI in `src/apps/polls/client/components.rs` with the **`form!` macro** + `watch { ... }` blocks inside a `page!` component
 - Call `submit_vote` (a `#[server_fn]` in `crate::apps::polls::server_fn`) on submit; show server validation errors reactively
 
 ### [Part 5: Testing](5-testing/)

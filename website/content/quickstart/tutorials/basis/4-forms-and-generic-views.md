@@ -12,7 +12,7 @@ In this chapter we add the interactive layer of the polling app: the voting form
 
 - [`src/shared/types.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/shared/types.rs) — DTOs that cross the WASM/native boundary, plus the `#[derive(Validate)]` rules that run *only* on the server.
 - [`src/shared/forms.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/shared/forms.rs) — server-only `Form` definitions that the unit test in this chapter pins against. The actual `FormMetadata` (incl. CSRF hidden input) is emitted on the client by the `form!` macro at expansion time.
-- [`src/client/components/polls.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/client/components/polls.rs) — the `form!` macro pages backed by `#[server_fn]` mutations in [`src/apps/polls/server_fn.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/apps/polls/server_fn.rs).
+- [`src/apps/polls/client/components.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/apps/polls/client/components.rs) — the `form!` macro pages backed by `#[server_fn]` mutations in [`src/apps/polls/server_fn.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/apps/polls/server_fn.rs).
 
 If you are coming from Django, this is roughly the chapter where "forms + ModelForm + class-based generic views" would appear. The pages template solves the same problem with a different cast: typed DTO validators, a server-side `Form` purely for metadata, and the **`form!`** macro on the client that renders the UI and dispatches to a `#[server_fn]`.
 
@@ -218,12 +218,12 @@ This is the convention the reference example settled on. Earlier iterations of t
 
 Now the interesting part: `form!`. This is the single recommended path for forms in this tutorial — and in nearly every production reinhardt-pages component. It is declarative, it integrates with `#[server_fn]`, and it lets you trade a few lines of macro syntax for what would otherwise be dozens of lines of imperative `use_state` plumbing.
 
-We will walk through the voting form from `src/client/components/polls.rs`. The shape is dense; we will quote it first and then break it down.
+We will walk through the voting form from `src/apps/polls/client/components.rs`. The shape is dense; we will quote it first and then break it down.
 
 ### The voting form, in full
 
 ```rust
-// src/client/components/polls.rs (extract)
+// src/apps/polls/client/components.rs (extract)
 
 use crate::shared::types::{ChoiceInfo, QuestionInfo};
 use reinhardt::pages::component::Page;
@@ -235,7 +235,7 @@ use crate::apps::polls::server_fn::{
 	create_choice, create_question, delete_choice, delete_question, get_question_detail,
 	get_question_results, get_questions, submit_vote, update_choice, update_question,
 };
-// Typed URL helpers are now emitted by `#[url_patterns]` directly
+// Typed URL helpers live next to the app's client router
 // (issue #4656); we alias the macro-emitted `urls` module as `links` to
 // keep call sites concise.
 use crate::apps::polls::urls::client_router::urls as links;
@@ -429,7 +429,7 @@ Calling `dispatch` kicks off the async call once; the action then exposes the re
 The voting form's choices are not known at compile time — they come from the database. The pattern that wires loaded data into a `form!` is to (a) start an action that loads the data, and (b) use a `use_effect` to write the result into the generated choices signal:
 
 ```rust
-// src/client/components/polls.rs (continued)
+// src/apps/polls/client/components.rs (continued)
 
 // Bridge load_detail results to form choices via use_effect
 {
@@ -752,7 +752,7 @@ The "ideal implementation" comments in the source are not aspirational decoratio
 The matching client pages are short. Here is the "new question" page — it is the entire pattern in one block:
 
 ```rust
-// src/client/components/polls.rs (extract)
+// src/apps/polls/client/components.rs (extract)
 
 /// New question page (`/polls/new/`).
 pub fn question_new() -> Page {
@@ -827,7 +827,7 @@ Two things make this shorter than the voting form:
 - **`redirect_on_success: "/"`** — `form!` knows how to navigate on its own; you do not have to write a `success_navigation` watch block by hand.
 - **No `watch:` clause inside `form!`** — the page renders the button and error display *outside* `form!`. Both patterns are valid; the choice is purely aesthetic.
 
-`question_edit` and `question_delete_confirm` follow the same shape, adding a `HiddenField` for `question_id` and (for edit) a `load_detail` action that pre-fills the form. The choice CUD pages (`choice_new`, `choice_edit`, `choice_delete_confirm`) are structurally identical — see `src/client/components/polls.rs` for the full set.
+`question_edit` and `question_delete_confirm` follow the same shape, adding a `HiddenField` for `question_id` and (for edit) a `load_detail` action that pre-fills the form. The choice CUD pages (`choice_new`, `choice_edit`, `choice_delete_confirm`) are structurally identical — see `src/apps/polls/client/components.rs` for the full set.
 
 ## Choice CUD: Ownership Through the Parent
 
@@ -918,7 +918,7 @@ The pattern repeats for `update_choice` (load choice → look up parent question
 
 If you are coming from Django or another classic server-rendered framework, you may be wondering where the generic views went. In short: the pages template does not have them, and does not need them.
 
-- **`ListView` / `DetailView`** are replaced by **page factory functions** — `polls_index`, `polls_detail`, `polls_results`, `question_new`, `question_edit`, `choice_new`, … each defined in `src/client/components/polls.rs` and `src/client/pages.rs`. We wrote them in Part 3.
+- **`ListView` / `DetailView`** are replaced by **page factory functions** — `polls_index`, `polls_detail`, `polls_results`, `question_new`, `question_edit`, `choice_new`, … each defined in `src/apps/polls/client/components.rs` and wrapped from `src/client/pages.rs`. We wrote them in Part 3.
 - **The reusability story** is **component composition with `page!` + `watch` + `use_action`**, not subclassing. The voting page composes a `page!` outer shell, a `form!` block, two `watch`-driven action states, and a `use_effect` bridge — six small pieces, each independently reasonable.
 - **Form rendering** is **the `form!` macro**, not a templating language with form tags. The HTML is in your component.
 
@@ -932,7 +932,7 @@ You now have everything Part 4 set out to deliver:
 
 - DTO field-level validation lives in `src/shared/types.rs`, with `#[dto]` emitting `derive(Validate)` (and OpenAPI `Schema`) behind `cfg(native)` so the WASM bundle stays small.
 - The voting form's metadata + CSRF token are emitted by the `form!` macro itself at expansion time on the client side; the server-only `create_vote_form()` in `src/shared/forms.rs` exists so the same shape can be unit-tested (`test_vote_form_metadata`) without compiling the macro, and the `strip_arguments: { csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token() … }` clause pulls the per-request CSRF token from the page-level helper.
-- The `form!` macro in `src/client/components/polls.rs` declares the UI, dispatches to `submit_vote`, serialises every field as `String`, appends the CSRF token through `strip_arguments`, and surfaces success/error reactively through the generated `loading()` / `error()` signals and matching `watch` blocks.
+- The `form!` macro in `src/apps/polls/client/components.rs` declares the UI, dispatches to `submit_vote`, serialises every field as `String`, appends the CSRF token through `strip_arguments`, and surfaces success/error reactively through the generated `loading()` / `error()` signals and matching `watch` blocks.
 - Question and Choice CUD reuse the same `form!` + `#[server_fn]` shape, composing `(*session_user).as_ref().map_err(ServerFnError::from)?` (authentication, via the `Depends<Result<User, SessionError>>` DI factory) and `require_question_author` (authorization) on top of typed model builders.
 - "Generic views" are not a separate concept in the pages template — they are the page factory functions you already have, glued together with the reactive primitives above.
 

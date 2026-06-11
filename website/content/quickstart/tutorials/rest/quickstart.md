@@ -8,327 +8,262 @@ sidebar_weight = 10
 
 # Quickstart
 
-Create a simple API for administrators to view and edit users and groups in the system.
+Build the same code-snippet API used by
+[`examples/examples-tutorial-rest`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-rest).
+The example is a REST-only crate: it has a `snippets` app, function-based
+CRUD endpoints, a `ModelViewSet`, Bruno collections, migrations, and no
+WASM client.
 
 ## Project Setup
 
-First, install the global tool. The command below pins this tutorial to the
-documented release for reproducibility; omit `--version` to let Cargo choose
-the latest stable release. The literal below is release-managed.
+Install the global tool. The command below pins this tutorial to the
+documented release for reproducibility; omit `--version` to let Cargo
+choose the latest stable release.
 
 <!-- reinhardt-version-sync -->
 ```bash
 cargo install reinhardt-admin-cli --version "0.2.0-rc.5"
 ```
 
-**Note:** After installation, the command is `reinhardt-admin`, not `reinhardt-admin-cli`.
-
-Create a new Reinhardt project called tutorial:
+Create a new Reinhardt REST project:
 
 ```bash
-# Create RESTful API project
 reinhardt-admin startproject tutorial --template rest
 cd tutorial
 ```
 
-This generates a complete project structure:
+The reference example has this shape:
 
-```
-tutorial/
+```text
+examples-tutorial-rest/
 ├── Cargo.toml
-├── README.md
 ├── Makefile.toml
+├── Dockerfile
+├── Dockerfile.bruno
+├── docker-compose.api-tests.yml
+├── bruno/
+├── migrations/
+│   ├── auth/0001_initial.rs
+│   ├── default/0001_initial.rs
+│   └── snippets/0001_initial.rs
 ├── settings/
 │   ├── base.toml
-│   ├── local.toml
-│   ├── staging.toml
-│   └── production.toml
-└── src/
-    ├── lib.rs
-    ├── config.rs
-    ├── apps.rs
-    ├── config/
-    │   ├── settings.rs
-    │   ├── urls.rs
-    │   └── apps.rs
-    └── bin/
-        └── manage.rs
+│   └── ci.toml
+├── src/
+│   ├── apps.rs
+│   ├── config.rs
+│   ├── lib.rs
+│   ├── apps/
+│   │   ├── snippets.rs
+│   │   └── snippets/
+│   │       ├── models.rs
+│   │       ├── serializers.rs
+│   │       ├── urls.rs
+│   │       └── views.rs
+│   ├── config/
+│   │   ├── apps.rs
+│   │   ├── settings.rs
+│   │   └── urls.rs
+│   └── bin/
+│       └── manage.rs
+└── tests/
+    └── integration.rs
 ```
 
-The generated `Cargo.toml` already includes all necessary dependencies for REST API development.
+## Snippet Model
 
-## Models
+Create a `snippets` app and define the `Snippet` model in
+`src/apps/snippets/models.rs`:
 
-For this quickstart, we'll use Reinhardt's built-in `User` and `Group` models provided by the auth feature.
+```rust
+use chrono::{DateTime, Utc};
+use reinhardt::core::serde::{Deserialize, Serialize};
+use reinhardt::prelude::*;
+
+/// Snippet model representing a code snippet
+#[model(app_label = "snippets", table_name = "snippets")]
+#[derive(Serialize, Deserialize)]
+pub struct Snippet {
+	#[field(primary_key = true)]
+	pub id: i64,
+
+	#[field(max_length = 100)]
+	pub title: String,
+
+	#[field(max_length = 10000)]
+	pub code: String,
+
+	#[field(max_length = 50)]
+	pub language: String,
+
+	#[field(auto_now_add = true)]
+	pub created_at: DateTime<Utc>,
+}
+```
+
+The full example also adds `Snippet::highlighted()` using `syntect`; the
+REST response serializer calls it to return highlighted HTML alongside
+the raw code.
 
 ## Serializers
 
-Define serializers for data representation. Add to `src/main.rs`:
+`src/apps/snippets/serializers.rs` defines one input serializer and one
+response shape:
 
 ```rust
-use serde::{Serialize, Deserialize};
+use reinhardt::Validate;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UserSerializer {
-    pub id: i64,
-    pub username: String,
-    pub email: String,
+/// Serializer for creating/updating snippets
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct SnippetSerializer {
+	#[validate(length(
+		min = 1,
+		max = 100,
+		message = "Title must be between 1 and 100 characters"
+	))]
+	pub title: String,
+
+	#[validate(length(
+		min = 1,
+		max = 10000,
+		message = "Code must be between 1 and 10000 characters"
+	))]
+	pub code: String,
+
+	#[validate(length(
+		min = 1,
+		max = 50,
+		message = "Language must be between 1 and 50 characters"
+	))]
+	pub language: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GroupSerializer {
-    pub id: i64,
-    pub name: String,
+/// Response serializer for snippets
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnippetResponse {
+	pub id: i64,
+	pub title: String,
+	pub code: String,
+	pub language: String,
+	pub highlighted: String,
 }
 ```
 
-This example uses simple data structures. In real applications, you can implement the `Serializer` trait to add validation and data transformation logic.
+## Function-Based Endpoints
 
-## Views
-
-Implement API endpoints using HTTP method decorators. Add to `users/views.rs`:
+`src/apps/snippets/views.rs` exposes five CRUD handlers:
 
 ```rust
-use serde_json::{self as json, json};
-use reinhardt::ViewResult;
-use reinhardt::{get, post, Json, Response, StatusCode};
-use crate::models::User;
-use crate::serializers::UserSerializer;
+use chrono::Utc;
+use json::json;
+use reinhardt::Validate;
+use reinhardt::core::serde::json;
+use reinhardt::http::ViewResult;
+use reinhardt::{Json, Path, Response, StatusCode};
+use reinhardt::{delete, get, post, put};
 
-#[get("/users", name = "list_users")]
-pub async fn list_users() -> ViewResult<Response> {
-    let users = User::objects().all().await?;
-    let serialized: Vec<UserSerializer> = users.into_iter()
-        .map(|u| UserSerializer::from(u))
-        .collect();
-
-    let response_data = json!({ "users": serialized });
-    let json = json::to_string(&response_data)?;
-    Ok(Response::new(StatusCode::OK)
-        .with_header("Content-Type", "application/json")
-        .with_body(json))
-}
+use super::models::Snippet;
+use super::serializers::{SnippetResponse, SnippetSerializer};
 ```
 
-**Note**: The `#[inject]` attribute enables automatic dependency injection. For detailed information, see [HTTP Method Decorators Guide - Dependency Injection](0-http-macros.md#dependency-injection-with-inject).
+The create endpoint uses declarative validation:
 
 ```rust
-#[post("/users", name = "create_user")]
-pub async fn create_user(
-    Json(data): Json<UserSerializer>,
-) -> ViewResult<Response> {
-    // Create user
-    let user = User::objects().create(data.username, data.email).await?;
-    let serialized = UserSerializer::from(user);
+/// Create a new snippet
+///
+/// POST /snippets/
+/// Request body: JSON with title, code, language fields
+/// Success response: 201 Created with created snippet
+#[post("/snippets/", name = "snippets-create", pre_validate = true)]
+pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Response> {
+	let snippet = Snippet::build()
+		.title(serializer.title.clone())
+		.code(serializer.code.clone())
+		.language(serializer.language.clone())
+		.finish();
 
-    let response_data = json!({
-        "message": "User created",
-        "user": serialized
-    });
-    let json = json::to_string(&response_data)?;
-    Ok(Response::new(StatusCode::CREATED)
-        .with_header("Content-Type", "application/json")
-        .with_body(json))
+	let response_data = json!({
+		"message": "Snippet created",
+		"snippet": SnippetResponse::from_model(&snippet)
+	});
+
+	let json = json::to_string(&response_data)?;
+	Ok(Response::new(StatusCode::CREATED)
+		.with_header("Content-Type", "application/json")
+		.with_body(json))
 }
 ```
 
-**Note**: ViewSets (like Django REST framework's ViewSets) are now available! For building complex APIs with less code, see [Tutorial 6: ViewSets and Routers](../6-viewsets-and-routers/). This quickstart focuses on function-based endpoints using HTTP method decorators like `#[get]`, `#[post]`, etc.
+`list`, `retrieve`, `update`, and `delete` use the same explicit
+`Response` style. `update` performs manual `serializer.validate()?`
+because it combines `Path<i64>` and `Json<SnippetSerializer>`; enabling
+`pre_validate = true` there would also try to validate the path
+extractor.
 
-## Routing
+## URL Configuration
 
-First, create a users app:
-
-```bash
-reinhardt-admin startapp users --template rest
-```
-
-### Define Models and Serializers
-
-Edit `users/models.rs`:
-
-```rust
-use serde::{Serialize, Deserialize};
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct User {
-    pub id: i64,
-    pub username: String,
-    pub email: String,
-}
-```
-
-Edit `users/serializers.rs`:
-
-```rust
-use serde::{Serialize, Deserialize};
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UserSerializer {
-    pub id: i64,
-    pub username: String,
-    pub email: String,
-}
-```
-
-### Create Views
-
-Edit `users/views.rs` to implement full CRUD operations:
-
-```rust
-use serde_json::{self as json, json};
-use reinhardt::ViewResult;
-use reinhardt::{get, post, Json, Path, Response, StatusCode};
-use crate::models::User;
-use crate::serializers::UserSerializer;
-
-#[get("/users", name = "list_users")]
-pub async fn list_users() -> ViewResult<Response> {
-    let users = User::objects().all().await?;
-    let serialized: Vec<UserSerializer> = users.into_iter()
-        .map(|u| UserSerializer::from(u))
-        .collect();
-
-    let response_data = json!({ "users": serialized });
-    let json = json::to_string(&response_data)?;
-    Ok(Response::new(StatusCode::OK)
-        .with_header("Content-Type", "application/json")
-        .with_body(json))
-}
-
-#[get("/users/{id}/", name = "retrieve_user")]
-pub async fn retrieve_user(
-    Path(id): Path<i64>,
-) -> ViewResult<Response> {
-    let user = User::objects().get(id).first().await?
-        .ok_or("User not found")?;
-
-    let serialized = UserSerializer::from(user);
-    let response_data = json!({ "user": serialized });
-    let json = json::to_string(&response_data)?;
-    Ok(Response::new(StatusCode::OK)
-        .with_header("Content-Type", "application/json")
-        .with_body(json))
-}
-
-#[post("/users", name = "create_user")]
-pub async fn create_user(
-    Json(data): Json<UserSerializer>,
-) -> ViewResult<Response> {
-    let user = User::objects().create(data.username, data.email).await?;
-    let serialized = UserSerializer::from(user);
-
-    let response_data = json!({
-        "message": "User created",
-        "user": serialized
-    });
-    let json = json::to_string(&response_data)?;
-    Ok(Response::new(StatusCode::CREATED)
-        .with_header("Content-Type", "application/json")
-        .with_body(json))
-}
-```
-
-### Configure URLs
-
-Edit `users/urls.rs` to register the view functions:
+Register the snippets endpoints in `src/apps/snippets/urls.rs`:
 
 ```rust
 use reinhardt::ServerRouter;
 
 use super::views;
 
+/// Register every snippets-app URL on a single `ServerRouter`.
 pub fn url_patterns() -> ServerRouter {
-    ServerRouter::new()
-        .endpoint(views::list_users)
-        .endpoint(views::retrieve_user)
-        .endpoint(views::create_user)
+	ServerRouter::new()
+		.endpoint(views::list)
+		.endpoint(views::create)
+		.endpoint(views::retrieve)
+		.endpoint(views::update)
+		.endpoint(views::delete)
+		.viewset("/snippets-viewset", views::viewset())
 }
 ```
 
-**URL Patterns Generated:**
-- `GET /api/users/` → `views::list_users`
-- `GET /api/users/{id}/` → `views::retrieve_user`
-- `POST /api/users/` → `views::create_user`
-
-### Register with Project
-
-Edit `src/config/urls.rs`:
+Then mount the app under `/api/` from `src/config/urls.rs`:
 
 ```rust
 use reinhardt::prelude::*;
 use reinhardt::routes;
 
-// Note: UnifiedRouter requires the `client-router` feature flag
 #[routes]
 pub fn routes() -> UnifiedRouter {
-    UnifiedRouter::new()
-        .mount("/api/", users::urls::url_patterns())
+	UnifiedRouter::new().mount("/api/", crate::apps::snippets::urls::url_patterns())
 }
 ```
 
-The `#[routes]` attribute macro automatically registers this function with the
-framework for discovery via the `inventory` crate.
+## Run It
 
-Edit `src/config/apps.rs`:
-
-```rust
-use reinhardt::installed_apps;
-
-installed_apps! {
-    users: "users",
-}
-
-pub fn get_installed_apps() -> Vec<String> {
-    InstalledApp::all_apps()
-}
-```
-
-This configures the following URL patterns:
-
-- `GET /api/users/` - List users
-- `POST /api/users/` - Create new user
-- `GET /api/users/{id}/` - Retrieve specific user
-
-**Note**: To implement full CRUD (UPDATE, DELETE), add additional endpoint functions in `users/views.rs` and register them in `users/urls.rs` following the same pattern.
-
-## Testing the API
-
-First, start the development server:
+Start the local stack and server:
 
 ```bash
 cargo make runserver
 ```
 
-Test the API using curl or httpie:
+Try the function-based endpoints:
 
 ```bash
-# Get list of users
-curl http://127.0.0.1:8000/api/users/
+curl http://127.0.0.1:8000/api/snippets/
 
-# Create new user
-curl -X POST http://127.0.0.1:8000/api/users/ \
+curl -X POST http://127.0.0.1:8000/api/snippets/ \
   -H "Content-Type: application/json" \
-  -d '{"username":"alice","email":"alice@example.com"}'
-
-# Get specific user
-curl http://127.0.0.1:8000/api/users/1/
-
-# Update user
-curl -X PUT http://127.0.0.1:8000/api/users/1/ \
-  -H "Content-Type: application/json" \
-  -d '{"username":"alice","email":"newemail@example.com"}'
-
-# Delete user
-curl -X DELETE http://127.0.0.1:8000/api/users/1/
+  -d '{"title":"Hello","code":"fn main() {}","language":"rust"}'
 ```
 
-## Summary
+Try the ViewSet endpoints, which are mounted in the same process:
 
-In this quickstart, you learned:
+```bash
+curl http://127.0.0.1:8000/api/snippets-viewset/
+curl "http://127.0.0.1:8000/api/snippets-viewset/?language=rust&ordering=-created_at"
+```
 
-1. Setting up a Reinhardt project
-2. Defining serializers
-3. Creating CRUD APIs with ViewSets
-4. Automatic URL generation with routers
+The Bruno collection under `bruno/` mirrors these flows in the `Snippets
+CRUD`, `Snippets ViewSet`, and `Validation Tests` folders.
 
-For more detailed information, see the [tutorials](../1-serialization/).
+## Next Steps
+
+Continue with [Tutorial 0: HTTP Macros](../0-http-macros/) for the macro
+details, then [Tutorial 6: ViewSets and Routers](../6-viewsets-and-routers/)
+for the `ModelViewSet` path.

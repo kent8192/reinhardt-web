@@ -25,7 +25,7 @@ The Reinhardt admin is configured in two files that already exist in the generat
 
 This split mirrors the way the rest of the project is organized: each app owns its own models, server functions, URLs, and admin metadata, and `src/config/` aggregates them into a single project router. There is no global admin module that owns every model in the project; `configure_admin()` simply imports the admin structs from each app and registers them by name.
 
-The admin module on `apps/polls.rs` is `#[cfg(native)]`-gated, exactly like the other native-only modules (`admin`, `models`, `serializers`, `views`) — only `server_fn` and `urls` compile on both targets. The relevant module declarations look like this:
+The admin module on `apps/polls.rs` is `#[cfg(native)]`-gated, exactly like the other native-only modules (`admin`, `di`, `models`, `serializers`) — only `server_fn` and `urls` compile on both targets, while the app-local UI module is `#[cfg(wasm)]`. The relevant module declarations look like this:
 
 ```rust
 // src/apps/polls.rs
@@ -34,14 +34,16 @@ use reinhardt::app_config;
 
 #[cfg(native)]
 pub mod admin;
+#[cfg(wasm)]
+pub mod client;
+#[cfg(native)]
+pub mod di;
 #[cfg(native)]
 pub mod models;
 #[cfg(native)]
 pub mod serializers;
 pub mod server_fn;
 pub mod urls;
-#[cfg(native)]
-pub mod views;
 
 #[cfg(native)]
 #[app_config(name = "polls", label = "polls")]
@@ -205,7 +207,7 @@ Three things happen here:
 
 ## Mounting the Admin: `src/config/urls.rs`
 
-The site is mounted in `src/config/urls.rs`, the same `#[routes(standalone, client_inventory)]` function you saw in [Part 3](../3-views-and-urls/) that registers every server function and applies the session middleware. The admin mount is a `#[cfg(native)]` block, because the admin is server-only and the SPA never needs to know about it:
+The site is mounted in `src/config/urls.rs`, the same `#[routes]` function you saw in [Part 3](../3-views-and-urls/) that registers every server function, aggregates client routes, and applies the session middleware. The admin mount is a `#[cfg(native)]` block, because the admin is server-only and the SPA never needs to know about it:
 
 ```rust
 #[cfg(native)]
@@ -214,7 +216,7 @@ use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
 #[cfg(native)]
 use crate::config::admin::configure_admin;
 
-#[routes(standalone, client_inventory)]
+#[routes]
 pub fn routes() -> UnifiedRouter {
     // … server-function registration omitted for clarity …
 

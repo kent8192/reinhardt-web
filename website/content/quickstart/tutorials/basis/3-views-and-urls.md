@@ -1,33 +1,33 @@
 +++
-title = "Part 3: Server Functions, Views, and URLs"
+title = "Part 3: Server Functions and URLs"
 weight = 30
 
 [extra]
 sidebar_weight = 30
 +++
 
-# Part 3: Server Functions, Views, and URLs
+# Part 3: Server Functions and URLs
 
 By the end of this chapter your project will behave like a real polling
-application: typed RPC calls from the WASM client, server-rendered JSON
-endpoints for non-WASM consumers, per-app routing tables, a per-app SPA
-router, and a launcher that mounts every page on `#root`. Each step is
-verbatim from the reference implementation in
+application: typed RPC calls from the WASM client, per-app routing
+tables, a per-app SPA router, and a launcher that mounts every page on
+`#root`. Each step is verbatim from the reference implementation in
 [`examples/examples-tutorial-basis/`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis).
 
-The "views" layer in the pages architecture has **two** parallel halves —
-and you build them both:
+The "views" layer in the pages architecture is the typed server-function
+surface. The WASM client calls these handlers through generated stubs,
+and the server registers the same handlers as native routes:
 
 1. **Server functions** (`src/apps/<app>/server_fn.rs`) — typed RPC the WASM
    client calls as if it were a local `async fn`. Every reactive component
    built in Part 4 calls one of these.
-2. **Server-rendered REST endpoints** (`src/apps/polls/views.rs`) — classic
-   `#[get]` / `#[post]` handlers that produce JSON. A `curl` user or a
-   non-Reinhardt frontend hits these directly.
+2. **Per-app URL modules** (`src/apps/<app>/urls/`) — explicit homes for
+   server and client route tables. In the current example the native
+   `server_urls.rs` files intentionally return an empty `ServerRouter`
+   because all dynamic data access goes through `#[server_fn]`.
 
-Both halves live next to the models they touch, both are mounted through
-the same `urls/` directory module, and both share the same authentication
-gate. We introduce them in that order.
+Both halves live next to the models they touch and share the same
+authentication gate. We introduce them in that order.
 
 ## Recap: `#[cfg(wasm)]` and `#[cfg(native)]`
 
@@ -149,7 +149,7 @@ function. The function happens to run on the server.
 ```mermaid
 sequenceDiagram
     participant U as User (browser)
-    participant C as client/components/polls.rs
+    participant C as apps/polls/client/components.rs
     participant S as apps/polls/server_fn.rs
     participant M as apps/polls/models.rs
     participant DB as Database
@@ -169,35 +169,14 @@ sequenceDiagram
     C->>U: watch { ... } re-renders results
 ```
 
-The same diagram fits the REST counterpart almost exactly — only the first
-two steps differ:
+The typed-RPC path is deliberately the single dynamic data path in the
+basis example. If you need classic JSON endpoints for a non-WASM client,
+use the REST tutorial instead; mixing both styles in this introductory
+pages tutorial made the example harder to reason about and drifted from
+the current crate.
 
-```mermaid
-sequenceDiagram
-    participant U as curl / external frontend
-    participant V as apps/polls/views.rs (#[post])
-    participant M as apps/polls/models.rs
-    participant DB as Database
-
-    U->>V: POST /polls/1/vote/ {"choice_id": 2}
-    V->>V: Path(question_id), Json(VoteRequest)
-    V->>M: Choice::objects().get(choice_id)
-    M->>DB: SELECT * FROM choices WHERE id = ?
-    DB-->>M: row
-    M-->>V: Choice
-    V->>M: choice.vote().await (auto-saves)
-    M->>DB: UPDATE choices SET votes = ? WHERE id = ?
-    DB-->>M: ok
-    V-->>U: 200 OK application/json
-```
-
-The two halves are **not** redundant: the typed-RPC half gives the WASM
-client a compile-time guarantee that DTO names match server-side, while
-the REST half gives a JSON consumer a stable, documentable URL surface
-that does not depend on Reinhardt's macro-generated client stubs.
-
-Both halves get wired into the framework through a per-app `urls/`
-directory module. We unpack that next.
+The client route table still gets wired into the framework through a
+per-app `urls/` directory module. We unpack that next.
 
 ## The `urls/` Directory Module
 
@@ -208,8 +187,8 @@ by the framework. For `polls` it looks like this:
 src/apps/polls/
 ├── urls.rs                       declares the two submodules below
 └── urls/
-    ├── server_urls.rs            #[url_patterns(InstalledApp::polls, mode = server)]
-    └── client_router.rs          #[url_patterns(InstalledApp::polls, mode = client)]
+    ├── server_urls.rs            ServerRouter (empty today)
+    └── client_router.rs          ClientRouter
 ```
 
 The aggregator `apps/polls/urls.rs` is tiny — it just gates the two
@@ -218,14 +197,8 @@ submodules on the right target:
 ```rust
 //! URL configuration for the polls application.
 //!
-//! Both submodules use `#[url_patterns(InstalledApp::polls, mode = ...)]`,
-//! so the framework auto-registers them via inventory. The WASM entry
-//! point looks up the client router through
-//! `ClientLauncher::router_client(client_url_patterns)`, and the native
-//! aggregator does not need to mount the server router explicitly.
-//!
-//! - `server_urls` — `#[url_patterns(..., mode = server)]` → `ServerRouter`
-//! - `client_router` — `#[url_patterns(..., mode = client)]` → `ClientRouter`
+//! - `server_urls` — server-side `ServerRouter`
+//! - `client_router` — client-side `ClientRouter`
 
 #[cfg(native)]
 pub mod server_urls;
@@ -236,22 +209,17 @@ pub mod client_router;
 
 Three rules govern every file under `urls/`:
 
-1. **The function names are fixed.** They must be exactly
-   `server_url_patterns` / `client_url_patterns` / `unified_url_patterns`
-   to match the `mode = …` argument. The framework's discovery layer
-   looks them up by name.
-2. **The first argument is a typed `InstalledApp::<app>`.** It comes from
-   the `installed_apps!` macro you wrote in Part 1, and the URL prefix
-   the framework auto-applies to each router (`/polls/`, `/users/`) comes
-   from the right-hand side of that macro. Discussion
-   [#3770](https://github.com/kent8192/reinhardt-web/discussions/3770)
-   and [#3918](https://github.com/kent8192/reinhardt-web/discussions/3918)
-   replaced the older string-literal form with this typed identifier.
-3. **The aggregator auto-mounts everything via `inventory`.** Once an
-   app's `urls/server_urls.rs::server_url_patterns()` carries the
-   attribute, `src/config/urls.rs` does not need any explicit
-   `.mount("/polls/", ...)` call — the framework collects every
-   registered router on its own.
+1. **The module names are stable.** `server_urls` compiles only on native,
+   `client_router` compiles only on wasm, and the parent `urls.rs` exists
+   on both targets.
+2. **Client paths are declared next to the app UI.** The polls client
+   router imports page factories from `src/client/pages.rs`, and those
+   factories call the app-local components in
+   `src/apps/polls/client/components.rs`.
+3. **Project-level aggregation happens in `src/config/urls.rs`.** Native
+   data handlers are registered as `#[server_fn]` markers, while the
+   wasm branch stitches app-local `client_url_patterns()` routers into a
+   single `UnifiedRouter`.
 
 The same shape repeats for the `users` app. Its server-side router is
 intentionally empty (auth is exposed via server functions, not HTTP
@@ -263,15 +231,10 @@ through the same discovery mechanism:
 //!
 //! Defines no HTTP endpoints of its own — authentication is exposed via
 //! server functions registered in `crate::config::urls::routes`. This empty
-//! aggregator exists so the app label `users` is reachable through the
-//! same `#[url_patterns]` discovery path as `polls`.
+//! aggregator exists for discoverability and symmetry with `polls`.
 
 use reinhardt::ServerRouter;
-use reinhardt::url_patterns;
 
-use crate::config::apps::InstalledApp;
-
-#[url_patterns(InstalledApp::users, mode = server)]
 pub fn server_url_patterns() -> ServerRouter {
 	ServerRouter::new()
 }
@@ -914,211 +877,66 @@ That's the entire authentication surface. The nav bar built in Part 4
 calls `current_user()` to decide whether to show "Sign in" or
 "Sign out".
 
-## Server-Rendered REST Endpoints (`apps/polls/views.rs`)
+## Empty Server Routers (`urls/server_urls.rs`)
 
-The same business logic is also exposed as classic JSON endpoints so
-that non-WASM consumers (a `curl` user, a separate frontend, an
-integration test) can interact with the application without going
-through the typed RPC stubs. Each handler uses the HTTP-method attributes
-(`#[get]` / `#[post]`), takes typed extractors (`Path<i64>`,
-`Json<VoteRequest>`), and returns a `Response` with a JSON body.
-
-```rust
-use json::json;
-use reinhardt::Model;
-use reinhardt::StatusCode;
-use reinhardt::core::serde::json;
-use reinhardt::db::orm::{FilterOperator, FilterValue};
-use reinhardt::http::ViewResult;
-use reinhardt::{Json, Path};
-use reinhardt::{Response, get, post};
-use serde::Deserialize;
-
-use super::models::{Choice, Question};
-
-/// Request body for voting
-#[derive(Debug, Deserialize)]
-pub struct VoteRequest {
-	pub choice_id: i64,
-}
-
-/// Index view - List all polls
-#[get("/", name = "polls_index")]
-pub async fn index() -> ViewResult<Response> {
-	let manager = Question::objects();
-	let questions = manager.all().all().await?;
-	let latest_questions: Vec<_> = questions.into_iter().take(5).collect();
-
-	let response_data = json!({
-		"message": "Polls index",
-		"polls": latest_questions
-	});
-
-	let json = json::to_string(&response_data)?;
-	Ok(Response::new(StatusCode::OK)
-		.with_header("Content-Type", "application/json")
-		.with_body(json))
-}
-
-/// Detail view - Show a specific poll
-///
-/// GET /polls/{question_id}/
-#[get("/{question_id}/", name = "polls_detail")]
-pub async fn detail(Path(question_id): Path<i64>) -> ViewResult<Response> {
-	let question_manager = Question::objects();
-	let question = question_manager
-		.get(question_id)
-		.first()
-		.await?
-		.ok_or("Question not found")?;
-
-	let choice_manager = Choice::objects();
-	let choices = choice_manager
-		.filter(
-			Choice::field_question_id(),
-			FilterOperator::Eq,
-			FilterValue::Int(question_id),
-		)
-		.all()
-		.await?;
-
-	let response_data = json!({
-		"question": question,
-		"choices": choices
-	});
-
-	let json = json::to_string(&response_data)?;
-	Ok(Response::new(StatusCode::OK)
-		.with_header("Content-Type", "application/json")
-		.with_body(json))
-}
-```
-
-The `results` and `vote` handlers continue the same pattern. Note that
-`vote` accepts a small local `VoteRequest` DTO (declared in `views.rs`
-itself, not the shared one) so that the REST endpoint's wire format does
-not need a `question_id` field in the body — it comes from the path:
-
-```rust
-/// Vote view - Handle voting
-///
-/// POST /polls/{question_id}/vote/
-#[post("/{question_id}/vote/", name = "polls_vote")]
-pub async fn vote(
-	Path(question_id): Path<i64>,
-	Json(vote_req): Json<VoteRequest>,
-) -> ViewResult<Response> {
-	let choice_id = vote_req.choice_id;
-
-	let choice_manager = Choice::objects();
-	let mut choice = choice_manager
-		.get(choice_id)
-		.first()
-		.await?
-		.ok_or("Choice not found")?;
-
-	if *choice.question_id() != question_id {
-		return Err("Choice does not belong to this question".into());
-	}
-
-	// `Choice::vote()` is `async fn` and persists the row internally via
-	// `self.save().await`, so a separate `manager.update(&choice)` call
-	// is not needed.
-	choice.vote().await?;
-	let updated_choice = choice;
-
-	let response_data = json!({
-		"message": "Vote recorded successfully",
-		"question_id": question_id,
-		"choice_id": choice_id,
-		"choice_text": updated_choice.choice_text(),
-		"new_vote_count": updated_choice.votes()
-	});
-
-	let json = json::to_string(&response_data)?;
-	Ok(Response::new(StatusCode::OK)
-		.with_header("Content-Type", "application/json")
-		.with_body(json))
-}
-```
-
-`#[get(... , name = "polls_index")]` registers the path under a stable
-name. The server-router aggregator picks all four handlers up:
+The basis example does not expose classic `#[get]` / `#[post]` JSON views
+from the polls app anymore. Every dynamic data path is a typed
+`#[server_fn]` registered in `src/config/urls.rs`. The polls server router
+therefore stays explicit but empty:
 
 ```rust
 //! Server-side URL configuration for the polls application.
 //!
-//! The `#[url_patterns]` macro auto-registers this router via inventory and
-//! derives the path prefix from `InstalledApp::polls` (= `"polls"`), so the
-//! aggregating `config/urls.rs` does not need an explicit `.mount("/polls/", ...)`
-//! call.
+//! The polls app exposes every dynamic data path through `#[server_fn]`
+//! (registered in `src/config/urls.rs`), so this router is intentionally
+//! empty — there are no native-only `#[get]/#[post]` views to mount. The
+//! function is kept around because:
+//!
+//! 1. **Symmetry with `users`** — every app in the tutorial declares both
+//!    a `client_router` and a `server_urls` submodule, even when the
+//!    server side has nothing to register today. New polls-app HTTP
+//!    endpoints (a CSV export, an RSS feed, …) drop into this function
+//!    without touching the aggregator.
+//! 2. **Discoverability** — readers grepping for the per-app server
+//!    surface find this file and a clear "no endpoints today" rationale
+//!    instead of guessing whether the omission is intentional.
 
 use reinhardt::ServerRouter;
-use reinhardt::url_patterns;
 
-use crate::apps::polls::views;
-use crate::config::apps::InstalledApp;
-
-#[url_patterns(InstalledApp::polls, mode = server)]
 pub fn server_url_patterns() -> ServerRouter {
 	ServerRouter::new()
-		.endpoint(views::index)
-		.endpoint(views::detail)
-		.endpoint(views::results)
-		.endpoint(views::vote)
 }
 ```
 
-The `users` app has no REST endpoints in this tutorial, so its
-`server_url_patterns()` returns an empty `ServerRouter::new()` as shown
-earlier.
+The `users` app follows the same pattern: authentication is exposed via
+server functions (`login`, `register`, `logout`, `current_user`), so
+`apps/users/urls/server_urls.rs` also returns `ServerRouter::new()`.
 
 ## Registering Everything in `src/config/urls.rs`
 
 The project-level `routes()` function plays three roles:
 
 1. Registers every server function via `.server(|s| s.server_fn(...))`.
-   Per-app `ServerRouter`s are auto-mounted by `#[url_patterns(...,
-   mode = server)]`, so this file does not call `.mount("/polls/", ...)`
-   for them. On wasm, it also aggregates every app's
-   `client_url_patterns()` so the `#[routes]`-emitted
-   `ClientRouterRegistration` carries the full SPA route table (the
-   `client_inventory` flag described below).
+   The per-app `server_urls.rs` files are empty today, so this file does
+   not mount `/polls/` or `/users/` native HTTP endpoints. On wasm, it
+   aggregates every app's `client_url_patterns()` so the SPA launcher can
+   collect the full route table.
 2. On native, mounts the admin panel at `/admin/` (and its static
    assets at `/static/admin/`) using `admin_routes_with_di`, which also
    wires the `AdminDatabase` DI registration.
 3. On native, applies the `SessionMiddleware` with a two-week TTL, `Lax`
    SameSite, `httpOnly`, and path `/`.
 
-The attribute is `#[routes(standalone, client_inventory)]`. Both flags
-are unconditional:
-
-- `client_inventory` (#4453) drops the macro's `native_only` cfg gate on
-  the user function body and emits
-  `inventory::submit!(ClientRouterRegistration)` on
-  `wasm32-unknown-unknown`. The body therefore MUST compile on both
-  targets — `.server(|s| ...)` (where `s` is a no-op `ServerRouter` on
-  wasm) and the `#[cfg(wasm)]` aggregation block below ensure that.
-- `standalone` suppresses generation of `crate::urls::url_prelude` and
-  the `ResolvedUrls::<app>()` accessor methods. This project does not
-  consume `installed_apps!`-generated `client_url_resolvers` modules
-  from a top-level `urls` directory — per-app
-  `#[url_patterns(..., mode = client)]` declarations live in
-  `apps/<app>/urls/client_router.rs` instead, and SPA URL resolution
-  flows through `register_client_reverser` (called inside
-  `collect_client_router_from_inventory`).
+The attribute is plain `#[routes]`. The function body still compiles on
+both targets: the native branch registers server functions, admin, and
+session middleware, while the wasm branch aggregates each app's client
+router so `ClientLauncher::register_routes_from_inventory()` has a
+complete SPA route table.
 
 ```rust
 //! URL configuration for examples-tutorial-basis project
 //!
-//! The `routes` function defines the top-level project router. Per-app server
-//! routes are auto-mounted via `#[url_patterns(InstalledApp::<app>, mode = server)]`,
-//! and per-app client routes are aggregated through the `.client(|c| ...)`
-//! closure below so that the `#[routes]` macro's WASM-side
-//! `inventory::submit!(ClientRouterRegistration)` emission carries every
-//! SPA route. `ClientLauncher::register_routes_from_inventory()` in
-//! `client/lib.rs` then merges those entries and installs them as the SPA
-//! route table.
+//! The `routes` function defines the top-level project router.
 //!
 //! Middleware stack (server-only):
 //! 1. `SessionMiddleware` — cookie-based session management used by the
@@ -1162,35 +980,13 @@ fn create_session_middleware() -> SessionMiddleware {
 
 /// Build the top-level project router.
 ///
-/// `#[routes(standalone, client_inventory)]` opts into the new cross-target
-/// convention introduced in #4453 without enabling per-app URL-resolver
-/// generation (this project does not consume `installed_apps!`-generated
-/// `client_url_resolvers` modules from a top-level `urls` directory; the
-/// per-app `#[url_patterns(..., mode = client)]` declarations live in
-/// `apps/<app>/urls/client_router.rs` instead). The flags compose:
+/// The `#[routes]` macro registers this function for automatic discovery
+/// via `inventory::submit!(UrlPatternsRegistration)` and emits a linker
+/// marker to enforce single-usage.
 ///
-/// - `client_inventory` (#4453): drops the macro's `native_only` cfg gate
-///   from the user function body and emits
-///   `inventory::submit!(ClientRouterRegistration)` on
-///   `wasm32-unknown-unknown`. The body below MUST therefore compile on
-///   both targets — `.server(|s| ...)` and the `#[cfg(wasm)]` aggregation
-///   block ensure that.
-/// - `standalone`: suppresses generation of `crate::urls::url_prelude` and
-///   the `ResolvedUrls::<app>()` accessor methods. The project still
-///   resolves SPA URLs via `register_client_reverser` (called inside
-///   `collect_client_router_from_inventory`).
-///
-/// On native, the macro emits `inventory::submit!(UrlPatternsRegistration)`
-/// for the `ServerRouter` carried by the returned `UnifiedRouter`. On wasm
-/// it emits the parallel `ClientRouterRegistration`, and
-/// `ClientLauncher::register_routes_from_inventory()` in
-/// `client/lib.rs` consumes those entries to install the SPA route table.
-///
-/// Per-app server routers are still discovered through their own
-/// `#[url_patterns(InstalledApp::<app>, mode = server)]` registrations; this
-/// function only registers the project-level server functions, the admin
-/// panel, and the session middleware on top of them.
-#[routes(standalone, client_inventory)]
+/// This function registers the project-level server functions, the admin
+/// panel, and the session middleware.
+#[routes]
 pub fn routes() -> UnifiedRouter {
 	let router = UnifiedRouter::new().server(|s| {
 		// On wasm the `s` parameter is a no-op `ServerRouter` and every
@@ -1223,24 +1019,17 @@ pub fn routes() -> UnifiedRouter {
 		}
 	});
 
-	// Aggregate every app's client routes on wasm so the macro-emitted
-	// `ClientRouterRegistration` carries the full SPA route table.
+	// Aggregate every app's client routes on wasm so the SPA route table
+	// carries every app's client-side URL patterns.
 	//
 	// Each `client_url_patterns()` already namespaces its routes
-	// (`polls:` / `users:`) via its own `#[url_patterns(..., mode = client)]`
-	// registration. We compose them by wrapping each in a single-purpose
+	// (`polls:` / `users:`). We compose them by wrapping each in a single-purpose
 	// `UnifiedRouter` and stitching with `mount_unified`, which uses
-	// `ClientRouter::merge` internally (still `pub(crate)` upstream —
-	// tracked in #4442). When #4442 ships, this collapses to
-	// `.client(|c| c.merge(polls).merge(users))`.
+	// `ClientRouter::merge` internally.
 	//
-	// The aggregation is `#[cfg(wasm)]` because:
-	// - The per-app `client_router` submodules are themselves wasm-only
-	//   (they import `crate::client::pages::*`, which is wasm-only).
-	// - On native, `#[routes(standalone, client_inventory)]` consumes the
-	//   server portion of the returned `UnifiedRouter` via
-	//   `UrlPatternsRegistration`; the `ClientRouter` field is unused on
-	//   the native side.
+	// The aggregation is `#[cfg(wasm)]` because the per-app `client_router`
+	// submodules are themselves wasm-only (they import `crate::client::pages::*`,
+	// which is wasm-only).
 	#[cfg(wasm)]
 	let router = router
 		.mount_unified(
@@ -1290,96 +1079,122 @@ Three registration conventions are worth memorising:
 - The import list is in snake_case and refers to the function names, not
   to a separate type — `use ... submit_vote;` then `submit_vote::marker`.
 - The wasm-side aggregation lives in the `routes()` body itself, not in
-  `client/lib.rs`. Because `#[routes(..., client_inventory)]` emits a
-  `ClientRouterRegistration` from this function, every per-app
-  `client_url_patterns()` it stitches in becomes part of the SPA route
-  table that `ClientLauncher::register_routes_from_inventory()` consumes.
+  `client/lib.rs`. Every per-app `client_url_patterns()` it stitches in
+  becomes part of the SPA route table that
+  `ClientLauncher::register_routes_from_inventory()` consumes.
 
 ## Client Routing in `urls/client_router.rs`
 
 The client-side router maps URLs to **page factories** that return
 `Page` values. The factories live in `src/client/pages.rs`; the router
-just plumbs them in. Each route is registered with a stable name so that
-`ResolvedUrls::from_global().resolve_client_url("polls:detail", &[("question_id", "1")])`
-returns the right path.
+just plumbs them in. Each route is registered with a stable name, and
+the app-local `urls` helper functions return the concrete paths used by
+components.
 
 ```rust
 //! Client-side routing for the polls SPA.
 //!
-//! Routes are declared with `#[url_patterns(InstalledApp::polls, mode = client)]`,
-//! which auto-registers the router via inventory and applies the `polls`
-//! namespace to every named route (so the route name passed to `named_route`
-//! is reachable as `polls:<name>` through `ResolvedUrls`). Each route is
-//! registered with a stable name so that page components can resolve URLs
-//! through `ResolvedUrls::resolve_client_url(...)` instead of formatting
+//! The router applies the `polls` namespace to every named route.
+//! Each route is registered with a stable name so that page components
+//! can resolve URLs through the URL reverser instead of formatting
 //! path strings inline.
-
-use reinhardt::ClientPath;
-use reinhardt::ClientRouter;
-use reinhardt::pages::component::Page;
-use reinhardt::pages::page;
-use reinhardt::url_patterns;
 
 use crate::client::pages::{
 	choice_delete_page, choice_edit_page, choice_new_page, index_page, polls_detail_page,
 	polls_results_page, question_delete_page, question_edit_page, question_new_page,
 };
-use crate::config::apps::InstalledApp;
+use reinhardt::ClientPath;
+use reinhardt::ClientRouter;
+use reinhardt::pages::component::Page;
+use reinhardt::pages::page;
 
-#[url_patterns(InstalledApp::polls, mode = client)]
 pub fn client_url_patterns() -> ClientRouter {
 	ClientRouter::new()
-		.named_route("index", "/", index_page)
-		.named_route("question_new", "/polls/new/", question_new_page)
-		.named_route_path(
+		.route("index", "/", index_page)
+		.route("question_new", "/polls/new/", question_new_page)
+		.route_path(
 			"choice_new",
 			"/polls/{question_id}/choices/new/",
 			|ClientPath(question_id): ClientPath<i64>| choice_new_page(question_id),
 		)
-		.named_route_path(
+		.route_path(
 			"choice_edit",
 			"/polls/{question_id}/choices/{choice_id}/edit/",
 			|ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
 				choice_edit_page(question_id, choice_id)
 			},
 		)
-		.named_route_path(
+		.route_path(
 			"choice_delete",
 			"/polls/{question_id}/choices/{choice_id}/delete/",
 			|ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
 				choice_delete_page(question_id, choice_id)
 			},
 		)
-		.named_route_path(
+		.route_path(
 			"detail",
 			"/polls/{question_id}/",
 			|ClientPath(question_id): ClientPath<i64>| polls_detail_page(question_id),
 		)
-		.named_route_path(
+		.route_path(
 			"question_edit",
 			"/polls/{question_id}/edit/",
 			|ClientPath(question_id): ClientPath<i64>| question_edit_page(question_id),
 		)
-		.named_route_path(
+		.route_path(
 			"question_delete",
 			"/polls/{question_id}/delete/",
 			|ClientPath(question_id): ClientPath<i64>| question_delete_page(question_id),
 		)
-		.named_route_path(
+		.route_path(
 			"results",
 			"/polls/{question_id}/results/",
 			|ClientPath(question_id): ClientPath<i64>| polls_results_page(question_id),
 		)
 		.not_found(|| error_page("Page not found"))
 }
+pub mod urls {
+	pub fn index() -> String {
+		"/".to_string()
+	}
+
+	pub fn detail(question_id: i64) -> String {
+		format!("/polls/{question_id}/")
+	}
+
+	pub fn results(question_id: i64) -> String {
+		format!("/polls/{question_id}/results/")
+	}
+
+	pub fn question_new() -> String {
+		"/polls/new/".to_string()
+	}
+
+	pub fn question_edit(question_id: i64) -> String {
+		format!("/polls/{question_id}/edit/")
+	}
+
+	pub fn question_delete(question_id: i64) -> String {
+		format!("/polls/{question_id}/delete/")
+	}
+
+	pub fn choice_new(question_id: i64) -> String {
+		format!("/polls/{question_id}/choices/new/")
+	}
+
+	pub fn choice_edit(question_id: i64, choice_id: i64) -> String {
+		format!("/polls/{question_id}/choices/{choice_id}/edit/")
+	}
+
+	pub fn choice_delete(question_id: i64, choice_id: i64) -> String {
+		format!("/polls/{question_id}/choices/{choice_id}/delete/")
+	}
+}
 
 /// Error page used as the `not_found` fallback.
 fn error_page(message: &str) -> Page {
 	let message = message.to_string();
-	// `urls::index()` is the macro-emitted typed helper (issue #4656),
-	// sibling to `client_url_patterns` at this module's parent scope.
-	let home_href = urls::index();
-	page!(|message: String, home_href: String| {
+	page!(|message: String| {
 		div {
 			class: "layout-page",
 			div {
@@ -1387,28 +1202,27 @@ fn error_page(message: &str) -> Page {
 				{ message }
 			}
 			a {
-				href: home_href,
+				href: "/",
 				class: "btn-primary",
 				"Back to Home"
 			}
 		}
-	})(message, home_href)
+	})(message)
 }
 ```
 
-`ClientRouter` exposes three registration helpers that you will use over
+`ClientRouter` exposes route registration helpers that you will use over
 and over:
 
-- **`named_route(name, path, page_factory)`** — for parameter-less
+- **`route(name, path, page_factory)`** — for parameter-less
   routes. `page_factory` is a `Fn() -> Page`.
-- **`named_route_path(name, path, page_factory)`** — for any number of
+- **`route_path(name, path, page_factory)`** — for any number of
   typed path parameters from 1 to 8. The factory takes one
   `ClientPath<T>` per parameter, and the arity is inferred from the
   closure signature via the sealed `Handler<Args>` trait.
 
-The `polls:` namespace in `ResolvedUrls` lookups comes from the
-`InstalledApp::polls` argument to `#[url_patterns]`; you do not write it
-into the call to `named_route` yourself.
+The app-local `urls` module is a small typed helper layer used by the
+components when they need an `href`.
 
 The `users` app's client router is a much shorter version of the same
 file. Three login/logout/signup pages, no path parameters, namespace
@@ -1417,114 +1231,58 @@ file. Three login/logout/signup pages, no path parameters, namespace
 ```rust
 //! Client-side routing for the users application (login/logout pages).
 //!
-//! Routes are auto-prefixed with `/users/` from `InstalledApp::users`, so the
-//! relative path `/login/` resolves to `/users/login/` at runtime. Each
-//! route is registered with a stable name (`users:login`, `users:logout`)
-//! so callers can resolve URLs via `ResolvedUrls::resolve_client_url(...)`.
+//! Each route is registered with a stable name (`users:login`,
+//! `users:logout`) so callers can resolve URLs via the URL reverser.
 
 use reinhardt::ClientRouter;
-use reinhardt::url_patterns;
 
 use crate::client::pages::{login_page, logout_page, signup_page};
-use crate::config::apps::InstalledApp;
 
-#[url_patterns(InstalledApp::users, mode = client)]
 pub fn client_url_patterns() -> ClientRouter {
 	ClientRouter::new()
-		.named_route("login", "/login/", login_page)
-		.named_route("logout", "/logout/", logout_page)
-		.named_route("signup", "/signup/", signup_page)
+		.route("login", "/login/", login_page)
+		.route("logout", "/logout/", logout_page)
+		.route("signup", "/signup/", signup_page)
+}
+
+pub mod urls {
+	pub fn login() -> String {
+		"/login/".to_string()
+	}
+
+	pub fn logout() -> String {
+		"/logout/".to_string()
+	}
+
+	pub fn signup() -> String {
+		"/signup/".to_string()
+	}
 }
 ```
 
-### Typed URL helpers in `src/client/links.rs`
-
-Components never construct URLs by hand. Every navigation goes through a
-small helper in `src/client/links.rs` that delegates to
-`ResolvedUrls::from_global().resolve_client_url(...)`. The benefit is
-that if a route ever moves — say, `polls:detail` changes from
-`/polls/{question_id}/` to `/p/{question_id}/` — the components do not
-need to be updated; only the route definition does.
-
-```rust
-//! Typed URL helpers backed by `ResolvedUrls`.
-
-use reinhardt::ClientUrlResolver;
-
-use crate::config::urls::ResolvedUrls;
-
-fn urls() -> ResolvedUrls {
-	ResolvedUrls::from_global()
-}
-
-fn resolve(name: &str, params: &[(&str, &str)]) -> String {
-	urls().resolve_client_url(name, params)
-}
-
-// ---- polls ---------------------------------------------------------------
-
-/// `/` — polls index.
-pub fn polls_index() -> String {
-	resolve("polls:index", &[])
-}
-
-/// `/polls/new/` — new-question form.
-pub fn question_new() -> String {
-	resolve("polls:question_new", &[])
-}
-
-/// `/polls/{question_id}/` — poll detail / voting page.
-pub fn poll_detail(question_id: i64) -> String {
-	resolve("polls:detail", &[("question_id", &question_id.to_string())])
-}
-
-/// `/polls/{question_id}/results/` — voting results.
-pub fn poll_results(question_id: i64) -> String {
-	resolve(
-		"polls:results",
-		&[("question_id", &question_id.to_string())],
-	)
-}
-
-// ... and so on for question_edit, question_delete, choice_new,
-//     choice_edit, choice_delete, login, logout, signup.
-```
-
-The full file declares one helper per registered route, with a doc
-comment that shows the expanded path. This is what Part 4 will use when
-the polls components need an `href` for navigation.
+Each app keeps these tiny `urls` helpers next to its router. That keeps
+navigation helpers app-local instead of centralizing them in a separate
+`src/client/links.rs` file.
 
 ## Bootstrapping the SPA in `src/client/lib.rs`
 
-With `#[routes(..., client_inventory)]` carrying every app's
-`ClientRouter` into the macro-emitted `ClientRouterRegistration`, the
+With `src/config/urls.rs` aggregating every app's client router, the
 WASM entry point collapses to three lines.
-`ClientLauncher::register_routes_from_inventory()` pulls each
-registration out of `inventory`, merges them into a single SPA route
-table, installs the project-level client reverser (so
-`ResolvedUrls::from_global()` lookups resolve in components and the nav
-bar), and mounts the result on `#root`:
+`ClientLauncher::register_routes_from_inventory()` pulls the registered
+route table out of `inventory`, merges it into a single SPA router, and
+mounts the result on `#root`:
 
 ```rust
 //! WASM SPA entry point.
 //!
-//! The `#[routes]`-annotated function in
-//! [`crate::config::urls::routes`] aggregates every app's
-//! `client_url_patterns()` through `UnifiedRouter::mount_unified` and the
-//! macro submits the resulting `ClientRouter` into `inventory` at compile
-//! time as a `ClientRouterRegistration`.
-//!
-//! [`ClientLauncher::register_routes_from_inventory`] consumes those
-//! registrations at launch time, merges them into a single SPA route
-//! table, registers the project-level client reverser so
-//! `ResolvedUrls::from_global()` lookups resolve in components and the
-//! nav bar, and installs the router as the SPA mount on `#root`. Refs
-//! #4453.
+//! [`ClientLauncher::register_routes_from_inventory`] consumes the
+//! `#[routes]`-registered router at launch time and installs the SPA
+//! route table on `#root`.
 
 use reinhardt::pages::ClientLauncher;
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen(start)]
+#[cfg_attr(not(feature = "msw"), wasm_bindgen(start))]
 pub fn main() -> Result<(), JsValue> {
 	ClientLauncher::new("#root")
 		.register_routes_from_inventory()
@@ -1544,25 +1302,20 @@ tutorials and snippets still reference them:
   import path mentions a duplicate history submodule any more — the
   bare `reinhardt::pages::ClientLauncher` import shown above is the
   only routing import this file ever needs.
-- [reinhardt-web#4453](https://github.com/kent8192/reinhardt-web/issues/4453)
-  is what made the file this short in the first place: client routers
-  are now discovered through `inventory` (via the `client_inventory`
-  flag on `#[routes]`) instead of being stitched together with a
-  hand-written `build_spa_router()` helper.
+- Client routers are now discovered through `inventory` instead of being
+  stitched together with a hand-written `build_spa_router()` helper.
 
 If you read older Reinhardt code, you may see a longer
-`client/lib.rs` that used `router_client(|| { … })` with a manual
-`UnifiedRouter::mount_unified` + `into_client` helper and an explicit
-`register_client_reverser(router.to_reverser())` call. That is the
-pre-#4453 shape; the body of `routes()` in
-`src/config/urls.rs` now does that aggregation, and
-`register_routes_from_inventory()` handles the reverser implicitly.
+`client/lib.rs` that used `router_client(|| { … })` with manual router
+assembly. That is the older shape; the body of `routes()` in
+`src/config/urls.rs` now does the app-router aggregation.
 
 ## Page Factories in `src/client/pages.rs`
 
 `pages.rs` is the bridge between the client router and the components
 that Part 4 will define. Each factory wraps a body component (defined in
-`src/client/components/polls.rs` or `users.rs`) in `with_nav(...)` from
+`src/apps/polls/client/components.rs` or
+`src/apps/users/client/components.rs`) in `with_nav(...)` from
 `client::components::nav`, so every routed page gets the same header
 without each component re-implementing it.
 
@@ -1574,7 +1327,7 @@ without each component re-implementing it.
 //!
 //! The shared site navigation (`nav_bar`) is composed at this layer so every
 //! routed page receives the same header without each component reimplementing
-//! it. Body components in `client::components::polls` / `::users` stay focused
+//! it. Body components in `apps::<app>::client::components` stay focused
 //! on page-specific markup.
 
 use reinhardt::pages::component::Page;
@@ -1583,22 +1336,26 @@ use crate::client::components::nav::with_nav;
 
 /// Index page - List all polls
 pub fn index_page() -> Page {
-	with_nav(crate::client::components::polls::polls_index())
+	with_nav(crate::apps::polls::client::components::polls_index())
 }
 
 /// Poll detail page - Show question and voting form
 pub fn polls_detail_page(question_id: i64) -> Page {
-	with_nav(crate::client::components::polls::polls_detail(question_id))
+	with_nav(crate::apps::polls::client::components::polls_detail(
+		question_id,
+	))
 }
 
 /// Poll results page - Show voting results
 pub fn polls_results_page(question_id: i64) -> Page {
-	with_nav(crate::client::components::polls::polls_results(question_id))
+	with_nav(crate::apps::polls::client::components::polls_results(
+		question_id,
+	))
 }
 
 /// New question page - Create a new poll question
 pub fn question_new_page() -> Page {
-	with_nav(crate::client::components::polls::question_new())
+	with_nav(crate::apps::polls::client::components::question_new())
 }
 
 // ... question_edit_page, question_delete_page, choice_new_page,
@@ -1770,35 +1527,27 @@ boots. Part 6 unpacks the static-asset pipeline end to end.
 
 ## Verifying What You've Built
 
-You can run the project right now and exercise both halves of the
-routing surface from the command line:
+You can run the project right now and inspect the registered routing
+surface from the command line:
 
 ```bash
 # 1. Generate + apply migrations and start the dev server (one shot).
 cargo make dev
 ```
 
-In another terminal:
-
 ```bash
-# 2. Hit the REST endpoint directly.
-curl http://127.0.0.1:8000/polls/
-curl http://127.0.0.1:8000/polls/1/
-
-# 3. Vote via the REST endpoint.
-curl -X POST http://127.0.0.1:8000/polls/1/vote/ \
-     -H 'Content-Type: application/json' \
-     -d '{"choice_id": 1}'
+# 2. Inspect registered server functions, admin routes, and client routes.
+cargo make showurls
 ```
 
-For the typed-RPC half, the WASM client will exercise every server
-function as part of normal usage once Part 4 lands. Until then, the
-`tests/integration.rs` and `tests/wasm/polls_mock_test.rs` files (Part
-5) drive the same code paths directly.
+The WASM client will exercise every server function as part of normal
+usage once Part 4 lands. Until then, the `tests/integration.rs` and
+`tests/wasm/polls_mock_test.rs` files (Part 5) drive the same code paths
+directly.
 
 `cargo make showurls` is a useful command for sanity-checking what got
-registered — every route declared via `#[url_patterns]`, every server
-function listed in `routes()`, and every admin path mounted by
+registered — every server function listed in `routes()`, every client
+route aggregated from `client_url_patterns()`, and every admin path mounted by
 `admin_routes_with_di` shows up there.
 
 ## Summary
@@ -1814,10 +1563,8 @@ the polling application:
   script runs.
 - **Per-app `urls/` directory module.** `src/apps/<app>/urls.rs` gates
   `server_urls` (`#[cfg(native)]`) and `client_router` (`#[cfg(wasm)]`);
-  each submodule's `server_url_patterns` / `client_url_patterns`
-  function carries
-  `#[url_patterns(InstalledApp::<app>, mode = server|client|unified)]`
-  and is auto-mounted via inventory.
+  `server_url_patterns()` is explicit and empty today, while
+  `client_url_patterns()` returns the app-local `ClientRouter`.
 - **Typed RPC server functions.** Every reactive mutation the WASM
   client will call lives in `src/apps/<app>/server_fn.rs`. The DI
   container injects `DatabaseConnection`, `SessionData`,
@@ -1828,30 +1575,19 @@ the polling application:
   in `apps::polls::di`; `atomic(&db, || async { … })` guards
   read-modify-write; the trailing `_csrf_token: String` parameter is
   verified by middleware before the handler runs.
-- **Server-rendered REST endpoints.** `src/apps/polls/views.rs` exposes
-  the same business logic over plain JSON for non-WASM consumers; the
-  handlers use `Path<T>`, `Json<T>`, and return a `Response` with an
-  explicit content type.
 - **Project-level glue.** `src/config/urls.rs` carries
-  `#[routes(standalone, client_inventory)]` so the macro emits both
-  `UrlPatternsRegistration` (native) and `ClientRouterRegistration`
-  (wasm) into `inventory`. The function registers every server function
+  `#[routes]`. The function registers every server function
   with `.server(|s| s.server_fn(name::marker))`, aggregates every app's
   `client_url_patterns()` via `mount_unified` on wasm, mounts the admin
   panel at `/admin/` via `admin_routes_with_di`, and applies
   `SessionMiddleware` with a two-week TTL and Lax SameSite.
 - **Client routing and link resolution.** Each app's
   `urls/client_router.rs` registers routes by stable name through
-  `named_route` / `named_route_path` (the latter covers every arity
-  1..=8 via the sealed `Handler<Args>` trait);
-  `src/client/links.rs` wraps every `ResolvedUrls::resolve_client_url`
-  lookup so components never construct URLs by hand.
+  `route` / `route_path` and exposes a small app-local `urls` helper
+  module for component `href` values.
 - **SPA bootstrap.** `src/client/lib.rs` collapses to
   `ClientLauncher::new("#root").register_routes_from_inventory().launch()`
-  thanks to `client_inventory`; the launcher merges every
-  `ClientRouterRegistration` submitted by `routes()`, installs the
-  project-level reverser so `ResolvedUrls::from_global()` works, and
-  mounts the SPA on `#root`.
+  and mounts the collected SPA router on `#root`.
 - **Page factories.** `src/client/pages.rs` wraps each body component in
   `with_nav(...)` so every routed page shares the same header — the
   body components themselves are the subject of Part 4.

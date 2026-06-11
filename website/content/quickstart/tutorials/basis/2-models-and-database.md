@@ -23,7 +23,7 @@ flowchart LR
     PollsApp["src/apps/polls/models.rs<br/>Question, Choice"] -->|"#[model] schema"| Migrations["migrations/<br/>(generated)"]
     UsersApp["src/apps/users/models.rs<br/>User + AuthUserManager"] -->|"#[model] schema"| Migrations
     Migrations -->|cargo make migrate| DB
-    AppsConfig["src/config/apps.rs<br/>installed_apps!"] -->|InstalledApp enum| PollsApp
+    AppsConfig["src/config/apps.rs<br/>installed_apps!"] -->|app labels| PollsApp
     AppsConfig --> UsersApp
 ```
 
@@ -56,7 +56,7 @@ Edit `src/apps/polls.rs`:
 //!
 //! This app demonstrates:
 //! - Database models (Question, Choice)
-//! - Views and URL routing
+//! - Server functions and URL routing
 //! - Forms and generic views
 //! - Admin panel integration
 
@@ -65,14 +65,16 @@ use reinhardt::app_config;
 
 #[cfg(native)]
 pub mod admin;
+#[cfg(wasm)]
+pub mod client;
+#[cfg(native)]
+pub mod di;
 #[cfg(native)]
 pub mod models;
 #[cfg(native)]
 pub mod serializers;
 pub mod server_fn;
 pub mod urls;
-#[cfg(native)]
-pub mod views;
 
 #[cfg(native)]
 #[app_config(name = "polls", label = "polls")]
@@ -81,14 +83,15 @@ pub struct PollsConfig;
 
 A few things to notice before we move on to the model file:
 
-- `admin`, `models`, `serializers`, and `views` are gated on `#[cfg(native)]`. They depend on database access, the validator crate, admin macros, or HTTP plumbing that has no place in the WASM bundle. The browser never sees these files.
+- `admin`, `di`, `models`, and `serializers` are gated on `#[cfg(native)]`. They depend on database access, the validator crate, admin macros, or server-side DI plumbing that has no place in the WASM bundle. The browser never sees these files.
+- `client` is gated on `#[cfg(wasm)]`. It owns the polls app's `page!`, `watch`, and `form!` components instead of putting app-specific UI under the cross-app `src/client/` shell.
 - `server_fn` and `urls` are **not** cfg-gated at this level. Server functions need their typed signatures visible on both targets so the WASM client can generate stubs; the routing module declares cfg-gated submodules of its own (`urls/server_urls.rs` for native, `urls/client_router.rs` for WASM). Splitting the gating across the parent module and the children is what lets the same `urls::` path resolve on both compile targets without duplication.
 - `PollsConfig` is the typed app handle. `#[app_config(name = "polls", label = "polls")]` registers it with the framework so admin pages, migration metadata, and signal dispatch can find the app under the label that matches the right-hand side of `installed_apps! { polls: "polls", ... }`. Without it, `cargo make makemigrations` would not know which app a new model belongs to.
 
-We are creating empty placeholders for `admin.rs`, `serializers.rs`, `server_fn.rs`, `urls.rs`, and `views.rs` for now — Part 3 and Part 7 fill them in. The compiler will complain that those modules are missing once we add `pub mod ...;` lines for them, so create the files now even if they only contain a doc comment:
+We are creating empty placeholders for `admin.rs`, `client.rs`, `di.rs`, `serializers.rs`, `server_fn.rs`, and `urls.rs` for now — Part 3 and Part 7 fill them in. The compiler will complain that those modules are missing once we add `pub mod ...;` lines for them, so create the files now even if they only contain a doc comment:
 
 ```bash
-touch src/apps/polls/{admin,serializers,server_fn,urls,views}.rs
+touch src/apps/polls/{admin,client,di,serializers,server_fn,urls}.rs
 ```
 
 `models.rs` is the one we actually write content into this chapter.
@@ -533,12 +536,12 @@ pub fn get_installed_apps() -> Vec<String> {
 
 `installed_apps!` does two things at once. It is the closest thing the framework has to a Django `INSTALLED_APPS` setting, but it is also a code generator:
 
-- It expands into a `pub enum InstalledApp { polls, users }` — that's where the typed `InstalledApp::polls` and `InstalledApp::users` identifiers come from.
+- It expands into the app label metadata used by migrations, admin registration, and route namespaces.
 - The left-hand side of each entry (`polls:`) is the enum variant name. The right-hand side (`"polls"`) is the **app label** that becomes the URL prefix the framework auto-applies to each app's routers and that matches the `app_label = "polls"` you typed on the model attribute.
 
-Why does this matter for Part 2? Because the typed `InstalledApp::polls` and `InstalledApp::users` values are what Part 3's `#[url_patterns(InstalledApp::polls, mode = server)]` and `#[url_patterns(InstalledApp::polls, mode = client)]` attributes consume. They are the same identifiers wired through both the routing macros and the migration directory layout. Get them right in `installed_apps!` now and the rest of the tutorial follows.
+Why does this matter for Part 2? Because the same app labels are wired through migrations, admin metadata, server-function registration, and client route namespaces. Get them right in `installed_apps!` now and the rest of the tutorial follows.
 
-We don't write `#[url_patterns(...)]` annotations until Part 3 — keep the placeholder `urls.rs` files we created earlier empty for now. This chapter only needs `installed_apps!` to be correct so that `cargo make makemigrations` knows about both apps.
+We don't fill in app-local routers until Part 3 — keep the placeholder `urls.rs` files we created earlier empty for now. This chapter only needs `installed_apps!` to be correct so that `cargo make makemigrations` knows about both apps.
 
 ## Generating and Applying Migrations
 
@@ -584,11 +587,11 @@ If anything looks unexpected, inspect the routing surface and the model registry
 cargo make showurls
 ```
 
-This dumps every URL pattern the framework currently knows about. It will be sparse at this point in the tutorial (the `urls/server_urls.rs` and `urls/client_router.rs` files are still empty), but `cargo make showurls` is the right tool to come back to once Part 3 lands the routers — it confirms that the typed `#[url_patterns(InstalledApp::<app>, mode = ...)]` registration actually picked up your routes.
+This dumps every URL pattern the framework currently knows about. It will be sparse at this point in the tutorial (the `urls/server_urls.rs` and `urls/client_router.rs` files are still empty), but `cargo make showurls` is the right tool to come back to once Part 3 lands the routers and server-function registrations.
 
 ## A Note on `serializers.rs`
 
-We touched `serializers.rs` earlier and left it empty. The example fills it in with a `QuestionSerializer`, `ChoiceSerializer`, and matching response types for the server-rendered REST endpoints in `apps/polls/views.rs` (the `#[get]` / `#[post]` handlers that round out the demo). Server functions don't need `Serializer`s — they hand back plain `Serialize` DTOs from `src/shared/types.rs` — so we leave `serializers.rs` alone in this chapter and come back to it in Part 3 when we wire up the REST view layer alongside the server function layer.
+We touched `serializers.rs` earlier and left it empty. The current example fills it in with `QuestionSerializer`, `ChoiceSerializer`, and matching response types for the ownership-checked question/choice mutation flow. Server functions still hand back shared DTOs from `src/shared/types.rs`, but the serializer structs keep form validation and response mapping close to the polls app. We leave `serializers.rs` alone in this chapter and come back to it in Part 3 when we wire up the server function layer and client routes.
 
 The same goes for `admin.rs`: Part 7 fills in the `#[admin(model, for = Question, ...)]` and `#[admin(model, for = Choice, ...)]` annotations and registers them in `src/config/admin.rs`. We can leave the file empty for now.
 
@@ -598,18 +601,18 @@ You now have the data plane of the tutorial in place: two `polls` models, one `u
 
 In Part 3 we add the read side — `get_questions`, `get_question_detail`, `get_question_results` — as `#[server_fn]` declarations in `src/apps/polls/server_fn.rs`, plus the matching client routes in `src/apps/polls/urls/client_router.rs`. We also wire up the `users` app's `login`, `register`, `logout`, and `current_user` server functions and connect them to the session middleware mounted from `src/config/urls.rs`.
 
-Continue to [Part 3: Server Functions, Views, and URLs](../3-views-and-urls/).
+Continue to [Part 3: Server Functions and URLs](../3-views-and-urls/).
 
 ## Summary
 
 In this chapter you learned:
 
 - How `settings/base.toml`'s `[database]` block selects SQLite for the tutorial without any external server
-- How `src/apps/polls.rs` declares its submodules with `#[cfg(native)]` for `admin` / `models` / `serializers` / `views` while keeping `server_fn` and `urls` available on both compile targets
+- How `src/apps/polls.rs` declares its submodules with `#[cfg(native)]` for `admin` / `di` / `models` / `serializers`, `#[cfg(wasm)]` for app-local `client`, while keeping `server_fn` and `urls` available on both compile targets
 - How `#[model(app_label = ..., table_name = ...)]` plus `#[field(...)]` plus `#[rel(foreign_key, related_name = ...)]` define `Question` and `Choice`, including the rule that `related_name` is required
 - How the `#[model]`-generated typestate `build()` constructor (`Question::build()...finish()`, `Choice::build()...finish()`) keeps call sites stable as the schema grows
 - How `#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]` layers auth traits on top of `#[model]`, and why `manager = false` is the right pick when you have a project-local manager
 - How the `#[user] + #[model]` macro pair auto-generates the `SuperuserInit` impl (plus its `inventory` registration) that makes `cargo run --bin manage createsuperuser` work, and why that path intentionally bypasses the application-side `AuthUserManager` validation
 - How a project-local `AuthUserManager` is registered with the DI container through `#[injectable_factory(scope = "transient")]`, and why the factory form sidesteps the `async-trait` dependency that `#[injectable]` would otherwise force
-- How `installed_apps! { polls: "polls", users: "users" }` generates the typed `InstalledApp::polls` and `InstalledApp::users` identifiers that Part 3 will hand to `#[url_patterns(InstalledApp::<app>, mode = ...)]`
+- How `installed_apps! { polls: "polls", users: "users" }` generates stable app labels used by migrations, admin metadata, and routing
 - How `cargo make makemigrations` + `cargo make migrate` (with `cargo make showurls` as the inspection tool) compile and apply the schema to `db.sqlite3`

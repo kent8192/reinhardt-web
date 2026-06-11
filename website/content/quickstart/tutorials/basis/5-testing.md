@@ -577,7 +577,7 @@ async fn test_polls_index_with_msw_active() {
 }
 ```
 
-`polls_index`, `polls_detail`, and `polls_results` are the exact `page!` components from `src/client/components/polls.rs`. The mock returns a `Vec<QuestionInfo>` the component knows how to render, the test asserts the produced `Page` is a `Page::Element` variant, and that is enough to catch the regressions this layer cares about: a panic in component construction, an MSW handler that fails to register, or a misshapen DTO that does not deserialize.
+`polls_index`, `polls_detail`, and `polls_results` are the exact `page!` components from `src/apps/polls/client/components.rs`. The mock returns a `Vec<QuestionInfo>` the component knows how to render, the test asserts the produced `Page` is a `Page::Element` variant, and that is enough to catch the regressions this layer cares about: a panic in component construction, an MSW handler that fails to register, or a misshapen DTO that does not deserialize.
 
 ## Step 5 — Run the tests with `cargo make`
 
