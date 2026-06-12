@@ -15,7 +15,6 @@ pub mod admin;
 pub mod client;
 #[cfg(native)]
 pub mod di;
-#[cfg(native)]
 pub mod models;
 #[cfg(native)]
 pub mod serializers;

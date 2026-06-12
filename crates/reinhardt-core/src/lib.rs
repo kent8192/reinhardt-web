@@ -87,6 +87,18 @@ pub mod exception;
 /// Flash message storage framework.
 #[cfg(feature = "messages")]
 pub mod messages;
+/// Target-neutral metadata traits emitted by model macros.
+pub mod model_info {
+	/// Minimal model identity needed by generated `{Model}Info` companion types.
+	///
+	/// Unlike the ORM `Model` trait, this trait is available on WASM and only
+	/// exposes the primary-key type required for generated foreign-key `*_id`
+	/// fields.
+	pub trait InfoModel {
+		/// Primary-key type used by generated DTO companion fields.
+		type PrimaryKey;
+	}
+}
 /// Content negotiation for request/response formats.
 #[cfg(feature = "negotiation")]
 pub mod negotiation;

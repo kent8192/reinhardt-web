@@ -28,8 +28,11 @@
 //! `register_superuser_creator` call is required.
 
 use chrono::{DateTime, Utc};
+#[cfg(native)]
 use reinhardt::Argon2Hasher;
+#[cfg(native)]
 use reinhardt::admin::AdminUser;
+#[cfg(native)]
 use reinhardt::macros::user;
 use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -41,7 +44,7 @@ use serde::{Deserialize, Serialize};
 // auto-manager is also gated to `Uuid` / `Option<Uuid>` primary keys
 // (issue #4455), and this model uses `i64` to demonstrate auto-increment
 // integer PKs in the tutorial.
-#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]
+#[cfg_attr(native, user(hasher = Argon2Hasher, username_field = "username", manager = false))]
 #[model(app_label = "users", table_name = "users")]
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -51,22 +54,23 @@ pub struct User {
 	#[field(max_length = 150, unique = true)]
 	pub username: String,
 
-	#[field(max_length = 255)]
+	#[field(max_length = 255, skip_info = true)]
 	pub password_hash: Option<String>,
 
 	#[field(default = true)]
 	pub is_active: bool,
 
-	#[field(default = false)]
+	#[field(default = false, skip_info = true)]
 	pub is_superuser: bool,
 
-	#[field(include_in_new = false)]
+	#[field(include_in_new = false, skip_info = true)]
 	pub last_login: Option<DateTime<Utc>>,
 
-	#[field(auto_now_add = true)]
+	#[field(auto_now_add = true, skip_info = true)]
 	pub created_at: DateTime<Utc>,
 }
 
+#[cfg(native)]
 impl AdminUser for User {
 	fn is_active(&self) -> bool {
 		self.is_active
