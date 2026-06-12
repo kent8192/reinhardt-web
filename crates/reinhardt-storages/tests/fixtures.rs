@@ -382,7 +382,7 @@ impl MockS3Server {
 	pub async fn create_backend(&self) -> Arc<dyn StorageBackend> {
 		// SAFETY: Setting environment variables for test-only AWS credentials.
 		// These tests run serially and the env vars are required by aws-config
-		// defaults() credential chain used in S3Storage::new().
+		// defaults() credential chain used when S3Storage signs requests.
 		unsafe {
 			std::env::set_var("AWS_ACCESS_KEY_ID", "test");
 			std::env::set_var("AWS_SECRET_ACCESS_KEY", "test");
@@ -404,7 +404,7 @@ impl MockS3Server {
 	pub async fn create_backend_with_prefix(&self, prefix: &str) -> Arc<dyn StorageBackend> {
 		// SAFETY: Setting environment variables for test-only AWS credentials.
 		// These tests run serially and the env vars are required by aws-config
-		// defaults() credential chain used in S3Storage::new().
+		// defaults() credential chain used when S3Storage signs requests.
 		unsafe {
 			std::env::set_var("AWS_ACCESS_KEY_ID", "test");
 			std::env::set_var("AWS_SECRET_ACCESS_KEY", "test");

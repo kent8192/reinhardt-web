@@ -23,6 +23,5 @@ The S3 client supports the object operations required by
 - `HEAD Object`
 - presigned `GET` URLs
 
-Credentials are loaded from `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and
-the optional `AWS_SESSION_TOKEN` environment variable. This deliberately does
-not implement the complete AWS SDK credential provider chain.
+Credentials and region are loaded through `aws-config`, preserving the AWS SDK
+default provider chain without constructing an `aws-sdk-s3` service client.

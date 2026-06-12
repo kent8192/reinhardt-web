@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use reinhardt_providers::aws::{AwsCredentials, S3Client, S3ClientConfig};
+use reinhardt_providers::aws::{AwsCredentialsSource, S3Client, S3ClientConfig};
 use std::time::Duration;
 
 use crate::config::S3Config;
@@ -26,14 +26,16 @@ impl S3Storage {
 	///
 	/// # Errors
 	///
-	/// Returns `` `StorageError::ConfigError` `` if AWS configuration fails.
+	/// Keeps returning `Result` for compatibility with the storage factory.
+	/// Credential loading is deferred until an S3 operation signs a request.
 	pub async fn new(config: S3Config) -> Result<Self> {
 		let force_path_style = config.endpoint.is_some();
+		let region = config.region;
 		let client = S3Client::new(S3ClientConfig {
 			bucket: config.bucket,
-			region: config.region.unwrap_or_else(|| "us-east-1".to_string()),
+			region: region.clone(),
 			endpoint: config.endpoint,
-			credentials: AwsCredentials::from_env_optional()?,
+			credentials: AwsCredentialsSource::default_chain(region),
 			force_path_style,
 		});
 
@@ -97,7 +99,8 @@ impl StorageBackend for S3Storage {
 
 		Ok(self
 			.client
-			.presigned_get_url(&key, Duration::from_secs(expiry_secs))?)
+			.presigned_get_url(&key, Duration::from_secs(expiry_secs))
+			.await?)
 	}
 
 	async fn size(&self, name: &str) -> Result<u64> {

@@ -153,9 +153,10 @@ endpoint = "http://localhost:4566"
 prefix = "uploads/"
 ```
 
-`endpoint` and `prefix` are optional. S3 credentials are loaded from
-`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optional `AWS_SESSION_TOKEN`.
-This backend does not implement the complete AWS SDK credential provider chain.
+`endpoint` and `prefix` are optional. S3 credentials and region are resolved
+through the AWS SDK default provider chain, while object operations are sent
+through the minimal `reinhardt-providers` S3 client instead of
+`aws-sdk-s3`.
 
 ### Google Cloud Storage
 

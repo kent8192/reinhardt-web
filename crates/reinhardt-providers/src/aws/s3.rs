@@ -12,7 +12,7 @@ use reqwest::{Client, Method, Response, StatusCode};
 use sha2::{Digest, Sha256};
 use url::Url;
 
-use crate::aws::AwsCredentials;
+use crate::aws::{AwsCredentials, AwsCredentialsSource};
 use crate::{ProviderError, Result};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -30,6 +30,12 @@ struct SigningRequest<'a> {
 	amz_date: &'a str,
 	payload_hash: &'a str,
 	credentials: &'a AwsCredentials,
+	region: &'a str,
+}
+
+struct ResolvedS3SigningConfig {
+	credentials: AwsCredentials,
+	region: String,
 }
 
 /// Metadata returned by S3 `HEAD Object`.
@@ -50,11 +56,11 @@ pub struct S3ClientConfig {
 	/// S3 bucket name.
 	pub bucket: String,
 	/// AWS region used for SigV4 signing.
-	pub region: String,
+	pub region: Option<String>,
 	/// Custom S3-compatible endpoint URL.
 	pub endpoint: Option<String>,
 	/// Credentials used for request signing.
-	pub credentials: Option<AwsCredentials>,
+	pub credentials: AwsCredentialsSource,
 	/// Use path-style addressing (`/{bucket}/{key}`).
 	pub force_path_style: bool,
 }
@@ -63,11 +69,12 @@ impl S3ClientConfig {
 	/// Build S3 client config for a bucket and region.
 	#[must_use]
 	pub fn new(bucket: impl Into<String>, region: impl Into<String>) -> Self {
+		let region = region.into();
 		Self {
 			bucket: bucket.into(),
-			region: region.into(),
+			region: Some(region.clone()),
 			endpoint: None,
-			credentials: None,
+			credentials: AwsCredentialsSource::default_chain(Some(region)),
 			force_path_style: false,
 		}
 	}
@@ -157,20 +164,21 @@ impl S3Client {
 	///
 	/// Returns an error when credentials are missing, the URL cannot be built, or
 	/// the expiry exceeds S3's seven-day SigV4 limit.
-	pub fn presigned_get_url(&self, key: &str, expires: Duration) -> Result<String> {
+	pub async fn presigned_get_url(&self, key: &str, expires: Duration) -> Result<String> {
 		if expires.as_secs() > 604_800 {
 			return Err(ProviderError::Config(
 				"S3 presigned URLs cannot expire after more than seven days".to_string(),
 			));
 		}
 
-		let credentials = self.credentials()?;
-		let (mut url, canonical_uri) = self.object_url(key)?;
+		let signing_config = self.resolve_signing_config().await?;
+		let credentials = &signing_config.credentials;
+		let (mut url, canonical_uri) = self.object_url(key, &signing_config.region)?;
 		let host = canonical_host(&url)?;
 		let now = Utc::now();
 		let date = now.format("%Y%m%d").to_string();
 		let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
-		let credential_scope = self.credential_scope(&date);
+		let credential_scope = self.credential_scope(&date, &signing_config.region);
 		let credential = format!("{}/{}", credentials.access_key_id(), credential_scope);
 
 		let mut query = BTreeMap::new();
@@ -190,9 +198,14 @@ impl S3Client {
 		let canonical_request = format!(
 			"GET\n{canonical_uri}\n{canonical_query_string}\nhost:{host}\n\nhost\nUNSIGNED-PAYLOAD"
 		);
-		let string_to_sign = self.string_to_sign(&canonical_request, &date, &amz_date)?;
+		let string_to_sign =
+			self.string_to_sign(&canonical_request, &date, &amz_date, &signing_config.region)?;
 		let signature = sign_hex(
-			&signing_key(credentials.secret_access_key(), &date, &self.config.region),
+			&signing_key(
+				credentials.secret_access_key(),
+				&date,
+				&signing_config.region,
+			),
 			&string_to_sign,
 		);
 
@@ -203,8 +216,9 @@ impl S3Client {
 	}
 
 	async fn signed_request(&self, method: Method, key: &str, body: Bytes) -> Result<Response> {
-		let credentials = self.credentials()?;
-		let (url, canonical_uri) = self.object_url(key)?;
+		let signing_config = self.resolve_signing_config().await?;
+		let credentials = &signing_config.credentials;
+		let (url, canonical_uri) = self.object_url(key, &signing_config.region)?;
 		let host = canonical_host(&url)?;
 		let now = Utc::now();
 		let date = now.format("%Y%m%d").to_string();
@@ -223,6 +237,7 @@ impl S3Client {
 			amz_date: &amz_date,
 			payload_hash: &payload_hash,
 			credentials,
+			region: &signing_config.region,
 		})?;
 
 		Ok(self
@@ -255,20 +270,24 @@ impl S3Client {
 			signed_headers,
 			request.payload_hash
 		);
-		let string_to_sign =
-			self.string_to_sign(&canonical_request, request.date, request.amz_date)?;
+		let string_to_sign = self.string_to_sign(
+			&canonical_request,
+			request.date,
+			request.amz_date,
+			request.region,
+		)?;
 		let signature = sign_hex(
 			&signing_key(
 				request.credentials.secret_access_key(),
 				request.date,
-				&self.config.region,
+				request.region,
 			),
 			&string_to_sign,
 		);
 		let authorization = format!(
 			"AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
 			request.credentials.access_key_id(),
-			self.credential_scope(request.date),
+			self.credential_scope(request.date, request.region),
 			signed_headers,
 			signature
 		);
@@ -290,29 +309,37 @@ impl S3Client {
 		canonical_request: &str,
 		date: &str,
 		amz_date: &str,
+		region: &str,
 	) -> Result<String> {
 		let hashed_request = sha256_hex(canonical_request.as_bytes());
 		Ok(format!(
 			"AWS4-HMAC-SHA256\n{}\n{}\n{}",
 			amz_date,
-			self.credential_scope(date),
+			self.credential_scope(date, region),
 			hashed_request
 		))
 	}
 
-	fn credential_scope(&self, date: &str) -> String {
-		format!("{date}/{}/{S3_SERVICE}/{AWS4_REQUEST}", self.config.region)
+	fn credential_scope(&self, date: &str, region: &str) -> String {
+		format!("{date}/{region}/{S3_SERVICE}/{AWS4_REQUEST}")
 	}
 
-	fn credentials(&self) -> Result<&AwsCredentials> {
-		self.config.credentials.as_ref().ok_or_else(|| {
-			ProviderError::Config(
-				"AWS credentials are required for S3 operations; set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY".to_string(),
-			)
+	async fn resolve_signing_config(&self) -> Result<ResolvedS3SigningConfig> {
+		let resolved = self.config.credentials.resolve().await?;
+		let region = self
+			.config
+			.region
+			.clone()
+			.or(resolved.region)
+			.unwrap_or_else(|| "us-east-1".to_string());
+
+		Ok(ResolvedS3SigningConfig {
+			credentials: resolved.credentials,
+			region,
 		})
 	}
 
-	fn object_url(&self, key: &str) -> Result<(Url, String)> {
+	fn object_url(&self, key: &str, region: &str) -> Result<(Url, String)> {
 		let encoded_key = uri_encode(key, false);
 
 		if self.config.endpoint.is_some() || self.config.force_path_style {
@@ -328,10 +355,7 @@ impl S3Client {
 			return Ok((url, canonical_uri));
 		}
 
-		let host = format!(
-			"{}.s3.{}.amazonaws.com",
-			self.config.bucket, self.config.region
-		);
+		let host = format!("{}.s3.{}.amazonaws.com", self.config.bucket, region);
 		let canonical_uri = format!("/{encoded_key}");
 		let url = Url::parse(&format!("https://{host}{canonical_uri}"))?;
 		Ok((url, canonical_uri))

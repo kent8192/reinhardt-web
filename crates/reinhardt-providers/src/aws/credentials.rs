@@ -2,6 +2,9 @@
 
 use std::env;
 
+use aws_credential_types::provider::ProvideCredentials;
+use aws_types::region::Region;
+
 use crate::{ProviderError, Result};
 
 /// AWS credentials used for signing provider requests.
@@ -90,4 +93,81 @@ impl AwsCredentials {
 	pub fn session_token(&self) -> Option<&str> {
 		self.session_token.as_deref()
 	}
+}
+
+/// AWS credential resolution strategy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AwsCredentialsSource {
+	/// Use these credentials directly.
+	Static(AwsCredentials),
+	/// Use the AWS SDK default credential provider chain.
+	DefaultChain {
+		/// Optional region override applied to the default SDK config loader.
+		region_override: Option<String>,
+	},
+}
+
+impl AwsCredentialsSource {
+	/// Create a default provider-chain credential source.
+	#[must_use]
+	pub fn default_chain(region_override: Option<String>) -> Self {
+		Self::DefaultChain { region_override }
+	}
+
+	/// Resolve credentials and region for request signing.
+	///
+	/// # Errors
+	///
+	/// Returns an error if the configured credential source cannot provide
+	/// credentials.
+	pub async fn resolve(&self) -> Result<AwsSigningConfig> {
+		match self {
+			AwsCredentialsSource::Static(credentials) => Ok(AwsSigningConfig {
+				credentials: credentials.clone(),
+				region: None,
+			}),
+			AwsCredentialsSource::DefaultChain { region_override } => {
+				let mut loader = aws_config::defaults(aws_config::BehaviorVersion::latest());
+				if let Some(region) = region_override {
+					loader = loader.region(Region::new(region.clone()));
+				}
+
+				let sdk_config = loader.load().await;
+				let provider = sdk_config.credentials_provider().ok_or_else(|| {
+					ProviderError::Config(
+						"AWS default credential provider chain is not configured".to_string(),
+					)
+				})?;
+				let credentials = provider.provide_credentials().await.map_err(|err| {
+					ProviderError::Config(format!(
+						"failed to load AWS credentials from the default provider chain: {err}"
+					))
+				})?;
+				let mut provider_credentials = AwsCredentials::new(
+					credentials.access_key_id().to_string(),
+					credentials.secret_access_key().to_string(),
+				);
+				if let Some(token) = credentials.session_token() {
+					provider_credentials =
+						provider_credentials.with_session_token(token.to_string());
+				}
+
+				Ok(AwsSigningConfig {
+					credentials: provider_credentials,
+					region: sdk_config
+						.region()
+						.map(|region| region.as_ref().to_string()),
+				})
+			}
+		}
+	}
+}
+
+/// Resolved AWS signing configuration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AwsSigningConfig {
+	/// Credentials used to sign the request.
+	pub credentials: AwsCredentials,
+	/// Region resolved by the default AWS SDK config loader, if any.
+	pub region: Option<String>,
 }
