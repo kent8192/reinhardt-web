@@ -142,6 +142,27 @@ async fn startproject_pages_from_embedded_only() {
 		!makefile_toml.contains("\"--noinput\""),
 		"generated pages Makefile must not use the createsuperuser-only --noinput spelling"
 	);
+	let build_rs = std::fs::read_to_string(generated.join("build.rs")).unwrap();
+	for cfg in ["client", "server", "wasm", "native"] {
+		assert!(
+			build_rs.contains(&format!("cargo::rustc-check-cfg=cfg({cfg})")),
+			"generated pages build.rs must declare cfg({cfg}) for Rust 2024 check-cfg:\n{build_rs}"
+		);
+	}
+	assert!(
+		build_rs.contains("wasm: { target_arch = \"wasm32\" }")
+			&& build_rs.contains("native: { not(target_arch = \"wasm32\") }"),
+		"generated pages build.rs must keep wasm/native compatibility aliases:\n{build_rs}"
+	);
+	let shared_types = std::fs::read_to_string(generated.join("src/shared/types.rs")).unwrap();
+	assert!(
+		!shared_types.contains("\nuse serde::{Deserialize, Serialize};"),
+		"generated shared types placeholder must not create an unused import warning:\n{shared_types}"
+	);
+	assert!(
+		shared_types.contains("// use serde::{Deserialize, Serialize};"),
+		"generated shared types placeholder should keep the serde import in the commented example:\n{shared_types}"
+	);
 	assert_manifest_parses(&generated.join("Cargo.toml"));
 }
 

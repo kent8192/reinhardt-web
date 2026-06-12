@@ -161,6 +161,8 @@ The tutorial does not use `admin.rs`, `serializers.rs`, or `views.rs` for `users
 
 Replace the generated `src/apps/users/models.rs` placeholder with:
 
+> The generated placeholder contains only a small generic model example. Do not adapt that placeholder for the tutorial `User`: it does not include `#[user]` or the project-local manager. Replace the whole file with the code below.
+
 ```rust
 //! User model for the tutorial-basis example.
 //!
@@ -214,19 +216,19 @@ pub struct User {
     #[field(max_length = 150, unique = true)]
     pub username: String,
 
-    #[field(max_length = 255)]
+    #[field(max_length = 255, skip_info = true)]
     pub password_hash: Option<String>,
 
     #[field(default = true)]
     pub is_active: bool,
 
-    #[field(default = false)]
+    #[field(default = false, skip_info = true)]
     pub is_superuser: bool,
 
-    #[field(include_in_new = false)]
+    #[field(include_in_new = false, skip_info = true)]
     pub last_login: Option<DateTime<Utc>>,
 
-    #[field(auto_now_add = true)]
+    #[field(auto_now_add = true, skip_info = true)]
     pub created_at: DateTime<Utc>,
 }
 
@@ -264,8 +266,9 @@ Notice that we did **not** pass `full = true`. The `full` flag would also implem
 | Attribute | What it does |
 |-----------|--------------|
 | `#[field(max_length = 150, unique = true)]` | Adds a `UNIQUE` constraint on `username`. Two users cannot register with the same name. |
-| `#[field(max_length = 255)]` on `Option<String>` | `password_hash` is nullable because OAuth users (a future feature) would not have a password. The `Option` is what makes it nullable; `max_length` is still the column width. |
+| `#[field(max_length = 255, skip_info = true)]` on `Option<String>` | `password_hash` is nullable because OAuth users (a future feature) would not have a password. The `Option` is what makes it nullable; `max_length` is still the column width. `skip_info = true` keeps the generated public info DTO from exposing password metadata. |
 | `#[field(include_in_new = false)]` | Excludes `last_login` from the `User::build()` typestate. `last_login` is only ever set by the login server function in Part 3 (it stamps the timestamp on a successful login), so it should not be required at construction time. Without this attribute, every test fixture would have to supply a meaningless value. |
+| `#[field(..., skip_info = true)]` | Excludes internal/auth-state fields such as `password_hash`, `is_superuser`, `last_login`, and `created_at` from the generated `{Model}Info` companion type used on the client side. |
 
 `is_active` defaults to `true`, `is_superuser` defaults to `false`, and `created_at` is `auto_now_add`. These four defaults plus `include_in_new = false` on `last_login` mean the typestate builder for `User` only requires the two fields the manager actually needs to fill in: `username` and `password_hash`. That keeps the manager small.
 
@@ -372,7 +375,7 @@ mod manager {
 pub use manager::AuthUserManager;
 ```
 
-Use the manager logic from [`examples/examples-tutorial-basis/src/apps/users/models.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/apps/users/models.rs) as the reference for the full implementation: the validation logic (`username.is_empty()`, `chars().count() > 150`, password length checks) is what the `register` server function in Part 3 relies on. Keep the generated project's cfg alias when copying it into your tutorial project: the pages template uses `#[cfg(server)]` / `#[cfg(client)]`, while the in-repository example uses equivalent workspace-local aliases.
+Use the manager logic from [`examples/examples-tutorial-basis/src/apps/users/models.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/apps/users/models.rs) as the reference for the full implementation: the validation logic (`username.is_empty()`, `chars().count() > 150`, password length checks) is what the `register` server function in Part 3 relies on. Generated pages projects declare both cfg alias pairs: `server` / `client` for generated source and `native` / `wasm` for framework macro expansions and in-repository examples.
 
 The mechanism worth understanding here is the registration line:
 

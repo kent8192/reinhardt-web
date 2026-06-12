@@ -1,32 +1,24 @@
 //! Models module for {{ app_name }} app
 //!
-//! Use the `#[user]` macro to auto-generate `BaseUser`, `FullUser`,
-//! `PermissionsMixin`, and `AuthIdentity` trait implementations for user models.
+//! Replace this placeholder with the models for the app.
+//!
+//! Authentication `User` models need the `#[user]` macro and the auth field
+//! set expected by your project. For the basics tutorial, copy the complete
+//! `User` model from the tutorial chapter instead of adapting this placeholder.
 //!
 //! # Example
 //!
 //! ```rust,ignore
-//! use reinhardt::macros::user;
-//! use reinhardt::Argon2Hasher;
-//! use serde::{Deserialize, Serialize};
+//! use reinhardt::prelude::*;
+//! use reinhardt::{Deserialize, Serialize};
 //!
+//! #[model(app_label = "{{ app_name }}", table_name = "{{ app_name }}_items")]
 //! #[derive(Serialize, Deserialize)]
-//! #[user(hasher = Argon2Hasher, username_field = "email")]
-//! #[model(table_name = "users")]
-//! pub struct User {
+//! pub struct {{ camel_case_app_name }}Item {
 //!     #[field(primary_key = true)]
-//!     pub id: uuid::Uuid,
-//!     #[field(max_length = 255, unique = true)]
-//!     pub email: String,
+//!     pub id: i64,
+//!
 //!     #[field(max_length = 255)]
-//!     pub password_hash: Option<String>,
-//!     #[field]
-//!     pub last_login: Option<chrono::DateTime<chrono::Utc>>,
-//!     #[field(default = true)]
-//!     pub is_active: bool,
-//!     #[field(default = false)]
-//!     pub is_superuser: bool,
-//!     #[field(auto_now_add = true)]
-//!     pub created_at: chrono::DateTime<chrono::Utc>,
+//!     pub name: String,
 //! }
 //! ```
