@@ -6,12 +6,10 @@
 //! the result is bound through `use_action`, so the bar reactively updates
 //! once the WASM client finishes its first roundtrip.
 //!
-//! All `href` values are resolved through the hand-written `urls`
-//! helper modules at `apps::polls::urls::client_router::urls` and
-//! `apps::users::urls::client_router::urls`.
-use crate::apps::polls::urls::client_router::urls as polls_links;
+//! All `href` values are resolved through each app's client router.
+use crate::apps::polls::urls::client_router as polls_routes;
 use crate::apps::users::server_fn::current_user;
-use crate::apps::users::urls::client_router::urls as users_links;
+use crate::apps::users::urls::client_router as users_routes;
 use crate::shared::types::UserInfo;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
@@ -28,10 +26,10 @@ pub fn nav_bar() -> Page {
 		use_action(|_: ()| async move { current_user().await.map_err(|e| e.to_string()) });
 	load_user.dispatch(());
 	let auth_signal = load_user.clone();
-	let polls_index_href = polls_links::index();
-	let login_href = users_links::login();
-	let logout_href = users_links::logout();
-	let signup_href = users_links::signup();
+	let polls_index_href = polls_routes::reverse("index", &[]);
+	let login_href = users_routes::reverse("login", &[]);
+	let logout_href = users_routes::reverse("logout", &[]);
+	let signup_href = users_routes::reverse("signup", &[]);
 	page!(|auth_signal: Action<Option<UserInfo>, String>, polls_index_href: String, login_href: String, logout_href: String, signup_href: String| {
 		nav {
 			class: "nav-bar",
