@@ -1,6 +1,8 @@
 use reinhardt::Validate;
 use serde::{Deserialize, Serialize};
 
+pub use crate::apps::polls::models::{ChoiceInfo, QuestionInfo};
+
 /// Serializer for creating/updating questions
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct QuestionSerializer {
@@ -10,32 +12,6 @@ pub struct QuestionSerializer {
 		message = "Question text must be between 1 and 200 characters"
 	))]
 	pub question_text: String,
-}
-
-/// Response model for questions
-#[derive(Debug, Serialize, Deserialize)]
-pub struct QuestionResponse {
-	pub id: i64,
-	pub question_text: String,
-	pub pub_date: chrono::DateTime<chrono::Utc>,
-	pub was_published_recently: bool,
-}
-
-// `From<&Question>` is the borrowed-input counterpart to the owned-input
-// `From<Question> for QuestionInfo` in `crate::shared::types`. Use this form
-// when the caller still needs the `Question` after the conversion (rendering
-// + auditing on the same instance), and use `QuestionInfo::from(question)`
-// when ownership can be transferred. Both follow the canonical `From` /
-// `Into` idiom — there is no `from_model` factory.
-impl From<&crate::apps::polls::models::Question> for QuestionResponse {
-	fn from(model: &crate::apps::polls::models::Question) -> Self {
-		Self {
-			id: model.id(),
-			question_text: model.question_text().to_string(),
-			pub_date: model.pub_date(),
-			was_published_recently: model.was_published_recently(),
-		}
-	}
 }
 
 /// Serializer for creating/updating choices
@@ -49,26 +25,6 @@ pub struct ChoiceSerializer {
 		message = "Choice text must be between 1 and 200 characters"
 	))]
 	pub choice_text: String,
-}
-
-/// Response model for choices
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ChoiceResponse {
-	pub id: i64,
-	pub question_id: i64,
-	pub choice_text: String,
-	pub votes: i32,
-}
-
-impl From<&crate::apps::polls::models::Choice> for ChoiceResponse {
-	fn from(model: &crate::apps::polls::models::Choice) -> Self {
-		Self {
-			id: model.id(),
-			question_id: *model.question_id(),
-			choice_text: model.choice_text().to_string(),
-			votes: model.votes(),
-		}
-	}
 }
 
 #[cfg(test)]
