@@ -2,8 +2,8 @@
 //!
 //! Route names are namespaced under `{{ app_name }}` (e.g.
 //! `{{ app_name }}:index`). Pass `client_url_patterns()` explicitly to
-//! `ClientLauncher::router_client(...)` in `src/client/lib.rs` (or merge
-//! it with other apps' routers there) for the routes to become active.
+//! `UnifiedRouter::mount_unified(...)` from `src/config/urls.rs` for the
+//! routes to become active through route inventory.
 //!
 //! # Placeholder note
 //!

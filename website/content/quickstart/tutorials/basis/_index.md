@@ -80,9 +80,8 @@ examples-tutorial-basis/
 │   │   ├── polls/
 │   │   │   ├── models.rs      # #[model] Question (author FK to User), Choice (question FK)
 │   │   │   ├── client.rs      # wasm-only app UI module
-│   │   │   ├── di.rs          # request-scoped auth/ownership factories used by server_fn.rs
 │   │   │   ├── server_fn.rs   # #[server_fn] get_questions / get_question_detail / vote / submit_vote / create_question / …
-│   │   │   ├── urls.rs        # declares urls/server_urls.rs (cfg native) + urls/client_router.rs (cfg wasm)
+│   │   │   ├── urls.rs        # exposes app-level server/client router functions
 │   │   │   ├── urls/
 │   │   │   │   ├── server_urls.rs   # ServerRouter with polls server_fn marker registrations
 │   │   │   │   └── client_router.rs # ClientRouter (.route / .route_path + reverse helper)
@@ -106,7 +105,7 @@ Three rules keep this structure predictable:
 
 1. **Server vs client** — `#[cfg(server)]` code runs on the server (models, server function bodies, forms, admin). `#[cfg(client)]` code runs in the browser (`src/client/` plus each app's `client` module). Code under `src/shared/types.rs` compiles on both so DTOs stay in sync, and each app declares its `server_fn` and `urls` so the typed `#[server_fn]` client stubs work in the browser.
 2. **Server functions are the bridge, and they live per-app** — anything the WASM client needs from the database goes through a `#[server_fn]` defined in `src/apps/<app>/server_fn.rs` (so it sits alongside that app's models, DI helpers, client UI, and admin), and the result is returned as a DTO from `src/shared/types.rs`. There is no top-level `src/server_fn/` directory.
-3. **Routing is also per-app, with a `urls/` directory module** — each app exposes `src/apps/<app>/urls/server_urls.rs` (`ServerRouter`) and `src/apps/<app>/urls/client_router.rs` (`ClientRouter`). Server functions are registered in the app-local `server_urls.rs` files, and `src/config/urls.rs` mounts those app routers while also aggregating the WASM route tables with `UnifiedRouter::mount_unified`.
+3. **Routing is also per-app, with a `urls/` directory module** — each app exposes app-level `server_url_patterns()` and `client_url_patterns()` functions from `src/apps/<app>/urls.rs`. Server functions are registered in app-local `server_urls.rs` files, and `src/config/urls.rs` aggregates the app-level router functions rather than importing individual handlers.
 
 ## Tutorial Structure
 
@@ -129,7 +128,7 @@ Three rules keep this structure predictable:
 - Write **server functions** under `src/apps/polls/server_fn.rs` and `src/apps/users/server_fn.rs` — this is the "views" layer for the WASM client
 - Split routing into `src/apps/<app>/urls/server_urls.rs` (`ServerRouter`) and `src/apps/<app>/urls/client_router.rs` (`ClientRouter`)
 - Register each app's server functions in its own `urls/server_urls.rs` with `ServerFnRouterExt::server_fn(...)`
-- Mount app server routers in `src/config/urls.rs` and aggregate client routers with `mount_unified`
+- Expose app-level router functions from `src/apps/<app>/urls.rs`; `src/config/urls.rs` aggregates those functions rather than importing each server function directly
 - Bootstrap the SPA in `src/client/lib.rs` with `ClientLauncher::new("#root").register_routes_from_inventory().launch()`; the `#[routes]` aggregator in `src/config/urls.rs` composes each app's client router via `UnifiedRouter::mount_unified`, which the launcher then collects
 
 ### [Part 4: Forms and Generic Views](4-forms-and-generic-views/)

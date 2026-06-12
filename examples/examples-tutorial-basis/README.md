@@ -27,12 +27,12 @@ This example corresponds to the basis tutorial parts 1-7:
 The example exposes its dynamic business logic through the pages stack:
 
 - **Typed RPC server functions** in `src/apps/<app>/server_fn.rs` — `#[server_fn]` functions (`get_questions`, `get_question_detail`, `vote`, `create_question`, …, plus `login` / `logout` / `register` / `current_user` for the `users` app). The macro generates a typed client stub for WASM and a server-side handler for native; dependencies are resolved positionally with `#[inject]` (`DatabaseConnection`, `SessionData`, …).
-- **Per-app server route modules** in `src/apps/<app>/urls/server_urls.rs` — each app registers its own `#[server_fn]` markers through `ServerFnRouterExt`, while `src/config/urls.rs` mounts the app routers.
+- **Per-app URL modules** in `src/apps/<app>/urls.rs` — each app exposes `server_url_patterns()` and `client_url_patterns()`; server-function markers stay in `urls/server_urls.rs`, while `src/config/urls.rs` only aggregates the app-level router functions.
 - **Dynamic WASM forms** in `src/apps/polls/client/components.rs` — the poll detail route builds its `RadioSelect` voting form from the choices returned by `get_question_detail`, so each loaded choice becomes a submitted `choice_id` option.
 
 ### URL Structure
 
-The project router mounts per-app server routers on native and merges per-app client routers on WASM. Route names remain app-local (`polls:*`, `users:*`), and components resolve links through each app's `client_router::reverse(...)` helper.
+The project router mounts per-app server routers on native and merges per-app client routers on WASM through app-level `urls.rs` functions. Route names remain app-local (`polls:*`, `users:*`), and components resolve links through each app's client route reverser.
 
 | Path | Layer | Where it is defined |
 |------|-------|---------------------|
@@ -133,7 +133,6 @@ examples-tutorial-basis/
 │   │   │   ├── client/
 │   │   │   │   └── components.rs
 │   │   │   ├── client.rs
-│   │   │   ├── di.rs
 │   │   │   ├── models.rs
 │   │   │   ├── serializers.rs
 │   │   │   ├── server_fn.rs
@@ -202,7 +201,7 @@ This example is designed to be studied alongside the basis tutorial:
 - `src/apps/polls/models.rs` defines the `Question` and `Choice` models with `#[model]`, `#[field]`, and `#[rel(foreign_key)]`.
 - `src/apps/users/models.rs` defines the tutorial `User` model with `#[user]` and the injectable `AuthUserManager`.
 - `src/apps/polls/server_fn.rs` and `src/apps/users/server_fn.rs` expose typed `#[server_fn]` RPC handlers for the WASM client.
-- `src/apps/polls/di.rs` provides request-scoped authorization helpers such as `SessionUser`, `AuthoredQuestion`, and `AuthoredChoice`.
+- `src/apps/polls/urls.rs` and `src/apps/users/urls.rs` expose the app-level server and client router functions that `src/config/urls.rs` aggregates.
 - `src/apps/polls/urls/server_urls.rs` and `src/apps/users/urls/server_urls.rs` provide native `ServerRouter` registrations.
 - `src/apps/polls/urls/client_router.rs` and `src/apps/users/urls/client_router.rs` provide WASM `ClientRouter` registrations.
 - `src/client/lib.rs` starts the browser app with `ClientLauncher::new("#root").register_routes_from_inventory().launch()`.

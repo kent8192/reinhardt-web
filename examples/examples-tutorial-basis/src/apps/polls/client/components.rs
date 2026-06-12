@@ -189,8 +189,8 @@ pub fn polls_detail(question_id: i64) -> Page {
 	//   page after a successful vote. The closure captures `qid` from the
 	//   outer scope; the macro stores it on the generated form struct and the
 	//   generated `submit()` method dispatches through `pages::navigate()` so
-	//   the route table installed by `ClientLauncher::router_client` handles
-	//   the transition without a full page load.
+	//   the route table installed from `#[routes]` inventory handles the
+	//   transition without a full page load.
 	let voting_form = form! {
 		name: VotingForm,
 		server_fn: submit_vote,

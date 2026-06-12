@@ -111,7 +111,7 @@ Three rules keep this layout predictable:
 
 1. **`#[cfg(server)]` vs `#[cfg(client)]`** — server-only code (models, server function bodies, forms, admin) is gated on `server`; browser-only code (`src/client/` plus app-local `client` modules) is gated on `client`. `src/shared/types.rs` compiles on both so DTOs stay in sync, and each app's `server_fn` and `urls` modules are both targets so the typed client stubs work in the browser.
 2. **Server functions are the bridge, and they live per-app** — every `#[server_fn]` lives in `src/apps/<app>/server_fn.rs`, sitting next to that app's models, DI helpers, client UI, and admin. There is no top-level `src/server_fn/` directory.
-3. **Routing is per-app, with a `urls/` directory module** — `src/apps/<app>/urls.rs` declares `pub mod server_urls;` (`#[cfg(server)]`) and `pub mod client_router;` (`#[cfg(client)]`). App-local `server_urls.rs` files register `#[server_fn]` markers, and the project-level `src/config/urls.rs` mounts those app server routers while aggregating the app-local client routers.
+3. **Routing is per-app, with a `urls/` directory module** — `src/apps/<app>/urls.rs` exposes app-level `server_url_patterns()` and `client_url_patterns()` functions. App-local `server_urls.rs` files register `#[server_fn]` markers, and the project-level `src/config/urls.rs` aggregates those app-level router functions rather than importing individual handlers.
 
 **Available `cargo make` tasks (defined in `Makefile.toml`):**
 
@@ -147,7 +147,7 @@ Each generated file has a specific role. Walking top-down:
 - `src/config/`
   - `settings.rs` — `#[settings(core: CoreSettings | contacts: ContactSettings)] pub struct ProjectSettings;` plus a `get_settings()` function that builds the layered `SettingsBuilder` (`DefaultSource` → `TomlFileSource("base.toml")` → `TomlFileSource("{profile}.toml")` → `HighPriorityEnvSource("REINHARDT_")`).
   - `apps.rs` — `startapp` appends `installed_apps!` entries here. The macro generates the app labels used by settings, migrations, admin metadata, and routing namespaces.
-  - `urls.rs` — `#[routes] pub fn routes() -> UnifiedRouter`. Part 3 mounts each app's `server_url_patterns()` under `#[cfg(server)]`, aggregates each app's `client_url_patterns()` with `mount_unified` under `#[cfg(client)]`, mounts the admin at `/admin/`, and applies the session middleware.
+  - `urls.rs` — `#[routes] pub fn routes() -> UnifiedRouter`. Part 3 calls each app's `urls::server_url_patterns()` under `#[cfg(server)]`, aggregates each app's `urls::client_url_patterns()` with `mount_unified` under `#[cfg(client)]`, mounts the admin at `/admin/`, and applies the session middleware.
   - `wasm.rs` — an `inventory::submit!` entry that registers `dist-wasm/` as an `AppStaticFilesConfig`, so `cargo make collectstatic` discovers the WASM build artifacts and copies them into `staticfiles/`.
   - `admin.rs` — `configure_admin() -> AdminSite` instantiates the admin site, names it, and registers each app's `ModelAdmin` implementations (`QuestionAdmin`, `ChoiceAdmin`).
 - `src/shared/`

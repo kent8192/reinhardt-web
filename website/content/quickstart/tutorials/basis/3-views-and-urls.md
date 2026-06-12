@@ -170,27 +170,38 @@ by the framework. For `polls` it looks like this:
 ```text
 # Project tree: 3-views-and-urls
 src/apps/polls/
-├── urls.rs                       declares the two submodules below
+├── urls.rs                       app-level router functions
 └── urls/
     ├── server_urls.rs            ServerRouter with server_fn markers
     └── client_router.rs          ClientRouter
 ```
 
-The aggregator `apps/polls/urls.rs` is tiny — it just gates the two
-submodules on the right target:
+The aggregator `apps/polls/urls.rs` is tiny. It gates the submodules on
+the right target and exposes app-level functions that the project router
+can aggregate without importing individual server functions:
 
 ```rust
 // File: src/apps/polls/urls.rs
 //! URL configuration for the polls application.
 //!
-//! - `server_urls` — server-side `ServerRouter`
-//! - `client_router` — client-side `ClientRouter`
+//! - `server_url_patterns()` — server-side app router.
+//! - `client_url_patterns()` — client-side app router.
 
 #[cfg(server)]
 pub mod server_urls;
 
 #[cfg(client)]
 pub mod client_router;
+
+#[cfg(server)]
+pub fn server_url_patterns() -> reinhardt::ServerRouter {
+	server_urls::server_url_patterns()
+}
+
+#[cfg(client)]
+pub fn client_url_patterns() -> reinhardt::ClientRouter {
+	client_router::client_url_patterns()
+}
 ```
 
 Three rules govern every file under `urls/`:
@@ -202,10 +213,9 @@ Three rules govern every file under `urls/`:
    router imports page factories from `src/client/pages.rs`, and those
    factories call the app-local components in
    `src/apps/polls/client/components.rs`.
-3. **Project-level aggregation happens in `src/config/urls.rs`.** Server
-   app routers are mounted there, while the client branch stitches
-   app-local `client_url_patterns()` routers into a single
-   `UnifiedRouter`.
+3. **Project-level aggregation happens in `src/config/urls.rs`.** It calls
+   each app's `urls::server_url_patterns()` and `urls::client_url_patterns()`
+   functions, without importing individual `#[server_fn]` handlers.
 
 The same shape repeats for the `users` app. Its server-side router owns
 the authentication server-function registrations:
@@ -929,24 +939,18 @@ fn create_session_middleware() -> SessionMiddleware {
 /// via `inventory::submit!(UrlPatternsRegistration)` and emits a linker
 /// marker to enforce single-usage.
 ///
-/// This function registers the project-level server routers, the admin
-/// panel, and the session middleware.
+/// This function aggregates the app-level server routers, the app-level
+/// client routers, the admin panel, and the session middleware.
 #[routes]
 pub fn routes() -> UnifiedRouter {
 	let router = UnifiedRouter::new();
 
-	// Per-app server URL modules are server-only because they register
-	// `#[server_fn]` marker modules emitted for the server build.
+	// Each app owns its server-function marker registration in its own
+	// `urls` module. The project router only aggregates app routers.
 	#[cfg(server)]
 	let router = router.server(|s| {
-		s.mount(
-			"/",
-			crate::apps::polls::urls::server_urls::server_url_patterns(),
-		)
-		.mount(
-			"/",
-			crate::apps::users::urls::server_urls::server_url_patterns(),
-		)
+		s.mount("/", crate::apps::polls::urls::server_url_patterns())
+			.mount("/", crate::apps::users::urls::server_url_patterns())
 	});
 
 	// Aggregate every app's client routes on the client so the SPA route table
@@ -964,13 +968,11 @@ pub fn routes() -> UnifiedRouter {
 	let router = router
 		.mount_unified(
 			"/",
-			UnifiedRouter::new()
-				.client(|_| crate::apps::polls::urls::client_router::client_url_patterns()),
+			UnifiedRouter::new().client(|_| crate::apps::polls::urls::client_url_patterns()),
 		)
 		.mount_unified(
 			"/",
-			UnifiedRouter::new()
-				.client(|_| crate::apps::users::urls::client_router::client_url_patterns()),
+			UnifiedRouter::new().client(|_| crate::apps::users::urls::client_url_patterns()),
 		);
 
 	// Mount the auto-generated admin panel at /admin/ (server-only).
@@ -1005,12 +1007,13 @@ Three registration conventions are worth memorising:
 
 - Each server function exposes a unit-struct `marker` (e.g.,
   `submit_vote::marker`) that the macro generates. The app-local
-  `server_url_patterns()` function passes those markers into
+  `urls/server_urls.rs::server_url_patterns()` function passes those markers into
   `ServerFnRouterExt::server_fn`.
 - The import list is in snake_case and refers to the function names, not
   to a separate type — `use ... submit_vote;` then `submit_vote::marker`.
-- `src/config/urls.rs` mounts the app routers rather than importing
-  every function from every app.
+- `src/apps/<app>/urls.rs` exposes `server_url_patterns()` and
+  `client_url_patterns()`; `src/config/urls.rs` aggregates those app-level
+  functions rather than importing every server function from every app.
 - The client-side aggregation lives in the `routes()` body itself, not in
   `client/lib.rs`. Every per-app `client_url_patterns()` it stitches in
   becomes part of the SPA route table that
@@ -1204,10 +1207,9 @@ tutorials and snippets still reference them:
 - Client routers are now discovered through `inventory` instead of being
   stitched together with a hand-written `build_spa_router()` helper.
 
-If you read older Reinhardt code, you may see a longer
-`client/lib.rs` that used `router_client(|| { … })` with manual router
-assembly. That is the older shape; the body of `routes()` in
-`src/config/urls.rs` now does the app-router aggregation.
+If you read older Reinhardt code, you may see a longer `client/lib.rs`
+with manual router assembly. That is the older shape; the body of
+`routes()` in `src/config/urls.rs` now does the app-router aggregation.
 
 ## Page Factories in `src/client/pages.rs`
 
@@ -1465,10 +1467,10 @@ the polling application:
   `Cargo.toml` use raw `target_arch = "wasm32"` predicates because Cargo
   evaluates them before the build script runs.
 - **Per-app `urls/` directory module.** `src/apps/<app>/urls.rs` gates
-  `server_urls` (`#[cfg(server)]`) and `client_router` (`#[cfg(client)]`);
-  `server_url_patterns()` registers the app's server-side `#[server_fn]`
-  markers, while `client_url_patterns()` returns the app-local
-  `ClientRouter`.
+  `server_urls` (`#[cfg(server)]`) and `client_router` (`#[cfg(client)]`)
+  and exposes app-level `server_url_patterns()` / `client_url_patterns()`;
+  `urls/server_urls.rs` registers the app's server-side `#[server_fn]`
+  markers, while `urls/client_router.rs` returns the app-local `ClientRouter`.
 - **Typed RPC server functions.** Every reactive mutation the WASM
   client will call lives in `src/apps/<app>/server_fn.rs`. The DI
   container injects `DatabaseConnection`, `SessionData`,
