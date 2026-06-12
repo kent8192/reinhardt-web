@@ -14,16 +14,8 @@ pub fn client_url_patterns() -> ClientRouter {
 		.route("signup", "/signup/", signup_page)
 }
 
-pub mod urls {
-	pub fn login() -> String {
-		"/login/".to_string()
-	}
-
-	pub fn logout() -> String {
-		"/logout/".to_string()
-	}
-
-	pub fn signup() -> String {
-		"/signup/".to_string()
-	}
+pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
+	client_url_patterns()
+		.reverse(name, params)
+		.unwrap_or_else(|error| panic!("failed to reverse users client route `{name}`: {error}"))
 }

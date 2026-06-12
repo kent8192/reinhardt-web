@@ -3,10 +3,10 @@
 //! Provides minimal login / logout / sign-up pages backed by the `users`
 //! server functions. Every form uses the `form!` macro to define static fields
 //! while `#[server_fn]` client stubs attach the CSRF header automatically.
-use crate::apps::polls::urls::client_router::urls as polls_links;
+use crate::apps::polls::urls::client_router as polls_routes;
 #[cfg(wasm)]
 use crate::apps::users::server_fn::{login, logout, register};
-use crate::apps::users::urls::client_router::urls as links;
+use crate::apps::users::urls::client_router as users_routes;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
@@ -39,8 +39,8 @@ pub fn login_form() -> Page {
 	let loading_signal = login_form.loading().clone();
 	let error_signal = login_form.error().clone();
 	let form_view = login_form.into_page();
-	let polls_index_href = polls_links::index();
-	let signup_href = links::signup();
+	let polls_index_href = polls_routes::reverse("index", &[]);
+	let signup_href = users_routes::reverse("signup", &[]);
 
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, signup_href: String| {
 		div {
@@ -115,7 +115,7 @@ pub fn logout_form() -> Page {
 	};
 	let error_signal = logout_form.error().clone();
 	let form_view = logout_form.into_page();
-	let polls_index_href = polls_links::index();
+	let polls_index_href = polls_routes::reverse("index", &[]);
 
 	page!(|error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String| {
 		div {
@@ -195,8 +195,8 @@ pub fn signup_form() -> Page {
 	let loading_signal = signup_form.loading().clone();
 	let error_signal = signup_form.error().clone();
 	let form_view = signup_form.into_page();
-	let polls_index_href = polls_links::index();
-	let login_href = links::login();
+	let polls_index_href = polls_routes::reverse("index", &[]);
+	let login_href = users_routes::reverse("login", &[]);
 
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, login_href: String| {
 		div {
