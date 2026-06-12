@@ -153,10 +153,11 @@ endpoint = "http://localhost:4566"
 prefix = "uploads/"
 ```
 
-`endpoint` and `prefix` are optional. S3 credentials and region are resolved
-through the AWS SDK default provider chain, while object operations are sent
-through the minimal `reinhardt-providers` S3 client instead of
-`aws-sdk-s3`.
+`endpoint` and `prefix` are optional. S3 credentials are resolved through the
+AWS SDK default provider chain. The signing region uses `[storage.s3].region`
+when configured and falls back to the default provider chain only when omitted.
+Object operations are sent through the minimal `reinhardt-providers` S3 client
+instead of `aws-sdk-s3`.
 
 ### Google Cloud Storage
 

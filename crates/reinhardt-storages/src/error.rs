@@ -45,7 +45,9 @@ impl From<reinhardt_providers::ProviderError> for StorageError {
 			reinhardt_providers::ProviderError::Config(message) => {
 				StorageError::ConfigError(message)
 			}
-			reinhardt_providers::ProviderError::NotFound(name) => StorageError::NotFound(name),
+			reinhardt_providers::ProviderError::NotFound(_) => {
+				StorageError::Other("provider resource not found".to_string())
+			}
 			reinhardt_providers::ProviderError::PermissionDenied(message) => {
 				StorageError::PermissionDenied(message)
 			}

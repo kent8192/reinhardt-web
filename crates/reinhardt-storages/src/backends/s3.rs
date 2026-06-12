@@ -4,7 +4,10 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use reinhardt_providers::aws::{AwsCredentialsSource, S3Client, S3ClientConfig};
+use reinhardt_providers::{
+	ProviderError,
+	aws::{AwsCredentialsSource, S3Client, S3ClientConfig},
+};
 use std::time::Duration;
 
 use crate::config::S3Config;
@@ -68,7 +71,11 @@ impl StorageBackend for S3Storage {
 	async fn open(&self, name: &str) -> Result<Vec<u8>> {
 		let key = self.get_key(name);
 
-		let bytes = self.client.get_object(&key).await?;
+		let bytes = self
+			.client
+			.get_object(&key)
+			.await
+			.map_err(|err| map_provider_not_found(err, name))?;
 		Ok(bytes.to_vec())
 	}
 
@@ -79,7 +86,10 @@ impl StorageBackend for S3Storage {
 
 		let key = self.get_key(name);
 
-		self.client.delete_object(&key).await?;
+		self.client
+			.delete_object(&key)
+			.await
+			.map_err(|err| map_provider_not_found(err, name))?;
 
 		Ok(())
 	}
@@ -129,5 +139,12 @@ impl StorageBackend for S3Storage {
 		metadata
 			.last_modified
 			.ok_or_else(|| StorageError::Other("Last-Modified header missing".to_string()))
+	}
+}
+
+fn map_provider_not_found(err: ProviderError, name: &str) -> StorageError {
+	match err {
+		ProviderError::NotFound(_) => StorageError::NotFound(name.to_string()),
+		err => err.into(),
 	}
 }

@@ -10,7 +10,6 @@ operation and the full SDK surface is too heavy or too unstable for that path.
 ## Features
 
 - `aws`: AWS helpers, currently including a minimal S3 HTTP/SigV4 client
-- `gcp`: reserved for Google Cloud helpers
 
 ## AWS S3
 

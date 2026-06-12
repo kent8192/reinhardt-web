@@ -20,6 +20,8 @@ type HmacSha256 = Hmac<Sha256>;
 const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 const S3_SERVICE: &str = "s3";
 const AWS4_REQUEST: &str = "aws4_request";
+const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 struct SigningRequest<'a> {
 	method: &'a Method,
@@ -92,7 +94,11 @@ impl S3Client {
 	#[must_use]
 	pub fn new(config: S3ClientConfig) -> Self {
 		Self {
-			http: Client::new(),
+			http: Client::builder()
+				.connect_timeout(DEFAULT_CONNECT_TIMEOUT)
+				.timeout(DEFAULT_REQUEST_TIMEOUT)
+				.build()
+				.expect("static reqwest client configuration should be valid"),
 			config,
 		}
 	}
@@ -347,11 +353,20 @@ impl S3Client {
 				.config
 				.endpoint
 				.as_deref()
-				.unwrap_or("https://s3.amazonaws.com")
-				.trim_end_matches('/');
+				.unwrap_or("https://s3.amazonaws.com");
+			let endpoint_url = Url::parse(endpoint)?;
+			let base_path = endpoint_url.path().trim_end_matches('/');
 			let bucket = uri_encode(&self.config.bucket, true);
-			let canonical_uri = format!("/{bucket}/{encoded_key}");
-			let url = Url::parse(&format!("{endpoint}{canonical_uri}"))?;
+			let canonical_uri = format!("{base_path}/{bucket}/{encoded_key}");
+			let mut origin = endpoint_url;
+			origin.set_path("");
+			origin.set_query(None);
+			origin.set_fragment(None);
+			let url = Url::parse(&format!(
+				"{}{}",
+				origin.as_str().trim_end_matches('/'),
+				canonical_uri
+			))?;
 			return Ok((url, canonical_uri));
 		}
 
@@ -523,5 +538,26 @@ mod tests {
 	#[test]
 	fn empty_sha256_constant_matches_hash() {
 		assert_eq!(sha256_hex([]), EMPTY_SHA256);
+	}
+
+	#[test]
+	fn object_url_includes_endpoint_base_path_in_canonical_uri() {
+		let client = S3Client::new(S3ClientConfig {
+			bucket: "test-bucket".to_string(),
+			region: Some("us-east-1".to_string()),
+			endpoint: Some("http://127.0.0.1:9000/base/".to_string()),
+			credentials: AwsCredentialsSource::Static(AwsCredentials::new("test", "test")),
+			force_path_style: true,
+		});
+
+		let (url, canonical_uri) = client
+			.object_url("path/to/file name.txt", "us-east-1")
+			.expect("object URL should be built");
+
+		assert_eq!(canonical_uri, "/base/test-bucket/path/to/file%20name.txt");
+		assert_eq!(
+			url.as_str(),
+			"http://127.0.0.1:9000/base/test-bucket/path/to/file%20name.txt"
+		);
 	}
 }
