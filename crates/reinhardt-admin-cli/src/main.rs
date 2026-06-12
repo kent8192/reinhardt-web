@@ -1024,6 +1024,24 @@ mod arg_group_tests {
 	}
 
 	#[test]
+	fn startproject_dependency_flags_are_accepted() {
+		assert!(
+			try_parse(&[
+				"reinhardt-admin",
+				"startproject",
+				"myproj",
+				"--template",
+				"pages",
+				"--features",
+				"standard,pages,admin,conf,commands,db-sqlite,forms,auth-session,argon2-hasher",
+				"--no-interactive",
+			])
+			.is_ok(),
+			"startproject dependency flags should parse"
+		);
+	}
+
+	#[test]
 	fn startproject_template_rest_accepted() {
 		assert!(
 			try_parse(&[

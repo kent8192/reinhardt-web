@@ -42,7 +42,6 @@ a `settings/` directory:
 ```
 my-project/
 ├── settings/
-│   ├── .gitignore         # Ignores *.toml, only commits *.example.toml
 │   ├── base.example.toml  # Base configuration template
 │   ├── local.example.toml # Local development template
 │   ├── staging.example.toml
@@ -655,25 +654,16 @@ println!("Secret key: {}", settings.core.secret_key);
 
 ## Security Best Practices
 
-### 1. `.gitignore` Configuration
+### 1. Configuration File Tracking
 
-`settings/.gitignore`:
+Reinhardt project templates do not ignore `settings/*.toml`. Track template
+files and any team-approved non-secret TOML defaults directly in Git. Keep
+machine-local overrides and real secrets outside the repository, or add a
+project-specific ignore rule for that exact local-only file.
 
-```gitignore
-# Actual configuration files are not tracked by Git
-*.toml
-
-# Only commit example files
-!*.example.toml
-```
-
-Project root `.gitignore`:
+Project root `.gitignore` should still ignore environment variable files:
 
 ```gitignore
-# Configuration files
-settings/*.toml
-!settings/*.example.toml
-
 # Environment variable files
 .env
 .env.local

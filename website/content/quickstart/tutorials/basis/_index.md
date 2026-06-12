@@ -68,7 +68,7 @@ examples-tutorial-basis/
 │   │   └── manage.rs          # CLI binary (manage.py equivalent), required-features = ["with-reinhardt"]
 │   ├── config/
 │   │   ├── settings.rs        # #[settings(core: CoreSettings)] ProjectSettings + SettingsBuilder + profile loading
-│   │   ├── apps.rs            # installed_apps! { polls: "polls", users: "users" }
+│   │   ├── apps.rs            # installed_apps! entries added by startapp
 │   │   ├── urls.rs            # #[routes] routes() -> UnifiedRouter (app server-router mounts, admin mount, session middleware, client-router aggregation)
 │   │   ├── wasm.rs            # AppStaticFilesConfig for dist-wasm/, registered via inventory::submit!
 │   │   └── admin.rs           # configure_admin() -> AdminSite + register Question/Choice admins
@@ -111,16 +111,16 @@ Three rules keep this structure predictable:
 
 ### [Part 1: Project Setup](1-project-setup/)
 
-- Install `reinhardt-admin-cli` and generate a project from the **`pages`** template
+- Install `reinhardt-admin-cli`, generate a project from the **`pages`** template, and create `polls` / `users` apps with `startapp`
 - Walk the `src/{lib,apps,config,shared,client,bin}` layout the template emits
 - Configure `settings/base.toml` and load it through the `ProjectSettings` + `SettingsBuilder` pipeline (note: `TomlFileSource` interpolation is enabled by default)
-- Run the dev server with `cargo make runserver` (auto-runs `migrate` first) and the full WASM workflow with `cargo make dev`
+- Run the dev server with `cargo make runserver` and the full WASM workflow with `cargo make dev`
 
 ### [Part 2: Models and Database](2-models-and-database/)
 
 - Define `Question` and `Choice` under `src/apps/polls/models.rs` with `#[model(app_label = "polls", table_name = "...")]`, using `#[field(...)]` and `#[rel(foreign_key, related_name = "...")]` to wire `Question.author -> User` and `Choice.question -> Question`
 - Introduce the `users` app and the `User` model defined with `#[user(hasher = Argon2Hasher, username_field = "username", manager = false)] + #[model(...)]`, plus a project-local `AuthUserManager` registered via `#[injectable_factory(scope = "transient")]`
-- Register both apps in `src/config/apps.rs` via `installed_apps! { polls: "polls", users: "users" }`
+- Use the `installed_apps! { polls: "polls", users: "users" }` entries that `startapp` added in Part 1
 - Generate and apply migrations with `cargo make makemigrations` and `cargo make migrate`
 
 ### [Part 3: Server Functions and URLs](3-views-and-urls/)

@@ -8,7 +8,7 @@ sidebar_weight = 20
 
 # Part 2: Models and Database
 
-Part 1 generated the pages project layout and started the dev server against an empty database. In this chapter we fill in the model layer that backs the rest of the tutorial: the `polls` app with `Question` and `Choice`, the `users` app with a session-aware `User` and a project-local `AuthUserManager`, and the migration workflow that turns those Rust definitions into a SQLite schema.
+Part 1 generated the pages project layout, created the tutorial apps, and configured SQLite for local development. In this chapter we fill in the model layer that backs the rest of the tutorial: the `polls` app with `Question` and `Choice`, the `users` app with a session-aware `User` and a project-local `AuthUserManager`, and the migration workflow that turns those Rust definitions into a SQLite schema.
 
 By the end of the chapter your `src/apps/` tree will match [`examples/examples-tutorial-basis/src/apps/`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/apps) — same files, same attributes, same builder shape. Part 3 plugs server functions on top of these models, so resist the urge to skip ahead and "just add the views"; getting the model layer right is what makes the typed `#[server_fn]` story click later.
 
@@ -18,7 +18,7 @@ The model layer is the bridge between the SQLite file on disk and the typed hand
 
 ```mermaid
 flowchart LR
-    Settings["settings/base.toml<br/>[database]"] -->|loaded by| ConfigSettings["src/config/settings.rs<br/>ProjectSettings"]
+    Settings["settings/base.toml<br/>[core.databases.default]"] -->|loaded by| ConfigSettings["src/config/settings.rs<br/>ProjectSettings"]
     ConfigSettings -->|opens| DB[(SQLite<br/>db.sqlite3)]
     PollsApp["src/apps/polls/models.rs<br/>Question, Choice"] -->|"#[model] schema"| Migrations["migrations/<br/>(generated)"]
     UsersApp["src/apps/users/models.rs<br/>User + AuthUserManager"] -->|"#[model] schema"| Migrations
@@ -27,23 +27,23 @@ flowchart LR
     AppsConfig --> UsersApp
 ```
 
-Three pieces fit together: settings tell Reinhardt **where** the database lives, the `#[model]`-annotated structs tell it **what** the schema looks like, and `installed_apps!` tells it **which apps to scan** for models, server functions, and URL routers. The migration commands stitch the schema and the file together.
+Three pieces fit together: settings tell Reinhardt **where** the database lives, the `#[model]`-annotated structs tell it **what** the schema looks like, and the app labels that `startapp` added to `installed_apps!` tell it **which apps to scan** for models, server functions, and URL routers. The migration commands stitch the schema and the file together.
 
 ## Database Configuration Recap
 
-Part 1 already set up `settings/base.toml` with a SQLite section. Open it and confirm the `[database]` block looks like this:
+Part 1 already set up `settings/base.toml` with a SQLite section. Open it and confirm the `[core.databases.default]` block looks like this:
 
 ```toml
-[database]
+[core.databases.default]
 engine = "sqlite"
 name = "db.sqlite3"
 ```
 
-That is the entire database configuration the tutorial needs. `engine = "sqlite"` selects the `db-sqlite` backend (already enabled by the `pages` template's `reinhardt = { features = [..., "db-sqlite", ...] }` dependency in `Cargo.toml`), and `name = "db.sqlite3"` is the relative path to the on-disk SQLite file Reinhardt will create on first `migrate`. There is no separate database server to install or start, and no `DATABASE_URL` to export.
+That is the entire database configuration the tutorial needs. `engine = "sqlite"` selects the `db-sqlite` backend (enabled by the explicit `startproject --features ...,db-sqlite,...` command from Part 1), and `name = "db.sqlite3"` is the relative path to the on-disk SQLite file Reinhardt will create on first `migrate`. There is no separate database server to install or start, and no `DATABASE_URL` to export.
 
-If you ever need to point a single run at a different file (for example, an integration test), set `REINHARDT_DATABASE__NAME=/tmp/throwaway.sqlite3` in the environment — the `LowPriorityEnvSource` registered in `src/config/settings.rs` picks up `REINHARDT_`-prefixed variables and folds them into the layered settings. Stick with `db.sqlite3` for the tutorial.
+If you ever need to point a single run at a different file (for example, an integration test), set `REINHARDT_CORE__DATABASES__DEFAULT__NAME=/tmp/throwaway.sqlite3` in the environment. The `HighPriorityEnvSource` registered in `src/config/settings.rs` picks up `REINHARDT_`-prefixed variables and folds them into the layered settings. Stick with `db.sqlite3` for the tutorial.
 
-> Migrating to PostgreSQL or MySQL later is a settings-only change (`engine = "postgresql"` plus host/user/password, or `engine = "mysql"`). Add the matching `db-postgres` / `db-mysql` feature on `reinhardt` in `Cargo.toml` and the same `#[model]` definitions in this chapter work unchanged.
+> Migrating to PostgreSQL or MySQL later is a settings change (`engine = "postgresql"` plus host/user/password, or `engine = "mysql"`) plus the matching `db-postgres` / `db-mysql` feature on `reinhardt` in `Cargo.toml`. The same `#[model]` definitions in this chapter work unchanged.
 
 ## Declaring the `polls` App Module Tree
 
@@ -517,9 +517,9 @@ Two details worth knowing:
 - `scope = "transient"` — a fresh `AuthUserManager` per resolution. `BaseUserManager::create_user(&mut self, …)` needs unique mutable access, so we cannot share an `Arc` across requests. Transient is the right scope; the manager itself only holds a cloned `DatabaseConnection` (which is internally an `Arc` over a connection pool), so the cost is trivial.
 - **Why factory, not `#[injectable]` on the struct?** The doc comment on the example calls it out. `#[injectable]` emits `#[async_trait::async_trait]` directly, which would force the consuming crate to add `async-trait` to its `Cargo.toml`. That breaks examples-project rule DM-1 ("Reinhardt Dependencies Only"). `#[injectable_factory]` does not have that requirement. Until reinhardt-web#4445 reworks the macro, the factory form is the right pick for project code.
 
-## Registering Both Apps in `installed_apps!`
+## Confirming App Registration
 
-`src/config/apps.rs` is where the framework learns which apps it should scan. Part 1's generated tree already lists both apps; confirm it matches:
+`src/config/apps.rs` is where the framework learns which apps it should scan. The `startapp` commands from Part 1 already updated it; confirm it matches:
 
 ```rust
 use reinhardt::installed_apps;
@@ -539,13 +539,13 @@ pub fn get_installed_apps() -> Vec<String> {
 - It expands into the app label metadata used by migrations, admin registration, and route namespaces.
 - The left-hand side of each entry (`polls:`) is the enum variant name. The right-hand side (`"polls"`) is the **app label** that becomes the URL prefix the framework auto-applies to each app's routers and that matches the `app_label = "polls"` you typed on the model attribute.
 
-Why does this matter for Part 2? Because the same app labels are wired through migrations, admin metadata, server-function registration, and client route namespaces. Get them right in `installed_apps!` now and the rest of the tutorial follows.
+Why does this matter for Part 2? Because the same app labels are wired through migrations, admin metadata, server-function registration, and client route namespaces. With the labels already registered by `startapp`, `cargo make makemigrations` can place new model changes under the right migration directory.
 
-We don't fill in app-local routers until Part 3 — keep the placeholder `urls.rs` files we created earlier empty for now. This chapter only needs `installed_apps!` to be correct so that `cargo make makemigrations` knows about both apps.
+We don't fill in app-local routers until Part 3 — keep the placeholder `urls.rs` files created by `startapp` empty for now. This chapter only needs the existing app registration so that `cargo make makemigrations` knows about both apps.
 
 ## Generating and Applying Migrations
 
-With the models defined and the apps registered, we can ask Reinhardt to compile the schema and write it to the database. Two commands, both defined in `Makefile.toml`:
+With the models defined and the `startapp` registration in place, we can ask Reinhardt to compile the schema and write it to the database. Two commands, both defined in `Makefile.toml`:
 
 ```bash
 cargo make makemigrations
@@ -597,7 +597,7 @@ The same goes for `admin.rs`: Part 7 fills in the `#[admin(model, for = Question
 
 ## What's Next?
 
-You now have the data plane of the tutorial in place: two `polls` models, one `users` model with a project-local manager, both apps registered in `installed_apps!`, and a SQLite database with the right schema. The dev server (`cargo make dev` from Part 1) will start cleanly against it, even though there are no routes that read from the database yet.
+You now have the data plane of the tutorial in place: two `polls` models, one `users` model with a project-local manager, both apps registered by `startapp`, and a SQLite database with the right schema. The dev server (`cargo make dev` from Part 1) will start cleanly against it, even though there are no routes that read from the database yet.
 
 In Part 3 we add the read side — `get_questions`, `get_question_detail`, `get_question_results` — as `#[server_fn]` declarations in `src/apps/polls/server_fn.rs`, plus the matching client routes in `src/apps/polls/urls/client_router.rs`. We also wire up the `users` app's `login`, `register`, `logout`, and `current_user` server functions and connect them to the session middleware mounted from `src/config/urls.rs`.
 
@@ -607,12 +607,12 @@ Continue to [Part 3: Server Functions and URLs](../3-views-and-urls/).
 
 In this chapter you learned:
 
-- How `settings/base.toml`'s `[database]` block selects SQLite for the tutorial without any external server
+- How `settings/base.toml`'s `[core.databases.default]` block selects SQLite for the tutorial without any external server
 - How `src/apps/polls.rs` declares its submodules with `#[cfg(native)]` for `admin` / `di` / `models` / `serializers`, `#[cfg(wasm)]` for app-local `client`, while keeping `server_fn` and `urls` available on both compile targets
 - How `#[model(app_label = ..., table_name = ...)]` plus `#[field(...)]` plus `#[rel(foreign_key, related_name = ...)]` define `Question` and `Choice`, including the rule that `related_name` is required
 - How the `#[model]`-generated typestate `build()` constructor (`Question::build()...finish()`, `Choice::build()...finish()`) keeps call sites stable as the schema grows
 - How `#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]` layers auth traits on top of `#[model]`, and why `manager = false` is the right pick when you have a project-local manager
 - How the `#[user] + #[model]` macro pair auto-generates the `SuperuserInit` impl (plus its `inventory` registration) that makes `cargo run --bin manage createsuperuser` work, and why that path intentionally bypasses the application-side `AuthUserManager` validation
 - How a project-local `AuthUserManager` is registered with the DI container through `#[injectable_factory(scope = "transient")]`, and why the factory form sidesteps the `async-trait` dependency that `#[injectable]` would otherwise force
-- How `installed_apps! { polls: "polls", users: "users" }` generates stable app labels used by migrations, admin metadata, and routing
+- How the `installed_apps! { polls: "polls", users: "users" }` entries created by `startapp` generate stable app labels used by migrations, admin metadata, and routing
 - How `cargo make makemigrations` + `cargo make migrate` (with `cargo make showurls` as the inspection tool) compile and apply the schema to `db.sqlite3`

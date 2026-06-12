@@ -7,7 +7,7 @@
 # - production.toml (production environment)
 #
 # IMPORTANT: Copy this file to base.toml and update the values.
-# The base.toml file is gitignored and should not be committed.
+# Commit non-secret defaults only when they are meant to be shared.
 
 [core]
 debug = false

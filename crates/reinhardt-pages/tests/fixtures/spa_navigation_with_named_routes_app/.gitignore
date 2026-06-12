@@ -98,10 +98,6 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/rust,rust-analyzer,macos,windows,linux
 
-# Settings files (only *.example.toml should be committed)
-settings/*.toml
-!settings/*.example.toml
-
 # Environment files
 .env
 .env.local
