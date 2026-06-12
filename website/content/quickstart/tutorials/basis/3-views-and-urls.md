@@ -1132,34 +1132,8 @@ The app-local `reverse` helper is intentionally small. Components call
 instead of hand-formatting paths or carrying a separate helper module
 that can drift from the route table.
 
-The `users` app's client router is a much shorter version of the same
-file. Three login/logout/signup pages, no path parameters, namespace
-`users:`:
-
-```rust
-// File: src/apps/polls/urls/client_router.rs
-//! Client-side routing for the users application (login/logout pages).
-//!
-//! Each route is registered with a stable name (`users:login`,
-//! `users:logout`) so callers can resolve URLs via the URL reverser.
-
-use reinhardt::ClientRouter;
-
-use crate::client::pages::{login_page, logout_page, signup_page};
-
-pub fn client_url_patterns() -> ClientRouter {
-	ClientRouter::new()
-		.route("login", "/login/", login_page)
-		.route("logout", "/logout/", logout_page)
-		.route("signup", "/signup/", signup_page)
-}
-
-pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
-	client_url_patterns()
-		.reverse(name, params)
-		.unwrap_or_else(|error| panic!("failed to reverse users client route `{name}`: {error}"))
-}
-```
+The `users` app follows the same pattern with only three parameter-less
+routes: `login`, `logout`, and `signup`, all under the `users:` namespace.
 
 Each app keeps reverse lookup next to its router. That keeps navigation
 helpers app-local without duplicating the route definitions in a
