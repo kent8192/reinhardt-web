@@ -387,6 +387,10 @@ async fn startapp_pages_layout_has_urls_submodule() {
 		urls_contents.contains("pub mod client_router"),
 		"apps/foo/urls.rs must declare `pub mod client_router`:\n{urls_contents}"
 	);
+	assert!(
+		urls_contents.contains("#[cfg(client)]\npub fn reverse"),
+		"apps/foo/urls.rs must expose a client-gated `reverse` helper:\n{urls_contents}"
+	);
 
 	// 4. Sub-routers define their url_patterns functions with empty bodies.
 	//    The bodies are isolated from the module doc-comment (which may
@@ -422,6 +426,14 @@ async fn startapp_pages_layout_has_urls_submodule() {
 		client_body.matches(".route(\"index\",").count(),
 		0,
 		"client_router.rs function body must not embed example route calls:\n{client_body}"
+	);
+	assert!(
+		client_contents.contains("pub fn reverse"),
+		"client_router.rs must define `pub fn reverse`:\n{client_contents}"
+	);
+	assert!(
+		client_contents.contains("failed to reverse foo client route"),
+		"client_router.rs reverse helper must include the generated app name in panic context:\n{client_contents}"
 	);
 
 	// 5. Per-app aggregator `apps/foo.rs` declares `#[cfg(client)] pub mod client;`
