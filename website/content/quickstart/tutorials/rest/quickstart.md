@@ -264,6 +264,6 @@ CRUD`, `Snippets ViewSet`, and `Validation Tests` folders.
 
 ## Next Steps
 
-Continue with [Tutorial 0: HTTP Macros](../0-http-macros/) for the macro
-details, then [Tutorial 6: ViewSets and Routers](../6-viewsets-and-routers/)
+Continue with [Tutorial 0: HTTP Macros](./0-http-macros/) for the macro
+details, then [Tutorial 6: ViewSets and Routers](./6-viewsets-and-routers/)
 for the `ModelViewSet` path.

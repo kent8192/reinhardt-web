@@ -93,7 +93,7 @@ cargo make showurls
 
 ## Project Structure
 
-```
+```text
 examples-tutorial-basis/
 ├── .gitignore
 ├── Cargo.toml

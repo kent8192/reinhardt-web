@@ -177,7 +177,7 @@ What it does at runtime is walk every `AppStaticFilesConfig` registered via `inv
 
 After it runs you will see:
 
-```
+```text
 staticfiles/
 ├── examples_tutorial_basis.js
 ├── examples_tutorial_basis_bg.wasm
@@ -230,7 +230,7 @@ Two flags are worth calling out:
 - `--with-pages` hosts the SPA frontend alongside the server-function and admin routes. Without it `runserver` would still serve `/admin/` and the native backend routes but would not mount the SPA shell.
 - `--no-override-wasm` is what tells `runserver` *not* to re-invoke its own internal WASM rebuild — since `wasm-build-dev` has just produced the bundle, letting `runserver` do it again would either be wasted work or, worse, overwrite the just-built artifacts.
 
-`runserver` itself does not apply migrations. After changing models or starting from a fresh SQLite file, run `cargo make migrate` before using routes that read or write the database.
+The bare `manage runserver --with-pages` command does not apply migrations. The reference example's `cargo make runserver` task chains `migrate` first; if you bypass the Makefile and invoke `manage runserver` directly after changing models or starting from a fresh SQLite file, run `cargo make migrate` before using routes that read or write the database.
 
 ### `cargo make dev-release`
 
@@ -511,7 +511,7 @@ cargo make clean-cache && cargo make wasm-build-dev
 
 ### `cargo make dev` builds but the database has no tables
 
-Run `cargo make migrate` once, then re-run `cargo make dev`. A fresh `db.sqlite3` starts empty; the generated `runserver` task builds the WASM bundle and starts the server, but it does not apply schema migrations for you.
+Run `cargo make migrate` once, then re-run `cargo make dev`. A fresh `db.sqlite3` starts empty; the reference example's `cargo make runserver` and `cargo make dev` tasks normally chain `migrate`, but direct `manage runserver --with-pages` invocations do not apply schema migrations for you.
 
 ### `cargo make wasm-test` fails to compile
 

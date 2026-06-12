@@ -156,7 +156,7 @@ sequenceDiagram
 
     U->>C: Click "Vote"
     C->>C: form! { ... submit -> submit_vote }
-    C->>S: typed RPC: submit_vote(qid, cid, _csrf)
+    C->>S: typed RPC: submit_vote(qid, cid)
     S->>S: atomic(&db, || async { ... })
     S->>M: Choice::objects().get(choice_id)
     M->>DB: SELECT * FROM choices WHERE id = ?
