@@ -106,6 +106,7 @@ $RECYCLE.BIN/
 # Local Reinhardt runtime state
 .reinhardt/
 local-infra.json
+db.sqlite3
 
 # IDE
 .idea/
