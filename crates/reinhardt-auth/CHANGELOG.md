@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.3...reinhardt-auth@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-auth` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Replace old auth user traits and fixture types with `AuthIdentity`, `BaseUser` / `FullUser`, `PermissionsMixin`, and application-owned `#[user]` models.
+- Use `CurrentUser<U>` as the canonical extractor; `AuthUser<U>` is only a deprecated compatibility wrapper.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+- *(auth)* [**breaking**] remove RC-deprecated CurrentUser, DefaultUser, and User trait (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520), closes [[#4652](https://github.com/kent8192/reinhardt-web/issues/4652)](https://github.com/kent8192/reinhardt-web/issues/4652))
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+- *(model)* [**breaking**] make new an alias for build
+
+### Added
+
+- *(auth)* [**breaking**] remove RC-deprecated CurrentUser, DefaultUser, and User trait (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520), closes [[#4652](https://github.com/kent8192/reinhardt-web/issues/4652)](https://github.com/kent8192/reinhardt-web/issues/4652))
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+- *(model)* [**breaking**] make new an alias for build
+- *(auth)* add settings fragments for session, jwt, token rotation
+
+### Changed
+
+- *(auth)* make CurrentUser canonical extractor
+
+### Deprecated
+
+- *(auth)* deprecate SessionConfig, JwtConfig, TokenRotationConfig
+
+### Removed
+
+- **`CurrentUser<U>` struct** (`src/current_user.rs`, deprecated
+  `0.1.0-rc.12`) — entire module removed. Use the canonical
+  `AuthUser<U>` extractor (`src/auth_user.rs`) directly. Closes
+  Issue #4652.
+
+  Note: `CurrentUser` could **not** be retained as a type alias
+  (the original plan in #4652) because its on-the-wire shape
+  (`Option<U>` + `Option<Uuid>`) differs from `AuthUser`'s
+  tuple-struct shape — a type alias would break pattern-matching
+  call sites. Migration is therefore a struct-replacement rather
+  than a no-op alias.
+- **`DefaultUser` struct** (`src/default_user.rs`, deprecated
+  `0.1.0-rc.15`) — entire module removed. Define your own user type
+  with the `#[user]` attribute macro.
+- **`User` trait + `SimpleUser` + `AnonymousUser`** (`src/core/user.rs`,
+  deprecated `0.1.0-rc.15`) — entire module removed. Use
+  `AuthIdentity` + `BaseUser` / `FullUser` + `PermissionsMixin`
+  instead.
+
+### Fixed
+
+- stop implicit openapi schema macro output
+- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(macros)* suppress missing_docs on generated Info companion types
+
+### Performance
+
+- atomize facade dependency feature gates
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+- *(auth)* update core.rs and lib.rs doc references for removed types
+- *(di,auth)* fix rustdoc link warnings on nightly
+
+### Maintenance
+
+- *(auth)* add reinhardt-conf dependency for settings fragments
+
+### Testing
+
+- *(auth)* remove time-based permission clock flake
+
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.2.0-rc.4...reinhardt-auth@v0.2.0-rc.5) - 2026-06-11
 
 ### Documentation

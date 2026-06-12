@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.3...reinhardt-middleware@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-middleware` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Replace `SessionStoreRef` injection with `Depends<SessionStore>`.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+- *(middleware)* [**breaking**] migrate session DI from Arc<SessionStore> to Depends<SessionStore>
+- *(middleware)* [**breaking**] replace deprecated SecurityConfig with builder pattern on SecurityMiddleware
+- [**breaking**] Migrate session DI resolution from `Arc<SessionStore>` to the
+  canonical `Depends<SessionStore>` shape, aligning session middleware with the
+  rest of reinhardt-di's `#[inject] Depends<T>` direction. See
+  [#4437](https://github.com/kent8192/reinhardt-web/issues/4437).
+  - `SessionMiddleware::di_registrations` now keys on `TypeId::of::<SessionStore>()`
+    (previously `TypeId::of::<Arc<SessionStore>>()`), and stores the
+    `Arc<SessionStore>` verbatim (no double-Arc envelope).
+  - The `SessionStoreRef` newtype wrapper has been **removed**. Handlers that
+    previously took `#[inject] store: SessionStoreRef` must now take
+    `#[inject] store: Depends<SessionStore>`. Call sites for `SessionAuthExt`
+    (`session.login(&store, …)`, `session.logout(&store)`) continue to work
+    unchanged thanks to `Depends<T>: Deref<Target = T>` and Rust deref coercion.
+  - `SessionAuthExt::login` / `SessionAuthExt::logout` now take `&SessionStore`
+    directly instead of `&SessionStoreRef`.
+  - **Migration**: replace `#[inject] store: SessionStoreRef` with
+    `#[inject] store: Depends<SessionStore>` and update imports from
+    `reinhardt::middleware::session::SessionStoreRef` to
+    `reinhardt::middleware::session::SessionStore` + `reinhardt::di::Depends`.
+    Manual DI setup that called `singleton.set::<Arc<SessionStore>>(store)`
+    should call `singleton.set_arc(store)` instead.
+
+### Added
+
+- *(middleware)* [**breaking**] migrate session DI from Arc<SessionStore> to Depends<SessionStore>
+- *(middleware)* bridge CorsConfig to CorsSettings fragment
+
+### Changed
+
+- *(conf)* delete deprecated Settings, AdvancedSettings, JsonFileSource, and related APIs
+- *(middleware)* [**breaking**] replace deprecated SecurityConfig with builder pattern on SecurityMiddleware
+- [**breaking**] Migrate session DI resolution from `Arc<SessionStore>` to the
+  canonical `Depends<SessionStore>` shape, aligning session middleware with the
+  rest of reinhardt-di's `#[inject] Depends<T>` direction. See
+  [#4437](https://github.com/kent8192/reinhardt-web/issues/4437).
+  - `SessionMiddleware::di_registrations` now keys on `TypeId::of::<SessionStore>()`
+    (previously `TypeId::of::<Arc<SessionStore>>()`), and stores the
+    `Arc<SessionStore>` verbatim (no double-Arc envelope).
+  - The `SessionStoreRef` newtype wrapper has been **removed**. Handlers that
+    previously took `#[inject] store: SessionStoreRef` must now take
+    `#[inject] store: Depends<SessionStore>`. Call sites for `SessionAuthExt`
+    (`session.login(&store, …)`, `session.logout(&store)`) continue to work
+    unchanged thanks to `Depends<T>: Deref<Target = T>` and Rust deref coercion.
+  - `SessionAuthExt::login` / `SessionAuthExt::logout` now take `&SessionStore`
+    directly instead of `&SessionStoreRef`.
+  - **Migration**: replace `#[inject] store: SessionStoreRef` with
+    `#[inject] store: Depends<SessionStore>` and update imports from
+    `reinhardt::middleware::session::SessionStoreRef` to
+    `reinhardt::middleware::session::SessionStore` + `reinhardt::di::Depends`.
+    Manual DI setup that called `singleton.set::<Arc<SessionStore>>(store)`
+    should call `singleton.set_arc(store)` instead.
+
+### Fixed
+
+- stop implicit openapi schema macro output
+- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+- *(docs)* resolve rustdoc intra-doc link errors on develop/0.2.0
+- *(docs)* resolve additional rustdoc link errors for feature-gated types
+- complete downstream shielding for deprecated config re-exports
+
+### Performance
+
+- atomize facade dependency feature gates
+- trim standard facade feature dependencies
+
+### Maintenance
+
+- *(examples)* remove examples-twitter
+
+
 ## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.2.0-rc.2...reinhardt-middleware@v0.2.0-rc.3) - 2026-06-05
 
 ### Fixed

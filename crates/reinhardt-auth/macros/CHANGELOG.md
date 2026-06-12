@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth-macros@v0.1.3...reinhardt-auth-macros@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-auth-macros` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Regenerate auth models after moving to the final `CurrentUser<U>` and user trait contracts.
+- See [`instructions/MIGRATION_0.2.md`](../../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth-macros@v0.2.0-rc.4...reinhardt-auth-macros@v0.2.0-rc.5) - 2026-06-11
 
 ### Documentation

@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.1.3...reinhardt-apps@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-apps` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Review the breaking changes listed below before upgrading from 0.1.x.
+- See the root CHANGELOG and `instructions/MIGRATION_0.2.md` for cross-crate migration guidance.
+
+### Changed
+
+- *(conf)* delete deprecated Settings, AdvancedSettings, JsonFileSource, and related APIs
+
+### Fixed
+
+- *(docs)* resolve remaining cross-crate intra-doc link errors
+- shield downstream consumers of newly deprecated config types
+- complete downstream shielding for deprecated config re-exports
+
+### Performance
+
+- atomize facade dependency feature gates
+- trim standard facade feature dependencies
+
+### Maintenance
+
+- update Cargo.toml dependencies
+
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.2.0-rc.4...reinhardt-apps@v0.2.0-rc.5) - 2026-06-11
 
 ### Maintenance
