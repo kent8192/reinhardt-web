@@ -262,7 +262,7 @@ There is one new attribute macro and a handful of new field options. Let's unpac
 - `username_field = "username"` — which field is the identity column. The framework needs to know this so session-based authentication can look users up by username.
 - `manager = false` — **opt out of the auto-generated `UserManager`.** This is the critical flag for the tutorial. Reinhardt-web#4451 added a default `UserManager` so simple projects don't need to write one, but if we want to layer custom validation (username trimming, password length, uniqueness checks) and register the manager through the DI container, the auto-generated manager would shadow ours. Setting `manager = false` makes room for the project-local one we're about to write.
 
-`#[derive(Default, Clone, Serialize, Deserialize)]` is needed for a few reasons: `Default` lets the framework construct a stand-in `User` for the request extensions when no user is logged in; `Clone` lets server functions pull an owned `AuthUserManager` out of `Depends<_>` later; `Serialize`/`Deserialize` are for the DTO conversion in `src/shared/types.rs` (Part 3).
+`#[derive(Default, Clone, Serialize, Deserialize)]` is needed for a few reasons: `Default` lets the framework construct a stand-in `User` for the request extensions when no user is logged in; `Clone` lets server functions pull an owned `AuthUserManager` out of `Depends<_>` later; `Serialize`/`Deserialize` are propagated by `#[model]` to the generated `UserInfo` companion that `src/shared/types.rs` re-exports in Part 3.
 
 Notice that we did **not** pass `full = true`. The `full` flag would also implement `FullUser`, which requires `email`, `first_name`, `last_name`, `is_staff`, and `date_joined` fields. The tutorial keeps the schema small on purpose: fewer signup fields, fewer migration columns, less to explain. The doc comment in the example file calls this out explicitly.
 
@@ -644,7 +644,7 @@ This dumps every URL pattern the framework currently knows about. It will be spa
 
 ## A Note on `serializers.rs`
 
-The generated `serializers.rs` file can stay as a placeholder for now. The current example fills it in with `QuestionSerializer`, `ChoiceSerializer`, and matching response types for the ownership-checked question/choice mutation flow. Server functions still hand back shared DTOs from `src/shared/types.rs`, but the serializer structs keep form validation and response mapping close to the polls app. We leave `serializers.rs` alone in this chapter and come back to it in Part 3 when we wire up the server function layer and client routes.
+The generated `serializers.rs` file can stay as a placeholder for now. The current example fills it in with `QuestionSerializer`, `ChoiceSerializer`, and matching response types for the ownership-checked question/choice mutation flow. Server functions hand back generated `QuestionInfo` / `ChoiceInfo` companions re-exported from `src/shared/types.rs`, while the serializer structs keep form validation and response mapping close to the polls app. We leave `serializers.rs` alone in this chapter and come back to it in Part 3 when we wire up the server function layer and client routes.
 
 The same goes for `admin.rs`: Part 7 fills in the `#[admin(model, for = Question, ...)]` and `#[admin(model, for = Choice, ...)]` annotations and registers them in `src/config/admin.rs`. We can leave the file empty for now.
 

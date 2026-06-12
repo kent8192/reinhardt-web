@@ -74,7 +74,7 @@ examples-tutorial-basis/
 │   │   ├── wasm.rs            # AppStaticFilesConfig for dist-wasm/, registered via inventory::submit!
 │   │   └── admin.rs           # configure_admin() -> AdminSite + register Question/Choice admins
 │   ├── shared/
-│   │   ├── types.rs           # Native Info aliases + WASM DTO fallbacks; VoteRequest, LoginRequest, RegisterRequest
+│   │   ├── types.rs           # Re-exported generated *Info companions; VoteRequest, LoginRequest, RegisterRequest
 │   │   └── forms.rs           # #[cfg(server)] create_vote_form() — form! + use_form metadata/runtime contract
 │   ├── apps/
 │   │   ├── polls/
@@ -103,8 +103,8 @@ examples-tutorial-basis/
 
 Three rules keep this structure predictable:
 
-1. **Server vs client** — `#[cfg(server)]` code runs on the server (models, server function bodies, forms, admin). `#[cfg(client)]` code runs in the browser (`src/client/` plus each app's `client` module). Code under `src/shared/types.rs` compiles on both so DTOs stay in sync, and each app declares its `server_fn` and `urls` so the typed `#[server_fn]` client stubs work in the browser.
-2. **Server functions are the bridge, and they live per-app** — anything the WASM client needs from the database goes through a `#[server_fn]` defined in `src/apps/<app>/server_fn.rs` (so it sits alongside that app's models, DI helpers, client UI, and admin), and the result is returned as a DTO from `src/shared/types.rs`. There is no top-level `src/server_fn/` directory.
+1. **Server vs client** — `#[cfg(server)]` code runs on the server (server function bodies, forms, admin, database-only helpers). `#[cfg(client)]` code runs in the browser (`src/client/` plus each app's `client` module). Model modules compile on both targets so the `#[model]` macro can expose generated `QuestionInfo`, `ChoiceInfo`, and `UserInfo` companions to WASM; the ORM implementation it generates remains server-only.
+2. **Server functions are the bridge, and they live per-app** — anything the WASM client needs from the database goes through a `#[server_fn]` defined in `src/apps/<app>/server_fn.rs` (so it sits alongside that app's models, client UI, and admin), and the result is returned as a generated `*Info` companion or request DTO from `src/shared/types.rs`. There is no top-level `src/server_fn/` directory.
 3. **Routing is also per-app, with a `urls/` directory module** — each app exposes app-level `server_url_patterns()` and `client_url_patterns()` functions from `src/apps/<app>/urls.rs`. Server functions are registered in app-local `server_urls.rs` files, and `src/config/urls.rs` aggregates the app-level router functions rather than importing individual handlers.
 
 ## Tutorial Structure
