@@ -11,11 +11,58 @@ use chrono::{DateTime, Utc};
 use reinhardt_storages::{StorageBackend, StorageConfig};
 use rstest::fixture;
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 use wiremock::matchers::any;
 use wiremock::{Mock, MockServer, Respond, ResponseTemplate};
+
+struct AwsEnvGuard {
+	originals: Vec<(&'static str, Option<String>)>,
+}
+
+impl AwsEnvGuard {
+	fn test_credentials() -> Self {
+		let guard = Self::capture(&[
+			"AWS_ACCESS_KEY_ID",
+			"AWS_SECRET_ACCESS_KEY",
+			"AWS_SESSION_TOKEN",
+		]);
+
+		// SAFETY: S3 tests that create `MockS3Server` run under #[serial(s3)],
+		// preventing concurrent environment access.
+		unsafe {
+			env::set_var("AWS_ACCESS_KEY_ID", "test");
+			env::set_var("AWS_SECRET_ACCESS_KEY", "test");
+			env::remove_var("AWS_SESSION_TOKEN");
+		}
+
+		guard
+	}
+
+	fn capture(keys: &[&'static str]) -> Self {
+		Self {
+			originals: keys.iter().map(|key| (*key, env::var(key).ok())).collect(),
+		}
+	}
+}
+
+impl Drop for AwsEnvGuard {
+	fn drop(&mut self) {
+		for (key, value) in self.originals.iter().rev() {
+			// SAFETY: The same #[serial(s3)] guard that protects creation also
+			// protects restoration when the mock server is dropped.
+			unsafe {
+				if let Some(value) = value {
+					env::set_var(key, value);
+				} else {
+					env::remove_var(key);
+				}
+			}
+		}
+	}
+}
 
 // ============================================================================
 // Test Data (inline to avoid super::utils dependency issues)
@@ -327,11 +374,13 @@ pub struct MockS3Server {
 	endpoint: String,
 	bucket: String,
 	region: String,
+	_env_guard: AwsEnvGuard,
 }
 
 impl MockS3Server {
 	/// Create a new mock S3 server with a pre-created test bucket.
 	pub async fn new() -> Self {
+		let env_guard = AwsEnvGuard::test_credentials();
 		let server = MockServer::start().await;
 		let endpoint = server.uri();
 		let bucket = "test-bucket".to_string();
@@ -360,6 +409,7 @@ impl MockS3Server {
 			endpoint,
 			bucket,
 			region,
+			_env_guard: env_guard,
 		}
 	}
 
@@ -380,14 +430,6 @@ impl MockS3Server {
 
 	/// Create S3 storage backend from this mock server.
 	pub async fn create_backend(&self) -> Arc<dyn StorageBackend> {
-		// SAFETY: Setting environment variables for test-only AWS credentials.
-		// These tests run serially and the env vars are required by aws-config
-		// defaults() credential chain used in S3Storage::new().
-		unsafe {
-			std::env::set_var("AWS_ACCESS_KEY_ID", "test");
-			std::env::set_var("AWS_SECRET_ACCESS_KEY", "test");
-		}
-
 		let config = StorageConfig::S3(reinhardt_storages::config::S3Config {
 			bucket: self.bucket.clone(),
 			region: Some(self.region.clone()),
@@ -402,14 +444,6 @@ impl MockS3Server {
 
 	/// Create S3 storage backend with prefix from this mock server.
 	pub async fn create_backend_with_prefix(&self, prefix: &str) -> Arc<dyn StorageBackend> {
-		// SAFETY: Setting environment variables for test-only AWS credentials.
-		// These tests run serially and the env vars are required by aws-config
-		// defaults() credential chain used in S3Storage::new().
-		unsafe {
-			std::env::set_var("AWS_ACCESS_KEY_ID", "test");
-			std::env::set_var("AWS_SECRET_ACCESS_KEY", "test");
-		}
-
 		let config = StorageConfig::S3(reinhardt_storages::config::S3Config {
 			bucket: self.bucket.clone(),
 			region: Some(self.region.clone()),
@@ -612,6 +646,7 @@ pub async fn azure_fixture() -> AzureFixture {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use serial_test::serial;
 
 	// Common fixture tests
 	#[test]
@@ -700,6 +735,7 @@ mod tests {
 
 	// S3 fixture tests
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_s3_container_creation() {
 		let container = MockS3Server::new().await;
 		assert!(
@@ -712,6 +748,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_s3_backend_fixture() {
 		let backend = s3_backend().await;
 
@@ -730,6 +767,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_s3_backend_with_prefix_fixture() {
 		let backend = s3_backend_with_prefix().await;
 
