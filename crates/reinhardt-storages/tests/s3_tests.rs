@@ -9,6 +9,7 @@ use fixtures::{
 };
 use reinhardt_storages::StorageError;
 use rstest::rstest;
+use serial_test::serial;
 use utils::{assert_presigned_url, assert_storage_exists, assert_storage_not_exists};
 
 // ============================================================================
@@ -20,6 +21,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_save_file(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_save.txt";
 		let content = b"Hello, S3!";
@@ -40,6 +42,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_open_file(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_open.txt";
 		let content = b"Hello, S3 Storage!";
@@ -59,6 +62,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_delete_file(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_delete.txt";
 		s3_backend
@@ -82,6 +86,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_exists_true(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_exists_true.txt";
 		s3_backend
@@ -101,6 +106,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_exists_false(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_nonexistent.txt";
 		let exists = s3_backend
@@ -112,6 +118,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_roundtrip(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_roundtrip.bin";
 		let content = vec![0u8, 1, 2, 3, 255, 254, 253];
@@ -131,6 +138,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_overwrite_file(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_overwrite.txt";
 		let content1 = b"Original content";
@@ -155,6 +163,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_empty_file(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_empty.txt";
 		let content: Vec<u8> = vec![];
@@ -173,6 +182,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_binary_data(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_binary.bin";
 		let content: Vec<u8> = (0u8..=255).collect();
@@ -191,6 +201,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_nested_path(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "path/to/nested/file.txt";
 		let content = b"Nested file content";
@@ -218,6 +229,7 @@ mod url_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_presigned_url_format(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_url.txt";
 		s3_backend
@@ -235,6 +247,7 @@ mod url_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_presigned_url_custom_expiry(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_expiry.txt";
 		s3_backend
@@ -252,6 +265,7 @@ mod url_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_url_not_found(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "nonexistent.txt";
 
@@ -262,6 +276,7 @@ mod url_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_url_contains_bucket(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_bucket_in_url.txt";
 		s3_backend
@@ -291,6 +306,7 @@ mod prefix_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_prefix_applied_to_save(#[future(awt)] s3_backend_with_prefix: S3BackendOwner) {
 		let name = "test_prefix_save.txt";
 		let content = b"Prefix test content";
@@ -313,6 +329,7 @@ mod prefix_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_prefix_applied_to_open(#[future(awt)] s3_backend_with_prefix: S3BackendOwner) {
 		let name = "test_prefix_open.txt";
 		let content = b"Prefix open test";
@@ -335,6 +352,7 @@ mod prefix_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_prefix_trailing_slash(#[future(awt)] s3_container: MockS3Server) {
 		// Create a new backend with trailing slash in prefix
 		let container = s3_container;
@@ -358,6 +376,7 @@ mod prefix_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_prefix_with_nested_path(#[future(awt)] s3_backend_with_prefix: S3BackendOwner) {
 		let name = "nested/path/file.txt";
 		let content = b"Prefix with nested path";
@@ -387,6 +406,7 @@ mod metadata_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_file_size(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_size.txt";
 		let content = b"Hello, S3 Size!";
@@ -405,6 +425,7 @@ mod metadata_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_modified_time(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_time.txt";
 
@@ -426,6 +447,7 @@ mod metadata_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_size_updates_after_overwrite(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_size_update.txt";
 		let content1 = b"Small";
@@ -454,6 +476,7 @@ mod metadata_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_empty_file_size(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "test_empty_size.txt";
 		let content: Vec<u8> = vec![];
@@ -480,6 +503,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_open_not_found(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "nonexistent_open.txt";
 
@@ -490,6 +514,22 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
+	async fn test_prefixed_open_not_found_uses_logical_name(
+		#[future(awt)] s3_backend_with_prefix: S3BackendOwner,
+	) {
+		let name = "nonexistent_prefixed_open.txt";
+
+		let result = s3_backend_with_prefix.open(name).await;
+		assert!(matches!(
+			result,
+			Err(StorageError::NotFound(not_found)) if not_found == name
+		));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	#[serial(s3)]
 	async fn test_delete_not_found(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "nonexistent_delete.txt";
 
@@ -500,6 +540,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_size_not_found(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "nonexistent_size.txt";
 
@@ -510,6 +551,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_url_not_found(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "nonexistent_url.txt";
 
@@ -520,6 +562,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_special_characters_in_name(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "file with spaces & symbols!.txt";
 		let content = b"Special chars";
@@ -538,6 +581,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_unicode_filename(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "ファイル.txt"; // Japanese filename
 		let content = "Unicode content".as_bytes();
@@ -560,6 +604,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_modified_time_not_found(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name = "nonexistent_time.txt";
 
@@ -578,6 +623,7 @@ mod multiple_operations_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_multiple_files(#[future(awt)] s3_backend: S3BackendOwner) {
 		let files: Vec<(&str, &[u8])> = vec![
 			("file1.txt", b"content1"),
@@ -614,6 +660,7 @@ mod multiple_operations_tests {
 
 	#[rstest]
 	#[tokio::test]
+	#[serial(s3)]
 	async fn test_unique_names(#[future(awt)] s3_backend: S3BackendOwner) {
 		let name1 = generate_unique_name("test");
 		let name2 = generate_unique_name("test");

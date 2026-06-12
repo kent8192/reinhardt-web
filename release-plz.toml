@@ -185,6 +185,10 @@ name = "reinhardt-pages-macros"
 version_group = "reinhardt"
 
 [[package]]
+name = "reinhardt-providers"
+version_group = "reinhardt"
+
+[[package]]
 name = "reinhardt-query"
 version_group = "reinhardt"
 

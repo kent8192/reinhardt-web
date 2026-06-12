@@ -39,63 +39,31 @@ pub enum StorageError {
 }
 
 #[cfg(feature = "s3")]
-impl From<aws_sdk_s3::error::SdkError<aws_sdk_s3::operation::put_object::PutObjectError>>
-	for StorageError
-{
-	fn from(
-		err: aws_sdk_s3::error::SdkError<aws_sdk_s3::operation::put_object::PutObjectError>,
-	) -> Self {
-		StorageError::NetworkError(err.to_string())
-	}
-}
-
-#[cfg(feature = "s3")]
-impl From<aws_sdk_s3::error::SdkError<aws_sdk_s3::operation::get_object::GetObjectError>>
-	for StorageError
-{
-	fn from(
-		err: aws_sdk_s3::error::SdkError<aws_sdk_s3::operation::get_object::GetObjectError>,
-	) -> Self {
+impl From<reinhardt_providers::ProviderError> for StorageError {
+	fn from(err: reinhardt_providers::ProviderError) -> Self {
 		match err {
-			aws_sdk_s3::error::SdkError::ServiceError(ref service_err) => {
-				if service_err.err().is_no_such_key() {
-					StorageError::NotFound("S3 object not found".to_string())
-				} else {
-					StorageError::NetworkError(err.to_string())
-				}
+			reinhardt_providers::ProviderError::Config(message) => {
+				StorageError::ConfigError(message)
 			}
-			_ => StorageError::NetworkError(err.to_string()),
-		}
-	}
-}
-
-#[cfg(feature = "s3")]
-impl From<aws_sdk_s3::error::SdkError<aws_sdk_s3::operation::delete_object::DeleteObjectError>>
-	for StorageError
-{
-	fn from(
-		err: aws_sdk_s3::error::SdkError<aws_sdk_s3::operation::delete_object::DeleteObjectError>,
-	) -> Self {
-		StorageError::NetworkError(err.to_string())
-	}
-}
-
-#[cfg(feature = "s3")]
-impl From<aws_sdk_s3::error::SdkError<aws_sdk_s3::operation::head_object::HeadObjectError>>
-	for StorageError
-{
-	fn from(
-		err: aws_sdk_s3::error::SdkError<aws_sdk_s3::operation::head_object::HeadObjectError>,
-	) -> Self {
-		match err {
-			aws_sdk_s3::error::SdkError::ServiceError(ref service_err) => {
-				if service_err.err().is_not_found() {
-					StorageError::NotFound("S3 object not found".to_string())
-				} else {
-					StorageError::NetworkError(err.to_string())
-				}
+			reinhardt_providers::ProviderError::NotFound(_) => {
+				StorageError::Other("provider resource not found".to_string())
 			}
-			_ => StorageError::NetworkError(err.to_string()),
+			reinhardt_providers::ProviderError::PermissionDenied(message) => {
+				StorageError::PermissionDenied(message)
+			}
+			reinhardt_providers::ProviderError::Service {
+				status: 404,
+				message,
+			} => StorageError::NotFound(message),
+			reinhardt_providers::ProviderError::Service { message, .. }
+			| reinhardt_providers::ProviderError::Header(message) => StorageError::NetworkError(message),
+			reinhardt_providers::ProviderError::Http(err) => {
+				StorageError::NetworkError(err.to_string())
+			}
+			reinhardt_providers::ProviderError::Url(err) => {
+				StorageError::ConfigError(err.to_string())
+			}
+			_ => StorageError::Other(err.to_string()),
 		}
 	}
 }
