@@ -82,7 +82,7 @@ polls_project/
 │   ├── bin/
 │   │   └── manage.rs          # CLI binary (Django's manage.py equivalent), required-features = ["with-reinhardt"]
 │   ├── config/
-│   │   ├── settings.rs        # #[settings(core: CoreSettings)] ProjectSettings + SettingsBuilder + profile loading
+│   │   ├── settings.rs        # #[settings(core: CoreSettings | contacts: ContactSettings)] ProjectSettings + SettingsBuilder + profile loading
 │   │   ├── apps.rs            # installed_apps! entries added by startapp
 │   │   ├── urls.rs            # #[routes] routes() -> UnifiedRouter (app server-router mounts, admin mount, session middleware, client-router aggregation)
 │   │   ├── wasm.rs            # AppStaticFilesConfig for dist-wasm/, registered via inventory::submit!
@@ -139,7 +139,7 @@ Each generated file has a specific role. Walking top-down:
 - `src/lib.rs` — the crate root. It declares `pub mod apps;`, `pub mod config;`, `pub mod shared;`, and `#[cfg(wasm)] pub mod client;`. Server-only re-exports (`async_trait`, the `reinhardt_apps` / `reinhardt_core` / `reinhardt_di::params` / `reinhardt_http` shims) are gated on `#[cfg(native)]`.
 - `src/bin/manage.rs` — the server-side binary. It sets `REINHARDT_SETTINGS_MODULE = "examples_tutorial_basis.config.settings"` (rename to your crate name in the generated tree) and calls `reinhardt::commands::execute_from_command_line_with_settings(get_settings())`. The WASM build still needs a `main` symbol for `bin` crate-types, so the file also defines an empty `fn main() {}` under `#[cfg(target_arch = "wasm32")]`.
 - `src/config/`
-  - `settings.rs` — `#[settings(core: CoreSettings)] pub struct ProjectSettings;` plus a `get_settings()` function that builds the layered `SettingsBuilder` (`DefaultSource` → `TomlFileSource("base.toml")` → `TomlFileSource("{profile}.toml")` → `HighPriorityEnvSource("REINHARDT_")`).
+  - `settings.rs` — `#[settings(core: CoreSettings | contacts: ContactSettings)] pub struct ProjectSettings;` plus a `get_settings()` function that builds the layered `SettingsBuilder` (`DefaultSource` → `TomlFileSource("base.toml")` → `TomlFileSource("{profile}.toml")` → `HighPriorityEnvSource("REINHARDT_")`).
   - `apps.rs` — `startapp` appends `installed_apps!` entries here. The macro generates the app labels used by settings, migrations, admin metadata, and routing namespaces.
   - `urls.rs` — `#[routes] pub fn routes() -> UnifiedRouter`. Mounts each app's `server_url_patterns()` under `#[cfg(native)]`, aggregates each app's `client_url_patterns()` with `mount_unified` under `#[cfg(wasm)]`, mounts the admin at `/admin/` (plus `/static/admin/`) via `admin_routes_with_di(Arc::new(configure_admin()))`, and applies the session middleware.
   - `wasm.rs` — an `inventory::submit!` entry that registers `dist-wasm/` as an `AppStaticFilesConfig`, so `cargo make collectstatic` discovers the WASM build artifacts and copies them into `staticfiles/`.
@@ -185,7 +185,7 @@ flowchart LR
 
 ## Configuring `settings/base.toml`
 
-`settings/base.toml` holds the always-loaded base layer of your settings. Open it and confirm it contains at least the keys consumed by the `[core]` and `[core.databases.default]` fragments. For the tutorial, switch the generated PostgreSQL default to SQLite:
+`settings/base.toml` holds the always-loaded base layer of your settings. Open it and confirm it contains at least the keys consumed by the `[core]`, `[core.databases.default]`, and `[contacts]` fragments. For the tutorial, switch the generated PostgreSQL default to SQLite and keep empty contact lists:
 
 ```toml
 [core]
@@ -206,6 +206,10 @@ append_slash = true
 [core.databases.default]
 engine = "sqlite"
 name = "db.sqlite3"
+
+[contacts]
+admins = []
+managers = []
 ```
 
 A few things worth knowing as you edit:
@@ -230,7 +234,7 @@ use reinhardt::conf::settings::sources::{
 use reinhardt::settings;
 use std::env;
 
-#[settings(core: CoreSettings)]
+#[settings(core: CoreSettings | contacts: ContactSettings)]
 pub struct ProjectSettings;
 
 pub fn get_settings() -> ProjectSettings {
@@ -254,7 +258,9 @@ pub fn get_settings() -> ProjectSettings {
 }
 ```
 
-> Need a project-specific setting beyond `CoreSettings`? You can compose fragments with `|`, e.g., `#[settings(core: CoreSettings | cache: CacheSettings)] pub struct ProjectSettings;`. The basis tutorial keeps the project settings minimal and reads the database configuration from `core.databases.default`.
+`execute_from_command_line_with_settings(get_settings())` requires settings that satisfy `HasCommonSettings`, which includes both `CoreSettings` and `ContactSettings`. The empty `[contacts]` arrays above are valid defaults; without the section, startup fails while composing `ProjectSettings`.
+
+> Need another project-specific setting beyond the common fragments? Compose it with `|`, e.g., `#[settings(core: CoreSettings | contacts: ContactSettings | cache: CacheSettings)] pub struct ProjectSettings;`. The basis tutorial keeps the project settings otherwise minimal and reads the database configuration from `core.databases.default`.
 
 ## What `startapp` Registered
 

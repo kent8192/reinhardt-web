@@ -67,7 +67,7 @@ examples-tutorial-basis/
 │   ├── bin/
 │   │   └── manage.rs          # CLI binary (manage.py equivalent), required-features = ["with-reinhardt"]
 │   ├── config/
-│   │   ├── settings.rs        # #[settings(core: CoreSettings)] ProjectSettings + SettingsBuilder + profile loading
+│   │   ├── settings.rs        # #[settings(core: CoreSettings | contacts: ContactSettings)] ProjectSettings + SettingsBuilder + profile loading
 │   │   ├── apps.rs            # installed_apps! entries added by startapp
 │   │   ├── urls.rs            # #[routes] routes() -> UnifiedRouter (app server-router mounts, admin mount, session middleware, client-router aggregation)
 │   │   ├── wasm.rs            # AppStaticFilesConfig for dist-wasm/, registered via inventory::submit!
@@ -113,7 +113,7 @@ Three rules keep this structure predictable:
 
 - Install `reinhardt-admin-cli`, generate a project from the **`pages`** template, and create `polls` / `users` apps with `startapp`
 - Walk the `src/{lib,apps,config,shared,client,bin}` layout the template emits
-- Configure `settings/base.toml` and load it through the `ProjectSettings` + `SettingsBuilder` pipeline (note: `TomlFileSource` interpolation is enabled by default)
+- Configure `settings/base.toml` with `[core]`, `[core.databases.default]`, and `[contacts]`, then load it through the `ProjectSettings` + `SettingsBuilder` pipeline (note: `TomlFileSource` interpolation is enabled by default)
 - Run the dev server with `cargo make runserver` and the full WASM workflow with `cargo make dev`
 
 ### [Part 2: Models and Database](2-models-and-database/)
