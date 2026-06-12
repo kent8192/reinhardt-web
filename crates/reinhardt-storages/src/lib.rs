@@ -14,6 +14,8 @@
 //! - **Feature Flags**: Enable only the backends you need
 //! - **Temporary URLs**: Generate S3 presigned URLs, GCS V4 signed URLs, and
 //!   Azure SAS URLs for secure file sharing
+//! - **Provider boundary**: S3 uses `reinhardt-providers` for minimal HTTP and
+//!   SigV4 support instead of depending on the full AWS SDK
 //!
 //! ## Example
 //!

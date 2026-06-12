@@ -12,6 +12,8 @@ Cloud storage backend abstraction for the Reinhardt framework, inspired by
 - **Feature flags**: enable only the providers your application uses
 - **Temporary URLs**: presigned URLs for S3, V4 signed URLs for GCS, and SAS
   URLs for Azure Blob Storage
+- **Provider boundary**: S3 uses `reinhardt-providers` for the minimal HTTP and
+  SigV4 operations required by this crate
 - **Backends**:
   - Amazon S3
   - Google Cloud Storage
@@ -151,8 +153,9 @@ endpoint = "http://localhost:4566"
 prefix = "uploads/"
 ```
 
-`endpoint` and `prefix` are optional. Without `endpoint`, the AWS SDK default
-endpoint and credential chain are used.
+`endpoint` and `prefix` are optional. S3 credentials are loaded from
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optional `AWS_SESSION_TOKEN`.
+This backend does not implement the complete AWS SDK credential provider chain.
 
 ### Google Cloud Storage
 

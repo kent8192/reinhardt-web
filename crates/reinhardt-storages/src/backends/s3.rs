@@ -3,9 +3,8 @@
 #![allow(deprecated)] // Backend constructor keeps accepting legacy config during compatibility.
 
 use async_trait::async_trait;
-use aws_config::Region;
-use aws_sdk_s3::{Client, primitives::ByteStream};
 use chrono::{DateTime, Utc};
+use reinhardt_providers::aws::{AwsCredentials, S3Client, S3ClientConfig};
 use std::time::Duration;
 
 use crate::config::S3Config;
@@ -14,8 +13,7 @@ use crate::{Result, StorageBackend, StorageError};
 /// Amazon S3 storage backend.
 #[derive(Debug, Clone)]
 pub struct S3Storage {
-	client: Client,
-	bucket: String,
+	client: S3Client,
 	prefix: Option<String>,
 }
 
@@ -30,24 +28,17 @@ impl S3Storage {
 	///
 	/// Returns `` `StorageError::ConfigError` `` if AWS configuration fails.
 	pub async fn new(config: S3Config) -> Result<Self> {
-		let mut config_builder = aws_config::defaults(aws_config::BehaviorVersion::latest());
-
-		if let Some(region) = config.region {
-			config_builder = config_builder.region(Region::new(region));
-		}
-
-		let sdk_config = config_builder.load().await;
-		let mut client_builder = aws_sdk_s3::config::Builder::from(&sdk_config);
-
-		if let Some(endpoint) = config.endpoint {
-			client_builder = client_builder.endpoint_url(endpoint).force_path_style(true);
-		}
-
-		let client = Client::from_conf(client_builder.build());
+		let force_path_style = config.endpoint.is_some();
+		let client = S3Client::new(S3ClientConfig {
+			bucket: config.bucket,
+			region: config.region.unwrap_or_else(|| "us-east-1".to_string()),
+			endpoint: config.endpoint,
+			credentials: AwsCredentials::from_env_optional()?,
+			force_path_style,
+		});
 
 		Ok(Self {
 			client,
-			bucket: config.bucket,
 			prefix: config.prefix,
 		})
 	}
@@ -67,13 +58,7 @@ impl StorageBackend for S3Storage {
 	async fn save(&self, name: &str, content: &[u8]) -> Result<String> {
 		let key = self.get_key(name);
 
-		self.client
-			.put_object()
-			.bucket(&self.bucket)
-			.key(&key)
-			.body(ByteStream::from(content.to_vec()))
-			.send()
-			.await?;
+		self.client.put_object(&key, content.to_vec()).await?;
 
 		Ok(key)
 	}
@@ -81,20 +66,7 @@ impl StorageBackend for S3Storage {
 	async fn open(&self, name: &str) -> Result<Vec<u8>> {
 		let key = self.get_key(name);
 
-		let response = self
-			.client
-			.get_object()
-			.bucket(&self.bucket)
-			.key(&key)
-			.send()
-			.await?;
-
-		let bytes = response
-			.body
-			.collect()
-			.await
-			.map_err(|e| StorageError::NetworkError(e.to_string()))?;
-
+		let bytes = self.client.get_object(&key).await?;
 		Ok(bytes.to_vec())
 	}
 
@@ -105,12 +77,7 @@ impl StorageBackend for S3Storage {
 
 		let key = self.get_key(name);
 
-		self.client
-			.delete_object()
-			.bucket(&self.bucket)
-			.key(&key)
-			.send()
-			.await?;
+		self.client.delete_object(&key).await?;
 
 		Ok(())
 	}
@@ -118,24 +85,7 @@ impl StorageBackend for S3Storage {
 	async fn exists(&self, name: &str) -> Result<bool> {
 		let key = self.get_key(name);
 
-		match self
-			.client
-			.head_object()
-			.bucket(&self.bucket)
-			.key(&key)
-			.send()
-			.await
-		{
-			Ok(_) => Ok(true),
-			Err(e) => {
-				if let aws_sdk_s3::error::SdkError::ServiceError(ref service_err) = e
-					&& service_err.err().is_not_found()
-				{
-					return Ok(false);
-				}
-				Err(e.into())
-			}
-		}
+		Ok(self.client.head_object(&key).await?.is_some())
 	}
 
 	async fn url(&self, name: &str, expiry_secs: u64) -> Result<String> {
@@ -145,59 +95,36 @@ impl StorageBackend for S3Storage {
 
 		let key = self.get_key(name);
 
-		let presigned_request = self
+		Ok(self
 			.client
-			.get_object()
-			.bucket(&self.bucket)
-			.key(&key)
-			.presigned(
-				aws_sdk_s3::presigning::PresigningConfig::expires_in(Duration::from_secs(
-					expiry_secs,
-				))
-				.map_err(|e| StorageError::ConfigError(e.to_string()))?,
-			)
-			.await
-			.map_err(|e| StorageError::NetworkError(e.to_string()))?;
-
-		Ok(presigned_request.uri().to_string())
+			.presigned_get_url(&key, Duration::from_secs(expiry_secs))?)
 	}
 
 	async fn size(&self, name: &str) -> Result<u64> {
 		let key = self.get_key(name);
 
-		let response = self
+		let metadata = self
 			.client
-			.head_object()
-			.bucket(&self.bucket)
-			.key(&key)
-			.send()
-			.await?;
+			.head_object(&key)
+			.await?
+			.ok_or_else(|| StorageError::NotFound(name.to_string()))?;
 
-		response
-			.content_length()
-			.map(|size| size as u64)
+		metadata
+			.size
 			.ok_or_else(|| StorageError::Other("Content-Length header missing".to_string()))
 	}
 
 	async fn get_modified_time(&self, name: &str) -> Result<DateTime<Utc>> {
 		let key = self.get_key(name);
 
-		let response = self
+		let metadata = self
 			.client
-			.head_object()
-			.bucket(&self.bucket)
-			.key(&key)
-			.send()
-			.await?;
+			.head_object(&key)
+			.await?
+			.ok_or_else(|| StorageError::NotFound(name.to_string()))?;
 
-		let last_modified = response
-			.last_modified()
-			.ok_or_else(|| StorageError::Other("Last-Modified header missing".to_string()))?;
-
-		let timestamp = last_modified.secs();
-		let datetime = DateTime::from_timestamp(timestamp, 0)
-			.ok_or_else(|| StorageError::Other("Invalid timestamp".to_string()))?;
-
-		Ok(datetime)
+		metadata
+			.last_modified
+			.ok_or_else(|| StorageError::Other("Last-Modified header missing".to_string()))
 	}
 }

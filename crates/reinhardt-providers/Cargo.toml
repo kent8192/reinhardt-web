@@ -1,0 +1,28 @@
+[package]
+name = "reinhardt-providers"
+version = "0.2.0-rc.5"
+description = "Cloud provider integrations for Reinhardt"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["aws", "gcp", "cloud", "providers"]
+categories = ["api-bindings", "web-programming"]
+
+[dependencies]
+bytes = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+hmac = { workspace = true, optional = true }
+reqwest = { workspace = true }
+sha2 = { workspace = true, optional = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+
+[features]
+default = []
+aws = ["bytes", "chrono", "hmac", "sha2"]
+gcp = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
