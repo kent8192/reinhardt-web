@@ -11,28 +11,29 @@ sidebar_weight = 30
 By the end of this chapter your project will behave like a real polling
 application: typed RPC calls from the WASM client, per-app routing
 tables, a per-app SPA router, and a launcher that mounts every page on
-`#root`. Each step is verbatim from the reference implementation in
+`#root`. The structure follows the generated pages template and the
+reference implementation in
 [`examples/examples-tutorial-basis/`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis).
 
 The "views" layer in the pages architecture is the typed server-function
 surface. The WASM client calls these handlers through generated stubs,
-and the server registers the same handlers as native routes:
+and the server registers the same handlers as server-side routes:
 
 1. **Server functions** (`src/apps/<app>/server_fn.rs`) — typed RPC the WASM
    client calls as if it were a local `async fn`. Every reactive component
    built in Part 4 calls one of these.
 2. **Per-app URL modules** (`src/apps/<app>/urls/`) — explicit homes for
-   server and client route tables. The native `server_urls.rs` files
-   register each app's `#[server_fn]` markers, while the WASM
+   server and client route tables. The server-side `server_urls.rs` files
+   register each app's `#[server_fn]` markers, while the client-side
    `client_router.rs` files register page routes and reverse helpers.
 
 Both halves live next to the models they touch and share the same
 authentication gate. We introduce them in that order.
 
-## Recap: `#[cfg(wasm)]` and `#[cfg(native)]`
+## Recap: `#[cfg(client)]`, `#[cfg(server)]`, `#[cfg(wasm)]`, and `#[cfg(native)]`
 
-Part 1 added the two custom cfg aliases that gate every file in this
-project. They come from the workspace's `build.rs`, which uses
+Part 1 added the custom cfg aliases that gate generated files. They come
+from the project's `build.rs`, which uses
 [`cfg_aliases`](https://docs.rs/cfg_aliases) to register the names:
 
 ```rust
@@ -40,100 +41,81 @@ project. They come from the workspace's `build.rs`, which uses
 use cfg_aliases::cfg_aliases;
 
 fn main() {
-	// Auto-detect: check if reinhardt workspace exists in parent
-	let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-	let examples_dir = std::path::Path::new(&manifest_dir).parent().unwrap();
-	let parent_dir = examples_dir.parent().unwrap();
-	let parent_cargo = parent_dir.join("Cargo.toml");
-
-	let is_local_dev = parent_cargo.exists()
-		&& std::fs::read_to_string(&parent_cargo)
-			.map(|c| c.contains("name = \"reinhardt-web\""))
-			.unwrap_or(false);
-
-	if is_local_dev {
-		// In subtree context - enable integration tests
-		println!("cargo:rustc-cfg=with_reinhardt");
-
-		// Warn if .cargo/config.toml is not set up for local override
-		let config_path = examples_dir.join(".cargo/config.toml");
-		if !config_path.exists() {
-			println!(
-				"cargo:warning=Local reinhardt workspace detected but .cargo/config.toml is missing. \
-				 Copy the template: cp .cargo/config.local.toml .cargo/config.toml"
-			);
-		}
-	} else {
-		// Standalone mode - enable tests if crates.io versions are available
-		println!("cargo:rustc-cfg=with_reinhardt");
-	}
-
-	println!("cargo:rerun-if-changed=build.rs");
-	println!("cargo:rerun-if-changed=../.cargo/config.toml");
-
-	// Declare custom cfg to avoid warnings in Rust 2024 edition
-	println!("cargo::rustc-check-cfg=cfg(with_reinhardt)");
+	// Rust 2024 edition requires explicit check-cfg declarations
+	println!("cargo::rustc-check-cfg=cfg(client)");
+	println!("cargo::rustc-check-cfg=cfg(server)");
 	println!("cargo::rustc-check-cfg=cfg(wasm)");
 	println!("cargo::rustc-check-cfg=cfg(native)");
 
 	cfg_aliases! {
-		wasm: { all(target_family = "wasm", target_os = "unknown") },
-		native: { not(all(target_family = "wasm", target_os = "unknown")) },
+		// Platform aliases for simpler conditional compilation
+		// Use `#[cfg(client)]` instead of `#[cfg(target_arch = "wasm32")]`
+		client: { target_arch = "wasm32" },
+		// Use `#[cfg(server)]` instead of `#[cfg(not(target_arch = "wasm32"))]`
+		server: { not(target_arch = "wasm32") },
+		// Compatibility aliases used by framework macro expansions.
+		wasm: { target_arch = "wasm32" },
+		native: { not(target_arch = "wasm32") },
 	}
 }
 ```
 
 Two important consequences carry through the entire chapter:
 
-- **In Rust source**, use `#[cfg(wasm)]` for browser-only items and
-  `#[cfg(native)]` for server-only items. The `with_reinhardt` cfg also
-  declared here gates the integration tests in Part 5.
+- **In generated Rust source**, use `#[cfg(client)]` for browser-only
+  items and `#[cfg(server)]` for server-only items. The `wasm` and
+  `native` aliases stay available for framework macro expansions and
+  compatibility with existing example code.
 - **In `Cargo.toml`**, the two `[target.'cfg(...)'.dependencies]` headers
-  must use the raw `target_family` / `target_os` predicates (Cargo does
-  not yet resolve user-defined `cfg_aliases` on the left-hand side of a
-  target predicate):
+  must use raw target cfgs because Cargo evaluates them before `build.rs`
+  runs. The generated pages template uses `target_arch = "wasm32"`:
 
 ```toml
-# WASM-specific dependencies
-[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-reinhardt = { workspace = true, features = ["pages", "client-router"] }
-wasm-bindgen = "0.2.106"
-wasm-bindgen-futures = "0.4.56"
-web-sys = { version = "0.3.83", features = [
+# Browser/WASM-specific dependencies
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+reinhardt = {
+	version = "...",
+	package = "reinhardt-web",
+	default-features = false,
+	features = ["pages", "client-router"],
+}
+wasm-bindgen = "=0.2.122"
+web-sys = { version = "0.3", features = [
 	"Window",
 	"Document",
 	"Element",
-	"HtmlFormElement",
 	"HtmlInputElement",
+	"HtmlFormElement",
 	"Event",
 	"EventTarget",
+	"Location",
+	"History",
 ] }
+js-sys = "0.3"
 console_error_panic_hook = "0.1"
-gloo-net = "0.6"
-# WASM-compatible chrono and uuid
-chrono = { version = "0.4", features = ["serde", "wasmbind"] }
-uuid = { version = "1.11.0", features = ["serde", "v4", "v7", "js"] }
+wasm-bindgen-futures = "0.4"
 
 # Server-specific dependencies
-[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
-reinhardt = { workspace = true, features = [
-	"full",
-	"pages",
-	"conf",
-	"commands",
-	"db-sqlite",
-	"forms",
-	"client-router",
-	"auth-session",
-] }
-tokio = { version = "1.48.0", features = ["full"] }
-# Server-specific common dependencies
-chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.11.0", features = ["serde", "v4", "v7"] }
-anyhow = { workspace = true }
-ctor = "0.6.1"
-inventory = "0.3"
-linkme = "0.3"
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reinhardt = {
+	version = "...",
+	package = "reinhardt-web",
+	default-features = false,
+	features = [
+		"standard",
+		"pages",
+		"admin",
+		"conf",
+		"commands",
+		"db-sqlite",
+		"forms",
+		"auth-session",
+		"argon2-hasher",
+	],
+}
+clap = { version = "4", features = ["derive"] }
+console = "0.16.1"
+tokio = { version = "1", features = ["full"] }
 ```
 
 The `[lib] crate-type = ["cdylib", "rlib"]` declaration (already added in
@@ -200,24 +182,24 @@ submodules on the right target:
 //! - `server_urls` — server-side `ServerRouter`
 //! - `client_router` — client-side `ClientRouter`
 
-#[cfg(native)]
+#[cfg(server)]
 pub mod server_urls;
 
-#[cfg(wasm)]
+#[cfg(client)]
 pub mod client_router;
 ```
 
 Three rules govern every file under `urls/`:
 
-1. **The module names are stable.** `server_urls` compiles only on native,
-   `client_router` compiles only on wasm, and the parent `urls.rs` exists
-   on both targets.
+1. **The module names are stable.** `server_urls` compiles only on the
+   server, `client_router` compiles only on the client, and the parent
+   `urls.rs` exists on both targets.
 2. **Client paths are declared next to the app UI.** The polls client
    router imports page factories from `src/client/pages.rs`, and those
    factories call the app-local components in
    `src/apps/polls/client/components.rs`.
-3. **Project-level aggregation happens in `src/config/urls.rs`.** Native
-   app routers are mounted there, while the wasm branch stitches
+3. **Project-level aggregation happens in `src/config/urls.rs`.** Server
+   app routers are mounted there, while the client branch stitches
    app-local `client_url_patterns()` routers into a single
    `UnifiedRouter`.
 
@@ -258,8 +240,8 @@ function in this section follows the same five conventions:
   the body runs. Common injections are `reinhardt::DatabaseConnection`,
   `SessionData`, `Depends<SessionStore>`, and project-local services like
   `Depends<AuthUserManager>`.
-- The body is implicitly `#[cfg(native)]` — the macro generates a typed
-  client stub for the WASM side so callers only see the signature.
+- The body is server-only — the macro generates a typed client stub for
+  the WASM side so callers only see the signature.
 - DTOs at the boundary come from `src/shared/types.rs`, so renaming a
   field there fails to compile on both sides simultaneously.
 - For mutations called from `form!`, form fields still arrive as
@@ -284,9 +266,9 @@ the database up before the handler runs — the actual queries go through
 use crate::shared::types::{ChoiceInfo, QuestionInfo};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
-// Server-only imports. Each addition here MUST also be wired in `[cfg(native)]`
+// Server-only imports. Each addition here MUST also be wired in `[cfg(server)]`
 // at the call site — see the per-handler `use` blocks below for examples.
-#[cfg(native)]
+#[cfg(server)]
 use {
 	crate::apps::polls::di::SessionError, crate::apps::users::models::User, reinhardt::Model,
 	reinhardt::di::Depends,
@@ -426,7 +408,7 @@ pub async fn vote(
 }
 
 /// Internal vote implementation (shared between vote and submit_vote)
-#[cfg(native)]
+#[cfg(server)]
 async fn vote_internal(
 	request: VoteRequest,
 	db: reinhardt::DatabaseConnection,
@@ -662,11 +644,11 @@ work.
 
 ```rust
 use crate::shared::types::UserInfo;
-#[cfg(native)]
+#[cfg(server)]
 use crate::shared::types::{LoginRequest, RegisterRequest};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
-#[cfg(native)]
+#[cfg(server)]
 use {
 	crate::apps::users::models::{AuthUserManager, User},
 	reinhardt::BaseUser,
@@ -683,7 +665,7 @@ use {
 ```
 
 `login` validates the request (Reinhardt re-exports the `Validate` derive
-from the `validator` crate, gated on `#[cfg(native)]`), looks up the
+from the `validator` crate for the server build), looks up the
 user, checks the password through `BaseUser::check_password`, then calls
 `SessionAuthExt::login` to rotate the session id (fixation prevention)
 and persist `user_id`:
@@ -917,19 +899,19 @@ project; it only mounts app routers.
 
 The project-level `routes()` function plays three roles:
 
-1. Mounts every app's native `server_url_patterns()` router. Those app
-   routers own the `#[server_fn]` marker registrations. On wasm, it
+1. Mounts every app's server-side `server_url_patterns()` router. Those
+   app routers own the `#[server_fn]` marker registrations. On the client, it
    aggregates every app's `client_url_patterns()` so the SPA launcher can
    collect the full route table.
-2. On native, mounts the admin panel at `/admin/` (and its static
+2. On the server, mounts the admin panel at `/admin/` (and its static
    assets at `/static/admin/`) using `admin_routes_with_di`, which also
    wires the `AdminDatabase` DI registration.
-3. On native, applies the `SessionMiddleware` with a two-week TTL, `Lax`
+3. On the server, applies the `SessionMiddleware` with a two-week TTL, `Lax`
    SameSite, `httpOnly`, and path `/`.
 
 The attribute is plain `#[routes]`. The function body still compiles on
-both targets: the native branch mounts app server routers, admin, and
-session middleware, while the wasm branch aggregates each app's client
+both targets: the server branch mounts app server routers, admin, and
+session middleware, while the client branch aggregates each app's client
 router so `ClientLauncher::register_routes_from_inventory()` has a
 complete SPA route table.
 
@@ -943,22 +925,22 @@ complete SPA route table.
 //!    `users` app's login/logout server functions
 
 use reinhardt::UnifiedRouter;
-#[cfg(native)]
+#[cfg(server)]
 use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
 use reinhardt::routes;
 
-#[cfg(native)]
+#[cfg(server)]
 use crate::config::admin::configure_admin;
 
-#[cfg(native)]
+#[cfg(server)]
 use reinhardt::middleware::session::{SessionConfig, SessionMiddleware};
-#[cfg(native)]
+#[cfg(server)]
 use std::time::Duration;
 
 /// Build the session middleware with a two-week TTL and Lax SameSite.
 ///
 /// Uses the production-oriented defaults shared by the tutorial examples.
-#[cfg(native)]
+#[cfg(server)]
 fn create_session_middleware() -> SessionMiddleware {
 	let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(1_209_600))
 		.with_http_only(true)
@@ -979,9 +961,9 @@ fn create_session_middleware() -> SessionMiddleware {
 pub fn routes() -> UnifiedRouter {
 	let router = UnifiedRouter::new();
 
-	// Per-app server URL modules are native-only because they register
+	// Per-app server URL modules are server-only because they register
 	// `#[server_fn]` marker modules emitted for the server build.
-	#[cfg(native)]
+	#[cfg(server)]
 	let router = router.server(|s| {
 		s.mount(
 			"/",
@@ -993,7 +975,7 @@ pub fn routes() -> UnifiedRouter {
 		)
 	});
 
-	// Aggregate every app's client routes on wasm so the SPA route table
+	// Aggregate every app's client routes on the client so the SPA route table
 	// carries every app's client-side URL patterns.
 	//
 	// Each `client_url_patterns()` already namespaces its routes
@@ -1001,10 +983,10 @@ pub fn routes() -> UnifiedRouter {
 	// `UnifiedRouter` and stitching with `mount_unified`, which uses
 	// `ClientRouter::merge` internally.
 	//
-	// The aggregation is `#[cfg(wasm)]` because the per-app `client_router`
-	// submodules are themselves wasm-only (they import `crate::client::pages::*`,
-	// which is wasm-only).
-	#[cfg(wasm)]
+	// The aggregation is `#[cfg(client)]` because the per-app `client_router`
+	// submodules are themselves client-only (they import `crate::client::pages::*`,
+	// which is client-only).
+	#[cfg(client)]
 	let router = router
 		.mount_unified(
 			"/",
@@ -1021,7 +1003,7 @@ pub fn routes() -> UnifiedRouter {
 	// `admin_routes_with_di` returns both the router and a DI registration
 	// list that lazily provides `AdminDatabase` to admin handlers from the
 	// project's `DatabaseConnection`.
-	#[cfg(native)]
+	#[cfg(server)]
 	let router = {
 		let admin_site = std::sync::Arc::new(configure_admin());
 		let (admin_router, admin_di) = admin_routes_with_di(admin_site);
@@ -1038,7 +1020,7 @@ pub fn routes() -> UnifiedRouter {
 	// can resolve the same store the middleware writes to without a parallel
 	// `with_di_registrations(...)` call. See #4426 (and the original #4423
 	// regression that motivated the auto-registration hook).
-	#[cfg(native)]
+	#[cfg(server)]
 	let router = router.with_middleware(create_session_middleware());
 
 	router
@@ -1055,7 +1037,7 @@ Three registration conventions are worth memorising:
   to a separate type — `use ... submit_vote;` then `submit_vote::marker`.
 - `src/config/urls.rs` mounts the app routers rather than importing
   every function from every app.
-- The wasm-side aggregation lives in the `routes()` body itself, not in
+- The client-side aggregation lives in the `routes()` body itself, not in
   `client/lib.rs`. Every per-app `client_url_patterns()` it stitches in
   becomes part of the SPA route table that
   `ClientLauncher::register_routes_from_inventory()` consumes.
@@ -1496,15 +1478,14 @@ registered — every server function mounted through the app
 In this chapter you have built the complete routing and "views" layer of
 the polling application:
 
-- **Conditional compilation aliases.** `build.rs` registers `wasm` and
-  `native` so every source file selects the right target with
-  `#[cfg(wasm)]` / `#[cfg(native)]`; the matching `[target.'cfg(...)']`
-  blocks in `Cargo.toml` still use the raw `target_family` /
-  `target_os` predicates because Cargo evaluates them before the build
-  script runs.
+- **Conditional compilation aliases.** `build.rs` registers `client` and
+  `server` for generated source and keeps `wasm` / `native` as
+  compatibility aliases. The matching `[target.'cfg(...)']` blocks in
+  `Cargo.toml` use raw `target_arch = "wasm32"` predicates because Cargo
+  evaluates them before the build script runs.
 - **Per-app `urls/` directory module.** `src/apps/<app>/urls.rs` gates
-  `server_urls` (`#[cfg(native)]`) and `client_router` (`#[cfg(wasm)]`);
-  `server_url_patterns()` registers the app's native `#[server_fn]`
+  `server_urls` (`#[cfg(server)]`) and `client_router` (`#[cfg(client)]`);
+  `server_url_patterns()` registers the app's server-side `#[server_fn]`
   markers, while `client_url_patterns()` returns the app-local
   `ClientRouter`.
 - **Typed RPC server functions.** Every reactive mutation the WASM
@@ -1519,8 +1500,8 @@ the polling application:
   client stub and verified by middleware before the handler runs.
 - **Project-level glue.** `src/config/urls.rs` carries
   `#[routes]`. The function mounts each app's
-  `server_url_patterns()` router on native, aggregates every app's
-  `client_url_patterns()` via `mount_unified` on wasm, mounts the admin
+  `server_url_patterns()` router on the server, aggregates every app's
+  `client_url_patterns()` via `mount_unified` on the client, mounts the admin
   panel at `/admin/` via `admin_routes_with_di`, and applies
   `SessionMiddleware` with a two-week TTL and Lax SameSite.
 - **Client routing and link resolution.** Each app's
