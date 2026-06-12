@@ -556,7 +556,13 @@ reinhardt-routers-macros = { path = "crates/reinhardt-urls/routers-macros", vers
 
 # Streaming
 rskafka = { version = "0.5" }
-time = { version = "0.3" }
+# Workaround for time-rs/time#783.
+# Remove when time 0.3.48+ no longer causes coherence conflicts in downstream
+# blanket impls.
+#
+# Ideal implementation:
+#   time = { version = "0.3" }
+time = { version = ">=0.3, <0.3.48" }
 
 # Web framework
 tokio = { version = "1.51.0", features = ["rt-multi-thread", "sync", "time", "macros", "net", "io-util"] }
