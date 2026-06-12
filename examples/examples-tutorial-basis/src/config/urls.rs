@@ -9,21 +9,10 @@
 use reinhardt::UnifiedRouter;
 #[cfg(native)]
 use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
-#[cfg(native)]
-use reinhardt::pages::server_fn::ServerFnRouterExt;
 use reinhardt::routes;
 
 #[cfg(native)]
 use crate::config::admin::configure_admin;
-
-// Import server_fn marker modules (snake_case + ::marker)
-#[cfg(native)]
-use crate::apps::polls::server_fn::{
-	create_choice, create_question, delete_choice, delete_question, get_question_detail,
-	get_question_results, get_questions, submit_vote, update_choice, update_question, vote,
-};
-#[cfg(native)]
-use crate::apps::users::server_fn::{current_user, login, logout, register};
 
 #[cfg(native)]
 use reinhardt::middleware::session::{SessionConfig, SessionMiddleware};
@@ -52,35 +41,20 @@ fn create_session_middleware() -> SessionMiddleware {
 /// panel, and the session middleware.
 #[routes]
 pub fn routes() -> UnifiedRouter {
-	let router = UnifiedRouter::new().server(|s| {
-		// On wasm the `s` parameter is a no-op `ServerRouter` and every
-		// builder call inside this closure is absorbed by it
-		// (see `reinhardt_urls::routers::ServerRouter`), so the `server_fn`
-		// markers do not need to compile on wasm. We still gate the marker
-		// references on `#[cfg(native)]` because the `server_fn` marker
-		// modules themselves are native-only.
-		#[cfg(native)]
-		{
-			s.server_fn(get_questions::marker)
-				.server_fn(get_question_detail::marker)
-				.server_fn(get_question_results::marker)
-				.server_fn(vote::marker)
-				.server_fn(submit_vote::marker)
-				.server_fn(create_question::marker)
-				.server_fn(update_question::marker)
-				.server_fn(delete_question::marker)
-				.server_fn(create_choice::marker)
-				.server_fn(update_choice::marker)
-				.server_fn(delete_choice::marker)
-				.server_fn(login::marker)
-				.server_fn(logout::marker)
-				.server_fn(register::marker)
-				.server_fn(current_user::marker)
-		}
-		#[cfg(not(native))]
-		{
-			s
-		}
+	let router = UnifiedRouter::new();
+
+	// Per-app server URL modules are native-only because they register
+	// `#[server_fn]` marker modules emitted for the server build.
+	#[cfg(native)]
+	let router = router.server(|s| {
+		s.mount(
+			"/",
+			crate::apps::polls::urls::server_urls::server_url_patterns(),
+		)
+		.mount(
+			"/",
+			crate::apps::users::urls::server_urls::server_url_patterns(),
+		)
 	});
 
 	// Aggregate every app's client routes on wasm so the SPA route table

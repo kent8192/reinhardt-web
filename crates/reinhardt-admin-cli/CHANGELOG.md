@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.3...reinhardt-admin-cli@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-admin-cli` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Refresh generated project templates if the project vendors Reinhardt scaffold output.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Added
+
+- *(commands)* add interactive dependency configuration
+- `reinhardt-admin migrate-manouche-v2 [PATH]` subcommand applying the
+  Manouche v1 → v2 codemod (spec §6.1 + §6.2). Available as `cargo make
+  migrate-manouche-v2`. Supports `--dry-run` and `--skip <rule>`. Rules:
+  `bare_ident`, `watch_unwrap`, `use_effect_deps`, `component_props`.
+
+### Changed
+
+- *(admin-cli)* replace the imperative AST formatter with a tree-sitter and Topiary pipeline for `page!`, `form!`, and `head!` DSL macros.
+
+### Fixed
+
+- *(admin-cli)* keep `migrate-manouche-v2` idempotent for already wrapped page expression slots.
+- *(admin-cli)* preserve item attributes when `migrate-manouche-v2` rewrites attributed items.
+- *(admin-cli)* avoid treating control-flow syntax variables as page children in `migrate-manouche-v2`.
+- *(admin-cli)* keep `migrate-manouche-v2` from rewriting `match` patterns and `let` bindings as page children.
+- *(admin-cli)* preserve inner module docs and migrate element bodies inside `let` initializers in `migrate-manouche-v2`.
+- *(admin-cli)* restore Topiary formatter wiring from main
+- *(admin-cli)* run rustfmt on DSL-skipped files in fmt command
+- *(admin-cli)* pass ignore-all files through rustfmt in fmt command
+- *(admin-cli)* update migrate_v2 expected fixtures to match prettyplease output
+- *(admin-cli)* reject commented-out `#![rustfmt::skip]` in `rustfmt_skip_attr_matches`
+- split formatter from admin cli
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+
+
 ## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.2.0-rc.4...reinhardt-admin-cli@v0.2.0-rc.5) - 2026-06-11
 
 ### Added

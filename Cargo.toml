@@ -436,6 +436,7 @@ members = [
   "crates/reinhardt-deeplink",                          # Mobile deep linking
   "crates/reinhardt-openapi",                           # OpenAPI router wrapper
   # Feature crates (develop/0.2.0)
+  "crates/reinhardt-providers",
   "crates/reinhardt-storages",
   # Integration tests
   "tests",
@@ -535,6 +536,7 @@ reinhardt-deeplink = { path = "crates/reinhardt-deeplink", version = "0.2.0-rc.5
 reinhardt-openapi = { path = "crates/reinhardt-openapi", version = "0.2.0-rc.5" }
 
 # Feature crates (develop/0.2.0)
+reinhardt-providers = { path = "crates/reinhardt-providers", version = "0.2.0-rc.5" }
 reinhardt-storages = { path = "crates/reinhardt-storages", version = "0.2.0-rc.5" }
 
 # Query subcrates
