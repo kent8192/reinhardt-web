@@ -73,7 +73,7 @@ polls_project/
 │   ├── config/
 │   │   ├── settings.rs        # #[settings(core: CoreSettings)] ProjectSettings + SettingsBuilder + profile loading
 │   │   ├── apps.rs            # installed_apps! { polls: "polls", users: "users" }
-│   │   ├── urls.rs            # #[routes] routes() -> UnifiedRouter (server_fn registration, admin mount, session middleware, client-router aggregation)
+│   │   ├── urls.rs            # #[routes] routes() -> UnifiedRouter (app server-router mounts, admin mount, session middleware, client-router aggregation)
 │   │   ├── wasm.rs            # AppStaticFilesConfig for dist-wasm/, registered via inventory::submit!
 │   │   └── admin.rs           # configure_admin() -> AdminSite + register Question/Choice admins
 │   ├── shared/
@@ -94,7 +94,7 @@ Three rules keep this layout predictable:
 
 1. **`#[cfg(native)]` vs `#[cfg(wasm)]`** — server-only code (models, server function bodies, forms, admin) is gated on `native`; browser-only code (`src/client/` plus app-local `client` modules) is gated on `wasm`. `src/shared/types.rs` compiles on both so DTOs stay in sync, and each app's `server_fn` and `urls` modules are both targets so the typed client stubs work in the browser.
 2. **Server functions are the bridge, and they live per-app** — every `#[server_fn]` lives in `src/apps/<app>/server_fn.rs`, sitting next to that app's models, DI helpers, client UI, and admin. There is no top-level `src/server_fn/` directory.
-3. **Routing is per-app, with a `urls/` directory module** — `src/apps/<app>/urls.rs` declares `pub mod server_urls;` (`#[cfg(native)]`) and `pub mod client_router;` (`#[cfg(wasm)]`). The project-level `src/config/urls.rs` registers `#[server_fn]` markers and aggregates the app-local client routers.
+3. **Routing is per-app, with a `urls/` directory module** — `src/apps/<app>/urls.rs` declares `pub mod server_urls;` (`#[cfg(native)]`) and `pub mod client_router;` (`#[cfg(wasm)]`). App-local `server_urls.rs` files register `#[server_fn]` markers, and the project-level `src/config/urls.rs` mounts those app server routers while aggregating the app-local client routers.
 
 **Available `cargo make` tasks (defined in `Makefile.toml`):**
 
@@ -130,12 +130,12 @@ Each generated file has a specific role. Walking top-down:
 - `src/config/`
   - `settings.rs` — `#[settings(core: CoreSettings)] pub struct ProjectSettings;` plus a `get_settings()` function that builds the layered `SettingsBuilder` (`DefaultSource` → `LowPriorityEnvSource("REINHARDT_")` → `TomlFileSource("base.toml")` → `TomlFileSource("{profile}.toml")`). Profile resolution lives in a private `profile_name()` helper.
   - `apps.rs` — `installed_apps! { polls: "polls", users: "users" }`. The macro generates the app labels used by settings, migrations, admin metadata, and routing namespaces.
-  - `urls.rs` — `#[routes] pub fn routes() -> UnifiedRouter`. Registers every server function via `.server(|s| s.server_fn(name::marker))`, aggregates each app's `client_url_patterns()` with `mount_unified` under `#[cfg(wasm)]`, mounts the admin at `/admin/` (plus `/static/admin/`) via `admin_routes_with_di(Arc::new(configure_admin()))`, and applies the session middleware.
+  - `urls.rs` — `#[routes] pub fn routes() -> UnifiedRouter`. Mounts each app's `server_url_patterns()` under `#[cfg(native)]`, aggregates each app's `client_url_patterns()` with `mount_unified` under `#[cfg(wasm)]`, mounts the admin at `/admin/` (plus `/static/admin/`) via `admin_routes_with_di(Arc::new(configure_admin()))`, and applies the session middleware.
   - `wasm.rs` — an `inventory::submit!` entry that registers `dist-wasm/` as an `AppStaticFilesConfig`, so `cargo make collectstatic` discovers the WASM build artifacts and copies them into `staticfiles/`.
   - `admin.rs` — `configure_admin() -> AdminSite` instantiates the admin site, names it, and registers each app's `ModelAdmin` implementations (`QuestionAdmin`, `ChoiceAdmin`).
 - `src/shared/`
-  - `types.rs` — DTOs (`QuestionInfo`, `ChoiceInfo`, `UserInfo`, `LoginRequest`, `RegisterRequest`, `VoteRequest`) shared between WASM and server. `Validate` derives are wrapped in `#[cfg_attr(native, derive(Validate))]` so the WASM client does not pull in the validator crate.
-  - `forms.rs` — `#[cfg(native)]`-only `Form` definitions used by the `form!` macro on the client (forms are constructed server-side and serialized to `FormMetadata`).
+  - `types.rs` — DTOs shared between WASM and server. On native it re-exports the model-generated `QuestionInfo`, `ChoiceInfo`, and `UserInfo` aliases; on WASM it keeps fallback serde structs until those generated companion types are exported there. `LoginRequest` and `RegisterRequest` use `#[dto]` so validation derives stay native-only.
+  - `forms.rs` — `#[cfg(native)]`-only form metadata/runtime contract checks built from `form!` and `use_form(&form).build()`.
 - `src/apps/` — Reinhardt apps. Each app owns its models, server functions, app-local WASM components, URLs, admin, serializers, and DI helpers. We fill these in starting from Part 2.
 - `src/client/` — WASM-only cross-app shell. `lib.rs` is the `#[wasm_bindgen(start)]` entry that calls `ClientLauncher::new("#root").register_routes_from_inventory().launch()`. `pages.rs` exposes page factories and wraps app-local components in the shared nav bar; `components/nav.rs` contains the shared navigation shell. App-specific page bodies live under `src/apps/<app>/client/`.
 
@@ -166,7 +166,7 @@ flowchart LR
 
 - Unified codebase for frontend and backend
 - Type-safe RPC-style communication via `#[server_fn]`
-- Client-side reactivity (`page!` + `watch` + `use_action`)
+- Client-side reactivity (`page!` + `form!` + `use_resource`)
 - Single deployment artifact
 - WASM compilation for the client-side UI
 

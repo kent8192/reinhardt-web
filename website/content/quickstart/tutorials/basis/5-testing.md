@@ -146,22 +146,49 @@ Two things to notice:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reinhardt::forms::wasm_compat::FormExt;
     use rstest::rstest;
 
     #[rstest]
     fn test_vote_form_metadata() {
-        let form = create_vote_form();
-        let metadata = form.to_metadata();
+        let metadata = create_vote_form();
 
-        assert_eq!(metadata.fields.len(), 1);
-        assert_eq!(metadata.fields[0].name, "choice");
-        assert!(metadata.fields[0].required);
+        assert_eq!(metadata.fields.len(), 2);
+        assert_eq!(metadata.fields[0].name, "question_id");
+        assert_eq!(metadata.fields[1].name, "choice_id");
+        assert!(metadata.fields[1].required);
+    }
+
+    #[rstest]
+    fn test_vote_form_runtime_contract() {
+        let form = form! {
+            name: VoteForm,
+            server_fn: submit_vote,
+            method: Post,
+            fields: {
+                question_id: HiddenField {
+                    initial: String::new(),
+                }
+                choice_id: HiddenField {
+                    initial: String::new(),
+                    label: "Choice",
+                    required,
+                }
+            }
+        };
+        let runtime = use_form(&form).build();
+
+        assert_eq!(runtime.get_values().question_id, String::new());
+        assert_eq!(runtime.get_values().choice_id, String::new());
+        assert!(!runtime.form_state().is_dirty.get());
+        assert!(!runtime.get_field_state(form.choice_id_field()).is_dirty);
     }
 }
 ```
 
-`Form::to_metadata()` lives in `reinhardt::forms::wasm_compat::FormExt`. The test confirms that the single `choice` field — the one the WASM voter sees as a hidden input — survives the conversion to the DTO that crosses the WASM↔native boundary.
+`create_vote_form()` now returns `StaticFormMetadata` generated from the
+same `form!` source used for the runtime contract. The first test pins the
+metadata fields, and the second test proves `use_form(&form).build()`
+starts from the expected clean state.
 
 These in-file tests live next to the code they exercise, are auto-discovered by Cargo (no `[[test]]` block needed), and run as part of `cargo make test-unit`.
 

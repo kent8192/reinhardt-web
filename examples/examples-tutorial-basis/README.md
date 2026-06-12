@@ -1,6 +1,6 @@
 # Reinhardt Basis Tutorial Example - Polling Application
 
-This example demonstrates the concepts covered in the [Reinhardt Basis Tutorial](../../../website/content/quickstart/tutorials/basis/). It implements a complete polling application with two cooperating apps (`polls` and `users`) — server-rendered REST endpoints, typed RPC server functions, an admin panel, and a WASM single-page-application client all in a single crate.
+This example demonstrates the concepts covered in the [Reinhardt Basis Tutorial](../../../website/content/quickstart/tutorials/basis/). It implements a complete polling application with two cooperating apps (`polls` and `users`) — typed RPC server functions, per-app route modules, an admin panel, and a WASM single-page-application client all in a single crate.
 
 ## What This Example Covers
 
@@ -8,8 +8,8 @@ This example corresponds to the basis tutorial parts 1-7:
 
 - **Part 1: Project Setup** - Project structure, development server, first views
 - **Part 2: Models and Database** - Database configuration, ORM models, admin panel
-- **Part 3: Views and URLs** - View functions, URL routing, templates
-- **Part 4: Forms and Generic Views** - HTML forms, form processing, generic views
+- **Part 3: Server Functions and URLs** - Typed server functions, app route modules, SPA routing
+- **Part 4: Forms and Generic Views** - `form!` forms, reactive page components, mutation flows
 - **Part 5: Testing** - Automated testing, model and view tests
 - **Part 6: Static Files** - CSS, images, static file management
 - **Part 7: Admin Customization** - Admin interface customization
@@ -22,27 +22,26 @@ This example corresponds to the basis tutorial parts 1-7:
 - **`Choice`** (`src/apps/polls/models.rs`) — answer option with a `question` foreign key (`#[rel(foreign_key, related_name = "choices")]`), `choice_text`, and a `votes` counter.
 - **`User`** (`src/apps/users/models.rs`) — minimal authentication model defined with `#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]` on top of `#[model(app_label = "users", table_name = "users")]`. `manager = false` opts out of the auto-generated user manager so the example can register a project-local `AuthUserManager` via `#[injectable_factory(scope = "transient")]`.
 
-### Views
+### Server Functions and Pages
 
-The example exposes the same business logic through two layers:
+The example exposes its dynamic business logic through the pages stack:
 
-- **Server-rendered REST endpoints** in `src/apps/polls/views.rs` — `#[get]` / `#[post]` handlers that take `Path<i64>` / `Json<VoteRequest>` and return JSON. Mounted by `apps/polls/urls/server_urls.rs::server_url_patterns()`.
 - **Typed RPC server functions** in `src/apps/<app>/server_fn.rs` — `#[server_fn]` functions (`get_questions`, `get_question_detail`, `vote`, `create_question`, …, plus `login` / `logout` / `register` / `current_user` for the `users` app). The macro generates a typed client stub for WASM and a server-side handler for native; dependencies are resolved positionally with `#[inject]` (`DatabaseConnection`, `SessionData`, …).
+- **Per-app server route modules** in `src/apps/<app>/urls/server_urls.rs` — each app registers its own `#[server_fn]` markers through `ServerFnRouterExt`, while `src/config/urls.rs` mounts the app routers.
 - **Dynamic WASM forms** in `src/apps/polls/client/components.rs` — the poll detail route builds its `RadioSelect` voting form from the choices returned by `get_question_detail`, so each loaded choice becomes a submitted `choice_id` option.
 
 ### URL Structure
 
-App routers are auto-mounted by `#[url_patterns(InstalledApp::<app>, mode = server | client)]`, so the project-level `src/config/urls.rs` does not need explicit `.mount("/polls/", …)` calls.
+The project router mounts per-app server routers on native and merges per-app client routers on WASM. Route names remain app-local (`polls:*`, `users:*`), and components resolve links through each app's `client_router::reverse(...)` helper.
 
 | Path | Layer | Where it is defined |
 |------|-------|---------------------|
-| `/polls/` | Server REST list + SPA home (`polls:index`) | `apps/polls/views.rs::index` + `apps/polls/urls/client_router.rs` |
-| `/polls/{question_id}/` | Server REST detail + SPA route (`polls:detail`) | `views::detail` + `client_router.rs` |
-| `/polls/{question_id}/results/` | Server REST results + SPA route (`polls:results`) | `views::results` + `client_router.rs` |
-| `/polls/{question_id}/vote/` (POST) | Server REST vote submission | `views::vote` |
+| `/` | SPA home (`polls:index`) backed by `get_questions` | `apps/polls/urls/client_router.rs` + `apps/polls/server_fn.rs` |
+| `/polls/{question_id}/` | SPA detail route (`polls:detail`) backed by `get_question_detail` | `client_router.rs` + `server_fn.rs` |
+| `/polls/{question_id}/results/` | SPA results route (`polls:results`) backed by `get_question_results` | `client_router.rs` + `server_fn.rs` |
 | `/polls/new/`, `/polls/{question_id}/edit/`, `/polls/{question_id}/delete/` | Author-only CUD client routes backed by `#[server_fn]`s | `apps/polls/urls/client_router.rs` + `apps/polls/server_fn.rs` |
 | `/polls/{question_id}/choices/new/`, `…/edit/`, `…/delete/` | Choice CUD client routes backed by `#[server_fn]`s | `client_router.rs` + `server_fn.rs` |
-| `/users/login/`, `/users/logout/`, `/users/signup/` | Auth client routes; server functions registered in `src/config/urls.rs` | `apps/users/urls/client_router.rs` |
+| `/login/`, `/logout/`, `/signup/` | Auth client routes; server functions registered in `apps/users/urls/server_urls.rs` | `apps/users/urls/client_router.rs` + `apps/users/server_fn.rs` |
 | `/admin/` | Auto-generated admin panel | `src/config/admin.rs` mounted in `src/config/urls.rs` |
 
 ## Setup
@@ -85,19 +84,11 @@ cargo make dev-release
 
 The server listens at `http://127.0.0.1:8000/`.
 
-### Available Endpoints
+### Inspect Registered Routes
 
 ```bash
-# Server-rendered REST endpoints (src/apps/polls/views.rs)
-curl http://127.0.0.1:8000/polls/
-curl http://127.0.0.1:8000/polls/1/
-curl http://127.0.0.1:8000/polls/1/results/
-
-# Submit a vote (POST). The CSRF token is enforced by middleware; for an
-# interactive flow, drive the same endpoints through the WASM SPA at /polls/.
-curl -X POST http://127.0.0.1:8000/polls/1/vote/ \
-  -H "Content-Type: application/json" \
-  -d '{"question_id": 1, "choice_id": 1}'
+# Server functions, client routes, admin routes, and static mounts
+cargo make showurls
 ```
 
 ## Project Structure

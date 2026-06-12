@@ -22,9 +22,9 @@ and the server registers the same handlers as native routes:
    client calls as if it were a local `async fn`. Every reactive component
    built in Part 4 calls one of these.
 2. **Per-app URL modules** (`src/apps/<app>/urls/`) — explicit homes for
-   server and client route tables. In the current example the native
-   `server_urls.rs` files intentionally return an empty `ServerRouter`
-   because all dynamic data access goes through `#[server_fn]`.
+   server and client route tables. The native `server_urls.rs` files
+   register each app's `#[server_fn]` markers, while the WASM
+   `client_router.rs` files register page routes and reverse helpers.
 
 Both halves live next to the models they touch and share the same
 authentication gate. We introduce them in that order.
@@ -187,7 +187,7 @@ by the framework. For `polls` it looks like this:
 src/apps/polls/
 ├── urls.rs                       declares the two submodules below
 └── urls/
-    ├── server_urls.rs            ServerRouter (empty today)
+    ├── server_urls.rs            ServerRouter with server_fn markers
     └── client_router.rs          ClientRouter
 ```
 
@@ -217,26 +217,29 @@ Three rules govern every file under `urls/`:
    factories call the app-local components in
    `src/apps/polls/client/components.rs`.
 3. **Project-level aggregation happens in `src/config/urls.rs`.** Native
-   data handlers are registered as `#[server_fn]` markers, while the
-   wasm branch stitches app-local `client_url_patterns()` routers into a
-   single `UnifiedRouter`.
+   app routers are mounted there, while the wasm branch stitches
+   app-local `client_url_patterns()` routers into a single
+   `UnifiedRouter`.
 
-The same shape repeats for the `users` app. Its server-side router is
-intentionally empty (auth is exposed via server functions, not HTTP
-endpoints) but the file still exists so that the `users:` namespace flows
-through the same discovery mechanism:
+The same shape repeats for the `users` app. Its server-side router owns
+the authentication server-function registrations:
 
 ```rust
 //! Server-side URL patterns for the users application.
 //!
-//! Defines no HTTP endpoints of its own — authentication is exposed via
-//! server functions registered in `crate::config::urls::routes`. This empty
-//! aggregator exists for discoverability and symmetry with `polls`.
+//! Authentication is exposed via `#[server_fn]` handlers. Register them
+//! here so the users app owns its server surface.
 
+use crate::apps::users::server_fn::{current_user, login, logout, register};
 use reinhardt::ServerRouter;
+use reinhardt::pages::server_fn::ServerFnRouterExt;
 
 pub fn server_url_patterns() -> ServerRouter {
 	ServerRouter::new()
+		.server_fn(login::marker)
+		.server_fn(logout::marker)
+		.server_fn(register::marker)
+		.server_fn(current_user::marker)
 }
 ```
 
@@ -259,12 +262,11 @@ function in this section follows the same five conventions:
   client stub for the WASM side so callers only see the signature.
 - DTOs at the boundary come from `src/shared/types.rs`, so renaming a
   field there fails to compile on both sides simultaneously.
-- For mutations called from `form!`, the **last** non-injected parameter
-  is `_csrf_token: String`. The CSRF middleware verifies it before the
-  handler runs; the value is present only so the macro-generated client
-  stub's positional argument list matches the server signature
-  (tracked upstream in
-  [reinhardt-web#3971](https://github.com/kent8192/reinhardt-web/issues/3971)).
+- For mutations called from `form!`, form fields still arrive as
+  `String` values today. CSRF is handled by the generated `#[server_fn]`
+  client stub through the `X-CSRFToken` header and verified by
+  middleware before the handler runs; it is not part of the business
+  function signature.
 
 ### The polls read functions
 
@@ -279,19 +281,19 @@ the database up before the handler runs — the actual queries go through
 //!
 //! These functions provide the server-side API for the polling application.
 
-use crate::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
+use crate::shared::types::{ChoiceInfo, QuestionInfo};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
-// Server-only imports
+// Server-only imports. Each addition here MUST also be wired in `[cfg(native)]`
+// at the call site — see the per-handler `use` blocks below for examples.
 #[cfg(native)]
 use {
-	crate::apps::users::models::User,
-	crate::shared::forms::create_vote_form,
-	reinhardt::Model,
-	reinhardt::db::orm::{FilterOperator, FilterValue},
-	reinhardt::forms::wasm_compat::{FormExt, FormMetadata},
-	reinhardt::middleware::session::{SessionData, USER_ID_SESSION_KEY},
+	crate::apps::polls::di::SessionError, crate::apps::users::models::User, reinhardt::Model,
+	reinhardt::di::Depends,
 };
+
+// WASM-only imports
+// (None needed - all forms logic is server-side)
 
 /// Get all questions (latest 5)
 #[server_fn]
@@ -480,16 +482,12 @@ them, and reuses `vote_internal`.
 /// submit. Converts String field values to the required types and calls the
 /// underlying vote function.
 ///
-/// The trailing `_csrf_token: String` argument is supplied by `form!`'s
-/// `strip_arguments` block (reinhardt-web#3971). Actual CSRF verification is
-/// performed by the server-side CSRF middleware before this handler runs;
-/// receiving the value here keeps the WASM client stub's positional argument
-/// list aligned with the server signature.
+/// CSRF is supplied by the `#[server_fn]` client stub through `X-CSRFToken`
+/// and verified by middleware before this handler runs.
 #[server_fn]
 pub async fn submit_vote(
 	question_id: String,
 	choice_id: String,
-	_csrf_token: String,
 	#[inject] db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	let question_id: i64 = question_id
@@ -518,7 +516,6 @@ ships — for example:
 /// Ideal implementation (without the form! String workaround tracked in #4397):
 ///   pub async fn create_question(
 ///       question_text: String,
-///       _csrf_token: String,
 ///       #[inject] _db: reinhardt::DatabaseConnection,
 ///       #[inject] session_user: Depends<Result<User, SessionError>>,
 ///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
@@ -599,7 +596,6 @@ that the caller authored the row:
 pub async fn update_question(
 	question_id: String,
 	question_text: String,
-	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
@@ -695,13 +691,12 @@ and persist `user_id`:
 ```rust
 /// Authenticate a user by username/password and persist the session.
 ///
-/// `_csrf_token` is appended by `form!` for non-GET forms (reinhardt-web#3337);
-/// CSRF is verified by middleware before this handler runs.
+/// CSRF is supplied by the `#[server_fn]` client stub through `X-CSRFToken`
+/// and verified by middleware before this handler runs.
 #[server_fn]
 pub async fn login(
 	username: String,
 	password: String,
-	_csrf_token: String,
 	#[inject] _db: DatabaseConnection,
 	#[inject] session: SessionData,
 	#[inject] store: Depends<SessionStore>,
@@ -763,7 +758,6 @@ pub async fn register(
 	username: String,
 	password: String,
 	password_confirmation: String,
-	_csrf_token: String,
 	#[inject] user_manager: Depends<AuthUserManager>,
 	#[inject] session: SessionData,
 	#[inject] store: Depends<SessionStore>,
@@ -835,7 +829,6 @@ for the actual rotation:
 ```rust
 #[server_fn]
 pub async fn logout(
-	_csrf_token: String,
 	#[inject] session: SessionData,
 	#[inject] store: Depends<SessionStore>,
 ) -> std::result::Result<(), ServerFnError> {
@@ -877,48 +870,55 @@ That's the entire authentication surface. The nav bar built in Part 4
 calls `current_user()` to decide whether to show "Sign in" or
 "Sign out".
 
-## Empty Server Routers (`urls/server_urls.rs`)
+## App Server Routers (`urls/server_urls.rs`)
 
 The basis example does not expose classic `#[get]` / `#[post]` JSON views
 from the polls app anymore. Every dynamic data path is a typed
-`#[server_fn]` registered in `src/config/urls.rs`. The polls server router
-therefore stays explicit but empty:
+`#[server_fn]`, and each app registers its own markers in
+`urls/server_urls.rs`. The polls server router is therefore the app-local
+server surface:
 
 ```rust
 //! Server-side URL configuration for the polls application.
 //!
-//! The polls app exposes every dynamic data path through `#[server_fn]`
-//! (registered in `src/config/urls.rs`), so this router is intentionally
-//! empty — there are no native-only `#[get]/#[post]` views to mount. The
-//! function is kept around because:
-//!
-//! 1. **Symmetry with `users`** — every app in the tutorial declares both
-//!    a `client_router` and a `server_urls` submodule, even when the
-//!    server side has nothing to register today. New polls-app HTTP
-//!    endpoints (a CSV export, an RSS feed, …) drop into this function
-//!    without touching the aggregator.
-//! 2. **Discoverability** — readers grepping for the per-app server
-//!    surface find this file and a clear "no endpoints today" rationale
-//!    instead of guessing whether the omission is intentional.
+//! The polls app exposes its dynamic data path through `#[server_fn]`
+//! handlers. Register them here so the per-app server surface lives next
+//! to the app's models, client router, and handler bodies.
 
+use crate::apps::polls::server_fn::{
+	create_choice, create_question, delete_choice, delete_question, get_question_detail,
+	get_question_results, get_questions, submit_vote, update_choice, update_question, vote,
+};
 use reinhardt::ServerRouter;
+use reinhardt::pages::server_fn::ServerFnRouterExt;
 
 pub fn server_url_patterns() -> ServerRouter {
 	ServerRouter::new()
+		.server_fn(get_questions::marker)
+		.server_fn(get_question_detail::marker)
+		.server_fn(get_question_results::marker)
+		.server_fn(vote::marker)
+		.server_fn(submit_vote::marker)
+		.server_fn(create_question::marker)
+		.server_fn(update_question::marker)
+		.server_fn(delete_question::marker)
+		.server_fn(create_choice::marker)
+		.server_fn(update_choice::marker)
+		.server_fn(delete_choice::marker)
 }
 ```
 
-The `users` app follows the same pattern: authentication is exposed via
-server functions (`login`, `register`, `logout`, `current_user`), so
-`apps/users/urls/server_urls.rs` also returns `ServerRouter::new()`.
+The `users` router follows the same pattern for `login`, `register`,
+`logout`, and `current_user`. That keeps server ownership local to the
+app. `src/config/urls.rs` no longer imports every server function in the
+project; it only mounts app routers.
 
 ## Registering Everything in `src/config/urls.rs`
 
 The project-level `routes()` function plays three roles:
 
-1. Registers every server function via `.server(|s| s.server_fn(...))`.
-   The per-app `server_urls.rs` files are empty today, so this file does
-   not mount `/polls/` or `/users/` native HTTP endpoints. On wasm, it
+1. Mounts every app's native `server_url_patterns()` router. Those app
+   routers own the `#[server_fn]` marker registrations. On wasm, it
    aggregates every app's `client_url_patterns()` so the SPA launcher can
    collect the full route table.
 2. On native, mounts the admin panel at `/admin/` (and its static
@@ -928,7 +928,7 @@ The project-level `routes()` function plays three roles:
    SameSite, `httpOnly`, and path `/`.
 
 The attribute is plain `#[routes]`. The function body still compiles on
-both targets: the native branch registers server functions, admin, and
+both targets: the native branch mounts app server routers, admin, and
 session middleware, while the wasm branch aggregates each app's client
 router so `ClientLauncher::register_routes_from_inventory()` has a
 complete SPA route table.
@@ -945,21 +945,10 @@ complete SPA route table.
 use reinhardt::UnifiedRouter;
 #[cfg(native)]
 use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
-#[cfg(native)]
-use reinhardt::pages::server_fn::ServerFnRouterExt;
 use reinhardt::routes;
 
 #[cfg(native)]
 use crate::config::admin::configure_admin;
-
-// Import server_fn marker modules (snake_case + ::marker)
-#[cfg(native)]
-use crate::apps::polls::server_fn::{
-	create_choice, create_question, delete_choice, delete_question, get_question_detail,
-	get_question_results, get_questions, submit_vote, update_choice, update_question, vote,
-};
-#[cfg(native)]
-use crate::apps::users::server_fn::{current_user, login, logout, register};
 
 #[cfg(native)]
 use reinhardt::middleware::session::{SessionConfig, SessionMiddleware};
@@ -984,39 +973,24 @@ fn create_session_middleware() -> SessionMiddleware {
 /// via `inventory::submit!(UrlPatternsRegistration)` and emits a linker
 /// marker to enforce single-usage.
 ///
-/// This function registers the project-level server functions, the admin
+/// This function registers the project-level server routers, the admin
 /// panel, and the session middleware.
 #[routes]
 pub fn routes() -> UnifiedRouter {
-	let router = UnifiedRouter::new().server(|s| {
-		// On wasm the `s` parameter is a no-op `ServerRouter` and every
-		// builder call inside this closure is absorbed by it
-		// (see `reinhardt_urls::routers::ServerRouter`), so the `server_fn`
-		// markers do not need to compile on wasm. We still gate the marker
-		// references on `#[cfg(native)]` because the `server_fn` marker
-		// modules themselves are native-only.
-		#[cfg(native)]
-		{
-			s.server_fn(get_questions::marker)
-				.server_fn(get_question_detail::marker)
-				.server_fn(get_question_results::marker)
-				.server_fn(vote::marker)
-				.server_fn(submit_vote::marker)
-				.server_fn(create_question::marker)
-				.server_fn(update_question::marker)
-				.server_fn(delete_question::marker)
-				.server_fn(create_choice::marker)
-				.server_fn(update_choice::marker)
-				.server_fn(delete_choice::marker)
-				.server_fn(login::marker)
-				.server_fn(logout::marker)
-				.server_fn(register::marker)
-				.server_fn(current_user::marker)
-		}
-		#[cfg(not(native))]
-		{
-			s
-		}
+	let router = UnifiedRouter::new();
+
+	// Per-app server URL modules are native-only because they register
+	// `#[server_fn]` marker modules emitted for the server build.
+	#[cfg(native)]
+	let router = router.server(|s| {
+		s.mount(
+			"/",
+			crate::apps::polls::urls::server_urls::server_url_patterns(),
+		)
+		.mount(
+			"/",
+			crate::apps::users::urls::server_urls::server_url_patterns(),
+		)
 	});
 
 	// Aggregate every app's client routes on wasm so the SPA route table
@@ -1074,10 +1048,13 @@ pub fn routes() -> UnifiedRouter {
 Three registration conventions are worth memorising:
 
 - Each server function exposes a unit-struct `marker` (e.g.,
-  `submit_vote::marker`) that the macro generates. The
-  `s.server_fn(name::marker)` call passes that marker into the router.
+  `submit_vote::marker`) that the macro generates. The app-local
+  `server_url_patterns()` function passes those markers into
+  `ServerFnRouterExt::server_fn`.
 - The import list is in snake_case and refers to the function names, not
   to a separate type — `use ... submit_vote;` then `submit_vote::marker`.
+- `src/config/urls.rs` mounts the app routers rather than importing
+  every function from every app.
 - The wasm-side aggregation lives in the `routes()` body itself, not in
   `client/lib.rs`. Every per-app `client_url_patterns()` it stitches in
   becomes part of the SPA route table that
@@ -1088,8 +1065,8 @@ Three registration conventions are worth memorising:
 The client-side router maps URLs to **page factories** that return
 `Page` values. The factories live in `src/client/pages.rs`; the router
 just plumbs them in. Each route is registered with a stable name, and
-the app-local `urls` helper functions return the concrete paths used by
-components.
+the app-local `reverse(name, params)` helper resolves concrete paths
+from that same route table.
 
 ```rust
 //! Client-side routing for the polls SPA.
@@ -1153,42 +1130,11 @@ pub fn client_url_patterns() -> ClientRouter {
 		)
 		.not_found(|| error_page("Page not found"))
 }
-pub mod urls {
-	pub fn index() -> String {
-		"/".to_string()
-	}
 
-	pub fn detail(question_id: i64) -> String {
-		format!("/polls/{question_id}/")
-	}
-
-	pub fn results(question_id: i64) -> String {
-		format!("/polls/{question_id}/results/")
-	}
-
-	pub fn question_new() -> String {
-		"/polls/new/".to_string()
-	}
-
-	pub fn question_edit(question_id: i64) -> String {
-		format!("/polls/{question_id}/edit/")
-	}
-
-	pub fn question_delete(question_id: i64) -> String {
-		format!("/polls/{question_id}/delete/")
-	}
-
-	pub fn choice_new(question_id: i64) -> String {
-		format!("/polls/{question_id}/choices/new/")
-	}
-
-	pub fn choice_edit(question_id: i64, choice_id: i64) -> String {
-		format!("/polls/{question_id}/choices/{choice_id}/edit/")
-	}
-
-	pub fn choice_delete(question_id: i64, choice_id: i64) -> String {
-		format!("/polls/{question_id}/choices/{choice_id}/delete/")
-	}
+pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
+	client_url_patterns()
+		.reverse(name, params)
+		.unwrap_or_else(|error| panic!("failed to reverse polls client route `{name}`: {error}"))
 }
 
 /// Error page used as the `not_found` fallback.
@@ -1221,8 +1167,10 @@ and over:
   `ClientPath<T>` per parameter, and the arity is inferred from the
   closure signature via the sealed `Handler<Args>` trait.
 
-The app-local `urls` module is a small typed helper layer used by the
-components when they need an `href`.
+The app-local `reverse` helper is intentionally small. Components call
+`polls_routes::reverse("detail", &[("question_id", id.as_str())])`
+instead of hand-formatting paths or carrying a separate helper module
+that can drift from the route table.
 
 The `users` app's client router is a much shorter version of the same
 file. Three login/logout/signup pages, no path parameters, namespace
@@ -1245,24 +1193,16 @@ pub fn client_url_patterns() -> ClientRouter {
 		.route("signup", "/signup/", signup_page)
 }
 
-pub mod urls {
-	pub fn login() -> String {
-		"/login/".to_string()
-	}
-
-	pub fn logout() -> String {
-		"/logout/".to_string()
-	}
-
-	pub fn signup() -> String {
-		"/signup/".to_string()
-	}
+pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
+	client_url_patterns()
+		.reverse(name, params)
+		.unwrap_or_else(|error| panic!("failed to reverse users client route `{name}`: {error}"))
 }
 ```
 
-Each app keeps these tiny `urls` helpers next to its router. That keeps
-navigation helpers app-local instead of centralizing them in a separate
-`src/client/links.rs` file.
+Each app keeps reverse lookup next to its router. That keeps navigation
+helpers app-local without duplicating the route definitions in a
+separate `src/client/links.rs` file.
 
 ## Bootstrapping the SPA in `src/client/lib.rs`
 
@@ -1366,8 +1306,8 @@ pub fn question_new_page() -> Page {
 Each `..._page()` factory has the same shape: take any path parameters
 the route exposes, call the matching body component, and pass the
 resulting `Page` to `with_nav`. We do not show the body components here —
-those are the subject of Part 4, where you will see the `page!`, `watch`,
-`form!`, and `use_action` machinery that actually renders the polls
+those are the subject of Part 4, where you will see the `page!`,
+`form!`, and `use_resource` machinery that actually renders the polls
 index, the voting form, and the auth pages.
 
 ## The SPA Shell: `index.html`
@@ -1546,8 +1486,9 @@ usage once Part 4 lands. Until then, the `tests/integration.rs` and
 directly.
 
 `cargo make showurls` is a useful command for sanity-checking what got
-registered — every server function listed in `routes()`, every client
-route aggregated from `client_url_patterns()`, and every admin path mounted by
+registered — every server function mounted through the app
+`server_url_patterns()` routers, every client route aggregated from
+`client_url_patterns()`, and every admin path mounted by
 `admin_routes_with_di` shows up there.
 
 ## Summary
@@ -1563,8 +1504,9 @@ the polling application:
   script runs.
 - **Per-app `urls/` directory module.** `src/apps/<app>/urls.rs` gates
   `server_urls` (`#[cfg(native)]`) and `client_router` (`#[cfg(wasm)]`);
-  `server_url_patterns()` is explicit and empty today, while
-  `client_url_patterns()` returns the app-local `ClientRouter`.
+  `server_url_patterns()` registers the app's native `#[server_fn]`
+  markers, while `client_url_patterns()` returns the app-local
+  `ClientRouter`.
 - **Typed RPC server functions.** Every reactive mutation the WASM
   client will call lives in `src/apps/<app>/server_fn.rs`. The DI
   container injects `DatabaseConnection`, `SessionData`,
@@ -1573,18 +1515,18 @@ the polling application:
   `(*session_user).as_ref().map_err(ServerFnError::from)?` is the shared
   401/403/500 gate, layered on the `Result<User, SessionError>` factory
   in `apps::polls::di`; `atomic(&db, || async { … })` guards
-  read-modify-write; the trailing `_csrf_token: String` parameter is
-  verified by middleware before the handler runs.
+  read-modify-write; CSRF is supplied by the generated server-function
+  client stub and verified by middleware before the handler runs.
 - **Project-level glue.** `src/config/urls.rs` carries
-  `#[routes]`. The function registers every server function
-  with `.server(|s| s.server_fn(name::marker))`, aggregates every app's
+  `#[routes]`. The function mounts each app's
+  `server_url_patterns()` router on native, aggregates every app's
   `client_url_patterns()` via `mount_unified` on wasm, mounts the admin
   panel at `/admin/` via `admin_routes_with_di`, and applies
   `SessionMiddleware` with a two-week TTL and Lax SameSite.
 - **Client routing and link resolution.** Each app's
   `urls/client_router.rs` registers routes by stable name through
-  `route` / `route_path` and exposes a small app-local `urls` helper
-  module for component `href` values.
+  `route` / `route_path` and exposes a small app-local `reverse` helper
+  for component `href` values.
 - **SPA bootstrap.** `src/client/lib.rs` collapses to
   `ClientLauncher::new("#root").register_routes_from_inventory().launch()`
   and mounts the collected SPA router on `#root`.
