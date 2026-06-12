@@ -60,7 +60,7 @@ dependencies = ["wasm-bindgen-check"]
 [tasks.collectstatic-wasm]
 description = "Collect static files to dist/ for WASM frontend"
 command = "cargo"
-args = ["run", "--bin", "manage", "collectstatic", "--noinput"]
+args = ["run", "--bin", "manage", "collectstatic", "--no-input"]
 dependencies = ["wasm-compile-dev"]
 
 [tasks.wasm-bindgen-dev]

@@ -133,6 +133,15 @@ async fn startproject_pages_from_embedded_only() {
 	assert!(cargo_toml.contains(
 		"features = [\"standard\", \"pages\", \"admin\", \"conf\", \"commands\", \"db-postgres\"]"
 	));
+	let makefile_toml = std::fs::read_to_string(generated.join("Makefile.toml")).unwrap();
+	assert!(
+		makefile_toml.contains("\"--no-input\""),
+		"generated pages Makefile must use collectstatic's non-interactive flag"
+	);
+	assert!(
+		!makefile_toml.contains("\"--noinput\""),
+		"generated pages Makefile must not use the createsuperuser-only --noinput spelling"
+	);
 	assert_manifest_parses(&generated.join("Cargo.toml"));
 }
 
