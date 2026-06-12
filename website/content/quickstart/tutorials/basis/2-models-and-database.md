@@ -10,7 +10,7 @@ sidebar_weight = 20
 
 Part 1 generated the pages project layout, created the tutorial apps, and configured SQLite for local development. In this chapter we fill in the model layer that backs the rest of the tutorial: the `polls` app with `Question` and `Choice`, the `users` app with a session-aware `User` and a project-local `AuthUserManager`, and the migration workflow that turns those Rust definitions into a SQLite schema.
 
-By the end of the chapter your `src/apps/` tree will match [`examples/examples-tutorial-basis/src/apps/`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/apps) — same files, same attributes, same builder shape. Part 3 plugs server functions on top of these models, so resist the urge to skip ahead and "just add the views"; getting the model layer right is what makes the typed `#[server_fn]` story click later.
+By the end of the chapter your data model will match [`examples/examples-tutorial-basis/src/apps/`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/apps): the same `User`, `Question`, and `Choice` fields, the same model attributes, and the same builder shape. The generated app module tree remains the pages-template tree; later chapters replace its placeholders with the tutorial's server functions, routes, client pages, forms, and admin customization.
 
 ## Where We're Headed
 
@@ -47,58 +47,353 @@ If you ever need to point a single run at a different file (for example, an inte
 
 ## Declaring the `polls` App Module Tree
 
-The pages template gave us `src/apps.rs` with `pub mod polls;` and an empty `src/apps/polls.rs`. We're going to fill in `src/apps/polls.rs` so it declares the four cfg-gated submodules the rest of the app needs.
+The `startapp polls --template pages` command from Part 1 already created the app module entry and placeholder files. The generated tree looks like this:
 
-Edit `src/apps/polls.rs`:
+```text
+src/apps/
+├── polls.rs
+└── polls/
+    ├── admin.rs
+    ├── client.rs
+    ├── client/
+    │   ├── components.rs
+    │   └── pages.rs
+    ├── models.rs
+    ├── serializers.rs
+    ├── server_fn.rs
+    ├── urls.rs
+    ├── urls/
+    │   ├── client_router.rs
+    │   └── server_urls.rs
+    └── views.rs
+```
+
+Open `src/apps/polls.rs` and confirm it matches the generated pages-app module entry:
 
 ```rust
-//! Polls application - Tutorial basis example
+//! polls application module
 //!
-//! This app demonstrates:
-//! - Database models (Question, Choice)
-//! - Server functions and URL routing
-//! - Forms and generic views
-//! - Admin panel integration
+//! A Reinhardt Pages app whose server-side and client-side code both live
+//! under this directory:
+//!
+//! - `admin` / `models` / `serializers` / `views` — server-only
+//! - `server_fn` / `urls` — bi-target (gate internally)
+//! - `client` — WASM-only (per-app UI + page wrappers)
 
-#[cfg(native)]
+#[cfg(server)]
 use reinhardt::app_config;
 
-#[cfg(native)]
+#[cfg(server)]
 pub mod admin;
-#[cfg(wasm)]
-pub mod client;
-#[cfg(native)]
-pub mod di;
-#[cfg(native)]
+#[cfg(server)]
 pub mod models;
-#[cfg(native)]
+#[cfg(server)]
 pub mod serializers;
+#[cfg(server)]
+pub mod views;
+
+// Bi-target modules: both server and client portions live inside, gated internally.
 pub mod server_fn;
 pub mod urls;
 
-#[cfg(native)]
+#[cfg(client)]
+pub mod client;
+
+#[cfg(server)]
 #[app_config(name = "polls", label = "polls")]
 pub struct PollsConfig;
 ```
 
 A few things to notice before we move on to the model file:
 
-- `admin`, `di`, `models`, and `serializers` are gated on `#[cfg(native)]`. They depend on database access, the validator crate, admin macros, or server-side DI plumbing that has no place in the WASM bundle. The browser never sees these files.
-- `client` is gated on `#[cfg(wasm)]`. It owns the polls app's `page!`, `watch`, and `form!` components instead of putting app-specific UI under the cross-app `src/client/` shell.
-- `server_fn` and `urls` are **not** cfg-gated at this level. Server functions need their typed signatures visible on both targets so the WASM client can generate stubs; the routing module declares cfg-gated submodules of its own (`urls/server_urls.rs` for native, `urls/client_router.rs` for WASM). Splitting the gating across the parent module and the children is what lets the same `urls::` path resolve on both compile targets without duplication.
+- `admin`, `models`, `serializers`, and `views` are gated on `#[cfg(server)]`. They depend on database access, admin macros, serializers, or server-side HTTP plumbing that has no place in the WASM bundle. The browser never sees these files.
+- `client` is gated on `#[cfg(client)]`. It owns the polls app's `page!`, `watch`, and `form!` components instead of putting app-specific UI under the cross-app `src/client/` shell.
+- `server_fn` and `urls` are **not** cfg-gated at this level. Server functions need their typed signatures visible on both targets so the WASM client can generate stubs; the routing module declares cfg-gated submodules of its own (`urls/server_urls.rs` for server, `urls/client_router.rs` for client). Splitting the gating across the parent module and the children is what lets the same `urls::` path resolve on both compile targets without duplication.
 - `PollsConfig` is the typed app handle. `#[app_config(name = "polls", label = "polls")]` registers it with the framework so admin pages, migration metadata, and signal dispatch can find the app under the label that matches the right-hand side of `installed_apps! { polls: "polls", ... }`. Without it, `cargo make makemigrations` would not know which app a new model belongs to.
 
-We are creating empty placeholders for `admin.rs`, `client.rs`, `di.rs`, `serializers.rs`, `server_fn.rs`, and `urls.rs` for now — Part 3 and Part 7 fill them in. The compiler will complain that those modules are missing once we add `pub mod ...;` lines for them, so create the files now even if they only contain a doc comment:
+Do not create these files by hand; `startapp` already did that. In this chapter we replace `models.rs` with the real data model and leave the generated placeholders in `admin.rs`, `serializers.rs`, `views.rs`, `server_fn.rs`, `urls.rs`, and `client/` for later chapters.
 
-```bash
-touch src/apps/polls/{admin,client,di,serializers,server_fn,urls}.rs
+## Adding the `users` App
+
+The `polls` app's `Question.author` field will reference `User`, so define the `users` model first. If you write `Question` before `User` exists, `use crate::apps::users::models::User;` fails immediately.
+
+### Module Tree
+
+Like `polls`, the `users` app already has a generated pages-app module entry. Open `src/apps/users.rs` and confirm the shape before replacing `models.rs`:
+
+```rust
+//! users application module
+//!
+//! A Reinhardt Pages app whose server-side and client-side code both live
+//! under this directory:
+//!
+//! - `admin` / `models` / `serializers` / `views` — server-only
+//! - `server_fn` / `urls` — bi-target (gate internally)
+//! - `client` — WASM-only (per-app UI + page wrappers)
+
+#[cfg(server)]
+use reinhardt::app_config;
+
+#[cfg(server)]
+pub mod admin;
+#[cfg(server)]
+pub mod models;
+#[cfg(server)]
+pub mod serializers;
+#[cfg(server)]
+pub mod views;
+
+// Bi-target modules: both server and client portions live inside, gated internally.
+pub mod server_fn;
+pub mod urls;
+
+#[cfg(client)]
+pub mod client;
+
+#[cfg(server)]
+#[app_config(name = "users", label = "users")]
+pub struct UsersConfig;
 ```
 
-`models.rs` is the one we actually write content into this chapter.
+The tutorial does not use `admin.rs`, `serializers.rs`, or `views.rs` for `users`, but keeping the generated placeholders is harmless and keeps the app layout consistent with the pages template. The important part for this chapter is `src/apps/users/models.rs`, because `Question.author` depends on it.
+
+### The `User` Model
+
+Replace the generated `src/apps/users/models.rs` placeholder with:
+
+```rust
+//! User model for the tutorial-basis example.
+//!
+//! Uses the `#[user]` attribute macro to derive `BaseUser`,
+//! `PermissionsMixin`, and `AuthIdentity` implementations from the
+//! conventional field set (`username`, `password_hash`, `last_login`,
+//! `is_active`, `is_superuser`). `full = true` is intentionally **not**
+//! enabled — the tutorial keeps the model minimal (no `email` /
+//! `first_name` / `last_name` / `date_joined` / `is_staff`), which keeps
+//! both the schema and the SignupForm small.
+//!
+//! All registration / authentication-state changes from application code
+//! go through [`AuthUserManager`] (a project-local implementation of
+//! `BaseUserManager<User>`) rather than constructing `User` instances
+//! by hand — see the `register` server function in
+//! `crate::apps::users::server_fn`.
+//!
+//! The `createsuperuser` management command takes a **different** path:
+//! it drives `TypedSuperuserCreator<User>` (via the `SuperuserInit` impl
+//! that the `#[user] + #[model]` macro pair auto-generates and the
+//! matching `inventory::submit!(SuperuserCreatorRegistration)` entry that
+//! the framework discovers at startup), which calls
+//! `User::objects().create(&user)` directly. That path therefore
+//! **bypasses** the password-length / username trim / uniqueness checks
+//! that [`AuthUserManager::build_user`] performs for the application signup
+//! flow. Acceptable for the tutorial CLI. Auto-registration for minimal
+//! user models without `full = true` is the resolution of
+//! reinhardt-web#4522 — no manual `SuperuserInit` impl or
+//! `register_superuser_creator` call is required.
+
+use chrono::{DateTime, Utc};
+use reinhardt::Argon2Hasher;
+use reinhardt::macros::user;
+use reinhardt::prelude::*;
+use serde::{Deserialize, Serialize};
+
+// `manager = false` opts out of the auto-generated manager that
+// `#[user(...)]` emits by default since reinhardt-web#4451 — the tutorial
+// keeps its own DB-backed `AuthUserManager` below (registered via
+// `#[injectable_factory]`) which would otherwise be shadowed. The
+// auto-manager is also gated to `Uuid` / `Option<Uuid>` primary keys
+// (issue #4455), and this model uses `i64` to demonstrate auto-increment
+// integer PKs in the tutorial.
+#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]
+#[model(app_label = "users", table_name = "users")]
+#[derive(Default, Clone, Serialize, Deserialize)]
+pub struct User {
+    #[field(primary_key = true)]
+    pub id: i64,
+
+    #[field(max_length = 150, unique = true)]
+    pub username: String,
+
+    #[field(max_length = 255)]
+    pub password_hash: Option<String>,
+
+    #[field(default = true)]
+    pub is_active: bool,
+
+    #[field(default = false)]
+    pub is_superuser: bool,
+
+    #[field(include_in_new = false)]
+    pub last_login: Option<DateTime<Utc>>,
+
+    #[field(auto_now_add = true)]
+    pub created_at: DateTime<Utc>,
+}
+
+// SuperuserInit is auto-generated by the `#[user] + #[model]` macro pair
+// (since reinhardt-web#4522 relaxed the guard from `full && has_model` to
+// `has_model`). The generated impl drops the `email` argument because the
+// minimal user has no email column, and the i64 PK is left as 0 so the
+// DB assigns the real value on insert.
+```
+
+There is one new attribute macro and a handful of new field options. Let's unpack them.
+
+### The `#[user]` Attribute
+
+```rust
+#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]
+#[model(app_label = "users", table_name = "users")]
+#[derive(Default, Clone, Serialize, Deserialize)]
+```
+
+`#[user]` layers the auth traits on top of `#[model]`. It implements `BaseUser`, `PermissionsMixin`, and `AuthIdentity` on the struct, hooks the password-hashing pipeline up to the chosen hasher, and (by default) generates a `UserManager` companion type. Three arguments matter:
+
+- `hasher = Argon2Hasher` — the algorithm `set_password(&str)` uses. Argon2 is what the framework recommends; alternatives exist for legacy interop.
+- `username_field = "username"` — which field is the identity column. The framework needs to know this so session-based authentication can look users up by username.
+- `manager = false` — **opt out of the auto-generated `UserManager`.** This is the critical flag for the tutorial. Reinhardt-web#4451 added a default `UserManager` so simple projects don't need to write one, but if we want to layer custom validation (username trimming, password length, uniqueness checks) and register the manager through the DI container, the auto-generated manager would shadow ours. Setting `manager = false` makes room for the project-local one we're about to write.
+
+`#[derive(Default, Clone, Serialize, Deserialize)]` is needed for a few reasons: `Default` lets the framework construct a stand-in `User` for the request extensions when no user is logged in; `Clone` lets server functions pull an owned `AuthUserManager` out of `Depends<_>` later; `Serialize`/`Deserialize` are for the DTO conversion in `src/shared/types.rs` (Part 3).
+
+Notice that we did **not** pass `full = true`. The `full` flag would also implement `FullUser`, which requires `email`, `first_name`, `last_name`, `is_staff`, and `date_joined` fields. The tutorial keeps the schema small on purpose: fewer signup fields, fewer migration columns, less to explain. The doc comment in the example file calls this out explicitly.
+
+### New Field Attributes
+
+`User` introduces three field options we haven't seen yet:
+
+| Attribute | What it does |
+|-----------|--------------|
+| `#[field(max_length = 150, unique = true)]` | Adds a `UNIQUE` constraint on `username`. Two users cannot register with the same name. |
+| `#[field(max_length = 255)]` on `Option<String>` | `password_hash` is nullable because OAuth users (a future feature) would not have a password. The `Option` is what makes it nullable; `max_length` is still the column width. |
+| `#[field(include_in_new = false)]` | Excludes `last_login` from the `User::build()` typestate. `last_login` is only ever set by the login server function in Part 3 (it stamps the timestamp on a successful login), so it should not be required at construction time. Without this attribute, every test fixture would have to supply a meaningless value. |
+
+`is_active` defaults to `true`, `is_superuser` defaults to `false`, and `created_at` is `auto_now_add`. These four defaults plus `include_in_new = false` on `last_login` mean the typestate builder for `User` only requires the two fields the manager actually needs to fill in: `username` and `password_hash`. That keeps the manager small.
+
+### How `createsuperuser` Finds This Model
+
+The `cargo run --bin manage createsuperuser` command needs a way to construct a `User` from `(username, email)` without running the application-side `AuthUserManager` validation. That constructor is the `SuperuserInit` trait, and since [reinhardt-web#4522](https://github.com/kent8192/reinhardt-web/pull/4522) the `#[user] + #[model]` macro pair **auto-generates** the `impl SuperuserInit for User` block plus the matching `inventory::submit!(SuperuserCreatorRegistration)` entry. You do not write either by hand.
+
+Two details worth knowing:
+
+- The generated `init_superuser(username, _email)` intentionally drops `email` because the tutorial's minimal `User` has no `email` column — the macro inspects the struct fields and only writes back the ones that exist. `full = true` would add the column; we opted out of that on purpose.
+- The primary key is left as `Default::default()` (`0` for `i64`). The database fills it in on insert thanks to `auto_increment`.
+
+The `createsuperuser` path **bypasses** the password-length / username-trim / uniqueness checks that `AuthUserManager::build_user` (below) performs for the application signup flow. That is acceptable for the tutorial CLI, where the operator is trusted.
+
+### The Project-Local `AuthUserManager`
+
+The example file follows the model struct with a `#[cfg(server)] mod manager { ... }` block. The full source is long; here is the shape, with the key registration call highlighted:
+
+```rust
+#[cfg(server)]
+mod manager {
+    use super::User;
+    use reinhardt::BaseUser;
+    use reinhardt::DatabaseConnection;
+    use reinhardt::Model;
+    use reinhardt::core::async_trait;
+    use reinhardt::core::exception::Error;
+    use reinhardt::db::orm::{FilterOperator, FilterValue};
+    use reinhardt::di::{Depends, injectable_factory};
+    use reinhardt::reinhardt_auth::BaseUserManager;
+    use serde_json::Value;
+    use std::collections::HashMap;
+
+    /// Project-local `BaseUserManager<User>` implementation.
+    ///
+    /// Named `AuthUserManager` (rather than `UserManager`) to avoid
+    /// confusion with the auto-generated manager that `#[user(...)]` can
+    /// emit — the tutorial opts out via `manager = false`.
+    #[derive(Clone)]
+    pub struct AuthUserManager {
+        db: DatabaseConnection,
+    }
+
+    #[injectable_factory(scope = "transient")]
+    async fn auth_user_manager_factory(#[inject] db: Depends<DatabaseConnection>) -> AuthUserManager {
+        AuthUserManager { db: (*db).clone() }
+    }
+
+    impl AuthUserManager {
+        async fn build_user(
+            &self,
+            username: &str,
+            password: Option<&str>,
+            extra: &HashMap<String, Value>,
+        ) -> Result<User, Error> {
+            // Trim username, enforce length, check uniqueness, then:
+            let mut user = User::build()
+                .username(username.to_string())
+                .password_hash(None)
+                .is_active(/* … */)
+                .is_superuser(false)
+                .finish();
+            if let Some(pw) = password {
+                // Enforce min length, then hash:
+                user.set_password(pw)
+                    .map_err(|e| Error::Internal(format!("Password hashing failed: {}", e)))?;
+            }
+            Ok(user)
+        }
+    }
+
+    #[async_trait]
+    impl BaseUserManager<User> for AuthUserManager {
+        async fn create_user(
+            &mut self,
+            username: &str,
+            password: Option<&str>,
+            extra: HashMap<String, Value>,
+        ) -> Result<User, Error> {
+            let new_user = self.build_user(username, password, &extra).await?;
+            User::objects()
+                .create_with_conn(&self.db, &new_user)
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+        }
+
+        async fn create_superuser(
+            &mut self,
+            username: &str,
+            password: Option<&str>,
+            extra: HashMap<String, Value>,
+        ) -> Result<User, Error> {
+            let mut new_user = self.build_user(username, password, &extra).await?;
+            new_user.is_superuser = true;
+            User::objects()
+                .create_with_conn(&self.db, &new_user)
+                .await
+                .map_err(|e| Error::Database(e.to_string()))
+        }
+    }
+}
+
+#[cfg(server)]
+pub use manager::AuthUserManager;
+```
+
+Use the manager logic from [`examples/examples-tutorial-basis/src/apps/users/models.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/apps/users/models.rs) as the reference for the full implementation: the validation logic (`username.is_empty()`, `chars().count() > 150`, password length checks) is what the `register` server function in Part 3 relies on. Keep the generated project's cfg alias when copying it into your tutorial project: the pages template uses `#[cfg(server)]` / `#[cfg(client)]`, while the in-repository example uses equivalent workspace-local aliases.
+
+The mechanism worth understanding here is the registration line:
+
+```rust
+#[injectable_factory(scope = "transient")]
+async fn auth_user_manager_factory(#[inject] db: Depends<DatabaseConnection>) -> AuthUserManager {
+    AuthUserManager { db: (*db).clone() }
+}
+```
+
+`#[injectable_factory]` is the dependency-injection primitive that makes `AuthUserManager` accessible to server functions. The macro registers the factory at compile time (via `inventory::submit!`), and at request time the DI container resolves any handler parameter declared as `#[inject] um: Depends<AuthUserManager>` by calling this function — which in turn requests a `Depends<DatabaseConnection>`. The chain composes itself; you never write `let db = ctx.get::<DatabaseConnection>();` by hand.
+
+Two details worth knowing:
+
+- `scope = "transient"` — a fresh `AuthUserManager` per resolution. `BaseUserManager::create_user(&mut self, …)` needs unique mutable access, so we cannot share an `Arc` across requests. Transient is the right scope; the manager itself only holds a cloned `DatabaseConnection` (which is internally an `Arc` over a connection pool), so the cost is trivial.
+- **Why factory, not `#[injectable]` on the struct?** The doc comment on the example calls it out. `#[injectable]` emits `#[async_trait::async_trait]` directly, which would force the consuming crate to add `async-trait` to its `Cargo.toml`. That breaks examples-project rule DM-1 ("Reinhardt Dependencies Only"). `#[injectable_factory]` does not have that requirement. Until reinhardt-web#4445 reworks the macro, the factory form is the right pick for project code.
+
 
 ## Defining `Question` and `Choice`
 
-Create `src/apps/polls/models.rs` with the following contents:
+Now that `User` exists, replace the generated `src/apps/polls/models.rs` placeholder with the following contents:
 
 ```rust
 use chrono::{DateTime, Utc};
@@ -253,270 +548,6 @@ You will see `Question::build()` and `Choice::build()` in every server function 
 
 `was_published_recently()` is a plain `impl` method — nothing Reinhardt-specific, just a small helper that lives on the model because that's where the data lives. `vote()` is more interesting: it's `async fn` and calls `self.save().await` after incrementing the counter, so the increment **and** the row-level UPDATE happen together. Part 3's `vote` server function therefore just wraps `Choice::vote(&mut self).await?` in an `atomic(&db, …)` block so two concurrent voters do not race — there is no separate `manager.update(&choice).await?` step. The helper is the only place the increment is spelled out, which means the future "rate-limit a vote per user" or "audit-log the increment" change has exactly one site to edit.
 
-## Adding the `users` App
-
-The `polls` app's `Question.author` field references `User`, so we need that type defined before anything compiles. The pages template already declared `pub mod users;` in `src/apps.rs`; we now fill in `src/apps/users.rs` and `src/apps/users/models.rs`.
-
-### Module Tree
-
-Edit `src/apps/users.rs`:
-
-```rust
-//! Users application
-//!
-//! Provides session-based authentication for the tutorial-basis example.
-//! Defines a minimal `User` model and exposes server functions for login,
-//! logout, sign-up, and current-user introspection via
-//! `crate::apps::users::server_fn`.
-
-#[cfg(native)]
-pub mod models;
-
-pub mod server_fn;
-pub mod urls;
-```
-
-This is intentionally lighter than `polls.rs`: the `users` app does not register an admin panel or HTTP views in this tutorial, and the only thing the WASM client needs is the server function module (so it can generate typed stubs for `login`, `register`, `logout`, and `current_user`) and the URLs (so it can route to the login / signup pages).
-
-Like before, create the placeholder files for `server_fn.rs` and `urls.rs` so the compiler does not complain while we work on `models.rs`:
-
-```bash
-touch src/apps/users/{server_fn,urls}.rs
-```
-
-### The `User` Model
-
-Create `src/apps/users/models.rs`:
-
-```rust
-//! User model for the tutorial-basis example.
-//!
-//! Uses the `#[user]` attribute macro to derive `BaseUser`,
-//! `PermissionsMixin`, and `AuthIdentity` implementations from the
-//! conventional field set (`username`, `password_hash`, `last_login`,
-//! `is_active`, `is_superuser`). `full = true` is intentionally **not**
-//! enabled — the tutorial keeps the model minimal (no `email` /
-//! `first_name` / `last_name` / `date_joined` / `is_staff`), which keeps
-//! both the schema and the SignupForm small.
-//!
-//! All registration / authentication-state changes from application code
-//! go through [`AuthUserManager`] (a project-local implementation of
-//! `BaseUserManager<User>`) rather than constructing `User` instances
-//! by hand — see the `register` server function in
-//! `crate::apps::users::server_fn`.
-//!
-//! The `createsuperuser` management command takes a **different** path:
-//! it drives `TypedSuperuserCreator<User>` (via the `SuperuserInit` impl
-//! that the `#[user] + #[model]` macro pair auto-generates and the
-//! matching `inventory::submit!(SuperuserCreatorRegistration)` entry that
-//! the framework discovers at startup), which calls
-//! `User::objects().create(&user)` directly. That path therefore
-//! **bypasses** the password-length / username trim / uniqueness checks
-//! that [`AuthUserManager::build_user`] performs for the application signup
-//! flow. Acceptable for the tutorial CLI. Auto-registration for minimal
-//! user models without `full = true` is the resolution of
-//! reinhardt-web#4522 — no manual `SuperuserInit` impl or
-//! `register_superuser_creator` call is required.
-
-use chrono::{DateTime, Utc};
-use reinhardt::Argon2Hasher;
-use reinhardt::macros::user;
-use reinhardt::prelude::*;
-use serde::{Deserialize, Serialize};
-
-// `manager = false` opts out of the auto-generated manager that
-// `#[user(...)]` emits by default since reinhardt-web#4451 — the tutorial
-// keeps its own DB-backed `AuthUserManager` below (registered via
-// `#[injectable_factory]`) which would otherwise be shadowed. The
-// auto-manager is also gated to `Uuid` / `Option<Uuid>` primary keys
-// (issue #4455), and this model uses `i64` to demonstrate auto-increment
-// integer PKs in the tutorial.
-#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]
-#[model(app_label = "users", table_name = "users")]
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct User {
-    #[field(primary_key = true)]
-    pub id: i64,
-
-    #[field(max_length = 150, unique = true)]
-    pub username: String,
-
-    #[field(max_length = 255)]
-    pub password_hash: Option<String>,
-
-    #[field(default = true)]
-    pub is_active: bool,
-
-    #[field(default = false)]
-    pub is_superuser: bool,
-
-    #[field(include_in_new = false)]
-    pub last_login: Option<DateTime<Utc>>,
-
-    #[field(auto_now_add = true)]
-    pub created_at: DateTime<Utc>,
-}
-
-// SuperuserInit is auto-generated by the `#[user] + #[model]` macro pair
-// (since reinhardt-web#4522 relaxed the guard from `full && has_model` to
-// `has_model`). The generated impl drops the `email` argument because the
-// minimal user has no email column, and the i64 PK is left as 0 so the
-// DB assigns the real value on insert.
-```
-
-There is one new attribute macro and a handful of new field options. Let's unpack them.
-
-### The `#[user]` Attribute
-
-```rust
-#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]
-#[model(app_label = "users", table_name = "users")]
-#[derive(Default, Clone, Serialize, Deserialize)]
-```
-
-`#[user]` layers the auth traits on top of `#[model]`. It implements `BaseUser`, `PermissionsMixin`, and `AuthIdentity` on the struct, hooks the password-hashing pipeline up to the chosen hasher, and (by default) generates a `UserManager` companion type. Three arguments matter:
-
-- `hasher = Argon2Hasher` — the algorithm `set_password(&str)` uses. Argon2 is what the framework recommends; alternatives exist for legacy interop.
-- `username_field = "username"` — which field is the identity column. The framework needs to know this so session-based authentication can look users up by username.
-- `manager = false` — **opt out of the auto-generated `UserManager`.** This is the critical flag for the tutorial. Reinhardt-web#4451 added a default `UserManager` so simple projects don't need to write one, but if we want to layer custom validation (username trimming, password length, uniqueness checks) and register the manager through the DI container, the auto-generated manager would shadow ours. Setting `manager = false` makes room for the project-local one we're about to write.
-
-`#[derive(Default, Clone, Serialize, Deserialize)]` is needed for a few reasons: `Default` lets the framework construct a stand-in `User` for the request extensions when no user is logged in; `Clone` lets server functions pull an owned `AuthUserManager` out of `Depends<_>` later; `Serialize`/`Deserialize` are for the DTO conversion in `src/shared/types.rs` (Part 3).
-
-Notice that we did **not** pass `full = true`. The `full` flag would also implement `FullUser`, which requires `email`, `first_name`, `last_name`, `is_staff`, and `date_joined` fields. The tutorial keeps the schema small on purpose: fewer signup fields, fewer migration columns, less to explain. The doc comment in the example file calls this out explicitly.
-
-### New Field Attributes
-
-`User` introduces three field options we haven't seen yet:
-
-| Attribute | What it does |
-|-----------|--------------|
-| `#[field(max_length = 150, unique = true)]` | Adds a `UNIQUE` constraint on `username`. Two users cannot register with the same name. |
-| `#[field(max_length = 255)]` on `Option<String>` | `password_hash` is nullable because OAuth users (a future feature) would not have a password. The `Option` is what makes it nullable; `max_length` is still the column width. |
-| `#[field(include_in_new = false)]` | Excludes `last_login` from the `User::build()` typestate. `last_login` is only ever set by the login server function in Part 3 (it stamps the timestamp on a successful login), so it should not be required at construction time. Without this attribute, every test fixture would have to supply a meaningless value. |
-
-`is_active` defaults to `true`, `is_superuser` defaults to `false`, and `created_at` is `auto_now_add`. These four defaults plus `include_in_new = false` on `last_login` mean the typestate builder for `User` only requires the two fields the manager actually needs to fill in: `username` and `password_hash`. That keeps the manager small.
-
-### How `createsuperuser` Finds This Model
-
-The `cargo run --bin manage createsuperuser` command needs a way to construct a `User` from `(username, email)` without running the application-side `AuthUserManager` validation. That constructor is the `SuperuserInit` trait, and since [reinhardt-web#4522](https://github.com/kent8192/reinhardt-web/pull/4522) the `#[user] + #[model]` macro pair **auto-generates** the `impl SuperuserInit for User` block plus the matching `inventory::submit!(SuperuserCreatorRegistration)` entry. You do not write either by hand.
-
-Two details worth knowing:
-
-- The generated `init_superuser(username, _email)` intentionally drops `email` because the tutorial's minimal `User` has no `email` column — the macro inspects the struct fields and only writes back the ones that exist. `full = true` would add the column; we opted out of that on purpose.
-- The primary key is left as `Default::default()` (`0` for `i64`). The database fills it in on insert thanks to `auto_increment`.
-
-The `createsuperuser` path **bypasses** the password-length / username-trim / uniqueness checks that `AuthUserManager::build_user` (below) performs for the application signup flow. That is acceptable for the tutorial CLI, where the operator is trusted.
-
-### The Project-Local `AuthUserManager`
-
-The example file follows the model struct with a `#[cfg(native)] mod manager { ... }` block. The full source is long; here is the shape, with the key registration call highlighted:
-
-```rust
-#[cfg(native)]
-mod manager {
-    use super::User;
-    use reinhardt::BaseUser;
-    use reinhardt::DatabaseConnection;
-    use reinhardt::Model;
-    use reinhardt::core::async_trait;
-    use reinhardt::core::exception::Error;
-    use reinhardt::db::orm::{FilterOperator, FilterValue};
-    use reinhardt::di::{Depends, injectable_factory};
-    use reinhardt::reinhardt_auth::BaseUserManager;
-    use serde_json::Value;
-    use std::collections::HashMap;
-
-    /// Project-local `BaseUserManager<User>` implementation.
-    ///
-    /// Named `AuthUserManager` (rather than `UserManager`) to avoid
-    /// confusion with the auto-generated manager that `#[user(...)]` can
-    /// emit — the tutorial opts out via `manager = false`.
-    #[derive(Clone)]
-    pub struct AuthUserManager {
-        db: DatabaseConnection,
-    }
-
-    #[injectable_factory(scope = "transient")]
-    async fn auth_user_manager_factory(#[inject] db: Depends<DatabaseConnection>) -> AuthUserManager {
-        AuthUserManager { db: (*db).clone() }
-    }
-
-    impl AuthUserManager {
-        async fn build_user(
-            &self,
-            username: &str,
-            password: Option<&str>,
-            extra: &HashMap<String, Value>,
-        ) -> Result<User, Error> {
-            // Trim username, enforce length, check uniqueness, then:
-            let mut user = User::build()
-                .username(username.to_string())
-                .password_hash(None)
-                .is_active(/* … */)
-                .is_superuser(false)
-                .finish();
-            if let Some(pw) = password {
-                // Enforce min length, then hash:
-                user.set_password(pw)
-                    .map_err(|e| Error::Internal(format!("Password hashing failed: {}", e)))?;
-            }
-            Ok(user)
-        }
-    }
-
-    #[async_trait]
-    impl BaseUserManager<User> for AuthUserManager {
-        async fn create_user(
-            &mut self,
-            username: &str,
-            password: Option<&str>,
-            extra: HashMap<String, Value>,
-        ) -> Result<User, Error> {
-            let new_user = self.build_user(username, password, &extra).await?;
-            User::objects()
-                .create_with_conn(&self.db, &new_user)
-                .await
-                .map_err(|e| Error::Database(e.to_string()))
-        }
-
-        async fn create_superuser(
-            &mut self,
-            username: &str,
-            password: Option<&str>,
-            extra: HashMap<String, Value>,
-        ) -> Result<User, Error> {
-            let mut new_user = self.build_user(username, password, &extra).await?;
-            new_user.is_superuser = true;
-            User::objects()
-                .create_with_conn(&self.db, &new_user)
-                .await
-                .map_err(|e| Error::Database(e.to_string()))
-        }
-    }
-}
-
-#[cfg(native)]
-pub use manager::AuthUserManager;
-```
-
-You should copy the manager block verbatim from [`examples/examples-tutorial-basis/src/apps/users/models.rs`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis/src/apps/users/models.rs) — the validation logic (`username.is_empty()`, `chars().count() > 150`, password length checks) is what the `register` server function in Part 3 relies on.
-
-The mechanism worth understanding here is the registration line:
-
-```rust
-#[injectable_factory(scope = "transient")]
-async fn auth_user_manager_factory(#[inject] db: Depends<DatabaseConnection>) -> AuthUserManager {
-    AuthUserManager { db: (*db).clone() }
-}
-```
-
-`#[injectable_factory]` is the dependency-injection primitive that makes `AuthUserManager` accessible to server functions. The macro registers the factory at compile time (via `inventory::submit!`), and at request time the DI container resolves any handler parameter declared as `#[inject] um: Depends<AuthUserManager>` by calling this function — which in turn requests a `Depends<DatabaseConnection>`. The chain composes itself; you never write `let db = ctx.get::<DatabaseConnection>();` by hand.
-
-Two details worth knowing:
-
-- `scope = "transient"` — a fresh `AuthUserManager` per resolution. `BaseUserManager::create_user(&mut self, …)` needs unique mutable access, so we cannot share an `Arc` across requests. Transient is the right scope; the manager itself only holds a cloned `DatabaseConnection` (which is internally an `Arc` over a connection pool), so the cost is trivial.
-- **Why factory, not `#[injectable]` on the struct?** The doc comment on the example calls it out. `#[injectable]` emits `#[async_trait::async_trait]` directly, which would force the consuming crate to add `async-trait` to its `Cargo.toml`. That breaks examples-project rule DM-1 ("Reinhardt Dependencies Only"). `#[injectable_factory]` does not have that requirement. Until reinhardt-web#4445 reworks the macro, the factory form is the right pick for project code.
-
 ## Confirming App Registration
 
 `src/config/apps.rs` is where the framework learns which apps it should scan. The `startapp` commands from Part 1 already updated it; confirm it matches:
@@ -541,7 +572,7 @@ pub fn get_installed_apps() -> Vec<String> {
 
 Why does this matter for Part 2? Because the same app labels are wired through migrations, admin metadata, server-function registration, and client route namespaces. With the labels already registered by `startapp`, `cargo make makemigrations` can place new model changes under the right migration directory.
 
-We don't fill in app-local routers until Part 3 — keep the placeholder `urls.rs` files created by `startapp` empty for now. This chapter only needs the existing app registration so that `cargo make makemigrations` knows about both apps.
+We don't fill in app-local routers until Part 3 — keep the generated `urls.rs`, `urls/server_urls.rs`, and `urls/client_router.rs` placeholders as they are for now. This chapter only needs the existing app registration so that `cargo make makemigrations` knows about both apps.
 
 ## Generating and Applying Migrations
 
@@ -591,7 +622,7 @@ This dumps every URL pattern the framework currently knows about. It will be spa
 
 ## A Note on `serializers.rs`
 
-We touched `serializers.rs` earlier and left it empty. The current example fills it in with `QuestionSerializer`, `ChoiceSerializer`, and matching response types for the ownership-checked question/choice mutation flow. Server functions still hand back shared DTOs from `src/shared/types.rs`, but the serializer structs keep form validation and response mapping close to the polls app. We leave `serializers.rs` alone in this chapter and come back to it in Part 3 when we wire up the server function layer and client routes.
+The generated `serializers.rs` file can stay as a placeholder for now. The current example fills it in with `QuestionSerializer`, `ChoiceSerializer`, and matching response types for the ownership-checked question/choice mutation flow. Server functions still hand back shared DTOs from `src/shared/types.rs`, but the serializer structs keep form validation and response mapping close to the polls app. We leave `serializers.rs` alone in this chapter and come back to it in Part 3 when we wire up the server function layer and client routes.
 
 The same goes for `admin.rs`: Part 7 fills in the `#[admin(model, for = Question, ...)]` and `#[admin(model, for = Choice, ...)]` annotations and registers them in `src/config/admin.rs`. We can leave the file empty for now.
 
@@ -608,7 +639,7 @@ Continue to [Part 3: Server Functions and URLs](../3-views-and-urls/).
 In this chapter you learned:
 
 - How `settings/base.toml`'s `[core.databases.default]` block selects SQLite for the tutorial without any external server
-- How `src/apps/polls.rs` declares its submodules with `#[cfg(native)]` for `admin` / `di` / `models` / `serializers`, `#[cfg(wasm)]` for app-local `client`, while keeping `server_fn` and `urls` available on both compile targets
+- How the generated `src/apps/polls.rs` declares server-only modules with `#[cfg(server)]`, app-local UI with `#[cfg(client)]`, and keeps `server_fn` / `urls` available on both compile targets
 - How `#[model(app_label = ..., table_name = ...)]` plus `#[field(...)]` plus `#[rel(foreign_key, related_name = ...)]` define `Question` and `Choice`, including the rule that `related_name` is required
 - How the `#[model]`-generated typestate `build()` constructor (`Question::build()...finish()`, `Choice::build()...finish()`) keeps call sites stable as the schema grows
 - How `#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]` layers auth traits on top of `#[model]`, and why `manager = false` is the right pick when you have a project-local manager

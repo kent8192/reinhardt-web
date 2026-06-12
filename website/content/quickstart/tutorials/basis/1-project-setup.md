@@ -62,7 +62,7 @@ After those commands, the scaffold has the same high-level shape as the referenc
 polls_project/
 ├── Cargo.toml                 # cdylib + rlib; native reinhardt dependency with the explicit tutorial features above; WASM dependency with "pages" + "client-router"
 ├── Makefile.toml              # cargo make runserver / migrate / dev / wasm-build-dev / collectstatic / test / …
-├── build.rs                   # cfg_aliases: `native` vs `wasm`; also emits `with_reinhardt` cfg after auto-detecting the parent workspace
+├── build.rs                   # cfg_aliases: `server` vs `client`
 ├── index.html                 # SPA shell — single #root mount + UnoCSS runtime
 ├── README.md
 ├── favicon.png
@@ -76,9 +76,9 @@ polls_project/
 ├── src/
 │   ├── lib.rs                 # Crate root; declares apps / config / shared / client modules with cfg gates
 │   ├── apps.rs                # pub mod polls; pub mod users;
-│   ├── config.rs              # pub mod admin/settings/wasm (cfg native); apps / urls compile both targets
-│   ├── shared.rs              # pub mod forms (cfg native); pub mod types (both targets)
-│   ├── client.rs              # pub mod lib / pages / components (gated to cfg wasm at the crate root)
+│   ├── config.rs              # pub mod settings/wasm (cfg server); apps / urls compile both targets
+│   ├── shared.rs              # pub mod forms (cfg server); pub mod types (both targets)
+│   ├── client.rs              # pub mod lib / components (gated to cfg client at the crate root)
 │   ├── bin/
 │   │   └── manage.rs          # CLI binary (Django's manage.py equivalent), required-features = ["with-reinhardt"]
 │   ├── config/
@@ -91,21 +91,21 @@ polls_project/
 │   │   ├── types.rs           # Shared DTOs (filled in Part 2 onward)
 │   │   └── forms.rs           # Server-only Form definitions (filled in Part 4)
 │   ├── apps/
-│   │   ├── polls/             # Filled in Part 2 onward (models, di, server_fn, client, urls/, admin, serializers)
+│   │   ├── polls/             # Filled in Part 2 onward (models, server_fn, client, urls/, admin, serializers)
 │   │   └── users/             # Filled in Part 2 (User model + auth server functions)
 │   └── client/                # Filled in Part 3 (lib.rs entry, pages.rs, shared components/)
 │       └── …
 └── tests/
-    ├── integration.rs         # Native integration tests, required-features = ["with-reinhardt"]
+    ├── integration.rs         # Server-side integration tests, required-features = ["with-reinhardt"]
     └── wasm/
-        └── polls_mock_test.rs # WASM mock tests, required-features = ["msw"] (#![cfg(wasm)]-gated)
+        └── polls_mock_test.rs # WASM mock tests, required-features = ["msw"] (client-gated)
 ```
 
 Three rules keep this layout predictable:
 
-1. **`#[cfg(native)]` vs `#[cfg(wasm)]`** — server-only code (models, server function bodies, forms, admin) is gated on `native`; browser-only code (`src/client/` plus app-local `client` modules) is gated on `wasm`. `src/shared/types.rs` compiles on both so DTOs stay in sync, and each app's `server_fn` and `urls` modules are both targets so the typed client stubs work in the browser.
+1. **`#[cfg(server)]` vs `#[cfg(client)]`** — server-only code (models, server function bodies, forms, admin) is gated on `server`; browser-only code (`src/client/` plus app-local `client` modules) is gated on `client`. `src/shared/types.rs` compiles on both so DTOs stay in sync, and each app's `server_fn` and `urls` modules are both targets so the typed client stubs work in the browser.
 2. **Server functions are the bridge, and they live per-app** — every `#[server_fn]` lives in `src/apps/<app>/server_fn.rs`, sitting next to that app's models, DI helpers, client UI, and admin. There is no top-level `src/server_fn/` directory.
-3. **Routing is per-app, with a `urls/` directory module** — `src/apps/<app>/urls.rs` declares `pub mod server_urls;` (`#[cfg(native)]`) and `pub mod client_router;` (`#[cfg(wasm)]`). App-local `server_urls.rs` files register `#[server_fn]` markers, and the project-level `src/config/urls.rs` mounts those app server routers while aggregating the app-local client routers.
+3. **Routing is per-app, with a `urls/` directory module** — `src/apps/<app>/urls.rs` declares `pub mod server_urls;` (`#[cfg(server)]`) and `pub mod client_router;` (`#[cfg(client)]`). App-local `server_urls.rs` files register `#[server_fn]` markers, and the project-level `src/config/urls.rs` mounts those app server routers while aggregating the app-local client routers.
 
 **Available `cargo make` tasks (defined in `Makefile.toml`):**
 
@@ -132,22 +132,22 @@ Three rules keep this layout predictable:
 
 Each generated file has a specific role. Walking top-down:
 
-- `Cargo.toml` — declares `crate-type = ["cdylib", "rlib"]` (cdylib for WASM, rlib for the server binary), `default-run = "manage"`, and a `manage` binary for the native management CLI. It splits the `reinhardt` dependency between two `[target.'cfg(...)'.dependencies]` blocks: the native side uses the explicit tutorial features from the `startproject` command, while the WASM side only enables `pages + client-router`.
-- `build.rs` — uses the `cfg_aliases` crate to register two custom cfgs: `wasm` = `all(target_family = "wasm", target_os = "unknown")` and `native` = its negation. You will see these throughout the source as `#[cfg(wasm)]` / `#[cfg(native)]`. The build script also auto-detects whether the parent directory is the `reinhardt-web` workspace (subtree development) versus a standalone checkout, and unconditionally emits `cargo:rustc-cfg=with_reinhardt` in both modes so the integration test target compiles either way.
+- `Cargo.toml` — declares `crate-type = ["cdylib", "rlib"]` (cdylib for WASM, rlib for the server binary), `default-run = "manage"`, and a `manage` binary for the server-side management CLI. It splits the `reinhardt` dependency between two `[target.'cfg(...)'.dependencies]` blocks: the server side uses the explicit tutorial features from the `startproject` command, while the WASM side only enables `pages + client-router`.
+- `build.rs` — uses the `cfg_aliases` crate to register two custom cfgs: `client` = `target_arch = "wasm32"` and `server` = its negation. You will see these throughout generated source as `#[cfg(client)]` / `#[cfg(server)]`.
 - `index.html` — the SPA shell. It loads UnoCSS from a CDN, defines a `#root` div that the launcher mounts into, and shows a `Loading…` spinner while the WASM bundle downloads.
 - `settings/` — TOML settings files. `base.toml` is always loaded; `{profile}.toml` (resolved from `REINHARDT_ENV`, or `local` otherwise) layers on top. `local.toml` contains local development settings (tracked in version control).
-- `src/lib.rs` — the crate root. It declares `pub mod apps;`, `pub mod config;`, `pub mod shared;`, and `#[cfg(wasm)] pub mod client;`. Server-only re-exports (`async_trait`, the `reinhardt_apps` / `reinhardt_core` / `reinhardt_di::params` / `reinhardt_http` shims) are gated on `#[cfg(native)]`.
+- `src/lib.rs` — the crate root. It declares `pub mod apps;`, `pub mod config;`, `pub mod shared;`, and `#[cfg(client)] pub mod client;`. Server-only re-exports (`async_trait`, the `reinhardt_apps` / `reinhardt_core` / `reinhardt_di::params` / `reinhardt_http` shims) are gated on `#[cfg(server)]`.
 - `src/bin/manage.rs` — the server-side binary. It sets `REINHARDT_SETTINGS_MODULE = "examples_tutorial_basis.config.settings"` (rename to your crate name in the generated tree) and calls `reinhardt::commands::execute_from_command_line_with_settings(get_settings())`. The WASM build still needs a `main` symbol for `bin` crate-types, so the file also defines an empty `fn main() {}` under `#[cfg(target_arch = "wasm32")]`.
 - `src/config/`
   - `settings.rs` — `#[settings(core: CoreSettings | contacts: ContactSettings)] pub struct ProjectSettings;` plus a `get_settings()` function that builds the layered `SettingsBuilder` (`DefaultSource` → `TomlFileSource("base.toml")` → `TomlFileSource("{profile}.toml")` → `HighPriorityEnvSource("REINHARDT_")`).
   - `apps.rs` — `startapp` appends `installed_apps!` entries here. The macro generates the app labels used by settings, migrations, admin metadata, and routing namespaces.
-  - `urls.rs` — `#[routes] pub fn routes() -> UnifiedRouter`. Mounts each app's `server_url_patterns()` under `#[cfg(native)]`, aggregates each app's `client_url_patterns()` with `mount_unified` under `#[cfg(wasm)]`, mounts the admin at `/admin/` (plus `/static/admin/`) via `admin_routes_with_di(Arc::new(configure_admin()))`, and applies the session middleware.
+  - `urls.rs` — `#[routes] pub fn routes() -> UnifiedRouter`. Part 3 mounts each app's `server_url_patterns()` under `#[cfg(server)]`, aggregates each app's `client_url_patterns()` with `mount_unified` under `#[cfg(client)]`, mounts the admin at `/admin/`, and applies the session middleware.
   - `wasm.rs` — an `inventory::submit!` entry that registers `dist-wasm/` as an `AppStaticFilesConfig`, so `cargo make collectstatic` discovers the WASM build artifacts and copies them into `staticfiles/`.
   - `admin.rs` — `configure_admin() -> AdminSite` instantiates the admin site, names it, and registers each app's `ModelAdmin` implementations (`QuestionAdmin`, `ChoiceAdmin`).
 - `src/shared/`
-  - `types.rs` — DTOs shared between WASM and server. On native it re-exports the model-generated `QuestionInfo`, `ChoiceInfo`, and `UserInfo` aliases; on WASM it keeps fallback serde structs until those generated companion types are exported there. `LoginRequest` and `RegisterRequest` use `#[dto]` so validation derives stay native-only.
-  - `forms.rs` — `#[cfg(native)]`-only form metadata/runtime contract checks built from `form!` and `use_form(&form).build()`.
-- `src/apps/` — Reinhardt apps. Each app owns its models, server functions, app-local WASM components, URLs, admin, serializers, and DI helpers. We fill these in starting from Part 2.
+  - `types.rs` — DTOs shared between WASM and server. On the server side it re-exports the model-generated `QuestionInfo`, `ChoiceInfo`, and `UserInfo` aliases; on WASM it keeps fallback serde structs until those generated companion types are exported there. `LoginRequest` and `RegisterRequest` use `#[dto]` so validation derives stay server-only.
+  - `forms.rs` — `#[cfg(server)]`-only form metadata/runtime contract checks built from `form!` and `use_form(&form).build()`.
+- `src/apps/` — Reinhardt apps. Each app owns its models, server functions, app-local WASM components, URLs, admin, serializers, and server-side view placeholders. We fill these in starting from Part 2.
 - `src/client/` — WASM-only cross-app shell. `lib.rs` is the `#[wasm_bindgen(start)]` entry that calls `ClientLauncher::new("#root").register_routes_from_inventory().launch()`. `pages.rs` exposes page factories and wraps app-local components in the shared nav bar; `components/nav.rs` contains the shared navigation shell. App-specific page bodies live under `src/apps/<app>/client/`.
 
 ### Architecture: WASM + SSR (reinhardt-pages)
@@ -336,8 +336,8 @@ cargo make dev-release
 
 The pages template gave you a five-section project:
 
-- **Server-side modules** (`src/apps/*/models.rs`, `di.rs`, `server_fn.rs`, `urls/server_urls.rs`, `admin.rs`, `serializers.rs`) — gated on `#[cfg(native)]` so they vanish from the WASM build.
-- **WASM-side modules** (`src/client/*`, `src/apps/*/urls/client_router.rs`) — gated on `#[cfg(wasm)]`.
+- **Server-side modules** (`src/apps/*/models.rs`, `views.rs`, `urls/server_urls.rs`, `admin.rs`, `serializers.rs`) — gated on `#[cfg(server)]` so they vanish from the WASM build.
+- **WASM-side modules** (`src/client/*`, `src/apps/*/urls/client_router.rs`) — gated on `#[cfg(client)]`.
 - **Shared modules** (`src/shared/types.rs`, each app's `server_fn.rs` signatures) — compile for both targets so DTOs and typed RPC stubs stay in sync.
 - **Project-level glue** (`src/config/*`, `src/bin/manage.rs`) — the entry points the framework looks up: `routes()`, `get_installed_apps()`, `get_settings()`, `configure_admin()`, `execute_from_command_line_with_settings()`.
 - **Task automation** (`Makefile.toml`) — every command you will use throughout the tutorial, from `cargo make migrate` to `cargo make wasm-build-release`.
@@ -353,7 +353,7 @@ When you're ready, move on to [Part 2: Models and Database](../2-models-and-data
 In this tutorial you learned:
 
 - How to install `reinhardt-admin-cli`, generate a project from the `pages` template, and create `polls` / `users` apps with `startapp`
-- How the `src/{lib, apps, config, shared, client, bin}` layout maps to native vs WASM code paths via `cfg_aliases`
+- How the `src/{lib, apps, config, shared, client, bin}` layout maps to server vs client code paths via `cfg_aliases`
 - How `settings/base.toml` + profile overlays are loaded through `SettingsBuilder` (with `${VAR}` interpolation enabled by default)
 - How `startapp` updates `src/apps.rs` and `src/config/apps.rs`, and how `installed_apps!` exposes stable app labels to settings, migrations, admin metadata, and routing
 - How `cargo make runserver` and `cargo make dev` differ — and which `cargo make` tasks ship in `Makefile.toml`
