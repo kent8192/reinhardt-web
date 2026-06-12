@@ -1,6 +1,6 @@
 //! Attribute macro implementation for `#[model(...)]`
 
-use crate::crate_paths::{get_reinhardt_crate, get_reinhardt_orm_crate};
+use crate::crate_paths::get_reinhardt_crate;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Attribute, Field, ItemStruct, Result, Type};
@@ -24,7 +24,6 @@ pub(crate) fn model_attribute_impl(
 ) -> Result<TokenStream> {
 	// Get dynamic crate paths for code generation
 	let reinhardt = get_reinhardt_crate();
-	let orm_crate = get_reinhardt_orm_crate();
 
 	// Check if #[derive(Model)] already exists (avoid double processing)
 	// Parse derive tokens properly instead of fragile string matching
@@ -141,11 +140,12 @@ pub(crate) fn model_attribute_impl(
 				{
 					let id_field_name = syn::Ident::new(&id_field_name_str, field_name.span());
 
-					// Generate _id field with the target model's PrimaryKey type
-					// The type will be resolved at compile time via Model trait
+					// Generate _id field with the target model's primary-key type.
+					// `InfoModel` is target-neutral, so generated DTO companions can
+					// compile on WASM without the native ORM surface.
 					let new_field: Field = syn::parse_quote! {
 						#[serde(default)]
-						#id_field_name: <#target_ty as #orm_crate::Model>::PrimaryKey
+						#id_field_name: <#target_ty as #reinhardt::model_info::InfoModel>::PrimaryKey
 					};
 
 					fk_id_fields.push(new_field);

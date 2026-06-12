@@ -167,6 +167,8 @@ pub mod reinhardt_apps {
 	}
 }
 
+pub use reinhardt_core::model_info;
+
 #[cfg(all(feature = "di", native))]
 #[doc(hidden)]
 pub mod reinhardt_di {
@@ -474,5 +476,69 @@ pub mod db {
 	/// Convenience re-exports for database operations.
 	pub mod prelude {
 		pub use reinhardt_db::prelude::*;
+	}
+}
+
+/// WASM-compatible database marker namespace.
+///
+/// This is intentionally limited to marker field types required by `#[model]`
+/// definitions that only expose generated `{Model}Info` DTOs on WASM. It does
+/// not expose ORM, connection, query, or migration APIs.
+#[cfg(not(native))]
+pub mod db {
+	/// Relationship marker types accepted by `#[model]` on WASM.
+	pub mod associations {
+		use std::marker::PhantomData;
+
+		/// Marker type for foreign-key relationship fields.
+		#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+		pub struct ForeignKeyField<T>(PhantomData<T>);
+
+		impl<T> Default for ForeignKeyField<T> {
+			fn default() -> Self {
+				Self(PhantomData)
+			}
+		}
+
+		impl<T> ForeignKeyField<T> {
+			/// Creates a new foreign-key marker.
+			pub const fn new() -> Self {
+				Self(PhantomData)
+			}
+		}
+
+		/// Marker type for many-to-many relationship fields.
+		#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+		pub struct ManyToManyField<Source, Target, S = ()>(PhantomData<(Source, Target, S)>);
+
+		impl<Source, Target, S> Default for ManyToManyField<Source, Target, S> {
+			fn default() -> Self {
+				Self(PhantomData)
+			}
+		}
+
+		impl<Source, Target, S> ManyToManyField<Source, Target, S> {
+			/// Creates a new many-to-many marker.
+			pub const fn new() -> Self {
+				Self(PhantomData)
+			}
+		}
+
+		/// Marker type for one-to-one relationship fields.
+		#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+		pub struct OneToOneField<T>(PhantomData<T>);
+
+		impl<T> Default for OneToOneField<T> {
+			fn default() -> Self {
+				Self(PhantomData)
+			}
+		}
+
+		impl<T> OneToOneField<T> {
+			/// Creates a new one-to-one marker.
+			pub const fn new() -> Self {
+				Self(PhantomData)
+			}
+		}
 	}
 }

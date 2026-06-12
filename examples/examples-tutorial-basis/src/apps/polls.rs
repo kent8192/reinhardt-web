@@ -13,7 +13,6 @@ use reinhardt::app_config;
 pub mod admin;
 #[cfg(client)]
 pub mod client;
-#[cfg(server)]
 pub mod models;
 #[cfg(server)]
 pub mod serializers;
