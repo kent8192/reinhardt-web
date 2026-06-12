@@ -1028,7 +1028,7 @@ the app-local `reverse(name, params)` helper resolves concrete paths
 from that same route table.
 
 ```rust
-// File: src/client/pages.rs
+// File: src/apps/polls/urls/client_router.rs
 //! Client-side routing for the polls SPA.
 //!
 //! The router applies the `polls` namespace to every named route.
@@ -1134,6 +1134,32 @@ that can drift from the route table.
 
 The `users` app follows the same pattern with only three parameter-less
 routes: `login`, `logout`, and `signup`, all under the `users:` namespace.
+
+```rust
+// File: src/apps/users/urls/client_router.rs
+//! Client-side routing for the users application (login/logout/signup pages).
+//!
+//! Each route is registered with a stable name (`users:login`,
+//! `users:logout`, `users:signup`) so callers can resolve URLs via the URL
+//! reverser.
+
+use reinhardt::ClientRouter;
+
+use crate::client::pages::{login_page, logout_page, signup_page};
+
+pub fn client_url_patterns() -> ClientRouter {
+	ClientRouter::new()
+		.route("login", "/login/", login_page)
+		.route("logout", "/logout/", logout_page)
+		.route("signup", "/signup/", signup_page)
+}
+
+pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
+	client_url_patterns()
+		.reverse(name, params)
+		.unwrap_or_else(|error| panic!("failed to reverse users client route `{name}`: {error}"))
+}
+```
 
 Each app keeps reverse lookup next to its router. That keeps navigation
 helpers app-local without duplicating the route definitions in a
