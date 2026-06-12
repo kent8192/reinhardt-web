@@ -41,18 +41,20 @@ fn create_session_middleware() -> SessionMiddleware {
 /// panel, and the session middleware.
 #[routes]
 pub fn routes() -> UnifiedRouter {
-	let router = UnifiedRouter::new().server(|s| {
-		// Per-app server URL modules are native-only because they register
-		// `#[server_fn]` marker modules emitted for the server build.
-		#[cfg(native)]
-		{
-			s.mount("/", crate::apps::polls::urls::server_url_patterns())
-				.mount("/", crate::apps::users::urls::server_url_patterns())
-		}
-		#[cfg(not(native))]
-		{
-			s
-		}
+	let router = UnifiedRouter::new();
+
+	// Per-app server URL modules are native-only because they register
+	// `#[server_fn]` marker modules emitted for the server build.
+	#[cfg(native)]
+	let router = router.server(|s| {
+		s.mount(
+			"/",
+			crate::apps::polls::urls::server_urls::server_url_patterns(),
+		)
+		.mount(
+			"/",
+			crate::apps::users::urls::server_urls::server_url_patterns(),
+		)
 	});
 
 	// Aggregate every app's client routes on wasm so the SPA route table
@@ -70,11 +72,13 @@ pub fn routes() -> UnifiedRouter {
 	let router = router
 		.mount_unified(
 			"/",
-			UnifiedRouter::new().client(|_| crate::apps::polls::urls::client_url_patterns()),
+			UnifiedRouter::new()
+				.client(|_| crate::apps::polls::urls::client_router::client_url_patterns()),
 		)
 		.mount_unified(
 			"/",
-			UnifiedRouter::new().client(|_| crate::apps::users::urls::client_url_patterns()),
+			UnifiedRouter::new()
+				.client(|_| crate::apps::users::urls::client_router::client_url_patterns()),
 		);
 
 	// Mount the auto-generated admin panel at /admin/ (server-only).

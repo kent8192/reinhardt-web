@@ -12,14 +12,6 @@ use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::Signal;
 
-fn polls_index_href() -> String {
-	polls_routes::reverse("index", &[])
-}
-
-fn users_href(name: &str) -> String {
-	users_routes::reverse(name, &[])
-}
-
 /// Login page: username + password form posting to the `login` server function.
 ///
 /// On success, redirects to the polls index. Field bindings and CSRF header
@@ -47,8 +39,8 @@ pub fn login_form() -> Page {
 	let loading_signal = login_form.loading().clone();
 	let error_signal = login_form.error().clone();
 	let form_view = login_form.into_page();
-	let polls_index_href = polls_index_href();
-	let signup_href = users_href("signup");
+	let polls_index_href = polls_routes::reverse("index", &[]);
+	let signup_href = users_routes::reverse("signup", &[]);
 
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, signup_href: String| {
 		div {
@@ -123,7 +115,7 @@ pub fn logout_form() -> Page {
 	};
 	let error_signal = logout_form.error().clone();
 	let form_view = logout_form.into_page();
-	let polls_index_href = polls_index_href();
+	let polls_index_href = polls_routes::reverse("index", &[]);
 
 	page!(|error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String| {
 		div {
@@ -203,8 +195,8 @@ pub fn signup_form() -> Page {
 	let loading_signal = signup_form.loading().clone();
 	let error_signal = signup_form.error().clone();
 	let form_view = signup_form.into_page();
-	let polls_index_href = polls_index_href();
-	let login_href = users_href("login");
+	let polls_index_href = polls_routes::reverse("index", &[]);
+	let login_href = users_routes::reverse("login", &[]);
 
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, login_href: String| {
 		div {

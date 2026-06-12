@@ -21,8 +21,8 @@
 //!   in `tests/wasm/polls_mock_test.rs`).
 //! - page! v2 forbids implicit captures, so every value used in the body is a
 //!   declared parameter and free functions are called through a multi-segment
-//!   path (`self::format_server_error`, `self::question_href`). Form sub-views that
-//!   depend on the form's `error` / `loading` signals are rendered inline as
+//!   path (`self::format_server_error`, `polls_routes::reverse`). Form sub-views
+//!   that depend on the form's `error` / `loading` signals are rendered inline as
 //!   `{ .. }` blocks that read each signal exactly once.
 
 use crate::shared::types::{ChoiceInfo, QuestionInfo, UserInfo};
@@ -32,7 +32,6 @@ use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::use_effect;
 use reinhardt::pages::reactive::{Resource, ResourceState, Signal, use_resource};
 
-// Alias the `urls` module as `links` to keep call sites concise.
 use crate::apps::polls::server_fn::{
 	create_choice, create_question, delete_choice, delete_question, get_question_detail,
 	get_question_results, get_questions, submit_vote, update_choice, update_question,
@@ -42,15 +41,6 @@ use crate::apps::polls::urls::client_router as polls_routes;
 // choice) on the viewer being the question's author (issue #4703). Server-
 // side `require_question_author` checks remain in place as defense in depth.
 use crate::apps::users::server_fn::current_user;
-
-fn polls_href(name: &str) -> String {
-	polls_routes::reverse(name, &[])
-}
-
-fn question_href(name: &str, question_id: i64) -> String {
-	let question_id = question_id.to_string();
-	polls_routes::reverse(name, &[("question_id", question_id.as_str())])
-}
 
 // =========================================================================
 // Error display helpers
@@ -88,7 +78,7 @@ pub fn polls_index() -> Page {
 		|| async move { get_questions().await.map_err(|e| e.to_string()) },
 		(),
 	);
-	let new_question_href = polls_href("question_new");
+	let new_question_href = polls_routes::reverse("question_new", &[]);
 
 	page!(|load_questions: Resource<Vec<QuestionInfo>, String>, new_question_href: String| {
 		div {
@@ -136,7 +126,7 @@ pub fn polls_index() -> Page {
 							class: "space-y-2",
 							for question in questions {
 								a {
-									href: self::question_href("detail", question.id),
+									href: polls_routes::reverse("detail", &[("question_id", question.id.to_string().as_str())]),
 									class: "block p-4 border border-border rounded-lg bg-surface-primary hover:bg-surface-secondary transition-colors",
 									div {
 										class: "flex w-full justify-between",
@@ -205,7 +195,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 		name: VotingForm,
 		server_fn: submit_vote,
 		method: Post,
-		success_url: |_form| self::question_href("results", qid),
+		success_url: |_form| polls_routes::reverse("results", &[("question_id", qid.to_string().as_str())]),
 		fields: {
 			question_id: HiddenField {
 				initial: qid.to_string(),
@@ -225,7 +215,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 		watch: {
 			submit_button: |form| {
 				let is_loading = form.loading().get();
-				let back_href = self::polls_href("index");
+				let back_href = polls_routes::reverse("index", &[]);
 				page!(|is_loading: bool, back_href: String| {
 					div {
 						class: "mt-3",
@@ -300,12 +290,12 @@ pub fn polls_detail(question_id: i64) -> Page {
 							}
 						}
 						a {
-							href: self::question_href("detail", question_id),
+							href: polls_routes::reverse("detail", &[("question_id", question_id.to_string().as_str())]),
 							class: "btn-secondary",
 							"Try Again"
 						}
 						a {
-							href: self::polls_href("index"),
+							href: polls_routes::reverse("index", &[]),
 							class: "btn-primary ml-2",
 							"Back to Polls"
 						}
@@ -343,18 +333,18 @@ pub fn polls_detail(question_id: i64) -> Page {
 								div {
 									class: "flex gap-2",
 									a {
-										href: self::question_href("results", question_id),
+										href: polls_routes::reverse("results", &[("question_id", question_id.to_string().as_str())]),
 										class: "btn-secondary",
 										"View results"
 									}
 									if is_author {
 										a {
-											href: self::question_href("question_edit", question_id),
+											href: polls_routes::reverse("question_edit", &[("question_id", question_id.to_string().as_str())]),
 											class: "btn-secondary",
 											"Edit"
 										}
 										a {
-											href: self::question_href("question_delete", question_id),
+											href: polls_routes::reverse("question_delete", &[("question_id", question_id.to_string().as_str())]),
 											class: "btn-danger",
 											"Delete"
 										}
@@ -366,7 +356,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 								div {
 									class: "mt-4",
 									a {
-										href: self::question_href("choice_new", question_id),
+										href: polls_routes::reverse("choice_new", &[("question_id", question_id.to_string().as_str())]),
 										class: "btn-secondary",
 										"Add choice"
 									}
@@ -435,7 +425,7 @@ pub fn polls_results(question_id: i64) -> Page {
 							}
 						}
 						a {
-							href: self::polls_href("index"),
+							href: polls_routes::reverse("index", &[]),
 							class: "btn-primary",
 							"Back to Polls"
 						}
@@ -520,24 +510,24 @@ pub fn polls_results(question_id: i64) -> Page {
 							div {
 								class: "mt-3 flex flex-wrap gap-2",
 								a {
-									href: self::question_href("detail", question_id),
+									href: polls_routes::reverse("detail", &[("question_id", question_id.to_string().as_str())]),
 									class: "btn-primary",
 									"Vote Again"
 								}
 								if is_author {
 									a {
-										href: self::question_href("question_edit", question_id),
+										href: polls_routes::reverse("question_edit", &[("question_id", question_id.to_string().as_str())]),
 										class: "btn-secondary",
 										"Edit question"
 									}
 									a {
-										href: self::question_href("question_delete", question_id),
+										href: polls_routes::reverse("question_delete", &[("question_id", question_id.to_string().as_str())]),
 										class: "btn-danger",
 										"Delete question"
 									}
 								}
 								a {
-									href: self::polls_href("index"),
+									href: polls_routes::reverse("index", &[]),
 									class: "btn-secondary",
 									"Back to Polls"
 								}
@@ -672,7 +662,7 @@ pub fn question_new() -> Page {
 	let loading_signal = new_form.loading().clone();
 	let error_signal = new_form.error().clone();
 	let form_view = new_form.into_page();
-	let cancel_href = polls_href("index");
+	let cancel_href = polls_routes::reverse("index", &[]);
 
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, cancel_href: String| {
 		div {
@@ -805,7 +795,7 @@ pub fn question_edit(question_id: i64) -> Page {
 							}
 						}
 						a {
-							href: self::question_href("detail", question_id),
+							href: polls_routes::reverse("detail", &[("question_id", question_id.to_string().as_str())]),
 							class: "btn-secondary ml-2",
 							"Cancel"
 						}
@@ -846,7 +836,7 @@ pub fn question_edit(question_id: i64) -> Page {
 							}
 						}
 						a {
-							href: self::polls_href("index"),
+							href: polls_routes::reverse("index", &[]),
 							class: "btn-primary",
 							"Back to Polls"
 						}
@@ -881,7 +871,10 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 	let loading_signal = delete_form.loading().clone();
 	let error_signal = delete_form.error().clone();
 	let form_view = delete_form.into_page();
-	let cancel_href = question_href("detail", question_id);
+	let cancel_href = polls_routes::reverse(
+		"detail",
+		&[("question_id", question_id.to_string().as_str())],
+	);
 
 	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>, error_signal: Signal<Option<String>>, loading_signal: Signal<bool>, form_view: Page, cancel_href: String| {
 		div {
@@ -997,7 +990,7 @@ pub fn choice_new(question_id: i64) -> Page {
 		name: NewChoiceForm,
 		server_fn: create_choice,
 		method: Post,
-		success_url: |_form| self::question_href("detail", qid),
+		success_url: |_form| polls_routes::reverse("detail", &[("question_id", qid.to_string().as_str())]),
 		fields: {
 			question_id: HiddenField {
 				initial: qid_str,
@@ -1015,7 +1008,7 @@ pub fn choice_new(question_id: i64) -> Page {
 	let loading_signal = new_form.loading().clone();
 	let error_signal = new_form.error().clone();
 	let form_view = new_form.into_page();
-	let back_href = question_href("detail", qid);
+	let back_href = polls_routes::reverse("detail", &[("question_id", qid.to_string().as_str())]);
 
 	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, back_href: String| {
 		div {
@@ -1068,7 +1061,10 @@ pub fn choice_new(question_id: i64) -> Page {
 /// pending-state fallback href.
 pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 	let cid_str = choice_id.to_string();
-	let cancel_href = question_href("detail", question_id);
+	let cancel_href = polls_routes::reverse(
+		"detail",
+		&[("question_id", question_id.to_string().as_str())],
+	);
 
 	let edit_form = form! {
 		name: EditChoiceForm,
@@ -1143,7 +1139,10 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 /// links back to the parent poll synchronously without an extra fetch.
 pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 	let cid_str = choice_id.to_string();
-	let cancel_href = question_href("detail", question_id);
+	let cancel_href = polls_routes::reverse(
+		"detail",
+		&[("question_id", question_id.to_string().as_str())],
+	);
 
 	let delete_form = form! {
 		name: DeleteChoiceForm,
