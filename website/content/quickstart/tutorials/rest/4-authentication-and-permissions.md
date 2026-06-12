@@ -15,6 +15,7 @@ Protect your API with authentication and permission controls.
 Reinhardt provides authentication:
 
 ```rust
+// File: src/permissions.rs
 use reinhardt::prelude::*;
 
 async fn login(username: &str, password: &str) -> Option<User> {
@@ -32,6 +33,7 @@ Reinhardt provides standard permission implementations that you can use out of t
 Reinhardt includes common permission classes:
 
 ```rust
+// File: src/permissions.rs
 use reinhardt::prelude::*;
 use reinhardt::{IsAuthenticated, AllowAny};
 
@@ -51,6 +53,7 @@ let permissions = vec![
 For custom authorization logic, you can implement the `Permission` trait:
 
 ```rust
+// File: src/permissions.rs
 use reinhardt::prelude::*;
 use async_trait::async_trait;
 
@@ -70,6 +73,7 @@ impl Permission for CustomPermission {
 The `PermissionContext` provides request information for permission checks:
 
 ```rust
+// File: src/permissions.rs
 pub struct PermissionContext<'a> {
     pub request: &'a reinhardt_http::Request,
     pub is_authenticated: bool,
@@ -88,6 +92,7 @@ Reinhardt provides the following standard permission classes:
 Allows access to any user (authenticated or not). This is the default permission:
 
 ```rust
+// File: src/permissions.rs
 use reinhardt::AllowAny;
 
 let permission = Box::new(AllowAny) as Box<dyn Permission>;
@@ -98,6 +103,7 @@ let permission = Box::new(AllowAny) as Box<dyn Permission>;
 Only authenticated users can access:
 
 ```rust
+// File: src/permissions.rs
 use reinhardt::IsAuthenticated;
 
 let permission = Box::new(IsAuthenticated) as Box<dyn Permission>;
@@ -105,6 +111,7 @@ let permission = Box::new(IsAuthenticated) as Box<dyn Permission>;
 
 **Implementation Reference:**
 ```rust
+// File: src/permissions.rs
 // You don't need to implement this - use IsAuthenticated directly
 pub struct IsAuthenticated;
 
@@ -121,6 +128,7 @@ impl Permission for IsAuthenticated {
 Admin-only permission:
 
 ```rust
+// File: src/permissions.rs
 use reinhardt::IsAdminUser;
 
 let permission = Box::new(IsAdminUser) as Box<dyn Permission>;
@@ -131,6 +139,7 @@ let permission = Box::new(IsAdminUser) as Box<dyn Permission>;
 Create custom permissions for specific requirements:
 
 ```rust
+// File: src/permissions.rs
 use reinhardt::prelude::*;
 use async_trait::async_trait;
 
@@ -161,6 +170,7 @@ impl Permission for IsOwnerOrReadOnly {
 Apply permissions to ViewSets using `ModelViewSetHandler`:
 
 ```rust
+// File: src/permissions.rs
 use reinhardt::prelude::*;
 use reinhardt::IsAuthenticated;
 use std::sync::Arc;
@@ -174,6 +184,7 @@ let handler = ModelViewSetHandler::<Snippet>::new()
 Check permissions for specific objects:
 
 ```rust
+// File: src/permissions.rs
 use reinhardt::prelude::*;
 use async_trait::async_trait;
 
@@ -204,6 +215,7 @@ impl Permission for IsOwner {
 Combine multiple permissions:
 
 ```rust
+// File: src/permissions.rs
 use reinhardt::prelude::*;
 use async_trait::async_trait;
 
@@ -230,6 +242,7 @@ impl Permission for IsAuthenticatedAndActive {
 Full authentication and permission workflow using standard and custom permissions:
 
 ```rust
+// File: src/permissions.rs
 use reinhardt::prelude::*;
 use reinhardt::IsAuthenticated;
 use serde::{Serialize, Deserialize};
@@ -293,6 +306,7 @@ Users can be assigned to groups, and each group can have its own set of permissi
 Register a global `GroupManager` at application startup:
 
 ```rust
+// File: src/permissions.rs
 use reinhardt_auth::{GroupManager, register_group_manager};
 use reinhardt_auth::group_management::CreateGroupData;
 use std::sync::Arc;
@@ -325,6 +339,7 @@ Once a `GroupManager` is registered, `PermissionsMixin::get_group_permissions()`
 automatically resolves permissions for the user's groups:
 
 ```rust
+// File: src/permissions.rs
 use reinhardt_auth::PermissionsMixin;
 
 // User belongs to "editors" group
@@ -350,6 +365,7 @@ When combining `#[user]` with `#[model]`, the user macro automatically injects
 `ManyToManyField` relationships for structured database queries:
 
 ```rust
+// File: src/permissions.rs
 use reinhardt::prelude::*;
 use reinhardt_auth::Argon2Hasher;
 

@@ -21,31 +21,29 @@ The Reinhardt admin is configured in two files that already exist in the generat
 | `src/apps/<app>/admin.rs` | **App-local registration.** Declare one `#[admin(model, for = …, …)]` struct per model the admin should manage. This is the per-app configuration: list columns, search fields, ordering, filters, per-page limits. |
 | `src/config/admin.rs` | **Project-wide `AdminSite`.** Instantiate `AdminSite::new(...)`, set site-wide metadata (`site_title`, `site_header`, `list_per_page`), and register each app's admin types with the site. |
 
-`src/config/urls.rs` then mounts the site at `/admin/` and serves its static assets at `/static/admin/` — gated on `#[cfg(native)]` because the admin is server-only.
+`src/config/urls.rs` then mounts the site at `/admin/` and serves its static assets at `/static/admin/` — gated on `#[cfg(server)]` because the admin is server-only.
 
 This split mirrors the way the rest of the project is organized: each app owns its own models, server functions, URLs, and admin metadata, and `src/config/` aggregates them into a single project router. There is no global admin module that owns every model in the project; `configure_admin()` simply imports the admin structs from each app and registers them by name.
 
-The admin module on `apps/polls.rs` is `#[cfg(native)]`-gated, exactly like the other native-only modules (`admin`, `di`, `models`, `serializers`) — only `server_fn` and `urls` compile on both targets, while the app-local UI module is `#[cfg(wasm)]`. The relevant module declarations look like this:
+The admin module on `apps/polls.rs` is `#[cfg(server)]`-gated, exactly like the other server-only modules (`admin`, `models`, `serializers`) — only `server_fn` and `urls` compile on both targets, while the app-local UI module is `#[cfg(client)]`. The relevant module declarations look like this:
 
 ```rust
-// src/apps/polls.rs
-#[cfg(native)]
+// File: src/apps/polls.rs
+#[cfg(server)]
 use reinhardt::app_config;
 
-#[cfg(native)]
+#[cfg(server)]
 pub mod admin;
-#[cfg(wasm)]
+#[cfg(client)]
 pub mod client;
-#[cfg(native)]
-pub mod di;
-#[cfg(native)]
+#[cfg(server)]
 pub mod models;
-#[cfg(native)]
+#[cfg(server)]
 pub mod serializers;
 pub mod server_fn;
 pub mod urls;
 
-#[cfg(native)]
+#[cfg(server)]
 #[app_config(name = "polls", label = "polls")]
 pub struct PollsConfig;
 ```
@@ -57,6 +55,7 @@ That `#[app_config(name = "polls", label = "polls")]` annotation on `PollsConfig
 Open `src/apps/polls/admin.rs`. The file is short — it imports the two polls models and declares one `#[admin]` struct per model:
 
 ```rust
+// File: src/apps/polls/admin.rs
 //! Admin configuration for the polls app.
 //!
 //! Demonstrates the `#[admin(model, ...)]` macro by registering the two
@@ -111,7 +110,7 @@ pub struct ChoiceAdmin;
 Each key inside `#[admin(...)]` is a field of the generated `ModelAdmin` impl. The values reference fields on the target model — so the field names you list have to match the actual `#[field(...)]` columns on `Question` and `Choice` from `src/apps/polls/models.rs`:
 
 ```rust
-// src/apps/polls/models.rs (recap from Part 2)
+// File: src/apps/polls/models.rs (recap from Part 2)
 #[model(app_label = "polls", table_name = "questions")]
 #[derive(Serialize, Deserialize)]
 pub struct Question {
@@ -162,6 +161,7 @@ The `ChoiceAdmin` block uses the same attributes with slightly different choices
 `src/apps/polls/admin.rs` declares **what** the admin knows about each model; `src/config/admin.rs` decides **how the site looks** and **which admins are registered**. The whole file is fifteen lines of logic:
 
 ```rust
+// File: src/config/admin.rs
 //! Admin panel configuration for examples-tutorial-basis.
 //!
 //! Builds an `AdminSite` and registers per-app `ModelAdmin` configurations
@@ -207,13 +207,14 @@ Three things happen here:
 
 ## Mounting the Admin: `src/config/urls.rs`
 
-The site is mounted in `src/config/urls.rs`, the same `#[routes]` function you saw in [Part 3](../3-views-and-urls/) that registers every server function, aggregates client routes, and applies the session middleware. The admin mount is a `#[cfg(native)]` block, because the admin is server-only and the SPA never needs to know about it:
+The site is mounted in `src/config/urls.rs`, the same `#[routes]` function you saw in [Part 3](../3-views-and-urls/) that registers every server function, aggregates client routes, and applies the session middleware. The admin mount is a `#[cfg(server)]` block, because the admin is server-only and the SPA never needs to know about it:
 
 ```rust
-#[cfg(native)]
+// File: src/config/urls.rs
+#[cfg(server)]
 use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
 // …
-#[cfg(native)]
+#[cfg(server)]
 use crate::config::admin::configure_admin;
 
 #[routes]
@@ -224,7 +225,7 @@ pub fn routes() -> UnifiedRouter {
     // `admin_routes_with_di` returns both the router and a DI registration
     // list that lazily provides `AdminDatabase` to admin handlers from the
     // project's `DatabaseConnection`.
-    #[cfg(native)]
+    #[cfg(server)]
     let router = {
         let admin_site = std::sync::Arc::new(configure_admin());
         let (admin_router, admin_di) = admin_routes_with_di(admin_site);
@@ -255,6 +256,7 @@ That is the entire mount. No additional routes, no admin-side middleware, no sec
 Migrations are already wired up from [Part 2](../2-models-and-database/), and the session middleware from [Part 3](../3-views-and-urls/) is what gives the admin its login flow. To see the admin running:
 
 ```bash
+# Terminal: project root
 cargo make migrate
 cargo make runserver
 ```
@@ -268,7 +270,7 @@ If you want to seed some data first, you can do it from a `cargo make shell` ses
 Adding a third model to the admin is purely additive — you do not have to touch any existing file beyond the two project-wide registration sites:
 
 1. **Create `src/apps/<new_app>/admin.rs`** with one or more `#[admin(model, for = MyModel, …)]` structs. Pattern-match against `apps/polls/admin.rs`: pick `list_display`, `fields`, `list_filter`, `search_fields`, `ordering`, `readonly_fields`, `list_per_page`, and a `permissions` policy.
-2. **Add the module to `src/apps/<new_app>.rs`** with `#[cfg(native)] pub mod admin;`, mirroring the polls layout.
+2. **Add the module to `src/apps/<new_app>.rs`** with `#[cfg(server)] pub mod admin;`, mirroring the polls layout.
 3. **Annotate the new app's config struct** with `#[app_config(name = "<new_app>", label = "<new_app>")]` so the admin can discover it through the app config registry.
 4. **Import the new admin types in `src/config/admin.rs`** and call `site.register("MyModel", MyModelAdmin).expect(...)` once per model. No changes to `src/config/urls.rs` are needed — the admin router picks up every registered model automatically.
 

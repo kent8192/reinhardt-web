@@ -7,22 +7,22 @@
 //!    `users` app's login/logout server functions
 
 use reinhardt::UnifiedRouter;
-#[cfg(native)]
+#[cfg(server)]
 use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
 use reinhardt::routes;
 
-#[cfg(native)]
+#[cfg(server)]
 use crate::config::admin::configure_admin;
 
-#[cfg(native)]
+#[cfg(server)]
 use reinhardt::middleware::session::{SessionConfig, SessionMiddleware};
-#[cfg(native)]
+#[cfg(server)]
 use std::time::Duration;
 
 /// Build the session middleware with a two-week TTL and Lax SameSite.
 ///
 /// Uses the production-oriented defaults shared by the tutorial examples.
-#[cfg(native)]
+#[cfg(server)]
 fn create_session_middleware() -> SessionMiddleware {
 	let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(1_209_600))
 		.with_http_only(true)
@@ -45,7 +45,7 @@ pub fn routes() -> UnifiedRouter {
 
 	// Per-app server URL modules are native-only because they register
 	// `#[server_fn]` marker modules emitted for the server build.
-	#[cfg(native)]
+	#[cfg(server)]
 	let router = router.server(|s| {
 		s.mount(
 			"/",
@@ -65,10 +65,10 @@ pub fn routes() -> UnifiedRouter {
 	// `UnifiedRouter` and stitching with `mount_unified`, which uses
 	// `ClientRouter::merge` internally.
 	//
-	// The aggregation is `#[cfg(wasm)]` because the per-app `client_router`
+	// The aggregation is `#[cfg(client)]` because the per-app `client_router`
 	// submodules are themselves wasm-only (they import `crate::client::pages::*`,
 	// which is wasm-only).
-	#[cfg(wasm)]
+	#[cfg(client)]
 	let router = router
 		.mount_unified(
 			"/",
@@ -85,7 +85,7 @@ pub fn routes() -> UnifiedRouter {
 	// `admin_routes_with_di` returns both the router and a DI registration
 	// list that lazily provides `AdminDatabase` to admin handlers from the
 	// project's `DatabaseConnection`.
-	#[cfg(native)]
+	#[cfg(server)]
 	let router = {
 		let admin_site = std::sync::Arc::new(configure_admin());
 		let (admin_router, admin_di) = admin_routes_with_di(admin_site);
@@ -102,7 +102,7 @@ pub fn routes() -> UnifiedRouter {
 	// can resolve the same store the middleware writes to without a parallel
 	// `with_di_registrations(...)` call. See #4426 (and the original #4423
 	// regression that motivated the auto-registration hook).
-	#[cfg(native)]
+	#[cfg(server)]
 	let router = router.with_middleware(create_session_middleware());
 
 	router

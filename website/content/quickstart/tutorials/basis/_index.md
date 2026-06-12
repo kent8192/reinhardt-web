@@ -52,6 +52,7 @@ Administrators can:
 Every chapter maps onto this layout, which matches the completed example under `examples/examples-tutorial-basis/`:
 
 ```text
+# Project tree: _index
 examples-tutorial-basis/
 ├── Cargo.toml                 # cdylib + rlib; reinhardt with "pages" + "client-router" + "auth-session" features
 ├── Makefile.toml              # cargo make tasks: runserver, migrate, dev, wasm-build-dev, collectstatic, test, …
@@ -74,7 +75,7 @@ examples-tutorial-basis/
 │   │   └── admin.rs           # configure_admin() -> AdminSite + register Question/Choice admins
 │   ├── shared/
 │   │   ├── types.rs           # Native Info aliases + WASM DTO fallbacks; VoteRequest, LoginRequest, RegisterRequest
-│   │   └── forms.rs           # #[cfg(native)] create_vote_form() — form! + use_form metadata/runtime contract
+│   │   └── forms.rs           # #[cfg(server)] create_vote_form() — form! + use_form metadata/runtime contract
 │   ├── apps/
 │   │   ├── polls/
 │   │   │   ├── models.rs      # #[model] Question (author FK to User), Choice (question FK)
@@ -103,7 +104,7 @@ examples-tutorial-basis/
 
 Three rules keep this structure predictable:
 
-1. **Native vs WASM** — `#[cfg(native)]` code runs on the server (models, server function bodies, forms, admin). `#[cfg(wasm)]` code runs in the browser (`src/client/` plus each app's `client` module). Code under `src/shared/types.rs` compiles on both so DTOs stay in sync, and each app declares its `server_fn` and `urls` so the typed `#[server_fn]` client stubs work in the browser.
+1. **Server vs client** — `#[cfg(server)]` code runs on the server (models, server function bodies, forms, admin). `#[cfg(client)]` code runs in the browser (`src/client/` plus each app's `client` module). Code under `src/shared/types.rs` compiles on both so DTOs stay in sync, and each app declares its `server_fn` and `urls` so the typed `#[server_fn]` client stubs work in the browser.
 2. **Server functions are the bridge, and they live per-app** — anything the WASM client needs from the database goes through a `#[server_fn]` defined in `src/apps/<app>/server_fn.rs` (so it sits alongside that app's models, DI helpers, client UI, and admin), and the result is returned as a DTO from `src/shared/types.rs`. There is no top-level `src/server_fn/` directory.
 3. **Routing is also per-app, with a `urls/` directory module** — each app exposes `src/apps/<app>/urls/server_urls.rs` (`ServerRouter`) and `src/apps/<app>/urls/client_router.rs` (`ClientRouter`). Server functions are registered in the app-local `server_urls.rs` files, and `src/config/urls.rs` mounts those app routers while also aggregating the WASM route tables with `UnifiedRouter::mount_unified`.
 
@@ -133,7 +134,7 @@ Three rules keep this structure predictable:
 
 ### [Part 4: Forms and Generic Views](4-forms-and-generic-views/)
 
-- Define `create_vote_form()` in `src/shared/forms.rs` (server-only, behind `#[cfg(native)]`) from the same `form!` source that `use_form(&form).build()` can exercise in tests
+- Define `create_vote_form()` in `src/shared/forms.rs` (server-only, behind `#[cfg(server)]`) from the same `form!` source that `use_form(&form).build()` can exercise in tests
 - Let the client-side `form!` macro emit the matching `FormMetadata`; CSRF for WASM submits is supplied by the generated `#[server_fn]` client stub and verified by middleware
 - Build the voting UI in `src/apps/polls/client/components.rs` with the **`form!` macro** + `watch { ... }` blocks inside a `page!` component
 - Call `submit_vote` (a `#[server_fn]` in `crate::apps::polls::server_fn`) on submit; show server validation errors reactively
@@ -142,7 +143,7 @@ Three rules keep this structure predictable:
 
 - Use `rstest` fixtures + `reinhardt-test` helpers + `sqlx` + `tempfile` (all under `[target.'cfg(not(...))'.dev-dependencies]`) to spin up an isolated SQLite for native integration tests
 - Mark the native integration target with `[[test]] name = "integration", required-features = ["with-reinhardt"]`
-- Add a WASM-only target at `tests/wasm/polls_mock_test.rs` (`#![cfg(wasm)]`, `required-features = ["msw"]`) that mocks server function HTTP calls via MSW
+- Add a WASM-only target at `tests/wasm/polls_mock_test.rs` (`#![cfg(client)]`, `required-features = ["msw"]`) that mocks server function HTTP calls via MSW
 - Follow the Arrange-Act-Assert pattern with `// Arrange`, `// Act`, `// Assert` labels
 
 ### [Part 6: Static Files](6-static-files/)

@@ -17,6 +17,7 @@ By the end of the chapter your data model will match [`examples/examples-tutoria
 The model layer is the bridge between the SQLite file on disk and the typed handlers in `src/apps/<app>/server_fn.rs`. The data flow we're about to assemble:
 
 ```mermaid
+%% Diagram: Model and migration flow
 flowchart LR
     Settings["settings/base.toml<br/>[core.databases.default]"] -->|loaded by| ConfigSettings["src/config/settings.rs<br/>ProjectSettings"]
     ConfigSettings -->|opens| DB[(SQLite<br/>db.sqlite3)]
@@ -34,6 +35,7 @@ Three pieces fit together: settings tell Reinhardt **where** the database lives,
 Part 1 already set up `settings/base.toml` with a SQLite section. Open it and confirm the `[core.databases.default]` block looks like this:
 
 ```toml
+# File: settings/base.toml
 [core.databases.default]
 engine = "sqlite"
 name = "db.sqlite3"
@@ -50,6 +52,7 @@ If you ever need to point a single run at a different file (for example, an inte
 The `startapp polls --template pages` command from Part 1 already created the app module entry and placeholder files. The generated tree looks like this:
 
 ```text
+# Project tree: src/apps/polls
 src/apps/
 ├── polls.rs
 └── polls/
@@ -71,6 +74,7 @@ src/apps/
 Open `src/apps/polls.rs` and confirm it matches the generated pages-app module entry:
 
 ```rust
+// File: src/apps/polls.rs
 //! polls application module
 //!
 //! A Reinhardt Pages app whose server-side and client-side code both live
@@ -122,6 +126,7 @@ The `polls` app's `Question.author` field will reference `User`, so define the `
 Like `polls`, the `users` app already has a generated pages-app module entry. Open `src/apps/users.rs` and confirm the shape before replacing `models.rs`:
 
 ```rust
+// File: src/apps/users.rs
 //! users application module
 //!
 //! A Reinhardt Pages app whose server-side and client-side code both live
@@ -164,6 +169,7 @@ Replace the generated `src/apps/users/models.rs` placeholder with:
 > The generated placeholder contains only a small generic model example. Do not adapt that placeholder for the tutorial `User`: it does not include `#[user]` or the project-local manager. Replace the whole file with the code below.
 
 ```rust
+// File: src/apps/users/models.rs
 //! User model for the tutorial-basis example.
 //!
 //! Uses the `#[user]` attribute macro to derive `BaseUser`,
@@ -244,6 +250,7 @@ There is one new attribute macro and a handful of new field options. Let's unpac
 ### The `#[user]` Attribute
 
 ```rust
+// File: src/apps/users/models.rs
 #[user(hasher = Argon2Hasher, username_field = "username", manager = false)]
 #[model(app_label = "users", table_name = "users")]
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -288,6 +295,7 @@ The `createsuperuser` path **bypasses** the password-length / username-trim / un
 The example file follows the model struct with a `#[cfg(server)] mod manager { ... }` block. The full source is long; here is the shape, with the key registration call highlighted:
 
 ```rust
+// File: src/apps/users/models.rs
 #[cfg(server)]
 mod manager {
     use super::User;
@@ -296,7 +304,6 @@ mod manager {
     use reinhardt::Model;
     use reinhardt::core::async_trait;
     use reinhardt::core::exception::Error;
-    use reinhardt::db::orm::{FilterOperator, FilterValue};
     use reinhardt::di::{Depends, injectable_factory};
     use reinhardt::reinhardt_auth::BaseUserManager;
     use serde_json::Value;
@@ -380,6 +387,7 @@ Use the manager logic from [`examples/examples-tutorial-basis/src/apps/users/mod
 The mechanism worth understanding here is the registration line:
 
 ```rust
+// File: examples/examples-tutorial-basis/src/apps/users/models.rs
 #[injectable_factory(scope = "transient")]
 async fn auth_user_manager_factory(#[inject] db: Depends<DatabaseConnection>) -> AuthUserManager {
     AuthUserManager { db: (*db).clone() }
@@ -399,6 +407,7 @@ Two details worth knowing:
 Now that `User` exists, replace the generated `src/apps/polls/models.rs` placeholder with the following contents:
 
 ```rust
+// File: src/apps/polls/models.rs
 use chrono::{DateTime, Utc};
 use reinhardt::db::associations::ForeignKeyField;
 use reinhardt::prelude::*;
@@ -473,6 +482,7 @@ This file is small but every attribute pulls its weight. Let's walk through what
 ### The `#[model]` Attribute
 
 ```rust
+// File: src/apps/polls/models.rs
 #[model(app_label = "polls", table_name = "questions")]
 #[derive(Serialize, Deserialize)]
 pub struct Question { ... }
@@ -503,6 +513,7 @@ There is no `null = true` or `unique = true` here because every field in `Questi
 ### The `#[rel]` Attribute
 
 ```rust
+// File: src/apps/polls/models.rs
 #[rel(foreign_key, related_name = "questions")]
 pub author: ForeignKeyField<User>,
 ```
@@ -521,6 +532,7 @@ The same pattern shows up on `Choice.question`. The pair `Question.author` / `Ch
 Once `#[model]` has expanded, the struct gains a `build()` associated function that returns a typestate builder. The example's unit test shows the call site:
 
 ```rust
+// File: src/apps/polls/models.rs
 let mut choice = Choice::build()
     .choice_text("Choice 1")
     .votes(0)
@@ -530,6 +542,7 @@ assert_eq!(choice.votes(), 0);
 ```
 
 ```rust
+// File: src/apps/polls/models.rs
 let question = Question::build()
     .question_text("What's your favorite color?")
     .author(1_i64)
@@ -556,6 +569,7 @@ You will see `Question::build()` and `Choice::build()` in every server function 
 `src/config/apps.rs` is where the framework learns which apps it should scan. The `startapp` commands from Part 1 already updated it; confirm it matches:
 
 ```rust
+// File: src/config/apps.rs
 use reinhardt::installed_apps;
 
 installed_apps! {
@@ -582,12 +596,14 @@ We don't fill in app-local routers until Part 3 — keep the generated `urls.rs`
 With the models defined and the `startapp` registration in place, we can ask Reinhardt to compile the schema and write it to the database. Two commands, both defined in `Makefile.toml`:
 
 ```bash
+# Terminal: project root
 cargo make makemigrations
 ```
 
 This is `manage makemigrations`. The command walks the `inventory` registry, finds every `#[model]`-decorated struct, groups them by `app_label`, diffs each group against the most recent migration on disk, and writes out a new migration file when the schema has changed. The first run for a new app produces `migrations/<app_label>/_0001_initial.rs` (or `_0001_initial.sql` depending on your settings). For our tutorial:
 
 ```
+# Project tree: migrations
 migrations/
 ├── polls/
 │   └── _0001_initial.rs
@@ -600,12 +616,14 @@ The files describe the schema in Rust (typed CREATE TABLE / CREATE INDEX stateme
 Once the migration files exist, apply them:
 
 ```bash
+# Terminal: project root
 cargo make migrate
 ```
 
 You should see something like:
 
 ```
+# Output: terminal
 Running migrations:
   Applying users.0001_initial... OK
   Applying polls.0001_initial... OK
@@ -618,6 +636,7 @@ Running migrations:
 If anything looks unexpected, inspect the routing surface and the model registry with:
 
 ```bash
+# Terminal: project root
 cargo make showurls
 ```
 

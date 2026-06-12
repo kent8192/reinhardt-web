@@ -38,6 +38,7 @@ Open `Cargo.toml` and look at the testing-related blocks. Every line below is ve
 ### Features
 
 ```toml
+# File: Cargo.toml
 [features]
 default = ["with-reinhardt", "client-router"]
 # client-router: Enable client-side routing support (required for #[routes] macro with UnifiedRouter)
@@ -60,6 +61,7 @@ Three feature flags matter for testing:
 ### Dev-dependencies, gated per target
 
 ```toml
+# File: Cargo.toml
 [dev-dependencies]
 reinhardt = { workspace = true, features = ["test"] }
 rstest = { version = "0.26", default-features = false }
@@ -68,14 +70,14 @@ rstest = { version = "0.26", default-features = false }
 # of the shared `[dev-dependencies]` block because tokio/sqlx/tempfile and
 # their transitive deps (mio etc.) do not build for `wasm32-unknown-unknown`,
 # which would otherwise break `wasm-pack test`.
-[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 serial_test = "3.2"
 tokio = { version = "1.48.0", features = ["rt", "macros"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 tempfile = "3.15"
 
 # WASM-specific dev-dependencies
-[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3.56"
 ```
 
@@ -84,11 +86,12 @@ The **shared** block pulls in `reinhardt` with its `test` feature (re-exports `M
 ### `[[test]]` targets
 
 ```toml
+# File: Cargo.toml
 [[test]]
 name = "integration"
 required-features = ["with-reinhardt"]
 
-# WASM-only test target. The file is `#![cfg(wasm)]`-gated, so it compiles
+# WASM-only test target. The file is `#![cfg(client)]`-gated, so it compiles
 # to a no-op on native and only fires under `wasm-pack test`. Declaring it
 # explicitly is necessary because Cargo does not auto-discover test files
 # under `tests/<subdir>/`.
@@ -109,6 +112,7 @@ The smallest unit of testing is an inline `#[cfg(test)] mod tests` block in the 
 ### `src/apps/polls/models.rs` — typestate builder coverage
 
 ```rust
+// File: src/apps/polls/models.rs
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,6 +147,7 @@ Two things to notice:
 ### `src/shared/forms.rs` — form metadata coverage
 
 ```rust
+// File: src/shared/forms.rs
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,24 +199,26 @@ These in-file tests live next to the code they exercise, are auto-discovered by 
 
 ## Step 3 — Native integration tests in `tests/integration.rs`
 
-This is the workhorse. The file is gated by `#![cfg(native)]` and `required-features = ["with-reinhardt"]`, and split into three `mod` blocks: `database_tests`, `server_fn_tests`, and `auth_tests`. Each module addresses a different concern.
+This is the workhorse. The file is gated by `#![cfg(server)]` and `required-features = ["with-reinhardt"]`, and split into three `mod` blocks: `database_tests`, `server_fn_tests`, and `auth_tests`. Each module addresses a different concern.
 
 ### File-level gating
 
 ```rust
+// File: tests/integration.rs
 // Native-only: this file uses tokio/sqlx/tempfile which don't build for wasm32.
 // `wasm-pack test` builds all `--tests` targets; without this gate the test
 // binary tries (and fails) to link sqlx for wasm32.
-#![cfg(native)]
+#![cfg(server)]
 ```
 
-`#![cfg(native)]` doubles up with `required-features = ["with-reinhardt"]` in `Cargo.toml` — belt and braces.
+`#![cfg(server)]` doubles up with `required-features = ["with-reinhardt"]` in `Cargo.toml` — belt and braces.
 
 ### Pattern A — raw `sqlx` + `tempfile` fixture
 
 When you need full control over the schema (or migrations are not yet generated), set up the database by hand with `sqlx`:
 
 ```rust
+// File: tests/integration.rs
 #[cfg(with_reinhardt)]
 mod database_tests {
     use rstest::*;
@@ -259,6 +266,7 @@ Three things are worth calling out:
 A consumer test follows the AAA pattern:
 
 ```rust
+// File: tests/integration.rs
 #[rstest]
 #[tokio::test]
 async fn test_question_database_create(
@@ -287,6 +295,7 @@ The `_file` underscore prefix tells the compiler the binding is held intentional
 A different module in the same file, `server_fn_tests`, exercises the actual `#[server_fn]` functions. These need both a `sqlx` pool *and* a reinhardt `DatabaseConnection`, plus the global ORM database has to be initialised before any `Question::objects()` call:
 
 ```rust
+// File: tests/integration.rs
 #[cfg(all(with_reinhardt, server))]
 mod server_fn_tests {
     use reinhardt::DatabaseConnection;
@@ -357,6 +366,7 @@ Two ideas converge here:
 Look closely at the attribute stack on `test_get_questions_server_fn`:
 
 ```rust
+// File: tests/integration.rs
 #[rstest]
 #[tokio::test]
 #[serial(server_fn_tests)]
@@ -369,15 +379,15 @@ Every test in `mod server_fn_tests` that calls `reinitialize_database` carries `
 
 ### Pattern C — authorization tests with no schema
 
-The third module, `auth_tests`, demonstrates that not every native integration test needs a full schema. The CUD `#[server_fn]`s in `apps::polls::server_fn` all start with a `(*session_user).as_ref().map_err(ServerFnError::from)?` gate (resolved from the `Depends<Result<User, SessionError>>` DI factory in `apps::polls::di`); when the session is empty the factory yields `Err(SessionError::Anonymous)` and the `From<&SessionError> for ServerFnError` conversion returns 401 *before* the handler touches the database, so the fixture is an empty SQLite file:
+The third module, `auth_tests`, demonstrates that not every native integration test needs a full schema. The CUD `#[server_fn]`s in `apps::polls::server_fn` all start with a `(*session_user).as_ref().map_err(ServerFnError::from)?` gate (resolved from the `Depends<Result<User, SessionError>>` DI factory in the same module); when the session is empty the factory yields `Err(SessionError::Anonymous)` and the `From<&SessionError> for ServerFnError` conversion returns 401 *before* the handler touches the database, so the fixture is an empty SQLite file:
 
 ```rust
+// File: tests/integration.rs
 #[cfg(with_reinhardt)]
 mod auth_tests {
-    use examples_tutorial_basis::apps::polls::di::SessionError;
     use examples_tutorial_basis::apps::polls::server_fn::{
-        create_choice, create_question, delete_choice, delete_question, update_choice,
-        update_question,
+        SessionError, create_choice, create_question, delete_choice, delete_question,
+        update_choice, update_question,
     };
     use examples_tutorial_basis::apps::users::models::User;
     use reinhardt::DatabaseConnection;
@@ -401,7 +411,7 @@ mod auth_tests {
 
     /// Anonymous session error wrapped in `Depends<Result<User, SessionError>>`
     /// — the same value the request-scoped `session_user_factory` in
-    /// `apps::polls::di` would produce for a `SessionData` without a
+    /// `apps::polls::server_fn` would produce for a `SessionData` without a
     /// `user_id` key. We construct it directly with `Depends::from_value`
     /// so the test does not need to spin up the middleware stack or the DI
     /// container; the gate under test is `From<&SessionError> for
@@ -420,13 +430,8 @@ mod auth_tests {
         let session_user = anonymous_session_user();
 
         // Act
-        let result = create_question(
-            "Anonymous attempt".to_string(),
-            "csrf-token-ignored".to_string(),
-            db_conn,
-            session_user,
-        )
-        .await;
+        let result = create_question("Anonymous attempt".to_string(), db_conn, session_user)
+            .await;
 
         // Assert
         assert_unauthorized(result, "create_question");
@@ -442,6 +447,7 @@ This is the canonical example of a test that follows AAA explicitly: three lines
 The `assert_unauthorized` helper near the top of the module shows how to keep brittle string-matching contained:
 
 ```rust
+// File: tests/integration.rs
 fn assert_unauthorized<T>(
     result: std::result::Result<T, reinhardt::pages::server_fn::ServerFnError>,
     operation: &str,
@@ -481,7 +487,8 @@ In other words: the WASM test runs the **real** application code path, all the w
 ### File-level setup
 
 ```rust
-#![cfg(wasm)]
+// File: tests/wasm/polls_mock_test.rs
+#![cfg(client)]
 
 use wasm_bindgen_test::*;
 
@@ -502,7 +509,7 @@ use reinhardt::test::msw::MockServiceWorker;
 
 Three things in this preamble do real work:
 
-- `#![cfg(wasm)]` makes the whole file a no-op on native builds. Combined with `required-features = ["msw"]`, this means `cargo nextest run --all-features` skips it silently and `wasm-pack test --headless --chrome` is the only thing that runs it.
+- `#![cfg(client)]` makes the whole file a no-op on native builds. Combined with `required-features = ["msw"]`, this means `cargo nextest run --all-features` skips it silently and `wasm-pack test --headless --chrome` is the only thing that runs it.
 - `wasm_bindgen_test_configure!(run_in_browser)` tells `wasm-bindgen-test` to drive headless Chrome instead of a Node.js shim.
 - `MockServiceWorker` comes from `reinhardt::test::msw` — enabled by the `test` feature on the shared `reinhardt` dev-dependency. The `msw` Cargo feature on the application crate is a *separate* gate that controls *whether the application's own `#[server_fn]`s emit marker types*.
 
@@ -511,6 +518,7 @@ Three things in this preamble do real work:
 The file declares plain (non-fixture) helpers because each test composes them differently:
 
 ```rust
+// File: tests/wasm/polls_mock_test.rs
 fn mock_question() -> QuestionInfo {
     QuestionInfo {
         id: 1,
@@ -528,6 +536,7 @@ The DTOs (`QuestionInfo`, `ChoiceInfo`, `VoteRequest`) are the same `serde`-deri
 ### A success-path test
 
 ```rust
+// File: tests/wasm/polls_mock_test.rs
 /// `get_questions()` returns the list mocked by MSW (success path).
 #[wasm_bindgen_test]
 async fn test_get_questions_returns_mocked_list() {
@@ -562,6 +571,7 @@ In between, `get_questions().await` is the *real* client stub generated by `#[se
 ### An error-path test
 
 ```rust
+// File: tests/wasm/polls_mock_test.rs
 /// `get_questions()` surfaces a server-side error from MSW (error path).
 #[wasm_bindgen_test]
 async fn test_get_questions_surfaces_server_error() {
@@ -592,6 +602,7 @@ async fn test_get_questions_surfaces_server_error() {
 The file also mounts real polls components while MSW is active. These tests do not await reactive re-renders — that would require a scheduler flush outside the scope of this file — but they prove the component constructs without panicking when MSW is in place:
 
 ```rust
+// File: tests/wasm/polls_mock_test.rs
 /// `polls_index()` constructs cleanly with MSW intercepting `get_questions`.
 #[wasm_bindgen_test]
 async fn test_polls_index_with_msw_active() {
@@ -611,6 +622,7 @@ async fn test_polls_index_with_msw_active() {
 The `Makefile.toml` exposes four entry points:
 
 ```toml
+# File: Makefile.toml
 [tasks.test]
 description = "Run all tests"
 command = "cargo"
@@ -635,6 +647,7 @@ args = ["test", "--headless", "--chrome", "--", "--no-default-features"]
 In practice:
 
 ```bash
+# Terminal: project root
 # Everything that compiles for the host target (in-file tests + integration.rs).
 cargo make test
 

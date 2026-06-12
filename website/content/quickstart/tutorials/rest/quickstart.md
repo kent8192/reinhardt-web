@@ -22,12 +22,14 @@ choose the latest stable release.
 
 <!-- reinhardt-version-sync -->
 ```bash
+# Terminal: project root
 cargo install reinhardt-admin-cli --version "0.2.0-rc.5"
 ```
 
 Create a new Reinhardt REST project:
 
 ```bash
+# Terminal: project root
 reinhardt-admin startproject tutorial --template rest
 cd tutorial
 ```
@@ -35,6 +37,7 @@ cd tutorial
 The reference example has this shape:
 
 ```text
+# Project tree: quickstart
 examples-tutorial-rest/
 ├── Cargo.toml
 ├── Makefile.toml
@@ -76,6 +79,7 @@ Create a `snippets` app and define the `Snippet` model in
 `src/apps/snippets/models.rs`:
 
 ```rust
+// File: src/apps/snippets/models.rs
 use chrono::{DateTime, Utc};
 use reinhardt::core::serde::{Deserialize, Serialize};
 use reinhardt::prelude::*;
@@ -111,6 +115,7 @@ the raw code.
 response shape:
 
 ```rust
+// File: src/apps/snippets/serializers.rs
 use reinhardt::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -155,6 +160,7 @@ pub struct SnippetResponse {
 `src/apps/snippets/views.rs` exposes five CRUD handlers:
 
 ```rust
+// File: src/apps/snippets/serializers.rs
 use chrono::Utc;
 use json::json;
 use reinhardt::Validate;
@@ -170,6 +176,7 @@ use super::serializers::{SnippetResponse, SnippetSerializer};
 The create endpoint uses declarative validation:
 
 ```rust
+// File: src/apps/snippets/views.rs
 /// Create a new snippet
 ///
 /// POST /snippets/
@@ -206,6 +213,7 @@ extractor.
 Register the snippets endpoints in `src/apps/snippets/urls.rs`:
 
 ```rust
+// File: src/apps/snippets/urls.rs
 use reinhardt::ServerRouter;
 
 use super::views;
@@ -225,6 +233,7 @@ pub fn url_patterns() -> ServerRouter {
 Then mount the app under `/api/` from `src/config/urls.rs`:
 
 ```rust
+// File: src/apps/snippets/urls.rs
 use reinhardt::prelude::*;
 use reinhardt::routes;
 
@@ -239,12 +248,14 @@ pub fn routes() -> UnifiedRouter {
 Start the local stack and server:
 
 ```bash
+# Terminal: project root
 cargo make runserver
 ```
 
 Try the function-based endpoints:
 
 ```bash
+# Terminal: project root
 curl http://127.0.0.1:8000/api/snippets/
 
 curl -X POST http://127.0.0.1:8000/api/snippets/ \
@@ -255,6 +266,7 @@ curl -X POST http://127.0.0.1:8000/api/snippets/ \
 Try the ViewSet endpoints, which are mounted in the same process:
 
 ```bash
+# Terminal: project root
 curl http://127.0.0.1:8000/api/snippets-viewset/
 curl "http://127.0.0.1:8000/api/snippets-viewset/?language=rust&ordering=-created_at"
 ```

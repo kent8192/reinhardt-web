@@ -6,12 +6,12 @@
 use reinhardt::dto;
 use serde::{Deserialize, Serialize};
 
-#[cfg(native)]
+#[cfg(server)]
 pub use crate::apps::polls::models::{ChoiceInfo, QuestionInfo};
-#[cfg(native)]
+#[cfg(server)]
 pub use crate::apps::users::models::UserInfo;
 
-#[cfg(wasm)]
+#[cfg(client)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UserInfo {
 	pub id: i64,
@@ -19,7 +19,7 @@ pub struct UserInfo {
 	pub is_active: bool,
 }
 
-#[cfg(wasm)]
+#[cfg(client)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct QuestionInfo {
 	pub id: i64,
@@ -28,7 +28,7 @@ pub struct QuestionInfo {
 	pub author_id: i64,
 }
 
-#[cfg(wasm)]
+#[cfg(client)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChoiceInfo {
 	pub id: i64,
@@ -41,7 +41,7 @@ pub struct ChoiceInfo {
 ///
 /// Sent from the WASM client to the server when submitting the login form.
 ///
-/// The `#[dto]` macro emits `Validate` behind `cfg(native)` so the WASM client
+/// The `#[dto]` macro emits `Validate` behind `cfg(server)` so the WASM client
 /// does not pull in the validator-crate machinery — the server is the only
 /// side that runs `request.validate()` before hitting the database.
 #[dto]
@@ -91,7 +91,7 @@ pub struct RegisterRequest {
 	pub password_confirmation: String,
 }
 
-#[cfg(native)]
+#[cfg(server)]
 impl RegisterRequest {
 	/// Confirm that `password` and `password_confirmation` match.
 	///

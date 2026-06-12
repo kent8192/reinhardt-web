@@ -17,11 +17,11 @@ pub fn create_vote_form() -> StaticFormMetadata {
 		server_fn: submit_vote,
 		method: Post,
 		fields: {
-			question_id: HiddenField {
-				initial: String::new(),
+			question_id: HiddenField<i64> {
+				initial: 0i64,
 			}
-			choice_id: HiddenField {
-				initial: String::new(),
+			choice_id: HiddenField<i64> {
+				initial: 0i64,
 				label: "Choice",
 				required,
 			}
@@ -53,11 +53,11 @@ mod tests {
 			server_fn: submit_vote,
 			method: Post,
 			fields: {
-				question_id: HiddenField {
-					initial: String::new(),
+				question_id: HiddenField<i64> {
+					initial: 0i64,
 				}
-				choice_id: HiddenField {
-					initial: String::new(),
+				choice_id: HiddenField<i64> {
+					initial: 0i64,
 					label: "Choice",
 					required,
 				}
@@ -65,8 +65,8 @@ mod tests {
 		};
 		let runtime = use_form(&form).build();
 
-		assert_eq!(runtime.get_values().question_id, String::new());
-		assert_eq!(runtime.get_values().choice_id, String::new());
+		assert_eq!(runtime.get_values().question_id, 0i64);
+		assert_eq!(runtime.get_values().choice_id, 0i64);
 		assert!(!runtime.form_state().is_dirty.get());
 		assert!(!runtime.get_field_state(form.choice_id_field()).is_dirty);
 	}

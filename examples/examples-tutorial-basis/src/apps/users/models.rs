@@ -72,7 +72,7 @@ pub struct User {
 // minimal user has no email column, and the i64 PK is left as 0 so the
 // DB assigns the real value on insert.
 
-#[cfg(native)]
+#[cfg(server)]
 mod manager {
 	use super::User;
 	use reinhardt::BaseUser;
@@ -214,5 +214,5 @@ mod manager {
 	}
 }
 
-#[cfg(native)]
+#[cfg(server)]
 pub use manager::AuthUserManager;

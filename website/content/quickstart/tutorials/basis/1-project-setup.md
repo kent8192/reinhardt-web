@@ -15,6 +15,7 @@ In this tutorial, we'll install the Reinhardt CLI, generate a new project from t
 Before we begin, let's verify that Rust and Cargo are installed correctly:
 
 ```bash
+# Terminal: project root
 rustc --version
 cargo --version
 ```
@@ -24,6 +25,7 @@ You should see version information for both commands. If not, visit [rust-lang.o
 The tutorial also assumes you have `cargo-make` installed for the `cargo make …` task runner:
 
 ```bash
+# Terminal: project root
 cargo install cargo-make
 ```
 
@@ -33,6 +35,7 @@ Install the global tool for project generation. The command below pins this tuto
 
 <!-- reinhardt-version-sync -->
 ```bash
+# Terminal: project root
 cargo install reinhardt-admin-cli --version "0.2.0-rc.5"
 ```
 
@@ -41,6 +44,7 @@ cargo install reinhardt-admin-cli --version "0.2.0-rc.5"
 This tutorial uses the **reinhardt-pages template** — a WASM client + server functions + shared types layout. Generate the project from that template with explicit features so the setup is reproducible in non-interactive shells:
 
 ```bash
+# Terminal: project root
 reinhardt-admin startproject polls_project --template pages \
   --features standard,pages,admin,conf,commands,db-sqlite,forms,auth-session,argon2-hasher \
   --no-interactive
@@ -50,6 +54,7 @@ cd polls_project
 `startproject` creates the project shell. Now create the two tutorial apps:
 
 ```bash
+# Terminal: project root
 reinhardt-admin startapp polls --template pages
 reinhardt-admin startapp users --template pages
 ```
@@ -59,6 +64,7 @@ reinhardt-admin startapp users --template pages
 After those commands, the scaffold has the same high-level shape as the reference implementation in [`examples/examples-tutorial-basis/`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis):
 
 ```text
+# Project tree: polls_project
 polls_project/
 ├── Cargo.toml                 # cdylib + rlib; native reinhardt dependency with the explicit tutorial features above; WASM dependency with "pages" + "client-router"
 ├── Makefile.toml              # cargo make runserver / migrate / dev / wasm-build-dev / collectstatic / test / …
@@ -133,7 +139,7 @@ Three rules keep this layout predictable:
 Each generated file has a specific role. Walking top-down:
 
 - `Cargo.toml` — declares `crate-type = ["cdylib", "rlib"]` (cdylib for WASM, rlib for the server binary), `default-run = "manage"`, and a `manage` binary for the server-side management CLI. It splits the `reinhardt` dependency between two `[target.'cfg(...)'.dependencies]` blocks: the server side uses the explicit tutorial features from the `startproject` command, while the WASM side only enables `pages + client-router`.
-- `build.rs` — uses the `cfg_aliases` crate to register `client` / `wasm` for `target_arch = "wasm32"` and `server` / `native` for its negation. Generated source uses `#[cfg(client)]` / `#[cfg(server)]`; the compatibility aliases keep framework macro expansions and example code that still use `#[cfg(wasm)]` / `#[cfg(native)]` warning-free.
+- `build.rs` — uses the `cfg_aliases` crate to register `client` / `wasm` for `target_arch = "wasm32"` and `server` / `native` for its negation. Generated source uses `#[cfg(client)]` / `#[cfg(server)]`; the compatibility aliases keep framework macro expansions and older code that still use `#[cfg(wasm)]` / `#[cfg(native)]` warning-free.
 - `index.html` — the SPA shell. It loads UnoCSS from a CDN, defines a `#root` div that the launcher mounts into, and shows a `Loading…` spinner while the WASM bundle downloads.
 - `settings/` — TOML settings files. `base.toml` is always loaded; `{profile}.toml` (resolved from `REINHARDT_ENV`, or `local` otherwise) layers on top. `local.toml` contains local development settings (tracked in version control).
 - `src/lib.rs` — the crate root. It declares `pub mod apps;`, `pub mod config;`, `pub mod shared;`, and `#[cfg(client)] pub mod client;`. Server-only re-exports (`async_trait`, the `reinhardt_apps` / `reinhardt_core` / `reinhardt_di::params` / `reinhardt_http` shims) are gated on `#[cfg(server)]`.
@@ -162,6 +168,7 @@ This tutorial uses the **WASM + SSR** architecture with **reinhardt-pages**, ide
 The data flow for one user interaction looks like this:
 
 ```mermaid
+%% Diagram: Architecture: WASM + SSR (reinhardt-pages)
 flowchart LR
     Browser["Browser<br/>(loads WASM)"] -->|Router matches URL| Component["page! component<br/>(src/client/components/…)"]
     Component -->|"calls #[server_fn] stub"| ServerFn["server function<br/>(src/apps/&lt;app&gt;/server_fn.rs)"]
@@ -188,6 +195,7 @@ flowchart LR
 `settings/base.toml` holds the always-loaded base layer of your settings. Open it and confirm it contains at least the keys consumed by the `[core]`, `[core.databases.default]`, and `[contacts]` fragments. For the tutorial, switch the generated PostgreSQL default to SQLite and keep empty contact lists:
 
 ```toml
+# File: settings/base.toml
 [core]
 debug = false
 secret_key = "CHANGE_THIS_IN_PRODUCTION"
@@ -226,6 +234,7 @@ A few things worth knowing as you edit:
 Look in `src/config/settings.rs` to see this wired up:
 
 ```rust
+// File: src/config/settings.rs
 use reinhardt::conf::settings::builder::SettingsBuilder;
 use reinhardt::conf::settings::profile::Profile;
 use reinhardt::conf::settings::sources::{
@@ -267,6 +276,7 @@ pub fn get_settings() -> ProjectSettings {
 The two `startapp` commands updated `src/config/apps.rs` so the framework can discover the `polls` and `users` apps:
 
 ```rust
+// File: src/config/apps.rs
 use reinhardt::installed_apps;
 
 installed_apps! {
@@ -295,6 +305,7 @@ You have two choices for running the dev server locally.
 Use this when you want the standard generated runserver task:
 
 ```bash
+# Terminal: project root
 cargo make runserver
 ```
 
@@ -305,12 +316,14 @@ cargo make runserver
 This is the most common command during the tutorial. It cleans the WASM cache, rebuilds the bundle in debug mode, and starts the dev server:
 
 ```bash
+# Terminal: project root
 cargo make dev
 ```
 
 You should see output similar to:
 
 ```
+# Output: terminal
     Compiling polls_project v0.1.0 (/path/to/polls_project)
      Finished dev [unoptimized + debuginfo] target(s) in 2.34s
       Running `target/debug/manage runserver --with-pages`
@@ -329,6 +342,7 @@ Open your web browser and visit `http://127.0.0.1:8000/`. You will see the SPA s
 For a production-grade build, the `dev-release` family of tasks does the same orchestration but invokes `wasm-build-release` (with `wasm-opt`) and `collectstatic`:
 
 ```bash
+# Terminal: project root
 cargo make dev-release
 ```
 

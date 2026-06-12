@@ -26,6 +26,7 @@ Both directories live at the project root and are both git-ignored build artifac
 The bridge between the two is `src/config/wasm.rs`. It is a one-time inventory registration that tells `collectstatic` "there is a static directory called `dist-wasm/`, please collect it under url prefix `""` when you run":
 
 ```rust
+// File: src/config/wasm.rs
 //! WASM artifacts registration for collectstatic
 //!
 //! This module registers the dist-wasm directory containing WASM build artifacts
@@ -43,7 +44,7 @@ inventory::submit! {
 }
 ```
 
-This file is included from `src/config.rs` under `#[cfg(native)]` (the WASM target neither runs `collectstatic` nor needs to register inventory entries). `app_label` is the namespace `collectstatic` uses to disambiguate file collisions; `static_dir` is a path relative to the crate root; `url_prefix = ""` means "collect under the root of `STATIC_ROOT`" rather than nesting under a subdirectory.
+This file is included from `src/config.rs` under `#[cfg(server)]` (the WASM target neither runs `collectstatic` nor needs to register inventory entries). `app_label` is the namespace `collectstatic` uses to disambiguate file collisions; `static_dir` is a path relative to the crate root; `url_prefix = ""` means "collect under the root of `STATIC_ROOT`" rather than nesting under a subdirectory.
 
 ### Why two tiers instead of one?
 
@@ -58,6 +59,7 @@ Three reasons, all enforced by the example project's structure:
 The `cargo make dev` and `cargo make dev-release` task graphs encapsulate the full pipeline. The diagram below traces what happens when you change a Rust file and want to see the result in the browser:
 
 ```mermaid
+%% Diagram: The Build Pipeline
 flowchart TD
     A["Edit src/**.rs"] --> B["cargo make clean-cache<br/>removes dist/, dist-wasm/,<br/>target/debug/incremental,<br/>target/wasm32-unknown-unknown"]
     B --> C["cargo make wasm-compile-dev<br/>cargo build --target wasm32-unknown-unknown"]
@@ -75,6 +77,7 @@ The right-hand column is what each step actually shells out to, copied verbatim 
 The script `scripts/clean-cache.sh` is short enough to quote in full:
 
 ```bash
+# File: scripts/clean-cache.sh
 #!/usr/bin/env bash
 # `cargo make clean-cache` body: drop the WASM bundles and Rust
 # incremental cache so the next `cargo make dev` / `dev-release` rebuilds
@@ -117,6 +120,7 @@ It exists because `wasm-pack` plus Rust incremental compilation can get into sta
 These are the two underlying calls that `wasm-pack` orchestrates:
 
 ```toml
+# File: Makefile.toml
 [tasks.wasm-compile-dev]
 description = "Compile WASM binary (debug mode)"
 command = "cargo"
@@ -148,6 +152,7 @@ The `--target web` flag is what makes the generated JS module loadable directly 
 This is the orchestrating task: it depends on `wasm-bindgen-dev`, then runs `scripts/wasm-build-dev.sh`:
 
 ```bash
+# Terminal: project root
 #!/usr/bin/env bash
 # Post-step for `cargo make wasm-build-dev`: after `wasm-pack` writes the
 # debug bundle into `dist-wasm/`, copy it (plus other static assets) into
@@ -167,6 +172,7 @@ So `wasm-build-dev` is `wasm-bindgen-dev` plus a `collectstatic` call. The `--no
 The task itself is a thin wrapper:
 
 ```toml
+# File: Makefile.toml
 [tasks.collectstatic]
 description = "Collect static files into STATIC_ROOT"
 command = "cargo"
@@ -178,6 +184,7 @@ What it does at runtime is walk every `AppStaticFilesConfig` registered via `inv
 After it runs you will see:
 
 ```text
+# File: src/config/wasm.rs
 staticfiles/
 ├── examples_tutorial_basis.js
 ├── examples_tutorial_basis_bg.wasm
@@ -189,6 +196,7 @@ staticfiles/
 This is the everyday task. Its definition in `Makefile.toml` is just a dependency chain:
 
 ```toml
+# File: Makefile.toml
 [tasks.dev]
 description = "Build WASM and start development server with frontend"
 dependencies = ["clean-cache", "wasm-build-dev", "run-dev-server"]
@@ -197,6 +205,7 @@ dependencies = ["clean-cache", "wasm-build-dev", "run-dev-server"]
 So `cargo make dev` runs `clean-cache` → `wasm-build-dev` (which itself chains `wasm-compile-dev` → `wasm-bindgen-dev` → `collectstatic`) → `run-dev-server`. The last step is `scripts/run-dev-server.sh`:
 
 ```bash
+# File: scripts/run-dev-server.sh
 #!/usr/bin/env bash
 # Final step of `cargo make dev`: start the development server against the
 # wasm bundle that `wasm-build-dev` already produced. The directory check
@@ -237,6 +246,7 @@ The bare `manage runserver --with-pages` command does not apply migrations. The 
 The release-mode equivalent chains a different set of tasks:
 
 ```toml
+# File: Makefile.toml
 [tasks.dev-release]
 description = "Build optimized WASM and start server"
 dependencies = ["clean-cache", "wasm-build-release", "collectstatic", "run-dev-release-server"]
@@ -295,6 +305,7 @@ A subtle point: under `cargo make dev`, the server is *not* serving from `static
 `index.html` lives at the project root and is copied (verbatim) into the directory that the dev server serves at `/`. It is what the browser fetches when a user visits `http://127.0.0.1:8000/` for the first time. The file is longer than a textbook SPA shell because it also wires up CDN integrity hints, a pre-render theme detector, and the UnoCSS configuration — every piece below is loaded directly from `examples/examples-tutorial-basis/index.html`:
 
 ```html
+<!-- File: index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -438,6 +449,7 @@ Fourth, the shell preloads `/static/css/style.css` via `<link rel="stylesheet" h
 The example's `Cargo.toml` defines a third feature flag that is directly relevant to how the static pipeline interacts with testing:
 
 ```toml
+# File: Cargo.toml
 [features]
 default = ["with-reinhardt", "client-router"]
 # client-router: Enable client-side routing support (required for #[routes] macro with UnifiedRouter)
@@ -454,6 +466,7 @@ msw = []
 The `msw` feature here is a thin pass-through: enabling it on the example crate forwards to the `reinhardt` facade so that `#[server_fn]` generates the `MockableServerFn` markers that the WASM-only test target `tests/wasm/polls_mock_test.rs` consumes for Mock Service Worker–style interception. The opt-in shape is deliberate because the facade flag is still in flight (tracked in upstream `#4287` and its PR `#4288`); until that lands, leaving the feature out of `default` keeps `cargo nextest run` and `wasm-pack test` both green via the `required-features = ["msw"]` clause on the test declaration:
 
 ```toml
+# File: Cargo.toml
 [[test]]
 name = "polls_mock_test"
 path = "tests/wasm/polls_mock_test.rs"
@@ -465,6 +478,7 @@ That is, the test target is *declared* but is not compiled unless `--features ms
 This matters in the static-files chapter for one reason: the MSW-style mocks intercept the HTTP requests that the SPA makes from inside the browser, so they are exercising the *served* WASM bundle, not the source `.wasm` on disk. If `wasm-build-dev` has not run, there is nothing for the test harness to load, and the failure mode looks like "the test page is blank". The `wasm-test` task documents the related quirk:
 
 ```toml
+# File: Makefile.toml
 # `--no-default-features` is forwarded to the underlying `cargo build --tests
 # --target wasm32-unknown-unknown` so the `with-reinhardt`-gated `manage` bin
 # (native-only, uses tokio / reinhardt::commands / async fn main) is skipped
@@ -504,6 +518,7 @@ The two failure modes you will hit during a tutorial session are both easy to di
 The shell rendered (so the server is up) but the WASM bundle never instantiated. Almost always this is a stale `dist-wasm/` left over from a previous build that no longer matches the source:
 
 ```bash
+# Terminal: project root
 cargo make clean-cache && cargo make wasm-build-dev
 ```
 
@@ -518,6 +533,7 @@ Run `cargo make migrate` once, then re-run `cargo make dev`. A fresh `db.sqlite3
 This is the failure mode the `wasm-test` task description warns about:
 
 ```text
+# Output: terminal
 error[E0432]: unresolved import `tokio::main`
 ```
 

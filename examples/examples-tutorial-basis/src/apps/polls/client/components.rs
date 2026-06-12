@@ -197,10 +197,10 @@ pub fn polls_detail(question_id: i64) -> Page {
 		method: Post,
 		success_url: |_form| polls_routes::reverse("results", &[("question_id", qid.to_string().as_str())]),
 		fields: {
-			question_id: HiddenField {
-				initial: qid.to_string(),
+			question_id: HiddenField<i64> {
+				initial: qid,
 			}
-			choice_id: ChoiceField {
+			choice_id: ChoiceField<i64> {
 				widget: RadioSelect,
 				required,
 				label: "Select your choice",
@@ -264,7 +264,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// `RadioSelect` group for choiceless questions, so any submit emitted
 	// `choice_id=""` and `submit_vote` rejected the request with the
 	// runtime `Invalid choice_id` application error.
-	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>, load_current_user: Resource<Option<UserInfo>, String>, choice_options_signal: Signal<Vec<(String, String) >>, voting_form_page: Page, question_id: i64| {
+	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>, load_current_user: Resource<Option<UserInfo>, String>, choice_options_signal: Signal<Vec<(i64, String) >>, voting_form_page: Page, question_id: i64| {
 		div { {
 			match load_detail.get() {
 				ResourceState::Loading => page!(|| {
@@ -316,7 +316,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 							}
 						})()
 					} else {
-						let choice_options: Vec<(String, String) > = choices.iter().map(|c|(c.id.to_string(), c.choice_text.clone())).collect();
+						let choice_options: Vec<(i64, String) > = choices.iter().map(|c|(c.id, c.choice_text.clone())).collect();
 						if choice_options_signal.get_untracked() != choice_options {
 							choice_options_signal.set(choice_options);
 						}
@@ -726,8 +726,8 @@ pub fn question_edit(question_id: i64) -> Page {
 		method: Post,
 		redirect_on_success: "/",
 		fields: {
-			question_id: HiddenField {
-				initial: qid.to_string(),
+			question_id: HiddenField<i64> {
+				initial: qid,
 			}
 			question_text: CharField {
 				label: "Question",
@@ -862,8 +862,8 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 		method: Post,
 		redirect_on_success: "/",
 		fields: {
-			question_id: HiddenField {
-				initial: qid.to_string(),
+			question_id: HiddenField<i64> {
+				initial: qid,
 			}
 		}
 	};
@@ -974,7 +974,6 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 /// New choice page (`/polls/{question_id}/choices/new/`).
 pub fn choice_new(question_id: i64) -> Page {
 	let qid = question_id;
-	let qid_str = qid.to_string();
 
 	// `redirect_on_success` (issue #4700): without it the form submits
 	// successfully but the client stays on `/polls/{qid}/choices/new/`
@@ -992,8 +991,8 @@ pub fn choice_new(question_id: i64) -> Page {
 		method: Post,
 		success_url: |_form| polls_routes::reverse("detail", &[("question_id", qid.to_string().as_str())]),
 		fields: {
-			question_id: HiddenField {
-				initial: qid_str,
+			question_id: HiddenField<i64> {
+				initial: qid,
 			},
 			choice_text: CharField {
 				label: "Choice text",
@@ -1060,7 +1059,6 @@ pub fn choice_new(question_id: i64) -> Page {
 /// poll is synchronous — no extra server roundtrip and no
 /// pending-state fallback href.
 pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
-	let cid_str = choice_id.to_string();
 	let cancel_href = polls_routes::reverse(
 		"detail",
 		&[("question_id", question_id.to_string().as_str())],
@@ -1072,8 +1070,8 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 		method: Post,
 		redirect_on_success: "/",
 		fields: {
-			choice_id: HiddenField {
-				initial: cid_str,
+			choice_id: HiddenField<i64> {
+				initial: choice_id,
 			}
 			choice_text: CharField {
 				label: "Choice text",
@@ -1138,7 +1136,6 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 /// Like [`choice_edit`], both ids are part of the route so "Cancel"
 /// links back to the parent poll synchronously without an extra fetch.
 pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
-	let cid_str = choice_id.to_string();
 	let cancel_href = polls_routes::reverse(
 		"detail",
 		&[("question_id", question_id.to_string().as_str())],
@@ -1150,8 +1147,8 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 		method: Post,
 		redirect_on_success: "/",
 		fields: {
-			choice_id: HiddenField {
-				initial: cid_str,
+			choice_id: HiddenField<i64> {
+				initial: choice_id,
 			}
 		}
 	};

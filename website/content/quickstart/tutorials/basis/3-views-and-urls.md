@@ -30,14 +30,14 @@ and the server registers the same handlers as server-side routes:
 Both halves live next to the models they touch and share the same
 authentication gate. We introduce them in that order.
 
-## Recap: `#[cfg(client)]`, `#[cfg(server)]`, `#[cfg(wasm)]`, and `#[cfg(native)]`
+## Recap: `#[cfg(client)]`, `#[cfg(server)]`, and Cargo target cfg
 
 Part 1 added the custom cfg aliases that gate generated files. They come
 from the project's `build.rs`, which uses
 [`cfg_aliases`](https://docs.rs/cfg_aliases) to register the names:
 
 ```rust
-// build.rs
+// File: build.rs
 use cfg_aliases::cfg_aliases;
 
 fn main() {
@@ -65,12 +65,13 @@ Two important consequences carry through the entire chapter:
 - **In generated Rust source**, use `#[cfg(client)]` for browser-only
   items and `#[cfg(server)]` for server-only items. The `wasm` and
   `native` aliases stay available for framework macro expansions and
-  compatibility with existing example code.
+  compatibility with older generated or example code.
 - **In `Cargo.toml`**, the two `[target.'cfg(...)'.dependencies]` headers
   must use raw target cfgs because Cargo evaluates them before `build.rs`
   runs. The generated pages template uses `target_arch = "wasm32"`:
 
 ```toml
+# File: Cargo.toml
 # Browser/WASM-specific dependencies
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 reinhardt = {
@@ -129,6 +130,7 @@ WASM client never constructs URLs or parses JSON by hand — it calls a
 function. The function happens to run on the server.
 
 ```mermaid
+%% Diagram: The Two Parallel Routing Layers
 sequenceDiagram
     participant U as User (browser)
     participant C as apps/polls/client/components.rs
@@ -166,6 +168,7 @@ Each app exposes routing through a small directory whose layout is fixed
 by the framework. For `polls` it looks like this:
 
 ```text
+# Project tree: 3-views-and-urls
 src/apps/polls/
 ├── urls.rs                       declares the two submodules below
 └── urls/
@@ -177,6 +180,7 @@ The aggregator `apps/polls/urls.rs` is tiny — it just gates the two
 submodules on the right target:
 
 ```rust
+// File: src/apps/polls/urls.rs
 //! URL configuration for the polls application.
 //!
 //! - `server_urls` — server-side `ServerRouter`
@@ -207,6 +211,7 @@ The same shape repeats for the `users` app. Its server-side router owns
 the authentication server-function registrations:
 
 ```rust
+// File: src/apps/users/urls/server_urls.rs
 //! Server-side URL patterns for the users application.
 //!
 //! Authentication is exposed via `#[server_fn]` handlers. Register them
@@ -259,6 +264,7 @@ the database up before the handler runs — the actual queries go through
 `Model::objects()`.
 
 ```rust
+// File: src/apps/polls/server_fn.rs
 //! Poll server functions
 //!
 //! These functions provide the server-side API for the polling application.
@@ -270,8 +276,10 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 // at the call site — see the per-handler `use` blocks below for examples.
 #[cfg(server)]
 use {
-	crate::apps::polls::di::SessionError, crate::apps::users::models::User, reinhardt::Model,
-	reinhardt::di::Depends,
+	crate::apps::users::models::User,
+	reinhardt::Model,
+	reinhardt::di::{Depends, injectable_factory},
+	reinhardt::middleware::session::{SessionData, USER_ID_SESSION_KEY},
 };
 
 // WASM-only imports
@@ -307,6 +315,7 @@ pub async fn get_questions(
 `#[model]` macro generated for you in Part 2:
 
 ```rust
+// File: src/apps/polls/server_fn.rs
 /// Get question detail with choices
 #[server_fn]
 pub async fn get_question_detail(
@@ -315,7 +324,6 @@ pub async fn get_question_detail(
 ) -> std::result::Result<(QuestionInfo, Vec<ChoiceInfo>), ServerFnError> {
 	use crate::apps::polls::models::{Choice, Question};
 	use reinhardt::Model;
-	use reinhardt::db::orm::{FilterOperator, FilterValue};
 
 	let question_manager = Question::objects();
 	let question = question_manager
@@ -327,11 +335,7 @@ pub async fn get_question_detail(
 
 	let choice_manager = Choice::objects();
 	let choices = choice_manager
-		.filter(
-			Choice::field_question_id(),
-			FilterOperator::Eq,
-			FilterValue::Int(question_id),
-		)
+		.filter(Choice::field_question_id().eq(question_id))
 		.all()
 		.await
 		.map_err(|e| ServerFnError::application(e.to_string()))?;
@@ -347,6 +351,7 @@ pub async fn get_question_detail(
 client only has to render numbers:
 
 ```rust
+// File: src/apps/polls/server_fn.rs
 /// Get question results
 ///
 /// Returns the question and all its choices with vote counts.
@@ -357,7 +362,6 @@ pub async fn get_question_results(
 ) -> std::result::Result<(QuestionInfo, Vec<ChoiceInfo>, i32), ServerFnError> {
 	use crate::apps::polls::models::{Choice, Question};
 	use reinhardt::Model;
-	use reinhardt::db::orm::{FilterOperator, FilterValue};
 
 	let question_manager = Question::objects();
 	let question = question_manager
@@ -369,11 +373,7 @@ pub async fn get_question_results(
 
 	let choice_manager = Choice::objects();
 	let choices = choice_manager
-		.filter(
-			Choice::field_question_id(),
-			FilterOperator::Eq,
-			FilterValue::Int(question_id),
-		)
+		.filter(Choice::field_question_id().eq(question_id))
 		.all()
 		.await
 		.map_err(|e| ServerFnError::application(e.to_string()))?;
@@ -396,6 +396,7 @@ the same row before either has written — so the body runs inside
 if the closure returns `Err`.
 
 ```rust
+// File: src/apps/polls/server_fn.rs
 /// Vote for a choice
 ///
 /// Increments the vote count for the selected choice.
@@ -451,34 +452,26 @@ async fn vote_internal(
 ### `submit_vote`: the `form!` adapter
 
 The WASM client built in Part 4 will use the `form!` macro to render the
-voting form. `form!` currently serialises every field as a plain
-`String` on submit — tracked upstream in
-[reinhardt-web#4397](https://github.com/kent8192/reinhardt-web/issues/4397) —
-so `submit_vote` exists as a thin adapter that takes strings, parses
-them, and reuses `vote_internal`.
+voting form. `form!` now preserves typed field values, so the hidden
+`question_id` and selected `choice_id` reach `submit_vote` as `i64`
+arguments. `submit_vote` is still a thin adapter, but it no longer has to
+parse strings before reusing `vote_internal`.
 
 ```rust
+// File: src/apps/polls/server_fn.rs
 /// Submit vote via form! macro
 ///
-/// Wrapper function that accepts individual field values from form! macro's
-/// submit. Converts String field values to the required types and calls the
-/// underlying vote function.
+/// Wrapper function that accepts individual typed field values from form!'s
+/// submit path and calls the underlying vote function.
 ///
 /// CSRF is supplied by the `#[server_fn]` client stub through `X-CSRFToken`
 /// and verified by middleware before this handler runs.
 #[server_fn]
 pub async fn submit_vote(
-	question_id: String,
-	choice_id: String,
+	question_id: i64,
+	choice_id: i64,
 	#[inject] db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
-	let question_id: i64 = question_id
-		.parse()
-		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
-	let choice_id: i64 = choice_id
-		.parse()
-		.map_err(|_| ServerFnError::application("Invalid choice_id"))?;
-
 	let request = VoteRequest {
 		question_id,
 		choice_id,
@@ -488,24 +481,10 @@ pub async fn submit_vote(
 }
 ```
 
-Each CUD handler in `server_fn.rs` carries an "Ideal implementation"
-comment showing the typed signature that becomes possible once #4397
-ships — for example:
-
-```rust
-/// Create a new question owned by the current user.
-///
-/// Ideal implementation (without the form! String workaround tracked in #4397):
-///   pub async fn create_question(
-///       question_text: String,
-///       #[inject] _db: reinhardt::DatabaseConnection,
-///       #[inject] session_user: Depends<Result<User, SessionError>>,
-///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
-```
-
-This is the workaround comment convention the project uses everywhere:
-the ideal code is written next to the workaround so that the upgrade path
-is obvious when the upstream issue resolves.
+The same typed-field contract applies to the CUD handlers below:
+`HiddenField<i64>` reaches the server function as `i64`, while text
+inputs stay `String`. There is no longer a separate "ideal implementation"
+comment because the typed signature is the implementation.
 
 ### `SessionError`: the DI-resolved 401/403/500 gate
 
@@ -514,14 +493,14 @@ out of the session, look up the row, check `is_active`. Putting that
 inline at the top of every handler would be noisy and easy to skip, so
 the project pushes the "load user_id from session, look up the row,
 classify as `Ok(user)` / `Anonymous` / `Inactive` / `Unavailable`"
-pipeline into a **DI factory** that lives in `apps::polls::di`. The
+pipeline into a request-scoped **DI factory** in `apps::polls::server_fn`. The
 factory returns `Result<User, SessionError>`, so each authenticated
 handler receives `Depends<Result<User, SessionError>>` from the DI
 container and calls `(*session_user).as_ref().map_err(ServerFnError::from)?`
 to surface the 401/403/500:
 
 ```rust
-// src/apps/polls/di.rs (excerpt)
+// File: src/apps/polls/server_fn.rs (excerpt)
 //
 // The factory is registered with `#[injectable_factory(scope = "request")]`
 // so each request resolves its own `Result<User, SessionError>` once. The
@@ -573,10 +552,11 @@ as the first statement. The Question CUD handlers additionally enforce
 that the caller authored the row:
 
 ```rust
+// File: src/apps/polls/server_fn.rs
 /// Update a question's text. Only the author may update.
 #[server_fn]
 pub async fn update_question(
-	question_id: String,
+	question_id: i64,
 	question_text: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
@@ -584,10 +564,6 @@ pub async fn update_question(
 	use crate::apps::polls::models::Question;
 
 	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
-
-	let question_id: i64 = question_id
-		.parse()
-		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
 
 	let trimmed = question_text.trim();
 	if trimmed.is_empty() || trimmed.len() > 200 {
@@ -643,6 +619,7 @@ stored, and `BaseUserManager::create_user` does the password-hashing
 work.
 
 ```rust
+// File: src/apps/users/server_fn.rs
 use crate::shared::types::UserInfo;
 #[cfg(server)]
 use crate::shared::types::{LoginRequest, RegisterRequest};
@@ -654,7 +631,7 @@ use {
 	reinhardt::BaseUser,
 	reinhardt::DatabaseConnection,
 	reinhardt::Validate,
-	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
+	reinhardt::Model,
 	reinhardt::di::Depends,
 	reinhardt::middleware::session::{
 		SessionAuthExt, SessionData, SessionStore, USER_ID_SESSION_KEY,
@@ -671,6 +648,7 @@ user, checks the password through `BaseUser::check_password`, then calls
 and persist `user_id`:
 
 ```rust
+// File: src/apps/users/server_fn.rs
 /// Authenticate a user by username/password and persist the session.
 ///
 /// CSRF is supplied by the `#[server_fn]` client stub through `X-CSRFToken`
@@ -697,11 +675,7 @@ pub async fn login(
 
 	let manager = User::objects();
 	let user = manager
-		.filter(
-			User::field_username(),
-			FilterOperator::Eq,
-			FilterValue::String(request.username.trim().to_string()),
-		)
+		.filter(User::field_username().eq(request.username.trim().to_string()))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
@@ -735,6 +709,7 @@ pub async fn login(
 `AuthUserManager` introduced in Part 2:
 
 ```rust
+// File: src/apps/users/server_fn.rs
 #[server_fn]
 pub async fn register(
 	username: String,
@@ -809,6 +784,7 @@ on an unauthenticated session and then defers to `SessionAuthExt::logout`
 for the actual rotation:
 
 ```rust
+// File: src/apps/users/server_fn.rs
 #[server_fn]
 pub async fn logout(
 	#[inject] session: SessionData,
@@ -835,11 +811,7 @@ pub async fn current_user(
 	};
 
 	let user = User::objects()
-		.filter(
-			User::field_id(),
-			FilterOperator::Eq,
-			FilterValue::Int(user_id),
-		)
+		.filter(User::field_id().eq(user_id))
 		.first()
 		.await
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
@@ -861,6 +833,7 @@ from the polls app anymore. Every dynamic data path is a typed
 server surface:
 
 ```rust
+// File: src/apps/polls/urls/server_urls.rs
 //! Server-side URL configuration for the polls application.
 //!
 //! The polls app exposes its dynamic data path through `#[server_fn]`
@@ -916,6 +889,7 @@ router so `ClientLauncher::register_routes_from_inventory()` has a
 complete SPA route table.
 
 ```rust
+// File: src/config/urls.rs
 //! URL configuration for examples-tutorial-basis project
 //!
 //! The `routes` function defines the top-level project router.
@@ -1051,6 +1025,7 @@ the app-local `reverse(name, params)` helper resolves concrete paths
 from that same route table.
 
 ```rust
+// File: src/client/pages.rs
 //! Client-side routing for the polls SPA.
 //!
 //! The router applies the `polls` namespace to every named route.
@@ -1159,6 +1134,7 @@ file. Three login/logout/signup pages, no path parameters, namespace
 `users:`:
 
 ```rust
+// File: src/apps/polls/urls/client_router.rs
 //! Client-side routing for the users application (login/logout pages).
 //!
 //! Each route is registered with a stable name (`users:login`,
@@ -1195,6 +1171,7 @@ route table out of `inventory`, merges it into a single SPA router, and
 mounts the result on `#root`:
 
 ```rust
+// File: src/client/lib.rs
 //! WASM SPA entry point.
 //!
 //! [`ClientLauncher::register_routes_from_inventory`] consumes the
@@ -1242,6 +1219,7 @@ that Part 4 will define. Each factory wraps a body component (defined in
 without each component re-implementing it.
 
 ```rust
+// File: src/client/pages.rs
 //! Page components
 //!
 //! This module re-exports page-level components for the polling application.
@@ -1311,6 +1289,7 @@ document that `ClientLauncher::new("#root")` mounts into, so it is
 worth seeing once in full:
 
 ```html
+<!-- File: index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1453,11 +1432,13 @@ You can run the project right now and inspect the registered routing
 surface from the command line:
 
 ```bash
+# Terminal: project root
 # 1. Generate + apply migrations and start the dev server (one shot).
 cargo make dev
 ```
 
 ```bash
+# Terminal: project root
 # 2. Inspect registered server functions, admin routes, and client routes.
 cargo make showurls
 ```
@@ -1495,7 +1476,7 @@ the polling application:
   `Depends<Result<User, SessionError>>`;
   `(*session_user).as_ref().map_err(ServerFnError::from)?` is the shared
   401/403/500 gate, layered on the `Result<User, SessionError>` factory
-  in `apps::polls::di`; `atomic(&db, || async { … })` guards
+  in `apps::polls::server_fn`; `atomic(&db, || async { … })` guards
   read-modify-write; CSRF is supplied by the generated server-function
   client stub and verified by middleware before the handler runs.
 - **Project-level glue.** `src/config/urls.rs` carries

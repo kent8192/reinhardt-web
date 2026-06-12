@@ -30,6 +30,7 @@ HTTP method decorators provide a FastAPI-inspired approach to defining API endpo
 ### Simple GET Endpoint
 
 ```rust
+// File: src/views.rs
 use reinhardt::prelude::*;
 use reinhardt::get;
 
@@ -47,6 +48,7 @@ pub async fn list_users() -> ViewResult<Response> {
 ### Simple POST Endpoint
 
 ```rust
+// File: src/views.rs
 use reinhardt::post;
 use reinhardt::Json;
 use serde::{Deserialize, Serialize};
@@ -79,6 +81,7 @@ pub async fn create_user(
 ### All HTTP Method Decorators
 
 ```rust
+// File: src/views.rs
 use reinhardt::{get, post, put, patch, delete};
 
 #[get("/resource", name = "read")]
@@ -106,6 +109,7 @@ pub async fn destroy() -> ViewResult<Response> { /* ... */ }
 Use the `Path` extractor to capture URL parameters:
 
 ```rust
+// File: src/views.rs
 use reinhardt::get;
 use reinhardt::Path;
 
@@ -128,6 +132,7 @@ pub async fn get_user(
 ### Multiple Path Parameters
 
 ```rust
+// File: src/views.rs
 #[get("/users/{user_id}/posts/{post_id}/", name = "get_user_post")]
 pub async fn get_user_post(
     Path((user_id, post_id)): Path<(i64, i64)>,
@@ -146,6 +151,7 @@ pub async fn get_user_post(
 ### Named Path Parameters
 
 ```rust
+// File: src/views.rs
 use std::collections::HashMap;
 
 #[get("/articles/{year}/{month}/{slug}/", name = "get_article")]
@@ -167,6 +173,7 @@ pub async fn get_article(
 The `#[inject]` attribute enables automatic dependency injection:
 
 ```rust
+// File: src/dependencies.rs
 use reinhardt::get;
 use reinhardt::db::DatabaseConnection;
 
@@ -186,6 +193,7 @@ pub async fn get_data(
 ### Multiple Dependencies
 
 ```rust
+// File: src/views.rs
 use reinhardt::{get, Request};
 use reinhardt::db::DatabaseConnection;
 use reinhardt::cache::Cache;
@@ -227,6 +235,7 @@ pub async fn get_user(
 By default, dependencies are resolved per request. Use `cache = true` for singleton-like behavior:
 
 ```rust
+// File: src/views.rs
 #[inject(cache = true)] config: Arc<AppConfig>,  // Singleton
 #[inject(cache = false)] request_id: RequestId,  // Per-request
 #[inject] db: DatabaseConnection,           // Default: per-request
@@ -255,6 +264,7 @@ By default, dependencies are resolved per request. Use `cache = true` for single
 Use `ServerRouter` for application routing:
 
 ```rust
+// File: src/views.rs
 use reinhardt::ServerRouter;
 use reinhardt::Method;
 use crate::views;
@@ -272,6 +282,7 @@ pub fn url_patterns() -> ServerRouter {
 ### Mounting Sub-Routers
 
 ```rust
+// File: src/config/urls.rs
 use reinhardt::routes;
 
 #[routes]
@@ -287,6 +298,7 @@ pub fn routes() -> ServerRouter {
 For library development or custom routers:
 
 ```rust
+// File: src/views.rs
 use reinhardt::routing::Route;
 
 pub fn url_patterns() -> Vec<Route> {
@@ -321,6 +333,7 @@ pub fn url_patterns() -> Vec<Route> {
 Create custom extractors for common patterns:
 
 ```rust
+// File: src/views.rs
 use reinhardt::di::{FromRequest, ParamContext, ParamResult};
 
 pub struct CurrentUser {
@@ -361,6 +374,7 @@ pub async fn profile(user: CurrentUser) -> ViewResult<Response> {
 Implement custom error handling:
 
 ```rust
+// File: src/views.rs
 use reinhardt::prelude::*;
 
 #[derive(Debug)]
@@ -401,6 +415,7 @@ pub async fn get_user(
 HTTP decorators work seamlessly with Reinhardt middleware:
 
 ```rust
+// File: src/middleware.rs
 use reinhardt::{Middleware, MiddlewareChain, Handler, Request, Response};
 use std::sync::Arc;
 
@@ -435,6 +450,7 @@ let app = MiddlewareChain::new(Arc::new(router))
 ### 1. Use Named Routes
 
 ```rust
+// File: src/views.rs
 #[get("/users/{id}/", name = "get_user")]  // ✅ Good
 #[get("/users/{id}/")]                   // ❌ Avoid (no name)
 ```
@@ -444,6 +460,7 @@ Named routes enable URL reversal and better debugging.
 ### 2. Explicit HTTP Methods
 
 ```rust
+// File: src/views.rs
 // ✅ Good: Explicit method
 ServerRouter::new()
     .function("/users", Method::GET, list_users)
@@ -456,6 +473,7 @@ Route::from_handler("/users", handle_users)  // Must check method manually
 ### 3. Type-Safe Parameter Extraction
 
 ```rust
+// File: src/views.rs
 // ✅ Good: Type-safe extraction
 Path(user_id): Path<i64>
 
@@ -466,6 +484,7 @@ let user_id = req.path_params.get("id")?.parse::<i64>()?;
 ### 4. Dependency Injection Over Manual Threading
 
 ```rust
+// File: src/dependencies.rs
 // ✅ Good: Automatic injection
 #[get("/data", name = "get_data")]
 pub async fn get_data(

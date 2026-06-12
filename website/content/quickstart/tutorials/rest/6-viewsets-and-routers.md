@@ -19,6 +19,7 @@ ViewSets allow you to implement common RESTful API patterns concisely.
 Provides full CRUD operations:
 
 ```rust
+// File: src/models.rs
 use chrono::{DateTime, Utc};
 use reinhardt::prelude::*;
 use serde::{Serialize, Deserialize};
@@ -73,6 +74,7 @@ let snippet_viewset = ModelViewSet::<Snippet, SnippetSerializer>::new("snippet")
 Provides read-only operations:
 
 ```rust
+// File: src/models.rs
 use reinhardt::prelude::*;
 
 let snippet_viewset = ReadOnlyModelViewSet::<Snippet, SnippetSerializer>::new("snippet");
@@ -106,7 +108,7 @@ Register ViewSets with routers to automatically generate URLs.
 Define your ViewSet registrations in `urls.rs`:
 
 ```rust
-// src/config/urls.rs
+// File: src/config/urls.rs
 use reinhardt::prelude::*;
 use reinhardt::routes;
 
@@ -168,6 +170,7 @@ Routers automatically generate URL patterns from ViewSets:
 Define models and serializers:
 
 ```rust
+// File: src/views.rs
 use reinhardt::prelude::*;
 use serde::{Serialize, Deserialize};
 
@@ -203,7 +206,7 @@ struct UserSerializer {
 Register ViewSets in `urls.rs`:
 
 ```rust
-// src/config/urls.rs
+// File: src/config/urls.rs
 use reinhardt::prelude::*;
 use reinhardt::routes;
 
@@ -229,6 +232,7 @@ pub fn routes() -> UnifiedRouter {
 Start the development server:
 
 ```bash
+# Terminal: project root
 cargo make runserver
 ```
 
@@ -237,6 +241,7 @@ cargo make runserver
 ### Function-based Views (Tutorial 1-5)
 
 ```rust
+// File: src/views.rs
 // ~200 lines of code for full CRUD operations
 use reinhardt::{get, post, put, delete, Json, Path, Response, StatusCode, ViewResult};
 use reinhardt::Validate;
@@ -292,6 +297,7 @@ ServerRouter::new()
 ### ViewSet-based (Tutorial 6)
 
 ```rust
+// File: src/views.rs
 // ~15 lines for the same functionality PLUS pagination, filtering, and ordering!
 use reinhardt::ModelViewSet;
 use reinhardt::views::viewsets::{FilterConfig, OrderingConfig, PaginationConfig};
@@ -326,6 +332,7 @@ The complete working example is available in `examples-tutorial-rest`:
 ### Running the Example
 
 ```bash
+# Terminal: project root
 cd examples/examples-tutorial-rest
 
 # Option 1: Function-based views (Tutorial 1-5)
@@ -340,6 +347,7 @@ USE_VIEWSET=1 cargo make runserver
 ### Testing the ViewSet Features
 
 ```bash
+# Terminal: project root
 # List with pagination
 curl "http://127.0.0.1:8000/api/snippets-viewset/?page=1&page_size=10"
 

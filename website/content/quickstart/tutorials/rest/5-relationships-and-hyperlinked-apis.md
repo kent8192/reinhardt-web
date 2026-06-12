@@ -15,6 +15,7 @@ Create APIs with relationships between resources and use hyperlinks for navigati
 Generate URLs for named routes using the router's `reverse()` method:
 
 ```rust
+// File: src/config/urls.rs
 use reinhardt::prelude::*;
 
 let router = ServerRouter::new();
@@ -30,6 +31,7 @@ let url = router.reverse("snippet-detail", &[("id", "42")]);
 Use hyperlinked fields in serializers to reference related resources:
 
 ```rust
+// File: src/serializers.rs
 use reinhardt::prelude::*;
 use serde::{Serialize, Deserialize};
 
@@ -51,6 +53,7 @@ let owner_url = router.reverse("user-detail", &[("id", &owner_id.to_string())]);
 Create serializers with automatic hyperlink generation:
 
 ```rust
+// File: src/serializers.rs
 use reinhardt::prelude::*;
 use serde::{Serialize, Deserialize};
 
@@ -84,6 +87,7 @@ struct SnippetHyperlinked {
 Include related objects in responses:
 
 ```rust
+// File: src/serializers.rs
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,6 +110,7 @@ struct SnippetWithUser {
 Define URL patterns with route names:
 
 ```rust
+// File: src/config/urls.rs
 use reinhardt::prelude::*;
 
 let mut router = ServerRouter::new();
@@ -129,6 +134,7 @@ router.register_viewset("users", user_viewset);
 Create responses with hyperlinks:
 
 ```rust
+// File: src/serializers.rs
 use reinhardt::prelude::*;
 
 async fn snippet_detail(
@@ -161,6 +167,7 @@ async fn snippet_detail(
 Handle many-to-many relationships:
 
 ```rust
+// File: src/serializers.rs
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,6 +198,7 @@ let tag_urls: Vec<String> = snippet.tags
 Full hyperlinked API implementation:
 
 ```rust
+// File: src/serializers.rs
 use reinhardt::prelude::*;
 use serde::{Serialize, Deserialize};
 

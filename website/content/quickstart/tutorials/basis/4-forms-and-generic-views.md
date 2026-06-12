@@ -31,10 +31,10 @@ Notice what *neither* does: client-side mirror validation. We deliberately do no
 
 ### Flavor 1: DTO field validation in `shared/types.rs`
 
-The `LoginRequest` and `RegisterRequest` DTOs both live in `src/shared/types.rs`. They are normal `serde` payloads, decorated with the **`#[dto]`** attribute macro — `#[dto]` is the convention-driven entry point that wraps `Validate` (and an OpenAPI `Schema`) `derive` behind `cfg(native)` for you, so the per-field `#[validate(...)]` attributes can be written plainly without any `#[cfg_attr(...)]` noise:
+The `LoginRequest` and `RegisterRequest` DTOs both live in `src/shared/types.rs`. They are normal `serde` payloads, decorated with the **`#[dto]`** attribute macro — `#[dto]` is the convention-driven entry point that wraps `Validate` (and an OpenAPI `Schema`) `derive` behind `cfg(server)` for you, so the per-field `#[validate(...)]` attributes can be written plainly without any `#[cfg_attr(...)]` noise:
 
 ```rust
-// src/shared/types.rs
+// File: src/shared/types.rs
 
 use chrono::{DateTime, Utc};
 use reinhardt::dto;
@@ -45,7 +45,7 @@ use serde::{Deserialize, Serialize};
 /// Sent from the WASM client to the server when submitting the login form.
 ///
 /// The `#[dto]` macro emits `Validate` (and an OpenAPI `Schema`)
-/// derive behind `cfg(native)` so the WASM client does not pull in the
+/// derive behind `cfg(server)` so the WASM client does not pull in the
 /// validator-crate machinery — the server is the only side that runs
 /// `request.validate()` before hitting the database.
 #[dto]
@@ -99,13 +99,13 @@ pub struct RegisterRequest {
 Three details are load-bearing:
 
 1. **`#[dto]`** — this single attribute is the convention. It emits `#[cfg_attr(native, derive(Validate, Schema))]` for you so the validator-crate `derive` (and the OpenAPI `Schema` derive) are server-only. On WASM the struct still serialises and deserialises, but it has no `validate()` method and pulls in neither dependency.
-2. **Plain `#[validate(...)]`** on every rule — no `#[cfg_attr(...)]` wrapping needed. `#[dto]` propagates the native-only gating to these attributes too, so the validator crate is not pulled into the browser bundle at all.
+2. **Plain `#[validate(...)]`** on every rule — no `#[cfg_attr(...)]` wrapping needed. `#[dto]` propagates the server-only gating to these attributes too, so the validator crate is not pulled into the browser bundle at all.
 3. **No `must_match` for password confirmation.** Cross-field equality lives in a hand-written helper rather than the derive macro:
 
 ```rust
-// src/shared/types.rs (continued)
+// File: src/shared/types.rs (continued)
 
-#[cfg(native)]
+#[cfg(server)]
 impl RegisterRequest {
 	/// Confirm that `password` and `password_confirmation` match.
 	///
@@ -132,23 +132,23 @@ A server function that consumes `RegisterRequest` first runs `request.validate()
 The other piece we need is *not* about a DTO payload — it is about HTML
 forms: which fields exist, what widgets they render with, and what
 initial runtime state the generated form exposes. That lives in
-`src/shared/forms.rs`, which is gated `#[cfg(native)] pub mod forms;`
+`src/shared/forms.rs`, which is gated `#[cfg(server)] pub mod forms;`
 from `src/shared.rs`:
 
 ```rust
-// src/shared.rs
+// File: src/shared.rs
 
 //! Shared types and utilities
 //!
 //! This module contains types and utilities shared between client and server.
 
-#[cfg(native)]
+#[cfg(server)]
 pub mod forms;
 pub mod types;
 ```
 
 ```rust
-// src/shared/forms.rs
+// File: src/shared/forms.rs
 
 //! Form definitions for examples-tutorial-basis.
 //!
@@ -169,11 +169,11 @@ pub fn create_vote_form() -> StaticFormMetadata {
 		server_fn: submit_vote,
 		method: Post,
 		fields: {
-			question_id: HiddenField {
-				initial: String::new(),
+			question_id: HiddenField<i64> {
+				initial: 0i64,
 			}
-			choice_id: HiddenField {
-				initial: String::new(),
+			choice_id: HiddenField<i64> {
+				initial: 0i64,
 				label: "Choice",
 				required,
 			}
@@ -192,14 +192,14 @@ That is the entire file. It does three things and nothing else:
 3. Returns `StaticFormMetadata` through `form.metadata()`.
 
 This helper never runs in the browser — it cannot, because the `forms`
-module is `#[cfg(native)]`. Its job is to pin the native metadata and
+module is `#[cfg(server)]`. Its job is to pin the native metadata and
 runtime contract to the same `form!` source instead of hand-building a
 second, drifting representation.
 
 A small unit test in the same file shows the metadata shape:
 
 ```rust
-// src/shared/forms.rs (continued)
+// File: src/shared/forms.rs (continued)
 
 #[cfg(test)]
 mod tests {
@@ -223,11 +223,11 @@ mod tests {
 			server_fn: submit_vote,
 			method: Post,
 			fields: {
-				question_id: HiddenField {
-					initial: String::new(),
-				}
-				choice_id: HiddenField {
-					initial: String::new(),
+					question_id: HiddenField<i64> {
+						initial: 0i64,
+					}
+					choice_id: HiddenField<i64> {
+						initial: 0i64,
 					label: "Choice",
 					required,
 				}
@@ -249,7 +249,7 @@ surface that code using the generated form expects.
 
 ## Exposing the Form to the WASM Client
 
-The WASM client cannot call `create_vote_form()` directly — that function exists only when `#[cfg(native)]` is set. But it does not have to: the `form!` macro that drives the voting page (covered in the next section) handles the metadata plumbing internally. When a `form!` block declares `server_fn: submit_vote` + `method: Post`, the macro emits the matching metadata and wires submission to the generated server-function client stub. CSRF for WASM submissions is supplied by that stub through `X-CSRFToken` and verified by middleware before the handler runs; it is no longer modeled as a trailing business argument in `submit_vote`.
+The WASM client cannot call `create_vote_form()` directly — that function exists only when `#[cfg(server)]` is set. But it does not have to: the `form!` macro that drives the voting page (covered in the next section) handles the metadata plumbing internally. When a `form!` block declares `server_fn: submit_vote` + `method: Post`, the macro emits the matching metadata and wires submission to the generated server-function client stub. CSRF for WASM submissions is supplied by that stub through `X-CSRFToken` and verified by middleware before the handler runs; it is no longer modeled as a trailing business argument in `submit_vote`.
 
 This is the convention the reference example settled on. Earlier iterations of the tutorial exposed a `get_vote_form_metadata` server function for this purpose, and that pattern is still viable for one-off bespoke forms — but the typed `form!` macro removes the need from the canonical voting case, so the project no longer ships that handler.
 
@@ -262,7 +262,7 @@ We will walk through the voting form from `src/apps/polls/client/components.rs`.
 ### The voting form, core path
 
 ```rust
-// src/apps/polls/client/components.rs (extract)
+// File: src/apps/polls/client/components.rs (extract)
 
 use crate::shared::types::{ChoiceInfo, QuestionInfo, UserInfo};
 use reinhardt::pages::component::Page;
@@ -304,10 +304,10 @@ pub fn polls_detail(question_id: i64) -> Page {
 		method: Post,
 		success_url: |_form| polls_routes::reverse("results", &[("question_id", qid.to_string().as_str())]),
 		fields: {
-			question_id: HiddenField {
-				initial: qid.to_string(),
-			}
-			choice_id: ChoiceField {
+				question_id: HiddenField<i64> {
+					initial: qid,
+				}
+				choice_id: ChoiceField<i64> {
 				widget: RadioSelect,
 				required,
 				label: "Select your choice",
@@ -358,7 +358,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 	let choice_options_signal = voting_form.choice_id_choices().clone();
 	let voting_form_page = voting_form.into_page();
 
-	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>, load_current_user: Resource<Option<UserInfo>, String>, choice_options_signal: Signal<Vec<(String, String)>>, voting_form_page: Page, question_id: i64| {
+	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>, load_current_user: Resource<Option<UserInfo>, String>, choice_options_signal: Signal<Vec<(i64, String)>>, voting_form_page: Page, question_id: i64| {
 		div { {
 			match load_detail.get() {
 				ResourceState::Loading => page!(|| {
@@ -386,10 +386,10 @@ pub fn polls_detail(question_id: i64) -> Page {
 							}
 						})()
 					} else {
-						let choice_options: Vec<(String, String)> = choices
-							.iter()
-							.map(|c| (c.id.to_string(), c.choice_text.clone()))
-							.collect();
+							let choice_options: Vec<(i64, String)> = choices
+								.iter()
+								.map(|c| (c.id, c.choice_text.clone()))
+								.collect();
 						if choice_options_signal.get_untracked() != choice_options {
 							choice_options_signal.set(choice_options);
 						}
@@ -435,7 +435,7 @@ The block above is doing six things; the cleanest way to internalise `form!` is 
 
 Two behaviours are worth flagging because they are easy to miss:
 
-1. **All fields submit as `String`.** This is tracked upstream as [reinhardt-web#4397](https://github.com/kent8192/reinhardt-web/issues/4397). Once that ships, the matching `#[server_fn]` will be able to accept typed parameters directly. Until then, every server function reachable from `form!` accepts `String` and parses inside the handler — we will see this in the next section.
+1. **Field values keep their declared types.** A `HiddenField<i64>` or `ChoiceField<i64>` submits an `i64`; a `CharField` submits a `String`. The matching `#[server_fn]` signature should use those same types.
 2. **CSRF is transport-level for the WASM path.** The `#[server_fn]` client stub attaches `X-CSRFToken`, and middleware verifies it before the handler runs. Do not add an extra CSRF field to the business signature just to satisfy `form!`.
 
 ### What the generated `voting_form` value gives you
@@ -474,6 +474,7 @@ as `ResourceState::Loading`, `ResourceState::Error`, or
 `ResourceState::Success`. In the detail page we have:
 
 ```rust
+// File: src/apps/polls/client/components.rs
 let load_detail = use_resource(
 	move || async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
 	(),
@@ -495,15 +496,15 @@ that signal from the `ResourceState::Success` branch that already has the
 loaded `Vec<ChoiceInfo>`:
 
 ```rust
-// src/apps/polls/client/components.rs (continued)
+// File: src/apps/polls/client/components.rs (continued)
 
 let choice_options_signal = voting_form.choice_id_choices().clone();
 let voting_form_page = voting_form.into_page();
 
 // Later, inside ResourceState::Success((q, choices)):
-let choice_options: Vec<(String, String)> = choices
+let choice_options: Vec<(i64, String)> = choices
 	.iter()
-	.map(|c| (c.id.to_string(), c.choice_text.clone()))
+	.map(|c| (c.id, c.choice_text.clone()))
 	.collect();
 if choice_options_signal.get_untracked() != choice_options {
 	choice_options_signal.set(choice_options);
@@ -511,8 +512,8 @@ if choice_options_signal.get_untracked() != choice_options {
 voting_form_page.clone()
 ```
 
-The `Vec<ChoiceInfo>` becomes the `Vec<(String, String)>` shape that
-`choices_from: "choices"` expects — value first, label second. The
+The `Vec<ChoiceInfo>` becomes the `Vec<(i64, String)>` shape that
+`ChoiceField<i64>` expects — value first, label second. The
 `get_untracked()` guard avoids re-setting the signal to the same value on
 every render. Keeping `voting_form_page` outside the success branch also
 keeps the radio input state stable across reactive updates.
@@ -520,6 +521,7 @@ keeps the radio input state stable across reactive updates.
 When the user picks a choice and presses Vote, the complete round-trip looks like this:
 
 ```mermaid
+%% Diagram: Connecting Form Metadata + Resource Data: the Voting Lifecycle
 sequenceDiagram
     participant U as User
     participant F as VotingForm (form!)
@@ -528,9 +530,9 @@ sequenceDiagram
     participant W as watch / success_url
 
     U->>F: select choice, click Vote
-    F->>F: collect fields as String
+    F->>F: collect typed field values
     F->>SF: submit_vote(question_id, choice_id)
-    SF->>SF: parse Strings, build VoteRequest
+    SF->>SF: build VoteRequest
     SF->>DB: atomic SELECT choice, UPDATE votes by 1
     DB-->>SF: updated Choice
     SF-->>F: Result of ChoiceInfo or ServerFnError
@@ -540,31 +542,24 @@ sequenceDiagram
 
 The CSRF check happens *before* `submit_vote` runs — it is a middleware concern, not a handler concern.
 
-Here is the matching server function in full, including the `String`-typed workaround commented at the top of the CUD block:
+Here is the matching server function in full:
 
 ```rust
-// src/apps/polls/server_fn.rs
+// File: src/apps/polls/server_fn.rs
 
 /// Submit vote via form! macro
 ///
-/// Wrapper function that accepts individual field values from form! macro's submit.
-/// Converts String field values to the required types and calls the underlying vote function.
+/// Wrapper function that accepts individual typed field values from form!'s
+/// submit path and calls the underlying vote function.
 ///
 /// CSRF is supplied by the `#[server_fn]` client stub through `X-CSRFToken`
 /// and verified by middleware before this handler runs.
 #[server_fn]
 pub async fn submit_vote(
-	question_id: String,
-	choice_id: String,
+	question_id: i64,
+	choice_id: i64,
 	#[inject] db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
-	let question_id: i64 = question_id
-		.parse()
-		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
-	let choice_id: i64 = choice_id
-		.parse()
-		.map_err(|_| ServerFnError::application("Invalid choice_id"))?;
-
 	let request = VoteRequest {
 		question_id,
 		choice_id,
@@ -579,10 +574,10 @@ pub async fn submit_vote(
 
 ## Question CUD via `form!`
 
-The voting form is the headline use case, but the same pattern composes naturally for create / update / delete. The Question CUD handlers in `src/apps/polls/server_fn.rs` show what an authenticated mutation looks like when stitched together with the `String`-based ABI and the session-user DI factory (see Part 3 for the factory definition):
+The voting form is the headline use case, but the same pattern composes naturally for create / update / delete. The Question CUD handlers in `src/apps/polls/server_fn.rs` show what an authenticated mutation looks like when stitched together with typed `form!` fields and the session-user DI factory defined in the same file:
 
 ```rust
-// src/apps/polls/server_fn.rs
+// File: src/apps/polls/server_fn.rs
 
 // =========================================================================
 // Question CUD (Phase 2)
@@ -590,14 +585,12 @@ The voting form is the headline use case, but the same pattern composes naturall
 //
 // All three mutations below follow the same conventions:
 //
-// * Every form field is received as `String` because `form!` currently
-//   serializes all fields as strings on submit. This is tracked upstream as
-//   reinhardt-web#4397 — once that ships, the `String` + `.parse()` dance
-//   below can be replaced with the typed signatures shown next to each
-//   handler. CSRF is handled by the generated server-function client stub
-//   and middleware, so it is not part of these business signatures.
+// * `form!` submits field values with the types declared by the field
+//   definitions, so `HiddenField<i64>` reaches these handlers as `i64`.
+//   CSRF is handled by the generated server-function client stub and
+//   middleware, so it is not part of these business signatures.
 // * Authentication is required: `Depends<Result<User, SessionError>>` is
-//   resolved by the request-scoped factory in `apps::polls::di` and
+//   resolved by the request-scoped factory in this module and
 //   exposes `.as_ref().map_err(ServerFnError::from)?` for the 401/403/500
 //   surface.
 // * For `update_question` and `delete_question`, ownership is enforced by
@@ -605,13 +598,6 @@ The voting form is the headline use case, but the same pattern composes naturall
 //   ownership returns a 403.
 
 /// Create a new question owned by the current user.
-///
-/// Ideal implementation (without the form! String workaround tracked in #4397):
-///   pub async fn create_question(
-///       question_text: String,
-///       #[inject] _db: reinhardt::DatabaseConnection,
-///       #[inject] session_user: Depends<Result<User, SessionError>>,
-///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
 #[server_fn]
 pub async fn create_question(
 	question_text: String,
@@ -644,10 +630,10 @@ pub async fn create_question(
 }
 ```
 
-`(*session_user).as_ref().map_err(ServerFnError::from)?` is the shared 401/403/500 gate, layered on the session-user DI factory in `apps::polls::di`. The factory does the "load user_id from session, fetch the row, classify Anonymous / active / Inactive / Unavailable" dance once per request and returns a `Result<User, SessionError>`; each authenticated handler just borrows the result and converts the error via `From<&SessionError>`:
+`(*session_user).as_ref().map_err(ServerFnError::from)?` is the shared 401/403/500 gate, layered on the session-user DI factory in `apps::polls::server_fn`. The factory does the "load user_id from session, fetch the row, classify Anonymous / active / Inactive / Unavailable" dance once per request and returns a `Result<User, SessionError>`; each authenticated handler just borrows the result and converts the error via `From<&SessionError>`:
 
 ```rust
-// src/apps/polls/di.rs (extract)
+// File: src/apps/polls/server_fn.rs (extract)
 
 /// Error variants for the session-based user lookup factory.
 ///
@@ -697,19 +683,12 @@ async fn session_user_factory(
 `update_question` and `delete_question` follow the same shape; the only difference is the ownership check after loading the row:
 
 ```rust
-// src/apps/polls/server_fn.rs (continued)
+// File: src/apps/polls/server_fn.rs (continued)
 
 /// Update a question's text. Only the author may update.
-///
-/// Ideal implementation (without the form! String workaround tracked in #4397):
-///   pub async fn update_question(
-///       question_id: i64,
-///       question_text: String,
-///       ...
-///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
 #[server_fn]
 pub async fn update_question(
-	question_id: String,
+	question_id: i64,
 	question_text: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
@@ -717,10 +696,6 @@ pub async fn update_question(
 	use crate::apps::polls::models::Question;
 
 	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
-
-	let question_id: i64 = question_id
-		.parse()
-		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
 
 	let trimmed = question_text.trim();
 	if trimmed.is_empty() || trimmed.len() > 200 {
@@ -756,25 +731,15 @@ pub async fn update_question(
 }
 
 /// Delete a question. Only the author may delete.
-///
-/// Ideal implementation (without the form! String workaround tracked in #4397):
-///   pub async fn delete_question(
-///       question_id: i64,
-///       ...
-///   ) -> std::result::Result<(), ServerFnError> { ... }
 #[server_fn]
 pub async fn delete_question(
-	question_id: String,
+	question_id: i64,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<(), ServerFnError> {
 	use crate::apps::polls::models::Question;
 
 	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
-
-	let question_id: i64 = question_id
-		.parse()
-		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
 
 	let manager = Question::objects();
 	let question = manager
@@ -800,14 +765,14 @@ pub async fn delete_question(
 }
 ```
 
-The "ideal implementation" comments in the source are not aspirational decoration — they are the literal signatures the handlers will collapse to once `form!` ships typed-field serialisation (#4397). The intent is that the only thing that needs to change in this file then is the parameter types and the deletion of the `.parse()` lines; the rest of the body, the session check, and the ownership check stay put.
+The typed signatures are the implementation now: ID fields arrive as `i64`, text fields remain `String`, and CSRF stays in the generated server-function transport rather than the business signature.
 
 ### What the client side of CUD looks like
 
 The matching client pages are short. Here is the "new question" page — it is the entire pattern in one block:
 
 ```rust
-// src/apps/polls/client/components.rs (extract)
+// File: src/apps/polls/client/components.rs (extract)
 
 /// New question page (`/polls/new/`).
 pub fn question_new() -> Page {
@@ -889,11 +854,11 @@ Two things make this shorter than the voting form:
 Choices have no author field of their own; ownership is derived from the parent question. The `create_choice` server function shows the composition pattern with the shared `require_question_author` helper:
 
 ```rust
-// src/apps/polls/server_fn.rs
+// File: src/apps/polls/server_fn.rs
 
 /// Internal helper: load a Question by id and ensure the given user is its
 /// author. Returns 401/403/404 as appropriate.
-#[cfg(native)]
+#[cfg(server)]
 async fn require_question_author(
 	question_id: i64,
 	user: &User,
@@ -921,7 +886,7 @@ async fn require_question_author(
 /// choices.
 #[server_fn]
 pub async fn create_choice(
-	question_id: String,
+	question_id: i64,
 	choice_text: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
@@ -929,9 +894,6 @@ pub async fn create_choice(
 	use crate::apps::polls::models::Choice;
 
 	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
-	let question_id: i64 = question_id
-		.parse()
-		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
 	let question = require_question_author(question_id, user).await?;
 
 	let trimmed = choice_text.trim();
@@ -960,11 +922,10 @@ pub async fn create_choice(
 Read this top-to-bottom and the layering becomes obvious:
 
 1. `(*session_user).as_ref().map_err(ServerFnError::from)?` — authentication, resolved via the `Depends<Result<User, SessionError>>` DI factory.
-2. `question_id.parse()?` — workaround for the `String`-only ABI.
-3. `require_question_author(question_id, &user).await?` — authorization, *through the parent row*.
-4. Local content validation (length).
-5. `Choice::build() … .finish()` — typed model construction (from Part 2).
-6. `Choice::objects().create(...).await?` — the actual mutation.
+2. `require_question_author(question_id, &user).await?` — authorization, *through the parent row*.
+3. Local content validation (length).
+4. `Choice::build() … .finish()` — typed model construction (from Part 2).
+5. `Choice::objects().create(...).await?` — the actual mutation.
 
 The pattern repeats for `update_choice` (load choice → look up parent question → check author) and `delete_choice`. Each tiered check returns its own `ServerFnError::server(status, message)`, which surfaces directly on the client through the form's `error` signal. There is no shared exception class to design or middleware to register — the server function simply returns the error, and the `form!` macro plumbs it to `form.error()`.
 
@@ -984,9 +945,9 @@ If you absolutely need a lower-level form-handling path — multi-step wizards w
 
 You now have everything Part 4 set out to deliver:
 
-- DTO field-level validation lives in `src/shared/types.rs`, with `#[dto]` emitting `derive(Validate)` (and OpenAPI `Schema`) behind `cfg(native)` so the WASM bundle stays small.
+- DTO field-level validation lives in `src/shared/types.rs`, with `#[dto]` emitting `derive(Validate)` (and OpenAPI `Schema`) behind `cfg(server)` so the WASM bundle stays small.
 - The voting form's metadata is emitted by the `form!` macro; the server-only `create_vote_form()` in `src/shared/forms.rs` uses the same `form!` source with `use_form(&form).build()` so metadata and runtime-state tests stay tied to the generated contract.
-- The `form!` macro in `src/apps/polls/client/components.rs` declares the UI, dispatches to `submit_vote`, serialises every field as `String`, lets the generated server-function client stub handle CSRF transport, and surfaces success/error reactively through the generated `loading()` / `error()` signals and matching `watch` blocks.
+- The `form!` macro in `src/apps/polls/client/components.rs` declares the UI, dispatches to `submit_vote`, preserves typed field values, lets the generated server-function client stub handle CSRF transport, and surfaces success/error reactively through the generated `loading()` / `error()` signals and matching `watch` blocks.
 - Question and Choice CUD reuse the same `form!` + `#[server_fn]` shape, composing `(*session_user).as_ref().map_err(ServerFnError::from)?` (authentication, via the `Depends<Result<User, SessionError>>` DI factory) and `require_question_author` (authorization) on top of typed model builders.
 - "Generic views" are not a separate concept in the pages template — they are the page factory functions you already have, glued together with the reactive primitives above.
 
