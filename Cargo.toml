@@ -723,6 +723,13 @@ aquamarine = "0.6.0"
 #   topiary-tree-sitter-facade = "0.7.3"
 #   topiary-web-tree-sitter-sys = "0.7.3"
 [patch.crates-io]
+# Workaround for smithy-lang/smithy-rs#4696 (tracked in reinhardt-web#5274).
+# Remove this patch when aws-runtime publishes a release with an explicit
+# event-stream signer cast.
+#
+# Ideal implementation (without workaround):
+#   aws-runtime = "1.7.4"
+aws-runtime = { path = "vendor/aws-runtime" }
 topiary-tree-sitter-facade = { path = "vendor/topiary-tree-sitter-facade" }
 topiary-web-tree-sitter-sys = { path = "vendor/topiary-web-tree-sitter-sys" }
 
