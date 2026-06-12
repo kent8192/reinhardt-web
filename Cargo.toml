@@ -726,6 +726,13 @@ aquamarine = "0.6.0"
 topiary-tree-sitter-facade = { path = "vendor/topiary-tree-sitter-facade" }
 topiary-web-tree-sitter-sys = { path = "vendor/topiary-web-tree-sitter-sys" }
 
+# Workaround for smithy-lang/smithy-rs#4696 (tracked in reinhardt-web#5274).
+# Remove this patch when aws-runtime publishes the explicit event-stream signer cast.
+#
+# Ideal implementation (without workaround):
+#   aws-runtime resolves from crates.io without a local patch.
+aws-runtime = { path = "vendor/aws-runtime" }
+
 # TODO: Monitor and upgrade when upstream fixes num-bigint-dig v0.8.x future incompatibility
 # Issue: https://github.com/rust-lang/rust/issues/120192
 # Current: v0.8.6 via sqlx -> sqlx-mysql -> rsa v0.9.x
