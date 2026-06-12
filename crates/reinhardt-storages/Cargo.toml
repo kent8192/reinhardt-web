@@ -18,16 +18,13 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 reinhardt-conf = { workspace = true, features = ["settings"] }
 reinhardt-core = { workspace = true }
+reinhardt-providers = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
 bytes = { workspace = true, optional = true }
 hmac = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 percent-encoding = { version = "2.3", optional = true }
-
-# S3
-aws-sdk-s3 = { version = "1", optional = true }
-aws-config = { version = "1", optional = true }
 
 # GCS
 google-cloud-storage = { version = "1.12.0", optional = true }
@@ -45,7 +42,6 @@ tempfile = "3"
 rstest = "0.23"
 uuid = { version = "1", features = ["v4"] }
 rand = "0.8"
-aws-config = { version = "1", features = ["behavior-version-latest"] }
 serial_test = "3"
 testcontainers = { workspace = true }
 reqwest = { workspace = true }
@@ -53,7 +49,7 @@ toml = { workspace = true }
 
 [features]
 default = ["s3", "local"]
-s3 = ["aws-sdk-s3", "aws-config"]
+s3 = ["dep:reinhardt-providers", "reinhardt-providers/aws"]
 gcs = [
   "google-cloud-storage",
   "google-cloud-auth",
