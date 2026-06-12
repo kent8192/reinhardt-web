@@ -1,20 +1,21 @@
 //! Server-side URL configuration for the {{ app_name }} application.
 //!
 //! Per-app routers are NOT aggregated automatically — endpoints added here
-//! become reachable only after `config/urls.rs` wires this function in
-//! (e.g. via `router.mount("/{{ app_name }}/", server_url_patterns())` or
-//! `router.server(|s| s.server_fn(...))` for individual server functions).
+//! become reachable only after `config/urls.rs` aggregates
+//! `crate::apps::{{ app_name }}::urls::server_url_patterns()`.
 //!
 //! # Placeholder note
 //!
 //! The freshly generated function returns an empty `ServerRouter`. Register
-//! views/endpoints here:
+//! views/endpoints and server-function markers here:
 //!
 //! ```rust,ignore
-//! use crate::apps::{{ app_name }}::views;
+//! use crate::apps::{{ app_name }}::{server_fn, views};
+//! use reinhardt::pages::server_fn::ServerFnRouterExt;
 //!
 //! ServerRouter::new()
 //!     .endpoint(views::index)
+//!     .server_fn(server_fn::some_fn::marker)
 //! ```
 
 use reinhardt::ServerRouter;

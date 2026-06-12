@@ -20,6 +20,7 @@ hmac = { workspace = true, optional = true }
 reqwest = { workspace = true }
 sha2 = { workspace = true, optional = true }
 thiserror = { workspace = true }
+time = { workspace = true, optional = true }
 url = { workspace = true }
 
 [features]
@@ -32,6 +33,7 @@ aws = [
   "chrono",
   "hmac",
   "sha2",
+  "time",
 ]
 gcp = []
 

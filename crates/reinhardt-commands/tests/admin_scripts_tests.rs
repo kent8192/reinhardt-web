@@ -525,6 +525,41 @@ async fn test_startapp_restful_style() {
 	let cmd = StartAppCommand;
 	let result = cmd.execute(&ctx).await;
 	assert!(result.is_ok(), "RESTful app creation failed");
+
+	let models_rs = env.read_file(&format!("src/apps/{app_name}/models.rs"));
+	assert!(
+		models_rs.contains("Replace this placeholder with the models for the app."),
+		"RESTful app models.rs must be explicit that users replace the placeholder:\n{models_rs}"
+	);
+	assert!(
+		!models_rs.contains("#[user("),
+		"RESTful app models.rs must not include a generic auth User example:\n{models_rs}"
+	);
+	assert!(
+		models_rs.contains("use reinhardt::prelude::*;"),
+		"RESTful app models.rs example must import the prelude so #[model] resolves:\n{models_rs}"
+	);
+	assert!(
+		models_rs.contains("use reinhardt::{Deserialize, Serialize};"),
+		"RESTful app models.rs example must avoid undeclared direct serde dependency:\n{models_rs}"
+	);
+	let model_attr = "#[model(app_label = \"api_app\", table_name = \"api_app_items\")]";
+	assert!(
+		models_rs.contains(model_attr),
+		"RESTful app models.rs example must include the generated app label:\n{models_rs}"
+	);
+	assert!(
+		models_rs.contains("pub struct ApiAppItem"),
+		"RESTful app models.rs example must render the app-specific type name:\n{models_rs}"
+	);
+	let model_pos = models_rs.find(model_attr).expect("model attr present");
+	let derive_pos = models_rs
+		.find("#[derive(Serialize, Deserialize)]")
+		.expect("derive attr present");
+	assert!(
+		model_pos < derive_pos,
+		"RESTful app models.rs example must show #[model] before #[derive]:\n{models_rs}"
+	);
 }
 
 #[serial]

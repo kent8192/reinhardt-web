@@ -6,22 +6,19 @@
 //! - Forms and generic views
 //! - Admin panel integration
 
-#[cfg(native)]
+#[cfg(server)]
 use reinhardt::app_config;
 
-#[cfg(native)]
+#[cfg(server)]
 pub mod admin;
-#[cfg(wasm)]
+#[cfg(client)]
 pub mod client;
-#[cfg(native)]
-pub mod di;
-#[cfg(native)]
 pub mod models;
-#[cfg(native)]
+#[cfg(server)]
 pub mod serializers;
 pub mod server_fn;
 pub mod urls;
 
-#[cfg(native)]
+#[cfg(server)]
 #[app_config(name = "polls", label = "polls")]
 pub struct PollsConfig;

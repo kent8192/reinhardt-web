@@ -15,6 +15,7 @@ Learn how to handle HTTP requests and responses in Reinhardt.
 Reinhardt's `Request` object provides access to HTTP request data:
 
 ```rust
+// File: src/views.rs
 use reinhardt::prelude::*;
 use reinhardt::ViewResult;
 use reinhardt::{get, Method, Response};
@@ -49,6 +50,7 @@ async fn my_view(request: Request) -> ViewResult<Response> {
 Create responses using the builder pattern:
 
 ```rust
+// File: src/views.rs
 use reinhardt::prelude::*;
 use serde_json::json;
 
@@ -79,6 +81,7 @@ let response = Response::ok()
 Reinhardt provides convenience methods for common status codes:
 
 ```rust
+// File: src/views.rs
 // 200 OK
 Response::ok()
     .with_json(&data)?
@@ -110,6 +113,7 @@ Response::internal_server_error()
 Reinhardt provides convenient helper methods on the `Request` type for parsing request data:
 
 ```rust
+// File: src/views.rs
 use reinhardt::prelude::*;
 use reinhardt::ViewResult;
 use reinhardt::post;
@@ -153,6 +157,7 @@ async fn create_snippet(request: Request) -> ViewResult<Response> {
 **Error handling examples:**
 
 ```rust
+// File: src/views.rs
 // Explicit error handling
 let data: CreateSnippet = match request.json() {
     Ok(d) => d,
@@ -165,6 +170,7 @@ let data: CreateSnippet = match request.json() {
 ```
 
 ```rust
+// File: src/views.rs
 // Using `?` operator (recommended - cleaner)
 let data: CreateSnippet = request.json()?;
 // Automatically returns error response (400 Bad Request) on failure
@@ -185,6 +191,7 @@ let data: CreateSnippet = request.json()?;
 For special parsing requirements, you can manually parse the request body:
 
 ```rust
+// File: src/views.rs
 #[post("/snippets/", name = "create_snippet_manual")]
 async fn create_snippet_manual(request: Request) -> ViewResult<Response> {
     // Manual parsing for advanced use cases
@@ -206,6 +213,7 @@ async fn create_snippet_manual(request: Request) -> ViewResult<Response> {
 Reinhardt supports multiple content types:
 
 ```rust
+// File: src/views.rs
 use reinhardt::prelude::*;
 use reinhardt::ViewResult;
 use reinhardt::post;
@@ -244,6 +252,7 @@ async fn handle_request(mut request: Request) -> ViewResult<Response> {
 Handle errors gracefully:
 
 ```rust
+// File: src/views.rs
 use reinhardt::prelude::*;
 use reinhardt::ViewResult;
 use reinhardt::post;
@@ -276,6 +285,7 @@ async fn safe_view(request: Request) -> ViewResult<Response> {
 Full request/response handling using Reinhardt's helper methods:
 
 ```rust
+// File: src/views.rs
 use reinhardt::prelude::*;
 use reinhardt::ViewResult;
 use reinhardt::endpoint;

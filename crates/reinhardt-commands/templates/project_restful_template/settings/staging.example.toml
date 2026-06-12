@@ -1,7 +1,7 @@
 # Staging Environment Settings for {{ project_name }}
 #
 # Copy this file to staging.toml and fill in the values for your staging environment.
-# staging.toml is gitignored — never commit it.
+# Do not commit real secrets. Add a project-specific ignore rule for private copies.
 #
 # Uncomment and adjust the settings below as needed.
 
@@ -10,7 +10,7 @@
 # secret_key = "uncomment-this-line-and-replace-with-a-long-random-string"
 # allowed_hosts = ["staging.example.com"]
 
-# [database]
+# [core.databases.default]
 # engine = "postgresql"
 # host = "staging-db.example.com"
 # port = 5432

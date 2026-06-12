@@ -6,11 +6,11 @@
 //! (fixation prevention), and `user_id` is persisted in the session map.
 
 use crate::shared::types::UserInfo;
-#[cfg(native)]
+#[cfg(server)]
 use crate::shared::types::{LoginRequest, RegisterRequest};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
-#[cfg(native)]
+#[cfg(server)]
 use {
 	crate::apps::users::models::{AuthUserManager, User},
 	reinhardt::BaseUser,

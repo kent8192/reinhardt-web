@@ -45,6 +45,7 @@ rand = { workspace = true, optional = true }
 aws-config = { version = "1.5", optional = true }
 aws-sdk-secretsmanager = { version = "1.52", optional = true }
 aws-smithy-runtime = { version = "1.9", optional = true }
+time = { workspace = true, optional = true }
 azure_identity = { version = "0.29.0", optional = true }
 azure_security_keyvault_secrets = { version = "0.8.0", optional = true }
 futures = { workspace = true, optional = true }
@@ -68,7 +69,7 @@ async = ["async-trait", "tokio"]
 dynamic-redis = ["async", "redis"]
 dynamic-database = ["async", "reinhardt-query", "sqlx"]
 vault = ["async", "reqwest"]
-aws-secrets = ["async", "aws-config", "aws-sdk-secretsmanager", "aws-smithy-runtime"]
+aws-secrets = ["async", "aws-config", "aws-sdk-secretsmanager", "aws-smithy-runtime", "time"]
 azure-keyvault = ["async", "azure_identity", "azure_security_keyvault_secrets", "futures"]
 secret-rotation = ["async", "rand"]
 encryption = ["aes-gcm", "pbkdf2", "rand", "sha2"]

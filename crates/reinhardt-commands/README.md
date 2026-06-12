@@ -479,10 +479,10 @@ reinhardt-admin startproject myproject --template pages
 reinhardt-admin startproject myproject --features standard,admin --no-interactive
 ```
 
-Interactive terminals can choose the project type, Reinhardt version, and
-feature flags during `startproject`. Use `--reinhardt-version`,
-`--feature`, `--features`, `--default-features`, and `--no-interactive`
-for reproducible scripts.
+Pass the project type and dependency selection explicitly. Use
+`--reinhardt-version`, `--feature`, `--features`, `--default-features`, and
+`--no-interactive` for reproducible scripts instead of relying on a
+`startproject` wizard.
 
 Existing projects can update their `reinhardt` dependency through the same
 selection flow:

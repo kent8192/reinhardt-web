@@ -29,7 +29,7 @@
 
 // Native-only: the tutorial's `User` model and the `reinhardt-auth` types
 // it pulls in (sqlx, etc.) do not build for `wasm32-unknown-unknown`.
-#![cfg(native)]
+#![cfg(server)]
 
 use examples_tutorial_basis::apps::users::models::User;
 use reinhardt::BaseUser;
