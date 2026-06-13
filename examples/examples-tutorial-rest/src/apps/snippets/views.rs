@@ -68,8 +68,10 @@ pub async fn create(
 
 	// `Snippet::build()` is the macro-generated typestate builder (see
 	// `#[model]` on `Snippet`). `id` defaults to `0`, which `create_with_conn`
-	// recognizes as "auto-increment" and omits from the INSERT statement, and
-	// `created_at` is populated by the database via `auto_now_add = true`.
+	// recognizes as "auto-increment" and omits from the INSERT statement.
+	// `created_at` is stamped client-side with `Utc::now()` by the builder
+	// because the field is declared `auto_now_add = true`, so it is sent as a
+	// concrete value in the INSERT.
 	let snippet = Snippet::build()
 		.title(serializer.title.clone())
 		.code(serializer.code.clone())
