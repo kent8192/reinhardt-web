@@ -8,6 +8,7 @@
 
 use reinhardt::app_config;
 
+pub mod di;
 pub mod models;
 pub mod serializers;
 pub mod urls;
