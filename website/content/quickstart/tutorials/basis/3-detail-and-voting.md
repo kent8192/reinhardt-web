@@ -158,7 +158,7 @@ async fn vote_internal(
             .map_err(|e| anyhow::anyhow!(e.to_string()))?
             .ok_or_else(|| anyhow::anyhow!("Choice not found"))?;
 
-        if choice.question_id() != request.question_id {
+        if *choice.question_id() != request.question_id {
             return Err(anyhow::anyhow!("Choice does not belong to question"));
         }
 
