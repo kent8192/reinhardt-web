@@ -30,11 +30,14 @@ pub fn url_patterns() -> ServerRouter {
 		// Function-based endpoints (Tutorial 1-5)
 		// - GET    /snippets/        — views::list
 		// - POST   /snippets/        — views::create
+		// - GET    /snippets/config/ — views::config (registered before
+		//   the `{id}` route below so this literal path is matched first)
 		// - GET    /snippets/{id}/   — views::retrieve
 		// - PUT    /snippets/{id}/   — views::update
 		// - DELETE /snippets/{id}/   — views::delete
 		.endpoint(views::list)
 		.endpoint(views::create)
+		.endpoint(views::config)
 		.endpoint(views::retrieve)
 		.endpoint(views::update)
 		.endpoint(views::delete)

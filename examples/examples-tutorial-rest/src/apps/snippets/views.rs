@@ -24,8 +24,57 @@ use reinhardt::{delete, get, post, put};
 // `serializer.validate()?` call below — hence the `use reinhardt::Validate`
 // import above is intentional.
 
+use super::di::{ConfigError, SnippetListConfig};
 use super::models::Snippet;
 use super::serializers::{SnippetResponse, SnippetSerializer};
+
+/// Snippet listing configuration endpoint.
+///
+/// Demonstrates the `Depends<Result<T, E>>` form (the `DependsResult<T, E>`
+/// type alias expands to this, but route handlers must spell it out — see
+/// below): the `checked_list_config` factory in `di.rs` returns
+/// `Result<SnippetListConfig, ConfigError>`, so its registry key
+/// (`TypeId::of::<Result<SnippetListConfig, ConfigError>>()`) is distinct
+/// from the plain `SnippetListConfig` factory's key
+/// (`TypeId::of::<SnippetListConfig>()`) even though the success type is
+/// identical.
+///
+/// `#[get]` resolves `#[inject]` parameters of the literal form
+/// `Depends<T>` via `resolve_from_registry::<T>()` (no `T: Injectable`
+/// bound — see `crates/reinhardt-core/macros/src/routes_registration.rs`).
+/// That single-generic-argument match does not recognise the
+/// `DependsResult<T, E>` / `DependsOption<T>` sugar aliases (those are
+/// resolved by `#[injectable]` struct fields and `#[injectable_factory]`
+/// parameters instead), so route handlers spell out
+/// `Depends<Result<T, E>>` to take this path.
+///
+/// Registered before `retrieve` (`/snippets/{id}/`) in `urls.rs` so this
+/// literal `/snippets/config/` path is matched first.
+///
+/// GET /snippets/config/
+/// Success response: 200 OK with `{ "max_page_size": <usize> }`
+/// Error response: 503 Service Unavailable with `{ "error": <message> }`
+#[get("/snippets/config/", name = "snippets-config")]
+pub async fn config(
+	#[inject] cfg: Depends<Result<SnippetListConfig, ConfigError>>,
+) -> ViewResult<Response> {
+	// `Depends<Result<T, E>>` derefs to `Result<T, E>`. `.as_ref()` matches on
+	// `Result<&SnippetListConfig, &ConfigError>` without consuming `cfg`.
+	match (*cfg).as_ref() {
+		Ok(cfg) => {
+			let body = json::to_string(&json!({ "max_page_size": cfg.max_page_size }))?;
+			Ok(Response::new(StatusCode::OK)
+				.with_header("Content-Type", "application/json")
+				.with_body(body))
+		}
+		Err(ConfigError(msg)) => {
+			let body = json::to_string(&json!({ "error": msg }))?;
+			Ok(Response::new(StatusCode::SERVICE_UNAVAILABLE)
+				.with_header("Content-Type", "application/json")
+				.with_body(body))
+		}
+	}
+}
 
 /// List all snippets
 ///
