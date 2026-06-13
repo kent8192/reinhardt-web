@@ -7,12 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.2.0-rc.5...reinhardt-pages@v0.2.0-rc.6) - 2026-06-13
-
-### Fixed
-
-- *(commands)* align startproject scaffold defaults
-
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.3...reinhardt-pages@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-pages` for the Reinhardt 0.2.0 line. This
@@ -192,6 +186,8 @@ RC entries remain below as detailed history.
   alive for the Resource's lifetime, and applies the `defer_yield` microtask
   deferral (#3316) on the dependency-driven path as well, not only the
   fetch-once path.
+
+- *(commands)* align startproject scaffold defaults
 
 ### Performance
 

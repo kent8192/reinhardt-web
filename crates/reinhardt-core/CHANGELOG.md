@@ -7,17 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.2.0-rc.5...reinhardt-core@v0.2.0-rc.6) - 2026-06-13
-
-### Added
-
-- *(macros)* expose model info companions to wasm
-
-### Documentation
-
-- *(release)* finalize 0.2.0 changelog
-- *(release)* refine 0.2.0 changelog narrative
-
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.3...reinhardt-core@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-core` for the Reinhardt 0.2.0 line. This
@@ -52,6 +41,8 @@ RC entries remain below as detailed history.
   invalidation by a hidden Layout-timing Effect that subscribes to the deps.
 - `impl Trackable for Signal<T>` and `impl Trackable for Memo<T>`, enabling
   these primitives to participate in hook deps tuples.
+
+- *(macros)* expose model info companions to wasm
 
 ### Removed
 
