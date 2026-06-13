@@ -27,8 +27,8 @@ use examples_tutorial_basis::apps::polls::server_fn::{
 };
 use examples_tutorial_basis::apps::users::server_fn::current_user;
 use examples_tutorial_basis::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
+use gloo_timers::future::TimeoutFuture;
 use reinhardt::pages::component::{Page, PageExt};
-use reinhardt::pages::prelude::defer_yield;
 use reinhardt::pages::server_fn::ServerFnError;
 use reinhardt::pages::{Element as DomElement, document};
 use reinhardt::test::msw::MockServiceWorker;
@@ -131,10 +131,15 @@ async fn await_selector(selector: &str) -> DomElement {
 		if let Some(element) = doc.query_selector(selector).expect("query selector") {
 			return element;
 		}
-		defer_yield().await;
+		TimeoutFuture::new(50).await;
 	}
 
-	panic!("timed out waiting for selector `{selector}`");
+	let root_html = doc
+		.query_selector("#polls-test-root")
+		.expect("query test root")
+		.map(|root| root.as_web_sys().inner_html())
+		.unwrap_or_else(|| "<missing #polls-test-root>".to_string());
+	panic!("timed out waiting for selector `{selector}` in #polls-test-root DOM: {root_html}");
 }
 
 // ============================================================================
@@ -163,8 +168,8 @@ fn test_polls_index_has_container() {
 	let view = polls_index();
 	let html = view.render_to_string();
 	assert!(
-		html.contains("container"),
-		"Should have Bootstrap container class"
+		html.contains("max-w-4xl") && html.contains("mx-auto"),
+		"Should have the current centered page container classes"
 	);
 }
 
@@ -473,8 +478,7 @@ async fn test_polls_detail_keeps_clicked_radio_checked() {
 		.expect("choice radio should be an input element");
 	input.click();
 
-	defer_yield().await;
-	defer_yield().await;
+	TimeoutFuture::new(50).await;
 
 	let current_input = document()
 		.query_selector(selector)

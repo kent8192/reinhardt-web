@@ -203,7 +203,7 @@ async fn test_register_returns_mocked_user() {
 async fn test_register_surfaces_validation_error() {
 	let worker = MockServiceWorker::new();
 	worker.handle_server_fn::<register::marker>(|_args| {
-		Err(ServerFnError::application("Username is already taken"))
+		Err(ServerFnError::server(400, "Username is already taken"))
 	});
 	worker.start().await;
 
@@ -215,13 +215,14 @@ async fn test_register_surfaces_validation_error() {
 	.await
 	.expect_err("expected validation error");
 	match err {
-		ServerFnError::Application(msg) => {
+		ServerFnError::Server { status, message } => {
+			assert_eq!(status, 400, "expected HTTP 400 status");
 			assert_eq!(
-				msg, "Username is already taken",
+				message, "Username is already taken",
 				"expected mocked validation message to propagate verbatim"
 			);
 		}
-		other => panic!("expected ServerFnError::Application, got: {other:?}"),
+		other => panic!("expected ServerFnError::Server, got: {other:?}"),
 	}
 }
 
