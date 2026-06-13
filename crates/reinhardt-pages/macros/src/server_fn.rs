@@ -23,24 +23,49 @@ use crate::crate_paths::{
 	get_reinhardt_pages_crate, get_reinhardt_pages_crate_info,
 };
 
-/// Extract the inner type `T` from `Depends<T>`.
+/// Extract the inner type from a Depends-family wrapper.
 ///
-/// Returns `Some(T)` if the type is `Depends<T>`, `None` otherwise.
+/// Recognises three shapes and returns the type that should be passed to
+/// `Depends::<...>::resolve_from_registry`:
+///
+/// - `Depends<T>` → `T`
+/// - `DependsResult<T, E>` → `Result<T, E>`
+/// - `DependsOption<T>` → `Option<T>`
+///
 /// Mirrors the helper in `crates/reinhardt-core/macros/src/routes_registration.rs`.
 /// Keep this implementation in sync with that file; the two proc-macro crates
 /// cannot share code directly without introducing a new non-proc-macro helper
 /// crate, and the helper is small enough that duplication is preferred.
-fn extract_depends_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
-	if let syn::Type::Path(type_path) = ty {
-		let last_segment = type_path.path.segments.last()?;
-		if last_segment.ident == "Depends"
-			&& let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
-			&& args.args.len() == 1
-			&& let syn::GenericArgument::Type(inner) = args.args.first()?
-		{
-			return Some(inner);
-		}
+fn extract_depends_inner_type(ty: &syn::Type) -> Option<syn::Type> {
+	let syn::Type::Path(type_path) = ty else {
+		return None;
+	};
+	let last_segment = type_path.path.segments.last()?;
+	let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments else {
+		return None;
+	};
+
+	if last_segment.ident == "Depends"
+		&& args.args.len() == 1
+		&& let syn::GenericArgument::Type(inner) = args.args.first()?
+	{
+		return Some(inner.clone());
 	}
+
+	if last_segment.ident == "DependsResult" && args.args.len() == 2 {
+		let mut iter = args.args.iter();
+		let t = iter.next()?;
+		let e = iter.next()?;
+		return Some(syn::parse_quote! { ::core::result::Result<#t, #e> });
+	}
+
+	if last_segment.ident == "DependsOption"
+		&& args.args.len() == 1
+		&& let Some(t) = args.args.first()
+	{
+		return Some(syn::parse_quote! { ::core::option::Option<#t> });
+	}
+
 	None
 }
 

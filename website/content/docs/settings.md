@@ -67,10 +67,11 @@ cp production.example.toml production.toml
 `settings/base.toml`:
 
 ```toml
+[core]
 debug = false
 secret_key = "your-secret-key-here"
 
-[databases.default]
+[core.databases.default]
 engine = "postgresql"
 host = "localhost"
 port = 5432
@@ -82,10 +83,11 @@ password = "change-this"
 `settings/local.toml`:
 
 ```toml
+[core]
 debug = true
 secret_key = "development-secret-key"
 
-[databases.default]
+[core.databases.default]
 name = "mydb_dev"
 password = "local-password"
 ```
@@ -115,10 +117,8 @@ pub fn get_settings() -> ProjectSettings {
 		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
 		.add_source(TomlFileSource::new(settings_dir.join("base.toml")))
 		.add_source(TomlFileSource::new(settings_dir.join(format!("{}.toml", profile_str))))
-		.build()
+		.build_composed::<ProjectSettings>()
 		.expect("Failed to build settings")
-		.into_typed()
-		.expect("Failed to convert settings")
 }
 ```
 
@@ -206,19 +206,21 @@ You can choose between two environment variable sources depending on your needs:
 
 ```toml
 # base.toml
+[core]
 debug = false
 secret_key = "base-secret"
 
-[databases.default]
+[core.databases.default]
 host = "localhost"
 port = 5432
 ```
 
 ```toml
 # local.toml
+[core]
 debug = true
 
-[databases.default]
+[core.databases.default]
 host = "127.0.0.1"
 ```
 
@@ -231,16 +233,16 @@ export REINHARDT_DATABASE_PORT=5433
 
 - `debug = true` (local.toml overrides base.toml)
 - `secret_key = "base-secret"` (not defined in local.toml, uses base.toml value)
-- `databases.default.host = "127.0.0.1"` (local.toml overrides base.toml)
-- `databases.default.port = 5432` (base.toml overrides environment variable because TOML
+- `core.databases.default.host = "127.0.0.1"` (local.toml overrides base.toml)
+- `core.databases.default.port = 5432` (base.toml overrides environment variable because TOML
   has higher priority than LowPriorityEnvSource)
 
 **Result if using EnvSource instead:**
 
 - `debug = true` (local.toml value)
 - `secret_key = "base-secret"` (base.toml value)
-- `databases.default.host = "127.0.0.1"` (local.toml value)
-- `databases.default.port = 5433` (environment variable overrides TOML because EnvSource
+- `core.databases.default.host = "127.0.0.1"` (local.toml value)
+- `core.databases.default.port = 5433` (environment variable overrides TOML because EnvSource
   has higher priority)
 
 ---
@@ -256,7 +258,7 @@ debug = false
 secret_key = "CHANGE_THIS_IN_PRODUCTION"
 allowed_hosts = ["localhost", "127.0.0.1"]
 
-[databases.default]
+[core.databases.default]
 engine = "postgresql"
 host = "localhost"
 port = 5432
@@ -285,7 +287,7 @@ Settings for development:
 debug = true
 secret_key = "dev-secret-key-not-for-production"
 
-[databases.default]
+[core.databases.default]
 name = "mydb_dev"
 password = "local-dev-password"
 
@@ -301,7 +303,7 @@ debug = false
 secret_key = "staging-secret-key"
 allowed_hosts = ["staging.example.com"]
 
-[databases.default]
+[core.databases.default]
 host = "staging-db.example.com"
 name = "mydb_staging"
 password = "staging-db-password"
@@ -318,7 +320,7 @@ debug = false
 secret_key = "production-secret-key-from-secret-manager"
 allowed_hosts = ["www.example.com", "api.example.com"]
 
-[databases.default]
+[core.databases.default]
 host = "prod-db.example.com"
 port = 5432
 name = "mydb_production"
@@ -379,7 +381,7 @@ Reinhardt provides 12 built-in fragments:
 
 | Fragment             | Field Name     | TOML Section   | Has Trait               |
 | -------------------- | -------------- | -------------- | ----------------------- |
-| `CoreSettings`       | `core`         | (flattened)    | `HasCoreSettings`       |
+| `CoreSettings`       | `core`         | `[core]`       | `HasCoreSettings`       |
 | `SecuritySettings`   | `security`     | `[security]`   | `HasSecuritySettings`   |
 | `CacheSettings`      | `cache`        | `[cache]`      | `HasCacheSettings`      |
 | `SessionSettings`    | `session`      | `[session]`    | `HasSessionSettings`    |
@@ -392,9 +394,8 @@ Reinhardt provides 12 built-in fragments:
 | `TemplateSettings`   | `templates`    | `[templates]`  | `HasTemplateSettings`   |
 | `ContactSettings`    | `contacts`     | `[contacts]`   | `HasContactSettings`    |
 
-**Note:** `CoreSettings` uses `#[serde(flatten)]`, so its fields (`debug`,
-`secret_key`, `database`, etc.) appear at the top level in TOML files rather
-than under a `[core]` section.
+**Note:** In composable settings, `CoreSettings` lives under `[core]`. Its
+database map is configured under sections such as `[core.databases.default]`.
 
 ### The `#[settings]` Macro
 

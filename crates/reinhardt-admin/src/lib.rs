@@ -2,10 +2,13 @@
 //!
 //! Admin functionality for Reinhardt framework.
 //!
-//! This crate serves as a workspace for admin-related functionality:
-//! - **types**: Shared type definitions for admin API
-//! - **api**: Backend JSON API for admin panel
-//! - **ui**: WASM-based admin panel UI (Dominator + futures-signals)
+//! This crate contains admin-related functionality:
+//! - **adapters**: Unified server/client imports for admin types
+//! - **core**: Admin site registration, model admin configuration, and database helpers
+//! - **pages**: Admin page rendering
+//! - **server**: Server functions and HTTP handlers
+//! - **settings**: Server-side admin settings
+//! - **types**: Shared request/response DTOs
 //!
 //! ## Features
 //!

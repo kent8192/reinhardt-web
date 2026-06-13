@@ -1,13 +1,13 @@
 # Reinhardt - Integration Tests
 
-> **Important**: This is the official location for all new integration tests. The legacy `/tests/integration/` directory is being phased out and should not be used for new tests.
+> **Important**: This package is the official location for integration tests that span multiple Reinhardt crates.
 
 This directory contains comprehensive integration tests for multiple Reinhardt crates that require interaction between different components.
 
 ## Directory Structure
 
-- `/tests/tests/integration/` - **Official integration test directory** (this directory)
-- `/tests/integration/` - Legacy directory (deprecated, being phased out)
+- `/tests/integration/` - Integration test package (`reinhardt-integration-tests`)
+- `/tests/integration/tests/` - Individual integration test targets
 
 ## Overview
 

@@ -71,10 +71,61 @@ jobs:
             sudo -E apt-get -o DPkg::Lock::Timeout=120 install -y gh
           fi
 
-      - name: Run release-plz release (dry-run)
-        uses: release-plz/action@v0.5
+      - name: Install release-plz
+        uses: taiki-e/install-action@ec28e287910af896fd98e04056d31fa68607e7ad
         with:
-          command: release
-          dry_run: true
+          tool: release-plz
+
+      - name: Run release-plz release (dry-run)
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          log="$RUNNER_TEMP/release-plz-dry-run.log"
+          release-plz release \
+            --dry-run \
+            --no-verify \
+            --git-token "$GITHUB_TOKEN" \
+            --repo-url "https://github.com/${GITHUB_REPOSITORY}" \
+            >"$log" 2>&1
+          status=$?
+          cat "$log"
+
+          if [[ $status -eq 0 ]]; then
+            exit 0
+          fi
+
+          # Workaround for release-plz/release-plz#2878 (tracked in reinhardt-web#5089).
+          # In dry-run mode, release-plz skips uploading a same-release workspace
+          # dependency, so the next dependent crate can fail registry resolution
+          # even though a real release would publish the dependency first.
+          # Remove this workaround when release-plz can simulate same-release
+          # workspace dependencies during `release --dry-run`.
+          #
+          # Ideal implementation (without workaround):
+          #   release-plz release --dry-run --no-verify --git-token "$GITHUB_TOKEN"
+          declare -A dry_skipped_crates=()
+          while IFS= read -r line; do
+            if [[ "$line" =~ ^(reinhardt-[A-Za-z0-9_-]+)[[:space:]]+([^:[:space:]]+):[[:space:]]+due[[:space:]]+to[[:space:]]+dry,[[:space:]]+skipping ]]; then
+              dry_skipped_crates["${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"]=1
+            fi
+          done < "$log"
+
+          known_same_release_dependency_failure=false
+          while IFS= read -r requirement; do
+            if [[ "$requirement" =~ ^(reinhardt-[A-Za-z0-9_-]+)[[:space:]]*=[[:space:]]*\"\^?([^\"]+)\"$ ]] \
+              && [[ -n "${dry_skipped_crates["${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"]+set}" ]]
+            then
+              known_same_release_dependency_failure=true
+              echo "::warning::release-plz dry-run skipped ${BASH_REMATCH[1]} ${BASH_REMATCH[2]} and later failed to resolve that same-release workspace dependency."
+              break
+            fi
+          done < <(sed -nE "s/.*failed to select a version for the requirement \`([^\`]+)\`.*/\\1/p" "$log")
+
+          if [[ "$known_same_release_dependency_failure" == "true" ]]; then
+            echo "::warning::Ignoring known release-plz dry-run same-release dependency false positive (release-plz/release-plz#2878, reinhardt-web#5089)."
+            exit 0
+          fi
+
+          exit "$status"

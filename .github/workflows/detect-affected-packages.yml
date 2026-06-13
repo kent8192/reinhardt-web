@@ -59,13 +59,15 @@ jobs:
         run: |
           if [[ "$HEAD_REF" == release-plz-* || "$HEAD_REF" == develop-release-plz-* ]]; then
             echo "Release PR detected — running all tests"
-            echo "run-all=true" >> "$GITHUB_OUTPUT"
-            echo "has-affected=true" >> "$GITHUB_OUTPUT"
-            echo "nextest-filter=" >> "$GITHUB_OUTPUT"
-            echo "affected-packages=" >> "$GITHUB_OUTPUT"
-            echo "cargo-packages=" >> "$GITHUB_OUTPUT"
-            echo "partition-count=8" >> "$GITHUB_OUTPUT"
-            echo "partitions-json=[1,2,3,4,5,6,7,8]" >> "$GITHUB_OUTPUT"
+            {
+              echo "run-all=true"
+              echo "has-affected=true"
+              echo "nextest-filter="
+              echo "affected-packages="
+              echo "cargo-packages="
+              echo "partition-count=8"
+              echo "partitions-json=[1,2,3,4,5,6,7,8]"
+            } >> "$GITHUB_OUTPUT"
           else
             bash .github/scripts/detect-affected-packages.sh \
               "origin/$BASE_REF"
@@ -88,7 +90,7 @@ jobs:
             echo "run-examples=true" >> "$GITHUB_OUTPUT"
           else
             if [[ -n "${PR_NUMBER:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then
-              if \! GH_OUT=$(gh api \
+              if ! GH_OUT=$(gh api \
                   "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" \
                   --paginate --jq '.[].filename'); then
                 echo "::error::gh api call failed: repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" >&2
@@ -123,26 +125,28 @@ jobs:
           PARTITION_COUNT: ${{ steps.detect.outputs.partition-count }}
           RUN_EXAMPLES: ${{ steps.detect-examples.outputs.run-examples }}
         run: |
-          echo "### Affected Package Detection" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Run all**: \`$RUN_ALL\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Has affected**: \`$HAS_AFFECTED\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Run examples**: \`$RUN_EXAMPLES\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Partition count**: \`$PARTITION_COUNT\`" >> "$GITHUB_STEP_SUMMARY"
-          if [[ -n "$NEXTEST_FILTER" ]]; then
-            echo "- **Nextest filter**: \`$NEXTEST_FILTER\`" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          if [[ -n "$AFFECTED_PACKAGES" ]]; then
-            echo "- **Affected packages**:" >> "$GITHUB_STEP_SUMMARY"
-            while IFS= read -r pkg; do
-              [[ -z "$pkg" ]] && continue
-              echo "  - \`$pkg\`" >> "$GITHUB_STEP_SUMMARY"
-            done <<< "$AFFECTED_PACKAGES"
-          fi
-          if [[ -n "$CARGO_PACKAGES" ]]; then
-            echo "- **Packages to compile** (affected + rdeps):" >> "$GITHUB_STEP_SUMMARY"
-            while IFS= read -r pkg; do
-              [[ -z "$pkg" ]] && continue
-              echo "  - \`$pkg\`" >> "$GITHUB_STEP_SUMMARY"
-            done <<< "$CARGO_PACKAGES"
-          fi
+          {
+            echo "### Affected Package Detection"
+            echo ""
+            echo "- **Run all**: \`$RUN_ALL\`"
+            echo "- **Has affected**: \`$HAS_AFFECTED\`"
+            echo "- **Run examples**: \`$RUN_EXAMPLES\`"
+            echo "- **Partition count**: \`$PARTITION_COUNT\`"
+            if [[ -n "$NEXTEST_FILTER" ]]; then
+              echo "- **Nextest filter**: \`$NEXTEST_FILTER\`"
+            fi
+            if [[ -n "$AFFECTED_PACKAGES" ]]; then
+              echo "- **Affected packages**:"
+              while IFS= read -r pkg; do
+                [[ -z "$pkg" ]] && continue
+                echo "  - \`$pkg\`"
+              done <<< "$AFFECTED_PACKAGES"
+            fi
+            if [[ -n "$CARGO_PACKAGES" ]]; then
+              echo "- **Packages to compile** (affected + rdeps):"
+              while IFS= read -r pkg; do
+                [[ -z "$pkg" ]] && continue
+                echo "  - \`$pkg\`"
+              done <<< "$CARGO_PACKAGES"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

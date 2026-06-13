@@ -139,25 +139,31 @@ jobs:
         run: cargo check --target wasm32-unknown-unknown -p reinhardt-core -p reinhardt-urls --features reinhardt-core/full,reinhardt-urls/client-router
 
       - name: Check WASM compilation (example library)
-        if: ${{ matrix.wasm-lib-check }}
+        if: ${{ matrix.needs-wasm }}
         working-directory: examples/${{ matrix.example }}
         run: cargo check --target wasm32-unknown-unknown --lib
 
+      # browser-actions/setup-chrome@v2 does not support linux/arm64, so the
+      # headless-browser WASM steps are skipped on self-hosted (arm64) runners
+      # (release-plz-* branches are routed there by determine-runner.yml). The
+      # wasm32-unknown-unknown compilation check above still runs on arm64;
+      # browser WASM coverage is provided on GitHub-hosted x86_64 via
+      # wasm-check.yml (forced to x86_64 by #3492). Tracked in #5012.
       - name: Install Chrome
-        if: ${{ matrix.needs-wasm }}
+        if: ${{ matrix.needs-wasm && !contains(inputs.runner, 'self-hosted') }}
         uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
           install-chromedriver: true
 
       - name: Install wasm-pack
-        if: ${{ matrix.needs-wasm }}
+        if: ${{ matrix.needs-wasm && !contains(inputs.runner, 'self-hosted') }}
         uses: taiki-e/install-action@v2
         with:
           tool: wasm-pack
 
       - name: Run WASM tests
-        if: ${{ matrix.needs-wasm }}
+        if: ${{ matrix.needs-wasm && !contains(inputs.runner, 'self-hosted') }}
         working-directory: examples/${{ matrix.example }}
         run: cargo make wasm-test || echo "No WASM tests found, skipping"
 

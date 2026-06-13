@@ -4,7 +4,7 @@ use petgraph::Undirected;
 use petgraph::graph::Graph;
 use petgraph::visit::EdgeRef;
 use regex::Regex;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use strsim::{jaro_winkler, levenshtein};
 
 use super::model_registry::ManyToManyMetadata;
@@ -3740,6 +3740,24 @@ impl MigrationAutodetector {
 	/// assert_eq!(changes.created_models.len(), 1);
 	/// ```
 	pub fn detect_changes(&self) -> DetectedChanges {
+		self.detect_changes_internal(false)
+			.expect("non-strict autodetection must not fail")
+	}
+
+	/// Detect changes and fail when a compatible field rename is ambiguous.
+	///
+	/// This is the safer entry point for `makemigrations`: when the
+	/// autodetector sees add/drop candidates that could be field renames, it
+	/// must either emit `RenameColumn` for one-to-one compatible pairs or stop
+	/// instead of silently generating destructive add/drop operations.
+	pub fn try_detect_changes(&self) -> super::Result<DetectedChanges> {
+		self.detect_changes_internal(true)
+	}
+
+	fn detect_changes_internal(
+		&self,
+		strict_rename_ambiguity: bool,
+	) -> super::Result<DetectedChanges> {
 		let mut changes = DetectedChanges::default();
 
 		// Detect model-level changes
@@ -3751,7 +3769,7 @@ impl MigrationAutodetector {
 		self.detect_added_fields(&mut changes);
 		self.detect_removed_fields(&mut changes);
 		self.detect_altered_fields(&mut changes);
-		self.detect_renamed_fields(&mut changes);
+		self.detect_renamed_fields(&mut changes, strict_rename_ambiguity)?;
 
 		// Detect index and constraint changes
 		self.detect_added_indexes(&mut changes);
@@ -3795,7 +3813,7 @@ impl MigrationAutodetector {
 			.created_many_to_many
 			.sort_by(|a, b| (&a.0, &a.1, &a.2).cmp(&(&b.0, &b.1, &b.2)));
 
-		changes
+		Ok(changes)
 	}
 
 	/// Detect newly created models
@@ -4097,42 +4115,162 @@ impl MigrationAutodetector {
 	/// // With matching type, might detect as rename
 	/// assert!(changes.renamed_fields.len() <= 1);
 	/// ```
-	fn detect_renamed_fields(&self, changes: &mut DetectedChanges) {
-		// Only check models that exist in both states
-		for ((app_label, model_name), from_model) in &self.from_state.models {
-			if let Some(to_model) = self.to_state.get_model(app_label, model_name) {
-				// Get removed and added fields for this model
-				let removed_fields: Vec<_> = from_model
-					.fields
-					.iter()
-					.filter(|(name, _)| !to_model.fields.contains_key(*name))
-					.collect();
+	fn detect_renamed_fields(
+		&self,
+		changes: &mut DetectedChanges,
+		strict_rename_ambiguity: bool,
+	) -> super::Result<()> {
+		let mut confirmed_renames = Vec::new();
+		let mut ambiguous_groups = Vec::new();
 
-				let added_fields: Vec<_> = to_model
-					.fields
-					.iter()
-					.filter(|(name, _)| !from_model.fields.contains_key(*name))
-					.collect();
+		for ((app_label, model_name), to_model) in &self.to_state.models {
+			let Some(from_model) = self
+				.from_state
+				.get_model_by_table_name(app_label, &to_model.table_name)
+			else {
+				continue;
+			};
 
-				// Try to match removed fields with added fields
-				for (removed_name, removed_field) in &removed_fields {
-					for (added_name, added_field) in &added_fields {
-						// If field types match, consider it a rename
-						if removed_field.field_type == added_field.field_type
-							&& removed_field.nullable == added_field.nullable
-						{
-							changes.renamed_fields.push((
-								app_label.clone(),
-								model_name.clone(),
-								removed_name.to_string(),
-								added_name.to_string(),
-							));
-							break;
-						}
+			let removed_fields: Vec<_> = from_model
+				.fields
+				.iter()
+				.filter(|(name, _)| !to_model.fields.contains_key(*name))
+				.collect();
+			let added_fields: Vec<_> = to_model
+				.fields
+				.iter()
+				.filter(|(name, _)| !from_model.fields.contains_key(*name))
+				.collect();
+
+			if removed_fields.is_empty() || added_fields.is_empty() {
+				continue;
+			}
+
+			let mut old_to_new: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+			let mut new_to_old: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+
+			for (removed_name, removed_field) in &removed_fields {
+				for (added_name, added_field) in &added_fields {
+					if Self::field_definitions_match_for_rename(
+						removed_name,
+						removed_field,
+						added_name,
+						added_field,
+					) {
+						old_to_new
+							.entry((*removed_name).clone())
+							.or_default()
+							.insert((*added_name).clone());
+						new_to_old
+							.entry((*added_name).clone())
+							.or_default()
+							.insert((*removed_name).clone());
 					}
 				}
 			}
+
+			if old_to_new.is_empty() {
+				continue;
+			}
+
+			for (old_name, new_names) in &old_to_new {
+				if new_names.len() == 1 {
+					let new_name = new_names.iter().next().expect("one candidate");
+					if new_to_old
+						.get(new_name)
+						.is_some_and(|old_names| old_names.len() == 1)
+					{
+						confirmed_renames.push((
+							app_label.clone(),
+							model_name.clone(),
+							to_model.table_name.clone(),
+							old_name.clone(),
+							new_name.clone(),
+						));
+						continue;
+					}
+				}
+
+				ambiguous_groups.push(format!(
+					"{}.{} (table {}): old [{}] -> new [{}]",
+					app_label,
+					model_name,
+					to_model.table_name,
+					old_name,
+					new_names.iter().cloned().collect::<Vec<_>>().join(", ")
+				));
+			}
+
+			for (new_name, old_names) in &new_to_old {
+				if old_names.len() > 1 {
+					ambiguous_groups.push(format!(
+						"{}.{} (table {}): old [{}] -> new [{}]",
+						app_label,
+						model_name,
+						to_model.table_name,
+						old_names.iter().cloned().collect::<Vec<_>>().join(", "),
+						new_name
+					));
+				}
+			}
 		}
+
+		ambiguous_groups.sort();
+		ambiguous_groups.dedup();
+		if strict_rename_ambiguity && !ambiguous_groups.is_empty() {
+			return Err(super::MigrationError::InvalidMigration(format!(
+				"Ambiguous field rename candidates detected. \
+				 Reinhardt will not emit destructive AddColumn + DropColumn operations for \
+				 rename-like changes. Split the change or make the rename intent explicit. \
+				 Candidates: {}",
+				ambiguous_groups.join("; ")
+			)));
+		}
+
+		for (app_label, model_name, table_name, old_name, new_name) in confirmed_renames {
+			changes.renamed_fields.push((
+				app_label.clone(),
+				model_name.clone(),
+				old_name.clone(),
+				new_name.clone(),
+			));
+			changes.added_fields.retain(|(app, model, field)| {
+				!(app == &app_label && model == &model_name && field == &new_name)
+			});
+			changes.removed_fields.retain(|(app, model, field)| {
+				if app != &app_label || field != &old_name {
+					return true;
+				}
+				self.from_state
+					.get_model(app, model)
+					.is_none_or(|from_model| from_model.table_name != table_name)
+			});
+			changes.altered_fields.retain(|(app, model, field)| {
+				!(app == &app_label && model == &model_name && field == &new_name)
+			});
+		}
+
+		Ok(())
+	}
+
+	fn field_definitions_match_for_rename(
+		from_name: &str,
+		from_field: &FieldState,
+		to_name: &str,
+		to_field: &FieldState,
+	) -> bool {
+		if from_field.field_type != to_field.field_type
+			|| from_field.nullable != to_field.nullable
+			|| from_field.foreign_key != to_field.foreign_key
+		{
+			return false;
+		}
+
+		let mut from_def = super::ColumnDefinition::from_field_state(from_name, from_field);
+		let mut to_def = super::ColumnDefinition::from_field_state(to_name, to_field);
+		from_def.name = "__renamed_field__".to_string();
+		to_def.name = "__renamed_field__".to_string();
+		from_def == to_def
 	}
 
 	/// Calculate similarity between two models using advanced field matching
@@ -4481,6 +4619,15 @@ impl MigrationAutodetector {
 					if Self::single_field_unique_already_present(to_constraint, from_model) {
 						continue;
 					}
+					if Self::added_single_field_unique_preserved_by_rename(
+						changes,
+						app_label,
+						model_name,
+						to_constraint,
+						from_model,
+					) {
+						continue;
+					}
 					changes.added_constraints.push((
 						app_label.clone(),
 						model_name.clone(),
@@ -4523,6 +4670,15 @@ impl MigrationAutodetector {
 					if Self::single_field_unique_already_present(from_constraint, to_model) {
 						continue;
 					}
+					if Self::removed_single_field_unique_preserved_by_rename(
+						changes,
+						app_label,
+						model_name,
+						to_model,
+						from_constraint,
+					) {
+						continue;
+					}
 					changes.removed_constraints.push((
 						app_label.clone(),
 						model_name.clone(),
@@ -4551,19 +4707,61 @@ impl MigrationAutodetector {
 			return false;
 		}
 		let column = &candidate.fields[0];
-		let covered_by_constraint = other_side
+		Self::single_field_unique_column_already_present(other_side, column)
+	}
+
+	fn single_field_unique_column_already_present(model: &ModelState, column: &str) -> bool {
+		let covered_by_constraint = model
 			.constraints
 			.iter()
-			.any(|c| is_single_field_unique(c) && &c.fields[0] == column);
+			.any(|c| is_single_field_unique(c) && c.fields[0] == column);
 		if covered_by_constraint {
 			return true;
 		}
-		other_side
+		model
 			.fields
 			.get(column)
 			.and_then(|f| f.params.get("unique"))
 			.map(String::as_str)
 			== Some("true")
+	}
+
+	fn added_single_field_unique_preserved_by_rename(
+		changes: &DetectedChanges,
+		app_label: &str,
+		model_name: &str,
+		to_constraint: &ConstraintDefinition,
+		from_model: &ModelState,
+	) -> bool {
+		if !is_single_field_unique(to_constraint) {
+			return false;
+		}
+		let new_column = &to_constraint.fields[0];
+		changes.renamed_fields.iter().any(|(app, model, old, new)| {
+			app == app_label
+				&& model == model_name
+				&& new == new_column
+				&& Self::single_field_unique_column_already_present(from_model, old)
+		})
+	}
+
+	fn removed_single_field_unique_preserved_by_rename(
+		changes: &DetectedChanges,
+		app_label: &str,
+		from_model_name: &str,
+		to_model: &ModelState,
+		from_constraint: &ConstraintDefinition,
+	) -> bool {
+		if !is_single_field_unique(from_constraint) {
+			return false;
+		}
+		let old_column = &from_constraint.fields[0];
+		changes.renamed_fields.iter().any(|(app, model, old, new)| {
+			app == app_label
+				&& (model == from_model_name || model == &to_model.name)
+				&& old == old_column
+				&& Self::single_field_unique_column_already_present(to_model, new)
+		})
 	}
 
 	/// Final-pass dedup: drop redundant single-column `AddConstraint UNIQUE`
@@ -5003,14 +5201,23 @@ impl MigrationAutodetector {
 	/// Performs the generate operations operation.
 	pub fn generate_operations(&self) -> Vec<super::Operation> {
 		let changes = self.detect_changes();
-		let mut by_app: std::collections::BTreeMap<String, Vec<super::Operation>> =
-			std::collections::BTreeMap::new();
+		self.generate_operations_from_changes(&changes)
+	}
+
+	/// Performs operation generation and fails on ambiguous rename-like changes.
+	pub fn try_generate_operations(&self) -> super::Result<Vec<super::Operation>> {
+		let changes = self.try_detect_changes()?;
+		Ok(self.generate_operations_from_changes(&changes))
+	}
+
+	fn generate_operations_from_changes(&self, changes: &DetectedChanges) -> Vec<super::Operation> {
+		let mut by_app: BTreeMap<String, Vec<super::Operation>> = BTreeMap::new();
 
 		// Shared per-app emissions (CreateTable, column ops, constraint ops,
 		// auto-increment resets). This is the single source of truth shared
 		// with `generate_migrations()` so the two paths cannot diverge again
 		// (issue #4040).
-		self.emit_shared_per_app_operations(&changes, &mut by_app);
+		self.emit_shared_per_app_operations(changes, &mut by_app);
 
 		// `generate_operations()`-specific extra: walk ManyToMany fields on
 		// new and added models and emit intermediate `CreateTable`s via
@@ -5129,6 +5336,20 @@ impl MigrationAutodetector {
 							field,
 						),
 						mysql_options: None,
+					});
+			}
+		}
+
+		// RenameColumn for confirmed field renames.
+		for (app_label, model_name, old_name, new_name) in &changes.renamed_fields {
+			if let Some(model) = self.to_state.get_model(app_label, model_name) {
+				by_app
+					.entry(app_label.clone())
+					.or_default()
+					.push(super::Operation::RenameColumn {
+						table: model.table_name.clone(),
+						old_name: old_name.clone(),
+						new_name: new_name.clone(),
 					});
 			}
 		}
@@ -5317,14 +5538,23 @@ impl MigrationAutodetector {
 	/// ```
 	pub fn generate_migrations(&self) -> Vec<super::Migration> {
 		let changes = self.detect_changes();
-		let mut migrations_by_app: std::collections::BTreeMap<String, Vec<super::Operation>> =
-			std::collections::BTreeMap::new();
+		self.generate_migrations_from_changes(&changes)
+	}
+
+	/// Generate migrations and fail on ambiguous rename-like changes.
+	pub fn try_generate_migrations(&self) -> super::Result<Vec<super::Migration>> {
+		let changes = self.try_detect_changes()?;
+		Ok(self.generate_migrations_from_changes(&changes))
+	}
+
+	fn generate_migrations_from_changes(&self, changes: &DetectedChanges) -> Vec<super::Migration> {
+		let mut migrations_by_app: BTreeMap<String, Vec<super::Operation>> = BTreeMap::new();
 
 		// Shared per-app emissions (CreateTable, column ops, constraint ops,
 		// auto-increment resets). Single source of truth shared with
 		// `generate_operations()` — see `emit_shared_per_app_operations` and
 		// issue #4040.
-		self.emit_shared_per_app_operations(&changes, &mut migrations_by_app);
+		self.emit_shared_per_app_operations(changes, &mut migrations_by_app);
 
 		// Generate intermediate tables for ManyToMany relationships
 		for (app_label, model_name, through_table, m2m) in &changes.created_many_to_many {
@@ -6012,6 +6242,292 @@ mod tests {
 			constraints,
 			many_to_many_fields: Vec::new(),
 		}
+	}
+
+	#[rstest]
+	fn generate_operations_emits_rename_column_for_unambiguous_field_rename() {
+		let from_model = build_model_state(
+			"deployments",
+			"Deployment",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("app_name", super::super::FieldType::VarChar(255), false),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"deployments",
+			"Deployment",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("project_name", super::super::FieldType::VarChar(255), false),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("deployments".to_string(), "Deployment".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("deployments".to_string(), "Deployment".to_string()),
+				to_model,
+			)]),
+		);
+
+		let operations = detector
+			.try_generate_operations()
+			.expect("unambiguous rename should generate operations");
+
+		assert_eq!(operations.len(), 1, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::RenameColumn {
+				table,
+				old_name,
+				new_name
+			} if table == "deployments_deployment"
+				&& old_name == "app_name"
+				&& new_name == "project_name"
+		));
+	}
+
+	#[rstest]
+	fn generate_operations_renames_unique_column_without_constraint_churn() {
+		let id_field = FieldState::new("id", super::super::FieldType::Integer, false);
+		let old_slug_field =
+			FieldState::new("old_slug", super::super::FieldType::VarChar(255), false);
+		let new_slug_field = FieldState::new("slug", super::super::FieldType::VarChar(255), false);
+		let from_unique = ConstraintDefinition {
+			name: "deployments_deployment_old_slug_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["old_slug".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let to_unique = ConstraintDefinition {
+			name: "deployments_deployment_slug_uniq".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["slug".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let from_model = build_model_state(
+			"deployments",
+			"Deployment",
+			vec![id_field.clone(), old_slug_field],
+			Vec::new(),
+			vec![from_unique],
+		);
+		let to_model = build_model_state(
+			"deployments",
+			"Deployment",
+			vec![id_field, new_slug_field],
+			Vec::new(),
+			vec![to_unique],
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("deployments".to_string(), "Deployment".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("deployments".to_string(), "Deployment".to_string()),
+				to_model,
+			)]),
+		);
+
+		let operations = detector
+			.try_generate_operations()
+			.expect("unique column rename should generate operations");
+
+		assert_eq!(operations.len(), 1, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::RenameColumn {
+				table,
+				old_name,
+				new_name
+			} if table == "deployments_deployment"
+				&& old_name == "old_slug"
+				&& new_name == "slug"
+		));
+		assert!(
+			operations.iter().all(|op| {
+				!matches!(
+					op,
+					super::super::Operation::AddConstraint { .. }
+						| super::super::Operation::DropConstraint { .. }
+				)
+			}),
+			"expected no AddConstraint/DropConstraint for unique rename, got: {operations:?}"
+		);
+	}
+
+	#[rstest]
+	fn generate_operations_detects_field_rename_from_offline_table_keyed_state() {
+		let mut from_model = build_model_state(
+			"deployments",
+			"DeploymentsDeployment",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("reinhardt_app_yaml", super::super::FieldType::Text, false),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		from_model.table_name = "deployments_deployment".to_string();
+		let to_model = build_model_state(
+			"deployments",
+			"Deployment",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("project_yaml", super::super::FieldType::Text, false),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				(
+					"deployments".to_string(),
+					"DeploymentsDeployment".to_string(),
+				),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("deployments".to_string(), "Deployment".to_string()),
+				to_model,
+			)]),
+		);
+
+		let migrations = detector
+			.try_generate_migrations()
+			.expect("table-name matched state should detect rename");
+		let operations: Vec<_> = migrations
+			.iter()
+			.flat_map(|migration| migration.operations.iter())
+			.collect();
+
+		assert_eq!(operations.len(), 1, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			operations[0],
+			super::super::Operation::RenameColumn {
+				table,
+				old_name,
+				new_name
+			} if table == "deployments_deployment"
+				&& old_name == "reinhardt_app_yaml"
+				&& new_name == "project_yaml"
+		));
+	}
+
+	#[rstest]
+	fn try_generate_operations_rejects_ambiguous_field_rename_candidates() {
+		let from_model = build_model_state(
+			"projects",
+			"Project",
+			vec![
+				FieldState::new("old_code", super::super::FieldType::VarChar(255), false),
+				FieldState::new("legacy_code", super::super::FieldType::VarChar(255), false),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"projects",
+			"Project",
+			vec![FieldState::new(
+				"project_code",
+				super::super::FieldType::VarChar(255),
+				false,
+			)],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("projects".to_string(), "Project".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("projects".to_string(), "Project".to_string()),
+				to_model,
+			)]),
+		);
+
+		let error = detector
+			.try_generate_operations()
+			.expect_err("ambiguous rename candidates must fail");
+		let message = error.to_string();
+
+		assert!(
+			message.contains("Ambiguous field rename candidates"),
+			"unexpected error: {message}"
+		);
+		assert!(
+			message.contains("legacy_code")
+				&& message.contains("old_code")
+				&& message.contains("project_code"),
+			"error should name candidate fields: {message}"
+		);
+	}
+
+	#[rstest]
+	fn try_generate_operations_preserves_unrelated_add_and_drop() {
+		let from_model = build_model_state(
+			"projects",
+			"Project",
+			vec![FieldState::new(
+				"legacy_payload",
+				super::super::FieldType::Text,
+				true,
+			)],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"projects",
+			"Project",
+			vec![FieldState::new(
+				"retry_count",
+				super::super::FieldType::Integer,
+				false,
+			)],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("projects".to_string(), "Project".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("projects".to_string(), "Project".to_string()),
+				to_model,
+			)]),
+		);
+
+		let operations = detector
+			.try_generate_operations()
+			.expect("unrelated add/drop should remain valid");
+
+		assert!(
+			operations.iter().any(|op| matches!(
+				op,
+				super::super::Operation::AddColumn { column, .. } if column.name == "retry_count"
+			)),
+			"expected AddColumn, got: {operations:?}"
+		);
+		assert!(
+			operations.iter().any(|op| matches!(
+				op,
+				super::super::Operation::DropColumn { column, .. } if column == "legacy_payload"
+			)),
+			"expected DropColumn, got: {operations:?}"
+		);
 	}
 
 	#[rstest]

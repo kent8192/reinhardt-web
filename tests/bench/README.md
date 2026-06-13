@@ -13,8 +13,10 @@ cargo bench -p reinhardt-benchmarks
 Run a specific benchmark:
 
 ```bash
-cargo bench -p reinhardt-benchmarks --bench example_bench
+cargo bench -p reinhardt-benchmarks --bench performance_benchmarks
 ```
+
+Current benchmark targets are `performance_benchmarks`, `auth_benchmarks`, `settings_benchmarks`, and `concurrent_benchmarks`.
 
 ## Adding New Benchmarks
 
