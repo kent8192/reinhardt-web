@@ -496,7 +496,7 @@ mod server_fn_tests {
 	use tempfile::NamedTempFile;
 
 	// Import server functions
-	use examples_tutorial_basis::server_fn::polls::{
+	use examples_tutorial_basis::apps::polls::server_fn::{
 		get_question_detail, get_question_results, get_questions, vote,
 	};
 	use examples_tutorial_basis::shared::types::VoteRequest;

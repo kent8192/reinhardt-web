@@ -83,6 +83,7 @@ tempfile = "3.15"
 
 # WASM-specific dev-dependencies
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+gloo-timers = { version = "0.3", features = ["futures"] }
 wasm-bindgen-test = "0.3.56"
 
 [build-dependencies]
