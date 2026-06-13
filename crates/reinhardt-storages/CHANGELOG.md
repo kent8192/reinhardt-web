@@ -7,22 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.0-rc.5...reinhardt-storages@v0.2.0-rc.6) - 2026-06-13
-
-### Added
-
-- *(providers)* add minimal S3 provider client
-
-### Documentation
-
-- *(release)* finalize 0.2.0 changelog
-- *(release)* refine 0.2.0 changelog narrative
-
-### Fixed
-
-- *(providers)* preserve AWS credential chain
-- *(providers)* address CodeRabbit review
-
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/releases/tag/reinhardt-storages@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-storages` for the Reinhardt 0.2.0 line. This
@@ -49,6 +33,8 @@ RC entries remain below as detailed history.
 - local, S3-compatible, GCS, and Azure backend feature surfaces for storage
   integrations.
 
+- *(providers)* add minimal S3 provider client
+
 ### Changed
 
 - *(storages)* consolidate test fixture submodules into single file
@@ -72,6 +58,9 @@ RC entries remain below as detailed history.
 - *(storages)* make StorageSettings::default() convertible in non-local builds
 - *(storages)* escape #[settings] in deprecation notes for rustdoc
 - *(storages)* gate gcs/azure integration tests behind their features
+
+- *(providers)* preserve AWS credential chain
+- *(providers)* address CodeRabbit review
 
 ### Security
 

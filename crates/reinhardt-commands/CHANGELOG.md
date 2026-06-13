@@ -7,20 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.0-rc.5...reinhardt-commands@v0.2.0-rc.6) - 2026-06-13
-
-### Documentation
-
-- *(tutorial)* aggregate app URL routers
-
-### Fixed
-
-- *(commands)* add pages app reverse template
-- *(commands)* align startproject scaffold defaults
-- *(commands)* use collectstatic no-input in pages template
-- *(commands)* make generated model placeholders tutorial-safe
-- *(commands)* ignore sqlite database in project templates
-
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.3...reinhardt-commands@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-commands` for the Reinhardt 0.2.0 line. This
@@ -64,6 +50,12 @@ RC entries remain below as detailed history.
 - *(commands)* align wasm bindgen template
 - *(commands)* verify runserver reachability after hot reload
 
+- *(commands)* add pages app reverse template
+- *(commands)* align startproject scaffold defaults
+- *(commands)* use collectstatic no-input in pages template
+- *(commands)* make generated model placeholders tutorial-safe
+- *(commands)* ignore sqlite database in project templates
+
 ### Performance
 
 - *(commands)* skip unrelated hot reload rebuilds
@@ -79,6 +71,8 @@ RC entries remain below as detailed history.
 - *(commands)* document migrate-with-target semantics
 - *(commands)* clarify APP_LABEL/MIGRATION_NAME dependency
 - *(commands)* make execute_from_command_line_with_settings doc example compile
+
+- *(tutorial)* aggregate app URL routers
 
 ### Maintenance
 
