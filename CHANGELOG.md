@@ -7,59 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0-rc.5...reinhardt-web@v0.2.0-rc.6) - 2026-06-13
-
-### Added
-
-- *(macros)* expose model info companions to wasm
-
-### Changed
-
-- *(examples)* aggregate tutorial route contracts
-- *(examples)* inline tutorial route contracts
-
-### Documentation
-
-- add release announcement(s)
-- *(tutorial)* align basis docs with route contracts
-- *(tutorial)* document contacts settings fragment
-- *(tutorial)* align basis modules with pages template
-- *(tutorial)* address CodeRabbit review comments
-- *(tutorial)* align cfg recap with pages template
-- *(tutorial)* align typed form examples
-- *(tutorial)* aggregate app URL routers
-- *(tutorial)* trim duplicate client router snippet
-- *(tutorial)* restore users client router snippet
-- *(tutorial)* describe generated model info companions
-
-### Fixed
-
-- *(forms)* omit unreachable focus path for empty forms
-- *(commands)* add pages app reverse template
-- *(ci)* patch aws-runtime event-stream signer
-- *(commands)* align startproject scaffold defaults
-- *(commands)* use collectstatic no-input in pages template
-- *(commands)* make generated model placeholders tutorial-safe
-- *(ci)* pin broken upstream transitive releases
-- *(commands)* ignore sqlite database in project templates
-
-### Maintenance
-
-- drop vendored aws-runtime patch
-
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.3...reinhardt-web@v0.2.0) - 2026-06-11
 
 Stable 0.2.0 is the first release of the Reinhardt 0.2 line. It
-promotes the `0.2.0-rc.2` through `0.2.0-rc.5` train into one upgrade
+promotes the `0.2.0-rc.2` through `0.2.0-rc.6` train into one upgrade
 story: remove the 0.1.x compatibility layer, adopt the final Manouche
 v2 page/form model, move application configuration to typed settings
 fragments, and make routing, testing, and local development more
 explicit.
 
 This release is not a patch-style rollup. It is a migration release for
-applications that stayed on 0.1.x while the 0.2 APIs stabilized. The RC
-entries below preserve the detailed history; this section is the
-upgrade-oriented summary.
+applications that stayed on 0.1.x while the 0.2 APIs stabilized. Earlier
+RC entries below preserve the detailed history; final release-polish
+changes are folded into this upgrade-oriented summary.
 
 ### Upgrade Impact
 
@@ -156,6 +116,8 @@ database migrations, then run the verification commands in the guide.
 - Manouche v2 component syntax, typed form field generics, `use_resource`,
   hook dependency tracking, and server-function metadata available across
   targets.
+- Generated model-info companion types are exported for WASM targets so
+  tutorial and admin-style flows can share the same model metadata.
 - Storage backends and test coverage for local, S3-compatible, GCS, and
   Azure-style storage flows.
 - Interactive admin dependency configuration and refreshed project
@@ -171,6 +133,8 @@ database migrations, then run the verification commands in the guide.
   model-construction contract.
 - Formatter responsibilities are split out of the admin CLI and routed
   through the published `reinhardt-formatter` crate.
+- Tutorial route contracts are aggregated or inlined where appropriate so
+  the example apps match the final route and page-template structure.
 
 ### Deprecated
 
@@ -185,10 +149,16 @@ database migrations, then run the verification commands in the guide.
   and release fixtures.
 - Form runtime parity, dynamic radio choices, SPA link rerendering, SSR
   hydration IDs, and reactive mount borrow handling.
+- Empty-form focus handling no longer emits unreachable focus paths.
 - Admin formatter wiring, migration fixture preservation, and project
   template dependency wiring.
+- Project templates now include pages app reverse helpers, collectstatic
+  no-input defaults, tutorial-safe model placeholders, and sqlite database
+  ignores.
 - Migration generation, model companion derives, query expectations, and
   backend-specific SQL behavior.
+- Release-branch CI is stabilized against the aws-runtime event-stream
+  signer issue and broken upstream transitive releases.
 
 ### Security
 
@@ -214,8 +184,13 @@ database migrations, then run the verification commands in the guide.
   stale generated release branches, and release announcements was hardened.
 - Public API documentation coverage, docs.rs links, website channel routing,
   and release website deployment were aligned for stable publication.
+- Release announcements and tutorial documentation were synchronized with
+  route-contract, settings-fragment, typed-form, generated model-info, and
+  pages-template guidance.
 - Examples and generated templates were refreshed against the local 0.2.0
   workspace instead of published RC assumptions.
+- Temporary vendored AWS runtime overrides were removed once the release
+  train no longer needed them.
 
 ### Testing
 
