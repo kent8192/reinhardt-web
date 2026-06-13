@@ -25,6 +25,8 @@ RC entries remain below as detailed history.
 - *(staticfiles)* preserve raw index in non-spa mode
 - *(staticfiles)* inject wasm loader for directory index without spa mode
 
+- *(ci)* pin broken upstream transitive releases
+
 ### Performance
 
 - *(commands)* notify browsers after hot reload rebuilds

@@ -187,6 +187,8 @@ RC entries remain below as detailed history.
   deferral (#3316) on the dependency-driven path as well, not only the
   fetch-once path.
 
+- *(commands)* align startproject scaffold defaults
+
 ### Performance
 
 - *(commands)* notify browsers after hot reload rebuilds

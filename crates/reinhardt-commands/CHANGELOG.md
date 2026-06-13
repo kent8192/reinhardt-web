@@ -50,6 +50,12 @@ RC entries remain below as detailed history.
 - *(commands)* align wasm bindgen template
 - *(commands)* verify runserver reachability after hot reload
 
+- *(commands)* add pages app reverse template
+- *(commands)* align startproject scaffold defaults
+- *(commands)* use collectstatic no-input in pages template
+- *(commands)* make generated model placeholders tutorial-safe
+- *(commands)* ignore sqlite database in project templates
+
 ### Performance
 
 - *(commands)* skip unrelated hot reload rebuilds
@@ -65,6 +71,8 @@ RC entries remain below as detailed history.
 - *(commands)* document migrate-with-target semantics
 - *(commands)* clarify APP_LABEL/MIGRATION_NAME dependency
 - *(commands)* make execute_from_command_line_with_settings doc example compile
+
+- *(tutorial)* aggregate app URL routers
 
 ### Maintenance
 
