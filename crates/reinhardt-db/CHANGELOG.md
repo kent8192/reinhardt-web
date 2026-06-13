@@ -55,6 +55,8 @@ RC entries remain below as detailed history.
 - *(docs)* resolve remaining cross-crate intra-doc link errors
 - repair release examples tests
 
+- *(ci)* pin broken upstream transitive releases
+
 ### Performance
 
 - atomize facade dependency feature gates

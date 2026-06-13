@@ -33,6 +33,8 @@ RC entries remain below as detailed history.
 - local, S3-compatible, GCS, and Azure backend feature surfaces for storage
   integrations.
 
+- *(providers)* add minimal S3 provider client
+
 ### Changed
 
 - *(storages)* consolidate test fixture submodules into single file
@@ -56,6 +58,9 @@ RC entries remain below as detailed history.
 - *(storages)* make StorageSettings::default() convertible in non-local builds
 - *(storages)* escape #[settings] in deprecation notes for rustdoc
 - *(storages)* gate gcs/azure integration tests behind their features
+
+- *(providers)* preserve AWS credential chain
+- *(providers)* address CodeRabbit review
 
 ### Security
 

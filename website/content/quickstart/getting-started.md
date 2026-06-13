@@ -31,7 +31,7 @@ the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.0-rc.5"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.6"
 ```
 
 **Note:** After installation, the command is `reinhardt-admin`, not
@@ -354,14 +354,16 @@ next:
 
 ### 📚 Tutorials
 
-- [Tutorial 1: Serialization](/quickstart/tutorials/rest/1-serialization/)
-- [Tutorial 2: Requests and Responses](/quickstart/tutorials/rest/2-requests-and-responses/)
-- [Tutorial 3: Class-Based Views](/quickstart/tutorials/rest/3-class-based-views/)
-- [Tutorial 4: Authentication & Permissions](/quickstart/tutorials/rest/4-authentication-and-permissions/)
+- [Part 1: Project Setup](/quickstart/tutorials/rest/1-project-setup/)
+- [Part 2: Your First Endpoints](/quickstart/tutorials/rest/2-first-endpoints/)
+- [Part 3: Models and the Database](/quickstart/tutorials/rest/3-models-and-database/)
+- [Part 4: Dependency Injection](/quickstart/tutorials/rest/4-dependency-injection/)
+- [Part 5: Serializers and Validation](/quickstart/tutorials/rest/5-serializers-and-validation/)
+- [Part 6: Bonus: ViewSets and Routers](/quickstart/tutorials/rest/6-viewsets-and-routers/)
 
 ### 🎛️ Advanced Features
 
-- **Dependency Injection** - FastAPI-style DI (Tutorial coming soon)
+- [Dependency Injection](/quickstart/tutorials/rest/4-dependency-injection/) - Wire API handlers to the database
 - [Feature Flags Guide](/docs/feature-flags/) - Optimize your build
 - [Database Integration](#database-integration) - Connect to PostgreSQL/MySQL
 - Management Commands - Django-style
@@ -383,7 +385,7 @@ Check out the [ORM documentation](/docs/api/) for more details.
 ## Getting Help
 
 <!-- reinhardt-version-sync -->
-- 📖 [API Reference](https://docs.rs/reinhardt-web/0.2.0-rc.5/reinhardt/)
+- 📖 [API Reference](https://docs.rs/reinhardt-web/0.2.0-rc.6/reinhardt/)
 - 🗺️ [DeepWiki](https://deepwiki.com/kent8192/reinhardt-web) - AI-generated codebase documentation
 - 💬 [GitHub Discussions](https://github.com/kent8192/reinhardt-web/discussions)
 - 🐛 [Report Issues](https://github.com/kent8192/reinhardt-web/issues)

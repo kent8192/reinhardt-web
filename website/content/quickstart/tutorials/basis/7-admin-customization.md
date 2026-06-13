@@ -298,7 +298,7 @@ You have finished the Reinhardt basis tutorial. The polls project now matches ev
 
 ## Where to Go From Here
 
-- **[REST Tutorial](../rest/quickstart/)** — build a pure JSON API on the same model layer, using `#[get]` / `#[post]` views, `Serializer`s, and `ViewSet` + `Router`.
+- **[REST Tutorial](../rest/)** — build a pure JSON API on the same model layer, using `#[get]` / `#[post]` views, `Serializer`s, and `ViewSet` + `Router`.
 - **[Feature Flags Guide](/docs/feature-flags/)** — tune which `reinhardt` features your project pulls in to keep build size and compile time in check.
 - **Individual crate docs** on docs.rs — deep dives into `reinhardt-admin`, `reinhardt-pages`, `reinhardt-db`, and the rest of the crate fan-out used here.
 

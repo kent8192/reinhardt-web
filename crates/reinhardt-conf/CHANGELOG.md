@@ -52,6 +52,8 @@ RC entries remain below as detailed history.
 - *(conf)* [**breaking**] remove legacy advanced settings types
 - *(conf)* emit fragment self settings impls
 
+- *(ci)* pin broken upstream transitive releases
+
 ### Performance
 
 - atomize facade dependency feature gates
