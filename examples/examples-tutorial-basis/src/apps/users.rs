@@ -7,7 +7,7 @@
 
 pub mod models;
 
-#[cfg(wasm)]
+#[cfg(client)]
 pub mod client;
 pub mod server_fn;
 pub mod urls;

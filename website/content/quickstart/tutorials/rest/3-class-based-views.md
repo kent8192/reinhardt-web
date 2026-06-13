@@ -19,6 +19,7 @@ Reinhardt provides generic views for common REST patterns.
 View for displaying a list of objects:
 
 ```rust
+// File: src/views.rs
 use reinhardt::prelude::*;
 use serde::{Serialize, Deserialize};
 
@@ -66,6 +67,7 @@ Reinhardt provides the following generic views:
 ViewSets provide a powerful way to build RESTful APIs with significantly less code. They combine multiple CRUD actions into a single struct:
 
 ```rust
+// File: src/views.rs
 use reinhardt::prelude::*;
 
 // ModelViewSet automatically provides all CRUD operations

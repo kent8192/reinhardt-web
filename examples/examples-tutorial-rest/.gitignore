@@ -1,6 +1,3 @@
-# Settings files (local.toml contains user-specific settings)
-settings/local.toml
-
 # Environment files
 .env
 .env.local

@@ -3,9 +3,9 @@
 //! These types are serializable and can be sent between the WASM client
 //! and the Rust server via server functions.
 
-use serde::{Deserialize, Serialize};
-
 // Example shared type:
+//
+// use serde::{Deserialize, Serialize};
 //
 // #[derive(Debug, Clone, Serialize, Deserialize)]
 // pub struct DataItem {

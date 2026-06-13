@@ -26,6 +26,7 @@ Both directories live at the project root and are both git-ignored build artifac
 The bridge between the two is `src/config/wasm.rs`. It is a one-time inventory registration that tells `collectstatic` "there is a static directory called `dist-wasm/`, please collect it under url prefix `""` when you run":
 
 ```rust
+// File: src/config/wasm.rs
 //! WASM artifacts registration for collectstatic
 //!
 //! This module registers the dist-wasm directory containing WASM build artifacts
@@ -43,7 +44,7 @@ inventory::submit! {
 }
 ```
 
-This file is included from `src/config.rs` under `#[cfg(native)]` (the WASM target neither runs `collectstatic` nor needs to register inventory entries). `app_label` is the namespace `collectstatic` uses to disambiguate file collisions; `static_dir` is a path relative to the crate root; `url_prefix = ""` means "collect under the root of `STATIC_ROOT`" rather than nesting under a subdirectory.
+This file is included from `src/config.rs` under `#[cfg(server)]` (the WASM target neither runs `collectstatic` nor needs to register inventory entries). `app_label` is the namespace `collectstatic` uses to disambiguate file collisions; `static_dir` is a path relative to the crate root; `url_prefix = ""` means "collect under the root of `STATIC_ROOT`" rather than nesting under a subdirectory.
 
 ### Why two tiers instead of one?
 
@@ -58,6 +59,7 @@ Three reasons, all enforced by the example project's structure:
 The `cargo make dev` and `cargo make dev-release` task graphs encapsulate the full pipeline. The diagram below traces what happens when you change a Rust file and want to see the result in the browser:
 
 ```mermaid
+%% Diagram: The Build Pipeline
 flowchart TD
     A["Edit src/**.rs"] --> B["cargo make clean-cache<br/>removes dist/, dist-wasm/,<br/>target/debug/incremental,<br/>target/wasm32-unknown-unknown"]
     B --> C["cargo make wasm-compile-dev<br/>cargo build --target wasm32-unknown-unknown"]
@@ -75,6 +77,7 @@ The right-hand column is what each step actually shells out to, copied verbatim 
 The script `scripts/clean-cache.sh` is short enough to quote in full:
 
 ```bash
+# File: scripts/clean-cache.sh
 #!/usr/bin/env bash
 # `cargo make clean-cache` body: drop the WASM bundles and Rust
 # incremental cache so the next `cargo make dev` / `dev-release` rebuilds
@@ -117,6 +120,7 @@ It exists because `wasm-pack` plus Rust incremental compilation can get into sta
 These are the two underlying calls that `wasm-pack` orchestrates:
 
 ```toml
+# File: Makefile.toml
 [tasks.wasm-compile-dev]
 description = "Compile WASM binary (debug mode)"
 command = "cargo"
@@ -148,6 +152,7 @@ The `--target web` flag is what makes the generated JS module loadable directly 
 This is the orchestrating task: it depends on `wasm-bindgen-dev`, then runs `scripts/wasm-build-dev.sh`:
 
 ```bash
+# Terminal: project root
 #!/usr/bin/env bash
 # Post-step for `cargo make wasm-build-dev`: after `wasm-pack` writes the
 # debug bundle into `dist-wasm/`, copy it (plus other static assets) into
@@ -167,6 +172,7 @@ So `wasm-build-dev` is `wasm-bindgen-dev` plus a `collectstatic` call. The `--no
 The task itself is a thin wrapper:
 
 ```toml
+# File: Makefile.toml
 [tasks.collectstatic]
 description = "Collect static files into STATIC_ROOT"
 command = "cargo"
@@ -177,7 +183,8 @@ What it does at runtime is walk every `AppStaticFilesConfig` registered via `inv
 
 After it runs you will see:
 
-```
+```text
+# File: src/config/wasm.rs
 staticfiles/
 ├── examples_tutorial_basis.js
 ├── examples_tutorial_basis_bg.wasm
@@ -189,6 +196,7 @@ staticfiles/
 This is the everyday task. Its definition in `Makefile.toml` is just a dependency chain:
 
 ```toml
+# File: Makefile.toml
 [tasks.dev]
 description = "Build WASM and start development server with frontend"
 dependencies = ["clean-cache", "wasm-build-dev", "run-dev-server"]
@@ -197,6 +205,7 @@ dependencies = ["clean-cache", "wasm-build-dev", "run-dev-server"]
 So `cargo make dev` runs `clean-cache` → `wasm-build-dev` (which itself chains `wasm-compile-dev` → `wasm-bindgen-dev` → `collectstatic`) → `run-dev-server`. The last step is `scripts/run-dev-server.sh`:
 
 ```bash
+# File: scripts/run-dev-server.sh
 #!/usr/bin/env bash
 # Final step of `cargo make dev`: start the development server against the
 # wasm bundle that `wasm-build-dev` already produced. The directory check
@@ -227,16 +236,17 @@ cargo run --bin manage -- runserver --with-pages --noreload --no-override-wasm
 
 Two flags are worth calling out:
 
-- `--with-pages` hosts the SPA frontend alongside the JSON API. Without it `runserver` would still serve `/admin/` and the server-rendered REST endpoints in `views.rs` but would not mount the SPA shell.
+- `--with-pages` hosts the SPA frontend alongside the server-function and admin routes. Without it `runserver` would still serve `/admin/` and the native backend routes but would not mount the SPA shell.
 - `--no-override-wasm` is what tells `runserver` *not* to re-invoke its own internal WASM rebuild — since `wasm-build-dev` has just produced the bundle, letting `runserver` do it again would either be wasted work or, worse, overwrite the just-built artifacts.
 
-`runserver` itself depends on `migrate`, so by the time the dev server is listening, the SQLite database file `db.sqlite3` has its schema applied. You never have to run `cargo make migrate` by hand when starting a fresh worktree — the `runserver` task pulls it in automatically.
+The bare `manage runserver --with-pages` command does not apply migrations. The reference example's `cargo make runserver` task chains `migrate` first; if you bypass the Makefile and invoke `manage runserver` directly after changing models or starting from a fresh SQLite file, run `cargo make migrate` before using routes that read or write the database.
 
 ### `cargo make dev-release`
 
 The release-mode equivalent chains a different set of tasks:
 
 ```toml
+# File: Makefile.toml
 [tasks.dev-release]
 description = "Build optimized WASM and start server"
 dependencies = ["clean-cache", "wasm-build-release", "collectstatic", "run-dev-release-server"]
@@ -295,6 +305,7 @@ A subtle point: under `cargo make dev`, the server is *not* serving from `static
 `index.html` lives at the project root and is copied (verbatim) into the directory that the dev server serves at `/`. It is what the browser fetches when a user visits `http://127.0.0.1:8000/` for the first time. The file is longer than a textbook SPA shell because it also wires up CDN integrity hints, a pre-render theme detector, and the UnoCSS configuration — every piece below is loaded directly from `examples/examples-tutorial-basis/index.html`:
 
 ```html
+<!-- File: index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -438,6 +449,7 @@ Fourth, the shell preloads `/static/css/style.css` via `<link rel="stylesheet" h
 The example's `Cargo.toml` defines a third feature flag that is directly relevant to how the static pipeline interacts with testing:
 
 ```toml
+# File: Cargo.toml
 [features]
 default = ["with-reinhardt", "client-router"]
 # client-router: Enable client-side routing support (required for #[routes] macro with UnifiedRouter)
@@ -454,6 +466,7 @@ msw = []
 The `msw` feature here is a thin pass-through: enabling it on the example crate forwards to the `reinhardt` facade so that `#[server_fn]` generates the `MockableServerFn` markers that the WASM-only test target `tests/wasm/polls_mock_test.rs` consumes for Mock Service Worker–style interception. The opt-in shape is deliberate because the facade flag is still in flight (tracked in upstream `#4287` and its PR `#4288`); until that lands, leaving the feature out of `default` keeps `cargo nextest run` and `wasm-pack test` both green via the `required-features = ["msw"]` clause on the test declaration:
 
 ```toml
+# File: Cargo.toml
 [[test]]
 name = "polls_mock_test"
 path = "tests/wasm/polls_mock_test.rs"
@@ -465,6 +478,7 @@ That is, the test target is *declared* but is not compiled unless `--features ms
 This matters in the static-files chapter for one reason: the MSW-style mocks intercept the HTTP requests that the SPA makes from inside the browser, so they are exercising the *served* WASM bundle, not the source `.wasm` on disk. If `wasm-build-dev` has not run, there is nothing for the test harness to load, and the failure mode looks like "the test page is blank". The `wasm-test` task documents the related quirk:
 
 ```toml
+# File: Makefile.toml
 # `--no-default-features` is forwarded to the underlying `cargo build --tests
 # --target wasm32-unknown-unknown` so the `with-reinhardt`-gated `manage` bin
 # (native-only, uses tokio / reinhardt::commands / async fn main) is skipped
@@ -488,9 +502,9 @@ The cross-reference between Part 5's testing chapter and this one is that the `m
 
 It is worth being explicit about what *isn't* part of Reinhardt's pages static pipeline, since the analogy with classic Django sometimes leads to wrong expectations:
 
-- **There is no `STATICFILES_DIRS` array configured in `settings/base.toml`.** Look at the file from Part 1 — it has `[core]`, `[core.security]`, and `[database]`, but no `[static]` section. The pages template registers static directories programmatically via `AppStaticFilesConfig` + `inventory::submit!`, not declaratively via a settings list. If you want to register an additional static directory (say, a `static/` folder for hand-authored CSS), you add another `inventory::submit!` block alongside `src/config/wasm.rs` rather than appending to a TOML array.
+- **There is no `STATICFILES_DIRS` array configured in `settings/base.toml`.** Look at the file from Part 1 — it has `[core]`, `[core.security]`, `[core.databases.default]`, and `[contacts]`, but no `STATICFILES_DIRS` array. The pages template registers static directories programmatically via `AppStaticFilesConfig` + `inventory::submit!`, not declaratively via a settings list. If you want to register an additional static directory (say, a `static/` folder for hand-authored CSS), you add another `inventory::submit!` block alongside `src/config/wasm.rs` rather than appending to a TOML array.
 - **There is no `STATICFILES_STORAGE` to swap in for hashed filenames or S3 uploads.** The example uses the framework's default storage, which is a plain filesystem copy into `STATIC_ROOT`. CDN integration and content-hashed asset names are out of scope for this tutorial's example project; they are framework-level concerns that the pages template intentionally leaves to deployment configuration.
-- **There is no per-app `static/` directory convention enforced by the framework.** Django auto-collects from any app's `static/` folder; Reinhardt does not. Each static source is registered explicitly via `AppStaticFilesConfig`, which means there are no surprises at collect time — you can `grep` the codebase for `AppStaticFilesConfig` to see every static-asset source the project ships with. The example does ship a *project-level* `static/` directory at the crate root (`static/css/style.css`, `static/images/poll-icon.svg`), and both `index.html` (`<link rel="stylesheet" href="/static/css/style.css">`) and `src/client/components/polls.rs` (`src: "/static/images/poll-icon.svg"`) reference it by absolute URL. But that directory is intentionally **not** registered through `AppStaticFilesConfig` — the only `inventory::submit!` block in `src/config/wasm.rs` points at `dist-wasm/`, so `cargo make collectstatic` does **not** copy `static/css/` or `static/images/` into `staticfiles/`. The practical consequence is that those URLs only resolve under `cargo make dev`, where the development runserver falls back to the source tree; on a production deployment that serves `STATIC_ROOT` alone (the typical Cloudfront / nginx setup) the same paths return **`404`**. The honest recipe for adding a project-wide stylesheet or icon is therefore to register `static/` with its own `inventory::submit!` block (mirroring the existing entry but with `static_dir: "static"`, `url_prefix: ""`, and a distinct `app_label`); referencing files by absolute URL *without* that registration only "works" in development.
+- **There is no per-app `static/` directory convention enforced by the framework.** Django auto-collects from any app's `static/` folder; Reinhardt does not. Each static source is registered explicitly via `AppStaticFilesConfig`, which means there are no surprises at collect time — you can `grep` the codebase for `AppStaticFilesConfig` to see every static-asset source the project ships with. The example does ship a *project-level* `static/` directory at the crate root (`static/css/style.css`, `static/images/poll-icon.svg`), and both `index.html` (`<link rel="stylesheet" href="/static/css/style.css">`) and `src/apps/polls/client/components.rs` (`src: "/static/images/poll-icon.svg"`) reference it by absolute URL. But that directory is intentionally **not** registered through `AppStaticFilesConfig` — the only `inventory::submit!` block in `src/config/wasm.rs` points at `dist-wasm/`, so `cargo make collectstatic` does **not** copy `static/css/` or `static/images/` into `staticfiles/`. The practical consequence is that those URLs only resolve under `cargo make dev`, where the development runserver falls back to the source tree; on a production deployment that serves `STATIC_ROOT` alone (the typical Cloudfront / nginx setup) the same paths return **`404`**. The honest recipe for adding a project-wide stylesheet or icon is therefore to register `static/` with its own `inventory::submit!` block (mirroring the existing entry but with `static_dir: "static"`, `url_prefix: ""`, and a distinct `app_label`); referencing files by absolute URL *without* that registration only "works" in development.
 - **There is no `{% static %}` template tag in `index.html`.** The shell HTML is served as-is, without template rendering. Substitution happens (if at all) inside the WASM bundle once it runs, not before.
 
 These omissions are intentional. The pages template's static story is "build the WASM bundle, register the build output for collection, copy everything into a known root, and serve from there" — concrete, scriptable, and free of the implicit per-app discovery that Django uses.
@@ -504,6 +518,7 @@ The two failure modes you will hit during a tutorial session are both easy to di
 The shell rendered (so the server is up) but the WASM bundle never instantiated. Almost always this is a stale `dist-wasm/` left over from a previous build that no longer matches the source:
 
 ```bash
+# Terminal: project root
 cargo make clean-cache && cargo make wasm-build-dev
 ```
 
@@ -511,13 +526,14 @@ cargo make clean-cache && cargo make wasm-build-dev
 
 ### `cargo make dev` builds but the database has no tables
 
-This should not happen with the example as shipped — the `runserver` task explicitly depends on `migrate`, so a fresh `db.sqlite3` gets its schema applied before the server starts listening. If you somehow get a `no such table: polls_question` error after `cargo make dev`, run `cargo make migrate` once by hand to confirm the migration target works, then re-run `cargo make dev`. The dependency chain in `Makefile.toml` does not skip steps unless you have edited it, so this is mostly a "did you wipe `db.sqlite3` while the server was running" check.
+Run `cargo make migrate` once, then re-run `cargo make dev`. A fresh `db.sqlite3` starts empty; the reference example's `cargo make runserver` and `cargo make dev` tasks normally chain `migrate`, but direct `manage runserver --with-pages` invocations do not apply schema migrations for you.
 
 ### `cargo make wasm-test` fails to compile
 
 This is the failure mode the `wasm-test` task description warns about:
 
 ```text
+# Output: terminal
 error[E0432]: unresolved import `tokio::main`
 ```
 

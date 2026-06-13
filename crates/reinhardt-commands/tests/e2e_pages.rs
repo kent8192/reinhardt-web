@@ -49,6 +49,49 @@ fn pages_context(args: Vec<String>) -> CommandContext {
 	ctx
 }
 
+fn assert_models_placeholder_is_tutorial_safe(
+	models_rs: &str,
+	app_label: &str,
+	expected_type: &str,
+) {
+	assert!(
+		models_rs.contains("Replace this placeholder with the models for the app."),
+		"models.rs placeholder must be explicit that tutorial users replace it:\n{models_rs}"
+	);
+	assert!(
+		!models_rs.contains("#[user("),
+		"models.rs placeholder must not include a generic auth User example; the tutorial owns that code:\n{models_rs}"
+	);
+	assert!(
+		models_rs.contains("use reinhardt::prelude::*;"),
+		"models.rs placeholder example must import the prelude so #[model] resolves:\n{models_rs}"
+	);
+	assert!(
+		models_rs.contains("use reinhardt::{Deserialize, Serialize};"),
+		"models.rs placeholder example must avoid undeclared direct serde dependency:\n{models_rs}"
+	);
+	let model_attr =
+		format!("#[model(app_label = \"{app_label}\", table_name = \"{app_label}_items\")]");
+	assert!(
+		models_rs.contains(&model_attr),
+		"models.rs placeholder example must include the generated app_label:\n{models_rs}"
+	);
+	assert!(
+		models_rs.contains(&format!("pub struct {expected_type}")),
+		"models.rs placeholder example must render the app-specific type name:\n{models_rs}"
+	);
+	let model_pos = models_rs
+		.find(&model_attr)
+		.expect("model attribute checked above");
+	let derive_pos = models_rs
+		.find("#[derive(Serialize, Deserialize)]")
+		.expect("derive attribute must be present");
+	assert!(
+		model_pos < derive_pos,
+		"#[model] must be shown before #[derive] so macro helper attributes are in scope:\n{models_rs}"
+	);
+}
+
 #[rstest]
 #[tokio::test]
 #[serial(cwd)]
@@ -235,6 +278,9 @@ async fn app_pages_layout_matches_tutorial() {
 		polls_dir.join("models.rs").exists(),
 		"apps/polls/models.rs must exist"
 	);
+	let models_rs =
+		fs::read_to_string(polls_dir.join("models.rs")).expect("read apps/polls/models.rs");
+	assert_models_placeholder_is_tutorial_safe(&models_rs, "polls", "PollsItem");
 	assert!(
 		polls_dir.join("serializers.rs").exists(),
 		"apps/polls/serializers.rs must exist"
@@ -510,6 +556,18 @@ async fn workspace_app_pages_uses_unified_template() {
 		app_dir.join("build.rs").exists(),
 		"apps/bar/build.rs must exist for pages workspace crate"
 	);
+	let build_rs = fs::read_to_string(app_dir.join("build.rs")).expect("read workspace build.rs");
+	for cfg in ["client", "server", "wasm", "native"] {
+		assert!(
+			build_rs.contains(&format!("cargo::rustc-check-cfg=cfg({cfg})")),
+			"workspace app build.rs must declare cfg({cfg}) for Rust 2024 check-cfg:\n{build_rs}"
+		);
+	}
+	assert!(
+		build_rs.contains("wasm: { target_arch = \"wasm32\" }")
+			&& build_rs.contains("native: { not(target_arch = \"wasm32\") }"),
+		"workspace app build.rs must keep wasm/native compatibility aliases:\n{build_rs}"
+	);
 
 	// 2. Source files live under apps/<name>/src/
 	let src = app_dir.join("src");
@@ -549,6 +607,9 @@ async fn workspace_app_pages_uses_unified_template() {
 		src.join("server_fn.rs").exists(),
 		"apps/bar/src/server_fn.rs must exist"
 	);
+	let workspace_models =
+		fs::read_to_string(src.join("models.rs")).expect("read apps/bar/src/models.rs");
+	assert_models_placeholder_is_tutorial_safe(&workspace_models, "bar", "BarItem");
 
 	// 4. lib.rs has cfg gates (shared template, not the old workspace-only version)
 	let lib_rs = fs::read_to_string(src.join("lib.rs")).expect("read lib.rs");

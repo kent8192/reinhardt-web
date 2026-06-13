@@ -487,6 +487,10 @@ port = 5432
 name = "mydb"
 user = "postgres"
 password = "postgres"
+
+[contacts]
+admins = []
+managers = []
 ```
 
 Settings are automatically composed in `src/config/settings.rs` — this is what
@@ -499,18 +503,22 @@ use reinhardt::prelude::*;
 // `CoreSettings` is registered under the `core` section, so its fields —
 // including the `[core.databases.default]` connection that `migrate` /
 // `runserver` resolve — live under `[core]` in the TOML above.
-#[settings(core: CoreSettings)]
+// `ContactSettings` is mounted under `[contacts]`; management commands
+// require it through the `HasCommonSettings` bound.
+#[settings(core: CoreSettings | contacts: ContactSettings)]
 pub struct ProjectSettings;
 ```
 
 `#[settings(...)]` composes settings fragments into `ProjectSettings` using the
 `key: Type` syntax. Each fragment is a `#[settings(fragment = true, section = "...")]`
 struct mounted under its declared section. `CoreSettings` (section `core`) carries
-`debug`, `secret_key`, `allowed_hosts`, the `databases` map, and `security`. Add
+`debug`, `secret_key`, `allowed_hosts`, the `databases` map, and `security`;
+`ContactSettings` (section `contacts`) carries the administrator and manager
+contact lists needed by the common management-command settings contract. Add
 project-specific fragments the same way:
 
 ```rust
-#[settings(core: CoreSettings | cache: CacheSettings)]
+#[settings(core: CoreSettings | contacts: ContactSettings | cache: CacheSettings)]
 pub struct ProjectSettings;
 ```
 

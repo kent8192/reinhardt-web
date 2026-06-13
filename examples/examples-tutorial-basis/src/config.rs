@@ -1,10 +1,10 @@
 //! Configuration module for examples-tutorial-basis
 
-#[cfg(native)]
+#[cfg(server)]
 pub mod admin;
 pub mod apps;
-#[cfg(native)]
+#[cfg(server)]
 pub mod settings;
 pub mod urls;
-#[cfg(native)]
+#[cfg(server)]
 pub mod wasm;

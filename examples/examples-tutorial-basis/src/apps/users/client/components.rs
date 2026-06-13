@@ -4,7 +4,7 @@
 //! server functions. Every form uses the `form!` macro to define static fields
 //! while `#[server_fn]` client stubs attach the CSRF header automatically.
 use crate::apps::polls::urls::client_router as polls_routes;
-#[cfg(wasm)]
+#[cfg(client)]
 use crate::apps::users::server_fn::{login, logout, register};
 use crate::apps::users::urls::client_router as users_routes;
 use reinhardt::pages::component::Page;

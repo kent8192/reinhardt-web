@@ -92,7 +92,9 @@ async fn startproject_restful_honors_dependency_selection_flags() {
 	let cargo_toml = std::fs::read_to_string(tmp.path().join("feature_proj/Cargo.toml")).unwrap();
 	assert!(cargo_toml.contains("version = \"0.2.0-rc.4\""));
 	assert!(cargo_toml.contains("default-features = false"));
-	assert!(cargo_toml.contains("features = [\"minimal\", \"db-sqlite\"]"));
+	assert!(cargo_toml.contains(
+		"features = [\"minimal\", \"db-sqlite\", \"conf\", \"commands\", \"db-postgres\", \"api\"]"
+	));
 }
 
 #[rstest]
@@ -124,6 +126,43 @@ async fn startproject_pages_from_embedded_only() {
 		generated.join("src").is_dir(),
 		"src/ directory must be generated"
 	);
+	let cargo_toml = std::fs::read_to_string(generated.join("Cargo.toml")).unwrap();
+	assert!(cargo_toml.contains(
+		"package = \"reinhardt-web\", default-features = false, features = [\"pages\", \"client-router\"]"
+	));
+	assert!(cargo_toml.contains(
+		"features = [\"standard\", \"pages\", \"admin\", \"conf\", \"commands\", \"db-postgres\"]"
+	));
+	let makefile_toml = std::fs::read_to_string(generated.join("Makefile.toml")).unwrap();
+	assert!(
+		makefile_toml.contains("\"--no-input\""),
+		"generated pages Makefile must use collectstatic's non-interactive flag"
+	);
+	assert!(
+		!makefile_toml.contains("\"--noinput\""),
+		"generated pages Makefile must not use the createsuperuser-only --noinput spelling"
+	);
+	let build_rs = std::fs::read_to_string(generated.join("build.rs")).unwrap();
+	for cfg in ["client", "server", "wasm", "native"] {
+		assert!(
+			build_rs.contains(&format!("cargo::rustc-check-cfg=cfg({cfg})")),
+			"generated pages build.rs must declare cfg({cfg}) for Rust 2024 check-cfg:\n{build_rs}"
+		);
+	}
+	assert!(
+		build_rs.contains("wasm: { target_arch = \"wasm32\" }")
+			&& build_rs.contains("native: { not(target_arch = \"wasm32\") }"),
+		"generated pages build.rs must keep wasm/native compatibility aliases:\n{build_rs}"
+	);
+	let shared_types = std::fs::read_to_string(generated.join("src/shared/types.rs")).unwrap();
+	assert!(
+		!shared_types.contains("\nuse serde::{Deserialize, Serialize};"),
+		"generated shared types placeholder must not create an unused import warning:\n{shared_types}"
+	);
+	assert!(
+		shared_types.contains("// use serde::{Deserialize, Serialize};"),
+		"generated shared types placeholder should keep the serde import in the commented example:\n{shared_types}"
+	);
 	assert_manifest_parses(&generated.join("Cargo.toml"));
 }
 
@@ -148,6 +187,8 @@ async fn startproject_pages_adds_required_pages_features() {
 	res.expect("startproject --with-pages succeeds with dependency selection flags");
 	let cargo_toml =
 		std::fs::read_to_string(tmp.path().join("pages_feature_proj/Cargo.toml")).unwrap();
-	assert!(cargo_toml.contains("features = [\"minimal\", \"pages\", \"admin\"]"));
+	assert!(cargo_toml.contains(
+		"features = [\"minimal\", \"pages\", \"admin\", \"conf\", \"commands\", \"db-postgres\"]"
+	));
 	assert_manifest_parses(&tmp.path().join("pages_feature_proj/Cargo.toml"));
 }

@@ -31,6 +31,7 @@ chrono = { version = "0.4", features = ["serde"] }
 First, define the Snippet model using Reinhardt's `#[model(...)]` attribute. This automatically implements the `Model` trait, generates type-safe field accessors, and registers the model globally:
 
 ```rust
+// File: src/serializers.rs
 use chrono::{DateTime, Utc};
 use reinhardt::prelude::*;
 use serde::{Serialize, Deserialize};
@@ -63,6 +64,7 @@ The `#[model(...)]` attribute automatically derives the `Model` trait -- you do 
 Reinhardt primarily uses [serde](https://serde.rs/) for serialization. For simple cases, derive macros are sufficient:
 
 ```rust
+// File: src/serializers.rs
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,6 +81,7 @@ pub struct Snippet {
 For custom serialization logic, implement the `Serializer` trait. Validation can be handled by a separate function:
 
 ```rust
+// File: src/serializers.rs
 use reinhardt::prelude::*;
 
 pub struct SnippetSerializer;
@@ -129,6 +132,7 @@ fn validate_snippet(snippet: &Snippet) -> Result<(), Vec<ValidationError>> {
 Use field validators for specific field constraints:
 
 ```rust
+// File: src/serializers.rs
 use reinhardt::prelude::*;
 
 // String field with length constraints
@@ -155,6 +159,7 @@ email_field.validate(&"user@example.com".to_string()).unwrap();
 Convert data to/from JSON:
 
 ```rust
+// File: src/serializers.rs
 use reinhardt::prelude::*;
 
 let serializer = JsonSerializer::<Snippet>::new();
@@ -187,6 +192,7 @@ best fits your use case.
 For basic validation with standard rules, use serde with Reinhardt's built-in validation:
 
 ```rust
+// File: src/serializers.rs
 use serde::{Serialize, Deserialize};
 use reinhardt::Validate;
 
@@ -222,6 +228,7 @@ request.validate()?;  // Validates all fields
 For production APIs, separate input validation from output formatting. This pattern uses `SnippetSerializer` for request validation (with Reinhardt's built-in validation) and `SnippetResponse` for response serialization (with a `from_model()` method):
 
 ```rust
+// File: src/serializers.rs
 use serde::{Serialize, Deserialize};
 use reinhardt::Validate;
 
@@ -285,6 +292,7 @@ Key advantages of this split pattern:
 For custom serialization with complex validation logic or business rules:
 
 ```rust
+// File: src/serializers.rs
 use reinhardt::prelude::*;
 
 pub struct UserSerializer;
@@ -349,6 +357,7 @@ async fn validate_user(user: &User) -> Result<(), Vec<ValidationError>> {
 For GraphQL APIs, use `async-graphql`'s `InputObject`:
 
 ```rust
+// File: src/serializers.rs
 use async_graphql::InputObject;
 
 #[derive(InputObject)]
@@ -412,6 +421,7 @@ For most REST APIs, **Pattern 1** is the recommended starting point.
 For database models, use `ModelSerializer` with custom validation:
 
 ```rust
+// File: src/serializers.rs
 use reinhardt::prelude::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -470,6 +480,7 @@ assert!(validate_user(&invalid_user).is_err());
 Handle nested data structures:
 
 ```rust
+// File: src/serializers.rs
 use reinhardt::prelude::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -504,6 +515,7 @@ let json = serializer.serialize(&article).unwrap();
 Typical validation workflow in an API view with Reinhardt:
 
 ```rust
+// File: src/serializers.rs
 use json::json;
 use reinhardt::core::serde::json;
 use reinhardt::ViewResult;
