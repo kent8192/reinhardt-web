@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0-rc.5...reinhardt-web@v0.2.0-rc.6) - 2026-06-13
+
+### Added
+
+- *(macros)* expose model info companions to wasm
+
+### Changed
+
+- *(examples)* aggregate tutorial route contracts
+- *(examples)* inline tutorial route contracts
+
+### Documentation
+
+- add release announcement(s)
+- *(tutorial)* align basis docs with route contracts
+- *(tutorial)* document contacts settings fragment
+- *(tutorial)* align basis modules with pages template
+- *(tutorial)* address CodeRabbit review comments
+- *(tutorial)* align cfg recap with pages template
+- *(tutorial)* align typed form examples
+- *(tutorial)* aggregate app URL routers
+- *(tutorial)* trim duplicate client router snippet
+- *(tutorial)* restore users client router snippet
+- *(tutorial)* describe generated model info companions
+
+### Fixed
+
+- *(forms)* omit unreachable focus path for empty forms
+- *(commands)* add pages app reverse template
+- *(ci)* patch aws-runtime event-stream signer
+- *(commands)* align startproject scaffold defaults
+- *(commands)* use collectstatic no-input in pages template
+- *(commands)* make generated model placeholders tutorial-safe
+- *(ci)* pin broken upstream transitive releases
+- *(commands)* ignore sqlite database in project templates
+
+### Maintenance
+
+- drop vendored aws-runtime patch
+
+### Testing
+
+- *(examples)* fix tutorial basis CI tests
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.3...reinhardt-web@v0.2.0) - 2026-06-11
 
 Stable 0.2.0 is the first release of the Reinhardt 0.2 line. It
