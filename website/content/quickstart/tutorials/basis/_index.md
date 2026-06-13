@@ -1,5 +1,5 @@
 +++
-title = "Basics Tutorials"
+title = "Basis Tutorials"
 description = "Build a full-stack polling application with Reinhardt pages."
 sort_by = "weight"
 weight = 10

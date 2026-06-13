@@ -45,7 +45,18 @@ msw = ["reinhardt/msw"]
 
 ## Native Test Dependencies
 
-The native test fixture uses `rstest`, `serial_test`, `sqlx`, `tempfile`, and Reinhardt's database connection APIs:
+The native test fixture uses `rstest`, `serial_test`, `tokio`, `sqlx`, `tempfile`, and Reinhardt's database connection APIs:
+
+```toml
+[dev-dependencies]
+rstest = { version = "0.26", default-features = false }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+serial_test = "3.2"
+tokio = { version = "1.48.0", features = ["rt", "macros"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+tempfile = "3.15"
+```
 
 ```rust
 use reinhardt::DatabaseConnection;

@@ -312,14 +312,18 @@ The final example adds a "Create new poll" button and owner-only controls. Leave
 Until the admin arrives in Part 6, the quickest local seed is SQL. Use the same database that `cargo make dev` points at:
 
 ```sql
-insert into questions (question_text, pub_date)
-values ('What should we build next?', now());
-
+with inserted_question as (
+    insert into questions (question_text, pub_date)
+    values ('What should we build next?', now())
+    returning id
+)
 insert into choices (question_id, choice_text, votes)
-values (1, 'More tutorials', 0), (1, 'More examples', 0);
+select id, 'More tutorials', 0 from inserted_question
+union all
+select id, 'More examples', 0 from inserted_question;
 ```
 
-If your database does not support `now()`, use the timestamp literal form it expects.
+If your database does not support `now()` or data-modifying common table expressions, use the timestamp and inserted-ID syntax it expects.
 
 ## Checkpoint
 

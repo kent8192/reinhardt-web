@@ -430,7 +430,7 @@ pub fn nav_bar() -> Page {
 When a user is present, show their username and a logout link:
 
 ```rust
-if auth_signal.is_pending() {
+if load_user.is_pending() {
     div {
         class: "flex items-center gap-3",
         aria_busy: "true",
@@ -439,7 +439,7 @@ if auth_signal.is_pending() {
             "Checking sign-in status"
         }
     }
-} else if let Some(Some(user)) = auth_signal.result() {
+} else if let Some(Some(user)) = load_user.result() {
     div {
         class: "flex items-center gap-3",
         span {

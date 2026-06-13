@@ -56,6 +56,19 @@ pub struct ChoiceAdmin;
 
 `QuestionAdmin` includes `author_id` because Part 5 made question ownership part of the schema.
 
+Part 2 already exposed the polls app from `src/apps.rs`:
+
+```rust
+pub mod polls;
+```
+
+Now expose the admin module from the polls app parent so the site configuration can import it:
+
+```rust
+#[cfg(server)]
+pub mod admin;
+```
+
 ## Configure the Admin Site
 
 Create `src/config/admin.rs` and register the app admins:
@@ -87,6 +100,13 @@ pub fn configure_admin() -> AdminSite {
 ```
 
 The site configuration is metadata. Database access is supplied later through DI when routes are mounted.
+
+Expose the configuration module from `src/config.rs`:
+
+```rust
+#[cfg(server)]
+pub mod admin;
+```
 
 ## Mount Admin Routes
 
