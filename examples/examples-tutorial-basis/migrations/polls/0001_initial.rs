@@ -54,15 +54,6 @@ pub(super) fn migration() -> Migration {
 				name: "questions".to_string(),
 				columns: vec![
 					ColumnDefinition {
-						name: "author_id".to_string(),
-						type_definition: FieldType::BigInteger,
-						not_null: true,
-						unique: false,
-						primary_key: false,
-						auto_increment: false,
-						default: None,
-					},
-					ColumnDefinition {
 						name: "id".to_string(),
 						type_definition: FieldType::BigInteger,
 						not_null: true,
