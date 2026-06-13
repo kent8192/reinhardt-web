@@ -2,6 +2,9 @@
 title = "Part 1: Project Setup"
 description = "Generate a Reinhardt REST project, inspect the settings layout, and run the development server."
 weight = 10
+
+[extra]
+sidebar_weight = 10
 +++
 
 # Part 1: Project Setup

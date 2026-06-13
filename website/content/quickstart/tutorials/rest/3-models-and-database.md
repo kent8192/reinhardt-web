@@ -2,6 +2,9 @@
 title = "Part 3: Models and the Database"
 description = "Define the Snippet model, generate the initial migration, and apply it to the database."
 weight = 30
+
+[extra]
+sidebar_weight = 30
 +++
 
 # Part 3: Models and the Database

@@ -2,6 +2,9 @@
 title = "Part 5: Serializers and Validation"
 description = "Validate request bodies, serialize responses, and choose status codes for API errors."
 weight = 50
+
+[extra]
+sidebar_weight = 50
 +++
 
 # Part 5: Serializers and Validation

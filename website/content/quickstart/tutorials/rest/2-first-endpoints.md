@@ -2,6 +2,9 @@
 title = "Part 2: Your First Endpoints"
 description = "Add temporary JSON endpoints with Reinhardt HTTP method macros and request extractors."
 weight = 20
+
+[extra]
+sidebar_weight = 20
 +++
 
 # Part 2: Your First Endpoints

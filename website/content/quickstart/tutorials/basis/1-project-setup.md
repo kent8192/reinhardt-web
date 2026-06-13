@@ -132,7 +132,7 @@ Three rules keep this layout predictable:
 | `cargo make clippy-check` / `clippy-fix` | Clippy with `-D warnings` |
 | `cargo make quality` / `quality-fix` | Run both `fmt-*` and `clippy-*` |
 
-> **Note**: This tutorial targets the **reinhardt-pages** architecture end-to-end. If you are instead building a pure JSON backend consumed by an external SPA or mobile client, start with the [REST Tutorial](../rest/0-http-macros/).
+> **Note**: This tutorial targets the **reinhardt-pages** architecture end-to-end. If you are instead building a pure JSON backend consumed by an external SPA or mobile client, start with the [REST Tutorial](../rest/).
 
 ## Understanding the Project Structure
 
@@ -188,7 +188,7 @@ flowchart LR
 - Single deployment artifact
 - WASM compilation for the client-side UI
 
-**Alternative: RESTful API architecture.** If you're building a backend API for separate frontends (React, Vue, mobile apps), see the [REST API Tutorial](../rest/0-http-macros/) instead.
+**Alternative: RESTful API architecture.** If you're building a backend API for separate frontends (React, Vue, mobile apps), see the [REST API Tutorial](../rest/) instead.
 
 ## Configuring `settings/base.toml`
 

@@ -350,7 +350,7 @@ impl Serializer for UserSerializer {
 
 - [Module documentation](https://docs.rs/reinhardt-rest) (available after crates.io publish)
 - See `crates/reinhardt-rest/src/serializers.rs` for comprehensive serializers documentation
-- [Tutorial: Serialization](/quickstart/tutorials/rest/1-serialization/)
+- [Tutorial: Serializers and Validation](/quickstart/tutorials/rest/5-serializers-and-validation/)
 
 ### reinhardt-views (viewsets feature)
 
@@ -528,7 +528,7 @@ let auth = JwtAuth::new(secret_key);
 **Documentation:**
 
 - [Module documentation](https://docs.rs/reinhardt-auth) (available after crates.io publish)
-- [Tutorial: Authentication & Permissions](/quickstart/tutorials/rest/4-authentication-and-permissions/)
+- [REST Tutorial Overview](/quickstart/tutorials/rest/)
 
 ## Additional Components
 

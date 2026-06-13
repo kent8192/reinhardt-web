@@ -2,6 +2,9 @@
 title = "Part 6: Bonus: ViewSets and Routers"
 description = "Expose the snippets API through ModelViewSet and mount it beside the function-based handlers."
 weight = 60
+
+[extra]
+sidebar_weight = 60
 +++
 
 # Part 6: Bonus: ViewSets and Routers

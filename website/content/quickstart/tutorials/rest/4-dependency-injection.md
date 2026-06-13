@@ -2,6 +2,9 @@
 title = "Part 4: Dependency Injection"
 description = "Inject a DatabaseConnection, query the real ORM, and register a fallible DI factory."
 weight = 40
+
+[extra]
+sidebar_weight = 40
 +++
 
 # Part 4: Dependency Injection

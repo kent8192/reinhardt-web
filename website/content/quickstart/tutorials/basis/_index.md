@@ -171,7 +171,7 @@ Work through the chapters in order. Each chapter assumes the directory layout pr
 
 ## Comparison with REST Tutorial
 
-If you're also interested in building pure JSON APIs, see the [REST Tutorial](../rest/quickstart/).
+If you're also interested in building pure JSON APIs, see the [REST Tutorial](../rest/).
 
 - **Basis Tutorial** (this one): full-stack pages template — WASM client + `#[server_fn]` + shared DTOs + admin + session auth.
 - **REST Tutorial**: `#[get]` / `#[post]` views, `Serializer`s, and `ViewSet` + `Router` for classic REST endpoints.
