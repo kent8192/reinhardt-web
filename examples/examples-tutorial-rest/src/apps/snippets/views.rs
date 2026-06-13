@@ -82,9 +82,12 @@ pub async fn config(
 /// Success response: 200 OK with array of snippets
 #[get("/snippets/", name = "snippets-list")]
 pub async fn list(#[inject] db: Depends<DatabaseConnection>) -> ViewResult<Response> {
-	// `Depends<T>` implements `Deref<Target = T>`, so `&*db` borrows the
-	// underlying `DatabaseConnection` that the DI container resolved.
-	let snippets = Manager::<Snippet>::new().all().all_with_db(&*db).await?;
+	// `Depends<T>` implements `Deref<Target = T>`. `all_with_db` wants a
+	// `&DatabaseConnection`, so passing `&db` lets deref coercion turn
+	// `&Depends<DatabaseConnection>` into `&DatabaseConnection` for free.
+	// (To take the value by reference explicitly you would write `&*db`; the
+	// `config` handler above shows the explicit `*db` form where it is needed.)
+	let snippets = Manager::<Snippet>::new().all().all_with_db(&db).await?;
 	let snippet_responses: Vec<SnippetResponse> =
 		snippets.iter().map(SnippetResponse::from_model).collect();
 
@@ -128,7 +131,7 @@ pub async fn create(
 		.finish();
 
 	let created = Manager::<Snippet>::new()
-		.create_with_conn(&*db, &snippet)
+		.create_with_conn(&db, &snippet)
 		.await?;
 
 	let response_data = json!({
@@ -155,7 +158,7 @@ pub async fn retrieve(
 ) -> ViewResult<Response> {
 	let snippets = Manager::<Snippet>::new()
 		.get(snippet_id)
-		.all_with_db(&*db)
+		.all_with_db(&db)
 		.await?;
 
 	let snippet = match snippets.first() {
@@ -200,7 +203,7 @@ pub async fn update(
 	serializer.validate()?;
 
 	let manager = Manager::<Snippet>::new();
-	let existing = manager.get(snippet_id).all_with_db(&*db).await?;
+	let existing = manager.get(snippet_id).all_with_db(&db).await?;
 
 	let mut snippet = match existing.into_iter().next() {
 		Some(snippet) => snippet,
@@ -216,7 +219,7 @@ pub async fn update(
 	snippet.code = serializer.code.clone();
 	snippet.language = serializer.language.clone();
 
-	let updated = manager.update_with_conn(&*db, &snippet).await?;
+	let updated = manager.update_with_conn(&db, &snippet).await?;
 
 	let response_data = json!({
 		"message": "Snippet updated",
@@ -241,7 +244,7 @@ pub async fn delete(
 	#[inject] db: Depends<DatabaseConnection>,
 ) -> ViewResult<Response> {
 	let manager = Manager::<Snippet>::new();
-	let existing = manager.get(snippet_id).all_with_db(&*db).await?;
+	let existing = manager.get(snippet_id).all_with_db(&db).await?;
 
 	if existing.is_empty() {
 		let error = json::to_string(&json!({"error": "Snippet not found"}))?;
@@ -250,7 +253,7 @@ pub async fn delete(
 			.with_body(error));
 	}
 
-	manager.delete_with_conn(&*db, snippet_id).await?;
+	manager.delete_with_conn(&db, snippet_id).await?;
 
 	// Return 204 No Content for successful deletion
 	Ok(Response::new(StatusCode::NO_CONTENT))
