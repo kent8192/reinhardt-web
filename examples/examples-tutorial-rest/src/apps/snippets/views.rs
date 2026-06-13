@@ -245,9 +245,9 @@ pub async fn delete(
 /// ViewSet endpoints (under `/api/snippets-viewset/`) are served by the
 /// same process — `crate::apps::snippets::urls::url_patterns` registers
 /// them on a single `ServerRouter` with no `USE_VIEWSET`-style toggle.
-/// Unlike the function-based views above (which fall back to in-memory
-/// `get_sample_snippets()` data for demonstration), the ViewSet path will
-/// observe an empty list until rows are inserted into the `snippets` table.
+/// Like the function-based views above, the ViewSet path queries the real
+/// database, so both observe an empty list until rows are inserted into the
+/// `snippets` table.
 #[reinhardt::viewset(basename = "snippet")]
 pub fn viewset() -> reinhardt::ModelViewSet<Snippet, SnippetSerializer> {
 	use reinhardt::ModelViewSet;
