@@ -42,6 +42,8 @@ RC entries remain below as detailed history.
 - `impl Trackable for Signal<T>` and `impl Trackable for Memo<T>`, enabling
   these primitives to participate in hook deps tuples.
 
+- *(macros)* expose model info companions to wasm
+
 ### Removed
 
 - **`#[routes]` deprecated 2-level URL accessor codegen** (rc.16) —

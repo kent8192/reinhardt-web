@@ -44,6 +44,8 @@ RC entries remain below as detailed history.
 - *(admin-cli)* reject commented-out `#![rustfmt::skip]` in `rustfmt_skip_attr_matches`
 - split formatter from admin cli
 
+- *(commands)* align startproject scaffold defaults
+
 ### Documentation
 
 - *(release)* enforce public API doc coverage

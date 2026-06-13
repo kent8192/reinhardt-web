@@ -46,6 +46,8 @@ RC entries remain below as detailed history.
   function identifier are exempt. Refs
   [#4901](https://github.com/kent8192/reinhardt-web/issues/4901).
 
+- *(macros)* expose model info companions to wasm
+
 ### Changed
 
 - *(settings)* share schema macro analysis

@@ -35,6 +35,8 @@ RC entries remain below as detailed history.
 - *(settings)* require explicit nested settings nodes
 - *(tasks)* [**breaking**] remove misleading create_queue_from_settings API
 
+- *(ci)* pin broken upstream transitive releases
+
 ### Documentation
 
 - *(tasks)* note that create_queue_from_settings does not retain settings

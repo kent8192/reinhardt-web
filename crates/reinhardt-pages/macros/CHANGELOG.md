@@ -55,6 +55,8 @@ RC entries remain below as detailed history.
 - *(pages)* render dynamic radio choices
 - *(forms)* stabilize form runtime and validator parity
 
+- *(forms)* omit unreachable focus path for empty forms
+
 ### Performance
 
 - *(pages)* batch generated page attributes

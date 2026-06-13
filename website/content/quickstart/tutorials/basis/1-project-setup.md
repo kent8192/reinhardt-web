@@ -36,7 +36,7 @@ Install the global tool for project generation. The command below pins this tuto
 <!-- reinhardt-version-sync -->
 ```bash
 # Terminal: project root
-cargo install reinhardt-admin-cli --version "0.2.0-rc.5"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.6"
 ```
 
 ## Creating a Project
