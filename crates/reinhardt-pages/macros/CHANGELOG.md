@@ -7,12 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.2.0-rc.5...reinhardt-pages-macros@v0.2.0-rc.6) - 2026-06-13
-
-### Fixed
-
-- *(forms)* omit unreachable focus path for empty forms
-
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.3...reinhardt-pages-macros@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-pages-macros` for the Reinhardt 0.2.0 line. This
@@ -60,6 +54,8 @@ RC entries remain below as detailed history.
 - *(auth)* replace InternalUser in UserManager public API with ManagedUser
 - *(pages)* render dynamic radio choices
 - *(forms)* stabilize form runtime and validator parity
+
+- *(forms)* omit unreachable focus path for empty forms
 
 ### Performance
 

@@ -7,17 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.0-rc.5...reinhardt-db@v0.2.0-rc.6) - 2026-06-13
-
-### Documentation
-
-- *(release)* finalize 0.2.0 changelog
-- *(release)* refine 0.2.0 changelog narrative
-
-### Fixed
-
-- *(ci)* pin broken upstream transitive releases
-
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.3...reinhardt-db@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-db` for the Reinhardt 0.2.0 line. This
@@ -65,6 +54,8 @@ RC entries remain below as detailed history.
 - *(db)* qualify Manager in rustdoc examples and add missing Objects type
 - *(docs)* resolve remaining cross-crate intra-doc link errors
 - repair release examples tests
+
+- *(ci)* pin broken upstream transitive releases
 
 ### Performance
 
