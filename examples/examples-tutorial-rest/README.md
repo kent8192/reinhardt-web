@@ -4,15 +4,14 @@ This example demonstrates the concepts covered in the [Reinhardt REST Tutorial](
 
 ## What This Example Covers
 
-This example corresponds to the REST tutorial Quickstart and Tutorial 1-6:
+This example corresponds to the REST tutorial Parts 1-6:
 
-- **Quickstart** - Project setup, serializers, views, routing
-- **Tutorial 1: Serialization** - serde, validation, JSON serialization
-- **Tutorial 2: Requests and Responses** - Request object, Response builder, parameter extraction
-- **Tutorial 3: Class-Based Views** - Generic views (ListAPIView, CreateAPIView, etc.)
-- **Tutorial 4: Authentication & Permissions** - Authentication systems
-- **Tutorial 5: Relationships and Hyperlinked APIs** - Relationships and hyperlinked APIs
-- **Tutorial 6: ViewSets and Routers** - ViewSets, ModelViewSet, Router
+- **Part 1: Project Setup** - Project structure, settings, the `manage` CLI, the development server
+- **Part 2: Your First Endpoints** - `#[get]` / `#[post]` / `#[put]` / `#[delete]`, route `name = "..."`, `Path` / `Query` / `Json` extractors, `ViewResult`
+- **Part 3: Models and the Database** - `#[model]` `Snippet`, migrations, `migrate`, the builder API
+- **Part 4: Dependency Injection** - `#[inject] Depends<DatabaseConnection>`, `#[injectable]` / `#[injectable_factory]`, scopes, `TypeId`-keyed registration, the `Result<T, NewError>` pattern with `Depends<Result<T, E>>`. This is where the CRUD handlers are wired to the real ORM
+- **Part 5: Serializers and Validation** - `Validate` derive, `pre_validate = true`, error responses and status codes
+- **Part 6: Bonus — ViewSets and Routers** - the same CRUD compressed to ~15 lines with `ModelViewSet`; pagination, filtering, ordering
 
 ## Features
 
@@ -28,20 +27,27 @@ This example corresponds to the REST tutorial Quickstart and Tutorial 1-6:
 ### API Endpoints
 
 ```
-GET    /api/snippets/       - List all snippets
-POST   /api/snippets/       - Create a new snippet
-GET    /api/snippets/<id>/  - Retrieve a specific snippet
-PUT    /api/snippets/<id>/  - Update a snippet
-DELETE /api/snippets/<id>/  - Delete a snippet
+GET    /api/snippets/         - List all snippets
+POST   /api/snippets/         - Create a new snippet
+GET    /api/snippets/config/  - DI demonstration: list configuration (Depends<Result<T, E>>)
+GET    /api/snippets/<id>/    - Retrieve a specific snippet
+PUT    /api/snippets/<id>/    - Update a snippet
+DELETE /api/snippets/<id>/    - Delete a snippet
 ```
+
+All handlers receive a database connection through dependency injection
+(`#[inject] db: Depends<DatabaseConnection>`) and query the real ORM. The
+`/api/snippets/config/` endpoint is a teaching aid for
+`Depends<Result<T, E>>`; see `src/apps/snippets/di.rs`.
 
 ## Setup
 
 ### Prerequisites
 
 - Rust 1.75 or later
-- PostgreSQL (optional, for database features)
-- Docker (optional, for TestContainers in tests)
+- Docker, for the disposable PostgreSQL and Redis containers used by
+  `cargo make migrate` and `cargo make runserver`
+- PostgreSQL, only if you point `settings/local.toml` at an existing database
 
 ### Installation
 
@@ -52,8 +58,11 @@ cd examples/examples-tutorial-rest
 # Build the project
 cargo build
 
+# Apply migrations against the local disposable database
+cargo make migrate
+
 # Run tests
-cargo test
+cargo make test
 ```
 
 ## Usage
@@ -61,6 +70,10 @@ cargo test
 ### Run the Development Server
 
 ```bash
+# Apply migrations first. `runserver` also depends on `migrate`, but running
+# it explicitly makes first-run database problems easier to see.
+cargo make migrate
+
 cargo make runserver
 ```
 
@@ -154,6 +167,7 @@ examples-tutorial-rest/
 ├── src/
 │   ├── apps/
 │   │   ├── snippets/
+│   │   │   ├── di.rs
 │   │   │   ├── models.rs
 │   │   │   ├── serializers.rs
 │   │   │   ├── urls.rs
@@ -176,16 +190,17 @@ examples-tutorial-rest/
 
 This example is designed to be studied alongside the REST tutorial:
 
-1. **Start with the tutorial**: Read [Quickstart](../../website/content/quickstart/tutorials/rest/quickstart.md)
+1. **Start with the tutorial**: Read the [REST tutorial](../../website/content/quickstart/tutorials/rest/)
 2. **Examine the code**: Look at how concepts are implemented in this example
-3. **Run the tests**: `cargo test` to see the functionality in action
+3. **Run the tests**: `cargo make test` to see the functionality in action
 4. **Experiment**: Modify the code and see what happens
 
 ## Key Concepts Demonstrated
 
 - `src/apps/snippets/models.rs` defines the `Snippet` model with `#[model(app_label = "snippets", table_name = "snippets")]`, typed fields, `created_at`, and the `highlighted()` helper.
 - `src/apps/snippets/serializers.rs` defines `SnippetSerializer` with `Validate` length rules and `SnippetResponse::from_model()`.
-- `src/apps/snippets/views.rs` exposes function-based CRUD handlers with `#[get]`, `#[post(pre_validate = true)]`, `#[put]`, and `#[delete]`.
+- `src/apps/snippets/di.rs` registers a plain singleton config and a fallible `Result<SnippetListConfig, ConfigError>` factory to demonstrate TypeId-keyed DI registrations.
+- `src/apps/snippets/views.rs` exposes function-based CRUD handlers with `#[get]`, `#[post(pre_validate = true)]`, `#[put]`, and `#[delete]`, resolving `DatabaseConnection` through `Depends<DatabaseConnection>`.
 - `src/apps/snippets/views.rs` also exposes a `#[reinhardt::viewset(basename = "snippet")]` `ModelViewSet` with pagination, filtering, and ordering.
 - `src/apps/snippets/urls.rs` registers both function-based endpoints and ViewSet endpoints on one `ServerRouter`.
 - `src/config/urls.rs` uses `#[routes]` and mounts the snippets router under the literal `/api/` prefix.
@@ -198,53 +213,45 @@ Run the test suite:
 
 ```bash
 # Run all tests
-cargo test
+cargo make test
 
 # Run specific test
-cargo test test_snippet_model
+cargo nextest run --all-features test_snippet_model
 
 # Run with output
-cargo test -- --nocapture
+cargo nextest run --all-features --no-capture
 ```
 
-## ViewSets (Tutorial 6)
+## ViewSets (Part 6)
 
-This example demonstrates both function-based views (Tutorial 1-5) and ViewSet-based views (Tutorial 6). **Both are mounted simultaneously** on the same running server — there is no toggle between them. The two endpoint sets coexist under separate URL prefixes:
+This example demonstrates both function-based views (Parts 2-5) and
+ViewSet-based views (Part 6). **Both are mounted simultaneously** on the
+same running server; there is no toggle between them. The two endpoint sets
+coexist under separate URL prefixes:
 
 ```bash
+cargo make migrate
 cargo make runserver
 
-# Function-based endpoints (Tutorial 1-5)
+# Function-based endpoints (Parts 2-5)
 curl http://127.0.0.1:8000/api/snippets/
 
-# ViewSet endpoints (Tutorial 6)
+# ViewSet endpoints (Part 6)
 curl http://127.0.0.1:8000/api/snippets-viewset/
 ```
 
 The Bruno collection under `bruno/` contains a `Snippets CRUD` folder for the function-based path and a `Snippets ViewSet` folder for the ViewSet path; both can be exercised back-to-back without restarting the server.
 
-> **rc.23+ runtime behaviour**: Starting with reinhardt-web rc.23,
-> `ModelViewSet` (and `ReadOnlyModelViewSet`) issue **real database
-> queries** instead of returning skeleton `[]` / `{}` responses. To exercise
-> the ViewSet endpoints you must therefore migrate the `snippets` table
-> first:
->
-> ```bash
-> cargo make migrate
-> cargo make runserver
-> ```
->
-> Until rows are inserted, the `/api/snippets-viewset/` endpoints will
-> return an empty list. The function-based path (`/api/snippets/`) is
-> unaffected — it falls back to in-memory sample snippets defined in
-> `views.rs::get_sample_snippets`.
+Both endpoint sets issue real database queries. Until rows are inserted, both
+paths return empty lists. Create rows with either `POST /api/snippets/` or
+`POST /api/snippets-viewset/`, then list or retrieve them through either path.
 
 ### Comparison
 
 | Approach | Code Lines | Features |
 |----------|------------|----------|
-| Function-based (Tutorial 1-5) | ~200 lines | Full control, explicit implementation |
-| ViewSet-based (Tutorial 6) | ~15 lines | CRUD automation, pagination, filtering, ordering |
+| Function-based (Parts 2-5) | ~200 lines | Full control, explicit implementation |
+| ViewSet-based (Part 6) | ~15 lines | CRUD automation, pagination, filtering, ordering |
 
 ### ViewSet Features
 
@@ -273,13 +280,13 @@ curl "http://127.0.0.1:8000/api/snippets-viewset/?language=rust&ordering=-title&
 
 ### When to Use Each Approach
 
-**Function-based views (Tutorial 1-5)**:
+**Function-based views (Parts 2-5)**:
 - Simple endpoints with custom logic
 - Non-standard RESTful patterns
 - When you need fine-grained control
 - Learning HTTP handling basics
 
-**ViewSet-based views (Tutorial 6)**:
+**ViewSet-based views (Part 6)**:
 - Standard RESTful CRUD APIs
 - When pagination, filtering, and ordering are needed
 - Rapid API development
@@ -292,9 +299,8 @@ After understanding this example:
 1. **Compare both approaches**: Try switching between function-based and ViewSet-based
 2. **Understand the trade-offs**: When to use each approach (see above)
 3. **Add custom actions**: Extend ViewSets with `#[action]` decorator for non-CRUD endpoints
-4. **Add database integration**: Implement actual database storage instead of in-memory sample data
-5. **Add authentication**: Implement JWT/Token/Session auth for both approaches
-6. **Add permissions**: Implement permission classes to control access
+4. **Add authentication**: Implement JWT, token, or session auth for both approaches
+5. **Add permissions**: Implement permission classes to control access
 
 ## Related Documentation
 
