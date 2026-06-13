@@ -23,7 +23,7 @@ choose the latest stable release.
 <!-- reinhardt-version-sync -->
 ```bash
 # Terminal: project root
-cargo install reinhardt-admin-cli --version "0.2.0-rc.5"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.6"
 ```
 
 Create a new Reinhardt REST project:
