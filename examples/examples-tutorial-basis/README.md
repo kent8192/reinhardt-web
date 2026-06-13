@@ -1,18 +1,18 @@
 # Reinhardt Basis Tutorial Example - Polling Application
 
-This example demonstrates the concepts covered in the [Reinhardt Basis Tutorial](../../../website/content/quickstart/tutorials/basis/). It implements a complete polling application with two cooperating apps (`polls` and `users`) — typed RPC server functions, per-app route modules, an admin panel, and a WASM single-page-application client all in a single crate.
+This example demonstrates the concepts covered in the [Reinhardt Basis Tutorial](../../website/content/quickstart/tutorials/basis/). It implements a complete polling application with two cooperating apps (`polls` and `users`) — typed RPC server functions, per-app route modules, an admin panel, and a WASM single-page-application client all in a single crate.
 
 ## What This Example Covers
 
 This example corresponds to the basis tutorial parts 1-7:
 
-- **Part 1: Project Setup** - Project structure, development server, first views
-- **Part 2: Models and Database** - Database configuration, ORM models, admin panel
-- **Part 3: Server Functions and URLs** - Typed server functions, app route modules, SPA routing
-- **Part 4: Forms and Generic Views** - `form!` forms, reactive page components, mutation flows
-- **Part 5: Testing** - Automated testing, model and view tests
-- **Part 6: Static Files** - CSS, images, static file management
-- **Part 7: Admin Customization** - Admin interface customization
+- **Part 1: Project Setup and SPA Shell** - Pages template layout, settings, WASM entry point, and `cargo make dev`
+- **Part 2: Your First Feature - the Poll Index** - `polls` app, anonymous `Question`/`Choice` migration `0001`, `get_questions`, and the index component
+- **Part 3: Detail Pages and Voting** - Detail/results server functions, `form!` voting, reactive errors, and vote persistence
+- **Part 4: Users and Authentication** - `users` app, minimal `User`, injectable `AuthUserManager`, session middleware, and auth pages
+- **Part 5: Ownership and Poll CRUD** - `Question.author` migration `0002`, ownership-checked question and choice CUD server functions, and owner-only controls
+- **Part 6: The Admin and Static Files** - `QuestionAdmin`/`ChoiceAdmin`, `/admin/`, WASM artifact registration, and static collection
+- **Part 7: Testing** - Native integration tests, `createsuperuser` coverage, and WASM MSW mock tests
 
 ## Features
 
@@ -108,7 +108,8 @@ examples-tutorial-basis/
 │   ├── default/
 │   │   └── 0001_initial.rs
 │   ├── polls/
-│   │   └── 0001_initial.rs
+│   │   ├── 0001_initial.rs
+│   │   └── 0002_question_author.rs
 │   └── users/
 │       └── 0001_initial.rs
 ├── scripts/
@@ -191,7 +192,7 @@ examples-tutorial-basis/
 
 This example is designed to be studied alongside the basis tutorial:
 
-1. **Start with the tutorial**: Read [Part 1](../../../website/content/quickstart/tutorials/basis/1-project-setup.md)
+1. **Start with the tutorial**: Read [Part 1](../../website/content/quickstart/tutorials/basis/1-project-setup.md)
 2. **Examine the code**: Look at how concepts are implemented in this example
 3. **Run the tests**: `cargo make test` to see the functionality in action
 4. **Experiment**: Modify the code and see what happens
@@ -233,15 +234,15 @@ The `msw` feature is forwarded to the `reinhardt` facade so `#[server_fn]` gener
 
 After understanding this example:
 
-1. **Extend the models**: Add user authentication, comments, or tags
-2. **Add database integration**: Implement actual database storage
-3. **Create templates**: Add HTML templates for views
-4. **Customize admin**: Create custom admin interface
-5. **Add static files**: Include CSS and JavaScript
+1. **Add richer poll features**: comments, tags, scheduled publication, or poll closing times
+2. **Strengthen authorization tests**: extend the native fixture with users plus `author_id` rows and assert author success vs non-author 403 cases
+3. **Improve production deployment**: add environment-specific settings, TLS/static hosting strategy, and persistent database configuration
+4. **Customize the admin**: add project-specific filters, read-only computed columns, or stricter permissions
+5. **Expand WASM coverage**: add browser tests for the create/edit/delete flows beyond the current MSW smoke tests
 
 ## Related Documentation
 
-- [Basis Tutorial](../../../website/content/quickstart/tutorials/basis/) - Step-by-step guide
+- [Basis Tutorial](../../website/content/quickstart/tutorials/basis/) - Step-by-step guide
 - [API Documentation](https://docs.rs/reinhardt-web) - Complete API reference
 
 ## License
