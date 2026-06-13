@@ -1,7 +1,9 @@
-use chrono::Utc;
 use json::json;
 use reinhardt::Validate;
 use reinhardt::core::serde::json;
+use reinhardt::db::DatabaseConnection;
+use reinhardt::db::orm::Manager;
+use reinhardt::di::Depends;
 use reinhardt::http::ViewResult;
 use reinhardt::{Json, Path, Response, StatusCode};
 use reinhardt::{delete, get, post, put};
@@ -22,34 +24,56 @@ use reinhardt::{delete, get, post, put};
 // `serializer.validate()?` call below — hence the `use reinhardt::Validate`
 // import above is intentional.
 
+use super::di::{ConfigError, SnippetListConfig};
 use super::models::Snippet;
 use super::serializers::{SnippetResponse, SnippetSerializer};
 
-/// Helper function to get sample snippets for demonstration
-fn get_sample_snippets() -> Vec<Snippet> {
-	vec![
-		Snippet {
-			id: 1,
-			title: "Hello World".to_string(),
-			code: "fn main() {\n    println!(\"Hello, World!\");\n}".to_string(),
-			language: "rust".to_string(),
-			created_at: Utc::now(),
-		},
-		Snippet {
-			id: 2,
-			title: "Fibonacci".to_string(),
-			code: "def fibonacci(n):\n    if n <= 1:\n        return n\n    return fibonacci(n-1) + fibonacci(n-2)".to_string(),
-			language: "python".to_string(),
-			created_at: Utc::now(),
-		},
-		Snippet {
-			id: 3,
-			title: "Quick Sort".to_string(),
-			code: "function quickSort(arr) {\n  if (arr.length <= 1) return arr;\n  const pivot = arr[0];\n  const left = arr.slice(1).filter(x => x < pivot);\n  const right = arr.slice(1).filter(x => x >= pivot);\n  return [...quickSort(left), pivot, ...quickSort(right)];\n}".to_string(),
-			language: "javascript".to_string(),
-			created_at: Utc::now(),
-		},
-	]
+/// Snippet listing configuration endpoint.
+///
+/// Demonstrates the `Depends<Result<T, E>>` form (the `DependsResult<T, E>`
+/// type alias expands to this, but route handlers must spell it out — see
+/// below): the `checked_list_config` factory in `di.rs` returns
+/// `Result<SnippetListConfig, ConfigError>`, so its registry key
+/// (`TypeId::of::<Result<SnippetListConfig, ConfigError>>()`) is distinct
+/// from the plain `SnippetListConfig` factory's key
+/// (`TypeId::of::<SnippetListConfig>()`) even though the success type is
+/// identical.
+///
+/// `#[get]` resolves `#[inject]` parameters of the literal form
+/// `Depends<T>` via `resolve_from_registry::<T>()` (no `T: Injectable`
+/// bound — see `crates/reinhardt-core/macros/src/routes_registration.rs`).
+/// That single-generic-argument match does not recognise the
+/// `DependsResult<T, E>` / `DependsOption<T>` sugar aliases (those are
+/// resolved by `#[injectable]` struct fields and `#[injectable_factory]`
+/// parameters instead), so route handlers spell out
+/// `Depends<Result<T, E>>` to take this path.
+///
+/// Registered before `retrieve` (`/snippets/{id}/`) in `urls.rs` so this
+/// literal `/snippets/config/` path is matched first.
+///
+/// GET /snippets/config/
+/// Success response: 200 OK with `{ "max_page_size": <usize> }`
+/// Error response: 503 Service Unavailable with `{ "error": <message> }`
+#[get("/snippets/config/", name = "snippets-config")]
+pub async fn config(
+	#[inject] cfg: Depends<Result<SnippetListConfig, ConfigError>>,
+) -> ViewResult<Response> {
+	// `Depends<Result<T, E>>` derefs to `Result<T, E>`. `.as_ref()` matches on
+	// `Result<&SnippetListConfig, &ConfigError>` without consuming `cfg`.
+	match (*cfg).as_ref() {
+		Ok(cfg) => {
+			let body = json::to_string(&json!({ "max_page_size": cfg.max_page_size }))?;
+			Ok(Response::new(StatusCode::OK)
+				.with_header("Content-Type", "application/json")
+				.with_body(body))
+		}
+		Err(ConfigError(msg)) => {
+			let body = json::to_string(&json!({ "error": msg }))?;
+			Ok(Response::new(StatusCode::SERVICE_UNAVAILABLE)
+				.with_header("Content-Type", "application/json")
+				.with_body(body))
+		}
+	}
 }
 
 /// List all snippets
@@ -57,19 +81,17 @@ fn get_sample_snippets() -> Vec<Snippet> {
 /// GET /snippets/
 /// Success response: 200 OK with array of snippets
 #[get("/snippets/", name = "snippets-list")]
-pub async fn list() -> ViewResult<Response> {
-	// Production ORM usage:
-	// let snippets = Manager::<Snippet>::new().all().await?;
-
-	// Demo mode: Use sample data
-	let snippets = get_sample_snippets();
+pub async fn list(#[inject] db: Depends<DatabaseConnection>) -> ViewResult<Response> {
+	// `Depends<T>` implements `Deref<Target = T>`. `all_with_db` wants a
+	// `&DatabaseConnection`, so passing `&db` lets deref coercion turn
+	// `&Depends<DatabaseConnection>` into `&DatabaseConnection` for free.
+	// (To take the value by reference explicitly you would write `&*db`; the
+	// `config` handler above shows the explicit `*db` form where it is needed.)
+	let snippets = Manager::<Snippet>::new().all().all_with_db(&db).await?;
 	let snippet_responses: Vec<SnippetResponse> =
 		snippets.iter().map(SnippetResponse::from_model).collect();
 
-	let response_data = json!({
-		"snippets": snippet_responses
-	});
-
+	let response_data = json!({ "snippets": snippet_responses });
 	let json = json::to_string(&response_data)?;
 	Ok(Response::new(StatusCode::OK)
 		.with_header("Content-Type", "application/json")
@@ -86,32 +108,35 @@ pub async fn list() -> ViewResult<Response> {
 ///   macro option below — the macro returns HTTP 400 with a JSON error body
 ///   before this function body runs)
 #[post("/snippets/", name = "snippets-create", pre_validate = true)]
-pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Response> {
+pub async fn create(
+	Json(serializer): Json<SnippetSerializer>,
+	#[inject] db: Depends<DatabaseConnection>,
+) -> ViewResult<Response> {
 	// `pre_validate = true` on the route macro extracts `Json<SnippetSerializer>`
 	// into a temporary, calls `Validate::validate(&__tmp)`, then re-destructures
 	// into the original `Json(serializer)` binding. No manual `serializer.validate()?`
 	// is needed (the previous explicit call was redundant once `pre_validate`
 	// was introduced in rc.5).
 
-	// Production ORM usage:
-	// let snippet = Manager::<Snippet>::new().create(Snippet {
-	//     id: 0, // Auto-generated
-	//     title: serializer.title.clone(),
-	//     code: serializer.code.clone(),
-	//     language: serializer.language.clone(),
-	//     created_at: Utc::now(),
-	// }).await?;
-
-	// Demo mode: construct a mock snippet via the macro-generated builder.
+	// `Snippet::build()` is the macro-generated typestate builder (see
+	// `#[model]` on `Snippet`). `id` defaults to `0`, which `create_with_conn`
+	// recognizes as "auto-increment" and omits from the INSERT statement.
+	// `created_at` is stamped client-side with `Utc::now()` by the builder
+	// because the field is declared `auto_now_add = true`, so it is sent as a
+	// concrete value in the INSERT.
 	let snippet = Snippet::build()
 		.title(serializer.title.clone())
 		.code(serializer.code.clone())
 		.language(serializer.language.clone())
 		.finish();
 
+	let created = Manager::<Snippet>::new()
+		.create_with_conn(&db, &snippet)
+		.await?;
+
 	let response_data = json!({
 		"message": "Snippet created",
-		"snippet": SnippetResponse::from_model(&snippet)
+		"snippet": SnippetResponse::from_model(&created)
 	});
 
 	let json = json::to_string(&response_data)?;
@@ -127,13 +152,16 @@ pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Res
 /// Error responses:
 /// - 404 Not Found: Snippet not found
 #[get("/snippets/{id}/", name = "snippets-retrieve")]
-pub async fn retrieve(Path(snippet_id): Path<i64>) -> ViewResult<Response> {
-	// Production ORM usage:
-	// let snippet = Manager::<Snippet>::new().get(snippet_id).await?;
+pub async fn retrieve(
+	Path(snippet_id): Path<i64>,
+	#[inject] db: Depends<DatabaseConnection>,
+) -> ViewResult<Response> {
+	let snippets = Manager::<Snippet>::new()
+		.get(snippet_id)
+		.all_with_db(&db)
+		.await?;
 
-	// Demo mode: Find in sample data
-	let snippets = get_sample_snippets();
-	let snippet = match snippets.iter().find(|s| s.id == snippet_id) {
+	let snippet = match snippets.first() {
 		Some(snippet) => snippet,
 		None => {
 			let error = json::to_string(&json!({"error": "Snippet not found"}))?;
@@ -168,21 +196,16 @@ pub async fn retrieve(Path(snippet_id): Path<i64>) -> ViewResult<Response> {
 pub async fn update(
 	Path(snippet_id): Path<i64>,
 	Json(serializer): Json<SnippetSerializer>,
+	#[inject] db: Depends<DatabaseConnection>,
 ) -> ViewResult<Response> {
 	// Manual validation — see module-level comment on why `pre_validate = true`
 	// is not used here.
 	serializer.validate()?;
 
-	// Production ORM usage:
-	// let snippet = Manager::<Snippet>::new().update(snippet_id, |s| {
-	//     s.title = serializer.title.clone();
-	//     s.code = serializer.code.clone();
-	//     s.language = serializer.language.clone();
-	// }).await?;
+	let manager = Manager::<Snippet>::new();
+	let existing = manager.get(snippet_id).all_with_db(&db).await?;
 
-	// Demo mode: Verify snippet exists and return updated version
-	let snippets = get_sample_snippets();
-	let existing = match snippets.iter().find(|s| s.id == snippet_id) {
+	let mut snippet = match existing.into_iter().next() {
 		Some(snippet) => snippet,
 		None => {
 			let error = json::to_string(&json!({"error": "Snippet not found"}))?;
@@ -192,20 +215,15 @@ pub async fn update(
 		}
 	};
 
-	// Build the updated snippet via the macro-generated builder, then
-	// preserve the original identifier and creation timestamp so the mock
-	// response remains consistent with the stored record.
-	let mut updated_snippet = Snippet::build()
-		.title(serializer.title.clone())
-		.code(serializer.code.clone())
-		.language(serializer.language.clone())
-		.finish();
-	updated_snippet.id = existing.id;
-	updated_snippet.created_at = existing.created_at;
+	snippet.title = serializer.title.clone();
+	snippet.code = serializer.code.clone();
+	snippet.language = serializer.language.clone();
+
+	let updated = manager.update_with_conn(&db, &snippet).await?;
 
 	let response_data = json!({
 		"message": "Snippet updated",
-		"snippet": SnippetResponse::from_model(&updated_snippet)
+		"snippet": SnippetResponse::from_model(&updated)
 	});
 
 	let json = json::to_string(&response_data)?;
@@ -221,18 +239,21 @@ pub async fn update(
 /// Error responses:
 /// - 404 Not Found: Snippet not found
 #[delete("/snippets/{id}/", name = "snippets-delete")]
-pub async fn delete(Path(snippet_id): Path<i64>) -> ViewResult<Response> {
-	// Production ORM usage:
-	// Manager::<Snippet>::new().delete(snippet_id).await?;
+pub async fn delete(
+	Path(snippet_id): Path<i64>,
+	#[inject] db: Depends<DatabaseConnection>,
+) -> ViewResult<Response> {
+	let manager = Manager::<Snippet>::new();
+	let existing = manager.get(snippet_id).all_with_db(&db).await?;
 
-	// Demo mode: Verify snippet exists
-	let snippets = get_sample_snippets();
-	if !snippets.iter().any(|s| s.id == snippet_id) {
+	if existing.is_empty() {
 		let error = json::to_string(&json!({"error": "Snippet not found"}))?;
 		return Ok(Response::new(StatusCode::NOT_FOUND)
 			.with_header("Content-Type", "application/json")
 			.with_body(error));
 	}
+
+	manager.delete_with_conn(&db, snippet_id).await?;
 
 	// Return 204 No Content for successful deletion
 	Ok(Response::new(StatusCode::NO_CONTENT))
@@ -278,9 +299,9 @@ pub async fn delete(Path(snippet_id): Path<i64>) -> ViewResult<Response> {
 /// ViewSet endpoints (under `/api/snippets-viewset/`) are served by the
 /// same process — `crate::apps::snippets::urls::url_patterns` registers
 /// them on a single `ServerRouter` with no `USE_VIEWSET`-style toggle.
-/// Unlike the function-based views above (which fall back to in-memory
-/// `get_sample_snippets()` data for demonstration), the ViewSet path will
-/// observe an empty list until rows are inserted into the `snippets` table.
+/// Like the function-based views above, the ViewSet path queries the real
+/// database, so both observe an empty list until rows are inserted into the
+/// `snippets` table.
 #[reinhardt::viewset(basename = "snippet")]
 pub fn viewset() -> reinhardt::ModelViewSet<Snippet, SnippetSerializer> {
 	use reinhardt::ModelViewSet;
