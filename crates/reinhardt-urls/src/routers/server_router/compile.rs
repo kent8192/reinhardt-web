@@ -37,7 +37,7 @@ impl ServerRouter {
 
 		let mut errors = Vec::new();
 
-		// Compile function routes
+		// Compile endpoint routes
 		for func_route in &self.functions {
 			let route_handler = RouteHandler {
 				handler: func_route.handler.clone(),
@@ -83,7 +83,7 @@ impl ServerRouter {
 				middleware: view_route.middleware.clone(),
 			};
 
-			// Strip prefix from route path (same reason as function routes above)
+			// Strip prefix from route path (same reason as endpoint routes above)
 			let route_path_owned = Self::strip_prefix_normalized(&self.prefix, &view_route.path)
 				.unwrap_or_else(|| Cow::Borrowed(&view_route.path));
 			let route_path: &str = &route_path_owned;
@@ -116,7 +116,7 @@ impl ServerRouter {
 				middleware: route.middleware.clone(),
 			};
 
-			// Strip prefix from route path (same reason as function routes above)
+			// Strip prefix from route path (same reason as endpoint routes above)
 			let route_path_owned = Self::strip_prefix_normalized(&self.prefix, &route.path)
 				.unwrap_or_else(|| Cow::Borrowed(&route.path));
 			let route_path: &str = &route_path_owned;
@@ -274,11 +274,22 @@ impl ServerRouter {
 	/// ```
 	/// use reinhardt_urls::routers::ServerRouter;
 	/// use hyper::Method;
-	/// # use reinhardt_http::{Request, Response, Result};
+	/// # use hyper::Method;
+	/// # use reinhardt_core::endpoint::EndpointInfo;
+	/// # use reinhardt_http::{Handler, Request, Response, Result};
 	///
-	/// # async fn handler(_req: Request) -> Result<Response> { Ok(Response::ok()) }
+	/// # struct UsersDetail;
+	/// # impl EndpointInfo for UsersDetail {
+	/// #     fn path() -> &'static str { "/users/{id}" }
+	/// #     fn method() -> Method { Method::GET }
+	/// #     fn name() -> &'static str { "users-detail" }
+	/// # }
+	/// # #[async_trait::async_trait]
+	/// # impl Handler for UsersDetail {
+	/// #     async fn handle(&self, _req: Request) -> Result<Response> { Ok(Response::ok()) }
+	/// # }
 	/// let router = ServerRouter::new()
-	///     .function("/users/{id}", Method::GET, handler);
+	///     .endpoint(|| UsersDetail);
 	///
 	/// // Validate routes at startup
 	/// assert!(router.validate_routes().is_ok());

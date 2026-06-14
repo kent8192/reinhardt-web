@@ -4,6 +4,7 @@
 //! the middleware chain so security headers are applied.
 
 use hyper::Method;
+use reinhardt_core::endpoint::EndpointInfo;
 use reinhardt_http::{Handler, Request, Response};
 use reinhardt_middleware::xframe::{XFrameOptions, XFrameOptionsMiddleware};
 use reinhardt_urls::routers::ServerRouter;
@@ -20,8 +21,27 @@ fn create_test_request(method: Method, path: &str) -> Request {
 		.unwrap()
 }
 
-async fn ok_handler(_req: Request) -> reinhardt_core::exception::Result<Response> {
-	Ok(Response::ok())
+struct UsersEndpoint;
+
+impl EndpointInfo for UsersEndpoint {
+	fn path() -> &'static str {
+		"/api/users/"
+	}
+
+	fn method() -> Method {
+		Method::GET
+	}
+
+	fn name() -> &'static str {
+		"api-users"
+	}
+}
+
+#[async_trait::async_trait]
+impl Handler for UsersEndpoint {
+	async fn handle(&self, _req: Request) -> reinhardt_core::exception::Result<Response> {
+		Ok(Response::ok())
+	}
 }
 
 // ============================================================================
@@ -35,7 +55,7 @@ async fn test_router_404_gets_xframe_header() {
 	// Arrange
 	let router = ServerRouter::new()
 		.with_middleware(XFrameOptionsMiddleware::new(XFrameOptions::Deny))
-		.route("/api/users/", Method::GET, ok_handler);
+		.endpoint(|| UsersEndpoint);
 
 	// Act
 	let request = create_test_request(Method::GET, "/nonexistent");
@@ -60,7 +80,7 @@ async fn test_router_405_gets_xframe_header() {
 	// Arrange
 	let router = ServerRouter::new()
 		.with_middleware(XFrameOptionsMiddleware::new(XFrameOptions::Deny))
-		.route("/api/users/", Method::GET, ok_handler);
+		.endpoint(|| UsersEndpoint);
 
 	// Act: POST to a GET-only route
 	let request = create_test_request(Method::POST, "/api/users/");

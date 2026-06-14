@@ -7,12 +7,93 @@
 // compatibility window. Remove this allowance once `DeeplinkConfig` is deleted.
 #![allow(deprecated)]
 
+use async_trait::async_trait;
 use hyper::Method;
+use reinhardt_core::endpoint::EndpointInfo;
+use reinhardt_http::{Handler, Request, Response};
 use reinhardt_urls::routers::{ServerRouter, UnifiedRouter};
 
 use crate::config::DeeplinkConfig;
 use crate::endpoints::{AasaHandler, AssetLinksHandler};
 use crate::error::DeeplinkError;
+
+#[derive(Clone)]
+struct AasaEndpoint {
+	handler: AasaHandler,
+}
+
+#[derive(Clone)]
+struct AasaJsonEndpoint {
+	handler: AasaHandler,
+}
+
+#[derive(Clone)]
+struct AssetLinksEndpoint {
+	handler: AssetLinksHandler,
+}
+
+impl EndpointInfo for AasaEndpoint {
+	fn path() -> &'static str {
+		"/apple-app-site-association"
+	}
+
+	fn method() -> Method {
+		Method::GET
+	}
+
+	fn name() -> &'static str {
+		"apple-app-site-association"
+	}
+}
+
+impl EndpointInfo for AasaJsonEndpoint {
+	fn path() -> &'static str {
+		"/apple-app-site-association.json"
+	}
+
+	fn method() -> Method {
+		Method::GET
+	}
+
+	fn name() -> &'static str {
+		"apple-app-site-association-json"
+	}
+}
+
+impl EndpointInfo for AssetLinksEndpoint {
+	fn path() -> &'static str {
+		"/assetlinks.json"
+	}
+
+	fn method() -> Method {
+		Method::GET
+	}
+
+	fn name() -> &'static str {
+		"assetlinks"
+	}
+}
+
+#[async_trait]
+impl Handler for AasaEndpoint {
+	async fn handle(&self, request: Request) -> reinhardt_core::exception::Result<Response> {
+		self.handler.handle(request).await
+	}
+}
+
+#[async_trait]
+impl Handler for AasaJsonEndpoint {
+	async fn handle(&self, request: Request) -> reinhardt_core::exception::Result<Response> {
+		self.handler.handle(request).await
+	}
+}
+
+#[async_trait]
+impl Handler for AssetLinksEndpoint {
+	async fn handle(&self, request: Request) -> reinhardt_core::exception::Result<Response> {
+		self.handler.handle(request).await
+	}
+}
 
 /// Dedicated router for deeplink endpoints.
 ///
@@ -80,23 +161,20 @@ impl DeeplinkRouter {
 
 			// Register at both paths (some tools expect .json extension)
 			server = server
-				.handler_with_method(
-					"/apple-app-site-association",
-					Method::GET,
-					aasa_handler.clone(),
-				)
-				.handler_with_method(
-					"/apple-app-site-association.json",
-					Method::GET,
-					aasa_handler,
-				);
+				.endpoint(|| AasaEndpoint {
+					handler: aasa_handler.clone(),
+				})
+				.endpoint(|| AasaJsonEndpoint {
+					handler: aasa_handler,
+				});
 		}
 
 		// Register Android App Links endpoint
 		if let Some(android_config) = &config.android {
 			let assetlinks_handler = AssetLinksHandler::new(android_config.clone())?;
-			server =
-				server.handler_with_method("/assetlinks.json", Method::GET, assetlinks_handler);
+			server = server.endpoint(|| AssetLinksEndpoint {
+				handler: assetlinks_handler,
+			});
 		}
 
 		Ok(Self { config, server })

@@ -1,6 +1,8 @@
-//! Handler adapters for ViewSets and functions
+//! Handler adapters for ViewSets.
 
+#[cfg(feature = "viewsets")]
 use async_trait::async_trait;
+#[cfg(feature = "viewsets")]
 use reinhardt_http::{Handler, Request, Response, Result};
 #[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::{Action, ViewSet};
@@ -23,22 +25,5 @@ impl Handler for ViewSetHandler {
 		// and the `dispatch()` method uses those pre-injected dependencies.
 		// This pattern avoids runtime DI context lookups and provides better performance.
 		self.viewset.dispatch(req, self.action.clone()).await
-	}
-}
-
-/// Function handler adapter
-pub struct FunctionHandler<F> {
-	/// The wrapped async function.
-	pub func: F,
-}
-
-#[async_trait]
-impl<F, Fut> Handler for FunctionHandler<F>
-where
-	F: Fn(Request) -> Fut + Send + Sync,
-	Fut: std::future::Future<Output = Result<Response>> + Send,
-{
-	async fn handle(&self, req: Request) -> Result<Response> {
-		(self.func)(req).await
 	}
 }
