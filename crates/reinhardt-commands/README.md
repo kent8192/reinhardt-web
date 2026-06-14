@@ -191,6 +191,9 @@ resolved Reinhardt settings. Use `infra run` for short-lived management
 commands that need local infrastructure values. Keep long-running server
 processes on the normal `manage runserver` entrypoint.
 
+When a required service image is missing from the active Docker daemon,
+`infra up` pulls it before creating the container.
+
 ```bash
 # Start containers for services inferred from settings
 cargo run --bin manage infra up
