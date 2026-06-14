@@ -13,11 +13,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.2.0-rc.7", features = ["websockets"] }
+reinhardt = { version = "0.2.0", features = ["websockets"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.2.0-rc.7", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.2.0-rc.7", features = ["full"] }      # All features
+# reinhardt = { version = "0.2.0", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.2.0", features = ["full"] }      # All features
 ```
 
 Then import WebSocket features:

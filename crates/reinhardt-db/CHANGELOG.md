@@ -7,16 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0-rc.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.0-rc.6...reinhardt-db@v0.2.0-rc.7) - 2026-06-14
-
-### Fixed
-
-- *(ci)* clear promotion scan blockers
-
-### Maintenance
-
-- *(release)* prepare 0.2.0 promotion to main
-
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.3...reinhardt-db@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-db` for the Reinhardt 0.2.0 line. This
