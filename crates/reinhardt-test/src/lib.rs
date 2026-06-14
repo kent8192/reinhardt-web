@@ -30,6 +30,9 @@
 //! - **`static`**: Enable static file testing utilities
 //! - **`wasm`**: Enable WASM frontend testing utilities
 //! - **`wasm-full`**: Enable WASM testing with full web-sys features
+//! - **`msw`**: Enable MSW-style request mocking. WASM targets intercept
+//!   `window.fetch`; native targets start a loopback mock HTTP server for
+//!   explicit endpoint injection.
 //! - **`server-fn-test`**: Enable server function testing utilities
 //! - **`tasks`**: Enable task queue testing utilities
 //! - **`admin`**: Enable admin panel testing utilities
