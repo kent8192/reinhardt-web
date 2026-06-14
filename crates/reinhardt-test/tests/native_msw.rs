@@ -232,6 +232,41 @@ async fn native_worker_rejects_passthrough_policy_at_startup() {
 }
 
 #[tokio::test]
+async fn native_worker_rejects_concurrent_startup() {
+	let worker = MockServiceWorker::new();
+
+	let (first, second) = tokio::join!(worker.try_start(), worker.try_start());
+	let successes = [first.is_ok(), second.is_ok()]
+		.into_iter()
+		.filter(|ok| *ok)
+		.count();
+	let failures = [first, second]
+		.into_iter()
+		.filter_map(Result::err)
+		.map(|error| error.to_string())
+		.collect::<Vec<_>>();
+
+	assert_eq!(successes, 1);
+	assert_eq!(
+		failures,
+		vec!["MockServiceWorker is already started".to_string()]
+	);
+
+	let response = reqwest::get(endpoint(&worker, "/api/concurrent-start"))
+		.await
+		.expect("started worker should serve diagnostic responses");
+	assert_eq!(response.status().as_u16(), 500);
+	assert_eq!(
+		response
+			.text()
+			.await
+			.expect("diagnostic body should decode"),
+		"MSW: No handler for GET /api/concurrent-start"
+	);
+	worker.stop().await;
+}
+
+#[tokio::test]
 async fn native_worker_network_error_closes_request_without_http_response() {
 	let worker = MockServiceWorker::new();
 	worker.handle(rest::get("/api/network-error").network_error());

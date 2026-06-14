@@ -37,12 +37,18 @@ struct NativeRuntime {
 	handle: JoinHandle<()>,
 }
 
+enum RuntimeState {
+	Stopped,
+	Starting,
+	Started(NativeRuntime),
+}
+
 /// Native MSW-style mock server for HTTP clients that accept explicit endpoints.
 pub struct MockServiceWorker {
 	handlers: SharedHandlers,
 	recorder: RecorderHandle,
 	unhandled_policy: UnhandledPolicy,
-	runtime: Mutex<Option<NativeRuntime>>,
+	runtime: Mutex<RuntimeState>,
 	url: Mutex<Option<String>>,
 }
 
@@ -58,7 +64,7 @@ impl MockServiceWorker {
 			handlers: SharedHandlers::new(),
 			recorder: RecorderHandle::new(),
 			unhandled_policy: policy,
-			runtime: Mutex::new(None),
+			runtime: Mutex::new(RuntimeState::Stopped),
 			url: Mutex::new(None),
 		}
 	}
@@ -75,19 +81,32 @@ impl MockServiceWorker {
 		if matches!(self.unhandled_policy, UnhandledPolicy::Passthrough) {
 			return Err(MswError::NativePassthroughUnsupported);
 		}
-		if self
-			.runtime
-			.lock()
-			.expect("MSW runtime lock poisoned")
-			.is_some()
 		{
-			return Err(MswError::AlreadyStarted);
+			let mut runtime = self.runtime.lock().expect("MSW runtime lock poisoned");
+			match *runtime {
+				RuntimeState::Stopped => {
+					*runtime = RuntimeState::Starting;
+				}
+				RuntimeState::Starting | RuntimeState::Started(_) => {
+					return Err(MswError::AlreadyStarted);
+				}
+			}
 		}
 
-		let listener = TcpListener::bind("127.0.0.1:0")
-			.await
-			.map_err(MswError::Bind)?;
-		let addr = listener.local_addr().map_err(MswError::Bind)?;
+		let listener = match TcpListener::bind("127.0.0.1:0").await {
+			Ok(listener) => listener,
+			Err(err) => {
+				*self.runtime.lock().expect("MSW runtime lock poisoned") = RuntimeState::Stopped;
+				return Err(MswError::Bind(err));
+			}
+		};
+		let addr = match listener.local_addr() {
+			Ok(addr) => addr,
+			Err(err) => {
+				*self.runtime.lock().expect("MSW runtime lock poisoned") = RuntimeState::Stopped;
+				return Err(MswError::Bind(err));
+			}
+		};
 		let url = format!("http://{addr}");
 		let handlers = self.handlers.clone();
 		let recorder = self.recorder.clone();
@@ -98,18 +117,18 @@ impl MockServiceWorker {
 		});
 
 		*self.url.lock().expect("MSW URL lock poisoned") = Some(url);
-		*self.runtime.lock().expect("MSW runtime lock poisoned") = Some(NativeRuntime { handle });
+		*self.runtime.lock().expect("MSW runtime lock poisoned") =
+			RuntimeState::Started(NativeRuntime { handle });
 		Ok(())
 	}
 
 	/// Stop the native loopback server.
 	pub async fn stop(&self) {
-		let runtime = self
-			.runtime
-			.lock()
-			.expect("MSW runtime lock poisoned")
-			.take();
-		if let Some(runtime) = runtime {
+		let runtime = {
+			let mut runtime = self.runtime.lock().expect("MSW runtime lock poisoned");
+			std::mem::replace(&mut *runtime, RuntimeState::Stopped)
+		};
+		if let RuntimeState::Started(runtime) = runtime {
 			runtime.handle.abort();
 			let _ = runtime.handle.await;
 		}
@@ -199,12 +218,11 @@ impl Default for MockServiceWorker {
 
 impl Drop for MockServiceWorker {
 	fn drop(&mut self) {
-		if let Some(runtime) = self
-			.runtime
-			.get_mut()
-			.expect("MSW runtime lock poisoned")
-			.take()
-		{
+		let runtime = std::mem::replace(
+			self.runtime.get_mut().expect("MSW runtime lock poisoned"),
+			RuntimeState::Stopped,
+		);
+		if let RuntimeState::Started(runtime) = runtime {
 			runtime.handle.abort();
 		}
 		self.url.get_mut().expect("MSW URL lock poisoned").take();
