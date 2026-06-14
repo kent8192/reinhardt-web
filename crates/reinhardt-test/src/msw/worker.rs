@@ -1,7 +1,6 @@
 //! `MockServiceWorker` — the core orchestrator for MSW-style fetch interception.
 
 use std::cell::{Cell, RefCell};
-use std::rc::Rc;
 
 use js_sys::Promise;
 use wasm_bindgen::closure::Closure;
@@ -11,10 +10,11 @@ use reinhardt_pages::server_fn::{MockableServerFn, ServerFnError};
 
 use super::context::TestContext;
 use super::handler::RestHandler;
-use super::handler::{ErasedHandler, ServerFnContextHandler, ServerFnHandler};
+use super::handler::{ServerFnContextHandler, ServerFnHandler};
 use super::interceptor;
 use super::matcher::UrlMatcher;
-use super::recorder::{CallQuery, RecordedRequest, RequestRecorder, ServerFnCallQuery};
+use super::recorder::{CallQuery, RecordedRequest, ServerFnCallQuery};
+use super::state::{RecorderHandle, SharedHandlers};
 
 struct ActiveInterceptor {
 	owner_id: u64,
@@ -95,8 +95,8 @@ impl From<&UnhandledPolicy> for interceptor::UnhandledPolicy {
 /// ```
 pub struct MockServiceWorker {
 	worker_id: u64,
-	handlers: Rc<RefCell<Vec<Box<dyn ErasedHandler>>>>,
-	recorder: Rc<RefCell<RequestRecorder>>,
+	handlers: SharedHandlers,
+	recorder: RecorderHandle,
 	unhandled_policy: UnhandledPolicy,
 	active: Cell<bool>,
 }
@@ -111,8 +111,8 @@ impl MockServiceWorker {
 	pub fn with_policy(policy: UnhandledPolicy) -> Self {
 		Self {
 			worker_id: next_worker_id(),
-			handlers: Rc::new(RefCell::new(Vec::new())),
-			recorder: Rc::new(RefCell::new(RequestRecorder::new())),
+			handlers: SharedHandlers::new(),
+			recorder: RecorderHandle::new(),
 			unhandled_policy: policy,
 			active: Cell::new(false),
 		}
@@ -159,20 +159,20 @@ impl MockServiceWorker {
 
 	/// Remove all handlers and recorded requests.
 	pub fn reset(&self) {
-		self.handlers.borrow_mut().clear();
-		self.recorder.borrow_mut().clear();
+		self.handlers.clear();
+		self.recorder.clear();
 	}
 
 	/// Remove all handlers but keep recorded requests.
 	pub fn reset_handlers(&self) {
-		self.handlers.borrow_mut().clear();
+		self.handlers.clear();
 	}
 
 	// --- REST handler registration ---
 
 	/// Register a REST handler.
 	pub fn handle(&self, handler: RestHandler) {
-		self.handlers.borrow_mut().push(Box::new(handler));
+		self.handlers.push(Box::new(handler));
 	}
 
 	// --- server_fn handler registration ---
@@ -182,13 +182,11 @@ impl MockServiceWorker {
 		&self,
 		handler: impl Fn(S::Args) -> Result<S::Response, ServerFnError> + 'static,
 	) {
-		self.handlers
-			.borrow_mut()
-			.push(Box::new(ServerFnHandler::<S>::new(
-				Box::new(handler),
-				false,
-				None,
-			)));
+		self.handlers.push(Box::new(ServerFnHandler::<S>::new(
+			Box::new(handler),
+			false,
+			None,
+		)));
 	}
 
 	/// Register a server_fn handler with a DI test context.
@@ -198,7 +196,6 @@ impl MockServiceWorker {
 		handler: impl Fn(S::Args, &TestContext) -> Result<S::Response, ServerFnError> + 'static,
 	) {
 		self.handlers
-			.borrow_mut()
 			.push(Box::new(ServerFnContextHandler::<S>::new(
 				context,
 				Box::new(handler),
@@ -224,7 +221,7 @@ impl MockServiceWorker {
 
 	/// All recorded calls.
 	pub fn all_calls(&self) -> Vec<RecordedRequest> {
-		self.recorder.borrow().all().to_vec()
+		self.recorder.all()
 	}
 }
 

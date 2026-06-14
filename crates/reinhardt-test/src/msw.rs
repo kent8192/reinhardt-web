@@ -38,6 +38,7 @@ mod error;
 pub(crate) mod handler;
 mod interceptor;
 mod matcher;
+#[cfg(native)]
 mod native;
 pub(crate) mod recorder;
 mod response;
