@@ -133,14 +133,14 @@ use reinhardt_pages::server_fn::ServerFnError;
 use super::context::TestContext;
 
 #[cfg(native)]
-type ServerFnResponseFn<S> =
-	dyn Fn(<S as MockableServerFn>::Args) -> Result<<S as MockableServerFn>::Response, ServerFnError>
-		+ Send
-		+ Sync;
+type ServerFnResponseFn<S> = dyn Fn(<S as MockableServerFn>::Args) -> Result<<S as MockableServerFn>::Response, ServerFnError>
+	+ Send
+	+ Sync;
 
 #[cfg(wasm)]
-type ServerFnResponseFn<S> =
-	dyn Fn(<S as MockableServerFn>::Args) -> Result<<S as MockableServerFn>::Response, ServerFnError>;
+type ServerFnResponseFn<S> = dyn Fn(
+	<S as MockableServerFn>::Args,
+) -> Result<<S as MockableServerFn>::Response, ServerFnError>;
 
 #[cfg(native)]
 type ServerFnContextResponseFn<S> = dyn Fn(
@@ -151,10 +151,11 @@ type ServerFnContextResponseFn<S> = dyn Fn(
 	+ Sync;
 
 #[cfg(wasm)]
-type ServerFnContextResponseFn<S> = dyn Fn(
-	<S as MockableServerFn>::Args,
-	&TestContext,
-) -> Result<<S as MockableServerFn>::Response, ServerFnError>;
+type ServerFnContextResponseFn<S> =
+	dyn Fn(
+		<S as MockableServerFn>::Args,
+		&TestContext,
+	) -> Result<<S as MockableServerFn>::Response, ServerFnError>;
 
 /// Type-safe handler for server functions.
 pub(crate) struct ServerFnHandler<S: MockableServerFn> {

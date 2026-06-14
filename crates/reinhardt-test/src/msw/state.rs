@@ -101,7 +101,10 @@ impl SharedHandlers {
 	}
 
 	pub(crate) fn push(&self, handler: Box<dyn ErasedHandler>) {
-		self.0.lock().expect("MSW handler lock poisoned").push(handler);
+		self.0
+			.lock()
+			.expect("MSW handler lock poisoned")
+			.push(handler);
 	}
 
 	pub(crate) fn clear(&self) {

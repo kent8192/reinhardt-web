@@ -1,4 +1,7 @@
-#![cfg(all(not(all(target_family = "wasm", target_os = "unknown")), feature = "msw"))]
+#![cfg(all(
+	not(all(target_family = "wasm", target_os = "unknown")),
+	feature = "msw"
+))]
 
 use std::time::Duration;
 
@@ -84,14 +87,21 @@ async fn native_worker_matches_parameterized_paths_and_query_strings() {
 #[tokio::test]
 async fn native_worker_consumes_once_handlers() {
 	let worker = MockServiceWorker::new();
-	worker.handle(rest::get("/api/once").once().respond(MockResponse::text("first")));
+	worker.handle(
+		rest::get("/api/once")
+			.once()
+			.respond(MockResponse::text("first")),
+	);
 	worker.start().await;
 
 	let first = reqwest::get(endpoint(&worker, "/api/once"))
 		.await
 		.expect("first mock request should succeed");
 	assert_eq!(first.status().as_u16(), 200);
-	assert_eq!(first.text().await.expect("first body should decode"), "first");
+	assert_eq!(
+		first.text().await.expect("first body should decode"),
+		"first"
+	);
 
 	let second = reqwest::get(endpoint(&worker, "/api/once"))
 		.await
@@ -176,7 +186,10 @@ async fn native_worker_applies_handler_delay() {
 		.expect("mock request should succeed");
 
 	assert_eq!(response.status().as_u16(), 200);
-	assert_eq!(response.text().await.expect("slow body should decode"), "slow");
+	assert_eq!(
+		response.text().await.expect("slow body should decode"),
+		"slow"
+	);
 	assert!(
 		started.elapsed() >= Duration::from_millis(50),
 		"handler delay should be applied"
