@@ -17,7 +17,7 @@ default = ["broken-link-email"]
 
 # Fine-grained middleware features
 cors = []
-compression = ["dep:brotli", "dep:flate2"]
+compression = ["dep:alloc-stdlib", "dep:brotli-decompressor", "dep:brotli", "dep:flate2"]
 security = []
 rate-limit = []
 sessions = ["dep:reinhardt-auth", "reinhardt-auth/sessions"]
@@ -56,6 +56,8 @@ hyper = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 flate2 = { workspace = true, optional = true }
+alloc-stdlib = { workspace = true, optional = true }
+brotli-decompressor = { workspace = true, optional = true }
 brotli = { version = "8.0.2", optional = true }
 sha2 = { workspace = true }
 hex = "0.4"
