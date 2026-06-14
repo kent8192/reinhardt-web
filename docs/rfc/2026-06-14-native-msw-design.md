@@ -123,9 +123,10 @@ Native URL API:
 let endpoint = worker.url();
 ```
 
-`url()` returns `&str` and panics with a clear message if called before native
-startup. This catches forgotten `start().await` calls immediately in test code.
-On WASM, `url()` is not required for the initial design.
+`url()` returns an owned `String` and panics with a clear message if called
+before native startup. Returning an owned value avoids leaking the bound URL or
+borrowing across a synchronization guard while keeping endpoint construction
+ergonomic in tests. On WASM, `url()` is not required for the initial design.
 
 Native `respond_with` closures must be usable from the native server task. The
 native implementation should require `Send + Sync + 'static` for dynamic
