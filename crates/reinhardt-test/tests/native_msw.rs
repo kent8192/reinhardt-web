@@ -32,8 +32,6 @@ async fn native_worker_serves_registered_get_response() {
 		r#"{"hello":"world"}"#
 	);
 	worker.calls_to("/api/test").assert_count(1);
-
-	worker.stop().await;
 }
 
 #[tokio::test]
@@ -62,8 +60,6 @@ async fn native_worker_passes_request_body_to_dynamic_handler() {
 		.expect("call should be recorded");
 	assert_eq!(recorded.method, "POST");
 	assert_eq!(recorded.body.as_deref(), Some("native-body"));
-
-	worker.stop().await;
 }
 
 #[tokio::test]
@@ -81,13 +77,8 @@ async fn native_worker_matches_parameterized_paths_and_query_strings() {
 
 	assert_eq!(response.status().as_u16(), 200);
 	let body = response.text().await.expect("response body should decode");
-	assert!(
-		body.contains("/api/users/42?active=true"),
-		"body should include recorded URL, got {body}"
-	);
+	assert_eq!(body, r#"{"url":"/api/users/42?active=true"}"#);
 	worker.calls_to("/api/users/:id").assert_count(1);
-
-	worker.stop().await;
 }
 
 #[tokio::test]
@@ -106,16 +97,11 @@ async fn native_worker_consumes_once_handlers() {
 		.await
 		.expect("second mock request should receive diagnostic response");
 	assert_eq!(second.status().as_u16(), 500);
-	assert!(
-		second
-			.text()
-			.await
-			.expect("second body should decode")
-			.contains("MSW: No handler for GET /api/once")
+	assert_eq!(
+		second.text().await.expect("second body should decode"),
+		"MSW: No handler for GET /api/once"
 	);
 	worker.calls_to("/api/once").assert_count(2);
-
-	worker.stop().await;
 }
 
 #[tokio::test]
@@ -137,8 +123,13 @@ async fn native_worker_reset_clears_handlers_and_recorded_calls() {
 		.await
 		.expect("request after reset should receive diagnostic response");
 	assert_eq!(after_reset.status().as_u16(), 500);
-
-	worker.stop().await;
+	assert_eq!(
+		after_reset
+			.text()
+			.await
+			.expect("reset diagnostic body should decode"),
+		"MSW: No handler for GET /api/reset"
+	);
 }
 
 #[tokio::test]
@@ -159,9 +150,14 @@ async fn native_worker_reset_handlers_preserves_recorded_calls() {
 		.await
 		.expect("request after handler reset should receive diagnostic response");
 	assert_eq!(after_reset.status().as_u16(), 500);
+	assert_eq!(
+		after_reset
+			.text()
+			.await
+			.expect("reset handlers diagnostic body should decode"),
+		"MSW: No handler for GET /api/reset-handlers"
+	);
 	worker.calls_to("/api/reset-handlers").assert_count(2);
-
-	worker.stop().await;
 }
 
 #[tokio::test]
@@ -180,12 +176,11 @@ async fn native_worker_applies_handler_delay() {
 		.expect("mock request should succeed");
 
 	assert_eq!(response.status().as_u16(), 200);
+	assert_eq!(response.text().await.expect("slow body should decode"), "slow");
 	assert!(
 		started.elapsed() >= Duration::from_millis(50),
 		"handler delay should be applied"
 	);
-
-	worker.stop().await;
 }
 
 #[tokio::test]
@@ -198,16 +193,14 @@ async fn native_worker_returns_diagnostic_response_for_unhandled_requests() {
 		.expect("unhandled request should return deterministic response");
 
 	assert_eq!(response.status().as_u16(), 500);
-	assert!(
+	assert_eq!(
 		response
 			.text()
 			.await
-			.expect("diagnostic body should decode")
-			.contains("MSW: No handler for GET /api/missing")
+			.expect("diagnostic body should decode"),
+		"MSW: No handler for GET /api/missing"
 	);
 	worker.calls_to("/api/missing").assert_count(1);
-
-	worker.stop().await;
 }
 
 #[tokio::test]
@@ -219,10 +212,9 @@ async fn native_worker_rejects_passthrough_policy_at_startup() {
 		.await
 		.expect_err("native passthrough should be rejected");
 
-	assert!(
-		error
-			.to_string()
-			.contains("UnhandledPolicy::Passthrough is not supported on native MSW")
+	assert_eq!(
+		error.to_string(),
+		"UnhandledPolicy::Passthrough is not supported on native MSW"
 	);
 }
 
@@ -238,8 +230,7 @@ async fn native_worker_network_error_closes_request_without_http_response() {
 		result.is_err(),
 		"network_error handler should surface as a client transport error"
 	);
-
-	worker.stop().await;
+	worker.calls_to("/api/network-error").assert_count(1);
 }
 
 #[tokio::test]
