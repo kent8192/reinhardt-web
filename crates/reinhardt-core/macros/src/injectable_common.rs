@@ -164,6 +164,25 @@ pub(crate) fn parse_no_inject_options(attrs: &[syn::Attribute]) -> Option<NoInje
 
 use proc_macro2::TokenStream;
 
+pub(crate) fn generate_inject_resolver_expr(
+	di_crate: &TokenStream,
+	ty: &syn::Type,
+	ctx: TokenStream,
+	use_cache: bool,
+) -> TokenStream {
+	quote::quote! {
+		{
+			use #di_crate::{
+				__InjectFallbackResolver as _,
+				__InjectWrapperResolver as _,
+			};
+			#di_crate::__InjectResolver::<#ty>::new()
+				.__resolve_inject_parameter(#ctx, #use_cache)
+				.await
+		}
+	}
+}
+
 /// Information about `#[inject]` parameters (for code generation)
 ///
 /// This struct is part of the DI code generation infrastructure and will be used
@@ -265,25 +284,18 @@ pub(crate) fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec
 			let pat = &param.pat;
 			let ty = &param.ty;
 			let use_cache = param.options.use_cache;
+			let resolve_expr = generate_inject_resolver_expr(
+				&di_crate,
+				ty,
+				quote::quote! { &__di_ctx },
+				use_cache,
+			);
 
-			if use_cache {
-				quote::quote! {
-					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
-						.await
-						.map_err(|e| #core_crate::exception::Error::Internal(
-							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
-						))?
-						.into_inner();
-				}
-			} else {
-				quote::quote! {
-					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, false)
-						.await
-						.map_err(|e| #core_crate::exception::Error::Internal(
-							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
-						))?
-						.into_inner();
-				}
+			quote::quote! {
+				let #pat: #ty = #resolve_expr
+					.map_err(|e| #core_crate::exception::Error::Internal(
+						format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
+					))?;
 			}
 		})
 		.collect()
@@ -310,21 +322,16 @@ where
 			let ty = &param.ty;
 			let use_cache = param.options.use_cache;
 			let error_conversion = error_mapper(ty);
+			let resolve_expr = generate_inject_resolver_expr(
+				&di_crate,
+				ty,
+				quote::quote! { &__di_ctx },
+				use_cache,
+			);
 
-			if use_cache {
-				quote::quote! {
-					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
-						.await
-						.map_err(|e| #error_conversion)?
-						.into_inner();
-				}
-			} else {
-				quote::quote! {
-					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, false)
-						.await
-						.map_err(|e| #error_conversion)?
-						.into_inner();
-				}
+			quote::quote! {
+				let #pat: #ty = #resolve_expr
+					.map_err(|e| #error_conversion)?;
 			}
 		})
 		.collect()

@@ -23,50 +23,23 @@ use crate::crate_paths::{
 	get_reinhardt_pages_crate, get_reinhardt_pages_crate_info,
 };
 
-/// Extract the inner type from a Depends-family wrapper.
-///
-/// Recognises three shapes and returns the type that should be passed to
-/// `Depends::<...>::resolve_from_registry`:
-///
-/// - `Depends<T>` → `T`
-/// - `DependsResult<T, E>` → `Result<T, E>`
-/// - `DependsOption<T>` → `Option<T>`
-///
-/// Mirrors the helper in `crates/reinhardt-core/macros/src/routes_registration.rs`.
-/// Keep this implementation in sync with that file; the two proc-macro crates
-/// cannot share code directly without introducing a new non-proc-macro helper
-/// crate, and the helper is small enough that duplication is preferred.
-fn extract_depends_inner_type(ty: &syn::Type) -> Option<syn::Type> {
-	let syn::Type::Path(type_path) = ty else {
-		return None;
-	};
-	let last_segment = type_path.path.segments.last()?;
-	let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments else {
-		return None;
-	};
-
-	if last_segment.ident == "Depends"
-		&& args.args.len() == 1
-		&& let syn::GenericArgument::Type(inner) = args.args.first()?
-	{
-		return Some(inner.clone());
+fn generate_inject_resolver_expr(
+	di_crate: &proc_macro2::TokenStream,
+	ty: &syn::Type,
+	ctx: proc_macro2::TokenStream,
+	use_cache: bool,
+) -> proc_macro2::TokenStream {
+	quote! {
+		{
+			use #di_crate::{
+				__InjectFallbackResolver as _,
+				__InjectWrapperResolver as _,
+			};
+			#di_crate::__InjectResolver::<#ty>::new()
+				.__resolve_inject_parameter(#ctx, #use_cache)
+				.await
+		}
 	}
-
-	if last_segment.ident == "DependsResult" && args.args.len() == 2 {
-		let mut iter = args.args.iter();
-		let t = iter.next()?;
-		let e = iter.next()?;
-		return Some(syn::parse_quote! { ::core::result::Result<#t, #e> });
-	}
-
-	if last_segment.ident == "DependsOption"
-		&& args.args.len() == 1
-		&& let Some(t) = args.args.first()
-	{
-		return Some(syn::parse_quote! { ::core::option::Option<#t> });
-	}
-
-	None
 }
 
 /// Convert snake_case identifier to UpperCamelCase for struct naming
@@ -923,13 +896,9 @@ fn generate_server_handler(
 		}
 	};
 
-	// Generate DI resolution code
-	//
-	// For `Depends<T>` parameters we resolve via `resolve_from_registry()`, which
-	// has no `T: Injectable` trait bound. This allows factory-produced types
-	// (registered via `#[injectable_factory]`) to be injected without manually
-	// implementing `Injectable`. This mirrors the fix applied to `#[routes]` in
-	// commit `98adb15b9`.
+	// Generate DI resolution code. Runtime trait dispatch resolves
+	// `InjectableType` wrappers from the registry and falls back to normal
+	// `Injectable` values for non-wrapper parameters.
 	let di_resolution = if !inject_params.is_empty() {
 		// Dynamically resolve crate paths
 		let di_crate = get_reinhardt_di_crate();
@@ -940,61 +909,32 @@ fn generate_server_handler(
 			.map(|p| {
 				let pat = &p.pat;
 				let ty = &p.ty;
-				if let Some(inner_ty) = extract_depends_inner_type(&p.ty) {
-					quote! {
-						let #pat: #ty =
-							#di_crate::Depends::<#inner_ty>::resolve_from_registry(&__di_ctx, true)
-								.await
-								.map_err(|e| {
-									// Auth errors (401/403) expose framework-provided user-facing
-									// messages. Any other DI failure is treated as an internal
-									// error: the detailed cause is logged server-side, and the
-									// client receives a generic message to avoid leaking internals.
-									let (status, msg) = match &e {
-										#di_crate::DiError::Authentication(m) => (401u16, m.clone()),
-										#di_crate::DiError::Authorization(m) => (403u16, m.clone()),
-										other => {
-											#pages_crate_for_di::__private::tracing::error!(
-												error = ?other,
-												param = stringify!(#ty),
-												"Dependency injection failed",
-											);
-											(500u16, "Internal server error".to_string())
-										}
-									};
-									let server_err = #pages_crate_for_di::server_fn::ServerFnError::server(status, msg);
-									::serde_json::to_string(&server_err)
-										.unwrap_or_else(|_| "Internal server error".to_string())
-								})?;
-					}
-				} else {
-					quote! {
-						let #pat: #ty =
-							#di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
-								.await
-								.map_err(|e| {
-									// Auth errors (401/403) expose framework-provided user-facing
-									// messages. Any other DI failure is treated as an internal
-									// error: the detailed cause is logged server-side, and the
-									// client receives a generic message to avoid leaking internals.
-									let (status, msg) = match &e {
-										#di_crate::DiError::Authentication(m) => (401u16, m.clone()),
-										#di_crate::DiError::Authorization(m) => (403u16, m.clone()),
-										other => {
-											#pages_crate_for_di::__private::tracing::error!(
-												error = ?other,
-												param = stringify!(#ty),
-												"Dependency injection failed",
-											);
-											(500u16, "Internal server error".to_string())
-										}
-									};
-									let server_err = #pages_crate_for_di::server_fn::ServerFnError::server(status, msg);
-									::serde_json::to_string(&server_err)
-										.unwrap_or_else(|_| "Internal server error".to_string())
-								})?
-								.into_inner();
-					}
+				let resolve_expr =
+					generate_inject_resolver_expr(&di_crate, ty, quote! { &__di_ctx }, true);
+				quote! {
+					let #pat: #ty =
+						#resolve_expr
+							.map_err(|e| {
+								// Auth errors (401/403) expose framework-provided user-facing
+								// messages. Any other DI failure is treated as an internal
+								// error: the detailed cause is logged server-side, and the
+								// client receives a generic message to avoid leaking internals.
+								let (status, msg) = match &e {
+									#di_crate::DiError::Authentication(m) => (401u16, m.clone()),
+									#di_crate::DiError::Authorization(m) => (403u16, m.clone()),
+									other => {
+										#pages_crate_for_di::__private::tracing::error!(
+											error = ?other,
+											param = stringify!(#ty),
+											"Dependency injection failed",
+										);
+										(500u16, "Internal server error".to_string())
+									}
+								};
+								let server_err = #pages_crate_for_di::server_fn::ServerFnError::server(status, msg);
+								::serde_json::to_string(&server_err)
+									.unwrap_or_else(|_| "Internal server error".to_string())
+							})?;
 				}
 			})
 			.collect();

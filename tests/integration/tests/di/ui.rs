@@ -22,6 +22,9 @@ fn test_injectable_compile_fail_cases() {
 	// Test: Unknown macro argument should fail
 	t.compile_fail("tests/di/ui/fail/unknown_injectable_arg.rs");
 
+	// Test: custom wrapper missing InjectableType should fail
+	t.compile_fail("tests/di/ui/fail/missing_injectable_type_trait.rs");
+
 	// Note: circular_dependency compiles but fails at runtime (tested in core_error_handling.rs)
 }
 
@@ -81,6 +84,9 @@ fn test_injectable_compile_pass_cases() {
 
 	// Test: DependsResult<T, E> in #[server_fn] (regression guard for #4937)
 	t.pass("tests/di/ui/pass/depends_result_in_server_fn.rs");
+
+	// Test: trait-based wrappers in route and server_fn macros (regression guard for #4938)
+	t.pass("tests/di/ui/pass/trait_based_inject_wrappers.rs");
 }
 
 // Note: Compile-pass tests for #[injectable_factory] are NOT possible via trybuild

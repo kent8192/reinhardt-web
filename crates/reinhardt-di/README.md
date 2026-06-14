@@ -517,6 +517,30 @@ factory. Reinhardt registers the literal return type, so `Result<T, E1>` and
 Consumers can request the factory output as `DependsResult<T, E>` or
 `Depends<Result<T, E>>`.
 
+`#[inject]` wrapper detection is trait-based. Built-in aliases such as
+`DependsResult<T, E>` work through `Depends<T>`, and applications can define
+their own wrapper types by implementing `InjectableType` with the registry key
+in `type Inner`.
+
+```rust
+use reinhardt::di::{Depends, InjectableType};
+
+struct Lazy<T>(Depends<T>)
+where
+    T: Send + Sync + 'static;
+
+impl<T> InjectableType for Lazy<T>
+where
+    T: Send + Sync + 'static,
+{
+    type Inner = T;
+
+    fn from_depends(depends: Depends<Self::Inner>) -> Self {
+        Self(depends)
+    }
+}
+```
+
 **Attributes:**
 
 Scope is passed as a macro argument in key-value form.
