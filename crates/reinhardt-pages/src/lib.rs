@@ -89,6 +89,11 @@
 //! runtime.set_value(login_form.username_field(), "ada".to_string());
 //! ```
 //!
+//! `FileField` and `ImageField` participate in this runtime contract as
+//! `Option<web_sys::File>` values. File values are browser-owned and are
+//! tracked for dirty/touched state without treating the file payload as a
+//! serializable scalar.
+//!
 //! Use `ambient_arguments` for non-field values supplied from surrounding
 //! context. The old `strip_arguments` DSL name remains as a deprecated alias.
 //! CSRF should be supplied by `#[server_fn]` client stubs through the
