@@ -247,6 +247,29 @@ async fn native_worker_network_error_closes_request_without_http_response() {
 }
 
 #[tokio::test]
+async fn native_worker_network_error_once_handler_is_consumed() {
+	let worker = MockServiceWorker::new();
+	worker.handle(rest::get("/api/network-error-once").once().network_error());
+	worker.start().await;
+
+	let first = reqwest::get(endpoint(&worker, "/api/network-error-once")).await;
+	assert!(
+		first.is_err(),
+		"network_error handler should surface as a client transport error"
+	);
+
+	let second = reqwest::get(endpoint(&worker, "/api/network-error-once"))
+		.await
+		.expect("consumed once network_error should fall through to diagnostic response");
+	assert_eq!(second.status().as_u16(), 500);
+	assert_eq!(
+		second.text().await.expect("diagnostic body should decode"),
+		"MSW: No handler for GET /api/network-error-once"
+	);
+	worker.calls_to("/api/network-error-once").assert_count(2);
+}
+
+#[tokio::test]
 async fn native_worker_stop_releases_listener() {
 	let worker = MockServiceWorker::new();
 	worker.handle(rest::get("/api/lifecycle").respond(MockResponse::text("ok")));

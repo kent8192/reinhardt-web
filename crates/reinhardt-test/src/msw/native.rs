@@ -256,9 +256,9 @@ async fn handle_request(
 			.iter()
 			.find(|handler| handler.matches(&intercepted))
 			.map(|handler| {
-				let is_network_error = handler.is_network_error();
 				let delay = handler.delay();
 				let response = handler.respond(&intercepted);
+				let is_network_error = handler.is_network_error();
 				(is_network_error, delay, response)
 			})
 	};
