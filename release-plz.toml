@@ -256,6 +256,18 @@ version_group = "reinhardt"
 name = "reinhardt-websockets"
 version_group = "reinhardt"
 
+[[package]]
+name = "tree-sitter-reinhardt-form"
+version_group = "reinhardt"
+
+[[package]]
+name = "tree-sitter-reinhardt-head"
+version_group = "reinhardt"
+
+[[package]]
+name = "tree-sitter-reinhardt-page"
+version_group = "reinhardt"
+
 # Non-published packages (tests, examples, internal tools)
 [[package]]
 name = "reinhardt-test-support"

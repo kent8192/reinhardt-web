@@ -661,6 +661,14 @@ image = "0.25.10"
 
 # Compression
 flate2 = "1.1.9"
+# Workaround for dropbox/rust-alloc-no-stdlib#22 (tracked in reinhardt-web#5304).
+# Remove these pins when alloc-stdlib and brotli-decompressor no longer
+# permit incompatible alloc-no-stdlib 2.x / 3.x selections.
+#
+# Ideal implementation (without workaround):
+#   no direct alloc-stdlib or brotli-decompressor dependency is needed.
+alloc-stdlib = "=0.2.2"
+brotli-decompressor = "=5.0.1"
 brotli = "8.0.2"
 
 # Collections & data structures

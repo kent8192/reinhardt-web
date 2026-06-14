@@ -45,6 +45,8 @@ walkdir = "2.4"
 glob = "0.3"
 notify = { version = "8.2.0", optional = true }
 flate2 = { version = "1.0", optional = true }
+alloc-stdlib = { workspace = true, optional = true }
+brotli-decompressor = { workspace = true, optional = true }
 brotli = { version = "8.0.2", optional = true }
 base64 = "0.22"
 sourcemap = "9.0"
@@ -103,7 +105,7 @@ gcs = ["dep:cloud-storage"]
 processing = []
 image-optimization = ["processing", "dep:oxipng", "dep:image", "dep:webp"]
 source-maps = ["processing"]
-compression = ["processing", "dep:brotli", "dep:flate2"]
+compression = ["processing", "dep:alloc-stdlib", "dep:brotli-decompressor", "dep:brotli", "dep:flate2"]
 advanced-minification = [
   "processing",
   "dep:oxc_allocator",

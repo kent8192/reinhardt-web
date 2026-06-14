@@ -36,6 +36,8 @@ urlencoding = "2.1"
 quick-xml = { version = "0.38.3", optional = true }
 serde_yaml = { workspace = true, optional = true }
 flate2 = { workspace = true, optional = true }
+alloc-stdlib = { workspace = true, optional = true }
+brotli-decompressor = { workspace = true, optional = true }
 brotli = { workspace = true, optional = true }
 rmp-serde = { workspace = true }
 prost = { workspace = true }
@@ -96,7 +98,7 @@ serializers = ["serde"]
 messages = ["serde"]
 negotiation = []
 parsers = []
-compressed-parsers = ["parsers", "dep:brotli", "dep:flate2"]
+compressed-parsers = ["parsers", "dep:alloc-stdlib", "dep:brotli-decompressor", "dep:brotli", "dep:flate2"]
 pagination = ["serde"]
 reactive = []
 
