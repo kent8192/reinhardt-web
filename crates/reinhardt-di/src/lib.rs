@@ -8,8 +8,35 @@
 //! - **Async-first**: Built for async/await
 //! - **Scoped**: Request-scoped and singleton dependencies
 //! - **Composable**: Dependencies can depend on other dependencies
+//! - **Extensible wrappers**: Custom `#[inject]` wrappers can implement
+//!   [`InjectableType`] instead of relying on framework-defined type names
 //! - **Cache**: Automatic caching within request scope
 //! - **Circular Dependency Detection**: Automatic runtime detection with optimized performance
+//!
+//! ## Custom `#[inject]` Wrappers
+//!
+//! `#[inject]` resolves wrapper parameters through [`InjectableType`]. This
+//! lets applications define domain-specific dependency wrappers while still
+//! using the registry key of the wrapped dependency.
+//!
+//! ```rust,no_run
+//! use reinhardt_di::{Depends, InjectableType};
+//!
+//! struct Lazy<T>(Depends<T>)
+//! where
+//!     T: Send + Sync + 'static;
+//!
+//! impl<T> InjectableType for Lazy<T>
+//! where
+//!     T: Send + Sync + 'static,
+//! {
+//!     type Inner = T;
+//!
+//!     fn from_depends(depends: Depends<Self::Inner>) -> Self {
+//!         Self(depends)
+//!     }
+//! }
+//! ```
 //!
 //! ## Cargo features
 //!
@@ -284,6 +311,7 @@ pub mod depends;
 pub mod function_handle;
 pub mod graph;
 pub mod injectable;
+pub mod injectable_type;
 pub mod injected;
 pub mod override_registry;
 pub mod provider;
@@ -309,6 +337,9 @@ pub use override_registry::OverrideRegistry;
 pub use context::{ParamContext, Request};
 pub use depends::{Depends, DependsBuilder, DependsOption, DependsResult};
 pub use injectable::Injectable;
+pub use injectable_type::InjectableType;
+#[doc(hidden)]
+pub use injectable_type::{__InjectFallbackResolver, __InjectResolver, __InjectWrapperResolver};
 pub use injected::{DependencyScope as InjectedScope, InjectionMetadata};
 pub use provider::{Provider, ProviderFn};
 pub use registration::DiRegistrationList;

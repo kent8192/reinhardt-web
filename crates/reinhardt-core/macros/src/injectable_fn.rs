@@ -5,7 +5,9 @@
 //! to be used as a factory/provider for dependency injection.
 
 use crate::crate_paths::{get_async_trait_crate, get_reinhardt_di_crate};
-use crate::injectable_common::{InjectionScope, is_inject_attr, parse_inject_options};
+use crate::injectable_common::{
+	InjectionScope, generate_inject_resolver_expr, is_inject_attr, parse_inject_options,
+};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{FnArg, Ident, ItemFn, Pat, PatType, Result, ReturnType, Type};
@@ -110,6 +112,8 @@ pub(crate) fn injectable_fn_impl(_args: TokenStream, input: ItemFn) -> Result<To
 			let name = &param.name;
 			let ty = &param.ty;
 			let use_cache = param.use_cache;
+			let resolve_expr =
+				generate_inject_resolver_expr(&di_crate, ty, quote! { __di_ctx }, use_cache);
 
 			match param.scope {
 				InjectionScope::Singleton => {
@@ -119,7 +123,7 @@ pub(crate) fn injectable_fn_impl(_args: TokenStream, input: ItemFn) -> Result<To
 							if let Some(cached) = __di_ctx.singleton_scope().get::<#ty>() {
 								(*cached).clone()
 							} else {
-								let __injected = #di_crate::Depends::<#ty>::resolve(__di_ctx, #use_cache).await
+								let value = #resolve_expr
 								.map_err(|e| {
 									tracing::debug!(
 										dependency_type = stringify!(#ty),
@@ -127,7 +131,6 @@ pub(crate) fn injectable_fn_impl(_args: TokenStream, input: ItemFn) -> Result<To
 									);
 									e
 								})?;
-								let value = (*__injected).clone();
 								__di_ctx.singleton_scope().set(value.clone());
 								value
 							}
@@ -137,15 +140,14 @@ pub(crate) fn injectable_fn_impl(_args: TokenStream, input: ItemFn) -> Result<To
 				InjectionScope::Request => {
 					quote! {
 						let #name: #ty = {
-							let __injected = #di_crate::Depends::<#ty>::resolve(__di_ctx, #use_cache).await
+							#resolve_expr
 							.map_err(|e| {
 								tracing::debug!(
 									dependency_type = stringify!(#ty),
 									"injectable function dependency resolution failed"
 								);
 								e
-							})?;
-							(*__injected).clone()
+							})?
 						};
 					}
 				}

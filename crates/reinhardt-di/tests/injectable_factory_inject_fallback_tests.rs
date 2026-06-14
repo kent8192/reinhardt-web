@@ -29,8 +29,8 @@ use serial_test::serial;
 use std::sync::Arc;
 
 use reinhardt_di::{
-	Depends, DiResult, Injectable, InjectionContext, SingletonScope, global_registry,
-	injectable_factory,
+	Depends, DiResult, Injectable, InjectableType, InjectionContext, SingletonScope,
+	global_registry, injectable_factory,
 };
 
 /// Manually-Injectable type that is *not* registered in the global
@@ -139,4 +139,124 @@ async fn factory_with_depends_factory_only_type_still_uses_registry_only_path() 
 	// Assert — value comes from the registry override (the only DI path
 	// available for `FactoryOnlyConfig`).
 	assert_eq!(*paged, PagedRequest { page_size: 25 });
+}
+
+#[derive(Clone, Debug)]
+struct Lazy<T>
+where
+	T: Send + Sync + 'static,
+{
+	depends: Depends<T>,
+}
+
+impl<T> InjectableType for Lazy<T>
+where
+	T: Send + Sync + 'static,
+{
+	type Inner = T;
+
+	fn from_depends(depends: Depends<Self::Inner>) -> Self {
+		Self { depends }
+	}
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct LazyRequest {
+	page_size: u32,
+}
+
+#[injectable_factory(scope = "transient")]
+async fn lazy_request_factory(#[inject] config: Lazy<FactoryOnlyConfig>) -> LazyRequest {
+	LazyRequest {
+		page_size: config.depends.page_size,
+	}
+}
+
+#[rstest]
+#[serial(di_registry)]
+#[tokio::test]
+async fn factory_accepts_custom_injectable_type_wrapper_without_name_matching() {
+	// Arrange — `Lazy<T>` is not named `Depends`, so this only works when
+	// `#[injectable_factory]` delegates wrapper detection to `InjectableType`.
+	let registry = global_registry();
+	let _guard = registry.register_override::<FactoryOnlyConfig, _, _>(
+		reinhardt_di::DependencyScope::Transient,
+		|_ctx| async { Ok(FactoryOnlyConfig { page_size: 50 }) },
+	);
+	let scope = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::builder(scope).build();
+
+	// Act
+	let lazy = ctx
+		.resolve::<LazyRequest>()
+		.await
+		.expect("custom InjectableType wrapper must resolve via the registry");
+
+	// Assert
+	assert_eq!(*lazy, LazyRequest { page_size: 50 });
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct DualConfig {
+	source: &'static str,
+}
+
+#[derive(Clone, Debug)]
+struct DualMode {
+	depends: Depends<DualConfig>,
+}
+
+impl InjectableType for DualMode {
+	type Inner = DualConfig;
+
+	fn from_depends(depends: Depends<Self::Inner>) -> Self {
+		Self { depends }
+	}
+}
+
+#[async_trait]
+impl Injectable for DualMode {
+	async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+		Ok(Self {
+			depends: Depends::from_value(DualConfig {
+				source: "injectable",
+			}),
+		})
+	}
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct DualModeReport {
+	source: &'static str,
+}
+
+#[injectable_factory(scope = "transient")]
+async fn dual_mode_report_factory(#[inject] mode: DualMode) -> DualModeReport {
+	DualModeReport {
+		source: mode.depends.source,
+	}
+}
+
+#[rstest]
+#[serial(di_registry)]
+#[tokio::test]
+async fn factory_prefers_injectable_type_wrapper_over_injectable_fallback() {
+	// Arrange — `DualMode` implements both traits. The resolved value must come
+	// from the registry-backed `InjectableType` path, not `Injectable::inject`.
+	let registry = global_registry();
+	let _guard = registry.register_override::<DualConfig, _, _>(
+		reinhardt_di::DependencyScope::Transient,
+		|_ctx| async { Ok(DualConfig { source: "registry" }) },
+	);
+	let scope = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::builder(scope).build();
+
+	// Act
+	let report = ctx
+		.resolve::<DualModeReport>()
+		.await
+		.expect("InjectableType must take precedence over Injectable fallback");
+
+	// Assert
+	assert_eq!(*report, DualModeReport { source: "registry" });
 }

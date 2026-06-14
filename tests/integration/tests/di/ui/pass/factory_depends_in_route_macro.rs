@@ -25,7 +25,7 @@ async fn make_app_config() -> AppConfig {
 	}
 }
 
-#[get("/hello", name = "hello_factory_depends")]
+#[get("/hello", name = "hello-factory-depends")]
 async fn hello(#[inject] cfg: Depends<AppConfig>) -> ViewResult<Response> {
 	Ok(Response::ok().with_body(cfg.host.clone()))
 }
