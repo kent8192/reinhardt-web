@@ -26,7 +26,7 @@
 - Use `security` type for security vulnerability fixes (dedicated CHANGELOG section)
 - Use `deprecated` type for marking features/APIs as deprecated (dedicated CHANGELOG section)
 - Review Release PRs created by release-plz before merging
-- Fix Release PR issues via a `fix/`/`hotfix/` branch targeting the Release PR's base branch (e.g., `main`), not by pushing to the release-plz branch directly
+- Fix Release PR issues via a `fix/`/`hotfix/` branch targeting the Release PR's base branch (e.g., `main` or `develop/*`), not by pushing to the release-plz branch directly
 - Verify no circular dev-dependency chains exist before publishing (functional crates must not dev-depend on other Reinhardt crates)
 - Include `version` field in `reinhardt-test` workspace dependency (published crate, same as others)
 - Follow RP-1 procedure in instructions/RELEASE_PROCESS.md for partial release failures
@@ -51,6 +51,9 @@
 - Specify language for code blocks: ` ```rust `, NOT ` ``` `
 - Wrap bracket patterns in backticks: `` `array[0]` ``, NOT `array[0]`
 - Use backticks (not intra-doc links) for feature-gated types: `` `FeatureType` ``, NOT `` [`FeatureType`] ``
+- Do not write redundant explicit link targets in intra-doc links: `` [`Foo`] ``, NOT `` [`Foo`](crate::Foo) `` when the label already resolves (instructions/DOCUMENTATION_STANDARDS.md § RD-8)
+- Use backticks (not intra-doc links) for removed/deprecated items: `` `RemovedType` ``, NOT `` [`RemovedType`] `` (instructions/DOCUMENTATION_STANDARDS.md § RD-9)
+- Use backticks (not intra-doc links) for private/`pub(crate)` items in public docs: `` `InternalType` ``, NOT `` [`InternalType`] `` (instructions/DOCUMENTATION_STANDARDS.md § RD-10)
 - Avoid starting continuation lines of `//` and `///` comments with a Rust keyword or trigger macro — restructure prose so the token is wrapped in backticks or appears mid-line (Semgrep `rust-commented-out-code` rule trips otherwise; canonical token list in instructions/DOCUMENTATION_STANDARDS.md § RD-7)
 - Use Mermaid diagrams (via `aquamarine`) for architecture documentation instead of ASCII art
 - Ensure `.stderr` files in trybuild tests contain only single error type (no warning/error mixing)
@@ -77,6 +80,9 @@
 - Use worktree-based merge strategy for PR conflict resolution (NOT rebase/force-push)
 - Apply `migration-approved` label to develop/* → main PRs (requires maintainer approval for version transition)
 - Apply `agent-suspect` label to all agent-detected bug Issues
+- Apply the `breaking-change` label to ALL breaking change PRs and Issues
+- Complete the "Breaking Change Assessment" section (Yes/No) on every PR
+- Fill the "Breaking Changes" section with migration guide when the assessment is "Yes"
 - Verify agent-detected bugs independently before removing `agent-suspect` label
 - Create `develop/0.x+1.0` branch when version group enters RC phase (DB-1)
 - Direct next-version features and breaking changes to `develop/0.x+1.0` during RC (DB-2)
@@ -134,6 +140,9 @@
 - Start commit description with uppercase letter
 - End commit description with a period
 - Omit `!` or `BREAKING CHANGE:` for API-breaking changes
+- Submit a breaking change PR or Issue without the `breaking-change` label
+- Skip the Breaking Change Assessment section in PRs
+- Check "Yes" in Breaking Change Assessment without filling the Breaking Changes section
 - Create issues without appropriate labels
 - Create public issues for security vulnerabilities
 - Create duplicate issues without searching first
@@ -151,6 +160,9 @@
 - Write macro attributes without backticks in doc comments (causes unresolved link warnings)
 - Write bare URLs in doc comments (causes bare URL warnings)
 - Use intra-doc links for feature-gated items (causes unresolved link warnings)
+- Write redundant explicit link targets in intra-doc links: `` [`Foo`](crate::Foo) `` when `` [`Foo`] `` suffices (nightly `redundant_explicit_links` warning; § RD-8)
+- Use intra-doc links for removed/deprecated items (causes `broken_intra_doc_links` error; use backticks — § RD-9)
+- Use intra-doc links for `pub(crate)` or private items in public docs (causes `private_intra_doc_links` error; use backticks — § RD-10)
 - Start a continuation line of a `//` or `///` comment with a Rust keyword or trigger macro — Semgrep flags the line as commented-out code and blocks the TODO Check CI; wrap the token in backticks or move it mid-line (canonical token list in instructions/DOCUMENTATION_STANDARDS.md § RD-7)
 - Create new ASCII art diagrams in doc comments (use Mermaid instead)
 - Mix warnings and errors in trybuild `.stderr` files
@@ -211,7 +223,7 @@ For comprehensive guidelines, see:
 - **Upstream Issue Reporting**: instructions/UPSTREAM_ISSUE_REPORTING.md
 - **GitHub Interactions**: instructions/GITHUB_INTERACTION.md
 - **Copilot Review Handling**: instructions/GITHUB_INTERACTION.md (CR-1 ~ CR-5)
-- **Obsidian Wiki Maintenance**: instructions/OBSIDIAN_WIKI.md (OW-1 ~ OW-4)
+- **Obsidian Wiki Maintenance**: instructions/OBSIDIAN_WIKI.md (OW-1 ~ OW-6)
 - **GitHub Discussions**: https://github.com/kent8192/reinhardt-web/discussions
 - **Security Policy**: SECURITY.md
 - **Code of Conduct**: CODE_OF_CONDUCT.md

@@ -8,6 +8,9 @@
 //! - CircuitBreaker decision table (State, Request result, Min requests combinations)
 //! - RateLimit decision table (Strategy, Tokens, Cost combinations)
 
+// The deprecated `CorsConfig` is exercised here during the compatibility window.
+#![allow(deprecated)]
+
 mod fixtures;
 
 use async_trait::async_trait;

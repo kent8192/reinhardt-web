@@ -15,11 +15,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.4", features = ["tasks"] }
+reinhardt = { version = "0.2.0-rc.6", features = ["tasks"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.4", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.4", features = ["full"] }      # All features
+# reinhardt = { version = "0.2.0-rc.6", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.2.0-rc.6", features = ["full"] }      # All features
 ```
 
 Then import task features:
@@ -78,12 +78,9 @@ use reinhardt::tasks::backend::{TaskBackend, RedisTaskBackend};
 #### Task Queue
 
 - **TaskQueue**: Task queue management
-  - Configurable queue name
-  - Retry count configuration (default: 3)
-  - Task enqueuing via backend
-- **QueueConfig**: Queue configuration
-  - Customizable queue name
-  - Maximum retry count setting
+  - Stateless delegator that enqueues tasks through a backend
+- **QueueSettings**: `[tasks_queue]` settings fragment
+  - Defines the queue name and max-retries fields
 
 #### Task Scheduling
 

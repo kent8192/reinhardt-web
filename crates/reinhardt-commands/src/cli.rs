@@ -7,18 +7,22 @@
 use crate::MakeMigrationsCommand;
 use crate::base::BaseCommand;
 use crate::collectstatic::{CollectStaticCommand, CollectStaticOptions};
+use crate::local_infra::InfraSubcommand;
 use crate::registry::CommandRegistry;
 use crate::{CheckCommand, CommandContext, MigrateCommand, RunServerCommand, ShellCommand};
 #[cfg(feature = "introspect")]
 use clap::ValueEnum;
 use clap::{Parser, Subcommand};
+use reinhardt_conf::HasCommonSettings;
 use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::profile::Profile;
 use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
+use reinhardt_utils::staticfiles::StaticFilesConfig;
 use serde_json::Value;
 use std::env;
 #[allow(unused)]
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[cfg(feature = "routers")]
 use crate::builtin::ShowUrlsCommand;
@@ -117,6 +121,17 @@ pub enum Commands {
 		/// Show migration plan without applying
 		#[arg(long)]
 		plan: bool,
+
+		/// Root directory containing migration files (default: ./migrations)
+		#[arg(long, value_name = "DIR")]
+		migrations_dir: Option<PathBuf>,
+	},
+
+	/// Manage local development infrastructure containers
+	Infra {
+		/// Infrastructure subcommand to execute
+		#[command(subcommand)]
+		command: InfraSubcommand,
 	},
 
 	/// Start the development server
@@ -339,6 +354,63 @@ pub async fn execute_from_command_line() -> Result<(), Box<dyn std::error::Error
 	execute_from_command_line_with_registry(CommandRegistry::new()).await
 }
 
+/// Execute commands from command-line arguments with the project's composed settings.
+///
+/// This is the settings-aware counterpart of [`execute_from_command_line`]. The
+/// project's generated `src/bin/manage.rs` calls this with its own
+/// `get_settings()` result so that database-requiring commands (`migrate`,
+/// `makemigrations`, `runserver`, `createsuperuser`) can resolve the database
+/// connection from `settings/*.toml` (the `[core.databases.default]` block) when
+/// `DATABASE_URL` is not set. Without settings, those commands fall back to the
+/// `DATABASE_URL` environment variable (see [`execute_from_command_line`]).
+///
+/// # Arguments
+///
+/// * `settings` - The composed application settings, typically a
+///   `ProjectSettings` value built via `#[settings(...)]` + `SettingsBuilder`.
+///   Any type implementing [`HasCommonSettings`] is accepted.
+///
+/// # Returns
+///
+/// Returns `Ok(())` on success, or an error message on failure.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use reinhardt_commands::execute_from_command_line_with_settings;
+/// # use reinhardt_conf::settings::contacts::ContactSettings;
+/// # use reinhardt_conf::settings::core_settings::CoreSettings;
+/// # use reinhardt_conf::settings::fragment::HasSettings;
+/// # // Stands in for the project's `#[settings(...)]`-generated `ProjectSettings`.
+/// # struct ProjectSettings { core: CoreSettings, contacts: ContactSettings }
+/// # impl HasSettings<CoreSettings> for ProjectSettings {
+/// #     fn get_settings(&self) -> &CoreSettings { &self.core }
+/// # }
+/// # impl HasSettings<ContactSettings> for ProjectSettings {
+/// #     fn get_settings(&self) -> &ContactSettings { &self.contacts }
+/// # }
+/// # fn get_settings() -> ProjectSettings {
+/// #     ProjectSettings { core: CoreSettings::default(), contacts: ContactSettings::default() }
+/// # }
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     if let Err(e) = execute_from_command_line_with_settings(get_settings()).await {
+///         eprintln!("Error: {}", e);
+///         std::process::exit(1);
+///     }
+///     Ok(())
+/// }
+/// ```
+pub async fn execute_from_command_line_with_settings<S>(
+	settings: S,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+	S: HasCommonSettings + 'static,
+{
+	execute_from_command_line_with_registry_and_settings(CommandRegistry::new(), settings).await
+}
+
 /// Execute commands from command-line arguments with a custom command registry.
 ///
 /// This entry point works like [`execute_from_command_line`] but additionally
@@ -378,6 +450,45 @@ pub async fn execute_from_command_line() -> Result<(), Box<dyn std::error::Error
 pub async fn execute_from_command_line_with_registry(
 	registry: CommandRegistry,
 ) -> Result<(), Box<dyn std::error::Error>> {
+	execute_with_registry_and_optional_settings(registry, None).await
+}
+
+/// Execute commands from CLI arguments with a custom command registry **and** the
+/// project's composed settings.
+///
+/// Combines [`execute_from_command_line_with_registry`] (custom commands) with
+/// [`execute_from_command_line_with_settings`] (settings-aware database
+/// resolution). See those for details.
+///
+/// # Arguments
+///
+/// * `registry` - A [`CommandRegistry`] holding custom commands to make available.
+/// * `settings` - The composed application settings (any [`HasCommonSettings`]).
+///
+/// # Returns
+///
+/// Returns `Ok(())` on success, or an error message on failure.
+pub async fn execute_from_command_line_with_registry_and_settings<S>(
+	registry: CommandRegistry,
+	settings: S,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+	S: HasCommonSettings + 'static,
+{
+	execute_with_registry_and_optional_settings(
+		registry,
+		Some(Arc::new(settings) as Arc<dyn HasCommonSettings>),
+	)
+	.await
+}
+
+/// Shared driver: parse CLI arguments, perform pre-dispatch registration, and run
+/// the resolved command with the optional composed settings threaded into the
+/// command context.
+async fn execute_with_registry_and_optional_settings(
+	registry: CommandRegistry,
+	settings: Option<Arc<dyn HasCommonSettings>>,
+) -> Result<(), Box<dyn std::error::Error>> {
 	// Attempt normal clap parsing first. If it fails (e.g., unknown subcommand),
 	// fall back to checking the registry for a matching custom command.
 	let (command, verbosity) = match Cli::try_parse() {
@@ -413,7 +524,7 @@ pub async fn execute_from_command_line_with_registry(
 	#[cfg(feature = "auth")]
 	reinhardt_auth::auto_register_superuser_creator();
 
-	run_command_with_registry(command, verbosity, registry).await
+	run_command_core(command, verbosity, registry, settings).await
 }
 
 /// Returns `true` for commands that need URL patterns registered **before**
@@ -498,6 +609,24 @@ pub async fn run_command_with_registry(
 	verbosity: u8,
 	registry: CommandRegistry,
 ) -> Result<(), Box<dyn std::error::Error>> {
+	run_command_core(command, verbosity, registry, None).await
+}
+
+/// Execute a command with optional composed settings threaded into the context.
+///
+/// This settings-aware core backs both the no-settings entry points
+/// ([`run_command`], [`run_command_with_registry`]) and the settings-aware ones
+/// ([`execute_from_command_line_with_settings`]). When `settings` is `Some`, the
+/// database-init context receives the composed `ProjectSettings`, so
+/// [`initialize_orm_database`](crate::builtin::initialize_orm_database) can
+/// resolve the URL from `[core.databases.default]` even when `DATABASE_URL` is
+/// unset (#5042).
+async fn run_command_core(
+	command: Commands,
+	verbosity: u8,
+	registry: CommandRegistry,
+	settings: Option<Arc<dyn HasCommonSettings>>,
+) -> Result<(), Box<dyn std::error::Error>> {
 	// Initialize ORM database for commands that require it.
 	// This must happen before command dispatch so that commands like
 	// createsuperuser can use the ORM connection pool. (#3186)
@@ -505,8 +634,20 @@ pub async fn run_command_with_registry(
 	if requires_database(&command) {
 		let mut ctx = crate::CommandContext::new(vec![]);
 		ctx.verbosity = verbosity;
+		// Thread the project's composed settings into the ORM-init context so the
+		// database URL can be resolved from `settings/*.toml`
+		// (`[core.databases.default]`) when `DATABASE_URL` is unset (#5042).
+		if let Some(s) = settings.clone() {
+			ctx = ctx.with_settings(s);
+		}
 		crate::builtin::initialize_orm_database(&ctx).await?;
 	}
+
+	// `settings` is consumed by the database-init block above and the
+	// `makemigrations` arm below; bind it in feature combinations where neither
+	// path is compiled so it does not trip the unused-variable lint.
+	#[cfg(not(any(feature = "reinhardt-db", feature = "migrations")))]
+	let _ = &settings;
 
 	match command {
 		#[cfg(feature = "migrations")]
@@ -529,6 +670,7 @@ pub async fn run_command_with_registry(
 				merge,
 				force_empty_state,
 				verbosity,
+				settings.clone(),
 			)
 			.await
 		}
@@ -539,6 +681,7 @@ pub async fn run_command_with_registry(
 			fake,
 			fake_initial,
 			plan,
+			migrations_dir,
 		} => {
 			execute_migrate(MigrateParams {
 				app_label,
@@ -547,8 +690,17 @@ pub async fn run_command_with_registry(
 				fake,
 				fake_initial,
 				plan,
+				migrations_dir,
 				verbosity,
 			})
+			.await
+		}
+		Commands::Infra { command } => {
+			crate::local_infra::InfraCommand::execute(
+				command,
+				&std::env::current_dir()?,
+				settings.as_deref(),
+			)
 			.await
 		}
 		Commands::Runserver {
@@ -726,9 +878,17 @@ async fn execute_makemigrations(
 	merge: bool,
 	force_empty_state: bool,
 	verbosity: u8,
+	settings: Option<Arc<dyn HasCommonSettings>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let mut ctx = CommandContext::default();
 	ctx.set_verbosity(verbosity);
+	// Attach the project's composed settings so `makemigrations` can resolve the
+	// database URL from `settings/*.toml` when no `--database`/`DATABASE_URL` is
+	// provided (#5042). `makemigrations` does not flow through
+	// `initialize_orm_database`, so it carries its own settings handle.
+	if let Some(s) = settings {
+		ctx = ctx.with_settings(s);
+	}
 
 	if !app_labels.is_empty() {
 		for label in app_labels {
@@ -768,6 +928,7 @@ struct MigrateParams {
 	fake: bool,
 	fake_initial: bool,
 	plan: bool,
+	migrations_dir: Option<PathBuf>,
 	verbosity: u8,
 }
 
@@ -794,6 +955,12 @@ async fn execute_migrate(params: MigrateParams) -> Result<(), Box<dyn std::error
 	}
 	if let Some(db) = params.database {
 		ctx.set_option("database".to_string(), db);
+	}
+	if let Some(dir) = params.migrations_dir {
+		ctx.set_option(
+			"migrations-dir".to_string(),
+			dir.to_string_lossy().to_string(),
+		);
 	}
 
 	let cmd = MigrateCommand;
@@ -901,7 +1068,6 @@ async fn execute_check(
 }
 
 /// Execute the collectstatic command
-#[allow(deprecated)] // Uses Settings which is deprecated; retained for backward compatibility
 async fn execute_collectstatic(
 	clear: bool,
 	no_input: bool,
@@ -982,12 +1148,18 @@ async fn execute_collectstatic(
 		))
 		.build()?;
 
-	let settings = merged.into_typed::<reinhardt_conf::Settings>()?;
-
-	// Convert Settings to StaticFilesConfig
-	let config = settings
-		.get_static_config()
-		.map_err(|e| format!("Failed to get static config: {}", e))?;
+	// Construct StaticFilesConfig directly from merged settings
+	let static_root = merged
+		.get::<String>("static_root")
+		.ok()
+		.map(PathBuf::from)
+		.unwrap_or_else(|| base_dir.join("staticfiles"));
+	let config = StaticFilesConfig {
+		static_root,
+		static_url: merged.get_or("static_url", "/static/".to_string()),
+		staticfiles_dirs: merged.get_or("staticfiles_dirs", Vec::new()),
+		media_url: None,
+	};
 
 	// Create options
 	let options = CollectStaticOptions {
@@ -1439,6 +1611,7 @@ mod tests {
 			fake: false,
 			fake_initial: false,
 			plan: false,
+			migrations_dir: None,
 		};
 
 		// Act
@@ -1899,6 +2072,7 @@ mod tests {
 			fake: false,
 			fake_initial: false,
 			plan: false,
+			migrations_dir: None,
 		};
 
 		// Act

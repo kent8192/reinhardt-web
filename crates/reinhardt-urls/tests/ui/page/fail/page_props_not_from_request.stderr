@@ -1,0 +1,19 @@
+error[E0277]: the trait bound `WhateverProps: FromRequest` is not satisfied
+  --> tests/ui/page/fail/page_props_not_from_request.rs:14:30
+   |
+14 |     let _ = ClientRouter::new().page("x", "/x/", handler);
+   |                                 ^^^^ unsatisfied trait bound
+   |
+help: the trait `FromRequest` is not implemented for `WhateverProps`
+  --> tests/ui/page/fail/page_props_not_from_request.rs:7:1
+   |
+ 7 | struct WhateverProps;
+   | ^^^^^^^^^^^^^^^^^^^^
+note: required by a bound in `ClientRouter::page`
+  --> src/routers/client_router/core.rs
+   |
+   |     pub fn page<F, P>(mut self, name: &str, pattern: &str, handler: F) -> Self
+   |            ---- required by a bound in this associated function
+...
+   |         P: FromRequest + Send + Sync + 'static,
+   |            ^^^^^^^^^^^ required by this bound in `ClientRouter::page`

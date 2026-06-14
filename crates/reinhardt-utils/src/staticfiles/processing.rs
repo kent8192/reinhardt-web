@@ -26,6 +26,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 pub mod bundle;
+#[cfg(feature = "compression")]
 pub mod compress;
 pub mod minify;
 

@@ -14,6 +14,9 @@
 //! - Content delivery with compression (GZip + Brotli + ETag)
 //! - Request tracing workflow (RequestId + Tracing + Metrics)
 
+// The deprecated `CorsConfig` is exercised here during the compatibility window.
+#![allow(deprecated)]
+
 mod fixtures;
 
 use fixtures::{ConfigurableTestHandler, create_request_with_headers, create_test_request};

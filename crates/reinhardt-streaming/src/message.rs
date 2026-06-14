@@ -3,13 +3,18 @@ use serde::{Deserialize, Serialize};
 /// A streaming message wrapping a typed payload with topic and offset metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message<T> {
+	/// Topic from which the message was received or to which it will be sent.
 	pub topic: String,
+	/// Typed message payload.
 	pub payload: T,
+	/// Backend offset, when provided by the streaming provider.
 	pub offset: Option<i64>,
+	/// Backend partition, when provided by the streaming provider.
 	pub partition: Option<i32>,
 }
 
 impl<T> Message<T> {
+	/// Create a message with topic and payload metadata.
 	pub fn new(topic: impl Into<String>, payload: T) -> Self {
 		Self {
 			topic: topic.into(),
@@ -19,11 +24,13 @@ impl<T> Message<T> {
 		}
 	}
 
+	/// Attach a backend offset to the message.
 	pub fn with_offset(mut self, offset: i64) -> Self {
 		self.offset = Some(offset);
 		self
 	}
 
+	/// Attach a backend partition to the message.
 	pub fn with_partition(mut self, partition: i32) -> Self {
 		self.partition = Some(partition);
 		self

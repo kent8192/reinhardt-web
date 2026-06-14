@@ -2,6 +2,6 @@
 //!
 //! This module contains types and utilities shared between client and server.
 
-#[cfg(native)]
+#[cfg(server)]
 pub mod forms;
 pub mod types;

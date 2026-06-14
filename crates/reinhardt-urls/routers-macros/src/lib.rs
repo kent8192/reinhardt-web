@@ -32,6 +32,8 @@
 //! let pattern = path!("/users/{id/");
 //! ```
 
+#![warn(missing_docs)]
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{LitStr, parse_macro_input};

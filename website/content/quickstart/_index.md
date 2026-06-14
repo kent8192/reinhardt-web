@@ -11,18 +11,19 @@ Get up and running with Reinhardt in 5 minutes.
 
 ## 1. Install Reinhardt Admin CLI
 
-Install the latest stable CLI, or keep `--version` as a reproducibility pin.
-The literal below is auto-bumped by release-plz on each release.
+Install the CLI with Cargo. The command below pins this guide to the
+documented release for reproducibility; omit `--version` to let Cargo choose
+the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.1.4"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.6"
 ```
 
 ## 2. Create your project
 
 ```bash
-reinhardt-admin startproject my-api --with-rest
+reinhardt-admin startproject my-api
 cd my-api
 ```
 

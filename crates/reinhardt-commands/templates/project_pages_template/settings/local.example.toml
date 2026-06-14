@@ -1,7 +1,7 @@
 # Local Development Settings for {{ project_name }}
 #
 # Copy this file to local.toml and fill in the values for your local environment.
-# local.toml is gitignored — never commit it.
+# Do not commit real secrets. Add a project-specific ignore rule for private copies.
 #
 # Uncomment and adjust the settings below as needed.
 
@@ -10,7 +10,7 @@
 # secret_key = "uncomment-this-line-and-replace-with-a-long-random-string"
 # allowed_hosts = ["localhost", "127.0.0.1"]
 
-# [database]
+# [core.databases.default]
 # engine = "postgresql"
 # host = "localhost"
 # port = 5432
@@ -19,7 +19,7 @@
 # password = "postgres"
 
 # Alternatively, use SQLite for simpler local development:
-# [database]
+# [core.databases.default]
 # engine = "sqlite"
 # name = "db.sqlite3"
 

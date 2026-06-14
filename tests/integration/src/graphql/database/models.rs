@@ -11,12 +11,12 @@ use serde_json::json;
 // Import model definitions from fixtures
 use super::fixtures::models::{Post, Tables, User};
 
-/// Tests basic model initialization using `Model::new()` pattern.
+/// Tests basic model initialization using the model builder.
 #[rstest]
 #[tokio::test]
 async fn test_model_initialization() {
 	// Test User model initialization
-	let user = User::new(1, "Test User".to_string(), "test@example.com".to_string());
+	let user = User::fixture(1, "Test User", "test@example.com");
 
 	// Verify all fields are set correctly
 	assert_eq!(user.id, 1);
@@ -25,7 +25,7 @@ async fn test_model_initialization() {
 	assert_eq!(user.is_active, true); // Default value should be true
 
 	// Test Post model initialization
-	let post = Post::new(1, "Test Post".to_string(), "Test content".to_string(), 1);
+	let post = Post::fixture(1, "Test Post", "Test content", 1);
 
 	assert_eq!(post.id, 1);
 	assert_eq!(post.title, "Test Post");
@@ -93,7 +93,7 @@ async fn test_model_field_constraints() {
 	// User name field should have max_length = 255 (from #[field(max_length = 255)])
 	// This is a documentation/expectation test
 	let test_name = "a".repeat(255);
-	let user = User::new(1, test_name.clone(), "test@example.com".to_string());
+	let user = User::fixture(1, test_name.clone(), "test@example.com");
 
 	// The model should accept the maximum length
 	assert_eq!(user.name.len(), 255);
@@ -104,7 +104,7 @@ async fn test_model_field_constraints() {
 #[rstest]
 #[tokio::test]
 async fn test_model_serialization() {
-	let user = User::new(1, "Test User".to_string(), "test@example.com".to_string());
+	let user = User::fixture(1, "Test User", "test@example.com");
 
 	// Convert to JSON to simulate GraphQL serialization
 	let json_value = json!({
@@ -129,7 +129,7 @@ async fn test_model_serialization() {
 #[case(100, "typical ID")]
 #[case(i32::MAX, "maximum valid ID")]
 fn test_user_id_equivalence_partitioning(#[case] id: i32, #[case] description: &str) {
-	let user = User::new(id, format!("User {}", id), "test@example.com".to_string());
+	let user = User::fixture(id, format!("User {}", id), "test@example.com");
 	assert_eq!(user.id, id, "Failed for: {}", description);
 }
 
@@ -140,7 +140,7 @@ fn test_user_id_equivalence_partitioning(#[case] id: i32, #[case] description: &
 #[case(&"a".repeat(255), "maximum length (255)")]
 fn test_user_name_boundary_values(#[case] name: String, #[case] description: &str) {
 	// Test that User model can be created with boundary name values
-	let user = User::new(1, name.clone(), "test@example.com".to_string());
+	let user = User::fixture(1, name.clone(), "test@example.com");
 	assert_eq!(user.name, name, "Failed for: {}", description);
 }
 
@@ -158,7 +158,7 @@ fn test_user_activation_decision_table(
 	#[case] scenario: &str,
 ) {
 	// Create user with initial state
-	let mut user = User::new(1, "Test User".to_string(), "test@example.com".to_string());
+	let mut user = User::fixture(1, "Test User", "test@example.com");
 	user.is_active = initial_active;
 
 	// Simulate state change (in real test, this would be a mutation)
@@ -173,7 +173,7 @@ fn test_user_activation_decision_table(
 #[tokio::test]
 async fn test_model_trait_implementation() {
 	// Verify User implements Model trait (compiler check)
-	let user = User::new(1, "Test".to_string(), "test@example.com".to_string());
+	let user = User::fixture(1, "Test", "test@example.com");
 
 	// This is a compile-time check, but we can verify at runtime
 	// that the instance has the expected type
@@ -190,11 +190,11 @@ async fn test_model_trait_implementation() {
 #[tokio::test]
 async fn test_model_error_cases() {
 	// Test with extreme values
-	let user = User::new(i32::MAX, "Test".to_string(), "test@example.com".to_string());
+	let user = User::fixture(i32::MAX, "Test", "test@example.com");
 	assert_eq!(user.id, i32::MAX);
 
 	// Test with minimum values
-	let user2 = User::new(i32::MIN, "Test".to_string(), "test@example.com".to_string());
+	let user2 = User::fixture(i32::MIN, "Test", "test@example.com");
 	assert_eq!(user2.id, i32::MIN);
 
 	// Note: Additional error case tests would require actual database operations
@@ -207,8 +207,8 @@ async fn test_model_error_cases() {
 #[tokio::test]
 async fn test_model_relationships() {
 	// Create related user and post
-	let user = User::new(1, "Author".to_string(), "author@example.com".to_string());
-	let post = Post::new(1, "Post Title".to_string(), "Content".to_string(), user.id);
+	let user = User::fixture(1, "Author", "author@example.com");
+	let post = Post::fixture(1, "Post Title", "Content", user.id);
 
 	// Verify the foreign key relationship
 	assert_eq!(post.author_id, user.id);

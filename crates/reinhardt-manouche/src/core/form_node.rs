@@ -73,7 +73,8 @@ pub struct FormMacro {
 	/// Redirect URL on successful form submission
 	///
 	/// Supports static paths (`"/profile"`) or dynamic paths with parameter expansion (`"/profile/{id}"`).
-	/// The redirect is triggered after `on_success` callback (if any) completes.
+	/// Runs after a successful generated submit; custom runtime behavior belongs
+	/// in `use_form(&form)`.
 	pub redirect_on_success: Option<LitStr>,
 	/// Redirect URL expression on successful form submission
 	///
@@ -108,6 +109,8 @@ pub struct FormMacro {
 	///
 	/// See `StripArgument` for details. Tracked under reinhardt-web#3971.
 	pub strip_arguments: Vec<StripArgument>,
+	/// Source syntax used for `strip_arguments`.
+	pub ambient_arguments_source: Option<AmbientArgumentsSource>,
 	/// Span for error reporting
 	pub span: Span,
 }
@@ -218,6 +221,9 @@ pub struct FormFieldDef {
 	pub name: Ident,
 	/// Field type identifier (e.g., CharField, EmailField)
 	pub field_type: Ident,
+	/// Optional generic type arguments parsed from `FieldType<T1, T2, ...>`.
+	/// `None` when no `<...>` follows the field type identifier in the DSL.
+	pub generics: Option<syn::punctuated::Punctuated<syn::Type, syn::Token![,]>>,
 	/// Field properties (validation and styling)
 	pub properties: Vec<FormFieldProperty>,
 	/// Span for error reporting
@@ -734,8 +740,10 @@ pub struct ValidatorRule {
 /// to the underlying server_fn at submit time.
 ///
 /// Useful for values like CSRF tokens or other ambient context that should not
-/// be exposed as user-editable form fields, but must appear in the server_fn
-/// signature.
+/// Argument supplied from ambient context rather than from the user-facing form.
+///
+/// The legacy `strip_arguments` DSL name is kept as a deprecated alias for
+/// `ambient_arguments`.
 ///
 /// ## Behavior
 ///
@@ -751,7 +759,7 @@ pub struct ValidatorRule {
 ///
 /// Prior to reinhardt-web#3971 the `form!` macro silently appended a
 /// `__csrf_token: String` argument to every `method != Get` server_fn call.
-/// `strip_arguments` makes that injection explicit and generalizes it to any
+/// `ambient_arguments` makes that injection explicit and generalizes it to any
 /// argument the user wants to supply outside the form's field surface.
 ///
 /// ## Example DSL
@@ -760,7 +768,7 @@ pub struct ValidatorRule {
 /// form! {
 ///     server_fn: submit_vote,
 ///     method: Post,
-///     strip_arguments: {
+///     ambient_arguments: {
 ///         csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token()
 ///             .unwrap_or_default(),
 ///     },
@@ -777,68 +785,31 @@ pub struct StripArgument {
 	pub span: Span,
 }
 
-/// Form submission callbacks configuration.
+/// Source syntax used for arguments supplied outside the user-facing form.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AmbientArgumentsSource {
+	/// Current `ambient_arguments: { ... }` syntax.
+	AmbientArguments,
+	/// Deprecated `strip_arguments: { ... }` alias.
+	StripArguments,
+}
+
+/// Parsed form submission callbacks configuration.
 ///
-/// Allows defining custom behavior at different stages of form submission:
-/// - Before submission starts
-/// - On successful submission
-/// - On error
-/// - When loading state changes
-///
-/// ## Example DSL
-///
-/// ```ignore
-/// form! {
-///     name: ProfileForm,
-///     server_fn: update_profile,
-///
-///     on_submit: |form| {
-///         // Called before submission starts
-///     },
-///     on_success: |result| {
-///         // Called when server_fn returns successfully
-///     },
-///     on_error: |e| {
-///         // Called when submission fails
-///     },
-///     on_loading: |is_loading| {
-///         // Called when loading state changes
-///     },
-///
-///     fields: { ... }
-/// }
-/// ```
+/// These legacy `form!` runtime callback clauses are retained in the parsed AST
+/// so older source can produce a targeted validation error. They are rejected by
+/// validation; use `use_form(&form)` for runtime behavior.
 #[derive(Debug, Clone, Default)]
 pub struct FormCallbacks {
-	/// Callback called before form submission starts.
-	/// Signature: `|form: &FormName| { ... }`
+	/// Legacy callback clause retained for targeted validation errors.
 	pub on_submit: Option<ExprClosure>,
-	/// Callback called when submission succeeds.
-	/// Receives the server_fn return value.
-	/// Signature: `|result: T| { ... }`
+	/// Legacy callback clause retained for targeted validation errors.
 	pub on_success: Option<ExprClosure>,
-	/// Lifted variant of `on_success` that captures outer-scope locals.
-	///
-	/// Unlike `on_success` (which is expanded inside the generated `fn submit()`
-	/// body and therefore cannot see enclosing-scope locals like `user_id`),
-	/// `on_success_ref` is expanded at the outer construction block. This lets
-	/// the user closure capture locals from the surrounding function scope.
-	///
-	/// The closure receives the server_fn return value by reference (`&T`)
-	/// instead of by move (`T`); for callbacks that must *consume* the value
-	/// (e.g., `set_current_user(Some(value))`), keep using `on_success`.
-	///
-	/// Both may be supplied together. Execution order: `on_success_ref` runs
-	/// first (receives `&value`), then `on_success` runs (receives `value` by
-	/// move).
-	///
-	/// Signature: `|form: &Self, result: &T| { ... }`
+	/// Legacy callback clause retained for targeted validation errors.
 	pub on_success_ref: Option<ExprClosure>,
-	/// Callback called when submission fails.
-	/// Signature: `|error: ServerFnError| { ... }`
+	/// Legacy callback clause retained for targeted validation errors.
 	pub on_error: Option<ExprClosure>,
-	/// Callback called when loading state changes.
-	/// Signature: `|is_loading: bool| { ... }`
+	/// Legacy callback clause retained for targeted validation errors.
 	pub on_loading: Option<ExprClosure>,
 	/// Span for error reporting (from first callback parsed)
 	pub span: Option<Span>,
@@ -860,24 +831,11 @@ impl FormCallbacks {
 	}
 }
 
-/// UI state configuration for form submission.
+/// Parsed form submission state configuration.
 ///
-/// Defines which state signals (loading, error, success) are enabled for the form.
-/// These signals are automatically managed during form submission lifecycle.
-///
-/// ## Example DSL
-///
-/// ```ignore
-/// state: { loading, error, success },
-/// ```
-///
-/// ## Available State Fields
-///
-/// | Field | Signal Type | Description |
-/// |-------|-------------|-------------|
-/// | `loading` | `Signal<bool>` | True during form submission |
-/// | `error` | `Signal<Option<String>>` | Contains error message if submission failed |
-/// | `success` | `Signal<bool>` | True after successful submission |
+/// This legacy `form! state: { ... }` clause is retained in the parsed AST so
+/// older source can produce a targeted validation error. It is rejected by
+/// validation; use `use_form(&form).build().form_state()` for runtime state.
 #[derive(Debug, Clone)]
 pub struct FormState {
 	/// List of enabled state fields
@@ -1128,6 +1086,7 @@ impl FormMacro {
 			fields: Vec::new(),
 			validators: Vec::new(),
 			strip_arguments: Vec::new(),
+			ambient_arguments_source: None,
 			span,
 		}
 	}
@@ -1160,6 +1119,7 @@ impl FormFieldDef {
 		Self {
 			name,
 			field_type,
+			generics: None,
 			properties: Vec::new(),
 			span,
 		}

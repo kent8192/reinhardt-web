@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reinhardt_middleware::session::{
-	SessionAuthExt, SessionData, SessionStore, SessionStoreRef, USER_ID_SESSION_KEY,
+	SessionAuthExt, SessionData, SessionStore, USER_ID_SESSION_KEY,
 };
 
 fn make_store_and_session() -> (Arc<SessionStore>, SessionData) {
@@ -23,11 +23,10 @@ fn make_store_and_session() -> (Arc<SessionStore>, SessionData) {
 #[tokio::test]
 async fn login_regenerates_id_writes_user_id_and_rotates_store_entry() {
 	let (store, mut session) = make_store_and_session();
-	let store_ref = SessionStoreRef(Arc::clone(&store));
 	let original_id = session.id.clone();
 	assert!(store.get(&original_id).is_some());
 
-	session.login(&store_ref, 42i64).unwrap();
+	session.login(&store, 42i64).unwrap();
 
 	// The id was regenerated.
 	assert_ne!(
@@ -56,17 +55,16 @@ async fn login_regenerates_id_writes_user_id_and_rotates_store_entry() {
 #[tokio::test]
 async fn logout_rotates_id_drops_user_id_and_keeps_other_keys() {
 	let (store, mut session) = make_store_and_session();
-	let store_ref = SessionStoreRef(Arc::clone(&store));
 
 	// Pre-populate the session with both a user id and an unrelated key
 	// (`flash`) — logout must preserve the latter so callers can still
 	// surface "you have been logged out" messages on the response.
-	session.login(&store_ref, 7i64).unwrap();
+	session.login(&store, 7i64).unwrap();
 	let post_login_id = session.id.clone();
 	session.set("flash".to_string(), "bye".to_string()).unwrap();
 	store.save(session.clone());
 
-	session.logout(&store_ref);
+	session.logout(&store);
 
 	assert_ne!(
 		session.id, post_login_id,
@@ -92,15 +90,13 @@ async fn logout_rotates_id_drops_user_id_and_keeps_other_keys() {
 
 #[tokio::test]
 async fn login_round_trip_uuid_primary_key() {
-	// Mirror the examples-twitter case where `PrimaryKey = Uuid`. The
-	// helper must be primary-key-shape agnostic — anything `Serialize` works.
+	// The helper must be primary-key-shape agnostic — anything `Serialize` works.
 	use uuid::Uuid;
 
 	let (store, mut session) = make_store_and_session();
-	let store_ref = SessionStoreRef(Arc::clone(&store));
 	let user_id = Uuid::now_v7();
 
-	session.login(&store_ref, user_id).unwrap();
+	session.login(&store, user_id).unwrap();
 
 	let stored = store.get(&session.id).expect("rotated session present");
 	assert_eq!(

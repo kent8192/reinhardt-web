@@ -15,11 +15,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.4", features = ["di"] }
+reinhardt = { version = "0.2.0-rc.6", features = ["di"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.4", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.4", features = ["full"] }      # All features
+# reinhardt = { version = "0.2.0-rc.6", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.2.0-rc.6", features = ["full"] }      # All features
 ```
 
 Then import DI features:
@@ -38,9 +38,9 @@ use reinhardt::di::{Injected, OptionalInjected, SingletonScope};
 - **Request Scope**: Dependencies cached per request (default)
 - **Singleton Scope**: Dependencies shared across the entire application
 
-### Injectable Types
+### Automatic Injection
 
-Types must implement `Injectable` to be resolved from the container. Use `#[injectable]` for user-owned service types, write a manual `impl Injectable` for custom construction logic, or rely on the provided wrapper implementations for `Arc<T>`, `Depends<T>`, and `Option<T>`.
+Types implementing `Default + Clone + Send + Sync + 'static` automatically implement the `Injectable` trait and can be used as dependencies.
 
 ## Implemented Features ✓
 
@@ -73,9 +73,8 @@ Types must implement `Injectable` to be resolved from the container. Use `#[inje
 **Recommendation**: Use `Depends<T>` for most cases (more ergonomic). Use `Injected<T>` when you need direct control or metadata access.
 
 - ✓ **Injectable Trait**: Define types that can be injected as dependencies
-  - Macro implementation: Use `#[injectable]` on user-owned service types
-  - Wrapper implementation: `Arc<T>`, `Depends<T>`, and `Option<T>` compose over existing injectables
-  - Manual implementation: Use when complex initialization logic is needed
+  - Auto-implementation: For types implementing `Default + Clone + Send + Sync + 'static`
+  - Custom implementation: When complex initialization logic is needed
 
 - ✓ **InjectionContext**: Context for dependency resolution
   - Builder pattern for context creation: `InjectionContext::builder(singleton).build()`
@@ -511,6 +510,13 @@ async fn factory_function(#[inject] dep: Arc<Dependency>) -> ReturnType {
 }
 ```
 
+When initialization can fail, prefer `Result<T, E>` as the return type. `T` is
+the dependency you want, and `E` should be an error type used only by that
+factory. Reinhardt registers the literal return type, so `Result<T, E1>` and
+`Result<T, E2>` have different `TypeId` values even when `T` is the same.
+Consumers can request the factory output as `DependsResult<T, E>` or
+`Depends<Result<T, E>>`.
+
 **Attributes:**
 
 Scope is passed as a macro argument in key-value form.
@@ -525,13 +531,30 @@ supplied.
 **Example:**
 ```rust
 use reinhardt::di::macros::injectable_factory;
+use reinhardt::di::DependsResult;
+use reinhardt::{get, Response, StatusCode, ViewResult};
 use std::sync::Arc;
 
+#[derive(Debug)]
+struct DatabaseConnectionError;
+
 #[injectable_factory(scope = "singleton")]
-async fn create_database(#[inject] config: Arc<Config>) -> DatabaseConnection {
+async fn create_database(
+    #[inject] config: Arc<Config>,
+) -> Result<DatabaseConnection, DatabaseConnectionError> {
     DatabaseConnection::connect(&config.database_url)
         .await
-        .expect("Failed to connect to database")
+        .map_err(|_| DatabaseConnectionError)
+}
+
+#[get("/database/health", name = "database_health")]
+async fn database_health(
+    #[inject] db: DependsResult<DatabaseConnection, DatabaseConnectionError>,
+) -> ViewResult<Response> {
+    match db.into_inner() {
+        Ok(_) => Ok(Response::new(StatusCode::OK)),
+        Err(_) => Ok(Response::new(StatusCode::SERVICE_UNAVAILABLE)),
+    }
 }
 ```
 

@@ -9,8 +9,8 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
-	// Force-link the parent library so its `#[routes]` /
-	// `#[url_patterns]` `inventory::submit!` registrations (e.g. the
+	// Force-link the parent library so its `#[routes]`
+	// `inventory::submit!` registrations (e.g. the
 	// `UrlPatternsRegistration` emitted from `config::urls::routes`)
 	// survive Rust's dead-code elimination. Without an explicit
 	// reference from this binary, the linker drops the library
@@ -18,7 +18,8 @@ mod native {
 	// returns an empty set, which the framework surfaces as
 	// "No URL patterns registered" at runtime.
 	use examples_tutorial_basis as _;
-	use reinhardt::commands::execute_from_command_line;
+	use examples_tutorial_basis::config::settings::get_settings;
+	use reinhardt::commands::execute_from_command_line_with_settings;
 	use std::process;
 
 	#[tokio::main]
@@ -38,7 +39,7 @@ mod native {
 		// `inventory::submit!`, so no manual `register_superuser_creator`
 		// call is required here.
 
-		if let Err(e) = execute_from_command_line().await {
+		if let Err(e) = execute_from_command_line_with_settings(get_settings()).await {
 			eprintln!("Error: {e}");
 			process::exit(1);
 		}

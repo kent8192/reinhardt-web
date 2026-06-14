@@ -124,4 +124,3 @@ where
 }
 
 // Note: Tests for ForeignKeyAccessor require actual model types and database connections.
-// Integration tests are in the examples-twitter project which uses real model types.

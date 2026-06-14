@@ -210,6 +210,7 @@ impl<M: Model> Lookup<M> {
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn app_label() -> &'static str { "app" }
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
@@ -251,3 +252,24 @@ impl<M: Model> Lookup<M> {
 		&self.value
 	}
 }
+
+// Note on `Lookup<M>` vs. `Filter` (Issue #4650):
+//
+// The public-facing user-visible call site
+//
+//     Choice::field_question_id().eq(question_id)
+//
+// goes through the `#[model]`-generated `FieldRef<M, T>::eq()`, which
+// already returns a `Filter` (see `crate::orm::expressions`). That
+// `Filter` flows directly into `Manager::filter(impl Into<FilterCondition>)` /
+// `QuerySet::filter(impl Into<FilterCondition>)`.
+//
+// The parallel `Field<M, T>::eq()` builder in this module returns a
+// `Lookup<M>` and is currently used only internally by
+// `query_fields::compiler` and `FilteredRelation`. A `Lookup<M>` →
+// `Filter` bridge is intentionally NOT provided yet — a faithful total
+// conversion would require lossy mapping of variants such as `IExact`,
+// `Regex`, and `Range` to a `FilterOperator` enum that does not have
+// those variants. Adding the missing `FilterOperator` /
+// `FilterValue::Range` variants (and the SQL-compile dispatch for them)
+// is tracked as a follow-up to Issue #4650 and will land additively.

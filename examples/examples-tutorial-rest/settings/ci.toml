@@ -2,12 +2,14 @@
 #
 # `CoreSettings` is registered as `#[settings(section = "core")]`, so its
 # fields must live under `[core]` to override values from base.toml. The
-# `[database]` section is consumed at the top level by reinhardt-db.
+# database lives under `[core.databases.default]` (the same fragment),
+# deep-merging onto base.toml's Postgres config — here switching the engine
+# to an in-memory SQLite database for CI.
 
 [core]
 debug = false
 secret_key = "ci-testing-secret-key-not-for-production"
 
-[database]
+[core.databases.default]
 engine = "sqlite"
 name = ":memory:"

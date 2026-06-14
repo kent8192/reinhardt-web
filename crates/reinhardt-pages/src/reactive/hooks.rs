@@ -53,7 +53,6 @@
 //! - [`use_id`] - Generate unique IDs
 //! - [`use_sync_external_store`] - Subscribe to external stores
 //! - [`use_websocket`] - WebSocket connections (WASM only)
-//! - [`use_action_state`] - Form action state (**deprecated**, use [`use_reducer`] or [`use_action`])
 //! - [`use_optimistic`] - Optimistic UI updates
 //! - [`use_debug_value`] - DevTools labels
 //! - [`use_effect_event`] - Non-reactive event handlers
@@ -107,10 +106,15 @@ pub mod transition;
 pub mod websocket;
 
 // Re-export all hooks
-#[allow(deprecated)] // Intentional: re-exporting deprecated items for backward compatibility
-pub use action::{ActionState, OptimisticState, use_action_state, use_optimistic};
+pub use reinhardt_core::reactive::batch;
+
+pub use action::{OptimisticState, use_optimistic};
 pub use async_action::{Action, ActionPhase, use_action};
 pub use context::use_context;
+#[allow(
+	deprecated,
+	reason = "re-export kept until removal in v0.3.0 (Refs #4195)"
+)]
 pub use debug::{use_debug_value, use_effect_event};
 pub use effect::{use_effect, use_layout_effect};
 pub use id::use_id;

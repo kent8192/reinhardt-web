@@ -1,7 +1,7 @@
 use reinhardt_conf::settings::core_settings::CoreSettings;
 use reinhardt_conf::settings::database_config::DatabaseConfig;
 use reinhardt_conf::settings::security::SecuritySettings;
-use reinhardt_conf::settings::{CacheSettings, EmailSettings, SessionSettings};
+use reinhardt_conf::{CacheSettings, EmailSettings, SessionSettings};
 use rstest::rstest;
 use std::collections::HashMap;
 

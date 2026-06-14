@@ -46,9 +46,9 @@ If you have written `ModelSerializer` or `Depends()` before, Reinhardt will feel
 
 <!-- reinhardt-version-sync -->
 ```bash
-# Currently a pre-release: --version is required. Once 0.1.4 stable ships,
-# --version becomes optional (and acts as an opt-in reproducibility pin).
-cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
+# Pin the documented Reinhardt release for reproducibility.
+# Omit --version to let Cargo choose the latest stable release.
+cargo install reinhardt-admin-cli --version "0.2.0-rc.6"
 
 reinhardt-admin startproject my-api && cd my-api
 cargo run --bin manage runserver  # Visit http://127.0.0.1:8000
@@ -103,9 +103,9 @@ Reinhardt follows a **three-phase lifecycle** for every crate:
 | **Stable** (`0.x.0`) | Full SemVer 2.0 guarantees. |
 
 <!-- reinhardt-version-sync -->
-**Current status:** Reinhardt is at `0.1.4`. From `0.1.0` onward, all
-public APIs follow SemVer 2.0; breaking changes ship in a future
-`0.2.0-rc.N` series coordinated through the `develop/0.2.0` branch.
+**Current release line:** Reinhardt documentation tracks `0.2.0-rc.6`. From
+`0.1.0` onward, all public APIs follow SemVer 2.0; future breaking changes
+move through the documented alpha and RC lifecycle before stable publication.
 
 For per-release detail (changelog summary, upgrade notes, known issues),
 see the [Release category in GitHub Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
@@ -116,7 +116,9 @@ The full lifecycle policy lives in
 
 Reinhardt is a modular framework. Choose your starting point:
 
-> **New here?** Start with the default standard setup. Use `full` if you need all features, or `minimal` for lightweight APIs.
+> **New here?** Start with the default standard setup. Use `minimal` plus explicit opt-in features for lightweight APIs. `full` remains available as the exhaustive flagship preset, but it is not the recommended starting point for normal applications.
+
+Feature presets are layered. `full`, `standard`, and `minimal` are top-level presets; each preset enables lower-level feature groups, and those groups enable atom feature flags such as `viewset-routing`, `signals`, `image-validation`, `compressed-parsers`, `commands-autoreload`, `browsable-api`, and `openapi-swagger-ui`. External dependencies are attached at the atom feature boundary wherever possible, so choosing `minimal` or `standard` does not implicitly import every dependency carried by `full`.
 
 ### Default: Standard Setup (Balanced) ⚠️ Default Preset
 
@@ -127,10 +129,12 @@ Get a well-balanced feature set with zero configuration:
 [dependencies]
 # Import as 'reinhardt', published as 'reinhardt-web'
 # Default enables the "standard" preset (balanced feature set)
-reinhardt = { version = "0.1.4", package = "reinhardt-web" }
+reinhardt = { version = "0.2.0-rc.6", package = "reinhardt-web" }
 ```
 
 **Includes:** Core, Database (PostgreSQL), REST API (serializers, parsers, pagination, filters, throttling, versioning, metadata, content negotiation), Auth, Middleware (sessions), Pages (WASM Frontend with SSR), Signals
+
+**Opt-in atoms:** OpenAPI generation/UI, browsable API templates, compressed request parsers, static-file compression, and image validation are intentionally outside `standard`. Add `openapi`, `openapi-swagger-ui`, `browsable-api`, `compressed-parsers`, `middleware-compression`, or `image-validation` when an application needs them.
 
 **Binary**: ~20-30 MB | **Compile**: Medium
 
@@ -140,19 +144,19 @@ use reinhardt::prelude::*;
 use reinhardt::{Request, Response, StatusCode};
 ```
 
-### Option 1: Full-Featured (All Batteries Included)
+### Option 1: Full-Featured (Exhaustive Flagship)
 
-For projects that need every available component:
+For compatibility checks, framework development, and projects that intentionally need every available component:
 
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.4", package = "reinhardt-web", default-features = false, features = ["full"] }
+reinhardt = { version = "0.2.0-rc.6", package = "reinhardt-web", default-features = false, features = ["full"] }
 ```
 
 **Includes:** Everything in Standard, plus Admin, GraphQL, WebSockets, Cache, i18n, Mail, Static Files, Storage, and more
 
-**Binary**: ~50+ MB | **Compile**: Slower, but everything works out of the box
+**Binary**: ~50+ MB | **Compile**: Slowest, because this preset intentionally pulls the complete dependency graph
 
 ### Option 2: Microservices (Minimal Setup)
 
@@ -161,7 +165,7 @@ Lightweight and fast, perfect for simple APIs:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.4", package = "reinhardt-web", default-features = false, features = ["minimal"] }
+reinhardt = { version = "0.2.0-rc.6", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 ```
 
 **Includes:** HTTP, routing, DI, parameter extraction, server
@@ -176,24 +180,24 @@ Install only the components you need:
 ```toml
 [dependencies]
 # Core components
-reinhardt-http = "0.1.4"
-reinhardt-urls = "0.1.4"
+reinhardt-http = "0.2.0-rc.6"
+reinhardt-urls = "0.2.0-rc.6"
 
 # Optional: Database
-reinhardt-db = "0.1.4"
+reinhardt-db = "0.2.0-rc.6"
 
 # Optional: Authentication
-reinhardt-auth = "0.1.4"
+reinhardt-auth = "0.2.0-rc.6"
 
 # Optional: REST API features
-reinhardt-rest = "0.1.4"
+reinhardt-rest = "0.2.0-rc.6"
 
 # Optional: Admin panel
-reinhardt-admin = "0.1.4"
+reinhardt-admin = "0.2.0-rc.6"
 
 # Optional: Advanced features
-reinhardt-graphql = "0.1.4"
-reinhardt-websockets = "0.1.4"
+reinhardt-graphql = "0.2.0-rc.6"
+reinhardt-websockets = "0.2.0-rc.6"
 ```
 
 **Note on Crate Naming:**
@@ -205,15 +209,13 @@ The main Reinhardt crate is published on crates.io as `reinhardt-web`, but you i
 
 ### 1. Install Reinhardt Admin Tool
 
-While Reinhardt is on a pre-release (`-rc.*` / `-alpha.*`), `cargo install`
-requires an explicit `--version` because pre-releases are not selected by
-default. Once `0.1.0` stable ships, omit `--version` to pull the latest
-stable (or keep `--version` as an opt-in reproducibility pin). The literal
-below is auto-bumped by release-plz on each release.
+Install the CLI with Cargo. The command below pins this guide to the
+documented release for reproducibility; omit `--version` to let Cargo choose
+the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.1.4"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.6"
 ```
 
 ### 2. Create a New Project
@@ -222,6 +224,23 @@ cargo install reinhardt-admin-cli --version "0.1.4"
 # Create a RESTful API project (default)
 reinhardt-admin startproject my-api
 cd my-api
+```
+
+Interactive terminals can choose the Reinhardt version and feature flags
+during project creation. Scripts can pass them explicitly:
+
+<!-- reinhardt-version-sync -->
+```bash
+reinhardt-admin startproject my-api \
+  --reinhardt-version "0.2.0-rc.6" \
+  --features standard,admin \
+  --no-interactive
+```
+
+For an existing project, update the `reinhardt` dependency in `Cargo.toml`:
+
+```bash
+reinhardt-admin configure --features minimal,db-sqlite --no-interactive
 ```
 
 This generates a complete project structure:
@@ -284,7 +303,9 @@ cargo run --bin manage -- runserver --with-pages
 Edit any Rust source file (server-side or wasm-side) and the bundle
 plus the server are rebuilt in place. Pass `--noreload` to disable
 auto-reload entirely, or `--no-wasm-rebuild` to keep server reload
-but manage the wasm build yourself.
+but manage the wasm build yourself. A successful server restart log is
+emitted only after the respawned child accepts connections at the
+advertised development address.
 
 For build-loop performance work, use `cargo make bench-builds-dry-run`
 to inspect the benchmark commands and `cargo make bench-builds` to write
@@ -430,12 +451,12 @@ framework for discovery via the `inventory` crate.
 **Note:** The `reinhardt::prelude` includes commonly used types. Key exports include:
 
 **Always Available:**
-- Core routing and views: `Router`, `DefaultRouter`, `ServerRouter`, `View`, `ListView`, `DetailView`
-- ViewSets: `ViewSet`, `ModelViewSet`, `ReadOnlyModelViewSet`
 - HTTP: `StatusCode`
 
 **Feature-Dependent:**
 - **`core` feature**: `Request`, `Response`, `Handler`, `Middleware`, Signals (`post_save`, `pre_save`, etc.)
+- **`routing` feature**: `Router`, `DefaultRouter`, `ServerRouter`
+- **`api`, `standard`, or `api-only` features**: `View`, `ListView`, `DetailView`, `ViewSet`, `ModelViewSet`, `ReadOnlyModelViewSet`
 - **`database` feature**: `Model`, `DatabaseConnection`, `F`, `Q`, `Transaction`, `atomic`, Database functions (`Concat`, `Upper`, `Lower`, `Now`, `CurrentDate`), Window functions (`Window`, `RowNumber`, `Rank`, `DenseRank`), Constraints (`UniqueConstraint`, `CheckConstraint`, `ForeignKeyConstraint`)
 - **`auth` feature**: `BaseUser`, `FullUser`, `PermissionsMixin`, `BaseUserManager`, `Argon2Hasher`, `GroupManager`, `CreateGroupData`, `Permission`, `ObjectPermission`, `ObjectPermissionManager`
 - **`minimal`, `standard`, or `di` features**: `Body`, `Cookie`, `Header`, `Json`, `Path`, `Query`
@@ -452,7 +473,7 @@ For a complete step-by-step guide, see [Getting Started](https://reinhardt-web.d
 
 ### With Database
 
-Configure database aliases in `settings/base.toml`:
+Configure the database in `settings/base.toml` under `[core.databases.default]`:
 
 ```toml
 [core]
@@ -461,33 +482,43 @@ secret_key = "your-secret-key-for-development"
 
 [core.databases.default]
 engine = "postgresql"
+host = "localhost"
+port = 5432
 name = "mydb"
 user = "postgres"
 password = "postgres"
-host = "localhost"
-port = 5432
+
+[contacts]
+admins = []
+managers = []
 ```
 
-Settings are automatically loaded in `src/config/settings.rs`:
+Settings are automatically composed in `src/config/settings.rs` — this is what
+`reinhardt-admin startproject` generates:
 
 ```rust
 // src/config/settings.rs
 use reinhardt::prelude::*;
 
-// Compose built-in settings fragments with | - field names are inferred from type names
-// (e.g., CoreSettings -> core, CacheSettings -> cache, EmailSettings -> email)
-#[settings(CoreSettings | CacheSettings | EmailSettings)]
+// `CoreSettings` is registered under the `core` section, so its fields —
+// including the `[core.databases.default]` connection that `migrate` /
+// `runserver` resolve — live under `[core]` in the TOML above.
+// `ContactSettings` is mounted under `[contacts]`; management commands
+// require it through the `HasCommonSettings` bound.
+#[settings(core: CoreSettings | contacts: ContactSettings)]
 pub struct ProjectSettings;
 ```
 
-The `|` syntax composes settings fragments into `ProjectSettings`. Each type must be a `#[settings(fragment = true, ...)]` struct. Built-in fragments:
-- **`CoreSettings`** - `base_dir`, `secret_key`, `debug`, `allowed_hosts`, `databases`, `security`, `middleware`, `root_urlconf`, and `installed_apps`
-- **`CacheSettings`**, **`ContactSettings`**, **`CorsSettings`**, **`EmailSettings`**, **`I18nSettings`**, **`LoggingSettings`**, **`MediaSettings`**, **`SecuritySettings`**, **`SessionSettings`**, **`StaticSettings`**, and **`TemplateSettings`** - optional framework sections
-
-Add project-specific fragments with explicit field names using `key: Type` syntax:
+`#[settings(...)]` composes settings fragments into `ProjectSettings` using the
+`key: Type` syntax. Each fragment is a `#[settings(fragment = true, section = "...")]`
+struct mounted under its declared section. `CoreSettings` (section `core`) carries
+`debug`, `secret_key`, `allowed_hosts`, the `databases` map, and `security`;
+`ContactSettings` (section `contacts`) carries the administrator and manager
+contact lists needed by the common management-command settings contract. Add
+project-specific fragments the same way:
 
 ```rust
-#[settings(CoreSettings | CacheSettings | mail: MailSettings)]
+#[settings(core: CoreSettings | contacts: ContactSettings | cache: CacheSettings)]
 pub struct ProjectSettings;
 ```
 
@@ -503,7 +534,7 @@ normal Reinhardt model:
 ```rust
 // users/models.rs
 use reinhardt::prelude::*;
-use reinhardt::Argon2Hasher;
+use reinhardt::auth::Argon2Hasher;
 
 #[user(hasher = Argon2Hasher, username_field = "username", full = true)]
 #[model(app_label = "users", table_name = "users")]
@@ -593,12 +624,8 @@ impl User {
 use reinhardt::prelude::*;
 use crate::models::User;
 
-// Django-style F/Q object queries with type-safe field references
+// Django-style lookup helpers with type-safe field references
 async fn complex_user_query() -> Result<Vec<User>, Box<dyn std::error::Error>> {
-	// Q objects for building complex conditions
-	let active_query = Q::new("is_active", "=", "true")
-		.and(Q::new("date_joined", ">=", "NOW()"));
-
 	// Database functions with type-safe field references
 	let email_lower = Lower::new(User::field_email().into());
 	let username_upper = Upper::new(User::field_username().into());
@@ -615,7 +642,10 @@ async fn complex_user_query() -> Result<Vec<User>, Box<dyn std::error::Error>> {
 
 	// Build and execute the query using QuerySet
 	let users = User::objects()
-		.filter(active_query)
+		.filter(User::field_is_active().exact(true))
+		.filter(User::field_email().icontains("example.com"))
+		.filter(User::field_id().is_in([1_i64, 2, 3]))
+		.filter(User::field_date_joined().year().gte(2026))
 		.annotate("email_lower", email_lower)
 		.annotate("username_upper", username_upper)
 		.annotate("rank", rank_by_join_date)
@@ -698,13 +728,13 @@ password-management workflow, groups, and object-level permissions on top.
 **User lifecycle example:**
 
 For a custom user, implement `BaseUserManager<User>` (see
-`reinhardt_auth::BaseUserManager`). The signature required is:
+`reinhardt::auth::BaseUserManager`). The signature required is:
 
 ```rust
 use std::collections::HashMap;
 use async_trait::async_trait;
+use reinhardt::auth::{BaseUserManager, Argon2Hasher, PasswordHasher};
 use reinhardt::prelude::*;
-use reinhardt_auth::{Argon2Hasher, BaseUserManager, PasswordHasher};
 use serde_json::Value;
 use crate::models::User;
 
@@ -726,7 +756,18 @@ impl BaseUserManager<User> for UserManager {
 		password: Option<&str>,
 		extra: HashMap<String, Value>,
 	) -> Result<User, reinhardt::Error> {
-		let mut user = User::new(username.to_string(), /* email */ String::new());
+		let mut user = User::build()
+			.username(username)
+			.email("")
+			.password_hash(None)
+			.first_name("")
+			.last_name("")
+			.is_active(true)
+			.is_staff(false)
+			.is_superuser(false)
+			.last_login(None)
+			.phone_number(None)
+			.finish();
 		if let Some(pw) = password {
 			user.set_password(pw)?;
 		}
@@ -756,7 +797,7 @@ let alice = users
 instantiated directly:
 
 ```rust
-use reinhardt::{CreateGroupData, GroupManager, ObjectPermissionManager};
+use reinhardt::auth::{GroupManager, CreateGroupData, ObjectPermissionManager};
 
 let mut groups = GroupManager::new();
 let editors = groups
@@ -771,15 +812,16 @@ Use JWT authentication in your app's `views/profile.rs`:
 
 ```rust
 // users/views/profile.rs
-use reinhardt::{AuthUser, Response, StatusCode, ViewResult, get};
+use reinhardt::{Response, StatusCode, ViewResult, get};
+use reinhardt::auth::CurrentUser;
 use crate::models::User;
 
 // JwtAuthMiddleware must be registered in urls.rs to populate AuthState in request extensions
 #[get("/profile", name = "get_profile")]
 pub async fn get_profile(
-	#[inject] AuthUser(user): AuthUser<User>,
+	#[inject] CurrentUser(user): CurrentUser<User>,
 ) -> ViewResult<Response> {
-	// AuthUser<U> loads the full user model from the database using the AuthState
+	// CurrentUser<U> loads the full user model from the database using the AuthState
 	// set by authentication middleware. Returns an injection error if unauthenticated.
 	if !user.is_active() {
 		return Err("User account is inactive".into());
@@ -840,35 +882,65 @@ registration entry (via `inventory::submit!`) so the type resolves from
 
 #### 2. `#[injectable_factory]` — the pseudo orphan rule
 
-Rust's orphan rule forbids `impl Injectable for SomeForeignType`. For user-owned
-adapters around third-party handles, Reinhardt offers `#[injectable_factory]`.
-You write an async function whose return type is the type to register; the macro
-wraps it, submits an `inventory` entry, and hands the returned value to the DI
-container:
+Rust's orphan rule forbids `impl Injectable for SomeForeignType`. For those
+cases — database connections, `Arc<dyn Trait>`, third-party handles — Reinhardt
+offers `#[injectable_factory]`. You write an async function whose return type
+is the type to register; the macro wraps it, submits an `inventory` entry, and
+hands the returned value to the DI container:
 
 ```rust
 use reinhardt::db::DatabaseConnection;
 use reinhardt::di::{Depends, injectable_factory};
 
-#[derive(Clone)]
-pub struct AppDatabase {
-    pub connection: DatabaseConnection,
-}
-
 #[injectable_factory(scope = "singleton")]
-async fn app_database(
+async fn database_connection(
     #[inject] config: Depends<Config>,
-) -> AppDatabase {
-    let connection = DatabaseConnection::connect(&config.database_url)
+) -> DatabaseConnection {
+    DatabaseConnection::connect(&config.database_url)
         .await
-        .expect("failed to open database connection");
-    AppDatabase { connection }
+        .expect("failed to open database connection")
 }
 ```
 
 **Every parameter of an `#[injectable_factory]` function must be annotated
 with `#[inject]`.** There is no way to pass runtime arguments; factories only
 compose over other injectables.
+
+When a factory can fail, prefer returning `Result<T, E>` where `T` is the
+dependency you want and `E` is an error type used only by that factory. The DI
+registry key is the literal return type's `TypeId`, so `Result<T,
+DatabaseConnectionError>` and `Result<T, OtherFactoryError>` are distinct even
+when both factories produce the same successful `T`. Inject that dependency as
+`DependsResult<T, E>` (or `Depends<Result<T, E>>`) and handle the factory-local
+error at the call site.
+
+```rust
+use reinhardt::db::DatabaseConnection;
+use reinhardt::{get, Response, StatusCode, ViewResult};
+use reinhardt::di::{Depends, DependsResult, injectable_factory};
+
+#[derive(Debug)]
+struct DatabaseConnectionError;
+
+#[injectable_factory(scope = "singleton")]
+async fn database_connection_result(
+    #[inject] config: Depends<Config>,
+) -> Result<DatabaseConnection, DatabaseConnectionError> {
+    DatabaseConnection::connect(&config.database_url)
+        .await
+        .map_err(|_| DatabaseConnectionError)
+}
+
+#[get("/database/health", name = "database_health")]
+async fn database_health(
+    #[inject] db: DependsResult<DatabaseConnection, DatabaseConnectionError>,
+) -> ViewResult<Response> {
+    match db.into_inner() {
+        Ok(_) => Ok(Response::new(StatusCode::OK)),
+        Err(_) => Ok(Response::new(StatusCode::SERVICE_UNAVAILABLE)),
+    }
+}
+```
 
 **The pseudo orphan rule.** To prevent user factories from silently shadowing
 framework-owned types (e.g., `reinhardt_di::InjectionContext`, routers,
@@ -880,10 +952,6 @@ inside that crate. This emulates the orphan rule across the DI boundary: foreign
 types are fair game, framework types are not. The validator lives in
 [`crates/reinhardt-di/src/validation.rs`](crates/reinhardt-di/src/validation.rs)
 (`check_framework_type_override`, lines 51–129).
-
-Framework-owned types such as `DatabaseConnection` should use the injectable
-implementation provided by the framework, or be wrapped in a project-owned type
-like `AppDatabase` when you need project-specific construction.
 
 #### 3. `#[inject]` + `Depends<T>` in handlers
 
@@ -1120,8 +1188,19 @@ pub async fn create_user(
 ) -> ViewResult<Response> {
 	// Json<T> deserializes the body; Validated<T> runs #[validate] rules and yields the validated value
 
-	// Create user using the auto-generated new() function from #[user] + #[model]
-	let mut user = User::new(create_req.username, create_req.email);
+	// Create user using the auto-generated builder from #[user] + #[model]
+	let mut user = User::build()
+		.username(create_req.username)
+		.email(create_req.email)
+		.password_hash(None)
+		.first_name("")
+		.last_name("")
+		.is_active(true)
+		.is_staff(false)
+		.is_superuser(false)
+		.last_login(None)
+		.phone_number(None)
+		.finish();
 
 	// Hash and set password using BaseUser trait
 	user.set_password(&create_req.password)?;
@@ -1141,7 +1220,7 @@ pub async fn create_user(
 | Your Goal | Start Here |
 |-----------|-----------|
 | **Full-stack REST API** | [Getting Started Guide](#getting-started-guide) |
-| **Full-stack with Pages (WASM + SSR)** | [Twitter Demo](examples/examples-twitter/) |
+| **Full-stack with Pages (WASM + SSR)** | [Basis Tutorial](examples/examples-tutorial-basis/) |
 | **Lightweight DI-focused API** | [Minimal Installation](#option-2-microservices-minimal-setup) |
 
 > **Standalone DI for existing Axum apps** is planned for a future release.

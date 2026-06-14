@@ -173,8 +173,8 @@ pub mod versioned;
 #[cfg(native)]
 pub mod visualization;
 
-// Re-export the path! macro for compile-time path validation
-#[cfg(native)]
+// Re-export the path! macro for compile-time path validation.
+#[cfg(all(native, feature = "routers-macros"))]
 pub use reinhardt_routers_macros::path;
 
 #[cfg(native)]
@@ -200,26 +200,9 @@ pub use registration::{
 pub use registration::{RouterFactory, UrlPatternsRegistration};
 #[cfg(native)]
 pub use reverse::{
-	ReverseError,
-	ReverseResult,
-	UrlParams,
-	// Type-safe reversal
-	UrlPattern,
-	UrlPatternWithParams,
-	UrlReverser,
-	extract_param_names,
-	reverse,
-	reverse_typed,
-	reverse_typed_with_params,
-	try_reverse_single_pass,
-	try_reverse_with_aho_corasick,
+	ReverseError, ReverseResult, UrlReverser, extract_param_names, reverse,
+	try_reverse_single_pass, try_reverse_with_aho_corasick,
 };
-#[cfg(native)]
-#[allow(
-	deprecated,
-	reason = "re-export deprecated panicking helpers during the deprecation cycle"
-)]
-pub use reverse::{reverse_single_pass, reverse_with_aho_corasick};
 #[cfg(native)]
 pub use route::Route;
 #[cfg(native)]
@@ -238,6 +221,13 @@ pub use server_router::{
 	take_di_registrations,
 };
 
+// On WASM with `client-router`, `ServerRouter` is the no-op builder defined in
+// `unified_router`. Re-exported here so `reinhardt_urls::routers::ServerRouter`
+// resolves uniformly on both targets (issue #4569). The native re-export above
+// and this one are gated on mutually exclusive cfgs, so exactly one is active.
+#[cfg(all(wasm, feature = "client-router"))]
+pub use unified_router::ServerRouter;
+
 // Unified router (closure-based API combining server and client routers)
 #[cfg(any(native, feature = "client-router"))]
 pub use unified_router::UnifiedRouter;
@@ -245,19 +235,11 @@ pub use unified_router::UnifiedRouter;
 // Client router re-exports
 #[cfg(feature = "client-router")]
 pub use client_router::{
-	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, ClientUrlReverser, FromPath,
-	HistoryState, MergeError, NavigationSubscription, NavigationType, ParamContext, Path,
-	RouteHandler, SingleFromPath, clear_client_reverser, get_client_reverser,
-	register_client_reverser,
+	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, FromPath, HistoryState,
+	MergeError, NavigationSubscription, NavigationType, ParamContext, Path, RouteHandler,
+	RouteMetadata, SingleFromPath,
 };
 pub use resolver::{ClientUrlResolver, WebSocketUrlResolver};
-// Re-export the deprecated `UrlResolverUnprefixed` helper trait so the macro
-// can refer to it via `<reinhardt-facade>::UrlResolverUnprefixed`. Refs #4507.
-#[allow(
-	deprecated,
-	reason = "re-export deprecated helper trait during the deprecation cycle"
-)]
-pub use resolver::UrlResolverUnprefixed;
 
 // Re-export the canonical `StreamingTopicResolver` trait from
 // `reinhardt-streaming` so downstream users can keep importing it from

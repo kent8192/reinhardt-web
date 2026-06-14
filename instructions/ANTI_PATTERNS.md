@@ -21,6 +21,7 @@ mindmap
       Obsolete code comments
       Alternative TODO notations
       Undocumented allow attrs
+      cfg(any()) gate
     Resource Management
       Manual cleanup
       mem::forget leaks
@@ -233,6 +234,39 @@ pub fn new_implementation() {  // ✅ Old code deleted
 
 **Why?** Git history preserves old code. Commented code creates clutter.
 
+### ❌ Conditional Compilation Gates for Deprecated API Removal
+
+**DON'T:**
+
+```rust
+// ❌ Using #[cfg(any())] to "soft-delete" a deprecated API
+#[cfg(any())]
+pub fn legacy_function() {
+    // dead code preserved in the tree
+}
+
+#[cfg(any())]
+pub struct LegacyType {
+    // dead code preserved in the tree
+}
+```
+
+```rust
+// ❌ Gating an entire module file behind cfg(any())
+// File: src/legacy/module.rs
+#![cfg(any())]  // NEVER do this — delete the file and its `pub mod` declaration
+```
+
+**DO:**
+
+```rust
+// ✅ Delete the file and the `pub mod` declaration from its parent module.
+// ✅ Update all callers (in-crate and cross-crate) in the same commit.
+// ✅ Use `git blame <deletion-commit>^` to inspect the code as it existed before deletion.
+```
+
+**Why?** `#[cfg(any())]` is always-false conditional compilation — semantically equivalent to deletion but leaves dead code in the tree. Dead code accumulates technical debt: it confuses readers, bloats IDE search results, masks compilation errors in callers, and misleads future refactoring. The "git blame readability" argument is invalid because `git blame <commit>^` can inspect past state.
+
 ### ❌ Deletion Record Comments
 
 **DON'T:**
@@ -326,6 +360,29 @@ pub fn send_email(to: &str, body: &str) -> Result<()> {
 ```
 
 **Why?** Unmarked placeholders can be mistaken for production code.
+
+### ❌ Using `#[cfg(any())]` as a Deletion Substitute
+
+**DON'T:**
+
+```rust
+#[cfg(any())] // Removed in 0.2.0, kept for reference
+pub fn old_api() {}
+```
+
+**DO:**
+
+```rust
+// Delete the function entirely. Git history preserves old code.
+```
+
+**Why?** `#[cfg(any())]` is always false, leaving dead code in the sourcebase
+even though no target can ever activate it. This confuses readers who may think
+there is a valid compilation target where this code exists, creates a
+maintenance burden (dead imports, type requirements, async/sync mismatches),
+and circumvents the project's delete-over-hide policy. If removal must be
+staged, use `#[deprecated]` on the API surface while keeping real callers;
+delete unconditionally when the deprecation period ends.
 
 ### ❌ Undocumented `#[allow(...)]` Attributes
 
@@ -636,6 +693,31 @@ git commit -m "..."
 ```
 
 **Why?** Commits should only be made with explicit user authorization.
+
+### ❌ Committing Directly to Protected Branches
+
+**DON'T:**
+
+```bash
+# ❌ Never commit directly on a protected branch
+git checkout develop/0.2.0
+# ... make changes ...
+git add .
+git commit -m "docs: update some instruction files"
+```
+
+**DO:**
+
+```bash
+# ✅ Always use a non-protected feature/fix/docs branch
+git checkout -b docs/update-instructions
+# ... make changes ...
+git add .
+git commit -m "docs: update some instruction files"
+# Then create a Pull Request from docs/update-instructions to develop/0.2.0
+```
+
+**Why?** Protected branches (`main`, `master`, `develop/*`, `release/*`) receive changes exclusively through Pull Requests. Direct commits bypass review, CI validation, and branch protection rules.
 
 ### ❌ Batch Operations Without Dry-Run
 

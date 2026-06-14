@@ -19,12 +19,12 @@
 //! accept Cargo flags before the path argument.
 
 #![cfg(wasm)]
-#![allow(deprecated)] // (Refs #4234) Test exercises deprecated `pages::Router` surface.
 
-use reinhardt_pages::app::{ClientLauncher, with_router};
+use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
-use reinhardt_pages::reactive::with_runtime;
-use reinhardt_pages::router::Router;
+use reinhardt_pages::reactive::{Signal, with_runtime};
+use reinhardt_urls::routers::ClientRouter;
+use wasm_bindgen::JsCast;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -46,11 +46,45 @@ fn page_a() -> Page {
 		.into_page()
 }
 
+fn page_with_anchor_to_b() -> Page {
+	PageElement::new("div")
+		.attr("id", "route-a")
+		.child("ROUTE-A-CONTENT")
+		.child(
+			PageElement::new("a")
+				.attr("id", "link-to-b")
+				.attr("href", "/b")
+				.child("Go to B"),
+		)
+		.into_page()
+}
+
 fn page_b() -> Page {
 	PageElement::new("div")
 		.attr("id", "route-b")
 		.child("ROUTE-B-CONTENT")
 		.into_page()
+}
+
+fn page_with_reentrant_nested_reactive() -> Page {
+	let trigger = Signal::new(0_i32);
+	let trigger_for_outer = trigger.clone();
+
+	Page::reactive(move || {
+		let _ = trigger_for_outer.get();
+		let trigger_for_inner = trigger_for_outer.clone();
+
+		Page::reactive(move || {
+			if trigger_for_inner.get_untracked() == 0 {
+				trigger_for_inner.set(1);
+			}
+
+			PageElement::new("div")
+				.attr("id", "route-reentrant")
+				.child("ROUTE-REENTRANT-CONTENT")
+				.into_page()
+		})
+	})
 }
 
 fn install_app_root() -> web_sys::Element {
@@ -75,11 +109,11 @@ async fn client_launcher_re_renders_on_router_push() {
 	let root = install_app_root();
 
 	ClientLauncher::new("#app")
-		.router(|| {
-			Router::new()
-				.route("/", page_root)
-				.route("/a", page_a)
-				.route("/b", page_b)
+		.router_client(|| {
+			ClientRouter::new()
+				.route("root", "/", page_root)
+				.route("a", "/a", page_a)
+				.route("b", "/b", page_b)
 		})
 		.launch()
 		.expect("launch");
@@ -87,7 +121,7 @@ async fn client_launcher_re_renders_on_router_push() {
 	yield_to_microtasks().await;
 
 	// Navigate to /a and confirm the body switches.
-	with_router(|r| r.push("/a")).expect("push /a");
+	with_spa_router(|r| r.push("/a")).expect("push /a");
 	let pending_after_push_a = with_runtime(|rt| rt.debug_pending_updates());
 	yield_to_microtasks().await;
 	yield_to_microtasks().await;
@@ -106,7 +140,7 @@ async fn client_launcher_re_renders_on_router_push() {
 	);
 
 	// Navigate to /b — this is the regression-critical step.
-	with_router(|r| r.push("/b")).expect("push /b");
+	with_spa_router(|r| r.push("/b")).expect("push /b");
 	let pending_after_push_b = with_runtime(|rt| rt.debug_pending_updates());
 	yield_to_microtasks().await;
 	yield_to_microtasks().await;
@@ -122,6 +156,58 @@ async fn client_launcher_re_renders_on_router_push() {
 	assert!(
 		!html_after_b.contains("ROUTE-A-CONTENT"),
 		"expected /a view absent after push('/b'), got: {html_after_b}"
+	);
+}
+
+#[wasm_bindgen_test]
+async fn client_launcher_re_renders_after_intercepted_anchor_click() {
+	let root = install_app_root();
+
+	ClientLauncher::new("#app")
+		.router_client(|| {
+			ClientRouter::new()
+				.route("root", "/", page_root)
+				.route("a", "/a", page_with_anchor_to_b)
+				.route("b", "/b", page_b)
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+
+	with_spa_router(|r| r.push("/a")).expect("push /a");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+	assert!(
+		root.inner_html().contains("ROUTE-A-CONTENT"),
+		"setup precondition: expected /a before clicking link, got: {}",
+		root.inner_html()
+	);
+
+	let document = web_sys::window().unwrap().document().unwrap();
+	let anchor: web_sys::HtmlElement = document
+		.get_element_by_id("link-to-b")
+		.expect("link-to-b exists")
+		.dyn_into()
+		.expect("link-to-b is HtmlElement");
+	anchor.click();
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+
+	let path = web_sys::window()
+		.unwrap()
+		.location()
+		.pathname()
+		.expect("location pathname");
+	let html_after_click = root.inner_html();
+	assert_eq!(path, "/b");
+	assert!(
+		html_after_click.contains("ROUTE-B-CONTENT"),
+		"Refs #5104: intercepted anchor click changed the URL but did not rerender /b, got: {html_after_click}"
+	);
+	assert!(
+		!html_after_click.contains("ROUTE-A-CONTENT"),
+		"Refs #5104: previous /a view should be gone after anchor navigation, got: {html_after_click}"
 	);
 }
 
@@ -158,11 +244,11 @@ async fn client_launcher_reproduces_issue_4088_navigation_flow() {
 	}
 
 	ClientLauncher::new("#app")
-		.router(|| {
-			Router::new()
-				.route("/", dashboard)
-				.route("/login", login_page)
-				.route("/register", register_page)
+		.router_client(|| {
+			ClientRouter::new()
+				.route("dashboard", "/", dashboard)
+				.route("login", "/login", login_page)
+				.route("register", "/register", register_page)
 				.not_found(not_found)
 		})
 		.launch()
@@ -176,7 +262,7 @@ async fn client_launcher_reproduces_issue_4088_navigation_flow() {
 	);
 
 	// Issue #4088 row 2: /login should render login_page after Router::push
-	with_router(|r| r.push("/login")).expect("push /login");
+	with_spa_router(|r| r.push("/login")).expect("push /login");
 	yield_to_microtasks().await;
 	yield_to_microtasks().await;
 	assert!(
@@ -186,7 +272,7 @@ async fn client_launcher_reproduces_issue_4088_navigation_flow() {
 	);
 
 	// Issue #4088 row 3: /register
-	with_router(|r| r.push("/register")).expect("push /register");
+	with_spa_router(|r| r.push("/register")).expect("push /register");
 	yield_to_microtasks().await;
 	yield_to_microtasks().await;
 	assert!(
@@ -196,7 +282,7 @@ async fn client_launcher_reproduces_issue_4088_navigation_flow() {
 	);
 
 	// Issue #4088 row 4: /clusters has no route — must fall through to not_found
-	with_router(|r| r.push("/clusters")).expect("push /clusters");
+	with_spa_router(|r| r.push("/clusters")).expect("push /clusters");
 	yield_to_microtasks().await;
 	yield_to_microtasks().await;
 	assert!(
@@ -220,22 +306,22 @@ async fn client_launcher_re_renders_on_popstate() {
 	let observed_paths_for_listener = observed_paths.clone();
 
 	ClientLauncher::new("#app")
-		.router(|| {
-			Router::new()
-				.route("/", page_root)
-				.route("/a", page_a)
-				.route("/b", page_b)
+		.router_client(|| {
+			ClientRouter::new()
+				.route("root", "/", page_root)
+				.route("a", "/a", page_a)
+				.route("b", "/b", page_b)
 		})
 		.after_launch(move |_ctx| {
 			// after_launch is FnOnce, so observed_paths_for_listener can
 			// be moved straight into the listener body without an extra
 			// clone.
-			let sub = with_router(move |r| {
-				r.on_navigate(move |path, _params| {
+			let sub = with_spa_router(move |r| {
+				r.on_navigate_dyn(Box::new(move |path, _params| {
 					observed_paths_for_listener
 						.borrow_mut()
 						.push(path.to_string());
-				})
+				}))
 			});
 			// Leak the subscription for the lifetime of the test; it is
 			// dropped naturally when the WASM module exits.
@@ -248,10 +334,10 @@ async fn client_launcher_re_renders_on_popstate() {
 
 	// Arrange: navigate forward to /a then /b so popstate has somewhere
 	// to pop back to.
-	with_router(|r| r.push("/a")).expect("push /a");
+	with_spa_router(|r| r.push("/a")).expect("push /a");
 	yield_to_microtasks().await;
 	yield_to_microtasks().await;
-	with_router(|r| r.push("/b")).expect("push /b");
+	with_spa_router(|r| r.push("/b")).expect("push /b");
 	yield_to_microtasks().await;
 	yield_to_microtasks().await;
 
@@ -306,11 +392,11 @@ async fn client_launcher_handles_back_to_back_navigations() {
 	let root = install_app_root();
 
 	ClientLauncher::new("#app")
-		.router(|| {
-			Router::new()
-				.route("/", page_root)
-				.route("/a", page_a)
-				.route("/b", page_b)
+		.router_client(|| {
+			ClientRouter::new()
+				.route("root", "/", page_root)
+				.route("a", "/a", page_a)
+				.route("b", "/b", page_b)
 		})
 		.launch()
 		.expect("launch");
@@ -321,7 +407,7 @@ async fn client_launcher_handles_back_to_back_navigations() {
 	// class manifested as the second or third navigation no longer
 	// re-mounting.
 	for iteration in 0..3 {
-		with_router(|r| r.push("/a")).expect("push /a");
+		with_spa_router(|r| r.push("/a")).expect("push /a");
 		yield_to_microtasks().await;
 		yield_to_microtasks().await;
 		assert!(
@@ -335,7 +421,7 @@ async fn client_launcher_handles_back_to_back_navigations() {
 			root.inner_html()
 		);
 
-		with_router(|r| r.push("/b")).expect("push /b");
+		with_spa_router(|r| r.push("/b")).expect("push /b");
 		yield_to_microtasks().await;
 		yield_to_microtasks().await;
 		assert!(
@@ -349,4 +435,32 @@ async fn client_launcher_handles_back_to_back_navigations() {
 			root.inner_html()
 		);
 	}
+}
+
+#[wasm_bindgen_test]
+async fn client_launcher_handles_reentrant_reactive_mount_during_navigation() {
+	let root = install_app_root();
+
+	ClientLauncher::new("#app")
+		.router_client(|| {
+			ClientRouter::new().route("root", "/", page_root).route(
+				"reentrant",
+				"/reentrant",
+				page_with_reentrant_nested_reactive,
+			)
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+
+	with_spa_router(|r| r.push("/reentrant")).expect("push /reentrant");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+
+	let html = root.inner_html();
+	assert!(
+		html.contains("ROUTE-REENTRANT-CONTENT"),
+		"expected reentrant route to render without RefCell reentry panic, got: {html}"
+	);
 }

@@ -35,6 +35,7 @@ impl FieldSelector for ArticleFields {
 impl Model for Article {
 	type PrimaryKey = i64;
 	type Fields = ArticleFields;
+	type Objects = reinhardt_db::orm::Manager<Self>;
 
 	fn table_name() -> &'static str {
 		"articles"
@@ -72,6 +73,7 @@ impl FieldSelector for CommentFields {
 impl Model for Comment {
 	type PrimaryKey = i64;
 	type Fields = CommentFields;
+	type Objects = reinhardt_db::orm::Manager<Self>;
 
 	fn table_name() -> &'static str {
 		"comments"

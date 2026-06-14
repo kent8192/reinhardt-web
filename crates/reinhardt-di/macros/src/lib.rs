@@ -4,6 +4,8 @@
 //! - `#[injectable]` - Mark a struct as injectable with automatic registration
 //! - `#[injectable_factory]` - Mark an async function as a dependency factory
 
+#![warn(missing_docs)]
+
 use proc_macro::TokenStream;
 use syn::{DeriveInput, ItemFn, parse_macro_input};
 
@@ -79,13 +81,29 @@ pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```ignore
 /// use reinhardt_di::Depends;
+/// use reinhardt_di::DependsResult;
 /// use reinhardt_di_macros::injectable_factory;
 ///
+/// #[derive(Debug)]
+/// struct DatabaseConnectionError;
+///
 /// #[injectable_factory(scope = "singleton")]
-/// async fn create_database(#[inject] config: Depends<Config>) -> DatabaseConnection {
-///     DatabaseConnection::connect(&config.database_url).await.unwrap()
+/// async fn create_database(
+///     #[inject] config: Depends<Config>,
+/// ) -> Result<DatabaseConnection, DatabaseConnectionError> {
+///     DatabaseConnection::connect(&config.database_url)
+///         .await
+///         .map_err(|_| DatabaseConnectionError)
 /// }
+///
+/// type DatabaseDependency = DependsResult<DatabaseConnection, DatabaseConnectionError>;
 /// ```
+///
+/// When a factory can fail, prefer returning `Result<T, E>` where `T` is
+/// the desired dependency and `E` is an error type used only by that
+/// factory. The DI registry key is the literal return type's `TypeId`, so
+/// `Result<T, E1>` and `Result<T, E2>` are different keys even when `T` is
+/// the same.
 ///
 /// # Attributes
 ///

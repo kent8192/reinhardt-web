@@ -26,23 +26,24 @@ This crate provides the following modules:
 
 Add `reinhardt` to your `Cargo.toml`:
 
-<!-- reinhardt-version-sync:2 -->
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.4", features = ["conf"] }
+reinhardt = { version = "0.2.0-rc.6", features = ["conf"] }
 
-# Or use the broad preset:
-# reinhardt = { version = "0.1.4", features = ["full"] }      # Includes conf
+# Or use a preset:
+# reinhardt = { version = "0.2.0-rc.6", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.2.0-rc.6", features = ["full"] }      # All features
 ```
 
 Then import configuration features:
 
 ```rust
-use reinhardt::conf::settings::{Settings, SettingsBuilder};
-use reinhardt::conf::settings::sources::{EnvSource, TomlFileSource};
+use reinhardt::conf::settings::{SettingsBuilder, Settings};
+use reinhardt::conf::settings::sources::ConfigSource;
 ```
 
-**Note:** The root `conf` feature is opt-in. It is included in the `full` preset, but not in the default `standard` preset.
+**Note:** Configuration features are included in the `standard` and `full` feature presets.
 
 ### Optional Features
 
@@ -50,14 +51,14 @@ Enable specific features based on your needs:
 
 <!-- reinhardt-version-sync:3 -->
 ```toml
-# With async support from the direct crate
-reinhardt-conf = { version = "0.1.4", features = ["async"] }
+# With async support
+reinhardt = { version = "0.2.0-rc.6", features = ["conf", "async"] }
 
-# With encryption from the direct crate
-reinhardt-conf = { version = "0.1.4", features = ["encryption"] }
+# With encryption
+reinhardt = { version = "0.2.0-rc.6", features = ["conf", "encryption"] }
 
-# With Vault integration from the direct crate
-reinhardt-conf = { version = "0.1.4", features = ["vault"] }
+# With Vault integration
+reinhardt = { version = "0.2.0-rc.6", features = ["conf", "vault"] }
 ```
 
 Available features:
@@ -76,12 +77,12 @@ Available features:
 
 ```rust
 use reinhardt::conf::settings::SettingsBuilder;
-use reinhardt::conf::settings::sources::{EnvSource, TomlFileSource};
+use reinhardt::conf::settings::sources::ConfigSource;
 
 // Basic usage
 let settings = SettingsBuilder::new()
-    .add_source(TomlFileSource::new("config.toml"))
-    .add_source(EnvSource::new())
+    .add_source(ConfigSource::File("config.toml"))
+    .add_source(ConfigSource::Environment)
     .build()?;
 
 // Access settings
@@ -133,6 +134,31 @@ port = "${REINHARDT_DB_PORT:-5432}"
 db_password = "${DB_PASSWORD:?Set DB_PASSWORD via direnv or 1Password CLI}"
 ```
 
+Secret fields backed by `SecretString` also accept explicit source maps:
+
+```toml
+[database.default]
+engine = "postgresql"
+host = "localhost"
+port = 5432
+name = "app"
+user = "app"
+password = { env = "DATABASE_PASSWORD" }
+
+[database.replica]
+engine = "postgresql"
+host = "replica.internal"
+port = 5432
+name = "app"
+user = "readonly"
+password = { file = "/run/secrets/db-replica-password" }
+```
+
+Use `{ secret = "literal" }` for inline values, `{ env = "NAME" }` for process
+environment variables, and `{ file = "path" }` for file-backed secrets. File
+sources trim trailing CR/LF so Docker/Kubernetes-style secret files work without
+leaking the final newline into connection strings.
+
 #### Behavior Notes
 
 - **Strict empty handling**: an empty environment-variable value is treated identically
@@ -177,9 +203,85 @@ db_password = "${DB_PASSWORD:?Set DB_PASSWORD via direnv or 1Password CLI}"
   port = "${PORT:-5432}"
   ```
 
+## Typed Settings Schemas
+
+Composed settings expose typed schema references through `ProjectSettings::schema()`.
+Embedded settings nodes are addressable with normal field access:
+
+```rust,ignore
+let password = ProjectSettings::schema().database.default.password;
+assert_eq!(password.path().to_string(), "database.default.db-password");
+```
+
+The path is derived from the root composition key, the embedded field key, and
+serde rename attributes. For example, `#[settings(database: DatabaseSettings)]`,
+`DatabaseSettings { default: DatabaseConfig }`, and
+`#[serde(rename = "db-password")] password` produce
+`database.default.db-password`. Type-only composition still uses the fragment's
+section hint for the root path.
+
+Schema generation peels semantically agnostic wrappers before building nested
+references: `Option<T>`, `Vec<T>`, `HashMap<String, T>`,
+`BTreeMap<String, T>`, `IndexMap<String, T>`, and `Box<T>`. Optional refs expose
+`.some()`, sequence refs expose `.any()`, map refs expose `.any()` and
+`.entry(key)`, and boxed values are transparent.
+
+Use `#[setting(node)]` to force a field to be treated as an embedded settings
+node and `#[setting(leaf)]` to force leaf behavior. The default inference is
+conservative: types ending in `Config` may infer node behavior, while types
+ending in `Settings` should be annotated explicitly unless they are built-in
+fragments already annotated by the crate.
+
+Required validation descends into embedded nodes after the direct section field
+exists. A missing nested required leaf reports
+`BuildError::MissingRequiredPath` with the full schema path. A missing direct
+required field on the section still reports `BuildError::MissingRequiredField`.
+
+### Embedded-Only Settings Nodes
+
+Use `#[settings(fragment = true)]` without a `section = "..."` argument for a
+settings struct that should participate in schema metadata and validation below
+a root fragment, but should not become a top-level TOML section by itself.
+
+```rust,ignore
+#[settings(fragment = true, section = "database")]
+pub struct DatabaseSettings {
+    pub default: DatabaseConfig,
+    pub replica: Option<DatabaseConfig>,
+}
+
+#[settings(fragment = true, default_policy = "required")]
+pub struct DatabaseConfig {
+    pub engine: DatabaseEngine,
+    pub host: String,
+    pub port: u16,
+    pub name: String,
+    pub user: String,
+    pub password: SecretString,
+}
+```
+
+The corresponding TOML still nests the embedded node under the root fragment:
+
+```toml
+[database.default]
+engine = "postgresql"
+host = "localhost"
+port = 5432
+name = "app"
+user = "app"
+password = { env = "DATABASE_PASSWORD" }
+```
+
+A root fragment with `section = "..."` implements `SettingsFragment` and can be
+used in composed project settings. An embedded-only node implements
+`SettingsNode` for recursive schema and validation support, but does not
+implement `SettingsFragment`, expose `section()`, or register as a root
+composition section.
+
 ## Field Status
 
-The legacy `Settings` struct exposes these fields at the top level. Composable settings generated with `#[settings(CoreSettings | ...)]` nest the same core fields under `settings.core`.
+The `Settings` struct contains fields that are either actively consumed by the framework or reserved for future implementation.
 
 ### Active Fields
 

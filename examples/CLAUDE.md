@@ -14,44 +14,43 @@ The `examples/` directory contains example projects and shared utilities in a fl
 examples/
 ├── examples-tutorial-basis/       # Polls tutorial (MTV/Pages-style)
 ├── examples-tutorial-rest/        # Snippets tutorial (REST API)
-├── examples-twitter/              # End-to-end Twitter-clone demo
 ├── .cargo/
-│   └── config.local.toml          # Template for local development
+│   └── config.local.toml          # Compatibility template for explicit local patches
 ├── Cargo.toml                     # Workspace configuration
 └── README.md
 ```
 
 ### Example Projects
 
-Each `examples-*` directory is an independent Cargo project demonstrating specific Reinhardt features. By default, examples use published crates.io versions of Reinhardt.
+Each `examples-*` directory is an independent Cargo project demonstrating specific Reinhardt features. By default, examples resolve Reinhardt from the parent checkout so release-line examples can be tested before and after publication.
 
 ---
 
 ## Dependency Management
 
-### Default Mode (crates.io)
+### Default Mode (parent checkout)
 
-By default, examples use published versions from crates.io:
+By default, examples use the parent Reinhardt checkout through the examples workspace dependency:
 
 <!-- reinhardt-version-sync -->
 ```toml
-[dependencies]
-reinhardt = { version = "0.1.4", package = "reinhardt-web", features = ["standard"] }
+[workspace.dependencies]
+reinhardt = { path = "..", version = "0.2.0-rc.6", package = "reinhardt-web" }
 ```
 
-### Local Development Mode
+### Explicit Patch Mode
 
-For framework contributors testing against local Reinhardt code:
+For workflows that need an explicit Cargo patch:
 
 1. Copy `.cargo/config.local.toml` to `.cargo/config.toml`
-2. This activates `[patch.crates-io]` overrides pointing to local workspace
+2. This activates `[patch.crates-io]` overrides pointing to the local workspace
 3. `.cargo/config.toml` is gitignored
 
 ```bash
-# Activate local development mode
+# Activate explicit patch mode
 cp .cargo/config.local.toml .cargo/config.toml
 
-# Deactivate (back to crates.io)
+# Deactivate
 rm -f .cargo/config.toml
 ```
 
@@ -70,7 +69,7 @@ rm -f .cargo/config.toml
 ```toml
 [dependencies]
 # ✅ Main reinhardt crate only
-reinhardt = { version = "0.1.4", package = "reinhardt-web", features = ["core", "database"] }
+reinhardt = { version = "0.2.0-rc.6", package = "reinhardt-web", features = ["core", "database"] }
 
 # ✅ External crates are fine
 tokio = { workspace = true }
@@ -86,7 +85,7 @@ rstest = "0.26.1"
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.4", package = "reinhardt-web", features = ["core"] }
+reinhardt = { version = "0.2.0-rc.6", package = "reinhardt-web", features = ["core"] }
 reinhardt-http = { path = "../../../crates/reinhardt-http" }      # ❌ NEVER
 reinhardt-routers = { path = "../../../crates/reinhardt-urls/crates/routers" }  # ❌ NEVER
 reinhardt-di = { path = "../../../crates/reinhardt-di" }          # ❌ NEVER

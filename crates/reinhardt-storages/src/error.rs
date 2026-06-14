@@ -1,0 +1,69 @@
+//! Error types for storage operations.
+
+use thiserror::Error;
+
+/// Result type alias for storage operations.
+pub type Result<T> = std::result::Result<T, StorageError>;
+
+/// Error types that can occur during storage operations.
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum StorageError {
+	/// The requested file or resource was not found.
+	#[error("File not found: {0}")]
+	NotFound(String),
+
+	/// Permission was denied for the operation.
+	#[error("Permission denied: {0}")]
+	PermissionDenied(String),
+
+	/// A network error occurred during communication with the storage backend.
+	#[error("Network error: {0}")]
+	NetworkError(String),
+
+	/// Configuration error (invalid or missing configuration).
+	#[error("Configuration error: {0}")]
+	ConfigError(String),
+
+	/// The provided path is invalid or attempts to escape the storage root.
+	#[error("Invalid path: {0}")]
+	InvalidPath(String),
+
+	/// I/O error occurred during file operations.
+	#[error("I/O error: {0}")]
+	IoError(#[from] std::io::Error),
+
+	/// Other errors not covered by specific variants.
+	#[error("Storage error: {0}")]
+	Other(String),
+}
+
+#[cfg(feature = "s3")]
+impl From<reinhardt_providers::ProviderError> for StorageError {
+	fn from(err: reinhardt_providers::ProviderError) -> Self {
+		match err {
+			reinhardt_providers::ProviderError::Config(message) => {
+				StorageError::ConfigError(message)
+			}
+			reinhardt_providers::ProviderError::NotFound(_) => {
+				StorageError::Other("provider resource not found".to_string())
+			}
+			reinhardt_providers::ProviderError::PermissionDenied(message) => {
+				StorageError::PermissionDenied(message)
+			}
+			reinhardt_providers::ProviderError::Service {
+				status: 404,
+				message,
+			} => StorageError::NotFound(message),
+			reinhardt_providers::ProviderError::Service { message, .. }
+			| reinhardt_providers::ProviderError::Header(message) => StorageError::NetworkError(message),
+			reinhardt_providers::ProviderError::Http(err) => {
+				StorageError::NetworkError(err.to_string())
+			}
+			reinhardt_providers::ProviderError::Url(err) => {
+				StorageError::ConfigError(err.to_string())
+			}
+			_ => StorageError::Other(err.to_string()),
+		}
+	}
+}

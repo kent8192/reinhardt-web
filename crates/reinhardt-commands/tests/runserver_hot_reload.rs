@@ -40,7 +40,9 @@
 #![cfg(all(feature = "server", feature = "autoreload", feature = "pages"))]
 
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Duration;
+use std::time::Instant;
 
 use reinhardt_commands::__hot_reload_test_api::{
 	DEBOUNCE_WINDOW, RebuildTargets, ServerRebuildOutcome, ServerRebuildPipeline, SourceRoots,
@@ -62,6 +64,7 @@ struct Fixture {
 	root: tempfile::TempDir,
 	#[allow(dead_code)] // Retained for diagnostic prints; surfaces in panic messages.
 	name: String,
+	manage_bin: Mutex<Option<PathBuf>>,
 }
 
 impl Fixture {
@@ -85,11 +88,55 @@ impl Fixture {
 		Self {
 			root,
 			name: crate_name.to_string(),
+			manage_bin: Mutex::new(None),
 		}
 	}
 
 	fn path(&self) -> &Path {
 		self.root.path()
+	}
+
+	/// Build the fixture `manage` binary and remember Cargo's executable path.
+	fn build_manage_bin(&self) -> PathBuf {
+		let output = std::process::Command::new("cargo")
+			.args(["build", "--bin", "manage", "--manifest-path"])
+			.arg(self.root.path().join("Cargo.toml"))
+			.args(["--message-format=json"])
+			.output()
+			.expect("invoke cargo build for fixture manage bin");
+		assert!(
+			output.status.success(),
+			"fixture manage bin must build: {}",
+			String::from_utf8_lossy(&output.stderr)
+		);
+
+		let executable = output
+			.stdout
+			.split(|b| *b == b'\n')
+			.filter_map(|line| serde_json::from_slice::<serde_json::Value>(line).ok())
+			.find_map(|value| {
+				let reason = value.get("reason").and_then(|v| v.as_str())?;
+				let target_name = value
+					.get("target")
+					.and_then(|v| v.get("name"))
+					.and_then(|v| v.as_str())?;
+				let executable = value.get("executable").and_then(|v| v.as_str())?;
+				(reason == "compiler-artifact" && target_name == "manage")
+					.then(|| PathBuf::from(executable))
+			})
+			.expect("cargo must report fixture manage executable path");
+
+		*self.manage_bin.lock().expect("manage_bin lock") = Some(executable.clone());
+		executable
+	}
+
+	/// Return the already-built fixture `manage` executable path.
+	fn manage_bin(&self) -> PathBuf {
+		self.manage_bin
+			.lock()
+			.expect("manage_bin lock")
+			.clone()
+			.expect("fixture manage bin must be built before use")
 	}
 
 	/// Rewrite the cdylib `{{MARKER}}` slot to the given value.
@@ -158,47 +205,47 @@ fn build_wasm(
 	WasmBuilder::new(config).build()
 }
 
-/// Resolve the cargo target directory cargo will use for `fixture`.
-///
-/// Honours user-level config redirections such as `build.build-dir` and
-/// `CARGO_TARGET_DIR`. Returned path is the *root* target dir; binaries
-/// land under `<root>/debug/`.
-fn fixture_target_dir(fixture: &Fixture) -> PathBuf {
-	let output = std::process::Command::new("cargo")
-		.args(["metadata", "--no-deps", "--format-version=1"])
-		.current_dir(fixture.path())
-		.output()
-		.expect("cargo metadata for fixture");
-	let json: serde_json::Value =
-		serde_json::from_slice(&output.stdout).expect("cargo metadata json parse");
-	let target_dir = json
-		.get("target_directory")
-		.and_then(|v| v.as_str())
-		.expect("cargo metadata.target_directory");
-	PathBuf::from(target_dir)
-}
-
-/// Path to the `manage` binary inside `fixture`'s effective target dir.
-fn fixture_manage_bin(fixture: &Fixture) -> PathBuf {
-	fixture_target_dir(fixture).join("debug").join("manage")
-}
-
 /// Spawn a long-running `manage` child for `fixture` after building it.
 /// The child sleeps for an hour and is killed by the test on drop.
 async fn spawn_long_running_child(fixture: &Fixture) -> tokio::process::Child {
-	// Pre-build the manage bin so the spawned child has something to exec.
-	let status = std::process::Command::new("cargo")
-		.args(["build", "--bin", "manage", "--manifest-path"])
-		.arg(fixture.path().join("Cargo.toml"))
-		.status()
-		.expect("invoke cargo build for fixture manage bin");
-	assert!(status.success(), "fixture manage bin must build");
-
-	let bin_path = fixture_manage_bin(fixture);
+	let bin_path = fixture.build_manage_bin();
 	tokio::process::Command::new(&bin_path)
 		.kill_on_drop(true)
 		.spawn()
 		.expect("spawn fixture manage bin")
+}
+
+/// Reserve a local TCP address that can be reused by the fixture child.
+fn reserve_loopback_addr() -> String {
+	let listener =
+		std::net::TcpListener::bind("127.0.0.1:0").expect("bind ephemeral loopback port");
+	let addr = listener.local_addr().expect("read local addr");
+	addr.to_string()
+}
+
+/// Spawn a fixture child that binds `addr` and responds to TCP/HTTP probes.
+async fn spawn_listening_child(fixture: &Fixture, addr: &str) -> tokio::process::Child {
+	let bin_path = fixture.build_manage_bin();
+	tokio::process::Command::new(&bin_path)
+		.kill_on_drop(true)
+		.env("HOT_RELOAD_LISTEN_ADDR", addr)
+		.spawn()
+		.expect("spawn fixture manage listener")
+}
+
+/// Poll until the fixture accepts TCP connections at `addr`.
+async fn assert_addr_reachable(addr: &str) {
+	let deadline = Instant::now() + Duration::from_secs(10);
+	loop {
+		if std::net::TcpStream::connect(addr).is_ok() {
+			return;
+		}
+		assert!(
+			Instant::now() < deadline,
+			"fixture must accept TCP connections at {addr}"
+		);
+		tokio::time::sleep(Duration::from_millis(50)).await;
+	}
 }
 
 /// Run `ServerRebuildPipeline::run` against `fixture` with a respawn closure
@@ -216,7 +263,7 @@ async fn run_server_pipeline(
 	std::env::set_current_dir(fixture.path()).expect("set fixture cwd");
 
 	let bin_name = "manage".to_string();
-	let bin_path = fixture_manage_bin(fixture);
+	let bin_path = fixture.manage_bin();
 	let respawn = move || -> std::io::Result<tokio::process::Child> {
 		tokio::process::Command::new(&bin_path)
 			.kill_on_drop(true)
@@ -224,6 +271,39 @@ async fn run_server_pipeline(
 	};
 
 	let (outcome, new_child) = ServerRebuildPipeline::run(&bin_name, current_child, respawn).await;
+
+	std::env::set_current_dir(&saved_cwd).expect("restore cwd");
+
+	if let Some(c) = new_child {
+		*current_child = c;
+	}
+	outcome
+}
+
+/// Run `ServerRebuildPipeline::run_with_readiness` against `fixture` with a
+/// respawn closure that boots a fresh listener at the same advertised address.
+async fn run_server_pipeline_with_readiness(
+	fixture: &Fixture,
+	current_child: &mut tokio::process::Child,
+	addr: &str,
+) -> ServerRebuildOutcome {
+	// `ServerRebuildPipeline::run_with_readiness` shells to `cargo build --bin
+	// <bin>` with the parent process's cwd. Mirror `run_server_pipeline`.
+	let saved_cwd = std::env::current_dir().expect("current dir");
+	std::env::set_current_dir(fixture.path()).expect("set fixture cwd");
+
+	let bin_name = "manage".to_string();
+	let bin_path = fixture.manage_bin();
+	let listen_addr = addr.to_string();
+	let respawn = move || -> std::io::Result<tokio::process::Child> {
+		tokio::process::Command::new(&bin_path)
+			.kill_on_drop(true)
+			.env("HOT_RELOAD_LISTEN_ADDR", &listen_addr)
+			.spawn()
+	};
+
+	let (outcome, new_child) =
+		ServerRebuildPipeline::run_with_readiness(&bin_name, current_child, respawn, addr).await;
 
 	std::env::set_current_dir(&saved_cwd).expect("restore cwd");
 
@@ -282,6 +362,34 @@ async fn hr_2_server_change_triggers_server_rebuild() {
 }
 
 // ---------------------------------------------------------------------------
+// HR-9: a successful server restart must leave the advertised address reachable.
+// ---------------------------------------------------------------------------
+#[tokio::test(flavor = "multi_thread")]
+#[serial(server_pipeline)]
+async fn hr_9_server_restart_accepts_connections_after_pipeline_ok() {
+	// Arrange
+	let fixture = Fixture::new("hr9_fixture", 900);
+	let addr = reserve_loopback_addr();
+	let mut child = spawn_listening_child(&fixture, &addr).await;
+	assert_addr_reachable(&addr).await;
+
+	// Act
+	let outcome = run_server_pipeline_with_readiness(&fixture, &mut child, &addr).await;
+
+	// Assert
+	match outcome {
+		ServerRebuildOutcome::Ok { duration } => {
+			assert!(duration > Duration::ZERO, "duration must be positive");
+		}
+		other => panic!("expected ServerRebuildOutcome::Ok, got {other:?}"),
+	}
+	assert_addr_reachable(&addr).await;
+
+	// Cleanup
+	let _ = child.kill().await;
+}
+
+// ---------------------------------------------------------------------------
 // HR-3: --no-wasm-rebuild flag plumbing skips the WASM pipeline.
 //
 // This test asserts the dispatch-time configuration the watcher reads:
@@ -294,6 +402,7 @@ async fn hr_3_no_wasm_rebuild_flag_skips_wasm_pipeline() {
 	// Arrange: a config with the flag set, plus an empty SourceRoots.
 	let config = WatcherConfig {
 		bin_name: "manage".to_string(),
+		address: "127.0.0.1:0".to_string(),
 		roots: SourceRoots {
 			src_dirs: Vec::new(),
 			manifest_files: Vec::new(),
@@ -499,7 +608,7 @@ async fn hr_7_run_watcher_processes_events() {
 	let saved_cwd = std::env::current_dir().expect("current dir");
 	std::env::set_current_dir(fixture.path()).expect("set fixture cwd");
 
-	let bin_path = fixture_manage_bin(&fixture);
+	let bin_path = fixture.manage_bin();
 	let respawn_count = Arc::new(AtomicUsize::new(0));
 	let respawn_count_for_closure = Arc::clone(&respawn_count);
 	let respawn = move || -> std::io::Result<tokio::process::Child> {
@@ -512,6 +621,7 @@ async fn hr_7_run_watcher_processes_events() {
 	let ctx = CommandContext::default();
 	let config = WatcherConfig {
 		bin_name: "manage".to_string(),
+		address: "127.0.0.1:0".to_string(),
 		roots: SourceRoots {
 			src_dirs: vec![fixture.path().join("src")],
 			manifest_files: vec![fixture.path().join("Cargo.toml")],
@@ -613,17 +723,21 @@ async fn hr_9_run_watcher_broadcasts_reload_after_server_rebuild() {
 	// Arrange: fixture + initial server child + cwd switched so cargo
 	// resolves the fixture's manifest. Mirrors `run_server_pipeline`.
 	let fixture = Fixture::new("hr9_fixture", 900);
-	let initial_child = spawn_long_running_child(&fixture).await;
+	let addr = reserve_loopback_addr();
+	let initial_child = spawn_listening_child(&fixture, &addr).await;
+	assert_addr_reachable(&addr).await;
 	let saved_cwd = std::env::current_dir().expect("current dir");
 	std::env::set_current_dir(fixture.path()).expect("set fixture cwd");
 
-	let bin_path = fixture_manage_bin(&fixture);
+	let bin_path = fixture.manage_bin();
 	let respawn_count = Arc::new(AtomicUsize::new(0));
 	let respawn_count_for_closure = Arc::clone(&respawn_count);
+	let respawn_addr = addr.clone();
 	let respawn = move || -> std::io::Result<tokio::process::Child> {
 		respawn_count_for_closure.fetch_add(1, Ordering::SeqCst);
 		tokio::process::Command::new(&bin_path)
 			.kill_on_drop(true)
+			.env("HOT_RELOAD_LISTEN_ADDR", &respawn_addr)
 			.spawn()
 	};
 
@@ -631,12 +745,13 @@ async fn hr_9_run_watcher_broadcasts_reload_after_server_rebuild() {
 	let ctx = CommandContext::default();
 	let config = WatcherConfig {
 		bin_name: "manage".to_string(),
+		address: addr.clone(),
 		roots: SourceRoots {
 			src_dirs: vec![fixture.path().join("src")],
 			manifest_files: vec![fixture.path().join("Cargo.toml")],
 			lockfile: None,
 		},
-		server_address: None,
+		server_address: Some(addr),
 		no_wasm_rebuild: true,
 		pages_enabled: true,
 		hmr_tx: Some(hmr_tx),

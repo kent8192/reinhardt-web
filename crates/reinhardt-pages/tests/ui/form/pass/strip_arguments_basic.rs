@@ -1,26 +1,28 @@
-//! form! macro with explicit `strip_arguments` (reinhardt-web#3971).
+//! form! macro with legacy `strip_arguments` (reinhardt-web#3971).
 //!
-//! `strip_arguments` lets the user supply server_fn arguments that should not
-//! appear as user-facing form fields. This test exercises the common case of
-//! routing a CSRF token explicitly instead of relying on the deprecated
-//! implicit auto-injection path.
+//! `strip_arguments` is a deprecated alias for `ambient_arguments`.
+//! It remains accepted for backward compatibility.
 
 use reinhardt_pages::form;
 
 fn main() {
 	// Server_fn declares both data fields and a CSRF parameter explicitly.
-	// `strip_arguments` supplies the csrf_token expression at submit time.
+	// The legacy alias supplies the csrf_token expression at submit time.
 	let _vote_form = form! {
 		name: VoteForm,
 		server_fn: submit_vote,
 		method: Post,
-		fields: {
-			_question_id: IntegerField { widget: HiddenInput },
-			_choice_id: IntegerField { required },
-		},
 		strip_arguments: {
 			csrf_token: String::new(),
 		},
+		fields: {
+			_question_id: IntegerField {
+				widget: HiddenInput,
+			}
+			_choice_id: IntegerField {
+				required,
+			}
+		}
 	};
 
 	// Multiple stripped arguments append in source order.
@@ -28,13 +30,15 @@ fn main() {
 		name: MultiForm,
 		server_fn: submit_multi,
 		method: Post,
-		fields: {
-			_payload: CharField { required },
-		},
 		strip_arguments: {
 			csrf_token: String::new(),
 			tenant_id: 0u64,
 		},
+		fields: {
+			_payload: CharField {
+				required,
+			}
+		}
 	};
 }
 

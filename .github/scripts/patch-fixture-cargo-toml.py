@@ -43,7 +43,11 @@ def enable_features(manifest: Path, extra_features: list[str]) -> None:
 	if not additions:
 		return
 	insertion = "".join(f'\t"{f}",\n' for f in additions)
-	new_body = body.rstrip() + "\n" + insertion
+	stripped_body = body.rstrip()
+	separator = ""
+	if stripped_body and not stripped_body.endswith(","):
+		separator = ","
+	new_body = stripped_body + separator + "\n" + insertion
 	manifest.write_text(text[: match.start()] + prefix + new_body + suffix + text[match.end() :])
 
 

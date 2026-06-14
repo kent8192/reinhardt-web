@@ -2,38 +2,40 @@
 //!
 //! Import this module to get access to the most commonly used types and traits.
 
-#[allow(deprecated)]
-pub use super::advanced::{
-	AdvancedSettings, CacheSettings, CorsSettings, DatabaseSettings as AdvancedDatabaseSettings,
-	EmailSettings, LoggingSettings, MediaSettings, SessionSettings, SettingsError, StaticSettings,
-};
 pub use super::builder::{BuildError, GetError, MergeStrategy, MergedSettings, SettingsBuilder};
+pub use super::cache::{CacheSettings, HasCacheSettings};
+pub use super::cors::{CorsSettings, HasCorsSettings};
+pub use super::email::{EmailSettings, HasEmailSettings};
 pub use super::env::{Env, EnvError};
 pub use super::env_loader::{EnvLoader, load_env, load_env_auto, load_env_optional};
 pub use super::env_parser::{
 	CacheUrl, DatabaseUrl, parse_bool, parse_cache_url, parse_database_url, parse_dict, parse_list,
 };
 pub use super::interpolation::InterpolationError;
+pub use super::logging::{HasLoggingSettings, LoggingSettings};
+pub use super::media::{HasMediaSettings, MediaSettings};
 pub use super::profile::Profile;
+pub use super::schema::{
+	FieldRef, HasSettingsSchema, MapRef, OptionalRef, SecretFieldRef, SequenceRef, SettingsNode,
+	SettingsNodeSchema, SettingsPathBuf, SettingsPathSegment, SettingsValueSchema,
+};
+pub use super::session::{HasSessionSettings, SessionSettings};
 pub use super::sources::{
 	ConfigSource, DefaultSource, DotEnvSource, EnvSource, HighPriorityEnvSource,
 	LowPriorityEnvSource, SourceError, TomlFileSource,
 };
-pub use super::typed_deserializer::CoercionError;
-// `JsonFileSource` and `auto_source` are deprecated alongside *.json
-// configuration support and will be removed in 0.2.0 (issue #4087). The prelude
-// continues to surface them during the deprecation window so existing user code
-// keeps compiling unchanged. The `#[allow(deprecated)]` is scoped to this
-// re-export only so deprecations added to other `sources` items remain visible.
-#[allow(deprecated)]
-pub use super::sources::{JsonFileSource, auto_source};
+pub use super::static_files::{HasStaticSettings, StaticSettings};
 pub use super::testing::{SettingsOverride, SettingsOverrideGuard};
+pub use super::typed_deserializer::CoercionError;
 pub use super::validation::{
 	ChoiceValidator, PatternValidator, RangeValidator, RequiredValidator, SecurityValidator,
 	SettingsValidator, ValidationError, ValidationResult, Validator,
 };
+pub use super::{DatabaseConfig, MiddlewareConfig};
+// `TemplateConfig` is deprecated in favor of the `TemplateSettings` fragment;
+// keep it in the prelude for the compatibility window.
 #[allow(deprecated)]
-pub use super::{DatabaseConfig, MiddlewareConfig, Settings, TemplateConfig};
+pub use super::TemplateConfig;
 
 // Dynamic settings (async feature)
 #[cfg(feature = "async")]

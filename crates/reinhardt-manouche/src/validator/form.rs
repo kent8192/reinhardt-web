@@ -17,15 +17,16 @@ use std::collections::HashSet;
 use syn::{Error, Result};
 
 use crate::core::{
-	FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry, FormFieldGroup,
-	FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState, FormSubmitButtonDef,
-	FormValidator, FormWatch, IconAttr, IconChild, IconPosition, StripArgument, TypedChoicesConfig,
-	TypedCustomAttr, TypedDerivedItem, TypedFieldDisplay, TypedFieldStyling, TypedFieldType,
-	TypedFieldValidation, TypedFormAction, TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef,
-	TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState,
-	TypedFormStyling, TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon,
-	TypedIconAttr, TypedIconChild, TypedIconPosition, TypedStripArgument, TypedSubmitButtonDef,
-	TypedValidatorRule, TypedWidget, TypedWrapper, TypedWrapperAttr, ValidatorRule,
+	AmbientArgumentsSource, FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry,
+	FormFieldGroup, FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState,
+	FormSubmitButtonDef, FormValidator, FormWatch, IconAttr, IconChild, IconPosition,
+	StripArgument, TypedChoicesConfig, TypedCustomAttr, TypedDerivedItem, TypedFieldDisplay,
+	TypedFieldStyling, TypedFieldType, TypedFieldValidation, TypedFormAction, TypedFormCallbacks,
+	TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro,
+	TypedFormSlots, TypedFormState, TypedFormStyling, TypedFormValidator, TypedFormWatch,
+	TypedFormWatchItem, TypedIcon, TypedIconAttr, TypedIconChild, TypedIconPosition,
+	TypedStripArgument, TypedSubmitButtonDef, TypedValidatorRule, TypedWidget, TypedWrapper,
+	TypedWrapperAttr, ValidatorRule,
 };
 
 /// Validates and transforms the FormMacro AST into a typed AST.
@@ -36,6 +37,19 @@ use crate::core::{
 ///
 /// Returns a compilation error if any validation rule is violated.
 pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
+	validate_form_with_ambient_arguments_source(ast, ast.ambient_arguments_source)
+}
+
+/// Validates and transforms the FormMacro AST into a typed AST with the source
+/// syntax used for ambient arguments.
+///
+/// # Errors
+///
+/// Returns a compilation error if any validation rule is violated.
+pub fn validate_form_with_ambient_arguments_source(
+	ast: &FormMacro,
+	ambient_arguments_source: Option<AmbientArgumentsSource>,
+) -> Result<TypedFormMacro> {
 	// Validate unique field names
 	validate_unique_field_names(&ast.fields)?;
 
@@ -64,6 +78,15 @@ pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
 	let redirect_on_success = transform_redirect(&ast.redirect_on_success)?;
 
 	let success_url = ast.success_url.clone();
+	if let (Some(_), Some(url_expr)) = (ast.redirect_on_success.as_ref(), success_url.as_ref()) {
+		return Err(Error::new_spanned(
+			url_expr,
+			"form! cannot specify both `redirect_on_success` and `success_url`: each generates an \
+			 SPA navigation on successful submit, so combining them would push two history \
+			 entries and fire two observer cycles. Use `redirect_on_success` for a static URL or \
+			 `success_url` for a dynamically-computed one, not both.",
+		));
+	}
 
 	// Transform initial_loader (pass through the Path)
 	let initial_loader = ast.initial_loader.clone();
@@ -81,7 +104,8 @@ pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
 	let validators = transform_validators(&ast.validators, &ast.fields)?;
 
 	// Transform stripped server_fn arguments (reinhardt-web#3971).
-	let strip_arguments = transform_strip_arguments(&ast.strip_arguments, &ast.fields)?;
+	let strip_arguments =
+		transform_strip_arguments(&ast.strip_arguments, &ast.fields, ambient_arguments_source)?;
 
 	// The parser guarantees that `name` is Some after successful parsing.
 	let name = ast
@@ -204,39 +228,16 @@ fn transform_form_styling(ast: &FormMacro) -> Result<TypedFormStyling> {
 	})
 }
 
-/// Valid state field names for form UI state management.
-const VALID_STATE_FIELDS: &[&str] = &["loading", "error", "success"];
-
-/// Transforms FormState to TypedFormState with validation.
-///
-/// Validates that all state field names are valid (`loading`, `error`, `success`).
+/// Rejects removed form-level runtime state clauses.
 fn transform_state(state: &Option<FormState>) -> Result<Option<TypedFormState>> {
 	let Some(form_state) = state else {
 		return Ok(None);
 	};
 
-	let mut typed_state = TypedFormState::new(form_state.span);
-
-	for field in &form_state.fields {
-		let name = field.name.to_string();
-		match name.as_str() {
-			"loading" => typed_state.loading = true,
-			"error" => typed_state.error = true,
-			"success" => typed_state.success = true,
-			_ => {
-				return Err(Error::new(
-					field.span,
-					format!(
-						"invalid state field: '{}'. Expected one of: {}",
-						name,
-						VALID_STATE_FIELDS.join(", ")
-					),
-				));
-			}
-		}
-	}
-
-	Ok(Some(typed_state))
+	Err(Error::new(
+		form_state.span,
+		"`form! state: { ... }` was removed; use `use_form(&form).build().form_state()` for runtime form state",
+	))
 }
 
 /// Transforms FormCallbacks to TypedFormCallbacks.
@@ -244,6 +245,18 @@ fn transform_state(state: &Option<FormState>) -> Result<Option<TypedFormState>> 
 /// For callbacks, we simply pass through the closure expressions since
 /// type checking is done by the Rust compiler during code generation.
 fn transform_callbacks(callbacks: &FormCallbacks) -> Result<TypedFormCallbacks> {
+	if callbacks.on_submit.is_some()
+		|| callbacks.on_success.is_some()
+		|| callbacks.on_success_ref.is_some()
+		|| callbacks.on_error.is_some()
+		|| callbacks.on_loading.is_some()
+	{
+		return Err(Error::new(
+			callbacks.span.unwrap_or_else(Span::call_site),
+			"`form!` runtime callback clauses were removed; configure submit lifecycle through `use_form(&form)`",
+		));
+	}
+
 	Ok(TypedFormCallbacks {
 		on_submit: callbacks.on_submit.clone(),
 		on_success: callbacks.on_success.clone(),
@@ -341,6 +354,16 @@ fn transform_derived(derived: &Option<FormDerived>) -> Result<Option<TypedFormDe
 /// - Supports `{param}` syntax for dynamic parameters
 /// - Rejects dangerous schemes (javascript:, data:, vbscript:, file:)
 fn transform_redirect(redirect: &Option<syn::LitStr>) -> Result<Option<String>> {
+	validate_redirect_on_success(redirect)
+}
+
+/// Validates and normalizes a `redirect_on_success` literal.
+///
+/// # Errors
+///
+/// Returns a compilation error when the redirect path is empty, uses an
+/// unsafe URL scheme, or is neither a relative path nor an HTTPS URL.
+pub fn validate_redirect_on_success(redirect: &Option<syn::LitStr>) -> Result<Option<String>> {
 	let Some(redirect) = redirect else {
 		return Ok(None);
 	};
@@ -564,7 +587,8 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	};
 
 	// Parse field type
-	let field_type = parse_field_type(&field.field_type).map_err(&annotate)?;
+	let field_type =
+		parse_field_type(&field.field_type, field.generics.as_ref()).map_err(&annotate)?;
 
 	// Extract properties into categories
 	let validation = extract_validation_properties(&field.properties).map_err(&annotate)?;
@@ -598,30 +622,136 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 }
 
 /// Parses field type identifier into TypedFieldType enum.
-fn parse_field_type(ident: &syn::Ident) -> Result<TypedFieldType> {
+///
+/// `generics` carries the optional `<T1, T2, ...>` parsed off the field-type
+/// identifier in the form! DSL. For non-generic field types, any generics
+/// are rejected; for generic-capable field types, exactly one type argument
+/// is required (or zero, in which case a default type is substituted).
+fn parse_field_type(
+	ident: &syn::Ident,
+	generics: Option<&syn::punctuated::Punctuated<syn::Type, syn::Token![,]>>,
+) -> Result<TypedFieldType> {
 	let type_str = ident.to_string();
+
+	// Helper: require exactly one type argument; default to `fallback` if absent.
+	let require_one_generic = |fallback: syn::Type| -> Result<syn::Type> {
+		match generics {
+			None => Ok(fallback),
+			Some(args) if args.len() == 1 => Ok(args[0].clone()),
+			Some(args) => Err(Error::new(
+				ident.span(),
+				format!(
+					"{} accepts exactly one type parameter, found {}",
+					type_str,
+					args.len(),
+				),
+			)),
+		}
+	};
+
+	// Helper: reject any generic arguments on non-generic-capable field types.
+	let reject_generics = || -> Result<()> {
+		if generics.is_some() {
+			Err(Error::new(
+				ident.span(),
+				format!("{} does not accept a type parameter", type_str),
+			))
+		} else {
+			Ok(())
+		}
+	};
+
 	match type_str.as_str() {
-		"CharField" => Ok(TypedFieldType::CharField),
-		"TextField" => Ok(TypedFieldType::TextField),
-		"EmailField" => Ok(TypedFieldType::EmailField),
-		"PasswordField" => Ok(TypedFieldType::PasswordField),
-		"IntegerField" => Ok(TypedFieldType::IntegerField),
-		"FloatField" => Ok(TypedFieldType::FloatField),
-		"DecimalField" => Ok(TypedFieldType::DecimalField),
-		"BooleanField" => Ok(TypedFieldType::BooleanField),
-		"DateField" => Ok(TypedFieldType::DateField),
-		"TimeField" => Ok(TypedFieldType::TimeField),
-		"DateTimeField" => Ok(TypedFieldType::DateTimeField),
-		"ChoiceField" => Ok(TypedFieldType::ChoiceField),
-		"MultipleChoiceField" => Ok(TypedFieldType::MultipleChoiceField),
-		"FileField" => Ok(TypedFieldType::FileField),
-		"ImageField" => Ok(TypedFieldType::ImageField),
-		"UrlField" => Ok(TypedFieldType::UrlField),
-		"SlugField" => Ok(TypedFieldType::SlugField),
-		"UuidField" => Ok(TypedFieldType::UuidField),
-		"IpAddressField" => Ok(TypedFieldType::IpAddressField),
-		"JsonField" => Ok(TypedFieldType::JsonField),
-		"HiddenField" => Ok(TypedFieldType::HiddenField),
+		// Non-generic field types
+		"CharField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::CharField)
+		}
+		"TextField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::TextField)
+		}
+		"EmailField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::EmailField)
+		}
+		"PasswordField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::PasswordField)
+		}
+		"UrlField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::UrlField)
+		}
+		"SlugField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::SlugField)
+		}
+		"IntegerField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::IntegerField)
+		}
+		"FloatField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::FloatField)
+		}
+		"DecimalField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::DecimalField)
+		}
+		"BooleanField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::BooleanField)
+		}
+		"DateField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::DateField)
+		}
+		"TimeField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::TimeField)
+		}
+		"DateTimeField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::DateTimeField)
+		}
+		"FileField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::FileField)
+		}
+		"ImageField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::ImageField)
+		}
+		"UuidField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::UuidField)
+		}
+
+		// Generic-capable field types
+		"HiddenField" => {
+			let inner = require_one_generic(syn::parse_quote!(::std::string::String))?;
+			Ok(TypedFieldType::HiddenField { inner })
+		}
+		"ChoiceField" => {
+			let inner = require_one_generic(syn::parse_quote!(::std::string::String))?;
+			Ok(TypedFieldType::ChoiceField { inner })
+		}
+		"MultipleChoiceField" => {
+			let inner = require_one_generic(syn::parse_quote!(::std::string::String))?;
+			Ok(TypedFieldType::MultipleChoiceField { inner })
+		}
+		"JsonField" => {
+			let inner = require_one_generic(syn::parse_quote!(::std::string::String))?;
+			Ok(TypedFieldType::JsonField { inner })
+		}
+
+		// Specialized (no generic accepted)
+		"IpAddressField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::IpAddressField)
+		}
+
 		_ => Err(Error::new(
 			ident.span(),
 			format!(
@@ -629,7 +759,7 @@ fn parse_field_type(ident: &syn::Ident) -> Result<TypedFieldType> {
 				PasswordField, IntegerField, FloatField, DecimalField, BooleanField, DateField, \
 				TimeField, DateTimeField, ChoiceField, MultipleChoiceField, FileField, ImageField, \
 				UrlField, SlugField, UuidField, IpAddressField, JsonField, HiddenField",
-				type_str
+				type_str,
 			),
 		)),
 	}
@@ -1194,7 +1324,7 @@ fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoic
 	})
 }
 
-/// Transforms `strip_arguments` entries into their typed form.
+/// Transforms ambient argument entries into their typed form.
 ///
 /// Validates two constraints:
 /// 1. No duplicate argument names (each server_fn parameter may only be supplied once).
@@ -1204,9 +1334,13 @@ fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoic
 fn transform_strip_arguments(
 	args: &[StripArgument],
 	fields: &[FormFieldEntry],
+	source: Option<AmbientArgumentsSource>,
 ) -> Result<Vec<TypedStripArgument>> {
 	let mut seen = HashSet::new();
 	let mut typed = Vec::with_capacity(args.len());
+	let keyword = ambient_arguments_keyword(source);
+	let canonical_suffix = ambient_arguments_canonical_suffix(source);
+	let collision_entry = ambient_arguments_collision_entry(source);
 
 	for arg in args {
 		let name_str = arg.name.to_string();
@@ -1215,7 +1349,7 @@ fn transform_strip_arguments(
 			return Err(Error::new(
 				arg.span,
 				format!(
-					"duplicate strip_arguments entry '{name_str}': each server_fn argument may only appear once"
+					"duplicate {keyword} entry '{name_str}': each server_fn argument may only appear once{canonical_suffix}"
 				),
 			));
 		}
@@ -1224,7 +1358,7 @@ fn transform_strip_arguments(
 			return Err(Error::new(
 				arg.span,
 				format!(
-					"strip_arguments key '{name_str}' collides with a declared form field; either rename the field or remove this strip entry"
+					"{keyword} key '{name_str}' collides with a declared form field; either rename the field or remove this {collision_entry} entry{canonical_suffix}"
 				),
 			));
 		}
@@ -1237,6 +1371,27 @@ fn transform_strip_arguments(
 	}
 
 	Ok(typed)
+}
+
+fn ambient_arguments_keyword(source: Option<AmbientArgumentsSource>) -> &'static str {
+	match source {
+		Some(AmbientArgumentsSource::StripArguments) => "strip_arguments",
+		_ => "ambient_arguments",
+	}
+}
+
+fn ambient_arguments_canonical_suffix(source: Option<AmbientArgumentsSource>) -> &'static str {
+	match source {
+		Some(AmbientArgumentsSource::StripArguments) => "; use ambient_arguments for new code",
+		_ => "",
+	}
+}
+
+fn ambient_arguments_collision_entry(source: Option<AmbientArgumentsSource>) -> &'static str {
+	match source {
+		Some(AmbientArgumentsSource::StripArguments) => "strip",
+		_ => "ambient",
+	}
 }
 
 /// Checks if a field with the given name exists in the field entries.
@@ -1581,12 +1736,13 @@ mod tests {
 		let result = parse_and_validate(input);
 
 		// Assert
-		assert!(result.is_ok());
-		let typed = result.unwrap();
-		let state = typed.state.expect("state should be Some");
-		assert!(state.has_loading());
-		assert!(state.has_error());
-		assert!(state.has_success());
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("`form! state: { ... }` was removed")
+		);
 	}
 
 	#[rstest]
@@ -1607,12 +1763,13 @@ mod tests {
 		let result = parse_and_validate(input);
 
 		// Assert
-		assert!(result.is_ok());
-		let typed = result.unwrap();
-		let state = typed.state.expect("state should be Some");
-		assert!(state.has_loading());
-		assert!(!state.has_error());
-		assert!(!state.has_success());
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("`form! state: { ... }` was removed")
+		);
 	}
 
 	#[rstest]
@@ -1638,7 +1795,7 @@ mod tests {
 			result
 				.unwrap_err()
 				.to_string()
-				.contains("invalid state field")
+				.contains("`form! state: { ... }` was removed")
 		);
 	}
 
@@ -1684,13 +1841,13 @@ mod tests {
 		let result = parse_and_validate(input);
 
 		// Assert
-		assert!(result.is_ok());
-		let typed = result.unwrap();
-		assert!(typed.callbacks.has_any());
-		assert!(typed.callbacks.has_on_submit());
-		assert!(typed.callbacks.has_on_success());
-		assert!(typed.callbacks.has_on_error());
-		assert!(typed.callbacks.has_on_loading());
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("runtime callback clauses were removed")
+		);
 	}
 
 	#[rstest]
@@ -1713,13 +1870,13 @@ mod tests {
 		let result = parse_and_validate(input);
 
 		// Assert
-		assert!(result.is_ok());
-		let typed = result.unwrap();
-		assert!(typed.callbacks.has_any());
-		assert!(!typed.callbacks.has_on_submit());
-		assert!(typed.callbacks.has_on_success());
-		assert!(!typed.callbacks.has_on_error());
-		assert!(!typed.callbacks.has_on_loading());
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("runtime callback clauses were removed")
+		);
 	}
 
 	#[rstest]
@@ -1768,21 +1925,13 @@ mod tests {
 		let result = parse_and_validate(input);
 
 		// Assert
-		assert!(result.is_ok());
-		let typed = result.unwrap();
-
-		// Check state
-		assert!(typed.state.is_some());
-		let state = typed.state.as_ref().unwrap();
-		assert!(state.has_loading());
-		assert!(state.has_error());
-		assert!(state.has_success());
-
-		// Check callbacks
-		assert!(typed.callbacks.has_on_success());
-		assert!(typed.callbacks.has_on_error());
-		assert!(!typed.callbacks.has_on_submit());
-		assert!(!typed.callbacks.has_on_loading());
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("`form! state: { ... }` was removed")
+		);
 	}
 
 	#[rstest]
@@ -2476,8 +2625,6 @@ mod tests {
 			server_fn: update_data,
 			initial_loader: fetch_data,
 
-			on_success: |result| { /* handle success */ },
-
 			fields: {
 				name: CharField { required },
 			},
@@ -2490,7 +2637,7 @@ mod tests {
 		assert!(result.is_ok());
 		let typed = result.unwrap();
 		assert!(typed.initial_loader.is_some());
-		assert!(typed.callbacks.has_on_success());
+		assert!(!typed.callbacks.has_any());
 	}
 
 	// =========================================================================
@@ -2784,10 +2931,6 @@ mod tests {
 			name: FullFeaturedForm,
 			server_fn: submit_data,
 
-			state: { loading, error },
-
-			on_success: |result| { /* handle */ },
-
 			slots: {
 				before_fields: || {
 					view! { <h2>"Enter Information"</h2> }
@@ -2808,14 +2951,8 @@ mod tests {
 		// Assert
 		assert!(result.is_ok());
 		let typed = result.unwrap();
-		// Check state
-		assert!(typed.state.is_some());
-		let state = typed.state.as_ref().unwrap();
-		assert!(state.has_loading());
-		assert!(state.has_error());
-
-		// Check callbacks
-		assert!(typed.callbacks.has_on_success());
+		assert!(typed.state.is_none());
+		assert!(!typed.callbacks.has_any());
 
 		// Check slots
 		assert!(typed.slots.is_some());
@@ -2831,12 +2968,6 @@ mod tests {
 			name: CompleteStep9Form,
 			server_fn: update_profile,
 			initial_loader: get_profile,
-
-			state: { loading, error, success },
-
-			on_success: |result| {
-				navigate("/profile");
-			},
 
 			slots: {
 				before_fields: || {
@@ -2881,10 +3012,10 @@ mod tests {
 		assert!(typed.initial_loader.is_some());
 
 		// Check state
-		assert!(typed.state.is_some());
+		assert!(typed.state.is_none());
 
 		// Check callbacks
-		assert!(typed.callbacks.has_on_success());
+		assert!(!typed.callbacks.has_any());
 
 		// Check slots
 		assert!(typed.slots.is_some());
@@ -3455,8 +3586,6 @@ mod tests {
 			name: CompleteForm,
 			server_fn: create_tweet,
 
-			state: { loading, error },
-
 			derived: {
 				char_count: |form| form.content().get().len(),
 				is_valid: |form| form.char_count().get() <= 280,
@@ -3481,10 +3610,7 @@ mod tests {
 		let typed = result.unwrap();
 
 		// Check state
-		assert!(typed.state.is_some());
-		let state = typed.state.as_ref().unwrap();
-		assert!(state.has_loading());
-		assert!(state.has_error());
+		assert!(typed.state.is_none());
 
 		// Check derived
 		assert!(typed.derived.is_some());

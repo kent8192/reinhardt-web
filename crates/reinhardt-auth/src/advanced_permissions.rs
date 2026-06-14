@@ -28,7 +28,7 @@ pub struct ObjectPermission {
 	permission: String,
 	/// Optional object identifier (e.g., "article:123")
 	object_id: Option<String>,
-	/// Granted permissions: (username, object_id) -> set of permission names
+	/// Granted permissions: (user_id, object_id) -> set of permission names
 	grants: HashMap<(String, String), HashSet<String>>,
 }
 
@@ -74,11 +74,11 @@ impl ObjectPermission {
 	/// ```
 	pub fn grant(
 		&mut self,
-		username: impl Into<String>,
+		user_id: impl Into<String>,
 		permission: impl Into<String>,
 		object_id: impl Into<String>,
 	) {
-		let key = (username.into(), object_id.into());
+		let key = (user_id.into(), object_id.into());
 		self.grants
 			.entry(key)
 			.or_default()
@@ -88,12 +88,12 @@ impl ObjectPermission {
 	/// Check if a user has a specific permission on a specific object
 	pub fn user_has_object_permission(
 		&self,
-		username: &str,
+		user_id: &str,
 		permission: &str,
 		object_id: &str,
 	) -> bool {
 		self.grants
-			.get(&(username.to_string(), object_id.to_string()))
+			.get(&(user_id.to_string(), object_id.to_string()))
 			.is_some_and(|perms| perms.contains(permission))
 	}
 }
@@ -120,7 +120,7 @@ impl Permission for ObjectPermission {
 		};
 
 		// Check if the user has the specific permission on this object
-		self.user_has_object_permission(user.username(), &self.permission, object_id)
+		self.user_has_object_permission(&user.id(), &self.permission, object_id)
 	}
 }
 
@@ -145,7 +145,7 @@ impl Permission for ObjectPermission {
 pub struct RoleBasedPermission {
 	/// Roles mapped to their permissions
 	roles: HashMap<String, Vec<String>>,
-	/// User role mapping (username -> role)
+	/// User role mapping (user_id -> role)
 	user_roles: HashMap<String, String>,
 	/// Required permission for the Permission trait check (optional)
 	required_permission: Option<String>,
@@ -219,8 +219,8 @@ impl RoleBasedPermission {
 	/// perm.add_role("user", vec!["read"]);
 	/// perm.assign_user_role("alice", "user");
 	/// ```
-	pub fn assign_user_role(&mut self, username: impl Into<String>, role: impl Into<String>) {
-		self.user_roles.insert(username.into(), role.into());
+	pub fn assign_user_role(&mut self, user_id: impl Into<String>, role: impl Into<String>) {
+		self.user_roles.insert(user_id.into(), role.into());
 	}
 
 	/// Check if user has specific permission
@@ -238,8 +238,8 @@ impl RoleBasedPermission {
 	/// assert!(perm.user_has_permission("bob", "write"));
 	/// assert!(!perm.user_has_permission("bob", "delete"));
 	/// ```
-	pub fn user_has_permission(&self, username: &str, permission: &str) -> bool {
-		if let Some(role) = self.user_roles.get(username)
+	pub fn user_has_permission(&self, user_id: &str, permission: &str) -> bool {
+		if let Some(role) = self.user_roles.get(user_id)
 			&& let Some(perms) = self.roles.get(role)
 		{
 			return perms.iter().any(|p| p == permission);
@@ -269,11 +269,11 @@ impl Permission for RoleBasedPermission {
 
 		// Check specific permission within the user's role
 		match &self.required_permission {
-			Some(perm) => self.user_has_permission(user.username(), perm),
+			Some(perm) => self.user_has_permission(&user.id(), perm),
 			// If no required permission is set, check that the user has a role
 			// with at least one permission defined
 			None => {
-				if let Some(role) = self.user_roles.get(user.username())
+				if let Some(role) = self.user_roles.get(&user.id())
 					&& let Some(perms) = self.roles.get(role)
 				{
 					!perms.is_empty()
@@ -288,15 +288,15 @@ impl Permission for RoleBasedPermission {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::SimpleUser;
+	use crate::internal_user::InternalUser;
 	use bytes::Bytes;
 	use hyper::Method;
 	use reinhardt_http::Request;
 	use rstest::rstest;
 	use uuid::Uuid;
 
-	fn make_user(username: &str) -> Box<dyn crate::User> {
-		Box::new(SimpleUser {
+	fn make_user(username: &str) -> Box<dyn crate::core::AuthIdentity> {
+		Box::new(InternalUser {
 			id: Uuid::now_v7(),
 			username: username.to_string(),
 			email: format!("{}@example.com", username),
@@ -379,8 +379,10 @@ mod tests {
 	#[tokio::test]
 	async fn test_object_permission_grants_with_matching_grant() {
 		// Arrange - user has the specific permission on the object
+		let alice = make_user("alice");
+		let alice_id = alice.id();
 		let mut perm = ObjectPermission::new("edit", Some("post:42"));
-		perm.grant("alice", "edit", "post:42");
+		perm.grant(&alice_id, "edit", "post:42");
 
 		let request = Request::builder()
 			.method(Method::GET)
@@ -394,7 +396,7 @@ mod tests {
 			is_authenticated: true,
 			is_admin: false,
 			is_active: true,
-			user: Some(make_user("alice")),
+			user: Some(alice),
 		};
 
 		// Act & Assert
@@ -405,8 +407,10 @@ mod tests {
 	#[tokio::test]
 	async fn test_object_permission_denies_wrong_user() {
 		// Arrange - grant is for alice, but bob is requesting
+		let alice = make_user("alice");
+		let alice_id = alice.id();
 		let mut perm = ObjectPermission::new("edit", Some("post:42"));
-		perm.grant("alice", "edit", "post:42");
+		perm.grant(&alice_id, "edit", "post:42");
 
 		let request = Request::builder()
 			.method(Method::GET)
@@ -526,9 +530,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_role_permission_trait_with_user_and_role() {
 		// Arrange
+		let alice = make_user("alice");
+		let alice_id = alice.id();
 		let mut perm = RoleBasedPermission::new();
 		perm.add_role("user", vec!["read"]);
-		perm.assign_user_role("alice", "user");
+		perm.assign_user_role(&alice_id, "user");
 
 		let request = Request::builder()
 			.method(Method::GET)
@@ -542,7 +548,7 @@ mod tests {
 			is_authenticated: true,
 			is_admin: false,
 			is_active: true,
-			user: Some(make_user("alice")),
+			user: Some(alice),
 		};
 
 		// Act & Assert
@@ -553,9 +559,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_role_permission_trait_denies_user_without_role() {
 		// Arrange - bob has no assigned role
+		let alice = make_user("alice");
+		let alice_id = alice.id();
 		let mut perm = RoleBasedPermission::new();
 		perm.add_role("user", vec!["read"]);
-		perm.assign_user_role("alice", "user");
+		perm.assign_user_role(&alice_id, "user");
 
 		let request = Request::builder()
 			.method(Method::GET)
@@ -630,9 +638,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_role_permission_denies_empty_permission_list() {
 		// Arrange
+		let alice = make_user("alice");
+		let alice_id = alice.id();
 		let mut perm = RoleBasedPermission::new();
 		perm.add_role("viewer", Vec::<String>::new());
-		perm.assign_user_role("alice", "viewer");
+		perm.assign_user_role(&alice_id, "viewer");
 
 		let request = Request::builder()
 			.method(Method::GET)
@@ -646,7 +656,7 @@ mod tests {
 			is_authenticated: true,
 			is_admin: false,
 			is_active: true,
-			user: Some(make_user("alice")),
+			user: Some(alice),
 		};
 
 		// Act & Assert
@@ -657,9 +667,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_role_permission_with_required_permission_grants() {
 		// Arrange
+		let alice = make_user("alice");
+		let alice_id = alice.id();
 		let mut perm = RoleBasedPermission::with_required_permission("write");
 		perm.add_role("editor", vec!["read", "write"]);
-		perm.assign_user_role("alice", "editor");
+		perm.assign_user_role(&alice_id, "editor");
 
 		let request = Request::builder()
 			.method(Method::GET)
@@ -673,7 +685,7 @@ mod tests {
 			is_authenticated: true,
 			is_admin: false,
 			is_active: true,
-			user: Some(make_user("alice")),
+			user: Some(alice),
 		};
 
 		// Act & Assert
@@ -684,9 +696,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_role_permission_with_required_permission_denies() {
 		// Arrange
+		let alice = make_user("alice");
+		let alice_id = alice.id();
 		let mut perm = RoleBasedPermission::with_required_permission("delete");
 		perm.add_role("editor", vec!["read", "write"]);
-		perm.assign_user_role("alice", "editor");
+		perm.assign_user_role(&alice_id, "editor");
 
 		let request = Request::builder()
 			.method(Method::GET)
@@ -700,7 +714,7 @@ mod tests {
 			is_authenticated: true,
 			is_admin: false,
 			is_active: true,
-			user: Some(make_user("alice")),
+			user: Some(alice),
 		};
 
 		// Act & Assert

@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-db"
-version = "0.1.4"
+version = "0.2.0-rc.6"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -76,6 +76,7 @@ redis = { workspace = true, optional = true, features = ["tokio-comp", "cluster-
 cassandra-cpp = { version = "3.0", optional = true }
 aws-sdk-dynamodb = { version = "1.0", optional = true }
 aws-config = { version = "1.0", optional = true }
+time = { workspace = true, optional = true }
 neo4rs = { version = "0.7", optional = true }
 anyhow = { workspace = true }
 dashmap = "6.1.0"
@@ -85,8 +86,8 @@ refinery = { workspace = true, optional = true }
 aes-gcm = { workspace = true }
 sha2 = { workspace = true }
 rand = { workspace = true }
-image = { workspace = true }
-flate2 = { workspace = true }
+image = { workspace = true, optional = true }
+flate2 = { workspace = true, optional = true }
 phonenumber = { workspace = true }
 smallvec = "1.13"
 paste = "1.0"
@@ -100,17 +101,21 @@ default = [
   "migrations",
   "hybrid",
   "associations",
+  "image-fields",
+  "compressed-fields",
 ]
 
 # Module features (conditionally compiled when feature is enabled)
-backends = []
-backends-pool = []
+backends = ["pool"]
+backends-pool = ["pool"]
 pool = []
-orm = []
+orm = ["backends", "hybrid"]
 migrations = ["refinery"]
 hybrid = []
 associations = []
 contenttypes = []
+image-fields = ["dep:image"]
+compressed-fields = ["dep:flate2"]
 nosql = ["dep:bson"]
 backends-settings = ["backends"]
 
@@ -128,6 +133,8 @@ database-full = [
   "hybrid",
   "associations",
   "contenttypes",
+  "compressed-fields",
+  "image-fields",
   "all-databases",
   "full",
 ]
@@ -156,7 +163,7 @@ db-mysql = []
 mongodb = ["dep:mongodb", "nosql"]
 redis = ["dep:redis"]
 cassandra = ["dep:cassandra-cpp"]
-dynamodb = ["dep:aws-sdk-dynamodb", "dep:aws-config"]
+dynamodb = ["dep:aws-sdk-dynamodb", "dep:aws-config", "time"]
 neo4j = ["dep:neo4rs"]
 nosql-document = ["mongodb"]
 nosql-key-value = ["redis", "dynamodb"]

@@ -101,6 +101,8 @@
 //! assert_eq!(user.to_string(), "user");
 //! ```
 
+#![warn(missing_docs)]
+
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::quote;

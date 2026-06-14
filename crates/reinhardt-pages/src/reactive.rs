@@ -95,25 +95,31 @@
 // Re-export core reactive primitives from reinhardt-reactive
 pub use reinhardt_core::reactive::{
 	Context, ContextGuard, Effect, EffectTiming, Memo, NodeId, NodeType, Observer, Runtime, Signal,
-	context, create_context, effect, get_context, memo, provide_context, remove_context, runtime,
-	signal, with_runtime,
+	batch, context, create_context, effect, get_context, memo, provide_context, remove_context,
+	runtime, signal, with_runtime,
 };
 
 // WASM-specific modules (kept in reinhardt-pages)
 pub mod hooks;
 pub mod resource;
+pub mod trackable;
 
-// Re-export resource types
-pub use resource::{Resource, ResourceState};
+pub use trackable::Trackable;
+
+// Re-export resource types and the unified hook (available on all targets)
+pub use resource::{Resource, ResourceState, use_resource};
 #[cfg(wasm)]
+#[allow(
+	deprecated,
+	reason = "re-export kept until removal in v0.3.0; use use_resource instead"
+)]
 pub use resource::{create_resource, create_resource_with_deps};
 
 // Re-export hooks
 #[allow(deprecated)] // Intentional: re-exporting deprecated items for backward compatibility
 pub use hooks::{
-	Action, ActionPhase, ActionState, Dispatch, OptimisticState, Ref, SetState, SharedSetState,
-	SharedSignal, TransitionState, use_action, use_action_state, use_callback, use_context,
-	use_debug_value, use_deferred_value, use_effect, use_effect_event, use_id, use_layout_effect,
-	use_memo, use_optimistic, use_reducer, use_ref, use_shared_state, use_state,
-	use_sync_external_store, use_transition,
+	Action, ActionPhase, Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal,
+	TransitionState, use_action, use_callback, use_context, use_debug_value, use_deferred_value,
+	use_effect, use_effect_event, use_id, use_layout_effect, use_memo, use_optimistic, use_reducer,
+	use_ref, use_shared_state, use_state, use_sync_external_store, use_transition,
 };

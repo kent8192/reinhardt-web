@@ -44,14 +44,15 @@
 //! ```
 
 use proc_macro2::TokenStream;
-use quote::{ToTokens, quote};
+use quote::{ToTokens, format_ident, quote};
 
 use crate::crate_paths::get_reinhardt_pages_crate_info;
 use reinhardt_manouche::core::{
-	FormMethod, TypedCustomAttr, TypedFieldType, TypedFormAction, TypedFormCallbacks,
-	TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro,
-	TypedFormSlots, TypedFormState, TypedFormWatch, TypedIcon, TypedIconChild, TypedIconPosition,
-	TypedSubmitButtonDef, TypedValidatorRule, TypedWidget, TypedWrapper,
+	AmbientArgumentsSource, FormMethod, TypedCustomAttr, TypedFieldType, TypedFormAction,
+	TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry,
+	TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState, TypedFormWatch, TypedIcon,
+	TypedIconChild, TypedIconPosition, TypedSubmitButtonDef, TypedValidatorRule, TypedWidget,
+	TypedWrapper,
 };
 
 /// Collects all fields from field entries, flattening groups.
@@ -72,26 +73,545 @@ fn collect_all_fields(entries: &[TypedFormFieldEntry]) -> Vec<&TypedFormFieldDef
 	fields
 }
 
+fn generate_ambient_argument_deprecation_markers(
+	macro_ast: &TypedFormMacro,
+	ambient_arguments_source: Option<AmbientArgumentsSource>,
+) -> TokenStream {
+	let legacy_marker = if matches!(
+		ambient_arguments_source,
+		Some(AmbientArgumentsSource::StripArguments)
+	) {
+		let ident = format_ident!(
+			"__REINHARDT_{}_STRIP_ARGUMENTS_DEPRECATED",
+			upper_snake_ident_fragment(&macro_ast.name)
+		);
+		quote! {
+			#[deprecated(
+				note = "`strip_arguments` was renamed to `ambient_arguments`; use `ambient_arguments` for values supplied from ambient context"
+			)]
+			const #ident: () = ();
+			let _ = #ident;
+		}
+	} else {
+		quote! {}
+	};
+
+	let has_csrf_ambient_arg = macro_ast
+		.strip_arguments
+		.iter()
+		.any(|arg| is_csrf_argument_name(&arg.name));
+	let csrf_marker = if has_csrf_ambient_arg {
+		let ident = format_ident!(
+			"__REINHARDT_{}_CSRF_AMBIENT_DEPRECATED",
+			upper_snake_ident_fragment(&macro_ast.name)
+		);
+		quote! {
+			#[deprecated(
+				note = "CSRF should be supplied by #[server_fn] client stubs via the X-CSRFToken header, not as a server_fn business argument"
+			)]
+			const #ident: () = ();
+			let _ = #ident;
+		}
+	} else {
+		quote! {}
+	};
+
+	quote! {
+		#legacy_marker
+		#csrf_marker
+	}
+}
+
+fn upper_snake_ident_fragment(ident: &syn::Ident) -> String {
+	let mut out = String::new();
+	for (index, ch) in ident.to_string().chars().enumerate() {
+		if ch.is_ascii_uppercase() && index > 0 {
+			out.push('_');
+		}
+		out.push(ch.to_ascii_uppercase());
+	}
+	out
+}
+
+fn should_pass_csrf_as_business_argument(macro_ast: &TypedFormMacro) -> bool {
+	macro_ast
+		.strip_arguments
+		.iter()
+		.any(|arg| is_csrf_argument_name(&arg.name))
+}
+
+fn is_csrf_argument_name(name: &syn::Ident) -> bool {
+	matches!(
+		name.to_string().as_str(),
+		"csrf_token" | "_csrf_token" | "csrfmiddlewaretoken"
+	)
+}
+
+fn generate_form_runtime_contract(
+	macro_ast: &TypedFormMacro,
+	pages_crate: &TokenStream,
+) -> TokenStream {
+	let values_ident = format_ident!("{}Values", macro_ast.name);
+	let field_ident = format_ident!("{}Field", macro_ast.name);
+	let form_ident = &macro_ast.name;
+	let all_fields = collect_all_fields(&macro_ast.fields);
+	let unsupported_fields: Vec<String> = all_fields
+		.iter()
+		.filter(|field| !supports_generated_form_values(&field.field_type))
+		.map(|field| {
+			format!(
+				"{} ({})",
+				field.name,
+				field_type_to_string(&field.field_type)
+			)
+		})
+		.collect();
+	if !unsupported_fields.is_empty() {
+		let message = format!(
+			"form! cannot generate a use_form runtime contract for unsupported field(s): {}. FileField and ImageField are not supported by use_form(&form) yet.",
+			unsupported_fields.join(", ")
+		);
+		return quote! {
+			compile_error!(#message);
+		};
+	}
+
+	let value_fields: Vec<TokenStream> = all_fields
+		.iter()
+		.map(|field| {
+			let name = &field.name;
+			let ty = field_type_to_value_type(&field.field_type);
+			quote! { pub #name: #ty, }
+		})
+		.collect();
+
+	let values_fields: Vec<TokenStream> = all_fields
+		.iter()
+		.map(|field| {
+			let name = &field.name;
+			quote! { #name: self.#name.get(), }
+		})
+		.collect();
+	let initial_values_fields: Vec<TokenStream> = all_fields
+		.iter()
+		.map(|field| {
+			let name = &field.name;
+			let init = field_type_default_value(&field.field_type);
+			quote! { #name: #init, }
+		})
+		.collect();
+
+	let apply_values_fields: Vec<TokenStream> = all_fields
+		.iter()
+		.map(|field| {
+			let name = &field.name;
+			quote! { self.#name.set(values.#name.clone()); }
+		})
+		.collect();
+
+	let field_variants: Vec<syn::Ident> = all_fields
+		.iter()
+		.map(|field| field_variant_ident(&field.name))
+		.collect();
+	let field_accessor_methods: Vec<TokenStream> = all_fields
+		.iter()
+		.zip(field_variants.iter())
+		.map(|(field, variant)| {
+			let method = format_ident!("{}_field", field.name);
+			quote! {
+				pub fn #method(&self) -> #field_ident {
+					#field_ident::#variant
+				}
+			}
+		})
+		.collect();
+	let field_setters: Vec<TokenStream> = all_fields
+		.iter()
+		.zip(field_variants.iter())
+		.map(|(field, variant)| {
+			let name = &field.name;
+			let ty = field_type_to_value_type(&field.field_type);
+			quote! {
+				#field_ident::#variant => {
+					let boxed: ::std::boxed::Box<dyn ::core::any::Any> =
+						::std::boxed::Box::new(value);
+					match boxed.downcast::<#ty>() {
+						Ok(value) => self.#name.set(*value),
+						Err(_) => panic!(
+							"form! field {:?} does not accept values of type {}",
+							field,
+							::core::any::type_name::<T>(),
+						),
+					}
+				}
+			}
+		})
+		.collect();
+	let apply_field_values: Vec<TokenStream> = all_fields
+		.iter()
+		.zip(field_variants.iter())
+		.map(|(field, variant)| {
+			let name = &field.name;
+			quote! {
+				#field_ident::#variant => self.#name.set(values.#name.clone()),
+			}
+		})
+		.collect();
+	let field_dirty_arms: Vec<TokenStream> = all_fields
+		.iter()
+		.zip(field_variants.iter())
+		.map(|(field, variant)| {
+			let name = &field.name;
+			quote! {
+				#field_ident::#variant => current.#name != defaults.#name,
+			}
+		})
+		.collect();
+	let field_focus_arms: Vec<TokenStream> = all_fields
+		.iter()
+		.zip(field_variants.iter())
+		.map(|(field, variant)| {
+			let field_id = field.name.to_string();
+			quote! {
+				#field_ident::#variant => #field_id,
+			}
+		})
+		.collect();
+	let watch_field_arms: Vec<TokenStream> = all_fields
+		.iter()
+		.zip(field_variants.iter())
+		.map(|(field, variant)| {
+			let name = &field.name;
+			quote! {
+				#field_ident::#variant => {
+					let boxed: ::std::boxed::Box<dyn ::core::any::Any> =
+						::std::boxed::Box::new(self.#name.clone());
+					boxed
+						.downcast::<#pages_crate::reactive::Signal<T>>()
+						.ok()
+						.map(|signal| *signal)
+				}
+			}
+		})
+		.collect();
+	let required_validation_checks: Vec<TokenStream> = all_fields
+		.iter()
+		.zip(field_variants.iter())
+		.filter_map(|(field, variant)| {
+			if !field.validation.required {
+				return None;
+			}
+			let name = &field.name;
+			let message = format!("{} is required", name);
+			let empty_check = runtime_required_empty_check(name, &field.field_type)?;
+			Some(quote! {
+				if #empty_check {
+					error.add_field_error(#field_ident::#variant, #message);
+				}
+			})
+		})
+		.collect();
+	let wasm_focus_body = if all_fields.is_empty() {
+		quote! {
+			match field {}
+		}
+	} else {
+		quote! {
+			let field_id = match field {
+				#(#field_focus_arms)*
+			};
+			let window = ::web_sys::window()
+				.ok_or(#pages_crate::FocusError::MissingTarget)?;
+			let document = window
+				.document()
+				.ok_or(#pages_crate::FocusError::MissingTarget)?;
+			let element = document
+				.get_element_by_id(field_id)
+				.ok_or(#pages_crate::FocusError::MissingTarget)?;
+			use ::wasm_bindgen::JsCast;
+			let element = element
+				.dyn_into::<::web_sys::HtmlElement>()
+				.map_err(|_| #pages_crate::FocusError::Unsupported)?;
+			element
+				.focus()
+				.map_err(|_| #pages_crate::FocusError::Unsupported)
+		}
+	};
+
+	quote! {
+		#[derive(Clone, PartialEq)]
+		struct #values_ident {
+			#(#value_fields)*
+		}
+
+		#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+		enum #field_ident {
+			#(#field_variants,)*
+		}
+
+		impl #form_ident {
+			#(#field_accessor_methods)*
+		}
+
+		impl #pages_crate::FormRuntimeSource for #form_ident {
+			type Values = #values_ident;
+			type Field = #field_ident;
+
+			fn runtime_initial_values(&self) -> Self::Values {
+				self.__initial_values.borrow().clone()
+			}
+
+			fn runtime_current_values(&self) -> Self::Values {
+				#values_ident {
+					#(#values_fields)*
+				}
+			}
+
+			fn runtime_apply_values(&self, values: &Self::Values) {
+				#(#apply_values_fields)*
+			}
+
+			fn runtime_set_field_value<T>(&self, field: Self::Field, value: T)
+			where
+				T: ::core::any::Any + 'static,
+			{
+				match field {
+					#(#field_setters)*
+				}
+			}
+
+			fn runtime_apply_field_value(&self, field: Self::Field, values: &Self::Values) {
+				match field {
+					#(#apply_field_values)*
+				}
+			}
+
+			fn runtime_field_is_dirty(
+				&self,
+				field: Self::Field,
+				current: &Self::Values,
+				defaults: &Self::Values,
+			) -> bool {
+				match field {
+					#(#field_dirty_arms)*
+				}
+			}
+
+			fn runtime_watch_field<T>(&self, field: Self::Field) -> ::core::option::Option<#pages_crate::reactive::Signal<T>>
+			where
+				T: ::core::clone::Clone + 'static,
+			{
+				match field {
+					#(#watch_field_arms)*
+				}
+			}
+
+			fn runtime_validate(&self) -> ::core::result::Result<(), #pages_crate::FormValidationError<Self::Field>> {
+				let mut error = #pages_crate::FormValidationError::new();
+				#(#required_validation_checks)*
+				match self.validate() {
+					::core::result::Result::Ok(()) => {}
+					::core::result::Result::Err(errors) => {
+						for (field, message) in errors {
+							match field {
+								#(
+									stringify!(#field_variants) => {
+										error.add_field_error(#field_ident::#field_variants, message);
+									}
+								)*
+								_ => error.set_form_error(message),
+							}
+						}
+					}
+				}
+				if error.is_empty() {
+					::core::result::Result::Ok(())
+				} else {
+					::core::result::Result::Err(error)
+				}
+			}
+
+			fn runtime_fields(&self) -> &'static [Self::Field] {
+				&[#(#field_ident::#field_variants),*]
+			}
+
+			fn runtime_set_focus(&self, field: Self::Field) -> ::core::result::Result<(), #pages_crate::FocusError> {
+				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+				{
+					#wasm_focus_body
+				}
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+				{
+					let _ = field;
+					::core::result::Result::Err(#pages_crate::FocusError::Unsupported)
+				}
+			}
+		}
+
+		let _ = #values_ident {
+			#(#initial_values_fields)*
+		};
+		let _ = ::core::mem::size_of::<#values_ident>();
+		let _ = ::core::mem::size_of::<#field_ident>();
+	}
+}
+
+fn field_variant_ident(ident: &syn::Ident) -> syn::Ident {
+	format_ident!(
+		"{}",
+		snake_to_pascal(&ident.to_string()),
+		span = ident.span()
+	)
+}
+
+fn snake_to_pascal(input: &str) -> String {
+	let mut out = String::new();
+	let mut upper_next = true;
+	for ch in input.chars() {
+		if ch == '_' {
+			upper_next = true;
+			continue;
+		}
+		if upper_next {
+			out.push(ch.to_ascii_uppercase());
+			upper_next = false;
+		} else {
+			out.push(ch);
+		}
+	}
+	out
+}
+
+fn runtime_required_empty_check(
+	name: &syn::Ident,
+	field_type: &TypedFieldType,
+) -> Option<TokenStream> {
+	match field_type {
+		TypedFieldType::CharField
+		| TypedFieldType::TextField
+		| TypedFieldType::EmailField
+		| TypedFieldType::PasswordField
+		| TypedFieldType::UrlField
+		| TypedFieldType::SlugField => Some(quote! {
+			self.#name.get().trim().is_empty()
+		}),
+		TypedFieldType::DateField
+		| TypedFieldType::TimeField
+		| TypedFieldType::DateTimeField
+		| TypedFieldType::FileField
+		| TypedFieldType::ImageField
+		| TypedFieldType::UuidField
+		| TypedFieldType::IpAddressField => Some(quote! {
+			self.#name.get().is_none()
+		}),
+		TypedFieldType::MultipleChoiceField { .. } => Some(quote! {
+			self.#name.get().is_empty()
+		}),
+		TypedFieldType::IntegerField
+		| TypedFieldType::FloatField
+		| TypedFieldType::DecimalField
+		| TypedFieldType::BooleanField
+		| TypedFieldType::HiddenField { .. }
+		| TypedFieldType::ChoiceField { .. }
+		| TypedFieldType::JsonField { .. } => None,
+	}
+}
+
+fn supports_generated_form_values(field_type: &TypedFieldType) -> bool {
+	match field_type {
+		TypedFieldType::FileField | TypedFieldType::ImageField => false,
+		TypedFieldType::HiddenField { inner }
+		| TypedFieldType::ChoiceField { inner }
+		| TypedFieldType::MultipleChoiceField { inner } => is_basic_form_value_type(inner),
+		_ => true,
+	}
+}
+
+fn supports_form_runtime_contract(entries: &[TypedFormFieldEntry]) -> bool {
+	collect_all_fields(entries)
+		.iter()
+		.all(|field| supports_generated_form_values(&field.field_type))
+}
+
+fn is_basic_form_value_type(ty: &syn::Type) -> bool {
+	let syn::Type::Path(path) = ty else {
+		return false;
+	};
+	let Some(segment) = path.path.segments.last() else {
+		return false;
+	};
+	matches!(
+		segment.ident.to_string().as_str(),
+		"String"
+			| "bool" | "i8"
+			| "i16" | "i32"
+			| "i64" | "i128"
+			| "isize" | "u8"
+			| "u16" | "u32"
+			| "u64" | "u128"
+			| "usize" | "f32"
+			| "f64"
+	)
+}
+
 /// Generates the complete code for a form! macro invocation.
 ///
 /// This function generates conditional code that works for both WASM and server builds.
-pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
+pub(super) fn generate(
+	macro_ast: &TypedFormMacro,
+	ambient_arguments_source: Option<AmbientArgumentsSource>,
+) -> TokenStream {
 	let crate_info = get_reinhardt_pages_crate_info();
 	let use_statement = &crate_info.use_statement;
 	let pages_crate = &crate_info.ident;
 
 	let struct_name = &macro_ast.name;
-
-	let effective_state: Option<TypedFormState> = if macro_ast.success_url.is_some() {
-		let mut s = macro_ast
-			.state
-			.clone()
-			.unwrap_or_else(|| TypedFormState::new(macro_ast.span));
-		s.success = true;
-		Some(s)
+	let ambient_argument_deprecation_markers =
+		generate_ambient_argument_deprecation_markers(macro_ast, ambient_arguments_source);
+	let form_runtime_contract = generate_form_runtime_contract(macro_ast, pages_crate);
+	let runtime_contract_supported = supports_form_runtime_contract(&macro_ast.fields);
+	let values_ident = format_ident!("{}Values", macro_ast.name);
+	let runtime_initial_values_field_decl = if runtime_contract_supported {
+		quote! {
+			__initial_values: ::std::rc::Rc<::std::cell::RefCell<#values_ident>>,
+		}
 	} else {
-		macro_ast.state.clone()
+		quote! {}
 	};
+	let runtime_initial_values_field_default_init = if runtime_contract_supported {
+		let initial_fields: Vec<TokenStream> = collect_all_fields(&macro_ast.fields)
+			.iter()
+			.map(|field| {
+				let name = &field.name;
+				let init = field_type_default_value(&field.field_type);
+				quote! { #name: #init, }
+			})
+			.collect();
+		quote! {
+			__initial_values: ::std::rc::Rc::new(
+				::std::cell::RefCell::new(#values_ident {
+					#(#initial_fields)*
+				}),
+			),
+		}
+	} else {
+		quote! {}
+	};
+	let runtime_initial_values_outer_refresh = if runtime_contract_supported {
+		quote! {
+			*__reinhardt_form.__initial_values.borrow_mut() =
+				#pages_crate::FormRuntimeSource::runtime_current_values(&__reinhardt_form);
+		}
+	} else {
+		quote! {}
+	};
+
+	let effective_state = Some(TypedFormState {
+		loading: true,
+		error: true,
+		success: true,
+		span: macro_ast.span,
+	});
 
 	// Generate field declarations
 	let field_decls = generate_field_declarations(&macro_ast.fields, pages_crate);
@@ -197,30 +717,51 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 	let validate_method = generate_validate_method(macro_ast, pages_crate);
 
 	// Generate load_initial_values method if initial_loader is specified
-	let load_initial_method = generate_load_initial_values(macro_ast, pages_crate);
+	let load_initial_method =
+		generate_load_initial_values(macro_ast, pages_crate, runtime_contract_supported);
 
 	// Generate load_choices method if choices_loader is specified
 	let load_choices_method = generate_load_choices(macro_ast, pages_crate);
 
+	// Collect every field (including group children) and compute the
+	// struct-level where clause for generic-capable inner types. The clause
+	// is spliced into BOTH the struct definition and every `impl #struct_name`
+	// block — Rust requires consistency between the two. For forms without
+	// any generic-capable field (`HiddenField<T>` / `ChoiceField<T>` /
+	// `MultipleChoiceField<T>` / `JsonField<T>`), the helper returns an empty
+	// TokenStream, so the macro output is unchanged for such forms. See
+	// `build_typed_field_where_clause` below for the bound list and the
+	// rationale (issue #4397, Task 9).
+	let all_fields_for_bounds = collect_all_fields(&macro_ast.fields);
+	let where_clause = build_typed_field_where_clause(&all_fields_for_bounds);
+
 	quote! {
 		{
 			#use_statement
+			#ambient_argument_deprecation_markers
+			#form_runtime_contract
 
 			#[derive(Clone)]
-			struct #struct_name {
-				#field_decls
-				#state_decls
-				#watch_field_decls
+			struct #struct_name
+			#where_clause
+				{
+					#field_decls
+					#runtime_initial_values_field_decl
+					#state_decls
+					#watch_field_decls
 				#success_url_field_decl
 				#on_success_field_decl
 				#on_success_ref_field_decl
 			}
 
-			impl #struct_name {
+			impl #struct_name
+			#where_clause
+			{
 				fn new() -> Self {
-					Self {
-						#field_inits
-						#state_inits
+						Self {
+							#field_inits
+							#runtime_initial_values_field_default_init
+							#state_inits
 						#watch_field_default_inits
 						#success_url_field_default_init
 						#on_success_field_default_init
@@ -252,9 +793,10 @@ pub(super) fn generate(macro_ast: &TypedFormMacro) -> TokenStream {
 			// (issue #4605 / #4612), what makes `on_success:` capture outer
 			// locals when the user closure is annotated (issue #4624), and
 			// what makes `on_success_ref:` capture outer locals (issue #4624).
-			let mut __reinhardt_form = #struct_name::new();
-			#initial_outer_setup
-			#watch_outer_setup
+				let mut __reinhardt_form = #struct_name::new();
+				#initial_outer_setup
+				#runtime_initial_values_outer_refresh
+				#watch_outer_setup
 			#success_url_outer_setup
 			#on_success_outer_setup
 			#on_success_ref_outer_setup
@@ -287,8 +829,9 @@ fn generate_field_declarations(
 			if field.choices_config.is_some() {
 				let choices_name =
 					syn::Ident::new(&format!("{}_choices", field.name), field.name.span());
+				let choice_value_ty = choice_value_type(&field.field_type);
 				Some(quote! {
-					#choices_name: #pages_crate::reactive::Signal<Vec<(String, String)>>,
+					#choices_name: #pages_crate::reactive::Signal<Vec<(#choice_value_ty, String)>>,
 				})
 			} else {
 				None
@@ -400,9 +943,10 @@ fn generate_field_accessors(
 			if field.choices_config.is_some() {
 				let choices_name =
 					syn::Ident::new(&format!("{}_choices", field.name), field.name.span());
+				let choice_value_ty = choice_value_type(&field.field_type);
 				Some(quote! {
 					/// Returns the choices signal for dynamic choice options.
-					pub fn #choices_name(&self) -> &#pages_crate::reactive::Signal<Vec<(String, String)>> {
+					pub fn #choices_name(&self) -> &#pages_crate::reactive::Signal<Vec<(#choice_value_ty, String)>> {
 						&self.#choices_name
 					}
 				})
@@ -424,66 +968,26 @@ fn generate_field_accessors(
 /// - `__error: Signal<Option<String>>` - Contains error message if submission failed
 /// - `__success: Signal<bool>` - True after successful submission
 fn generate_state_declarations(
-	state: &Option<TypedFormState>,
+	_state: &Option<TypedFormState>,
 	pages_crate: &TokenStream,
 ) -> TokenStream {
-	let Some(state) = state else {
-		return quote! {};
-	};
-
-	let mut decls = Vec::new();
-
-	if state.loading {
-		decls.push(quote! {
-			__loading: #pages_crate::reactive::Signal<bool>,
-		});
+	quote! {
+		__loading: #pages_crate::reactive::Signal<bool>,
+		__error: #pages_crate::reactive::Signal<Option<String>>,
+		__success: #pages_crate::reactive::Signal<bool>,
 	}
-
-	if state.error {
-		decls.push(quote! {
-			__error: #pages_crate::reactive::Signal<Option<String>>,
-		});
-	}
-
-	if state.success {
-		decls.push(quote! {
-			__success: #pages_crate::reactive::Signal<bool>,
-		});
-	}
-
-	quote! { #(#decls)* }
 }
 
 /// Generates state field initializers for the new() function.
 fn generate_state_initializers(
-	state: &Option<TypedFormState>,
+	_state: &Option<TypedFormState>,
 	pages_crate: &TokenStream,
 ) -> TokenStream {
-	let Some(state) = state else {
-		return quote! {};
-	};
-
-	let mut inits = Vec::new();
-
-	if state.loading {
-		inits.push(quote! {
-			__loading: #pages_crate::reactive::Signal::new(false),
-		});
+	quote! {
+		__loading: #pages_crate::reactive::Signal::new(false),
+		__error: #pages_crate::reactive::Signal::new(None),
+		__success: #pages_crate::reactive::Signal::new(false),
 	}
-
-	if state.error {
-		inits.push(quote! {
-			__error: #pages_crate::reactive::Signal::new(None),
-		});
-	}
-
-	if state.success {
-		inits.push(quote! {
-			__success: #pages_crate::reactive::Signal::new(false),
-		});
-	}
-
-	quote! { #(#inits)* }
 }
 
 /// Generates state accessor methods.
@@ -493,49 +997,37 @@ fn generate_state_initializers(
 /// - `error()` returns `&Signal<Option<String>>`
 /// - `success()` returns `&Signal<bool>`
 fn generate_state_accessors(
-	state: &Option<TypedFormState>,
+	_state: &Option<TypedFormState>,
 	pages_crate: &TokenStream,
 ) -> TokenStream {
-	let Some(state) = state else {
-		return quote! {};
-	};
+	quote! {
+		/// Returns the generated loading signal.
+		///
+		/// This compatibility signal is `true` while the generated submit
+		/// handler is in progress. New runtime orchestration should use
+		/// `use_form(&form).build().form_state()`.
+		pub fn loading(&self) -> &#pages_crate::reactive::Signal<bool> {
+			&self.__loading
+		}
 
-	let mut accessors = Vec::new();
+		/// Returns the generated submit error signal.
+		///
+		/// This compatibility signal contains the error message if the last
+		/// generated submit failed. New runtime orchestration should use
+		/// `use_form(&form).build().form_state()`.
+		pub fn error(&self) -> &#pages_crate::reactive::Signal<Option<String>> {
+			&self.__error
+		}
 
-	if state.loading {
-		accessors.push(quote! {
-			/// Returns the loading state signal.
-			///
-			/// This signal is `true` while form submission is in progress.
-			pub fn loading(&self) -> &#pages_crate::reactive::Signal<bool> {
-				&self.__loading
-			}
-		});
+		/// Returns the generated success signal.
+		///
+		/// This compatibility signal is `true` after the generated submit
+		/// succeeds. New runtime orchestration should use
+		/// `use_form(&form).build().form_state()`.
+		pub fn success(&self) -> &#pages_crate::reactive::Signal<bool> {
+			&self.__success
+		}
 	}
-
-	if state.error {
-		accessors.push(quote! {
-			/// Returns the error state signal.
-			///
-			/// This signal contains the error message if the last submission failed.
-			pub fn error(&self) -> &#pages_crate::reactive::Signal<Option<String>> {
-				&self.__error
-			}
-		});
-	}
-
-	if state.success {
-		accessors.push(quote! {
-			/// Returns the success state signal.
-			///
-			/// This signal is `true` after successful form submission.
-			pub fn success(&self) -> &#pages_crate::reactive::Signal<bool> {
-				&self.__success
-			}
-		});
-	}
-
-	quote! { #(#accessors)* }
 }
 
 /// Bundle of token streams produced for the watch block.
@@ -798,16 +1290,8 @@ fn generate_on_success_ref_artifacts(
 			// call below matches whatever signature the runtime call uses.
 			let all_fields = collect_all_fields(&macro_ast.fields);
 			let field_count = all_fields.len();
-			let has_explicit_csrf_field = all_fields.iter().any(|f| f.name == "csrf_token");
-			let needs_csrf = !matches!(macro_ast.method, FormMethod::Get);
 			let strip_arg_count = macro_ast.strip_arguments.len();
-			let extra_count = if strip_arg_count > 0 {
-				strip_arg_count
-			} else if needs_csrf && !has_explicit_csrf_field {
-				1usize
-			} else {
-				0usize
-			};
+			let extra_count = strip_arg_count;
 			let total_arg_count = field_count + extra_count;
 			let probe_args = (0..total_arg_count)
 				.map(|_| quote! { ::core::unreachable!() })
@@ -1181,12 +1665,12 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 	// Determine if CSRF protection is needed (non-GET methods)
 	let needs_csrf = !matches!(macro_ast.method, FormMethod::Get);
 
-	// Check if CSRF token should be auto-injected as a server_fn argument.
-	// This is needed when: non-GET method, using server_fn, and no explicit csrf_token field.
+	// Check if CSRF token was explicitly supplied as a server_fn business argument.
 	let has_explicit_csrf_field = all_fields.iter().any(|f| f.name == "csrf_token");
-	let auto_csrf_arg = needs_csrf
+	let csrf_business_arg = needs_csrf
 		&& matches!(macro_ast.action, TypedFormAction::ServerFn(_))
-		&& !has_explicit_csrf_field;
+		&& !has_explicit_csrf_field
+		&& should_pass_csrf_as_business_argument(macro_ast);
 
 	// Generate CSRF token injection for non-GET methods
 	let csrf_injection = if needs_csrf {
@@ -1253,45 +1737,39 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 				})
 				.collect();
 
-			// Generate server_fn call expression (with auto CSRF token if needed)
-			let server_fn_call = if auto_csrf_arg {
-				quote! {
-					{
-						let __csrf_token = #pages_crate::csrf::get_csrf_token()
-							.unwrap_or_default();
-						#server_fn_ident(#(#field_names,)* __csrf_token).await
-					}
-				}
+			let strip_arg_exprs: Vec<&syn::Expr> = macro_ast
+				.strip_arguments
+				.iter()
+				.map(|arg| &arg.value)
+				.collect();
+
+			// Legacy compatibility: old form! server_fn bindings could append
+			// CSRF as a business argument through strip_arguments /
+			// ambient_arguments. New use_form-based lowering should not use this
+			// path; CSRF belongs in the X-CSRFToken header injected by
+			// #[server_fn] client stubs.
+			let server_fn_call = if csrf_business_arg || !strip_arg_exprs.is_empty() {
+				quote! { #server_fn_ident(#(#field_names,)* #(#strip_arg_exprs),*).await }
 			} else {
 				quote! { #server_fn_ident(#(#field_names),*).await }
 			};
 
 			// Generate callbacks
 			let callbacks = &macro_ast.callbacks;
-			let state = &macro_ast.state;
 			let redirect = &macro_ast.redirect_on_success;
 
-			// Check if loading/error states are enabled
-			let has_loading = state.as_ref().is_some_and(|s| s.loading);
-			let has_error = state.as_ref().is_some_and(|s| s.error);
-
 			// Generate loading state management
-			let loading_start = if has_loading {
-				quote! { submit_loading.set(true); }
-			} else {
-				quote! {}
+			let loading_start = quote! {
+				submit_loading.set(true);
+				submit_error.set(None);
+				submit_success.set(false);
 			};
 
 			// Clone loading/error signals if they exist
-			let state_signal_clones = {
-				let mut clones = Vec::new();
-				if has_loading {
-					clones.push(quote! { let submit_loading = self.loading().clone(); });
-				}
-				if has_error {
-					clones.push(quote! { let submit_error = self.error().clone(); });
-				}
-				quote! { #(#clones)* }
+			let state_signal_clones = quote! {
+				let submit_loading = self.loading().clone();
+				let submit_error = self.error().clone();
+				let submit_success = self.success().clone();
 			};
 
 			// Generate redirect code. Issue #4610: prefer the SPA-aware
@@ -1347,6 +1825,48 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 				quote! {}
 			};
 
+			let success_url_outer_clones = if macro_ast.success_url.is_some() {
+				quote! {
+					let __success_url_handler_clone = self.__success_url_handler.clone();
+					let __form_clone_for_success_url = self.clone();
+				}
+			} else {
+				quote! {}
+			};
+			let success_url_event_clones = if macro_ast.success_url.is_some() {
+				quote! {
+					let __success_url_handler_for_submit =
+						__success_url_handler_clone.clone();
+					let __form_clone_for_success_url =
+						__form_clone_for_success_url.clone();
+				}
+			} else {
+				quote! {}
+			};
+			let success_url_invocation = if macro_ast.success_url.is_some() {
+				quote! {
+					if let ::core::option::Option::Some(__handler) =
+						__success_url_handler_for_submit.as_ref()
+					{
+						let __url = __handler(&__form_clone_for_success_url);
+						if #pages_crate::navigate(
+							__url.clone(),
+							#pages_crate::NavigationType::Push,
+						)
+						.is_err()
+						{
+							if let ::core::option::Option::Some(window) =
+								::web_sys::window()
+							{
+								let _ = window.location().set_href(&__url);
+							}
+						}
+					}
+				}
+			} else {
+				quote! {}
+			};
+
 			// Generate on_error callback if present
 			let on_error_code = if let Some(callback) = &callbacks.on_error {
 				quote! { (#callback)(e.clone()); }
@@ -1355,29 +1875,19 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 			};
 
 			// Generate async block signal clones only for existing state signals
-			let async_signal_clones = {
-				let mut clones = Vec::new();
-				if has_loading {
-					clones.push(quote! { let async_loading = submit_loading.clone(); });
-				}
-				if has_error {
-					clones.push(quote! { let async_error = submit_error.clone(); });
-				}
-				quote! { #(#clones)* }
+			let async_signal_clones = quote! {
+				let async_loading = submit_loading.clone();
+				let async_error = submit_error.clone();
+				let async_success = submit_success.clone();
 			};
 
 			// Generate loading end with async signal
-			let async_loading_end = if has_loading {
-				quote! { async_loading.set(false); }
-			} else {
-				quote! {}
-			};
+			let async_loading_end = quote! { async_loading.set(false); };
 
 			// Generate async error handling with async signal
-			let async_error_handling = if has_error {
-				quote! { async_error.set(Some(e.to_string())); }
-			} else {
-				quote! {}
+			let async_error_handling = quote! {
+				async_error.set(Some(e.to_string()));
+				async_success.set(false);
 			};
 
 			quote! {
@@ -1391,6 +1901,7 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 				// for the async block (#4624). Both must live in the outer
 				// scope so `async move` can capture them.
 				#on_success_ref_outer_clones
+				#success_url_outer_clones
 
 				let form_element = PageElement::new("form")
 					.attr("id", #form_id_str)
@@ -1422,16 +1933,19 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 
 								// Clone loading/error signals for async block if they exist
 								#async_signal_clones
+								#success_url_event_clones
 
-								#pages_crate::spawn::spawn_task(async move {
+								#pages_crate::platform::spawn_task(async move {
 									match #server_fn_call {
 										Ok(_value) => {
+											async_success.set(true);
 											// Order matters: on_success_ref
 											// (borrows) runs before on_success
 											// (may consume by move). #4624.
 											#on_success_ref_invocation
 											#on_success_code
 											#redirect_code
+											#success_url_invocation
 										}
 										Err(e) => {
 											#on_error_code
@@ -1635,7 +2149,8 @@ fn generate_field_view(
 	let custom_attrs = generate_custom_attrs(&field.custom_attrs);
 
 	// Generate event listener for two-way binding
-	let event_listener = generate_bind_listener(signal_ident, &field.widget, pages_crate);
+	let event_listener =
+		generate_bind_listener(signal_ident, &field.widget, &field.field_type, pages_crate);
 
 	// Generate input element based on widget type
 	let input_element = match &field.widget {
@@ -1676,6 +2191,52 @@ fn generate_field_view(
 					.bool_attr("required", #required)
 					#custom_attrs
 					#event_listener
+			}
+		}
+		TypedWidget::RadioSelect if field.choices_config.is_some() => {
+			let choices_name =
+				syn::Ident::new(&format!("{}_choices", field.name), field.name.span());
+			let checked_attr = signal_ident.map(|signal_ident| {
+				quote! {
+					.bool_attr(
+						"checked",
+						#signal_ident.get().to_string() == choice_value.to_string(),
+					)
+				}
+			});
+			quote! {
+				{
+					let __choices_signal = self.#choices_name.clone();
+					#pages_crate::component::Page::reactive(move || {
+						let __choices = __choices_signal.get();
+						let mut __children = ::std::vec::Vec::new();
+						for (i, (choice_value, choice_label)) in
+							__choices.into_iter().enumerate()
+						{
+							let __choice_id =
+								::std::format!("{}_{}", #field_name_str, i);
+							__children.push(
+								PageElement::new("label")
+									.attr("for", __choice_id.clone())
+									.child(
+										PageElement::new("input")
+											.attr("type", "radio")
+											.attr("name", #field_name_str)
+											.attr("id", __choice_id)
+											.attr("value", choice_value.to_string())
+											.attr("class", #input_class)
+											.bool_attr("required", #required)
+											#checked_attr
+											#custom_attrs
+											#event_listener
+									)
+									.child(choice_label)
+									.into_page(),
+							);
+						}
+						#pages_crate::component::Page::Fragment(__children)
+					})
+				}
 			}
 		}
 		TypedWidget::RadioSelect => {
@@ -1888,39 +2449,40 @@ fn generate_custom_attrs(attrs: &[TypedCustomAttr]) -> TokenStream {
 /// - Select, checkbox, radio: "change" event
 ///
 /// The generated code handles both WASM and non-WASM environments using conditional
-/// compilation. In WASM, it extracts the value from the DOM element. In non-WASM,
-/// the handler is a no-op for type compatibility.
+/// compilation. In WASM, it extracts the value from the DOM element and converts it
+/// to the signal's inner Rust type. In non-WASM, the handler is a no-op for type
+/// compatibility.
 fn generate_bind_listener(
 	signal_ident: Option<&syn::Ident>,
 	widget: &TypedWidget,
+	field_type: &TypedFieldType,
 	pages_crate: &TokenStream,
 ) -> TokenStream {
 	let Some(signal_ident) = signal_ident else {
 		return TokenStream::new();
 	};
 
+	if matches!(field_type, TypedFieldType::MultipleChoiceField { .. }) {
+		return generate_multi_select_listener(signal_ident, field_type, pages_crate);
+	}
+
 	// Determine event type and element type based on widget
-	let (event_name, element_type, value_getter) = match widget {
-		TypedWidget::Textarea => ("input", "HtmlTextAreaElement", quote! { textarea.value() }),
-		TypedWidget::Select | TypedWidget::SelectMultiple => {
-			("change", "HtmlSelectElement", quote! { select.value() })
-		}
-		TypedWidget::CheckboxInput => (
-			"change",
-			"HtmlInputElement",
-			quote! { input.checked().to_string() },
-		),
-		TypedWidget::RadioSelect => ("change", "HtmlInputElement", quote! { input.value() }),
-		_ => ("input", "HtmlInputElement", quote! { input.value() }),
+	let (event_name, element_type) = match widget {
+		TypedWidget::Textarea => ("input", "HtmlTextAreaElement"),
+		TypedWidget::Select | TypedWidget::SelectMultiple => ("change", "HtmlSelectElement"),
+		TypedWidget::CheckboxInput => ("change", "HtmlInputElement"),
+		TypedWidget::RadioSelect => ("change", "HtmlInputElement"),
+		_ => ("input", "HtmlInputElement"),
 	};
 
-	// Create element type identifiers for WASM code
 	let element_type_ident = quote::format_ident!("{}", element_type);
 	let element_var = match widget {
 		TypedWidget::Textarea => quote::format_ident!("textarea"),
 		TypedWidget::Select | TypedWidget::SelectMultiple => quote::format_ident!("select"),
 		_ => quote::format_ident!("input"),
 	};
+
+	let conversion = generate_value_conversion(field_type, widget, &element_var);
 
 	quote! {
 		.listener(#event_name, {
@@ -1931,7 +2493,181 @@ fn generate_bind_listener(
 					use wasm_bindgen::JsCast;
 					if let Some(target) = event.target() {
 						if let Ok(#element_var) = target.dyn_into::<web_sys::#element_type_ident>() {
-							signal.set(#value_getter);
+							#conversion
+						}
+					}
+				}
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+				{
+					let _ = event;
+					let _ = &#pages_crate::component::DummyEvent;
+				}
+			}
+		})
+	}
+}
+
+/// Generates the value conversion code that transforms a DOM element value into
+/// the appropriate Rust type for the signal. Parse failures are silently ignored,
+/// preserving the previous signal value.
+fn generate_value_conversion(
+	field_type: &TypedFieldType,
+	widget: &TypedWidget,
+	element_var: &syn::Ident,
+) -> TokenStream {
+	match field_type {
+		// String fields: direct assignment
+		TypedFieldType::CharField
+		| TypedFieldType::TextField
+		| TypedFieldType::EmailField
+		| TypedFieldType::PasswordField
+		| TypedFieldType::UrlField
+		| TypedFieldType::SlugField => {
+			quote! { signal.set(#element_var.value()); }
+		}
+
+		// BooleanField with CheckboxInput: use .checked() directly
+		TypedFieldType::BooleanField if matches!(widget, TypedWidget::CheckboxInput) => {
+			quote! { signal.set(#element_var.checked()); }
+		}
+
+		// BooleanField with other widgets (e.g. select "true"/"false")
+		TypedFieldType::BooleanField => {
+			quote! {
+				if let Ok(v) = #element_var.value().parse::<bool>() {
+					signal.set(v);
+				}
+			}
+		}
+
+		// Numeric types
+		TypedFieldType::IntegerField => {
+			quote! {
+				if let Ok(v) = #element_var.value().parse::<i64>() {
+					signal.set(v);
+				}
+			}
+		}
+		TypedFieldType::FloatField | TypedFieldType::DecimalField => {
+			quote! {
+				if let Ok(v) = #element_var.value().parse::<f64>() {
+					signal.set(v);
+				}
+			}
+		}
+
+		// Option-wrapped types: empty string → None, otherwise parse to Some
+		TypedFieldType::DateField => {
+			quote! {
+				let raw = #element_var.value();
+				if raw.is_empty() {
+					signal.set(::core::option::Option::None);
+				} else if let Ok(v) = raw.parse::<chrono::NaiveDate>() {
+					signal.set(::core::option::Option::Some(v));
+				}
+			}
+		}
+		TypedFieldType::TimeField => {
+			quote! {
+				let raw = #element_var.value();
+				if raw.is_empty() {
+					signal.set(::core::option::Option::None);
+				} else if let Ok(v) = raw.parse::<chrono::NaiveTime>() {
+					signal.set(::core::option::Option::Some(v));
+				}
+			}
+		}
+		TypedFieldType::DateTimeField => {
+			quote! {
+				let raw = #element_var.value();
+				if raw.is_empty() {
+					signal.set(::core::option::Option::None);
+				} else if let Ok(v) = raw.parse::<chrono::NaiveDateTime>() {
+					signal.set(::core::option::Option::Some(v));
+				}
+			}
+		}
+		TypedFieldType::UuidField => {
+			quote! {
+				let raw = #element_var.value();
+				if raw.is_empty() {
+					signal.set(::core::option::Option::None);
+				} else if let Ok(v) = raw.parse::<uuid::Uuid>() {
+					signal.set(::core::option::Option::Some(v));
+				}
+			}
+		}
+		TypedFieldType::IpAddressField => {
+			quote! {
+				let raw = #element_var.value();
+				if raw.is_empty() {
+					signal.set(::core::option::Option::None);
+				} else if let Ok(v) = raw.parse::<::std::net::IpAddr>() {
+					signal.set(::core::option::Option::Some(v));
+				}
+			}
+		}
+
+		// Generic-capable fields using FromStr
+		TypedFieldType::HiddenField { inner } | TypedFieldType::ChoiceField { inner } => {
+			quote! {
+				if let Ok(v) = #element_var.value().parse::<#inner>() {
+					signal.set(v);
+				}
+			}
+		}
+
+		// JsonField: use serde_json (FromStr not required)
+		TypedFieldType::JsonField { inner } => {
+			quote! {
+				if let Ok(v) = ::serde_json::from_str::<#inner>(&#element_var.value()) {
+					signal.set(v);
+				}
+			}
+		}
+
+		// MultipleChoiceField handled separately in generate_multi_select_listener
+		TypedFieldType::MultipleChoiceField { .. } => {
+			unreachable!("MultipleChoiceField is handled by generate_multi_select_listener")
+		}
+
+		// FileField / ImageField: file inputs use different event patterns (out of scope)
+		TypedFieldType::FileField | TypedFieldType::ImageField => TokenStream::new(),
+	}
+}
+
+/// Generates the complete listener block for `MultipleChoiceField<T>`, which
+/// iterates over `selectedOptions` and parses each value via `FromStr`.
+fn generate_multi_select_listener(
+	signal_ident: &syn::Ident,
+	field_type: &TypedFieldType,
+	pages_crate: &TokenStream,
+) -> TokenStream {
+	let TypedFieldType::MultipleChoiceField { inner } = field_type else {
+		unreachable!("generate_multi_select_listener called with non-MultipleChoiceField");
+	};
+
+	quote! {
+		.listener("change", {
+			let signal = #signal_ident.clone();
+			move |event| {
+				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+				{
+					use wasm_bindgen::JsCast;
+					if let Some(target) = event.target() {
+						if let Ok(select) = target.dyn_into::<web_sys::HtmlSelectElement>() {
+							let options = select.selected_options();
+							let mut values = ::std::vec::Vec::new();
+							for i in 0..options.length() {
+								if let Some(opt) = options.item(i) {
+									if let Ok(opt_el) = opt.dyn_into::<web_sys::HtmlOptionElement>() {
+										if let Ok(v) = opt_el.value().parse::<#inner>() {
+											values.push(v);
+										}
+									}
+								}
+							}
+							signal.set(values);
 						}
 					}
 				}
@@ -1958,16 +2694,16 @@ fn generate_validate_method(macro_ast: &TypedFormMacro, _pages_crate: &TokenStre
 
 	if validators.is_empty() {
 		quote! {
-			pub fn validate(&self) -> Result<(), Vec<String>> {
+			pub fn validate(&self) -> Result<(), Vec<(&'static str, String)>> {
 				Ok(())
 			}
 		}
 	} else {
 		quote! {
-			pub fn validate(&self) -> Result<(), Vec<String>> {
-				let mut errors = Vec::new();
-				#(#validators)*
-				if errors.is_empty() {
+				pub fn validate(&self) -> Result<(), Vec<(&'static str, String)>> {
+					let mut errors = Vec::new();
+					#(#validators)*
+					if errors.is_empty() {
 					Ok(())
 				} else {
 					Err(errors)
@@ -1991,12 +2727,12 @@ fn generate_server_validator_rules(
 		.map(|rule| {
 			let condition = &rule.condition;
 			let message = &rule.message;
-			let field_name_str = field_name.to_string();
+			let field_variant = field_variant_ident(field_name);
 			quote! {
 				{
 					let v = self.#field_name.get();
 					if !(#condition) {
-						errors.push(format!("{}: {}", #field_name_str, #message));
+						errors.push((stringify!(#field_variant), (#message).to_string()));
 					}
 				}
 			}
@@ -2028,15 +2764,6 @@ fn generate_submit_method(
 			let all_fields = collect_all_fields(&macro_ast.fields);
 			let field_names: Vec<&syn::Ident> = all_fields.iter().map(|f| &f.name).collect();
 
-			// Check if CSRF token should be auto-injected as a server_fn argument
-			let has_explicit_csrf_field = all_fields.iter().any(|f| f.name == "csrf_token");
-			let needs_csrf = !matches!(macro_ast.method, FormMethod::Get);
-
-			// reinhardt-web#3971: Generic strip_arguments take precedence over the
-			// implicit CSRF auto-injection. When the user supplies any
-			// `strip_arguments: { ... }` entries we route exactly those values to
-			// the server_fn — no hidden additional arguments — so the call signature
-			// matches what the user wrote in their server_fn definition.
 			let strip_arg_exprs: Vec<&syn::Expr> = macro_ast
 				.strip_arguments
 				.iter()
@@ -2044,28 +2771,11 @@ fn generate_submit_method(
 				.collect();
 
 			let submit_server_fn_call = if !strip_arg_exprs.is_empty() {
-				// Explicit strip_arguments path: append exactly the user-supplied
+				// Explicit ambient_arguments path: append exactly the user-supplied
 				// expressions positionally after the form-field arguments.
 				quote! {
 					{
 						#server_fn_ident(#(self.#field_names.get(),)* #(#strip_arg_exprs),*).await
-					}
-				}
-			} else if needs_csrf && !has_explicit_csrf_field {
-				// Backward-compatible CSRF auto-injection path. Triggers a
-				// deprecation warning at compile time so users migrate to
-				// explicit `strip_arguments: { csrf_token: ... }` (reinhardt-web#3971).
-				quote! {
-					{
-						#[deprecated(
-							since = "0.1.0-rc.22",
-							note = "implicit CSRF token injection is deprecated; declare `csrf_token: String` on the server_fn and pass it via `strip_arguments: { csrf_token: ::reinhardt::reinhardt_pages::csrf::get_csrf_token().unwrap_or_default() }`. See reinhardt-web#3971."
-						)]
-						const __FORM_CSRF_AUTO_INJECT_DEPRECATED: () = ();
-						let _ = __FORM_CSRF_AUTO_INJECT_DEPRECATED;
-						let __csrf_token = #pages_crate::csrf::get_csrf_token()
-							.unwrap_or_default();
-						#server_fn_ident(#(self.#field_names.get(),)* __csrf_token).await
 					}
 				}
 			} else {
@@ -2241,6 +2951,7 @@ fn generate_submit_method(
 fn generate_load_initial_values(
 	macro_ast: &TypedFormMacro,
 	pages_crate: &TokenStream,
+	runtime_contract_supported: bool,
 ) -> TokenStream {
 	// Return empty if no initial_loader is specified
 	let Some(initial_loader) = &macro_ast.initial_loader else {
@@ -2261,6 +2972,14 @@ fn generate_load_initial_values(
 			})
 		})
 		.collect();
+	let runtime_initial_values_refresh = if runtime_contract_supported {
+		quote! {
+			*self.__initial_values.borrow_mut() =
+				#pages_crate::FormRuntimeSource::runtime_current_values(self);
+		}
+	} else {
+		quote! {}
+	};
 
 	// If no fields have initial_from, just call the loader but don't set anything
 	if field_setters.is_empty() {
@@ -2289,11 +3008,12 @@ fn generate_load_initial_values(
 			/// Calls the configured initial_loader and populates fields
 			/// that have `initial_from` specified with values from the result.
 			#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-			pub async fn load_initial_values(&self) -> Result<(), #pages_crate::ServerFnError> {
-				let data = #initial_loader().await?;
-				#(#field_setters)*
-				Ok(())
-			}
+				pub async fn load_initial_values(&self) -> Result<(), #pages_crate::ServerFnError> {
+					let data = #initial_loader().await?;
+					#(#field_setters)*
+					#runtime_initial_values_refresh
+					Ok(())
+				}
 
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			pub async fn load_initial_values(&self) -> Result<(), #pages_crate::ServerFnError> {
@@ -2359,10 +3079,19 @@ fn generate_load_choices(macro_ast: &TypedFormMacro, pages_crate: &TokenStream) 
 				let from_ident = syn::Ident::new(&config.choices_from, field.name.span());
 				let value_ident = syn::Ident::new(&config.choice_value, field.name.span());
 				let label_ident = syn::Ident::new(&config.choice_label, field.name.span());
+				// When the field carries a generic type parameter (e.g.
+				// ChoiceField<i64>), clone the value rather than
+				// stringifying so the tuple type matches the choices
+				// Signal declaration `Signal<Vec<(T, String)>>`.
+				let value_expr = if choice_inner_type_is_string(&field.field_type) {
+					quote!(item.#value_ident.to_string())
+				} else {
+					quote!(item.#value_ident.clone())
+				};
 				quote! {
 					self.#choices_signal_name.set(
 						data.#from_ident.iter().map(|item| {
-							(item.#value_ident.to_string(), item.#label_ident.clone())
+							(#value_expr, item.#label_ident.clone())
 						}).collect()
 					);
 				}
@@ -2430,32 +3159,21 @@ fn generate_on_submit_callback(callbacks: &TypedFormCallbacks) -> TokenStream {
 /// Generates the on_loading callback invocation and state update.
 fn generate_on_loading_callback(
 	callbacks: &TypedFormCallbacks,
-	state: &Option<TypedFormState>,
+	_state: &Option<TypedFormState>,
 	is_loading: bool,
 ) -> TokenStream {
 	let mut code = Vec::new();
 
-	// Update loading state if defined
-	if let Some(state) = state
-		&& state.loading
-	{
-		code.push(quote! {
-			self.__loading.set(#is_loading);
-		});
-	}
+	code.push(quote! {
+		self.__loading.set(#is_loading);
+	});
 
 	// Clear success/error states when starting loading
-	if is_loading && let Some(state) = state {
-		if state.success {
-			code.push(quote! {
-				self.__success.set(false);
-			});
-		}
-		if state.error {
-			code.push(quote! {
-				self.__error.set(None);
-			});
-		}
+	if is_loading {
+		code.push(quote! {
+			self.__success.set(false);
+			self.__error.set(None);
+		});
 	}
 
 	// Call on_loading callback if defined
@@ -2535,18 +3253,16 @@ pub(crate) struct SuccessUrlArtifacts {
 /// `qid` are now captured normally. Refs #4605 / #4612.
 fn generate_on_success_callback(
 	callbacks: &TypedFormCallbacks,
-	state: &Option<TypedFormState>,
+	_state: &Option<TypedFormState>,
 	success_url: &Option<syn::Expr>,
 	on_success_lifted: bool,
 ) -> TokenStream {
 	let mut code = Vec::new();
 
-	let has_success_state = state.as_ref().map(|s| s.success).unwrap_or(false);
-	if has_success_state || success_url.is_some() {
-		code.push(quote! {
-			self.__success.set(true);
-		});
-	}
+	let _ = success_url;
+	code.push(quote! {
+		self.__success.set(true);
+	});
 
 	if !on_success_lifted && let Some(on_success) = &callbacks.on_success {
 		code.push(quote! {
@@ -2917,18 +3633,14 @@ fn build_on_success_artifacts(on_success: &Option<syn::ExprClosure>) -> OnSucces
 /// Generates the on_error callback invocation and state update.
 fn generate_on_error_callback(
 	callbacks: &TypedFormCallbacks,
-	state: &Option<TypedFormState>,
+	_state: &Option<TypedFormState>,
 ) -> TokenStream {
 	let mut code = Vec::new();
 
-	// Update error state if defined
-	if let Some(state) = state
-		&& state.error
-	{
-		code.push(quote! {
-			self.__error.set(Some(e.to_string()));
-		});
-	}
+	code.push(quote! {
+		self.__error.set(Some(e.to_string()));
+		self.__success.set(false);
+	});
 
 	// Call on_error callback if defined
 	if let Some(on_error) = &callbacks.on_error {
@@ -2973,36 +3685,90 @@ fn generate_redirect_code(redirect: &Option<String>, pages_crate: &TokenStream) 
 	}
 }
 
+/// Converts field type to its value type.
+fn field_type_to_value_type(field_type: &TypedFieldType) -> TokenStream {
+	match field_type {
+		// Inherently String-shaped (always String, no generic accepted)
+		TypedFieldType::CharField
+		| TypedFieldType::TextField
+		| TypedFieldType::EmailField
+		| TypedFieldType::PasswordField
+		| TypedFieldType::UrlField
+		| TypedFieldType::SlugField => quote!(::std::string::String),
+
+		// Primitive typed
+		TypedFieldType::IntegerField => quote!(i64),
+		TypedFieldType::FloatField | TypedFieldType::DecimalField => quote!(f64),
+		TypedFieldType::BooleanField => quote!(bool),
+
+		// Date / Time
+		TypedFieldType::DateField => quote!(::core::option::Option<chrono::NaiveDate>),
+		TypedFieldType::TimeField => quote!(::core::option::Option<chrono::NaiveTime>),
+		TypedFieldType::DateTimeField => {
+			quote!(::core::option::Option<chrono::NaiveDateTime>)
+		}
+
+		// File-like
+		TypedFieldType::FileField | TypedFieldType::ImageField => {
+			quote!(::core::option::Option<web_sys::File>)
+		}
+
+		// Misc
+		TypedFieldType::UuidField => quote!(::core::option::Option<uuid::Uuid>),
+
+		// Generic-capable: substitute the inner type recorded by the validator
+		TypedFieldType::HiddenField { inner } => quote!(#inner),
+		TypedFieldType::ChoiceField { inner } => quote!(#inner),
+		TypedFieldType::MultipleChoiceField { inner } => quote!(::std::vec::Vec<#inner>),
+		TypedFieldType::JsonField { inner } => quote!(#inner),
+
+		// Specialized
+		TypedFieldType::IpAddressField => quote!(::core::option::Option<::std::net::IpAddr>),
+	}
+}
+
 /// Converts field type to Signal type.
 fn field_type_to_signal_type(
 	field_type: &TypedFieldType,
 	pages_crate: &TokenStream,
 ) -> TokenStream {
 	let inner_type = match field_type {
+		// Inherently String-shaped (always String, no generic accepted)
 		TypedFieldType::CharField
 		| TypedFieldType::TextField
 		| TypedFieldType::EmailField
 		| TypedFieldType::PasswordField
 		| TypedFieldType::UrlField
-		| TypedFieldType::SlugField
-		| TypedFieldType::IpAddressField
-		| TypedFieldType::JsonField => quote!(String),
+		| TypedFieldType::SlugField => quote!(::std::string::String),
 
+		// Primitive typed
 		TypedFieldType::IntegerField => quote!(i64),
 		TypedFieldType::FloatField | TypedFieldType::DecimalField => quote!(f64),
 		TypedFieldType::BooleanField => quote!(bool),
 
-		TypedFieldType::DateField => quote!(Option<chrono::NaiveDate>),
-		TypedFieldType::TimeField => quote!(Option<chrono::NaiveTime>),
-		TypedFieldType::DateTimeField => quote!(Option<chrono::NaiveDateTime>),
+		// Date / Time
+		TypedFieldType::DateField => quote!(::core::option::Option<chrono::NaiveDate>),
+		TypedFieldType::TimeField => quote!(::core::option::Option<chrono::NaiveTime>),
+		TypedFieldType::DateTimeField => quote!(::core::option::Option<chrono::NaiveDateTime>),
 
-		TypedFieldType::ChoiceField => quote!(String),
-		TypedFieldType::MultipleChoiceField => quote!(Vec<String>),
+		// File-like
+		TypedFieldType::FileField | TypedFieldType::ImageField => {
+			quote!(::core::option::Option<web_sys::File>)
+		}
 
-		TypedFieldType::FileField | TypedFieldType::ImageField => quote!(Option<web_sys::File>),
+		// Misc
+		TypedFieldType::UuidField => quote!(::core::option::Option<uuid::Uuid>),
 
-		TypedFieldType::UuidField => quote!(Option<uuid::Uuid>),
-		TypedFieldType::HiddenField => quote!(String),
+		// Generic-capable: substitute the inner type recorded by the validator
+		TypedFieldType::HiddenField { inner } => quote!(#inner),
+		TypedFieldType::ChoiceField { inner } => quote!(#inner),
+		TypedFieldType::MultipleChoiceField { inner } => quote!(::std::vec::Vec<#inner>),
+		TypedFieldType::JsonField { inner } => quote!(#inner),
+
+		// Specialized
+		TypedFieldType::IpAddressField => {
+			quote!(::core::option::Option<::std::net::IpAddr>)
+		}
 	};
 
 	quote!(#pages_crate::reactive::Signal<#inner_type>)
@@ -3011,29 +3777,169 @@ fn field_type_to_signal_type(
 /// Returns the default value for a field type.
 fn field_type_default_value(field_type: &TypedFieldType) -> TokenStream {
 	match field_type {
+		// Inherently String-shaped — empty string default
 		TypedFieldType::CharField
 		| TypedFieldType::TextField
 		| TypedFieldType::EmailField
 		| TypedFieldType::PasswordField
 		| TypedFieldType::UrlField
-		| TypedFieldType::SlugField
-		| TypedFieldType::IpAddressField
-		| TypedFieldType::JsonField
-		| TypedFieldType::ChoiceField
-		| TypedFieldType::HiddenField => quote!(String::new()),
+		| TypedFieldType::SlugField => quote!(::std::string::String::new()),
 
+		// Primitive
 		TypedFieldType::IntegerField => quote!(0i64),
 		TypedFieldType::FloatField | TypedFieldType::DecimalField => quote!(0.0f64),
 		TypedFieldType::BooleanField => quote!(false),
 
+		// Optional-shaped — None default
 		TypedFieldType::DateField
 		| TypedFieldType::TimeField
 		| TypedFieldType::DateTimeField
 		| TypedFieldType::FileField
 		| TypedFieldType::ImageField
-		| TypedFieldType::UuidField => quote!(None),
+		| TypedFieldType::UuidField => quote!(::core::option::Option::None),
 
-		TypedFieldType::MultipleChoiceField => quote!(Vec::new()),
+		// Generic-capable: rely on T: Default (enforced by the
+		// struct-level where clause emitted in Task 9)
+		TypedFieldType::HiddenField { inner }
+		| TypedFieldType::ChoiceField { inner }
+		| TypedFieldType::JsonField { inner } => {
+			quote!(<#inner as ::core::default::Default>::default())
+		}
+		TypedFieldType::MultipleChoiceField { .. } => quote!(::std::vec::Vec::new()),
+
+		// Specialized
+		TypedFieldType::IpAddressField => quote!(::core::option::Option::None),
+	}
+}
+
+/// Returns the inner type used as the *value* in a choices store for the
+/// given field type.
+///
+/// For `ChoiceField<T>` the choices store is `Signal<Vec<(T, String)>>`
+/// (value, label). For `MultipleChoiceField<T>` the per-item value type is
+/// also `T`. This helper MUST only be called on those two field types —
+/// it panics otherwise to surface mis-routed callers.
+fn choice_value_type(field_type: &TypedFieldType) -> TokenStream {
+	match field_type {
+		TypedFieldType::ChoiceField { inner } | TypedFieldType::MultipleChoiceField { inner } => {
+			quote!(#inner)
+		}
+		_ => panic!(
+			"choice_value_type called on a non-choice TypedFieldType variant; \
+			 this is a codegen bug",
+		),
+	}
+}
+
+/// Returns `true` when the inner type of a `ChoiceField` or
+/// `MultipleChoiceField` is `String` (including the implicit default).
+/// When `false`, the field carries a user-supplied non-String generic
+/// and the codegen must not stringify the value in choice-loading code.
+fn choice_inner_type_is_string(field_type: &TypedFieldType) -> bool {
+	match field_type {
+		TypedFieldType::ChoiceField { inner } | TypedFieldType::MultipleChoiceField { inner } => {
+			type_is_string(inner)
+		}
+		_ => false,
+	}
+}
+
+/// Returns `true` when a `syn::Type` is the path `String`
+/// (including fully-qualified forms like `::std::string::String`).
+fn type_is_string(ty: &syn::Type) -> bool {
+	if let syn::Type::Path(type_path) = ty
+		&& type_path.qself.is_none()
+	{
+		let segs = &type_path.path.segments;
+		if segs.len() == 1 {
+			return segs[0].ident == "String";
+		}
+		// std::string::String (or ::std::string::String)
+		if segs.len() == 3
+			&& segs[0].ident == "std"
+			&& segs[1].ident == "string"
+			&& segs[2].ident == "String"
+		{
+			return true;
+		}
+	}
+	false
+}
+
+/// Builds the struct-level `where` clause that asserts trait-bound
+/// satisfaction for every concrete type substituted into a generic-capable
+/// field. For monomorphic forms (where the inner type is fully resolved at
+/// macro-expansion time) this clause acts as a compile-time assertion: if
+/// the user picked a type that lacks the required impls, the error fires
+/// once at the struct definition site with a precise diagnostic.
+///
+/// Returns an empty token stream when the form has no generic-capable
+/// fields (so no where clause is emitted at all).
+///
+/// Each unique inner type is asserted once. Duplicate inner types across
+/// multiple fields contribute only one predicate (deduplicated by the
+/// stringified token sequence of the inner type).
+fn build_typed_field_where_clause(all_fields: &[&TypedFormFieldDef]) -> TokenStream {
+	let mut bounds: Vec<TokenStream> = Vec::new();
+	let mut seen: ::std::collections::HashSet<String> = ::std::collections::HashSet::new();
+	let mut needs_from_str: ::std::collections::HashSet<String> =
+		::std::collections::HashSet::new();
+
+	// First pass: collect which types need FromStr (used by non-JsonField generics)
+	for field in all_fields {
+		let inner = match &field.field_type {
+			TypedFieldType::HiddenField { inner }
+			| TypedFieldType::ChoiceField { inner }
+			| TypedFieldType::MultipleChoiceField { inner } => Some(inner),
+			_ => None,
+		};
+		if let Some(ty) = inner {
+			needs_from_str.insert(quote!(#ty).to_string());
+		}
+	}
+
+	// Second pass: emit bounds for all generic-capable fields
+	for field in all_fields {
+		let inner = match &field.field_type {
+			TypedFieldType::HiddenField { inner }
+			| TypedFieldType::ChoiceField { inner }
+			| TypedFieldType::JsonField { inner }
+			| TypedFieldType::MultipleChoiceField { inner } => Some(inner.clone()),
+			_ => None,
+		};
+		if let Some(ty) = inner {
+			let key = quote!(#ty).to_string();
+			if seen.insert(key.clone()) {
+				if needs_from_str.contains(&key) {
+					bounds.push(quote! {
+							#ty: ::serde::Serialize
+								+ ::serde::de::DeserializeOwned
+								+ ::core::clone::Clone
+								+ ::core::cmp::PartialEq
+								+ ::core::fmt::Display
+								+ ::core::str::FromStr
+								+ ::core::default::Default
+							+ 'static
+					});
+				} else {
+					bounds.push(quote! {
+							#ty: ::serde::Serialize
+								+ ::serde::de::DeserializeOwned
+								+ ::core::clone::Clone
+								+ ::core::cmp::PartialEq
+								+ ::core::fmt::Display
+								+ ::core::default::Default
+							+ 'static
+					});
+				}
+			}
+		}
+	}
+
+	if bounds.is_empty() {
+		quote!()
+	} else {
+		quote!(where #(#bounds),*)
 	}
 }
 
@@ -3051,16 +3957,16 @@ fn field_type_to_string(field_type: &TypedFieldType) -> &'static str {
 		TypedFieldType::DateField => "DateField",
 		TypedFieldType::TimeField => "TimeField",
 		TypedFieldType::DateTimeField => "DateTimeField",
-		TypedFieldType::ChoiceField => "ChoiceField",
-		TypedFieldType::MultipleChoiceField => "MultipleChoiceField",
+		TypedFieldType::ChoiceField { .. } => "ChoiceField",
+		TypedFieldType::MultipleChoiceField { .. } => "MultipleChoiceField",
 		TypedFieldType::FileField => "FileField",
 		TypedFieldType::ImageField => "ImageField",
 		TypedFieldType::UrlField => "UrlField",
 		TypedFieldType::SlugField => "SlugField",
 		TypedFieldType::UuidField => "UuidField",
 		TypedFieldType::IpAddressField => "IpAddressField",
-		TypedFieldType::JsonField => "JsonField",
-		TypedFieldType::HiddenField => "HiddenField",
+		TypedFieldType::JsonField { .. } => "JsonField",
+		TypedFieldType::HiddenField { .. } => "HiddenField",
 	}
 }
 
@@ -3125,8 +4031,8 @@ mod tests {
 		use reinhardt_manouche::core::FormMacro;
 
 		let untyped_ast: FormMacro = syn::parse2(input).unwrap();
-		let typed_ast = crate::form::validator::validate(&untyped_ast).unwrap();
-		generate(&typed_ast)
+		let typed_ast = crate::form::validator::validate(&untyped_ast, None).unwrap();
+		generate(&typed_ast, None)
 	}
 
 	#[rstest::rstest]
@@ -3183,132 +4089,6 @@ mod tests {
 	}
 
 	#[rstest::rstest]
-	fn test_generate_on_success_ref_lift() {
-		// Arrange — issue #4624. When `on_success_ref:` is supplied, the
-		// macro must emit the lifted-handler scaffold: a private struct
-		// field, its setter, the `__coerce_form` 3-param identity fn that
-		// pins the user closure's `(&Self, &__T)` shape, and the
-		// outer-scope setup that installs the Arc.
-		let input = quote! {
-			name: OnSuccessRefForm,
-			server_fn: update_profile,
-
-			on_success_ref: |_form, _value| {
-				let _ = _value;
-			},
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		// Act
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Assert — all four artifact splice points are present.
-		assert!(
-			output_str.contains("__on_success_ref_handler"),
-			"missing field declaration"
-		);
-		assert!(
-			output_str.contains("__set_on_success_ref_handler"),
-			"missing setter method"
-		);
-		assert!(
-			output_str.contains("__coerce_form"),
-			"missing identity-fn type-coercion trick (E0282 will return)"
-		);
-		assert!(
-			output_str.contains("downcast_ref"),
-			"missing infallible type-erasure downcast"
-		);
-	}
-
-	#[rstest::rstest]
-	fn test_generate_on_success_ref_type_safety_guard() {
-		// Arrange — issue #4624 type-safety regression caught by review.
-		// The runtime `downcast_ref().expect()` is only sound if the
-		// macro *also* emits a compile-time check that the user closure's
-		// `__T` matches the server_fn's Ok type. The guard takes the form
-		// of a dead-code branch that calls the server_fn (with
-		// `unreachable!()` for every arg) and feeds the extracted Ok
-		// value into the user closure.
-		let input = quote! {
-			name: TypeSafeRefForm,
-			server_fn: update_profile,
-
-			on_success_ref: |_form, _value| {
-				let _ = _value;
-			},
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		// Act
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Assert — the dead-code typecheck infrastructure must appear:
-		// the Future-Ok extractor, the never-typed arg placeholders, and
-		// the user-closure invocation that pins `__T` to the server_fn
-		// Ok arm.
-		assert!(
-			output_str.contains("__on_success_ref_extract_ok"),
-			"missing dead-code Future<Output=Result<T,E>> Ok extractor"
-		);
-		assert!(
-			output_str.contains("unreachable"),
-			"missing never-typed arg placeholders for server_fn probe call"
-		);
-		assert!(
-			output_str.contains("__probe_ok"),
-			"missing probe-value binding that forces __T = server_fn Ok type"
-		);
-	}
-
-	#[rstest::rstest]
-	fn test_generate_on_success_ref_no_type_guard_for_url_action() {
-		// Arrange — URL action forms have no server_fn to extract a
-		// return type from, and `on_success_ref` would never actually
-		// fire there. The type-safety guard must be omitted in that case
-		// (otherwise we'd emit a dead-code call to a nonexistent
-		// `server_fn_ident`).
-		//
-		// The lifted handler scaffold is still emitted (parser/codegen
-		// don't reject the combination — it's a no-op at runtime), but
-		// without the compile-time probe.
-		let input = quote! {
-			name: UrlActionRefForm,
-			action: "/api/submit",
-
-			on_success_ref: |_form, _value| {
-				let _ = _value;
-			},
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		// Act
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Assert — scaffold present, but typecheck infrastructure absent.
-		assert!(
-			output_str.contains("__on_success_ref_handler"),
-			"scaffold should still be emitted for URL forms"
-		);
-		assert!(
-			!output_str.contains("__on_success_ref_extract_ok"),
-			"URL form must not emit the Future Ok extractor (no server_fn to probe)"
-		);
-	}
-
-	#[rstest::rstest]
 	fn test_generate_omits_on_success_ref_scaffold_when_unused() {
 		// Arrange — a form without `on_success_ref:` must NOT pay the
 		// scaffold cost: no field, no setter, no Arc allocation in `new()`.
@@ -3355,59 +4135,7 @@ mod tests {
 	}
 
 	#[rstest::rstest]
-	fn test_generate_state_all_fields() {
-		let input = quote! {
-			name: StateForm,
-			server_fn: submit_form,
-
-			state: { loading, error, success },
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Check state field declarations
-		assert!(output_str.contains("__loading"));
-		assert!(output_str.contains("__error"));
-		assert!(output_str.contains("__success"));
-
-		// Check accessor methods are generated
-		assert!(output_str.contains("fn loading"));
-		assert!(output_str.contains("fn error"));
-		assert!(output_str.contains("fn success"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_state_single_field() {
-		let input = quote! {
-			name: LoadingForm,
-			action: "/test",
-
-			state: { loading },
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Only loading should be present
-		assert!(output_str.contains("__loading"));
-		assert!(output_str.contains("fn loading"));
-
-		// error and success should not be present
-		assert!(!output_str.contains("__error"));
-		assert!(!output_str.contains("__success"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_form_without_state() {
+	fn test_generate_form_without_state_clause_keeps_standard_signals() {
 		let input = quote! {
 			name: NoStateForm,
 			action: "/test",
@@ -3420,158 +4148,12 @@ mod tests {
 		let output = parse_validate_generate(input);
 		let output_str = output.to_string();
 
-		// No state fields should be present
-		assert!(!output_str.contains("__loading"));
-		assert!(!output_str.contains("__error"));
-		assert!(!output_str.contains("__success"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_callback_on_success() {
-		let input = quote! {
-			name: CallbackForm,
-			server_fn: submit_form,
-
-			on_success: |result| {
-				log::info!("Success!");
-			},
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Check submit method with callback invocation
-		assert!(output_str.contains("fn submit"));
-		// The callback closure should be in the generated code
-		assert!(output_str.contains("callback"));
-		assert!(output_str.contains("value"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_callback_on_error() {
-		let input = quote! {
-			name: ErrorCallbackForm,
-			server_fn: submit_form,
-
-			on_error: |e| {
-				log::error!("Error: {:?}", e);
-			},
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Check error handling with callback
-		assert!(output_str.contains("fn submit"));
-		assert!(output_str.contains("Err (e)") || output_str.contains("Err(e)"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_callback_on_loading() {
-		let input = quote! {
-			name: LoadingCallbackForm,
-			server_fn: submit_form,
-
-			on_loading: |is_loading| {
-				log::info!("Loading: {}", is_loading);
-			},
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Check loading callback invocation
-		assert!(output_str.contains("fn submit"));
-		// Should have both true and false calls for on_loading
-		assert!(output_str.contains("true") && output_str.contains("false"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_callback_on_submit() {
-		let input = quote! {
-			name: SubmitCallbackForm,
-			server_fn: submit_form,
-
-			on_submit: |form| {
-				log::info!("Submitting form");
-			},
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Check on_submit callback is called before request
-		assert!(output_str.contains("fn submit"));
-		assert!(output_str.contains("callback (self)") || output_str.contains("callback(self)"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_all_callbacks() {
-		let input = quote! {
-			name: AllCallbacksForm,
-			server_fn: submit_form,
-
-			on_submit: |form| { /* submit */ },
-			on_success: |result| { /* success */ },
-			on_error: |e| { /* error */ },
-			on_loading: |is_loading| { /* loading */ },
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// All callbacks should be present
-		assert!(output_str.contains("fn submit"));
-		// Check the submit method contains callback invocations
-		assert!(output_str.contains("callback"));
-	}
-
-	#[rstest::rstest]
-	fn test_generate_callbacks_with_state() {
-		let input = quote! {
-			name: CallbackStateForm,
-			server_fn: submit_form,
-
-			state: { loading, error, success },
-
-			on_success: |result| { /* success */ },
-			on_error: |e| { /* error */ },
-
-			fields: {
-				data: CharField {},
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Check state updates are generated
-		assert!(output_str.contains("__loading . set"));
-		assert!(output_str.contains("__success . set"));
-		assert!(output_str.contains("__error . set"));
-
-		// Check callback invocations are also present
-		assert!(output_str.contains("callback"));
+		// The legacy `state: { ... }` clause is rejected by validation, but
+		// generated forms still expose standard submit status signals for
+		// existing UI code and examples.
+		assert!(output_str.contains("__loading"));
+		assert!(output_str.contains("__error"));
+		assert!(output_str.contains("__success"));
 	}
 
 	#[rstest::rstest]
@@ -4162,6 +4744,38 @@ mod tests {
 	}
 
 	#[rstest::rstest]
+	fn test_generate_dynamic_radio_select_renders_choice_inputs() {
+		let input = quote! {
+			name: DynamicRadioForm,
+			server_fn: submit_vote,
+
+			fields: {
+				choice_id: ChoiceField {
+					widget: RadioSelect,
+					required,
+					label: "Select your choice",
+					class: "form-check",
+					choices_from: "choices",
+					choice_value: "id",
+					choice_label: "choice_text",
+				},
+			},
+		};
+
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		assert!(output_str.contains("Page :: reactive"));
+		assert!(output_str.contains("let __choices_signal = self . choice_id_choices . clone ()"));
+		assert!(output_str.contains("__choices_signal . get ()"));
+		assert!(output_str.contains("for (i , (choice_value , choice_label)) in"));
+		assert!(output_str.contains(". attr (\"type\" , \"radio\")"));
+		assert!(output_str.contains(". attr (\"value\" , choice_value . to_string ())"));
+		assert!(output_str.contains(". child (choice_label)"));
+		assert!(output_str.contains(". listener (\"change\""));
+	}
+
+	#[rstest::rstest]
 	fn test_generate_bind_checkbox_uses_change_event() {
 		let input = quote! {
 			name: CheckboxBindForm,
@@ -4276,15 +4890,8 @@ mod tests {
 			action: "/test",
 
 			watch: {
-				error_view: |form| { form.error() },
-				loading_view: |form| { form.loading() },
-				success_view: |form| { form.success() },
-			},
-
-			state: {
-				loading,
-				error,
-				success,
+				email_view: |form| { form.email().get() },
+				length_view: |form| { form.email().get().len() },
 			},
 
 			fields: {
@@ -4296,9 +4903,8 @@ mod tests {
 		let output_str = output.to_string();
 
 		// Check all three watch methods are generated
-		assert!(output_str.contains("fn error_view"));
-		assert!(output_str.contains("fn loading_view"));
-		assert!(output_str.contains("fn success_view"));
+		assert!(output_str.contains("fn email_view"));
+		assert!(output_str.contains("fn length_view"));
 	}
 
 	#[rstest::rstest]
@@ -4309,19 +4915,12 @@ mod tests {
 
 			watch: {
 				conditional_view: |form| {
-					if form.error().get().is_some() {
-						"Error occurred"
-					} else if form.loading().get().clone() {
-						"Loading..."
+					if form.data().get().trim().is_empty() {
+						"Missing"
 					} else {
 						"Ready"
 					}
 				},
-			},
-
-			state: {
-				loading,
-				error,
 			},
 
 			fields: {
@@ -4334,8 +4933,7 @@ mod tests {
 
 		// Check that the watch method is generated with the complex closure
 		assert!(output_str.contains("fn conditional_view"));
-		assert!(output_str.contains("form . error () . get () . is_some ()"));
-		assert!(output_str.contains("form . loading () . get () . clone ()"));
+		assert!(output_str.contains("form . data () . get () . trim () . is_empty ()"));
 	}
 
 	#[rstest::rstest]
@@ -4406,6 +5004,23 @@ mod tests {
 		assert!(!output_str.contains("__watch_closure"));
 	}
 
+	#[rstest::rstest]
+	fn test_generate_empty_fields_focus_omits_unreachable_dom_path() {
+		let input = quote! {
+			name: EmptyFieldsForm,
+			action: "/test",
+
+			fields: {},
+		};
+
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		assert!(output_str.contains("fn runtime_set_focus"));
+		assert!(output_str.contains("match field { }"));
+		assert!(!output_str.contains("let field_id = match field { }"));
+	}
+
 	// ===== Redirect Code Generation Tests =====
 
 	#[rstest::rstest]
@@ -4452,31 +5067,6 @@ mod tests {
 	}
 
 	#[rstest::rstest]
-	fn test_generate_redirect_with_callbacks() {
-		let input = quote! {
-			name: RedirectCallbackForm,
-			server_fn: submit_form,
-			redirect_on_success: "/profile",
-
-			on_success: |result| {
-				console::log_1(&"Success!".into());
-			},
-
-			fields: {
-				name: CharField { required },
-			},
-		};
-
-		let output = parse_validate_generate(input);
-		let output_str = output.to_string();
-
-		// Should have both callback and redirect
-		assert!(output_str.contains("Success!"));
-		assert!(output_str.contains("/profile"));
-		assert!(output_str.contains("set_href"));
-	}
-
-	#[rstest::rstest]
 	fn test_generate_no_redirect() {
 		let input = quote! {
 			name: NoRedirectForm,
@@ -4500,27 +5090,28 @@ mod tests {
 	}
 
 	#[rstest::rstest]
-	fn test_generate_redirect_with_state() {
+	fn test_generate_success_url_runs_from_onsubmit_path() {
 		let input = quote! {
-			name: RedirectStateForm,
+			name: SuccessUrlSubmitForm,
 			server_fn: submit_form,
-			redirect_on_success: "/success",
-
-			state: { loading, success },
+			success_url: |_form| "/done",
 
 			fields: {
-				data: CharField { required },
+				name: CharField { required },
 			},
 		};
 
 		let output = parse_validate_generate(input);
 		let output_str = output.to_string();
 
-		// Should have state fields and redirect
-		assert!(output_str.contains("__loading"));
-		assert!(output_str.contains("__success"));
-		assert!(output_str.contains("/success"));
-		assert!(output_str.contains("set_href"));
+		assert!(
+			output_str.contains(
+				"let __success_url_handler_clone = self . __success_url_handler . clone ()"
+			)
+		);
+		assert!(output_str.contains("let __url = __handler (& __form_clone_for_success_url)"));
+		assert!(output_str.contains("NavigationType :: Push"));
+		assert!(output_str.contains("set_href (& __url)"));
 	}
 
 	#[rstest::rstest]
@@ -4821,12 +5412,6 @@ mod tests {
 			server_fn: update_profile,
 			initial_loader: get_profile,
 
-			state: { loading, error, success },
-
-			on_success: |result| {
-				log::info!("Success!");
-			},
-
 			slots: {
 				before_fields: || {
 					view! { <h2>"Edit Profile"</h2> }
@@ -4869,12 +5454,7 @@ mod tests {
 		// 3. slots
 		assert!(output_str.contains("fn into_page"));
 
-		// 4. state
-		assert!(output_str.contains("__loading"));
-		assert!(output_str.contains("__error"));
-		assert!(output_str.contains("__success"));
-
-		// 5. callbacks
+		// 4. submit method
 		assert!(output_str.contains("fn submit"));
 	}
 
@@ -5380,5 +5960,119 @@ mod tests {
 			!output_str.contains("\"button\""),
 			"form without SubmitButton must not generate a <button> element"
 		);
+	}
+
+	#[test]
+	fn hidden_field_with_generic_emits_typed_signal() {
+		// Arrange
+		let ft = TypedFieldType::HiddenField {
+			inner: syn::parse_quote!(i64),
+		};
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		// Act
+		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
+
+		// Assert
+		let expected = quote::quote!(::reinhardt_pages::reactive::Signal<i64>).to_string();
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn hidden_field_default_string_when_no_generic_specified() {
+		// Arrange — validator substitutes String when the user omits generics
+		let ft = TypedFieldType::HiddenField {
+			inner: syn::parse_quote!(::std::string::String),
+		};
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		// Act
+		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
+
+		// Assert
+		let expected =
+			quote::quote!(::reinhardt_pages::reactive::Signal<::std::string::String>).to_string();
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn multiple_choice_emits_vec_of_inner() {
+		// Arrange
+		let ft = TypedFieldType::MultipleChoiceField {
+			inner: syn::parse_quote!(i64),
+		};
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		// Act
+		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
+
+		// Assert
+		// Proc-macro token streams render nested angle brackets with a
+		// space between `>` and `>` (e.g. `Vec < i64 > >`), matching
+		// how `field_type_to_signal_type` constructs the type. The
+		// expected string uses a literal to avoid `quote!` collapsing.
+		let expected = ":: reinhardt_pages :: reactive :: Signal < :: std :: vec :: Vec < i64 > >";
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn ip_address_field_is_specialized_to_option_ipaddr() {
+		// Arrange
+		let ft = TypedFieldType::IpAddressField;
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		// Act
+		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
+
+		// Assert
+		let expected = ":: reinhardt_pages :: reactive :: Signal < :: core :: option :: Option < :: std :: net :: IpAddr > >";
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn json_field_explicit_serde_json_value() {
+		// Arrange
+		let ft = TypedFieldType::JsonField {
+			inner: syn::parse_quote!(::serde_json::Value),
+		};
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		// Act
+		let actual = field_type_to_signal_type(&ft, &pages_crate).to_string();
+
+		// Assert
+		let expected =
+			quote::quote!(::reinhardt_pages::reactive::Signal<::serde_json::Value>).to_string();
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn hidden_field_default_value_is_t_default() {
+		// Arrange
+		let ft = TypedFieldType::HiddenField {
+			inner: syn::parse_quote!(i64),
+		};
+
+		// Act
+		let actual = field_type_default_value(&ft).to_string();
+
+		// Assert
+		let expected = quote::quote!(<i64 as ::core::default::Default>::default()).to_string();
+		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn multiple_choice_default_value_is_vec_new() {
+		// Arrange
+		let ft = TypedFieldType::MultipleChoiceField {
+			inner: syn::parse_quote!(i64),
+		};
+
+		// Act
+		let actual = field_type_default_value(&ft).to_string();
+
+		// Assert
+		let expected = quote::quote!(::std::vec::Vec::new()).to_string();
+		assert_eq!(actual, expected);
 	}
 }

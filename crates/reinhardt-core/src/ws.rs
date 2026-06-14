@@ -24,7 +24,7 @@ pub trait WebSocketEndpointInfo {
 
 /// Inventory metadata submitted by `#[websocket]` at compile time.
 ///
-/// Used by `impl WebSocketUrlResolver for ResolvedUrls` to resolve route names.
+/// Used by `UrlReverser` to resolve WebSocket route names.
 pub struct WebSocketEndpointMetadata {
 	/// URL path pattern (e.g. `"/ws/chat/{room_id}/"`).
 	pub path: &'static str,
@@ -113,7 +113,7 @@ impl WebSocketRoute {
 /// WebSocket router: build-time registration + runtime lookup.
 ///
 /// The build-time API (`consumer()`, `reverse()`, `find_pending()`) is used
-/// by `#[url_patterns(mode = ws)]` and `UnifiedRouter::websocket()`.
+/// by `UnifiedRouter::websocket()` and WebSocket route declarations.
 /// The async API (`register_route()`, `find_route()`, etc.) is used at
 /// connection-handling time in `reinhardt-websockets`.
 #[derive(Clone)]
@@ -139,8 +139,7 @@ impl WebSocketRouter {
 
 	/// Set the namespace for this router.
 	///
-	/// Parallel to `ServerRouter::with_namespace`, emitted by
-	/// `#[url_patterns(mode = ws)]` to pass the `AppLabel::path(...)`.
+	/// Parallel to `ServerRouter::with_namespace`.
 	/// WebSocket route paths are absolute today and are not rewritten
 	/// with this namespace; the value is stored for parity with other
 	/// routers and future use. See reinhardt-web#3829.

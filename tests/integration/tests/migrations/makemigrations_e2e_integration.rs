@@ -33,6 +33,15 @@ use tokio::sync::Mutex;
 // Helper Functions
 // ============================================================================
 
+const GENERATED_MIGRATION_FUNCTION_SIGNATURE: &str = "pub(super) fn migration() -> Migration";
+
+fn assert_generated_migration_function(file_content: &str, message: &str) {
+	assert!(
+		file_content.contains(GENERATED_MIGRATION_FUNCTION_SIGNATURE),
+		"{message}"
+	);
+}
+
 /// Helper to create a simple schema with a todos table
 fn create_todos_schema() -> DatabaseSchema {
 	let mut schema = DatabaseSchema::default();
@@ -964,9 +973,9 @@ async fn nc_09_initial_migration_correctness() {
 		file_content.contains("email"),
 		"Migration should include email column"
 	);
-	assert!(
-		file_content.contains("pub fn migration() -> Migration"),
-		"Migration file should contain migration function"
+	assert_generated_migration_function(
+		&file_content,
+		"Migration file should contain migration function",
 	);
 	assert!(
 		file_content.contains("initial: Some(true)"),
@@ -1079,9 +1088,9 @@ async fn nc_11_generated_migration_executability() {
 	.await;
 
 	// Assert: File contains expected Rust structure
-	assert!(
-		file_content.contains("pub fn migration() -> Migration"),
-		"Generated file should contain a migration() function"
+	assert_generated_migration_function(
+		&file_content,
+		"Generated file should contain a migration() function",
 	);
 	assert!(
 		file_content.contains("use reinhardt::db::migrations::prelude::*"),
@@ -1929,9 +1938,9 @@ async fn edg_01_empty_migration_generation() {
 	let file_content =
 		std::fs::read_to_string(&migration_file_path).expect("Failed to read migration file");
 
-	assert!(
-		file_content.contains("pub fn migration() -> Migration"),
-		"Empty migration should still contain migration function"
+	assert_generated_migration_function(
+		&file_content,
+		"Empty migration should still contain migration function",
 	);
 	// No operations in the file
 	assert!(
@@ -2330,9 +2339,9 @@ async fn edg_09_large_number_of_fields() {
 	);
 
 	// Verify the file is valid Rust structure
-	assert!(
-		file_content.contains("pub fn migration() -> Migration"),
-		"Migration with 100+ fields should contain valid migration function"
+	assert_generated_migration_function(
+		&file_content,
+		"Migration with 100+ fields should contain valid migration function",
 	);
 }
 

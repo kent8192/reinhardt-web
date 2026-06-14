@@ -384,10 +384,12 @@ impl TypeDecorator for UrlType {
 }
 
 /// Compressed text type using gzip compression
+#[cfg(feature = "compressed-fields")]
 pub struct CompressedTextType {
 	compression_level: flate2::Compression,
 }
 
+#[cfg(feature = "compressed-fields")]
 impl CompressedTextType {
 	/// Create a new CompressedTextType with default compression level
 	///
@@ -449,12 +451,14 @@ impl CompressedTextType {
 	}
 }
 
+#[cfg(feature = "compressed-fields")]
 impl Default for CompressedTextType {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
+#[cfg(feature = "compressed-fields")]
 impl TypeDecorator for CompressedTextType {
 	type ImplType = String;
 
@@ -539,6 +543,7 @@ mod tests {
 
 	#[test]
 	fn test_encrypted_string() {
+		// codeql[rust/hard-coded-cryptographic-value] -- Deterministic test key, not a deployed secret.
 		let key = [42u8; 32];
 		let decorator = EncryptedString::new(key);
 
@@ -607,6 +612,7 @@ mod tests {
 	}
 
 	#[test]
+	#[cfg(feature = "compressed-fields")]
 	fn test_compressed_text() {
 		let decorator = CompressedTextType::new();
 
@@ -674,6 +680,7 @@ mod tests {
 		assert_eq!(EncryptedString::new([0u8; 32]).sql_type_name(), "BLOB");
 		assert_eq!(EmailType::new().sql_type_name(), "VARCHAR(255)");
 		assert_eq!(UrlType::new().sql_type_name(), "TEXT");
+		#[cfg(feature = "compressed-fields")]
 		assert_eq!(CompressedTextType::new().sql_type_name(), "BLOB");
 	}
 }

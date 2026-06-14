@@ -1,0 +1,42 @@
+[package]
+name = "reinhardt-providers"
+version = "0.2.0-rc.6"
+description = "Cloud provider integrations for Reinhardt"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["aws", "gcp", "cloud", "providers"]
+categories = ["api-bindings", "web-programming"]
+
+[dependencies]
+aws-config = { version = "1", optional = true, features = ["behavior-version-latest"] }
+aws-credential-types = { version = "1", optional = true }
+aws-types = { version = "1", optional = true }
+bytes = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+hmac = { workspace = true, optional = true }
+reqwest = { workspace = true }
+sha2 = { workspace = true, optional = true }
+thiserror = { workspace = true }
+time = { workspace = true, optional = true }
+url = { workspace = true }
+
+[features]
+default = []
+aws = [
+  "aws-config",
+  "aws-credential-types",
+  "aws-types",
+  "bytes",
+  "chrono",
+  "hmac",
+  "sha2",
+  "time",
+]
+gcp = []
+
+[dev-dependencies]
+serial_test = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

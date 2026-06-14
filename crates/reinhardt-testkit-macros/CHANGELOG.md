@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit-macros@v0.1.3...reinhardt-testkit-macros@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-testkit-macros` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Use the final testkit override and auth helper APIs when regenerating fixtures.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+- *(di)* update public docs to reflect per-context registry isolation
+
+
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit-macros@v0.2.0-rc.4...reinhardt-testkit-macros@v0.2.0-rc.5) - 2026-06-11
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit-macros@v0.1.3...reinhardt-testkit-macros@v0.2.0-rc.2) - 2026-06-03
+
+### Documentation
+
+- *(di)* update public docs to reflect per-context registry isolation
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit-macros@v0.1.0-rc.30...reinhardt-testkit-macros@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-testkit-macros` as part of the

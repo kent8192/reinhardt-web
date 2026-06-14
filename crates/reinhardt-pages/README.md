@@ -11,6 +11,9 @@ WASM-based reactive frontend framework for Reinhardt with Django-like API.
 - **Security First**: Built-in CSRF protection, XSS prevention, and session management
 - **Simplified Conditional Compilation**: `cfg_aliases` integration and automatic event handler handling
 
+For a React concept mapping, see
+[Reinhardt Pages for React developers](docs/react_to_reinhardt.md).
+
 ## Quick Start
 
 ### Using the Prelude (Recommended)
@@ -56,6 +59,7 @@ fn main() {
     println!("cargo::rustc-check-cfg=cfg(native)");
 
     cfg_aliases! {
+        // Browser-WASM only (wasm32-unknown-unknown); excludes WASI / emscripten.
         wasm: { all(target_family = "wasm", target_os = "unknown") },
         native: { not(all(target_family = "wasm", target_os = "unknown")) },
     }
@@ -73,12 +77,12 @@ Now you can use shorter cfg attributes:
 
 ```rust
 // Before:
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[cfg(target_arch = "wasm32")]
 // After:
 #[cfg(wasm)]
 
 // Before:
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 // After:
 #[cfg(native)]
 ```
@@ -105,7 +109,7 @@ fn my_button(on_click: Signal<bool>) -> View {
 
 **Before** (manual conditional compilation):
 ```rust
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[cfg(target_arch = "wasm32")]
 {
     page!(|| {
         button {
@@ -114,7 +118,7 @@ fn my_button(on_click: Signal<bool>) -> View {
         }
     })
 }
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 {
     let _ = on_click; // suppress warning
     page!(|| {
@@ -133,6 +137,37 @@ page!(|| {
     }
 })
 ```
+
+### Forms: Static Definition and Dynamic Behavior
+
+`form!` defines static form structure: field names, widgets, labels,
+validation metadata, server function binding, and rendering. `use_form` owns
+typed runtime behavior: values, field signals, dirty/touched state, validation
+errors, loading, success, reset, and submit orchestration.
+
+Create the form with `form!`, then attach runtime behavior to that generated
+form:
+
+```rust
+use reinhardt_pages::{form, use_form};
+
+let login_form = form! {
+    name: LoginForm,
+    action: "/login",
+    fields: {
+        username: CharField { initial: String::new() }
+        password: CharField { initial: String::new() }
+    }
+};
+
+let runtime = use_form(&login_form).build();
+runtime.set_value(login_form.username_field(), "ada".to_string());
+```
+
+Arguments supplied from ambient context use `ambient_arguments`. The old
+`strip_arguments` name remains as a deprecated alias. CSRF should stay at the
+transport layer: `#[server_fn]` client stubs attach `X-CSRFToken`, while
+non-WASM forms still render the hidden CSRF input for traditional posts.
 
 ### Reactive Conditional Rendering with `watch`
 
@@ -248,15 +283,18 @@ The prelude includes:
 ### Reactive System
 - `Signal`, `Effect`, `Memo`, `Resource`, `ResourceState`
 - Context: `Context`, `ContextGuard`, `create_context`, `get_context`, `provide_context`, `remove_context`
+- Explicit batching: `reinhardt_pages::reactive::batch`
 
 ### Hooks
 - `use_state`, `use_effect`, `use_memo`, `use_callback`, `use_context`
 - `use_ref`, `use_reducer`, `use_transition`, `use_deferred_value`
 - `use_id`, `use_layout_effect`, `use_effect_event`, `use_debug_value`
-- `use_optimistic`, `use_action_state`, `use_shared_state`, `use_sync_external_store`
+- `use_optimistic`, `use_action`, `Action::with_optimistic`, `use_shared_state`, `use_sync_external_store`
+- `use_resource` (async data fetching; `use_resource(fetcher, deps)` with `()` fetches once on WASM, while non-WASM targets drop the `fetcher` future, ignore `deps`, and stay `Loading` until hydration/client execution)
 
 ### Component System
 - `Component`, `ElementView`, `IntoView`, `View`, `Props`, `ViewEventHandler`
+- `SuspenseBoundary`, `ErrorBoundary`, `BoundaryError`, `ErrorTracker`
 
 ### Events and Callbacks
 - `Callback`, `IntoEventHandler`, `into_event_handler`
@@ -272,6 +310,7 @@ The prelude includes:
 - `ApiModel`, `ApiQuerySet`, `Filter`, `FilterOp`
 - `ServerFn`, `ServerFnError`
 - See [Server Function Macro Guide](docs/server_fn_macro.md) for detailed usage and migration information
+- See [React-to-Reinhardt Guide](docs/react_to_reinhardt.md) for React hooks, JSX, actions, routing, SSR, and hydration mappings
 
 ### Authentication and Security
 - `AuthData`, `AuthError`, `AuthState`, `auth_state`
@@ -288,9 +327,12 @@ The prelude includes:
 ### Macros
 - `page!`
 
+### Task spawning (cross-target)
+- `spawn_task`, `defer_yield` (no-op on native)
+
 ### WASM-specific
-- `spawn_local` (re-exported from wasm_bindgen_futures)
-- `create_resource`, `create_resource_with_deps`
+- `spawn_local` (re-exported from wasm_bindgen_futures; **deprecated** — use `spawn_task`)
+- `create_resource`, `create_resource_with_deps` (**deprecated** — use the cross-target `use_resource`)
 
 ## Example
 
@@ -316,21 +358,14 @@ fn counter() -> View {
 
 | Feature | Description |
 |---------|-------------|
-| `console_error_panic_hook` | Install the browser panic hook for easier WASM debugging |
 | `msgpack` | MessagePack serialization support |
-| `testing` | Marker feature for internal test-only code paths |
-| `msw` | Generate MockableServerFn support for MSW-style WASM tests |
-| `pages-full` | Aggregate of `msgpack` and `web-sys-full` |
+| `pages-full` | All features enabled (`msgpack` + `web-sys-full`) |
 | `static` | Static file serving |
 | `urls` | URL routing integration |
 | `debug-hooks` | Debug hooks for development |
 | `uuid` | UUID type support |
 | `chrono` | Chrono date/time type support |
 | `ast` | AST processing support |
-| `e2e-cdp-test` | Marker feature for Chrome DevTools Protocol E2E tests |
-| `wasm-diag-test` | Marker feature for WASM diagnostic tests |
-| `nav-diag-dom` | Expose SPA navigation diagnostics on the DOM |
-| `hmr` | Hot-module-reload support for development |
 | `web-sys-full` | All required web-sys features for WASM applications |
 
 ## License

@@ -25,6 +25,8 @@ use uuid::Uuid;
 pub enum FilterOperator {
 	/// Eq variant.
 	Eq,
+	/// Case-insensitive exact match.
+	IExact,
 	/// Ne variant.
 	Ne,
 	/// Gt variant.
@@ -41,10 +43,22 @@ pub enum FilterOperator {
 	NotIn,
 	/// Contains variant.
 	Contains,
+	/// Case-insensitive contains variant.
+	IContains,
 	/// StartsWith variant.
 	StartsWith,
+	/// Case-insensitive starts-with variant.
+	IStartsWith,
 	/// EndsWith variant.
 	EndsWith,
+	/// Case-insensitive ends-with variant.
+	IEndsWith,
+	/// Regular expression match.
+	Regex,
+	/// Case-insensitive regular expression match.
+	IRegex,
+	/// BETWEEN range lookup.
+	Range,
 	// PostgreSQL array operators
 	/// Array contains all elements (@>)
 	ArrayContains,
@@ -100,6 +114,10 @@ pub enum FilterValue {
 	Null,
 	/// Array variant.
 	Array(Vec<String>),
+	/// Typed list variant for IN and NOT IN lookups.
+	List(Vec<FilterValue>),
+	/// Two-value range for BETWEEN lookups.
+	Range(Box<FilterValue>, Box<FilterValue>),
 	/// Field reference for field-to-field comparisons (e.g., WHERE discount_price < total_price)
 	FieldRef(super::expressions::F),
 	/// Arithmetic expression (e.g., WHERE total != unit_price * quantity)
@@ -109,10 +127,17 @@ pub enum FilterValue {
 }
 
 #[derive(Debug, Clone)]
+enum FilterField {
+	Column,
+	Expression(String),
+}
+
+#[derive(Debug, Clone)]
 /// Represents a filter.
 pub struct Filter {
 	/// The field.
 	pub field: String,
+	field_source: FilterField,
 	/// The operator.
 	pub operator: FilterOperator,
 	/// The value.
@@ -122,8 +147,52 @@ pub struct Filter {
 impl Filter {
 	/// Creates a new instance.
 	pub fn new(field: impl Into<String>, operator: FilterOperator, value: FilterValue) -> Self {
+		let field = field.into();
 		Self {
-			field: field.into(),
+			field,
+			field_source: FilterField::Column,
+			operator,
+			value,
+		}
+	}
+
+	/// Returns the SQL expression used on the left side of this filter.
+	pub fn lhs_expr(&self) -> Expr {
+		filter_lhs_expr(self)
+	}
+
+	/// Returns the SQL text used on the left side of this filter.
+	pub fn lhs_sql(&self) -> String {
+		filter_lhs_sql(self)
+	}
+
+	/// Combine this filter with another condition using AND.
+	pub fn and(self, other: impl Into<FilterCondition>) -> FilterCondition {
+		FilterCondition::And(vec![FilterCondition::from(self), other.into()])
+	}
+
+	/// Combine this filter with another condition using OR.
+	pub fn or(self, other: impl Into<FilterCondition>) -> FilterCondition {
+		FilterCondition::Or(vec![FilterCondition::from(self), other.into()])
+	}
+
+	/// Negate this filter.
+	// This method mirrors Django-style query combinators and returns FilterCondition,
+	// so implementing std::ops::Not would not provide the same fluent API.
+	#[allow(clippy::should_implement_trait)]
+	pub fn not(self) -> FilterCondition {
+		FilterCondition::not(self)
+	}
+
+	pub(crate) fn expression(
+		sql: impl Into<String>,
+		operator: FilterOperator,
+		value: FilterValue,
+	) -> Self {
+		let sql = sql.into();
+		Self {
+			field: sql.clone(),
+			field_source: FilterField::Expression(sql),
 			operator,
 			value,
 		}
@@ -182,14 +251,11 @@ pub enum UpdateValue {
 /// ]);
 ///
 /// // Complex nested condition: (status = 'active') AND (name LIKE '%alice%' OR email LIKE '%alice%')
-/// let complex = FilterCondition::And(vec![
-///     FilterCondition::Single(Filter::new(
-///         "status".to_string(),
-///         FilterOperator::Eq,
-///         FilterValue::String("active".to_string()),
-///     )),
-///     search,
-/// ]);
+/// let complex = Filter::new(
+///     "status".to_string(),
+///     FilterOperator::Eq,
+///     FilterValue::String("active".to_string()),
+/// ).and(search);
 /// ```
 #[derive(Debug, Clone)]
 pub enum FilterCondition {
@@ -226,20 +292,33 @@ impl FilterCondition {
 	/// ```
 	/// use reinhardt_db::orm::{Filter, FilterCondition, FilterOperator, FilterValue};
 	///
-	/// let condition = FilterCondition::not(
-	///     FilterCondition::Single(Filter::new(
-	///         "is_active".to_string(),
-	///         FilterOperator::Eq,
-	///         FilterValue::Boolean(true),
-	///     ))
-	/// );
+	/// let condition = Filter::new(
+	///     "is_active".to_string(),
+	///     FilterOperator::Eq,
+	///     FilterValue::Boolean(true),
+	/// ).not();
 	/// ```
 	// This method is intentionally named `not` for API consistency with Django's Q object.
 	// It does not implement std::ops::Not because it constructs a FilterCondition variant,
 	// not a boolean negation.
 	#[allow(clippy::should_implement_trait)]
-	pub fn not(condition: FilterCondition) -> Self {
-		Self::Not(Box::new(condition))
+	pub fn not(condition: impl Into<FilterCondition>) -> Self {
+		Self::Not(Box::new(condition.into()))
+	}
+
+	/// Create an AND condition from multiple conditions.
+	pub fn all(conditions: Vec<FilterCondition>) -> Self {
+		Self::and(conditions)
+	}
+
+	/// Create an OR condition from multiple conditions.
+	pub fn any(conditions: Vec<FilterCondition>) -> Self {
+		Self::or(conditions)
+	}
+
+	/// Create a NOT condition that negates the given condition.
+	pub fn negate(condition: impl Into<FilterCondition>) -> Self {
+		Self::not(condition)
 	}
 
 	/// Create an OR condition from multiple filters (convenience method for search)
@@ -275,6 +354,12 @@ impl FilterCondition {
 			}
 			FilterCondition::Not(condition) => condition.is_empty(),
 		}
+	}
+}
+
+impl From<Filter> for FilterCondition {
+	fn from(filter: Filter) -> Self {
+		Self::Single(filter)
 	}
 }
 
@@ -425,6 +510,8 @@ enum SubqueryCondition {
 	NotExists { subquery: String },
 }
 
+const MAX_FILTER_CONDITION_DEPTH: usize = 64;
+
 #[derive(Clone)]
 /// Represents a query set.
 pub struct QuerySet<T>
@@ -433,6 +520,7 @@ where
 {
 	_phantom: std::marker::PhantomData<T>,
 	filters: SmallVec<[Filter; 10]>,
+	filter_conditions: SmallVec<[FilterCondition; 4]>,
 	select_related_fields: Vec<String>,
 	prefetch_related_fields: Vec<String>,
 	order_by_fields: Vec<String>,
@@ -464,6 +552,7 @@ where
 		Self {
 			_phantom: std::marker::PhantomData,
 			filters: SmallVec::new(),
+			filter_conditions: SmallVec::new(),
 			select_related_fields: Vec::new(),
 			prefetch_related_fields: Vec::new(),
 			order_by_fields: Vec::new(),
@@ -490,6 +579,7 @@ where
 		Self {
 			_phantom: std::marker::PhantomData,
 			filters: SmallVec::new(),
+			filter_conditions: SmallVec::new(),
 			select_related_fields: Vec::new(),
 			prefetch_related_fields: Vec::new(),
 			order_by_fields: Vec::new(),
@@ -511,9 +601,16 @@ where
 		}
 	}
 
-	/// Performs the filter operation.
-	pub fn filter(mut self, filter: Filter) -> Self {
-		self.filters.push(filter);
+	/// Appends a filter expression to this `QuerySet`.
+	///
+	/// Accepts any value convertible into [`FilterCondition`] — typically a
+	/// [`Filter`] from `FieldRef::eq()` / `.gt()` / ... or a composite condition
+	/// built with [`Filter::and`], [`Filter::or`], and [`Filter::not`].
+	pub fn filter(mut self, filter: impl Into<FilterCondition>) -> Self {
+		match filter.into() {
+			FilterCondition::Single(filter) => self.filters.push(filter),
+			condition => self.filter_conditions.push(condition),
+		}
 		self
 	}
 
@@ -523,6 +620,17 @@ where
 	/// observe or assert on the active filter chain (Issue #3980).
 	pub fn filters(&self) -> &[Filter] {
 		&self.filters
+	}
+
+	/// Returns composite filter conditions applied to this `QuerySet`.
+	pub fn filter_conditions(&self) -> &[FilterCondition] {
+		&self.filter_conditions
+	}
+
+	fn has_where_predicates(&self) -> bool {
+		!(self.filters.is_empty()
+			&& self.filter_conditions.is_empty()
+			&& self.subquery_conditions.is_empty())
 	}
 
 	/// Create a QuerySet from a subquery (FROM clause subquery / derived table)
@@ -559,6 +667,7 @@ where
 	/// # impl Model for Book {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = BookFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "books" }
 	/// #     fn new_fields() -> Self::Fields { BookFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -592,6 +701,7 @@ where
 		Self {
 			_phantom: std::marker::PhantomData,
 			filters: SmallVec::new(),
+			filter_conditions: SmallVec::new(),
 			select_related_fields: Vec::new(),
 			prefetch_related_fields: Vec::new(),
 			order_by_fields: Vec::new(),
@@ -642,6 +752,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -657,6 +768,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -711,6 +823,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -726,6 +839,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -780,6 +894,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -795,6 +910,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -849,6 +965,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -864,6 +981,7 @@ where
 	/// # impl Model for Category {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = CategoryFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "categories" }
 	/// #     fn new_fields() -> Self::Fields { CategoryFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -925,6 +1043,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -973,6 +1092,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -988,6 +1108,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1040,6 +1161,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1055,6 +1177,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1106,6 +1229,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1121,6 +1245,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1188,6 +1313,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1288,6 +1414,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1388,6 +1515,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1480,6 +1608,7 @@ where
 	/// # impl Model for Book {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = BookFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "books" }
 	/// #     fn new_fields() -> Self::Fields { BookFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1511,6 +1640,7 @@ where
 	/// # impl Model for Sale {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = SaleFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "sales" }
 	/// #     fn new_fields() -> Self::Fields { SaleFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1590,6 +1720,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1689,6 +1820,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1784,6 +1916,7 @@ where
 	/// # impl Model for Product {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ProductFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "products" }
 	/// #     fn new_fields() -> Self::Fields { ProductFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1888,6 +2021,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -1989,6 +2123,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields::new() }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2066,6 +2201,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2081,6 +2217,7 @@ where
 	/// # impl Model for Book {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = BookFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "books" }
 	/// #     fn new_fields() -> Self::Fields { BookFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2133,6 +2270,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2148,6 +2286,7 @@ where
 	/// # impl Model for Book {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = BookFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "books" }
 	/// #     fn new_fields() -> Self::Fields { BookFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2201,6 +2340,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2216,6 +2356,7 @@ where
 	/// # impl Model for Book {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = BookFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "books" }
 	/// #     fn new_fields() -> Self::Fields { BookFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2268,6 +2409,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2283,6 +2425,7 @@ where
 	/// # impl Model for Book {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = BookFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "books" }
 	/// #     fn new_fields() -> Self::Fields { BookFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2336,6 +2479,7 @@ where
 	/// # impl Model for Employee {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = EmployeeFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "employees" }
 	/// #     fn new_fields() -> Self::Fields { EmployeeFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2394,6 +2538,7 @@ where
 	/// # impl Model for Customer {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = CustomerFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "customers" }
 	/// #     fn new_fields() -> Self::Fields { CustomerFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -2441,16 +2586,16 @@ where
 	}
 
 	/// Build WHERE condition using reinhardt-query from accumulated filters
-	fn build_where_condition(&self) -> Option<Condition> {
-		// Early return only if both filters and subquery_conditions are empty
-		if self.filters.is_empty() && self.subquery_conditions.is_empty() {
-			return None;
+	fn build_where_condition(&self) -> reinhardt_core::exception::Result<Option<Condition>> {
+		if !self.has_where_predicates() {
+			return Ok(None);
 		}
 
 		let mut cond = Condition::all();
+		let mut added = false;
 
 		for filter in &self.filters {
-			let col = Expr::col(parse_column_reference(&filter.field));
+			let col = Self::filter_lhs_expr(filter);
 
 			let expr = match (&filter.operator, &filter.value) {
 				// Field-to-field comparisons (must come before generic patterns)
@@ -2515,6 +2660,10 @@ where
 				// NULL checks
 				(FilterOperator::Eq, FilterValue::Null) => col.is_null(),
 				(FilterOperator::Ne, FilterValue::Null) => col.is_not_null(),
+				(FilterOperator::IExact, FilterValue::String(s)) => {
+					Self::like_expr(filter, s, LikePattern::Exact, true)
+				}
+				(FilterOperator::IExact, v) => col.eq(Self::filter_value_to_sea_value(v)),
 				// Generic value comparisons (catch-all for other FilterValue types)
 				(FilterOperator::Eq, v) => col.eq(Self::filter_value_to_sea_value(v)),
 				(FilterOperator::Ne, v) => col.ne(Self::filter_value_to_sea_value(v)),
@@ -2529,6 +2678,12 @@ where
 				(FilterOperator::In, FilterValue::Array(arr)) => {
 					col.is_in(arr.iter().map(|s| s.as_str()).collect::<Vec<_>>())
 				}
+				(FilterOperator::In, FilterValue::List(values)) => col.is_in(
+					values
+						.iter()
+						.map(Self::filter_value_to_sea_value)
+						.collect::<Vec<_>>(),
+				),
 				(FilterOperator::NotIn, FilterValue::String(s)) => {
 					let values = Self::parse_array_string(s);
 					col.is_not_in(values)
@@ -2536,43 +2691,121 @@ where
 				(FilterOperator::NotIn, FilterValue::Array(arr)) => {
 					col.is_not_in(arr.iter().map(|s| s.as_str()).collect::<Vec<_>>())
 				}
-				(FilterOperator::Contains, FilterValue::String(s)) => col.like(format!("%{}%", s)),
+				(FilterOperator::NotIn, FilterValue::List(values)) => col.is_not_in(
+					values
+						.iter()
+						.map(Self::filter_value_to_sea_value)
+						.collect::<Vec<_>>(),
+				),
+				(FilterOperator::Contains, FilterValue::String(s)) => {
+					Self::like_expr(filter, s, LikePattern::Contains, false)
+				}
+				(FilterOperator::IContains, FilterValue::String(s)) => {
+					Self::like_expr(filter, s, LikePattern::Contains, true)
+				}
 				(FilterOperator::Contains, FilterValue::Array(arr)) => {
-					col.like(format!("%{}%", arr.first().unwrap_or(&String::new())))
+					let value = arr.first().map(String::as_str).unwrap_or("");
+					Self::like_expr(filter, value, LikePattern::Contains, false)
 				}
-				(FilterOperator::StartsWith, FilterValue::String(s)) => col.like(format!("{}%", s)),
+				(FilterOperator::StartsWith, FilterValue::String(s)) => {
+					Self::like_expr(filter, s, LikePattern::StartsWith, false)
+				}
+				(FilterOperator::IStartsWith, FilterValue::String(s)) => {
+					Self::like_expr(filter, s, LikePattern::StartsWith, true)
+				}
 				(FilterOperator::StartsWith, FilterValue::Array(arr)) => {
-					col.like(format!("{}%", arr.first().unwrap_or(&String::new())))
+					let value = arr.first().map(String::as_str).unwrap_or("");
+					Self::like_expr(filter, value, LikePattern::StartsWith, false)
 				}
-				(FilterOperator::EndsWith, FilterValue::String(s)) => col.like(format!("%{}", s)),
+				(FilterOperator::EndsWith, FilterValue::String(s)) => {
+					Self::like_expr(filter, s, LikePattern::EndsWith, false)
+				}
+				(FilterOperator::IEndsWith, FilterValue::String(s)) => {
+					Self::like_expr(filter, s, LikePattern::EndsWith, true)
+				}
 				(FilterOperator::EndsWith, FilterValue::Array(arr)) => {
-					col.like(format!("%{}", arr.first().unwrap_or(&String::new())))
+					let value = arr.first().map(String::as_str).unwrap_or("");
+					Self::like_expr(filter, value, LikePattern::EndsWith, false)
 				}
+				(FilterOperator::Regex, FilterValue::String(pattern)) => Expr::cust_with_values(
+					format!("{} ~ ?", Self::filter_lhs_sql(filter)),
+					[pattern.clone()],
+				)
+				.into_simple_expr(),
+				(FilterOperator::IRegex, FilterValue::String(pattern)) => Expr::cust_with_values(
+					format!("{} ~* ?", Self::filter_lhs_sql(filter)),
+					[pattern.clone()],
+				)
+				.into_simple_expr(),
+				(FilterOperator::Range, FilterValue::Range(start, end)) => Expr::cust_with_values(
+					format!("{} BETWEEN ? AND ?", Self::filter_lhs_sql(filter)),
+					[
+						Self::filter_value_to_sea_value(start),
+						Self::filter_value_to_sea_value(end),
+					],
+				)
+				.into_simple_expr(),
 				// Handle Integer, Float, Boolean for text operators
 				(FilterOperator::Contains, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.like(format!("%{}%", i))
 				}
+				(FilterOperator::IContains, FilterValue::Integer(i) | FilterValue::Int(i)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}%", i)))
+				}
 				(FilterOperator::Contains, FilterValue::Float(f)) => col.like(format!("%{}%", f)),
+				(FilterOperator::IContains, FilterValue::Float(f)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}%", f)))
+				}
 				(FilterOperator::Contains, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
 					col.like(format!("%{}%", b))
 				}
+				(FilterOperator::IContains, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}%", b)))
+				}
 				(FilterOperator::Contains, FilterValue::Null) => col.like("%"),
+				(FilterOperator::IContains, FilterValue::Null) => {
+					col.binary(BinOper::ILike, SimpleExpr::from("%"))
+				}
 				(FilterOperator::StartsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.like(format!("{}%", i))
 				}
+				(FilterOperator::IStartsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("{}%", i)))
+				}
 				(FilterOperator::StartsWith, FilterValue::Float(f)) => col.like(format!("{}%", f)),
+				(FilterOperator::IStartsWith, FilterValue::Float(f)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("{}%", f)))
+				}
 				(FilterOperator::StartsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
 					col.like(format!("{}%", b))
 				}
+				(FilterOperator::IStartsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("{}%", b)))
+				}
 				(FilterOperator::StartsWith, FilterValue::Null) => col.like("%"),
+				(FilterOperator::IStartsWith, FilterValue::Null) => {
+					col.binary(BinOper::ILike, SimpleExpr::from("%"))
+				}
 				(FilterOperator::EndsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.like(format!("%{}", i))
 				}
+				(FilterOperator::IEndsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}", i)))
+				}
 				(FilterOperator::EndsWith, FilterValue::Float(f)) => col.like(format!("%{}", f)),
+				(FilterOperator::IEndsWith, FilterValue::Float(f)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}", f)))
+				}
 				(FilterOperator::EndsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
 					col.like(format!("%{}", b))
 				}
+				(FilterOperator::IEndsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
+					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}", b)))
+				}
 				(FilterOperator::EndsWith, FilterValue::Null) => col.like("%"),
+				(FilterOperator::IEndsWith, FilterValue::Null) => {
+					col.binary(BinOper::ILike, SimpleExpr::from("%"))
+				}
 				// Handle In/NotIn for non-String types
 				(FilterOperator::In, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.is_in(vec![*i])
@@ -2604,7 +2837,7 @@ where
 					Expr::cust_with_values(
 						format!(
 							"{} @> ARRAY[{}]",
-							quote_identifier(&filter.field),
+							Self::filter_lhs_sql(filter),
 							placeholders
 						),
 						arr.iter().cloned(),
@@ -2617,7 +2850,7 @@ where
 					Expr::cust_with_values(
 						format!(
 							"{} <@ ARRAY[{}]",
-							quote_identifier(&filter.field),
+							Self::filter_lhs_sql(filter),
 							placeholders
 						),
 						arr.iter().cloned(),
@@ -2630,7 +2863,7 @@ where
 					Expr::cust_with_values(
 						format!(
 							"{} && ARRAY[{}]",
-							quote_identifier(&filter.field),
+							Self::filter_lhs_sql(filter),
 							placeholders
 						),
 						arr.iter().cloned(),
@@ -2643,7 +2876,7 @@ where
 					Expr::cust_with_values(
 						format!(
 							"{} @@ plainto_tsquery('english', ?)",
-							quote_identifier(&filter.field)
+							Self::filter_lhs_sql(filter)
 						),
 						[query.clone()],
 					)
@@ -2653,7 +2886,7 @@ where
 				(FilterOperator::JsonbContains, FilterValue::String(json)) => {
 					// field @> ?::jsonb - parameterized
 					Expr::cust_with_values(
-						format!("{} @> ?::jsonb", quote_identifier(&filter.field)),
+						format!("{} @> ?::jsonb", Self::filter_lhs_sql(filter)),
 						[json.clone()],
 					)
 					.into_simple_expr()
@@ -2661,14 +2894,14 @@ where
 				(FilterOperator::JsonbContainedBy, FilterValue::String(json)) => {
 					// field <@ ?::jsonb - parameterized
 					Expr::cust_with_values(
-						format!("{} <@ ?::jsonb", quote_identifier(&filter.field)),
+						format!("{} <@ ?::jsonb", Self::filter_lhs_sql(filter)),
 						[json.clone()],
 					)
 					.into_simple_expr()
 				}
 				(FilterOperator::JsonbKeyExists, FilterValue::String(key)) => {
 					// field ? 'key' - using PgBinOper for safe parameterization
-					Expr::cust(quote_identifier(&filter.field))
+					Expr::cust(Self::filter_lhs_sql(filter))
 						.into_simple_expr()
 						.binary(
 							BinOper::PgOperator(PgBinOper::JsonContainsKey),
@@ -2683,7 +2916,7 @@ where
 						keys.iter().cloned(),
 					)
 					.into_simple_expr();
-					Expr::cust(quote_identifier(&filter.field))
+					Expr::cust(Self::filter_lhs_sql(filter))
 						.into_simple_expr()
 						.binary(
 							BinOper::PgOperator(PgBinOper::JsonContainsAnyKey),
@@ -2698,7 +2931,7 @@ where
 						keys.iter().cloned(),
 					)
 					.into_simple_expr();
-					Expr::cust(quote_identifier(&filter.field))
+					Expr::cust(Self::filter_lhs_sql(filter))
 						.into_simple_expr()
 						.binary(
 							BinOper::PgOperator(PgBinOper::JsonContainsAllKeys),
@@ -2708,7 +2941,7 @@ where
 				(FilterOperator::JsonbPathExists, FilterValue::String(path)) => {
 					// field @? ? - parameterized
 					Expr::cust_with_values(
-						format!("{} @? ?", quote_identifier(&filter.field)),
+						format!("{} @? ?", Self::filter_lhs_sql(filter)),
 						[path.clone()],
 					)
 					.into_simple_expr()
@@ -2716,17 +2949,16 @@ where
 				// PostgreSQL Range operators
 				(FilterOperator::RangeContains, v) => {
 					// field @> ? - parameterized
-					let val = Self::filter_value_to_sql_string(v);
 					Expr::cust_with_values(
-						format!("{} @> ?", quote_identifier(&filter.field)),
-						[val],
+						format!("{} @> ?", Self::filter_lhs_sql(filter)),
+						[Self::filter_value_to_sea_value(v)],
 					)
 					.into_simple_expr()
 				}
 				(FilterOperator::RangeContainedBy, FilterValue::String(range)) => {
 					// field <@ ? - parameterized
 					Expr::cust_with_values(
-						format!("{} <@ ?", quote_identifier(&filter.field)),
+						format!("{} <@ ?", Self::filter_lhs_sql(filter)),
 						[range.clone()],
 					)
 					.into_simple_expr()
@@ -2734,7 +2966,7 @@ where
 				(FilterOperator::RangeOverlaps, FilterValue::String(range)) => {
 					// field && ? - parameterized
 					Expr::cust_with_values(
-						format!("{} && ?", quote_identifier(&filter.field)),
+						format!("{} && ?", Self::filter_lhs_sql(filter)),
 						[range.clone()],
 					)
 					.into_simple_expr()
@@ -2747,6 +2979,14 @@ where
 			};
 
 			cond = cond.add(expr);
+			added = true;
+		}
+
+		for filter_condition in &self.filter_conditions {
+			if let Some(expr) = Self::build_filter_condition(filter_condition, 0)? {
+				cond = cond.add(expr);
+				added = true;
+			}
 		}
 
 		// Add subquery conditions
@@ -2773,9 +3013,67 @@ where
 			};
 
 			cond = cond.add(expr);
+			added = true;
 		}
 
-		Some(cond)
+		Ok(added.then_some(cond))
+	}
+
+	fn build_filter_condition(
+		filter_condition: &FilterCondition,
+		depth: usize,
+	) -> reinhardt_core::exception::Result<Option<Condition>> {
+		if depth >= MAX_FILTER_CONDITION_DEPTH {
+			return Err(reinhardt_core::exception::Error::Validation(format!(
+				"Filter condition exceeded maximum depth of {} levels",
+				MAX_FILTER_CONDITION_DEPTH
+			)));
+		}
+
+		match filter_condition {
+			FilterCondition::Single(filter) => {
+				let mut queryset = Self::new();
+				queryset.filters.push(filter.clone());
+				queryset.build_where_condition()
+			}
+			FilterCondition::And(conditions) => {
+				let mut condition = Condition::all();
+				let mut added = false;
+				for item in conditions {
+					if let Some(sub_condition) = Self::build_filter_condition(item, depth + 1)? {
+						condition = condition.add(sub_condition);
+						added = true;
+					}
+				}
+				Ok(added.then_some(condition))
+			}
+			FilterCondition::Or(conditions) => {
+				let mut condition = Condition::any();
+				let mut added = false;
+				for item in conditions {
+					if let Some(sub_condition) = Self::build_filter_condition(item, depth + 1)? {
+						condition = condition.add(sub_condition);
+						added = true;
+					}
+				}
+				Ok(added.then_some(condition))
+			}
+			FilterCondition::Not(condition) => {
+				Ok(Self::build_filter_condition(condition, depth + 1)?
+					.map(|condition| condition.not()))
+			}
+		}
+	}
+
+	fn false_condition() -> Condition {
+		Condition::all().add(Expr::cust("FALSE").into_simple_expr())
+	}
+
+	fn build_where_condition_or_false(&self) -> Option<Condition> {
+		match self.build_where_condition() {
+			Ok(condition) => condition,
+			Err(_) => Some(Self::false_condition()),
+		}
 	}
 
 	/// Convert FilterValue to reinhardt_query::value::Value
@@ -2842,6 +3140,32 @@ where
 		value.to_sql()
 	}
 
+	fn filter_lhs_expr(filter: &Filter) -> Expr {
+		filter_lhs_expr(filter)
+	}
+
+	fn filter_lhs_sql(filter: &Filter) -> String {
+		filter_lhs_sql(filter)
+	}
+
+	fn like_expr(
+		filter: &Filter,
+		value: &str,
+		pattern: LikePattern,
+		case_insensitive: bool,
+	) -> SimpleExpr {
+		let operator = if case_insensitive { "ILIKE" } else { "LIKE" };
+		Expr::cust_with_values(
+			format!(
+				"{} {} ? ESCAPE '\\'",
+				Self::filter_lhs_sql(filter),
+				operator
+			),
+			[pattern.apply(value)],
+		)
+		.into_simple_expr()
+	}
+
 	fn filter_value_to_sea_value(v: &FilterValue) -> reinhardt_query::value::Value {
 		match v {
 			FilterValue::String(s) => {
@@ -2857,36 +3181,23 @@ where
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => (*b).into(),
 			FilterValue::Null => reinhardt_query::value::Value::Int(None),
 			FilterValue::Array(arr) => arr.join(",").into(),
+			FilterValue::List(values) => values
+				.iter()
+				.map(Self::value_to_string)
+				.collect::<Vec<_>>()
+				.join(",")
+				.into(),
+			FilterValue::Range(start, end) => format!(
+				"{},{}",
+				Self::value_to_string(start),
+				Self::value_to_string(end)
+			)
+			.into(),
 			// FieldRef, Expression, and OuterRef are typically handled separately
 			// in build_where_condition(), but provide proper conversion as fallback
 			FilterValue::FieldRef(f) => f.field.clone().into(),
 			FilterValue::Expression(expr) => expr.to_sql().into(),
 			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone().into(),
-		}
-	}
-
-	/// Convert FilterValue to SQL-safe string representation
-	/// Used for custom SQL expressions (PostgreSQL operators)
-	fn filter_value_to_sql_string(v: &FilterValue) -> String {
-		match v {
-			FilterValue::String(s) => format!("'{}'", s.replace('\'', "''")),
-			FilterValue::Integer(i) | FilterValue::Int(i) => i.to_string(),
-			FilterValue::Float(f) => f.to_string(),
-			FilterValue::Boolean(b) | FilterValue::Bool(b) => {
-				if *b { "TRUE" } else { "FALSE" }.to_string()
-			}
-			FilterValue::Null => "NULL".to_string(),
-			FilterValue::Array(arr) => {
-				// Format as PostgreSQL array literal
-				let elements = arr
-					.iter()
-					.map(|s| format!("'{}'", s.replace('\'', "''")))
-					.collect::<Vec<_>>();
-				format!("ARRAY[{}]", elements.join(", "))
-			}
-			FilterValue::FieldRef(f) => f.field.clone(),
-			FilterValue::Expression(expr) => expr.to_sql(),
-			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone(),
 		}
 	}
 
@@ -2901,6 +3212,18 @@ where
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => b.to_string(),
 			FilterValue::Null => String::new(),
 			FilterValue::Array(arr) => arr.join(","),
+			FilterValue::List(values) => values
+				.iter()
+				.map(Self::value_to_string)
+				.collect::<Vec<_>>()
+				.join(","),
+			FilterValue::Range(start, end) => {
+				format!(
+					"{},{}",
+					Self::value_to_string(start),
+					Self::value_to_string(end)
+				)
+			}
 			FilterValue::FieldRef(f) => f.field.clone(),
 			FilterValue::Expression(expr) => expr.to_sql(),
 			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone(),
@@ -2956,6 +3279,13 @@ where
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => vec![(*b).into()],
 			FilterValue::Null => vec![reinhardt_query::value::Value::Int(None)],
 			FilterValue::Array(arr) => arr.iter().map(|s| s.clone().into()).collect(),
+			FilterValue::List(values) => {
+				values.iter().map(Self::filter_value_to_sea_value).collect()
+			}
+			FilterValue::Range(start, end) => vec![
+				Self::filter_value_to_sea_value(start),
+				Self::filter_value_to_sea_value(end),
+			],
 			FilterValue::FieldRef(f) => vec![f.field.clone().into()],
 			FilterValue::Expression(expr) => vec![expr.to_sql().into()],
 			FilterValue::OuterRef(outer) => vec![outer.field.clone().into()],
@@ -2975,7 +3305,7 @@ where
 	// Allow dead_code: backward-compatible string-based WHERE clause builder for legacy code paths
 	#[allow(dead_code)]
 	fn build_where_clause(&self) -> (String, Vec<String>) {
-		if self.filters.is_empty() {
+		if !self.has_where_predicates() {
 			return (String::new(), Vec::new());
 		}
 
@@ -2983,7 +3313,7 @@ where
 		let mut stmt = Query::select();
 		stmt.from(Alias::new("dummy"));
 
-		if let Some(cond) = self.build_where_condition() {
+		if let Some(cond) = self.build_where_condition_or_false() {
 			stmt.cond_where(cond);
 		}
 
@@ -3031,6 +3361,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3075,6 +3406,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3165,7 +3497,7 @@ where
 		}
 
 		// Apply WHERE conditions
-		if let Some(cond) = self.build_where_condition() {
+		if let Some(cond) = self.build_where_condition_or_false() {
 			stmt.cond_where(cond);
 		}
 
@@ -3299,6 +3631,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3345,6 +3678,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3540,6 +3874,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3551,11 +3886,11 @@ where
 	///
 	/// // Fetch filtered users with eager loading
 	/// let active_users = User::objects()
-	///     .filter(
+	///     .filter(Filter::new(
 	///         "is_active",
 	///         FilterOperator::Eq,
 	///         FilterValue::Boolean(true),
-	///     )
+	///     ))
 	///     .select_related(&["profile"])
 	///     .all()
 	///     .await?;
@@ -3605,7 +3940,7 @@ where
 				stmt.column(ColumnRef::Asterisk);
 			}
 
-			if let Some(cond) = self.build_where_condition() {
+			if let Some(cond) = self.build_where_condition()? {
 				stmt.cond_where(cond);
 			}
 
@@ -3683,6 +4018,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3691,11 +4027,11 @@ where
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Fetch first active user
 	/// let user = User::objects()
-	///     .filter(
+	///     .filter(Filter::new(
 	///         "is_active",
 	///         FilterOperator::Eq,
 	///         FilterValue::Boolean(true),
-	///     )
+	///     ))
 	///     .first()
 	///     .await?;
 	///
@@ -3722,7 +4058,7 @@ where
 	///
 	/// ```no_run
 	/// # use reinhardt_db::orm::Model;
-	/// # use reinhardt_db::orm::{FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64>, email: String }
@@ -3734,6 +4070,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3742,11 +4079,11 @@ where
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Fetch user with specific email (must be unique)
 	/// let user = User::objects()
-	///     .filter(
+	///     .filter(Filter::new(
 	///         "email",
 	///         FilterOperator::Eq,
 	///         FilterValue::String("alice@example.com".to_string()),
-	///     )
+	///     ))
 	///     .get()
 	///     .await?;
 	/// # Ok(())
@@ -3793,6 +4130,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3843,7 +4181,7 @@ where
 				stmt.column(ColumnRef::Asterisk);
 			}
 
-			if let Some(cond) = self.build_where_condition() {
+			if let Some(cond) = self.build_where_condition()? {
 				stmt.cond_where(cond);
 			}
 
@@ -3915,6 +4253,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3924,7 +4263,7 @@ where
 	/// # let user_id = 1;
 	/// let db = reinhardt_db::orm::manager::get_connection().await?;
 	/// let user = User::objects()
-	///     .filter("id", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::Integer(user_id))
+	///     .filter(reinhardt_db::orm::Filter::new("id", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::Integer(user_id)))
 	///     .get_with_db(&db)
 	///     .await?;
 	/// # Ok(())
@@ -3967,6 +4306,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -3975,7 +4315,7 @@ where
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let db = reinhardt_db::orm::manager::get_connection().await?;
 	/// let user = User::objects()
-	///     .filter("status", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::String("active".to_string()))
+	///     .filter(reinhardt_db::orm::Filter::new("status", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::String("active".to_string())))
 	///     .first_with_db(&db)
 	///     .await?;
 	/// # Ok(())
@@ -4012,6 +4352,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4020,11 +4361,11 @@ where
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Count active users
 	/// let count = User::objects()
-	///     .filter(
+	///     .filter(Filter::new(
 	///         "is_active",
 	///         FilterOperator::Eq,
 	///         FilterValue::Boolean(true),
-	///     )
+	///     ))
 	///     .count()
 	///     .await?;
 	///
@@ -4043,7 +4384,7 @@ where
 			.expr(Func::count(Expr::asterisk().into_simple_expr()));
 
 		// Add WHERE conditions
-		if let Some(cond) = self.build_where_condition() {
+		if let Some(cond) = self.build_where_condition()? {
 			stmt.cond_where(cond);
 		}
 
@@ -4087,6 +4428,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4095,11 +4437,11 @@ where
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Check if any admin users exist
 	/// let has_admin = User::objects()
-	///     .filter(
+	///     .filter(Filter::new(
 	///         "role",
 	///         FilterOperator::Eq,
 	///         FilterValue::String("admin".to_string()),
-	///     )
+	///     ))
 	///     .exists()
 	///     .await?;
 	///
@@ -4131,6 +4473,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4185,7 +4528,7 @@ where
 		}
 
 		// Add WHERE conditions
-		if let Some(cond) = self.build_where_condition() {
+		if let Some(cond) = self.build_where_condition_or_false() {
 			stmt.cond_where(cond);
 		}
 
@@ -4213,6 +4556,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4220,7 +4564,7 @@ where
 	/// # }
 	/// use std::collections::HashMap;
 	/// let queryset = User::objects()
-	///     .filter("id", FilterOperator::Eq, FilterValue::Integer(1));
+	///     .filter(Filter::new("id", FilterOperator::Eq, FilterValue::Integer(1)));
 	///
 	/// let mut updates = HashMap::new();
 	/// updates.insert("name".to_string(), UpdateValue::String("Alice".to_string()));
@@ -4286,13 +4630,14 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// # }
 	/// let queryset = User::objects()
-	///     .filter("id", FilterOperator::Eq, FilterValue::Integer(1));
+	///     .filter(Filter::new("id", FilterOperator::Eq, FilterValue::Integer(1)));
 	///
 	/// let (sql, params) = queryset.delete_sql();
 	/// // sql: "DELETE FROM users WHERE id = $1"
@@ -4300,7 +4645,7 @@ where
 	/// ```
 	/// Generate DELETE statement using reinhardt-query
 	pub fn delete_query(&self) -> reinhardt_query::prelude::DeleteStatement {
-		if self.filters.is_empty() {
+		if !self.has_where_predicates() {
 			panic!(
 				"DELETE without WHERE clause is not allowed. Use .filter() to specify which rows to delete."
 			);
@@ -4310,7 +4655,7 @@ where
 		stmt.from_table(Alias::new(T::table_name()));
 
 		// Add WHERE conditions
-		if let Some(cond) = self.build_where_condition() {
+		if let Some(cond) = self.build_where_condition_or_false() {
 			stmt.cond_where(cond);
 		}
 
@@ -4351,6 +4696,7 @@ where
 	/// # impl Model for PostTag {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostTagFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "post_tags" }
 	/// #     fn new_fields() -> Self::Fields { PostTagFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { None }
@@ -4495,6 +4841,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4550,6 +4897,7 @@ where
 	/// # impl Model for Author {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = AuthorFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "authors" }
 	/// #     fn new_fields() -> Self::Fields { AuthorFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4565,6 +4913,7 @@ where
 	/// # impl Model for Book {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = BookFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "books" }
 	/// #     fn new_fields() -> Self::Fields { BookFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4628,6 +4977,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4643,6 +4993,7 @@ where
 	/// # impl Model for Order {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = OrderFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "orders" }
 	/// #     fn new_fields() -> Self::Fields { OrderFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4764,7 +5115,7 @@ where
 			}
 
 			// Apply WHERE conditions
-			if let Some(cond) = self.build_where_condition() {
+			if let Some(cond) = self.build_where_condition_or_false() {
 				stmt.cond_where(cond);
 			}
 
@@ -4947,6 +5298,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -4962,7 +5314,7 @@ where
 	///
 	/// // Combine with filters
 	/// let active_user_names = User::objects()
-	///     .filter("is_active", FilterOperator::Eq, FilterValue::Boolean(true))
+	///     .filter(Filter::new("is_active", FilterOperator::Eq, FilterValue::Boolean(true)))
 	///     .values(&["username"])
 	///     .all()
 	///     .await?;
@@ -4995,6 +5347,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5030,6 +5383,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5077,6 +5431,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5115,6 +5470,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5154,6 +5510,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5194,6 +5551,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5209,6 +5567,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5216,14 +5575,14 @@ where
 	/// # }
 	/// // Use in IN clause
 	/// let active_user_ids = User::objects()
-	///     .filter("is_active", FilterOperator::Eq, FilterValue::Bool(true))
+	///     .filter(Filter::new("is_active", FilterOperator::Eq, FilterValue::Bool(true)))
 	///     .values(&["id"])
 	///     .as_subquery();
 	/// // Generates: (SELECT id FROM users WHERE is_active = $1)
 	///
 	/// // Use as derived table
 	/// let subquery = Post::objects()
-	///     .filter("published", FilterOperator::Eq, FilterValue::Bool(true))
+	///     .filter(Filter::new("published", FilterOperator::Eq, FilterValue::Bool(true)))
 	///     .as_subquery();
 	/// // Generates: (SELECT * FROM posts WHERE published = $1)
 	/// ```
@@ -5251,6 +5610,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5292,6 +5652,7 @@ where
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "users" }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5338,6 +5699,7 @@ where
 	/// # impl Model for Article {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ArticleFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "articles" }
 	/// #     fn new_fields() -> Self::Fields { ArticleFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5385,6 +5747,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5432,6 +5795,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn new_fields() -> Self::Fields { PostFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5479,6 +5843,7 @@ where
 	/// # impl Model for Product {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ProductFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "products" }
 	/// #     fn new_fields() -> Self::Fields { ProductFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5526,6 +5891,7 @@ where
 	/// # impl Model for Product {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ProductFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "products" }
 	/// #     fn new_fields() -> Self::Fields { ProductFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5573,6 +5939,7 @@ where
 	/// # impl Model for Event {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = EventFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "events" }
 	/// #     fn new_fields() -> Self::Fields { EventFields }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
@@ -5646,6 +6013,22 @@ pub(crate) fn quote_identifier(field: &str) -> String {
 	}
 }
 
+fn filter_lhs_expr(filter: &Filter) -> Expr {
+	match &filter.field_source {
+		FilterField::Column => Expr::col(parse_column_reference(&filter.field)),
+		FilterField::Expression(sql) if filter.field == *sql => Expr::cust(sql.clone()),
+		FilterField::Expression(_) => Expr::col(parse_column_reference(&filter.field)),
+	}
+}
+
+fn filter_lhs_sql(filter: &Filter) -> String {
+	match &filter.field_source {
+		FilterField::Column => quote_identifier(&filter.field),
+		FilterField::Expression(sql) if filter.field == *sql => sql.clone(),
+		FilterField::Expression(_) => quote_identifier(&filter.field),
+	}
+}
+
 /// Parse field reference into reinhardt-query column expression
 ///
 /// Handles both qualified (`table.column`) and unqualified (`column`) references.
@@ -5695,10 +6078,42 @@ fn parse_column_reference(field: &str) -> reinhardt_query::prelude::ColumnRef {
 	}
 }
 
+#[derive(Debug, Clone, Copy)]
+enum LikePattern {
+	Exact,
+	Contains,
+	StartsWith,
+	EndsWith,
+}
+
+impl LikePattern {
+	fn apply(self, value: &str) -> String {
+		let escaped = escape_like_pattern(value);
+		match self {
+			Self::Exact => escaped,
+			Self::Contains => format!("%{}%", escaped),
+			Self::StartsWith => format!("{}%", escaped),
+			Self::EndsWith => format!("%{}", escaped),
+		}
+	}
+}
+
+fn escape_like_pattern(value: &str) -> String {
+	let mut escaped = String::with_capacity(value.len());
+	for ch in value.chars() {
+		if matches!(ch, '\\' | '%' | '_') {
+			escaped.push('\\');
+		}
+		escaped.push(ch);
+	}
+	escaped
+}
+
 #[cfg(test)]
 mod tests {
+	use super::{FilterCondition, MAX_FILTER_CONDITION_DEPTH};
 	use crate::orm::query::UpdateValue;
-	use crate::orm::{FilterOperator, FilterValue, Model, QuerySet, query::Filter};
+	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
@@ -5720,6 +6135,34 @@ mod tests {
 				email,
 			}
 		}
+
+		const fn field_id() -> crate::orm::expressions::FieldRef<TestUser, i64> {
+			crate::orm::expressions::FieldRef::new("id")
+		}
+
+		const fn field_username() -> crate::orm::expressions::FieldRef<TestUser, String> {
+			crate::orm::expressions::FieldRef::new("username")
+		}
+
+		const fn field_email() -> crate::orm::expressions::FieldRef<TestUser, String> {
+			crate::orm::expressions::FieldRef::new("email")
+		}
+
+		const fn field_created_at() -> crate::orm::expressions::FieldRef<TestUser, String> {
+			crate::orm::expressions::FieldRef::new("created_at")
+		}
+
+		const fn field_tags() -> crate::orm::expressions::FieldRef<TestUser, Vec<String>> {
+			crate::orm::expressions::FieldRef::new("tags")
+		}
+
+		const fn field_metadata() -> crate::orm::expressions::FieldRef<TestUser, String> {
+			crate::orm::expressions::FieldRef::new("metadata")
+		}
+
+		const fn field_active_period() -> crate::orm::expressions::FieldRef<TestUser, String> {
+			crate::orm::expressions::FieldRef::new("active_period")
+		}
 	}
 
 	#[derive(Debug, Clone)]
@@ -5734,6 +6177,7 @@ mod tests {
 	impl Model for TestUser {
 		type PrimaryKey = i64;
 		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			"test_users"
@@ -5913,8 +6357,8 @@ mod tests {
 		let (sql, params) = queryset.update_sql(&updates);
 
 		// HashMap iteration order is not guaranteed, so we check both possible orderings
-		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4)";
-		let valid_sql_2 = "UPDATE \"test_users\" SET \"email\" = $1, \"username\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4)";
+		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4 ESCAPE '\\')";
+		let valid_sql_2 = "UPDATE \"test_users\" SET \"email\" = $1, \"username\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4 ESCAPE '\\')";
 		assert!(
 			sql == valid_sql_1 || sql == valid_sql_2,
 			"Generated SQL '{}' does not match either expected pattern",
@@ -5961,7 +6405,7 @@ mod tests {
 
 		assert_eq!(
 			sql,
-			"DELETE FROM \"test_users\" WHERE (\"username\" = $1 AND \"email\" LIKE $2)"
+			"DELETE FROM \"test_users\" WHERE (\"username\" = $1 AND \"email\" LIKE $2 ESCAPE '\\')"
 		);
 		assert_eq!(params, vec!["alice", "alice@%"]);
 	}
@@ -6506,6 +6950,423 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case(
+		Filter::new("username", FilterOperator::IExact, FilterValue::String("Alice".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'Alice' ESCAPE '\'"#
+	)]
+	#[case(
+		Filter::new("email", FilterOperator::IContains, FilterValue::String("example.com".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "email" ILIKE '%example.com%' ESCAPE '\'"#
+	)]
+	#[case(
+		Filter::new("username", FilterOperator::IStartsWith, FilterValue::String("ali".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'ali%' ESCAPE '\'"#
+	)]
+	#[case(
+		Filter::new("username", FilterOperator::IEndsWith, FilterValue::String("ice".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" ILIKE '%ice' ESCAPE '\'"#
+	)]
+	#[case(
+		Filter::new("username", FilterOperator::Regex, FilterValue::String("^a".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" ~ '^a'"#
+	)]
+	#[case(
+		Filter::new("username", FilterOperator::IRegex, FilterValue::String("^a".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" ~* '^a'"#
+	)]
+	fn test_django_style_string_lookup_filters(#[case] filter: Filter, #[case] expected: &str) {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(filter);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(sql, expected);
+	}
+
+	#[rstest]
+	fn test_filter_or_chain_generates_expected_sql() {
+		// Arrange
+		let condition = TestUser::field_username()
+			.exact("alice")
+			.or(TestUser::field_email().icontains("example.com"));
+		let queryset = QuerySet::<TestUser>::new().filter(condition);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' OR "email" ILIKE '%example.com%' ESCAPE '\')"#
+		);
+	}
+
+	#[rstest]
+	fn test_filter_and_chain_generates_expected_sql() {
+		// Arrange
+		let condition = TestUser::field_username()
+			.exact("alice")
+			.and(TestUser::field_id().gte(10));
+		let queryset = QuerySet::<TestUser>::new().filter(condition);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' AND "id" >= 10)"#
+		);
+	}
+
+	#[rstest]
+	fn test_filter_not_chain_generates_expected_sql() {
+		// Arrange
+		let condition = TestUser::field_username().exact("alice").not();
+		let queryset = QuerySet::<TestUser>::new().filter(condition);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE NOT "username" = 'alice'"#
+		);
+	}
+
+	#[rstest]
+	fn test_composite_only_filter_is_recognized_by_delete_sql() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(
+			TestUser::field_username()
+				.exact("alice")
+				.or(TestUser::field_email().icontains("example.com")),
+		);
+
+		// Act
+		let (sql, params) = queryset.delete_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"DELETE FROM "test_users" WHERE ("username" = $1 OR "email" ILIKE $2 ESCAPE '\')"#
+		);
+		assert_eq!(params, vec!["alice", "%example.com%"]);
+	}
+
+	#[rstest]
+	fn test_over_deep_filter_condition_returns_error_and_to_sql_stays_safe() {
+		// Arrange
+		let mut condition = FilterCondition::Single(TestUser::field_username().exact("alice"));
+		for _ in 0..=MAX_FILTER_CONDITION_DEPTH {
+			condition = FilterCondition::not(condition);
+		}
+		let queryset = QuerySet::<TestUser>::new().filter(condition);
+
+		// Act
+		let result = queryset.build_where_condition();
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(reinhardt_core::exception::Error::Validation(_))
+		));
+		assert_eq!(sql, r#"SELECT * FROM "test_users" WHERE FALSE"#);
+	}
+
+	#[rstest]
+	#[case(
+		Filter::new("email", FilterOperator::IContains, FilterValue::String("100%_match\\".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "email" ILIKE '%100\%\_match\\%' ESCAPE '\'"#
+	)]
+	#[case(
+		Filter::new("username", FilterOperator::IExact, FilterValue::String("alice_admin".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'alice\_admin' ESCAPE '\'"#
+	)]
+	fn test_django_style_case_insensitive_like_filters_escape_metacharacters(
+		#[case] filter: Filter,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(filter);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(sql, expected);
+	}
+
+	#[rstest]
+	#[case(
+		Filter::new("email", FilterOperator::Contains, FilterValue::String("100%_match\\".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "email" LIKE '%100\%\_match\\%' ESCAPE '\'"#
+	)]
+	#[case(
+		Filter::new("username", FilterOperator::StartsWith, FilterValue::String("alice_admin".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" LIKE 'alice\_admin%' ESCAPE '\'"#
+	)]
+	#[case(
+		Filter::new("username", FilterOperator::EndsWith, FilterValue::String("100%".to_string())),
+		r#"SELECT * FROM "test_users" WHERE "username" LIKE '%100\%' ESCAPE '\'"#
+	)]
+	fn test_django_style_case_sensitive_like_filters_escape_metacharacters(
+		#[case] filter: Filter,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(filter);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(sql, expected);
+	}
+
+	#[rstest]
+	fn test_django_style_is_in_filter_accepts_typed_values() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			"id",
+			FilterOperator::In,
+			FilterValue::List(vec![FilterValue::Integer(1), FilterValue::Integer(2)]),
+		));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(sql, r#"SELECT * FROM "test_users" WHERE "id" IN (1, 2)"#);
+	}
+
+	#[rstest]
+	fn test_django_style_between_range_filter() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			"id",
+			FilterOperator::Range,
+			FilterValue::Range(
+				Box::new(FilterValue::Integer(10)),
+				Box::new(FilterValue::Integer(20)),
+			),
+		));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "id" BETWEEN 10 AND 20"#
+		);
+	}
+
+	#[rstest]
+	fn test_django_style_date_part_filter_expression() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::expression(
+			"EXTRACT(YEAR FROM \"created_at\")",
+			FilterOperator::Eq,
+			FilterValue::Integer(2026),
+		));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE EXTRACT(YEAR FROM "created_at") = 2026"#
+		);
+	}
+
+	#[rstest]
+	fn test_public_filter_new_treats_expression_like_field_as_quoted_column() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			"__reinhardt_filter_expr:EXTRACT(YEAR FROM \"created_at\")",
+			FilterOperator::Eq,
+			FilterValue::Integer(2026),
+		));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "__reinhardt_filter_expr:EXTRACT(YEAR FROM ""created_at"")" = 2026"#
+		);
+	}
+
+	#[rstest]
+	fn test_public_column_filter_uses_mutated_field_consistently() {
+		// Arrange
+		let mut filter = Filter::new(
+			"username",
+			FilterOperator::Eq,
+			FilterValue::String("alice".into()),
+		);
+		filter.field = "email".to_string();
+		let queryset = QuerySet::<TestUser>::new().filter(filter);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(sql, r#"SELECT * FROM "test_users" WHERE "email" = 'alice'"#);
+	}
+
+	#[rstest]
+	fn test_mutated_transformed_filter_field_falls_back_to_quoted_column() {
+		// Arrange
+		let mut filter = TestUser::field_created_at().year().eq(2026);
+		filter.field = "EXTRACT(MONTH FROM \"created_at\")".to_string();
+		let queryset = QuerySet::<TestUser>::new().filter(filter);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "EXTRACT(MONTH FROM ""created_at"")" = 2026"#
+		);
+	}
+
+	#[rstest]
+	fn test_field_accessor_lookup_helpers_generate_expected_sql() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new()
+			.filter(TestUser::field_username().exact("alice"))
+			.filter(TestUser::field_email().icontains("example.com"))
+			.filter(TestUser::field_id().is_in([1_i64, 2, 3]))
+			.filter(TestUser::field_created_at().year().gte(2026));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' AND "email" ILIKE '%example.com%' ESCAPE '\' AND "id" IN (1, 2, 3) AND EXTRACT(YEAR FROM "created_at") >= 2026)"#
+		);
+	}
+
+	#[rstest]
+	fn test_field_accessor_null_not_in_and_range_helpers_generate_expected_sql() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new()
+			.filter(TestUser::field_email().is_not_null())
+			.filter(TestUser::field_id().not_in([10_i64, 20]))
+			.filter(TestUser::field_id().range(100_i64, 200));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE ("email" IS NOT NULL AND "id" NOT IN (10, 20) AND "id" BETWEEN 100 AND 200)"#
+		);
+	}
+
+	#[rstest]
+	fn test_field_accessor_string_lookup_variants_generate_expected_sql() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new()
+			.filter(TestUser::field_username().contains("lic"))
+			.filter(TestUser::field_username().starts_with("a"))
+			.filter(TestUser::field_username().ends_with("e"))
+			.filter(TestUser::field_username().istarts_with("AL"))
+			.filter(TestUser::field_username().iends_with("CE"))
+			.filter(TestUser::field_username().regex("^a.*e$"))
+			.filter(TestUser::field_username().iregex("^A.*E$"));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE ("username" LIKE '%lic%' ESCAPE '\' AND "username" LIKE 'a%' ESCAPE '\' AND "username" LIKE '%e' ESCAPE '\' AND "username" ILIKE 'AL%' ESCAPE '\' AND "username" ILIKE '%CE' ESCAPE '\' AND "username" ~ '^a.*e$' AND "username" ~* '^A.*E$')"#
+		);
+	}
+
+	#[rstest]
+	#[case(TestUser::field_created_at().date().eq("2026-06-10"), r#"SELECT * FROM "test_users" WHERE DATE("created_at") = '2026-06-10'"#)]
+	#[case(TestUser::field_created_at().time().eq("05:00:00"), r#"SELECT * FROM "test_users" WHERE TIME("created_at") = '05:00:00'"#)]
+	#[case(TestUser::field_created_at().month().eq(6), r#"SELECT * FROM "test_users" WHERE EXTRACT(MONTH FROM "created_at") = 6"#)]
+	#[case(TestUser::field_created_at().day().eq(10), r#"SELECT * FROM "test_users" WHERE EXTRACT(DAY FROM "created_at") = 10"#)]
+	#[case(TestUser::field_created_at().week().eq(24), r#"SELECT * FROM "test_users" WHERE EXTRACT(WEEK FROM "created_at") = 24"#)]
+	#[case(TestUser::field_created_at().week_day().eq(4), r#"SELECT * FROM "test_users" WHERE (EXTRACT(DOW FROM "created_at") + 1) = 4"#)]
+	#[case(TestUser::field_created_at().iso_week_day().eq(3), r#"SELECT * FROM "test_users" WHERE EXTRACT(ISODOW FROM "created_at") = 3"#)]
+	#[case(TestUser::field_created_at().quarter().eq(2), r#"SELECT * FROM "test_users" WHERE EXTRACT(QUARTER FROM "created_at") = 2"#)]
+	#[case(TestUser::field_created_at().hour().gte(5), r#"SELECT * FROM "test_users" WHERE EXTRACT(HOUR FROM "created_at") >= 5"#)]
+	#[case(TestUser::field_created_at().minute().lt(30), r#"SELECT * FROM "test_users" WHERE EXTRACT(MINUTE FROM "created_at") < 30"#)]
+	#[case(TestUser::field_created_at().second().lte(59), r#"SELECT * FROM "test_users" WHERE EXTRACT(SECOND FROM "created_at") <= 59"#)]
+	fn test_field_accessor_date_time_transforms_generate_expected_sql(
+		#[case] filter: Filter,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(filter);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(sql, expected);
+	}
+
+	#[rstest]
+	fn test_field_accessor_postgres_array_jsonb_and_range_helpers_generate_expected_sql() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new()
+			.filter(TestUser::field_tags().array_contains(["rust", "async"]))
+			.filter(TestUser::field_tags().array_overlap(["web", "orm"]))
+			.filter(TestUser::field_metadata().jsonb_contains(r#"{"active": true}"#))
+			.filter(TestUser::field_metadata().jsonb_has_any_keys(["tier", "plan"]))
+			.filter(TestUser::field_active_period().range_overlaps("[2026-01-01,2027-01-01)"));
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE ("tags" @> ARRAY['rust', 'async'] AND "tags" && ARRAY['web', 'orm'] AND "metadata" @> '{"active": true}'::jsonb AND "metadata" ?| array['tier', 'plan'] AND "active_period" && '[2026-01-01,2027-01-01)')"#
+		);
+	}
+
+	#[rstest]
+	fn test_complex_django_style_lookup_query_combines_order_distinct_and_limit() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new()
+			.filter(TestUser::field_email().icontains("example.com"))
+			.filter(TestUser::field_username().is_not_null())
+			.filter(TestUser::field_created_at().year().range(2024, 2026))
+			.distinct()
+			.order_by(&["-created_at", "username"])
+			.limit(25)
+			.offset(50);
+
+		// Act
+		let sql = queryset.to_sql();
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT DISTINCT * FROM "test_users" WHERE ("email" ILIKE '%example.com%' ESCAPE '\' AND "username" IS NOT NULL AND EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026) ORDER BY "created_at" DESC, "username" ASC LIMIT 25 OFFSET 50"#
+		);
+	}
+
+	#[rstest]
 	fn test_range_contains_filter_quotes_field() {
 		// Arrange
 		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
@@ -6520,7 +7381,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE "age_range" @> '''25'''"#
+			r#"SELECT * FROM "test_users" WHERE "age_range" @> '25'"#
 		);
 	}
 

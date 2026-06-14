@@ -6,7 +6,7 @@
 use reinhardt_core::{macros::model, validators::ValidationResult};
 use reinhardt_db::{
 	DatabaseConnection,
-	orm::{FilterOperator, FilterValue, Model},
+	orm::{Filter, FilterOperator, FilterValue, Model},
 };
 use std::sync::Arc;
 use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
@@ -77,7 +77,7 @@ impl TestDatabase {
 		username: &str,
 		email: &str,
 	) -> Result<i32, Box<dyn std::error::Error>> {
-		let user = TestUser::new(username.to_string(), email.to_string());
+		let user = TestUser::build().username(username).email(email).finish();
 		let manager = TestUser::objects();
 		let created = manager.create(&user).await?;
 		Ok(created.id())
@@ -90,11 +90,11 @@ impl TestDatabase {
 	) -> Result<bool, Box<dyn std::error::Error>> {
 		let manager = TestUser::objects();
 		let count = manager
-			.filter(
+			.filter(Filter::new(
 				"username",
 				FilterOperator::Eq,
 				FilterValue::String(username.to_string()),
-			)
+			))
 			.count()
 			.await?;
 		Ok(count > 0)
@@ -104,11 +104,11 @@ impl TestDatabase {
 	pub async fn email_exists(&self, email: &str) -> Result<bool, Box<dyn std::error::Error>> {
 		let manager = TestUser::objects();
 		let count = manager
-			.filter(
+			.filter(Filter::new(
 				"email",
 				FilterOperator::Eq,
 				FilterValue::String(email.to_string()),
-			)
+			))
 			.count()
 			.await?;
 		Ok(count > 0)
@@ -122,7 +122,12 @@ impl TestDatabase {
 		price: f64,
 		stock: i32,
 	) -> Result<i32, Box<dyn std::error::Error>> {
-		let product = TestProduct::new(name.to_string(), code.to_string(), price, stock);
+		let product = TestProduct::build()
+			.name(name)
+			.code(code)
+			.price(price)
+			.stock(stock)
+			.finish();
 		let manager = TestProduct::objects();
 		let created = manager.create(&product).await?;
 		Ok(created.id())
@@ -132,11 +137,11 @@ impl TestDatabase {
 	pub async fn user_exists(&self, user_id: i32) -> Result<bool, Box<dyn std::error::Error>> {
 		let manager = TestUser::objects();
 		let count = manager
-			.filter(
+			.filter(Filter::new(
 				"id",
 				FilterOperator::Eq,
 				FilterValue::Integer(user_id as i64),
-			)
+			))
 			.count()
 			.await?;
 		Ok(count > 0)
@@ -149,11 +154,11 @@ impl TestDatabase {
 	) -> Result<bool, Box<dyn std::error::Error>> {
 		let manager = TestProduct::objects();
 		let count = manager
-			.filter(
+			.filter(Filter::new(
 				"id",
 				FilterOperator::Eq,
 				FilterValue::Integer(product_id as i64),
-			)
+			))
 			.count()
 			.await?;
 		Ok(count > 0)
@@ -166,7 +171,11 @@ impl TestDatabase {
 		product_id: i32,
 		quantity: i32,
 	) -> Result<i32, Box<dyn std::error::Error>> {
-		let order = TestOrder::new(user_id, product_id, quantity);
+		let order = TestOrder::build()
+			.user_id(user_id)
+			.product_id(product_id)
+			.quantity(quantity)
+			.finish();
 		let manager = TestOrder::objects();
 		let created = manager.create(&order).await?;
 		Ok(created.id())

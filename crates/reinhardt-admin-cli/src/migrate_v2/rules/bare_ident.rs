@@ -7,6 +7,7 @@
 
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 use quote::quote;
+use std::iter::Peekable;
 use syn::visit_mut::{self, VisitMut};
 
 use crate::migrate_v2::rewriter::FileRewriter;
@@ -63,8 +64,53 @@ fn rewrite_page_body(input: TokenStream) -> TokenStream {
 fn rewrite_brace_body(input: TokenStream) -> TokenStream {
 	let mut out: Vec<TokenTree> = Vec::new();
 	let mut iter = input.into_iter().peekable();
+	let mut previous_token_can_own_brace_body = false;
 
 	while let Some(tt) = iter.next() {
+		if let TokenTree::Ident(id) = &tt {
+			match id.to_string().as_str() {
+				"if" | "for" | "while" => {
+					out.push(tt);
+					push_control_prefix_and_rewrite_body(&mut iter, &mut out);
+					previous_token_can_own_brace_body = false;
+					continue;
+				}
+				"match" => {
+					out.push(tt);
+					push_match_prefix_and_rewrite_body(&mut iter, &mut out);
+					previous_token_can_own_brace_body = false;
+					continue;
+				}
+				"let" => {
+					out.push(tt);
+					push_statement_until_semicolon(&mut iter, &mut out);
+					previous_token_can_own_brace_body = false;
+					continue;
+				}
+				"else" => {
+					out.push(tt);
+					if let Some(TokenTree::Ident(next)) = iter.peek()
+						&& next == "if"
+					{
+						let if_token = iter.next().expect("peeked token disappeared");
+						out.push(if_token);
+						push_control_prefix_and_rewrite_body(&mut iter, &mut out);
+					} else {
+						push_immediate_body_if_present(&mut iter, &mut out);
+					}
+					previous_token_can_own_brace_body = false;
+					continue;
+				}
+				"loop" | "unsafe" | "async" => {
+					out.push(tt);
+					push_immediate_body_if_present(&mut iter, &mut out);
+					previous_token_can_own_brace_body = false;
+					continue;
+				}
+				_ => {}
+			}
+		}
+
 		// Look for `Ident` followed by something that is NOT one of:
 		//   `{` — element body
 		//   `(` — component call or function call
@@ -96,43 +142,204 @@ fn rewrite_brace_body(input: TokenStream) -> TokenStream {
 				let ident = id.clone();
 				let wrapped = quote! { #ident };
 				out.push(TokenTree::Group(Group::new(Delimiter::Brace, wrapped)));
+				previous_token_can_own_brace_body = false;
 				continue;
 			}
 		}
 
 		// Recurse into any nested braced group (could be a child element body) —
-		// UNLESS the group is already in v2 expression-slot shape (`{ expr }`
-		// where the inner stream is itself wrapped in a single brace group).
-		// Recursing into such a body would re-wrap the inner ident on every
-		// pass, breaking idempotency.
+		// UNLESS it is a standalone expression slot created by a prior run.
+		// Element/control-flow bodies are owned by the previous token, while
+		// expression slots appear as standalone brace groups in child position.
 		if let TokenTree::Group(g) = &tt
 			&& g.delimiter() == Delimiter::Brace
 		{
-			if is_already_wrapped_expression_slot(&g.stream()) {
-				out.push(tt);
-			} else {
+			if previous_token_can_own_brace_body {
 				let inner = rewrite_brace_body(g.stream());
 				out.push(TokenTree::Group(Group::new(Delimiter::Brace, inner)));
+			} else {
+				out.push(tt);
 			}
+			previous_token_can_own_brace_body = false;
 			continue;
 		}
 
+		previous_token_can_own_brace_body = match &tt {
+			TokenTree::Ident(id) => !is_reserved_keyword(&id.to_string()),
+			TokenTree::Punct(p) => matches!(p.as_char(), ')' | ']'),
+			_ => false,
+		};
 		out.push(tt);
 	}
 
 	out.into_iter().collect()
 }
 
-/// True when a brace body's entire contents are themselves a single brace
-/// group — i.e. the surrounding braces are already the v2 expression-slot
-/// wrapping (`{ {expr} }`) introduced by a prior run of this rule.
-fn is_already_wrapped_expression_slot(stream: &TokenStream) -> bool {
-	let mut iter = stream.clone().into_iter();
-	let first = iter.next();
-	let rest = iter.next();
-	match (first, rest) {
-		(Some(TokenTree::Group(g)), None) => g.delimiter() == Delimiter::Brace,
-		_ => false,
+fn push_control_prefix_and_rewrite_body(
+	iter: &mut Peekable<proc_macro2::token_stream::IntoIter>,
+	out: &mut Vec<TokenTree>,
+) {
+	for next in iter.by_ref() {
+		if let TokenTree::Group(g) = &next
+			&& g.delimiter() == Delimiter::Brace
+		{
+			let inner = rewrite_brace_body(g.stream());
+			out.push(TokenTree::Group(Group::new(Delimiter::Brace, inner)));
+			return;
+		}
+		out.push(next);
+	}
+}
+
+fn push_match_prefix_and_rewrite_body(
+	iter: &mut Peekable<proc_macro2::token_stream::IntoIter>,
+	out: &mut Vec<TokenTree>,
+) {
+	for next in iter.by_ref() {
+		if let TokenTree::Group(g) = &next
+			&& g.delimiter() == Delimiter::Brace
+		{
+			let inner = rewrite_match_body(g.stream());
+			out.push(TokenTree::Group(Group::new(Delimiter::Brace, inner)));
+			return;
+		}
+		out.push(next);
+	}
+}
+
+fn rewrite_match_body(input: TokenStream) -> TokenStream {
+	let mut out: Vec<TokenTree> = Vec::new();
+	let mut arm_value: Vec<TokenTree> = Vec::new();
+	let mut iter = input.into_iter().peekable();
+	let mut in_arm_value = false;
+
+	while let Some(tt) = iter.next() {
+		if !in_arm_value {
+			if is_fat_arrow_start(&tt, iter.peek()) {
+				out.push(tt);
+				if let Some(next) = iter.next() {
+					out.push(next);
+				}
+				in_arm_value = true;
+			} else {
+				out.push(tt);
+			}
+			continue;
+		}
+
+		if is_top_level_comma(&tt) {
+			out.extend(rewrite_brace_body(arm_value.into_iter().collect()));
+			arm_value = Vec::new();
+			out.push(tt);
+			in_arm_value = false;
+		} else {
+			arm_value.push(tt);
+		}
+	}
+
+	if in_arm_value {
+		out.extend(rewrite_brace_body(arm_value.into_iter().collect()));
+	}
+
+	out.into_iter().collect()
+}
+
+fn is_fat_arrow_start(tt: &TokenTree, next: Option<&TokenTree>) -> bool {
+	matches!(tt, TokenTree::Punct(p) if p.as_char() == '=')
+		&& matches!(next, Some(TokenTree::Punct(p)) if p.as_char() == '>')
+}
+
+fn is_top_level_comma(tt: &TokenTree) -> bool {
+	matches!(tt, TokenTree::Punct(p) if p.as_char() == ',')
+}
+
+fn push_statement_until_semicolon(
+	iter: &mut Peekable<proc_macro2::token_stream::IntoIter>,
+	out: &mut Vec<TokenTree>,
+) {
+	let mut initializer: Vec<TokenTree> = Vec::new();
+	let mut in_initializer = false;
+
+	for next in iter.by_ref() {
+		let is_semicolon = matches!(&next, TokenTree::Punct(p) if p.as_char() == ';');
+		let is_assignment = matches!(&next, TokenTree::Punct(p) if p.as_char() == '=');
+
+		if in_initializer {
+			if is_semicolon {
+				out.extend(rewrite_let_initializer(initializer.into_iter().collect()));
+				out.push(next);
+				return;
+			}
+			initializer.push(next);
+			continue;
+		}
+
+		out.push(next);
+		if is_assignment {
+			in_initializer = true;
+		}
+		if is_semicolon {
+			return;
+		}
+	}
+
+	if in_initializer {
+		out.extend(rewrite_let_initializer(initializer.into_iter().collect()));
+	}
+}
+
+fn rewrite_let_initializer(input: TokenStream) -> TokenStream {
+	let mut out: Vec<TokenTree> = Vec::new();
+	let mut previous_token_can_own_brace_body = false;
+
+	for tt in input {
+		match tt {
+			TokenTree::Group(g) if g.delimiter() == Delimiter::Brace => {
+				let inner = if previous_token_can_own_brace_body {
+					rewrite_brace_body(g.stream())
+				} else {
+					rewrite_let_initializer(g.stream())
+				};
+				out.push(TokenTree::Group(Group::new(Delimiter::Brace, inner)));
+				previous_token_can_own_brace_body = false;
+			}
+			TokenTree::Group(g) => {
+				let delimiter = g.delimiter();
+				let inner = rewrite_let_initializer(g.stream());
+				out.push(TokenTree::Group(Group::new(delimiter, inner)));
+				previous_token_can_own_brace_body = false;
+			}
+			other => {
+				previous_token_can_own_brace_body = token_can_own_let_initializer_body(&other);
+				out.push(other);
+			}
+		}
+	}
+
+	out.into_iter().collect()
+}
+
+fn token_can_own_let_initializer_body(tt: &TokenTree) -> bool {
+	matches!(
+		tt,
+		TokenTree::Ident(id)
+			if starts_lowercase(&id.to_string()) && !is_reserved_keyword(&id.to_string())
+	)
+}
+
+fn push_immediate_body_if_present(
+	iter: &mut Peekable<proc_macro2::token_stream::IntoIter>,
+	out: &mut Vec<TokenTree>,
+) {
+	if let Some(TokenTree::Group(g)) = iter.peek()
+		&& g.delimiter() == Delimiter::Brace
+	{
+		let body = match iter.next() {
+			Some(TokenTree::Group(g)) => g,
+			_ => unreachable!("peek matched but next did not"),
+		};
+		let inner = rewrite_brace_body(body.stream());
+		out.push(TokenTree::Group(Group::new(Delimiter::Brace, inner)));
 	}
 }
 

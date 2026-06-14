@@ -22,11 +22,6 @@ pub type SharedRc<T> = std::sync::Arc<T>;
 #[cfg(not(feature = "thread-safe"))]
 pub type SharedRc<T> = std::rc::Rc<T>;
 
-/// Deprecated alias for [`SharedRc`].
-#[allow(deprecated)]
-#[deprecated(since = "0.1.0-rc.16", note = "use `SharedRc` instead")]
-pub type SeaRc<T> = SharedRc<T>;
-
 /// Type-erased identifier for heterogeneous collections.
 ///
 /// This allows storing different types implementing `Iden` in the same collection.

@@ -17,7 +17,7 @@
 // Native-only: this file uses tokio/sqlx/tempfile which don't build for wasm32.
 // `wasm-pack test` builds all `--tests` targets; without this gate the test
 // binary tries (and fails) to link sqlx for wasm32.
-#![cfg(native)]
+#![cfg(server)]
 
 #[cfg(with_reinhardt)]
 mod database_tests {
@@ -496,7 +496,7 @@ mod server_fn_tests {
 	use tempfile::NamedTempFile;
 
 	// Import server functions
-	use examples_tutorial_basis::server_fn::polls::{
+	use examples_tutorial_basis::apps::polls::server_fn::{
 		get_question_detail, get_question_results, get_questions, vote,
 	};
 	use examples_tutorial_basis::shared::types::VoteRequest;
@@ -841,10 +841,9 @@ mod server_fn_tests {
 
 #[cfg(with_reinhardt)]
 mod auth_tests {
-	use examples_tutorial_basis::apps::polls::di::SessionError;
 	use examples_tutorial_basis::apps::polls::server_fn::{
-		create_choice, create_question, delete_choice, delete_question, update_choice,
-		update_question,
+		SessionError, create_choice, create_question, delete_choice, delete_question,
+		update_choice, update_question,
 	};
 	use examples_tutorial_basis::apps::users::models::User;
 	use reinhardt::DatabaseConnection;
@@ -868,7 +867,7 @@ mod auth_tests {
 
 	/// Anonymous session error wrapped in `Depends<Result<User, SessionError>>`
 	/// — the same value the request-scoped `session_user_factory` in
-	/// `apps::polls::di` would produce for a `SessionData` without a
+	/// `apps::polls::server_fn` would produce for a `SessionData` without a
 	/// `user_id` key. We construct it directly with `Depends::from_value`
 	/// so the test does not need to spin up the middleware stack or the DI
 	/// container; the gate under test is `From<&SessionError> for
@@ -909,13 +908,7 @@ mod auth_tests {
 		let session_user = anonymous_session_user();
 
 		// Act
-		let result = create_question(
-			"Anonymous attempt".to_string(),
-			"csrf-token-ignored".to_string(),
-			db_conn,
-			session_user,
-		)
-		.await;
+		let result = create_question("Anonymous attempt".to_string(), db_conn, session_user).await;
 
 		// Assert
 		assert_unauthorized(result, "create_question");
@@ -929,14 +922,7 @@ mod auth_tests {
 		let (_file, db_conn) = empty_db_conn.await;
 		let session_user = anonymous_session_user();
 
-		let result = update_question(
-			"1".to_string(),
-			"New text".to_string(),
-			"csrf".to_string(),
-			db_conn,
-			session_user,
-		)
-		.await;
+		let result = update_question(1, "New text".to_string(), db_conn, session_user).await;
 
 		assert_unauthorized(result, "update_question");
 	}
@@ -949,8 +935,7 @@ mod auth_tests {
 		let (_file, db_conn) = empty_db_conn.await;
 		let session_user = anonymous_session_user();
 
-		let result =
-			delete_question("1".to_string(), "csrf".to_string(), db_conn, session_user).await;
+		let result = delete_question(1, db_conn, session_user).await;
 
 		assert_unauthorized(result, "delete_question");
 	}
@@ -963,14 +948,7 @@ mod auth_tests {
 		let (_file, db_conn) = empty_db_conn.await;
 		let session_user = anonymous_session_user();
 
-		let result = create_choice(
-			"1".to_string(),
-			"Anonymous choice".to_string(),
-			"csrf".to_string(),
-			db_conn,
-			session_user,
-		)
-		.await;
+		let result = create_choice(1, "Anonymous choice".to_string(), db_conn, session_user).await;
 
 		assert_unauthorized(result, "create_choice");
 	}
@@ -983,14 +961,7 @@ mod auth_tests {
 		let (_file, db_conn) = empty_db_conn.await;
 		let session_user = anonymous_session_user();
 
-		let result = update_choice(
-			"1".to_string(),
-			"Hijack".to_string(),
-			"csrf".to_string(),
-			db_conn,
-			session_user,
-		)
-		.await;
+		let result = update_choice(1, "Hijack".to_string(), db_conn, session_user).await;
 
 		assert_unauthorized(result, "update_choice");
 	}
@@ -1003,8 +974,7 @@ mod auth_tests {
 		let (_file, db_conn) = empty_db_conn.await;
 		let session_user = anonymous_session_user();
 
-		let result =
-			delete_choice("1".to_string(), "csrf".to_string(), db_conn, session_user).await;
+		let result = delete_choice(1, db_conn, session_user).await;
 
 		assert_unauthorized(result, "delete_choice");
 	}

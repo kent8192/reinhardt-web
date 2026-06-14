@@ -27,6 +27,9 @@ on:
         default: release
   pull_request:
     types: [closed]
+    branches:
+      - main
+      - 'develop/**'
     paths: ['announcements/**']
 
 # Serialize per-base-branch but never cancel an in-flight release-plz run;
@@ -59,9 +62,10 @@ jobs:
   # 1. Push to main → release-plz creates Release PR (branch: release-plz-*)
   # 2. Merge Release PR → release-plz detects commit from release-plz-* branch and publishes
   #
-  # With release_always = false in release-plz.toml:
-  # - Regular pushes: release-plz skips publishing (not from release PR)
-  # - Release PR merge: release-plz detects release-plz-* branch and publishes
+  # With release_always = true in release-plz.toml:
+  # - Regular pushes: release-plz keeps the next Release PR up to date
+  # - Release PR merge: release-plz publishes every workspace crate whose
+  #   local version differs from crates.io
   #
   # Runner: Always uses self-hosted AWS runner for release operations
   # (faster builds, no disk space issues, no dpkg lock contention)
@@ -105,7 +109,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run release-plz release-pr
-        id: release-plz-pr
+        id: release-plz-pr-action
         uses: release-plz/action@v0.5
         with:
           command: release-pr
@@ -113,12 +117,58 @@ jobs:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
+      - name: Validate release-plz release-pr result
+        id: release-plz-pr
+        env:
+          RAW_PR_JSON: ${{ steps.release-plz-pr-action.outputs.pr }}
+          RAW_PRS_JSON: ${{ steps.release-plz-pr-action.outputs.prs }}
+          RAW_PRS_CREATED: ${{ steps.release-plz-pr-action.outputs.prs_created }}
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          if [ "$RAW_PRS_CREATED" = "true" ] && [ -n "$RAW_PR_JSON" ] && [ "$RAW_PR_JSON" != "{}" ]; then
+            echo "release-plz/action created or updated a Release PR."
+            echo "pr=$RAW_PR_JSON" >> "$GITHUB_OUTPUT"
+            echo "prs=$RAW_PRS_JSON" >> "$GITHUB_OUTPUT"
+            echo "prs_created=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "release-plz/action reported no Release PRs; rerunning release-plz CLI strictly."
+          release_pr_stderr=$(mktemp)
+          trap 'rm -f "$release_pr_stderr"' EXIT
+
+          if ! release_pr_output=$(release-plz release-pr \
+            --git-token "$GITHUB_TOKEN" \
+            --repo-url "https://github.com/${GITHUB_REPOSITORY}" \
+            --config release-plz.toml \
+            -o json 2>"$release_pr_stderr"); then
+            cat "$release_pr_stderr" >&2
+            echo "::error::release-plz release-pr failed after the action reported no PRs; refusing to mask this as a no-op."
+            exit 1
+          fi
+
+          echo "release_pr_output: $release_pr_output"
+          prs=$(jq -c '.prs // []' <<< "$release_pr_output")
+          prs_length=$(jq 'length' <<< "$prs")
+          if [ "$prs_length" != "0" ]; then
+            first_pr=$(jq -c '.[0]' <<< "$prs")
+            prs_created=true
+          else
+            first_pr="{}"
+            prs_created=false
+          fi
+
+          echo "pr=$first_pr" >> "$GITHUB_OUTPUT"
+          echo "prs=$prs" >> "$GITHUB_OUTPUT"
+          echo "prs_created=$prs_created" >> "$GITHUB_OUTPUT"
+
       - name: Update version references in release branch
-        # Guard against no-op release-pr runs: when release-plz/action@v0.5
-        # finds nothing to release it sets outputs.pr to "{}" (not empty),
-        # which makes `outputs.pr != ''` truthy. Without the extra checks,
-        # fromJson('{}').head_branch becomes null -> HEAD_BRANCH empty ->
-        # `git fetch origin ""` fails with exit 128. See run 24864402077.
+        # Guard against no-op and failed release-pr runs. Keep JSON parsing in
+        # the shell instead of `fromJson(...)` expressions so a failed
+        # release-plz step or malformed output cannot produce a secondary
+        # workflow expression error. See run 24864402077 and #4828.
         #
         # Use GraphQL createCommitOnBranch (NOT git push) so the new commit's
         # committer is `web-flow`, the only identity that reliably triggers
@@ -128,15 +178,19 @@ jobs:
         # leaving the Release PR head SHA without any Actions check-runs.
         # See #4042 (this fix), #4029, #4031 (incomplete fix).
         if: >-
-          steps.release-plz-pr.outputs.pr != ''
+          steps.release-plz-pr.outcome == 'success'
+          && steps.release-plz-pr.outputs.pr != ''
           && steps.release-plz-pr.outputs.pr != '{}'
-          && fromJson(steps.release-plz-pr.outputs.pr).head_branch != null
         env:
-          HEAD_BRANCH: ${{ fromJson(steps.release-plz-pr.outputs.pr).head_branch }}
+          RELEASE_PR_JSON: ${{ steps.release-plz-pr.outputs.pr }}
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          if ! HEAD_BRANCH=$(jq -er '.head_branch // empty' <<< "$RELEASE_PR_JSON"); then
+            echo "::warning::release-plz did not emit a valid PR head branch; skipping version reference update."
+            exit 0
+          fi
           if [ -z "$HEAD_BRANCH" ]; then
             echo "No release PR created (HEAD_BRANCH is empty); skipping."
             exit 0
@@ -458,16 +512,23 @@ jobs:
 
   release-announcement-pr:
     name: Create Release Announcement PR
-    # Announcements are produced only for releases originating from main.
-    # Pre-release tags from develop/** push are skipped by the branch guard
-    # below (github.ref == 'refs/heads/main'). The previous stable-only tag
-    # filter was removed in #4692 because the branch guard already enforces
-    # the intent of #4541, and the regex also prevented legitimate RC
-    # releases on main (e.g. v0.1.0-rc.30) from receiving announcements.
+    # Announcements are produced for release tags originating from stable main
+    # and active develop release trains. Other branch pushes are skipped by the
+    # branch guard below. The previous stable-only tag filter was removed in
+    # #4692 because branch origin is the intent boundary for announcements, and
+    # the regex also prevented legitimate RC releases from receiving
+    # announcements.
     if: |
       always() &&
       (
-        (github.event_name == 'push' && needs.release-plz-release.outputs.released == 'true' && github.ref == 'refs/heads/main') ||
+        (
+          github.event_name == 'push' &&
+          needs.release-plz-release.outputs.released == 'true' &&
+          (
+            github.ref == 'refs/heads/main' ||
+            startsWith(github.ref, 'refs/heads/develop/')
+          )
+        ) ||
         (github.event_name == 'workflow_dispatch')
       )
     needs: [release-plz-release]
@@ -726,9 +787,16 @@ jobs:
 
   post-announcement:
     name: Post Announcement to Discussions
+    # Announcement PRs may be reviewed and merged on either stable main or an
+    # active develop release train. Keep this aligned with the pull_request
+    # trigger branch filter above.
     if: >
       github.event_name == 'pull_request' &&
       github.event.pull_request.merged == true &&
+      (
+        github.event.pull_request.base.ref == 'main' ||
+        startsWith(github.event.pull_request.base.ref, 'develop/')
+      ) &&
       contains(github.event.pull_request.labels.*.name, 'announcement')
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
     timeout-minutes: 10

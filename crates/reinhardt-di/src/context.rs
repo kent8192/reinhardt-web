@@ -44,6 +44,10 @@ pub struct InjectionContext {
 	singleton_scope: Arc<SingletonScope>,
 	/// Override registry for dependency substitution (e.g., for testing)
 	override_registry: Arc<OverrideRegistry>,
+	/// Per-context dependency registry that takes precedence over the global
+	/// registry during resolution. When `Some`, types registered here are
+	/// resolved first; types not found fall back to `global_registry()`.
+	registry: Option<Arc<crate::registry::DependencyRegistry>>,
 	/// HTTP request for parameter extraction
 	#[cfg(feature = "params")]
 	request: Option<Arc<Request>>,
@@ -66,6 +70,7 @@ pub struct InjectionContext {
 /// ```
 pub struct InjectionContextBuilder {
 	singleton_scope: Arc<SingletonScope>,
+	registry: Option<Arc<crate::registry::DependencyRegistry>>,
 	#[cfg(feature = "params")]
 	request: Option<Request>,
 	#[cfg(feature = "params")]
@@ -117,6 +122,16 @@ impl InjectionContextBuilder {
 		self
 	}
 
+	/// Attach a per-context dependency registry.
+	///
+	/// Types registered in this registry take precedence over the global
+	/// registry during [`InjectionContext::resolve`]. Types not found here
+	/// fall back to `global_registry()`.
+	pub fn with_registry(mut self, registry: Arc<crate::registry::DependencyRegistry>) -> Self {
+		self.registry = Some(registry);
+		self
+	}
+
 	/// Register a singleton instance in the context.
 	///
 	/// This allows explicit registration of pre-configured instances
@@ -160,6 +175,7 @@ impl InjectionContextBuilder {
 			request_scope: RequestScope::new(),
 			singleton_scope: self.singleton_scope,
 			override_registry: Arc::new(OverrideRegistry::new()),
+			registry: self.registry,
 			#[cfg(feature = "params")]
 			request: self.request.map(Arc::new),
 			#[cfg(feature = "params")]
@@ -174,6 +190,7 @@ impl Clone for InjectionContext {
 			request_scope: self.request_scope.deep_clone(),
 			singleton_scope: Arc::clone(&self.singleton_scope),
 			override_registry: Arc::clone(&self.override_registry),
+			registry: self.registry.clone(),
 			#[cfg(feature = "params")]
 			request: self.request.clone(),
 			#[cfg(feature = "params")]
@@ -198,6 +215,7 @@ impl InjectionContext {
 	pub fn builder(singleton_scope: impl Into<Arc<SingletonScope>>) -> InjectionContextBuilder {
 		InjectionContextBuilder {
 			singleton_scope: singleton_scope.into(),
+			registry: None,
 			#[cfg(feature = "params")]
 			request: None,
 			#[cfg(feature = "params")]
@@ -408,6 +426,7 @@ impl InjectionContext {
 			request_scope: RequestScope::new(),
 			singleton_scope: self.singleton_scope.clone(),
 			override_registry: self.override_registry.clone(),
+			registry: self.registry.clone(),
 			#[cfg(feature = "params")]
 			request,
 			#[cfg(feature = "params")]
@@ -573,12 +592,31 @@ impl InjectionContext {
 		self.override_registry.clear();
 	}
 
-	/// Resolve a dependency from the global registry
+	/// Layered registry lookup: per-context registry takes precedence, then
+	/// global. Returns the scope and which registry owns the type.
+	fn find_type_registration<T: Any + Send + Sync + 'static>(
+		&self,
+	) -> Option<(
+		crate::registry::DependencyScope,
+		&Arc<crate::registry::DependencyRegistry>,
+	)> {
+		use crate::registry::global_registry;
+
+		if let Some(ref reg) = self.registry
+			&& let Some(scope) = reg.get_scope::<T>()
+		{
+			return Some((scope, reg));
+		}
+		let global = global_registry();
+		global.get_scope::<T>().map(|scope| (scope, global))
+	}
+
+	/// Resolve a dependency by type.
 	///
-	/// This method implements the core dependency resolution logic:
-	/// 1. Check cache based on scope (Request or Singleton)
-	/// 2. If not cached, create using the factory from the global registry
-	/// 3. Cache the result according to the scope
+	/// Resolution checks the per-context registry first (if set via
+	/// [`InjectionContextBuilder::with_registry`]), then falls back to the
+	/// global registry. Scope caches (singleton / request) are consulted
+	/// before invoking the factory.
 	///
 	/// # Examples
 	///
@@ -605,29 +643,42 @@ impl InjectionContext {
 	/// ```
 	pub async fn resolve<T: Any + Send + Sync + 'static>(&self) -> crate::DiResult<Arc<T>> {
 		use crate::cycle_detection::{
-			begin_resolution, register_type_name, with_cycle_detection_scope,
+			begin_scoped_resolution, current_dependent_scope, current_dependent_type_name,
+			register_type_name, with_cycle_detection_scope,
 		};
-		use crate::registry::{DependencyScope, global_registry};
+		use crate::registry::DependencyScope;
 
 		with_cycle_detection_scope(async {
 			let type_id = std::any::TypeId::of::<T>();
 			let type_name = std::any::type_name::<T>();
-			let registry = global_registry();
 
 			// Register type name (for error messages)
 			register_type_name::<T>(type_name);
 
 			// [Fast path] Skip circular detection on cache hit
-			let scope = match registry.get_scope::<T>() {
-				Some(s) => s,
+			let (scope, registry) = match self.find_type_registration::<T>() {
+				Some(entry) => entry,
 				None => {
 					// Fallback: check scope caches for types pre-seeded via
 					// SingletonScope::set() / InjectionContext::set_request()
 					// (e.g., types registered through DiRegistrationList).
+					// Singleton pre-seeds are safe for any dependent scope.
 					if let Some(cached) = self.get_singleton::<T>() {
 						return Ok(cached);
 					}
+					// Request pre-seeds are request-scoped: apply the same
+					// hierarchy check as registry-registered types.
 					if let Some(cached) = self.get_request::<T>() {
+						if !DependencyScope::Request.outlives(current_dependent_scope()) {
+							return Err(crate::DiError::ScopeError(format!(
+								"Scope violation: {:?}-scoped '{}' cannot resolve \
+								 Request-scoped '{}' (pre-seeded); the dependency would \
+								 be captured with a shorter lifetime",
+								current_dependent_scope(),
+								current_dependent_type_name(),
+								type_name,
+							)));
+						}
 						return Ok(cached);
 					}
 					return Err(crate::DiError::DependencyNotRegistered {
@@ -635,6 +686,22 @@ impl InjectionContext {
 					});
 				}
 			};
+
+			// Scope hierarchy check — runs on EVERY resolution (cache hit or miss).
+			// A singleton dependent must not resolve a request-scoped dependency,
+			// even if that dependency is already cached from a prior request.
+			if !scope.outlives(current_dependent_scope()) {
+				return Err(crate::DiError::ScopeError(format!(
+					"Scope violation: {:?}-scoped '{}' cannot resolve \
+					 {:?}-scoped '{}'; the dependency would be captured with \
+					 a shorter lifetime",
+					current_dependent_scope(),
+					current_dependent_type_name(),
+					scope,
+					type_name,
+				)));
+			}
+
 			match scope {
 				DependencyScope::Singleton => {
 					if let Some(cached) = self.get_singleton::<T>() {
@@ -649,12 +716,17 @@ impl InjectionContext {
 				_ => {}
 			}
 
-			// [Slow path] Execute circular detection only on cache miss
-			let _guard = begin_resolution(type_id, type_name)
-				.map_err(|e| crate::DiError::CircularDependency(e.to_string()))?;
+			// [Slow path] Scope-aware resolution with cycle detection
+			let _guard =
+				begin_scoped_resolution(type_id, type_name, scope).map_err(|e| match e {
+					crate::cycle_detection::CycleError::ScopeViolation { .. } => {
+						crate::DiError::ScopeError(e.to_string())
+					}
+					other => crate::DiError::CircularDependency(other.to_string()),
+				})?;
 
 			// Actual resolution processing (existing logic)
-			self.resolve_internal::<T>(scope).await
+			self.resolve_internal::<T>(scope, registry).await
 			// Guard is automatically cleaned up when dropped
 		})
 		.await
@@ -673,18 +745,28 @@ impl InjectionContext {
 	pub async fn __resolve_from_registry<T: Any + Send + Sync + 'static>(
 		&self,
 	) -> crate::DiResult<Arc<T>> {
-		use crate::registry::{DependencyScope, global_registry};
+		use crate::cycle_detection::{current_dependent_scope, current_dependent_type_name};
+		use crate::registry::DependencyScope;
 
-		let registry = global_registry();
 		let type_name = std::any::type_name::<T>();
-		let scope = match registry.get_scope::<T>() {
-			Some(s) => s,
+		let (scope, registry) = match self.find_type_registration::<T>() {
+			Some(entry) => entry,
 			None => {
 				// Fallback: check scope caches for pre-seeded types
 				if let Some(cached) = self.get_singleton::<T>() {
 					return Ok(cached);
 				}
 				if let Some(cached) = self.get_request::<T>() {
+					if !DependencyScope::Request.outlives(current_dependent_scope()) {
+						return Err(crate::DiError::ScopeError(format!(
+							"Scope violation: {:?}-scoped '{}' cannot resolve \
+							 Request-scoped '{}' (pre-seeded); the dependency would \
+							 be captured with a shorter lifetime",
+							current_dependent_scope(),
+							current_dependent_type_name(),
+							type_name,
+						)));
+					}
 					return Ok(cached);
 				}
 				return Err(crate::DiError::DependencyNotRegistered {
@@ -692,6 +774,19 @@ impl InjectionContext {
 				});
 			}
 		};
+
+		// Scope hierarchy check — same as resolve()
+		if !scope.outlives(current_dependent_scope()) {
+			return Err(crate::DiError::ScopeError(format!(
+				"Scope violation: {:?}-scoped '{}' cannot resolve \
+				 {:?}-scoped '{}'; the dependency would be captured with \
+				 a shorter lifetime",
+				current_dependent_scope(),
+				current_dependent_type_name(),
+				scope,
+				type_name,
+			)));
+		}
 
 		// Fast cache check (same as resolve)
 		match scope {
@@ -708,16 +803,15 @@ impl InjectionContext {
 			_ => {}
 		}
 
-		self.resolve_internal::<T>(scope).await
+		self.resolve_internal::<T>(scope, registry).await
 	}
 
 	async fn resolve_internal<T: Any + Send + Sync + 'static>(
 		&self,
 		scope: crate::registry::DependencyScope,
+		registry: &Arc<crate::registry::DependencyRegistry>,
 	) -> crate::DiResult<Arc<T>> {
-		use crate::registry::{DependencyScope, global_registry};
-
-		let registry = global_registry();
+		use crate::registry::DependencyScope;
 
 		match scope {
 			DependencyScope::Singleton => {

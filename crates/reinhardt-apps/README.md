@@ -19,27 +19,27 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.4", package = "reinhardt-web", features = ["core"] }
+reinhardt = { version = "0.2.0-rc.6", package = "reinhardt-web", features = ["apps"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.4", package = "reinhardt-web" }  # default standard preset
-# reinhardt = { version = "0.1.4", package = "reinhardt-web", features = ["full"] }      # All features
+# reinhardt = { version = "0.2.0-rc.6", package = "reinhardt-web", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.2.0-rc.6", package = "reinhardt-web", features = ["full"] }      # All features
 ```
 
 Then import app features:
 
 ```rust
-use reinhardt::{installed_apps, AppConfig};
+use reinhardt::apps::{AppConfig, installed_apps};
 ```
 
-**Note:** App support is exposed by the root `core` feature. The default `standard` preset includes `core`; there is no separate root `apps` feature.
+**Note:** App features are included in the `standard` and `full` feature presets.
 
 ## Usage
 
 Define installed apps using the `installed_apps!` macro:
 
 ```rust
-use reinhardt::installed_apps;
+use reinhardt::apps::installed_apps;
 
 installed_apps! {
 	users: "users",
@@ -53,7 +53,7 @@ installed_apps! {
 ```toml
 [dependencies]
 reinhardt = {
-	version = "0.1.4",
+	version = "0.2.0-rc.6",
 	package = "reinhardt-web",
 	features = ["auth", "sessions", "admin"]
 }
@@ -148,7 +148,7 @@ pub fn get_installed_apps() -> Vec<String> {
 ```toml
 [dependencies]
 reinhardt = {
-	version = "0.1.4",
+	version = "0.2.0-rc.6",
 	package = "reinhardt-web",
 	features = ["auth", "sessions", "admin", "static-files"]
 }
@@ -240,7 +240,7 @@ pub fn get_installed_apps() -> Vec<String> {
 # Cargo.toml
 [dependencies]
 reinhardt = {
-	version = "0.1.4",
+	version = "0.2.0-rc.6",
 	package = "reinhardt-web",
 	features = ["auth", "sessions", "database"]
 }
@@ -300,7 +300,7 @@ INSTALLED_APPS = [
 ```toml
 # Cargo.toml
 [dependencies]
-reinhardt = { version = "0.1.4", package = "reinhardt-web", features = ["auth", "admin"] }
+reinhardt = { version = "0.2.0-rc.6", package = "reinhardt-web", features = ["auth", "admin"] }
 ```
 
 ```rust

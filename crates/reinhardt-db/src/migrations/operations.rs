@@ -2367,7 +2367,14 @@ impl Operation {
 	///
 	/// # Returns
 	///
-	/// * `Ok(Some(sql))` - Reverse SQL generated successfully
+	/// * `Ok(Some(stmts))` - Reverse DDL as one or more SQL statements; each element is a
+	///   single statement intended to be dispatched separately through
+	///   `SchemaEditor::execute()` (which is backed by sqlx Extended Query and accepts only
+	///   one statement per payload). Operations that revert to a single payload (e.g.
+	///   `DropTable`, `AddColumn`) return a one-element `Vec`; operations that need
+	///   multiple payloads to round-trip cleanly (e.g. `AlterColumn` on PostgreSQL and
+	///   CockroachDB, which split type reversion and NOT NULL restoration into two
+	///   statements) return a multi-element `Vec`.
 	/// * `Ok(None)` - Operation is not reversible (see Design Limitation below)
 	/// * `Err(_)` - Error generating reverse SQL
 	///
@@ -2386,41 +2393,42 @@ impl Operation {
 		&self,
 		dialect: &SqlDialect,
 		project_state: &ProjectState,
-	) -> super::Result<Option<String>> {
+	) -> super::Result<Option<Vec<String>>> {
 		match self {
-			Operation::CreateTable { name, .. } => {
-				Ok(Some(format!("DROP TABLE {};", quote_identifier(name))))
-			}
-			Operation::AddColumn { table, column, .. } => Ok(Some(format!(
+			Operation::CreateTable { name, .. } => Ok(Some(vec![format!(
+				"DROP TABLE {};",
+				quote_identifier(name)
+			)])),
+			Operation::AddColumn { table, column, .. } => Ok(Some(vec![format!(
 				"ALTER TABLE {} DROP COLUMN {};",
 				quote_identifier(table),
 				quote_identifier(&column.name)
-			))),
+			)])),
 			Operation::RunSQL { reverse_sql, .. } => {
-				Ok(reverse_sql.as_ref().map(|s| s.to_string()))
+				Ok(reverse_sql.as_ref().map(|s| vec![s.to_string()]))
 			}
 			Operation::RunRust { reverse_code, .. } => Ok(reverse_code.as_ref().map(|code| {
-				format!(
+				vec![format!(
 					"-- RunRust (reverse): {}",
 					code.lines().next().unwrap_or("")
-				)
+				)]
 			})),
 			// Phase 1: Simple reverse operations
-			Operation::RenameTable { old_name, new_name } => Ok(Some(format!(
+			Operation::RenameTable { old_name, new_name } => Ok(Some(vec![format!(
 				"ALTER TABLE {} RENAME TO {};",
 				quote_identifier(new_name),
 				quote_identifier(old_name)
-			))),
+			)])),
 			Operation::RenameColumn {
 				table,
 				old_name,
 				new_name,
-			} => Ok(Some(format!(
+			} => Ok(Some(vec![format!(
 				"ALTER TABLE {} RENAME COLUMN {} TO {};",
 				quote_identifier(table),
 				quote_identifier(new_name),
 				quote_identifier(old_name)
-			))),
+			)])),
 			Operation::CreateIndex { table, columns, .. } => {
 				// Use the same naming convention as to_sql(): idx_{table}_{columns_joined}
 				// This ensures the rollback DROP INDEX targets the correct index name
@@ -2429,7 +2437,7 @@ impl Operation {
 				// MySQL requires `DROP INDEX <name> ON <table>`; PostgreSQL/SQLite/CockroachDB
 				// only need the index name. Mirror the dialect dispatch used by the forward
 				// `Operation::DropIndex` SQL generator above.
-				Ok(Some(match dialect {
+				let sql = match dialect {
 					SqlDialect::Mysql => format!(
 						"DROP INDEX {} ON {};",
 						quote_identifier(&index_name),
@@ -2438,7 +2446,8 @@ impl Operation {
 					SqlDialect::Postgres | SqlDialect::Sqlite | SqlDialect::Cockroachdb => {
 						format!("DROP INDEX {};", quote_identifier(&index_name))
 					}
-				}))
+				};
+				Ok(Some(vec![sql]))
 			}
 			Operation::AddConstraint {
 				table,
@@ -2453,11 +2462,11 @@ impl Operation {
 							constraint_sql
 						))
 					})?;
-				Ok(Some(format!(
+				Ok(Some(vec![format!(
 					"ALTER TABLE {} DROP CONSTRAINT {};",
 					quote_identifier(table),
 					quote_identifier(&constraint_name)
-				)))
+				)]))
 			}
 			// Phase 2: Complex reverse operations using ProjectState
 			Operation::DropColumn { table, column } => {
@@ -2467,11 +2476,11 @@ impl Operation {
 				{
 					let col_def = ColumnDefinition::from_field_state(column.clone(), field);
 					let col_sql = Self::column_to_sql(&col_def, dialect);
-					return Ok(Some(format!(
+					return Ok(Some(vec![format!(
 						"ALTER TABLE {} ADD COLUMN {};",
 						quote_identifier(table),
 						col_sql
-					)));
+					)]));
 				}
 				// Cannot reconstruct without state
 				Ok(None)
@@ -2506,83 +2515,55 @@ impl Operation {
 				// `Operation::reverse_requires_sqlite_recreation`). The placeholder
 				// comment below is a defensive fallback: emitting executable
 				// ALTER COLUMN syntax on SQLite would always error (#4582).
-				let sql = match dialect {
-					SqlDialect::Postgres => {
-						// PostgreSQL allows multiple `ALTER COLUMN` clauses to
-						// be combined into a single `ALTER TABLE` statement via
-						// comma separation. Use this form (rather than two
-						// independent statements joined by `\n`) so the payload
-						// remains a single statement and round-trips through
-						// `SchemaEditor::execute()`, which is backed by
-						// `sqlx::query(sql).execute(...)` and uses the Extended
-						// Query protocol that rejects multi-statement payloads.
-						// Fixes #4630.
+				let stmts = match dialect {
+					SqlDialect::Postgres | SqlDialect::Cockroachdb => {
+						// Emit type reversion and nullability restoration as two
+						// independent single-statement payloads. The executor
+						// (see `MigrationExecutor::rollback_migration`) iterates
+						// the returned `Vec<String>` and dispatches each through
+						// `SchemaEditor::execute()` — backed by sqlx Extended
+						// Query, which accepts only one statement per payload.
+						//
+						// This shape is required by CockroachDB, which rejects
+						// the comma-combined `ALTER TABLE ... ALTER COLUMN c
+						// TYPE T, ALTER COLUMN c {SET|DROP} NOT NULL` form that
+						// PostgreSQL accepts. Unifying both dialects on the
+						// multi-statement path keeps the contract uniform and
+						// restores NOT NULL rollback fidelity on Cockroach.
+						// Refs #4630, #4640.
 						let nullability_clause = if old_def.not_null {
 							"SET NOT NULL"
 						} else {
 							"DROP NOT NULL"
 						};
-						format!(
-							"ALTER TABLE {table} \
-							 ALTER COLUMN {column} TYPE {type_sql}, \
-							 ALTER COLUMN {column} {nullability_clause};",
-							table = quote_identifier(table),
-							column = quote_identifier(column),
-							type_sql = type_sql,
-							nullability_clause = nullability_clause,
-						)
+						vec![
+							format!(
+								"ALTER TABLE {table} ALTER COLUMN {column} TYPE {type_sql};",
+								table = quote_identifier(table),
+								column = quote_identifier(column),
+								type_sql = type_sql,
+							),
+							format!(
+								"ALTER TABLE {table} ALTER COLUMN {column} {nullability_clause};",
+								table = quote_identifier(table),
+								column = quote_identifier(column),
+								nullability_clause = nullability_clause,
+							),
+						]
 					}
-					SqlDialect::Cockroachdb => {
-						// CockroachDB does NOT accept a combined `ALTER TABLE
-						// ... ALTER COLUMN c TYPE T, ALTER COLUMN c {SET|DROP}
-						// NOT NULL` in a single statement (it rejects mixing
-						// `ALTER COLUMN ... TYPE` with sibling `ALTER COLUMN`
-						// clauses), and `SchemaEditor::execute()` is a
-						// single-statement dispatcher (sqlx Extended Query),
-						// so the two clauses cannot share a payload either.
-						//
-						// Emit the column-type reversion only; nullability
-						// rollback for CockroachDB is intentionally
-						// best-effort here. The full fix requires returning
-						// `Vec<String>` from `to_reverse_sql` so multiple
-						// single-statement payloads can be dispatched — that
-						// change is tracked separately so this PR can unblock
-						// the rc.30 release without cascading into ~25 call
-						// sites and tests. The stop-gap output shape of this
-						// branch (single statement, `ALTER COLUMN ... TYPE`,
-						// no nullability clause, no comma-combined form) is
-						// pinned by the inline unit test
-						// `test_to_reverse_sql_alter_column_cockroachdb` in
-						// the `#[cfg(test)] mod tests` block of this file,
-						// added under reinhardt-web#4639. An end-to-end
-						// integration test against a live CockroachDB
-						// testcontainer is blocked on reinhardt-web#4642
-						// (`DatabaseMigrationExecutor` calls
-						// `pg_advisory_lock()`, which CockroachDB does not
-						// implement). The full `Vec<String>` API refactor
-						// that restores NOT NULL rollback fidelity is
-						// tracked in reinhardt-web#4640 and targets
-						// `develop/0.2.0`. Refs #4630, #4639, #4640, #4642.
-						format!(
-							"ALTER TABLE {} ALTER COLUMN {} TYPE {};",
-							quote_identifier(table),
-							quote_identifier(column),
-							type_sql
-						)
-					}
-					SqlDialect::Mysql => format!(
+					SqlDialect::Mysql => vec![format!(
 						"ALTER TABLE {} MODIFY COLUMN {} {}{};",
 						quote_identifier(table),
 						quote_identifier(column),
 						type_sql,
 						null_clause
-					),
-					SqlDialect::Sqlite => format!(
+					)],
+					SqlDialect::Sqlite => vec![format!(
 						"-- SQLite does not support ALTER COLUMN, table recreation required for {}",
 						quote_identifier(table)
-					),
+					)],
 				};
-				Ok(Some(sql))
+				Ok(Some(stmts))
 			}
 			Operation::DropIndex { table, columns } => {
 				// Enhancement opportunity: Full index reconstruction would preserve
@@ -2595,12 +2576,12 @@ impl Operation {
 					.map(|c| quote_identifier(c).to_string())
 					.collect::<Vec<_>>()
 					.join(", ");
-				Ok(Some(format!(
+				Ok(Some(vec![format!(
 					"CREATE INDEX {} ON {} ({});",
 					quote_identifier(&index_name),
 					quote_identifier(table),
 					columns_list
-				)))
+				)]))
 			}
 			Operation::DropConstraint {
 				table,
@@ -2614,11 +2595,11 @@ impl Operation {
 						.find(|c| c.name == *constraint_name)
 				{
 					let constraint = constraint_def.to_constraint();
-					return Ok(Some(format!(
+					return Ok(Some(vec![format!(
 						"ALTER TABLE {} ADD {};",
 						quote_identifier(table),
 						constraint
-					)));
+					)]));
 				}
 				// Cannot reconstruct without state
 				Ok(None)
@@ -2640,11 +2621,11 @@ impl Operation {
 						parts.push(format!("  {}", constraint));
 					}
 
-					return Ok(Some(format!(
+					return Ok(Some(vec![format!(
 						"CREATE TABLE {} (\n{}\n);",
 						quote_identifier(name),
 						parts.join(",\n")
-					)));
+					)]));
 				}
 				// Cannot reconstruct without state
 				Ok(None)
@@ -2652,7 +2633,10 @@ impl Operation {
 			Operation::BulkLoad { table, .. } => {
 				// Reverse of bulk load is to truncate the table (remove loaded data)
 				// Note: This removes ALL data, not just the data loaded by this operation
-				Ok(Some(format!("TRUNCATE TABLE {};", quote_identifier(table))))
+				Ok(Some(vec![format!(
+					"TRUNCATE TABLE {};",
+					quote_identifier(table)
+				)]))
 			}
 			_ => Ok(None),
 		}
@@ -5444,7 +5428,7 @@ mod tests {
 			reverse.is_ok() && reverse.as_ref().ok().unwrap().is_some(),
 			"CreateTable should have reverse SQL operation"
 		);
-		let sql = reverse.unwrap().unwrap();
+		let sql = reverse.unwrap().unwrap().join("\n");
 		assert!(
 			sql.contains("DROP TABLE"),
 			"Reverse SQL should contain DROP TABLE, got: {}",
@@ -5493,7 +5477,7 @@ mod tests {
 			reverse.is_ok() && reverse.as_ref().ok().unwrap().is_some(),
 			"AddColumn should have reverse SQL operation"
 		);
-		let sql = reverse.unwrap().unwrap();
+		let sql = reverse.unwrap().unwrap().join("\n");
 		assert!(
 			sql.contains("DROP COLUMN"),
 			"Reverse SQL should contain DROP COLUMN, got: {}",
@@ -5544,11 +5528,14 @@ mod tests {
 		let op = alter_column_with_old_def();
 		let state = ProjectState::default();
 
-		// Act
-		let sql = op
+		// Act: reverse SQL is now returned as a multi-statement `Vec<String>`
+		// (see `Operation::to_reverse_sql` doc); flatten to a single string for
+		// the substring-based assertions below.
+		let stmts = op
 			.to_reverse_sql(&SqlDialect::Postgres, &state)
 			.expect("reverse SQL should succeed")
 			.expect("reverse SQL should be present");
+		let sql = stmts.join("\n");
 
 		// Assert
 		assert!(
@@ -5561,6 +5548,22 @@ mod tests {
 			"Postgres reverse SQL should restore VARCHAR(50), got: {}",
 			sql
 		);
+		// Multi-statement contract (#4640): type reversion and nullability
+		// restoration are emitted as two independent statements so
+		// `SchemaEditor::execute()` (sqlx Extended Query) can dispatch each
+		// payload without rejection.
+		assert_eq!(
+			stmts.len(),
+			2,
+			"Postgres AlterColumn reverse SQL must emit two statements \
+			 (type + nullability), got: {:?}",
+			stmts
+		);
+		assert!(
+			stmts[1].contains("DROP NOT NULL"),
+			"Postgres second statement must restore DROP NOT NULL (was_nullable), got: {}",
+			stmts[1]
+		);
 	}
 
 	/// Reverse SQL for MySQL must use `MODIFY COLUMN` syntax — the previous
@@ -5572,11 +5575,19 @@ mod tests {
 		let op = alter_column_with_old_def();
 		let state = ProjectState::default();
 
-		// Act
-		let sql = op
+		// Act: MySQL AlterColumn reverse SQL remains a single `MODIFY COLUMN`
+		// statement (one-element `Vec`).
+		let stmts = op
 			.to_reverse_sql(&SqlDialect::Mysql, &state)
 			.expect("reverse SQL should succeed")
 			.expect("reverse SQL should be present");
+		assert_eq!(
+			stmts.len(),
+			1,
+			"MySQL AlterColumn reverse SQL should remain a single statement, got: {:?}",
+			stmts
+		);
+		let sql = stmts.join("\n");
 
 		// Assert
 		assert!(
@@ -5601,23 +5612,32 @@ mod tests {
 		);
 	}
 
-	/// Reverse SQL for CockroachDB must emit the column-type reversion as a
-	/// single, dialect-isolated statement.
+	/// Reverse SQL for CockroachDB must emit the column-type reversion **and**
+	/// the nullability restoration as two independent single-statement payloads
+	/// — the same shape PostgreSQL uses post-#4640.
 	///
-	/// PR #4633 split CockroachDB off from PostgreSQL because CockroachDB
-	/// rejects the comma-combined `ALTER COLUMN ... TYPE T, ALTER COLUMN
-	/// ... {SET|DROP} NOT NULL` form that PostgreSQL accepts. The current
-	/// stop-gap emits only the column-type reversion and intentionally
-	/// drops nullability rollback fidelity (the full fix is tracked in
-	/// reinhardt-web#4640 and depends on `to_reverse_sql` returning
-	/// `Vec<String>`).
+	/// History: PR #4633 split CockroachDB off from PostgreSQL because
+	/// CockroachDB rejects the comma-combined `ALTER COLUMN ... TYPE T,
+	/// ALTER COLUMN ... {SET|DROP} NOT NULL` form that PostgreSQL accepts.
+	/// The interim stop-gap (#4633) emitted only the column-type reversion
+	/// and dropped NOT NULL rollback fidelity. This Issue (#4640) restored
+	/// full fidelity by changing `Operation::to_reverse_sql` to return
+	/// `Vec<String>`, so each statement is dispatched separately by
+	/// `SchemaEditor::execute()` (sqlx Extended Query, single-statement).
 	///
-	/// This unit test guards the stop-gap output shape so that a future
-	/// regression — e.g. re-folding CockroachDB into the Postgres comma form,
-	/// or accidentally appending the nullability clause as a second `\n`-joined
-	/// statement that `SchemaEditor::execute()` would reject — surfaces at
-	/// `cargo test` time instead of only at downstream CockroachDB deployments
-	/// (reinhardt-web#4639).
+	/// This test pins the post-#4640 multi-statement contract: a future
+	/// regression that re-folds CockroachDB into a single payload (and thus
+	/// drops nullability) — or that emits the Postgres comma-combined form —
+	/// will fail here at `cargo test` time instead of at downstream
+	/// CockroachDB deployments.
+	///
+	/// Identifier quoting note: `quote_identifier` here is
+	/// `pg_escape::quote_identifier`, which only quotes identifiers that fall
+	/// outside PostgreSQL's unquoted-identifier grammar (anything outside
+	/// `[a-z_][a-z0-9_]*`, or a reserved keyword). `products` and `name`
+	/// are plain lowercase ASCII matching that grammar, so the expected
+	/// output is unquoted. Identifier-quoting-by-default is tracked
+	/// separately in #4674.
 	#[test]
 	fn test_to_reverse_sql_alter_column_cockroachdb() {
 		// Arrange
@@ -5625,68 +5645,49 @@ mod tests {
 		let state = ProjectState::default();
 
 		// Act
-		let sql = op
+		let stmts = op
 			.to_reverse_sql(&SqlDialect::Cockroachdb, &state)
 			.expect("reverse SQL should succeed")
 			.expect("reverse SQL should be present");
 
-		// Assert: shape must match the expected single-statement form
-		// exactly. Asserting `==` (not `contains`) is intentional: the
-		// stop-gap is supposed to emit *only* `ALTER TABLE products ALTER
-		// COLUMN name TYPE VARCHAR(50);` with no extra clauses (no
-		// nullability, no USING, no comma-combined sibling). A `contains`
-		// check would silently allow `, ALTER COLUMN ... SET NOT NULL`
-		// suffixes — exactly the regression this test is meant to pin.
-		//
-		// Identifier quoting note: `quote_identifier` here is
-		// `pg_escape::quote_identifier`, which only quotes identifiers
-		// that fall outside PostgreSQL's unquoted-identifier grammar
-		// (anything outside `[a-z_][a-z0-9_]*`, or a reserved keyword).
-		// `products` and `name` are plain lowercase ASCII matching that
-		// grammar, so the expected output is unquoted. This matches the
-		// identical convention documented on
-		// `test_to_reverse_sql_drop_index_includes_on_table_for_mysql`.
-		// Identifier-quoting-by-default is tracked separately in #4674.
-		let expected = "ALTER TABLE products ALTER COLUMN name TYPE VARCHAR(50);";
+		// Assert: exact two-element Vec, type reversion first, nullability
+		// restoration second. `not_null` on the `old_definition` (see
+		// `alter_column_with_old_def`) is `false`, so the second statement
+		// is `DROP NOT NULL`. Asserting `==` (not `contains`) is
+		// intentional — a permissive `contains` check would allow a future
+		// regression to re-fold these into a single comma-combined payload
+		// (which CockroachDB rejects).
 		assert_eq!(
-			sql, expected,
-			"CockroachDB reverse SQL must match the pinned single-statement \
-			 form exactly (no extra clauses), got: {}",
-			sql
+			stmts,
+			vec![
+				"ALTER TABLE products ALTER COLUMN name TYPE VARCHAR(50);".to_string(),
+				"ALTER TABLE products ALTER COLUMN name DROP NOT NULL;".to_string(),
+			],
+			"CockroachDB reverse SQL must emit exactly [type_stmt, nullability_stmt], \
+			 got: {:?}",
+			stmts
 		);
 
-		// Assert: must be exactly one SQL statement. CockroachDB rejects the
-		// Postgres comma-combined form, and `SchemaEditor::execute()` is a
-		// single-statement dispatcher (sqlx Extended Query), so the stop-gap
-		// must not return a `;\n`-joined multi-statement payload either.
-		// Trim whitespace first so a trailing `;\n` or `; ` still has its
-		// terminating semicolon recognised by `trim_end_matches(';')`.
-		let trimmed = sql.trim().trim_end_matches(';').trim();
-		assert!(
-			!trimmed.contains(';'),
-			"CockroachDB reverse SQL must be exactly one statement (no internal \
-			 `;`), got: {}",
-			sql
-		);
-		assert!(
-			!sql.contains(",\n") && !sql.contains(", ALTER COLUMN"),
-			"CockroachDB reverse SQL must not emit the Postgres comma-combined \
-			 form (CockroachDB rejects it), got: {}",
-			sql
-		);
-
-		// Assert: nullability rollback is intentionally dropped under the
-		// stop-gap. Regressing toward emitting `SET NOT NULL` / `DROP NOT
-		// NULL` either as a second statement or inline in the same `ALTER
-		// TABLE` payload would re-break CockroachDB rollback — the
-		// `Vec<String>` API refactor (reinhardt-web#4640) is the supported
-		// path for restoring NOT NULL fidelity.
-		assert!(
-			!sql.contains("SET NOT NULL") && !sql.contains("DROP NOT NULL"),
-			"CockroachDB reverse SQL must not emit nullability clause under \
-			 the current stop-gap (tracked in #4640), got: {}",
-			sql
-		);
+		// Defensive: every emitted statement must be a single SQL statement.
+		// `SchemaEditor::execute()` is a single-statement dispatcher (sqlx
+		// Extended Query); a regression that re-introduces the Postgres
+		// comma-combined form inside a single Vec element would re-break
+		// CockroachDB rollback. Trim trailing `;` so the check looks only at
+		// internal separators.
+		for stmt in &stmts {
+			let trimmed = stmt.trim().trim_end_matches(';').trim();
+			assert!(
+				!trimmed.contains(';'),
+				"each emitted statement must be a single SQL statement, got: {}",
+				stmt
+			);
+			assert!(
+				!stmt.contains(", ALTER COLUMN"),
+				"emitted statements must not use the Postgres comma-combined form \
+				 (CockroachDB rejects it), got: {}",
+				stmt
+			);
+		}
 	}
 
 	/// SQLite has no general `ALTER COLUMN`; the rollback path is handled
@@ -5700,11 +5701,20 @@ mod tests {
 		let op = alter_column_with_old_def();
 		let state = ProjectState::default();
 
-		// Act
-		let sql = op
+		// Act: SQLite emits a single inert comment (executor recreates the
+		// table via the SQLite-recreation path), so the returned `Vec` is
+		// one element.
+		let stmts = op
 			.to_reverse_sql(&SqlDialect::Sqlite, &state)
 			.expect("reverse SQL should succeed")
 			.expect("reverse SQL should be present");
+		assert_eq!(
+			stmts.len(),
+			1,
+			"SQLite AlterColumn reverse SQL should remain a single comment, got: {:?}",
+			stmts
+		);
+		let sql = &stmts[0];
 
 		// Assert
 		assert!(
@@ -5764,7 +5774,7 @@ mod tests {
 			reverse.is_ok() && reverse.as_ref().ok().unwrap().is_some(),
 			"RunSQL with reverse_sql should have reverse SQL"
 		);
-		let sql = reverse.unwrap().unwrap();
+		let sql = reverse.unwrap().unwrap().join("\n");
 		assert!(
 			sql.contains("DROP INDEX"),
 			"Reverse SQL should contain provided reverse_sql, got: {}",
@@ -5905,9 +5915,8 @@ mod tests {
 	fn from_field_state_non_optional_non_bool() {
 		// Arrange
 		// Models a Rust field declared as `pub username: String` with no
-		// default. This confirms the fix is type-agnostic (not bool-only) —
-		// the broader symptom in `examples-twitter/migrations/auth/0001_initial.rs`
-		// where `username`, `bio`, `email`, etc. were all silently NULLABLE.
+		// default. This confirms the fix is type-agnostic (not bool-only) and
+		// prevents required string fields from being emitted as NULLABLE.
 		let field_state = FieldState::new("username", FieldType::VarChar(150), false);
 
 		// Act
@@ -6379,7 +6388,8 @@ mod tests {
 		let sql = op
 			.to_reverse_sql(&SqlDialect::Postgres, &state)
 			.unwrap()
-			.unwrap();
+			.unwrap()
+			.join("\n");
 
 		// Assert
 		assert_eq!(
@@ -6410,7 +6420,8 @@ mod tests {
 		let sql = op
 			.to_reverse_sql(&SqlDialect::Postgres, &state)
 			.unwrap()
-			.unwrap();
+			.unwrap()
+			.join("\n");
 
 		// Assert
 		assert_eq!(
@@ -6432,7 +6443,8 @@ mod tests {
 		let sql = op
 			.to_reverse_sql(&SqlDialect::Postgres, &state)
 			.unwrap()
-			.unwrap();
+			.unwrap()
+			.join("\n");
 
 		// Assert
 		assert_eq!(
@@ -6455,7 +6467,8 @@ mod tests {
 		let sql = op
 			.to_reverse_sql(&SqlDialect::Postgres, &state)
 			.unwrap()
-			.unwrap();
+			.unwrap()
+			.join("\n");
 
 		// Assert
 		assert_eq!(
@@ -6484,7 +6497,8 @@ mod tests {
 		let sql = op
 			.to_reverse_sql(&SqlDialect::Postgres, &state)
 			.unwrap()
-			.unwrap();
+			.unwrap()
+			.join("\n");
 
 		// Assert
 		assert!(
@@ -6520,7 +6534,8 @@ mod tests {
 		let sql = op
 			.to_reverse_sql(&SqlDialect::Mysql, &state)
 			.unwrap()
-			.unwrap();
+			.unwrap()
+			.join("\n");
 
 		// Assert: `quote_identifier` is `pg_escape::quote_identifier`, which only
 		// adds quotes when the identifier contains reserved or non-lowercase
@@ -6557,7 +6572,11 @@ mod tests {
 		let state = ProjectState::default();
 
 		// Act
-		let sql = op.to_reverse_sql(&dialect, &state).unwrap().unwrap();
+		let sql = op
+			.to_reverse_sql(&dialect, &state)
+			.unwrap()
+			.unwrap()
+			.join("\n");
 
 		// Assert
 		assert_eq!(
@@ -6580,7 +6599,8 @@ mod tests {
 		let sql = op
 			.to_reverse_sql(&SqlDialect::Postgres, &state)
 			.unwrap()
-			.unwrap();
+			.unwrap()
+			.join("\n");
 
 		// Assert
 		assert!(
@@ -6610,7 +6630,8 @@ mod tests {
 		let sql = op
 			.to_reverse_sql(&SqlDialect::Postgres, &state)
 			.unwrap()
-			.unwrap();
+			.unwrap()
+			.join("\n");
 
 		// Assert
 		assert_eq!(

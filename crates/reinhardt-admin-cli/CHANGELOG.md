@@ -7,57 +7,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.2...reinhardt-admin-cli@v0.1.3) - 2026-05-31
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.3...reinhardt-admin-cli@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-admin-cli` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Refresh generated project templates if the project vendors Reinhardt scaffold output.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Added
+
+- *(commands)* add interactive dependency configuration
+- `reinhardt-admin migrate-manouche-v2 [PATH]` subcommand applying the
+  Manouche v1 → v2 codemod (spec §6.1 + §6.2). Available as `cargo make
+  migrate-manouche-v2`. Supports `--dry-run` and `--skip <rule>`. Rules:
+  `bare_ident`, `watch_unwrap`, `use_effect_deps`, `component_props`.
+
+### Changed
+
+- *(admin-cli)* replace the imperative AST formatter with a tree-sitter and Topiary pipeline for `page!`, `form!`, and `head!` DSL macros.
 
 ### Fixed
 
-- *(ci)* merge main and fix DSL formatting for examples-twitter common.rs
+- *(admin-cli)* keep `migrate-manouche-v2` idempotent for already wrapped page expression slots.
+- *(admin-cli)* preserve item attributes when `migrate-manouche-v2` rewrites attributed items.
+- *(admin-cli)* avoid treating control-flow syntax variables as page children in `migrate-manouche-v2`.
+- *(admin-cli)* keep `migrate-manouche-v2` from rewriting `match` patterns and `let` bindings as page children.
+- *(admin-cli)* preserve inner module docs and migrate element bodies inside `let` initializers in `migrate-manouche-v2`.
+- *(admin-cli)* restore Topiary formatter wiring from main
 - *(admin-cli)* run rustfmt on DSL-skipped files in fmt command
 - *(admin-cli)* pass ignore-all files through rustfmt in fmt command
-- *(admin-cli)* traverse past sub-crate Cargo.toml when searching for rustfmt config
+- *(admin-cli)* update migrate_v2 expected fixtures to match prettyplease output
+- *(admin-cli)* reject commented-out `#![rustfmt::skip]` in `rustfmt_skip_attr_matches`
+- split formatter from admin cli
+
+- *(commands)* align startproject scaffold defaults
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+
+
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.2.0-rc.4...reinhardt-admin-cli@v0.2.0-rc.5) - 2026-06-11
+
+### Added
+
+- *(commands)* add interactive dependency configuration
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+
+### Fixed
+
+- *(ci)* repair admin dependency config checks
+
+### Fixed
+
+- *(admin-cli)* keep `migrate-manouche-v2` idempotent for already wrapped page expression slots.
+- *(admin-cli)* preserve item attributes when `migrate-manouche-v2` rewrites attributed items.
+- *(admin-cli)* avoid treating control-flow syntax variables as page children in `migrate-manouche-v2`.
+- *(admin-cli)* keep `migrate-manouche-v2` from rewriting `match` patterns and `let` bindings as page children.
+- *(admin-cli)* preserve inner module docs and migrate element bodies inside `let` initializers in `migrate-manouche-v2`.
+
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.3...reinhardt-admin-cli@v0.2.0-rc.2) - 2026-06-03
+
+### Fixed
+
+- *(admin-cli)* restore Topiary formatter wiring from main
+- *(admin-cli)* run rustfmt on DSL-skipped files in fmt command
+- *(admin-cli)* pass ignore-all files through rustfmt in fmt command
+- *(admin-cli)* revert rustfmt-damaged migrate_v2 fixtures
+- *(admin-cli)* update migrate_v2 expected fixtures to match prettyplease output
+- *(admin-cli)* preserve migrate_v2 fixtures during fmt-all
+- *(admin-cli)* reject commented-out `#![rustfmt::skip]` in `rustfmt_skip_attr_matches`
 - *(admin-cli)* skip nested workspaces in fmt-all
+- split formatter from admin cli
+
+### Maintenance
+
+- forward merge main v0.1.2 changes into develop 0.2.0
 
 ### Styling
 
-- *(admin-cli)* wrap is_manifest binding to satisfy rustfmt
+- apply rustfmt to non-DSL files on develop/0.2.0
 
 ### Changed
 
 - *(admin-cli)* replace the imperative AST formatter with a tree-sitter and Topiary pipeline for `page!`, `form!`, and `head!` DSL macros.
 
 ## [0.1.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0...reinhardt-admin-cli@v0.1.1) - 2026-05-24
-
 ### Added
 
-- *(admin-cli)* scaffold migrate-manouche-v2 subcommand
-- *(admin-cli)* codemod pipeline scaffolding (walker + rule trait + review fixes)
-- *(admin)* add form! macro DSL formatting support
-
-### Fixed
-
-- *(admin)* preserve blank lines inside page! macro DSL when formatting
-- *(admin)* preserve comments and blank lines in codemod rewriting
-- *(admin)* use text-based item search for codemod formatting preservation
-- *(admin-cli)* address CodeRabbit review on form! detection, char/lifetime scan, temp file, and codemod rules
-- *(admin-cli)* use unique temp filename in target directory for atomic rename
-- *(admin-cli)* ensure temp file cleanup runs on rename failure
-- *(admin)* clean up temp file when std::fs::write fails in write_developer_file
-- *(admin-cli)* revert version to 0.1.0
-- *(admin-cli)* resolve formatting issues in fmt-all output
-- *(admin-cli)* remove invalid callbacks wrapper from formatter
-- *(admin-cli)* skip rustfmt for closures containing page!/form! macros
-- *(admin-cli)* use rustfmt directly for closures with page!/form! macros
-- *(reinhardt-admin-cli)* add page! macro protection in closure and handler expression formatting
-- *(reinhardt-admin-cli)* emit form! DSL syntax for wrapper, icon, icon_position fields
-- *(reinhardt-admin-cli)* add form! token preprocessing to convert internal AST to DSL
-- *(reinhardt-admin)* strip trailing commas from Icon attrs before merging children
-- *(reinhardt-admin-cli)* fix off-by-one bounds check in parse_wrapper_inner and parse_icon_inner
-- *(ci)* resolve Rust 1.94 clippy failures
-
-### Styling
-
-- *(admin)* fix indentation in write_developer_file write-error handler
-- *(admin-cli)* apply rustfmt to migrate_v2 codemod tests
+- `reinhardt-admin migrate-manouche-v2 [PATH]` subcommand applying the
+  Manouche v1 → v2 codemod (spec §6.1 + §6.2). Available as `cargo make
+  migrate-manouche-v2`. Supports `--dry-run` and `--skip <rule>`. Rules:
+  `bare_ident`, `watch_unwrap`, `use_effect_deps`, `component_props`.
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-rc.30...reinhardt-admin-cli@v0.1.0) - 2026-05-22
 
@@ -75,6 +123,9 @@ Per-prerelease history is in the [Release Discussions](https://github.com/kent81
   new Reinhardt project (matching the per-app layout from
   [#4476](https://github.com/kent8192/reinhardt-web/discussions/4476)), `startapp` adds an application module, and both
   accept `--template-dir` to override the embedded templates.
+- **Interactive dependency selection** — `startproject` can prompt
+  for the Reinhardt version and feature flags, and `configure`
+  applies the same dependency selection to an existing project.
 - **Template selection via `ArgGroup`** — `--template /
   --with-pages / --with-rest` replaces the previous
   `--template-type` flag; the selection is enforced by a `clap`

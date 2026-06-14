@@ -7,11 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.3...reinhardt-testkit@v0.1.4) - 2026-06-10
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.3...reinhardt-testkit@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-testkit` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Replace `force_authenticate` helpers and `with_authenticated_user` with the fluent auth APIs.
+- Move old migration fixture usage to `postgres_with_migrations_from_dir(...)`.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- *(testkit)* [**breaking**] gate 9 RC-deprecated items behind cfg(any()) (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+
+### Added
+
+- *(testkit)* [**breaking**] gate 9 RC-deprecated items behind cfg(any()) (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+
+### Changed
+
+- *(testkit)* remove residual doc references to deleted deprecated APIs
+
+### Removed
+
+- **`APIRequestFactory::force_authenticate`** (`src/factory.rs`, deprecated `0.1.0-rc.16`) — use `client.auth().session()` or `client.auth().jwt()`.
+- **`APIClient::force_authenticate`** (`src/client.rs`, deprecated `0.1.0-rc.16`) — same migration.
+- **`ServerFnTestContext::with_authenticated_user`** (`src/server_fn/context.rs`, deprecated `0.1.0-rc.16`) — use `.auth().session(&user).done()`.
+- **6 testcontainers fixtures + helpers** (`src/fixtures/testcontainers.rs`, deprecated `0.1.0-rc.16`) — use `postgres_with_migrations_from_dir()` and the filesystem-based migration loader.
+
+### Fixed
+
+- delete gated items instead of cfg-gating, update callers
+- *(testkit)* shield server fixtures from deprecated RateLimitConfig
 
 ### Maintenance
 
 - update Cargo.toml dependencies
+
+
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.2.0-rc.4...reinhardt-testkit@v0.2.0-rc.5) - 2026-06-11
+
+### Maintenance
+
+- update Cargo.toml dependencies
+
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.3...reinhardt-testkit@v0.2.0-rc.2) - 2026-06-03
+
+### Added
+
+- *(testkit)* [**breaking**] gate 9 RC-deprecated items behind cfg(any()) (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(testkit)* remove residual doc references to deleted deprecated APIs
+
+### Fixed
+
+- delete gated items instead of cfg-gating, update callers
+- *(ci)* recover develop release-plz prerelease
+- *(testkit)* shield server fixtures from deprecated RateLimitConfig
+
+### Styling
+
+- apply rustfmt to non-DSL files on develop/0.2.0
+
+### Removed
+
+#### BREAKING CHANGES
+
+Removed all 9 RC-deprecated items from `reinhardt-testkit` per
+STABILITY_POLICY § SP-4 (umbrella Issue
+[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)):
+
+- **`APIRequestFactory::force_authenticate`** (`src/factory.rs`, deprecated `0.1.0-rc.16`) — use `client.auth().session()` or `client.auth().jwt()`.
+- **`APIClient::force_authenticate`** (`src/client.rs`, deprecated `0.1.0-rc.16`) — same migration.
+- **`ServerFnTestContext::with_authenticated_user`** (`src/server_fn/context.rs`, deprecated `0.1.0-rc.16`) — use `.auth().session(&user).done()`.
+- **6 testcontainers fixtures + helpers** (`src/fixtures/testcontainers.rs`, deprecated `0.1.0-rc.16`) — use `postgres_with_migrations_from_dir()` and the filesystem-based migration loader.
+
+All 9 items are gated with `#[cfg(any())]` so they no longer compile;
+this preserves git blame readability for one release. A subsequent
+cleanup PR can delete the gated code outright.
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.30...reinhardt-testkit@v0.1.0) - 2026-05-22
 

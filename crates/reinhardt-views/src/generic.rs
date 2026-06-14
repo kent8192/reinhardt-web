@@ -17,6 +17,13 @@
 //! - [`RetrieveDestroyAPIView`] - Retrieve and delete (GET, DELETE)
 //! - [`RetrieveUpdateDestroyAPIView`] - Full CRUD except list (GET, PUT, PATCH, DELETE)
 //!
+//! # QuerySet Defaults
+//!
+//! Generic views use an explicitly configured queryset when `.with_queryset(...)`
+//! is provided. Without an explicit queryset, they start from
+//! `Model::objects().all()` so model-level custom manager filters apply to list
+//! and lookup paths.
+//!
 //! # Examples
 //!
 //! ```rust,no_run
@@ -44,6 +51,7 @@
 //! impl Model for Article {
 //!     type PrimaryKey = i64;
 //!     type Fields = ArticleFields;
+//!     type Objects = reinhardt_db::orm::Manager<Self>;
 //!     fn table_name() -> &'static str { "articles" }
 //!     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 //!     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -62,6 +70,8 @@ mod destroy_api;
 mod list_api;
 pub(crate) mod patch_utils;
 mod retrieve_api;
+#[cfg(test)]
+pub(crate) mod test_support;
 mod update_api;
 
 // Re-export all API views

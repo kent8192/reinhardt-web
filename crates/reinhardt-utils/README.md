@@ -10,28 +10,28 @@ Includes date/time utilities, string manipulation, encoding/decoding, and other 
 
 ## Installation
 
-Add `reinhardt-utils` directly, or enable one of the root features that re-export a utility area:
+Add `reinhardt` to your `Cargo.toml`:
 
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt-utils = "0.1.4"
+reinhardt = { version = "0.2.0-rc.6", features = ["utils"] }
 
-# Root facade examples:
-# reinhardt = { version = "0.1.4", package = "reinhardt-web", features = ["cache"] }
-# reinhardt = { version = "0.1.4", package = "reinhardt-web", features = ["static-files", "storage"] }
+# Or use a preset:
+# reinhardt = { version = "0.2.0-rc.6", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.2.0-rc.6", features = ["full"] }      # All features
 ```
 
 Then import utility features:
 
 ```rust
-use reinhardt_utils::cache::{Cache, InMemoryCache};
-use reinhardt_utils::logging::{LogLevel, Logger};
-use reinhardt_utils::storage::{LocalStorage, Storage};
-use reinhardt_utils::html::{escape, unescape};
+use reinhardt::utils::cache::{Cache, InMemoryCache};
+use reinhardt::utils::logging::{Logger, LogLevel};
+use reinhardt::utils::storage::{Storage, LocalStorage};
+use reinhardt::utils::core::html::{escape, unescape};
 ```
 
-**Note:** There is no root `utils` feature. The root facade exposes specific utility areas through features such as `cache`, `redis-backend`, `static-files`, and `storage`; the `full` preset enables the broad utility surface.
+**Note:** Utility features are included in the `standard` and `full` feature presets.
 
 ## Features
 
@@ -306,7 +306,6 @@ use reinhardt_utils::html::{escape, unescape};
 
 **Usage Example**:
 
-<!-- reinhardt-version-sync -->
 ```rust
 use reinhardt::utils::logging::security::{SecurityLogger, SecurityError};
 
@@ -323,7 +322,7 @@ logger.log_security_error(&SecurityError::CsrfViolation);  // ERROR level
 logger.log_csrf_violation("http://evil.com");
 
 // Log rate limit exceeded
-logger.log_rate_limit_exceeded("0.1.4", 100);
+logger.log_rate_limit_exceeded("192.0.2.10", 100);
 
 // Log suspicious file operations
 logger.log_suspicious_file_operation("delete", Path::new("/etc/passwd"));

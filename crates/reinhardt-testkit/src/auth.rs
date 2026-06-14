@@ -1,7 +1,6 @@
 //! Test authentication utilities.
 //!
-//! Provides a builder-based API for setting up authentication state in tests,
-//! replacing the deprecated `force_authenticate` method.
+//! Provides a builder-based API for setting up authentication state in tests.
 //!
 //! # Architecture
 //!

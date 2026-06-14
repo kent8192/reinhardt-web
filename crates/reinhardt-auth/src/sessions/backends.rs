@@ -76,4 +76,5 @@ pub use file::FileSessionBackend;
 pub use cookie::CookieSessionBackend;
 
 #[cfg(feature = "jwt")]
+#[allow(deprecated)] // Re-export keeps the compatibility API discoverable during the 0.2 line.
 pub use jwt::{JwtConfig, JwtSessionBackend};

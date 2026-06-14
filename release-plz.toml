@@ -35,8 +35,8 @@ publish_timeout = "10m"
 dependencies_update = true
 
 # Two-stage release workflow (native release-plz control):
-# - Stage 1: Push to main → `release-plz release-pr` creates Release PR (branch: release-plz-*)
-# - Stage 2: Merge Release PR → `release-plz release` detects commit from release-plz-* branch and publishes
+# - Stage 1: Push to main -> `release-plz release-pr` creates Release PR (branch: release-plz-*)
+# - Stage 2: Merge Release PR -> `release-plz release` detects commit from release-plz-* branch and publishes
 #
 # With release_always = true:
 # - release-plz publishes ALL crates whose local version differs from crates.io
@@ -182,6 +182,10 @@ version_group = "reinhardt"
 
 [[package]]
 name = "reinhardt-pages-macros"
+version_group = "reinhardt"
+
+[[package]]
+name = "reinhardt-providers"
 version_group = "reinhardt"
 
 [[package]]

@@ -156,7 +156,7 @@ jobs:
           # On those, release-plz bumps versions in Cargo.toml so cargo-semver-checks
           # can auto-detect the intended release type without --release-type.
           IS_RELEASE_PR="false"
-          if [[ "$HEAD_REF" == release-plz-* ]]; then
+          if [[ "$HEAD_REF" == release-plz-* || "$HEAD_REF" == develop-release-plz-* ]]; then
             IS_RELEASE_PR="true"
           fi
           echo "is-release-pr=$IS_RELEASE_PR" >> "$GITHUB_OUTPUT"
@@ -330,13 +330,26 @@ jobs:
             exit 0
           fi
 
+          if grep -Fq "SemverViolation" "$LOG_FILE"; then
+            exit 1
+          fi
+
           # cargo-semver-checks cannot compare APIs when the baseline crate
           # itself fails rustdoc. That is a baseline build problem, not a
-          # SemVer regression in the current PR. Keep true SemVerViolation
-          # failures hard-failing.
+          # SemVer regression in the current PR.
           if grep -Eq "Building .*\\(baseline\\)" "$LOG_FILE" \
             && grep -Fq "failed to build rustdoc for crate" "$LOG_FILE"; then
             echo "::warning::Skipping SemVer comparison for ${CRATE_NAME}: baseline rustdoc build failed at ${BASELINE_REV}."
+            exit 0
+          fi
+
+          # cargo metadata can fail before API comparison when the baseline
+          # dependency graph resolves to a transient upstream cycle. Keep true
+          # SemVerViolation failures hard-failing above.
+          if grep -Fq 'cargo metadata` exited with an error' "$LOG_FILE" \
+            && grep -Fq 'cyclic package dependency: package `js-sys' "$LOG_FILE" \
+            && grep -Fq 'depends on itself' "$LOG_FILE"; then
+            echo "::warning::Skipping SemVer comparison for ${CRATE_NAME}: baseline dependency resolution hit js-sys self-cycle at ${BASELINE_REV}."
             exit 0
           fi
 

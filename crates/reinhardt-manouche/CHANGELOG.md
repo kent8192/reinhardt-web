@@ -7,23 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.3...reinhardt-manouche@v0.1.4) - 2026-06-10
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.3...reinhardt-manouche@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-manouche` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Added
+
+- *(pages)* support keyed page list rendering
+- *(forms)* add typed use_form ergonomics
+- feat!(forms): route use_form through form definitions
+
+### Fixed
+
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(docs)* resolve remaining rustdoc doctest failures
+- *(forms)* stabilize form runtime and validator parity
 
 ### Performance
 
 - *(pages)* trim wasm dependency graph
 
-## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.2...reinhardt-manouche@v0.1.3) - 2026-05-31
 
-### Documentation
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.2.0-rc.4...reinhardt-manouche@v0.2.0-rc.5) - 2026-06-11
 
-- align documentation with current APIs
+### Performance
 
-## [0.1.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0...reinhardt-manouche@v0.1.1) - 2026-05-24
+- *(pages)* trim wasm dependency graph
+
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.3...reinhardt-manouche@v0.2.0-rc.2) - 2026-06-03
+
+### Added
+
+- *(pages)* support keyed page list rendering
+- *(forms)* add typed use_form ergonomics
+- feat!(forms): route use_form through form definitions
 
 ### Fixed
 
-- *(ci)* resolve Rust 1.94 clippy failures
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(ci)* resolve all pre-existing compilation failures on develop/0.2.0
+- *(docs)* resolve remaining rustdoc doctest failures
+- *(forms)* address review and CI failures
+- *(forms)* stabilize form runtime and validator parity
+- *(forms)* address review feedback
+- *(forms)* address bot review feedback
+
+### Maintenance
+
+- forward merge main v0.1.1 changes into develop 0.2.0
+
+### Styling
+
+- apply formatter fixes across workspace
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0-rc.30...reinhardt-manouche@v0.1.0) - 2026-05-22
 

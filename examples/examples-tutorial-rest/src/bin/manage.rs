@@ -1,7 +1,7 @@
 //! Reinhardt Project Management CLI for examples-tutorial-rest
 
 use examples_tutorial_rest::config;
-use reinhardt::commands::execute_from_command_line;
+use reinhardt::commands::execute_from_command_line_with_settings;
 use reinhardt::core::tokio;
 use std::process;
 
@@ -19,8 +19,11 @@ async fn main() {
 	// Ensure config module is loaded (triggers #[routes] macro)
 	let _ = &config::urls::routes;
 
-	// Execute command from command line
-	if let Err(e) = execute_from_command_line().await {
+	// Execute command from command line, handing the project's composed
+	// settings to the runtime so database-requiring commands resolve the
+	// connection from settings/*.toml (`[core.databases.default]`).
+	if let Err(e) = execute_from_command_line_with_settings(config::settings::get_settings()).await
+	{
 		eprintln!("Error: {}", e);
 		process::exit(1);
 	}

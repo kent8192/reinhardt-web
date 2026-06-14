@@ -12,7 +12,7 @@
 //!
 //! **Run with**: `cargo make wasm-test`
 
-#![cfg(wasm)]
+#![cfg(all(target_family = "wasm", target_os = "unknown"))]
 
 use wasm_bindgen_test::*;
 
@@ -25,10 +25,14 @@ use examples_tutorial_basis::apps::polls::client::components::{
 use examples_tutorial_basis::apps::polls::server_fn::{
 	get_question_detail, get_question_results, get_questions, vote,
 };
+use examples_tutorial_basis::apps::users::server_fn::current_user;
 use examples_tutorial_basis::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
-use reinhardt::pages::component::Page;
+use gloo_timers::future::TimeoutFuture;
+use reinhardt::pages::component::{Page, PageExt};
 use reinhardt::pages::server_fn::ServerFnError;
+use reinhardt::pages::{Element as DomElement, document};
 use reinhardt::test::msw::MockServiceWorker;
+use wasm_bindgen::JsCast;
 
 // ============================================================================
 // Test Fixtures
@@ -40,6 +44,7 @@ fn mock_question() -> QuestionInfo {
 		id: 1,
 		question_text: "What is your favorite programming language?".to_string(),
 		pub_date: chrono::Utc::now(),
+		author_id: 1,
 	}
 }
 
@@ -50,16 +55,19 @@ fn mock_questions_list() -> Vec<QuestionInfo> {
 			id: 1,
 			question_text: "What is your favorite programming language?".to_string(),
 			pub_date: chrono::Utc::now(),
+			author_id: 1,
 		},
 		QuestionInfo {
 			id: 2,
 			question_text: "Which web framework do you prefer?".to_string(),
 			pub_date: chrono::Utc::now(),
+			author_id: 1,
 		},
 		QuestionInfo {
 			id: 3,
 			question_text: "What database do you use most?".to_string(),
 			pub_date: chrono::Utc::now(),
+			author_id: 1,
 		},
 	]
 }
@@ -97,6 +105,43 @@ fn mock_vote_request() -> VoteRequest {
 	}
 }
 
+fn install_poll_test_root() -> DomElement {
+	let doc = document();
+	if let Some(prev) = doc
+		.query_selector("#polls-test-root")
+		.expect("query test root")
+	{
+		prev.as_web_sys().remove();
+	}
+
+	let root = doc.create_element("div").expect("create test root");
+	root.set_attribute("id", "polls-test-root")
+		.expect("set test root id");
+	doc.body()
+		.expect("document body")
+		.as_web_sys()
+		.append_child(root.as_web_sys())
+		.expect("append test root");
+	root
+}
+
+async fn await_selector(selector: &str) -> DomElement {
+	let doc = document();
+	for _ in 0..100 {
+		if let Some(element) = doc.query_selector(selector).expect("query selector") {
+			return element;
+		}
+		TimeoutFuture::new(50).await;
+	}
+
+	let root_html = doc
+		.query_selector("#polls-test-root")
+		.expect("query test root")
+		.map(|root| root.as_web_sys().inner_html())
+		.unwrap_or_else(|| "<missing #polls-test-root>".to_string());
+	panic!("timed out waiting for selector `{selector}` in #polls-test-root DOM: {root_html}");
+}
+
 // ============================================================================
 // Polls Index Rendering Tests
 // ============================================================================
@@ -112,30 +157,20 @@ fn test_polls_index_renders() {
 #[wasm_bindgen_test]
 fn test_polls_index_has_title() {
 	let view = polls_index();
-
-	if let Page::Element(element) = view {
-		let html = element.to_html();
-		assert!(html.contains("Polls"), "Should have 'Polls' title");
-		assert!(html.contains("<h1"), "Title should be in h1 tag");
-	} else {
-		panic!("Expected Page::Element");
-	}
+	let html = view.render_to_string();
+	assert!(html.contains("Polls"), "Should have 'Polls' title");
+	assert!(html.contains("<h1"), "Title should be in h1 tag");
 }
 
 /// Test polls index has container class
 #[wasm_bindgen_test]
 fn test_polls_index_has_container() {
 	let view = polls_index();
-
-	if let Page::Element(element) = view {
-		let html = element.to_html();
-		assert!(
-			html.contains("container"),
-			"Should have Bootstrap container class"
-		);
-	} else {
-		panic!("Expected Page::Element");
-	}
+	let html = view.render_to_string();
+	assert!(
+		html.contains("max-w-4xl") && html.contains("mx-auto"),
+		"Should have the current centered page container classes"
+	);
 }
 
 // ============================================================================
@@ -398,6 +433,67 @@ async fn test_polls_detail_with_msw_active() {
 	assert!(matches!(view, Page::Element(_)));
 }
 
+/// `polls_detail(qid)` renders one radio input for each loaded choice.
+#[wasm_bindgen_test]
+async fn test_polls_detail_renders_loaded_choice_radios() {
+	let worker = MockServiceWorker::new();
+	worker.handle_server_fn::<get_question_detail::marker>(|_args| {
+		Ok((mock_question(), mock_choices()))
+	});
+	worker.handle_server_fn::<current_user::marker>(|_args| Ok(None));
+	worker.start().await;
+
+	let root = install_poll_test_root();
+	polls_detail(1).mount(&root).expect("mount polls detail");
+
+	await_selector("input[type='radio'][name='choice_id'][value='1']").await;
+	await_selector("input[type='radio'][name='choice_id'][value='2']").await;
+	await_selector("input[type='radio'][name='choice_id'][value='3']").await;
+
+	worker
+		.calls_to_server_fn::<get_question_detail::marker>()
+		.assert_called();
+}
+
+/// Selecting a poll choice must survive the reactive re-render triggered by the
+/// form field signal update.
+#[wasm_bindgen_test]
+async fn test_polls_detail_keeps_clicked_radio_checked() {
+	let worker = MockServiceWorker::new();
+	worker.handle_server_fn::<get_question_detail::marker>(|_args| {
+		Ok((mock_question(), mock_choices()))
+	});
+	worker.handle_server_fn::<current_user::marker>(|_args| Ok(None));
+	worker.start().await;
+
+	let root = install_poll_test_root();
+	polls_detail(1).mount(&root).expect("mount polls detail");
+
+	let selector = "input[type='radio'][name='choice_id'][value='1']";
+	let input = await_selector(selector)
+		.await
+		.as_web_sys()
+		.clone()
+		.dyn_into::<web_sys::HtmlInputElement>()
+		.expect("choice radio should be an input element");
+	input.click();
+
+	TimeoutFuture::new(50).await;
+
+	let current_input = document()
+		.query_selector(selector)
+		.expect("query selected radio")
+		.expect("selected radio should still exist")
+		.as_web_sys()
+		.clone()
+		.dyn_into::<web_sys::HtmlInputElement>()
+		.expect("current choice radio should be an input element");
+	assert!(
+		current_input.checked(),
+		"clicked choice radio should stay checked after reactive update"
+	);
+}
+
 /// `polls_results(qid)` constructs cleanly with MSW intercepting
 /// `get_question_results`.
 #[wasm_bindgen_test]
@@ -431,10 +527,11 @@ fn test_question_info_serialization() {
 #[wasm_bindgen_test]
 fn test_question_info_deserialization() {
 	let json = r#"{
-        "id": 1,
-        "question_text": "What is Rust?",
-        "pub_date": "2025-01-01T12:00:00Z"
-    }"#;
+	        "id": 1,
+	        "question_text": "What is Rust?",
+	        "pub_date": "2025-01-01T12:00:00Z",
+	        "author_id": 1
+	    }"#;
 
 	let question: QuestionInfo =
 		serde_json::from_str(json).expect("Should deserialize QuestionInfo");

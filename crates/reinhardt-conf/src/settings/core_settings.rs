@@ -59,6 +59,7 @@ pub struct CoreSettings {
 	/// secure_ssl_redirect = true
 	/// session_cookie_secure = true
 	/// ```
+	#[setting(node)]
 	#[serde(default)]
 	pub security: SecuritySettings,
 	/// Middleware class paths.

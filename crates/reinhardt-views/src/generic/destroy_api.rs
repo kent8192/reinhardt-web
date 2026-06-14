@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use hyper::Method;
 use reinhardt_core::exception::{Error, Result};
-use reinhardt_db::orm::{Filter, FilterOperator, FilterValue, Manager, Model, QuerySet};
+use reinhardt_db::orm::{CustomManager, Filter, FilterOperator, FilterValue, Model, QuerySet};
 use reinhardt_http::{Request, Response};
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -45,6 +45,7 @@ use crate::core::View;
 /// impl Model for Article {
 ///     type PrimaryKey = i64;
 ///     type Fields = ArticleFields;
+///     type Objects = reinhardt_db::orm::Manager<Self>;
 ///     fn table_name() -> &'static str { "articles" }
 ///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -85,6 +86,7 @@ where
 	/// # impl Model for Article {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ArticleFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "articles" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -125,6 +127,7 @@ where
 	/// # impl Model for Article {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = ArticleFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "articles" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -141,7 +144,7 @@ where
 
 	/// Gets the queryset, creating a default one if not set
 	fn get_queryset(&self) -> QuerySet<M> {
-		self.queryset.clone().unwrap_or_default()
+		self.queryset.clone().unwrap_or_else(|| M::objects().all())
 	}
 
 	/// Retrieves the object to delete by lookup field value from request path params
@@ -186,7 +189,7 @@ where
 			.ok_or_else(|| Error::Http("Object has no primary key".to_string()))?;
 
 		// Delete using Manager
-		let manager = Manager::<M>::new();
+		let manager = M::objects();
 		manager
 			.delete(pk)
 			.await
@@ -200,6 +203,29 @@ where
 {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::generic::test_support::{
+		ManagedArticle, assert_default_manager_queryset, assert_explicit_queryset,
+		explicit_queryset,
+	};
+
+	#[test]
+	fn default_queryset_uses_model_objects() {
+		let view = DestroyAPIView::<ManagedArticle>::new();
+
+		assert_default_manager_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn explicit_queryset_overrides_model_objects() {
+		let view = DestroyAPIView::<ManagedArticle>::new().with_queryset(explicit_queryset());
+
+		assert_explicit_queryset(view.get_queryset());
 	}
 }
 

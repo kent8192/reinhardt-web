@@ -284,6 +284,7 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::orm::Manager;
 	use reinhardt_query::prelude::QueryStatementBuilder;
 
 	#[test]
@@ -360,6 +361,7 @@ mod tests {
 	impl Model for TestUser {
 		type PrimaryKey = String;
 		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			"users"
@@ -407,6 +409,7 @@ mod tests {
 	impl Model for TestTweet {
 		type PrimaryKey = String;
 		type Fields = TestTweetFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			"tweets"

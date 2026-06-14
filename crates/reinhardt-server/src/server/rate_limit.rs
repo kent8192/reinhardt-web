@@ -1,3 +1,5 @@
+#![allow(deprecated)] // RateLimitConfig is deprecated but still used by the handler and tests in this module.
+
 use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
 use std::collections::HashMap;
@@ -16,6 +18,10 @@ pub enum RateLimitStrategy {
 }
 
 /// Rate limiter configuration
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `RateLimitSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone)]
 pub struct RateLimitConfig {
 	/// Maximum requests allowed in the window

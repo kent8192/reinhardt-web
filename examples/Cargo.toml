@@ -3,7 +3,6 @@ resolver = "2"
 members = [
 	"examples-tutorial-basis",
 	"examples-tutorial-rest",
-	"examples-twitter",
 ]
 
 # Note: Each example has a binary named "manage"
@@ -12,13 +11,13 @@ members = [
 #   cd examples-rest-api && cargo run
 #   cd examples-database-integration && cargo run
 #
-# Uses crates.io published versions by default.
-# For local development, copy .cargo/config.local.toml to .cargo/config.toml
+# Resolve Reinhardt from the parent checkout so examples validate the current
+# workspace release line before and after publication to crates.io.
 
 [workspace.dependencies]
-# Reinhardt framework (crates.io published versions)
+# Reinhardt framework from this repository.
 # reinhardt-version-sync
-reinhardt = { version = "0.1.4", package = "reinhardt-web" }
+reinhardt = { path = "..", version = "0.2.0-rc.6", package = "reinhardt-web" }
 
 # Testing
 testcontainers = { version = "0.27.2", features = ["blocking"] }
@@ -42,6 +41,7 @@ anyhow = "1.0.100"
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
 	'cfg(native)',
+	'cfg(server)',
 	'cfg(wasm)',
 	'cfg(with_reinhardt)',
 ] }

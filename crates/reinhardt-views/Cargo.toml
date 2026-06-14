@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-views"
-version = "0.1.4"
+version = "0.2.0-rc.6"
 description = "View layer aggregator for viewsets and views-core"
 edition.workspace = true
 rust-version.workspace = true
@@ -9,8 +9,8 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-reinhardt-core = { workspace = true, features = ["exception", "macros", "pagination", "serializers", "serde", "types", "security"] }
-reinhardt-db = { workspace = true, features = ["orm", "di"] }
+reinhardt-core = { workspace = true, default-features = false, features = ["exception", "macros", "pagination", "serializers", "serde", "types", "security"] }
+reinhardt-db = { workspace = true, default-features = false, features = ["orm", "di"] }
 reinhardt-di = { workspace = true }
 reinhardt-http = { workspace = true }
 async-trait = { workspace = true }
@@ -24,12 +24,12 @@ lazy_static = "1.4"
 rust-embed = "8.0"
 bytes = { workspace = true }
 hyper = { workspace = true }
-syntect = { workspace = true }
+syntect = { workspace = true, optional = true }
 once_cell = { workspace = true }
 
 # REST framework for filters/serializers
-reinhardt-rest = {workspace = true, features = ["filters", "serializers", "openapi"]}
-reinhardt-auth = { workspace = true }
+reinhardt-rest = {workspace = true, default-features = false, features = ["filters", "serializers"]}
+reinhardt-auth = { workspace = true, default-features = false, features = ["params"] }
 reinhardt-utils = { workspace = true, features = ["cache"] }
 uuid = { workspace = true }
 sqlx = { workspace = true, features = [
@@ -45,16 +45,16 @@ urlencoding = "2.1"
 reinhardt-query = { workspace = true }
 parking_lot = { workspace = true }
 tracing = { workspace = true }
-utoipa = { version = "5.4", features = ["url", "uuid", "yaml"] }
+utoipa = { version = "5.4", features = ["url", "uuid", "yaml"], optional = true }
 
 [features]
-default = []
+default = ["browsable-api", "openapi"]
 viewsets = []
-views-full = [
-  
-]
+browsable-api = ["dep:syntect"]
+openapi = ["dep:utoipa", "reinhardt-rest/openapi"]
+views-full = ["browsable-api", "openapi"]
 argon2-hasher = ["reinhardt-auth/argon2-hasher"]
-full = ["argon2-hasher"]
+full = ["argon2-hasher", "browsable-api", "openapi"]
 
 [dev-dependencies]
 insta = { workspace = true }

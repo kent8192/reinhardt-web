@@ -74,6 +74,7 @@ impl reinhardt_db::orm::FieldSelector for AdminDefaultUserFields {
 impl Model for AdminDefaultUser {
 	type PrimaryKey = Uuid;
 	type Fields = AdminDefaultUserFields;
+	type Objects = reinhardt_db::orm::Manager<Self>;
 
 	fn table_name() -> &'static str {
 		"auth_user"

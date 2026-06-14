@@ -75,17 +75,12 @@ impl ReactiveIfNode {
 	/// * `condition` - Closure that returns the condition value
 	/// * `then_view` - Closure that returns the view when condition is true
 	/// * `else_view` - Closure that returns the view when condition is false
-	pub fn new<C, T, E>(
+	pub fn new(
 		parent: &crate::dom::Element,
-		condition: C,
-		then_view: T,
-		else_view: E,
-	) -> Self
-	where
-		C: Fn() -> bool + 'static,
-		T: Fn() -> Page + 'static,
-		E: Fn() -> Page + 'static,
-	{
+		condition: std::sync::Arc<dyn Fn() -> bool + 'static>,
+		then_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+		else_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+	) -> Self {
 		// Create a comment node as a marker/anchor point
 		let document = web_sys::window()
 			.expect("window should be available")
@@ -123,9 +118,14 @@ impl ReactiveIfNode {
 				*last = Some(new_condition);
 				drop(last);
 
-				// Remove old nodes
-				let mut nodes = current_nodes_clone.borrow_mut();
-				for node in nodes.drain(..) {
+				// Refs #5100: remove old nodes before mounting the replacement view. The
+				// mount path may synchronously run layout effects, so do not
+				// hold this RefCell borrow across `mount_before_marker`.
+				let old_nodes = {
+					let mut nodes = current_nodes_clone.borrow_mut();
+					nodes.drain(..).collect::<Vec<_>>()
+				};
+				for node in old_nodes {
 					if let Some(parent_node) = node.parent_node() {
 						let _ = parent_node.remove_child(&node);
 					}
@@ -140,7 +140,7 @@ impl ReactiveIfNode {
 
 				// Mount new nodes before the marker
 				let new_nodes = mount_before_marker(&marker_clone, view);
-				*nodes = new_nodes;
+				*current_nodes_clone.borrow_mut() = new_nodes;
 			},
 			EffectTiming::Layout, // Use Layout timing for synchronous DOM updates
 		);
@@ -180,10 +180,10 @@ impl ReactiveNode {
 	///
 	/// * `parent` - The parent DOM element to mount the reactive content into
 	/// * `render` - Closure that returns the view to render
-	pub fn new<F>(parent: &crate::dom::Element, render: F) -> Self
-	where
-		F: Fn() -> Page + 'static,
-	{
+	pub fn new(
+		parent: &crate::dom::Element,
+		render: std::sync::Arc<dyn Fn() -> Page + 'static>,
+	) -> Self {
 		// Create a comment node as a marker/anchor point
 		let document = web_sys::window()
 			.expect("window should be available")
@@ -210,9 +210,14 @@ impl ReactiveNode {
 				// Render the view (this tracks Signal dependencies)
 				let view = render();
 
-				// Remove old nodes
-				let mut nodes = current_nodes_clone.borrow_mut();
-				for node in nodes.drain(..) {
+				// Refs #5100: remove old nodes before mounting the replacement view. The
+				// mount path may synchronously run layout effects, so do not
+				// hold this RefCell borrow across `mount_before_marker`.
+				let old_nodes = {
+					let mut nodes = current_nodes_clone.borrow_mut();
+					nodes.drain(..).collect::<Vec<_>>()
+				};
+				for node in old_nodes {
 					if let Some(parent_node) = node.parent_node() {
 						let _ = parent_node.remove_child(&node);
 					}
@@ -220,7 +225,7 @@ impl ReactiveNode {
 
 				// Mount new nodes before the marker
 				let new_nodes = mount_before_marker(&marker_clone, view);
-				*nodes = new_nodes;
+				*current_nodes_clone.borrow_mut() = new_nodes;
 			},
 			EffectTiming::Layout, // Use Layout timing for synchronous DOM updates
 		);
@@ -302,6 +307,11 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 		}
 		Page::Fragment(children) => {
 			for child in children {
+				nodes.extend(mount_before_marker(marker, child));
+			}
+		}
+		Page::KeyedFragment(children) => {
+			for (_, child) in children {
 				nodes.extend(mount_before_marker(marker, child));
 			}
 		}

@@ -1,0 +1,423 @@
++++
+title = "Part 5: Ownership and Poll CRUD"
+description = "Add question ownership with migration 0002, then build ownership-checked CRUD for polls and choices."
+weight = 50
+
+[extra]
+sidebar_weight = 50
++++
+
+# Part 5: Ownership and Poll CRUD
+
+The app now has users, but polls are still anonymous. In this part you will add `Question.author`, generate migration `0002_question_author`, and build create/edit/delete flows for questions and choices.
+
+The client hides controls that do not apply to the current user, but that is only ergonomics. The server functions enforce ownership every time.
+
+## Add the Author Field
+
+Open `src/apps/polls/models.rs`. Import the user model and add an author foreign key to `Question`:
+
+```rust
+use crate::apps::users::models::User;
+```
+
+```rust
+#[model(app_label = "polls", table_name = "questions")]
+#[derive(Serialize, Deserialize)]
+pub struct Question {
+    #[field(primary_key = true)]
+    pub id: i64,
+
+    #[field(max_length = 200)]
+    pub question_text: String,
+
+    #[field(auto_now_add = true)]
+    pub pub_date: DateTime<Utc>,
+
+    #[rel(foreign_key, related_name = "questions")]
+    pub author: ForeignKeyField<User>,
+}
+```
+
+This is the schema change you intentionally deferred in Part 2.
+
+## Generate Migration 0002
+
+Run migrations again:
+
+```bash
+cargo make makemigrations
+cargo make migrate
+```
+
+The new migration should add `author_id` to `questions`, not rewrite `0001_initial.rs`. The reference migration is `migrations/polls/0002_question_author.rs`:
+
+```rust
+pub(super) fn migration() -> Migration {
+    Migration {
+        app_label: "polls".to_string(),
+        name: "0002_question_author".to_string(),
+        operations: vec![Operation::AddColumn {
+            table: "questions".to_string(),
+            column: ColumnDefinition {
+                name: "author_id".to_string(),
+                type_definition: FieldType::BigInteger,
+                not_null: true,
+                unique: false,
+                primary_key: false,
+                auto_increment: false,
+                default: None,
+            },
+            mysql_options: None,
+        }],
+        dependencies: vec![("polls".to_string(), "0001_initial".to_string())],
+        atomic: true,
+        replaces: vec![],
+        initial: None,
+        state_only: false,
+        database_only: false,
+        swappable_dependencies: vec![],
+        optional_dependencies: vec![],
+    }
+}
+```
+
+For a tutorial database, it is fine to reset and reseed. For real existing data, a non-null column without a default needs a backfill plan before the constraint can be applied safely.
+
+## Inject the Current User
+
+The polls server functions need an authenticated user. Add a request-scoped factory in `src/apps/polls/server_fn.rs`:
+
+```rust
+#[cfg(server)]
+#[derive(Clone, Debug)]
+pub enum SessionError {
+    Anonymous,
+    Inactive,
+    Unavailable(String),
+}
+```
+
+```rust
+#[cfg(server)]
+#[injectable_factory(scope = "request")]
+async fn session_user_factory(#[inject] session: SessionData) -> Result<User, SessionError> {
+    let Some(user_id) = session.get::<i64>(USER_ID_SESSION_KEY) else {
+        return Err(SessionError::Anonymous);
+    };
+
+    let user = match User::objects()
+        .filter(User::field_id().eq(user_id))
+        .first()
+        .await
+    {
+        Ok(Some(user)) => user,
+        Ok(None) => return Err(SessionError::Anonymous),
+        Err(err) => {
+            return Err(SessionError::Unavailable(err.to_string()));
+        }
+    };
+
+    if user.is_active {
+        Ok(user)
+    } else {
+        Err(SessionError::Inactive)
+    }
+}
+```
+
+Handlers consume it as `Depends<Result<User, SessionError>>`:
+
+```rust
+let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
+```
+
+This keeps authentication failure explicit: anonymous users get 401, inactive users get 403, and lookup failures stay server errors.
+
+## Create Questions
+
+Add the create server function:
+
+```rust
+#[server_fn]
+pub async fn create_question(
+    question_text: String,
+    #[inject] _db: reinhardt::DatabaseConnection,
+    #[inject] session_user: Depends<Result<User, SessionError>>,
+) -> std::result::Result<QuestionInfo, ServerFnError> {
+    use crate::apps::polls::models::Question;
+
+    let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
+
+    let trimmed = question_text.trim();
+    if trimmed.is_empty() || trimmed.len() > 200 {
+        return Err(ServerFnError::server(
+            400,
+            "Question text must be between 1 and 200 characters",
+        ));
+    }
+
+    let manager = Question::objects();
+    let new_question = Question::build()
+        .question_text(trimmed)
+        .author(user.id())
+        .finish();
+    let saved = manager
+        .create(&new_question)
+        .await
+        .map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
+    Ok(QuestionInfo::from(saved))
+}
+```
+
+The `author(user.id())` builder call is the new ownership link.
+
+## Update and Delete Questions
+
+Update and delete both load the row, compare author ids, and reject non-authors:
+
+```rust
+if *question.author_id() != user.id() {
+    return Err(ServerFnError::server(
+        403,
+        "Only the question's author can edit it",
+    ));
+}
+```
+
+Then update:
+
+```rust
+question.question_text = trimmed.to_string();
+
+let updated = manager
+    .update(&question)
+    .await
+    .map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
+Ok(QuestionInfo::from(updated))
+```
+
+Or delete:
+
+```rust
+manager
+    .delete(question.id())
+    .await
+    .map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
+Ok(())
+```
+
+Do not rely on the client to protect these actions. The comparison in the server function is the rule.
+
+## Manage Choices Through the Parent Question
+
+`Choice` does not have its own author field. Ownership comes from the parent `Question`:
+
+```rust
+#[cfg(server)]
+async fn require_question_author(
+    question_id: i64,
+    user: &User,
+) -> std::result::Result<crate::apps::polls::models::Question, ServerFnError> {
+    use crate::apps::polls::models::Question;
+
+    let question = Question::objects()
+        .get(question_id)
+        .first()
+        .await
+        .map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
+        .ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
+
+    if *question.author_id() != user.id() {
+        return Err(ServerFnError::server(
+            403,
+            "Only the question's author can manage its choices",
+        ));
+    }
+
+    Ok(question)
+}
+```
+
+`create_choice` verifies the parent question first:
+
+```rust
+let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
+let question = require_question_author(question_id, user).await?;
+
+let new_choice = Choice::build()
+    .choice_text(trimmed)
+    .votes(0)
+    .question(question.id())
+    .finish();
+```
+
+`update_choice` and `delete_choice` load the choice, then call `require_question_author(*choice.question_id(), user)` before mutating the row.
+
+## Register the CRUD Server Functions
+
+Update `src/apps/polls/urls/server_urls.rs`:
+
+```rust
+ServerRouter::new()
+    .server_fn(get_questions::marker)
+    .server_fn(get_question_detail::marker)
+    .server_fn(get_question_results::marker)
+    .server_fn(vote::marker)
+    .server_fn(submit_vote::marker)
+    .server_fn(create_question::marker)
+    .server_fn(update_question::marker)
+    .server_fn(delete_question::marker)
+    .server_fn(create_choice::marker)
+    .server_fn(update_choice::marker)
+    .server_fn(delete_choice::marker)
+```
+
+## Add Client CRUD Routes
+
+Add question and choice routes in `src/apps/polls/urls/client_router.rs`:
+
+```rust
+ClientRouter::new()
+    .route("index", "/", index_page)
+    .route("question_new", "/polls/new/", question_new_page)
+    .route_path(
+        "choice_new",
+        "/polls/{question_id}/choices/new/",
+        |ClientPath(question_id): ClientPath<i64>| choice_new_page(question_id),
+    )
+    .route_path(
+        "choice_edit",
+        "/polls/{question_id}/choices/{choice_id}/edit/",
+        |ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
+            choice_edit_page(question_id, choice_id)
+        },
+    )
+    .route_path(
+        "choice_delete",
+        "/polls/{question_id}/choices/{choice_id}/delete/",
+        |ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
+            choice_delete_page(question_id, choice_id)
+        },
+    )
+```
+
+The existing detail/results routes remain below these.
+
+## Add Question Forms
+
+The new-question page submits to `create_question`:
+
+```rust
+pub fn question_new() -> Page {
+    let new_form = form! {
+        name: NewQuestionForm,
+        server_fn: create_question,
+        method: Post,
+        redirect_on_success: "/",
+        fields: {
+            question_text: CharField {
+                label: "Question",
+                placeholder: "What do you want to ask?",
+                max_length: 200,
+                class: "form-control",
+            }
+        }
+    };
+```
+
+The edit page loads the current question, then pre-fills the form:
+
+```rust
+let edit_form = form! {
+    name: EditQuestionForm,
+    server_fn: update_question,
+    method: Post,
+    redirect_on_success: "/",
+    fields: {
+        question_id: HiddenField<i64> {
+            initial: qid,
+        }
+        question_text: CharField {
+            label: "Question",
+            placeholder: "Updated question text",
+            max_length: 200,
+            class: "form-control",
+        }
+    }
+};
+```
+
+The delete page follows the same pattern with `delete_question` and a confirmation button.
+
+## Add Choice Forms
+
+Choice creation posts to `create_choice` and returns to the parent detail page:
+
+```rust
+let new_form = form! {
+    name: NewChoiceForm,
+    server_fn: create_choice,
+    method: Post,
+    success_url: |_form| polls_routes::reverse("detail", &[("question_id", qid.to_string().as_str())]),
+    fields: {
+        question_id: HiddenField<i64> {
+            initial: qid,
+        },
+        choice_text: CharField {
+            label: "Choice text",
+            placeholder: "An answer option",
+            required,
+            max_length: 200,
+            class: "form-control",
+        },
+    },
+};
+```
+
+Choice edit/delete pages include both route ids so the client can return to the parent question:
+
+```rust
+polls_routes::reverse("detail", &[("question_id", question_id.to_string().as_str())])
+```
+
+## Hide Owner-Only Controls
+
+Detail and results pages should load the current user and compare it with `q.author_id`:
+
+```rust
+let load_current_user = use_resource(
+    || async move { current_user().await.map_err(|e| e.to_string()) },
+    (),
+);
+```
+
+```rust
+let is_author = matches!(
+    load_current_user.get(),
+    ResourceState::Success(Some(ref u)) if u.id == q.author_id
+);
+```
+
+Use `is_author` to show edit/delete/add-choice links only to the owner. This improves the UI, but the server checks above remain authoritative.
+
+## Checkpoint
+
+Run the app:
+
+```bash
+cargo make dev
+```
+
+Create two accounts. With account A, create a poll and choices. Log out, log in as account B, and try to open account A's edit/delete URLs directly. The forms may render, but submits must fail with an authorization error.
+
+Before continuing:
+
+- `0001_initial.rs` is still the anonymous poll schema.
+- `0002_question_author.rs` adds `questions.author_id`.
+- Question create/update/delete require `Depends<Result<User, SessionError>>`.
+- Choice create/update/delete call `require_question_author`.
+- Owner-only UI is only a convenience; server functions enforce the rule.

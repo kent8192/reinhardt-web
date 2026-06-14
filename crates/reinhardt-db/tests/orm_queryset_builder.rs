@@ -5,7 +5,7 @@
 
 use reinhardt_db::orm::model::FieldSelector;
 use reinhardt_db::orm::query::{Filter, FilterCondition, OrmQuery, UpdateValue};
-use reinhardt_db::orm::{FilterOperator, FilterValue, Model, QuerySet};
+use reinhardt_db::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet};
 use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -33,6 +33,7 @@ impl FieldSelector for TestProductFields {
 impl Model for TestProduct {
 	type PrimaryKey = i64;
 	type Fields = TestProductFields;
+	type Objects = Manager<Self>;
 
 	fn table_name() -> &'static str {
 		"products"

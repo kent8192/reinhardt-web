@@ -58,6 +58,8 @@
 //! # }
 //! ```
 
+#![allow(deprecated)] // RetryConfig/WebhookConfig are deprecated; still constructed internally.
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use ipnet::IpNet;
@@ -440,6 +442,10 @@ pub struct WebhookEvent {
 /// assert_eq!(config.max_retries, 3);
 /// assert_eq!(config.backoff_multiplier, 2.0);
 /// ```
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `WebhookRetrySettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone)]
 pub struct RetryConfig {
 	/// Maximum number of retry attempts
@@ -486,6 +492,10 @@ impl Default for RetryConfig {
 /// assert_eq!(config.url, "https://api.example.com/webhooks");
 /// assert_eq!(config.timeout, Duration::from_secs(5));
 /// ```
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `WebhookSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone)]
 pub struct WebhookConfig {
 	/// Webhook URL

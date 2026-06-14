@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-grpc"
-version = "0.1.4"
+version = "0.2.0-rc.6"
 description = "gRPC support for building RPC services"
 edition.workspace = true
 rust-version.workspace = true
@@ -19,6 +19,11 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 uuid = { workspace = true }
 tracing = { workspace = true }
+serde = { workspace = true }
+
+# Settings fragment support
+reinhardt-conf = { workspace = true, features = ["settings"] }
+reinhardt-core = { workspace = true }
 
 # DI support (optional)
 reinhardt-di = { workspace = true, optional = true }
@@ -37,3 +42,4 @@ insta = { workspace = true }
 tokio-test = { workspace = true }
 rstest = { workspace = true }
 tracing = { workspace = true }
+toml = { workspace = true }

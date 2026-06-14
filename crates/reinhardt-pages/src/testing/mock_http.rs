@@ -8,28 +8,6 @@
 //! When testing WASM components that call server functions, you often want to
 //! mock the HTTP responses instead of making actual network requests. This module
 //! provides a registry-based approach to intercept and mock these calls.
-//!
-//! # Example
-//!
-//! ```rust,ignore
-//! use reinhardt_pages::testing::{mock_server_fn, clear_mocks, assert_server_fn_called};
-//!
-//! #[wasm_bindgen_test]
-//! async fn test_login_component() {
-//!     // Setup mock response
-//!     let user = UserInfo { username: "test".to_string(), ... };
-//!     mock_server_fn("/api/server_fn/login", &user);
-//!
-//!     // Render and interact with component
-//!     // ...
-//!
-//!     // Verify the server function was called
-//!     assert_server_fn_called("/api/server_fn/login");
-//!
-//!     // Cleanup
-//!     clear_mocks();
-//! }
-//! ```
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -144,75 +122,6 @@ thread_local! {
 	static MOCK_REGISTRY: RefCell<MockRegistry> = RefCell::new(MockRegistry::new());
 }
 
-/// Register a mock response for a server function endpoint.
-///
-/// When the specified endpoint is called, the provided data will be
-/// serialized to JSON and returned as a successful response.
-///
-/// # Arguments
-///
-/// * `path` - The server function endpoint path (e.g., "/api/server_fn/login")
-/// * `response` - Any serializable data to return
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let user = UserInfo { username: "test".to_string(), ... };
-/// mock_server_fn("/api/server_fn/login", &user);
-/// ```
-#[deprecated(
-	since = "0.1.0-rc.16",
-	note = "Use `MockServiceWorker::handle_server_fn` from `reinhardt_test::msw` instead. See issue #3283."
-)]
-pub fn mock_server_fn<T: serde::Serialize>(path: &str, response: &T) {
-	MOCK_REGISTRY.with(|r| {
-		r.borrow_mut()
-			.responses
-			.insert(path.to_string(), MockResponse::ok(response));
-	});
-}
-
-/// Register an error mock response for a server function endpoint.
-///
-/// # Arguments
-///
-/// * `path` - The server function endpoint path
-/// * `status` - HTTP status code for the error
-/// * `message` - Error message
-///
-/// # Example
-///
-/// ```rust,ignore
-/// mock_server_fn_error("/api/server_fn/login", 401, "Invalid credentials");
-/// ```
-#[deprecated(
-	since = "0.1.0-rc.16",
-	note = "Use `MockServiceWorker` with `rest::post(...).respond(...)` from `reinhardt_test::msw` instead. See issue #3283."
-)]
-pub fn mock_server_fn_error(path: &str, status: u16, message: &str) {
-	MOCK_REGISTRY.with(|r| {
-		r.borrow_mut()
-			.responses
-			.insert(path.to_string(), MockResponse::error(status, message));
-	});
-}
-
-/// Register a custom mock response for more control.
-///
-/// # Arguments
-///
-/// * `path` - The server function endpoint path
-/// * `response` - The custom MockResponse
-#[deprecated(
-	since = "0.1.0-rc.16",
-	note = "Use `MockServiceWorker::handle` from `reinhardt_test::msw` instead. See issue #3283."
-)]
-pub fn mock_server_fn_custom(path: &str, response: MockResponse) {
-	MOCK_REGISTRY.with(|r| {
-		r.borrow_mut().responses.insert(path.to_string(), response);
-	});
-}
-
 /// Clear all mock responses and call history.
 ///
 /// Should be called at the end of each test to ensure a clean state.
@@ -222,7 +131,7 @@ pub fn mock_server_fn_custom(path: &str, response: MockResponse) {
 /// ```rust,ignore
 /// #[wasm_bindgen_test]
 /// async fn test_example() {
-///     mock_server_fn("/api/endpoint", &data);
+///     // Register mocks via MockServiceWorker or direct MockResponse...
 ///     // ... test code ...
 ///     clear_mocks(); // Cleanup
 /// }
@@ -273,7 +182,7 @@ pub fn get_call_history() -> Vec<MockCall> {
 /// # Example
 ///
 /// ```rust,ignore
-/// mock_server_fn("/api/server_fn/login", &response);
+/// // Register mock response via MockServiceWorker or direct manipulation...
 /// // ... trigger the call ...
 /// assert_server_fn_called("/api/server_fn/login");
 /// ```
@@ -368,7 +277,6 @@ pub(crate) fn get_mock_response(path: &str) -> Option<MockResponse> {
 }
 
 #[cfg(test)]
-#[allow(deprecated)]
 mod tests {
 	use super::*;
 	use serde::{Deserialize, Serialize};
@@ -401,38 +309,6 @@ mod tests {
 	}
 
 	#[test]
-	fn test_mock_server_fn_registration() {
-		clear_mocks();
-
-		let data = TestData {
-			name: "test".to_string(),
-			value: 42,
-		};
-		mock_server_fn("/api/test", &data);
-
-		let response = get_mock_response("/api/test");
-		assert!(response.is_some());
-		assert_eq!(response.unwrap().status, 200);
-
-		clear_mocks();
-	}
-
-	#[test]
-	fn test_mock_server_fn_error_registration() {
-		clear_mocks();
-
-		mock_server_fn_error("/api/test", 500, "Internal Error");
-
-		let response = get_mock_response("/api/test");
-		assert!(response.is_some());
-		let r = response.unwrap();
-		assert_eq!(r.status, 500);
-		assert_eq!(r.body, "Internal Error");
-
-		clear_mocks();
-	}
-
-	#[test]
 	fn test_call_history_recording() {
 		clear_mocks();
 
@@ -454,14 +330,17 @@ mod tests {
 
 	#[test]
 	fn test_clear_mocks() {
-		mock_server_fn("/api/test", &"data");
+		// Register a mock response and record a call
+		MOCK_REGISTRY.with(|r| {
+			r.borrow_mut()
+				.responses
+				.insert("/api/test".to_string(), MockResponse::ok(&"test"));
+		});
 		record_mock_call("/api/test", "", "GET", 1000.0);
-
 		assert!(get_mock_response("/api/test").is_some());
 		assert_eq!(get_call_history().len(), 1);
 
 		clear_mocks();
-
 		assert!(get_mock_response("/api/test").is_none());
 		assert!(get_call_history().is_empty());
 	}

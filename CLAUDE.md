@@ -327,7 +327,7 @@ See instructions/RELEASE_PROCESS.md for detailed release procedures.
 
 ### Obsidian Wiki Maintenance
 
-**Access:** Obsidian MCP server (`obsidian-vault`) — vault path is resolved by the MCP server, not hardcoded
+**Vault:** Discovered via Obsidian MCP server (`obsidian-vault`). Call `obsidian_list_files_in_vault` to verify connectivity and resolve the vault root.
 
 Update the Obsidian wiki **frequently and proactively** — at the end of every meaningful work unit (architectural decision, new pattern, troubleshooting solution, lesson learned, module/component studied, dependency assessed, flow traced, concept clarified, options compared, question answered) and whenever you learn something worth preserving. When in doubt, write a short page (OW-1):
 
@@ -572,7 +572,7 @@ cat .testcontainers.properties
 
 **CI Failure Diagnosis (Known Patterns):**
 - Check these recurring patterns first:
-  1. rustdoc intra-doc link errors with `-D warnings`
+  1. rustdoc intra-doc link errors with `-D warnings` (broken links, redundant explicit targets, private item links — see RD-8/RD-9/RD-10 in instructions/DOCUMENTATION_STANDARDS.md)
   2. docs.rs build issues from empty code blocks
   3. SemVer compatibility with `cargo-semver-checks`
   4. Windows CI-specific failures

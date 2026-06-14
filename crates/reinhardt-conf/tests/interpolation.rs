@@ -95,37 +95,6 @@ fn default_constructor_interpolates_var() {
 
 #[rstest]
 #[serial(env)]
-#[allow(deprecated)] // exercising the deprecated set_interpolation path on purpose
-fn deprecated_set_interpolation_still_works() {
-	// Arrange — set_interpolation(bool) is deprecated since 0.1.0-rc.27
-	// but must remain functional until removal in 0.2.0 (issue #4224).
-	let _guard = EnvGuard(vec!["IT_DEPRECATED_HOST"]);
-	// SAFETY: serial-protected.
-	unsafe { env::set_var("IT_DEPRECATED_HOST", "legacy-host") };
-	let (_dir, path) = write_toml_file(r#"host = "${IT_DEPRECATED_HOST}""#);
-	let (_dir2, path2) = write_toml_file(r#"host = "${IT_DEPRECATED_HOST}""#);
-
-	// Act — true keeps interpolation on; false opts out and preserves literal
-	let on: String = SettingsBuilder::new()
-		.add_source(TomlFileSource::new(&path).set_interpolation(true))
-		.build()
-		.unwrap()
-		.get("host")
-		.unwrap();
-	let off: String = SettingsBuilder::new()
-		.add_source(TomlFileSource::new(&path2).set_interpolation(false))
-		.build()
-		.unwrap()
-		.get("host")
-		.unwrap();
-
-	// Assert
-	assert_eq!(on, "legacy-host");
-	assert_eq!(off, "${IT_DEPRECATED_HOST}");
-}
-
-#[rstest]
-#[serial(env)]
 fn default_value_used_when_var_unset() {
 	// Arrange
 	let _guard = EnvGuard(vec!["IT_UNSET_HOST"]);

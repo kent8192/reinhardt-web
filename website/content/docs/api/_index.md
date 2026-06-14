@@ -13,8 +13,9 @@ sidebar_weight = 10
 
 Welcome to the Reinhardt API reference documentation. This guide provides comprehensive information about Reinhardt's APIs, modules, and components.
 
-> **Note**: Full API documentation will be available at [docs.rs/reinhardt-web](https://docs.rs/reinhardt-web) once published to crates.io.
-> In the meantime, comprehensive documentation is available in each crate's `lib.rs` file.
+<!-- reinhardt-version-sync -->
+> **Note**: Full API documentation for this release is available at [docs.rs/reinhardt-web](https://docs.rs/reinhardt-web/0.2.0-rc.6/reinhardt/).
+> Comprehensive documentation is also available in each crate's `lib.rs` file.
 
 ## Reinhardt Crate Structure
 
@@ -218,55 +219,45 @@ ORM layer for database abstraction with Reinhardt's own query builder (reinhardt
 - ✅ Basic CRUD operations (implemented)
 - ✅ Relationship definitions (implemented)
 - ✅ `#[model(...)]` attribute macro (implemented - automatically applies Model trait)
-- 🚧 Django-style `filter(age__gte=18)` syntax (planned)
+- ✅ Django-style lookup helpers on generated field accessors
 
 **Example (Current API):**
 
 ```rust
+use chrono::{DateTime, Utc};
+use reinhardt::model;
 use reinhardt::db::orm::Model;
-use reinhardt::query::prelude::{Query, Expr, PostgresQueryBuilder};
+use serde::{Deserialize, Serialize};
 
-// Model definition (currently manual implementation)
+#[derive(Serialize, Deserialize)]
+#[model(table_name = "users")]
 struct User {
+    #[field(primary_key = true)]
     id: i64,
+    #[field(max_length = 255)]
     username: String,
+    #[field(max_length = 255)]
     email: String,
     age: i32,
+    created_at: DateTime<Utc>,
 }
 
-// Query using Reinhardt's own query builder
-let query = Query::select()
-    .from(User::table_name())
-    .column(User::id)
-    .column(User::username)
-    .column(User::email)
-    .and_where(Expr::col(User::age).gte(18))
-    .order_by(User::created, reinhardt::query::prelude::Order::Desc)
-    .limit(10)
-    .to_owned();
-
-let sql = query.to_string(PostgresQueryBuilder);
-// Execute SQL to fetch users
-```
-
-**Planned API (Future Implementation):**
-
-```rust
-// Planned Django-style API
-use reinhardt::db::orm::{Model, QuerySet};
-
-#[model(table_name = "users")]  // Macro is planned
-struct User {
-    id: i64,
-    username: String,
-    email: String,
-}
-
-// Future planned API
 let users = User::objects()
-    .filter(age__gte = 18)
-    .order_by("-created")
+    .filter(User::field_age().gte(18))
+    .filter(User::field_email().icontains("example.com"))
+    .filter(User::field_id().is_in([1_i64, 2, 3]))
+    .filter(User::field_created_at().year().gte(2026))
+    .order_by(&["-created_at"])
     .limit(10)
+    .all()
+    .await?;
+
+let matching_users = User::objects()
+    .filter(
+        User::field_username()
+            .iexact("admin")
+            .or(User::field_email().icontains("example.com").not()),
+    )
     .all()
     .await?;
 ```
@@ -359,7 +350,7 @@ impl Serializer for UserSerializer {
 
 - [Module documentation](https://docs.rs/reinhardt-rest) (available after crates.io publish)
 - See `crates/reinhardt-rest/src/serializers.rs` for comprehensive serializers documentation
-- [Tutorial: Serialization](/quickstart/tutorials/rest/1-serialization/)
+- [Tutorial: Serializers and Validation](/quickstart/tutorials/rest/5-serializers-and-validation/)
 
 ### reinhardt-views (viewsets feature)
 
@@ -537,7 +528,7 @@ let auth = JwtAuth::new(secret_key);
 **Documentation:**
 
 - [Module documentation](https://docs.rs/reinhardt-auth) (available after crates.io publish)
-- [Tutorial: Authentication & Permissions](/quickstart/tutorials/rest/4-authentication-and-permissions/)
+- [REST Tutorial Overview](/quickstart/tutorials/rest/)
 
 ## Additional Components
 
@@ -938,7 +929,8 @@ Main package that re-exports all components based on feature flags.
 
 **Documentation:**
 
-- [Main documentation](https://docs.rs/reinhardt-web) (available after crates.io publish)
+<!-- reinhardt-version-sync -->
+- [Main documentation](https://docs.rs/reinhardt-web/0.2.0-rc.6/reinhardt/)
 - [Feature Flags Guide](/docs/feature-flags/)
 
 ## Common Patterns
@@ -1003,4 +995,5 @@ Found an error in the documentation? Want to improve it?
 
 ---
 
-**Note**: This is a high-level overview. Full API documentation will be available at [docs.rs/reinhardt-web](https://docs.rs/reinhardt-web) once published to crates.io. In the meantime, comprehensive documentation is available in each crate's `lib.rs` file.
+<!-- reinhardt-version-sync -->
+**Note**: This is a high-level overview. Full API documentation for this release is available at [docs.rs/reinhardt-web](https://docs.rs/reinhardt-web/0.2.0-rc.6/reinhardt/). Comprehensive documentation is also available in each crate's `lib.rs` file.

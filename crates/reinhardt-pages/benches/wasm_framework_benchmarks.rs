@@ -1,5 +1,3 @@
-#![allow(deprecated)] // (Refs #4234) Benchmark exercises deprecated `pages::Router` surface.
-
 //! WASM Framework Benchmarks
 //!
 //! Comprehensive performance benchmarks for the reinhardt-pages framework.
@@ -13,8 +11,8 @@
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
 use reinhardt_pages::reactive::{Effect, Memo, Signal};
-use reinhardt_pages::router::Router;
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
+use reinhardt_urls::routers::ClientRouter;
 
 // ============================================================================
 // Category 1: Reactive System Benchmarks (7 benchmarks)
@@ -274,14 +272,14 @@ fn bench_ssr_with_hydration_markers(c: &mut Criterion) {
 
 /// Benchmark: Path matching with simple routes
 fn bench_router_path_matching(c: &mut Criterion) {
-	let router = Router::new()
-		.route("/users/{id}", || {
+	let router = ClientRouter::new()
+		.route("user_detail", "/users/{id}", || {
 			PageElement::new("div").child("User").into_page()
 		})
-		.route("/posts/{slug}/", || {
+		.route("post_detail", "/posts/{slug}/", || {
 			PageElement::new("div").child("Post").into_page()
 		})
-		.route("/admin/users/{id}/edit", || {
+		.route("admin_user_edit", "/admin/users/{id}/edit", || {
 			PageElement::new("div").child("Edit").into_page()
 		});
 
@@ -292,15 +290,19 @@ fn bench_router_path_matching(c: &mut Criterion) {
 
 /// Benchmark: Complex path matching with many routes
 fn bench_router_complex_path_matching(c: &mut Criterion) {
-	let mut router = Router::new();
+	let mut router = ClientRouter::new();
 
 	// Add many routes
 	for i in 0..100 {
-		router = router.route(&format!("/api/v1/resource{}/{{id}}", i), move || {
-			PageElement::new("div")
-				.child(format!("Resource {}", i))
-				.into_page()
-		});
+		router = router.route(
+			&format!("resource_{}", i),
+			&format!("/api/v1/resource{}/{{id}}", i),
+			move || {
+				PageElement::new("div")
+					.child(format!("Resource {}", i))
+					.into_page()
+			},
+		);
 	}
 
 	c.bench_function("router_complex_path_matching", |b| {
@@ -310,7 +312,8 @@ fn bench_router_complex_path_matching(c: &mut Criterion) {
 
 /// Benchmark: Parameter extraction
 fn bench_router_parameter_extraction(c: &mut Criterion) {
-	let router = Router::new().route(
+	let router = ClientRouter::new().route(
+		"comment_detail",
 		"/users/{user_id}/posts/{post_id}/comments/{comment_id}/",
 		|| PageElement::new("div").child("Comment").into_page(),
 	);
@@ -329,14 +332,14 @@ fn bench_router_parameter_extraction(c: &mut Criterion) {
 fn bench_router_named_routes(c: &mut Criterion) {
 	c.bench_function("router_named_routes", |b| {
 		b.iter(|| {
-			let _router = Router::new()
-				.named_route("user_profile", "/users/{id}/profile", || {
+			let _router = ClientRouter::new()
+				.route("user_profile", "/users/{id}/profile", || {
 					PageElement::new("div").child("Profile").into_page()
 				})
-				.named_route("user_posts", "/users/{id}/posts", || {
+				.route("user_posts", "/users/{id}/posts", || {
 					PageElement::new("div").child("Posts").into_page()
 				})
-				.named_route("user_settings", "/users/{id}/settings", || {
+				.route("user_settings", "/users/{id}/settings", || {
 					PageElement::new("div").child("Settings").into_page()
 				});
 		})

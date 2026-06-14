@@ -1,16 +1,26 @@
 //! URL configuration for the {{ app_name }} application.
 //!
-//! Both submodules use `#[url_patterns(InstalledApp::{{ app_name }}, mode = ...)]`,
-//! so the framework auto-registers them via inventory. The WASM entry point
-//! looks up the client router through
-//! `ClientLauncher::router_client(client_router::client_url_patterns)`, and the native
-//! aggregator does not need to mount the server router explicitly.
-//!
-//! - `server_urls` — `#[url_patterns(..., mode = server)]` → `ServerRouter`
-//! - `client_router` — `#[url_patterns(..., mode = client)]` → `ClientRouter`
+//! - `server_url_patterns()` — server-side app router
+//! - `client_url_patterns()` — client-side app router
+//! - `reverse()` — client-side named route reversal
 
 #[cfg(server)]
 pub mod server_urls;
 
 #[cfg(client)]
 pub mod client_router;
+
+#[cfg(server)]
+pub fn server_url_patterns() -> reinhardt::ServerRouter {
+	server_urls::server_url_patterns()
+}
+
+#[cfg(client)]
+pub fn client_url_patterns() -> reinhardt::ClientRouter {
+	client_router::client_url_patterns()
+}
+
+#[cfg(client)]
+pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
+	client_router::reverse(name, params)
+}

@@ -9,11 +9,9 @@
 //! - `/admin/{model}/{id}/change/` - Edit form
 
 // (Refs #4234) Migration to reinhardt_urls::routers::ClientRouter pending separate follow-up issue.
-// `reinhardt_pages::router::Router` is `#[deprecated]` since 0.1.0-rc.27; this module
+// `reinhardt_urls::routers::ClientRouter` is the canonical SPA router; this module
 // references it pervasively (struct, `Router::new()`, `Arc<Router>`, closure params),
 // so file-scope suppression is preferred over per-usage `#[allow(deprecated)]` attribute spam.
-#![allow(deprecated)]
-
 use crate::pages::components::features::{
 	Column, FormField, ListViewData, dashboard, detail_view, list_view, model_form,
 };
@@ -22,13 +20,16 @@ pub use crate::pages::components::login;
 use crate::server::{get_dashboard, get_detail, get_fields, get_list};
 #[cfg(client)]
 use crate::types::ListQueryParams;
+#[cfg(server)]
 use crate::types::ModelInfo;
 use reinhardt_pages::Signal;
 use reinhardt_pages::component::{Component, Page};
 use reinhardt_pages::page;
-use reinhardt_pages::router::{Link, Router};
+use reinhardt_pages::router::Link;
 #[cfg(client)]
-use reinhardt_pages::{ResourceState, create_resource};
+use reinhardt_pages::{ResourceState, use_resource};
+use reinhardt_urls::routers::ClientRouter;
+use reinhardt_urls::routers::client_router::Path;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -71,7 +72,23 @@ pub enum AdminRoute {
 // Global Router instance
 // Initialized by init_global_router() and accessed via with_router()
 thread_local! {
-	static ROUTER: RefCell<Option<Router>> = const { RefCell::new(None) };
+	static ROUTER: RefCell<Option<ClientRouter>> = const { RefCell::new(None) };
+}
+
+#[cfg(any(client, test))]
+fn json_value_to_display_string(value: &serde_json::Value) -> String {
+	match value {
+		serde_json::Value::String(value) => value.clone(),
+		serde_json::Value::Number(value) => value.to_string(),
+		serde_json::Value::Bool(value) => value.to_string(),
+		serde_json::Value::Null => String::new(),
+		serde_json::Value::Array(values) => values
+			.iter()
+			.map(json_value_to_display_string)
+			.collect::<Vec<_>>()
+			.join(", "),
+		serde_json::Value::Object(_) => value.to_string(),
+	}
 }
 
 /// Admin URL configuration loaded from server at runtime.
@@ -139,7 +156,7 @@ pub fn init_global_router() {
 /// ```
 pub fn try_with_router<F, R>(f: F) -> Option<R>
 where
-	F: FnOnce(&Router) -> R,
+	F: FnOnce(&ClientRouter) -> R,
 {
 	ROUTER.with(|r| r.borrow().as_ref().map(f))
 }
@@ -163,7 +180,7 @@ where
 /// ```
 pub fn with_router<F, R>(f: F) -> R
 where
-	F: FnOnce(&Router) -> R,
+	F: FnOnce(&ClientRouter) -> R,
 {
 	try_with_router(f).expect("Router not initialized. Call init_global_router() first.")
 }
@@ -171,8 +188,10 @@ where
 /// Dashboard view component for router
 #[cfg(client)]
 fn dashboard_view() -> Page {
-	let dashboard_resource =
-		create_resource(|| async { get_dashboard().await.map_err(|e| e.to_string()) });
+	let dashboard_resource = use_resource(
+		|| async { get_dashboard().await.map_err(|e| e.to_string()) },
+		(),
+	);
 
 	let reactive_content = Page::reactive({
 		let resource = dashboard_resource.clone();
@@ -191,12 +210,12 @@ fn dashboard_view() -> Page {
 		}
 	});
 
-	page!(|| {
+	page!(|reactive_content: Page| {
 		div {
 			class: "dashboard-container p-6 md:p-8 max-w-7xl mx-auto",
 			{ reactive_content }
 		}
-	})()
+	})(reactive_content)
 }
 
 /// Dashboard view component for router (non-WASM fallback)
@@ -222,15 +241,18 @@ fn dashboard_view() -> Page {
 fn list_view_component(model_name: String) -> Page {
 	use reinhardt_pages::use_effect;
 
-	let list_resource = create_resource(move || {
-		let model_name = model_name.clone();
-		async move {
-			let params = ListQueryParams::default();
-			get_list(model_name, params)
-				.await
-				.map_err(|e| e.to_string())
-		}
-	});
+	let list_resource = use_resource(
+		move || {
+			let model_name = model_name.clone();
+			async move {
+				let params = ListQueryParams::default();
+				get_list(model_name, params)
+					.await
+					.map_err(|e| e.to_string())
+			}
+		},
+		(),
+	);
 
 	// Create signals outside the reactive closure so they persist across re-renders
 	let page_signal = Signal::new(1u64);
@@ -244,11 +266,16 @@ fn list_view_component(model_name: String) -> Page {
 	{
 		let resource = list_resource.clone();
 		let page_signal = page_signal.clone();
-		use_effect(move || {
-			if let ResourceState::Success(ref response) = resource.get() {
-				page_signal.set(response.page);
-			}
-		});
+		let resource_for_deps = list_resource.clone();
+		use_effect(
+			move || {
+				if let ResourceState::Success(ref response) = resource.get() {
+					page_signal.set(response.page);
+				}
+				None::<fn()>
+			},
+			(resource_for_deps,),
+		);
 	}
 
 	let reactive_content = Page::reactive({
@@ -284,7 +311,7 @@ fn list_view_component(model_name: String) -> Page {
 						.map(|record| {
 							record
 								.into_iter()
-								.map(|(k, v)| (k, v.as_str().unwrap_or("").to_string()))
+								.map(|(k, v)| (k, json_value_to_display_string(&v)))
 								.collect()
 						})
 						.collect(),
@@ -299,12 +326,12 @@ fn list_view_component(model_name: String) -> Page {
 		}
 	});
 
-	page!(|| {
+	page!(|reactive_content: Page| {
 		div {
 			class: "list-container p-6 md:p-8 max-w-7xl mx-auto",
 			{ reactive_content }
 		}
-	})()
+	})(reactive_content)
 }
 
 /// List view component for router (non-WASM fallback)
@@ -344,15 +371,18 @@ fn list_view_component(model_name: String) -> Page {
 fn detail_view_component(model_name: String, record_id: String) -> Page {
 	let model_name_for_view = model_name.clone();
 	let record_id_for_view = record_id.clone();
-	let detail_resource = create_resource(move || {
-		let model_name = model_name.clone();
-		let record_id = record_id.clone();
-		async move {
-			get_detail(model_name, record_id)
-				.await
-				.map_err(|e| e.to_string())
-		}
-	});
+	let detail_resource = use_resource(
+		move || {
+			let model_name = model_name.clone();
+			let record_id = record_id.clone();
+			async move {
+				get_detail(model_name, record_id)
+					.await
+					.map_err(|e| e.to_string())
+			}
+		},
+		(),
+	);
 
 	let reactive_content = Page::reactive({
 		let resource = detail_resource.clone();
@@ -364,7 +394,7 @@ fn detail_view_component(model_name: String, record_id: String) -> Page {
 				let data: std::collections::HashMap<String, String> = response
 					.data
 					.iter()
-					.map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+					.map(|(k, v)| (k.clone(), json_value_to_display_string(v)))
 					.collect();
 				detail_view(&model_name, &record_id, &data)
 			}
@@ -372,12 +402,12 @@ fn detail_view_component(model_name: String, record_id: String) -> Page {
 		}
 	});
 
-	page!(|| {
+	page!(|reactive_content: Page| {
 		div {
 			class: "detail-container p-6 md:p-8 max-w-7xl mx-auto",
 			{ reactive_content }
 		}
-	})()
+	})(reactive_content)
 }
 
 /// Detail view component for router (non-WASM fallback)
@@ -395,14 +425,17 @@ fn detail_view_component(model_name: String, record_id: String) -> Page {
 #[cfg(client)]
 fn create_view_component(model_name: String) -> Page {
 	let model_name_for_view = model_name.clone();
-	let fields_resource = create_resource(move || {
-		let model_name = model_name.clone();
-		async move {
-			get_fields(model_name, None)
-				.await
-				.map_err(|e| e.to_string())
-		}
-	});
+	let fields_resource = use_resource(
+		move || {
+			let model_name = model_name.clone();
+			async move {
+				get_fields(model_name, None)
+					.await
+					.map_err(|e| e.to_string())
+			}
+		},
+		(),
+	);
 
 	let reactive_content = Page::reactive({
 		let resource = fields_resource.clone();
@@ -427,12 +460,12 @@ fn create_view_component(model_name: String) -> Page {
 		}
 	});
 
-	page!(|| {
+	page!(|reactive_content: Page| {
 		div {
 			class: "form-container p-6 md:p-8 max-w-7xl mx-auto",
 			{ reactive_content }
 		}
-	})()
+	})(reactive_content)
 }
 
 /// Create form view component for router (non-WASM fallback)
@@ -468,15 +501,18 @@ fn create_view_component(model_name: String) -> Page {
 fn edit_view_component(model_name: String, record_id: String) -> Page {
 	let model_name_for_view = model_name.clone();
 	let record_id_for_view = record_id.clone();
-	let fields_resource = create_resource(move || {
-		let model_name = model_name.clone();
-		let record_id = record_id.clone();
-		async move {
-			get_fields(model_name, Some(record_id))
-				.await
-				.map_err(|e| e.to_string())
-		}
-	});
+	let fields_resource = use_resource(
+		move || {
+			let model_name = model_name.clone();
+			let record_id = record_id.clone();
+			async move {
+				get_fields(model_name, Some(record_id))
+					.await
+					.map_err(|e| e.to_string())
+			}
+		},
+		(),
+	);
 
 	let reactive_content = Page::reactive({
 		let resource = fields_resource.clone();
@@ -497,12 +533,12 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 									.as_array()
 									.map(|arr| {
 										arr.iter()
-											.filter_map(|x| x.as_str().map(str::to_string))
+											.map(json_value_to_display_string)
 											.collect::<Vec<_>>()
 											.join(", ")
 									})
 									.unwrap_or_default(),
-								Some(v) => v.as_str().unwrap_or("").to_string(),
+								Some(v) => json_value_to_display_string(v),
 								None => String::new(),
 							}
 						} else {
@@ -524,12 +560,12 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 		}
 	});
 
-	page!(|| {
+	page!(|reactive_content: Page| {
 		div {
 			class: "form-container p-6 md:p-8 max-w-7xl mx-auto",
 			{ reactive_content }
 		}
-	})()
+	})(reactive_content)
 }
 
 /// Edit form view component for router (non-WASM fallback)
@@ -566,7 +602,7 @@ fn not_found_view() -> Page {
 		.class("admin-btn admin-btn-primary")
 		.render();
 
-	page!(|| {
+	page!(|dashboard_link: Page| {
 		div {
 			class: "not-found text-center py-16 animate__animated animate__fadeIn",
 			h1 {
@@ -579,7 +615,7 @@ fn not_found_view() -> Page {
 			}
 			div { { dashboard_link } }
 		}
-	})()
+	})(dashboard_link)
 }
 
 /// Loading view component
@@ -609,8 +645,6 @@ fn loading_view() -> Page {
 /// token and redirects to the login page.
 #[cfg(client)]
 fn error_view(message: &str) -> Page {
-	use reinhardt_pages::component::IntoPage;
-
 	// Detect 401 Unauthorized — clear token and redirect to login
 	if message.contains("401") {
 		reinhardt_pages::auth::clear_jwt_token();
@@ -632,7 +666,7 @@ fn error_view(message: &str) -> Page {
 		.class("admin-btn admin-btn-primary")
 		.render();
 
-	page!(|| {
+	page!(|message: String, dashboard_link: Page| {
 		div {
 			class: "admin-alert admin-alert-danger mt-8 animate__animated animate__shakeX",
 			role: "alert",
@@ -646,7 +680,7 @@ fn error_view(message: &str) -> Page {
 			}
 			{ dashboard_link }
 		}
-	})()
+	})(message, dashboard_link)
 }
 
 /// Initialize the admin router
@@ -674,59 +708,41 @@ fn error_view(message: &str) -> Page {
 ///
 /// let router = init_router();
 /// ```
-pub fn init_router() -> Router {
+pub fn init_router() -> ClientRouter {
 	// IMPORTANT: Route registration order matters. See doc comment above.
 	// Login route must be registered before dynamic routes to prevent
 	// /admin/login/ from matching the list route with model="login".
-	Router::new()
-		.named_route("login", "/admin/login/", login::login_view)
-		.named_route("dashboard", "/admin/", dashboard_view)
-		.named_route("create", "/admin/{model}/add/", || {
-			with_router(|router| {
-				let params = router.current_params().get();
-				let model_name = params
-					.get("model")
-					.cloned()
-					.unwrap_or_else(|| "unknown".to_string());
-				create_view_component(model_name)
-			})
-		})
-		.named_route("edit", "/admin/{model}/{id}/change/", || {
-			with_router(|router| {
-				let params = router.current_params().get();
-				let model_name = params
-					.get("model")
-					.cloned()
-					.unwrap_or_else(|| "unknown".to_string());
-				let record_id = params.get("id").cloned().unwrap_or_else(|| "0".to_string());
+	ClientRouter::new()
+		.route("login", "/admin/login/", login::login_view)
+		.route("dashboard", "/admin/", dashboard_view)
+		.route_path(
+			"create",
+			"/admin/{model}/add/",
+			|Path(model_name): Path<String>| create_view_component(model_name),
+		)
+		.route_path(
+			"edit",
+			"/admin/{model}/{id}/change/",
+			|Path(model_name): Path<String>, Path(record_id): Path<String>| {
 				edit_view_component(model_name, record_id)
-			})
-		})
-		.named_route("detail", "/admin/{model}/{id}/", || {
-			with_router(|router| {
-				let params = router.current_params().get();
-				let model_name = params
-					.get("model")
-					.cloned()
-					.unwrap_or_else(|| "unknown".to_string());
-				let record_id = params.get("id").cloned().unwrap_or_else(|| "0".to_string());
+			},
+		)
+		.route_path(
+			"detail",
+			"/admin/{model}/{id}/",
+			|Path(model_name): Path<String>, Path(record_id): Path<String>| {
 				detail_view_component(model_name, record_id)
-			})
-		})
-		.named_route("list", "/admin/{model}/", || {
-			with_router(|router| {
-				let params = router.current_params().get();
-				let model_name = params
-					.get("model")
-					.cloned()
-					.unwrap_or_else(|| "unknown".to_string());
-				list_view_component(model_name)
-			})
-		})
+			},
+		)
+		.route_path(
+			"list",
+			"/admin/{model}/",
+			|Path(model_name): Path<String>| list_view_component(model_name),
+		)
 		.not_found(not_found_view)
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 
@@ -833,6 +849,22 @@ mod tests {
 	}
 
 	#[test]
+	fn test_reverse_url_create() {
+		let router = init_router();
+		let url = router.reverse("create", &[("model", "users")]).unwrap();
+		assert_eq!(url, "/admin/users/add/");
+	}
+
+	#[test]
+	fn test_reverse_url_edit() {
+		let router = init_router();
+		let url = router
+			.reverse("edit", &[("model", "users"), ("id", "42")])
+			.unwrap();
+		assert_eq!(url, "/admin/users/42/change/");
+	}
+
+	#[test]
 	fn test_init_global_router() {
 		init_global_router();
 
@@ -890,6 +922,33 @@ mod tests {
 		// Verify basic rendering succeeds
 		let html = view.render_to_string();
 		assert!(html.contains("users") || html.contains("List"));
+	}
+
+	#[test]
+	fn test_direct_list_route_extracts_model_name() {
+		let router = init_router();
+
+		router.push("/admin/question/").unwrap();
+		let html = router.render_current().render_to_string();
+
+		assert!(
+			html.contains("question"),
+			"Direct list route render should pass the model path segment to the view"
+		);
+	}
+
+	#[test]
+	fn test_json_value_to_display_string_preserves_non_string_scalars() {
+		assert_eq!(json_value_to_display_string(&serde_json::json!(42)), "42");
+		assert_eq!(
+			json_value_to_display_string(&serde_json::json!(true)),
+			"true"
+		);
+		assert_eq!(json_value_to_display_string(&serde_json::Value::Null), "");
+		assert_eq!(
+			json_value_to_display_string(&serde_json::json!([1, "two", false])),
+			"1, two, false"
+		);
 	}
 
 	#[test]

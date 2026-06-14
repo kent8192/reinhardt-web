@@ -449,7 +449,7 @@ impl Injectable for AdminSite {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use crate::core::ModelAdminConfig;

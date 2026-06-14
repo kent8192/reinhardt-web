@@ -70,13 +70,13 @@ use super::cache::{SessionBackend, SessionError};
 /// use chrono::Utc;
 ///
 /// let now_ms = Utc::now().timestamp_millis();
-/// let session = Session {
-///     session_key: "abc123".to_string(),
-///     session_data: "{\"user_id\": 42}".to_string(),
-///     expire_date: now_ms + 3600000, // 1 hour
-///     created_at: now_ms,
-///     last_accessed: Some(now_ms),
-/// };
+/// let session = Session::build()
+///     .session_key("abc123")
+///     .session_data("{\"user_id\": 42}")
+///     .expire_date(now_ms + 3600000) // 1 hour
+///     .created_at(now_ms)
+///     .last_accessed(Some(now_ms))
+///     .finish();
 /// ```
 #[model(table_name = "sessions")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -349,7 +349,7 @@ impl SessionBackend for DatabaseSessionBackend {
 	{
 		// Use ORM to load session
 		let session = Session::objects()
-			.filter_by(Filter::new(
+			.filter(Filter::new(
 				"session_key".to_string(),
 				FilterOperator::Eq,
 				FilterValue::String(session_key.to_string()),
@@ -461,7 +461,7 @@ impl SessionBackend for DatabaseSessionBackend {
 
 		// Use ORM to check if session exists and is not expired
 		let session = Session::objects()
-			.filter_by(Filter::new(
+			.filter(Filter::new(
 				"session_key".to_string(),
 				FilterOperator::Eq,
 				FilterValue::String(session_key.to_string()),
@@ -502,7 +502,7 @@ impl CleanupableBackend for DatabaseSessionBackend {
 	) -> Result<Option<SessionMetadata>, SessionError> {
 		// Use ORM to get session metadata
 		let session = Session::objects()
-			.filter_by(Filter::new(
+			.filter(Filter::new(
 				"session_key".to_string(),
 				FilterOperator::Eq,
 				FilterValue::String(session_key.to_string()),
@@ -533,7 +533,7 @@ impl CleanupableBackend for DatabaseSessionBackend {
 	async fn list_keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>, SessionError> {
 		// Use ORM to list session keys with prefix
 		let sessions = Session::objects()
-			.filter_by(Filter::new(
+			.filter(Filter::new(
 				"session_key".to_string(),
 				FilterOperator::StartsWith,
 				FilterValue::String(prefix.to_string()),
@@ -550,7 +550,7 @@ impl CleanupableBackend for DatabaseSessionBackend {
 	async fn count_keys_with_prefix(&self, prefix: &str) -> Result<usize, SessionError> {
 		// Use ORM to count session keys with prefix
 		let count = Session::objects()
-			.filter_by(Filter::new(
+			.filter(Filter::new(
 				"session_key".to_string(),
 				FilterOperator::StartsWith,
 				FilterValue::String(prefix.to_string()),
@@ -585,12 +585,28 @@ impl CleanupableBackend for DatabaseSessionBackend {
 mod tests {
 	use super::*;
 
+	fn session(
+		session_key: impl Into<String>,
+		session_data: impl Into<String>,
+		expire_date: i64,
+		created_at: i64,
+		last_accessed: Option<i64>,
+	) -> Session {
+		Session::build()
+			.session_key(session_key)
+			.session_data(session_data)
+			.expire_date(expire_date)
+			.created_at(created_at)
+			.last_accessed(last_accessed)
+			.finish()
+	}
+
 	#[test]
 	fn test_session_struct_fields() {
 		let now_ms = Utc::now().timestamp_millis();
-		let session = Session::new(
-			"test_key".to_string(),
-			r#"{"user_id": 42}"#.to_string(),
+		let session = session(
+			"test_key",
+			r#"{"user_id": 42}"#,
 			now_ms + 3600000, // 1 hour from now
 			now_ms,
 			Some(now_ms),
@@ -606,13 +622,7 @@ mod tests {
 	#[test]
 	fn test_session_struct_without_last_accessed() {
 		let now_ms = Utc::now().timestamp_millis();
-		let session = Session::new(
-			"key".to_string(),
-			"{}".to_string(),
-			now_ms + 1000,
-			now_ms,
-			None,
-		);
+		let session = session("key", "{}", now_ms + 1000, now_ms, None);
 
 		assert!(session.last_accessed.is_none());
 	}
@@ -620,9 +630,9 @@ mod tests {
 	#[test]
 	fn test_session_clone() {
 		let now_ms = Utc::now().timestamp_millis();
-		let session = Session::new(
-			"clone_test".to_string(),
-			r#"{"data": "value"}"#.to_string(),
+		let session = session(
+			"clone_test",
+			r#"{"data": "value"}"#,
 			now_ms + 3600000,
 			now_ms,
 			Some(now_ms),
@@ -640,13 +650,7 @@ mod tests {
 	#[test]
 	fn test_session_debug() {
 		let now_ms = Utc::now().timestamp_millis();
-		let session = Session::new(
-			"debug_key".to_string(),
-			"{}".to_string(),
-			now_ms,
-			now_ms,
-			None,
-		);
+		let session = session("debug_key", "{}", now_ms, now_ms, None);
 
 		let debug_str = format!("{:?}", session);
 
@@ -657,9 +661,9 @@ mod tests {
 	#[test]
 	fn test_session_serialize() {
 		let now_ms = Utc::now().timestamp_millis();
-		let session = Session::new(
-			"serialize_key".to_string(),
-			r#"{"count": 10}"#.to_string(),
+		let session = session(
+			"serialize_key",
+			r#"{"count": 10}"#,
 			now_ms + 3600000,
 			now_ms,
 			Some(now_ms),

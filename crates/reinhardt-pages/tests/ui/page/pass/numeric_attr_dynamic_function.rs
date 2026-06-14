@@ -1,4 +1,8 @@
-//! page! macro with numeric attributes using function calls
+//! page! macro with numeric attributes using function calls.
+//!
+//! Spec §3.7 (no implicit captures): single-segment lowercase idents are
+//! treated as value bindings. Free functions are referenced via the
+//! `self::` prefix so the path is multi-segment.
 
 use reinhardt_pages::page;
 
@@ -15,12 +19,12 @@ fn main() {
 		div {
 			input {
 				r#type: "text",
-				maxlength: get_max_len(),
+				maxlength: self::get_max_len(),
 			}
 			input {
 				r#type: "number",
 				min: 0,
-				max: calculate_rows(50),
+				max: self::calculate_rows(50),
 			}
 		}
 	});

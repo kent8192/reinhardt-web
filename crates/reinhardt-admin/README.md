@@ -34,17 +34,17 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.4", features = ["admin"] }
+reinhardt = { version = "0.2.0-rc.6", features = ["admin"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.4", features = ["full"] }  # All features
+# reinhardt = { version = "0.2.0-rc.6", features = ["full"] }  # All features
 ```
 
 Then import admin features:
 
 ```rust
 use reinhardt::admin::{AdminSite, ModelAdmin};
-use reinhardt::admin::{AdminError, ListQueryParams};
+use reinhardt::admin::types::{ListQueryParams, AdminError};
 ```
 
 ## Quick Start
@@ -54,17 +54,12 @@ use reinhardt::admin::{AdminError, ListQueryParams};
 Register models with `AdminSite` in a dedicated configuration function:
 
 ```rust
-use reinhardt::admin::{AdminSite, ModelAdminConfig};
+use reinhardt::admin::{AdminSite, ModelAdmin};
 
-fn configure_admin() -> reinhardt::admin::AdminResult<AdminSite> {
-	let site = AdminSite::new("My Admin");
-	let user_admin = ModelAdminConfig::builder()
-		.model_name("User")
-		.table_name("users")
-		.list_display(vec!["id", "username", "email"])
-		.build()?;
-	site.register("User", user_admin)?;
-	Ok(site)
+fn configure_admin() -> AdminSite {
+	let mut site = AdminSite::new("My Admin");
+	site.register::<User>(UserAdmin::default());
+	site
 }
 ```
 
@@ -139,7 +134,7 @@ The admin panel is built on several key components:
 
 Advanced filtering and query building with reinhardt-query integration:
 
-- **FilterOperator**: Eq, Ne, Gt, Gte, Lt, Lte, Contains, StartsWith, EndsWith, In, NotIn, IsNull, IsNotNull, plus array, full-text, JSONB, and range operators
+- **FilterOperator**: Eq, Ne, Gt, Gte, Lt, Lte, Contains, StartsWith, EndsWith, In, NotIn, Between, Regex
 - **FilterCondition**: AND/OR conditions for complex queries
 - **FilterValue**: Type-safe value representation (String, Int, Float, Bool, Array)
 
@@ -160,7 +155,7 @@ individual modules under `src/server/`:
 - `bulk_delete_records` — bulk delete operations
 - `export_data` — export data (CSV, JSON, XML)
 - `import_data` — import data
-- `admin_login` — admin authentication
+- `admin_login` / `admin_login_with_header` — admin authentication
 - `admin_logout` — admin session termination
 
 ### Routing
@@ -194,6 +189,7 @@ let router = UnifiedRouter::new()
 // POST   /admin/api/server_fn/export_data
 // POST   /admin/api/server_fn/import_data
 // POST   /admin/api/server_fn/admin_login
+// POST   /admin/api/server_fn/admin_login_with_header
 // POST   /admin/api/server_fn/admin_logout
 // GET    /admin/              (SPA shell)
 // GET    /admin/{*tail}       (SPA client-side routing)

@@ -448,7 +448,7 @@ cargo run --bin manage runserver --with-pages --static-dir build
 cargo run --bin manage runserver --with-pages --no-spa
 ```
 
-See [examples/examples-twitter](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-twitter) for a complete implementation.
+See [examples/examples-tutorial-basis](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis) for a complete implementation.
 
 ---
 

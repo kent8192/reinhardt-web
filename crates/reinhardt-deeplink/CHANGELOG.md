@@ -7,11 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.3...reinhardt-deeplink@v0.1.4) - 2026-06-10
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.3...reinhardt-deeplink@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-deeplink` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Review the breaking changes listed below before upgrading from 0.1.x.
+- See the root CHANGELOG and `instructions/MIGRATION_0.2.md` for cross-crate migration guidance.
+
+### Added
+
+- *(deeplink)* add DeeplinkSettings fragment
+
+### Deprecated
+
+- *(deeplink)* deprecate DeeplinkConfig in favor of DeeplinkSettings
 
 ### Fixed
 
-- *(build)* address Codex review follow-ups
+- *(settings)* require explicit nested settings nodes
+- *(deeplink)* derive Default for DeeplinkSettings
+
+### Documentation
+
+- *(deeplink)* document #![allow(deprecated)] allowances
+
+### Maintenance
+
+- *(deeplink)* add reinhardt-conf dependency for settings fragments
+
+
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.2.0-rc.4...reinhardt-deeplink@v0.2.0-rc.5) - 2026-06-11
+
+### Fixed
+
+- *(build)* port Codex review follow-ups
+
+## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.2.0-rc.3...reinhardt-deeplink@v0.2.0-rc.4) - 2026-06-06
+
+### Fixed
+
+- *(settings)* require explicit nested settings nodes
+
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.3...reinhardt-deeplink@v0.2.0-rc.2) - 2026-06-03
+
+### Added
+
+- *(deeplink)* add DeeplinkSettings fragment
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Deprecated
+
+- *(deeplink)* deprecate DeeplinkConfig in favor of DeeplinkSettings
+
+### Documentation
+
+- *(deeplink)* document #![allow(deprecated)] allowances
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+- *(deeplink)* derive Default for DeeplinkSettings
+
+### Maintenance
+
+- *(deeplink)* add reinhardt-conf dependency for settings fragments
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-deeplink@v0.1.0-rc.30...reinhardt-deeplink@v0.1.0) - 2026-05-22
 

@@ -22,9 +22,9 @@
 //! bundle deployment hazard (the actual root cause of #4122; see
 //! tracking issues #4127 and #4128).
 
-use reinhardt_pages::app::{ClientLauncher, with_router};
+use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
-use reinhardt_pages::router::Router;
+use reinhardt_pages::router::ClientRouter;
 use wasm_bindgen::prelude::*;
 
 fn nav_link(href: &'static str, label: &'static str, current: &str) -> PageElement {
@@ -40,17 +40,18 @@ fn layout_shell(content_id: &'static str, content_label: &'static str) -> Page {
 	// reflects the freshly-navigated path. `render_and_mount` runs only
 	// after `Router::push` has updated the path Signal and notified
 	// observers.
-	let current = with_router(|r| r.current_path().get());
+	let current = with_spa_router(|r| r.current_path().get());
 	PageElement::new("div")
 		.attr("id", "shell")
 		.child(
 			PageElement::new("aside").attr("id", "sidebar").child(
 				PageElement::new("ul")
 					.child(PageElement::new("li").child(nav_link("/", "Home", &current)))
-					.child(
-						PageElement::new("li")
-							.child(nav_link("/clusters", "Clusters", &current)),
-					)
+					.child(PageElement::new("li").child(nav_link(
+						"/clusters",
+						"Clusters",
+						&current,
+					)))
 					.child(PageElement::new("li").child(nav_link("/login", "Login", &current))),
 			),
 		)
@@ -80,23 +81,23 @@ pub fn login_page() -> Page {
 pub fn start() -> Result<(), JsValue> {
 	console_error_panic_hook::set_once();
 	ClientLauncher::new("#app")
-		.router(|| {
-			Router::new()
-				.route("/", home_page)
-				.route("/clusters", clusters_page)
-				.route("/login", login_page)
+		.router_client(|| {
+			ClientRouter::new()
+				.route("home", "/", home_page)
+				.route("clusters", "/clusters", clusters_page)
+				.route("login", "/login", login_page)
 		})
 		.launch()
 }
 
 #[wasm_bindgen]
 pub fn __diag_observer_count_js() -> usize {
-	with_router(|r| r.__diag_observer_count())
+	with_spa_router(|r| r.__diag_observer_count())
 }
 
 #[wasm_bindgen]
 pub fn __diag_dispatch_count_js() -> u64 {
-	with_router(|r| r.__diag_dispatch_count())
+	with_spa_router(|r| r.__diag_dispatch_count())
 }
 
 #[wasm_bindgen]

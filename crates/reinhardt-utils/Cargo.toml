@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-utils"
-version = "0.1.4"
+version = "0.2.0-rc.6"
 description = "Utility functions aggregator for Reinhardt"
 edition.workspace = true
 rust-version.workspace = true
@@ -44,8 +44,8 @@ regex = "1.10"
 walkdir = "2.4"
 glob = "0.3"
 notify = { version = "8.2.0", optional = true }
-flate2 = "1.0"
-brotli = "8.0.2"
+flate2 = { version = "1.0", optional = true }
+brotli = { version = "8.0.2", optional = true }
 base64 = "0.22"
 sourcemap = "9.0"
 oxc_allocator = { version = "0.96.0", optional = true }
@@ -56,6 +56,15 @@ oxc_mangler = { version = "0.96.0", optional = true }
 oxc_codegen = { version = "0.96.0", optional = true }
 aws-config = { version = "1.0", optional = true }
 aws-sdk-s3 = { version = "1.0", optional = true }
+# Workaround for smithy-lang/smithy-rs#4695.
+# Remove when aws-runtime/event-stream compiles against aws-smithy-eventstream
+# 0.60.21+.
+#
+# Ideal implementation:
+#   aws-sdk-s3 = { version = "1.0", optional = true }
+#   s3 = ["dep:aws-config", "dep:aws-sdk-s3", "time"]
+aws-smithy-eventstream = { version = "=0.60.20", optional = true }
+time = { workspace = true, optional = true }
 azure_storage = { version = "0.21.0", optional = true }
 azure_storage_blobs = { version = "0.21.0", optional = true }
 cloud-storage = { version = "0.11", optional = true }
@@ -88,13 +97,13 @@ all-backends = [
   "memcached-backend",
 ]
 full = ["advanced-minification", "all-backends", "azure", "compression", "dev-server", "gcs", "image-optimization", "processing", "s3", "source-maps"]
-s3 = ["dep:aws-config", "dep:aws-sdk-s3"]
+s3 = ["dep:aws-config", "dep:aws-sdk-s3", "dep:aws-smithy-eventstream", "time"]
 azure = ["dep:azure_storage", "dep:azure_storage_blobs"]
 gcs = ["dep:cloud-storage"]
 processing = []
 image-optimization = ["processing", "dep:oxipng", "dep:image", "dep:webp"]
 source-maps = ["processing"]
-compression = ["processing"]
+compression = ["processing", "dep:brotli", "dep:flate2"]
 advanced-minification = [
   "processing",
   "dep:oxc_allocator",

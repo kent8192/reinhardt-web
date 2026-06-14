@@ -1,0 +1,12 @@
+error: identifier `outer` used inside `page!` is not declared as a parameter.
+
+       help: add it to the closure signature:
+       page!(|outer: Signal<...>| { ... })
+       note: `page!` forbids implicit captures so reactive dependencies are
+       explicit (React-style props-down data flow). Item paths
+       (`module::func`), types (`Vec`, `Option`), and constants
+       (`MAX_LEN`) are unaffected.
+ --> tests/ui/page/fail/implicit_capture_lowercase.rs:8:4
+  |
+8 |             outer.get()
+  |             ^^^^^

@@ -90,6 +90,60 @@ struct Task {
 	due_date: Option<DateTime<Utc>>,
 }
 
+fn blog_post(
+	title: impl Into<String>,
+	content: impl Into<String>,
+	status: impl Into<String>,
+	author_id: Option<i64>,
+	published_at: Option<DateTime<Utc>>,
+	created_at: Option<DateTime<Utc>>,
+) -> BlogPost {
+	BlogPost::build()
+		.title(title)
+		.content(content)
+		.status(status)
+		.author_id(author_id)
+		.published_at(published_at)
+		.created_at(created_at)
+		.finish()
+}
+
+fn product(
+	name: impl Into<String>,
+	sku: impl Into<String>,
+	price: f64,
+	stock_quantity: i32,
+	category: impl Into<String>,
+	active: bool,
+) -> Product {
+	Product::build()
+		.name(name)
+		.sku(sku)
+		.price(price)
+		.stock_quantity(stock_quantity)
+		.category(category)
+		.active(active)
+		.finish()
+}
+
+fn task(
+	title: impl Into<String>,
+	description: impl Into<String>,
+	status: impl Into<String>,
+	priority: i32,
+	assignee_id: Option<i64>,
+	due_date: Option<DateTime<Utc>>,
+) -> Task {
+	Task::build()
+		.title(title)
+		.description(description)
+		.status(status)
+		.priority(priority)
+		.assignee_id(assignee_id)
+		.due_date(due_date)
+		.finish()
+}
+
 // ============================================================================
 // Iden Enums
 // ============================================================================
@@ -323,10 +377,10 @@ async fn test_blog_posting_workflow(#[future] setup_blog: PgPool) {
 	let pool = setup_blog.await;
 
 	// Step 1: Create draft post
-	let draft_post = BlogPost::new(
-		"My First Blog Post".to_string(),
-		"This is the content of my blog post.".to_string(),
-		"draft".to_string(),
+	let draft_post = blog_post(
+		"My First Blog Post",
+		"This is the content of my blog post.",
+		"draft",
 		Some(1),
 		None,
 		Some(Utc::now()),
@@ -402,14 +456,7 @@ async fn test_ecommerce_inventory_management(#[future] setup_products: PgPool) {
 	let pool = setup_products.await;
 
 	// Step 1: Add new product
-	let product = Product::new(
-		"Wireless Mouse".to_string(),
-		"WM-001".to_string(),
-		29.99,
-		100,
-		"Electronics".to_string(),
-		true,
-	);
+	let product = product("Wireless Mouse", "WM-001", 29.99, 100, "Electronics", true);
 
 	let row = sqlx::query(
 		"INSERT INTO products (name, sku, price, stock_quantity, category, active)
@@ -479,10 +526,10 @@ async fn test_task_management_workflow(#[future] setup_tasks: PgPool) {
 	let pool = setup_tasks.await;
 
 	// Step 1: Create new task
-	let task = Task::new(
-		"Implement login feature".to_string(),
-		"Add user authentication with JWT".to_string(),
-		"todo".to_string(),
+	let task = task(
+		"Implement login feature",
+		"Add user authentication with JWT",
+		"todo",
 		1,                                                         // High priority
 		Some(5),                                                   // Assignee ID
 		Some(Utc::now() + chrono::Duration::try_days(7).unwrap()), // Due in 7 days
@@ -544,12 +591,12 @@ async fn test_product_search_filtering(#[future] setup_products: PgPool) {
 
 	// Insert multiple products
 	for i in 1..=10 {
-		let product = Product::new(
+		let product = product(
 			format!("Product {}", i),
 			format!("SKU-{:03}", i),
 			(i as f64) * 10.0,
 			i * 5,
-			if i % 2 == 0 { "Electronics" } else { "Books" }.to_string(),
+			if i % 2 == 0 { "Electronics" } else { "Books" },
 			i % 3 != 0, // Some inactive products
 		);
 
@@ -608,10 +655,10 @@ async fn test_bulk_task_creation(#[future] setup_tasks: PgPool) {
 	];
 
 	for (index, title) in task_titles.iter().enumerate() {
-		let task = Task::new(
-			String::from(*title),
+		let task = task(
+			*title,
 			format!("Description for {}", title),
-			"todo".to_string(),
+			"todo",
 			(index as i32) + 1, // Priority based on order
 			Some(1),            // Assignee
 			Some(Utc::now() + chrono::Duration::try_days((index as i64) + 1).unwrap()),
@@ -654,10 +701,10 @@ async fn test_category_based_organization(#[future] setup_blog: PgPool) {
 	let categories = vec!["Technology", "Travel", "Food", "Technology", "Travel"];
 
 	for (index, category) in categories.iter().enumerate() {
-		let post = BlogPost::new(
+		let post = blog_post(
 			format!("Post about {}", category),
 			format!("Content for {} post {}", category, index),
-			String::from(*category), // Using status field as category for this test
+			*category, // Using status field as category for this test
 			Some(1),
 			if category == &"Technology" {
 				Some(Utc::now())
@@ -715,12 +762,12 @@ async fn test_multi_tenant_isolation(#[future] setup_products: PgPool) {
 	];
 
 	for (index, (tenant, name)) in tenant_products.iter().enumerate() {
-		let product = Product::new(
-			String::from(*name),
+		let product = product(
+			*name,
 			format!("SKU-{}", index),
 			99.99,
 			10,
-			String::from(*tenant), // Using category as tenant identifier
+			*tenant, // Using category as tenant identifier
 			true,
 		);
 

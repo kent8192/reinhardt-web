@@ -118,6 +118,8 @@ impl RebuildTargets {
 pub struct WatcherConfig {
 	/// Bin name passed to `cargo build --bin`.
 	pub bin_name: String,
+	/// Advertised runserver address that must be reachable after restart.
+	pub address: String,
 	/// Source directories and manifest files to subscribe to.
 	pub roots: SourceRoots,
 	/// HTTP address used by the child server. When set, browser reloads that
@@ -344,10 +346,11 @@ pub async fn run_rebuild_for_paths(
 		// disjoint cargo target directories (`wasm32-unknown-unknown` vs
 		// `debug`) and the wasm pipeline does not interact with the running
 		// child process, so concurrent execution is safe.
-		let server_fut = crate::server_rebuild_pipeline::ServerRebuildPipeline::run(
+		let server_fut = crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
 			&config.bin_name,
 			current_child,
 			respawn,
+			&config.address,
 		);
 		let (wasm_ok, (server_outcome, new_child)) = tokio::join!(wasm_fut, server_fut);
 		let server_ok = server_rebuild_succeeded(&server_outcome);
@@ -381,10 +384,11 @@ pub async fn run_rebuild_for_paths(
 		let _ = wasm_ok;
 	} else {
 		let (server_outcome, new_child) =
-			crate::server_rebuild_pipeline::ServerRebuildPipeline::run(
+			crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
 				&config.bin_name,
 				current_child,
 				respawn,
+				&config.address,
 			)
 			.await;
 		let server_ok = server_rebuild_succeeded(&server_outcome);
@@ -484,16 +488,16 @@ pub async fn run_watcher(
 				let _ = current_child.wait().await;
 				return Ok(());
 			}
-			debounced = debounce_next(&mut rx, DEBOUNCE_WINDOW) => {
-				let Some(paths) = debounced else {
-					// Channel closed: the watcher dropped or the OS torn
-					// the subscription down. Treat as graceful shutdown.
-					let _ = current_child.kill().await;
-					let _ = current_child.wait().await;
-					return Ok(());
-				};
-				run_rebuild_for_paths(ctx, config, paths, &mut current_child, &respawn).await;
-			}
+				debounced = debounce_next(&mut rx, DEBOUNCE_WINDOW) => {
+					let Some(paths) = debounced else {
+						// Channel closed: the watcher dropped or the OS torn
+						// the subscription down. Treat as graceful shutdown.
+						let _ = current_child.kill().await;
+						let _ = current_child.wait().await;
+						return Ok(());
+					};
+					run_rebuild_for_paths(ctx, config, paths, &mut current_child, &respawn).await;
+				}
 		}
 	}
 }
@@ -608,6 +612,7 @@ mod tests {
 	fn pages_config(no_wasm_rebuild: bool) -> WatcherConfig {
 		WatcherConfig {
 			bin_name: "manage".to_string(),
+			address: "127.0.0.1:8000".to_string(),
 			roots: SourceRoots {
 				src_dirs: vec![PathBuf::from("/project/src")],
 				manifest_files: vec![PathBuf::from("/project/Cargo.toml")],

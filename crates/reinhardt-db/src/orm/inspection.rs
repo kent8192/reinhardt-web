@@ -422,6 +422,7 @@ impl<M: Model> ModelInspector<M> {
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
 	///     type Fields = UserFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///
 	///     fn table_name() -> &'static str {
 	///         "users"
@@ -471,6 +472,7 @@ impl<M: Model> ModelInspector<M> {
 	/// impl Model for Post {
 	///     type PrimaryKey = i64;
 	///     type Fields = PostFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///
 	///     fn table_name() -> &'static str {
 	///         "blog_posts"
@@ -518,6 +520,7 @@ impl<M: Model> ModelInspector<M> {
 	/// impl Model for Article {
 	///     type PrimaryKey = u32;
 	///     type Fields = ArticleFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///
 	///     fn table_name() -> &'static str {
 	///         "articles"
@@ -575,6 +578,7 @@ impl<M: Model> ModelInspector<M> {
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
 	///     type Fields = UserFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///
 	///     fn table_name() -> &'static str {
 	///         "users"
@@ -627,6 +631,7 @@ impl<M: Model> ModelInspector<M> {
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
 	///     type Fields = UserFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///
 	///     fn table_name() -> &'static str {
 	///         "users"
@@ -680,6 +685,7 @@ impl<M: Model> ModelInspector<M> {
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
 	///     type Fields = UserFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///
 	///     fn table_name() -> &'static str {
 	///         "users"
@@ -734,6 +740,7 @@ impl<M: Model> ModelInspector<M> {
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
 	///     type Fields = UserFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///
 	///     fn table_name() -> &'static str {
 	///         "users"
@@ -788,6 +795,7 @@ impl<M: Model> ModelInspector<M> {
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
 	///     type Fields = UserFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///
 	///     fn table_name() -> &'static str {
 	///         "users"
@@ -1114,6 +1122,7 @@ impl FieldInspector {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::orm::Manager;
 	use crate::orm::fields::{
 		AutoField, BooleanField, CharField, DecimalField, EmailField, IntegerField,
 	};
@@ -1394,6 +1403,7 @@ mod tests {
 		impl Model for TestModel {
 			type PrimaryKey = i32;
 			type Fields = TestModelFields;
+			type Objects = Manager<Self>;
 
 			fn table_name() -> &'static str {
 				"test_table"
@@ -1436,6 +1446,7 @@ mod tests {
 		impl Model for Article {
 			type PrimaryKey = u32;
 			type Fields = ArticleFields;
+			type Objects = Manager<Self>;
 
 			fn table_name() -> &'static str {
 				"articles"
@@ -1482,6 +1493,7 @@ mod tests {
 		impl Model for User {
 			type PrimaryKey = i32;
 			type Fields = UserFields;
+			type Objects = Manager<Self>;
 
 			fn table_name() -> &'static str {
 				"users"
@@ -1524,6 +1536,7 @@ mod tests {
 		impl Model for Empty {
 			type PrimaryKey = i32;
 			type Fields = EmptyFields;
+			type Objects = Manager<Self>;
 
 			fn table_name() -> &'static str {
 				"empty"
@@ -1566,6 +1579,7 @@ mod tests {
 		impl Model for Simple {
 			type PrimaryKey = i32;
 			type Fields = SimpleFields;
+			type Objects = Manager<Self>;
 
 			fn table_name() -> &'static str {
 				"simple"

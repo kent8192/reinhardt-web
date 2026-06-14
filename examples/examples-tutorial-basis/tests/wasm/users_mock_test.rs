@@ -19,7 +19,7 @@
 //! `msw` feature so the test target is skipped on toolchains without the
 //! framework MSW facade (tracked in upstream #4287 / PR #4288).
 
-#![cfg(wasm)]
+#![cfg(all(target_family = "wasm", target_os = "unknown"))]
 
 use wasm_bindgen_test::*;
 
@@ -45,7 +45,7 @@ fn mock_user() -> UserInfo {
 	UserInfo {
 		id: 1,
 		username: "alice".to_string(),
-		email: "alice@example.com".to_string(),
+		is_active: true,
 	}
 }
 
@@ -64,14 +64,10 @@ fn test_login_form_renders() {
 #[wasm_bindgen_test]
 fn test_login_form_has_fields() {
 	let view = login_form();
-	if let Page::Element(element) = view {
-		let html = element.to_html();
-		assert!(html.contains("Username"), "expected Username label");
-		assert!(html.contains("Password"), "expected Password label");
-		assert!(html.contains("Sign in"), "expected submit affordance");
-	} else {
-		panic!("Expected Page::Element");
-	}
+	let html = view.render_to_string();
+	assert!(html.contains("Username"), "expected Username label");
+	assert!(html.contains("Password"), "expected Password label");
+	assert!(html.contains("Sign in"), "expected submit affordance");
 }
 
 // ============================================================================
@@ -89,21 +85,17 @@ fn test_signup_form_renders() {
 #[wasm_bindgen_test]
 fn test_signup_form_has_required_fields() {
 	let view = signup_form();
-	if let Page::Element(element) = view {
-		let html = element.to_html();
-		assert!(html.contains("Username"), "expected Username label");
-		assert!(html.contains("Password"), "expected Password label");
-		assert!(
-			html.contains("Confirm password"),
-			"expected password confirmation label"
-		);
-		assert!(
-			html.contains("Create account"),
-			"expected create-account submit affordance"
-		);
-	} else {
-		panic!("Expected Page::Element");
-	}
+	let html = view.render_to_string();
+	assert!(html.contains("Username"), "expected Username label");
+	assert!(html.contains("Password"), "expected Password label");
+	assert!(
+		html.contains("Confirm password"),
+		"expected password confirmation label"
+	);
+	assert!(
+		html.contains("Create account"),
+		"expected create-account submit affordance"
+	);
 }
 
 // ============================================================================
@@ -121,15 +113,11 @@ fn test_logout_form_renders() {
 #[wasm_bindgen_test]
 fn test_logout_form_has_submit() {
 	let view = logout_form();
-	if let Page::Element(element) = view {
-		let html = element.to_html();
-		assert!(
-			html.contains("Sign out"),
-			"expected sign-out submit affordance"
-		);
-	} else {
-		panic!("Expected Page::Element");
-	}
+	let html = view.render_to_string();
+	assert!(
+		html.contains("Sign out"),
+		"expected sign-out submit affordance"
+	);
 }
 
 // ============================================================================
@@ -151,13 +139,9 @@ async fn test_login_returns_mocked_user() {
 	});
 	worker.start().await;
 
-	let user = login(
-		"alice".to_string(),
-		"hunter2".to_string(),
-		String::new(), // csrf token; verified by middleware before handler
-	)
-	.await
-	.expect("login should succeed");
+	let user = login("alice".to_string(), "hunter2".to_string())
+		.await
+		.expect("login should succeed");
 
 	assert_eq!(user.id, mocked.id);
 	assert_eq!(user.username, "alice");
@@ -173,7 +157,7 @@ async fn test_login_surfaces_invalid_credentials() {
 	});
 	worker.start().await;
 
-	let err = login("alice".to_string(), "wrong".to_string(), String::new())
+	let err = login("alice".to_string(), "wrong".to_string())
 		.await
 		.expect_err("expected invalid-credentials error");
 	match err {
@@ -203,7 +187,6 @@ async fn test_register_returns_mocked_user() {
 		"alice".to_string(),
 		"hunter2".to_string(),
 		"hunter2".to_string(),
-		String::new(),
 	)
 	.await
 	.expect("register should succeed");
@@ -220,7 +203,7 @@ async fn test_register_returns_mocked_user() {
 async fn test_register_surfaces_validation_error() {
 	let worker = MockServiceWorker::new();
 	worker.handle_server_fn::<register::marker>(|_args| {
-		Err(ServerFnError::application("Username is already taken"))
+		Err(ServerFnError::server(400, "Username is already taken"))
 	});
 	worker.start().await;
 
@@ -228,18 +211,18 @@ async fn test_register_surfaces_validation_error() {
 		"alice".to_string(),
 		"hunter2".to_string(),
 		"hunter2".to_string(),
-		String::new(),
 	)
 	.await
 	.expect_err("expected validation error");
 	match err {
-		ServerFnError::Application(msg) => {
+		ServerFnError::Server { status, message } => {
+			assert_eq!(status, 400, "expected HTTP 400 status");
 			assert_eq!(
-				msg, "Username is already taken",
+				message, "Username is already taken",
 				"expected mocked validation message to propagate verbatim"
 			);
 		}
-		other => panic!("expected ServerFnError::Application, got: {other:?}"),
+		other => panic!("expected ServerFnError::Server, got: {other:?}"),
 	}
 }
 
@@ -250,7 +233,7 @@ async fn test_logout_succeeds() {
 	worker.handle_server_fn::<logout::marker>(|_args| Ok(()));
 	worker.start().await;
 
-	logout(String::new()).await.expect("logout should succeed");
+	logout().await.expect("logout should succeed");
 	worker
 		.calls_to_server_fn::<logout::marker>()
 		.assert_called();
@@ -269,7 +252,10 @@ async fn test_current_user_returns_authenticated_user() {
 
 	let user = current_user().await.expect("current_user should succeed");
 
-	assert_eq!(user, Some(mocked));
+	let user = user.expect("authenticated session should return a user");
+	assert_eq!(user.id, mocked.id);
+	assert_eq!(user.username, mocked.username);
+	assert_eq!(user.is_active, mocked.is_active);
 	worker
 		.calls_to_server_fn::<current_user::marker>()
 		.assert_called();
@@ -339,5 +325,7 @@ fn test_user_info_round_trip() {
 	let original = mock_user();
 	let json = serde_json::to_string(&original).expect("UserInfo should serialize");
 	let parsed: UserInfo = serde_json::from_str(&json).expect("UserInfo should deserialize");
-	assert_eq!(parsed, original);
+	assert_eq!(parsed.id, original.id);
+	assert_eq!(parsed.username, original.username);
+	assert_eq!(parsed.is_active, original.is_active);
 }

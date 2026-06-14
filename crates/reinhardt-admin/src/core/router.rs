@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 use reinhardt_di::SingletonScope;
 #[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRouterExt;
@@ -348,7 +348,7 @@ fn build_admin_router(
 		use crate::server::{
 			bulk_delete_records, create_record, delete_record, export_data, get_dashboard,
 			get_detail, get_fields, get_list, import_data, login::admin_login,
-			logout::admin_logout, update_record,
+			login::admin_login_with_header, logout::admin_logout, update_record,
 		};
 		router
 			.server_fn(get_dashboard::marker)
@@ -362,6 +362,7 @@ fn build_admin_router(
 			.server_fn(export_data::marker)
 			.server_fn(import_data::marker)
 			.server_fn(admin_login::marker)
+			.server_fn(admin_login_with_header::marker)
 			.server_fn(admin_logout::marker)
 			.function("/", hyper::Method::GET, admin_spa_handler)
 			.function("/{*tail}", hyper::Method::GET, admin_spa_handler)
@@ -451,7 +452,7 @@ pub fn admin_routes_with_di(
 	)
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use rstest::rstest;
@@ -524,6 +525,7 @@ mod tests {
 			"/api/server_fn/export_data",
 			"/api/server_fn/import_data",
 			"/api/server_fn/admin_login",
+			"/api/server_fn/admin_login_with_header",
 			"/api/server_fn/admin_logout",
 			"/",
 			"/{*tail}",
@@ -534,8 +536,8 @@ mod tests {
 		let routes = router.get_all_routes();
 		let paths: Vec<&str> = routes.iter().map(|(path, _, _, _)| path.as_str()).collect();
 
-		// Assert - 12 server functions + 2 GET routes should be registered
-		assert_eq!(routes.len(), 14);
+		// Assert - 13 server functions + 2 GET routes should be registered
+		assert_eq!(routes.len(), 15);
 		for expected in &expected_paths {
 			assert_eq!(
 				paths.iter().filter(|p| p == &expected).count(),

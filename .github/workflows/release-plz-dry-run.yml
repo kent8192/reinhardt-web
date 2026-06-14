@@ -121,7 +121,7 @@ jobs:
               echo "::warning::release-plz dry-run skipped ${BASH_REMATCH[1]} ${BASH_REMATCH[2]} and later failed to resolve that same-release workspace dependency."
               break
             fi
-          done < <(sed -nE 's/.*failed to select a version for the requirement `([^`]+)`.*/\1/p' "$log")
+          done < <(sed -nE "s/.*failed to select a version for the requirement \`([^\`]+)\`.*/\\1/p" "$log")
 
           if [[ "$known_same_release_dependency_failure" == "true" ]]; then
             echo "::warning::Ignoring known release-plz dry-run same-release dependency false positive (release-plz/release-plz#2878, reinhardt-web#5089)."

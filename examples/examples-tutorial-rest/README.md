@@ -4,15 +4,14 @@ This example demonstrates the concepts covered in the [Reinhardt REST Tutorial](
 
 ## What This Example Covers
 
-This example corresponds to the REST tutorial Quickstart and Tutorial 1-6:
+This example corresponds to the REST tutorial Parts 1-6:
 
-- **Quickstart** - Project setup, serializers, views, routing
-- **Tutorial 1: Serialization** - serde, validation, JSON serialization
-- **Tutorial 2: Requests and Responses** - Request object, Response builder, parameter extraction
-- **Tutorial 3: Class-Based Views** - Generic views (ListAPIView, CreateAPIView, etc.)
-- **Tutorial 4: Authentication & Permissions** - Authentication systems
-- **Tutorial 5: Relationships and Hyperlinked APIs** - Relationships and hyperlinked APIs
-- **Tutorial 6: ViewSets and Routers** - ViewSets, ModelViewSet, Router
+- **Part 1: Project Setup** - Project structure, settings, the `manage` CLI, the development server
+- **Part 2: Your First Endpoints** - `#[get]` / `#[post]` / `#[put]` / `#[delete]`, route `name = "..."`, `Path` / `Query` / `Json` extractors, `ViewResult`
+- **Part 3: Models and the Database** - `#[model]` `Snippet`, migrations, `migrate`, the builder API
+- **Part 4: Dependency Injection** - `#[inject] Depends<DatabaseConnection>`, `#[injectable]` / `#[injectable_factory]`, scopes, `TypeId`-keyed registration, the `Result<T, NewError>` pattern with `Depends<Result<T, E>>`. This is where the CRUD handlers are wired to the real ORM
+- **Part 5: Serializers and Validation** - `Validate` derive, `pre_validate = true`, error responses and status codes
+- **Part 6: Bonus — ViewSets and Routers** - the same CRUD compressed to ~15 lines with `ModelViewSet`; pagination, filtering, ordering
 
 ## Features
 
@@ -28,20 +27,27 @@ This example corresponds to the REST tutorial Quickstart and Tutorial 1-6:
 ### API Endpoints
 
 ```
-GET    /api/snippets/       - List all snippets
-POST   /api/snippets/       - Create a new snippet
-GET    /api/snippets/<id>/  - Retrieve a specific snippet
-PUT    /api/snippets/<id>/  - Update a snippet
-DELETE /api/snippets/<id>/  - Delete a snippet
+GET    /api/snippets/         - List all snippets
+POST   /api/snippets/         - Create a new snippet
+GET    /api/snippets/config/  - DI demonstration: list configuration (Depends<Result<T, E>>)
+GET    /api/snippets/<id>/    - Retrieve a specific snippet
+PUT    /api/snippets/<id>/    - Update a snippet
+DELETE /api/snippets/<id>/    - Delete a snippet
 ```
+
+All handlers receive a database connection through dependency injection
+(`#[inject] db: Depends<DatabaseConnection>`) and query the real ORM. The
+`/api/snippets/config/` endpoint is a teaching aid for
+`Depends<Result<T, E>>`; see `src/apps/snippets/di.rs`.
 
 ## Setup
 
 ### Prerequisites
 
 - Rust 1.75 or later
-- PostgreSQL (optional, for database features)
-- Docker (optional, for TestContainers in tests)
+- Docker, for the disposable PostgreSQL and Redis containers used by
+  `cargo make migrate` and `cargo make runserver`
+- PostgreSQL, only if you point `settings/local.toml` at an existing database
 
 ### Installation
 
@@ -52,8 +58,11 @@ cd examples/examples-tutorial-rest
 # Build the project
 cargo build
 
+# Apply migrations against the local disposable database
+cargo make migrate
+
 # Run tests
-cargo test
+cargo make test
 ```
 
 ## Usage
@@ -61,7 +70,11 @@ cargo test
 ### Run the Development Server
 
 ```bash
-cargo run --bin manage runserver
+# Apply migrations first. `runserver` also depends on `migrate`, but running
+# it explicitly makes first-run database problems easier to see.
+cargo make migrate
+
+cargo make runserver
 ```
 
 The server will start at `http://127.0.0.1:8000/`.
@@ -101,231 +114,98 @@ curl -X DELETE http://127.0.0.1:8000/api/snippets/1/
 
 ```
 examples-tutorial-rest/
-├── Cargo.toml                      # Project configuration
-├── build.rs                        # Build script
-├── README.md                       # This file
+├── .gitignore
+├── Cargo.toml
+├── Dockerfile
+├── Dockerfile.bruno
+├── Makefile.toml
+├── README.md
+├── bruno/
+│   ├── Snippets CRUD/
+│   │   ├── Create Snippet.bru
+│   │   ├── Delete Snippet.bru
+│   │   ├── Get Snippet.bru
+│   │   ├── List Snippets (Initial).bru
+│   │   ├── Update Snippet.bru
+│   │   ├── Verify Deletion (404).bru
+│   │   └── folder.bru
+│   ├── Snippets ViewSet/
+│   │   ├── Create Snippet.bru
+│   │   ├── Delete Snippet.bru
+│   │   ├── Filter by Language.bru
+│   │   ├── Get Snippet.bru
+│   │   ├── List Snippets (Initial).bru
+│   │   ├── Order by Created At Desc.bru
+│   │   ├── Update Snippet.bru
+│   │   └── folder.bru
+│   ├── Validation Tests/
+│   │   ├── Create Snippet - Empty Code (400).bru
+│   │   ├── Create Snippet - Missing Title (400).bru
+│   │   └── folder.bru
+│   ├── bruno.json
+│   ├── environments/
+│   │   └── local.bru
+│   └── reports/
+│       └── .gitkeep
+├── build.rs
+├── docker-compose.api-tests.yml
+├── migrations/
+│   ├── auth/
+│   │   └── 0001_initial.rs
+│   ├── default/
+│   │   └── 0001_initial.rs
+│   └── snippets/
+│       └── 0001_initial.rs
+├── scripts/
+│   ├── db_url.sh
+│   ├── infra_down.sh
+│   ├── infra_up.sh
+│   └── parse_local_toml.py
+├── settings/
+│   ├── base.toml
+│   └── ci.toml
 ├── src/
-│   ├── lib.rs                      # Library entry point
-│   ├── config.rs                   # Config aggregator
-│   ├── apps.rs                     # Apps aggregator
-│   ├── urls_demo.rs                # Typed `ResolvedUrls` accessor shims (Issue #4548)
+│   ├── apps/
+│   │   ├── snippets/
+│   │   │   ├── di.rs
+│   │   │   ├── models.rs
+│   │   │   ├── serializers.rs
+│   │   │   ├── urls.rs
+│   │   │   └── views.rs
+│   │   └── snippets.rs
+│   ├── apps.rs
 │   ├── bin/
-│   │   └── manage.rs               # Management command
+│   │   └── manage.rs
 │   ├── config/
-│   │   ├── apps.rs                 # installed_apps! { snippets: "snippets" }
-│   │   ├── settings.rs             # Settings composition
-│   │   └── urls.rs                 # #[routes] entry point, mounts /api/
-│   └── apps/
-│       ├── snippets.rs             # snippets app entry (sibling of snippets/)
-│       └── snippets/
-│           ├── models.rs           # Snippet model (#[model])
-│           ├── serializers.rs      # SnippetSerializer + SnippetResponse
-│           ├── urls.rs             # aggregator: #[url_patterns(InstalledApp::snippets, mode = server)]
-│           │                       # registers both function-based and ViewSet endpoints
-│           └── views.rs            # HTTP method handlers + #[viewset]
+│   │   ├── apps.rs
+│   │   ├── settings.rs
+│   │   └── urls.rs
+│   ├── config.rs
+│   └── lib.rs
 └── tests/
-    ├── integration.rs              # CRUD + edge-case integration tests
-    └── urls_typed_accessors.rs     # Typed `ResolvedUrls` accessor end-to-end tests
+    └── integration.rs
 ```
 
 ## Learning Path
 
 This example is designed to be studied alongside the REST tutorial:
 
-1. **Start with the tutorial**: Read [Quickstart](../../website/content/quickstart/tutorials/rest/quickstart.md)
+1. **Start with the tutorial**: Read the [REST tutorial](../../website/content/quickstart/tutorials/rest/)
 2. **Examine the code**: Look at how concepts are implemented in this example
-3. **Run the tests**: `cargo test` to see the functionality in action
+3. **Run the tests**: `cargo make test` to see the functionality in action
 4. **Experiment**: Modify the code and see what happens
 
 ## Key Concepts Demonstrated
 
-### 1. Models (models.rs)
-
-```rust
-pub struct Snippet {
-    pub id: Option<i64>,
-    pub title: String,
-    pub code: String,
-    pub language: String,
-}
-```
-
-### 2. Serializers (serializers.rs)
-
-```rust
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct SnippetSerializer {
-    #[validate(length(min = 1, max = 100))]
-    pub title: String,
-
-    #[validate(length(min = 1))]
-    pub code: String,
-
-    #[validate(length(min = 1, max = 50))]
-    pub language: String,
-}
-```
-
-### 3. Views (views.rs)
-
-```rust
-// HTTP method decorator + `pre_validate = true` (declarative validation,
-// available since rc.5). The macro extracts `Json<SnippetSerializer>`, calls
-// `Validate::validate` on the dereferenced value, and returns HTTP 400 with
-// JSON error details on failure — all before this function body runs.
-#[get("/snippets/", name = "snippets_list")]
-pub async fn list() -> ViewResult<Response> {
-    // List all snippets — return JSON via `Response::new(StatusCode::OK).with_body(...)`.
-}
-
-#[post("/snippets/", name = "snippets_create", pre_validate = true)]
-pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Response> {
-    // `serializer` is already validated. Just persist and return 201.
-}
-```
-
-### 4. URL Routing (urls.rs)
-
-The snippets app exposes a single `url_patterns()` entry point in
-`src/apps/snippets/urls.rs`. It carries the typed
-`#[url_patterns(InstalledApp::snippets, mode = server)]` macro (rc.18+,
-discussion #3770), which binds the router to its owning app at compile
-time via the `AppLabel` trait and applies `.with_namespace("snippets")`
-for URL reversal (e.g. `"snippets:snippets_list"`) without changing the
-request path. Both the function-based endpoints (Tutorial 1-5) and the
-ViewSet endpoints (Tutorial 6) are registered on the same router:
-
-```rust
-// src/apps/snippets/urls.rs
-#[url_patterns(InstalledApp::snippets, mode = server)]
-pub fn url_patterns() -> ServerRouter {
-    ServerRouter::new()
-        // Function-based endpoints (Tutorial 1-5)
-        .endpoint(views::list)
-        .endpoint(views::create)
-        .endpoint(views::retrieve)
-        .endpoint(views::update)
-        .endpoint(views::delete)
-        // ViewSet endpoints (Tutorial 6)
-        .viewset("/snippets-viewset", views::viewset())
-}
-```
-
-> **Why the routes are inlined here**: the framework currently supports at
-> most one `#[url_patterns(InstalledApp::<app>, mode = server)]` per app
-> (sibling occurrences emit duplicate `__for_each_url_resolver` macros and
-> fail with `E0659: ambiguous name`), and `.mount("/", helper())` calls
-> additionally require each mount target to have its own `url_resolvers`
-> module. Splitting the function-based and ViewSet registrations into
-> separate helper files is therefore not possible today. See `urls.rs`'s
-> module-level comment for the full rationale and the framework path that
-> would lift the constraint.
-
-Mounted at the project root with an explicit literal prefix.
-`#[routes(server_only)]` is used because this project is REST-only —
-the `server_only` flag (Issue #4509) tells the macro to skip per-app
-`client_url_resolvers` / `ws_url_resolvers` module lookups, so the
-`snippets` app does not need empty `client_router.rs` / `ws_urls.rs`
-stub modules and the `websockets` Cargo feature can stay off. The
-macro still consumes `installed_apps!` and generates the typed
-`ResolvedUrls::snippets()` accessor that `standalone` would have
-suppressed:
-
-```rust
-// src/config/urls.rs
-#[routes(server_only)]
-pub fn routes() -> UnifiedRouter {
-    UnifiedRouter::new().mount("/api/", crate::apps::snippets::urls::url_patterns())
-}
-```
-
-The `/api/` prefix is a literal path (no `{...}` segments), satisfying the
-rc.24 guard that panics when `ServerRouter::mount()` receives a parameterised
-prefix.
-
-### 5. URL Resolution: Typed `ResolvedUrls` Accessors
-
-Once the `#[routes]` macro has registered the router globally, application
-code can resolve any registered route through the **typed**
-`ResolvedUrls::server().<app>().<route>()` accessor instead of formatting
-URLs inline or reaching for the deprecated flat `urls.snippet_list()`
-surface (deprecated since `0.1.0-rc.16`). The typed accessor was
-introduced by [PR #4518](https://github.com/kent8192/reinhardt-web/pull/4518)
-and is the recommended pattern going forward — see
-[Issue #4548](https://github.com/kent8192/reinhardt-web/issues/4548) for
-the migration milestone.
-
-This example demonstrates the typed accessor pattern in
-`src/urls_demo.rs` (thin shims) and pins the resolved URL strings in
-`tests/urls_typed_accessors.rs` (end-to-end registration + assertions).
-
-```rust
-use examples_tutorial_rest::urls_demo;
-use reinhardt::ResolvedUrls;
-
-// Once per request after the server has booted.
-let urls = ResolvedUrls::from_global();
-
-// Function-based endpoints (Tutorial 1-5)
-let list_url   = urls.server().snippets().snippets_list();      // "/api/snippets/"
-let create_url = urls.server().snippets().snippets_create();    // "/api/snippets/"
-let detail_url = urls.server().snippets().snippets_retrieve("42"); // "/api/snippets/42/"
-
-// ViewSet endpoints (Tutorial 6) — the typed accessor is namespaced
-// per app, so the viewset's `<basename>_list` and `<basename>_detail`
-// live next to the function-based ones on the same gateway.
-let vs_list   = urls.server().snippets().snippet_list();        // "/api/snippets-viewset/"
-let vs_detail = urls.server().snippets().snippet_detail("42");  // "/api/snippets-viewset/42/"
-
-// Equivalent calls through the `urls_demo` shim — useful when a caller
-// already has an `id: i64` and does not want to stringify at every
-// call site.
-assert_eq!(urls_demo::snippets_list(&urls), list_url);
-assert_eq!(urls_demo::snippets_retrieve(&urls, 42), detail_url);
-```
-
-#### Why typed accessors
-
-| Concern | Typed accessor | Deprecated flat surface |
-|---|---|---|
-| Compile-time misspelling check | ✅ method name is a Rust identifier | ❌ panics at runtime |
-| Namespace safety | ✅ auto-prefixes `"<app>:"` | ❌ relies on `UrlResolverUnprefixed` iteration |
-| Refactor-safe across renamed routes | ✅ accessor follows route name | ❌ same surface for every route |
-| Discoverable from IDE auto-complete | ✅ on `SnippetsUrls<'_>` | ❌ blanket trait, hidden in extensions |
-
-#### Migration recipe
-
-1. `let urls = ResolvedUrls::from_global();` (or `ResolvedUrls::from_router(...)`
-   when you already have an `Arc<ServerRouter>` in hand — useful in tests).
-2. Replace `urls.<route>()` → `urls.server().<app>().<route>()`.
-3. If a route takes a path parameter, pass it as `&str` (use
-   `&id.to_string()` for `i64` primary keys).
-
-#### Deprecation removal
-
-The flat accessors (`urls.snippet_list()`, `urls.snippet_detail("42")`)
-remain functional but will be removed in `v0.2.0`. Run
-`cargo build --message-format=short 2>&1 | grep deprecated` to discover
-remaining call sites in your own code.
-
-### 6. Validation
-
-```rust
-// Serializer side: declare validation rules with `#[validate(...)]`.
-use reinhardt::Validate;
-
-#[derive(serde::Deserialize, Validate)]
-pub struct SnippetSerializer { /* ... */ }
-
-// Handler side: enable `pre_validate = true` on the route macro.
-// Manual `serializer.validate()?` is no longer needed inside the handler
-// body — the macro generates the call for you and converts failures into
-// a HTTP 400 JSON response.
-#[post("/snippets/", name = "snippets_create", pre_validate = true)]
-pub async fn create(Json(serializer): Json<SnippetSerializer>) -> ViewResult<Response> {
-    /* serializer is already validated here */
-}
-```
+- `src/apps/snippets/models.rs` defines the `Snippet` model with `#[model(app_label = "snippets", table_name = "snippets")]`, typed fields, `created_at`, and the `highlighted()` helper.
+- `src/apps/snippets/serializers.rs` defines `SnippetSerializer` with `Validate` length rules and `SnippetResponse::from_model()`.
+- `src/apps/snippets/di.rs` registers a plain singleton config and a fallible `Result<SnippetListConfig, ConfigError>` factory to demonstrate TypeId-keyed DI registrations.
+- `src/apps/snippets/views.rs` exposes function-based CRUD handlers with `#[get]`, `#[post(pre_validate = true)]`, `#[put]`, and `#[delete]`, resolving `DatabaseConnection` through `Depends<DatabaseConnection>`.
+- `src/apps/snippets/views.rs` also exposes a `#[reinhardt::viewset(basename = "snippet")]` `ModelViewSet` with pagination, filtering, and ordering.
+- `src/apps/snippets/urls.rs` registers both function-based endpoints and ViewSet endpoints on one `ServerRouter`.
+- `src/config/urls.rs` uses `#[routes]` and mounts the snippets router under the literal `/api/` prefix.
+- `bruno/` contains executable API collections for CRUD, ViewSet, and validation flows.
+- `tests/integration.rs` covers native CRUD, validation, ViewSet, and routing behavior.
 
 ## Testing
 
@@ -333,53 +213,45 @@ Run the test suite:
 
 ```bash
 # Run all tests
-cargo test
+cargo make test
 
 # Run specific test
-cargo test test_snippet_model
+cargo nextest run --all-features test_snippet_model
 
 # Run with output
-cargo test -- --nocapture
+cargo nextest run --all-features --no-capture
 ```
 
-## ViewSets (Tutorial 6)
+## ViewSets (Part 6)
 
-This example demonstrates both function-based views (Tutorial 1-5) and ViewSet-based views (Tutorial 6). **Both are mounted simultaneously** on the same running server — there is no toggle between them. The two endpoint sets coexist under separate URL prefixes:
+This example demonstrates both function-based views (Parts 2-5) and
+ViewSet-based views (Part 6). **Both are mounted simultaneously** on the
+same running server; there is no toggle between them. The two endpoint sets
+coexist under separate URL prefixes:
 
 ```bash
-cargo run --bin manage runserver
+cargo make migrate
+cargo make runserver
 
-# Function-based endpoints (Tutorial 1-5)
+# Function-based endpoints (Parts 2-5)
 curl http://127.0.0.1:8000/api/snippets/
 
-# ViewSet endpoints (Tutorial 6)
+# ViewSet endpoints (Part 6)
 curl http://127.0.0.1:8000/api/snippets-viewset/
 ```
 
 The Bruno collection under `bruno/` contains a `Snippets CRUD` folder for the function-based path and a `Snippets ViewSet` folder for the ViewSet path; both can be exercised back-to-back without restarting the server.
 
-> **rc.23+ runtime behaviour**: Starting with reinhardt-web rc.23,
-> `ModelViewSet` (and `ReadOnlyModelViewSet`) issue **real database
-> queries** instead of returning skeleton `[]` / `{}` responses. To exercise
-> the ViewSet endpoints you must therefore migrate the `snippets` table
-> first:
->
-> ```bash
-> cargo run --bin manage -- migrate
-> cargo run --bin manage runserver
-> ```
->
-> Until rows are inserted, the `/api/snippets-viewset/` endpoints will
-> return an empty list. The function-based path (`/api/snippets/`) is
-> unaffected — it falls back to in-memory sample snippets defined in
-> `views.rs::get_sample_snippets`.
+Both endpoint sets issue real database queries. Until rows are inserted, both
+paths return empty lists. Create rows with either `POST /api/snippets/` or
+`POST /api/snippets-viewset/`, then list or retrieve them through either path.
 
 ### Comparison
 
 | Approach | Code Lines | Features |
 |----------|------------|----------|
-| Function-based (Tutorial 1-5) | ~200 lines | Full control, explicit implementation |
-| ViewSet-based (Tutorial 6) | ~15 lines | CRUD automation, pagination, filtering, ordering |
+| Function-based (Parts 2-5) | ~200 lines | Full control, explicit implementation |
+| ViewSet-based (Part 6) | ~15 lines | CRUD automation, pagination, filtering, ordering |
 
 ### ViewSet Features
 
@@ -408,13 +280,13 @@ curl "http://127.0.0.1:8000/api/snippets-viewset/?language=rust&ordering=-title&
 
 ### When to Use Each Approach
 
-**Function-based views (Tutorial 1-5)**:
+**Function-based views (Parts 2-5)**:
 - Simple endpoints with custom logic
 - Non-standard RESTful patterns
 - When you need fine-grained control
 - Learning HTTP handling basics
 
-**ViewSet-based views (Tutorial 6)**:
+**ViewSet-based views (Part 6)**:
 - Standard RESTful CRUD APIs
 - When pagination, filtering, and ordering are needed
 - Rapid API development
@@ -427,9 +299,8 @@ After understanding this example:
 1. **Compare both approaches**: Try switching between function-based and ViewSet-based
 2. **Understand the trade-offs**: When to use each approach (see above)
 3. **Add custom actions**: Extend ViewSets with `#[action]` decorator for non-CRUD endpoints
-4. **Add database integration**: Implement actual database storage instead of in-memory sample data
-5. **Add authentication**: Implement JWT/Token/Session auth for both approaches
-6. **Add permissions**: Implement permission classes to control access
+4. **Add authentication**: Implement JWT, token, or session auth for both approaches
+5. **Add permissions**: Implement permission classes to control access
 
 ## Related Documentation
 

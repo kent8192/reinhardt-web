@@ -7,11 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.2...reinhardt-grpc@v0.1.3) - 2026-05-31
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.3...reinhardt-grpc@v0.2.0) - 2026-06-11
 
-### Documentation
+Stable release of `reinhardt-grpc` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
 
-- update version references to v0.1.3
+### Migration Notes
+
+- Review the breaking changes listed below before upgrading from 0.1.x.
+- See the root CHANGELOG and `instructions/MIGRATION_0.2.md` for cross-crate migration guidance.
+
+### Added
+
+- *(grpc)* add GrpcServerSettings fragment for the grpc_server section
+
+### Deprecated
+
+- *(grpc)* deprecate GrpcServerConfig in favor of GrpcServerSettings
+
+### Maintenance
+
+- *(grpc)* add reinhardt-conf, reinhardt-core, serde deps for settings fragment
+
+
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.3...reinhardt-grpc@v0.2.0-rc.2) - 2026-06-03
+
+### Added
+
+- *(grpc)* add GrpcServerSettings fragment for the grpc_server section
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Deprecated
+
+- *(grpc)* deprecate GrpcServerConfig in favor of GrpcServerSettings
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
+### Maintenance
+
+- *(grpc)* add reinhardt-conf, reinhardt-core, serde deps for settings fragment
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.0-rc.30...reinhardt-grpc@v0.1.0) - 2026-05-22
 

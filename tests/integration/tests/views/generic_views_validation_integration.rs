@@ -57,6 +57,22 @@ struct Article {
 	created_at: Option<DateTime<Utc>>,
 }
 
+fn article(
+	title: impl Into<String>,
+	content: impl Into<String>,
+	published: bool,
+	view_count: i32,
+	created_at: Option<DateTime<Utc>>,
+) -> Article {
+	Article::build()
+		.title(title)
+		.content(content)
+		.published(published)
+		.view_count(view_count)
+		.created_at(created_at)
+		.finish()
+}
+
 // ============================================================================
 // Table Identifiers (for reinhardt-query operations)
 // ============================================================================
@@ -148,9 +164,9 @@ async fn articles_table(#[future] db_pool: Arc<PgPool>) -> Arc<PgPool> {
 async fn existing_article(#[future] articles_table: Arc<PgPool>) -> (Arc<PgPool>, Article) {
 	let pool = articles_table.await;
 
-	let article = Article::new(
-		"Existing Article".to_string(),
-		"Existing content".to_string(),
+	let article = article(
+		"Existing Article",
+		"Existing content",
 		true,
 		100,
 		Some(Utc::now()),

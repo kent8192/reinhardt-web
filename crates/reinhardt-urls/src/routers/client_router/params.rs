@@ -15,13 +15,24 @@ use super::error::PathError;
 #[derive(Debug, Clone)]
 pub struct ParamContext {
 	/// Named parameters extracted from the path.
-	#[allow(dead_code)] // Reserved for future named parameter access
 	pub(crate) params: HashMap<String, String>,
 	/// Parameter values in the order they appear in the pattern.
 	///
 	/// This guarantees that tuple extraction works correctly by index,
 	/// matching the order of parameters in the URL pattern.
 	pub(crate) param_values: Vec<String>,
+	/// Raw query string (without the leading `?`), populated by
+	/// [`ClientRouter::render_current`] for routes registered via
+	/// [`ClientRouter::page`] so [`QueryParam<T>`] can extract values.
+	///
+	/// `None` for paths without a `?` segment or for routes registered
+	/// via the legacy `route` / `route_params` / `route_result` /
+	/// `route_path*` APIs (those handlers do not read the query).
+	///
+	/// [`ClientRouter::render_current`]: super::core::ClientRouter::render_current
+	/// [`ClientRouter::page`]: super::core::ClientRouter::page
+	/// [`QueryParam<T>`]: super::from_request::QueryParam
+	pub(crate) query: Option<String>,
 }
 
 impl ParamContext {
@@ -30,7 +41,33 @@ impl ParamContext {
 		Self {
 			params,
 			param_values,
+			query: None,
 		}
+	}
+
+	/// Creates a new parameter context with an attached query string.
+	///
+	/// Used by [`ClientRouter::render_current`] when dispatching a
+	/// [`ClientRouter::page`] handler so [`QueryParam<T>`] extractors
+	/// can see the captured query.
+	///
+	/// [`ClientRouter::render_current`]: super::core::ClientRouter::render_current
+	/// [`ClientRouter::page`]: super::core::ClientRouter::page
+	/// [`QueryParam<T>`]: super::from_request::QueryParam
+	pub fn with_query(mut self, query: Option<String>) -> Self {
+		self.query = query;
+		self
+	}
+
+	/// Returns the named-parameter map (path parameters captured by the
+	/// route pattern, keyed by their `{name}` placeholder).
+	pub fn params(&self) -> &HashMap<String, String> {
+		&self.params
+	}
+
+	/// Returns the raw query string (without the leading `?`), if any.
+	pub fn query(&self) -> Option<&str> {
+		self.query.as_deref()
 	}
 
 	/// Returns the number of parameters.

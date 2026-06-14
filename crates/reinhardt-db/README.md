@@ -143,11 +143,10 @@ Advanced features for specific use cases:
   - **When to use**: Polymorphic relationships (comments, tags, etc.)
 
 - **`nosql` module**: NoSQL database support
-  - Core NoSQL traits and BSON document support
-  - MongoDB integration behind the `mongodb` feature
+  - MongoDB integration (implemented)
   - Unified NoSQL backend traits
   - Document, Key-Value, Column-Family, Graph paradigms
-  - **When to use**: Working with NoSQL abstractions, or enable `mongodb` / `nosql-document` / `nosql-all` for concrete MongoDB support
+  - **When to use**: Working with NoSQL databases like MongoDB
 
 ## Installation
 
@@ -156,7 +155,7 @@ Add this to your `Cargo.toml`:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = "0.1.4"
+reinhardt-db = "0.2.0-rc.6"
 ```
 
 ### Optional Features
@@ -166,7 +165,7 @@ Enable specific features based on your needs:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = { version = "0.1.4", features = ["postgres", "orm", "migrations"] }
+reinhardt-db = { version = "0.2.0-rc.6", features = ["postgres", "orm", "migrations"] }
 ```
 
 Available features:
@@ -180,9 +179,7 @@ Available features:
 - `associations` (default): Relationship management
 - `sqlite`: SQLite support
 - `mysql`: MySQL support
-- `nosql`: Core NoSQL/BSON support
-- `mongodb`: MongoDB backend support
-- `nosql-document` / `nosql-all`: Aggregate NoSQL backend presets
+- `nosql`: NoSQL database support (MongoDB)
 - `di`: DI integration for `DatabaseConnection`
 - `contenttypes`: Generic relations support
 - `all-databases`: All database backends
@@ -245,22 +242,35 @@ For a complete list of field attributes, see the `#[field(...)]` macro documenta
 ### Query with QuerySet
 
 ```rust
-use reinhardt_db::orm::{QuerySet, Model};
+use reinhardt_db::orm::Model;
 
 // Get all users
 let users = User::objects().all().await?;
 
 // Filter users
 let adults = User::objects()
-    .filter("age__gte", 18)
+    .filter(User::field_age().gte(18))
     .order_by("-created_at")
     .all()
     .await?;
 
 // Get a single user
 let user = User::objects()
-    .filter("username", "john")
+    .filter(User::field_username().exact("john"))
     .first()
+    .await?;
+
+// Django-style lookup helpers on generated field accessors
+let matching = User::objects()
+    .filter(User::field_email().icontains("example.com"))
+    .filter(User::field_id().is_in([1_i64, 2, 3]))
+    .filter(User::field_deleted_at().is_null())
+    .all()
+    .await?;
+
+let recent = User::objects()
+    .filter(User::field_created_at().year().gte(2026))
+    .all()
     .await?;
 ```
 
@@ -799,10 +809,7 @@ Optimize how related objects are loaded:
   - `MigrationAutodetector`: Detects differences between states
   - Model creation/deletion detection
   - Field addition/removal/modification detection
-  - Smart rename detection for models and fields, including `RenameColumn` for
-    unambiguous compatible field renames
-  - Ambiguous rename-like field changes are rejected by fallible generation APIs
-    instead of silently producing destructive add/drop operations
+  - Smart rename detection for models and fields
   - Index and constraint change detection
 
 - **Migration Execution**

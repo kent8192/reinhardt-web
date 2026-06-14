@@ -21,6 +21,9 @@ mod migrate_integration;
 #[path = "commands/makemigrations_integration.rs"]
 mod makemigrations_integration;
 
+#[path = "commands/makemigrations_command_boundary.rs"]
+mod makemigrations_command_boundary;
+
 #[path = "commands/introspect_integration.rs"]
 mod introspect_integration;
 

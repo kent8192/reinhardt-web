@@ -2,24 +2,77 @@
 //!
 //! These functions provide the server-side API for the polling application.
 
-use crate::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
+use crate::shared::types::{ChoiceInfo, QuestionInfo};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
-// Server-only imports. Each addition here MUST also be wired in `[cfg(native)]`
+// Server-only imports. Each addition here MUST also be wired in `[cfg(server)]`
 // at the call site — see the per-handler `use` blocks below for examples.
-#[cfg(native)]
+#[cfg(server)]
 use {
-	crate::apps::polls::di::SessionError, crate::apps::users::models::User, reinhardt::Model,
-	reinhardt::di::Depends,
+	crate::apps::users::models::User,
+	reinhardt::Model,
+	reinhardt::di::{Depends, injectable_factory},
+	reinhardt::middleware::session::{SessionData, USER_ID_SESSION_KEY},
 };
 
-// The previous request-scoped helper `require_user(&session)` has been
-// replaced by the session-user factory in `apps::polls::di`. Each
-// authenticated handler now receives `Depends<Result<User, SessionError>>`
-// from the DI container and calls `.as_ref().map_err(ServerFnError::from)?`
-// to surface 401/403/500. The factory also documents the path to
-// `reinhardt_auth::AuthUser<User>` once #4652 (the `CurrentUser` →
-// `AuthUser` unification + `SessionMiddleware` → `AuthState` bridge) lands.
+/// Error variants for the session-based user lookup factory.
+///
+/// Three failure modes are distinguished so handlers can surface the
+/// correct HTTP status and so that an operational outage is not silently
+/// rewritten into a fake 401.
+#[cfg(server)]
+#[derive(Clone, Debug)]
+pub enum SessionError {
+	Anonymous,
+	Inactive,
+	Unavailable(String),
+}
+
+/// Convert a `SessionError` reference to a `ServerFnError` with the
+/// appropriate HTTP status code.
+#[cfg(server)]
+impl From<&SessionError> for ServerFnError {
+	fn from(err: &SessionError) -> Self {
+		match err {
+			SessionError::Anonymous => ServerFnError::server(401, "Authentication required"),
+			SessionError::Inactive => ServerFnError::server(403, "User account is inactive"),
+			SessionError::Unavailable(_) => {
+				ServerFnError::server(500, "User lookup temporarily unavailable")
+			}
+		}
+	}
+}
+
+#[cfg(server)]
+#[injectable_factory(scope = "request")]
+async fn session_user_factory(#[inject] session: SessionData) -> Result<User, SessionError> {
+	let Some(user_id) = session.get::<i64>(USER_ID_SESSION_KEY) else {
+		return Err(SessionError::Anonymous);
+	};
+
+	let user = match User::objects()
+		.filter(User::field_id().eq(user_id))
+		.first()
+		.await
+	{
+		Ok(Some(user)) => user,
+		Ok(None) => return Err(SessionError::Anonymous),
+		Err(err) => {
+			::tracing::warn!(
+				user_id = user_id,
+				error = %err,
+				"session_user_factory: user lookup failed"
+			);
+			return Err(SessionError::Unavailable(err.to_string()));
+		}
+	};
+
+	if user.is_active {
+		Ok(user)
+	} else {
+		Err(SessionError::Inactive)
+	}
+}
 
 // WASM-only imports
 // (None needed - all forms logic is server-side)
@@ -71,21 +124,10 @@ pub async fn get_question_detail(
 		.map_err(|e| ServerFnError::application(e.to_string()))?
 		.ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
 
-	// Get choices.
-	//
-	// Ideal implementation (blocked on #4650): the typed builder
-	// `Field::eq` returns `Lookup<M>` but `Manager::filter` currently
-	// only accepts the legacy `(field_name, FilterOperator, FilterValue)`
-	// triple. Once that Issue ships, this call collapses to:
-	//   `.filter(Choice::field_question_id().eq(question_id))`.
-	use reinhardt::db::orm::{FilterOperator, FilterValue};
+	// Get choices using the typed builder.
 	let choice_manager = Choice::objects();
 	let choices = choice_manager
-		.filter(
-			Choice::field_question_id(),
-			FilterOperator::Eq,
-			FilterValue::Int(question_id),
-		)
+		.filter(Choice::field_question_id().eq(question_id))
 		.all()
 		.await
 		.map_err(|e| ServerFnError::application(e.to_string()))?;
@@ -116,16 +158,10 @@ pub async fn get_question_results(
 		.map_err(|e| ServerFnError::application(e.to_string()))?
 		.ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
 
-	// Get choices. Same legacy-filter rationale as `get_question_detail`
-	// — typed builder is blocked on #4650.
-	use reinhardt::db::orm::{FilterOperator, FilterValue};
+	// Get choices using the typed builder.
 	let choice_manager = Choice::objects();
 	let choices = choice_manager
-		.filter(
-			Choice::field_question_id(),
-			FilterOperator::Eq,
-			FilterValue::Int(question_id),
-		)
+		.filter(Choice::field_question_id().eq(question_id))
 		.all()
 		.await
 		.map_err(|e| ServerFnError::application(e.to_string()))?;
@@ -144,7 +180,7 @@ pub async fn get_question_results(
 /// Increments the vote count for the selected choice.
 #[server_fn]
 pub async fn vote(
-	request: VoteRequest,
+	request: crate::shared::types::VoteRequest,
 	#[inject] db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	vote_internal(request, db).await
@@ -152,29 +188,18 @@ pub async fn vote(
 
 /// Submit vote via form! macro
 ///
-/// Wrapper function that accepts individual field values from form! macro's submit.
-/// Converts String field values to the required types and calls the underlying vote function.
+/// Wrapper function that accepts individual typed field values from form!'s submit
+/// path and calls the underlying vote function.
 ///
-/// The trailing `_csrf_token: String` argument is supplied by `form!`'s
-/// `strip_arguments` block (reinhardt-web#3971). Actual CSRF verification is
-/// performed by the server-side CSRF middleware before this handler runs;
-/// receiving the value here keeps the WASM client stub's positional argument
-/// list aligned with the server signature.
+/// CSRF is supplied by the `#[server_fn]` client stub through `X-CSRFToken`
+/// and verified by middleware before this handler runs.
 #[server_fn]
 pub async fn submit_vote(
-	question_id: String,
-	choice_id: String,
-	_csrf_token: String,
+	question_id: i64,
+	choice_id: i64,
 	#[inject] db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
-	let question_id: i64 = question_id
-		.parse()
-		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
-	let choice_id: i64 = choice_id
-		.parse()
-		.map_err(|_| ServerFnError::application("Invalid choice_id"))?;
-
-	let request = VoteRequest {
+	let request = crate::shared::types::VoteRequest {
 		question_id,
 		choice_id,
 	};
@@ -184,9 +209,9 @@ pub async fn submit_vote(
 }
 
 /// Internal vote implementation (shared between vote and submit_vote)
-#[cfg(native)]
+#[cfg(server)]
 async fn vote_internal(
-	request: VoteRequest,
+	request: crate::shared::types::VoteRequest,
 	db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	use crate::apps::polls::models::Choice;
@@ -233,34 +258,21 @@ async fn vote_internal(
 //
 // All three mutations below follow the same conventions:
 //
-// * Every form field is received as `String` because `form!` currently
-//   serializes all fields as strings on submit. This is tracked upstream as
-//   reinhardt-web#4397 — once that ships, the `String` + `.parse()` dance
-//   below can be replaced with the typed signatures shown next to each
-//   handler. The trailing `_csrf_token: String` parameter is appended by the
-//   `form!` macro for non-GET forms; the CSRF middleware verifies it before
-//   the handler runs.
+// * `form!` submits field values with the types declared by the field
+//   definitions, so `HiddenField<i64>` reaches these handlers as `i64`.
+//   CSRF is supplied by the `#[server_fn]` client stub through `X-CSRFToken`
+//   and verified by middleware.
 // * Authentication is required: `Depends<Result<User, SessionError>>` is
-//   resolved by the request-scoped factory in `apps::polls::di` and
-//   exposes `.as_ref().map_err(ServerFnError::from)?` for the 401/403/500
-//   surface.
+//   resolved by the request-scoped factory in this module and exposes
+//   `.as_ref().map_err(ServerFnError::from)?` for the 401/403/500 surface.
 // * For `update_question` and `delete_question`, ownership is enforced by
 //   comparing `question.author_id()` with the current user's id; mismatched
 //   ownership returns a 403.
 
 /// Create a new question owned by the current user.
-///
-/// Ideal implementation (without the form! String workaround tracked in #4397):
-///   pub async fn create_question(
-///       question_text: String,
-///       _csrf_token: String,
-///       #[inject] _db: reinhardt::DatabaseConnection,
-///       #[inject] session_user: Depends<Result<User, SessionError>>,
-///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
 #[server_fn]
 pub async fn create_question(
 	question_text: String,
-	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
@@ -290,29 +302,16 @@ pub async fn create_question(
 }
 
 /// Update a question's text. Only the author may update.
-///
-/// Ideal implementation (without the form! String workaround tracked in #4397):
-///   pub async fn update_question(
-///       question_id: i64,
-///       question_text: String,
-///       _csrf_token: String,
-///       ...
-///   ) -> std::result::Result<QuestionInfo, ServerFnError> { ... }
 #[server_fn]
 pub async fn update_question(
-	question_id: String,
+	question_id: i64,
 	question_text: String,
-	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
 	use crate::apps::polls::models::Question;
 
 	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
-
-	let question_id: i64 = question_id
-		.parse()
-		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
 
 	let trimmed = question_text.trim();
 	if trimmed.is_empty() || trimmed.len() > 200 {
@@ -348,27 +347,15 @@ pub async fn update_question(
 }
 
 /// Delete a question. Only the author may delete.
-///
-/// Ideal implementation (without the form! String workaround tracked in #4397):
-///   pub async fn delete_question(
-///       question_id: i64,
-///       _csrf_token: String,
-///       ...
-///   ) -> std::result::Result<(), ServerFnError> { ... }
 #[server_fn]
 pub async fn delete_question(
-	question_id: String,
-	_csrf_token: String,
+	question_id: i64,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<(), ServerFnError> {
 	use crate::apps::polls::models::Question;
 
 	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
-
-	let question_id: i64 = question_id
-		.parse()
-		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
 
 	let manager = Question::objects();
 	let question = manager
@@ -399,12 +386,11 @@ pub async fn delete_question(
 //
 // Choice has no own author field — ownership is derived from the parent
 // Question. Each mutation loads the Question first, verifies that the
-// caller authored it, then mutates the Choice. The same form! String ABI
-// constraint (#4397) used by the Question CUD handlers above applies here.
+// caller authored it, then mutates the Choice.
 
 /// Internal helper: load a Question by id and ensure the given user is its
 /// author. Returns 401/403/404 as appropriate.
-#[cfg(native)]
+#[cfg(server)]
 async fn require_question_author(
 	question_id: i64,
 	user: &User,
@@ -432,18 +418,14 @@ async fn require_question_author(
 /// choices.
 #[server_fn]
 pub async fn create_choice(
-	question_id: String,
+	question_id: i64,
 	choice_text: String,
-	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	use crate::apps::polls::models::Choice;
 
 	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
-	let question_id: i64 = question_id
-		.parse()
-		.map_err(|_| ServerFnError::application("Invalid question_id"))?;
 	let question = require_question_author(question_id, user).await?;
 
 	let trimmed = choice_text.trim();
@@ -471,19 +453,14 @@ pub async fn create_choice(
 /// Update a Choice's text. Only the parent question's author may update.
 #[server_fn]
 pub async fn update_choice(
-	choice_id: String,
+	choice_id: i64,
 	choice_text: String,
-	_csrf_token: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	use crate::apps::polls::models::Choice;
 
 	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
-	let choice_id: i64 = choice_id
-		.parse()
-		.map_err(|_| ServerFnError::application("Invalid choice_id"))?;
-
 	let trimmed = choice_text.trim();
 	if trimmed.is_empty() || trimmed.len() > 200 {
 		return Err(ServerFnError::server(
@@ -514,18 +491,13 @@ pub async fn update_choice(
 /// Delete a Choice. Only the parent question's author may delete.
 #[server_fn]
 pub async fn delete_choice(
-	choice_id: String,
-	_csrf_token: String,
+	choice_id: i64,
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<(), ServerFnError> {
 	use crate::apps::polls::models::Choice;
 
 	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
-	let choice_id: i64 = choice_id
-		.parse()
-		.map_err(|_| ServerFnError::application("Invalid choice_id"))?;
-
 	let manager = Choice::objects();
 	let choice = manager
 		.get(choice_id)

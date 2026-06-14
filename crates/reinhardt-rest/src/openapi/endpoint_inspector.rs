@@ -369,9 +369,9 @@ impl EndpointInspector {
 	/// Infer tags from module path
 	///
 	/// Examples:
-	/// - `examples_twitter::apps::auth::views::register` → ["Auth"]
-	/// - `examples_twitter::apps::profile::views::fetch_profile` → ["Profile"]
-	/// - `examples_twitter::apps::dm::views::messages` → ["Dm"]
+	/// - `my_project::apps::auth::views::register` → ["Auth"]
+	/// - `my_project::apps::profile::views::fetch_profile` → ["Profile"]
+	/// - `my_project::apps::dm::views::messages` → ["Dm"]
 	fn infer_tags(&self, module_path: &str) -> Vec<String> {
 		// Split module path by ::
 		let parts: Vec<&str> = module_path.split("::").collect();
@@ -480,11 +480,11 @@ mod tests {
 		let inspector = EndpointInspector::new();
 
 		assert_eq!(
-			inspector.infer_tags("examples_twitter::apps::auth::views::register"),
+			inspector.infer_tags("my_project::apps::auth::views::register"),
 			vec!["Auth".to_string()]
 		);
 		assert_eq!(
-			inspector.infer_tags("examples_twitter::apps::profile::views::fetch_profile"),
+			inspector.infer_tags("my_project::apps::profile::views::fetch_profile"),
 			vec!["Profile".to_string()]
 		);
 		assert_eq!(

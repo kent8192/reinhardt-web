@@ -8,16 +8,13 @@ Global command-line tool for Reinhardt project management.
 
 ## Installation
 
-Install globally using cargo. While Reinhardt is on a pre-release
-(`-rc.*` / `-alpha.*`), `cargo install` requires an explicit `--version`
-because pre-releases are not selected by default. Once `0.1.0` stable
-ships, omit `--version` to pull the latest stable (or keep `--version`
-as an opt-in reproducibility pin). The literal below is auto-bumped by
-release-plz on each release.
+Install globally using Cargo. The command below pins this guide to the
+documented release for reproducibility; omit `--version` to let Cargo choose
+the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.1.4"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.6"
 ```
 
 This installs the `reinhardt-admin` command.
@@ -26,9 +23,10 @@ This installs the `reinhardt-admin` command.
 
 ### Create a New Project
 
+<!-- reinhardt-version-sync -->
 ```bash
-# Create a RESTful API project
-reinhardt-admin startproject myproject --with-rest
+# Create a RESTful API project (default in non-interactive shells)
+reinhardt-admin startproject myproject
 
 # Create a Pages (WASM + SSR) project
 reinhardt-admin startproject myproject --with-pages
@@ -39,6 +37,30 @@ reinhardt-admin startproject myproject --template pages
 
 # Create project in a specific directory
 reinhardt-admin startproject myproject --with-rest /path/to/directory
+
+# Pin the generated Reinhardt dependency
+reinhardt-admin startproject myproject --with-rest \
+  --reinhardt-version 0.2.0-rc.6 \
+  --features standard,admin \
+  --no-interactive
+```
+
+When run from an interactive terminal, `startproject` prompts for the
+project type, Reinhardt version, and feature flags when those choices are
+not provided as flags. Non-interactive runs use deterministic defaults.
+
+### Configure an Existing Project
+
+<!-- reinhardt-version-sync -->
+```bash
+# Interactively update ./Cargo.toml
+reinhardt-admin configure
+
+# Update a project without prompts
+reinhardt-admin configure /path/to/project \
+  --reinhardt-version 0.2.0-rc.6 \
+  --features minimal,db-sqlite \
+  --no-interactive
 ```
 
 ### Create a New App
@@ -86,7 +108,7 @@ reinhardt-admin plugin info auth-delion --remote
 
 # Install a plugin
 reinhardt-admin plugin install auth-delion
-reinhardt-admin plugin install auth-delion --version 0.1.4
+reinhardt-admin plugin install auth-delion --version 0.2.0-rc.6
 
 # Remove a plugin
 reinhardt-admin plugin remove auth-delion

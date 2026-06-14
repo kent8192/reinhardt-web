@@ -1,13 +1,21 @@
 use reinhardt::db::migrations::FieldType;
 use reinhardt::db::migrations::prelude::*;
-
-pub fn migration() -> Migration {
+pub(super) fn migration() -> Migration {
 	Migration {
 		app_label: "users".to_string(),
 		name: "0001_initial".to_string(),
 		operations: vec![Operation::CreateTable {
 			name: "users".to_string(),
 			columns: vec![
+				ColumnDefinition {
+					name: "created_at".to_string(),
+					type_definition: FieldType::TimestampTz,
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
 				ColumnDefinition {
 					name: "id".to_string(),
 					type_definition: FieldType::BigInteger,
@@ -18,10 +26,28 @@ pub fn migration() -> Migration {
 					default: None,
 				},
 				ColumnDefinition {
-					name: "username".to_string(),
-					type_definition: FieldType::VarChar(150u32),
+					name: "is_active".to_string(),
+					type_definition: FieldType::Boolean,
 					not_null: true,
-					unique: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: Some("true".to_string()),
+				},
+				ColumnDefinition {
+					name: "is_superuser".to_string(),
+					type_definition: FieldType::Boolean,
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: Some("false".to_string()),
+				},
+				ColumnDefinition {
+					name: "last_login".to_string(),
+					type_definition: FieldType::TimestampTz,
+					not_null: false,
+					unique: false,
 					primary_key: false,
 					auto_increment: false,
 					default: None,
@@ -36,34 +62,19 @@ pub fn migration() -> Migration {
 					default: None,
 				},
 				ColumnDefinition {
-					name: "is_active".to_string(),
-					type_definition: FieldType::Boolean,
+					name: "username".to_string(),
+					type_definition: FieldType::VarChar(150u32),
 					not_null: true,
-					unique: false,
-					primary_key: false,
-					auto_increment: false,
-					default: None,
-				},
-				ColumnDefinition {
-					name: "last_login".to_string(),
-					type_definition: FieldType::TimestampTz,
-					not_null: false,
-					unique: false,
-					primary_key: false,
-					auto_increment: false,
-					default: None,
-				},
-				ColumnDefinition {
-					name: "created_at".to_string(),
-					type_definition: FieldType::TimestampTz,
-					not_null: true,
-					unique: false,
+					unique: true,
 					primary_key: false,
 					auto_increment: false,
 					default: None,
 				},
 			],
-			constraints: vec![],
+			constraints: vec![Constraint::Unique {
+				name: "users_user_username_uniq".to_string(),
+				columns: vec!["username".to_string()],
+			}],
 			without_rowid: None,
 			interleave_in_parent: None,
 			partition: None,

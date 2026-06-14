@@ -12,6 +12,9 @@
 //! - X-Forwarded-For IP extraction with injection attempts
 //! - Session ID validation with collision attempts
 
+// The deprecated `CorsConfig` is exercised here during the compatibility window.
+#![allow(deprecated)]
+
 mod fixtures;
 
 use fixtures::{ConfigurableTestHandler, create_request_with_headers, create_test_request};

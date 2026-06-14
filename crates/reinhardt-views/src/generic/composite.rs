@@ -4,7 +4,7 @@ use crate::viewsets::{FilterConfig, PaginationConfig};
 use async_trait::async_trait;
 use hyper::Method;
 use reinhardt_core::exception::{Error, Result};
-use reinhardt_db::orm::{Filter, FilterOperator, FilterValue, Manager, Model, QuerySet};
+use reinhardt_db::orm::{CustomManager, Filter, FilterOperator, FilterValue, Model, QuerySet};
 use reinhardt_http::{Request, Response};
 use reinhardt_rest::serializers::{Serializer, ValidatorConfig};
 use serde::{Deserialize, Serialize};
@@ -47,6 +47,7 @@ use crate::core::View;
 /// impl Model for Article {
 ///     type PrimaryKey = i64;
 ///     type Fields = ArticleFields;
+///     type Objects = reinhardt_db::orm::Manager<Self>;
 ///     fn table_name() -> &'static str { "articles" }
 ///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -112,7 +113,7 @@ where
 
 	/// Gets the queryset, creating a default one if not set
 	fn get_queryset(&self) -> QuerySet<M> {
-		self.queryset.clone().unwrap_or_default()
+		self.queryset.clone().unwrap_or_else(|| M::objects().all())
 	}
 
 	/// Builds a filtered queryset with ordering applied, before pagination.
@@ -403,7 +404,7 @@ where
 
 	/// Gets the queryset, creating a default one if not set
 	fn get_queryset(&self) -> QuerySet<M> {
-		self.queryset.clone().unwrap_or_default()
+		self.queryset.clone().unwrap_or_else(|| M::objects().all())
 	}
 
 	/// Gets a single object by lookup field value from request path params
@@ -486,7 +487,7 @@ where
 				object.set_primary_key(pk);
 
 				// Update using Manager
-				let manager = Manager::<M>::new();
+				let manager = M::objects();
 				let updated = manager
 					.update(&object)
 					.await
@@ -531,7 +532,7 @@ where
 					.map_err(|e| Error::Http(format!("Failed to merge patch: {}", e)))?;
 
 				// Update using Manager
-				let manager = Manager::<M>::new();
+				let manager = M::objects();
 				let updated = manager
 					.update(&merged)
 					.await
@@ -604,7 +605,7 @@ where
 
 	/// Gets the queryset, creating a default one if not set
 	fn get_queryset(&self) -> QuerySet<M> {
-		self.queryset.clone().unwrap_or_default()
+		self.queryset.clone().unwrap_or_else(|| M::objects().all())
 	}
 
 	/// Gets a single object by lookup field value from request path params
@@ -680,7 +681,7 @@ where
 					.ok_or_else(|| Error::Http("Object has no primary key".to_string()))?;
 
 				// Delete using Manager
-				let manager = Manager::<M>::new();
+				let manager = M::objects();
 				manager
 					.delete(pk)
 					.await
@@ -747,7 +748,7 @@ where
 
 	/// Gets the queryset, creating a default one if not set
 	fn get_queryset(&self) -> QuerySet<M> {
-		self.queryset.clone().unwrap_or_default()
+		self.queryset.clone().unwrap_or_else(|| M::objects().all())
 	}
 
 	/// Gets a single object by lookup field value from request path params
@@ -786,6 +787,91 @@ where
 {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::generic::test_support::{
+		ManagedArticle, assert_default_manager_queryset, assert_explicit_queryset,
+		assert_manager_and_request_filters, explicit_queryset,
+	};
+	use reinhardt_rest::serializers::JsonSerializer;
+
+	#[test]
+	fn list_create_default_queryset_uses_model_objects() {
+		let view = ListCreateAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new();
+
+		assert_default_manager_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn list_create_explicit_queryset_overrides_model_objects() {
+		let view = ListCreateAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new()
+			.with_queryset(explicit_queryset());
+
+		assert_explicit_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn list_create_filtered_queryset_preserves_model_objects_filters() {
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/managed-articles?tenant_id=7")
+			.build()
+			.unwrap();
+		let view = ListCreateAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new()
+			.with_filter_config(FilterConfig::new().with_filterable_fields(vec!["tenant_id"]));
+
+		assert_manager_and_request_filters(view.get_filtered_queryset(&request));
+	}
+
+	#[test]
+	fn retrieve_update_default_queryset_uses_model_objects() {
+		let view = RetrieveUpdateAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new();
+
+		assert_default_manager_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn retrieve_update_explicit_queryset_overrides_model_objects() {
+		let view = RetrieveUpdateAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new()
+			.with_queryset(explicit_queryset());
+
+		assert_explicit_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn retrieve_destroy_default_queryset_uses_model_objects() {
+		let view = RetrieveDestroyAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new();
+
+		assert_default_manager_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn retrieve_destroy_explicit_queryset_overrides_model_objects() {
+		let view = RetrieveDestroyAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new()
+			.with_queryset(explicit_queryset());
+
+		assert_explicit_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn retrieve_update_destroy_default_queryset_uses_model_objects() {
+		let view =
+			RetrieveUpdateDestroyAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new();
+
+		assert_default_manager_queryset(view.get_queryset());
+	}
+
+	#[test]
+	fn retrieve_update_destroy_explicit_queryset_overrides_model_objects() {
+		let view =
+			RetrieveUpdateDestroyAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new()
+				.with_queryset(explicit_queryset());
+
+		assert_explicit_queryset(view.get_queryset());
 	}
 }
 
@@ -830,7 +916,7 @@ where
 				object.set_primary_key(pk);
 
 				// Update using Manager
-				let manager = Manager::<M>::new();
+				let manager = M::objects();
 				let updated = manager
 					.update(&object)
 					.await
@@ -875,7 +961,7 @@ where
 					.map_err(|e| Error::Http(format!("Failed to merge patch: {}", e)))?;
 
 				// Update using Manager
-				let manager = Manager::<M>::new();
+				let manager = M::objects();
 				let updated = manager
 					.update(&merged)
 					.await
@@ -901,7 +987,7 @@ where
 					.ok_or_else(|| Error::Http("Object has no primary key".to_string()))?;
 
 				// Delete using Manager
-				let manager = Manager::<M>::new();
+				let manager = M::objects();
 				manager
 					.delete(pk)
 					.await

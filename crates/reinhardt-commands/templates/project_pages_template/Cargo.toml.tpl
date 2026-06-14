@@ -16,11 +16,6 @@ name = "manage"
 path = "src/bin/manage.rs"
 
 [dependencies]
-reinhardt = { version = "{{ reinhardt_version }}", package = "reinhardt-web", features = [
-	"full",
-	"admin",  # Admin panel functionality (includes reinhardt-pages)
-] }
-
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.11", features = ["v4", "serde"] }
 ctor = "0.6"
@@ -30,7 +25,8 @@ serde_json = "1.0"
 inventory = "0.3"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2"
+reinhardt = { version = "{{ reinhardt_version }}", package = "reinhardt-web", default-features = false, features = ["pages", "client-router"] }
+wasm-bindgen = "=0.2.122"
 web-sys = { version = "0.3", features = [
 	"Window",
 	"Document",
@@ -47,6 +43,7 @@ console_error_panic_hook = "0.1"
 wasm-bindgen-futures = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reinhardt = { version = "{{ reinhardt_version }}", package = "reinhardt-web", default-features = {{ reinhardt_default_features }}, features = {{ reinhardt_features_toml }} }
 clap = { version = "4", features = ["derive"] }
 console = "0.16.1"
 tokio = { version = "1", features = ["full"] }

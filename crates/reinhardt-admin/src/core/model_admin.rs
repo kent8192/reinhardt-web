@@ -12,8 +12,8 @@ use async_trait::async_trait;
 /// from [`BaseUser`](reinhardt_auth::BaseUser) or [`FullUser`](reinhardt_auth::FullUser).
 ///
 /// A blanket implementation is provided for all types implementing
-/// [`FullUser`](reinhardt_auth::FullUser), so [`DefaultUser`](reinhardt_auth::DefaultUser)
-/// and any custom user model with `FullUser` will automatically satisfy this trait.
+/// [`FullUser`](reinhardt_auth::FullUser), so any custom user model
+/// with `FullUser` will automatically satisfy this trait.
 ///
 /// For simpler user models that only implement `BaseUser` (without `FullUser`),
 /// this trait can be implemented manually to enable admin authentication.
@@ -33,8 +33,8 @@ pub trait AdminUser: Send + Sync {
 
 /// Blanket implementation for all types implementing [`FullUser`](reinhardt_auth::FullUser).
 ///
-/// This ensures that [`DefaultUser`](reinhardt_auth::DefaultUser) and any custom user model
-/// with `FullUser` implementation automatically satisfies `AdminUser`.
+/// This ensures that any custom user model with `FullUser` implementation
+/// automatically satisfies `AdminUser`.
 impl<T: reinhardt_auth::FullUser> AdminUser for T {
 	fn is_active(&self) -> bool {
 		reinhardt_auth::BaseUser::is_active(self)
@@ -486,7 +486,7 @@ impl ModelAdminConfigBuilder {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use rstest::rstest;

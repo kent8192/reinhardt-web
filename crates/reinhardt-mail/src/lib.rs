@@ -52,7 +52,7 @@
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use reinhardt_mail::send_mail;
-//! use reinhardt_conf::settings::EmailSettings;
+//! use reinhardt_conf::EmailSettings;
 //!
 //! let mut settings = EmailSettings::default();
 //! settings.backend = "console".to_string();
@@ -132,18 +132,24 @@
 //!
 //! ### SMTP with TLS
 //!
+//! Configure the SMTP backend through the `EmailSettings` fragment and build it
+//! with [`create_smtp_backend_from_settings`].
+//!
 //! ```rust,no_run
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! use reinhardt_mail::{SmtpBackend, SmtpConfig, SmtpSecurity, EmailMessage};
-//! use std::time::Duration;
+//! use reinhardt_mail::{create_smtp_backend_from_settings, EmailMessage};
+//! use reinhardt_conf::EmailSettings;
 //!
-//! let config = SmtpConfig::new("smtp.gmail.com", 587)
-//!     .with_credentials("user@gmail.com".to_string(), "password".to_string())
-//!     .with_security(SmtpSecurity::StartTls)
-//!     .with_timeout(Duration::from_secs(30));
+//! let mut settings = EmailSettings::default();
+//! settings.host = "smtp.gmail.com".to_string();
+//! settings.port = 587;
+//! settings.username = Some("user@gmail.com".to_string());
+//! settings.password = Some("password".to_string());
+//! settings.use_tls = true;
+//! settings.timeout = Some(30);
 //!
-//! let backend = SmtpBackend::new(config)?;
+//! let backend = create_smtp_backend_from_settings(&settings)?;
 //!
 //! let email = EmailMessage::builder()
 //!     .from("sender@gmail.com")
@@ -160,6 +166,7 @@
 //! ### Bulk Sending with Connection Pool
 //!
 //! ```rust,no_run
+//! # #![allow(deprecated)]
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use reinhardt_mail::pooling::{EmailPool, PoolConfig};
@@ -204,8 +211,12 @@ use thiserror::Error;
 
 pub use backends::{
 	ConsoleBackend, EmailBackend, FileBackend, MemoryBackend, SmtpAuthMechanism, SmtpBackend,
-	SmtpConfig, SmtpSecurity, backend_from_settings,
+	SmtpSecurity, backend_from_settings, create_smtp_backend_from_settings,
 };
+// `SmtpConfig` is deprecated in favour of the `EmailSettings` fragment; re-export
+// it separately so the deprecation lint is suppressed only at the re-export site.
+#[allow(deprecated)]
+pub use backends::SmtpConfig;
 pub use message::{Alternative, Attachment, EmailMessage, EmailMessageBuilder};
 pub use utils::{mail_admins, mail_managers, send_mail, send_mail_with_backend, send_mass_mail};
 pub use validation::MAX_EMAIL_LENGTH;

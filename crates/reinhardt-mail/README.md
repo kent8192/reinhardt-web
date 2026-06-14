@@ -13,11 +13,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.4", features = ["mail"] }
+reinhardt = { version = "0.2.0-rc.6", features = ["mail"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.4", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.4", features = ["full"] }      # All features
+# reinhardt = { version = "0.2.0-rc.6", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.2.0-rc.6", features = ["full"] }      # All features
 ```
 
 Then import mail features:
@@ -61,7 +61,9 @@ use reinhardt::mail::backends::{SmtpBackend, ConsoleBackend};
 
 #### Settings Integration
 
-- **backend_from_settings**: Backend initialization from configuration
+- **backend_from_settings**: Backend initialization from the `EmailSettings` fragment
+- **create_smtp_backend_from_settings**: SMTP backend initialization from composed settings
+- Helpers accept any type implementing `HasSettings<EmailSettings>`, including the fragment itself and composed `#[settings]` structs
 - Integration with reinhardt-conf for email configuration
   - Admin and manager email lists
   - Subject prefix configuration

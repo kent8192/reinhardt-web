@@ -173,6 +173,16 @@ impl<M, T> FieldRef<M, T> {
 		Filter::new(self.name.to_string(), FilterOperator::Eq, value.into())
 	}
 
+	/// Create an exact equality filter using Django lookup naming.
+	pub fn exact<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		self.eq(value)
+	}
+
+	/// Create a case-insensitive exact match filter.
+	pub fn iexact<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		Filter::new(self.name.to_string(), FilterOperator::IExact, value.into())
+	}
+
 	/// Create a not-equal filter for this field
 	///
 	/// # Examples
@@ -231,6 +241,329 @@ impl<M, T> FieldRef<M, T> {
 	/// ```
 	pub fn lte<V: Into<FilterValue>>(&self, value: V) -> Filter {
 		Filter::new(self.name.to_string(), FilterOperator::Lte, value.into())
+	}
+
+	/// Create an IN filter. Named `is_in` because `in` is a Rust keyword.
+	pub fn is_in<I, V>(&self, values: I) -> Filter
+	where
+		I: IntoIterator<Item = V>,
+		V: Into<FilterValue>,
+	{
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::In,
+			FilterValue::List(values.into_iter().map(Into::into).collect()),
+		)
+	}
+
+	/// Create a NOT IN filter.
+	pub fn not_in<I, V>(&self, values: I) -> Filter
+	where
+		I: IntoIterator<Item = V>,
+		V: Into<FilterValue>,
+	{
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::NotIn,
+			FilterValue::List(values.into_iter().map(Into::into).collect()),
+		)
+	}
+
+	/// Create a LIKE `%value%` containment filter.
+	pub fn contains<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::Contains,
+			value.into(),
+		)
+	}
+
+	/// Create a case-insensitive containment filter.
+	pub fn icontains<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::IContains,
+			value.into(),
+		)
+	}
+
+	/// Create a LIKE `value%` prefix filter.
+	pub fn starts_with<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::StartsWith,
+			value.into(),
+		)
+	}
+
+	/// Create a case-insensitive prefix filter.
+	pub fn istarts_with<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::IStartsWith,
+			value.into(),
+		)
+	}
+
+	/// Create a LIKE `%value` suffix filter.
+	pub fn ends_with<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::EndsWith,
+			value.into(),
+		)
+	}
+
+	/// Create a case-insensitive suffix filter.
+	pub fn iends_with<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::IEndsWith,
+			value.into(),
+		)
+	}
+
+	/// Create an IS NULL filter.
+	pub fn is_null(&self) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::IsNull,
+			FilterValue::Null,
+		)
+	}
+
+	/// Create an IS NOT NULL filter.
+	pub fn is_not_null(&self) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::IsNotNull,
+			FilterValue::Null,
+		)
+	}
+
+	/// Create a regular expression filter.
+	pub fn regex<V: Into<FilterValue>>(&self, pattern: V) -> Filter {
+		Filter::new(self.name.to_string(), FilterOperator::Regex, pattern.into())
+	}
+
+	/// Create a case-insensitive regular expression filter.
+	pub fn iregex<V: Into<FilterValue>>(&self, pattern: V) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::IRegex,
+			pattern.into(),
+		)
+	}
+
+	/// Create a BETWEEN filter.
+	pub fn range<V: Into<FilterValue>>(&self, start: V, end: V) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::Range,
+			FilterValue::Range(Box::new(start.into()), Box::new(end.into())),
+		)
+	}
+
+	/// Create a PostgreSQL array containment filter (`@>`).
+	pub fn array_contains<I, V>(&self, values: I) -> Filter
+	where
+		I: IntoIterator<Item = V>,
+		V: ToString,
+	{
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::ArrayContains,
+			FilterValue::Array(values.into_iter().map(|v| v.to_string()).collect()),
+		)
+	}
+
+	/// Create a PostgreSQL array contained-by filter (`<@`).
+	pub fn array_contained_by<I, V>(&self, values: I) -> Filter
+	where
+		I: IntoIterator<Item = V>,
+		V: ToString,
+	{
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::ArrayContainedBy,
+			FilterValue::Array(values.into_iter().map(|v| v.to_string()).collect()),
+		)
+	}
+
+	/// Create a PostgreSQL array overlap filter (`&&`).
+	pub fn array_overlap<I, V>(&self, values: I) -> Filter
+	where
+		I: IntoIterator<Item = V>,
+		V: ToString,
+	{
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::ArrayOverlap,
+			FilterValue::Array(values.into_iter().map(|v| v.to_string()).collect()),
+		)
+	}
+
+	/// Create a PostgreSQL JSONB containment filter (`@>`).
+	pub fn jsonb_contains(&self, json: &str) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::JsonbContains,
+			FilterValue::String(json.to_string()),
+		)
+	}
+
+	/// Create a PostgreSQL JSONB contained-by filter (`<@`).
+	pub fn jsonb_contained_by(&self, json: &str) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::JsonbContainedBy,
+			FilterValue::String(json.to_string()),
+		)
+	}
+
+	/// Create a PostgreSQL JSONB key-exists filter (`?`).
+	pub fn jsonb_has_key(&self, key: &str) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::JsonbKeyExists,
+			FilterValue::String(key.to_string()),
+		)
+	}
+
+	/// Create a PostgreSQL JSONB any-key-exists filter (`?|`).
+	pub fn jsonb_has_any_keys<I, V>(&self, keys: I) -> Filter
+	where
+		I: IntoIterator<Item = V>,
+		V: ToString,
+	{
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::JsonbAnyKeyExists,
+			FilterValue::Array(keys.into_iter().map(|v| v.to_string()).collect()),
+		)
+	}
+
+	/// Create a PostgreSQL JSONB all-keys-exist filter (`?&`).
+	pub fn jsonb_has_keys<I, V>(&self, keys: I) -> Filter
+	where
+		I: IntoIterator<Item = V>,
+		V: ToString,
+	{
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::JsonbAllKeysExist,
+			FilterValue::Array(keys.into_iter().map(|v| v.to_string()).collect()),
+		)
+	}
+
+	/// Create a PostgreSQL JSONPath existence filter (`@?`).
+	pub fn jsonb_path_exists(&self, path: &str) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::JsonbPathExists,
+			FilterValue::String(path.to_string()),
+		)
+	}
+
+	/// Create a PostgreSQL range field containment filter (`@>`).
+	pub fn range_contains<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::RangeContains,
+			value.into(),
+		)
+	}
+
+	/// Create a PostgreSQL range field contained-by filter (`<@`).
+	pub fn range_contained_by(&self, range: &str) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::RangeContainedBy,
+			FilterValue::String(range.to_string()),
+		)
+	}
+
+	/// Create a PostgreSQL range field overlap filter (`&&`).
+	pub fn range_overlaps(&self, range: &str) -> Filter {
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::RangeOverlaps,
+			FilterValue::String(range.to_string()),
+		)
+	}
+
+	/// Transform a date/datetime field to its date component.
+	pub fn date(&self) -> TransformedFieldRef<M> {
+		self.transform("DATE({field})")
+	}
+
+	/// Transform a datetime/time field to its time component.
+	pub fn time(&self) -> TransformedFieldRef<M> {
+		self.transform("TIME({field})")
+	}
+
+	/// Transform a date/datetime field to its year component.
+	pub fn year(&self) -> TransformedFieldRef<M> {
+		self.extract("YEAR")
+	}
+
+	/// Transform a date/datetime field to its ISO year component.
+	pub fn iso_year(&self) -> TransformedFieldRef<M> {
+		self.extract("ISOYEAR")
+	}
+
+	/// Transform a date/datetime field to its month component.
+	pub fn month(&self) -> TransformedFieldRef<M> {
+		self.extract("MONTH")
+	}
+
+	/// Transform a date/datetime field to its day component.
+	pub fn day(&self) -> TransformedFieldRef<M> {
+		self.extract("DAY")
+	}
+
+	/// Transform a date/datetime field to its week component.
+	pub fn week(&self) -> TransformedFieldRef<M> {
+		self.extract("WEEK")
+	}
+
+	/// Transform to Django-compatible weekday where Sunday is 1.
+	pub fn week_day(&self) -> TransformedFieldRef<M> {
+		self.transform("(EXTRACT(DOW FROM {field}) + 1)")
+	}
+
+	/// Transform to ISO weekday where Monday is 1.
+	pub fn iso_week_day(&self) -> TransformedFieldRef<M> {
+		self.extract("ISODOW")
+	}
+
+	/// Transform a date/datetime field to its quarter component.
+	pub fn quarter(&self) -> TransformedFieldRef<M> {
+		self.extract("QUARTER")
+	}
+
+	/// Transform a datetime/time field to its hour component.
+	pub fn hour(&self) -> TransformedFieldRef<M> {
+		self.extract("HOUR")
+	}
+
+	/// Transform a datetime/time field to its minute component.
+	pub fn minute(&self) -> TransformedFieldRef<M> {
+		self.extract("MINUTE")
+	}
+
+	/// Transform a datetime/time field to its second component.
+	pub fn second(&self) -> TransformedFieldRef<M> {
+		self.extract("SECOND")
+	}
+
+	fn extract(&self, part: &str) -> TransformedFieldRef<M> {
+		self.transform(&format!("EXTRACT({} FROM {{field}})", part))
+	}
+
+	fn transform(&self, template: &str) -> TransformedFieldRef<M> {
+		let sql = template.replace("{field}", &quote_identifier(self.name));
+		TransformedFieldRef::new(sql)
 	}
 
 	/// Create an equality filter comparing this field to another field
@@ -330,13 +663,103 @@ impl<M, T> FieldRef<M, T> {
 	}
 }
 
+#[derive(Debug, Clone)]
+/// A SQL transform applied to a model field for Django-style date/time lookups.
+pub struct TransformedFieldRef<M> {
+	sql: String,
+	_phantom: PhantomData<M>,
+}
+
+impl<M> TransformedFieldRef<M> {
+	fn new(sql: String) -> Self {
+		Self {
+			sql,
+			_phantom: PhantomData,
+		}
+	}
+
+	fn filter<V: Into<FilterValue>>(&self, operator: FilterOperator, value: V) -> Filter {
+		Filter::expression(self.sql.clone(), operator, value.into())
+	}
+
+	/// Create an equality filter on the transformed value.
+	pub fn eq<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		self.filter(FilterOperator::Eq, value)
+	}
+
+	/// Create an exact equality filter using Django lookup naming.
+	pub fn exact<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		self.eq(value)
+	}
+
+	/// Create a case-insensitive exact match filter on the transformed value.
+	pub fn iexact<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		self.filter(FilterOperator::IExact, value)
+	}
+
+	/// Create a not-equal filter on the transformed value.
+	pub fn ne<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		self.filter(FilterOperator::Ne, value)
+	}
+
+	/// Create a greater-than filter on the transformed value.
+	pub fn gt<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		self.filter(FilterOperator::Gt, value)
+	}
+
+	/// Create a greater-than-or-equal filter on the transformed value.
+	pub fn gte<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		self.filter(FilterOperator::Gte, value)
+	}
+
+	/// Create a less-than filter on the transformed value.
+	pub fn lt<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		self.filter(FilterOperator::Lt, value)
+	}
+
+	/// Create a less-than-or-equal filter on the transformed value.
+	pub fn lte<V: Into<FilterValue>>(&self, value: V) -> Filter {
+		self.filter(FilterOperator::Lte, value)
+	}
+
+	/// Create an IN filter on the transformed value.
+	pub fn is_in<I, V>(&self, values: I) -> Filter
+	where
+		I: IntoIterator<Item = V>,
+		V: Into<FilterValue>,
+	{
+		Filter::expression(
+			self.sql.clone(),
+			FilterOperator::In,
+			FilterValue::List(values.into_iter().map(Into::into).collect()),
+		)
+	}
+
+	/// Create a BETWEEN filter on the transformed value.
+	pub fn range<V: Into<FilterValue>>(&self, start: V, end: V) -> Filter {
+		Filter::expression(
+			self.sql.clone(),
+			FilterOperator::Range,
+			FilterValue::Range(Box::new(start.into()), Box::new(end.into())),
+		)
+	}
+
+	/// Return the SQL expression backing this transformed field.
+	pub fn to_sql(&self) -> &str {
+		&self.sql
+	}
+}
+
 impl<M, T> fmt::Display for FieldRef<M, T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "{}", self.name)
 	}
 }
 
-// Allow conversion from FieldRef to String for Manager::filter()
+// Allow conversion from FieldRef to String for general string-context use
+// (logging, error messages, custom query builders). `Manager::filter` /
+// `QuerySet::filter` now take `impl Into<FilterCondition>` (Issue #4650), so they
+// no longer rely on this conversion.
 impl<M, T> From<FieldRef<M, T>> for String {
 	fn from(field_ref: FieldRef<M, T>) -> Self {
 		field_ref.name.to_string()
@@ -894,6 +1317,7 @@ mod tests {
 	struct TestUser {
 		id: i64,
 		name: String,
+		created_at: i64,
 	}
 
 	// Simulating what #[derive(Model)] macro would generate
@@ -904,6 +1328,10 @@ mod tests {
 
 		const fn field_name() -> FieldRef<TestUser, String> {
 			FieldRef::new("name")
+		}
+
+		const fn field_created_at() -> FieldRef<TestUser, i64> {
+			FieldRef::new("created_at")
 		}
 	}
 
@@ -927,6 +1355,34 @@ mod tests {
 		let id_ref = TestUser::field_id();
 		let f: F = id_ref.into();
 		assert_eq!(f.to_sql(), "\"id\"");
+	}
+
+	#[test]
+	fn test_field_ref_django_style_filter_helpers() {
+		let contains = TestUser::field_name().icontains("alice");
+		assert_eq!(contains.field, "name");
+		assert!(matches!(contains.operator, FilterOperator::IContains));
+		assert!(matches!(contains.value, FilterValue::String(value) if value == "alice"));
+
+		let in_filter = TestUser::field_id().is_in([1_i64, 2_i64]);
+		assert_eq!(in_filter.field, "id");
+		assert!(matches!(in_filter.operator, FilterOperator::In));
+		assert!(matches!(in_filter.value, FilterValue::List(values) if values.len() == 2));
+
+		let null_filter = TestUser::field_name().is_null();
+		assert_eq!(null_filter.field, "name");
+		assert!(matches!(null_filter.operator, FilterOperator::IsNull));
+	}
+
+	#[test]
+	fn test_field_ref_django_style_date_transform_helpers() {
+		let year = TestUser::field_created_at().year();
+		assert_eq!(year.to_sql(), "EXTRACT(YEAR FROM \"created_at\")");
+
+		let filter = year.gte(2026);
+		assert_eq!(filter.field, "EXTRACT(YEAR FROM \"created_at\")");
+		assert!(matches!(filter.operator, FilterOperator::Gte));
+		assert!(matches!(filter.value, FilterValue::Integer(2026)));
 	}
 
 	#[test]

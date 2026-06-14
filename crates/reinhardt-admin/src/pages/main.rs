@@ -2,10 +2,19 @@
 
 use crate::pages::router;
 use reinhardt_pages::component::PageExt;
-use reinhardt_pages::{Effect, Element, cleanup_reactive_nodes};
+use reinhardt_pages::{Element, cleanup_reactive_nodes};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use web_sys::{Event, HtmlElement, window};
+
+fn render_current_route(app_element: &web_sys::Element) -> Result<(), JsValue> {
+	cleanup_reactive_nodes();
+	let view = router::with_router(|r| r.render_current());
+	app_element.set_inner_html("");
+	let wrapper = Element::new(app_element.clone());
+	view.mount(&wrapper)
+		.map_err(|e| JsValue::from_str(&format!("Mount failed: {:?}", e)))
+}
 
 /// WASM entry point
 ///
@@ -13,7 +22,7 @@ use web_sys::{Event, HtmlElement, window};
 /// It initializes the application and mounts it to the DOM.
 #[allow(clippy::main_recursion)]
 #[wasm_bindgen(start)]
-pub fn main() -> Result<(), JsValue> {
+pub fn start() -> Result<(), JsValue> {
 	// Set up panic hook for better error messages in console
 	#[cfg(feature = "console_error_panic_hook")]
 	console_error_panic_hook::set_once();
@@ -36,47 +45,23 @@ pub fn main() -> Result<(), JsValue> {
 	// Initialize global router
 	router::init_global_router();
 
-	// Auth gate: if no JWT token is stored, redirect to login page.
-	// Uses AdminUrls default since dashboard data has not been fetched yet.
-	if reinhardt_pages::auth::get_jwt_token().is_none() {
-		let login_url = crate::pages::router::get_login_url();
-		router::with_router(|r| {
-			let _ = r.push(&login_url);
-		});
-	}
-
 	// Initial render — mount to DOM so event handlers (form submit, etc.) are attached.
-	let view = router::with_router(|r| r.render_current());
-	let app_wrapper = Element::new(app_element.clone());
-	app_element.set_inner_html(""); // clear before mount
-	view.mount(&app_wrapper)
-		.map_err(|e| JsValue::from_str(&format!("Mount failed: {:?}", e)))?;
+	render_current_route(&app_element)?;
 
-	// Set up reactive effect for route changes
+	// Re-render only on actual router navigation. Tracking router signals in a
+	// reactive effect remounts the whole app during form input updates and clears
+	// uncontrolled field values.
 	let app_clone = app_element.clone();
-	let _effect = Effect::new(move || {
-		let view = router::with_router(|r| {
-			// Subscribe to both current_path and current_params to trigger re-render.
-			// current_params alone is insufficient: /admin/login/ → /admin/
-			// both have empty params, so the signal would not trigger.
-			let _ = r.current_path().get();
-			let _ = r.current_params().get();
-			r.render_current()
-		});
-		// Clean up previous reactive nodes before re-mounting to prevent
-		// stale Effects from operating on detached DOM nodes.
-		cleanup_reactive_nodes();
-		app_clone.set_inner_html("");
-		let wrapper = Element::new(app_clone.clone());
-		if let Err(e) = view.mount(&wrapper) {
-			web_sys::console::error_1(&format!("Re-mount failed: {:?}", e).into());
-		}
+	let render_subscription = router::with_router(|r| {
+		r.on_navigate(move |_path, _params| {
+			if let Err(e) = render_current_route(&app_clone) {
+				web_sys::console::error_1(&format!("Re-mount failed: {:?}", e).into());
+			}
+		})
 	});
-	// Intentional memory leak: WASM entry points run for the entire application
-	// lifetime and never terminate. The Effect must persist to keep reactive
-	// re-renders working. Dropping it would disable route-change rendering.
-	// See: https://rustwasm.github.io/wasm-bindgen/reference/weak-references.html
-	std::mem::forget(_effect);
+	// WASM entry points run for the whole application lifetime, so this
+	// navigation subscription must stay alive for the same duration.
+	std::mem::forget(render_subscription);
 
 	// Set up navigation event listeners
 

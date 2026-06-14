@@ -384,10 +384,10 @@ fn event_type_from_string(s: &str) -> Option<EventType> {
 		"error" => Some(EventType::Error),
 		"scroll" => Some(EventType::Scroll),
 		"resize" => Some(EventType::Resize),
-		unknown => {
+		_unknown => {
 			crate::warn_log!(
 				"Unknown event type '{}' encountered during hydration, skipping",
-				unknown
+				_unknown
 			);
 			None
 		}
@@ -440,7 +440,7 @@ fn test_attach_options_full_hydration() {
 	assert!(!options.skip_static);
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(native)]
 #[test]
 fn test_attach_events_recursive_non_wasm() {
 	let mut registry = EventRegistry::new();
@@ -453,7 +453,7 @@ fn test_attach_events_recursive_non_wasm() {
 	assert!(result.is_ok());
 	assert!(!registry.is_empty());
 }
-#[cfg(all(test, not(target_arch = "wasm32")))]
+#[cfg(all(test, native))]
 mod tests {
 	use super::*;
 

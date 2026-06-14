@@ -7,7 +7,7 @@
 //!
 //! This middleware can send email notifications to managers when broken links are
 //! detected. The canonical entry point is
-//! [`BrokenLinkEmailsMiddleware::from_settings`], which copies
+//! `BrokenLinkEmailsMiddleware::from_settings`, which copies
 //! `Settings::managers` into [`BrokenLinkConfig::managers`] once at middleware
 //! construction time. When no `Settings` instance is available, callers may
 //! configure recipients directly via [`BrokenLinkConfig::with_emails`]; the
@@ -19,7 +19,6 @@ use hyper::header::{REFERER, USER_AGENT};
 use regex::Regex;
 use reinhardt_conf::settings;
 use reinhardt_http::{Handler, Middleware, Request, Response, Result};
-use reinhardt_mail;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -39,7 +38,7 @@ pub struct BrokenLinkConfig {
 	/// Managers to notify when a broken link is detected
 	///
 	/// Resolved from `Settings::managers` at middleware construction time via
-	/// [`BrokenLinkConfig::from_settings`]. When empty, the middleware falls
+	/// `BrokenLinkConfig::from_settings`. When empty, the middleware falls
 	/// back to converting [`BrokenLinkConfig::email_addresses`] into anonymous
 	/// `Contact` entries.
 	pub managers: Vec<settings::Contact>,
@@ -75,30 +74,6 @@ impl BrokenLinkConfig {
 			],
 			managers: Vec::new(),
 		}
-	}
-
-	/// Create a `BrokenLinkConfig` from application `Settings`
-	///
-	/// Resolves `Settings::managers` once at construction time, so the
-	/// middleware does not need to re-parse settings on every request.
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_conf::Settings;
-	/// use reinhardt_middleware::BrokenLinkConfig;
-	///
-	/// #[allow(deprecated)]
-	/// let settings = Settings::default();
-	/// #[allow(deprecated)]
-	/// let config = BrokenLinkConfig::from_settings(&settings);
-	/// assert!(config.enabled);
-	/// ```
-	#[allow(deprecated)] // Settings is deprecated in favor of composable fragments
-	pub fn from_settings(settings: &settings::Settings) -> Self {
-		let mut config = Self::new();
-		config.managers = settings.managers.clone();
-		config
 	}
 
 	/// Disable broken link detection
@@ -249,28 +224,6 @@ impl BrokenLinkEmailsMiddleware {
 		}
 	}
 
-	/// Create a `BrokenLinkEmailsMiddleware` from application `Settings`
-	///
-	/// This is the canonical entry point. Manager contacts from
-	/// `Settings::managers` are resolved exactly once and stored on the
-	/// middleware, eliminating per-request environment lookups.
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_conf::Settings;
-	/// use reinhardt_middleware::BrokenLinkEmailsMiddleware;
-	///
-	/// #[allow(deprecated)]
-	/// let settings = Settings::default();
-	/// #[allow(deprecated)]
-	/// let middleware = BrokenLinkEmailsMiddleware::from_settings(&settings);
-	/// ```
-	#[allow(deprecated)] // Settings is deprecated in favor of composable fragments
-	pub fn from_settings(settings: &settings::Settings) -> Self {
-		Self::new(BrokenLinkConfig::from_settings(settings))
-	}
-
 	/// Check if the path should be ignored
 	fn is_ignored_path(&self, path: &str) -> bool {
 		self.ignored_path_regexes.iter().any(|re| re.is_match(path))
@@ -326,7 +279,7 @@ impl BrokenLinkEmailsMiddleware {
 			)
 		};
 
-		// Send email notifications to managers
+		#[cfg(feature = "broken-link-email")]
 		if !managers.is_empty() {
 			let subject = format!("Broken link detected: {}", path);
 			let body = format!(
@@ -346,6 +299,10 @@ impl BrokenLinkEmailsMiddleware {
 				// Schedule email sending in a separate task to avoid blocking
 				// Note: Uses default SMTP config (localhost:25). Configure via SmtpConfig for production.
 				tokio::spawn(async move {
+					// `SmtpConfig` is deprecated in favor of the `EmailSettings`
+					// fragment; this placeholder default is kept during the 0.2
+					// compatibility window.
+					#[allow(deprecated)]
 					let config = reinhardt_mail::SmtpConfig::default();
 					let backend = match reinhardt_mail::SmtpBackend::new(config) {
 						Ok(backend) => backend,
@@ -376,6 +333,13 @@ impl BrokenLinkEmailsMiddleware {
 					}
 				});
 			}
+		}
+
+		#[cfg(not(feature = "broken-link-email"))]
+		if !managers.is_empty() {
+			log::debug!(
+				"Broken link email notification skipped because the broken-link-email feature is disabled"
+			);
 		}
 	}
 }

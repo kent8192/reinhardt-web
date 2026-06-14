@@ -9,13 +9,6 @@ use reinhardt_macros::{consumer, producer, streaming_patterns};
 use reinhardt_streaming::{Message, StreamingError, streaming_routes};
 use serde::{Deserialize, Serialize};
 
-// Stub __url_resolver_support for StreamingRef impl
-pub mod __url_resolver_support {
-	pub struct StreamingRef<'a> {
-		pub _marker: core::marker::PhantomData<&'a ()>,
-	}
-}
-
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct Order {
 	id: u64,
@@ -46,17 +39,6 @@ fn per_app_struct_has_correct_topic_names() {
 	};
 
 	// Act & Assert: methods return the Kafka topic registered by #[producer]/#[consumer]
-	assert_eq!(app_urls.emit_event(), "events");
-	assert_eq!(app_urls.on_event(), "events");
-}
-
-#[test]
-fn streaming_ref_accessor_returns_per_app_struct() {
-	let streaming_ref = __url_resolver_support::StreamingRef {
-		_marker: PhantomData,
-	};
-
-	let app_urls = streaming_ref.applabel();
 	assert_eq!(app_urls.emit_event(), "events");
 	assert_eq!(app_urls.on_event(), "events");
 }

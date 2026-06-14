@@ -18,7 +18,7 @@ use syn::parse_quote;
 /// // use reinhardt::db::migrations::prelude::*;
 /// // use reinhardt::db::migrations::FieldType;
 ///
-/// pub fn migration() -> Migration {
+/// pub(super) fn migration() -> Migration {
 ///     Migration::new("0001_initial", "app")
 /// }
 /// ```
@@ -157,7 +157,7 @@ impl FilesystemRepository {
 			use reinhardt::db::migrations::prelude::*;
 			use reinhardt::db::migrations::FieldType;
 
-			pub fn migration() -> Migration {
+			pub(super) fn migration() -> Migration {
 				Migration {
 					app_label: #app_label.to_string(),
 					name: #name.to_string(),
@@ -453,7 +453,7 @@ mod tests {
 		assert!(tokio::fs::try_exists(&path).await.unwrap());
 
 		let content = tokio::fs::read_to_string(&path).await.unwrap();
-		assert!(content.contains("pub fn migration() -> Migration"));
+		assert!(content.contains("pub(super) fn migration() -> Migration"));
 		assert!(content.contains("app_label: \"polls\""));
 		assert!(content.contains("name: \"0001_initial\""));
 	}

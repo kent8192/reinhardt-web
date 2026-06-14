@@ -1,7 +1,10 @@
 // Integration tests for reinhardt-conf SettingsBuilder API.
 // Covers: default values, overrides, validation, database config, middleware config,
 // installed apps, profile, and error cases.
-#![allow(deprecated)] // Tests exercise deprecated Settings for backward-compatibility verification
+
+// `TemplateConfig` is deprecated in favor of the `TemplateSettings` fragment;
+// these tests still exercise the legacy type during the compatibility window.
+#![allow(deprecated)]
 
 use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::profile::Profile;
@@ -9,7 +12,7 @@ use reinhardt_conf::settings::sources::DefaultSource;
 use reinhardt_conf::settings::validation::{
 	RequiredValidator, SecurityValidator, SettingsValidator,
 };
-use reinhardt_conf::settings::{DatabaseConfig, MiddlewareConfig, Settings, TemplateConfig};
+use reinhardt_conf::settings::{DatabaseConfig, MiddlewareConfig, TemplateConfig};
 use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -421,240 +424,6 @@ fn merged_settings_clone_is_independent() {
 }
 
 // ===========================================================================
-// Settings struct – default values
-// ===========================================================================
-
-#[rstest]
-fn settings_default_debug_is_true() {
-	// Act
-	let settings = Settings::default();
-
-	// Assert
-	assert!(settings.core.debug);
-}
-
-#[rstest]
-fn settings_default_time_zone_is_utc() {
-	// Act
-	let settings = Settings::default();
-
-	// Assert
-	assert_eq!(settings.time_zone, "UTC");
-}
-
-#[rstest]
-fn settings_default_language_code_is_en_us() {
-	// Act
-	let settings = Settings::default();
-
-	// Assert
-	assert_eq!(settings.language_code, "en-us");
-}
-
-#[rstest]
-#[allow(deprecated)] // Test: verifies deprecated `installed_apps` field behavior
-fn settings_default_installed_apps_is_empty() {
-	// Act
-	let settings = Settings::default();
-
-	// Assert
-	assert!(settings.core.installed_apps.is_empty());
-}
-
-#[rstest]
-fn settings_default_middleware_is_empty() {
-	// Act
-	let settings = Settings::default();
-
-	// Assert
-	assert!(settings.core.middleware.is_empty());
-}
-
-#[rstest]
-fn settings_default_static_url() {
-	// Act
-	let settings = Settings::default();
-
-	// Assert
-	assert_eq!(settings.static_url, "/static/");
-}
-
-#[rstest]
-fn settings_default_media_url() {
-	// Act
-	let settings = Settings::default();
-
-	// Assert
-	assert_eq!(settings.media_url, "/media/");
-}
-
-#[rstest]
-fn settings_default_databases_has_default_entry() {
-	// Act
-	let settings = Settings::default();
-
-	// Assert
-	assert!(settings.core.databases.contains_key("default"));
-}
-
-#[rstest]
-fn settings_default_append_slash_is_true() {
-	// Act
-	let settings = Settings::default();
-
-	// Assert
-	assert!(settings.core.security.append_slash);
-}
-
-// ===========================================================================
-// Settings struct – new() constructor
-// ===========================================================================
-
-#[rstest]
-fn settings_new_sets_base_dir_and_secret_key() {
-	// Arrange
-	let base_dir = PathBuf::from("/app");
-	let secret_key = "test-secret-key-12345".to_string();
-
-	// Act
-	let settings = Settings::new(base_dir.clone(), secret_key.clone());
-
-	// Assert
-	assert_eq!(settings.core.base_dir, base_dir);
-	assert_eq!(settings.core.secret_key, secret_key);
-}
-
-#[rstest]
-fn settings_new_debug_defaults_to_true() {
-	// Act
-	let settings = Settings::new(PathBuf::from("/app"), "some-key".to_string());
-
-	// Assert
-	assert!(settings.core.debug);
-}
-
-// ===========================================================================
-// Settings struct – add_app / installed_apps
-// ===========================================================================
-
-#[rstest]
-#[allow(deprecated)] // Test: verifies deprecated `add_app` method behavior
-fn settings_add_app_increases_count() {
-	// Arrange
-	let mut settings = Settings::default();
-
-	// Act
-	settings.add_app("myapp");
-
-	// Assert
-	assert_eq!(settings.core.installed_apps.len(), 1);
-	assert!(settings.core.installed_apps.contains(&"myapp".to_string()));
-}
-
-#[rstest]
-#[allow(deprecated)] // Test: verifies deprecated `add_app` method behavior
-fn settings_add_multiple_apps() {
-	// Arrange
-	let mut settings = Settings::default();
-
-	// Act
-	settings.add_app("app_a");
-	settings.add_app("app_b");
-	settings.add_app("app_c");
-
-	// Assert
-	assert_eq!(settings.core.installed_apps.len(), 3);
-	assert!(settings.core.installed_apps.contains(&"app_a".to_string()));
-	assert!(settings.core.installed_apps.contains(&"app_b".to_string()));
-	assert!(settings.core.installed_apps.contains(&"app_c".to_string()));
-}
-
-#[rstest]
-#[allow(deprecated)] // Test: verifies deprecated `with_validated_apps` method behavior
-fn settings_with_validated_apps_replaces_apps_list() {
-	// Arrange
-	let mut settings = Settings::default();
-	settings.add_app("old_app");
-
-	// Act
-	let settings =
-		settings.with_validated_apps(|| vec!["new_app_one".to_string(), "new_app_two".to_string()]);
-
-	// Assert
-	assert_eq!(settings.core.installed_apps.len(), 2);
-	assert!(
-		!settings
-			.core
-			.installed_apps
-			.contains(&"old_app".to_string())
-	);
-	assert!(
-		settings
-			.core
-			.installed_apps
-			.contains(&"new_app_one".to_string())
-	);
-}
-
-// ===========================================================================
-// Settings struct – middleware
-// ===========================================================================
-
-#[rstest]
-fn settings_middleware_field_can_be_set_directly() {
-	// Arrange
-	let mut settings = Settings::default();
-
-	// Act
-	settings.core.middleware = vec![
-		"reinhardt.middleware.SecurityMiddleware".to_string(),
-		"reinhardt.middleware.SessionMiddleware".to_string(),
-	];
-
-	// Assert
-	assert_eq!(settings.core.middleware.len(), 2);
-	assert_eq!(
-		settings.core.middleware[0],
-		"reinhardt.middleware.SecurityMiddleware"
-	);
-}
-
-// ===========================================================================
-// Settings struct – admin / manager contacts
-// ===========================================================================
-
-#[rstest]
-fn settings_add_admin_and_manager() {
-	// Arrange
-	let mut settings = Settings::default();
-
-	// Act
-	settings.add_admin("Alice", "alice@example.com");
-	settings.add_manager("Bob", "bob@example.com");
-
-	// Assert
-	assert_eq!(settings.admins.len(), 1);
-	assert_eq!(settings.admins[0].name, "Alice");
-	assert_eq!(settings.managers.len(), 1);
-	assert_eq!(settings.managers[0].name, "Bob");
-}
-
-#[rstest]
-fn settings_managers_from_admins_copies_all() {
-	// Arrange
-	let mut settings = Settings::default();
-	settings.add_admin("Admin One", "one@example.com");
-	settings.add_admin("Admin Two", "two@example.com");
-
-	// Act
-	settings.managers_from_admins();
-
-	// Assert
-	assert_eq!(settings.managers.len(), 2);
-	assert_eq!(settings.managers, settings.admins);
-}
-
-// ===========================================================================
 // DatabaseConfig – factory methods
 // ===========================================================================
 
@@ -804,37 +573,6 @@ fn template_config_add_dir_appends_path() {
 	// Assert
 	assert_eq!(cfg.dirs.len(), 1);
 	assert_eq!(cfg.dirs[0], PathBuf::from("/app/templates"));
-}
-
-// ===========================================================================
-// Settings struct – static / media config
-// ===========================================================================
-
-#[rstest]
-fn settings_get_static_config_fails_when_static_root_not_set() {
-	// Arrange
-	let settings = Settings::default();
-
-	// Act
-	let result = settings.get_static_config();
-
-	// Assert
-	assert!(result.is_err());
-}
-
-#[rstest]
-fn settings_get_static_config_succeeds_when_static_root_is_set() {
-	// Arrange
-	let mut settings = Settings::default();
-	settings.static_root = Some(PathBuf::from("/app/static"));
-
-	// Act
-	let result = settings.get_static_config();
-
-	// Assert
-	assert!(result.is_ok());
-	let config = result.unwrap();
-	assert_eq!(config.static_url, "/static/");
 }
 
 // ===========================================================================

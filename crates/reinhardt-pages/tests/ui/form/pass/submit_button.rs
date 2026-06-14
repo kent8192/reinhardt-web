@@ -12,18 +12,18 @@ fn main() {
 		fields: {
 			username: CharField {
 				required,
-				label: "Username"
-			},
+				label: "Username",
+			}
 			password: CharField {
 				required,
 				widget: PasswordInput,
-				label: "Password"
-			},
+				label: "Password",
+			}
 			submit: SubmitButton {
 				label: "Sign in",
-				class: "btn-primary"
-			},
-		},
+				class: "btn-primary",
+			}
+		}
 	};
 
 	// SubmitButton with minimal properties (defaults to "Submit" label)
@@ -31,9 +31,11 @@ fn main() {
 		name: MinimalForm,
 		action: "/api/submit",
 		fields: {
-			name: CharField { required },
-			submit: SubmitButton {},
-		},
+			name: CharField {
+				required,
+			}
+			submit: SubmitButton,
+		}
 	};
 
 	// SubmitButton with id and disabled
@@ -41,12 +43,14 @@ fn main() {
 		name: DisabledForm,
 		action: "/api/submit",
 		fields: {
-			email: EmailField { required },
+			email: EmailField {
+				required,
+			}
 			submit: SubmitButton {
 				label: "Send",
 				id: "submit-btn",
-				disabled
-			},
-		},
+				disabled,
+			}
+		}
 	};
 }

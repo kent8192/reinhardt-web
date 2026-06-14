@@ -25,13 +25,13 @@ Before you begin, make sure you have:
 
 ### Step 1: Install Reinhardt Admin
 
-The command below pins the CLI version for reproducibility. Omit `--version`
-to install the latest stable release. The literal below is auto-bumped by
-release-plz on each release.
+Install the CLI with Cargo. The command below pins this guide to the
+documented release for reproducibility; omit `--version` to let Cargo choose
+the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.1.4"
+cargo install reinhardt-admin-cli --version "0.2.0-rc.6"
 ```
 
 **Note:** After installation, the command is `reinhardt-admin`, not
@@ -40,8 +40,8 @@ cargo install reinhardt-admin-cli --version "0.1.4"
 ### Step 2: Create a New Project
 
 ```bash
-# Create a RESTful API project
-reinhardt-admin startproject my-api --with-rest
+# Create a RESTful API project (default)
+reinhardt-admin startproject my-api
 cd my-api
 ```
 
@@ -129,7 +129,7 @@ Visit `http://127.0.0.1:8000/` in your browser.
 - `cargo make wasm-build-dev` - Build WASM only (debug)
 - `cargo make wasm-build-release` - Build WASM only (release, with wasm-opt)
 
-See [examples/examples-twitter](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-twitter) for a complete implementation.
+See [examples/examples-tutorial-basis](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis) for a complete implementation.
 
 ### Step 3: Choose Your Flavor
 
@@ -141,7 +141,7 @@ Balanced setup for most production projects:
 
 {% versioned_code(lang="toml") %}
 [dependencies]
-# Default behavior - standard bundle enabled
+# Default behavior - all features enabled
 reinhardt = { version = "LATEST_VERSION", package = "reinhardt-web" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -354,14 +354,16 @@ next:
 
 ### 📚 Tutorials
 
-- [Tutorial 1: Serialization](/quickstart/tutorials/rest/1-serialization/)
-- [Tutorial 2: Requests and Responses](/quickstart/tutorials/rest/2-requests-and-responses/)
-- [Tutorial 3: Class-Based Views](/quickstart/tutorials/rest/3-class-based-views/)
-- [Tutorial 4: Authentication & Permissions](/quickstart/tutorials/rest/4-authentication-and-permissions/)
+- [Part 1: Project Setup](/quickstart/tutorials/rest/1-project-setup/)
+- [Part 2: Your First Endpoints](/quickstart/tutorials/rest/2-first-endpoints/)
+- [Part 3: Models and the Database](/quickstart/tutorials/rest/3-models-and-database/)
+- [Part 4: Dependency Injection](/quickstart/tutorials/rest/4-dependency-injection/)
+- [Part 5: Serializers and Validation](/quickstart/tutorials/rest/5-serializers-and-validation/)
+- [Part 6: Bonus: ViewSets and Routers](/quickstart/tutorials/rest/6-viewsets-and-routers/)
 
 ### 🎛️ Advanced Features
 
-- **Dependency Injection** - FastAPI-style DI (Tutorial coming soon)
+- [Dependency Injection](/quickstart/tutorials/rest/4-dependency-injection/) - Wire API handlers to the database
 - [Feature Flags Guide](/docs/feature-flags/) - Optimize your build
 - [Database Integration](#database-integration) - Connect to PostgreSQL/MySQL
 - Management Commands - Django-style
@@ -382,7 +384,8 @@ Check out the [ORM documentation](/docs/api/) for more details.
 
 ## Getting Help
 
-- 📖 [API Reference](https://docs.rs/reinhardt-web/latest/reinhardt_web/)
+<!-- reinhardt-version-sync -->
+- 📖 [API Reference](https://docs.rs/reinhardt-web/0.2.0-rc.6/reinhardt/)
 - 🗺️ [DeepWiki](https://deepwiki.com/kent8192/reinhardt-web) - AI-generated codebase documentation
 - 💬 [GitHub Discussions](https://github.com/kent8192/reinhardt-web/discussions)
 - 🐛 [Report Issues](https://github.com/kent8192/reinhardt-web/issues)

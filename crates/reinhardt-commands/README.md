@@ -12,13 +12,14 @@ migrations, static file collection, development server, and more.
 
 Add `reinhardt` to your `Cargo.toml`:
 
-<!-- reinhardt-version-sync:2 -->
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.4", features = ["commands"] }
+reinhardt = { version = "0.2.0-rc.6", features = ["commands"] }
 
-# Or use the broad preset:
-# reinhardt = { version = "0.1.4", features = ["full"] }      # Includes commands
+# Or use a preset:
+# reinhardt = { version = "0.2.0-rc.6", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.2.0-rc.6", features = ["full"] }      # All features
 ```
 
 Then import command features:
@@ -27,7 +28,7 @@ Then import command features:
 use reinhardt::commands::{BaseCommand, CommandRegistry};
 ```
 
-**Note:** The root `commands` feature is opt-in. It is included in the `full` preset, but not in the default `standard` preset.
+**Note:** Command features are included in the `standard` and `full` feature presets.
 
 ### As a global CLI tool
 
@@ -36,9 +37,9 @@ package:
 
 <!-- reinhardt-version-sync -->
 ```bash
-# Pre-release: --version is required. Once 0.1.4 stable ships, --version
-# becomes optional. The literal below is auto-bumped by release-plz.
-cargo install reinhardt-admin-cli --version "0.1.0-rc.30"
+# Pin the documented Reinhardt release for reproducibility.
+# Omit --version to let Cargo choose the latest stable release.
+cargo install reinhardt-admin-cli --version "0.2.0-rc.6"
 ```
 
 This installs the `reinhardt-admin` command:
@@ -58,6 +59,7 @@ details.
 - **makemigrations** - Create new database migrations based on model changes
 - **migrate** - Apply database migrations
 - **runserver** - Start the development server
+- **infra** - Start, stop, inspect, and use local development infrastructure
 - **shell** - Run an interactive REPL
 - **check** - Check the project for common issues
 - **collectstatic** - Collect static files into `STATIC_ROOT`
@@ -127,7 +129,7 @@ use reinhardt::commands::TemplateContext;
 
 let mut context = TemplateContext::new();
 context.insert("project_name", "my_project");
-context.insert("version", "0.1.4");
+context.insert("version", "0.2.0-rc.6");
 context.insert("features", vec!["auth", "admin"]);  // Any Serialize type
 ```
 
@@ -182,6 +184,38 @@ cargo run --bin manage migrate
 cargo run --bin manage runserver
 ```
 
+### `infra` Command
+
+The `infra` command manages project-local Docker containers derived from the
+resolved Reinhardt settings. Use `infra run` for short-lived management
+commands that need local infrastructure values. Keep long-running server
+processes on the normal `manage runserver` entrypoint.
+
+```bash
+# Start containers for services inferred from settings
+cargo run --bin manage infra up
+
+# Print the resolved state as JSON
+cargo run --bin manage infra up --json
+
+# Run a short-lived management command with local infrastructure settings applied
+cargo run --bin manage infra run -- migrate
+
+# Run the development server separately after exporting local infrastructure env
+eval "$(cargo run --bin manage infra up --print-env)"
+cargo run --bin manage runserver
+
+# Inspect or stop the persisted local infrastructure state
+cargo run --bin manage infra status
+cargo run --bin manage infra down
+```
+
+State is stored under `.reinhardt/local-infra.json` in the project directory.
+The child process receives `DATABASE_URL`, `REDIS_URL`, and compatible
+`REINHARDT_` environment variables for discovered local services.
+`infra run -- runserver` is intentionally unsupported; start infrastructure
+first, then run `manage runserver` as its own process.
+
 ### `makemigrations` Command Options
 
 The `makemigrations` command supports the following flags and options:
@@ -202,12 +236,6 @@ By default, `makemigrations` builds the current project state by replaying
 existing migrations using TestContainers (or a real database with `--from-db`).
 If neither is available, the command fails.
 
-When model changes look like compatible field renames, `makemigrations`
-emits `RenameColumn` for unambiguous one-to-one matches. If multiple old and
-new fields are compatible and the rename intent is ambiguous, the command
-stops instead of generating destructive `AddColumn` + `DropColumn`
-operations.
-
 The `--force-empty-state` flag overrides this behavior by assuming an empty
 starting state, which is useful in the following scenarios:
 
@@ -227,6 +255,60 @@ cargo run --bin manage makemigrations --force-empty-state
 cargo run --bin manage makemigrations --force-empty-state --dry-run
 ```
 
+### `migrate` Command Options
+
+The `migrate` command applies and unapplies migrations using Django-style
+*migrate-with-target* semantics: a single command expresses both directions and
+the direction is resolved from the currently applied state.
+
+| Flag / Option | Description |
+|---------------|-------------|
+| `<APP_LABEL>` | App to migrate (positional, optional) |
+| `<MIGRATION_NAME>` | Target migration, or the special token `zero` (positional, optional) |
+| `--fake` | Update the recorder (mark applied for forward, unapplied for rollback) without executing migration SQL |
+| `--fake-initial` | Skip the initial migration if the tables already exist |
+| `--plan` | Preview the migration plan without applying or rolling back |
+| `--migrations-dir <DIR>` | Root directory containing migration files (default: `./migrations`) |
+| `-d`, `--database <URL>` | Database connection string (falls back to `DATABASE_URL`) |
+
+**Note:** Although `<APP_LABEL>` and `<MIGRATION_NAME>` are each individually
+optional, supplying a `<MIGRATION_NAME>` requires `<APP_LABEL>` to be given as
+well; otherwise the command fails with `<migration> requires <app>`.
+
+#### Migrate to a Target
+
+When a `<MIGRATION_NAME>` is given, the direction is auto-detected by comparing
+the target against the migrations currently applied for `<APP_LABEL>`:
+
+```bash
+# Apply every unapplied migration for the app (no target)
+cargo run --bin manage migrate myapp
+
+# Forward: apply up to and including 0003_third (and its dependencies)
+cargo run --bin manage migrate myapp 0003_third
+
+# Backward: roll back every migration applied after 0001_initial
+cargo run --bin manage migrate myapp 0001_initial
+
+# Unapply ALL migrations for the app (Django's special `zero` token)
+cargo run --bin manage migrate myapp zero
+
+# Preview any of the above without touching the database
+cargo run --bin manage migrate myapp 0001_initial --plan
+```
+
+The resolution rules are:
+
+- `<target> == "zero"` — unapply **all** migrations for the app.
+- `<target>` is currently applied — roll back every migration applied **after**
+  it (backward). When `<target>` is already the latest applied migration this is
+  a no-op.
+- `<target>` is **not** applied — apply `<target>` and its intra-app dependency
+  closure (forward), skipping anything already applied.
+
+`--plan` never mutates the database, including the migration bookkeeping table:
+on a fresh database a dry-run leaves it uncreated.
+
 ### `collect_migrations!` Macro and `linkme` Dependency
 
 The `collect_migrations!` macro registers migration modules for runtime
@@ -238,7 +320,7 @@ Projects using `collect_migrations!` must add `linkme` as a dependency:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.4", features = ["commands"] }
+reinhardt = { version = "0.2.0-rc.6", features = ["standard"] }
 linkme = "0.3"
 ```
 
@@ -265,6 +347,8 @@ time.
 | --------------------------------- | --------------------------------------- |
 | `python manage.py makemigrations` | `cargo run --bin manage makemigrations` |
 | `python manage.py migrate`        | `cargo run --bin manage migrate`        |
+| `python manage.py migrate app 0001` | `cargo run --bin manage migrate app 0001` |
+| `python manage.py migrate app zero` | `cargo run --bin manage migrate app zero` |
 | `python manage.py runserver`      | `cargo run --bin manage runserver`      |
 | `python manage.py shell`          | `cargo run --bin manage shell`          |
 | `python manage.py check`          | `cargo run --bin manage check`          |
@@ -391,6 +475,21 @@ impl BaseCommand for PluginInstallCommand {
 
 ```bash
 reinhardt-admin startproject myproject --template rest
+reinhardt-admin startproject myproject --template pages
+reinhardt-admin startproject myproject --features standard,admin --no-interactive
+```
+
+Pass the project type and dependency selection explicitly. Use
+`--reinhardt-version`, `--feature`, `--features`, `--default-features`, and
+`--no-interactive` for reproducible scripts instead of relying on a
+`startproject` wizard.
+
+Existing projects can update their `reinhardt` dependency through the same
+selection flow:
+
+```bash
+reinhardt-admin configure
+reinhardt-admin configure /path/to/project --features minimal,db-sqlite --no-interactive
 ```
 
 ### App Templates
@@ -439,8 +538,6 @@ subdirectories matching the built-in names:
 - `project_restful_template`
 - `app_pages_template`
 - `app_restful_template`
-- `app_pages_workspace_template`
-- `app_restful_workspace_template`
 
 Any file present in your override directory wins; any file absent falls back to
 the embedded copy. This lets you customise a single file without vendoring the

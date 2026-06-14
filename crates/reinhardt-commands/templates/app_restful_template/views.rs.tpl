@@ -7,18 +7,18 @@
 //     pub mod example;
 // }
 //
-// Example of an authenticated endpoint using `AuthUser<U>` (rc.15+):
-// `AuthUser<U>` resolves the authenticated user via DI — JWT verification
+// Example of an authenticated endpoint using `CurrentUser<U>`:
+// `CurrentUser<U>` resolves the authenticated user via DI — JWT verification
 // is handled automatically by the auth middleware.
 // `#[get]` auto-enables DI when `#[inject]` parameters are present.
 //
 // use crate::models::User; // replace with your user model
-// use reinhardt::{get, AuthUser, Response, StatusCode};
+// use reinhardt::{get, CurrentUser, Response, StatusCode};
 // use reinhardt::http::ViewResult;
 //
 // #[get("/me/", name = "{{ app_name }}_me")]
 // pub async fn me(
-//     #[inject] AuthUser(user): AuthUser<User>,
+//     #[inject] CurrentUser(user): CurrentUser<User>,
 // ) -> ViewResult<Response> {
 //     Ok(Response::new(StatusCode::OK).with_body(user.email().to_string()))
 // }

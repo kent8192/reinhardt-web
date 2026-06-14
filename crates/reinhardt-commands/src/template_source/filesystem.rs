@@ -148,15 +148,15 @@ mod tests {
 		// Assert
 		assert!(
 			root.iter()
-				.any(|e| e.rel_path == PathBuf::from("a.txt") && !e.is_dir)
+				.any(|e| e.rel_path.as_path() == Path::new("a.txt") && !e.is_dir)
 		);
 		assert!(
 			root.iter()
-				.any(|e| e.rel_path == PathBuf::from("sub") && e.is_dir)
+				.any(|e| e.rel_path.as_path() == Path::new("sub") && e.is_dir)
 		);
 		assert!(
 			sub.iter()
-				.any(|e| e.rel_path == PathBuf::from("sub/b.txt") && !e.is_dir)
+				.any(|e| e.rel_path.as_path() == Path::new("sub/b.txt") && !e.is_dir)
 		);
 	}
 

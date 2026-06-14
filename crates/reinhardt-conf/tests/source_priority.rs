@@ -1,14 +1,7 @@
 // Integration tests for EnvSource type inference, LowPriorityEnvSource, and cross-priority merging.
-// Covers: smart parsing, prefix handling, priority chain (Default → LowPriorityEnv → Toml/Json → Env).
-//
-// `JsonFileSource` is deprecated until removal in 0.2.0 (issue #4087); the
-// JSON priority cases must keep running during the deprecation window.
-// Deprecation warnings are silenced per import / per test function below so
-// that any new deprecation added elsewhere in this file still surfaces.
+// Covers: smart parsing, prefix handling, priority chain (Default → LowPriorityEnv → Toml → Env).
 
 use reinhardt_conf::settings::builder::SettingsBuilder;
-#[allow(deprecated)] // Deprecated alongside *.json support (issue #4087).
-use reinhardt_conf::settings::sources::JsonFileSource;
 use reinhardt_conf::settings::sources::{
 	ConfigSource, DefaultSource, EnvSource, HighPriorityEnvSource, LowPriorityEnvSource,
 	TomlFileSource,
@@ -27,14 +20,6 @@ use tempfile::TempDir;
 fn write_toml_file(content: &str) -> (TempDir, PathBuf) {
 	let dir = TempDir::new().unwrap();
 	let path = dir.path().join("config.toml");
-	let mut file = std::fs::File::create(&path).unwrap();
-	file.write_all(content.as_bytes()).unwrap();
-	(dir, path)
-}
-
-fn write_json_file(content: &str) -> (TempDir, PathBuf) {
-	let dir = TempDir::new().unwrap();
-	let path = dir.path().join("config.json");
 	let mut file = std::fs::File::create(&path).unwrap();
 	file.write_all(content.as_bytes()).unwrap();
 	(dir, path)
@@ -356,48 +341,6 @@ fn low_priority_env_overrides_default() {
 
 	// Cleanup
 	unsafe { remove_env_vars(&["LPMPTEST2_TIMEOUT"]) };
-}
-
-#[rstest]
-#[allow(deprecated)] // JsonFileSource is deprecated (issue #4087); test must keep covering it.
-fn json_overrides_default() {
-	// Arrange
-	let (_dir, json_path) = write_json_file(r#"{"name": "from_json"}"#);
-	let default = DefaultSource::new().with_value("name", Value::String("default".to_string()));
-
-	// Act
-	let settings = SettingsBuilder::new()
-		.add_source(default)
-		.add_source(JsonFileSource::new(&json_path))
-		.build()
-		.unwrap();
-
-	// Assert – Json(50) wins over Default(0)
-	let name: String = settings.get("name").unwrap();
-	assert_eq!(name, "from_json");
-}
-
-#[rstest]
-#[serial(env)]
-#[allow(deprecated)] // JsonFileSource is deprecated (issue #4087); test must keep covering it.
-fn env_overrides_json() {
-	// Arrange
-	let (_dir, json_path) = write_json_file(r#"{"port": 2000}"#);
-	unsafe { set_env_vars(&[("MPTEST2_PORT", "7000")]) };
-
-	// Act
-	let settings = SettingsBuilder::new()
-		.add_source(JsonFileSource::new(&json_path))
-		.add_source(EnvSource::new().with_prefix("MPTEST2_"))
-		.build()
-		.unwrap();
-
-	// Assert – Env(100) wins over Json(50)
-	let port: u16 = settings.get("port").unwrap();
-	assert_eq!(port, 7000);
-
-	// Cleanup
-	unsafe { remove_env_vars(&["MPTEST2_PORT"]) };
 }
 
 #[rstest]

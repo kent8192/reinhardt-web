@@ -9,7 +9,7 @@
 use crate::template_source::{EmbeddedSource, FilesystemSource, MergedSource, TemplateSource};
 use crate::{
 	BaseCommand, CommandArgument, CommandContext, CommandError, CommandOption, CommandResult,
-	TemplateCommand, TemplateContext, generate_secret_key, to_camel_case,
+	TemplateCommand, TemplateContext, generate_secret_key, project_config, to_camel_case,
 };
 use async_trait::async_trait;
 use std::env;
@@ -120,6 +120,13 @@ impl BaseCommand for StartProjectCommand {
 
 		// Generate a random secret key
 		let secret_key = format!("insecure-{}", generate_secret_key());
+		let required_features = if with_pages {
+			&["pages", "admin", "conf", "commands", "db-postgres"][..]
+		} else {
+			&["conf", "commands", "db-postgres", "api"][..]
+		};
+		let dependency_selection =
+			project_config::resolve_dependency_selection(ctx, required_features).await?;
 
 		// Prepare template context
 		let mut context = TemplateContext::new();
@@ -131,7 +138,15 @@ impl BaseCommand for StartProjectCommand {
 			"CHANGE_THIS_IN_PRODUCTION_MUST_BE_KEPT_SECRET",
 		)?;
 		context.insert("camel_case_project_name", to_camel_case(&project_name))?;
-		context.insert("reinhardt_version", env!("CARGO_PKG_VERSION"))?;
+		context.insert("reinhardt_version", &dependency_selection.version)?;
+		context.insert(
+			"reinhardt_default_features",
+			dependency_selection.default_features,
+		)?;
+		context.insert(
+			"reinhardt_features_toml",
+			dependency_selection.features_toml(),
+		)?;
 		context.insert("is_restful", if !with_pages { "true" } else { "false" })?;
 		context.insert("with_pages", if with_pages { "true" } else { "false" })?;
 
@@ -307,6 +322,8 @@ impl BaseCommand for StartAppCommand {
 			context.insert("camel_case_app_name", to_camel_case(&app_name))?;
 			context.insert("is_restful", if !with_pages { "true" } else { "false" })?;
 			context.insert("with_pages", if with_pages { "true" } else { "false" })?;
+			context.insert("is_workspace", "false")?;
+			context.insert("project_crate_name", "")?;
 
 			// Determine template source (--template > --template-dir/env > embedded)
 			let subdir = format!("app_{}_template", template_key);
@@ -451,6 +468,7 @@ async fn create_workspace_app(
 	context.insert("camel_case_app_name", to_camel_case(app_name))?;
 	context.insert("is_restful", if !with_pages { "true" } else { "false" })?;
 	context.insert("with_pages", if with_pages { "true" } else { "false" })?;
+	context.insert("is_workspace", "true")?;
 	// Workspace apps reference the parent project crate by name (for example
 	// `use my_project::config::apps::InstalledApp;`). Derive that name from
 	// the current directory (the workspace root), normalizing hyphens to
@@ -462,17 +480,142 @@ async fn create_workspace_app(
 		.unwrap_or_else(|| "project".to_string());
 	context.insert("project_crate_name", &project_crate_name)?;
 
-	// Determine template source via embedded fallback
+	// Reuse the non-workspace template; is_workspace conditionals handle the
+	// import-path divergence inside the templates themselves.
 	let template_key = if with_pages { "pages" } else { "restful" };
-	let subdir = format!("app_{}_workspace_template", template_key);
+	let subdir = format!("app_{}_template", template_key);
 	let source = resolve_source(effective_template_dir_override(ctx).as_deref(), &subdir)?;
 
-	// Create app using TemplateCommand
+	// Render template into apps/<name>/src/ so the standard crate layout is
+	// preserved (Cargo.toml sits one level above, at apps/<name>/).
+	let src_target = app_target.join("src");
 	let template_cmd = TemplateCommand::new();
-	template_cmd.handle(app_name, Some(&app_target), source.as_ref(), context, ctx)?;
+	template_cmd.handle(app_name, Some(&src_target), source.as_ref(), context, ctx)?;
+
+	// Generate workspace infrastructure files at apps/<name>/
+	generate_workspace_cargo_toml(app_name, &project_crate_name, with_pages, &app_target)?;
+	if with_pages {
+		generate_workspace_build_rs(app_name, &app_target)?;
+	}
 
 	// Update workspace Cargo.toml
 	update_workspace_members(app_name)?;
+
+	Ok(())
+}
+
+/// Generate `Cargo.toml` for a workspace app crate.
+///
+/// The generated manifest includes a path dependency on the parent project
+/// crate (`project_crate_name`) so that workspace app templates can import
+/// types such as `InstalledApp` and shared components from the root crate.
+fn generate_workspace_cargo_toml(
+	app_name: &str,
+	project_crate_name: &str,
+	with_pages: bool,
+	app_dir: &Path,
+) -> CommandResult<()> {
+	use std::fs;
+	use std::io::Write;
+
+	let pages_deps = if with_pages {
+		"\n\n[target.'cfg(target_arch = \"wasm32\")'.dependencies]\n\
+		 wasm-bindgen = { workspace = true }\n\
+		 web-sys = { workspace = true }\n\
+		 js-sys = { workspace = true }\n\
+		 console_error_panic_hook = { workspace = true }\n\
+		 wasm-bindgen-futures = { workspace = true }\n\n\
+		 [build-dependencies]\n\
+		 cfg_aliases = \"0.2\""
+	} else {
+		""
+	};
+
+	let lib_section = if with_pages {
+		format!(
+			"\n[lib]\nname = \"{app_name}\"\npath = \"src/lib.rs\"\n\
+			 crate-type = [\"cdylib\", \"rlib\"]  # cdylib for WASM, rlib for server\n"
+		)
+	} else {
+		format!("\n[lib]\nname = \"{app_name}\"\npath = \"src/lib.rs\"\n")
+	};
+
+	// The project crate dependency uses a relative path (`../..`) pointing
+	// from `apps/<name>/` back to the workspace root where the parent
+	// project's Cargo.toml lives.
+	let project_pkg = project_crate_name.replace('_', "-");
+	let content = format!(
+		"[package]\n\
+		 name = \"{app_name}\"\n\
+		 version = \"0.1.0\"\n\
+		 edition = \"2024\"\n\
+		 {lib_section}\n\
+		 [dependencies]\n\
+		 {project_pkg} = {{ path = \"../..\" }}\n\
+		 reinhardt-core = {{ workspace = true }}\n\
+		 reinhardt-orm = {{ workspace = true }}\n\
+		 reinhardt-routers = {{ workspace = true }}\n\
+		 tokio = {{ workspace = true }}\n\
+		 async-trait = {{ workspace = true }}\n\
+		 serde = {{ workspace = true }}\n\
+		 chrono = {{ workspace = true }}\n\
+		 uuid = {{ workspace = true }}{pages_deps}\n"
+	);
+
+	fs::create_dir_all(app_dir).map_err(|e| {
+		CommandError::ExecutionError(format!("Failed to create app directory: {}", e))
+	})?;
+
+	let cargo_path = app_dir.join("Cargo.toml");
+	let mut f = fs::File::create(&cargo_path).map_err(|e| {
+		CommandError::ExecutionError(format!("Failed to create {}: {}", cargo_path.display(), e))
+	})?;
+	f.write_all(content.as_bytes()).map_err(|e| {
+		CommandError::ExecutionError(format!("Failed to write {}: {}", cargo_path.display(), e))
+	})?;
+
+	Ok(())
+}
+
+/// Generate `build.rs` for a workspace pages app crate (cfg_aliases setup).
+fn generate_workspace_build_rs(app_name: &str, app_dir: &Path) -> CommandResult<()> {
+	use std::fs;
+	use std::io::Write;
+
+	let content = format!(
+		"//! Build script for {app_name}.\n\
+		 //!\n\
+		 //! Sets up cfg aliases for simplified conditional compilation.\n\
+		 \n\
+		 use cfg_aliases::cfg_aliases;\n\
+		 \n\
+		 fn main() {{\n\
+		 \t// Rust 2024 edition requires explicit check-cfg declarations\n\
+		 \tprintln!(\"cargo::rustc-check-cfg=cfg(client)\");\n\
+		 \tprintln!(\"cargo::rustc-check-cfg=cfg(server)\");\n\
+		 \tprintln!(\"cargo::rustc-check-cfg=cfg(wasm)\");\n\
+		 \tprintln!(\"cargo::rustc-check-cfg=cfg(native)\");\n\
+		 \n\
+		 \tcfg_aliases! {{\n\
+		 \t\t// Platform aliases for simpler conditional compilation\n\
+		 \t\t// Use `#[cfg(client)]` instead of `#[cfg(target_arch = \"wasm32\")]`\n\
+		 \t\tclient: {{ target_arch = \"wasm32\" }},\n\
+		 \t\t// Use `#[cfg(server)]` instead of `#[cfg(not(target_arch = \"wasm32\"))]`\n\
+		 \t\tserver: {{ not(target_arch = \"wasm32\") }},\n\
+		 \t\t// Compatibility aliases used by framework macro expansions.\n\
+		 \t\twasm: {{ target_arch = \"wasm32\" }},\n\
+		 \t\tnative: {{ not(target_arch = \"wasm32\") }},\n\
+		 \t}}\n\
+		 }}\n"
+	);
+
+	let build_path = app_dir.join("build.rs");
+	let mut f = fs::File::create(&build_path).map_err(|e| {
+		CommandError::ExecutionError(format!("Failed to create {}: {}", build_path.display(), e))
+	})?;
+	f.write_all(content.as_bytes()).map_err(|e| {
+		CommandError::ExecutionError(format!("Failed to write {}: {}", build_path.display(), e))
+	})?;
 
 	Ok(())
 }
@@ -655,8 +798,8 @@ fn update_apps_export(app_name: &str, with_pages: bool) -> CommandResult<()> {
 /// Append a new app entry to the `installed_apps! { ... }` block in
 /// `src/config/apps.rs`.
 ///
-/// Issue #3670: the typed `#[url_patterns(InstalledApp::<name>, ...)]`
-/// form requires the app's label to be registered via `installed_apps!`.
+/// Issue #3670: typed route declarations require the app's label to be
+/// registered via `installed_apps!`.
 /// This function is idempotent: if an entry with the same label already
 /// exists, it is left alone.
 ///

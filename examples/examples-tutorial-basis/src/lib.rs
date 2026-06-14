@@ -10,7 +10,7 @@
 //! - Admin panel customization
 
 // Server-only re-exports for macro-generated code
-#[cfg(native)]
+#[cfg(server)]
 mod server_only {
 	pub use reinhardt::core::async_trait;
 	pub use reinhardt::reinhardt_apps;
@@ -18,7 +18,7 @@ mod server_only {
 	pub use reinhardt::reinhardt_di::params;
 	pub use reinhardt::reinhardt_http;
 }
-#[cfg(native)]
+#[cfg(server)]
 pub use server_only::*;
 
 // Applications (declared on both targets; submodules cfg-gate themselves)
@@ -28,7 +28,7 @@ pub mod apps;
 pub mod config;
 
 // Client-only modules (WASM)
-#[cfg(wasm)]
+#[cfg(client)]
 pub mod client;
 
 // Shared modules (both WASM and server)
@@ -40,5 +40,5 @@ pub mod client;
 pub mod shared;
 
 // Re-exports
-#[cfg(native)]
+#[cfg(server)]
 pub use config::settings::get_settings;

@@ -8,42 +8,28 @@
 //! - `Filters` - Filter panel
 //! - `DataTable` - Data table component
 
+#[cfg(client)]
+use crate::server::{create_record, delete_record, update_record};
 use crate::types::{FilterInfo, FilterType, ModelInfo};
-use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use reinhardt_pages::Signal;
 use reinhardt_pages::component::Page;
 use reinhardt_pages::page;
 use std::collections::HashMap;
 
-/// Characters that must be percent-encoded in URL path segments.
-///
-/// This set encodes characters that are unsafe or reserved in URL paths,
-/// while preserving RFC 3986 unreserved characters (`A-Z`, `a-z`, `0-9`, `-`, `_`, `.`, `~`).
-/// Encoded characters: space, `"`, `#`, `%`, `/`, `<`, `>`, `?`, `[`, `]`, `^`, `` ` ``, `{`, `|`, `}`.
-const PATH_SEGMENT_ENCODE_SET: &AsciiSet = &CONTROLS
-	.add(b' ')
-	.add(b'"')
-	.add(b'#')
-	.add(b'%')
-	.add(b'/')
-	.add(b'<')
-	.add(b'>')
-	.add(b'?')
-	.add(b'[')
-	.add(b']')
-	.add(b'^')
-	.add(b'`')
-	.add(b'{')
-	.add(b'|')
-	.add(b'}');
+fn reverse_admin_url(route_name: &str, params: &[(&str, &str)]) -> String {
+	crate::pages::router::try_with_router(|router| router.reverse(route_name, params))
+		.unwrap_or_else(|| crate::pages::router::init_router().reverse(route_name, params))
+		.unwrap_or_else(|err| panic!("failed to reverse admin route `{}`: {}", route_name, err))
+}
 
-/// Percent-encode a string for safe use in URL path segments.
-///
-/// Encodes characters that are unsafe for URL path segments while preserving
-/// RFC 3986 unreserved characters (`-`, `_`, `.`, `~`) to avoid unnecessarily
-/// mangling valid route segments such as `user-management`.
-fn encode_path_segment(s: &str) -> String {
-	utf8_percent_encode(s, PATH_SEGMENT_ENCODE_SET).to_string()
+fn admin_model_url(route_name: &str, model_name: &str) -> String {
+	let model = model_name.to_lowercase();
+	reverse_admin_url(route_name, &[("model", &model)])
+}
+
+fn admin_record_url(route_name: &str, model_name: &str, record_id: &str) -> String {
+	let model = model_name.to_lowercase();
+	reverse_admin_url(route_name, &[("model", &model), ("id", record_id)])
 }
 
 /// Dashboard component
@@ -66,7 +52,7 @@ pub fn dashboard(site_name: &str, models: &[ModelInfo]) -> Page {
 	let site_name = site_name.to_string();
 	let grid = models_grid(models);
 
-	page!(|| {
+	page!(|site_name: String, grid: Page| {
 		div {
 			class: "dashboard animate__animated animate__fadeIn",
 			h1 {
@@ -77,7 +63,7 @@ pub fn dashboard(site_name: &str, models: &[ModelInfo]) -> Page {
 			}
 			{ grid }
 		}
-	})()
+	})(site_name, grid)
 }
 
 /// Generates a grid of model cards
@@ -96,12 +82,12 @@ fn models_grid(models: &[ModelInfo]) -> Page {
 		.map(|model| model_card(&model.name, &model.list_url))
 		.collect();
 
-	page!(|| {
+	page!(|card_views: Vec<Page>| {
 		div {
 			class: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4",
 			{ card_views }
 		}
-	})()
+	})(card_views)
 }
 
 /// Generates a single model card
@@ -109,21 +95,18 @@ fn model_card(name: &str, url: &str) -> Page {
 	let name = name.to_string();
 	let url = url.to_string();
 	let label = format!("View {}", &name);
+	let manage_text = format!("Manage {} records", &name);
 
-	page!(|| {
+	page!(|name: String, url: String, label: String, manage_text: String| {
 		div {
 			class: "admin-card p-5 flex flex-col animate__animated animate__fadeInUp",
 			h3 {
 				class: "font-display text-lg font-bold text-slate-900 mb-1",
-				{
-					name.clone()
-				}
+				{ name }
 			}
 			p {
 				class: "text-sm text-slate-500 mb-4 flex-1",
-				{
-					format!("Manage {} records", name)
-				}
+				{ manage_text }
 			}
 			a {
 				class: "admin-btn admin-btn-primary text-center",
@@ -131,7 +114,7 @@ fn model_card(name: &str, url: &str) -> Page {
 				{ label }
 			}
 		}
-	})()
+	})(name, url, label, manage_text)
 }
 
 /// Column definition for list view
@@ -205,13 +188,26 @@ pub fn list_view(
 	let table_page = data_table(&data.columns, &data.records, &data.model_name);
 	let pagination_page =
 		crate::pages::components::common::pagination(current_page_signal, data.total_pages);
+	let add_url = admin_model_url("create", &data.model_name);
+	let add_label = format!("Add {}", data.model_name);
+	let add_link = {
+		use reinhardt_pages::component::Component;
+		use reinhardt_pages::router::Link;
+		Link::new(add_url, add_label)
+			.class("admin-btn admin-btn-primary")
+			.render()
+	};
 
-	page!(|| {
+	page!(|title: String, add_link: Page, filters_page: Page, summary: String, table_page: Page, pagination_page: Page| {
 		div {
 			class: "list-view animate__animated animate__fadeIn",
-			h1 {
-				class: "font-display text-2xl font-bold text-slate-900 mb-6",
-				{ title }
+			div {
+				class: "mb-6 flex items-center justify-between gap-4",
+				h1 {
+					class: "font-display text-2xl font-bold text-slate-900",
+					{ title }
+				}
+				{ add_link }
 			}
 			{ filters_page }
 			div {
@@ -221,7 +217,14 @@ pub fn list_view(
 			{ table_page }
 			{ pagination_page }
 		}
-	})()
+	})(
+		title,
+		add_link,
+		filters_page,
+		summary,
+		table_page,
+		pagination_page,
+	)
 }
 
 /// Generates a data table
@@ -234,31 +237,31 @@ fn data_table(
 		.iter()
 		.map(|col| {
 			let label = col.label.clone();
-			page!(|| {
+			page!(|label: String| {
 				th { { label } }
-			})()
+			})(label)
 		})
 		.chain(std::iter::once(page!(|| {
 			th { "Actions" }
 		})()))
 		.collect();
 
-	let thead = page!(|| {
+	let thead = page!(|header_cells: Vec<Page>| {
 		thead {
 			tr { { header_cells } }
 		}
-	})();
+	})(header_cells);
 
 	let body_rows: Vec<Page> = records
 		.iter()
 		.map(|record| table_row(columns, record, model_name))
 		.collect();
 
-	let tbody = page!(|| {
+	let tbody = page!(|body_rows: Vec<Page>| {
 		tbody { { body_rows } }
-	})();
+	})(body_rows);
 
-	page!(|| {
+	page!(|thead: Page, tbody: Page| {
 		div {
 			class: "overflow-x-auto rounded-lg border border-slate-200",
 			table {
@@ -267,7 +270,7 @@ fn data_table(
 				{ tbody }
 			}
 		}
-	})()
+	})(thead, tbody)
 }
 
 /// Generates a table row for a single record
@@ -283,24 +286,24 @@ fn table_row(
 				.get(&col.field)
 				.cloned()
 				.unwrap_or_else(|| "-".to_string());
-			page!(|| {
+			page!(|value: String| {
 				td { { value } }
-			})()
+			})(value)
 		})
 		.collect();
 
 	let record_id = record.get("id").cloned().unwrap_or_else(|| "0".to_string());
 	let actions = action_buttons(model_name, &record_id);
-	let actions_cell = page!(|| {
+	let actions_cell = page!(|actions: Page| {
 		td { { actions } }
-	})();
+	})(actions);
 
-	page!(|| {
+	page!(|data_cells: Vec<Page>, actions_cell: Page| {
 		tr {
 			{ data_cells }
 			{ actions_cell }
 		}
-	})()
+	})(data_cells, actions_cell)
 }
 
 /// Generates action buttons for a record
@@ -308,10 +311,8 @@ fn action_buttons(model_name: &str, record_id: &str) -> Page {
 	use reinhardt_pages::component::Component;
 	use reinhardt_pages::router::Link;
 
-	let encoded_model = encode_path_segment(&model_name.to_lowercase());
-	let encoded_id = encode_path_segment(record_id);
-	let detail_url = format!("/admin/{}/{}/", encoded_model, encoded_id);
-	let edit_url = format!("/admin/{}/{}/change/", encoded_model, encoded_id);
+	let detail_url = admin_record_url("detail", model_name, record_id);
+	let edit_url = admin_record_url("edit", model_name, record_id);
 
 	let view_link = Link::new(detail_url, "View")
 		.class("admin-btn admin-btn-outline admin-btn-sm")
@@ -320,13 +321,13 @@ fn action_buttons(model_name: &str, record_id: &str) -> Page {
 		.class("admin-btn admin-btn-outline admin-btn-sm")
 		.render();
 
-	page!(|| {
+	page!(|view_link: Page, edit_link: Page| {
 		div {
 			class: "flex gap-1",
 			{ view_link }
 			{ edit_link }
 		}
-	})()
+	})(view_link, edit_link)
 }
 
 /// Form field definition for model forms
@@ -367,21 +368,22 @@ pub fn detail_view(
 	use reinhardt_pages::component::Component;
 	use reinhardt_pages::router::Link;
 
-	let encoded_model = encode_path_segment(&model_name.to_lowercase());
-	let encoded_id = encode_path_segment(record_id);
-	let edit_url = format!("/admin/{}/{}/change/", encoded_model, encoded_id);
-	let list_url = format!("/admin/{}/", encoded_model);
+	let edit_url = admin_record_url("edit", model_name, record_id);
+	let list_url = admin_model_url("list", model_name);
 
 	let title = format!("{} Detail", model_name);
 	let table_page = detail_table(record);
 	let edit_link = Link::new(edit_url, "Edit")
 		.class("admin-btn admin-btn-primary mr-2")
 		.render();
-	let back_link = Link::new(list_url, "Back to List")
+	let back_link = Link::new(list_url.clone(), "Back to List")
 		.class("admin-btn admin-btn-secondary")
 		.render();
+	let delete_model = model_name.to_string();
+	let delete_id = record_id.to_string();
+	let delete_return_url = list_url.clone();
 
-	page!(|| {
+	page!(|title: String, table_page: Page, edit_link: Page, back_link: Page, delete_model: String, delete_id: String, delete_return_url: String| {
 		div {
 			class: "detail-view animate__animated animate__fadeIn",
 			h1 {
@@ -393,9 +395,25 @@ pub fn detail_view(
 				class: "mt-6 flex gap-2",
 				{ edit_link }
 				{ back_link }
+				button {
+					type: "button",
+					class: "admin-btn admin-btn-danger",
+					@click: move |_| {
+						#[cfg(client)]crate::pages::components::features::delete_model_record(delete_model.clone(), delete_id.clone(), delete_return_url.clone());
+					},
+					"Delete"
+				}
 			}
 		}
-	})()
+	})(
+		title,
+		table_page,
+		edit_link,
+		back_link,
+		delete_model,
+		delete_id,
+		delete_return_url,
+	)
 }
 
 /// Generates a detail table for record fields
@@ -408,7 +426,7 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
 		.map(|(key, value)| {
 			let key = key.clone();
 			let value = value.clone();
-			page!(|| {
+			page!(|key: String, value: String| {
 				tr {
 					th {
 						class: "w-1/4 text-left text-sm font-medium text-slate-500 py-3 px-4 bg-slate-50",
@@ -419,11 +437,11 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
 						{ value }
 					}
 				}
-			})()
+			})(key, value)
 		})
 		.collect();
 
-	page!(|| {
+	page!(|rows: Vec<Page>| {
 		div {
 			class: "overflow-x-auto rounded-lg border border-slate-200",
 			table {
@@ -431,7 +449,7 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
 				tbody { { rows } }
 			}
 		}
-	})()
+	})(rows)
 }
 
 /// Model form component
@@ -466,35 +484,28 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 	};
 
 	let action_url = if let Some(rid) = record_id {
-		format!(
-			"/admin/{}/{}/change/",
-			encode_path_segment(&model_name.to_lowercase()),
-			encode_path_segment(rid)
-		)
+		admin_record_url("edit", model_name, rid)
 	} else {
-		format!(
-			"/admin/{}/add/",
-			encode_path_segment(&model_name.to_lowercase())
-		)
+		admin_model_url("create", model_name)
 	};
 
-	let list_url = format!(
-		"/admin/{}/",
-		encode_path_segment(&model_name.to_lowercase())
-	);
+	let list_url = admin_model_url("list", model_name);
 
 	let form_fields: Vec<Page> = fields.iter().map(form_group).collect();
-	let form_groups = page!(|| {
+	let form_groups = page!(|form_fields: Vec<Page>| {
 		div {
 			class: "admin-card p-6",
 			{ form_fields }
 		}
-	})();
-	let cancel_link = Link::new(list_url, "Cancel")
+	})(form_fields);
+	let cancel_link = Link::new(list_url.clone(), "Cancel")
 		.class("admin-btn admin-btn-secondary")
 		.render();
+	let submit_model = model_name.to_string();
+	let submit_record_id = record_id.map(str::to_string);
+	let submit_return_url = list_url.clone();
 
-	page!(|| {
+	page!(|form_title: String, action_url: String, form_groups: Page, cancel_link: Page, submit_model: String, submit_record_id: Option<String>, submit_return_url: String| {
 		div {
 			class: "model-form max-w-2xl animate__animated animate__fadeIn",
 			h1 {
@@ -504,6 +515,10 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 			form {
 				method: "post",
 				action: action_url,
+				@submit: move |event| {
+					event.prevent_default();
+					#[cfg(client)]crate::pages::components::features::submit_model_form(event, submit_model.clone(), submit_record_id.clone(), submit_return_url.clone(), );
+				},
 				{ form_groups }
 				div {
 					class: "mt-6 flex gap-2",
@@ -516,7 +531,181 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 				}
 			}
 		}
-	})()
+	})(
+		form_title,
+		action_url,
+		form_groups,
+		cancel_link,
+		submit_model,
+		submit_record_id,
+		submit_return_url,
+	)
+}
+
+#[cfg(client)]
+fn submit_model_form(
+	event: web_sys::Event,
+	model_name: String,
+	record_id: Option<String>,
+	return_url: String,
+) {
+	let request = collect_mutation_request(&event);
+	reinhardt_pages::platform::spawn_task(async move {
+		let result = if let Some(id) = record_id {
+			update_record(model_name, id, request).await
+		} else {
+			create_record(model_name, request).await
+		};
+
+		match result {
+			Ok(_) => navigate_or_set_href(&return_url),
+			Err(e) => report_admin_error(&format!("Save failed: {}", e)),
+		}
+	});
+}
+
+#[cfg(client)]
+fn delete_model_record(model_name: String, record_id: String, return_url: String) {
+	let confirmed = web_sys::window()
+		.and_then(|w| w.confirm_with_message("Delete this record?").ok())
+		.unwrap_or(false);
+	if !confirmed {
+		return;
+	}
+
+	let csrf_token = reinhardt_pages::csrf::get_csrf_token().unwrap_or_default();
+	reinhardt_pages::platform::spawn_task(async move {
+		match delete_record(model_name, record_id, csrf_token).await {
+			Ok(_) => navigate_or_set_href(&return_url),
+			Err(e) => report_admin_error(&format!("Delete failed: {}", e)),
+		}
+	});
+}
+
+#[cfg(client)]
+fn collect_mutation_request(event: &web_sys::Event) -> crate::types::MutationRequest {
+	use wasm_bindgen::JsCast;
+
+	let mut data = HashMap::new();
+	let target = event.target().or_else(|| event.current_target());
+	if let Some(target) = target
+		&& let Ok(form) = target.dyn_into::<web_sys::HtmlFormElement>()
+	{
+		let elements = form.elements();
+		for index in 0..elements.length() {
+			let Some(element) = elements.item(index) else {
+				continue;
+			};
+			collect_form_control_value(&element, &mut data);
+		}
+	}
+
+	crate::types::MutationRequest {
+		csrf_token: reinhardt_pages::csrf::get_csrf_token().unwrap_or_default(),
+		data,
+	}
+}
+
+#[cfg(client)]
+fn collect_form_control_value(
+	element: &web_sys::Element,
+	data: &mut HashMap<String, serde_json::Value>,
+) {
+	use wasm_bindgen::JsCast;
+
+	if let Some(input) = element.dyn_ref::<web_sys::HtmlInputElement>() {
+		let name = input.name();
+		if name.is_empty() {
+			return;
+		}
+		let value = if input.type_() == "checkbox" {
+			serde_json::Value::Bool(input.checked())
+		} else {
+			form_value_to_json(&name, &input.value(), input.type_() == "number")
+		};
+		data.insert(name, value);
+		return;
+	}
+
+	if let Some(textarea) = element.dyn_ref::<web_sys::HtmlTextAreaElement>() {
+		let name = textarea.name();
+		if !name.is_empty() {
+			data.insert(name, serde_json::Value::String(textarea.value()));
+		}
+		return;
+	}
+
+	if let Some(select) = element.dyn_ref::<web_sys::HtmlSelectElement>() {
+		let name = select.name();
+		if !name.is_empty() {
+			data.insert(name.clone(), select_value_to_json(select, &name));
+		}
+	}
+}
+
+#[cfg(client)]
+fn select_value_to_json(select: &web_sys::HtmlSelectElement, name: &str) -> serde_json::Value {
+	use wasm_bindgen::JsCast;
+
+	if !select.multiple() {
+		return form_value_to_json(name, &select.value(), false);
+	}
+
+	let options = select.options();
+	let values: Vec<String> = (0..options.length())
+		.filter_map(|index| {
+			let option = options.item(index)?;
+			let option = option.dyn_into::<web_sys::HtmlOptionElement>().ok()?;
+			option.selected().then(|| option.value())
+		})
+		.collect();
+
+	form_values_to_json_array(name, &values)
+}
+
+#[cfg(any(client, test))]
+fn form_values_to_json_array(name: &str, values: &[String]) -> serde_json::Value {
+	serde_json::Value::Array(
+		values
+			.iter()
+			.map(|value| form_value_to_json(name, value, false))
+			.collect(),
+	)
+}
+
+#[cfg(any(client, test))]
+fn form_value_to_json(name: &str, value: &str, prefer_number: bool) -> serde_json::Value {
+	if prefer_number || name.ends_with("_id") {
+		if value.trim().is_empty() {
+			return serde_json::Value::Null;
+		}
+		if let Ok(value) = value.parse::<i64>() {
+			return serde_json::Value::Number(value.into());
+		}
+		if let Ok(value) = value.parse::<f64>()
+			&& let Some(number) = serde_json::Number::from_f64(value)
+		{
+			return serde_json::Value::Number(number);
+		}
+	}
+	serde_json::Value::String(value.to_string())
+}
+
+#[cfg(client)]
+fn navigate_or_set_href(url: &str) {
+	if reinhardt_pages::navigate(url.to_string(), reinhardt_pages::NavigationType::Push).is_err()
+		&& let Some(window) = web_sys::window()
+	{
+		let _ = window.location().set_href(url);
+	}
+}
+
+#[cfg(client)]
+fn report_admin_error(message: &str) {
+	web_sys::console::error_1(&message.into());
+	if let Some(window) = web_sys::window() {
+		let _ = window.alert_with_message(message);
+	}
 }
 
 /// Generates a form group (label + input) for a field
@@ -525,7 +714,7 @@ fn form_group(field: &FormField) -> Page {
 	let label = field.label.clone();
 	let input = form_element(field, &input_id);
 
-	page!(|| {
+	page!(|input_id: String, label: String, input: Page| {
 		div {
 			class: "mb-4",
 			label {
@@ -535,7 +724,7 @@ fn form_group(field: &FormField) -> Page {
 			}
 			{ input }
 		}
-	})()
+	})(input_id, label, input)
 }
 
 /// Render `<option>` elements for a list of `(value, label)` choices,
@@ -552,20 +741,20 @@ fn render_option_elements(choices: &[(String, String)], selected: &[&str]) -> Ve
 			let label = label.clone();
 			let is_selected = selected.iter().any(|s| *s == value);
 			if is_selected {
-				page!(|| {
+				page!(|value: String, label: String| {
 					option {
 						value: value,
 						selected: true,
 						{ label }
 					}
-				})()
+				})(value, label)
 			} else {
-				page!(|| {
+				page!(|value: String, label: String| {
 					option {
 						value: value,
 						{ label }
 					}
-				})()
+				})(value, label)
 			}
 		})
 		.collect()
@@ -600,7 +789,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 		}
 		FormFieldSpec::TextArea => {
 			if required {
-				page!(|| {
+				page!(|input_id: String, name: String, value: String| {
 					textarea {
 						class: "admin-input",
 						id: input_id,
@@ -609,9 +798,9 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						autocomplete: "off",
 						{ value }
 					}
-				})()
+				})(input_id, name, value)
 			} else {
-				page!(|| {
+				page!(|input_id: String, name: String, value: String| {
 					textarea {
 						class: "admin-input",
 						id: input_id,
@@ -619,13 +808,13 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						autocomplete: "off",
 						{ value }
 					}
-				})()
+				})(input_id, name, value)
 			}
 		}
 		FormFieldSpec::Select { choices } => {
 			let options = render_option_elements(choices, &[value.as_str()]);
 			if required {
-				page!(|| {
+				page!(|input_id: String, name: String, options: Vec<Page>| {
 					select {
 						class: "admin-select",
 						id: input_id,
@@ -633,23 +822,23 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						required: true,
 						{ options }
 					}
-				})()
+				})(input_id, name, options)
 			} else {
-				page!(|| {
+				page!(|input_id: String, name: String, options: Vec<Page>| {
 					select {
 						class: "admin-select",
 						id: input_id,
 						name: name,
 						{ options }
 					}
-				})()
+				})(input_id, name, options)
 			}
 		}
 		FormFieldSpec::MultiSelect { choices } => {
 			let selected = parse_multi_value(&value);
 			let options = render_option_elements(choices, &selected);
 			if required {
-				page!(|| {
+				page!(|input_id: String, name: String, options: Vec<Page>| {
 					select {
 						class: "admin-select",
 						id: input_id,
@@ -658,9 +847,9 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						required: true,
 						{ options }
 					}
-				})()
+				})(input_id, name, options)
 			} else {
-				page!(|| {
+				page!(|input_id: String, name: String, options: Vec<Page>| {
 					select {
 						class: "admin-select",
 						id: input_id,
@@ -668,7 +857,7 @@ fn form_element(field: &FormField, input_id: &str) -> Page {
 						multiple: true,
 						{ options }
 					}
-				})()
+				})(input_id, name, options)
 			}
 		}
 	}
@@ -683,7 +872,7 @@ fn render_input(
 	required: bool,
 ) -> Page {
 	if required {
-		page!(|| {
+		page!(|html_type: String, input_id: String, name: String, value: String| {
 			input {
 				class: "admin-input",
 				type: html_type,
@@ -693,9 +882,9 @@ fn render_input(
 				required: true,
 				autocomplete: "off",
 			}
-		})()
+		})(html_type, input_id, name, value)
 	} else {
-		page!(|| {
+		page!(|html_type: String, input_id: String, name: String, value: String| {
 			input {
 				class: "admin-input",
 				type: html_type,
@@ -704,7 +893,7 @@ fn render_input(
 				value: value,
 				autocomplete: "off",
 			}
-		})()
+		})(html_type, input_id, name, value)
 	}
 }
 
@@ -761,29 +950,29 @@ fn create_filter_select(
 			let value = value.clone();
 			let label = label.clone();
 			if value == current_val {
-				page!(|| {
+				page!(|value: String, label: String| {
 					option {
 						value: value,
 						selected: true,
 						{ label }
 					}
-				})()
+				})(value, label)
 			} else {
-				page!(|| {
+				page!(|value: String, label: String| {
 					option {
 						value: value,
 						{ label }
 					}
-				})()
+				})(value, label)
 			}
 		})
 		.collect();
-	let options_container = page!(|| {
+	let options_container = page!(|options: Vec<Page>| {
 		span { { options } }
-	})();
+	})(options);
 	let field_str = field.to_string();
 
-	page!(|field_str: String, _filters_signal: Signal<HashMap<String, String>>| {
+	page!(|field_str: String, _filters_signal: Signal<HashMap<String, String>>, options_container: Page| {
 		select {
 			class: "admin-select",
 			data_filter_field: field_str.clone(),
@@ -805,7 +994,7 @@ fn create_filter_select(
 			},
 			{ options_container }
 		}
-	})(field_str, filters_signal)
+	})(field_str, filters_signal, options_container)
 }
 
 /// Create filter control (label + select)
@@ -824,7 +1013,7 @@ fn create_filter_control(
 		filters_signal,
 	);
 
-	page!(|| {
+	page!(|label: String, select: Page| {
 		div {
 			class: "min-w-48",
 			label {
@@ -833,7 +1022,7 @@ fn create_filter_control(
 			}
 			{ select }
 		}
-	})()
+	})(label, select)
 }
 
 /// Filters component
@@ -878,14 +1067,14 @@ pub fn filters(
 		})
 		.collect();
 
-	let filter_controls = page!(|| {
+	let filter_controls = page!(|filter_controls: Vec<Page>| {
 		div {
 			class: "flex flex-wrap gap-4",
 			{ filter_controls }
 		}
-	})();
+	})(filter_controls);
 
-	page!(|| {
+	page!(|filter_controls: Page| {
 		div {
 			class: "admin-card p-4 mb-4",
 			h5 {
@@ -894,13 +1083,14 @@ pub fn filters(
 			}
 			{ filter_controls }
 		}
-	})()
+	})(filter_controls)
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
-	use super::detail_table;
+	use super::{detail_table, form_value_to_json, form_values_to_json_array};
 	use rstest::rstest;
+	use serde_json::json;
 	use std::collections::HashMap;
 
 	/// Verifies that detail_table renders fields in alphabetical order regardless
@@ -956,6 +1146,30 @@ mod tests {
 		assert!(
 			html.contains("john@example.com"),
 			"value 'john@example.com' must appear in output"
+		);
+	}
+
+	#[rstest]
+	fn test_form_value_to_json_converts_id_values() {
+		assert_eq!(form_value_to_json("owner_id", "42", false), json!(42));
+		assert_eq!(
+			form_value_to_json("owner_id", "", false),
+			serde_json::Value::Null
+		);
+		assert_eq!(form_value_to_json("title", "42", false), json!("42"));
+	}
+
+	#[rstest]
+	fn test_form_values_to_json_array_preserves_all_values() {
+		let values = vec![
+			"read".to_string(),
+			"write".to_string(),
+			"delete".to_string(),
+		];
+
+		assert_eq!(
+			form_values_to_json_array("permissions", &values),
+			json!(["read", "write", "delete"])
 		);
 	}
 }

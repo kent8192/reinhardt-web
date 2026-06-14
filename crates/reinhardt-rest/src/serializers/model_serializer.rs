@@ -25,20 +25,40 @@ use std::sync::Arc;
 ///
 /// ```no_run
 /// # use reinhardt_rest::serializers::{ModelSerializer, Serializer};
-/// # use reinhardt_db::orm::Engine;
-/// # use reinhardt_auth::DefaultUser;
+/// # use reinhardt_db::orm::Model;
+/// # use serde::{Serialize, Deserialize};
 /// # use uuid::Uuid;
+/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// # struct User {
+/// #     id: Uuid,
+/// #     username: String,
+/// #     email: String,
+/// # }
+/// # impl Model for User {
+/// #     type PrimaryKey = Uuid;
+/// #     type Fields = UserFields;
+/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+/// #     fn table_name() -> &'static str { "users" }
+/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+/// #     fn new_fields() -> Self::Fields { UserFields }
+/// # }
+/// # #[derive(Clone)]
+/// # struct UserFields;
+/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+/// #     fn with_alias(self, _alias: &str) -> Self { self }
+/// # }
 /// #
 /// # fn example() {
-/// let serializer = ModelSerializer::<DefaultUser>::new();
+/// let serializer = ModelSerializer::<User>::new();
 ///
 /// // With Meta configuration
-/// let serializer = ModelSerializer::<DefaultUser>::new()
+/// let serializer = ModelSerializer::<User>::new()
 ///     .with_fields(vec!["id".to_string(), "username".to_string()])
 ///     .with_read_only_fields(vec!["id".to_string()]);
 ///
 /// // Serialize a user
-/// let user = DefaultUser {
+/// let user = User {
 ///     id: Uuid::now_v7(),
 ///     username: "alice".to_string(),
 ///     email: "alice@example.com".to_string(),
@@ -71,9 +91,31 @@ where
 	///
 	/// ```
 	/// # use reinhardt_rest::serializers::ModelSerializer;
-	/// # use reinhardt_auth::DefaultUser;
+	/// # use reinhardt_db::orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # use uuid::Uuid;
+	/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Uuid,
+	/// #     username: String,
+	/// #     email: String,
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// # }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// #
-	/// let serializer = ModelSerializer::<DefaultUser>::new();
+	/// let serializer = ModelSerializer::<User>::new();
 	/// ```
 	pub fn new() -> Self {
 		Self {
@@ -91,9 +133,31 @@ where
 	///
 	/// ```
 	/// # use reinhardt_rest::serializers::ModelSerializer;
-	/// # use reinhardt_auth::DefaultUser;
+	/// # use reinhardt_db::orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # use uuid::Uuid;
+	/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Uuid,
+	/// #     username: String,
+	/// #     email: String,
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// # }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// #
-	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	/// let serializer = ModelSerializer::<User>::new()
 	///     .with_fields(vec!["id".to_string(), "username".to_string()]);
 	/// ```
 	pub fn with_fields(mut self, fields: Vec<String>) -> Self {
@@ -107,9 +171,31 @@ where
 	///
 	/// ```
 	/// # use reinhardt_rest::serializers::ModelSerializer;
-	/// # use reinhardt_auth::DefaultUser;
+	/// # use reinhardt_db::orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # use uuid::Uuid;
+	/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Uuid,
+	/// #     username: String,
+	/// #     email: String,
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// # }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// #
-	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	/// let serializer = ModelSerializer::<User>::new()
 	///     .with_exclude(vec!["password_hash".to_string()]);
 	/// ```
 	pub fn with_exclude(mut self, exclude: Vec<String>) -> Self {
@@ -123,9 +209,31 @@ where
 	///
 	/// ```
 	/// # use reinhardt_rest::serializers::ModelSerializer;
-	/// # use reinhardt_auth::DefaultUser;
+	/// # use reinhardt_db::orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # use uuid::Uuid;
+	/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Uuid,
+	/// #     username: String,
+	/// #     email: String,
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// # }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// #
-	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	/// let serializer = ModelSerializer::<User>::new()
 	///     .with_read_only_fields(vec!["id".to_string()]);
 	/// ```
 	pub fn with_read_only_fields(mut self, fields: Vec<String>) -> Self {
@@ -139,9 +247,31 @@ where
 	///
 	/// ```
 	/// # use reinhardt_rest::serializers::ModelSerializer;
-	/// # use reinhardt_auth::DefaultUser;
+	/// # use reinhardt_db::orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # use uuid::Uuid;
+	/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Uuid,
+	/// #     username: String,
+	/// #     email: String,
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// # }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// #
-	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	/// let serializer = ModelSerializer::<User>::new()
 	///     .with_write_only_fields(vec!["password_hash".to_string()]);
 	/// ```
 	pub fn with_write_only_fields(mut self, fields: Vec<String>) -> Self {
@@ -173,6 +303,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -214,6 +345,7 @@ where
 	/// # impl Model for Post {
 	/// #     type PrimaryKey = i64;
 	/// #     type Fields = PostFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
 	/// #     fn table_name() -> &'static str { "posts" }
 	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -240,13 +372,35 @@ where
 	///
 	/// ```
 	/// # use reinhardt_rest::serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
-	/// # use reinhardt_auth::DefaultUser;
+	/// # use reinhardt_db::orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # use uuid::Uuid;
+	/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Uuid,
+	/// #     username: String,
+	/// #     email: String,
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// # }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// #
 	/// let mut introspector = FieldIntrospector::new();
 	/// introspector.register_field(FieldInfo::new("id", "Uuid").primary_key());
 	/// introspector.register_field(FieldInfo::new("username", "String"));
 	///
-	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	/// let serializer = ModelSerializer::<User>::new()
 	///     .with_introspector(introspector);
 	/// ```
 	pub fn with_introspector(mut self, introspector: FieldIntrospector) -> Self {
@@ -268,13 +422,35 @@ where
 	///
 	/// ```
 	/// # use reinhardt_rest::serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
-	/// # use reinhardt_auth::DefaultUser;
+	/// # use reinhardt_db::orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # use uuid::Uuid;
+	/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Uuid,
+	/// #     username: String,
+	/// #     email: String,
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// # }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// #
 	/// let mut introspector = FieldIntrospector::new();
 	/// introspector.register_field(FieldInfo::new("id", "Uuid"));
 	/// introspector.register_field(FieldInfo::new("username", "String"));
 	///
-	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	/// let serializer = ModelSerializer::<User>::new()
 	///     .with_introspector(introspector);
 	///
 	/// let fields = serializer.field_names();
@@ -298,13 +474,35 @@ where
 	///
 	/// ```
 	/// # use reinhardt_rest::serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
-	/// # use reinhardt_auth::DefaultUser;
+	/// # use reinhardt_db::orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # use uuid::Uuid;
+	/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Uuid,
+	/// #     username: String,
+	/// #     email: String,
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// # }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// #
 	/// let mut introspector = FieldIntrospector::new();
 	/// introspector.register_field(FieldInfo::new("id", "Uuid"));
 	/// introspector.register_field(FieldInfo::new("username", "String"));
 	///
-	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	/// let serializer = ModelSerializer::<User>::new()
 	///     .with_introspector(introspector);
 	///
 	/// let required = serializer.required_fields();
@@ -326,13 +524,35 @@ where
 	///
 	/// ```
 	/// # use reinhardt_rest::serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
-	/// # use reinhardt_auth::DefaultUser;
+	/// # use reinhardt_db::orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # use uuid::Uuid;
+	/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Uuid,
+	/// #     username: String,
+	/// #     email: String,
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// # }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// #
 	/// let mut introspector = FieldIntrospector::new();
 	/// introspector.register_field(FieldInfo::new("email", "String").optional());
 	/// introspector.register_field(FieldInfo::new("username", "String"));
 	///
-	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	/// let serializer = ModelSerializer::<User>::new()
 	///     .with_introspector(introspector);
 	///
 	/// let optional = serializer.optional_fields();
@@ -353,13 +573,35 @@ where
 	///
 	/// ```
 	/// # use reinhardt_rest::serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
-	/// # use reinhardt_auth::DefaultUser;
+	/// # use reinhardt_db::orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # use uuid::Uuid;
+	/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Uuid,
+	/// #     username: String,
+	/// #     email: String,
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// # }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// #
 	/// let mut introspector = FieldIntrospector::new();
 	/// introspector.register_field(FieldInfo::new("id", "Uuid").primary_key());
 	/// introspector.register_field(FieldInfo::new("username", "String"));
 	///
-	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	/// let serializer = ModelSerializer::<User>::new()
 	///     .with_introspector(introspector);
 	///
 	/// let pk = serializer.primary_key_field();
@@ -378,9 +620,31 @@ where
 	///
 	/// ```
 	/// # use reinhardt_rest::serializers::{ModelSerializer, validators::UniqueValidator};
-	/// # use reinhardt_auth::DefaultUser;
+	/// # use reinhardt_db::orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # use uuid::Uuid;
+	/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Uuid,
+	/// #     username: String,
+	/// #     email: String,
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// # }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// #
-	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	/// let serializer = ModelSerializer::<User>::new()
 	///     .with_unique_validator(UniqueValidator::new("username"));
 	/// ```
 	pub fn with_unique_validator(mut self, validator: UniqueValidator<M>) -> Self {
@@ -394,9 +658,31 @@ where
 	///
 	/// ```
 	/// # use reinhardt_rest::serializers::{ModelSerializer, validators::UniqueTogetherValidator};
-	/// # use reinhardt_auth::DefaultUser;
+	/// # use reinhardt_db::orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # use uuid::Uuid;
+	/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Uuid,
+	/// #     username: String,
+	/// #     email: String,
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// # }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// #
-	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	/// let serializer = ModelSerializer::<User>::new()
 	///     .with_unique_together_validator(
 	///         UniqueTogetherValidator::new(vec!["username", "email"])
 	///     );
@@ -427,9 +713,31 @@ where
 	///
 	/// ```
 	/// # use reinhardt_rest::serializers::{ModelSerializer, validators::UniqueValidator};
-	/// # use reinhardt_auth::DefaultUser;
+	/// # use reinhardt_db::orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # use uuid::Uuid;
+	/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Uuid,
+	/// #     username: String,
+	/// #     email: String,
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// # }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// #
-	/// let serializer = ModelSerializer::<DefaultUser>::new()
+	/// let serializer = ModelSerializer::<User>::new()
 	///     .with_unique_validator(UniqueValidator::new("username"));
 	///
 	/// let validators = serializer.validators();
@@ -454,11 +762,32 @@ where
 	///
 	/// ```
 	/// # use reinhardt_rest::serializers::ModelSerializer;
-	/// # use reinhardt_auth::DefaultUser;
+	/// # use reinhardt_db::orm::Model;
+	/// # use serde::{Serialize, Deserialize};
 	/// # use uuid::Uuid;
+	/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Uuid,
+	/// #     username: String,
+	/// #     email: String,
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// # }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// #
-	/// let serializer = ModelSerializer::<DefaultUser>::new();
-	/// let user = DefaultUser {
+	/// let serializer = ModelSerializer::<User>::new();
+	/// let user = User {
 	///     id: Uuid::now_v7(),
 	///     username: "alice".to_string(),
 	///     ..Default::default()
@@ -490,14 +819,35 @@ where
 	///
 	/// ```no_run
 	/// # use reinhardt_rest::serializers::ModelSerializer;
-	/// # use reinhardt_auth::DefaultUser;
-	/// # use reinhardt_db::backends::DatabaseConnection;
+	/// # use reinhardt_db::orm::Model;
+	/// # use serde::{Serialize, Deserialize};
 	/// # use uuid::Uuid;
+	/// # #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+	/// # struct User {
+	/// #     id: Uuid,
+	/// #     username: String,
+	/// #     email: String,
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = Uuid;
+	/// #     type Fields = UserFields;
+	/// #     type Objects = reinhardt_db::orm::Manager<Self>;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { Some(self.id) }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = value; }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// # }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # use reinhardt_db::backends::DatabaseConnection;
 	/// #
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let connection = DatabaseConnection::connect_postgres("postgres://localhost/test").await?;
-	/// let serializer = ModelSerializer::<DefaultUser>::new();
-	/// let user = DefaultUser {
+	/// let serializer = ModelSerializer::<User>::new();
+	/// let user = User {
 	///     id: Uuid::now_v7(),
 	///     username: "alice".to_string(),
 	///     ..Default::default()

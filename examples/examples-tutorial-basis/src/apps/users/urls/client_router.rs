@@ -1,20 +1,22 @@
-//! Client-side routing for the users application (login/logout pages).
+//! Client-side routing for the users application (login/logout/signup pages).
 //!
-//! Routes are auto-prefixed with `/users/` from `InstalledApp::users`, so the
-//! relative path `/login/` resolves to `/users/login/` at runtime. Each
-//! route is registered with a stable name (`users:login`, `users:logout`)
-//! so callers can resolve URLs via `ResolvedUrls::resolve_client_url(...)`.
+//! Each route is registered with a stable name (`users:login`,
+//! `users:logout`, `users:signup`) so callers can resolve URLs via the URL
+//! reverser.
 
 use reinhardt::ClientRouter;
-use reinhardt::url_patterns;
 
 use crate::client::pages::{login_page, logout_page, signup_page};
-use crate::config::apps::InstalledApp;
 
-#[url_patterns(InstalledApp::users, mode = client)]
 pub fn client_url_patterns() -> ClientRouter {
 	ClientRouter::new()
-		.named_route("login", "/login/", login_page)
-		.named_route("logout", "/logout/", logout_page)
-		.named_route("signup", "/signup/", signup_page)
+		.route("login", "/login/", login_page)
+		.route("logout", "/logout/", logout_page)
+		.route("signup", "/signup/", signup_page)
+}
+
+pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
+	client_url_patterns()
+		.reverse(name, params)
+		.unwrap_or_else(|error| panic!("failed to reverse users client route `{name}`: {error}"))
 }

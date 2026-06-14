@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-admin"
-version = "0.1.4"
+version = "0.2.0-rc.6"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -23,6 +23,7 @@ anyhow = { workspace = true }
 base64 = { workspace = true }
 percent-encoding = "2.3"
 reinhardt-pages = { workspace = true }
+reinhardt-urls = { workspace = true, features = ["routers"] }
 sha2 = "0.10"
 subtle = "2"
 getrandom = { workspace = true }
@@ -37,7 +38,6 @@ reinhardt-core = { workspace = true, features = ["exception"] }
 reinhardt-db = { workspace = true, features = ["orm"] }
 reinhardt-di = { workspace = true }
 reinhardt-http = { workspace = true }
-reinhardt-urls = { workspace = true, features = ["routers"] }
 reinhardt-utils = { workspace = true, features = ["storage", "utils-core"] }
 reinhardt-query = { workspace = true }
 reqwest = { workspace = true }
@@ -72,6 +72,10 @@ web-sys = { version = "0.3.83", features = [
 	"InputEvent",
 	"HtmlInputElement",
 	"HtmlFormElement",
+	"HtmlOptionElement",
+	"HtmlOptionsCollection",
+	"HtmlSelectElement",
+	"HtmlTextAreaElement",
 	"HtmlButtonElement",
 	"History",
 	"Location",

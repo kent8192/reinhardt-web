@@ -43,9 +43,6 @@ jobs:
           - example: examples-tutorial-rest
             needs-docker: true
             needs-wasm: false
-          - example: examples-twitter
-            needs-docker: true
-            needs-wasm: true
 
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -140,6 +137,11 @@ jobs:
       - name: Check WASM compilation (framework crates)
         if: ${{ matrix.needs-wasm }}
         run: cargo check --target wasm32-unknown-unknown -p reinhardt-core -p reinhardt-urls --features reinhardt-core/full,reinhardt-urls/client-router
+
+      - name: Check WASM compilation (example library)
+        if: ${{ matrix.needs-wasm }}
+        working-directory: examples/${{ matrix.example }}
+        run: cargo check --target wasm32-unknown-unknown --lib
 
       # browser-actions/setup-chrome@v2 does not support linux/arm64, so the
       # headless-browser WASM steps are skipped on self-hosted (arm64) runners

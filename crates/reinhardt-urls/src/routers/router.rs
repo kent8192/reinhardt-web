@@ -1,8 +1,11 @@
 use super::{PathMatcher, PathPattern, Route};
 use async_trait::async_trait;
 use reinhardt_http::{Handler, Request, Response, Result};
+#[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::ViewSet;
+#[cfg(feature = "viewsets")]
 use std::collections::HashMap;
+#[cfg(feature = "viewsets")]
 use std::sync::Arc;
 
 /// Router trait - composes routes together
@@ -83,11 +86,10 @@ impl DefaultRouter {
 	/// # }
 	/// let handler = Arc::new(DummyHandler);
 	/// let mut router = DefaultRouter::new();
-	/// router.add_route(
-	///     path("/users/{id}/", handler)
-	///         .with_name("detail")
-	///         .with_namespace("users")
-	/// );
+	/// let mut route = path("/users/{id}/", handler)
+	///     .with_namespace("users");
+	/// route.name = Some("detail".to_string());
+	/// router.add_route(route);
 	///
 	/// let mut params = HashMap::new();
 	/// params.insert("id".to_string(), "123".to_string());
@@ -123,10 +125,9 @@ impl DefaultRouter {
 	/// # }
 	/// let handler = Arc::new(DummyHandler);
 	/// let mut router = DefaultRouter::new();
-	/// router.add_route(
-	///     path("/users/{id}/", handler)
-	///         .with_name("detail")
-	/// );
+	/// let mut route = path("/users/{id}/", handler);
+	/// route.name = Some("detail".to_string());
+	/// router.add_route(route);
 	///
 	/// let url = router.reverse_with("detail", &[("id", "123")]).unwrap();
 	/// assert_eq!(url, "/users/123/");
@@ -168,6 +169,7 @@ impl DefaultRouter {
 	// - /users/{id}/ for detail actions
 	/// assert_eq!(router.get_routes().len(), 2);
 	/// ```
+	#[cfg(feature = "viewsets")]
 	pub fn register_viewset<V: ViewSet + 'static>(&mut self, prefix: &str, viewset: Arc<V>) {
 		let basename = viewset.get_basename();
 		let lookup_field = viewset.get_lookup_field();
@@ -175,18 +177,16 @@ impl DefaultRouter {
 		// List/Create endpoint: /prefix/
 		let list_path = format!("/{}/", prefix.trim_matches('/'));
 		let list_handler = ViewSetListHandler::new(viewset.clone());
-		self.add_route(
-			Route::new(list_path.clone(), Arc::new(list_handler))
-				.with_name(format!("{}-list", basename)),
-		);
+		let mut list_route = Route::new(list_path.clone(), Arc::new(list_handler));
+		list_route.name = Some(format!("{}-list", basename));
+		self.add_route(list_route);
 
 		// Detail endpoint: /prefix/{lookup_field}/
 		let detail_path = format!("/{}/{{{}}}/", prefix.trim_matches('/'), lookup_field);
 		let detail_handler = ViewSetDetailHandler::new(viewset.clone());
-		self.add_route(
-			Route::new(detail_path, Arc::new(detail_handler))
-				.with_name(format!("{}-detail", basename)),
-		);
+		let mut detail_route = Route::new(detail_path, Arc::new(detail_handler));
+		detail_route.name = Some(format!("{}-detail", basename));
+		self.add_route(detail_route);
 
 		// Register custom actions from ViewSet
 		let extra_actions = viewset.get_extra_actions();
@@ -226,9 +226,9 @@ impl DefaultRouter {
 			};
 
 			let action_handler = ActionHandlerWrapper::new(action.handler.clone());
-			self.add_route(
-				Route::new(action_path, Arc::new(action_handler)).with_name(action_url_name),
-			);
+			let mut action_route = Route::new(action_path, Arc::new(action_handler));
+			action_route.name = Some(action_url_name);
+			self.add_route(action_route);
 		}
 	}
 	/// Get URL map for a ViewSet's extra actions
@@ -261,6 +261,7 @@ impl DefaultRouter {
 	/// // The ViewSet has no extra actions, so the map will be empty
 	/// assert!(url_map.is_empty());
 	/// ```
+	#[cfg(feature = "viewsets")]
 	pub fn get_action_url_map<V: ViewSet>(
 		&self,
 		viewset: &V,
@@ -494,10 +495,11 @@ impl Router for DefaultRouter {
 	/// #     }
 	/// # }
 	/// let handler = Arc::new(DummyHandler);
-	/// let users_routes = vec![
-	///     path("/", handler.clone()).with_name("list"),
-	///     path("/{id}/", handler).with_name("detail"),
-	/// ];
+	/// let mut list_route = path("/", handler.clone());
+	/// list_route.name = Some("list".to_string());
+	/// let mut detail_route = path("/{id}/", handler);
+	/// detail_route.name = Some("detail".to_string());
+	/// let users_routes = vec![list_route, detail_route];
 	///
 	/// let mut router = DefaultRouter::new();
 	/// router.mount("/users", users_routes, Some("users".to_string()));
@@ -578,10 +580,12 @@ impl Handler for DefaultRouter {
 }
 
 /// Handler wrapper for ViewSet list actions
+#[cfg(feature = "viewsets")]
 struct ViewSetListHandler<V> {
 	viewset: Arc<V>,
 }
 
+#[cfg(feature = "viewsets")]
 impl<V> ViewSetListHandler<V> {
 	fn new(viewset: Arc<V>) -> Self {
 		Self { viewset }
@@ -589,6 +593,7 @@ impl<V> ViewSetListHandler<V> {
 }
 
 #[async_trait]
+#[cfg(feature = "viewsets")]
 impl<V: ViewSet + 'static> Handler for ViewSetListHandler<V> {
 	async fn handle(&self, request: Request) -> Result<Response> {
 		let action = reinhardt_views::viewsets::Action::list();
@@ -597,10 +602,12 @@ impl<V: ViewSet + 'static> Handler for ViewSetListHandler<V> {
 }
 
 /// Handler wrapper for ViewSet detail actions
+#[cfg(feature = "viewsets")]
 struct ViewSetDetailHandler<V> {
 	viewset: Arc<V>,
 }
 
+#[cfg(feature = "viewsets")]
 impl<V> ViewSetDetailHandler<V> {
 	fn new(viewset: Arc<V>) -> Self {
 		Self { viewset }
@@ -608,6 +615,7 @@ impl<V> ViewSetDetailHandler<V> {
 }
 
 #[async_trait]
+#[cfg(feature = "viewsets")]
 impl<V: ViewSet + 'static> Handler for ViewSetDetailHandler<V> {
 	async fn handle(&self, request: Request) -> Result<Response> {
 		// Determine action based on HTTP method
@@ -627,10 +635,12 @@ impl<V: ViewSet + 'static> Handler for ViewSetDetailHandler<V> {
 }
 
 /// Handler wrapper for custom ViewSet actions
+#[cfg(feature = "viewsets")]
 struct ActionHandlerWrapper {
 	handler: Arc<dyn reinhardt_views::viewsets::ActionHandler>,
 }
 
+#[cfg(feature = "viewsets")]
 impl ActionHandlerWrapper {
 	fn new(handler: Arc<dyn reinhardt_views::viewsets::ActionHandler>) -> Self {
 		Self { handler }
@@ -638,6 +648,7 @@ impl ActionHandlerWrapper {
 }
 
 #[async_trait]
+#[cfg(feature = "viewsets")]
 impl Handler for ActionHandlerWrapper {
 	async fn handle(&self, request: Request) -> Result<Response> {
 		self.handler.handle(request).await

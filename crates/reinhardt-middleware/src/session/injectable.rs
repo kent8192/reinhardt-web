@@ -1,9 +1,16 @@
-//! `Injectable` implementations exposing session state to the DI layer.
+//! `Injectable` implementation exposing `SessionData` to the DI layer.
+//!
+//! The session store is contributed to the DI container by
+//! [`SessionMiddleware::di_registrations`] under `TypeId::of::<SessionStore>()`,
+//! which is the same key `Depends::<SessionStore>::resolve(...)` looks up.
+//! Handlers that want the store directly should use
+//! `#[inject] store: Depends<SessionStore>`; this module's `Injectable for
+//! SessionData` impl reaches into the same scope by `TypeId` to load the
+//! per-request session.
 
 use async_trait::async_trait;
 use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext};
 use reinhardt_http::Request;
-use std::sync::Arc;
 
 use super::cookie::find_cookie_value;
 use super::data::SessionData;
@@ -38,8 +45,11 @@ fn extract_session_id_from_request(request: &Request, cookie_name: &str) -> DiRe
 #[async_trait]
 impl Injectable for SessionData {
 	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
-		// Get SessionStore from SingletonScope
-		let store = ctx.get_singleton::<Arc<SessionStore>>().ok_or_else(|| {
+		// Look up the store under TypeId::of::<SessionStore>() — the same key
+		// SessionMiddleware::di_registrations uses and that
+		// Depends::<SessionStore>::resolve(...) would hit via the SingletonScope
+		// fallback path. See #4437.
+		let store = ctx.get_singleton::<SessionStore>().ok_or_else(|| {
 			DiError::NotFound(
 				concat!(
 					"SessionStore not found in SingletonScope. ",
@@ -84,39 +94,5 @@ impl Injectable for SessionData {
 			})?;
 		session.id_holder = id_holder;
 		Ok(session)
-	}
-}
-
-/// Wrapper for `Arc<SessionStore>` to enable dependency injection
-///
-/// This wrapper type is necessary because we cannot implement Injectable
-/// for `Arc<SessionStore>` directly due to Rust's orphan rules.
-#[derive(Clone)]
-pub struct SessionStoreRef(pub Arc<SessionStore>);
-
-impl SessionStoreRef {
-	/// Get a reference to the inner SessionStore
-	pub fn inner(&self) -> &SessionStore {
-		&self.0
-	}
-
-	/// Get a clone of the inner `Arc<SessionStore>`
-	pub fn arc(&self) -> Arc<SessionStore> {
-		Arc::clone(&self.0)
-	}
-}
-
-#[async_trait]
-impl Injectable for SessionStoreRef {
-	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
-		ctx.get_singleton::<Arc<SessionStore>>()
-			.map(|arc_store| SessionStoreRef(Arc::clone(&*arc_store)))
-			.ok_or_else(|| {
-				DiError::NotFound(
-					"SessionStore not found in SingletonScope. \
-                     Ensure SessionMiddleware is configured and its store is registered."
-						.to_string(),
-				)
-			})
 	}
 }

@@ -22,15 +22,20 @@ session_cookie_secure = false
 csrf_cookie_secure = false
 append_slash = true
 
-# Top-level [database] is the canonical schema consumed by
-# `reinhardt_db::connection::get_database_url_from_env_or_settings`.
+# `[core.databases.default]` is the canonical database schema: it is consumed
+# by the composed `ProjectSettings` (`#[settings(core: CoreSettings | contacts:
+# ContactSettings)]`, where `CoreSettings` is registered under section "core"),
+# and the management
+# runtime resolves the connection from it via
+# `reinhardt_db::backends::DatabaseConnection::database_url_from`.
 # See README "With Database" section and reinhardt_conf::settings::DatabaseConfig.
 #
 # The example targets the disposable PostgreSQL container provisioned by
 # `scripts/infra_up.sh` (auto-started as a `runserver` dependency via
 # `migrate`). Override the credentials in `settings/local.toml` if you
 # point this crate at an existing Postgres instance instead.
-[database]
+
+[core.databases.default]
 engine = "postgresql"
 host = "localhost"
 port = 5432
@@ -41,6 +46,13 @@ password = "reinhardt"
 # Redis URL consumed by `scripts/parse_local_toml.py` so the same
 # disposable infra script can provision a Redis container alongside
 # Postgres. The example itself does not yet use Redis, but the container
-# is started for parity with the wider Reinhardt-family stack
-# (reinhardt-cloud, examples-twitter).
+# is started for parity with the wider Reinhardt-family stack.
 redis_url = "redis://localhost:6379/0"
+
+# Contacts fragment (admins/managers). Required because `ProjectSettings`
+# composes `ContactSettings` (`#[settings(core: CoreSettings | contacts:
+# ContactSettings)]`) to satisfy the `HasCommonSettings` bound on
+# `execute_from_command_line_with_settings`. Empty lists are valid defaults.
+[contacts]
+admins = []
+managers = []

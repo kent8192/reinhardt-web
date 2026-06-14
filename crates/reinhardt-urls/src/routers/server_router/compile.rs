@@ -5,12 +5,16 @@
 //! `RwLock` poisoning to avoid cascade failures.
 
 use super::ServerRouter;
+#[cfg(feature = "viewsets")]
 use super::handlers::ViewSetHandler;
 use super::types::RouteHandler;
 use hyper::Method;
+#[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::Action;
 use std::borrow::Cow;
-use std::sync::{Arc, PoisonError};
+#[cfg(feature = "viewsets")]
+use std::sync::Arc;
+use std::sync::PoisonError;
 
 impl ServerRouter {
 	/// Compile all routes into matchit routers.
@@ -138,16 +142,27 @@ impl ServerRouter {
 			}
 		}
 
-		// Compile ViewSet routes
+		#[cfg(feature = "viewsets")]
+		self.compile_viewset_routes(&mut errors);
+
+		// Mark routes as compiled
+		*self
+			.routes_compiled
+			.write()
+			.unwrap_or_else(PoisonError::into_inner) = true;
+
+		errors
+	}
+
+	#[cfg(feature = "viewsets")]
+	fn compile_viewset_routes(&self, errors: &mut Vec<String>) {
 		// ViewSet base_path must NOT include self.prefix because resolve() strips
 		// the prefix from incoming request paths before matching against matchit.
 		for (prefix, viewset) in &self.viewsets {
 			let base_path = format!("/{}", prefix.trim_start_matches('/'));
 
-			// Collection route: GET /prefix/ (list), POST /prefix/ (create)
 			let collection_path = format!("{}/", base_path.trim_end_matches('/'));
 
-			// List action (GET)
 			let list_handler = RouteHandler {
 				handler: Arc::new(ViewSetHandler {
 					viewset: viewset.clone(),
@@ -167,7 +182,6 @@ impl ServerRouter {
 				));
 			}
 
-			// Create action (POST)
 			let create_handler = RouteHandler {
 				handler: Arc::new(ViewSetHandler {
 					viewset: viewset.clone(),
@@ -187,11 +201,9 @@ impl ServerRouter {
 				));
 			}
 
-			// Detail routes: GET/PUT/DELETE /prefix/{id}/
 			let lookup_field = viewset.get_lookup_field();
 			let detail_path = format!("{}/{{{}}}/", base_path.trim_end_matches('/'), lookup_field);
 
-			// Retrieve action (GET)
 			let retrieve_handler = RouteHandler {
 				handler: Arc::new(ViewSetHandler {
 					viewset: viewset.clone(),
@@ -211,7 +223,6 @@ impl ServerRouter {
 				));
 			}
 
-			// Update action (PUT)
 			let update_handler = RouteHandler {
 				handler: Arc::new(ViewSetHandler {
 					viewset: viewset.clone(),
@@ -231,7 +242,6 @@ impl ServerRouter {
 				));
 			}
 
-			// Destroy action (DELETE)
 			let destroy_handler = RouteHandler {
 				handler: Arc::new(ViewSetHandler {
 					viewset: viewset.clone(),
@@ -251,14 +261,6 @@ impl ServerRouter {
 				));
 			}
 		}
-
-		// Mark routes as compiled
-		*self
-			.routes_compiled
-			.write()
-			.unwrap_or_else(PoisonError::into_inner) = true;
-
-		errors
 	}
 
 	/// Validate all routes by compiling them and returning any errors.

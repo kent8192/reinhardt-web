@@ -15,8 +15,8 @@ mod browser;
 // remain accessible at the same path after the browser submodule extraction.
 #[cfg(all(wasm, feature = "wasm"))]
 pub use browser::{
-	WasmTestEnv, mock_cookies, mock_fetch, mock_local_storage, mock_session_storage,
-	populated_storage, screen, session_cookies, wasm_test_env,
+	WasmTestEnv, mock_cookies, mock_local_storage, mock_session_storage, populated_storage, screen,
+	session_cookies, wasm_test_env,
 };
 
 // MSW fixtures (requires wasm + msw features)

@@ -18,6 +18,3 @@ mod viewset_register_to_integration;
 
 #[path = "routing/viewset_router_integration.rs"]
 mod viewset_router_integration;
-
-#[path = "routing/url_patterns_typed_integration.rs"]
-mod url_patterns_typed_integration;

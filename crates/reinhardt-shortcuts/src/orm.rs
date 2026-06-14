@@ -6,6 +6,8 @@
 //! This module is only available with the `database` feature enabled.
 
 #[cfg(feature = "database")]
+use reinhardt_db::orm::CustomManager;
+#[cfg(feature = "database")]
 use reinhardt_db::prelude::Model;
 #[cfg(feature = "database")]
 use reinhardt_http::Response;

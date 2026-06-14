@@ -7,11 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-mail@v0.1.3...reinhardt-mail@v0.1.4) - 2026-06-10
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-mail@v0.1.3...reinhardt-mail@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-mail` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Review the breaking changes listed below before upgrading from 0.1.x.
+- See the root CHANGELOG and `instructions/MIGRATION_0.2.md` for cross-crate migration guidance.
+
+### Breaking Changes
+
+- *(conf)* [**breaking**] remove legacy advanced settings types
+
+### Deprecated
+
+- bridge SmtpConfig to the EmailSettings fragment
+- shield smtp_integration test from SmtpConfig deprecation
+
+### Fixed
+
+- *(mail)* accept settings email fragments
+- *(conf)* [**breaking**] remove legacy advanced settings types
+
+### Documentation
+
+- *(mail,conf)* fix unresolved intra-doc links to settings fragments
 
 ### Maintenance
 
 - update Cargo.toml dependencies
+
+
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-mail@v0.2.0-rc.4...reinhardt-mail@v0.2.0-rc.5) - 2026-06-11
+
+### Maintenance
+
+- update Cargo.toml dependencies
+
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-mail@v0.1.3...reinhardt-mail@v0.2.0-rc.2) - 2026-06-03
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Deprecated
+
+- bridge SmtpConfig to the EmailSettings fragment
+- shield smtp_integration test from SmtpConfig deprecation
+
+### Documentation
+
+- *(mail,conf)* fix unresolved intra-doc links to settings fragments
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+- *(mail)* accept settings email fragments
+- *(conf)* [**breaking**] remove legacy advanced settings types
+- *(ci)* unblock release docs and form tests
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-mail@v0.1.0-rc.30...reinhardt-mail@v0.1.0) - 2026-05-22
 

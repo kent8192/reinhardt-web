@@ -7,27 +7,130 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.3...reinhardt-pages-macros@v0.1.4) - 2026-06-10
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.3...reinhardt-pages-macros@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-pages-macros` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Run the Manouche v2 migration codemod for `page!` syntax changes, then review implicit captures manually.
+- See [`instructions/MIGRATION_0.2.md`](../../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- *(pages-macros)* [**breaking**] implement compile-time hook deps verification
+
+### Added
+
+- *(pages-macros)* add typed value conversion in WASM bind listener
+- *(pages)* support keyed page list rendering
+- *(pages-macros)* [**breaking**] implement compile-time hook deps verification
+- *(forms)* add typed use_form ergonomics
+- feat!(forms): route use_form through form definitions
+
+### Changed
+
+- *(pages)* unify spawn into platform/, expose spawn_task from prelude
+- `#[server_fn]` now emits the `marker` module on wasm
+  unconditionally — previously the marker was only present when the
+  `msw` feature was active, which forced `#[url_patterns(mode = unified)]`
+  closure bodies that referenced `my_fn::marker` to be wrapped in
+  `#[cfg(native)] { ... }` arms. The optional `Args` struct and
+  `MockableServerFn` impl remain gated behind `#[cfg(feature = "msw")]`
+  inside the marker module
+  ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
+- `#[server_fn]` emits `impl ServerFnMetadata for marker` on every
+  emission path, providing a single source of truth for `PATH`,
+  `NAME`, `CODEC`, and `INJECTED_PARAMS` across the cfg boundary.
+  Duplicate constant declarations have been removed from
+  `impl ServerFnRegistration` (native) and `impl MockableServerFn`
+  (msw) blocks
+  ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
 
 ### Fixed
 
-- *(features)* gate signals facade exports
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(pages)* render dynamic radio choices
+- *(forms)* stabilize form runtime and validator parity
+
+- *(forms)* omit unreachable focus path for empty forms
 
 ### Performance
 
 - *(pages)* batch generated page attributes
 
-## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.2...reinhardt-pages-macros@v0.1.3) - 2026-05-31
+### Documentation
+
+- *(release)* enforce public API doc coverage
+- *(pages)* document Clone requirement for keyed for iterators
+
+
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.2.0-rc.4...reinhardt-pages-macros@v0.2.0-rc.5) - 2026-06-11
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+
+### Performance
+
+- *(pages)* batch generated page attributes
+
+### Testing
+
+- *(ci)* refresh release CI expectations
+
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.3...reinhardt-pages-macros@v0.2.0-rc.2) - 2026-06-03
+
+### Added
+
+- *(pages-macros)* add typed value conversion in WASM bind listener
+- *(pages)* support keyed page list rendering
+- *(pages-macros)* [**breaking**] implement compile-time hook deps verification
+- *(forms)* add typed use_form ergonomics
+- feat!(forms): route use_form through form definitions
+
+### Changed
+
+- *(pages)* unify spawn into platform/, expose spawn_task from prelude
+
+### Documentation
+
+- *(pages)* document Clone requirement for keyed for iterators
 
 ### Fixed
 
-- *(di)* resolve DependsResult macro injection
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(pages)* render dynamic radio choices
+- *(forms)* address review and CI failures
+- *(forms)* stabilize form runtime and validator parity
+- *(forms)* address review feedback
+- *(forms)* address bot review feedback
 
-## [0.1.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0...reinhardt-pages-macros@v0.1.1) - 2026-05-24
+### Maintenance
 
-### Fixed
+- forward merge main v0.1.1 changes into develop 0.2.0
+- *(ci)* merge develop into release docs fix
 
-- *(ci)* resolve Rust 1.94 clippy failures
+### Changed
+
+- `#[server_fn]` now emits the `marker` module on wasm
+  unconditionally — previously the marker was only present when the
+  `msw` feature was active, which forced `#[url_patterns(mode = unified)]`
+  closure bodies that referenced `my_fn::marker` to be wrapped in
+  `#[cfg(native)] { ... }` arms. The optional `Args` struct and
+  `MockableServerFn` impl remain gated behind `#[cfg(feature = "msw")]`
+  inside the marker module
+  ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
+- `#[server_fn]` emits `impl ServerFnMetadata for marker` on every
+  emission path, providing a single source of truth for `PATH`,
+  `NAME`, `CODEC`, and `INJECTED_PARAMS` across the cfg boundary.
+  Duplicate constant declarations have been removed from
+  `impl ServerFnRegistration` (native) and `impl MockableServerFn`
+  (msw) blocks
+  ([#4711](https://github.com/kent8192/reinhardt-web/issues/4711)).
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.30...reinhardt-pages-macros@v0.1.0) - 2026-05-22
 

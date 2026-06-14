@@ -75,6 +75,7 @@ pub use backends::DatabaseSessionBackend;
 pub use backends::FileSessionBackend;
 
 #[cfg(feature = "jwt")]
+#[allow(deprecated)] // Re-export keeps the compatibility API discoverable during the 0.2 line.
 pub use backends::{JwtConfig, JwtSessionBackend};
 
 pub use cleanup::{CleanupConfig, CleanupableBackend, SessionCleanupTask, SessionMetadata};

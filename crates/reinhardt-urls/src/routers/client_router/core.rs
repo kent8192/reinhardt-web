@@ -4,14 +4,15 @@
 //! The router uses `Page` type for all view rendering.
 
 use super::error::{MergeError, RouterError};
+use super::from_request::FromRequest;
 use super::handler::{
-	RouteHandler, no_params_handler, result_handler, single_path_handler, three_path_handler,
-	two_path_handler, with_params_handler,
+	Handler, RouteHandler, from_request_handler, no_params_handler, result_handler,
+	with_params_handler,
 };
 #[cfg(wasm)]
 use super::history::setup_popstate_listener;
 use super::history::{HistoryState, NavigationType, current_path, push_state, replace_state};
-use super::params::{FromPath, ParamContext, Path, SingleFromPath};
+use super::params::{FromPath, ParamContext, Path};
 use super::pattern::ClientPathPattern;
 use reinhardt_core::page::Page;
 use reinhardt_core::reactive::Signal;
@@ -88,6 +89,67 @@ pub struct ClientRouteMatch {
 	/// This guarantees that tuple extraction works correctly by index,
 	/// matching the order of parameters in the URL pattern.
 	pub(crate) param_values: Vec<String>,
+	/// Raw query string (without the leading `?`), captured from the
+	/// path passed to [`ClientRouter::match_path`].
+	///
+	/// Populated by `match_path` so [`ClientRouter::page`] handlers can
+	/// surface query data via [`QueryParam<T>`]. `None` when the path
+	/// had no `?` segment.
+	///
+	/// [`ClientRouter::page`]: ClientRouter::page
+	/// [`QueryParam<T>`]: super::from_request::QueryParam
+	pub query: Option<String>,
+}
+
+/// Route-level metadata exposed alongside matched client routes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RouteMetadata {
+	/// Browser/document title associated with the route.
+	title: Option<String>,
+	/// Human-readable breadcrumb label associated with the route.
+	breadcrumb: Option<String>,
+	/// Whether this route should be treated as authentication-protected.
+	requires_auth: bool,
+}
+
+impl RouteMetadata {
+	/// Creates empty route metadata.
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	/// Sets the route title.
+	pub fn with_title(mut self, title: impl Into<String>) -> Self {
+		self.title = Some(title.into());
+		self
+	}
+
+	/// Sets the breadcrumb label.
+	pub fn with_breadcrumb(mut self, breadcrumb: impl Into<String>) -> Self {
+		self.breadcrumb = Some(breadcrumb.into());
+		self
+	}
+
+	/// Sets whether the route requires authentication.
+	pub fn with_requires_auth(mut self, requires_auth: bool) -> Self {
+		self.requires_auth = requires_auth;
+		self
+	}
+
+	/// Returns the route title, if configured.
+	pub fn title(&self) -> Option<&str> {
+		self.title.as_deref()
+	}
+
+	/// Returns the breadcrumb label, if configured.
+	pub fn breadcrumb(&self) -> Option<&str> {
+		self.breadcrumb.as_deref()
+	}
+
+	/// Returns whether the route requires authentication.
+	pub fn requires_auth(&self) -> bool {
+		self.requires_auth
+	}
 }
 
 /// A single route definition.
@@ -96,6 +158,8 @@ pub struct ClientRoute {
 	pattern: ClientPathPattern,
 	/// Optional route name for reverse lookups.
 	name: Option<String>,
+	/// Route-level metadata.
+	metadata: RouteMetadata,
 	/// The route handler.
 	handler: Arc<dyn RouteHandler>,
 	/// Optional guard function.
@@ -107,6 +171,7 @@ impl Clone for ClientRoute {
 		Self {
 			pattern: self.pattern.clone(),
 			name: self.name.clone(),
+			metadata: self.metadata.clone(),
 			handler: Arc::clone(&self.handler),
 			guard: self.guard.clone(),
 		}
@@ -118,6 +183,7 @@ impl std::fmt::Debug for ClientRoute {
 		f.debug_struct("ClientRoute")
 			.field("pattern", &self.pattern)
 			.field("name", &self.name)
+			.field("metadata", &self.metadata)
 			.field("has_guard", &self.guard.is_some())
 			.finish()
 	}
@@ -138,6 +204,7 @@ impl ClientRoute {
 			pattern: ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
 			name: None,
+			metadata: RouteMetadata::default(),
 			handler: no_params_handler(component),
 			guard: None,
 		}
@@ -157,6 +224,7 @@ impl ClientRoute {
 			pattern: ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
 			name: Some(name.into()),
+			metadata: RouteMetadata::default(),
 			handler: no_params_handler(component),
 			guard: None,
 		}
@@ -171,6 +239,12 @@ impl ClientRoute {
 		self
 	}
 
+	/// Adds route-level metadata to this route.
+	pub fn with_metadata(mut self, metadata: RouteMetadata) -> Self {
+		self.metadata = metadata;
+		self
+	}
+
 	/// Returns the route name.
 	pub fn name(&self) -> Option<&str> {
 		self.name.as_deref()
@@ -179,6 +253,11 @@ impl ClientRoute {
 	/// Returns the pattern.
 	pub fn pattern(&self) -> &ClientPathPattern {
 		&self.pattern
+	}
+
+	/// Returns route-level metadata.
+	pub fn metadata(&self) -> &RouteMetadata {
+		&self.metadata
 	}
 
 	/// Checks if the guard allows access.
@@ -310,8 +389,7 @@ impl ClientRouter {
 	///
 	/// # Examples
 	///
-	/// Composing per-app SPA routers produced by
-	/// `#[url_patterns(InstalledApp::<app>, mode = client)]` into the single
+	/// Composing per-app SPA routers into the single
 	/// `ClientRouter` that `ClientLauncher::router_client` expects:
 	///
 	/// ```rust,ignore
@@ -364,9 +442,9 @@ impl ClientRouter {
 	/// Prefix all named route keys with `"namespace:"`.
 	///
 	/// This is the client-side equivalent of `ServerRouter::with_namespace()`.
-	/// Called by `#[url_patterns(InstalledApp::<variant>, mode = client)]` (or
-	/// `mode = unified`) to ensure registered names match the `"app:route"`
-	/// format used by per-app resolver structs.
+	/// Called by client/unified route declarations to ensure registered
+	/// names match the `"app:route"` format used by per-app resolver
+	/// structs.
 	pub fn with_namespace(mut self, namespace: &str) -> Self {
 		let old = std::mem::take(&mut self.named_routes);
 		for (name, idx) in old {
@@ -381,45 +459,69 @@ impl ClientRouter {
 		self
 	}
 
-	/// Adds a route to the router.
-	pub fn route<F>(mut self, pattern: &str, component: F) -> Self
-	where
-		F: Fn() -> Page + Send + Sync + 'static,
-	{
-		self.routes.push(ClientRoute::new(pattern, component));
+	/// Insert a named route into the lookup table, panicking on duplicates.
+	///
+	/// All individual route registration methods (`route`, `route_params`,
+	/// `route_result`, `page`, `route_path`) delegate to this helper so
+	/// that a duplicate name is caught immediately at registration time
+	/// rather than causing silent reverse/match drift at runtime.
+	///
+	/// The `merge` and `with_namespace` methods intentionally bypass this
+	/// check: `merge` documents last-wins semantics, and `with_namespace`
+	/// re-keys existing entries without introducing new names.
+	///
+	/// # Panics
+	///
+	/// Panics if `name` is already registered.
+	fn insert_named_route(&mut self, name: &str, index: usize) {
+		if self.named_routes.insert(name.to_string(), index).is_some() {
+			panic!(
+				"Duplicate client route name '{}': a route with this name is already registered",
+				name,
+			);
+		}
+	}
+
+	/// Adds metadata to an already-registered named route.
+	///
+	/// # Panics
+	///
+	/// Panics if `name` is not registered.
+	pub fn with_route_metadata(mut self, name: &str, metadata: RouteMetadata) -> Self {
+		let index = *self.named_routes.get(name).unwrap_or_else(|| {
+			panic!(
+				"Unknown client route name '{}': cannot attach metadata",
+				name
+			)
+		});
+		self.routes[index] = self.routes[index].clone().with_metadata(metadata);
 		self
 	}
 
 	/// Adds a named route to the router.
-	pub fn named_route<F>(mut self, name: &str, pattern: &str, component: F) -> Self
+	///
+	/// Every route requires a unique `name` for reverse URL lookup.
+	///
+	/// # Panics
+	///
+	/// Panics if `name` duplicates an already-registered route name.
+	pub fn route<F>(mut self, name: &str, pattern: &str, component: F) -> Self
 	where
 		F: Fn() -> Page + Send + Sync + 'static,
 	{
 		let index = self.routes.len();
 		self.routes
 			.push(ClientRoute::named(name, pattern, component));
-		self.named_routes.insert(name.to_string(), index);
-		self
-	}
-
-	/// Adds a route with typed path parameters.
-	pub fn route_params<F, T>(mut self, pattern: &str, handler: F) -> Self
-	where
-		F: Fn(Path<T>) -> Page + Send + Sync + 'static,
-		T: FromPath + Send + Sync + 'static,
-	{
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
-				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: None,
-			handler: with_params_handler(handler),
-			guard: None,
-		});
+		self.insert_named_route(name, index);
 		self
 	}
 
 	/// Adds a named route with typed path parameters.
-	pub fn named_route_params<F, T>(mut self, name: &str, pattern: &str, handler: F) -> Self
+	///
+	/// # Panics
+	///
+	/// Panics if `name` duplicates an already-registered route name.
+	pub fn route_params<F, T>(mut self, name: &str, pattern: &str, handler: F) -> Self
 	where
 		F: Fn(Path<T>) -> Page + Send + Sync + 'static,
 		T: FromPath + Send + Sync + 'static,
@@ -429,32 +531,20 @@ impl ClientRouter {
 			pattern: ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
 			name: Some(name.to_string()),
+			metadata: RouteMetadata::default(),
 			handler: with_params_handler(handler),
 			guard: None,
 		});
-		self.named_routes.insert(name.to_string(), index);
+		self.insert_named_route(name, index);
 		self
 	}
 
-	/// Adds a route with typed path parameters that returns a Result.
-	pub fn route_result<F, T, E>(mut self, pattern: &str, handler: F) -> Self
-	where
-		F: Fn(Path<T>) -> Result<Page, E> + Send + Sync + 'static,
-		T: FromPath + Send + Sync + 'static,
-		E: Into<RouterError> + Send + Sync + 'static,
-	{
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
-				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: None,
-			handler: result_handler(handler),
-			guard: None,
-		});
-		self
-	}
-
-	/// Adds a named route with typed path parameters that returns a Result.
-	pub fn named_route_result<F, T, E>(mut self, name: &str, pattern: &str, handler: F) -> Self
+	/// Adds a named route with typed path parameters that returns a `Result`.
+	///
+	/// # Panics
+	///
+	/// Panics if `name` duplicates an already-registered route name.
+	pub fn route_result<F, T, E>(mut self, name: &str, pattern: &str, handler: F) -> Self
 	where
 		F: Fn(Path<T>) -> Result<Page, E> + Send + Sync + 'static,
 		T: FromPath + Send + Sync + 'static,
@@ -465,10 +555,73 @@ impl ClientRouter {
 			pattern: ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
 			name: Some(name.to_string()),
+			metadata: RouteMetadata::default(),
 			handler: result_handler(handler),
 			guard: None,
 		});
-		self.named_routes.insert(name.to_string(), index);
+		self.insert_named_route(name, index);
+		self
+	}
+
+	/// Adds a named route whose handler receives a single Props struct
+	/// constructed via [`FromRequest`] (Manouche DSL v2 spec §4.3).
+	///
+	/// This is the canonical v2 route-handler shape: the same Props
+	/// struct can be used both as a Component (passed via the
+	/// `Component { ... }` invocation syntax) and as a page function
+	/// (registered here). Path / query extraction errors surface as a
+	/// `Page::Text` describing the failure rather than panicking.
+	///
+	/// The `#[derive(FromRequest)]` / `#[derive(PageProps)]` proc-macros
+	/// that automate the manual `impl FromRequest` boilerplate are
+	/// deferred to spec §10.
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// use reinhardt_urls::routers::ClientRouter;
+	/// use reinhardt_urls::routers::client_router::from_request::{
+	///     ExtractError, FromRequest, PathParam, RouteContext,
+	/// };
+	///
+	/// struct UserPageProps { id: PathParam<i32> }
+	///
+	/// impl FromRequest for UserPageProps {
+	///     fn from_request(ctx: &RouteContext) -> Result<Self, ExtractError> {
+	///         Ok(Self { id: PathParam::extract(ctx, "id")? })
+	///     }
+	/// }
+	///
+	/// fn user_page(props: UserPageProps) -> reinhardt_core::types::page::Page {
+	///     reinhardt_core::types::page::Page::Text(
+	///         format!("user {}", props.id.into_inner()).into(),
+	///     )
+	/// }
+	///
+	/// let router = ClientRouter::new().page("user", "/users/{id}/", user_page);
+	/// ```
+	///
+	/// # Panics
+	///
+	/// Panics if the pattern is invalid (exceeds length/segment limits
+	/// or invalid regex). Use [`ClientPathPattern::new`] directly for
+	/// fallible construction. Also panics if `name` duplicates an
+	/// already-registered route name.
+	pub fn page<F, P>(mut self, name: &str, pattern: &str, handler: F) -> Self
+	where
+		F: Fn(P) -> Page + Send + Sync + 'static,
+		P: FromRequest + Send + Sync + 'static,
+	{
+		let index = self.routes.len();
+		self.routes.push(ClientRoute {
+			pattern: ClientPathPattern::new(pattern)
+				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
+			name: Some(name.to_string()),
+			metadata: RouteMetadata::default(),
+			handler: from_request_handler(handler, pattern.to_string()),
+			guard: None,
+		});
+		self.insert_named_route(name, index);
 		self
 	}
 
@@ -483,140 +636,58 @@ impl ClientRouter {
 		self
 	}
 
-	/// Adds a route with a single path parameter using `Path<T>` extractor.
+	/// Adds a named route with one to eight path parameters using `Path<T>`
+	/// extractors.
 	///
-	/// # Example
+	/// The handler closure may take any number of `Path<T>` arguments from 1
+	/// to 8. The compiler infers the arity from the closure signature via the
+	/// sealed `Handler<Args>` trait, so the same method name covers every
+	/// supported arity. Refs Issue #4637.
+	///
+	/// # Examples
 	///
 	/// ```ignore
+	/// // One path parameter
 	/// let router = ClientRouter::new()
-	///     .route_path("/users/{id}/", |Path(id): Path<i64>| {
-	///         user_detail(id)
-	///     });
+	///     .route_path("user_detail", "/users/{id}/", |Path(id): Path<i64>| user_detail(id));
+	///
+	/// // Two path parameters
+	/// let router = router.route_path(
+	///     "user_post_detail",
+	///     "/users/{user_id}/posts/{post_id}/",
+	///     |Path(user_id): Path<i64>, Path(post_id): Path<i64>| {
+	///         user_post_detail(user_id, post_id)
+	///     },
+	/// );
+	///
+	/// // Three path parameters
+	/// let router = router.route_path(
+	///     "issue_detail",
+	///     "/org/{org}/repos/{repo}/issues/{issue}/",
+	///     |Path(org): Path<String>, Path(repo): Path<String>, Path(issue): Path<i32>| {
+	///         issue_detail(org, repo, issue)
+	///     },
+	/// );
 	/// ```
-	pub fn route_path<F, T>(mut self, pattern: &str, handler: F) -> Self
+	///
+	/// # Panics
+	///
+	/// Panics if the pattern is invalid or if `name` duplicates an
+	/// already-registered route name.
+	pub fn route_path<H, Args>(mut self, name: &str, pattern: &str, handler: H) -> Self
 	where
-		F: Fn(Path<T>) -> Page + Send + Sync + 'static,
-		T: SingleFromPath + Send + Sync + 'static,
-	{
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
-				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: None,
-			handler: single_path_handler(handler),
-			guard: None,
-		});
-		self
-	}
-
-	/// Adds a named route with a single path parameter using `Path<T>` extractor.
-	pub fn named_route_path<F, T>(mut self, name: &str, pattern: &str, handler: F) -> Self
-	where
-		F: Fn(Path<T>) -> Page + Send + Sync + 'static,
-		T: SingleFromPath + Send + Sync + 'static,
+		H: Handler<Args>,
 	{
 		let index = self.routes.len();
 		self.routes.push(ClientRoute {
 			pattern: ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
 			name: Some(name.to_string()),
-			handler: single_path_handler(handler),
+			metadata: RouteMetadata::default(),
+			handler: handler.into_route_handler(),
 			guard: None,
 		});
-		self.named_routes.insert(name.to_string(), index);
-		self
-	}
-
-	/// Adds a route with two path parameters using multiple `Path<T>` extractors.
-	///
-	/// # Example
-	///
-	/// ```ignore
-	/// let router = ClientRouter::new()
-	///     .route_path2("/users/{user_id}/posts/{post_id}/",
-	///         |Path(user_id): Path<i64>, Path(post_id): Path<i64>| {
-	///             user_post_detail(user_id, post_id)
-	///         });
-	/// ```
-	pub fn route_path2<F, T1, T2>(mut self, pattern: &str, handler: F) -> Self
-	where
-		F: Fn(Path<T1>, Path<T2>) -> Page + Send + Sync + 'static,
-		T1: SingleFromPath + Send + Sync + 'static,
-		T2: SingleFromPath + Send + Sync + 'static,
-	{
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
-				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: None,
-			handler: two_path_handler(handler),
-			guard: None,
-		});
-		self
-	}
-
-	/// Adds a named route with two path parameters.
-	pub fn named_route_path2<F, T1, T2>(mut self, name: &str, pattern: &str, handler: F) -> Self
-	where
-		F: Fn(Path<T1>, Path<T2>) -> Page + Send + Sync + 'static,
-		T1: SingleFromPath + Send + Sync + 'static,
-		T2: SingleFromPath + Send + Sync + 'static,
-	{
-		let index = self.routes.len();
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
-				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: Some(name.to_string()),
-			handler: two_path_handler(handler),
-			guard: None,
-		});
-		self.named_routes.insert(name.to_string(), index);
-		self
-	}
-
-	/// Adds a route with three path parameters using multiple `Path<T>` extractors.
-	///
-	/// # Example
-	///
-	/// ```ignore
-	/// let router = ClientRouter::new()
-	///     .route_path3("/org/{org}/repos/{repo}/issues/{issue}/",
-	///         |Path(org): Path<String>, Path(repo): Path<String>, Path(issue): Path<i32>| {
-	///             issue_detail(org, repo, issue)
-	///         });
-	/// ```
-	pub fn route_path3<F, T1, T2, T3>(mut self, pattern: &str, handler: F) -> Self
-	where
-		F: Fn(Path<T1>, Path<T2>, Path<T3>) -> Page + Send + Sync + 'static,
-		T1: SingleFromPath + Send + Sync + 'static,
-		T2: SingleFromPath + Send + Sync + 'static,
-		T3: SingleFromPath + Send + Sync + 'static,
-	{
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
-				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: None,
-			handler: three_path_handler(handler),
-			guard: None,
-		});
-		self
-	}
-
-	/// Adds a named route with three path parameters.
-	pub fn named_route_path3<F, T1, T2, T3>(mut self, name: &str, pattern: &str, handler: F) -> Self
-	where
-		F: Fn(Path<T1>, Path<T2>, Path<T3>) -> Page + Send + Sync + 'static,
-		T1: SingleFromPath + Send + Sync + 'static,
-		T2: SingleFromPath + Send + Sync + 'static,
-		T3: SingleFromPath + Send + Sync + 'static,
-	{
-		let index = self.routes.len();
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
-				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: Some(name.to_string()),
-			handler: three_path_handler(handler),
-			guard: None,
-		});
-		self.named_routes.insert(name.to_string(), index);
+		self.insert_named_route(name, index);
 		self
 	}
 
@@ -655,13 +726,27 @@ impl ClientRouter {
 	}
 
 	/// Matches a path against registered routes.
+	///
+	/// Strips an optional `?query` suffix before matching and stores
+	/// the captured query (without the leading `?`) on
+	/// [`ClientRouteMatch::query`]. Patterns therefore match against
+	/// the path portion only; the query is delivered to handlers via
+	/// the match struct (used by [`ClientRouter::page`] /
+	/// [`QueryParam`]).
+	///
+	/// [`QueryParam`]: super::from_request::QueryParam
 	pub fn match_path(&self, path: &str) -> Option<ClientRouteMatch> {
+		let (path_only, query) = match path.split_once('?') {
+			Some((p, q)) => (p, Some(q.to_string())),
+			None => (path, None),
+		};
 		for route in &self.routes {
-			if let Some((params, param_values)) = route.pattern.matches(path) {
+			if let Some((params, param_values)) = route.pattern.matches(path_only) {
 				let route_match = ClientRouteMatch {
 					route: route.clone(),
 					params,
 					param_values,
+					query: query.clone(),
 				};
 
 				// Check guard if present
@@ -918,7 +1003,8 @@ impl ClientRouter {
 
 		if let Some(route_match) = self.match_path(&path) {
 			let ctx =
-				ParamContext::new(route_match.params.clone(), route_match.param_values.clone());
+				ParamContext::new(route_match.params.clone(), route_match.param_values.clone())
+					.with_query(route_match.query.clone());
 
 			match route_match.route.handler.handle(&ctx) {
 				Ok(view) => view,
@@ -937,23 +1023,6 @@ impl ClientRouter {
 	/// Checks if a route name exists.
 	pub fn has_route(&self, name: &str) -> bool {
 		self.named_routes.contains_key(name)
-	}
-
-	/// Extract a lightweight, thread-safe URL reverser.
-	///
-	/// The returned `ClientUrlReverser` contains only the
-	/// named-route-to-pattern mapping and can be shared across threads
-	/// (unlike `ClientRouter` itself which holds reactive signals).
-	pub fn to_reverser(&self) -> super::reverser::ClientUrlReverser {
-		let named_patterns = self
-			.named_routes
-			.iter()
-			.map(|(name, &idx)| {
-				let pattern = self.routes[idx].pattern.pattern().to_string();
-				(name.clone(), pattern)
-			})
-			.collect();
-		super::reverser::ClientUrlReverser::new(named_patterns)
 	}
 
 	/// Sets up a popstate event listener for browser back/forward navigation.
@@ -1117,17 +1186,17 @@ mod tests {
 	#[test]
 	fn test_router_add_route() {
 		let router = ClientRouter::new()
-			.route("/", home_page)
-			.route("/users/", user_page);
+			.route("home", "/", home_page)
+			.route("users", "/users/", user_page);
 
 		assert_eq!(router.route_count(), 2);
 	}
 
 	#[test]
-	fn test_router_named_route() {
+	fn test_router_route_with_name() {
 		let router = ClientRouter::new()
-			.named_route("home", "/", home_page)
-			.named_route("users", "/users/", user_page);
+			.route("home", "/", home_page)
+			.route("users", "/users/", user_page);
 
 		assert!(router.has_route("home"));
 		assert!(router.has_route("users"));
@@ -1137,8 +1206,8 @@ mod tests {
 	#[test]
 	fn test_router_match_exact() {
 		let router = ClientRouter::new()
-			.route("/", home_page)
-			.route("/users/", user_page);
+			.route("home", "/", home_page)
+			.route("users", "/users/", user_page);
 
 		assert!(router.match_path("/").is_some());
 		assert!(router.match_path("/users/").is_some());
@@ -1147,7 +1216,7 @@ mod tests {
 
 	#[test]
 	fn test_router_match_params() {
-		let router = ClientRouter::new().route("/users/{id}/", user_page);
+		let router = ClientRouter::new().route("user_detail", "/users/{id}/", user_page);
 
 		let route_match = router.match_path("/users/42/");
 		assert!(route_match.is_some());
@@ -1158,9 +1227,11 @@ mod tests {
 
 	#[test]
 	fn test_router_reverse() {
-		let router = ClientRouter::new()
-			.named_route("home", "/", home_page)
-			.named_route("user_detail", "/users/{id}/", user_page);
+		let router = ClientRouter::new().route("home", "/", home_page).route(
+			"user_detail",
+			"/users/{id}/",
+			user_page,
+		);
 
 		assert_eq!(router.reverse("home", &[]).unwrap(), "/");
 		assert_eq!(
@@ -1186,7 +1257,7 @@ mod tests {
 	#[rstest]
 	fn test_render_current_returns_page_without_not_found() {
 		// Arrange
-		let router = ClientRouter::new().route("/home/", home_page);
+		let router = ClientRouter::new().route("home", "/home/", home_page);
 
 		// Act — path does not match, no not_found registered
 		let page = router.render_current();
@@ -1199,7 +1270,7 @@ mod tests {
 	fn test_router_with_guard() {
 		let router = ClientRouter::new()
 			.guarded_route("/admin/", test_page, |_| false)
-			.route("/public/", test_page);
+			.route("public", "/public/", test_page);
 
 		// Guard rejects
 		assert!(router.match_path("/admin/").is_none());
@@ -1222,8 +1293,8 @@ mod tests {
 	#[test]
 	fn test_router_push_non_wasm() {
 		let router = ClientRouter::new()
-			.route("/", home_page)
-			.route("/users/", user_page);
+			.route("home", "/", home_page)
+			.route("users", "/users/", user_page);
 
 		// Non-WASM push should succeed
 		assert!(router.push("/users/").is_ok());
@@ -1231,7 +1302,7 @@ mod tests {
 
 	#[test]
 	fn test_router_replace_non_wasm() {
-		let router = ClientRouter::new().route("/", home_page);
+		let router = ClientRouter::new().route("home", "/", home_page);
 
 		// Non-WASM replace should succeed
 		assert!(router.replace("/").is_ok());
@@ -1243,9 +1314,11 @@ mod tests {
 
 	#[test]
 	fn test_route_path_single() {
-		let router = ClientRouter::new().route_path("/users/{id}/", |Path(_id): Path<i64>| {
-			page_with_text("User")
-		});
+		let router = ClientRouter::new().route_path(
+			"user_detail",
+			"/users/{id}/",
+			|Path(_id): Path<i64>| page_with_text("User"),
+		);
 
 		assert_eq!(router.route_count(), 1);
 
@@ -1258,8 +1331,12 @@ mod tests {
 	}
 
 	#[test]
-	fn test_route_path2_two_params() {
-		let router = ClientRouter::new().route_path2(
+	fn test_route_path_two_params() {
+		// Two path parameters now flow through the unified `route_path`
+		// (Issue #4637). Closure signature is unchanged from the prior
+		// `route_path2`.
+		let router = ClientRouter::new().route_path(
+			"user_post",
 			"/users/{user_id}/posts/{post_id}/",
 			|Path(_user_id): Path<i64>, Path(_post_id): Path<i64>| page_with_text("UserPost"),
 		);
@@ -1275,8 +1352,10 @@ mod tests {
 	}
 
 	#[test]
-	fn test_route_path3_three_params() {
-		let router = ClientRouter::new().route_path3(
+	fn test_route_path_three_params() {
+		// Three path parameters via unified `route_path` (Issue #4637).
+		let router = ClientRouter::new().route_path(
+			"member",
 			"/orgs/{org_id}/teams/{team_id}/members/{member_id}/",
 			|Path(_org_id): Path<String>,
 			 Path(_team_id): Path<i64>,
@@ -1298,8 +1377,34 @@ mod tests {
 	}
 
 	#[test]
-	fn test_named_route_path() {
-		let router = ClientRouter::new().named_route_path(
+	fn test_route_path_four_params() {
+		// Guard against regression of the 1..=8 widening (Issue #4637).
+		// Arity-4 is the smallest case beyond the previously supported
+		// arity-3 ceiling, so exercising it proves the `impl_handler!`
+		// macro expansion actually reaches the higher tuples.
+		let router = ClientRouter::new().route_path(
+			"quad",
+			"/a/{a}/b/{b}/c/{c}/d/{d}/",
+			|Path(_a): Path<i64>, Path(_b): Path<i64>, Path(_c): Path<i64>, Path(_d): Path<i64>| {
+				page_with_text("Quad")
+			},
+		);
+
+		assert_eq!(router.route_count(), 1);
+
+		let route_match = router.match_path("/a/1/b/2/c/3/d/4/");
+		assert!(route_match.is_some());
+
+		let route_match = route_match.unwrap();
+		assert_eq!(route_match.params.get("a"), Some(&"1".to_string()));
+		assert_eq!(route_match.params.get("b"), Some(&"2".to_string()));
+		assert_eq!(route_match.params.get("c"), Some(&"3".to_string()));
+		assert_eq!(route_match.params.get("d"), Some(&"4".to_string()));
+	}
+
+	#[test]
+	fn test_route_path_single_with_reverse() {
+		let router = ClientRouter::new().route_path(
 			"user_detail",
 			"/users/{id}/",
 			|Path(_id): Path<i64>| page_with_text("User"),
@@ -1313,8 +1418,9 @@ mod tests {
 	}
 
 	#[test]
-	fn test_named_route_path2() {
-		let router = ClientRouter::new().named_route_path2(
+	fn test_route_path_two_params_with_reverse() {
+		// `route_path` now covers every arity (Issue #4637).
+		let router = ClientRouter::new().route_path(
 			"user_post",
 			"/users/{user_id}/posts/{post_id}/",
 			|Path(_user_id): Path<i64>, Path(_post_id): Path<i64>| page_with_text("UserPost"),
@@ -1330,8 +1436,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_named_route_path3() {
-		let router = ClientRouter::new().named_route_path3(
+	fn test_route_path_three_params_with_reverse() {
+		let router = ClientRouter::new().route_path(
 			"org_team_member",
 			"/orgs/{org}/teams/{team}/members/{member}/",
 			|Path(_org): Path<String>, Path(_team): Path<i64>, Path(_member): Path<i64>| {
@@ -1353,10 +1459,11 @@ mod tests {
 
 	#[test]
 	fn test_route_path_with_string_param() {
-		let router = ClientRouter::new()
-			.route_path("/posts/{slug}/", |Path(_slug): Path<String>| {
-				page_with_text("Post")
-			});
+		let router = ClientRouter::new().route_path(
+			"post_detail",
+			"/posts/{slug}/",
+			|Path(_slug): Path<String>| page_with_text("Post"),
+		);
 
 		let route_match = router.match_path("/posts/hello-world/");
 		assert!(route_match.is_some());
@@ -1370,14 +1477,14 @@ mod tests {
 
 	fn polls_router() -> ClientRouter {
 		ClientRouter::new()
-			.named_route("polls:index", "/polls/", home_page)
-			.named_route("polls:detail", "/polls/{id}/", user_page)
+			.route("polls:index", "/polls/", home_page)
+			.route("polls:detail", "/polls/{id}/", user_page)
 	}
 
 	fn users_router() -> ClientRouter {
 		ClientRouter::new()
-			.named_route("users:login", "/users/login/", home_page)
-			.named_route("users:logout", "/users/logout/", home_page)
+			.route("users:login", "/users/login/", home_page)
+			.route("users:logout", "/users/logout/", home_page)
 	}
 
 	#[test]
@@ -1399,8 +1506,8 @@ mod tests {
 
 	#[test]
 	fn merge_last_wins_on_name_collision() {
-		let first = ClientRouter::new().named_route("shared", "/a/", || page_with_text("first"));
-		let second = ClientRouter::new().named_route("shared", "/b/", || page_with_text("second"));
+		let first = ClientRouter::new().route("shared", "/a/", || page_with_text("first"));
+		let second = ClientRouter::new().route("shared", "/b/", || page_with_text("second"));
 
 		let merged = first.merge(second);
 
@@ -1422,7 +1529,9 @@ mod tests {
 			page_with_text("other-not-found")
 		});
 
-		let merged = ClientRouter::new().route("/home/", home_page).merge(other);
+		let merged = ClientRouter::new()
+			.route("home", "/home/", home_page)
+			.merge(other);
 
 		// Render against a non-matching path; `other`'s `not_found` must not
 		// fire because `merge` keeps `self`'s observation state and discards
@@ -1445,8 +1554,8 @@ mod tests {
 
 	#[test]
 	fn try_merge_err_on_name_collision() {
-		let first = ClientRouter::new().named_route("polls:index", "/a/", home_page);
-		let second = ClientRouter::new().named_route("polls:index", "/b/", home_page);
+		let first = ClientRouter::new().route("polls:index", "/a/", home_page);
+		let second = ClientRouter::new().route("polls:index", "/b/", home_page);
 
 		let err = first
 			.try_merge(second)
@@ -1473,7 +1582,7 @@ mod tests {
 
 		// Re-build the same router because `try_merge` takes `self` by value.
 		let attempt = polls_router();
-		let collide = ClientRouter::new().named_route("polls:index", "/x/", home_page);
+		let collide = ClientRouter::new().route("polls:index", "/x/", home_page);
 		let err = attempt
 			.try_merge(collide)
 			.expect_err("collision must be reported");
@@ -1492,5 +1601,54 @@ mod tests {
 		};
 		let text = err.to_string();
 		assert!(text.contains("polls:detail"));
+	}
+
+	// ----- duplicate route name detection ------------------------------------
+
+	#[rstest]
+	#[should_panic(expected = "Duplicate client route name 'home'")]
+	fn route_panics_on_duplicate_name() {
+		// Arrange — a router with an existing "home" route
+		let router = ClientRouter::new().route("home", "/", home_page);
+
+		// Act — registering the same name again must panic
+		let _router = router.route("home", "/other/", user_page);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "Duplicate client route name 'detail'")]
+	fn route_params_panics_on_duplicate_name() {
+		// Arrange
+		let router = ClientRouter::new().route("detail", "/items/{id}/", home_page);
+
+		// Act
+		let _router = router.route_params("detail", "/users/{id}/", |Path(_id): Path<i64>| {
+			page_with_text("User")
+		});
+	}
+
+	#[rstest]
+	#[should_panic(expected = "Duplicate client route name 'show'")]
+	fn route_path_panics_on_duplicate_name() {
+		// Arrange
+		let router = ClientRouter::new().route("show", "/a/", home_page);
+
+		// Act
+		let _router = router.route_path("show", "/b/{id}/", |Path(_id): Path<i64>| {
+			page_with_text("B")
+		});
+	}
+
+	#[rstest]
+	fn merge_does_not_panic_on_duplicate_name() {
+		// Arrange — merge intentionally uses last-wins semantics
+		let first = ClientRouter::new().route("shared", "/a/", || page_with_text("first"));
+		let second = ClientRouter::new().route("shared", "/b/", || page_with_text("second"));
+
+		// Act — must NOT panic (last-wins is the documented contract)
+		let merged = first.merge(second);
+
+		// Assert — the second route wins
+		assert_eq!(merged.reverse("shared", &[]).unwrap(), "/b/");
 	}
 }

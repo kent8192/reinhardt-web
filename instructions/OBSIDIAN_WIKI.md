@@ -8,8 +8,8 @@ This file defines the policy for maintaining the Reinhardt project knowledge bas
 
 ## Vault Reference
 
-**Access Method:** Obsidian MCP server (`obsidian-vault`)
-**Vault Discovery:** The vault path is managed by the Obsidian MCP server configuration — do NOT hardcode paths. Use `obsidian_list_files_in_vault` to verify connectivity and discover vault contents.
+**Access Method:** Obsidian MCP server (`obsidian-vault`). The vault path is resolved automatically by the MCP server — do not hardcode it.
+**Connectivity Check:** Call `obsidian_list_files_in_vault` to verify the MCP server is available and the vault is accessible.
 **Vault CLAUDE.md:** Contains structure, conventions, and operation instructions
 
 ---
@@ -164,7 +164,7 @@ Knowledge MUST be spread across the full category set, never concentrated in a s
 ### Exclusions
 - Do NOT record operational details (which agent ran what, session IDs, timestamps of tool calls)
 - Do NOT duplicate information already in CLAUDE.md, AGENTS.md, or `instructions/`
-- Do NOT record conversation details or session-specific interactions
+- Do NOT record user interactions or conversation details
 - Do NOT create pages for knowledge that is obvious from reading the code
 
 ---
@@ -192,6 +192,6 @@ Knowledge MUST be spread across the full category set, never concentrated in a s
 - Skip capturing reusable knowledge merely because it seems small (OW-1)
 - Create wiki pages for trivial changes or operational records (OW-1)
 - Duplicate information already in CLAUDE.md or `instructions/` (OW-4)
-- Record conversation details or session-specific interactions in the wiki (OW-4)
+- Record user interactions or conversation details in the wiki (OW-4)
 - Perform partial meta-page updates (update all three or none) (OW-2)
 - Save knowledge to a memory system without simultaneously writing to the wiki (OW-6), unless Obsidian MCP is unavailable

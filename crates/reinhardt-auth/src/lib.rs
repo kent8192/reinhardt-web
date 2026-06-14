@@ -1,6 +1,5 @@
 #![warn(missing_docs)]
-// Re-exports of deprecated User trait and DefaultUser struct are intentional for backward compatibility.
-#![allow(deprecated)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 //! # Reinhardt Auth
 //!
 //! Authentication and authorization system for Reinhardt framework.
@@ -33,7 +32,6 @@
 //!
 //! - [`core`]: Authentication traits, user types, permission classes, and password hashing
 //! - [`sessions`]: Session backends (JWT, database, Redis, cookie, file)
-//! - [`current_user`]: Dependency-injectable `CurrentUser` extractor
 //! - `social` (feature-gated): OAuth2/OpenID Connect social authentication providers
 //! - `user_management`: CRUD operations for users and groups
 //!
@@ -41,7 +39,7 @@
 //!
 //! | Feature | Default | Description |
 //! |---------|---------|-------------|
-//! | `params` | enabled | `CurrentUser` parameter extraction via DI |
+//! | `params` | enabled | Parameter extraction via DI |
 //! | `jwt` | disabled | JWT-based authentication backend |
 //! | `sessions` | disabled | Session-based authentication |
 //! | `oauth` | disabled | OAuth2 authorization code flow |
@@ -65,11 +63,6 @@ pub mod sessions;
 // Core authentication types and traits (migrated from reinhardt-core-auth)
 pub mod core;
 
-// CurrentUser injectable for dependency injection
-pub mod current_user;
-#[allow(deprecated)]
-pub use current_user::CurrentUser;
-
 // AuthInfo lightweight auth extractor
 pub mod auth_info;
 pub use auth_info::AuthInfo;
@@ -82,9 +75,10 @@ pub use guard::{All, Any, Guard, Not, Public};
 // Re-export guard!() macro from reinhardt-auth-macros
 pub use reinhardt_auth_macros::guard;
 
-// AuthUser authenticated user extractor
+// Authenticated user extractors
 pub mod auth_user;
-pub use auth_user::AuthUser;
+#[allow(deprecated)]
+pub use auth_user::{AuthUser, CurrentUser};
 
 // Startup validation for auth extractors
 pub mod auth_extractors;
@@ -96,14 +90,18 @@ pub use auth_extractors::validate_auth_extractors;
 pub(crate) const USER_ID_NAMESPACE: uuid::Uuid =
 	uuid::uuid!("c7a85537-073f-5092-8d10-774e109477c9");
 
-// Re-export core authentication types
+pub(crate) mod internal_user;
+
+// Re-export core authentication types. The deprecated `User` trait,
+// `SimpleUser`, and `AnonymousUser` (which lived in `core::user`) were
+// removed in 0.2.0 per Issue #4520 — use `AuthIdentity` + `BaseUser` /
+// `FullUser` + `PermissionsMixin` instead.
 pub use core::{
-	AllowAny, AnonymousUser, AuthBackend, AuthIdentity, BaseUser, CompositeAuthBackend, FullUser,
-	IsActiveUser, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, PasswordHasher,
-	Permission, PermissionContext, PermissionsMixin, SimpleUser, SuperuserCreator,
-	SuperuserCreatorRegistration, SuperuserInit, TypedSuperuserCreator, User,
-	auto_register_superuser_creator, get_superuser_creator, register_superuser_creator,
-	superuser_creator_for,
+	AllowAny, AuthBackend, AuthIdentity, BaseUser, CompositeAuthBackend, FullUser, IsActiveUser,
+	IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, PasswordHasher, Permission,
+	PermissionContext, PermissionsMixin, SuperuserCreator, SuperuserCreatorRegistration,
+	SuperuserInit, TypedSuperuserCreator, auto_register_superuser_creator, get_superuser_creator,
+	register_superuser_creator, superuser_creator_for,
 };
 
 #[cfg(feature = "argon2-hasher")]
@@ -120,11 +118,9 @@ pub mod advanced_permissions;
 /// Base user manager trait for CRUD operations.
 pub mod base_user_manager;
 /// HTTP Basic authentication backend.
+#[cfg_attr(docsrs, doc(cfg(feature = "basic")))]
+#[cfg(feature = "basic")]
 pub mod basic;
-/// Default user model with Argon2 password hashing.
-pub mod default_user;
-/// Default user manager implementation.
-pub mod default_user_manager;
 /// Group management (create, delete, assign users).
 pub mod group_management;
 /// Login/logout HTTP handlers.
@@ -174,13 +170,14 @@ pub mod token_storage;
 /// User CRUD management.
 pub mod user_management;
 
+/// Settings fragments for authentication backends.
+pub mod settings;
+
 pub use advanced_permissions::{ObjectPermission as AdvancedObjectPermission, RoleBasedPermission};
 pub use base_user_manager::BaseUserManager;
+#[cfg_attr(docsrs, doc(cfg(feature = "basic")))]
+#[cfg(feature = "basic")]
 pub use basic::BasicAuthentication as HttpBasicAuth;
-#[cfg(feature = "argon2-hasher")]
-pub use default_user::DefaultUser;
-#[cfg(feature = "argon2-hasher")]
-pub use default_user_manager::DefaultUserManager;
 pub use group_management::{
 	CreateGroupData, Group, GroupManagementError, GroupManagementResult, GroupManager,
 	get_group_manager, register_group_manager,
@@ -238,7 +235,17 @@ pub use token_blacklist::{
 	InMemoryTokenBlacklist, RefreshToken, RefreshTokenStore, TokenBlacklist, TokenRotationManager,
 };
 #[cfg(any(feature = "jwt", feature = "token"))]
+#[allow(deprecated)] // Re-export keeps the compatibility API discoverable during the 0.2 line.
 pub use token_rotation::{AutoTokenRotationManager, TokenRotationConfig, TokenRotationRecord};
+
+#[cfg(feature = "sessions")]
+pub use settings::SessionSettings;
+
+#[cfg(feature = "jwt")]
+pub use settings::{JwtSessionSettings, create_jwt_session_backend_from_settings};
+
+#[cfg(feature = "token")]
+pub use settings::{TokenRotationSettings, create_token_rotation_manager_from_settings};
 #[cfg(all(feature = "database", any(feature = "jwt", feature = "token")))]
 pub use token_storage::DatabaseTokenStorage;
 #[cfg(any(feature = "jwt", feature = "token"))]
@@ -246,7 +253,8 @@ pub use token_storage::{
 	InMemoryTokenStorage, StoredToken, TokenStorage, TokenStorageError, TokenStorageResult,
 };
 pub use user_management::{
-	CreateUserData, UpdateUserData, UserManagementError, UserManagementResult, UserManager,
+	CreateUserData, ManagedUser, UpdateUserData, UserManagementError, UserManagementResult,
+	UserManager,
 };
 
 /// Authentication errors that can occur during user verification.
@@ -301,46 +309,14 @@ impl From<JwtError> for AuthenticationError {
 	}
 }
 
-/// Authentication backend trait
-///
-/// All authentication operations are asynchronous to support various backends
-/// including database lookups, external API calls, and distributed systems.
-#[async_trait::async_trait]
-pub trait AuthenticationBackend: Send + Sync {
-	/// Authenticate a request and return a user if successful
-	///
-	/// # Arguments
-	///
-	/// * `request` - The incoming HTTP request
-	///
-	/// # Returns
-	///
-	/// - `Ok(Some(user))` if authentication succeeded
-	/// - `Ok(None)` if authentication failed but should try next backend
-	/// - `Err(error)` if a fatal error occurred
-	async fn authenticate(
-		&self,
-		request: &reinhardt_http::Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError>;
-
-	/// Get a user by their ID
-	///
-	/// # Arguments
-	///
-	/// * `user_id` - The user's unique identifier
-	///
-	/// # Returns
-	///
-	/// - `Ok(Some(user))` if user was found
-	/// - `Ok(None)` if user doesn't exist
-	/// - `Err(error)` if an error occurred
-	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError>;
-}
+// `AuthenticationBackend` trait was removed in 0.2.0 per Issue #4520.
+// Use `AuthBackend` (from `core::auth_backend`) instead. The old trait
+// depended on the removed `User` trait; `AuthBackend` works with
+// `AuthIdentity` and is the canonical authentication backend trait.
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use uuid::Uuid;
 
 	#[test]
 	#[cfg(feature = "jwt")]
@@ -559,35 +535,5 @@ mod tests {
 			user: None,
 		};
 		assert!(permission.has_permission(&context).await);
-	}
-
-	#[test]
-	fn test_simple_user_implementation() {
-		let user = SimpleUser {
-			id: Uuid::now_v7(),
-			username: "testuser".to_string(),
-			email: "test@example.com".to_string(),
-			is_active: true,
-			is_admin: false,
-			is_staff: false,
-			is_superuser: false,
-		};
-
-		assert!(!user.id().is_empty());
-		assert_eq!(user.username(), "testuser");
-		assert!(user.is_authenticated());
-		assert!(user.is_active());
-		assert!(!user.is_admin());
-	}
-
-	#[test]
-	fn test_anonymous_user() {
-		let user = AnonymousUser;
-
-		assert_eq!(user.id(), "");
-		assert_eq!(user.username(), "");
-		assert!(!user.is_authenticated());
-		assert!(!user.is_active());
-		assert!(!user.is_admin());
 	}
 }

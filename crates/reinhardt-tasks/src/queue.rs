@@ -1,9 +1,15 @@
 //! Task queue management
 
+#![allow(deprecated)] // QueueConfig is deprecated; this module still defines and re-exports it during the compatibility window.
+
 use crate::backend::TaskExecutionError;
 use crate::{Task, TaskBackend, TaskId};
 
 /// Configuration for a task queue.
+#[deprecated(
+	since = "0.2.0",
+	note = "Use `QueueSettings` with the `#[settings]` macro instead."
+)]
 #[derive(Debug, Clone)]
 pub struct QueueConfig {
 	/// Name of the queue.
@@ -34,11 +40,6 @@ pub struct TaskQueue;
 impl TaskQueue {
 	/// Creates a new task queue with default configuration.
 	pub fn new() -> Self {
-		Self
-	}
-
-	/// Creates a new task queue with the given configuration.
-	pub fn with_config(_config: QueueConfig) -> Self {
 		Self
 	}
 

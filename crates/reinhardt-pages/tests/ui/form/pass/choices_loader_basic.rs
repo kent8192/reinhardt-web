@@ -16,8 +16,8 @@ fn main() {
 				choices_from: "choices",
 				choice_value: "id",
 				choice_label: "choice_text",
-			},
-		},
+			}
+		}
 	};
 }
 

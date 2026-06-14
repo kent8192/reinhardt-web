@@ -7,19 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.3...reinhardt-test@v0.1.4) - 2026-06-10
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.3...reinhardt-test@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-test` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Replace `MockFetch` / `mock_server_fn` with `MockServiceWorker` and use test-local user types instead of the built-in `TestUser` fixture.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- *(test)* [**breaking**] gate MockFetch and TestUser behind cfg(any()) (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+
+### Added
+
+- *(test)* [**breaking**] gate MockFetch and TestUser behind cfg(any()) (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+
+### Changed
+
+- *(pages)* delete deprecated mock_server_fn and use_action_state APIs
+
+### Removed
+
+- **`MockFetch` struct** (`src/wasm/mock.rs`, deprecated `0.1.0-rc.16`, refs #3283) — use `MockServiceWorker` from `reinhardt_test::msw`.
+- **`TestUser` struct** (`src/fixtures/auth.rs`, deprecated `0.1.0-rc.16`) — define your own user type with `#[user]` macro and use `ForceLoginUser` trait.
+
+### Fixed
+
+- *(test)* stabilize WASM MSW server_fn transport
+- delete gated items instead of cfg-gating, update callers
+- *(test)* restore missing pub use prefix in wasm mock re-export
+- *(examples)* render basis tutorial vote choices
+- Exposed `reinhardt::test::msw::MockServiceWorker` for WASM consumers that
+  enable the root `msw` facade feature.
+
+
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.2.0-rc.4...reinhardt-test@v0.2.0-rc.5) - 2026-06-11
 
 ### Fixed
 
 - *(build)* address CodeRabbit review feedback
-- *(build)* address Codex review follow-ups
+- *(build)* port Codex review follow-ups
 
-## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.2...reinhardt-test@v0.1.3) - 2026-05-31
+## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.2.0-rc.2...reinhardt-test@v0.2.0-rc.3) - 2026-06-05
 
-### Documentation
+### Fixed
 
-- align documentation with current APIs
-- fix version marker counts
+- *(test)* stabilize WASM MSW server_fn transport
+
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.3...reinhardt-test@v0.2.0-rc.2) - 2026-06-03
+
+### Added
+
+- *(test)* [**breaking**] gate MockFetch and TestUser behind cfg(any()) (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+- *(pages)* delete deprecated mock_server_fn and use_action_state APIs
+
+### Fixed
+
+- delete gated items instead of cfg-gating, update callers
+- *(test)* restore missing pub use prefix in wasm mock re-export
+- *(ci)* recover develop release-plz prerelease
+- *(examples)* render basis tutorial vote choices
+
+### Styling
+
+- apply formatter fixes across workspace
+
+### Fixed
+
+- Exposed `reinhardt::test::msw::MockServiceWorker` for WASM consumers that
+  enable the root `msw` facade feature.
+
+### Removed
+
+#### BREAKING CHANGES
+
+Removed both RC-deprecated items per STABILITY_POLICY § SP-4
+(umbrella Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520)):
+
+- **`MockFetch` struct** (`src/wasm/mock.rs`, deprecated `0.1.0-rc.16`, refs #3283) — use `MockServiceWorker` from `reinhardt_test::msw`.
+- **`TestUser` struct** (`src/fixtures/auth.rs`, deprecated `0.1.0-rc.16`) — define your own user type with `#[user]` macro and use `ForceLoginUser` trait.
+
+Both items are gated with `#[cfg(any())]` (compile-excluded).
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-rc.30...reinhardt-test@v0.1.0) - 2026-05-22
 

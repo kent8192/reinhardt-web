@@ -146,66 +146,10 @@ pub async fn fetch_with_mock(
 	)))
 }
 
-#[cfg(all(test, not(target_arch = "wasm32")))]
+#[cfg(all(test, native))]
 mod tests {
 	use super::*;
-	#[allow(deprecated)]
-	use crate::testing::mock_http::{
-		clear_mocks, get_call_history, mock_server_fn, mock_server_fn_error,
-	};
-
-	#[derive(serde::Serialize, serde::Deserialize)]
-	struct TestResponse {
-		message: String,
-	}
-
-	#[tokio::test]
-	async fn test_fetch_with_mock_returns_mocked_response() {
-		clear_mocks();
-
-		let response = TestResponse {
-			message: "Hello".to_string(),
-		};
-		mock_server_fn("/api/test", &response);
-
-		let result = fetch_with_mock("/api/test", "GET", None, &[]).await;
-		assert!(result.is_ok());
-
-		let (status, body) = result.unwrap();
-		assert_eq!(status, 200);
-		assert!(body.contains("Hello"));
-
-		clear_mocks();
-	}
-
-	#[tokio::test]
-	async fn test_fetch_with_mock_records_call() {
-		clear_mocks();
-
-		mock_server_fn("/api/test", &"ok");
-
-		let _ = fetch_with_mock("/api/test", "POST", Some(r#"{"key":"value"}"#), &[]).await;
-
-		let history = get_call_history();
-		assert_eq!(history.len(), 1);
-		assert_eq!(history[0].path, "/api/test");
-		assert_eq!(history[0].method, "POST");
-		assert_eq!(history[0].body, r#"{"key":"value"}"#);
-
-		clear_mocks();
-	}
-
-	#[tokio::test]
-	async fn test_fetch_with_mock_error_response() {
-		clear_mocks();
-
-		mock_server_fn_error("/api/error", 401, "Unauthorized");
-
-		let result = fetch_with_mock("/api/error", "GET", None, &[]).await;
-		assert!(result.is_err());
-
-		clear_mocks();
-	}
+	use crate::testing::mock_http::{clear_mocks, get_call_history};
 
 	#[tokio::test]
 	async fn test_fetch_without_mock_fails_on_server() {

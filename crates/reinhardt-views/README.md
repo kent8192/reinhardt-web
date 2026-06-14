@@ -17,11 +17,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.4", features = ["views"] }
+reinhardt = { version = "0.2.0-rc.6", features = ["views"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.4", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.4", features = ["full"] }      # All features
+# reinhardt = { version = "0.2.0-rc.6", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.2.0-rc.6", features = ["full"] }      # All features
 ```
 
 Then import view features:
@@ -101,7 +101,8 @@ use reinhardt::views::viewsets::{ViewSet, ModelViewSet};
 - **RetrieveUpdateDestroyAPIView** - Combined retrieve/update/delete endpoint
   - GET/HEAD/PUT/PATCH/DELETE request support (stub)
 
-**Note**: Full ORM integration pending for create/update/delete operations.
+**Note**: Create, update, and delete views provide request/response scaffolding;
+applications wire persistence behavior through their serializers and managers.
 
 #### OpenAPI Schema Generation
 
@@ -262,7 +263,7 @@ use reinhardt::views::{OpenAPISpec, Info, PathItem, Operation};
 
 let spec = OpenAPISpec::new(Info::new(
     "My API".into(),
-    "0.1.4".into()
+    "0.2.0-rc.6".into()
 ));
 ```
 

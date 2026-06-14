@@ -2,10 +2,9 @@
 //!
 //! Provides TOTP (Time-based One-Time Password) support for MFA.
 
-// This module uses the deprecated User trait for backward compatibility.
-// MFAAuthentication returns Box<dyn User> to preserve existing authentication APIs.
-#![allow(deprecated)]
-use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
+use crate::core::AuthIdentity;
+use crate::internal_user::InternalUser;
+use crate::{AuthBackend, AuthenticationError};
 use reinhardt_http::Request;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -165,11 +164,11 @@ impl Default for MFAAuthentication {
 }
 
 #[async_trait::async_trait]
-impl AuthenticationBackend for MFAAuthentication {
+impl AuthBackend for MFAAuthentication {
 	async fn authenticate(
 		&self,
 		request: &Request,
-	) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// Extract username and MFA code from request headers
 		let username = request
 			.headers
@@ -183,13 +182,12 @@ impl AuthenticationBackend for MFAAuthentication {
 		match (username, code) {
 			(Some(user), Some(mfa_code)) => {
 				if self.verify_totp(user, mfa_code).await? {
-					Ok(Some(Box::new(SimpleUser {
+					Ok(Some(Box::new(InternalUser {
 						id: Uuid::new_v5(&USER_ID_NAMESPACE, user.as_bytes()),
 						username: user.to_string(),
 						email: String::new(),
 						// Security defaults: privilege flags are set to restrictive values
 						// since MFA authentication alone cannot determine user privileges.
-						// Use UserRepository integration for accurate privilege data.
 						is_active: true,
 						is_admin: false,
 						is_staff: false,
@@ -203,17 +201,19 @@ impl AuthenticationBackend for MFAAuthentication {
 		}
 	}
 
-	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
+	async fn get_user(
+		&self,
+		user_id: &str,
+	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
 		// Check if user exists in our secrets store
 		let secrets = self.secrets.lock().await;
 		if secrets.contains_key(user_id) {
-			Ok(Some(Box::new(SimpleUser {
+			Ok(Some(Box::new(InternalUser {
 				id: Uuid::new_v5(&USER_ID_NAMESPACE, user_id.as_bytes()),
 				username: user_id.to_string(),
 				email: String::new(),
 				// Security defaults: privilege flags are set to restrictive values
 				// since MFA authentication alone cannot determine user privileges.
-				// Use UserRepository integration for accurate privilege data.
 				is_active: true,
 				is_admin: false,
 				is_staff: false,
@@ -421,8 +421,10 @@ mod tests {
 		let result = mfa.authenticate(&request).await.unwrap();
 
 		// Assert
-		assert!(result.is_some());
-		assert_eq!(result.unwrap().get_username(), "alice");
+		let user = result.expect("MFA authentication should succeed");
+		let expected_id = Uuid::new_v5(&USER_ID_NAMESPACE, b"alice").to_string();
+		assert_eq!(user.id(), expected_id);
+		assert!(user.is_authenticated());
 	}
 
 	#[rstest]

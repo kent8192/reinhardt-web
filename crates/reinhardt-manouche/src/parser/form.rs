@@ -3,7 +3,7 @@
 //! This module provides the `Parse` trait implementation for `FormMacro`,
 //! allowing it to be parsed from a `TokenStream`.
 
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::{Span, TokenStream, TokenTree};
 use syn::{
 	Expr, ExprClosure, Ident, LitStr, Path, Result, Token, braced,
 	parse::{Parse, ParseStream},
@@ -11,10 +11,10 @@ use syn::{
 };
 
 use crate::{
-	ClientTrigger, CustomAttr, FormAction, FormDerived, FormDerivedItem, FormFieldDef,
-	FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormSlots, FormState,
-	FormStateField, FormSubmitButtonDef, FormValidator, FormWatch, FormWatchItem, IconAttr,
-	IconChild, IconElement, IconPosition, StripArgument, ValidatorRule, ValidatorScope,
+	AmbientArgumentsSource, ClientTrigger, CustomAttr, FormAction, FormDerived, FormDerivedItem,
+	FormFieldDef, FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormSlots,
+	FormState, FormStateField, FormSubmitButtonDef, FormValidator, FormWatch, FormWatchItem,
+	IconAttr, IconChild, IconElement, IconPosition, StripArgument, ValidatorRule, ValidatorScope,
 	WrapperAttr, WrapperElement,
 };
 
@@ -27,10 +27,63 @@ pub fn parse_form(input: TokenStream) -> syn::Result<FormMacro> {
 	syn::parse2(input)
 }
 
+/// Detects whether the top-level form DSL uses `ambient_arguments` or the
+/// deprecated `strip_arguments` alias.
+#[must_use]
+pub fn detect_ambient_arguments_source(input: &TokenStream) -> Option<AmbientArgumentsSource> {
+	let mut tokens = input.clone().into_iter().peekable();
+
+	while let Some(token) = tokens.next() {
+		let TokenTree::Ident(ident) = token else {
+			continue;
+		};
+
+		let source = match ident.to_string().as_str() {
+			"ambient_arguments" => AmbientArgumentsSource::AmbientArguments,
+			"strip_arguments" => AmbientArgumentsSource::StripArguments,
+			_ => continue,
+		};
+
+		if matches!(tokens.peek(), Some(TokenTree::Punct(punct)) if punct.as_char() == ':') {
+			return Some(source);
+		}
+	}
+
+	None
+}
+
+/// Parses an optional generic-argument list of the form `<T1, T2, ...>` that may
+/// appear immediately after a field-type identifier in the form! DSL.
+///
+/// - Returns `Ok(None)` when the next token is not `<`.
+/// - Returns `Ok(Some(types))` for a non-empty list `<T1, ...>`.
+/// - Returns `Err` for an empty `<>` (zero arguments), with a span at the
+///   field-type identifier so the diagnostic points at the user's code.
+fn parse_optional_field_type_generics(
+	input: ParseStream,
+	field_type_span: Span,
+) -> Result<Option<syn::punctuated::Punctuated<syn::Type, Token![,]>>> {
+	if !input.peek(Token![<]) {
+		return Ok(None);
+	}
+	let _: Token![<] = input.parse()?;
+	if input.peek(Token![>]) {
+		return Err(syn::Error::new(
+			field_type_span,
+			"expected at least one type argument inside `<...>`",
+		));
+	}
+	let args: syn::punctuated::Punctuated<syn::Type, Token![,]> =
+		syn::punctuated::Punctuated::parse_separated_nonempty(input)?;
+	let _: Token![>] = input.parse()?;
+	Ok(Some(args))
+}
+
 impl Parse for FormMacro {
 	fn parse(input: ParseStream) -> Result<Self> {
 		let span = input.span();
 		let mut form = FormMacro::new(None, span);
+		let mut ambient_arguments_clause: Option<&'static str> = None;
 
 		// Parse key-value pairs until we hit fields or validators
 		while !input.is_empty() {
@@ -156,9 +209,49 @@ impl Parse for FormMacro {
 				"client_validators" => {
 					return Err(reject_client_validators_with_guidance(&key));
 				}
+				"ambient_arguments" => {
+					let content;
+					braced!(content in input);
+					match ambient_arguments_clause {
+						Some("ambient_arguments") => {
+							return Err(syn::Error::new(
+								key.span(),
+								"duplicate `ambient_arguments` property",
+							));
+						}
+						Some("strip_arguments") => {
+							return Err(syn::Error::new(
+								key.span(),
+								"form! cannot specify both `ambient_arguments` and deprecated `strip_arguments`; use `ambient_arguments`",
+							));
+						}
+						_ => {}
+					}
+					ambient_arguments_clause = Some("ambient_arguments");
+					form.ambient_arguments_source = Some(AmbientArgumentsSource::AmbientArguments);
+					form.strip_arguments = parse_ambient_arguments(&content)?;
+					parse_optional_comma(input)?;
+				}
 				"strip_arguments" => {
 					let content;
 					braced!(content in input);
+					match ambient_arguments_clause {
+						Some("strip_arguments") => {
+							return Err(syn::Error::new(
+								key.span(),
+								"duplicate `strip_arguments` property",
+							));
+						}
+						Some("ambient_arguments") => {
+							return Err(syn::Error::new(
+								key.span(),
+								"form! cannot specify both `ambient_arguments` and deprecated `strip_arguments`; use `ambient_arguments`",
+							));
+						}
+						_ => {}
+					}
+					ambient_arguments_clause = Some("strip_arguments");
+					form.ambient_arguments_source = Some(AmbientArgumentsSource::StripArguments);
 					form.strip_arguments = parse_strip_arguments(&content)?;
 					parse_optional_comma(input)?;
 				}
@@ -166,7 +259,7 @@ impl Parse for FormMacro {
 					return Err(syn::Error::new(
 						key.span(),
 						format!(
-							"Unknown form property: '{}'. Expected: name, action, server_fn, method, class, state, on_submit, on_success, on_success_ref, on_error, on_loading, watch, redirect_on_success, success_url, initial_loader, choices_loader, slots, fields, validators, derived, strip_arguments",
+							"Unknown form property: '{}'. Expected: name, action, server_fn, method, class, state, on_submit, on_success, on_success_ref, on_error, on_loading, watch, redirect_on_success, success_url, initial_loader, choices_loader, slots, fields, validators, derived, ambient_arguments, strip_arguments",
 							key
 						),
 					));
@@ -230,6 +323,11 @@ fn parse_field_definitions(input: ParseStream) -> Result<Vec<FormFieldEntry>> {
 				span,
 			}));
 		} else {
+			// Optionally consume `<T1, T2, ...>` generic arguments before the
+			// property block. Only regular fields support generics; FieldGroup
+			// and SubmitButton are handled in the branches above.
+			let generics = parse_optional_field_type_generics(input, field_type.span())?;
+
 			// Parse regular field properties in braces: { required, max_length: 100, ... }
 			let properties = if input.peek(token::Brace) {
 				let content;
@@ -242,6 +340,7 @@ fn parse_field_definitions(input: ParseStream) -> Result<Vec<FormFieldEntry>> {
 			entries.push(FormFieldEntry::Field(FormFieldDef {
 				name,
 				field_type,
+				generics,
 				properties,
 				span,
 			}));
@@ -318,6 +417,11 @@ fn parse_group_fields(input: ParseStream) -> Result<Vec<FormFieldDef>> {
 			));
 		}
 
+		// Optionally consume `<T1, T2, ...>` generic arguments before the
+		// property block. Mirrors the top-level field parser; nested FieldGroup
+		// is rejected above so this only runs for regular field types.
+		let generics = parse_optional_field_type_generics(input, field_type.span())?;
+
 		// Parse properties in braces: { required, max_length: 100, ... }
 		let properties = if input.peek(token::Brace) {
 			let content;
@@ -330,6 +434,7 @@ fn parse_group_fields(input: ParseStream) -> Result<Vec<FormFieldDef>> {
 		fields.push(FormFieldDef {
 			name,
 			field_type,
+			generics,
 			properties,
 			span,
 		});
@@ -582,7 +687,7 @@ fn parse_icon_child(tag: Ident, input: ParseStream, span: Span) -> Result<IconCh
 	})
 }
 
-/// Parses strip_arguments inside the `strip_arguments: { ... }` block.
+/// Parses ambient arguments inside the `ambient_arguments: { ... }` block.
 ///
 /// Format: `arg_name: <expression>,` repeated. Each entry binds one
 /// server_fn argument name to an expression evaluated at submit time on the
@@ -590,6 +695,13 @@ fn parse_icon_child(tag: Ident, input: ParseStream, span: Span) -> Result<IconCh
 /// call after all regular form-field arguments.
 ///
 /// Tracked under reinhardt-web#3971.
+fn parse_ambient_arguments(input: ParseStream) -> Result<Vec<StripArgument>> {
+	parse_strip_arguments(input)
+}
+
+/// Parses legacy strip_arguments inside the `strip_arguments: { ... }` block.
+///
+/// `strip_arguments` is a deprecated alias for `ambient_arguments`.
 fn parse_strip_arguments(input: ParseStream) -> Result<Vec<StripArgument>> {
 	let mut args = Vec::new();
 
@@ -3601,6 +3713,7 @@ mod tests {
 mod scope_tests {
 	use super::*;
 	use crate::core::{ClientTrigger, ValidatorRule, ValidatorScope};
+	use quote::quote;
 	use rstest::*;
 
 	/// Wrapper that parses `[ ... ]` as a rules list via `parse_validator_rules`.
@@ -3670,6 +3783,82 @@ mod scope_tests {
 			"Expected error containing '{}', got: {}",
 			expected_fragment,
 			err
+		);
+	}
+
+	// ---- Field-type generic argument parsing (Issue #4397) ----
+
+	#[rstest]
+	fn parses_field_type_with_generic_argument() {
+		// Arrange
+		let input = quote! {
+			name: MyForm,
+			action: "/x",
+
+			fields: {
+				question_id: HiddenField<i64> { initial: 0i64 },
+			},
+		};
+
+		// Act
+		let parsed: FormMacro = syn::parse2(input).expect("should parse");
+
+		// Assert
+		let field = parsed.fields[0]
+			.as_field()
+			.expect("question_id should be a regular field");
+		assert_eq!(field.name.to_string(), "question_id");
+		let generics = field.generics.as_ref().expect("generics should be Some");
+		assert_eq!(generics.len(), 1);
+		let first = &generics[0];
+		let first_str = quote!(#first).to_string();
+		assert_eq!(first_str.replace(' ', ""), "i64");
+	}
+
+	#[rstest]
+	fn parses_field_type_without_generic_argument() {
+		// Arrange
+		let input = quote! {
+			name: MyForm,
+			action: "/x",
+
+			fields: {
+				username: CharField { required },
+			},
+		};
+
+		// Act
+		let parsed: FormMacro = syn::parse2(input).expect("should parse");
+
+		// Assert
+		let field = parsed.fields[0]
+			.as_field()
+			.expect("username should be a regular field");
+		assert_eq!(field.name.to_string(), "username");
+		assert!(field.generics.is_none());
+	}
+
+	#[rstest]
+	fn rejects_zero_generic_arguments() {
+		// Arrange
+		let input = quote! {
+			name: MyForm,
+			action: "/x",
+
+			fields: {
+				question_id: HiddenField<> {},
+			},
+		};
+
+		// Act
+		let res: Result<FormMacro> = syn::parse2(input);
+
+		// Assert
+		let err = res.expect_err("empty <> must be rejected");
+		assert!(
+			err.to_string()
+				.contains("expected at least one type argument"),
+			"unexpected error message: {err}",
 		);
 	}
 }

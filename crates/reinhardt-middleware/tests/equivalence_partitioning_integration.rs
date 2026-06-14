@@ -13,6 +13,9 @@
 //! - Cache key partitions
 //! - Compression encoding partitions
 
+// The deprecated `CorsConfig` is exercised here during the compatibility window.
+#![allow(deprecated)]
+
 mod fixtures;
 
 use fixtures::*;

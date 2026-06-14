@@ -1,12 +1,11 @@
 //! Integration tests for profile switching in reinhardt-conf.
-#![allow(deprecated)] // Tests exercise deprecated Settings for backward-compatibility verification
 //!
 //! Covers Development, Staging, and Production profile behavior including
 //! default debug flags, allowed hosts configuration, and database config per profile.
 
 use reinhardt_conf::settings::DatabaseConfig;
-use reinhardt_conf::settings::Settings;
 use reinhardt_conf::settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::core_settings::CoreSettings;
 use reinhardt_conf::settings::profile::Profile;
 use reinhardt_conf::settings::sources::DefaultSource;
 use rstest::rstest;
@@ -234,42 +233,42 @@ fn env_file_name_custom() {
 }
 
 // ---------------------------------------------------------------------------
-// Settings struct + profile-driven configuration
+// CoreSettings struct + profile-driven configuration
 // ---------------------------------------------------------------------------
 
 #[rstest]
 fn settings_development_has_debug_true_by_default() {
 	// Arrange
-	let settings = Settings::default();
+	let settings = CoreSettings::default();
 
 	// Assert – Settings::new() sets debug=true which corresponds to development defaults
-	assert!(settings.core.debug);
+	assert!(settings.debug);
 }
 
 #[rstest]
 fn settings_production_profile_should_disable_debug() {
 	// Arrange
-	let mut settings = Settings::default();
+	let mut settings = CoreSettings::default();
 	let profile = Profile::Production;
 
 	// Act – apply the profile's debug default
-	settings.core.debug = profile.default_debug();
+	settings.debug = profile.default_debug();
 
 	// Assert
-	assert!(!settings.core.debug);
+	assert!(!settings.debug);
 }
 
 #[rstest]
 fn settings_staging_profile_keeps_debug_enabled() {
 	// Arrange
-	let mut settings = Settings::default();
+	let mut settings = CoreSettings::default();
 	let profile = Profile::Staging;
 
 	// Act
-	settings.core.debug = profile.default_debug();
+	settings.debug = profile.default_debug();
 
 	// Assert
-	assert!(settings.core.debug);
+	assert!(settings.debug);
 }
 
 // ---------------------------------------------------------------------------
@@ -279,64 +278,56 @@ fn settings_staging_profile_keeps_debug_enabled() {
 #[rstest]
 fn development_settings_allows_localhost() {
 	// Arrange
-	let mut settings = Settings::new(PathBuf::from("."), "dev-secret".to_string());
+	let mut settings = CoreSettings {
+		base_dir: PathBuf::from("."),
+		secret_key: "dev-secret".to_string(),
+		..Default::default()
+	};
 
 	// Act – typical development setup
-	settings.core.allowed_hosts = vec!["localhost".to_string(), "127.0.0.1".to_string()];
+	settings.allowed_hosts = vec!["localhost".to_string(), "127.0.0.1".to_string()];
 
 	// Assert
-	assert!(
-		settings
-			.core
-			.allowed_hosts
-			.contains(&"localhost".to_string())
-	);
-	assert!(
-		settings
-			.core
-			.allowed_hosts
-			.contains(&"127.0.0.1".to_string())
-	);
+	assert!(settings.allowed_hosts.contains(&"localhost".to_string()));
+	assert!(settings.allowed_hosts.contains(&"127.0.0.1".to_string()));
 }
 
 #[rstest]
 fn production_settings_disallows_debug_and_restricts_hosts() {
 	// Arrange
-	let mut settings = Settings::new(PathBuf::from("/app"), "prod-secret-key".to_string());
+	let mut settings = CoreSettings {
+		base_dir: PathBuf::from("/app"),
+		secret_key: "prod-secret-key".to_string(),
+		..Default::default()
+	};
 
 	// Act – typical production setup
-	settings.core.debug = false;
-	settings.core.allowed_hosts = vec!["example.com".to_string(), "www.example.com".to_string()];
+	settings.debug = false;
+	settings.allowed_hosts = vec!["example.com".to_string(), "www.example.com".to_string()];
 
 	// Assert
-	assert!(!settings.core.debug);
-	assert!(
-		!settings
-			.core
-			.allowed_hosts
-			.contains(&"localhost".to_string())
-	);
-	assert!(
-		settings
-			.core
-			.allowed_hosts
-			.contains(&"example.com".to_string())
-	);
+	assert!(!settings.debug);
+	assert!(!settings.allowed_hosts.contains(&"localhost".to_string()));
+	assert!(settings.allowed_hosts.contains(&"example.com".to_string()));
 }
 
 #[rstest]
 fn staging_settings_allows_staging_domain() {
 	// Arrange
-	let mut settings = Settings::new(PathBuf::from("/app"), "staging-secret".to_string());
+	let mut settings = CoreSettings {
+		base_dir: PathBuf::from("/app"),
+		secret_key: "staging-secret".to_string(),
+		..Default::default()
+	};
 
 	// Act
-	settings.core.allowed_hosts = vec!["staging.example.com".to_string()];
-	settings.core.debug = Profile::Staging.default_debug();
+	settings.allowed_hosts = vec!["staging.example.com".to_string()];
+	settings.debug = Profile::Staging.default_debug();
 
 	// Assert
-	assert!(settings.core.debug);
-	assert_eq!(settings.core.allowed_hosts.len(), 1);
-	assert_eq!(settings.core.allowed_hosts[0], "staging.example.com");
+	assert!(settings.debug);
+	assert_eq!(settings.allowed_hosts.len(), 1);
+	assert_eq!(settings.allowed_hosts[0], "staging.example.com");
 }
 
 // ---------------------------------------------------------------------------

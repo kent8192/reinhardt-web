@@ -1,5 +1,7 @@
 //! tree-sitter grammar for the Reinhardt `form!` DSL.
 
+#![warn(missing_docs)]
+
 use tree_sitter_language::LanguageFn;
 
 unsafe extern "C" {

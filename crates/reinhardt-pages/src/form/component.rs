@@ -53,10 +53,10 @@ use super::validators::ValidatorRegistry;
 #[cfg(wasm)]
 use crate::dom::{Document, Element};
 #[cfg(wasm)]
+use crate::platform::spawn_task;
+#[cfg(wasm)]
 use crate::reactive::Effect;
 use crate::reactive::Signal;
-#[cfg(wasm)]
-use crate::spawn::spawn_task;
 #[cfg(wasm)]
 use js_sys::Function;
 #[cfg(wasm)]

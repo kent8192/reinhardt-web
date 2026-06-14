@@ -286,6 +286,7 @@ impl RouteGroup {
 	/// let group = RouteGroup::new()
 	///     .viewset("/users", UserViewSet);
 	/// ```
+	#[cfg(feature = "viewsets")]
 	pub fn viewset<V: reinhardt_views::viewsets::ViewSet + 'static>(
 		mut self,
 		prefix: &str,
@@ -296,8 +297,8 @@ impl RouteGroup {
 	}
 
 	/// Same as [`Self::viewset`] at runtime, but carries a `PhantomData<M>`
-	/// marker that `#[url_patterns]` recovers at expansion time to discover
-	/// `#[action]`-decorated methods on the impl block `M`.
+	/// marker that the route resolver machinery recovers at expansion time
+	/// to discover `#[action]`-decorated methods on the impl block `M`.
 	///
 	/// `M` is purely a name-bearing token. Users write
 	/// `PhantomData::<MyViewSetImpl>` as the third argument. The bound is
@@ -310,6 +311,7 @@ impl RouteGroup {
 	/// slot so `ViewSet::get_extra_actions` finds them at dispatch time.
 	///
 	/// Refs Issue #4507.
+	#[cfg(feature = "viewsets")]
 	pub fn viewset_with_actions<V, M>(
 		self,
 		prefix: &str,
@@ -583,7 +585,7 @@ mod tests {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "viewsets"))]
 mod viewset_with_actions_tests {
 	use super::*;
 	use async_trait::async_trait;
@@ -610,7 +612,7 @@ mod viewset_with_actions_tests {
 		}
 	}
 
-	/// Marker type the future `#[url_patterns]` macro will recover at
+	/// Marker type the route resolver machinery recovers at
 	/// expansion time. It carries no runtime state.
 	struct DummyImpl;
 

@@ -18,8 +18,12 @@ fn main() {
 		name: VoteForm,
 		server_fn: submit_vote,
 		fields: {
-			_question_id: IntegerField { widget: HiddenInput },
-			_choice_id: IntegerField { required },
-		},
+			_question_id: IntegerField {
+				widget: HiddenInput,
+			}
+			_choice_id: IntegerField {
+				required,
+			}
+		}
 	};
 }

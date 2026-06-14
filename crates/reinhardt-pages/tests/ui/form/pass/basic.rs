@@ -8,11 +8,13 @@ fn main() {
 		name: LoginForm,
 		action: "/api/login",
 		fields: {
-			username: CharField { required },
+			username: CharField {
+				required,
+			}
 			password: CharField {
 				required,
-				widget: PasswordInput
-			},
-		},
+				widget: PasswordInput,
+			}
+		}
 	};
 }

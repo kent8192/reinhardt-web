@@ -68,6 +68,7 @@ where
 	/// impl Model for Article {
 	///     type PrimaryKey = i64;
 	///     type Fields = ArticleFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "articles" }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -118,6 +119,7 @@ where
 	/// impl Model for Article {
 	///     type PrimaryKey = i64;
 	///     type Fields = ArticleFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "articles" }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -161,6 +163,7 @@ where
 	/// impl Model for Article {
 	///     type PrimaryKey = i64;
 	///     type Fields = ArticleFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "articles" }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -216,6 +219,7 @@ where
 	/// impl Model for Article {
 	///     type PrimaryKey = i64;
 	///     type Fields = ArticleFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "articles" }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -257,6 +261,7 @@ where
 	/// impl Model for Article {
 	///     type PrimaryKey = i64;
 	///     type Fields = ArticleFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "articles" }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -298,6 +303,7 @@ where
 	/// impl Model for Article {
 	///     type PrimaryKey = i64;
 	///     type Fields = ArticleFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "articles" }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -339,6 +345,7 @@ where
 	/// impl Model for Article {
 	///     type PrimaryKey = i64;
 	///     type Fields = ArticleFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "articles" }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -384,6 +391,7 @@ where
 	/// impl Model for Article {
 	///     type PrimaryKey = i64;
 	///     type Fields = ArticleFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str { "articles" }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
@@ -438,11 +446,7 @@ where
 
 			let results = queryset
 				.clone()
-				.filter(Filter {
-					field: pk_field.to_string(),
-					operator: FilterOperator::Eq,
-					value: filter_value,
-				})
+				.filter(Filter::new(pk_field, FilterOperator::Eq, filter_value))
 				.all()
 				.await?;
 
@@ -455,11 +459,11 @@ where
 		if let Some(slug_value) = request.path_params.get(slug_kwarg) {
 			let results = queryset
 				.clone()
-				.filter(Filter {
-					field: self.get_slug_field().to_string(),
-					operator: FilterOperator::Eq,
-					value: FilterValue::String(slug_value.clone()),
-				})
+				.filter(Filter::new(
+					self.get_slug_field(),
+					FilterOperator::Eq,
+					FilterValue::String(slug_value.clone()),
+				))
 				.all()
 				.await?;
 

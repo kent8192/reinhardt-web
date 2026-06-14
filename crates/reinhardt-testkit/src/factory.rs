@@ -190,7 +190,6 @@ pub struct RequestBuilder {
 	query_params: HashMap<String, String>,
 	body: Option<Bytes>,
 	format: String,
-	user: Option<Value>,
 }
 
 impl RequestBuilder {
@@ -203,7 +202,6 @@ impl RequestBuilder {
 			query_params: HashMap::new(),
 			body: None,
 			format: "json".to_string(),
-			user: None,
 		}
 	}
 	/// Get the HTTP method of this request.
@@ -310,26 +308,6 @@ impl RequestBuilder {
 		self.body = Some(body.into());
 		self
 	}
-	/// Force authenticate as user (for testing)
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_testkit::factory::APIRequestFactory;
-	/// use serde_json::json;
-	///
-	/// let factory = APIRequestFactory::new();
-	/// let user = json!({"id": 1, "username": "testuser"});
-	/// let request = factory.get("/api/profile/").force_authenticate(user).build().unwrap();
-	/// ```
-	#[deprecated(
-		since = "0.1.0-rc.16",
-		note = "use `client.auth().session()` or `client.auth().jwt()` instead"
-	)]
-	pub fn force_authenticate(mut self, user: Value) -> Self {
-		self.user = Some(user);
-		self
-	}
 	/// Build the request
 	///
 	/// # Examples
@@ -376,11 +354,6 @@ impl RequestBuilder {
 				_ => "application/octet-stream",
 			};
 			request = request.header("Content-Type", content_type);
-		}
-
-		// Add authentication marker if user is set
-		if self.user.is_some() {
-			request = request.header("X-Test-User", "authenticated");
 		}
 
 		// Build request with body
@@ -657,27 +630,6 @@ mod tests {
 		assert!(uri.contains("page=1"));
 		assert!(uri.contains("limit=10"));
 		assert!(uri.contains('&'));
-	}
-
-	#[rstest]
-	#[allow(deprecated)]
-	fn test_builder_force_authenticate() {
-		// Arrange
-		let factory = APIRequestFactory::new();
-		let user = json!({"id": 1, "username": "testuser"});
-
-		// Act
-		let request = factory
-			.get("/api/profile/")
-			.force_authenticate(user)
-			.build()
-			.unwrap();
-
-		// Assert
-		assert_eq!(
-			request.headers().get("X-Test-User").unwrap(),
-			"authenticated"
-		);
 	}
 
 	#[rstest]

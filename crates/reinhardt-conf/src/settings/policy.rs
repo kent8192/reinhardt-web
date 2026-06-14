@@ -17,8 +17,9 @@ pub enum FieldRequirement {
 /// `#[setting(...)]` field attributes and `default_policy` configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FieldPolicy {
-	/// Field name (matches the struct field name, used for key lookup
-	/// in the merged `IndexMap<String, serde_json::Value>`)
+	/// Field name (matches the Rust struct field name for compatibility).
+	///
+	/// Schema metadata separately tracks the serialized TOML key.
 	pub name: &'static str,
 	/// Whether the field is required or optional
 	pub requirement: FieldRequirement,

@@ -1,14 +1,14 @@
 #![cfg(feature = "client-router")]
 //! Integration tests for client-side URL resolution.
+//!
+//! After the URL routing simplification (Issue #4784), client URL reversal
+//! uses `ClientRouter::reverse()` directly instead of a separate
+//! `ClientUrlReverser` struct.
 
 use rstest::*;
-use serial_test::serial;
 
 use reinhardt_core::page::Page;
-use reinhardt_urls::routers::client_router::{
-	ClientRouter, ClientUrlReverser, clear_client_reverser, get_client_reverser,
-	register_client_reverser,
-};
+use reinhardt_urls::routers::client_router::ClientRouter;
 use reinhardt_urls::routers::resolver::ClientUrlResolver;
 
 /// Stub page component for route registration.
@@ -17,65 +17,54 @@ fn stub_page() -> Page {
 }
 
 #[rstest]
-#[serial(client_reverser)]
 fn test_client_url_reverser_round_trip_via_client_router() {
 	// Arrange
-	clear_client_reverser();
 	let router = ClientRouter::new()
-		.named_route("app:home", "/", stub_page)
-		.named_route("app:user_detail", "/users/{id}/", stub_page)
-		.named_route(
+		.route("app:home", "/", stub_page)
+		.route("app:user_detail", "/users/{id}/", stub_page)
+		.route(
 			"app:user_posts",
 			"/users/{user_id}/posts/{post_id}/",
 			stub_page,
 		);
 
-	// Act
-	let reverser = router.to_reverser();
-	register_client_reverser(reverser);
-	let retrieved = get_client_reverser().expect("reverser should be registered");
-
-	// Assert
-	assert_eq!(retrieved.reverse("app:home", &[]), Some("/".to_string()));
+	// Act & Assert
+	assert_eq!(router.reverse("app:home", &[]).ok(), Some("/".to_string()));
 	assert_eq!(
-		retrieved.reverse("app:user_detail", &[("id", "42")]),
+		router.reverse("app:user_detail", &[("id", "42")]).ok(),
 		Some("/users/42/".to_string())
 	);
 	assert_eq!(
-		retrieved.reverse("app:user_posts", &[("user_id", "5"), ("post_id", "10")]),
+		router
+			.reverse("app:user_posts", &[("user_id", "5"), ("post_id", "10")])
+			.ok(),
 		Some("/users/5/posts/10/".to_string())
 	);
-	assert_eq!(retrieved.reverse("nonexistent", &[]), None);
-
-	// Cleanup
-	clear_client_reverser();
+	assert!(router.reverse("nonexistent", &[]).is_err());
 }
 
-/// Test that ClientUrlResolver trait works with ClientUrlReverser
+/// Test that ClientUrlResolver trait works with ClientRouter
 #[rstest]
 fn test_client_url_resolver_trait_impl() {
 	// Arrange
-	use std::collections::HashMap;
-
-	let mut patterns = HashMap::new();
-	patterns.insert("myapp:index".to_string(), "/".to_string());
-	patterns.insert("myapp:detail".to_string(), "/items/{id}/".to_string());
-	let reverser = std::sync::Arc::new(ClientUrlReverser::new(patterns));
+	let router = ClientRouter::new()
+		.route("myapp:index", "/", stub_page)
+		.route("myapp:detail", "/items/{id}/", stub_page);
 
 	// Create a simple resolver wrapper
 	struct TestResolver {
-		reverser: std::sync::Arc<ClientUrlReverser>,
+		router: ClientRouter,
 	}
 
 	impl ClientUrlResolver for TestResolver {
 		fn resolve_client_url(&self, name: &str, params: &[(&str, &str)]) -> String {
-			self.reverser
+			self.router
 				.reverse(name, params)
-				.unwrap_or_else(|| panic!("Route '{}' not found", name))
+				.unwrap_or_else(|_| panic!("Route '{}' not found", name))
 		}
 	}
 
-	let resolver = TestResolver { reverser };
+	let resolver = TestResolver { router };
 
 	// Act & Assert
 	assert_eq!(resolver.resolve_client_url("myapp:index", &[]), "/");
@@ -89,24 +78,22 @@ fn test_client_url_resolver_trait_impl() {
 #[should_panic(expected = "not found")]
 fn test_client_url_resolver_panics_on_unknown_route() {
 	// Arrange
-	use std::collections::HashMap;
-
-	let reverser = ClientUrlReverser::new(HashMap::new());
+	let router = ClientRouter::new();
 
 	struct TestResolver {
-		reverser: ClientUrlReverser,
+		router: ClientRouter,
 	}
 
 	impl ClientUrlResolver for TestResolver {
 		fn resolve_client_url(&self, name: &str, params: &[(&str, &str)]) -> String {
-			self.reverser
+			self.router
 				.reverse(name, params)
-				.unwrap_or_else(|| panic!("Route '{}' not found", name))
+				.unwrap_or_else(|_| panic!("Route '{}' not found", name))
 		}
 	}
 
-	let resolver = TestResolver { reverser };
+	let resolver = TestResolver { router };
 
-	// Act — should panic
+	// Act -- should panic
 	resolver.resolve_client_url("nonexistent", &[]);
 }

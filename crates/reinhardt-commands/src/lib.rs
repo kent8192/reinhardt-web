@@ -115,7 +115,8 @@
 //! Edit any Rust source file (server-side or wasm-side) and the bundle plus
 //! the server are rebuilt in place. Pass `--noreload` to disable auto-reload
 //! entirely, or `--no-wasm-rebuild` to keep server reload but manage the wasm
-//! build yourself.
+//! build yourself. The server restart success log is emitted only after the
+//! respawned child accepts connections at the advertised development address.
 //!
 //! See [`runserver_hooks`] for the full hot-reload runbook and failure modes.
 
@@ -145,6 +146,8 @@ pub mod i18n_commands;
 /// Project introspection command for platform metadata discovery.
 #[cfg(feature = "introspect")]
 pub mod introspect;
+/// Local development infrastructure management.
+pub mod local_infra;
 /// Email testing command.
 pub mod mail_commands;
 /// Terminal output wrapper with styling support.
@@ -155,6 +158,8 @@ mod page_hot_patch;
 /// Plugin management commands.
 #[cfg(feature = "plugins")]
 pub mod plugin_commands;
+/// Project dependency configuration commands.
+pub mod project_config;
 /// Command registry for discovery and dispatch.
 pub mod registry;
 /// Runserver lifecycle hooks for concurrent services and pre-listen validation.
@@ -226,7 +231,8 @@ pub use builtin::{CheckCommand, CheckDiCommand, MigrateCommand, RunServerCommand
 pub use cli::start_server;
 pub use cli::{
 	Cli, Commands, auto_register_router, execute_from_command_line,
-	execute_from_command_line_with_registry, run_command, run_command_with_registry,
+	execute_from_command_line_with_registry, execute_from_command_line_with_registry_and_settings,
+	execute_from_command_line_with_settings, run_command, run_command_with_registry,
 };
 pub use collectstatic::{CollectStaticCommand, CollectStaticOptions, CollectStaticStats};
 pub use context::CommandContext;
@@ -235,6 +241,7 @@ pub use i18n_commands::{CompileMessagesCommand, MakeMessagesCommand};
 pub use introspect::IntrospectCommand;
 pub use mail_commands::SendTestEmailCommand;
 pub use output::OutputWrapper;
+pub use project_config::{ConfigureCommand, ReinhardtDependencySelection};
 pub use registry::CommandRegistry;
 #[cfg(feature = "server")]
 pub use runserver_hooks::{RunserverContext, RunserverHook, RunserverHookRegistration};

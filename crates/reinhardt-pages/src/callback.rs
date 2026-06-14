@@ -32,7 +32,7 @@ use std::sync::Arc;
 
 use crate::component::PageEventHandler;
 #[cfg(wasm)]
-use crate::spawn::spawn_task;
+use crate::platform::spawn_task;
 
 #[cfg(wasm)]
 type EventArg = web_sys::Event;
@@ -153,6 +153,161 @@ impl<Args, Ret> Clone for Callback<Args, Ret> {
 		Self {
 			inner: Arc::clone(&self.inner),
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// callback_with_deps — internal helper for the use_callback / use_callback_with
+// hooks (Refs #4195).
+//
+// Maintains Rc/Arc identity of `Callback::inner` across re-entries at the same
+// call site while the listed deps NodeIds are unchanged, and swaps the inner
+// Arc<Fn> when deps change. Mirrors React's `useCallback(f, deps)` semantics.
+// ---------------------------------------------------------------------------
+
+/// Per-call-site state for [`callback_with_deps`].
+///
+/// Keyed by leaked `&'static str` of the caller's `Location` and stores the
+/// most recent deps tuple together with a type-erased `Arc<dyn Fn>`. The
+/// inner Arc is downcast and cloned into the returned `Callback`.
+#[allow(dead_code)]
+struct CallbackSlot {
+	deps: smallvec::SmallVec<[reinhardt_core::reactive::runtime::NodeId; 8]>,
+	f_any: Arc<dyn std::any::Any>,
+}
+
+thread_local! {
+	#[allow(clippy::type_complexity)]
+	static CALLBACK_REGISTRY: std::cell::RefCell<
+		std::collections::HashMap<&'static str, CallbackSlot>,
+	> = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Internal helper used by the `use_callback` / `use_callback_with` hooks.
+///
+/// Returns a `Callback<Args, Ret>` whose internal `Arc<dyn Fn>` identity
+/// is stable while `deps` NodeIds are unchanged across re-invocations at
+/// the same call site, and is replaced when any dep changes.
+///
+/// The `#[track_caller]` attribute lets us key the registry by the
+/// source `(file, line, column)` of the caller so different call sites
+/// have independent slots.
+#[cfg(wasm)]
+#[track_caller]
+#[allow(dead_code)]
+pub(crate) fn callback_with_deps<Args, Ret>(
+	f: impl Fn(Args) -> Ret + 'static,
+	deps: reinhardt_core::reactive::deps::Deps,
+) -> Callback<Args, Ret>
+where
+	Args: 'static,
+	Ret: 'static,
+{
+	type InnerArc<A, R> = Arc<dyn Fn(A) -> R + 'static>;
+
+	let loc = std::panic::Location::caller();
+	let key: &'static str = {
+		let s = format!("{}:{}:{}", loc.file(), loc.line(), loc.column());
+		Box::leak(s.into_boxed_str())
+	};
+
+	CALLBACK_REGISTRY.with(|reg| {
+		let mut reg = reg.borrow_mut();
+		let new_ids: smallvec::SmallVec<[reinhardt_core::reactive::runtime::NodeId; 8]> =
+			deps.as_slice().iter().copied().collect();
+
+		let slot = reg.entry(key).or_insert_with(|| CallbackSlot {
+			deps: smallvec::SmallVec::new(),
+			f_any: Arc::new(()) as Arc<dyn std::any::Any>,
+		});
+
+		let needs_replace =
+			slot.deps.as_slice() != new_ids.as_slice() || !slot.f_any.is::<InnerArc<Args, Ret>>();
+
+		if needs_replace {
+			let new_fn: InnerArc<Args, Ret> = Arc::new(f);
+			slot.deps = new_ids;
+			slot.f_any = Arc::new(new_fn) as Arc<dyn std::any::Any>;
+		}
+
+		let typed: &InnerArc<Args, Ret> = slot
+			.f_any
+			.downcast_ref::<InnerArc<Args, Ret>>()
+			.expect("CallbackSlot type mismatch — call site changed signature");
+
+		Callback {
+			inner: typed.clone(),
+		}
+	})
+}
+
+/// Internal helper used by `use_callback` / `use_callback_with` (native).
+///
+/// See the `cfg(wasm)` variant above for full documentation. The native
+/// variant additionally requires the closure to be `Send + Sync` so the
+/// resulting `Callback` matches `Callback::new`'s native bounds.
+#[cfg(native)]
+#[track_caller]
+#[allow(dead_code)]
+pub(crate) fn callback_with_deps<Args, Ret>(
+	f: impl Fn(Args) -> Ret + Send + Sync + 'static,
+	deps: reinhardt_core::reactive::deps::Deps,
+) -> Callback<Args, Ret>
+where
+	Args: 'static,
+	Ret: 'static,
+{
+	type InnerArc<A, R> = Arc<dyn Fn(A) -> R + Send + Sync + 'static>;
+
+	let loc = std::panic::Location::caller();
+	let key: &'static str = {
+		let s = format!("{}:{}:{}", loc.file(), loc.line(), loc.column());
+		Box::leak(s.into_boxed_str())
+	};
+
+	CALLBACK_REGISTRY.with(|reg| {
+		let mut reg = reg.borrow_mut();
+		let new_ids: smallvec::SmallVec<[reinhardt_core::reactive::runtime::NodeId; 8]> =
+			deps.as_slice().iter().copied().collect();
+
+		let slot = reg.entry(key).or_insert_with(|| CallbackSlot {
+			deps: smallvec::SmallVec::new(),
+			f_any: Arc::new(()) as Arc<dyn std::any::Any>,
+		});
+
+		let needs_replace =
+			slot.deps.as_slice() != new_ids.as_slice() || !slot.f_any.is::<InnerArc<Args, Ret>>();
+
+		if needs_replace {
+			let new_fn: InnerArc<Args, Ret> = Arc::new(f);
+			slot.deps = new_ids;
+			slot.f_any = Arc::new(new_fn) as Arc<dyn std::any::Any>;
+		}
+
+		let typed: &InnerArc<Args, Ret> = slot
+			.f_any
+			.downcast_ref::<InnerArc<Args, Ret>>()
+			.expect("CallbackSlot type mismatch — call site changed signature");
+
+		Callback {
+			inner: typed.clone(),
+		}
+	})
+}
+
+#[cfg(test)]
+impl<Args, Ret> Callback<Args, Ret> {
+	/// Test-only accessor for raw inner-Arc pointer identity.
+	///
+	/// Used by `callback_with_deps` tests to assert `Arc::ptr_eq` semantics.
+	/// Named `_rc_ptr` for historical alignment with the plan template
+	/// despite the inner being `Arc` not `Rc`.
+	pub(crate) fn inner_rc_ptr(&self) -> *const () {
+		// Take the address of the trait-object data pointer; using
+		// `Arc::as_ptr` yields a fat pointer (`*const dyn Fn(...)`) which
+		// is not directly comparable. We cast to a thin `*const u8` via
+		// `*const ()` for the equality assertion in tests.
+		Arc::as_ptr(&self.inner) as *const u8 as *const ()
 	}
 }
 
@@ -392,5 +547,75 @@ mod tests {
 		let handler: PageEventHandler = into_event_handler(|_: DummyEvent| {});
 		// Verify it's callable
 		handler(DummyEvent::default());
+	}
+}
+
+#[cfg(test)]
+mod tests_with_deps {
+	use super::*;
+	use reinhardt_core::reactive::deps::IntoDeps;
+	use reinhardt_core::reactive::signal::Signal;
+	use serial_test::serial;
+
+	// `callback_with_deps` keys its registry slot by the caller's
+	// `(file, line, column)` via `#[track_caller]`. To exercise the slot
+	// reuse path, both invocations MUST originate from the SAME source
+	// line — accomplished by driving a loop over a single call site.
+
+	#[cfg(native)]
+	#[test]
+	#[serial]
+	fn callback_stable_when_deps_unchanged() {
+		// Arrange
+		let s = Signal::new(0_i32);
+		let mut prev: Option<*const ()> = None;
+
+		// Act — same call site (loop body) re-entered with same deps.
+		for _ in 0..3 {
+			let cb = callback_with_deps::<i32, ()>(
+				{
+					let s = s.clone();
+					move |x: i32| {
+						let _ = (x, s.get());
+					}
+				},
+				(s.clone(),).into_deps(),
+			);
+			let rc = cb.inner_rc_ptr();
+
+			// Assert
+			if let Some(prev_rc) = prev {
+				assert_eq!(
+					rc, prev_rc,
+					"Arc<Fn> identity must be stable when deps unchanged"
+				);
+			}
+			prev = Some(rc);
+		}
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial]
+	fn callback_swaps_on_deps_change() {
+		// Arrange
+		let signals: Vec<Signal<i32>> = (0..3).map(Signal::new).collect();
+		let mut prev: Option<*const ()> = None;
+
+		// Act — same call site (loop body) re-entered with different
+		// deps each iteration.
+		for s in &signals {
+			let cb = callback_with_deps::<i32, ()>(|_: i32| {}, (s.clone(),).into_deps());
+			let rc = cb.inner_rc_ptr();
+
+			// Assert
+			if let Some(prev_rc) = prev {
+				assert_ne!(
+					rc, prev_rc,
+					"Arc<Fn> identity must change when deps NodeIds differ"
+				);
+			}
+			prev = Some(rc);
+		}
 	}
 }

@@ -4,14 +4,14 @@
 //! Similar to Leptos's `create_resource`, it manages Loading/Success/Error states
 //! and integrates with the Signal-based reactivity system.
 
-use super::Signal;
+use super::{Effect, Signal};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
-#[cfg(wasm)]
-use crate::spawn::{defer_yield, spawn_task};
+use crate::platform::{defer_yield, spawn_task};
+use reinhardt_core::reactive::deps::IntoDeps;
 
 /// Type alias for the refetch callback function
 ///
@@ -86,13 +86,13 @@ impl<T: fmt::Display, E: fmt::Display> fmt::Display for ResourceState<T, E> {
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::{Resource, create_resource};
+/// use reinhardt_pages::reactive::{Resource, use_resource};
 ///
 /// async fn fetch_user(id: u32) -> Result<User, String> {
 ///     // Fetch from API...
 /// }
 ///
-/// let resource = create_resource(|| fetch_user(42));
+/// let resource = use_resource(|| fetch_user(42), ());
 ///
 /// match resource.get() {
 ///     ResourceState::Loading => println!("Loading..."),
@@ -103,6 +103,12 @@ impl<T: fmt::Display, E: fmt::Display> fmt::Display for ResourceState<T, E> {
 pub struct Resource<T: Clone + 'static, E: Clone + 'static = String> {
 	state: Signal<ResourceState<T, E>>,
 	refetch_fn: RefetchCallback,
+	/// RAII anchor that keeps the dependency-tracking `Effect` alive for the
+	/// lifetime of the `Resource`. An `Effect` disposes itself on drop (removing
+	/// its node from the runtime graph), so without holding the handle here the
+	/// effect would be torn down immediately after creation and dependency-change
+	/// refetch would never fire.
+	effect_guard: Rc<Effect>,
 }
 
 impl<T: Clone + 'static, E: Clone + 'static> Clone for Resource<T, E> {
@@ -110,6 +116,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Clone for Resource<T, E> {
 		Resource {
 			state: self.state.clone(),
 			refetch_fn: Rc::clone(&self.refetch_fn),
+			effect_guard: Rc::clone(&self.effect_guard),
 		}
 	}
 }
@@ -155,27 +162,140 @@ impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
 	}
 }
 
-/// Create a resource from an async function
+impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Trackable
+	for Resource<T, E>
+{
+	/// Returns the underlying state `Signal`'s `NodeId`, allowing this
+	/// `Resource` to participate in hook deps tuples alongside `Signal`
+	/// and `Memo` (Refs #4195).
+	fn node_id(&self) -> reinhardt_core::reactive::runtime::NodeId {
+		self.state.id()
+	}
+}
+
+/// Reactive async data hook — the resource counterpart of `use_effect`.
 ///
-/// This function takes an async fetcher and returns a `Resource<T>`.
-/// The fetcher is immediately executed, and the Resource state transitions
-/// from Loading → Success/Error based on the result.
+/// `use_resource(fetcher, deps)` runs `fetcher` and tracks its result as a
+/// [`Resource`] (`Loading → Success/Error`). The `deps` argument follows the
+/// same [`IntoDeps`] convention as [`use_effect`](super::hooks::use_effect):
 ///
-/// # WASM-only
+/// - `()` → fetch once on mount (never automatically refetches).
+/// - `(signal,)` / `(a, b, ..)` → refetch whenever any listed dependency
+///   changes. Dependencies are the explicitly listed [`Trackable`]s
+///   (`Signal`/`Memo`/`Resource`); signals merely *read* inside the async
+///   `fetcher` do not subscribe (they cross an `await` boundary), so list
+///   everything that should drive a refetch — the same stale-deps rule as
+///   `use_effect`.
 ///
-/// This function is only available on WASM targets, as it uses `spawn_local`
-/// for async execution.
+/// The initial fetch and every dependency-driven refetch are deferred one
+/// microtask (`defer_yield`) so they cannot hang when created during WASM
+/// initialization before the event loop is running (#3316).
+///
+/// [`Trackable`]: reinhardt_core::reactive::deps::Trackable
+/// [`IntoDeps`]: reinhardt_core::reactive::deps::IntoDeps
+///
+/// # Dual-target behavior
+///
+/// Like [`use_action`](super::hooks::use_action), this hook is available on all
+/// targets:
+///
+/// - **WASM**: the fetcher runs via `spawn_task` on the browser event loop.
+/// - **Non-WASM (SSR)**: `spawn_task` drops the future, so the fetcher never
+///   runs and the `Resource` stays `Loading`. The server renders the loading
+///   state and the client performs the real fetch after hydration.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::create_resource;
+/// use reinhardt_pages::reactive::{Signal, use_resource};
 ///
-/// let user_resource = create_resource(|| async {
-///     fetch_user_from_api(42).await
-/// });
+/// // Fetch once on mount:
+/// let user = use_resource(|| async { fetch_user_from_api(42).await }, ());
+///
+/// // Refetch whenever `user_id` changes:
+/// let user_id = Signal::new(42u32);
+/// let user = use_resource(
+///     {
+///         let user_id = user_id.clone();
+///         move || {
+///             let id = user_id.get();
+///             async move { fetch_user_from_api(id).await }
+///         }
+///     },
+///     (user_id.clone(),),
+/// );
+/// user_id.set(100); // triggers a refetch
 /// ```
+pub fn use_resource<T, E, F, Fut, D>(fetcher: F, deps: D) -> Resource<T, E>
+where
+	T: Clone + 'static,
+	E: Clone + 'static,
+	F: Fn() -> Fut + 'static,
+	Fut: std::future::Future<Output = Result<T, E>> + 'static,
+	D: IntoDeps,
+{
+	let state = Signal::new(ResourceState::Loading);
+	let fetcher = Rc::new(fetcher);
+
+	// Single fetch routine shared by the dependency-driven Effect and manual
+	// refetch. `defer_yield` runs on every path (initial, dependency change, and
+	// manual refetch) so the fetch cannot hang when spawned during WASM
+	// initialization before the event loop ticks (#3316).
+	let run: Rc<dyn Fn()> = {
+		let state = state.clone();
+		let fetcher = Rc::clone(&fetcher);
+		Rc::new(move || {
+			state.set(ResourceState::Loading);
+			let state = state.clone();
+			let fetcher = Rc::clone(&fetcher);
+			spawn_task(async move {
+				defer_yield().await;
+				match fetcher().await {
+					Ok(data) => state.set(ResourceState::Success(data)),
+					Err(err) => state.set(ResourceState::Error(err)),
+				}
+			});
+		})
+	};
+
+	// Drive the initial fetch and dependency-change refetches. `new_with_deps`
+	// (not `new`) means only the explicitly listed `deps` trigger re-runs; the
+	// Effect is stored in the returned `Resource` (see `effect_guard`) so it
+	// stays alive for the Resource's lifetime instead of being disposed on drop.
+	let effect = {
+		let run = Rc::clone(&run);
+		Effect::new_with_deps(
+			move || {
+				run();
+				None::<fn()>
+			},
+			deps.into_deps(),
+		)
+	};
+
+	let refetch_fn: RefetchCallback = Rc::new(RefCell::new(Some(Box::new({
+		let run = Rc::clone(&run);
+		move || run()
+	}))));
+
+	Resource {
+		state,
+		refetch_fn,
+		effect_guard: Rc::new(effect),
+	}
+}
+
+/// Create a resource from an async function (deprecated).
+///
+/// # WASM-only
+///
+/// This function is only available on WASM targets.
 #[cfg(wasm)]
+#[deprecated(
+	since = "0.2.0-rc.2",
+	note = "Renamed for naming consistency with use_effect/use_memo/use_callback. \
+	Use `use_resource(fetcher, ())` for fetch-on-mount. Scheduled for removal in v0.3.0."
+)]
 pub fn create_resource<T, E, F, Fut>(fetcher: F) -> Resource<T, E>
 where
 	T: Clone + 'static,
@@ -183,76 +303,21 @@ where
 	F: Fn() -> Fut + 'static,
 	Fut: std::future::Future<Output = Result<T, E>> + 'static,
 {
-	let state = Signal::new(ResourceState::Loading);
-	let refetch_fn: RefetchCallback = Rc::new(RefCell::new(None));
-
-	let state_for_fetch = state.clone();
-	let fetcher_for_initial = Rc::new(fetcher);
-	let fetcher_for_refetch = Rc::clone(&fetcher_for_initial);
-
-	// Defer initial fetch to the next microtask so the JS event loop can tick first.
-	// Without this, JsFuture from fetch/Response.text() hangs when spawned during
-	// WASM initialization (inside main()) before the event loop is running. (#3316)
-	spawn_task({
-		let state = state_for_fetch.clone();
-		let fetcher = Rc::clone(&fetcher_for_initial);
-		async move {
-			defer_yield().await;
-			match fetcher().await {
-				Ok(data) => state.set(ResourceState::Success(data)),
-				Err(err) => state.set(ResourceState::Error(err)),
-			}
-		}
-	});
-
-	// Setup refetch function
-	let state_for_refetch = state.clone();
-	*refetch_fn.borrow_mut() = Some(Box::new(move || {
-		state_for_refetch.set(ResourceState::Loading);
-
-		spawn_task({
-			let state = state_for_refetch.clone();
-			let fetcher = Rc::clone(&fetcher_for_refetch);
-			async move {
-				match fetcher().await {
-					Ok(data) => state.set(ResourceState::Success(data)),
-					Err(err) => state.set(ResourceState::Error(err)),
-				}
-			}
-		});
-	}));
-
-	Resource { state, refetch_fn }
+	use_resource(fetcher, ())
 }
 
-/// Create a resource with dependency tracking
-///
-/// This function creates a Resource that automatically refetches when
-/// the dependency Signal changes. The fetcher receives the current value
-/// of the dependency.
+/// Create a resource with dependency tracking (deprecated).
 ///
 /// # WASM-only
 ///
 /// This function is only available on WASM targets.
-///
-/// # Example
-///
-/// ```ignore
-/// use reinhardt_pages::reactive::{Signal, create_resource_with_deps};
-///
-/// let user_id = Signal::new(42u32);
-///
-/// let user_resource = create_resource_with_deps(
-///     user_id.clone(),
-///     |id| async move {
-///         fetch_user_from_api(id).await
-///     }
-/// );
-///
-/// // When user_id changes, the resource automatically refetches
-/// user_id.set(100);
-/// ```
 #[cfg(wasm)]
+#[deprecated(
+	since = "0.2.0-rc.2",
+	note = "Unified into use_resource. Use \
+	`use_resource(move || { let v = dep.get(); async move { .. } }, (dep,))`. \
+	Scheduled for removal in v0.3.0."
+)]
 pub fn create_resource_with_deps<T, E, D, F, Fut>(deps: Signal<D>, fetcher: F) -> Resource<T, E>
 where
 	T: Clone + 'static,
@@ -261,53 +326,12 @@ where
 	F: Fn(D) -> Fut + 'static,
 	Fut: std::future::Future<Output = Result<T, E>> + 'static,
 {
-	let state = Signal::new(ResourceState::Loading);
-	let refetch_fn: RefetchCallback = Rc::new(RefCell::new(None));
-
-	let fetcher = Rc::new(fetcher);
-	let fetcher_for_effect = Rc::clone(&fetcher);
-	let state_for_effect = state.clone();
-	let deps_for_effect = deps.clone();
-
-	// Setup effect to track dependency changes
-	use super::Effect;
-	Effect::new(move || {
-		let deps_value = deps_for_effect.get();
-		let state = state_for_effect.clone();
-		let fetcher = Rc::clone(&fetcher_for_effect);
-
-		state.set(ResourceState::Loading);
-
-		spawn_task(async move {
-			match fetcher(deps_value).await {
-				Ok(data) => state.set(ResourceState::Success(data)),
-				Err(err) => state.set(ResourceState::Error(err)),
-			}
-		});
-	});
-
-	// Setup refetch function (refetches with current deps value)
-	let state_for_refetch = state.clone();
-	let deps_for_refetch = deps.clone();
-	let fetcher_for_refetch = Rc::clone(&fetcher);
-
-	*refetch_fn.borrow_mut() = Some(Box::new(move || {
-		state_for_refetch.set(ResourceState::Loading);
-
-		spawn_task({
-			let state = state_for_refetch.clone();
-			let deps_value = deps_for_refetch.get();
-			let fetcher = Rc::clone(&fetcher_for_refetch);
-			async move {
-				match fetcher(deps_value).await {
-					Ok(data) => state.set(ResourceState::Success(data)),
-					Err(err) => state.set(ResourceState::Error(err)),
-				}
-			}
-		});
-	}));
-
-	Resource { state, refetch_fn }
+	// Forward to the unified hook: subscribe to `deps` and read its current
+	// value inside the fetcher. This also fixes the original behavior — the old
+	// implementation disposed its tracking Effect immediately, so dependency
+	// changes never triggered a refetch.
+	let dep_for_fetch = deps.clone();
+	use_resource(move || fetcher(dep_for_fetch.get()), (deps,))
 }
 
 #[cfg(test)]

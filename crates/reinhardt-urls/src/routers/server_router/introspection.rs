@@ -5,6 +5,7 @@
 
 use super::ServerRouter;
 use super::types::{MiddlewareInfo, RouteInfo, join_path};
+#[cfg(feature = "viewsets")]
 use hyper::Method;
 
 impl ServerRouter {
@@ -108,6 +109,7 @@ impl ServerRouter {
 		}
 
 		// Collect ViewSet routes
+		#[cfg(feature = "viewsets")]
 		for prefix in self.viewsets.keys() {
 			// Same composition rule as `collect_routes_recursive` below: normalize
 			// the viewset prefix to a single leading `/` and join via
@@ -241,6 +243,14 @@ impl ServerRouter {
 		}
 	}
 
+	/// Returns a reference to the internal URL reverser.
+	///
+	/// The reverser is populated after [`register_all_routes()`](Self::register_all_routes)
+	/// has been called.
+	pub fn reverser(&self) -> &crate::routers::UrlReverser {
+		&self.reverser
+	}
+
 	/// Register an alias for a route name in this router's reverser.
 	///
 	/// See `UrlReverser::add_name_alias` for details.
@@ -308,6 +318,7 @@ impl ServerRouter {
 		}
 
 		// Collect ViewSet routes with standard names (Django convention: basename, not prefix)
+		#[cfg(feature = "viewsets")]
 		for (prefix, viewset) in &self.viewsets {
 			// Normalize the viewset prefix to a single leading `/` (and no
 			// trailing `/`) before composing it under `current_prefix` with
@@ -436,7 +447,7 @@ impl ServerRouter {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "viewsets"))]
 mod viewset_path_composition_tests {
 	use super::*;
 	use async_trait::async_trait;

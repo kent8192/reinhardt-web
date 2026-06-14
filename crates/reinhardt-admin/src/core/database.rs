@@ -13,7 +13,7 @@ use reinhardt_db::orm::{
 };
 use reinhardt_di::{DiResult, Injectable, InjectionContext};
 use reinhardt_query::prelude::{
-	Alias, CaseStatement, ColumnRef, Condition, Expr, ExprTrait, IntoValue, Order,
+	Alias, BinOper, CaseStatement, ColumnRef, Condition, Expr, ExprTrait, IntoValue, Order,
 	PostgresQueryBuilder, Query, QueryStatementBuilder, SimpleExpr, Value,
 };
 use serde::{Deserialize, Serialize};
@@ -119,6 +119,7 @@ impl reinhardt_db::orm::FieldSelector for AdminRecordFields {
 impl Model for AdminRecord {
 	type PrimaryKey = i64;
 	type Fields = AdminRecordFields;
+	type Objects = reinhardt_db::orm::Manager<Self>;
 
 	fn table_name() -> &'static str {
 		"admin_records"
@@ -199,6 +200,7 @@ pub fn filter_value_to_sea_value(v: &FilterValue) -> Value {
 		// in build_single_filter_expr(). Return None-string as fallback
 		// for unexpected scalar contexts.
 		FilterValue::Array(_) => Value::String(None),
+		FilterValue::List(_) | FilterValue::Range(_, _) => Value::String(None),
 		FilterValue::FieldRef(f) => {
 			// FieldRef generates column reference, not scalar value.
 			// For Value context, return field name as string.
@@ -352,12 +354,17 @@ fn escape_like_pattern(input: &str) -> String {
 /// Build a SimpleExpr from a single Filter
 #[doc(hidden)]
 pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
-	let col = Expr::col(Alias::new(&filter.field));
+	let col = filter.lhs_expr();
+	let lhs_sql = filter.lhs_sql();
 
 	let expr = match (&filter.operator, &filter.value) {
 		// Null handling (must come before generic patterns)
 		(FilterOperator::Eq, FilterValue::Null) => col.is_null(),
 		(FilterOperator::Ne, FilterValue::Null) => col.is_not_null(),
+		(FilterOperator::IExact, FilterValue::String(s)) => {
+			col.binary(BinOper::ILike, SimpleExpr::from(s.clone()))
+		}
+		(FilterOperator::IExact, v) => col.eq(filter_value_to_sea_value(v)),
 
 		// FieldRef: Column-to-column comparisons
 		(FilterOperator::Eq, FilterValue::FieldRef(f)) => col.eq(Expr::col(Alias::new(&f.field))),
@@ -419,12 +426,38 @@ pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 		(FilterOperator::Contains, FilterValue::String(s)) => {
 			col.like(format!("%{}%", escape_like_pattern(s)))
 		}
+		(FilterOperator::IContains, FilterValue::String(s)) => col.binary(
+			BinOper::ILike,
+			SimpleExpr::from(format!("%{}%", escape_like_pattern(s))),
+		),
 		(FilterOperator::StartsWith, FilterValue::String(s)) => {
 			col.like(format!("{}%", escape_like_pattern(s)))
 		}
+		(FilterOperator::IStartsWith, FilterValue::String(s)) => col.binary(
+			BinOper::ILike,
+			SimpleExpr::from(format!("{}%", escape_like_pattern(s))),
+		),
 		(FilterOperator::EndsWith, FilterValue::String(s)) => {
 			col.like(format!("%{}", escape_like_pattern(s)))
 		}
+		(FilterOperator::IEndsWith, FilterValue::String(s)) => col.binary(
+			BinOper::ILike,
+			SimpleExpr::from(format!("%{}", escape_like_pattern(s))),
+		),
+		(FilterOperator::Regex, FilterValue::String(pattern)) => {
+			Expr::cust_with_values(format!("{} ~ ?", lhs_sql), [pattern.clone()]).into()
+		}
+		(FilterOperator::IRegex, FilterValue::String(pattern)) => {
+			Expr::cust_with_values(format!("{} ~* ?", lhs_sql), [pattern.clone()]).into()
+		}
+		(FilterOperator::Range, FilterValue::Range(start, end)) => Expr::cust_with_values(
+			format!("{} BETWEEN ? AND ?", lhs_sql),
+			[
+				filter_value_to_sea_value(start),
+				filter_value_to_sea_value(end),
+			],
+		)
+		.into(),
 		// Array-based In/NotIn: convert each element to a Value
 		(FilterOperator::In, FilterValue::Array(arr)) => {
 			if arr.is_empty() {
@@ -439,6 +472,28 @@ pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 			}
 			let values: Vec<Value> = arr.iter().map(|v| v.as_str().into_value()).collect();
 			col.is_not_in(values)
+		}
+		(FilterOperator::In, FilterValue::List(values)) => {
+			if values.is_empty() {
+				return None;
+			}
+			col.is_in(
+				values
+					.iter()
+					.map(filter_value_to_sea_value)
+					.collect::<Vec<_>>(),
+			)
+		}
+		(FilterOperator::NotIn, FilterValue::List(values)) => {
+			if values.is_empty() {
+				return None;
+			}
+			col.is_not_in(
+				values
+					.iter()
+					.map(filter_value_to_sea_value)
+					.collect::<Vec<_>>(),
+			)
 		}
 
 		(FilterOperator::In, FilterValue::String(s)) => {
@@ -1292,7 +1347,7 @@ reinhardt_di::inventory::submit! {
 	)
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use reinhardt_db::orm::annotation::Expression;
@@ -1728,6 +1783,29 @@ mod tests {
 				op
 			);
 		}
+	}
+
+	#[test]
+	fn test_build_single_filter_expr_uses_transformed_filter_lhs() {
+		// Arrange
+		let filter = reinhardt_db::orm::expressions::FieldRef::<(), i64>::new("created_at")
+			.year()
+			.range(2024, 2026);
+
+		// Act
+		let result = build_single_filter_expr(&filter);
+
+		// Assert
+		assert!(result.is_some());
+		let query = Query::select()
+			.from(Alias::new("users"))
+			.column(ColumnRef::Asterisk)
+			.cond_where(Condition::all().add(result.unwrap()))
+			.to_string(PostgresQueryBuilder);
+		assert_eq!(
+			query,
+			r#"SELECT * FROM "users" WHERE EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026"#
+		);
 	}
 
 	#[test]

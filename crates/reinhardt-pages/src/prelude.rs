@@ -35,12 +35,13 @@
 //! - [`use_state`], [`use_effect`], [`use_memo`], [`use_callback`], [`use_context`]
 //! - [`use_ref`], [`use_reducer`], [`use_transition`], [`use_deferred_value`]
 //! - [`use_id`], [`use_layout_effect`], [`use_effect_event`], [`use_debug_value`]
-//! - [`use_optimistic`], [`use_action_state`] (deprecated), [`use_shared_state`]
+//! - [`use_optimistic`], [`use_shared_state`]
 //! - [`use_action`], [`use_sync_external_store`]
 //!
 //! ## Component System
 //! - [`Component`], [`PageElement`], [`IntoPage`], [`Page`], [`Props`]
 //! - [`PageEventHandler`]
+//! - [`SuspenseBoundary`], [`ErrorBoundary`], [`BoundaryError`]
 //!
 //! ## Events and Callbacks
 //! - [`Callback`], [`IntoEventHandler`], [`into_event_handler`]
@@ -50,7 +51,7 @@
 //! - [`Document`], [`Element`], [`EventHandle`], [`EventType`], [`document`](fn@document)
 //!
 //! ## Routing
-//! - [`Link`], [`Router`], [`Route`], [`RouterOutlet`], [`PathPattern`]
+//! - [`Link`], `Router`, `Route`, `RouterOutlet`, `PathPattern`
 //!
 //! ## Macros
 //! - [`page`] - Component DSL for defining views
@@ -60,6 +61,13 @@
 //! - [`resolve_static`] - Resolve static file URLs
 //! - [`init_static_resolver`] - Initialize the static resolver
 //! - [`is_initialized`] - Check if static resolver is initialized
+//!
+//! ## Typed Forms
+//! - [`use_form`], [`UseFormReturn`], [`UseFormBuilder`]
+//!
+//! ## Task Spawning
+//! - [`spawn_task`], [`defer_yield`] - cross-target async task spawning
+//!   (no-op on native; replaces the deprecated `spawn_local` re-export)
 
 // ============================================================================
 // Reactive System
@@ -74,17 +82,25 @@ pub use crate::reactive::{
 
 // Hooks API
 pub use crate::reactive::{Action, ActionPhase, use_action};
-#[allow(deprecated)] // Intentional: re-exporting deprecated items for backward compatibility
+#[allow(
+	deprecated,
+	reason = "re-export kept until removal in v0.3.0 (Refs #4195)"
+)]
 pub use crate::reactive::{
-	ActionState, Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal,
-	TransitionState, use_action_state, use_callback, use_context, use_debug_value,
-	use_deferred_value, use_effect, use_effect_event, use_id, use_layout_effect, use_memo,
-	use_optimistic, use_reducer, use_ref, use_shared_state, use_state, use_sync_external_store,
-	use_transition,
+	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
+	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_effect_event,
+	use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state,
+	use_state, use_sync_external_store, use_transition,
 };
 
-// WASM-only resource creation functions
+// Unified resource hook (available on all targets)
+pub use crate::reactive::use_resource;
+// Deprecated resource constructors, kept until removal in v0.3.0
 #[cfg(wasm)]
+#[allow(
+	deprecated,
+	reason = "re-export kept until removal in v0.3.0; use use_resource instead"
+)]
 pub use crate::reactive::{create_resource, create_resource_with_deps};
 
 // ============================================================================
@@ -92,8 +108,9 @@ pub use crate::reactive::{create_resource, create_resource_with_deps};
 // ============================================================================
 
 pub use crate::component::{
-	Component, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, PageEventHandler, PageExt,
-	Props, ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary,
+	BoundaryError, Component, ErrorBoundary, ErrorTracker, Head, IntoPage, LinkTag, MetaTag, Page,
+	PageElement, PageEventHandler, PageExt, Props, ResourceTracker, ScriptTag, StyleTag,
+	SuspenseBoundary,
 };
 
 // ============================================================================
@@ -104,6 +121,9 @@ pub use crate::callback::{Callback, IntoEventHandler, into_event_handler};
 
 // Platform-agnostic Event type
 pub use crate::platform::Event;
+
+// Platform-agnostic task spawning (cross-target)
+pub use crate::platform::{defer_yield, spawn_task};
 
 // ============================================================================
 // DOM
@@ -116,11 +136,7 @@ pub use crate::dom::{Document, Element, EventHandle, EventType, document};
 // ============================================================================
 
 // Non-deprecated rendering primitives.
-pub use crate::router::{Link, RouterOutlet};
-// Deprecated routing types (Refs #4234). Re-exported for backward
-// compatibility; new code should prefer `reinhardt_urls::routers::*`.
-#[allow(deprecated)] // (Refs #4234) Prelude re-exports deprecated routing surface.
-pub use crate::router::{PathPattern, Route, Router};
+pub use crate::router::Link;
 
 // ============================================================================
 // API and Server Functions
@@ -161,6 +177,12 @@ pub use crate::static_resolver::{init_static_resolver, is_initialized, resolve_s
 // Forms (native only)
 // ============================================================================
 
+pub use crate::form_state::{
+	FieldError, FieldState, FocusError, FormEvent, FormRuntimeSource, FormState, FormSubscription,
+	FormValidationError, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder, UseFormReturn,
+	UseFormSubmitOutcome, use_form,
+};
+
 #[cfg(native)]
 pub use crate::form::{FormBinding, FormComponent};
 
@@ -185,5 +207,9 @@ pub use crate::page;
 /// Spawn a local async task (WASM only).
 ///
 /// This is a convenience re-export from `wasm_bindgen_futures`.
+///
+/// Deprecated in favor of [`spawn_task`], which is cross-target (a no-op on
+/// native) and does not require a `#[cfg(wasm)]` guard at the call site.
 #[cfg(wasm)]
+#[deprecated(note = "use spawn_task from reinhardt_pages::prelude instead")]
 pub use wasm_bindgen_futures::spawn_local;

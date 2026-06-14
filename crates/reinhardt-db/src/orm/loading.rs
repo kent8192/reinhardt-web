@@ -167,6 +167,7 @@ impl<T: Model> LoadOptionBuilder<T> {
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
 	///     type Fields = UserFields;
+	///     type Objects = reinhardt_db::orm::Manager<Self>;
 	///     fn table_name() -> &'static str {
 	///         "users"
 	///     }
@@ -338,6 +339,7 @@ impl LoadContext {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::orm::Manager;
 	use reinhardt_core::validators::TableName;
 	use serde::{Deserialize, Serialize};
 
@@ -359,6 +361,7 @@ mod tests {
 	impl Model for User {
 		type PrimaryKey = i64;
 		type Fields = UserFields;
+		type Objects = Manager<Self>;
 
 		fn table_name() -> &'static str {
 			USER_TABLE.as_str()

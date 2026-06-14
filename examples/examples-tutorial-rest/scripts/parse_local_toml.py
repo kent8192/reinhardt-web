@@ -6,11 +6,29 @@ configuration in a single source of truth. Despite the historical name,
 this script accepts any settings profile (`local.toml`, `ci.toml`, ...);
 the caller picks the file based on `REINHARDT_ENV`.
 
-The settings shape mirrors the example crates' top-level `[database]`
-section (see README "With Database" / `reinhardt_conf::settings::DatabaseConfig`).
-Redis URL is read from a top-level `redis_url = "..."` key with a sane
-default; examples that don't actually use Redis still get an idle
-container spun up so the infra footprint is identical across examples.
+The script mirrors the layered settings loader in `reinhardt_conf`: when
+a sibling `base.toml` exists next to the requested profile, it is loaded
+first as the default layer and the profile is deep-merged on top (the
+profile wins on key conflicts). This keeps the container provisioning
+script in sync with what `src/config/settings.rs` actually resolves at
+runtime, so a user-local `local.toml` containing only `[core]` overrides
+can still inherit the canonical `[database]` block from `base.toml`.
+
+Two database schemas are accepted (in priority order):
+
+1. Top-level ``[database]`` -- the canonical shape consumed by
+   `reinhardt_conf::settings::DatabaseConfig` (examples-tutorial-basis,
+   examples-tutorial-rest).
+2. ``[core.databases.default]`` -- the Django-style multi-database
+   layout exposed through `CoreSettings`.
+
+The second form is a fallback so that a `base.toml` carrying only the
+runtime-shape schema still satisfies the provisioning script when the
+caller selects `base.toml` directly (e.g., `REINHARDT_ENV=base`).
+
+Redis URL is read from the `[database]` section with a sane default;
+examples that don't actually use Redis still get an idle container
+spun up so the infra footprint is identical across examples.
 
 Usage:
     parse_local_toml.py <path_to_settings.toml>
@@ -36,6 +54,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import os.path
 import shlex
 import sys
 import urllib.parse
@@ -63,22 +82,71 @@ def _load_toml(path: str) -> dict:
 		raise SystemExit(1)
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+	# Recursively merge `override` into `base`. Nested dicts are merged
+	# key-by-key; scalars and lists in `override` replace the entry in
+	# `base`. Mirrors `reinhardt_conf`'s layered TOML loader so the
+	# provisioning script sees the same resolved values as the runtime.
+	result = dict(base)
+	for key, value in override.items():
+		existing = result.get(key)
+		if isinstance(existing, dict) and isinstance(value, dict):
+			result[key] = _deep_merge(existing, value)
+		else:
+			result[key] = value
+	return result
+
+
+def _resolve_database(data: dict) -> dict | None:
+	# Prefer the canonical top-level `[database]` schema. Fall back to
+	# the Django-style `[core.databases.default]` layout so that selecting
+	# `base.toml` directly still yields provisionable credentials even when
+	# only the runtime-shape schema is present.
+	candidate = data.get("database")
+	if isinstance(candidate, dict):
+		return candidate
+	nested = (
+		data.get("core", {})
+		.get("databases", {})
+		.get("default")
+	)
+	if isinstance(nested, dict):
+		return nested
+	return None
+
+
+def _load_settings(profile_path: str) -> dict:
+	# Layer the profile TOML on top of a sibling `base.toml` when one
+	# exists. When the caller asked for `base.toml` itself, or no sibling
+	# base is present, fall back to the profile as the sole source.
+	profile_data = _load_toml(profile_path)
+	settings_dir = os.path.dirname(profile_path) or "."
+	base_path = os.path.join(settings_dir, "base.toml")
+	if os.path.abspath(profile_path) == os.path.abspath(base_path):
+		return profile_data
+	if not os.path.isfile(base_path):
+		return profile_data
+	base_data = _load_toml(base_path)
+	return _deep_merge(base_data, profile_data)
+
+
 def main(argv: list[str]) -> int:
 	if len(argv) != 2:
 		sys.stderr.write("Usage: parse_local_toml.py <settings.toml>\n")
 		return 2
 
-	data = _load_toml(argv[1])
+	data = _load_settings(argv[1])
 
-	try:
-		db = data["database"]
-	except KeyError:
+	db = _resolve_database(data)
+	if db is None:
 		sys.stderr.write(
-			f"Error: top-level [database] missing from {argv[1]}\n"
+			f"Error: neither top-level [database] nor "
+			f"[core.databases.default] found in {argv[1]} "
+			f"(and from sibling base.toml, if present)\n"
 		)
 		return 1
 
-	redis_url = data.get("redis_url", "redis://localhost:6379/0")
+	redis_url = db.get("redis_url") or data.get("redis_url", "redis://localhost:6379/0")
 	parsed = urllib.parse.urlparse(redis_url)
 
 	print(f"PG_HOST={_q(db.get('host', 'localhost'))}")

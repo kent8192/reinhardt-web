@@ -449,6 +449,15 @@ args = ["llvm-cov", "nextest", "--workspace", "--lib", "--all-features", "--no-f
 description = "Check representative feature combinations (30 patterns)"
 dependencies = ["feature-check-facade", "feature-check-subcrate"]
 
+[tasks.dependency-feature-audit]
+description = "Capture dependency-heavy crate presence across feature combinations"
+script_runner = "bash"
+script = '''
+set -euo pipefail
+label="${AUDIT_LABEL:-manual}"
+scripts/dependency-feature-audit.sh "${label}"
+'''
+
 [tasks.feature-check-facade]
 description = "Check facade crate feature combinations (19 patterns)"
 script_runner = "bash"

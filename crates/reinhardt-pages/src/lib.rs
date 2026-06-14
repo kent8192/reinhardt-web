@@ -3,11 +3,44 @@
 //! A Django-inspired frontend framework for Reinhardt that preserves the benefits of
 //! Django templates while leveraging WebAssembly for modern interactivity.
 //!
+//! Use [`reactive::batch`] to group related reactive writes into one update
+//! cycle. Async [`Action`] handles can be connected to [`OptimisticState`] with
+//! [`Action::with_optimistic`] so failed mutations automatically roll back
+//! optimistic UI state.
+//!
 //! ## Features
 //!
-//! - **Fine-grained Reactivity**: Leptos/Solid.js-style Signal system with automatic dependency tracking
+//! - **Fine-grained Reactivity**: Leptos/Solid.js-style Signal system with React-aligned hooks
 //! - **Hybrid Rendering**: SSR + Client-side Hydration for optimal performance and SEO
 //! - **Django-like API**: Familiar patterns for Reinhardt developers
+//! - **Boundaries**: Suspense and error boundaries for async UI states
+//!
+//! ## React-aligned hook signatures (v0.2, Refs #4195)
+//!
+//! `use_effect`, `use_layout_effect`, `use_memo`, `use_callback`, and
+//! `use_callback_with` take an explicit dependency tuple as the second
+//! argument:
+//!
+//! ```ignore
+//! use reinhardt_pages::prelude::*;
+//!
+//! let count = Signal::new(0_i32);
+//! let count_for_effect = count.clone();
+//! let _eff = use_effect(
+//!     move || {
+//!         println!("count = {}", count_for_effect.get());
+//!         None::<fn()>
+//!     },
+//!     (count.clone(),),
+//! );
+//! ```
+//!
+//! Closures run with no active reactive Observer ("Option A"), so
+//! `Signal::get` inside does NOT auto-subscribe — subscriptions derive
+//! exclusively from the deps tuple. Pass `()` for mount-only effects.
+//!
+//! For a concept-by-concept mapping from React to Reinhardt Pages, see
+//! `docs/react_to_reinhardt.md` in this crate.
 //! - **Low-level Only**: Built on wasm-bindgen, web-sys, and js-sys (no high-level framework dependencies)
 //! - **Security First**: Built-in CSRF protection, XSS prevention, and session management
 //!
@@ -20,6 +53,7 @@
 //! - [`builder`]: HTML element builder API
 //! - [`component`]: Component system with IntoPage trait, Head management
 //! - [`form`](mod@form): Django Form integration
+//! - [`form_state`]: Typed `use_form` runtime state
 //! - [`csrf`]: CSRF protection
 //! - [`auth`]: Authentication integration
 //! - [`api`]: API client with Django QuerySet-like interface
@@ -28,6 +62,37 @@
 //! - [`hydration`]: Client-side hydration
 //! - [`router`]: Client-side routing (reinhardt-urls compatible)
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
+//!
+//! ## Forms
+//!
+//! `form!` owns static form definition: field names, widgets, labels,
+//! rendering metadata, and server function binding. [`use_form`] owns typed
+//! runtime behavior: value signals, dirty/touched state, validation errors,
+//! loading/success state, reset, and submit orchestration.
+//!
+//! Create a `form!` generated form and attach runtime behavior with
+//! [`use_form`]:
+//!
+//! ```ignore
+//! use reinhardt_pages::{form, use_form};
+//!
+//! let login_form = form! {
+//!     name: LoginForm,
+//!     action: "/login",
+//!     fields: {
+//!         username: CharField { initial: String::new() }
+//!         password: CharField { initial: String::new() }
+//!     }
+//! };
+//!
+//! let runtime = use_form(&login_form).build();
+//! runtime.set_value(login_form.username_field(), "ada".to_string());
+//! ```
+//!
+//! Use `ambient_arguments` for non-field values supplied from surrounding
+//! context. The old `strip_arguments` DSL name remains as a deprecated alias.
+//! CSRF should be supplied by `#[server_fn]` client stubs through the
+//! `X-CSRFToken` header rather than as a server function business argument.
 //!
 //! ## Macros
 //!
@@ -44,15 +109,11 @@
 //! fn counter() -> Page {
 //!     let count = Signal::new(0);
 //!
-//!     page!(|| {
+//!     page!(|count: Signal<i32>| {
 //!         div {
-//!             p { "Count: " }
-//!             button {
-//!                 @click: |_| count.update(|n| *n += 1),
-//!                 "Increment"
-//!             }
+//!             p { { format!("Count: {}", count.get()) } }
 //!         }
-//!     })()
+//!     })(count)
 //! }
 //! ```
 //!
@@ -92,29 +153,35 @@
 //!     let ws = use_websocket("ws://localhost:8000/ws/chat", UseWebSocketOptions::default());
 //!
 //!     // Monitor connection state reactively
-//!     use_effect({
-//!         let ws = ws.clone();
-//!         move || {
-//!             match ws.connection_state().get() {
-//!                 ConnectionState::Open => log!("Connected to chat"),
-//!                 ConnectionState::Closed => log!("Disconnected from chat"),
-//!                 ConnectionState::Error(e) => log!("Connection error: {}", e),
-//!                 _ => {}
+//!     use_effect(
+//!         {
+//!             let ws = ws.clone();
+//!             move || {
+//!                 match ws.connection_state().get() {
+//!                     ConnectionState::Open => log!("Connected to chat"),
+//!                     ConnectionState::Closed => log!("Disconnected from chat"),
+//!                     ConnectionState::Error(e) => log!("Connection error: {}", e),
+//!                     _ => {}
+//!                 }
+//!                 None::<fn()>
 //!             }
-//!             None::<fn()>
-//!         }
-//!     });
+//!         },
+//!         (),
+//!     );
 //!
 //!     // Handle incoming messages
-//!     use_effect({
-//!         let ws = ws.clone();
-//!         move || {
-//!             if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
-//!                 log!("Received: {}", text);
+//!     use_effect(
+//!         {
+//!             let ws = ws.clone();
+//!             move || {
+//!                 if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
+//!                     log!("Received: {}", text);
+//!                 }
+//!                 None::<fn()>
 //!             }
-//!             None::<fn()>
-//!         }
-//!     });
+//!         },
+//!         (),
+//!     );
 //!
 //!     page!(|| {
 //!         div {
@@ -145,10 +212,28 @@ pub mod callback;
 pub mod dom;
 pub mod logging;
 pub mod reactive;
-pub mod spawn;
 
-// Platform abstraction (unified types for WASM and native)
+// Platform abstraction (unified types and task spawning for WASM and native)
 pub mod platform;
+
+/// Backward-compatibility re-export of task-spawning utilities.
+///
+/// Task spawning moved into `platform` (#4362). This deprecated module
+/// keeps existing `reinhardt_pages::spawn::*` imports working for the
+/// remainder of the 0.x line.
+pub mod spawn {
+	/// Deprecated: use `spawn_task` from `reinhardt_pages::prelude` instead.
+	#[deprecated(
+		note = "moved to reinhardt_pages::platform; use spawn_task from reinhardt_pages::prelude instead"
+	)]
+	pub use crate::platform::spawn_task;
+
+	/// Deprecated: use `defer_yield` from `reinhardt_pages::prelude` instead.
+	#[deprecated(
+		note = "moved to reinhardt_pages::platform; use defer_yield from reinhardt_pages::prelude instead"
+	)]
+	pub use crate::platform::defer_yield;
+}
 
 // Unified prelude for simplified imports
 pub mod prelude;
@@ -161,6 +246,8 @@ pub mod auth;
 pub mod csrf;
 // Static form metadata types for form! macro (WASM-compatible)
 pub mod form_generated;
+// Typed form runtime state (WASM-compatible)
+pub mod form_state;
 // FormComponent requires reinhardt-forms which is not WASM-compatible yet
 // For now, client-side forms should use PageElement
 #[cfg(native)]
@@ -196,7 +283,7 @@ pub mod testing;
 pub mod static_resolver;
 
 // Hot Module Replacement (server-side only, feature-gated)
-#[cfg(all(not(target_arch = "wasm32"), feature = "hmr"))]
+#[cfg(all(native, feature = "hmr"))]
 pub mod hmr;
 
 // Table utilities (django-tables2 equivalent)
@@ -217,8 +304,8 @@ pub use component::DummyEvent;
 #[cfg(wasm)]
 pub use component::cleanup_reactive_nodes;
 pub use component::{
-	Component, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, PageExt, Props,
-	ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary,
+	BoundaryError, Component, ErrorBoundary, ErrorTracker, Head, IntoPage, LinkTag, MetaTag, Page,
+	PageElement, PageExt, Props, ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary,
 };
 pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{Document, Element, EventHandle, EventType, document};
@@ -226,35 +313,39 @@ pub use dom::{Document, Element, EventHandle, EventType, document};
 pub use form::{FormBinding, FormComponent};
 // Static form metadata types (always available, used by form! macro)
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
+pub use form_state::{
+	FieldError, FieldState, FocusError, FormEvent, FormRuntimeSource, FormState, FormSubscription,
+	FormValidationError, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder, UseFormReturn,
+	UseFormSubmitOutcome, use_form,
+};
 pub use hydration::{HydrationContext, HydrationError, hydrate};
-pub use reactive::{Effect, Memo, Resource, ResourceState, Signal};
+pub use reactive::{Effect, Memo, Resource, ResourceState, Signal, use_resource};
 #[cfg(wasm)]
+#[allow(
+	deprecated,
+	reason = "re-export kept until removal in v0.3.0; use use_resource instead"
+)]
 pub use reactive::{create_resource, create_resource_with_deps};
 // Re-export Context system
 pub use reactive::{
 	Context, ContextGuard, create_context, get_context, provide_context, remove_context,
 };
 // Re-export Hooks API
-#[allow(deprecated)]
-// (Refs #4234) Re-exporting deprecated `with_router` and `PathParams` for backward compatibility.
-pub use app::{ClientLauncher, LaunchCtx, PathCtx, PathParams, with_router};
+pub use app::{ClientLauncher, LaunchCtx, PathCtx, PathParams};
 pub use reactive::{Action, ActionPhase, use_action};
 #[allow(deprecated)] // Intentional: re-exporting deprecated items for backward compatibility
 pub use reactive::{
-	ActionState, Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal,
-	TransitionState, use_action_state, use_callback, use_context, use_debug_value,
-	use_deferred_value, use_effect, use_effect_event, use_id, use_layout_effect, use_memo,
-	use_optimistic, use_reducer, use_ref, use_shared_state, use_state, use_sync_external_store,
-	use_transition,
+	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
+	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_effect_event,
+	use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state,
+	use_state, use_sync_external_store, use_transition,
 };
 #[cfg(native)]
 pub use reinhardt_forms::{
 	Widget,
 	wasm_compat::{FieldMetadata, FormMetadata},
 };
-#[allow(deprecated)]
-// (Refs #4234) Re-exporting deprecated `PathPattern`, `Route`, `Router` for backward compatibility.
-pub use router::{Link, PathPattern, Route, Router, RouterOutlet};
+pub use router::Link;
 // Imperative SPA navigation API (Issue #4610). `navigate` is the free
 // function; `use_router` returns a `RouterHandle` for use inside hooks /
 // components. `NavigateError` is the public error returned by both paths.
@@ -281,10 +372,11 @@ pub mod __private {
 
 	// `tracing` is enabled for all targets *except* browser wasm (wasm32-unknown-unknown).
 	// Browser wasm uses a different logging mechanism, so tracing is intentionally excluded there.
-	// The cfg condition `not(all(target_family = "wasm", target_os = "unknown"))` precisely
-	// targets browser wasm, which reports target_family = "wasm" and target_os = "unknown".
-	// This is intentionally different from the `reqwest` cfg above.
-	#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+	// The `native` cfg alias (defined in build.rs as
+	// `not(all(target_family = "wasm", target_os = "unknown"))`) precisely targets every
+	// non-browser-wasm platform.
+	// This is intentionally different from the `reqwest` cfg above, which spans all wasm targets.
+	#[cfg(native)]
 	pub use tracing;
 }
 

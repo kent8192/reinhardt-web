@@ -10,26 +10,27 @@ password hashing with Argon2.
 
 ## Installation
 
-Add `reinhardt-auth` to your `Cargo.toml`:
+Add `reinhardt` to your `Cargo.toml`:
 
-<!-- reinhardt-version-sync:2 -->
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt-auth = "0.1.4"
+reinhardt = { version = "0.2.0-rc.6", features = ["auth"] }
 
-# Optional APIs:
-# reinhardt-auth = { version = "0.1.4", features = ["jwt", "argon2-hasher"] }
+# Or use a preset:
+# reinhardt = { version = "0.2.0-rc.6", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.2.0-rc.6", features = ["full"] }      # All features
 ```
 
 Then import authentication features:
 
 ```rust
-use reinhardt_auth::{AnonymousUser, SimpleUser, User};
-use reinhardt_auth::{AuthenticationBackend, HttpBasicAuth};
-use reinhardt_auth::{AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly};
+use reinhardt::auth::{User, SimpleUser, AnonymousUser};
+use reinhardt::auth::{JwtAuth, HttpBasicAuth, AuthenticationBackend};
+use reinhardt::auth::{AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly};
 ```
 
-**Note:** The default feature set enables `params`. APIs such as `JwtAuth`, `Claims`, `DefaultUser`, and `DefaultUserManager` require the `jwt` or `argon2-hasher` crate features shown in the examples below.
+**Note:** Authentication features are included in the `standard` and `full` feature presets.
 
 ## Implemented ✓
 
@@ -44,8 +45,7 @@ use reinhardt_auth::{AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly};
 - **Encode/Decode**: Full JWT token encoding and decoding support
 
 ```rust
-// Requires reinhardt-auth = { version = "0.1.2", features = ["jwt"] }
-use reinhardt_auth::jwt::{Claims, JwtAuth};
+use reinhardt::auth::jwt::{JwtAuth, Claims};
 use chrono::Duration;
 
 let jwt_auth = JwtAuth::new(b"my-secret-key");
@@ -62,16 +62,13 @@ let claims = jwt_auth.verify_token(&token).unwrap();
   headers
 
 ```rust
-use reinhardt_auth::{AuthenticationBackend, HttpBasicAuth};
+use reinhardt::auth::{HttpBasicAuth, AuthenticationBackend};
 
-# async fn example(request: reinhardt_http::Request) -> Result<(), reinhardt_auth::AuthenticationError> {
 let mut auth = HttpBasicAuth::new();
 auth.add_user("alice", "secret123");
 
 // Request with Basic auth header will be authenticated
-let result = auth.authenticate(&request).await?;
-# Ok(())
-# }
+let result = auth.authenticate(&request).unwrap();
 ```
 
 ### User Management
@@ -97,7 +94,7 @@ let result = auth.authenticate(&request).await?;
 - **Serialization Support**: Serde integration for SimpleUser
 
 ```rust
-use reinhardt_auth::{AnonymousUser, SimpleUser, User};
+use reinhardt::auth::{User, SimpleUser, AnonymousUser};
 use uuid::Uuid;
 
 let user = SimpleUser {
@@ -122,8 +119,8 @@ assert!(!user.is_admin());
   authentication
 - **Automatic Password Hashing**: Argon2id hashing by default, fully
   customizable
-- **Associated Hasher Type**:
-  `type Hasher: PasswordHasher + Default`
+- **Associated Type Default**:
+  `type Hasher: PasswordHasher + Default = Argon2Hasher`
 - **Password Management**:
   - `set_password()`: Automatically hashes with configured hasher
   - `check_password()`: Verifies password against hash
@@ -138,8 +135,7 @@ assert!(!user.is_admin());
   AbstractBaseUser
 
 ```rust
-// Requires reinhardt-auth = { version = "0.1.2", features = ["argon2-hasher"] }
-use reinhardt_auth::{Argon2Hasher, BaseUser};
+use reinhardt::auth::BaseUser;
 use uuid::Uuid;
 use chrono::Utc;
 use serde::{Serialize, Deserialize};
@@ -155,7 +151,7 @@ struct MyUser {
 
 impl BaseUser for MyUser {
     type PrimaryKey = Uuid;
-    type Hasher = Argon2Hasher;
+    // type Hasher = Argon2Hasher; // Default, can be omitted or customized
 
     fn get_username_field() -> &'static str { "email" }
     fn get_username(&self) -> &str { &self.email }
@@ -195,8 +191,7 @@ assert!(user.check_password("securepass123").unwrap());
 - **Django Compatibility**: Matches Django's AbstractUser interface
 
 ```rust
-// Requires reinhardt-auth = { version = "0.1.2", features = ["argon2-hasher"] }
-use reinhardt_auth::{BaseUser, DefaultUser, FullUser};
+use reinhardt::auth::{BaseUser, FullUser, DefaultUser};
 use uuid::Uuid;
 use chrono::Utc;
 
@@ -232,8 +227,7 @@ assert_eq!(user.get_short_name(), "Alice");
 - **Django Compatibility**: Permission format `"app_label.permission_name"`
 
 ```rust
-// Requires reinhardt-auth = { version = "0.1.2", features = ["argon2-hasher"] }
-use reinhardt_auth::{DefaultUser, PermissionsMixin};
+use reinhardt::auth::{DefaultUser, PermissionsMixin};
 use uuid::Uuid;
 use chrono::Utc;
 
@@ -271,8 +265,7 @@ assert!(user.has_module_perms("blog"));
 - **Zero Configuration**: Works out of the box with automatic Argon2id hashing
 
 ```rust
-// Requires reinhardt-auth = { version = "0.1.2", features = ["argon2-hasher"] }
-use reinhardt_auth::{BaseUser, DefaultUser, DefaultUserManager};
+use reinhardt::auth::{BaseUser, DefaultUser, DefaultUserManager};
 use std::collections::HashMap;
 
 # tokio_test::block_on(async {
@@ -385,11 +378,6 @@ Opt out and hand-write the implementation when you need any of:
 
 ```rust
 // Opt out and provide a DB-backed manager yourself.
-// Requires reinhardt-auth = { version = "0.1.2", features = ["argon2-hasher"] }
-use reinhardt::macros::user;
-use reinhardt_auth::Argon2Hasher;
-use serde::{Deserialize, Serialize};
-
 #[user(hasher = Argon2Hasher, username_field = "email", manager = false)]
 #[derive(Default, Serialize, Deserialize)]
 pub struct User { /* ... */ }
@@ -413,10 +401,9 @@ impl reinhardt_auth::BaseUserManager<User> for UserManager {
   `primary_key`, `unique`, `max_length`, `default`, and `include_in_new`
 
 ```rust
-// Requires reinhardt-auth = { version = "0.1.2", features = ["argon2-hasher"] }
+use reinhardt::Argon2Hasher;
 use reinhardt::macros::user;
 use reinhardt::prelude::*;
-use reinhardt_auth::Argon2Hasher;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -460,7 +447,7 @@ pub struct User {
 - **Password Verification**: Constant-time comparison for security
 
 ```rust
-use reinhardt_auth::{Argon2Hasher, PasswordHasher};
+use reinhardt::auth::{Argon2Hasher, PasswordHasher};
 
 let hasher = Argon2Hasher::new();
 let hash = hasher.hash("my_password").unwrap();
@@ -483,7 +470,7 @@ assert!(hasher.verify("my_password", &hash).unwrap());
 - **Flexible Configuration**: Add backends dynamically at runtime
 
 ```rust
-use reinhardt_auth::CompositeAuthBackend;
+use reinhardt::auth::CompositeAuthBackend;
 
 let mut composite = CompositeAuthBackend::new();
 composite.add_backend(Box::new(database_backend));
@@ -511,7 +498,7 @@ let user = composite.authenticate("alice", "password").await;
   anonymous users
 
 ```rust
-use reinhardt_auth::{IsAuthenticated, Permission, PermissionContext};
+use reinhardt::auth::{Permission, IsAuthenticated, PermissionContext};
 
 let permission = IsAuthenticated;
 let context = PermissionContext {
@@ -554,8 +541,8 @@ assert!(permission.has_permission(&context).await);
 - **Cookie Integration**: Secure session cookie handling
 
 ```rust
-use reinhardt_auth::{AuthenticationBackend, SessionAuthentication};
-use reinhardt_auth::sessions::backends::InMemorySessionBackend;
+use reinhardt::auth::{SessionAuthentication, AuthenticationBackend};
+use reinhardt::auth::sessions::backends::InMemorySessionBackend;
 
 // SessionAuthentication is generic over B: SessionBackend.
 // Pass the backend to new(), or use Default when B: Default.
@@ -584,7 +571,7 @@ if let Some(user) = auth.get_user("user_id").await? {
 - **Time Window**: Configurable tolerance for time skew (default: 1 time step)
 
 ```rust
-use reinhardt_auth::MFAAuthentication;
+use reinhardt::auth::MFAAuthentication;
 
 let mfa = MFAAuthentication::new("MyApp");
 
@@ -614,7 +601,7 @@ assert!(mfa.verify_code("alice", code).await?);
 - **InMemoryTokenStore**: Built-in in-memory token storage
 
 ```rust
-use reinhardt_auth::{GrantType, OAuth2Application, OAuth2Authentication};
+use reinhardt::auth::{OAuth2Authentication, OAuth2Application, GrantType};
 
 // OAuth2Authentication::new() takes no arguments; use ::with_repository() for custom storage.
 let oauth2 = OAuth2Authentication::new();
@@ -659,7 +646,7 @@ let claims = oauth2.verify_token(&token.access_token).await?;
 - **InMemoryRefreshTokenStore**: Built-in in-memory refresh token storage
 
 ```rust
-use reinhardt_auth::{
+use reinhardt::auth::{
     TokenBlacklist, InMemoryTokenBlacklist, BlacklistReason,
     TokenRotationManager, InMemoryRefreshTokenStore
 };
@@ -691,7 +678,7 @@ let new_token = rotation_manager.rotate_token("old_refresh_token", "user123").aw
 - **SSO Support**: Single sign-on integration
 
 ```rust
-use reinhardt_auth::RemoteUserAuthentication;
+use reinhardt::auth::RemoteUserAuthentication;
 
 // Standard configuration
 let auth = RemoteUserAuthentication::new("REMOTE_USER");
@@ -708,8 +695,7 @@ let user = auth.authenticate(&request).await?;
 ### Complete Authentication Flow
 
 ```rust
-// Requires reinhardt-auth = { version = "0.1.2", features = ["jwt", "argon2-hasher"] }
-use reinhardt_auth::{
+use reinhardt::auth::{
     JwtAuth, HttpBasicAuth, AuthBackend,
     SimpleUser, User, Argon2Hasher, PasswordHasher,
     Permission, IsAuthenticated, PermissionContext
@@ -723,7 +709,7 @@ let mut basic_auth = HttpBasicAuth::new();
 basic_auth.add_user("alice", "password123");
 
 // 3. Authenticate user and generate JWT
-let user = basic_auth.authenticate(&request).await?.unwrap();
+let user = basic_auth.authenticate(&request).unwrap().unwrap();
 let token = jwt_auth.generate_token(
     user.id(),
     user.username().to_string(),
@@ -751,7 +737,7 @@ if permission.has_permission(&context).await {
 ### Custom Authentication Backend
 
 ```rust
-use reinhardt_auth::{Argon2Hasher, AuthBackend, PasswordHasher, SimpleUser};
+use reinhardt::auth::{AuthBackend, SimpleUser, Argon2Hasher, PasswordHasher};
 use async_trait::async_trait;
 use std::collections::HashMap;
 

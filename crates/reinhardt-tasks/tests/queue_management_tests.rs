@@ -1,3 +1,5 @@
+#![allow(deprecated)] // Exercises the deprecated XxxConfig compatibility API.
+
 //! Task queue management tests
 //!
 //! Tests QueueConfig and TaskQueue implementations.
@@ -65,15 +67,6 @@ fn test_task_queue_new() {
 	let queue = TaskQueue::new();
 	// Queue creation should succeed (no panic)
 	assert_eq!(std::mem::size_of_val(&queue), 0); // TaskQueue is a unit struct
-}
-
-/// Test: TaskQueue with_config
-#[test]
-fn test_task_queue_with_config() {
-	let config = QueueConfig::new("custom_queue".to_string());
-	let queue = TaskQueue::with_config(config);
-	// Queue creation with config should succeed
-	assert_eq!(std::mem::size_of_val(&queue), 0);
 }
 
 /// Test: TaskQueue default

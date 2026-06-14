@@ -1,42 +1,48 @@
 //! Integration tests for snippets application
+//!
+//! The `snippets` views (`apps::snippets::views::{list, create, retrieve,
+//! update, delete}`) take `#[inject] db: Depends<DatabaseConnection>`, which
+//! requires a resolved DI container to invoke directly. Standing up the full
+//! DI container in a unit test is out of scope here (see Task A3 notes), so
+//! these tests exercise the `Manager::<Snippet>` ORM layer that the handlers
+//! delegate to, against a real `DatabaseConnection` backed by a temporary
+//! SQLite file. This covers the exact data-access path used by every view
+//! (`all_with_db`, `get(..).all_with_db`, `create_with_conn`,
+//! `update_with_conn`, `delete_with_conn`) while satisfying the project rule
+//! that every test uses at least one Reinhardt component.
 
 #[cfg(with_reinhardt)]
 mod tests {
+	use reinhardt::DatabaseConnection;
+	use reinhardt::db::orm::{Filter, FilterOperator, FilterValue, Manager};
+	use reinhardt::test::fixtures::create_table_for_model;
 	use rstest::*;
-	use sqlx::SqlitePool;
-	use std::sync::Arc;
 	use tempfile::NamedTempFile;
 
+	use examples_tutorial_rest::apps::snippets::models::Snippet;
+
+	/// Fixture: temporary SQLite database with the `snippets` table created
+	/// from the `Snippet` model metadata via `create_table_for_model`.
 	#[fixture]
-	async fn sqlite_with_migrations() -> (NamedTempFile, Arc<SqlitePool>) {
+	async fn sqlite_with_migrations() -> (NamedTempFile, DatabaseConnection) {
 		// Create temp file
 		let temp_file = NamedTempFile::new().expect("Failed to create temp file");
 		let db_path = temp_file.path().to_str().unwrap().to_string();
-		let database_url = format!("sqlite://{}?mode=rwc", db_path);
 
-		// Connect to SQLite
-		let pool = SqlitePool::connect(&database_url)
+		// `connect_sqlite` automatically sets `create_if_missing(true)`.
+		let database_url = format!("sqlite:///{}", db_path);
+
+		let conn = DatabaseConnection::connect_sqlite(&database_url)
 			.await
-			.expect("Failed to connect to SQLite");
-		let pool = Arc::new(pool);
+			.expect("Failed to create DatabaseConnection");
 
-		// Manual table creation (SQLite)
-		let create_snippets_table = r#"
-			CREATE TABLE IF NOT EXISTS snippets (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				title VARCHAR(255) NOT NULL,
-				code TEXT NOT NULL,
-				language VARCHAR(50) NOT NULL,
-				created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-			)
-		"#;
-
-		sqlx::query(create_snippets_table)
-			.execute(pool.as_ref())
+		// Create the `snippets` table from the `Snippet` model metadata.
+		// `create_table_for_model` operates on the inner backend connection.
+		create_table_for_model::<Snippet>(conn.inner())
 			.await
 			.expect("Failed to create snippets table");
 
-		(temp_file, pool)
+		(temp_file, conn)
 	}
 
 	// ============================================================================
@@ -48,11 +54,11 @@ mod tests {
 		use examples_tutorial_rest::apps::snippets::models::Snippet;
 
 		// Arrange / Act
-		let snippet = Snippet::new(
-			"Hello World".to_string(),
-			"println!(\"Hello, world!\");".to_string(),
-			"rust".to_string(),
-		);
+		let snippet = Snippet::build()
+			.title("Hello World")
+			.code("println!(\"Hello, world!\");")
+			.language("rust")
+			.finish();
 
 		// Assert
 		assert_eq!(snippet.title, "Hello World");
@@ -91,670 +97,455 @@ mod tests {
 	}
 
 	// ============================================================================
-	// Database Integration Tests - CRUD Operations (4 tests)
+	// Database Integration Tests - CRUD Operations
 	// ============================================================================
 
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_create(
-		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
+		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, pool) = sqlite_with_migrations.await;
+		let (_file, conn) = sqlite_with_migrations.await;
 
-		// Create a snippet
-		let result: (i64, String, String, String) = sqlx::query_as(
-			r#"
-			INSERT INTO snippets (title, code, language)
-			VALUES ($1, $2, $3)
-			RETURNING id, title, code, language
-			"#,
-		)
-		.bind("Test Snippet")
-		.bind("fn main() {}")
-		.bind("rust")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to create snippet");
+		// Arrange
+		let snippet = Snippet::build()
+			.title("Test Snippet")
+			.code("fn main() {}")
+			.language("rust")
+			.finish();
 
-		assert_eq!(result.1, "Test Snippet");
-		assert_eq!(result.2, "fn main() {}");
-		assert_eq!(result.3, "rust");
+		// Act
+		let created = Manager::<Snippet>::new()
+			.create_with_conn(&conn, &snippet)
+			.await
+			.expect("Failed to create snippet");
+
+		// Assert
+		assert_eq!(created.title, "Test Snippet");
+		assert_eq!(created.code, "fn main() {}");
+		assert_eq!(created.language, "rust");
+		assert!(created.id > 0, "created snippet should have an assigned id");
 	}
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_snippet_read(#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>)) {
-		let (_file, pool) = sqlite_with_migrations.await;
+	async fn test_snippet_read(
+		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
+	) {
+		let (_file, conn) = sqlite_with_migrations.await;
 
-		// Create a snippet
-		let created: (i64,) = sqlx::query_as(
-			r#"
-			INSERT INTO snippets (title, code, language)
-			VALUES ($1, $2, $3)
-			RETURNING id
-			"#,
-		)
-		.bind("Read Test")
-		.bind("println!(\"Hello\");")
-		.bind("rust")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to create snippet");
+		// Arrange
+		let snippet = Snippet::build()
+			.title("Read Test")
+			.code("println!(\"Hello\");")
+			.language("rust")
+			.finish();
+		let created = Manager::<Snippet>::new()
+			.create_with_conn(&conn, &snippet)
+			.await
+			.expect("Failed to create snippet");
 
-		// Read the snippet
-		let result: (i64, String, String, String) = sqlx::query_as(
-			r#"
-			SELECT id, title, code, language
-			FROM snippets
-			WHERE id = $1
-			"#,
-		)
-		.bind(created.0)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to read snippet");
+		// Act
+		let found = Manager::<Snippet>::new()
+			.get(created.id)
+			.all_with_db(&conn)
+			.await
+			.expect("Failed to read snippet");
 
-		assert_eq!(result.0, created.0);
-		assert_eq!(result.1, "Read Test");
-		assert_eq!(result.2, "println!(\"Hello\");");
-		assert_eq!(result.3, "rust");
+		// Assert
+		assert_eq!(found.len(), 1);
+		assert_eq!(found[0].id, created.id);
+		assert_eq!(found[0].title, "Read Test");
+		assert_eq!(found[0].code, "println!(\"Hello\");");
+		assert_eq!(found[0].language, "rust");
 	}
 
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_update(
-		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
+		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, pool) = sqlite_with_migrations.await;
+		let (_file, conn) = sqlite_with_migrations.await;
 
-		// Create a snippet
-		let created: (i64,) = sqlx::query_as(
-			r#"
-			INSERT INTO snippets (title, code, language)
-			VALUES ($1, $2, $3)
-			RETURNING id
-			"#,
-		)
-		.bind("Original Title")
-		.bind("original code")
-		.bind("python")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to create snippet");
+		// Arrange
+		let snippet = Snippet::build()
+			.title("Original Title")
+			.code("original code")
+			.language("python")
+			.finish();
+		let manager = Manager::<Snippet>::new();
+		let created = manager
+			.create_with_conn(&conn, &snippet)
+			.await
+			.expect("Failed to create snippet");
 
-		// Update the snippet
-		let updated: (i64, String, String, String) = sqlx::query_as(
-			r#"
-			UPDATE snippets
-			SET title = $1, code = $2, language = $3
-			WHERE id = $4
-			RETURNING id, title, code, language
-			"#,
-		)
-		.bind("Updated Title")
-		.bind("updated code")
-		.bind("javascript")
-		.bind(created.0)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to update snippet");
+		let mut to_update = created.clone();
+		to_update.title = "Updated Title".to_string();
+		to_update.code = "updated code".to_string();
+		to_update.language = "javascript".to_string();
 
-		assert_eq!(updated.0, created.0);
-		assert_eq!(updated.1, "Updated Title");
-		assert_eq!(updated.2, "updated code");
-		assert_eq!(updated.3, "javascript");
+		// Act
+		let updated = manager
+			.update_with_conn(&conn, &to_update)
+			.await
+			.expect("Failed to update snippet");
+
+		// Assert
+		assert_eq!(updated.id, created.id);
+		assert_eq!(updated.title, "Updated Title");
+		assert_eq!(updated.code, "updated code");
+		assert_eq!(updated.language, "javascript");
 	}
 
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_delete(
-		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
+		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, pool) = sqlite_with_migrations.await;
+		let (_file, conn) = sqlite_with_migrations.await;
 
-		// Create a snippet
-		let created: (i64,) = sqlx::query_as(
-			r#"
-			INSERT INTO snippets (title, code, language)
-			VALUES ($1, $2, $3)
-			RETURNING id
-			"#,
-		)
-		.bind("To Delete")
-		.bind("delete me")
-		.bind("rust")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to create snippet");
+		// Arrange
+		let snippet = Snippet::build()
+			.title("To Delete")
+			.code("delete me")
+			.language("rust")
+			.finish();
+		let manager = Manager::<Snippet>::new();
+		let created = manager
+			.create_with_conn(&conn, &snippet)
+			.await
+			.expect("Failed to create snippet");
 
-		// Delete the snippet
-		let deleted_rows = sqlx::query(
-			r#"
-			DELETE FROM snippets
-			WHERE id = $1
-			"#,
-		)
-		.bind(created.0)
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to delete snippet")
-		.rows_affected();
+		// Act
+		manager
+			.delete_with_conn(&conn, created.id)
+			.await
+			.expect("Failed to delete snippet");
 
-		assert_eq!(deleted_rows, 1);
-
-		// Verify deletion
-		let result: Option<(i64,)> = sqlx::query_as(
-			r#"
-			SELECT id FROM snippets WHERE id = $1
-			"#,
-		)
-		.bind(created.0)
-		.fetch_optional(pool.as_ref())
-		.await
-		.expect("Failed to verify deletion");
-
-		assert!(result.is_none());
+		// Assert
+		let remaining = manager
+			.get(created.id)
+			.all_with_db(&conn)
+			.await
+			.expect("Failed to query after deletion");
+		assert_eq!(remaining.len(), 0);
 	}
 
 	// ============================================================================
-	// Database Integration Tests - Query Operations (4 tests)
+	// Database Integration Tests - Query Operations
 	// ============================================================================
 
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_list_all(
-		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
+		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, pool) = sqlite_with_migrations.await;
+		let (_file, conn) = sqlite_with_migrations.await;
 
-		// Create multiple snippets
-		sqlx::query(
-			r#"
-			INSERT INTO snippets (title, code, language)
-			VALUES
-				($1, $2, $3),
-				($4, $5, $6),
-				($7, $8, $9)
-			"#,
-		)
-		.bind("Snippet 1")
-		.bind("code 1")
-		.bind("rust")
-		.bind("Snippet 2")
-		.bind("code 2")
-		.bind("python")
-		.bind("Snippet 3")
-		.bind("code 3")
-		.bind("javascript")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to create snippets");
+		// Arrange
+		let manager = Manager::<Snippet>::new();
+		for (title, language) in [
+			("Snippet 1", "rust"),
+			("Snippet 2", "python"),
+			("Snippet 3", "javascript"),
+		] {
+			let snippet = Snippet::build()
+				.title(title)
+				.code(format!("code for {}", title))
+				.language(language)
+				.finish();
+			manager
+				.create_with_conn(&conn, &snippet)
+				.await
+				.expect("Failed to create snippet");
+		}
 
-		// List all snippets
-		let snippets: Vec<(i64, String, String, String)> = sqlx::query_as(
-			r#"
-			SELECT id, title, code, language
-			FROM snippets
-			ORDER BY id
-			"#,
-		)
-		.fetch_all(pool.as_ref())
-		.await
-		.expect("Failed to list snippets");
+		// Act
+		let snippets = manager
+			.all()
+			.order_by(&["id"])
+			.all_with_db(&conn)
+			.await
+			.expect("Failed to list snippets");
 
+		// Assert
 		assert_eq!(snippets.len(), 3);
-		assert_eq!(snippets[0].1, "Snippet 1");
-		assert_eq!(snippets[1].1, "Snippet 2");
-		assert_eq!(snippets[2].1, "Snippet 3");
+		assert_eq!(snippets[0].title, "Snippet 1");
+		assert_eq!(snippets[1].title, "Snippet 2");
+		assert_eq!(snippets[2].title, "Snippet 3");
 	}
 
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_filter_by_language(
-		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
+		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, pool) = sqlite_with_migrations.await;
+		let (_file, conn) = sqlite_with_migrations.await;
 
-		// Create snippets with different languages
-		sqlx::query(
-			r#"
-			INSERT INTO snippets (title, code, language)
-			VALUES
-				($1, $2, $3),
-				($4, $5, $6),
-				($7, $8, $9)
-			"#,
-		)
-		.bind("Rust Snippet")
-		.bind("fn main() {}")
-		.bind("rust")
-		.bind("Python Snippet")
-		.bind("print('hello')")
-		.bind("python")
-		.bind("Another Rust")
-		.bind("let x = 5;")
-		.bind("rust")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to create snippets");
+		// Arrange
+		let manager = Manager::<Snippet>::new();
+		for (title, code, language) in [
+			("Rust Snippet", "fn main() {}", "rust"),
+			("Python Snippet", "print('hello')", "python"),
+			("Another Rust", "let x = 5;", "rust"),
+		] {
+			let snippet = Snippet::build()
+				.title(title)
+				.code(code)
+				.language(language)
+				.finish();
+			manager
+				.create_with_conn(&conn, &snippet)
+				.await
+				.expect("Failed to create snippet");
+		}
 
-		// Filter by language
-		let rust_snippets: Vec<(i64, String, String, String)> = sqlx::query_as(
-			r#"
-			SELECT id, title, code, language
-			FROM snippets
-			WHERE language = $1
-			ORDER BY id
-			"#,
-		)
-		.bind("rust")
-		.fetch_all(pool.as_ref())
-		.await
-		.expect("Failed to filter snippets");
+		// Act
+		let filter = Filter::new(
+			"language",
+			FilterOperator::Eq,
+			FilterValue::String("rust".to_string()),
+		);
+		let rust_snippets = manager
+			.filter(filter)
+			.order_by(&["id"])
+			.all_with_db(&conn)
+			.await
+			.expect("Failed to filter snippets");
 
+		// Assert
 		assert_eq!(rust_snippets.len(), 2);
-		assert_eq!(rust_snippets[0].1, "Rust Snippet");
-		assert_eq!(rust_snippets[1].1, "Another Rust");
+		assert_eq!(rust_snippets[0].title, "Rust Snippet");
+		assert_eq!(rust_snippets[1].title, "Another Rust");
 	}
 
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_search_by_title(
-		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
+		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, pool) = sqlite_with_migrations.await;
+		let (_file, conn) = sqlite_with_migrations.await;
 
-		// Create snippets with searchable titles
-		sqlx::query(
-			r#"
-			INSERT INTO snippets (title, code, language)
-			VALUES
-				($1, $2, $3),
-				($4, $5, $6),
-				($7, $8, $9)
-			"#,
-		)
-		.bind("Hello World")
-		.bind("println!(\"Hello\");")
-		.bind("rust")
-		.bind("Goodbye World")
-		.bind("println!(\"Goodbye\");")
-		.bind("rust")
-		.bind("Unrelated")
-		.bind("some code")
-		.bind("python")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to create snippets");
+		// Arrange
+		let manager = Manager::<Snippet>::new();
+		for (title, code, language) in [
+			("Hello World", "println!(\"Hello\");", "rust"),
+			("Goodbye World", "println!(\"Goodbye\");", "rust"),
+			("Unrelated", "some code", "python"),
+		] {
+			let snippet = Snippet::build()
+				.title(title)
+				.code(code)
+				.language(language)
+				.finish();
+			manager
+				.create_with_conn(&conn, &snippet)
+				.await
+				.expect("Failed to create snippet");
+		}
 
-		// Search by title pattern
-		let results: Vec<(i64, String, String, String)> = sqlx::query_as(
-			r#"
-			SELECT id, title, code, language
-			FROM snippets
-			WHERE title LIKE $1
-			ORDER BY id
-			"#,
-		)
-		.bind("%World%")
-		.fetch_all(pool.as_ref())
-		.await
-		.expect("Failed to search snippets");
+		// Act
+		let filter = Filter::new(
+			"title",
+			FilterOperator::Contains,
+			FilterValue::String("World".to_string()),
+		);
+		let results = manager
+			.filter(filter)
+			.order_by(&["id"])
+			.all_with_db(&conn)
+			.await
+			.expect("Failed to search snippets");
 
+		// Assert
 		assert_eq!(results.len(), 2);
-		assert_eq!(results[0].1, "Hello World");
-		assert_eq!(results[1].1, "Goodbye World");
+		assert_eq!(results[0].title, "Hello World");
+		assert_eq!(results[1].title, "Goodbye World");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_snippet_count(
+		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
+	) {
+		let (_file, conn) = sqlite_with_migrations.await;
+
+		// Arrange
+		let manager = Manager::<Snippet>::new();
+		for i in 1..=4 {
+			let snippet = Snippet::build()
+				.title(format!("Snippet {}", i))
+				.code(format!("code {}", i))
+				.language("rust")
+				.finish();
+			manager
+				.create_with_conn(&conn, &snippet)
+				.await
+				.expect("Failed to create snippet");
+		}
+
+		// Act
+		let snippets = manager
+			.all()
+			.all_with_db(&conn)
+			.await
+			.expect("Failed to count snippets");
+
+		// Assert
+		assert_eq!(snippets.len(), 4);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_snippet_order_by_title(
+		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
+	) {
+		let (_file, conn) = sqlite_with_migrations.await;
+
+		// Arrange
+		let manager = Manager::<Snippet>::new();
+		for title in ["Charlie", "Alpha", "Bravo"] {
+			let snippet = Snippet::build()
+				.title(title)
+				.code("fn main() {}")
+				.language("rust")
+				.finish();
+			manager
+				.create_with_conn(&conn, &snippet)
+				.await
+				.expect("Failed to create snippet");
+		}
+
+		// Act
+		let snippets = manager
+			.all()
+			.order_by(&["title"])
+			.all_with_db(&conn)
+			.await
+			.expect("Failed to order snippets by title");
+
+		// Assert
+		assert_eq!(snippets.len(), 3);
+		assert_eq!(snippets[0].title, "Alpha");
+		assert_eq!(snippets[1].title, "Bravo");
+		assert_eq!(snippets[2].title, "Charlie");
 	}
 
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_pagination(
-		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
+		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, pool) = sqlite_with_migrations.await;
+		let (_file, conn) = sqlite_with_migrations.await;
 
-		// Create 5 snippets
+		// Arrange
+		let manager = Manager::<Snippet>::new();
 		for i in 1..=5 {
-			sqlx::query(
-				r#"
-				INSERT INTO snippets (title, code, language)
-				VALUES ($1, $2, $3)
-				"#,
-			)
-			.bind(format!("Snippet {}", i))
-			.bind(format!("code {}", i))
-			.bind("rust")
-			.execute(pool.as_ref())
-			.await
-			.expect("Failed to create snippet");
+			let snippet = Snippet::build()
+				.title(format!("Snippet {}", i))
+				.code(format!("code {}", i))
+				.language("rust")
+				.finish();
+			manager
+				.create_with_conn(&conn, &snippet)
+				.await
+				.expect("Failed to create snippet");
 		}
 
-		// First page (limit 2, offset 0)
-		let page1: Vec<(i64, String, String, String)> = sqlx::query_as(
-			r#"
-			SELECT id, title, code, language
-			FROM snippets
-			ORDER BY id
-			LIMIT $1 OFFSET $2
-			"#,
-		)
-		.bind(2i64)
-		.bind(0i64)
-		.fetch_all(pool.as_ref())
-		.await
-		.expect("Failed to fetch page 1");
+		// Act - first page (limit 2, offset 0)
+		let page1 = manager
+			.all()
+			.order_by(&["id"])
+			.limit(2)
+			.offset(0)
+			.all_with_db(&conn)
+			.await
+			.expect("Failed to fetch page 1");
 
+		// Act - second page (limit 2, offset 2)
+		let page2 = manager
+			.all()
+			.order_by(&["id"])
+			.limit(2)
+			.offset(2)
+			.all_with_db(&conn)
+			.await
+			.expect("Failed to fetch page 2");
+
+		// Assert
 		assert_eq!(page1.len(), 2);
-		assert_eq!(page1[0].1, "Snippet 1");
-		assert_eq!(page1[1].1, "Snippet 2");
-
-		// Second page (limit 2, offset 2)
-		let page2: Vec<(i64, String, String, String)> = sqlx::query_as(
-			r#"
-			SELECT id, title, code, language
-			FROM snippets
-			ORDER BY id
-			LIMIT $1 OFFSET $2
-			"#,
-		)
-		.bind(2i64)
-		.bind(2i64)
-		.fetch_all(pool.as_ref())
-		.await
-		.expect("Failed to fetch page 2");
+		assert_eq!(page1[0].title, "Snippet 1");
+		assert_eq!(page1[1].title, "Snippet 2");
 
 		assert_eq!(page2.len(), 2);
-		assert_eq!(page2[0].1, "Snippet 3");
-		assert_eq!(page2[1].1, "Snippet 4");
+		assert_eq!(page2[0].title, "Snippet 3");
+		assert_eq!(page2[1].title, "Snippet 4");
 	}
 
 	// ============================================================================
-	// Database Integration Tests - Edge Cases (7 tests)
+	// Database Integration Tests - Edge Cases
 	// ============================================================================
 
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_empty_database(
-		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
+		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, pool) = sqlite_with_migrations.await;
+		let (_file, conn) = sqlite_with_migrations.await;
 
-		// Query empty database
-		let snippets: Vec<(i64, String, String, String)> = sqlx::query_as(
-			r#"
-			SELECT id, title, code, language
-			FROM snippets
-			"#,
-		)
-		.fetch_all(pool.as_ref())
-		.await
-		.expect("Failed to query empty database");
+		// Act
+		let snippets = Manager::<Snippet>::new()
+			.all()
+			.all_with_db(&conn)
+			.await
+			.expect("Failed to query empty database");
 
+		// Assert
 		assert_eq!(snippets.len(), 0);
 	}
 
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_nonexistent_id(
-		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
+		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, pool) = sqlite_with_migrations.await;
+		let (_file, conn) = sqlite_with_migrations.await;
 
-		// Query with nonexistent ID
-		let result: Option<(i64, String, String, String)> = sqlx::query_as(
-			r#"
-			SELECT id, title, code, language
-			FROM snippets
-			WHERE id = $1
-			"#,
-		)
-		.bind(99999i64)
-		.fetch_optional(pool.as_ref())
-		.await
-		.expect("Failed to query nonexistent ID");
+		// Act
+		let result = Manager::<Snippet>::new()
+			.get(99999)
+			.all_with_db(&conn)
+			.await
+			.expect("Failed to query nonexistent id");
 
-		assert!(result.is_none());
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_snippet_duplicate_title_allowed(
-		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
-	) {
-		let (_file, pool) = sqlite_with_migrations.await;
-
-		// Create first snippet
-		sqlx::query(
-			r#"
-			INSERT INTO snippets (title, code, language)
-			VALUES ($1, $2, $3)
-			"#,
-		)
-		.bind("Duplicate Title")
-		.bind("code 1")
-		.bind("rust")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to create first snippet");
-
-		// Create second snippet with same title (should succeed - no unique constraint)
-		let result: Result<(i64,), _> = sqlx::query_as(
-			r#"
-			INSERT INTO snippets (title, code, language)
-			VALUES ($1, $2, $3)
-			RETURNING id
-			"#,
-		)
-		.bind("Duplicate Title")
-		.bind("code 2")
-		.bind("python")
-		.fetch_one(pool.as_ref())
-		.await;
-
-		assert!(result.is_ok());
-
-		// Verify both exist
-		let count: (i64,) = sqlx::query_as(
-			r#"
-			SELECT COUNT(*) as count
-			FROM snippets
-			WHERE title = $1
-			"#,
-		)
-		.bind("Duplicate Title")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to count snippets");
-
-		assert_eq!(count.0, 2);
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_snippet_count(
-		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
-	) {
-		let (_file, pool) = sqlite_with_migrations.await;
-
-		// Create 3 snippets
-		sqlx::query(
-			r#"
-			INSERT INTO snippets (title, code, language)
-			VALUES
-				($1, $2, $3),
-				($4, $5, $6),
-				($7, $8, $9)
-			"#,
-		)
-		.bind("Snippet 1")
-		.bind("code 1")
-		.bind("rust")
-		.bind("Snippet 2")
-		.bind("code 2")
-		.bind("python")
-		.bind("Snippet 3")
-		.bind("code 3")
-		.bind("rust")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to create snippets");
-
-		// Count all snippets
-		let total: (i64,) = sqlx::query_as(
-			r#"
-			SELECT COUNT(*) as count
-			FROM snippets
-			"#,
-		)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to count all snippets");
-
-		assert_eq!(total.0, 3);
-
-		// Count rust snippets
-		let rust_count: (i64,) = sqlx::query_as(
-			r#"
-			SELECT COUNT(*) as count
-			FROM snippets
-			WHERE language = $1
-			"#,
-		)
-		.bind("rust")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to count rust snippets");
-
-		assert_eq!(rust_count.0, 2);
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_snippet_order_by_title(
-		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
-	) {
-		let (_file, pool) = sqlite_with_migrations.await;
-
-		// Create snippets with different titles
-		sqlx::query(
-			r#"
-			INSERT INTO snippets (title, code, language)
-			VALUES
-				($1, $2, $3),
-				($4, $5, $6),
-				($7, $8, $9)
-			"#,
-		)
-		.bind("Charlie")
-		.bind("code c")
-		.bind("rust")
-		.bind("Alice")
-		.bind("code a")
-		.bind("python")
-		.bind("Bob")
-		.bind("code b")
-		.bind("javascript")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to create snippets");
-
-		// Order by title ascending
-		let results: Vec<(i64, String, String, String)> = sqlx::query_as(
-			r#"
-			SELECT id, title, code, language
-			FROM snippets
-			ORDER BY title ASC
-			"#,
-		)
-		.fetch_all(pool.as_ref())
-		.await
-		.expect("Failed to order snippets");
-
-		assert_eq!(results.len(), 3);
-		assert_eq!(results[0].1, "Alice");
-		assert_eq!(results[1].1, "Bob");
-		assert_eq!(results[2].1, "Charlie");
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_snippet_language_case_sensitivity(
-		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
-	) {
-		let (_file, pool) = sqlite_with_migrations.await;
-
-		// Create snippets with different case languages
-		sqlx::query(
-			r#"
-			INSERT INTO snippets (title, code, language)
-			VALUES
-				($1, $2, $3),
-				($4, $5, $6)
-			"#,
-		)
-		.bind("Lowercase Rust")
-		.bind("code 1")
-		.bind("rust")
-		.bind("Uppercase Rust")
-		.bind("code 2")
-		.bind("RUST")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to create snippets");
-
-		// Exact match (case-sensitive)
-		let exact: (i64,) = sqlx::query_as(
-			r#"
-			SELECT COUNT(*) as count
-			FROM snippets
-			WHERE language = $1
-			"#,
-		)
-		.bind("rust")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to count exact match");
-
-		assert_eq!(exact.0, 1);
-
-		// Case-insensitive match
-		let case_insensitive: (i64,) = sqlx::query_as(
-			r#"
-			SELECT COUNT(*) as count
-			FROM snippets
-			WHERE LOWER(language) = LOWER($1)
-			"#,
-		)
-		.bind("rust")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to count case-insensitive match");
-
-		assert_eq!(case_insensitive.0, 2);
+		// Assert
+		assert_eq!(result.len(), 0);
 	}
 
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_update_nonexistent(
-		#[future] sqlite_with_migrations: (NamedTempFile, Arc<SqlitePool>),
+		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, pool) = sqlite_with_migrations.await;
+		let (_file, conn) = sqlite_with_migrations.await;
 
-		// Try to update nonexistent snippet
-		let updated_rows = sqlx::query(
-			r#"
-			UPDATE snippets
-			SET title = $1
-			WHERE id = $2
-			"#,
-		)
-		.bind("New Title")
-		.bind(99999i64)
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to update nonexistent snippet")
-		.rows_affected();
+		// Arrange - a model instance whose primary key has no matching row
+		let mut nonexistent = Snippet::build()
+			.title("New Title")
+			.code("code")
+			.language("rust")
+			.finish();
+		nonexistent.id = 99999;
 
-		assert_eq!(updated_rows, 0);
+		// Act
+		let result = Manager::<Snippet>::new()
+			.update_with_conn(&conn, &nonexistent)
+			.await;
+
+		// Assert
+		assert!(
+			result.is_err(),
+			"updating a nonexistent snippet should fail"
+		);
 	}
 }

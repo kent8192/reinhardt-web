@@ -35,11 +35,10 @@
 //! share a coherent baseline.
 
 #![cfg(all(target_arch = "wasm32", feature = "wasm-diag-test"))]
-#![allow(deprecated)] // (Refs #4234) Test exercises deprecated `pages::Router` surface.
 
-use reinhardt_pages::app::{ClientLauncher, with_router};
+use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
-use reinhardt_pages::router::Router;
+use reinhardt_urls::routers::ClientRouter;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_test::*;
 
@@ -65,7 +64,7 @@ fn nav_link(href: &'static str, label: &'static str, current: &str) -> PageEleme
 }
 
 fn layout_shell(content_id: &'static str, content_label: &'static str) -> Page {
-	let current = with_router(|r| r.current_path().get());
+	let current = with_spa_router(|r| r.current_path().get());
 	PageElement::new("div")
 		.attr("id", "shell")
 		.child(
@@ -102,11 +101,11 @@ fn login_page() -> Page {
 	layout_shell("route-login", "LOGIN VIEW")
 }
 
-fn build_router() -> Router {
-	Router::new()
-		.route("/", home_page)
-		.route("/clusters", clusters_page)
-		.route("/login", login_page)
+fn build_router() -> ClientRouter {
+	ClientRouter::new()
+		.route("home", "/", home_page)
+		.route("clusters", "/clusters", clusters_page)
+		.route("login", "/login", login_page)
 }
 
 // ---- DOM helpers ----
@@ -182,12 +181,12 @@ async fn tier3_invariants_inv1_through_inv4_with_dom_swap() {
 	let _root = install_app_root();
 
 	ClientLauncher::new("#app")
-		.router(build_router)
+		.router_client(build_router)
 		.launch()
 		.expect("launch");
 
 	// Inv-1: launch() must register at least one navigation observer.
-	let observer_count_initial = with_router(|r| r.__diag_observer_count());
+	let observer_count_initial = with_spa_router(|r| r.__diag_observer_count());
 	assert!(
 		observer_count_initial >= 1,
 		"Inv-1 (Tier 3) violated: launch() must register the render listener; got {}",
@@ -200,7 +199,7 @@ async fn tier3_invariants_inv1_through_inv4_with_dom_swap() {
 	let document = web_sys::window().unwrap().document().unwrap();
 
 	// Capture baselines after launch but before any navigation.
-	let dispatch_before = with_router(|r| r.__diag_dispatch_count());
+	let dispatch_before = with_spa_router(|r| r.__diag_dispatch_count());
 	let render_before = ClientLauncher::__diag_render_count();
 
 	// First navigation: / -> /clusters via synthesized click. Wait for
@@ -208,8 +207,8 @@ async fn tier3_invariants_inv1_through_inv4_with_dom_swap() {
 	click_link("/clusters");
 	await_element("#route-clusters", 100).await;
 
-	let observer_after_one = with_router(|r| r.__diag_observer_count());
-	let dispatch_after_one = with_router(|r| r.__diag_dispatch_count());
+	let observer_after_one = with_spa_router(|r| r.__diag_observer_count());
+	let dispatch_after_one = with_spa_router(|r| r.__diag_dispatch_count());
 	let render_after_one = ClientLauncher::__diag_render_count();
 
 	// Inv-2 (step 1): observer count must not have decreased.
@@ -259,8 +258,8 @@ async fn tier3_invariants_inv1_through_inv4_with_dom_swap() {
 	click_link("/login");
 	await_element("#route-login", 100).await;
 
-	let observer_after_two = with_router(|r| r.__diag_observer_count());
-	let dispatch_after_two = with_router(|r| r.__diag_dispatch_count());
+	let observer_after_two = with_spa_router(|r| r.__diag_observer_count());
+	let dispatch_after_two = with_spa_router(|r| r.__diag_dispatch_count());
 	let render_after_two = ClientLauncher::__diag_render_count();
 
 	// Inv-2 (step 2): still monotonic across the second navigation.

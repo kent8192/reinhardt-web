@@ -12,13 +12,14 @@ Supports both unit testing and integration testing with real or test databases.
 
 Add `reinhardt` to your `Cargo.toml`:
 
-<!-- reinhardt-version-sync:2 -->
+<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.4", features = ["test"] }
+reinhardt = { version = "0.2.0-rc.6", features = ["test"] }
 
-# Or use the broad preset:
-# reinhardt = { version = "0.1.4", features = ["full"] }      # Includes test
+# Or use a preset:
+# reinhardt = { version = "0.2.0-rc.6", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.2.0-rc.6", features = ["full"] }      # All features
 ```
 
 Then import testing features:
@@ -28,7 +29,7 @@ use reinhardt::test::{APIClient, APITestCase, TestResponse};
 use reinhardt::test::{FixtureLoader, Factory, MockFunction};
 ```
 
-**Note:** The root `test` feature is opt-in. It is included in the `full` preset, but not in the default `standard` preset.
+**Note:** Testing features are included in the `standard` and `full` feature presets.
 
 ## Features
 

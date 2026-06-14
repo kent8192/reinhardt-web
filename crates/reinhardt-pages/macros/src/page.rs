@@ -1,19 +1,69 @@
-//! The page! macro implementation.
+//! The `page!` macro implementation.
 //!
 //! This module provides the `page!` procedural macro for creating anonymous
 //! WASM components with a concise, ergonomic DSL.
+//!
+//! ## v2 contract
+//!
+//! Per the Manouche v2 design, `page!` enforces three rules at compile time:
+//!
+//! 1. **No implicit captures** (spec §3.7). Every value identifier inside
+//!    the body must appear in the closure parameter list. Item paths
+//!    (multi-segment like `crate::util::fmt`), type identifiers (`Vec`,
+//!    `Option`), constants (`MAX_LEN`), and macro invocations (`format!`)
+//!    are exempt. Free function calls should use `self::` (or any module
+//!    prefix) so the path is multi-segment.
+//!
+//! 2. **Unconditional auto-wrap** (spec §4.1). Every `{expr}` and every
+//!    `if` / `for` control-flow block is wrapped in
+//!    `Page::reactive(move || ...)` at codegen time. Re-renders happen
+//!    automatically when tracked inputs change. The historical `watch { ... }`
+//!    wrapper is removed.
+//!
+//! 3. **No bare-identifier shorthand** (spec §3.6). Bare identifiers in
+//!    element bodies are no longer accepted. The shorthand `div { foo }`
+//!    was ambiguous with the element form `div { foo { ... } }`, so the
+//!    validator requires the explicit braced form:
+//!
+//!    - Before (v1): `` `div { name }` ``
+//!    - After (v2):  `` `div { {name} }` ``
+//!
+//!    The codemod `cargo make migrate-manouche-v2` (PR3) rewrites existing
+//!    sources mechanically.
+//!
+//! `for` blocks may attach a stable reconciliation key with `@key(expr)`.
+//! The key expression is evaluated for each item and stored in a
+//! `Page::KeyedFragment`; unkeyed `for` blocks keep producing regular
+//! fragments.
+//!
+//! Because every `for` block is auto-wrapped in `Page::reactive(move || ...)`
+//! (rule 2 above), the iterator expression is cloned on each reactive re-run.
+//! The iterator expression must therefore implement `Clone` (e.g. `Vec<T>`,
+//! `&[T]`, or any `Clone` collection).
+//!
+//! ```ignore
+//! page!(|todos: Vec<Todo>| {
+//!     ul {
+//!         // Iterator expression `todos` must implement `Clone`.
+//!         for todo in todos @key(todo.id.clone()) {
+//!             li { { todo.title.clone() } }
+//!         }
+//!     }
+//! });
+//! ```
 //!
 //! ## Example
 //!
 //! ```ignore
 //! use reinhardt_pages::page;
+//! use reinhardt_pages::reactive::Signal;
 //!
-//! // Define an anonymous component
-//! let counter = page!(|initial: i32| {
+//! // Anonymous component with explicit Signal dependency.
+//! let counter = page!(|count: Signal<i32>| {
 //!     div {
 //!         class: "counter",
 //!         h1 { "Counter" }
-//!         span { format!("Count: {}", initial) }
+//!         span { { format!("Count: {}", count.get()) } }
 //!         button {
 //!             @click: |_| { /* increment logic */ },
 //!             "+"
@@ -21,12 +71,55 @@
 //!     }
 //! });
 //!
-//! // Use it like a function
-//! let view = counter(42);
+//! // Use it like a function.
+//! let count = Signal::new(0);
+//! let view = counter(count);
 //! ```
+//!
+//! ## Component invocation (spec §3.5)
+//!
+//! Two syntactically distinct forms can be used to invoke a component from
+//! within a `page!` body:
+//!
+//! 1. **Legacy positional / paren form** — `{my_button("label".into(), false)}`.
+//!    The component is just a normal Rust function call wrapped in `{ ... }`.
+//!
+//! 2. **React-style brace form** — `Card { item: x, @click: h, p { "kid" } }`.
+//!    The component is a function `fn card(props: CardProps) -> Page` where
+//!    `CardProps` derives `bon::Builder`. Codegen emits a builder chain that
+//!    sets each named prop, each `@event:` prop (as `.on_<event>(handler)`),
+//!    and (when children are present) `.children(Some(<child_view>))`.
+//!
+//! Both forms coexist; the parser picks based on the punctuation that
+//! follows the component identifier (`(` vs. `{`).
+//!
+//! `ignore` — this doctest lives in a proc-macro crate where
+//! `reinhardt_pages::*` imports aren't resolvable and `bon` isn't a
+//! dev-dependency. The example is tested via integration tests instead.
+//!
+//! ```ignore
+//! use reinhardt_pages::component::Page;
+//! use reinhardt_pages::page;
+//!
+//! #[derive(bon::Builder)]
+//! struct CardProps { item: String }
+//!
+//! fn card(p: CardProps) -> Page {
+//!     page!(|p: CardProps| { article { h2 { {p.item.clone()} } } })(p)
+//! }
+//!
+//! // Brace form (spec §3.5).
+//! let _ = page!(|| { div { Card { item: "hello".to_string() } } });
+//! ```
+//!
+//! See `reinhardt-pages/CHANGELOG.md` `### Added` entry and the design
+//! comment in `page::codegen::generate_component_brace` for the full
+//! lowering rules.
 
 mod codegen;
+pub(crate) mod hook_deps_validator;
 pub(crate) mod html_spec;
+mod scope_utils;
 mod validator;
 
 use proc_macro::TokenStream;
@@ -49,6 +142,12 @@ pub(crate) fn page_impl(input: TokenStream) -> TokenStream {
 		Err(err) => return err.to_compile_error().into(),
 	};
 
+	// 1a. Hook deps verification (pre-codegen pass, Refs #4195 / #4721 / #4746).
+	// Emits a `compile_error!` for every Signal read inside a hook closure
+	// (written directly in this `page!` body) that is missing from the hook's
+	// deps tuple. Empty when no such mistake is found.
+	let hook_deps_diagnostics = hook_deps_validator::verify_hook_deps(&untyped_ast);
+
 	// 2. Validate + Transform: Untyped AST → Typed AST
 	let typed_ast = match validator::validate(&untyped_ast) {
 		Ok(ast) => ast,
@@ -56,9 +155,25 @@ pub(crate) fn page_impl(input: TokenStream) -> TokenStream {
 	};
 
 	// 3. Codegen: Typed AST → Rust code
-	let output = codegen::generate(&typed_ast);
+	let codegen_output = codegen::generate(&typed_ast);
 
-	output.into()
+	// 4. Combine verification diagnostics with the codegen output. The codegen
+	// output is a block expression, so when diagnostics are present we wrap
+	// both in an outer block — this keeps the `compile_error!` invocation in a
+	// valid statement position even when `page!` is used in expression
+	// position, and lands the error at the user's call site.
+	let combined = if hook_deps_diagnostics.is_empty() {
+		codegen_output
+	} else {
+		quote::quote! {
+			{
+				#hook_deps_diagnostics
+				#codegen_output
+			}
+		}
+	};
+
+	combined.into()
 }
 
 #[cfg(test)]
@@ -82,8 +197,8 @@ mod tests {
 		let input = quote!(|name: String, count: i32| {
 			div {
 				class: "greeting",
-				span { name }
-				span { count.to_string() }
+				span { {name} }
+				span { {count.to_string()} }
 			}
 		});
 		let untyped_ast: PageMacro = syn::parse2(input).unwrap();
@@ -97,10 +212,12 @@ mod tests {
 
 	#[test]
 	fn test_page_macro_with_events() {
+		// Spec §3.7 (no implicit captures): event handler bodies route free
+		// functions through `self::` so the path is multi-segment.
 		let input = quote!(|| {
 			button {
-				@click: |e| { handle_click(e); },
-				@input: |e| { handle_input(e); },
+				@click: |e| { self::handle_click(e); },
+				@input: |e| { self::handle_input(e); },
 				"Click me"
 			}
 		});

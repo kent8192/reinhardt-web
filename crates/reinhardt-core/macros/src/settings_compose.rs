@@ -1,6 +1,7 @@
 //! Handler for `#[settings(key: Type | Type | key: Type)]`
 
 use crate::settings_parser::{FieldOverride, FragmentEntry, PolicyKind, parse_settings_attr};
+use crate::settings_schema;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashSet;
@@ -27,89 +28,6 @@ const BUILTIN_FRAGMENTS: &[&str] = &[
 	"TemplateSettings",
 ];
 
-/// Convert CamelCase to snake_case.
-///
-/// Walk characters left to right. Insert `_` before an uppercase letter
-/// when the previous character is lowercase, or when it begins a new word
-/// after a run of uppercase letters.
-///
-/// Examples: `"Core"` → `"core"`, `"StaticFiles"` → `"static_files"`,
-/// `"I18n"` → `"i18n"`, `"HTTPSProxy"` → `"https_proxy"`.
-fn camel_to_snake(s: &str) -> String {
-	let mut result = String::with_capacity(s.len() + 4);
-	let chars: Vec<char> = s.chars().collect();
-
-	for (i, &ch) in chars.iter().enumerate() {
-		if ch.is_uppercase() {
-			if i > 0 {
-				let prev = chars[i - 1];
-				if prev.is_lowercase() || prev.is_ascii_digit() {
-					// aB → a_b
-					result.push('_');
-				} else if prev.is_uppercase()
-					&& chars.get(i + 1).is_some_and(|next| next.is_lowercase())
-				{
-					// ABc → a_bc (acronym boundary)
-					result.push('_');
-				}
-			}
-			result.push(ch.to_lowercase().next().unwrap());
-		} else {
-			result.push(ch);
-		}
-	}
-
-	result
-}
-
-/// Rust keywords that cannot be used as field names.
-///
-/// Includes strict keywords, reserved keywords, and weak keywords.
-/// Mirrors the keyword set in `crates/reinhardt-db/src/migrations/introspect/naming.rs`.
-const RUST_KEYWORDS: &[&str] = &[
-	// Strict keywords
-	"as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern",
-	"false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
-	"ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type",
-	"unsafe", "use", "where", "while",
-	// Reserved keywords (may be used in future)
-	"abstract", "become", "box", "do", "final", "macro", "override", "priv", "try", "typeof",
-	"unsized", "virtual", "yield", // Weak keywords (context-sensitive)
-	"union",
-];
-
-/// Strip `Settings` suffix and convert CamelCase prefix to snake_case.
-///
-/// Returns error if:
-/// - Type does not end with `Settings`
-/// - Prefix is empty (type is exactly `Settings`)
-/// - Inferred name is a Rust keyword
-fn infer_field_name(type_name: &str) -> std::result::Result<String, String> {
-	let prefix = type_name.strip_suffix("Settings").ok_or_else(|| {
-		format!(
-			"Type `{}` does not end with `Settings`. Use explicit syntax: `field_name: {}`",
-			type_name, type_name
-		)
-	})?;
-
-	if prefix.is_empty() {
-		return Err(
-			"Type `Settings` has an empty prefix after stripping `Settings` suffix.".to_string(),
-		);
-	}
-
-	let field_name = camel_to_snake(prefix);
-
-	if RUST_KEYWORDS.contains(&field_name.as_str()) {
-		return Err(format!(
-			"Type `{}` infers field name `{}`, which is a Rust keyword. Use explicit syntax: `{}_field: {}`",
-			type_name, field_name, field_name, type_name
-		));
-	}
-
-	Ok(field_name)
-}
-
 /// Implementation for `#[settings(key: Type)]`.
 pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Result<TokenStream> {
 	let conf_crate = crate::crate_paths::get_reinhardt_conf_crate();
@@ -134,8 +52,10 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 		)
 	})?;
 
-	// Collect includes with overrides; exclusion syntax is no longer supported
-	let mut includes: Vec<(String, String, Vec<FieldOverride>)> = vec![];
+	// Collect includes with overrides; exclusion syntax is no longer supported.
+	// The final boolean tracks type-only syntax so generated runtime code can
+	// prefer the fragment section while preserving inferred-field fallback.
+	let mut includes: Vec<(String, String, Vec<FieldOverride>, bool)> = vec![];
 	let mut seen_keys: HashSet<String> = HashSet::new();
 	let mut seen_types: HashSet<String> = HashSet::new();
 
@@ -171,10 +91,10 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 						));
 					}
 				}
-				includes.push((key.clone(), type_name.clone(), overrides.clone()));
+				includes.push((key.clone(), type_name.clone(), overrides.clone(), false));
 			}
 			FragmentEntry::TypeOnly(type_name) => {
-				let key = infer_field_name(type_name)
+				let key = settings_schema::infer_type_key(type_name)
 					.map_err(|msg| syn::Error::new(proc_macro2::Span::call_site(), msg))?;
 				if !seen_keys.insert(key.clone()) {
 					return Err(syn::Error::new(
@@ -188,7 +108,7 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 						format!("Duplicate fragment type `{}`.", type_name),
 					));
 				}
-				includes.push((key, type_name.clone(), vec![]));
+				includes.push((key, type_name.clone(), vec![], true));
 			}
 			FragmentEntry::Exclude(type_name) => {
 				return Err(syn::Error::new(
@@ -209,7 +129,7 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 	// This allows TOML files to use the conventional `[section]` structure.
 	let field_defs: Vec<_> = includes
 		.iter()
-		.map(|(key, type_name, _)| {
+		.map(|(key, type_name, _, _)| {
 			let key_ident = format_ident!("{}", key);
 			let type_path = resolve_fragment_type(type_name, &conf_crate);
 			quote! {
@@ -218,10 +138,46 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 		})
 		.collect();
 
+	let schema_name = settings_schema::schema_type_name(struct_name);
+	let schema_field_defs: Vec<_> = includes
+		.iter()
+		.map(|(key, type_name, _, _)| {
+			let key_ident = format_ident!("{}", key);
+			let type_path = resolve_fragment_type(type_name, &conf_crate);
+			quote! {
+				#[doc = "Typed schema reference for this composed settings fragment."]
+				pub #key_ident: <#type_path as #conf_crate::settings::schema::SettingsNode>::Schema<#struct_name>
+			}
+		})
+		.collect();
+
+	let schema_field_inits: Vec<_> = includes
+		.iter()
+		.map(|(key, type_name, _, is_type_only)| {
+			let key_ident = format_ident!("{}", key);
+			let key_str = key.as_str();
+			let type_path = resolve_fragment_type(type_name, &conf_crate);
+			let root_path = if *is_type_only {
+				quote! {
+					#conf_crate::settings::schema::SettingsPathBuf::from_key(
+						<#type_path as #conf_crate::settings::fragment::SettingsFragment>::section()
+					)
+				}
+			} else {
+				quote! {
+					#conf_crate::settings::schema::SettingsPathBuf::from_key(#key_str)
+				}
+			};
+			quote! {
+				#key_ident: <#type_path as #conf_crate::settings::schema::SettingsNode>::schema_at::<#struct_name>(#root_path)
+			}
+		})
+		.collect();
+
 	// Generate HasSettings<F> impls for each fragment
 	let trait_impls: Vec<_> = includes
 		.iter()
-		.map(|(key, type_name, _)| {
+		.map(|(key, type_name, _, _)| {
 			let key_ident = format_ident!("{}", key);
 			let type_path = resolve_fragment_type(type_name, &conf_crate);
 			quote! {
@@ -239,7 +195,7 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 	// SettingsFragment::validate delegates to SettingsValidation::validate automatically.
 	let validate_calls: Vec<_> = includes
 		.iter()
-		.map(|(key, _, _)| {
+		.map(|(key, _, _, _)| {
 			let key_ident = format_ident!("{}", key);
 			quote! {
 				#conf_crate::settings::fragment::SettingsFragment::validate(&self.#key_ident, profile)?;
@@ -252,7 +208,7 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 	let mut resolved_methods: Vec<TokenStream> = vec![];
 	let mut field_assertions: Vec<TokenStream> = vec![];
 
-	for (key, type_name, overrides) in &includes {
+	for (key, type_name, overrides, _) in &includes {
 		if overrides.is_empty() {
 			continue;
 		}
@@ -339,9 +295,15 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 	// rather than at the root level, matching the TOML `[section]` convention.
 	let requirement_checks: Vec<_> = includes
 		.iter()
-		.map(|(key, type_name, overrides)| {
-			let key_str = key.to_string();
+		.map(|(key, type_name, overrides, is_type_only)| {
+			let key_str = key.as_str();
 			let type_path = resolve_fragment_type(type_name, &conf_crate);
+			let primary_key_expr = if *is_type_only {
+				quote! { <#type_path as #conf_crate::settings::fragment::SettingsFragment>::section() }
+			} else {
+				quote! { #key_str }
+			};
+			let fallback_key_expr = quote! { #key_str };
 			let policies_expr = if overrides.is_empty() {
 				quote! {
 					<#type_path as #conf_crate::settings::fragment::SettingsFragment>::field_policies()
@@ -352,21 +314,49 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 			};
 			quote! {
 				{
-					// Look up the section sub-map (e.g., merged["core"])
-					let section_map = merged.get(#key_str)
-						.and_then(|v| v.as_object());
+					let primary_key: &'static str = #primary_key_expr;
+					let fallback_key: &'static str = #fallback_key_expr;
+					let section_map = #conf_crate::settings::schema::root_section(
+						merged,
+						primary_key,
+						fallback_key,
+					);
+					let section_path_key = if section_map.is_some()
+						&& primary_key != fallback_key
+						&& !merged.contains_key(primary_key)
+					{
+						fallback_key
+					} else {
+						primary_key
+					};
+					let mut node_schema = <#type_path as #conf_crate::settings::schema::SettingsNode>::node_schema();
 					for policy in #policies_expr {
-						if policy.requirement == #conf_crate::settings::policy::FieldRequirement::Required {
+						if let Some(field_schema) = node_schema
+							.fields
+							.iter_mut()
+							.find(|field| field.rust_name == policy.name)
+						{
+							field_schema.policy = *policy;
+						}
+					}
+					for field_schema in &node_schema.fields {
+						if field_schema.policy.requirement == #conf_crate::settings::policy::FieldRequirement::Required {
 							let found = section_map
-								.map(|m| m.contains_key(policy.name))
+								.map(|m| m.contains_key(field_schema.key))
 								.unwrap_or(false);
 							if !found {
 								return ::std::result::Result::Err(#conf_crate::settings::builder::BuildError::MissingRequiredField {
-									section: <#type_path as #conf_crate::settings::fragment::SettingsFragment>::section(),
-									field: policy.name,
+									section: section_path_key,
+									field: field_schema.key,
 								});
 							}
 						}
+					}
+					if let ::std::option::Option::Some(section_map) = section_map {
+						node_schema.validate_required_map_at(
+							section_map,
+							#conf_crate::settings::schema::SettingsPathBuf::from_key(section_path_key),
+						)?;
 					}
 				}
 			}
@@ -380,12 +370,33 @@ pub(crate) fn settings_compose_impl(args: TokenStream, input: ItemStruct) -> Res
 			#(#field_defs,)*
 		}
 
+		#[doc = "Typed schema references for this composed settings root."]
+		#[derive(Clone, Debug)]
+		#vis struct #schema_name {
+			#(#schema_field_defs,)*
+		}
+
+		impl #conf_crate::settings::schema::HasSettingsSchema for #struct_name {
+			type Schema = #schema_name;
+
+			fn schema() -> Self::Schema {
+				#schema_name {
+					#(#schema_field_inits,)*
+				}
+			}
+		}
+
 		#(#trait_impls)*
 
 		#(#field_assertions)*
 
 		impl #struct_name {
 			#(#resolved_methods)*
+
+			/// Build typed schema references for this composed settings root.
+			pub fn settings_schema() -> #schema_name {
+				<Self as #conf_crate::settings::schema::HasSettingsSchema>::schema()
+			}
 
 			/// Validate all fragments against the given profile.
 			pub fn validate(
@@ -457,7 +468,7 @@ mod tests {
 	#[case("HTTPSProxy", "https_proxy")]
 	fn test_camel_to_snake(#[case] input: &str, #[case] expected: &str) {
 		// Act
-		let result = camel_to_snake(input);
+		let result = settings_schema::camel_to_snake(input);
 
 		// Assert
 		assert_eq!(result, expected);
@@ -475,7 +486,7 @@ mod tests {
 		#[case] expected: std::result::Result<&str, &str>,
 	) {
 		// Act
-		let result = infer_field_name(input);
+		let result = settings_schema::infer_type_key(input);
 
 		// Assert
 		assert_eq!(result, expected.map(String::from).map_err(String::from));
@@ -487,7 +498,7 @@ mod tests {
 	#[case("StaticSettings", "Rust keyword")]
 	fn test_infer_field_name_error(#[case] input: &str, #[case] expected_contains: &str) {
 		// Act
-		let result = infer_field_name(input);
+		let result = settings_schema::infer_type_key(input);
 
 		// Assert
 		assert!(result.is_err());

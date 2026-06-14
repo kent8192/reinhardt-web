@@ -5,7 +5,7 @@
 //! `execute_js`. Mounts on `#app` to match the Tier 2/3 e2e harness
 //! convention.
 
-use reinhardt_pages::app::{ClientLauncher, with_router};
+use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
@@ -15,23 +15,23 @@ use super::router;
 pub fn main() -> Result<(), JsValue> {
 	console_error_panic_hook::set_once();
 	ClientLauncher::new("#app")
-		.router(router::init_router)
+		.router_client(router::init_router)
 		.launch()
 }
 
 #[wasm_bindgen]
 pub fn __diag_router_id_js() -> usize {
-	with_router(|r| r.__diag_router_id())
+	with_spa_router(|r| r.__diag_router_id())
 }
 
 #[wasm_bindgen]
 pub fn __diag_observer_count_js() -> usize {
-	with_router(|r| r.__diag_observer_count())
+	with_spa_router(|r| r.__diag_observer_count())
 }
 
 #[wasm_bindgen]
 pub fn __diag_dispatch_count_js() -> u64 {
-	with_router(|r| r.__diag_dispatch_count())
+	with_spa_router(|r| r.__diag_dispatch_count())
 }
 
 #[wasm_bindgen]

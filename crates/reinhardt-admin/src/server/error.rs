@@ -217,7 +217,7 @@ impl AdminAuth {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, server))]
 mod tests {
 	use super::*;
 	use async_trait::async_trait;

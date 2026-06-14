@@ -1,3 +1,4 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
 //! # Reinhardt Middleware
 //!
 //! Comprehensive HTTP middleware collection for the Reinhardt framework.
@@ -141,6 +142,8 @@
 #![warn(missing_docs)]
 pub mod allowed_hosts;
 /// Session-based authentication middleware (requires `sessions` feature).
+#[cfg_attr(docsrs, doc(cfg(feature = "sessions")))]
+#[cfg(feature = "sessions")]
 pub mod auth;
 pub mod broken_link;
 #[cfg(feature = "compression")]
@@ -181,6 +184,8 @@ pub mod redirect_fallback;
 #[cfg(feature = "session-redis")]
 pub mod redis_session;
 /// Reverse proxy remote user authentication middleware (requires `sessions` feature).
+#[cfg_attr(docsrs, doc(cfg(feature = "sessions")))]
+#[cfg(feature = "sessions")]
 pub mod remote_user;
 pub mod request_id;
 #[cfg(feature = "security")]
@@ -208,7 +213,10 @@ pub use conditional::ConditionalGetMiddleware;
 #[cfg(feature = "sessions")]
 pub use cookie_session_auth::{CookieSessionAuthMiddleware, CookieSessionConfig};
 #[cfg(feature = "cors")]
-pub use cors::CorsMiddleware;
+#[allow(deprecated)]
+pub use cors::CorsConfig;
+#[cfg(feature = "cors")]
+pub use cors::{CorsMiddleware, create_cors_middleware_from_settings};
 pub use csp::{CspConfig, CspMiddleware, CspNonce};
 pub use csp_helpers::{csp_nonce_attr, get_csp_nonce};
 pub use csrf::{
@@ -244,8 +252,7 @@ pub use redis_session::RedisSessionBackend;
 pub use remote_user::{PersistentRemoteUserMiddleware, REMOTE_USER_HEADER, RemoteUserMiddleware};
 pub use request_id::{REQUEST_ID_HEADER, RequestIdConfig, RequestIdMiddleware};
 #[cfg(feature = "security")]
-#[allow(deprecated)] // SecurityConfig is deprecated but still re-exported for compatibility
-pub use security_middleware::{SecurityConfig, SecurityMiddleware};
+pub use security_middleware::SecurityMiddleware;
 pub use session::{SessionConfig, SessionData, SessionMiddleware, SessionStore};
 pub use site::{SITE_ID_HEADER, Site, SiteConfig, SiteMiddleware, SiteRegistry};
 pub use timeout::{TimeoutConfig, TimeoutMiddleware};
@@ -257,6 +264,8 @@ pub use xframe::{XFrameOptions, XFrameOptionsMiddleware};
 pub use xss::{XssConfig, XssError, XssProtector};
 
 #[cfg(all(test, feature = "cors"))]
+// The deprecated `CorsConfig` is exercised here during the compatibility window.
+#[allow(deprecated)]
 mod tests {
 	use super::*;
 	use bytes::Bytes;

@@ -1,7 +1,7 @@
 
 [package]
 name = "reinhardt-di"
-version = "0.1.4"
+version = "0.2.0-rc.6"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -12,6 +12,7 @@ description = "Dependency injection system for Reinhardt, inspired by FastAPI"
 [[bin]]
 name = "check-di"
 path = "src/bin/check-di.rs"
+doc = false
 
 [dependencies]
 reinhardt-http = { workspace = true }
@@ -33,6 +34,7 @@ serde_json = { workspace = true }
 serde_urlencoded = "0.7"
 form_urlencoded = "1.2"
 http = "1.0"
+bytes.workspace = true
 urlencoding = "2.1"
 regex = { workspace = true }
 multer = { version = "3.1", optional = true }
@@ -73,6 +75,10 @@ proptest = { workspace = true }
 rstest = { workspace = true }
 trybuild = { workspace = true }
 criterion = { workspace = true, features = ["async_tokio"] }
+[[test]]
+name = "scope_hierarchy_tests"
+required-features = ["testing"]
+
 [[bench]]
 name = "cache_performance"
 harness = false

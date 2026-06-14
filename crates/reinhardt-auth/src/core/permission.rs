@@ -1,9 +1,6 @@
-// This module uses the deprecated User trait for backward compatibility.
-// PermissionContext holds an optional Box<dyn User> for existing permission APIs.
-#![allow(deprecated)]
 use async_trait::async_trait;
 
-use crate::core::user::User;
+use crate::core::AuthIdentity;
 
 /// Permission context - contains request information for permission checking
 ///
@@ -13,7 +10,7 @@ use crate::core::user::User;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_auth::{PermissionContext, AnonymousUser, User};
+/// use reinhardt_auth::PermissionContext;
 /// use reinhardt_http::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
@@ -46,7 +43,7 @@ pub struct PermissionContext<'a> {
 	/// Whether the user account is active
 	pub is_active: bool,
 	/// The authenticated user, if any
-	pub user: Option<Box<dyn User>>,
+	pub user: Option<Box<dyn AuthIdentity>>,
 }
 
 /// Permission trait - defines permission checking interface
@@ -133,7 +130,7 @@ impl Permission for AllowAny {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_auth::{Permission, IsAuthenticated, PermissionContext, SimpleUser, User};
+/// use reinhardt_auth::{Permission, IsAuthenticated, ManagedUser, PermissionContext};
 /// use reinhardt_http::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
@@ -161,7 +158,7 @@ impl Permission for AllowAny {
 /// assert!(!permission.has_permission(&context).await);
 ///
 /// // Authenticated user - permission granted
-/// let user = SimpleUser {
+/// let user = ManagedUser {
 ///     id: Uuid::now_v7(),
 ///     username: "alice".to_string(),
 ///     email: "alice@example.com".to_string(),
@@ -195,7 +192,7 @@ impl Permission for IsAuthenticated {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_auth::{Permission, IsAdminUser, PermissionContext, SimpleUser, User};
+/// use reinhardt_auth::{Permission, IsAdminUser, ManagedUser, PermissionContext};
 /// use reinhardt_http::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
@@ -213,7 +210,7 @@ impl Permission for IsAuthenticated {
 ///     .unwrap();
 ///
 /// // Non-admin user - permission denied
-/// let user = SimpleUser {
+/// let user = ManagedUser {
 ///     id: Uuid::now_v7(),
 ///     username: "alice".to_string(),
 ///     email: "alice@example.com".to_string(),
@@ -232,7 +229,7 @@ impl Permission for IsAuthenticated {
 /// assert!(!permission.has_permission(&context).await);
 ///
 /// // Admin user - permission granted
-/// let admin = SimpleUser {
+/// let admin = ManagedUser {
 ///     id: Uuid::now_v7(),
 ///     username: "admin".to_string(),
 ///     email: "admin@example.com".to_string(),

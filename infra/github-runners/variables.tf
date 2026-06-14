@@ -103,6 +103,17 @@ variable "hotpath_runner_instance_type" {
   default     = "t4g.micro"
 }
 
+variable "enable_cancel_runner" {
+  description = "Enable the always-on cancel runner for PR close event workflows"
+  type        = bool
+  default     = true
+}
+
+variable "cancel_runner_instance_type" {
+  description = "EC2 instance type for the always-on cancel runner"
+  type        = string
+  default     = "t4g.nano"
+}
 
 variable "tf_plan_aws_access_key_id" {
   description = "AWS access key ID for terraform-plan CI workflow (read-only IAM user recommended)"

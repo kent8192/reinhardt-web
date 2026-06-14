@@ -65,17 +65,17 @@ pub fn button(text: &str, variant: ButtonVariant, disabled: bool, on_click: Sign
 	let text = text.to_string();
 
 	if disabled {
-		return page!(|| {
+		return page!(|classes: String, text: String| {
 			button {
 				class: classes,
 				type: "button",
 				disabled: true,
 				{ text }
 			}
-		})();
+		})(classes, text);
 	}
 
-	page!(|_on_click: Signal<bool>| {
+	page!(|classes: String, text: String, _on_click: Signal<bool>| {
 		button {
 			class: classes,
 			type: "button",
@@ -84,7 +84,7 @@ pub fn button(text: &str, variant: ButtonVariant, disabled: bool, on_click: Sign
 			},
 			{ text }
 		}
-	})(on_click)
+	})(classes, text, on_click)
 }
 
 /// Loading spinner component
@@ -129,7 +129,7 @@ pub fn error_display(message: &str, dismissible: bool) -> Page {
 	let message = message.to_string();
 
 	if dismissible {
-		page!(|| {
+		page!(|message: String| {
 			div {
 				class: "admin-alert admin-alert-danger flex items-start justify-between animate__animated animate__shakeX",
 				role: "alert",
@@ -141,15 +141,15 @@ pub fn error_display(message: &str, dismissible: bool) -> Page {
 					"×"
 				}
 			}
-		})()
+		})(message)
 	} else {
-		page!(|| {
+		page!(|message: String| {
 			div {
 				class: "admin-alert admin-alert-danger animate__animated animate__shakeX",
 				role: "alert",
 				{ message }
 			}
-		})()
+		})(message)
 	}
 }
 
@@ -219,12 +219,12 @@ pub fn pagination(current_page: Signal<u64>, total_pages: u64) -> Page {
 		},
 	));
 
-	page!(|| {
+	page!(|nav_items: Vec<Page>| {
 		div {
 			class: "flex justify-center gap-1 mt-6",
 			{ nav_items }
 		}
-	})()
+	})(nav_items)
 }
 
 /// Helper function to create a pagination item with event handler
@@ -241,25 +241,25 @@ where
 	let text = text.to_string();
 
 	if disabled {
-		page!(|| {
+		page!(|text: String| {
 			span {
 				class: "admin-page-link admin-page-link-disabled",
 				aria_disabled: "true",
 				tabindex: (-1_i32).to_string(),
 				{ text }
 			}
-		})()
+		})(text)
 	} else if active {
-		page!(|| {
+		page!(|text: String| {
 			span {
 				class: "admin-page-link admin-page-link-active",
 				aria_current: "page",
 				{ text }
 			}
-		})()
+		})(text)
 	} else {
 		let handler: Arc<dyn Fn(Signal<u64>)> = Arc::new(handler);
-		page!(|_signal: Signal<u64>, _handler: Arc<dyn Fn(Signal<u64>) >| {
+		page!(|text: String, _signal: Signal<u64>, _handler: Arc<dyn Fn(Signal<u64>) >| {
 			a {
 				class: "admin-page-link",
 				href: "#",
@@ -268,7 +268,7 @@ where
 				},
 				{ text }
 			}
-		})(signal, handler)
+		})(text, signal, handler)
 	}
 }
 
@@ -293,7 +293,7 @@ pub fn search_bar(value: Signal<String>, placeholder: &str) -> Page {
 	let current_value = value.get();
 	let placeholder = placeholder.to_string();
 
-	page!(|| {
+	page!(|placeholder: String, current_value: String| {
 		div {
 			class: "flex",
 			span {
@@ -307,5 +307,5 @@ pub fn search_bar(value: Signal<String>, placeholder: &str) -> Page {
 				value: current_value,
 			}
 		}
-	})()
+	})(placeholder, current_value)
 }

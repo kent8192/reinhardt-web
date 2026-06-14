@@ -7,11 +7,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.3...reinhardt-tasks@v0.1.4) - 2026-06-10
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.3...reinhardt-tasks@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-tasks` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Review the breaking changes listed below before upgrading from 0.1.x.
+- See the root CHANGELOG and `instructions/MIGRATION_0.2.md` for cross-crate migration guidance.
+
+### Breaking Changes
+
+- *(tasks)* [**breaking**] remove misleading create_queue_from_settings API
+
+### Added
+
+- *(tasks)* add settings fragments and settings-first constructors
+
+### Deprecated
+
+- *(tasks)* deprecate config structs in favor of settings fragments
+
+### Fixed
+
+- *(settings)* require explicit nested settings nodes
+- *(tasks)* [**breaking**] remove misleading create_queue_from_settings API
+
+- *(ci)* pin broken upstream transitive releases
+
+### Documentation
+
+- *(tasks)* note that create_queue_from_settings does not retain settings
+- *(tasks)* correct tracking issue reference to [[#5068](https://github.com/kent8192/reinhardt-web/issues/5068)](https://github.com/kent8192/reinhardt-web/issues/5068)
+- *(tasks)* move deferred queue-settings note to lib.rs header
 
 ### Maintenance
 
 - update Cargo.toml dependencies
+- *(tasks)* add reinhardt-conf and reinhardt-core dependencies for settings
+
+
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.2.0-rc.4...reinhardt-tasks@v0.2.0-rc.5) - 2026-06-11
+
+### Maintenance
+
+- update Cargo.toml dependencies
+
+## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.2.0-rc.3...reinhardt-tasks@v0.2.0-rc.4) - 2026-06-06
+
+### Fixed
+
+- *(settings)* require explicit nested settings nodes
+
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.3...reinhardt-tasks@v0.2.0-rc.2) - 2026-06-03
+
+### Added
+
+- *(tasks)* add settings fragments and settings-first constructors
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Deprecated
+
+- *(tasks)* deprecate config structs in favor of settings fragments
+
+### Documentation
+
+- *(tasks)* note that create_queue_from_settings does not retain settings
+- *(tasks)* correct tracking issue reference to [[#5068](https://github.com/kent8192/reinhardt-web/issues/5068)](https://github.com/kent8192/reinhardt-web/issues/5068)
+- *(tasks)* move deferred queue-settings note to lib.rs header
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+- *(tasks)* [**breaking**] remove misleading create_queue_from_settings API
+
+### Maintenance
+
+- *(tasks)* add reinhardt-conf and reinhardt-core dependencies for settings
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.0-rc.30...reinhardt-tasks@v0.1.0) - 2026-05-22
 

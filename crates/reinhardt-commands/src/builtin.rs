@@ -11,7 +11,7 @@ use reinhardt_db::migrations::DatabaseMigrationExecutor;
 #[cfg(feature = "migrations")]
 use reinhardt_db::backends::{DatabaseConnection, DatabaseType};
 
-// Import backends' DatabaseConnection for get_database_url helper (without migrations feature)
+// Import DatabaseConnection for database_url_from (without migrations feature)
 #[cfg(all(feature = "reinhardt-db", not(feature = "migrations")))]
 use reinhardt_db::backends::DatabaseConnection;
 
@@ -49,6 +49,16 @@ impl BaseCommand for MigrateCommand {
 				"fake-initial",
 				"Skip initial migration if tables exist",
 			),
+			CommandOption::flag(
+				None,
+				"plan",
+				"Preview the migration plan without applying or rolling back",
+			),
+			CommandOption::option(
+				None,
+				"migrations-dir",
+				"Root directory containing migration files (default: ./migrations)",
+			),
 			CommandOption::option(Some('d'), "database", "Database to migrate")
 				.with_default("default"),
 		]
@@ -58,16 +68,18 @@ impl BaseCommand for MigrateCommand {
 		ctx.info("Running migrations...");
 
 		let app_label = ctx.arg(0).map(|s| s.to_string());
-		let _migration_name = ctx.arg(1).map(|s| s.to_string());
+		let target = ctx.arg(1).map(|s| s.to_string());
 		let is_fake = ctx.has_option("fake");
 		let _is_fake_initial = ctx.has_option("fake-initial");
+		#[cfg_attr(not(feature = "migrations"), allow(unused_variables))]
+		let is_plan = ctx.has_option("plan");
 		let _database = ctx
 			.option("database")
 			.map(|s| s.to_string())
 			.unwrap_or_else(|| "default".to_string());
 
 		if let Some(ref app_name) = app_label {
-			if let Some(ref migration) = _migration_name {
+			if let Some(ref migration) = target {
 				ctx.verbose(&format!("Migrating {} to {}", app_name, migration));
 			} else {
 				ctx.verbose(&format!("Migrating app: {}", app_name));
@@ -91,7 +103,10 @@ impl BaseCommand for MigrateCommand {
 			use tokio::sync::Mutex;
 
 			ctx.verbose("Loading migrations from disk...");
-			let migrations_dir = PathBuf::from("migrations");
+			let migrations_dir = ctx
+				.option("migrations-dir")
+				.map(PathBuf::from)
+				.unwrap_or_else(|| PathBuf::from("migrations"));
 
 			let source = Arc::new(FilesystemSource::new(migrations_dir.clone()));
 			let repository: Arc<Mutex<dyn reinhardt_db::migrations::MigrationRepository>> =
@@ -110,7 +125,7 @@ impl BaseCommand for MigrateCommand {
 			let database_url = ctx
 				.option("database")
 				.map(|s| s.to_string())
-				.or_else(|| get_database_url().ok())
+				.or_else(|| std::env::var("DATABASE_URL").ok())
 				.ok_or_else(|| {
 					crate::CommandError::ExecutionError(
 						"No database URL provided. Use --database option or set DATABASE_URL environment variable".to_string()
@@ -177,6 +192,345 @@ impl BaseCommand for MigrateCommand {
 				))
 			})?;
 
+			// 4.5. Direction detection (Django-style migrate-with-target semantics).
+			//
+			// `manage migrate <app> <target>` expresses both apply and unapply in a
+			// single command; the direction is resolved by comparing `<target>`
+			// against the currently applied state for `<app>`:
+			//
+			//   * `<target> == "zero"`  -> unapply ALL migrations for `<app>`.
+			//   * `<target>` is currently applied -> roll back every migration
+			//                            applied AFTER it (backward).
+			//   * `<target>` is NOT applied        -> apply `<target>` and its
+			//                            intra-app dependency closure (forward).
+			//
+			// `--plan` previews the action without touching the database. On a fresh
+			// database the bookkeeping table is created lazily for real execution but
+			// NEVER for `--plan`, preserving the dry-run "leave the DB untouched"
+			// contract.
+			if let Some(target_name) = target.as_deref() {
+				use reinhardt_db::migrations::DatabaseMigrationRecorder;
+				use std::collections::HashSet;
+
+				let app = app_label.as_ref().ok_or_else(|| {
+					crate::CommandError::InvalidArguments(
+						"<migration> requires <app>; usage: `migrate <app> <target>` or `migrate <app> zero`"
+							.to_string(),
+					)
+				})?;
+
+				let recorder = DatabaseMigrationRecorder::new(connection.clone());
+				// For real execution, ensure the recorder table exists so the rollback
+				// can persist its unapply records (`apply_migrations` does the same
+				// before recording). For `--plan` we must NOT create the table; instead
+				// `plan_applied_migrations` probes for it: a missing table on a fresh DB
+				// degrades to an empty set, while a genuine DB error fails fast so the
+				// preview never misreports the applied state.
+				let applied = if is_plan {
+					plan_applied_migrations(&connection, &recorder).await?
+				} else {
+					recorder.ensure_schema_table().await.map_err(|e| {
+						crate::CommandError::ExecutionError(format!(
+							"Failed to ensure migration recorder table: {}",
+							e
+						))
+					})?;
+					recorder.get_applied_migrations().await.map_err(|e| {
+						crate::CommandError::ExecutionError(format!(
+							"Failed to query applied migrations: {}",
+							e
+						))
+					})?
+				};
+				let applied_for_app: Vec<_> =
+					applied.iter().filter(|r| r.app == *app).cloned().collect();
+
+				// Branch (a): `migrate <app> zero` -> unapply ALL applied migrations.
+				if target_name == "zero" {
+					if applied_for_app.is_empty() {
+						ctx.info(&format!(
+							"No applied migrations for app '{}'; nothing to do.",
+							app
+						));
+						return Ok(());
+					}
+
+					// `applied_for_app` is ASC by applied time; rollback unapplies the
+					// newest first. Plan and `--fake` operate purely on recorder records
+					// and never load files; only a real rollback needs the on-disk
+					// reverse SQL.
+					if is_plan {
+						ctx.info(&format!(
+							"[plan] Would unapply {} migration(s) for app '{}':",
+							applied_for_app.len(),
+							app
+						));
+						for r in applied_for_app.iter().rev() {
+							ctx.info(&format!("  - {}:{} (unapply)", r.app, r.name));
+						}
+						return Ok(());
+					}
+
+					if is_fake {
+						ctx.info(
+							"Faking rollback (updating recorder without executing reverse SQL):",
+						);
+						for r in applied_for_app.iter().rev() {
+							recorder.unapply(&r.app, &r.name).await.map_err(|e| {
+								crate::CommandError::ExecutionError(format!(
+									"Failed to unapply {}:{}: {}",
+									r.app, r.name, e
+								))
+							})?;
+							ctx.success(&format!("  ✓ Faked rollback: {}:{}", r.app, r.name));
+						}
+						ctx.success(&format!(
+							"Faked rollback of {} migration(s) for app '{}'",
+							applied_for_app.len(),
+							app
+						));
+						return Ok(());
+					}
+
+					let mut to_rollback = Vec::with_capacity(applied_for_app.len());
+					for r in &applied_for_app {
+						let migration = all_migrations
+							.iter()
+							.find(|m| m.app_label == r.app && m.name == r.name)
+							.cloned()
+							.ok_or_else(|| {
+								crate::CommandError::ExecutionError(format!(
+									"Migration {}:{} is recorded as applied but its file was not found on disk",
+									r.app, r.name
+								))
+							})?;
+						to_rollback.push(migration);
+					}
+
+					let mut executor = DatabaseMigrationExecutor::new(connection);
+					let result = executor
+						.rollback_migrations(&to_rollback)
+						.await
+						.map_err(|e| {
+							crate::CommandError::ExecutionError(format!(
+								"Failed to roll back migrations: {:?}",
+								e
+							))
+						})?;
+					for id in &result.applied {
+						ctx.success(&format!("  ✓ Rolled back: {}", id));
+					}
+					ctx.success(&format!(
+						"Rolled back {} migration(s) for app '{}'",
+						result.applied.len(),
+						app
+					));
+					return Ok(());
+				}
+
+				// Branch (b): target is currently applied -> roll back everything after it.
+				if let Some(pos) = applied_for_app.iter().position(|r| r.name == target_name) {
+					let to_rollback_records = &applied_for_app[pos + 1..];
+					if to_rollback_records.is_empty() {
+						ctx.info(&format!(
+							"Already at {}:{}; nothing to do.",
+							app, target_name
+						));
+						return Ok(());
+					}
+
+					// Plan and `--fake` operate purely on recorder records; only a real
+					// rollback loads the on-disk reverse SQL.
+					if is_plan {
+						ctx.info(&format!(
+							"[plan] Would unapply {} migration(s) for app '{}' to reach target '{}':",
+							to_rollback_records.len(),
+							app,
+							target_name
+						));
+						for r in to_rollback_records.iter().rev() {
+							ctx.info(&format!("  - {}:{} (unapply)", r.app, r.name));
+						}
+						return Ok(());
+					}
+
+					if is_fake {
+						ctx.info(
+							"Faking rollback (updating recorder without executing reverse SQL):",
+						);
+						for r in to_rollback_records.iter().rev() {
+							recorder.unapply(&r.app, &r.name).await.map_err(|e| {
+								crate::CommandError::ExecutionError(format!(
+									"Failed to unapply {}:{}: {}",
+									r.app, r.name, e
+								))
+							})?;
+							ctx.success(&format!("  ✓ Faked rollback: {}:{}", r.app, r.name));
+						}
+						ctx.success(&format!(
+							"Faked rollback to {}:{} ({} migration(s) unapplied)",
+							app,
+							target_name,
+							to_rollback_records.len()
+						));
+						return Ok(());
+					}
+
+					let mut to_rollback = Vec::with_capacity(to_rollback_records.len());
+					for r in to_rollback_records {
+						let migration = all_migrations
+							.iter()
+							.find(|m| m.app_label == r.app && m.name == r.name)
+							.cloned()
+							.ok_or_else(|| {
+								crate::CommandError::ExecutionError(format!(
+									"Migration {}:{} is recorded as applied but its file was not found on disk",
+									r.app, r.name
+								))
+							})?;
+						to_rollback.push(migration);
+					}
+
+					let mut executor = DatabaseMigrationExecutor::new(connection);
+					let result = executor
+						.rollback_migrations(&to_rollback)
+						.await
+						.map_err(|e| {
+							crate::CommandError::ExecutionError(format!(
+								"Failed to roll back migrations: {:?}",
+								e
+							))
+						})?;
+					for id in &result.applied {
+						ctx.success(&format!("  ✓ Rolled back: {}", id));
+					}
+					ctx.success(&format!(
+						"Rolled back to {}:{} ({} migration(s) unapplied)",
+						app,
+						target_name,
+						result.applied.len()
+					));
+					return Ok(());
+				}
+
+				// Branch (c): target is NOT currently applied -> forward to target.
+				// Validate the target exists on disk first.
+				let target_on_disk = all_migrations
+					.iter()
+					.any(|m| m.app_label == *app && m.name == target_name);
+				if !target_on_disk {
+					return Err(crate::CommandError::ExecutionError(format!(
+						"Migration {}:{} does not exist on disk",
+						app, target_name
+					)));
+				}
+
+				// Applying "to target" means applying the target plus every migration
+				// it transitively depends on within the same app. `apply_migrations`
+				// re-sorts the slice topologically and skips already-applied entries,
+				// so we only need to hand it the correct *set* of migrations. Cross-app
+				// prerequisites are managed by their own `migrate <other_app>` run,
+				// mirroring the app-scoped behavior of the apply-all path below.
+				let mut needed: HashSet<(String, String)> = HashSet::new();
+				let mut stack: Vec<(String, String)> = vec![(app.clone(), target_name.to_string())];
+				while let Some((dep_app, dep_name)) = stack.pop() {
+					if !needed.insert((dep_app.clone(), dep_name.clone())) {
+						continue;
+					}
+					if let Some(migration) = all_migrations
+						.iter()
+						.find(|m| m.app_label == dep_app && m.name == dep_name)
+					{
+						for (da, dn) in &migration.dependencies {
+							if *da == *app {
+								stack.push((da.clone(), dn.clone()));
+							}
+						}
+					}
+				}
+
+				let to_apply: Vec<_> = all_migrations
+					.iter()
+					.filter(|m| needed.contains(&(m.app_label.clone(), m.name.clone())))
+					.cloned()
+					.collect();
+
+				let applied_names: HashSet<&str> =
+					applied_for_app.iter().map(|r| r.name.as_str()).collect();
+				let pending: Vec<_> = to_apply
+					.iter()
+					.filter(|m| !applied_names.contains(m.name.as_str()))
+					.collect();
+
+				if pending.is_empty() {
+					ctx.info(&format!(
+						"Already at or past {}:{}; nothing to apply.",
+						app, target_name
+					));
+					return Ok(());
+				}
+
+				if is_plan {
+					ctx.info(&format!(
+						"[plan] Would apply {} migration(s) for app '{}' to reach target '{}':",
+						pending.len(),
+						app,
+						target_name
+					));
+					for migration in &pending {
+						ctx.info(&format!(
+							"  - {}:{} (apply)",
+							migration.app_label, migration.name
+						));
+					}
+					return Ok(());
+				}
+
+				if is_fake {
+					ctx.info("Faking migrations (marking as applied without executing):");
+					for migration in &pending {
+						recorder
+							.record_applied(&migration.app_label, &migration.name)
+							.await
+							.map_err(|e| {
+								crate::CommandError::ExecutionError(format!(
+									"Failed to record fake migration {}:{}: {}",
+									migration.app_label, migration.name, e
+								))
+							})?;
+						ctx.success(&format!(
+							"  ✓ Faked: {}:{}",
+							migration.app_label, migration.name
+						));
+					}
+					ctx.success(&format!(
+						"Faked {} migration(s) to reach {}:{}",
+						pending.len(),
+						app,
+						target_name
+					));
+					return Ok(());
+				}
+
+				let mut executor = DatabaseMigrationExecutor::new(connection);
+				let result = executor.apply_migrations(&to_apply).await.map_err(|e| {
+					crate::CommandError::ExecutionError(format!(
+						"Failed to apply migrations: {:?}",
+						e
+					))
+				})?;
+				for id in &result.applied {
+					ctx.success(&format!("  ✓ Applied: {}", id));
+				}
+				ctx.success(&format!(
+					"Applied {} migration(s) to reach {}:{}",
+					result.applied.len(),
+					app,
+					target_name
+				));
+				return Ok(());
+			}
+
 			// 5. Filter and check migrations
 			let migrations_to_apply: Vec<_> = if let Some(ref app) = app_label {
 				all_migrations
@@ -199,6 +553,40 @@ impl BaseCommand for MigrateCommand {
 				"Found {} migration(s) to apply",
 				migrations_to_apply.len()
 			));
+
+			// 5.5. `--plan` previews the apply-all set without mutating the database.
+			// Query the recorder to show only not-yet-applied migrations; on a fresh
+			// DB the table may not exist (treated as "nothing applied"), but a real DB
+			// error must fail fast rather than masquerade as an empty set. The table is
+			// never created here (dry-run contract).
+			if is_plan {
+				use reinhardt_db::migrations::DatabaseMigrationRecorder;
+				let recorder = DatabaseMigrationRecorder::new(connection.clone());
+				let applied = plan_applied_migrations(&connection, &recorder).await?;
+				let pending: Vec<_> = migrations_to_apply
+					.iter()
+					.filter(|m| {
+						!applied
+							.iter()
+							.any(|r| r.app == m.app_label && r.name == m.name)
+					})
+					.collect();
+				if pending.is_empty() {
+					ctx.info("[plan] No unapplied migrations.");
+					return Ok(());
+				}
+				ctx.info(&format!(
+					"[plan] Would apply {} migration(s):",
+					pending.len()
+				));
+				for migration in &pending {
+					ctx.info(&format!(
+						"  - {}:{} (apply)",
+						migration.app_label, migration.name
+					));
+				}
+				return Ok(());
+			}
 
 			// 6. Apply migrations (or fake them
 			if is_fake {
@@ -260,6 +648,54 @@ impl BaseCommand for MigrateCommand {
 			ctx.info("To use migrate, enable the 'migrations' feature");
 			Ok(())
 		}
+	}
+}
+
+/// Resolve the applied-migration set for a `--plan` preview without creating the
+/// recorder table.
+///
+/// Dry-run contract: a missing recorder table on a fresh database means nothing
+/// has been applied yet, so its absence degrades to an empty set. A genuine
+/// database error (permissions, connectivity, malformed query) must NOT be
+/// silently swallowed — doing so would print a plan that wrongly claims nothing
+/// is applied. The existence probe therefore distinguishes "table missing" from
+/// "real failure" and fails fast on the latter.
+#[cfg(feature = "migrations")]
+async fn plan_applied_migrations(
+	connection: &DatabaseConnection,
+	recorder: &reinhardt_db::migrations::DatabaseMigrationRecorder,
+) -> CommandResult<Vec<reinhardt_db::migrations::recorder::MigrationRecord>> {
+	use reinhardt_db::migrations::SchemaEditor;
+
+	// Non-atomic editor: a pure existence probe issuing a single SELECT, with no
+	// transaction and no DDL, so the dry-run contract (never mutate in `--plan`)
+	// is preserved.
+	let mut editor = SchemaEditor::new(connection.clone(), false, connection.database_type())
+		.await
+		.map_err(|e| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to inspect migration recorder table in --plan mode: {}",
+				e
+			))
+		})?;
+
+	if editor
+		.table_exists("reinhardt_migrations")
+		.await
+		.map_err(|e| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to check migration recorder table existence in --plan mode: {}",
+				e
+			))
+		})? {
+		recorder.get_applied_migrations().await.map_err(|e| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to query applied migrations in --plan mode: {}",
+				e
+			))
+		})
+	} else {
+		Ok(Vec::new())
 	}
 }
 
@@ -799,11 +1235,19 @@ impl BaseCommand for MakeMigrationsCommand {
 
 			let is_verbose = ctx.has_option("verbose");
 
-			// Get database URL from context option or environment
+			// Get database URL from context option or environment, falling back
+			// to the project's composed settings (`[core.databases.default]`)
+			// when neither is provided (#5042). An empty string preserves the
+			// TestContainers `from_state` path for offline runs.
 			let database_url = ctx
 				.option("database")
 				.map(|s| s.to_string())
-				.or_else(|| get_database_url().ok())
+				.or_else(|| std::env::var("DATABASE_URL").ok())
+				.or_else(|| {
+					ctx.settings
+						.as_ref()
+						.and_then(|s| DatabaseConnection::database_url_from(s.as_ref(), None).ok())
+				})
 				.unwrap_or_default();
 
 			// 2. Build from_state from database history or TestContainers
@@ -1002,9 +1446,7 @@ impl BaseCommand for MakeMigrationsCommand {
 					app_from_state,
 					app_target_state,
 				);
-				let generated_migrations = detector
-					.try_generate_migrations()
-					.map_err(|err| CommandError::ExecutionError(err.to_string()))?;
+				let generated_migrations = detector.generate_migrations();
 
 				// Process generated migrations for this app
 				for migration in generated_migrations {
@@ -1288,6 +1730,23 @@ impl ShellCommand {
 /// Development server command
 pub struct RunServerCommand;
 
+#[cfg(all(feature = "server", feature = "autoreload"))]
+struct AutoreloadChildOptions<'a> {
+	address: &'a str,
+	insecure: bool,
+	no_docs: bool,
+	with_pages: bool,
+	static_dir: &'a str,
+	no_spa: bool,
+	no_project_static: bool,
+	index: Option<&'a str>,
+	hmr_port: Option<u16>,
+	no_wasm: bool,
+	no_override_wasm: bool,
+	force_wasm: bool,
+	wasm_optional: bool,
+}
+
 impl RunServerCommand {
 	/// Consume `UrlPatternsRegistration` `inventory` entries and install the
 	/// merged `ServerRouter` as the process-wide HTTP router.
@@ -1501,9 +1960,15 @@ impl BaseCommand for RunServerCommand {
 		}
 
 		let address = ctx.arg(0).map(|s| s.as_str()).unwrap_or("127.0.0.1:8000");
+		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let noreload = ctx.has_option("noreload");
+		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let no_wasm_rebuild = ctx.has_option("no-wasm-rebuild");
 		let insecure = ctx.has_option("insecure");
+		#[cfg_attr(
+			not(any(feature = "server", feature = "openapi-router")),
+			allow(unused_variables)
+		)]
 		let no_docs = ctx.has_option("no_docs");
 		let with_pages = ctx.has_option("with-pages");
 		let static_dir_raw = ctx
@@ -1511,21 +1976,22 @@ impl BaseCommand for RunServerCommand {
 			.map(|s| s.to_string())
 			.unwrap_or_else(|| "dist".to_string());
 		let no_spa = ctx.has_option("no-spa");
+		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let no_project_static = ctx.has_option("no-project-static");
+		let no_wasm = ctx.has_option("no-wasm");
+		let no_override_wasm = ctx.has_option("no-override-wasm");
+		let force_wasm_legacy = ctx.has_option("force-wasm");
+		let wasm_optional = ctx.has_option("wasm-optional");
 		// Build WASM frontend if --with-pages and not --no-wasm
 		#[cfg(feature = "pages")]
 		{
-			let no_wasm = ctx.has_option("no-wasm");
-			let no_override_wasm = ctx.has_option("no-override-wasm");
-			let force_wasm_legacy = ctx.has_option("force-wasm");
 			if force_wasm_legacy {
-				ctx.warning(
-					"--force-wasm is now the default behavior; this flag is deprecated. \
-					 Use --no-override-wasm to opt out of rebuilds.",
-				);
+				ctx.warning(concat!(
+					"--force-wasm is now the default behavior; this flag is deprecated. ",
+					"Use --no-override-wasm to opt out of rebuilds."
+				));
 			}
 			let force = !no_override_wasm;
-			let wasm_optional = ctx.has_option("wasm-optional");
 			if with_pages
 				&& !no_wasm && let Err(e) = Self::build_pages_wasm(ctx, force)
 			{
@@ -1717,6 +2183,10 @@ impl BaseCommand for RunServerCommand {
 					no_project_static,
 					index_raw.as_deref(),
 					no_wasm_rebuild,
+					no_wasm,
+					no_override_wasm,
+					force_wasm_legacy,
+					wasm_optional,
 				)
 				.await;
 			}
@@ -1734,6 +2204,10 @@ impl BaseCommand for RunServerCommand {
 				&static_dir_raw,
 				no_spa,
 				no_project_static,
+				no_wasm,
+				no_override_wasm,
+				force_wasm_legacy,
+				wasm_optional,
 			)
 			.await
 		}
@@ -1819,6 +2293,10 @@ impl RunServerCommand {
 		static_dir: &str,
 		no_spa: bool,
 		no_project_static: bool,
+		no_wasm: bool,
+		no_override_wasm: bool,
+		force_wasm: bool,
+		wasm_optional: bool,
 	) -> CommandResult<()> {
 		use reinhardt_server::{HttpServer, ShutdownCoordinator};
 
@@ -1907,7 +2385,7 @@ impl RunServerCommand {
 					// Register DatabaseConnection directly (not wrapped in Arc)
 					// The DI system wraps it in Arc internally via SingletonScope::set
 					singleton_scope.set(db_conn);
-					let url = get_database_url().unwrap_or_default();
+					let url = std::env::var("DATABASE_URL").ok().unwrap_or_default();
 					ctx.info(&format!(
 						"💾 Database: {} (DI registered)",
 						sanitize_database_url(&url)
@@ -2082,6 +2560,10 @@ impl RunServerCommand {
 					no_project_static,
 					index_raw.as_deref(),
 					no_wasm_rebuild,
+					no_wasm,
+					no_override_wasm,
+					force_wasm,
+					wasm_optional,
 				)
 				.await
 			}
@@ -2188,6 +2670,10 @@ impl RunServerCommand {
 		no_project_static: bool,
 		index: Option<&str>,
 		no_wasm_rebuild: bool,
+		no_wasm: bool,
+		no_override_wasm: bool,
+		force_wasm: bool,
+		wasm_optional: bool,
 	) -> CommandResult<()> {
 		// Resolve the cargo metadata for the current working directory.
 		let metadata = cargo_metadata::MetadataCommand::new().exec().map_err(|e| {
@@ -2288,6 +2774,10 @@ impl RunServerCommand {
 				no_project_static,
 				index_owned.as_deref(),
 				hmr_port,
+				no_wasm,
+				no_override_wasm,
+				force_wasm,
+				wasm_optional,
 			)
 			.map_err(|e| std::io::Error::other(e.to_string()))
 		};
@@ -2300,6 +2790,7 @@ impl RunServerCommand {
 
 		let cfg = crate::debounced_watcher::WatcherConfig {
 			bin_name,
+			address: address.to_string(),
 			roots,
 			server_address: Some(address.to_string()),
 			no_wasm_rebuild,
@@ -2489,6 +2980,10 @@ impl RunServerCommand {
 		no_project_static: bool,
 		index: Option<&str>,
 		hmr_port: Option<u16>,
+		no_wasm: bool,
+		no_override_wasm: bool,
+		force_wasm: bool,
+		wasm_optional: bool,
 	) -> CommandResult<tokio::process::Child> {
 		let current_exe = std::env::current_exe().map_err(|e| {
 			crate::CommandError::ExecutionError(format!("Failed to get current executable: {}", e))
@@ -2512,30 +3007,23 @@ impl RunServerCommand {
 		};
 
 		let mut cmd = tokio::process::Command::new(&current_exe);
-		cmd.arg("runserver").arg(address).arg("--noreload");
-
-		if insecure {
-			cmd.arg("--insecure");
-		}
-		if no_docs {
-			cmd.arg("--no-docs");
-		}
-		if with_pages {
-			cmd.arg("--with-pages");
-		}
-		if !static_dir.is_empty() {
-			cmd.arg("--static-dir").arg(static_dir);
-		}
-		if no_spa {
-			cmd.arg("--no-spa");
-		}
-		if no_project_static {
-			cmd.arg("--no-project-static");
-		}
-		if let Some(index_path) = index {
-			cmd.arg("--index").arg(index_path);
-		}
-		if let Some(port) = hmr_port {
+		let child_options = AutoreloadChildOptions {
+			address,
+			insecure,
+			no_docs,
+			with_pages,
+			static_dir,
+			no_spa,
+			no_project_static,
+			index,
+			hmr_port,
+			no_wasm,
+			no_override_wasm,
+			force_wasm,
+			wasm_optional,
+		};
+		cmd.args(Self::build_autoreload_child_args(&child_options));
+		if let Some(port) = child_options.hmr_port {
 			cmd.env("REINHARDT_HMR_PORT", port.to_string());
 		}
 
@@ -2563,6 +3051,53 @@ impl RunServerCommand {
 				diag,
 			))
 		})
+	}
+
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn build_autoreload_child_args(options: &AutoreloadChildOptions<'_>) -> Vec<String> {
+		let mut args = vec![
+			"runserver".to_string(),
+			options.address.to_string(),
+			"--noreload".to_string(),
+		];
+
+		if options.insecure {
+			args.push("--insecure".to_string());
+		}
+		if options.no_docs {
+			args.push("--no-docs".to_string());
+		}
+		if options.with_pages {
+			args.push("--with-pages".to_string());
+		}
+		if !options.static_dir.is_empty() {
+			args.push("--static-dir".to_string());
+			args.push(options.static_dir.to_string());
+		}
+		if options.no_spa {
+			args.push("--no-spa".to_string());
+		}
+		if options.no_project_static {
+			args.push("--no-project-static".to_string());
+		}
+		if let Some(index_path) = options.index {
+			args.push("--index".to_string());
+			args.push(index_path.to_string());
+		}
+		if options.no_wasm {
+			args.push("--no-wasm".to_string());
+		}
+		if options.no_override_wasm {
+			args.push("--no-override-wasm".to_string());
+		}
+		if options.force_wasm {
+			args.push("--force-wasm".to_string());
+		}
+		if options.wasm_optional {
+			args.push("--wasm-optional".to_string());
+		}
+
+		args
 	}
 
 	/// Build the pages WASM bundle from the current project (if it declares cdylib).
@@ -3109,12 +3644,13 @@ fn sanitize_database_url(url: &str) -> String {
 	url.to_string()
 }
 
-/// Initialize the ORM database connection from reinhardt-conf settings.
+/// Initialize the ORM database connection from settings.
 ///
-/// Resolves the database URL via [`get_database_url()`] (reinhardt-conf
-/// settings as primary source, `DATABASE_URL` env var as fallback),
-/// syncs the resolved URL to the `DATABASE_URL` environment variable,
-/// and initializes the ORM global connection pool.
+/// Resolves the database URL from `ctx.settings` (via
+/// [`DatabaseConnection::database_url_from`]) or falls back
+/// to the `DATABASE_URL` environment variable, syncs the
+/// resolved URL to `DATABASE_URL`, and initializes the ORM
+/// global connection pool.
 ///
 /// This function does **not** handle DI registration — that remains
 /// the responsibility of `runserver` since only HTTP-serving commands
@@ -3129,7 +3665,25 @@ pub(crate) async fn initialize_orm_database(
 	ctx: &CommandContext,
 ) -> Result<(), crate::CommandError> {
 	let env_database_url = std::env::var("DATABASE_URL").ok();
-	let url = get_database_url()?;
+	let url =
+		match ctx.settings.as_ref() {
+			Some(settings) => DatabaseConnection::database_url_from(
+				settings.as_ref(),
+				env_database_url.as_deref(),
+			)
+			.map_err(|e| {
+				crate::CommandError::ExecutionError(format!("Failed to get database URL: {}", e))
+			})?,
+			None => match env_database_url.clone() {
+				Some(url) => url,
+				// No `ctx.settings` and no `DATABASE_URL`: fall back to the disk
+				// loader that reads `settings/*.toml` directly. This restores
+				// parity with the pre-refactor behaviour and is symmetric with
+				// `sync_database_url_to_env`, which already re-resolves from
+				// settings on its `None` arm (#5042).
+				None => get_database_url_from_settings()?,
+			},
+		};
 
 	sync_database_url_to_env(env_database_url.as_deref(), &url, ctx);
 
@@ -3143,23 +3697,6 @@ pub(crate) async fn initialize_orm_database(
 		sanitize_database_url(&url)
 	));
 	Ok(())
-}
-
-/// Helper function to get `DATABASE_URL` from environment or settings files.
-///
-/// This is the disk-reading fallback used when no `ProjectSettings` handle
-/// is available on the `CommandContext`. Once the CLI wires the composed
-/// settings through, callers should prefer
-/// `DatabaseConnection::database_url_from(ctx.settings.unwrap().as_ref(), ...)`.
-#[cfg(feature = "reinhardt-db")]
-fn get_database_url() -> Result<String, crate::CommandError> {
-	use std::env;
-
-	let base_dir = env::current_dir().ok();
-	#[allow(deprecated)] // disk-reading fallback; superseded by `database_url_from`
-	DatabaseConnection::get_database_url_from_env_or_settings(base_dir).map_err(|e| {
-		crate::CommandError::ExecutionError(format!("Failed to get database URL: {}", e))
-	})
 }
 
 /// Helper function to get DATABASE_URL from settings files only (ignoring env var).
@@ -3214,9 +3751,19 @@ pub(crate) fn get_database_url_from_settings() -> Result<String, crate::CommandE
 			crate::CommandError::ExecutionError(format!("Failed to load settings: {}", e))
 		})?;
 
-	// Extract database configuration from settings
-	let db_config: reinhardt_conf::settings::DatabaseConfig =
-		if let Some(db_val) = merged.get_raw("database") {
+	// Locate the database configuration. Prefer the legacy/Django-style
+	// top-level `[database]` block, then fall back to the canonical
+	// `[core.databases.default]` nested schema so this disk loader understands
+	// the same shape `database_url_from` reads from composed settings (#5042).
+	let db_val = merged.get_raw("database").or_else(|| {
+		merged
+			.get_raw("core")
+			.and_then(|core| core.get("databases"))
+			.and_then(|databases| databases.get("default"))
+	});
+
+	let db_config: reinhardt_conf::settings::DatabaseConfig = db_val
+		.and_then(|db_val| {
 			serde_json::from_value(db_val.clone()).ok().or_else(|| {
 				if let serde_json::Value::Object(db_map) = db_val {
 					let engine = db_map
@@ -3248,9 +3795,7 @@ pub(crate) fn get_database_url_from_settings() -> Result<String, crate::CommandE
 					None
 				}
 			})
-		} else {
-			None
-		}
+		})
 		.ok_or_else(|| {
 			crate::CommandError::ExecutionError(
 				"No database configuration found in settings files".to_string(),
@@ -3766,7 +4311,7 @@ mod tests {
 		// Create a temporary directory for migrations
 		let temp_dir = TempDir::new().unwrap();
 		let migrations_dir = temp_dir.path();
-		std::fs::create_dir_all(&migrations_dir).unwrap();
+		std::fs::create_dir_all(migrations_dir).unwrap();
 
 		// Register a test model
 		let registry = global_registry();
@@ -3821,7 +4366,7 @@ mod tests {
 		// Create a temporary directory for migrations
 		let temp_dir = TempDir::new().unwrap();
 		let migrations_dir = temp_dir.path();
-		std::fs::create_dir_all(&migrations_dir).unwrap();
+		std::fs::create_dir_all(migrations_dir).unwrap();
 
 		// Register a test model
 		let registry = global_registry();
@@ -4018,6 +4563,70 @@ mod tests {
 	}
 
 	#[test]
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn test_autoreload_child_args_forward_wasm_startup_flags() {
+		let args = RunServerCommand::build_autoreload_child_args(&AutoreloadChildOptions {
+			address: "127.0.0.1:8000",
+			insecure: true,
+			no_docs: true,
+			with_pages: true,
+			static_dir: "dist",
+			no_spa: true,
+			no_project_static: true,
+			index: Some("index.html"),
+			hmr_port: Some(35729),
+			no_wasm: true,
+			no_override_wasm: true,
+			force_wasm: true,
+			wasm_optional: true,
+		});
+
+		assert_eq!(
+			args,
+			vec![
+				"runserver",
+				"127.0.0.1:8000",
+				"--noreload",
+				"--insecure",
+				"--no-docs",
+				"--with-pages",
+				"--static-dir",
+				"dist",
+				"--no-spa",
+				"--no-project-static",
+				"--index",
+				"index.html",
+				"--no-wasm",
+				"--no-override-wasm",
+				"--force-wasm",
+				"--wasm-optional",
+			]
+		);
+	}
+
+	#[test]
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn test_autoreload_child_args_omit_disabled_wasm_startup_flags() {
+		let args = RunServerCommand::build_autoreload_child_args(&AutoreloadChildOptions {
+			address: "127.0.0.1:8000",
+			insecure: false,
+			no_docs: false,
+			with_pages: false,
+			static_dir: "",
+			no_spa: false,
+			no_project_static: false,
+			index: None,
+			hmr_port: None,
+			no_wasm: false,
+			no_override_wasm: false,
+			force_wasm: false,
+			wasm_optional: false,
+		});
+
+		assert_eq!(args, vec!["runserver", "127.0.0.1:8000", "--noreload"]);
+	}
+
+	#[test]
 	#[cfg(feature = "migrations")]
 	fn test_makemigrations_command_metadata() {
 		let cmd = MakeMigrationsCommand;
@@ -4171,6 +4780,62 @@ port = 5432
 
 		#[rstest]
 		#[serial(env_database_url)]
+		fn test_get_database_url_from_settings_with_core_databases_default() {
+			// Arrange: the canonical nested schema (`[core.databases.default]`)
+			// rather than the legacy flat top-level `[database]` block (#5042).
+			let temp_dir = tempfile::TempDir::new().unwrap();
+			let settings_dir = temp_dir.path().join("settings");
+			std::fs::create_dir_all(&settings_dir).unwrap();
+
+			let toml_content = r#"
+[core]
+secret_key = "test-secret"
+
+[core.databases.default]
+engine = "postgresql"
+name = "nesteddb"
+user = "testuser"
+password = "testpass"
+host = "localhost"
+port = 5432
+"#;
+			std::fs::write(settings_dir.join("base.toml"), toml_content).unwrap();
+			std::fs::write(settings_dir.join("local.toml"), "").unwrap();
+
+			// Change to the temp directory
+			let original_dir = std::env::current_dir().unwrap();
+			std::env::set_current_dir(temp_dir.path()).unwrap();
+
+			// Remove DATABASE_URL to ensure settings-only resolution
+			let original_db_url = std::env::var("DATABASE_URL").ok();
+			unsafe { std::env::remove_var("DATABASE_URL") };
+
+			// Act
+			let result = get_database_url_from_settings();
+
+			// Assert
+			assert!(
+				result.is_ok(),
+				"get_database_url_from_settings failed for nested schema: {:?}",
+				result.err()
+			);
+			let url = result.unwrap();
+			assert!(
+				url.starts_with("postgresql://"),
+				"Expected postgresql:// URL, got: {}",
+				url
+			);
+			assert!(url.contains("nesteddb"), "URL should contain database name");
+
+			// Cleanup
+			if let Some(db_url) = original_db_url {
+				unsafe { std::env::set_var("DATABASE_URL", db_url) };
+			}
+			std::env::set_current_dir(original_dir).unwrap();
+		}
+
+		#[rstest]
+		#[serial(env_database_url)]
 		fn test_get_database_url_from_settings_returns_error_without_config() {
 			// Arrange
 			let temp_dir = tempfile::TempDir::new().unwrap();
@@ -4200,44 +4865,6 @@ port = 5432
 			if let Some(db_url) = original_db_url {
 				unsafe { std::env::set_var("DATABASE_URL", db_url) };
 			}
-			std::env::set_current_dir(original_dir).unwrap();
-		}
-
-		#[rstest]
-		#[serial(env_database_url)]
-		fn test_get_database_url_prefers_env_var() {
-			// Arrange
-			let temp_dir = tempfile::TempDir::new().unwrap();
-			let settings_dir = temp_dir.path().join("settings");
-			std::fs::create_dir_all(&settings_dir).unwrap();
-
-			let toml_content = r#"
-[database]
-engine = "postgresql"
-name = "settings_db"
-user = "user"
-password = "pass"
-host = "localhost"
-port = 5432
-"#;
-			std::fs::write(settings_dir.join("base.toml"), toml_content).unwrap();
-			std::fs::write(settings_dir.join("local.toml"), "").unwrap();
-
-			let original_dir = std::env::current_dir().unwrap();
-			std::env::set_current_dir(temp_dir.path()).unwrap();
-
-			let env_url = "postgresql://envuser:envpass@envhost:5433/envdb";
-			unsafe { std::env::set_var("DATABASE_URL", env_url) };
-
-			// Act
-			let result = get_database_url();
-
-			// Assert
-			assert!(result.is_ok());
-			assert_eq!(result.unwrap(), env_url);
-
-			// Cleanup
-			unsafe { std::env::remove_var("DATABASE_URL") };
 			std::env::set_current_dir(original_dir).unwrap();
 		}
 

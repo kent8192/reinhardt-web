@@ -1,0 +1,174 @@
+error: form! cannot generate a use_form runtime contract for unsupported field(s): data (HiddenField). FileField and ImageField are not supported by use_form(&form) yet.
+  --> tests/ui/form/fail/hidden_field_no_default.rs:26:10
+   |
+26 |       let _ = form! {
+   |  _____________^
+27 | |         name: BadForm,
+28 | |         action: "/x",
+29 | |         fields: {
+...  |
+32 | |     };
+   | |_____^
+   |
+   = note: this error originates in the macro `form` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `NoDefault: Default` is not satisfied
+  --> tests/ui/form/fail/hidden_field_no_default.rs:26:10
+   |
+26 |       let _ = form! {
+   |  _____________^
+27 | |         name: BadForm,
+28 | |         action: "/x",
+29 | |         fields: {
+...  |
+32 | |     };
+   | |_____^ the trait `Default` is not implemented for `NoDefault`
+   |
+   = help: see issue #48214
+   = note: this error originates in the macro `form` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `NoDefault` with `#[derive(Default)]`
+   |
+ 7 + #[derive(Default)]
+ 8 | struct NoDefault {
+   |
+
+error[E0277]: can't compare `NoDefault` with `NoDefault`
+  --> tests/ui/form/fail/hidden_field_no_default.rs:26:10
+   |
+26 |       let _ = form! {
+   |  _____________^
+27 | |         name: BadForm,
+28 | |         action: "/x",
+29 | |         fields: {
+...  |
+32 | |     };
+   | |_____^ no implementation for `NoDefault == NoDefault`
+   |
+   = help: the trait `PartialEq` is not implemented for `NoDefault`
+   = help: see issue #48214
+   = note: this error originates in the macro `form` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `NoDefault` with `#[derive(PartialEq)]`
+   |
+ 7 + #[derive(PartialEq)]
+ 8 | struct NoDefault {
+   |
+
+error[E0277]: the trait bound `NoDefault: Default` is not satisfied
+  --> tests/ui/form/fail/hidden_field_no_default.rs:26:10
+   |
+26 |       let _ = form! {
+   |  _____________^
+27 | |         name: BadForm,
+28 | |         action: "/x",
+29 | |         fields: {
+...  |
+32 | |     };
+   | |_____^ the trait `Default` is not implemented for `NoDefault`
+   |
+   = help: see issue #48214
+help: consider annotating `NoDefault` with `#[derive(Default)]`
+   |
+ 7 + #[derive(Default)]
+ 8 | struct NoDefault {
+   |
+
+error[E0277]: can't compare `NoDefault` with `NoDefault`
+  --> tests/ui/form/fail/hidden_field_no_default.rs:26:10
+   |
+26 |       let _ = form! {
+   |  _____________^
+27 | |         name: BadForm,
+28 | |         action: "/x",
+29 | |         fields: {
+...  |
+32 | |     };
+   | |_____^ no implementation for `NoDefault == NoDefault`
+   |
+   = help: the trait `PartialEq` is not implemented for `NoDefault`
+   = help: see issue #48214
+help: consider annotating `NoDefault` with `#[derive(PartialEq)]`
+   |
+ 7 + #[derive(PartialEq)]
+ 8 | struct NoDefault {
+   |
+
+error[E0277]: can't compare `NoDefault` with `NoDefault`
+  --> tests/ui/form/fail/hidden_field_no_default.rs:26:10
+   |
+26 |     let _ = form! {
+   |             ^ no implementation for `NoDefault == NoDefault`
+   |
+   = help: the trait `PartialEq` is not implemented for `NoDefault`
+note: required by a bound in `BadForm`
+  --> tests/ui/form/fail/hidden_field_no_default.rs:26:10
+   |
+26 |       let _ = form! {
+   |  _____________^
+27 | |         name: BadForm,
+28 | |         action: "/x",
+29 | |         fields: {
+...  |
+32 | |     };
+   | |_____^ required by this bound in `BadForm`
+   = note: this error originates in the macro `form` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `NoDefault` with `#[derive(PartialEq)]`
+   |
+ 7 + #[derive(PartialEq)]
+ 8 | struct NoDefault {
+   |
+
+error[E0277]: the trait bound `NoDefault: Default` is not satisfied
+  --> tests/ui/form/fail/hidden_field_no_default.rs:26:10
+   |
+26 |     let _ = form! {
+   |             ^ the trait `Default` is not implemented for `NoDefault`
+   |
+note: required by a bound in `BadForm`
+  --> tests/ui/form/fail/hidden_field_no_default.rs:26:10
+   |
+26 |       let _ = form! {
+   |  _____________^
+27 | |         name: BadForm,
+28 | |         action: "/x",
+29 | |         fields: {
+...  |
+32 | |     };
+   | |_____^ required by this bound in `BadForm`
+   = note: this error originates in the macro `form` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `NoDefault` with `#[derive(Default)]`
+   |
+ 7 + #[derive(Default)]
+ 8 | struct NoDefault {
+   |
+
+error[E0599]: the function or associated item `new` exists for struct `BadForm`, but its trait bounds were not satisfied
+  --> tests/ui/form/fail/hidden_field_no_default.rs:26:10
+   |
+ 7 |    struct NoDefault {
+   |    ---------------- doesn't satisfy `NoDefault: Default` or `NoDefault: PartialEq`
+...
+26 |        let _ = form! {
+   |  ______________^
+   | | _____________|
+   | ||
+27 | ||         name: BadForm,
+   | ||_____________________- function or associated item `new` not found for this struct
+28 | |          action: "/x",
+29 | |          fields: {
+...  |
+32 | |      };
+   | |______^ function or associated item cannot be called on `BadForm` due to unsatisfied trait bounds
+   |
+note: the following trait bounds were not satisfied:
+      `NoDefault: Default`
+      `NoDefault: PartialEq`
+  --> tests/ui/form/fail/hidden_field_no_default.rs:27:9
+   |
+27 |         name: BadForm,
+   |               ^^^^^^^
+   = note: this error originates in the macro `form` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `NoDefault` with `#[derive(Default, PartialEq)]`
+   |
+ 7 + #[derive(Default, PartialEq)]
+ 8 | struct NoDefault {
+   |

@@ -46,6 +46,7 @@
 //! yourself. See the [`SuperuserInit`] documentation for an example.
 
 use async_trait::async_trait;
+use reinhardt_db::orm::CustomManager;
 use std::marker::PhantomData;
 use std::sync::OnceLock;
 

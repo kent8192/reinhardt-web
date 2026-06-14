@@ -17,14 +17,14 @@ use std::collections::HashSet;
 use syn::{Error, Result};
 
 use reinhardt_manouche::core::{
-	FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry, FormFieldGroup,
-	FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState, FormSubmitButtonDef,
-	FormValidator, FormWatch, IconPosition, StripArgument, TypedChoicesConfig, TypedCustomAttr,
-	TypedDerivedItem, TypedFieldDisplay, TypedFieldStyling, TypedFieldType, TypedFieldValidation,
-	TypedFormAction, TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry,
-	TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState, TypedFormStyling,
-	TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon, TypedIconAttr,
-	TypedIconChild, TypedIconPosition, TypedStripArgument, TypedSubmitButtonDef,
+	AmbientArgumentsSource, FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry,
+	FormFieldGroup, FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState,
+	FormSubmitButtonDef, FormValidator, FormWatch, IconPosition, StripArgument, TypedChoicesConfig,
+	TypedCustomAttr, TypedDerivedItem, TypedFieldDisplay, TypedFieldStyling, TypedFieldType,
+	TypedFieldValidation, TypedFormAction, TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef,
+	TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState,
+	TypedFormStyling, TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon,
+	TypedIconAttr, TypedIconChild, TypedIconPosition, TypedStripArgument, TypedSubmitButtonDef,
 	TypedValidatorRule, TypedWidget, TypedWrapper, TypedWrapperAttr, ValidatorRule,
 };
 
@@ -118,7 +118,10 @@ fn validate_safe_tag(tag: &str, context: &str, span: Span) -> Result<()> {
 /// # Errors
 ///
 /// Returns a compilation error if any validation rule is violated.
-pub(super) fn validate(ast: &FormMacro) -> Result<TypedFormMacro> {
+pub(super) fn validate(
+	ast: &FormMacro,
+	ambient_arguments_source: Option<AmbientArgumentsSource>,
+) -> Result<TypedFormMacro> {
 	// Validate unique field names
 	validate_unique_field_names(&ast.fields)?;
 
@@ -180,7 +183,8 @@ pub(super) fn validate(ast: &FormMacro) -> Result<TypedFormMacro> {
 	let validators = transform_validators(&ast.validators, &ast.fields)?;
 
 	// Transform stripped server_fn arguments (reinhardt-web#3971).
-	let strip_arguments = transform_strip_arguments(&ast.strip_arguments, &ast.fields)?;
+	let strip_arguments =
+		transform_strip_arguments(&ast.strip_arguments, &ast.fields, ambient_arguments_source)?;
 
 	// The parser guarantees that `name` is Some after successful parsing.
 	let name = ast
@@ -188,25 +192,23 @@ pub(super) fn validate(ast: &FormMacro) -> Result<TypedFormMacro> {
 		.clone()
 		.expect("form name must be set after parsing");
 
-	Ok(TypedFormMacro {
-		name,
-		action,
-		method,
-		styling,
-		state,
-		callbacks,
-		watch,
-		derived,
-		redirect_on_success,
-		success_url,
-		initial_loader,
-		choices_loader,
-		slots,
-		fields,
-		validators,
-		strip_arguments,
-		span: ast.span,
-	})
+	let mut typed = TypedFormMacro::new(name, action, ast.span);
+	typed.method = method;
+	typed.styling = styling;
+	typed.state = state;
+	typed.callbacks = callbacks;
+	typed.watch = watch;
+	typed.derived = derived;
+	typed.redirect_on_success = redirect_on_success;
+	typed.success_url = success_url;
+	typed.initial_loader = initial_loader;
+	typed.choices_loader = choices_loader;
+	typed.slots = slots;
+	typed.fields = fields;
+	typed.validators = validators;
+	typed.strip_arguments = strip_arguments;
+
+	Ok(typed)
 }
 
 /// Validates that all field names are unique.
@@ -303,39 +305,16 @@ fn transform_form_styling(ast: &FormMacro) -> Result<TypedFormStyling> {
 	})
 }
 
-/// Valid state field names for form UI state management.
-const VALID_STATE_FIELDS: &[&str] = &["loading", "error", "success"];
-
-/// Transforms FormState to TypedFormState with validation.
-///
-/// Validates that all state field names are valid (`loading`, `error`, `success`).
+/// Rejects removed form-level runtime state clauses.
 fn transform_state(state: &Option<FormState>) -> Result<Option<TypedFormState>> {
 	let Some(form_state) = state else {
 		return Ok(None);
 	};
 
-	let mut typed_state = TypedFormState::new(form_state.span);
-
-	for field in &form_state.fields {
-		let name = field.name.to_string();
-		match name.as_str() {
-			"loading" => typed_state.loading = true,
-			"error" => typed_state.error = true,
-			"success" => typed_state.success = true,
-			_ => {
-				return Err(Error::new(
-					field.span,
-					format!(
-						"invalid state field: '{}'. Expected one of: {}",
-						name,
-						VALID_STATE_FIELDS.join(", ")
-					),
-				));
-			}
-		}
-	}
-
-	Ok(Some(typed_state))
+	Err(Error::new(
+		form_state.span,
+		"`form! state: { ... }` was removed; use `use_form(&form).build().form_state()` for runtime form state",
+	))
 }
 
 /// Transforms FormCallbacks to TypedFormCallbacks.
@@ -343,6 +322,18 @@ fn transform_state(state: &Option<FormState>) -> Result<Option<TypedFormState>> 
 /// For callbacks, we simply pass through the closure expressions since
 /// type checking is done by the Rust compiler during code generation.
 fn transform_callbacks(callbacks: &FormCallbacks) -> Result<TypedFormCallbacks> {
+	if callbacks.on_submit.is_some()
+		|| callbacks.on_success.is_some()
+		|| callbacks.on_success_ref.is_some()
+		|| callbacks.on_error.is_some()
+		|| callbacks.on_loading.is_some()
+	{
+		return Err(Error::new(
+			callbacks.span.unwrap_or_else(Span::call_site),
+			"`form!` runtime callback clauses were removed; configure submit lifecycle through `use_form(&form)`",
+		));
+	}
+
 	Ok(TypedFormCallbacks {
 		on_submit: callbacks.on_submit.clone(),
 		on_success: callbacks.on_success.clone(),
@@ -436,41 +427,10 @@ fn transform_derived(derived: &Option<FormDerived>) -> Result<Option<TypedFormDe
 ///
 /// Validates that the redirect path:
 /// - Starts with `/` (relative paths)
-/// - Or is a valid URL pattern
+/// - Or is an HTTPS URL
 /// - Supports `{param}` syntax for dynamic parameters
 fn transform_redirect(redirect: &Option<syn::LitStr>) -> Result<Option<String>> {
-	let Some(redirect) = redirect else {
-		return Ok(None);
-	};
-
-	let path = redirect.value();
-
-	// Validate path format
-	if path.is_empty() {
-		return Err(Error::new(
-			redirect.span(),
-			"redirect_on_success path cannot be empty",
-		));
-	}
-
-	// Reject insecure HTTP URLs - redirect may leak credentials or session tokens
-	if path.starts_with("http://") {
-		return Err(Error::new(
-			redirect.span(),
-			"redirect_on_success rejects insecure HTTP URLs to prevent credential leakage; \
-			 use HTTPS or a relative path instead",
-		));
-	}
-
-	// Path must start with / or be a valid HTTPS URL
-	if !path.starts_with('/') && !path.starts_with("https://") {
-		return Err(Error::new(
-			redirect.span(),
-			"redirect_on_success path must start with '/' or be a full HTTPS URL (https://)",
-		));
-	}
-
-	Ok(Some(path))
+	reinhardt_manouche::validator::validate_redirect_on_success(redirect)
 }
 
 /// Transforms FormSlots to TypedFormSlots.
@@ -626,7 +586,7 @@ fn transform_submit_button(btn: &FormSubmitButtonDef) -> Result<TypedSubmitButto
 /// Transforms a single field definition.
 fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	// Parse field type
-	let field_type = parse_field_type(&field.field_type)?;
+	let field_type = parse_field_type(&field.field_type, field.generics.as_ref())?;
 
 	// Extract properties into categories
 	let validation = extract_validation_properties(&field.properties)?;
@@ -660,30 +620,136 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 }
 
 /// Parses field type identifier into TypedFieldType enum.
-fn parse_field_type(ident: &syn::Ident) -> Result<TypedFieldType> {
+///
+/// `generics` carries the optional `<T1, T2, ...>` parsed off the field-type
+/// identifier in the form! DSL. For non-generic field types, any generics
+/// are rejected; for generic-capable field types, exactly one type argument
+/// is required (or zero, in which case a default type is substituted).
+fn parse_field_type(
+	ident: &syn::Ident,
+	generics: Option<&syn::punctuated::Punctuated<syn::Type, syn::Token![,]>>,
+) -> Result<TypedFieldType> {
 	let type_str = ident.to_string();
+
+	// Helper: require exactly one type argument; default to `fallback` if absent.
+	let require_one_generic = |fallback: syn::Type| -> Result<syn::Type> {
+		match generics {
+			None => Ok(fallback),
+			Some(args) if args.len() == 1 => Ok(args[0].clone()),
+			Some(args) => Err(Error::new(
+				ident.span(),
+				format!(
+					"{} accepts exactly one type parameter, found {}",
+					type_str,
+					args.len(),
+				),
+			)),
+		}
+	};
+
+	// Helper: reject any generic arguments on non-generic-capable field types.
+	let reject_generics = || -> Result<()> {
+		if generics.is_some() {
+			Err(Error::new(
+				ident.span(),
+				format!("{} does not accept a type parameter", type_str),
+			))
+		} else {
+			Ok(())
+		}
+	};
+
 	match type_str.as_str() {
-		"CharField" => Ok(TypedFieldType::CharField),
-		"TextField" => Ok(TypedFieldType::TextField),
-		"EmailField" => Ok(TypedFieldType::EmailField),
-		"PasswordField" => Ok(TypedFieldType::PasswordField),
-		"IntegerField" => Ok(TypedFieldType::IntegerField),
-		"FloatField" => Ok(TypedFieldType::FloatField),
-		"DecimalField" => Ok(TypedFieldType::DecimalField),
-		"BooleanField" => Ok(TypedFieldType::BooleanField),
-		"DateField" => Ok(TypedFieldType::DateField),
-		"TimeField" => Ok(TypedFieldType::TimeField),
-		"DateTimeField" => Ok(TypedFieldType::DateTimeField),
-		"ChoiceField" => Ok(TypedFieldType::ChoiceField),
-		"MultipleChoiceField" => Ok(TypedFieldType::MultipleChoiceField),
-		"FileField" => Ok(TypedFieldType::FileField),
-		"ImageField" => Ok(TypedFieldType::ImageField),
-		"UrlField" => Ok(TypedFieldType::UrlField),
-		"SlugField" => Ok(TypedFieldType::SlugField),
-		"UuidField" => Ok(TypedFieldType::UuidField),
-		"IpAddressField" => Ok(TypedFieldType::IpAddressField),
-		"JsonField" => Ok(TypedFieldType::JsonField),
-		"HiddenField" => Ok(TypedFieldType::HiddenField),
+		// Non-generic field types
+		"CharField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::CharField)
+		}
+		"TextField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::TextField)
+		}
+		"EmailField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::EmailField)
+		}
+		"PasswordField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::PasswordField)
+		}
+		"UrlField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::UrlField)
+		}
+		"SlugField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::SlugField)
+		}
+		"IntegerField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::IntegerField)
+		}
+		"FloatField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::FloatField)
+		}
+		"DecimalField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::DecimalField)
+		}
+		"BooleanField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::BooleanField)
+		}
+		"DateField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::DateField)
+		}
+		"TimeField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::TimeField)
+		}
+		"DateTimeField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::DateTimeField)
+		}
+		"FileField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::FileField)
+		}
+		"ImageField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::ImageField)
+		}
+		"UuidField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::UuidField)
+		}
+
+		// Generic-capable field types
+		"HiddenField" => {
+			let inner = require_one_generic(syn::parse_quote!(::std::string::String))?;
+			Ok(TypedFieldType::HiddenField { inner })
+		}
+		"ChoiceField" => {
+			let inner = require_one_generic(syn::parse_quote!(::std::string::String))?;
+			Ok(TypedFieldType::ChoiceField { inner })
+		}
+		"MultipleChoiceField" => {
+			let inner = require_one_generic(syn::parse_quote!(::std::string::String))?;
+			Ok(TypedFieldType::MultipleChoiceField { inner })
+		}
+		"JsonField" => {
+			let inner = require_one_generic(syn::parse_quote!(::std::string::String))?;
+			Ok(TypedFieldType::JsonField { inner })
+		}
+
+		// Specialized (no generic accepted)
+		"IpAddressField" => {
+			reject_generics()?;
+			Ok(TypedFieldType::IpAddressField)
+		}
+
 		_ => Err(Error::new(
 			ident.span(),
 			format!(
@@ -691,7 +757,7 @@ fn parse_field_type(ident: &syn::Ident) -> Result<TypedFieldType> {
 				PasswordField, IntegerField, FloatField, DecimalField, BooleanField, DateField, \
 				TimeField, DateTimeField, ChoiceField, MultipleChoiceField, FileField, ImageField, \
 				UrlField, SlugField, UuidField, IpAddressField, JsonField, HiddenField",
-				type_str
+				type_str,
 			),
 		)),
 	}
@@ -1279,7 +1345,7 @@ fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoic
 	})
 }
 
-/// Transforms `strip_arguments` entries into their typed form.
+/// Transforms ambient argument entries into their typed form.
 ///
 /// Validates two constraints:
 /// 1. No duplicate argument names (each server_fn parameter may only be supplied once).
@@ -1289,9 +1355,13 @@ fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoic
 fn transform_strip_arguments(
 	args: &[StripArgument],
 	fields: &[FormFieldEntry],
+	source: Option<AmbientArgumentsSource>,
 ) -> Result<Vec<TypedStripArgument>> {
 	let mut seen = HashSet::new();
 	let mut typed = Vec::with_capacity(args.len());
+	let keyword = ambient_arguments_keyword(source);
+	let canonical_suffix = ambient_arguments_canonical_suffix(source);
+	let collision_entry = ambient_arguments_collision_entry(source);
 
 	for arg in args {
 		let name_str = arg.name.to_string();
@@ -1300,7 +1370,7 @@ fn transform_strip_arguments(
 			return Err(Error::new(
 				arg.span,
 				format!(
-					"duplicate strip_arguments entry '{name_str}': each server_fn argument may only appear once"
+					"duplicate {keyword} entry '{name_str}': each server_fn argument may only appear once{canonical_suffix}"
 				),
 			));
 		}
@@ -1309,7 +1379,7 @@ fn transform_strip_arguments(
 			return Err(Error::new(
 				arg.span,
 				format!(
-					"strip_arguments key '{name_str}' collides with a declared form field; either rename the field or remove this strip entry"
+					"{keyword} key '{name_str}' collides with a declared form field; either rename the field or remove this {collision_entry} entry{canonical_suffix}"
 				),
 			));
 		}
@@ -1322,6 +1392,27 @@ fn transform_strip_arguments(
 	}
 
 	Ok(typed)
+}
+
+fn ambient_arguments_keyword(source: Option<AmbientArgumentsSource>) -> &'static str {
+	match source {
+		Some(AmbientArgumentsSource::StripArguments) => "strip_arguments",
+		_ => "ambient_arguments",
+	}
+}
+
+fn ambient_arguments_canonical_suffix(source: Option<AmbientArgumentsSource>) -> &'static str {
+	match source {
+		Some(AmbientArgumentsSource::StripArguments) => "; use ambient_arguments for new code",
+		_ => "",
+	}
+}
+
+fn ambient_arguments_collision_entry(source: Option<AmbientArgumentsSource>) -> &'static str {
+	match source {
+		Some(AmbientArgumentsSource::StripArguments) => "strip",
+		_ => "ambient",
+	}
 }
 
 /// Checks if a field with the given name exists in the field entries.
@@ -1543,11 +1634,73 @@ fn extract_string_value_from_expr(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use quote::quote;
+	use quote::{ToTokens, quote};
 
 	fn parse_and_validate(input: proc_macro2::TokenStream) -> Result<TypedFormMacro> {
+		let ambient_arguments_source =
+			reinhardt_manouche::parser::detect_ambient_arguments_source(&input);
 		let ast: FormMacro = syn::parse2(input)?;
-		validate(&ast)
+		validate(&ast, ambient_arguments_source)
+	}
+
+	fn assert_validator_parity(
+		input: proc_macro2::TokenStream,
+		mutate_ast: impl FnOnce(&mut FormMacro),
+	) {
+		let ambient_arguments_source =
+			reinhardt_manouche::parser::detect_ambient_arguments_source(&input);
+		let mut ast: FormMacro = syn::parse2(input).expect("form input must parse");
+		mutate_ast(&mut ast);
+
+		let macro_result = validate(&ast, ambient_arguments_source);
+		let manouche_result =
+			reinhardt_manouche::validator::validate_form_with_ambient_arguments_source(
+				&ast,
+				ambient_arguments_source,
+			);
+
+		match (macro_result, manouche_result) {
+			(Ok(macro_typed), Ok(manouche_typed)) => {
+				assert_eq!(macro_typed.name, manouche_typed.name);
+				assert_eq!(
+					macro_typed.redirect_on_success,
+					manouche_typed.redirect_on_success
+				);
+				assert_eq!(
+					macro_typed.success_url.is_some(),
+					manouche_typed.success_url.is_some()
+				);
+				assert_eq!(
+					strip_argument_signatures(&macro_typed.strip_arguments),
+					strip_argument_signatures(&manouche_typed.strip_arguments)
+				);
+				assert_eq!(macro_typed.fields.len(), manouche_typed.fields.len());
+			}
+			(Err(macro_err), Err(manouche_err)) => {
+				assert_eq!(macro_err.to_string(), manouche_err.to_string());
+			}
+			(Ok(_), Err(err)) => {
+				panic!("macros validator accepted input rejected by manouche: {err}");
+			}
+			(Err(err), Ok(_)) => {
+				panic!("macros validator rejected input accepted by manouche: {err}");
+			}
+		}
+	}
+
+	fn assert_validator_parity_for(input: proc_macro2::TokenStream) {
+		assert_validator_parity(input, |_| {});
+	}
+
+	fn strip_argument_signatures(args: &[TypedStripArgument]) -> Vec<(String, String)> {
+		args.iter()
+			.map(|arg| {
+				(
+					arg.name.to_string(),
+					arg.value.to_token_stream().to_string(),
+				)
+			})
+			.collect()
 	}
 
 	#[rstest::rstest]
@@ -1697,13 +1850,13 @@ mod tests {
 		};
 
 		let result = parse_and_validate(input);
-		assert!(result.is_ok());
-
-		let typed = result.unwrap();
-		let state = typed.state.expect("state should be Some");
-		assert!(state.has_loading());
-		assert!(state.has_error());
-		assert!(state.has_success());
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("`form! state: { ... }` was removed")
+		);
 	}
 
 	#[rstest::rstest]
@@ -1720,13 +1873,13 @@ mod tests {
 		};
 
 		let result = parse_and_validate(input);
-		assert!(result.is_ok());
-
-		let typed = result.unwrap();
-		let state = typed.state.expect("state should be Some");
-		assert!(state.has_loading());
-		assert!(!state.has_error());
-		assert!(!state.has_success());
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("`form! state: { ... }` was removed")
+		);
 	}
 
 	#[rstest::rstest]
@@ -1748,7 +1901,7 @@ mod tests {
 			result
 				.unwrap_err()
 				.to_string()
-				.contains("invalid state field")
+				.contains("`form! state: { ... }` was removed")
 		);
 	}
 
@@ -1787,14 +1940,13 @@ mod tests {
 		};
 
 		let result = parse_and_validate(input);
-		assert!(result.is_ok());
-
-		let typed = result.unwrap();
-		assert!(typed.callbacks.has_any());
-		assert!(typed.callbacks.has_on_submit());
-		assert!(typed.callbacks.has_on_success());
-		assert!(typed.callbacks.has_on_error());
-		assert!(typed.callbacks.has_on_loading());
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("runtime callback clauses were removed")
+		);
 	}
 
 	#[rstest::rstest]
@@ -1813,14 +1965,13 @@ mod tests {
 		};
 
 		let result = parse_and_validate(input);
-		assert!(result.is_ok());
-
-		let typed = result.unwrap();
-		assert!(typed.callbacks.has_any());
-		assert!(!typed.callbacks.has_on_submit());
-		assert!(typed.callbacks.has_on_success());
-		assert!(!typed.callbacks.has_on_error());
-		assert!(!typed.callbacks.has_on_loading());
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("runtime callback clauses were removed")
+		);
 	}
 
 	#[rstest::rstest]
@@ -1862,22 +2013,13 @@ mod tests {
 		};
 
 		let result = parse_and_validate(input);
-		assert!(result.is_ok());
-
-		let typed = result.unwrap();
-
-		// Check state
-		assert!(typed.state.is_some());
-		let state = typed.state.as_ref().unwrap();
-		assert!(state.has_loading());
-		assert!(state.has_error());
-		assert!(state.has_success());
-
-		// Check callbacks
-		assert!(typed.callbacks.has_on_success());
-		assert!(typed.callbacks.has_on_error());
-		assert!(!typed.callbacks.has_on_submit());
-		assert!(!typed.callbacks.has_on_loading());
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("`form! state: { ... }` was removed")
+		);
 	}
 
 	#[rstest::rstest]
@@ -2500,8 +2642,6 @@ mod tests {
 			server_fn: update_data,
 			initial_loader: fetch_data,
 
-			on_success: |result| { /* handle success */ },
-
 			fields: {
 				name: CharField { required },
 			},
@@ -2512,7 +2652,7 @@ mod tests {
 
 		let typed = result.unwrap();
 		assert!(typed.initial_loader.is_some());
-		assert!(typed.callbacks.has_on_success());
+		assert!(!typed.callbacks.has_any());
 	}
 
 	// =========================================================================
@@ -2775,16 +2915,12 @@ mod tests {
 	#[rstest::rstest]
 	fn test_validate_slots_with_state_and_callbacks() {
 		let input = quote! {
-			name: FullFeaturedForm,
-			server_fn: submit_data,
+		name: FullFeaturedForm,
+		server_fn: submit_data,
 
-			state: { loading, error },
-
-			on_success: |result| { /* handle */ },
-
-			slots: {
-				before_fields: || {
-					view! { <h2>"Enter Information"</h2> }
+		slots: {
+			before_fields: || {
+				view! { <h2>"Enter Information"</h2> }
 				},
 				after_fields: || {
 					view! { <button type="submit">"Save"</button> }
@@ -2800,14 +2936,8 @@ mod tests {
 		assert!(result.is_ok());
 
 		let typed = result.unwrap();
-		// Check state
-		assert!(typed.state.is_some());
-		let state = typed.state.as_ref().unwrap();
-		assert!(state.has_loading());
-		assert!(state.has_error());
-
-		// Check callbacks
-		assert!(typed.callbacks.has_on_success());
+		assert!(typed.state.is_none());
+		assert!(!typed.callbacks.has_any());
 
 		// Check slots
 		assert!(typed.slots.is_some());
@@ -2819,19 +2949,13 @@ mod tests {
 	#[rstest::rstest]
 	fn test_validate_full_step9_features() {
 		let input = quote! {
-			name: CompleteStep9Form,
-			server_fn: update_profile,
-			initial_loader: get_profile,
+		name: CompleteStep9Form,
+		server_fn: update_profile,
+		initial_loader: get_profile,
 
-			state: { loading, error, success },
-
-			on_success: |result| {
-				navigate("/profile");
-			},
-
-			slots: {
-				before_fields: || {
-					view! { <div class="form-intro">"Edit your profile"</div> }
+		slots: {
+			before_fields: || {
+				view! { <div class="form-intro">"Edit your profile"</div> }
 				},
 				after_fields: || {
 					view! {
@@ -2870,10 +2994,10 @@ mod tests {
 		assert!(typed.initial_loader.is_some());
 
 		// Check state
-		assert!(typed.state.is_some());
+		assert!(typed.state.is_none());
 
 		// Check callbacks
-		assert!(typed.callbacks.has_on_success());
+		assert!(!typed.callbacks.has_any());
 
 		// Check slots
 		assert!(typed.slots.is_some());
@@ -3388,14 +3512,12 @@ mod tests {
 	#[rstest::rstest]
 	fn test_validate_derived_with_watch_and_state() {
 		let input = quote! {
-			name: CompleteForm,
-			server_fn: create_tweet,
+		name: CompleteForm,
+		server_fn: create_tweet,
 
-			state: { loading, error },
-
-			derived: {
-				char_count: |form| form.content().get().len(),
-				is_valid: |form| form.char_count().get() <= 280,
+		derived: {
+			char_count: |form| form.content().get().len(),
+			is_valid: |form| form.char_count().get() <= 280,
 			},
 
 			watch: {
@@ -3415,10 +3537,7 @@ mod tests {
 		let typed = result.unwrap();
 
 		// Check state
-		assert!(typed.state.is_some());
-		let state = typed.state.as_ref().unwrap();
-		assert!(state.has_loading());
-		assert!(state.has_error());
+		assert!(typed.state.is_none());
 
 		// Check derived
 		assert!(typed.derived.is_some());
@@ -3710,7 +3829,10 @@ mod tests {
 		let result = transform_redirect(&Some(lit));
 		assert!(result.is_err());
 		let err = result.unwrap_err().to_string();
-		assert!(err.contains("insecure HTTP"));
+		assert_eq!(
+			err,
+			"redirect_on_success rejects HTTP URLs for security. Use HTTPS URL instead."
+		);
 	}
 
 	#[test]
@@ -3749,8 +3871,10 @@ mod tests {
 		let lit = syn::LitStr::new("ftp://example.com/file", proc_macro2::Span::call_site());
 		let result = transform_redirect(&Some(lit));
 		assert!(result.is_err());
-		let err = result.unwrap_err().to_string();
-		assert!(err.contains("must start with '/'"));
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"redirect_on_success path must be a relative path (starting with '/', './', or '../') or an HTTPS URL"
+		);
 	}
 
 	#[test]
@@ -3804,7 +3928,7 @@ mod tests {
 		);
 
 		// Act
-		let result = validate(&ast);
+		let result = validate(&ast, None);
 
 		// Assert — strict equality on the full diagnostic so any wording
 		// change forces an intentional test update (CLAUDE.md: prefer
@@ -3818,6 +3942,112 @@ mod tests {
 			 entries and fire two observer cycles. Use `redirect_on_success` for a static URL or \
 			 `success_url` for a dynamically-computed one, not both."
 		);
+	}
+
+	#[rstest::rstest]
+	fn validator_parity_rejects_removed_state_clause() {
+		let input = quote! {
+			name: StateForm,
+			server_fn: submit_form,
+
+			state: { loading, error, success },
+
+			fields: {
+				data: CharField {},
+			},
+		};
+
+		assert_validator_parity_for(input);
+	}
+
+	#[rstest::rstest]
+	fn validator_parity_rejects_removed_runtime_callback_clauses() {
+		let input = quote! {
+			name: CallbackForm,
+			server_fn: submit_form,
+
+			on_success: |result| { let _ = result; },
+			on_error: |error| { let _ = error; },
+			on_loading: |loading| { let _ = loading; },
+
+			fields: {
+				data: CharField {},
+			},
+		};
+
+		assert_validator_parity_for(input);
+	}
+
+	#[rstest::rstest]
+	fn validator_parity_rejects_ambient_argument_duplicate_with_same_diagnostic() {
+		let input = quote! {
+			name: VoteForm,
+			server_fn: submit_vote,
+			ambient_arguments: {
+				csrf_token: csrf_a(),
+				csrf_token: csrf_b(),
+			},
+			fields: {
+				choice_id: IntegerField { required },
+			},
+		};
+
+		assert_validator_parity_for(input);
+	}
+
+	#[rstest::rstest]
+	fn validator_parity_rejects_strip_argument_collision_with_same_diagnostic() {
+		let input = quote! {
+			name: VoteForm,
+			server_fn: submit_vote,
+			strip_arguments: {
+				choice_id: ambient_choice_id(),
+			},
+			fields: {
+				choice_id: IntegerField { required },
+			},
+		};
+
+		assert_validator_parity_for(input);
+	}
+
+	#[rstest::rstest]
+	fn validator_parity_rejects_simultaneous_redirect_and_success_url() {
+		let input = quote! {
+			name: VoteForm,
+			action: "/api/vote",
+			redirect_on_success: "/thanks",
+
+			fields: {
+				choice_id: IntegerField { required },
+			},
+		};
+
+		assert_validator_parity(input, |ast| {
+			ast.success_url = Some(
+				syn::parse_str::<syn::Expr>("|_form| String::from(\"/thanks-too\")")
+					.expect("success_url expression must parse"),
+			);
+		});
+	}
+
+	#[rstest::rstest]
+	#[case::dot_relative("./success")]
+	#[case::double_dot_relative("../home")]
+	#[case::mixed_case_https("HTTPS://EXAMPLE.COM/success")]
+	fn validator_parity_accepts_redirect_variants(#[case] redirect: &str) {
+		let redirect = syn::LitStr::new(redirect, proc_macro2::Span::call_site());
+		let input = quote! {
+			name: RedirectForm,
+			action: "/test",
+			redirect_on_success: #redirect,
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		assert_validator_parity_for(input);
 	}
 
 	#[rstest::rstest]

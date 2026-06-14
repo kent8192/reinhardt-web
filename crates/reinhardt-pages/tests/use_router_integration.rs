@@ -2,36 +2,33 @@
 //! Issue #4610: integration coverage for the imperative SPA navigation
 //! hook (`use_router`) on the native target.
 //!
-//! These tests install a deprecated `Router` (rather than the canonical
-//! `ClientRouter`) in the `APP_ROUTER` thread-local via the hidden
-//! `__install_router_for_test` testing hook, then exercise the public
+//! These tests install a `ClientRouter` (the canonical
+//! SPA router) in the `APP_ROUTER` thread-local via the hidden
+//! `__install_client_router_for_test` testing hook, then exercise the public
 //! `use_router()` hook end-to-end and assert that the underlying router's
 //! reactive `current_path` signal observes the navigation.
 //!
-//! `Router` is chosen over `ClientRouter` for the test fixture because its
-//! constructor (`Router::new`) is dependency-free and produces a working
-//! native-side router without pulling in any urls-app wiring. The
-//! `RouterHandle` API dispatches identically through both — see
+//! `ClientRouter` is the canonical SPA router; it is installed in the
+//! `APP_ROUTER` thread-local via `__install_client_router_for_test`.
+//! The `RouterHandle` API dispatches through the `SpaRouter` trait — see
 //! `crates/reinhardt-pages/src/app/spa_router.rs` for the trait impls.
 
-#![allow(deprecated)] // (Refs #4234) Tests exercise deprecated `pages::Router` directly.
-
 use reinhardt_pages::app::{
-	__clear_spa_router_for_test, __current_path_for_test, __install_router_for_test,
+	__clear_spa_router_for_test, __current_path_for_test, __install_client_router_for_test,
 };
 use reinhardt_pages::component::Page;
 use reinhardt_pages::reactive::hooks::use_router;
-use reinhardt_pages::router::Router;
+use reinhardt_urls::routers::ClientRouter;
 
 use rstest::rstest;
 use serial_test::serial;
 
-/// Builds a small `Router` with two named routes so navigation observably
+/// Builds a small `ClientRouter` with two named routes so navigation observably
 /// changes the `current_path` signal.
-fn build_test_router() -> Router {
-	Router::new()
-		.named_route("home", "/", || Page::text("Home"))
-		.named_route("welcome", "/welcome", || Page::text("Welcome"))
+fn build_test_router() -> ClientRouter {
+	ClientRouter::new()
+		.route("home", "/", || Page::text("Home"))
+		.route("welcome", "/welcome", || Page::text("Welcome"))
 }
 
 /// RAII guard that installs a test router on construction and clears the
@@ -42,8 +39,8 @@ fn build_test_router() -> Router {
 struct SpaRouterGuard;
 
 impl SpaRouterGuard {
-	fn install(router: Router) -> Self {
-		__install_router_for_test(router);
+	fn install(router: ClientRouter) -> Self {
+		__install_client_router_for_test(router);
 		Self
 	}
 }

@@ -13,7 +13,7 @@
 //! - Decision table: Various grant conditions
 //! - Use case: SSO scenarios, multiple scopes
 
-use reinhardt_auth::AuthenticationBackend;
+use reinhardt_auth::AuthBackend;
 use reinhardt_auth::oauth2::{
 	AccessToken, AuthorizationCode, GrantType, InMemoryOAuth2Store, OAuth2Application,
 	OAuth2Authentication, OAuth2TokenStore,
@@ -252,7 +252,7 @@ async fn test_client_validation(oauth2_with_app: OAuth2Authentication) {
 #[rstest]
 #[tokio::test]
 async fn test_get_user_via_default_repository(oauth2_auth: OAuth2Authentication) {
-	// Get user via SimpleUserRepository
+	// Get user via SimpleUserRepository (returns AuthIdentity)
 	let user = oauth2_auth
 		.get_user("test_user_id")
 		.await
@@ -260,8 +260,6 @@ async fn test_get_user_via_default_repository(oauth2_auth: OAuth2Authentication)
 
 	assert!(user.is_some(), "User should be found");
 	let user = user.unwrap();
-	assert_eq!(user.get_username(), "test_user_id");
-	assert!(user.is_active());
 	assert!(user.is_authenticated());
 }
 

@@ -7,18 +7,158 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.3...reinhardt-db@v0.1.4) - 2026-06-10
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.3...reinhardt-db@v0.2.0) - 2026-06-11
+
+Stable release of `reinhardt-db` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
+
+### Migration Notes
+
+- Update query/filter calls to the single-argument `Filter` contract and review generated migration diffs.
+- Handle reverse migration SQL as `Vec<String>` where rollback may need multiple statements.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- **`FieldMetadata` gains type-safe `nullable: bool` field** ([#4439](https://github.com/kent8192/reinhardt-web/issues/4439)).
+  `is_nullable()` reads the struct field. `with_nullable()` sets it as
+  the canonical source of truth. `with_param("null", ...)` still works
+  (auto-syncs the struct field) but should migrate to `with_nullable()`.
+  `to_model_state()` no longer copies `"null"` into `FieldState.params`.
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+- *(model)* [**breaking**] make new an alias for build
+
+### Added
+
+- *(orm)* add Django-like lookup helpers
+- *(orm)* support composite filter combinators
+- *(db)* introduce type-safe nullable field on FieldMetadata
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+- *(model)* [**breaking**] make new an alias for build
+
+### Removed
+
+- **`DatabaseConnection::get_database_url_from_env_or_settings(base_dir)`**
+  (deprecated since `0.1.0-rc.29`) — removed per STABILITY_POLICY § SP-4
+  and umbrella Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
+  The function reloaded `settings/<profile>.toml` from disk on every
+  call, duplicating the framework's settings-loading logic. Use
+  `DatabaseConnection::database_url_from(settings, env_override)` with
+  a pre-built `ProjectSettings` instead.
 
 ### Fixed
 
-- *(db)* emit rename columns for safe makemigrations renames
-- *(db)* avoid unique constraint churn on column rename
+- *(orm)* address lookup review edge cases
+- *(db)* align LIKE escape SQL expectations
+- *(db)* qualify Manager in rustdoc examples and add missing Objects type
+- *(docs)* resolve remaining cross-crate intra-doc link errors
+- repair release examples tests
 
-## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.2...reinhardt-db@v0.1.3) - 2026-05-31
+- *(ci)* pin broken upstream transitive releases
+
+### Performance
+
+- atomize facade dependency feature gates
+- trim standard facade feature dependencies
 
 ### Documentation
 
-- align documentation with current APIs
+- *(reinhardt-db)* fix QuerySet doctests for single-argument filter() API
+- *(reinhardt-db)* qualify Filter path in with_db doctests
+
+### Maintenance
+
+- *(examples)* remove examples-twitter
+
+
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.0-rc.4...reinhardt-db@v0.2.0-rc.5) - 2026-06-11
+
+### Added
+
+- *(orm)* add Django-like lookup helpers
+- *(orm)* support composite filter combinators
+
+### Fixed
+
+- *(orm)* address lookup review edge cases
+- *(db)* align LIKE escape SQL expectations
+
+## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.0-rc.2...reinhardt-db@v0.2.0-rc.3) - 2026-06-05
+
+### Fixed
+
+- address CodeRabbit dependency gate review
+
+### Performance
+
+- atomize facade dependency feature gates
+- trim standard facade feature dependencies
+
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.3...reinhardt-db@v0.2.0-rc.2) - 2026-06-03
+
+### Added
+
+- *(db)* introduce type-safe nullable field on FieldMetadata
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+- *(model)* [**breaking**] make new an alias for build
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Documentation
+
+- *(reinhardt-db)* fix QuerySet doctests for single-argument filter() API
+- *(reinhardt-db)* qualify Filter path in with_db doctests
+
+### Fixed
+
+- *(db)* address CodeRabbit review on CHANGELOG and with_param normalization
+- *(ci)* recover develop release-plz prerelease
+- *(db)* qualify Manager in rustdoc examples and add missing Objects type
+- *(docs)* resolve remaining cross-crate intra-doc link errors
+- repair release examples tests
+
+### Maintenance
+
+- *(examples)* remove examples-twitter
+
+### Styling
+
+- apply formatter fixes across workspace
+- apply rustfmt to non-DSL files on develop/0.2.0
+
+### Breaking Changes
+
+- **`FieldMetadata` gains type-safe `nullable: bool` field** ([#4439](https://github.com/kent8192/reinhardt-web/issues/4439)).
+  `is_nullable()` reads the struct field. `with_nullable()` sets it as
+  the canonical source of truth. `with_param("null", ...)` still works
+  (auto-syncs the struct field) but should migrate to `with_nullable()`.
+  `to_model_state()` no longer copies `"null"` into `FieldState.params`.
+
+### Removed
+
+#### BREAKING CHANGES
+
+- **`DatabaseConnection::get_database_url_from_env_or_settings(base_dir)`**
+  (deprecated since `0.1.0-rc.29`) — removed per STABILITY_POLICY § SP-4
+  and umbrella Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
+  The function reloaded `settings/<profile>.toml` from disk on every
+  call, duplicating the framework's settings-loading logic. Use
+  `DatabaseConnection::database_url_from(settings, env_override)` with
+  a pre-built `ProjectSettings` instead.
+
+In-tree test deleted: `crates/reinhardt-db/tests/database_url_loader_interpolation.rs`.
+
+Note: this PR keeps the consumer in `reinhardt-commands/src/builtin.rs`
+(`get_database_url_from_settings`) unchanged. That helper still
+references the removed entry point and will be migrated in a
+follow-up `chore(commands)!: replace get_database_url_from_settings with
+database_url_from` PR.
+
+See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md#reinhardt-db)
+for the migration guide.
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-rc.30...reinhardt-db@v0.1.0) - 2026-05-22
 

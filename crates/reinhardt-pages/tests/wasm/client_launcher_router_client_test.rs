@@ -11,8 +11,6 @@
 //!   `wasm-pack test --headless --chrome crates/reinhardt-pages -- --test client_launcher_router_client_test`
 
 #![cfg(wasm)]
-#![allow(deprecated)] // (Refs #4234) Test exercises deprecated `pages::Router` for mutual-exclusion check.
-
 use reinhardt_core::page::Page;
 use reinhardt_pages::app::ClientLauncher;
 use reinhardt_urls::routers::ClientRouter;
@@ -62,8 +60,8 @@ fn router_client_launcher_accepts_configured_router() {
 	let launcher_result = ClientLauncher::new("#app")
 		.router_client(move || {
 			let r = ClientRouter::new()
-				.named_route("home", "/", home)
-				.named_route("about", "/about", about);
+				.route("home", "/", home)
+				.route("about", "/about", about);
 			let _sub = r.on_navigate(move |_, _| {
 				dispatched_clone.set(dispatched_clone.get() + 1);
 			});
@@ -76,24 +74,5 @@ fn router_client_launcher_accepts_configured_router() {
 		launcher_result.is_ok(),
 		"router_client launch must succeed, got: {:?}",
 		launcher_result.err()
-	);
-}
-
-#[wasm_bindgen_test]
-fn router_client_and_router_are_mutually_exclusive() {
-	// Arrange
-	let _root = install_app_root();
-
-	// Act: configure both routers; `launch()` must reject this.
-	// File-scope `#![allow(deprecated)]` covers `router(...)` and `Router::new`.
-	let result = ClientLauncher::new("#app")
-		.router(reinhardt_pages::router::Router::new)
-		.router_client(ClientRouter::new)
-		.launch();
-
-	// Assert
-	assert!(
-		result.is_err(),
-		"setting both `router(...)` and `router_client(...)` must error"
 	);
 }

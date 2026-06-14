@@ -144,8 +144,7 @@ pub(crate) fn parse_action_args_with_defaults(
 				};
 				// `url_name` is later passed to `syn::Ident::new(...)` by
 				// the viewset/routes macro emitters to build identifiers
-				// like `__for_each_viewset_meta_<url_name>` and the typed
-				// `ResolvedUrls::<route>()` accessor. `syn::Ident::new`
+				// like `__for_each_viewset_meta_<url_name>`. `syn::Ident::new`
 				// panics on non-identifier input (e.g. `"highlight-code"`
 				// or `"foo bar"`), which surfaces at proc-macro expansion
 				// as an obscure rustc message. Validate as a Rust

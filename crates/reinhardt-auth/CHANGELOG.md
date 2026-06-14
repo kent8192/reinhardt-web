@@ -7,18 +7,197 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.3...reinhardt-auth@v0.1.4) - 2026-06-10
+## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.3...reinhardt-auth@v0.2.0) - 2026-06-11
 
-### Maintenance
+Stable release of `reinhardt-auth` for the Reinhardt 0.2.0 line. This
+entry consolidates the 0.2.0 release-candidate series; the original
+RC entries remain below as detailed history.
 
-- update Cargo.toml dependencies
+### Migration Notes
 
-## [0.1.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.2...reinhardt-auth@v0.1.3) - 2026-05-31
+- Replace old auth user traits and fixture types with `AuthIdentity`, `BaseUser` / `FullUser`, `PermissionsMixin`, and application-owned `#[user]` models.
+- Use `CurrentUser<U>` as the canonical extractor; `AuthUser<U>` is only a deprecated compatibility wrapper.
+- See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
+
+### Breaking Changes
+
+- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+- *(auth)* [**breaking**] remove RC-deprecated CurrentUser, DefaultUser, and User trait (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520), closes [[#4652](https://github.com/kent8192/reinhardt-web/issues/4652)](https://github.com/kent8192/reinhardt-web/issues/4652))
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+- *(model)* [**breaking**] make new an alias for build
+
+### Added
+
+- *(auth)* [**breaking**] remove RC-deprecated CurrentUser, DefaultUser, and User trait (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520), closes [[#4652](https://github.com/kent8192/reinhardt-web/issues/4652)](https://github.com/kent8192/reinhardt-web/issues/4652))
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+- *(model)* [**breaking**] make new an alias for build
+- *(auth)* add settings fragments for session, jwt, token rotation
+
+### Changed
+
+- *(auth)* make CurrentUser canonical extractor
+
+### Deprecated
+
+- *(auth)* deprecate SessionConfig, JwtConfig, TokenRotationConfig
+
+### Removed
+
+- **`CurrentUser<U>` struct** (`src/current_user.rs`, deprecated
+  `0.1.0-rc.12`) — entire module removed. Use the canonical
+  `AuthUser<U>` extractor (`src/auth_user.rs`) directly. Closes
+  Issue #4652.
+
+  Note: `CurrentUser` could **not** be retained as a type alias
+  (the original plan in #4652) because its on-the-wire shape
+  (`Option<U>` + `Option<Uuid>`) differs from `AuthUser`'s
+  tuple-struct shape — a type alias would break pattern-matching
+  call sites. Migration is therefore a struct-replacement rather
+  than a no-op alias.
+- **`DefaultUser` struct** (`src/default_user.rs`, deprecated
+  `0.1.0-rc.15`) — entire module removed. Define your own user type
+  with the `#[user]` attribute macro.
+- **`User` trait + `SimpleUser` + `AnonymousUser`** (`src/core/user.rs`,
+  deprecated `0.1.0-rc.15`) — entire module removed. Use
+  `AuthIdentity` + `BaseUser` / `FullUser` + `PermissionsMixin`
+  instead.
+
+### Fixed
+
+- stop implicit openapi schema macro output
+- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(macros)* suppress missing_docs on generated Info companion types
+
+### Performance
+
+- atomize facade dependency feature gates
 
 ### Documentation
 
-- align documentation with current APIs
-- fix version marker counts
+- *(release)* enforce public API doc coverage
+- *(auth)* update core.rs and lib.rs doc references for removed types
+- *(di,auth)* fix rustdoc link warnings on nightly
+
+### Maintenance
+
+- *(auth)* add reinhardt-conf dependency for settings fragments
+
+### Testing
+
+- *(auth)* remove time-based permission clock flake
+
+
+## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.2.0-rc.4...reinhardt-auth@v0.2.0-rc.5) - 2026-06-11
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+
+### Testing
+
+- *(auth)* remove time-based permission clock flake
+
+## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.2.0-rc.3...reinhardt-auth@v0.2.0-rc.4) - 2026-06-06
+
+### Changed
+
+- *(auth)* make CurrentUser canonical extractor
+
+## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.2.0-rc.2...reinhardt-auth@v0.2.0-rc.3) - 2026-06-05
+
+### Fixed
+
+- address CodeRabbit dependency gate review
+- stop implicit openapi schema macro output
+
+### Performance
+
+- atomize facade dependency feature gates
+
+## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.3...reinhardt-auth@v0.2.0-rc.2) - 2026-06-03
+
+### Added
+
+- *(auth)* [**breaking**] remove RC-deprecated CurrentUser, DefaultUser, and User trait (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520), closes [[#4652](https://github.com/kent8192/reinhardt-web/issues/4652)](https://github.com/kent8192/reinhardt-web/issues/4652))
+- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
+- *(model)* [**breaking**] make new an alias for build
+- *(auth)* add settings fragments for session, jwt, token rotation
+
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Deprecated
+
+- *(auth)* deprecate SessionConfig, JwtConfig, TokenRotationConfig
+
+### Documentation
+
+- *(auth)* update core.rs and lib.rs doc references for removed types
+- *(di,auth)* fix rustdoc link warnings on nightly
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+- *(auth)* address CodeRabbit review feedback
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(auth,urls,pages)* remove stale references and fix latent clippy lints
+- *(macros)* suppress missing_docs on generated Info companion types
+- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
+
+### Maintenance
+
+- *(auth)* add reinhardt-conf dependency for settings fragments
+
+### Styling
+
+- apply formatter fixes across workspace
+
+### Removed
+
+#### BREAKING CHANGES
+
+Removed all 3 RC-deprecated APIs from `reinhardt-auth` per
+STABILITY_POLICY § SP-4 (umbrella Issue
+[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)) plus
+closed companion Issue
+[#4652](https://github.com/kent8192/reinhardt-web/issues/4652).
+
+- **`CurrentUser<U>` struct** (`src/current_user.rs`, deprecated
+  `0.1.0-rc.12`) — entire module removed. Use the canonical
+  `AuthUser<U>` extractor (`src/auth_user.rs`) directly. Closes
+  Issue #4652.
+
+  Note: `CurrentUser` could **not** be retained as a type alias
+  (the original plan in #4652) because its on-the-wire shape
+  (`Option<U>` + `Option<Uuid>`) differs from `AuthUser`'s
+  tuple-struct shape — a type alias would break pattern-matching
+  call sites. Migration is therefore a struct-replacement rather
+  than a no-op alias.
+
+- **`DefaultUser` struct** (`src/default_user.rs`, deprecated
+  `0.1.0-rc.15`) — entire module removed. Define your own user type
+  with the `#[user]` attribute macro.
+
+- **`User` trait + `SimpleUser` + `AnonymousUser`** (`src/core/user.rs`,
+  deprecated `0.1.0-rc.15`) — entire module removed. Use
+  `AuthIdentity` + `BaseUser` / `FullUser` + `PermissionsMixin`
+  instead.
+
+### Known consumer migration follow-up
+
+This PR removes the symbols from `reinhardt-auth` itself. Workspace
+consumers that still reference the removed types — including
+`reinhardt-middleware`, `reinhardt-rest`, `reinhardt-http`,
+`reinhardt-views`, the `examples-tutorial-basis` app (per #4652's
+companion-PR section), and the workspace facade `reinhardt-web` — will
+need a coordinated migration in a follow-up PR. CI on this PR is
+expected to fail compilation on those crates until the follow-up lands.
+
+See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md#reinhardt-auth)
+for the migration guide.
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-rc.30...reinhardt-auth@v0.1.0) - 2026-05-22
 

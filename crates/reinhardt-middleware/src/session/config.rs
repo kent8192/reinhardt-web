@@ -1,7 +1,5 @@
 //! `SessionConfig`: cookie name, TTL, and cookie-attribute knobs.
 
-#[allow(deprecated)]
-use reinhardt_conf::Settings;
 use std::time::Duration;
 
 /// Session configuration
@@ -130,30 +128,6 @@ impl SessionConfig {
 	pub fn with_path(mut self, path: String) -> Self {
 		self.path = path;
 		self
-	}
-
-	/// Create a `SessionConfig` from application `Settings`
-	///
-	/// Maps `Settings.core.security.session_cookie_secure` to `SessionConfig.secure`.
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_conf::Settings;
-	/// use reinhardt_middleware::session::SessionConfig;
-	///
-	/// #[allow(deprecated)]
-	/// let settings = Settings::default();
-	/// #[allow(deprecated)]
-	/// let config = SessionConfig::from_settings(&settings);
-	/// assert!(!config.secure);
-	/// ```
-	#[allow(deprecated)] // Settings is deprecated in favor of composable fragments
-	pub fn from_settings(settings: &Settings) -> Self {
-		Self {
-			secure: settings.core.security.session_cookie_secure,
-			..Self::default()
-		}
 	}
 }
 

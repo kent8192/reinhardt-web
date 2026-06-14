@@ -51,6 +51,7 @@ pub struct Choice {
 	pub votes: i32,
 }
 
+#[cfg(native)]
 impl Choice {
 	/// Increment the vote count and persist it.
 	///
@@ -66,7 +67,7 @@ impl Choice {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, native))]
 mod tests {
 	use super::*;
 	use rstest::rstest;

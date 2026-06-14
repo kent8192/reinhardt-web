@@ -129,6 +129,11 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 				mount_inner(child, parent)?;
 			}
 		}
+		Page::KeyedFragment(children) => {
+			for (_, child) in children {
+				mount_inner(child, parent)?;
+			}
+		}
 		Page::Empty => {}
 		Page::WithHead { view, .. } => {
 			// On client-side, head is handled separately; just mount the content

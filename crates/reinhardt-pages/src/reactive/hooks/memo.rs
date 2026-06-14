@@ -1,8 +1,12 @@
-//! Memoization hooks: use_memo and use_callback
+//! Memoization hooks: use_memo, use_callback, use_callback_with
 //!
-//! These hooks provide React-like memoization built on top of Memo and Callback.
+//! React-aligned hooks built on top of [`Memo::new_with_deps`] and the
+//! `callback_with_deps` Rc-swap helper. All three take an explicit
+//! dependency tuple as the second argument (Refs #4195).
 
-use crate::callback::Callback;
+use reinhardt_core::reactive::deps::IntoDeps;
+
+use crate::callback::{Callback, callback_with_deps};
 use crate::reactive::Memo;
 
 #[cfg(wasm)]
@@ -16,9 +20,9 @@ type EventArg = crate::component::DummyEvent;
 /// This is the React-like equivalent of `useMemo`. The calculation is re-run
 /// only when its reactive dependencies change.
 ///
-/// Unlike React's useMemo, dependencies are automatically tracked - you don't
-/// need to specify a dependency array. Any Signal accessed inside the calculation
-/// will be tracked as a dependency.
+/// Reinhardt Pages uses an explicit dependency tuple instead of a React
+/// dependency array. Signal reads inside the calculation do not subscribe
+/// implicitly; the tuple passed as `deps` determines when the memo re-runs.
 ///
 /// # Type Parameters
 ///
@@ -28,6 +32,7 @@ type EventArg = crate::component::DummyEvent;
 /// # Arguments
 ///
 /// * `f` - A function that performs the calculation
+/// * `deps` - Explicit dependency tuple; pass `()` for mount-only memoization
 ///
 /// # Returns
 ///
@@ -42,26 +47,30 @@ type EventArg = crate::component::DummyEvent;
 /// let (filter, set_filter) = use_state(2);
 ///
 /// // Expensive filtering operation - only re-runs when items or filter change
-/// let filtered = use_memo({
-///     let items = items.clone();
-///     let filter = filter.clone();
-///     move || {
-///         items.get()
-///             .into_iter()
-///             .filter(|&x| x > filter.get())
-///             .collect::<Vec<_>>()
-///     }
-/// });
+/// let filtered = use_memo(
+///     {
+///         let items = items.clone();
+///         let filter = filter.clone();
+///         move || {
+///             items.get()
+///                 .into_iter()
+///                 .filter(|&x| x > filter.get())
+///                 .collect::<Vec<_>>()
+///         }
+///     },
+///     (items.clone(), filter.clone()),
+/// );
 ///
 /// // Reading the memoized value
 /// let result = filtered.get();
 /// ```
-pub fn use_memo<T, F>(f: F) -> Memo<T>
+pub fn use_memo<T, F, D>(f: F, deps: D) -> Memo<T>
 where
 	T: Clone + 'static,
 	F: FnMut() -> T + 'static,
+	D: IntoDeps,
 {
-	Memo::new(f)
+	Memo::new_with_deps(f, deps.into_deps())
 }
 
 /// Memoizes a callback function to maintain a stable reference.
@@ -113,11 +122,13 @@ where
 /// The callback captures values at creation time. To use the latest values,
 /// capture Signals (which are cheap to clone) rather than their values.
 #[cfg(wasm)]
-pub fn use_callback<F>(f: F) -> Callback<EventArg, ()>
+#[track_caller]
+pub fn use_callback<F, D>(f: F, deps: D) -> Callback<EventArg, ()>
 where
 	F: Fn(EventArg) + 'static,
+	D: IntoDeps,
 {
-	Callback::new(f)
+	callback_with_deps::<EventArg, ()>(f, deps.into_deps())
 }
 
 /// Memoizes a callback function to maintain a stable reference (server-side version).
@@ -125,11 +136,13 @@ where
 /// See the WASM version for full documentation.
 /// Requires `Send + Sync` bounds for thread-safe server-side usage.
 #[cfg(native)]
-pub fn use_callback<F>(f: F) -> Callback<EventArg, ()>
+#[track_caller]
+pub fn use_callback<F, D>(f: F, deps: D) -> Callback<EventArg, ()>
 where
 	F: Fn(EventArg) + Send + Sync + 'static,
+	D: IntoDeps,
 {
-	Callback::new(f)
+	callback_with_deps::<EventArg, ()>(f, deps.into_deps())
 }
 
 /// Creates a memoized callback with custom argument and return types.
@@ -160,11 +173,15 @@ where
 /// assert_eq!(add.call(5), 6);
 /// ```
 #[cfg(wasm)]
-pub fn use_callback_with<Args, Ret, F>(f: F) -> Callback<Args, Ret>
+#[track_caller]
+pub fn use_callback_with<Args, Ret, F, D>(f: F, deps: D) -> Callback<Args, Ret>
 where
 	F: Fn(Args) -> Ret + 'static,
+	Args: 'static,
+	Ret: 'static,
+	D: IntoDeps,
 {
-	Callback::new(f)
+	callback_with_deps::<Args, Ret>(f, deps.into_deps())
 }
 
 /// Creates a memoized callback with custom argument and return types (server-side version).
@@ -172,11 +189,15 @@ where
 /// See the WASM version for full documentation.
 /// Requires `Send + Sync` bounds for thread-safe server-side usage.
 #[cfg(native)]
-pub fn use_callback_with<Args, Ret, F>(f: F) -> Callback<Args, Ret>
+#[track_caller]
+pub fn use_callback_with<Args, Ret, F, D>(f: F, deps: D) -> Callback<Args, Ret>
 where
 	F: Fn(Args) -> Ret + Send + Sync + 'static,
+	Args: 'static,
+	Ret: 'static,
+	D: IntoDeps,
 {
-	Callback::new(f)
+	callback_with_deps::<Args, Ret>(f, deps.into_deps())
 }
 
 #[cfg(test)]
@@ -188,7 +209,7 @@ mod tests {
 	#[test]
 	#[serial]
 	fn test_use_memo_basic() {
-		let memo = use_memo(|| 42);
+		let memo = use_memo(|| 42, ());
 		assert_eq!(memo.get(), 42);
 	}
 
@@ -197,10 +218,13 @@ mod tests {
 	fn test_use_memo_with_signal() {
 		let count = Signal::new(5);
 
-		let doubled = use_memo({
-			let count = count.clone();
-			move || count.get() * 2
-		});
+		let doubled = use_memo(
+			{
+				let count = count.clone();
+				move || count.get() * 2
+			},
+			(count.clone(),),
+		);
 
 		assert_eq!(doubled.get(), 10);
 	}
@@ -210,10 +234,13 @@ mod tests {
 	fn test_use_memo_complex() {
 		let items = Signal::new(vec![1, 2, 3, 4, 5]);
 
-		let sum = use_memo({
-			let items = items.clone();
-			move || items.get().iter().sum::<i32>()
-		});
+		let sum = use_memo(
+			{
+				let items = items.clone();
+				move || items.get().iter().sum::<i32>()
+			},
+			(items.clone(),),
+		);
 
 		assert_eq!(sum.get(), 15);
 	}
@@ -223,17 +250,18 @@ mod tests {
 	fn test_use_callback() {
 		use crate::component::DummyEvent;
 
-		let callback = use_callback(|_: DummyEvent| {});
+		let callback = use_callback(|_: DummyEvent| {}, ());
 		callback.call(DummyEvent::default());
 	}
 
 	#[cfg(native)]
 	#[test]
 	fn test_use_callback_with() {
-		let add_one = use_callback_with(|x: i32| x + 1);
+		let add_one = use_callback_with::<i32, i32, _, _>(|x: i32| x + 1, ());
 		assert_eq!(add_one.call(5), 6);
 
-		let concat = use_callback_with(|s: String| format!("Hello, {}", s));
+		let concat =
+			use_callback_with::<String, String, _, _>(|s: String| format!("Hello, {}", s), ());
 		assert_eq!(concat.call("World".to_string()), "Hello, World");
 	}
 }

@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-pages"
-version = "0.1.4"
+version = "0.2.0-rc.6"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -27,7 +27,7 @@ ast = []
 # Enables the `tests/integration/spa_navigation_e2e_test.rs` integration
 # test (Refs #4088). This is a marker feature: the actual test deps
 # (`reinhardt-test`, `axum`, `tower-http`) live as native-only path
-# dev-dependencies (see `[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]`).
+# dev-dependencies (see `[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]`).
 # Per CLAUDE.md KI-2, `reinhardt-test` is a path-only dev-dep here to avoid
 # both cyclic publishable dependencies and release-plz publish ordering
 # breakage. Cargo dev-dependencies cannot be optional, so feature gating
@@ -76,6 +76,7 @@ web-sys-full = [
 	"web-sys/HtmlFormElement",
 	"web-sys/HtmlTextAreaElement",
 	"web-sys/HtmlSelectElement",
+	"web-sys/HtmlOptionElement",
 	"web-sys/DomTokenList",
 	"web-sys/NamedNodeMap",
 	"web-sys/Attr",
@@ -84,6 +85,7 @@ web-sys-full = [
 	"web-sys/HtmlDocument",
 	"web-sys/History",
 	"web-sys/Location",
+	"web-sys/Url",
 	"web-sys/WebSocket",
 	"web-sys/MessageEvent",
 	"web-sys/CloseEvent",
@@ -92,6 +94,11 @@ web-sys-full = [
 ]
 
 [dependencies]
+# Builder generator for `Component { ... }` invocation form (spec §3.5.2).
+# Used as a runtime dep so user code can `#[derive(bon::Builder)]` on
+# component prop structs. Staged for removal under spec §10.
+bon = { workspace = true }
+
 # Constant-time comparison for CSRF token verification
 subtle = { workspace = true }
 
@@ -171,6 +178,7 @@ web-sys = { version = "0.3.83", features = [
 	# History API (for router)
 	"History",
 	"Location",
+	"Url",
 	# Storage API (for JWT token management)
 	"Storage",
 	# WebSocket API
@@ -182,7 +190,8 @@ web-sys = { version = "0.3.83", features = [
 ] }
 
 # Async support for WASM
-reinhardt-core = { workspace = true, features = ["reactive", "page", "security"] }
+reinhardt-core = {workspace = true, default-features = false, features = ["reactive", "page", "security"]}
+smallvec = { workspace = true }
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 wasm-bindgen-futures = "0.4.56"
 reqwest = { workspace = true, default-features = false, features = ["json"] }
@@ -192,7 +201,7 @@ uuid = { version = "1.7", features = ["v7", "js"] }
 # `client_router::history` primitives (deduplicates with the server-side
 # dep below). Server-only deps inside reinhardt-urls are gated by the
 # wasm target, so the default features are safe on wasm.
-reinhardt-urls = { workspace = true, features = ["client-router"] }
+reinhardt-urls = { workspace = true, default-features = false, features = ["client-router"] }
 
 # Server-side only dependencies (DI, HTTP, Forms, Server Function Registry)
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
@@ -200,7 +209,7 @@ reinhardt-forms = { workspace = true }
 reinhardt-di = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-middleware = { workspace = true }
-reinhardt-urls = { workspace = true, features = ["routers", "client-router"] }
+reinhardt-urls = { workspace = true, default-features = false, features = ["routers", "client-router"] }
 reinhardt-server = { workspace = true }
 reinhardt-utils = { workspace = true, features = ["staticfiles"] }
 hyper = { workspace = true }
@@ -225,13 +234,17 @@ serial_test = "3"
 trybuild = "1.0"
 rstest = { workspace = true }
 tempfile = { workspace = true }
+# `form!`'s `DateField` / `TimeField` / `DateTimeField` codegen emits bare
+# `chrono::Naive*` paths, so trybuild fixtures exercising those fields need
+# `chrono` resolvable in the generated fixture binary.
+chrono = { workspace = true }
 
-[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
 # Used by tests/wasm/client_launcher_navigation_test.rs (Refs #4075) to
 # yield to the reactive scheduler between `Router::push` calls.
 gloo-timers = { version = "0.3", features = ["futures"] }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
 criterion = { workspace = true }
 proptest = { workspace = true }
 hyper-util = { workspace = true }
