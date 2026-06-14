@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0-rc.6...reinhardt-web@v0.2.0-rc.7) - 2026-06-14
+
+### Documentation
+
+- *(tutorial)* replace rest tutorial index with DI-centric structure
+- *(tutorial)* add rest tutorial part 1 project setup
+- *(tutorial)* add rest tutorial part 2 first endpoints
+- *(tutorial)* add rest tutorial part 3 models and database
+- *(tutorial)* add rest tutorial part 4 dependency injection
+- *(tutorial)* add rest tutorial part 5 serializers and validation
+- *(tutorial)* add rest tutorial part 6 viewsets and routers
+- *(tutorial)* update rest tutorial navigation links
+- *(tutorial)* replace basis tutorial index with feature-slice structure
+- *(tutorial)* add basis tutorial part 1 project setup
+- *(tutorial)* add basis tutorial part 2 poll index
+- *(tutorial)* add basis tutorial part 3 detail and voting
+- *(tutorial)* add basis tutorial part 4 users and authentication
+- *(tutorial)* correct basis part 3 vote ownership check snippet
+- *(tutorial)* add basis tutorial part 5 ownership and crud
+- *(tutorial)* add basis tutorial part 6 admin and static files
+- *(tutorial)* add basis tutorial part 7 testing
+- *(examples)* update basis tutorial example README for feature slices
+- *(tutorial)* address CodeRabbit basis tutorial feedback
+
+### Fixed
+
+- *(infra)* declare cancel runner terraform variables
+- *(ci)* clear promotion scan blockers
+- *(commands)* satisfy clippy for local infra fallback
+
+### Maintenance
+
+- *(release)* prepare 0.2.0 promotion to main
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.3...reinhardt-web@v0.2.0) - 2026-06-11
 
 Stable 0.2.0 is the first release of the Reinhardt 0.2 line. It
