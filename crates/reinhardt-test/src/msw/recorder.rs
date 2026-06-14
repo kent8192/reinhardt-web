@@ -1,10 +1,10 @@
 //! Request recording and query/assertion API.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use super::matcher::UrlMatcher;
+use super::state::RecorderHandle;
 
 /// A recorded intercepted request.
 #[derive(Debug, Clone)]
@@ -46,28 +46,25 @@ impl RequestRecorder {
 
 /// Filtered query over recorded requests.
 pub struct CallQuery<'a> {
-	recorder: &'a RefCell<RequestRecorder>,
+	recorder: RecorderHandle,
 	matcher: UrlMatcher,
+	_marker: PhantomData<&'a ()>,
 }
 
 impl<'a> CallQuery<'a> {
-	pub(crate) fn new(
-		recorder: &'a RefCell<RequestRecorder>,
-		pattern: impl Into<UrlMatcher>,
-	) -> Self {
+	pub(crate) fn new(recorder: &RecorderHandle, pattern: impl Into<UrlMatcher>) -> Self {
 		Self {
-			recorder,
+			recorder: recorder.clone(),
 			matcher: pattern.into(),
+			_marker: PhantomData,
 		}
 	}
 
 	fn filtered(&self) -> Vec<RecordedRequest> {
 		self.recorder
-			.borrow()
 			.all()
-			.iter()
+			.into_iter()
 			.filter(|r| self.matcher.matches(&r.url))
-			.cloned()
 			.collect()
 	}
 
@@ -194,16 +191,10 @@ mod tests {
 
 	#[rstest]
 	fn recorder_records_and_counts() {
-		let recorder = RefCell::new(RequestRecorder::new());
-		recorder
-			.borrow_mut()
-			.record(make_request("/api/users", "GET"));
-		recorder
-			.borrow_mut()
-			.record(make_request("/api/users", "POST"));
-		recorder
-			.borrow_mut()
-			.record(make_request("/api/posts", "GET"));
+		let recorder = RecorderHandle::new();
+		recorder.record(make_request("/api/users", "GET"));
+		recorder.record(make_request("/api/users", "POST"));
+		recorder.record(make_request("/api/posts", "GET"));
 
 		let query = CallQuery::new(&recorder, "/api/users");
 		assert_eq!(query.count(), 2);
@@ -211,9 +202,9 @@ mod tests {
 
 	#[rstest]
 	fn call_query_first_and_last() {
-		let recorder = RefCell::new(RequestRecorder::new());
-		recorder.borrow_mut().record(make_request("/api/a", "GET"));
-		recorder.borrow_mut().record(make_request("/api/a", "POST"));
+		let recorder = RecorderHandle::new();
+		recorder.record(make_request("/api/a", "GET"));
+		recorder.record(make_request("/api/a", "POST"));
 
 		let query = CallQuery::new(&recorder, "/api/a");
 		assert_eq!(query.first().unwrap().method, "GET");
@@ -222,37 +213,37 @@ mod tests {
 
 	#[rstest]
 	fn assert_called_succeeds() {
-		let recorder = RefCell::new(RequestRecorder::new());
-		recorder.borrow_mut().record(make_request("/api/x", "GET"));
+		let recorder = RecorderHandle::new();
+		recorder.record(make_request("/api/x", "GET"));
 		CallQuery::new(&recorder, "/api/x").assert_called();
 	}
 
 	#[rstest]
 	#[should_panic(expected = "Expected at least one call")]
 	fn assert_called_fails() {
-		let recorder = RefCell::new(RequestRecorder::new());
+		let recorder = RecorderHandle::new();
 		CallQuery::new(&recorder, "/api/x").assert_called();
 	}
 
 	#[rstest]
 	fn assert_not_called_succeeds() {
-		let recorder = RefCell::new(RequestRecorder::new());
+		let recorder = RecorderHandle::new();
 		CallQuery::new(&recorder, "/api/x").assert_not_called();
 	}
 
 	#[rstest]
 	fn assert_count_succeeds() {
-		let recorder = RefCell::new(RequestRecorder::new());
-		recorder.borrow_mut().record(make_request("/api/x", "GET"));
-		recorder.borrow_mut().record(make_request("/api/x", "GET"));
+		let recorder = RecorderHandle::new();
+		recorder.record(make_request("/api/x", "GET"));
+		recorder.record(make_request("/api/x", "GET"));
 		CallQuery::new(&recorder, "/api/x").assert_count(2);
 	}
 
 	#[rstest]
 	fn recorder_clear() {
-		let recorder = RefCell::new(RequestRecorder::new());
-		recorder.borrow_mut().record(make_request("/api/x", "GET"));
-		recorder.borrow_mut().clear();
-		assert!(recorder.borrow().all().is_empty());
+		let recorder = RecorderHandle::new();
+		recorder.record(make_request("/api/x", "GET"));
+		recorder.clear();
+		assert!(recorder.all().is_empty());
 	}
 }

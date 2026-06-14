@@ -34,14 +34,18 @@
 #![allow(dead_code, clippy::type_complexity)]
 
 mod context;
+mod error;
 pub(crate) mod handler;
 mod interceptor;
 mod matcher;
+mod native;
 pub(crate) mod recorder;
 mod response;
 pub mod rest;
+mod state;
 
 pub use context::TestContext;
+pub use error::MswError;
 pub use handler::InterceptedRequest;
 pub use matcher::{Segment, UrlMatcher};
 pub use recorder::{CallQuery, RecordedRequest, ServerFnCallQuery};
@@ -52,3 +56,6 @@ pub use response::MockResponse;
 mod worker;
 #[cfg(wasm)]
 pub use worker::{MockServiceWorker, UnhandledPolicy};
+
+#[cfg(native)]
+pub use native::{MockServiceWorker, UnhandledPolicy};
