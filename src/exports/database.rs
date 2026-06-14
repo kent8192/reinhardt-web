@@ -6,17 +6,6 @@ pub use reinhardt_db::orm::{
 };
 
 // Query expressions (Django-style F/Q objects)
-//
-// # Examples
-//
-// ```rust,no_run
-// # use reinhardt::{F, Q};
-// let price_expr = F::field("price");
-// let filter = Q::and(vec![
-//     Q::field("status").equals("active"),
-//     Q::field("price").gt(100),
-// ]);
-// ```
 pub use reinhardt_db::orm::{
 	Exists, F, FieldRef, Filter, FilterOperator, FilterValue, OuterRef, Q, QOperator, Subquery,
 };

@@ -394,6 +394,7 @@ mod tests {
 	#[rstest]
 	fn test_settings_db_config_postgresql() {
 		// Arrange
+		// codeql[rust/hard-coded-cryptographic-value] -- Test fixture credential, not a deployed secret.
 		let db = DatabaseConfig::postgresql("testdb", "user", "pass", "localhost", 5432);
 
 		// Assert
@@ -402,6 +403,7 @@ mod tests {
 		assert_eq!(db.user, Some("user".to_string()));
 		assert_eq!(
 			db.password.as_ref().map(|p| p.expose_secret()),
+			// codeql[rust/hard-coded-cryptographic-value] -- Test fixture credential assertion.
 			Some("pass")
 		);
 		assert_eq!(db.port, Some(5432));
@@ -410,6 +412,7 @@ mod tests {
 	#[rstest]
 	fn test_debug_output_redacts_password() {
 		// Arrange
+		// codeql[rust/hard-coded-cryptographic-value] -- Test fixture credential, not a deployed secret.
 		let db = DatabaseConfig::postgresql("testdb", "user", "s3cr3t!", "localhost", 5432);
 
 		// Act
@@ -436,6 +439,7 @@ mod tests {
 	#[rstest]
 	fn test_to_url_encodes_special_chars_in_username() {
 		// Arrange
+		// codeql[rust/hard-coded-cryptographic-value] -- Test fixture credential, not a deployed secret.
 		let mut db = DatabaseConfig::postgresql("mydb", "user@domain", "pass", "localhost", 5432);
 		db.user = Some("user@domain".to_string());
 
@@ -450,6 +454,7 @@ mod tests {
 	#[rstest]
 	fn test_to_url_encodes_special_chars_in_password() {
 		// Arrange
+		// codeql[rust/hard-coded-cryptographic-value] -- Test fixture credential, not a deployed secret.
 		let db = DatabaseConfig::postgresql("mydb", "user", "p@ss:w/rd#", "localhost", 5432);
 
 		// Act
@@ -463,6 +468,7 @@ mod tests {
 	#[rstest]
 	fn test_to_url_prevents_host_injection() {
 		// Arrange - malicious username that attempts to redirect to a different host
+		// codeql[rust/hard-coded-cryptographic-value] -- Test fixture credential, not a deployed secret.
 		let db = DatabaseConfig::postgresql(
 			"mydb",
 			"admin@evil.com:9999/fake",
@@ -482,6 +488,7 @@ mod tests {
 	#[rstest]
 	fn test_to_url_encodes_query_parameter_values() {
 		// Arrange
+		// codeql[rust/hard-coded-cryptographic-value] -- Test fixture credential, not a deployed secret.
 		let mut db = DatabaseConfig::postgresql("mydb", "user", "pass", "localhost", 5432);
 		db.options
 			.insert("sslmode".to_string(), "require&inject=true".to_string());
@@ -497,6 +504,7 @@ mod tests {
 	#[rstest]
 	fn test_to_url_simple_credentials() {
 		// Arrange
+		// codeql[rust/hard-coded-cryptographic-value] -- Test fixture credential, not a deployed secret.
 		let db = DatabaseConfig::postgresql("mydb", "user", "pass", "localhost", 5432);
 
 		// Act
@@ -509,6 +517,7 @@ mod tests {
 	#[rstest]
 	fn test_display_output_masks_credentials() {
 		// Arrange
+		// codeql[rust/hard-coded-cryptographic-value] -- Test fixture credential, not a deployed secret.
 		let db = DatabaseConfig::postgresql("mydb", "admin", "s3cr3t!", "db.example.com", 5432);
 
 		// Act
@@ -537,6 +546,7 @@ mod tests {
 	#[rstest]
 	fn test_password_stored_as_secret_string() {
 		// Arrange
+		// codeql[rust/hard-coded-cryptographic-value] -- Test fixture credential, not a deployed secret.
 		let db = DatabaseConfig::postgresql("mydb", "user", "my-secret-pw", "localhost", 5432);
 
 		// Act

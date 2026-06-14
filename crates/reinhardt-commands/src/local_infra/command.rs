@@ -264,8 +264,14 @@ fn local_infra_env(
 				let password = settings
 					.and_then(|settings| settings.core().databases.get("default"))
 					.and_then(|database| database.password.as_ref())
-					.map(|password| password.expose_secret())
-					.unwrap_or("postgres");
+					.map(|password| password.expose_secret());
+				let password = match password {
+					Some(password) => password,
+					None => {
+						// codeql[rust/hard-coded-cryptographic-value] -- Local Docker fallback, not a production credential.
+						"postgres"
+					}
+				};
 				env.push((
 					"DATABASE_URL".to_string(),
 					postgres_url(user, password, &service.host, service.host_port, database)?,

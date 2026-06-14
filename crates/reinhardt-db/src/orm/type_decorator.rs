@@ -543,6 +543,7 @@ mod tests {
 
 	#[test]
 	fn test_encrypted_string() {
+		// codeql[rust/hard-coded-cryptographic-value] -- Deterministic test key, not a deployed secret.
 		let key = [42u8; 32];
 		let decorator = EncryptedString::new(key);
 

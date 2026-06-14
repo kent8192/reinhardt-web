@@ -603,6 +603,7 @@ mod tests {
 			.with_channel_prefix("custom:channel:".to_string())
 			.with_group_prefix("custom:group:".to_string())
 			.with_message_expiry(120)
+			// codeql[rust/hard-coded-cryptographic-value] -- Test fixture credential, not a deployed secret.
 			.with_password("secret".to_string())
 			.with_username("app_user".to_string())
 			.with_tls()
@@ -798,7 +799,9 @@ mod tests {
 
 	#[test]
 	fn test_auth_validation_passes_with_password() {
-		let config = RedisConfig::default().with_password("secret".to_string());
+		let config = RedisConfig::default()
+			// codeql[rust/hard-coded-cryptographic-value] -- Test fixture credential, not a deployed secret.
+			.with_password("secret".to_string());
 		let result = config.validate_auth();
 		assert!(result.is_ok());
 	}
@@ -814,6 +817,7 @@ mod tests {
 	#[test]
 	fn test_auth_config_with_all_fields() {
 		let config = RedisConfig::default()
+			// codeql[rust/hard-coded-cryptographic-value] -- Test fixture credential, not a deployed secret.
 			.with_password("secret".to_string())
 			.with_username("admin".to_string())
 			.with_tls()
