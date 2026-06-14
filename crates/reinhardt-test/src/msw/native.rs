@@ -1,5 +1,6 @@
 //! Native `MockServiceWorker` runtime backed by a loopback HTTP server.
 
+use std::net::TcpListener as StdTcpListener;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -34,13 +35,8 @@ pub enum UnhandledPolicy {
 }
 
 struct NativeRuntime {
+	url: String,
 	handle: JoinHandle<()>,
-}
-
-enum RuntimeState {
-	Stopped,
-	Starting,
-	Started(NativeRuntime),
 }
 
 /// Native MSW-style mock server for HTTP clients that accept explicit endpoints.
@@ -48,8 +44,7 @@ pub struct MockServiceWorker {
 	handlers: SharedHandlers,
 	recorder: RecorderHandle,
 	unhandled_policy: UnhandledPolicy,
-	runtime: Mutex<RuntimeState>,
-	url: Mutex<Option<String>>,
+	runtime: Mutex<Option<NativeRuntime>>,
 }
 
 impl MockServiceWorker {
@@ -64,8 +59,7 @@ impl MockServiceWorker {
 			handlers: SharedHandlers::new(),
 			recorder: RecorderHandle::new(),
 			unhandled_policy: policy,
-			runtime: Mutex::new(RuntimeState::Stopped),
-			url: Mutex::new(None),
+			runtime: Mutex::new(None),
 		}
 	}
 
@@ -81,32 +75,16 @@ impl MockServiceWorker {
 		if matches!(self.unhandled_policy, UnhandledPolicy::Passthrough) {
 			return Err(MswError::NativePassthroughUnsupported);
 		}
-		{
-			let mut runtime = self.runtime.lock().expect("MSW runtime lock poisoned");
-			match *runtime {
-				RuntimeState::Stopped => {
-					*runtime = RuntimeState::Starting;
-				}
-				RuntimeState::Starting | RuntimeState::Started(_) => {
-					return Err(MswError::AlreadyStarted);
-				}
-			}
+
+		let mut runtime = self.runtime.lock().expect("MSW runtime lock poisoned");
+		if runtime.is_some() {
+			return Err(MswError::AlreadyStarted);
 		}
 
-		let listener = match TcpListener::bind("127.0.0.1:0").await {
-			Ok(listener) => listener,
-			Err(err) => {
-				*self.runtime.lock().expect("MSW runtime lock poisoned") = RuntimeState::Stopped;
-				return Err(MswError::Bind(err));
-			}
-		};
-		let addr = match listener.local_addr() {
-			Ok(addr) => addr,
-			Err(err) => {
-				*self.runtime.lock().expect("MSW runtime lock poisoned") = RuntimeState::Stopped;
-				return Err(MswError::Bind(err));
-			}
-		};
+		let std_listener = StdTcpListener::bind("127.0.0.1:0").map_err(MswError::Bind)?;
+		std_listener.set_nonblocking(true).map_err(MswError::Bind)?;
+		let addr = std_listener.local_addr().map_err(MswError::Bind)?;
+		let listener = TcpListener::from_std(std_listener).map_err(MswError::Bind)?;
 		let url = format!("http://{addr}");
 		let handlers = self.handlers.clone();
 		let recorder = self.recorder.clone();
@@ -116,9 +94,7 @@ impl MockServiceWorker {
 			serve(listener, handlers, recorder, policy).await;
 		});
 
-		*self.url.lock().expect("MSW URL lock poisoned") = Some(url);
-		*self.runtime.lock().expect("MSW runtime lock poisoned") =
-			RuntimeState::Started(NativeRuntime { handle });
+		*runtime = Some(NativeRuntime { url, handle });
 		Ok(())
 	}
 
@@ -126,22 +102,22 @@ impl MockServiceWorker {
 	pub async fn stop(&self) {
 		let runtime = {
 			let mut runtime = self.runtime.lock().expect("MSW runtime lock poisoned");
-			std::mem::replace(&mut *runtime, RuntimeState::Stopped)
+			runtime.take()
 		};
-		if let RuntimeState::Started(runtime) = runtime {
+		if let Some(runtime) = runtime {
 			runtime.handle.abort();
 			let _ = runtime.handle.await;
 		}
-		*self.url.lock().expect("MSW URL lock poisoned") = None;
 	}
 
 	/// Return the native server base URL.
 	pub fn url(&self) -> String {
-		self.url
+		self.runtime
 			.lock()
-			.expect("MSW URL lock poisoned")
+			.expect("MSW runtime lock poisoned")
 			.as_ref()
 			.expect("MockServiceWorker::url() called before start()")
+			.url
 			.clone()
 	}
 
@@ -218,14 +194,14 @@ impl Default for MockServiceWorker {
 
 impl Drop for MockServiceWorker {
 	fn drop(&mut self) {
-		let runtime = std::mem::replace(
-			self.runtime.get_mut().expect("MSW runtime lock poisoned"),
-			RuntimeState::Stopped,
-		);
-		if let RuntimeState::Started(runtime) = runtime {
+		if let Some(runtime) = self
+			.runtime
+			.get_mut()
+			.expect("MSW runtime lock poisoned")
+			.take()
+		{
 			runtime.handle.abort();
 		}
-		self.url.get_mut().expect("MSW URL lock poisoned").take();
 	}
 }
 

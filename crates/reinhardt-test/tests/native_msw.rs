@@ -3,6 +3,7 @@
 	feature = "msw"
 ))]
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use reinhardt_test::msw::{MockResponse, MockServiceWorker, UnhandledPolicy, rest};
@@ -262,6 +263,39 @@ async fn native_worker_rejects_concurrent_startup() {
 			.await
 			.expect("diagnostic body should decode"),
 		"MSW: No handler for GET /api/concurrent-start"
+	);
+	worker.stop().await;
+}
+
+#[tokio::test]
+async fn native_worker_remains_restartable_after_concurrent_start_and_stop() {
+	let worker = Arc::new(MockServiceWorker::new());
+	worker.handle(rest::get("/api/restart").respond(MockResponse::text("ok")));
+
+	let start_worker = Arc::clone(&worker);
+	let stop_worker = Arc::clone(&worker);
+	let (start_result, stop_result) = tokio::join!(
+		tokio::spawn(async move { start_worker.try_start().await }),
+		tokio::spawn(async move { stop_worker.stop().await })
+	);
+
+	start_result
+		.expect("startup task should complete")
+		.expect("concurrent startup should not fail");
+	stop_result.expect("stop task should complete");
+
+	worker.stop().await;
+	worker
+		.try_start()
+		.await
+		.expect("worker should restart after concurrent lifecycle calls");
+	let response = reqwest::get(endpoint(&worker, "/api/restart"))
+		.await
+		.expect("restarted worker should serve requests");
+	assert_eq!(response.status().as_u16(), 200);
+	assert_eq!(
+		response.text().await.expect("response body should decode"),
+		"ok"
 	);
 	worker.stop().await;
 }
