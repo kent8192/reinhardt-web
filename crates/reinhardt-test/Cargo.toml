@@ -41,8 +41,15 @@ wasm = [
   "reinhardt-pages/testing",
 ]
 wasm-full = ["wasm", "reinhardt-pages/web-sys-full"]
-# MSW-style network-level request interception (requires wasm)
-msw = ["wasm", "reinhardt-pages/msw"]
+# MSW-style request mocking.
+msw = [
+  "wasm",
+  "reinhardt-pages/msw",
+  "dep:bytes",
+  "dep:hyper",
+  "dep:hyper-util",
+  "dep:http-body-util",
+]
 # Server function testing utilities
 server-fn-test = ["reinhardt-pages/testing"]
 # E2E browser testing via WebDriver (fantoccini)
@@ -150,6 +157,12 @@ sqlx = { workspace = true, optional = true }
 
 # Re-exported dependencies needed for backward compatibility
 tokio = { workspace = true }
+
+# Optional native MSW dependencies
+bytes = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true }
+hyper-util = { workspace = true, optional = true }
+http-body-util = { workspace = true, optional = true }
 
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
