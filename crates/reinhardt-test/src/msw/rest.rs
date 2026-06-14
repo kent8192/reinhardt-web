@@ -74,6 +74,22 @@ impl RestHandlerBuilder {
 	}
 
 	/// Respond with a dynamic closure.
+	#[cfg(native)]
+	pub fn respond_with(
+		self,
+		f: impl Fn(&InterceptedRequest) -> MockResponse + Send + Sync + 'static,
+	) -> RestHandler {
+		RestHandler::new(
+			self.method,
+			self.matcher,
+			Box::new(f),
+			self.once,
+			self.delay,
+		)
+	}
+
+	/// Respond with a dynamic closure.
+	#[cfg(wasm)]
 	pub fn respond_with(
 		self,
 		f: impl Fn(&InterceptedRequest) -> MockResponse + 'static,

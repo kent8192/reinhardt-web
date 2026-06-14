@@ -7,8 +7,14 @@ use std::collections::HashMap;
 /// into server_fn mock handlers.
 #[derive(Default)]
 pub struct TestContext {
-	values: HashMap<TypeId, Box<dyn Any>>,
+	values: TestContextValues,
 }
+
+#[cfg(wasm)]
+type TestContextValues = HashMap<TypeId, Box<dyn Any>>;
+
+#[cfg(native)]
+type TestContextValues = HashMap<TypeId, Box<dyn Any + Send + Sync>>;
 
 impl TestContext {
 	/// Create an empty context.
@@ -17,7 +23,15 @@ impl TestContext {
 	}
 
 	/// Insert a value keyed by its type. Consumes self for builder pattern.
+	#[cfg(wasm)]
 	pub fn insert<T: 'static>(mut self, value: T) -> Self {
+		self.values.insert(TypeId::of::<T>(), Box::new(value));
+		self
+	}
+
+	/// Insert a value keyed by its type. Consumes self for builder pattern.
+	#[cfg(native)]
+	pub fn insert<T: Send + Sync + 'static>(mut self, value: T) -> Self {
 		self.values.insert(TypeId::of::<T>(), Box::new(value));
 		self
 	}
