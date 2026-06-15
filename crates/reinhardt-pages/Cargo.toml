@@ -63,6 +63,8 @@ web-sys-full = [
 	"web-sys/Text",
 	"web-sys/Event",
 	"web-sys/EventTarget",
+	"web-sys/CustomEvent",
+	"web-sys/CustomEventInit",
 	"web-sys/console",
 	"web-sys/MouseEvent",
 	"web-sys/InputEvent",
@@ -154,6 +156,8 @@ web-sys = { version = "0.3.83", features = [
 	"Text",
 	"Event",
 	"EventTarget",
+	"CustomEvent",
+	"CustomEventInit",
 	"console",
 	# Event types
 	"MouseEvent",
@@ -291,6 +295,11 @@ required-features = []
 [[test]]
 name = "suspense_boundary_wasm_test"
 path = "tests/wasm/suspense_boundary_wasm_test.rs"
+required-features = []
+
+[[test]]
+name = "custom_element_interop_wasm_test"
+path = "tests/wasm/custom_element_interop_wasm_test.rs"
 required-features = []
 
 [[test]]
