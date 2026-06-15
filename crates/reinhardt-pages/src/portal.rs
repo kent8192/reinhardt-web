@@ -12,6 +12,10 @@ use crate::component::{IntoPage, MountError, Page, PageElement};
 #[cfg(wasm)]
 use crate::component::PageExt;
 #[cfg(wasm)]
+use crate::component::reactive_if::{
+	ReactiveNodeStore, clear_reactive_node_store, new_reactive_node_store, with_reactive_node_store,
+};
+#[cfg(wasm)]
 use crate::dom::Element;
 
 /// A DOM target that can receive a portal.
@@ -109,13 +113,16 @@ impl Portal {
 			.append_child(&host)
 			.map_err(|_| PortalError::AppendHostFailed)?;
 
+		let reactive_nodes = new_reactive_node_store();
 		let wrapper = Element::new(host.clone());
-		if let Err(error) = self.view.mount(&wrapper) {
+		if let Err(error) = with_reactive_node_store(&reactive_nodes, || self.view.mount(&wrapper))
+		{
+			clear_reactive_node_store(&reactive_nodes);
 			host.remove();
 			return Err(PortalError::Mount(error));
 		}
 
-		Ok(PortalHandle::active(host))
+		Ok(PortalHandle::active(host, reactive_nodes))
 	}
 
 	/// Host-side portal mount stub.
@@ -231,14 +238,17 @@ pub struct PortalHandle {
 	active: bool,
 	#[cfg(wasm)]
 	host: Option<web_sys::Element>,
+	#[cfg(wasm)]
+	reactive_nodes: Option<ReactiveNodeStore>,
 }
 
 impl PortalHandle {
 	#[cfg(wasm)]
-	fn active(host: web_sys::Element) -> Self {
+	fn active(host: web_sys::Element, reactive_nodes: ReactiveNodeStore) -> Self {
 		Self {
 			active: true,
 			host: Some(host),
+			reactive_nodes: Some(reactive_nodes),
 		}
 	}
 
@@ -248,6 +258,8 @@ impl PortalHandle {
 			active: false,
 			#[cfg(wasm)]
 			host: None,
+			#[cfg(wasm)]
+			reactive_nodes: None,
 		}
 	}
 
@@ -262,6 +274,11 @@ impl PortalHandle {
 	}
 
 	fn detach(&mut self) {
+		#[cfg(wasm)]
+		if let Some(reactive_nodes) = self.reactive_nodes.take() {
+			clear_reactive_node_store(&reactive_nodes);
+		}
+
 		#[cfg(wasm)]
 		if let Some(host) = self.host.take() {
 			host.remove();

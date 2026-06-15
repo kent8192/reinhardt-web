@@ -1,7 +1,8 @@
 #![cfg(wasm)]
 
-use reinhardt_pages::component::{IntoPage, PageElement};
+use reinhardt_pages::component::{IntoPage, Page, PageElement, cleanup_reactive_nodes};
 use reinhardt_pages::portal::{PortalTarget, mount_portal};
+use reinhardt_pages::reactive::Signal;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -57,5 +58,34 @@ fn portal_mounts_page_into_target_and_cleans_up_on_drop() {
 			.unwrap()
 			.is_none()
 	);
+	target.remove();
+}
+
+#[wasm_bindgen_test]
+fn portal_reactive_nodes_survive_root_cleanup() {
+	let target = install_portal_target();
+	let count = Signal::new(0_i32);
+	let count_for_view = count.clone();
+
+	let handle = mount_portal(
+		PortalTarget::element_id("portal-target"),
+		Page::reactive(move || {
+			PageElement::new("span")
+				.attr("id", "portal-reactive-child")
+				.child(format!("PORTAL-COUNT-{}", count_for_view.get()))
+				.into_page()
+		}),
+	)
+	.expect("portal mount");
+
+	assert!(target.inner_html().contains("PORTAL-COUNT-0"));
+
+	cleanup_reactive_nodes();
+	count.set(1);
+
+	assert!(target.inner_html().contains("PORTAL-COUNT-1"));
+	assert!(!target.inner_html().contains("PORTAL-COUNT-0"));
+
+	drop(handle);
 	target.remove();
 }
