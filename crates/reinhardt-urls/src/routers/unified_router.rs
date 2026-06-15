@@ -109,7 +109,7 @@ impl UnifiedRouter {
 	///
 	/// The closure receives a [`ServerRouter`] and should return a configured router.
 	///
-	/// Parity: P1 on WASM and P2 on native.
+	/// Parity: P1.
 	///
 	/// Native builds execute the closure and store the configured `ServerRouter`.
 	/// WASM builds accept the same closure shape for type checking and return the
@@ -466,7 +466,7 @@ impl UnifiedRouter {
 
 	/// Configure server-side routing with a closure.
 	///
-	/// Parity: P1 on WASM and P2 on native.
+	/// Parity: P1.
 	///
 	/// Native builds execute the closure and store the configured `ServerRouter`.
 	/// WASM builds accept the same closure shape for type checking and return the
@@ -827,7 +827,7 @@ impl UnifiedRouter {
 
 	/// Accept and discard server-side routing configuration.
 	///
-	/// Parity: P1 on WASM and P2 on native.
+	/// Parity: P1.
 	///
 	/// Native builds execute the closure and store the configured `ServerRouter`.
 	/// WASM builds accept the same closure shape for type checking and return the
