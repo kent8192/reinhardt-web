@@ -356,6 +356,7 @@ pub use router::Link;
 // components. `NavigateError` is the public error returned by both paths.
 pub use reactive::hooks::router::{NavigateError, RouterHandle, use_router};
 pub use router::{NavigationType, navigate};
+pub use router::{Path, Query};
 pub use server_fn::{ServerFn, ServerFnError, parse_server_error_message};
 pub use ssr::SsrState;
 #[cfg(native)]
@@ -366,10 +367,14 @@ pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
 pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
 pub use reinhardt_pages_macros::page;
+pub use reinhardt_pages_macros::{FromRequest, component, page_props};
 
 // Private re-exports used by macro-generated code. Not part of the public API.
 #[doc(hidden)]
 pub mod __private {
+	pub use inventory;
+	pub use reinhardt_urls;
+
 	// `reqwest` is enabled for all wasm32 targets (including WASI, wasm32-unknown-unknown, etc.)
 	// because the HTTP client is needed on any wasm32 platform.
 	#[cfg(target_arch = "wasm32")]

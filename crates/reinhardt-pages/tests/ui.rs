@@ -60,3 +60,39 @@ fn test_hooks_explicit_deps_ui_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/hooks/fail/*.rs");
 }
+
+#[test]
+fn test_from_request_macro_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/from_request/pass/*.rs");
+}
+
+#[test]
+fn test_from_request_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/from_request/fail/*.rs");
+}
+
+#[test]
+fn test_page_props_macro_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/page_props/pass/*.rs");
+}
+
+#[test]
+fn test_page_props_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/page_props/fail/*.rs");
+}
+
+#[test]
+fn test_component_macro_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/component/pass/*.rs");
+}
+
+#[test]
+fn test_component_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/component/fail/*.rs");
+}

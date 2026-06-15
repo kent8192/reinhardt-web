@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added `#[derive(FromRequest)]`, `#[page_props]`, and
+  `#[component("/path", "name")]` macro codegen for route-backed page
+  components.
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.3...reinhardt-pages-macros@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-pages-macros` for the Reinhardt 0.2.0 line. This
