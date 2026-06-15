@@ -29,10 +29,106 @@ mod wasm_only {
 	/// This type is never actually used in WASM code.
 	pub struct AdminRecord;
 
-	/// Dummy ModelAdmin type for WASM type checking
+	/// Admin user trait stub for WASM type checking.
+	///
+	/// This trait is never actually used in WASM code.
+	pub trait AdminUser: Send + Sync {
+		/// Whether the user account is active.
+		fn is_active(&self) -> bool;
+
+		/// Whether the user is a staff member.
+		fn is_staff(&self) -> bool;
+
+		/// Whether the user is a superuser.
+		fn is_superuser(&self) -> bool;
+
+		/// The username for audit logging.
+		fn get_username(&self) -> &str;
+	}
+
+	/// Model admin trait stub for WASM type checking.
+	///
+	/// This trait is never actually used in WASM code.
+	#[async_trait::async_trait]
+	pub trait ModelAdmin: Send + Sync {
+		/// Get the model name.
+		fn model_name(&self) -> &str;
+
+		/// Get the database table name.
+		fn table_name(&self) -> &str {
+			""
+		}
+
+		/// Get the primary key field name.
+		fn pk_field(&self) -> &str {
+			"id"
+		}
+
+		/// Fields to display in list view.
+		fn list_display(&self) -> Vec<&str> {
+			vec!["id"]
+		}
+
+		/// Fields that can be used for filtering.
+		fn list_filter(&self) -> Vec<&str> {
+			vec![]
+		}
+
+		/// Fields that can be searched.
+		fn search_fields(&self) -> Vec<&str> {
+			vec![]
+		}
+
+		/// Fields to display in forms.
+		fn fields(&self) -> Option<Vec<&str>> {
+			None
+		}
+
+		/// Read-only fields.
+		fn readonly_fields(&self) -> Vec<&str> {
+			vec![]
+		}
+
+		/// Ordering for list view.
+		fn ordering(&self) -> Vec<&str> {
+			vec!["-id"]
+		}
+
+		/// Number of items per page.
+		fn list_per_page(&self) -> Option<usize> {
+			None
+		}
+
+		/// Check if user has permission to view this model.
+		async fn has_view_permission(&self, _user: &dyn AdminUser) -> bool {
+			false
+		}
+
+		/// Check if user has permission to add records for this model.
+		async fn has_add_permission(&self, _user: &dyn AdminUser) -> bool {
+			false
+		}
+
+		/// Check if user has permission to change records for this model.
+		async fn has_change_permission(&self, _user: &dyn AdminUser) -> bool {
+			false
+		}
+
+		/// Check if user has permission to delete records for this model.
+		async fn has_delete_permission(&self, _user: &dyn AdminUser) -> bool {
+			false
+		}
+	}
+
+	/// Dummy ModelAdminConfig type for WASM type checking
 	///
 	/// This type is never actually used in WASM code.
-	pub struct ModelAdmin;
+	pub struct ModelAdminConfig;
+
+	/// Dummy ModelAdminConfigBuilder type for WASM type checking
+	///
+	/// This type is never actually used in WASM code.
+	pub struct ModelAdminConfigBuilder;
 
 	/// Dummy ExportFormat type for WASM type checking
 	///
@@ -60,4 +156,7 @@ mod wasm_only {
 	///
 	/// This type is never actually used in WASM code.
 	pub struct ImportResult;
+
+	#[allow(dead_code)]
+	fn assert_admin_trait_shapes(_admin: &dyn ModelAdmin, _user: &dyn AdminUser) {}
 }
