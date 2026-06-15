@@ -111,7 +111,9 @@ pub fn server_fn(args: TokenStream, input: TokenStream) -> TokenStream {
 /// has the same visibility, attributes, name, and signature, then emits
 /// target-gated definitions for browser WASM and non-browser-WASM builds.
 ///
-/// ```ignore
+/// ```no_run
+/// use reinhardt_pages_macros::wasm_server_api;
+///
 /// #[wasm_server_api]
 /// mod platform {
 ///     #[wasm]
