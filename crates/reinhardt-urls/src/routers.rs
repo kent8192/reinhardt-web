@@ -68,14 +68,22 @@
 //! ```rust,no_run
 //! use reinhardt_urls::routers::UnifiedRouter;
 //! use reinhardt_middleware::LoggingMiddleware;
-//! use hyper::Method;
-//! # use reinhardt_http::{Request, Response, Result};
+//! # use hyper::Method;
+//! # use reinhardt_core::endpoint::EndpointInfo;
+//! # use reinhardt_http::{Handler, Request, Response, Result};
 //!
-//! # async fn handler(_req: Request) -> Result<Response> {
-//! #     Ok(Response::ok())
+//! # struct Users;
+//! # impl EndpointInfo for Users {
+//! #     fn path() -> &'static str { "/api/users" }
+//! #     fn method() -> Method { Method::GET }
+//! #     fn name() -> &'static str { "api-users" }
+//! # }
+//! # #[async_trait::async_trait]
+//! # impl Handler for Users {
+//! #     async fn handle(&self, _req: Request) -> Result<Response> { Ok(Response::ok()) }
 //! # }
 //! let router = UnifiedRouter::new()
-//!     .function("/api/users", Method::GET, handler)
+//!     .endpoint(|| Users)
 //!     .with_middleware(LoggingMiddleware::new());
 //! ```
 //!
@@ -84,21 +92,36 @@
 //! ```rust,no_run
 //! use reinhardt_urls::routers::RouteGroup;
 //! use reinhardt_middleware::LoggingMiddleware;
-//! use hyper::Method;
-//! # use reinhardt_http::{Request, Response, Result};
+//! # use hyper::Method;
+//! # use reinhardt_core::endpoint::EndpointInfo;
+//! # use reinhardt_http::{Handler, Request, Response, Result};
 //!
-//! # async fn users_list(_req: Request) -> Result<Response> {
-//! #     Ok(Response::ok())
+//! # struct UsersList;
+//! # struct UsersDetail;
+//! # impl EndpointInfo for UsersList {
+//! #     fn path() -> &'static str { "/users" }
+//! #     fn method() -> Method { Method::GET }
+//! #     fn name() -> &'static str { "users-list" }
 //! # }
-//! # async fn users_detail(_req: Request) -> Result<Response> {
-//! #     Ok(Response::ok())
+//! # impl EndpointInfo for UsersDetail {
+//! #     fn path() -> &'static str { "/users/{id}" }
+//! #     fn method() -> Method { Method::GET }
+//! #     fn name() -> &'static str { "users-detail" }
+//! # }
+//! # #[async_trait::async_trait]
+//! # impl Handler for UsersList {
+//! #     async fn handle(&self, _req: Request) -> Result<Response> { Ok(Response::ok()) }
+//! # }
+//! # #[async_trait::async_trait]
+//! # impl Handler for UsersDetail {
+//! #     async fn handle(&self, _req: Request) -> Result<Response> { Ok(Response::ok()) }
 //! # }
 //! // Create a group with middleware
 //! let group = RouteGroup::new()
 //!     .with_prefix("/api/v1")
 //!     .with_middleware(LoggingMiddleware::new())
-//!     .function("/users", Method::GET, users_list)
-//!     .function("/users/{id}", Method::GET, users_detail);
+//!     .endpoint(|| UsersList)
+//!     .endpoint(|| UsersDetail);
 //!
 //! let router = group.build();
 //! ```
@@ -216,7 +239,7 @@ pub use simple::SimpleRouter;
 // Server router (full HTTP routing implementation)
 #[cfg(native)]
 pub use server_router::{
-	FunctionHandler, MiddlewareInfo, ServerRouter, clear_router, get_router, get_router_di_context,
+	MiddlewareInfo, ServerRouter, clear_router, get_router, get_router_di_context,
 	is_router_registered, register_di_registrations, register_router, register_router_arc,
 	take_di_registrations,
 };

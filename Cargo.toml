@@ -466,7 +466,7 @@ default-members = [
 [workspace.package]
 version = "0.2.0-rc.2"
 edition = "2024"
-rust-version = "1.94.0"
+rust-version = "1.96.0"
 license = "BSD-3-Clause"
 repository = "https://github.com/kent8192/reinhardt-web"
 homepage = "https://github.com/kent8192/reinhardt-web"

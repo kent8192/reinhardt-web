@@ -150,7 +150,7 @@ let choice = Choice::build()
 
 ### MU-4 (SHOULD): Use Info Companion Type for Cross-Layer Data Transfer
 
-The `#[model]` macro automatically generates a `{Model}Info` companion struct — a plain data carrier with all non-ORM fields, `pub` visibility, and bidirectional `From` conversions.
+The `#[model]` macro automatically generates a `{Model}Info` companion struct — a plain data carrier with model data fields, lightweight relationship fields, `pub` visibility, and bidirectional `From` conversions.
 
 **Generated for every model by default.** Opt out with `#[model(info = false)]`.
 
@@ -167,30 +167,61 @@ struct Post {
     author: ForeignKeyField<Author>,
 }
 
-// Auto-generated: PostInfo { id, title, author_id }
+// Auto-generated:
+// PostInfo {
+//     id,
+//     title,
+//     author: RelationInfo<Author>,
+// }
 // From<Post> for PostInfo ✓
 // From<PostInfo> for Post ✓
 ```
 
 **Field inclusion rules:**
 - Regular data fields: included
-- FK `_id` fields (auto-generated): included (carry actual FK values)
-- Relationship marker types (`ForeignKeyField`, `OneToOneField`, `ManyToManyField`): excluded
+- `ForeignKeyField<T>` and `OneToOneField<T>`: included as `RelationInfo<T>`
+- `ManyToManyField<Source, Target>`: included as `ManyToManyInfo<Source, Target>`
+- FK `_id` fields (auto-generated): not exposed directly; use `info.author.id`
+- Relationship marker types are not exposed directly because they do not carry values
 - `#[field(skip = true)]` or `#[field(skip_info = true)]` fields: excluded
 
-**Builder with `IntoPrimaryKey` support:**
+**Builder with relationship payload support:**
 ```rust
 let info = PostInfo::build()
     .id(Some(1))
     .title("Hello")
-    .author_id(&author)  // accepts &Author via IntoPrimaryKey
+    .author(&author)  // accepts &Author via IntoPrimaryKey
     .finish();
 
 let info = PostInfo::build()
     .id(Some(1))
     .title("Hello")
-    .author_id(author_uuid)  // also accepts raw PK value
+    .author(author_uuid)  // also accepts raw PK value
     .finish();
+```
+
+Many-to-many Info fields use a lightweight target-primary-key list:
+
+```rust
+let info = PostInfo::build()
+    .id(Some(1))
+    .title("Hello")
+    .author(author_uuid)
+    .tags([tag_id_1, tag_id_2])
+    .finish();
+
+assert_eq!(info.author.id, author_uuid);
+assert_eq!(info.tags.target_ids, vec![tag_id_1, tag_id_2]);
+```
+
+When serde derives are mirrored onto `{Model}Info`, the relationship payloads
+serialize with the same lightweight field names:
+
+```json
+{
+  "author": { "id": "..." },
+  "tags": { "target_ids": ["..."] }
+}
 ```
 
 **Validation auto-generation:**

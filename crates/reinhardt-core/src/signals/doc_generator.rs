@@ -187,7 +187,7 @@ impl SignalDocGenerator {
 			output.push_str("### Connected Receivers\n\n");
 
 			let mut receivers = doc.receivers.clone();
-			receivers.sort_by(|a, b| b.priority.cmp(&a.priority));
+			receivers.sort_by_key(|receiver| std::cmp::Reverse(receiver.priority));
 
 			output
 				.push_str("| Receiver | Description | Priority | Critical | Expected Duration |\n");
@@ -299,7 +299,7 @@ impl SignalDocGenerator {
 			output.push_str("    </tr>\n");
 
 			let mut receivers = doc.receivers.clone();
-			receivers.sort_by(|a, b| b.priority.cmp(&a.priority));
+			receivers.sort_by_key(|receiver| std::cmp::Reverse(receiver.priority));
 
 			for receiver in receivers {
 				let critical = if receiver.is_critical {

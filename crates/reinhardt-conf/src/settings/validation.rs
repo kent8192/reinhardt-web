@@ -261,12 +261,10 @@ impl BaseSettingsValidator for SecurityValidator {
 					));
 				}
 			}
-			"secure_ssl_redirect" => {
-				if value.as_bool() != Some(true) {
-					return Err(reinhardt_core::validators::ValidationError::Custom(
-						"SECURE_SSL_REDIRECT should be true in production".to_string(),
-					));
-				}
+			"secure_ssl_redirect" if value.as_bool() != Some(true) => {
+				return Err(reinhardt_core::validators::ValidationError::Custom(
+					"SECURE_SSL_REDIRECT should be true in production".to_string(),
+				));
 			}
 			_ => {}
 		}

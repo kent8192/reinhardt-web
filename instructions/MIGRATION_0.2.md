@@ -246,9 +246,10 @@ let user = User::build()
     .build();
 ```
 
-The `#[model]` macro also generates a `{Model}Info` companion DTO with
-bidirectional `From` conversions. Prefer that DTO over hand-maintained mirror
-structs when moving model data across API boundaries.
+The `#[model]` macro also generates a `{Model}Info` companion value type with
+bidirectional `From` conversions. Relationship fields use lightweight
+`RelationInfo` / `ManyToManyInfo` payloads, so prefer the companion over
+hand-maintained mirror structs when moving model data across layers.
 
 ### Reverse SQL
 

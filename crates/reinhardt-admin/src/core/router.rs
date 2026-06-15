@@ -9,8 +9,12 @@
 
 use std::sync::Arc;
 
+#[cfg(server)]
+use reinhardt_core::endpoint::EndpointInfo;
 #[cfg(all(test, server))]
 use reinhardt_di::SingletonScope;
+#[cfg(server)]
+use reinhardt_http::{Handler, Request, Response, Result};
 #[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRouterExt;
 use reinhardt_urls::routers::ServerRouter;
@@ -93,6 +97,52 @@ async fn admin_spa_handler(
 	}
 	Ok(response.with_body(admin_spa_html(&settings.site_title)))
 }
+
+#[cfg(server)]
+macro_rules! admin_endpoint {
+	($type_name:ident, $path:literal, $method:ident, $route_name:literal, $handler:ident) => {
+		struct $type_name;
+
+		impl EndpointInfo for $type_name {
+			fn path() -> &'static str {
+				$path
+			}
+
+			fn method() -> hyper::Method {
+				hyper::Method::$method
+			}
+
+			fn name() -> &'static str {
+				$route_name
+			}
+		}
+
+		#[async_trait::async_trait]
+		impl Handler for $type_name {
+			async fn handle(&self, request: Request) -> Result<Response> {
+				$handler(request).await
+			}
+		}
+	};
+}
+
+#[cfg(server)]
+admin_endpoint!(
+	AdminSpaRootEndpoint,
+	"/",
+	GET,
+	"admin_spa_root",
+	admin_spa_handler
+);
+
+#[cfg(server)]
+admin_endpoint!(
+	AdminSpaCatchAllEndpoint,
+	"/{*tail}",
+	GET,
+	"admin_spa_catch_all",
+	admin_spa_handler
+);
 
 /// Resolves an admin static file path to its final URL.
 ///
@@ -197,6 +247,24 @@ async fn admin_static_file_handler(
 	}
 }
 
+#[cfg(server)]
+admin_endpoint!(
+	AdminStaticFileGetEndpoint,
+	"/{*path}",
+	GET,
+	"admin_static_file_get",
+	admin_static_file_handler
+);
+
+#[cfg(server)]
+admin_endpoint!(
+	AdminStaticFileHeadEndpoint,
+	"/{*path}",
+	HEAD,
+	"admin_static_file_head",
+	admin_static_file_handler
+);
+
 /// Inner implementation for [`admin_static_file_handler`].
 ///
 /// Separated to allow the outer function to catch errors defensively,
@@ -275,8 +343,8 @@ pub fn admin_static_routes() -> ServerRouter {
 
 	#[cfg(server)]
 	let router = router
-		.function("/{*path}", hyper::Method::GET, admin_static_file_handler)
-		.function("/{*path}", hyper::Method::HEAD, admin_static_file_handler);
+		.endpoint(|| AdminStaticFileGetEndpoint)
+		.endpoint(|| AdminStaticFileHeadEndpoint);
 
 	router
 }
@@ -364,8 +432,8 @@ fn build_admin_router(
 			.server_fn(admin_login::marker)
 			.server_fn(admin_login_with_header::marker)
 			.server_fn(admin_logout::marker)
-			.function("/", hyper::Method::GET, admin_spa_handler)
-			.function("/{*tail}", hyper::Method::GET, admin_spa_handler)
+			.endpoint(|| AdminSpaRootEndpoint)
+			.endpoint(|| AdminSpaCatchAllEndpoint)
 	};
 
 	router

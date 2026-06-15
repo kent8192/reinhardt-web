@@ -1,7 +1,7 @@
 # Dockerfile for examples-tutorial-rest API testing
 # Build context: workspace root (../..)
 
-FROM rust:1.94.1-slim AS builder
+FROM rust:1.96.0-slim AS builder
 
 WORKDIR /app
 
