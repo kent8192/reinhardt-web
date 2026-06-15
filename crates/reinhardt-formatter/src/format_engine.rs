@@ -634,6 +634,16 @@ mod tests {
 	}
 
 	#[rstest]
+	fn formats_page_semantic_wrappers_preserve_control_flow_spacing() {
+		// Act
+		let formatted = format_dsl(MacroKind::Page, r#"|| { if show { div { "x" } } }"#)
+			.expect("format page DSL");
+
+		// Assert
+		assert_eq!(formatted, "|| {\n\tif show {\n\t\tdiv { \"x\" }\n\t}\n}");
+	}
+
+	#[rstest]
 	fn preserves_separator_between_text_literal_and_following_fragment() {
 		for kind in [MacroKind::Page, MacroKind::Form, MacroKind::Head] {
 			// Act
