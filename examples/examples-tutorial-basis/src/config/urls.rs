@@ -2,34 +2,12 @@
 //!
 //! The `routes` function defines the top-level project router.
 //!
-//! Middleware stack (server-only):
+//! Middleware stack:
 //! 1. `SessionMiddleware` — cookie-based session management used by the
 //!    `users` app's login/logout server functions
 
 use reinhardt::UnifiedRouter;
-#[cfg(server)]
-use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
 use reinhardt::routes;
-
-#[cfg(server)]
-use crate::config::admin::configure_admin;
-
-#[cfg(server)]
-use reinhardt::middleware::session::{SessionConfig, SessionMiddleware};
-#[cfg(server)]
-use std::time::Duration;
-
-/// Build the session middleware with a two-week TTL and Lax SameSite.
-///
-/// Uses the production-oriented defaults shared by the tutorial examples.
-#[cfg(server)]
-fn create_session_middleware() -> SessionMiddleware {
-	let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(1_209_600))
-		.with_http_only(true)
-		.with_same_site("Lax".to_string())
-		.with_path("/".to_string());
-	SessionMiddleware::new(config)
-}
 
 /// Build the top-level project router.
 ///
@@ -45,11 +23,7 @@ pub fn routes() -> UnifiedRouter {
 
 	// Each app owns its server-function marker registration in its own
 	// `urls` module. The project router only aggregates app routers.
-	#[cfg(server)]
-	let router = router.server(|s| {
-		s.mount("/", crate::apps::polls::urls::server_url_patterns())
-			.mount("/", crate::apps::users::urls::server_url_patterns())
-	});
+	let router = crate::native_runtime::mount_server_url_patterns(router);
 
 	// Aggregate every app's client routes so both native route-table
 	// construction and the WASM SPA see the same URL patterns.
@@ -73,15 +47,7 @@ pub fn routes() -> UnifiedRouter {
 	// `admin_routes_with_di` returns both the router and a DI registration
 	// list that lazily provides `AdminDatabase` to admin handlers from the
 	// project's `DatabaseConnection`.
-	#[cfg(server)]
-	let router = {
-		let admin_site = std::sync::Arc::new(configure_admin());
-		let (admin_router, admin_di) = admin_routes_with_di(admin_site);
-		router
-			.mount("/admin/", admin_router)
-			.mount("/static/admin/", admin_static_routes())
-			.with_di_registrations(admin_di)
-	};
+	let router = crate::native_runtime::mount_admin_routes(router);
 
 	// `SessionMiddleware` auto-registers its `SessionStore` as a DI singleton
 	// via `Middleware::di_registrations` (keyed by `TypeId::of::<SessionStore>()`
@@ -90,8 +56,5 @@ pub fn routes() -> UnifiedRouter {
 	// can resolve the same store the middleware writes to without a parallel
 	// `with_di_registrations(...)` call. See #4426 (and the original #4423
 	// regression that motivated the auto-registration hook).
-	#[cfg(server)]
-	let router = router.with_middleware(create_session_middleware());
-
-	router
+	crate::native_runtime::with_session_middleware(router)
 }

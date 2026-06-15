@@ -1,8 +1,9 @@
-use reinhardt::Validate;
+use reinhardt::dto;
 use serde::{Deserialize, Serialize};
 
 /// Serializer for creating/updating snippets
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[dto]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnippetSerializer {
 	#[validate(length(
 		min = 1,
@@ -51,6 +52,7 @@ impl SnippetResponse {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use reinhardt::Validate;
 	use rstest::rstest;
 
 	#[rstest]

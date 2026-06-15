@@ -31,6 +31,12 @@ pub mod config;
 // modules inside `client` remain cfg-gated.
 pub mod client;
 
+// Cross-target wrappers for client-side data loaders.
+pub mod client_api;
+
+// Native runtime wiring plus WASM no-op route-table shims.
+pub mod native_runtime;
+
 // Shared modules (both WASM and server)
 //
 // Server functions are now scoped under each app — they live alongside

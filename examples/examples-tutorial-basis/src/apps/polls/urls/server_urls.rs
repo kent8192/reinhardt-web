@@ -11,7 +11,7 @@ use crate::apps::polls::server_fn::{
 use reinhardt::ServerRouter;
 use reinhardt::pages::server_fn::ServerFnRouterExt;
 
-pub fn server_url_patterns() -> ServerRouter {
+pub(super) fn server_url_patterns() -> ServerRouter {
 	ServerRouter::new()
 		.server_fn(get_questions::marker)
 		.server_fn(get_question_detail::marker)

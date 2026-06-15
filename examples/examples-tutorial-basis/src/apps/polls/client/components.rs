@@ -33,14 +33,14 @@ use reinhardt::pages::reactive::hooks::use_effect;
 use reinhardt::pages::reactive::{Resource, ResourceState, Signal, use_resource};
 
 use crate::apps::polls::server_fn::{
-	create_choice, create_question, delete_choice, delete_question, get_question_detail,
-	get_question_results, get_questions, submit_vote, update_choice, update_question,
+	create_choice, create_question, delete_choice, delete_question, submit_vote, update_choice,
+	update_question,
 };
 use crate::apps::polls::urls::client_router as polls_routes;
+use crate::client_api::{current_user, get_question_detail, get_question_results, get_questions};
 // Used by `polls_detail` to gate owner-only controls (Edit / Delete / Add
 // choice) on the viewer being the question's author (issue #4703). Server-
 // side `require_question_author` checks remain in place as defense in depth.
-use crate::apps::users::server_fn::current_user;
 
 // =========================================================================
 // Error display helpers

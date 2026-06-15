@@ -9,6 +9,9 @@ default-run = "manage"
 # The `manage` binary is auto-discovered from src/bin/manage.rs, matching the
 # canonical `cargo run --bin manage -- runserver` form documented in README.
 
+[lib]
+crate-type = ["rlib"]
+
 [dependencies]
 reinhardt = { workspace = true, features = [
     "minimal",
@@ -23,15 +26,16 @@ reinhardt = { workspace = true, features = [
     "api",  # Includes rest + viewsets
     "client-router",
 ] }
-tokio = { version = "1.48.0", features = ["full"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 chrono = { version = "0.4", features = ["serde"] }
-syntect = "5.2"
 ctor = "0.6.1"
 inventory = "0.3"
 
-[dev-dependencies]
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+syntect = "5.2"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 reinhardt = { workspace = true, features = [
     "test",
     "testcontainers",
@@ -40,6 +44,7 @@ rstest = { version = "0.26", default-features = false }
 serial_test = "3.2"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 tempfile = "3.15"
+tokio = { version = "1.48.0", features = ["full"] }
 
 [build-dependencies]
 cfg_aliases = "0.2"

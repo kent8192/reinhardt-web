@@ -7,7 +7,7 @@ use crate::apps::users::server_fn::{current_user, login, logout, register};
 use reinhardt::ServerRouter;
 use reinhardt::pages::server_fn::ServerFnRouterExt;
 
-pub fn server_url_patterns() -> ServerRouter {
+pub(super) fn server_url_patterns() -> ServerRouter {
 	ServerRouter::new()
 		.server_fn(login::marker)
 		.server_fn(logout::marker)

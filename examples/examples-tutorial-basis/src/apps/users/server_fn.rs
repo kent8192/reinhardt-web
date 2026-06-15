@@ -6,24 +6,7 @@
 //! (fixation prevention), and `user_id` is persisted in the session map.
 
 use crate::shared::types::UserInfo;
-#[cfg(server)]
-use crate::shared::types::{LoginRequest, RegisterRequest};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
-
-#[cfg(server)]
-use {
-	crate::apps::users::models::{AuthUserManager, User},
-	reinhardt::BaseUser,
-	reinhardt::DatabaseConnection,
-	reinhardt::Validate,
-	reinhardt::db::orm::Model,
-	reinhardt::di::Depends,
-	reinhardt::middleware::session::{
-		SessionAuthExt, SessionData, SessionStore, USER_ID_SESSION_KEY,
-	},
-	reinhardt::reinhardt_auth::BaseUserManager,
-	std::collections::HashMap,
-};
 
 /// Authenticate a user by username/password and persist the session.
 ///
@@ -33,13 +16,17 @@ use {
 pub async fn login(
 	username: String,
 	password: String,
-	#[inject] _db: DatabaseConnection,
-	#[inject] session: SessionData,
-	#[inject] store: Depends<SessionStore>,
+	#[inject] _db: reinhardt::DatabaseConnection,
+	#[inject] session: reinhardt::middleware::session::SessionData,
+	#[inject] store: reinhardt::di::Depends<reinhardt::middleware::session::SessionStore>,
 ) -> std::result::Result<UserInfo, ServerFnError> {
+	use crate::apps::users::models::User;
+	use reinhardt::middleware::session::SessionAuthExt;
+	use reinhardt::{BaseUser, Model, Validate};
+
 	let mut session = session;
 
-	let request = LoginRequest { username, password };
+	let request = crate::shared::types::LoginRequest { username, password };
 
 	// Run the field-level validators declared on `LoginRequest` before
 	// touching the database — empty/oversized credentials should reject
@@ -104,13 +91,18 @@ pub async fn register(
 	username: String,
 	password: String,
 	password_confirmation: String,
-	#[inject] user_manager: Depends<AuthUserManager>,
-	#[inject] session: SessionData,
-	#[inject] store: Depends<SessionStore>,
+	#[inject] user_manager: reinhardt::di::Depends<crate::native_runtime::AuthUserManager>,
+	#[inject] session: reinhardt::middleware::session::SessionData,
+	#[inject] store: reinhardt::di::Depends<reinhardt::middleware::session::SessionStore>,
 ) -> std::result::Result<UserInfo, ServerFnError> {
+	use reinhardt::Validate;
+	use reinhardt::middleware::session::SessionAuthExt;
+	use reinhardt::reinhardt_auth::BaseUserManager;
+	use std::collections::HashMap;
+
 	let mut session = session;
 
-	let request = RegisterRequest {
+	let request = crate::shared::types::RegisterRequest {
 		username,
 		password,
 		password_confirmation,
@@ -141,7 +133,7 @@ pub async fn register(
 	// the inner manager — its only field is another
 	// `Depends<DatabaseConnection>`, which is itself an `Arc` clone — so
 	// this is cheap and gives us the `&mut` access the trait method needs.
-	let mut user_manager: AuthUserManager = (*user_manager).clone();
+	let mut user_manager: crate::native_runtime::AuthUserManager = (*user_manager).clone();
 	let saved = user_manager
 		.create_user(
 			request.username.trim(),
@@ -166,9 +158,11 @@ pub async fn register(
 /// CSRF is supplied by the `#[server_fn]` client stub; see [`login`].
 #[server_fn]
 pub async fn logout(
-	#[inject] session: SessionData,
-	#[inject] store: Depends<SessionStore>,
+	#[inject] session: reinhardt::middleware::session::SessionData,
+	#[inject] store: reinhardt::di::Depends<reinhardt::middleware::session::SessionStore>,
 ) -> std::result::Result<(), ServerFnError> {
+	use reinhardt::middleware::session::{SessionAuthExt, USER_ID_SESSION_KEY};
+
 	let mut session = session;
 
 	// Only honor logout for sessions that actually carry an authenticated
@@ -188,9 +182,13 @@ pub async fn logout(
 /// Return the currently authenticated user, if any.
 #[server_fn]
 pub async fn current_user(
-	#[inject] _db: DatabaseConnection,
-	#[inject] session: SessionData,
+	#[inject] _db: reinhardt::DatabaseConnection,
+	#[inject] session: reinhardt::middleware::session::SessionData,
 ) -> std::result::Result<Option<UserInfo>, ServerFnError> {
+	use crate::apps::users::models::User;
+	use reinhardt::Model;
+	use reinhardt::middleware::session::USER_ID_SESSION_KEY;
+
 	let user_id = match session.get::<i64>(USER_ID_SESSION_KEY) {
 		Some(id) => id,
 		None => return Ok(None),
