@@ -1,0 +1,5 @@
+error: #[page_props] fields require #[from_request(path)] or #[from_request(query)]
+ --> tests/ui/page_props/fail/missing_source.rs:5:2
+  |
+5 |     id: i64,
+  |     ^^^^^^^

@@ -24,6 +24,80 @@ application.
 | `useDeferredValue` | `use_deferred_value(signal)` | Defers a `Signal<T>` value. |
 | React actions / server functions | `use_action` + `#[server_fn]` | Server calls are typed Rust functions with generated WASM client stubs. |
 
+## React 19 and 19.2 parity classification
+
+React 19 and 19.2 added frontend APIs around form actions, async reads,
+server/client boundaries, metadata, asset loading, and transition boundaries.
+Reinhardt Pages maps those expectations to Rust-first APIs instead of copying
+React API names.
+
+| React concept | Reinhardt classification | Tracking |
+| --- | --- | --- |
+| `useActionState` | Documentation-only mapping to `form!`, `use_form`, `use_action`, and `#[server_fn]`; no React-named clone. | #5309 |
+| `<form action={function}>` | Explicit non-goal. Reinhardt keeps static form contracts and typed RPC bindings separate. | #5309 |
+| Generic `use(...)` for Promise reads | Explicit non-goal. Use `use_resource(fetcher, deps)` for async data. | #5310 |
+| Generic `use(...)` for Context reads | Explicit non-goal. Use typed `Context<T>` with `use_context`. | #5310 |
+| Suspense integration for async reads | Existing API with different semantics through `SuspenseBoundary` and resource tracking. | #5310 |
+| React Server Components and RSC/Flight transport | Explicit non-goal. Reinhardt does not provide React-compatible component transport. | #5311 |
+| `"use client"` / `"use server"` directives | Explicit non-goal. Reinhardt uses Rust/WASM targets and `#[server_fn]`, not directive strings. | #5311 |
+| Server reference passing | Explicit non-goal. `#[server_fn]` generates typed client stubs but does not serialize server function references into client components. | #5311 |
+| Automatic metadata hoisting | Explicit non-goal. Reinhardt metadata stays explicit through `head!` and `Head`; component body nodes are not hoisted into the document head. | #5312 |
+| React DOM asset APIs such as `preinit`, `preload`, `preconnect`, and `prefetchDNS` | Reinhardt-native explicit `Head` / `LinkTag` asset hint helpers with exact duplicate SSR deduplication; no browser-only imperative asset API. | #5312 |
+| `createPortal` | Reinhardt-native explicit `Portal` / `mount_portal` API. `ClientLauncher::ensure_portal` remains only a launcher helper for idempotent body-level mounts. | #5313 |
+| Custom element property, attribute, and event interop | Explicit DOM interop API. HTML attributes stay attributes; JS properties use `Element::set_property` / `get_property`, and custom event payloads use raw or typed `CustomEvent.detail` listeners. | #5314 |
+| `ref` as a regular prop | Explicit non-goal. Reinhardt does not treat `ref` as a magic component prop; use typed props, `use_ref`, and explicit DOM handles. | #5314 |
+| `Activity` and `ViewTransition` | Candidate follow-up. Existing `use_transition`, `use_deferred_value`, signals, and `SuspenseBoundary` are related but not equivalent. | #5315 |
+| Cross-target API parity guardrails | Implementation follow-up for a wasm/server parity macro before broadening dual-target public APIs. | #5199 |
+
+The umbrella tracker for this classification is #5198. It should close only
+after this table reflects the final outcome of each focused follow-up.
+
+## Metadata and asset loading
+
+React 19 allows metadata such as `<title>`, `<meta>`, and `<link>` to appear in
+component bodies and be hoisted into the document head. Reinhardt Pages keeps
+that contract explicit. Document metadata belongs in `head!` or in a `Head`
+value attached to the page; ordinary `page!` body nodes render where they are
+declared.
+
+Asset loading hints use the same explicit head model. `Head` and `LinkTag`
+provide helpers for common browser hints:
+
+- `preconnect`
+- `dns_prefetch`
+- `module_preload`
+- `preload_script`
+- `preload_style`
+- `preload_image`
+- `preload_font`
+
+```rust,ignore
+use reinhardt::pages::prelude::*;
+
+fn document_head() -> Head {
+    Head::new()
+        .title("Dashboard")
+        .preconnect("https://cdn.example.com")
+        .dns_prefetch("https://cdn.example.com")
+        .module_preload("/static/app.mjs")
+        .preload_script("/static/app.js")
+        .preload_style("/static/app.css")
+        .preload_image("/static/hero.png")
+        .preload_font("/static/font.woff2")
+}
+```
+
+`preload_font` emits `crossorigin="anonymous"` by default so CSS `@font-face`
+loads can reuse the preload instead of issuing a second font request.
+
+During SSR, Reinhardt removes exact duplicate head entries after rendering each
+entry to HTML, including duplicates between renderer defaults and a supplied
+`Head`. The deduplication is conservative: entries with different attributes,
+media conditions, `crossorigin` values, or Open Graph payloads remain separate.
+Hydration does not scan component bodies for metadata or run a browser-only
+imperative asset loader; the server-rendered head remains the deterministic
+source of document-level metadata and hints.
+
 ## Components, props, and children
 
 In React, a component is a function that returns JSX. In Reinhardt Pages, a
@@ -239,6 +313,37 @@ let render_count = use_ref(0);
 render_count.update(|count| *count += 1);
 ```
 
+For custom elements, keep HTML attributes and JavaScript properties explicit.
+`page!` attributes and `Element::set_attribute` render string attributes.
+Use the DOM wrapper for property-based web component APIs after an element is
+available on the client.
+
+```rust,ignore
+use reinhardt::pages::prelude::*;
+use wasm_bindgen::JsValue;
+
+let widget: Element = /* created or queried on WASM */;
+widget.set_attribute("data-theme", "dark")?;
+widget.set_property("value", &JsValue::from_str("selected"))?;
+```
+
+Custom element events use normal DOM event listener handles. Use
+`add_custom_event_listener` for raw `JsValue` payloads, or
+`add_typed_custom_event_listener` when `CustomEvent.detail` should deserialize
+into a Rust type with `serde_wasm_bindgen`.
+
+```rust,ignore
+let handle = widget.add_typed_custom_event_listener("widget-change", |payload| {
+    let detail: Result<WidgetChange, String> = payload;
+    // Keep the returned handle alive while the listener should remain active.
+});
+```
+
+`ref` is not a special prop in Reinhardt components. Pass explicit typed props
+or callbacks when a component should expose behavior. Store mutable values in
+`use_ref`; a future element-ref binding API would need a separate lifecycle
+contract rather than React-style `ref` prop semantics.
+
 Context is type-safe. A missing provider returns `None` instead of throwing.
 
 ```rust,ignore
@@ -272,12 +377,23 @@ Render loading or stale-state UI by reading `transition.is_pending.get()` and
 
 ## Forms, actions, and `#[server_fn]`
 
-React server actions and client actions map to two pieces in Reinhardt Pages:
+React server actions and client actions map to separate pieces in Reinhardt
+Pages:
 
+- `form!` defines a static form contract, including field metadata,
+  validation, and rendered form structure.
+- `use_form(&form)` builds runtime form state such as field values, validation
+  errors, submit state, and submit lifecycle callbacks.
 - `#[server_fn]` defines the server operation and generates the WASM client
   stub.
 - `use_action` wraps an async mutation and exposes `Idle`, `Pending`,
   `Success`, and `Error` phases.
+
+React `useActionState` combines form submission, pending state, result state,
+and errors behind one hook. Reinhardt keeps those responsibilities explicit:
+use `use_form` for typed form state and validation, then use `use_action` to
+run the `#[server_fn]` mutation after the form is valid. React's DOM
+`action={function}` behavior is not supported directly.
 
 ```rust,ignore
 use reinhardt::pages::prelude::*;
@@ -309,6 +425,12 @@ fn todo_form() -> Page {
             },
             "Create"
         }
+        if create.result().is_some() {
+            p {
+                role: "status",
+                "Todo created"
+            }
+        }
         if create.error().is_some() {
             p {
                 role: "alert",
@@ -319,8 +441,27 @@ fn todo_form() -> Page {
 }
 ```
 
-For optimistic UI, keep predicted state in `use_optimistic` and confirm or
-revert it from the action result.
+For generated forms, read submit state from the runtime returned by `use_form`:
+
+```rust,ignore
+let runtime = use_form(&profile_form)
+    .on_submit_start(|handle| {
+        log::info!("submitting {:?}", handle.get_values());
+    })
+    .on_submit_success(|handle| {
+        assert!(handle.form_state().is_submit_successful.get());
+    })
+    .build();
+
+let state = runtime.form_state();
+let pending = state.is_submitting.get();
+let submit_succeeded = state.is_submit_successful.get();
+let visible_error = state.error.get();
+```
+
+For optimistic UI, keep predicted state in `use_optimistic`, attach it with
+`Action::with_optimistic`, and let the action confirm it on success or revert it
+on error.
 
 ## Routing
 
@@ -342,6 +483,42 @@ fn app_router() -> ClientRouter {
 }
 ```
 
+## Portals
+
+React `createPortal` renders children into another DOM node while keeping the
+component relationship in React's virtual tree. Reinhardt Pages uses an explicit
+portal mount API instead of treating `ClientLauncher::ensure_portal` as a
+general primitive.
+
+Use `Portal` or `mount_portal` when a `Page` should render into an existing DOM
+target such as a modal root or toast root:
+
+```rust,ignore
+use reinhardt::pages::prelude::*;
+
+fn open_dialog() -> Result<PortalHandle, PortalError> {
+    mount_portal(
+        PortalTarget::element_id("modal-root"),
+        page!(|| {
+            div {
+                role: "dialog",
+                "Dialog content"
+            }
+        })(),
+    )
+}
+```
+
+The returned `PortalHandle` owns the mounted host. Dropping it removes the
+portal host from the target, so callers should keep the handle in the same
+lifetime scope as the source view or effect that opened the portal.
+
+SSR is explicit: portal children are not duplicated into the source tree. Use
+`Portal::placeholder()` when the server output should include a deterministic
+`<template data-rh-portal="...">` marker. Hydration does not move server
+nodes across the document; WASM `mount_portal` mounts the `Page` into the target
+and attaches event handlers through the normal `PageExt::mount` path.
+
 ## SSR and hydration
 
 React hydrates server HTML into a virtual DOM tree. Reinhardt Pages renders
@@ -357,6 +534,8 @@ Practical consequences:
   server render path.
 - Use `#[server_fn]` for typed client-to-server mutations instead of manually
   duplicating API request stubs.
+- Treat `#[server_fn]` as typed RPC, not as React Server Actions reference
+  serialization.
 - Prefer signal reads inside `watch { ... }` for reactive view branches.
 
 ## Intentional differences from React
@@ -375,6 +554,10 @@ intentional:
 - Event and DOM APIs are typed Rust APIs over `web-sys` on WASM and native
   stubs during SSR.
 - Missing context is represented as `Option<T>`.
+- There is no catch-all React-style `use(...)` API. Async resource reads,
+  context reads, and loading boundaries use separate typed APIs.
+- There is no React-compatible RSC/Flight transport or directive-string
+  boundary. Use `#[server_fn]` for client-to-server RPC.
 
 ## Migration checklist
 

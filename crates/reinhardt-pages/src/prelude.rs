@@ -48,7 +48,8 @@
 //! - [`Event`] (platform-agnostic event type)
 //!
 //! ## DOM
-//! - [`Document`], [`Element`], [`EventHandle`], [`EventType`], [`document`](fn@document)
+//! - [`Document`], [`Element`], [`CustomEventOptions`], [`EventHandle`],
+//!   [`EventType`], [`document`](fn@document)
 //!
 //! ## Routing
 //! - [`Link`], `Router`, `Route`, `RouterOutlet`, `PathPattern`
@@ -124,12 +125,13 @@ pub use crate::platform::Event;
 
 // Platform-agnostic task spawning (cross-target)
 pub use crate::platform::{defer_yield, spawn_task};
+pub use crate::portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
 
 // ============================================================================
 // DOM
 // ============================================================================
 
-pub use crate::dom::{Document, Element, EventHandle, EventType, document};
+pub use crate::dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
 
 // ============================================================================
 // Routing
@@ -199,6 +201,7 @@ pub use reinhardt_forms::{
 pub use crate::form;
 pub use crate::head;
 pub use crate::page;
+pub use crate::wasm_server_api;
 
 // ============================================================================
 // WASM-specific utilities

@@ -8,6 +8,7 @@
 //! - `head!` - HTML head section DSL macro
 //! - `form!` - Type-safe form component macro with reactive bindings
 //! - `#[server_fn]` - Server Functions (RPC) macro
+//! - `#[wasm_server_api]` - API parity guard for matching WASM/server surfaces
 //!
 //! ## Form Design
 //!
@@ -63,11 +64,15 @@
 
 use proc_macro::TokenStream;
 
+mod component;
 mod crate_paths;
 mod form;
+mod from_request;
 mod head;
 mod page;
+mod page_props;
 mod server_fn;
+mod wasm_server_api;
 
 /// Server Function macro
 ///
@@ -100,6 +105,52 @@ mod server_fn;
 #[proc_macro_attribute]
 pub fn server_fn(args: TokenStream, input: TokenStream) -> TokenStream {
 	server_fn::server_fn_impl(args, input)
+}
+
+/// Derives `FromRequest` for named props structs with extractor fields.
+#[proc_macro_derive(FromRequest, attributes(from_request))]
+pub fn derive_from_request(input: TokenStream) -> TokenStream {
+	from_request::derive_from_request_impl(input)
+}
+
+/// Adds builder support and `FromRequest` extraction to a named props struct.
+#[proc_macro_attribute]
+pub fn page_props(args: TokenStream, input: TokenStream) -> TokenStream {
+	page_props::page_props_impl(args, input)
+}
+
+/// Declares a route-backed page component.
+#[proc_macro_attribute]
+pub fn component(args: TokenStream, input: TokenStream) -> TokenStream {
+	component::component_impl(args, input)
+}
+
+/// Declares public APIs with matching WASM and server-side surfaces.
+///
+/// Apply this attribute to an inline module containing pairs of functions
+/// marked with `#[wasm]` and `#[server]`. The macro validates that each pair
+/// has the same visibility, attributes, name, and signature, then emits
+/// target-gated definitions for browser WASM and non-browser-WASM builds.
+///
+/// ```no_run
+/// use reinhardt_pages_macros::wasm_server_api;
+///
+/// #[wasm_server_api]
+/// mod platform {
+///     #[wasm]
+///     pub fn target_name() -> &'static str {
+///         "wasm"
+///     }
+///
+///     #[server]
+///     pub fn target_name() -> &'static str {
+///         "server"
+///     }
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
+	wasm_server_api::wasm_server_api_impl(args, input)
 }
 
 /// Derives typed field signals and form traits for a form values struct.

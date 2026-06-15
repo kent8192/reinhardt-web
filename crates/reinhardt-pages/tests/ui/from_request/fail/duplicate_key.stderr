@@ -1,0 +1,6 @@
+error: duplicate from_request key `id`
+ --> tests/ui/from_request/fail/duplicate_key.rs:7:2
+  |
+7 | /     #[from_request(name = "id")]
+8 | |     tab: QueryParam<String>,
+  | |___________________________^

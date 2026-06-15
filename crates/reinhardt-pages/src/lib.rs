@@ -61,6 +61,7 @@
 //! - [`ssr`]: Server-side rendering with Head support
 //! - [`hydration`]: Client-side hydration
 //! - [`router`]: Client-side routing (reinhardt-urls compatible)
+//! - [`portal`]: Explicit portal mounting into existing DOM targets
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
 //!
 //! ## Forms
@@ -103,6 +104,10 @@
 //!
 //! - [`page!`]: JSX-like macro for defining view components
 //! - [`head!`]: JSX-like macro for defining HTML head sections
+//! - [`form!`]: Type-safe form component macro
+//! - [`wasm_server_api`]: WASM/server API parity macro
+//!
+//! See `docs/wasm_server_api.md` for the target-specific API parity contract.
 //!
 //! ## Example
 //!
@@ -220,6 +225,7 @@ pub mod reactive;
 
 // Platform abstraction (unified types and task spawning for WASM and native)
 pub mod platform;
+pub mod portal;
 
 /// Backward-compatibility re-export of task-spawning utilities.
 ///
@@ -313,7 +319,7 @@ pub use component::{
 	PageElement, PageExt, Props, ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary,
 };
 pub use csrf::{CsrfManager, get_csrf_token};
-pub use dom::{Document, Element, EventHandle, EventType, document};
+pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
 #[cfg(native)]
 pub use form::{FormBinding, FormComponent};
 // Static form metadata types (always available, used by form! macro)
@@ -324,6 +330,7 @@ pub use form_state::{
 	UseFormSubmitOutcome, use_form,
 };
 pub use hydration::{HydrationContext, HydrationError, hydrate};
+pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
 pub use reactive::{Effect, Memo, Resource, ResourceState, Signal, use_resource};
 #[cfg(wasm)]
 #[allow(
@@ -356,6 +363,7 @@ pub use router::Link;
 // components. `NavigateError` is the public error returned by both paths.
 pub use reactive::hooks::router::{NavigateError, RouterHandle, use_router};
 pub use router::{NavigationType, navigate};
+pub use router::{Path, Query};
 pub use server_fn::{ServerFn, ServerFnError, parse_server_error_message};
 pub use ssr::SsrState;
 #[cfg(native)]
@@ -366,10 +374,16 @@ pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
 pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
 pub use reinhardt_pages_macros::page;
+pub use reinhardt_pages_macros::wasm_server_api;
+pub use reinhardt_pages_macros::{FromRequest, component, page_props};
 
 // Private re-exports used by macro-generated code. Not part of the public API.
 #[doc(hidden)]
 pub mod __private {
+	pub use bon;
+	pub use inventory;
+	pub use reinhardt_urls;
+
 	// `reqwest` is enabled for all wasm32 targets (including WASI, wasm32-unknown-unknown, etc.)
 	// because the HTTP client is needed on any wasm32 platform.
 	#[cfg(target_arch = "wasm32")]

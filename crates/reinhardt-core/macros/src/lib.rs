@@ -1121,12 +1121,25 @@ pub fn dto(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Fragment mode
 ///
-/// Marks a struct as a settings fragment:
+/// Marks a struct as a root settings fragment:
 ///
 /// ```rust,ignore
 /// #[settings(fragment = true, section = "cache")]
 /// pub struct CacheSettings {
 ///     pub backend: String,
+/// }
+/// ```
+///
+/// Omitting `section = "..."` creates an embedded settings node instead of a
+/// root fragment. Embedded nodes participate in recursive schema metadata and
+/// required-field validation below a root fragment, but they do not implement
+/// `SettingsFragment` and cannot be composed directly:
+///
+/// ```rust,ignore
+/// #[settings(fragment = true, default_policy = "required")]
+/// pub struct DatabaseConfig {
+///     pub engine: String,
+///     pub host: String,
 /// }
 /// ```
 ///
