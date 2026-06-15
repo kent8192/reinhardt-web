@@ -273,7 +273,6 @@ impl ServerRouter {
 	///
 	/// ```
 	/// use reinhardt_urls::routers::ServerRouter;
-	/// use hyper::Method;
 	/// # use hyper::Method;
 	/// # use reinhardt_core::endpoint::EndpointInfo;
 	/// # use reinhardt_http::{Handler, Request, Response, Result};
