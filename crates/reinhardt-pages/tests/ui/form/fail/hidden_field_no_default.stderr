@@ -1,4 +1,4 @@
-error: form! cannot generate a use_form runtime contract for unsupported field(s): data (HiddenField). FileField and ImageField are not supported by use_form(&form) yet.
+error: form! cannot generate a use_form runtime contract for unsupported field(s): data (HiddenField).
   --> tests/ui/form/fail/hidden_field_no_default.rs:26:10
    |
 26 |       let _ = form! {
