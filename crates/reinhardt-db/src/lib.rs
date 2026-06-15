@@ -139,6 +139,10 @@
 //! | `nosql` | disabled | NoSQL/BSON type support |
 //! | `di` | disabled | Dependency injection integration |
 //! | `database-full` | disabled | Enable all database features |
+//!
+//! The `model-info` feature is intentionally target-neutral. It exists for
+//! macro-generated metadata surfaces that need to compile on WASM without
+//! enabling ORM, migrations, connection pools, or database drivers.
 
 pub mod naming;
 
@@ -162,6 +166,9 @@ pub mod nosql;
 pub mod orm;
 #[cfg(feature = "pool")]
 pub mod pool;
+
+#[cfg(feature = "model-info")]
+pub use reinhardt_core::model_info;
 
 /// Prelude module for convenient imports
 ///
