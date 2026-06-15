@@ -64,10 +64,13 @@
 
 use proc_macro::TokenStream;
 
+mod component;
 mod crate_paths;
 mod form;
+mod from_request;
 mod head;
 mod page;
+mod page_props;
 mod server_fn;
 mod wasm_server_api;
 
@@ -102,6 +105,24 @@ mod wasm_server_api;
 #[proc_macro_attribute]
 pub fn server_fn(args: TokenStream, input: TokenStream) -> TokenStream {
 	server_fn::server_fn_impl(args, input)
+}
+
+/// Derives `FromRequest` for named props structs with extractor fields.
+#[proc_macro_derive(FromRequest, attributes(from_request))]
+pub fn derive_from_request(input: TokenStream) -> TokenStream {
+	from_request::derive_from_request_impl(input)
+}
+
+/// Adds builder support and `FromRequest` extraction to a named props struct.
+#[proc_macro_attribute]
+pub fn page_props(args: TokenStream, input: TokenStream) -> TokenStream {
+	page_props::page_props_impl(args, input)
+}
+
+/// Declares a route-backed page component.
+#[proc_macro_attribute]
+pub fn component(args: TokenStream, input: TokenStream) -> TokenStream {
+	component::component_impl(args, input)
 }
 
 /// Declares public APIs with matching WASM and server-side surfaces.
