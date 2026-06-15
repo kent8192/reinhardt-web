@@ -260,6 +260,10 @@ impl ReactiveNode {
 					// Render the view (this tracks Signal dependencies)
 					let view = render();
 
+					if update_activity_boundary_attrs(&current_nodes_clone, &view) {
+						return;
+					}
+
 					// Refs #5100: remove old nodes before mounting the replacement view. The
 					// mount path may synchronously run layout effects, so do not
 					// hold this RefCell borrow across `mount_before_marker`.
@@ -287,6 +291,66 @@ impl ReactiveNode {
 			effect,
 		}
 	}
+}
+
+#[cfg(wasm)]
+fn update_activity_boundary_attrs(
+	current_nodes: &Rc<RefCell<Vec<web_sys::Node>>>,
+	view: &Page,
+) -> bool {
+	use wasm_bindgen::JsCast;
+
+	let Page::Element(element_view) = view else {
+		return false;
+	};
+
+	let Some(activity_mode) = element_view
+		.attrs()
+		.iter()
+		.find(|(name, _)| name.as_ref() == "data-rh-activity")
+		.map(|(_, value)| value.as_ref())
+	else {
+		return false;
+	};
+
+	if !element_view
+		.attrs()
+		.iter()
+		.any(|(name, value)| name.as_ref() == "data-rh-state-preserved" && value.as_ref() == "true")
+	{
+		return false;
+	}
+
+	let nodes = current_nodes.borrow();
+	if nodes.len() != 1 {
+		return false;
+	}
+
+	let Some(existing_element) = nodes[0].dyn_ref::<web_sys::Element>() else {
+		return false;
+	};
+
+	if existing_element
+		.get_attribute("data-rh-state-preserved")
+		.as_deref()
+		!= Some("true")
+		|| existing_element.get_attribute("data-rh-activity").is_none()
+	{
+		return false;
+	}
+
+	let _ = existing_element.set_attribute("data-rh-activity", activity_mode);
+	let _ = existing_element.set_attribute("data-rh-state-preserved", "true");
+
+	if activity_mode == "hidden" {
+		let _ = existing_element.set_attribute("hidden", "hidden");
+		let _ = existing_element.set_attribute("aria-hidden", "true");
+	} else {
+		let _ = existing_element.remove_attribute("hidden");
+		let _ = existing_element.remove_attribute("aria-hidden");
+	}
+
+	true
 }
 
 /// Mounts a Page before a marker node and returns the created DOM nodes.

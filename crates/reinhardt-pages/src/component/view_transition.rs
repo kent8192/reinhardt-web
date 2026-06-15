@@ -190,7 +190,7 @@ impl ViewTransitionBoundary {
 
 	/// Set the CSS `view-transition-name` for the boundary wrapper.
 	pub fn name(mut self, name: impl Into<Cow<'static, str>>) -> Self {
-		self.name = Some(name.into());
+		self.name = Some(sanitize_view_transition_name(name.into()));
 		self
 	}
 
@@ -223,5 +223,45 @@ impl Default for ViewTransitionBoundary {
 impl IntoPage for ViewTransitionBoundary {
 	fn into_page(self) -> Page {
 		self.render()
+	}
+}
+
+fn sanitize_view_transition_name(name: Cow<'static, str>) -> Cow<'static, str> {
+	let value = name.as_ref();
+	let mut sanitized = String::with_capacity(value.len().max(1) + 6);
+
+	if value.is_empty() || needs_identifier_prefix(value) {
+		sanitized.push_str("rh-vt-");
+	}
+
+	for ch in value.chars() {
+		if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+			sanitized.push(ch);
+		} else {
+			sanitized.push('_');
+		}
+	}
+
+	if sanitized.eq_ignore_ascii_case("inherit")
+		|| sanitized.eq_ignore_ascii_case("initial")
+		|| sanitized.eq_ignore_ascii_case("none")
+		|| sanitized.eq_ignore_ascii_case("revert")
+		|| sanitized.eq_ignore_ascii_case("revert-layer")
+		|| sanitized.eq_ignore_ascii_case("unset")
+	{
+		sanitized.insert_str(0, "rh-vt-");
+	}
+
+	match name {
+		Cow::Borrowed(value) if sanitized == value => Cow::Borrowed(value),
+		_ => Cow::Owned(sanitized),
+	}
+}
+
+fn needs_identifier_prefix(value: &str) -> bool {
+	let mut chars = value.chars();
+	match chars.next() {
+		Some(ch) if ch.is_ascii_alphabetic() || ch == '_' => false,
+		_ => true,
 	}
 }

@@ -86,6 +86,20 @@ fn view_transition_boundary_renders_name_style() {
 }
 
 #[test]
+fn view_transition_boundary_sanitizes_name_before_inline_style() {
+	let html = ViewTransitionBoundary::new()
+		.name("123; color: red")
+		.content(|| Page::text("Hero"))
+		.render()
+		.render_to_string();
+
+	assert!(html.contains("data-rh-view-transition-name=\"rh-vt-123__color__red\""));
+	assert!(html.contains("style=\"view-transition-name: rh-vt-123__color__red;\""));
+	assert!(!html.contains("color: red"));
+	assert!(!html.contains("123;"));
+}
+
+#[test]
 fn native_start_view_transition_runs_update_and_reports_unsupported() {
 	let ran = Rc::new(RefCell::new(false));
 	let handle = start_view_transition({

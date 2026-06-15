@@ -8,8 +8,12 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use reinhardt_pages::component::{
-	ActivityBoundary, IntoPage, Page, PageElement, ViewTransitionBoundary, start_view_transition,
+	ActivityBoundary, IntoPage, Page, PageElement, PageExt, ViewTransitionBoundary,
+	cleanup_reactive_nodes, start_view_transition,
 };
+use reinhardt_pages::dom::Element;
+use reinhardt_pages::reactive::Signal;
+use wasm_bindgen::JsCast;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -37,6 +41,83 @@ fn view_transition_boundary_marks_named_subtree() {
 	assert!(html.contains("data-rh-view-transition=\"boundary\""));
 	assert!(html.contains("data-rh-view-transition-name=\"panel\""));
 	assert!(html.contains("view-transition-name: panel;"));
+}
+
+#[wasm_bindgen_test]
+fn reactive_activity_mode_updates_wrapper_without_recreating_content() {
+	cleanup_reactive_nodes();
+
+	let document = web_sys::window().unwrap().document().unwrap();
+	if let Some(prev) = document.get_element_by_id("activity-root") {
+		prev.remove();
+	}
+
+	let target = document.create_element("div").unwrap();
+	target.set_id("activity-root");
+	document.body().unwrap().append_child(&target).unwrap();
+
+	let visible = Signal::new(true);
+	let visible_for_view = visible.clone();
+	Page::reactive(move || {
+		ActivityBoundary::default()
+			.visible_when(visible_for_view.get())
+			.content(|| {
+				PageElement::new("input")
+					.attr("id", "activity-owned-input")
+					.attr("value", "initial")
+					.into_page()
+			})
+			.into_page()
+	})
+	.mount(&Element::new(target.clone()))
+	.expect("activity mounts");
+
+	let wrapper = target
+		.query_selector("[data-rh-activity]")
+		.unwrap()
+		.expect("activity wrapper");
+	let input = document
+		.get_element_by_id("activity-owned-input")
+		.unwrap()
+		.dyn_into::<web_sys::HtmlInputElement>()
+		.unwrap();
+	input.set_value("user typed");
+
+	visible.set(false);
+	assert_eq!(
+		wrapper.get_attribute("data-rh-activity").as_deref(),
+		Some("hidden")
+	);
+	assert_eq!(wrapper.get_attribute("hidden").as_deref(), Some("hidden"));
+	assert_eq!(
+		document
+			.get_element_by_id("activity-owned-input")
+			.unwrap()
+			.dyn_into::<web_sys::HtmlInputElement>()
+			.unwrap()
+			.value(),
+		"user typed"
+	);
+
+	visible.set(true);
+	assert_eq!(
+		wrapper.get_attribute("data-rh-activity").as_deref(),
+		Some("visible")
+	);
+	assert_eq!(wrapper.get_attribute("hidden"), None);
+	assert_eq!(wrapper.get_attribute("aria-hidden"), None);
+	assert_eq!(
+		document
+			.get_element_by_id("activity-owned-input")
+			.unwrap()
+			.dyn_into::<web_sys::HtmlInputElement>()
+			.unwrap()
+			.value(),
+		"user typed"
+	);
+
+	cleanup_reactive_nodes();
+	target.remove();
 }
 
 #[wasm_bindgen_test]
