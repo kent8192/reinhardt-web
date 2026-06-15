@@ -125,6 +125,7 @@ pub use crate::platform::Event;
 
 // Platform-agnostic task spawning (cross-target)
 pub use crate::platform::{defer_yield, spawn_task};
+pub use crate::portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
 
 // ============================================================================
 // DOM

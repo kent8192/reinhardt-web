@@ -313,6 +313,11 @@ path = "tests/wasm/client_launcher_router_client_test.rs"
 required-features = []
 
 [[test]]
+name = "portal_wasm_test"
+path = "tests/wasm/portal_wasm_test.rs"
+required-features = []
+
+[[test]]
 name = "spa_navigation_e2e_test"
 path = "tests/integration/spa_navigation_e2e_test.rs"
 required-features = ["e2e-cdp-test"]
