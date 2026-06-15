@@ -12,10 +12,10 @@
 //! Test Categories:
 //! - View Head Only: 2 tests
 //! - No Head: 1 test
-//! - Multiple Elements: 3 tests
+//! - Multiple Elements: 4 tests
 //! - Edge Cases: 2 tests
 //!
-//! Total: 8 tests
+//! Total: 9 tests
 
 #[cfg(native)]
 mod ssr_tests {
@@ -134,6 +134,34 @@ mod ssr_tests {
 
 		assert!(html.contains("<title>My Page</title>"));
 		assert!(html.contains("<meta name=\"description\" content=\"Page description\""));
+	}
+
+	/// Tests exact duplicate asset hints are deduplicated during SSR.
+	#[rstest]
+	fn test_duplicate_asset_hints_are_deduplicated_during_ssr() {
+		let view_head = Head::new()
+			.preconnect("https://cdn.example.com")
+			.preconnect("https://cdn.example.com")
+			.preload_script("/static/app.js")
+			.preload_script("/static/app.js");
+		let view = PageElement::new("div")
+			.child("Content")
+			.into_page()
+			.with_head(view_head);
+
+		let mut renderer = SsrRenderer::new();
+		let html = renderer.render_page_with_view_head(view);
+
+		assert_eq!(
+			html.matches("<link rel=\"preconnect\" href=\"https://cdn.example.com\">")
+				.count(),
+			1
+		);
+		assert_eq!(
+			html.matches("<link rel=\"preload\" href=\"/static/app.js\" as=\"script\">")
+				.count(),
+			1
+		);
 	}
 
 	// ============================================================================

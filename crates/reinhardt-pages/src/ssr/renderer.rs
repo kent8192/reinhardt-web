@@ -259,6 +259,7 @@ impl SsrRenderer {
 	/// * `content` - The rendered body content
 	/// * `view_head` - Optional head extracted from a View
 	fn wrap_in_html_with_head(&self, content: &str, view_head: Option<&Head>) -> String {
+		let view_head = view_head.map(Head::deduplicated);
 		let mut html = String::with_capacity(content.len() + 1024);
 
 		// DOCTYPE and html opening
@@ -276,7 +277,7 @@ impl SsrRenderer {
 		);
 
 		// Add View's head elements
-		if let Some(head) = view_head {
+		if let Some(head) = view_head.as_ref() {
 			// Title from View's head
 			if let Some(ref title) = head.title {
 				html.push_str(&format!("<title>{}</title>\n", html_escape(title)));
