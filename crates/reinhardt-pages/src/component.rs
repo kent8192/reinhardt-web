@@ -9,7 +9,7 @@
 //! - **Component trait**: Define reusable UI components
 //! - **Page enum**: Unified representation of DOM elements, text, and fragments
 //! - **Props system**: Type-safe component properties
-//! - **Boundaries**: Suspense and error boundary components
+//! - **Boundaries**: Suspense, error, activity, and view-transition components
 //!
 //! ## Usage
 //!
@@ -29,14 +29,17 @@
 //! let html = page.render_to_string();
 //! ```
 
+pub mod activity;
 pub mod error_boundary;
 mod into_page;
 mod props;
 pub(crate) mod reactive_if;
 pub mod suspense;
 mod r#trait;
+pub mod view_transition;
 
 // Re-export Page types (originally from into_page, now from reinhardt-types via into_page)
+pub use activity::{ActivityBoundary, ActivityMode};
 pub use error_boundary::{BoundaryError, ErrorBoundary, ErrorTracker};
 #[cfg(native)]
 pub use into_page::DummyEvent;
@@ -50,3 +53,6 @@ pub use props::Props;
 pub use reactive_if::{ReactiveIfNode, ReactiveNode, cleanup_reactive_nodes, store_reactive_node};
 pub use suspense::{ResourceTracker, SuspenseBoundary};
 pub use r#trait::Component;
+pub use view_transition::{
+	ViewTransitionBoundary, ViewTransitionHandle, ViewTransitionStatus, start_view_transition,
+};

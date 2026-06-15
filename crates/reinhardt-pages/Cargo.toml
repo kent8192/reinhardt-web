@@ -294,6 +294,11 @@ path = "tests/wasm/suspense_boundary_wasm_test.rs"
 required-features = []
 
 [[test]]
+name = "activity_view_transition_wasm_test"
+path = "tests/wasm/activity_view_transition_wasm_test.rs"
+required-features = []
+
+[[test]]
 name = "client_launcher_navigation_test"
 path = "tests/wasm/client_launcher_navigation_test.rs"
 required-features = []

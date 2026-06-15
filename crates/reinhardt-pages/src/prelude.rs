@@ -41,7 +41,8 @@
 //! ## Component System
 //! - [`Component`], [`PageElement`], [`IntoPage`], [`Page`], [`Props`]
 //! - [`PageEventHandler`]
-//! - [`SuspenseBoundary`], [`ErrorBoundary`], [`BoundaryError`]
+//! - [`SuspenseBoundary`], [`ErrorBoundary`], [`ActivityBoundary`],
+//!   [`ViewTransitionBoundary`], [`BoundaryError`]
 //!
 //! ## Events and Callbacks
 //! - [`Callback`], [`IntoEventHandler`], [`into_event_handler`]
@@ -108,9 +109,10 @@ pub use crate::reactive::{create_resource, create_resource_with_deps};
 // ============================================================================
 
 pub use crate::component::{
-	BoundaryError, Component, ErrorBoundary, ErrorTracker, Head, IntoPage, LinkTag, MetaTag, Page,
-	PageElement, PageEventHandler, PageExt, Props, ResourceTracker, ScriptTag, StyleTag,
-	SuspenseBoundary,
+	ActivityBoundary, ActivityMode, BoundaryError, Component, ErrorBoundary, ErrorTracker, Head,
+	IntoPage, LinkTag, MetaTag, Page, PageElement, PageEventHandler, PageExt, Props,
+	ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary,
+	ViewTransitionHandle, ViewTransitionStatus, start_view_transition,
 };
 
 // ============================================================================
