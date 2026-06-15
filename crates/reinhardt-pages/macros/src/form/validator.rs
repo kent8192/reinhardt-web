@@ -551,7 +551,7 @@ fn transform_field_entry(entry: &FormFieldEntry) -> Result<TypedFormFieldEntry> 
 		}
 		FormFieldEntry::Collection(collection) => {
 			let typed_collection = transform_collection(collection)?;
-			Ok(TypedFormFieldEntry::Collection(typed_collection))
+			Ok(TypedFormFieldEntry::Collection(Box::new(typed_collection)))
 		}
 		FormFieldEntry::SubmitButton(btn) => {
 			let typed_btn = transform_submit_button(btn)?;
