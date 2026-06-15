@@ -44,7 +44,7 @@ All handlers receive a database connection through dependency injection
 
 ### Prerequisites
 
-- Rust 1.75 or later
+- Rust 1.96.0 or later
 - Docker, for the disposable PostgreSQL and Redis containers used by
   `cargo make migrate` and `cargo make runserver`
 - PostgreSQL, only if you point `settings/local.toml` at an existing database
