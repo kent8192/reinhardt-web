@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.2.0...reinhardt-pages-macros@v0.3.0) - 2026-06-15
+
+### Added
+
+- *(pages)* add route-backed component macros
+
+### Fixed
+
+- *(di)* support trait-based inject wrapper resolution
+- *(di)* preserve Depends inject fallback
+- *(pages)* resolve generated builder dependency path
+- *(pages)* address CodeRabbit component macro review
+
+### Maintenance
+
+- merge develop/0.3.0 into component route macros
+
 ### Added
 
 - Added `#[derive(FromRequest)]`, `#[page_props]`, and
