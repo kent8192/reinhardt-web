@@ -25,6 +25,7 @@
 //! ```
 
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 
 use super::util::html_escape;
 
@@ -183,6 +184,41 @@ impl LinkTag {
 		let mut link = Self::new("preload", href);
 		link.as_attr = Some(as_type.into());
 		link
+	}
+
+	/// Creates a script preload link.
+	pub fn preload_script(href: impl Into<Cow<'static, str>>) -> Self {
+		Self::preload(href, "script")
+	}
+
+	/// Creates a style preload link.
+	pub fn preload_style(href: impl Into<Cow<'static, str>>) -> Self {
+		Self::preload(href, "style")
+	}
+
+	/// Creates an image preload link.
+	pub fn preload_image(href: impl Into<Cow<'static, str>>) -> Self {
+		Self::preload(href, "image")
+	}
+
+	/// Creates a font preload link with anonymous CORS.
+	pub fn preload_font(href: impl Into<Cow<'static, str>>) -> Self {
+		Self::preload(href, "font").with_crossorigin("anonymous")
+	}
+
+	/// Creates a module preload link.
+	pub fn module_preload(href: impl Into<Cow<'static, str>>) -> Self {
+		Self::new("modulepreload", href)
+	}
+
+	/// Creates a preconnect link.
+	pub fn preconnect(href: impl Into<Cow<'static, str>>) -> Self {
+		Self::new("preconnect", href)
+	}
+
+	/// Creates a DNS prefetch link.
+	pub fn dns_prefetch(href: impl Into<Cow<'static, str>>) -> Self {
+		Self::new("dns-prefetch", href)
 	}
 
 	/// Sets the type attribute.
@@ -606,6 +642,41 @@ impl Head {
 		self.link(LinkTag::preload(href, as_type))
 	}
 
+	/// Adds a script preload link.
+	pub fn preload_script(self, href: impl Into<Cow<'static, str>>) -> Self {
+		self.link(LinkTag::preload_script(href))
+	}
+
+	/// Adds a style preload link.
+	pub fn preload_style(self, href: impl Into<Cow<'static, str>>) -> Self {
+		self.link(LinkTag::preload_style(href))
+	}
+
+	/// Adds an image preload link.
+	pub fn preload_image(self, href: impl Into<Cow<'static, str>>) -> Self {
+		self.link(LinkTag::preload_image(href))
+	}
+
+	/// Adds a font preload link with anonymous CORS.
+	pub fn preload_font(self, href: impl Into<Cow<'static, str>>) -> Self {
+		self.link(LinkTag::preload_font(href))
+	}
+
+	/// Adds a module preload link.
+	pub fn module_preload(self, href: impl Into<Cow<'static, str>>) -> Self {
+		self.link(LinkTag::module_preload(href))
+	}
+
+	/// Adds a preconnect link.
+	pub fn preconnect(self, href: impl Into<Cow<'static, str>>) -> Self {
+		self.link(LinkTag::preconnect(href))
+	}
+
+	/// Adds a DNS prefetch link.
+	pub fn dns_prefetch(self, href: impl Into<Cow<'static, str>>) -> Self {
+		self.link(LinkTag::dns_prefetch(href))
+	}
+
 	/// Adds a canonical URL link.
 	pub fn canonical(self, href: impl Into<Cow<'static, str>>) -> Self {
 		self.link(LinkTag::new("canonical", href))
@@ -677,40 +748,66 @@ impl Head {
 		self
 	}
 
+	/// Returns a copy with exact duplicate head entries removed.
+	///
+	/// Deduplication is intentionally conservative: only entries with identical
+	/// rendered HTML are collapsed. Distinct Open Graph images, media-specific
+	/// stylesheets, or crossorigin variants stay separate.
+	pub fn deduplicated(&self) -> Self {
+		let mut head = self.clone();
+		head.dedup_in_place();
+		head
+	}
+
+	/// Removes exact duplicate head entries and returns this head.
+	pub fn dedup(mut self) -> Self {
+		self.dedup_in_place();
+		self
+	}
+
+	/// Removes exact duplicate head entries in place.
+	pub fn dedup_in_place(&mut self) {
+		retain_unique_by(&mut self.meta_tags, MetaTag::to_html);
+		retain_unique_by(&mut self.links, LinkTag::to_html);
+		retain_unique_by(&mut self.styles, StyleTag::to_html);
+		retain_unique_by(&mut self.scripts, ScriptTag::to_html);
+	}
+
 	/// Renders the head section to HTML string.
 	///
 	/// This method generates the complete `<head>` tag content,
 	/// including all meta tags, links, scripts, and styles.
 	pub fn to_html(&self) -> String {
+		let head = self.deduplicated();
 		let mut parts = Vec::new();
 
 		// Base tag
-		if let Some(ref base) = self.base {
+		if let Some(ref base) = head.base {
 			parts.push(format!("<base href=\"{}\">", html_escape(base)));
 		}
 
 		// Meta tags
-		for meta in &self.meta_tags {
+		for meta in &head.meta_tags {
 			parts.push(meta.to_html());
 		}
 
 		// Title
-		if let Some(ref title) = self.title {
+		if let Some(ref title) = head.title {
 			parts.push(format!("<title>{}</title>", html_escape(title)));
 		}
 
 		// Link tags
-		for link in &self.links {
+		for link in &head.links {
 			parts.push(link.to_html());
 		}
 
 		// Style tags
-		for style in &self.styles {
+		for style in &head.styles {
 			parts.push(style.to_html());
 		}
 
 		// Script tags
-		for script in &self.scripts {
+		for script in &head.scripts {
 			parts.push(script.to_html());
 		}
 
@@ -726,6 +823,11 @@ impl Head {
 			&& self.styles.is_empty()
 			&& self.base.is_none()
 	}
+}
+
+fn retain_unique_by<T>(items: &mut Vec<T>, mut key: impl FnMut(&T) -> String) {
+	let mut seen = BTreeSet::new();
+	items.retain(|item| seen.insert(key(item)));
 }
 
 #[cfg(test)]
@@ -763,6 +865,38 @@ mod tests {
 		assert_eq!(
 			link.to_html(),
 			"<link rel=\"stylesheet\" href=\"/static/css/style.css\">"
+		);
+	}
+
+	#[rstest]
+	fn test_link_tag_asset_hints() {
+		assert_eq!(
+			LinkTag::preconnect("https://cdn.example.com").to_html(),
+			"<link rel=\"preconnect\" href=\"https://cdn.example.com\">"
+		);
+		assert_eq!(
+			LinkTag::dns_prefetch("https://cdn.example.com").to_html(),
+			"<link rel=\"dns-prefetch\" href=\"https://cdn.example.com\">"
+		);
+		assert_eq!(
+			LinkTag::module_preload("/static/app.mjs").to_html(),
+			"<link rel=\"modulepreload\" href=\"/static/app.mjs\">"
+		);
+		assert_eq!(
+			LinkTag::preload_script("/static/app.js").to_html(),
+			"<link rel=\"preload\" href=\"/static/app.js\" as=\"script\">"
+		);
+		assert_eq!(
+			LinkTag::preload_style("/static/app.css").to_html(),
+			"<link rel=\"preload\" href=\"/static/app.css\" as=\"style\">"
+		);
+		assert_eq!(
+			LinkTag::preload_image("/static/hero.png").to_html(),
+			"<link rel=\"preload\" href=\"/static/hero.png\" as=\"image\">"
+		);
+		assert_eq!(
+			LinkTag::preload_font("/static/font.woff2").to_html(),
+			"<link rel=\"preload\" href=\"/static/font.woff2\" as=\"font\" crossorigin=\"anonymous\">"
 		);
 	}
 
@@ -872,6 +1006,69 @@ mod tests {
 		assert_eq!(merged.title, Some(Cow::Borrowed("Override Title")));
 		assert_eq!(merged.meta_tags.len(), 2); // charset + description
 		assert_eq!(merged.links.len(), 2); // base.css + overlay.css
+	}
+
+	#[rstest]
+	fn test_head_asset_hint_helpers() {
+		let head = Head::new()
+			.preconnect("https://cdn.example.com")
+			.dns_prefetch("https://cdn.example.com")
+			.module_preload("/static/app.mjs")
+			.preload_script("/static/app.js")
+			.preload_style("/static/app.css")
+			.preload_image("/static/hero.png")
+			.preload_font("/static/font.woff2");
+
+		let html = head.to_html();
+
+		assert!(html.contains("<link rel=\"preconnect\" href=\"https://cdn.example.com\">"));
+		assert!(html.contains("<link rel=\"dns-prefetch\" href=\"https://cdn.example.com\">"));
+		assert!(html.contains("<link rel=\"modulepreload\" href=\"/static/app.mjs\">"));
+		assert!(html.contains("<link rel=\"preload\" href=\"/static/app.js\" as=\"script\">"));
+		assert!(html.contains("<link rel=\"preload\" href=\"/static/app.css\" as=\"style\">"));
+		assert!(html.contains("<link rel=\"preload\" href=\"/static/hero.png\" as=\"image\">"));
+		assert!(html.contains(
+			"<link rel=\"preload\" href=\"/static/font.woff2\" as=\"font\" crossorigin=\"anonymous\">"
+		));
+	}
+
+	#[rstest]
+	fn test_head_to_html_deduplicates_exact_entries() {
+		let head = Head::new()
+			.meta_description("Repeated")
+			.meta_description("Repeated")
+			.preconnect("https://cdn.example.com")
+			.preconnect("https://cdn.example.com")
+			.inline_css("body { color: black; }")
+			.inline_css("body { color: black; }")
+			.js_defer("/static/app.js")
+			.js_defer("/static/app.js");
+
+		let html = head.to_html();
+
+		assert_eq!(html.matches("name=\"description\"").count(), 1);
+		assert_eq!(html.matches("rel=\"preconnect\"").count(), 1);
+		assert_eq!(
+			html.matches("<style>body { color: black; }</style>")
+				.count(),
+			1
+		);
+		assert_eq!(
+			html.matches("<script src=\"/static/app.js\" defer></script>")
+				.count(),
+			1
+		);
+	}
+
+	#[rstest]
+	fn test_head_dedup_preserves_distinct_asset_variants() {
+		let head = Head::new()
+			.link(LinkTag::preconnect("https://cdn.example.com"))
+			.link(LinkTag::preconnect("https://cdn.example.com").with_crossorigin("anonymous"));
+
+		let deduplicated = head.deduplicated();
+
+		assert_eq!(deduplicated.links.len(), 2);
 	}
 
 	#[rstest]

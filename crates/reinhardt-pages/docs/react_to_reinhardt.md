@@ -41,8 +41,8 @@ React API names.
 | React Server Components and RSC/Flight transport | Explicit non-goal. Reinhardt does not provide React-compatible component transport. | #5311 |
 | `"use client"` / `"use server"` directives | Explicit non-goal. Reinhardt uses Rust/WASM targets and `#[server_fn]`, not directive strings. | #5311 |
 | Server reference passing | Explicit non-goal. `#[server_fn]` generates typed client stubs but does not serialize server function references into client components. | #5311 |
-| Automatic metadata hoisting | Candidate follow-up. Current Reinhardt metadata is explicit through `head!` and `Head`. | #5312 |
-| React DOM asset APIs such as `preinit`, `preload`, `preconnect`, and `prefetchDNS` | Candidate follow-up for explicit `Head` / `LinkTag` helpers and deduplication decisions. | #5312 |
+| Automatic metadata hoisting | Explicit non-goal. Reinhardt metadata stays explicit through `head!` and `Head`; component body nodes are not hoisted into the document head. | #5312 |
+| React DOM asset APIs such as `preinit`, `preload`, `preconnect`, and `prefetchDNS` | Reinhardt-native explicit `Head` / `LinkTag` asset hint helpers with exact duplicate SSR deduplication; no browser-only imperative asset API. | #5312 |
 | `createPortal` | Candidate follow-up. `ClientLauncher::ensure_portal` is a launcher helper, not a general portal API. | #5313 |
 | Custom element property, attribute, and event interop | Explicit DOM interop API. HTML attributes stay attributes; JS properties use `Element::set_property` / `get_property`, and custom event payloads use raw or typed `CustomEvent.detail` listeners. | #5314 |
 | `ref` as a regular prop | Explicit non-goal. Reinhardt does not treat `ref` as a magic component prop; use typed props, `use_ref`, and explicit DOM handles. | #5314 |
@@ -51,6 +51,52 @@ React API names.
 
 The umbrella tracker for this classification is #5198. It should close only
 after this table reflects the final outcome of each focused follow-up.
+
+## Metadata and asset loading
+
+React 19 allows metadata such as `<title>`, `<meta>`, and `<link>` to appear in
+component bodies and be hoisted into the document head. Reinhardt Pages keeps
+that contract explicit. Document metadata belongs in `head!` or in a `Head`
+value attached to the page; ordinary `page!` body nodes render where they are
+declared.
+
+Asset loading hints use the same explicit head model. `Head` and `LinkTag`
+provide helpers for common browser hints:
+
+- `preconnect`
+- `dns_prefetch`
+- `module_preload`
+- `preload_script`
+- `preload_style`
+- `preload_image`
+- `preload_font`
+
+```rust,ignore
+use reinhardt::pages::prelude::*;
+
+fn document_head() -> Head {
+    Head::new()
+        .title("Dashboard")
+        .preconnect("https://cdn.example.com")
+        .dns_prefetch("https://cdn.example.com")
+        .module_preload("/static/app.mjs")
+        .preload_script("/static/app.js")
+        .preload_style("/static/app.css")
+        .preload_image("/static/hero.png")
+        .preload_font("/static/font.woff2")
+}
+```
+
+`preload_font` emits `crossorigin="anonymous"` by default so CSS `@font-face`
+loads can reuse the preload instead of issuing a second font request.
+
+During SSR, Reinhardt removes exact duplicate head entries after rendering each
+entry to HTML, including duplicates between renderer defaults and a supplied
+`Head`. The deduplication is conservative: entries with different attributes,
+media conditions, `crossorigin` values, or Open Graph payloads remain separate.
+Hydration does not scan component bodies for metadata or run a browser-only
+imperative asset loader; the server-rendered head remains the deterministic
+source of document-level metadata and hints.
 
 ## Components, props, and children
 

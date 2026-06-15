@@ -103,6 +103,10 @@
 //!
 //! - [`page!`]: JSX-like macro for defining view components
 //! - [`head!`]: JSX-like macro for defining HTML head sections
+//! - [`form!`]: Type-safe form component macro
+//! - [`wasm_server_api`]: WASM/server API parity macro
+//!
+//! See `docs/wasm_server_api.md` for the target-specific API parity contract.
 //!
 //! ## Example
 //!
@@ -366,6 +370,7 @@ pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
 pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
 pub use reinhardt_pages_macros::page;
+pub use reinhardt_pages_macros::wasm_server_api;
 
 // Private re-exports used by macro-generated code. Not part of the public API.
 #[doc(hidden)]

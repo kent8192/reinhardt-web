@@ -200,6 +200,7 @@ pub use reinhardt_forms::{
 pub use crate::form;
 pub use crate::head;
 pub use crate::page;
+pub use crate::wasm_server_api;
 
 // ============================================================================
 // WASM-specific utilities
