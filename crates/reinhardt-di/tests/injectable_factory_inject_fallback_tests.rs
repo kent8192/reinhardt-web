@@ -56,9 +56,23 @@ struct DerivedUser {
 	user_id: i64,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct DerivedDependsUser {
+	user_id: i64,
+}
+
 #[injectable_factory(scope = "transient")]
 async fn derived_user_factory(#[inject] session: ManualSession) -> DerivedUser {
 	DerivedUser {
+		user_id: session.user_id,
+	}
+}
+
+#[injectable_factory(scope = "transient")]
+async fn derived_depends_user_factory(
+	#[inject] session: Depends<ManualSession>,
+) -> DerivedDependsUser {
+	DerivedDependsUser {
 		user_id: session.user_id,
 	}
 }
@@ -83,6 +97,28 @@ async fn factory_resolves_non_depends_manual_injectable_via_inject_fallback() {
 
 	// Assert
 	assert_eq!(*derived, DerivedUser { user_id: 7 });
+}
+
+#[rstest]
+#[serial(di_registry)]
+#[tokio::test]
+async fn factory_resolves_depends_manual_injectable_via_depends_fallback() {
+	// Arrange
+	let scope = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::builder(scope).build();
+	assert!(
+		!global_registry().is_registered::<ManualSession>(),
+		"ManualSession must remain unregistered to exercise Depends::resolve fallback",
+	);
+
+	// Act
+	let derived = ctx
+		.resolve::<DerivedDependsUser>()
+		.await
+		.expect("Depends<T> parameter must preserve Depends::resolve fallback");
+
+	// Assert
+	assert_eq!(*derived, DerivedDependsUser { user_id: 7 });
 }
 
 /// Variant 2: `Depends<T>` form against a *factory-only* type — i.e. one

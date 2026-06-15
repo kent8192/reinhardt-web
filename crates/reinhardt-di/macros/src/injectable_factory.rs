@@ -4,7 +4,57 @@ use crate::crate_paths::get_reinhardt_di_crate;
 use crate::utils::{extract_scope_from_args, is_inject_attr};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{FnArg, ItemFn, Pat, PatType, Result};
+use syn::{FnArg, GenericArgument, ItemFn, Pat, PatType, PathArguments, Result, Type};
+
+fn depends_inner_type(ty: &Type) -> Option<&Type> {
+	let Type::Path(type_path) = ty else {
+		return None;
+	};
+	let segment = type_path.path.segments.last()?;
+	if segment.ident != "Depends" {
+		return None;
+	}
+	let PathArguments::AngleBracketed(args) = &segment.arguments else {
+		return None;
+	};
+	match args.args.first()? {
+		GenericArgument::Type(inner_ty) => Some(inner_ty),
+		_ => None,
+	}
+}
+
+fn generate_inject_resolver_expr(
+	di_crate: &TokenStream,
+	ty: &Type,
+	ctx: TokenStream,
+	use_cache: bool,
+) -> TokenStream {
+	if let Some(inner_ty) = depends_inner_type(ty) {
+		quote! {
+			{
+				use #di_crate::{
+					__InjectDependsFallbackResolver as _,
+					__InjectDependsRegistryResolver as _,
+				};
+				#di_crate::__InjectDependsResolver::<#inner_ty>::new()
+					.__resolve_inject_depends_parameter(#ctx, #use_cache)
+					.await
+			}
+		}
+	} else {
+		quote! {
+			{
+				use #di_crate::{
+					__InjectFallbackResolver as _,
+					__InjectWrapperResolver as _,
+				};
+				#di_crate::__InjectResolver::<#ty>::new()
+					.__resolve_inject_parameter(#ctx, #use_cache)
+					.await
+			}
+		}
+	}
+}
 
 /// Implementation of the `#[injectable_factory]` attribute macro
 ///
@@ -80,16 +130,9 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 	let inject_resolutions: Vec<_> = inject_params
 		.iter()
 		.map(|(pat, ty)| {
+			let resolve_expr = generate_inject_resolver_expr(&di_crate, ty, quote! { &*ctx }, true);
 			quote! {
-				let #pat: #ty = {
-					use #di_crate::{
-						__InjectFallbackResolver as _,
-						__InjectWrapperResolver as _,
-					};
-					#di_crate::__InjectResolver::<#ty>::new()
-						.__resolve_inject_parameter(&*ctx, true)
-						.await?
-				};
+				let #pat: #ty = #resolve_expr?;
 			}
 		})
 		.collect();

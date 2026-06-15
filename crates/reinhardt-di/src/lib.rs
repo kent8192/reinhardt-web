@@ -339,7 +339,10 @@ pub use depends::{Depends, DependsBuilder, DependsOption, DependsResult};
 pub use injectable::Injectable;
 pub use injectable_type::InjectableType;
 #[doc(hidden)]
-pub use injectable_type::{__InjectFallbackResolver, __InjectResolver, __InjectWrapperResolver};
+pub use injectable_type::{
+	__InjectDependsFallbackResolver, __InjectDependsRegistryResolver, __InjectDependsResolver,
+	__InjectFallbackResolver, __InjectResolver, __InjectWrapperResolver,
+};
 pub use injected::{DependencyScope as InjectedScope, InjectionMetadata};
 pub use provider::{Provider, ProviderFn};
 pub use registration::DiRegistrationList;

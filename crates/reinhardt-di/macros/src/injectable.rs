@@ -97,6 +97,55 @@ fn classify_injection_type(ty: &Type) -> InjectionType {
 	InjectionType::InjectableWrapper
 }
 
+fn depends_inner_type(ty: &Type) -> Option<&Type> {
+	let Type::Path(type_path) = ty else {
+		return None;
+	};
+	let segment = type_path.path.segments.last()?;
+	if segment.ident != "Depends" || !is_likely_reinhardt_di_path(&type_path.path.segments) {
+		return None;
+	}
+	let PathArguments::AngleBracketed(args) = &segment.arguments else {
+		return None;
+	};
+	match args.args.first()? {
+		GenericArgument::Type(inner_ty) => Some(inner_ty),
+		_ => None,
+	}
+}
+
+fn generate_inject_resolver_expr(
+	di_crate: &TokenStream,
+	ty: &Type,
+	use_cache: bool,
+) -> TokenStream {
+	if let Some(inner_ty) = depends_inner_type(ty) {
+		quote! {
+			{
+				use #di_crate::{
+					__InjectDependsFallbackResolver as _,
+					__InjectDependsRegistryResolver as _,
+				};
+				#di_crate::__InjectDependsResolver::<#inner_ty>::new()
+					.__resolve_inject_depends_parameter(__di_ctx, #use_cache)
+					.await?
+			}
+		}
+	} else {
+		quote! {
+			{
+				use #di_crate::{
+					__InjectFallbackResolver as _,
+					__InjectWrapperResolver as _,
+				};
+				#di_crate::__InjectResolver::<#ty>::new()
+					.__resolve_inject_parameter(__di_ctx, #use_cache)
+					.await?
+			}
+		}
+	}
+}
+
 /// Implementation of the `#[injectable]` attribute macro
 ///
 /// This macro:
@@ -177,17 +226,7 @@ pub(crate) fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<T
 				// Generate dependency resolution call based on injection type
 				let resolve_call = match injection_type {
 					InjectionType::InjectableWrapper => {
-						quote! {
-							{
-								use #di_crate::{
-									__InjectFallbackResolver as _,
-									__InjectWrapperResolver as _,
-								};
-								#di_crate::__InjectResolver::<#ty>::new()
-									.__resolve_inject_parameter(__di_ctx, #use_cache)
-									.await?
-							}
-						}
+						generate_inject_resolver_expr(&di_crate, ty, use_cache)
 					}
 					InjectionType::OptionalDepends(inner_ty) => {
 						if use_cache {

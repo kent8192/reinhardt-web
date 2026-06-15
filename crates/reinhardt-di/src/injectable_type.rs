@@ -59,7 +59,21 @@ pub struct __InjectResolver<T> {
 	_marker: PhantomData<fn() -> T>,
 }
 
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct __InjectDependsResolver<T> {
+	_marker: PhantomData<fn() -> T>,
+}
+
 impl<T> __InjectResolver<T> {
+	pub const fn new() -> Self {
+		Self {
+			_marker: PhantomData,
+		}
+	}
+}
+
+impl<T> __InjectDependsResolver<T> {
 	pub const fn new() -> Self {
 		Self {
 			_marker: PhantomData,
@@ -97,6 +111,66 @@ where
 			let depends = Depends::<T::Inner>::resolve_from_registry(ctx, use_cache).await?;
 			Ok(T::from_depends(depends))
 		})
+	}
+}
+
+#[doc(hidden)]
+pub trait __InjectDependsFallbackResolver<T>
+where
+	T: Injectable,
+{
+	fn __resolve_inject_depends_parameter<'a>(
+		self,
+		ctx: &'a InjectionContext,
+		use_cache: bool,
+	) -> __InjectResolveFuture<'a, Depends<T>>
+	where
+		T: 'a;
+}
+
+impl<T> __InjectDependsFallbackResolver<T> for __InjectDependsResolver<T>
+where
+	T: Injectable,
+{
+	fn __resolve_inject_depends_parameter<'a>(
+		self,
+		ctx: &'a InjectionContext,
+		use_cache: bool,
+	) -> __InjectResolveFuture<'a, Depends<T>>
+	where
+		T: 'a,
+	{
+		Box::pin(async move { Depends::<T>::resolve(ctx, use_cache).await })
+	}
+}
+
+#[doc(hidden)]
+pub trait __InjectDependsRegistryResolver<T>
+where
+	T: Send + Sync + 'static,
+{
+	fn __resolve_inject_depends_parameter<'a>(
+		self,
+		ctx: &'a InjectionContext,
+		use_cache: bool,
+	) -> __InjectResolveFuture<'a, Depends<T>>
+	where
+		T: 'a;
+}
+
+impl<T> __InjectDependsRegistryResolver<T> for &__InjectDependsResolver<T>
+where
+	T: Send + Sync + 'static,
+{
+	fn __resolve_inject_depends_parameter<'a>(
+		self,
+		ctx: &'a InjectionContext,
+		use_cache: bool,
+	) -> __InjectResolveFuture<'a, Depends<T>>
+	where
+		T: 'a,
+	{
+		Box::pin(async move { Depends::<T>::resolve_from_registry(ctx, use_cache).await })
 	}
 }
 

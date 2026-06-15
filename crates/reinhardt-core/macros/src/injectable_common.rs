@@ -163,6 +163,24 @@ pub(crate) fn parse_no_inject_options(attrs: &[syn::Attribute]) -> Option<NoInje
 // ============================================================================
 
 use proc_macro2::TokenStream;
+use syn::{GenericArgument, PathArguments, Type};
+
+fn depends_inner_type(ty: &Type) -> Option<&Type> {
+	let Type::Path(type_path) = ty else {
+		return None;
+	};
+	let segment = type_path.path.segments.last()?;
+	if segment.ident != "Depends" {
+		return None;
+	}
+	let PathArguments::AngleBracketed(args) = &segment.arguments else {
+		return None;
+	};
+	match args.args.first()? {
+		GenericArgument::Type(inner_ty) => Some(inner_ty),
+		_ => None,
+	}
+}
 
 pub(crate) fn generate_inject_resolver_expr(
 	di_crate: &TokenStream,
@@ -170,15 +188,29 @@ pub(crate) fn generate_inject_resolver_expr(
 	ctx: TokenStream,
 	use_cache: bool,
 ) -> TokenStream {
-	quote::quote! {
-		{
-			use #di_crate::{
-				__InjectFallbackResolver as _,
-				__InjectWrapperResolver as _,
-			};
-			#di_crate::__InjectResolver::<#ty>::new()
-				.__resolve_inject_parameter(#ctx, #use_cache)
-				.await
+	if let Some(inner_ty) = depends_inner_type(ty) {
+		quote::quote! {
+			{
+				use #di_crate::{
+					__InjectDependsFallbackResolver as _,
+					__InjectDependsRegistryResolver as _,
+				};
+				#di_crate::__InjectDependsResolver::<#inner_ty>::new()
+					.__resolve_inject_depends_parameter(#ctx, #use_cache)
+					.await
+			}
+		}
+	} else {
+		quote::quote! {
+			{
+				use #di_crate::{
+					__InjectFallbackResolver as _,
+					__InjectWrapperResolver as _,
+				};
+				#di_crate::__InjectResolver::<#ty>::new()
+					.__resolve_inject_parameter(#ctx, #use_cache)
+					.await
+			}
 		}
 	}
 }
