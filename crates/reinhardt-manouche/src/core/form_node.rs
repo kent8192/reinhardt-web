@@ -141,7 +141,7 @@ pub enum FormFieldEntry {
 	/// A group of related fields
 	Group(FormFieldGroup),
 	/// A repeatable collection of field entries
-	Collection(FormFieldCollection),
+	Collection(Box<FormFieldCollection>),
 	/// A submit button (not a data field — generates no Signal)
 	SubmitButton(FormSubmitButtonDef),
 }
@@ -206,7 +206,7 @@ impl FormFieldEntry {
 	/// Returns a reference to the inner collection if this is a Collection variant.
 	pub fn as_collection(&self) -> Option<&FormFieldCollection> {
 		match self {
-			FormFieldEntry::Collection(collection) => Some(collection),
+			FormFieldEntry::Collection(collection) => Some(collection.as_ref()),
 			_ => None,
 		}
 	}

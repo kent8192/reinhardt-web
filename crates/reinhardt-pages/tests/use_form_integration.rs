@@ -656,11 +656,11 @@ fn collection_path_state_follows_item_key_across_reorder() {
 		fields: {
 			line_items: FieldArray {
 				fields: {
-						description: CharField {}
-						quantity: IntegerField {}
-					}
+					description: CharField {}
+					quantity: IntegerField {}
 				}
 			}
+		}
 	};
 	let runtime = use_form(&invoice).build();
 	let collection = invoice.line_items_collection();

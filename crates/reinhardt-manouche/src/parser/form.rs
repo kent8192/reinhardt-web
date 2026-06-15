@@ -312,7 +312,7 @@ fn parse_field_definitions(input: ParseStream) -> Result<Vec<FormFieldEntry>> {
 			let content;
 			braced!(content in input);
 			let collection = parse_field_array(name, &content, span)?;
-			entries.push(FormFieldEntry::Collection(collection));
+			entries.push(FormFieldEntry::Collection(Box::new(collection)));
 		} else if field_type == "SubmitButton" {
 			// Parse submit button: SubmitButton { label: "Sign in", class: "btn-primary" }
 			let properties = if input.peek(token::Brace) {

@@ -585,7 +585,7 @@ pub enum TypedFormFieldEntry {
 	/// A group of related fields
 	Group(TypedFormFieldGroup),
 	/// A repeatable collection of field entries
-	Collection(TypedFormFieldCollection),
+	Collection(Box<TypedFormFieldCollection>),
 	/// A submit button (not a data field — generates no Signal)
 	SubmitButton(TypedSubmitButtonDef),
 }
@@ -650,7 +650,7 @@ impl TypedFormFieldEntry {
 	/// Returns a reference to the inner collection if this is a Collection variant.
 	pub fn as_collection(&self) -> Option<&TypedFormFieldCollection> {
 		match self {
-			TypedFormFieldEntry::Collection(collection) => Some(collection),
+			TypedFormFieldEntry::Collection(collection) => Some(collection.as_ref()),
 			_ => None,
 		}
 	}
