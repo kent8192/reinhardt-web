@@ -201,9 +201,9 @@ impl LinkTag {
 		Self::preload(href, "image")
 	}
 
-	/// Creates a font preload link.
+	/// Creates a font preload link with anonymous CORS.
 	pub fn preload_font(href: impl Into<Cow<'static, str>>) -> Self {
-		Self::preload(href, "font")
+		Self::preload(href, "font").with_crossorigin("anonymous")
 	}
 
 	/// Creates a module preload link.
@@ -657,7 +657,7 @@ impl Head {
 		self.link(LinkTag::preload_image(href))
 	}
 
-	/// Adds a font preload link.
+	/// Adds a font preload link with anonymous CORS.
 	pub fn preload_font(self, href: impl Into<Cow<'static, str>>) -> Self {
 		self.link(LinkTag::preload_font(href))
 	}
@@ -896,7 +896,7 @@ mod tests {
 		);
 		assert_eq!(
 			LinkTag::preload_font("/static/font.woff2").to_html(),
-			"<link rel=\"preload\" href=\"/static/font.woff2\" as=\"font\">"
+			"<link rel=\"preload\" href=\"/static/font.woff2\" as=\"font\" crossorigin=\"anonymous\">"
 		);
 	}
 
@@ -1027,7 +1027,9 @@ mod tests {
 		assert!(html.contains("<link rel=\"preload\" href=\"/static/app.js\" as=\"script\">"));
 		assert!(html.contains("<link rel=\"preload\" href=\"/static/app.css\" as=\"style\">"));
 		assert!(html.contains("<link rel=\"preload\" href=\"/static/hero.png\" as=\"image\">"));
-		assert!(html.contains("<link rel=\"preload\" href=\"/static/font.woff2\" as=\"font\">"));
+		assert!(html.contains(
+			"<link rel=\"preload\" href=\"/static/font.woff2\" as=\"font\" crossorigin=\"anonymous\">"
+		));
 	}
 
 	#[rstest]

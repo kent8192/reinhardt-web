@@ -164,6 +164,28 @@ mod ssr_tests {
 		);
 	}
 
+	/// Tests exact duplicate default meta tags are deduplicated during SSR.
+	#[rstest]
+	fn test_default_meta_tags_are_deduplicated_during_ssr() {
+		let view_head = Head::with_defaults();
+		let view = PageElement::new("div")
+			.child("Content")
+			.into_page()
+			.with_head(view_head);
+
+		let mut renderer = SsrRenderer::new();
+		let html = renderer.render_page_with_view_head(view);
+
+		assert_eq!(html.matches("<meta charset=\"UTF-8\">").count(), 1);
+		assert_eq!(
+			html.matches(
+				"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+			)
+			.count(),
+			1
+		);
+	}
+
 	// ============================================================================
 	// Edge Case Tests
 	// ============================================================================

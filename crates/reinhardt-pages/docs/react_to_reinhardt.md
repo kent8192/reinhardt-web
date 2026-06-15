@@ -87,12 +87,16 @@ fn document_head() -> Head {
 }
 ```
 
+`preload_font` emits `crossorigin="anonymous"` by default so CSS `@font-face`
+loads can reuse the preload instead of issuing a second font request.
+
 During SSR, Reinhardt removes exact duplicate head entries after rendering each
-entry to HTML. The deduplication is conservative: entries with different
-attributes, media conditions, `crossorigin` values, or Open Graph payloads remain
-separate. Hydration does not scan component bodies for metadata or run a
-browser-only imperative asset loader; the server-rendered head remains the
-deterministic source of document-level metadata and hints.
+entry to HTML, including duplicates between renderer defaults and a supplied
+`Head`. The deduplication is conservative: entries with different attributes,
+media conditions, `crossorigin` values, or Open Graph payloads remain separate.
+Hydration does not scan component bodies for metadata or run a browser-only
+imperative asset loader; the server-rendered head remains the deterministic
+source of document-level metadata and hints.
 
 ## Components, props, and children
 
