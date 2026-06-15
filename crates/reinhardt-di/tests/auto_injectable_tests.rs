@@ -3,6 +3,8 @@
 //! This module tests the `#[injectable]` macro for automatic dependency injection
 //! on structs with `#[inject]` and `#[no_inject]` fields.
 
+#![cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+
 use reinhardt_di::{Depends, Injectable, InjectionContext, SingletonScope};
 use reinhardt_macros::injectable;
 use std::sync::Arc;

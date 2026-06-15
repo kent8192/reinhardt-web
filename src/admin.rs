@@ -50,7 +50,6 @@ pub mod adapters {
 }
 
 /// Core admin registration and configuration types.
-#[cfg(native)]
 pub mod core {
 	pub use reinhardt_admin::core::*;
 }
