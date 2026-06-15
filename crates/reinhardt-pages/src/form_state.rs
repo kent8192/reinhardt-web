@@ -212,7 +212,7 @@ pub enum FocusError {
 /// Trait implemented by `form!` generated forms.
 pub trait FormRuntimeSource: Clone + 'static {
 	/// Generated value struct for this form.
-	type Values: Clone + PartialEq + 'static;
+	type Values: Clone + 'static;
 	/// Generated field token enum for this form.
 	type Field: Copy + Eq + Hash + Debug + 'static;
 
@@ -280,6 +280,16 @@ type SubmitCallback<Form, Deps> = Rc<dyn Fn(&UseFormReturn<Form, Deps>)>;
 type Subscriber<Form> = Rc<dyn Fn(FormEvent<Form>)>;
 type SubscriberSlots<Form> = Rc<RefCell<Vec<Option<Subscriber<Form>>>>>;
 
+fn form_values_are_dirty<Form>(form: &Form, current: &Form::Values, defaults: &Form::Values) -> bool
+where
+	Form: FormRuntimeSource,
+{
+	form.runtime_fields()
+		.iter()
+		.copied()
+		.any(|field| form.runtime_field_is_dirty(field, current, defaults))
+}
+
 #[allow(
 	clippy::too_many_arguments,
 	reason = "The sync effect needs the independent form state handles it updates atomically."
@@ -318,7 +328,11 @@ where
 				touched_fields.borrow_mut().insert(*field, true);
 			}
 			state.is_touched.set(true);
-			state.is_dirty.set(current != *default_values.borrow());
+			state.is_dirty.set(form_values_are_dirty(
+				&form,
+				&current,
+				&default_values.borrow(),
+			));
 			values_signal.set(current);
 
 			if revalidate_on == RevalidateOn::Change {
@@ -486,7 +500,7 @@ where
 	pub fn build(self) -> UseFormReturn<Form, Deps> {
 		let default_values = self.form.runtime_initial_values();
 		let current_values = self.form.runtime_current_values();
-		let is_dirty = current_values != default_values;
+		let is_dirty = form_values_are_dirty(&self.form, &current_values, &default_values);
 		let form = self.form;
 		let default_values = Rc::new(RefCell::new(default_values));
 		let deps = Rc::new(RefCell::new(self.deps));
@@ -871,9 +885,11 @@ where
 
 	fn refresh_dirty(&self) {
 		let current = self.get_values();
-		self.state
-			.is_dirty
-			.set(current != *self.default_values.borrow());
+		self.state.is_dirty.set(form_values_are_dirty(
+			&self.form,
+			&current,
+			&self.default_values.borrow(),
+		));
 		self.state.is_touched.set(true);
 	}
 

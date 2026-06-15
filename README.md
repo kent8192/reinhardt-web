@@ -986,6 +986,30 @@ pub async fn uncached_handler(
 ) -> ViewResult<Response> { /* always a fresh resolution within the scope */ }
 ```
 
+`#[inject]` wrapper resolution is trait-based rather than name-based. Renamed
+imports and aliases of `Depends<T>` work, and custom wrappers can implement
+`InjectableType` to resolve a registry key while exposing a domain-specific
+parameter type:
+
+```rust
+use reinhardt::di::{Depends, InjectableType};
+
+struct Lazy<T>(Depends<T>)
+where
+    T: Send + Sync + 'static;
+
+impl<T> InjectableType for Lazy<T>
+where
+    T: Send + Sync + 'static,
+{
+    type Inner = T;
+
+    fn from_depends(depends: Depends<Self::Inner>) -> Self {
+        Self(depends)
+    }
+}
+```
+
 #### Manual `impl Injectable`
 
 When neither macro fits (generic bounds the macro cannot infer, hand-written

@@ -5,11 +5,13 @@
 //! - Bidirectional `From` conversions (Model ↔ Info)
 //! - Opt-out via `#[model(info = false)]`
 //! - Field exclusion via `#[field(skip_info = true)]`
-//! - FK `_id` field inclusion (relationship markers excluded)
-//! - Builder with `IntoPrimaryKey` support for FK fields
+//! - Lightweight relation field inclusion for FK, OneToOne, and ManyToMany
+//! - Builder with relation-aware setters
 //! - Validation attribute generation from `#[field(...)]` config
 
+use reinhardt::db::associations::{ForeignKeyField, ManyToManyField, OneToOneField};
 use reinhardt::model;
+use reinhardt::model_info::{ManyToManyInfo, RelationInfo};
 use serde::{Deserialize, Serialize};
 
 // --- Basic Info generation ---
@@ -192,4 +194,159 @@ fn test_info_builder_basic() {
 	assert_eq!(info.id, Some(1));
 	assert_eq!(info.name, "Diana");
 	assert_eq!(info.age, Some(28));
+}
+
+// --- Relationship fields ---
+
+#[model(app_label = "test", table_name = "info_authors")]
+#[derive(Serialize, Deserialize)]
+struct InfoAuthor {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[field(max_length = 100)]
+	name: String,
+}
+
+#[model(app_label = "test", table_name = "info_tags")]
+#[derive(Serialize, Deserialize)]
+struct InfoTag {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[field(max_length = 100)]
+	label: String,
+}
+
+#[model(app_label = "test", table_name = "info_posts")]
+#[derive(Serialize, Deserialize)]
+struct InfoPost {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[field(max_length = 100)]
+	title: String,
+
+	#[rel(foreign_key, related_name = "info_posts")]
+	author: ForeignKeyField<InfoAuthor>,
+
+	#[rel(many_to_many, related_name = "info_posts")]
+	tags: ManyToManyField<InfoPost, InfoTag>,
+}
+
+#[model(app_label = "test", table_name = "info_profiles")]
+#[derive(Serialize, Deserialize)]
+struct InfoProfile {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[rel(one_to_one, related_name = "info_profile")]
+	user: OneToOneField<InfoAuthor>,
+}
+
+#[model(app_label = "test", table_name = "info_hidden_relations")]
+#[derive(Serialize, Deserialize)]
+struct InfoHiddenRelations {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[field(skip_info = true)]
+	#[rel(foreign_key, related_name = "hidden_posts")]
+	author: ForeignKeyField<InfoAuthor>,
+
+	#[field(skip_info = true)]
+	#[rel(many_to_many, related_name = "hidden_posts")]
+	tags: ManyToManyField<InfoHiddenRelations, InfoTag>,
+}
+
+#[test]
+fn test_info_fk_relation_field_generated() {
+	// Arrange
+	let post = InfoPost::build().title("Hello").author(7_i64).finish();
+
+	// Act
+	let info: InfoPostInfo = post.into();
+
+	// Assert
+	assert_eq!(info.title, "Hello");
+	assert_eq!(info.author.id, 7);
+	assert_eq!(info.tags.target_ids, Vec::<i64>::new());
+}
+
+#[test]
+fn test_info_one_to_one_relation_field_generated() {
+	// Act
+	let info = InfoProfileInfo::build().id(Some(1)).user(9_i64).finish();
+	let model: InfoProfile = info.clone().into();
+
+	// Assert
+	assert_eq!(info.id, Some(1));
+	assert_eq!(info.user.id, 9);
+	assert_eq!(*model.user_id(), 9);
+}
+
+#[test]
+fn test_info_many_to_many_uses_lightweight_payload() {
+	// Arrange
+	let info = InfoPostInfo {
+		id: Some(1),
+		title: "Tagged".to_string(),
+		author: RelationInfo::new(7),
+		tags: ManyToManyInfo::new([2, 3]),
+	};
+
+	// Assert
+	assert_eq!(info.author.id, 7);
+	assert_eq!(info.tags.target_ids, vec![2, 3]);
+}
+
+#[test]
+fn test_info_builder_accepts_relation_payloads() {
+	// Act
+	let info = InfoPostInfo::build()
+		.id(Some(1))
+		.title("Builder")
+		.author(7_i64)
+		.tags([2_i64, 3_i64])
+		.finish();
+
+	// Assert
+	assert_eq!(info.id, Some(1));
+	assert_eq!(info.title, "Builder");
+	assert_eq!(info.author.id, 7);
+	assert_eq!(info.tags.target_ids, vec![2, 3]);
+}
+
+#[test]
+fn test_info_relation_serde_shape() {
+	// Arrange
+	let info = InfoPostInfo {
+		id: Some(1),
+		title: "Serde".to_string(),
+		author: RelationInfo::new(7),
+		tags: ManyToManyInfo::new([2, 3]),
+	};
+
+	// Act
+	let json = serde_json::to_value(&info).unwrap();
+	let deserialized: InfoPostInfo = serde_json::from_value(json.clone()).unwrap();
+
+	// Assert
+	assert_eq!(json["author"]["id"], 7);
+	assert_eq!(json["tags"]["target_ids"], serde_json::json!([2, 3]));
+	assert_eq!(deserialized.author.id, 7);
+	assert_eq!(deserialized.tags.target_ids, vec![2, 3]);
+}
+
+#[test]
+fn test_info_skip_relation_fields() {
+	// Arrange
+	let info = InfoHiddenRelationsInfo { id: Some(1) };
+
+	// Act
+	let model: InfoHiddenRelations = info.into();
+
+	// Assert
+	assert_eq!(*model.id(), Some(1));
+	assert_eq!(*model.author_id(), 0);
 }

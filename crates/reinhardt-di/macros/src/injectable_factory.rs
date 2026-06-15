@@ -1,10 +1,60 @@
 //! Implementation of the `#[injectable_factory]` macro
 
 use crate::crate_paths::get_reinhardt_di_crate;
-use crate::utils::{extract_depends_inner_type, extract_scope_from_args, is_inject_attr};
+use crate::utils::{extract_scope_from_args, is_inject_attr};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{FnArg, ItemFn, Pat, PatType, Result};
+use syn::{FnArg, GenericArgument, ItemFn, Pat, PatType, PathArguments, Result, Type};
+
+fn depends_inner_type(ty: &Type) -> Option<&Type> {
+	let Type::Path(type_path) = ty else {
+		return None;
+	};
+	let segment = type_path.path.segments.last()?;
+	if segment.ident != "Depends" {
+		return None;
+	}
+	let PathArguments::AngleBracketed(args) = &segment.arguments else {
+		return None;
+	};
+	match args.args.first()? {
+		GenericArgument::Type(inner_ty) => Some(inner_ty),
+		_ => None,
+	}
+}
+
+fn generate_inject_resolver_expr(
+	di_crate: &TokenStream,
+	ty: &Type,
+	ctx: TokenStream,
+	use_cache: bool,
+) -> TokenStream {
+	if let Some(inner_ty) = depends_inner_type(ty) {
+		quote! {
+			{
+				use #di_crate::{
+					__InjectDependsFallbackResolver as _,
+					__InjectDependsRegistryResolver as _,
+				};
+				#di_crate::__InjectDependsResolver::<#inner_ty>::new()
+					.__resolve_inject_depends_parameter(#ctx, #use_cache)
+					.await
+			}
+		}
+	} else {
+		quote! {
+			{
+				use #di_crate::{
+					__InjectFallbackResolver as _,
+					__InjectWrapperResolver as _,
+				};
+				#di_crate::__InjectResolver::<#ty>::new()
+					.__resolve_inject_parameter(#ctx, #use_cache)
+					.await
+			}
+		}
+	}
+}
 
 /// Implementation of the `#[injectable_factory]` attribute macro
 ///
@@ -73,40 +123,16 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 	// Get dynamic crate path (needed by inject_resolutions below)
 	let di_crate = get_reinhardt_di_crate();
 
-	// Generate dependency resolution code (kent8192/reinhardt-web#4685).
-	//
-	// Two parameter shapes are supported:
-	//
-	// - `Depends<T>` — resolved via `Depends::resolve_from_registry`. The
-	//   registry-only path has no `T: Injectable` bound, which is the whole
-	//   reason factory-produced types (deliberately without `impl Injectable`)
-	//   can be injected this way. Callers wrap such types in `Depends<T>` by
-	//   project convention (see
-	//   `tests/integration/tests/di/ui/pass/factory_depends_in_server_fn.rs`).
-	//
-	// - non-`Depends` `T` — resolved via `Depends::resolve`, which consults
-	//   the registry *first* and falls back to `T::inject(ctx)` when the type
-	//   is not registered. This matches the codegen pattern used by
-	//   `#[server_fn]` / `#[routes]` for the same shape and lets factories
-	//   accept types whose only DI surface is a manual `impl Injectable`
-	//   (e.g. `SessionData`, `ServerFnRequest`, `AuthInfo`). The fallback
-	//   requires `T: Injectable`, satisfied by every callsite that uses the
-	//   non-`Depends` form today.
+	// Generate dependency resolution code (kent8192/reinhardt-web#4938).
+	// The runtime resolver lets the compiler choose the `InjectableType`
+	// wrapper path first and falls back to normal `Injectable` resolution for
+	// non-wrapper parameters.
 	let inject_resolutions: Vec<_> = inject_params
 		.iter()
 		.map(|(pat, ty)| {
-			if let Some(inner_ty) = extract_depends_inner_type(ty) {
-				quote! {
-					let #pat: #ty = #di_crate::Depends::<#inner_ty>::resolve_from_registry(&*ctx, true).await?;
-				}
-			} else {
-				// `Depends::into_inner` consumes the `Depends<T>`, tries
-				// `Arc::try_unwrap`, and falls back to `(*arc).clone()` only when
-				// the Arc is still shared. This avoids an unconditional clone in
-				// the common single-owner path (factory body is the sole holder).
-				quote! {
-					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&*ctx, true).await?.into_inner();
-				}
+			let resolve_expr = generate_inject_resolver_expr(&di_crate, ty, quote! { &*ctx }, true);
+			quote! {
+				let #pat: #ty = #resolve_expr?;
 			}
 		})
 		.collect();

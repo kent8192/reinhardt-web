@@ -5,8 +5,8 @@
 
 use crate::crate_paths::{get_async_trait_crate, get_reinhardt_di_crate};
 use crate::injectable_common::{
-	DefaultValue, InjectionScope, NoInjectOptions, is_inject_attr, is_no_inject_attr,
-	parse_inject_options, parse_no_inject_options,
+	DefaultValue, InjectionScope, NoInjectOptions, generate_inject_resolver_expr, is_inject_attr,
+	is_no_inject_attr, parse_inject_options, parse_no_inject_options,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -178,7 +178,7 @@ pub(crate) fn injectable_struct_impl(
 	let generics = &input.generics;
 	let where_clause = &generics.where_clause;
 
-	// Auto-derive Clone for DI-ready types (used by into_inner() and injectable_factory patterns)
+	// Auto-derive Clone for DI-ready types used by generated injection paths.
 	if !has_clone_derive(&input.attrs) {
 		input.attrs.push(syn::parse_quote!(#[derive(Clone)]));
 	}
@@ -282,6 +282,8 @@ pub(crate) fn injectable_struct_impl(
 			let name = &field_info.name;
 			let ty = &field_info.ty;
 			let use_cache = field_info.use_cache;
+			let resolve_expr =
+				generate_inject_resolver_expr(&di_crate, ty, quote! { __di_ctx }, use_cache);
 
 			let resolve_call = match field_info.scope {
 				InjectionScope::Singleton => {
@@ -291,7 +293,7 @@ pub(crate) fn injectable_struct_impl(
 							if let Some(cached) = __di_ctx.singleton_scope().get::<#ty>() {
 								(*cached).clone()
 							} else {
-								let __injected = #di_crate::Depends::<#ty>::resolve(__di_ctx, #use_cache).await
+								let value = #resolve_expr
 								.map_err(|e| {
 									tracing::debug!(
 										field = stringify!(#name),
@@ -300,7 +302,6 @@ pub(crate) fn injectable_struct_impl(
 									);
 									e
 								})?;
-								let value = (*__injected).clone();
 								__di_ctx.singleton_scope().set(value.clone());
 								value
 							}
@@ -310,7 +311,7 @@ pub(crate) fn injectable_struct_impl(
 				InjectionScope::Request => {
 					quote! {
 						{
-							let __injected = #di_crate::Depends::<#ty>::resolve(__di_ctx, #use_cache).await
+							#resolve_expr
 							.map_err(|e| {
 								tracing::debug!(
 									field = stringify!(#name),
@@ -318,8 +319,7 @@ pub(crate) fn injectable_struct_impl(
 									"dependency injection resolution failed"
 								);
 								e
-							})?;
-							(*__injected).clone()
+							})?
 						}
 					}
 				}

@@ -163,6 +163,57 @@ pub(crate) fn parse_no_inject_options(attrs: &[syn::Attribute]) -> Option<NoInje
 // ============================================================================
 
 use proc_macro2::TokenStream;
+use syn::{GenericArgument, PathArguments, Type};
+
+fn depends_inner_type(ty: &Type) -> Option<&Type> {
+	let Type::Path(type_path) = ty else {
+		return None;
+	};
+	let segment = type_path.path.segments.last()?;
+	if segment.ident != "Depends" {
+		return None;
+	}
+	let PathArguments::AngleBracketed(args) = &segment.arguments else {
+		return None;
+	};
+	match args.args.first()? {
+		GenericArgument::Type(inner_ty) => Some(inner_ty),
+		_ => None,
+	}
+}
+
+pub(crate) fn generate_inject_resolver_expr(
+	di_crate: &TokenStream,
+	ty: &syn::Type,
+	ctx: TokenStream,
+	use_cache: bool,
+) -> TokenStream {
+	if let Some(inner_ty) = depends_inner_type(ty) {
+		quote::quote! {
+			{
+				use #di_crate::{
+					__InjectDependsFallbackResolver as _,
+					__InjectDependsRegistryResolver as _,
+				};
+				#di_crate::__InjectDependsResolver::<#inner_ty>::new()
+					.__resolve_inject_depends_parameter(#ctx, #use_cache)
+					.await
+			}
+		}
+	} else {
+		quote::quote! {
+			{
+				use #di_crate::{
+					__InjectFallbackResolver as _,
+					__InjectWrapperResolver as _,
+				};
+				#di_crate::__InjectResolver::<#ty>::new()
+					.__resolve_inject_parameter(#ctx, #use_cache)
+					.await
+			}
+		}
+	}
+}
 
 /// Information about `#[inject]` parameters (for code generation)
 ///
@@ -265,25 +316,18 @@ pub(crate) fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec
 			let pat = &param.pat;
 			let ty = &param.ty;
 			let use_cache = param.options.use_cache;
+			let resolve_expr = generate_inject_resolver_expr(
+				&di_crate,
+				ty,
+				quote::quote! { &__di_ctx },
+				use_cache,
+			);
 
-			if use_cache {
-				quote::quote! {
-					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
-						.await
-						.map_err(|e| #core_crate::exception::Error::Internal(
-							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
-						))?
-						.into_inner();
-				}
-			} else {
-				quote::quote! {
-					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, false)
-						.await
-						.map_err(|e| #core_crate::exception::Error::Internal(
-							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
-						))?
-						.into_inner();
-				}
+			quote::quote! {
+				let #pat: #ty = #resolve_expr
+					.map_err(|e| #core_crate::exception::Error::Internal(
+						format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
+					))?;
 			}
 		})
 		.collect()
@@ -310,21 +354,16 @@ where
 			let ty = &param.ty;
 			let use_cache = param.options.use_cache;
 			let error_conversion = error_mapper(ty);
+			let resolve_expr = generate_inject_resolver_expr(
+				&di_crate,
+				ty,
+				quote::quote! { &__di_ctx },
+				use_cache,
+			);
 
-			if use_cache {
-				quote::quote! {
-					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
-						.await
-						.map_err(|e| #error_conversion)?
-						.into_inner();
-				}
-			} else {
-				quote::quote! {
-					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, false)
-						.await
-						.map_err(|e| #error_conversion)?
-						.into_inner();
-				}
+			quote::quote! {
+				let #pat: #ty = #resolve_expr
+					.map_err(|e| #error_conversion)?;
 			}
 		})
 		.collect()
