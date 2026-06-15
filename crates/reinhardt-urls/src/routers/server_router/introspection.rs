@@ -8,6 +8,11 @@ use super::types::{MiddlewareInfo, RouteInfo, join_path};
 #[cfg(feature = "viewsets")]
 use hyper::Method;
 
+fn introspection_route_name(name: &Option<String>) -> Option<String> {
+	name.as_deref()
+		.map(|name| name.strip_prefix('!').unwrap_or(name).to_string())
+}
+
 impl ServerRouter {
 	/// Get the prefix of this router
 	pub fn prefix(&self) -> &str {
@@ -70,7 +75,7 @@ impl ServerRouter {
 
 			routes.push((
 				full_path,
-				route.name.clone(),
+				introspection_route_name(&route.name),
 				route.namespace.clone().or_else(|| self.namespace.clone()),
 				vec![], // Method-agnostic handlers accept all HTTP methods (shown as "ALL" in showurls)
 			));
@@ -86,7 +91,7 @@ impl ServerRouter {
 
 			routes.push((
 				full_path,
-				func_route.name.clone(),
+				introspection_route_name(&func_route.name),
 				self.namespace.clone(), // Use router's namespace
 				vec![func_route.method.clone()],
 			));

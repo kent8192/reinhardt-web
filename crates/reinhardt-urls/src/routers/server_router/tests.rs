@@ -39,6 +39,7 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 			25 => "/users",
 			26 => "/items",
 			27 => "/users",
+			28 => "/profile",
 			_ => unreachable!("unsupported test endpoint"),
 		}
 	}
@@ -80,6 +81,7 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 			25 => "users-list",
 			26 => "items-list",
 			27 => "users-create",
+			28 => "!profile_detail",
 			_ => unreachable!("unsupported test endpoint"),
 		}
 	}
@@ -189,6 +191,19 @@ fn test_get_all_routes() {
 
 	// Assert
 	assert_eq!(routes.len(), 0);
+}
+
+#[rstest]
+fn test_get_all_routes_strips_optout_sigil_from_endpoint_name() {
+	// Arrange
+	let router = ServerRouter::new().endpoint(|| TestEndpoint::<28>);
+
+	// Act
+	let routes = router.get_all_routes();
+
+	// Assert
+	assert_eq!(routes.len(), 1);
+	assert_eq!(routes[0].1.as_deref(), Some("profile_detail"));
 }
 
 #[rstest]
