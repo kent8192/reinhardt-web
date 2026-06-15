@@ -327,9 +327,10 @@ pub use form::{FormBinding, FormComponent};
 // Static form metadata types (always available, used by form! macro)
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use form_state::{
-	FieldError, FieldState, FocusError, FormEvent, FormRuntimeSource, FormState, FormSubscription,
-	FormValidationError, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder, UseFormReturn,
-	UseFormSubmitOutcome, use_form,
+	CollectionItem, CollectionItemKey, CollectionState, FieldError, FieldPathState, FieldState,
+	FocusError, FormCollectionRuntimeSource, FormEvent, FormRuntimeSource, FormState,
+	FormSubscription, FormValidationError, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder,
+	UseFormReturn, UseFormSubmitOutcome, use_form,
 };
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};

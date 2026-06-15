@@ -132,14 +132,16 @@ pub enum FormAction {
 
 /// An entry in the form fields list.
 ///
-/// Can be either a regular field definition or a field group
-/// containing multiple related fields.
+/// Can be a regular field definition, a layout group, a repeatable collection,
+/// or a submit button.
 #[derive(Debug, Clone)]
 pub enum FormFieldEntry {
 	/// A single field definition
 	Field(FormFieldDef),
 	/// A group of related fields
 	Group(FormFieldGroup),
+	/// A repeatable collection of field entries
+	Collection(FormFieldCollection),
 	/// A submit button (not a data field — generates no Signal)
 	SubmitButton(FormSubmitButtonDef),
 }
@@ -148,6 +150,11 @@ impl FormFieldEntry {
 	/// Returns true if this is a field group.
 	pub fn is_group(&self) -> bool {
 		matches!(self, FormFieldEntry::Group(_))
+	}
+
+	/// Returns true if this is a field collection.
+	pub fn is_collection(&self) -> bool {
+		matches!(self, FormFieldEntry::Collection(_))
 	}
 
 	/// Returns true if this is a regular field.
@@ -165,6 +172,7 @@ impl FormFieldEntry {
 		match self {
 			FormFieldEntry::Field(f) => &f.name,
 			FormFieldEntry::Group(g) => &g.name,
+			FormFieldEntry::Collection(collection) => &collection.name,
 			FormFieldEntry::SubmitButton(b) => &b.name,
 		}
 	}
@@ -174,6 +182,7 @@ impl FormFieldEntry {
 		match self {
 			FormFieldEntry::Field(f) => f.span,
 			FormFieldEntry::Group(g) => g.span,
+			FormFieldEntry::Collection(collection) => collection.span,
 			FormFieldEntry::SubmitButton(b) => b.span,
 		}
 	}
@@ -190,6 +199,14 @@ impl FormFieldEntry {
 	pub fn as_group(&self) -> Option<&FormFieldGroup> {
 		match self {
 			FormFieldEntry::Group(g) => Some(g),
+			_ => None,
+		}
+	}
+
+	/// Returns a reference to the inner collection if this is a Collection variant.
+	pub fn as_collection(&self) -> Option<&FormFieldCollection> {
+		match self {
+			FormFieldEntry::Collection(collection) => Some(collection),
 			_ => None,
 		}
 	}
@@ -297,6 +314,29 @@ impl FormFieldGroup {
 	pub fn field_count(&self) -> usize {
 		self.fields.len()
 	}
+}
+
+/// A repeatable collection of fields in the form macro.
+#[derive(Debug, Clone)]
+pub struct FormFieldCollection {
+	/// Collection name identifier
+	pub name: Ident,
+	/// Collection-level label text
+	pub label: Option<LitStr>,
+	/// Collection-level CSS class
+	pub class: Option<LitStr>,
+	/// Minimum number of items to render or accept
+	pub min_items: Option<syn::LitInt>,
+	/// Maximum number of items to render or accept
+	pub max_items: Option<syn::LitInt>,
+	/// Initial data source path
+	pub initial_from: Option<LitStr>,
+	/// Field entries within each collection item
+	pub fields: Vec<FormFieldEntry>,
+	/// Custom item renderer closure
+	pub render_item: Option<ExprClosure>,
+	/// Span for error reporting
+	pub span: Span,
 }
 
 /// A property within a field definition.

@@ -17,14 +17,15 @@ use std::collections::HashSet;
 use syn::{Error, Result};
 
 use reinhardt_manouche::core::{
-	AmbientArgumentsSource, FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry,
-	FormFieldGroup, FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState,
-	FormSubmitButtonDef, FormValidator, FormWatch, IconPosition, StripArgument, TypedChoicesConfig,
-	TypedCustomAttr, TypedDerivedItem, TypedFieldDisplay, TypedFieldStyling, TypedFieldType,
-	TypedFieldValidation, TypedFormAction, TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef,
-	TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState,
-	TypedFormStyling, TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon,
-	TypedIconAttr, TypedIconChild, TypedIconPosition, TypedStripArgument, TypedSubmitButtonDef,
+	AmbientArgumentsSource, FormAction, FormCallbacks, FormDerived, FormFieldCollection,
+	FormFieldDef, FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormMethod,
+	FormSlots, FormState, FormSubmitButtonDef, FormValidator, FormWatch, IconPosition,
+	StripArgument, TypedChoicesConfig, TypedCustomAttr, TypedDerivedItem, TypedFieldDisplay,
+	TypedFieldStyling, TypedFieldType, TypedFieldValidation, TypedFormAction, TypedFormCallbacks,
+	TypedFormDerived, TypedFormFieldCollection, TypedFormFieldDef, TypedFormFieldEntry,
+	TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState, TypedFormStyling,
+	TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon, TypedIconAttr,
+	TypedIconChild, TypedIconPosition, TypedStripArgument, TypedSubmitButtonDef,
 	TypedValidatorRule, TypedWidget, TypedWrapper, TypedWrapperAttr, ValidatorRule,
 };
 
@@ -250,12 +251,95 @@ fn validate_unique_field_names(entries: &[FormFieldEntry]) -> Result<()> {
 					}
 				}
 			}
+			FormFieldEntry::Collection(collection) => {
+				let name = collection.name.to_string();
+				if !seen.insert(name.clone()) {
+					return Err(Error::new(
+						collection.name.span(),
+						format!("duplicate field/collection name: '{}'", name),
+					));
+				}
+				validate_unique_collection_field_names(collection)?;
+			}
 			FormFieldEntry::SubmitButton(btn) => {
 				let name = btn.name.to_string();
 				if !seen.insert(name.clone()) {
 					return Err(Error::new(
 						btn.name.span(),
 						format!("duplicate field/button name: '{}'", name),
+					));
+				}
+			}
+		}
+	}
+
+	Ok(())
+}
+
+fn validate_unique_collection_field_names(collection: &FormFieldCollection) -> Result<()> {
+	let mut seen = HashSet::new();
+
+	for entry in &collection.fields {
+		match entry {
+			FormFieldEntry::Field(field) => {
+				let name = field.name.to_string();
+				if !seen.insert(name.clone()) {
+					return Err(Error::new(
+						field.name.span(),
+						format!(
+							"duplicate field name: '{}' (in collection '{}')",
+							name, collection.name
+						),
+					));
+				}
+			}
+			FormFieldEntry::Group(group) => {
+				let group_name = group.name.to_string();
+				if !seen.insert(group_name.clone()) {
+					return Err(Error::new(
+						group.name.span(),
+						format!(
+							"duplicate field/group name: '{}' (in collection '{}')",
+							group_name, collection.name
+						),
+					));
+				}
+
+				for field in &group.fields {
+					let name = field.name.to_string();
+					if !seen.insert(name.clone()) {
+						return Err(Error::new(
+							field.name.span(),
+							format!(
+								"duplicate field name: '{}' (in group '{}')",
+								name, group_name
+							),
+						));
+					}
+				}
+			}
+			FormFieldEntry::Collection(nested) => {
+				let name = nested.name.to_string();
+				if !seen.insert(name.clone()) {
+					return Err(Error::new(
+						nested.name.span(),
+						format!(
+							"duplicate field/collection name: '{}' (in collection '{}')",
+							name, collection.name
+						),
+					));
+				}
+				validate_unique_collection_field_names(nested)?;
+			}
+			FormFieldEntry::SubmitButton(btn) => {
+				let name = btn.name.to_string();
+				if !seen.insert(name.clone()) {
+					return Err(Error::new(
+						btn.name.span(),
+						format!(
+							"duplicate field/button name: '{}' (in collection '{}')",
+							name, collection.name
+						),
 					));
 				}
 			}
@@ -465,6 +549,10 @@ fn transform_field_entry(entry: &FormFieldEntry) -> Result<TypedFormFieldEntry> 
 			let typed_group = transform_field_group(group)?;
 			Ok(TypedFormFieldEntry::Group(typed_group))
 		}
+		FormFieldEntry::Collection(collection) => {
+			let typed_collection = transform_collection(collection)?;
+			Ok(TypedFormFieldEntry::Collection(typed_collection))
+		}
 		FormFieldEntry::SubmitButton(btn) => {
 			let typed_btn = transform_submit_button(btn)?;
 			Ok(TypedFormFieldEntry::SubmitButton(typed_btn))
@@ -488,6 +576,141 @@ fn transform_field_group(group: &FormFieldGroup) -> Result<TypedFormFieldGroup> 
 		fields: typed_fields,
 		span: group.span,
 	})
+}
+
+/// Transforms a field collection into a typed field collection.
+fn transform_collection(collection: &FormFieldCollection) -> Result<TypedFormFieldCollection> {
+	let min_items = collection
+		.min_items
+		.as_ref()
+		.map(|lit| {
+			lit.base10_parse::<usize>().map_err(|_| {
+				Error::new(lit.span(), "min_items must be a valid non-negative integer")
+			})
+		})
+		.transpose()?;
+	let max_items = collection
+		.max_items
+		.as_ref()
+		.map(|lit| {
+			lit.base10_parse::<usize>().map_err(|_| {
+				Error::new(lit.span(), "max_items must be a valid non-negative integer")
+			})
+		})
+		.transpose()?;
+
+	if let (Some(min_items), Some(max_items)) = (min_items, max_items)
+		&& min_items > max_items
+	{
+		return Err(Error::new(
+			collection.span,
+			"min_items cannot be greater than max_items",
+		));
+	}
+
+	validate_collection_codegen_surface(collection)?;
+
+	if let Some(nested) = collection.fields.iter().find_map(|entry| match entry {
+		FormFieldEntry::Collection(nested) => Some(nested),
+		_ => None,
+	}) {
+		return Err(Error::new(
+			nested.span,
+			"nested FieldArray is not supported by reinhardt-pages macro codegen yet",
+		));
+	}
+
+	let fields = collection
+		.fields
+		.iter()
+		.map(transform_field_entry)
+		.collect::<Result<Vec<_>>>()?;
+
+	Ok(TypedFormFieldCollection {
+		name: collection.name.clone(),
+		label: collection.label.as_ref().map(|lit| lit.value()),
+		class: collection.class.as_ref().map(|lit| lit.value()),
+		min_items,
+		max_items,
+		initial_from: collection.initial_from.as_ref().map(|lit| lit.value()),
+		fields,
+		render_item: collection.render_item.clone(),
+		span: collection.span,
+	})
+}
+
+fn validate_collection_codegen_surface(collection: &FormFieldCollection) -> Result<()> {
+	if let Some(initial_from) = &collection.initial_from {
+		return Err(Error::new(
+			initial_from.span(),
+			"FieldArray initial_from is not supported by reinhardt-pages macro codegen yet",
+		));
+	}
+	if collection.render_item.is_some() {
+		return Err(Error::new(
+			collection.span,
+			"FieldArray render_item is not supported by reinhardt-pages macro codegen yet",
+		));
+	}
+
+	for entry in &collection.fields {
+		match entry {
+			FormFieldEntry::Field(field) => validate_collection_codegen_field(field)?,
+			FormFieldEntry::Group(group) => {
+				return Err(Error::new(
+					group.span,
+					"FieldGroup inside FieldArray is not supported by reinhardt-pages macro codegen yet",
+				));
+			}
+			FormFieldEntry::Collection(_) => {}
+			FormFieldEntry::SubmitButton(button) => {
+				return Err(Error::new(
+					button.span,
+					"SubmitButton inside FieldArray is not supported by reinhardt-pages macro codegen yet",
+				));
+			}
+		}
+	}
+
+	Ok(())
+}
+
+fn validate_collection_codegen_field(field: &FormFieldDef) -> Result<()> {
+	let field_type = field.field_type.to_string();
+	if field_type == "FileField" || field_type == "ImageField" {
+		return Err(Error::new(
+			field.span,
+			"FileField and ImageField inside FieldArray are not supported by reinhardt-pages macro codegen yet",
+		));
+	}
+
+	for property in &field.properties {
+		match property {
+			FormFieldProperty::Named { name, span, .. } if name == "initial" => {
+				return Err(Error::new(
+					*span,
+					"initial is not supported inside FieldArray item fields yet",
+				));
+			}
+			FormFieldProperty::InitialFrom { span, .. } => {
+				return Err(Error::new(
+					*span,
+					"initial_from is not supported inside FieldArray item fields yet",
+				));
+			}
+			FormFieldProperty::ChoicesFrom { span, .. }
+			| FormFieldProperty::ChoiceValue { span, .. }
+			| FormFieldProperty::ChoiceLabel { span, .. } => {
+				return Err(Error::new(
+					*span,
+					"dynamic choices are not supported inside FieldArray item fields yet",
+				));
+			}
+			_ => {}
+		}
+	}
+
+	Ok(())
 }
 
 /// Transforms a submit button definition into a typed submit button.
@@ -1375,7 +1598,7 @@ fn transform_strip_arguments(
 			));
 		}
 
-		if field_exists(fields, &arg.name) {
+		if ambient_argument_surface_entry_exists(fields, &arg.name) {
 			return Err(Error::new(
 				arg.span,
 				format!(
@@ -1415,10 +1638,12 @@ fn ambient_arguments_collision_entry(source: Option<AmbientArgumentsSource>) -> 
 	}
 }
 
-/// Checks if a field with the given name exists in the field entries.
+/// Checks if an ambient argument collides with a declared form surface entry.
 ///
-/// This checks both top-level fields and fields within groups.
-fn field_exists(entries: &[FormFieldEntry], name: &syn::Ident) -> bool {
+/// Ambient arguments share the form's top-level submission surface, so this
+/// includes top-level fields, group fields, and top-level collection names.
+/// Collection item fields are not part of that surface.
+fn ambient_argument_surface_entry_exists(entries: &[FormFieldEntry], name: &syn::Ident) -> bool {
 	for entry in entries {
 		match entry {
 			FormFieldEntry::Field(field) => {
@@ -1431,7 +1656,36 @@ fn field_exists(entries: &[FormFieldEntry], name: &syn::Ident) -> bool {
 					return true;
 				}
 			}
+			FormFieldEntry::Collection(collection) => {
+				if collection.name == *name {
+					return true;
+				}
+			}
 			FormFieldEntry::SubmitButton(_) => {}
+		}
+	}
+	false
+}
+
+/// Checks if a field-level validator targets a declared scalar field.
+///
+/// Field validators can target top-level fields and fields within groups.
+/// Collection names and collection item fields are intentionally excluded
+/// until collection validation semantics are implemented.
+fn validator_target_field_exists(entries: &[FormFieldEntry], name: &syn::Ident) -> bool {
+	for entry in entries {
+		match entry {
+			FormFieldEntry::Field(field) => {
+				if field.name == *name {
+					return true;
+				}
+			}
+			FormFieldEntry::Group(group) => {
+				if group.fields.iter().any(|f| f.name == *name) {
+					return true;
+				}
+			}
+			FormFieldEntry::Collection(_) | FormFieldEntry::SubmitButton(_) => {}
 		}
 	}
 	false
@@ -1452,7 +1706,7 @@ fn transform_validators(
 				span,
 			} => {
 				// Validate that field exists (including in groups)
-				if !field_exists(fields, field_name) {
+				if !validator_target_field_exists(fields, field_name) {
 					return Err(Error::new(
 						field_name.span(),
 						format!("validator references unknown field: '{}'", field_name),
@@ -4009,6 +4263,171 @@ mod tests {
 		};
 
 		assert_validator_parity_for(input);
+	}
+
+	#[rstest::rstest]
+	fn test_validate_strip_argument_rejects_field_array_collision() {
+		let input = quote! {
+			name: InvoiceForm,
+			server_fn: submit_invoice,
+			strip_arguments: {
+				line_items: ambient_line_items(),
+			},
+			fields: {
+				line_items: FieldArray {
+					fields: {
+						description: CharField {},
+					},
+				},
+			},
+		};
+
+		let err = parse_and_validate(input).expect_err("FieldArray name collision must fail");
+		assert_eq!(
+			err.to_string(),
+			"strip_arguments key 'line_items' collides with a declared form field; either rename the field or remove this strip entry; use ambient_arguments for new code"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_validate_field_validator_rejects_field_array_name() {
+		let input = quote! {
+			name: InvoiceForm,
+			action: "/invoices",
+			fields: {
+				line_items: FieldArray {
+					fields: {
+						description: CharField {},
+					},
+				},
+			},
+			validators: {
+				line_items: [|_v| true => "Line items are invalid"],
+			},
+		};
+
+		let err = parse_and_validate(input).expect_err("collection validator target must fail");
+		assert_eq!(
+			err.to_string(),
+			"validator references unknown field: 'line_items'"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_validate_nested_field_array_rejected() {
+		let input = quote! {
+			name: InvoiceForm,
+			action: "/invoices",
+			fields: {
+				line_items: FieldArray {
+					fields: {
+						description: CharField {},
+						discounts: FieldArray {
+							fields: {
+								amount: IntegerField {},
+							},
+						},
+					},
+				},
+			},
+		};
+
+		let err = parse_and_validate(input).expect_err("nested FieldArray must fail");
+		assert_eq!(
+			err.to_string(),
+			"nested FieldArray is not supported by reinhardt-pages macro codegen yet"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_validate_field_array_rejects_initial_on_item_field() {
+		let input = quote! {
+			name: InvoiceForm,
+			action: "/invoices",
+			fields: {
+				line_items: FieldArray {
+					fields: {
+						quantity: IntegerField {
+							initial: 1,
+						},
+					},
+				},
+			},
+		};
+
+		let err = parse_and_validate(input).expect_err("FieldArray item initial must fail");
+		assert_eq!(
+			err.to_string(),
+			"initial is not supported inside FieldArray item fields yet"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_validate_field_array_rejects_file_fields() {
+		let input = quote! {
+			name: UploadForm,
+			action: "/uploads",
+			fields: {
+				attachments: FieldArray {
+					fields: {
+						document: FileField {},
+					},
+				},
+			},
+		};
+
+		let err = parse_and_validate(input).expect_err("FieldArray FileField must fail");
+		assert_eq!(
+			err.to_string(),
+			"FileField and ImageField inside FieldArray are not supported by reinhardt-pages macro codegen yet"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_validate_field_array_rejects_field_groups() {
+		let input = quote! {
+			name: InvoiceForm,
+			action: "/invoices",
+			fields: {
+				line_items: FieldArray {
+					fields: {
+						details: FieldGroup {
+							fields: {
+								description: CharField {},
+							},
+						},
+					},
+				},
+			},
+		};
+
+		let err = parse_and_validate(input).expect_err("FieldArray FieldGroup must fail");
+		assert_eq!(
+			err.to_string(),
+			"FieldGroup inside FieldArray is not supported by reinhardt-pages macro codegen yet"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_validate_field_array_rejects_render_item() {
+		let input = quote! {
+			name: InvoiceForm,
+			action: "/invoices",
+			fields: {
+				line_items: FieldArray {
+					fields: {
+						description: CharField {},
+					},
+					render_item: |item| { item.default_row() },
+				},
+			},
+		};
+
+		let err = parse_and_validate(input).expect_err("FieldArray render_item must fail");
+		assert_eq!(
+			err.to_string(),
+			"FieldArray render_item is not supported by reinhardt-pages macro codegen yet"
+		);
 	}
 
 	#[rstest::rstest]
