@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.2.0...reinhardt-conf@v0.3.0) - 2026-06-15
+
+### Maintenance
+
+- migrate Rust toolchain to 1.96.0
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.3...reinhardt-conf@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-conf` for the Reinhardt 0.2.0 line. This

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.2.0...reinhardt-urls@v0.3.0) - 2026-06-15
+
+### Added
+
+- *(urls)* [**breaking**] remove raw server route registration APIs
+
+### Fixed
+
+- *(urls)* remove duplicate validate_routes doctest import
+- *(urls)* hide route opt-out sigil in introspection
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.3...reinhardt-urls@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-urls` for the Reinhardt 0.2.0 line. This
