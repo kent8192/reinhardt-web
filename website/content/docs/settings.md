@@ -348,8 +348,8 @@ fragments using the `#[settings]` macro.
 
 ### The `SettingsFragment` Trait
 
-Every settings fragment implements the `SettingsFragment` trait, which defines the
-TOML section name and optional profile-based validation:
+Every root settings fragment implements the `SettingsFragment` trait, which
+defines the TOML section name and optional profile-based validation:
 
 ```rust
 pub trait SettingsFragment:
@@ -374,6 +374,38 @@ pub trait SettingsFragment:
 	}
 }
 ```
+
+Embedded settings structs use `SettingsNode` instead. A node participates in
+recursive schema metadata and required-field validation below a root fragment,
+but it does not own a top-level TOML section:
+
+```rust
+use reinhardt::settings;
+
+#[settings(fragment = true, section = "database")]
+pub struct DatabaseSettings {
+	pub default: DatabaseConfig,
+}
+
+#[settings(fragment = true, default_policy = "required")]
+pub struct DatabaseConfig {
+	pub engine: String,
+	pub host: String,
+	pub password: String,
+}
+```
+
+The corresponding TOML nests the node under the root fragment:
+
+```toml
+[database.default]
+engine = "postgresql"
+host = "localhost"
+password = "CHANGE_THIS"
+```
+
+Use `section = "..."` only when the struct should be composed directly into a
+project settings root. Omit it for reusable embedded nodes.
 
 ### Available Fragments
 
