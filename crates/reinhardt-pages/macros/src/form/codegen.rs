@@ -79,7 +79,7 @@ fn collect_collections(entries: &[TypedFormFieldEntry]) -> Vec<&TypedFormFieldCo
 	entries
 		.iter()
 		.filter_map(|entry| match entry {
-			TypedFormFieldEntry::Collection(collection) => Some(collection),
+			TypedFormFieldEntry::Collection(collection) => Some(collection.as_ref()),
 			_ => None,
 		})
 		.collect()
@@ -426,6 +426,8 @@ fn generate_form_runtime_contract(
 		.zip(collection_variants.iter())
 		.zip(collection_field_idents.iter())
 		.flat_map(|((collection, collection_variant), field_ident)| {
+			let collection_variant = collection_variant.clone();
+			let field_ident = field_ident.clone();
 			let field_path_ident = field_path_ident.clone();
 			collect_scalar_fields(&collection.fields)
 				.into_iter()
@@ -876,6 +878,8 @@ fn generate_form_runtime_contract(
 			.zip(collection_variants.iter())
 			.zip(collection_field_idents.iter())
 			.flat_map(|((collection, collection_variant), field_ident)| {
+				let collection_variant = collection_variant.clone();
+				let field_ident = field_ident.clone();
 				let collection_name = collection.name.to_string();
 				let field_path_ident = field_path_ident.clone();
 				collect_scalar_fields(&collection.fields)
@@ -917,6 +921,8 @@ fn generate_form_runtime_contract(
 			.zip(collection_variants.iter())
 			.zip(collection_field_idents.iter())
 			.flat_map(|((collection, collection_variant), field_ident)| {
+				let collection_variant = collection_variant.clone();
+				let field_ident = field_ident.clone();
 				let collection_name = &collection.name;
 				let field_path_ident = field_path_ident.clone();
 				collect_scalar_fields(&collection.fields)
@@ -990,6 +996,8 @@ fn generate_form_runtime_contract(
 			.zip(collection_variants.iter())
 			.zip(collection_field_idents.iter())
 			.flat_map(|((collection, collection_variant), field_ident)| {
+				let collection_variant = collection_variant.clone();
+				let field_ident = field_ident.clone();
 				let collection_name = &collection.name;
 				let field_path_ident = field_path_ident.clone();
 				collect_scalar_fields(&collection.fields)
@@ -1059,6 +1067,8 @@ fn generate_form_runtime_contract(
 			.zip(collection_variants.iter())
 			.zip(collection_field_idents.iter())
 			.flat_map(|((collection, collection_variant), field_ident)| {
+				let collection_variant = collection_variant.clone();
+				let field_ident = field_ident.clone();
 				let collection_name = &collection.name;
 				let field_path_ident = field_path_ident.clone();
 				collect_scalar_fields(&collection.fields)
