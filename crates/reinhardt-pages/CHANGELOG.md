@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.2.0...reinhardt-pages@v0.3.0) - 2026-06-15
+
+### Added
+
+- *(pages)* add explicit portal mounting api
+
+### Documentation
+
+- *(pages)* classify React 19 parity outcomes
+
+### Fixed
+
+- *(ci)* update Rust 1.96 UI stderr expectations
+- *(pages)* isolate portal reactive lifecycle
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.3...reinhardt-pages@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-pages` for the Reinhardt 0.2.0 line. This
