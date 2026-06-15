@@ -51,7 +51,7 @@
 //! - [`reactive`]: Fine-grained reactivity system (Signal, Effect, Memo)
 //! - [`dom`]: DOM abstraction layer
 //! - [`builder`]: HTML element builder API
-//! - [`component`]: Component system with IntoPage trait, Head management
+//! - [`component`](mod@component): Component system with IntoPage trait, Head management
 //! - [`form`](mod@form): Django Form integration
 //! - [`form_state`]: Typed `use_form` runtime state
 //! - [`csrf`]: CSRF protection
