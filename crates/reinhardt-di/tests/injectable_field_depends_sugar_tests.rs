@@ -24,8 +24,8 @@ use serial_test::serial;
 use std::sync::Arc;
 
 use reinhardt_di::{
-	DependencyScope, DependsOption, DependsResult, Injectable, InjectionContext, SingletonScope,
-	global_registry, injectable,
+	DependencyScope, Depends, DependsOption, DependsResult, Injectable, InjectableType,
+	InjectionContext, SingletonScope, global_registry, injectable,
 };
 
 /// Factory-produced user type. No `impl Injectable` on purpose — it is only
@@ -147,5 +147,67 @@ async fn injectable_field_depends_option_resolves_from_registry() {
 		Some(CacheBackend {
 			url: "redis://localhost".to_string(),
 		})
+	);
+}
+
+#[derive(Clone, Debug)]
+struct Lazy<T>
+where
+	T: Send + Sync + 'static,
+{
+	depends: Depends<T>,
+}
+
+impl<T> InjectableType for Lazy<T>
+where
+	T: Send + Sync + 'static,
+{
+	type Inner = T;
+
+	fn from_depends(depends: Depends<Self::Inner>) -> Self {
+		Self { depends }
+	}
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct FieldOnlyConfig {
+	value: String,
+}
+
+#[injectable]
+struct CustomWrapperConsumer {
+	#[inject]
+	config: Lazy<FieldOnlyConfig>,
+}
+
+#[rstest]
+#[serial(di_registry)]
+#[tokio::test]
+async fn injectable_field_accepts_custom_injectable_type_wrapper() {
+	// Arrange — `FieldOnlyConfig` has no `Injectable` impl. The custom wrapper
+	// field can only resolve through `InjectableType::Inner` and the registry.
+	let registry = global_registry();
+	let _guard = registry.register_override::<FieldOnlyConfig, _, _>(
+		DependencyScope::Transient,
+		|_ctx| async {
+			Ok(FieldOnlyConfig {
+				value: "custom".to_string(),
+			})
+		},
+	);
+	let scope = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::builder(scope).build();
+
+	// Act
+	let consumer = <CustomWrapperConsumer as Injectable>::inject(&ctx)
+		.await
+		.expect("custom InjectableType field must resolve from the registry");
+
+	// Assert
+	assert_eq!(
+		*consumer.config.depends,
+		FieldOnlyConfig {
+			value: "custom".to_string(),
+		}
 	);
 }

@@ -17,7 +17,7 @@ mod utils;
 /// Mark a struct as injectable and register it with the global registry
 ///
 /// This macro automatically derives `Clone` for the annotated type if it is
-/// not already derived. `Clone` is used by `into_inner()` and `injectable_factory` patterns.
+/// not already derived. `Clone` is used by generated injection and caching paths.
 ///
 /// # Attribute Ordering
 ///

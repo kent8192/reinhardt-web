@@ -29,7 +29,7 @@ async fn make_app_config() -> Result<AppConfig, ConfigError> {
 	})
 }
 
-#[get("/hello", name = "hello_depends_result")]
+#[get("/hello", name = "hello-depends-result")]
 async fn hello(#[inject] cfg: DependsResult<AppConfig, ConfigError>) -> ViewResult<Response> {
 	match &*cfg {
 		Ok(c) => Ok(Response::ok().with_body(c.host.clone())),

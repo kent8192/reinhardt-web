@@ -32,15 +32,10 @@ fn should_use_cache(_field: &syn::Field) -> bool {
 /// Injection field type classification
 #[derive(Debug, Clone)]
 enum InjectionType {
-	/// `Depends<T>` - required dependency
-	Depends(Type),
 	/// `Option<Depends<T>>` - optional dependency
-	OptionalDepends(Type),
-	/// `DependsResult<T, E>` / `DependsOption<T>` - factory-produced inner type
-	/// (`Result<T, E>` / `Option<T>`) resolved from the registry only. These
-	/// inner types are produced by `#[injectable_factory]` and never implement
-	/// `Injectable`, so resolution must NOT require `T: Injectable`.
-	DependsFromRegistry(Type),
+	OptionalDepends(Box<Type>),
+	/// A dependency or wrapper resolved by the runtime trait dispatcher.
+	InjectableWrapper,
 }
 
 /// Check whether a type path likely originates from the `reinhardt_di` crate.
@@ -70,64 +65,19 @@ fn is_likely_reinhardt_di_path(
 	})
 }
 
-/// Extract inner type from `Depends<T>` or `Option<Depends<T>>`
-///
-/// Returns `Some(InjectionType)` if the type is a valid injection type,
-/// `None` otherwise.
-///
-/// # Path qualification
-///
-/// This function matches on the terminal identifier (`Depends`, `Option`)
-/// and additionally validates that multi-segment paths contain a recognized
-/// `reinhardt_di` prefix. This prevents user-defined types with the same
-/// leaf name from being misclassified as DI wrapper types. Single-segment
-/// paths are accepted because the typical usage is via
-/// `use reinhardt_di::Depends;`.
-fn classify_injection_type(ty: &Type) -> Option<InjectionType> {
+/// Classify the one syntactic special case that cannot be expressed with
+/// `InjectableType`: optional field injection as `Option<Depends<T>>`.
+fn classify_injection_type(ty: &Type) -> InjectionType {
 	if let Type::Path(type_path) = ty {
 		let segments = &type_path.path.segments;
 		if segments.is_empty() {
-			return None;
+			return InjectionType::InjectableWrapper;
 		}
 
-		let last_segment = segments.last()?;
+		let Some(last_segment) = segments.last() else {
+			return InjectionType::InjectableWrapper;
+		};
 		let ident = &last_segment.ident;
-
-		// Check for Depends<T>
-		if ident == "Depends"
-			&& is_likely_reinhardt_di_path(segments)
-			&& let PathArguments::AngleBracketed(args) = &last_segment.arguments
-			&& let Some(GenericArgument::Type(inner_ty)) = args.args.first()
-		{
-			return Some(InjectionType::Depends(inner_ty.clone()));
-		}
-
-		// Check for DependsResult<T, E> (sugar for Depends<Result<T, E>>).
-		// The inner Result<T, E> is factory-produced and never Injectable, so
-		// it must resolve from the registry only (DependsFromRegistry).
-		if ident == "DependsResult"
-			&& is_likely_reinhardt_di_path(segments)
-			&& let PathArguments::AngleBracketed(args) = &last_segment.arguments
-			&& args.args.len() == 2
-		{
-			let mut iter = args.args.iter();
-			let t = iter.next()?;
-			let e = iter.next()?;
-			let inner: Type = syn::parse_quote! { ::core::result::Result<#t, #e> };
-			return Some(InjectionType::DependsFromRegistry(inner));
-		}
-
-		// Check for DependsOption<T> (sugar for Depends<Option<T>>).
-		// The inner Option<T> is factory-produced and never Injectable, so
-		// it must resolve from the registry only (DependsFromRegistry).
-		if ident == "DependsOption"
-			&& is_likely_reinhardt_di_path(segments)
-			&& let PathArguments::AngleBracketed(args) = &last_segment.arguments
-			&& let Some(GenericArgument::Type(inner_ty)) = args.args.first()
-		{
-			let inner: Type = syn::parse_quote! { ::core::option::Option<#inner_ty> };
-			return Some(InjectionType::DependsFromRegistry(inner));
-		}
 
 		// Check for Option<Depends<T>>
 		if ident == "Option"
@@ -140,11 +90,60 @@ fn classify_injection_type(ty: &Type) -> Option<InjectionType> {
 			&& inner_seg.ident == "Depends"
 			&& is_likely_reinhardt_di_path(&inner_path.path.segments)
 		{
-			return Some(InjectionType::OptionalDepends(innermost_ty.clone()));
+			return InjectionType::OptionalDepends(Box::new(innermost_ty.clone()));
 		}
 	}
 
-	None
+	InjectionType::InjectableWrapper
+}
+
+fn depends_inner_type(ty: &Type) -> Option<&Type> {
+	let Type::Path(type_path) = ty else {
+		return None;
+	};
+	let segment = type_path.path.segments.last()?;
+	if segment.ident != "Depends" || !is_likely_reinhardt_di_path(&type_path.path.segments) {
+		return None;
+	}
+	let PathArguments::AngleBracketed(args) = &segment.arguments else {
+		return None;
+	};
+	match args.args.first()? {
+		GenericArgument::Type(inner_ty) => Some(inner_ty),
+		_ => None,
+	}
+}
+
+fn generate_inject_resolver_expr(
+	di_crate: &TokenStream,
+	ty: &Type,
+	use_cache: bool,
+) -> TokenStream {
+	if let Some(inner_ty) = depends_inner_type(ty) {
+		quote! {
+			{
+				use #di_crate::{
+					__InjectDependsFallbackResolver as _,
+					__InjectDependsRegistryResolver as _,
+				};
+				#di_crate::__InjectDependsResolver::<#inner_ty>::new()
+					.__resolve_inject_depends_parameter(__di_ctx, #use_cache)
+					.await?
+			}
+		}
+	} else {
+		quote! {
+			{
+				use #di_crate::{
+					__InjectFallbackResolver as _,
+					__InjectWrapperResolver as _,
+				};
+				#di_crate::__InjectResolver::<#ty>::new()
+					.__resolve_inject_parameter(__di_ctx, #use_cache)
+					.await?
+			}
+		}
+	}
 }
 
 /// Implementation of the `#[injectable]` attribute macro
@@ -215,13 +214,7 @@ pub(crate) fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<T
 			}
 
 			if has_inject {
-				// Validate and classify the injection type
-				let injection_type = classify_injection_type(ty).ok_or_else(|| {
-					syn::Error::new_spanned(
-						field,
-						"#[inject] field must have type Depends<T>, DependsResult<T, E>, DependsOption<T>, or Option<Depends<T>>",
-					)
-				})?;
+				let injection_type = classify_injection_type(ty);
 
 				// Inject this field
 				has_inject_fields = true;
@@ -232,27 +225,8 @@ pub(crate) fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<T
 
 				// Generate dependency resolution call based on injection type
 				let resolve_call = match injection_type {
-					InjectionType::Depends(inner_ty) => {
-						if use_cache {
-							quote! {
-								#di_crate::Depends::<#inner_ty>::resolve(__di_ctx, true)
-									.await?
-							}
-						} else {
-							quote! {
-								#di_crate::Depends::<#inner_ty>::resolve(__di_ctx, false)
-									.await?
-							}
-						}
-					}
-					InjectionType::DependsFromRegistry(inner_ty) => {
-						// resolve_from_registry has no `T: Injectable` bound, so it
-						// works for factory-produced inner types (Result<T, E> /
-						// Option<T>) that are registered without an Injectable impl.
-						quote! {
-							#di_crate::Depends::<#inner_ty>::resolve_from_registry(__di_ctx, #use_cache)
-								.await?
-						}
+					InjectionType::InjectableWrapper => {
+						generate_inject_resolver_expr(&di_crate, ty, use_cache)
 					}
 					InjectionType::OptionalDepends(inner_ty) => {
 						if use_cache {
