@@ -1,0 +1,5 @@
+error: `#[wasm]` and `#[server]` markers may only annotate functions
+ --> tests/ui/wasm_server_api/fail/marker_on_struct.rs:7:2
+  |
+7 |     #[wasm]
+  |     ^

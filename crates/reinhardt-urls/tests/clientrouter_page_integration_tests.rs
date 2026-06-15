@@ -45,6 +45,23 @@ fn search_page(props: SearchPageProps) -> Page {
 	Page::Text(format!("search: {}", props.q.into_inner()).into())
 }
 
+#[derive(Debug)]
+struct PathEchoProps {
+	path: String,
+}
+
+impl FromRequest for PathEchoProps {
+	fn from_request(ctx: &RouteContext) -> Result<Self, ExtractError> {
+		Ok(Self {
+			path: ctx.path().to_string(),
+		})
+	}
+}
+
+fn path_echo_page(props: PathEchoProps) -> Page {
+	Page::Text(props.path.into())
+}
+
 // --- Helpers ---------------------------------------------------------------
 
 /// Render the router for a path by driving the public `current_path` signal
@@ -90,6 +107,32 @@ fn page_method_extracts_query_param() {
 	// Assert
 	let s = page_text(&view);
 	assert_eq!(s, "search: rust", "expected `search: rust`, got: {s}");
+}
+
+#[rstest]
+fn page_method_exposes_matched_path_to_from_request() {
+	// Arrange
+	let router = ClientRouter::new().page("path-echo", "/users/{id}/", path_echo_page);
+
+	// Act
+	let view = router_render(&router, "/users/42/");
+
+	// Assert
+	let s = page_text(&view);
+	assert_eq!(s, "/users/42/", "expected matched path, got: {s}");
+}
+
+#[rstest]
+fn page_method_exposes_matched_path_without_query() {
+	// Arrange
+	let router = ClientRouter::new().page("path-echo-query", "/search/", path_echo_page);
+
+	// Act
+	let view = router_render(&router, "/search/?q=rust");
+
+	// Assert
+	let s = page_text(&view);
+	assert_eq!(s, "/search/", "expected query-free matched path, got: {s}");
 }
 
 #[rstest]
