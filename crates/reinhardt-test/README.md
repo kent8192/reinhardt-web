@@ -89,6 +89,18 @@ use reinhardt::test::{FixtureLoader, Factory, MockFunction};
   - Argument verification
   - Reset and inspection capabilities
 
+#### MSW-Style Request Mocking
+
+- **WASM runtime**: `MockServiceWorker` overrides `window.fetch()` for browser
+  tests.
+- **Native runtime**: `MockServiceWorker` starts a loopback HTTP mock server
+  and exposes `worker.url()` for explicit endpoint injection.
+- **Shared API**: `rest::get(...)`, `MockResponse`, request recording, and
+  `calls_to(...)` work across both runtimes.
+
+Native MSW does not intercept arbitrary `reqwest`, `hyper`, AWS SDK, or
+OS-level traffic. The code under test must use the mock server URL.
+
 #### Message Testing (Django-style)
 
 - **Message assertions**: Test message framework integration
