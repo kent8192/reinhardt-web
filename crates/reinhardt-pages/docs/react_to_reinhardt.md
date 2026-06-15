@@ -24,6 +24,34 @@ application.
 | `useDeferredValue` | `use_deferred_value(signal)` | Defers a `Signal<T>` value. |
 | React actions / server functions | `use_action` + `#[server_fn]` | Server calls are typed Rust functions with generated WASM client stubs. |
 
+## React 19 and 19.2 parity classification
+
+React 19 and 19.2 added frontend APIs around form actions, async reads,
+server/client boundaries, metadata, asset loading, and transition boundaries.
+Reinhardt Pages maps those expectations to Rust-first APIs instead of copying
+React API names.
+
+| React concept | Reinhardt classification | Tracking |
+| --- | --- | --- |
+| `useActionState` | Documentation-only mapping to `form!`, `use_form`, `use_action`, and `#[server_fn]`; no React-named clone. | #5309 |
+| `<form action={function}>` | Explicit non-goal. Reinhardt keeps static form contracts and typed RPC bindings separate. | #5309 |
+| Generic `use(...)` for Promise reads | Explicit non-goal. Use `use_resource(fetcher, deps)` for async data. | #5310 |
+| Generic `use(...)` for Context reads | Explicit non-goal. Use typed `Context<T>` with `use_context`. | #5310 |
+| Suspense integration for async reads | Existing API with different semantics through `SuspenseBoundary` and resource tracking. | #5310 |
+| React Server Components and RSC/Flight transport | Explicit non-goal. Reinhardt does not provide React-compatible component transport. | #5311 |
+| `"use client"` / `"use server"` directives | Explicit non-goal. Reinhardt uses Rust/WASM targets and `#[server_fn]`, not directive strings. | #5311 |
+| Server reference passing | Explicit non-goal. `#[server_fn]` generates typed client stubs but does not serialize server function references into client components. | #5311 |
+| Automatic metadata hoisting | Candidate follow-up. Current Reinhardt metadata is explicit through `head!` and `Head`. | #5312 |
+| React DOM asset APIs such as `preinit`, `preload`, `preconnect`, and `prefetchDNS` | Candidate follow-up for explicit `Head` / `LinkTag` helpers and deduplication decisions. | #5312 |
+| `createPortal` | Candidate follow-up. `ClientLauncher::ensure_portal` is a launcher helper, not a general portal API. | #5313 |
+| Custom element property, attribute, and event interop | Candidate follow-up against `page!` attributes, typed events, and DOM abstraction. | #5314 |
+| `ref` as a regular prop | Candidate follow-up. Current guidance is `use_ref` and typed component props. | #5314 |
+| `Activity` and `ViewTransition` | Candidate follow-up. Existing `use_transition`, `use_deferred_value`, signals, and `SuspenseBoundary` are related but not equivalent. | #5315 |
+| Cross-target API parity guardrails | Implementation follow-up for a wasm/server parity macro before broadening dual-target public APIs. | #5199 |
+
+The umbrella tracker for this classification is #5198. It should close only
+after this table reflects the final outcome of each focused follow-up.
+
 ## Components, props, and children
 
 In React, a component is a function that returns JSX. In Reinhardt Pages, a
@@ -272,12 +300,23 @@ Render loading or stale-state UI by reading `transition.is_pending.get()` and
 
 ## Forms, actions, and `#[server_fn]`
 
-React server actions and client actions map to two pieces in Reinhardt Pages:
+React server actions and client actions map to separate pieces in Reinhardt
+Pages:
 
+- `form!` defines a static form contract, including field metadata,
+  validation, and rendered form structure.
+- `use_form(&form)` builds runtime form state such as field values, validation
+  errors, submit state, and submit lifecycle callbacks.
 - `#[server_fn]` defines the server operation and generates the WASM client
   stub.
 - `use_action` wraps an async mutation and exposes `Idle`, `Pending`,
   `Success`, and `Error` phases.
+
+React `useActionState` combines form submission, pending state, result state,
+and errors behind one hook. Reinhardt keeps those responsibilities explicit:
+use `use_form` for typed form state and validation, then use `use_action` to
+run the `#[server_fn]` mutation after the form is valid. React's DOM
+`action={function}` behavior is not supported directly.
 
 ```rust,ignore
 use reinhardt::pages::prelude::*;
@@ -309,6 +348,12 @@ fn todo_form() -> Page {
             },
             "Create"
         }
+        if create.result().is_some() {
+            p {
+                role: "status",
+                "Todo created"
+            }
+        }
         if create.error().is_some() {
             p {
                 role: "alert",
@@ -319,8 +364,27 @@ fn todo_form() -> Page {
 }
 ```
 
-For optimistic UI, keep predicted state in `use_optimistic` and confirm or
-revert it from the action result.
+For generated forms, read submit state from the runtime returned by `use_form`:
+
+```rust,ignore
+let runtime = use_form(&profile_form)
+    .on_submit_start(|handle| {
+        log::info!("submitting {:?}", handle.get_values());
+    })
+    .on_submit_success(|handle| {
+        assert!(handle.form_state().is_submit_successful.get());
+    })
+    .build();
+
+let state = runtime.form_state();
+let pending = state.is_submitting.get();
+let submit_succeeded = state.is_submit_successful.get();
+let visible_error = state.error.get();
+```
+
+For optimistic UI, keep predicted state in `use_optimistic`, attach it with
+`Action::with_optimistic`, and let the action confirm it on success or revert it
+on error.
 
 ## Routing
 
@@ -357,6 +421,8 @@ Practical consequences:
   server render path.
 - Use `#[server_fn]` for typed client-to-server mutations instead of manually
   duplicating API request stubs.
+- Treat `#[server_fn]` as typed RPC, not as React Server Actions reference
+  serialization.
 - Prefer signal reads inside `watch { ... }` for reactive view branches.
 
 ## Intentional differences from React
@@ -375,6 +441,10 @@ intentional:
 - Event and DOM APIs are typed Rust APIs over `web-sys` on WASM and native
   stubs during SSR.
 - Missing context is represented as `Option<T>`.
+- There is no catch-all React-style `use(...)` API. Async resource reads,
+  context reads, and loading boundaries use separate typed APIs.
+- There is no React-compatible RSC/Flight transport or directive-string
+  boundary. Use `#[server_fn]` for client-to-server RPC.
 
 ## Migration checklist
 
