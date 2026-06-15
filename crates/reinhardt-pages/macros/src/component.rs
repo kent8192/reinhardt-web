@@ -143,7 +143,8 @@ fn expand_component(args: ComponentArgs, input: ItemFn) -> syn::Result<proc_macr
 	let component_name_literal = component_ident.to_string();
 
 	Ok(quote! {
-		#[derive(::bon::Builder)]
+		#[derive(#pages_crate::__private::bon::Builder)]
+		#[builder(crate = #pages_crate::__private::bon)]
 		#vis struct #props_ident {
 			#(#props_fields,)*
 		}

@@ -372,6 +372,7 @@ pub use reinhardt_pages_macros::{FromRequest, component, page_props};
 // Private re-exports used by macro-generated code. Not part of the public API.
 #[doc(hidden)]
 pub mod __private {
+	pub use bon;
 	pub use inventory;
 	pub use reinhardt_urls;
 

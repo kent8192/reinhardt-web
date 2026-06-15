@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   generated plain props builders, and `Path(...)` / `Query(...)` extractor-style
   component function arguments.
 
+### Fixed
+
+- Fixed route-backed component macro builders so downstream crates can use
+  generated props without depending directly on `bon`.
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.3...reinhardt-pages@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-pages` for the Reinhardt 0.2.0 line. This

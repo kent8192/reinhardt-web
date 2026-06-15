@@ -64,7 +64,8 @@ fn expand_page_props(mut item: ItemStruct) -> Result<proc_macro2::TokenStream> {
 	}
 
 	Ok(quote! {
-		#[derive(::bon::Builder)]
+		#[derive(#pages_crate::__private::bon::Builder)]
+		#[builder(crate = #pages_crate::__private::bon)]
 		#item
 
 		impl #pages_crate::router::request::FromRequest for #ident {
