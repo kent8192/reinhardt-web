@@ -64,7 +64,6 @@ pub struct RegisterRequest {
 	pub password_confirmation: String,
 }
 
-#[cfg(server)]
 impl RegisterRequest {
 	/// Confirm that `password` and `password_confirmation` match.
 	///

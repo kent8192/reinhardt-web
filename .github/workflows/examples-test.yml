@@ -42,7 +42,7 @@ jobs:
             needs-wasm: true
           - example: examples-tutorial-rest
             needs-docker: true
-            needs-wasm: false
+            needs-wasm: true
 
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -112,6 +112,9 @@ jobs:
 
       - name: Setup local development config
         run: cp examples/.cargo/config.local.toml examples/.cargo/config.toml
+
+      - name: Check accepted API parity paths
+        run: .github/scripts/check-example-api-parity-cfg.sh
 
       - name: Pull Docker images
         if: ${{ matrix.needs-docker }}

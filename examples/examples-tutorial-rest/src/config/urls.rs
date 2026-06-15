@@ -6,10 +6,10 @@
 //! satisfies the rc.24 guard that panics if `ServerRouter::mount()` receives
 //! a prefix containing path parameters.
 
-use reinhardt::prelude::*;
+use reinhardt::UnifiedRouter;
 use reinhardt::routes;
 
 #[routes]
 pub fn routes() -> UnifiedRouter {
-	UnifiedRouter::new().mount("/api/", crate::apps::snippets::urls::url_patterns())
+	crate::native_runtime::mount_api_routes(UnifiedRouter::new())
 }

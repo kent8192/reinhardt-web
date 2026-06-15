@@ -15,8 +15,6 @@
 
 use reinhardt::ServerRouter;
 
-use super::views;
-
 /// Register every snippets-app URL on a single `ServerRouter`.
 ///
 /// Function-based endpoints (Tutorial 1-5) and the `ModelViewSet`
@@ -26,27 +24,5 @@ use super::views;
 /// `Snippets ViewSet` folders drive these in turn against the same
 /// process.
 pub fn url_patterns() -> ServerRouter {
-	ServerRouter::new()
-		// Function-based endpoints (Tutorial 1-5)
-		// - GET    /snippets/        — views::list
-		// - POST   /snippets/        — views::create
-		// - GET    /snippets/config/ — views::config (registered before
-		//   the `{id}` route below so this literal path is matched first)
-		// - GET    /snippets/{id}/   — views::retrieve
-		// - PUT    /snippets/{id}/   — views::update
-		// - DELETE /snippets/{id}/   — views::delete
-		.endpoint(views::list)
-		.endpoint(views::create)
-		.endpoint(views::config)
-		.endpoint(views::retrieve)
-		.endpoint(views::update)
-		.endpoint(views::delete)
-		// ViewSet endpoints (Tutorial 6, rc.23+ real CRUD)
-		// - GET    /snippets-viewset/         — list (pagination/filter/order)
-		// - POST   /snippets-viewset/         — create
-		// - GET    /snippets-viewset/{id}/    — retrieve
-		// - PUT    /snippets-viewset/{id}/    — update
-		// - PATCH  /snippets-viewset/{id}/    — partial update
-		// - DELETE /snippets-viewset/{id}/    — delete
-		.viewset("/snippets-viewset", views::viewset())
+	crate::native_runtime::snippets_url_patterns()
 }

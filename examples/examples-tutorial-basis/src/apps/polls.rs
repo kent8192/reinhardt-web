@@ -6,19 +6,7 @@
 //! - Forms and generic views
 //! - Admin panel integration
 
-#[cfg(server)]
-use reinhardt::app_config;
-
-#[cfg(server)]
-pub mod admin;
-#[cfg(client)]
 pub mod client;
 pub mod models;
-#[cfg(server)]
-pub mod serializers;
 pub mod server_fn;
 pub mod urls;
-
-#[cfg(server)]
-#[app_config(name = "polls", label = "polls")]
-pub struct PollsConfig;

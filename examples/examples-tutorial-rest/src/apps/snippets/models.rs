@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
-use reinhardt::core::serde::{Deserialize, Serialize};
 use reinhardt::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// Snippet model representing a code snippet
 #[model(app_label = "snippets", table_name = "snippets")]
@@ -23,7 +23,7 @@ pub struct Snippet {
 }
 
 impl Snippet {
-	/// Get a highlighted version of the code using syntect
+	/// Get a highlighted version of the code using the runtime highlighter.
 	///
 	/// Returns HTML-formatted code with syntax highlighting based on the snippet's language.
 	/// Falls back to plain text if the language is not recognized.
@@ -42,23 +42,7 @@ impl Snippet {
 	/// assert!(html.contains("<span"));
 	/// ```
 	pub fn highlighted(&self) -> String {
-		use syntect::highlighting::ThemeSet;
-		use syntect::html::highlighted_html_for_string;
-		use syntect::parsing::SyntaxSet;
-
-		let ss = SyntaxSet::load_defaults_newlines();
-		let ts = ThemeSet::load_defaults();
-
-		// Try to find syntax by name first, then by extension
-		let syntax = ss
-			.find_syntax_by_name(&self.language)
-			.or_else(|| ss.find_syntax_by_extension(&self.language))
-			.unwrap_or_else(|| ss.find_syntax_plain_text());
-
-		let theme = &ts.themes["base16-ocean.dark"];
-
-		highlighted_html_for_string(&self.code, &ss, syntax, theme)
-			.unwrap_or_else(|_| self.code.clone())
+		crate::native_runtime::highlighted_code(&self.language, &self.code)
 	}
 }
 
@@ -161,7 +145,8 @@ mod tests {
 
 		// Should not panic on empty code and should return valid (possibly empty) HTML
 		// The test verifies the method completes successfully without panicking
-		// NOTE: Empty code produces minimal HTML structure from syntect, exact output varies
+		// NOTE: Empty code produces minimal HTML structure from the highlighter,
+		// exact output varies.
 		let _ = html; // Verifies method returns successfully
 	}
 

@@ -9,9 +9,9 @@
 //! both the schema and the SignupForm small.
 //!
 //! All registration / authentication-state changes from application code
-//! go through [`AuthUserManager`] (a project-local implementation of
-//! `BaseUserManager<User>`) rather than constructing `User` instances
-//! by hand — see the `register` server function in
+//! go through `crate::native_runtime::AuthUserManager` (a project-local
+//! implementation of `BaseUserManager<User>`) rather than constructing
+//! `User` instances by hand — see the `register` server function in
 //! `crate::apps::users::server_fn`.
 //!
 //! The `createsuperuser` management command takes a **different** path:
@@ -21,17 +21,14 @@
 //! the framework discovers at startup), which calls
 //! `User::objects().create(&user)` directly. That path therefore
 //! **bypasses** the password-length / username trim / uniqueness checks
-//! that [`AuthUserManager::build_user`] performs for the application signup
-//! flow. Acceptable for the tutorial CLI. Auto-registration for minimal
+//! that `crate::native_runtime::AuthUserManager::build_user` performs for the
+//! application signup flow. Acceptable for the tutorial CLI. Auto-registration
+//! for minimal
 //! user models without `full = true` is the resolution of
 //! reinhardt-web#4522 — no manual `SuperuserInit` impl or
 //! `register_superuser_creator` call is required.
 
 use chrono::{DateTime, Utc};
-#[cfg(native)]
-use reinhardt::Argon2Hasher;
-#[cfg(native)]
-use reinhardt::macros::user;
 use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -42,7 +39,14 @@ use serde::{Deserialize, Serialize};
 // auto-manager is also gated to `Uuid` / `Option<Uuid>` primary keys
 // (issue #4455), and this model uses `i64` to demonstrate auto-increment
 // integer PKs in the tutorial.
-#[cfg_attr(native, user(hasher = Argon2Hasher, username_field = "username", manager = false))]
+#[cfg_attr(
+	native,
+	reinhardt::macros::user(
+		hasher = reinhardt::Argon2Hasher,
+		username_field = "username",
+		manager = false
+	)
+)]
 #[model(app_label = "users", table_name = "users")]
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -73,148 +77,3 @@ pub struct User {
 // `has_model`). The generated impl drops the `email` argument because the
 // minimal user has no email column, and the i64 PK is left as 0 so the
 // DB assigns the real value on insert.
-
-#[cfg(server)]
-mod manager {
-	use super::User;
-	use reinhardt::BaseUser;
-	use reinhardt::DatabaseConnection;
-	use reinhardt::Model;
-	use reinhardt::core::async_trait;
-	use reinhardt::core::exception::Error;
-	use reinhardt::di::{Depends, injectable_factory};
-	// `BaseUserManager` lives in `reinhardt-auth` and is not yet re-exported
-	// at the top level of `reinhardt`; reach it via the doc-hidden module
-	// re-export until the facade exposes it directly (tracked in #4444).
-	use reinhardt::reinhardt_auth::BaseUserManager;
-	use serde_json::Value;
-	use std::collections::HashMap;
-
-	/// Project-local `BaseUserManager<User>` implementation.
-	///
-	/// Named `AuthUserManager` (rather than `UserManager`) to avoid
-	/// confusion with the auto-generated manager that `#[user(...)]` can
-	/// emit — the tutorial opts out via `manager = false`.
-	///
-	/// Encapsulates the "create + hash + persist" pipeline for the tutorial
-	/// `User`. Server functions receive an injected instance via
-	/// `#[inject] um: Depends<AuthUserManager>` and delegate to `create_user`
-	/// / `create_superuser` so password hashing, uniqueness checks, and
-	/// saves stay in a single place.
-	///
-	/// `#[user(...)]` does emit a manager by default (since
-	/// reinhardt-web#4451), but this tutorial opts out via `manager = false`
-	/// on the `#[user]` attribute above so the auto-emitted manager does not
-	/// shadow this hand-written one — and because the auto-manager is gated
-	/// to `Uuid` / `Option<Uuid>` primary keys (issue #4455) whereas this
-	/// model uses `i64`. `Clone` is derived so a server function can pull an
-	/// owned `AuthUserManager` out of `Depends<_>` and invoke the
-	/// `BaseUserManager::create_user(&mut self, …)` trait method without
-	/// fighting `Arc` mutability.
-	///
-	/// We register through `#[injectable_factory]` rather than `#[injectable]`
-	/// on the struct itself because `#[injectable]` emits
-	/// `#[async_trait::async_trait]` directly, requiring the consuming crate
-	/// to add `async-trait` to its `Cargo.toml`. That breaks
-	/// `examples/CLAUDE.md` DM-1 ("Reinhardt Dependencies Only"); the
-	/// `#[injectable_factory]` path does not have this issue. See #4445.
-	#[derive(Clone)]
-	pub struct AuthUserManager {
-		db: DatabaseConnection,
-	}
-
-	#[injectable_factory(scope = "transient")]
-	async fn auth_user_manager_factory(
-		#[inject] db: Depends<DatabaseConnection>,
-	) -> AuthUserManager {
-		AuthUserManager { db: (*db).clone() }
-	}
-
-	impl AuthUserManager {
-		async fn build_user(
-			&self,
-			username: &str,
-			password: Option<&str>,
-			extra: &HashMap<String, Value>,
-		) -> Result<User, Error> {
-			let username = username.trim();
-			if username.is_empty() {
-				return Err(Error::Validation("Username cannot be empty".to_string()));
-			}
-			if username.chars().count() > 150 {
-				return Err(Error::Validation(
-					"Username must be 150 characters or fewer".to_string(),
-				));
-			}
-
-			let manager = User::objects();
-			let existing = manager
-				.filter(User::field_username().eq(username.to_string()))
-				.first()
-				.await
-				.map_err(|e| Error::Database(e.to_string()))?;
-			if existing.is_some() {
-				return Err(Error::Validation("Username is already taken".to_string()));
-			}
-
-			let is_active = extra
-				.get("is_active")
-				.and_then(|v| v.as_bool())
-				.unwrap_or(true);
-
-			// `User::build()` (typestate builder from `#[model]`) keeps this
-			// call site stable as the schema grows — a new required field
-			// surfaces as an additional setter rather than a positional
-			// argument rewrite.
-			let mut user = User::build()
-				.username(username.to_string())
-				.password_hash(None)
-				.is_active(is_active)
-				.is_superuser(false)
-				.finish();
-			if let Some(pw) = password {
-				if pw.chars().count() < 8 {
-					return Err(Error::Validation(
-						"Password must be at least 8 characters".to_string(),
-					));
-				}
-				user.set_password(pw)
-					.map_err(|e| Error::Internal(format!("Password hashing failed: {}", e)))?;
-			}
-			Ok(user)
-		}
-	}
-
-	#[async_trait]
-	impl BaseUserManager<User> for AuthUserManager {
-		async fn create_user(
-			&mut self,
-			username: &str,
-			password: Option<&str>,
-			extra: HashMap<String, Value>,
-		) -> Result<User, Error> {
-			let new_user = self.build_user(username, password, &extra).await?;
-			User::objects()
-				.create_with_conn(&self.db, &new_user)
-				.await
-				.map_err(|e| Error::Database(e.to_string()))
-		}
-
-		async fn create_superuser(
-			&mut self,
-			username: &str,
-			password: Option<&str>,
-			extra: HashMap<String, Value>,
-		) -> Result<User, Error> {
-			let mut new_user = self.build_user(username, password, &extra).await?;
-			new_user.is_superuser = true;
-			User::objects()
-				.create_with_conn(&self.db, &new_user)
-				.await
-				.map_err(|e| Error::Database(e.to_string()))
-		}
-	}
-}
-
-#[cfg(server)]
-pub use manager::AuthUserManager;
