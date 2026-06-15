@@ -46,7 +46,7 @@ React API names.
 | `createPortal` | Reinhardt-native explicit `Portal` / `mount_portal` API. `ClientLauncher::ensure_portal` remains only a launcher helper for idempotent body-level mounts. | #5313 |
 | Custom element property, attribute, and event interop | Explicit DOM interop API. HTML attributes stay attributes; JS properties use `Element::set_property` / `get_property`, and custom event payloads use raw or typed `CustomEvent.detail` listeners. | #5314 |
 | `ref` as a regular prop | Explicit non-goal. Reinhardt does not treat `ref` as a magic component prop; use typed props, `use_ref`, and explicit DOM handles. | #5314 |
-| `Activity` and `ViewTransition` | Candidate follow-up. Existing `use_transition`, `use_deferred_value`, signals, and `SuspenseBoundary` are related but not equivalent. | #5315 |
+| `Activity` and `ViewTransition` | Explicit boundary APIs. `ActivityBoundary` preserves hidden subtrees; `ViewTransitionBoundary` marks transition participants, and `start_view_transition` uses the browser API on WASM with a fallback. | #5315 |
 | Cross-target API parity guardrails | Implementation follow-up for a wasm/server parity macro before broadening dual-target public APIs. | #5199 |
 
 The umbrella tracker for this classification is #5198. It should close only
@@ -374,6 +374,53 @@ let deferred_query = use_deferred_value(query.clone());
 
 Render loading or stale-state UI by reading `transition.is_pending.get()` and
 `deferred_query.get()`.
+
+`ActivityBoundary` is the state-preserved hiding primitive. It always renders
+its content, including on SSR, and hides the wrapper with `hidden` /
+`aria-hidden` when the mode is hidden. Use it when DOM-owned state should stay
+mounted while the region is not visible.
+
+```rust,ignore
+let details_open = use_state(|| false);
+
+let details = ActivityBoundary::default()
+    .visible_when(details_open.0.get())
+    .content(|| page!(|| {
+        section {
+            h2 { "Details" }
+            p { "The subtree stays rendered while hidden." }
+        }
+    }));
+```
+
+`ViewTransitionBoundary` is an SSR-safe marker for elements that should
+participate in browser view transitions. It emits stable `data-rh-*` markers
+and, when named, a CSS `view-transition-name`; it does not change hydration
+semantics by itself. Names are normalized before they are written to inline CSS
+so dynamic ids or slugs cannot inject style declarations.
+
+```rust,ignore
+let card = ViewTransitionBoundary::new()
+    .name("selected-card")
+    .content(|| page!(|| {
+        article { "Selected" }
+    }));
+```
+
+On WASM, wrap state changes with `start_view_transition` when the browser
+should coordinate a View Transition API update. Browsers without
+`document.startViewTransition`, and native SSR, execute the update normally and
+report an unsupported status.
+
+```rust,ignore
+let handle = start_view_transition(move || {
+    selected_id.set(Some(id));
+});
+
+if handle.is_unsupported() {
+    // The state update still ran; only browser transition support was missing.
+}
+```
 
 ## Forms, actions, and `#[server_fn]`
 

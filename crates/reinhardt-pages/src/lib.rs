@@ -51,7 +51,7 @@
 //! - [`reactive`]: Fine-grained reactivity system (Signal, Effect, Memo)
 //! - [`dom`]: DOM abstraction layer
 //! - [`builder`]: HTML element builder API
-//! - [`component`]: Component system with IntoPage trait, Head management
+//! - [`component`](mod@component): Component system with IntoPage trait, Head management
 //! - [`form`](mod@form): Django Form integration
 //! - [`form_state`]: Typed `use_form` runtime state
 //! - [`csrf`]: CSRF protection
@@ -315,8 +315,10 @@ pub use component::DummyEvent;
 #[cfg(wasm)]
 pub use component::cleanup_reactive_nodes;
 pub use component::{
-	BoundaryError, Component, ErrorBoundary, ErrorTracker, Head, IntoPage, LinkTag, MetaTag, Page,
-	PageElement, PageExt, Props, ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary,
+	ActivityBoundary, ActivityMode, BoundaryError, Component, ErrorBoundary, ErrorTracker, Head,
+	IntoPage, LinkTag, MetaTag, Page, PageElement, PageExt, Props, ResourceTracker, ScriptTag,
+	StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle, ViewTransitionStatus,
+	start_view_transition,
 };
 pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
