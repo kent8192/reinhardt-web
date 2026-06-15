@@ -4259,6 +4259,10 @@ impl MigrationAutodetector {
 		to_name: &str,
 		to_field: &FieldState,
 	) -> bool {
+		if !Self::field_names_support_rename(from_name, to_name) {
+			return false;
+		}
+
 		if from_field.field_type != to_field.field_type
 			|| from_field.nullable != to_field.nullable
 			|| from_field.foreign_key != to_field.foreign_key
@@ -4271,6 +4275,47 @@ impl MigrationAutodetector {
 		from_def.name = "__renamed_field__".to_string();
 		to_def.name = "__renamed_field__".to_string();
 		from_def == to_def
+	}
+
+	fn field_names_support_rename(from_name: &str, to_name: &str) -> bool {
+		const NAME_SIMILARITY_THRESHOLD: f64 = 0.82;
+
+		if from_name == to_name {
+			return true;
+		}
+
+		Self::field_name_similarity(from_name, to_name) >= NAME_SIMILARITY_THRESHOLD
+			|| Self::field_names_share_rename_token(from_name, to_name)
+	}
+
+	fn field_name_similarity(from_name: &str, to_name: &str) -> f64 {
+		let jaro_winkler_sim = jaro_winkler(from_name, to_name);
+		let lev_distance = levenshtein(from_name, to_name);
+		let max_len = from_name.len().max(to_name.len()) as f64;
+		let levenshtein_sim = if max_len > 0.0 {
+			1.0 - (lev_distance as f64 / max_len)
+		} else {
+			1.0
+		};
+
+		0.7 * jaro_winkler_sim + 0.3 * levenshtein_sim
+	}
+
+	fn field_names_share_rename_token(from_name: &str, to_name: &str) -> bool {
+		let from_tokens = Self::rename_field_name_tokens(from_name);
+		let to_tokens = Self::rename_field_name_tokens(to_name);
+
+		from_tokens.iter().any(|token| to_tokens.contains(token))
+	}
+
+	fn rename_field_name_tokens(name: &str) -> BTreeSet<String> {
+		to_snake_case(name)
+			.split('_')
+			.filter(|token| {
+				token.len() >= 3 && !matches!(*token, "id" | "name" | "new" | "old" | "legacy")
+			})
+			.map(ToOwned::to_owned)
+			.collect()
 	}
 
 	/// Calculate similarity between two models using advanced field matching
@@ -6251,7 +6296,7 @@ mod tests {
 			"Deployment",
 			vec![
 				FieldState::new("id", super::super::FieldType::Integer, false),
-				FieldState::new("app_name", super::super::FieldType::VarChar(255), false),
+				FieldState::new("app_slug", super::super::FieldType::VarChar(255), false),
 			],
 			Vec::new(),
 			Vec::new(),
@@ -6261,7 +6306,7 @@ mod tests {
 			"Deployment",
 			vec![
 				FieldState::new("id", super::super::FieldType::Integer, false),
-				FieldState::new("project_name", super::super::FieldType::VarChar(255), false),
+				FieldState::new("project_slug", super::super::FieldType::VarChar(255), false),
 			],
 			Vec::new(),
 			Vec::new(),
@@ -6289,8 +6334,8 @@ mod tests {
 				old_name,
 				new_name
 			} if table == "deployments_deployment"
-				&& old_name == "app_name"
-				&& new_name == "project_name"
+				&& old_name == "app_slug"
+				&& new_name == "project_slug"
 		));
 	}
 
@@ -6472,6 +6517,71 @@ mod tests {
 				&& message.contains("old_code")
 				&& message.contains("project_code"),
 			"error should name candidate fields: {message}"
+		);
+	}
+
+	#[rstest]
+	#[case("nickname", "status")]
+	#[case("first_name", "last_name")]
+	fn try_generate_operations_preserves_same_definition_unrelated_add_and_drop(
+		#[case] removed_name: &str,
+		#[case] added_name: &str,
+	) {
+		let from_model = build_model_state(
+			"projects",
+			"Project",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new(removed_name, super::super::FieldType::VarChar(255), false),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"projects",
+			"Project",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new(added_name, super::super::FieldType::VarChar(255), false),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("projects".to_string(), "Project".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("projects".to_string(), "Project".to_string()),
+				to_model,
+			)]),
+		);
+
+		let operations = detector
+			.try_generate_operations()
+			.expect("unrelated same-definition add/drop should remain valid");
+
+		assert_eq!(operations.len(), 2, "unexpected operations: {operations:?}");
+		assert!(
+			operations.iter().any(|op| matches!(
+				op,
+				super::super::Operation::AddColumn { column, .. } if column.name == added_name
+			)),
+			"expected AddColumn, got: {operations:?}"
+		);
+		assert!(
+			operations.iter().any(|op| matches!(
+				op,
+				super::super::Operation::DropColumn { column, .. } if column == removed_name
+			)),
+			"expected DropColumn, got: {operations:?}"
+		);
+		assert!(
+			operations
+				.iter()
+				.all(|op| !matches!(op, super::super::Operation::RenameColumn { .. })),
+			"unexpected RenameColumn for unrelated fields: {operations:?}"
 		);
 	}
 
