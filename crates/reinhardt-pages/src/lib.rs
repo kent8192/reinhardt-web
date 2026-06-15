@@ -317,7 +317,7 @@ pub use component::{
 	PageElement, PageExt, Props, ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary,
 };
 pub use csrf::{CsrfManager, get_csrf_token};
-pub use dom::{Document, Element, EventHandle, EventType, document};
+pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
 #[cfg(native)]
 pub use form::{FormBinding, FormComponent};
 // Static form metadata types (always available, used by form! macro)

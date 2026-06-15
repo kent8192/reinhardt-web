@@ -44,8 +44,8 @@ React API names.
 | Automatic metadata hoisting | Explicit non-goal. Reinhardt metadata stays explicit through `head!` and `Head`; component body nodes are not hoisted into the document head. | #5312 |
 | React DOM asset APIs such as `preinit`, `preload`, `preconnect`, and `prefetchDNS` | Reinhardt-native explicit `Head` / `LinkTag` asset hint helpers with exact duplicate SSR deduplication; no browser-only imperative asset API. | #5312 |
 | `createPortal` | Candidate follow-up. `ClientLauncher::ensure_portal` is a launcher helper, not a general portal API. | #5313 |
-| Custom element property, attribute, and event interop | Candidate follow-up against `page!` attributes, typed events, and DOM abstraction. | #5314 |
-| `ref` as a regular prop | Candidate follow-up. Current guidance is `use_ref` and typed component props. | #5314 |
+| Custom element property, attribute, and event interop | Explicit DOM interop API. HTML attributes stay attributes; JS properties use `Element::set_property` / `get_property`, and custom event payloads use raw or typed `CustomEvent.detail` listeners. | #5314 |
+| `ref` as a regular prop | Explicit non-goal. Reinhardt does not treat `ref` as a magic component prop; use typed props, `use_ref`, and explicit DOM handles. | #5314 |
 | `Activity` and `ViewTransition` | Candidate follow-up. Existing `use_transition`, `use_deferred_value`, signals, and `SuspenseBoundary` are related but not equivalent. | #5315 |
 | Cross-target API parity guardrails | Implementation follow-up for a wasm/server parity macro before broadening dual-target public APIs. | #5199 |
 
@@ -312,6 +312,37 @@ as timers, previous values, or DOM handles.
 let render_count = use_ref(0);
 render_count.update(|count| *count += 1);
 ```
+
+For custom elements, keep HTML attributes and JavaScript properties explicit.
+`page!` attributes and `Element::set_attribute` render string attributes.
+Use the DOM wrapper for property-based web component APIs after an element is
+available on the client.
+
+```rust,ignore
+use reinhardt::pages::prelude::*;
+use wasm_bindgen::JsValue;
+
+let widget: Element = /* created or queried on WASM */;
+widget.set_attribute("data-theme", "dark")?;
+widget.set_property("value", &JsValue::from_str("selected"))?;
+```
+
+Custom element events use normal DOM event listener handles. Use
+`add_custom_event_listener` for raw `JsValue` payloads, or
+`add_typed_custom_event_listener` when `CustomEvent.detail` should deserialize
+into a Rust type with `serde_wasm_bindgen`.
+
+```rust,ignore
+let handle = widget.add_typed_custom_event_listener("widget-change", |payload| {
+    let detail: Result<WidgetChange, String> = payload;
+    // Keep the returned handle alive while the listener should remain active.
+});
+```
+
+`ref` is not a special prop in Reinhardt components. Pass explicit typed props
+or callbacks when a component should expose behavior. Store mutable values in
+`use_ref`; a future element-ref binding API would need a separate lifecycle
+contract rather than React-style `ref` prop semantics.
 
 Context is type-safe. A missing provider returns `None` instead of throwing.
 
