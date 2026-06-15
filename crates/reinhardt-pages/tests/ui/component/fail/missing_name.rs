@@ -1,4 +1,4 @@
-#![allow(unused_imports)]
+#![allow(unused_imports)] // Compile-fail fixtures may stop before using every imported helper.
 
 use reinhardt_pages::{Page, Path, component, page};
 

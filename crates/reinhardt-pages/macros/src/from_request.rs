@@ -14,9 +14,15 @@ pub(crate) fn derive_from_request_impl(input: TokenStream) -> TokenStream {
 }
 
 fn expand_from_request(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
-	let ident = input.ident;
-	let fields = named_fields(&input.data)?;
+	let DeriveInput {
+		ident,
+		generics,
+		data,
+		..
+	} = input;
+	let fields = named_fields(&data)?;
 	let pages_crate = get_reinhardt_pages_crate();
+	let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 	let mut keys = HashSet::new();
 	let mut initializers = Vec::new();
 
@@ -39,7 +45,9 @@ fn expand_from_request(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
 	}
 
 	Ok(quote! {
-		impl #pages_crate::router::request::FromRequest for #ident {
+		impl #impl_generics #pages_crate::router::request::FromRequest for #ident #ty_generics
+			#where_clause
+		{
 			fn from_request(
 				ctx: &#pages_crate::router::request::RouteContext,
 			) -> ::std::result::Result<Self, #pages_crate::router::request::ExtractError> {

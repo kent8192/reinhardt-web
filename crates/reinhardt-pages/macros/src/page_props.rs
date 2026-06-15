@@ -62,13 +62,16 @@ fn expand_page_props(mut item: ItemStruct) -> Result<proc_macro2::TokenStream> {
 		};
 		initializers.push(quote! { #field_ident: #extractor });
 	}
+	let (impl_generics, ty_generics, where_clause) = item.generics.split_for_impl();
 
 	Ok(quote! {
 		#[derive(#pages_crate::__private::bon::Builder)]
 		#[builder(crate = #pages_crate::__private::bon)]
 		#item
 
-		impl #pages_crate::router::request::FromRequest for #ident {
+		impl #impl_generics #pages_crate::router::request::FromRequest for #ident #ty_generics
+			#where_clause
+		{
 			fn from_request(
 				ctx: &#pages_crate::router::request::RouteContext,
 			) -> ::std::result::Result<Self, #pages_crate::router::request::ExtractError> {

@@ -73,8 +73,8 @@ fn expand_component(args: ComponentArgs, input: ItemFn) -> syn::Result<proc_macr
 		));
 	}
 	match &input.sig.output {
-		ReturnType::Type(_, _) => {}
-		ReturnType::Default => {
+		ReturnType::Type(_, ty) if is_page_type(ty) => {}
+		_ => {
 			return Err(syn::Error::new_spanned(
 				&input.sig,
 				"#[component] functions must return Page",
@@ -199,6 +199,17 @@ fn field_visibility_tokens(vis: &Visibility) -> proc_macro2::TokenStream {
 		Visibility::Inherited => quote! {},
 		_ => quote! { #vis },
 	}
+}
+
+fn is_page_type(ty: &Type) -> bool {
+	let Type::Path(type_path) = ty else {
+		return false;
+	};
+	type_path
+		.path
+		.segments
+		.last()
+		.is_some_and(|segment| segment.ident == "Page")
 }
 
 fn parse_args(inputs: &Punctuated<FnArg, Token![,]>) -> syn::Result<Vec<ExtractedArg>> {

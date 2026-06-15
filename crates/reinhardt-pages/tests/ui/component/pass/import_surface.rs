@@ -10,7 +10,7 @@ fn user_page(Path(id): Path<i64>, Query(tab): Query<String>) -> Page {
 }
 
 fn main() {
-	let _ = page!(|| {
+	let _: Page = page!(|| {
 		UserPage {
 			id: 7,
 			tab: "profile".to_string(),

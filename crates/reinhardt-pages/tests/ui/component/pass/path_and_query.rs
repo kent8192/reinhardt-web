@@ -10,11 +10,11 @@ fn user_tab(Path(id): Path<i64>, Query(tab): Query<String>) -> Page {
 }
 
 fn main() {
-	let _ = UserTabProps::builder()
+	let _: UserTabProps = UserTabProps::builder()
 		.id(7)
 		.tab("profile".to_string())
 		.build();
-	let _ = page!(|| {
+	let _: Page = page!(|| {
 		UserTab {
 			id: 7,
 			tab: "profile".to_string(),
