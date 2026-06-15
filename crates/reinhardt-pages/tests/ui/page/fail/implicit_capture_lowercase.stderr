@@ -6,7 +6,7 @@ error: identifier `outer` used inside `page!` is not declared as a parameter.
        explicit (React-style props-down data flow). Item paths
        (`module::func`), types (`Vec`, `Option`), and constants
        (`MAX_LEN`) are unaffected.
- --> tests/ui/page/fail/implicit_capture_lowercase.rs:8:4
+ --> tests/ui/page/fail/implicit_capture_lowercase.rs:7:11
   |
-8 |             outer.get()
-  |             ^^^^^
+7 |         div { { outer.get() } }
+  |                 ^^^^^

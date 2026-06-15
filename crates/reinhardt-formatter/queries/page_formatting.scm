@@ -6,8 +6,93 @@
 (line_comment) @leaf @append_hardline
 (block_comment) @leaf
 (fragment) @leaf
+(closure_args) @leaf
+(component_identifier) @leaf
+(rustfmt_island) @leaf
 
 ; === Token spacing ===
+
+; Space between page closure args and the closure body.
+(
+  (closure_args) @append_space
+  .
+  (block)
+)
+
+; Space between semantic element/component names and their bodies.
+(
+  [(fragment) (component_identifier)] @append_space
+  .
+  (block)
+)
+
+; Space between semantic attribute/event heads and their Rust expression values.
+(attribute
+  (fragment) @append_space
+  .
+  (rustfmt_island)
+)
+
+(event_attribute
+  (fragment) @append_space
+  .
+  (rustfmt_island)
+)
+
+; Space between Rust closure heads and their block bodies inside values.
+(rustfmt_island
+  (fragment) @append_space
+  .
+  (block))
+
+; Commas owned by semantic attributes/events separate following DSL items.
+(attribute
+  (comma) @append_hardline)
+
+(event_attribute
+  (comma) @append_hardline)
+
+; Interpolation blocks stay inline with spaces around the Rust expression.
+(interpolation
+  "{" @prepend_space
+  .
+  (rustfmt_island) @prepend_space @append_space
+  .
+  "}")
+
+; Keep else and else-if clauses attached to the preceding control-flow block.
+(if_control_flow
+  (block
+    "}" @append_space)
+  .
+  (else_clause))
+
+(else_clause
+  (fragment) @append_space
+  .
+  [(control_flow) (block)])
+
+; Separate adjacent semantic control-flow wrappers.
+(_
+  (control_flow)
+  .
+  (control_flow
+    (if_control_flow
+      (fragment) @prepend_hardline)))
+
+(_
+  (control_flow)
+  .
+  (control_flow
+    (for_control_flow
+      (fragment) @prepend_hardline)))
+
+(_
+  (control_flow)
+  .
+  (control_flow
+    (match_control_flow
+      (fragment) @prepend_hardline)))
 
 ; Space after fragment ending with : or = before strings/chars/raw strings.
 (
@@ -30,6 +115,15 @@
   [(string) (char) (raw_string)] @append_space
   .
   (fragment) @leaf
+  (#match? @leaf "^(r#)?[A-Za-z_][A-Za-z0-9_]*")
+)
+
+; Space between string/char/raw string and following semantic element.
+(
+  [(string) (char) (raw_string)] @append_space
+  .
+  (element
+    (fragment) @leaf)
   (#match? @leaf "^(r#)?[A-Za-z_][A-Za-z0-9_]*")
 )
 
@@ -74,9 +168,24 @@
 (block
   "{" @prepend_space
   .
-  [(fragment) (string) (char) (raw_string) (paren) (bracket) (block)] @prepend_space @append_space
+  [(fragment) (string) (char) (raw_string) (paren) (bracket) (block) (interpolation) (rustfmt_island)] @prepend_space @append_space
   .
   "}")
+
+; --- Single semantic-child blocks: expanded ---
+(block
+  "{" @prepend_space @append_hardline @append_indent_start
+  .
+  [(element) (component_call) (control_flow) (attribute) (event_attribute)]
+  .
+  "}")
+
+(block
+  "{"
+  .
+  [(element) (component_call) (control_flow) (attribute) (event_attribute)]
+  .
+  "}" @prepend_hardline @prepend_indent_end)
 
 ; --- Multi-item blocks: expanded ---
 ; Opening brace gets hardline + indent when block has 2+ named children.
@@ -105,18 +214,64 @@
 
 ; === Block separation ===
 
+; Semantic wrappers hide their inner block from generic sibling rules, so
+; separate adjacent page items at the wrapper boundary.
+(_
+  (element
+    (block
+      "}" @append_hardline))
+  .
+  [(element) (component_call) (control_flow) (interpolation)])
+
+(_
+  (component_call
+    (block
+      "}" @append_hardline))
+  .
+  [(element) (component_call) (control_flow) (interpolation)])
+
+(_
+  (control_flow
+    (if_control_flow
+      (block
+        "}" @append_hardline)))
+  .
+  [(element) (component_call) (control_flow) (interpolation)])
+
+(_
+  (control_flow
+    (for_control_flow
+      (block
+        "}" @append_hardline)))
+  .
+  [(element) (component_call) (control_flow) (interpolation)])
+
+(_
+  (control_flow
+    (match_control_flow
+      (block
+        "}" @append_hardline)))
+  .
+  [(element) (component_call) (control_flow) (interpolation)])
+
+(_
+  (interpolation
+    "}" @append_hardline)
+  .
+  [(element) (component_call) (control_flow) (interpolation)])
+
 ; After closing brace, hardline before non-else items.
 (_
   (block
     "}" @append_hardline)
   .
-  [(block) (string) (char) (raw_string)])
+  [(block) (string) (char) (raw_string) (element) (component_call) (control_flow) (attribute) (event_attribute) (interpolation)])
 
 (_
   (block
     "}" @append_hardline)
   .
-  (fragment) @leaf
+  [(fragment) (component_identifier)] @leaf
   (#not-match? @leaf "^else\\b"))
 
 ; After closing brace, space before else (keeps } else { on one line).

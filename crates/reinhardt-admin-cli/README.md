@@ -129,7 +129,9 @@ reinhardt-admin plugin update --all
 
 Use `reinhardt-formatter` to format all Rust files in the project. Reinhardt
 DSL macros are formatted with tree-sitter grammars and Topiary queries before
-`cargo fmt --all` formats the surrounding Rust code:
+`cargo fmt --all` formats the surrounding Rust code. For supported `page!`
+Rust expression islands, the formatter also runs rustfmt on the extracted
+expression and reinserts the result conservatively:
 
 ```bash
 # Format all files in the project
@@ -138,6 +140,10 @@ reinhardt-formatter fmt-all
 # Check formatting without modifying files
 reinhardt-formatter fmt-all --check
 ```
+
+The first rustfmt-island pass applies only to safe `page!` expression and
+event-handler regions. Unsupported fragments remain unchanged so the formatter
+does not rewrite DSL bodies it cannot classify confidently.
 
 ### Format Reinhardt Macro DSLs
 
