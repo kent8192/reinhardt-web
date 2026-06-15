@@ -145,7 +145,7 @@ impl<'a> ImagePullReference<'a> {
 			},
 			None => Self {
 				from_image: image,
-				tag: None,
+				tag: Some("latest"),
 			},
 		}
 	}
@@ -290,12 +290,23 @@ mod tests {
 	}
 
 	#[test]
-	fn image_pull_reference_keeps_untagged_image() {
+	fn image_pull_reference_defaults_untagged_image_to_latest() {
 		assert_eq!(
 			ImagePullReference::parse("redis"),
 			ImagePullReference {
 				from_image: "redis",
-				tag: None
+				tag: Some("latest")
+			}
+		);
+	}
+
+	#[test]
+	fn image_pull_reference_defaults_namespaced_untagged_image_to_latest() {
+		assert_eq!(
+			ImagePullReference::parse("library/redis"),
+			ImagePullReference {
+				from_image: "library/redis",
+				tag: Some("latest")
 			}
 		);
 	}
