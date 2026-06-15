@@ -20,10 +20,10 @@
 use super::ServerFnError;
 use super::registration::ServerFnRegistration;
 use hyper::{Method, StatusCode};
-use reinhardt_http::{Request, Response, SharedResponseCookies};
+use reinhardt_core::endpoint::EndpointInfo;
+use reinhardt_http::{Handler, Request, Response, Result, SharedResponseCookies};
 use reinhardt_urls::routers::ServerRouter;
-use std::future::Future;
-use std::pin::Pin;
+use std::marker::PhantomData;
 
 /// Extension trait for registering server functions with `ServerRouter`.
 ///
@@ -71,11 +71,34 @@ pub trait ServerFnRouterExt {
 	/// let router = ServerRouter::new()
 	///     .server_fn(login);
 	/// ```
-	fn server_fn<S: ServerFnRegistration>(self, marker: S) -> Self;
+	fn server_fn<S: ServerFnRegistration + 'static>(self, marker: S) -> Self;
 }
 
 impl ServerFnRouterExt for ServerRouter {
-	fn server_fn<S: ServerFnRegistration>(self, _marker: S) -> Self {
+	fn server_fn<S: ServerFnRegistration + 'static>(self, _marker: S) -> Self {
+		self.endpoint(|| ServerFnEndpoint::<S>(PhantomData))
+	}
+}
+
+struct ServerFnEndpoint<S>(PhantomData<S>);
+
+impl<S: ServerFnRegistration> EndpointInfo for ServerFnEndpoint<S> {
+	fn path() -> &'static str {
+		S::PATH
+	}
+
+	fn method() -> Method {
+		Method::POST
+	}
+
+	fn name() -> &'static str {
+		S::NAME
+	}
+}
+
+#[async_trait::async_trait]
+impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
+	async fn handle(&self, req: Request) -> Result<Response> {
 		let handler = S::handler();
 		let path = S::PATH;
 		let name = S::NAME;
@@ -86,52 +109,42 @@ impl ServerFnRouterExt for ServerRouter {
 			_ => "application/json",
 		};
 
-		let wrapper = move |req: Request| -> Pin<
-			Box<dyn Future<Output = Result<Response, reinhardt_http::Error>> + Send>,
-		> {
-			Box::pin(async move {
-				// Insert a shared cookie jar so the handler can set response
-				// cookies. Clones share the same backing store, so cookies
-				// added by the handler are visible to this wrapper afterwards.
-				let cookie_jar = SharedResponseCookies::new();
-				req.extensions.insert(cookie_jar.clone());
+		// Insert a shared cookie jar so the handler can set response cookies.
+		// Clones share the same backing store, so cookies added by the handler
+		// are visible to this adapter afterwards.
+		let cookie_jar = SharedResponseCookies::new();
+		req.extensions.insert(cookie_jar.clone());
 
-				let mut response = match handler(req).await {
-					Ok(body) => Response::ok()
-						.with_header("Content-Type", response_content_type)
-						.with_body(body),
-					Err(error_body) => {
-						// Log the error to stderr for debugging
-						eprintln!("[server_fn ERROR] {} ({}): {}", name, path, error_body);
+		let mut response = match handler(req).await {
+			Ok(body) => Response::ok()
+				.with_header("Content-Type", response_content_type)
+				.with_body(body),
+			Err(error_body) => {
+				// Log the error to stderr for debugging.
+				eprintln!("[server_fn ERROR] {} ({}): {}", name, path, error_body);
 
-						// Extract status code from ServerFnError if possible
-						let status_code = serde_json::from_str::<ServerFnError>(&error_body)
-							.ok()
-							.map(|err| match err {
-								ServerFnError::Server { status, .. } => {
-									StatusCode::from_u16(status)
-										.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
-								}
-								_ => StatusCode::INTERNAL_SERVER_ERROR,
-							})
-							.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+				// Extract status code from ServerFnError if possible.
+				let status_code = serde_json::from_str::<ServerFnError>(&error_body)
+					.ok()
+					.map(|err| match err {
+						ServerFnError::Server { status, .. } => StatusCode::from_u16(status)
+							.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+						_ => StatusCode::INTERNAL_SERVER_ERROR,
+					})
+					.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
-						Response::new(status_code)
-							.with_header("Content-Type", response_content_type)
-							.with_body(error_body)
-					}
-				};
-
-				// Apply response cookies from the shared cookie jar.
-				let cookies = cookie_jar.take();
-				for cookie in cookies.cookies() {
-					response = response.append_header("Set-Cookie", cookie);
-				}
-
-				Ok(response)
-			})
+				Response::new(status_code)
+					.with_header("Content-Type", response_content_type)
+					.with_body(error_body)
+			}
 		};
 
-		self.function(path, Method::POST, wrapper)
+		// Apply response cookies from the shared cookie jar.
+		let cookies = cookie_jar.take();
+		for cookie in cookies.cookies() {
+			response = response.append_header("Set-Cookie", cookie);
+		}
+
+		Ok(response)
 	}
 }
