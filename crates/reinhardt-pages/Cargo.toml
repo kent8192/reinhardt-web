@@ -63,6 +63,8 @@ web-sys-full = [
 	"web-sys/Text",
 	"web-sys/Event",
 	"web-sys/EventTarget",
+	"web-sys/CustomEvent",
+	"web-sys/CustomEventInit",
 	"web-sys/console",
 	"web-sys/MouseEvent",
 	"web-sys/InputEvent",
@@ -136,6 +138,9 @@ thiserror = { workspace = true }
 # Router pattern matching
 regex = "1.11"
 
+# Component route metadata registration used by `#[component]`.
+inventory = { workspace = true }
+
 # Optional panic hook for readable WASM console errors (used by ClientLauncher)
 console_error_panic_hook = { version = "0.1", optional = true }
 
@@ -154,6 +159,8 @@ web-sys = { version = "0.3.83", features = [
 	"Text",
 	"Event",
 	"EventTarget",
+	"CustomEvent",
+	"CustomEventInit",
 	"console",
 	# Event types
 	"MouseEvent",
@@ -299,6 +306,11 @@ path = "tests/wasm/activity_view_transition_wasm_test.rs"
 required-features = []
 
 [[test]]
+name = "custom_element_interop_wasm_test"
+path = "tests/wasm/custom_element_interop_wasm_test.rs"
+required-features = []
+
+[[test]]
 name = "client_launcher_navigation_test"
 path = "tests/wasm/client_launcher_navigation_test.rs"
 required-features = []
@@ -306,6 +318,11 @@ required-features = []
 [[test]]
 name = "client_launcher_router_client_test"
 path = "tests/wasm/client_launcher_router_client_test.rs"
+required-features = []
+
+[[test]]
+name = "portal_wasm_test"
+path = "tests/wasm/portal_wasm_test.rs"
 required-features = []
 
 [[test]]

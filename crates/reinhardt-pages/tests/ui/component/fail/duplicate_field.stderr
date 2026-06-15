@@ -1,0 +1,5 @@
+error: duplicate component props field `id`
+ --> tests/ui/component/fail/duplicate_field.rs:6:40
+  |
+6 | fn user_post(Path(id): Path<i64>, Path(id): Path<i64>) -> Page {
+  |                                        ^^

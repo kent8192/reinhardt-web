@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added `ClientRouter::component(handler)` and component metadata traits for
+  registering route-backed page components without repeating path/name
+  metadata.
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.3...reinhardt-urls@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-urls` for the Reinhardt 0.2.0 line. This

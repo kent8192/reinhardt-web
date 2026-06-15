@@ -72,6 +72,7 @@
 //! Inv-1 ~ Inv-6 documented in `pages::router::core`.
 //! See `kent8192/reinhardt-web#4234`.
 
+pub mod component;
 mod core;
 mod error;
 pub mod from_request;
@@ -84,6 +85,7 @@ pub mod history;
 mod params;
 mod pattern;
 // Public re-exports
+pub use component::{ComponentInfo, ComponentMetadata};
 pub use core::{
 	ClientRoute, ClientRouteMatch, ClientRouter, NavigationSubscription, RouteMetadata,
 };
