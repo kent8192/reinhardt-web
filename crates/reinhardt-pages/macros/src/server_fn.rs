@@ -1317,6 +1317,9 @@ fn generate_server_handler(
 	// active (#4711). The struct + ServerFnMetadata impl are always present;
 	// the optional `Args` struct and `MockableServerFn` impl live behind the
 	// inner `feature = "msw"` cfg (see `msw_wasm_inner_tokens` above).
+	// Parity: the marker module is P1. WASM emits the marker so
+	// `.server_fn(function_name::marker)` remains nameable in shared route
+	// declarations, but route registration is native-only behavior.
 	let wasm_marker_tokens = quote! {
 		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 		#vis mod #marker_module_name {

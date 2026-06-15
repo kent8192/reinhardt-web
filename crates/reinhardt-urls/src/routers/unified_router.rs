@@ -37,6 +37,9 @@
 //!   `.server()` and `.client()` methods available.
 //! - When `client-router` feature is **disabled**: Server-only [`UnifiedRouter`] with
 //!   only `.server()` method available.
+//!
+//! Cross-target behavior follows the P0/P1/P2 contract documented in
+//! `instructions/API_PARITY.md`.
 
 #[cfg(native)]
 use crate::routers::server_router::ServerRouter;
@@ -105,6 +108,12 @@ impl UnifiedRouter {
 	/// Configure server-side routing with a closure.
 	///
 	/// The closure receives a [`ServerRouter`] and should return a configured router.
+	///
+	/// Parity: P1 on WASM and P2 on native.
+	///
+	/// Native builds execute the closure and store the configured `ServerRouter`.
+	/// WASM builds accept the same closure shape for type checking and return the
+	/// router unchanged without registration side effects.
 	///
 	/// # Example
 	///
@@ -456,6 +465,12 @@ impl UnifiedRouter {
 	}
 
 	/// Configure server-side routing with a closure.
+	///
+	/// Parity: P1 on WASM and P2 on native.
+	///
+	/// Native builds execute the closure and store the configured `ServerRouter`.
+	/// WASM builds accept the same closure shape for type checking and return the
+	/// router unchanged without registration side effects.
 	pub fn server<F>(mut self, f: F) -> Self
 	where
 		F: FnOnce(ServerRouter) -> ServerRouter,
@@ -811,6 +826,12 @@ impl UnifiedRouter {
 	}
 
 	/// Accept and discard server-side routing configuration.
+	///
+	/// Parity: P1 on WASM and P2 on native.
+	///
+	/// Native builds execute the closure and store the configured `ServerRouter`.
+	/// WASM builds accept the same closure shape for type checking and return the
+	/// router unchanged without registration side effects.
 	///
 	/// On WASM, server routing is not available. The closure is accepted for
 	/// cross-target type-checking — its `ServerRouter` parameter type is unified
