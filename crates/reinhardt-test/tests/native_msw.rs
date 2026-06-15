@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use reinhardt_test::msw::{MockResponse, MockServiceWorker, UnhandledPolicy, rest};
 use serde_json::json;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 fn endpoint(worker: &MockServiceWorker, path: &str) -> String {
 	format!("{}{}", worker.url(), path)
@@ -361,4 +362,67 @@ async fn native_worker_stop_releases_listener() {
 		after_stop.is_err(),
 		"request after stop should not reach a live listener"
 	);
+}
+
+#[tokio::test]
+async fn native_worker_stop_closes_keep_alive_connections() {
+	let worker = MockServiceWorker::new();
+	worker.handle(rest::get("/api/keep-alive").respond(MockResponse::text("ok")));
+	worker.start().await;
+
+	let addr: std::net::SocketAddr = worker
+		.url()
+		.strip_prefix("http://")
+		.expect("native worker URL should use http")
+		.parse()
+		.expect("native worker URL should contain a socket address");
+	let mut stream = tokio::net::TcpStream::connect(addr)
+		.await
+		.expect("raw keep-alive connection should open");
+
+	stream
+		.write_all(
+			b"GET /api/keep-alive HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
+		)
+		.await
+		.expect("first request should write");
+	let mut buffer = vec![0; 1024];
+	let mut response = Vec::new();
+	tokio::time::timeout(Duration::from_millis(200), async {
+		loop {
+			let read = stream
+				.read(&mut buffer)
+				.await
+				.expect("first response should read");
+			assert!(read > 0, "first response should not close early");
+			response.extend_from_slice(&buffer[..read]);
+			if String::from_utf8_lossy(&response).contains("ok") {
+				break;
+			}
+		}
+	})
+	.await
+	.expect("first keep-alive response should complete promptly");
+	assert!(
+		String::from_utf8_lossy(&response).contains("ok"),
+		"first keep-alive request should be served"
+	);
+
+	worker.stop().await;
+
+	let write_after_stop = stream
+		.write_all(b"GET /api/keep-alive HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+		.await;
+	if write_after_stop.is_err() {
+		return;
+	}
+
+	match tokio::time::timeout(Duration::from_millis(200), stream.read(&mut buffer)).await {
+		Ok(Ok(0) | Err(_)) => {}
+		Ok(Ok(read_after_stop)) => panic!(
+			"stopped worker must not serve requests on an existing keep-alive connection: {}",
+			String::from_utf8_lossy(&buffer[..read_after_stop])
+		),
+		Err(_) => panic!("stopped worker should close keep-alive connections promptly"),
+	}
 }

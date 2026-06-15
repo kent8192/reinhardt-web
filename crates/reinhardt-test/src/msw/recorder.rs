@@ -1,7 +1,6 @@
 //! Request recording and query/assertion API.
 
 use std::collections::HashMap;
-use std::marker::PhantomData;
 
 use super::matcher::UrlMatcher;
 use super::state::RecorderHandle;
@@ -45,18 +44,16 @@ impl RequestRecorder {
 }
 
 /// Filtered query over recorded requests.
-pub struct CallQuery<'a> {
+pub struct CallQuery {
 	recorder: RecorderHandle,
 	matcher: UrlMatcher,
-	_marker: PhantomData<&'a ()>,
 }
 
-impl<'a> CallQuery<'a> {
+impl CallQuery {
 	pub(crate) fn new(recorder: &RecorderHandle, pattern: impl Into<UrlMatcher>) -> Self {
 		Self {
 			recorder: recorder.clone(),
 			matcher: pattern.into(),
-			_marker: PhantomData,
 		}
 	}
 
@@ -127,14 +124,14 @@ impl<'a> CallQuery<'a> {
 /// Type-safe call query for server_fn calls with Args deserialization.
 ///
 /// Created via `MockServiceWorker::calls_to_server_fn`.
-pub struct ServerFnCallQuery<'a, S> {
-	pub(crate) inner: CallQuery<'a>,
-	pub(crate) _marker: PhantomData<S>,
+pub struct ServerFnCallQuery<S> {
+	pub(crate) inner: CallQuery,
+	pub(crate) _marker: std::marker::PhantomData<S>,
 }
 
 use reinhardt_pages::server_fn::MockableServerFn;
 
-impl<'a, S: MockableServerFn> ServerFnCallQuery<'a, S> {
+impl<S: MockableServerFn> ServerFnCallQuery<S> {
 	/// Number of matching calls.
 	pub fn count(&self) -> usize {
 		self.inner.count()

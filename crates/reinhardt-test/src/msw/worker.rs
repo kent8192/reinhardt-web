@@ -207,12 +207,12 @@ impl MockServiceWorker {
 	// --- Query API ---
 
 	/// Query recorded calls matching a URL pattern.
-	pub fn calls_to(&self, pattern: impl Into<UrlMatcher>) -> CallQuery<'_> {
+	pub fn calls_to(&self, pattern: impl Into<UrlMatcher>) -> CallQuery {
 		CallQuery::new(&self.recorder, pattern)
 	}
 
 	/// Query recorded calls to a specific server function (type-safe).
-	pub fn calls_to_server_fn<S: MockableServerFn>(&self) -> ServerFnCallQuery<'_, S> {
+	pub fn calls_to_server_fn<S: MockableServerFn>(&self) -> ServerFnCallQuery<S> {
 		ServerFnCallQuery {
 			inner: CallQuery::new(&self.recorder, S::PATH),
 			_marker: std::marker::PhantomData,

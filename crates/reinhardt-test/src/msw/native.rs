@@ -13,7 +13,7 @@ use hyper::{Request as HyperRequest, Response as HyperResponse, StatusCode};
 use hyper_util::rt::TokioIo;
 use reinhardt_pages::server_fn::{MockableServerFn, ServerFnError};
 use tokio::net::TcpListener;
-use tokio::task::JoinHandle;
+use tokio::task::{JoinHandle, JoinSet};
 
 use super::context::TestContext;
 use super::error::MswError;
@@ -168,12 +168,12 @@ impl MockServiceWorker {
 	}
 
 	/// Query recorded calls matching a URL pattern.
-	pub fn calls_to(&self, pattern: impl Into<UrlMatcher>) -> CallQuery<'_> {
+	pub fn calls_to(&self, pattern: impl Into<UrlMatcher>) -> CallQuery {
 		CallQuery::new(&self.recorder, pattern)
 	}
 
 	/// Query recorded calls to a specific server function.
-	pub fn calls_to_server_fn<S: MockableServerFn>(&self) -> ServerFnCallQuery<'_, S> {
+	pub fn calls_to_server_fn<S: MockableServerFn>(&self) -> ServerFnCallQuery<S> {
 		ServerFnCallQuery {
 			inner: CallQuery::new(&self.recorder, S::PATH),
 			_marker: std::marker::PhantomData,
@@ -211,21 +211,27 @@ async fn serve(
 	recorder: RecorderHandle,
 	policy: UnhandledPolicy,
 ) {
+	let mut connections = JoinSet::new();
 	loop {
-		let Ok((stream, _addr)) = listener.accept().await else {
-			break;
-		};
-		let handlers = handlers.clone();
-		let recorder = recorder.clone();
-		let policy = policy.clone();
+		tokio::select! {
+			accepted = listener.accept() => {
+				let Ok((stream, _addr)) = accepted else {
+					break;
+				};
+				let handlers = handlers.clone();
+				let recorder = recorder.clone();
+				let policy = policy.clone();
 
-		tokio::spawn(async move {
-			let io = TokioIo::new(stream);
-			let service = service_fn(move |request| {
-				handle_request(request, handlers.clone(), recorder.clone(), policy.clone())
-			});
-			let _ = http1::Builder::new().serve_connection(io, service).await;
-		});
+				connections.spawn(async move {
+					let io = TokioIo::new(stream);
+					let service = service_fn(move |request| {
+						handle_request(request, handlers.clone(), recorder.clone(), policy.clone())
+					});
+					let _ = http1::Builder::new().serve_connection(io, service).await;
+				});
+			}
+			Some(_) = connections.join_next(), if !connections.is_empty() => {}
+		}
 	}
 }
 
