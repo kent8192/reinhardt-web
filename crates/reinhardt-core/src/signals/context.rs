@@ -220,11 +220,9 @@ impl MetricsCollector {
 		let min_execution_time_ns = self.min_execution_time_ns.load(Ordering::Relaxed);
 		let max_execution_time_ns = self.max_execution_time_ns.load(Ordering::Relaxed);
 
-		let avg_execution_time_ns = if receiver_executions > 0 {
-			total_execution_time_ns / receiver_executions
-		} else {
-			0
-		};
+		let avg_execution_time_ns = total_execution_time_ns
+			.checked_div(receiver_executions)
+			.unwrap_or(0);
 
 		SignalMetrics {
 			send_count,

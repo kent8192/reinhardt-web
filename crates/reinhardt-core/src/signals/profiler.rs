@@ -260,7 +260,7 @@ impl<T: Send + Sync + 'static> SignalProfiler<T> {
 	/// ```
 	pub fn slowest_receivers(&self, count: usize) -> Vec<ReceiverProfile> {
 		let mut profiles = self.all_receiver_profiles();
-		profiles.sort_by(|a, b| b.avg_duration.cmp(&a.avg_duration));
+		profiles.sort_by_key(|profile| std::cmp::Reverse(profile.avg_duration));
 		profiles.truncate(count);
 		profiles
 	}
@@ -354,7 +354,7 @@ impl<T: Send + Sync + 'static> SignalProfiler<T> {
 			report.push_str("\nReceiver Profiles:\n");
 
 			let mut sorted_profiles: Vec<_> = profiles.values().collect();
-			sorted_profiles.sort_by(|a, b| b.avg_duration.cmp(&a.avg_duration));
+			sorted_profiles.sort_by_key(|profile| std::cmp::Reverse(profile.avg_duration));
 
 			for profile in sorted_profiles {
 				report.push_str(&format!("\n  {}:\n", profile.dispatch_uid));
