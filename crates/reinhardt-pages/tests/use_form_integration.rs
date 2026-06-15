@@ -358,6 +358,48 @@ fn validation_failure_sets_form_error_and_submit_failure_state() {
 }
 
 #[test]
+fn use_form_accepts_file_field_runtime_contracts() {
+	let upload = form! {
+		name: UploadForm,
+		action: "/upload",
+		fields: {
+			document: FileField {
+				required,
+			}
+			avatar: ImageField {}
+		}
+	};
+
+	let runtime = use_form(&upload).build();
+	let document = runtime.watch_field::<Option<web_sys::File>>(upload.document_field());
+	let avatar = runtime.watch_field::<Option<web_sys::File>>(upload.avatar_field());
+
+	assert!(runtime.get_values().document.is_none());
+	assert!(runtime.get_values().avatar.is_none());
+	assert!(document.get().is_none());
+	assert!(avatar.get().is_none());
+	assert!(!runtime.form_state().is_dirty.get());
+	assert!(!runtime.get_field_state(upload.document_field()).is_dirty);
+
+	let result = runtime.trigger();
+
+	assert!(result.is_err());
+	assert_eq!(
+		runtime
+			.get_field_state(upload.document_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("document is required")
+	);
+
+	runtime.set_value(upload.document_field(), None::<web_sys::File>);
+
+	assert!(runtime.get_field_state(upload.document_field()).is_touched);
+	assert!(!runtime.get_field_state(upload.document_field()).is_dirty);
+}
+
+#[test]
 fn submit_callbacks_run_in_order_after_dependencies_are_configured() {
 	let profile = form! {
 		name: ProfileForm,

@@ -168,7 +168,7 @@ fn generate_form_runtime_contract(
 		.collect();
 	if !unsupported_fields.is_empty() {
 		let message = format!(
-			"form! cannot generate a use_form runtime contract for unsupported field(s): {}. FileField and ImageField are not supported by use_form(&form) yet.",
+			"form! cannot generate a use_form runtime contract for unsupported field(s): {}.",
 			unsupported_fields.join(", ")
 		);
 		return quote! {
@@ -519,7 +519,6 @@ fn runtime_required_empty_check(
 
 fn supports_generated_form_values(field_type: &TypedFieldType) -> bool {
 	match field_type {
-		TypedFieldType::FileField | TypedFieldType::ImageField => false,
 		TypedFieldType::HiddenField { inner }
 		| TypedFieldType::ChoiceField { inner }
 		| TypedFieldType::MultipleChoiceField { inner } => is_basic_form_value_type(inner),
@@ -2465,6 +2464,12 @@ fn generate_bind_listener(
 	if matches!(field_type, TypedFieldType::MultipleChoiceField { .. }) {
 		return generate_multi_select_listener(signal_ident, field_type, pages_crate);
 	}
+	if matches!(
+		field_type,
+		TypedFieldType::FileField | TypedFieldType::ImageField
+	) {
+		return generate_file_input_listener(signal_ident, pages_crate);
+	}
 
 	// Determine event type and element type based on widget
 	let (event_name, element_type) = match widget {
@@ -2494,6 +2499,35 @@ fn generate_bind_listener(
 					if let Some(target) = event.target() {
 						if let Ok(#element_var) = target.dyn_into::<web_sys::#element_type_ident>() {
 							#conversion
+						}
+					}
+				}
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+				{
+					let _ = event;
+					let _ = &#pages_crate::component::DummyEvent;
+				}
+			}
+		})
+	}
+}
+
+/// Generates the complete listener block for file-like fields.
+fn generate_file_input_listener(
+	signal_ident: &syn::Ident,
+	pages_crate: &TokenStream,
+) -> TokenStream {
+	quote! {
+		.listener("change", {
+			let signal = #signal_ident.clone();
+			move |event| {
+				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+				{
+					use wasm_bindgen::JsCast;
+					if let Some(target) = event.target() {
+						if let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() {
+							let file = input.files().and_then(|files| files.item(0));
+							signal.set(file);
 						}
 					}
 				}
@@ -2631,8 +2665,9 @@ fn generate_value_conversion(
 			unreachable!("MultipleChoiceField is handled by generate_multi_select_listener")
 		}
 
-		// FileField / ImageField: file inputs use different event patterns (out of scope)
-		TypedFieldType::FileField | TypedFieldType::ImageField => TokenStream::new(),
+		TypedFieldType::FileField | TypedFieldType::ImageField => {
+			unreachable!("FileField and ImageField are handled by generate_file_input_listener")
+		}
 	}
 }
 
@@ -4798,6 +4833,28 @@ mod tests {
 	}
 
 	#[rstest::rstest]
+	fn test_generate_bind_file_field_uses_change_event_and_files() {
+		let input = quote! {
+			name: FileBindForm,
+			action: "/test",
+
+			fields: {
+				document: FileField {
+					bind: true,
+				},
+			},
+		};
+
+		let output = parse_validate_generate(input);
+		let output_str = output.to_string();
+
+		assert!(output_str.contains(". listener (\"change\""));
+		assert!(output_str.contains("HtmlInputElement"));
+		assert!(output_str.contains("input . files ()"));
+		assert!(output_str.contains("files . item (0)"));
+	}
+
+	#[rstest::rstest]
 	fn test_generate_bind_multiple_fields() {
 		let input = quote! {
 			name: MultiBindForm,
@@ -6027,6 +6084,22 @@ mod tests {
 		// Assert
 		let expected = ":: reinhardt_pages :: reactive :: Signal < :: core :: option :: Option < :: std :: net :: IpAddr > >";
 		assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn file_fields_emit_option_file_signals() {
+		let pages_crate = quote::quote!(::reinhardt_pages);
+
+		let file_actual =
+			field_type_to_signal_type(&TypedFieldType::FileField, &pages_crate).to_string();
+		let image_actual =
+			field_type_to_signal_type(&TypedFieldType::ImageField, &pages_crate).to_string();
+
+		let expected = ":: reinhardt_pages :: reactive :: Signal < :: core :: option :: Option < web_sys :: File > >";
+		assert_eq!(file_actual, expected);
+		assert_eq!(image_actual, expected);
+		assert!(supports_generated_form_values(&TypedFieldType::FileField));
+		assert!(supports_generated_form_values(&TypedFieldType::ImageField));
 	}
 
 	#[test]
