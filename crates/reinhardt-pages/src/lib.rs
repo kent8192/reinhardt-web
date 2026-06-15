@@ -61,6 +61,7 @@
 //! - [`ssr`]: Server-side rendering with Head support
 //! - [`hydration`]: Client-side hydration
 //! - [`router`]: Client-side routing (reinhardt-urls compatible)
+//! - [`portal`]: Explicit portal mounting into existing DOM targets
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
 //!
 //! ## Forms
@@ -224,6 +225,7 @@ pub mod reactive;
 
 // Platform abstraction (unified types and task spawning for WASM and native)
 pub mod platform;
+pub mod portal;
 
 /// Backward-compatibility re-export of task-spawning utilities.
 ///
@@ -328,6 +330,7 @@ pub use form_state::{
 	UseFormSubmitOutcome, use_form,
 };
 pub use hydration::{HydrationContext, HydrationError, hydrate};
+pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
 pub use reactive::{Effect, Memo, Resource, ResourceState, Signal, use_resource};
 #[cfg(wasm)]
 #[allow(
