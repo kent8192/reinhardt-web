@@ -260,8 +260,5 @@ fn sanitize_view_transition_name(name: Cow<'static, str>) -> Cow<'static, str> {
 
 fn needs_identifier_prefix(value: &str) -> bool {
 	let mut chars = value.chars();
-	match chars.next() {
-		Some(ch) if ch.is_ascii_alphabetic() || ch == '_' => false,
-		_ => true,
-	}
+	!matches!(chars.next(), Some(ch) if ch.is_ascii_alphabetic() || ch == '_')
 }
