@@ -315,6 +315,7 @@ The prelude includes:
 - `ApiModel`, `ApiQuerySet`, `Filter`, `FilterOp`
 - `ServerFn`, `ServerFnError`
 - See [Server Function Macro Guide](docs/server_fn_macro.md) for detailed usage and migration information
+- See [WASM/server API Parity Macro](docs/wasm_server_api.md) for APIs that need matching public surfaces with target-specific implementations
 - See [React-to-Reinhardt Guide](docs/react_to_reinhardt.md) for React hooks, JSX, actions, routing, SSR, and hydration mappings
 
 ### Authentication and Security
@@ -331,6 +332,9 @@ The prelude includes:
 
 ### Macros
 - `page!`
+- `head!`
+- `form!`
+- `wasm_server_api`
 
 ### Task spawning (cross-target)
 - `spawn_task`, `defer_yield` (no-op on native)

@@ -1,0 +1,5 @@
+error: `#[wasm_server_api]` target variants must be public functions
+ --> tests/ui/wasm_server_api/fail/non_public.rs:8:5
+  |
+8 |     fn target_name() -> &'static str {
+  |        ^^^^^^^^^^^
