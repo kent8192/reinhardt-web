@@ -83,6 +83,8 @@ impl NavigationSubscription {
 pub struct ClientRouteMatch {
 	/// The matched route.
 	pub route: ClientRoute,
+	/// Matched path without the query string.
+	pub path: String,
 	/// Extracted path parameters.
 	pub params: HashMap<String, String>,
 	/// Parameter values in the order they appear in the pattern.
@@ -768,6 +770,7 @@ impl ClientRouter {
 			if let Some((params, param_values)) = route.pattern.matches(path_only) {
 				let route_match = ClientRouteMatch {
 					route: route.clone(),
+					path: path_only.to_string(),
 					params,
 					param_values,
 					query: query.clone(),
@@ -1028,6 +1031,7 @@ impl ClientRouter {
 		if let Some(route_match) = self.match_path(&path) {
 			let ctx =
 				ParamContext::new(route_match.params.clone(), route_match.param_values.clone())
+					.with_path(route_match.path.clone())
 					.with_query(route_match.query.clone());
 
 			match route_match.route.handler.handle(&ctx) {

@@ -310,10 +310,7 @@ where
 {
 	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
 		let route_ctx = RouteContext::new(
-			// The matched path is not directly available to RouteHandler;
-			// pass an empty placeholder. Handlers that need the path can
-			// read it from the router's `current_path` signal.
-			String::new(),
+			ctx.path().unwrap_or("").to_string(),
 			ctx.params().clone(),
 			ctx.query().unwrap_or("").to_string(),
 		);

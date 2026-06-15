@@ -1,0 +1,5 @@
+error: `#[wasm]` and `#[server]` variants for `target_name` must have matching non-target attributes
+  --> tests/ui/wasm_server_api/fail/attribute_mismatch.rs:14:9
+   |
+14 |     pub fn target_name() -> &'static str {
+   |            ^^^^^^^^^^^
