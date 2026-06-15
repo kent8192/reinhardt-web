@@ -2188,7 +2188,7 @@ impl ChangeTracker {
 			.cloned()
 			.collect();
 
-		patterns.sort_by(|a, b| b.frequency.cmp(&a.frequency));
+		patterns.sort_by_key(|pattern| std::cmp::Reverse(pattern.frequency));
 		patterns
 	}
 
@@ -2974,11 +2974,11 @@ impl InferenceEngine {
 							evidence.push(format!("Optional field added: {}", field_name_pattern));
 						}
 					}
-					RuleCondition::MultipleModelRenames { min_count } => {
-						if model_renames.len() >= *min_count {
-							optional_matches += 1;
-							evidence.push(format!("Multiple renames: {}", model_renames.len()));
-						}
+					RuleCondition::MultipleModelRenames { min_count }
+						if model_renames.len() >= *min_count =>
+					{
+						optional_matches += 1;
+						evidence.push(format!("Multiple renames: {}", model_renames.len()));
 					}
 					_ => {}
 				}

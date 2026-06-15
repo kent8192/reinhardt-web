@@ -164,6 +164,11 @@ let runtime = use_form(&login_form).build();
 runtime.set_value(login_form.username_field(), "ada".to_string());
 ```
 
+`FileField` and `ImageField` also participate in the generated runtime
+contract as `Option<web_sys::File>` values. File values are browser-owned and
+are tracked for dirty/touched state without treating the file payload as a
+serializable scalar.
+
 Arguments supplied from ambient context use `ambient_arguments`. The old
 `strip_arguments` name remains as a deprecated alias. CSRF should stay at the
 transport layer: `#[server_fn]` client stubs attach `X-CSRFToken`, while

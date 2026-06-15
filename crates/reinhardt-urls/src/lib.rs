@@ -18,15 +18,33 @@
 //! ```rust,ignore
 //! # use reinhardt_urls::routers::UnifiedRouter;
 //! # use hyper::Method;
-//! # use reinhardt_http::{Request, Response};
+//! # use reinhardt_core::endpoint::EndpointInfo;
+//! # use reinhardt_http::{Handler, Request, Response};
 //! # use reinhardt_core::exception::Result;
 //!
-//! # async fn handler(_req: Request) -> Result<Response> { Ok(Response::ok()) }
-//! # async fn users_handler(_req: Request) -> Result<Response> { Ok(Response::ok()) }
-//! # async fn settings_handler(_req: Request) -> Result<Response> { Ok(Response::ok()) }
+//! # struct Public;
+//! # struct Protected;
+//! # impl EndpointInfo for Public {
+//! #     fn path() -> &'static str { "/public" }
+//! #     fn method() -> Method { Method::GET }
+//! #     fn name() -> &'static str { "public" }
+//! # }
+//! # impl EndpointInfo for Protected {
+//! #     fn path() -> &'static str { "/protected" }
+//! #     fn method() -> Method { Method::GET }
+//! #     fn name() -> &'static str { "protected" }
+//! # }
+//! # #[async_trait::async_trait]
+//! # impl Handler for Public {
+//! #     async fn handle(&self, _req: Request) -> Result<Response> { Ok(Response::ok()) }
+//! # }
+//! # #[async_trait::async_trait]
+//! # impl Handler for Protected {
+//! #     async fn handle(&self, _req: Request) -> Result<Response> { Ok(Response::ok()) }
+//! # }
 //! let router = UnifiedRouter::new()
-//!     .function("/public", Method::GET, handler)
-//!     .function("/protected", Method::GET, handler);
+//!     .endpoint(|| Public)
+//!     .endpoint(|| Protected);
 //!     // .with_route_middleware(...) // Route-specific middleware
 //! ```
 //!

@@ -69,6 +69,8 @@ web-sys-full = [
 	"web-sys/KeyboardEvent",
 	"web-sys/FocusEvent",
 	"web-sys/PopStateEvent",
+	"web-sys/File",
+	"web-sys/FileList",
 	"web-sys/HtmlInputElement",
 	"web-sys/HtmlButtonElement",
 	"web-sys/HtmlDivElement",
@@ -160,6 +162,8 @@ web-sys = { version = "0.3.83", features = [
 	"FocusEvent",
 	"PopStateEvent",
 	# HTML element types
+	"File",
+	"FileList",
 	"HtmlInputElement",
 	"HtmlButtonElement",
 	"HtmlDivElement",
