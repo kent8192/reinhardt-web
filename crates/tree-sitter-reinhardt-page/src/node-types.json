@@ -51,6 +51,10 @@
           "named": true
         },
         {
+          "type": "closure_args",
+          "named": true
+        },
+        {
           "type": "comma",
           "named": true
         },
@@ -492,6 +496,10 @@
         },
         {
           "type": "char",
+          "named": true
+        },
+        {
+          "type": "closure_args",
           "named": true
         },
         {

@@ -139,9 +139,7 @@ fn component_macro_props_render_like_page_brace_invocation() {
 	#[component("/users/{id}/", "user-detail")]
 	fn user_page(Path(id): Path<i64>) -> Page {
 		page!(|id: i64| {
-			div { {
-				format!("user {id}")
-			} }
+			div { { format!("user {id}") } }
 		})(id)
 	}
 

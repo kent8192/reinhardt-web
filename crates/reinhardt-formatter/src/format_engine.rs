@@ -70,6 +70,13 @@ impl RustfmtOptions {
 			cmd.arg("--color").arg(color);
 		}
 	}
+
+	fn apply_to_island_command(&self, cmd: &mut Command) {
+		self.apply_to_command(cmd);
+		if self.edition.is_none() {
+			cmd.arg("--edition=2024");
+		}
+	}
 }
 
 /// Result of formatting operation.
@@ -565,10 +572,7 @@ fn format_rustfmt_island(
 	}
 	let wrapped = format!("fn main() {{ let __reinhardt_fmt = {island}; }}\n");
 	let mut cmd = Command::new("rustfmt");
-	rustfmt_options.apply_to_command(&mut cmd);
-	if rustfmt_options.config_path.is_none() && rustfmt_options.edition.is_none() {
-		cmd.arg("--edition=2024");
-	}
+	rustfmt_options.apply_to_island_command(&mut cmd);
 	let mut child = cmd
 		.arg("--emit=stdout")
 		.stdin(Stdio::piped())
@@ -1900,6 +1904,49 @@ fn main() {}";
 	}
 
 	#[rstest]
+	fn form_and_head_unary_minus_spacing_is_preserved() {
+		for (kind, input) in [
+			(MacroKind::Form, r#"{ tabindex: (-1_i32), }"#),
+			(MacroKind::Head, r#"|| { meta { tabindex: (-1_i32), } }"#),
+		] {
+			// Arrange / Act
+			let formatted = format_dsl(kind, input).expect("format DSL");
+
+			// Assert
+			assert!(
+				formatted.contains("tabindex: (-1_i32)"),
+				"{kind:?} should preserve unary-minus spacing without page rustfmt islands: {formatted}"
+			);
+		}
+	}
+
+	#[rstest]
+	fn page_rustfmt_island_defaults_to_2024_edition_with_config_path() {
+		// Arrange
+		let dir = tempfile::tempdir().expect("create tempdir");
+		let config_path = dir.path().join("rustfmt.toml");
+		std::fs::write(&config_path, "max_width = 100\n").expect("write rustfmt config");
+		let options = RustfmtOptions {
+			config_path: Some(config_path),
+			..RustfmtOptions::default()
+		};
+
+		// Act
+		let formatted = format_dsl_with_options(
+			MacroKind::Page,
+			r#"|| { div { value: async { foo+bar }, } }"#,
+			&options,
+		)
+		.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("value: async { foo + bar },"),
+			"page Rust islands should use Rust 2024 even when config_path is supplied: {formatted}"
+		);
+	}
+
+	#[rstest]
 	fn page_rustfmt_island_formats_attribute_expression() {
 		// Arrange / Act
 		let formatted = format_dsl(
@@ -1932,6 +1979,38 @@ fn main() {}";
 		assert!(
 			formatted.contains("_ => set_done(),"),
 			"fallback match arm spacing should be formatted inside event closure body: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn page_rustfmt_island_formats_closure_with_multiple_parameters() {
+		// Arrange / Act
+		let formatted = format_dsl(
+			MacroKind::Page,
+			r#"|| { button { on_pair: |left, right| left+right, "Save" } }"#,
+		)
+		.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("on_pair: |left, right| left + right,"),
+			"closure parameter comma should stay inside the Rust island: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn page_rustfmt_island_formats_turbofish_with_multiple_arguments() {
+		// Arrange / Act
+		let formatted = format_dsl(
+			MacroKind::Page,
+			r#"|| { div { value: make_pair::<Left, Right>(), "x" } }"#,
+		)
+		.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("value: make_pair::<Left, Right>(),"),
+			"turbofish comma should stay inside the Rust island: {formatted}"
 		);
 	}
 
@@ -2114,6 +2193,26 @@ fn main() {}";
 		assert!(
 			formatted.contains("} else {"),
 			"else should be on same line as closing brace: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn control_flow_struct_patterns_keep_real_body() {
+		// Arrange / Act
+		let formatted = format_dsl(
+			MacroKind::Page,
+			r#"|| { if let Foo { field } = value { div { "x" } } for Foo { field } in rows { span { { field } } } }"#,
+		)
+		.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains(r#"if let Foo { field } = value {"#),
+			"if-let struct pattern should stay in the control-flow head: {formatted}"
+		);
+		assert!(
+			formatted.contains(r#"for Foo { field } in rows {"#),
+			"for-loop struct pattern should stay in the control-flow head: {formatted}"
 		);
 	}
 

@@ -459,6 +459,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "closure_args"
+        },
+        {
+          "type": "SYMBOL",
           "name": "paren"
         },
         {

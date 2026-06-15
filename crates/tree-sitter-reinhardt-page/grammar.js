@@ -120,6 +120,7 @@ module.exports = grammar({
 
     _rust_item: $ => choice(
       alias($._rust_block, $.block),
+      $.closure_args,
       $.paren,
       $.bracket,
       $.line_comment,

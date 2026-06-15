@@ -37,6 +37,10 @@ static bool is_structural_delimiter(int32_t c) {
 		   c == '(' || c == ')' || c == '"' || c == ',' || c == ';';
 }
 
+static bool is_fragment_delimiter(int32_t c, unsigned angle_depth) {
+	return !(c == ',' && angle_depth > 0) && is_structural_delimiter(c);
+}
+
 static bool is_ident_start(int32_t c) {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
@@ -48,6 +52,17 @@ static bool is_ident_continue(int32_t c) {
 static bool is_horizontal_whitespace(int32_t c) { return c == ' ' || c == '\t'; }
 
 static bool is_rust_whitespace(int32_t c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
+
+static void update_fragment_angle_depth(int32_t c, int32_t next, bool previous_was_whitespace,
+										unsigned *angle_depth) {
+	if (c == '<' && !previous_was_whitespace && !is_rust_whitespace(next) && next != '=' && next != '>') {
+		(*angle_depth)++;
+		return;
+	}
+	if (c == '>' && *angle_depth > 0) {
+		(*angle_depth)--;
+	}
+}
 
 static bool has_keyword_prefix(const char *prefix, unsigned prefix_len, const char *keyword, unsigned keyword_len) {
 	if (prefix_len <= keyword_len) {
@@ -76,6 +91,25 @@ static bool prefix_equals_keyword(const char *prefix, unsigned prefix_len, const
 static bool last_identifier_is(const char *identifier, unsigned identifier_len, const char *keyword,
 							   unsigned keyword_len) {
 	return prefix_equals_keyword(identifier, identifier_len, keyword, keyword_len);
+}
+
+static void finish_control_head_identifier(enum TokenType token_type, const char *last_identifier,
+										   unsigned last_identifier_len, bool *identifier_active,
+										   bool *has_if_let_pattern, bool *for_seen_in) {
+	if (!*identifier_active) {
+		return;
+	}
+	if (token_type == IF_HEAD && last_identifier_is(last_identifier, last_identifier_len, "let", 3)) {
+		*has_if_let_pattern = true;
+	}
+	if (token_type == FOR_HEAD && last_identifier_is(last_identifier, last_identifier_len, "in", 2)) {
+		*for_seen_in = true;
+	}
+	*identifier_active = false;
+}
+
+static bool control_head_tail_can_start_struct_pattern(int32_t last_significant) {
+	return is_ident_continue(last_significant) || last_significant == '>';
 }
 
 static void record_fragment_char(int32_t c, char *prefix, unsigned *consumed_len, unsigned *content_len,
@@ -243,9 +277,18 @@ static bool scan_balanced_brace_block(TSLexer *lexer) {
 
 static bool control_head_block_starts_expression(enum TokenType token_type, bool has_significant_tail,
 												 int32_t last_significant, const char *last_identifier,
-												 unsigned last_identifier_len) {
+												 unsigned last_identifier_len, bool has_if_let_pattern,
+												 bool if_let_pattern_complete, bool for_seen_in) {
 	if (!has_significant_tail) {
 		return token_type == IF_HEAD || token_type == MATCH_HEAD;
+	}
+	if (token_type == IF_HEAD && has_if_let_pattern && !if_let_pattern_complete &&
+		control_head_tail_can_start_struct_pattern(last_significant)) {
+		return true;
+	}
+	if (token_type == FOR_HEAD && !for_seen_in &&
+		control_head_tail_can_start_struct_pattern(last_significant)) {
+		return true;
 	}
 	if (token_type == FOR_HEAD && last_identifier_is(last_identifier, last_identifier_len, "in", 2)) {
 		return true;
@@ -263,10 +306,14 @@ static bool control_head_block_starts_expression(enum TokenType token_type, bool
 		   last_significant == '/' || last_significant == '%';
 }
 
-static void record_control_head_char(int32_t c, bool *has_significant_tail, int32_t *last_significant,
-									 char *last_identifier, unsigned *last_identifier_len, bool *identifier_active) {
+static void record_control_head_char(enum TokenType token_type, int32_t c, bool *has_significant_tail,
+									 int32_t *last_significant, char *last_identifier,
+									 unsigned *last_identifier_len, bool *identifier_active,
+									 bool *has_if_let_pattern, bool *if_let_pattern_complete,
+									 bool *for_seen_in) {
 	if (is_rust_whitespace(c)) {
-		*identifier_active = false;
+		finish_control_head_identifier(token_type, last_identifier, *last_identifier_len, identifier_active,
+									   has_if_let_pattern, for_seen_in);
 		return;
 	}
 
@@ -285,7 +332,11 @@ static void record_control_head_char(int32_t c, bool *has_significant_tail, int3
 		return;
 	}
 
-	*identifier_active = false;
+	finish_control_head_identifier(token_type, last_identifier, *last_identifier_len, identifier_active,
+								   has_if_let_pattern, for_seen_in);
+	if (token_type == IF_HEAD && *has_if_let_pattern && c == '=') {
+		*if_let_pattern_complete = true;
+	}
 }
 
 static bool scan_control_head_tail(TSLexer *lexer, const bool *valid_symbols, enum TokenType token_type) {
@@ -296,11 +347,15 @@ static bool scan_control_head_tail(TSLexer *lexer, const bool *valid_symbols, en
 	char last_identifier[16];
 	unsigned last_identifier_len = 0;
 	bool identifier_active = false;
+	bool has_if_let_pattern = false;
+	bool if_let_pattern_complete = false;
+	bool for_seen_in = false;
 
 	while (lexer->lookahead != 0) {
 		if (lexer->lookahead == '{' && paren_depth == 0 && bracket_depth == 0) {
 			if (control_head_block_starts_expression(token_type, has_significant_tail, last_significant,
-													 last_identifier, last_identifier_len)) {
+													 last_identifier, last_identifier_len, has_if_let_pattern,
+													 if_let_pattern_complete, for_seen_in)) {
 				if (!scan_balanced_brace_block(lexer)) {
 					return false;
 				}
@@ -341,8 +396,9 @@ static bool scan_control_head_tail(TSLexer *lexer, const bool *valid_symbols, en
 				identifier_active = false;
 				continue;
 			}
-			record_control_head_char('r', &has_significant_tail, &last_significant, last_identifier,
-									 &last_identifier_len, &identifier_active);
+			record_control_head_char(token_type, 'r', &has_significant_tail, &last_significant, last_identifier,
+									 &last_identifier_len, &identifier_active, &has_if_let_pattern,
+									 &if_let_pattern_complete, &for_seen_in);
 			lexer->mark_end(lexer);
 			continue;
 		}
@@ -358,8 +414,9 @@ static bool scan_control_head_tail(TSLexer *lexer, const bool *valid_symbols, en
 				}
 				continue;
 			}
-			record_control_head_char('/', &has_significant_tail, &last_significant, last_identifier,
-									 &last_identifier_len, &identifier_active);
+			record_control_head_char(token_type, '/', &has_significant_tail, &last_significant, last_identifier,
+									 &last_identifier_len, &identifier_active, &has_if_let_pattern,
+									 &if_let_pattern_complete, &for_seen_in);
 			lexer->mark_end(lexer);
 			continue;
 		}
@@ -375,8 +432,9 @@ static bool scan_control_head_tail(TSLexer *lexer, const bool *valid_symbols, en
 		int32_t c = lexer->lookahead;
 		bool is_trailing_whitespace = is_rust_whitespace(c);
 		lexer->advance(lexer, false);
-		record_control_head_char(c, &has_significant_tail, &last_significant, last_identifier, &last_identifier_len,
-								 &identifier_active);
+		record_control_head_char(token_type, c, &has_significant_tail, &last_significant, last_identifier,
+								 &last_identifier_len, &identifier_active, &has_if_let_pattern,
+								 &if_let_pattern_complete, &for_seen_in);
 		if (!is_trailing_whitespace) {
 			lexer->mark_end(lexer);
 		}
@@ -439,7 +497,10 @@ static bool scan_closure_args(TSLexer *lexer) {
 }
 
 static bool scan_fragment_tail(TSLexer *lexer, bool has_content) {
-	while (!is_structural_delimiter(lexer->lookahead)) {
+	unsigned angle_depth = 0;
+	bool previous_was_whitespace = false;
+
+	while (!is_fragment_delimiter(lexer->lookahead, angle_depth)) {
 		if (lexer->lookahead == '\'') {
 			lexer->advance(lexer, false);
 			if (is_ident_start(lexer->lookahead)) {
@@ -469,7 +530,10 @@ static bool scan_fragment_tail(TSLexer *lexer, bool has_content) {
 			continue;
 		}
 		bool is_trailing_whitespace = lexer->lookahead == ' ' || lexer->lookahead == '\t';
+		int32_t c = lexer->lookahead;
 		lexer->advance(lexer, false);
+		update_fragment_angle_depth(c, lexer->lookahead, previous_was_whitespace, &angle_depth);
+		previous_was_whitespace = is_rust_whitespace(c);
 		if (!is_trailing_whitespace) {
 			has_content = true;
 			lexer->mark_end(lexer);
@@ -517,6 +581,8 @@ static bool scan_classified_fragment(TSLexer *lexer, const bool *valid_symbols) 
 	unsigned content_len = 0;
 	bool has_content = false;
 	bool previous_was_colon = false;
+	bool previous_was_whitespace = false;
+	unsigned angle_depth = 0;
 
 	if (lexer->lookahead == 'r') {
 		lexer->advance(lexer, false);
@@ -560,7 +626,7 @@ static bool scan_classified_fragment(TSLexer *lexer, const bool *valid_symbols) 
 		}
 	}
 
-	while (!is_structural_delimiter(lexer->lookahead)) {
+	while (!is_fragment_delimiter(lexer->lookahead, angle_depth)) {
 		if (lexer->lookahead == '\'') {
 			lexer->advance(lexer, false);
 			if (is_ident_start(lexer->lookahead)) {
@@ -595,6 +661,8 @@ static bool scan_classified_fragment(TSLexer *lexer, const bool *valid_symbols) 
 		int32_t c = lexer->lookahead;
 		lexer->advance(lexer, false);
 		record_fragment_char(c, prefix, &consumed_len, &content_len, &has_content);
+		update_fragment_angle_depth(c, lexer->lookahead, previous_was_whitespace, &angle_depth);
+		previous_was_whitespace = is_rust_whitespace(c);
 		if (!is_horizontal_whitespace(c)) {
 			lexer->mark_end(lexer);
 		}

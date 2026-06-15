@@ -464,6 +464,54 @@ mod tests {
 	}
 
 	#[test]
+	fn page_dsl_parses_if_let_control_flow_with_struct_pattern() {
+		let source = r#"|| { if let Foo { field } = value { div { "x" } } }"#;
+
+		assert_control_flow_body(source, "if_control_flow", r#"{ div { "x" } }"#);
+	}
+
+	#[test]
+	fn page_dsl_parses_for_control_flow_with_struct_pattern() {
+		let source = r#"|| { for Foo { field } in rows { div { { field } } } }"#;
+
+		assert_control_flow_body(source, "for_control_flow", r#"{ div { { field } } }"#);
+	}
+
+	#[test]
+	fn page_dsl_parses_closure_attribute_comma_as_rust() {
+		let source = r#"|| { button { on_pair: |left, right| left + right, "Save" } }"#;
+		let tree = parse(source);
+		let sexp = tree.root_node().to_sexp();
+
+		assert!(
+			!tree.root_node().has_error(),
+			"parse tree should not contain errors: {sexp}"
+		);
+		assert_eq!(
+			count_node_kind(tree.root_node(), "attribute"),
+			1,
+			"closure parameter comma must not split the attribute: {sexp}"
+		);
+	}
+
+	#[test]
+	fn page_dsl_parses_turbofish_attribute_comma_as_rust() {
+		let source = r#"|| { div { value: make_pair::<Left, Right>(), "x" } }"#;
+		let tree = parse(source);
+		let sexp = tree.root_node().to_sexp();
+
+		assert!(
+			!tree.root_node().has_error(),
+			"parse tree should not contain errors: {sexp}"
+		);
+		assert_eq!(
+			count_node_kind(tree.root_node(), "attribute"),
+			1,
+			"turbofish comma must not split the attribute: {sexp}"
+		);
+	}
+
+	#[test]
 	fn page_dsl_parses_control_flow_keyword_followed_by_newline() {
 		let source = "|| { if\nshow { div { \"x\" } } }";
 
