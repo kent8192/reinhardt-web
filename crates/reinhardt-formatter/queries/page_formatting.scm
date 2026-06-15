@@ -8,6 +8,7 @@
 (fragment) @leaf
 (closure_args) @leaf
 (component_identifier) @leaf
+(rustfmt_island) @leaf
 
 ; === Token spacing ===
 
@@ -175,12 +176,15 @@
 (block
   "{" @prepend_space @append_hardline @append_indent_start
   .
-  [(element) (component_call) (control_flow) (attribute) (event_attribute)])
+  [(element) (component_call) (control_flow) (attribute) (event_attribute)]
+  .
+  "}")
 
 (block
   "{"
   .
   [(element) (component_call) (control_flow) (attribute) (event_attribute)]
+  .
   "}" @prepend_hardline @prepend_indent_end)
 
 ; --- Multi-item blocks: expanded ---
@@ -209,6 +213,52 @@
   (semicolon) @append_hardline)
 
 ; === Block separation ===
+
+; Semantic wrappers hide their inner block from generic sibling rules, so
+; separate adjacent page items at the wrapper boundary.
+(_
+  (element
+    (block
+      "}" @append_hardline))
+  .
+  [(element) (component_call) (control_flow) (interpolation)])
+
+(_
+  (component_call
+    (block
+      "}" @append_hardline))
+  .
+  [(element) (component_call) (control_flow) (interpolation)])
+
+(_
+  (control_flow
+    (if_control_flow
+      (block
+        "}" @append_hardline)))
+  .
+  [(element) (component_call) (control_flow) (interpolation)])
+
+(_
+  (control_flow
+    (for_control_flow
+      (block
+        "}" @append_hardline)))
+  .
+  [(element) (component_call) (control_flow) (interpolation)])
+
+(_
+  (control_flow
+    (match_control_flow
+      (block
+        "}" @append_hardline)))
+  .
+  [(element) (component_call) (control_flow) (interpolation)])
+
+(_
+  (interpolation
+    "}" @append_hardline)
+  .
+  [(element) (component_call) (control_flow) (interpolation)])
 
 ; After closing brace, hardline before non-else items.
 (_

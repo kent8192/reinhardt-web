@@ -516,6 +516,7 @@ static bool scan_classified_fragment(TSLexer *lexer, const bool *valid_symbols) 
 	unsigned consumed_len = 0;
 	unsigned content_len = 0;
 	bool has_content = false;
+	bool previous_was_colon = false;
 
 	if (lexer->lookahead == 'r') {
 		lexer->advance(lexer, false);
@@ -597,11 +598,14 @@ static bool scan_classified_fragment(TSLexer *lexer, const bool *valid_symbols) 
 		if (!is_horizontal_whitespace(c)) {
 			lexer->mark_end(lexer);
 		}
-		if (c == ':' && first == '@' && valid_symbols[EVENT_ATTRIBUTE_HEAD]) {
+		bool path_separator_colon = c == ':' && (previous_was_colon || lexer->lookahead == ':');
+		previous_was_colon = c == ':';
+		if (c == ':' && !path_separator_colon && first == '@' && valid_symbols[EVENT_ATTRIBUTE_HEAD]) {
 			lexer->result_symbol = EVENT_ATTRIBUTE_HEAD;
 			return true;
 		}
-		if (c == ':' && (first == '_' || (first >= 'a' && first <= 'z')) && valid_symbols[ATTRIBUTE_HEAD]) {
+		if (c == ':' && !path_separator_colon && (first == '_' || (first >= 'a' && first <= 'z')) &&
+			valid_symbols[ATTRIBUTE_HEAD]) {
 			lexer->result_symbol = ATTRIBUTE_HEAD;
 			return true;
 		}

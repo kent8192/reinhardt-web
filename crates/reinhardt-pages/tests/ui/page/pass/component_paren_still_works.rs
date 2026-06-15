@@ -10,9 +10,7 @@ use reinhardt_pages::page;
 fn my_button(label: String, disabled: bool) -> Page {
 	let _ = disabled;
 	page!(|label: String| {
-		button { {
-			label.clone()
-		} }
+		button { { label.clone() } }
 	})(label)
 }
 
@@ -21,8 +19,6 @@ fn main() {
 	// (spec §3.7). Free functions are still callable via a qualified item path
 	// (`self::my_button`), which the capture-discipline check exempts.
 	let _ = page!(|| {
-		div { {
-			self::my_button("click".to_string(), false)
-		} }
+		div { { self::my_button("click".to_string(), false) } }
 	});
 }

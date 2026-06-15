@@ -23,12 +23,8 @@ struct CardProps {
 fn card(props: CardProps) -> Page {
 	page!(|p: CardProps| {
 		article {
-			h2 { {
-				p.item.clone()
-			} }
-			{
-				p.children.clone().unwrap_or_else(Page::empty)
-			}
+			h2 { { p.item.clone() } }
+			{ p.children.clone().unwrap_or_else(Page::empty) }
 		}
 	})(props)
 }
@@ -113,9 +109,7 @@ fn nested_component_inside_for_loop() {
 	fn item_card(p: ItemCardProps) -> Page {
 		page!(|p: ItemCardProps| {
 			article {
-				h2 { {
-					p.title.clone()
-				} }
+				h2 { { p.title.clone() } }
 			}
 		})(p)
 	}

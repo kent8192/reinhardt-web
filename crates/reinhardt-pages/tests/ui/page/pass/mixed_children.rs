@@ -27,9 +27,7 @@ fn main() {
 	let _with_expr = page!(|count: i32| {
 		div {
 			span { "Count: " }
-			strong { {
-				format!("{}", count)
-			} }
+			strong { { format!("{}", count) } }
 		}
 	});
 }

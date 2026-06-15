@@ -3,11 +3,14 @@
 //! Rust source files are parsed with tree-sitter-rust so `page!`, `form!`, and
 //! `head!` invocations are detected as syntax nodes rather than by text search.
 //! Each DSL body is then parsed by a small Reinhardt tree-sitter grammar and
-//! formatted through Topiary query captures. Rust code formatting remains the
-//! responsibility of rustfmt.
+//! formatted through Topiary query captures. Supported `page!` Rust expression
+//! islands are then passed through rustfmt conservatively; invalid or
+//! unsupported islands are preserved unchanged. Surrounding Rust source
+//! formatting remains the responsibility of the outer rustfmt pass.
 
+use std::io::Write;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use topiary_core::{
 	Language as TopiaryLanguage, Operation, TopiaryQuery, formatter_str as topiary_formatter_str,
@@ -128,14 +131,34 @@ struct MacroParts<'a> {
 	inner: &'a str,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProtectedRustfmtIsland {
+	marker: String,
+	original: String,
+}
+
+#[derive(Debug)]
+struct FormattedDsl {
+	output: String,
+	protected_islands: Vec<ProtectedRustfmtIsland>,
+}
+
 /// Formatter engine used by `fmt` and `fmt-all`.
 #[derive(Debug, Default)]
-pub(crate) struct FormatEngine;
+pub(crate) struct FormatEngine {
+	rustfmt_options: RustfmtOptions,
+}
 
 impl FormatEngine {
 	/// Create a new formatter engine.
+	#[cfg(test)]
 	pub(crate) fn new() -> Self {
-		Self
+		Self::default()
+	}
+
+	/// Create a formatter engine with rustfmt options for page! Rust islands.
+	pub(crate) fn with_rustfmt_options(rustfmt_options: RustfmtOptions) -> Self {
+		Self { rustfmt_options }
 	}
 
 	/// Check if a source file has a file-wide ignore marker.
@@ -191,7 +214,12 @@ impl FormatEngine {
 				result.push_str(&content[info.start..info.end]);
 			} else {
 				let original = &content[info.start..info.end];
-				match format_macro(original, info.kind, base_indent(content, info.start)) {
+				match format_macro(
+					original,
+					info.kind,
+					base_indent(content, info.start),
+					&self.rustfmt_options,
+				) {
 					Ok(formatted) => result.push_str(&formatted),
 					Err(_) => result.push_str(original),
 				}
@@ -261,15 +289,21 @@ fn macro_kind(text: &str) -> Option<MacroKind> {
 	None
 }
 
-fn format_macro(original: &str, kind: MacroKind, base_indent: usize) -> Result<String, String> {
+fn format_macro(
+	original: &str,
+	kind: MacroKind,
+	base_indent: usize,
+	rustfmt_options: &RustfmtOptions,
+) -> Result<String, String> {
 	let parts = split_macro(original, kind)?;
 	let dsl_input = if parts.open == '{' {
 		format!("{}{}{}", parts.open, parts.inner, parts.close)
 	} else {
 		parts.inner.to_string()
 	};
-	let formatted_dsl = format_dsl(kind, &dsl_input)?;
-	let formatted_dsl = indent_relative(formatted_dsl.trim_end(), base_indent);
+	let formatted = format_dsl_with_options_preserving_markers(kind, &dsl_input, rustfmt_options)?;
+	let mut formatted_dsl = indent_relative(formatted.output.trim_end(), base_indent);
+	restore_protected_rustfmt_islands(&mut formatted_dsl, &formatted.protected_islands);
 
 	let spacer = if parts.open == '(' { "" } else { " " };
 	if parts.open == '{' {
@@ -317,15 +351,40 @@ fn split_macro(original: &str, kind: MacroKind) -> Result<MacroParts<'_>, String
 	})
 }
 
+#[cfg(test)]
 fn format_dsl(kind: MacroKind, input: &str) -> Result<String, String> {
+	format_dsl_with_options(kind, input, &RustfmtOptions::default())
+}
+
+#[cfg(test)]
+fn format_dsl_with_options(
+	kind: MacroKind,
+	input: &str,
+	rustfmt_options: &RustfmtOptions,
+) -> Result<String, String> {
+	let mut formatted = format_dsl_with_options_preserving_markers(kind, input, rustfmt_options)?;
+	restore_protected_rustfmt_islands(&mut formatted.output, &formatted.protected_islands);
+	Ok(formatted.output)
+}
+
+fn format_dsl_with_options_preserving_markers(
+	kind: MacroKind,
+	input: &str,
+	rustfmt_options: &RustfmtOptions,
+) -> Result<FormattedDsl, String> {
 	validate_dsl_with_tree_sitter(kind, input)?;
 	if kind.query().trim().is_empty() {
 		return Err(format!("Topiary query for {} DSL is empty", kind.name()));
 	}
+	let (topiary_input, protected_islands) = if kind == MacroKind::Page {
+		protect_topiary_sensitive_page_islands(input)
+	} else {
+		(input.to_string(), Vec::new())
+	};
 	let mut output = Vec::new();
 	let language = topiary_language(kind)?;
 	topiary_formatter_str(
-		input,
+		&topiary_input,
 		&mut output,
 		&language,
 		Operation::Format {
@@ -334,116 +393,425 @@ fn format_dsl(kind: MacroKind, input: &str) -> Result<String, String> {
 		},
 	)
 	.map_err(|e| format!("Topiary failed to format {} DSL: {e}", kind.name()))?;
-	String::from_utf8(output)
-		.map(|formatted| normalize_dsl_output(formatted.trim()))
-		.map_err(|e| {
-			format!(
-				"Topiary produced invalid UTF-8 for {} DSL: {e}",
-				kind.name()
-			)
-		})
+	let formatted = String::from_utf8(output).map_err(|e| {
+		format!(
+			"Topiary produced invalid UTF-8 for {} DSL: {e}",
+			kind.name()
+		)
+	})?;
+	let mut normalized = normalize_dsl_output(formatted.trim());
+	if kind == MacroKind::Page {
+		normalized = format_page_rustfmt_islands(&normalized, rustfmt_options);
+	}
+	Ok(FormattedDsl {
+		output: normalized,
+		protected_islands,
+	})
+}
+
+fn restore_protected_rustfmt_islands(input: &mut String, islands: &[ProtectedRustfmtIsland]) {
+	for island in islands {
+		*input = input.replace(&island.marker, &island.original);
+	}
 }
 
 fn normalize_dsl_output(input: &str) -> String {
-	normalize_unary_minus(input)
+	input.to_string()
 }
 
-fn normalize_unary_minus(input: &str) -> String {
-	let bytes = input.as_bytes();
-	let mut result = Vec::with_capacity(bytes.len());
-	let mut i = 0;
-	while i < bytes.len() {
-		if bytes[i] == b'r' && i + 1 < bytes.len() && (bytes[i + 1] == b'"' || bytes[i + 1] == b'#')
-		{
-			i = skip_raw_string(bytes, i, &mut result);
-			continue;
-		}
-		if bytes[i] == b'"' {
-			i = skip_regular_string(bytes, i, &mut result);
-			continue;
-		}
-		result.push(bytes[i]);
-		if bytes[i] == b'(' {
-			i += 1;
-			while i < bytes.len() && bytes[i] == b' ' {
-				i += 1;
-			}
-			if i < bytes.len() && bytes[i] == b'-' {
-				result.push(b'-');
-				i += 1;
-				let start = i;
-				while i < bytes.len() && bytes[i] == b' ' {
-					i += 1;
-				}
-				if i > start
-					&& i < bytes.len()
-					&& (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_')
+fn protect_topiary_sensitive_page_islands(input: &str) -> (String, Vec<ProtectedRustfmtIsland>) {
+	let mut parser = Parser::new();
+	let language = tree_sitter_reinhardt_page::LANGUAGE.into();
+	if parser.set_language(&language).is_err() {
+		return (input.to_string(), Vec::new());
+	}
+	let Some(tree) = parser.parse(input, None) else {
+		return (input.to_string(), Vec::new());
+	};
+	if tree.root_node().has_error() {
+		return (input.to_string(), Vec::new());
+	}
+
+	let mut ranges = Vec::new();
+	collect_topiary_sensitive_rustfmt_island_ranges(tree.root_node(), input, &mut ranges);
+	let ranges = non_nested_ranges(ranges);
+	if ranges.is_empty() {
+		return (input.to_string(), Vec::new());
+	}
+
+	let protected: Vec<ProtectedRustfmtIsland> = ranges
+		.iter()
+		.enumerate()
+		.map(|(index, &(start, end))| ProtectedRustfmtIsland {
+			marker: protected_island_marker(input, index),
+			original: input[start..end].to_string(),
+		})
+		.collect();
+
+	let mut output = input.to_string();
+	for ((start, end), island) in ranges.iter().zip(&protected).rev() {
+		output.replace_range(*start..*end, &island.marker);
+	}
+	(output, protected)
+}
+
+fn collect_topiary_sensitive_rustfmt_island_ranges(
+	node: Node<'_>,
+	source: &str,
+	ranges: &mut Vec<(usize, usize)>,
+) {
+	if node.kind() == "rustfmt_island" {
+		let start = node.start_byte();
+		let end = node.end_byte();
+		if start < end {
+			let island = &source[start..end];
+			if topiary_sensitive_rustfmt_island(island) {
+				if contains_top_level_semicolon(island)
+					&& let Some(parent) = node.parent()
+					&& parent.kind() == "interpolation"
 				{
-					continue;
+					ranges.push((parent.start_byte(), parent.end_byte()));
+				} else {
+					ranges.push((start, end));
 				}
-				result.extend_from_slice(&bytes[start..i]);
 			}
+		}
+		return;
+	}
+
+	let mut cursor = node.walk();
+	for child in node.children(&mut cursor) {
+		collect_topiary_sensitive_rustfmt_island_ranges(child, source, ranges);
+	}
+}
+
+fn protected_island_marker(input: &str, index: usize) -> String {
+	let mut suffix = 0;
+	loop {
+		let marker = format!("__reinhardt_fmt_protected_island_{index}_{suffix}");
+		if !input.contains(&marker) {
+			return marker;
+		}
+		suffix += 1;
+	}
+}
+
+fn format_page_rustfmt_islands(input: &str, rustfmt_options: &RustfmtOptions) -> String {
+	let mut parser = Parser::new();
+	let language = tree_sitter_reinhardt_page::LANGUAGE.into();
+	if parser.set_language(&language).is_err() {
+		return input.to_string();
+	}
+	let Some(tree) = parser.parse(input, None) else {
+		return input.to_string();
+	};
+	if tree.root_node().has_error() {
+		return input.to_string();
+	}
+
+	let mut ranges = Vec::new();
+	collect_rustfmt_island_ranges(tree.root_node(), &mut ranges);
+	let ranges = non_nested_ranges(ranges);
+
+	let mut output = input.to_string();
+	for (start, end) in ranges.into_iter().rev() {
+		let island = &input[start..end];
+		let line_indent = line_indent_for_offset(input, start);
+		if let Some(formatted) = format_rustfmt_island(island, line_indent, rustfmt_options) {
+			output.replace_range(start..end, &formatted);
+		}
+	}
+	output
+}
+
+fn collect_rustfmt_island_ranges(node: Node<'_>, ranges: &mut Vec<(usize, usize)>) {
+	if node.kind() == "rustfmt_island" {
+		let start = node.start_byte();
+		let end = node.end_byte();
+		if start < end {
+			ranges.push((start, end));
+		}
+		return;
+	}
+
+	let mut cursor = node.walk();
+	for child in node.children(&mut cursor) {
+		collect_rustfmt_island_ranges(child, ranges);
+	}
+}
+
+fn non_nested_ranges(mut ranges: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+	ranges.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| right.1.cmp(&left.1)));
+	let mut kept = Vec::with_capacity(ranges.len());
+	for range in ranges {
+		let is_nested = kept
+			.iter()
+			.any(|outer: &(usize, usize)| outer.0 <= range.0 && range.1 <= outer.1);
+		if !is_nested {
+			kept.push(range);
+		}
+	}
+	kept.sort_by_key(|range| range.0);
+	kept
+}
+
+fn format_rustfmt_island(
+	island: &str,
+	line_indent: &str,
+	rustfmt_options: &RustfmtOptions,
+) -> Option<String> {
+	if topiary_sensitive_rustfmt_island(island) {
+		return None;
+	}
+	let wrapped = format!("fn main() {{ let __reinhardt_fmt = {island}; }}\n");
+	let mut cmd = Command::new("rustfmt");
+	rustfmt_options.apply_to_command(&mut cmd);
+	if rustfmt_options.config_path.is_none() && rustfmt_options.edition.is_none() {
+		cmd.arg("--edition=2024");
+	}
+	let mut child = cmd
+		.arg("--emit=stdout")
+		.stdin(Stdio::piped())
+		.stdout(Stdio::piped())
+		.stderr(Stdio::null())
+		.spawn()
+		.ok()?;
+	let Some(mut stdin) = child.stdin.take() else {
+		let _ = child.kill();
+		let _ = child.wait();
+		return None;
+	};
+	if stdin.write_all(wrapped.as_bytes()).is_err() {
+		drop(stdin);
+		let _ = child.kill();
+		let _ = child.wait();
+		return None;
+	}
+	drop(stdin);
+
+	let output = child.wait_with_output().ok()?;
+	if !output.status.success() {
+		return None;
+	}
+	let formatted_wrapper = String::from_utf8(output.stdout).ok()?;
+	let formatted = unwrap_rustfmt_island(&formatted_wrapper)?;
+	Some(reindent_multiline_island(formatted, line_indent))
+}
+
+fn contains_rust_comment_marker(input: &str) -> bool {
+	input.contains("//") || input.contains("/*")
+}
+
+fn topiary_sensitive_rustfmt_island(input: &str) -> bool {
+	contains_rust_comment_marker(input) || contains_top_level_semicolon(input)
+}
+
+fn contains_top_level_semicolon(input: &str) -> bool {
+	let chars: Vec<char> = input.chars().collect();
+	let mut index = 0;
+	let mut paren_depth = 0usize;
+	let mut bracket_depth = 0usize;
+	let mut brace_depth = 0usize;
+
+	while index < chars.len() {
+		match chars[index] {
+			'"' => skip_string_literal(&chars, &mut index),
+			'\'' => skip_char_or_lifetime(&chars, &mut index),
+			'r' if skip_raw_string_literal(&chars, &mut index) => {}
+			'/' if index + 1 < chars.len() && chars[index + 1] == '/' => {
+				index += 2;
+				while index < chars.len() && chars[index] != '\n' {
+					index += 1;
+				}
+			}
+			'/' if index + 1 < chars.len() && chars[index + 1] == '*' => {
+				index += 2;
+				while index + 1 < chars.len() && !(chars[index] == '*' && chars[index + 1] == '/') {
+					index += 1;
+				}
+				index = (index + 2).min(chars.len());
+			}
+			'(' => {
+				paren_depth += 1;
+				index += 1;
+			}
+			')' => {
+				paren_depth = paren_depth.saturating_sub(1);
+				index += 1;
+			}
+			'[' => {
+				bracket_depth += 1;
+				index += 1;
+			}
+			']' => {
+				bracket_depth = bracket_depth.saturating_sub(1);
+				index += 1;
+			}
+			'{' => {
+				brace_depth += 1;
+				index += 1;
+			}
+			'}' => {
+				brace_depth = brace_depth.saturating_sub(1);
+				index += 1;
+			}
+			';' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => return true,
+			_ => index += 1,
+		}
+	}
+
+	false
+}
+
+fn skip_string_literal(chars: &[char], index: &mut usize) {
+	*index += 1;
+	while *index < chars.len() {
+		let current = chars[*index];
+		*index += 1;
+		if current == '\\' && *index < chars.len() {
+			*index += 1;
 			continue;
 		}
-		i += 1;
+		if current == '"' {
+			break;
+		}
 	}
-	String::from_utf8(result).unwrap_or_else(|_| input.to_string())
 }
 
-fn skip_regular_string(bytes: &[u8], start: usize, result: &mut Vec<u8>) -> usize {
-	result.push(bytes[start]);
-	let mut i = start + 1;
-	while i < bytes.len() {
-		result.push(bytes[i]);
-		if bytes[i] == b'"' {
-			return i + 1;
+fn skip_char_or_lifetime(chars: &[char], index: &mut usize) {
+	*index += 1;
+	if *index < chars.len() && is_ident_start(chars[*index]) {
+		*index += 1;
+		while *index < chars.len() && is_ident_continue(chars[*index]) {
+			*index += 1;
 		}
-		if bytes[i] == b'\\' && i + 1 < bytes.len() {
-			i += 1;
-			result.push(bytes[i]);
+		if *index >= chars.len() || chars[*index] != '\'' {
+			return;
 		}
-		i += 1;
 	}
-	i
+	while *index < chars.len() {
+		let current = chars[*index];
+		*index += 1;
+		if current == '\\' && *index < chars.len() {
+			*index += 1;
+			continue;
+		}
+		if current == '\'' {
+			break;
+		}
+	}
 }
 
-fn skip_raw_string(bytes: &[u8], start: usize, result: &mut Vec<u8>) -> usize {
-	result.push(bytes[start]);
-	let mut i = start + 1;
-	let mut hashes: usize = 0;
-	while i < bytes.len() && bytes[i] == b'#' {
+fn is_ident_start(ch: char) -> bool {
+	ch == '_' || ch.is_ascii_alphabetic()
+}
+
+fn is_ident_continue(ch: char) -> bool {
+	is_ident_start(ch) || ch.is_ascii_digit()
+}
+
+fn skip_raw_string_literal(chars: &[char], index: &mut usize) -> bool {
+	let start = *index;
+	let mut cursor = start + 1;
+	let mut hashes = 0usize;
+	while cursor < chars.len() && chars[cursor] == '#' {
 		hashes += 1;
-		result.push(bytes[i]);
-		i += 1;
+		cursor += 1;
 	}
-	if i >= bytes.len() || bytes[i] != b'"' {
-		return i;
+	if cursor >= chars.len() || chars[cursor] != '"' {
+		return false;
 	}
-	result.push(bytes[i]);
-	i += 1;
-	loop {
-		if i >= bytes.len() {
-			return i;
-		}
-		result.push(bytes[i]);
-		if bytes[i] == b'"' {
-			let mut matched = 0;
-			while matched < hashes
-				&& i + 1 + matched < bytes.len()
-				&& bytes[i + 1 + matched] == b'#'
+	cursor += 1;
+	while cursor < chars.len() {
+		if chars[cursor] == '"' {
+			let mut matched_hashes = 0usize;
+			while matched_hashes < hashes
+				&& cursor + 1 + matched_hashes < chars.len()
+				&& chars[cursor + 1 + matched_hashes] == '#'
 			{
-				matched += 1;
+				matched_hashes += 1;
 			}
-			if matched == hashes {
-				for _ in 0..hashes {
-					i += 1;
-					result.push(bytes[i]);
-				}
-				return i + 1;
+			if matched_hashes == hashes {
+				*index = cursor + 1 + matched_hashes;
+				return true;
 			}
 		}
-		i += 1;
+		cursor += 1;
 	}
+	*index = chars.len();
+	true
+}
+
+fn unwrap_rustfmt_island(formatted_wrapper: &str) -> Option<&str> {
+	let mut parser = Parser::new();
+	let language = tree_sitter_rust::LANGUAGE.into();
+	parser.set_language(&language).ok()?;
+	let tree = parser.parse(formatted_wrapper, None)?;
+	if tree.root_node().has_error() {
+		return None;
+	}
+	let declaration = find_first_node_kind(tree.root_node(), "let_declaration")?;
+	let value = declaration.child_by_field_name("value")?;
+	value.utf8_text(formatted_wrapper.as_bytes()).ok()
+}
+
+fn find_first_node_kind<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
+	if node.kind() == kind {
+		return Some(node);
+	}
+	let mut cursor = node.walk();
+	for child in node.children(&mut cursor) {
+		if let Some(found) = find_first_node_kind(child, kind) {
+			return Some(found);
+		}
+	}
+	None
+}
+
+fn reindent_multiline_island(input: &str, line_indent: &str) -> String {
+	let mut lines: Vec<&str> = input.lines().collect();
+	if lines.len() <= 1 {
+		return input.to_string();
+	}
+	let strip_indent = common_continuation_indent(&lines[1..]);
+	let mut result = String::from(lines.remove(0));
+	for line in lines {
+		result.push('\n');
+		if !line.is_empty() {
+			result.push_str(line_indent);
+		}
+		result.push_str(strip_leading_indent(line, strip_indent));
+	}
+	result
+}
+
+fn common_continuation_indent(lines: &[&str]) -> usize {
+	lines
+		.iter()
+		.filter(|line| !line.is_empty())
+		.map(|line| line.len() - line.trim_start_matches([' ', '\t']).len())
+		.min()
+		.unwrap_or(0)
+}
+
+fn strip_leading_indent(line: &str, count: usize) -> &str {
+	let mut bytes = 0;
+	for ch in line.chars().take(count) {
+		if ch != ' ' && ch != '\t' {
+			break;
+		}
+		bytes += ch.len_utf8();
+	}
+	&line[bytes..]
+}
+
+fn line_indent_for_offset(input: &str, offset: usize) -> &str {
+	let line_start = input[..offset].rfind('\n').map_or(0, |pos| pos + 1);
+	let line_prefix = &input[line_start..offset];
+	let indent_end = line_prefix
+		.find(|ch: char| ch != ' ' && ch != '\t')
+		.map_or(offset, |pos| line_start + pos);
+	&input[line_start..indent_end]
 }
 
 fn topiary_language(kind: MacroKind) -> Result<TopiaryLanguage, String> {
@@ -641,6 +1009,42 @@ mod tests {
 
 		// Assert
 		assert_eq!(formatted, "|| {\n\tif show {\n\t\tdiv { \"x\" }\n\t}\n}");
+	}
+
+	#[rstest]
+	fn formats_page_semantic_attribute_blocks_without_extra_indent() {
+		// Act
+		let formatted = format_dsl(
+			MacroKind::Page,
+			r#"|| { div { class: "container", "Styled content" } }"#,
+		)
+		.expect("format page DSL");
+
+		// Assert
+		assert_eq!(
+			formatted,
+			"|| {\n\tdiv {\n\t\tclass: \"container\",\n\t\t\"Styled content\"\n\t}\n}"
+		);
+	}
+
+	#[rstest]
+	fn formats_page_semantic_siblings_with_hardline_separators() {
+		// Act
+		let formatted = format_dsl(
+			MacroKind::Page,
+			r#"|| { div { h1 { { title } } { add_link } div { { summary } } } }"#,
+		)
+		.expect("format page DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("h1 { { title } }\n\t\t{ add_link }\n\t\tdiv { { summary } }"),
+			"semantic siblings should stay line-separated: {formatted}"
+		);
+		assert!(
+			!formatted.contains("}div"),
+			"semantic element siblings must not concatenate: {formatted}"
+		);
 	}
 
 	#[rstest]
@@ -1000,7 +1404,7 @@ fn main() {}";
 		// Arrange
 		let formatter = FormatEngine::new();
 		let source = r#"fn main() {
-	let view = page!(|| { div { "hello" } });
+		let view = page!(|| { div { "hello" } });
 	let h = head!(|| { title { "Title" } });
 }"#;
 
@@ -1020,6 +1424,26 @@ fn main() {}";
 		);
 		assert!(result.contains_dsl_macro);
 		assert_eq!(result.skipped, None);
+	}
+
+	#[rstest]
+	fn protected_page_islands_preserve_multiline_raw_string_bytes() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let protected = "/* keep */ r#\"line1\n\t\t\t\t    line2\"#";
+		let source = format!(
+			"fn main() {{\n\tlet view = page!(|| {{\n\t\tdiv {{\n\t\t\ttitle: {protected},\n\t\t\t\"x\"\n\t\t}}\n\t}});\n}}"
+		);
+
+		// Act
+		let result = formatter.format(&source).expect("format source");
+
+		// Assert
+		assert!(
+			result.content.contains(protected),
+			"protected Rust island should preserve raw string bytes: {}",
+			result.content
+		);
 	}
 
 	// -----------------------------------------------------------------------
@@ -1476,6 +1900,188 @@ fn main() {}";
 	}
 
 	#[rstest]
+	fn page_rustfmt_island_formats_attribute_expression() {
+		// Arrange / Act
+		let formatted = format_dsl(
+			MacroKind::Page,
+			r#"|| { span { title: format!("{}", foo+bar), } }"#,
+		)
+		.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains(r#"title: format!("{}", foo + bar),"#),
+			"attribute expression should be formatted inside page Rust island: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn page_rustfmt_island_formats_event_closure_body() {
+		// Arrange / Act
+		let formatted = format_dsl(
+			MacroKind::Page,
+			r#"|| { button { @click: |_| { match status { 0=>set_pending(), _=>set_done(), } }, } }"#,
+		)
+		.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("0 => set_pending(),"),
+			"match arm spacing should be formatted inside event closure body: {formatted}"
+		);
+		assert!(
+			formatted.contains("_ => set_done(),"),
+			"fallback match arm spacing should be formatted inside event closure body: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn page_rustfmt_island_formats_interpolation_expression() {
+		// Arrange / Act
+		let formatted =
+			format_dsl(MacroKind::Page, r#"|| { span { { count+1 } } }"#).expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("{ count + 1 }"),
+			"interpolation expression should be formatted inside page Rust island: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn page_rustfmt_island_formats_interpolation_paths() {
+		// Arrange / Act
+		let formatted = format_dsl(MacroKind::Page, r#"|| { span { { foo::bar(1+2) } } }"#)
+			.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("{ foo::bar(1 + 2) }"),
+			"Rust path separators inside interpolation should not become attributes: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn page_rustfmt_island_preserves_top_level_statement_interpolation() {
+		// Arrange / Act
+		let formatted = format_dsl(
+			MacroKind::Page,
+			r#"|| { div { { hooks::use_effect({ let count = count.clone(); move || { let _ = count.get(); None::<fn() > } }, (count.clone(), ), ); "x" } } }"#,
+		)
+		.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("hooks::use_effect"),
+			"Rust paths in statement interpolation should be preserved: {formatted}"
+		);
+		assert!(
+			formatted.contains(r#"; "x""#),
+			"top-level statement interpolation should not lose following expressions: {formatted}"
+		);
+		assert!(
+			!formatted.contains("hooks: :use_effect"),
+			"Rust path separators should not be formatted as DSL attributes: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn page_rustfmt_island_preserves_string_contents() {
+		// Arrange / Act
+		let formatted = format_dsl(
+			MacroKind::Page,
+			r#"|| { span { title: "value is (- 1)", { "match x { 0=>a }" } } }"#,
+		)
+		.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains(r#""value is (- 1)""#),
+			"string literal contents should remain unchanged: {formatted}"
+		);
+		assert!(
+			formatted.contains(r#""match x { 0=>a }""#),
+			"text string contents should remain unchanged: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn page_rustfmt_island_falls_back_for_invalid_rust() {
+		// Arrange / Act
+		let formatted = format_dsl(MacroKind::Page, r#"|| { span { title: value., "x" } }"#)
+			.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("title: value.,"),
+			"invalid Rust island should be preserved when rustfmt cannot format it: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn page_rustfmt_island_preserves_comment_islands() {
+		// Arrange / Act
+		let formatted = format_dsl(
+			MacroKind::Page,
+			r#"|| { span { title: /* keep */ foo+bar, } }"#,
+		)
+		.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("title: /* keep */ foo+bar,"),
+			"comment-bearing Rust islands should be preserved: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn page_rustfmt_island_preserves_line_comment_islands_idempotently() {
+		// Arrange
+		let input = "|| { span { title: // keep leading\nfoo+bar, other: value+1, } }";
+
+		// Act
+		let formatted = format_dsl(MacroKind::Page, input).expect("format DSL");
+		let second = format_dsl(MacroKind::Page, &formatted).expect("format DSL again");
+
+		// Assert
+		assert_eq!(
+			second, formatted,
+			"line-comment Rust islands should be formatter-idempotent"
+		);
+		assert!(
+			formatted.contains("title: // keep leading\nfoo+bar,"),
+			"line-comment Rust islands should be preserved: {formatted}"
+		);
+		assert!(
+			formatted.contains("other: value + 1,"),
+			"safe sibling Rust islands should still be formatted: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn page_rustfmt_island_uses_configured_rustfmt_options() {
+		// Arrange
+		let options = RustfmtOptions {
+			config: Some("max_width=40".to_string()),
+			..RustfmtOptions::default()
+		};
+
+		// Act
+		let formatted = format_dsl_with_options(
+			MacroKind::Page,
+			r#"|| { span { title: very_long_function_name(alpha_value, beta_value, gamma_value, delta_value), } }"#,
+			&options,
+		)
+		.expect("format DSL");
+
+		// Assert
+		assert!(
+			formatted.contains("\n\t\t\talpha_value,"),
+			"configured rustfmt max_width should format page Rust islands: {formatted}"
+		);
+	}
+
+	#[rstest]
 	fn empty_closure_body_stays_inline() {
 		// Arrange / Act
 		let formatted = format_dsl(
@@ -1525,65 +2131,5 @@ fn main() {}";
 			!formatted.contains("div {\n"),
 			"empty element block should not expand: {formatted}"
 		);
-	}
-
-	#[rstest]
-	fn normalize_unary_minus_preserves_string_contents() {
-		// Arrange
-		let input = r#"div { "value is (- 1)" }"#;
-
-		// Act
-		let result = normalize_unary_minus(input);
-
-		// Assert
-		assert_eq!(result, input);
-	}
-
-	#[rstest]
-	fn normalize_unary_minus_collapses_outside_strings() {
-		// Arrange
-		let input = r#"tabindex: (- 1_i32).to_string()"#;
-
-		// Act
-		let result = normalize_unary_minus(input);
-
-		// Assert
-		assert_eq!(result, r#"tabindex: (-1_i32).to_string()"#);
-	}
-
-	#[rstest]
-	fn normalize_unary_minus_handles_escaped_quotes() {
-		// Arrange
-		let input = r#""escaped \" (- 1) end" (- 2_i32)"#;
-
-		// Act
-		let result = normalize_unary_minus(input);
-
-		// Assert
-		assert_eq!(result, r#""escaped \" (- 1) end" (-2_i32)"#);
-	}
-
-	#[rstest]
-	fn normalize_unary_minus_preserves_raw_string_contents() {
-		// Arrange
-		let input = r##"r#"raw (- 1) content"# (- 3_u8)"##;
-
-		// Act
-		let result = normalize_unary_minus(input);
-
-		// Assert
-		assert_eq!(result, r##"r#"raw (- 1) content"# (-3_u8)"##);
-	}
-
-	#[rstest]
-	fn normalize_unary_minus_preserves_raw_string_no_hashes() {
-		// Arrange
-		let input = r#"r"raw (- 1) here" (- 4_i64)"#;
-
-		// Act
-		let result = normalize_unary_minus(input);
-
-		// Assert
-		assert_eq!(result, r#"r"raw (- 1) here" (-4_i64)"#);
 	}
 }

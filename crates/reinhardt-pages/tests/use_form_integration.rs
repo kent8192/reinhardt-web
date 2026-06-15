@@ -212,7 +212,7 @@ fn use_form_accepts_json_field_runtime_contracts() {
 		action: "/settings",
 		fields: {
 			payload: JsonField<::serde_json::Value> {
-				initial: ::serde_json::json!({
+				initial: ::serde_json::json!( {
 					"theme": "dark"
 				}),
 			}

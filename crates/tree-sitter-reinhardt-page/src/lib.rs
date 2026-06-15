@@ -361,6 +361,48 @@ mod tests {
 	}
 
 	#[test]
+	fn page_dsl_parses_path_interpolation_as_rustfmt_island() {
+		let source = r#"|| { div { { foo::bar() } } }"#;
+		let tree = parse(source);
+		let sexp = tree.root_node().to_sexp();
+
+		assert!(
+			!tree.root_node().has_error(),
+			"parse tree should not contain errors: {sexp}"
+		);
+		assert!(
+			has_node_kind(tree.root_node(), "interpolation"),
+			"Rust path interpolation should not parse as a DSL block: {sexp}"
+		);
+		assert_eq!(
+			count_node_kind(tree.root_node(), "attribute"),
+			0,
+			"Rust path separators must not parse as attribute heads: {sexp}"
+		);
+	}
+
+	#[test]
+	fn page_dsl_parses_statement_interpolation_as_rustfmt_island() {
+		let source = r#"|| { div { { hooks::use_effect({ let value = value.clone(); value.get(); }, (value.clone(), ), ); "x" } } }"#;
+		let tree = parse(source);
+		let sexp = tree.root_node().to_sexp();
+
+		assert!(
+			!tree.root_node().has_error(),
+			"parse tree should not contain errors: {sexp}"
+		);
+		assert!(
+			has_node_kind(tree.root_node(), "interpolation"),
+			"statement interpolation should remain an interpolation node: {sexp}"
+		);
+		assert_eq!(
+			count_node_kind(tree.root_node(), "attribute"),
+			0,
+			"statement interpolation paths must not parse as DSL attributes: {sexp}"
+		);
+	}
+
+	#[test]
 	fn page_dsl_parses_control_flow_without_rustfmt_targeting_body() {
 		let tree = parse(r#"|| { if show { div { "visible" } } else { span { "hidden" } } }"#);
 		let sexp = tree.root_node().to_sexp();

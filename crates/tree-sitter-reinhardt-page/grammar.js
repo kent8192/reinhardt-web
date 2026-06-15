@@ -19,7 +19,9 @@ module.exports = grammar({
 
   conflicts: $ => [
     [$._item, $._rust_item],
+    [$._item, $.rustfmt_island],
     [$._item, $._rust_block_item],
+    [$._item, $.rustfmt_island, $._rust_block_item],
     [$.block, $._rust_block],
     [$.rustfmt_island, $._rust_block_item],
   ],
@@ -104,7 +106,7 @@ module.exports = grammar({
       $.block,
     )),
 
-    interpolation: $ => prec(1, seq(
+    interpolation: $ => prec(4, seq(
       '{',
       $.rustfmt_island,
       '}',
@@ -114,7 +116,7 @@ module.exports = grammar({
     paren: $ => seq('(', repeat($._item), ')'),
     bracket: $ => seq('[', repeat($._item), ']'),
 
-    rustfmt_island: $ => prec.right(repeat1($._rust_item)),
+    rustfmt_island: $ => prec.right(repeat1(choice($._rust_item, $.semicolon))),
 
     _rust_item: $ => choice(
       alias($._rust_block, $.block),

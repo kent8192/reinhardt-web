@@ -511,6 +511,10 @@
           "named": true
         },
         {
+          "type": "semicolon",
+          "named": true
+        },
+        {
           "type": "string",
           "named": true
         }
