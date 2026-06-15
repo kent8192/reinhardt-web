@@ -6,7 +6,6 @@
 #[cfg(server)]
 pub mod server_urls;
 
-#[cfg(client)]
 pub mod client_router;
 
 #[cfg(server)]
@@ -14,7 +13,6 @@ pub fn server_url_patterns() -> reinhardt::ServerRouter {
 	server_urls::server_url_patterns()
 }
 
-#[cfg(client)]
 pub fn client_url_patterns() -> reinhardt::ClientRouter {
 	client_router::client_url_patterns()
 }
