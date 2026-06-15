@@ -283,11 +283,9 @@ fn extract_serde_attrs(attrs: &[Attribute]) -> syn::Result<SerdeFieldAttrs> {
 					Ok(())
 				})?;
 			}
-			Meta::Path(path) => {
-				// Handle `#[serde(skip)]` without parentheses
-				if path.is_ident("skip") {
-					serde_attrs.skip = true;
-				}
+			// Handle `#[serde(skip)]` without parentheses
+			Meta::Path(path) if path.is_ident("skip") => {
+				serde_attrs.skip = true;
 			}
 			_ => {}
 		}

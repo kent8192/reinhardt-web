@@ -454,7 +454,7 @@ fn viewset_impl_impl(args: TokenStream, item_impl: syn::ItemImpl) -> syn::Result
 /// `const_type_name` feature: `type_name::<T>()` is callable in regular
 /// (non-const) function context, but `inventory::submit!`'s `static`
 /// initializer cannot use it yet (rust-lang/rust#63084 — `const_type_name`
-/// is still unstable as of Rust 1.94).
+/// is still unstable as of Rust 1.96).
 ///
 /// The handler is intentionally left as the `ActionMetadata::new`-default
 /// no-op: the user's method has a free-form signature (e.g.

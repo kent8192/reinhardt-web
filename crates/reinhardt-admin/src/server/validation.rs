@@ -157,25 +157,21 @@ fn validate_value_size(field_name: &str, value: &serde_json::Value) -> Result<()
 				)));
 			}
 		}
-		serde_json::Value::Array(arr) => {
-			if arr.len() > MAX_FIELDS {
-				return Err(AdminError::ValidationError(format!(
-					"Field '{}' array too large: {} elements (max {})",
-					field_name,
-					arr.len(),
-					MAX_FIELDS
-				)));
-			}
+		serde_json::Value::Array(arr) if arr.len() > MAX_FIELDS => {
+			return Err(AdminError::ValidationError(format!(
+				"Field '{}' array too large: {} elements (max {})",
+				field_name,
+				arr.len(),
+				MAX_FIELDS
+			)));
 		}
-		serde_json::Value::Object(obj) => {
-			if obj.len() > MAX_FIELDS {
-				return Err(AdminError::ValidationError(format!(
-					"Field '{}' object too large: {} keys (max {})",
-					field_name,
-					obj.len(),
-					MAX_FIELDS
-				)));
-			}
+		serde_json::Value::Object(obj) if obj.len() > MAX_FIELDS => {
+			return Err(AdminError::ValidationError(format!(
+				"Field '{}' object too large: {} keys (max {})",
+				field_name,
+				obj.len(),
+				MAX_FIELDS
+			)));
 		}
 		_ => {}
 	}

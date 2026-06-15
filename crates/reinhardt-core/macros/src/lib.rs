@@ -698,13 +698,16 @@ pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
 /// This provides a cleaner syntax by eliminating the need to explicitly write
 /// `#[derive(Model)]` on every model struct.
 ///
-/// # Info Companion Type (Issue #4194)
+/// # Info Companion Type (Issues #4194, #5272)
 ///
-/// By default, generates a `{Model}Info` companion struct — a plain data carrier
-/// with `pub` fields, bidirectional `From` conversions, and a typestate builder.
-/// FK builder setters accept `impl IntoPrimaryKey<T>`. Validation attributes are
-/// derived from `#[field(...)]` config. Opt out with `#[model(info = false)]`.
-/// Exclude individual fields with `#[field(skip_info = true)]`.
+/// By default, generates a `{Model}Info` companion struct with `pub` fields,
+/// bidirectional `From` conversions, and a typestate builder. Relationship
+/// fields use lightweight `RelationInfo<T>` and `ManyToManyInfo<Source, Target>`
+/// payloads instead of ORM marker fields or flattened `*_id` fields. FK and
+/// OneToOne builder setters accept `impl IntoPrimaryKey<T>`. Validation
+/// attributes are derived from `#[field(...)]` config. Opt out with
+/// `#[model(info = false)]`. Exclude individual fields with
+/// `#[field(skip_info = true)]`.
 ///
 /// # Model Attributes
 ///
