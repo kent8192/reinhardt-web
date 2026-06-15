@@ -28,6 +28,7 @@ use examples_tutorial_basis::apps::polls::server_fn::{
 use examples_tutorial_basis::apps::users::server_fn::current_user;
 use examples_tutorial_basis::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
 use gloo_timers::future::TimeoutFuture;
+use reinhardt::model_info::RelationInfo;
 use reinhardt::pages::component::{Page, PageExt};
 use reinhardt::pages::server_fn::ServerFnError;
 use reinhardt::pages::{Element as DomElement, document};
@@ -44,7 +45,7 @@ fn mock_question() -> QuestionInfo {
 		id: 1,
 		question_text: "What is your favorite programming language?".to_string(),
 		pub_date: chrono::Utc::now(),
-		author_id: 1,
+		author: RelationInfo::new(1),
 	}
 }
 
@@ -55,19 +56,19 @@ fn mock_questions_list() -> Vec<QuestionInfo> {
 			id: 1,
 			question_text: "What is your favorite programming language?".to_string(),
 			pub_date: chrono::Utc::now(),
-			author_id: 1,
+			author: RelationInfo::new(1),
 		},
 		QuestionInfo {
 			id: 2,
 			question_text: "Which web framework do you prefer?".to_string(),
 			pub_date: chrono::Utc::now(),
-			author_id: 1,
+			author: RelationInfo::new(1),
 		},
 		QuestionInfo {
 			id: 3,
 			question_text: "What database do you use most?".to_string(),
 			pub_date: chrono::Utc::now(),
-			author_id: 1,
+			author: RelationInfo::new(1),
 		},
 	]
 }
@@ -77,19 +78,19 @@ fn mock_choices() -> Vec<ChoiceInfo> {
 	vec![
 		ChoiceInfo {
 			id: 1,
-			question_id: 1,
+			question: RelationInfo::new(1),
 			choice_text: "Rust".to_string(),
 			votes: 42,
 		},
 		ChoiceInfo {
 			id: 2,
-			question_id: 1,
+			question: RelationInfo::new(1),
 			choice_text: "Python".to_string(),
 			votes: 30,
 		},
 		ChoiceInfo {
 			id: 3,
-			question_id: 1,
+			question: RelationInfo::new(1),
 			choice_text: "JavaScript".to_string(),
 			votes: 25,
 		},
@@ -530,7 +531,7 @@ fn test_question_info_deserialization() {
 	        "id": 1,
 	        "question_text": "What is Rust?",
 	        "pub_date": "2025-01-01T12:00:00Z",
-	        "author_id": 1
+	        "author": { "id": 1 }
 	    }"#;
 
 	let question: QuestionInfo =
@@ -544,7 +545,7 @@ fn test_question_info_deserialization() {
 fn test_choice_info_serialization() {
 	let choice = ChoiceInfo {
 		id: 1,
-		question_id: 1,
+		question: RelationInfo::new(1),
 		choice_text: "Rust".to_string(),
 		votes: 42,
 	};
@@ -552,7 +553,7 @@ fn test_choice_info_serialization() {
 	let json = serde_json::to_string(&choice).expect("Should serialize ChoiceInfo");
 	assert!(json.contains("Rust"));
 	assert!(json.contains("42"));
-	assert!(json.contains("question_id"));
+	assert!(json.contains("question"));
 }
 
 /// Test ChoiceInfo deserialization
@@ -560,7 +561,7 @@ fn test_choice_info_serialization() {
 fn test_choice_info_deserialization() {
 	let json = r#"{
         "id": 1,
-        "question_id": 1,
+        "question": { "id": 1 },
         "choice_text": "Python",
         "votes": 30
     }"#;
@@ -673,7 +674,7 @@ fn test_vote_request_various_values() {
 fn test_choice_info_zero_votes() {
 	let choice = ChoiceInfo {
 		id: 1,
-		question_id: 1,
+		question: RelationInfo::new(1),
 		choice_text: "New Choice".to_string(),
 		votes: 0,
 	};
@@ -690,7 +691,7 @@ fn test_choice_info_zero_votes() {
 fn test_choice_info_high_votes() {
 	let choice = ChoiceInfo {
 		id: 1,
-		question_id: 1,
+		question: RelationInfo::new(1),
 		choice_text: "Popular Choice".to_string(),
 		votes: 1_000_000,
 	};

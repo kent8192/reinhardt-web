@@ -305,7 +305,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 					// Owner-only controls (Edit / Delete / Add choice) are hidden for
 					// non-authors and unauthenticated viewers (issue #4703). Any
 					// non-`Success(Some(u))` shape leaves `is_author` as `false`.
-					let is_author = matches!(load_current_user.get(), ResourceState::Success(Some(ref u))if u.id == q.author_id);
+					let is_author = matches!(load_current_user.get(), ResourceState::Success(Some(ref u))if u.id == q.author.id);
 					// Render the voting form only when the question has choices;
 					// otherwise show an empty-state prompt (reinhardt-web#4686).
 					let choices_view = if choices.is_empty() {
@@ -434,7 +434,7 @@ pub fn polls_results(question_id: i64) -> Page {
 				ResourceState::Success((q, choices, total)) => {
 					// Owner-only controls (Edit / Delete) are hidden for non-authors
 					// and unauthenticated viewers (issue #4703).
-					let is_author = matches!(load_current_user.get(), ResourceState::Success(Some(ref u))if u.id == q.author_id);
+					let is_author = matches!(load_current_user.get(), ResourceState::Success(Some(ref u))if u.id == q.author.id);
 					page!(|q: QuestionInfo, choices: Vec<ChoiceInfo>, total: i32, is_author: bool, question_id: i64| {
 						div {
 							class: "max-w-4xl mx-auto px-4 mt-12",
