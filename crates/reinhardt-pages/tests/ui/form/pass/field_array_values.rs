@@ -32,12 +32,27 @@ fn main() {
 		let _quantity: i64 = item.quantity;
 	});
 	let line_item_signals = invoice.line_items().get();
-	assert!(line_item_signals.is_empty());
-	let _signal_item_fields = line_item_signals.first().map(|item| {
+	let _line_item_signals: Vec<_> = line_item_signals;
+	let _signal_item_fields = _line_item_signals.first().map(|item| {
 		let _key = item.key();
 		let _index: usize = item.index();
 		let _description: &String = &item.value().description;
 		let _quantity: i64 = item.value().quantity;
 	});
 	let _collection = invoice.line_items_collection();
+
+	let addresses = form! {
+		name: Addresses,
+		action: "/addresses",
+		fields: {
+			addresses: FieldArray {
+				fields: {
+					street: CharField {}
+				}
+			}
+		}
+	};
+	let _addresses_runtime = use_form(&addresses).build();
+	let _address_item = addresses.new_addresses_item();
+	let _addresses_collection = addresses.addresses_collection();
 }

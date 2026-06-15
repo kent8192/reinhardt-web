@@ -8,6 +8,87 @@ use reinhardt_pages::{
 	UseFormSubmitOutcome, form, use_form,
 };
 
+fn first_tag_html(html: &str, tag: &str) -> String {
+	let start = format!("<{tag}");
+	let start_index = html
+		.find(&start)
+		.expect("tag should exist in rendered HTML");
+	let tag_html = &html[start_index..];
+	let end_index = tag_html
+		.find('>')
+		.expect("tag should close in rendered HTML");
+	tag_html[..=end_index].to_string()
+}
+
+fn first_element_html(html: &str, tag: &str) -> String {
+	let start = format!("<{tag}");
+	let end = format!("</{tag}>");
+	let start_index = html
+		.find(&start)
+		.expect("element should exist in rendered HTML");
+	let element_html = &html[start_index..];
+	let end_index = element_html
+		.find(&end)
+		.expect("element should close in rendered HTML")
+		+ end.len();
+	element_html[..end_index].to_string()
+}
+
+fn attr_values(html: &str, attr: &str) -> Vec<String> {
+	let pattern = format!("{attr}=\"");
+	let mut values = Vec::new();
+	let mut rest = html;
+	while let Some((_, after_pattern)) = rest.split_once(&pattern) {
+		let (value, after_value) = after_pattern
+			.split_once('"')
+			.expect("attribute value should close in rendered HTML");
+		values.push(value.to_string());
+		rest = after_value;
+	}
+	values
+}
+
+fn input_tags(html: &str) -> Vec<String> {
+	let mut tags = Vec::new();
+	let mut rest = html;
+	while let Some(start_index) = rest.find("<input") {
+		let after_start = &rest[start_index..];
+		let end_index = after_start
+			.find('>')
+			.expect("input tag should close in rendered HTML");
+		tags.push(after_start[..=end_index].to_string());
+		rest = &after_start[end_index + 1..];
+	}
+	tags
+}
+
+fn attr_value(tag: &str, attr: &str) -> Option<String> {
+	let pattern = format!("{attr}=\"");
+	let (_, after_pattern) = tag.split_once(&pattern)?;
+	let (value, _) = after_pattern.split_once('"')?;
+	Some(value.to_string())
+}
+
+fn input_attr_values_for_name_prefix(html: &str, prefix: &str, attr: &str) -> Vec<String> {
+	input_tags(html)
+		.into_iter()
+		.filter(|tag| {
+			attr_value(tag, "name")
+				.as_deref()
+				.is_some_and(|name| name.starts_with(prefix))
+		})
+		.map(|tag| {
+			attr_value(&tag, attr).unwrap_or_else(|| {
+				panic!("input tag with matching name should have {attr} attribute")
+			})
+		})
+		.collect()
+}
+
+fn string_values(values: &[&str]) -> Vec<String> {
+	values.iter().map(|value| (*value).to_string()).collect()
+}
+
 #[test]
 fn use_form_builds_runtime_from_generated_form_contract() {
 	let profile = form! {
@@ -410,26 +491,92 @@ fn field_array_renders_runtime_items_with_deterministic_names() {
 	let second_key = runtime.push_item(collection, second);
 	let html = invoice.clone().into_page().render_to_string();
 
-	assert!(html.contains(r#"<fieldset class="invoice-lines""#));
-	assert!(html.contains(r#"data-reinhardt-field-array="line_items""#));
-	assert!(html.contains(r#"data-reinhardt-min-items="1""#));
-	assert!(html.contains(r#"data-reinhardt-max-items="3""#));
-	assert!(html.contains(r#"<legend class="reinhardt-field-array-label">Line items</legend>"#));
-	assert!(html.contains(&format!(r#"data-reinhardt-item-key="{first_key:?}""#)));
-	assert!(html.contains(&format!(r#"data-reinhardt-item-key="{second_key:?}""#)));
-	assert!(html.contains(r#"name="line_items[0][description]""#));
-	assert!(html.contains(r#"id="line_items_0_description""#));
-	assert!(html.contains(r#"value="Keyboard""#));
-	assert!(html.contains(r#"name="line_items[1][quantity]""#));
-	assert!(html.contains(r#"id="line_items_1_quantity""#));
-	assert!(html.contains(r#"value="1""#));
+	assert_eq!(
+		first_tag_html(&html, "fieldset"),
+		r#"<fieldset class="invoice-lines" data-reinhardt-field-array="line_items" data-reinhardt-min-items="1" data-reinhardt-max-items="3">"#
+	);
+	assert_eq!(
+		first_element_html(&html, "legend"),
+		r#"<legend class="reinhardt-field-array-label">Line items</legend>"#
+	);
+	assert_eq!(
+		attr_values(&html, "data-reinhardt-item-key"),
+		vec![format!("{first_key:?}"), format!("{second_key:?}"),]
+	);
+	assert_eq!(
+		input_attr_values_for_name_prefix(&html, "line_items[", "name"),
+		string_values(&[
+			"line_items[0][description]",
+			"line_items[0][quantity]",
+			"line_items[1][description]",
+			"line_items[1][quantity]",
+		])
+	);
+	assert_eq!(
+		input_attr_values_for_name_prefix(&html, "line_items[", "id"),
+		string_values(&[
+			"line_items_0_description",
+			"line_items_0_quantity",
+			"line_items_1_description",
+			"line_items_1_quantity",
+		])
+	);
+	assert_eq!(
+		input_attr_values_for_name_prefix(&html, "line_items[", "value"),
+		string_values(&["Keyboard", "2", "Mouse", "1"])
+	);
 
 	assert_eq!(runtime.move_item(collection, second_key, 0), Some((1, 0)));
 	let moved_html = invoice.into_page().render_to_string();
-	assert!(moved_html.contains(r#"name="line_items[0][description]""#));
-	assert!(moved_html.contains(r#"value="Mouse""#));
-	assert!(moved_html.contains(r#"name="line_items[1][description]""#));
-	assert!(moved_html.contains(r#"value="Keyboard""#));
+	assert_eq!(
+		input_attr_values_for_name_prefix(&moved_html, "line_items[", "name"),
+		string_values(&[
+			"line_items[0][description]",
+			"line_items[0][quantity]",
+			"line_items[1][description]",
+			"line_items[1][quantity]",
+		])
+	);
+	assert_eq!(
+		input_attr_values_for_name_prefix(&moved_html, "line_items[", "value"),
+		string_values(&["Mouse", "1", "Keyboard", "2"])
+	);
+}
+
+#[test]
+fn field_array_renders_datetime_local_values() {
+	let schedule = form! {
+		name: ScheduleForm,
+		action: "/schedule",
+		fields: {
+			slots: FieldArray {
+				fields: {
+					starts_at: DateTimeField {}
+				}
+			}
+		}
+	};
+	let runtime = use_form(&schedule).build();
+	let collection = schedule.slots_collection();
+	let mut slot = schedule.new_slots_item();
+	slot.starts_at = Some(
+		chrono::NaiveDate::from_ymd_opt(2026, 6, 16)
+			.expect("valid date")
+			.and_hms_opt(8, 30, 45)
+			.expect("valid time"),
+	);
+
+	runtime.push_item(collection, slot);
+	let html = schedule.into_page().render_to_string();
+
+	assert_eq!(
+		input_attr_values_for_name_prefix(&html, "slots[", "type"),
+		string_values(&["datetime-local"])
+	);
+	assert_eq!(
+		input_attr_values_for_name_prefix(&html, "slots[", "value"),
+		string_values(&["2026-06-16T08:30:45"])
+	);
 }
 
 #[test]

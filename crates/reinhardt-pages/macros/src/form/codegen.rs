@@ -85,9 +85,13 @@ fn collect_collections(entries: &[TypedFormFieldEntry]) -> Vec<&TypedFormFieldCo
 		.collect()
 }
 
-fn collection_item_values_ident(collection_name: &syn::Ident) -> syn::Ident {
+fn collection_item_values_ident(
+	form_name: &syn::Ident,
+	collection_name: &syn::Ident,
+) -> syn::Ident {
 	format_ident!(
-		"{}ItemValues",
+		"{}{}ItemValues",
+		upper_camel_ident_fragment(form_name),
 		upper_camel_ident_fragment(collection_name),
 		span = collection_name.span()
 	)
@@ -235,7 +239,7 @@ fn generate_form_runtime_contract(
 	let collection_item_value_structs: Vec<TokenStream> = collections
 		.iter()
 		.map(|collection| {
-			let ident = collection_item_values_ident(&collection.name);
+			let ident = collection_item_values_ident(&macro_ast.name, &collection.name);
 			let item_fields = collect_scalar_fields(&collection.fields);
 			let fields: Vec<TokenStream> = item_fields
 				.iter()
@@ -280,7 +284,7 @@ fn generate_form_runtime_contract(
 		.collect();
 	value_fields.extend(collections.iter().map(|collection| {
 		let name = &collection.name;
-		let item_values_ident = collection_item_values_ident(&collection.name);
+		let item_values_ident = collection_item_values_ident(&macro_ast.name, &collection.name);
 		quote! { pub #name: ::std::vec::Vec<#item_values_ident>, }
 	}));
 
@@ -382,7 +386,8 @@ fn generate_form_runtime_contract(
 		.iter()
 		.map(|collection| {
 			format_ident!(
-				"{}Field",
+				"{}{}Field",
+				upper_camel_ident_fragment(&macro_ast.name),
 				upper_camel_ident_fragment(&collection.name),
 				span = collection.name.span()
 			)
@@ -764,7 +769,7 @@ fn generate_form_runtime_contract(
 			.zip(collection_variants.iter())
 			.map(|(collection, variant)| {
 				let name = &collection.name;
-				let item_ident = collection_item_values_ident(&collection.name);
+				let item_ident = collection_item_values_ident(&macro_ast.name, &collection.name);
 				let collection_name = name.to_string();
 				quote! {
 					#collection_ident::#variant => {
@@ -1715,7 +1720,7 @@ pub(super) fn generate(
 	});
 
 	// Generate field declarations
-	let field_decls = generate_field_declarations(&macro_ast.fields, pages_crate);
+	let field_decls = generate_field_declarations(&macro_ast.name, &macro_ast.fields, pages_crate);
 
 	// Generate state field declarations
 	let state_decls = generate_state_declarations(&effective_state, pages_crate);
@@ -1731,7 +1736,7 @@ pub(super) fn generate(
 	let state_inits = generate_state_initializers(&effective_state, pages_crate);
 
 	// Generate field accessor methods
-	let field_accessors = generate_field_accessors(&macro_ast.fields, pages_crate);
+	let field_accessors = generate_field_accessors(&macro_ast.name, &macro_ast.fields, pages_crate);
 
 	// Generate state accessor methods
 	let state_accessors = generate_state_accessors(&effective_state, pages_crate);
@@ -1911,6 +1916,7 @@ pub(super) fn generate(
 
 /// Generates field declarations for the form struct.
 fn generate_field_declarations(
+	form_name: &syn::Ident,
 	entries: &[TypedFormFieldEntry],
 	pages_crate: &TokenStream,
 ) -> TokenStream {
@@ -1929,7 +1935,7 @@ fn generate_field_declarations(
 
 	decls.extend(collections.iter().map(|collection| {
 		let name = &collection.name;
-		let item_ident = collection_item_values_ident(&collection.name);
+		let item_ident = collection_item_values_ident(form_name, &collection.name);
 		quote! {
 			#name: #pages_crate::reactive::Signal<::std::vec::Vec<#pages_crate::CollectionItem<#item_ident>>>,
 		}
@@ -2059,6 +2065,7 @@ fn generate_initial_outer_setup(
 
 /// Generates field accessor methods.
 fn generate_field_accessors(
+	form_name: &syn::Ident,
 	entries: &[TypedFormFieldEntry],
 	pages_crate: &TokenStream,
 ) -> TokenStream {
@@ -2079,7 +2086,7 @@ fn generate_field_accessors(
 
 	for collection in collections {
 		let name = &collection.name;
-		let item_ident = collection_item_values_ident(&collection.name);
+		let item_ident = collection_item_values_ident(form_name, &collection.name);
 		let new_item_method = format_ident!("new_{}_item", name);
 		accessors.push(quote! {
 				pub fn #name(&self) -> &#pages_crate::reactive::Signal<::std::vec::Vec<#pages_crate::CollectionItem<#item_ident>>> {
@@ -3305,7 +3312,9 @@ fn generate_collection_view(
 	quote! {
 		{
 			let __collection_signal = self.#collection_name.clone();
+			let __path_signals = self.__path_signals.clone();
 			#pages_crate::component::Page::reactive(move || {
+				let _ = &__path_signals;
 				let __items = __collection_signal.get();
 				let mut __item_pages = ::std::vec::Vec::new();
 				for item in __items {
@@ -3357,7 +3366,7 @@ fn generate_collection_field_view(
 	let label_class = field.styling.label_class();
 	let input_class = field.styling.input_class();
 	let custom_attrs = generate_custom_attrs(&field.custom_attrs);
-	let listener = generate_collection_bind_listener(field, pages_crate);
+	let listener = generate_collection_bind_listener(field, pages_crate, collection_name);
 	let field_value = collection_field_value_expr(field);
 	let value_attr = if matches!(
 		field.field_type,
@@ -3506,13 +3515,19 @@ fn collection_field_value_expr(field: &TypedFormFieldDef) -> TokenStream {
 		| TypedFieldType::SlugField => quote! { item_value.#field_name.clone() },
 		TypedFieldType::DateField
 		| TypedFieldType::TimeField
-		| TypedFieldType::DateTimeField
 		| TypedFieldType::UuidField
 		| TypedFieldType::IpAddressField => quote! {
 			item_value
 				.#field_name
 				.as_ref()
 				.map(::std::string::ToString::to_string)
+				.unwrap_or_default()
+		},
+		TypedFieldType::DateTimeField => quote! {
+			item_value
+				.#field_name
+				.as_ref()
+				.map(|value| value.format("%Y-%m-%dT%H:%M:%S").to_string())
 				.unwrap_or_default()
 		},
 		TypedFieldType::MultipleChoiceField { .. } => quote! {
@@ -3551,8 +3566,12 @@ fn collection_field_checked_expr(field: &TypedFormFieldDef) -> TokenStream {
 fn generate_collection_bind_listener(
 	field: &TypedFormFieldDef,
 	pages_crate: &TokenStream,
+	collection_name: &str,
 ) -> TokenStream {
 	let field_name = &field.name;
+	let field_name_str = field.name.to_string();
+	let field_type = field_type_to_value_type(&field.field_type);
+	let collection_name_str = collection_name.to_string();
 	let event_name = match field.widget {
 		TypedWidget::Textarea => "input",
 		TypedWidget::Select | TypedWidget::SelectMultiple => "change",
@@ -3576,6 +3595,7 @@ fn generate_collection_bind_listener(
 		{
 			let __item_index = __items[__position].index();
 			let mut __item_value = __items[__position].value().clone();
+			let __path_value = __new_value.clone();
 			__item_value.#field_name = __new_value;
 			__items[__position] = #pages_crate::CollectionItem::new(
 				__item_key,
@@ -3583,6 +3603,23 @@ fn generate_collection_bind_listener(
 				__item_value,
 			);
 			__field_collection_signal.set(__items);
+			let __path_key = ::std::format!(
+				"{}:{:?}:{}",
+				#collection_name_str,
+				__item_key,
+				#field_name_str,
+			);
+			let __path_signal = __field_path_signals
+				.borrow()
+				.get(&__path_key)
+				.and_then(|signal| {
+					signal
+						.downcast_ref::<#pages_crate::reactive::Signal<#field_type>>()
+						.cloned()
+				});
+			if let ::core::option::Option::Some(__path_signal) = __path_signal {
+				__path_signal.set(__path_value);
+			}
 		}
 	};
 	let wasm_update =
@@ -3591,6 +3628,7 @@ fn generate_collection_bind_listener(
 	quote! {
 		.listener(#event_name, {
 			let __field_collection_signal = __collection_signal.clone();
+			let __field_path_signals = __path_signals.clone();
 			let __item_key = item.key();
 			move |event| {
 				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
@@ -3608,6 +3646,7 @@ fn generate_collection_bind_listener(
 				{
 					let _ = event;
 					let _ = &__field_collection_signal;
+					let _ = &__field_path_signals;
 					let _ = __item_key;
 				}
 			}
@@ -3662,11 +3701,7 @@ fn collection_field_wasm_update(
 		TypedFieldType::TimeField => {
 			collection_option_parse_update(element_var, quote! { chrono::NaiveTime }, assignment)
 		}
-		TypedFieldType::DateTimeField => collection_option_parse_update(
-			element_var,
-			quote! { chrono::NaiveDateTime },
-			assignment,
-		),
+		TypedFieldType::DateTimeField => collection_datetime_parse_update(element_var, assignment),
 		TypedFieldType::UuidField => {
 			collection_option_parse_update(element_var, quote! { uuid::Uuid }, assignment)
 		}
@@ -3721,6 +3756,25 @@ fn collection_option_parse_update(
 			#assignment
 		} else if let ::core::result::Result::Ok(__parsed) =
 			__raw.parse::<#value_type>()
+		{
+			let __new_value = ::core::option::Option::Some(__parsed);
+			#assignment
+		}
+	}
+}
+
+fn collection_datetime_parse_update(
+	element_var: &syn::Ident,
+	assignment: TokenStream,
+) -> TokenStream {
+	quote! {
+		let __raw = #element_var.value();
+		if __raw.is_empty() {
+			let __new_value = ::core::option::Option::None;
+			#assignment
+		} else if let ::core::result::Result::Ok(__parsed) =
+			chrono::NaiveDateTime::parse_from_str(&__raw, "%Y-%m-%dT%H:%M:%S")
+				.or_else(|_| chrono::NaiveDateTime::parse_from_str(&__raw, "%Y-%m-%dT%H:%M"))
 		{
 			let __new_value = ::core::option::Option::Some(__parsed);
 			#assignment
@@ -4228,7 +4282,10 @@ fn generate_value_conversion(
 				let raw = #element_var.value();
 				if raw.is_empty() {
 					signal.set(::core::option::Option::None);
-				} else if let Ok(v) = raw.parse::<chrono::NaiveDateTime>() {
+				} else if let Ok(v) =
+					chrono::NaiveDateTime::parse_from_str(&raw, "%Y-%m-%dT%H:%M:%S")
+						.or_else(|_| chrono::NaiveDateTime::parse_from_str(&raw, "%Y-%m-%dT%H:%M"))
+				{
 					signal.set(::core::option::Option::Some(v));
 				}
 			}

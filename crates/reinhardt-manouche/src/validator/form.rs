@@ -3274,12 +3274,11 @@ mod tests {
 		let result = parse_and_validate(input);
 
 		// Assert
-		assert!(result.is_err());
-		assert!(
+		assert_eq!(
 			result
-				.unwrap_err()
-				.to_string()
-				.contains("min_items cannot be greater than max_items")
+				.expect_err("invalid FieldArray item bounds should fail validation")
+				.to_string(),
+			"min_items cannot be greater than max_items"
 		);
 	}
 
@@ -3304,12 +3303,11 @@ mod tests {
 		let result = parse_and_validate(input);
 
 		// Assert
-		assert!(result.is_err());
-		assert!(
+		assert_eq!(
 			result
-				.unwrap_err()
-				.to_string()
-				.contains("duplicate field name: 'description'")
+				.expect_err("duplicate FieldArray item fields should fail validation")
+				.to_string(),
+			"duplicate field name: 'description' (in collection 'line_items')"
 		);
 	}
 
@@ -3338,12 +3336,11 @@ mod tests {
 		let result = parse_and_validate(input);
 
 		// Assert
-		assert!(result.is_err());
-		assert!(
+		assert_eq!(
 			result
-				.unwrap_err()
-				.to_string()
-				.contains("duplicate field name: 'prompt'")
+				.expect_err("duplicate nested FieldArray item fields should fail validation")
+				.to_string(),
+			"duplicate field name: 'prompt' (in collection 'questions')"
 		);
 	}
 
@@ -3371,12 +3368,11 @@ mod tests {
 		let result = parse_and_validate(input);
 
 		// Assert
-		assert!(result.is_err());
-		assert!(
+		assert_eq!(
 			result
-				.unwrap_err()
-				.to_string()
-				.contains("ambient_arguments key 'line_items' collides with a declared form field")
+				.expect_err("ambient argument colliding with FieldArray should fail validation")
+				.to_string(),
+			"ambient_arguments key 'line_items' collides with a declared form field; either rename the field or remove this ambient entry"
 		);
 	}
 
@@ -3406,12 +3402,11 @@ mod tests {
 		let result = parse_and_validate(input);
 
 		// Assert
-		assert!(result.is_err());
-		assert!(
+		assert_eq!(
 			result
-				.unwrap_err()
-				.to_string()
-				.contains("validator references unknown field: 'line_items'")
+				.expect_err("collection-level validator target should fail validation")
+				.to_string(),
+			"validator references unknown field: 'line_items'"
 		);
 	}
 
