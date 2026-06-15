@@ -59,6 +59,8 @@ struct ModelAttributesParsed {
 	/// Whether to generate Info companion struct (Issue #4194).
 	/// `None` means not specified (defaults to `true` in `ModelConfig`).
 	info: Option<bool>,
+	/// Whether this model is only available on the native/server side.
+	server_only: bool,
 	/// Whether the original model has `#[derive(serde::Serialize)]`.
 	/// Passed from the attribute macro since derive macros cannot see `#[derive()]`.
 	serde_serialize: bool,
@@ -143,6 +145,8 @@ struct ModelConfig {
 	/// Whether to generate an `{Model}Info` companion struct (Issue #4194).
 	/// Defaults to `true`. Set `#[model(info = false)]` to opt out.
 	info: bool,
+	/// Whether this model should skip shared data/info output.
+	server_only: bool,
 	/// Whether the original model derives `serde::Serialize`.
 	serde_serialize: bool,
 	/// Whether the original model derives `serde::Deserialize`.
@@ -157,6 +161,7 @@ impl ModelConfig {
 		let mut constraints = Vec::new();
 		let mut manager: Option<syn::Path> = None;
 		let mut info: Option<bool> = None;
+		let mut server_only = false;
 		let mut serde_serialize = false;
 		let mut serde_deserialize = false;
 
@@ -204,6 +209,9 @@ impl ModelConfig {
 			if let Some(i) = model_attr.info {
 				info = Some(i);
 			}
+			if model_attr.server_only {
+				server_only = true;
+			}
 			if model_attr.serde_serialize {
 				serde_serialize = true;
 			}
@@ -225,6 +233,7 @@ impl ModelConfig {
 			constraints,
 			manager,
 			info: info.unwrap_or(true),
+			server_only,
 			serde_serialize,
 			serde_deserialize,
 		})
@@ -240,6 +249,7 @@ impl ModelConfig {
 		let mut unique_together = Vec::new();
 		let mut manager: Option<syn::Path> = None;
 		let mut info: Option<bool> = None;
+		let mut server_only = false;
 		let mut serde_serialize = false;
 		let mut serde_deserialize = false;
 
@@ -257,6 +267,14 @@ impl ModelConfig {
 				continue;
 			} else if ident == "serde_deserialize" {
 				serde_deserialize = true;
+				if input.peek(Token![,]) {
+					input.parse::<Token![,]>()?;
+				} else {
+					break;
+				}
+				continue;
+			} else if ident == "server_only" {
+				server_only = true;
 				if input.peek(Token![,]) {
 					input.parse::<Token![,]>()?;
 				} else {
@@ -326,6 +344,7 @@ impl ModelConfig {
 			unique_together,
 			manager,
 			info,
+			server_only,
 			serde_serialize,
 			serde_deserialize,
 		})
@@ -2198,18 +2217,26 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		}
 	};
 
-	// Conditionally generate Info companion struct (Issue #4194)
-	let info_struct = if model_config.info {
-		generate_info_struct(
-			struct_name,
-			generics,
-			&field_infos,
-			&fk_field_infos,
-			model_config.serde_serialize,
-			model_config.serde_deserialize,
-		)?
-	} else {
+	let shared_info_output = if model_config.server_only {
 		quote! {}
+	} else {
+		// Conditionally generate Info companion struct (Issue #4194)
+		let info_struct = if model_config.info {
+			generate_info_struct(
+				struct_name,
+				generics,
+				&field_infos,
+				&fk_field_infos,
+				model_config.serde_serialize,
+				model_config.serde_deserialize,
+			)?
+		} else {
+			quote! {}
+		};
+		quote! {
+			#info_model_impl
+			#info_struct
+		}
 	};
 
 	// Determine the `type Objects` associated type for the Model impl.
@@ -2226,7 +2253,7 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			// Generate composite PK type definition if needed
 			#composite_pk_type_def
 
-			#info_model_impl
+			#shared_info_output
 
 			// Generate new() as a zero-arg alias of build()
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -2338,9 +2365,6 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 			// Generate field selector struct for type-safe JOIN/GROUP BY/HAVING operations
 			#field_selector_struct
-
-		// Generate Info companion struct (Issue #4194)
-		#info_struct
 	};
 
 	Ok(expanded)
