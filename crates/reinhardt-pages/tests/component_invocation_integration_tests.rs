@@ -23,12 +23,8 @@ struct CardProps {
 fn card(props: CardProps) -> Page {
 	page!(|p: CardProps| {
 		article {
-			h2 { {
-				p.item.clone()
-			} }
-			{
-				p.children.clone().unwrap_or_else(Page::empty)
-			}
+			h2 { { p.item.clone() } }
+			{ p.children.clone().unwrap_or_else(Page::empty) }
 		}
 	})(props)
 }
@@ -113,9 +109,7 @@ fn nested_component_inside_for_loop() {
 	fn item_card(p: ItemCardProps) -> Page {
 		page!(|p: ItemCardProps| {
 			article {
-				h2 { {
-					p.title.clone()
-				} }
+				h2 { { p.title.clone() } }
 			}
 		})(p)
 	}
@@ -145,9 +139,7 @@ fn component_macro_props_render_like_page_brace_invocation() {
 	#[component("/users/{id}/", "user-detail")]
 	fn user_page(Path(id): Path<i64>) -> Page {
 		page!(|id: i64| {
-			div { {
-				format!("user {id}")
-			} }
+			div { { format!("user {id}") } }
 		})(id)
 	}
 
