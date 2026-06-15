@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.2.0...reinhardt-urls@v0.3.0) - 2026-06-15
+
+### Added
+
+- *(urls)* [**breaking**] remove raw server route registration APIs
+- *(pages)* add route-backed component macros
+
+### Fixed
+
+- *(urls)* remove duplicate validate_routes doctest import
+- *(urls)* hide route opt-out sigil in introspection
+
+### Maintenance
+
+- merge develop/0.3.0 into component route macros
+
 ### Added
 
 - Added `ClientRouter::component(handler)` and component metadata traits for
