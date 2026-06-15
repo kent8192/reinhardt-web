@@ -43,7 +43,7 @@ React API names.
 | Server reference passing | Explicit non-goal. `#[server_fn]` generates typed client stubs but does not serialize server function references into client components. | #5311 |
 | Automatic metadata hoisting | Candidate follow-up. Current Reinhardt metadata is explicit through `head!` and `Head`. | #5312 |
 | React DOM asset APIs such as `preinit`, `preload`, `preconnect`, and `prefetchDNS` | Candidate follow-up for explicit `Head` / `LinkTag` helpers and deduplication decisions. | #5312 |
-| `createPortal` | Candidate follow-up. `ClientLauncher::ensure_portal` is a launcher helper, not a general portal API. | #5313 |
+| `createPortal` | Reinhardt-native explicit `Portal` / `mount_portal` API. `ClientLauncher::ensure_portal` remains only a launcher helper for idempotent body-level mounts. | #5313 |
 | Custom element property, attribute, and event interop | Candidate follow-up against `page!` attributes, typed events, and DOM abstraction. | #5314 |
 | `ref` as a regular prop | Candidate follow-up. Current guidance is `use_ref` and typed component props. | #5314 |
 | `Activity` and `ViewTransition` | Candidate follow-up. Existing `use_transition`, `use_deferred_value`, signals, and `SuspenseBoundary` are related but not equivalent. | #5315 |
@@ -405,6 +405,42 @@ fn app_router() -> ClientRouter {
         .not_found(|| page!(|| { h1 { "Not found" } })())
 }
 ```
+
+## Portals
+
+React `createPortal` renders children into another DOM node while keeping the
+component relationship in React's virtual tree. Reinhardt Pages uses an explicit
+portal mount API instead of treating `ClientLauncher::ensure_portal` as a
+general primitive.
+
+Use `Portal` or `mount_portal` when a `Page` should render into an existing DOM
+target such as a modal root or toast root:
+
+```rust,ignore
+use reinhardt::pages::prelude::*;
+
+fn open_dialog() -> Result<PortalHandle, PortalError> {
+    mount_portal(
+        PortalTarget::element_id("modal-root"),
+        page!(|| {
+            div {
+                role: "dialog",
+                "Dialog content"
+            }
+        })(),
+    )
+}
+```
+
+The returned `PortalHandle` owns the mounted host. Dropping it removes the
+portal host from the target, so callers should keep the handle in the same
+lifetime scope as the source view or effect that opened the portal.
+
+SSR is explicit: portal children are not duplicated into the source tree. Use
+`Portal::placeholder()` when the server output should include a deterministic
+`<template data-rh-portal="...">` marker. Hydration does not move server
+nodes across the document; WASM `mount_portal` mounts the `Page` into the target
+and attaches event handlers through the normal `PageExt::mount` path.
 
 ## SSR and hydration
 
