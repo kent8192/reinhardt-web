@@ -182,9 +182,10 @@ pub use crate::static_resolver::{init_static_resolver, is_initialized, resolve_s
 // ============================================================================
 
 pub use crate::form_state::{
-	FieldError, FieldState, FocusError, FormEvent, FormRuntimeSource, FormState, FormSubscription,
-	FormValidationError, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder, UseFormReturn,
-	UseFormSubmitOutcome, use_form,
+	CustomWidgetContext, CustomWidgetRawValue, FieldError, FieldState, FocusError, FormEvent,
+	FormRuntimeSource, FormState, FormSubscription, FormValidationError, FormWidgetAdapter,
+	FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder,
+	UseFormReturn, UseFormSubmitOutcome, use_form,
 };
 
 #[cfg(native)]

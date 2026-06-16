@@ -1,11 +1,69 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use reinhardt_pages::{
-	FieldError, FormEvent, ResetOnDeps, RevalidateOn, UseFormSubmitOutcome, form, use_form,
+	CustomWidgetContext, CustomWidgetRawValue, FieldError, FormEvent, FormWidgetAdapter,
+	FormWidgetError, FormWidgetValueKind, Page, ResetOnDeps, RevalidateOn, UseFormSubmitOutcome,
+	form, use_form,
 };
+
+thread_local! {
+	static LAST_CUSTOM_WIDGET_PROPS: RefCell<Option<DateRangeProps>> = const { RefCell::new(None) };
+}
+
+#[derive(Clone)]
+struct DateRangeProps {
+	value: String,
+	error: Option<FieldError>,
+	on_raw_change: Rc<dyn Fn(CustomWidgetRawValue) -> Result<(), FormWidgetError>>,
+}
+
+fn capturing_date_range_picker(props: DateRangeProps) -> Page {
+	LAST_CUSTOM_WIDGET_PROPS.with(|slot| {
+		*slot.borrow_mut() = Some(props);
+	});
+	Page::Fragment(Vec::new())
+}
+
+fn take_last_custom_widget_props() -> DateRangeProps {
+	LAST_CUSTOM_WIDGET_PROPS.with(|slot| {
+		slot.borrow_mut()
+			.take()
+			.expect("custom widget props should be captured")
+	})
+}
+
+struct DateRangeAdapter;
+
+impl FormWidgetAdapter<String> for DateRangeAdapter {
+	type ComponentProps = DateRangeProps;
+
+	fn value_kind() -> FormWidgetValueKind {
+		FormWidgetValueKind::Value
+	}
+
+	fn props(ctx: CustomWidgetContext<String>) -> Self::ComponentProps {
+		DateRangeProps {
+			value: ctx.value,
+			error: ctx.error,
+			on_raw_change: ctx.on_raw_change,
+		}
+	}
+
+	fn parse(raw: CustomWidgetRawValue) -> Result<String, FormWidgetError> {
+		match raw {
+			CustomWidgetRawValue::String(value) if value.contains("..") => Ok(value),
+			CustomWidgetRawValue::String(_) => Err(FormWidgetError::new("invalid date range")),
+			_ => Err(FormWidgetError::new("expected string value")),
+		}
+	}
+
+	fn format(value: &String) -> CustomWidgetRawValue {
+		CustomWidgetRawValue::String(value.clone())
+	}
+}
 
 #[test]
 fn use_form_builds_runtime_from_generated_form_contract() {
@@ -98,6 +156,227 @@ fn use_form_tracks_field_updates_errors_and_resets() {
 	runtime.reset();
 	assert_eq!(runtime.get_values().bio, "COBOL pioneer".to_string());
 	assert!(!runtime.form_state().is_dirty.get());
+}
+
+#[test]
+fn use_form_tracks_month_and_week_as_strings() {
+	let schedule = form! {
+		name: ScheduleForm,
+		action: "/schedule",
+		fields: {
+			billing_month: CharField {
+				widget: MonthInput,
+				initial: "2026-06".to_string(),
+			}
+			sprint_week: CharField {
+				widget: WeekInput,
+				initial: "2026-W24".to_string(),
+			}
+		}
+	};
+
+	let runtime = use_form(&schedule).build();
+	let billing_month = runtime.watch_field::<String>(schedule.billing_month_field());
+	let sprint_week = runtime.watch_field::<String>(schedule.sprint_week_field());
+
+	assert_eq!(runtime.get_values().billing_month, "2026-06".to_string());
+	assert_eq!(runtime.get_values().sprint_week, "2026-W24".to_string());
+	assert_eq!(billing_month.get(), "2026-06".to_string());
+	assert_eq!(sprint_week.get(), "2026-W24".to_string());
+	assert!(!runtime.form_state().is_dirty.get());
+	assert!(
+		!runtime
+			.get_field_state(schedule.billing_month_field())
+			.is_dirty
+	);
+	assert!(
+		!runtime
+			.get_field_state(schedule.sprint_week_field())
+			.is_dirty
+	);
+
+	runtime.set_value(schedule.billing_month_field(), "2026-07".to_string());
+
+	assert_eq!(runtime.get_values().billing_month, "2026-07".to_string());
+	assert!(runtime.form_state().is_dirty.get());
+	assert!(
+		runtime
+			.get_field_state(schedule.billing_month_field())
+			.is_dirty
+	);
+
+	runtime.reset();
+
+	assert_eq!(runtime.get_values().billing_month, "2026-06".to_string());
+	assert_eq!(runtime.get_values().sprint_week, "2026-W24".to_string());
+	assert!(!runtime.form_state().is_dirty.get());
+	assert!(
+		!runtime
+			.get_field_state(schedule.billing_month_field())
+			.is_dirty
+	);
+	assert!(
+		!runtime
+			.get_field_state(schedule.sprint_week_field())
+			.is_dirty
+	);
+}
+
+#[test]
+fn use_form_can_sync_after_native_reset() {
+	let profile = form! {
+		name: NativeResetForm,
+		action: "/profile",
+		fields: {
+			name: CharField {
+				initial: "before".to_string(),
+			}
+			reset: ResetButton {
+				label: "Reset",
+			}
+		}
+	};
+
+	let runtime = use_form(&profile).build();
+
+	runtime.set_value(profile.name_field(), "after".to_string());
+	runtime.set_error(profile.name_field(), FieldError::new("name is invalid"));
+
+	assert_eq!(runtime.get_values().name, "after".to_string());
+	assert!(runtime.form_state().is_dirty.get());
+	assert!(runtime.form_state().is_touched.get());
+	assert!(runtime.get_field_state(profile.name_field()).is_dirty);
+	assert!(runtime.get_field_state(profile.name_field()).is_touched);
+	assert_eq!(
+		runtime
+			.get_field_state(profile.name_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("name is invalid")
+	);
+
+	profile.name().set("before".to_string());
+	runtime.sync_after_native_reset();
+
+	assert_eq!(runtime.get_values().name, "before".to_string());
+	assert!(!runtime.form_state().is_dirty.get());
+	assert!(!runtime.form_state().is_touched.get());
+	assert!(!runtime.get_field_state(profile.name_field()).is_dirty);
+	assert!(!runtime.get_field_state(profile.name_field()).is_touched);
+	assert!(
+		runtime
+			.get_field_state(profile.name_field())
+			.error
+			.is_none()
+	);
+
+	profile.name().set("native value".to_string());
+	runtime.set_value(profile.name_field(), "runtime touched".to_string());
+	profile.name().set("native value".to_string());
+	runtime.set_error(profile.name_field(), FieldError::new("native error"));
+
+	assert_eq!(runtime.get_values().name, "native value".to_string());
+	assert!(runtime.form_state().is_dirty.get());
+	assert!(runtime.form_state().is_touched.get());
+	assert!(runtime.get_field_state(profile.name_field()).is_dirty);
+	assert!(runtime.get_field_state(profile.name_field()).is_touched);
+	assert_eq!(
+		runtime
+			.get_field_state(profile.name_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("native error")
+	);
+
+	runtime.sync_after_native_reset();
+	let name_state = runtime.get_field_state(profile.name_field());
+
+	assert_eq!(runtime.get_values().name, "native value".to_string());
+	assert!(runtime.form_state().is_dirty.get());
+	assert!(name_state.is_dirty);
+	assert_eq!(runtime.form_state().is_dirty.get(), name_state.is_dirty);
+	assert!(!runtime.form_state().is_touched.get());
+	assert!(!name_state.is_touched);
+	assert!(name_state.error.is_none());
+	assert!(runtime.form_state().error.get().is_none());
+}
+
+#[test]
+fn custom_widget_bridge_parse_error_sets_runtime_field_error() {
+	let booking = form! {
+		name: CustomWidgetRuntimeForm,
+		action: "/booking",
+		fields: {
+			date_range: CharField {
+				initial: "2026-06-01..2026-06-02".to_string(),
+				widget: CustomWidget(capturing_date_range_picker) {
+					experimental,
+					adapter: DateRangeAdapter,
+				},
+			}
+		}
+	};
+	let runtime = use_form(&booking).build();
+	let _page = booking.clone().into_page();
+	let props = take_last_custom_widget_props();
+
+	assert_eq!(props.value, "2026-06-01..2026-06-02");
+	assert!(props.error.is_none());
+
+	let invalid_result = (props.on_raw_change)(CustomWidgetRawValue::String("invalid".to_string()));
+
+	assert!(invalid_result.is_err());
+	assert_eq!(
+		invalid_result.err().as_ref().map(FormWidgetError::message),
+		Some("invalid date range")
+	);
+	assert_eq!(
+		runtime
+			.get_field_state(booking.date_range_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("invalid date range")
+	);
+	assert_eq!(
+		runtime.get_values().date_range,
+		"2026-06-01..2026-06-02".to_string()
+	);
+	assert!(runtime.trigger().is_err());
+	assert_eq!(
+		runtime.handle_submit(),
+		UseFormSubmitOutcome::ValidationFailed
+	);
+
+	let _page = booking.clone().into_page();
+	let props = take_last_custom_widget_props();
+	assert_eq!(
+		props.error.as_ref().map(FieldError::message),
+		Some("invalid date range")
+	);
+
+	let valid_result = (props.on_raw_change)(CustomWidgetRawValue::String(
+		"2026-06-03..2026-06-04".to_string(),
+	));
+
+	assert!(valid_result.is_ok());
+	assert_eq!(
+		runtime.get_values().date_range,
+		"2026-06-03..2026-06-04".to_string()
+	);
+	assert!(
+		runtime
+			.get_field_state(booking.date_range_field())
+			.error
+			.is_none()
+	);
+
+	let _page = booking.clone().into_page();
+	let props = take_last_custom_widget_props();
+	assert_eq!(props.value, "2026-06-03..2026-06-04");
+	assert!(props.error.is_none());
 }
 
 #[test]

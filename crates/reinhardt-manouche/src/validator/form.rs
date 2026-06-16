@@ -17,16 +17,20 @@ use std::collections::HashSet;
 use syn::{Error, Result};
 
 use crate::core::{
-	AmbientArgumentsSource, FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry,
-	FormFieldGroup, FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState,
-	FormSubmitButtonDef, FormValidator, FormWatch, IconAttr, IconChild, IconPosition,
-	StripArgument, TypedChoicesConfig, TypedCustomAttr, TypedDerivedItem, TypedFieldDisplay,
+	AmbientArgumentsSource, FormAction, FormCallbacks, FormChoiceItem, FormControlEntryDef,
+	FormControlEntryKind, FormCustomWidgetSpec, FormDatalistDef, FormDerived, FormFieldDef,
+	FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState,
+	FormSubmitButtonDef, FormValidator, FormWatch, FormWidgetSpec, IconAttr, IconChild,
+	IconPosition, StripArgument, TypedButtonControlDef, TypedButtonKind, TypedChoiceGroup,
+	TypedChoiceItem, TypedChoiceOption, TypedChoicesConfig, TypedCustomAttr, TypedCustomWidget,
+	TypedDatalistDef, TypedDerivedItem, TypedFieldDisplay, TypedFieldNativeAttrs,
 	TypedFieldStyling, TypedFieldType, TypedFieldValidation, TypedFormAction, TypedFormCallbacks,
 	TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro,
 	TypedFormSlots, TypedFormState, TypedFormStyling, TypedFormValidator, TypedFormWatch,
 	TypedFormWatchItem, TypedIcon, TypedIconAttr, TypedIconChild, TypedIconPosition,
-	TypedStripArgument, TypedSubmitButtonDef, TypedValidatorRule, TypedWidget, TypedWrapper,
-	TypedWrapperAttr, ValidatorRule,
+	TypedImageInputDef, TypedMeterDef, TypedOutputDef, TypedProgressDef, TypedStripArgument,
+	TypedSubmitButtonDef, TypedValidatorRule, TypedWidget, TypedWrapper, TypedWrapperAttr,
+	ValidatorRule,
 };
 
 /// Validates and transforms the FormMacro AST into a typed AST.
@@ -99,6 +103,7 @@ pub fn validate_form_with_ambient_arguments_source(
 
 	// Transform fields
 	let fields = transform_fields(&ast.fields)?;
+	validate_list_references(&fields)?;
 
 	// Transform unified validators (scope filtering happens at codegen)
 	let validators = transform_validators(&ast.validators, &ast.fields)?;
@@ -139,49 +144,149 @@ fn validate_unique_field_names(entries: &[FormFieldEntry]) -> Result<()> {
 	let mut seen = HashSet::new();
 
 	for entry in entries {
-		match entry {
-			FormFieldEntry::Field(field) => {
-				let name = field.name.to_string();
-				if !seen.insert(name.clone()) {
-					return Err(Error::new(
-						field.name.span(),
-						format!("duplicate field name: '{}'", name),
-					));
-				}
-			}
-			FormFieldEntry::Group(group) => {
-				// Check group name is unique
-				let group_name = group.name.to_string();
-				if !seen.insert(group_name.clone()) {
-					return Err(Error::new(
-						group.name.span(),
-						format!("duplicate field/group name: '{}'", group_name),
-					));
-				}
+		validate_unique_entry_name(entry, &mut seen, None)?;
+	}
 
-				// Check fields within the group
-				for field in &group.fields {
-					let name = field.name.to_string();
-					if !seen.insert(name.clone()) {
+	Ok(())
+}
+
+fn validate_unique_entry_name(
+	entry: &FormFieldEntry,
+	seen: &mut HashSet<String>,
+	group_name: Option<&str>,
+) -> Result<()> {
+	match entry {
+		FormFieldEntry::Field(field) => {
+			let name = field.name.to_string();
+			if !seen.insert(name.clone()) {
+				let message = if let Some(group_name) = group_name {
+					format!(
+						"duplicate field name: '{}' (in group '{}')",
+						name, group_name
+					)
+				} else {
+					format!("duplicate field name: '{}'", name)
+				};
+				return Err(Error::new(field.name.span(), message));
+			}
+		}
+		FormFieldEntry::Group(group) => {
+			let name = group.name.to_string();
+			if !seen.insert(name.clone()) {
+				return Err(Error::new(
+					group.name.span(),
+					format!("duplicate field/group name: '{}'", name),
+				));
+			}
+
+			for child in &group.fields {
+				validate_unique_entry_name(child, seen, Some(&name))?;
+			}
+		}
+		FormFieldEntry::SubmitButton(btn) => {
+			let name = btn.name.to_string();
+			if !seen.insert(name.clone()) {
+				return Err(Error::new(
+					btn.name.span(),
+					format!("duplicate field/button name: '{}'", name),
+				));
+			}
+		}
+		FormFieldEntry::ResetButton(control)
+		| FormFieldEntry::Button(control)
+		| FormFieldEntry::ImageInput(control)
+		| FormFieldEntry::Output(control)
+		| FormFieldEntry::Meter(control)
+		| FormFieldEntry::Progress(control) => {
+			let name = control.name.to_string();
+			if !seen.insert(name.clone()) {
+				let message = if let Some(group_name) = group_name {
+					format!(
+						"duplicate field/control name: '{}' (in group '{}')",
+						name, group_name
+					)
+				} else {
+					format!("duplicate field/control name: '{}'", name)
+				};
+				return Err(Error::new(control.name.span(), message));
+			}
+		}
+		FormFieldEntry::Datalist(datalist) => {
+			let name = datalist.name.to_string();
+			if !seen.insert(name.clone()) {
+				let message = if let Some(group_name) = group_name {
+					format!(
+						"duplicate field/datalist name: '{}' (in group '{}')",
+						name, group_name
+					)
+				} else {
+					format!("duplicate field/datalist name: '{}'", name)
+				};
+				return Err(Error::new(datalist.name.span(), message));
+			}
+		}
+	}
+
+	Ok(())
+}
+
+fn validate_list_references(entries: &[TypedFormFieldEntry]) -> Result<()> {
+	let mut datalist_names = HashSet::new();
+	collect_datalist_names(entries, &mut datalist_names);
+	validate_entry_list_references(entries, &datalist_names)
+}
+
+fn collect_datalist_names(entries: &[TypedFormFieldEntry], datalist_names: &mut HashSet<String>) {
+	for entry in entries {
+		match entry {
+			TypedFormFieldEntry::Group(group) => {
+				collect_datalist_names(&group.fields, datalist_names);
+			}
+			TypedFormFieldEntry::Datalist(datalist) => {
+				datalist_names.insert(datalist.name.to_string());
+			}
+			TypedFormFieldEntry::Field(_)
+			| TypedFormFieldEntry::SubmitButton(_)
+			| TypedFormFieldEntry::ResetButton(_)
+			| TypedFormFieldEntry::Button(_)
+			| TypedFormFieldEntry::ImageInput(_)
+			| TypedFormFieldEntry::Output(_)
+			| TypedFormFieldEntry::Meter(_)
+			| TypedFormFieldEntry::Progress(_) => {}
+		}
+	}
+}
+
+fn validate_entry_list_references(
+	entries: &[TypedFormFieldEntry],
+	datalist_names: &HashSet<String>,
+) -> Result<()> {
+	for entry in entries {
+		match entry {
+			TypedFormFieldEntry::Field(field) => {
+				if let Some(list) = &field.native_attrs.list {
+					let list_name = list.to_string();
+					if !datalist_names.contains(&list_name) {
 						return Err(Error::new(
-							field.name.span(),
+							list.span(),
 							format!(
-								"duplicate field name: '{}' (in group '{}')",
-								name, group_name
+								"list reference '{list_name}' must resolve to a Datalist entry",
 							),
 						));
 					}
 				}
 			}
-			FormFieldEntry::SubmitButton(btn) => {
-				let name = btn.name.to_string();
-				if !seen.insert(name.clone()) {
-					return Err(Error::new(
-						btn.name.span(),
-						format!("duplicate field/button name: '{}'", name),
-					));
-				}
+			TypedFormFieldEntry::Group(group) => {
+				validate_entry_list_references(&group.fields, datalist_names)?;
 			}
+			TypedFormFieldEntry::SubmitButton(_)
+			| TypedFormFieldEntry::ResetButton(_)
+			| TypedFormFieldEntry::Button(_)
+			| TypedFormFieldEntry::ImageInput(_)
+			| TypedFormFieldEntry::Output(_)
+			| TypedFormFieldEntry::Meter(_)
+			| TypedFormFieldEntry::Progress(_)
+			| TypedFormFieldEntry::Datalist(_) => {}
 		}
 	}
 
@@ -436,34 +541,70 @@ fn transform_slots(slots: &Option<FormSlots>) -> Result<Option<TypedFormSlots>> 
 
 /// Transforms all field entries (fields and field groups).
 fn transform_fields(entries: &[FormFieldEntry]) -> Result<Vec<TypedFormFieldEntry>> {
-	entries.iter().map(transform_field_entry).collect()
+	entries
+		.iter()
+		.map(|entry| transform_field_entry(entry, entries))
+		.collect()
 }
 
 /// Transforms a single field entry (either a field or a group).
-fn transform_field_entry(entry: &FormFieldEntry) -> Result<TypedFormFieldEntry> {
+fn transform_field_entry(
+	entry: &FormFieldEntry,
+	all_entries: &[FormFieldEntry],
+) -> Result<TypedFormFieldEntry> {
 	match entry {
 		FormFieldEntry::Field(field) => {
 			let typed_field = transform_field(field)?;
 			Ok(TypedFormFieldEntry::Field(Box::new(typed_field)))
 		}
 		FormFieldEntry::Group(group) => {
-			let typed_group = transform_field_group(group)?;
+			let typed_group = transform_field_group(group, all_entries)?;
 			Ok(TypedFormFieldEntry::Group(typed_group))
 		}
 		FormFieldEntry::SubmitButton(btn) => {
 			let typed_btn = transform_submit_button(btn)?;
 			Ok(TypedFormFieldEntry::SubmitButton(typed_btn))
 		}
+		FormFieldEntry::ResetButton(control) => {
+			let typed_control = transform_button_control(control)?;
+			Ok(TypedFormFieldEntry::ResetButton(typed_control))
+		}
+		FormFieldEntry::Button(control) => {
+			let typed_control = transform_button_control(control)?;
+			Ok(TypedFormFieldEntry::Button(typed_control))
+		}
+		FormFieldEntry::ImageInput(control) => {
+			let typed_control = transform_image_input(control)?;
+			Ok(TypedFormFieldEntry::ImageInput(typed_control))
+		}
+		FormFieldEntry::Output(control) => {
+			let typed_control = transform_output(control, all_entries)?;
+			Ok(TypedFormFieldEntry::Output(typed_control))
+		}
+		FormFieldEntry::Meter(control) => {
+			let typed_control = transform_meter(control)?;
+			Ok(TypedFormFieldEntry::Meter(Box::new(typed_control)))
+		}
+		FormFieldEntry::Progress(control) => {
+			let typed_control = transform_progress(control)?;
+			Ok(TypedFormFieldEntry::Progress(Box::new(typed_control)))
+		}
+		FormFieldEntry::Datalist(datalist) => {
+			let typed_datalist = transform_datalist(datalist)?;
+			Ok(TypedFormFieldEntry::Datalist(Box::new(typed_datalist)))
+		}
 	}
 }
 
 /// Transforms a field group into a typed field group.
-fn transform_field_group(group: &FormFieldGroup) -> Result<TypedFormFieldGroup> {
-	// Transform each field in the group
-	let typed_fields: Vec<TypedFormFieldDef> = group
+fn transform_field_group(
+	group: &FormFieldGroup,
+	all_entries: &[FormFieldEntry],
+) -> Result<TypedFormFieldGroup> {
+	let typed_fields: Vec<TypedFormFieldEntry> = group
 		.fields
 		.iter()
-		.map(transform_field)
+		.map(|entry| transform_field_entry(entry, all_entries))
 		.collect::<Result<_>>()?;
 
 	Ok(TypedFormFieldGroup {
@@ -571,6 +712,424 @@ fn transform_submit_button(btn: &FormSubmitButtonDef) -> Result<TypedSubmitButto
 	})
 }
 
+fn transform_button_control(control: &FormControlEntryDef) -> Result<TypedButtonControlDef> {
+	let kind_name = control_entry_kind_name(control.kind);
+	let mut label = None;
+	let mut class = None;
+	let mut id = None;
+	let mut disabled = false;
+
+	for prop in &control.properties {
+		match prop {
+			FormFieldProperty::Named { name, value, span } => {
+				let prop_name = name.to_string();
+				match prop_name.as_str() {
+					"label" => label = Some(expect_string_literal(value, *span, "label")?),
+					"class" => class = Some(expect_string_literal(value, *span, "class")?),
+					"id" => id = Some(expect_string_literal(value, *span, "id")?),
+					_ => {
+						return Err(Error::new(
+							*span,
+							format!("unknown {kind_name} property: '{prop_name}'"),
+						));
+					}
+				}
+			}
+			FormFieldProperty::Flag { name, span } => {
+				let prop_name = name.to_string();
+				match prop_name.as_str() {
+					"disabled" => disabled = true,
+					_ => {
+						return Err(Error::new(
+							*span,
+							format!("unknown {kind_name} flag: '{prop_name}'"),
+						));
+					}
+				}
+			}
+			_ => {
+				return Err(unknown_control_property_error(control.kind, prop));
+			}
+		}
+	}
+
+	let (kind, default_label) = match control.kind {
+		FormControlEntryKind::ResetButton => (TypedButtonKind::Reset, "Reset"),
+		FormControlEntryKind::Button => (TypedButtonKind::Button, "Button"),
+		_ => {
+			return Err(Error::new(
+				control.span,
+				format!("{kind_name} cannot be transformed as a button control"),
+			));
+		}
+	};
+
+	Ok(TypedButtonControlDef {
+		name: control.name.clone(),
+		kind,
+		label: label.unwrap_or_else(|| default_label.to_string()),
+		class,
+		id,
+		disabled,
+		span: control.span,
+	})
+}
+
+fn transform_image_input(control: &FormControlEntryDef) -> Result<TypedImageInputDef> {
+	let mut src = None;
+	let mut alt = None;
+	let mut class = None;
+	let mut id = None;
+	let mut disabled = false;
+	let mut width = None;
+	let mut height = None;
+
+	for prop in &control.properties {
+		match prop {
+			FormFieldProperty::Named { name, value, span } => {
+				let prop_name = name.to_string();
+				match prop_name.as_str() {
+					"src" => src = Some(expect_string_literal(value, *span, "src")?),
+					"alt" => alt = Some(expect_string_literal(value, *span, "alt")?),
+					"class" => class = Some(expect_string_literal(value, *span, "class")?),
+					"id" => id = Some(expect_string_literal(value, *span, "id")?),
+					"width" => {
+						width = Some(expect_positive_i64_literal(value, *span, "width")?);
+					}
+					"height" => {
+						height = Some(expect_positive_i64_literal(value, *span, "height")?);
+					}
+					_ => {
+						return Err(Error::new(
+							*span,
+							format!("unknown ImageInput property: '{prop_name}'"),
+						));
+					}
+				}
+			}
+			FormFieldProperty::Flag { name, span } => {
+				let prop_name = name.to_string();
+				match prop_name.as_str() {
+					"disabled" => disabled = true,
+					_ => {
+						return Err(Error::new(
+							*span,
+							format!("unknown ImageInput flag: '{prop_name}'"),
+						));
+					}
+				}
+			}
+			_ => return Err(unknown_control_property_error(control.kind, prop)),
+		}
+	}
+
+	Ok(TypedImageInputDef {
+		name: control.name.clone(),
+		src: src.ok_or_else(|| Error::new(control.span, "ImageInput requires src"))?,
+		alt: alt.ok_or_else(|| Error::new(control.span, "ImageInput requires alt"))?,
+		class,
+		id,
+		disabled,
+		width,
+		height,
+		span: control.span,
+	})
+}
+
+fn transform_output(
+	control: &FormControlEntryDef,
+	all_entries: &[FormFieldEntry],
+) -> Result<TypedOutputDef> {
+	let mut label = None;
+	let mut for_fields = Vec::new();
+	let mut class = None;
+	let mut id = None;
+
+	for prop in &control.properties {
+		match prop {
+			FormFieldProperty::Named { name, value, span } => {
+				let prop_name = name.to_string();
+				match prop_name.as_str() {
+					"label" => label = Some(expect_string_literal(value, *span, "label")?),
+					"for" => for_fields = expect_ident_array(value, *span, "for")?,
+					"class" => class = Some(expect_string_literal(value, *span, "class")?),
+					"id" => id = Some(expect_string_literal(value, *span, "id")?),
+					_ => {
+						return Err(Error::new(
+							*span,
+							format!("unknown Output property: '{prop_name}'"),
+						));
+					}
+				}
+			}
+			FormFieldProperty::Flag { name, span } => {
+				let prop_name = name.to_string();
+				return Err(Error::new(
+					*span,
+					format!("unknown Output flag: '{prop_name}'"),
+				));
+			}
+			_ => return Err(unknown_control_property_error(control.kind, prop)),
+		}
+	}
+
+	for field in &for_fields {
+		if !field_exists(all_entries, field) {
+			return Err(Error::new(
+				field.span(),
+				format!("Output for references unknown value field: '{}'", field),
+			));
+		}
+	}
+
+	Ok(TypedOutputDef {
+		name: control.name.clone(),
+		label,
+		for_fields,
+		class,
+		id,
+		span: control.span,
+	})
+}
+
+fn transform_meter(control: &FormControlEntryDef) -> Result<TypedMeterDef> {
+	let mut label = None;
+	let mut value = None;
+	let mut min = None;
+	let mut max = None;
+	let mut low = None;
+	let mut high = None;
+	let mut optimum = None;
+	let mut class = None;
+	let mut id = None;
+
+	for prop in &control.properties {
+		match prop {
+			FormFieldProperty::Named {
+				name,
+				value: expr,
+				span,
+			} => {
+				let prop_name = name.to_string();
+				match prop_name.as_str() {
+					"label" => label = Some(expect_string_literal(expr, *span, "label")?),
+					"value" => value = Some(expr.clone()),
+					"min" => min = Some(expr.clone()),
+					"max" => max = Some(expr.clone()),
+					"low" => low = Some(expr.clone()),
+					"high" => high = Some(expr.clone()),
+					"optimum" => optimum = Some(expr.clone()),
+					"class" => class = Some(expect_string_literal(expr, *span, "class")?),
+					"id" => id = Some(expect_string_literal(expr, *span, "id")?),
+					_ => {
+						return Err(Error::new(
+							*span,
+							format!("unknown Meter property: '{prop_name}'"),
+						));
+					}
+				}
+			}
+			FormFieldProperty::Flag { name, span } => {
+				let prop_name = name.to_string();
+				return Err(Error::new(
+					*span,
+					format!("unknown Meter flag: '{prop_name}'"),
+				));
+			}
+			_ => return Err(unknown_control_property_error(control.kind, prop)),
+		}
+	}
+
+	Ok(TypedMeterDef {
+		name: control.name.clone(),
+		label,
+		value: value.ok_or_else(|| Error::new(control.span, "Meter requires value"))?,
+		min,
+		max,
+		low,
+		high,
+		optimum,
+		class,
+		id,
+		span: control.span,
+	})
+}
+
+fn transform_progress(control: &FormControlEntryDef) -> Result<TypedProgressDef> {
+	let mut label = None;
+	let mut value = None;
+	let mut max = None;
+	let mut class = None;
+	let mut id = None;
+
+	for prop in &control.properties {
+		match prop {
+			FormFieldProperty::Named {
+				name,
+				value: expr,
+				span,
+			} => {
+				let prop_name = name.to_string();
+				match prop_name.as_str() {
+					"label" => label = Some(expect_string_literal(expr, *span, "label")?),
+					"value" => value = Some(expr.clone()),
+					"max" => max = Some(expr.clone()),
+					"class" => class = Some(expect_string_literal(expr, *span, "class")?),
+					"id" => id = Some(expect_string_literal(expr, *span, "id")?),
+					_ => {
+						return Err(Error::new(
+							*span,
+							format!("unknown Progress property: '{prop_name}'"),
+						));
+					}
+				}
+			}
+			FormFieldProperty::Flag { name, span } => {
+				let prop_name = name.to_string();
+				return Err(Error::new(
+					*span,
+					format!("unknown Progress flag: '{prop_name}'"),
+				));
+			}
+			_ => return Err(unknown_control_property_error(control.kind, prop)),
+		}
+	}
+
+	Ok(TypedProgressDef {
+		name: control.name.clone(),
+		label,
+		value,
+		max,
+		class,
+		id,
+		span: control.span,
+	})
+}
+
+fn transform_datalist(datalist: &FormDatalistDef) -> Result<TypedDatalistDef> {
+	validate_datalist_properties(datalist)?;
+
+	let static_choices = extract_static_choices(&datalist.properties)?;
+	let choices_config = extract_choices_config(&datalist.properties);
+
+	if !static_choices.is_empty() && choices_config.is_some() {
+		return Err(Error::new(
+			datalist.span,
+			"Datalist cannot specify both options and choices_from",
+		));
+	}
+
+	if static_choices.is_empty() && choices_config.is_none() {
+		return Err(Error::new(
+			datalist.span,
+			"Datalist requires either options or choices_from",
+		));
+	}
+
+	let static_choices = transform_static_choices(&static_choices, false, true)?;
+
+	Ok(TypedDatalistDef {
+		name: datalist.name.clone(),
+		static_choices,
+		choices_config,
+		span: datalist.span,
+	})
+}
+
+fn validate_datalist_properties(datalist: &FormDatalistDef) -> Result<()> {
+	for prop in &datalist.properties {
+		match prop {
+			FormFieldProperty::Choices { .. }
+			| FormFieldProperty::ChoicesFrom { .. }
+			| FormFieldProperty::ChoiceValue { .. }
+			| FormFieldProperty::ChoiceLabel { .. }
+			| FormFieldProperty::ChoiceDisabled { .. } => {}
+			FormFieldProperty::ChoiceGroup { .. }
+			| FormFieldProperty::ChoiceGroupDisabled { .. } => {
+				let prop_name = property_name(prop);
+				return Err(Error::new(
+					property_span(prop),
+					format!("Datalist does not support {prop_name}; datalist options must be flat",),
+				));
+			}
+			_ => {
+				let prop_name = property_name(prop);
+				return Err(Error::new(
+					property_span(prop),
+					format!("unknown Datalist property: '{prop_name}'"),
+				));
+			}
+		}
+	}
+
+	Ok(())
+}
+
+fn control_entry_kind_name(kind: FormControlEntryKind) -> &'static str {
+	match kind {
+		FormControlEntryKind::ResetButton => "ResetButton",
+		FormControlEntryKind::Button => "Button",
+		FormControlEntryKind::ImageInput => "ImageInput",
+		FormControlEntryKind::Output => "Output",
+		FormControlEntryKind::Meter => "Meter",
+		FormControlEntryKind::Progress => "Progress",
+	}
+}
+
+fn property_name(prop: &FormFieldProperty) -> String {
+	match prop {
+		FormFieldProperty::Named { name, .. } | FormFieldProperty::Flag { name, .. } => {
+			name.to_string()
+		}
+		FormFieldProperty::Widget { .. } => "widget".to_string(),
+		FormFieldProperty::Wrapper { .. } => "wrapper".to_string(),
+		FormFieldProperty::Icon { .. } => "icon".to_string(),
+		FormFieldProperty::IconPosition { .. } => "icon_position".to_string(),
+		FormFieldProperty::Attrs { .. } => "attrs".to_string(),
+		FormFieldProperty::Bind { .. } => "bind".to_string(),
+		FormFieldProperty::InitialFrom { .. } => "initial_from".to_string(),
+		FormFieldProperty::ChoicesFrom { .. } => "choices_from".to_string(),
+		FormFieldProperty::Choices { .. } => "choices".to_string(),
+		FormFieldProperty::ChoiceValue { .. } => "choice_value".to_string(),
+		FormFieldProperty::ChoiceLabel { .. } => "choice_label".to_string(),
+		FormFieldProperty::ChoiceDisabled { .. } => "choice_disabled".to_string(),
+		FormFieldProperty::ChoiceGroup { .. } => "choice_group".to_string(),
+		FormFieldProperty::ChoiceGroupDisabled { .. } => "choice_group_disabled".to_string(),
+	}
+}
+
+fn property_span(prop: &FormFieldProperty) -> Span {
+	match prop {
+		FormFieldProperty::Named { span, .. }
+		| FormFieldProperty::Flag { span, .. }
+		| FormFieldProperty::Widget { span, .. }
+		| FormFieldProperty::Wrapper { span, .. }
+		| FormFieldProperty::Icon { span, .. }
+		| FormFieldProperty::IconPosition { span, .. }
+		| FormFieldProperty::Attrs { span, .. }
+		| FormFieldProperty::Bind { span, .. }
+		| FormFieldProperty::InitialFrom { span, .. }
+		| FormFieldProperty::ChoicesFrom { span, .. }
+		| FormFieldProperty::Choices { span, .. }
+		| FormFieldProperty::ChoiceValue { span, .. }
+		| FormFieldProperty::ChoiceLabel { span, .. }
+		| FormFieldProperty::ChoiceDisabled { span, .. }
+		| FormFieldProperty::ChoiceGroup { span, .. }
+		| FormFieldProperty::ChoiceGroupDisabled { span, .. } => *span,
+	}
+}
+
+fn unknown_control_property_error(kind: FormControlEntryKind, prop: &FormFieldProperty) -> Error {
+	Error::new(
+		property_span(prop),
+		format!(
+			"unknown {} property: '{}'",
+			control_entry_kind_name(kind),
+			property_name(prop)
+		),
+	)
+}
+
 /// Transforms a single field definition.
 ///
 /// All property extraction errors are annotated with the field name for context.
@@ -595,6 +1154,9 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	let display = extract_display_properties(&field.properties).map_err(&annotate)?;
 	let styling = extract_styling_properties(&field.properties).map_err(&annotate)?;
 	let widget = extract_widget(&field.properties, &field_type).map_err(&annotate)?;
+	validate_widget_field_compatibility(&field_type, &widget, field.span).map_err(&annotate)?;
+	let native_attrs =
+		extract_native_attrs(&field.properties, &field_type, &widget).map_err(&annotate)?;
 	let wrapper = extract_wrapper(&field.properties).map_err(&annotate)?;
 	let icon = extract_icon(&field.properties).map_err(&annotate)?;
 	let custom_attrs = extract_custom_attrs(&field.properties).map_err(&annotate)?;
@@ -602,11 +1164,48 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	let initial_from = extract_initial_from(&field.properties);
 	let initial_expr = extract_initial_expr(&field.properties);
 	let choices_config = extract_choices_config(&field.properties);
+	let static_choices_source = extract_static_choices(&field.properties).map_err(&annotate)?;
+
+	validate_radio_select_choice_group_properties(&field.properties, &widget).map_err(&annotate)?;
+
+	if !static_choices_source.is_empty() && choices_config.is_some() {
+		return Err(annotate(Error::new(
+			field.span,
+			"field cannot specify both choices and choices_from",
+		)));
+	}
+
+	if choices_config.is_some() && !field_type_accepts_choices(&field_type) {
+		return Err(annotate(Error::new(
+			field.span,
+			"choices_from can only be used with ChoiceField or MultipleChoiceField",
+		)));
+	}
+
+	if !static_choices_source.is_empty() && !field_type_accepts_choices(&field_type) {
+		return Err(annotate(Error::new(
+			field.span,
+			"choices can only be used with ChoiceField or MultipleChoiceField",
+		)));
+	}
+
+	if !static_choices_source.is_empty()
+		&& !matches!(widget, TypedWidget::Select | TypedWidget::SelectMultiple)
+	{
+		return Err(annotate(Error::new(
+			field.span,
+			"choices require Select or SelectMultiple widget",
+		)));
+	}
+
+	let static_choices =
+		transform_static_choices(&static_choices_source, true, false).map_err(&annotate)?;
 
 	Ok(TypedFormFieldDef {
 		name: field.name.clone(),
 		field_type,
 		widget,
+		native_attrs,
 		validation,
 		display,
 		styling,
@@ -617,8 +1216,132 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 		initial_from,
 		initial_expr,
 		choices_config,
+		static_choices,
 		span: field.span,
 	})
+}
+
+fn field_type_accepts_choices(field_type: &TypedFieldType) -> bool {
+	matches!(
+		field_type,
+		TypedFieldType::ChoiceField { .. } | TypedFieldType::MultipleChoiceField { .. }
+	)
+}
+
+fn validate_radio_select_choice_group_properties(
+	properties: &[FormFieldProperty],
+	widget: &TypedWidget,
+) -> Result<()> {
+	if !matches!(widget, TypedWidget::RadioSelect) {
+		return Ok(());
+	}
+
+	for prop in properties {
+		match prop {
+			FormFieldProperty::ChoiceGroup { .. } => {
+				return Err(Error::new(
+					property_span(prop),
+					"choice_group is only supported on Select and SelectMultiple widgets",
+				));
+			}
+			FormFieldProperty::ChoiceGroupDisabled { .. } => {
+				return Err(Error::new(
+					property_span(prop),
+					"choice_group_disabled is only supported on Select and SelectMultiple widgets",
+				));
+			}
+			_ => {}
+		}
+	}
+
+	Ok(())
+}
+
+fn extract_static_choices(properties: &[FormFieldProperty]) -> Result<Vec<FormChoiceItem>> {
+	let mut choices = None;
+
+	for prop in properties {
+		if let FormFieldProperty::Choices {
+			choices: items,
+			span,
+		} = prop
+		{
+			if choices.is_some() {
+				return Err(Error::new(
+					*span,
+					"choices/options specified more than once",
+				));
+			}
+			choices = Some(items.clone());
+		}
+	}
+
+	Ok(choices.unwrap_or_default())
+}
+
+fn transform_static_choices(
+	choices: &[FormChoiceItem],
+	allow_groups: bool,
+	datalist: bool,
+) -> Result<Vec<TypedChoiceItem>> {
+	choices
+		.iter()
+		.map(|choice| transform_static_choice_item(choice, allow_groups, datalist))
+		.collect()
+}
+
+fn transform_static_choice_item(
+	choice: &FormChoiceItem,
+	allow_groups: bool,
+	datalist: bool,
+) -> Result<TypedChoiceItem> {
+	match choice {
+		FormChoiceItem::Option(option) => Ok(TypedChoiceItem::Option(Box::new(
+			transform_static_choice_option(option),
+		))),
+		FormChoiceItem::Group(group) => {
+			if datalist {
+				return Err(Error::new(
+					group.span,
+					"Datalist options cannot contain OptGroup",
+				));
+			}
+			if !allow_groups {
+				return Err(Error::new(
+					group.span,
+					"OptGroup is only supported by Select and SelectMultiple widgets",
+				));
+			}
+
+			let mut options = Vec::with_capacity(group.options.len());
+			for option in &group.options {
+				match option {
+					FormChoiceItem::Option(option) => {
+						options.push(transform_static_choice_option(option));
+					}
+					FormChoiceItem::Group(group) => {
+						return Err(Error::new(group.span, "nested OptGroup is not supported"));
+					}
+				}
+			}
+
+			Ok(TypedChoiceItem::Group(TypedChoiceGroup {
+				label: group.label.value(),
+				disabled: group.disabled,
+				options,
+				span: group.span,
+			}))
+		}
+	}
+}
+
+fn transform_static_choice_option(option: &crate::core::FormChoiceOption) -> TypedChoiceOption {
+	TypedChoiceOption {
+		value: option.value.clone(),
+		label: option.label.clone().unwrap_or_else(|| option.value.clone()),
+		disabled: option.disabled,
+		span: option.span,
+	}
 }
 
 /// Parses field type identifier into TypedFieldType enum.
@@ -825,8 +1548,12 @@ fn extract_validation_properties(properties: &[FormFieldProperty]) -> Result<Typ
 			FormFieldProperty::Bind { .. } => {}   // Ignore bind properties
 			FormFieldProperty::InitialFrom { .. } => {} // Ignore initial_from properties
 			FormFieldProperty::ChoicesFrom { .. } => {} // Ignore choices_from properties
+			FormFieldProperty::Choices { .. } => {} // Ignore static choice properties
 			FormFieldProperty::ChoiceValue { .. } => {} // Ignore choice_value properties
 			FormFieldProperty::ChoiceLabel { .. } => {} // Ignore choice_label properties
+			FormFieldProperty::ChoiceDisabled { .. } => {} // Ignore choice_disabled properties
+			FormFieldProperty::ChoiceGroup { .. } => {} // Ignore choice_group properties
+			FormFieldProperty::ChoiceGroupDisabled { .. } => {} // Ignore choice_group_disabled properties
 		}
 	}
 
@@ -914,8 +1641,12 @@ fn extract_display_properties(properties: &[FormFieldProperty]) -> Result<TypedF
 			FormFieldProperty::Bind { .. } => {}   // Ignore bind properties
 			FormFieldProperty::InitialFrom { .. } => {} // Ignore initial_from properties
 			FormFieldProperty::ChoicesFrom { .. } => {} // Ignore choices_from properties
+			FormFieldProperty::Choices { .. } => {} // Ignore static choice properties
 			FormFieldProperty::ChoiceValue { .. } => {} // Ignore choice_value properties
 			FormFieldProperty::ChoiceLabel { .. } => {} // Ignore choice_label properties
+			FormFieldProperty::ChoiceDisabled { .. } => {} // Ignore choice_disabled properties
+			FormFieldProperty::ChoiceGroup { .. } => {} // Ignore choice_group properties
+			FormFieldProperty::ChoiceGroupDisabled { .. } => {} // Ignore choice_group_disabled properties
 		}
 	}
 
@@ -980,11 +1711,11 @@ fn extract_widget(
 	// Look for explicit widget property
 	for prop in properties {
 		match prop {
-			FormFieldProperty::Widget {
-				widget_type,
-				span: _,
-			} => {
-				return parse_widget(widget_type);
+			FormFieldProperty::Widget { widget, span: _ } => {
+				return match widget {
+					FormWidgetSpec::Builtin(widget_type) => parse_widget(widget_type),
+					FormWidgetSpec::Custom(custom) => validate_custom_widget(custom),
+				};
 			}
 			FormFieldProperty::Named { name, value, span } if name == "widget" => {
 				// Handle widget specified as named property: widget: PasswordInput
@@ -1006,6 +1737,26 @@ fn extract_widget(
 	Ok(field_type.default_widget())
 }
 
+fn validate_custom_widget(custom: &FormCustomWidgetSpec) -> Result<TypedWidget> {
+	if !custom.experimental {
+		return Err(Error::new(
+			custom.span,
+			"CustomWidget requires the experimental marker",
+		));
+	}
+
+	let adapter = custom
+		.adapter
+		.clone()
+		.ok_or_else(|| Error::new(custom.span, "CustomWidget requires adapter"))?;
+
+	Ok(TypedWidget::CustomExperimental(TypedCustomWidget {
+		component: custom.component.clone(),
+		adapter,
+		span: custom.span,
+	}))
+}
+
 /// Parses widget identifier into TypedWidget enum.
 fn parse_widget(ident: &syn::Ident) -> Result<TypedWidget> {
 	let widget_str = ident.to_string();
@@ -1020,6 +1771,8 @@ fn parse_widget(ident: &syn::Ident) -> Result<TypedWidget> {
 		"Select" => Ok(TypedWidget::Select),
 		"SelectMultiple" => Ok(TypedWidget::SelectMultiple),
 		"DateInput" => Ok(TypedWidget::DateInput),
+		"MonthInput" => Ok(TypedWidget::MonthInput),
+		"WeekInput" => Ok(TypedWidget::WeekInput),
 		"TimeInput" => Ok(TypedWidget::TimeInput),
 		"DateTimeInput" => Ok(TypedWidget::DateTimeInput),
 		"FileInput" => Ok(TypedWidget::FileInput),
@@ -1033,13 +1786,326 @@ fn parse_widget(ident: &syn::Ident) -> Result<TypedWidget> {
 			ident.span(),
 			format!(
 				"unknown widget type: '{}'. Expected one of: TextInput, PasswordInput, \
-				EmailInput, NumberInput, Textarea, CheckboxInput, RadioSelect, Select, \
-				SelectMultiple, DateInput, TimeInput, DateTimeInput, FileInput, HiddenInput, \
-				ColorInput, RangeInput, UrlInput, TelInput, SearchInput",
+					EmailInput, NumberInput, Textarea, CheckboxInput, RadioSelect, Select, \
+					SelectMultiple, DateInput, MonthInput, WeekInput, TimeInput, DateTimeInput, \
+					FileInput, HiddenInput, ColorInput, RangeInput, UrlInput, TelInput, SearchInput",
 				widget_str
 			),
 		)),
 	}
+}
+
+#[derive(Default)]
+struct NativeAttrSpans {
+	min: Option<Span>,
+	max: Option<Span>,
+	step: Option<Span>,
+	multiple: Option<Span>,
+	accept: Option<Span>,
+	capture: Option<Span>,
+	list: Option<Span>,
+	size: Option<Span>,
+}
+
+fn validate_widget_field_compatibility(
+	field_type: &TypedFieldType,
+	widget: &TypedWidget,
+	span: Span,
+) -> Result<()> {
+	match widget {
+		TypedWidget::MonthInput if !is_string_valued_field(field_type) => Err(Error::new(
+			span,
+			"MonthInput is only supported on string-valued fields",
+		)),
+		TypedWidget::WeekInput if !is_string_valued_field(field_type) => Err(Error::new(
+			span,
+			"WeekInput is only supported on string-valued fields",
+		)),
+		_ => Ok(()),
+	}
+}
+
+fn extract_native_attrs(
+	properties: &[FormFieldProperty],
+	field_type: &TypedFieldType,
+	widget: &TypedWidget,
+) -> Result<TypedFieldNativeAttrs> {
+	let mut attrs = TypedFieldNativeAttrs::default();
+	let mut spans = NativeAttrSpans::default();
+
+	for prop in properties {
+		match prop {
+			FormFieldProperty::Named { name, value, span } => match name.to_string().as_str() {
+				"min" => {
+					attrs.min = Some(value.clone());
+					spans.min = Some(*span);
+				}
+				"max" => {
+					attrs.max = Some(value.clone());
+					spans.max = Some(*span);
+				}
+				"step" => {
+					attrs.step = Some(value.clone());
+					spans.step = Some(*span);
+				}
+				"multiple" => {
+					attrs.multiple = Some(expect_bool_literal(value, *span, "multiple")?);
+					spans.multiple = Some(*span);
+				}
+				"accept" => {
+					attrs.accept = Some(expect_string_literal(value, *span, "accept")?);
+					spans.accept = Some(*span);
+				}
+				"capture" => {
+					attrs.capture = Some(expect_string_literal(value, *span, "capture")?);
+					spans.capture = Some(*span);
+				}
+				"list" => {
+					attrs.list = Some(expect_ident_expr(value, *span, "list")?);
+					spans.list = Some(*span);
+				}
+				"size" => {
+					attrs.size = Some(expect_positive_i64_literal(value, *span, "size")?);
+					spans.size = Some(*span);
+				}
+				_ => {}
+			},
+			FormFieldProperty::Flag { name, span } if name == "multiple" => {
+				attrs.multiple = Some(true);
+				spans.multiple = Some(*span);
+			}
+			_ => {}
+		}
+	}
+
+	validate_native_attrs(field_type, widget, &attrs, &spans)?;
+	Ok(attrs)
+}
+
+fn validate_native_attrs(
+	field_type: &TypedFieldType,
+	widget: &TypedWidget,
+	attrs: &TypedFieldNativeAttrs,
+	spans: &NativeAttrSpans,
+) -> Result<()> {
+	if attrs.accept.is_some() && !is_file_like_input(field_type, widget) {
+		return Err(Error::new(
+			spans.accept.unwrap_or_else(Span::call_site),
+			"accept is only supported on file-like inputs",
+		));
+	}
+	if attrs.capture.is_some() && !is_file_like_input(field_type, widget) {
+		return Err(Error::new(
+			spans.capture.unwrap_or_else(Span::call_site),
+			"capture is only supported on file-like inputs",
+		));
+	}
+	if attrs.multiple.is_some() && !is_file_like_input(field_type, widget) {
+		return Err(Error::new(
+			spans.multiple.unwrap_or_else(Span::call_site),
+			"multiple is only supported on file-like inputs",
+		));
+	}
+	if attrs.list.is_some() && !is_text_like_input(widget) {
+		return Err(Error::new(
+			spans.list.unwrap_or_else(Span::call_site),
+			"list is only supported on text-like inputs",
+		));
+	}
+	if attrs.size.is_some() && !supports_size_attr(widget) {
+		return Err(Error::new(
+			spans.size.unwrap_or_else(Span::call_site),
+			"size is only supported on text-like inputs",
+		));
+	}
+	if attrs.min.is_some() && !supports_value_bound_attrs(widget) {
+		return Err(Error::new(
+			spans.min.unwrap_or_else(Span::call_site),
+			"min is only supported on native value inputs",
+		));
+	}
+	if attrs.max.is_some() && !supports_value_bound_attrs(widget) {
+		return Err(Error::new(
+			spans.max.unwrap_or_else(Span::call_site),
+			"max is only supported on native value inputs",
+		));
+	}
+	if attrs.step.is_some() && !supports_value_bound_attrs(widget) {
+		return Err(Error::new(
+			spans.step.unwrap_or_else(Span::call_site),
+			"step is only supported on native value inputs",
+		));
+	}
+
+	Ok(())
+}
+
+fn expect_string_literal(value: &syn::Expr, span: Span, prop_name: &str) -> Result<String> {
+	if let syn::Expr::Lit(lit) = value
+		&& let syn::Lit::Str(str_lit) = &lit.lit
+	{
+		return Ok(str_lit.value());
+	}
+
+	Err(Error::new(
+		span,
+		format!("{prop_name} must be a string literal"),
+	))
+}
+
+fn expect_bool_literal(value: &syn::Expr, span: Span, prop_name: &str) -> Result<bool> {
+	if let syn::Expr::Lit(lit) = value
+		&& let syn::Lit::Bool(bool_lit) = &lit.lit
+	{
+		return Ok(bool_lit.value);
+	}
+
+	Err(Error::new(
+		span,
+		format!("{prop_name} must be true or false"),
+	))
+}
+
+fn expect_ident_expr(value: &syn::Expr, span: Span, prop_name: &str) -> Result<syn::Ident> {
+	if let syn::Expr::Path(path) = value
+		&& path.path.leading_colon.is_none()
+		&& path.path.segments.len() == 1
+		&& let Some(ident) = path.path.get_ident()
+	{
+		return Ok(ident.clone());
+	}
+
+	Err(Error::new(
+		span,
+		format!("{prop_name} must be an identifier"),
+	))
+}
+
+fn expect_ident_array(value: &syn::Expr, span: Span, prop_name: &str) -> Result<Vec<syn::Ident>> {
+	let syn::Expr::Array(array) = value else {
+		return Err(Error::new(
+			span,
+			format!("{prop_name} must be an array of field identifiers"),
+		));
+	};
+
+	array
+		.elems
+		.iter()
+		.map(|elem| expect_ident_expr(elem, span, prop_name))
+		.collect()
+}
+
+fn expect_i64_literal(value: &syn::Expr, span: Span, prop_name: &str) -> Result<i64> {
+	match value {
+		syn::Expr::Lit(lit) => {
+			if let syn::Lit::Int(int_lit) = &lit.lit {
+				int_lit.base10_parse::<i64>().map_err(|_| {
+					Error::new(span, format!("{prop_name} must be an integer literal"))
+				})
+			} else {
+				Err(Error::new(
+					span,
+					format!("{prop_name} must be an integer literal"),
+				))
+			}
+		}
+		syn::Expr::Unary(unary) => {
+			if let syn::UnOp::Neg(_) = unary.op
+				&& let syn::Expr::Lit(lit) = &*unary.expr
+				&& let syn::Lit::Int(int_lit) = &lit.lit
+			{
+				let value = int_lit.base10_parse::<i64>().map_err(|_| {
+					Error::new(span, format!("{prop_name} must be an integer literal"))
+				})?;
+				Ok(-value)
+			} else {
+				Err(Error::new(
+					span,
+					format!("{prop_name} must be an integer literal"),
+				))
+			}
+		}
+		_ => Err(Error::new(
+			span,
+			format!("{prop_name} must be an integer literal"),
+		)),
+	}
+}
+
+fn expect_positive_i64_literal(value: &syn::Expr, span: Span, prop_name: &str) -> Result<i64> {
+	let parsed = expect_i64_literal(value, span, prop_name)?;
+	if parsed > 0 {
+		return Ok(parsed);
+	}
+
+	Err(Error::new(
+		span,
+		format!("{prop_name} must be a positive integer literal"),
+	))
+}
+
+fn is_string_valued_field(field_type: &TypedFieldType) -> bool {
+	matches!(
+		field_type,
+		TypedFieldType::CharField
+			| TypedFieldType::EmailField
+			| TypedFieldType::UrlField
+			| TypedFieldType::SlugField
+			| TypedFieldType::PasswordField
+			| TypedFieldType::TextField
+			| TypedFieldType::UuidField
+			| TypedFieldType::IpAddressField
+	)
+}
+
+fn is_file_like_input(field_type: &TypedFieldType, widget: &TypedWidget) -> bool {
+	matches!(
+		(field_type, widget),
+		(
+			TypedFieldType::FileField | TypedFieldType::ImageField,
+			TypedWidget::FileInput
+		)
+	)
+}
+
+fn is_text_like_input(widget: &TypedWidget) -> bool {
+	matches!(
+		widget,
+		TypedWidget::TextInput
+			| TypedWidget::SearchInput
+			| TypedWidget::UrlInput
+			| TypedWidget::TelInput
+			| TypedWidget::EmailInput
+			| TypedWidget::PasswordInput
+			| TypedWidget::MonthInput
+			| TypedWidget::WeekInput
+	)
+}
+
+fn supports_size_attr(widget: &TypedWidget) -> bool {
+	matches!(
+		widget,
+		TypedWidget::TextInput
+			| TypedWidget::SearchInput
+			| TypedWidget::UrlInput
+			| TypedWidget::TelInput
+			| TypedWidget::EmailInput
+			| TypedWidget::PasswordInput
+	)
+}
+
+fn supports_value_bound_attrs(widget: &TypedWidget) -> bool {
+	matches!(
+		widget,
+		TypedWidget::NumberInput
+			| TypedWidget::RangeInput
+			| TypedWidget::DateInput
+			| TypedWidget::TimeInput
+			| TypedWidget::DateTimeInput
+			| TypedWidget::MonthInput
+			| TypedWidget::WeekInput
+	)
 }
 
 /// Extracts wrapper property and transforms it into `TypedWrapper`.
@@ -1297,6 +2363,9 @@ fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoic
 	let mut choices_from: Option<(String, Span)> = None;
 	let mut choice_value: Option<String> = None;
 	let mut choice_label: Option<String> = None;
+	let mut choice_disabled: Option<String> = None;
+	let mut choice_group: Option<String> = None;
+	let mut choice_group_disabled: Option<String> = None;
 
 	for prop in properties {
 		match prop {
@@ -1309,6 +2378,15 @@ fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoic
 			FormFieldProperty::ChoiceLabel { path, .. } => {
 				choice_label = Some(path.value());
 			}
+			FormFieldProperty::ChoiceDisabled { path, .. } => {
+				choice_disabled = Some(path.value());
+			}
+			FormFieldProperty::ChoiceGroup { path, .. } => {
+				choice_group = Some(path.value());
+			}
+			FormFieldProperty::ChoiceGroupDisabled { path, .. } => {
+				choice_group_disabled = Some(path.value());
+			}
 			_ => {}
 		}
 	}
@@ -1319,6 +2397,9 @@ fn extract_choices_config(properties: &[FormFieldProperty]) -> Option<TypedChoic
 			from,
 			choice_value.unwrap_or_else(|| "value".to_string()),
 			choice_label.unwrap_or_else(|| "label".to_string()),
+			choice_disabled,
+			choice_group,
+			choice_group_disabled,
 			span,
 		)
 	})
@@ -1406,11 +2487,18 @@ fn field_exists(entries: &[FormFieldEntry], name: &syn::Ident) -> bool {
 				}
 			}
 			FormFieldEntry::Group(group) => {
-				if group.fields.iter().any(|f| f.name == *name) {
+				if field_exists(&group.fields, name) {
 					return true;
 				}
 			}
-			FormFieldEntry::SubmitButton(_) => {}
+			FormFieldEntry::SubmitButton(_)
+			| FormFieldEntry::ResetButton(_)
+			| FormFieldEntry::Button(_)
+			| FormFieldEntry::ImageInput(_)
+			| FormFieldEntry::Output(_)
+			| FormFieldEntry::Meter(_)
+			| FormFieldEntry::Progress(_)
+			| FormFieldEntry::Datalist(_) => {}
 		}
 	}
 	false
@@ -3073,9 +4161,10 @@ mod tests {
 		assert_eq!(group.fields.len(), 2);
 
 		// Check fields within the group
-		assert_eq!(group.fields[0].name.to_string(), "street");
-		assert!(group.fields[0].validation.required);
-		assert_eq!(group.fields[1].name.to_string(), "city");
+		let street = group.fields[0].as_field().unwrap();
+		assert_eq!(street.name.to_string(), "street");
+		assert!(street.validation.required);
+		assert_eq!(group.fields[1].as_field().unwrap().name.to_string(), "city");
 	}
 
 	#[rstest]
@@ -3337,8 +4426,14 @@ mod tests {
 		assert!(result.is_ok());
 		let typed = result.unwrap();
 		let group = typed.fields[0].as_group().unwrap();
-		assert_eq!(group.fields[0].initial_from, Some("name".to_string()));
-		assert_eq!(group.fields[1].initial_from, Some("biography".to_string()));
+		assert_eq!(
+			group.fields[0].as_field().unwrap().initial_from,
+			Some("name".to_string())
+		);
+		assert_eq!(
+			group.fields[1].as_field().unwrap().initial_from,
+			Some("biography".to_string())
+		);
 	}
 
 	#[rstest]
@@ -3424,7 +4519,7 @@ mod tests {
 		let group = typed.fields[0].as_group().unwrap();
 
 		// Check email field properties
-		let email = &group.fields[0];
+		let email = group.fields[0].as_field().unwrap();
 		assert!(email.validation.required);
 		assert_eq!(email.display.label, Some("Email Address".to_string()));
 		assert_eq!(
@@ -3434,7 +4529,7 @@ mod tests {
 		assert!(email.has_wrapper());
 
 		// Check password field properties
-		let password = &group.fields[1];
+		let password = group.fields[1].as_field().unwrap();
 		assert!(password.validation.required);
 		assert!(matches!(password.widget, TypedWidget::PasswordInput));
 		assert!(!password.bind);
@@ -3823,6 +4918,64 @@ mod tests {
 	}
 
 	#[rstest]
+	fn test_validate_radio_select_rejects_dynamic_choice_group() {
+		// Arrange
+		let input = quote! {
+			name: RadioSelectGroupForm,
+			action: "/test",
+			choices_loader: load_options,
+
+			fields: {
+				selected: ChoiceField {
+					widget: RadioSelect,
+					choices_from: "options",
+					choice_value: "id",
+					choice_label: "name",
+					choice_group: "group",
+				},
+			},
+		};
+
+		// Act
+		let err = parse_and_validate(input).unwrap_err().to_string();
+
+		// Assert
+		assert_eq!(
+			err,
+			"choice_group is only supported on Select and SelectMultiple widgets"
+		);
+	}
+
+	#[rstest]
+	fn test_validate_radio_select_rejects_dynamic_choice_group_disabled() {
+		// Arrange
+		let input = quote! {
+			name: RadioSelectGroupDisabledForm,
+			action: "/test",
+			choices_loader: load_options,
+
+			fields: {
+				selected: ChoiceField {
+					widget: RadioSelect,
+					choices_from: "options",
+					choice_value: "id",
+					choice_label: "name",
+					choice_group_disabled: "group_disabled",
+				},
+			},
+		};
+
+		// Act
+		let err = parse_and_validate(input).unwrap_err().to_string();
+
+		// Assert
+		assert_eq!(
+			err,
+			"choice_group_disabled is only supported on Select and SelectMultiple widgets"
+		);
+	}
+
+	#[rstest]
 	fn test_validate_choices_loader_with_initial_loader() {
 		// Arrange
 		let input = quote! {
@@ -3906,19 +5059,158 @@ mod tests {
 		// Check fields within the group
 		assert_eq!(group.fields.len(), 2);
 
-		let category_field = &group.fields[0];
+		let category_field = group.fields[0].as_field().unwrap();
 		assert!(category_field.choices_config.is_some());
 		assert_eq!(
 			category_field.choices_config.as_ref().unwrap().choices_from,
 			"categories"
 		);
 
-		let status_field = &group.fields[1];
+		let status_field = group.fields[1].as_field().unwrap();
 		assert!(status_field.choices_config.is_some());
 		assert_eq!(
 			status_field.choices_config.as_ref().unwrap().choices_from,
 			"statuses"
 		);
+	}
+
+	#[rstest]
+	fn test_validate_dynamic_datalist_and_list_reference() {
+		// Arrange
+		let input = quote! {
+			name: DynamicDatalistForm,
+			action: "/search",
+			choices_loader: load_suggestions,
+
+			fields: {
+				query: CharField {
+					widget: SearchInput,
+					list: suggestions,
+				},
+				suggestions: Datalist {
+					choices_from: "items",
+					choice_value: "value",
+					choice_label: "label",
+					choice_disabled: "disabled",
+				},
+			},
+		};
+
+		// Act
+		let typed = parse_and_validate(input).unwrap();
+
+		// Assert
+		let field = typed.fields[0].as_field().unwrap();
+		assert_eq!(
+			field.native_attrs.list.as_ref().unwrap().to_string(),
+			"suggestions"
+		);
+
+		let datalist = typed.fields[1].as_datalist().unwrap();
+		let config = datalist.choices_config.as_ref().unwrap();
+		assert_eq!(config.choices_from, "items");
+		assert_eq!(config.choice_value, "value");
+		assert_eq!(config.choice_label, "label");
+		assert_eq!(config.choice_disabled.as_deref(), Some("disabled"));
+		assert!(datalist.static_choices.is_empty());
+	}
+
+	#[rstest]
+	fn test_validate_list_rejects_missing_datalist() {
+		// Arrange
+		let input = quote! {
+			name: MissingDatalistForm,
+			action: "/search",
+
+			fields: {
+				query: CharField {
+					widget: SearchInput,
+					list: suggestions,
+				},
+			},
+		};
+
+		// Act
+		let err = parse_and_validate(input).unwrap_err().to_string();
+
+		// Assert
+		assert_eq!(
+			err,
+			"list reference 'suggestions' must resolve to a Datalist entry"
+		);
+	}
+
+	#[rstest]
+	fn test_validate_list_rejects_value_field_reference() {
+		// Arrange
+		let input = quote! {
+			name: ValueFieldListForm,
+			action: "/search",
+
+			fields: {
+				query: CharField {
+					widget: SearchInput,
+					list: suggestions,
+				},
+				suggestions: CharField {},
+			},
+		};
+
+		// Act
+		let err = parse_and_validate(input).unwrap_err().to_string();
+
+		// Assert
+		assert_eq!(
+			err,
+			"list reference 'suggestions' must resolve to a Datalist entry"
+		);
+	}
+
+	#[rstest]
+	fn test_validate_datalist_rejects_choice_group() {
+		// Arrange
+		let input = quote! {
+			name: InvalidDatalistGroupForm,
+			action: "/search",
+
+			fields: {
+				suggestions: Datalist {
+					choices_from: "items",
+					choice_group: "group",
+				},
+			},
+		};
+
+		// Act
+		let err = parse_and_validate(input).unwrap_err().to_string();
+
+		// Assert
+		assert_eq!(
+			err,
+			"Datalist does not support choice_group; datalist options must be flat"
+		);
+	}
+
+	#[rstest]
+	fn test_validate_datalist_rejects_unknown_property() {
+		// Arrange
+		let input = quote! {
+			name: InvalidDatalistPropertyForm,
+			action: "/search",
+
+			fields: {
+				suggestions: Datalist {
+					options: [("a", "A")],
+					label: "Suggestions",
+				},
+			},
+		};
+
+		// Act
+		let err = parse_and_validate(input).unwrap_err().to_string();
+
+		// Assert
+		assert_eq!(err, "unknown Datalist property: 'label'");
 	}
 
 	// =========================================================================
@@ -4244,5 +5536,83 @@ mod tests {
 		assert!(result.is_ok());
 		let typed = result.unwrap();
 		assert!(typed.redirect_on_success.is_none());
+	}
+
+	#[rstest]
+	fn test_typed_widget_size_rejects_zero() {
+		// Arrange
+		let input = quote! {
+			name: SearchForm,
+			action: "/search",
+
+			fields: {
+				query: CharField {
+					widget: SearchInput,
+					size: 0,
+				},
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_err());
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"size must be a positive integer literal"
+		);
+	}
+
+	#[rstest]
+	fn test_typed_widget_size_rejects_negative() {
+		// Arrange
+		let input = quote! {
+			name: SearchForm,
+			action: "/search",
+
+			fields: {
+				query: CharField {
+					widget: SearchInput,
+					size: -1,
+				},
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_err());
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"size must be a positive integer literal"
+		);
+	}
+
+	#[rstest]
+	fn test_typed_widget_size_rejects_non_integer() {
+		// Arrange
+		let input = quote! {
+			name: SearchForm,
+			action: "/search",
+
+			fields: {
+				query: CharField {
+					widget: SearchInput,
+					size: "32",
+				},
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_err());
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"size must be an integer literal"
+		);
 	}
 }

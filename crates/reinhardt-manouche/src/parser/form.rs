@@ -5,17 +5,20 @@
 
 use proc_macro2::{Span, TokenStream, TokenTree};
 use syn::{
-	Expr, ExprClosure, Ident, LitStr, Path, Result, Token, braced,
+	Expr, ExprClosure, Ident, LitStr, Path, Result, Token, braced, bracketed,
+	ext::IdentExt,
+	parenthesized,
 	parse::{Parse, ParseStream},
 	token,
 };
 
 use crate::{
-	AmbientArgumentsSource, ClientTrigger, CustomAttr, FormAction, FormDerived, FormDerivedItem,
-	FormFieldDef, FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormSlots,
-	FormState, FormStateField, FormSubmitButtonDef, FormValidator, FormWatch, FormWatchItem,
-	IconAttr, IconChild, IconElement, IconPosition, StripArgument, ValidatorRule, ValidatorScope,
-	WrapperAttr, WrapperElement,
+	AmbientArgumentsSource, ClientTrigger, CustomAttr, FormAction, FormChoiceGroup, FormChoiceItem,
+	FormChoiceOption, FormControlEntryDef, FormControlEntryKind, FormCustomWidgetSpec,
+	FormDatalistDef, FormDerived, FormDerivedItem, FormFieldDef, FormFieldEntry, FormFieldGroup,
+	FormFieldProperty, FormMacro, FormSlots, FormState, FormStateField, FormSubmitButtonDef,
+	FormValidator, FormWatch, FormWatchItem, FormWidgetSpec, IconAttr, IconChild, IconElement,
+	IconPosition, StripArgument, ValidatorRule, ValidatorScope, WrapperAttr, WrapperElement,
 };
 
 /// Parses a `form!` macro invocation into an untyped AST.
@@ -322,10 +325,50 @@ fn parse_field_definitions(input: ParseStream) -> Result<Vec<FormFieldEntry>> {
 				properties,
 				span,
 			}));
+		} else if field_type == "Datalist" {
+			let generics = parse_optional_field_type_generics(input, field_type.span())?;
+			if generics.is_some() {
+				return Err(syn::Error::new(
+					field_type.span(),
+					"Datalist does not accept generic arguments",
+				));
+			}
+
+			let properties = if input.peek(token::Brace) {
+				let content;
+				braced!(content in input);
+				parse_field_properties(&content)?
+			} else {
+				Vec::new()
+			};
+
+			entries.push(FormFieldEntry::Datalist(FormDatalistDef {
+				name,
+				properties,
+				span,
+			}));
+		} else if let Some(kind) = parse_control_entry_kind(&field_type) {
+			let generics = parse_optional_field_type_generics(input, field_type.span())?;
+			if generics.is_some() {
+				return Err(syn::Error::new(
+					field_type.span(),
+					format!("{field_type} does not accept generic arguments"),
+				));
+			}
+
+			let properties = if input.peek(token::Brace) {
+				let content;
+				braced!(content in input);
+				parse_field_properties(&content)?
+			} else {
+				Vec::new()
+			};
+
+			entries.push(control_entry_from_kind(name, kind, properties, span));
 		} else {
 			// Optionally consume `<T1, T2, ...>` generic arguments before the
 			// property block. Only regular fields support generics; FieldGroup
-			// and SubmitButton are handled in the branches above.
+			// and non-value entries are handled in the branches above.
 			let generics = parse_optional_field_type_generics(input, field_type.span())?;
 
 			// Parse regular field properties in braces: { required, max_length: 100, ... }
@@ -350,6 +393,41 @@ fn parse_field_definitions(input: ParseStream) -> Result<Vec<FormFieldEntry>> {
 	}
 
 	Ok(entries)
+}
+
+fn parse_control_entry_kind(ident: &Ident) -> Option<FormControlEntryKind> {
+	match ident.to_string().as_str() {
+		"ResetButton" => Some(FormControlEntryKind::ResetButton),
+		"Button" => Some(FormControlEntryKind::Button),
+		"ImageInput" => Some(FormControlEntryKind::ImageInput),
+		"Output" => Some(FormControlEntryKind::Output),
+		"Meter" => Some(FormControlEntryKind::Meter),
+		"Progress" => Some(FormControlEntryKind::Progress),
+		_ => None,
+	}
+}
+
+fn control_entry_from_kind(
+	name: Ident,
+	kind: FormControlEntryKind,
+	properties: Vec<FormFieldProperty>,
+	span: Span,
+) -> FormFieldEntry {
+	let def = FormControlEntryDef {
+		name,
+		kind,
+		properties,
+		span,
+	};
+
+	match kind {
+		FormControlEntryKind::ResetButton => FormFieldEntry::ResetButton(def),
+		FormControlEntryKind::Button => FormFieldEntry::Button(def),
+		FormControlEntryKind::ImageInput => FormFieldEntry::ImageInput(def),
+		FormControlEntryKind::Output => FormFieldEntry::Output(def),
+		FormControlEntryKind::Meter => FormFieldEntry::Meter(def),
+		FormControlEntryKind::Progress => FormFieldEntry::Progress(def),
+	}
 }
 
 /// Parses a field group definition.
@@ -399,50 +477,18 @@ fn parse_field_group(name: Ident, input: ParseStream, span: Span) -> Result<Form
 	})
 }
 
-/// Parses fields inside a field group (no nested groups allowed).
-fn parse_group_fields(input: ParseStream) -> Result<Vec<FormFieldDef>> {
-	let mut fields = Vec::new();
-
-	while !input.is_empty() {
-		let span = input.span();
-		let name: Ident = input.parse()?;
-		input.parse::<Token![:]>()?;
-		let field_type: Ident = input.parse()?;
-
-		// Nested FieldGroups are not allowed
-		if field_type == "FieldGroup" {
+/// Parses entries inside a field group (no nested groups allowed).
+fn parse_group_fields(input: ParseStream) -> Result<Vec<FormFieldEntry>> {
+	let entries = parse_field_definitions(input)?;
+	for entry in &entries {
+		if matches!(entry, FormFieldEntry::Group(_)) {
 			return Err(syn::Error::new(
-				field_type.span(),
+				entry.span(),
 				"nested field groups are not allowed",
 			));
 		}
-
-		// Optionally consume `<T1, T2, ...>` generic arguments before the
-		// property block. Mirrors the top-level field parser; nested FieldGroup
-		// is rejected above so this only runs for regular field types.
-		let generics = parse_optional_field_type_generics(input, field_type.span())?;
-
-		// Parse properties in braces: { required, max_length: 100, ... }
-		let properties = if input.peek(token::Brace) {
-			let content;
-			braced!(content in input);
-			parse_field_properties(&content)?
-		} else {
-			Vec::new()
-		};
-
-		fields.push(FormFieldDef {
-			name,
-			field_type,
-			generics,
-			properties,
-			span,
-		});
-
-		parse_optional_comma(input)?;
 	}
-
-	Ok(fields)
+	Ok(entries)
 }
 
 /// Parses field properties inside braces.
@@ -453,14 +499,19 @@ fn parse_field_properties(input: ParseStream) -> Result<Vec<FormFieldProperty>> 
 		let span = input.span();
 
 		// Check for widget keyword
-		if input.peek(Ident) {
-			let name: Ident = input.parse()?;
+		if input.peek(Ident::peek_any) {
+			let name: Ident = input.call(Ident::parse_any)?;
 
 			if name == "widget" {
 				// widget: WidgetType
 				input.parse::<Token![:]>()?;
 				let widget_type: Ident = input.parse()?;
-				properties.push(FormFieldProperty::Widget { widget_type, span });
+				let widget = if widget_type == "CustomWidget" {
+					FormWidgetSpec::Custom(parse_custom_widget_spec(input, span)?)
+				} else {
+					FormWidgetSpec::Builtin(widget_type)
+				};
+				properties.push(FormFieldProperty::Widget { widget, span });
 			} else if name == "wrapper" {
 				// wrapper: element { attr: value, ... }
 				input.parse::<Token![:]>()?;
@@ -546,6 +597,12 @@ fn parse_field_properties(input: ParseStream) -> Result<Vec<FormFieldProperty>> 
 				input.parse::<Token![:]>()?;
 				let field_name: LitStr = input.parse()?;
 				properties.push(FormFieldProperty::ChoicesFrom { field_name, span });
+			} else if name == "choices" || name == "options" {
+				input.parse::<Token![:]>()?;
+				let content;
+				bracketed!(content in input);
+				let choices = parse_choice_items(&content)?;
+				properties.push(FormFieldProperty::Choices { choices, span });
 			} else if name == "choice_value" {
 				// choice_value: "id" - specifies property path for value extraction from each choice
 				input.parse::<Token![:]>()?;
@@ -556,6 +613,18 @@ fn parse_field_properties(input: ParseStream) -> Result<Vec<FormFieldProperty>> 
 				input.parse::<Token![:]>()?;
 				let path: LitStr = input.parse()?;
 				properties.push(FormFieldProperty::ChoiceLabel { path, span });
+			} else if name == "choice_disabled" {
+				input.parse::<Token![:]>()?;
+				let path: LitStr = input.parse()?;
+				properties.push(FormFieldProperty::ChoiceDisabled { path, span });
+			} else if name == "choice_group" {
+				input.parse::<Token![:]>()?;
+				let path: LitStr = input.parse()?;
+				properties.push(FormFieldProperty::ChoiceGroup { path, span });
+			} else if name == "choice_group_disabled" {
+				input.parse::<Token![:]>()?;
+				let path: LitStr = input.parse()?;
+				properties.push(FormFieldProperty::ChoiceGroupDisabled { path, span });
 			} else if input.peek(Token![:]) {
 				// name: value
 				input.parse::<Token![:]>()?;
@@ -571,6 +640,178 @@ fn parse_field_properties(input: ParseStream) -> Result<Vec<FormFieldProperty>> 
 	}
 
 	Ok(properties)
+}
+
+fn parse_custom_widget_spec(input: ParseStream, span: Span) -> Result<FormCustomWidgetSpec> {
+	let component_content;
+	parenthesized!(component_content in input);
+	let component: Path = component_content.parse()?;
+	if !component_content.is_empty() {
+		return Err(syn::Error::new(
+			component_content.span(),
+			"expected a single CustomWidget component path",
+		));
+	}
+
+	if !input.peek(token::Brace) {
+		return Err(syn::Error::new(
+			span,
+			"CustomWidget requires a property body",
+		));
+	}
+
+	let body;
+	braced!(body in input);
+	let mut experimental = false;
+	let mut adapter = None;
+
+	while !body.is_empty() {
+		let property_span = body.span();
+		let property: Ident = body.call(Ident::parse_any)?;
+
+		if property == "experimental" {
+			experimental = true;
+		} else if property == "adapter" {
+			body.parse::<Token![:]>()?;
+			adapter = Some(body.parse()?);
+		} else {
+			return Err(syn::Error::new(
+				property_span,
+				"unknown CustomWidget property",
+			));
+		}
+
+		parse_optional_comma(&body)?;
+	}
+
+	Ok(FormCustomWidgetSpec {
+		component,
+		experimental,
+		adapter,
+		span,
+	})
+}
+
+fn parse_choice_items(input: ParseStream) -> Result<Vec<FormChoiceItem>> {
+	let mut choices = Vec::new();
+
+	while !input.is_empty() {
+		choices.push(parse_choice_item(input)?);
+		parse_optional_comma(input)?;
+	}
+
+	Ok(choices)
+}
+
+fn parse_choice_item(input: ParseStream) -> Result<FormChoiceItem> {
+	if input.peek(Ident) {
+		let fork = input.fork();
+		let ident: Ident = fork.call(Ident::parse_any)?;
+		if ident == "OptGroup" {
+			return parse_choice_group(input).map(FormChoiceItem::Group);
+		}
+	}
+
+	parse_choice_option(input).map(|option| FormChoiceItem::Option(Box::new(option)))
+}
+
+fn parse_choice_option(input: ParseStream) -> Result<FormChoiceOption> {
+	let span = input.span();
+	let content;
+	parenthesized!(content in input);
+
+	let value: Expr = content.parse()?;
+	let label = if content.peek(Token![,]) {
+		content.parse::<Token![,]>()?;
+		if content.is_empty() {
+			None
+		} else {
+			Some(content.parse()?)
+		}
+	} else {
+		None
+	};
+
+	if !content.is_empty() {
+		return Err(content.error("choice option tuple accepts one or two expressions"));
+	}
+
+	let disabled = parse_choice_disabled_block(input)?;
+
+	Ok(FormChoiceOption {
+		value,
+		label,
+		disabled,
+		span,
+	})
+}
+
+fn parse_choice_group(input: ParseStream) -> Result<FormChoiceGroup> {
+	let span = input.span();
+	let ident: Ident = input.call(Ident::parse_any)?;
+	if ident != "OptGroup" {
+		return Err(syn::Error::new(ident.span(), "expected OptGroup"));
+	}
+
+	let label_content;
+	parenthesized!(label_content in input);
+	let label: LitStr = label_content.parse()?;
+	if !label_content.is_empty() {
+		return Err(label_content.error("OptGroup accepts exactly one string label"));
+	}
+
+	let content;
+	braced!(content in input);
+
+	let mut disabled = false;
+	let mut options = Vec::new();
+
+	while !content.is_empty() {
+		if content.peek(Ident) {
+			let fork = content.fork();
+			let flag: Ident = fork.call(Ident::parse_any)?;
+			if flag == "disabled" {
+				let flag: Ident = content.call(Ident::parse_any)?;
+				if flag != "disabled" {
+					return Err(syn::Error::new(flag.span(), "expected disabled"));
+				}
+				disabled = true;
+				parse_optional_comma(&content)?;
+				continue;
+			}
+		}
+
+		options.push(parse_choice_item(&content)?);
+		parse_optional_comma(&content)?;
+	}
+
+	Ok(FormChoiceGroup {
+		label,
+		disabled,
+		options,
+		span,
+	})
+}
+
+fn parse_choice_disabled_block(input: ParseStream) -> Result<bool> {
+	if !input.peek(token::Brace) {
+		return Ok(false);
+	}
+
+	let content;
+	braced!(content in input);
+	let mut disabled = false;
+
+	while !content.is_empty() {
+		let flag: Ident = content.call(Ident::parse_any)?;
+		if flag != "disabled" {
+			return Err(syn::Error::new(flag.span(), "unknown choice option flag"));
+		}
+		disabled = true;
+		parse_optional_comma(&content)?;
+	}
+
+	Ok(disabled)
 }
 
 /// Parses custom attributes for aria-* and data-*.
@@ -1561,7 +1802,13 @@ mod tests {
 			})
 		);
 		assert!(field.properties.iter().any(|p| {
-			matches!(p, FormFieldProperty::Widget { widget_type, .. } if widget_type == "PasswordInput")
+			matches!(
+				p,
+				FormFieldProperty::Widget {
+					widget: FormWidgetSpec::Builtin(widget_type),
+					..
+				} if widget_type == "PasswordInput"
+			)
 		}));
 		assert!(
 			field
@@ -2862,8 +3109,11 @@ mod tests {
 		assert_eq!(group.label_text(), Some("Address".to_string()));
 		assert!(group.class_name().is_none());
 		assert_eq!(group.fields.len(), 2);
-		assert_eq!(group.fields[0].name.to_string(), "street");
-		assert_eq!(group.fields[1].name.to_string(), "city");
+		assert_eq!(
+			group.fields[0].as_field().unwrap().name.to_string(),
+			"street"
+		);
+		assert_eq!(group.fields[1].as_field().unwrap().name.to_string(), "city");
 	}
 
 	#[rstest]
@@ -3133,12 +3383,12 @@ mod tests {
 		assert!(result.is_ok());
 		let form = result.unwrap();
 		let group = form.fields[0].as_group().unwrap();
-		let street = &group.fields[0];
+		let street = group.fields[0].as_field().unwrap();
 		assert!(street.is_required());
 		assert!(street.get_label().is_some());
 		assert!(street.get_class().is_some());
 		assert!(street.get_placeholder().is_some());
-		let city = &group.fields[1];
+		let city = group.fields[1].as_field().unwrap();
 		assert!(city.is_required());
 		assert!(city.get_label().is_some());
 	}
