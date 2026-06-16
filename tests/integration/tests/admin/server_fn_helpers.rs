@@ -8,7 +8,6 @@ use reinhardt_admin::server::{AdminAuthenticatedUser, AdminDefaultUser};
 use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 use reinhardt_db::backends::dialect::PostgresBackend;
 use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
-use reinhardt_di::Depends;
 use reinhardt_di::{InjectionContext, SingletonScope};
 use reinhardt_http::AuthState;
 use reinhardt_pages::server_fn::ServerFnRequest;
@@ -403,7 +402,7 @@ pub(super) async fn setup_test_models_table(pool: &sqlx::PgPool) {
 #[fixture]
 pub async fn server_fn_context(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (Depends<AdminSite>, Depends<AdminDatabase>) {
+) -> (AdminSite, AdminDatabase) {
 	let (pool, _) = shared_db_pool.await;
 
 	setup_test_models_table(&pool).await;
@@ -412,10 +411,10 @@ pub async fn server_fn_context(
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
 	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = Depends::from_value(AdminDatabase::new(connection));
+	let db = AdminDatabase::new(connection);
 
 	// Create AdminSite and register with all permissions
-	let site = Depends::from_value(AdminSite::new("Test Admin Site"));
+	let site = AdminSite::new("Test Admin Site");
 	let admin = AllPermissionsModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
@@ -430,7 +429,7 @@ pub async fn server_fn_context(
 #[fixture]
 pub async fn deny_all_context(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (Depends<AdminSite>, Depends<AdminDatabase>) {
+) -> (AdminSite, AdminDatabase) {
 	let (pool, _) = shared_db_pool.await;
 
 	pool.execute(
@@ -452,9 +451,9 @@ pub async fn deny_all_context(
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
 	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = Depends::from_value(AdminDatabase::new(connection));
+	let db = AdminDatabase::new(connection);
 
-	let site = Depends::from_value(AdminSite::new("Deny All Test Admin"));
+	let site = AdminSite::new("Deny All Test Admin");
 	let admin = DenyAllModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
@@ -469,7 +468,7 @@ pub async fn deny_all_context(
 #[fixture]
 pub async fn view_only_context(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (Depends<AdminSite>, Depends<AdminDatabase>) {
+) -> (AdminSite, AdminDatabase) {
 	let (pool, _) = shared_db_pool.await;
 
 	pool.execute(
@@ -498,9 +497,9 @@ pub async fn view_only_context(
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
 	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = Depends::from_value(AdminDatabase::new(connection));
+	let db = AdminDatabase::new(connection);
 
-	let site = Depends::from_value(AdminSite::new("View Only Test Admin"));
+	let site = AdminSite::new("View Only Test Admin");
 	let admin = ViewOnlyModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
@@ -603,7 +602,7 @@ pub(super) fn build_auth_user_create_table_sql() -> String {
 #[fixture]
 pub async fn e2e_router_context(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (ServerRouter, Depends<AdminDatabase>) {
+) -> (ServerRouter, AdminDatabase) {
 	use reinhardt_admin::core::admin_routes_with_di;
 
 	let (pool, _) = shared_db_pool.await;
@@ -670,16 +669,16 @@ pub async fn e2e_router_context(
 	let db_conn = Arc::new(connection);
 
 	// Build AdminDatabase for test data setup
-	let admin_db = Depends::from_value(AdminDatabase::new((*db_conn).clone()));
+	let admin_db = AdminDatabase::new((*db_conn).clone());
 
 	// Build AdminSite and register test model
-	let site = Depends::from_value(AdminSite::new("E2E Test Admin"));
+	let site = AdminSite::new("E2E Test Admin");
 	let admin = AllPermissionsModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
 
 	// Build admin router with deferred DI
-	let (admin_router, admin_di) = admin_routes_with_di(Arc::clone(site.as_arc()));
+	let (admin_router, admin_di) = admin_routes_with_di(Arc::new(site));
 
 	// Build the complete router using UnifiedRouter API.
 	// Pre-seed singleton scope with DatabaseConnection so get_singleton() finds it.
@@ -711,13 +710,13 @@ pub async fn e2e_router_context_no_db() -> ServerRouter {
 	use reinhardt_admin::core::admin_routes_with_di;
 
 	// Build AdminSite and register test model
-	let site = Depends::from_value(AdminSite::new("E2E Test Admin (No DB)"));
+	let site = AdminSite::new("E2E Test Admin (No DB)");
 	let admin = AllPermissionsModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
 
 	// Build admin router with deferred DI
-	let (admin_router, admin_di) = admin_routes_with_di(Arc::clone(site.as_arc()));
+	let (admin_router, admin_di) = admin_routes_with_di(Arc::new(site));
 
 	// Build singleton scope WITHOUT DatabaseConnection
 	let singleton = Arc::new(SingletonScope::new());
@@ -882,7 +881,7 @@ pub fn make_e2e_request_no_auth(path: &str, body: serde_json::Value) -> reinhard
 #[fixture]
 pub async fn uuid_pk_context(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (Depends<AdminSite>, Depends<AdminDatabase>, sqlx::PgPool) {
+) -> (AdminSite, AdminDatabase, sqlx::PgPool) {
 	let (pool, _) = shared_db_pool.await;
 
 	// Create a table with UUID primary key using SeaQuery
@@ -941,9 +940,9 @@ pub async fn uuid_pk_context(
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
 	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = Depends::from_value(AdminDatabase::new(connection));
+	let db = AdminDatabase::new(connection);
 
-	let site = Depends::from_value(AdminSite::new("UUID Test Admin Site"));
+	let site = AdminSite::new("UUID Test Admin Site");
 	let admin = AllPermissionsModelAdmin::uuid_pk_model("uuid_test_models");
 	site.register("UuidModel", admin)
 		.expect("Failed to register UuidModel");
@@ -1039,7 +1038,7 @@ impl ModelAdmin for DenyAllPermissionsModelAdmin {
 #[fixture]
 pub async fn server_fn_context_deny_all(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (Depends<AdminSite>, Depends<AdminDatabase>) {
+) -> (AdminSite, AdminDatabase) {
 	let (pool, _) = shared_db_pool.await;
 
 	setup_test_models_table(&pool).await;
@@ -1047,9 +1046,9 @@ pub async fn server_fn_context_deny_all(
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
 	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = Depends::from_value(AdminDatabase::new(connection));
+	let db = AdminDatabase::new(connection);
 
-	let site = Depends::from_value(AdminSite::new("Deny All Test Site"));
+	let site = AdminSite::new("Deny All Test Site");
 	let admin = DenyAllPermissionsModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
@@ -1064,7 +1063,7 @@ pub async fn server_fn_context_deny_all(
 #[fixture]
 pub async fn server_fn_context_view_only(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (Depends<AdminSite>, Depends<AdminDatabase>) {
+) -> (AdminSite, AdminDatabase) {
 	let (pool, _) = shared_db_pool.await;
 
 	setup_test_models_table(&pool).await;
@@ -1082,9 +1081,9 @@ pub async fn server_fn_context_view_only(
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
 	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = Depends::from_value(AdminDatabase::new(connection));
+	let db = AdminDatabase::new(connection);
 
-	let site = Depends::from_value(AdminSite::new("View Only Test Site"));
+	let site = AdminSite::new("View Only Test Site");
 	let admin = ViewOnlyModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");

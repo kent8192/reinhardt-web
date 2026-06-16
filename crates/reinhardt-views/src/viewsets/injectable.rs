@@ -25,7 +25,7 @@
 
 use crate::ViewSet;
 use async_trait::async_trait;
-use reinhardt_di::{Depends, Injectable, InjectionContext};
+use reinhardt_di::{Injectable, InjectionContext};
 use reinhardt_http::{Request, Result};
 use std::sync::Arc;
 
@@ -92,15 +92,23 @@ pub trait InjectableViewSet: ViewSet {
 				)
 			})?;
 
-		let injected = Depends::<T>::resolve(&di_ctx, true).await.map_err(|e| {
-			reinhardt_core::exception::Error::Internal(format!(
+		match di_ctx.resolve::<T>().await {
+			Ok(injected) => Ok(injected.as_ref().clone()),
+			Err(reinhardt_di::DiError::DependencyNotRegistered { .. }) => {
+				T::inject(&di_ctx).await.map_err(|e| {
+					reinhardt_core::exception::Error::Internal(format!(
+						"Dependency injection failed for {}: {:?}",
+						std::any::type_name::<T>(),
+						e
+					))
+				})
+			}
+			Err(e) => Err(reinhardt_core::exception::Error::Internal(format!(
 				"Dependency injection failed for {}: {:?}",
 				std::any::type_name::<T>(),
 				e
-			))
-		})?;
-
-		Ok(injected.into_inner())
+			))),
+		}
 	}
 
 	/// Resolve a dependency from the request's DI context without caching
@@ -136,15 +144,13 @@ pub trait InjectableViewSet: ViewSet {
 				)
 			})?;
 
-		let injected = Depends::<T>::resolve(&di_ctx, false).await.map_err(|e| {
+		T::inject_uncached(&di_ctx).await.map_err(|e| {
 			reinhardt_core::exception::Error::Internal(format!(
 				"Dependency injection failed for {}: {:?}",
 				std::any::type_name::<T>(),
 				e
 			))
-		})?;
-
-		Ok(injected.into_inner())
+		})
 	}
 
 	/// Try to resolve a dependency, returning None if DI context is not available
@@ -167,10 +173,13 @@ pub trait InjectableViewSet: ViewSet {
 	{
 		let di_ctx = request.get_di_context::<Arc<InjectionContext>>()?;
 
-		Depends::<T>::resolve(&di_ctx, true)
-			.await
-			.ok()
-			.map(|injected| injected.into_inner())
+		match di_ctx.resolve::<T>().await {
+			Ok(injected) => Some(injected.as_ref().clone()),
+			Err(reinhardt_di::DiError::DependencyNotRegistered { .. }) => {
+				T::inject(&di_ctx).await.ok()
+			}
+			Err(_) => None,
+		}
 	}
 }
 

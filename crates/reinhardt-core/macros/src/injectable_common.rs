@@ -165,7 +165,7 @@ pub(crate) fn parse_no_inject_options(attrs: &[syn::Attribute]) -> Option<NoInje
 use proc_macro2::TokenStream;
 use syn::{GenericArgument, PathArguments, Type};
 
-fn depends_inner_type(ty: &Type) -> Option<&Type> {
+fn depends_key_value_types(ty: &Type) -> Option<(&Type, &Type)> {
 	let Type::Path(type_path) = ty else {
 		return None;
 	};
@@ -176,10 +176,17 @@ fn depends_inner_type(ty: &Type) -> Option<&Type> {
 	let PathArguments::AngleBracketed(args) = &segment.arguments else {
 		return None;
 	};
-	match args.args.first()? {
-		GenericArgument::Type(inner_ty) => Some(inner_ty),
-		_ => None,
+	if args.args.len() != 2 {
+		return None;
 	}
+	let mut generic_args = args.args.iter();
+	let GenericArgument::Type(key_ty) = generic_args.next()? else {
+		return None;
+	};
+	let GenericArgument::Type(value_ty) = generic_args.next()? else {
+		return None;
+	};
+	Some((key_ty, value_ty))
 }
 
 pub(crate) fn generate_inject_resolver_expr(
@@ -188,15 +195,10 @@ pub(crate) fn generate_inject_resolver_expr(
 	ctx: TokenStream,
 	use_cache: bool,
 ) -> TokenStream {
-	if let Some(inner_ty) = depends_inner_type(ty) {
+	if let Some((key_ty, value_ty)) = depends_key_value_types(ty) {
 		quote::quote! {
 			{
-				use #di_crate::{
-					__InjectDependsFallbackResolver as _,
-					__InjectDependsRegistryResolver as _,
-				};
-				#di_crate::__InjectDependsResolver::<#inner_ty>::new()
-					.__resolve_inject_depends_parameter(#ctx, #use_cache)
+				#di_crate::Depends::<#key_ty, #value_ty>::resolve_from_registry(#ctx, #use_cache)
 					.await
 			}
 		}

@@ -9,18 +9,12 @@ use super::server_fn_helpers::{
 use reinhardt_admin::core::{AdminDatabase, AdminSite, ExportFormat};
 use reinhardt_admin::server::{create_record, export_data, get_list};
 use reinhardt_admin::types::{ListQueryParams, MutationRequest};
-use reinhardt_di::Depends;
 use rstest::*;
 use serde_json::json;
 use std::collections::HashMap;
 
 /// Helper to create a test record with given name and status.
-async fn create_test_record(
-	site: &Depends<AdminSite>,
-	db: &Depends<AdminDatabase>,
-	name: &str,
-	status: &str,
-) {
+async fn create_test_record(site: &AdminSite, db: &AdminDatabase, name: &str, status: &str) {
 	let user = make_auth_user();
 	let request = make_staff_request();
 	let mut data = HashMap::new();
@@ -47,7 +41,7 @@ async fn create_test_record(
 #[rstest]
 #[tokio::test]
 async fn test_list_with_search_and_filter_combined(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: (AdminSite, AdminDatabase),
 ) {
 	// Arrange: Create records with various names and statuses
 	let (site, db) = server_fn_context.await;
@@ -92,7 +86,7 @@ async fn test_list_with_search_and_filter_combined(
 #[rstest]
 #[tokio::test]
 async fn test_list_with_search_and_pagination(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: (AdminSite, AdminDatabase),
 ) {
 	// Arrange: Create 10+ records with searchable names
 	let (site, db) = server_fn_context.await;
@@ -140,7 +134,7 @@ async fn test_list_with_search_and_pagination(
 #[rstest]
 #[tokio::test]
 async fn test_list_with_sort_ascending_and_descending(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: (AdminSite, AdminDatabase),
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -210,7 +204,7 @@ async fn test_list_with_sort_ascending_and_descending(
 #[rstest]
 #[tokio::test]
 async fn test_create_record_with_all_field_types(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: (AdminSite, AdminDatabase),
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -279,7 +273,7 @@ async fn test_create_record_with_all_field_types(
 #[rstest]
 #[tokio::test]
 async fn test_export_all_formats_produce_valid_output(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: (AdminSite, AdminDatabase),
 ) {
 	// Arrange: Create a record so export has data
 	let (site, db) = server_fn_context.await;
@@ -348,7 +342,7 @@ async fn test_export_all_formats_produce_valid_output(
 #[rstest]
 #[tokio::test]
 async fn test_list_with_filter_and_sort_combined(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: (AdminSite, AdminDatabase),
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -396,9 +390,7 @@ async fn test_list_with_filter_and_sort_combined(
 
 #[rstest]
 #[tokio::test]
-async fn test_concurrent_record_creation(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
-) {
+async fn test_concurrent_record_creation(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 

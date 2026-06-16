@@ -12,7 +12,6 @@ use reinhardt_admin::server::{
 	get_fields, get_list, import_data,
 };
 use reinhardt_admin::types::{BulkDeleteRequest, ListQueryParams, MutationRequest};
-use reinhardt_di::Depends;
 use rstest::*;
 use serde_json::json;
 use std::collections::HashMap;
@@ -21,9 +20,7 @@ use std::collections::HashMap;
 
 #[rstest]
 #[tokio::test]
-async fn test_full_crud_lifecycle_usecase(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
-) {
+async fn test_full_crud_lifecycle_usecase(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let user = make_auth_user();
@@ -183,7 +180,7 @@ async fn test_full_crud_lifecycle_usecase(
 #[rstest]
 #[tokio::test]
 async fn test_admin_dashboard_shows_registered_models(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: (AdminSite, AdminDatabase),
 ) {
 	// Arrange
 	let (site, _db) = server_fn_context.await;
@@ -212,7 +209,7 @@ async fn test_admin_dashboard_shows_registered_models(
 #[rstest]
 #[tokio::test]
 async fn test_search_then_export_matching_records(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: (AdminSite, AdminDatabase),
 ) {
 	// Arrange: Create records with distinct names
 	let (site, db) = server_fn_context.await;
@@ -283,9 +280,7 @@ async fn test_search_then_export_matching_records(
 
 #[rstest]
 #[tokio::test]
-async fn test_import_csv_then_verify_list(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
-) {
+async fn test_import_csv_then_verify_list(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let user = make_auth_user();
@@ -334,7 +329,7 @@ async fn test_import_csv_then_verify_list(
 #[rstest]
 #[tokio::test]
 async fn test_bulk_delete_then_verify_count(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: (AdminSite, AdminDatabase),
 ) {
 	// Arrange: Create 5 records
 	let (site, db) = server_fn_context.await;
@@ -398,7 +393,7 @@ async fn test_bulk_delete_then_verify_count(
 #[rstest]
 #[tokio::test]
 async fn test_get_fields_then_create_with_valid_data(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: (AdminSite, AdminDatabase),
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;

@@ -1,10 +1,11 @@
-//! Unit tests for Depends<T> and DependsBuilder
+//! Unit tests for Depends<K, T> and DependsBuilder
 
 use async_trait::async_trait;
-use reinhardt_di::{Depends, DiResult, Injectable, InjectionContext};
+use reinhardt_di::{Depends, DiResult, FactoryOutput, Injectable, InjectableKey, InjectionContext};
 use reinhardt_test::fixtures::*;
 use rstest::*;
 use std::sync::Arc;
+use std::sync::Once;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 // Test type definitions
@@ -12,6 +13,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 struct Config {
 	value: String,
 }
+
+struct ConfigKey;
+
+impl InjectableKey for ConfigKey {}
 
 #[async_trait]
 impl Injectable for Config {
@@ -26,6 +31,10 @@ impl Injectable for Config {
 struct UncachedConfig {
 	id: u32,
 }
+
+struct UncachedConfigKey;
+
+impl InjectableKey for UncachedConfigKey {}
 
 static UNCACHED_COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -49,35 +58,34 @@ struct NestedService {
 #[async_trait]
 impl Injectable for NestedService {
 	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
-		let config_depends = Depends::<Config>::builder().resolve(ctx).await?;
+		let config_depends = Depends::<ConfigKey, Config>::builder().resolve(ctx).await?;
 		Ok(NestedService {
 			config: config_depends.into_inner(),
 		})
 	}
 }
 
-/// Register test types in the global registry for Depends<T> resolution.
-/// Depends<T> resolves via ctx.resolve() which requires registry entries.
+/// Register test provider outputs in the global registry for keyed resolution.
 fn register_test_types() {
-	let registry = reinhardt_di::global_registry();
-	if !registry.is_registered::<Config>() {
-		registry.register::<Config>(
+	static REGISTER: Once = Once::new();
+	REGISTER.call_once(|| {
+		let registry = reinhardt_di::global_registry();
+		registry.register_async::<FactoryOutput<ConfigKey, Config>, _, _>(
 			reinhardt_di::DependencyScope::Request,
-			reinhardt_di::InjectableFactory::<Config>::new(),
+			|_ctx| async {
+				Ok(FactoryOutput::new(Config {
+					value: "config_value".to_string(),
+				}))
+			},
 		);
-	}
-	if !registry.is_registered::<UncachedConfig>() {
-		registry.register::<UncachedConfig>(
+		registry.register_async::<FactoryOutput<UncachedConfigKey, UncachedConfig>, _, _>(
 			reinhardt_di::DependencyScope::Transient,
-			reinhardt_di::InjectableFactory::<UncachedConfig>::new(),
+			|_ctx| async {
+				let id = UNCACHED_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
+				Ok(FactoryOutput::new(UncachedConfig { id }))
+			},
 		);
-	}
-	if !registry.is_registered::<NestedService>() {
-		registry.register::<NestedService>(
-			reinhardt_di::DependencyScope::Request,
-			reinhardt_di::InjectableFactory::<NestedService>::new(),
-		);
-	}
+	});
 }
 
 #[rstest]
@@ -86,7 +94,7 @@ async fn depends_builder_creates_instance(injection_context: InjectionContext) {
 	register_test_types();
 
 	// Act
-	let depends = Depends::<Config>::builder()
+	let depends = Depends::<ConfigKey, Config>::builder()
 		.resolve(&injection_context)
 		.await;
 
@@ -101,7 +109,8 @@ async fn depends_resolve_calls_injectable(injection_context: InjectionContext) {
 	register_test_types();
 
 	// Act
-	let depends = Depends::<Config>::resolve(&injection_context, true).await;
+	let depends =
+		Depends::<ConfigKey, Config>::resolve_from_registry(&injection_context, true).await;
 
 	// Assert
 	assert!(depends.is_ok());
@@ -121,12 +130,12 @@ async fn depends_with_use_cache_true() {
 	// Act — UncachedConfig is registered with Transient scope, so each
 	// resolve creates a new instance regardless of use_cache flag.
 	// The builder() (use_cache=true) no longer affects caching; scope does.
-	let depends1 = Depends::<UncachedConfig>::builder()
+	let depends1 = Depends::<UncachedConfigKey, UncachedConfig>::builder()
 		.resolve(&injection_context)
 		.await
 		.unwrap();
 
-	let depends2 = Depends::<UncachedConfig>::builder()
+	let depends2 = Depends::<UncachedConfigKey, UncachedConfig>::builder()
 		.resolve(&injection_context)
 		.await
 		.unwrap();
@@ -148,12 +157,12 @@ async fn depends_with_use_cache_false() {
 	// Act — UncachedConfig is registered with Transient scope, so each
 	// resolve creates a new instance. builder_no_cache() behaves the same
 	// as builder() since caching is now scope-driven, not per-call.
-	let depends1 = Depends::<UncachedConfig>::builder_no_cache()
+	let depends1 = Depends::<UncachedConfigKey, UncachedConfig>::builder_no_cache()
 		.resolve(&injection_context)
 		.await
 		.unwrap();
 
-	let depends2 = Depends::<UncachedConfig>::builder_no_cache()
+	let depends2 = Depends::<UncachedConfigKey, UncachedConfig>::builder_no_cache()
 		.resolve(&injection_context)
 		.await
 		.unwrap();

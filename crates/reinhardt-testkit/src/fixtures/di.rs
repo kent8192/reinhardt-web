@@ -43,15 +43,29 @@
 //! in tests without boilerplate setup code:
 //!
 //! ```rust,no_run
-//! use reinhardt_di::Depends;
+//! use reinhardt_di::{Depends, FactoryOutput, InjectableKey};
 //! use reinhardt_testkit::fixtures::injection_context;
 //! use rstest::*;
+//!
+//! struct ConfigKey;
+//! impl InjectableKey for ConfigKey {}
+//!
+//! #[derive(Clone)]
+//! struct Config {
+//!     api_key: String,
+//! }
 //!
 //! #[rstest]
 //! #[tokio::test]
 //! async fn test_depends_pattern(injection_context: reinhardt_di::InjectionContext) {
-//!     // Use Depends<T> for automatic dependency resolution
-//!     let config = Depends::<Config>::builder()
+//!     injection_context
+//!         .singleton_scope()
+//!         .set(FactoryOutput::<ConfigKey, Config>::new(Config {
+//!             api_key: "test_key".to_string(),
+//!         }));
+//!
+//!     // Use Depends<K, T> for keyed provider output resolution.
+//!     let config = Depends::<ConfigKey, Config>::builder()
 //!         .resolve(&injection_context)
 //!         .await
 //!         .unwrap();
@@ -183,32 +197,32 @@ pub fn singleton_scope() -> Arc<SingletonScope> {
 /// }
 /// ```
 ///
-/// ## With `Depends<T>`
+/// ## With `Depends<K, T>`
 ///
 /// ```rust,no_run
-/// use reinhardt_di::{Depends, Injectable, InjectionContext, DiResult};
+/// use reinhardt_di::{Depends, FactoryOutput, InjectableKey, InjectionContext};
 /// use reinhardt_testkit::fixtures::injection_context;
 /// use rstest::*;
+///
+/// struct DatabaseKey;
+/// impl InjectableKey for DatabaseKey {}
 ///
 /// #[derive(Clone, Default)]
 /// struct Database {
 ///     url: String,
 /// }
 ///
-/// #[async_trait::async_trait]
-/// impl Injectable for Database {
-///     async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
-///         Ok(Database {
-///             url: "postgres://localhost/db".to_string(),
-///         })
-///     }
-/// }
-///
 /// #[rstest]
 /// #[tokio::test]
 /// async fn test_with_depends(injection_context: InjectionContext) {
+///     injection_context
+///         .singleton_scope()
+///         .set(FactoryOutput::<DatabaseKey, Database>::new(Database {
+///             url: "postgres://localhost/db".to_string(),
+///         }));
+///
 ///     // FastAPI-style dependency resolution
-///     let db = Depends::<Database>::builder()
+///     let db = Depends::<DatabaseKey, Database>::builder()
 ///         .resolve(&injection_context)
 ///         .await
 ///         .unwrap();
@@ -505,13 +519,18 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_di::{Depends, DiResult, Injectable};
+	use reinhardt_di::{Depends, DiResult, FactoryOutput, Injectable, InjectableKey};
 
 	// Test structures
 	#[derive(Clone, Debug, PartialEq)]
 	struct TestConfig {
 		value: String,
 	}
+
+	#[derive(Debug)]
+	struct TestConfigKey;
+
+	impl InjectableKey for TestConfigKey {}
 
 	#[async_trait::async_trait]
 	impl Injectable for TestConfig {
@@ -572,19 +591,19 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_depends_with_fixtures(injection_context: InjectionContext) {
-		// Register TestConfig in the global registry so Depends<T> can resolve it
+		// Register keyed TestConfig output so Depends<K, T> can resolve it.
 		let registry = reinhardt_di::global_registry();
-		registry.register_async::<TestConfig, _, _>(
+		registry.register_async::<FactoryOutput<TestConfigKey, TestConfig>, _, _>(
 			reinhardt_di::DependencyScope::Request,
 			|_ctx| async {
-				Ok(TestConfig {
+				Ok(FactoryOutput::new(TestConfig {
 					value: "test_config".to_string(),
-				})
+				}))
 			},
 		);
 
-		// Test Depends<T> integration with fixtures
-		let config = Depends::<TestConfig>::builder()
+		// Test Depends<K, T> integration with fixtures.
+		let config = Depends::<TestConfigKey, TestConfig>::builder()
 			.resolve(&injection_context)
 			.await
 			.unwrap();
@@ -626,6 +645,11 @@ mod tests {
 	struct MockDatabase {
 		url: String,
 	}
+
+	#[derive(Debug)]
+	struct MockDatabaseKey;
+
+	impl InjectableKey for MockDatabaseKey {}
 
 	#[async_trait::async_trait]
 	impl Injectable for MockDatabase {
@@ -719,15 +743,17 @@ mod tests {
 	async fn test_injection_context_with_overrides_and_depends(
 		singleton_scope: Arc<SingletonScope>,
 	) {
-		// Create context with override
+		// Create context with keyed override.
 		let ctx = injection_context_with_overrides(singleton_scope, |scope| {
-			scope.set(MockDatabase {
-				url: "test://database".to_string(),
-			});
+			scope.set(FactoryOutput::<MockDatabaseKey, MockDatabase>::new(
+				MockDatabase {
+					url: "test://database".to_string(),
+				},
+			));
 		});
 
-		// Use Depends<T> - should also get the overridden value
-		let db = Depends::<MockDatabase>::builder()
+		// Use Depends<K, T> - should also get the overridden value.
+		let db = Depends::<MockDatabaseKey, MockDatabase>::builder()
 			.resolve(&ctx)
 			.await
 			.unwrap();

@@ -1,15 +1,21 @@
-// Compile-fail test: injectable_factory with non-inject parameters
+// Compile-fail test: injectable with non-inject parameters
 
-use reinhardt_di::injectable_factory;
+#![allow(unused_imports)]
+
+use reinhardt_di::{FactoryOutput, injectable};
+
+struct MyServiceKey;
+
+impl reinhardt_di::InjectableKey for MyServiceKey {}
 
 #[derive(Clone)]
 struct MyService {
 	name: String,
 }
 
-#[injectable_factory(scope = "singleton")]
-async fn make_service(name: String) -> MyService {
-	MyService { name }
+#[injectable(scope = "singleton")]
+async fn make_service(name: String) -> FactoryOutput<MyServiceKey, MyService> {
+	FactoryOutput::new(MyService { name })
 }
 
 fn main() {}

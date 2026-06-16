@@ -1,16 +1,21 @@
-//! Unit tests for `Depends<T>`, `Option<Depends<T>>`, and `InjectionMetadata`
+//! Unit tests for `Depends<K, T>`, `Option<Depends<K, T>>`, and `InjectionMetadata`
 
 use async_trait::async_trait;
-use reinhardt_di::injected::{DependencyScope, InjectionMetadata};
-use reinhardt_di::{Depends, DiResult, Injectable, InjectionContext};
+use reinhardt_di::injected::{DependencyScope as InjectedScope, InjectionMetadata};
+use reinhardt_di::{Depends, DiResult, FactoryOutput, Injectable, InjectableKey, InjectionContext};
 use reinhardt_test::fixtures::*;
 use rstest::*;
+use std::sync::Once;
 
 // Test type definitions
 #[derive(Clone, Debug, PartialEq)]
 struct TestData {
 	value: String,
 }
+
+struct TestDataKey;
+
+impl InjectableKey for TestDataKey {}
 
 // Injectable implementation is needed for Depends::resolve (registry-based resolution)
 #[async_trait]
@@ -31,7 +36,7 @@ async fn depends_wraps_value() {
 	};
 
 	// Act
-	let depends = Depends::from_value(data);
+	let depends = Depends::<TestDataKey, TestData>::from_value(data);
 
 	// Assert
 	assert_eq!(depends.value, "wrapped");
@@ -44,13 +49,13 @@ async fn depends_metadata_stores_scope() {
 	let data = TestData {
 		value: "metadata_test".to_string(),
 	};
-	let depends = Depends::from_value(data);
+	let depends = Depends::<TestDataKey, TestData>::from_value(data);
 
 	// Act
 	let metadata = depends.metadata();
 
 	// Assert
-	assert_eq!(metadata.scope, DependencyScope::Request);
+	assert_eq!(metadata.scope, InjectedScope::Request);
 	assert!(!metadata.cached);
 }
 
@@ -61,10 +66,10 @@ async fn option_depends_some_value() {
 	let data = TestData {
 		value: "optional_some".to_string(),
 	};
-	let depends = Depends::from_value(data);
+	let depends = Depends::<TestDataKey, TestData>::from_value(data);
 
 	// Act
-	let optional: Option<Depends<TestData>> = Some(depends);
+	let optional: Option<Depends<TestDataKey, TestData>> = Some(depends);
 
 	// Assert
 	assert!(optional.is_some());
@@ -75,7 +80,7 @@ async fn option_depends_some_value() {
 #[tokio::test]
 async fn option_depends_none_value() {
 	// Act
-	let optional: Option<Depends<TestData>> = None;
+	let optional: Option<Depends<TestDataKey, TestData>> = None;
 
 	// Assert
 	assert!(optional.is_none());
@@ -86,25 +91,42 @@ async fn option_depends_none_value() {
 async fn depends_scope_singleton() {
 	// Arrange
 	let metadata = InjectionMetadata {
-		scope: DependencyScope::Singleton,
+		scope: InjectedScope::Singleton,
 		cached: true,
 	};
 
 	// Assert
-	assert_eq!(metadata.scope, DependencyScope::Singleton);
+	assert_eq!(metadata.scope, InjectedScope::Singleton);
 	assert!(metadata.cached);
 }
 
 #[rstest]
 #[tokio::test]
 async fn depends_scope_request(injection_context: InjectionContext) {
+	register_test_data_output();
+
 	// Act
-	let depends = Depends::<TestData>::resolve(&injection_context, true)
+	let depends = Depends::<TestDataKey, TestData>::resolve_from_registry(&injection_context, true)
 		.await
 		.unwrap();
 
 	// Assert
 	let metadata = depends.metadata();
-	assert_eq!(metadata.scope, DependencyScope::Request);
+	assert_eq!(metadata.scope, InjectedScope::Request);
 	assert!(metadata.cached);
+}
+
+fn register_test_data_output() {
+	static REGISTER: Once = Once::new();
+	REGISTER.call_once(|| {
+		reinhardt_di::global_registry()
+			.register_async::<FactoryOutput<TestDataKey, TestData>, _, _>(
+				reinhardt_di::DependencyScope::Request,
+				|_ctx| async {
+					Ok(FactoryOutput::new(TestData {
+						value: "test_data".to_string(),
+					}))
+				},
+			);
+	});
 }

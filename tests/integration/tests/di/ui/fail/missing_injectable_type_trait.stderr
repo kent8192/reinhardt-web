@@ -1,10 +1,10 @@
 error[E0599]: the method `__resolve_inject_parameter` exists for struct `__InjectResolver<Broken<AppConfig>>`, but its trait bounds were not satisfied
-  --> tests/di/ui/fail/missing_injectable_type_trait.rs:21:1
+  --> tests/di/ui/fail/missing_injectable_type_trait.rs:25:1
    |
-17 | struct Broken<T>(reinhardt_di::Depends<T>)
+21 | struct Broken<T>(reinhardt_di::Depends<AppConfigKey, T>)
    | ---------------- doesn't satisfy `Broken<AppConfig>: Clone`, `Broken<AppConfig>: InjectableType` or `Broken<AppConfig>: Injectable`
 ...
-21 | #[get("/broken-wrapper", name = "broken-wrapper")]
+25 | #[get("/broken-wrapper", name = "broken-wrapper")]
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method cannot be called on `__InjectResolver<Broken<AppConfig>>` due to unsatisfied trait bounds
    |
   ::: $WORKSPACE/crates/reinhardt-di/src/injectable_type.rs
@@ -32,14 +32,14 @@ note: the traits `Injectable` and `InjectableType` must be implemented
    = note: this error originates in the attribute macro `get` (in Nightly builds, run with -Z macro-backtrace for more info)
 help: consider annotating `Broken<AppConfig>` with `#[derive(Clone)]`
    |
-17 + #[derive(Clone)]
-18 | struct Broken<T>(reinhardt_di::Depends<T>)
+21 + #[derive(Clone)]
+22 | struct Broken<T>(reinhardt_di::Depends<AppConfigKey, T>)
    |
 
 error[E0282]: type annotations needed
-  --> tests/di/ui/fail/missing_injectable_type_trait.rs:21:1
+  --> tests/di/ui/fail/missing_injectable_type_trait.rs:25:1
    |
-21 | #[get("/broken-wrapper", name = "broken-wrapper")]
+25 | #[get("/broken-wrapper", name = "broken-wrapper")]
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
    |
    = note: this error originates in the attribute macro `get` (in Nightly builds, run with -Z macro-backtrace for more info)

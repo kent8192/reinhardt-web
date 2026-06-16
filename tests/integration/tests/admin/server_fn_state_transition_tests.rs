@@ -13,7 +13,6 @@ use reinhardt_admin::server::{
 	bulk_delete_records, create_record, delete_record, export_data, get_detail, get_list,
 	import_data, update_record,
 };
-use reinhardt_di::Depends;
 use rstest::*;
 use serde_json::json;
 use std::collections::HashMap;
@@ -24,7 +23,7 @@ use std::collections::HashMap;
 #[rstest]
 #[tokio::test]
 async fn test_create_then_update_then_delete_lifecycle(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: (AdminSite, AdminDatabase),
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -201,7 +200,7 @@ fn test_register_unregister_reregister() {
 #[rstest]
 #[tokio::test]
 async fn test_import_then_export_round_trip_json(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: (AdminSite, AdminDatabase),
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -301,9 +300,7 @@ fn test_configure_site_after_register() {
 /// get_detail with non-existent ID returns error
 #[rstest]
 #[tokio::test]
-async fn test_detail_nonexistent_id(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
-) {
+async fn test_detail_nonexistent_id(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -330,9 +327,7 @@ async fn test_detail_nonexistent_id(
 /// update_record with non-existent ID returns error
 #[rstest]
 #[tokio::test]
-async fn test_update_nonexistent_id(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
-) {
+async fn test_update_nonexistent_id(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -368,9 +363,7 @@ async fn test_update_nonexistent_id(
 /// delete_record with non-existent ID returns error
 #[rstest]
 #[tokio::test]
-async fn test_delete_nonexistent_id(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
-) {
+async fn test_delete_nonexistent_id(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -398,9 +391,7 @@ async fn test_delete_nonexistent_id(
 /// get_list with page exceeding total returns empty results but valid metadata
 #[rstest]
 #[tokio::test]
-async fn test_list_page_exceeds_total(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
-) {
+async fn test_list_page_exceeds_total(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let auth_user = make_auth_user();
@@ -443,9 +434,7 @@ async fn test_list_page_exceeds_total(
 /// bulk_delete with empty IDs list
 #[rstest]
 #[tokio::test]
-async fn test_bulk_delete_empty_ids_list(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
-) {
+async fn test_bulk_delete_empty_ids_list(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();

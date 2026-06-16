@@ -11,7 +11,7 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use {
 	crate::apps::users::models::User,
 	reinhardt::Model,
-	reinhardt::di::{Depends, injectable_factory},
+	reinhardt::di::{Depends, FactoryOutput, injectable, injectable_key},
 	reinhardt::middleware::session::{SessionData, USER_ID_SESSION_KEY},
 };
 
@@ -44,10 +44,16 @@ impl From<&SessionError> for ServerFnError {
 }
 
 #[cfg(server)]
-#[injectable_factory(scope = "request")]
-async fn session_user_factory(#[inject] session: SessionData) -> Result<User, SessionError> {
+#[injectable_key]
+pub struct SessionUserKey;
+
+#[cfg(server)]
+#[injectable(scope = "request")]
+async fn session_user_factory(
+	#[inject] session: SessionData,
+) -> FactoryOutput<SessionUserKey, Result<User, SessionError>> {
 	let Some(user_id) = session.get::<i64>(USER_ID_SESSION_KEY) else {
-		return Err(SessionError::Anonymous);
+		return FactoryOutput::new(Err(SessionError::Anonymous));
 	};
 
 	let user = match User::objects()
@@ -56,21 +62,21 @@ async fn session_user_factory(#[inject] session: SessionData) -> Result<User, Se
 		.await
 	{
 		Ok(Some(user)) => user,
-		Ok(None) => return Err(SessionError::Anonymous),
+		Ok(None) => return FactoryOutput::new(Err(SessionError::Anonymous)),
 		Err(err) => {
 			::tracing::warn!(
 				user_id = user_id,
 				error = %err,
 				"session_user_factory: user lookup failed"
 			);
-			return Err(SessionError::Unavailable(err.to_string()));
+			return FactoryOutput::new(Err(SessionError::Unavailable(err.to_string())));
 		}
 	};
 
 	if user.is_active {
-		Ok(user)
+		FactoryOutput::new(Ok(user))
 	} else {
-		Err(SessionError::Inactive)
+		FactoryOutput::new(Err(SessionError::Inactive))
 	}
 }
 
@@ -262,8 +268,8 @@ async fn vote_internal(
 //   definitions, so `HiddenField<i64>` reaches these handlers as `i64`.
 //   CSRF is supplied by the `#[server_fn]` client stub through `X-CSRFToken`
 //   and verified by middleware.
-// * Authentication is required: `Depends<Result<User, SessionError>>` is
-//   resolved by the request-scoped factory in this module and exposes
+// * Authentication is required: keyed `Depends` resolves the
+//   request-scoped factory in this module and exposes
 //   `.as_ref().map_err(ServerFnError::from)?` for the 401/403/500 surface.
 // * For `update_question` and `delete_question`, ownership is enforced by
 //   comparing `question.author_id()` with the current user's id; mismatched
@@ -274,7 +280,7 @@ async fn vote_internal(
 pub async fn create_question(
 	question_text: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<Result<User, SessionError>>,
+	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
 	use crate::apps::polls::models::Question;
 
@@ -307,7 +313,7 @@ pub async fn update_question(
 	question_id: i64,
 	question_text: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<Result<User, SessionError>>,
+	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
 	use crate::apps::polls::models::Question;
 
@@ -351,7 +357,7 @@ pub async fn update_question(
 pub async fn delete_question(
 	question_id: i64,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<Result<User, SessionError>>,
+	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
 ) -> std::result::Result<(), ServerFnError> {
 	use crate::apps::polls::models::Question;
 
@@ -421,7 +427,7 @@ pub async fn create_choice(
 	question_id: i64,
 	choice_text: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<Result<User, SessionError>>,
+	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	use crate::apps::polls::models::Choice;
 
@@ -456,7 +462,7 @@ pub async fn update_choice(
 	choice_id: i64,
 	choice_text: String,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<Result<User, SessionError>>,
+	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
 	use crate::apps::polls::models::Choice;
 
@@ -493,7 +499,7 @@ pub async fn update_choice(
 pub async fn delete_choice(
 	choice_id: i64,
 	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<Result<User, SessionError>>,
+	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
 ) -> std::result::Result<(), ServerFnError> {
 	use crate::apps::polls::models::Choice;
 

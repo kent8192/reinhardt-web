@@ -49,7 +49,8 @@ mod tests {
 		// `SessionData::inject` reads the store from the singleton scope under
 		// TypeId::of::<SessionStore>() (post-#4437 key). `set_arc` stores the
 		// `Arc<SessionStore>` verbatim under that key, so handlers using
-		// `#[inject] store: Depends<SessionStore>` would resolve the same value.
+		// `#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>`
+		// would resolve the same store through the keyed registration.
 		singleton.set_arc(store);
 
 		// `SessionData::inject` reads the `Request` from the request scope via

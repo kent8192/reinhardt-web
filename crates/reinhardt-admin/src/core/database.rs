@@ -1331,8 +1331,8 @@ impl Injectable for AdminDatabase {
 	}
 }
 
-// Register AdminDatabase in the global dependency registry so that
-// Depends<AdminDatabase> can resolve it via ctx.resolve().
+// Register AdminDatabase in the global dependency registry so direct
+// `#[inject] AdminDatabase` parameters can resolve it via ctx.resolve().
 // Delegates to Injectable::inject() for lazy construction from DatabaseConnection.
 fn __register_admin_database(registry: &reinhardt_di::DependencyRegistry) {
 	registry.register::<AdminDatabase>(

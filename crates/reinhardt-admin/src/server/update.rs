@@ -7,8 +7,6 @@ use super::admin_auth::AdminAuthenticatedUser;
 use crate::adapters::{AdminDatabase, AdminRecord, AdminSite};
 use crate::types::MutationResponse;
 #[cfg(server)]
-use reinhardt_di::Depends;
-#[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 
@@ -55,8 +53,8 @@ pub async fn update_record(
 	model_name: String,
 	id: String,
 	request: crate::types::MutationRequest,
-	#[inject] site: Depends<AdminSite>,
-	#[inject] db: Depends<AdminDatabase>,
+	#[inject] site: AdminSite,
+	#[inject] db: AdminDatabase,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<crate::types::MutationResponse, ServerFnError> {

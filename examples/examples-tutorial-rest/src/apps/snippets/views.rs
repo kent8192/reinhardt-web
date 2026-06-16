@@ -24,29 +24,17 @@ use reinhardt::{delete, get, post, put};
 // `serializer.validate()?` call below — hence the `use reinhardt::Validate`
 // import above is intentional.
 
-use super::di::{ConfigError, SnippetListConfig};
+use super::di::{CheckedSnippetListConfigKey, ConfigError, SnippetListConfig};
 use super::models::Snippet;
 use super::serializers::{SnippetResponse, SnippetSerializer};
 
 /// Snippet listing configuration endpoint.
 ///
-/// Demonstrates the `Depends<Result<T, E>>` form (the `DependsResult<T, E>`
-/// type alias expands to this, but route handlers must spell it out — see
-/// below): the `checked_list_config` factory in `di.rs` returns
-/// `Result<SnippetListConfig, ConfigError>`, so its registry key
-/// (`TypeId::of::<Result<SnippetListConfig, ConfigError>>()`) is distinct
-/// from the plain `SnippetListConfig` factory's key
-/// (`TypeId::of::<SnippetListConfig>()`) even though the success type is
-/// identical.
-///
-/// `#[get]` resolves `#[inject]` parameters of the literal form
-/// `Depends<T>` via `resolve_from_registry::<T>()` (no `T: Injectable`
-/// bound — see `crates/reinhardt-core/macros/src/routes_registration.rs`).
-/// That single-generic-argument match does not recognise the
-/// `DependsResult<T, E>` / `DependsOption<T>` sugar aliases (those are
-/// resolved by `#[injectable]` struct fields and `#[injectable_factory]`
-/// parameters instead), so route handlers spell out
-/// `Depends<Result<T, E>>` to take this path.
+/// Demonstrates keyed `Depends<K, T>` for a fallible provider. The
+/// `checked_list_config` provider in `di.rs` returns
+/// `FactoryOutput<CheckedSnippetListConfigKey, Result<SnippetListConfig,
+/// ConfigError>>`, so the key type distinguishes this provider from any other
+/// `SnippetListConfig` provider.
 ///
 /// Registered before `retrieve` (`/snippets/{id}/`) in `urls.rs` so this
 /// literal `/snippets/config/` path is matched first.
@@ -56,10 +44,10 @@ use super::serializers::{SnippetResponse, SnippetSerializer};
 /// Error response: 503 Service Unavailable with `{ "error": <message> }`
 #[get("/snippets/config/", name = "snippets-config")]
 pub async fn config(
-	#[inject] cfg: Depends<Result<SnippetListConfig, ConfigError>>,
+	#[inject] cfg: Depends<CheckedSnippetListConfigKey, Result<SnippetListConfig, ConfigError>>,
 ) -> ViewResult<Response> {
-	// `Depends<Result<T, E>>` derefs to `Result<T, E>`. `.as_ref()` matches on
-	// `Result<&SnippetListConfig, &ConfigError>` without consuming `cfg`.
+	// `Depends<K, Result<T, E>>` derefs to `Result<T, E>`. `.as_ref()` matches
+	// on `Result<&SnippetListConfig, &ConfigError>` without consuming `cfg`.
 	match (*cfg).as_ref() {
 		Ok(cfg) => {
 			let body = json::to_string(&json!({ "max_page_size": cfg.max_page_size }))?;
@@ -81,12 +69,7 @@ pub async fn config(
 /// GET /snippets/
 /// Success response: 200 OK with array of snippets
 #[get("/snippets/", name = "snippets-list")]
-pub async fn list(#[inject] db: Depends<DatabaseConnection>) -> ViewResult<Response> {
-	// `Depends<T>` implements `Deref<Target = T>`. `all_with_db` wants a
-	// `&DatabaseConnection`, so passing `&db` lets deref coercion turn
-	// `&Depends<DatabaseConnection>` into `&DatabaseConnection` for free.
-	// (To take the value by reference explicitly you would write `&*db`; the
-	// `config` handler above shows the explicit `*db` form where it is needed.)
+pub async fn list(#[inject] db: DatabaseConnection) -> ViewResult<Response> {
 	let snippets = Manager::<Snippet>::new().all().all_with_db(&db).await?;
 	let snippet_responses: Vec<SnippetResponse> =
 		snippets.iter().map(SnippetResponse::from_model).collect();
@@ -110,7 +93,7 @@ pub async fn list(#[inject] db: Depends<DatabaseConnection>) -> ViewResult<Respo
 #[post("/snippets/", name = "snippets-create", pre_validate = true)]
 pub async fn create(
 	Json(serializer): Json<SnippetSerializer>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	// `pre_validate = true` on the route macro extracts `Json<SnippetSerializer>`
 	// into a temporary, calls `Validate::validate(&__tmp)`, then re-destructures
@@ -154,7 +137,7 @@ pub async fn create(
 #[get("/snippets/{id}/", name = "snippets-retrieve")]
 pub async fn retrieve(
 	Path(snippet_id): Path<i64>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	let snippets = Manager::<Snippet>::new()
 		.get(snippet_id)
@@ -196,7 +179,7 @@ pub async fn retrieve(
 pub async fn update(
 	Path(snippet_id): Path<i64>,
 	Json(serializer): Json<SnippetSerializer>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	// Manual validation — see module-level comment on why `pre_validate = true`
 	// is not used here.
@@ -241,7 +224,7 @@ pub async fn update(
 #[delete("/snippets/{id}/", name = "snippets-delete")]
 pub async fn delete(
 	Path(snippet_id): Path<i64>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	let manager = Manager::<Snippet>::new();
 	let existing = manager.get(snippet_id).all_with_db(&db).await?;

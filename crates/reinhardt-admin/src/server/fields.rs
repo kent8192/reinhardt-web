@@ -7,8 +7,6 @@ use super::admin_auth::AdminAuthenticatedUser;
 use crate::adapters::{AdminDatabase, AdminRecord, AdminSite, FieldInfo, FieldType};
 use crate::types::FieldsResponse;
 #[cfg(server)]
-use reinhardt_di::Depends;
-#[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 
@@ -46,8 +44,8 @@ use reinhardt_utils::utils_core::text::humanize_field_name;
 pub async fn get_fields(
 	model_name: String,
 	id: Option<String>,
-	#[inject] site: Depends<AdminSite>,
-	#[inject] db: Depends<AdminDatabase>,
+	#[inject] site: AdminSite,
+	#[inject] db: AdminDatabase,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<FieldsResponse, ServerFnError> {

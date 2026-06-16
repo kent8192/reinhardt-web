@@ -4,8 +4,6 @@
 
 use crate::adapters::{AdminSite, DashboardResponse, ModelInfo};
 #[cfg(server)]
-use reinhardt_di::Depends;
-#[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 
@@ -40,7 +38,7 @@ use super::security::{build_csrf_cookie, generate_csrf_token};
 /// ```
 #[server_fn]
 pub async fn get_dashboard(
-	#[inject] site: Depends<AdminSite>,
+	#[inject] site: AdminSite,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(_user): AdminAuthenticatedUser,
 ) -> Result<DashboardResponse, ServerFnError> {

@@ -1,125 +1,53 @@
 //! Procedural macros for Reinhardt dependency injection
 //!
 //! This crate provides FastAPI-style dependency injection macros:
-//! - `#[injectable]` - Mark a struct as injectable with automatic registration
-//! - `#[injectable_factory]` - Mark an async function as a dependency factory
+//! - `#[injectable]` - Mark an async function as a dependency provider
+//! - `#[injectable_factory]` - Deprecated compatibility name for `#[injectable]`
+//! - `#[injectable_key]` - Mark a struct as a dependency provider key
 
 #![warn(missing_docs)]
 
 use proc_macro::TokenStream;
-use syn::{DeriveInput, ItemFn, parse_macro_input};
+use syn::{ItemFn, ItemStruct, parse_macro_input};
 
 mod crate_paths;
-mod injectable;
 mod injectable_factory;
+mod injectable_key;
 mod utils;
 
-/// Mark a struct as injectable and register it with the global registry
+/// Register an injectable provider function.
 ///
-/// This macro automatically derives `Clone` for the annotated type if it is
-/// not already derived. `Clone` is used by generated injection and caching paths.
-///
-/// # Attribute Ordering
-///
-/// **`#[injectable]` must be placed above `#[derive(...)]` attributes.**
-///
-/// In Rust 2024 edition, attribute macros can only see attributes listed
-/// below them. If `#[derive(Clone)]` appears above `#[injectable]`, the
-/// macro cannot detect it and will add a duplicate `#[derive(Clone)]`,
-/// causing a compilation error.
-///
-/// ```ignore
-/// // Correct — #[injectable] is the outermost attribute
-/// #[injectable]
-/// #[derive(Default, Debug)]
-/// struct MyService {
-///     #[no_inject]
-///     name: String,
-/// }
-///
-/// // Incorrect — #[derive] above #[injectable] is not visible to the macro
-/// #[derive(Default, Debug)]
-/// #[injectable]  // Cannot detect derives above; may cause duplicate Clone
-/// struct MyService {
-///     #[no_inject]
-///     name: String,
-/// }
-/// ```
-///
-/// # Example
-///
-/// ```ignore
-/// use reinhardt_di_macros::injectable;
-///
-/// #[injectable(scope = "singleton")]
-/// struct Config {
-///     #[no_inject]
-///     database_url: String,
-/// }
-/// ```
-///
-/// # Attributes
-///
-/// Scope is passed as a macro argument in key-value form. `#[injectable]`
-/// defaults to `request` when no `scope` argument is supplied.
-///
-/// - `#[injectable(scope = "request")]` - Request scope (default)
-/// - `#[injectable(scope = "singleton")]` - Singleton scope
-/// - `#[injectable(scope = "transient")]` - Transient scope
+/// Provider functions must be async and return `FactoryOutput<K, T>`, where
+/// `K` is an `InjectableKey` and `T` is the value consumed through
+/// `Depends<K, T>`.
 #[proc_macro_attribute]
 pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
-	let input = parse_macro_input!(input as DeriveInput);
+	let input = parse_macro_input!(input as ItemFn);
 
-	injectable::injectable_impl(args.into(), input)
+	injectable_factory::injectable_factory_impl(args.into(), input)
 		.unwrap_or_else(|e| e.to_compile_error())
 		.into()
 }
 
-/// Mark an async function as a dependency factory
+/// Deprecated compatibility name for `#[injectable]`.
 ///
-/// # Example
-///
-/// ```ignore
-/// use reinhardt_di::Depends;
-/// use reinhardt_di::DependsResult;
-/// use reinhardt_di_macros::injectable_factory;
-///
-/// #[derive(Debug)]
-/// struct DatabaseConnectionError;
-///
-/// #[injectable_factory(scope = "singleton")]
-/// async fn create_database(
-///     #[inject] config: Depends<Config>,
-/// ) -> Result<DatabaseConnection, DatabaseConnectionError> {
-///     DatabaseConnection::connect(&config.database_url)
-///         .await
-///         .map_err(|_| DatabaseConnectionError)
-/// }
-///
-/// type DatabaseDependency = DependsResult<DatabaseConnection, DatabaseConnectionError>;
-/// ```
-///
-/// When a factory can fail, prefer returning `Result<T, E>` where `T` is
-/// the desired dependency and `E` is an error type used only by that
-/// factory. The DI registry key is the literal return type's `TypeId`, so
-/// `Result<T, E1>` and `Result<T, E2>` are different keys even when `T` is
-/// the same.
-///
-/// # Attributes
-///
-/// Scope is passed as a macro argument in key-value form.
-/// `#[injectable_factory]` defaults to `singleton` when no `scope` argument
-/// is supplied.
-///
-/// - `#[injectable_factory(scope = "singleton")]` - Singleton scope (default)
-/// - `#[injectable_factory(scope = "request")]` - Request scope
-/// - `#[injectable_factory(scope = "transient")]` - Transient scope
-/// - `#[inject]` - Mark function parameters for automatic injection
+/// Use `#[injectable]` on provider functions instead.
+#[deprecated(note = "use #[injectable] on provider functions instead")]
 #[proc_macro_attribute]
 pub fn injectable_factory(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);
 
 	injectable_factory::injectable_factory_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Mark a type as a dependency provider key.
+#[proc_macro_attribute]
+pub fn injectable_key(args: TokenStream, input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as ItemStruct);
+
+	injectable_key::injectable_key_impl(args.into(), input)
 		.unwrap_or_else(|e| e.to_compile_error())
 		.into()
 }

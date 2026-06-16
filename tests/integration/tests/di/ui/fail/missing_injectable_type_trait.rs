@@ -1,4 +1,4 @@
-use reinhardt_di::injectable_factory;
+use reinhardt_di::{FactoryOutput, InjectableKey, injectable};
 use reinhardt_http::{Response, ViewResult};
 use reinhardt_macros::get;
 
@@ -7,14 +7,18 @@ struct AppConfig {
 	host: String,
 }
 
-#[injectable_factory(scope = "transient")]
-async fn make_app_config() -> AppConfig {
-	AppConfig {
+struct AppConfigKey;
+
+impl InjectableKey for AppConfigKey {}
+
+#[injectable(scope = "transient")]
+async fn make_app_config() -> FactoryOutput<AppConfigKey, AppConfig> {
+	FactoryOutput::new(AppConfig {
 		host: "localhost".to_string(),
-	}
+	})
 }
 
-struct Broken<T>(reinhardt_di::Depends<T>)
+struct Broken<T>(reinhardt_di::Depends<AppConfigKey, T>)
 where
 	T: Send + Sync + 'static;
 
