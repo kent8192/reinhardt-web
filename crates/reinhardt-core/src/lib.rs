@@ -253,6 +253,31 @@ pub mod model_info {
 			self.target_ids == other.target_ids
 		}
 	}
+
+	#[cfg(test)]
+	mod tests {
+		use super::{InfoModel, ManyToManyInfo, RelationInfo};
+
+		#[derive(Debug)]
+		struct Post;
+
+		impl InfoModel for Post {
+			type PrimaryKey = i64;
+		}
+
+		#[test]
+		fn relation_info_preserves_primary_key() {
+			let relation = RelationInfo::<Post>::new(7);
+			assert_eq!(*relation.id(), 7);
+			assert_eq!(relation.into_id(), 7);
+		}
+
+		#[test]
+		fn many_to_many_info_preserves_target_ids() {
+			let info = ManyToManyInfo::<(), Post>::new([1, 2, 3]);
+			assert_eq!(info.target_ids(), &[1, 2, 3]);
+		}
+	}
 }
 /// Content negotiation for request/response formats.
 #[cfg(feature = "negotiation")]
