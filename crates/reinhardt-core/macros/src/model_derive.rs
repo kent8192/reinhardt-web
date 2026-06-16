@@ -2211,32 +2211,40 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	let field_selector_struct = generate_field_selector_struct(struct_name, &field_infos);
 
 	let (info_impl_generics, info_ty_generics, info_where_clause) = generics.split_for_impl();
-	let info_model_impl = quote! {
-		impl #info_impl_generics #reinhardt::model_info::InfoModel for #struct_name #info_ty_generics #info_where_clause {
-			type PrimaryKey = #pk_type;
+	let info_model_impl = if model_config.server_only {
+		quote! {
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+			impl #info_impl_generics #reinhardt::model_info::InfoModel for #struct_name #info_ty_generics #info_where_clause {
+				type PrimaryKey = #pk_type;
+			}
+		}
+	} else {
+		quote! {
+			impl #info_impl_generics #reinhardt::model_info::InfoModel for #struct_name #info_ty_generics #info_where_clause {
+				type PrimaryKey = #pk_type;
+			}
 		}
 	};
 
-	let shared_info_output = if model_config.server_only {
+	// Server-only models still expose native primary-key metadata for FK id
+	// generation, but skip shared Info companion output.
+	let info_struct = if model_config.server_only {
 		quote! {}
+	} else if model_config.info {
+		generate_info_struct(
+			struct_name,
+			generics,
+			&field_infos,
+			&fk_field_infos,
+			model_config.serde_serialize,
+			model_config.serde_deserialize,
+		)?
 	} else {
-		// Conditionally generate Info companion struct (Issue #4194)
-		let info_struct = if model_config.info {
-			generate_info_struct(
-				struct_name,
-				generics,
-				&field_infos,
-				&fk_field_infos,
-				model_config.serde_serialize,
-				model_config.serde_deserialize,
-			)?
-		} else {
-			quote! {}
-		};
-		quote! {
-			#info_model_impl
-			#info_struct
-		}
+		quote! {}
+	};
+	let shared_info_output = quote! {
+		#info_model_impl
+		#info_struct
 	};
 
 	// Determine the `type Objects` associated type for the Model impl.
