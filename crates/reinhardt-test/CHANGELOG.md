@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.2.0...reinhardt-test@v0.3.0) - 2026-06-16
+
+### Added
+
+- *(test)* add native msw mock server
+
+### Changed
+
+- *(test)* share msw state across runtimes
+- *(test)* adapt wasm msw to shared state
+
+### Documentation
+
+- *(test)* document native msw endpoint injection
+
+### Fixed
+
+- *(test)* consume native msw network error handlers
+- *(test)* reject concurrent native msw startup
+- *(test)* serialize native msw lifecycle state
+- *(test)* stop native MSW keep-alive tasks
+
+### Styling
+
+- *(test)* format native msw changes
+
+### Testing
+
+- *(test)* add native msw behavior coverage
+- *(test)* tighten native msw coverage
+
 ### Added
 
 - Native `reinhardt_test::msw::MockServiceWorker` support backed by a loopback

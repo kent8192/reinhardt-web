@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0...reinhardt-web@v0.3.0) - 2026-06-16
+
+### Added
+
+- feat!(macros): expose relation-shaped model info fields
+- *(formatter)* add semantic page grammar nodes
+- *(formatter)* rustfmt page expression islands
+
+### Changed
+
+- *(admin)* use keyed depends for server injections
+
+### Documentation
+
+- *(formatter)* document page rustfmt islands
+
+### Fixed
+
+- *(ci)* pin brotli allocator dependency
+- *(examples)* align polls info fixtures with relations
+- *(formatter)* handle reviewed page rustfmt islands
+- add native stubs for client page functions
+- *(pages)* export client_page from prelude
+- *(di)* honor cache false for keyed wrappers
+- *(ci)* satisfy pages clippy lint
+
+### Maintenance
+
+- *(release)* group tree-sitter crates
+- merge develop/0.3.0 into pr 5346
+
+### Styling
+
+- *(examples)* format tutorial basis pages
+- format di exports
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.3...reinhardt-web@v0.2.0) - 2026-06-11
 
 Stable 0.2.0 is the first release of the Reinhardt 0.2 line. It
