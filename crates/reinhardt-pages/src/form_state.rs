@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::rc::{Rc, Weak};
+use std::sync::Arc;
 
 use crate::reactive::{Effect, EffectTiming, Signal};
 
@@ -115,15 +116,128 @@ impl FieldError {
 	}
 }
 
+/// Experimental raw value kind requested by a custom widget adapter.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FormWidgetValueKind {
+	/// A single string value.
+	Value,
+	/// A boolean checked value.
+	Checked,
+	/// A file value. File parsing is not implemented yet.
+	File,
+	/// Multiple string values.
+	MultiValue,
+}
+
+/// Experimental raw value passed between generated forms and custom widget adapters.
+#[non_exhaustive]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CustomWidgetRawValue {
+	/// A single string value.
+	String(String),
+	/// A boolean checked value.
+	Bool(bool),
+	/// Multiple string values.
+	Strings(Vec<String>),
+	/// A raw value kind not supported by the current experimental runtime.
+	Unsupported,
+}
+
+/// Experimental error returned by a custom widget adapter.
+#[non_exhaustive]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FormWidgetError {
+	message: String,
+}
+
+impl FormWidgetError {
+	/// Creates an experimental custom widget adapter error.
+	pub fn new(message: impl Into<String>) -> Self {
+		Self {
+			message: message.into(),
+		}
+	}
+
+	/// Returns the experimental custom widget adapter error message.
+	pub fn message(&self) -> &str {
+		&self.message
+	}
+}
+
+/// Experimental context passed to custom widget adapters.
+#[non_exhaustive]
+#[derive(Clone)]
+pub struct CustomWidgetContext<Value> {
+	/// Current typed field value.
+	pub value: Value,
+	/// Whether the generated field should be disabled.
+	pub disabled: bool,
+	/// Whether the generated field is required.
+	pub required: bool,
+	/// Whether the generated field has been touched.
+	pub touched: bool,
+	/// Current field error, if any.
+	pub error: Option<FieldError>,
+	/// Generated form field name.
+	pub name: String,
+	/// Generated form field id.
+	pub id: String,
+	/// Experimental raw-change callback for custom widget components.
+	///
+	/// The generated form parses raw values through the adapter and updates the
+	/// generated field state when parsing succeeds. Parse failures are returned
+	/// to the caller as experimental adapter errors and surfaced through
+	/// runtime field error state.
+	pub on_raw_change: Rc<dyn Fn(CustomWidgetRawValue) -> Result<(), FormWidgetError>>,
+}
+
+impl<Value> CustomWidgetContext<Value> {
+	/// Creates an experimental custom widget context.
+	pub fn new(
+		value: Value,
+		on_raw_change: Rc<dyn Fn(CustomWidgetRawValue) -> Result<(), FormWidgetError>>,
+	) -> Self {
+		Self {
+			value,
+			disabled: false,
+			required: false,
+			touched: false,
+			error: None,
+			name: String::new(),
+			id: String::new(),
+			on_raw_change,
+		}
+	}
+}
+
+/// Experimental adapter trait for `CustomWidget(...)` generated form fields.
+pub trait FormWidgetAdapter<FieldValue> {
+	/// Props accepted by the custom widget component.
+	type ComponentProps;
+
+	/// Returns the raw value kind consumed by this experimental adapter.
+	fn value_kind() -> FormWidgetValueKind;
+
+	/// Builds component props from the generated field context.
+	fn props(ctx: CustomWidgetContext<FieldValue>) -> Self::ComponentProps;
+
+	/// Parses a raw widget value into the typed field value.
+	fn parse(raw: CustomWidgetRawValue) -> Result<FieldValue, FormWidgetError>;
+
+	/// Formats a typed field value into a raw widget value.
+	fn format(value: &FieldValue) -> CustomWidgetRawValue;
+}
+
 /// Validation failure for a generated form.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FormValidationError<Field>
 where
 	Field: Copy + Eq + Hash,
 {
-	field_errors: HashMap<Field, FieldError>,
-	collection_errors: HashMap<String, FieldError>,
-	path_errors: HashMap<String, FieldError>,
+	field_errors: Arc<HashMap<Field, FieldError>>,
+	collection_errors: Arc<HashMap<String, FieldError>>,
+	path_errors: Arc<HashMap<String, FieldError>>,
 	form_error: Option<String>,
 }
 
@@ -134,9 +248,9 @@ where
 	/// Creates an empty validation error.
 	pub fn new() -> Self {
 		Self {
-			field_errors: HashMap::new(),
-			collection_errors: HashMap::new(),
-			path_errors: HashMap::new(),
+			field_errors: Arc::new(HashMap::new()),
+			collection_errors: Arc::new(HashMap::new()),
+			path_errors: Arc::new(HashMap::new()),
 			form_error: None,
 		}
 	}
@@ -146,9 +260,9 @@ where
 		let mut field_errors = HashMap::new();
 		field_errors.insert(field, FieldError::new(message));
 		Self {
-			field_errors,
-			collection_errors: HashMap::new(),
-			path_errors: HashMap::new(),
+			field_errors: Arc::new(field_errors),
+			collection_errors: Arc::new(HashMap::new()),
+			path_errors: Arc::new(HashMap::new()),
 			form_error: None,
 		}
 	}
@@ -156,9 +270,9 @@ where
 	/// Creates a form-level validation error.
 	pub fn form(message: impl Into<String>) -> Self {
 		Self {
-			field_errors: HashMap::new(),
-			collection_errors: HashMap::new(),
-			path_errors: HashMap::new(),
+			field_errors: Arc::new(HashMap::new()),
+			collection_errors: Arc::new(HashMap::new()),
+			path_errors: Arc::new(HashMap::new()),
 			form_error: Some(message.into()),
 		}
 	}
@@ -185,7 +299,7 @@ where
 
 	/// Adds or replaces one field validation error.
 	pub fn add_field_error(&mut self, field: Field, message: impl Into<String>) {
-		self.field_errors.insert(field, FieldError::new(message));
+		Arc::make_mut(&mut self.field_errors).insert(field, FieldError::new(message));
 	}
 
 	/// Adds or replaces one generated collection validation error.
@@ -194,14 +308,13 @@ where
 		collection_key: impl Into<String>,
 		message: impl Into<String>,
 	) {
-		self.collection_errors
+		Arc::make_mut(&mut self.collection_errors)
 			.insert(collection_key.into(), FieldError::new(message));
 	}
 
 	/// Adds or replaces one nested collection path validation error.
 	pub fn add_path_error(&mut self, path_key: impl Into<String>, message: impl Into<String>) {
-		self.path_errors
-			.insert(path_key.into(), FieldError::new(message));
+		Arc::make_mut(&mut self.path_errors).insert(path_key.into(), FieldError::new(message));
 	}
 
 	/// Sets the form-level validation error.
@@ -389,6 +502,14 @@ pub trait FormRuntimeSource: Clone + 'static {
 	where
 		T: Clone + 'static;
 
+	/// Returns the current custom-widget bridge error for one generated field.
+	fn runtime_custom_widget_error(&self, _field: Self::Field) -> Option<FieldError> {
+		None
+	}
+
+	/// Sets or clears the current custom-widget bridge error for one generated field.
+	fn runtime_set_custom_widget_error(&self, _field: Self::Field, _error: Option<FieldError>) {}
+
 	/// Captures nested collection field values using the current runtime item keys.
 	fn runtime_path_values_from_values(
 		&self,
@@ -555,6 +676,7 @@ fn build_signal_sync_effect<Form>(
 	values_signal: Signal<Form::Values>,
 	subscribers: SubscriberSlots<Form>,
 	observed_values: Rc<RefCell<Form::Values>>,
+	custom_widget_error_fields: Rc<RefCell<HashMap<Form::Field, FieldError>>>,
 	signal_sync_suppressed: Rc<Cell<bool>>,
 	revalidate_on: RevalidateOn,
 ) -> Rc<Effect>
@@ -565,6 +687,7 @@ where
 		move || {
 			let current = form.runtime_current_values();
 			let previous = observed_values.borrow().clone();
+			let custom_widget_errors = collect_custom_widget_errors(&form);
 			let changed_fields: Vec<Form::Field> = form
 				.runtime_fields()
 				.iter()
@@ -591,6 +714,15 @@ where
 			*observed_values.borrow_mut() = current.clone();
 
 			if signal_sync_suppressed.get() || (changed_fields.is_empty() && !values_changed) {
+				if !signal_sync_suppressed.get() {
+					sync_custom_widget_errors_in_state(
+						&state,
+						&custom_widget_error_fields,
+						&custom_widget_errors,
+						&collection_errors,
+						&path_errors,
+					);
+				}
 				return;
 			}
 
@@ -626,12 +758,74 @@ where
 				apply_validation_result_to_state(&state, &collection_errors, &path_errors, &result);
 				notify_subscribers(&subscribers, FormEvent::Validated);
 			}
+			sync_custom_widget_errors_in_state(
+				&state,
+				&custom_widget_error_fields,
+				&custom_widget_errors,
+				&collection_errors,
+				&path_errors,
+			);
 			for field in changed_fields {
 				notify_subscribers(&subscribers, FormEvent::ValueChanged { field });
 			}
 		},
 		EffectTiming::Layout,
 	))
+}
+
+fn collect_custom_widget_errors<Form>(form: &Form) -> HashMap<Form::Field, FieldError>
+where
+	Form: FormRuntimeSource,
+{
+	form.runtime_fields()
+		.iter()
+		.copied()
+		.filter_map(|field| {
+			form.runtime_custom_widget_error(field)
+				.map(|error| (field, error))
+		})
+		.collect()
+}
+
+fn sync_custom_widget_errors_in_state<Field>(
+	state: &FormState<Field>,
+	tracked_fields: &Rc<RefCell<HashMap<Field, FieldError>>>,
+	custom_widget_errors: &HashMap<Field, FieldError>,
+	collection_errors: &Signal<HashMap<String, FieldError>>,
+	path_errors: &Signal<HashMap<String, FieldError>>,
+) where
+	Field: Copy + Eq + Hash + 'static,
+{
+	let mut tracked = tracked_fields.borrow_mut();
+	let mut field_errors = state.field_errors.get_untracked();
+	let mut changed = false;
+
+	let previously_tracked: Vec<(Field, FieldError)> = tracked
+		.iter()
+		.map(|(field, error)| (*field, error.clone()))
+		.collect();
+	for (field, previous_error) in previously_tracked {
+		if !custom_widget_errors.contains_key(&field) {
+			tracked.remove(&field);
+			if field_errors.get(&field) == Some(&previous_error) {
+				field_errors.remove(&field);
+				changed = true;
+			}
+		}
+	}
+
+	for (field, error) in custom_widget_errors {
+		if field_errors.get(field) != Some(error) {
+			field_errors.insert(*field, error.clone());
+			changed = true;
+		}
+		tracked.insert(*field, error.clone());
+	}
+
+	if changed {
+		state.field_errors.set(field_errors);
+		sync_first_error_in_state(state, collection_errors, path_errors);
+	}
 }
 
 fn adapt_no_deps_callback<Form, Deps>(
@@ -659,6 +853,7 @@ where
 			values_signal: handle.values_signal.clone(),
 			subscribers: Rc::clone(&handle.subscribers),
 			observed_values: Rc::clone(&handle.observed_values),
+			custom_widget_error_fields: Rc::clone(&handle.custom_widget_error_fields),
 			next_collection_item_key: Rc::clone(&handle.next_collection_item_key),
 			signal_sync_suppressed: Rc::clone(&handle.signal_sync_suppressed),
 			_signal_sync_effect: Rc::clone(&handle._signal_sync_effect),
@@ -838,6 +1033,7 @@ where
 		let values_signal = Signal::new(current_values.clone());
 		let subscribers = Rc::new(RefCell::new(Vec::new()));
 		let observed_values = Rc::new(RefCell::new(current_values));
+		let custom_widget_error_fields = Rc::new(RefCell::new(HashMap::new()));
 		let next_collection_item_key = Rc::new(Cell::new(1));
 		let signal_sync_suppressed = Rc::new(Cell::new(false));
 		let signal_sync_effect = build_signal_sync_effect(
@@ -852,6 +1048,7 @@ where
 			values_signal.clone(),
 			Rc::clone(&subscribers),
 			Rc::clone(&observed_values),
+			Rc::clone(&custom_widget_error_fields),
 			Rc::clone(&signal_sync_suppressed),
 			self.revalidate_on,
 		);
@@ -872,6 +1069,7 @@ where
 			values_signal,
 			subscribers,
 			observed_values,
+			custom_widget_error_fields,
 			next_collection_item_key,
 			signal_sync_suppressed,
 			_signal_sync_effect: signal_sync_effect,
@@ -904,6 +1102,7 @@ where
 	values_signal: Signal<Form::Values>,
 	subscribers: SubscriberSlots<Form>,
 	observed_values: Rc<RefCell<Form::Values>>,
+	custom_widget_error_fields: Rc<RefCell<HashMap<Form::Field, FieldError>>>,
 	next_collection_item_key: Rc<Cell<u64>>,
 	signal_sync_suppressed: Rc<Cell<bool>>,
 	_signal_sync_effect: Rc<Effect>,
@@ -935,6 +1134,7 @@ where
 			values_signal: self.values_signal.clone(),
 			subscribers: Rc::clone(&self.subscribers),
 			observed_values: Rc::clone(&self.observed_values),
+			custom_widget_error_fields: Rc::clone(&self.custom_widget_error_fields),
 			next_collection_item_key: Rc::clone(&self.next_collection_item_key),
 			signal_sync_suppressed: Rc::clone(&self.signal_sync_suppressed),
 			_signal_sync_effect: Rc::clone(&self._signal_sync_effect),
@@ -1043,6 +1243,10 @@ where
 
 	/// Clears all validation and submit errors.
 	pub fn clear_errors(&self) {
+		for field in self.form.runtime_fields() {
+			self.form.runtime_set_custom_widget_error(*field, None);
+		}
+		self.custom_widget_error_fields.borrow_mut().clear();
 		self.state.field_errors.set(HashMap::new());
 		self.collection_errors.set(HashMap::new());
 		self.path_errors.set(HashMap::new());
@@ -1053,6 +1257,8 @@ where
 
 	/// Clears one field error.
 	pub fn clear_field_error(&self, field: Form::Field) {
+		self.form.runtime_set_custom_widget_error(field, None);
+		self.custom_widget_error_fields.borrow_mut().remove(&field);
 		let mut errors = self.state.field_errors.get();
 		errors.remove(&field);
 		self.state.field_errors.set(errors);
@@ -1101,6 +1307,18 @@ where
 		self.clear_errors();
 		self.values_signal.set(defaults);
 		self.sync_observed_values();
+	}
+
+	/// Syncs runtime state after a native form reset has restored field values.
+	pub fn sync_after_native_reset(&self) {
+		let current = self.get_values();
+		let is_dirty = form_values_are_dirty(&self.form, &current, &self.default_values.borrow());
+		self.touched_fields.borrow_mut().clear();
+		self.state.is_touched.set(false);
+		self.state.is_dirty.set(is_dirty);
+		self.values_signal.set(current);
+		self.sync_observed_values();
+		self.clear_errors();
 	}
 
 	/// Resets one field to its current default value.

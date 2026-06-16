@@ -970,8 +970,8 @@ pub fn head(input: TokenStream) -> TokenStream {
 /// | `PasswordField` | `String` | `PasswordInput` | Password input (masked) |
 /// | `UrlField` | `String` | `UrlInput` | URL input |
 /// | `SlugField` | `String` | `TextInput` | URL-safe slug |
-/// | `UuidField` | `String` | `TextInput` | UUID input |
-/// | `IpAddressField` | `String` | `TextInput` | IP address |
+/// | `UuidField` | `Option<uuid::Uuid>` | `TextInput` | UUID input |
+/// | `IpAddressField` | `Option<std::net::IpAddr>` | `TextInput` | IP address |
 /// | `JsonField` | `String` | `Textarea` | JSON data |
 /// | `HiddenField` | `String` | `HiddenInput` | Hidden field |
 ///
