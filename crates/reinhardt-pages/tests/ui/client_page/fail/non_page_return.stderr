@@ -1,0 +1,5 @@
+error: #[client_page] functions must return Page
+ --> tests/ui/client_page/fail/non_page_return.rs:4:5
+  |
+4 | pub fn home_page() -> String {
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^

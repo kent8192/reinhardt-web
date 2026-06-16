@@ -49,17 +49,17 @@ use quote::{ToTokens, format_ident, quote};
 use crate::crate_paths::get_reinhardt_pages_crate_info;
 use reinhardt_manouche::core::{
 	AmbientArgumentsSource, FormMethod, TypedCustomAttr, TypedFieldType, TypedFormAction,
-	TypedFormCallbacks, TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry,
-	TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState, TypedFormWatch, TypedIcon,
-	TypedIconChild, TypedIconPosition, TypedSubmitButtonDef, TypedValidatorRule, TypedWidget,
-	TypedWrapper,
+	TypedFormCallbacks, TypedFormDerived, TypedFormFieldCollection, TypedFormFieldDef,
+	TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState,
+	TypedFormWatch, TypedIcon, TypedIconChild, TypedIconPosition, TypedSubmitButtonDef,
+	TypedValidatorRule, TypedWidget, TypedWrapper,
 };
 
-/// Collects all fields from field entries, flattening groups.
+/// Collects scalar fields from field entries, flattening groups.
 ///
 /// This is useful for generating struct declarations and accessors,
 /// where all fields need to be at the same level regardless of grouping.
-fn collect_all_fields(entries: &[TypedFormFieldEntry]) -> Vec<&TypedFormFieldDef> {
+fn collect_scalar_fields(entries: &[TypedFormFieldEntry]) -> Vec<&TypedFormFieldDef> {
 	let mut fields = Vec::new();
 	for entry in entries {
 		match entry {
@@ -67,10 +67,54 @@ fn collect_all_fields(entries: &[TypedFormFieldEntry]) -> Vec<&TypedFormFieldDef
 			TypedFormFieldEntry::Group(group) => {
 				fields.extend(group.fields.iter());
 			}
+			TypedFormFieldEntry::Collection(_) => {}
 			TypedFormFieldEntry::SubmitButton(_) => {} // Not a data field
 		}
 	}
 	fields
+}
+
+/// Collects top-level field collections from field entries.
+fn collect_collections(entries: &[TypedFormFieldEntry]) -> Vec<&TypedFormFieldCollection> {
+	entries
+		.iter()
+		.filter_map(|entry| match entry {
+			TypedFormFieldEntry::Collection(collection) => Some(collection.as_ref()),
+			_ => None,
+		})
+		.collect()
+}
+
+fn collection_item_values_ident(
+	form_name: &syn::Ident,
+	collection_name: &syn::Ident,
+) -> syn::Ident {
+	format_ident!(
+		"{}{}ItemValues",
+		upper_camel_ident_fragment(form_name),
+		upper_camel_ident_fragment(collection_name),
+		span = collection_name.span()
+	)
+}
+
+fn upper_camel_ident_fragment(ident: &syn::Ident) -> String {
+	let raw = ident.to_string();
+	let input = raw.strip_prefix("r#").unwrap_or(&raw);
+	let mut out = String::new();
+	let mut upper_next = true;
+	for ch in input.chars() {
+		if ch == '_' {
+			upper_next = true;
+			continue;
+		}
+		if upper_next {
+			out.push(ch.to_ascii_uppercase());
+			upper_next = false;
+		} else {
+			out.push(ch);
+		}
+	}
+	out
 }
 
 fn generate_ambient_argument_deprecation_markers(
@@ -154,8 +198,9 @@ fn generate_form_runtime_contract(
 	let values_ident = format_ident!("{}Values", macro_ast.name);
 	let field_ident = format_ident!("{}Field", macro_ast.name);
 	let form_ident = &macro_ast.name;
-	let all_fields = collect_all_fields(&macro_ast.fields);
-	let unsupported_fields: Vec<String> = all_fields
+	let all_fields = collect_scalar_fields(&macro_ast.fields);
+	let collections = collect_collections(&macro_ast.fields);
+	let mut unsupported_fields: Vec<String> = all_fields
 		.iter()
 		.filter(|field| !supports_generated_form_values(&field.field_type))
 		.map(|field| {
@@ -166,6 +211,21 @@ fn generate_form_runtime_contract(
 			)
 		})
 		.collect();
+	for collection in &collections {
+		unsupported_fields.extend(
+			collect_scalar_fields(&collection.fields)
+				.iter()
+				.filter(|field| !supports_generated_form_values(&field.field_type))
+				.map(|field| {
+					format!(
+						"{}.{} ({})",
+						collection.name,
+						field.name,
+						field_type_to_string(&field.field_type)
+					)
+				}),
+		);
+	}
 	if !unsupported_fields.is_empty() {
 		let message = format!(
 			"form! cannot generate a use_form runtime contract for unsupported field(s): {}.",
@@ -176,7 +236,45 @@ fn generate_form_runtime_contract(
 		};
 	}
 
-	let value_fields: Vec<TokenStream> = all_fields
+	let collection_item_value_structs: Vec<TokenStream> = collections
+		.iter()
+		.map(|collection| {
+			let ident = collection_item_values_ident(&macro_ast.name, &collection.name);
+			let item_fields = collect_scalar_fields(&collection.fields);
+			let fields: Vec<TokenStream> = item_fields
+				.iter()
+				.map(|field| {
+					let name = &field.name;
+					let ty = field_type_to_value_type(&field.field_type);
+					quote! { pub #name: #ty, }
+				})
+				.collect();
+			let default_fields: Vec<TokenStream> = item_fields
+				.iter()
+				.map(|field| {
+					let name = &field.name;
+					let init = field_type_default_value(&field.field_type);
+					quote! { #name: #init, }
+				})
+				.collect();
+			quote! {
+				#[derive(Clone, PartialEq)]
+				struct #ident {
+					#(#fields)*
+				}
+
+				impl ::core::default::Default for #ident {
+					fn default() -> Self {
+						Self {
+							#(#default_fields)*
+						}
+					}
+				}
+			}
+		})
+		.collect();
+
+	let mut value_fields: Vec<TokenStream> = all_fields
 		.iter()
 		.map(|field| {
 			let name = &field.name;
@@ -184,15 +282,31 @@ fn generate_form_runtime_contract(
 			quote! { pub #name: #ty, }
 		})
 		.collect();
+	value_fields.extend(collections.iter().map(|collection| {
+		let name = &collection.name;
+		let item_values_ident = collection_item_values_ident(&macro_ast.name, &collection.name);
+		quote! { pub #name: ::std::vec::Vec<#item_values_ident>, }
+	}));
 
-	let values_fields: Vec<TokenStream> = all_fields
+	let mut values_fields: Vec<TokenStream> = all_fields
 		.iter()
 		.map(|field| {
 			let name = &field.name;
 			quote! { #name: self.#name.get(), }
 		})
 		.collect();
-	let initial_values_fields: Vec<TokenStream> = all_fields
+	values_fields.extend(collections.iter().map(|collection| {
+		let name = &collection.name;
+		quote! {
+			#name: self
+				.#name
+				.get()
+				.into_iter()
+				.map(#pages_crate::CollectionItem::into_value)
+				.collect(),
+		}
+	}));
+	let mut initial_values_fields: Vec<TokenStream> = all_fields
 		.iter()
 		.map(|field| {
 			let name = &field.name;
@@ -200,14 +314,39 @@ fn generate_form_runtime_contract(
 			quote! { #name: #init, }
 		})
 		.collect();
+	initial_values_fields.extend(collections.iter().map(|collection| {
+		let name = &collection.name;
+		quote! { #name: ::std::vec::Vec::new(), }
+	}));
 
-	let apply_values_fields: Vec<TokenStream> = all_fields
+	let mut apply_values_fields: Vec<TokenStream> = all_fields
 		.iter()
 		.map(|field| {
 			let name = &field.name;
 			quote! { self.#name.set(values.#name.clone()); }
 		})
 		.collect();
+	apply_values_fields.extend(collections.iter().map(|collection| {
+		let name = &collection.name;
+		quote! {
+				self.__path_signals.borrow_mut().clear();
+				self.#name.set(
+					values
+						.#name
+					.iter()
+					.cloned()
+					.enumerate()
+					.map(|(index, value)| {
+						#pages_crate::CollectionItem::new(
+							#pages_crate::CollectionItemKey::from_runtime_index(index as u64),
+							index,
+							value,
+						)
+					})
+					.collect(),
+			);
+		}
+	}));
 
 	let field_variants: Vec<syn::Ident> = all_fields
 		.iter()
@@ -225,6 +364,136 @@ fn generate_form_runtime_contract(
 			}
 		})
 		.collect();
+	let collection_ident = format_ident!("{}Collection", macro_ast.name);
+	let field_path_ident = format_ident!("{}FieldPath", macro_ast.name);
+	let collection_variants: Vec<syn::Ident> = collections
+		.iter()
+		.map(|collection| field_variant_ident(&collection.name))
+		.collect();
+	let collection_accessor_methods: Vec<TokenStream> = collections
+		.iter()
+		.zip(collection_variants.iter())
+		.map(|(collection, variant)| {
+			let method = format_ident!("{}_collection", collection.name);
+			quote! {
+				pub fn #method(&self) -> #collection_ident {
+					#collection_ident::#variant
+				}
+			}
+		})
+		.collect();
+	let collection_field_idents: Vec<syn::Ident> = collections
+		.iter()
+		.map(|collection| {
+			format_ident!(
+				"{}{}Field",
+				upper_camel_ident_fragment(&macro_ast.name),
+				upper_camel_ident_fragment(&collection.name),
+				span = collection.name.span()
+			)
+		})
+		.collect();
+	let collection_field_definitions: Vec<TokenStream> = collections
+		.iter()
+		.zip(collection_field_idents.iter())
+		.map(|(collection, field_ident)| {
+			let variants: Vec<syn::Ident> = collect_scalar_fields(&collection.fields)
+				.iter()
+				.map(|field| field_variant_ident(&field.name))
+				.collect();
+			quote! {
+				#[allow(
+					dead_code,
+					reason = "Generated field path variants are constructed only when callers use path accessors."
+				)]
+				#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+				enum #field_ident {
+					#(#variants,)*
+				}
+			}
+		})
+		.collect();
+	let field_path_variants: Vec<TokenStream> = collections
+		.iter()
+		.zip(collection_variants.iter())
+		.zip(collection_field_idents.iter())
+		.map(|((_collection, variant), field_ident)| {
+			quote! {
+				#variant {
+					item: #pages_crate::CollectionItemKey,
+					field: #field_ident,
+				}
+			}
+		})
+		.collect();
+	let field_path_accessor_methods: Vec<TokenStream> = collections
+		.iter()
+		.zip(collection_variants.iter())
+		.zip(collection_field_idents.iter())
+		.flat_map(|((collection, collection_variant), field_ident)| {
+			let collection_variant = collection_variant.clone();
+			let field_ident = field_ident.clone();
+			let field_path_ident = field_path_ident.clone();
+			collect_scalar_fields(&collection.fields)
+				.into_iter()
+				.map(move |field| {
+					let method = format_ident!("{}_{}_path", collection.name, field.name);
+					let field_variant = field_variant_ident(&field.name);
+					quote! {
+						pub fn #method(
+							&self,
+							item: #pages_crate::CollectionItemKey,
+						) -> #field_path_ident {
+							#field_path_ident::#collection_variant {
+								item,
+								field: #field_ident::#field_variant,
+							}
+						}
+					}
+				})
+		})
+		.collect();
+	let collection_token_definition = if collections.is_empty() {
+		quote! {}
+	} else {
+		quote! {
+			#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+			enum #collection_ident {
+				#(#collection_variants,)*
+			}
+
+			impl #form_ident {
+				#(#collection_accessor_methods)*
+			}
+		}
+	};
+	let field_path_token_definition = if collections.is_empty() {
+		quote! {}
+	} else {
+		quote! {
+			#(#collection_field_definitions)*
+
+			#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+			enum #field_path_ident {
+				#(#field_path_variants,)*
+			}
+
+			impl #form_ident {
+				#(#field_path_accessor_methods)*
+			}
+		}
+	};
+	let collection_token_guard = if collections.is_empty() {
+		quote! {}
+	} else {
+		quote! {
+			let _ = ::core::mem::size_of::<#collection_ident>();
+			let _ = ::core::mem::size_of::<#field_path_ident>();
+			#(
+				let _ = ::core::mem::size_of::<#collection_field_idents>();
+			)*
+		}
+	};
 	let field_setters: Vec<TokenStream> = all_fields
 		.iter()
 		.zip(field_variants.iter())
@@ -294,6 +563,722 @@ fn generate_form_runtime_contract(
 			}
 		})
 		.collect();
+	let values_dirty_impl = if collections.is_empty() {
+		quote! {}
+	} else {
+		quote! {
+			fn runtime_values_are_dirty(
+				&self,
+				current: &Self::Values,
+				defaults: &Self::Values,
+			) -> bool {
+				current != defaults
+			}
+		}
+	};
+	let apply_pristine_values_impl = if collections.is_empty() {
+		quote! {}
+	} else {
+		let scalar_pristine_assignments: Vec<TokenStream> = all_fields
+			.iter()
+			.map(|field| {
+				let name = &field.name;
+				quote! {
+					if current.#name == old_defaults.#name {
+						self.#name.set(new_defaults.#name.clone());
+					}
+				}
+			})
+			.collect();
+		let collection_pristine_assignments: Vec<TokenStream> = collections
+			.iter()
+			.map(|collection| {
+				let name = &collection.name;
+				quote! {
+						if current.#name == old_defaults.#name {
+							self.__path_signals.borrow_mut().clear();
+							self.#name.set(
+								new_defaults
+									.#name
+								.iter()
+								.cloned()
+								.enumerate()
+								.map(|(index, value)| {
+									#pages_crate::CollectionItem::new(
+										#pages_crate::CollectionItemKey::from_runtime_index(index as u64),
+										index,
+										value,
+									)
+								})
+								.collect(),
+						);
+					}
+				}
+			})
+			.collect();
+		quote! {
+		fn runtime_apply_pristine_values(
+			&self,
+			current: &Self::Values,
+			old_defaults: &Self::Values,
+			new_defaults: &Self::Values,
+		) {
+			#(#scalar_pristine_assignments)*
+			#(#collection_pristine_assignments)*
+		}
+		}
+	};
+	let path_values_from_values_blocks: Vec<TokenStream> = collections
+		.iter()
+		.map(|collection| {
+			let collection_name = &collection.name;
+			let collection_name_text = collection.name.to_string();
+			let value_inserts: Vec<TokenStream> = collect_scalar_fields(&collection.fields)
+				.iter()
+				.map(|field| {
+					let field_name = &field.name;
+					let field_name_text = field.name.to_string();
+					quote! {
+						{
+							let value: ::std::rc::Rc<dyn ::core::any::Any> =
+								::std::rc::Rc::new(value.#field_name.clone());
+							path_values.insert(
+								::std::format!(
+									"{}:{:?}:{}",
+									#collection_name_text,
+									item.key(),
+									#field_name_text,
+								),
+								value,
+							);
+						}
+					}
+				})
+				.collect();
+			quote! {
+				for item in self.#collection_name.get() {
+					if let ::core::option::Option::Some(value) =
+						values.#collection_name.get(item.index())
+					{
+						#(#value_inserts)*
+					}
+				}
+			}
+		})
+		.collect();
+	let path_exists_blocks: Vec<TokenStream> = collections
+		.iter()
+		.map(|collection| {
+			let collection_name = &collection.name;
+			let collection_name_text = collection.name.to_string();
+			let path_checks: Vec<TokenStream> = collect_scalar_fields(&collection.fields)
+				.iter()
+				.map(|field| {
+					let field_name_text = field.name.to_string();
+					quote! {
+						if path_key
+							== ::std::format!(
+								"{}:{:?}:{}",
+								#collection_name_text,
+								item.key(),
+								#field_name_text,
+							)
+						{
+							return true;
+						}
+					}
+				})
+				.collect();
+			quote! {
+				for item in self.#collection_name.get() {
+					#(#path_checks)*
+				}
+			}
+		})
+		.collect();
+	let path_value_equals_blocks: Vec<TokenStream> = collections
+		.iter()
+		.map(|collection| {
+			let collection_name = &collection.name;
+			let collection_name_text = collection.name.to_string();
+			let value_checks: Vec<TokenStream> = collect_scalar_fields(&collection.fields)
+				.iter()
+				.map(|field| {
+					let field_name = &field.name;
+					let field_name_text = field.name.to_string();
+					let field_type = field_type_to_value_type(&field.field_type);
+					quote! {
+						if path_key
+							== ::std::format!(
+								"{}:{:?}:{}",
+								#collection_name_text,
+								item.key(),
+								#field_name_text,
+							)
+						{
+							return default
+								.downcast_ref::<#field_type>()
+								.map(|default| &item_value.#field_name == default);
+						}
+					}
+				})
+				.collect();
+			quote! {
+				for item in self.#collection_name.get() {
+					let item_value = item.value();
+					#(#value_checks)*
+				}
+			}
+		})
+		.collect();
+	let path_signal_sync_blocks: Vec<TokenStream> = collections
+		.iter()
+		.map(|collection| {
+			let collection_name = &collection.name;
+			let collection_name_text = collection.name.to_string();
+			let signal_updates: Vec<TokenStream> = collect_scalar_fields(&collection.fields)
+				.iter()
+				.map(|field| {
+					let field_name = &field.name;
+					let field_name_text = field.name.to_string();
+					let field_type = field_type_to_value_type(&field.field_type);
+					quote! {
+						{
+							let path_key = ::std::format!(
+								"{}:{:?}:{}",
+								#collection_name_text,
+								item.key(),
+								#field_name_text,
+							);
+							let path_signal = self
+								.__path_signals
+								.borrow()
+								.get(&path_key)
+								.and_then(|signal| {
+									signal
+										.downcast_ref::<#pages_crate::reactive::Signal<#field_type>>()
+										.cloned()
+								});
+							if let ::core::option::Option::Some(path_signal) = path_signal {
+								path_signal.set(item_value.#field_name.clone());
+							}
+						}
+					}
+				})
+				.collect();
+			quote! {
+				for item in self.#collection_name.get() {
+					let item_value = item.value();
+					#(#signal_updates)*
+				}
+			}
+		})
+		.collect();
+	let changed_collection_key_checks: Vec<TokenStream> = collections
+		.iter()
+		.zip(collection_variants.iter())
+		.map(|(collection, variant)| {
+			let collection_name = &collection.name;
+			quote! {
+				if current.#collection_name != previous.#collection_name {
+					keys.push(
+						<Self as #pages_crate::form_state::FormCollectionRuntimeSource>::runtime_collection_key(
+							#collection_ident::#variant,
+						),
+					);
+				}
+			}
+		})
+		.collect();
+	let collection_runtime_impl = if collections.is_empty() {
+		quote! {}
+	} else {
+		let collection_len_arms: Vec<TokenStream> = collections
+			.iter()
+			.zip(collection_variants.iter())
+			.map(|(collection, variant)| {
+				let name = &collection.name;
+				quote! {
+				#collection_ident::#variant => self.#name.get().len(),
+				}
+			})
+			.collect();
+		let collection_key_arms: Vec<TokenStream> = collections
+			.iter()
+			.zip(collection_variants.iter())
+			.map(|(collection, variant)| {
+				let name = collection.name.to_string();
+				quote! {
+					#collection_ident::#variant => #name.to_string(),
+				}
+			})
+			.collect();
+		let collection_dirty_arms: Vec<TokenStream> = collections
+			.iter()
+			.zip(collection_variants.iter())
+			.map(|(collection, variant)| {
+				let name = &collection.name;
+				quote! {
+					#collection_ident::#variant => current.#name != defaults.#name,
+				}
+			})
+			.collect();
+		let collection_insert_arms: Vec<TokenStream> = collections
+			.iter()
+			.zip(collection_variants.iter())
+			.map(|(collection, variant)| {
+				let name = &collection.name;
+				let item_ident = collection_item_values_ident(&macro_ast.name, &collection.name);
+				let collection_name = name.to_string();
+				quote! {
+					#collection_ident::#variant => {
+						let boxed: ::std::boxed::Box<dyn ::core::any::Any> =
+							::std::boxed::Box::new(value);
+						match boxed.downcast::<#item_ident>() {
+							::core::result::Result::Ok(value) => {
+								let mut items = self.#name.get();
+								let index = index.min(items.len());
+								items.insert(
+									index,
+									#pages_crate::CollectionItem::new(key, index, *value),
+								);
+								self.#name.set(
+									items
+										.into_iter()
+										.enumerate()
+										.map(|(index, item)| {
+											#pages_crate::CollectionItem::new(
+												item.key(),
+												index,
+												item.into_value(),
+											)
+										})
+										.collect(),
+								);
+								self.__path_signals.borrow_mut().clear();
+							}
+							::core::result::Result::Err(_) => panic!(
+								"form! collection '{}' does not accept values of type {}",
+								#collection_name,
+								::core::any::type_name::<T>(),
+							),
+						}
+					}
+				}
+			})
+			.collect();
+		let collection_remove_arms: Vec<TokenStream> = collections
+			.iter()
+			.zip(collection_variants.iter())
+			.map(|(collection, variant)| {
+				let name = &collection.name;
+				quote! {
+					#collection_ident::#variant => {
+						let mut items = self.#name.get();
+						if let ::core::option::Option::Some(index) =
+							items.iter().position(|item| item.key() == key)
+						{
+							items.remove(index);
+							self.#name.set(
+								items
+									.into_iter()
+									.enumerate()
+									.map(|(index, item)| {
+										#pages_crate::CollectionItem::new(
+											item.key(),
+											index,
+											item.into_value(),
+										)
+									})
+									.collect(),
+							);
+							self.__path_signals.borrow_mut().clear();
+							true
+						} else {
+							false
+						}
+					}
+				}
+			})
+			.collect();
+		let collection_move_arms: Vec<TokenStream> = collections
+			.iter()
+			.zip(collection_variants.iter())
+			.map(|(collection, variant)| {
+				let name = &collection.name;
+				quote! {
+					#collection_ident::#variant => {
+						let mut items = self.#name.get();
+						if let ::core::option::Option::Some(from_index) =
+							items.iter().position(|item| item.key() == key)
+						{
+							let item = items.remove(from_index);
+							let to_index = target_index.min(items.len());
+							items.insert(to_index, item);
+							self.#name.set(
+								items
+									.into_iter()
+									.enumerate()
+									.map(|(index, item)| {
+										#pages_crate::CollectionItem::new(
+											item.key(),
+											index,
+											item.into_value(),
+										)
+									})
+									.collect(),
+							);
+							self.__path_signals.borrow_mut().clear();
+							::core::option::Option::Some((from_index, to_index))
+						} else {
+							::core::option::Option::None
+						}
+					}
+				}
+			})
+			.collect();
+		let field_path_key_arms: Vec<TokenStream> = collections
+			.iter()
+			.zip(collection_variants.iter())
+			.zip(collection_field_idents.iter())
+			.flat_map(|((collection, collection_variant), field_ident)| {
+				let collection_variant = collection_variant.clone();
+				let field_ident = field_ident.clone();
+				let collection_name = collection.name.to_string();
+				let field_path_ident = field_path_ident.clone();
+				collect_scalar_fields(&collection.fields)
+					.into_iter()
+					.map(move |field| {
+						let field_name = field.name.to_string();
+						let field_variant = field_variant_ident(&field.name);
+						quote! {
+							#field_path_ident::#collection_variant {
+								item,
+								field: #field_ident::#field_variant,
+							} => ::std::format!("{}:{:?}:{}", #collection_name, item, #field_name),
+						}
+					})
+			})
+			.collect();
+		let field_path_keys_for_item_arms: Vec<TokenStream> = collections
+			.iter()
+			.zip(collection_variants.iter())
+			.map(|(collection, collection_variant)| {
+				let collection_name = collection.name.to_string();
+				let field_names: Vec<String> = collect_scalar_fields(&collection.fields)
+					.iter()
+					.map(|field| field.name.to_string())
+					.collect();
+				quote! {
+					#collection_ident::#collection_variant => {
+						::std::vec![
+							#(
+								::std::format!("{}:{:?}:{}", #collection_name, key, #field_names)
+							),*
+						]
+					}
+				}
+			})
+			.collect();
+		let watch_path_arms: Vec<TokenStream> = collections
+			.iter()
+			.zip(collection_variants.iter())
+			.zip(collection_field_idents.iter())
+			.flat_map(|((collection, collection_variant), field_ident)| {
+				let collection_variant = collection_variant.clone();
+				let field_ident = field_ident.clone();
+				let collection_name = &collection.name;
+				let field_path_ident = field_path_ident.clone();
+				collect_scalar_fields(&collection.fields)
+					.into_iter()
+					.map(move |field| {
+						let field_name = &field.name;
+						let field_type = field_type_to_value_type(&field.field_type);
+						let field_variant = field_variant_ident(&field.name);
+						quote! {
+							#field_path_ident::#collection_variant {
+								item,
+								field: #field_ident::#field_variant,
+							} => {
+								let path_key = Self::runtime_field_path_key(
+									&#field_path_ident::#collection_variant {
+										item,
+										field: #field_ident::#field_variant,
+									},
+								);
+								let value = self
+									.#collection_name
+									.get()
+									.into_iter()
+									.find(|entry| entry.key() == item)
+									.map(|entry| entry.value().#field_name.clone())?;
+								if let ::core::option::Option::Some(signal) = {
+									self.__path_signals
+										.borrow()
+										.get(&path_key)
+										.and_then(|signal| {
+											signal
+												.downcast_ref::<#pages_crate::reactive::Signal<#field_type>>()
+												.cloned()
+										})
+								} {
+									let boxed: ::std::boxed::Box<dyn ::core::any::Any> =
+										::std::boxed::Box::new(signal.clone());
+									match boxed.downcast::<#pages_crate::reactive::Signal<T>>() {
+										::core::result::Result::Ok(typed_signal) => {
+											signal.set(value);
+											return ::core::option::Option::Some(*typed_signal);
+										}
+										::core::result::Result::Err(_) => {
+											return ::core::option::Option::None;
+										}
+									}
+								}
+
+								let signal = #pages_crate::reactive::Signal::new(value);
+								let boxed: ::std::boxed::Box<dyn ::core::any::Any> =
+									::std::boxed::Box::new(signal);
+								let signal = match boxed
+									.downcast::<#pages_crate::reactive::Signal<T>>()
+								{
+									::core::result::Result::Ok(signal) => *signal,
+									::core::result::Result::Err(_) => {
+										return ::core::option::Option::None;
+									}
+								};
+								self.__path_signals
+									.borrow_mut()
+									.insert(path_key, ::std::boxed::Box::new(signal.clone()));
+								::core::option::Option::Some(signal)
+							}
+						}
+					})
+			})
+			.collect();
+		let set_path_value_arms: Vec<TokenStream> = collections
+			.iter()
+			.zip(collection_variants.iter())
+			.zip(collection_field_idents.iter())
+			.flat_map(|((collection, collection_variant), field_ident)| {
+				let collection_variant = collection_variant.clone();
+				let field_ident = field_ident.clone();
+				let collection_name = &collection.name;
+				let field_path_ident = field_path_ident.clone();
+				collect_scalar_fields(&collection.fields)
+					.into_iter()
+					.map(move |field| {
+						let field_name = &field.name;
+						let field_type = field_type_to_value_type(&field.field_type);
+						let field_variant = field_variant_ident(&field.name);
+						quote! {
+							#field_path_ident::#collection_variant {
+								item,
+								field: #field_ident::#field_variant,
+							} => {
+								let boxed: ::std::boxed::Box<dyn ::core::any::Any> =
+									::std::boxed::Box::new(value);
+								match boxed.downcast::<#field_type>() {
+									::core::result::Result::Ok(value) => {
+										let value = *value;
+										let mut items = self.#collection_name.get();
+											if let ::core::option::Option::Some(index) =
+												items.iter().position(|entry| entry.key() == item)
+											{
+												let item_index = items[index].index();
+											let mut item_value = items[index].value().clone();
+											item_value.#field_name = value.clone();
+											items[index] = #pages_crate::CollectionItem::new(
+												item,
+												item_index,
+												item_value,
+											);
+											self.#collection_name.set(items);
+											let signal = self
+												.__path_signals
+												.borrow()
+												.get(&path_key)
+												.and_then(|signal| {
+													signal
+														.downcast_ref::<
+															#pages_crate::reactive::Signal<#field_type>,
+														>()
+														.cloned()
+												});
+											if let ::core::option::Option::Some(signal) = signal {
+												signal.set(value);
+											}
+											true
+											} else {
+												false
+											}
+										}
+									::core::result::Result::Err(_) => panic!(
+										"form! field path {:?} does not accept values of type {}",
+										#field_path_ident::#collection_variant {
+											item,
+											field: #field_ident::#field_variant,
+										},
+										::core::any::type_name::<T>(),
+									),
+								}
+							}
+						}
+					})
+			})
+			.collect();
+		let path_dirty_arms: Vec<TokenStream> = collections
+			.iter()
+			.zip(collection_variants.iter())
+			.zip(collection_field_idents.iter())
+			.flat_map(|((collection, collection_variant), field_ident)| {
+				let collection_variant = collection_variant.clone();
+				let field_ident = field_ident.clone();
+				let collection_name = &collection.name;
+				let field_path_ident = field_path_ident.clone();
+				collect_scalar_fields(&collection.fields)
+					.into_iter()
+					.map(move |field| {
+						let field_name = &field.name;
+						let field_variant = field_variant_ident(&field.name);
+						quote! {
+							#field_path_ident::#collection_variant {
+								item,
+								field: #field_ident::#field_variant,
+							} => {
+								let items = self.#collection_name.get();
+								if let ::core::option::Option::Some(index) =
+									items.iter().position(|entry| entry.key() == item)
+								{
+									current
+										.#collection_name
+										.get(index)
+										.map(|item| &item.#field_name)
+										!= defaults
+											.#collection_name
+											.get(index)
+											.map(|item| &item.#field_name)
+								} else {
+									false
+								}
+							}
+						}
+					})
+			})
+			.collect();
+		quote! {
+				impl #pages_crate::form_state::FormCollectionRuntimeSource for #form_ident {
+					type Collection = #collection_ident;
+					type FieldPath = #field_path_ident;
+
+					fn runtime_field_path_key(path: &Self::FieldPath) -> ::std::string::String {
+						match path.clone() {
+							#(#field_path_key_arms)*
+						}
+					}
+
+					fn runtime_collection_key(collection: Self::Collection) -> ::std::string::String {
+						match collection {
+							#(#collection_key_arms)*
+						}
+					}
+
+					fn runtime_field_path_keys_for_item(
+						collection: Self::Collection,
+					key: #pages_crate::CollectionItemKey,
+				) -> ::std::vec::Vec<::std::string::String> {
+					match collection {
+						#(#field_path_keys_for_item_arms)*
+					}
+				}
+
+					fn runtime_collection_len(&self, collection: Self::Collection) -> usize {
+						match collection {
+							#(#collection_len_arms)*
+						}
+					}
+
+					fn runtime_collection_is_dirty(
+						&self,
+						collection: Self::Collection,
+						current: &Self::Values,
+						defaults: &Self::Values,
+					) -> bool {
+						match collection {
+							#(#collection_dirty_arms)*
+						}
+					}
+
+					fn runtime_insert_collection_item<T>(
+					&self,
+					collection: Self::Collection,
+					index: usize,
+					key: #pages_crate::CollectionItemKey,
+					value: T,
+				)
+				where
+					T: ::core::any::Any + ::core::clone::Clone + 'static,
+				{
+					match collection {
+						#(#collection_insert_arms)*
+					}
+				}
+
+				fn runtime_remove_collection_item(
+					&self,
+					collection: Self::Collection,
+					key: #pages_crate::CollectionItemKey,
+				) -> bool {
+					match collection {
+						#(#collection_remove_arms)*
+					}
+				}
+
+				fn runtime_move_collection_item(
+					&self,
+					collection: Self::Collection,
+					key: #pages_crate::CollectionItemKey,
+					target_index: usize,
+				) -> ::core::option::Option<(usize, usize)> {
+					match collection {
+						#(#collection_move_arms)*
+					}
+				}
+
+				fn runtime_watch_path<T>(
+					&self,
+					path: Self::FieldPath,
+				) -> ::core::option::Option<#pages_crate::reactive::Signal<T>>
+				where
+					T: ::core::clone::Clone + 'static,
+				{
+					match path {
+						#(#watch_path_arms)*
+					}
+				}
+
+					fn runtime_set_path_value<T>(&self, path: Self::FieldPath, value: T) -> bool
+					where
+						T: ::core::any::Any + 'static,
+					{
+						let path_key = Self::runtime_field_path_key(&path);
+						match path {
+						#(#set_path_value_arms)*
+					}
+				}
+
+				fn runtime_path_is_dirty(
+					&self,
+					path: &Self::FieldPath,
+					current: &Self::Values,
+					defaults: &Self::Values,
+					) -> bool {
+						match path.clone() {
+							#(#path_dirty_arms)*
+						}
+					}
+				}
+		}
+	};
 	let required_validation_checks: Vec<TokenStream> = all_fields
 		.iter()
 		.zip(field_variants.iter())
@@ -309,6 +1294,99 @@ fn generate_form_runtime_contract(
 					error.add_field_error(#field_ident::#variant, #message);
 				}
 			})
+		})
+		.collect();
+	let collection_constraints_validation_checks: Vec<TokenStream> = collections
+		.iter()
+		.zip(collection_variants.iter())
+		.flat_map(|(collection, collection_variant)| {
+			let collection_name = &collection.name;
+			let collection_name_text = collection.name.to_string();
+			let mut checks = Vec::new();
+			if let Some(min_items) = collection.min_items {
+				let message = format!(
+					"{} requires at least {} item{}",
+					collection_name_text,
+					min_items,
+					if min_items == 1 { "" } else { "s" }
+				);
+				checks.push(quote! {
+					{
+						let __len = self.#collection_name.get().len();
+						if __len < #min_items {
+							error.add_collection_error(
+								<#form_ident as #pages_crate::form_state::FormCollectionRuntimeSource>::runtime_collection_key(
+									#collection_ident::#collection_variant,
+								),
+								#message,
+							);
+						}
+					}
+				});
+			}
+			if let Some(max_items) = collection.max_items {
+				let message = format!(
+					"{} allows at most {} item{}",
+					collection_name_text,
+					max_items,
+					if max_items == 1 { "" } else { "s" }
+				);
+				checks.push(quote! {
+					{
+						let __len = self.#collection_name.get().len();
+						if __len > #max_items {
+							error.add_collection_error(
+								<#form_ident as #pages_crate::form_state::FormCollectionRuntimeSource>::runtime_collection_key(
+									#collection_ident::#collection_variant,
+								),
+								#message,
+							);
+						}
+					}
+				});
+			}
+			checks
+		})
+		.collect();
+	let collection_required_validation_checks: Vec<TokenStream> = collections
+		.iter()
+		.zip(collection_variants.iter())
+		.zip(collection_field_idents.iter())
+		.flat_map(|((collection, collection_variant), field_ident)| {
+			let collection_name = collection.name.clone();
+			let collection_name_text = collection.name.to_string();
+			let collection_variant = collection_variant.clone();
+			let field_ident = field_ident.clone();
+			let field_path_ident = field_path_ident.clone();
+			collect_scalar_fields(&collection.fields)
+				.into_iter()
+				.filter_map(move |field| {
+					if !field.validation.required {
+						return None;
+					}
+					let field_name = field.name.clone();
+					let field_name_text = field.name.to_string();
+					let field_variant = field_variant_ident(&field.name);
+					let message = format!("{}.{} is required", collection_name_text, field_name_text);
+					let empty_check =
+						runtime_collection_required_empty_check(&field_name, &field.field_type)?;
+					Some(quote! {
+						for item in self.#collection_name.get() {
+							let item_value = item.value();
+							if #empty_check {
+								let path = #field_path_ident::#collection_variant {
+									item: item.key(),
+									field: #field_ident::#field_variant,
+								};
+								error.add_path_error(
+									<#form_ident as #pages_crate::form_state::FormCollectionRuntimeSource>::runtime_field_path_key(&path),
+									#message,
+								);
+							}
+						}
+					})
+				})
+				.collect::<Vec<_>>()
 		})
 		.collect();
 	let wasm_focus_body = if all_fields.is_empty() {
@@ -339,6 +1417,8 @@ fn generate_form_runtime_contract(
 	};
 
 	quote! {
+		#(#collection_item_value_structs)*
+
 		#[derive(Clone, PartialEq)]
 		struct #values_ident {
 			#(#value_fields)*
@@ -348,6 +1428,9 @@ fn generate_form_runtime_contract(
 		enum #field_ident {
 			#(#field_variants,)*
 		}
+
+		#collection_token_definition
+		#field_path_token_definition
 
 		impl #form_ident {
 			#(#field_accessor_methods)*
@@ -386,31 +1469,77 @@ fn generate_form_runtime_contract(
 				}
 			}
 
-			fn runtime_field_is_dirty(
-				&self,
-				field: Self::Field,
-				current: &Self::Values,
-				defaults: &Self::Values,
-			) -> bool {
-				match field {
-					#(#field_dirty_arms)*
+				fn runtime_field_is_dirty(
+					&self,
+					field: Self::Field,
+					current: &Self::Values,
+					defaults: &Self::Values,
+				) -> bool {
+					match field {
+						#(#field_dirty_arms)*
+					}
 				}
-			}
 
-			fn runtime_watch_field<T>(&self, field: Self::Field) -> ::core::option::Option<#pages_crate::reactive::Signal<T>>
-			where
-				T: ::core::clone::Clone + 'static,
+					#values_dirty_impl
+
+					#apply_pristine_values_impl
+
+					fn runtime_watch_field<T>(&self, field: Self::Field) -> ::core::option::Option<#pages_crate::reactive::Signal<T>>
+					where
+						T: ::core::clone::Clone + 'static,
 			{
-				match field {
-					#(#watch_field_arms)*
+					match field {
+						#(#watch_field_arms)*
+					}
 				}
-			}
 
-			fn runtime_validate(&self) -> ::core::result::Result<(), #pages_crate::FormValidationError<Self::Field>> {
-				let mut error = #pages_crate::FormValidationError::new();
-				#(#required_validation_checks)*
-				match self.validate() {
-					::core::result::Result::Ok(()) => {}
+				fn runtime_path_values_from_values(
+					&self,
+					values: &Self::Values,
+				) -> ::std::collections::HashMap<
+					::std::string::String,
+					::std::rc::Rc<dyn ::core::any::Any>,
+				> {
+					let mut path_values = ::std::collections::HashMap::new();
+					#(#path_values_from_values_blocks)*
+					path_values
+				}
+
+				fn runtime_path_exists(&self, path_key: &str) -> bool {
+					#(#path_exists_blocks)*
+					false
+				}
+
+					fn runtime_path_value_equals(
+						&self,
+						path_key: &str,
+						default: &dyn ::core::any::Any,
+					) -> ::core::option::Option<bool> {
+						#(#path_value_equals_blocks)*
+						::core::option::Option::None
+					}
+
+					fn runtime_sync_path_signals(&self) {
+						#(#path_signal_sync_blocks)*
+					}
+
+					fn runtime_changed_collection_keys(
+						&self,
+						current: &Self::Values,
+						previous: &Self::Values,
+					) -> ::std::vec::Vec<::std::string::String> {
+						let mut keys = ::std::vec::Vec::new();
+						#(#changed_collection_key_checks)*
+						keys
+					}
+
+					fn runtime_validate(&self) -> ::core::result::Result<(), #pages_crate::FormValidationError<Self::Field>> {
+					let mut error = #pages_crate::FormValidationError::new();
+					#(#required_validation_checks)*
+					#(#collection_constraints_validation_checks)*
+					#(#collection_required_validation_checks)*
+					match self.validate() {
+						::core::result::Result::Ok(()) => {}
 					::core::result::Result::Err(errors) => {
 						for (field, message) in errors {
 							match field {
@@ -445,14 +1574,17 @@ fn generate_form_runtime_contract(
 					let _ = field;
 					::core::result::Result::Err(#pages_crate::FocusError::Unsupported)
 				}
+				}
 			}
-		}
 
-		let _ = #values_ident {
-			#(#initial_values_fields)*
-		};
+			#collection_runtime_impl
+
+			let _ = #values_ident {
+				#(#initial_values_fields)*
+			};
 		let _ = ::core::mem::size_of::<#values_ident>();
 		let _ = ::core::mem::size_of::<#field_ident>();
+		#collection_token_guard
 	}
 }
 
@@ -517,6 +1649,41 @@ fn runtime_required_empty_check(
 	}
 }
 
+fn runtime_collection_required_empty_check(
+	name: &syn::Ident,
+	field_type: &TypedFieldType,
+) -> Option<TokenStream> {
+	match field_type {
+		TypedFieldType::CharField
+		| TypedFieldType::TextField
+		| TypedFieldType::EmailField
+		| TypedFieldType::PasswordField
+		| TypedFieldType::UrlField
+		| TypedFieldType::SlugField => Some(quote! {
+			item_value.#name.trim().is_empty()
+		}),
+		TypedFieldType::DateField
+		| TypedFieldType::TimeField
+		| TypedFieldType::DateTimeField
+		| TypedFieldType::FileField
+		| TypedFieldType::ImageField
+		| TypedFieldType::UuidField
+		| TypedFieldType::IpAddressField => Some(quote! {
+			item_value.#name.is_none()
+		}),
+		TypedFieldType::MultipleChoiceField { .. } => Some(quote! {
+			item_value.#name.is_empty()
+		}),
+		TypedFieldType::IntegerField
+		| TypedFieldType::FloatField
+		| TypedFieldType::DecimalField
+		| TypedFieldType::BooleanField
+		| TypedFieldType::HiddenField { .. }
+		| TypedFieldType::ChoiceField { .. }
+		| TypedFieldType::JsonField { .. } => None,
+	}
+}
+
 fn supports_generated_form_values(field_type: &TypedFieldType) -> bool {
 	match field_type {
 		TypedFieldType::HiddenField { inner }
@@ -527,9 +1694,15 @@ fn supports_generated_form_values(field_type: &TypedFieldType) -> bool {
 }
 
 fn supports_form_runtime_contract(entries: &[TypedFormFieldEntry]) -> bool {
-	collect_all_fields(entries)
+	let scalar_supported = collect_scalar_fields(entries)
 		.iter()
-		.all(|field| supports_generated_form_values(&field.field_type))
+		.all(|field| supports_generated_form_values(&field.field_type));
+	let collection_items_supported = collect_collections(entries).iter().all(|collection| {
+		collect_scalar_fields(&collection.fields)
+			.iter()
+			.all(|field| supports_generated_form_values(&field.field_type))
+	});
+	scalar_supported && collection_items_supported
 }
 
 fn is_basic_form_value_type(ty: &syn::Type) -> bool {
@@ -577,25 +1750,32 @@ pub(super) fn generate(
 	} else {
 		quote! {}
 	};
-	let runtime_initial_values_field_default_init = if runtime_contract_supported {
-		let initial_fields: Vec<TokenStream> = collect_all_fields(&macro_ast.fields)
-			.iter()
-			.map(|field| {
-				let name = &field.name;
-				let init = field_type_default_value(&field.field_type);
-				quote! { #name: #init, }
-			})
-			.collect();
-		quote! {
-			__initial_values: ::std::rc::Rc::new(
-				::std::cell::RefCell::new(#values_ident {
-					#(#initial_fields)*
-				}),
-			),
-		}
-	} else {
-		quote! {}
-	};
+	let runtime_initial_values_field_default_init =
+		if runtime_contract_supported {
+			let mut initial_fields: Vec<TokenStream> = collect_scalar_fields(&macro_ast.fields)
+				.iter()
+				.map(|field| {
+					let name = &field.name;
+					let init = field_type_default_value(&field.field_type);
+					quote! { #name: #init, }
+				})
+				.collect();
+			initial_fields.extend(collect_collections(&macro_ast.fields).iter().map(
+				|collection| {
+					let name = &collection.name;
+					quote! { #name: ::std::vec::Vec::new(), }
+				},
+			));
+			quote! {
+				__initial_values: ::std::rc::Rc::new(
+					::std::cell::RefCell::new(#values_ident {
+						#(#initial_fields)*
+					}),
+				),
+			}
+		} else {
+			quote! {}
+		};
 	let runtime_initial_values_outer_refresh = if runtime_contract_supported {
 		quote! {
 			*__reinhardt_form.__initial_values.borrow_mut() =
@@ -613,7 +1793,7 @@ pub(super) fn generate(
 	});
 
 	// Generate field declarations
-	let field_decls = generate_field_declarations(&macro_ast.fields, pages_crate);
+	let field_decls = generate_field_declarations(&macro_ast.name, &macro_ast.fields, pages_crate);
 
 	// Generate state field declarations
 	let state_decls = generate_state_declarations(&effective_state, pages_crate);
@@ -629,7 +1809,7 @@ pub(super) fn generate(
 	let state_inits = generate_state_initializers(&effective_state, pages_crate);
 
 	// Generate field accessor methods
-	let field_accessors = generate_field_accessors(&macro_ast.fields, pages_crate);
+	let field_accessors = generate_field_accessors(&macro_ast.name, &macro_ast.fields, pages_crate);
 
 	// Generate state accessor methods
 	let state_accessors = generate_state_accessors(&effective_state, pages_crate);
@@ -731,7 +1911,10 @@ pub(super) fn generate(
 	// TokenStream, so the macro output is unchanged for such forms. See
 	// `build_typed_field_where_clause` below for the bound list and the
 	// rationale (issue #4397, Task 9).
-	let all_fields_for_bounds = collect_all_fields(&macro_ast.fields);
+	let mut all_fields_for_bounds = collect_scalar_fields(&macro_ast.fields);
+	for collection in collect_collections(&macro_ast.fields) {
+		all_fields_for_bounds.extend(collect_scalar_fields(&collection.fields));
+	}
 	let where_clause = build_typed_field_where_clause(&all_fields_for_bounds);
 
 	quote! {
@@ -806,10 +1989,12 @@ pub(super) fn generate(
 
 /// Generates field declarations for the form struct.
 fn generate_field_declarations(
+	form_name: &syn::Ident,
 	entries: &[TypedFormFieldEntry],
 	pages_crate: &TokenStream,
 ) -> TokenStream {
-	let fields = collect_all_fields(entries);
+	let fields = collect_scalar_fields(entries);
+	let collections = collect_collections(entries);
 	let mut decls: Vec<TokenStream> = fields
 		.iter()
 		.map(|field| {
@@ -820,6 +2005,26 @@ fn generate_field_declarations(
 			}
 		})
 		.collect();
+
+	decls.extend(collections.iter().map(|collection| {
+		let name = &collection.name;
+		let item_ident = collection_item_values_ident(form_name, &collection.name);
+		quote! {
+			#name: #pages_crate::reactive::Signal<::std::vec::Vec<#pages_crate::CollectionItem<#item_ident>>>,
+		}
+	}));
+	if !collections.is_empty() {
+		decls.push(quote! {
+			__path_signals: ::std::rc::Rc<
+				::std::cell::RefCell<
+					::std::collections::HashMap<
+						::std::string::String,
+						::std::boxed::Box<dyn ::core::any::Any>,
+					>,
+				>,
+			>,
+		});
+	}
 
 	// Add choices signal fields for dynamic choice fields
 	let choices_decls: Vec<TokenStream> = fields
@@ -847,7 +2052,8 @@ fn generate_field_initializers(
 	entries: &[TypedFormFieldEntry],
 	pages_crate: &TokenStream,
 ) -> TokenStream {
-	let fields = collect_all_fields(entries);
+	let fields = collect_scalar_fields(entries);
+	let collections = collect_collections(entries);
 	// `new()` is a `fn` item, so any `initial: <expr>` referencing enclosing-scope
 	// locals fails to compile with `E0434: can't capture dynamic environment in
 	// a fn item` (issue #4420). To preserve closure-like capture semantics for
@@ -865,6 +2071,20 @@ fn generate_field_initializers(
 			}
 		})
 		.collect();
+
+	inits.extend(collections.iter().map(|collection| {
+		let name = &collection.name;
+		quote! {
+			#name: #pages_crate::reactive::Signal::new(::std::vec::Vec::new()),
+		}
+	}));
+	if !collections.is_empty() {
+		inits.push(quote! {
+			__path_signals: ::std::rc::Rc::new(
+				::std::cell::RefCell::new(::std::collections::HashMap::new()),
+			),
+		});
+	}
 
 	// Add choices signal initializers for dynamic choice fields
 	let choices_inits: Vec<TokenStream> = fields
@@ -900,7 +2120,7 @@ fn generate_initial_outer_setup(
 	entries: &[TypedFormFieldEntry],
 	pages_crate: &TokenStream,
 ) -> TokenStream {
-	let fields = collect_all_fields(entries);
+	let fields = collect_scalar_fields(entries);
 	let assigns: Vec<TokenStream> = fields
 		.iter()
 		.filter_map(|field| {
@@ -918,10 +2138,12 @@ fn generate_initial_outer_setup(
 
 /// Generates field accessor methods.
 fn generate_field_accessors(
+	form_name: &syn::Ident,
 	entries: &[TypedFormFieldEntry],
 	pages_crate: &TokenStream,
 ) -> TokenStream {
-	let fields = collect_all_fields(entries);
+	let fields = collect_scalar_fields(entries);
+	let collections = collect_collections(entries);
 	let mut accessors: Vec<TokenStream> = fields
 		.iter()
 		.map(|field| {
@@ -934,6 +2156,22 @@ fn generate_field_accessors(
 			}
 		})
 		.collect();
+
+	for collection in collections {
+		let name = &collection.name;
+		let item_ident = collection_item_values_ident(form_name, &collection.name);
+		let new_item_method = format_ident!("new_{}_item", name);
+		accessors.push(quote! {
+				pub fn #name(&self) -> &#pages_crate::reactive::Signal<::std::vec::Vec<#pages_crate::CollectionItem<#item_ident>>> {
+					&self.#name
+				}
+			});
+		accessors.push(quote! {
+			pub fn #new_item_method(&self) -> #item_ident {
+				#item_ident::default()
+			}
+		});
+	}
 
 	// Add choices accessors for dynamic choice fields
 	let choices_accessors: Vec<TokenStream> = fields
@@ -1287,7 +2525,7 @@ fn generate_on_success_ref_artifacts(
 			// Replicate `generate_submit_method`'s argument count
 			// computation (codegen.rs ~L1698-1725) so that the dead-code
 			// call below matches whatever signature the runtime call uses.
-			let all_fields = collect_all_fields(&macro_ast.fields);
+			let all_fields = collect_scalar_fields(&macro_ast.fields);
 			let field_count = all_fields.len();
 			let strip_arg_count = macro_ast.strip_arguments.len();
 			let extra_count = strip_arg_count;
@@ -1550,7 +2788,7 @@ fn generate_metadata_function(
 		.unwrap_or("reinhardt-form");
 
 	// Collect all fields (including those in groups) for metadata
-	let all_fields = collect_all_fields(&macro_ast.fields);
+	let all_fields = collect_scalar_fields(&macro_ast.fields);
 	let field_metadata: Vec<TokenStream> = all_fields
 		.iter()
 		.map(|field| {
@@ -1599,7 +2837,7 @@ fn generate_metadata_function(
 /// Generates the into_view implementation.
 fn generate_into_page(macro_ast: &TypedFormMacro, pages_crate: &TokenStream) -> TokenStream {
 	// Collect all fields for signal bindings
-	let all_fields = collect_all_fields(&macro_ast.fields);
+	let all_fields = collect_scalar_fields(&macro_ast.fields);
 
 	// Generate signal bindings for fields with bind: true
 	let signal_bindings: Vec<TokenStream> = all_fields
@@ -1653,7 +2891,7 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 		.unwrap_or("reinhardt-form");
 
 	// Collect all fields for use in onsubmit handler
-	let all_fields = collect_all_fields(&macro_ast.fields);
+	let all_fields = collect_scalar_fields(&macro_ast.fields);
 
 	// Generate before_fields slot if present
 	let before_fields_slot = generate_before_fields_slot(&macro_ast.slots);
@@ -2038,6 +3276,9 @@ fn generate_field_entry_view(
 		TypedFormFieldEntry::Group(group) => {
 			generate_field_group_view(group, pages_crate, all_fields)
 		}
+		TypedFormFieldEntry::Collection(collection) => {
+			generate_collection_view(collection, pages_crate)
+		}
 		TypedFormFieldEntry::SubmitButton(btn) => generate_submit_button_view(btn),
 	}
 }
@@ -2109,10 +3350,508 @@ fn generate_field_group_view(
 	};
 
 	quote! {
-		PageElement::new("fieldset")
-			.attr("class", #group_class)
-			#label_element
+	PageElement::new("fieldset")
+		.attr("class", #group_class)
+		#label_element
 			#(.child(#field_views))*
+	}
+}
+
+fn generate_collection_view(
+	collection: &TypedFormFieldCollection,
+	pages_crate: &TokenStream,
+) -> TokenStream {
+	let collection_name = &collection.name;
+	let collection_name_str = collection.name.to_string();
+	let collection_class = collection
+		.class
+		.as_deref()
+		.unwrap_or("reinhardt-field-array");
+	let item_fields = collect_scalar_fields(&collection.fields);
+	let item_field_views: Vec<TokenStream> = item_fields
+		.iter()
+		.map(|field| generate_collection_field_view(field, pages_crate, &collection_name_str))
+		.collect();
+	let legend = collection.label.as_deref().unwrap_or(&collection_name_str);
+	let min_items_attr = collection.min_items.map(|min| {
+		let value = min.to_string();
+		quote! { .attr("data-reinhardt-min-items", #value) }
+	});
+	let max_items_attr = collection.max_items.map(|max| {
+		let value = max.to_string();
+		quote! { .attr("data-reinhardt-max-items", #value) }
+	});
+
+	quote! {
+		{
+			let __collection_signal = self.#collection_name.clone();
+			let __path_signals = self.__path_signals.clone();
+			#pages_crate::component::Page::reactive(move || {
+				let _ = &__path_signals;
+				let __items = __collection_signal.get();
+				let mut __item_pages = ::std::vec::Vec::new();
+				for item in __items {
+					let item_value = item.value().clone();
+					let __item_key = ::std::format!("{:?}", item.key());
+					__item_pages.push((
+						__item_key.clone(),
+						PageElement::new("div")
+							.attr("class", "reinhardt-field-array-item")
+							.attr("data-reinhardt-field-array-item", #collection_name_str)
+							.attr("data-reinhardt-item-index", item.index().to_string())
+							.attr("data-reinhardt-item-key", __item_key)
+							#(.child(#item_field_views))*
+							.into_page(),
+					));
+				}
+
+				PageElement::new("fieldset")
+					.attr("class", #collection_class)
+					.attr("data-reinhardt-field-array", #collection_name_str)
+					#min_items_attr
+					#max_items_attr
+					.child(
+						PageElement::new("legend")
+							.attr("class", "reinhardt-field-array-label")
+							.child(#legend)
+					)
+					.child(#pages_crate::component::Page::keyed_fragment(__item_pages))
+					.into_page()
+			})
+		}
+	}
+}
+
+fn generate_collection_field_view(
+	field: &TypedFormFieldDef,
+	pages_crate: &TokenStream,
+	collection_name: &str,
+) -> TokenStream {
+	let field_name_str = field.name.to_string();
+	let input_type = widget_to_input_type(&field.widget);
+	let label_text = field.display.label.as_deref().unwrap_or(&field_name_str);
+	let placeholder = field.display.placeholder.as_deref().unwrap_or("");
+	let required = field.validation.required;
+	let autocomplete_attr = field.display.autocomplete.as_deref().map(|val| {
+		quote! { .attr("autocomplete", #val) }
+	});
+	let wrapper_class = field.styling.wrapper_class();
+	let label_class = field.styling.label_class();
+	let input_class = field.styling.input_class();
+	let custom_attrs = generate_custom_attrs(&field.custom_attrs);
+	let listener = generate_collection_bind_listener(field, pages_crate, collection_name);
+	let field_value = collection_field_value_expr(field);
+	let value_attr = if matches!(
+		field.field_type,
+		TypedFieldType::FileField | TypedFieldType::ImageField
+	) {
+		quote! {}
+	} else {
+		quote! { .attr("value", #field_value) }
+	};
+	let checked_attr = if matches!(field.widget, TypedWidget::CheckboxInput) {
+		let checked = collection_field_checked_expr(field);
+		quote! { .bool_attr("checked", #checked) }
+	} else {
+		quote! {}
+	};
+
+	let input_element = match &field.widget {
+		TypedWidget::Textarea => {
+			quote! {
+				PageElement::new("textarea")
+					.attr("name", __field_name.clone())
+					.attr("id", __field_id.clone())
+					.attr("class", #input_class)
+					.attr("placeholder", #placeholder)
+					.bool_attr("required", #required)
+					#autocomplete_attr
+					#custom_attrs
+					#listener
+					.child(#field_value)
+			}
+		}
+		TypedWidget::Select | TypedWidget::SelectMultiple => {
+			let multiple = matches!(field.widget, TypedWidget::SelectMultiple);
+			quote! {
+				PageElement::new("select")
+					.attr("name", __field_name.clone())
+					.attr("id", __field_id.clone())
+					.attr("class", #input_class)
+					.bool_attr("required", #required)
+					.bool_attr("multiple", #multiple)
+					#autocomplete_attr
+					#custom_attrs
+					#listener
+			}
+		}
+		TypedWidget::CheckboxInput => {
+			quote! {
+				PageElement::new("input")
+					.attr("type", "checkbox")
+					.attr("name", __field_name.clone())
+					.attr("id", __field_id.clone())
+					.attr("class", #input_class)
+					.attr("value", "true")
+					.bool_attr("required", #required)
+					#checked_attr
+					#custom_attrs
+					#listener
+			}
+		}
+		_ => {
+			quote! {
+				PageElement::new("input")
+					.attr("type", #input_type)
+					.attr("name", __field_name.clone())
+					.attr("id", __field_id.clone())
+					.attr("class", #input_class)
+					.attr("placeholder", #placeholder)
+					.bool_attr("required", #required)
+					#value_attr
+					#autocomplete_attr
+					#custom_attrs
+					#listener
+			}
+		}
+	};
+
+	let label_element = if matches!(field.widget, TypedWidget::HiddenInput) {
+		quote! {}
+	} else {
+		quote! {
+			.child(
+				PageElement::new("label")
+					.attr("for", __field_id.clone())
+					.attr("class", #label_class)
+					.child(#label_text)
+			)
+		}
+	};
+
+	if matches!(field.widget, TypedWidget::HiddenInput) {
+		quote! {
+			{
+				let __field_name = ::std::format!(
+					"{}[{}][{}]",
+					#collection_name,
+					item.index(),
+					#field_name_str,
+				);
+				let __field_id = ::std::format!(
+					"{}_{}_{}",
+					#collection_name,
+					item.index(),
+					#field_name_str,
+				);
+				#input_element
+			}
+		}
+	} else {
+		let wrapper_attrs = generate_wrapper_attrs(&field.wrapper, wrapper_class);
+		let wrapper_tag = field
+			.wrapper
+			.as_ref()
+			.map(|w| w.tag.as_str())
+			.unwrap_or("div");
+		quote! {
+			{
+				let __field_name = ::std::format!(
+					"{}[{}][{}]",
+					#collection_name,
+					item.index(),
+					#field_name_str,
+				);
+				let __field_id = ::std::format!(
+					"{}_{}_{}",
+					#collection_name,
+					item.index(),
+					#field_name_str,
+				);
+				PageElement::new(#wrapper_tag)
+					#wrapper_attrs
+					#label_element
+					.child(#input_element)
+			}
+		}
+	}
+}
+
+fn collection_field_value_expr(field: &TypedFormFieldDef) -> TokenStream {
+	let field_name = &field.name;
+	match &field.field_type {
+		TypedFieldType::CharField
+		| TypedFieldType::TextField
+		| TypedFieldType::EmailField
+		| TypedFieldType::PasswordField
+		| TypedFieldType::UrlField
+		| TypedFieldType::SlugField => quote! { item_value.#field_name.clone() },
+		TypedFieldType::DateField
+		| TypedFieldType::TimeField
+		| TypedFieldType::UuidField
+		| TypedFieldType::IpAddressField => quote! {
+			item_value
+				.#field_name
+				.as_ref()
+				.map(::std::string::ToString::to_string)
+				.unwrap_or_default()
+		},
+		TypedFieldType::DateTimeField => quote! {
+			item_value
+				.#field_name
+				.as_ref()
+				.map(|value| value.format("%Y-%m-%dT%H:%M:%S").to_string())
+				.unwrap_or_default()
+		},
+		TypedFieldType::MultipleChoiceField { .. } => quote! {
+			item_value
+				.#field_name
+				.iter()
+				.map(::std::string::ToString::to_string)
+				.collect::<::std::vec::Vec<_>>()
+				.join(",")
+		},
+		TypedFieldType::JsonField { .. } => quote! {
+			::serde_json::to_string(&item_value.#field_name).unwrap_or_default()
+		},
+		TypedFieldType::FileField | TypedFieldType::ImageField => {
+			quote! { ::std::string::String::new() }
+		}
+		TypedFieldType::IntegerField
+		| TypedFieldType::FloatField
+		| TypedFieldType::DecimalField
+		| TypedFieldType::BooleanField
+		| TypedFieldType::HiddenField { .. }
+		| TypedFieldType::ChoiceField { .. } => {
+			quote! { item_value.#field_name.to_string() }
+		}
+	}
+}
+
+fn collection_field_checked_expr(field: &TypedFormFieldDef) -> TokenStream {
+	let field_name = &field.name;
+	match &field.field_type {
+		TypedFieldType::BooleanField => quote! { item_value.#field_name },
+		_ => quote! { false },
+	}
+}
+
+fn generate_collection_bind_listener(
+	field: &TypedFormFieldDef,
+	pages_crate: &TokenStream,
+	collection_name: &str,
+) -> TokenStream {
+	let field_name = &field.name;
+	let field_name_str = field.name.to_string();
+	let field_type = field_type_to_value_type(&field.field_type);
+	let collection_name_str = collection_name.to_string();
+	let event_name = match field.widget {
+		TypedWidget::Textarea => "input",
+		TypedWidget::Select | TypedWidget::SelectMultiple => "change",
+		TypedWidget::CheckboxInput | TypedWidget::RadioSelect => "change",
+		_ => "input",
+	};
+	let element_type = match field.widget {
+		TypedWidget::Textarea => quote! { HtmlTextAreaElement },
+		TypedWidget::Select | TypedWidget::SelectMultiple => quote! { HtmlSelectElement },
+		_ => quote! { HtmlInputElement },
+	};
+	let element_var = match field.widget {
+		TypedWidget::Textarea => quote::format_ident!("textarea"),
+		TypedWidget::Select | TypedWidget::SelectMultiple => quote::format_ident!("select"),
+		_ => quote::format_ident!("input"),
+	};
+	let assignment = quote! {
+		let mut __items = __field_collection_signal.get();
+		if let ::core::option::Option::Some(__position) =
+			__items.iter().position(|entry| entry.key() == __item_key)
+		{
+			let __item_index = __items[__position].index();
+			let mut __item_value = __items[__position].value().clone();
+			let __path_value = __new_value.clone();
+			__item_value.#field_name = __new_value;
+			__items[__position] = #pages_crate::CollectionItem::new(
+				__item_key,
+				__item_index,
+				__item_value,
+			);
+			__field_collection_signal.set(__items);
+			let __path_key = ::std::format!(
+				"{}:{:?}:{}",
+				#collection_name_str,
+				__item_key,
+				#field_name_str,
+			);
+			let __path_signal = __field_path_signals
+				.borrow()
+				.get(&__path_key)
+				.and_then(|signal| {
+					signal
+						.downcast_ref::<#pages_crate::reactive::Signal<#field_type>>()
+						.cloned()
+				});
+			if let ::core::option::Option::Some(__path_signal) = __path_signal {
+				__path_signal.set(__path_value);
+			}
+		}
+	};
+	let wasm_update =
+		collection_field_wasm_update(&field.field_type, &field.widget, &element_var, assignment);
+
+	quote! {
+		.listener(#event_name, {
+			let __field_collection_signal = __collection_signal.clone();
+			let __field_path_signals = __path_signals.clone();
+			let __item_key = item.key();
+			move |event| {
+				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+				{
+					use wasm_bindgen::JsCast;
+					if let ::core::option::Option::Some(target) = event.target() {
+						if let ::core::result::Result::Ok(#element_var) =
+							target.dyn_into::<web_sys::#element_type>()
+						{
+							#wasm_update
+						}
+					}
+				}
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+				{
+					let _ = event;
+					let _ = &__field_collection_signal;
+					let _ = &__field_path_signals;
+					let _ = __item_key;
+				}
+			}
+		})
+	}
+}
+
+fn collection_field_wasm_update(
+	field_type: &TypedFieldType,
+	widget: &TypedWidget,
+	element_var: &syn::Ident,
+	assignment: TokenStream,
+) -> TokenStream {
+	match field_type {
+		TypedFieldType::CharField
+		| TypedFieldType::TextField
+		| TypedFieldType::EmailField
+		| TypedFieldType::PasswordField
+		| TypedFieldType::UrlField
+		| TypedFieldType::SlugField => quote! {
+			let __new_value = #element_var.value();
+			#assignment
+		},
+		TypedFieldType::BooleanField if matches!(widget, TypedWidget::CheckboxInput) => quote! {
+			let __new_value = #element_var.checked();
+			#assignment
+		},
+		TypedFieldType::BooleanField => quote! {
+			if let ::core::result::Result::Ok(__new_value) =
+				#element_var.value().parse::<bool>()
+			{
+				#assignment
+			}
+		},
+		TypedFieldType::IntegerField => quote! {
+			if let ::core::result::Result::Ok(__new_value) =
+				#element_var.value().parse::<i64>()
+			{
+				#assignment
+			}
+		},
+		TypedFieldType::FloatField | TypedFieldType::DecimalField => quote! {
+			if let ::core::result::Result::Ok(__new_value) =
+				#element_var.value().parse::<f64>()
+			{
+				#assignment
+			}
+		},
+		TypedFieldType::DateField => {
+			collection_option_parse_update(element_var, quote! { chrono::NaiveDate }, assignment)
+		}
+		TypedFieldType::TimeField => {
+			collection_option_parse_update(element_var, quote! { chrono::NaiveTime }, assignment)
+		}
+		TypedFieldType::DateTimeField => collection_datetime_parse_update(element_var, assignment),
+		TypedFieldType::UuidField => {
+			collection_option_parse_update(element_var, quote! { uuid::Uuid }, assignment)
+		}
+		TypedFieldType::IpAddressField => {
+			collection_option_parse_update(element_var, quote! { ::std::net::IpAddr }, assignment)
+		}
+		TypedFieldType::HiddenField { inner } | TypedFieldType::ChoiceField { inner } => quote! {
+			if let ::core::result::Result::Ok(__new_value) =
+				#element_var.value().parse::<#inner>()
+			{
+				#assignment
+			}
+		},
+		TypedFieldType::JsonField { inner } => quote! {
+			if let ::core::result::Result::Ok(__new_value) =
+				::serde_json::from_str::<#inner>(&#element_var.value())
+			{
+				#assignment
+			}
+		},
+		TypedFieldType::MultipleChoiceField { inner } => quote! {
+			let __options = #element_var.selected_options();
+			let mut __new_value = ::std::vec::Vec::new();
+			for __i in 0..__options.length() {
+				if let ::core::option::Option::Some(__option) = __options.item(__i) {
+					if let ::core::result::Result::Ok(__option_el) =
+						__option.dyn_into::<web_sys::HtmlOptionElement>()
+					{
+						if let ::core::result::Result::Ok(__parsed) =
+							__option_el.value().parse::<#inner>()
+						{
+							__new_value.push(__parsed);
+						}
+					}
+				}
+			}
+			#assignment
+		},
+		TypedFieldType::FileField | TypedFieldType::ImageField => quote! {},
+	}
+}
+
+fn collection_option_parse_update(
+	element_var: &syn::Ident,
+	value_type: TokenStream,
+	assignment: TokenStream,
+) -> TokenStream {
+	quote! {
+		let __raw = #element_var.value();
+		if __raw.is_empty() {
+			let __new_value = ::core::option::Option::None;
+			#assignment
+		} else if let ::core::result::Result::Ok(__parsed) =
+			__raw.parse::<#value_type>()
+		{
+			let __new_value = ::core::option::Option::Some(__parsed);
+			#assignment
+		}
+	}
+}
+
+fn collection_datetime_parse_update(
+	element_var: &syn::Ident,
+	assignment: TokenStream,
+) -> TokenStream {
+	quote! {
+		let __raw = #element_var.value();
+		if __raw.is_empty() {
+			let __new_value = ::core::option::Option::None;
+			#assignment
+		} else if let ::core::result::Result::Ok(__parsed) =
+			chrono::NaiveDateTime::parse_from_str(&__raw, "%Y-%m-%dT%H:%M:%S")
+				.or_else(|_| chrono::NaiveDateTime::parse_from_str(&__raw, "%Y-%m-%dT%H:%M"))
+		{
+			let __new_value = ::core::option::Option::Some(__parsed);
+			#assignment
+		}
 	}
 }
 
@@ -2616,7 +4355,10 @@ fn generate_value_conversion(
 				let raw = #element_var.value();
 				if raw.is_empty() {
 					signal.set(::core::option::Option::None);
-				} else if let Ok(v) = raw.parse::<chrono::NaiveDateTime>() {
+				} else if let Ok(v) =
+					chrono::NaiveDateTime::parse_from_str(&raw, "%Y-%m-%dT%H:%M:%S")
+						.or_else(|_| chrono::NaiveDateTime::parse_from_str(&raw, "%Y-%m-%dT%H:%M"))
+				{
 					signal.set(::core::option::Option::Some(v));
 				}
 			}
@@ -2796,7 +4538,7 @@ fn generate_submit_method(
 	match &macro_ast.action {
 		TypedFormAction::ServerFn(server_fn_ident) => {
 			// Generate submit that calls the server_fn with callbacks
-			let all_fields = collect_all_fields(&macro_ast.fields);
+			let all_fields = collect_scalar_fields(&macro_ast.fields);
 			let field_names: Vec<&syn::Ident> = all_fields.iter().map(|f| &f.name).collect();
 
 			let strip_arg_exprs: Vec<&syn::Expr> = macro_ast
@@ -2994,7 +4736,7 @@ fn generate_load_initial_values(
 	};
 
 	// Collect fields that have initial_from specified (including from groups)
-	let all_fields = collect_all_fields(&macro_ast.fields);
+	let all_fields = collect_scalar_fields(&macro_ast.fields);
 	let field_setters: Vec<TokenStream> = all_fields
 		.iter()
 		.filter_map(|field| {
@@ -3104,7 +4846,7 @@ fn generate_load_choices(macro_ast: &TypedFormMacro, pages_crate: &TokenStream) 
 	};
 
 	// Collect fields that have choices_config specified (including from groups)
-	let all_fields = collect_all_fields(&macro_ast.fields);
+	let all_fields = collect_scalar_fields(&macro_ast.fields);
 	let field_setters: Vec<TokenStream> = all_fields
 		.iter()
 		.filter_map(|field| {

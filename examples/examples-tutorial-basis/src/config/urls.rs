@@ -51,18 +51,14 @@ pub fn routes() -> UnifiedRouter {
 			.mount("/", crate::apps::users::urls::server_url_patterns())
 	});
 
-	// Aggregate every app's client routes on wasm so the SPA route table
-	// carries every app's client-side URL patterns.
+	// Aggregate every app's client routes so both native route-table
+	// construction and the WASM SPA see the same URL patterns.
 	//
 	// Each `client_url_patterns()` already namespaces its routes
 	// (`polls:` / `users:`). We compose them by wrapping each in a single-purpose
 	// `UnifiedRouter` and stitching with `mount_unified`, which uses
 	// `ClientRouter::merge` internally.
 	//
-	// The aggregation is `#[cfg(client)]` because the per-app `client_router`
-	// submodules are themselves wasm-only (they import `crate::client::pages::*`,
-	// which is wasm-only).
-	#[cfg(client)]
 	let router = router
 		.mount_unified(
 			"/",
