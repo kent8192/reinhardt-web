@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.2.0...reinhardt-admin@v0.3.0) - 2026-06-16
+
+### Added
+
+- *(urls)* [**breaking**] remove raw server route registration APIs
+- *(formatter)* rustfmt page expression islands
+
+### Documentation
+
+- explain wasm admin stub allow
+
+### Fixed
+
+- gate native-only admin DI surfaces
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.3...reinhardt-admin@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-admin` for the Reinhardt 0.2.0 line. This

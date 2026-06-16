@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.2.0...reinhardt-pages@v0.3.0) - 2026-06-16
+
+### Added
+
+- *(pages)* add explicit asset loading helpers
+
+### Documentation
+
+- *(pages)* classify React 19 parity outcomes
+
+### Fixed
+
+- *(ci)* update Rust 1.96 UI stderr expectations
+- *(pages)* align asset head helpers with review feedback
+- *(pages)* address CodeRabbit component macro review
+- *(formatter)* handle reviewed page rustfmt islands
+- add native stubs for client page functions
+- *(pages)* export client_page from prelude
+
+### Maintenance
+
+- merge develop/0.3.0 into component route macros
+
 ### Added
 
 - Added route-backed component macro support via `#[component("/path", "name")]`,
