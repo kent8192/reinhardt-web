@@ -466,11 +466,11 @@ impl UnifiedRouter {
 
 	/// Configure server-side routing with a closure.
 	///
-	/// Parity: P1.
+	/// Parity: P0 native-only.
 	///
-	/// Native builds execute the closure and store the configured `ServerRouter`.
-	/// WASM builds accept the same closure shape for type checking and return the
-	/// router unchanged without registration side effects.
+	/// This arm only exists when `client-router` is disabled, and `routers.rs`
+	/// only re-exports it on native targets. WASM builds require the
+	/// `client-router` feature for the P1 no-op `server` closure shape.
 	pub fn server<F>(mut self, f: F) -> Self
 	where
 		F: FnOnce(ServerRouter) -> ServerRouter,
