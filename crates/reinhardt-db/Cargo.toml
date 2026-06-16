@@ -29,47 +29,47 @@ sqlx = { version = "0.8", features = [
   "sqlite",
   "tls-rustls",
   "uuid",
-] }
-reinhardt-query = { workspace = true, features = ["full", "thread-safe"] }
+], optional = true }
+reinhardt-query = { workspace = true, features = ["full", "thread-safe"], optional = true }
 
 # Async runtime
-tokio = { version = "1.41", features = ["full", "macros", "rt", "sync"] }
-async-trait = "0.1"
+tokio = { version = "1.41", features = ["full", "macros", "rt", "sync"], optional = true }
+async-trait = { version = "0.1", optional = true }
 
 # Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.11", features = ["v4", "v7", "serde"] }
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+chrono = { version = "0.4", features = ["serde"], optional = true }
+uuid = { version = "1.11", features = ["v4", "v7", "serde"], optional = true }
 
 # Error handling
-thiserror = "2.0"
+thiserror = { version = "2.0", optional = true }
 reinhardt-core = { workspace = true, features = ["exception", "macros", "types", "validators"]}
-tracing = { workspace = true }
-pg_escape = "0.1.1"
-futures = { workspace = true }
-rust_decimal = { workspace = true }
+tracing = { workspace = true, optional = true }
+pg_escape = { version = "0.1.1", optional = true }
+futures = { workspace = true, optional = true }
+rust_decimal = { workspace = true, optional = true }
 reinhardt-di = { workspace = true, optional = true }
 reinhardt-conf = { workspace = true, optional = true, features = ["settings"]}
-once_cell = "1.19"
-parking_lot = { workspace = true }
-clap = { version = "4.5", features = ["derive"] }
-console = "0.16.1"
-dialoguer = "0.12.0"
-indicatif = "0.18.0"
-aho-corasick = "1.1"
-petgraph = "0.8.3"
-regex = "1.11"
-strsim = "0.11"
-indexmap = "2.7"
-linkme = { workspace = true }
-toml = { workspace = true }
-syn = { version = "2.0", features = ["full", "parsing"] }
-quote = "1.0"
-proc-macro2 = "1.0"
-prettyplease = "0.2"
-walkdir = "2.5"
-aquamarine = { workspace = true }
+once_cell = { version = "1.19", optional = true }
+parking_lot = { workspace = true, optional = true }
+clap = { version = "4.5", features = ["derive"], optional = true }
+console = { version = "0.16.1", optional = true }
+dialoguer = { version = "0.12.0", optional = true }
+indicatif = { version = "0.18.0", optional = true }
+aho-corasick = { version = "1.1", optional = true }
+petgraph = { version = "0.8.3", optional = true }
+regex = { version = "1.11", optional = true }
+strsim = { version = "0.11", optional = true }
+indexmap = { version = "2.7", optional = true }
+linkme = { workspace = true, optional = true }
+toml = { workspace = true, optional = true }
+syn = { version = "2.0", features = ["full", "parsing"], optional = true }
+quote = { version = "1.0", optional = true }
+proc-macro2 = { version = "1.0", optional = true }
+prettyplease = { version = "0.2", optional = true }
+walkdir = { version = "2.5", optional = true }
+aquamarine = { workspace = true, optional = true }
 mongodb = { version = "3.0", optional = true, features = ["bson-3"] }
 bson = { version = "3.0.0", optional = true }
 redis = { workspace = true, optional = true, features = ["tokio-comp", "cluster-async"] }
@@ -78,19 +78,19 @@ aws-sdk-dynamodb = { version = "1.0", optional = true }
 aws-config = { version = "1.0", optional = true }
 time = { workspace = true, optional = true }
 neo4rs = { version = "0.7", optional = true }
-anyhow = { workspace = true }
-dashmap = "6.1.0"
-base64 = "0.22"
-lazy_static = "1.4"
+anyhow = { workspace = true, optional = true }
+dashmap = { version = "6.1.0", optional = true }
+base64 = { version = "0.22", optional = true }
+lazy_static = { version = "1.4", optional = true }
 refinery = { workspace = true, optional = true }
-aes-gcm = { workspace = true }
-sha2 = { workspace = true }
-rand = { workspace = true }
+aes-gcm = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
 image = { workspace = true, optional = true }
 flate2 = { workspace = true, optional = true }
-phonenumber = { workspace = true }
-smallvec = "1.13"
-paste = "1.0"
+phonenumber = { workspace = true, optional = true }
+smallvec = { version = "1.13", optional = true }
+paste = { version = "1.0", optional = true }
 
 [features]
 default = [
@@ -106,21 +106,66 @@ default = [
 ]
 
 # Module features (conditionally compiled when feature is enabled)
-backends = ["pool"]
-backends-pool = ["pool"]
-pool = []
-orm = ["backends", "hybrid"]
-migrations = ["refinery"]
-hybrid = []
-associations = []
-contenttypes = []
-image-fields = ["dep:image"]
-compressed-fields = ["dep:flate2"]
-nosql = ["dep:bson"]
-backends-settings = ["backends"]
+db-deps = [
+  "dep:aes-gcm",
+  "dep:aho-corasick",
+  "dep:anyhow",
+  "dep:aquamarine",
+  "dep:async-trait",
+  "dep:base64",
+  "dep:chrono",
+  "dep:clap",
+  "dep:console",
+  "dep:dashmap",
+  "dep:dialoguer",
+  "dep:futures",
+  "dep:indexmap",
+  "dep:indicatif",
+  "dep:lazy_static",
+  "dep:linkme",
+  "dep:once_cell",
+  "dep:parking_lot",
+  "dep:paste",
+  "dep:petgraph",
+  "dep:pg_escape",
+  "dep:phonenumber",
+  "dep:prettyplease",
+  "dep:proc-macro2",
+  "dep:quote",
+  "dep:rand",
+  "dep:regex",
+  "dep:reinhardt-query",
+  "dep:rust_decimal",
+  "dep:serde",
+  "dep:serde_json",
+  "dep:sha2",
+  "dep:smallvec",
+  "dep:sqlx",
+  "dep:strsim",
+  "dep:syn",
+  "dep:thiserror",
+  "dep:tokio",
+  "dep:toml",
+  "dep:tracing",
+  "dep:uuid",
+  "dep:walkdir",
+]
+model-info = []
+backends = ["db-deps", "pool"]
+backends-pool = ["db-deps", "pool"]
+pool = ["db-deps"]
+orm = ["backends", "db-deps", "hybrid"]
+migrations = ["db-deps", "dep:refinery"]
+hybrid = ["db-deps"]
+associations = ["db-deps"]
+contenttypes = ["db-deps"]
+image-fields = ["db-deps", "dep:image"]
+compressed-fields = ["db-deps", "dep:flate2"]
+nosql = ["db-deps", "dep:bson"]
+backends-settings = ["backends", "db-deps"]
 
 # DI integration - enables Injectable implementation for DatabaseConnection
-di = ["reinhardt-di"]
+di = ["db-deps", "reinhardt-di"]
 
 # Aggregate all database features
 database-full = [
@@ -140,9 +185,9 @@ database-full = [
 ]
 
 # Database-specific features
-postgres = ["sqlx/postgres"]
-sqlite = ["sqlx/sqlite"]
-mysql = ["sqlx/mysql"]
+postgres = ["db-deps", "sqlx/postgres"]
+sqlite = ["db-deps", "sqlx/sqlite"]
+mysql = ["db-deps", "sqlx/mysql"]
 
 # NoSQL database features
 nosql-all = ["cassandra", "dynamodb", "mongodb", "neo4j", "nosql", "redis"]
@@ -155,33 +200,28 @@ all-databases = [
   "cockroachdb-backend",
 ]
 full = ["advanced-queries", "all-databases", "database", "db-mysql", "db-postgres", "db-sqlite", "di", "migrations", "mysql", "nosql-all", "pooling", "postgres", "settings", "sqlite"]
-settings = ["dep:reinhardt-conf"]
-database = []
-db-sqlite = []
-db-postgres = []
-db-mysql = []
-mongodb = ["dep:mongodb", "nosql"]
-redis = ["dep:redis"]
-cassandra = ["dep:cassandra-cpp"]
-dynamodb = ["dep:aws-sdk-dynamodb", "dep:aws-config", "time"]
-neo4j = ["dep:neo4rs"]
+settings = ["db-deps", "dep:reinhardt-conf"]
+database = ["db-deps"]
+db-sqlite = ["db-deps"]
+db-postgres = ["db-deps"]
+db-mysql = ["db-deps"]
+mongodb = ["db-deps", "dep:mongodb", "nosql"]
+redis = ["db-deps", "dep:redis"]
+cassandra = ["db-deps", "dep:cassandra-cpp"]
+dynamodb = ["db-deps", "dep:aws-sdk-dynamodb", "dep:aws-config", "time"]
+neo4j = ["db-deps", "dep:neo4rs"]
 nosql-document = ["mongodb"]
 nosql-key-value = ["redis", "dynamodb"]
 nosql-column = ["cassandra"]
 nosql-graph = ["neo4j"]
-pooling = []
-advanced-queries = []
-integration-tests = []
+pooling = ["db-deps"]
+advanced-queries = ["db-deps"]
+integration-tests = ["db-deps"]
 
 [dev-dependencies]
 insta = { workspace = true }
-tokio-test = "0.4"
 rstest = { workspace = true }
 serial_test = { workspace = true }
-sqlx = { workspace = true, features = ["runtime-tokio", "postgres"] }
-tokio = { workspace = true, features = ["full", "macros", "rt", "test-util", "time"]}
-testcontainers = { workspace = true }
-testcontainers-modules = { workspace = true }
 uuid = { workspace = true }
 serde_json = "1.0"
 rust_decimal = { workspace = true }
@@ -190,3 +230,10 @@ proptest = { workspace = true }
 trybuild = "1.0"
 ctor = "0.6.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
+tokio-test = "0.4"
+sqlx = { workspace = true, features = ["runtime-tokio", "postgres"] }
+tokio = { workspace = true, features = ["full", "macros", "rt", "test-util", "time"]}
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }

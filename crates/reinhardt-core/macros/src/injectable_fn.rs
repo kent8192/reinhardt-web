@@ -168,6 +168,7 @@ pub(crate) fn injectable_fn_impl(_args: TokenStream, input: ItemFn) -> Result<To
 	// Generate the expanded code with override support
 	let expanded = quote! {
 		// Original function implementation (renamed, private)
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#impl_fn
 
 		/// Returns the function pointer for this injectable function.
@@ -195,6 +196,7 @@ pub(crate) fn injectable_fn_impl(_args: TokenStream, input: ItemFn) -> Result<To
 		}
 
 		// Injectable trait implementation for the return type
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#[#async_trait::async_trait]
 		impl #di_crate::Injectable for #return_type {
 			async fn inject(__di_ctx: &#di_crate::InjectionContext)

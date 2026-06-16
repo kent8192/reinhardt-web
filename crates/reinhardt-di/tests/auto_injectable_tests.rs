@@ -3,6 +3,8 @@
 //! This module tests the `#[injectable]` macro for automatic dependency injection
 //! on structs with `#[inject]` and `#[no_inject]` fields.
 
+#![cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+
 #[cfg(feature = "testing")]
 use reinhardt_di::{DependencyScope, Depends, FactoryOutput, InjectableKey, global_registry};
 use reinhardt_di::{Injectable, InjectionContext, SingletonScope};

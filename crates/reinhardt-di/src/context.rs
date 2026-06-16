@@ -3,6 +3,7 @@
 use crate::function_handle::FunctionHandle;
 use crate::override_registry::OverrideRegistry;
 use crate::scope::{RequestScope, SingletonScope};
+#[cfg(feature = "params")]
 use reinhardt_http::Request as HttpRequest;
 use std::any::Any;
 use std::sync::Arc;
@@ -445,6 +446,7 @@ impl InjectionContext {
 	/// `request_scope` (for [`get_request::<HttpRequest>()`](Self::get_request)),
 	/// ensuring that `Injectable` types such as `ServerFnRequest` can
 	/// retrieve it via either accessor.
+	#[cfg(feature = "params")]
 	pub fn fork_for_request(&self, request: HttpRequest) -> InjectionContext {
 		let request_arc = Arc::new(request);
 
@@ -886,7 +888,7 @@ impl RequestContext {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "params"))]
 mod tests {
 	use super::*;
 	use rstest::rstest;
@@ -932,7 +934,6 @@ mod tests {
 		assert!(forked.get_request::<String>().is_none());
 	}
 
-	#[cfg(feature = "params")]
 	#[rstest]
 	fn test_fork_for_request_sets_http_request() {
 		// Arrange
