@@ -132,6 +132,13 @@ flowchart TD
     B -->|"Planned features"| H["lib.rs header<br/>(NOT README.md)"]
 ```
 
+### Cross-target API parity
+
+Public symbols that can be named from both native and WASM application code
+MUST document their parity level from `instructions/API_PARITY.md`.
+P1 symbols MUST state the inert-side behavior in rustdoc. P0 behavior MUST stay
+absent on the unsupported target so misuse fails during compilation.
+
 ---
 
 ## Documentation Consistency
