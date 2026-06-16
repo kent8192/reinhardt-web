@@ -591,16 +591,14 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_depends_with_fixtures(injection_context: InjectionContext) {
-		// Register keyed TestConfig output so Depends<K, T> can resolve it.
-		let registry = reinhardt_di::global_registry();
-		registry.register_async::<FactoryOutput<TestConfigKey, TestConfig>, _, _>(
-			reinhardt_di::DependencyScope::Request,
-			|_ctx| async {
-				Ok(FactoryOutput::new(TestConfig {
+		// Register keyed TestConfig output in this test's isolated singleton scope.
+		injection_context
+			.singleton_scope()
+			.set(FactoryOutput::<TestConfigKey, TestConfig>::new(
+				TestConfig {
 					value: "test_config".to_string(),
-				}))
-			},
-		);
+				},
+			));
 
 		// Test Depends<K, T> integration with fixtures.
 		let config = Depends::<TestConfigKey, TestConfig>::builder()

@@ -37,7 +37,7 @@ where
 
 	/// Create a builder that records `cached = false` in dependency metadata.
 	///
-	/// Scope cache behavior is still controlled by the registered provider scope.
+	/// This bypasses scope-cache lookup for this resolution.
 	pub fn builder_no_cache() -> DependsBuilder<K, T> {
 		DependsBuilder {
 			use_cache: false,
@@ -47,7 +47,9 @@ where
 
 	/// Resolve the keyed provider output from the DI registry.
 	pub async fn resolve_from_registry(ctx: &InjectionContext, use_cache: bool) -> DiResult<Self> {
-		let output = ctx.resolve::<FactoryOutput<K, T>>().await?;
+		let output = ctx
+			.resolve_with_cache::<FactoryOutput<K, T>>(use_cache)
+			.await?;
 
 		Ok(Self::from_output(output, use_cache))
 	}

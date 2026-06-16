@@ -5,6 +5,7 @@ use reinhardt_di::injected::{DependencyScope as InjectedScope, InjectionMetadata
 use reinhardt_di::{Depends, DiResult, FactoryOutput, Injectable, InjectableKey, InjectionContext};
 use reinhardt_test::fixtures::*;
 use rstest::*;
+use serial_test::serial;
 use std::sync::Once;
 
 // Test type definitions
@@ -102,6 +103,7 @@ async fn depends_scope_singleton() {
 
 #[rstest]
 #[tokio::test]
+#[serial(di_registry)]
 async fn depends_scope_request(injection_context: InjectionContext) {
 	register_test_data_output();
 

@@ -1,7 +1,10 @@
 //! Unit tests for Depends<K, T> and DependsBuilder
 
 use async_trait::async_trait;
-use reinhardt_di::{Depends, DiResult, FactoryOutput, Injectable, InjectableKey, InjectionContext};
+use reinhardt_di::{
+	DependencyRegistry, DependencyScope, Depends, DiResult, FactoryOutput, Injectable,
+	InjectableKey, InjectionContext,
+};
 use reinhardt_test::fixtures::*;
 use rstest::*;
 use std::sync::Arc;
@@ -37,6 +40,7 @@ struct UncachedConfigKey;
 impl InjectableKey for UncachedConfigKey {}
 
 static UNCACHED_COUNTER: AtomicU32 = AtomicU32::new(0);
+static REQUEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 #[async_trait]
 impl Injectable for UncachedConfig {
@@ -54,6 +58,15 @@ impl Injectable for UncachedConfig {
 struct NestedService {
 	config: Config,
 }
+
+#[derive(Clone, Debug, PartialEq)]
+struct RequestCountedConfig {
+	id: u32,
+}
+
+struct RequestCountedConfigKey;
+
+impl InjectableKey for RequestCountedConfigKey {}
 
 #[async_trait]
 impl Injectable for NestedService {
@@ -170,6 +183,51 @@ async fn depends_with_use_cache_false() {
 	// Assert — Transient scope: factory is called each time
 	assert_ne!(depends1.id, depends2.id);
 	assert_eq!(UNCACHED_COUNTER.load(Ordering::SeqCst), 2);
+}
+
+#[serial_test::serial(request_counter)]
+#[tokio::test]
+async fn depends_with_use_cache_false_bypasses_request_scope_cache() {
+	// Arrange
+	let registry = Arc::new(DependencyRegistry::new());
+	registry.register_async::<FactoryOutput<RequestCountedConfigKey, RequestCountedConfig>, _, _>(
+		DependencyScope::Request,
+		|_ctx| async {
+			let id = REQUEST_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
+			Ok(FactoryOutput::new(RequestCountedConfig { id }))
+		},
+	);
+	let singleton_scope = Arc::new(reinhardt_di::SingletonScope::new());
+	let injection_context = InjectionContext::builder(singleton_scope)
+		.with_registry(registry)
+		.build();
+	REQUEST_COUNTER.store(0, Ordering::SeqCst);
+
+	// Act
+	let cached = Depends::<RequestCountedConfigKey, RequestCountedConfig>::builder()
+		.resolve(&injection_context)
+		.await
+		.unwrap();
+	let fresh1 = Depends::<RequestCountedConfigKey, RequestCountedConfig>::builder_no_cache()
+		.resolve(&injection_context)
+		.await
+		.unwrap();
+	let fresh2 = Depends::<RequestCountedConfigKey, RequestCountedConfig>::builder_no_cache()
+		.resolve(&injection_context)
+		.await
+		.unwrap();
+	let cached_again = Depends::<RequestCountedConfigKey, RequestCountedConfig>::builder()
+		.resolve(&injection_context)
+		.await
+		.unwrap();
+
+	// Assert - uncached resolutions create fresh values and leave the cache intact.
+	assert_eq!(cached.id, 1);
+	assert_eq!(fresh1.id, 2);
+	assert_eq!(fresh2.id, 3);
+	assert_eq!(cached_again.id, 1);
+	assert!(Arc::ptr_eq(cached.as_arc(), cached_again.as_arc()));
+	assert_eq!(REQUEST_COUNTER.load(Ordering::SeqCst), 3);
 }
 
 #[rstest]

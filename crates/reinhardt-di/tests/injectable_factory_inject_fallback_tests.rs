@@ -26,11 +26,14 @@ use async_trait::async_trait;
 use rstest::*;
 use serial_test::serial;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use reinhardt_di::{
 	Depends, DiResult, FactoryOutput, Injectable, InjectableKey, InjectableType, InjectionContext,
 	SingletonScope, global_registry, injectable,
 };
+
+static FRESH_WRAPPER_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// Manually-Injectable type that is *not* registered in the global
 /// registry — mirrors the framework shape used by `SessionData`,
@@ -239,6 +242,81 @@ where
 	fn from_resolved(inner: Arc<Self::Inner>, _use_cache: bool) -> Self {
 		Self { inner }
 	}
+}
+
+#[derive(Clone, Debug)]
+struct FreshFactoryOnlyConfig {
+	inner: Arc<FactoryOnlyConfig>,
+}
+
+impl std::ops::Deref for FreshFactoryOnlyConfig {
+	type Target = FactoryOnlyConfig;
+
+	fn deref(&self) -> &Self::Target {
+		&self.inner
+	}
+}
+
+impl InjectableType for FreshFactoryOnlyConfig {
+	type Inner = FactoryOutput<FactoryOnlyConfigKey, FactoryOnlyConfig>;
+
+	fn from_resolved(inner: Arc<Self::Inner>, _use_cache: bool) -> Self {
+		Self {
+			inner: Arc::new(inner.as_ref().as_ref().clone()),
+		}
+	}
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct FreshLazyReport {
+	page_size: u32,
+}
+
+struct FreshLazyReportKey;
+
+impl InjectableKey for FreshLazyReportKey {}
+
+#[injectable(scope = "transient")]
+async fn fresh_lazy_report_factory(
+	#[inject(cache = false)] config: FreshFactoryOnlyConfig,
+) -> FactoryOutput<FreshLazyReportKey, FreshLazyReport> {
+	FactoryOutput::new(FreshLazyReport {
+		page_size: config.page_size,
+	})
+}
+
+#[rstest]
+#[serial(di_registry)]
+#[tokio::test]
+async fn factory_cache_false_bypasses_custom_wrapper_inner_cache() {
+	// Arrange
+	FRESH_WRAPPER_COUNTER.store(0, Ordering::SeqCst);
+	let registry = global_registry();
+	let _guard = registry
+		.register_override::<FactoryOutput<FactoryOnlyConfigKey, FactoryOnlyConfig>, _, _>(
+			reinhardt_di::DependencyScope::Request,
+			|_ctx| async {
+				let page_size = FRESH_WRAPPER_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
+				Ok(FactoryOutput::new(FactoryOnlyConfig { page_size }))
+			},
+		);
+	let scope = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::builder(scope).build();
+
+	// Act
+	let first = ctx
+		.resolve::<FactoryOutput<FreshLazyReportKey, FreshLazyReport>>()
+		.await
+		.expect("cache=false custom wrapper parameter must resolve");
+	let second = ctx
+		.resolve::<FactoryOutput<FreshLazyReportKey, FreshLazyReport>>()
+		.await
+		.expect("cache=false custom wrapper parameter must resolve again");
+
+	// Assert
+	assert_eq!(first.as_ref().as_ref(), &FreshLazyReport { page_size: 1 });
+	assert_eq!(second.as_ref().as_ref(), &FreshLazyReport { page_size: 2 });
+	assert_eq!(FRESH_WRAPPER_COUNTER.load(Ordering::SeqCst), 2);
 }
 
 #[derive(Clone, Debug, PartialEq)]

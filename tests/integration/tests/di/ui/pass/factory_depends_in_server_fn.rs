@@ -25,7 +25,7 @@ impl InjectableKey for AppConfigKey {}
 #[injectable(scope = "transient")]
 async fn make_app_config() -> FactoryOutput<AppConfigKey, AppConfig> {
 	FactoryOutput::new(AppConfig {
-		host: "localhost".to_string(),
+		host: "localhost".into(),
 	})
 }
 

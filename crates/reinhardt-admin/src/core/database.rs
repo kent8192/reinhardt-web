@@ -2602,11 +2602,17 @@ mod tests {
 		// Assert - should fail with NotRegistered since no DatabaseConnection
 		assert!(result.is_err());
 		let err = result.err().unwrap();
-		assert!(
-			err.to_string().contains("DatabaseConnection"),
-			"Error should mention DatabaseConnection, got: {}",
-			err
-		);
+		match err {
+			reinhardt_di::DiError::NotRegistered { type_name, hint } => {
+				assert_eq!(type_name, "AdminDatabase");
+				assert_eq!(
+					hint,
+					"DatabaseConnection must be registered as a singleton. \
+					 Use InjectionContextBuilder::singleton(db_connection) during setup."
+				);
+			}
+			other => panic!("Expected NotRegistered error, got: {other:?}"),
+		}
 	}
 
 	#[rstest]
@@ -2623,11 +2629,17 @@ mod tests {
 
 		assert!(result.is_err());
 		let err = result.err().unwrap();
-		assert!(
-			err.to_string().contains("DatabaseConnection"),
-			"Error should mention DatabaseConnection, got: {}",
-			err
-		);
+		match err {
+			reinhardt_di::DiError::NotRegistered { type_name, hint } => {
+				assert_eq!(type_name, "AdminDatabase");
+				assert_eq!(
+					hint,
+					"DatabaseConnection must be registered as a singleton. \
+					 Use InjectionContextBuilder::singleton(db_connection) during setup."
+				);
+			}
+			other => panic!("Expected NotRegistered error, got: {other:?}"),
+		}
 	}
 
 	// ==================== FilterValue::Array In/NotIn tests (#2936) ====================

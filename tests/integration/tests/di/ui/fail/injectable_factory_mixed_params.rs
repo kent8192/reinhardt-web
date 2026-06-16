@@ -1,6 +1,6 @@
 // Compile-fail test: injectable with mix of inject and non-inject params
 
-#![allow(unused_imports)]
+#![allow(unused_imports)] // Broad imports keep compile-fail diagnostics focused.
 
 use reinhardt_di::{Depends, FactoryOutput, injectable};
 

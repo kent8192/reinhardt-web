@@ -119,7 +119,7 @@ where
 		T: 'a,
 	{
 		Box::pin(async move {
-			let inner = ctx.resolve::<T::Inner>().await?;
+			let inner = ctx.resolve_with_cache::<T::Inner>(use_cache).await?;
 			Ok(T::from_resolved(inner, use_cache))
 		})
 	}

@@ -238,8 +238,11 @@ async fn test_depends_caching_for_registry_type() {
 		.await
 		.unwrap();
 
-	// Assert — cached values are equal (fresh Arc wrappers, same inner value)
-	assert_eq!(*depends1, *depends2);
+	// Assert - both wrappers point to the same cached output instance.
+	assert!(
+		Arc::ptr_eq(depends1.as_arc(), depends2.as_arc()),
+		"Expected Depends<AppConfigKey, AppConfig> to reuse cached FactoryOutput"
+	);
 }
 
 /// Helper that exercises the registry `create` path used by `resolve`.

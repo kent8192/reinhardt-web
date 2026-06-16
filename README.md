@@ -964,10 +964,13 @@ dependencies, and `Depends<K, T>` for keyed provider output:
 
 ```rust
 use reinhardt::{get, Response, StatusCode, ViewResult};
-use reinhardt::di::Depends;
+use reinhardt::di::{Depends, injectable_key};
 use reinhardt::db::DatabaseConnection;
 use reinhardt::extractors::Path;
 use crate::models::User;
+
+#[injectable_key]
+struct PrimaryDatabase;
 
 #[get("/users/{id}/", name = "get_user")]
 pub async fn get_user(

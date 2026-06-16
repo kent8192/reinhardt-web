@@ -14,6 +14,7 @@ use reinhardt_di::{
 	SingletonScope,
 };
 use rstest::rstest;
+use serial_test::serial;
 use std::sync::Arc;
 use std::sync::Once;
 use std::time::Duration;
@@ -211,6 +212,7 @@ async fn test_injectable_async_timeout() {
 }
 
 #[tokio::test]
+#[serial(di_registry)]
 async fn test_depends_lifetime_management() {
 	register_resource_owner_output();
 

@@ -1,6 +1,6 @@
 // Compile-fail test: injectable with non-inject parameters
 
-#![allow(unused_imports)]
+#![allow(unused_imports)] // Broad imports keep compile-fail diagnostics focused.
 
 use reinhardt_di::{FactoryOutput, injectable};
 
