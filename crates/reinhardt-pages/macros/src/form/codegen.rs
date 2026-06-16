@@ -103,6 +103,18 @@ fn collect_all_datalists(entries: &[TypedFormFieldEntry]) -> Vec<&TypedDatalistD
 	datalists
 }
 
+fn custom_widget_touched_ident(field: &TypedFormFieldDef) -> Option<syn::Ident> {
+	if matches!(field.widget, TypedWidget::CustomExperimental(_)) {
+		Some(format_ident!(
+			"__{}_custom_widget_touched",
+			field.name,
+			span = field.name.span()
+		))
+	} else {
+		None
+	}
+}
+
 fn generate_ambient_argument_deprecation_markers(
 	macro_ast: &TypedFormMacro,
 	ambient_arguments_source: Option<AmbientArgumentsSource>,
@@ -235,7 +247,14 @@ fn generate_form_runtime_contract(
 		.iter()
 		.map(|field| {
 			let name = &field.name;
-			quote! { self.#name.set(values.#name.clone()); }
+			let custom_widget_touched_reset =
+				custom_widget_touched_ident(field).map(|touched_name| {
+					quote! { self.#touched_name.set(false); }
+				});
+			quote! {
+				self.#name.set(values.#name.clone());
+				#custom_widget_touched_reset
+			}
 		})
 		.collect();
 
@@ -261,12 +280,19 @@ fn generate_form_runtime_contract(
 		.map(|(field, variant)| {
 			let name = &field.name;
 			let ty = field_type_to_value_type(&field.field_type);
+			let custom_widget_touched_set =
+				custom_widget_touched_ident(field).map(|touched_name| {
+					quote! { self.#touched_name.set(true); }
+				});
 			quote! {
 				#field_ident::#variant => {
 					let boxed: ::std::boxed::Box<dyn ::core::any::Any> =
 						::std::boxed::Box::new(value);
 					match boxed.downcast::<#ty>() {
-						Ok(value) => self.#name.set(*value),
+						Ok(value) => {
+							self.#name.set(*value);
+							#custom_widget_touched_set
+						}
 						Err(_) => panic!(
 							"form! field {:?} does not accept values of type {}",
 							field,
@@ -282,8 +308,15 @@ fn generate_form_runtime_contract(
 		.zip(field_variants.iter())
 		.map(|(field, variant)| {
 			let name = &field.name;
+			let custom_widget_touched_reset =
+				custom_widget_touched_ident(field).map(|touched_name| {
+					quote! { self.#touched_name.set(false); }
+				});
 			quote! {
-				#field_ident::#variant => self.#name.set(values.#name.clone()),
+				#field_ident::#variant => {
+					self.#name.set(values.#name.clone());
+					#custom_widget_touched_reset
+				}
 			}
 		})
 		.collect();
@@ -1019,6 +1052,19 @@ fn generate_field_declarations(
 		.collect();
 
 	decls.extend(custom_widget_error_decls);
+
+	let custom_widget_touched_decls: Vec<TokenStream> = fields
+		.iter()
+		.filter_map(|field| {
+			custom_widget_touched_ident(field).map(|touched_name| {
+				quote! {
+					#touched_name: #pages_crate::reactive::Signal<bool>,
+				}
+			})
+		})
+		.collect();
+
+	decls.extend(custom_widget_touched_decls);
 	quote! { #(#decls)* }
 }
 
@@ -1103,6 +1149,19 @@ fn generate_field_initializers(
 		.collect();
 
 	inits.extend(custom_widget_error_inits);
+
+	let custom_widget_touched_inits: Vec<TokenStream> = fields
+		.iter()
+		.filter_map(|field| {
+			custom_widget_touched_ident(field).map(|touched_name| {
+				quote! {
+					#touched_name: #pages_crate::reactive::Signal::new(false),
+				}
+			})
+		})
+		.collect();
+
+	inits.extend(custom_widget_touched_inits);
 	quote! { #(#inits)* }
 }
 
@@ -2615,26 +2674,34 @@ fn generate_field_view(
 			let component = &custom.component;
 			let adapter = &custom.adapter;
 			let value_type = field_type_to_value_type(&field.field_type);
+			let disabled = field.display.disabled;
 			let custom_widget_error_name = format_ident!(
 				"__{}_custom_widget_error",
 				field_name,
 				span = field_name.span()
 			);
+			let custom_widget_touched_name =
+				custom_widget_touched_ident(field).expect("custom widget touched signal");
 			quote! {
-				{
-					let __field_signal = self.#field_name.clone();
-					let __custom_widget_error_signal = self.#custom_widget_error_name.clone();
-					let mut __ctx: #pages_crate::CustomWidgetContext<#value_type> =
-						#pages_crate::CustomWidgetContext::new(
-							__field_signal.get(),
-							::std::rc::Rc::new({
-								let __field_signal = __field_signal.clone();
-								let __custom_widget_error_signal =
-									__custom_widget_error_signal.clone();
-								move |__raw: #pages_crate::CustomWidgetRawValue| {
-									match <#adapter as #pages_crate::FormWidgetAdapter<#value_type>>::parse(__raw) {
-										::core::result::Result::Ok(__value) => {
-											__custom_widget_error_signal
+					{
+						let __field_signal = self.#field_name.clone();
+						let __custom_widget_error_signal = self.#custom_widget_error_name.clone();
+						let __custom_widget_touched_signal =
+							self.#custom_widget_touched_name.clone();
+						let mut __ctx: #pages_crate::CustomWidgetContext<#value_type> =
+							#pages_crate::CustomWidgetContext::new(
+								__field_signal.get(),
+								::std::rc::Rc::new({
+									let __field_signal = __field_signal.clone();
+									let __custom_widget_error_signal =
+										__custom_widget_error_signal.clone();
+									let __custom_widget_touched_signal =
+										__custom_widget_touched_signal.clone();
+									move |__raw: #pages_crate::CustomWidgetRawValue| {
+										__custom_widget_touched_signal.set(true);
+										match <#adapter as #pages_crate::FormWidgetAdapter<#value_type>>::parse(__raw) {
+											::core::result::Result::Ok(__value) => {
+												__custom_widget_error_signal
 												.set(::core::option::Option::None);
 											__field_signal.set(__value);
 											::core::result::Result::Ok(())
@@ -2648,14 +2715,14 @@ fn generate_field_view(
 											::core::result::Result::Err(__error)
 										}
 									}
-								}
-							}),
-						);
-					__ctx.disabled = false;
-					__ctx.required = #required;
-					__ctx.touched = false;
-					__ctx.error = __custom_widget_error_signal.get();
-					__ctx.name = #field_name_str.to_string();
+									}
+								}),
+							);
+						__ctx.disabled = #disabled;
+						__ctx.required = #required;
+						__ctx.touched = __custom_widget_touched_signal.get();
+						__ctx.error = __custom_widget_error_signal.get();
+						__ctx.name = #field_name_str.to_string();
 					__ctx.id = #field_name_str.to_string();
 					let __props =
 						<#adapter as #pages_crate::FormWidgetAdapter<#value_type>>::props(__ctx);
@@ -3142,11 +3209,6 @@ fn generate_native_attrs(attrs: &TypedFieldNativeAttrs) -> TokenStream {
 	if let Some(step) = &attrs.step {
 		result.extend(quote! {
 			.attr("step", (#step).to_string())
-		});
-	}
-	if let Some(multiple) = attrs.multiple {
-		result.extend(quote! {
-			.bool_attr("multiple", #multiple)
 		});
 	}
 	if let Some(accept) = &attrs.accept {
@@ -5481,28 +5543,27 @@ mod tests {
 	#[rstest::rstest]
 	fn test_generate_native_attrs() {
 		let input = quote! {
-			name: NativeAttrsForm,
-			action: "/test",
+		name: NativeAttrsForm,
+		action: "/test",
 
-			fields: {
-				billing_month: CharField {
-					widget: MonthInput,
-					min: "2026-01",
-					max: "2026-12",
-					step: 1,
-				}
-				search: CharField {
-					widget: SearchInput,
-					list: suggestions,
-					size: 32,
-				}
-				suggestions: Datalist {
-					options: [("term", "Term")],
-				}
+		fields: {
+			billing_month: CharField {
+				widget: MonthInput,
+				min: "2026-01",
+				max: "2026-12",
+				step: 1,
+			}
+			search: CharField {
+				widget: SearchInput,
+				list: suggestions,
+				size: 32,
+			}
+			suggestions: Datalist {
+				options: [("term", "Term")],
+			}
 				avatar: FileField {
 					accept: "image/png",
 					capture: "environment",
-					multiple,
 				}
 			},
 		};
@@ -5519,7 +5580,6 @@ mod tests {
 		assert!(output_str.contains(". attr (\"size\" , \"32\")"));
 		assert!(output_str.contains(". attr (\"accept\" , \"image/png\")"));
 		assert!(output_str.contains(". attr (\"capture\" , \"environment\")"));
-		assert!(output_str.contains(". bool_attr (\"multiple\" , true)"));
 	}
 
 	#[rstest::rstest]

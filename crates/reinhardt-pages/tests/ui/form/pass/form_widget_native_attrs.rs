@@ -25,7 +25,6 @@ fn main() {
 			avatar: FileField {
 				accept: "image/png,image/jpeg",
 				capture: "environment",
-				multiple: false,
 			}
 		}
 	};

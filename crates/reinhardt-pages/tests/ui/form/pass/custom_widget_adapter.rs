@@ -11,6 +11,7 @@ fn date_range_picker(_props: DateRangeProps) -> Page {
 struct DateRangeProps {
 	value: String,
 	disabled: bool,
+	touched: bool,
 }
 
 struct DateRangeAdapter;
@@ -23,10 +24,11 @@ impl FormWidgetAdapter<String> for DateRangeAdapter {
 	}
 
 	fn props(ctx: CustomWidgetContext<String>) -> Self::ComponentProps {
-		DateRangeProps {
-			value: ctx.value,
-			disabled: ctx.disabled,
-		}
+			DateRangeProps {
+				value: ctx.value,
+				disabled: ctx.disabled,
+				touched: ctx.touched,
+			}
 	}
 
 	fn parse(raw: CustomWidgetRawValue) -> Result<String, FormWidgetError> {
@@ -47,6 +49,7 @@ fn main() {
 		action: "/custom",
 		fields: {
 			date_range: CharField {
+				disabled,
 				widget: CustomWidget(date_range_picker) {
 					experimental,
 					adapter: DateRangeAdapter,

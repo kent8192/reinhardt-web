@@ -16,6 +16,8 @@ thread_local! {
 #[derive(Clone)]
 struct DateRangeProps {
 	value: String,
+	disabled: bool,
+	touched: bool,
 	error: Option<FieldError>,
 	on_raw_change: Rc<dyn Fn(CustomWidgetRawValue) -> Result<(), FormWidgetError>>,
 }
@@ -47,6 +49,8 @@ impl FormWidgetAdapter<String> for DateRangeAdapter {
 	fn props(ctx: CustomWidgetContext<String>) -> Self::ComponentProps {
 		DateRangeProps {
 			value: ctx.value,
+			disabled: ctx.disabled,
+			touched: ctx.touched,
 			error: ctx.error,
 			on_raw_change: ctx.on_raw_change,
 		}
@@ -311,6 +315,7 @@ fn custom_widget_bridge_parse_error_sets_runtime_field_error() {
 		fields: {
 			date_range: CharField {
 				initial: "2026-06-01..2026-06-02".to_string(),
+				disabled,
 				widget: CustomWidget(capturing_date_range_picker) {
 					experimental,
 					adapter: DateRangeAdapter,
@@ -323,6 +328,8 @@ fn custom_widget_bridge_parse_error_sets_runtime_field_error() {
 	let props = take_last_custom_widget_props();
 
 	assert_eq!(props.value, "2026-06-01..2026-06-02");
+	assert!(props.disabled);
+	assert!(!props.touched);
 	assert!(props.error.is_none());
 
 	let invalid_result = (props.on_raw_change)(CustomWidgetRawValue::String("invalid".to_string()));
@@ -352,6 +359,8 @@ fn custom_widget_bridge_parse_error_sets_runtime_field_error() {
 
 	let _page = booking.clone().into_page();
 	let props = take_last_custom_widget_props();
+	assert!(props.disabled);
+	assert!(props.touched);
 	assert_eq!(
 		props.error.as_ref().map(FieldError::message),
 		Some("invalid date range")
@@ -376,6 +385,8 @@ fn custom_widget_bridge_parse_error_sets_runtime_field_error() {
 	let _page = booking.clone().into_page();
 	let props = take_last_custom_widget_props();
 	assert_eq!(props.value, "2026-06-03..2026-06-04");
+	assert!(props.disabled);
+	assert!(props.touched);
 	assert!(props.error.is_none());
 }
 

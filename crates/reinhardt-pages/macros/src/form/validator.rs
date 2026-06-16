@@ -1142,6 +1142,57 @@ fn unknown_control_property_error(kind: FormControlEntryKind, prop: &FormFieldPr
 	)
 }
 
+const ALLOWED_FIELD_PROPERTIES: &[&str] = &[
+	"accept",
+	"autocomplete",
+	"autofocus",
+	"capture",
+	"class",
+	"disabled",
+	"error_class",
+	"help_text",
+	"initial",
+	"label",
+	"label_class",
+	"list",
+	"max",
+	"max_length",
+	"max_value",
+	"min",
+	"min_length",
+	"min_value",
+	"multiple",
+	"pattern",
+	"placeholder",
+	"readonly",
+	"required",
+	"size",
+	"step",
+	"widget",
+	"wrapper_class",
+];
+
+fn validate_known_field_properties(properties: &[FormFieldProperty]) -> Result<()> {
+	for prop in properties {
+		let (name, span) = match prop {
+			FormFieldProperty::Named { name, span, .. }
+			| FormFieldProperty::Flag { name, span } => (name.to_string(), *span),
+			_ => continue,
+		};
+
+		if !ALLOWED_FIELD_PROPERTIES.contains(&name.as_str()) {
+			return Err(Error::new(
+				span,
+				format!(
+					"unknown field property: '{name}'. Use typed field properties for native form behavior (min, max, step, accept, capture, list, size), and use attrs only for aria_* or data_* custom attributes"
+				),
+			));
+		}
+	}
+
+	Ok(())
+}
+
 /// Transforms a single field definition.
 fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	// Parse field type
@@ -1164,6 +1215,7 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	let static_choices_source = extract_static_choices(&field.properties)?;
 
 	validate_radio_select_choice_group_properties(&field.properties, &widget)?;
+	validate_known_field_properties(&field.properties)?;
 
 	if !static_choices_source.is_empty() && choices_config.is_some() {
 		return Err(Error::new(
@@ -1913,10 +1965,10 @@ fn validate_native_attrs(
 			"capture is only supported on file-like inputs",
 		));
 	}
-	if attrs.multiple.is_some() && !is_file_like_input(field_type, widget) {
+	if attrs.multiple.is_some() {
 		return Err(Error::new(
 			spans.multiple.unwrap_or_else(Span::call_site),
-			"multiple is only supported on file-like inputs",
+			"multiple field property is not supported yet. Use SelectMultiple for multi-select fields; multi-file inputs require a future Vec<File> value contract",
 		));
 	}
 	if attrs.list.is_some() && !is_text_like_input(widget) {
@@ -2067,8 +2119,6 @@ fn is_string_valued_field(field_type: &TypedFieldType) -> bool {
 			| TypedFieldType::SlugField
 			| TypedFieldType::PasswordField
 			| TypedFieldType::TextField
-			| TypedFieldType::UuidField
-			| TypedFieldType::IpAddressField
 	)
 }
 

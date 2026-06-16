@@ -260,6 +260,10 @@ The `form!` DSL exposes the following native HTML coverage as stable API:
 field. `OptGroup` groups choices inside choice controls and does not introduce
 a separate value slot.
 
+`MonthInput` and `WeekInput` are accepted only for raw string fields:
+`CharField`, `TextField`, `EmailField`, `UrlField`, `SlugField`, and
+`PasswordField`.
+
 ### MU-6 (MUST): Validate Typed Native Attributes Against Compatible Controls
 
 Typed native attributes are valid only on controls that support the corresponding
@@ -270,8 +274,12 @@ HTML behavior:
 | `min` / `max` / `step` | number, range, date, time, datetime-local, month, week |
 | `size` | text-like inputs |
 | `accept` / `capture` | file-like inputs |
-| `multiple` | file-like inputs and multi-select |
 | `list` | datalist-compatible text-like inputs |
+
+`multiple` is not accepted as a typed field property yet. Use the
+`SelectMultiple` widget for multi-select fields. File-like multi-select remains
+deferred until the generated value contract can represent `Vec<File>` instead
+of a single `Option<File>`.
 
 ### MU-7 (MUST): Treat `CustomWidget` as Experimental
 
