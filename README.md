@@ -843,104 +843,107 @@ runtime reflection or startup discovery cost.
 
 Three primitives drive everyday use:
 
-1. **`#[injectable]`** — turn a struct into an injectable service.
-2. **`#[injectable_factory]`** — register an async function as a factory for
-   types you *cannot* annotate yourself (foreign types, trait objects,
-   connection handles built from settings).
-3. **`#[inject]`** with **`Depends<T>`** — receive dependencies in a handler
-   (or another injectable) without wiring anything by hand.
+1. **`Injectable`** — implemented by framework-owned or application-owned
+   types that can be injected directly.
+2. **`#[injectable]` provider functions** — register async factories whose
+   return type is `FactoryOutput<K, T>`.
+3. **`#[inject]` with `Depends<K, T>`** — receive a keyed provider output in a
+   handler or another provider.
 
-#### 1. `#[injectable]` — struct-level injection
+#### 1. Direct `Injectable` types
 
-Apply `#[injectable]` to any struct whose fields are themselves injectable.
-Non-injected fields are marked with `#[no_inject]` and must implement
-`Default` (or be supplied via the generated builder):
+Application-owned types can implement `Injectable` directly when they are
+safe to identify by their own `TypeId`:
 
 ```rust
-use reinhardt::di::injectable;
+use reinhardt::di::{DiResult, Injectable, InjectionContext};
 
-// `scope` is passed as a macro argument; accepted values are
-// "singleton", "request", or "transient" (one literal, not an alternation).
-// When omitted, `#[injectable]` defaults to `request` and
-// `#[injectable_factory]` defaults to `singleton`. `Config` is registered
-// as a singleton here so it matches the singleton-scoped
-// `database_connection` factory below: mixing a longer-lived dependent
-// with a shorter-lived dependency is not rejected by the registry, but it
-// captures whichever request-scoped instance was live at first resolution
-// and reuses it for the singleton's lifetime — almost never what you want.
-#[injectable(scope = "singleton")]
 #[derive(Clone)]
 pub struct Config {
-    #[no_inject]
     pub database_url: String,
 }
-```
 
-`#[injectable]` generates an `impl Injectable for Config` and a compile-time
-registration entry (via `inventory::submit!`) so the type resolves from
-`InjectionContext` automatically.
-
-#### 2. `#[injectable_factory]` — the pseudo orphan rule
-
-Rust's orphan rule forbids `impl Injectable for SomeForeignType`. For those
-cases — database connections, `Arc<dyn Trait>`, third-party handles — Reinhardt
-offers `#[injectable_factory]`. You write an async function whose return type
-is the type to register; the macro wraps it, submits an `inventory` entry, and
-hands the returned value to the DI container:
-
-```rust
-use reinhardt::db::DatabaseConnection;
-use reinhardt::di::{Depends, injectable_factory};
-
-#[injectable_factory(scope = "singleton")]
-async fn database_connection(
-    #[inject] config: Depends<Config>,
-) -> DatabaseConnection {
-    DatabaseConnection::connect(&config.database_url)
-        .await
-        .expect("failed to open database connection")
+#[async_trait::async_trait]
+impl Injectable for Config {
+    async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+        Ok(Self {
+            database_url: "sqlite://app.db".to_string(),
+        })
+    }
 }
 ```
 
-**Every parameter of an `#[injectable_factory]` function must be annotated
-with `#[inject]`.** There is no way to pass runtime arguments; factories only
-compose over other injectables.
+Direct injection is appropriate for framework-owned extractors and types with
+one obvious meaning in the application.
 
-When a factory can fail, prefer returning `Result<T, E>` where `T` is the
-dependency you want and `E` is an error type used only by that factory. The DI
-registry key is the literal return type's `TypeId`, so `Result<T,
-DatabaseConnectionError>` and `Result<T, OtherFactoryError>` are distinct even
-when both factories produce the same successful `T`. Inject that dependency as
-`DependsResult<T, E>` (or `Depends<Result<T, E>>`) and handle the factory-local
-error at the call site.
+#### 2. `#[injectable]` provider functions
+
+Use a keyed provider when the same value type can have multiple meanings, or
+when a foreign type should not be made globally injectable by its own `TypeId`.
+The provider returns `FactoryOutput<K, T>`, and consumers request
+`Depends<K, T>`:
 
 ```rust
 use reinhardt::db::DatabaseConnection;
-use reinhardt::{get, Response, StatusCode, ViewResult};
-use reinhardt::di::{Depends, DependsResult, injectable_factory};
+use reinhardt::di::{Depends, FactoryOutput, injectable, injectable_key};
+
+#[injectable_key]
+struct PrimaryDatabase;
+
+#[injectable(scope = "singleton")]
+async fn database_connection(
+    #[inject] config: Config,
+) -> FactoryOutput<PrimaryDatabase, DatabaseConnection> {
+    let connection = DatabaseConnection::connect(&config.database_url)
+        .await
+        .expect("failed to open database connection");
+
+    FactoryOutput::new(connection)
+}
+```
+
+**Every parameter of an `#[injectable]` provider function must be annotated
+with `#[inject]`.** There is no way to pass runtime arguments; providers only
+compose over other injectables.
+
+When a provider can fail, put the `Result<T, E>` in the `T` position and keep
+the provider key as the unique identity:
+
+```rust
+use reinhardt::db::DatabaseConnection;
+use reinhardt::{Response, StatusCode, ViewResult, get};
+use reinhardt::di::{Depends, FactoryOutput, injectable, injectable_key};
 
 #[derive(Debug)]
 struct DatabaseConnectionError;
 
-#[injectable_factory(scope = "singleton")]
+#[injectable_key]
+struct DatabaseHealth;
+
+#[injectable(scope = "singleton")]
 async fn database_connection_result(
-    #[inject] config: Depends<Config>,
-) -> Result<DatabaseConnection, DatabaseConnectionError> {
-    DatabaseConnection::connect(&config.database_url)
-        .await
-        .map_err(|_| DatabaseConnectionError)
+    #[inject] config: Config,
+) -> FactoryOutput<DatabaseHealth, Result<DatabaseConnection, DatabaseConnectionError>> {
+    FactoryOutput::new(
+        DatabaseConnection::connect(&config.database_url)
+            .await
+            .map_err(|_| DatabaseConnectionError),
+    )
 }
 
 #[get("/database/health", name = "database_health")]
 async fn database_health(
-    #[inject] db: DependsResult<DatabaseConnection, DatabaseConnectionError>,
+    #[inject] db: Depends<DatabaseHealth, Result<DatabaseConnection, DatabaseConnectionError>>,
 ) -> ViewResult<Response> {
-    match db.into_inner() {
+    match db.as_ref() {
         Ok(_) => Ok(Response::new(StatusCode::OK)),
         Err(_) => Ok(Response::new(StatusCode::SERVICE_UNAVAILABLE)),
     }
 }
 ```
+
+`#[injectable_factory]` remains as a deprecated compatibility alias for
+provider functions. New code should use `#[injectable]`.
 
 **The pseudo orphan rule.** To prevent user factories from silently shadowing
 framework-owned types (e.g., `reinhardt_di::InjectionContext`, routers,
@@ -953,23 +956,26 @@ types are fair game, framework types are not. The validator lives in
 [`crates/reinhardt-di/src/validation.rs`](crates/reinhardt-di/src/validation.rs)
 (`check_framework_type_override`, lines 51–129).
 
-#### 3. `#[inject]` + `Depends<T>` in handlers
+#### 3. `#[inject]` + `Depends<K, T>` in handlers
 
 Use `#[inject]` on a handler parameter to have the DI container resolve it
-before the handler runs. Wrap the requested type in `Depends<T>` so that
-caching and scope are honoured:
+before the handler runs. Use direct types for ordinary `Injectable`
+dependencies, and `Depends<K, T>` for keyed provider output:
 
 ```rust
 use reinhardt::{get, Response, StatusCode, ViewResult};
-use reinhardt::di::Depends;
+use reinhardt::di::{Depends, injectable_key};
 use reinhardt::db::DatabaseConnection;
 use reinhardt::extractors::Path;
 use crate::models::User;
 
+#[injectable_key]
+struct PrimaryDatabase;
+
 #[get("/users/{id}/", name = "get_user")]
 pub async fn get_user(
     Path(id): Path<i64>,
-    #[inject] db: Depends<DatabaseConnection>,
+    #[inject] db: Depends<PrimaryDatabase, DatabaseConnection>,
 ) -> ViewResult<Response> {
     let user = User::objects().filter(User::field_id().eq(id)).get().await?;
     let body = serde_json::to_string(&user)?;
@@ -977,34 +983,40 @@ pub async fn get_user(
 }
 ```
 
-**Caching.** Within a scope boundary, resolving the same `Depends<T>` twice
+**Caching.** Within a scope boundary, resolving the same keyed dependency twice
 returns the *same* instance. Opt out per-call with `#[inject(cache = false)]`:
 
 ```rust
 pub async fn uncached_handler(
-    #[inject(cache = false)] db: Depends<DatabaseConnection>,
+    #[inject(cache = false)] db: Depends<PrimaryDatabase, DatabaseConnection>,
 ) -> ViewResult<Response> { /* always a fresh resolution within the scope */ }
 ```
 
 `#[inject]` wrapper resolution is trait-based rather than name-based. Renamed
-imports and aliases of `Depends<T>` work, and custom wrappers can implement
+imports and aliases of `Depends<K, T>` work, and custom wrappers can implement
 `InjectableType` to resolve a registry key while exposing a domain-specific
 parameter type:
 
 ```rust
-use reinhardt::di::{Depends, InjectableType};
+use reinhardt::di::{Depends, FactoryOutput, InjectableKey, InjectableType};
 
-struct Lazy<T>(Depends<T>)
+struct Lazy<K, T>(Depends<K, T>)
 where
+    K: InjectableKey,
     T: Send + Sync + 'static;
 
-impl<T> InjectableType for Lazy<T>
+impl<K, T> InjectableType for Lazy<K, T>
 where
+    K: InjectableKey,
     T: Send + Sync + 'static,
 {
-    type Inner = T;
+    type Inner = FactoryOutput<K, T>;
 
-    fn from_depends(depends: Depends<Self::Inner>) -> Self {
+    fn from_resolved(
+        inner: std::sync::Arc<Self::Inner>,
+        use_cache: bool,
+    ) -> Self {
+        let depends = Depends::from_output(inner, use_cache);
         Self(depends)
     }
 }
@@ -1067,14 +1079,13 @@ Combine HTTP method decorators with `#[inject]` for automatic dependency injecti
 ```rust
 use reinhardt::{get, Response, StatusCode, ViewResult};
 use reinhardt::extractors::Path;
-use reinhardt::di::Depends;
 use reinhardt::db::DatabaseConnection;
 use crate::models::User;
 
 #[get("/users/{id}/", name = "get_user")]
 pub async fn get_user(
 	Path(id): Path<i64>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	// Path extractor parses and validates the {id} segment automatically
 	let user = User::objects()
@@ -1109,7 +1120,6 @@ In your app's `views/user.rs`:
 // users/views/user.rs
 use reinhardt::{Response, StatusCode, ViewResult, get};
 use reinhardt::extractors::{Path, Query};
-use reinhardt::di::Depends;
 use reinhardt::db::DatabaseConnection;
 use crate::models::User;
 use serde::Deserialize;
@@ -1123,7 +1133,7 @@ pub struct GetUserParams {
 pub async fn get_user(
 	Path(id): Path<i64>,
 	Query(params): Query<GetUserParams>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	let user = User::objects()
 		.filter(User::field_id().eq(id))
@@ -1199,7 +1209,6 @@ In your app's `views/user.rs`:
 use reinhardt::{Response, StatusCode, ViewResult, post};
 use reinhardt::extractors::Json;
 use reinhardt::validation::Validated;
-use reinhardt::di::Depends;
 use reinhardt::db::DatabaseConnection;
 use crate::models::User;
 use crate::serializers::{CreateUserRequest, UserResponse};
@@ -1208,7 +1217,7 @@ use crate::serializers::{CreateUserRequest, UserResponse};
 pub async fn create_user(
 	Json(body): Json<CreateUserRequest>,
 	Validated(create_req): Validated<CreateUserRequest>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	// Json<T> deserializes the body; Validated<T> runs #[validate] rules and yields the validated value
 

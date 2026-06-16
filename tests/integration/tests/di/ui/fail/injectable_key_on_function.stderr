@@ -1,0 +1,5 @@
+error: expected `struct`
+ --> tests/di/ui/fail/injectable_key_on_function.rs:4:1
+  |
+4 | fn not_a_key() {}
+  | ^^

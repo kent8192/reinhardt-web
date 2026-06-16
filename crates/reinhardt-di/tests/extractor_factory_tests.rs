@@ -12,8 +12,8 @@ use bytes::Bytes;
 use hyper::{HeaderMap, Method, Version, header};
 use reinhardt_di::params::{Json, ParamContext, Path, Query};
 use reinhardt_di::{
-	DiError, Injectable, InjectionContext, Request, SingletonScope, global_registry,
-	injectable_factory,
+	DiError, FactoryOutput, Injectable, InjectableKey, InjectionContext, Request, SingletonScope,
+	global_registry, injectable,
 };
 use reinhardt_http::PathParams;
 use rstest::rstest;
@@ -196,11 +196,11 @@ async fn json_can_be_resolved_twice_in_the_same_request_via_body_cache() {
 }
 
 // =============================================================================
-// `#[injectable_factory]` body uses extractors via `#[inject]`
+// `#[injectable]` provider body uses extractors via `#[inject]`
 //
 // This is the user-facing API from Issue #4645: a factory composes over an
 // `#[inject] Path(id): Path<i64>` and resolves at runtime through the macro's
-// existing fallback path (`Depends::<T>::resolve` → `T::inject`).
+// registry-first `Injectable::inject` fallback path.
 // =============================================================================
 
 #[derive(Clone, Debug, PartialEq)]
@@ -208,9 +208,13 @@ struct AuthoredItem {
 	id: i64,
 }
 
-#[injectable_factory(scope = "request")]
-async fn authored_item(#[inject] path: Path<i64>) -> AuthoredItem {
-	AuthoredItem { id: path.0 }
+struct AuthoredItemKey;
+
+impl InjectableKey for AuthoredItemKey {}
+
+#[injectable(scope = "request")]
+async fn authored_item(#[inject] path: Path<i64>) -> FactoryOutput<AuthoredItemKey, AuthoredItem> {
+	FactoryOutput::new(AuthoredItem { id: path.0 })
 }
 
 #[rstest]
@@ -223,18 +227,17 @@ async fn injectable_factory_can_consume_path_extractor() {
 	let req = build_request(Method::GET, "/items/7", None, "");
 	let ctx = ctx_with_request(req, params);
 
-	// Act — `Depends<AuthoredItem>` triggers the factory, which itself
+	// Act — resolving the keyed factory output triggers the provider, which itself
 	// resolves `Path<i64>` through the new Injectable impl.
-	let resolved = ctx.resolve::<AuthoredItem>().await;
+	let resolved = ctx
+		.resolve::<FactoryOutput<AuthoredItemKey, AuthoredItem>>()
+		.await;
 
 	// Assert
 	let item = resolved.expect("factory resolution must succeed end-to-end");
-	assert_eq!(*item, AuthoredItem { id: 7 });
-	// Guard: AuthoredItem must NOT be in the registry as the wrapper —
-	// the factory was registered under its return type and the wrapper
-	// was generated as a separate fn.
+	assert_eq!(item.as_ref().as_ref(), &AuthoredItem { id: 7 });
 	assert!(
-		global_registry().is_registered::<AuthoredItem>(),
+		global_registry().is_registered::<FactoryOutput<AuthoredItemKey, AuthoredItem>>(),
 		"the factory registration submitted via inventory must be live"
 	);
 }
@@ -245,12 +248,11 @@ async fn injectable_factory_can_consume_path_extractor() {
 //
 // `AppContext` exposes its DI surface through a manual `impl Injectable`
 // only (it is never registered in the global registry). Per the
-// `#[injectable_factory]` contract (kent8192/reinhardt-web#4685), a
+// `#[injectable]` provider contract (kent8192/reinhardt-web#4685), a
 // manually-Injectable, unregistered type MUST be requested via the
-// non-`Depends` `#[inject] T` form, which resolves through
-// `Depends::<T>::resolve` (registry-first + `T::inject` fallback). The
-// `Depends<T>` form is reserved for factory-produced types that resolve via
-// the registry only (`resolve_from_registry`, no `Injectable` bound) — see
+// non-`Depends` `#[inject] T` form, which resolves through the registry-first
+// `T::inject` fallback. The `Depends<K, T>` form is reserved for
+// factory-produced types that resolve via keyed factory output — see
 // `injectable_factory_inject_fallback_tests.rs`.
 
 #[derive(Clone, Debug, PartialEq)]
@@ -271,15 +273,19 @@ struct AuthoredItemWithCtx {
 	tag: &'static str,
 }
 
-#[injectable_factory(scope = "request")]
+struct AuthoredItemWithCtxKey;
+
+impl InjectableKey for AuthoredItemWithCtxKey {}
+
+#[injectable(scope = "request")]
 async fn authored_item_with_ctx(
 	#[inject] path: Path<i64>,
 	#[inject] app: AppContext,
-) -> AuthoredItemWithCtx {
-	AuthoredItemWithCtx {
+) -> FactoryOutput<AuthoredItemWithCtxKey, AuthoredItemWithCtx> {
+	FactoryOutput::new(AuthoredItemWithCtx {
 		id: path.0,
 		tag: app.tag,
-	}
+	})
 }
 
 #[rstest]
@@ -293,13 +299,15 @@ async fn injectable_factory_mixes_path_extractor_and_depends() {
 	let ctx = ctx_with_request(req, params);
 
 	// Act
-	let resolved = ctx.resolve::<AuthoredItemWithCtx>().await;
+	let resolved = ctx
+		.resolve::<FactoryOutput<AuthoredItemWithCtxKey, AuthoredItemWithCtx>>()
+		.await;
 
 	// Assert
 	let item = resolved.expect("mixed factory must succeed end-to-end");
 	assert_eq!(
-		*item,
-		AuthoredItemWithCtx {
+		item.as_ref().as_ref(),
+		&AuthoredItemWithCtx {
 			id: 99,
 			tag: "global"
 		}

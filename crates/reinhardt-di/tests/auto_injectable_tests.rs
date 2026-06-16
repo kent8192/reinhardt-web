@@ -5,9 +5,19 @@
 
 #![cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 
-use reinhardt_di::{Depends, Injectable, InjectionContext, SingletonScope};
+#[cfg(feature = "testing")]
+use reinhardt_di::{DependencyScope, Depends, FactoryOutput, InjectableKey, global_registry};
+use reinhardt_di::{Injectable, InjectionContext, SingletonScope};
 use reinhardt_macros::injectable;
+#[cfg(feature = "testing")]
+use serial_test::serial;
 use std::sync::Arc;
+
+#[cfg(feature = "testing")]
+struct SimpleConfigKey;
+
+#[cfg(feature = "testing")]
+impl InjectableKey for SimpleConfigKey {}
 
 #[injectable]
 #[derive(Clone, Default, Debug, PartialEq)]
@@ -34,18 +44,20 @@ async fn test_auto_injectable_simple() {
 	assert_eq!(config.port, 0);
 }
 
+#[cfg(feature = "testing")]
 #[tokio::test]
+#[serial(di_registry)]
 async fn test_auto_injectable_with_depends() {
-	// Register SimpleConfig in the global registry for Depends<T> resolution
-	let registry = reinhardt_di::global_registry();
-	registry.register_async::<SimpleConfig, _, _>(
-		reinhardt_di::DependencyScope::Request,
-		|_ctx| async { Ok(SimpleConfig::default()) },
+	// Register the factory output that Depends<K, T> resolves from the registry.
+	let registry = global_registry();
+	let _guard = registry.register_override::<FactoryOutput<SimpleConfigKey, SimpleConfig>, _, _>(
+		DependencyScope::Request,
+		|_ctx| async { Ok(FactoryOutput::new(SimpleConfig::default())) },
 	);
 
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
-	let depends_config = Depends::<SimpleConfig>::builder()
+	let depends_config = Depends::<SimpleConfigKey, SimpleConfig>::builder()
 		.resolve(&ctx)
 		.await
 		.unwrap();

@@ -167,15 +167,13 @@ where
 				request.get_di_context::<std::sync::Arc<reinhardt_di::InjectionContext>>()
 		{
 			use reinhardt_db::DatabaseConnection;
-			use reinhardt_di::Depends;
+			use reinhardt_di::Injectable;
 
-			let conn = Depends::<DatabaseConnection>::resolve(&di_ctx, true)
+			let conn = DatabaseConnection::inject(&di_ctx)
 				.await
 				.map_err(|e| Error::Internal(format!("Failed to resolve DB: {:?}", e)))?;
 
-			validators
-				.validate_async(conn.into_inner().inner(), &data, None)
-				.await?;
+			validators.validate_async(conn.inner(), &data, None).await?;
 		}
 
 		// Create via QuerySet

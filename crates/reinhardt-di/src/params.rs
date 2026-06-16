@@ -373,8 +373,8 @@ impl ParamContext {
 	/// `Request::read_body()` is one-shot: it flips an internal
 	/// `body_consumed` flag and refuses subsequent calls. That is fine for
 	/// a single handler, but breaks down once multiple request-scoped
-	/// extractors (e.g. two `Json<T>` factories within one
-	/// `#[injectable_factory]` resolution chain — see #4645) want to read
+	/// extractors (e.g. two `Json<T>` injections within one `#[injectable]`
+	/// provider resolution chain — see #4645) want to read
 	/// the same body. This method consumes the body exactly once per
 	/// request and caches the resulting [`bytes::Bytes`] in
 	/// `ParamContext`; subsequent callers receive a cheap `Bytes::clone`

@@ -14,11 +14,11 @@ use super::admin_auth::AdminLoginAuthenticator;
 #[cfg(server)]
 use super::security::{build_admin_auth_cookie, require_csrf_header, require_csrf_token};
 #[cfg(server)]
-use crate::adapters::AdminSite;
+use crate::adapters::{AdminDatabase, AdminSite};
+#[cfg(server)]
+use crate::core::{AdminDatabaseKey, AdminSiteKey};
 #[cfg(server)]
 use reinhardt_auth::JwtAuth;
-#[cfg(server)]
-use reinhardt_db::orm::DatabaseConnection;
 #[cfg(server)]
 use reinhardt_di::Depends;
 #[cfg(server)]
@@ -68,9 +68,9 @@ pub async fn admin_login(
 	password: String,
 	csrf_token: String,
 	#[inject] http_request: ServerFnRequest,
-	#[inject] db: Depends<DatabaseConnection>,
-	#[inject] site: Depends<AdminSite>,
-	#[inject] authenticator: Depends<AdminLoginAuthenticator>,
+	#[inject] db: Depends<AdminDatabaseKey, AdminDatabase>,
+	#[inject] site: Depends<AdminSiteKey, AdminSite>,
+	#[inject] authenticator: AdminLoginAuthenticator,
 ) -> Result<LoginResponse, ServerFnError> {
 	// Validate CSRF token
 	require_csrf_token(&csrf_token, &http_request.inner().headers)?;
@@ -84,9 +84,9 @@ pub async fn admin_login_with_header(
 	username: String,
 	password: String,
 	#[inject] http_request: ServerFnRequest,
-	#[inject] db: Depends<DatabaseConnection>,
-	#[inject] site: Depends<AdminSite>,
-	#[inject] authenticator: Depends<AdminLoginAuthenticator>,
+	#[inject] db: Depends<AdminDatabaseKey, AdminDatabase>,
+	#[inject] site: Depends<AdminSiteKey, AdminSite>,
+	#[inject] authenticator: AdminLoginAuthenticator,
 ) -> Result<LoginResponse, ServerFnError> {
 	require_csrf_header(&http_request.inner().headers)?;
 
@@ -98,9 +98,9 @@ async fn complete_admin_login(
 	username: String,
 	password: String,
 	http_request: ServerFnRequest,
-	db: Depends<DatabaseConnection>,
-	site: Depends<AdminSite>,
-	authenticator: Depends<AdminLoginAuthenticator>,
+	db: Depends<AdminDatabaseKey, AdminDatabase>,
+	site: Depends<AdminSiteKey, AdminSite>,
+	authenticator: AdminLoginAuthenticator,
 ) -> Result<LoginResponse, ServerFnError> {
 	// Verify JWT secret is configured
 	let jwt_secret = site.jwt_secret().ok_or_else(|| {
@@ -110,7 +110,7 @@ async fn complete_admin_login(
 	let jwt_auth = JwtAuth::new(jwt_secret);
 
 	// Authenticate user (username lookup + password verification + staff check)
-	let user_info = (authenticator.0)(username.clone(), password, db.as_arc().clone())
+	let user_info = (authenticator.0)(username.clone(), password, db.connection_arc())
 		.await
 		.map_err(|e| {
 			::tracing::warn!(error = ?e, "admin_login: Authentication failed");

@@ -9,7 +9,7 @@ use super::config::SessionConfig;
 use super::cookie::find_cookie_value;
 use super::data::SessionData;
 use super::id::{ActiveSessionId, SessionCookieName, SessionId};
-use super::store::SessionStore;
+use super::store::{SessionStore, SessionStoreKey};
 
 /// Session middleware
 ///
@@ -158,20 +158,28 @@ impl Default for SessionMiddleware {
 
 #[async_trait]
 impl Middleware for SessionMiddleware {
-	/// Exposes the middleware-owned `Arc<SessionStore>` as a DI singleton.
+	/// Exposes the middleware-owned `Arc<SessionStore>` as DI singletons.
 	///
-	/// Registered under `TypeId::of::<SessionStore>()` so handlers can resolve
-	/// the store via `#[inject] store: Depends<SessionStore>` and so
-	/// `SessionData::inject` finds it through the same key. The value is the
-	/// middleware's own `Arc<SessionStore>` erased to `Arc<dyn Any + Send + Sync>`
-	/// — `SingletonScope::set_arc_any` stores the Arc verbatim (no extra
-	/// envelope wrap), so downcasting yields the same allocation handlers see.
-	/// See #4437 (migration from the previous `Arc<SessionStore>` key).
+	/// The raw `SessionStore` key is retained for `SessionData::inject`.
+	/// The keyed `FactoryOutput<SessionStoreKey, Arc<SessionStore>>` key is
+	/// used by handlers that request
+	/// `#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>`.
 	fn di_registrations(&self) -> Vec<MiddlewareDiRegistration> {
-		vec![(
-			TypeId::of::<SessionStore>(),
-			Arc::clone(&self.store) as Arc<dyn std::any::Any + Send + Sync>,
-		)]
+		let store = Arc::clone(&self.store);
+		let keyed_store = Arc::new(reinhardt_di::FactoryOutput::<
+			SessionStoreKey,
+			Arc<SessionStore>,
+		>::new(Arc::clone(&self.store)));
+		vec![
+			(
+				TypeId::of::<SessionStore>(),
+				store as Arc<dyn std::any::Any + Send + Sync>,
+			),
+			(
+				TypeId::of::<reinhardt_di::FactoryOutput<SessionStoreKey, Arc<SessionStore>>>(),
+				keyed_store as Arc<dyn std::any::Any + Send + Sync>,
+			),
+		]
 	}
 
 	async fn process(&self, request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
@@ -257,12 +265,7 @@ mod tests {
 		// Act: ask the middleware for its DI registrations.
 		let registrations = middleware.di_registrations();
 
-		// Assert: exactly one entry, keyed by SessionStore's TypeId (not
-		// Arc<SessionStore>'s) so that handlers can resolve
-		// `#[inject] store: Depends<SessionStore>` against the same key,
-		// pointing at the same underlying allocation as the middleware's
-		// own store handle. See #4437.
-		assert_eq!(registrations.len(), 1);
+		assert_eq!(registrations.len(), 2);
 		let (type_id, value) = &registrations[0];
 		assert_eq!(*type_id, TypeId::of::<SessionStore>());
 		let downcast = value
@@ -272,6 +275,20 @@ mod tests {
 		assert!(
 			Arc::ptr_eq(&downcast, &store_arc),
 			"middleware DI registration must expose the same Arc<SessionStore> the middleware writes to"
+		);
+
+		let (type_id, value) = &registrations[1];
+		assert_eq!(
+			*type_id,
+			TypeId::of::<reinhardt_di::FactoryOutput<SessionStoreKey, Arc<SessionStore>>>()
+		);
+		let downcast = value
+			.clone()
+			.downcast::<reinhardt_di::FactoryOutput<SessionStoreKey, Arc<SessionStore>>>()
+			.expect("registered Arc must downcast to keyed SessionStore factory output");
+		assert!(
+			Arc::ptr_eq(downcast.as_ref(), &store_arc),
+			"keyed DI registration must expose the same Arc<SessionStore> the middleware writes to"
 		);
 	}
 

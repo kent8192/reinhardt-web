@@ -7,8 +7,9 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::exception::Result;
-use reinhardt_di::{Depends, Injectable, InjectionContext, SingletonScope, injectable};
+use reinhardt_di::{Injectable, InjectionContext, SingletonScope};
 use reinhardt_http::{Request, Response};
+use reinhardt_macros::injectable;
 use reinhardt_views::viewsets::{Action, ActionType, ViewSet};
 use std::sync::Arc;
 
@@ -26,7 +27,7 @@ async fn test_complete_request_response_cycle() {
 	#[injectable]
 	#[allow(dead_code)]
 	struct RequestLogger {
-		#[no_inject]
+		#[no_inject(default = Default)]
 		count: Arc<AtomicUsize>,
 	}
 
@@ -42,7 +43,7 @@ async fn test_complete_request_response_cycle() {
 	#[allow(dead_code)]
 	struct LoggingViewSet {
 		#[inject]
-		logger: Depends<RequestLogger>,
+		logger: RequestLogger,
 	}
 
 	#[async_trait]
@@ -84,7 +85,7 @@ async fn test_complete_request_response_cycle() {
 async fn test_post_request_with_body() {
 	#[injectable]
 	struct BodyParser {
-		#[no_inject]
+		#[no_inject(default = Default)]
 		max_size: usize,
 	}
 
@@ -97,7 +98,7 @@ async fn test_post_request_with_body() {
 	#[injectable]
 	struct ParsingViewSet {
 		#[inject]
-		parser: Depends<BodyParser>,
+		parser: BodyParser,
 	}
 
 	#[async_trait]
@@ -143,7 +144,7 @@ async fn test_post_request_with_body() {
 async fn test_headers_extraction() {
 	#[injectable]
 	struct HeaderValidator {
-		#[no_inject]
+		#[no_inject(default = Default)]
 		required_header: String,
 	}
 
@@ -158,7 +159,7 @@ async fn test_headers_extraction() {
 	#[injectable]
 	struct HeaderViewSet {
 		#[inject]
-		validator: Depends<HeaderValidator>,
+		validator: HeaderValidator,
 	}
 
 	#[async_trait]
@@ -226,7 +227,7 @@ async fn test_multiple_viewsets_shared_service() {
 
 	#[injectable]
 	struct SharedCounter {
-		#[no_inject]
+		#[no_inject(default = Default)]
 		value: Arc<Mutex<i32>>,
 	}
 
@@ -241,13 +242,13 @@ async fn test_multiple_viewsets_shared_service() {
 	#[injectable]
 	struct ViewSetA {
 		#[inject]
-		counter: Depends<SharedCounter>,
+		counter: SharedCounter,
 	}
 
 	#[injectable]
 	struct ViewSetB {
 		#[inject]
-		counter: Depends<SharedCounter>,
+		counter: SharedCounter,
 	}
 
 	#[async_trait]
@@ -312,7 +313,7 @@ async fn test_multiple_viewsets_shared_service() {
 async fn test_viewset_composition() {
 	#[injectable]
 	struct ValidationService {
-		#[no_inject]
+		#[no_inject(default = Default)]
 		enabled: bool,
 	}
 
@@ -324,7 +325,7 @@ async fn test_viewset_composition() {
 
 	#[injectable]
 	struct StorageService {
-		#[no_inject]
+		#[no_inject(default = Default)]
 		items: Arc<std::sync::Mutex<Vec<String>>>,
 	}
 
@@ -339,9 +340,9 @@ async fn test_viewset_composition() {
 	#[injectable]
 	struct ComposedViewSet {
 		#[inject]
-		validator: Depends<ValidationService>,
+		validator: ValidationService,
 		#[inject]
-		storage: Depends<StorageService>,
+		storage: StorageService,
 	}
 
 	#[async_trait]
@@ -409,7 +410,7 @@ async fn test_viewset_composition() {
 async fn test_viewset_dependency_chain() {
 	#[injectable]
 	struct Logger {
-		#[no_inject]
+		#[no_inject(default = Default)]
 		prefix: String,
 	}
 
@@ -424,13 +425,13 @@ async fn test_viewset_dependency_chain() {
 	#[injectable]
 	struct Auditor {
 		#[inject]
-		logger: Depends<Logger>,
+		logger: Logger,
 	}
 
 	#[injectable]
 	struct ChainedViewSet {
 		#[inject]
-		auditor: Depends<Auditor>,
+		auditor: Auditor,
 	}
 
 	#[async_trait]
@@ -473,7 +474,7 @@ async fn test_viewset_dependency_chain() {
 async fn test_action_based_routing() {
 	#[injectable]
 	struct ActionRouter {
-		#[no_inject]
+		#[no_inject(default = Default)]
 		routes: Arc<std::sync::Mutex<Vec<String>>>,
 	}
 
@@ -488,7 +489,7 @@ async fn test_action_based_routing() {
 	#[injectable]
 	struct RoutedViewSet {
 		#[inject]
-		router: Depends<ActionRouter>,
+		router: ActionRouter,
 	}
 
 	#[async_trait]
@@ -539,7 +540,7 @@ async fn test_action_based_routing() {
 async fn test_custom_action_handling() {
 	#[injectable]
 	struct CustomActionHandler {
-		#[no_inject]
+		#[no_inject(default = Default)]
 		enabled: bool,
 	}
 
@@ -552,7 +553,7 @@ async fn test_custom_action_handling() {
 	#[injectable]
 	struct CustomActionViewSet {
 		#[inject]
-		handler: Depends<CustomActionHandler>,
+		handler: CustomActionHandler,
 	}
 
 	#[async_trait]
@@ -604,7 +605,7 @@ async fn test_custom_action_handling() {
 async fn test_method_based_routing() {
 	#[injectable]
 	struct MethodRouter {
-		#[no_inject]
+		#[no_inject(default = Default)]
 		allowed_methods: Vec<String>,
 	}
 
@@ -619,7 +620,7 @@ async fn test_method_based_routing() {
 	#[injectable]
 	struct MethodViewSet {
 		#[inject]
-		router: Depends<MethodRouter>,
+		router: MethodRouter,
 	}
 
 	#[async_trait]
@@ -683,7 +684,7 @@ async fn test_request_scoped_state() {
 
 	#[injectable]
 	struct RequestState {
-		#[no_inject]
+		#[no_inject(default = Default)]
 		request_id: Arc<Mutex<Option<String>>>,
 	}
 
@@ -698,7 +699,7 @@ async fn test_request_scoped_state() {
 	#[injectable]
 	struct StateViewSet {
 		#[inject]
-		state: Depends<RequestState>,
+		state: RequestState,
 	}
 
 	#[async_trait]
@@ -755,7 +756,7 @@ async fn test_singleton_state_persistence() {
 
 	#[injectable]
 	struct SingletonCounter {
-		#[no_inject]
+		#[no_inject(default = Default)]
 		count: Arc<Mutex<i32>>,
 	}
 
@@ -770,7 +771,7 @@ async fn test_singleton_state_persistence() {
 	#[injectable]
 	struct CounterViewSet {
 		#[inject]
-		counter: Depends<SingletonCounter>,
+		counter: SingletonCounter,
 	}
 
 	#[async_trait]
@@ -837,7 +838,7 @@ async fn test_session_state_isolation() {
 
 	#[injectable]
 	struct SessionData {
-		#[no_inject]
+		#[no_inject(default = Default)]
 		data: Arc<Mutex<Vec<String>>>,
 	}
 
@@ -852,7 +853,7 @@ async fn test_session_state_isolation() {
 	#[injectable]
 	struct SessionViewSet {
 		#[inject]
-		session: Depends<SessionData>,
+		session: SessionData,
 	}
 
 	#[async_trait]
@@ -919,14 +920,14 @@ async fn test_graceful_service_failure() {
 	#[injectable]
 	#[derive(Default)]
 	struct FallibleService {
-		#[no_inject]
+		#[no_inject(default = Default)]
 		fail: bool,
 	}
 
 	#[injectable]
 	struct ResilientViewSet {
 		#[inject]
-		service: Depends<FallibleService>,
+		service: FallibleService,
 	}
 
 	#[async_trait]
@@ -980,7 +981,7 @@ async fn test_empty_request_handling() {
 	#[allow(dead_code)]
 	struct EmptyViewSet {
 		#[inject]
-		handler: Depends<EmptyRequestHandler>,
+		handler: EmptyRequestHandler,
 	}
 
 	#[async_trait]
@@ -1022,7 +1023,7 @@ async fn test_empty_request_handling() {
 async fn test_large_payload_handling() {
 	#[injectable]
 	struct PayloadLimiter {
-		#[no_inject]
+		#[no_inject(default = Default)]
 		max_size: usize,
 	}
 
@@ -1035,7 +1036,7 @@ async fn test_large_payload_handling() {
 	#[injectable]
 	struct LimitedViewSet {
 		#[inject]
-		limiter: Depends<PayloadLimiter>,
+		limiter: PayloadLimiter,
 	}
 
 	#[async_trait]

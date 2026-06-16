@@ -5,12 +5,11 @@
 
 use super::server_fn_helpers::uuid_pk_context;
 use reinhardt_admin::adapters::{BulkDeleteRequest, ListQueryParams, MutationRequest};
-use reinhardt_admin::core::{AdminDatabase, AdminSite, ExportFormat};
+use reinhardt_admin::core::ExportFormat;
 use reinhardt_admin::server::{
 	bulk_delete_records, create_record, delete_record, export_data, get_detail, get_list,
 	update_record,
 };
-use reinhardt_di::Depends;
 use rstest::*;
 use serde_json::json;
 use std::collections::HashMap;
@@ -46,7 +45,7 @@ async fn insert_uuid_record(pool: &sqlx::PgPool, name: &str, status: &str) -> St
 #[rstest]
 #[tokio::test]
 async fn test_list_uuid_pk_model(
-	#[future] uuid_pk_context: (Depends<AdminSite>, Depends<AdminDatabase>, sqlx::PgPool),
+	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
 	let (site, db, pool) = uuid_pk_context.await;
@@ -89,7 +88,7 @@ async fn test_list_uuid_pk_model(
 #[rstest]
 #[tokio::test]
 async fn test_detail_uuid_pk_model(
-	#[future] uuid_pk_context: (Depends<AdminSite>, Depends<AdminDatabase>, sqlx::PgPool),
+	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
 	let (site, db, pool) = uuid_pk_context.await;
@@ -123,7 +122,7 @@ async fn test_detail_uuid_pk_model(
 #[rstest]
 #[tokio::test]
 async fn test_create_uuid_pk_model(
-	#[future] uuid_pk_context: (Depends<AdminSite>, Depends<AdminDatabase>, sqlx::PgPool),
+	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
 	let (site, db, _pool) = uuid_pk_context.await;
@@ -170,7 +169,7 @@ async fn test_create_uuid_pk_model(
 #[rstest]
 #[tokio::test]
 async fn test_update_uuid_pk_model(
-	#[future] uuid_pk_context: (Depends<AdminSite>, Depends<AdminDatabase>, sqlx::PgPool),
+	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
 	let (site, db, pool) = uuid_pk_context.await;
@@ -230,7 +229,7 @@ async fn test_update_uuid_pk_model(
 #[rstest]
 #[tokio::test]
 async fn test_delete_uuid_pk_model(
-	#[future] uuid_pk_context: (Depends<AdminSite>, Depends<AdminDatabase>, sqlx::PgPool),
+	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
 	let (site, db, pool) = uuid_pk_context.await;
@@ -268,7 +267,7 @@ async fn test_delete_uuid_pk_model(
 #[rstest]
 #[tokio::test]
 async fn test_bulk_delete_uuid_pk_model(
-	#[future] uuid_pk_context: (Depends<AdminSite>, Depends<AdminDatabase>, sqlx::PgPool),
+	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
 	let (site, db, pool) = uuid_pk_context.await;
@@ -313,7 +312,7 @@ async fn test_bulk_delete_uuid_pk_model(
 #[rstest]
 #[tokio::test]
 async fn test_export_uuid_pk_model(
-	#[future] uuid_pk_context: (Depends<AdminSite>, Depends<AdminDatabase>, sqlx::PgPool),
+	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
 	let (site, db, pool) = uuid_pk_context.await;

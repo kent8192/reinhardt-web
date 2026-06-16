@@ -5,9 +5,7 @@
 
 use super::server_fn_helpers::server_fn_context;
 use reinhardt_admin::core::AdminRecord;
-use reinhardt_admin::core::{AdminDatabase, AdminSite};
 use reinhardt_admin::server::get_fields;
-use reinhardt_di::Depends;
 use rstest::*;
 use serde_json::json;
 use std::collections::HashMap;
@@ -20,7 +18,7 @@ use super::server_fn_helpers::{make_auth_user, make_staff_request};
 #[rstest]
 #[tokio::test]
 async fn test_get_fields_create_form(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -60,7 +58,7 @@ async fn test_get_fields_create_form(
 #[rstest]
 #[tokio::test]
 async fn test_get_fields_edit_form(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -109,7 +107,7 @@ async fn test_get_fields_edit_form(
 #[rstest]
 #[tokio::test]
 async fn test_get_fields_returns_correct_field_names(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -142,7 +140,7 @@ async fn test_get_fields_returns_correct_field_names(
 #[rstest]
 #[tokio::test]
 async fn test_get_fields_field_labels_humanized(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -175,7 +173,7 @@ async fn test_get_fields_field_labels_humanized(
 #[rstest]
 #[tokio::test]
 async fn test_get_fields_field_type_inference(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -208,7 +206,7 @@ async fn test_get_fields_field_type_inference(
 #[rstest]
 #[tokio::test]
 async fn test_get_fields_edit_nonexistent_id(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -244,7 +242,7 @@ async fn test_get_fields_edit_nonexistent_id(
 #[rstest]
 #[tokio::test]
 async fn test_get_fields_model_not_registered(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;

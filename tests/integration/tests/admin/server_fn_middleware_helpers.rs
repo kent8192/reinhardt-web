@@ -11,7 +11,7 @@ use reinhardt_auth::JwtAuth;
 use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 use reinhardt_db::backends::dialect::PostgresBackend;
 use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
-use reinhardt_di::{Depends, InjectionContext, SingletonScope};
+use reinhardt_di::{InjectionContext, SingletonScope};
 use reinhardt_middleware::LoggingMiddleware;
 use reinhardt_query::prelude::{Alias, PostgresQueryBuilder, Query, QueryStatementBuilder};
 use reinhardt_server::HttpServer;
@@ -227,7 +227,7 @@ pub async fn post_cross_origin(
 #[fixture]
 pub async fn middleware_e2e_context(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (MiddlewareTestServer, Depends<AdminDatabase>) {
+) -> (MiddlewareTestServer, AdminDatabase) {
 	let (pool, _) = shared_db_pool.await;
 
 	setup_test_models_table(&pool).await;
@@ -284,16 +284,15 @@ pub async fn middleware_e2e_context(
 	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
 	let db_conn = Arc::new(connection);
 
-	let admin_db = Depends::from_value(AdminDatabase::new((*db_conn).clone()));
+	let admin_db = AdminDatabase::new((*db_conn).clone());
 
 	let mut site = AdminSite::new("Middleware E2E Test Admin");
 	site.set_jwt_secret(JWT_SECRET);
-	let site = Depends::from_value(site);
 	let admin = AllPermissionsModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
 
-	let (admin_router, admin_di) = admin_routes_with_di(Arc::clone(site.as_arc()));
+	let (admin_router, admin_di) = admin_routes_with_di(Arc::new(site));
 
 	let singleton = Arc::new(SingletonScope::new());
 	singleton.set_arc(db_conn);

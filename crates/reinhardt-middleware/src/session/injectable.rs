@@ -1,12 +1,12 @@
 //! `Injectable` implementation exposing `SessionData` to the DI layer.
 //!
 //! The session store is contributed to the DI container by
-//! [`SessionMiddleware::di_registrations`] under `TypeId::of::<SessionStore>()`,
-//! which is the same key `Depends::<SessionStore>::resolve(...)` looks up.
-//! Handlers that want the store directly should use
-//! `#[inject] store: Depends<SessionStore>`; this module's `Injectable for
-//! SessionData` impl reaches into the same scope by `TypeId` to load the
-//! per-request session.
+//! [`SessionMiddleware::di_registrations`] both under
+//! `TypeId::of::<SessionStore>()` for direct session loading and under
+//! `FactoryOutput<SessionStoreKey, Arc<SessionStore>>` for handlers that use
+//! `#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>`.
+//! This module's `Injectable for SessionData` impl reaches into the raw
+//! singleton entry by `TypeId` to load the per-request session.
 
 use async_trait::async_trait;
 use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext};
@@ -45,10 +45,10 @@ fn extract_session_id_from_request(request: &Request, cookie_name: &str) -> DiRe
 #[async_trait]
 impl Injectable for SessionData {
 	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
-		// Look up the store under TypeId::of::<SessionStore>() — the same key
-		// SessionMiddleware::di_registrations uses and that
-		// Depends::<SessionStore>::resolve(...) would hit via the SingletonScope
-		// fallback path. See #4437.
+		// Look up the raw store under TypeId::of::<SessionStore>() — the same
+		// singleton entry SessionMiddleware::di_registrations keeps for
+		// SessionData loading. Handler code should use the keyed
+		// FactoryOutput<SessionStoreKey, Arc<SessionStore>> registration.
 		let store = ctx.get_singleton::<SessionStore>().ok_or_else(|| {
 			DiError::NotFound(
 				concat!(

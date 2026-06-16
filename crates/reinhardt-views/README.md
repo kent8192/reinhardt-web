@@ -361,7 +361,7 @@ The crate includes comprehensive unit tests covering:
   2. **Method-Level Injection** - Use `#[endpoint]` with `#[inject]` attributes on method parameters
   3. **Dispatch-Level Injection** - Override `dispatch_with_context()` with `#[inject]` parameters
 - **DiViewSet** - ViewSet wrapper with full DI support
-  - Automatic dependency resolution via `Depends<V>`
+  - Automatic dependency resolution via direct `Injectable` values or `Depends<K, V>`
   - Integration with reinhardt-di framework
 - **ViewSetFactory Trait** - Factory pattern for ViewSet creation with DI
 - **Injectable Dependencies** - Example implementations (DatabaseConnection)
