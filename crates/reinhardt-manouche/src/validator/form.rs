@@ -17,16 +17,16 @@ use std::collections::HashSet;
 use syn::{Error, Result};
 
 use crate::core::{
-	AmbientArgumentsSource, FormAction, FormCallbacks, FormDerived, FormFieldDef, FormFieldEntry,
-	FormFieldGroup, FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState,
-	FormSubmitButtonDef, FormValidator, FormWatch, IconAttr, IconChild, IconPosition,
-	StripArgument, TypedChoicesConfig, TypedCustomAttr, TypedDerivedItem, TypedFieldDisplay,
-	TypedFieldStyling, TypedFieldType, TypedFieldValidation, TypedFormAction, TypedFormCallbacks,
-	TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro,
-	TypedFormSlots, TypedFormState, TypedFormStyling, TypedFormValidator, TypedFormWatch,
-	TypedFormWatchItem, TypedIcon, TypedIconAttr, TypedIconChild, TypedIconPosition,
-	TypedStripArgument, TypedSubmitButtonDef, TypedValidatorRule, TypedWidget, TypedWrapper,
-	TypedWrapperAttr, ValidatorRule,
+	AmbientArgumentsSource, FormAction, FormCallbacks, FormDerived, FormFieldCollection,
+	FormFieldDef, FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormMethod,
+	FormSlots, FormState, FormSubmitButtonDef, FormValidator, FormWatch, IconAttr, IconChild,
+	IconPosition, StripArgument, TypedChoicesConfig, TypedCustomAttr, TypedDerivedItem,
+	TypedFieldDisplay, TypedFieldStyling, TypedFieldType, TypedFieldValidation, TypedFormAction,
+	TypedFormCallbacks, TypedFormDerived, TypedFormFieldCollection, TypedFormFieldDef,
+	TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState,
+	TypedFormStyling, TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon,
+	TypedIconAttr, TypedIconChild, TypedIconPosition, TypedStripArgument, TypedSubmitButtonDef,
+	TypedValidatorRule, TypedWidget, TypedWrapper, TypedWrapperAttr, ValidatorRule,
 };
 
 /// Validates and transforms the FormMacro AST into a typed AST.
@@ -173,12 +173,95 @@ fn validate_unique_field_names(entries: &[FormFieldEntry]) -> Result<()> {
 					}
 				}
 			}
+			FormFieldEntry::Collection(collection) => {
+				let name = collection.name.to_string();
+				if !seen.insert(name.clone()) {
+					return Err(Error::new(
+						collection.name.span(),
+						format!("duplicate field/collection name: '{}'", name),
+					));
+				}
+				validate_unique_collection_field_names(collection)?;
+			}
 			FormFieldEntry::SubmitButton(btn) => {
 				let name = btn.name.to_string();
 				if !seen.insert(name.clone()) {
 					return Err(Error::new(
 						btn.name.span(),
 						format!("duplicate field/button name: '{}'", name),
+					));
+				}
+			}
+		}
+	}
+
+	Ok(())
+}
+
+fn validate_unique_collection_field_names(collection: &FormFieldCollection) -> Result<()> {
+	let mut seen = HashSet::new();
+
+	for entry in &collection.fields {
+		match entry {
+			FormFieldEntry::Field(field) => {
+				let name = field.name.to_string();
+				if !seen.insert(name.clone()) {
+					return Err(Error::new(
+						field.name.span(),
+						format!(
+							"duplicate field name: '{}' (in collection '{}')",
+							name, collection.name
+						),
+					));
+				}
+			}
+			FormFieldEntry::Group(group) => {
+				let group_name = group.name.to_string();
+				if !seen.insert(group_name.clone()) {
+					return Err(Error::new(
+						group.name.span(),
+						format!(
+							"duplicate field/group name: '{}' (in collection '{}')",
+							group_name, collection.name
+						),
+					));
+				}
+
+				for field in &group.fields {
+					let name = field.name.to_string();
+					if !seen.insert(name.clone()) {
+						return Err(Error::new(
+							field.name.span(),
+							format!(
+								"duplicate field name: '{}' (in group '{}')",
+								name, group_name
+							),
+						));
+					}
+				}
+			}
+			FormFieldEntry::Collection(nested) => {
+				let name = nested.name.to_string();
+				if !seen.insert(name.clone()) {
+					return Err(Error::new(
+						nested.name.span(),
+						format!(
+							"duplicate field/collection name: '{}' (in collection '{}')",
+							name, collection.name
+						),
+					));
+				}
+				validate_unique_collection_field_names(nested)?;
+			}
+			FormFieldEntry::SubmitButton(btn) => {
+				let name = btn.name.to_string();
+				if !seen.insert(name.clone()) {
+					return Err(Error::new(
+						btn.name.span(),
+						format!(
+							"duplicate field/button name: '{}' (in collection '{}')",
+							name, collection.name
+						),
 					));
 				}
 			}
@@ -434,12 +517,12 @@ fn transform_slots(slots: &Option<FormSlots>) -> Result<Option<TypedFormSlots>> 
 	}))
 }
 
-/// Transforms all field entries (fields and field groups).
+/// Transforms all field entries.
 fn transform_fields(entries: &[FormFieldEntry]) -> Result<Vec<TypedFormFieldEntry>> {
 	entries.iter().map(transform_field_entry).collect()
 }
 
-/// Transforms a single field entry (either a field or a group).
+/// Transforms a single field entry.
 fn transform_field_entry(entry: &FormFieldEntry) -> Result<TypedFormFieldEntry> {
 	match entry {
 		FormFieldEntry::Field(field) => {
@@ -449,6 +532,10 @@ fn transform_field_entry(entry: &FormFieldEntry) -> Result<TypedFormFieldEntry> 
 		FormFieldEntry::Group(group) => {
 			let typed_group = transform_field_group(group)?;
 			Ok(TypedFormFieldEntry::Group(typed_group))
+		}
+		FormFieldEntry::Collection(collection) => {
+			let typed_collection = transform_collection(collection)?;
+			Ok(TypedFormFieldEntry::Collection(Box::new(typed_collection)))
 		}
 		FormFieldEntry::SubmitButton(btn) => {
 			let typed_btn = transform_submit_button(btn)?;
@@ -472,6 +559,55 @@ fn transform_field_group(group: &FormFieldGroup) -> Result<TypedFormFieldGroup> 
 		class: group.class.as_ref().map(|c| c.value()),
 		fields: typed_fields,
 		span: group.span,
+	})
+}
+
+/// Transforms a field collection into a typed field collection.
+fn transform_collection(collection: &FormFieldCollection) -> Result<TypedFormFieldCollection> {
+	let min_items = collection
+		.min_items
+		.as_ref()
+		.map(|lit| {
+			lit.base10_parse::<usize>().map_err(|_| {
+				Error::new(lit.span(), "min_items must be a valid non-negative integer")
+			})
+		})
+		.transpose()?;
+	let max_items = collection
+		.max_items
+		.as_ref()
+		.map(|lit| {
+			lit.base10_parse::<usize>().map_err(|_| {
+				Error::new(lit.span(), "max_items must be a valid non-negative integer")
+			})
+		})
+		.transpose()?;
+
+	if let (Some(min_items), Some(max_items)) = (min_items, max_items)
+		&& min_items > max_items
+	{
+		return Err(Error::new(
+			collection.span,
+			"min_items cannot be greater than max_items",
+		));
+	}
+
+	let fields = collection
+		.fields
+		.iter()
+		.map(transform_field_entry)
+		.collect::<Result<Vec<_>>>()?;
+
+	Ok(TypedFormFieldCollection {
+		name: collection.name.clone(),
+		label: collection.label.as_ref().map(|lit| lit.value()),
+		class: collection.class.as_ref().map(|lit| lit.value()),
+		min_items,
+		max_items,
+		initial_from: collection.initial_from.as_ref().map(|lit| lit.value()),
+		fields,
+		render_item: collection.render_item.clone(),
+		span: collection.span,
 	})
 }
 
@@ -1354,7 +1490,7 @@ fn transform_strip_arguments(
 			));
 		}
 
-		if field_exists(fields, &arg.name) {
+		if ambient_argument_surface_entry_exists(fields, &arg.name) {
 			return Err(Error::new(
 				arg.span,
 				format!(
@@ -1394,10 +1530,11 @@ fn ambient_arguments_collision_entry(source: Option<AmbientArgumentsSource>) -> 
 	}
 }
 
-/// Checks if a field with the given name exists in the field entries.
+/// Checks if an ambient argument would collide with a declared form surface entry.
 ///
-/// This checks both top-level fields and fields within groups.
-fn field_exists(entries: &[FormFieldEntry], name: &syn::Ident) -> bool {
+/// This checks top-level fields, fields within groups, and collection names.
+/// Fields inside collections stay scoped to collection items.
+fn ambient_argument_surface_entry_exists(entries: &[FormFieldEntry], name: &syn::Ident) -> bool {
 	for entry in entries {
 		match entry {
 			FormFieldEntry::Field(field) => {
@@ -1410,6 +1547,35 @@ fn field_exists(entries: &[FormFieldEntry], name: &syn::Ident) -> bool {
 					return true;
 				}
 			}
+			FormFieldEntry::Collection(collection) => {
+				if collection.name == *name {
+					return true;
+				}
+			}
+			FormFieldEntry::SubmitButton(_) => {}
+		}
+	}
+	false
+}
+
+/// Checks if a field-level validator target exists.
+///
+/// Collection validators are not implemented yet, so collection names and
+/// fields inside collections are not valid validator targets.
+fn field_validator_target_exists(entries: &[FormFieldEntry], name: &syn::Ident) -> bool {
+	for entry in entries {
+		match entry {
+			FormFieldEntry::Field(field) => {
+				if field.name == *name {
+					return true;
+				}
+			}
+			FormFieldEntry::Group(group) => {
+				if group.fields.iter().any(|f| f.name == *name) {
+					return true;
+				}
+			}
+			FormFieldEntry::Collection(_) => {}
 			FormFieldEntry::SubmitButton(_) => {}
 		}
 	}
@@ -1431,7 +1597,7 @@ fn transform_validators(
 				span,
 			} => {
 				// Validate that field exists (including in groups)
-				if !field_exists(fields, field_name) {
+				if !field_validator_target_exists(fields, field_name) {
 					return Err(Error::new(
 						field_name.span(),
 						format!("validator references unknown field: '{}'", field_name),
@@ -3034,6 +3200,252 @@ mod tests {
 			typed.fields[2].as_field().unwrap().initial_from,
 			Some("bio".to_string())
 		);
+	}
+
+	// =========================================================================
+	// Field Array Tests
+	// =========================================================================
+
+	#[rstest]
+	fn test_validate_field_array_basic() {
+		// Arrange
+		let input = quote! {
+			name: InvoiceForm,
+			action: "/test",
+
+			fields: {
+				line_items: FieldArray {
+					label: "Line items",
+					class: "line-items",
+					min_items: 1,
+					max_items: 10,
+					initial_from: "line_items",
+					fields: {
+						description: CharField { required },
+						quantity: IntegerField { initial: 1, required },
+					},
+					render_item: |item| { item.default_row() },
+				},
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_ok());
+		let typed = result.unwrap();
+		assert_eq!(typed.fields.len(), 1);
+		assert!(typed.fields[0].is_collection());
+		assert_eq!(typed.fields[0].name().to_string(), "line_items");
+
+		let collection = typed.fields[0].as_collection().unwrap();
+		assert_eq!(collection.name.to_string(), "line_items");
+		assert_eq!(collection.label, Some("Line items".to_string()));
+		assert_eq!(collection.class, Some("line-items".to_string()));
+		assert_eq!(collection.min_items, Some(1));
+		assert_eq!(collection.max_items, Some(10));
+		assert_eq!(collection.initial_from, Some("line_items".to_string()));
+		assert_eq!(collection.fields.len(), 2);
+		assert!(collection.fields[0].as_field().is_some());
+		assert!(collection.fields[1].as_field().is_some());
+		assert!(collection.render_item.is_some());
+	}
+
+	#[rstest]
+	fn test_validate_field_array_rejects_invalid_item_bounds() {
+		// Arrange
+		let input = quote! {
+			name: InvalidItemsForm,
+			action: "/test",
+
+			fields: {
+				line_items: FieldArray {
+					min_items: 3,
+					max_items: 2,
+					fields: {
+						description: CharField {},
+					},
+				},
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert_eq!(
+			result
+				.expect_err("invalid FieldArray item bounds should fail validation")
+				.to_string(),
+			"min_items cannot be greater than max_items"
+		);
+	}
+
+	#[rstest]
+	fn test_validate_field_array_rejects_duplicate_field_names() {
+		// Arrange
+		let input = quote! {
+			name: DuplicateItemsForm,
+			action: "/test",
+
+			fields: {
+				line_items: FieldArray {
+					fields: {
+						description: CharField {},
+						description: TextField {},
+					},
+				},
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert_eq!(
+			result
+				.expect_err("duplicate FieldArray item fields should fail validation")
+				.to_string(),
+			"duplicate field name: 'description' (in collection 'line_items')"
+		);
+	}
+
+	#[rstest]
+	fn test_validate_field_array_rejects_nested_duplicate_field_names() {
+		// Arrange
+		let input = quote! {
+			name: DuplicateNestedItemsForm,
+			action: "/test",
+
+			fields: {
+				sections: FieldArray {
+					fields: {
+						questions: FieldArray {
+							fields: {
+								prompt: CharField {},
+								prompt: TextField {},
+							},
+						},
+					},
+				},
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert_eq!(
+			result
+				.expect_err("duplicate nested FieldArray item fields should fail validation")
+				.to_string(),
+			"duplicate field name: 'prompt' (in collection 'questions')"
+		);
+	}
+
+	#[rstest]
+	fn test_validate_field_array_rejects_ambient_arguments_collision() {
+		// Arrange
+		let input = quote! {
+			name: AmbientCollectionForm,
+			server_fn: submit_invoice,
+
+			ambient_arguments: {
+				line_items: line_items_context,
+			},
+
+			fields: {
+				line_items: FieldArray {
+					fields: {
+						description: CharField {},
+					},
+				},
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert_eq!(
+			result
+				.expect_err("ambient argument colliding with FieldArray should fail validation")
+				.to_string(),
+			"ambient_arguments key 'line_items' collides with a declared form field; either rename the field or remove this ambient entry"
+		);
+	}
+
+	#[rstest]
+	fn test_validate_field_array_rejects_collection_name_validator_target() {
+		// Arrange
+		let input = quote! {
+			name: CollectionValidatorForm,
+			action: "/test",
+
+			fields: {
+				line_items: FieldArray {
+					fields: {
+						description: CharField {},
+					},
+				},
+			},
+
+			validators: {
+				line_items: [
+					|v| !v.is_empty() => "Line items are required",
+				],
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert_eq!(
+			result
+				.expect_err("collection-level validator target should fail validation")
+				.to_string(),
+			"validator references unknown field: 'line_items'"
+		);
+	}
+
+	#[rstest]
+	fn test_validate_nested_field_array_entry() {
+		// Arrange
+		let input = quote! {
+			name: SurveyForm,
+			action: "/test",
+
+			fields: {
+				sections: FieldArray {
+					fields: {
+						title: CharField { required },
+						questions: FieldArray {
+							min_items: 1,
+							fields: {
+								prompt: CharField { required },
+							},
+						},
+					},
+				},
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_ok());
+		let typed = result.unwrap();
+		let sections = typed.fields[0].as_collection().unwrap();
+		assert_eq!(sections.fields.len(), 2);
+
+		let questions = sections.fields[1].as_collection().unwrap();
+		assert_eq!(questions.name.to_string(), "questions");
+		assert_eq!(questions.min_items, Some(1));
+		assert_eq!(questions.fields.len(), 1);
+		assert_eq!(questions.fields[0].name().to_string(), "prompt");
 	}
 
 	// =========================================================================
