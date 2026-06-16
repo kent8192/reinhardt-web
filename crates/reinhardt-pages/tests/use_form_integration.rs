@@ -796,6 +796,54 @@ fn use_form_watches_and_sets_collection_field_paths() {
 }
 
 #[test]
+fn direct_collection_signal_set_syncs_path_watchers_and_state() {
+	let invoice = form! {
+		name: InvoiceForm,
+		action: "/invoices",
+		fields: {
+			line_items: FieldArray {
+				fields: {
+					description: CharField {}
+					quantity: IntegerField {}
+				}
+			}
+		}
+	};
+	let runtime = use_form(&invoice).build();
+	let collection = invoice.line_items_collection();
+	let key = CollectionItemKey::from_runtime_index(0);
+	let mut item = invoice.new_line_items_item();
+	item.description = "Keyboard".to_string();
+	item.quantity = 2;
+
+	invoice
+		.line_items()
+		.set(vec![CollectionItem::new(key, 0, item)]);
+
+	let quantity_path = invoice.line_items_quantity_path(key);
+	let quantity = runtime.watch_path::<i64>(quantity_path.clone());
+	assert_eq!(quantity.get(), 2);
+	assert!(runtime.get_collection_state(collection).is_touched);
+	assert!(runtime.get_path_state(quantity_path.clone()).is_touched);
+
+	let mut updated_item = invoice
+		.line_items()
+		.get()
+		.into_iter()
+		.next()
+		.expect("line item exists")
+		.into_value();
+	updated_item.quantity = 5;
+	invoice
+		.line_items()
+		.set(vec![CollectionItem::new(key, 0, updated_item)]);
+
+	assert_eq!(quantity.get(), 5);
+	assert_eq!(runtime.get_values().line_items[0].quantity, 5);
+	assert!(runtime.get_path_state(quantity_path).is_touched);
+}
+
+#[test]
 fn collection_path_state_follows_item_key_across_reorder() {
 	let invoice = form! {
 		name: InvoiceForm,

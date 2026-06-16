@@ -187,6 +187,15 @@ pub(super) fn validate(
 	let strip_arguments =
 		transform_strip_arguments(&ast.strip_arguments, &ast.fields, ambient_arguments_source)?;
 
+	if let TypedFormAction::ServerFn(_) = &action
+		&& let Some(collection) = first_field_array_entry(&ast.fields)
+	{
+		return Err(Error::new(
+			collection.span,
+			"FieldArray is not supported with server_fn forms by reinhardt-pages macro codegen yet",
+		));
+	}
+
 	// The parser guarantees that `name` is Some after successful parsing.
 	let name = ast
 		.name
@@ -210,6 +219,13 @@ pub(super) fn validate(
 	typed.strip_arguments = strip_arguments;
 
 	Ok(typed)
+}
+
+fn first_field_array_entry(entries: &[FormFieldEntry]) -> Option<&FormFieldCollection> {
+	entries.iter().find_map(|entry| match entry {
+		FormFieldEntry::Collection(collection) => Some(collection.as_ref()),
+		_ => None,
+	})
 }
 
 /// Validates that all field names are unique.
@@ -4286,6 +4302,28 @@ mod tests {
 		assert_eq!(
 			err.to_string(),
 			"strip_arguments key 'line_items' collides with a declared form field; either rename the field or remove this strip entry; use ambient_arguments for new code"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_validate_server_fn_rejects_field_array() {
+		let input = quote! {
+			name: InvoiceForm,
+			server_fn: submit_invoice,
+			fields: {
+				customer_name: CharField {},
+				line_items: FieldArray {
+					fields: {
+						description: CharField {},
+					},
+				},
+			},
+		};
+
+		let err = parse_and_validate(input).expect_err("server_fn FieldArray must fail");
+		assert_eq!(
+			err.to_string(),
+			"FieldArray is not supported with server_fn forms by reinhardt-pages macro codegen yet"
 		);
 	}
 

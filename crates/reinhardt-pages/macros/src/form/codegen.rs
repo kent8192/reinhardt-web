@@ -731,6 +731,65 @@ fn generate_form_runtime_contract(
 			}
 		})
 		.collect();
+	let path_signal_sync_blocks: Vec<TokenStream> = collections
+		.iter()
+		.map(|collection| {
+			let collection_name = &collection.name;
+			let collection_name_text = collection.name.to_string();
+			let signal_updates: Vec<TokenStream> = collect_scalar_fields(&collection.fields)
+				.iter()
+				.map(|field| {
+					let field_name = &field.name;
+					let field_name_text = field.name.to_string();
+					let field_type = field_type_to_value_type(&field.field_type);
+					quote! {
+						{
+							let path_key = ::std::format!(
+								"{}:{:?}:{}",
+								#collection_name_text,
+								item.key(),
+								#field_name_text,
+							);
+							let path_signal = self
+								.__path_signals
+								.borrow()
+								.get(&path_key)
+								.and_then(|signal| {
+									signal
+										.downcast_ref::<#pages_crate::reactive::Signal<#field_type>>()
+										.cloned()
+								});
+							if let ::core::option::Option::Some(path_signal) = path_signal {
+								path_signal.set(item_value.#field_name.clone());
+							}
+						}
+					}
+				})
+				.collect();
+			quote! {
+				for item in self.#collection_name.get() {
+					let item_value = item.value();
+					#(#signal_updates)*
+				}
+			}
+		})
+		.collect();
+	let changed_collection_key_checks: Vec<TokenStream> = collections
+		.iter()
+		.zip(collection_variants.iter())
+		.map(|(collection, variant)| {
+			let collection_name = &collection.name;
+			quote! {
+				if current.#collection_name != previous.#collection_name {
+					keys.push(
+						<Self as #pages_crate::form_state::FormCollectionRuntimeSource>::runtime_collection_key(
+							#collection_ident::#variant,
+						),
+					);
+				}
+			}
+		})
+		.collect();
 	let collection_runtime_impl = if collections.is_empty() {
 		quote! {}
 	} else {
@@ -1451,16 +1510,30 @@ fn generate_form_runtime_contract(
 					false
 				}
 
-				fn runtime_path_value_equals(
-					&self,
-					path_key: &str,
-					default: &dyn ::core::any::Any,
-				) -> ::core::option::Option<bool> {
-					#(#path_value_equals_blocks)*
-					::core::option::Option::None
-				}
+					fn runtime_path_value_equals(
+						&self,
+						path_key: &str,
+						default: &dyn ::core::any::Any,
+					) -> ::core::option::Option<bool> {
+						#(#path_value_equals_blocks)*
+						::core::option::Option::None
+					}
 
-				fn runtime_validate(&self) -> ::core::result::Result<(), #pages_crate::FormValidationError<Self::Field>> {
+					fn runtime_sync_path_signals(&self) {
+						#(#path_signal_sync_blocks)*
+					}
+
+					fn runtime_changed_collection_keys(
+						&self,
+						current: &Self::Values,
+						previous: &Self::Values,
+					) -> ::std::vec::Vec<::std::string::String> {
+						let mut keys = ::std::vec::Vec::new();
+						#(#changed_collection_key_checks)*
+						keys
+					}
+
+					fn runtime_validate(&self) -> ::core::result::Result<(), #pages_crate::FormValidationError<Self::Field>> {
 					let mut error = #pages_crate::FormValidationError::new();
 					#(#required_validation_checks)*
 					#(#collection_constraints_validation_checks)*

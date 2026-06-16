@@ -412,6 +412,18 @@ pub trait FormRuntimeSource: Clone + 'static {
 		None
 	}
 
+	/// Synchronizes cached nested field path signals from current form values.
+	fn runtime_sync_path_signals(&self) {}
+
+	/// Returns collection keys whose values changed between two value snapshots.
+	fn runtime_changed_collection_keys(
+		&self,
+		_current: &Self::Values,
+		_previous: &Self::Values,
+	) -> Vec<String> {
+		Vec::new()
+	}
+
 	/// Runs generated validation.
 	fn runtime_validate(&self) -> Result<(), FormValidationError<Self::Field>> {
 		Ok(())
@@ -536,6 +548,8 @@ fn build_signal_sync_effect<Form>(
 	default_values: Rc<RefCell<Form::Values>>,
 	state: FormState<Form::Field>,
 	touched_fields: Rc<RefCell<HashMap<Form::Field, bool>>>,
+	touched_collections: Rc<RefCell<HashMap<String, bool>>>,
+	touched_paths: Rc<RefCell<HashMap<String, bool>>>,
 	collection_errors: Signal<HashMap<String, FieldError>>,
 	path_errors: Signal<HashMap<String, FieldError>>,
 	values_signal: Signal<Form::Values>,
@@ -558,6 +572,22 @@ where
 				.filter(|field| form.runtime_field_is_dirty(*field, &current, &previous))
 				.collect();
 			let values_changed = form.runtime_values_are_dirty(&current, &previous);
+			let current_path_values = form.runtime_path_values_from_values(&current);
+			let previous_path_values = form.runtime_path_values_from_values(&previous);
+			let changed_path_keys: Vec<String> = current_path_values
+				.keys()
+				.filter(|path_key| {
+					previous_path_values
+						.get(*path_key)
+						.and_then(|previous_value| {
+							form.runtime_path_value_equals(path_key, previous_value.as_ref())
+						})
+						.map(|matches_current| !matches_current)
+						.unwrap_or(true)
+				})
+				.cloned()
+				.collect();
+			let changed_collection_keys = form.runtime_changed_collection_keys(&current, &previous);
 			*observed_values.borrow_mut() = current.clone();
 
 			if signal_sync_suppressed.get() || (changed_fields.is_empty() && !values_changed) {
@@ -567,6 +597,22 @@ where
 			for field in &changed_fields {
 				touched_fields.borrow_mut().insert(*field, true);
 			}
+			for collection_key in changed_collection_keys {
+				touched_collections
+					.borrow_mut()
+					.insert(collection_key, true);
+			}
+			{
+				let mut touched_paths = touched_paths.borrow_mut();
+				touched_paths.retain(|path_key, _| current_path_values.contains_key(path_key));
+				for path_key in changed_path_keys {
+					touched_paths.insert(path_key, true);
+				}
+			}
+			let mut path_errors_map = path_errors.get();
+			path_errors_map.retain(|path_key, _| current_path_values.contains_key(path_key));
+			path_errors.set(path_errors_map);
+			form.runtime_sync_path_signals();
 			state.is_touched.set(true);
 			state.is_dirty.set(form_values_are_dirty(
 				&form,
@@ -799,6 +845,8 @@ where
 			Rc::clone(&default_values),
 			state.clone(),
 			Rc::clone(&touched_fields),
+			Rc::clone(&touched_collections),
+			Rc::clone(&touched_paths),
 			collection_errors.clone(),
 			path_errors.clone(),
 			values_signal.clone(),
