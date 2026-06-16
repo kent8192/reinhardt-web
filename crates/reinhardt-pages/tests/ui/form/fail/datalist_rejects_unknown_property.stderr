@@ -1,0 +1,5 @@
+error: unknown Datalist property: 'label'
+  --> tests/ui/form/fail/datalist_rejects_unknown_property.rs:10:5
+   |
+10 |                 label: "Suggestions",
+   |                 ^^^^^

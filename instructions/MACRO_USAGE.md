@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This file defines the policy for using Reinhardt's procedural macros (notably `#[model(...)]`) consistently across the codebase.
+This file defines the policy for using Reinhardt's macros (notably `#[model(...)]` and `form!`) consistently across the codebase.
 
 ---
 
@@ -152,7 +152,9 @@ let choice = Choice::build()
 
 The `#[model]` macro automatically generates a `{Model}Info` companion struct — a plain data carrier with model data fields, lightweight relationship fields, `pub` visibility, and bidirectional `From` conversions.
 
-**Generated for every model by default.** Opt out with `#[model(info = false)]`.
+**Generated for every model by default.** Opt out of only the companion struct
+with `#[model(info = false)]`. Use `#[model(server_only)]` for models that
+must not expose shared `InfoModel` / `{Model}Info` output on WASM.
 
 ```rust
 #[model(app_label = "blog", table_name = "posts")]
@@ -237,9 +239,80 @@ Validation attributes are derived from `#[field(...)]` config and emitted as `#[
 
 ---
 
+## `form!` Macro
+
+### MU-5 (MUST): Keep Stable Native Widget Coverage Explicit
+
+The `form!` DSL exposes the following native HTML coverage as stable API:
+
+| DSL item | HTML output | Value state |
+|---|---|---|
+| `MonthInput` | `<input type="month">` | string field |
+| `WeekInput` | `<input type="week">` | string field |
+| `ResetButton` | `<button type="reset">` | none |
+| `Button` | `<button type="button">` | none |
+| `ImageInput` | `<input type="image">` | none |
+| `Datalist` | `<datalist>` | option source only |
+| `OptGroup` | `<optgroup>` | choice grouping only |
+| `Output` | `<output>` | none |
+| `Meter` | `<meter>` | none |
+| `Progress` | `<progress>` | none |
+
+`Datalist` is an option source for compatible inputs, not a value-holding
+field. `OptGroup` groups choices inside choice controls and does not introduce
+a separate value slot.
+
+`MonthInput` and `WeekInput` are accepted only for raw string fields:
+`CharField`, `TextField`, `EmailField`, `UrlField`, `SlugField`, and
+`PasswordField`.
+
+### MU-6 (MUST): Validate Typed Native Attributes Against Compatible Controls
+
+Typed native attributes are valid only on controls that support the corresponding
+HTML behavior:
+
+| Attribute | Compatible controls |
+|---|---|
+| `min` / `max` / `step` | number, range, date, time, datetime-local, month, week |
+| `size` | text-like inputs |
+| `accept` / `capture` | file-like inputs |
+| `list` | datalist-compatible text-like inputs |
+
+`multiple` is not accepted as a typed field property yet. Use the
+`SelectMultiple` widget for multi-select fields. File-like multi-select remains
+deferred until the generated value contract can represent `Vec<File>` instead
+of a single `Option<File>`.
+
+### MU-7 (MUST): Treat `CustomWidget` as Experimental
+
+`CustomWidget` is an experimental extension point. Call sites must opt in with
+the `experimental` marker and provide an adapter:
+
+```rust,ignore
+date_range: CharField {
+    widget: CustomWidget(crate::widgets::DateRangePicker) {
+        experimental,
+        adapter: crate::widgets::DateRangeAdapter,
+    },
+}
+```
+
+The adapter API may change in a minor release with a documented migration path.
+
+### MU-8 (MUST): Render `FieldGroup` as a Semantic Fieldset
+
+`FieldGroup` renders as semantic `<fieldset>` output. When `label` is present,
+the label is rendered as a `<legend>` inside the fieldset.
+
+---
+
 ### ✅ MUST DO
 - Initialize `#[model(...)]` structs via the macro-generated `build()` builder or zero-argument `new()` alias
 - Add unrelated derives (e.g., `Debug`, `Clone`) via a separate `#[derive(...)]`
+- Keep stable `form!` widget coverage aligned with the documented native HTML output and value state
+- Validate typed native form attributes against the compatible control families
+- Treat `CustomWidget` as experimental and require the explicit adapter syntax
+- Render `FieldGroup` as semantic `<fieldset>` output with `label` mapped to `<legend>`
 
 ### ✅ SHOULD DO
 - Use `#[model(...)]` alone (do not also write `#[derive(Model)]`) — the attribute applies the derive for you
@@ -247,7 +320,8 @@ Validation attributes are derived from `#[field(...)]` config and emitted as `#[
 - Pass FK values via `.<related>(&model)` in `build()` setters when the related instance is already in scope (composes with #4398)
 - Use `{Model}Info` for API DTOs and cross-layer data transfer instead of hand-writing parallel structs (MU-4)
 - Use `#[field(skip_info = true)]` to exclude sensitive fields (e.g., password hashes) from the Info struct
-- Use `#[model(info = false)]` only when the Info struct would be genuinely unused
+- Use `#[model(info = false)]` only when the Info struct would be genuinely unused, but the model may still be referenced by shared relationship metadata
+- Use `#[model(server_only)]` only for models that are intentionally native-only and should not participate in WASM/shared type contracts
 
 ### ❌ NEVER DO
 - Initialize `#[model(...)]` structs via struct-literal syntax in production code (use `build()` or zero-argument `new()`)

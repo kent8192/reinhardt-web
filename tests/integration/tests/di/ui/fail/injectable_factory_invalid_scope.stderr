@@ -1,5 +1,5 @@
 error: Invalid scope. Expected 'singleton', 'request', or 'transient'
- --> tests/di/ui/fail/injectable_factory_invalid_scope.rs:8:30
-  |
-8 | #[injectable_factory(scope = "invalid_scope")]
-  |                              ^^^^^^^^^^^^^^^
+  --> tests/di/ui/fail/injectable_factory_invalid_scope.rs:14:22
+   |
+14 | #[injectable(scope = "invalid_scope")]
+   |                      ^^^^^^^^^^^^^^^

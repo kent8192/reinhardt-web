@@ -209,9 +209,9 @@ where
 impl<T> super::validation::WithValidation for Query<T> {}
 
 // Bridge `Query<T>` to the DI container. Once `T: DeserializeOwned`, callers
-// can write `#[inject] q: Query<MyFilter>` inside `#[injectable_factory]` or
-// any handler, and the existing `FromRequest` plumbing parses the query
-// string from `InjectionContext`'s attached request.
+// can write `#[inject] q: Query<MyFilter>` inside `#[injectable]` providers or
+// any handler, and the existing `FromRequest` plumbing parses the query string
+// from `InjectionContext`'s attached request.
 #[async_trait]
 impl<T> crate::Injectable for Query<T>
 where

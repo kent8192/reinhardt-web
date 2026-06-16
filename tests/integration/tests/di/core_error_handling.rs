@@ -9,9 +9,14 @@
 
 use super::test_helpers::resolve_injectable;
 use reinhardt_core::exception::Error;
-use reinhardt_di::{Depends, DiError, DiResult, Injectable, InjectionContext, SingletonScope};
+use reinhardt_di::{
+	Depends, DiError, DiResult, FactoryOutput, Injectable, InjectableKey, InjectionContext,
+	SingletonScope,
+};
 use rstest::rstest;
+use serial_test::serial;
 use std::sync::Arc;
+use std::sync::Once;
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -114,6 +119,10 @@ struct ResourceOwner {
 	data: String,
 }
 
+struct ResourceOwnerKey;
+
+impl InjectableKey for ResourceOwnerKey {}
+
 #[async_trait::async_trait]
 impl Injectable for ResourceOwner {
 	async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
@@ -203,21 +212,15 @@ async fn test_injectable_async_timeout() {
 }
 
 #[tokio::test]
+#[serial(di_registry)]
 async fn test_depends_lifetime_management() {
-	// Register ResourceOwner in the global registry for Depends<T> resolution
-	let registry = reinhardt_di::global_registry();
-	if !registry.is_registered::<ResourceOwner>() {
-		registry.register::<ResourceOwner>(
-			reinhardt_di::DependencyScope::Request,
-			reinhardt_di::InjectableFactory::<ResourceOwner>::new(),
-		);
-	}
+	register_resource_owner_output();
 
 	let singleton = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton).build();
 
 	// Resolve dependency using Depends
-	let depends_resource = Depends::<ResourceOwner>::builder()
+	let depends_resource = Depends::<ResourceOwnerKey, ResourceOwner>::builder()
 		.resolve(&ctx)
 		.await
 		.unwrap();
@@ -236,7 +239,7 @@ async fn test_depends_lifetime_management() {
 	assert_eq!(depends_resource.data, "owned-data");
 
 	// Resolve again from context (should return cached instance)
-	let depends_resource2 = Depends::<ResourceOwner>::builder()
+	let depends_resource2 = Depends::<ResourceOwnerKey, ResourceOwner>::builder()
 		.resolve(&ctx)
 		.await
 		.unwrap();
@@ -250,11 +253,11 @@ async fn test_depends_lifetime_management() {
 	drop(depends_resource2);
 
 	// Verify context cache still holds the value
-	let cached: Option<Arc<ResourceOwner>> = ctx.get_request();
+	let cached: Option<Arc<FactoryOutput<ResourceOwnerKey, ResourceOwner>>> = ctx.get_request();
 	assert!(cached.is_some());
 	let cached_value = cached.unwrap();
-	assert_eq!(cached_value.id, 1);
-	assert_eq!(cached_value.data, "owned-data");
+	assert_eq!(cached_value.as_ref().id, 1);
+	assert_eq!(cached_value.as_ref().data, "owned-data");
 
 	// Create a weak reference from cached Arc
 	let weak_ref = Arc::downgrade(&cached_value);
@@ -263,7 +266,23 @@ async fn test_depends_lifetime_management() {
 	// Weak reference should still be upgradeable because cache holds strong ref
 	let upgraded = weak_ref.upgrade();
 	assert!(upgraded.is_some());
-	assert_eq!(upgraded.unwrap().data, "owned-data");
+	assert_eq!(upgraded.unwrap().as_ref().data, "owned-data");
+}
+
+fn register_resource_owner_output() {
+	static REGISTER: Once = Once::new();
+	REGISTER.call_once(|| {
+		reinhardt_di::global_registry()
+			.register_async::<FactoryOutput<ResourceOwnerKey, ResourceOwner>, _, _>(
+				reinhardt_di::DependencyScope::Request,
+				|_ctx| async {
+					Ok(FactoryOutput::new(ResourceOwner {
+						id: 1,
+						data: "owned-data".to_string(),
+					}))
+				},
+			);
+	});
 }
 
 // === DiError to HTTP Error Status Code Mapping ===

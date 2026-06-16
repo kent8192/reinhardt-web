@@ -25,8 +25,10 @@ reinhardt = { version = "0.2.0", features = ["di"] }
 Then import DI features:
 
 ```rust
-use reinhardt::di::{Depends, Injectable, InjectionContext};
-use reinhardt::di::{Injected, OptionalInjected, SingletonScope};
+use reinhardt::di::{
+    Depends, FactoryOutput, Injectable, InjectableKey, InjectionContext,
+    SingletonScope, injectable, injectable_key,
+};
 ```
 
 **Note:** DI features are included in the `standard` and `full` feature presets.
@@ -38,9 +40,12 @@ use reinhardt::di::{Injected, OptionalInjected, SingletonScope};
 - **Request Scope**: Dependencies cached per request (default)
 - **Singleton Scope**: Dependencies shared across the entire application
 
-### Automatic Injection
+### Injection Models
 
-Types implementing `Default + Clone + Send + Sync + 'static` automatically implement the `Injectable` trait and can be used as dependencies.
+Application-owned types can implement `Injectable` directly when their own
+type is the dependency identity. Provider functions use `#[injectable]` and
+return `FactoryOutput<K, T>` when the dependency should be keyed by an
+application-defined `K` instead.
 
 ## Implemented Features ✓
 
@@ -48,33 +53,26 @@ Types implementing `Default + Clone + Send + Sync + 'static` automatically imple
 
 #### Dependency Wrappers
 
-`reinhardt-di` provides two wrapper types for dependency injection:
+`reinhardt-di` provides keyed wrappers for provider outputs:
 
-- ✓ **`Injected<T>` Wrapper**: Low-level dependency wrapper with metadata
-  - `Arc<T>` wrapper with injection metadata (scope, cached status)
-  - `Deref` trait for transparent access to inner value
-  - `resolve(&ctx)` - Resolve with cache (default)
-  - `resolve_uncached(&ctx)` - Resolve without cache
-  - Metadata access via `.scope()` and `.is_cached()` methods
-  - Direct control over dependency resolution
+- ✓ **`FactoryOutput<K, T>`**: return type for `#[injectable]` provider functions
+  - registered by `TypeId::of::<FactoryOutput<K, T>>()`
+  - stores the produced `T`
+  - lets multiple providers return the same `T` without colliding
 
-- ✓ **`Depends<T>` Wrapper**: High-level FastAPI-style builder
-  - `Depends::<T>::new()` - Cache enabled (default)
-  - `Depends::<T>::no_cache()` - Cache disabled
-  - `resolve(&ctx)` - Dependency resolution
-  - `from_value(value)` - Generate from value for testing
-  - More ergonomic API for most use cases
+- ✓ **`Depends<K, T>`**: handler/provider parameter wrapper for keyed outputs
+  - resolves `FactoryOutput<K, T>` from the registry
+  - dereferences to `T` for ergonomic use
+  - `Depends::<K, T>::builder()` - cache enabled metadata
+  - `Depends::<K, T>::builder_no_cache()` - cache disabled metadata
+  - `from_value(value)` - build from a value for tests
 
-- ✓ **`OptionalInjected<T>` Wrapper**: Optional dependency wrapper
-  - `Option<Injected<T>>` for dependencies that may not be available
-  - `resolve(&ctx)` - Returns `Ok(None)` if dependency not found
-  - Useful for optional features or fallback behavior
+Use direct `T` parameters for ordinary `Injectable` values. Use
+`Depends<K, T>` when consuming output from a provider function.
 
-**Recommendation**: Use `Depends<T>` for most cases (more ergonomic). Use `Injected<T>` when you need direct control or metadata access.
-
-- ✓ **Injectable Trait**: Define types that can be injected as dependencies
-  - Auto-implementation: For types implementing `Default + Clone + Send + Sync + 'static`
-  - Custom implementation: When complex initialization logic is needed
+- ✓ **Injectable Trait**: Define types that can be injected directly
+  - Manual implementation: When the type itself is the dependency identity
+  - `Arc<T>` and `Option<T>` blanket implementations for direct injectables
 
 - ✓ **InjectionContext**: Context for dependency resolution
   - Builder pattern for context creation: `InjectionContext::builder(singleton).build()`
@@ -126,7 +124,7 @@ Types implementing `Default + Clone + Send + Sync + 'static` automatically imple
   - Support for connection info injection
 
 - ✓ **WebSocket Support**: Dependency injection into WebSocket connections
-  - Use `Depends<T>` in WebSocket handlers
+  - Use direct `Injectable` values or `Depends<K, T>` in WebSocket handlers
 
 ### Advanced Dependency Patterns ✓
 
@@ -220,16 +218,30 @@ impl Injectable for UserData {
 
 ## Usage Examples
 
-### Basic Usage with `Depends<T>`
+### Basic Usage with `Depends<K, T>`
 
 ```rust
-use reinhardt::di::{Depends, Injectable, InjectionContext, SingletonScope};
+use reinhardt::di::{
+    Depends, FactoryOutput, InjectionContext, InjectableKey, SingletonScope,
+    injectable, injectable_key,
+};
 use std::sync::Arc;
 
 #[derive(Clone, Default)]
 struct Config {
     api_key: String,
     database_url: String,
+}
+
+#[injectable_key]
+struct ConfigKey;
+
+#[injectable(scope = "singleton")]
+async fn config_provider() -> FactoryOutput<ConfigKey, Config> {
+    FactoryOutput::new(Config {
+        api_key: "test-key".to_string(),
+        database_url: "sqlite://app.db".to_string(),
+    })
 }
 
 #[tokio::main]
@@ -240,8 +252,8 @@ async fn main() {
     // Creating the request context
     let ctx = InjectionContext::builder(singleton).build();
 
-    // Dependency Resolution (Cache Enabled)
-    let config = Depends::<Config>::new()
+    // Keyed dependency resolution (cache enabled metadata)
+    let config = Depends::<ConfigKey, Config>::builder()
         .resolve(&ctx)
         .await
         .unwrap();
@@ -250,43 +262,23 @@ async fn main() {
 }
 ```
 
-### Basic Usage with `Injected<T>`
+### Direct `Injectable` Implementation
 
 ```rust
-use reinhardt::di::{Injected, OptionalInjected, Injectable, InjectionContext, SingletonScope};
-use std::sync::Arc;
+use reinhardt::di::{DiResult, Injectable, InjectionContext};
 
-#[derive(Clone, Default)]
 struct Config {
     api_key: String,
     database_url: String,
 }
 
-#[derive(Clone, Default)]
-struct Cache {
-    enabled: bool,
-}
-
-#[tokio::main]
-async fn main() {
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::builder(singleton).build();
-
-    // Resolve with cache (default)
-    let config: Injected<Config> = Injected::resolve(&ctx).await.unwrap();
-    println!("API Key: {}", config.api_key);  // Deref trait allows direct access
-
-    // Access metadata
-    println!("Scope: {:?}", config.scope());
-    println!("Cached: {}", config.is_cached());
-
-    // Resolve without cache
-    let fresh_config = Injected::<Config>::resolve_uncached(&ctx).await.unwrap();
-
-    // Optional dependency
-    let optional_cache: OptionalInjected<Cache> = OptionalInjected::resolve(&ctx).await.unwrap();
-    if let Some(cache) = optional_cache.as_ref() {
-        println!("Cache enabled: {}", cache.enabled);
+#[async_trait::async_trait]
+impl Injectable for Config {
+    async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+        Ok(Self {
+            api_key: "test-key".to_string(),
+            database_url: "sqlite://app.db".to_string(),
+        })
     }
 }
 ```
@@ -386,13 +378,13 @@ mod tests {
 
 ```rust
 // Cache enabled (default) - Returns the same instance
-let config1 = Depends::<Config>::new().resolve(&ctx).await?;
-let config2 = Depends::<Config>::new().resolve(&ctx).await?;
+let config1 = Depends::<ConfigKey, Config>::builder().resolve(&ctx).await?;
+let config2 = Depends::<ConfigKey, Config>::builder().resolve(&ctx).await?;
 // config1 and config2 are the same instance
 
 // Cache disabled - Creates new instance each time
-let config3 = Depends::<Config>::no_cache().resolve(&ctx).await?;
-let config4 = Depends::<Config>::no_cache().resolve(&ctx).await?;
+let config3 = Depends::<ConfigKey, Config>::builder_no_cache().resolve(&ctx).await?;
+let config4 = Depends::<ConfigKey, Config>::builder_no_cache().resolve(&ctx).await?;
 // config3 and config4 are different instances
 ```
 
@@ -497,45 +489,52 @@ struct Config {
 }
 ```
 
-#### `#[injectable_factory]` - Async Function Factory
+#### `#[injectable]` - Async Provider Function
 
-Mark an async function as a dependency factory for complex initialization logic.
+Mark an async function as a keyed dependency provider for complex
+initialization logic.
 
 **Syntax:**
 ```rust
 // `scope` accepts "singleton", "request", or "transient" (see Attributes below).
-#[injectable_factory(scope = "singleton")]
-async fn factory_function(#[inject] dep: Arc<Dependency>) -> ReturnType {
+#[injectable(scope = "singleton")]
+async fn factory_function(
+    #[inject] dep: Dependency,
+) -> FactoryOutput<MyKey, ReturnType> {
     // Initialization logic
+    FactoryOutput::new(value)
 }
 ```
 
-When initialization can fail, prefer `Result<T, E>` as the return type. `T` is
-the dependency you want, and `E` should be an error type used only by that
-factory. Reinhardt registers the literal return type, so `Result<T, E1>` and
-`Result<T, E2>` have different `TypeId` values even when `T` is the same.
-Consumers can request the factory output as `DependsResult<T, E>` or
-`Depends<Result<T, E>>`.
+When initialization can fail, put `Result<T, E>` in the provider value
+position. Reinhardt registers `FactoryOutput<K, Result<T, E>>`, so the key `K`
+remains the provider identity and callers do not need factory-local wrapper
+types only to avoid `TypeId` collisions.
 
-`#[inject]` wrapper detection is trait-based. Built-in aliases such as
-`DependsResult<T, E>` work through `Depends<T>`, and applications can define
-their own wrapper types by implementing `InjectableType` with the registry key
-in `type Inner`.
+`#[inject]` wrapper detection is trait-based. `Depends<K, T>` resolves
+`FactoryOutput<K, T>`, and applications can define their own wrapper types by
+implementing `InjectableType` with the registry key in `type Inner`.
 
 ```rust
-use reinhardt::di::{Depends, InjectableType};
+use reinhardt::di::{Depends, FactoryOutput, InjectableKey, InjectableType};
 
-struct Lazy<T>(Depends<T>)
+struct Lazy<K, T>(Depends<K, T>)
 where
+    K: InjectableKey,
     T: Send + Sync + 'static;
 
-impl<T> InjectableType for Lazy<T>
+impl<K, T> InjectableType for Lazy<K, T>
 where
+    K: InjectableKey,
     T: Send + Sync + 'static,
 {
-    type Inner = T;
+    type Inner = FactoryOutput<K, T>;
 
-    fn from_depends(depends: Depends<Self::Inner>) -> Self {
+    fn from_resolved(
+        inner: std::sync::Arc<Self::Inner>,
+        use_cache: bool,
+    ) -> Self {
+        let depends = Depends::from_output(inner, use_cache);
         Self(depends)
     }
 }
@@ -544,38 +543,42 @@ where
 **Attributes:**
 
 Scope is passed as a macro argument in key-value form.
-`#[injectable_factory]` defaults to `singleton` when no `scope` argument is
-supplied.
+`#[injectable]` provider functions default to `singleton` when no `scope`
+argument is supplied. `#[injectable_factory]` is a deprecated compatibility
+alias for provider functions.
 
-- `` `#[injectable_factory(scope = "singleton")]` `` - Singleton scope (default)
-- `` `#[injectable_factory(scope = "request")]` `` - Request scope
-- `` `#[injectable_factory(scope = "transient")]` `` - Transient scope
+- `` `#[injectable(scope = "singleton")]` `` - Singleton scope (default)
+- `` `#[injectable(scope = "request")]` `` - Request scope
+- `` `#[injectable(scope = "transient")]` `` - Transient scope
 - `` `#[inject]` `` - Mark function parameters for automatic injection
 
 **Example:**
 ```rust
-use reinhardt::di::macros::injectable_factory;
-use reinhardt::di::DependsResult;
+use reinhardt::di::{Depends, FactoryOutput, injectable, injectable_key};
 use reinhardt::{get, Response, StatusCode, ViewResult};
-use std::sync::Arc;
 
 #[derive(Debug)]
 struct DatabaseConnectionError;
 
-#[injectable_factory(scope = "singleton")]
+#[injectable_key]
+struct DatabaseKey;
+
+#[injectable(scope = "singleton")]
 async fn create_database(
-    #[inject] config: Arc<Config>,
-) -> Result<DatabaseConnection, DatabaseConnectionError> {
-    DatabaseConnection::connect(&config.database_url)
-        .await
-        .map_err(|_| DatabaseConnectionError)
+    #[inject] config: Config,
+) -> FactoryOutput<DatabaseKey, Result<DatabaseConnection, DatabaseConnectionError>> {
+    FactoryOutput::new(
+        DatabaseConnection::connect(&config.database_url)
+            .await
+            .map_err(|_| DatabaseConnectionError),
+    )
 }
 
 #[get("/database/health", name = "database_health")]
 async fn database_health(
-    #[inject] db: DependsResult<DatabaseConnection, DatabaseConnectionError>,
+    #[inject] db: Depends<DatabaseKey, Result<DatabaseConnection, DatabaseConnectionError>>,
 ) -> ViewResult<Response> {
-    match db.into_inner() {
+    match db.as_ref() {
         Ok(_) => Ok(Response::new(StatusCode::OK)),
         Err(_) => Ok(Response::new(StatusCode::SERVICE_UNAVAILABLE)),
     }
@@ -594,52 +597,43 @@ async fn database_health(
 
 #### Simple Struct Injection
 
-```rust
-use reinhardt::di::{macros::injectable, InjectionContext, SingletonScope};
-use std::sync::Arc;
-
-#[injectable]
-struct Logger {
-    level: String,
-}
-
-impl Default for Logger {
-    fn default() -> Self {
-        Logger {
-            level: "info".to_string(),
-        }
-    }
-}
-
-#[tokio::main]
-async fn main() {
-    let singleton = Arc::new(SingletonScope::new());
-    let ctx = InjectionContext::builder(singleton).build();
-
-    let logger = Logger::inject(&ctx).await.unwrap();
-    println!("Log level: {}", logger.level);
-}
-```
-
-#### Factory with Nested Dependencies
+#### Provider with Nested Dependencies
 
 ```rust
-use reinhardt::di::macros::{injectable, injectable_factory};
-use std::sync::Arc;
+use reinhardt::di::{
+    Depends, DiResult, FactoryOutput, Injectable, InjectionContext,
+    injectable, injectable_key,
+};
 
-#[injectable(scope = "singleton")]
 struct AppConfig {
-    #[no_inject]
     db_url: String,
-    #[no_inject]
     cache_size: usize,
 }
 
-#[injectable_factory(scope = "request")]
+#[async_trait::async_trait]
+impl Injectable for AppConfig {
+    async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+        Ok(Self {
+            db_url: "sqlite://app.db".to_string(),
+            cache_size: 256,
+        })
+    }
+}
+
+#[injectable_key]
+struct ServiceKey;
+
+#[injectable(scope = "request")]
 async fn create_service(
-    #[inject] config: Arc<AppConfig>
-) -> MyService {
-    MyService::new(config.db_url.clone(), config.cache_size)
+    #[inject] config: AppConfig,
+) -> FactoryOutput<ServiceKey, MyService> {
+    FactoryOutput::new(MyService::new(config.db_url, config.cache_size))
+}
+
+async fn handler(
+    #[inject] service: Depends<ServiceKey, MyService>,
+) {
+    service.run().await;
 }
 ```
 

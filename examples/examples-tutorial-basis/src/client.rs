@@ -10,8 +10,10 @@
 //! (`lib::main`), the SPA `pages` aggregator that wraps every routed page
 //! with the shared nav bar, and the `components::nav` shell itself.
 
+#[cfg(client)]
 pub mod lib;
 
 pub mod pages;
 
+#[cfg(client)]
 pub mod components;

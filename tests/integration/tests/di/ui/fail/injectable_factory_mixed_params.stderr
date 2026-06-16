@@ -1,5 +1,8 @@
-error: #[injectable_factory] functions must have all parameters marked with #[inject]. Non-inject parameters are not supported because the generated wrapper function only receives an InjectionContext.
-  --> tests/di/ui/fail/injectable_factory_mixed_params.rs:12:1
+error: #[injectable] provider functions must have all parameters marked with #[inject]. Non-inject parameters are not supported because the generated wrapper function only receives an InjectionContext.
+  --> tests/di/ui/fail/injectable_factory_mixed_params.rs:25:1
    |
-12 | async fn make_service(#[inject] _config: reinhardt_di::Depends<String>, extra: String) -> MyService {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+25 | / async fn make_service(
+26 | |     #[inject] _config: Depends<ConfigKey, Config>,
+27 | |     extra: String,
+28 | | ) -> FactoryOutput<MyServiceKey, MyService> {
+   | |___________________________________________^

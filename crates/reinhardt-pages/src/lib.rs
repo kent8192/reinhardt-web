@@ -95,6 +95,48 @@
 //! tracked for dirty/touched state without treating the file payload as a
 //! serializable scalar.
 //!
+//! Stable native widget coverage includes the following `form!` DSL items:
+//!
+//! | DSL item | HTML output | Value state |
+//! |---|---|---|
+//! | `MonthInput` | `<input type="month">` | string field |
+//! | `WeekInput` | `<input type="week">` | string field |
+//! | `ResetButton` | `<button type="reset">` | none |
+//! | `Button` | `<button type="button">` | none |
+//! | `ImageInput` | `<input type="image">` | none |
+//! | `Datalist` | `<datalist>` | option source only |
+//! | `OptGroup` | `<optgroup>` | choice grouping only |
+//! | `Output` | `<output>` | none |
+//! | `Meter` | `<meter>` | none |
+//! | `Progress` | `<progress>` | none |
+//!
+//! Typed native attributes are accepted for the controls that support them:
+//!
+//! | Attribute | Compatible controls |
+//! |---|---|
+//! | `min` / `max` / `step` | number, range, date, time, datetime-local, month, week |
+//! | `size` | text-like inputs |
+//! | `accept` / `capture` | file-like inputs |
+//! | `multiple` | file-like inputs and multi-select |
+//! | `list` | datalist-compatible text-like inputs |
+//!
+//! `FieldGroup` renders as semantic `<fieldset>` output. When `label` is
+//! present, the label is rendered as a `<legend>` inside the fieldset.
+//!
+//! `CustomWidget` is experimental and must opt in explicitly:
+//!
+//! ```rust,ignore
+//! date_range: CharField {
+//!     widget: CustomWidget(crate::widgets::DateRangePicker) {
+//!         experimental,
+//!         adapter: crate::widgets::DateRangeAdapter,
+//!     },
+//! }
+//! ```
+//!
+//! The adapter API may change in a minor release with a documented migration
+//! path.
+//!
 //! Use `ambient_arguments` for non-field values supplied from surrounding
 //! context. The old `strip_arguments` DSL name remains as a deprecated alias.
 //! CSRF should be supplied by `#[server_fn]` client stubs through the
@@ -105,6 +147,7 @@
 //! - [`page!`]: JSX-like macro for defining view components
 //! - [`head!`]: JSX-like macro for defining HTML head sections
 //! - [`form!`]: Type-safe form component macro
+//! - [`client_page`]: Client page function macro with native route-table stubs
 //! - [`wasm_server_api`]: WASM/server API parity macro
 //!
 //! See `docs/wasm_server_api.md` for the target-specific API parity contract.
@@ -327,9 +370,11 @@ pub use form::{FormBinding, FormComponent};
 // Static form metadata types (always available, used by form! macro)
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use form_state::{
-	FieldError, FieldState, FocusError, FormEvent, FormRuntimeSource, FormState, FormSubscription,
-	FormValidationError, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder, UseFormReturn,
-	UseFormSubmitOutcome, use_form,
+	CollectionItem, CollectionItemKey, CollectionState, CustomWidgetContext, CustomWidgetRawValue,
+	FieldError, FieldPathState, FieldState, FocusError, FormCollectionRuntimeSource, FormEvent,
+	FormRuntimeSource, FormState, FormSubscription, FormValidationError, FormWidgetAdapter,
+	FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder,
+	UseFormReturn, UseFormSubmitOutcome, use_form,
 };
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
@@ -377,7 +422,7 @@ pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
 pub use reinhardt_pages_macros::page;
 pub use reinhardt_pages_macros::wasm_server_api;
-pub use reinhardt_pages_macros::{FromRequest, component, page_props};
+pub use reinhardt_pages_macros::{FromRequest, client_page, component, page_props};
 
 // Private re-exports used by macro-generated code. Not part of the public API.
 #[doc(hidden)]

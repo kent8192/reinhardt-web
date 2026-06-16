@@ -10,8 +10,8 @@ use crate::client::pages::{
 };
 use reinhardt::ClientPath;
 use reinhardt::ClientRouter;
+use reinhardt::pages::client_page;
 use reinhardt::pages::component::Page;
-use reinhardt::pages::page;
 
 pub fn client_url_patterns() -> ClientRouter {
 	ClientRouter::new()
@@ -66,9 +66,10 @@ pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
 }
 
 /// Error page used as the `not_found` fallback.
+#[client_page]
 fn error_page(message: &str) -> Page {
 	let message = message.to_string();
-	page!(|message: String| {
+	reinhardt::pages::page!(|message: String| {
 		div {
 			class: "layout-page",
 			div {

@@ -8,6 +8,7 @@
 //! - `head!` - HTML head section DSL macro
 //! - `form!` - Type-safe form component macro with reactive bindings
 //! - `#[server_fn]` - Server Functions (RPC) macro
+//! - `#[client_page]` - Client page function macro with native route-table stubs
 //! - `#[wasm_server_api]` - API parity guard for matching WASM/server surfaces
 //!
 //! ## Form Design
@@ -64,6 +65,7 @@
 
 use proc_macro::TokenStream;
 
+mod client_page;
 mod component;
 mod crate_paths;
 mod form;
@@ -105,6 +107,12 @@ mod wasm_server_api;
 #[proc_macro_attribute]
 pub fn server_fn(args: TokenStream, input: TokenStream) -> TokenStream {
 	server_fn::server_fn_impl(args, input)
+}
+
+/// Declares a client page function with a native route-table stub.
+#[proc_macro_attribute]
+pub fn client_page(args: TokenStream, input: TokenStream) -> TokenStream {
+	client_page::client_page_impl(args, input)
 }
 
 /// Derives `FromRequest` for named props structs with extractor fields.
@@ -962,8 +970,8 @@ pub fn head(input: TokenStream) -> TokenStream {
 /// | `PasswordField` | `String` | `PasswordInput` | Password input (masked) |
 /// | `UrlField` | `String` | `UrlInput` | URL input |
 /// | `SlugField` | `String` | `TextInput` | URL-safe slug |
-/// | `UuidField` | `String` | `TextInput` | UUID input |
-/// | `IpAddressField` | `String` | `TextInput` | IP address |
+/// | `UuidField` | `Option<uuid::Uuid>` | `TextInput` | UUID input |
+/// | `IpAddressField` | `Option<std::net::IpAddr>` | `TextInput` | IP address |
 /// | `JsonField` | `String` | `Textarea` | JSON data |
 /// | `HiddenField` | `String` | `HiddenInput` | Hidden field |
 ///

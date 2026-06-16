@@ -1,9 +1,12 @@
 //! Trait-based wrapper resolution for `#[inject]`.
 
-use crate::{Depends, DiResult, Injectable, context::InjectionContext};
+use crate::{
+	Depends, DiResult, FactoryOutput, Injectable, InjectableKey, context::InjectionContext,
+};
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
+use std::sync::Arc;
 
 /// Marker trait for wrapper types that can be resolved by `#[inject]`.
 ///
@@ -14,20 +17,27 @@ use std::pin::Pin;
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_di::{Depends, InjectableType};
+/// use reinhardt_di::{Depends, FactoryOutput, InjectableKey, InjectableType};
+/// use std::sync::Arc;
 ///
-/// struct Lazy<T>(Depends<T>)
+/// struct ConfigKey;
+///
+/// impl InjectableKey for ConfigKey {}
+///
+/// struct Lazy<K, T>(Depends<K, T>)
 /// where
+///     K: InjectableKey,
 ///     T: Send + Sync + 'static;
 ///
-/// impl<T> InjectableType for Lazy<T>
+/// impl<K, T> InjectableType for Lazy<K, T>
 /// where
+///     K: InjectableKey,
 ///     T: Send + Sync + 'static,
 /// {
-///     type Inner = T;
+///     type Inner = FactoryOutput<K, T>;
 ///
-///     fn from_depends(depends: Depends<Self::Inner>) -> Self {
-///         Self(depends)
+///     fn from_resolved(output: Arc<Self::Inner>, use_cache: bool) -> Self {
+///         Self(Depends::from_output(output, use_cache))
 ///     }
 /// }
 /// ```
@@ -36,17 +46,18 @@ pub trait InjectableType: Sized + Send + 'static {
 	type Inner: Send + Sync + 'static;
 
 	/// Build the wrapper from the resolved dependency handle.
-	fn from_depends(depends: Depends<Self::Inner>) -> Self;
+	fn from_resolved(inner: Arc<Self::Inner>, use_cache: bool) -> Self;
 }
 
-impl<T> InjectableType for Depends<T>
+impl<K, T> InjectableType for Depends<K, T>
 where
+	K: InjectableKey,
 	T: Send + Sync + 'static,
 {
-	type Inner = T;
+	type Inner = FactoryOutput<K, T>;
 
-	fn from_depends(depends: Depends<Self::Inner>) -> Self {
-		depends
+	fn from_resolved(output: Arc<Self::Inner>, use_cache: bool) -> Self {
+		Depends::from_output(output, use_cache)
 	}
 }
 
@@ -61,8 +72,8 @@ pub struct __InjectResolver<T> {
 
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy, Default)]
-pub struct __InjectDependsResolver<T> {
-	_marker: PhantomData<fn() -> T>,
+pub struct __InjectDependsResolver<K, T> {
+	_marker: PhantomData<fn() -> (K, T)>,
 }
 
 impl<T> __InjectResolver<T> {
@@ -73,7 +84,7 @@ impl<T> __InjectResolver<T> {
 	}
 }
 
-impl<T> __InjectDependsResolver<T> {
+impl<K, T> __InjectDependsResolver<K, T> {
 	pub const fn new() -> Self {
 		Self {
 			_marker: PhantomData,
@@ -108,69 +119,73 @@ where
 		T: 'a,
 	{
 		Box::pin(async move {
-			let depends = Depends::<T::Inner>::resolve_from_registry(ctx, use_cache).await?;
-			Ok(T::from_depends(depends))
+			let inner = ctx.resolve_with_cache::<T::Inner>(use_cache).await?;
+			Ok(T::from_resolved(inner, use_cache))
 		})
 	}
 }
 
 #[doc(hidden)]
-pub trait __InjectDependsFallbackResolver<T>
+pub trait __InjectDependsFallbackResolver<K, T>
 where
-	T: Injectable,
+	K: InjectableKey,
+	T: Send + Sync + 'static,
 {
 	fn __resolve_inject_depends_parameter<'a>(
 		self,
 		ctx: &'a InjectionContext,
 		use_cache: bool,
-	) -> __InjectResolveFuture<'a, Depends<T>>
+	) -> __InjectResolveFuture<'a, Depends<K, T>>
 	where
 		T: 'a;
 }
 
-impl<T> __InjectDependsFallbackResolver<T> for __InjectDependsResolver<T>
+impl<K, T> __InjectDependsFallbackResolver<K, T> for __InjectDependsResolver<K, T>
 where
-	T: Injectable,
+	K: InjectableKey,
+	T: Send + Sync + 'static,
 {
 	fn __resolve_inject_depends_parameter<'a>(
 		self,
 		ctx: &'a InjectionContext,
 		use_cache: bool,
-	) -> __InjectResolveFuture<'a, Depends<T>>
+	) -> __InjectResolveFuture<'a, Depends<K, T>>
 	where
 		T: 'a,
 	{
-		Box::pin(async move { Depends::<T>::resolve(ctx, use_cache).await })
+		Box::pin(async move { Depends::<K, T>::resolve_from_registry(ctx, use_cache).await })
 	}
 }
 
 #[doc(hidden)]
-pub trait __InjectDependsRegistryResolver<T>
+pub trait __InjectDependsRegistryResolver<K, T>
 where
+	K: InjectableKey,
 	T: Send + Sync + 'static,
 {
 	fn __resolve_inject_depends_parameter<'a>(
 		self,
 		ctx: &'a InjectionContext,
 		use_cache: bool,
-	) -> __InjectResolveFuture<'a, Depends<T>>
+	) -> __InjectResolveFuture<'a, Depends<K, T>>
 	where
 		T: 'a;
 }
 
-impl<T> __InjectDependsRegistryResolver<T> for &__InjectDependsResolver<T>
+impl<K, T> __InjectDependsRegistryResolver<K, T> for &__InjectDependsResolver<K, T>
 where
+	K: InjectableKey,
 	T: Send + Sync + 'static,
 {
 	fn __resolve_inject_depends_parameter<'a>(
 		self,
 		ctx: &'a InjectionContext,
 		use_cache: bool,
-	) -> __InjectResolveFuture<'a, Depends<T>>
+	) -> __InjectResolveFuture<'a, Depends<K, T>>
 	where
 		T: 'a,
 	{
-		Box::pin(async move { Depends::<T>::resolve_from_registry(ctx, use_cache).await })
+		Box::pin(async move { Depends::<K, T>::resolve_from_registry(ctx, use_cache).await })
 	}
 }
 
@@ -201,9 +216,15 @@ where
 		T: 'a,
 	{
 		Box::pin(async move {
-			Depends::<T>::resolve(ctx, use_cache)
-				.await
-				.map(Depends::into_inner)
+			if use_cache {
+				match ctx.resolve::<T>().await {
+					Ok(value) => Ok(value.as_ref().clone()),
+					Err(crate::DiError::DependencyNotRegistered { .. }) => T::inject(ctx).await,
+					Err(err) => Err(err),
+				}
+			} else {
+				T::inject_uncached(ctx).await
+			}
 		})
 	}
 }

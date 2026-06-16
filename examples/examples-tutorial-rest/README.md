@@ -9,7 +9,7 @@ This example corresponds to the REST tutorial Parts 1-6:
 - **Part 1: Project Setup** - Project structure, settings, the `manage` CLI, the development server
 - **Part 2: Your First Endpoints** - `#[get]` / `#[post]` / `#[put]` / `#[delete]`, route `name = "..."`, `Path` / `Query` / `Json` extractors, `ViewResult`
 - **Part 3: Models and the Database** - `#[model]` `Snippet`, migrations, `migrate`, the builder API
-- **Part 4: Dependency Injection** - `#[inject] Depends<DatabaseConnection>`, `#[injectable]` / `#[injectable_factory]`, scopes, `TypeId`-keyed registration, the `Result<T, NewError>` pattern with `Depends<Result<T, E>>`. This is where the CRUD handlers are wired to the real ORM
+- **Part 4: Dependency Injection** - direct `#[inject] DatabaseConnection`, keyed `#[injectable]` provider functions, scopes, `FactoryOutput<K, T>` registration, and `Depends<K, Result<T, E>>`. This is where the CRUD handlers are wired to the real ORM
 - **Part 5: Serializers and Validation** - `Validate` derive, `pre_validate = true`, error responses and status codes
 - **Part 6: Bonus — ViewSets and Routers** - the same CRUD compressed to ~15 lines with `ModelViewSet`; pagination, filtering, ordering
 
@@ -29,16 +29,16 @@ This example corresponds to the REST tutorial Parts 1-6:
 ```
 GET    /api/snippets/         - List all snippets
 POST   /api/snippets/         - Create a new snippet
-GET    /api/snippets/config/  - DI demonstration: list configuration (Depends<Result<T, E>>)
+GET    /api/snippets/config/  - DI demonstration: keyed fallible configuration
 GET    /api/snippets/<id>/    - Retrieve a specific snippet
 PUT    /api/snippets/<id>/    - Update a snippet
 DELETE /api/snippets/<id>/    - Delete a snippet
 ```
 
-All handlers receive a database connection through dependency injection
-(`#[inject] db: Depends<DatabaseConnection>`) and query the real ORM. The
+All handlers receive a database connection through direct dependency injection
+(`#[inject] db: DatabaseConnection`) and query the real ORM. The
 `/api/snippets/config/` endpoint is a teaching aid for
-`Depends<Result<T, E>>`; see `src/apps/snippets/di.rs`.
+`Depends<K, Result<T, E>>`; see `src/apps/snippets/di.rs`.
 
 ## Setup
 
@@ -199,8 +199,8 @@ This example is designed to be studied alongside the REST tutorial:
 
 - `src/apps/snippets/models.rs` defines the `Snippet` model with `#[model(app_label = "snippets", table_name = "snippets")]`, typed fields, `created_at`, and the `highlighted()` helper.
 - `src/apps/snippets/serializers.rs` defines `SnippetSerializer` with `Validate` length rules and `SnippetResponse::from_model()`.
-- `src/apps/snippets/di.rs` registers a plain singleton config and a fallible `Result<SnippetListConfig, ConfigError>` factory to demonstrate TypeId-keyed DI registrations.
-- `src/apps/snippets/views.rs` exposes function-based CRUD handlers with `#[get]`, `#[post(pre_validate = true)]`, `#[put]`, and `#[delete]`, resolving `DatabaseConnection` through `Depends<DatabaseConnection>`.
+- `src/apps/snippets/di.rs` registers keyed singleton config providers with `FactoryOutput<K, T>`, including a fallible `Result<SnippetListConfig, ConfigError>` output.
+- `src/apps/snippets/views.rs` exposes function-based CRUD handlers with `#[get]`, `#[post(pre_validate = true)]`, `#[put]`, and `#[delete]`, resolving `DatabaseConnection` through direct injection.
 - `src/apps/snippets/views.rs` also exposes a `#[reinhardt::viewset(basename = "snippet")]` `ModelViewSet` with pagination, filtering, and ordering.
 - `src/apps/snippets/urls.rs` registers both function-based endpoints and ViewSet endpoints on one `ServerRouter`.
 - `src/config/urls.rs` uses `#[routes]` and mounts the snippets router under the literal `/api/` prefix.

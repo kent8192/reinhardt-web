@@ -29,7 +29,7 @@ fn generate_inject_resolver_expr(
 	ctx: proc_macro2::TokenStream,
 	use_cache: bool,
 ) -> proc_macro2::TokenStream {
-	fn depends_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
+	fn depends_key_value_types(ty: &syn::Type) -> Option<(&syn::Type, &syn::Type)> {
 		let syn::Type::Path(type_path) = ty else {
 			return None;
 		};
@@ -40,21 +40,23 @@ fn generate_inject_resolver_expr(
 		let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
 			return None;
 		};
-		match args.args.first()? {
-			syn::GenericArgument::Type(inner_ty) => Some(inner_ty),
-			_ => None,
+		if args.args.len() != 2 {
+			return None;
 		}
+		let mut generic_args = args.args.iter();
+		let syn::GenericArgument::Type(key_ty) = generic_args.next()? else {
+			return None;
+		};
+		let syn::GenericArgument::Type(value_ty) = generic_args.next()? else {
+			return None;
+		};
+		Some((key_ty, value_ty))
 	}
 
-	if let Some(inner_ty) = depends_inner_type(ty) {
+	if let Some((key_ty, value_ty)) = depends_key_value_types(ty) {
 		quote! {
 			{
-				use #di_crate::{
-					__InjectDependsFallbackResolver as _,
-					__InjectDependsRegistryResolver as _,
-				};
-				#di_crate::__InjectDependsResolver::<#inner_ty>::new()
-					.__resolve_inject_depends_parameter(#ctx, #use_cache)
+				#di_crate::Depends::<#key_ty, #value_ty>::resolve_from_registry(#ctx, #use_cache)
 					.await
 			}
 		}
@@ -1317,6 +1319,9 @@ fn generate_server_handler(
 	// active (#4711). The struct + ServerFnMetadata impl are always present;
 	// the optional `Args` struct and `MockableServerFn` impl live behind the
 	// inner `feature = "msw"` cfg (see `msw_wasm_inner_tokens` above).
+	// Parity: the marker module is P1. WASM emits the marker so
+	// `.server_fn(function_name::marker)` remains nameable in shared route
+	// declarations, but route registration is native-only behavior.
 	let wasm_marker_tokens = quote! {
 		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 		#vis mod #marker_module_name {
@@ -1333,7 +1338,11 @@ fn generate_server_handler(
 			#[allow(unused_imports)]
 			use super::*;
 
-			#[doc = concat!("Marker struct for server function `", #name_str, "` (use with `.server_fn()`)")]
+			#[doc = concat!("Marker struct for server function `", #name_str, "` (use with `.server_fn()`).")]
+			#[doc = ""]
+			#[doc = "Parity: P1."]
+			#[doc = ""]
+			#[doc = "The marker is emitted on WASM so shared route declarations can name it, but server route registration is native-only behavior."]
 			pub struct marker;
 
 			impl #pages_crate::server_fn::ServerFnMetadata for marker {
@@ -1454,7 +1463,11 @@ fn generate_server_handler(
 		#vis mod #marker_module_name {
 			use super::*;
 
-			#[doc = concat!("Marker struct for server function `", #name_str, "` (use with `.server_fn()`)")]
+			#[doc = concat!("Marker struct for server function `", #name_str, "` (use with `.server_fn()`).")]
+			#[doc = ""]
+			#[doc = "Parity: P1."]
+			#[doc = ""]
+			#[doc = "The marker is emitted on both native and WASM so shared route declarations can name it. Native builds register the server handler; WASM builds keep the marker metadata inert."]
 			pub struct marker;
 
 			// Cross-target metadata. ServerFnMetadata lives in reinhardt-pages

@@ -317,18 +317,19 @@ pub async fn current_tenant(
 ```rust,ignore
 use reinhardt::di::Depends;
 use reinhardt::middleware::session::{
-    SessionAuthExt, SessionData, SessionStore,
+    SessionAuthExt, SessionData, SessionStore, SessionStoreKey,
 };
+use std::sync::Arc;
 
 #[server_fn]
 pub async fn login(
     username: String,
     password: String,
     #[inject] mut session: SessionData,
-    #[inject] store: Depends<SessionStore>,
+    #[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
 ) -> Result<UserInfo, ServerFnError> {
     let user = authenticate(&username, &password).await?;
-    session.login(&store, user.id())
+    session.login(&**store, user.id())
         .map_err(|e| ServerFnError::application(e.to_string()))?;
     Ok(UserInfo::from(user))
 }
@@ -336,9 +337,9 @@ pub async fn login(
 #[server_fn]
 pub async fn logout(
     #[inject] mut session: SessionData,
-    #[inject] store: Depends<SessionStore>,
+    #[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
 ) -> Result<(), ServerFnError> {
-    session.logout(&store);
+    session.logout(&**store);
     Ok(())
 }
 ```

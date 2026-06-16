@@ -35,10 +35,10 @@ impl Injectable for UserService {
 	}
 }
 
-/// Test: Nested injection (Depends<T> and direct injection)
+/// Test: Nested direct injection
 ///
-/// Tests that the same type can be injected both directly and via Depends<T>
-/// in the same handler function.
+/// Tests that an `Injectable` implementation can resolve another direct
+/// `Injectable` dependency from the same context.
 #[tokio::test]
 async fn test_nested_inject_handler() {
 	let singleton = Arc::new(SingletonScope::new());

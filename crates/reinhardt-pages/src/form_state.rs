@@ -36,6 +36,65 @@ pub enum RevalidateOn {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct NoDeps;
 
+/// Opaque runtime key for a collection item.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CollectionItemKey(u64);
+
+impl CollectionItemKey {
+	const GENERATED_KEY_FLAG: u64 = 1 << 63;
+
+	/// Creates a collection item key from a generated runtime index.
+	#[doc(hidden)]
+	pub fn from_runtime_index(value: u64) -> Self {
+		Self(value | Self::GENERATED_KEY_FLAG)
+	}
+
+	fn next(counter: &Cell<u64>) -> Self {
+		let value = counter.get();
+		assert!(
+			value < Self::GENERATED_KEY_FLAG,
+			"collection item key counter exhausted runtime key namespace"
+		);
+		counter.set(value + 1);
+		Self(value)
+	}
+}
+
+/// Runtime value paired with its collection item key and current index.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CollectionItem<T> {
+	key: CollectionItemKey,
+	index: usize,
+	value: T,
+}
+
+impl<T> CollectionItem<T> {
+	/// Creates a runtime collection item.
+	pub fn new(key: CollectionItemKey, index: usize, value: T) -> Self {
+		Self { key, index, value }
+	}
+
+	/// Returns the runtime key for this collection item.
+	pub fn key(&self) -> CollectionItemKey {
+		self.key
+	}
+
+	/// Returns the current positional index for this collection item.
+	pub fn index(&self) -> usize {
+		self.index
+	}
+
+	/// Returns the current value for this collection item.
+	pub fn value(&self) -> &T {
+		&self.value
+	}
+
+	/// Consumes this collection item and returns its value.
+	pub fn into_value(self) -> T {
+		self.value
+	}
+}
+
 /// A field-level error.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FieldError {
@@ -56,6 +115,119 @@ impl FieldError {
 	}
 }
 
+/// Experimental raw value kind requested by a custom widget adapter.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FormWidgetValueKind {
+	/// A single string value.
+	Value,
+	/// A boolean checked value.
+	Checked,
+	/// A file value. File parsing is not implemented yet.
+	File,
+	/// Multiple string values.
+	MultiValue,
+}
+
+/// Experimental raw value passed between generated forms and custom widget adapters.
+#[non_exhaustive]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CustomWidgetRawValue {
+	/// A single string value.
+	String(String),
+	/// A boolean checked value.
+	Bool(bool),
+	/// Multiple string values.
+	Strings(Vec<String>),
+	/// A raw value kind not supported by the current experimental runtime.
+	Unsupported,
+}
+
+/// Experimental error returned by a custom widget adapter.
+#[non_exhaustive]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FormWidgetError {
+	message: String,
+}
+
+impl FormWidgetError {
+	/// Creates an experimental custom widget adapter error.
+	pub fn new(message: impl Into<String>) -> Self {
+		Self {
+			message: message.into(),
+		}
+	}
+
+	/// Returns the experimental custom widget adapter error message.
+	pub fn message(&self) -> &str {
+		&self.message
+	}
+}
+
+/// Experimental context passed to custom widget adapters.
+#[non_exhaustive]
+#[derive(Clone)]
+pub struct CustomWidgetContext<Value> {
+	/// Current typed field value.
+	pub value: Value,
+	/// Whether the generated field should be disabled.
+	pub disabled: bool,
+	/// Whether the generated field is required.
+	pub required: bool,
+	/// Whether the generated field has been touched.
+	pub touched: bool,
+	/// Current field error, if any.
+	pub error: Option<FieldError>,
+	/// Generated form field name.
+	pub name: String,
+	/// Generated form field id.
+	pub id: String,
+	/// Experimental raw-change callback for custom widget components.
+	///
+	/// The generated form parses raw values through the adapter and updates the
+	/// generated field state when parsing succeeds. Parse failures are returned
+	/// to the caller as experimental adapter errors and surfaced through
+	/// runtime field error state.
+	pub on_raw_change: Rc<dyn Fn(CustomWidgetRawValue) -> Result<(), FormWidgetError>>,
+}
+
+impl<Value> CustomWidgetContext<Value> {
+	/// Creates an experimental custom widget context.
+	pub fn new(
+		value: Value,
+		on_raw_change: Rc<dyn Fn(CustomWidgetRawValue) -> Result<(), FormWidgetError>>,
+	) -> Self {
+		Self {
+			value,
+			disabled: false,
+			required: false,
+			touched: false,
+			error: None,
+			name: String::new(),
+			id: String::new(),
+			on_raw_change,
+		}
+	}
+}
+
+/// Experimental adapter trait for `CustomWidget(...)` generated form fields.
+pub trait FormWidgetAdapter<FieldValue> {
+	/// Props accepted by the custom widget component.
+	type ComponentProps;
+
+	/// Returns the raw value kind consumed by this experimental adapter.
+	fn value_kind() -> FormWidgetValueKind;
+
+	/// Builds component props from the generated field context.
+	fn props(ctx: CustomWidgetContext<FieldValue>) -> Self::ComponentProps;
+
+	/// Parses a raw widget value into the typed field value.
+	fn parse(raw: CustomWidgetRawValue) -> Result<FieldValue, FormWidgetError>;
+
+	/// Formats a typed field value into a raw widget value.
+	fn format(value: &FieldValue) -> CustomWidgetRawValue;
+}
+
 /// Validation failure for a generated form.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FormValidationError<Field>
@@ -72,6 +244,8 @@ where
 	Field: Copy + Eq + Hash,
 {
 	field_errors: HashMap<Field, FieldError>,
+	collection_errors: HashMap<String, FieldError>,
+	path_errors: HashMap<String, FieldError>,
 }
 
 impl<Field> FormValidationErrorDetails<Field>
@@ -81,6 +255,8 @@ where
 	fn new() -> Self {
 		Self {
 			field_errors: HashMap::new(),
+			collection_errors: HashMap::new(),
+			path_errors: HashMap::new(),
 		}
 	}
 }
@@ -120,6 +296,16 @@ where
 		&self.details.field_errors
 	}
 
+	/// Returns generated collection validation errors.
+	pub fn collection_errors(&self) -> &HashMap<String, FieldError> {
+		&self.details.collection_errors
+	}
+
+	/// Returns nested collection path errors.
+	pub fn path_errors(&self) -> &HashMap<String, FieldError> {
+		&self.details.path_errors
+	}
+
 	/// Returns the form-level error, if any.
 	pub fn form_error(&self) -> Option<&str> {
 		self.form_error.as_deref()
@@ -132,14 +318,35 @@ where
 			.insert(field, FieldError::new(message));
 	}
 
+	/// Adds or replaces one generated collection validation error.
+	pub fn add_collection_error(
+		&mut self,
+		collection_key: impl Into<String>,
+		message: impl Into<String>,
+	) {
+		self.details
+			.collection_errors
+			.insert(collection_key.into(), FieldError::new(message));
+	}
+
+	/// Adds or replaces one nested collection path validation error.
+	pub fn add_path_error(&mut self, path_key: impl Into<String>, message: impl Into<String>) {
+		self.details
+			.path_errors
+			.insert(path_key.into(), FieldError::new(message));
+	}
+
 	/// Sets the form-level validation error.
 	pub fn set_form_error(&mut self, message: impl Into<String>) {
 		self.form_error = Some(message.into());
 	}
 
-	/// Returns whether this error contains no field or form error.
+	/// Returns whether this error contains no field, path, or form error.
 	pub fn is_empty(&self) -> bool {
-		self.details.field_errors.is_empty() && self.form_error.is_none()
+		self.details.field_errors.is_empty()
+			&& self.details.collection_errors.is_empty()
+			&& self.details.path_errors.is_empty()
+			&& self.form_error.is_none()
 	}
 }
 
@@ -184,6 +391,30 @@ pub struct FieldState {
 	/// Whether this field was changed through the runtime.
 	pub is_touched: bool,
 	/// Current field-level error.
+	pub error: Option<FieldError>,
+}
+
+/// Snapshot for a nested field path inside a generated collection field.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FieldPathState {
+	/// Whether this field path differs from its default value.
+	pub is_dirty: bool,
+	/// Whether this field path was changed through the runtime.
+	pub is_touched: bool,
+	/// Current field path-level error.
+	pub error: Option<FieldError>,
+}
+
+/// Snapshot for a generated collection field.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CollectionState {
+	/// Number of items currently present in the collection.
+	pub len: usize,
+	/// Whether the collection differs from its default value.
+	pub is_dirty: bool,
+	/// Whether the collection was changed through the runtime.
+	pub is_touched: bool,
+	/// Current collection-level error.
 	pub error: Option<FieldError>,
 }
 
@@ -262,10 +493,76 @@ pub trait FormRuntimeSource: Clone + 'static {
 		defaults: &Self::Values,
 	) -> bool;
 
+	/// Returns whether the generated values differ from the comparison baseline.
+	fn runtime_values_are_dirty(&self, current: &Self::Values, defaults: &Self::Values) -> bool {
+		self.runtime_fields()
+			.iter()
+			.copied()
+			.any(|field| self.runtime_field_is_dirty(field, current, defaults))
+	}
+
+	/// Applies new defaults to pristine runtime values while preserving dirty values.
+	fn runtime_apply_pristine_values(
+		&self,
+		current: &Self::Values,
+		old_defaults: &Self::Values,
+		new_defaults: &Self::Values,
+	) {
+		for field in self.runtime_fields() {
+			let field = *field;
+			if !self.runtime_field_is_dirty(field, current, old_defaults) {
+				self.runtime_apply_field_value(field, new_defaults);
+			}
+		}
+	}
+
 	/// Returns the generated signal for a field when `T` matches the field type.
 	fn runtime_watch_field<T>(&self, field: Self::Field) -> Option<Signal<T>>
 	where
 		T: Clone + 'static;
+
+	/// Returns the current custom-widget bridge error for one generated field.
+	fn runtime_custom_widget_error(&self, _field: Self::Field) -> Option<FieldError> {
+		None
+	}
+
+	/// Sets or clears the current custom-widget bridge error for one generated field.
+	fn runtime_set_custom_widget_error(&self, _field: Self::Field, _error: Option<FieldError>) {}
+
+	/// Captures nested collection field values using the current runtime item keys.
+	fn runtime_path_values_from_values(
+		&self,
+		_values: &Self::Values,
+	) -> HashMap<String, Rc<dyn Any>> {
+		HashMap::new()
+	}
+
+	/// Captures current nested collection field values using runtime item keys.
+	fn runtime_path_values(&self) -> HashMap<String, Rc<dyn Any>> {
+		self.runtime_path_values_from_values(&self.runtime_current_values())
+	}
+
+	/// Returns whether a stable nested path key currently exists.
+	fn runtime_path_exists(&self, _path_key: &str) -> bool {
+		false
+	}
+
+	/// Compares a current nested path value with a captured default value.
+	fn runtime_path_value_equals(&self, _path_key: &str, _default: &dyn Any) -> Option<bool> {
+		None
+	}
+
+	/// Synchronizes cached nested field path signals from current form values.
+	fn runtime_sync_path_signals(&self) {}
+
+	/// Returns collection keys whose values changed between two value snapshots.
+	fn runtime_changed_collection_keys(
+		&self,
+		_current: &Self::Values,
+		_previous: &Self::Values,
+	) -> Vec<String> {
+		Vec::new()
+	}
 
 	/// Runs generated validation.
 	fn runtime_validate(&self) -> Result<(), FormValidationError<Self::Field>> {
@@ -279,6 +576,80 @@ pub trait FormRuntimeSource: Clone + 'static {
 
 	/// Returns generated field tokens in source order.
 	fn runtime_fields(&self) -> &'static [Self::Field];
+}
+
+/// Trait implemented by `form!` generated forms that expose runtime collections.
+pub trait FormCollectionRuntimeSource: FormRuntimeSource {
+	/// Generated collection token enum for this form.
+	type Collection: Copy + Eq + Hash + Debug + 'static;
+	/// Generated field path token enum for nested collection fields.
+	type FieldPath: Clone + Eq + Hash + Debug + 'static;
+
+	/// Returns the stable runtime map key for a generated field path.
+	fn runtime_field_path_key(path: &Self::FieldPath) -> String;
+
+	/// Returns the stable runtime map key for a generated collection.
+	fn runtime_collection_key(collection: Self::Collection) -> String;
+
+	/// Returns stable runtime map keys for every nested field path in an item.
+	fn runtime_field_path_keys_for_item(
+		collection: Self::Collection,
+		key: CollectionItemKey,
+	) -> Vec<String>;
+
+	/// Returns the current length for a generated collection.
+	fn runtime_collection_len(&self, collection: Self::Collection) -> usize;
+
+	/// Returns whether one generated collection differs between values and defaults.
+	fn runtime_collection_is_dirty(
+		&self,
+		collection: Self::Collection,
+		current: &Self::Values,
+		defaults: &Self::Values,
+	) -> bool;
+
+	/// Inserts one collection item value at the requested index.
+	fn runtime_insert_collection_item<T>(
+		&self,
+		collection: Self::Collection,
+		index: usize,
+		key: CollectionItemKey,
+		value: T,
+	) where
+		T: Any + Clone + 'static;
+
+	/// Removes one collection item by key.
+	fn runtime_remove_collection_item(
+		&self,
+		collection: Self::Collection,
+		key: CollectionItemKey,
+	) -> bool;
+
+	/// Moves one collection item by key.
+	fn runtime_move_collection_item(
+		&self,
+		collection: Self::Collection,
+		key: CollectionItemKey,
+		target_index: usize,
+	) -> Option<(usize, usize)>;
+
+	/// Returns the generated signal for a nested field path when `T` matches.
+	fn runtime_watch_path<T>(&self, path: Self::FieldPath) -> Option<Signal<T>>
+	where
+		T: Clone + 'static;
+
+	/// Applies one typed value to a generated nested field path.
+	fn runtime_set_path_value<T>(&self, path: Self::FieldPath, value: T) -> bool
+	where
+		T: Any + 'static;
+
+	/// Returns whether one nested field path differs between values and defaults.
+	fn runtime_path_is_dirty(
+		&self,
+		path: &Self::FieldPath,
+		current: &Self::Values,
+		defaults: &Self::Values,
+	) -> bool;
 }
 
 /// Builder returned by `use_form(&form)`.
@@ -305,10 +676,7 @@ fn form_values_are_dirty<Form>(form: &Form, current: &Form::Values, defaults: &F
 where
 	Form: FormRuntimeSource,
 {
-	form.runtime_fields()
-		.iter()
-		.copied()
-		.any(|field| form.runtime_field_is_dirty(field, current, defaults))
+	form.runtime_values_are_dirty(current, defaults)
 }
 
 #[allow(
@@ -320,9 +688,14 @@ fn build_signal_sync_effect<Form>(
 	default_values: Rc<RefCell<Form::Values>>,
 	state: FormState<Form::Field>,
 	touched_fields: Rc<RefCell<HashMap<Form::Field, bool>>>,
+	touched_collections: Rc<RefCell<HashMap<String, bool>>>,
+	touched_paths: Rc<RefCell<HashMap<String, bool>>>,
+	collection_errors: Signal<HashMap<String, FieldError>>,
+	path_errors: Signal<HashMap<String, FieldError>>,
 	values_signal: Signal<Form::Values>,
 	subscribers: SubscriberSlots<Form>,
 	observed_values: Rc<RefCell<Form::Values>>,
+	custom_widget_error_fields: Rc<RefCell<HashMap<Form::Field, FieldError>>>,
 	signal_sync_suppressed: Rc<Cell<bool>>,
 	revalidate_on: RevalidateOn,
 ) -> Rc<Effect>
@@ -333,21 +706,64 @@ where
 		move || {
 			let current = form.runtime_current_values();
 			let previous = observed_values.borrow().clone();
+			let custom_widget_errors = collect_custom_widget_errors(&form);
 			let changed_fields: Vec<Form::Field> = form
 				.runtime_fields()
 				.iter()
 				.copied()
 				.filter(|field| form.runtime_field_is_dirty(*field, &current, &previous))
 				.collect();
+			let values_changed = form.runtime_values_are_dirty(&current, &previous);
+			let current_path_values = form.runtime_path_values_from_values(&current);
+			let previous_path_values = form.runtime_path_values_from_values(&previous);
+			let changed_path_keys: Vec<String> = current_path_values
+				.keys()
+				.filter(|path_key| {
+					previous_path_values
+						.get(*path_key)
+						.and_then(|previous_value| {
+							form.runtime_path_value_equals(path_key, previous_value.as_ref())
+						})
+						.map(|matches_current| !matches_current)
+						.unwrap_or(true)
+				})
+				.cloned()
+				.collect();
+			let changed_collection_keys = form.runtime_changed_collection_keys(&current, &previous);
 			*observed_values.borrow_mut() = current.clone();
 
-			if signal_sync_suppressed.get() || changed_fields.is_empty() {
+			if signal_sync_suppressed.get() || (changed_fields.is_empty() && !values_changed) {
+				if !signal_sync_suppressed.get() {
+					sync_custom_widget_errors_in_state(
+						&state,
+						&custom_widget_error_fields,
+						&custom_widget_errors,
+						&collection_errors,
+						&path_errors,
+					);
+				}
 				return;
 			}
 
 			for field in &changed_fields {
 				touched_fields.borrow_mut().insert(*field, true);
 			}
+			for collection_key in changed_collection_keys {
+				touched_collections
+					.borrow_mut()
+					.insert(collection_key, true);
+			}
+			{
+				let mut touched_paths = touched_paths.borrow_mut();
+				touched_paths.retain(|path_key, _| current_path_values.contains_key(path_key));
+				for path_key in changed_path_keys {
+					touched_paths.insert(path_key, true);
+				}
+			}
+			let mut path_errors_map = path_errors.get();
+			path_errors_map.retain(|path_key, _| current_path_values.contains_key(path_key));
+			path_errors.set(path_errors_map);
+			form.runtime_sync_path_signals();
 			state.is_touched.set(true);
 			state.is_dirty.set(form_values_are_dirty(
 				&form,
@@ -358,15 +774,77 @@ where
 
 			if revalidate_on == RevalidateOn::Change {
 				let result = form.runtime_validate();
-				apply_validation_result_to_state(&state, &result);
+				apply_validation_result_to_state(&state, &collection_errors, &path_errors, &result);
 				notify_subscribers(&subscribers, FormEvent::Validated);
 			}
+			sync_custom_widget_errors_in_state(
+				&state,
+				&custom_widget_error_fields,
+				&custom_widget_errors,
+				&collection_errors,
+				&path_errors,
+			);
 			for field in changed_fields {
 				notify_subscribers(&subscribers, FormEvent::ValueChanged { field });
 			}
 		},
 		EffectTiming::Layout,
 	))
+}
+
+fn collect_custom_widget_errors<Form>(form: &Form) -> HashMap<Form::Field, FieldError>
+where
+	Form: FormRuntimeSource,
+{
+	form.runtime_fields()
+		.iter()
+		.copied()
+		.filter_map(|field| {
+			form.runtime_custom_widget_error(field)
+				.map(|error| (field, error))
+		})
+		.collect()
+}
+
+fn sync_custom_widget_errors_in_state<Field>(
+	state: &FormState<Field>,
+	tracked_fields: &Rc<RefCell<HashMap<Field, FieldError>>>,
+	custom_widget_errors: &HashMap<Field, FieldError>,
+	collection_errors: &Signal<HashMap<String, FieldError>>,
+	path_errors: &Signal<HashMap<String, FieldError>>,
+) where
+	Field: Copy + Eq + Hash + 'static,
+{
+	let mut tracked = tracked_fields.borrow_mut();
+	let mut field_errors = state.field_errors.get_untracked();
+	let mut changed = false;
+
+	let previously_tracked: Vec<(Field, FieldError)> = tracked
+		.iter()
+		.map(|(field, error)| (*field, error.clone()))
+		.collect();
+	for (field, previous_error) in previously_tracked {
+		if !custom_widget_errors.contains_key(&field) {
+			tracked.remove(&field);
+			if field_errors.get(&field) == Some(&previous_error) {
+				field_errors.remove(&field);
+				changed = true;
+			}
+		}
+	}
+
+	for (field, error) in custom_widget_errors {
+		if field_errors.get(field) != Some(error) {
+			field_errors.insert(*field, error.clone());
+			changed = true;
+		}
+		tracked.insert(*field, error.clone());
+	}
+
+	if changed {
+		state.field_errors.set(field_errors);
+		sync_first_error_in_state(state, collection_errors, path_errors);
+	}
 }
 
 fn adapt_no_deps_callback<Form, Deps>(
@@ -386,9 +864,16 @@ where
 			revalidate_on: handle.revalidate_on,
 			state: handle.state.clone(),
 			touched_fields: Rc::clone(&handle.touched_fields),
+			touched_collections: Rc::clone(&handle.touched_collections),
+			touched_paths: Rc::clone(&handle.touched_paths),
+			collection_errors: handle.collection_errors.clone(),
+			path_errors: handle.path_errors.clone(),
+			path_default_values: Rc::clone(&handle.path_default_values),
 			values_signal: handle.values_signal.clone(),
 			subscribers: Rc::clone(&handle.subscribers),
 			observed_values: Rc::clone(&handle.observed_values),
+			custom_widget_error_fields: Rc::clone(&handle.custom_widget_error_fields),
+			next_collection_item_key: Rc::clone(&handle.next_collection_item_key),
 			signal_sync_suppressed: Rc::clone(&handle.signal_sync_suppressed),
 			_signal_sync_effect: Rc::clone(&handle._signal_sync_effect),
 			on_submit_start: None,
@@ -401,6 +886,8 @@ where
 
 fn apply_validation_result_to_state<Field>(
 	state: &FormState<Field>,
+	collection_errors: &Signal<HashMap<String, FieldError>>,
+	path_errors: &Signal<HashMap<String, FieldError>>,
 	result: &Result<(), FormValidationError<Field>>,
 ) where
 	Field: Copy + Eq + Hash + 'static,
@@ -408,19 +895,26 @@ fn apply_validation_result_to_state<Field>(
 	match result {
 		Ok(()) => {
 			state.field_errors.set(HashMap::new());
+			collection_errors.set(HashMap::new());
+			path_errors.set(HashMap::new());
 			state.form_error.set(None);
-			sync_first_error_in_state(state);
+			sync_first_error_in_state(state, collection_errors, path_errors);
 		}
 		Err(error) => {
 			state.field_errors.set(error.field_errors().clone());
+			collection_errors.set(error.collection_errors().clone());
+			path_errors.set(error.path_errors().clone());
 			state.form_error.set(error.form_error().map(str::to_string));
-			sync_first_error_in_state(state);
+			sync_first_error_in_state(state, collection_errors, path_errors);
 		}
 	}
 }
 
-fn sync_first_error_in_state<Field>(state: &FormState<Field>)
-where
+fn sync_first_error_in_state<Field>(
+	state: &FormState<Field>,
+	collection_errors: &Signal<HashMap<String, FieldError>>,
+	path_errors: &Signal<HashMap<String, FieldError>>,
+) where
 	Field: Copy + Eq + Hash + 'static,
 {
 	let first_field_error = state
@@ -429,8 +923,20 @@ where
 		.values()
 		.next()
 		.map(|error| error.message().to_string());
+	let first_collection_error = collection_errors
+		.get()
+		.values()
+		.next()
+		.map(|error| error.message().to_string());
+	let first_path_error = path_errors
+		.get()
+		.values()
+		.next()
+		.map(|error| error.message().to_string());
 	state.error.set(
 		first_field_error
+			.or(first_collection_error)
+			.or(first_path_error)
 			.or_else(|| state.form_error.get())
 			.or_else(|| state.submit_error.get()),
 	);
@@ -523,6 +1029,9 @@ where
 		let current_values = self.form.runtime_current_values();
 		let is_dirty = form_values_are_dirty(&self.form, &current_values, &default_values);
 		let form = self.form;
+		let path_default_values = Rc::new(RefCell::new(
+			form.runtime_path_values_from_values(&default_values),
+		));
 		let default_values = Rc::new(RefCell::new(default_values));
 		let deps = Rc::new(RefCell::new(self.deps));
 		let state = FormState {
@@ -536,18 +1045,29 @@ where
 			is_submit_successful: Signal::new(false),
 		};
 		let touched_fields = Rc::new(RefCell::new(HashMap::new()));
+		let touched_collections = Rc::new(RefCell::new(HashMap::new()));
+		let touched_paths = Rc::new(RefCell::new(HashMap::new()));
+		let collection_errors = Signal::new(HashMap::new());
+		let path_errors = Signal::new(HashMap::new());
 		let values_signal = Signal::new(current_values.clone());
 		let subscribers = Rc::new(RefCell::new(Vec::new()));
 		let observed_values = Rc::new(RefCell::new(current_values));
+		let custom_widget_error_fields = Rc::new(RefCell::new(HashMap::new()));
+		let next_collection_item_key = Rc::new(Cell::new(1));
 		let signal_sync_suppressed = Rc::new(Cell::new(false));
 		let signal_sync_effect = build_signal_sync_effect(
 			form.clone(),
 			Rc::clone(&default_values),
 			state.clone(),
 			Rc::clone(&touched_fields),
+			Rc::clone(&touched_collections),
+			Rc::clone(&touched_paths),
+			collection_errors.clone(),
+			path_errors.clone(),
 			values_signal.clone(),
 			Rc::clone(&subscribers),
 			Rc::clone(&observed_values),
+			Rc::clone(&custom_widget_error_fields),
 			Rc::clone(&signal_sync_suppressed),
 			self.revalidate_on,
 		);
@@ -560,9 +1080,16 @@ where
 			revalidate_on: self.revalidate_on,
 			state,
 			touched_fields,
+			touched_collections,
+			touched_paths,
+			collection_errors,
+			path_errors,
+			path_default_values,
 			values_signal,
 			subscribers,
 			observed_values,
+			custom_widget_error_fields,
+			next_collection_item_key,
 			signal_sync_suppressed,
 			_signal_sync_effect: signal_sync_effect,
 			on_submit_start: self.on_submit_start,
@@ -586,9 +1113,16 @@ where
 	revalidate_on: RevalidateOn,
 	state: FormState<Form::Field>,
 	touched_fields: Rc<RefCell<HashMap<Form::Field, bool>>>,
+	touched_collections: Rc<RefCell<HashMap<String, bool>>>,
+	touched_paths: Rc<RefCell<HashMap<String, bool>>>,
+	collection_errors: Signal<HashMap<String, FieldError>>,
+	path_errors: Signal<HashMap<String, FieldError>>,
+	path_default_values: Rc<RefCell<HashMap<String, Rc<dyn Any>>>>,
 	values_signal: Signal<Form::Values>,
 	subscribers: SubscriberSlots<Form>,
 	observed_values: Rc<RefCell<Form::Values>>,
+	custom_widget_error_fields: Rc<RefCell<HashMap<Form::Field, FieldError>>>,
+	next_collection_item_key: Rc<Cell<u64>>,
 	signal_sync_suppressed: Rc<Cell<bool>>,
 	_signal_sync_effect: Rc<Effect>,
 	on_submit_start: Option<SubmitCallback<Form, Deps>>,
@@ -611,9 +1145,16 @@ where
 			revalidate_on: self.revalidate_on,
 			state: self.state.clone(),
 			touched_fields: Rc::clone(&self.touched_fields),
+			touched_collections: Rc::clone(&self.touched_collections),
+			touched_paths: Rc::clone(&self.touched_paths),
+			collection_errors: self.collection_errors.clone(),
+			path_errors: self.path_errors.clone(),
+			path_default_values: Rc::clone(&self.path_default_values),
 			values_signal: self.values_signal.clone(),
 			subscribers: Rc::clone(&self.subscribers),
 			observed_values: Rc::clone(&self.observed_values),
+			custom_widget_error_fields: Rc::clone(&self.custom_widget_error_fields),
+			next_collection_item_key: Rc::clone(&self.next_collection_item_key),
 			signal_sync_suppressed: Rc::clone(&self.signal_sync_suppressed),
 			_signal_sync_effect: Rc::clone(&self._signal_sync_effect),
 			on_submit_start: self.on_submit_start.clone(),
@@ -698,8 +1239,14 @@ where
 		self.form.runtime_apply_values(&values);
 		self.state.is_touched.set(true);
 		self.refresh_dirty();
+		self.touched_collections.borrow_mut().clear();
+		self.touched_paths.borrow_mut().clear();
+		self.rebuild_path_default_values();
+		self.collection_errors.set(HashMap::new());
+		self.path_errors.set(HashMap::new());
 		self.values_signal.set(values);
 		self.sync_observed_values();
+		self.sync_first_error();
 		if self.revalidate_on == RevalidateOn::Change {
 			let _ = self.trigger();
 		}
@@ -715,7 +1262,13 @@ where
 
 	/// Clears all validation and submit errors.
 	pub fn clear_errors(&self) {
+		for field in self.form.runtime_fields() {
+			self.form.runtime_set_custom_widget_error(*field, None);
+		}
+		self.custom_widget_error_fields.borrow_mut().clear();
 		self.state.field_errors.set(HashMap::new());
+		self.collection_errors.set(HashMap::new());
+		self.path_errors.set(HashMap::new());
 		self.state.form_error.set(None);
 		self.state.submit_error.set(None);
 		self.state.error.set(None);
@@ -723,6 +1276,8 @@ where
 
 	/// Clears one field error.
 	pub fn clear_field_error(&self, field: Form::Field) {
+		self.form.runtime_set_custom_widget_error(field, None);
+		self.custom_widget_error_fields.borrow_mut().remove(&field);
 		let mut errors = self.state.field_errors.get();
 		errors.remove(&field);
 		self.state.field_errors.set(errors);
@@ -761,13 +1316,28 @@ where
 		let _guard = self.suppress_signal_sync();
 		self.form.runtime_apply_values(&defaults);
 		self.touched_fields.borrow_mut().clear();
+		self.touched_collections.borrow_mut().clear();
+		self.touched_paths.borrow_mut().clear();
 		self.state.is_touched.set(false);
 		self.state.is_dirty.set(false);
 		self.state.is_submitting.set(false);
 		self.state.is_submit_successful.set(false);
+		self.rebuild_path_default_values();
 		self.clear_errors();
 		self.values_signal.set(defaults);
 		self.sync_observed_values();
+	}
+
+	/// Syncs runtime state after a native form reset has restored field values.
+	pub fn sync_after_native_reset(&self) {
+		let current = self.get_values();
+		let is_dirty = form_values_are_dirty(&self.form, &current, &self.default_values.borrow());
+		self.touched_fields.borrow_mut().clear();
+		self.state.is_touched.set(false);
+		self.state.is_dirty.set(is_dirty);
+		self.values_signal.set(current);
+		self.sync_observed_values();
+		self.clear_errors();
 	}
 
 	/// Resets one field to its current default value.
@@ -783,7 +1353,9 @@ where
 
 	/// Makes the current values the defaults and clears dirty state.
 	pub fn reset_default_values(&self) {
-		*self.default_values.borrow_mut() = self.get_values();
+		let values = self.get_values();
+		*self.default_values.borrow_mut() = values.clone();
+		*self.path_default_values.borrow_mut() = self.form.runtime_path_values_from_values(&values);
 		self.state.is_dirty.set(false);
 	}
 
@@ -852,31 +1424,37 @@ where
 
 		let old_defaults = self.default_values.borrow().clone();
 		let current = self.get_values();
+		let resets_all_values = matches!(self.reset_on_deps, ResetOnDeps::ResetAll);
 
 		match self.reset_on_deps {
 			ResetOnDeps::KeepDirtyValues => {
 				let _guard = self.suppress_signal_sync();
-				for field in self.form.runtime_fields() {
-					let field = *field;
-					if !self
-						.form
-						.runtime_field_is_dirty(field, &current, &old_defaults)
-					{
-						self.form.runtime_apply_field_value(field, &new_defaults);
-					}
-				}
+				self.form
+					.runtime_apply_pristine_values(&current, &old_defaults, &new_defaults);
 			}
 			ResetOnDeps::ResetAll => {
 				let _guard = self.suppress_signal_sync();
 				self.form.runtime_apply_values(&new_defaults);
 				self.touched_fields.borrow_mut().clear();
+				self.touched_collections.borrow_mut().clear();
+				self.touched_paths.borrow_mut().clear();
 			}
 			ResetOnDeps::ExplicitOnly => {}
 		}
 
 		*self.default_values.borrow_mut() = new_defaults;
+		if resets_all_values {
+			self.rebuild_path_default_values();
+		} else {
+			self.merge_missing_path_default_values();
+		}
+		self.prune_path_state_to_current_paths();
 		if !self.keep_errors {
 			self.clear_errors();
+		} else {
+			self.collection_errors.set(HashMap::new());
+			self.path_errors.set(HashMap::new());
+			self.sync_first_error();
 		}
 		self.refresh_dirty();
 		self.values_signal.set(self.get_values());
@@ -891,11 +1469,16 @@ where
 		match result {
 			Ok(()) => {
 				self.state.field_errors.set(HashMap::new());
+				self.collection_errors.set(HashMap::new());
+				self.path_errors.set(HashMap::new());
 				self.state.form_error.set(None);
 				self.sync_first_error();
 			}
 			Err(error) => {
 				self.state.field_errors.set(error.field_errors().clone());
+				self.collection_errors
+					.set(error.collection_errors().clone());
+				self.path_errors.set(error.path_errors().clone());
 				self.state
 					.form_error
 					.set(error.form_error().map(str::to_string));
@@ -922,8 +1505,22 @@ where
 			.values()
 			.next()
 			.map(|error| error.message().to_string());
+		let first_path_error = self
+			.path_errors
+			.get()
+			.values()
+			.next()
+			.map(|error| error.message().to_string());
+		let first_collection_error = self
+			.collection_errors
+			.get()
+			.values()
+			.next()
+			.map(|error| error.message().to_string());
 		self.state.error.set(
 			first_field_error
+				.or(first_collection_error)
+				.or(first_path_error)
 				.or_else(|| self.state.form_error.get())
 				.or_else(|| self.state.submit_error.get()),
 		);
@@ -944,6 +1541,244 @@ where
 
 	fn sync_observed_values(&self) {
 		*self.observed_values.borrow_mut() = self.get_values();
+	}
+
+	fn rebuild_path_default_values(&self) {
+		*self.path_default_values.borrow_mut() = self
+			.form
+			.runtime_path_values_from_values(&self.default_values.borrow());
+	}
+
+	fn merge_missing_path_default_values(&self) {
+		let defaults = self.default_values.borrow();
+		let missing_defaults = self.form.runtime_path_values_from_values(&defaults);
+		let mut path_default_values = self.path_default_values.borrow_mut();
+		for (path_key, value) in missing_defaults {
+			path_default_values.entry(path_key).or_insert(value);
+		}
+	}
+
+	fn prune_path_state_to_current_paths(&self) {
+		let current_paths = self.form.runtime_path_values();
+		self.touched_paths
+			.borrow_mut()
+			.retain(|path_key, _| current_paths.contains_key(path_key));
+
+		let mut path_errors = self.path_errors.get();
+		path_errors.retain(|path_key, _| current_paths.contains_key(path_key));
+		self.path_errors.set(path_errors);
+
+		self.path_default_values
+			.borrow_mut()
+			.retain(|path_key, _| current_paths.contains_key(path_key));
+	}
+}
+
+impl<Form, Deps> UseFormReturn<Form, Deps>
+where
+	Form: FormCollectionRuntimeSource,
+	Deps: Clone + PartialEq + 'static,
+{
+	/// Returns a typed signal for a nested collection field path.
+	pub fn watch_path<T>(&self, path: Form::FieldPath) -> Signal<T>
+	where
+		T: Clone + 'static,
+	{
+		self.form
+			.runtime_watch_path(path.clone())
+			.unwrap_or_else(|| {
+				panic!(
+					"field path {:?} is not compatible with requested Signal<{}>",
+					path,
+					type_name::<T>()
+				)
+			})
+	}
+
+	/// Applies one typed value to a nested collection field path.
+	pub fn set_path_value<T>(&self, path: Form::FieldPath, value: T)
+	where
+		T: Any + 'static,
+	{
+		let path_key = Form::runtime_field_path_key(&path);
+		let _guard = self.suppress_signal_sync();
+		if !self.form.runtime_set_path_value(path.clone(), value) {
+			panic!(
+				"field path {:?} does not exist in the current collection state",
+				path
+			);
+		}
+		self.touched_paths.borrow_mut().insert(path_key, true);
+		self.state.is_touched.set(true);
+		self.refresh_dirty();
+		self.values_signal.set(self.get_values());
+		self.sync_observed_values();
+		if self.revalidate_on == RevalidateOn::Change {
+			let _ = self.trigger();
+		}
+	}
+
+	/// Sets one nested collection field path error.
+	pub fn set_path_error(&self, path: Form::FieldPath, error: FieldError) {
+		let path_key = Form::runtime_field_path_key(&path);
+		let mut errors = self.path_errors.get();
+		errors.insert(path_key, error);
+		self.path_errors.set(errors);
+		self.sync_first_error();
+	}
+
+	/// Clears one nested collection field path error.
+	pub fn clear_path_error(&self, path: Form::FieldPath) {
+		let path_key = Form::runtime_field_path_key(&path);
+		let mut errors = self.path_errors.get();
+		errors.remove(&path_key);
+		self.path_errors.set(errors);
+		self.sync_first_error();
+	}
+
+	/// Returns state for one nested collection field path.
+	pub fn get_path_state(&self, path: Form::FieldPath) -> FieldPathState {
+		let path_key = Form::runtime_field_path_key(&path);
+		let current = self.get_values();
+		let defaults = self.default_values.borrow();
+		let errors = self.path_errors.get();
+		let is_dirty = match self.path_default_values.borrow().get(&path_key) {
+			Some(default) => self
+				.form
+				.runtime_path_value_equals(&path_key, default.as_ref())
+				.map(|matches_default| !matches_default)
+				.unwrap_or(false),
+			None => {
+				self.form.runtime_path_exists(&path_key)
+					|| self.form.runtime_path_is_dirty(&path, &current, &defaults)
+			}
+		};
+		FieldPathState {
+			is_dirty,
+			is_touched: self
+				.touched_paths
+				.borrow()
+				.get(&path_key)
+				.copied()
+				.unwrap_or(false),
+			error: errors.get(&path_key).cloned(),
+		}
+	}
+
+	/// Returns state for one generated collection field.
+	pub fn get_collection_state(&self, collection: Form::Collection) -> CollectionState {
+		let collection_key = Form::runtime_collection_key(collection);
+		let current = self.get_values();
+		let defaults = self.default_values.borrow();
+		let errors = self.collection_errors.get();
+		CollectionState {
+			len: self.form.runtime_collection_len(collection),
+			is_dirty: self
+				.form
+				.runtime_collection_is_dirty(collection, &current, &defaults),
+			is_touched: self
+				.touched_collections
+				.borrow()
+				.get(&collection_key)
+				.copied()
+				.unwrap_or(false),
+			error: errors.get(&collection_key).cloned(),
+		}
+	}
+
+	/// Appends one item to a generated collection.
+	pub fn push_item<T>(&self, collection: Form::Collection, value: T) -> CollectionItemKey
+	where
+		T: Any + Clone + 'static,
+	{
+		let index = self.form.runtime_collection_len(collection);
+		self.insert_item(collection, index, value)
+	}
+
+	/// Inserts one item into a generated collection.
+	pub fn insert_item<T>(
+		&self,
+		collection: Form::Collection,
+		index: usize,
+		value: T,
+	) -> CollectionItemKey
+	where
+		T: Any + Clone + 'static,
+	{
+		let key = CollectionItemKey::next(&self.next_collection_item_key);
+		let _guard = self.suppress_signal_sync();
+		self.form
+			.runtime_insert_collection_item(collection, index, key, value);
+		self.sync_after_collection_change(collection);
+		key
+	}
+
+	/// Removes one item from a generated collection.
+	pub fn remove_item(&self, collection: Form::Collection, key: CollectionItemKey) -> bool {
+		let _guard = self.suppress_signal_sync();
+		let removed = self.form.runtime_remove_collection_item(collection, key);
+		if removed {
+			self.clear_item_path_state(collection, key);
+			self.sync_after_collection_change(collection);
+			self.sync_first_error();
+		}
+		removed
+	}
+
+	/// Moves one item in a generated collection.
+	pub fn move_item(
+		&self,
+		collection: Form::Collection,
+		key: CollectionItemKey,
+		target_index: usize,
+	) -> Option<(usize, usize)> {
+		let _guard = self.suppress_signal_sync();
+		let movement = self
+			.form
+			.runtime_move_collection_item(collection, key, target_index);
+		if movement.is_some() {
+			self.sync_after_collection_change(collection);
+		}
+		movement
+	}
+
+	fn sync_after_collection_change(&self, collection: Form::Collection) {
+		let values = self.get_values();
+		let is_dirty = {
+			let defaults = self.default_values.borrow();
+			self.form.runtime_values_are_dirty(&values, &defaults)
+		};
+		self.touched_collections
+			.borrow_mut()
+			.insert(Form::runtime_collection_key(collection), true);
+		self.state.is_touched.set(true);
+		self.state.is_dirty.set(is_dirty);
+		self.values_signal.set(values.clone());
+		*self.observed_values.borrow_mut() = values;
+		if self.revalidate_on == RevalidateOn::Change {
+			let _ = self.trigger();
+		}
+	}
+
+	fn clear_item_path_state(&self, collection: Form::Collection, key: CollectionItemKey) {
+		let path_keys = Form::runtime_field_path_keys_for_item(collection, key);
+		if path_keys.is_empty() {
+			return;
+		}
+
+		{
+			let mut touched_paths = self.touched_paths.borrow_mut();
+			for path_key in &path_keys {
+				touched_paths.remove(path_key);
+			}
+		}
+
+		let mut path_errors = self.path_errors.get();
+		for path_key in path_keys {
+			path_errors.remove(&path_key);
+			self.path_default_values.borrow_mut().remove(&path_key);
+		}
+		self.path_errors.set(path_errors);
 	}
 }
 
@@ -993,5 +1828,68 @@ where
 		on_submit_start: None,
 		on_submit_success: None,
 		on_submit_error: None,
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{CollectionItem, CollectionItemKey, CollectionState, FieldError, FieldPathState};
+
+	#[test]
+	fn collection_item_key_is_opaque_and_stable() {
+		let first_key = CollectionItemKey(1);
+		let second_key = CollectionItemKey(2);
+		let generated_key = CollectionItemKey::from_runtime_index(1);
+		let runtime_boundary_key = CollectionItemKey(CollectionItemKey::GENERATED_KEY_FLAG - 1);
+		let exhausted_counter = ::std::cell::Cell::new(runtime_boundary_key.0);
+
+		assert_ne!(first_key, second_key);
+		assert_ne!(generated_key, first_key);
+		assert_ne!(
+			CollectionItemKey::next(&exhausted_counter),
+			CollectionItemKey::from_runtime_index(runtime_boundary_key.0)
+		);
+		assert_eq!(
+			exhausted_counter.get(),
+			CollectionItemKey::GENERATED_KEY_FLAG
+		);
+		assert!(
+			::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+				CollectionItemKey::next(&exhausted_counter);
+			}))
+			.is_err()
+		);
+		assert!(format!("{first_key:?}").contains("CollectionItemKey"));
+
+		let item = CollectionItem::new(first_key, 3, "Ada".to_string());
+
+		assert_eq!(item.key(), first_key);
+		assert_eq!(item.index(), 3);
+		assert_eq!(item.value().as_str(), "Ada");
+		assert_eq!(item.into_value(), "Ada".to_string());
+
+		let error = FieldError::new("collection item is required");
+		let collection_state = CollectionState {
+			len: 2,
+			is_dirty: true,
+			is_touched: false,
+			error: Some(error.clone()),
+		};
+		let field_path_state = FieldPathState {
+			is_dirty: false,
+			is_touched: true,
+			error: Some(error.clone()),
+		};
+
+		assert_eq!(collection_state.len, 2);
+		assert!(collection_state.is_dirty);
+		assert!(!collection_state.is_touched);
+		assert_eq!(
+			collection_state.error.as_ref().map(FieldError::message),
+			Some("collection item is required")
+		);
+		assert!(!field_path_state.is_dirty);
+		assert!(field_path_state.is_touched);
+		assert_eq!(field_path_state.error, Some(error));
 	}
 }

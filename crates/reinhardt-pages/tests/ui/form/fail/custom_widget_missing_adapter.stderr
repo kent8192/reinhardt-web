@@ -1,0 +1,5 @@
+error: CustomWidget requires adapter
+  --> tests/ui/form/fail/custom_widget_missing_adapter.rs:13:5
+   |
+13 |                 widget: CustomWidget(picker) {
+   |                 ^^^^^^

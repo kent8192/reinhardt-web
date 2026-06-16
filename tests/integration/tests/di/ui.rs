@@ -28,9 +28,9 @@ fn test_injectable_compile_fail_cases() {
 	// Note: circular_dependency compiles but fails at runtime (tested in core_error_handling.rs)
 }
 
-/// Test: Compile-fail cases for #[injectable_factory]
+/// Test: Compile-fail cases for #[injectable] provider functions
 ///
-/// Tests that invalid injectable_factory usage is rejected at compile time.
+/// Tests that invalid provider usage is rejected at compile time.
 #[test]
 fn test_injectable_factory_compile_fail_cases() {
 	let t = trybuild::TestCases::new();
@@ -51,6 +51,26 @@ fn test_injectable_factory_compile_fail_cases() {
 	t.compile_fail("tests/di/ui/fail/injectable_factory_mixed_params.rs");
 }
 
+#[test]
+fn test_keyed_provider_compile_pass_cases() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/di/ui/pass/keyed_provider_macro.rs");
+}
+
+#[test]
+fn test_keyed_provider_compile_fail_cases() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/di/ui/fail/injectable_key_on_function.rs");
+	t.compile_fail("tests/di/ui/fail/provider_returns_plain_type.rs");
+}
+
+#[test]
+fn test_keyed_depends_compile_pass_cases() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/di/ui/pass/keyed_depends_in_route_macro.rs");
+	t.pass("tests/di/ui/pass/keyed_depends_in_server_fn.rs");
+}
+
 /// Test: Compile-pass cases for #[injectable]
 ///
 /// Tests that valid DI usage compiles successfully.
@@ -61,36 +81,30 @@ fn test_injectable_compile_pass_cases() {
 	// Test: Basic Injectable implementation
 	t.pass("tests/di/ui/pass/basic_injectable.rs");
 
-	// Test: Injectable with scope attribute
-	t.pass("tests/di/ui/pass/injectable_with_scope.rs");
-
 	// Test: Nested dependencies
 	t.pass("tests/di/ui/pass/nested_dependencies.rs");
 
 	// Test: Complex types (Vec, HashMap, Option)
 	t.pass("tests/di/ui/pass/complex_types.rs");
 
-	// Test: #[injectable_factory] with #[inject] parameters (T and Arc<T>)
+	// Test: #[injectable] provider with #[inject] parameters (T and Arc<T>)
 	t.pass("tests/di/ui/pass/injectable_factory_inject_params.rs");
 
-	// Test: Depends<FactoryType> in #[get] route macro (regression guard for #3723)
+	// Test: Depends<K, FactoryType> in #[get] route macro
 	t.pass("tests/di/ui/pass/factory_depends_in_route_macro.rs");
 
-	// Test: Depends<FactoryType> in #[server_fn] (regression guard for #3723)
+	// Test: Depends<K, FactoryType> in #[server_fn]
 	t.pass("tests/di/ui/pass/factory_depends_in_server_fn.rs");
 
-	// Test: DependsResult<T, E> in #[get] route macro (regression guard for #4937)
+	// Test: Depends<K, Result<T, E>> in #[get] route macro
 	t.pass("tests/di/ui/pass/depends_result_in_route_macro.rs");
 
-	// Test: DependsResult<T, E> in #[server_fn] (regression guard for #4937)
+	// Test: Depends<K, Result<T, E>> in #[server_fn]
 	t.pass("tests/di/ui/pass/depends_result_in_server_fn.rs");
 
 	// Test: trait-based wrappers in route and server_fn macros (regression guard for #4938)
 	t.pass("tests/di/ui/pass/trait_based_inject_wrappers.rs");
 }
 
-// Note: Compile-pass tests for #[injectable_factory] are NOT possible via trybuild
-// because the macro generates `inventory::submit!` which requires linker-level static
-// initialization that trybuild's isolated compilation environment cannot support (E0015).
-// Instead, compile-pass coverage for injectable_factory is provided by integration tests
-// in auto_injection_basic.rs and registry_tests.rs.
+// Note: full provider registration behavior is covered by integration tests
+// because `inventory::submit!` requires linker-level static initialization.

@@ -169,6 +169,47 @@ contract as `Option<web_sys::File>` values. File values are browser-owned and
 are tracked for dirty/touched state without treating the file payload as a
 serializable scalar.
 
+Stable native widget coverage includes the following `form!` DSL items:
+
+| DSL item | HTML output | Value state |
+|---|---|---|
+| `MonthInput` | `<input type="month">` | string field |
+| `WeekInput` | `<input type="week">` | string field |
+| `ResetButton` | `<button type="reset">` | none |
+| `Button` | `<button type="button">` | none |
+| `ImageInput` | `<input type="image">` | none |
+| `Datalist` | `<datalist>` | option source only |
+| `OptGroup` | `<optgroup>` | choice grouping only |
+| `Output` | `<output>` | none |
+| `Meter` | `<meter>` | none |
+| `Progress` | `<progress>` | none |
+
+Typed native attributes are accepted for the controls that support them:
+
+| Attribute | Compatible controls |
+|---|---|
+| `min` / `max` / `step` | number, range, date, time, datetime-local, month, week |
+| `size` | text-like inputs |
+| `accept` / `capture` | file-like inputs |
+| `multiple` | file-like inputs and multi-select |
+| `list` | datalist-compatible text-like inputs |
+
+`FieldGroup` renders as semantic `<fieldset>` output. When `label` is
+present, the label is rendered as a `<legend>` inside the fieldset.
+
+`CustomWidget` is experimental and must opt in explicitly:
+
+```rust,ignore
+date_range: CharField {
+    widget: CustomWidget(crate::widgets::DateRangePicker) {
+        experimental,
+        adapter: crate::widgets::DateRangeAdapter,
+    },
+}
+```
+
+The adapter API may change in a minor release with a documented migration path.
+
 Arguments supplied from ambient context use `ambient_arguments`. The old
 `strip_arguments` name remains as a deprecated alias. CSRF should stay at the
 transport layer: `#[server_fn]` client stubs attach `X-CSRFToken`, while
@@ -315,6 +356,7 @@ The prelude includes:
 - `ApiModel`, `ApiQuerySet`, `Filter`, `FilterOp`
 - `ServerFn`, `ServerFnError`
 - See [Server Function Macro Guide](docs/server_fn_macro.md) for detailed usage and migration information
+- Use `#[client_page]` for client page functions that must also compile as native route-table stubs
 - See [WASM/server API Parity Macro](docs/wasm_server_api.md) for APIs that need matching public surfaces with target-specific implementations
 - See [React-to-Reinhardt Guide](docs/react_to_reinhardt.md) for React hooks, JSX, actions, routing, SSR, and hydration mappings
 
@@ -334,6 +376,7 @@ The prelude includes:
 - `page!`
 - `head!`
 - `form!`
+- `client_page`
 - `wasm_server_api`
 
 ### Task spawning (cross-target)

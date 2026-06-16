@@ -14,7 +14,7 @@
 //! | Category | Types |
 //! |----------|-------|
 //! | Core | `TypedFormMacro`, `TypedFormAction`, `FormMethod` |
-//! | Fields | `TypedFormFieldEntry`, `TypedFormFieldDef`, `TypedFormFieldGroup` |
+//! | Fields | `TypedFormFieldEntry`, `TypedFormFieldDef`, `TypedFormFieldGroup`, `TypedFormFieldCollection` |
 //! | Field Types | `TypedFieldType`, `TypedWidget` |
 //! | Properties | `TypedFieldValidation`, `TypedFieldDisplay`, `TypedFieldStyling` |
 //! | State | `TypedFormState`, `TypedFormCallbacks`, `TypedFormWatch` |
@@ -66,10 +66,12 @@ use super::form_node::ValidatorScope;
 ///         <<enumeration>>
 ///         Field~TypedFormFieldDef~
 ///         Group~TypedFormFieldGroup~
+///         Collection~TypedFormFieldCollection~
 ///     }
 ///
 ///     TypedFormFieldEntry --> TypedFormFieldDef
 ///     TypedFormFieldEntry --> TypedFormFieldGroup
+///     TypedFormFieldEntry --> TypedFormFieldCollection
 ///
 ///     class TypedFormFieldDef {
 ///         +TypedFieldType field_type
@@ -117,7 +119,7 @@ pub struct TypedFormMacro {
 	pub choices_loader: Option<Path>,
 	/// Slot definitions for custom UI elements
 	pub slots: Option<TypedFormSlots>,
-	/// Validated field definitions (can include field groups)
+	/// Validated field definitions (can include field groups and collections)
 	pub fields: Vec<TypedFormFieldEntry>,
 	/// Validated unified validators. Each rule carries a `ValidatorScope`
 	/// controlling whether it executes on server, client, or both.
@@ -494,6 +496,12 @@ pub struct TypedChoicesConfig {
 	/// e.g., "choice_text" extracts `choice.choice_text` for display.
 	/// Defaults to "label" if not specified.
 	pub choice_label: String,
+	/// Optional property path for extracting a disabled flag from each choice item.
+	pub choice_disabled: Option<String>,
+	/// Optional property path for extracting a group label from each choice item.
+	pub choice_group: Option<String>,
+	/// Optional property path for extracting a group disabled flag from each choice item.
+	pub choice_group_disabled: Option<String>,
 	/// Span for error reporting
 	pub span: Span,
 }
@@ -505,6 +513,9 @@ impl TypedChoicesConfig {
 			choices_from,
 			choice_value: "value".to_string(),
 			choice_label: "label".to_string(),
+			choice_disabled: None,
+			choice_group: None,
+			choice_group_disabled: None,
 			span,
 		}
 	}
@@ -514,15 +525,56 @@ impl TypedChoicesConfig {
 		choices_from: String,
 		choice_value: String,
 		choice_label: String,
+		choice_disabled: Option<String>,
+		choice_group: Option<String>,
+		choice_group_disabled: Option<String>,
 		span: Span,
 	) -> Self {
 		Self {
 			choices_from,
 			choice_value,
 			choice_label,
+			choice_disabled,
+			choice_group,
+			choice_group_disabled,
 			span,
 		}
 	}
+}
+
+/// A typed static choice item.
+#[derive(Debug, Clone)]
+pub enum TypedChoiceItem {
+	/// A single `<option>`.
+	Option(Box<TypedChoiceOption>),
+	/// An `<optgroup>`.
+	Group(TypedChoiceGroup),
+}
+
+/// A typed static choice option.
+#[derive(Debug, Clone)]
+pub struct TypedChoiceOption {
+	/// Option value expression.
+	pub value: syn::Expr,
+	/// Option label expression.
+	pub label: syn::Expr,
+	/// Whether the option is disabled.
+	pub disabled: bool,
+	/// Span for error reporting.
+	pub span: Span,
+}
+
+/// A typed static option group.
+#[derive(Debug, Clone)]
+pub struct TypedChoiceGroup {
+	/// Group label.
+	pub label: String,
+	/// Whether the group is disabled.
+	pub disabled: bool,
+	/// Group options.
+	pub options: Vec<TypedChoiceOption>,
+	/// Span for error reporting.
+	pub span: Span,
 }
 
 /// A validated field definition with typed properties.
@@ -540,6 +592,8 @@ pub struct TypedFormFieldDef {
 	pub styling: TypedFieldStyling,
 	/// Widget type
 	pub widget: TypedWidget,
+	/// Native HTML attributes for the generated form control
+	pub native_attrs: TypedFieldNativeAttrs,
 	/// Custom wrapper element for the field container
 	pub wrapper: Option<TypedWrapper>,
 	/// SVG icon for the field
@@ -566,14 +620,29 @@ pub struct TypedFormFieldDef {
 	/// When specified, the field will load choices from a `choices_loader`
 	/// server_fn and render them dynamically.
 	pub choices_config: Option<TypedChoicesConfig>,
+	/// Static choice options for select-like widgets.
+	pub static_choices: Vec<TypedChoiceItem>,
 	/// Span for error reporting
+	pub span: Span,
+}
+
+/// A validated datalist definition.
+#[derive(Debug)]
+pub struct TypedDatalistDef {
+	/// Datalist identifier.
+	pub name: Ident,
+	/// Static datalist options.
+	pub static_choices: Vec<TypedChoiceItem>,
+	/// Dynamic choices configuration.
+	pub choices_config: Option<TypedChoicesConfig>,
+	/// Span for error reporting.
 	pub span: Span,
 }
 
 /// An entry in the typed form fields list.
 ///
-/// Can be either a regular field definition or a field group
-/// containing multiple related fields.
+/// Can be a regular field definition, a field group, a repeatable collection,
+/// or a submit button.
 #[derive(Debug)]
 pub enum TypedFormFieldEntry {
 	/// A single field definition
@@ -582,14 +651,35 @@ pub enum TypedFormFieldEntry {
 	Field(Box<TypedFormFieldDef>),
 	/// A group of related fields
 	Group(TypedFormFieldGroup),
+	/// A repeatable collection of field entries
+	Collection(Box<TypedFormFieldCollection>),
 	/// A submit button (not a data field — generates no Signal)
 	SubmitButton(TypedSubmitButtonDef),
+	/// A reset button (not a data field).
+	ResetButton(TypedButtonControlDef),
+	/// A generic button (not a data field).
+	Button(TypedButtonControlDef),
+	/// An image submit control (not a generated form value).
+	ImageInput(TypedImageInputDef),
+	/// An output element (not a generated form value).
+	Output(TypedOutputDef),
+	/// A meter element (not a generated form value).
+	Meter(Box<TypedMeterDef>),
+	/// A progress element (not a generated form value).
+	Progress(Box<TypedProgressDef>),
+	/// A datalist element (not a generated form value).
+	Datalist(Box<TypedDatalistDef>),
 }
 
 impl TypedFormFieldEntry {
 	/// Returns true if this is a field group.
 	pub fn is_group(&self) -> bool {
 		matches!(self, TypedFormFieldEntry::Group(_))
+	}
+
+	/// Returns true if this is a field collection.
+	pub fn is_collection(&self) -> bool {
+		matches!(self, TypedFormFieldEntry::Collection(_))
 	}
 
 	/// Returns true if this is a regular field.
@@ -607,7 +697,14 @@ impl TypedFormFieldEntry {
 		match self {
 			TypedFormFieldEntry::Field(f) => &f.as_ref().name,
 			TypedFormFieldEntry::Group(g) => &g.name,
+			TypedFormFieldEntry::Collection(collection) => &collection.name,
 			TypedFormFieldEntry::SubmitButton(b) => &b.name,
+			TypedFormFieldEntry::ResetButton(b) | TypedFormFieldEntry::Button(b) => &b.name,
+			TypedFormFieldEntry::ImageInput(i) => &i.name,
+			TypedFormFieldEntry::Output(o) => &o.name,
+			TypedFormFieldEntry::Meter(m) => &m.name,
+			TypedFormFieldEntry::Progress(p) => &p.name,
+			TypedFormFieldEntry::Datalist(d) => &d.name,
 		}
 	}
 
@@ -616,7 +713,14 @@ impl TypedFormFieldEntry {
 		match self {
 			TypedFormFieldEntry::Field(f) => f.as_ref().span,
 			TypedFormFieldEntry::Group(g) => g.span,
+			TypedFormFieldEntry::Collection(collection) => collection.span,
 			TypedFormFieldEntry::SubmitButton(b) => b.span,
+			TypedFormFieldEntry::ResetButton(b) | TypedFormFieldEntry::Button(b) => b.span,
+			TypedFormFieldEntry::ImageInput(i) => i.span,
+			TypedFormFieldEntry::Output(o) => o.span,
+			TypedFormFieldEntry::Meter(m) => m.span,
+			TypedFormFieldEntry::Progress(p) => p.span,
+			TypedFormFieldEntry::Datalist(d) => d.span,
 		}
 	}
 
@@ -636,6 +740,14 @@ impl TypedFormFieldEntry {
 		}
 	}
 
+	/// Returns a reference to the inner collection if this is a Collection variant.
+	pub fn as_collection(&self) -> Option<&TypedFormFieldCollection> {
+		match self {
+			TypedFormFieldEntry::Collection(collection) => Some(collection.as_ref()),
+			_ => None,
+		}
+	}
+
 	/// Returns a reference to the inner submit button if this is a SubmitButton variant.
 	pub fn as_submit_button(&self) -> Option<&TypedSubmitButtonDef> {
 		match self {
@@ -643,6 +755,37 @@ impl TypedFormFieldEntry {
 			_ => None,
 		}
 	}
+
+	/// Returns a reference to the inner datalist if this is a Datalist variant.
+	pub fn as_datalist(&self) -> Option<&TypedDatalistDef> {
+		match self {
+			TypedFormFieldEntry::Datalist(d) => Some(d.as_ref()),
+			_ => None,
+		}
+	}
+}
+
+/// A validated repeatable collection of field entries.
+#[derive(Debug)]
+pub struct TypedFormFieldCollection {
+	/// Collection name identifier
+	pub name: Ident,
+	/// Collection-level label text
+	pub label: Option<String>,
+	/// Collection-level CSS class
+	pub class: Option<String>,
+	/// Minimum number of collection items
+	pub min_items: Option<usize>,
+	/// Maximum number of collection items
+	pub max_items: Option<usize>,
+	/// Initial value source field name
+	pub initial_from: Option<String>,
+	/// Validated field entries within each collection item
+	pub fields: Vec<TypedFormFieldEntry>,
+	/// Optional custom item renderer closure
+	pub render_item: Option<ExprClosure>,
+	/// Span for error reporting
+	pub span: Span,
 }
 
 /// A validated submit button definition.
@@ -665,6 +808,120 @@ pub struct TypedSubmitButtonDef {
 	pub span: Span,
 }
 
+/// Typed button control kind for non-submit buttons.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypedButtonKind {
+	/// `<button type="reset">`.
+	Reset,
+	/// `<button type="button">`.
+	Button,
+}
+
+/// A validated non-submit button control.
+#[derive(Debug)]
+pub struct TypedButtonControlDef {
+	/// Button name identifier.
+	pub name: Ident,
+	/// Button behavior.
+	pub kind: TypedButtonKind,
+	/// Button text.
+	pub label: String,
+	/// Optional CSS class.
+	pub class: Option<String>,
+	/// Optional HTML id attribute.
+	pub id: Option<String>,
+	/// Whether the button is disabled.
+	pub disabled: bool,
+	/// Span for error reporting.
+	pub span: Span,
+}
+
+/// A validated image input control.
+#[derive(Debug)]
+pub struct TypedImageInputDef {
+	/// Input name identifier.
+	pub name: Ident,
+	/// Image source URL.
+	pub src: String,
+	/// Image alt text.
+	pub alt: String,
+	/// Optional CSS class.
+	pub class: Option<String>,
+	/// Optional HTML id attribute.
+	pub id: Option<String>,
+	/// Whether the input is disabled.
+	pub disabled: bool,
+	/// Optional width attribute.
+	pub width: Option<i64>,
+	/// Optional height attribute.
+	pub height: Option<i64>,
+	/// Span for error reporting.
+	pub span: Span,
+}
+
+/// A validated output element.
+#[derive(Debug)]
+pub struct TypedOutputDef {
+	/// Output name identifier.
+	pub name: Ident,
+	/// Optional visible label content.
+	pub label: Option<String>,
+	/// Field ids referenced by the output element.
+	pub for_fields: Vec<Ident>,
+	/// Optional CSS class.
+	pub class: Option<String>,
+	/// Optional HTML id attribute.
+	pub id: Option<String>,
+	/// Span for error reporting.
+	pub span: Span,
+}
+
+/// A validated meter element.
+#[derive(Debug)]
+pub struct TypedMeterDef {
+	/// Meter name identifier.
+	pub name: Ident,
+	/// Optional visible label content.
+	pub label: Option<String>,
+	/// Current value expression.
+	pub value: syn::Expr,
+	/// Optional minimum expression.
+	pub min: Option<syn::Expr>,
+	/// Optional maximum expression.
+	pub max: Option<syn::Expr>,
+	/// Optional low threshold expression.
+	pub low: Option<syn::Expr>,
+	/// Optional high threshold expression.
+	pub high: Option<syn::Expr>,
+	/// Optional optimum expression.
+	pub optimum: Option<syn::Expr>,
+	/// Optional CSS class.
+	pub class: Option<String>,
+	/// Optional HTML id attribute.
+	pub id: Option<String>,
+	/// Span for error reporting.
+	pub span: Span,
+}
+
+/// A validated progress element.
+#[derive(Debug)]
+pub struct TypedProgressDef {
+	/// Progress name identifier.
+	pub name: Ident,
+	/// Optional visible label content.
+	pub label: Option<String>,
+	/// Optional current value expression.
+	pub value: Option<syn::Expr>,
+	/// Optional maximum expression.
+	pub max: Option<syn::Expr>,
+	/// Optional CSS class.
+	pub class: Option<String>,
+	/// Optional HTML id attribute.
+	pub id: Option<String>,
+	/// Span for error reporting.
+	pub span: Span,
+}
+
 /// A validated group of related fields.
 ///
 /// Field groups allow organizing multiple fields under a common container
@@ -677,16 +934,19 @@ pub struct TypedFormFieldGroup {
 	pub label: Option<String>,
 	/// Group CSS class
 	pub class: Option<String>,
-	/// Validated fields within the group
-	pub fields: Vec<TypedFormFieldDef>,
+	/// Validated entries within the group.
+	pub fields: Vec<TypedFormFieldEntry>,
 	/// Span for error reporting
 	pub span: Span,
 }
 
 impl TypedFormFieldGroup {
-	/// Returns the number of fields in this group.
+	/// Returns the number of value fields in this group.
 	pub fn field_count(&self) -> usize {
-		self.fields.len()
+		self.fields
+			.iter()
+			.filter(|entry| matches!(entry, TypedFormFieldEntry::Field(_)))
+			.count()
 	}
 }
 
@@ -867,6 +1127,8 @@ impl TypedFieldType {
 /// | `PasswordInput` | `<input>` | `password` |
 /// | `NumberInput` | `<input>` | `number` |
 /// | `DateInput` | `<input>` | `date` |
+/// | `MonthInput` | `<input>` | `month` |
+/// | `WeekInput` | `<input>` | `week` |
 /// | `TimeInput` | `<input>` | `time` |
 /// | `DateTimeInput` | `<input>` | `datetime-local` |
 /// | `CheckboxInput` | `<input>` | `checkbox` |
@@ -876,6 +1138,26 @@ impl TypedFieldType {
 /// | `Textarea` | `<textarea>` | - |
 /// | `Select` | `<select>` | - |
 /// | `SelectMultiple` | `<select multiple>` | - |
+/// Experimental custom widget metadata after validation.
+#[derive(Debug, Clone)]
+pub struct TypedCustomWidget {
+	/// Component function or constructor path.
+	pub component: syn::Path,
+	/// Adapter type path implementing the experimental runtime adapter trait.
+	pub adapter: syn::Path,
+	/// Source location span.
+	pub span: Span,
+}
+
+impl PartialEq for TypedCustomWidget {
+	fn eq(&self, other: &Self) -> bool {
+		self.component == other.component && self.adapter == other.adapter
+	}
+}
+
+impl Eq for TypedCustomWidget {}
+
+/// Supported widget renderers after semantic validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedWidget {
 	/// Standard text input (`<input type="text">`).
@@ -892,6 +1174,10 @@ pub enum TypedWidget {
 	TelInput,
 	/// Date picker input (`<input type="date">`).
 	DateInput,
+	/// Month picker input (`<input type="month">`).
+	MonthInput,
+	/// Week picker input (`<input type="week">`).
+	WeekInput,
 	/// Time picker input (`<input type="time">`).
 	TimeInput,
 	/// Date and time picker input (`<input type="datetime-local">`).
@@ -918,6 +1204,8 @@ pub enum TypedWidget {
 	FileInput,
 	/// Search input (`<input type="search">`).
 	SearchInput,
+	/// Experimental custom widget with an adapter.
+	CustomExperimental(TypedCustomWidget),
 }
 
 impl TypedWidget {
@@ -931,6 +1219,8 @@ impl TypedWidget {
 			TypedWidget::UrlInput => "url",
 			TypedWidget::TelInput => "tel",
 			TypedWidget::DateInput => "date",
+			TypedWidget::MonthInput => "month",
+			TypedWidget::WeekInput => "week",
 			TypedWidget::TimeInput => "time",
 			TypedWidget::DateTimeInput => "datetime-local",
 			TypedWidget::ColorInput => "color",
@@ -940,6 +1230,7 @@ impl TypedWidget {
 			TypedWidget::RadioInput | TypedWidget::RadioSelect => "radio",
 			TypedWidget::FileInput => "file",
 			TypedWidget::SearchInput => "search",
+			TypedWidget::CustomExperimental(_) => "text",
 			// These are not input types
 			TypedWidget::Textarea => "text",
 			TypedWidget::Select => "text",
@@ -951,7 +1242,10 @@ impl TypedWidget {
 	pub fn is_input(&self) -> bool {
 		!matches!(
 			self,
-			TypedWidget::Textarea | TypedWidget::Select | TypedWidget::SelectMultiple
+			TypedWidget::Textarea
+				| TypedWidget::Select
+				| TypedWidget::SelectMultiple
+				| TypedWidget::CustomExperimental(_)
 		)
 	}
 
@@ -960,6 +1254,7 @@ impl TypedWidget {
 		match self {
 			TypedWidget::Textarea => "textarea",
 			TypedWidget::Select | TypedWidget::SelectMultiple => "select",
+			TypedWidget::CustomExperimental(_) => "custom",
 			_ => "input",
 		}
 	}
@@ -1025,6 +1320,27 @@ pub struct TypedFieldDisplay {
 	pub autofocus: bool,
 	/// Autocomplete hint for the browser
 	pub autocomplete: Option<String>,
+}
+
+/// Native HTML attributes for a generated form control.
+#[derive(Debug, Clone, Default)]
+pub struct TypedFieldNativeAttrs {
+	/// Native `min` attribute expression.
+	pub min: Option<syn::Expr>,
+	/// Native `max` attribute expression.
+	pub max: Option<syn::Expr>,
+	/// Native `step` attribute expression.
+	pub step: Option<syn::Expr>,
+	/// Native `multiple` boolean attribute.
+	pub multiple: Option<bool>,
+	/// Native `accept` attribute for file inputs.
+	pub accept: Option<String>,
+	/// Native `capture` attribute for file inputs.
+	pub capture: Option<String>,
+	/// Native `list` datalist id reference.
+	pub list: Option<Ident>,
+	/// Native `size` attribute.
+	pub size: Option<i64>,
 }
 
 /// Styling-related properties of a field.
@@ -1426,6 +1742,7 @@ impl TypedFormFieldDef {
 			display: TypedFieldDisplay::default(),
 			styling: TypedFieldStyling::default(),
 			widget,
+			native_attrs: TypedFieldNativeAttrs::default(),
 			wrapper: None,
 			icon: None,
 			custom_attrs: Vec::new(),
@@ -1433,6 +1750,7 @@ impl TypedFormFieldDef {
 			initial_from: None,
 			initial_expr: None,
 			choices_config: None,
+			static_choices: Vec::new(),
 			span,
 		}
 	}
@@ -1614,6 +1932,8 @@ mod tests {
 		let password_input = TypedWidget::PasswordInput;
 		let number_input = TypedWidget::NumberInput;
 		let date_input = TypedWidget::DateInput;
+		let month_input = TypedWidget::MonthInput;
+		let week_input = TypedWidget::WeekInput;
 		let file_input = TypedWidget::FileInput;
 
 		// Act
@@ -1622,6 +1942,8 @@ mod tests {
 		let password_type = password_input.html_type();
 		let number_type = number_input.html_type();
 		let date_type = date_input.html_type();
+		let month_type = month_input.html_type();
+		let week_type = week_input.html_type();
 		let file_type = file_input.html_type();
 
 		// Assert
@@ -1630,6 +1952,8 @@ mod tests {
 		assert_eq!(password_type, "password");
 		assert_eq!(number_type, "number");
 		assert_eq!(date_type, "date");
+		assert_eq!(month_type, "month");
+		assert_eq!(week_type, "week");
 		assert_eq!(file_type, "file");
 	}
 
@@ -1638,6 +1962,8 @@ mod tests {
 		// Arrange
 		let text_input = TypedWidget::TextInput;
 		let email_input = TypedWidget::EmailInput;
+		let month_input = TypedWidget::MonthInput;
+		let week_input = TypedWidget::WeekInput;
 		let file_input = TypedWidget::FileInput;
 		let textarea = TypedWidget::Textarea;
 		let select = TypedWidget::Select;
@@ -1645,6 +1971,8 @@ mod tests {
 		// Act
 		let text_is_input = text_input.is_input();
 		let email_is_input = email_input.is_input();
+		let month_is_input = month_input.is_input();
+		let week_is_input = week_input.is_input();
 		let file_is_input = file_input.is_input();
 		let textarea_is_input = textarea.is_input();
 		let select_is_input = select.is_input();
@@ -1652,6 +1980,8 @@ mod tests {
 		// Assert
 		assert!(text_is_input);
 		assert!(email_is_input);
+		assert!(month_is_input);
+		assert!(week_is_input);
 		assert!(file_is_input);
 		assert!(!textarea_is_input);
 		assert!(!select_is_input);
@@ -1661,18 +1991,24 @@ mod tests {
 	fn test_typed_widget_html_tag() {
 		// Arrange
 		let text_input = TypedWidget::TextInput;
+		let month_input = TypedWidget::MonthInput;
+		let week_input = TypedWidget::WeekInput;
 		let textarea = TypedWidget::Textarea;
 		let select = TypedWidget::Select;
 		let file_input = TypedWidget::FileInput;
 
 		// Act
 		let text_tag = text_input.html_tag();
+		let month_tag = month_input.html_tag();
+		let week_tag = week_input.html_tag();
 		let textarea_tag = textarea.html_tag();
 		let select_tag = select.html_tag();
 		let file_tag = file_input.html_tag();
 
 		// Assert
 		assert_eq!(text_tag, "input");
+		assert_eq!(month_tag, "input");
+		assert_eq!(week_tag, "input");
 		assert_eq!(textarea_tag, "textarea");
 		assert_eq!(select_tag, "select");
 		assert_eq!(file_tag, "input");
