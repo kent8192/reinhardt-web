@@ -200,6 +200,7 @@ pub use reinhardt_forms::{
 // Macros
 // ============================================================================
 
+pub use crate::client_page;
 pub use crate::form;
 pub use crate::head;
 pub use crate::page;
