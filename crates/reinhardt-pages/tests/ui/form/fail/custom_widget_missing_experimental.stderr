@@ -1,0 +1,5 @@
+error: CustomWidget requires the experimental marker
+  --> tests/ui/form/fail/custom_widget_missing_experimental.rs:15:5
+   |
+15 |                 widget: CustomWidget(picker) {
+   |                 ^^^^^^

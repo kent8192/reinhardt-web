@@ -1,0 +1,5 @@
+error: MonthInput is only supported on string-valued fields
+ --> tests/ui/form/fail/month_input_rejects_date_field.rs:8:4
+  |
+8 |             billing_month: DateField {
+  |             ^^^^^^^^^^^^^

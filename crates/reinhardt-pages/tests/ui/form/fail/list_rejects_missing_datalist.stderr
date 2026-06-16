@@ -1,0 +1,5 @@
+error: list reference 'suggestions' must resolve to a Datalist entry
+  --> tests/ui/form/fail/list_rejects_missing_datalist.rs:10:11
+   |
+10 |                 list: suggestions,
+   |                       ^^^^^^^^^^^
