@@ -157,6 +157,8 @@ mod wasm_only {
 	/// This type is never actually used in WASM code.
 	pub struct ImportResult;
 
+	// The assertion function is intentionally never called; compiling its
+	// signature keeps the WASM trait-object shapes in sync with the native API.
 	#[allow(dead_code)]
 	fn assert_admin_trait_shapes(_admin: &dyn ModelAdmin, _user: &dyn AdminUser) {}
 }
