@@ -121,10 +121,31 @@ pub struct FormValidationError<Field>
 where
 	Field: Copy + Eq + Hash,
 {
+	details: Box<FormValidationErrorDetails<Field>>,
+	form_error: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FormValidationErrorDetails<Field>
+where
+	Field: Copy + Eq + Hash,
+{
 	field_errors: HashMap<Field, FieldError>,
 	collection_errors: HashMap<String, FieldError>,
 	path_errors: HashMap<String, FieldError>,
-	form_error: Option<String>,
+}
+
+impl<Field> FormValidationErrorDetails<Field>
+where
+	Field: Copy + Eq + Hash,
+{
+	fn new() -> Self {
+		Self {
+			field_errors: HashMap::new(),
+			collection_errors: HashMap::new(),
+			path_errors: HashMap::new(),
+		}
+	}
 }
 
 impl<Field> FormValidationError<Field>
@@ -134,21 +155,17 @@ where
 	/// Creates an empty validation error.
 	pub fn new() -> Self {
 		Self {
-			field_errors: HashMap::new(),
-			collection_errors: HashMap::new(),
-			path_errors: HashMap::new(),
+			details: Box::new(FormValidationErrorDetails::new()),
 			form_error: None,
 		}
 	}
 
 	/// Creates a field validation error.
 	pub fn field(field: Field, message: impl Into<String>) -> Self {
-		let mut field_errors = HashMap::new();
-		field_errors.insert(field, FieldError::new(message));
+		let mut details = FormValidationErrorDetails::new();
+		details.field_errors.insert(field, FieldError::new(message));
 		Self {
-			field_errors,
-			collection_errors: HashMap::new(),
-			path_errors: HashMap::new(),
+			details: Box::new(details),
 			form_error: None,
 		}
 	}
@@ -156,26 +173,24 @@ where
 	/// Creates a form-level validation error.
 	pub fn form(message: impl Into<String>) -> Self {
 		Self {
-			field_errors: HashMap::new(),
-			collection_errors: HashMap::new(),
-			path_errors: HashMap::new(),
+			details: Box::new(FormValidationErrorDetails::new()),
 			form_error: Some(message.into()),
 		}
 	}
 
 	/// Returns field errors.
 	pub fn field_errors(&self) -> &HashMap<Field, FieldError> {
-		&self.field_errors
+		&self.details.field_errors
 	}
 
 	/// Returns generated collection validation errors.
 	pub fn collection_errors(&self) -> &HashMap<String, FieldError> {
-		&self.collection_errors
+		&self.details.collection_errors
 	}
 
 	/// Returns nested collection path errors.
 	pub fn path_errors(&self) -> &HashMap<String, FieldError> {
-		&self.path_errors
+		&self.details.path_errors
 	}
 
 	/// Returns the form-level error, if any.
@@ -185,7 +200,9 @@ where
 
 	/// Adds or replaces one field validation error.
 	pub fn add_field_error(&mut self, field: Field, message: impl Into<String>) {
-		self.field_errors.insert(field, FieldError::new(message));
+		self.details
+			.field_errors
+			.insert(field, FieldError::new(message));
 	}
 
 	/// Adds or replaces one generated collection validation error.
@@ -194,13 +211,15 @@ where
 		collection_key: impl Into<String>,
 		message: impl Into<String>,
 	) {
-		self.collection_errors
+		self.details
+			.collection_errors
 			.insert(collection_key.into(), FieldError::new(message));
 	}
 
 	/// Adds or replaces one nested collection path validation error.
 	pub fn add_path_error(&mut self, path_key: impl Into<String>, message: impl Into<String>) {
-		self.path_errors
+		self.details
+			.path_errors
 			.insert(path_key.into(), FieldError::new(message));
 	}
 
@@ -211,9 +230,9 @@ where
 
 	/// Returns whether this error contains no field, path, or form error.
 	pub fn is_empty(&self) -> bool {
-		self.field_errors.is_empty()
-			&& self.collection_errors.is_empty()
-			&& self.path_errors.is_empty()
+		self.details.field_errors.is_empty()
+			&& self.details.collection_errors.is_empty()
+			&& self.details.path_errors.is_empty()
 			&& self.form_error.is_none()
 	}
 }
