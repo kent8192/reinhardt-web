@@ -382,6 +382,7 @@ pub(crate) fn injectable_struct_impl(
 		);
 		let register_fn_name = format_ident!("__reinhardt_register_{}", struct_name);
 		quote! {
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			#[allow(non_snake_case)]
 			async fn #factory_fn_name(
 				ctx: ::std::sync::Arc<#di_crate::InjectionContext>,
@@ -389,6 +390,7 @@ pub(crate) fn injectable_struct_impl(
 				<#struct_name as #di_crate::Injectable>::inject(&ctx).await
 			}
 
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			#[allow(non_snake_case)]
 			fn #register_fn_name(registry: &#di_crate::DependencyRegistry) {
 				registry.register_async::<#struct_name, _, _>(#scope_tokens, #factory_fn_name);
@@ -398,6 +400,7 @@ pub(crate) fn injectable_struct_impl(
 				);
 			}
 
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			#di_crate::inventory::submit! {
 				#di_crate::DependencyRegistration::new::<#struct_name>(
 					#type_name_str,
@@ -414,6 +417,7 @@ pub(crate) fn injectable_struct_impl(
 	let expanded = quote! {
 		#input
 
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#[#async_trait::async_trait]
 		impl #generics #di_crate::Injectable for #struct_name #generics #where_clause {
 			async fn inject(__di_ctx: &#di_crate::InjectionContext)

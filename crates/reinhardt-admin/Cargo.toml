@@ -27,6 +27,7 @@ reinhardt-urls = { workspace = true, features = ["routers"] }
 sha2 = "0.10"
 subtle = "2"
 getrandom = { workspace = true }
+async-trait = { workspace = true }
 
 # Server-only dependencies (native target)
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
@@ -43,7 +44,6 @@ reinhardt-query = { workspace = true }
 reqwest = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
-async-trait = { workspace = true }
 futures = { workspace = true }
 bytes = { workspace = true }
 hyper = { workspace = true }

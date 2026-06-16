@@ -14,7 +14,7 @@
 //! | Category | Types |
 //! |----------|-------|
 //! | Core | `TypedFormMacro`, `TypedFormAction`, `FormMethod` |
-//! | Fields | `TypedFormFieldEntry`, `TypedFormFieldDef`, `TypedFormFieldGroup` |
+//! | Fields | `TypedFormFieldEntry`, `TypedFormFieldDef`, `TypedFormFieldGroup`, `TypedFormFieldCollection` |
 //! | Field Types | `TypedFieldType`, `TypedWidget` |
 //! | Properties | `TypedFieldValidation`, `TypedFieldDisplay`, `TypedFieldStyling` |
 //! | State | `TypedFormState`, `TypedFormCallbacks`, `TypedFormWatch` |
@@ -66,10 +66,12 @@ use super::form_node::ValidatorScope;
 ///         <<enumeration>>
 ///         Field~TypedFormFieldDef~
 ///         Group~TypedFormFieldGroup~
+///         Collection~TypedFormFieldCollection~
 ///     }
 ///
 ///     TypedFormFieldEntry --> TypedFormFieldDef
 ///     TypedFormFieldEntry --> TypedFormFieldGroup
+///     TypedFormFieldEntry --> TypedFormFieldCollection
 ///
 ///     class TypedFormFieldDef {
 ///         +TypedFieldType field_type
@@ -117,7 +119,7 @@ pub struct TypedFormMacro {
 	pub choices_loader: Option<Path>,
 	/// Slot definitions for custom UI elements
 	pub slots: Option<TypedFormSlots>,
-	/// Validated field definitions (can include field groups)
+	/// Validated field definitions (can include field groups and collections)
 	pub fields: Vec<TypedFormFieldEntry>,
 	/// Validated unified validators. Each rule carries a `ValidatorScope`
 	/// controlling whether it executes on server, client, or both.
@@ -639,8 +641,8 @@ pub struct TypedDatalistDef {
 
 /// An entry in the typed form fields list.
 ///
-/// Can be either a regular field definition or a field group
-/// containing multiple related fields.
+/// Can be a regular field definition, a field group, a repeatable collection,
+/// or a submit button.
 #[derive(Debug)]
 pub enum TypedFormFieldEntry {
 	/// A single field definition
@@ -649,6 +651,8 @@ pub enum TypedFormFieldEntry {
 	Field(Box<TypedFormFieldDef>),
 	/// A group of related fields
 	Group(TypedFormFieldGroup),
+	/// A repeatable collection of field entries
+	Collection(Box<TypedFormFieldCollection>),
 	/// A submit button (not a data field — generates no Signal)
 	SubmitButton(TypedSubmitButtonDef),
 	/// A reset button (not a data field).
@@ -673,6 +677,11 @@ impl TypedFormFieldEntry {
 		matches!(self, TypedFormFieldEntry::Group(_))
 	}
 
+	/// Returns true if this is a field collection.
+	pub fn is_collection(&self) -> bool {
+		matches!(self, TypedFormFieldEntry::Collection(_))
+	}
+
 	/// Returns true if this is a regular field.
 	pub fn is_field(&self) -> bool {
 		matches!(self, TypedFormFieldEntry::Field(_))
@@ -688,6 +697,7 @@ impl TypedFormFieldEntry {
 		match self {
 			TypedFormFieldEntry::Field(f) => &f.as_ref().name,
 			TypedFormFieldEntry::Group(g) => &g.name,
+			TypedFormFieldEntry::Collection(collection) => &collection.name,
 			TypedFormFieldEntry::SubmitButton(b) => &b.name,
 			TypedFormFieldEntry::ResetButton(b) | TypedFormFieldEntry::Button(b) => &b.name,
 			TypedFormFieldEntry::ImageInput(i) => &i.name,
@@ -703,6 +713,7 @@ impl TypedFormFieldEntry {
 		match self {
 			TypedFormFieldEntry::Field(f) => f.as_ref().span,
 			TypedFormFieldEntry::Group(g) => g.span,
+			TypedFormFieldEntry::Collection(collection) => collection.span,
 			TypedFormFieldEntry::SubmitButton(b) => b.span,
 			TypedFormFieldEntry::ResetButton(b) | TypedFormFieldEntry::Button(b) => b.span,
 			TypedFormFieldEntry::ImageInput(i) => i.span,
@@ -729,6 +740,14 @@ impl TypedFormFieldEntry {
 		}
 	}
 
+	/// Returns a reference to the inner collection if this is a Collection variant.
+	pub fn as_collection(&self) -> Option<&TypedFormFieldCollection> {
+		match self {
+			TypedFormFieldEntry::Collection(collection) => Some(collection.as_ref()),
+			_ => None,
+		}
+	}
+
 	/// Returns a reference to the inner submit button if this is a SubmitButton variant.
 	pub fn as_submit_button(&self) -> Option<&TypedSubmitButtonDef> {
 		match self {
@@ -744,6 +763,29 @@ impl TypedFormFieldEntry {
 			_ => None,
 		}
 	}
+}
+
+/// A validated repeatable collection of field entries.
+#[derive(Debug)]
+pub struct TypedFormFieldCollection {
+	/// Collection name identifier
+	pub name: Ident,
+	/// Collection-level label text
+	pub label: Option<String>,
+	/// Collection-level CSS class
+	pub class: Option<String>,
+	/// Minimum number of collection items
+	pub min_items: Option<usize>,
+	/// Maximum number of collection items
+	pub max_items: Option<usize>,
+	/// Initial value source field name
+	pub initial_from: Option<String>,
+	/// Validated field entries within each collection item
+	pub fields: Vec<TypedFormFieldEntry>,
+	/// Optional custom item renderer closure
+	pub render_item: Option<ExprClosure>,
+	/// Span for error reporting
+	pub span: Span,
 }
 
 /// A validated submit button definition.

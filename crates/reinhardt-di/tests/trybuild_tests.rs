@@ -5,6 +5,8 @@
 //!   pulling in extra crates (notably `async-trait`, regression test for
 //!   issue #4445).
 
+#![cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+
 #[test]
 fn injectable_compile_fail() {
 	let t = trybuild::TestCases::new();

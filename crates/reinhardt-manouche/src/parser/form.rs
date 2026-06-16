@@ -15,10 +15,11 @@ use syn::{
 use crate::{
 	AmbientArgumentsSource, ClientTrigger, CustomAttr, FormAction, FormChoiceGroup, FormChoiceItem,
 	FormChoiceOption, FormControlEntryDef, FormControlEntryKind, FormCustomWidgetSpec,
-	FormDatalistDef, FormDerived, FormDerivedItem, FormFieldDef, FormFieldEntry, FormFieldGroup,
-	FormFieldProperty, FormMacro, FormSlots, FormState, FormStateField, FormSubmitButtonDef,
-	FormValidator, FormWatch, FormWatchItem, FormWidgetSpec, IconAttr, IconChild, IconElement,
-	IconPosition, StripArgument, ValidatorRule, ValidatorScope, WrapperAttr, WrapperElement,
+	FormDatalistDef, FormDerived, FormDerivedItem, FormFieldCollection, FormFieldDef,
+	FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormSlots, FormState,
+	FormStateField, FormSubmitButtonDef, FormValidator, FormWatch, FormWatchItem, FormWidgetSpec,
+	IconAttr, IconChild, IconElement, IconPosition, StripArgument, ValidatorRule, ValidatorScope,
+	WrapperAttr, WrapperElement,
 };
 
 /// Parses a `form!` macro invocation into an untyped AST.
@@ -292,9 +293,10 @@ fn parse_optional_comma(input: ParseStream) -> Result<()> {
 
 /// Parses field definitions inside the `fields: { ... }` block.
 ///
-/// Supports both regular fields and field groups:
+/// Supports regular fields, field groups, field collections, and submit buttons:
 /// - Regular field: `username: CharField { required, ... }`
 /// - Field group: `address: FieldGroup { label: "...", fields: { ... } }`
+/// - Field collection: `items: FieldArray { fields: { ... } }`
 fn parse_field_definitions(input: ParseStream) -> Result<Vec<FormFieldEntry>> {
 	let mut entries = Vec::new();
 
@@ -310,6 +312,11 @@ fn parse_field_definitions(input: ParseStream) -> Result<Vec<FormFieldEntry>> {
 			braced!(content in input);
 			let group = parse_field_group(name, &content, span)?;
 			entries.push(FormFieldEntry::Group(group));
+		} else if field_type == "FieldArray" {
+			let content;
+			braced!(content in input);
+			let collection = parse_field_array(name, &content, span)?;
+			entries.push(FormFieldEntry::Collection(Box::new(collection)));
 		} else if field_type == "SubmitButton" {
 			// Parse submit button: SubmitButton { label: "Sign in", class: "btn-primary" }
 			let properties = if input.peek(token::Brace) {
@@ -473,6 +480,59 @@ fn parse_field_group(name: Ident, input: ParseStream, span: Span) -> Result<Form
 		label,
 		class,
 		fields,
+		span,
+	})
+}
+
+/// Parses entries inside a field group (no nested groups allowed).
+fn parse_field_array(name: Ident, input: ParseStream, span: Span) -> Result<FormFieldCollection> {
+	let mut label = None;
+	let mut class = None;
+	let mut min_items = None;
+	let mut max_items = None;
+	let mut initial_from = None;
+	let mut fields = Vec::new();
+	let mut render_item = None;
+
+	while !input.is_empty() {
+		let key: Ident = input.parse()?;
+		input.parse::<Token![:]>()?;
+
+		match key.to_string().as_str() {
+			"label" => label = Some(input.parse()?),
+			"class" => class = Some(input.parse()?),
+			"min_items" => min_items = Some(input.parse()?),
+			"max_items" => max_items = Some(input.parse()?),
+			"initial_from" => initial_from = Some(input.parse()?),
+			"fields" => {
+				let content;
+				braced!(content in input);
+				fields = parse_field_definitions(&content)?;
+			}
+			"render_item" => render_item = Some(input.parse()?),
+			_ => {
+				return Err(syn::Error::new(
+					key.span(),
+					format!(
+						"Unknown FieldArray property: '{}'. Expected: label, class, min_items, max_items, initial_from, fields, render_item",
+						key
+					),
+				));
+			}
+		}
+
+		parse_optional_comma(input)?;
+	}
+
+	Ok(FormFieldCollection {
+		name,
+		label,
+		class,
+		min_items,
+		max_items,
+		initial_from,
+		fields,
+		render_item,
 		span,
 	})
 }
@@ -3075,6 +3135,85 @@ mod tests {
 	// =====================================================
 	// field group tests
 	// =====================================================
+
+	#[test]
+	fn test_parse_field_array_entry() {
+		let input: TokenStream = quote! {
+			name: InvoiceForm,
+			fields: {
+				line_items: FieldArray {
+					label: "Line items",
+					min_items: 1,
+					max_items: 10,
+					initial_from: "line_items",
+					fields: {
+						description: CharField { required }
+						quantity: IntegerField { initial: 1, required }
+					},
+					render_item: |item| { item.default_row() }
+				}
+			}
+		};
+
+		let form: FormMacro = syn::parse2(input).expect("FieldArray should parse");
+		let entry = form.fields.first().expect("line_items entry");
+		assert!(entry.is_collection());
+		assert_eq!(entry.name().to_string(), "line_items");
+		let collection = entry.as_collection().expect("collection entry");
+		assert_eq!(
+			collection.label.as_ref().map(LitStr::value),
+			Some("Line items".to_string())
+		);
+		assert_eq!(
+			collection
+				.min_items
+				.as_ref()
+				.map(|lit| lit.base10_parse::<usize>().unwrap()),
+			Some(1)
+		);
+		assert_eq!(
+			collection
+				.max_items
+				.as_ref()
+				.map(|lit| lit.base10_parse::<usize>().unwrap()),
+			Some(10)
+		);
+		assert_eq!(
+			collection.initial_from.as_ref().map(LitStr::value),
+			Some("line_items".to_string())
+		);
+		assert_eq!(collection.fields.len(), 2);
+		assert!(collection.render_item.is_some());
+	}
+
+	#[test]
+	fn test_parse_nested_field_array_entry() {
+		let input: TokenStream = quote! {
+			name: SurveyForm,
+			fields: {
+				sections: FieldArray {
+					fields: {
+						title: CharField { required }
+						questions: FieldArray {
+							fields: {
+								label: CharField { required }
+							}
+						}
+					}
+				}
+			}
+		};
+
+		let form: FormMacro = syn::parse2(input).expect("nested FieldArray should parse");
+		let sections = form.fields.first().unwrap().as_collection().unwrap();
+		let questions = sections
+			.fields
+			.iter()
+			.find(|entry| entry.name().to_string() == "questions")
+			.and_then(FormFieldEntry::as_collection)
+			.expect("questions nested collection");
+		assert_eq!(questions.fields.len(), 1);
+	}
 
 	#[rstest]
 	fn test_parse_field_group_basic() {

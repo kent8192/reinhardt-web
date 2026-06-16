@@ -152,7 +152,9 @@ let choice = Choice::build()
 
 The `#[model]` macro automatically generates a `{Model}Info` companion struct — a plain data carrier with model data fields, lightweight relationship fields, `pub` visibility, and bidirectional `From` conversions.
 
-**Generated for every model by default.** Opt out with `#[model(info = false)]`.
+**Generated for every model by default.** Opt out of only the companion struct
+with `#[model(info = false)]`. Use `#[model(server_only)]` for models that
+must not expose shared `InfoModel` / `{Model}Info` output on WASM.
 
 ```rust
 #[model(app_label = "blog", table_name = "posts")]
@@ -318,7 +320,8 @@ the label is rendered as a `<legend>` inside the fieldset.
 - Pass FK values via `.<related>(&model)` in `build()` setters when the related instance is already in scope (composes with #4398)
 - Use `{Model}Info` for API DTOs and cross-layer data transfer instead of hand-writing parallel structs (MU-4)
 - Use `#[field(skip_info = true)]` to exclude sensitive fields (e.g., password hashes) from the Info struct
-- Use `#[model(info = false)]` only when the Info struct would be genuinely unused
+- Use `#[model(info = false)]` only when the Info struct would be genuinely unused, but the model may still be referenced by shared relationship metadata
+- Use `#[model(server_only)]` only for models that are intentionally native-only and should not participate in WASM/shared type contracts
 
 ### ❌ NEVER DO
 - Initialize `#[model(...)]` structs via struct-literal syntax in production code (use `build()` or zero-argument `new()`)
