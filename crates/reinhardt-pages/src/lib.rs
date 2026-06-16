@@ -105,6 +105,7 @@
 //! - [`page!`]: JSX-like macro for defining view components
 //! - [`head!`]: JSX-like macro for defining HTML head sections
 //! - [`form!`]: Type-safe form component macro
+//! - [`client_page`]: Client page function macro with native route-table stubs
 //! - [`wasm_server_api`]: WASM/server API parity macro
 //!
 //! See `docs/wasm_server_api.md` for the target-specific API parity contract.
@@ -327,9 +328,10 @@ pub use form::{FormBinding, FormComponent};
 // Static form metadata types (always available, used by form! macro)
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use form_state::{
-	FieldError, FieldState, FocusError, FormEvent, FormRuntimeSource, FormState, FormSubscription,
-	FormValidationError, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder, UseFormReturn,
-	UseFormSubmitOutcome, use_form,
+	CollectionItem, CollectionItemKey, CollectionState, FieldError, FieldPathState, FieldState,
+	FocusError, FormCollectionRuntimeSource, FormEvent, FormRuntimeSource, FormState,
+	FormSubscription, FormValidationError, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder,
+	UseFormReturn, UseFormSubmitOutcome, use_form,
 };
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
@@ -377,7 +379,7 @@ pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
 pub use reinhardt_pages_macros::page;
 pub use reinhardt_pages_macros::wasm_server_api;
-pub use reinhardt_pages_macros::{FromRequest, component, page_props};
+pub use reinhardt_pages_macros::{FromRequest, client_page, component, page_props};
 
 // Private re-exports used by macro-generated code. Not part of the public API.
 #[doc(hidden)]
