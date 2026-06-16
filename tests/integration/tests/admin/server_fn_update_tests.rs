@@ -6,7 +6,6 @@
 use super::server_fn_helpers::server_fn_context;
 use reinhardt_admin::adapters::MutationRequest;
 use reinhardt_admin::core::AdminRecord;
-use reinhardt_admin::core::{AdminDatabase, AdminSite};
 use reinhardt_admin::server::{create_record, update_record};
 use rstest::*;
 use serde_json::json;
@@ -18,8 +17,8 @@ use super::server_fn_helpers::{TEST_CSRF_TOKEN, make_auth_user, make_staff_reque
 
 /// Creates a test record and returns its ID as a string.
 async fn create_test_record(
-	site: &AdminSite,
-	db: &AdminDatabase,
+	site: &super::server_fn_helpers::AdminSiteDepends,
+	db: &super::server_fn_helpers::AdminDatabaseDepends,
 	name: &str,
 	status: &str,
 ) -> String {
@@ -57,7 +56,9 @@ async fn create_test_record(
 /// Verify that update_record succeeds with valid data
 #[rstest]
 #[tokio::test]
-async fn test_update_record_happy_path(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_update_record_happy_path(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let id = create_test_record(&site, &db, "Original Name", "active").await;
@@ -96,7 +97,7 @@ async fn test_update_record_happy_path(#[future] server_fn_context: (AdminSite, 
 #[rstest]
 #[tokio::test]
 async fn test_update_record_returns_valid_response(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -144,7 +145,7 @@ async fn test_update_record_returns_valid_response(
 #[rstest]
 #[tokio::test]
 async fn test_update_record_persists_to_database(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -190,7 +191,7 @@ async fn test_update_record_persists_to_database(
 #[rstest]
 #[tokio::test]
 async fn test_update_record_multiple_fields(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -233,7 +234,7 @@ async fn test_update_record_multiple_fields(
 #[rstest]
 #[tokio::test]
 async fn test_update_record_special_characters(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -277,7 +278,7 @@ async fn test_update_record_special_characters(
 #[rstest]
 #[tokio::test]
 async fn test_update_record_partial_fields(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -323,7 +324,9 @@ async fn test_update_record_partial_fields(
 /// Verify update_record returns error for non-existent ID
 #[rstest]
 #[tokio::test]
-async fn test_update_record_not_found(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_update_record_not_found(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -357,7 +360,7 @@ async fn test_update_record_not_found(#[future] server_fn_context: (AdminSite, A
 #[rstest]
 #[tokio::test]
 async fn test_update_record_model_not_registered(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;

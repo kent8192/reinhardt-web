@@ -5,7 +5,6 @@
 
 use super::server_fn_helpers::server_fn_context;
 use reinhardt_admin::core::ExportFormat;
-use reinhardt_admin::core::{AdminDatabase, AdminSite};
 use reinhardt_admin::server::export_data;
 use rstest::*;
 use serde_json::json;
@@ -18,7 +17,9 @@ use super::server_fn_helpers::{make_auth_user, make_staff_request};
 /// Verify JSON export returns valid data with correct metadata
 #[rstest]
 #[tokio::test]
-async fn test_export_json_happy_path(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_export_json_happy_path(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -57,7 +58,9 @@ async fn test_export_json_happy_path(#[future] server_fn_context: (AdminSite, Ad
 /// records as ordered column values, avoiding the csv crate's map limitation.
 #[rstest]
 #[tokio::test]
-async fn test_export_csv_succeeds(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_export_csv_succeeds(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -97,7 +100,9 @@ async fn test_export_csv_succeeds(#[future] server_fn_context: (AdminSite, Admin
 /// records as ordered column values, avoiding the csv crate's map limitation.
 #[rstest]
 #[tokio::test]
-async fn test_export_tsv_succeeds(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_export_tsv_succeeds(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -136,7 +141,9 @@ async fn test_export_tsv_succeeds(#[future] server_fn_context: (AdminSite, Admin
 /// Regression test for Issue #2925: export should set truncated flag when records exceed limit
 #[rstest]
 #[tokio::test]
-async fn test_export_truncation_flag(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_export_truncation_flag(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -167,7 +174,9 @@ async fn test_export_truncation_flag(#[future] server_fn_context: (AdminSite, Ad
 /// Verify export from empty table returns empty data
 #[rstest]
 #[tokio::test]
-async fn test_export_empty_table(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_export_empty_table(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -198,7 +207,9 @@ async fn test_export_empty_table(#[future] server_fn_context: (AdminSite, AdminD
 /// Verify JSON export content type is correct
 #[rstest]
 #[tokio::test]
-async fn test_export_json_content_type(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_export_json_content_type(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -225,7 +236,9 @@ async fn test_export_json_content_type(#[future] server_fn_context: (AdminSite, 
 /// Verify export returns error for non-registered model
 #[rstest]
 #[tokio::test]
-async fn test_export_model_not_registered(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_export_model_not_registered(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();

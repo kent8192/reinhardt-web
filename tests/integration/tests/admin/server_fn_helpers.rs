@@ -3,12 +3,14 @@
 //! Provides helper functions to construct `ServerFnRequest`, `AdminAuthenticatedUser`,
 //! and a permission-granting ModelAdmin for testing server functions.
 
-use reinhardt_admin::core::{AdminDatabase, AdminSite, AdminUser, ModelAdmin};
+use reinhardt_admin::core::{
+	AdminDatabase, AdminDatabaseKey, AdminSite, AdminSiteKey, AdminUser, ModelAdmin,
+};
 use reinhardt_admin::server::{AdminAuthenticatedUser, AdminDefaultUser};
 use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 use reinhardt_db::backends::dialect::PostgresBackend;
 use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
-use reinhardt_di::{InjectionContext, SingletonScope};
+use reinhardt_di::{Depends, InjectionContext, SingletonScope};
 use reinhardt_http::AuthState;
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_query::prelude::{
@@ -20,6 +22,11 @@ use rstest::*;
 use sqlx::Executor;
 use std::sync::Arc;
 use uuid::Uuid;
+
+pub(super) type AdminSiteDepends = Depends<AdminSiteKey, AdminSite>;
+pub(super) type AdminDatabaseDepends = Depends<AdminDatabaseKey, AdminDatabase>;
+pub(super) type ServerFnContext = (AdminSiteDepends, AdminDatabaseDepends);
+pub(super) type UuidPkContext = (AdminSiteDepends, AdminDatabaseDepends, sqlx::PgPool);
 
 /// Fixed CSRF token value for testing.
 /// Both the request body and the cookie must use this same value.
@@ -91,6 +98,14 @@ pub fn make_staff_user() -> AdminDefaultUser {
 /// authentication used by admin server functions.
 pub fn make_auth_user() -> AdminAuthenticatedUser {
 	AdminAuthenticatedUser(Arc::new(make_staff_user()))
+}
+
+fn admin_site_dep(site: AdminSite) -> AdminSiteDepends {
+	Depends::from_value(site)
+}
+
+fn admin_database_dep(db: AdminDatabase) -> AdminDatabaseDepends {
+	Depends::from_value(db)
 }
 
 /// A ModelAdmin implementation that denies all permissions.
@@ -402,7 +417,7 @@ pub(super) async fn setup_test_models_table(pool: &sqlx::PgPool) {
 #[fixture]
 pub async fn server_fn_context(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (AdminSite, AdminDatabase) {
+) -> ServerFnContext {
 	let (pool, _) = shared_db_pool.await;
 
 	setup_test_models_table(&pool).await;
@@ -419,7 +434,7 @@ pub async fn server_fn_context(
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
 
-	(site, db)
+	(admin_site_dep(site), admin_database_dep(db))
 }
 
 /// Composite fixture providing AdminSite + AdminDatabase with a deny-all ModelAdmin.
@@ -879,9 +894,7 @@ pub fn make_e2e_request_no_auth(path: &str, body: serde_json::Value) -> reinhard
 /// Returns the PgPool alongside AdminSite and AdminDatabase so tests can
 /// insert records with UUID PKs directly via SQL.
 #[fixture]
-pub async fn uuid_pk_context(
-	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (AdminSite, AdminDatabase, sqlx::PgPool) {
+pub async fn uuid_pk_context(#[future] shared_db_pool: (sqlx::PgPool, String)) -> UuidPkContext {
 	let (pool, _) = shared_db_pool.await;
 
 	// Create a table with UUID primary key using SeaQuery
@@ -947,7 +960,7 @@ pub async fn uuid_pk_context(
 	site.register("UuidModel", admin)
 		.expect("Failed to register UuidModel");
 
-	(site, db, pool_clone)
+	(admin_site_dep(site), admin_database_dep(db), pool_clone)
 }
 
 // ==================== Permission Denial Test Infrastructure ====================
@@ -1038,7 +1051,7 @@ impl ModelAdmin for DenyAllPermissionsModelAdmin {
 #[fixture]
 pub async fn server_fn_context_deny_all(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (AdminSite, AdminDatabase) {
+) -> ServerFnContext {
 	let (pool, _) = shared_db_pool.await;
 
 	setup_test_models_table(&pool).await;
@@ -1053,7 +1066,7 @@ pub async fn server_fn_context_deny_all(
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
 
-	(site, db)
+	(admin_site_dep(site), admin_database_dep(db))
 }
 
 /// Composite fixture providing AdminSite + AdminDatabase with view-only permissions.
@@ -1063,7 +1076,7 @@ pub async fn server_fn_context_deny_all(
 #[fixture]
 pub async fn server_fn_context_view_only(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (AdminSite, AdminDatabase) {
+) -> ServerFnContext {
 	let (pool, _) = shared_db_pool.await;
 
 	setup_test_models_table(&pool).await;
@@ -1088,5 +1101,5 @@ pub async fn server_fn_context_view_only(
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
 
-	(site, db)
+	(admin_site_dep(site), admin_database_dep(db))
 }

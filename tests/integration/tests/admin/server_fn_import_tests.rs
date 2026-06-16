@@ -3,7 +3,7 @@
 //! Tests the import server function with various formats and boundary conditions.
 
 use super::server_fn_helpers::server_fn_context;
-use reinhardt_admin::core::{AdminDatabase, AdminSite, ImportFormat};
+use reinhardt_admin::core::ImportFormat;
 use reinhardt_admin::server::import_data;
 use rstest::*;
 
@@ -14,7 +14,9 @@ use super::server_fn_helpers::{make_auth_user, make_staff_request};
 /// Verify JSON import succeeds with valid data
 #[rstest]
 #[tokio::test]
-async fn test_import_json_happy_path(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_import_json_happy_path(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -49,7 +51,9 @@ async fn test_import_json_happy_path(#[future] server_fn_context: (AdminSite, Ad
 /// Verify CSV import succeeds with valid data
 #[rstest]
 #[tokio::test]
-async fn test_import_csv_happy_path(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_import_csv_happy_path(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -78,7 +82,9 @@ async fn test_import_csv_happy_path(#[future] server_fn_context: (AdminSite, Adm
 /// Verify TSV import succeeds with valid data
 #[rstest]
 #[tokio::test]
-async fn test_import_tsv_happy_path(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_import_tsv_happy_path(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -109,7 +115,9 @@ async fn test_import_tsv_happy_path(#[future] server_fn_context: (AdminSite, Adm
 /// Verify that import rejects file exceeding MAX_IMPORT_FILE_SIZE (10MB)
 #[rstest]
 #[tokio::test]
-async fn test_import_file_size_limit(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_import_file_size_limit(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -146,7 +154,9 @@ async fn test_import_file_size_limit(#[future] server_fn_context: (AdminSite, Ad
 /// Verify that import rejects data with more than MAX_IMPORT_RECORDS (1000)
 #[rstest]
 #[tokio::test]
-async fn test_import_record_count_limit(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_import_record_count_limit(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -193,7 +203,9 @@ async fn test_import_record_count_limit(#[future] server_fn_context: (AdminSite,
 /// Verify that invalid JSON returns deserialization error
 #[rstest]
 #[tokio::test]
-async fn test_import_invalid_json(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_import_invalid_json(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -220,7 +232,9 @@ async fn test_import_invalid_json(#[future] server_fn_context: (AdminSite, Admin
 /// Verify that invalid CSV returns error
 #[rstest]
 #[tokio::test]
-async fn test_import_invalid_csv(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_import_invalid_csv(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -257,7 +271,9 @@ async fn test_import_invalid_csv(#[future] server_fn_context: (AdminSite, AdminD
 /// Verify import of empty data
 #[rstest]
 #[tokio::test]
-async fn test_import_empty_data(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_import_empty_data(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -287,7 +303,9 @@ async fn test_import_empty_data(#[future] server_fn_context: (AdminSite, AdminDa
 /// Verify import returns error for non-registered model
 #[rstest]
 #[tokio::test]
-async fn test_import_model_not_registered(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_import_model_not_registered(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();

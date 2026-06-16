@@ -6,7 +6,6 @@
 use super::server_fn_helpers::server_fn_context;
 use reinhardt_admin::adapters::ListQueryParams;
 use reinhardt_admin::core::AdminRecord;
-use reinhardt_admin::core::{AdminDatabase, AdminSite};
 use reinhardt_admin::server::get_list;
 use rstest::*;
 use serde_json::json;
@@ -19,7 +18,9 @@ use super::server_fn_helpers::make_auth_user;
 /// Verify that get_list returns records with correct pagination metadata
 #[rstest]
 #[tokio::test]
-async fn test_get_list_happy_path(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_get_list_happy_path(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let auth_user = make_auth_user();
@@ -51,7 +52,9 @@ async fn test_get_list_happy_path(#[future] server_fn_context: (AdminSite, Admin
 /// Verify that search filters records by search fields (OR logic)
 #[rstest]
 #[tokio::test]
-async fn test_get_list_with_search(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_get_list_with_search(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let auth_user = make_auth_user();
@@ -82,7 +85,9 @@ async fn test_get_list_with_search(#[future] server_fn_context: (AdminSite, Admi
 /// Verify that filter by allowed field works
 #[rstest]
 #[tokio::test]
-async fn test_get_list_with_filter(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_get_list_with_filter(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let auth_user = make_auth_user();
@@ -116,7 +121,9 @@ async fn test_get_list_with_filter(#[future] server_fn_context: (AdminSite, Admi
 /// Verify that descending sort with "-" prefix works
 #[rstest]
 #[tokio::test]
-async fn test_get_list_sort_descending(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_get_list_sort_descending(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let auth_user = make_auth_user();
@@ -143,7 +150,7 @@ async fn test_get_list_sort_descending(#[future] server_fn_context: (AdminSite, 
 #[rstest]
 #[tokio::test]
 async fn test_get_list_sort_by_invalid_field(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -174,7 +181,7 @@ async fn test_get_list_sort_by_invalid_field(
 #[rstest]
 #[tokio::test]
 async fn test_get_list_unknown_filter_field(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -210,7 +217,7 @@ async fn test_get_list_unknown_filter_field(
 #[rstest]
 #[tokio::test]
 async fn test_get_list_pagination_defaults(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -238,7 +245,9 @@ async fn test_get_list_pagination_defaults(
 /// Verify that page_size is capped at MAX_PAGE_SIZE (500)
 #[rstest]
 #[tokio::test]
-async fn test_get_list_page_size_capped(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_get_list_page_size_capped(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let auth_user = make_auth_user();
@@ -264,7 +273,7 @@ async fn test_get_list_page_size_capped(#[future] server_fn_context: (AdminSite,
 #[rstest]
 #[tokio::test]
 async fn test_get_list_page_zero_treated_as_one(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -288,7 +297,9 @@ async fn test_get_list_page_zero_treated_as_one(
 /// Verify that get_list with empty table returns count=0, total_pages=1
 #[rstest]
 #[tokio::test]
-async fn test_get_list_empty_table(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_get_list_empty_table(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let auth_user = make_auth_user();
@@ -314,7 +325,7 @@ async fn test_get_list_empty_table(#[future] server_fn_context: (AdminSite, Admi
 #[rstest]
 #[tokio::test]
 async fn test_get_list_columns_match_list_display(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -350,7 +361,7 @@ async fn test_get_list_columns_match_list_display(
 #[rstest]
 #[tokio::test]
 async fn test_get_list_filters_match_list_filter(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -385,7 +396,7 @@ async fn test_get_list_filters_match_list_filter(
 #[rstest]
 #[tokio::test]
 async fn test_get_list_model_not_registered(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;

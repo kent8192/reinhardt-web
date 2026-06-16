@@ -8,7 +8,7 @@ use super::server_fn_helpers::{
 	server_fn_context_view_only,
 };
 use reinhardt_admin::adapters::{BulkDeleteRequest, ListQueryParams, MutationRequest};
-use reinhardt_admin::core::{AdminDatabase, AdminSite, ExportFormat, ImportFormat};
+use reinhardt_admin::core::{ExportFormat, ImportFormat};
 use reinhardt_admin::server::{
 	bulk_delete_records, create_record, delete_record, export_data, get_detail, get_fields,
 	get_list, import_data, update_record,
@@ -22,7 +22,7 @@ use std::collections::HashMap;
 #[rstest]
 #[tokio::test]
 async fn test_get_list_denied_when_view_false(
-	#[future] server_fn_context_deny_all: (AdminSite, AdminDatabase),
+	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context_deny_all.await;
@@ -50,7 +50,7 @@ async fn test_get_list_denied_when_view_false(
 #[rstest]
 #[tokio::test]
 async fn test_get_detail_denied_when_view_false(
-	#[future] server_fn_context_deny_all: (AdminSite, AdminDatabase),
+	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context_deny_all.await;
@@ -86,7 +86,7 @@ async fn test_get_detail_denied_when_view_false(
 #[rstest]
 #[tokio::test]
 async fn test_get_fields_denied_when_view_false(
-	#[future] server_fn_context_deny_all: (AdminSite, AdminDatabase),
+	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context_deny_all.await;
@@ -122,7 +122,7 @@ async fn test_get_fields_denied_when_view_false(
 #[rstest]
 #[tokio::test]
 async fn test_create_record_denied_when_add_false(
-	#[future] server_fn_context_deny_all: (AdminSite, AdminDatabase),
+	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context_deny_all.await;
@@ -163,7 +163,7 @@ async fn test_create_record_denied_when_add_false(
 #[rstest]
 #[tokio::test]
 async fn test_update_record_denied_when_change_false(
-	#[future] server_fn_context_deny_all: (AdminSite, AdminDatabase),
+	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context_deny_all.await;
@@ -205,7 +205,7 @@ async fn test_update_record_denied_when_change_false(
 #[rstest]
 #[tokio::test]
 async fn test_delete_record_denied_when_delete_false(
-	#[future] server_fn_context_deny_all: (AdminSite, AdminDatabase),
+	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context_deny_all.await;
@@ -242,7 +242,7 @@ async fn test_delete_record_denied_when_delete_false(
 #[rstest]
 #[tokio::test]
 async fn test_bulk_delete_denied_when_delete_false(
-	#[future] server_fn_context_deny_all: (AdminSite, AdminDatabase),
+	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context_deny_all.await;
@@ -283,7 +283,7 @@ async fn test_bulk_delete_denied_when_delete_false(
 #[rstest]
 #[tokio::test]
 async fn test_export_denied_when_view_false(
-	#[future] server_fn_context_deny_all: (AdminSite, AdminDatabase),
+	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context_deny_all.await;
@@ -319,7 +319,7 @@ async fn test_export_denied_when_view_false(
 #[rstest]
 #[tokio::test]
 async fn test_import_denied_when_add_false(
-	#[future] server_fn_context_deny_all: (AdminSite, AdminDatabase),
+	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context_deny_all.await;
@@ -363,7 +363,7 @@ async fn test_import_denied_when_add_false(
 #[rstest]
 #[tokio::test]
 async fn test_view_only_can_list_but_not_create(
-	#[future] server_fn_context_view_only: (AdminSite, AdminDatabase),
+	#[future] server_fn_context_view_only: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context_view_only.await;
@@ -424,7 +424,7 @@ async fn test_view_only_can_list_but_not_create(
 #[rstest]
 #[tokio::test]
 async fn test_view_only_can_detail_but_not_update(
-	#[future] server_fn_context_view_only: (AdminSite, AdminDatabase),
+	#[future] server_fn_context_view_only: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context_view_only.await;
@@ -481,7 +481,7 @@ async fn test_view_only_can_detail_but_not_update(
 #[rstest]
 #[tokio::test]
 async fn test_view_only_can_export_but_not_import(
-	#[future] server_fn_context_view_only: (AdminSite, AdminDatabase),
+	#[future] server_fn_context_view_only: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context_view_only.await;
@@ -554,7 +554,7 @@ async fn test_view_only_can_export_but_not_import(
 #[case::import("import")]
 #[tokio::test]
 async fn test_permission_denial_for_all_mutation_endpoints(
-	#[future] server_fn_context_deny_all: (AdminSite, AdminDatabase),
+	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 	#[case] endpoint: &str,
 ) {
 	// Arrange

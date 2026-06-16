@@ -6,6 +6,10 @@
 use super::admin_auth::AdminAuthenticatedUser;
 use crate::adapters::{AdminDatabase, AdminRecord, AdminSite, DetailResponse};
 #[cfg(server)]
+use crate::core::{AdminDatabaseKey, AdminSiteKey};
+#[cfg(server)]
+use reinhardt_di::Depends;
+#[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 
@@ -39,8 +43,8 @@ use super::error::{AdminAuth, MapServerFnError, ModelPermission};
 pub async fn get_detail(
 	model_name: String,
 	id: String,
-	#[inject] site: AdminSite,
-	#[inject] db: AdminDatabase,
+	#[inject] site: Depends<AdminSiteKey, AdminSite>,
+	#[inject] db: Depends<AdminDatabaseKey, AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<DetailResponse, ServerFnError> {

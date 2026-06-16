@@ -7,7 +7,6 @@
 use super::server_fn_helpers::server_fn_context;
 use reinhardt_admin::adapters::BulkDeleteRequest;
 use reinhardt_admin::core::AdminRecord;
-use reinhardt_admin::core::{AdminDatabase, AdminSite};
 use reinhardt_admin::server::{bulk_delete_records, delete_record};
 use rstest::*;
 use serde_json::json;
@@ -20,7 +19,9 @@ use super::server_fn_helpers::{TEST_CSRF_TOKEN, make_auth_user, make_staff_reque
 /// Verify that delete_record succeeds for an existing record
 #[rstest]
 #[tokio::test]
-async fn test_delete_record_happy_path(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_delete_record_happy_path(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -57,7 +58,7 @@ async fn test_delete_record_happy_path(#[future] server_fn_context: (AdminSite, 
 #[rstest]
 #[tokio::test]
 async fn test_delete_record_actually_removes(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -101,7 +102,9 @@ async fn test_delete_record_actually_removes(
 /// Regression test for Issue #2934: delete non-existent ID should return 404, not success
 #[rstest]
 #[tokio::test]
-async fn test_delete_record_not_found(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_delete_record_not_found(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -136,7 +139,7 @@ async fn test_delete_record_not_found(#[future] server_fn_context: (AdminSite, A
 #[rstest]
 #[tokio::test]
 async fn test_delete_record_model_not_registered(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -167,7 +170,9 @@ async fn test_delete_record_model_not_registered(
 /// Verify that bulk_delete_records deletes multiple records correctly
 #[rstest]
 #[tokio::test]
-async fn test_bulk_delete_happy_path(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_bulk_delete_happy_path(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -211,7 +216,9 @@ async fn test_bulk_delete_happy_path(#[future] server_fn_context: (AdminSite, Ad
 /// Verify bulk delete with single ID
 #[rstest]
 #[tokio::test]
-async fn test_bulk_delete_single_id(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_bulk_delete_single_id(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -251,7 +258,9 @@ async fn test_bulk_delete_single_id(#[future] server_fn_context: (AdminSite, Adm
 /// Regression test for Issue #2935: bulk_delete should enforce MAX_BULK_DELETE_IDS limit
 #[rstest]
 #[tokio::test]
-async fn test_bulk_delete_exceeds_limit(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_bulk_delete_exceeds_limit(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -294,7 +303,9 @@ async fn test_bulk_delete_exceeds_limit(#[future] server_fn_context: (AdminSite,
 /// Verify bulk delete with empty IDs list
 #[rstest]
 #[tokio::test]
-async fn test_bulk_delete_empty_ids(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_bulk_delete_empty_ids(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -333,7 +344,9 @@ async fn test_bulk_delete_empty_ids(#[future] server_fn_context: (AdminSite, Adm
 /// Verify bulk delete with partially matching IDs
 #[rstest]
 #[tokio::test]
-async fn test_bulk_delete_partial_match(#[future] server_fn_context: (AdminSite, AdminDatabase)) {
+async fn test_bulk_delete_partial_match(
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
+) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
 	let http_request = make_staff_request();
@@ -377,7 +390,7 @@ async fn test_bulk_delete_partial_match(#[future] server_fn_context: (AdminSite,
 #[rstest]
 #[tokio::test]
 async fn test_bulk_delete_model_not_registered(
-	#[future] server_fn_context: (AdminSite, AdminDatabase),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;

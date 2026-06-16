@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use reinhardt_core::macros::injectable;
-use reinhardt_di::{DiResult, Injectable, InjectionContext};
+use reinhardt_di::{DiResult, FactoryOutput, Injectable, InjectionContext};
 use std::sync::Arc;
 
 /// The main admin site that manages all registered models
@@ -61,6 +61,10 @@ pub struct AdminSite {
 	/// When `None`, admin login is disabled.
 	jwt_secret: Option<Vec<u8>>,
 }
+
+/// Provider key for the admin site dependency.
+#[reinhardt_di::injectable_key]
+pub struct AdminSiteKey;
 
 /// Configuration for the admin site
 #[derive(Debug, Clone)]
@@ -449,6 +453,11 @@ impl Injectable for AdminSite {
 	}
 }
 
+#[reinhardt_di::injectable(scope = "singleton")]
+async fn admin_site_provider(#[inject] site: AdminSite) -> FactoryOutput<AdminSiteKey, AdminSite> {
+	FactoryOutput::new(site)
+}
+
 #[cfg(all(test, server))]
 mod tests {
 	use super::*;
@@ -462,6 +471,22 @@ mod tests {
 		assert_eq!(admin.name(), "Test Admin");
 		assert_eq!(admin.url_prefix(), "/admin");
 		assert_eq!(admin.model_count(), 0);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_admin_site_resolves_through_keyed_provider() {
+		let singleton = Arc::new(SingletonScope::new());
+		let site = Arc::new(AdminSite::new("Registry Admin"));
+		singleton.set_arc(site);
+		let ctx = reinhardt_di::InjectionContext::builder(singleton).build();
+
+		let result =
+			reinhardt_di::Depends::<AdminSiteKey, AdminSite>::resolve_from_registry(&ctx, true)
+				.await;
+
+		assert!(result.is_ok());
+		assert_eq!(result.unwrap().name(), "Registry Admin");
 	}
 
 	#[rstest]

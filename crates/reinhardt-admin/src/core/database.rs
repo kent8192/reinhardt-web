@@ -11,7 +11,7 @@ use reinhardt_db::orm::execution::convert_values;
 use reinhardt_db::orm::{
 	DatabaseConnection, Filter, FilterCondition, FilterOperator, FilterValue, Model,
 };
-use reinhardt_di::{DiResult, Injectable, InjectionContext};
+use reinhardt_di::{DiResult, FactoryOutput, Injectable, InjectionContext};
 use reinhardt_query::prelude::{
 	Alias, BinOper, CaseStatement, ColumnRef, Condition, Expr, ExprTrait, IntoValue, Order,
 	PostgresQueryBuilder, Query, QueryStatementBuilder, SimpleExpr, Value,
@@ -647,6 +647,10 @@ pub fn build_composite_filter_condition_with_depth(
 pub struct AdminDatabase {
 	connection: Arc<DatabaseConnection>,
 }
+
+/// Provider key for the admin database dependency.
+#[reinhardt_di::injectable_key]
+pub struct AdminDatabaseKey;
 
 impl AdminDatabase {
 	/// Create a new admin database interface
@@ -1329,6 +1333,13 @@ impl Injectable for AdminDatabase {
 		ctx.set_singleton(db.clone());
 		Ok(db)
 	}
+}
+
+#[reinhardt_di::injectable(scope = "singleton")]
+async fn admin_database_provider(
+	#[inject] db: AdminDatabase,
+) -> FactoryOutput<AdminDatabaseKey, AdminDatabase> {
+	FactoryOutput::new(db)
 }
 
 // Register AdminDatabase in the global dependency registry so direct
@@ -2589,6 +2600,27 @@ mod tests {
 		let result = AdminDatabase::inject(&ctx).await;
 
 		// Assert - should fail with NotRegistered since no DatabaseConnection
+		assert!(result.is_err());
+		let err = result.err().unwrap();
+		assert!(
+			err.to_string().contains("DatabaseConnection"),
+			"Error should mention DatabaseConnection, got: {}",
+			err
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_admin_database_keyed_provider_reports_missing_connection() {
+		let singleton = Arc::new(reinhardt_di::SingletonScope::new());
+		let ctx = reinhardt_di::InjectionContext::builder(singleton).build();
+
+		let result =
+			reinhardt_di::Depends::<AdminDatabaseKey, AdminDatabase>::resolve_from_registry(
+				&ctx, true,
+			)
+			.await;
+
 		assert!(result.is_err());
 		let err = result.err().unwrap();
 		assert!(

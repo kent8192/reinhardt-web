@@ -16,7 +16,11 @@ use super::security::{build_admin_auth_cookie, require_csrf_header, require_csrf
 #[cfg(server)]
 use crate::adapters::{AdminDatabase, AdminSite};
 #[cfg(server)]
+use crate::core::{AdminDatabaseKey, AdminSiteKey};
+#[cfg(server)]
 use reinhardt_auth::JwtAuth;
+#[cfg(server)]
+use reinhardt_di::Depends;
 #[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
 
@@ -64,8 +68,8 @@ pub async fn admin_login(
 	password: String,
 	csrf_token: String,
 	#[inject] http_request: ServerFnRequest,
-	#[inject] db: AdminDatabase,
-	#[inject] site: AdminSite,
+	#[inject] db: Depends<AdminDatabaseKey, AdminDatabase>,
+	#[inject] site: Depends<AdminSiteKey, AdminSite>,
 	#[inject] authenticator: AdminLoginAuthenticator,
 ) -> Result<LoginResponse, ServerFnError> {
 	// Validate CSRF token
@@ -80,8 +84,8 @@ pub async fn admin_login_with_header(
 	username: String,
 	password: String,
 	#[inject] http_request: ServerFnRequest,
-	#[inject] db: AdminDatabase,
-	#[inject] site: AdminSite,
+	#[inject] db: Depends<AdminDatabaseKey, AdminDatabase>,
+	#[inject] site: Depends<AdminSiteKey, AdminSite>,
 	#[inject] authenticator: AdminLoginAuthenticator,
 ) -> Result<LoginResponse, ServerFnError> {
 	require_csrf_header(&http_request.inner().headers)?;
@@ -94,8 +98,8 @@ async fn complete_admin_login(
 	username: String,
 	password: String,
 	http_request: ServerFnRequest,
-	db: AdminDatabase,
-	site: AdminSite,
+	db: Depends<AdminDatabaseKey, AdminDatabase>,
+	site: Depends<AdminSiteKey, AdminSite>,
 	authenticator: AdminLoginAuthenticator,
 ) -> Result<LoginResponse, ServerFnError> {
 	// Verify JWT secret is configured
