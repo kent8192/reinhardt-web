@@ -113,7 +113,7 @@ pub use context::use_context;
 pub use debug::use_debug_value;
 pub use effect::{use_effect, use_layout_effect};
 pub use id::use_id;
-pub use memo::{use_callback, use_memo};
+pub use memo::{use_callback, use_callback_with, use_memo};
 pub use refs::{Ref, use_ref};
 pub use router::{NavigateError, RouterHandle, use_router};
 pub use state::{
