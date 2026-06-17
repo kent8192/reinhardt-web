@@ -843,8 +843,7 @@ mod server_fn_tests {
 mod auth_tests {
 	use examples_tutorial_basis::apps::polls::server_fn::{
 		SessionError, SessionUserKey, create_choice, create_question, delete_choice,
-		delete_question,
-		update_choice, update_question,
+		delete_question, update_choice, update_question,
 	};
 	use examples_tutorial_basis::apps::users::models::User;
 	use reinhardt::DatabaseConnection;

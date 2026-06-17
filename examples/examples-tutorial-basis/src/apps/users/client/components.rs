@@ -53,17 +53,16 @@ pub fn login_form() -> Page {
 						class: "card-title",
 						"Sign in"
 					}
-					{ error_signal
-					.get()
-					.map(|message| {
-						page!(|message: String| {
-							div {
-								class: "alert-danger mb-3",
-								{ message }
-							}
-						})(message)
-					})
-					.unwrap_or(Page::Empty) }
+					{
+						error_signal.get().map(|message| {
+							page!(|message: String| {
+								div {
+									class: "alert-danger mb-3",
+									{ message }
+								}
+							})(message)
+						}).unwrap_or(Page::Empty)
+					}
 					{ form_view }
 					div {
 						class: "mt-4",
@@ -135,17 +134,16 @@ pub fn logout_form() -> Page {
 						class: "text-muted mb-4",
 						"Click the button below to end your session."
 					}
-					{ error_signal
-					.get()
-					.map(|message| {
-						page!(|message: String| {
-							div {
-								class: "alert-danger mb-3",
-								{ message }
-							}
-						})(message)
-					})
-					.unwrap_or(Page::Empty) }
+					{
+						error_signal.get().map(|message| {
+							page!(|message: String| {
+								div {
+									class: "alert-danger mb-3",
+									{ message }
+								}
+							})(message)
+						}).unwrap_or(Page::Empty)
+					}
 					{ form_view }
 					button {
 						type: "submit",
@@ -215,17 +213,16 @@ pub fn signup_form() -> Page {
 						class: "card-title",
 						"Create account"
 					}
-					{ error_signal
-					.get()
-					.map(|message| {
-						page!(|message: String| {
-							div {
-								class: "alert-danger mb-3",
-								{ message }
-							}
-						})(message)
-					})
-					.unwrap_or(Page::Empty) }
+					{
+						error_signal.get().map(|message| {
+							page!(|message: String| {
+								div {
+									class: "alert-danger mb-3",
+									{ message }
+								}
+							})(message)
+						}).unwrap_or(Page::Empty)
+					}
 					{ form_view }
 					div {
 						class: "mt-4",
