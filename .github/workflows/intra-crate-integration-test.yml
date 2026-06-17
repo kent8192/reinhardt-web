@@ -203,6 +203,10 @@ jobs:
               fi
               PKG_ARGS+=(-p "$pkg")
             done <<< "$CARGO_PACKAGES"
+            if [[ ${#PKG_ARGS[@]} -eq 0 ]]; then
+              echo "No affected packages expose intra-crate integration test targets; nothing to test in this job."
+              exit 0
+            fi
           fi
           if [[ ${#PKG_ARGS[@]} -eq 0 ]]; then
             PKG_ARGS=(--workspace)

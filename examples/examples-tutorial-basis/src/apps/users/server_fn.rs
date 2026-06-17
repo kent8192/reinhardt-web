@@ -75,7 +75,7 @@ pub async fn login(
 	// `USER_ID_SESSION_KEY`, deletes the old store entry, and persists the
 	// rotated session in one step. See issue #4446.
 	session
-		.login(&**store, user.id())
+		.login(&store, user.id())
 		.map_err(|e| ServerFnError::application(format!("Session error: {}", e)))?;
 
 	Ok(UserInfo::from(user))
@@ -155,7 +155,7 @@ pub async fn register(
 	// signed in immediately on successful registration and the `"user_id"`
 	// key stays centralised behind `USER_ID_SESSION_KEY`.
 	session
-		.login(&**store, saved.id())
+		.login(&store, saved.id())
 		.map_err(|e| ServerFnError::application(format!("Session error: {}", e)))?;
 
 	Ok(UserInfo::from(saved))
@@ -181,7 +181,7 @@ pub async fn logout(
 	// `SessionAuthExt::logout` rotates the session id, drops the user-id
 	// key, and persists the rotated session — see the docstring on
 	// `SessionAuthExt` for the rationale on rotation-before-clear.
-	session.logout(&**store);
+	session.logout(&store);
 	Ok(())
 }
 

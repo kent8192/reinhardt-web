@@ -13,7 +13,7 @@ use std::sync::Arc;
 /// Mock database dependency
 #[injectable]
 struct Database {
-	#[no_inject(default = Default)]
+	#[no_inject(default = Database::default().connection_string)]
 	connection_string: String,
 }
 
@@ -28,7 +28,7 @@ impl Default for Database {
 /// Mock cache dependency
 #[injectable]
 struct RedisCache {
-	#[no_inject(default = Default)]
+	#[no_inject(default = RedisCache::default().host)]
 	host: String,
 }
 
