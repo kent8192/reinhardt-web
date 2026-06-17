@@ -67,6 +67,16 @@ variable "dns_record_www_id" {
   type        = string
 }
 
+variable "dns_record_notes_id" {
+  description = "Cloudflare DNS record ID for the notes subdomain"
+  type        = string
+}
+
+variable "dns_record_rc_id" {
+  description = "Cloudflare DNS record ID for the rc subdomain"
+  type        = string
+}
+
 variable "dns_record_google_verification_id" {
   description = "Cloudflare DNS record ID for Google verification TXT record"
   type        = string
