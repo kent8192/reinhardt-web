@@ -17,4 +17,6 @@ google_site_verification = ""
 # --- Import IDs (Cloudflare DNS record IDs for resource import) ---
 dns_record_apex_id                = ""
 dns_record_www_id                 = ""
+dns_record_notes_id               = ""
+dns_record_rc_id                  = ""
 dns_record_google_verification_id = ""
