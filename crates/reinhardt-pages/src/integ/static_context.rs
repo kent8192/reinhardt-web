@@ -118,6 +118,8 @@ mod tests {
 	#[test]
 	#[serial(static_context)]
 	fn test_resolve_with_manifest() {
+		reset_static_context();
+
 		let mut manifest = HashMap::new();
 		manifest.insert(
 			"images/logo.png".to_string(),
@@ -128,7 +130,7 @@ mod tests {
 			"css/style.def456.css".to_string(),
 		);
 
-		let _ = init_static_context(manifest);
+		init_static_context(manifest).expect("static context should initialize");
 
 		assert_eq!(
 			resolve_static_url("images/logo.png").unwrap(),
@@ -143,8 +145,8 @@ mod tests {
 	#[test]
 	#[serial(static_context)]
 	fn test_resolve_fallback() {
-		// Initialize context if not already initialized (OnceLock can only be set once)
-		let _ = STATIC_MANIFEST.set(HashMap::new());
+		reset_static_context();
+		init_static_context(HashMap::new()).expect("static context should initialize");
 
 		assert_eq!(
 			resolve_static_url("unknown.png").unwrap(),

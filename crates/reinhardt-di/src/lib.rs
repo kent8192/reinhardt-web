@@ -251,7 +251,7 @@
 //! specific DI context configuration. Understanding these requirements is essential
 //! for proper authentication integration.
 //!
-//! ### `CurrentUser<U>` (recommended)
+//! ### `CurrentUser<U>`
 //!
 //! Loads the full user model from the database. Requires:
 //!
@@ -280,12 +280,6 @@
 //!
 //! - **`AuthState`** present in request extensions (set by authentication middleware)
 //! - No `DatabaseConnection` needed
-//!
-//! ### `AuthUser<U>` (deprecated)
-//!
-//! Deprecated in favor of `CurrentUser<U>` and scheduled for removal in 0.3.
-//! It retains the same fail-fast behavior as `CurrentUser<U>` for 0.2
-//! compatibility.
 //!
 //! ### Startup Validation
 //!

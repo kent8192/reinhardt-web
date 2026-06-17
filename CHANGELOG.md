@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **BREAKING**: Removed the 0.2 compatibility extractor `AuthUser<U>`.
+  Use `CurrentUser<U>` for full authenticated-user extraction.
+- **BREAKING**: Removed the deprecated Pages resource constructors
+  `create_resource` and `create_resource_with_deps`. Use
+  `use_resource(fetcher, deps)`.
+- **BREAKING**: Removed the deprecated Pages hooks `use_effect_event` and
+  `use_effect_event_with`. Use `use_callback` / `use_callback_with` or read
+  latest signal values with `.get_untracked()` inside effects.
+
+### Migration Guide
+
+- Follow [`instructions/MIGRATION_0.3.md`](instructions/MIGRATION_0.3.md) for
+  the 0.2 to 0.3 compatibility-removal checklist.
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.3...reinhardt-web@v0.2.0) - 2026-06-11
 
 Stable 0.2.0 is the first release of the Reinhardt 0.2 line. It

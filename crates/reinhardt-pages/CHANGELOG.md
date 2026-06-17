@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **BREAKING**: Removed the deprecated resource constructors
+  `create_resource` and `create_resource_with_deps`. Use
+  `use_resource(fetcher, deps)`.
+- **BREAKING**: Removed the deprecated hooks `use_effect_event` and
+  `use_effect_event_with`. Use `use_callback` / `use_callback_with` or read
+  latest signal values with `.get_untracked()` inside effects.
+
 ### Added
 
 - Added route-backed component macro support via `#[component("/path", "name")]`,

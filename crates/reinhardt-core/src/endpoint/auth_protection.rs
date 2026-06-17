@@ -16,9 +16,9 @@ use super::EndpointMetadata;
 /// gap detectable at startup via [`validate_endpoint_security`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthProtection {
-	/// Endpoint requires authentication (e.g., handler accepts `AuthUser`).
+	/// Endpoint requires authentication (e.g., handler accepts `CurrentUser`).
 	Protected,
-	/// Authentication is optional (e.g., handler accepts `Option<AuthUser>`).
+	/// Authentication is optional (e.g., handler accepts `Option<AuthInfo>`).
 	Optional,
 	/// Endpoint is explicitly marked public (no auth required by design).
 	Public,

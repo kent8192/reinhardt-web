@@ -180,7 +180,8 @@ the closure signature now determines arity.
 
 The final 0.2 line uses `CurrentUser<U>` as the canonical authenticated-user
 extractor. `AuthUser<U>` remains as a deprecated tuple-struct compatibility
-wrapper during the 0.2 cycle and is scheduled for removal in 0.3.
+wrapper during the 0.2 cycle and is removed in 0.3. See
+[`MIGRATION_0.3.md`](MIGRATION_0.3.md) for the 0.3 removal checklist.
 
 ```rust
 // Before
@@ -279,7 +280,8 @@ These are 0.2 behavior changes, not the removed-deprecated list above:
 - bare identifier shorthand in element bodies is removed; write `{name}`,
 - `form!` fields can carry typed generic parameters for server function values,
 - `create_resource` / `create_resource_with_deps` call sites should move to
-  `use_resource(fetcher, deps)`,
+  `use_resource(fetcher, deps)` before 0.3, where the deprecated constructors
+  are removed,
 - `use_form` now starts from a generated form definition and returns a runtime
   builder; do not build runtime state from `FormOptions::new(...)`.
 
