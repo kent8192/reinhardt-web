@@ -27,7 +27,7 @@ async fn test_complete_request_response_cycle() {
 	#[injectable]
 	#[allow(dead_code)]
 	struct RequestLogger {
-		#[no_inject(default = Default)]
+		#[no_inject(default = RequestLogger::default().count)]
 		count: Arc<AtomicUsize>,
 	}
 
@@ -85,7 +85,7 @@ async fn test_complete_request_response_cycle() {
 async fn test_post_request_with_body() {
 	#[injectable]
 	struct BodyParser {
-		#[no_inject(default = Default)]
+		#[no_inject(default = BodyParser::default().max_size)]
 		max_size: usize,
 	}
 
@@ -144,7 +144,7 @@ async fn test_post_request_with_body() {
 async fn test_headers_extraction() {
 	#[injectable]
 	struct HeaderValidator {
-		#[no_inject(default = Default)]
+		#[no_inject(default = HeaderValidator::default().required_header)]
 		required_header: String,
 	}
 
@@ -227,7 +227,7 @@ async fn test_multiple_viewsets_shared_service() {
 
 	#[injectable]
 	struct SharedCounter {
-		#[no_inject(default = Default)]
+		#[no_inject(default = SharedCounter::default().value)]
 		value: Arc<Mutex<i32>>,
 	}
 
@@ -241,13 +241,13 @@ async fn test_multiple_viewsets_shared_service() {
 
 	#[injectable]
 	struct ViewSetA {
-		#[inject]
+		#[inject(scope = Singleton)]
 		counter: SharedCounter,
 	}
 
 	#[injectable]
 	struct ViewSetB {
-		#[inject]
+		#[inject(scope = Singleton)]
 		counter: SharedCounter,
 	}
 
@@ -313,7 +313,7 @@ async fn test_multiple_viewsets_shared_service() {
 async fn test_viewset_composition() {
 	#[injectable]
 	struct ValidationService {
-		#[no_inject(default = Default)]
+		#[no_inject(default = ValidationService::default().enabled)]
 		enabled: bool,
 	}
 
@@ -325,7 +325,7 @@ async fn test_viewset_composition() {
 
 	#[injectable]
 	struct StorageService {
-		#[no_inject(default = Default)]
+		#[no_inject(default = StorageService::default().items)]
 		items: Arc<std::sync::Mutex<Vec<String>>>,
 	}
 
@@ -410,7 +410,7 @@ async fn test_viewset_composition() {
 async fn test_viewset_dependency_chain() {
 	#[injectable]
 	struct Logger {
-		#[no_inject(default = Default)]
+		#[no_inject(default = Logger::default().prefix)]
 		prefix: String,
 	}
 
@@ -474,7 +474,7 @@ async fn test_viewset_dependency_chain() {
 async fn test_action_based_routing() {
 	#[injectable]
 	struct ActionRouter {
-		#[no_inject(default = Default)]
+		#[no_inject(default = ActionRouter::default().routes)]
 		routes: Arc<std::sync::Mutex<Vec<String>>>,
 	}
 
@@ -540,7 +540,7 @@ async fn test_action_based_routing() {
 async fn test_custom_action_handling() {
 	#[injectable]
 	struct CustomActionHandler {
-		#[no_inject(default = Default)]
+		#[no_inject(default = CustomActionHandler::default().enabled)]
 		enabled: bool,
 	}
 
@@ -605,7 +605,7 @@ async fn test_custom_action_handling() {
 async fn test_method_based_routing() {
 	#[injectable]
 	struct MethodRouter {
-		#[no_inject(default = Default)]
+		#[no_inject(default = MethodRouter::default().allowed_methods)]
 		allowed_methods: Vec<String>,
 	}
 
@@ -684,7 +684,7 @@ async fn test_request_scoped_state() {
 
 	#[injectable]
 	struct RequestState {
-		#[no_inject(default = Default)]
+		#[no_inject(default = RequestState::default().request_id)]
 		request_id: Arc<Mutex<Option<String>>>,
 	}
 
@@ -756,7 +756,7 @@ async fn test_singleton_state_persistence() {
 
 	#[injectable]
 	struct SingletonCounter {
-		#[no_inject(default = Default)]
+		#[no_inject(default = SingletonCounter::default().count)]
 		count: Arc<Mutex<i32>>,
 	}
 
@@ -838,7 +838,7 @@ async fn test_session_state_isolation() {
 
 	#[injectable]
 	struct SessionData {
-		#[no_inject(default = Default)]
+		#[no_inject(default = SessionData::default().data)]
 		data: Arc<Mutex<Vec<String>>>,
 	}
 
@@ -920,7 +920,7 @@ async fn test_graceful_service_failure() {
 	#[injectable]
 	#[derive(Default)]
 	struct FallibleService {
-		#[no_inject(default = Default)]
+		#[no_inject(default = FallibleService::default().fail)]
 		fail: bool,
 	}
 
@@ -1023,7 +1023,7 @@ async fn test_empty_request_handling() {
 async fn test_large_payload_handling() {
 	#[injectable]
 	struct PayloadLimiter {
-		#[no_inject(default = Default)]
+		#[no_inject(default = PayloadLimiter::default().max_size)]
 		max_size: usize,
 	}
 
