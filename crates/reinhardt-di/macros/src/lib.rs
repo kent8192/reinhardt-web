@@ -20,6 +20,11 @@ mod utils;
 /// Provider functions must be async and return `FactoryOutput<K, T>`, where
 /// `K` is an `InjectableKey` and `T` is the value consumed through
 /// `Depends<K, T>`.
+///
+/// On `wasm32-unknown-unknown` the generated provider becomes an inert
+/// same-name async stub and skips DI registration. This lets downstream crates
+/// keep DI provider definitions in modules that are also compiled for WASM,
+/// while dependency resolution remains native-only.
 #[proc_macro_attribute]
 pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);
@@ -43,6 +48,10 @@ pub fn injectable_factory(args: TokenStream, input: TokenStream) -> TokenStream 
 }
 
 /// Mark a type as a dependency provider key.
+///
+/// The key type is emitted on every target, but the `InjectableKey` impl is
+/// skipped on `wasm32-unknown-unknown` because keyed DI resolution is
+/// native-only.
 #[proc_macro_attribute]
 pub fn injectable_key(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemStruct);

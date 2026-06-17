@@ -547,6 +547,14 @@ Scope is passed as a macro argument in key-value form.
 argument is supplied. `#[injectable_factory]` is a deprecated compatibility
 alias for provider functions.
 
+Provider registration is native-only. On `wasm32-unknown-unknown`,
+`#[injectable]` emits an inert same-name async stub and skips the provider body,
+wrapper, registry function, and `inventory` submission. `#[injectable_key]`
+keeps the key type available on every target but skips the `InjectableKey` impl
+on WASM. This allows shared modules to compile for WASM without wrapping each
+provider in call-site `#[cfg(native)]`; DI resolution still runs only on native
+targets.
+
 - `` `#[injectable(scope = "singleton")]` `` - Singleton scope (default)
 - `` `#[injectable(scope = "request")]` `` - Request scope
 - `` `#[injectable(scope = "transient")]` `` - Transient scope
