@@ -671,18 +671,19 @@ pub fn question_new() -> Page {
 				class: "mb-4",
 				"New Question"
 			}
-			{
-				error_signal.get().map(|message| {
-					page!(|message: String| {
-						div {
-							class: "alert-danger mb-3",
-							{
-								self::format_server_error(&message)
-							}
+			{ error_signal
+			.get()
+			.map(|message| {
+				page!(|message: String| {
+					div {
+						class: "alert-danger mb-3",
+						{
+							self::format_server_error(&message)
 						}
-					})(message)
-				}).unwrap_or(Page::Empty)
-			}
+					}
+				})(message)
+			})
+			.unwrap_or(Page::Empty) }
 			{ form_view }
 			div {
 				class: "mt-3",
@@ -699,8 +700,7 @@ pub fn question_new() -> Page {
 							}
 						}
 					})(is_loading)
-				}
-				a {
+				}a {
 					href: cancel_href,
 					class: "btn-secondary ml-2",
 					"Cancel"
@@ -771,18 +771,19 @@ pub fn question_edit(question_id: i64) -> Page {
 				class: "mb-4",
 				"Edit Question"
 			}
-			{
-				edit_form_error.get().map(|message| {
-					page!(|message: String| {
-						div {
-							class: "alert-danger mb-3",
-							{
-								self::format_server_error(&message)
-							}
+			{ edit_form_error
+			.get()
+			.map(|message| {
+				page!(|message: String| {
+					div {
+						class: "alert-danger mb-3",
+						{
+							self::format_server_error(&message)
 						}
-					})(message)
-				}).unwrap_or(Page::Empty)
-			}
+					}
+				})(message)
+			})
+			.unwrap_or(Page::Empty) }
 			{ edit_form_page }
 			div {
 				class: "mt-3",
@@ -835,9 +836,7 @@ pub fn question_edit(question_id: i64) -> Page {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "alert-danger",
-							{
-								self::format_server_error(&error)
-							}
+							{ self::format_server_error(&error) }
 						}
 						a {
 							href: polls_routes::reverse("index", &[]),
@@ -886,8 +885,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 			h1 {
 				class: "mb-4",
 				"Delete Question?"
-			}
-			{
+			} {
 				match load_detail.get() {
 					ResourceState::Loading => page!(|| {
 						div {
@@ -906,9 +904,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 								}
 								blockquote {
 									class: "border-l-4 border-border-secondary pl-4 italic my-3",
-									{
-										q.question_text.clone()
-									}
+									{ q.question_text.clone() }
 								}
 							}
 						}
@@ -916,25 +912,24 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 					ResourceState::Error(error) => page!(|error: String| {
 						div {
 							class: "alert-danger",
-							{
-								self::format_server_error(&error)
-							}
+							{ self::format_server_error(&error) }
 						}
 					})(error),
 				}
 			}
-			{
-				error_signal.get().map(|message| {
-					page!(|message: String| {
-						div {
-							class: "alert-danger mt-3",
-							{
-								self::format_server_error(&message)
-							}
+			{ error_signal
+			.get()
+			.map(|message| {
+				page!(|message: String| {
+					div {
+						class: "alert-danger mt-3",
+						{
+							self::format_server_error(&message)
 						}
-					})(message)
-				}).unwrap_or(Page::Empty)
-			}
+					}
+				})(message)
+			})
+			.unwrap_or(Page::Empty) }
 			{ form_view }
 			div {
 				class: "mt-3",
@@ -1022,18 +1017,19 @@ pub fn choice_new(question_id: i64) -> Page {
 				class: "mb-4",
 				"Add a Choice"
 			}
-			{
-				error_signal.get().map(|message| {
-					page!(|message: String| {
-						div {
-							class: "alert-danger mb-3",
-							{
-								self::format_server_error(&message)
-							}
+			{ error_signal
+			.get()
+			.map(|message| {
+				page!(|message: String| {
+					div {
+						class: "alert-danger mb-3",
+						{
+							self::format_server_error(&message)
 						}
-					})(message)
-				}).unwrap_or(Page::Empty)
-			}
+					}
+				})(message)
+			})
+			.unwrap_or(Page::Empty) }
 			{ form_view }
 			div {
 				class: "mt-3",
@@ -1050,8 +1046,7 @@ pub fn choice_new(question_id: i64) -> Page {
 							}
 						}
 					})(is_loading)
-				}
-				a {
+				}a {
 					href: back_href,
 					class: "btn-secondary ml-2",
 					"Back to poll"
@@ -1101,18 +1096,19 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 				class: "mb-4",
 				"Edit Choice"
 			}
-			{
-				error_signal.get().map(|message| {
-					page!(|message: String| {
-						div {
-							class: "alert-danger mb-3",
-							{
-								self::format_server_error(&message)
-							}
+			{ error_signal
+			.get()
+			.map(|message| {
+				page!(|message: String| {
+					div {
+						class: "alert-danger mb-3",
+						{
+							self::format_server_error(&message)
 						}
-					})(message)
-				}).unwrap_or(Page::Empty)
-			}
+					}
+				})(message)
+			})
+			.unwrap_or(Page::Empty) }
 			{ form_view }
 			div {
 				class: "mt-3",
@@ -1129,8 +1125,7 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 							}
 						}
 					})(is_loading)
-				}
-				a {
+				}a {
 					href: cancel_href,
 					class: "btn-secondary ml-2",
 					"Cancel"
@@ -1178,18 +1173,19 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 				class: "mb-3",
 				"This action cannot be undone."
 			}
-			{
-				error_signal.get().map(|message| {
-					page!(|message: String| {
-						div {
-							class: "alert-danger mt-3",
-							{
-								self::format_server_error(&message)
-							}
+			{ error_signal
+			.get()
+			.map(|message| {
+				page!(|message: String| {
+					div {
+						class: "alert-danger mt-3",
+						{
+							self::format_server_error(&message)
 						}
-					})(message)
-				}).unwrap_or(Page::Empty)
-			}
+					}
+				})(message)
+			})
+			.unwrap_or(Page::Empty) }
 			{ form_view }
 			div {
 				class: "mt-3",
@@ -1206,8 +1202,7 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 							}
 						}
 					})(is_loading)
-				}
-				a {
+				}a {
 					href: cancel_href,
 					class: "btn-secondary ml-2",
 					"Cancel"
