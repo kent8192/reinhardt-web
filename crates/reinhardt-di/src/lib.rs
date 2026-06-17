@@ -220,6 +220,8 @@
 //! ```no_run
 //! # #[cfg(feature = "dev-tools")]
 //! # use reinhardt_di::{visualization::DependencyGraph, profiling::DependencyProfiler};
+//! # #[cfg(not(feature = "dev-tools"))]
+//! # fn main() {}
 //! # #[cfg(feature = "dev-tools")]
 //! # fn main() {
 //! // fn visualize_dependencies() {

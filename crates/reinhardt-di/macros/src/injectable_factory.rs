@@ -211,11 +211,13 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 	// Generate the expanded code
 	let expanded = quote! {
 		// Original implementation function (private)
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		async fn #original_fn_name(#(#original_params),*) -> #return_type {
 			#fn_block
 		}
 
 		// Public wrapper factory function
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#(#fn_attrs)*
 		#fn_vis async fn #fn_name(
 			ctx: ::std::sync::Arc<#di_crate::InjectionContext>,
@@ -245,7 +247,12 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 			}).await
 		}
 
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+		#(#fn_attrs)*
+		#fn_vis async fn #fn_name() {}
+
 		// Registration function for const-safe inventory::submit
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		fn #register_fn_name(registry: &#di_crate::DependencyRegistry) {
 			registry.register_async::<#return_type, _, _>(#scope_tokens, #fn_name);
 			registry.register_type_name(
@@ -258,6 +265,7 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 			);
 		}
 
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#di_crate::inventory::submit! {
 			#di_crate::DependencyRegistration::new::<#return_type>(
 				#type_name,
