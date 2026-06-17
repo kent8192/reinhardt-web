@@ -9,6 +9,7 @@ github_repository  = "reinhardt-web"
 pages_project_name = "reinhardt-web"
 custom_domain      = "reinhardt-web.dev"
 production_branch  = "main"
+rc_branch_name     = "develop/0.3.0"
 
 # --- Search engine verification ---
 google_site_verification = ""
