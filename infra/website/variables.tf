@@ -44,6 +44,12 @@ variable "production_branch" {
   default     = "main"
 }
 
+variable "rc_branch_name" {
+  description = "Git branch whose Cloudflare Pages branch alias backs rc.reinhardt-web.dev"
+  type        = string
+  default     = "develop/0.3.0"
+}
+
 # --- Search engine verification ---
 variable "google_site_verification" {
   description = "Google Search Console DNS TXT verification value"

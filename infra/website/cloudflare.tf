@@ -4,6 +4,11 @@ resource "cloudflare_pages_project" "website" {
   production_branch = var.production_branch
 }
 
+locals {
+  pages_subdomain = "${cloudflare_pages_project.website.name}.pages.dev"
+  rc_branch_slug  = replace(lower(var.rc_branch_name), "/[^0-9a-z]/", "-")
+}
+
 # Custom domain — registers domain with the Pages project
 resource "cloudflare_pages_domain" "website" {
   account_id   = var.cloudflare_account_id
@@ -23,7 +28,7 @@ resource "cloudflare_dns_record" "website_apex" {
   zone_id = data.cloudflare_zone.website.zone_id
   name    = "@"
   type    = "CNAME"
-  content = "${cloudflare_pages_project.website.name}.pages.dev"
+  content = local.pages_subdomain
   ttl     = 1
   proxied = true
 
@@ -42,11 +47,45 @@ resource "cloudflare_dns_record" "dns_website_www" {
   zone_id = data.cloudflare_zone.website.zone_id
   name    = "www"
   type    = "CNAME"
-  content = "${cloudflare_pages_project.website.name}.pages.dev"
+  content = local.pages_subdomain
   ttl     = 1
   proxied = true
 
   depends_on = [cloudflare_pages_domain.pages_website_www]
+}
+
+resource "cloudflare_pages_domain" "pages_website_notes" {
+  account_id   = var.cloudflare_account_id
+  project_name = cloudflare_pages_project.website.name
+  name         = "notes.${var.custom_domain}"
+}
+
+resource "cloudflare_dns_record" "dns_website_notes" {
+  zone_id = data.cloudflare_zone.website.zone_id
+  name    = "notes"
+  type    = "CNAME"
+  content = local.pages_subdomain
+  ttl     = 1
+  proxied = true
+
+  depends_on = [cloudflare_pages_domain.pages_website_notes]
+}
+
+resource "cloudflare_pages_domain" "pages_website_rc" {
+  account_id   = var.cloudflare_account_id
+  project_name = cloudflare_pages_project.website.name
+  name         = "rc.${var.custom_domain}"
+}
+
+resource "cloudflare_dns_record" "dns_website_rc" {
+  zone_id = data.cloudflare_zone.website.zone_id
+  name    = "rc"
+  type    = "CNAME"
+  content = "${local.rc_branch_slug}.${local.pages_subdomain}"
+  ttl     = 1
+  proxied = true
+
+  depends_on = [cloudflare_pages_domain.pages_website_rc]
 }
 
 # Google Search Console domain verification
