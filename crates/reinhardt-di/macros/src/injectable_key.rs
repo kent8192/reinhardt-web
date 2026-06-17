@@ -14,6 +14,7 @@ pub(crate) fn injectable_key_impl(_args: TokenStream, input: ItemStruct) -> Resu
 	Ok(quote! {
 		#input
 
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		impl #impl_generics #di_crate::InjectableKey for #ident #ty_generics #where_clause {}
 	})
 }

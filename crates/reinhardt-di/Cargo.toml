@@ -71,6 +71,7 @@ reinhardt-core = { workspace = true, features = ["types", "exception"] }
 reinhardt-macros = { workspace = true }
 serde = { workspace = true }
 rstest = { workspace = true }
+tempfile = { workspace = true }
 
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }
