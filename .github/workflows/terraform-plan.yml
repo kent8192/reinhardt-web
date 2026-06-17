@@ -186,6 +186,8 @@ jobs:
           TF_VAR_google_site_verification: ${{ secrets.TF_GOOGLE_SITE_VERIFICATION }}
           TF_VAR_dns_record_apex_id: ${{ secrets.TF_DNS_RECORD_APEX_ID }}
           TF_VAR_dns_record_www_id: ${{ secrets.TF_DNS_RECORD_WWW_ID }}
+          TF_VAR_dns_record_notes_id: ${{ secrets.TF_DNS_RECORD_NOTES_ID }}
+          TF_VAR_dns_record_rc_id: ${{ secrets.TF_DNS_RECORD_RC_ID }}
           TF_VAR_dns_record_google_verification_id: ${{ secrets.TF_DNS_RECORD_GOOGLE_VERIFICATION_ID }}
           TF_VAR_tf_plan_aws_access_key_id: ${{ secrets.TF_AWS_ACCESS_KEY_ID }}
           TF_VAR_tf_plan_aws_secret_access_key: ${{ secrets.TF_AWS_SECRET_ACCESS_KEY }}

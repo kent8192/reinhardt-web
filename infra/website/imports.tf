@@ -14,6 +14,24 @@ import {
   id = "${var.cloudflare_account_id}/${var.pages_project_name}/${var.custom_domain}"
 }
 
+# www custom domain registration
+import {
+  to = cloudflare_pages_domain.pages_website_www
+  id = "${var.cloudflare_account_id}/${var.pages_project_name}/www.${var.custom_domain}"
+}
+
+# notes custom domain registration
+import {
+  to = cloudflare_pages_domain.pages_website_notes
+  id = "${var.cloudflare_account_id}/${var.pages_project_name}/notes.${var.custom_domain}"
+}
+
+# rc custom domain registration
+import {
+  to = cloudflare_pages_domain.pages_website_rc
+  id = "${var.cloudflare_account_id}/${var.pages_project_name}/rc.${var.custom_domain}"
+}
+
 # Apex domain DNS record
 import {
   to = cloudflare_dns_record.website_apex
@@ -24,6 +42,18 @@ import {
 import {
   to = cloudflare_dns_record.dns_website_www
   id = "${data.cloudflare_zone.website.zone_id}/${var.dns_record_www_id}"
+}
+
+# notes subdomain DNS record
+import {
+  to = cloudflare_dns_record.dns_website_notes
+  id = "${data.cloudflare_zone.website.zone_id}/${var.dns_record_notes_id}"
+}
+
+# rc subdomain DNS record
+import {
+  to = cloudflare_dns_record.dns_website_rc
+  id = "${data.cloudflare_zone.website.zone_id}/${var.dns_record_rc_id}"
 }
 
 # Google Search Console verification TXT record
