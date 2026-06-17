@@ -1,8 +1,8 @@
 //! Resource - Async data fetching primitive
 //!
 //! This module provides `Resource<T>`, a reactive primitive for handling async operations.
-//! Similar to Leptos's `create_resource`, it manages Loading/Success/Error states
-//! and integrates with the Signal-based reactivity system.
+//! It manages Loading/Success/Error states and integrates with the Signal-based
+//! reactivity system.
 
 use super::{Effect, Signal};
 use serde::{Deserialize, Serialize};
@@ -283,55 +283,6 @@ where
 		refetch_fn,
 		effect_guard: Rc::new(effect),
 	}
-}
-
-/// Create a resource from an async function (deprecated).
-///
-/// # WASM-only
-///
-/// This function is only available on WASM targets.
-#[cfg(wasm)]
-#[deprecated(
-	since = "0.2.0-rc.2",
-	note = "Renamed for naming consistency with use_effect/use_memo/use_callback. \
-	Use `use_resource(fetcher, ())` for fetch-on-mount. Scheduled for removal in v0.3.0."
-)]
-pub fn create_resource<T, E, F, Fut>(fetcher: F) -> Resource<T, E>
-where
-	T: Clone + 'static,
-	E: Clone + 'static,
-	F: Fn() -> Fut + 'static,
-	Fut: std::future::Future<Output = Result<T, E>> + 'static,
-{
-	use_resource(fetcher, ())
-}
-
-/// Create a resource with dependency tracking (deprecated).
-///
-/// # WASM-only
-///
-/// This function is only available on WASM targets.
-#[cfg(wasm)]
-#[deprecated(
-	since = "0.2.0-rc.2",
-	note = "Unified into use_resource. Use \
-	`use_resource(move || { let v = dep.get(); async move { .. } }, (dep,))`. \
-	Scheduled for removal in v0.3.0."
-)]
-pub fn create_resource_with_deps<T, E, D, F, Fut>(deps: Signal<D>, fetcher: F) -> Resource<T, E>
-where
-	T: Clone + 'static,
-	E: Clone + 'static,
-	D: Clone + PartialEq + 'static,
-	F: Fn(D) -> Fut + 'static,
-	Fut: std::future::Future<Output = Result<T, E>> + 'static,
-{
-	// Forward to the unified hook: subscribe to `deps` and read its current
-	// value inside the fetcher. This also fixes the original behavior — the old
-	// implementation disposed its tracking Effect immediately, so dependency
-	// changes never triggered a refetch.
-	let dep_for_fetch = deps.clone();
-	use_resource(move || fetcher(dep_for_fetch.get()), (deps,))
 }
 
 #[cfg(test)]

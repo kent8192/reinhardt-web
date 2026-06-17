@@ -34,7 +34,7 @@
 //! ## Hooks
 //! - [`use_state`], [`use_effect`], [`use_memo`], [`use_callback`], [`use_context`]
 //! - [`use_ref`], [`use_reducer`], [`use_transition`], [`use_deferred_value`]
-//! - [`use_id`], [`use_layout_effect`], [`use_effect_event`], [`use_debug_value`]
+//! - [`use_id`], [`use_layout_effect`], [`use_debug_value`]
 //! - [`use_optimistic`], [`use_shared_state`]
 //! - [`use_action`], [`use_sync_external_store`]
 //!
@@ -84,26 +84,15 @@ pub use crate::reactive::{
 
 // Hooks API
 pub use crate::reactive::{Action, ActionPhase, use_action};
-#[allow(
-	deprecated,
-	reason = "re-export kept until removal in v0.3.0 (Refs #4195)"
-)]
 pub use crate::reactive::{
 	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
-	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_effect_event,
-	use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state,
-	use_state, use_sync_external_store, use_transition,
+	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_id,
+	use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state, use_state,
+	use_sync_external_store, use_transition,
 };
 
 // Unified resource hook (available on all targets)
 pub use crate::reactive::use_resource;
-// Deprecated resource constructors, kept until removal in v0.3.0
-#[cfg(wasm)]
-#[allow(
-	deprecated,
-	reason = "re-export kept until removal in v0.3.0; use use_resource instead"
-)]
-pub use crate::reactive::{create_resource, create_resource_with_deps};
 
 // ============================================================================
 // Component System

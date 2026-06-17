@@ -379,12 +379,6 @@ pub use form_state::{
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
 pub use reactive::{Effect, Memo, Resource, ResourceState, Signal, use_resource};
-#[cfg(wasm)]
-#[allow(
-	deprecated,
-	reason = "re-export kept until removal in v0.3.0; use use_resource instead"
-)]
-pub use reactive::{create_resource, create_resource_with_deps};
 // Re-export Context system
 pub use reactive::{
 	Context, ContextGuard, create_context, get_context, provide_context, remove_context,
@@ -392,12 +386,11 @@ pub use reactive::{
 // Re-export Hooks API
 pub use app::{ClientLauncher, LaunchCtx, PathCtx, PathParams};
 pub use reactive::{Action, ActionPhase, use_action};
-#[allow(deprecated)] // Intentional: re-exporting deprecated items for backward compatibility
 pub use reactive::{
 	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
-	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_effect_event,
-	use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state,
-	use_state, use_sync_external_store, use_transition,
+	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_id,
+	use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state, use_state,
+	use_sync_external_store, use_transition,
 };
 #[cfg(native)]
 pub use reinhardt_forms::{
