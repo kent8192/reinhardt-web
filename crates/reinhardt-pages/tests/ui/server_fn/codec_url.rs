@@ -9,13 +9,13 @@ use reinhardt_pages_macros::server_fn;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
-struct SearchResult {
+pub struct SearchResult {
 	title: String,
 	url: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ServerFnError(String);
+pub struct ServerFnError(String);
 
 impl std::fmt::Display for ServerFnError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

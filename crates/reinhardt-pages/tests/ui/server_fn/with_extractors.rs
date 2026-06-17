@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 // Mock types for testing
 #[derive(Serialize, Deserialize)]
-struct LoginRequest {
+pub struct LoginRequest {
 	email: String,
 	password: String,
 }
@@ -26,13 +26,13 @@ impl reinhardt_core::validators::Validate for LoginRequest {
 }
 
 #[derive(Serialize, Deserialize)]
-struct User {
+pub struct User {
 	id: u32,
 	name: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ServerFnError(String);
+pub struct ServerFnError(String);
 
 impl std::fmt::Display for ServerFnError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
