@@ -44,6 +44,12 @@ variable "production_branch" {
   default     = "main"
 }
 
+variable "rc_branch_name" {
+  description = "Git branch whose Cloudflare Pages branch alias backs rc.reinhardt-web.dev"
+  type        = string
+  default     = "develop/0.3.0"
+}
+
 # --- Search engine verification ---
 variable "google_site_verification" {
   description = "Google Search Console DNS TXT verification value"
@@ -58,6 +64,16 @@ variable "dns_record_apex_id" {
 
 variable "dns_record_www_id" {
   description = "Cloudflare DNS record ID for the www subdomain"
+  type        = string
+}
+
+variable "dns_record_notes_id" {
+  description = "Cloudflare DNS record ID for the notes subdomain"
+  type        = string
+}
+
+variable "dns_record_rc_id" {
+  description = "Cloudflare DNS record ID for the rc subdomain"
   type        = string
 }
 

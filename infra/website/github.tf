@@ -110,6 +110,26 @@ resource "github_actions_secret" "tf_plan_dns_record_www_id" {
   }
 }
 
+resource "github_actions_secret" "tf_plan_dns_record_notes_id" {
+  repository      = var.github_repository
+  secret_name     = "TF_DNS_RECORD_NOTES_ID"
+  plaintext_value = var.dns_record_notes_id
+
+  lifecycle {
+    ignore_changes = [plaintext_value]
+  }
+}
+
+resource "github_actions_secret" "tf_plan_dns_record_rc_id" {
+  repository      = var.github_repository
+  secret_name     = "TF_DNS_RECORD_RC_ID"
+  plaintext_value = var.dns_record_rc_id
+
+  lifecycle {
+    ignore_changes = [plaintext_value]
+  }
+}
+
 resource "github_actions_secret" "tf_plan_dns_record_google_verification_id" {
   repository      = var.github_repository
   secret_name     = "TF_DNS_RECORD_GOOGLE_VERIFICATION_ID"

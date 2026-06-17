@@ -13,6 +13,16 @@ output "custom_domain" {
   value       = cloudflare_pages_domain.website.name
 }
 
+output "notes_domain" {
+  description = "Technical notes custom domain for the Pages project"
+  value       = cloudflare_pages_domain.pages_website_notes.name
+}
+
+output "rc_domain" {
+  description = "RC custom domain for the configured Pages branch alias"
+  value       = cloudflare_pages_domain.pages_website_rc.name
+}
+
 output "zone_id" {
   description = "Cloudflare Zone ID for the custom domain"
   value       = data.cloudflare_zone.website.zone_id
