@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.2.0...reinhardt-auth@v0.3.0) - 2026-06-18
+
+### Changed
+
+- [**breaking**] remove 0.3 deprecated public APIs
+
+### Fixed
+
+- *(ci)* pin brotli allocator dependency
+
 ### Removed
 
 - **BREAKING**: Removed the 0.2 compatibility extractor `AuthUser<U>`.
