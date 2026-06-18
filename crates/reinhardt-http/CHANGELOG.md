@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.2.0...reinhardt-http@v0.3.0-rc.1) - 2026-06-18
+
+### Documentation
+
+- update version references to v0.3.0
+
+### Maintenance
+
+- mark release as 0.3.0-rc.1
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.3...reinhardt-http@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-http` for the Reinhardt 0.2.0 line. This

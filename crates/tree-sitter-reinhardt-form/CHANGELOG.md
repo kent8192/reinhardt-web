@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/tree-sitter-reinhardt-form@v0.1.2...tree-sitter-reinhardt-form@v0.3.0-rc.1) - 2026-06-18
+
+### Maintenance
+
+- mark release as 0.3.0-rc.1
+
 ## [0.1.2](https://github.com/kent8192/reinhardt-web/compare/tree-sitter-reinhardt-form@v0.1.1...tree-sitter-reinhardt-form@v0.1.2) - 2026-06-11
 
 ### Documentation
