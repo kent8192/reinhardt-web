@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0...reinhardt-web@v0.3.0-rc.1) - 2026-06-18
+
+### Added
+
+- feat!(macros): expose relation-shaped model info fields
+- *(formatter)* add semantic page grammar nodes
+- *(formatter)* rustfmt page expression islands
+- *(website)* add technical notes domain
+
+### Changed
+
+- *(admin)* use keyed depends for server injections
+- [**breaking**] remove 0.3 deprecated public APIs
+
+### Documentation
+
+- *(formatter)* document page rustfmt islands
+
+### Fixed
+
+- *(ci)* pin brotli allocator dependency
+- *(examples)* align polls info fixtures with relations
+- *(formatter)* handle reviewed page rustfmt islands
+- add native stubs for client page functions
+- *(pages)* export client_page from prelude
+- *(di)* honor cache false for keyed wrappers
+- *(ci)* satisfy pages clippy lint
+- *(infra)* import website DNS records
+- *(pages)* re-export use_callback_with from reactive::hooks
+
+### Maintenance
+
+- *(release)* group tree-sitter crates
+- merge develop/0.3.0 into pr 5346
+
+### Styling
+
+- *(examples)* format tutorial basis pages
+- format di exports
+
+### Testing
+
+- *(pages)* isolate static resolver state
+
 ### Removed
 
 - **BREAKING**: Removed the 0.2 compatibility extractor `AuthUser<U>`.

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.2.0...reinhardt-pages-macros@v0.3.0-rc.1) - 2026-06-18
+
+### Added
+
+- *(pages)* add route-backed component macros
+- *(forms)* add dynamic FieldArray runtime support
+
+### Fixed
+
+- *(di)* support trait-based inject wrapper resolution
+- *(di)* preserve Depends inject fallback
+- *(pages)* resolve generated builder dependency path
+- *(pages)* address CodeRabbit component macro review
+- *(forms)* propagate boxed field arrays to page macros
+- *(forms)* box page macro collection validation
+- *(forms)* address field array review feedback
+- *(forms)* harden field array review paths
+
+### Maintenance
+
+- merge develop/0.3.0 into component route macros
+
 ### Added
 
 - Added `#[derive(FromRequest)]`, `#[page_props]`, and

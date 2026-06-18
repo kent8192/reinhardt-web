@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-tasks"
-version = "0.2.0"
+version = "0.3.0-rc.1"
 description = "Background task execution and scheduling"
 edition.workspace = true
 rust-version.workspace = true
