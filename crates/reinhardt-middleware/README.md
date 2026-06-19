@@ -256,6 +256,15 @@ The `session` module ships three companion helpers for the
 `#[server_fn]` / `#[inject]` patterns used by authenticated handlers
 (introduced in [#4446](https://github.com/kent8192/reinhardt-web/issues/4446)):
 
+`SessionMiddleware` is the recommended single middleware for cookie-backed
+session authentication. It loads the active `SessionData`, publishes the
+middleware-owned `SessionStore` to DI, and derives `AuthState` from
+`USER_ID_SESSION_KEY` when the session is authenticated. Handlers can therefore
+combine `SessionAuthExt::login` / `logout` with `CurrentUser<U>` without adding
+`CookieSessionAuthMiddleware` as a second layer. `CookieSessionAuthMiddleware`
+remains available for applications that use a custom `AsyncSessionBackend`
+directly.
+
 - `USER_ID_SESSION_KEY` — the canonical session-store key (`"user_id"`)
   every handler should read from / write to instead of hardcoding a literal.
 - `SessionValue<T>` / `OptionalSessionValue<T>` — typed extractors that
