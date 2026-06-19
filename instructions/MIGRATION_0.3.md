@@ -36,6 +36,19 @@ async fn profile(CurrentUser(user): CurrentUser<MyUser>) -> Response {
 }
 ```
 
+## Session Auth Middleware Wiring
+
+Cookie-backed session apps should register `SessionMiddleware` once in
+`urls.rs`. The 0.3 line uses Option A from issue #4740: `SessionMiddleware`
+derives `AuthState` from `USER_ID_SESSION_KEY` when the active session is
+authenticated, while preserving any `AuthState` already inserted by another
+auth middleware. This keeps the common cookie-session setup to one middleware
+without introducing a separate `SessionAuthMiddleware` bundle type.
+
+`CookieSessionAuthMiddleware` remains available for projects that plug a custom
+`AsyncSessionBackend` directly, but it is not required for the standard
+`SessionData` + `SessionAuthExt` + `CurrentUser<U>` flow.
+
 ## Resource Hooks
 
 Use `use_resource(fetcher, deps)` for both mount-only and dependency-driven
