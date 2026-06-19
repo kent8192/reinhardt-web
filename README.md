@@ -808,7 +808,7 @@ let mut perms = ObjectPermissionManager::new();
 perms.grant_permission("alice", "article:123", "edit").await;
 ```
 
-Use JWT authentication in your app's `views/profile.rs`:
+Use authentication in your app's `views/profile.rs`:
 
 ```rust
 // users/views/profile.rs
@@ -816,7 +816,8 @@ use reinhardt::{Response, StatusCode, ViewResult, get};
 use reinhardt::auth::CurrentUser;
 use crate::models::User;
 
-// JwtAuthMiddleware must be registered in urls.rs to populate AuthState in request extensions
+// SessionMiddleware or JwtAuthMiddleware must be registered in urls.rs to
+// populate AuthState in request extensions.
 #[get("/profile", name = "get_profile")]
 pub async fn get_profile(
 	#[inject] CurrentUser(user): CurrentUser<User>,
