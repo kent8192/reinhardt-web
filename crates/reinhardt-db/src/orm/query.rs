@@ -10,8 +10,9 @@ use crate::orm::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
 use crate::orm::query_fields::comparison::FieldComparison;
 use crate::orm::query_fields::compiler::QueryFieldCompiler;
 use reinhardt_query::prelude::{
-	Alias, BinOper, ColumnRef, Condition, Expr, ExprTrait, Func, JoinType as SeaJoinType, Order,
-	PostgresQueryBuilder, Query, QueryStatementBuilder, SelectStatement, SimpleExpr,
+	Alias, BinOper, ColumnRef, Condition, Expr, ExprTrait, Func, JoinType as SeaJoinType,
+	MySqlQueryBuilder, Order, PostgresQueryBuilder, Query, QueryBuilder, QueryStatementBuilder,
+	SelectStatement, SimpleExpr, SqliteQueryBuilder, UpdateStatement,
 };
 use reinhardt_query::types::PgBinOper;
 use serde::{Deserialize, Serialize};
@@ -212,10 +213,131 @@ pub enum UpdateValue {
 	Boolean(bool),
 	/// Null variant.
 	Null,
+	/// Timestamp variant.
+	Timestamp(chrono::DateTime<chrono::Utc>),
+	/// UUID variant.
+	Uuid(Uuid),
 	/// Field reference for field-to-field updates (e.g., SET discount_price = total_price)
 	FieldRef(super::expressions::F),
 	/// Arithmetic expression (e.g., SET total = unit_price * quantity)
 	Expression(super::annotation::Expression),
+}
+
+impl From<String> for UpdateValue {
+	fn from(value: String) -> Self {
+		Self::String(value)
+	}
+}
+
+impl From<&str> for UpdateValue {
+	fn from(value: &str) -> Self {
+		Self::String(value.to_string())
+	}
+}
+
+impl From<i64> for UpdateValue {
+	fn from(value: i64) -> Self {
+		Self::Integer(value)
+	}
+}
+
+impl From<i32> for UpdateValue {
+	fn from(value: i32) -> Self {
+		Self::Integer(value as i64)
+	}
+}
+
+impl From<f64> for UpdateValue {
+	fn from(value: f64) -> Self {
+		Self::Float(value)
+	}
+}
+
+impl From<f32> for UpdateValue {
+	fn from(value: f32) -> Self {
+		Self::Float(value as f64)
+	}
+}
+
+impl From<bool> for UpdateValue {
+	fn from(value: bool) -> Self {
+		Self::Boolean(value)
+	}
+}
+
+impl From<chrono::DateTime<chrono::Utc>> for UpdateValue {
+	fn from(value: chrono::DateTime<chrono::Utc>) -> Self {
+		Self::Timestamp(value)
+	}
+}
+
+impl From<Uuid> for UpdateValue {
+	fn from(value: Uuid) -> Self {
+		Self::Uuid(value)
+	}
+}
+
+impl<T> From<Option<T>> for UpdateValue
+where
+	T: Into<UpdateValue>,
+{
+	fn from(value: Option<T>) -> Self {
+		value.map_or(Self::Null, Into::into)
+	}
+}
+
+/// One field assignment for a partial `QuerySet` update.
+#[derive(Debug, Clone)]
+pub struct FieldAssignment {
+	field: String,
+	value: UpdateValue,
+}
+
+impl FieldAssignment {
+	/// Creates a new field assignment.
+	pub fn new(field: impl Into<String>, value: impl Into<UpdateValue>) -> Self {
+		Self {
+			field: field.into(),
+			value: value.into(),
+		}
+	}
+
+	/// Returns the assigned field name.
+	pub fn field(&self) -> &str {
+		&self.field
+	}
+
+	/// Returns the assigned value.
+	pub fn value(&self) -> &UpdateValue {
+		&self.value
+	}
+}
+
+impl<M, T, V> From<(super::expressions::FieldRef<M, T>, V)> for FieldAssignment
+where
+	V: Into<UpdateValue>,
+{
+	fn from((field, value): (super::expressions::FieldRef<M, T>, V)) -> Self {
+		Self::new(field.name(), value)
+	}
+}
+
+impl<V> From<(&str, V)> for FieldAssignment
+where
+	V: Into<UpdateValue>,
+{
+	fn from((field, value): (&str, V)) -> Self {
+		Self::new(field, value)
+	}
+}
+
+impl<V> From<(String, V)> for FieldAssignment
+where
+	V: Into<UpdateValue>,
+{
+	fn from((field, value): (String, V)) -> Self {
+		Self::new(field, value)
+	}
 }
 
 /// Composite filter condition supporting AND/OR logic
@@ -4515,16 +4637,7 @@ where
 
 		// Add SET clauses
 		for (field, value) in updates {
-			let val_expr = match value {
-				UpdateValue::String(s) => Expr::val(s.clone()),
-				UpdateValue::Integer(i) => Expr::val(*i),
-				UpdateValue::Float(f) => Expr::val(*f),
-				UpdateValue::Boolean(b) => Expr::val(*b),
-				UpdateValue::Null => Expr::val(reinhardt_query::value::Value::Int(None)),
-				UpdateValue::FieldRef(f) => Expr::col(Alias::new(&f.field)),
-				UpdateValue::Expression(expr) => Self::expression_to_query_expr(expr),
-			};
-			stmt.value_expr(Alias::new(field), val_expr);
+			stmt.value_expr(Alias::new(field), Self::update_value_to_query_expr(value));
 		}
 
 		// Add WHERE conditions
@@ -4533,6 +4646,169 @@ where
 		}
 
 		stmt.to_owned()
+	}
+
+	/// Generate an UPDATE statement for field assignments on rows matched by this `QuerySet`.
+	///
+	/// Unlike [`QuerySet::update_query`], this public partial-update builder validates
+	/// that at least one non-empty predicate is present so callers cannot
+	/// accidentally update every row in the model table.
+	pub fn update_fields_query<I, A>(
+		&self,
+		values: I,
+	) -> reinhardt_core::exception::Result<UpdateStatement>
+	where
+		I: IntoIterator<Item = A>,
+		A: Into<FieldAssignment>,
+	{
+		let assignments = Self::collect_field_assignments(values);
+		self.update_fields_query_from_assignments(&assignments)
+	}
+
+	/// Generate PostgreSQL UPDATE SQL for field assignments on this `QuerySet`.
+	///
+	/// This mirrors [`QuerySet::update_sql`] for tests and custom SQL inspection.
+	/// Use [`QuerySet::update_fields`] to execute the update against the configured
+	/// database backend.
+	pub fn update_fields_sql<I, A>(
+		&self,
+		values: I,
+	) -> reinhardt_core::exception::Result<(String, Vec<String>)>
+	where
+		I: IntoIterator<Item = A>,
+		A: Into<FieldAssignment>,
+	{
+		let stmt = self.update_fields_query(values)?;
+		let (sql, values) = PostgresQueryBuilder.build_update(&stmt);
+		let params = values
+			.iter()
+			.map(|value| Self::sea_value_to_string(value))
+			.collect();
+		Ok((sql, params))
+	}
+
+	/// Update fields for rows matched by this `QuerySet` and return the affected row count.
+	///
+	/// The generated `UPDATE` preserves every filter, composite condition, and
+	/// subquery predicate already attached to the `QuerySet`.
+	pub async fn update_fields<I, A>(self, values: I) -> reinhardt_core::exception::Result<u64>
+	where
+		I: IntoIterator<Item = A>,
+		A: Into<FieldAssignment>,
+	{
+		let conn = super::manager::get_connection().await?;
+		self.update_fields_with_conn(&conn, values).await
+	}
+
+	/// Update fields using an explicit database connection.
+	pub async fn update_fields_with_conn<I, A>(
+		&self,
+		conn: &super::connection::DatabaseConnection,
+		values: I,
+	) -> reinhardt_core::exception::Result<u64>
+	where
+		I: IntoIterator<Item = A>,
+		A: Into<FieldAssignment>,
+	{
+		let stmt = self.update_fields_query(values)?;
+		let (sql, values) = Self::build_update_for_backend(&stmt, conn.backend());
+		let params = super::execution::convert_values(values);
+
+		conn.execute(&sql, params)
+			.await
+			.map_err(|error| reinhardt_core::exception::Error::Database(error.to_string()))
+	}
+
+	fn collect_field_assignments<I, A>(values: I) -> Vec<FieldAssignment>
+	where
+		I: IntoIterator<Item = A>,
+		A: Into<FieldAssignment>,
+	{
+		values.into_iter().map(Into::into).collect()
+	}
+
+	fn update_fields_query_from_assignments(
+		&self,
+		assignments: &[FieldAssignment],
+	) -> reinhardt_core::exception::Result<UpdateStatement> {
+		Self::validate_update_fields(assignments)?;
+
+		if !self.has_where_predicates() {
+			return Err(reinhardt_core::exception::Error::Validation(
+				"QuerySet::update_fields requires at least one filter predicate".to_string(),
+			));
+		}
+
+		let condition = self.build_where_condition()?.ok_or_else(|| {
+			reinhardt_core::exception::Error::Validation(
+				"QuerySet::update_fields requires at least one non-empty filter predicate"
+					.to_string(),
+			)
+		})?;
+
+		let mut stmt = Query::update();
+		stmt.table(Alias::new(T::table_name()));
+
+		for assignment in assignments {
+			stmt.value_expr(
+				Alias::new(assignment.field()),
+				Self::update_value_to_query_expr(assignment.value()),
+			);
+		}
+
+		stmt.cond_where(condition);
+
+		Ok(stmt.to_owned())
+	}
+
+	fn validate_update_fields(
+		assignments: &[FieldAssignment],
+	) -> reinhardt_core::exception::Result<()> {
+		if assignments.is_empty() {
+			return Err(reinhardt_core::exception::Error::Validation(
+				"QuerySet::update_fields requires at least one field assignment".to_string(),
+			));
+		}
+
+		if assignments
+			.iter()
+			.any(|assignment| assignment.field().trim().is_empty())
+		{
+			return Err(reinhardt_core::exception::Error::Validation(
+				"QuerySet::update_fields field names must not be empty".to_string(),
+			));
+		}
+
+		Ok(())
+	}
+
+	fn build_update_for_backend(
+		stmt: &UpdateStatement,
+		backend: super::connection::DatabaseBackend,
+	) -> (String, reinhardt_query::prelude::Values) {
+		match backend {
+			super::connection::DatabaseBackend::Postgres => PostgresQueryBuilder.build_update(stmt),
+			super::connection::DatabaseBackend::MySql => MySqlQueryBuilder.build_update(stmt),
+			super::connection::DatabaseBackend::Sqlite => SqliteQueryBuilder.build_update(stmt),
+		}
+	}
+
+	fn update_value_to_query_expr(value: &UpdateValue) -> Expr {
+		match value {
+			UpdateValue::String(s) => Expr::val(s.clone()),
+			UpdateValue::Integer(i) => Expr::val(*i),
+			UpdateValue::Float(f) => Expr::val(*f),
+			UpdateValue::Boolean(b) => Expr::val(*b),
+			UpdateValue::Null => Expr::cust("NULL"),
+			UpdateValue::Timestamp(dt) => Expr::val(
+				reinhardt_query::value::Value::ChronoDateTimeUtc(Some(Box::new(*dt))),
+			),
+			UpdateValue::Uuid(uuid) => {
+				Expr::val(reinhardt_query::value::Value::Uuid(Some(Box::new(*uuid))))
+			}
+			UpdateValue::FieldRef(f) => Expr::col(Alias::new(&f.field)),
+			UpdateValue::Expression(expr) => Self::expression_to_query_expr(expr),
+		}
 	}
 
 	/// Generate UPDATE SQL with WHERE clause and parameter binding
@@ -4601,6 +4877,8 @@ where
 			Value::Double(Some(f)) => f.to_string(),
 			Value::String(Some(s)) => s.to_string(),
 			Value::Bytes(Some(b)) => String::from_utf8_lossy(b).to_string(),
+			Value::ChronoDateTimeUtc(Some(dt)) => dt.to_rfc3339(),
+			Value::Uuid(Some(uuid)) => uuid.to_string(),
 			_ => String::new(),
 		}
 	}
@@ -6112,7 +6390,7 @@ fn escape_like_pattern(value: &str) -> String {
 #[cfg(test)]
 mod tests {
 	use super::{FilterCondition, MAX_FILTER_CONDITION_DEPTH};
-	use crate::orm::query::UpdateValue;
+	use crate::orm::query::{FieldAssignment, UpdateValue};
 	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
@@ -6198,6 +6476,81 @@ mod tests {
 		fn new_fields() -> Self::Fields {
 			TestUserFields
 		}
+	}
+
+	#[test]
+	fn test_field_assignment_from_generated_field_ref_tuple() {
+		let timestamp = chrono::DateTime::parse_from_rfc3339("2026-06-19T00:00:00Z")
+			.expect("valid timestamp")
+			.with_timezone(&chrono::Utc);
+
+		let assignment: FieldAssignment = (TestUser::field_created_at(), timestamp).into();
+
+		assert_eq!(assignment.field(), "created_at");
+		assert!(matches!(assignment.value(), UpdateValue::Timestamp(_)));
+	}
+
+	#[test]
+	fn test_field_assignment_from_field_ref_assign_helper() {
+		let assignment = TestUser::field_username().assign("alice");
+
+		assert_eq!(assignment.field(), "username");
+		assert!(matches!(
+			assignment.value(),
+			UpdateValue::String(value) if value == "alice"
+		));
+	}
+
+	#[test]
+	fn test_update_fields_sql_preserves_queryset_predicates() {
+		let timestamp = chrono::DateTime::parse_from_rfc3339("2026-06-19T00:00:00Z")
+			.expect("valid timestamp")
+			.with_timezone(&chrono::Utc);
+		let queryset = QuerySet::<TestUser>::new()
+			.filter(TestUser::field_id().eq(7))
+			.filter(TestUser::field_email().is_null());
+
+		let (sql, params) = queryset
+			.update_fields_sql([(TestUser::field_created_at(), timestamp)])
+			.expect("update fields sql");
+
+		assert_eq!(
+			sql,
+			"UPDATE \"test_users\" SET \"created_at\" = $1 WHERE (\"id\" = $2 AND \"email\" IS NULL)"
+		);
+		assert_eq!(params.len(), 2);
+		assert_eq!(params[0], "2026-06-19T00:00:00+00:00");
+		assert_eq!(params[1], "7");
+	}
+
+	#[test]
+	fn test_update_fields_sql_rejects_empty_assignments() {
+		let queryset = QuerySet::<TestUser>::new().filter(TestUser::field_id().eq(7));
+
+		let error = queryset
+			.update_fields_sql(std::iter::empty::<FieldAssignment>())
+			.expect_err("empty assignments should fail");
+
+		assert!(matches!(
+			error,
+			reinhardt_core::exception::Error::Validation(message)
+				if message.contains("field assignment")
+		));
+	}
+
+	#[test]
+	fn test_update_fields_sql_rejects_missing_predicate() {
+		let queryset = QuerySet::<TestUser>::new();
+
+		let error = queryset
+			.update_fields_sql([("username", "alice")])
+			.expect_err("missing predicate should fail");
+
+		assert!(matches!(
+			error,
+			reinhardt_core::exception::Error::Validation(message)
+				if message.contains("filter predicate")
+		));
 	}
 
 	#[tokio::test]

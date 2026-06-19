@@ -32,7 +32,7 @@
 //! ### ORM (`orm` module)
 //!
 //! - **Django-style Models**: Define database models with structs
-//! - **QuerySet API**: Chainable query builder
+//! - **QuerySet API**: Chainable query builder with conditional partial updates
 //! - **Field Types**: Rich set of field types with validation
 //! - **Relationships**: ForeignKey, ManyToMany, OneToOne
 //!

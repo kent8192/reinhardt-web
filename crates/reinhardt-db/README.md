@@ -272,6 +272,13 @@ let recent = User::objects()
     .filter(User::field_created_at().year().gte(2026))
     .all()
     .await?;
+
+// Atomic conditional partial update
+let updated = User::objects()
+    .filter(User::field_id().eq(user_id))
+    .filter(User::field_age().gte(18))
+    .update_fields([User::field_updated_at().assign(Utc::now())])
+    .await?;
 ```
 
 ### Create Migrations
