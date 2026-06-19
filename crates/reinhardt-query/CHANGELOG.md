@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.3.0-rc.1...reinhardt-query@v0.3.0-rc.2) - 2026-06-19
+
+### Documentation
+
+- update version references to v0.3.0-rc.2
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.1.3...reinhardt-query@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-query` for the Reinhardt 0.2.0 line. This
