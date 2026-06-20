@@ -153,6 +153,17 @@ pub async fn download_assets(
 			path: dest.display().to_string(),
 			source: std::io::Error::other("destination has no parent directory"),
 		})?;
+		let mut h = Sha256::new();
+		h.update(&bytes);
+		let computed = format!("{:x}", h.finalize());
+		if !asset.sha256.is_empty() && !computed.eq_ignore_ascii_case(asset.sha256) {
+			return Err(VendorDownloadError::IntegrityMismatch {
+				path: dest.display().to_string(),
+				expected: asset.sha256.to_string(),
+				actual: computed,
+			});
+		}
+
 		let mut tmp = tempfile::NamedTempFile::new_in(parent_dir).map_err(|source| {
 			VendorDownloadError::Io {
 				path: parent_dir.display().to_string(),
@@ -169,27 +180,15 @@ pub async fn download_assets(
 			source: e.error,
 		})?;
 
-		// Verify post-download. Empty SHA is short-circuited inside verify_integrity.
-		match verify_integrity(&dest, asset.sha256) {
-			Ok(()) => {
-				if asset.sha256.is_empty() {
-					// Compute and log the SHA so the developer can pin it.
-					if let Ok(content) = std::fs::read(&dest) {
-						let mut h = Sha256::new();
-						h.update(&content);
-						let computed = format!("{:x}", h.finalize());
-						if verbosity != Verbosity::Silent {
-							println!(
-								"vendor asset {} downloaded; computed sha256 = {}",
-								asset.target, computed
-							);
-						}
-					}
-				} else if verbosity == Verbosity::Verbose {
-					println!("verified: {}", asset.target);
-				}
+		if asset.sha256.is_empty() {
+			if verbosity != Verbosity::Silent {
+				println!(
+					"vendor asset {} downloaded; computed sha256 = {}",
+					asset.target, computed
+				);
 			}
-			Err(e) => return Err(e),
+		} else if verbosity == Verbosity::Verbose {
+			println!("verified: {}", asset.target);
 		}
 	}
 
@@ -236,16 +235,7 @@ pub async fn ensure_vendor_assets_for_app(
 		}
 		Err(e) => {
 			tracing::error!("vendor asset download for {} failed: {}", app_label, e);
-			if fail_hard() {
-				Err(e)
-			} else {
-				// Soft-fail: still mark as ensured so we do not retry every request.
-				ensured_set()
-					.lock()
-					.expect("ensured_set mutex poisoned")
-					.insert(key);
-				Ok(())
-			}
+			if fail_hard() { Err(e) } else { Ok(()) }
 		}
 	}
 }
