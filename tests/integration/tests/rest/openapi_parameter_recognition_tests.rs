@@ -49,10 +49,6 @@ struct TestUser {
 	is_active: bool,
 }
 
-/// Dummy serializer for ViewSet-based tests
-#[derive(Debug, Clone)]
-struct TestUserSerializer;
-
 /// Fixture: ViewSetInspector with default config
 #[fixture]
 fn inspector() -> ViewSetInspector {
@@ -70,8 +66,8 @@ fn generator() -> SchemaGenerator {
 
 /// Fixture: ModelViewSet for users
 #[fixture]
-fn user_viewset() -> ModelViewSet<TestUser, TestUserSerializer> {
-	ModelViewSet::<TestUser, TestUserSerializer>::new("users")
+fn user_viewset() -> ModelViewSet<TestUser, reinhardt_rest::serializers::JsonSerializer<TestUser>> {
+	ModelViewSet::<TestUser, reinhardt_rest::serializers::JsonSerializer<TestUser>>::new("users")
 }
 
 /// Helper: Create a minimal OpenAPI schema for UI tests
@@ -158,7 +154,7 @@ fn test_path_param_string_type_metadata() {
 #[rstest]
 fn test_viewset_generates_collection_and_detail_paths(
 	inspector: ViewSetInspector,
-	user_viewset: ModelViewSet<TestUser, TestUserSerializer>,
+	user_viewset: ModelViewSet<TestUser, reinhardt_rest::serializers::JsonSerializer<TestUser>>,
 ) {
 	// Arrange (fixtures provide inspector and viewset)
 
@@ -193,7 +189,7 @@ fn test_viewset_generates_collection_and_detail_paths(
 #[rstest]
 fn test_viewset_detail_operations_have_id_parameter(
 	inspector: ViewSetInspector,
-	user_viewset: ModelViewSet<TestUser, TestUserSerializer>,
+	user_viewset: ModelViewSet<TestUser, reinhardt_rest::serializers::JsonSerializer<TestUser>>,
 ) {
 	// Arrange
 	let paths = inspector.extract_paths(&user_viewset, "/api/users");
@@ -265,7 +261,7 @@ fn test_path_param_trait_various_types() {
 #[rstest]
 fn test_json_output_includes_path_parameters(
 	inspector: ViewSetInspector,
-	user_viewset: ModelViewSet<TestUser, TestUserSerializer>,
+	user_viewset: ModelViewSet<TestUser, reinhardt_rest::serializers::JsonSerializer<TestUser>>,
 ) {
 	// Arrange
 	let paths = inspector.extract_paths(&user_viewset, "/api/users");
@@ -313,7 +309,7 @@ fn test_json_output_includes_path_parameters(
 #[rstest]
 fn test_viewset_post_operation_has_request_body(
 	inspector: ViewSetInspector,
-	user_viewset: ModelViewSet<TestUser, TestUserSerializer>,
+	user_viewset: ModelViewSet<TestUser, reinhardt_rest::serializers::JsonSerializer<TestUser>>,
 ) {
 	// Arrange
 	let paths = inspector.extract_paths(&user_viewset, "/api/users");
@@ -340,7 +336,7 @@ fn test_viewset_post_operation_has_request_body(
 #[rstest]
 fn test_viewset_put_operation_exists(
 	inspector: ViewSetInspector,
-	user_viewset: ModelViewSet<TestUser, TestUserSerializer>,
+	user_viewset: ModelViewSet<TestUser, reinhardt_rest::serializers::JsonSerializer<TestUser>>,
 ) {
 	// Arrange
 	let paths = inspector.extract_paths(&user_viewset, "/api/users");
@@ -360,7 +356,7 @@ fn test_viewset_put_operation_exists(
 #[rstest]
 fn test_viewset_patch_operation_exists(
 	inspector: ViewSetInspector,
-	user_viewset: ModelViewSet<TestUser, TestUserSerializer>,
+	user_viewset: ModelViewSet<TestUser, reinhardt_rest::serializers::JsonSerializer<TestUser>>,
 ) {
 	// Arrange
 	let paths = inspector.extract_paths(&user_viewset, "/api/users");
@@ -380,7 +376,7 @@ fn test_viewset_patch_operation_exists(
 #[rstest]
 fn test_viewset_get_operation_has_no_request_body(
 	inspector: ViewSetInspector,
-	user_viewset: ModelViewSet<TestUser, TestUserSerializer>,
+	user_viewset: ModelViewSet<TestUser, reinhardt_rest::serializers::JsonSerializer<TestUser>>,
 ) {
 	// Arrange
 	let paths = inspector.extract_paths(&user_viewset, "/api/users");
@@ -402,7 +398,7 @@ fn test_viewset_get_operation_has_no_request_body(
 #[rstest]
 fn test_viewset_delete_operation_has_no_request_body(
 	inspector: ViewSetInspector,
-	user_viewset: ModelViewSet<TestUser, TestUserSerializer>,
+	user_viewset: ModelViewSet<TestUser, reinhardt_rest::serializers::JsonSerializer<TestUser>>,
 ) {
 	// Arrange
 	let paths = inspector.extract_paths(&user_viewset, "/api/users");
@@ -487,7 +483,7 @@ fn test_registry_schema_registration_for_body(mut generator: SchemaGenerator) {
 #[rstest]
 fn test_viewset_crud_body_presence(
 	inspector: ViewSetInspector,
-	user_viewset: ModelViewSet<TestUser, TestUserSerializer>,
+	user_viewset: ModelViewSet<TestUser, reinhardt_rest::serializers::JsonSerializer<TestUser>>,
 ) {
 	// Arrange
 	let paths = inspector.extract_paths(&user_viewset, "/api/users");
@@ -1512,7 +1508,7 @@ fn test_full_pipeline_json_structure(mut generator: SchemaGenerator) {
 #[rstest]
 fn test_viewset_generator_integration(
 	inspector: ViewSetInspector,
-	user_viewset: ModelViewSet<TestUser, TestUserSerializer>,
+	user_viewset: ModelViewSet<TestUser, reinhardt_rest::serializers::JsonSerializer<TestUser>>,
 	generator: SchemaGenerator,
 ) {
 	// Arrange

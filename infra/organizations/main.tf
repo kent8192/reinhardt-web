@@ -1,6 +1,11 @@
 # Manages the dedicated CI sub-account in AWS Organizations.
 # Run with master account credentials (the account that owns the Organization).
 # After apply, use outputs.account_id as the target account for all github-runners resources.
+#
+# This stack is intentionally excluded from Terraform plan/apply CI. It uses a
+# local backend and requires management-account credentials, so CI cannot
+# preserve the local state or safely create/import the Organizations account.
+# Apply manually with the state file in hand. See reinhardt-web#5393.
 
 terraform {
   required_version = ">= 1.10"
