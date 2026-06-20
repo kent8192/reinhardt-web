@@ -1,7 +1,13 @@
 # Dockerfile for Bruno API test runner.
 # Pre-installs @usebruno/cli into a minimal Node image so the runtime
 # container can run with a read-only root filesystem.
-FROM node:24-alpine
+#
+# Pinned to the current multi-arch node:24-alpine manifest so CI uses a stable
+# Node/Alpine base while still selecting the host platform. Review quarterly
+# or when Node/Alpine CVEs require a base refresh:
+#   docker buildx imagetools inspect docker.io/library/node:24-alpine
+# After bumping the digest, rebuild this Bruno image before opening the PR.
+FROM node:24-alpine@sha256:156b55f92e98ccd5ef49578a8cea0df4679826564bad1c9d4ef04462b9f0ded6
 
 # Pinned for reproducibility — bump deliberately when upgrading.
 # Using @latest makes CI failures impossible to bisect against upstream changes.
