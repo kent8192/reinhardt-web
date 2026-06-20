@@ -763,9 +763,6 @@ mod tests {
 		}
 	}
 
-	#[derive(Debug, Clone)]
-	struct TestSerializer;
-
 	#[test]
 	fn test_viewset_inspector_new() {
 		let inspector = ViewSetInspector::new();
@@ -775,7 +772,10 @@ mod tests {
 
 	#[test]
 	fn test_extract_paths_returns_collection_and_detail() {
-		let viewset = ModelViewSet::<TestModel, TestSerializer>::new("users");
+		let viewset = ModelViewSet::<
+			TestModel,
+			reinhardt_rest::serializers::JsonSerializer<TestModel>,
+		>::new("users");
 		let inspector = ViewSetInspector::new();
 		let paths = inspector.extract_paths(&viewset, "/api/users");
 
@@ -785,7 +785,10 @@ mod tests {
 
 	#[test]
 	fn test_extract_operations_includes_crud() {
-		let viewset = ModelViewSet::<TestModel, TestSerializer>::new("users");
+		let viewset = ModelViewSet::<
+			TestModel,
+			reinhardt_rest::serializers::JsonSerializer<TestModel>,
+		>::new("users");
 		let inspector = ViewSetInspector::new();
 		let operations = inspector.extract_operations(&viewset);
 
