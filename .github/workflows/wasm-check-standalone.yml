@@ -2,7 +2,10 @@ name: WASM Check (Standalone)
 
 # Re-exposes wasm-check.yml on push to main so the WASM regression suite runs
 # after a PR merges. ci.yml already invokes wasm-check.yml on pull_request, so
-# this wrapper is push-to-main only to avoid duplicate runs (Fixes #4093).
+# this wrapper is push-to-main by default to avoid duplicate runs (Fixes #4093).
+# workflow_dispatch remains available for the GitHub-hosted reusable check, but
+# cache seeding is restricted to trusted push-to-main runs because it restores and
+# builds repository code on CI runners.
 
 on:
   push:
@@ -38,6 +41,7 @@ jobs:
   # (linux-x64 and linux-arm64); each consumer restores the matching one
   # without any change required on the consumer side. (Fixes #4207)
   cache-seed:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     name: Cache Seed (wasm-feature-check, ${{ matrix.arch.name }})
     strategy:
       fail-fast: false
@@ -96,6 +100,7 @@ jobs:
   wasm-check:
     name: WASM Check
     needs: [cache-seed]
+    if: ${{ always() && needs.cache-seed.result != 'failure' && needs.cache-seed.result != 'cancelled' }}
     uses: ./.github/workflows/wasm-check.yml
     with:
       runner: '"ubuntu-latest"'
