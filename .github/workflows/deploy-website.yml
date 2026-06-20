@@ -81,8 +81,8 @@ jobs:
             fi
           fi
 
-          # AWS Spot runner selection (opt-in for PRs)
-          if [[ "$USE_MAC" == "false" ]] && [[ "$SELF_HOSTED_ENABLED" == "true" ]]; then
+          # AWS Spot runner selection (opt-in for trusted PRs)
+          if [[ "$USE_MAC" == "false" ]] && [[ "$SELF_HOSTED_ENABLED" == "true" ]] && [[ "$IS_FORK" != "true" ]]; then
             if [[ "$HEAD_REF" == release-plz-* ]]; then
               USE_AWS=true
             elif [[ "$ACTOR" == "$REPO_OWNER" ]]; then
