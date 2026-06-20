@@ -2,6 +2,7 @@ use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Uri, Version};
 use reinhardt_apps::{Handler, Request};
 use reinhardt_macros::model;
+use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_urls::routers::{DefaultRouter, Router};
 use reinhardt_views::viewsets::{GenericViewSet, ModelViewSet, ViewSet};
 use serde::{Deserialize, Serialize};
@@ -17,8 +18,7 @@ struct TestModel {
 	name: String,
 }
 
-#[derive(Debug, Clone)]
-struct TestSerializer;
+type TestSerializer = JsonSerializer<TestModel>;
 
 /// Test viewset registration with router
 #[tokio::test]

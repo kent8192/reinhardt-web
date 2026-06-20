@@ -26,6 +26,7 @@ use reinhardt_rest::filters::{
 	DatabaseDialect, FilterBackend, FuzzyAlgorithm, FuzzySearchFilter, RangeFilter,
 	SimpleOrderingBackend, SimpleSearchBackend,
 };
+use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_test::fixtures::testcontainers::{ContainerAsync, GenericImage, postgres_container};
 use reinhardt_views::viewsets::{
 	FilterConfig, FilterableViewSet, ModelViewSet, OrderingConfig, ReadOnlyModelViewSet,
@@ -55,8 +56,7 @@ struct TestModel {
 	created_at: i64,
 }
 
-#[derive(Debug, Clone)]
-struct TestSerializer;
+type TestSerializer = JsonSerializer<TestModel>;
 
 // ========================================================================
 // Custom Fixtures

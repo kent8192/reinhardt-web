@@ -2,6 +2,7 @@ use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_http::Request;
 use reinhardt_macros::model;
+use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_views::viewsets::{
 	Action, GenericViewSet, ModelViewSet, ReadOnlyModelViewSet, ViewSet,
 };
@@ -17,8 +18,7 @@ struct TestModel {
 	name: String,
 }
 
-#[derive(Debug, Clone)]
-struct TestSerializer;
+type TestSerializer = JsonSerializer<TestModel>;
 
 /// Test initializing viewset with action mapping
 #[tokio::test]
