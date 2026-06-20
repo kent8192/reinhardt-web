@@ -350,6 +350,35 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn test_session_save_uses_amortized_cleanup_while_above_threshold() {
+		let store = SessionStore::with_cleanup_threshold(2);
+
+		let first_valid_session = SessionData::new(Duration::from_secs(3600));
+		let second_valid_session = SessionData::new(Duration::from_secs(3600));
+		let third_valid_session = SessionData::new(Duration::from_secs(3600));
+		store.save(first_valid_session);
+		store.save(second_valid_session);
+		store.save(third_valid_session);
+
+		let mut first_expired_session = SessionData::new(Duration::from_secs(3600));
+		let first_expired_id = first_expired_session.id.clone();
+		first_expired_session.expires_at = SystemTime::now() - Duration::from_millis(20);
+		store.save(first_expired_session);
+
+		assert_eq!(store.len(), 4);
+		assert!(store.get(&first_expired_id).is_some());
+
+		let mut second_expired_session = SessionData::new(Duration::from_secs(3600));
+		let second_expired_id = second_expired_session.id.clone();
+		second_expired_session.expires_at = SystemTime::now() - Duration::from_millis(20);
+		store.save(second_expired_session);
+
+		assert_eq!(store.len(), 3);
+		assert!(store.get(&first_expired_id).is_none());
+		assert!(store.get(&second_expired_id).is_none());
+	}
+
+	#[tokio::test]
 	async fn test_with_defaults_constructor() {
 		let middleware = SessionMiddleware::with_defaults();
 		let handler = Arc::new(TestHandler);
