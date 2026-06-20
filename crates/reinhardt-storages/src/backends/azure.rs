@@ -272,10 +272,6 @@ impl AzureStorage {
 	}
 
 	fn sas_url(&self, blob: &str, expiry_secs: u64) -> Result<String> {
-		if self.config.sas_token.is_some() {
-			return Ok(self.append_sas(self.blob_url(blob)));
-		}
-
 		let expiry = Utc::now() + Duration::seconds(i64::try_from(expiry_secs).unwrap_or(i64::MAX));
 		let se = expiry.format("%Y-%m-%dT%H:%M:%SZ").to_string();
 		let sp = "r";
@@ -304,8 +300,13 @@ impl AzureStorage {
 			"",
 		]
 		.join("\n");
+		let access_key = self.config.access_key.as_ref().ok_or_else(|| {
+			StorageError::ConfigError(
+				"Azure access_key is required to generate temporary URLs".to_string(),
+			)
+		})?;
 		let key = STANDARD
-			.decode(self.access_key()?)
+			.decode(access_key.expose_secret())
 			.map_err(|err| StorageError::ConfigError(err.to_string()))?;
 		let mut mac = HmacSha256::new_from_slice(&key)
 			.map_err(|err| StorageError::ConfigError(err.to_string()))?;
@@ -442,5 +443,34 @@ impl StorageBackend for AzureStorage {
 		DateTime::parse_from_rfc2822(last_modified)
 			.map(|time| time.with_timezone(&Utc))
 			.map_err(|err| StorageError::Other(err.to_string()))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn sas_url_requires_access_key_instead_of_exposing_configured_sas_token() {
+		let storage = AzureStorage {
+			config: AzureConfig {
+				account: "testaccount".to_string(),
+				container: "testcontainer".to_string(),
+				prefix: None,
+				endpoint: Some("https://example.test/testaccount".to_string()),
+				access_key: None,
+				sas_token: Some("sp=rwdlac&sig=SECRET_CONTAINER_SIGNATURE".into()),
+				connection_string: None,
+			},
+			http: reqwest::Client::new(),
+		};
+
+		let err = storage
+			.sas_url("private.txt", 60)
+			.expect_err("temporary URLs must not expose configured SAS credentials");
+
+		assert!(
+			matches!(err, StorageError::ConfigError(message) if message == "Azure access_key is required to generate temporary URLs")
+		);
 	}
 }
