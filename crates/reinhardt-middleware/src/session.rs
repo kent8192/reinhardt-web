@@ -325,6 +325,31 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn test_session_save_cleans_expired_entries_while_above_threshold() {
+		let store = SessionStore::with_cleanup_threshold(1);
+
+		let first_valid_session = SessionData::new(Duration::from_secs(3600));
+		let first_valid_id = first_valid_session.id.clone();
+		store.save(first_valid_session);
+
+		let second_valid_session = SessionData::new(Duration::from_secs(3600));
+		let second_valid_id = second_valid_session.id.clone();
+		store.save(second_valid_session);
+
+		assert_eq!(store.len(), 2);
+
+		let mut expired_session = SessionData::new(Duration::from_secs(3600));
+		let expired_id = expired_session.id.clone();
+		expired_session.expires_at = SystemTime::now() - Duration::from_millis(20);
+		store.save(expired_session);
+
+		assert_eq!(store.len(), 2);
+		assert!(store.get(&expired_id).is_none());
+		assert!(store.get(&first_valid_id).is_some());
+		assert!(store.get(&second_valid_id).is_some());
+	}
+
+	#[tokio::test]
 	async fn test_with_defaults_constructor() {
 		let middleware = SessionMiddleware::with_defaults();
 		let handler = Arc::new(TestHandler);
