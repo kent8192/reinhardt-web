@@ -57,23 +57,17 @@ impl SessionStore {
 
 	/// Save a session, with automatic cleanup when threshold is exceeded.
 	///
-	/// Cleanup is amortized: a full `retain` scan only runs when crossing
-	/// the threshold from below, not on every subsequent insert.
+	/// Cleanup runs whenever the post-save session count exceeds the
+	/// configured threshold, ensuring expired entries are eventually evicted
+	/// even if the store remains above the threshold for an extended period.
 	pub fn save(&self, session: SessionData) {
 		let mut sessions = self.sessions.write().unwrap_or_else(|e| e.into_inner());
-		let was_at_or_below = sessions.len()
-			<= self
-				.max_sessions_before_cleanup
-				.load(std::sync::atomic::Ordering::Relaxed);
 		sessions.insert(session.id.clone(), session);
 
-		// Lazy eviction: clean up expired sessions only on the transition
-		// from "<= threshold" to "> threshold" to avoid repeated full-map
-		// scans under the write lock on every subsequent save.
 		let threshold = self
 			.max_sessions_before_cleanup
 			.load(std::sync::atomic::Ordering::Relaxed);
-		if was_at_or_below && sessions.len() > threshold {
+		if sessions.len() > threshold {
 			sessions.retain(|_, s| s.is_valid());
 		}
 	}
