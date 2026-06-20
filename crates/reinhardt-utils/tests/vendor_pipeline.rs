@@ -142,7 +142,51 @@ async fn download_errors_on_sha_mismatch() {
 	// Act
 	let result = download_assets(tmp.path(), &assets, Verbosity::Silent).await;
 
-	// Assert — the function attempts the download, then fails the post-write SHA check.
+	// Assert — the function attempts the download, then rejects it before install.
 	assert!(result.is_err(), "expected SHA mismatch error");
 	assert_eq!(request_count.load(Ordering::SeqCst), 1, "URL fetched once");
+	assert!(
+		!tmp.path().join("vendor/x.js").exists(),
+		"mismatching download must not be installed"
+	);
+}
+
+#[rstest]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn download_preserves_existing_file_on_sha_mismatch() {
+	// Arrange — an existing local file must not be replaced by a mismatching response.
+	let server = MockServer::start().await;
+	let request_count = Arc::new(AtomicUsize::new(0));
+
+	Mock::given(method("GET"))
+		.and(path("/x.js"))
+		.respond_with(CountingResponder {
+			counter: request_count.clone(),
+			body: b"attacker-controlled",
+		})
+		.mount(&server)
+		.await;
+
+	let tmp = tempfile::tempdir().expect("tempdir");
+	let target = tmp.path().join("vendor/x.js");
+	std::fs::create_dir_all(target.parent().expect("target parent")).expect("create vendor dir");
+	std::fs::write(&target, b"known previous contents").expect("write existing asset");
+
+	let url: &'static str = Box::leak(format!("{}/x.js", server.uri()).into_boxed_str());
+	let wrong_sha = "0000000000000000000000000000000000000000000000000000000000000000";
+	let assets = vec![AppVendorAsset {
+		app_label: "test",
+		url,
+		target: "vendor/x.js",
+		sha256: wrong_sha,
+	}];
+
+	// Act
+	let result = download_assets(tmp.path(), &assets, Verbosity::Silent).await;
+
+	// Assert
+	assert!(result.is_err(), "expected SHA mismatch error");
+	assert_eq!(request_count.load(Ordering::SeqCst), 1, "URL fetched once");
+	let contents = std::fs::read(&target).expect("existing asset remains readable");
+	assert_eq!(contents, b"known previous contents");
 }
