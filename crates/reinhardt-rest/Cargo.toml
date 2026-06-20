@@ -1,6 +1,10 @@
 [package]
 name = "reinhardt-rest"
+<<<<<<< Updated upstream
 version = "0.3.0-rc.2"
+=======
+version = "0.2.1"
+>>>>>>> Stashed changes
 description = "REST API framework aggregator for Reinhardt"
 keywords = ["rest", "api", "web", "framework", "django"]
 categories = ["web-programming", "web-programming::http-server"]

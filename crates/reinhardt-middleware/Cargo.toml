@@ -1,6 +1,10 @@
 [package]
 name = "reinhardt-middleware"
+<<<<<<< Updated upstream
 version = "0.3.0-rc.2"
+=======
+version = "0.2.1"
+>>>>>>> Stashed changes
 description = "Middleware system for request/response processing pipeline"
 keywords = ["middleware", "web", "cors", "security", "http"]
 categories = ["web-programming", "web-programming::http-server"]

@@ -1,6 +1,10 @@
 [package]
 name = "reinhardt-storages"
+<<<<<<< Updated upstream
 version = "0.2.2"
+=======
+version = "0.2.1"
+>>>>>>> Stashed changes
 edition = "2024"
 authors = ["Reinhardt Contributors"]
 license = "MIT OR Apache-2.0"

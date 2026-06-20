@@ -1,6 +1,10 @@
 [package]
 name = "reinhardt-mail"
+<<<<<<< Updated upstream
 version = "0.3.0-rc.2"
+=======
+version = "0.2.1"
+>>>>>>> Stashed changes
 description = "Email sending functionality with multiple backends"
 edition.workspace = true
 rust-version.workspace = true

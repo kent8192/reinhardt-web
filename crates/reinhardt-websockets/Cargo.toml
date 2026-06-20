@@ -1,6 +1,10 @@
 [package]
 name = "reinhardt-websockets"
+<<<<<<< Updated upstream
 version = "0.3.0-rc.2"
+=======
+version = "0.2.1"
+>>>>>>> Stashed changes
 description = "WebSocket support for real-time bidirectional communication"
 edition.workspace = true
 rust-version.workspace = true

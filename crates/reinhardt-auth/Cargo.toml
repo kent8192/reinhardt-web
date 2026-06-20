@@ -1,6 +1,10 @@
 [package]
 name = "reinhardt-auth"
+<<<<<<< Updated upstream
 version = "0.3.0-rc.2"
+=======
+version = "0.2.1"
+>>>>>>> Stashed changes
 description = "Authentication and authorization system"
 keywords = ["auth", "jwt", "authentication", "django", "web"]
 categories = ["authentication", "web-programming"]

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<<<<<<< Updated upstream
 ## [0.3.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.3.0-rc.1...reinhardt-middleware@v0.3.0-rc.2) - 2026-06-19
 
 ### Added
@@ -23,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(ci)* pin brotli allocator dependency
 - *(logging)* avoid zero-millisecond request durations
+=======
+## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.2.0...reinhardt-middleware@v0.2.1) - 2026-06-20
+
+### Fixed
+
+- *(middleware)* keep session cleanup active above threshold
+- *(middleware)* amortize session cleanup
+>>>>>>> Stashed changes
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.3...reinhardt-middleware@v0.2.0) - 2026-06-11
 

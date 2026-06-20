@@ -1,6 +1,10 @@
 [package]
 name = "reinhardt-forms"
+<<<<<<< Updated upstream
 version = "0.3.0-rc.2"
+=======
+version = "0.2.1"
+>>>>>>> Stashed changes
 description = "Form handling and validation"
 edition.workspace = true
 rust-version.workspace = true

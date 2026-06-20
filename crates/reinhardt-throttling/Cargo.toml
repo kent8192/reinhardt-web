@@ -1,6 +1,10 @@
 [package]
 name = "reinhardt-throttling"
+<<<<<<< Updated upstream
 version = "0.3.0-rc.2"
+=======
+version = "0.2.1"
+>>>>>>> Stashed changes
 description = "Throttling and rate limiting for Reinhardt framework"
 edition.workspace = true
 rust-version.workspace = true

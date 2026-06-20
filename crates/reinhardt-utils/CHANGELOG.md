@@ -7,11 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<<<<<<< Updated upstream
 ## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.2.0...reinhardt-utils@v0.3.0-rc.1) - 2026-06-18
 
 ### Fixed
 
 - *(ci)* pin brotli allocator dependency
+=======
+## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.2.0...reinhardt-utils@v0.2.1) - 2026-06-20
+
+### Fixed
+
+- *(utils)* verify vendor asset integrity before install
+>>>>>>> Stashed changes
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.3...reinhardt-utils@v0.2.0) - 2026-06-11
 

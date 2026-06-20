@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<<<<<<< Updated upstream
 ## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.2.0...reinhardt-di@v0.3.0-rc.1) - 2026-06-18
 
 ### Added
@@ -23,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(di)* support trait-based inject wrapper resolution
 - *(di)* preserve Depends inject fallback
 - *(di)* honor cache false for keyed wrappers
+=======
+## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.2.0...reinhardt-di@v0.2.1) - 2026-06-20
+
+### Maintenance
+
+- update Cargo.toml dependencies
+>>>>>>> Stashed changes
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.3...reinhardt-di@v0.2.0) - 2026-06-11
 

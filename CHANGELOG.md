@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<<<<<<< Updated upstream
 ## [0.3.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.1...reinhardt-web@v0.3.0-rc.2) - 2026-06-19
 
 ### Added
@@ -76,6 +77,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Follow [`instructions/MIGRATION_0.3.md`](instructions/MIGRATION_0.3.md) for
   the 0.2 to 0.3 compatibility-removal checklist.
+=======
+## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0...reinhardt-web@v0.2.1) - 2026-06-20
+
+### Added
+
+- *(website)* add technical notes domain
+
+### Fixed
+
+- *(infra)* import website DNS records
+- *(ci)* restrict wasm cache seed to main pushes
+- *(views)* wire declared viewset serializers
+- *(ci)* exclude organizations from Terraform automation
+>>>>>>> Stashed changes
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.3...reinhardt-web@v0.2.0) - 2026-06-11
 
