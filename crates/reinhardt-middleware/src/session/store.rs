@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::data::SessionData;
 
@@ -15,18 +16,26 @@ impl reinhardt_di::InjectableKey for SessionStoreKey {}
 /// Session store with automatic lazy eviction of expired sessions
 ///
 /// Performs threshold-based lazy cleanup of expired sessions to prevent
-/// unbounded memory growth. Cleanup is triggered inside `save` whenever the
-/// total number of stored sessions exceeds the configured threshold; it is
-/// not time-based. The threshold defaults to
+/// unbounded memory growth. Cleanup is triggered inside `save` when the
+/// total number of stored sessions crosses an amortized cleanup boundary; it
+/// is not time-based. The threshold defaults to
 /// `SessionStore::DEFAULT_CLEANUP_THRESHOLD` and can be overridden at
 /// construction via `SessionStore::with_cleanup_threshold` or adjusted at
 /// runtime via `SessionStore::set_cleanup_threshold`.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SessionStore {
 	/// Sessions
 	pub(super) sessions: RwLock<HashMap<String, SessionData>>,
 	/// Maximum number of sessions before triggering automatic cleanup
-	max_sessions_before_cleanup: std::sync::atomic::AtomicUsize,
+	max_sessions_before_cleanup: AtomicUsize,
+	/// Next session count at which `save` should perform cleanup.
+	next_cleanup_session_count: AtomicUsize,
+}
+
+impl Default for SessionStore {
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl SessionStore {
@@ -42,18 +51,21 @@ impl SessionStore {
 	/// Create a new store with a custom cleanup threshold.
 	///
 	/// The store triggers a single `retain` pass inside `save` whenever the
-	/// number of stored sessions exceeds `threshold`.
+	/// number of stored sessions crosses an amortized cleanup boundary.
 	pub fn with_cleanup_threshold(threshold: usize) -> Self {
 		Self {
 			sessions: RwLock::new(HashMap::new()),
-			max_sessions_before_cleanup: std::sync::atomic::AtomicUsize::new(threshold),
+			max_sessions_before_cleanup: AtomicUsize::new(threshold),
+			next_cleanup_session_count: AtomicUsize::new(threshold),
 		}
 	}
 
 	/// Update the cleanup threshold at runtime.
 	pub fn set_cleanup_threshold(&self, threshold: usize) {
 		self.max_sessions_before_cleanup
-			.store(threshold, std::sync::atomic::Ordering::Relaxed);
+			.store(threshold, Ordering::Relaxed);
+		self.next_cleanup_session_count
+			.store(threshold, Ordering::Relaxed);
 	}
 
 	/// Get a session
@@ -64,24 +76,24 @@ impl SessionStore {
 
 	/// Save a session, with automatic cleanup when threshold is exceeded.
 	///
-	/// Cleanup is amortized: a full `retain` scan only runs when crossing
-	/// the threshold from below, not on every subsequent insert.
+	/// Cleanup runs when the post-save session count exceeds the configured
+	/// threshold and reaches the next amortized cleanup boundary. The boundary
+	/// advances after each pass so a store that remains above the threshold does
+	/// not scan all sessions on every save.
 	pub fn save(&self, session: SessionData) {
 		let mut sessions = self.sessions.write().unwrap_or_else(|e| e.into_inner());
-		let was_at_or_below = sessions.len()
-			<= self
-				.max_sessions_before_cleanup
-				.load(std::sync::atomic::Ordering::Relaxed);
 		sessions.insert(session.id.clone(), session);
 
-		// Lazy eviction: clean up expired sessions only on the transition
-		// from "<= threshold" to "> threshold" to avoid repeated full-map
-		// scans under the write lock on every subsequent save.
-		let threshold = self
-			.max_sessions_before_cleanup
-			.load(std::sync::atomic::Ordering::Relaxed);
-		if was_at_or_below && sessions.len() > threshold {
+		let threshold = self.max_sessions_before_cleanup.load(Ordering::Relaxed);
+		let next_cleanup_session_count = self.next_cleanup_session_count.load(Ordering::Relaxed);
+		if sessions.len() > threshold && sessions.len() >= next_cleanup_session_count {
 			sessions.retain(|_, s| s.is_valid());
+
+			let cleanup_interval = threshold.max(1);
+			self.next_cleanup_session_count.store(
+				sessions.len().saturating_add(cleanup_interval),
+				Ordering::Relaxed,
+			);
 		}
 	}
 

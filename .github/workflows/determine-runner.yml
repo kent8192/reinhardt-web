@@ -13,6 +13,7 @@ name: Determine Runner
 #   Fork PRs are always excluded (security: untrusted code on local machine).
 #
 # AWS Spot: opt-in via PR checkbox when SELF_HOSTED_ENABLED=true.
+#   Fork PRs are always excluded (security: untrusted code on cloud runners).
 #   Budget circuit breaker sets SELF_HOSTED_ENABLED to "false" when exceeded.
 #
 # GitHub-hosted: fallback for fork PRs or when self-hosted is unavailable.
@@ -86,7 +87,7 @@ jobs:
           fi
 
           # --- AWS Spot runner selection (opt-in) ---
-          if [[ "$USE_MAC" == "false" ]] && [[ "$SELF_HOSTED_ENABLED" == "true" ]]; then
+          if [[ "$USE_MAC" == "false" ]] && [[ "$SELF_HOSTED_ENABLED" == "true" ]] && [[ "$IS_FORK" != "true" ]]; then
             if [[ "$HEAD_REF" == release-plz-* ]]; then
               USE_AWS=true
             elif [[ "$ACTOR" == "$REPO_OWNER" ]]; then
