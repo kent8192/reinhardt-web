@@ -85,12 +85,17 @@ pub fn generate_openapi_schema() -> OpenApiSchema {
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt::UnifiedRouter;
-/// use reinhardt::Method;
+/// use reinhardt::routers::ServerRouter;
+/// use reinhardt_macros::get;
+/// use reinhardt_http::{Request, Response, Result};
 /// use reinhardt_rest::openapi::endpoints::swagger_docs;
 ///
-/// let router = UnifiedRouter::new()
-///     .function("/docs", Method::GET, swagger_docs);
+/// #[get("/docs", name = "swagger_docs")]
+/// async fn swagger_docs_endpoint(req: Request) -> Result<Response> {
+///     swagger_docs(req).await
+/// }
+///
+/// let router = ServerRouter::new().endpoint(swagger_docs_endpoint);
 /// ```
 pub async fn swagger_docs(_req: Request) -> Result<Response> {
 	let html = SWAGGER_UI.render_html().map_err(|e| {
@@ -116,12 +121,17 @@ pub async fn swagger_docs(_req: Request) -> Result<Response> {
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt::UnifiedRouter;
-/// use reinhardt::Method;
+/// use reinhardt::routers::ServerRouter;
+/// use reinhardt_macros::get;
+/// use reinhardt_http::{Request, Response, Result};
 /// use reinhardt_rest::openapi::endpoints::redoc_docs;
 ///
-/// let router = UnifiedRouter::new()
-///     .function("/docs-redoc", Method::GET, redoc_docs);
+/// #[get("/docs-redoc", name = "redoc_docs")]
+/// async fn redoc_docs_endpoint(req: Request) -> Result<Response> {
+///     redoc_docs(req).await
+/// }
+///
+/// let router = ServerRouter::new().endpoint(redoc_docs_endpoint);
 /// ```
 pub async fn redoc_docs(_req: Request) -> Result<Response> {
 	let html = REDOC_UI.render_html().map_err(|e| {
@@ -146,12 +156,17 @@ pub async fn redoc_docs(_req: Request) -> Result<Response> {
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt::UnifiedRouter;
-/// use reinhardt::Method;
+/// use reinhardt::routers::ServerRouter;
+/// use reinhardt_macros::get;
+/// use reinhardt_http::{Request, Response, Result};
 /// use reinhardt_rest::openapi::endpoints::openapi_json;
 ///
-/// let router = UnifiedRouter::new()
-///     .function("/api/openapi.json", Method::GET, openapi_json);
+/// #[get("/api/openapi.json", name = "openapi_json")]
+/// async fn openapi_json_endpoint(req: Request) -> Result<Response> {
+///     openapi_json(req).await
+/// }
+///
+/// let router = ServerRouter::new().endpoint(openapi_json_endpoint);
 /// ```
 pub async fn openapi_json(_req: Request) -> Result<Response> {
 	let json = serde_json::to_string_pretty(&*OPENAPI_SCHEMA).map_err(|e| {

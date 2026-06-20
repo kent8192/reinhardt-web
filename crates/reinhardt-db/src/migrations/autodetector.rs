@@ -1185,7 +1185,12 @@ impl ProjectState {
 
 		for op in operations {
 			match op {
-				Operation::CreateTable { name, columns, .. } => {
+				Operation::CreateTable {
+					name,
+					columns,
+					constraints,
+					..
+				} => {
 					// Create a new model from the table definition
 					// Use the provided app_label instead of hardcoding "auto"
 					// Convert table name to model name (PascalCase)
@@ -1197,6 +1202,11 @@ impl ProjectState {
 					for col in columns {
 						let field = self.column_def_to_field_state(col);
 						model.add_field(field);
+					}
+					for constraint in constraints {
+						model
+							.constraints
+							.push(Self::constraint_to_definition(constraint));
 					}
 
 					self.add_model(model);
@@ -1225,6 +1235,9 @@ impl ProjectState {
 					// Find the model and remove the field
 					if let Some(model) = self.find_model_by_table_mut(table) {
 						model.fields.remove(column);
+						model.constraints.retain(|constraint| {
+							!constraint.fields.iter().any(|field| field == column)
+						});
 					}
 				}
 				Operation::AlterColumn {
@@ -1267,12 +1280,41 @@ impl ProjectState {
 					// Find the model and rename the field
 					if let Some(model) = self.find_model_by_table_mut(table) {
 						model.rename_field(old_name, new_name.to_string());
+						for constraint in &mut model.constraints {
+							for field in &mut constraint.fields {
+								if field == old_name {
+									*field = new_name.to_string();
+								}
+							}
+						}
 					}
 				}
-				// Other operations don't affect the schema state in ways we track
+				Operation::AddConstraint {
+					table,
+					constraint_sql,
+				} => {
+					if let Some(model) = self.find_model_by_table_mut(table)
+						&& let Some(constraint) =
+							Self::constraint_definition_from_sql(constraint_sql)
+						&& !model.constraints.iter().any(|c| c.name == constraint.name)
+					{
+						model.constraints.push(constraint);
+					}
+				}
+				Operation::DropConstraint {
+					table,
+					constraint_name,
+				} => {
+					if let Some(model) = self.find_model_by_table_mut(table) {
+						model
+							.constraints
+							.retain(|constraint| constraint.name != *constraint_name);
+					}
+				}
+				// Other operations don't affect the schema state in ways we track.
 				_ => {
-					// Operations like CreateIndex, DropIndex, RunSQL, etc.
-					// are not currently tracked in ProjectState
+					// Operations like CreateIndex, DropIndex, RunSQL, etc. are not
+					// currently tracked in ProjectState.
 				}
 			}
 		}
@@ -1320,6 +1362,131 @@ impl ProjectState {
 				}
 			})
 			.collect()
+	}
+
+	fn constraint_to_definition(
+		constraint: &super::operations::Constraint,
+	) -> ConstraintDefinition {
+		match constraint {
+			super::operations::Constraint::PrimaryKey { name, columns } => ConstraintDefinition {
+				name: name.clone(),
+				constraint_type: "primary_key".to_string(),
+				fields: columns.clone(),
+				expression: None,
+				foreign_key_info: None,
+			},
+			super::operations::Constraint::ForeignKey {
+				name,
+				columns,
+				referenced_table,
+				referenced_columns,
+				on_delete,
+				on_update,
+				..
+			} => ConstraintDefinition {
+				name: name.clone(),
+				constraint_type: "foreign_key".to_string(),
+				fields: columns.clone(),
+				expression: None,
+				foreign_key_info: Some(ForeignKeyConstraintInfo {
+					referenced_table: referenced_table.clone(),
+					referenced_columns: referenced_columns.clone(),
+					on_delete: *on_delete,
+					on_update: *on_update,
+				}),
+			},
+			super::operations::Constraint::Unique { name, columns } => ConstraintDefinition {
+				name: name.clone(),
+				constraint_type: "unique".to_string(),
+				fields: columns.clone(),
+				expression: None,
+				foreign_key_info: None,
+			},
+			super::operations::Constraint::Check { name, expression } => ConstraintDefinition {
+				name: name.clone(),
+				constraint_type: "check".to_string(),
+				fields: Vec::new(),
+				expression: Some(expression.clone()),
+				foreign_key_info: None,
+			},
+			super::operations::Constraint::OneToOne {
+				name,
+				column,
+				referenced_table,
+				referenced_column,
+				on_delete,
+				on_update,
+				..
+			} => ConstraintDefinition {
+				name: name.clone(),
+				constraint_type: "one_to_one".to_string(),
+				fields: vec![column.clone()],
+				expression: None,
+				foreign_key_info: Some(ForeignKeyConstraintInfo {
+					referenced_table: referenced_table.clone(),
+					referenced_columns: vec![referenced_column.clone()],
+					on_delete: *on_delete,
+					on_update: *on_update,
+				}),
+			},
+			super::operations::Constraint::ManyToMany {
+				name,
+				source_column,
+				target_column,
+				..
+			} => ConstraintDefinition {
+				name: name.clone(),
+				constraint_type: "many_to_many".to_string(),
+				fields: vec![source_column.clone(), target_column.clone()],
+				expression: None,
+				foreign_key_info: None,
+			},
+			super::operations::Constraint::Exclude { name, elements, .. } => ConstraintDefinition {
+				name: name.clone(),
+				constraint_type: "exclude".to_string(),
+				fields: elements.iter().map(|(field, _)| field.clone()).collect(),
+				expression: None,
+				foreign_key_info: None,
+			},
+		}
+	}
+
+	fn constraint_definition_from_sql(constraint_sql: &str) -> Option<ConstraintDefinition> {
+		let rest = constraint_sql.trim().strip_prefix("CONSTRAINT ")?;
+		let (name, body) = rest.split_once(' ')?;
+		let body = body.trim();
+		let upper_body = body.to_ascii_uppercase();
+		if upper_body.starts_with("UNIQUE (") {
+			let open = body.find('(')?;
+			let close = body[open + 1..].find(')')? + open + 1;
+			let fields = body[open + 1..close]
+				.split(',')
+				.map(|field| field.trim().trim_matches('"').to_string())
+				.filter(|field| !field.is_empty())
+				.collect::<Vec<_>>();
+			if fields.is_empty() {
+				return None;
+			}
+			return Some(ConstraintDefinition {
+				name: name.trim_matches('"').to_string(),
+				constraint_type: "unique".to_string(),
+				fields,
+				expression: None,
+				foreign_key_info: None,
+			});
+		}
+		if upper_body.starts_with("CHECK (") {
+			let open = body.find('(')?;
+			let close = body.rfind(')')?;
+			return Some(ConstraintDefinition {
+				name: name.trim_matches('"').to_string(),
+				constraint_type: "check".to_string(),
+				fields: Vec::new(),
+				expression: Some(body[open + 1..close].trim().to_string()),
+				foreign_key_info: None,
+			});
+		}
+		None
 	}
 
 	/// Helper: Convert ColumnDefinition to FieldState
@@ -2188,7 +2355,7 @@ impl ChangeTracker {
 			.cloned()
 			.collect();
 
-		patterns.sort_by(|a, b| b.frequency.cmp(&a.frequency));
+		patterns.sort_by_key(|pattern| std::cmp::Reverse(pattern.frequency));
 		patterns
 	}
 
@@ -2974,11 +3141,11 @@ impl InferenceEngine {
 							evidence.push(format!("Optional field added: {}", field_name_pattern));
 						}
 					}
-					RuleCondition::MultipleModelRenames { min_count } => {
-						if model_renames.len() >= *min_count {
-							optional_matches += 1;
-							evidence.push(format!("Multiple renames: {}", model_renames.len()));
-						}
+					RuleCondition::MultipleModelRenames { min_count }
+						if model_renames.len() >= *min_count =>
+					{
+						optional_matches += 1;
+						evidence.push(format!("Multiple renames: {}", model_renames.len()));
 					}
 					_ => {}
 				}
@@ -3911,7 +4078,9 @@ impl MigrationAutodetector {
 				for (field_name, to_field) in &to_model.fields {
 					if let Some(from_field) = from_model.fields.get(field_name) {
 						// Check if field definition has changed
-						if self.has_field_changed(field_name, from_field, to_field) {
+						if self.has_field_changed_in_model_context(
+							field_name, from_model, to_model, from_field, to_field,
+						) {
 							changes.altered_fields.push((
 								app_label.clone(),
 								model_name.clone(),
@@ -3924,33 +4093,32 @@ impl MigrationAutodetector {
 		}
 	}
 
-	/// Check if a field has changed.
-	///
-	/// Field type and nullability are compared directly against `FieldState`,
-	/// then the rest of the schema-affecting attributes are funneled through
-	/// `ColumnDefinition::from_field_state` so that the migration-replayed
-	/// `from_state` and the code-registry `to_state` collapse to the same
-	/// canonical `ColumnDefinition` regardless of how their `params`
-	/// HashMaps were populated.
-	///
-	/// `from_state` (built via `ProjectState::apply_migration_operations` ->
-	/// `column_def_to_field_state`) only inserts `primary_key`,
-	/// `auto_increment`, `unique`, and `default` keys when the corresponding
-	/// `ColumnDefinition` field is true / `Some`. `to_state` (built via the
-	/// `#[model]` macro and `ModelMetadata::to_model_state`) explicitly
-	/// inserts boolean strings such as `not_null = "true"`, `null = "false"`,
-	/// and `unique = "false"` for every field. A raw HashMap-key comparison
-	/// surfaces this asymmetry as a fictitious change even when the
-	/// underlying schema is identical, producing spurious `AlterColumn`
-	/// operations under offline file-based state reconstruction.
-	///
-	/// See reinhardt-web#4049 for the regression that motivated this
-	/// canonicalization.
-	fn has_field_changed(
+	fn has_field_changed_in_model_context(
+		&self,
+		field_name: &str,
+		from_model: &ModelState,
+		to_model: &ModelState,
+		from_field: &FieldState,
+		to_field: &FieldState,
+	) -> bool {
+		let from_unique = Self::single_field_unique_column_already_present(from_model, field_name);
+		let to_unique = Self::single_field_unique_column_already_present(to_model, field_name);
+		self.has_field_changed_with_unique(
+			field_name,
+			from_field,
+			to_field,
+			Some(from_unique),
+			Some(to_unique),
+		)
+	}
+
+	fn has_field_changed_with_unique(
 		&self,
 		field_name: &str,
 		from_field: &FieldState,
 		to_field: &FieldState,
+		from_unique: Option<bool>,
+		to_unique: Option<bool>,
 	) -> bool {
 		// Field type and nullability are compared directly because the
 		// `nullable` bit on `FieldState` carries the authoritative NOT NULL
@@ -3964,12 +4132,33 @@ impl MigrationAutodetector {
 
 		// Schema-affecting bits are compared via the canonical
 		// `ColumnDefinition` form to absorb asymmetric param populations.
-		let from_def = super::ColumnDefinition::from_field_state(field_name, from_field);
-		let to_def = super::ColumnDefinition::from_field_state(field_name, to_field);
+		let mut from_def = super::ColumnDefinition::from_field_state(field_name, from_field);
+		let mut to_def = super::ColumnDefinition::from_field_state(field_name, to_field);
+		from_def.auto_increment =
+			Self::canonical_auto_increment(&from_def.type_definition, from_def.auto_increment);
+		to_def.auto_increment =
+			Self::canonical_auto_increment(&to_def.type_definition, to_def.auto_increment);
+		if let Some(unique) = from_unique {
+			from_def.unique = unique;
+		}
+		if let Some(unique) = to_unique {
+			to_def.unique = unique;
+		}
 		from_def.primary_key != to_def.primary_key
 			|| from_def.auto_increment != to_def.auto_increment
 			|| from_def.unique != to_def.unique
-			|| from_def.default != to_def.default
+	}
+
+	fn canonical_auto_increment(field_type: &super::FieldType, auto_increment: bool) -> bool {
+		auto_increment
+			&& matches!(
+				field_type,
+				super::FieldType::BigInteger
+					| super::FieldType::Integer
+					| super::FieldType::SmallInteger
+					| super::FieldType::TinyInt
+					| super::FieldType::MediumInt
+			)
 	}
 
 	/// Detect renamed models
@@ -7139,7 +7328,8 @@ mod tests {
 		let detector = MigrationAutodetector::new(ProjectState::new(), ProjectState::new());
 
 		// Act
-		let changed = detector.has_field_changed("email", &from_field, &to_field);
+		let changed =
+			detector.has_field_changed_with_unique("email", &from_field, &to_field, None, None);
 
 		// Assert: should NOT be detected as changed
 		assert!(
@@ -7765,7 +7955,8 @@ mod tests {
 		let detector = MigrationAutodetector::new(ProjectState::new(), ProjectState::new());
 
 		// Act
-		let changed = detector.has_field_changed("id", &from_field, &to_field);
+		let changed =
+			detector.has_field_changed_with_unique("id", &from_field, &to_field, None, None);
 
 		// Assert — schema is identical (BigInteger PK NOT NULL auto_increment,
 		// not unique). Asymmetric param maps must not surface as a change.
@@ -8036,6 +8227,246 @@ mod tests {
 			"generate_migrations() emitted spurious AlterColumn for unchanged `id` PK \
 			 under apply_migration_operations from_state. ops={:?}",
 			migration_ops
+		);
+	}
+
+	#[rstest]
+	fn generate_operations_no_spurious_drift_for_replayed_auth_schema() {
+		// Arrange - regression for issue #5367.
+		//
+		// The file-based replay path reconstructs old migrations from
+		// `ColumnDefinition` values. That state can differ from today's
+		// registry state even when the applied schema is equivalent:
+		// - old UUID PK migrations may carry `auto_increment = true`;
+		// - field-level UNIQUE may have been added through `AddConstraint`;
+		// - Rust-side field defaults can be present in registry metadata even
+		//   when no DB-level default migration should be generated for an
+		//   existing column.
+		let create_auth_users = super::super::Operation::CreateTable {
+			name: "auth_users".to_string(),
+			columns: vec![
+				super::super::ColumnDefinition {
+					name: "id".to_string(),
+					type_definition: super::super::FieldType::Uuid,
+					not_null: true,
+					unique: false,
+					primary_key: true,
+					auto_increment: false,
+					default: None,
+				},
+				super::super::ColumnDefinition {
+					name: "username".to_string(),
+					type_definition: super::super::FieldType::VarChar(150),
+					not_null: true,
+					unique: true,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+				super::super::ColumnDefinition {
+					name: "email".to_string(),
+					type_definition: super::super::FieldType::VarChar(254),
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+				super::super::ColumnDefinition {
+					name: "first_name".to_string(),
+					type_definition: super::super::FieldType::VarChar(150),
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+				super::super::ColumnDefinition {
+					name: "last_name".to_string(),
+					type_definition: super::super::FieldType::VarChar(150),
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+				super::super::ColumnDefinition {
+					name: "is_active".to_string(),
+					type_definition: super::super::FieldType::Boolean,
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+				super::super::ColumnDefinition {
+					name: "is_staff".to_string(),
+					type_definition: super::super::FieldType::Boolean,
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+				super::super::ColumnDefinition {
+					name: "is_superuser".to_string(),
+					type_definition: super::super::FieldType::Boolean,
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+			],
+			constraints: vec![super::super::operations::Constraint::Unique {
+				name: "auth_user_username_uniq".to_string(),
+				columns: vec!["username".to_string()],
+			}],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let add_email_unique = super::super::Operation::AddConstraint {
+			table: "auth_users".to_string(),
+			constraint_sql: "CONSTRAINT auth_user_email_uniq UNIQUE (email)".to_string(),
+		};
+		let create_auth_permission = super::super::Operation::CreateTable {
+			name: "auth_permission".to_string(),
+			columns: vec![
+				super::super::ColumnDefinition {
+					name: "id".to_string(),
+					type_definition: super::super::FieldType::Uuid,
+					not_null: true,
+					unique: false,
+					primary_key: true,
+					auto_increment: true,
+					default: None,
+				},
+				super::super::ColumnDefinition {
+					name: "name".to_string(),
+					type_definition: super::super::FieldType::VarChar(255),
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+			],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+
+		let mut from_state = ProjectState::new();
+		from_state.apply_migration_operations(
+			&[create_auth_users, add_email_unique, create_auth_permission],
+			"auth",
+		);
+
+		let mut user_metadata =
+			super::super::model_registry::ModelMetadata::new("auth", "User", "auth_users");
+		user_metadata.add_field(
+			"id".to_string(),
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::Uuid)
+				.with_param("primary_key", "true")
+				.with_param("not_null", "true")
+				.with_nullable(false),
+		);
+		user_metadata.add_field(
+			"username".to_string(),
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::VarChar(150))
+				.with_param("max_length", "150")
+				.with_param("unique", "true")
+				.with_param("not_null", "true")
+				.with_nullable(false),
+		);
+		user_metadata.add_field(
+			"email".to_string(),
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::VarChar(254))
+				.with_param("max_length", "254")
+				.with_param("unique", "true")
+				.with_param("not_null", "true")
+				.with_nullable(false),
+		);
+		user_metadata.add_field(
+			"first_name".to_string(),
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::VarChar(150))
+				.with_param("max_length", "150")
+				.with_param("default", "''")
+				.with_param("not_null", "true")
+				.with_nullable(false),
+		);
+		user_metadata.add_field(
+			"last_name".to_string(),
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::VarChar(150))
+				.with_param("max_length", "150")
+				.with_param("default", "''")
+				.with_param("not_null", "true")
+				.with_nullable(false),
+		);
+		user_metadata.add_field(
+			"is_active".to_string(),
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::Boolean)
+				.with_param("default", "true")
+				.with_param("not_null", "true")
+				.with_nullable(false),
+		);
+		user_metadata.add_field(
+			"is_staff".to_string(),
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::Boolean)
+				.with_param("default", "false")
+				.with_param("not_null", "true")
+				.with_nullable(false),
+		);
+		user_metadata.add_field(
+			"is_superuser".to_string(),
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::Boolean)
+				.with_param("default", "false")
+				.with_param("not_null", "true")
+				.with_nullable(false),
+		);
+
+		let mut permission_metadata = super::super::model_registry::ModelMetadata::new(
+			"auth",
+			"AuthPermission",
+			"auth_permission",
+		);
+		permission_metadata.add_field(
+			"id".to_string(),
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::Uuid)
+				.with_param("primary_key", "true")
+				.with_param("not_null", "true")
+				.with_nullable(false),
+		);
+		permission_metadata.add_field(
+			"name".to_string(),
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::VarChar(255))
+				.with_param("max_length", "255")
+				.with_param("not_null", "true")
+				.with_nullable(false),
+		);
+
+		let to_state = build_project_state(vec![
+			(
+				("auth".to_string(), "User".to_string()),
+				user_metadata.to_model_state(),
+			),
+			(
+				("auth".to_string(), "AuthPermission".to_string()),
+				permission_metadata.to_model_state(),
+			),
+		]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert!(
+			operations.is_empty(),
+			"replayed auth schema should be in sync with registry state, got: {:?}",
+			operations
 		);
 	}
 

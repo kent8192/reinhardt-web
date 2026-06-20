@@ -22,10 +22,51 @@
 //! }
 //! ```
 
-use wasm_bindgen::{JsCast, closure::Closure};
+use serde::de::DeserializeOwned;
+use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 use web_sys;
 
 use crate::reactive::{Effect, Signal};
+
+/// Options used when dispatching a custom DOM event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CustomEventOptions {
+	/// Whether the event bubbles through ancestor elements.
+	pub bubbles: bool,
+	/// Whether event listeners may cancel the event.
+	pub cancelable: bool,
+	/// Whether the event crosses shadow DOM boundaries.
+	pub composed: bool,
+}
+
+impl CustomEventOptions {
+	/// Create options with browser defaults.
+	pub const fn new() -> Self {
+		Self {
+			bubbles: false,
+			cancelable: false,
+			composed: false,
+		}
+	}
+
+	/// Set the `bubbles` flag.
+	pub const fn bubbles(mut self, bubbles: bool) -> Self {
+		self.bubbles = bubbles;
+		self
+	}
+
+	/// Set the `cancelable` flag.
+	pub const fn cancelable(mut self, cancelable: bool) -> Self {
+		self.cancelable = cancelable;
+		self
+	}
+
+	/// Set the `composed` flag.
+	pub const fn composed(mut self, composed: bool) -> Self {
+		self.composed = composed;
+		self
+	}
+}
 
 /// Thin wrapper around `web_sys::Element`
 ///
@@ -204,6 +245,45 @@ impl Element {
 		});
 	}
 
+	/// Set a JavaScript property on this element.
+	///
+	/// Use this for custom elements whose public API is exposed through DOM
+	/// properties rather than string HTML attributes.
+	pub fn set_property(&self, name: &str, value: &JsValue) -> Result<(), String> {
+		let target: &JsValue = self.inner.as_ref();
+		let key = JsValue::from_str(name);
+		let applied = js_sys::Reflect::set(target, &key, value)
+			.map_err(|e| format!("Failed to set property '{}': {:?}", name, e))?;
+
+		if applied {
+			Ok(())
+		} else {
+			Err(format!(
+				"Reflect.set returned false for property '{}'",
+				name
+			))
+		}
+	}
+
+	/// Get a JavaScript property from this element.
+	///
+	/// Missing properties are returned as `JsValue::UNDEFINED`, matching
+	/// JavaScript property access semantics.
+	pub fn get_property(&self, name: &str) -> Result<JsValue, String> {
+		let target: &JsValue = self.inner.as_ref();
+		let key = JsValue::from_str(name);
+		js_sys::Reflect::get(target, &key)
+			.map_err(|e| format!("Failed to get property '{}': {:?}", name, e))
+	}
+
+	/// Delete a JavaScript property from this element.
+	pub fn delete_property(&self, name: &str) -> Result<bool, String> {
+		let target: js_sys::Object = self.inner.clone().unchecked_into();
+		let key = JsValue::from_str(name);
+		js_sys::Reflect::delete_property(&target, &key)
+			.map_err(|e| format!("Failed to delete property '{}': {:?}", name, e))
+	}
+
 	/// Add an event listener to this element
 	///
 	/// Returns an `EventHandle` that automatically removes the listener when dropped.
@@ -275,6 +355,80 @@ impl Element {
 			event_type: event_type.to_string(),
 			closure: Some(closure),
 		}
+	}
+
+	/// Add a custom event listener that receives `CustomEvent.detail`.
+	///
+	/// The listener is only invoked for `CustomEvent` instances. Keep the
+	/// returned handle alive for as long as the listener should remain active.
+	pub fn add_custom_event_listener<F>(&self, event_type: &str, mut callback: F) -> EventHandle
+	where
+		F: FnMut(JsValue) + 'static,
+	{
+		let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
+			if let Some(custom_event) = event.dyn_ref::<web_sys::CustomEvent>() {
+				callback(custom_event.detail());
+			}
+		}) as Box<dyn FnMut(web_sys::Event)>);
+
+		self.inner
+			.add_event_listener_with_callback(event_type, closure.as_ref().unchecked_ref())
+			.expect("Failed to add custom event listener");
+
+		EventHandle {
+			element: self.inner.clone(),
+			event_type: event_type.to_string(),
+			closure: Some(closure),
+		}
+	}
+
+	/// Add a custom event listener that deserializes `CustomEvent.detail`.
+	///
+	/// Payloads are decoded with `serde_wasm_bindgen`, so callers can receive
+	/// Rust structs from web component event payloads while still handling
+	/// malformed detail values explicitly.
+	pub fn add_typed_custom_event_listener<T, F>(
+		&self,
+		event_type: &str,
+		mut callback: F,
+	) -> EventHandle
+	where
+		T: DeserializeOwned + 'static,
+		F: FnMut(Result<T, String>) + 'static,
+	{
+		self.add_custom_event_listener(event_type, move |detail| {
+			callback(serde_wasm_bindgen::from_value(detail).map_err(|err| err.to_string()));
+		})
+	}
+
+	/// Dispatch a custom event with `detail` using browser default options.
+	pub fn dispatch_custom_event(
+		&self,
+		event_type: &str,
+		detail: &JsValue,
+	) -> Result<bool, String> {
+		self.dispatch_custom_event_with_options(event_type, detail, CustomEventOptions::default())
+	}
+
+	/// Dispatch a custom event with explicit event options.
+	pub fn dispatch_custom_event_with_options(
+		&self,
+		event_type: &str,
+		detail: &JsValue,
+		options: CustomEventOptions,
+	) -> Result<bool, String> {
+		let init = web_sys::CustomEventInit::new();
+		init.set_detail(detail);
+		init.set_bubbles(options.bubbles);
+		init.set_cancelable(options.cancelable);
+		init.set_composed(options.composed);
+
+		let event = web_sys::CustomEvent::new_with_event_init_dict(event_type, &init)
+			.map_err(|e| format!("Failed to create custom event '{}': {:?}", event_type, e))?;
+
+		self.inner
+			.dispatch_event(&event)
+			.map_err(|e| format!("Failed to dispatch custom event '{}': {:?}", event_type, e))
 	}
 
 	/// Set text content of this element

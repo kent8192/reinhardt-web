@@ -842,8 +842,8 @@ mod server_fn_tests {
 #[cfg(with_reinhardt)]
 mod auth_tests {
 	use examples_tutorial_basis::apps::polls::server_fn::{
-		SessionError, create_choice, create_question, delete_choice, delete_question,
-		update_choice, update_question,
+		SessionError, SessionUserKey, create_choice, create_question, delete_choice,
+		delete_question, update_choice, update_question,
 	};
 	use examples_tutorial_basis::apps::users::models::User;
 	use reinhardt::DatabaseConnection;
@@ -865,14 +865,14 @@ mod auth_tests {
 		(temp_file, db_conn)
 	}
 
-	/// Anonymous session error wrapped in `Depends<Result<User, SessionError>>`
+	/// Anonymous session error wrapped in `Depends<SessionUserKey, Result<User, SessionError>>`
 	/// — the same value the request-scoped `session_user_factory` in
 	/// `apps::polls::server_fn` would produce for a `SessionData` without a
 	/// `user_id` key. We construct it directly with `Depends::from_value`
 	/// so the test does not need to spin up the middleware stack or the DI
 	/// container; the gate under test is `From<&SessionError> for
 	/// ServerFnError`, not the factory itself.
-	fn anonymous_session_user() -> Depends<Result<User, SessionError>> {
+	fn anonymous_session_user() -> Depends<SessionUserKey, Result<User, SessionError>> {
 		Depends::from_value(Err(SessionError::Anonymous))
 	}
 

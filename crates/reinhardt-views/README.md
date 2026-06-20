@@ -17,11 +17,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.2.0", features = ["views"] }
+reinhardt = { version = "0.3.0-rc.2", features = ["views"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.2.0", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.2.0", features = ["full"] }      # All features
+# reinhardt = { version = "0.3.0-rc.2", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.3.0-rc.2", features = ["full"] }      # All features
 ```
 
 Then import view features:
@@ -263,7 +263,7 @@ use reinhardt::views::{OpenAPISpec, Info, PathItem, Operation};
 
 let spec = OpenAPISpec::new(Info::new(
     "My API".into(),
-    "0.2.0".into()
+    "0.3.0-rc.2".into()
 ));
 ```
 
@@ -361,7 +361,7 @@ The crate includes comprehensive unit tests covering:
   2. **Method-Level Injection** - Use `#[endpoint]` with `#[inject]` attributes on method parameters
   3. **Dispatch-Level Injection** - Override `dispatch_with_context()` with `#[inject]` parameters
 - **DiViewSet** - ViewSet wrapper with full DI support
-  - Automatic dependency resolution via `Depends<V>`
+  - Automatic dependency resolution via direct `Injectable` values or `Depends<K, V>`
   - Integration with reinhardt-di framework
 - **ViewSetFactory Trait** - Factory pattern for ViewSet creation with DI
 - **Injectable Dependencies** - Example implementations (DatabaseConnection)

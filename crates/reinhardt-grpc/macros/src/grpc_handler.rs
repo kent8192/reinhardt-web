@@ -299,31 +299,6 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 		};
 	};
 
-	// Generate compile-time type assertions for injected types
-	// This ensures all #[inject] types implement Injectable at compile time
-	// rather than failing at runtime with confusing errors
-	// Use unique const names with function name prefix to avoid conflicts
-	// when multiple #[grpc_handler] functions are in the same impl block
-	let fn_name_str = original_fn_name.to_string();
-	let type_assertions: Vec<_> = inject_params
-		.iter()
-		.enumerate()
-		.map(|(idx, param)| {
-			let ty = &param.ty;
-			let const_name = syn::Ident::new(
-				&format!("__ASSERT_{}_INJECTABLE_{}", fn_name_str.to_uppercase(), idx),
-				Span::call_site(),
-			);
-			quote! {
-				const #const_name: () = {
-					// Compile-time assertion: #[inject] parameter type must implement Injectable
-					fn __assert_injectable<__T: #di_crate::Injectable>() {}
-					fn __check() { __assert_injectable::<#ty>() }
-				};
-			}
-		})
-		.collect();
-
 	// Generate injection calls
 	let injection_calls: Vec<_> = inject_params
 		.iter()
@@ -332,26 +307,20 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 			let ty = &param.ty;
 			let use_cache = param.use_cache;
 
-			if use_cache {
-				quote! {
-					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
+			quote! {
+				let #pat: #ty = {
+					use #di_crate::{
+						__InjectFallbackResolver as _,
+						__InjectWrapperResolver as _,
+					};
+					#di_crate::__InjectResolver::<#ty>::new()
+						.__resolve_inject_parameter(&__di_ctx, #use_cache)
 						.await
 						.map_err(|e| {
 							::tracing::error!("DI resolution failed for {}: {:?}", stringify!(#ty), e);
 							::tonic::Status::internal("Internal server error")
 						})?
-						.into_inner();
-				}
-			} else {
-				quote! {
-					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, false)
-						.await
-						.map_err(|e| {
-							::tracing::error!("DI resolution failed for {}: {:?}", stringify!(#ty), e);
-							::tonic::Status::internal("Internal server error")
-						})?
-						.into_inner();
-				}
+				};
 			}
 		})
 		.collect();
@@ -394,9 +363,6 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 
 	// Generate the wrapper function
 	let expanded = quote! {
-		// Compile-time type assertions for injected dependencies
-		#(#type_assertions)*
-
 		// Original function (renamed to {name}_impl)
 		#(#fn_attrs)*
 		#asyncness fn #impl_fn_name #generics(#impl_inputs) #return_type #body

@@ -9,6 +9,8 @@ use crate::adapters::{
 	ModelAdmin,
 };
 #[cfg(server)]
+use crate::core::{AdminDatabaseKey, AdminSiteKey};
+#[cfg(server)]
 use reinhardt_db::orm::{Filter, FilterCondition, FilterOperator, FilterValue};
 #[cfg(server)]
 use reinhardt_di::Depends;
@@ -101,8 +103,8 @@ fn build_columns(model_admin: &Arc<dyn ModelAdmin>) -> Vec<ColumnInfo> {
 pub async fn get_list(
 	model_name: String,
 	params: crate::adapters::ListQueryParams,
-	#[inject] site: Depends<AdminSite>,
-	#[inject] db: Depends<AdminDatabase>,
+	#[inject] site: Depends<AdminSiteKey, AdminSite>,
+	#[inject] db: Depends<AdminDatabaseKey, AdminDatabase>,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<crate::adapters::ListResponse, ServerFnError> {
 	// Get model admin and check permission

@@ -28,6 +28,6 @@ pub use responses::*;
 // These stubs allow Server Function client code to type-check correctly
 #[cfg(client)]
 pub use wasm_stubs::{
-	AdminDatabase, AdminRecord, AdminSite, ExportFormat, ImportBuilder, ImportError, ImportFormat,
-	ImportResult, ModelAdmin,
+	AdminDatabase, AdminRecord, AdminSite, AdminUser, ExportFormat, ImportBuilder, ImportError,
+	ImportFormat, ImportResult, ModelAdmin, ModelAdminConfig, ModelAdminConfigBuilder,
 };

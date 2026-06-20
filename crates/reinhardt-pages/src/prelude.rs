@@ -34,21 +34,23 @@
 //! ## Hooks
 //! - [`use_state`], [`use_effect`], [`use_memo`], [`use_callback`], [`use_context`]
 //! - [`use_ref`], [`use_reducer`], [`use_transition`], [`use_deferred_value`]
-//! - [`use_id`], [`use_layout_effect`], [`use_effect_event`], [`use_debug_value`]
+//! - [`use_id`], [`use_layout_effect`], [`use_debug_value`]
 //! - [`use_optimistic`], [`use_shared_state`]
 //! - [`use_action`], [`use_sync_external_store`]
 //!
 //! ## Component System
 //! - [`Component`], [`PageElement`], [`IntoPage`], [`Page`], [`Props`]
 //! - [`PageEventHandler`]
-//! - [`SuspenseBoundary`], [`ErrorBoundary`], [`BoundaryError`]
+//! - [`SuspenseBoundary`], [`ErrorBoundary`], [`ActivityBoundary`],
+//!   [`ViewTransitionBoundary`], [`BoundaryError`]
 //!
 //! ## Events and Callbacks
 //! - [`Callback`], [`IntoEventHandler`], [`into_event_handler`]
 //! - [`Event`] (platform-agnostic event type)
 //!
 //! ## DOM
-//! - [`Document`], [`Element`], [`EventHandle`], [`EventType`], [`document`](fn@document)
+//! - [`Document`], [`Element`], [`CustomEventOptions`], [`EventHandle`],
+//!   [`EventType`], [`document`](fn@document)
 //!
 //! ## Routing
 //! - [`Link`], `Router`, `Route`, `RouterOutlet`, `PathPattern`
@@ -82,35 +84,25 @@ pub use crate::reactive::{
 
 // Hooks API
 pub use crate::reactive::{Action, ActionPhase, use_action};
-#[allow(
-	deprecated,
-	reason = "re-export kept until removal in v0.3.0 (Refs #4195)"
-)]
 pub use crate::reactive::{
 	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
-	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_effect_event,
-	use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state,
-	use_state, use_sync_external_store, use_transition,
+	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_id,
+	use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state, use_state,
+	use_sync_external_store, use_transition,
 };
 
 // Unified resource hook (available on all targets)
 pub use crate::reactive::use_resource;
-// Deprecated resource constructors, kept until removal in v0.3.0
-#[cfg(wasm)]
-#[allow(
-	deprecated,
-	reason = "re-export kept until removal in v0.3.0; use use_resource instead"
-)]
-pub use crate::reactive::{create_resource, create_resource_with_deps};
 
 // ============================================================================
 // Component System
 // ============================================================================
 
 pub use crate::component::{
-	BoundaryError, Component, ErrorBoundary, ErrorTracker, Head, IntoPage, LinkTag, MetaTag, Page,
-	PageElement, PageEventHandler, PageExt, Props, ResourceTracker, ScriptTag, StyleTag,
-	SuspenseBoundary,
+	ActivityBoundary, ActivityMode, BoundaryError, Component, ErrorBoundary, ErrorTracker, Head,
+	IntoPage, LinkTag, MetaTag, Page, PageElement, PageEventHandler, PageExt, Props,
+	ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary,
+	ViewTransitionHandle, ViewTransitionStatus, start_view_transition,
 };
 
 // ============================================================================
@@ -124,12 +116,13 @@ pub use crate::platform::Event;
 
 // Platform-agnostic task spawning (cross-target)
 pub use crate::platform::{defer_yield, spawn_task};
+pub use crate::portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
 
 // ============================================================================
 // DOM
 // ============================================================================
 
-pub use crate::dom::{Document, Element, EventHandle, EventType, document};
+pub use crate::dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
 
 // ============================================================================
 // Routing
@@ -178,9 +171,11 @@ pub use crate::static_resolver::{init_static_resolver, is_initialized, resolve_s
 // ============================================================================
 
 pub use crate::form_state::{
-	FieldError, FieldState, FocusError, FormEvent, FormRuntimeSource, FormState, FormSubscription,
-	FormValidationError, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder, UseFormReturn,
-	UseFormSubmitOutcome, use_form,
+	CollectionItem, CollectionItemKey, CollectionState, CustomWidgetContext, CustomWidgetRawValue,
+	FieldError, FieldPathState, FieldState, FocusError, FormCollectionRuntimeSource, FormEvent,
+	FormRuntimeSource, FormState, FormSubscription, FormValidationError, FormWidgetAdapter,
+	FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder,
+	UseFormReturn, UseFormSubmitOutcome, use_form,
 };
 
 #[cfg(native)]
@@ -196,9 +191,11 @@ pub use reinhardt_forms::{
 // Macros
 // ============================================================================
 
+pub use crate::client_page;
 pub use crate::form;
 pub use crate::head;
 pub use crate::page;
+pub use crate::wasm_server_api;
 
 // ============================================================================
 // WASM-specific utilities

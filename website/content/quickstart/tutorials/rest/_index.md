@@ -42,7 +42,7 @@ The first group is written by hand so you can see the request extractors, respon
 
 You should have:
 
-- Rust 1.94.0 or later
+- Rust 1.96.0 or later
 - Docker Desktop running, because the example's `cargo make migrate` and `cargo make runserver` tasks start disposable PostgreSQL and Redis containers
 - Basic familiarity with Rust modules, `async fn`, and JSON serialization
 - The `cargo-make` subcommand available as `cargo make`
@@ -51,7 +51,7 @@ Install the Reinhardt project generator before starting Part 1:
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.0"
+cargo install reinhardt-admin-cli --version "0.3.0-rc.2"
 ```
 
 After installation, the command is `reinhardt-admin`.

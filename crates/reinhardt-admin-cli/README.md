@@ -14,7 +14,7 @@ the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.0"
+cargo install reinhardt-admin-cli --version "0.3.0-rc.2"
 ```
 
 This installs the `reinhardt-admin` command.
@@ -40,7 +40,7 @@ reinhardt-admin startproject myproject --with-rest /path/to/directory
 
 # Pin the generated Reinhardt dependency
 reinhardt-admin startproject myproject --with-rest \
-  --reinhardt-version 0.2.0 \
+  --reinhardt-version 0.3.0-rc.2 \
   --features standard,admin \
   --no-interactive
 ```
@@ -58,7 +58,7 @@ reinhardt-admin configure
 
 # Update a project without prompts
 reinhardt-admin configure /path/to/project \
-  --reinhardt-version 0.2.0 \
+  --reinhardt-version 0.3.0-rc.2 \
   --features minimal,db-sqlite \
   --no-interactive
 ```
@@ -108,7 +108,7 @@ reinhardt-admin plugin info auth-delion --remote
 
 # Install a plugin
 reinhardt-admin plugin install auth-delion
-reinhardt-admin plugin install auth-delion --version 0.2.0
+reinhardt-admin plugin install auth-delion --version 0.3.0-rc.2
 
 # Remove a plugin
 reinhardt-admin plugin remove auth-delion
@@ -129,7 +129,9 @@ reinhardt-admin plugin update --all
 
 Use `reinhardt-formatter` to format all Rust files in the project. Reinhardt
 DSL macros are formatted with tree-sitter grammars and Topiary queries before
-`cargo fmt --all` formats the surrounding Rust code:
+`cargo fmt --all` formats the surrounding Rust code. For supported `page!`
+Rust expression islands, the formatter also runs rustfmt on the extracted
+expression and reinserts the result conservatively:
 
 ```bash
 # Format all files in the project
@@ -138,6 +140,10 @@ reinhardt-formatter fmt-all
 # Check formatting without modifying files
 reinhardt-formatter fmt-all --check
 ```
+
+The first rustfmt-island pass applies only to safe `page!` expression and
+event-handler regions. Unsupported fragments remain unchanged so the formatter
+does not rewrite DSL bodies it cannot classify confidently.
 
 ### Format Reinhardt Macro DSLs
 

@@ -1,7 +1,7 @@
 //! Task-local resolve context for accessing `InjectionContext` within DI factories.
 //!
 //! This module provides [`get_di_context`] which retrieves the active
-//! `InjectionContext` during `#[injectable_factory]` execution.
+//! `InjectionContext` during `#[injectable]` provider execution.
 //! The context is stored in a [`tokio::task_local!`] and set automatically
 //! by the macro-generated wrapper code.
 
@@ -39,13 +39,13 @@ tokio::task_local! {
 
 /// Retrieves the [`InjectionContext`] for the given [`ContextLevel`].
 ///
-/// This function is intended to be called within `#[injectable_factory]`
+/// This function is intended to be called within `#[injectable]` provider
 /// function bodies to access the DI context without `#[inject]`.
 ///
 /// # Panics
 ///
 /// Panics if called outside of a DI resolution context (i.e., not
-/// within an `#[injectable_factory]` or `#[injectable]` execution).
+/// within an `#[injectable]` provider execution).
 pub fn get_di_context(level: ContextLevel) -> Arc<InjectionContext> {
 	RESOLVE_CTX.with(|ctx| match level {
 		ContextLevel::Root => Arc::clone(&ctx.root),

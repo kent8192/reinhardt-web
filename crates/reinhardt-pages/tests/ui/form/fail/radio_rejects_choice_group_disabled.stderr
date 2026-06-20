@@ -1,0 +1,5 @@
+error: choice_group_disabled is only supported on Select and SelectMultiple widgets
+  --> tests/ui/form/fail/radio_rejects_choice_group_disabled.rs:13:5
+   |
+13 |                 choice_group_disabled: "disabled",
+   |                 ^^^^^^^^^^^^^^^^^^^^^

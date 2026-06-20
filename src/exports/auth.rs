@@ -5,9 +5,6 @@ pub use reinhardt_auth::{
 	IsAuthenticated, PasswordHasher, Permission, PermissionsMixin, validate_auth_extractors,
 };
 
-#[allow(deprecated)]
-pub use reinhardt_auth::AuthUser;
-
 #[cfg(feature = "argon2-hasher")]
 #[cfg_attr(docsrs, doc(cfg(all(feature = "auth", feature = "argon2-hasher"))))]
 pub use reinhardt_auth::Argon2Hasher;

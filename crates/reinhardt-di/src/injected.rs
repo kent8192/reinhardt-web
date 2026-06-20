@@ -4,8 +4,8 @@
 //! [`Depends`](crate::Depends) (the canonical dependency resolver) and
 //! historical consumers. The `Injected<T>` / `OptionalInjected<T>`
 //! wrappers that previously lived in this module were removed in 0.2.0
-//! per Issue #4520; use [`Depends<T>`](crate::Depends) and
-//! `Option<Depends<T>>` instead.
+//! per Issue #4520; use direct `Injectable` values or
+//! [`Depends<K, T>`](crate::Depends) for keyed provider output instead.
 
 /// Injection metadata
 ///

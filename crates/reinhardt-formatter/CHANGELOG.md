@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-formatter@v0.2.0...reinhardt-formatter@v0.3.0-rc.1) - 2026-06-18
+
+### Added
+
+- *(formatter)* add semantic page grammar nodes
+- *(formatter)* rustfmt page expression islands
+
+### Fixed
+
+- *(formatter)* handle reviewed page rustfmt islands
+
+### Added
+
+- Format safe Rust expression islands inside `page!` DSL macros with rustfmt
+  while preserving unsupported islands unchanged.
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-formatter@v0.1.3...reinhardt-formatter@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-formatter` for the Reinhardt 0.2.0 line. This

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.0-rc.1...reinhardt-db@v0.3.0-rc.2) - 2026-06-19
+
+### Added
+
+- *(orm)* add QuerySet conditional partial updates
+
+### Fixed
+
+- *(db)* suppress replayed migration drift
+
+## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.0...reinhardt-db@v0.3.0-rc.1) - 2026-06-18
+
+### Fixed
+
+- add wasm safe model metadata substrate
+
+### Maintenance
+
+- migrate Rust toolchain to 1.96.0
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.3...reinhardt-db@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-db` for the Reinhardt 0.2.0 line. This

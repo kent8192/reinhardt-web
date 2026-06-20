@@ -4,9 +4,10 @@ use crate::crate_paths::{
 	get_async_trait_crate, get_reinhardt_core_crate, get_reinhardt_di_crate,
 	get_reinhardt_http_crate, get_reinhardt_params_crate,
 };
-use crate::injectable_common::{InjectOptions, is_inject_attr, parse_inject_options};
+use crate::injectable_common::{
+	InjectOptions, generate_inject_resolver_expr, is_inject_attr, parse_inject_options,
+};
 use crate::path_macro;
-use crate::routes_registration::extract_depends_inner_type;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{
@@ -226,7 +227,7 @@ enum AuthProtectionKind {
 /// The first matching rule wins (rules are checked in priority order):
 ///
 /// - Contains `"Guard"` → `Protected`; also captures `guard_description`
-/// - Contains `"CurrentUser"` or `"AuthUser"` → `Protected`
+/// - Contains `"CurrentUser"` → `Protected`
 /// - Contains both `"Option"` and `"AuthInfo"` → `Optional`
 /// - Contains `"AuthInfo"` (alone) → `Protected`
 /// - Contains `"Public"` → `Public`
@@ -250,7 +251,7 @@ fn detect_auth_from_type_strings(type_strings: &[String]) -> AuthDetection {
 			continue;
 		}
 
-		if ty_str.contains("CurrentUser") || ty_str.contains("AuthUser") {
+		if ty_str.contains("CurrentUser") {
 			found_protected = true;
 			continue;
 		}
@@ -412,33 +413,20 @@ fn generate_wrapper_with_both(
 		quote! {}
 	};
 
-	// Generate injection calls
-	//
-	// For `Depends<T>` parameters we resolve via `resolve_from_registry()`, which
-	// has no `T: Injectable` trait bound. This allows factory-produced types
-	// (registered via `#[injectable_factory]`) to be injected without manually
-	// implementing `Injectable`. This mirrors the fix applied to `#[routes]` in
-	// commit `98adb15b9` (see routes_registration.rs).
+	// Generate injection calls. Runtime trait dispatch resolves `InjectableType`
+	// wrappers from the registry and falls back to normal `Injectable` values.
 	let injection_calls: Vec<_> = inject_params
 		.iter()
 		.map(|param| {
 			let pat = &param.pat;
 			let ty = &param.ty;
 			let use_cache = param.options.use_cache;
+			let resolve_expr =
+				generate_inject_resolver_expr(&di_crate, ty, quote! { &__di_ctx }, use_cache);
 
-			if let Some(inner_ty) = extract_depends_inner_type(ty) {
-				quote! {
-					let #pat: #ty = #di_crate::Depends::<#inner_ty>::resolve_from_registry(&__di_ctx, #use_cache)
-						.await
-						.map_err(#core_crate::exception::Error::from)?;
-				}
-			} else {
-				quote! {
-					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, #use_cache)
-						.await
-						.map_err(#core_crate::exception::Error::from)?
-						.into_inner();
-				}
+			quote! {
+				let #pat: #ty = #resolve_expr
+					.map_err(#core_crate::exception::Error::from)?;
 			}
 		})
 		.collect();
@@ -1333,17 +1321,6 @@ mod url_resolver_tests {
 	#[test]
 	fn detect_auth_marks_current_user_as_protected() {
 		let detection = detect_auth_from_type_strings(&["CurrentUser < User >".to_string()]);
-
-		assert!(matches!(
-			detection.protection,
-			AuthProtectionKind::Protected
-		));
-		assert!(detection.guard_description.is_none());
-	}
-
-	#[test]
-	fn detect_auth_keeps_auth_user_compatibility_as_protected() {
-		let detection = detect_auth_from_type_strings(&["AuthUser < User >".to_string()]);
 
 		assert!(matches!(
 			detection.protection,

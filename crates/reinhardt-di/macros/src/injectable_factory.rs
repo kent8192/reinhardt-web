@@ -1,12 +1,85 @@
-//! Implementation of the `#[injectable_factory]` macro
+//! Shared implementation for injectable provider function macros.
 
 use crate::crate_paths::get_reinhardt_di_crate;
-use crate::utils::{extract_depends_inner_type, extract_scope_from_args, is_inject_attr};
+use crate::utils::{extract_scope_from_args, is_inject_attr};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{FnArg, ItemFn, Pat, PatType, Result};
+use syn::{FnArg, GenericArgument, ItemFn, Pat, PatType, PathArguments, Result, Type};
 
-/// Implementation of the `#[injectable_factory]` attribute macro
+fn depends_key_value_types(ty: &Type) -> Option<(&Type, &Type)> {
+	let Type::Path(type_path) = ty else {
+		return None;
+	};
+	let segment = type_path.path.segments.last()?;
+	if segment.ident != "Depends" {
+		return None;
+	}
+	let PathArguments::AngleBracketed(args) = &segment.arguments else {
+		return None;
+	};
+	if args.args.len() != 2 {
+		return None;
+	}
+	let mut generic_args = args.args.iter();
+	let GenericArgument::Type(key_ty) = generic_args.next()? else {
+		return None;
+	};
+	let GenericArgument::Type(value_ty) = generic_args.next()? else {
+		return None;
+	};
+	Some((key_ty, value_ty))
+}
+
+fn is_factory_output_type(ty: &Type) -> bool {
+	let Type::Path(type_path) = ty else {
+		return false;
+	};
+	let Some(segment) = type_path.path.segments.last() else {
+		return false;
+	};
+	if segment.ident != "FactoryOutput" {
+		return false;
+	}
+	let PathArguments::AngleBracketed(args) = &segment.arguments else {
+		return false;
+	};
+	if args.args.len() != 2 {
+		return false;
+	}
+	args.args
+		.iter()
+		.all(|arg| matches!(arg, GenericArgument::Type(_)))
+}
+
+fn generate_inject_resolver_expr(
+	di_crate: &TokenStream,
+	ty: &Type,
+	ctx: TokenStream,
+	use_cache: bool,
+) -> TokenStream {
+	if let Some((key_ty, value_ty)) = depends_key_value_types(ty) {
+		quote! {
+			{
+				#di_crate::Depends::<#key_ty, #value_ty>::resolve_from_registry(#ctx, #use_cache)
+					.await
+			}
+		}
+	} else {
+		quote! {
+			{
+				use #di_crate::{
+					__InjectFallbackResolver as _,
+					__InjectWrapperResolver as _,
+				};
+				#di_crate::__InjectResolver::<#ty>::new()
+					.__resolve_inject_parameter(#ctx, #use_cache)
+					.await
+			}
+		}
+	}
+}
+
+/// Implementation of injectable provider function attribute macros.
 ///
 /// This macro:
 /// 1. Extracts the return type of the factory function
@@ -27,7 +100,7 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 	if input.sig.asyncness.is_none() {
 		return Err(syn::Error::new_spanned(
 			&input.sig,
-			"#[injectable_factory] can only be applied to async functions",
+			"#[injectable] provider functions must be async",
 		));
 	}
 
@@ -37,10 +110,16 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 		syn::ReturnType::Default => {
 			return Err(syn::Error::new_spanned(
 				&input.sig,
-				"#[injectable_factory] functions must have an explicit return type",
+				"#[injectable] provider functions must have an explicit return type",
 			));
 		}
 	};
+	if !is_factory_output_type(&return_type) {
+		return Err(syn::Error::new_spanned(
+			&return_type,
+			"#[injectable] provider functions must return FactoryOutput<K, T>",
+		));
+	}
 
 	// Analyze function parameters
 	let mut inject_params = Vec::new();
@@ -64,7 +143,7 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 	if !regular_params.is_empty() {
 		return Err(syn::Error::new_spanned(
 			&input.sig,
-			"#[injectable_factory] functions must have all parameters marked with #[inject]. \
+			"#[injectable] provider functions must have all parameters marked with #[inject]. \
 			 Non-inject parameters are not supported because the generated wrapper function \
 			 only receives an InjectionContext.",
 		));
@@ -73,40 +152,16 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 	// Get dynamic crate path (needed by inject_resolutions below)
 	let di_crate = get_reinhardt_di_crate();
 
-	// Generate dependency resolution code (kent8192/reinhardt-web#4685).
-	//
-	// Two parameter shapes are supported:
-	//
-	// - `Depends<T>` — resolved via `Depends::resolve_from_registry`. The
-	//   registry-only path has no `T: Injectable` bound, which is the whole
-	//   reason factory-produced types (deliberately without `impl Injectable`)
-	//   can be injected this way. Callers wrap such types in `Depends<T>` by
-	//   project convention (see
-	//   `tests/integration/tests/di/ui/pass/factory_depends_in_server_fn.rs`).
-	//
-	// - non-`Depends` `T` — resolved via `Depends::resolve`, which consults
-	//   the registry *first* and falls back to `T::inject(ctx)` when the type
-	//   is not registered. This matches the codegen pattern used by
-	//   `#[server_fn]` / `#[routes]` for the same shape and lets factories
-	//   accept types whose only DI surface is a manual `impl Injectable`
-	//   (e.g. `SessionData`, `ServerFnRequest`, `AuthInfo`). The fallback
-	//   requires `T: Injectable`, satisfied by every callsite that uses the
-	//   non-`Depends` form today.
+	// Generate dependency resolution code (kent8192/reinhardt-web#4938).
+	// The runtime resolver lets the compiler choose the `InjectableType`
+	// wrapper path first and falls back to normal `Injectable` resolution for
+	// non-wrapper parameters.
 	let inject_resolutions: Vec<_> = inject_params
 		.iter()
 		.map(|(pat, ty)| {
-			if let Some(inner_ty) = extract_depends_inner_type(ty) {
-				quote! {
-					let #pat: #ty = #di_crate::Depends::<#inner_ty>::resolve_from_registry(&*ctx, true).await?;
-				}
-			} else {
-				// `Depends::into_inner` consumes the `Depends<T>`, tries
-				// `Arc::try_unwrap`, and falls back to `(*arc).clone()` only when
-				// the Arc is still shared. This avoids an unconditional clone in
-				// the common single-owner path (factory body is the sole holder).
-				quote! {
-					let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&*ctx, true).await?.into_inner();
-				}
+			let resolve_expr = generate_inject_resolver_expr(&di_crate, ty, quote! { &*ctx }, true);
+			quote! {
+				let #pat: #ty = #resolve_expr?;
 			}
 		})
 		.collect();
@@ -156,11 +211,13 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 	// Generate the expanded code
 	let expanded = quote! {
 		// Original implementation function (private)
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		async fn #original_fn_name(#(#original_params),*) -> #return_type {
 			#fn_block
 		}
 
 		// Public wrapper factory function
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#(#fn_attrs)*
 		#fn_vis async fn #fn_name(
 			ctx: ::std::sync::Arc<#di_crate::InjectionContext>,
@@ -190,7 +247,12 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 			}).await
 		}
 
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+		#(#fn_attrs)*
+		#fn_vis async fn #fn_name() {}
+
 		// Registration function for const-safe inventory::submit
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		fn #register_fn_name(registry: &#di_crate::DependencyRegistry) {
 			registry.register_async::<#return_type, _, _>(#scope_tokens, #fn_name);
 			registry.register_type_name(
@@ -203,6 +265,7 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 			);
 		}
 
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#di_crate::inventory::submit! {
 			#di_crate::DependencyRegistration::new::<#return_type>(
 				#type_name,

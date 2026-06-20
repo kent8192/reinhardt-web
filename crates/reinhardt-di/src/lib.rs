@@ -8,8 +8,18 @@
 //! - **Async-first**: Built for async/await
 //! - **Scoped**: Request-scoped and singleton dependencies
 //! - **Composable**: Dependencies can depend on other dependencies
+//! - **Extensible wrappers**: Custom `#[inject]` wrappers can implement
+//!   [`InjectableType`] instead of relying on framework-defined type names
 //! - **Cache**: Automatic caching within request scope
 //! - **Circular Dependency Detection**: Automatic runtime detection with optimized performance
+//!
+//! ## Custom `#[inject]` Wrappers
+//!
+//! `#[inject]` resolves wrapper parameters through [`InjectableType`]. This
+//! lets framework and application wrappers choose a concrete registry key while
+//! exposing a domain-specific parameter type. The keyed provider API uses
+//! [`FactoryOutput`] as the registered value and [`Depends`] as the consumer
+//! wrapper.
 //!
 //! ## Cargo features
 //!
@@ -53,13 +63,16 @@
 //! ## Example
 //!
 //! ```rust,no_run
-//! # use reinhardt_di::{Depends, Injectable};
+//! # use reinhardt_di::{Depends, Injectable, InjectableKey};
 //! # #[tokio::main]
 //! # async fn main() {
 //! // Define a dependency
 //! // struct Database {
 //! //     pool: DbPool,
 //! // }
+//! //
+//! // struct DatabaseKey;
+//! // impl InjectableKey for DatabaseKey {}
 //! //
 //! // #[async_trait]
 //! // impl Injectable for Database {
@@ -73,7 +86,7 @@
 //! // Use in endpoint
 //! // #[endpoint(GET "/users")]
 //! // async fn list_users(
-//! //     db: Depends<Database>,
+//! //     db: Depends<DatabaseKey, Database>,
 //! // ) -> Result<Vec<User>> {
 //! //     db.query("SELECT * FROM users").await
 //! // }
@@ -122,21 +135,26 @@
 //! ## Resolve Context
 //!
 //! The [`get_di_context`] function provides access to the active
-//! [`InjectionContext`] within `#[injectable_factory]` and `#[injectable]`
-//! function bodies, without requiring `#[inject]`.
+//! [`InjectionContext`] within `#[injectable]` function bodies, without
+//! requiring `#[inject]`.
 //!
 //! This enables factories to access the DI context for purposes like
 //! passing it to downstream consumers:
 //!
 //! ```rust,ignore
-//! use reinhardt_di::{ContextLevel, Depends, get_di_context};
+//! use reinhardt_di::{ContextLevel, Depends, FactoryOutput, InjectableKey, get_di_context};
 //!
-//! #[injectable_factory(scope = "transient")]
+//! struct AppConfigKey;
+//! impl InjectableKey for AppConfigKey {}
+//! struct RouterKey;
+//! impl InjectableKey for RouterKey {}
+//!
+//! #[injectable(scope = "transient")]
 //! async fn make_router(
-//!     #[inject] config: Depends<AppConfig>,
-//! ) -> Router {
+//!     #[inject] config: Depends<AppConfigKey, AppConfig>,
+//! ) -> FactoryOutput<RouterKey, Router> {
 //!     let di_ctx = get_di_context(ContextLevel::Current);
-//!     Router::new().with_di_context(di_ctx)
+//!     FactoryOutput::new(Router::new().with_di_context(di_ctx))
 //! }
 //! ```
 //!
@@ -202,6 +220,8 @@
 //! ```no_run
 //! # #[cfg(feature = "dev-tools")]
 //! # use reinhardt_di::{visualization::DependencyGraph, profiling::DependencyProfiler};
+//! # #[cfg(not(feature = "dev-tools"))]
+//! # fn main() {}
 //! # #[cfg(feature = "dev-tools")]
 //! # fn main() {
 //! // fn visualize_dependencies() {
@@ -231,7 +251,7 @@
 //! specific DI context configuration. Understanding these requirements is essential
 //! for proper authentication integration.
 //!
-//! ### `CurrentUser<U>` (recommended)
+//! ### `CurrentUser<U>`
 //!
 //! Loads the full user model from the database. Requires:
 //!
@@ -261,12 +281,6 @@
 //! - **`AuthState`** present in request extensions (set by authentication middleware)
 //! - No `DatabaseConnection` needed
 //!
-//! ### `AuthUser<U>` (deprecated)
-//!
-//! Deprecated in favor of `CurrentUser<U>` and scheduled for removal in 0.3.
-//! It retains the same fail-fast behavior as `CurrentUser<U>` for 0.2
-//! compatibility.
-//!
 //! ### Startup Validation
 //!
 //! Call `reinhardt_auth::validate_auth_extractors()` during application startup
@@ -281,9 +295,12 @@ pub mod params;
 pub mod context;
 pub mod cycle_detection;
 pub mod depends;
+pub mod factory_output;
 pub mod function_handle;
 pub mod graph;
 pub mod injectable;
+pub mod injectable_key;
+pub mod injectable_type;
 pub mod injected;
 pub mod override_registry;
 pub mod provider;
@@ -302,13 +319,21 @@ pub use cycle_detection::{
 	CycleError, ResolutionGuard, begin_resolution, begin_scoped_resolution,
 	current_dependent_scope, register_type_name, with_cycle_detection_scope,
 };
+pub use factory_output::FactoryOutput;
 pub use function_handle::FunctionHandle;
+pub use injectable_key::InjectableKey;
 pub use override_registry::OverrideRegistry;
 
 #[cfg(feature = "params")]
 pub use context::{ParamContext, Request};
-pub use depends::{Depends, DependsBuilder, DependsOption, DependsResult};
+pub use depends::{Depends, DependsBuilder};
 pub use injectable::Injectable;
+pub use injectable_type::InjectableType;
+#[doc(hidden)]
+pub use injectable_type::{
+	__InjectDependsFallbackResolver, __InjectDependsRegistryResolver, __InjectDependsResolver,
+	__InjectFallbackResolver, __InjectResolver, __InjectWrapperResolver,
+};
 pub use injected::{DependencyScope as InjectedScope, InjectionMetadata};
 pub use provider::{Provider, ProviderFn};
 pub use registration::DiRegistrationList;
@@ -328,7 +353,7 @@ pub use inventory;
 
 // Re-export macros
 #[cfg(feature = "macros")]
-pub use reinhardt_di_macros::{injectable, injectable_factory};
+pub use reinhardt_di_macros::{injectable, injectable_factory, injectable_key};
 
 /// Errors that can occur during dependency injection resolution.
 #[derive(Debug, Error)]
@@ -426,8 +451,8 @@ impl DiError {
 	///
 	/// `From<ParamError> for DiError` is deliberately **not** provided to
 	/// avoid breaking type inference of the `?` operator in
-	/// [`Depends::resolve`](crate::Depends::resolve) call sites generated by
-	/// `#[injectable_factory]` — adding the impl introduces a second
+	/// keyed `Depends` resolution call sites generated by `#[injectable]`
+	/// providers — adding the impl introduces a second
 	/// candidate `From<E> for DiError` and Rust's inference engine fails to
 	/// disambiguate (E0282). Call sites must therefore convert explicitly
 	/// via `.map_err(DiError::from_param_error)`.

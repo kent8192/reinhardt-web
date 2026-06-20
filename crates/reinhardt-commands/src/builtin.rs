@@ -3208,7 +3208,7 @@ impl BaseCommand for ShowUrlsCommand {
 			ctx.info("Example:");
 			ctx.info("  let router = UnifiedRouter::new()");
 			ctx.info("      .with_prefix(\"/api\")");
-			ctx.info("      .function(\"/health\", Method::GET, health_handler);");
+			ctx.info("      .endpoint(health_check);");
 			ctx.info("");
 			ctx.info("  reinhardt_urls::routers::register_router(Arc::new(router));");
 			return Ok(());

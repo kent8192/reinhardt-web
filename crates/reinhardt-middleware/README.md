@@ -13,11 +13,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.2.0", features = ["middleware"] }
+reinhardt = { version = "0.3.0-rc.2", features = ["middleware"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.2.0", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.2.0", features = ["full"] }      # All features
+# reinhardt = { version = "0.3.0-rc.2", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.3.0-rc.2", features = ["full"] }      # All features
 ```
 
 Then import middleware features:
@@ -256,6 +256,15 @@ The `session` module ships three companion helpers for the
 `#[server_fn]` / `#[inject]` patterns used by authenticated handlers
 (introduced in [#4446](https://github.com/kent8192/reinhardt-web/issues/4446)):
 
+`SessionMiddleware` is the recommended single middleware for cookie-backed
+session authentication. It loads the active `SessionData`, publishes the
+middleware-owned `SessionStore` to DI, and derives `AuthState` from
+`USER_ID_SESSION_KEY` when the session is authenticated. Handlers can therefore
+combine `SessionAuthExt::login` / `logout` with `CurrentUser<U>` without adding
+`CookieSessionAuthMiddleware` as a second layer. `CookieSessionAuthMiddleware`
+remains available for applications that use a custom `AsyncSessionBackend`
+directly.
+
 - `USER_ID_SESSION_KEY` — the canonical session-store key (`"user_id"`)
   every handler should read from / write to instead of hardcoding a literal.
 - `SessionValue<T>` / `OptionalSessionValue<T>` — typed extractors that
@@ -317,18 +326,19 @@ pub async fn current_tenant(
 ```rust,ignore
 use reinhardt::di::Depends;
 use reinhardt::middleware::session::{
-    SessionAuthExt, SessionData, SessionStore,
+    SessionAuthExt, SessionData, SessionStore, SessionStoreKey,
 };
+use std::sync::Arc;
 
 #[server_fn]
 pub async fn login(
     username: String,
     password: String,
     #[inject] mut session: SessionData,
-    #[inject] store: Depends<SessionStore>,
+    #[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
 ) -> Result<UserInfo, ServerFnError> {
     let user = authenticate(&username, &password).await?;
-    session.login(&store, user.id())
+    session.login(&**store, user.id())
         .map_err(|e| ServerFnError::application(e.to_string()))?;
     Ok(UserInfo::from(user))
 }
@@ -336,9 +346,9 @@ pub async fn login(
 #[server_fn]
 pub async fn logout(
     #[inject] mut session: SessionData,
-    #[inject] store: Depends<SessionStore>,
+    #[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
 ) -> Result<(), ServerFnError> {
-    session.logout(&store);
+    session.logout(&**store);
     Ok(())
 }
 ```

@@ -51,7 +51,7 @@
 //! - [`reactive`]: Fine-grained reactivity system (Signal, Effect, Memo)
 //! - [`dom`]: DOM abstraction layer
 //! - [`builder`]: HTML element builder API
-//! - [`component`]: Component system with IntoPage trait, Head management
+//! - [`component`](mod@component): Component system with IntoPage trait, Head management
 //! - [`form`](mod@form): Django Form integration
 //! - [`form_state`]: Typed `use_form` runtime state
 //! - [`csrf`]: CSRF protection
@@ -61,6 +61,7 @@
 //! - [`ssr`]: Server-side rendering with Head support
 //! - [`hydration`]: Client-side hydration
 //! - [`router`]: Client-side routing (reinhardt-urls compatible)
+//! - [`portal`]: Explicit portal mounting into existing DOM targets
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
 //!
 //! ## Forms
@@ -89,6 +90,53 @@
 //! runtime.set_value(login_form.username_field(), "ada".to_string());
 //! ```
 //!
+//! `FileField` and `ImageField` participate in this runtime contract as
+//! `Option<web_sys::File>` values. File values are browser-owned and are
+//! tracked for dirty/touched state without treating the file payload as a
+//! serializable scalar.
+//!
+//! Stable native widget coverage includes the following `form!` DSL items:
+//!
+//! | DSL item | HTML output | Value state |
+//! |---|---|---|
+//! | `MonthInput` | `<input type="month">` | string field |
+//! | `WeekInput` | `<input type="week">` | string field |
+//! | `ResetButton` | `<button type="reset">` | none |
+//! | `Button` | `<button type="button">` | none |
+//! | `ImageInput` | `<input type="image">` | none |
+//! | `Datalist` | `<datalist>` | option source only |
+//! | `OptGroup` | `<optgroup>` | choice grouping only |
+//! | `Output` | `<output>` | none |
+//! | `Meter` | `<meter>` | none |
+//! | `Progress` | `<progress>` | none |
+//!
+//! Typed native attributes are accepted for the controls that support them:
+//!
+//! | Attribute | Compatible controls |
+//! |---|---|
+//! | `min` / `max` / `step` | number, range, date, time, datetime-local, month, week |
+//! | `size` | text-like inputs |
+//! | `accept` / `capture` | file-like inputs |
+//! | `multiple` | file-like inputs and multi-select |
+//! | `list` | datalist-compatible text-like inputs |
+//!
+//! `FieldGroup` renders as semantic `<fieldset>` output. When `label` is
+//! present, the label is rendered as a `<legend>` inside the fieldset.
+//!
+//! `CustomWidget` is experimental and must opt in explicitly:
+//!
+//! ```rust,ignore
+//! date_range: CharField {
+//!     widget: CustomWidget(crate::widgets::DateRangePicker) {
+//!         experimental,
+//!         adapter: crate::widgets::DateRangeAdapter,
+//!     },
+//! }
+//! ```
+//!
+//! The adapter API may change in a minor release with a documented migration
+//! path.
+//!
 //! Use `ambient_arguments` for non-field values supplied from surrounding
 //! context. The old `strip_arguments` DSL name remains as a deprecated alias.
 //! CSRF should be supplied by `#[server_fn]` client stubs through the
@@ -98,6 +146,11 @@
 //!
 //! - [`page!`]: JSX-like macro for defining view components
 //! - [`head!`]: JSX-like macro for defining HTML head sections
+//! - [`form!`]: Type-safe form component macro
+//! - [`client_page`]: Client page function macro with native route-table stubs
+//! - [`wasm_server_api`]: WASM/server API parity macro
+//!
+//! See `docs/wasm_server_api.md` for the target-specific API parity contract.
 //!
 //! ## Example
 //!
@@ -215,6 +268,7 @@ pub mod reactive;
 
 // Platform abstraction (unified types and task spawning for WASM and native)
 pub mod platform;
+pub mod portal;
 
 /// Backward-compatibility re-export of task-spawning utilities.
 ///
@@ -304,28 +358,27 @@ pub use component::DummyEvent;
 #[cfg(wasm)]
 pub use component::cleanup_reactive_nodes;
 pub use component::{
-	BoundaryError, Component, ErrorBoundary, ErrorTracker, Head, IntoPage, LinkTag, MetaTag, Page,
-	PageElement, PageExt, Props, ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary,
+	ActivityBoundary, ActivityMode, BoundaryError, Component, ErrorBoundary, ErrorTracker, Head,
+	IntoPage, LinkTag, MetaTag, Page, PageElement, PageExt, Props, ResourceTracker, ScriptTag,
+	StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle, ViewTransitionStatus,
+	start_view_transition,
 };
 pub use csrf::{CsrfManager, get_csrf_token};
-pub use dom::{Document, Element, EventHandle, EventType, document};
+pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
 #[cfg(native)]
 pub use form::{FormBinding, FormComponent};
 // Static form metadata types (always available, used by form! macro)
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use form_state::{
-	FieldError, FieldState, FocusError, FormEvent, FormRuntimeSource, FormState, FormSubscription,
-	FormValidationError, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder, UseFormReturn,
-	UseFormSubmitOutcome, use_form,
+	CollectionItem, CollectionItemKey, CollectionState, CustomWidgetContext, CustomWidgetRawValue,
+	FieldError, FieldPathState, FieldState, FocusError, FormCollectionRuntimeSource, FormEvent,
+	FormRuntimeSource, FormState, FormSubscription, FormValidationError, FormWidgetAdapter,
+	FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder,
+	UseFormReturn, UseFormSubmitOutcome, use_form,
 };
 pub use hydration::{HydrationContext, HydrationError, hydrate};
+pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
 pub use reactive::{Effect, Memo, Resource, ResourceState, Signal, use_resource};
-#[cfg(wasm)]
-#[allow(
-	deprecated,
-	reason = "re-export kept until removal in v0.3.0; use use_resource instead"
-)]
-pub use reactive::{create_resource, create_resource_with_deps};
 // Re-export Context system
 pub use reactive::{
 	Context, ContextGuard, create_context, get_context, provide_context, remove_context,
@@ -333,12 +386,11 @@ pub use reactive::{
 // Re-export Hooks API
 pub use app::{ClientLauncher, LaunchCtx, PathCtx, PathParams};
 pub use reactive::{Action, ActionPhase, use_action};
-#[allow(deprecated)] // Intentional: re-exporting deprecated items for backward compatibility
 pub use reactive::{
 	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
-	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_effect_event,
-	use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state,
-	use_state, use_sync_external_store, use_transition,
+	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_id,
+	use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state, use_state,
+	use_sync_external_store, use_transition,
 };
 #[cfg(native)]
 pub use reinhardt_forms::{
@@ -351,6 +403,7 @@ pub use router::Link;
 // components. `NavigateError` is the public error returned by both paths.
 pub use reactive::hooks::router::{NavigateError, RouterHandle, use_router};
 pub use router::{NavigationType, navigate};
+pub use router::{Path, Query};
 pub use server_fn::{ServerFn, ServerFnError, parse_server_error_message};
 pub use ssr::SsrState;
 #[cfg(native)]
@@ -361,10 +414,16 @@ pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
 pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
 pub use reinhardt_pages_macros::page;
+pub use reinhardt_pages_macros::wasm_server_api;
+pub use reinhardt_pages_macros::{FromRequest, client_page, component, page_props};
 
 // Private re-exports used by macro-generated code. Not part of the public API.
 #[doc(hidden)]
 pub mod __private {
+	pub use bon;
+	pub use inventory;
+	pub use reinhardt_urls;
+
 	// `reqwest` is enabled for all wasm32 targets (including WASI, wasm32-unknown-unknown, etc.)
 	// because the HTTP client is needed on any wasm32 platform.
 	#[cfg(target_arch = "wasm32")]

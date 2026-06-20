@@ -1,7 +1,7 @@
 
 [package]
 name = "reinhardt-di"
-version = "0.2.0"
+version = "0.3.0-rc.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -15,12 +15,12 @@ path = "src/bin/check-di.rs"
 doc = false
 
 [dependencies]
-reinhardt-http = { workspace = true }
+reinhardt-http = { workspace = true, optional = true }
 
 # Internal crates
 reinhardt-di-macros = { workspace = true, optional = true }
 
-tokio = { workspace = true }
+tokio = { version = "1.51.0", default-features = false, features = ["rt", "sync"] }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 dashmap = "6.1"
@@ -43,7 +43,7 @@ uuid = { workspace = true, optional = true }
 
 [features]
 default = []
-params = []
+params = ["dep:reinhardt-http"]
 macros = ["dep:reinhardt-di-macros"]
 dev-tools = ["dep:indexmap"]
 generator = ["dep:genawaiter"]
@@ -56,25 +56,28 @@ di-full = [
 ]
 validation = ["reinhardt-core/validators"]
 multi-value-arrays = []
-multipart = ["multer", "futures-util"]
+multipart = ["params", "multer", "futures-util"]
 uuid = ["dep:uuid"]
 full = ["validation", "multi-value-arrays", "multipart", "uuid"]
 testing = []
 
 [dev-dependencies]
 insta = { workspace = true }
-tokio = { workspace = true }
+tokio = { version = "1.51.0", default-features = false, features = ["macros", "rt", "sync", "time"] }
 futures = "0.3"
 bytes.workspace = true
-hyper.workspace = true
 serial_test = { workspace = true }
 reinhardt-core = { workspace = true, features = ["types", "exception"] }
 reinhardt-macros = { workspace = true }
 serde = { workspace = true }
-proptest = { workspace = true }
 rstest = { workspace = true }
-trybuild = { workspace = true }
+tempfile = { workspace = true }
+
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }
+hyper = { version = "1.9.0", default-features = false }
+proptest = { workspace = true }
+trybuild = { workspace = true }
 [[test]]
 name = "scope_hierarchy_tests"
 required-features = ["testing"]

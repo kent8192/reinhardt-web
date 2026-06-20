@@ -59,6 +59,8 @@ struct ModelAttributesParsed {
 	/// Whether to generate Info companion struct (Issue #4194).
 	/// `None` means not specified (defaults to `true` in `ModelConfig`).
 	info: Option<bool>,
+	/// Whether this model is only available on the native/server side.
+	server_only: bool,
 	/// Whether the original model has `#[derive(serde::Serialize)]`.
 	/// Passed from the attribute macro since derive macros cannot see `#[derive()]`.
 	serde_serialize: bool,
@@ -143,6 +145,8 @@ struct ModelConfig {
 	/// Whether to generate an `{Model}Info` companion struct (Issue #4194).
 	/// Defaults to `true`. Set `#[model(info = false)]` to opt out.
 	info: bool,
+	/// Whether this model should skip shared data/info output.
+	server_only: bool,
 	/// Whether the original model derives `serde::Serialize`.
 	serde_serialize: bool,
 	/// Whether the original model derives `serde::Deserialize`.
@@ -157,6 +161,7 @@ impl ModelConfig {
 		let mut constraints = Vec::new();
 		let mut manager: Option<syn::Path> = None;
 		let mut info: Option<bool> = None;
+		let mut server_only = false;
 		let mut serde_serialize = false;
 		let mut serde_deserialize = false;
 
@@ -204,6 +209,9 @@ impl ModelConfig {
 			if let Some(i) = model_attr.info {
 				info = Some(i);
 			}
+			if model_attr.server_only {
+				server_only = true;
+			}
 			if model_attr.serde_serialize {
 				serde_serialize = true;
 			}
@@ -225,6 +233,7 @@ impl ModelConfig {
 			constraints,
 			manager,
 			info: info.unwrap_or(true),
+			server_only,
 			serde_serialize,
 			serde_deserialize,
 		})
@@ -240,6 +249,7 @@ impl ModelConfig {
 		let mut unique_together = Vec::new();
 		let mut manager: Option<syn::Path> = None;
 		let mut info: Option<bool> = None;
+		let mut server_only = false;
 		let mut serde_serialize = false;
 		let mut serde_deserialize = false;
 
@@ -257,6 +267,14 @@ impl ModelConfig {
 				continue;
 			} else if ident == "serde_deserialize" {
 				serde_deserialize = true;
+				if input.peek(Token![,]) {
+					input.parse::<Token![,]>()?;
+				} else {
+					break;
+				}
+				continue;
+			} else if ident == "server_only" {
+				server_only = true;
 				if input.peek(Token![,]) {
 					input.parse::<Token![,]>()?;
 				} else {
@@ -326,6 +344,7 @@ impl ModelConfig {
 			unique_together,
 			manager,
 			info,
+			server_only,
 			serde_serialize,
 			serde_deserialize,
 		})
@@ -2192,14 +2211,26 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	let field_selector_struct = generate_field_selector_struct(struct_name, &field_infos);
 
 	let (info_impl_generics, info_ty_generics, info_where_clause) = generics.split_for_impl();
-	let info_model_impl = quote! {
-		impl #info_impl_generics #reinhardt::model_info::InfoModel for #struct_name #info_ty_generics #info_where_clause {
-			type PrimaryKey = #pk_type;
+	let info_model_impl = if model_config.server_only {
+		quote! {
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+			impl #info_impl_generics #reinhardt::model_info::InfoModel for #struct_name #info_ty_generics #info_where_clause {
+				type PrimaryKey = #pk_type;
+			}
+		}
+	} else {
+		quote! {
+			impl #info_impl_generics #reinhardt::model_info::InfoModel for #struct_name #info_ty_generics #info_where_clause {
+				type PrimaryKey = #pk_type;
+			}
 		}
 	};
 
-	// Conditionally generate Info companion struct (Issue #4194)
-	let info_struct = if model_config.info {
+	// Server-only models still expose native primary-key metadata for FK id
+	// generation, but skip shared Info companion output.
+	let info_struct = if model_config.server_only {
+		quote! {}
+	} else if model_config.info {
 		generate_info_struct(
 			struct_name,
 			generics,
@@ -2210,6 +2241,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		)?
 	} else {
 		quote! {}
+	};
+	let shared_info_output = quote! {
+		#info_model_impl
+		#info_struct
 	};
 
 	// Determine the `type Objects` associated type for the Model impl.
@@ -2226,7 +2261,7 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			// Generate composite PK type definition if needed
 			#composite_pk_type_def
 
-			#info_model_impl
+			#shared_info_output
 
 			// Generate new() as a zero-arg alias of build()
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -2338,9 +2373,6 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 			// Generate field selector struct for type-safe JOIN/GROUP BY/HAVING operations
 			#field_selector_struct
-
-		// Generate Info companion struct (Issue #4194)
-		#info_struct
 	};
 
 	Ok(expanded)
@@ -4733,11 +4765,27 @@ fn generate_field_selector_struct(
 	}
 }
 
-/// Generate the `{Model}Info` companion struct with `From` conversions (Issue #4194).
+#[derive(Clone)]
+enum InfoSetterKind {
+	Plain,
+	String,
+	Relation { target_ty: TokenStream },
+	ManyToMany { target_ty: TokenStream },
+}
+
+#[derive(Clone)]
+struct InfoFieldSpec {
+	name: Ident,
+	ty: TokenStream,
+	validate_attrs: Vec<TokenStream>,
+	setter_kind: InfoSetterKind,
+	from_model: TokenStream,
+}
+
+/// Generate the `{Model}Info` companion struct with `From` conversions (Issues #4194, #5272).
 ///
-/// The Info struct is a plain data carrier mirroring the model's data fields
-/// without ORM coupling. Relationship marker types are excluded; auto-generated
-/// FK `_id` fields are included.
+/// Relationship marker fields are represented with target-neutral lightweight
+/// value types rather than ORM marker fields or flattened `*_id` fields.
 fn generate_info_struct(
 	struct_name: &Ident,
 	generics: &syn::Generics,
@@ -4752,22 +4800,88 @@ fn generate_info_struct(
 	let info_name = Ident::new(&format!("{}Info", struct_name), struct_name.span());
 	let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-	// Determine which fields to include in Info
-	let info_fields: Vec<&FieldInfo> = field_infos
+	let normalize_relation_ty = |ty: &Type| -> TokenStream {
+		if matches!(ty, Type::Path(path) if path.path.is_ident("Self")) {
+			quote! { #struct_name #ty_generics }
+		} else {
+			quote! { #ty }
+		}
+	};
+
+	let fk_by_field_name: HashMap<String, &ForeignKeyFieldInfo> = fk_field_infos
 		.iter()
-		.filter(|f| {
-			!f.config.skip
-				&& !f.config.skip_info
-				&& !is_relationship_field_type(&f.ty)
-				&& !is_many_to_many_field_type(&f.ty)
-		})
+		.map(|fk| (fk.field_name.to_string(), fk))
+		.collect();
+	let fk_id_to_field_name: HashMap<String, Ident> = fk_field_infos
+		.iter()
+		.map(|fk| (format!("{}_id", fk.field_name), fk.field_name.clone()))
 		.collect();
 
-	// Build a map from FK _id field name to target model type
-	let fk_target_map: HashMap<String, &Type> = fk_field_infos
-		.iter()
-		.map(|fk| (format!("{}_id", fk.field_name), &fk.target_type))
-		.collect();
+	let mut info_fields = Vec::new();
+	for f in field_infos {
+		if f.config.skip || f.config.skip_info || f.is_fk_id_field {
+			continue;
+		}
+
+		let name = f.name.clone();
+		if let Some(fk) = fk_by_field_name.get(&name.to_string()) {
+			let id_name = Ident::new(&format!("{}_id", name), name.span());
+			let target_ty = normalize_relation_ty(&fk.target_type);
+			let ty = quote! { #reinhardt::model_info::RelationInfo<#target_ty> };
+			info_fields.push(InfoFieldSpec {
+				name: name.clone(),
+				ty,
+				validate_attrs: Vec::new(),
+				setter_kind: InfoSetterKind::Relation { target_ty },
+				from_model: quote! {
+					#name: #reinhardt::model_info::RelationInfo::new(model.#id_name),
+				},
+			});
+			continue;
+		}
+
+		if is_many_to_many_field_type(&f.ty) {
+			let Some(target_ty) = extract_m2m_target_type(&f.ty) else {
+				return Err(syn::Error::new_spanned(
+					&f.ty,
+					"ManyToManyField must specify source and target model types",
+				));
+			};
+			let target_ty = normalize_relation_ty(target_ty);
+			let source_ty = quote! { #struct_name #ty_generics };
+			let ty = quote! { #reinhardt::model_info::ManyToManyInfo<#source_ty, #target_ty> };
+			info_fields.push(InfoFieldSpec {
+				name: name.clone(),
+				ty,
+				validate_attrs: Vec::new(),
+				setter_kind: InfoSetterKind::ManyToMany { target_ty },
+				from_model: quote! {
+					#name: #reinhardt::model_info::ManyToManyInfo::empty(),
+				},
+			});
+			continue;
+		}
+
+		if is_relationship_field_type(&f.ty) {
+			continue;
+		}
+
+		let ty = &f.ty;
+		let validate_attrs = generate_validate_attrs(&f.config);
+		let (is_option, _) = extract_option_type(ty);
+		let setter_kind = if is_string_type(ty) && !is_option {
+			InfoSetterKind::String
+		} else {
+			InfoSetterKind::Plain
+		};
+		info_fields.push(InfoFieldSpec {
+			name: name.clone(),
+			ty: quote! { #ty },
+			validate_attrs,
+			setter_kind,
+			from_model: quote! { #name: model.#name, },
+		});
+	}
 
 	// Generate Info struct fields with optional validate attributes
 	let info_field_defs: Vec<TokenStream> = info_fields
@@ -4775,7 +4889,7 @@ fn generate_info_struct(
 		.map(|f| {
 			let name = &f.name;
 			let ty = &f.ty;
-			let validate_attrs = generate_validate_attrs(&f.config);
+			let validate_attrs = &f.validate_attrs;
 			quote! {
 				#(#validate_attrs)*
 				pub #name: #ty,
@@ -4804,7 +4918,7 @@ fn generate_info_struct(
 	// Conditionally add Validate derive if any field has validation. OpenAPI
 	// Schema remains explicit so non-OpenAPI REST users do not pull the OpenAPI
 	// feature graph through generated companion structs.
-	let has_any_validation = info_fields.iter().any(|f| field_has_validation(&f.config));
+	let has_any_validation = info_fields.iter().any(|f| !f.validate_attrs.is_empty());
 
 	let validate_derive = if has_any_validation {
 		quote! {
@@ -4815,21 +4929,23 @@ fn generate_info_struct(
 	};
 
 	// Generate From<Model> for Info
-	let model_to_info_fields: Vec<TokenStream> = info_fields
-		.iter()
-		.map(|f| {
-			let name = &f.name;
-			quote! { #name: model.#name, }
-		})
-		.collect();
+	let model_to_info_fields: Vec<TokenStream> =
+		info_fields.iter().map(|f| f.from_model.clone()).collect();
 
 	// Generate From<Info> for Model — all model fields, with defaults for excluded ones
 	let info_to_model_fields: Vec<TokenStream> = field_infos
 		.iter()
 		.map(|f| {
 			let name = &f.name;
-			let is_included = info_fields.iter().any(|inf| inf.name == f.name);
-			if is_included {
+			let name_str = name.to_string();
+			if let Some(relation_name) = fk_id_to_field_name.get(&name_str)
+				&& info_fields.iter().any(|inf| inf.name == *relation_name)
+			{
+				quote! { #name: info.#relation_name.into_id(), }
+			} else if info_fields.iter().any(|inf| inf.name == f.name)
+				&& !is_relationship_field_type(&f.ty)
+				&& !is_many_to_many_field_type(&f.ty)
+			{
 				quote! { #name: info.#name, }
 			} else {
 				quote! { #name: ::std::default::Default::default(), }
@@ -4837,14 +4953,8 @@ fn generate_info_struct(
 		})
 		.collect();
 
-	// Generate builder for Info with IntoPrimaryKey support on FK fields
-	let info_builder = generate_info_builder(
-		&info_name,
-		generics,
-		&info_fields,
-		&fk_target_map,
-		&orm_crate,
-	)?;
+	let info_builder =
+		generate_info_builder(&info_name, generics, &info_fields, &orm_crate, &reinhardt)?;
 
 	let info_doc = format!("Data-transfer companion for [`{}`].", struct_name);
 
@@ -4931,23 +5041,13 @@ fn generate_validate_attrs(config: &FieldConfig) -> Vec<TokenStream> {
 	attrs
 }
 
-/// Check if a `FieldConfig` has any validation metadata.
-fn field_has_validation(config: &FieldConfig) -> bool {
-	config.min_length.is_some()
-		|| config.max_length.is_some()
-		|| config.email == Some(true)
-		|| config.url == Some(true)
-		|| config.min_value.is_some()
-		|| config.max_value.is_some()
-}
-
-/// Generate a typestate builder for `{Model}Info` with `IntoPrimaryKey` support on FK fields.
+/// Generate a typestate builder for `{Model}Info`.
 fn generate_info_builder(
 	info_name: &Ident,
 	generics: &syn::Generics,
-	info_fields: &[&FieldInfo],
-	fk_target_map: &HashMap<String, &Type>,
+	info_fields: &[InfoFieldSpec],
 	orm_crate: &TokenStream,
+	reinhardt: &TokenStream,
 ) -> Result<TokenStream> {
 	let builder_name = Ident::new(&format!("{}Builder", info_name), info_name.span());
 	let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -5022,32 +5122,52 @@ fn generate_info_builder(
 				.filter_map(|(i, s)| if i != idx { Some(s) } else { None })
 				.collect();
 
-			let field_name_str = name.to_string();
-
-			// Check if this field is an FK _id field
-			if let Some(target_type) = fk_target_map.get(&field_name_str) {
-				// FK field: accept impl IntoPrimaryKey<TargetModel>
-				quote! {
-					#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-					#[allow(missing_docs)]
-					impl<#(#free_state_params),*> #builder_name<#(#input_states),*> {
-						pub fn #name<__FkArg>(mut self, value: __FkArg)
-							-> #builder_name<#(#output_states),*>
-						where
-							__FkArg: #orm_crate::IntoPrimaryKey<#target_type>,
-						{
-							self.#name = ::std::option::Option::Some(value.into_primary_key());
-							#builder_name {
-								#(#field_names: self.#field_names,)*
-								_state: ::std::marker::PhantomData,
+			match &f.setter_kind {
+				InfoSetterKind::Relation { target_ty } => {
+					quote! {
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						#[allow(missing_docs)]
+						impl<#(#free_state_params),*> #builder_name<#(#input_states),*> {
+							pub fn #name<__FkArg>(mut self, value: __FkArg)
+								-> #builder_name<#(#output_states),*>
+							where
+								__FkArg: #orm_crate::IntoPrimaryKey<#target_ty>,
+							{
+								self.#name = ::std::option::Option::Some(
+									#reinhardt::model_info::RelationInfo::new(value.into_primary_key())
+								);
+								#builder_name {
+									#(#field_names: self.#field_names,)*
+									_state: ::std::marker::PhantomData,
+								}
 							}
 						}
 					}
 				}
-			} else {
-				// Regular field: accept Into<T> for String, exact type otherwise
-				let is_string = matches!(ty, Type::Path(p) if p.path.segments.last().is_some_and(|s| s.ident == "String"));
-				if is_string {
+				InfoSetterKind::ManyToMany { target_ty } => {
+					quote! {
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						#[allow(missing_docs)]
+						impl<#(#free_state_params),*> #builder_name<#(#input_states),*> {
+							pub fn #name<__Ids>(mut self, value: __Ids)
+								-> #builder_name<#(#output_states),*>
+							where
+								__Ids: ::std::iter::IntoIterator<
+									Item = <#target_ty as #reinhardt::model_info::InfoModel>::PrimaryKey
+								>,
+							{
+								self.#name = ::std::option::Option::Some(
+									#reinhardt::model_info::ManyToManyInfo::new(value)
+								);
+								#builder_name {
+									#(#field_names: self.#field_names,)*
+									_state: ::std::marker::PhantomData,
+								}
+							}
+						}
+					}
+				}
+				InfoSetterKind::String => {
 					quote! {
 						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 						#[allow(missing_docs)]
@@ -5063,7 +5183,8 @@ fn generate_info_builder(
 							}
 						}
 					}
-				} else {
+				}
+				InfoSetterKind::Plain => {
 					quote! {
 						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 						#[allow(missing_docs)]

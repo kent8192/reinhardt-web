@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.2.0...reinhardt-pages@v0.3.0-rc.1) - 2026-06-18
+
+### Added
+
+- *(pages)* add explicit asset loading helpers
+
+### Changed
+
+- [**breaking**] remove 0.3 deprecated public APIs
+
+### Documentation
+
+- *(pages)* classify React 19 parity outcomes
+
+### Fixed
+
+- *(ci)* update Rust 1.96 UI stderr expectations
+- *(pages)* align asset head helpers with review feedback
+- *(pages)* address CodeRabbit component macro review
+- *(formatter)* handle reviewed page rustfmt islands
+- add native stubs for client page functions
+- *(pages)* export client_page from prelude
+- *(ci)* satisfy pages clippy lint
+- *(pages)* re-export use_callback_with from reactive::hooks
+
+### Maintenance
+
+- merge develop/0.3.0 into component route macros
+- merge develop/0.3.0 into pr 5346
+
+### Testing
+
+- *(pages)* isolate static resolver state
+
+### Removed
+
+- **BREAKING**: Removed the deprecated resource constructors
+  `create_resource` and `create_resource_with_deps`. Use
+  `use_resource(fetcher, deps)`.
+- **BREAKING**: Removed the deprecated hooks `use_effect_event` and
+  `use_effect_event_with`. Use `use_callback` / `use_callback_with` or read
+  latest signal values with `.get_untracked()` inside effects.
+
+### Added
+
+- Added route-backed component macro support via `#[component("/path", "name")]`,
+  generated plain props builders, and `Path(...)` / `Query(...)` extractor-style
+  component function arguments.
+
+### Fixed
+
+- Fixed route-backed component macro builders so downstream crates can use
+  generated props without depending directly on `bon`.
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.3...reinhardt-pages@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-pages` for the Reinhardt 0.2.0 line. This

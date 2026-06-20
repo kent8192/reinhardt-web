@@ -3,9 +3,8 @@
 //! Tests the import server function with various formats and boundary conditions.
 
 use super::server_fn_helpers::server_fn_context;
-use reinhardt_admin::core::{AdminDatabase, AdminSite, ImportFormat};
+use reinhardt_admin::core::ImportFormat;
 use reinhardt_admin::server::import_data;
-use reinhardt_di::Depends;
 use rstest::*;
 
 use super::server_fn_helpers::{make_auth_user, make_staff_request};
@@ -16,7 +15,7 @@ use super::server_fn_helpers::{make_auth_user, make_staff_request};
 #[rstest]
 #[tokio::test]
 async fn test_import_json_happy_path(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -53,7 +52,7 @@ async fn test_import_json_happy_path(
 #[rstest]
 #[tokio::test]
 async fn test_import_csv_happy_path(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -84,7 +83,7 @@ async fn test_import_csv_happy_path(
 #[rstest]
 #[tokio::test]
 async fn test_import_tsv_happy_path(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -117,7 +116,7 @@ async fn test_import_tsv_happy_path(
 #[rstest]
 #[tokio::test]
 async fn test_import_file_size_limit(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -156,7 +155,7 @@ async fn test_import_file_size_limit(
 #[rstest]
 #[tokio::test]
 async fn test_import_record_count_limit(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -205,7 +204,7 @@ async fn test_import_record_count_limit(
 #[rstest]
 #[tokio::test]
 async fn test_import_invalid_json(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -234,7 +233,7 @@ async fn test_import_invalid_json(
 #[rstest]
 #[tokio::test]
 async fn test_import_invalid_csv(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -273,7 +272,7 @@ async fn test_import_invalid_csv(
 #[rstest]
 #[tokio::test]
 async fn test_import_empty_data(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -305,7 +304,7 @@ async fn test_import_empty_data(
 #[rstest]
 #[tokio::test]
 async fn test_import_model_not_registered(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;

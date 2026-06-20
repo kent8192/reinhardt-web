@@ -1,7 +1,7 @@
 //! Integration tests for snippets application
 //!
 //! The `snippets` views (`apps::snippets::views::{list, create, retrieve,
-//! update, delete}`) take `#[inject] db: Depends<DatabaseConnection>`, which
+//! update, delete}`) take `#[inject] db: DatabaseConnection`, which
 //! requires a resolved DI container to invoke directly. Standing up the full
 //! DI container in a unit test is out of scope here (see Task A3 notes), so
 //! these tests exercise the `Manager::<Snippet>` ORM layer that the handlers

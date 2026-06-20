@@ -29,10 +29,11 @@ mod state_transition_tests {
 		);
 	}
 
-	/// Test that multiple initializations are idempotent
-	/// Due to OnceLock semantics, second init should be ignored
+	/// Test that multiple initializations are idempotent in production builds.
+	/// Due to OnceLock semantics, second init should be ignored.
 	#[rstest]
 	#[serial]
+	#[cfg(not(feature = "testing"))]
 	fn test_state_transition_multiple_init_idempotent() {
 		let config1 = TemplateStaticConfig::new("/static/".to_string());
 		init_static_resolver(config1);
@@ -49,6 +50,31 @@ mod state_transition_tests {
 		assert!(
 			!result.contains("/different/"),
 			"Second config should be ignored"
+		);
+	}
+
+	/// Test that the testing feature can replace resolver configuration.
+	///
+	/// Integration tests run many independent resolver cases in one process, so
+	/// `testing` intentionally permits replacement.
+	#[rstest]
+	#[serial]
+	#[cfg(feature = "testing")]
+	fn test_state_transition_multiple_init_replaces_config_in_testing() {
+		let config1 = TemplateStaticConfig::new("/static/".to_string());
+		init_static_resolver(config1);
+
+		let config2 = TemplateStaticConfig::new("/different/".to_string());
+		init_static_resolver(config2);
+
+		let result = resolve_static("test.css");
+		assert!(
+			result.contains("/different/"),
+			"Testing feature should allow config replacement"
+		);
+		assert!(
+			!result.contains("/static/"),
+			"Previous config should be replaced"
 		);
 	}
 

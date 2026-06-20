@@ -4,7 +4,7 @@
 //!
 //! Middleware stack (server-only):
 //! 1. `SessionMiddleware` — cookie-based session management used by the
-//!    `users` app's login/logout server functions
+//!    `users` app's login/logout server functions and `CurrentUser` auth state
 
 use reinhardt::UnifiedRouter;
 #[cfg(server)]
@@ -51,18 +51,14 @@ pub fn routes() -> UnifiedRouter {
 			.mount("/", crate::apps::users::urls::server_url_patterns())
 	});
 
-	// Aggregate every app's client routes on wasm so the SPA route table
-	// carries every app's client-side URL patterns.
+	// Aggregate every app's client routes so both native route-table
+	// construction and the WASM SPA see the same URL patterns.
 	//
 	// Each `client_url_patterns()` already namespaces its routes
 	// (`polls:` / `users:`). We compose them by wrapping each in a single-purpose
 	// `UnifiedRouter` and stitching with `mount_unified`, which uses
 	// `ClientRouter::merge` internally.
 	//
-	// The aggregation is `#[cfg(client)]` because the per-app `client_router`
-	// submodules are themselves wasm-only (they import `crate::client::pages::*`,
-	// which is wasm-only).
-	#[cfg(client)]
 	let router = router
 		.mount_unified(
 			"/",
@@ -90,10 +86,14 @@ pub fn routes() -> UnifiedRouter {
 	// `SessionMiddleware` auto-registers its `SessionStore` as a DI singleton
 	// via `Middleware::di_registrations` (keyed by `TypeId::of::<SessionStore>()`
 	// post-#4437), so server functions that
-	// `#[inject] session: SessionData` (or `#[inject] store: Depends<SessionStore>`)
+	// `#[inject] session: SessionData` or
+	// `#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>`
 	// can resolve the same store the middleware writes to without a parallel
-	// `with_di_registrations(...)` call. See #4426 (and the original #4423
-	// regression that motivated the auto-registration hook).
+	// `with_di_registrations(...)` call. The same middleware also derives
+	// `AuthState` from `USER_ID_SESSION_KEY`, so authenticated handlers can use
+	// `CurrentUser<U>` without adding a second cookie-session auth layer.
+	// See #4426 (and the original #4423 regression that motivated the
+	// auto-registration hook) and #4740.
 	#[cfg(server)]
 	let router = router.with_middleware(create_session_middleware());
 

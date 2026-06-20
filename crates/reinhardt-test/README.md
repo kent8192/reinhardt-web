@@ -15,11 +15,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.2.0", features = ["test"] }
+reinhardt = { version = "0.3.0-rc.2", features = ["test"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.2.0", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.2.0", features = ["full"] }      # All features
+# reinhardt = { version = "0.3.0-rc.2", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.3.0-rc.2", features = ["full"] }      # All features
 ```
 
 Then import testing features:
@@ -88,6 +88,18 @@ use reinhardt::test::{FixtureLoader, Factory, MockFunction};
   - Call recording with timestamps
   - Argument verification
   - Reset and inspection capabilities
+
+#### MSW-Style Request Mocking
+
+- **WASM runtime**: `MockServiceWorker` overrides `window.fetch()` for browser
+  tests.
+- **Native runtime**: `MockServiceWorker` starts a loopback HTTP mock server
+  and exposes `worker.url()` for explicit endpoint injection.
+- **Shared API**: `rest::get(...)`, `MockResponse`, request recording, and
+  `calls_to(...)` work across both runtimes.
+
+Native MSW does not intercept arbitrary `reqwest`, `hyper`, AWS SDK, or
+OS-level traffic. The code under test must use the mock server URL.
 
 #### Message Testing (Django-style)
 

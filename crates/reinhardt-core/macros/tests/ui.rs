@@ -167,6 +167,20 @@ fn test_user_macro_fail() {
 	t.compile_fail("tests/ui/user/fail/*.rs");
 }
 
+// ===== Model Parity =====
+
+#[test]
+fn test_model_macro_parity_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/model/pass/*.rs");
+}
+
+#[test]
+fn test_model_macro_parity_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/model/fail/*.rs");
+}
+
 // ===== DTO (Issue #4478) =====
 
 #[test]

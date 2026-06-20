@@ -16,7 +16,7 @@ project and build a simple REST API.
 
 Before you begin, make sure you have:
 
-- **Rust** 1.94.1 or later (2024 Edition required)
+- **Rust** 1.96.0 or later (2024 Edition required)
   ([Install Rust](https://www.rust-lang.org/tools/install))
 - **PostgreSQL** (included in `standard` and `full` bundles; optional for custom setups)
 - Basic familiarity with Rust and async programming
@@ -31,7 +31,7 @@ the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.0"
+cargo install reinhardt-admin-cli --version "0.3.0-rc.2"
 ```
 
 **Note:** After installation, the command is `reinhardt-admin`, not
@@ -385,7 +385,7 @@ Check out the [ORM documentation](/docs/api/) for more details.
 ## Getting Help
 
 <!-- reinhardt-version-sync -->
-- 📖 [API Reference](https://docs.rs/reinhardt-web/0.2.0/reinhardt/)
+- 📖 [API Reference](https://docs.rs/reinhardt-web/0.3.0-rc.2/reinhardt/)
 - 🗺️ [DeepWiki](https://deepwiki.com/kent8192/reinhardt-web) - AI-generated codebase documentation
 - 💬 [GitHub Discussions](https://github.com/kent8192/reinhardt-web/discussions)
 - 🐛 [Report Issues](https://github.com/kent8192/reinhardt-web/issues)
@@ -394,7 +394,7 @@ Check out the [ORM documentation](/docs/api/) for more details.
 
 **Port Already in Use**: Change the port in `serve()` function
 
-**Compilation Errors**: Ensure Rust 1.94.1+ (`rustc --version`)
+**Compilation Errors**: Ensure Rust 1.96.0+ (`rustc --version`)
 
 **Async Runtime**: Add `#[tokio::main]` to your main function
 

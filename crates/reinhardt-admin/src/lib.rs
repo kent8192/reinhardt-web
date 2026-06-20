@@ -31,6 +31,19 @@
 pub mod adapters;
 #[cfg(server)]
 pub mod core;
+#[cfg(client)]
+pub mod core {
+	//! Client-side admin core type stubs.
+	//!
+	//! The server target exposes the real admin core module. The client target
+	//! keeps the same import path available for shared code that names admin
+	//! core types in signatures erased by server functions or native-only macros.
+
+	pub use crate::types::{
+		AdminDatabase, AdminRecord, AdminSite, AdminUser, ExportFormat, ImportBuilder, ImportError,
+		ImportFormat, ImportResult, ModelAdmin, ModelAdminConfig, ModelAdminConfigBuilder,
+	};
+}
 pub mod pages;
 pub mod server;
 #[cfg(server)]

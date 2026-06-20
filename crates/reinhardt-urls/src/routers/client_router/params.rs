@@ -14,6 +14,21 @@ use super::error::PathError;
 /// and ordered parameter values (for tuple extraction).
 #[derive(Debug, Clone)]
 pub struct ParamContext {
+	/// Matched path without the query string.
+	///
+	/// Populated by [`ClientRouter::render_current`] for routes registered
+	/// via [`ClientRouter::page`] so [`RouteContext::path`] can expose the
+	/// router's matched path to [`FromRequest`] implementations.
+	///
+	/// `None` for direct test construction and for routes registered via
+	/// the legacy `route` / `route_params` / `route_result` / `route_path*`
+	/// APIs (those handlers do not read the path through `RouteContext`).
+	///
+	/// [`ClientRouter::render_current`]: super::core::ClientRouter::render_current
+	/// [`ClientRouter::page`]: super::core::ClientRouter::page
+	/// [`RouteContext::path`]: super::from_request::RouteContext::path
+	/// [`FromRequest`]: super::from_request::FromRequest
+	pub(crate) path: Option<String>,
 	/// Named parameters extracted from the path.
 	pub(crate) params: HashMap<String, String>,
 	/// Parameter values in the order they appear in the pattern.
@@ -39,10 +54,25 @@ impl ParamContext {
 	/// Creates a new parameter context.
 	pub fn new(params: HashMap<String, String>, param_values: Vec<String>) -> Self {
 		Self {
+			path: None,
 			params,
 			param_values,
 			query: None,
 		}
+	}
+
+	/// Creates a new parameter context with an attached matched path.
+	///
+	/// Used by [`ClientRouter::render_current`] when dispatching a
+	/// [`ClientRouter::page`] handler so [`RouteContext::path`] exposes
+	/// the matched path without any query string.
+	///
+	/// [`ClientRouter::render_current`]: super::core::ClientRouter::render_current
+	/// [`ClientRouter::page`]: super::core::ClientRouter::page
+	/// [`RouteContext::path`]: super::from_request::RouteContext::path
+	pub fn with_path(mut self, path: String) -> Self {
+		self.path = Some(path);
+		self
 	}
 
 	/// Creates a new parameter context with an attached query string.
@@ -63,6 +93,11 @@ impl ParamContext {
 	/// route pattern, keyed by their `{name}` placeholder).
 	pub fn params(&self) -> &HashMap<String, String> {
 		&self.params
+	}
+
+	/// Returns the matched path (without the query string), if present.
+	pub fn path(&self) -> Option<&str> {
+		self.path.as_deref()
 	}
 
 	/// Returns the raw query string (without the leading `?`), if any.

@@ -18,16 +18,12 @@ struct CardProps {
 fn card(p: CardProps) -> Page {
 	page!(|p: CardProps| {
 		article {
-			h2 { {
-				p.item.clone()
-			} }
-			{
-				// The interpolated `{expr}` is auto-wrapped in
+			h2 { { p.item.clone() } }
+			{ // The interpolated `{expr}` is auto-wrapped in
 				// `Page::reactive(move || ...)` (an `Fn` closure), so the
 				// captured `p.children` must be cloned rather than moved out
 				// of the closure (spec §4.1 auto-wrap contract).
-				p.children.clone().unwrap_or_else(Page::empty)
-			}
+				p.children.clone().unwrap_or_else(Page::empty) }
 		}
 	})(p)
 }

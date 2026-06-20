@@ -1,8 +1,8 @@
 //! User authentication server functions
 //!
 //! Provides session-cookie-based login/logout and current-user lookup.
-//! Follows the session-auth pattern: `SessionData` + `Depends<SessionStore>`
-//! are injected, the session ID is regenerated on successful login
+//! Follows the session-auth pattern: `SessionData` + keyed session-store
+//! dependency are injected, the session ID is regenerated on successful login
 //! (fixation prevention), and `user_id` is persisted in the session map.
 
 use crate::shared::types::UserInfo;
@@ -12,17 +12,18 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
 #[cfg(server)]
 use {
-	crate::apps::users::models::{AuthUserManager, User},
+	crate::apps::users::models::{AuthUserManager, AuthUserManagerKey, User},
 	reinhardt::BaseUser,
 	reinhardt::DatabaseConnection,
 	reinhardt::Validate,
 	reinhardt::db::orm::Model,
 	reinhardt::di::Depends,
 	reinhardt::middleware::session::{
-		SessionAuthExt, SessionData, SessionStore, USER_ID_SESSION_KEY,
+		SessionAuthExt, SessionData, SessionStore, SessionStoreKey, USER_ID_SESSION_KEY,
 	},
 	reinhardt::reinhardt_auth::BaseUserManager,
 	std::collections::HashMap,
+	std::sync::Arc,
 };
 
 /// Authenticate a user by username/password and persist the session.
@@ -35,7 +36,7 @@ pub async fn login(
 	password: String,
 	#[inject] _db: DatabaseConnection,
 	#[inject] session: SessionData,
-	#[inject] store: Depends<SessionStore>,
+	#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
 ) -> std::result::Result<UserInfo, ServerFnError> {
 	let mut session = session;
 
@@ -104,9 +105,9 @@ pub async fn register(
 	username: String,
 	password: String,
 	password_confirmation: String,
-	#[inject] user_manager: Depends<AuthUserManager>,
+	#[inject] user_manager: Depends<AuthUserManagerKey, AuthUserManager>,
 	#[inject] session: SessionData,
-	#[inject] store: Depends<SessionStore>,
+	#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
 ) -> std::result::Result<UserInfo, ServerFnError> {
 	let mut session = session;
 
@@ -137,10 +138,9 @@ pub async fn register(
 	// `reinhardt::Error` that maps to a 400 via `ServerFnError::application`.
 	//
 	// `BaseUserManager::create_user` takes `&mut self`, but DI hands us a
-	// shared `Depends<AuthUserManager>` (an `Arc` under the hood). Clone
-	// the inner manager — its only field is another
-	// `Depends<DatabaseConnection>`, which is itself an `Arc` clone — so
-	// this is cheap and gives us the `&mut` access the trait method needs.
+	// shared keyed `Depends`. Clone the inner manager — its only field is a
+	// database handle — so this is cheap and gives us the `&mut` access the
+	// trait method needs.
 	let mut user_manager: AuthUserManager = (*user_manager).clone();
 	let saved = user_manager
 		.create_user(
@@ -167,7 +167,7 @@ pub async fn register(
 #[server_fn]
 pub async fn logout(
 	#[inject] session: SessionData,
-	#[inject] store: Depends<SessionStore>,
+	#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
 ) -> std::result::Result<(), ServerFnError> {
 	let mut session = session;
 

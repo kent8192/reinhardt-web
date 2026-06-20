@@ -1,15 +1,18 @@
 //! `SessionMiddleware`: cookie parsing, store wiring, and `Set-Cookie` writeback.
 
 use async_trait::async_trait;
-use reinhardt_http::{Handler, Middleware, MiddlewareDiRegistration, Request, Response, Result};
+use reinhardt_http::{
+	AuthState, Handler, IsActive, IsAdmin, IsAuthenticated, Middleware, MiddlewareDiRegistration,
+	Request, Response, Result,
+};
 use std::any::TypeId;
 use std::sync::Arc;
 
 use super::config::SessionConfig;
 use super::cookie::find_cookie_value;
-use super::data::SessionData;
+use super::data::{SessionData, USER_ID_SESSION_KEY};
 use super::id::{ActiveSessionId, SessionCookieName, SessionId};
-use super::store::SessionStore;
+use super::store::{SessionStore, SessionStoreKey};
 
 /// Session middleware
 ///
@@ -148,6 +151,49 @@ impl SessionMiddleware {
 
 		parts.join("; ")
 	}
+
+	fn user_id_from_session(session: &SessionData) -> Option<String> {
+		let value = session.data.get(USER_ID_SESSION_KEY)?;
+		let user_id = match value {
+			serde_json::Value::String(s) => s.clone(),
+			serde_json::Value::Number(n) => n.to_string(),
+			serde_json::Value::Bool(b) => b.to_string(),
+			_ => return None,
+		};
+
+		if user_id.is_empty() {
+			None
+		} else {
+			Some(user_id)
+		}
+	}
+
+	fn populate_auth_extensions(request: &Request, session: &SessionData) {
+		if request.extensions.contains::<AuthState>() {
+			return;
+		}
+
+		let Some(user_id) = Self::user_id_from_session(session) else {
+			request.extensions.insert(IsAuthenticated(false));
+			request.extensions.insert(IsAdmin(false));
+			request.extensions.insert(IsActive(false));
+			request.extensions.insert(AuthState::anonymous());
+			return;
+		};
+
+		let is_staff = session.get::<bool>("is_staff").unwrap_or(false);
+		let is_superuser = session.get::<bool>("is_superuser").unwrap_or(false);
+		let is_admin = is_staff || is_superuser;
+		let is_active = true;
+
+		request.extensions.insert(user_id.clone());
+		request.extensions.insert(IsAuthenticated(true));
+		request.extensions.insert(IsAdmin(is_admin));
+		request.extensions.insert(IsActive(is_active));
+		request
+			.extensions
+			.insert(AuthState::authenticated(user_id, is_admin, is_active));
+	}
 }
 
 impl Default for SessionMiddleware {
@@ -158,20 +204,28 @@ impl Default for SessionMiddleware {
 
 #[async_trait]
 impl Middleware for SessionMiddleware {
-	/// Exposes the middleware-owned `Arc<SessionStore>` as a DI singleton.
+	/// Exposes the middleware-owned `Arc<SessionStore>` as DI singletons.
 	///
-	/// Registered under `TypeId::of::<SessionStore>()` so handlers can resolve
-	/// the store via `#[inject] store: Depends<SessionStore>` and so
-	/// `SessionData::inject` finds it through the same key. The value is the
-	/// middleware's own `Arc<SessionStore>` erased to `Arc<dyn Any + Send + Sync>`
-	/// — `SingletonScope::set_arc_any` stores the Arc verbatim (no extra
-	/// envelope wrap), so downcasting yields the same allocation handlers see.
-	/// See #4437 (migration from the previous `Arc<SessionStore>` key).
+	/// The raw `SessionStore` key is retained for `SessionData::inject`.
+	/// The keyed `FactoryOutput<SessionStoreKey, Arc<SessionStore>>` key is
+	/// used by handlers that request
+	/// `#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>`.
 	fn di_registrations(&self) -> Vec<MiddlewareDiRegistration> {
-		vec![(
-			TypeId::of::<SessionStore>(),
-			Arc::clone(&self.store) as Arc<dyn std::any::Any + Send + Sync>,
-		)]
+		let store = Arc::clone(&self.store);
+		let keyed_store = Arc::new(reinhardt_di::FactoryOutput::<
+			SessionStoreKey,
+			Arc<SessionStore>,
+		>::new(Arc::clone(&self.store)));
+		vec![
+			(
+				TypeId::of::<SessionStore>(),
+				store as Arc<dyn std::any::Any + Send + Sync>,
+			),
+			(
+				TypeId::of::<reinhardt_di::FactoryOutput<SessionStoreKey, Arc<SessionStore>>>(),
+				keyed_store as Arc<dyn std::any::Any + Send + Sync>,
+			),
+		]
 	}
 
 	async fn process(&self, request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
@@ -204,6 +258,7 @@ impl Middleware for SessionMiddleware {
 		// (`SessionData::regenerate_id`) keep `Set-Cookie` in sync. See #3827.
 		let active_id = ActiveSessionId::new(session.id.clone());
 		request.extensions.insert(active_id.clone());
+		Self::populate_auth_extensions(&request, &session);
 
 		// Call the handler
 		// Convert errors to responses so post-processing (e.g., security headers)
@@ -236,8 +291,39 @@ impl Middleware for SessionMiddleware {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use bytes::Bytes;
+	use hyper::{HeaderMap, Method, Version};
+	use reinhardt_http::{AuthState, Handler, Request};
 	use rstest::rstest;
+	use std::sync::Mutex;
 	use std::time::Duration;
+
+	#[derive(Default)]
+	struct CapturedAuth {
+		auth_state: Option<AuthState>,
+		user_id: Option<String>,
+		is_authenticated: Option<IsAuthenticated>,
+		is_admin: Option<IsAdmin>,
+		is_active: Option<IsActive>,
+	}
+
+	struct CaptureAuthHandler {
+		captured: Arc<Mutex<CapturedAuth>>,
+	}
+
+	#[async_trait]
+	impl Handler for CaptureAuthHandler {
+		async fn handle(&self, request: Request) -> Result<Response> {
+			*self.captured.lock().unwrap() = CapturedAuth {
+				auth_state: request.extensions.get::<AuthState>(),
+				user_id: request.extensions.get::<String>(),
+				is_authenticated: request.extensions.get::<IsAuthenticated>(),
+				is_admin: request.extensions.get::<IsAdmin>(),
+				is_active: request.extensions.get::<IsActive>(),
+			};
+			Ok(Response::ok())
+		}
+	}
 
 	/// Returns a `SessionMiddleware` with a fixed cookie name and TTL for
 	/// deterministic tests.
@@ -246,6 +332,41 @@ mod tests {
 			"sessionid".to_string(),
 			Duration::from_secs(3600),
 		))
+	}
+
+	fn request_with_cookie(session_id: &str) -> Request {
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			hyper::header::COOKIE,
+			hyper::header::HeaderValue::from_str(&format!("sessionid={}", session_id)).unwrap(),
+		);
+		Request::builder()
+			.method(Method::GET)
+			.uri("/")
+			.version(Version::HTTP_11)
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap()
+	}
+
+	fn request_without_cookie() -> Request {
+		Request::builder()
+			.method(Method::GET)
+			.uri("/")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap()
+	}
+
+	fn capture_handler() -> (Arc<Mutex<CapturedAuth>>, Arc<dyn Handler>) {
+		let captured = Arc::new(Mutex::new(CapturedAuth::default()));
+		let handler = Arc::new(CaptureAuthHandler {
+			captured: Arc::clone(&captured),
+		});
+		(captured, handler)
 	}
 
 	#[rstest]
@@ -257,12 +378,7 @@ mod tests {
 		// Act: ask the middleware for its DI registrations.
 		let registrations = middleware.di_registrations();
 
-		// Assert: exactly one entry, keyed by SessionStore's TypeId (not
-		// Arc<SessionStore>'s) so that handlers can resolve
-		// `#[inject] store: Depends<SessionStore>` against the same key,
-		// pointing at the same underlying allocation as the middleware's
-		// own store handle. See #4437.
-		assert_eq!(registrations.len(), 1);
+		assert_eq!(registrations.len(), 2);
 		let (type_id, value) = &registrations[0];
 		assert_eq!(*type_id, TypeId::of::<SessionStore>());
 		let downcast = value
@@ -272,6 +388,20 @@ mod tests {
 		assert!(
 			Arc::ptr_eq(&downcast, &store_arc),
 			"middleware DI registration must expose the same Arc<SessionStore> the middleware writes to"
+		);
+
+		let (type_id, value) = &registrations[1];
+		assert_eq!(
+			*type_id,
+			TypeId::of::<reinhardt_di::FactoryOutput<SessionStoreKey, Arc<SessionStore>>>()
+		);
+		let downcast = value
+			.clone()
+			.downcast::<reinhardt_di::FactoryOutput<SessionStoreKey, Arc<SessionStore>>>()
+			.expect("registered Arc must downcast to keyed SessionStore factory output");
+		assert!(
+			Arc::ptr_eq(downcast.as_ref(), &store_arc),
+			"keyed DI registration must expose the same Arc<SessionStore> the middleware writes to"
 		);
 	}
 
@@ -301,6 +431,86 @@ mod tests {
 			Arc::ptr_eq(&resolved, &store_arc),
 			"resolved Arc<SessionStore> must point at the same allocation the middleware owns"
 		);
+	}
+
+	#[tokio::test]
+	async fn session_middleware_populates_auth_state_from_session_user_id() {
+		let middleware = make_middleware();
+		let store = middleware.store_arc();
+		let mut session = SessionData::new(Duration::from_secs(3600));
+		session
+			.set(USER_ID_SESSION_KEY.to_string(), 42_i64)
+			.unwrap();
+		session.set("is_staff".to_string(), true).unwrap();
+		let session_id = session.id.clone();
+		store.save(session);
+
+		let (captured, handler) = capture_handler();
+		middleware
+			.process(request_with_cookie(&session_id), handler)
+			.await
+			.unwrap();
+
+		let captured = captured.lock().unwrap();
+		let auth_state = captured
+			.auth_state
+			.as_ref()
+			.expect("SessionMiddleware must insert AuthState");
+		assert!(auth_state.is_authenticated());
+		assert_eq!(auth_state.user_id(), "42");
+		assert!(auth_state.is_admin());
+		assert!(auth_state.is_active());
+		assert_eq!(captured.user_id.as_deref(), Some("42"));
+		assert_eq!(captured.is_authenticated, Some(IsAuthenticated(true)));
+		assert_eq!(captured.is_admin, Some(IsAdmin(true)));
+		assert_eq!(captured.is_active, Some(IsActive(true)));
+	}
+
+	#[tokio::test]
+	async fn session_middleware_populates_anonymous_auth_state_without_user_id() {
+		let middleware = make_middleware();
+		let (captured, handler) = capture_handler();
+
+		middleware
+			.process(request_without_cookie(), handler)
+			.await
+			.unwrap();
+
+		let captured = captured.lock().unwrap();
+		let auth_state = captured
+			.auth_state
+			.as_ref()
+			.expect("SessionMiddleware must insert anonymous AuthState");
+		assert!(auth_state.is_anonymous());
+		assert!(captured.user_id.is_none());
+		assert_eq!(captured.is_authenticated, Some(IsAuthenticated(false)));
+		assert_eq!(captured.is_admin, Some(IsAdmin(false)));
+		assert_eq!(captured.is_active, Some(IsActive(false)));
+	}
+
+	#[tokio::test]
+	async fn session_middleware_preserves_existing_auth_state() {
+		let middleware = make_middleware();
+		let request = request_without_cookie();
+		request
+			.extensions
+			.insert(AuthState::authenticated("jwt-user", true, true));
+		let (captured, handler) = capture_handler();
+
+		middleware.process(request, handler).await.unwrap();
+
+		let captured = captured.lock().unwrap();
+		let auth_state = captured
+			.auth_state
+			.as_ref()
+			.expect("pre-existing AuthState must remain visible");
+		assert_eq!(auth_state.user_id(), "jwt-user");
+		assert!(auth_state.is_authenticated());
+		assert!(auth_state.is_admin());
+		assert!(auth_state.is_active());
+		assert!(captured.is_authenticated.is_none());
+		assert!(captured.is_admin.is_none());
+		assert!(captured.is_active.is_none());
 	}
 
 	/// End-to-end injection test: drives the same path a handler with

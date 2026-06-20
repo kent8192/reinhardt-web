@@ -155,7 +155,7 @@ Add this to your `Cargo.toml`:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = "0.2.0"
+reinhardt-db = "0.3.0-rc.2"
 ```
 
 ### Optional Features
@@ -165,7 +165,7 @@ Enable specific features based on your needs:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = { version = "0.2.0", features = ["postgres", "orm", "migrations"] }
+reinhardt-db = { version = "0.3.0-rc.2", features = ["postgres", "orm", "migrations"] }
 ```
 
 Available features:
@@ -271,6 +271,13 @@ let matching = User::objects()
 let recent = User::objects()
     .filter(User::field_created_at().year().gte(2026))
     .all()
+    .await?;
+
+// Atomic conditional partial update
+let updated = User::objects()
+    .filter(User::field_id().eq(user_id))
+    .filter(User::field_age().gte(18))
+    .update_fields([User::field_updated_at().assign(Utc::now())])
     .await?;
 ```
 

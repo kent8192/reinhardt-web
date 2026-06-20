@@ -630,8 +630,8 @@ pub fn derive_schema(input: TokenStream) -> TokenStream {
 /// - Struct must have named fields
 /// - All fields must have either `#[inject]` or `#[no_inject]` attribute
 /// - `#[no_inject]` without default value requires field type to be `Option<T>`
-/// - `Clone` is auto-derived if not already present (used by `into_inner()` and `injectable_factory` patterns)
-/// - All `#[inject]` field types must implement `Injectable`
+/// - `Clone` is auto-derived if not already present (used by generated injection and caching paths)
+/// - All `#[inject]` field types must implement `Injectable` or `InjectableType`
 ///
 /// # Attribute Ordering
 ///
@@ -698,13 +698,16 @@ pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
 /// This provides a cleaner syntax by eliminating the need to explicitly write
 /// `#[derive(Model)]` on every model struct.
 ///
-/// # Info Companion Type (Issue #4194)
+/// # Info Companion Type (Issues #4194, #5272)
 ///
-/// By default, generates a `{Model}Info` companion struct — a plain data carrier
-/// with `pub` fields, bidirectional `From` conversions, and a typestate builder.
-/// FK builder setters accept `impl IntoPrimaryKey<T>`. Validation attributes are
-/// derived from `#[field(...)]` config. Opt out with `#[model(info = false)]`.
-/// Exclude individual fields with `#[field(skip_info = true)]`.
+/// By default, generates a `{Model}Info` companion struct with `pub` fields,
+/// bidirectional `From` conversions, and a typestate builder. Relationship
+/// fields use lightweight `RelationInfo<T>` and `ManyToManyInfo<Source, Target>`
+/// payloads instead of ORM marker fields or flattened `*_id` fields. FK and
+/// OneToOne builder setters accept `impl IntoPrimaryKey<T>`. Validation
+/// attributes are derived from `#[field(...)]` config. Opt out with
+/// `#[model(info = false)]`. Exclude individual fields with
+/// `#[field(skip_info = true)]`.
 ///
 /// # Model Attributes
 ///
@@ -1118,12 +1121,25 @@ pub fn dto(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Fragment mode
 ///
-/// Marks a struct as a settings fragment:
+/// Marks a struct as a root settings fragment:
 ///
 /// ```rust,ignore
 /// #[settings(fragment = true, section = "cache")]
 /// pub struct CacheSettings {
 ///     pub backend: String,
+/// }
+/// ```
+///
+/// Omitting `section = "..."` creates an embedded settings node instead of a
+/// root fragment. Embedded nodes participate in recursive schema metadata and
+/// required-field validation below a root fragment, but they do not implement
+/// `SettingsFragment` and cannot be composed directly:
+///
+/// ```rust,ignore
+/// #[settings(fragment = true, default_policy = "required")]
+/// pub struct DatabaseConfig {
+///     pub engine: String,
+///     pub host: String,
 /// }
 /// ```
 ///
