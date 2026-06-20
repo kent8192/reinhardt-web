@@ -1,6 +1,7 @@
 //! Nested router implementation tests
 
 use reinhardt_macros::model;
+use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_urls::routers::ServerRouter;
 use reinhardt_views::viewsets::{ModelViewSet, NestedResource, NestedViewSet, nested_url};
 use serde::{Deserialize, Serialize};
@@ -26,11 +27,8 @@ struct Post {
 	title: String,
 }
 
-#[derive(Debug, Clone)]
-struct UserSerializer;
-
-#[derive(Debug, Clone)]
-struct PostSerializer;
+type UserSerializer = JsonSerializer<User>;
+type PostSerializer = JsonSerializer<Post>;
 
 #[tokio::test]
 async fn test_nested_router_basic_structure() {

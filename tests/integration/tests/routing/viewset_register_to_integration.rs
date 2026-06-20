@@ -2,6 +2,7 @@
 
 use hyper::Method;
 use reinhardt_macros::model;
+use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_urls::routers::ServerRouter;
 use reinhardt_views::viewsets::ModelViewSet;
 use serde::{Deserialize, Serialize};
@@ -16,8 +17,7 @@ struct TestUser {
 	name: String,
 }
 
-#[derive(Debug, Clone)]
-struct TestSerializer;
+type TestSerializer = JsonSerializer<TestUser>;
 
 #[tokio::test]
 async fn test_viewset_register_to() {

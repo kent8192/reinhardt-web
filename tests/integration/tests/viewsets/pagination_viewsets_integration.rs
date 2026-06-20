@@ -4,6 +4,7 @@ use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_http::{Request, Response};
 use reinhardt_macros::model;
+use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_views::viewsets::ReadOnlyModelViewSet;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -21,8 +22,7 @@ struct Product {
 	category: String,
 }
 
-#[derive(Debug, Clone)]
-struct ProductSerializer;
+type ProductSerializer = JsonSerializer<Product>;
 
 // ============================================================================
 // Pagination Traits
