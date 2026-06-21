@@ -359,22 +359,21 @@ src/
 ├── apps/
 │   ├── polls.rs                  # per-app entry (sibling of polls/)
 │   └── polls/
-│       ├── admin.rs              # #[cfg(server)] admin registration
-│       ├── client.rs             # #[cfg(client)] aggregator: pub mod components; pub mod pages;
+│       ├── client.rs             # #[cfg(client)] aggregator: pub mod components;
 │       ├── client/
-│       │   ├── components.rs     # per-app UI (placeholder() returning Page)
-│       │   └── pages.rs          # per-app pages (placeholder_page wraps with_nav)
-│       ├── models.rs             # #[cfg(server)] models
-│       ├── models/               # (.gitkeep — user adds submodules here)
-│       ├── serializers.rs        # #[cfg(server)] serializers
-│       ├── serializers/          # (.gitkeep)
+│       │   └── components.rs     # per-app UI (placeholder() returning Page)
+│       ├── pages.rs              # target-neutral page entry points
+│       ├── server.rs             # #[cfg(server)] aggregator
+│       ├── server/
+│       │   ├── admin.rs          # admin registration
+│       │   ├── models.rs         # models
+│       │   ├── serializers.rs    # serializers
+│       │   ├── urls.rs           # server-function marker registration
+│       │   ├── models/           # (.gitkeep — user adds submodules here)
+│       │   └── serializers/      # (.gitkeep)
 │       ├── server_fn.rs          # bi-target #[server_fn] handlers (placeholder)
 │       ├── tests/                # (.gitkeep)
-│       ├── urls.rs               # urls aggregator (cfg-gated submodules)
-│       ├── urls/
-│       │   ├── server_urls.rs    # #[url_patterns(InstalledApp::polls, mode = server)]
-│       │   └── client_router.rs  # #[url_patterns(InstalledApp::polls, mode = client)]
-│       └── views.rs              # #[cfg(server)] views
+│       └── urls.rs               # target-neutral server/client router surface
 ├── bin/
 │   └── manage.rs                 # native-only management CLI entry
 ├── client.rs                     # #[cfg(client)] aggregator: pub mod lib; pub mod components;

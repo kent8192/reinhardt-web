@@ -3,7 +3,7 @@ use reinhardt::db::associations::ForeignKeyField;
 use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::apps::users::models::User;
+use crate::apps::users::server::models::User;
 
 /// Question model representing a poll question
 #[model(app_label = "polls", table_name = "questions")]

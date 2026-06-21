@@ -1,7 +1,7 @@
 use reinhardt::Validate;
 use serde::{Deserialize, Serialize};
 
-pub use crate::apps::polls::models::{ChoiceInfo, QuestionInfo};
+pub use crate::shared::types::{ChoiceInfo, QuestionInfo};
 
 /// Serializer for creating/updating questions
 #[derive(Debug, Serialize, Deserialize, Validate)]

@@ -34,7 +34,7 @@ installed_apps! {
 
 ## Define the User Model
 
-Open `src/apps/users/models.rs`. The example uses a minimal user model, not `full = true`:
+Open `src/apps/users/server/models.rs`. The example uses a minimal user model, not `full = true`:
 
 ```rust
 #[cfg_attr(native, user(hasher = Argon2Hasher, username_field = "username", manager = false))]
@@ -110,11 +110,30 @@ impl BaseUserManager<User> for AuthUserManager {
 
 ## Share Auth DTOs
 
-Update `src/shared/types.rs` to re-export `UserInfo` and define login/register DTOs:
+Update `src/shared/types.rs` to add `UserInfo` next to the poll DTOs and define login/register DTOs:
 
 ```rust
-pub use crate::apps::polls::models::{ChoiceInfo, QuestionInfo};
-pub use crate::apps::users::models::UserInfo;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserInfo {
+    pub id: i64,
+    pub username: String,
+    pub is_active: bool,
+}
+
+impl InfoModel for UserInfo {
+    type PrimaryKey = i64;
+}
+
+#[cfg(server)]
+impl From<crate::apps::users::server::models::User> for UserInfo {
+    fn from(user: crate::apps::users::server::models::User) -> Self {
+        Self {
+            id: user.id,
+            username: user.username,
+            is_active: user.is_active,
+        }
+    }
+}
 ```
 
 ```rust
@@ -281,17 +300,33 @@ pub async fn current_user(
 
 ## Register Auth Routes
 
-The users app follows the same split as polls:
+The users app follows the same target-neutral route surface as polls. `src/apps/users/urls.rs` owns the client route table and delegates server markers to `src/apps/users/server/urls.rs`:
 
 ```rust
-#[cfg(server)]
-pub mod server_urls;
+use reinhardt::{ClientRouter, ServerRouter};
 
-#[cfg(client)]
-pub mod client_router;
+use super::pages;
+
+pub fn server_url_patterns() -> ServerRouter {
+    #[cfg(server)]
+    {
+        super::server::urls::server_url_patterns()
+    }
+    #[cfg(not(server))]
+    {
+        ServerRouter::new()
+    }
+}
+
+pub fn client_url_patterns() -> ClientRouter {
+    ClientRouter::new()
+        .route("login", "/login/", pages::login_page)
+        .route("logout", "/logout/", pages::logout_page)
+        .route("signup", "/signup/", pages::signup_page)
+}
 ```
 
-Server routes register server-function markers:
+Server routes register server-function markers in `src/apps/users/server/urls.rs`:
 
 ```rust
 use crate::apps::users::server_fn::{current_user, login, logout, register};
@@ -307,14 +342,18 @@ pub fn server_url_patterns() -> ServerRouter {
 }
 ```
 
-Client routes expose the login, logout, and signup pages:
+App-local page entry points in `src/apps/users/pages.rs` wrap the users client components on WASM and return `Page::Empty` on native:
 
 ```rust
-pub fn client_url_patterns() -> ClientRouter {
-    ClientRouter::new()
-        .route("login", "/login/", login_page)
-        .route("logout", "/logout/", logout_page)
-        .route("signup", "/signup/", signup_page)
+pub fn login_page() -> Page {
+    #[cfg(client)]
+    {
+        with_nav(crate::apps::users::client::components::login_form())
+    }
+    #[cfg(not(client))]
+    {
+        Page::Empty
+    }
 }
 ```
 
@@ -329,7 +368,6 @@ let router = router.server(|s| {
 ```
 
 ```rust
-#[cfg(client)]
 let router = router
     .mount_unified(
         "/",

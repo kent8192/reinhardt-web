@@ -15,10 +15,10 @@ The client hides controls that do not apply to the current user, but that is onl
 
 ## Add the Author Field
 
-Open `src/apps/polls/models.rs`. Import the user model and add an author foreign key to `Question`:
+Open `src/apps/polls/server/models.rs`. Import the user model and add an author foreign key to `Question`:
 
 ```rust
-use crate::apps::users::models::User;
+use crate::apps::users::server::models::User;
 ```
 
 ```rust
@@ -40,6 +40,30 @@ pub struct Question {
 ```
 
 This is the schema change you intentionally deferred in Part 2.
+
+Update `QuestionInfo` in `src/shared/types.rs` so the client can tell whether the current user owns a question:
+
+```rust
+pub struct QuestionInfo {
+    pub id: i64,
+    pub question_text: String,
+    pub pub_date: DateTime<Utc>,
+    pub author: RelationInfo<UserInfo>,
+}
+
+#[cfg(server)]
+impl From<crate::apps::polls::server::models::Question> for QuestionInfo {
+    fn from(question: crate::apps::polls::server::models::Question) -> Self {
+        let author_id = *question.author_id();
+        Self {
+            id: question.id,
+            question_text: question.question_text,
+            pub_date: question.pub_date,
+            author: RelationInfo::new(author_id),
+        }
+    }
+}
+```
 
 ## Generate Migration 0002
 
@@ -145,7 +169,7 @@ pub async fn create_question(
     #[inject] _db: reinhardt::DatabaseConnection,
     #[inject] session_user: Depends<Result<User, SessionError>>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
-    use crate::apps::polls::models::Question;
+    use crate::apps::polls::server::models::Question;
 
     let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 
@@ -221,8 +245,8 @@ Do not rely on the client to protect these actions. The comparison in the server
 async fn require_question_author(
     question_id: i64,
     user: &User,
-) -> std::result::Result<crate::apps::polls::models::Question, ServerFnError> {
-    use crate::apps::polls::models::Question;
+) -> std::result::Result<crate::apps::polls::server::models::Question, ServerFnError> {
+    use crate::apps::polls::server::models::Question;
 
     let question = Question::objects()
         .get(question_id)
@@ -259,7 +283,7 @@ let new_choice = Choice::build()
 
 ## Register the CRUD Server Functions
 
-Update `src/apps/polls/urls/server_urls.rs`:
+Update `src/apps/polls/server/urls.rs`:
 
 ```rust
 ServerRouter::new()
@@ -278,29 +302,29 @@ ServerRouter::new()
 
 ## Add Client CRUD Routes
 
-Add question and choice routes in `src/apps/polls/urls/client_router.rs`:
+Add question and choice routes in `src/apps/polls/urls.rs`:
 
 ```rust
 ClientRouter::new()
-    .route("index", "/", index_page)
-    .route("question_new", "/polls/new/", question_new_page)
+    .route("index", "/", pages::index_page)
+    .route("question_new", "/polls/new/", pages::question_new_page)
     .route_path(
         "choice_new",
         "/polls/{question_id}/choices/new/",
-        |ClientPath(question_id): ClientPath<i64>| choice_new_page(question_id),
+        |ClientPath(question_id): ClientPath<i64>| pages::choice_new_page(question_id),
     )
     .route_path(
         "choice_edit",
         "/polls/{question_id}/choices/{choice_id}/edit/",
         |ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
-            choice_edit_page(question_id, choice_id)
+            pages::choice_edit_page(question_id, choice_id)
         },
     )
     .route_path(
         "choice_delete",
         "/polls/{question_id}/choices/{choice_id}/delete/",
         |ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
-            choice_delete_page(question_id, choice_id)
+            pages::choice_delete_page(question_id, choice_id)
         },
     )
 ```

@@ -62,11 +62,18 @@ tutorial/
     +-- bin/
     |   +-- manage.rs
     +-- config/
+    |   +-- apps.rs
     |   +-- settings.rs
     |   +-- urls.rs
+    |   +-- wasm.rs
     +-- client/
-        +-- lib.rs
-        +-- pages.rs
+    |   +-- components.rs
+    |   +-- lib.rs
+    |   +-- components/
+    |       +-- nav.rs
+    +-- shared/
+        +-- forms.rs
+        +-- types.rs
 ```
 
 The reference example has more files because it is the completed project. You will add those files as each slice needs them.
@@ -138,7 +145,7 @@ pub mod client;
 pub mod shared;
 ```
 
-`apps` and `shared` compile on both targets. Server-only internals are gated inside those modules when they need database, forms, or admin APIs.
+`apps` and `shared` compile on both targets. App-level page entry points and URL tables stay target-neutral, while database models, admin definitions, serializers, and server URL marker registration live under each app's `server/` module.
 
 ## Inspect Settings
 
@@ -215,7 +222,7 @@ pub fn main() -> Result<(), JsValue> {
 }
 ```
 
-Later parts will register routes from the `polls` and `users` apps. For now, confirm that the browser can load the client bundle and that the server is serving the pages application.
+Later parts will register routes from the `polls` and `users` apps. Their page entry points will live under `src/apps/<app>/pages.rs`; `src/client/` remains the cross-app browser shell. For now, confirm that the browser can load the client bundle and that the server is serving the pages application.
 
 ## Run the Development Workflow
 

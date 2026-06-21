@@ -15,7 +15,7 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 // Example server-only imports (uncomment when you add real handlers):
 // #[cfg(server)]
 // use {
-//     crate::apps::{{ app_name }}::models::{{ camel_case_app_name }},
+//     crate::apps::{{ app_name }}::server::models::{{ camel_case_app_name }},
 //     reinhardt::DatabaseConnection,
 //     reinhardt::Model,
 // };

@@ -1,6 +1,6 @@
 //! Server-side URL configuration for the {{ app_name }} application.
 //!
-//! Per-app routers are NOT aggregated automatically — endpoints added here
+//! Per-app routers are NOT aggregated automatically. Endpoints added here
 //! become reachable only after `config/urls.rs` aggregates
 //! `crate::apps::{{ app_name }}::urls::server_url_patterns()`.
 //!
@@ -10,7 +10,8 @@
 //! views/endpoints and server-function markers here:
 //!
 //! ```rust,ignore
-//! use crate::apps::{{ app_name }}::{server_fn, views};
+//! use super::views;
+//! use crate::apps::{{ app_name }}::server_fn;
 //! use reinhardt::pages::server_fn::ServerFnRouterExt;
 //!
 //! ServerRouter::new()
@@ -21,5 +22,5 @@
 use reinhardt::ServerRouter;
 
 pub fn server_url_patterns() -> ServerRouter {
-	ServerRouter::new()
+    ServerRouter::new()
 }

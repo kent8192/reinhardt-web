@@ -3,10 +3,10 @@
 //! Provides minimal login / logout / sign-up pages backed by the `users`
 //! server functions. Every form uses the `form!` macro to define static fields
 //! while `#[server_fn]` client stubs attach the CSRF header automatically.
-use crate::apps::polls::urls::client_router as polls_routes;
+use crate::apps::polls::urls as polls_routes;
 #[cfg(client)]
 use crate::apps::users::server_fn::{login, logout, register};
-use crate::apps::users::urls::client_router as users_routes;
+use crate::apps::users::urls as users_routes;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;

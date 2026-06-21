@@ -1,26 +1,30 @@
 //! URL configuration for the {{ app_name }} application.
 //!
-//! - `server_url_patterns()` — server-side app router
-//! - `client_url_patterns()` — client-side app router
-//! - `reverse()` — client-side named route reversal
+//! This module is intentionally target-neutral. Native builds use it to
+//! aggregate server and client route metadata, while WASM builds use the same
+//! client route table and reverse helpers.
 
-#[cfg(server)]
-pub mod server_urls;
+use reinhardt::{ClientRouter, ServerRouter};
 
-#[cfg(client)]
-pub mod client_router;
+use super::pages;
 
-#[cfg(server)]
-pub fn server_url_patterns() -> reinhardt::ServerRouter {
-	server_urls::server_url_patterns()
+pub fn server_url_patterns() -> ServerRouter {
+    #[cfg(server)]
+    {
+        super::server::urls::server_url_patterns()
+    }
+    #[cfg(not(server))]
+    {
+        ServerRouter::new()
+    }
 }
 
-#[cfg(client)]
-pub fn client_url_patterns() -> reinhardt::ClientRouter {
-	client_router::client_url_patterns()
+pub fn client_url_patterns() -> ClientRouter {
+    ClientRouter::new().route("placeholder", "/{{ app_name }}/", pages::placeholder_page)
 }
 
-#[cfg(client)]
 pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
-	client_router::reverse(name, params)
+    client_url_patterns()
+        .reverse(name, params)
+        .unwrap_or_else(|error| panic!("failed to reverse {{ app_name }} client route `{name}`: {error}"))
 }

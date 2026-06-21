@@ -27,8 +27,8 @@ pub mod apps;
 // Configuration (urls unconditional, rest server-only)
 pub mod config;
 
-// Cross-target page stubs live under `client::pages`; executable browser
-// modules inside `client` remain cfg-gated.
+// App-level page entry points live under `apps::<app>::pages`; executable
+// browser modules inside `client` remain cfg-gated.
 pub mod client;
 
 // Shared modules (both WASM and server)

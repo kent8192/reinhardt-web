@@ -63,7 +63,7 @@ details.
 - **shell** - Run an interactive REPL
 - **check** - Check the project for common issues
 - **collectstatic** - Collect static files into `STATIC_ROOT`
-- **showurls** - Display all registered URL patterns (requires `routers`
+- **showurls** - Display all registered server URL patterns (requires `routers`
   feature)
 
 ### Feature Flags

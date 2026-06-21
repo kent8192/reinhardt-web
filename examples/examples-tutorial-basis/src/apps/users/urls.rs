@@ -1,18 +1,35 @@
 //! URL configuration for the users application.
 //!
-//! - `server_url_patterns()` — server-side app router.
-//! - `client_url_patterns()` — client-side app router.
+//! This module is target-neutral so native and WASM builds share one route
+//! table and reverse-helper surface.
 
-#[cfg(server)]
-pub mod server_urls;
+use reinhardt::{ClientRouter, ServerRouter};
 
-pub mod client_router;
+use super::pages;
 
-#[cfg(server)]
-pub fn server_url_patterns() -> reinhardt::ServerRouter {
-	server_urls::server_url_patterns()
+/// Server-side app router.
+pub fn server_url_patterns() -> ServerRouter {
+	#[cfg(server)]
+	{
+		super::server::urls::server_url_patterns()
+	}
+	#[cfg(not(server))]
+	{
+		ServerRouter::new()
+	}
 }
 
-pub fn client_url_patterns() -> reinhardt::ClientRouter {
-	client_router::client_url_patterns()
+/// Client-side routes for login/logout/signup pages.
+pub fn client_url_patterns() -> ClientRouter {
+	ClientRouter::new()
+		.route("login", "/login/", pages::login_page)
+		.route("logout", "/logout/", pages::logout_page)
+		.route("signup", "/signup/", pages::signup_page)
+}
+
+/// Reverse a named users client route.
+pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
+	client_url_patterns()
+		.reverse(name, params)
+		.unwrap_or_else(|error| panic!("failed to reverse users client route `{name}`: {error}"))
 }

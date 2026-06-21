@@ -1978,9 +1978,13 @@ impl BaseCommand for RunServerCommand {
 		let no_spa = ctx.has_option("no-spa");
 		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let no_project_static = ctx.has_option("no-project-static");
+		#[cfg_attr(not(feature = "pages"), allow(unused_variables))]
 		let no_wasm = ctx.has_option("no-wasm");
+		#[cfg_attr(not(feature = "pages"), allow(unused_variables))]
 		let no_override_wasm = ctx.has_option("no-override-wasm");
+		#[cfg_attr(not(feature = "pages"), allow(unused_variables))]
 		let force_wasm_legacy = ctx.has_option("force-wasm");
+		#[cfg_attr(not(feature = "pages"), allow(unused_variables))]
 		let wasm_optional = ctx.has_option("wasm-optional");
 		// Build WASM frontend if --with-pages and not --no-wasm
 		#[cfg(feature = "pages")]
@@ -3191,7 +3195,7 @@ impl BaseCommand for ShowUrlsCommand {
 	}
 
 	fn description(&self) -> &str {
-		"Display all registered URL patterns"
+		"Display all registered server URL patterns"
 	}
 
 	fn options(&self) -> Vec<CommandOption> {
@@ -3222,7 +3226,7 @@ impl BaseCommand for ShowUrlsCommand {
 		let routes = router.get_all_routes();
 
 		if routes.is_empty() {
-			ctx.info("No routes registered.");
+			ctx.info("No server routes registered.");
 			return Ok(());
 		}
 
@@ -3230,7 +3234,7 @@ impl BaseCommand for ShowUrlsCommand {
 		let names_only = ctx.has_option("names");
 
 		// Display header
-		ctx.info("Registered URL patterns:");
+		ctx.info("Registered server URL patterns:");
 		ctx.info("");
 
 		if names_only {
@@ -3290,7 +3294,7 @@ impl BaseCommand for ShowUrlsCommand {
 		}
 
 		ctx.info("");
-		ctx.success(&format!("Total routes: {}", routes.len()));
+		ctx.success(&format!("Total server routes: {}", routes.len()));
 
 		Ok(())
 	}
