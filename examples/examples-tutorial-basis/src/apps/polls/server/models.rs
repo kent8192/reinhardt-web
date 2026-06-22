@@ -69,7 +69,7 @@ impl Choice {
 
 #[cfg(all(test, native))]
 mod tests {
-	use super::*;
+	use crate::apps::polls::server::models::*;
 	use rstest::rstest;
 
 	#[rstest]

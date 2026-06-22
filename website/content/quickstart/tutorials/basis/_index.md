@@ -86,7 +86,9 @@ examples-tutorial-basis/
 |   |   |       +-- admin.rs
 |   |   |       +-- models.rs
 |   |   |       +-- serializers.rs
-|   |   |       +-- urls.rs
+|   |   |   +-- urls/
+|   |   |       +-- client_router.rs
+|   |   |       +-- server_router.rs
 |   |   +-- users.rs
 |   |   +-- users/
 |   |       +-- client.rs
@@ -97,8 +99,10 @@ examples-tutorial-basis/
 |   |       +-- client/
 |   |       |   +-- components.rs
 |   |       +-- server/
-|   |           +-- models.rs
-|   |           +-- urls.rs
+|   |       |   +-- models.rs
+|   |       +-- urls/
+|   |           +-- client_router.rs
+|   |           +-- server_router.rs
 |   +-- client/
 |       +-- components.rs
 |       +-- components/
@@ -121,9 +125,9 @@ examples-tutorial-basis/
 
 Three rules keep this structure predictable:
 
-1. **Server and client are separate targets.** `#[cfg(server)]` code runs in the native server binary. `#[cfg(client)]` code runs in the browser as WASM. Database models, admin definitions, serializers, and server URL marker registration live under each app's `server/` module.
+1. **Server and client are separate targets.** `#[cfg(server)]` code runs in the native server binary. `#[cfg(client)]` code runs in the browser as WASM. Database models, admin definitions, and serializers live under each app's `server/` module; URL marker registration lives in `urls/server_router.rs` and is exposed through `urls.rs`.
 2. **Server functions are the bridge.** Anything the WASM client needs from the database goes through a `#[server_fn]` in `src/apps/<app>/server_fn.rs`. The client receives explicit wire DTOs from `src/shared/types.rs`, not server-only model modules.
-3. **Routing belongs to each app.** Each app exposes `server_url_patterns()` and `client_url_patterns()` from its target-neutral `src/apps/<app>/urls.rs`, and page entry points live in `src/apps/<app>/pages.rs`. The project-level `src/config/urls.rs` aggregates those app routers, session middleware, admin routes, and static-file routes.
+3. **Routing belongs to each app.** Each app exposes `server_url_patterns()` and `client_url_patterns()` from its target-neutral `src/apps/<app>/urls.rs`, which aggregates `urls/server_router.rs` and `urls/client_router.rs`. Page entry points live in `src/apps/<app>/pages.rs`. The project-level `src/config/urls.rs` aggregates those app routers, session middleware, admin routes, and static-file routes.
 
 ## Tutorial Structure
 

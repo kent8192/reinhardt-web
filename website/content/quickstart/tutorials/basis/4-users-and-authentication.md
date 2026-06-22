@@ -300,23 +300,38 @@ pub async fn current_user(
 
 ## Register Auth Routes
 
-The users app follows the same target-neutral route surface as polls. `src/apps/users/urls.rs` owns the client route table and delegates server markers to `src/apps/users/server/urls.rs`:
+The users app follows the same target-neutral route surface as polls. `src/apps/users/urls.rs` aggregates the split router modules:
 
 ```rust
 use reinhardt::{ClientRouter, ServerRouter};
 
-use super::pages;
+pub mod client_router;
+
+#[cfg(server)]
+pub mod server_router;
 
 pub fn server_url_patterns() -> ServerRouter {
     #[cfg(server)]
     {
-        super::server::urls::server_url_patterns()
+        server_router::server_url_patterns()
     }
     #[cfg(not(server))]
     {
         ServerRouter::new()
     }
 }
+
+pub fn client_url_patterns() -> ClientRouter {
+    client_router::client_url_patterns()
+}
+```
+
+Client routes live in `src/apps/users/urls/client_router.rs`:
+
+```rust
+use reinhardt::ClientRouter;
+
+use crate::apps::users::pages;
 
 pub fn client_url_patterns() -> ClientRouter {
     ClientRouter::new()
@@ -326,7 +341,7 @@ pub fn client_url_patterns() -> ClientRouter {
 }
 ```
 
-Server routes register server-function markers in `src/apps/users/server/urls.rs`:
+Server routes register server-function markers in `src/apps/users/urls/server_router.rs`:
 
 ```rust
 use crate::apps::users::server_fn::{current_user, login, logout, register};

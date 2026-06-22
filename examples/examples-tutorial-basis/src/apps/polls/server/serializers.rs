@@ -29,7 +29,7 @@ pub struct ChoiceSerializer {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::apps::polls::server::serializers::*;
 	use rstest::rstest;
 
 	#[rstest]

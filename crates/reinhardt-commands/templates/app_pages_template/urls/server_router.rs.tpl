@@ -10,8 +10,9 @@
 //! views/endpoints and server-function markers here:
 //!
 //! ```rust,ignore
-//! use super::views;
-//! use crate::apps::{{ app_name }}::server_fn;
+//! {% if is_workspace == "true" %}use crate::server::views;
+//! use crate::server_fn;{% else %}use crate::apps::{{ app_name }}::server::views;
+//! use crate::apps::{{ app_name }}::server_fn;{% endif %}
 //! use reinhardt::pages::server_fn::ServerFnRouterExt;
 //!
 //! ServerRouter::new()

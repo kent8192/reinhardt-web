@@ -368,12 +368,14 @@ src/
 │       │   ├── admin.rs          # admin registration
 │       │   ├── models.rs         # models
 │       │   ├── serializers.rs    # serializers
-│       │   ├── urls.rs           # server-function marker registration
 │       │   ├── models/           # (.gitkeep — user adds submodules here)
 │       │   └── serializers/      # (.gitkeep)
 │       ├── server_fn.rs          # bi-target #[server_fn] handlers (placeholder)
 │       ├── tests/                # (.gitkeep)
-│       └── urls.rs               # target-neutral server/client router surface
+│       ├── urls.rs               # target-neutral server/client router aggregate
+│       └── urls/
+│           ├── client_router.rs  # client route table and reverse helper
+│           └── server_router.rs  # server-function marker registration
 ├── bin/
 │   └── manage.rs                 # native-only management CLI entry
 ├── client.rs                     # #[cfg(client)] aggregator: pub mod lib; pub mod components;
@@ -426,9 +428,10 @@ pub fn server_url_patterns() -> ServerRouter {
 ```
 
 The `#[url_patterns]` attribute registers this router with the framework for
-automatic discovery. For Pages apps, use `mode = unified` and return
-`UnifiedRouter` instead (see the generated `urls/{server,client,ws}_urls.rs`
-submodules).
+automatic discovery. For Pages apps, keep the app-level `urls.rs` as the
+target-neutral aggregate and put route implementations in
+`urls/client_router.rs` and `urls/server_router.rs`; the project-level
+`src/config/urls.rs` mounts the aggregate functions.
 
 Include in `src/config/urls.rs`:
 
@@ -1155,7 +1158,7 @@ Register route with path parameter in `urls.rs`:
 // users/urls.rs
 use reinhardt::ServerRouter;
 
-use super::views;
+use crate::apps::users::views;
 
 pub fn url_patterns() -> ServerRouter {
 	ServerRouter::new()

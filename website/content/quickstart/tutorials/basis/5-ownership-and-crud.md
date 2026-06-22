@@ -283,7 +283,7 @@ let new_choice = Choice::build()
 
 ## Register the CRUD Server Functions
 
-Update `src/apps/polls/server/urls.rs`:
+Update `src/apps/polls/urls/server_router.rs`:
 
 ```rust
 ServerRouter::new()
@@ -302,7 +302,7 @@ ServerRouter::new()
 
 ## Add Client CRUD Routes
 
-Add question and choice routes in `src/apps/polls/urls.rs`:
+Add question and choice routes in `src/apps/polls/urls/client_router.rs`:
 
 ```rust
 ClientRouter::new()

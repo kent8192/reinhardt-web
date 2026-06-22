@@ -312,7 +312,7 @@ async fn app_pages_layout_matches_tutorial() {
 		"apps/polls.rs must carry the #[app_config] attribute:\n{polls_rs}"
 	);
 
-	// 2. Server-only submodules live under apps/<app>/server/.
+	// 2. Server-only implementation submodules live under apps/<app>/server/.
 	let polls_dir = apps.join("polls");
 	assert!(
 		polls_dir.join("server.rs").exists(),
@@ -331,10 +331,6 @@ async fn app_pages_layout_matches_tutorial() {
 		"apps/polls/server/serializers.rs must exist"
 	);
 	assert!(
-		server_dir.join("urls.rs").exists(),
-		"apps/polls/server/urls.rs must exist"
-	);
-	assert!(
 		server_dir.join("views.rs").exists(),
 		"apps/polls/server/views.rs must exist"
 	);
@@ -349,7 +345,7 @@ async fn app_pages_layout_matches_tutorial() {
 		"serializers.rs",
 		"views.rs",
 		"shared",
-		"urls",
+		"server/urls.rs",
 		"client/pages.rs",
 	] {
 		let path = polls_dir.join(unwanted);
@@ -392,9 +388,12 @@ async fn app_pages_layout_matches_tutorial() {
 		fs::read_to_string(polls_dir.join("pages.rs")).expect("read apps/polls/pages.rs");
 	assert!(
 		pages_rs.contains("pub fn placeholder_page")
+			&& pages_rs.contains("#[reinhardt::pages::component(\"/polls/\", \"placeholder\")]")
+			&& pages_rs.contains("use crate::apps::polls::client::components::placeholder;")
 			&& pages_rs.contains("#[cfg(client)]")
-			&& pages_rs.contains("Page::Empty"),
-		"apps/polls/pages.rs must define target-neutral route entries with gated UI details:\n{pages_rs}"
+			&& pages_rs.contains("Page::Empty")
+			&& !pages_rs.contains("super::"),
+		"apps/polls/pages.rs must define target-neutral route-backed entries with gated UI details:\n{pages_rs}"
 	);
 
 	let polls_components = polls_dir.join("client").join("components.rs");
@@ -408,20 +407,24 @@ async fn app_pages_layout_matches_tutorial() {
 		"apps/polls/client/components.rs must declare `pub fn placeholder`:\n{components_body}"
 	);
 
-	// 5. urls.rs is the target-neutral app router surface. The legacy
-	//    submodule and `unified_url_patterns` scaffolds are still forbidden.
+	// 5. urls.rs is the target-neutral app router aggregate. It delegates
+	//    implementation details to urls/client_router.rs and urls/server_router.rs.
 	let urls_rs = fs::read_to_string(polls_dir.join("urls.rs")).expect("read apps/polls/urls.rs");
 	assert!(
 		urls_rs.contains("pub fn server_url_patterns() -> ServerRouter"),
 		"apps/polls/urls.rs must expose server route aggregation through a target-neutral wrapper:\n{urls_rs}"
 	);
 	assert!(
+		urls_rs.contains("pub mod client_router") && urls_rs.contains("pub mod server_router"),
+		"apps/polls/urls.rs must aggregate client_router and server_router modules:\n{urls_rs}"
+	);
+	assert!(
 		urls_rs.contains("pub fn client_url_patterns() -> ClientRouter"),
 		"apps/polls/urls.rs must expose client route aggregation without cfg-gating the function:\n{urls_rs}"
 	);
 	assert!(
-		urls_rs.contains(".route(\"placeholder\", \"/polls/\", pages::placeholder_page)"),
-		"apps/polls/urls.rs must register a runnable placeholder client route:\n{urls_rs}"
+		urls_rs.contains("client_router::client_url_patterns()"),
+		"apps/polls/urls.rs must delegate client route implementation to client_router.rs:\n{urls_rs}"
 	);
 	assert!(
 		urls_rs.contains("pub fn reverse"),
@@ -455,16 +458,24 @@ async fn startapp_pages_layout_has_target_neutral_route_surface() {
 
 	let foo_dir = project_dir.join("src").join("apps").join("foo");
 
-	// 1. The target-neutral aggregator and server-only router module exist.
+	// 1. The target-neutral aggregator and split router modules exist.
 	let urls_rs = foo_dir.join("urls.rs");
-	let server_urls = foo_dir.join("server").join("urls.rs");
+	let client_router = foo_dir.join("urls").join("client_router.rs");
+	let server_router = foo_dir.join("urls").join("server_router.rs");
 	assert!(urls_rs.exists(), "apps/foo/urls.rs must exist");
-	assert!(server_urls.exists(), "apps/foo/server/urls.rs must exist");
-
-	// 2. The old urls/ submodule tree remains out of scope.
 	assert!(
-		!foo_dir.join("urls").exists(),
-		"apps/foo/urls/ must NOT be generated"
+		client_router.exists(),
+		"apps/foo/urls/client_router.rs must exist"
+	);
+	assert!(
+		server_router.exists(),
+		"apps/foo/urls/server_router.rs must exist"
+	);
+
+	// 2. ws_urls.rs remains out of scope.
+	assert!(
+		!foo_dir.join("urls").join("ws_urls.rs").exists(),
+		"apps/foo/urls/ws_urls.rs must NOT be generated"
 	);
 
 	// 3. The app-level route surface is target-neutral. Server-only details
@@ -484,8 +495,14 @@ async fn startapp_pages_layout_has_target_neutral_route_surface() {
 		"apps/foo/urls.rs must expose target-neutral reverse helpers:\n{urls_contents}"
 	);
 	assert!(
-		urls_contents.contains(".route(\"placeholder\", \"/foo/\", pages::placeholder_page)"),
-		"apps/foo/urls.rs must register the generated placeholder route:\n{urls_contents}"
+		urls_contents.contains("pub mod client_router")
+			&& urls_contents.contains("#[cfg(server)]\npub mod server_router"),
+		"apps/foo/urls.rs must aggregate split router modules:\n{urls_contents}"
+	);
+	assert!(
+		urls_contents.contains("client_router::client_url_patterns()")
+			&& urls_contents.contains("client_router::reverse(name, params)"),
+		"apps/foo/urls.rs must delegate client route implementation to client_router.rs:\n{urls_contents}"
 	);
 	assert!(
 		!urls_contents.contains("#[cfg(client)]\npub fn client_url_patterns")
@@ -493,27 +510,56 @@ async fn startapp_pages_layout_has_target_neutral_route_surface() {
 		"client route helpers must not be cfg-gated away from native builds:\n{urls_contents}"
 	);
 
-	// 4. Server-only router wiring defines its url_patterns function with an
+	// 4. Split router wiring defines url_patterns functions with empty bodies.
+	//    The body is isolated from the module doc-comment (which may quote an
+	//    example) by slicing the file at the `pub fn` definition before
+	//    searching for example calls.
+	let client_contents = fs::read_to_string(&client_router).expect("read client_router.rs");
+	assert_eq!(
+		client_contents.matches("#[url_patterns").count(),
+		0,
+		"client_router.rs must NOT carry the removed #[url_patterns] attribute:\n{client_contents}"
+	);
+	let client_body_start = client_contents
+		.find("pub fn client_url_patterns")
+		.expect("client_router.rs must define `pub fn client_url_patterns`");
+	let client_body = &client_contents[client_body_start..];
+	assert!(
+		client_body.contains(".component(pages::placeholder_page)"),
+		"client_router.rs must register the route-backed placeholder component:\n{client_body}"
+	);
+	assert!(
+		client_contents.contains("use crate::apps::foo::pages;")
+			&& !client_contents.contains("super::super::"),
+		"client_router.rs must use the app's absolute crate path instead of super::super:::\n{client_contents}"
+	);
+	assert!(
+		client_contents.contains("pub fn reverse"),
+		"client_router.rs must define `pub fn reverse`:\n{client_contents}"
+	);
+	assert!(
+		client_contents.contains("failed to reverse foo client route"),
+		"client_router.rs reverse helper must include the generated app name in panic context:\n{client_contents}"
+	);
+
+	// Server-only router wiring defines its url_patterns function with an
 	//    empty body. The body is isolated from the module doc-comment (which
 	//    may quote an example) by slicing the file at the `pub fn` definition
 	//    before searching for example calls.
-	//    The bodies are isolated from the module doc-comment (which may
-	//    legitimately quote an example) by slicing the file at the `pub fn`
-	//    definition before searching for example calls.
-	let server_contents = fs::read_to_string(&server_urls).expect("read server_urls.rs");
+	let server_contents = fs::read_to_string(&server_router).expect("read server_router.rs");
 	assert_eq!(
 		server_contents.matches("#[url_patterns").count(),
 		0,
-		"server_urls.rs must NOT carry the removed #[url_patterns] attribute:\n{server_contents}"
+		"server_router.rs must NOT carry the removed #[url_patterns] attribute:\n{server_contents}"
 	);
 	let server_body_start = server_contents
 		.find("pub fn server_url_patterns")
-		.expect("server_urls.rs must define `pub fn server_url_patterns`");
+		.expect("server_router.rs must define `pub fn server_url_patterns`");
 	let server_body = &server_contents[server_body_start..];
 	assert_eq!(
 		server_body.matches(".endpoint(views::").count(),
 		0,
-		"server_urls.rs function body must not embed example route calls:\n{server_body}"
+		"server_router.rs function body must not embed example route calls:\n{server_body}"
 	);
 
 	// 5. Per-app aggregator `apps/foo.rs` declares cfg-gated facades and
@@ -609,8 +655,12 @@ async fn workspace_app_pages_uses_unified_template() {
 		"apps/bar/src/urls.rs must exist"
 	);
 	assert!(
-		src.join("server").join("urls.rs").exists(),
-		"apps/bar/src/server/urls.rs must exist"
+		src.join("urls").join("client_router.rs").exists(),
+		"apps/bar/src/urls/client_router.rs must exist"
+	);
+	assert!(
+		src.join("urls").join("server_router.rs").exists(),
+		"apps/bar/src/urls/server_router.rs must exist"
 	);
 
 	// 3. The unified template now provides client/ and server_fn modules
@@ -666,13 +716,25 @@ async fn workspace_app_pages_uses_unified_template() {
 	//    would otherwise fail to compile under `-D warnings`).
 	let crate_import = "use crate::config::apps::InstalledApp;";
 	let project_import = format!("use {}::config::apps::InstalledApp;", project_name);
-	let server_urls =
-		fs::read_to_string(src.join("server").join("urls.rs")).expect("read server/urls.rs");
+	let server_urls = fs::read_to_string(src.join("urls").join("server_router.rs"))
+		.expect("read server_router.rs");
 	assert!(
 		!server_urls
 			.lines()
 			.any(|l| l.trim() == crate_import || l.trim() == project_import),
-		"workspace server_urls.rs must NOT import InstalledApp:\n{server_urls}"
+		"workspace server_router.rs must NOT import InstalledApp:\n{server_urls}"
+	);
+	let client_router = fs::read_to_string(src.join("urls").join("client_router.rs"))
+		.expect("read client_router.rs");
+	assert!(
+		!client_router
+			.lines()
+			.any(|l| l.trim() == crate_import || l.trim() == project_import),
+		"workspace client_router.rs must NOT import InstalledApp:\n{client_router}"
+	);
+	assert!(
+		client_router.contains("use crate::pages;") && !client_router.contains("super::super::"),
+		"workspace client_router.rs must import pages through crate:::\n{client_router}"
 	);
 
 	// 6. pages.rs imports with_nav from project crate, not crate::
@@ -690,6 +752,13 @@ async fn workspace_app_pages_uses_unified_template() {
 			.lines()
 			.any(|l| l.trim() == expected_workspace_with_nav),
 		"workspace pages.rs must import with_nav from project crate:\n{pages_rs}"
+	);
+	assert!(
+		pages_rs
+			.lines()
+			.any(|l| l.trim() == "use crate::client::components::placeholder;")
+			&& !pages_rs.contains("super::"),
+		"workspace pages.rs must import placeholder through crate:::\n{pages_rs}"
 	);
 
 	// 8. Cargo.toml is valid, references src/lib.rs, and depends on parent crate
@@ -753,17 +822,26 @@ async fn module_app_pages_does_not_generate_workspace_files() {
 	// app routers no longer reference it (an unused import would otherwise fail
 	// to compile under `-D warnings`).
 	let unwanted_module_import = "use crate::config::apps::InstalledApp;";
-	let server_urls = fs::read_to_string(apps.join("baz").join("server").join("urls.rs"))
-		.expect("read server_urls.rs");
+	let server_urls = fs::read_to_string(apps.join("baz").join("urls").join("server_router.rs"))
+		.expect("read server_router.rs");
 	assert!(
 		!server_urls
 			.lines()
 			.any(|l| l.trim() == unwanted_module_import),
-		"module server_urls.rs must NOT import InstalledApp:\n{server_urls}"
+		"module server_router.rs must NOT import InstalledApp:\n{server_urls}"
+	);
+	let client_router = fs::read_to_string(apps.join("baz").join("urls").join("client_router.rs"))
+		.expect("read client_router.rs");
+	assert!(
+		!client_router
+			.lines()
+			.any(|l| l.trim() == unwanted_module_import),
+		"module client_router.rs must NOT import InstalledApp:\n{client_router}"
 	);
 	assert!(
-		!apps.join("baz").join("urls").exists(),
-		"module app must NOT generate a urls/ subdirectory"
+		client_router.contains("use crate::apps::baz::pages;")
+			&& !client_router.contains("super::super::"),
+		"module client_router.rs must import pages through the app's absolute crate path:\n{client_router}"
 	);
 
 	// pages.rs with_nav import uses crate::, not project_crate_name::
@@ -774,5 +852,12 @@ async fn module_app_pages_does_not_generate_workspace_files() {
 			.lines()
 			.any(|l| l.trim() == expected_module_with_nav),
 		"module pages.rs must use crate:: for with_nav import:\n{pages_rs}"
+	);
+	assert!(
+		pages_rs
+			.lines()
+			.any(|l| l.trim() == "use crate::apps::baz::client::components::placeholder;")
+			&& !pages_rs.contains("super::"),
+		"module pages.rs must import placeholder through the app's absolute crate path:\n{pages_rs}"
 	);
 }

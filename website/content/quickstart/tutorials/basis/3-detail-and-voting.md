@@ -188,7 +188,7 @@ The helper increments `votes` and saves the row through the model lifecycle.
 
 ## Register the Server Functions
 
-Add the new markers in `src/apps/polls/server/urls.rs`:
+Add the new markers in `src/apps/polls/urls/server_router.rs`:
 
 ```rust
 ServerRouter::new()
@@ -203,7 +203,7 @@ Server-function routes stay app-local. `src/config/urls.rs` should still mount `
 
 ## Add Client Routes
 
-Add detail and results routes in `src/apps/polls/urls.rs`:
+Add detail and results routes in `src/apps/polls/urls/client_router.rs`:
 
 ```rust
 ClientRouter::new()

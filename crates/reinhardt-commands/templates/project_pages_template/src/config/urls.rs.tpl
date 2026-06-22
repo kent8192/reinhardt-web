@@ -5,8 +5,8 @@
 //! ## Aggregating app routers
 //!
 //! Each app owns its server-function marker registrations in
-//! `src/apps/<app>/server/urls.rs` and exposes them through the
-//! target-neutral wrapper in `src/apps/<app>/urls.rs`. After running
+//! `src/apps/<app>/urls/server_router.rs` and exposes them through the
+//! target-neutral aggregate in `src/apps/<app>/urls.rs`. After running
 //! `reinhardt-admin startapp <name> --with-pages`, aggregate the app-level
 //! router functions here:
 //!
@@ -22,8 +22,9 @@
 //! ## Registering client routers
 //!
 //! Client route tables for each app are declared in
-//! `src/apps/<app>/urls.rs`. Aggregate them here with `mount_unified`; the
-//! WASM launcher collects the route table from the `#[routes]` registration.
+//! `src/apps/<app>/urls/client_router.rs`. Aggregate them here through each
+//! app's `urls.rs`; the WASM launcher collects the route table from the
+//! `#[routes]` registration.
 
 use reinhardt::prelude::*;
 use reinhardt::routes;

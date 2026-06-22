@@ -3,4 +3,3 @@
 pub mod admin;
 pub mod models;
 pub mod serializers;
-pub mod urls;

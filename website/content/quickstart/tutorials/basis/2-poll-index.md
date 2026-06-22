@@ -222,23 +222,42 @@ The current reference implementation takes five rows from the manager query. Do 
 
 ## Split Server and Client Routes
 
-The app-level `src/apps/polls/urls.rs` stays target-neutral. It delegates server marker registration to `src/apps/polls/server/urls.rs`, and keeps the client route table in the same root module:
+The app-level `src/apps/polls/urls.rs` stays target-neutral. It aggregates the split router modules:
 
 ```rust
 use reinhardt::{ClientRouter, ServerRouter};
 
-use super::pages;
+pub mod client_router;
+
+#[cfg(server)]
+pub mod server_router;
 
 pub fn server_url_patterns() -> ServerRouter {
     #[cfg(server)]
     {
-        super::server::urls::server_url_patterns()
+        server_router::server_url_patterns()
     }
     #[cfg(not(server))]
     {
         ServerRouter::new()
     }
 }
+
+pub fn client_url_patterns() -> ClientRouter {
+    client_router::client_url_patterns()
+}
+
+pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
+    client_router::reverse(name, params)
+}
+```
+
+Put the client route table in `src/apps/polls/urls/client_router.rs`:
+
+```rust
+use reinhardt::ClientRouter;
+
+use crate::apps::polls::pages;
 
 pub fn client_url_patterns() -> ClientRouter {
     ClientRouter::new().route("index", "/", pages::index_page)
@@ -251,7 +270,7 @@ pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
 }
 ```
 
-Register the server function in `src/apps/polls/server/urls.rs`:
+Register the server function in `src/apps/polls/urls/server_router.rs`:
 
 ```rust
 use crate::apps::polls::server_fn::get_questions;

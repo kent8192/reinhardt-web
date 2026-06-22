@@ -27,7 +27,7 @@ This example corresponds to the basis tutorial parts 1-7:
 The example exposes its dynamic business logic through the pages stack:
 
 - **Typed RPC server functions** in `src/apps/<app>/server_fn.rs` — `#[server_fn]` functions (`get_questions`, `get_question_detail`, `vote`, `create_question`, …, plus `login` / `logout` / `register` / `current_user` for the `users` app). The macro generates a typed client stub for WASM and a server-side handler for native; dependencies are resolved positionally with `#[inject]` (`DatabaseConnection`, `SessionData`, …).
-- **Per-app URL modules** in `src/apps/<app>/urls.rs` — each app exposes `server_url_patterns()` and `client_url_patterns()` from one target-neutral surface; server-function markers stay in `src/apps/<app>/server/urls.rs`, while `src/config/urls.rs` only aggregates the app-level router functions.
+- **Per-app URL modules** in `src/apps/<app>/urls.rs` — each app exposes `server_url_patterns()` and `client_url_patterns()` from one target-neutral aggregate; server-function markers stay in `src/apps/<app>/urls/server_router.rs`, client route tables stay in `src/apps/<app>/urls/client_router.rs`, and `src/config/urls.rs` only aggregates the app-level router functions.
 - **App-local page entry points** in `src/apps/<app>/pages.rs` — native builds use these functions for route metadata and WASM builds call into `src/apps/<app>/client/components.rs`.
 - **Dynamic WASM forms** in `src/apps/polls/client/components.rs` — the poll detail route builds its `RadioSelect` voting form from the choices returned by `get_question_detail`, so each loaded choice becomes a submitted `choice_id` option.
 
@@ -42,7 +42,7 @@ The project router mounts per-app server routers on native and merges per-app cl
 | `/polls/{question_id}/results/` | SPA results route (`polls:results`) backed by `get_question_results` | `apps/polls/urls.rs` + `server_fn.rs` |
 | `/polls/new/`, `/polls/{question_id}/edit/`, `/polls/{question_id}/delete/` | Author-only CUD client routes backed by `#[server_fn]`s | `apps/polls/urls.rs` + `apps/polls/server_fn.rs` |
 | `/polls/{question_id}/choices/new/`, `…/edit/`, `…/delete/` | Choice CUD client routes backed by `#[server_fn]`s | `apps/polls/urls.rs` + `server_fn.rs` |
-| `/login/`, `/logout/`, `/signup/` | Auth client routes; server functions registered in `apps/users/server/urls.rs` | `apps/users/urls.rs` + `apps/users/server_fn.rs` |
+| `/login/`, `/logout/`, `/signup/` | Auth client routes; server functions registered in `apps/users/urls/server_router.rs` | `apps/users/urls.rs` + `apps/users/server_fn.rs` |
 | `/admin/` | Admin shell and admin route/static wiring. The embedded shell falls back to a placeholder unless the admin WASM SPA is built. | `src/config/admin.rs` mounted in `src/config/urls.rs` |
 
 ## Setup
@@ -148,11 +148,13 @@ examples-tutorial-basis/
 │   │   │   ├── server/
 │   │   │   │   ├── admin.rs
 │   │   │   │   ├── models.rs
-│   │   │   │   ├── serializers.rs
-│   │   │   │   └── urls.rs
+│   │   │   │   └── serializers.rs
 │   │   │   ├── server.rs
 │   │   │   ├── server_fn.rs
-│   │   │   └── urls.rs
+│   │   │   ├── urls.rs
+│   │   │   └── urls/
+│   │   │       ├── client_router.rs
+│   │   │       └── server_router.rs
 │   │   ├── polls.rs
 │   │   └── users/
 │   │       ├── client/
@@ -160,11 +162,13 @@ examples-tutorial-basis/
 │   │       ├── client.rs
 │   │       ├── pages.rs
 │   │       ├── server/
-│   │       │   ├── models.rs
-│   │       │   └── urls.rs
+│   │       │   └── models.rs
 │   │       ├── server.rs
 │   │       ├── server_fn.rs
-│   │       └── urls.rs
+│   │       ├── urls.rs
+│   │       └── urls/
+│   │           ├── client_router.rs
+│   │           └── server_router.rs
 │   ├── apps.rs
 │   ├── bin/
 │   │   └── manage.rs
@@ -215,7 +219,7 @@ This example is designed to be studied alongside the basis tutorial:
 - `src/apps/users/server/models.rs` defines the tutorial `User` model with `#[user]` and the injectable `AuthUserManager`.
 - `src/apps/polls/server_fn.rs` and `src/apps/users/server_fn.rs` expose typed `#[server_fn]` RPC handlers for the WASM client.
 - `src/apps/polls/urls.rs` and `src/apps/users/urls.rs` expose the app-level server and client router functions that `src/config/urls.rs` aggregates.
-- `src/apps/polls/server/urls.rs` and `src/apps/users/server/urls.rs` provide native `ServerRouter` registrations.
+- `src/apps/polls/urls/server_router.rs` and `src/apps/users/urls/server_router.rs` provide native `ServerRouter` registrations.
 - `src/apps/polls/pages.rs` and `src/apps/users/pages.rs` provide target-neutral page entry points used by the client routers.
 - `src/client/lib.rs` starts the browser app with `ClientLauncher::new("#root").register_routes_from_inventory().launch()`.
 - `src/apps/polls/client/components.rs`, `src/apps/users/client/components.rs`, and `src/client/components/nav.rs` define the page components used by the SPA.
