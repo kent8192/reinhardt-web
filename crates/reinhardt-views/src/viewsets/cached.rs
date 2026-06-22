@@ -143,6 +143,7 @@ impl CachedResponse {
 /// use reinhardt_views::viewsets::{CachedViewSet, CacheConfig, ModelViewSet};
 /// use reinhardt_utils::cache::InMemoryCache;
 /// use reinhardt_db::orm::{FieldSelector, Model};
+/// use reinhardt_rest::serializers::JsonSerializer;
 /// use std::time::Duration;
 ///
 /// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -164,8 +165,7 @@ impl CachedResponse {
 ///     fn new_fields() -> Self::Fields { UserFields }
 /// }
 ///
-/// #[derive(Debug, Clone)]
-/// struct UserSerializer;
+/// type UserSerializer = JsonSerializer<User>;
 ///
 /// # async fn example() {
 /// let cache = InMemoryCache::new();

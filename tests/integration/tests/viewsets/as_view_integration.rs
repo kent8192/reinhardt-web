@@ -6,6 +6,7 @@
 use hyper::{HeaderMap, Method, Uri, Version};
 use reinhardt_http::Request;
 use reinhardt_macros::model;
+use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_views::viewsets::viewset::ModelViewSet;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -50,7 +51,7 @@ fn create_test_request_with_body(method: Method, path: &str, body: &'static str)
 
 #[tokio::test]
 async fn test_viewset_handler_attribute_tracking() {
-	let viewset = ModelViewSet::<TestModel, ()>::new("test");
+	let viewset = ModelViewSet::<TestModel, JsonSerializer<TestModel>>::new("test");
 	let mut actions = HashMap::new();
 	actions.insert(Method::GET, "list".to_string());
 
@@ -67,7 +68,7 @@ async fn test_viewset_handler_attribute_tracking() {
 
 #[tokio::test]
 async fn test_viewset_handler_action_mapping() {
-	let viewset = ModelViewSet::<TestModel, ()>::new("test");
+	let viewset = ModelViewSet::<TestModel, JsonSerializer<TestModel>>::new("test");
 	let mut actions = HashMap::new();
 	actions.insert(Method::GET, "list".to_string());
 	actions.insert(Method::POST, "create".to_string());

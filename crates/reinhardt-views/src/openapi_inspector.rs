@@ -24,6 +24,7 @@ use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
 /// # use reinhardt_views::openapi_inspector::ViewSetInspector;
 /// # use reinhardt_views::viewsets::ModelViewSet;
 /// # use reinhardt_db::orm::{FieldSelector, Model};
+/// # use reinhardt_rest::serializers::JsonSerializer;
 /// # use serde::{Deserialize, Serialize};
 /// #
 /// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,8 +45,7 @@ use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
 /// #     fn new_fields() -> Self::Fields { UserFields }
 /// # }
 /// #
-/// # #[derive(Debug, Clone)]
-/// # struct UserSerializer;
+/// # type UserSerializer = JsonSerializer<User>;
 /// #
 /// # let viewset = ModelViewSet::<User, UserSerializer>::new("users");
 /// let inspector = ViewSetInspector::new();
@@ -122,6 +122,7 @@ impl ViewSetInspector {
 	/// # use reinhardt_views::openapi_inspector::ViewSetInspector;
 	/// # use reinhardt_views::viewsets::ModelViewSet;
 	/// # use reinhardt_db::orm::{FieldSelector, Model};
+	/// # use reinhardt_rest::serializers::JsonSerializer;
 	/// # use serde::{Deserialize, Serialize};
 	/// #
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,8 +138,7 @@ impl ViewSetInspector {
 	/// #     fn set_primary_key(&mut self, v: i64) { self.id = Some(v); }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// # }
-	/// # #[derive(Debug, Clone)]
-	/// # struct UserSerializer;
+	/// # type UserSerializer = JsonSerializer<User>;
 	/// #
 	/// # let viewset = ModelViewSet::<User, UserSerializer>::new("users");
 	/// let inspector = ViewSetInspector::new();
@@ -260,6 +260,7 @@ impl ViewSetInspector {
 	/// # use reinhardt_views::openapi_inspector::ViewSetInspector;
 	/// # use reinhardt_views::viewsets::ModelViewSet;
 	/// # use reinhardt_db::orm::{FieldSelector, Model};
+	/// # use reinhardt_rest::serializers::JsonSerializer;
 	/// # use serde::{Deserialize, Serialize};
 	/// #
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -275,8 +276,7 @@ impl ViewSetInspector {
 	/// #     fn set_primary_key(&mut self, v: i64) { self.id = Some(v); }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// # }
-	/// # #[derive(Debug, Clone)]
-	/// # struct UserSerializer;
+	/// # type UserSerializer = JsonSerializer<User>;
 	/// #
 	/// # let viewset = ModelViewSet::<User, UserSerializer>::new("users");
 	/// let inspector = ViewSetInspector::new();
