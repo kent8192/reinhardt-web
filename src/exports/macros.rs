@@ -11,6 +11,7 @@ pub use reinhardt_macros::settings;
 pub use reinhardt_macros::{Model, model};
 
 pub use reinhardt_macros::dto;
+pub use reinhardt_macros::user;
 
 #[cfg(all(feature = "database", native))]
 pub use reinhardt_macros::collect_migrations;
