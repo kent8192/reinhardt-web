@@ -9,5 +9,7 @@ pub mod models;
 
 #[cfg(client)]
 pub mod client;
+#[cfg(server)]
+pub mod services;
 pub mod server_fn;
 pub mod urls;

@@ -24,7 +24,7 @@ The reference implementation lives in [`examples/examples-tutorial-basis`](https
 
 - Basic Rust and Cargo knowledge.
 - `cargo make` installed.
-- Docker Desktop running for the disposable PostgreSQL and Redis development containers.
+- SQLite support through the Reinhardt feature flags used in Part 1.
 - A browser capable of running WebAssembly.
 
 ## What You'll Build
@@ -79,6 +79,7 @@ examples-tutorial-basis/
 |   |   |   +-- client.rs
 |   |   |   +-- models.rs
 |   |   |   +-- serializers.rs
+|   |   |   +-- services.rs
 |   |   |   +-- server_fn.rs
 |   |   |   +-- urls.rs
 |   |   |   +-- client/
@@ -91,6 +92,7 @@ examples-tutorial-basis/
 |   |   +-- users/
 |   |       +-- client.rs
 |   |       +-- models.rs
+|   |       +-- services.rs
 |   |       +-- server_fn.rs
 |   |       +-- urls.rs
 |   |       +-- client/
@@ -130,7 +132,7 @@ Three rules keep this structure predictable:
 
 ### [Part 1: Project Setup and SPA Shell](1-project-setup/)
 
-Generate a pages project, inspect the `src/{apps,config,shared,client,bin}` layout, wire settings through `ProjectSettings`, install the WASM tools, and run the empty SPA shell.
+Generate a pages project with explicit feature flags, inspect the `src/{apps,config,shared,client,bin}` layout, wire SQLite settings through `ProjectSettings`, install the WASM tools, and run the empty SPA shell.
 
 ### [Part 2: Your First Feature - the Poll Index](2-poll-index/)
 

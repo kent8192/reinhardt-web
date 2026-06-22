@@ -11,7 +11,7 @@ sidebar_weight = 20
 
 In this part you will build the first vertical slice: a `polls` app with `Question` and `Choice` models, a first migration, a `get_questions` server function, and a WASM index page that lists polls.
 
-Ownership and authentication come later. That is deliberate. The first migration creates polls without an `author_id` column; Part 5 adds ownership with a second migration.
+Ownership and authentication come later. That is deliberate. The first migration creates polls without an `author` field; Part 5 adds ownership with a second migration.
 
 ## Create the Polls App
 
@@ -84,7 +84,7 @@ cargo make makemigrations
 cargo make migrate
 ```
 
-The generated migration should create `questions` with `id`, `pub_date`, and `question_text`, but no `author_id`. The reference migration's `questions` table contains only these columns:
+The generated migration should create `questions` with `id`, `pub_date`, and `question_text`, but no ownership column. The reference migration's `questions` table contains only these columns:
 
 ```rust
 Operation::CreateTable {
@@ -125,7 +125,7 @@ Operation::CreateTable {
 }
 ```
 
-If `author_id` appears in `0001_initial.rs`, you have accidentally skipped ahead to Part 5.
+If an ownership column appears in `0001_initial.rs`, you have accidentally skipped ahead to Part 5.
 
 ## Re-export the Shared Info Types
 
@@ -169,7 +169,11 @@ pub async fn get_questions(
 }
 ```
 
-The current reference implementation takes five rows from the manager query. Do not rely on a specific ordering until you add one explicitly.
+Both `.all()` calls are required with the current manager/queryset API: the
+first call starts a `QuerySet<Question>` from the manager, and the second call
+executes that queryset asynchronously. The current reference implementation
+takes five rows from the manager query. Do not rely on a specific ordering until
+you add one explicitly.
 
 ## Split Server and Client Routes
 
@@ -309,21 +313,19 @@ The final example adds a "Create new poll" button and owner-only controls. Leave
 
 ## Seed a Poll
 
-Until the admin arrives in Part 6, the quickest local seed is SQL. Use the same database that `cargo make dev` points at:
+Until the admin arrives in Part 6, the quickest local seed is SQL. Use the same SQLite database that `cargo make dev` points at:
 
 ```sql
-with inserted_question as (
-    insert into questions (question_text, pub_date)
-    values ('What should we build next?', now())
-    returning id
-)
+insert into questions (question_text, pub_date)
+values ('What should we build next?', datetime('now'));
+
 insert into choices (question_id, choice_text, votes)
-select id, 'More tutorials', 0 from inserted_question
-union all
-select id, 'More examples', 0 from inserted_question;
+values
+    (last_insert_rowid(), 'More tutorials', 0),
+    (last_insert_rowid(), 'More examples', 0);
 ```
 
-If your database does not support `now()` or data-modifying common table expressions, use the timestamp and inserted-ID syntax it expects.
+Run it with `sqlite3 db.sqlite3` from the project root after `cargo make migrate`.
 
 ## Checkpoint
 
@@ -337,7 +339,7 @@ Open `http://127.0.0.1:8000/`. You should see the poll list rendered by the WASM
 
 Before continuing:
 
-- `migrations/polls/0001_initial.rs` has no `author_id`.
+- `migrations/polls/0001_initial.rs` has no ownership column.
 - `get_questions` returns `Vec<QuestionInfo>`.
 - `src/config/urls.rs` aggregates `polls::urls::server_url_patterns()` and `polls::urls::client_url_patterns()`.
 - The browser renders the poll index through `ClientLauncher`.

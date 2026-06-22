@@ -16,6 +16,8 @@ pub mod client;
 pub mod models;
 #[cfg(server)]
 pub mod serializers;
+#[cfg(server)]
+pub mod services;
 pub mod server_fn;
 pub mod urls;
 

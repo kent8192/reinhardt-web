@@ -131,8 +131,15 @@ async fn startproject_pages_from_embedded_only() {
 		"package = \"reinhardt-web\", default-features = false, features = [\"pages\", \"client-router\"]"
 	));
 	assert!(cargo_toml.contains(
-		"features = [\"standard\", \"pages\", \"admin\", \"conf\", \"commands\", \"db-postgres\"]"
+		"features = [\"standard\", \"pages\", \"admin\", \"conf\", \"commands-server\", \"commands-autoreload\", \"db-sqlite\", \"forms\", \"auth-session\", \"middleware\", \"argon2-hasher\", \"static-files\"]"
 	));
+	let base_settings =
+		std::fs::read_to_string(generated.join("settings/base.example.toml")).unwrap();
+	assert!(
+		base_settings.contains("engine = \"sqlite\"")
+			&& base_settings.contains("name = \"db.sqlite3\""),
+		"generated pages project should default to a local SQLite database:\n{base_settings}"
+	);
 	let makefile_toml = std::fs::read_to_string(generated.join("Makefile.toml")).unwrap();
 	assert!(
 		makefile_toml.contains("\"--no-input\""),
@@ -188,7 +195,7 @@ async fn startproject_pages_adds_required_pages_features() {
 	let cargo_toml =
 		std::fs::read_to_string(tmp.path().join("pages_feature_proj/Cargo.toml")).unwrap();
 	assert!(cargo_toml.contains(
-		"features = [\"minimal\", \"pages\", \"admin\", \"conf\", \"commands\", \"db-postgres\"]"
+		"features = [\"minimal\", \"pages\", \"admin\", \"conf\", \"commands-server\", \"commands-autoreload\", \"db-sqlite\", \"forms\", \"auth-session\", \"middleware\", \"argon2-hasher\", \"static-files\"]"
 	));
 	assert_manifest_parses(&tmp.path().join("pages_feature_proj/Cargo.toml"));
 }

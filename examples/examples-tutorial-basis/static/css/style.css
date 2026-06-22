@@ -471,6 +471,31 @@ label {
 	color: var(--success);
 }
 
+/* Navigation ------------------------------------------------------ */
+.nav-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	border-bottom: 1px solid var(--border-color);
+	padding-bottom: 0.75rem;
+}
+
+.nav-brand {
+	flex: 0 0 auto;
+}
+
+.nav-actions {
+	flex: 0 1 auto;
+	min-width: 0;
+}
+
+.nav-username {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
 /* Spinner ---------------------------------------------------------- */
 .spinner {
 	display: inline-block;
@@ -517,6 +542,16 @@ img {
 @media (max-width: 640px) {
 	html {
 		font-size: 15px;
+	}
+
+	.nav-bar {
+		align-items: flex-start;
+	}
+
+	.nav-actions {
+		width: 100%;
+		justify-content: flex-start;
+		flex-wrap: wrap;
 	}
 }
 

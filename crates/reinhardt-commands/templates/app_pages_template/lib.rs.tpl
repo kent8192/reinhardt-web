@@ -3,7 +3,7 @@
 //! A Reinhardt Pages app whose server-side and client-side code both live
 //! under this directory:
 //!
-//! - `admin` / `models` / `serializers` / `views` — server-only
+//! - `admin` / `models` / `serializers` / `services` / `views` — server-only
 //! - `server_fn` / `urls` — bi-target (gate internally)
 //! - `client` — WASM-only (per-app UI + page wrappers)
 
@@ -16,6 +16,8 @@ pub mod admin;
 pub mod models;
 #[cfg(server)]
 pub mod serializers;
+#[cfg(server)]
+pub mod services;
 #[cfg(server)]
 pub mod views;
 

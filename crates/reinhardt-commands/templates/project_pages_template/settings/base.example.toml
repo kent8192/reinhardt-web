@@ -31,12 +31,8 @@ secure_hsts_preload = false
 append_slash = true
 
 [core.databases.default]
-engine = "postgresql"
-host = "localhost"
-port = 5432
-name = "{{ project_name }}_db"
-user = "postgres"
-# password = "uncomment-this-line-and-replace-with-db-password"
+engine = "sqlite"
+name = "db.sqlite3"
 
 [static]
 url = "/static/"
