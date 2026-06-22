@@ -33,14 +33,14 @@ pub fn nav_bar() -> Page {
 	page!(|auth_signal: Action<Option<UserInfo>, String>, polls_index_href: String, login_href: String, logout_href: String, signup_href: String| {
 		nav {
 			class: "nav-bar",
-				a {
-					href: polls_index_href,
-					class: "nav-brand font-bold text-lg text-content-primary",
-					"Polls"
-				}
-				if auth_signal.is_pending() {
-					div {
-						class: "nav-actions flex items-center gap-3",
+			a {
+				href: polls_index_href,
+				class: "nav-brand font-bold text-lg text-content-primary",
+				"Polls"
+			}
+			if auth_signal.is_pending() {
+				div {
+					class: "nav-actions flex items-center gap-3",
 					aria_busy: "true",
 					span {
 						class: "sr-only",
@@ -55,14 +55,12 @@ pub fn nav_bar() -> Page {
 						aria_hidden: "true",
 					}
 				}
-				} else if let Some(Some(user)) = auth_signal.result() {
-					div {
-						class: "nav-actions flex items-center gap-3",
-						span {
-							class: "nav-username text-sm text-muted",
-						{
-							format!("Signed in as {}", user.username)
-						}
+			} else if let Some(Some(user)) = auth_signal.result() {
+				div {
+					class: "nav-actions flex items-center gap-3",
+					span {
+						class: "nav-username text-sm text-muted",
+						{ format!("Signed in as {}", user.username) }
 					}
 					a {
 						href: logout_href.clone(),
@@ -70,9 +68,9 @@ pub fn nav_bar() -> Page {
 						"Logout"
 					}
 				}
-				} else {
-					div {
-						class: "nav-actions flex items-center gap-2",
+			} else {
+				div {
+					class: "nav-actions flex items-center gap-2",
 					a {
 						href: signup_href.clone(),
 						class: "btn-secondary",
