@@ -37,7 +37,7 @@ installed_apps! {
 Open `src/apps/users/models.rs`. The example uses a minimal user model, not `full = true`:
 
 ```rust
-#[cfg_attr(native, user(hasher = Argon2Hasher, username_field = "username", manager = false))]
+#[user(hasher = reinhardt::Argon2Hasher, username_field = "username", manager = false)]
 #[model(app_label = "users", table_name = "users")]
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct User {
