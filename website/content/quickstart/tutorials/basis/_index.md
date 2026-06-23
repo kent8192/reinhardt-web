@@ -24,6 +24,7 @@ The reference implementation lives in [`examples/examples-tutorial-basis`](https
 
 - Basic Rust and Cargo knowledge.
 - `cargo make` installed.
+- `wasm32-unknown-unknown` target and `wasm-pack` installed.
 - SQLite support through the Reinhardt feature flags used in Part 1.
 - A browser capable of running WebAssembly.
 
@@ -106,7 +107,6 @@ examples-tutorial-basis/
 |       +-- components/
 |       |   +-- nav.rs
 |       +-- lib.rs
-|       +-- pages.rs
 +-- migrations/
 |   +-- polls/
 |       +-- 0001_initial.rs

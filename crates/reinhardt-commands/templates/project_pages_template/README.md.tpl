@@ -5,7 +5,8 @@ A Reinhardt Pages project with WASM frontend and server-side rendering.
 ## Prerequisites
 
 - Rust 1.94.1 or later (2024 Edition)
-- wasm-bindgen-cli: `cargo install wasm-bindgen-cli`
+- cargo-make: `cargo install cargo-make`
+- wasm-pack: `cargo install wasm-pack`
 - SQLite for the generated local database
 
 ## Getting Started
@@ -45,17 +46,16 @@ cargo build --release
 ```
 {{ project_name }}/
 ├── src/
-│   ├── client/       # WASM UI (runs in browser)
-│   │   ├── lib.rs     # WASM entry point
-│   │   ├── router.rs  # Client-side routing
-│   │   └── state.rs   # Global state management
-│   ├── server/       # Server functions (runs on server)
-│   │   └── server_fn.rs
-│   ├── shared/       # Shared types (used by both)
+│   ├── client/       # WASM shell (entry point and shared layout)
+│   │   ├── lib.rs
+│   │   └── components.rs
+│   ├── apps/         # App-local models, server functions, routes, and pages
+│   ├── shared/       # Shared types and server form metadata
 │   │   ├── types.rs
-│   │   └── errors.rs
+│   │   └── forms.rs
 │   └── config/       # Server configuration
 ├── dist/             # WASM build output
+├── dist-wasm/        # wasm-pack output before collectstatic
 ├── index.html        # WASM entry HTML
 └── Cargo.toml
 ```
@@ -64,14 +64,14 @@ cargo build --release
 
 ```bash
 # Create a new app
-cargo run --bin {{ project_name }} startapp myapp --with-pages
+cargo run --bin manage startapp myapp --with-pages
 
-# Database migrations
-cargo run --bin {{ project_name }} makemigrations
-cargo run --bin {{ project_name }} migrate
+# Database migrations (when using database features)
+cargo run --bin manage makemigrations
+cargo run --bin manage migrate
 
 # Check project for issues
-cargo run --bin {{ project_name }} check
+cargo run --bin manage check
 ```
 
 ## WASM Build Commands
@@ -87,4 +87,4 @@ cargo make wasm-clean          # Clean WASM build artifacts
 
 - [Reinhardt Documentation](https://github.com/kent8192/reinhardt-rs)
 - [Reinhardt Pages Guide](https://github.com/kent8192/reinhardt-rs/tree/main/docs)
-- [wasm-bindgen Documentation](https://rustwasm.github.io/wasm-bindgen/)
+- [wasm-pack Documentation](https://rustwasm.github.io/wasm-pack/)
