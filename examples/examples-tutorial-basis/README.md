@@ -20,7 +20,7 @@ This example corresponds to the basis tutorial parts 1-7:
 
 - **`Question`** (`src/apps/polls/server/models.rs`) — poll question with `question_text`, `pub_date` (`auto_now_add`), and an `author` foreign key to `User` (`#[rel(foreign_key, related_name = "questions")]`).
 - **`Choice`** (`src/apps/polls/server/models.rs`) — answer option with a `question` foreign key (`#[rel(foreign_key, related_name = "choices")]`), `choice_text`, and a `votes` counter.
-- **`User`** (`src/apps/users/server/models.rs`) — minimal authentication model defined with `#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]` on top of `#[model(app_label = "users", table_name = "users")]`. `manager = false` opts out of the auto-generated user manager so the example can register a project-local `AuthUserManager` via a keyed `#[injectable(scope = "transient")]` provider.
+- **`User`** (`src/apps/users/server/models.rs`) — minimal authentication model defined with `#[user(hasher = reinhardt::Argon2Hasher, username_field = "username", manager = false)]` on top of `#[model(app_label = "users", table_name = "users")]`. `manager = false` opts out of the auto-generated user manager so the example can register a project-local `AuthUserManager` via a keyed `#[injectable(scope = "transient")]` provider.
 
 ### Server Functions and Pages
 
