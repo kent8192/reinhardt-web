@@ -38,12 +38,7 @@ Open `src/apps/users/models.rs`. The example uses a minimal user model, without
 the expanded profile fields:
 
 ```rust
-#[cfg(native)]
-use reinhardt::Argon2Hasher;
-#[cfg(native)]
-use reinhardt::macros::user;
-
-#[cfg_attr(native, user(hasher = Argon2Hasher, username_field = "username", manager = false))]
+#[user(hasher = reinhardt::Argon2Hasher, username_field = "username", manager = false)]
 #[model(app_label = "users", table_name = "users")]
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -72,11 +67,10 @@ pub struct User {
 
 `manager = false` opts out of the generated user manager because this tutorial keeps a project-local manager that owns password hashing, uniqueness checks, and persistence.
 
-Keep the `cfg_attr(native, user(...))` gate. `models.rs` itself is not
-`#[cfg(native)]`: the browser still needs the macro-generated `UserInfo`
-companion type for `current_user()` responses. The `#[user]` macro and
-`Argon2Hasher` are native-only authentication pieces, so only that attribute and
-its imports are gated.
+Keep `#[user(...)]` directly on the shared model. On native targets it emits the
+authentication integrations; on `wasm32-unknown-unknown` it stays inert while
+preserving the macro-generated shared model metadata such as the `UserInfo`
+companion type used by `current_user()` responses.
 
 ## Add the Auth User Manager
 
