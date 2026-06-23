@@ -33,6 +33,8 @@ installed_apps! {
 
 The completed example also registers `users`, but do not add it until Part 4.
 
+The generated Pages app keeps `models`, `server_fn`, and `urls` available to both targets. Server-only modules such as `admin`, `serializers`, and `views` remain gated inside `src/apps/polls.rs`. That split lets the browser import the generated `QuestionInfo` and `ChoiceInfo` model-info types through `src/shared/types.rs`.
+
 ## Add the Initial Models
 
 Open `src/apps/polls/models.rs` and add the first version of the poll models:
@@ -208,7 +210,7 @@ pub fn server_url_patterns() -> ServerRouter {
 Register the index client route in `src/apps/polls/urls/client_router.rs`:
 
 ```rust
-use crate::client::pages::index_page;
+use crate::apps::polls::client::pages::index_page;
 use reinhardt::ClientRouter;
 
 pub fn client_url_patterns() -> ClientRouter {
@@ -248,11 +250,14 @@ ClientLauncher::new("#root")
     .launch()
 ```
 
-The page aggregator maps the named route to the polls component:
+The app-local page wrapper maps the named route to the polls component. Replace the generated placeholder in `src/apps/polls/client/pages.rs` with:
 
 ```rust
+use crate::client::components::nav::with_nav;
+use reinhardt::pages::component::Page;
+
 pub fn index_page() -> Page {
-    with_nav(crate::apps::polls::client::components::polls_index())
+    with_nav(super::components::polls_index())
 }
 ```
 

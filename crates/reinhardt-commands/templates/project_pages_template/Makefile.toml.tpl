@@ -16,7 +16,23 @@ skip_core_tasks = true
 # Use local target directory for each example (independent from workspace)
 CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = ["CARGO_TARGET_DIR"] } }
 WASM_TARGET = "wasm32-unknown-unknown"
-WASM_BINDGEN_VERSION = "0.2.122"
+
+# ============================================================================
+# Tooling
+# ============================================================================
+
+[tasks.install-tools]
+description = "Install development tools used by the generated Pages project"
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+rustup target add "${WASM_TARGET}"
+cargo install wasm-pack --locked
+cargo install cargo-watch --locked
+
+echo "Development tools installed"
+'''
 
 # ============================================================================
 # Development Server
@@ -33,20 +49,12 @@ dependencies = ["wasm-build-dev"]
 # WASM Build
 # ============================================================================
 
-[tasks.wasm-bindgen-check]
-description = "Check wasm-bindgen-cli version"
+[tasks.wasm-tool-check]
+description = "Check wasm-pack installation"
 script = '''
-if ! command -v wasm-bindgen >/dev/null 2>&1; then
-	echo "❌ wasm-bindgen-cli not installed"
-	echo "Run: cargo install wasm-bindgen-cli --version ${WASM_BINDGEN_VERSION}"
-	exit 1
-fi
-
-ACTUAL_VERSION=$(wasm-bindgen --version | awk '{print $2}')
-if [ "$ACTUAL_VERSION" != "${WASM_BINDGEN_VERSION}" ]; then
-	echo "❌ wasm-bindgen-cli version mismatch"
-	echo "Rust dependencies use wasm-bindgen ${WASM_BINDGEN_VERSION}, but installed wasm-bindgen-cli is ${ACTUAL_VERSION}"
-	echo "Run: cargo install -f wasm-bindgen-cli --version ${WASM_BINDGEN_VERSION}"
+if ! command -v wasm-pack >/dev/null 2>&1; then
+	echo "wasm-pack not installed"
+	echo "Run: cargo install wasm-pack --locked"
 	exit 1
 fi
 '''
@@ -54,34 +62,29 @@ fi
 [tasks.wasm-compile-dev]
 description = "Compile WASM binary (debug mode)"
 command = "cargo"
-args = ["build", "--target", "wasm32-unknown-unknown"]
-dependencies = ["wasm-bindgen-check"]
+args = ["build", "--target", "wasm32-unknown-unknown", "--lib"]
+dependencies = ["wasm-tool-check"]
 
 [tasks.collectstatic-wasm]
 description = "Collect static files to dist/ for WASM frontend"
 command = "cargo"
 args = ["run", "--bin", "manage", "collectstatic", "--no-input"]
-dependencies = ["wasm-compile-dev"]
 
 [tasks.wasm-bindgen-dev]
-description = "Generate WASM bindings (debug mode)"
-script = '''
-WASM_FILE=$(ls target/wasm32-unknown-unknown/debug/*.wasm 2>/dev/null | head -1)
-if [ -n "$WASM_FILE" ]; then
-	wasm-bindgen --target web "$WASM_FILE" --out-dir dist --debug
-	echo "✓ WASM bindings generated"
-else
-	echo "❌ No WASM file found"
-	exit 1
-fi
-'''
-dependencies = ["collectstatic-wasm"]
+description = "Generate WASM bindings using wasm-pack (debug mode)"
+command = "wasm-pack"
+args = [
+	"build",
+	"--target", "web",
+	"--out-dir", "dist-wasm",
+	"--dev",
+	"--no-typescript"
+]
+dependencies = ["wasm-compile-dev"]
 
 [tasks.wasm-finalize-dev]
 description = "Finalize WASM build"
-script = '''
-echo "✓ WASM build completed: dist/"
-'''
+script = { file = "scripts/wasm-build-dev.sh" }
 dependencies = ["wasm-bindgen-dev"]
 
 [tasks.wasm-build-dev]
@@ -91,40 +94,24 @@ dependencies = ["wasm-finalize-dev"]
 [tasks.wasm-compile-release]
 description = "Compile WASM binary (release mode)"
 command = "cargo"
-args = ["build", "--target", "wasm32-unknown-unknown", "--release"]
-dependencies = ["wasm-bindgen-check"]
+args = ["build", "--target", "wasm32-unknown-unknown", "--release", "--lib"]
+dependencies = ["wasm-tool-check"]
 
 [tasks.wasm-bindgen-release]
-description = "Generate WASM bindings (release mode)"
-script = '''
-WASM_FILE=$(ls target/wasm32-unknown-unknown/release/*.wasm 2>/dev/null | head -1)
-if [ -n "$WASM_FILE" ]; then
-	wasm-bindgen --target web "$WASM_FILE" --out-dir dist
-	echo "✓ WASM bindings generated"
-else
-	echo "❌ No WASM file found"
-	exit 1
-fi
-'''
-dependencies = ["collectstatic-wasm"]
+description = "Generate WASM bindings using wasm-pack (release mode)"
+command = "wasm-pack"
+args = [
+	"build",
+	"--target", "web",
+	"--out-dir", "dist-wasm",
+	"--release",
+	"--no-typescript"
+]
+dependencies = ["wasm-compile-release"]
 
 [tasks.wasm-finalize-release]
 description = "Finalize WASM build (optimize with wasm-opt)"
-script = '''
-# Optimize with wasm-opt if available
-if command -v wasm-opt &> /dev/null; then
-	echo "Running wasm-opt..."
-	WASM_BG=$(ls dist/*_bg.wasm 2>/dev/null | head -1)
-	if [ -n "$WASM_BG" ]; then
-		wasm-opt -O3 "$WASM_BG" -o "$WASM_BG"
-		echo "✓ WASM optimized"
-	fi
-else
-	echo "⚠️  wasm-opt not found, skipping optimization"
-fi
-
-echo "✓ WASM build completed: dist/"
-'''
+script = { file = "scripts/wasm-build-release.sh" }
 dependencies = ["wasm-bindgen-release"]
 
 [tasks.wasm-build-release]

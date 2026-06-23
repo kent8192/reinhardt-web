@@ -131,8 +131,42 @@ async fn startproject_pages_from_embedded_only() {
 		"package = \"reinhardt-web\", default-features = false, features = [\"pages\", \"client-router\"]"
 	));
 	assert!(cargo_toml.contains(
-		"features = [\"standard\", \"pages\", \"admin\", \"conf\", \"commands\", \"db-postgres\"]"
+		"features = [\"standard\", \"full\", \"pages\", \"conf\", \"commands\", \"db-sqlite\", \"forms\", \"client-router\", \"auth-session\"]"
 	));
+	assert!(
+		cargo_toml.contains("required-features = [\"with-reinhardt\"]")
+			&& cargo_toml.contains("default = [\"with-reinhardt\"]"),
+		"generated pages manifest must gate the native manage binary:\n{cargo_toml}"
+	);
+	let settings_rs = std::fs::read_to_string(generated.join("src/config/settings.rs")).unwrap();
+	assert!(
+		settings_rs.contains("#[settings(core: CoreSettings | contacts: ContactSettings)]"),
+		"generated pages settings must satisfy HasCommonSettings:\n{settings_rs}"
+	);
+	let base_settings = std::fs::read_to_string(generated.join("settings/base.toml")).unwrap();
+	assert!(
+		base_settings.contains("secret_key = \"insecure-")
+			&& base_settings.contains("[contacts]")
+			&& base_settings.contains("admins = []")
+			&& base_settings.contains("managers = []"),
+		"generated base.toml must include a secret key and contacts fragment:\n{base_settings}"
+	);
+	assert!(
+		base_settings.contains("engine = \"sqlite\"")
+			&& base_settings.contains("name = \"db.sqlite3\""),
+		"generated pages project should default to a local SQLite database:\n{base_settings}"
+	);
+	assert!(
+		!base_settings.contains("Copy this file to base.toml"),
+		"generated base.toml must not keep example-file copy instructions:\n{base_settings}"
+	);
+	let base_example =
+		std::fs::read_to_string(generated.join("settings/base.example.toml")).unwrap();
+	assert!(
+		base_example.contains("secret_key = \"CHANGE_THIS_IN_PRODUCTION_MUST_BE_KEPT_SECRET\"")
+			&& !base_example.contains("secret_key = \"insecure-"),
+		"generated base.example.toml must keep a non-secret placeholder:\n{base_example}"
+	);
 	let makefile_toml = std::fs::read_to_string(generated.join("Makefile.toml")).unwrap();
 	assert!(
 		makefile_toml.contains("\"--no-input\""),
@@ -141,6 +175,19 @@ async fn startproject_pages_from_embedded_only() {
 	assert!(
 		!makefile_toml.contains("\"--noinput\""),
 		"generated pages Makefile must not use the createsuperuser-only --noinput spelling"
+	);
+	assert!(
+		makefile_toml.contains("command = \"wasm-pack\"")
+			&& makefile_toml.contains("\"--lib\"")
+			&& makefile_toml.contains("scripts/wasm-build-dev.sh")
+			&& !makefile_toml.contains("wasm-bindgen --target web")
+			&& !makefile_toml.contains("WASM_FILE=$(ls target/wasm32-unknown-unknown"),
+		"generated pages Makefile must build the library bundle through wasm-pack:\n{makefile_toml}"
+	);
+	assert!(
+		generated.join("scripts/wasm-build-dev.sh").exists()
+			&& generated.join("scripts/wasm-build-release.sh").exists(),
+		"generated pages project must include WASM finalize scripts"
 	);
 	let build_rs = std::fs::read_to_string(generated.join("build.rs")).unwrap();
 	for cfg in ["client", "server", "wasm", "native"] {
@@ -188,7 +235,7 @@ async fn startproject_pages_adds_required_pages_features() {
 	let cargo_toml =
 		std::fs::read_to_string(tmp.path().join("pages_feature_proj/Cargo.toml")).unwrap();
 	assert!(cargo_toml.contains(
-		"features = [\"minimal\", \"pages\", \"admin\", \"conf\", \"commands\", \"db-postgres\"]"
+		"features = [\"minimal\", \"full\", \"pages\", \"conf\", \"commands\", \"db-sqlite\", \"forms\", \"client-router\", \"auth-session\"]"
 	));
 	assert_manifest_parses(&tmp.path().join("pages_feature_proj/Cargo.toml"));
 }

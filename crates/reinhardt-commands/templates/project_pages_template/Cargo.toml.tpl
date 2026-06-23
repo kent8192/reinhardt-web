@@ -14,6 +14,7 @@ crate-type = ["cdylib", "rlib"]  # cdylib for WASM, rlib for server
 [[bin]]
 name = "manage"
 path = "src/bin/manage.rs"
+required-features = ["with-reinhardt"]
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
@@ -47,6 +48,10 @@ reinhardt = { version = "{{ reinhardt_version }}", package = "reinhardt-web", de
 clap = { version = "4", features = ["derive"] }
 console = "0.16.1"
 tokio = { version = "1", features = ["full"] }
+
+[features]
+default = ["with-reinhardt"]
+with-reinhardt = []
 
 [build-dependencies]
 cfg_aliases = "0.2"

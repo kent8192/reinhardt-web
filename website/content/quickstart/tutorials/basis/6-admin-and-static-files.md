@@ -195,7 +195,7 @@ args = [
 
 ```toml
 [tasks.dev]
-description = "Build WASM and start development server with frontend (auto-starts PostgreSQL/Redis via `migrate` -> `infra-up`)"
+description = "Build WASM, apply migrations, and start the pages development server"
 dependencies = ["wasm-build-dev", "migrate", "run-dev-server"]
 ```
 

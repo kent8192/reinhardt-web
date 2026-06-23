@@ -24,7 +24,7 @@ The reference implementation lives in [`examples/examples-tutorial-basis`](https
 
 - Basic Rust and Cargo knowledge.
 - `cargo make` installed.
-- Docker Desktop running for the disposable PostgreSQL and Redis development containers.
+- `wasm32-unknown-unknown` target and `wasm-pack` installed.
 - A browser capable of running WebAssembly.
 
 ## What You'll Build
@@ -104,7 +104,6 @@ examples-tutorial-basis/
 |       +-- components/
 |       |   +-- nav.rs
 |       +-- lib.rs
-|       +-- pages.rs
 +-- migrations/
 |   +-- polls/
 |       +-- 0001_initial.rs

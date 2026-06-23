@@ -4,7 +4,7 @@
 //! Each route is registered with a stable name so that page components
 //! can resolve URLs through the URL reverser instead of formatting
 //! path strings inline.
-use crate::client::pages::{
+use crate::apps::polls::client::pages::{
 	choice_delete_page, choice_edit_page, choice_new_page, index_page, polls_detail_page,
 	polls_results_page, question_delete_page, question_edit_page, question_new_page,
 };
