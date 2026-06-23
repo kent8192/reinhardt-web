@@ -33,10 +33,15 @@ cargo install cargo-make wasm-pack
 
 ## Create a Pages Project
 
-Create a new project from the pages template:
+Create a new project from the pages template. `startproject` can prompt for
+feature flags interactively, but this tutorial uses a deterministic one-liner so
+your `Cargo.toml` matches the reference project:
 
 ```bash
-reinhardt-admin startproject tutorial --template pages
+reinhardt-admin startproject tutorial --template pages \
+  --features pages,admin,conf,commands-server,commands-autoreload,db-sqlite,forms,auth-session,middleware,argon2-hasher,static-files \
+  --default-features false \
+  --no-interactive
 cd tutorial
 ```
 
@@ -64,9 +69,13 @@ tutorial/
     +-- config/
     |   +-- settings.rs
     |   +-- urls.rs
+    |   +-- wasm.rs
+    +-- shared/
+    |   +-- forms.rs
+    |   +-- types.rs
     +-- client/
         +-- lib.rs
-        +-- pages.rs
+        +-- components.rs
 ```
 
 The reference example has more files because it is the completed project. You will add those files as each slice needs them.
@@ -80,7 +89,8 @@ Open `Cargo.toml`. The pages example builds an `rlib` for the native server and 
 crate-type = ["cdylib", "rlib"]  # cdylib for WASM, rlib for server
 ```
 
-The management command is native-only, so the binary is gated behind the `with-reinhardt` feature:
+In the reference example, the management command is native-only, so the binary
+is gated behind the `with-reinhardt` feature:
 
 ```toml
 [[bin]]
@@ -89,27 +99,39 @@ path = "src/bin/manage.rs"
 required-features = ["with-reinhardt"]
 ```
 
-The dependency split is the important design. WASM gets pages and client routing; the server gets the full framework, database backends, forms, commands, and session auth:
+That gate is required for the example's explicit native test target: `wasm-pack
+test` builds Cargo test targets for `wasm32-unknown-unknown`, and
+`required-features = ["with-reinhardt"]` keeps the native-only integration test
+and management binary out of that build when the WASM task uses
+`--no-default-features`.
+
+The dependency split is the important design. WASM gets pages and client
+routing; the server gets only the framework features this tutorial uses:
 
 ```toml
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 reinhardt = { workspace = true, features = ["pages", "client-router"] }
-wasm-bindgen = "0.2.106"
+wasm-bindgen = "=0.2.122"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 reinhardt = { workspace = true, features = [
-    "full",
     "pages",
     "conf",
-    "commands",
-    "db-postgres",
+    "commands-server",
+    "commands-autoreload",
     "db-sqlite",
     "forms",
-    "client-router",
     "auth-session",
+    "middleware",
+    "argon2-hasher",
+    "admin",
+    "static-files",
 ] }
 tokio = { version = "1.48.0", features = ["full"] }
 ```
+
+The `full` feature is intentionally absent. `tokio` still uses its own `full`
+runtime feature; that is unrelated to Reinhardt's `full` preset.
 
 In an example project, import Reinhardt APIs through the `reinhardt` facade. Do not depend on internal `reinhardt-*` crates directly.
 
@@ -149,45 +171,43 @@ Open `src/config/settings.rs`. The reference example composes the core settings 
 pub struct ProjectSettings;
 ```
 
-`get_settings()` loads defaults, low-priority environment variables, `settings/base.toml`, and the active profile file:
+`get_settings()` loads defaults, `settings/base.toml`, the active profile file, and high-priority environment variables:
 
 ```rust
 SettingsBuilder::new()
-    .profile(Profile::parse(&profile_str))
-    .add_source(DefaultSource::new().with_value(
-        "core.base_dir",
-        json::Value::String(base_dir.to_string_lossy().to_string()),
-    ))
-    .add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
+    .profile(profile)
+    .add_source(DefaultSource::new())
     .add_source(TomlFileSource::new(settings_dir.join("base.toml")))
     .add_source(TomlFileSource::new(
         settings_dir.join(format!("{}.toml", profile_str)),
     ))
-    .build_composed()
-    .expect("Failed to build settings")
+    .add_source(HighPriorityEnvSource::new().with_prefix("REINHARDT_"))
+    .build_composed::<ProjectSettings>()
+    .expect("Failed to build/compose settings")
 ```
 
 The matching `settings/base.toml` must include `[contacts]` because `ProjectSettings` includes `ContactSettings`:
 
 ```toml
+[core]
+secret_key = "insecure-..."
+
 [contacts]
 admins = []
 managers = []
 ```
 
-The example's database settings target the disposable PostgreSQL container started by the `cargo make` tasks:
+The tutorial database is a local SQLite file:
 
 ```toml
 [core.databases.default]
-engine = "postgresql"
-host = "localhost"
-port = 5432
-name = "examples_tutorial_basis"
-user = "reinhardt"
-password = "reinhardt"
+engine = "sqlite"
+name = "db.sqlite3"
 ```
 
-Use your own database name if you generated a new project. Keep the schema shape the same.
+`cargo make migrate` and `cargo make dev` resolve that setting through
+`scripts/db_url.sh` and create the file on demand. No PostgreSQL or Redis
+container is required for this tutorial path.
 
 ## See the Browser Mount Point
 
@@ -216,6 +236,8 @@ pub fn main() -> Result<(), JsValue> {
 ```
 
 Later parts will register routes from the `polls` and `users` apps. For now, confirm that the browser can load the client bundle and that the server is serving the pages application.
+
+`cargo make wasm-build-dev` runs `wasm-pack` against the library target and copies the generated browser bundle from `dist-wasm/` into `dist/`. It does not require a separate `wasm-bindgen-cli` install and does not bind the native `manage` binary.
 
 ## Run the Development Workflow
 

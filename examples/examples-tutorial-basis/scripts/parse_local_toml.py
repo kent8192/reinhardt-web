@@ -26,21 +26,17 @@ The second form is a fallback so that a `base.toml` carrying only the
 runtime-shape schema still satisfies the provisioning script when the
 caller selects `base.toml` directly (e.g., `REINHARDT_ENV=base`).
 
-Redis URL is read from the `[database]` section with a sane default;
-examples that don't actually use Redis still get an idle container
-spun up so the infra footprint is identical across examples.
-
 Usage:
     parse_local_toml.py <path_to_settings.toml>
 
 Stdout (one KEY=value per line, suitable for `eval`):
+    DB_ENGINE=sqlite
+    DB_NAME=db.sqlite3
     PG_HOST=localhost
     PG_PORT=5432
     PG_DB=reinhardt
     PG_USER=reinhardt
     PG_PASS=reinhardt
-    RD_HOST=localhost
-    RD_PORT=6379
 
 Values are shell-quoted via `shlex.quote` so `eval "$SETTINGS"` is safe
 even if a password or hostname contains whitespace, quotes, or shell
@@ -57,7 +53,6 @@ from __future__ import annotations
 import os.path
 import shlex
 import sys
-import urllib.parse
 
 
 def _q(value: object) -> str:
@@ -146,16 +141,13 @@ def main(argv: list[str]) -> int:
 		)
 		return 1
 
-	redis_url = db.get("redis_url") or data.get("redis_url", "redis://localhost:6379/0")
-	parsed = urllib.parse.urlparse(redis_url)
-
+	print(f"DB_ENGINE={_q(db.get('engine', 'postgresql'))}")
+	print(f"DB_NAME={_q(db.get('name', 'reinhardt'))}")
 	print(f"PG_HOST={_q(db.get('host', 'localhost'))}")
 	print(f"PG_PORT={_q(db.get('port', 5432))}")
 	print(f"PG_DB={_q(db.get('name', 'reinhardt'))}")
 	print(f"PG_USER={_q(db.get('user', 'reinhardt'))}")
 	print(f"PG_PASS={_q(db.get('password', 'reinhardt'))}")
-	print(f"RD_HOST={_q(parsed.hostname or 'localhost')}")
-	print(f"RD_PORT={_q(parsed.port or 6379)}")
 	return 0
 
 

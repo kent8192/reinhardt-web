@@ -23,6 +23,10 @@ name = "integration"
 required-features = ["with-reinhardt"]
 ```
 
+Keep this gate. The WASM test task runs Cargo with `--no-default-features` so
+browser tests do not compile native-only test dependencies such as `sqlx`,
+`tokio`, and `tempfile`.
+
 The WASM tests live under `tests/wasm/`, so Cargo needs explicit `[[test]]` entries:
 
 ```toml
@@ -171,7 +175,7 @@ let result = create_question(
 assert!(result.is_err());
 ```
 
-Do not claim this fixture covers every ownership path. Author success and non-author 403 cases require a fixture with `users` plus `questions.author_id`.
+Do not claim this fixture covers every ownership path. Author success and non-author 403 cases require a fixture with `users` plus the `Question.author` foreign key.
 
 ## Test Createsuperuser Wiring
 

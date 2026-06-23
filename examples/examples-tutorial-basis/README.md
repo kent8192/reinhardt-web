@@ -51,7 +51,7 @@ The project router mounts per-app server routers on native and merges per-app cl
 - Rust 1.94 or later (2024 edition, matches the workspace MSRV)
 - `cargo-make` (`cargo install cargo-make`)
 - `wasm-pack` for the WASM client build
-- Docker (optional, for TestContainers in integration tests)
+- SQLite, used through the `db-sqlite` Reinhardt feature
 
 ### Installation
 
@@ -115,8 +115,6 @@ examples-tutorial-basis/
 ├── scripts/
 │   ├── clean-cache.sh
 │   ├── db_url.sh
-│   ├── infra_down.sh
-│   ├── infra_up.sh
 │   ├── parse_local_toml.py
 │   ├── run-dev-release-server.sh
 │   ├── run-dev-server.sh
@@ -136,6 +134,7 @@ examples-tutorial-basis/
 │   │   │   ├── client.rs
 │   │   │   ├── models.rs
 │   │   │   ├── serializers.rs
+│   │   │   ├── services.rs
 │   │   │   ├── server_fn.rs
 │   │   │   ├── urls/
 │   │   │   │   ├── client_router.rs
@@ -147,6 +146,7 @@ examples-tutorial-basis/
 │   │       │   └── components.rs
 │   │       ├── client.rs
 │   │       ├── models.rs
+│   │       ├── services.rs
 │   │       ├── server_fn.rs
 │   │       ├── urls/
 │   │       │   ├── client_router.rs
@@ -201,6 +201,7 @@ This example is designed to be studied alongside the basis tutorial:
 
 - `src/apps/polls/models.rs` defines the `Question` and `Choice` models with `#[model]`, `#[field]`, and `#[rel(foreign_key)]`.
 - `src/apps/users/models.rs` defines the tutorial `User` model with `#[user]` and the injectable `AuthUserManager`.
+- `src/apps/polls/services.rs` and `src/apps/users/services.rs` are server-only homes for shared business operations when handlers grow beyond request/response glue.
 - `src/apps/polls/server_fn.rs` and `src/apps/users/server_fn.rs` expose typed `#[server_fn]` RPC handlers for the WASM client.
 - `src/apps/polls/urls.rs` and `src/apps/users/urls.rs` expose the app-level server and client router functions that `src/config/urls.rs` aggregates.
 - `src/apps/polls/urls/server_urls.rs` and `src/apps/users/urls/server_urls.rs` provide native `ServerRouter` registrations.
@@ -235,7 +236,7 @@ The `msw` feature is forwarded to the `reinhardt` facade so `#[server_fn]` gener
 After understanding this example:
 
 1. **Add richer poll features**: comments, tags, scheduled publication, or poll closing times
-2. **Strengthen authorization tests**: extend the native fixture with users plus `author_id` rows and assert author success vs non-author 403 cases
+2. **Strengthen authorization tests**: extend the native fixture with users plus `Question.author` rows and assert author success vs non-author 403 cases
 3. **Improve production deployment**: add environment-specific settings, TLS/static hosting strategy, and persistent database configuration
 4. **Customize the admin**: add project-specific filters, read-only computed columns, or stricter permissions
 5. **Expand WASM coverage**: add browser tests for the create/edit/delete flows beyond the current MSW smoke tests

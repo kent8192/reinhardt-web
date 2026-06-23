@@ -34,7 +34,8 @@ installed_apps! {
 
 ## Define the User Model
 
-Open `src/apps/users/models.rs`. The example uses a minimal user model, not `full = true`:
+Open `src/apps/users/models.rs`. The example uses a minimal user model, without
+the expanded profile fields:
 
 ```rust
 #[user(hasher = reinhardt::Argon2Hasher, username_field = "username", manager = false)]
@@ -65,6 +66,11 @@ pub struct User {
 ```
 
 `manager = false` opts out of the generated user manager because this tutorial keeps a project-local manager that owns password hashing, uniqueness checks, and persistence.
+
+Keep `#[user(...)]` directly on the shared model. On native targets it emits the
+authentication integrations; on `wasm32-unknown-unknown` it stays inert while
+preserving the macro-generated shared model metadata such as the `UserInfo`
+companion type used by `current_user()` responses.
 
 ## Add the Auth User Manager
 
