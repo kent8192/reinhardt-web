@@ -122,14 +122,17 @@ impl BaseCommand for StartProjectCommand {
 		let secret_key = format!("insecure-{}", generate_secret_key());
 		let required_features = if with_pages {
 			&[
-				"full",
 				"pages",
+				"admin",
 				"conf",
-				"commands",
+				"commands-server",
+				"commands-autoreload",
 				"db-sqlite",
 				"forms",
-				"client-router",
 				"auth-session",
+				"middleware",
+				"argon2-hasher",
+				"static-files",
 			][..]
 		} else {
 			&["conf", "commands", "db-postgres", "api"][..]

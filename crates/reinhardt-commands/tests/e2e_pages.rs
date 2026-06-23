@@ -299,6 +299,10 @@ async fn app_pages_layout_matches_tutorial() {
 		"apps/polls/serializers.rs must exist"
 	);
 	assert!(
+		polls_dir.join("services.rs").exists(),
+		"apps/polls/services.rs must exist"
+	);
+	assert!(
 		polls_dir.join("urls.rs").exists(),
 		"apps/polls/urls.rs must exist"
 	);
@@ -503,6 +507,10 @@ async fn startapp_pages_layout_has_urls_submodule() {
 		foo_rs.contains("#[cfg(client)]\npub mod client;"),
 		"apps/foo.rs must declare `#[cfg(client)] pub mod client;`:\n{foo_rs}"
 	);
+	assert!(
+		foo_rs.contains("#[cfg(server)]\npub mod services;"),
+		"apps/foo.rs must declare `#[cfg(server)] pub mod services;`:\n{foo_rs}"
+	);
 	// Bi-target lines: ensure they have no cfg attr immediately preceding.
 	for bi_target in ["pub mod models;", "pub mod server_fn;", "pub mod urls;"] {
 		let pos = foo_rs
@@ -599,6 +607,10 @@ async fn workspace_app_pages_uses_unified_template() {
 	assert!(
 		src.join("urls").join("client_router.rs").exists(),
 		"apps/bar/src/urls/client_router.rs must exist"
+	);
+	assert!(
+		src.join("services.rs").exists(),
+		"apps/bar/src/services.rs must exist"
 	);
 
 	// 3. The unified template now provides client/ and server_fn modules

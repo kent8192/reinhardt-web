@@ -1,8 +1,3 @@
-//! Client-side code (WASM)
-//!
-//! This module contains all client-side code that runs in the browser.
-//! Client-side routing lives under `crate::apps::polls::urls::client_router`.
-
 //! Cross-app client shell.
 //!
 //! Each application's UI lives under `apps::<app>::client::*`. This

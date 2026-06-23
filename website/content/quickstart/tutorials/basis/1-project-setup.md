@@ -33,10 +33,15 @@ cargo install cargo-make wasm-pack
 
 ## Create a Pages Project
 
-Create a new project from the pages template:
+Create a new project from the pages template. `startproject` can prompt for
+feature flags interactively, but this tutorial uses a deterministic one-liner so
+your `Cargo.toml` matches the reference project:
 
 ```bash
-reinhardt-admin startproject tutorial --template pages
+reinhardt-admin startproject tutorial --template pages \
+  --features pages,admin,conf,commands-server,commands-autoreload,db-sqlite,forms,auth-session,middleware,argon2-hasher,static-files \
+  --default-features false \
+  --no-interactive
 cd tutorial
 ```
 
@@ -84,7 +89,8 @@ Open `Cargo.toml`. The pages example builds an `rlib` for the native server and 
 crate-type = ["cdylib", "rlib"]  # cdylib for WASM, rlib for server
 ```
 
-The management command is native-only, so the binary is gated behind the `with-reinhardt` feature:
+In the reference example, the management command is native-only, so the binary
+is gated behind the `with-reinhardt` feature:
 
 ```toml
 [[bin]]
@@ -93,7 +99,14 @@ path = "src/bin/manage.rs"
 required-features = ["with-reinhardt"]
 ```
 
-The dependency split is the important design. WASM gets pages and client routing; the server gets the framework features needed for the tutorial app:
+That gate is required for the example's explicit native test target: `wasm-pack
+test` builds Cargo test targets for `wasm32-unknown-unknown`, and
+`required-features = ["with-reinhardt"]` keeps the native-only integration test
+and management binary out of that build when the WASM task uses
+`--no-default-features`.
+
+The dependency split is the important design. WASM gets pages and client
+routing; the server gets only the framework features this tutorial uses:
 
 ```toml
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -102,18 +115,23 @@ wasm-bindgen = "=0.2.122"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 reinhardt = { workspace = true, features = [
-    "standard",
-    "full",
     "pages",
     "conf",
-    "commands",
+    "commands-server",
+    "commands-autoreload",
     "db-sqlite",
     "forms",
-    "client-router",
     "auth-session",
+    "middleware",
+    "argon2-hasher",
+    "admin",
+    "static-files",
 ] }
 tokio = { version = "1.48.0", features = ["full"] }
 ```
+
+The `full` feature is intentionally absent. `tokio` still uses its own `full`
+runtime feature; that is unrelated to Reinhardt's `full` preset.
 
 In an example project, import Reinhardt APIs through the `reinhardt` facade. Do not depend on internal `reinhardt-*` crates directly.
 
@@ -179,7 +197,7 @@ admins = []
 managers = []
 ```
 
-The generated tutorial project uses a local SQLite file so the first checkpoint does not require a database container:
+The tutorial database is a local SQLite file:
 
 ```toml
 [core.databases.default]
@@ -187,7 +205,9 @@ engine = "sqlite"
 name = "db.sqlite3"
 ```
 
-Use your own database name if you generated a new project. Keep the schema shape the same.
+`cargo make migrate` and `cargo make dev` resolve that setting through
+`scripts/db_url.sh` and create the file on demand. No PostgreSQL or Redis
+container is required for this tutorial path.
 
 ## See the Browser Mount Point
 

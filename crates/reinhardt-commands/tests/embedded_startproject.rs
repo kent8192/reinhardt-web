@@ -131,7 +131,7 @@ async fn startproject_pages_from_embedded_only() {
 		"package = \"reinhardt-web\", default-features = false, features = [\"pages\", \"client-router\"]"
 	));
 	assert!(cargo_toml.contains(
-		"features = [\"standard\", \"full\", \"pages\", \"conf\", \"commands\", \"db-sqlite\", \"forms\", \"client-router\", \"auth-session\"]"
+		"features = [\"standard\", \"pages\", \"admin\", \"conf\", \"commands-server\", \"commands-autoreload\", \"db-sqlite\", \"forms\", \"auth-session\", \"middleware\", \"argon2-hasher\", \"static-files\"]"
 	));
 	assert!(
 		cargo_toml.contains("required-features = [\"with-reinhardt\"]")
@@ -235,7 +235,7 @@ async fn startproject_pages_adds_required_pages_features() {
 	let cargo_toml =
 		std::fs::read_to_string(tmp.path().join("pages_feature_proj/Cargo.toml")).unwrap();
 	assert!(cargo_toml.contains(
-		"features = [\"minimal\", \"full\", \"pages\", \"conf\", \"commands\", \"db-sqlite\", \"forms\", \"client-router\", \"auth-session\"]"
+		"features = [\"minimal\", \"pages\", \"admin\", \"conf\", \"commands-server\", \"commands-autoreload\", \"db-sqlite\", \"forms\", \"auth-session\", \"middleware\", \"argon2-hasher\", \"static-files\"]"
 	));
 	assert_manifest_parses(&tmp.path().join("pages_feature_proj/Cargo.toml"));
 }

@@ -3,8 +3,8 @@
 # `CoreSettings` is registered as `#[settings(section = "core")]`, so its
 # fields must live under `[core]` to override values from base.toml. The
 # database lives under `[core.databases.default]` (the same fragment),
-# deep-merging onto base.toml's Postgres config — here switching the engine
-# to an in-memory SQLite database for CI.
+# deep-merging onto base.toml's SQLite config and switching to an in-memory
+# database for CI.
 
 [core]
 debug = false

@@ -4,7 +4,7 @@
 //! under this directory:
 //!
 //! - `models` / `server_fn` / `urls` — bi-target (gate internally)
-//! - `admin` / `serializers` / `views` — server-only
+//! - `admin` / `serializers` / `services` / `views` — server-only
 //! - `client` — WASM-only (per-app UI + page wrappers)
 
 #[cfg(server)]
@@ -15,6 +15,8 @@ pub mod admin;
 pub mod models;
 #[cfg(server)]
 pub mod serializers;
+#[cfg(server)]
+pub mod services;
 #[cfg(server)]
 pub mod views;
 

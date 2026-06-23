@@ -35,12 +35,12 @@ pub fn nav_bar() -> Page {
 			class: "nav-bar",
 			a {
 				href: polls_index_href,
-				class: "font-bold text-lg text-content-primary",
+				class: "nav-brand font-bold text-lg text-content-primary",
 				"Polls"
 			}
 			if auth_signal.is_pending() {
 				div {
-					class: "flex items-center gap-3",
+					class: "nav-actions flex items-center gap-3",
 					aria_busy: "true",
 					span {
 						class: "sr-only",
@@ -57,9 +57,9 @@ pub fn nav_bar() -> Page {
 				}
 			} else if let Some(Some(user)) = auth_signal.result() {
 				div {
-					class: "flex items-center gap-3",
+					class: "nav-actions flex items-center gap-3",
 					span {
-						class: "text-sm text-muted",
+						class: "nav-username text-sm text-muted",
 						{
 							format!("Signed in as {}", user.username)
 						}
@@ -72,7 +72,7 @@ pub fn nav_bar() -> Page {
 				}
 			} else {
 				div {
-					class: "flex items-center gap-2",
+					class: "nav-actions flex items-center gap-2",
 					a {
 						href: signup_href.clone(),
 						class: "btn-secondary",

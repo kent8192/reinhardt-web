@@ -441,6 +441,7 @@ async fn test_startapp_creates_app_structure() {
 
 	// Verify app directory was created in src/apps/ (default module mode)
 	assert!(env.file_exists(&format!("src/apps/{}.rs", app_name)));
+	assert!(env.file_exists(&format!("src/apps/{}/services.rs", app_name)));
 }
 
 #[serial]

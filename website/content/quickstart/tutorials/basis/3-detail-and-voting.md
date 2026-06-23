@@ -292,6 +292,11 @@ let voting_form = form! {
 
 `choices_from: "choices"` binds the radio options to the choices returned by `get_question_detail`. The generated `#[server_fn]` client stub supplies the CSRF header for WASM submits; you do not pass CSRF as a business argument.
 
+The `watch` block is only for reactive UI around this static form definition:
+the submit button reads `form.loading()` so it can disable itself and switch
+labels while the vote is in flight. Field registration, server-function binding,
+and initial values stay in `form!`.
+
 The final example also hides owner-only edit/delete controls here. Defer those branches until Part 5.
 
 ## Add Static Form Metadata
@@ -327,6 +332,11 @@ pub fn create_vote_form() -> StaticFormMetadata {
 pub mod forms;
 pub mod types;
 ```
+
+Use `form!` for the static form contract. Use `use_form(&form).build()` when a
+server-side helper needs the generated runtime contract, such as metadata and
+validation state. Do not move `server_fn`, field definitions, or initial values
+into `use_form`.
 
 ## Build the Results Page
 

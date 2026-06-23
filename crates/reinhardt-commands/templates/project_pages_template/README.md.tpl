@@ -7,6 +7,7 @@ A Reinhardt Pages project with WASM frontend and server-side rendering.
 - Rust 1.94.1 or later (2024 Edition)
 - cargo-make: `cargo install cargo-make`
 - wasm-pack: `cargo install wasm-pack`
+- SQLite for the generated local database
 
 ## Getting Started
 
