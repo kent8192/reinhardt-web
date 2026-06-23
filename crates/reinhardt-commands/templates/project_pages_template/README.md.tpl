@@ -6,7 +6,7 @@ A Reinhardt Pages project with WASM frontend and server-side rendering.
 
 - Rust 1.96.0 or later (2024 Edition)
 - cargo-make: `cargo install cargo-make`
-- wasm-bindgen-cli matching the project version (installed by `cargo make install-tools`)
+- wasm-pack for the browser bundle (installed by `cargo make install-tools`)
 - PostgreSQL (optional, for database features)
 
 ## Getting Started
@@ -62,7 +62,9 @@ cargo build --release
 │   │   └── forms.rs
 │   └── config/       # Server configuration
 ├── dist/             # WASM build output
+├── dist-wasm/        # wasm-pack output copied into dist/
 ├── index.html        # WASM entry HTML
+├── scripts/          # cargo-make helper scripts
 └── Cargo.toml
 ```
 
@@ -96,4 +98,4 @@ cargo make wasm-clean          # Clean WASM build artifacts
 
 - [Reinhardt Documentation](https://github.com/kent8192/reinhardt-rs)
 - [Reinhardt Pages Guide](https://github.com/kent8192/reinhardt-rs/tree/main/docs)
-- [wasm-bindgen Documentation](https://rustwasm.github.io/wasm-bindgen/)
+- [wasm-pack Documentation](https://rustwasm.github.io/wasm-pack/)

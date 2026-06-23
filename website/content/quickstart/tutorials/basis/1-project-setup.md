@@ -24,11 +24,11 @@ cargo install reinhardt-admin-cli --version "0.3.0-rc.2"
 
 The installed binary is `reinhardt-admin`.
 
-The pages template also needs the WASM target, `cargo-make`, and `wasm-pack`:
+Install `cargo-make`; the generated project can install the WASM target,
+`wasm-pack`, and the file watcher through its own `install-tools` task:
 
 ```bash
-rustup target add wasm32-unknown-unknown
-cargo install cargo-make wasm-pack
+cargo install cargo-make
 ```
 
 ## Create a Pages Project
@@ -38,6 +38,7 @@ Create a new project from the pages template:
 ```bash
 reinhardt-admin startproject tutorial --template pages
 cd tutorial
+cargo make install-tools
 ```
 
 The completed tutorial will eventually add `polls` and `users` apps. Do not create them yet. The first milestone is a project that can compile the browser entry point and serve the SPA shell.
@@ -87,7 +88,10 @@ Open `Cargo.toml`. The pages example builds an `rlib` for the native server and 
 crate-type = ["cdylib", "rlib"]  # cdylib for WASM, rlib for server
 ```
 
-The management command is native-only, so the binary is gated behind the `with-reinhardt` feature:
+The management command is native-only, so the binary is gated behind the
+`with-reinhardt` feature. The generated project enables that feature by default
+for native development, while `wasm-pack test -- --no-default-features` can skip
+the native-only binary:
 
 ```toml
 [[bin]]
@@ -96,27 +100,40 @@ path = "src/bin/manage.rs"
 required-features = ["with-reinhardt"]
 ```
 
-The dependency split is the important design. WASM gets pages and client routing; the server gets the full framework, database backends, forms, commands, and session auth:
+The generated feature section keeps those local gates explicit:
+
+```toml
+[features]
+default = ["with-reinhardt", "client-router"]
+client-router = []
+with-reinhardt = []
+msw = ["reinhardt/msw"]
+```
+
+The dependency split is the important design. WASM gets pages and client
+routing; the server gets the framework, database backend, commands, admin, and
+configuration features selected by `startproject`:
 
 ```toml
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-reinhardt = { workspace = true, features = ["pages", "client-router"] }
-wasm-bindgen = "0.2.106"
+reinhardt = { version = "0.3.0-rc.2", package = "reinhardt-web", default-features = false, features = ["pages", "client-router"] }
+wasm-bindgen = "=0.2.122"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-reinhardt = { workspace = true, features = [
-    "full",
+reinhardt = { version = "0.3.0-rc.2", package = "reinhardt-web", default-features = false, features = [
+    "standard",
     "pages",
+    "admin",
     "conf",
     "commands",
     "db-postgres",
-    "db-sqlite",
-    "forms",
-    "client-router",
-    "auth-session",
 ] }
-tokio = { version = "1.48.0", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 ```
+
+If you pass an explicit SQLite feature list, keep the Pages runtime facade in
+place. Current `startproject` adds the required `minimal` feature automatically
+when a custom Pages list lacks a preset such as `standard`.
 
 In an example project, import Reinhardt APIs through the `reinhardt` facade. Do not depend on internal `reinhardt-*` crates directly.
 
@@ -244,6 +261,7 @@ Open `http://127.0.0.1:8000/`. At this point the application is only the shell. 
 
 Before continuing:
 
+- `cargo make install-tools` has installed the WASM target and `wasm-pack`.
 - `cargo make dev` starts the server.
 - The browser reaches `http://127.0.0.1:8000/`.
 - `settings/base.toml` contains `[core]`, `[core.databases.default]`, and `[contacts]`.

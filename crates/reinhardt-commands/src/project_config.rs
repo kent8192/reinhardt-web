@@ -265,10 +265,22 @@ fn should_add_required_feature(features: &[String], feature: &str) -> bool {
 	if features.iter().any(|existing| existing == feature) {
 		return false;
 	}
+	if feature == "minimal" && has_minimal_preset_feature(features) {
+		return false;
+	}
 	if feature == "db-postgres" && has_database_backend_feature(features) {
 		return false;
 	}
 	true
+}
+
+fn has_minimal_preset_feature(features: &[String]) -> bool {
+	features.iter().any(|feature| {
+		matches!(
+			feature.as_str(),
+			"standard" | "full" | "api-only" | "graphql-server"
+		)
+	})
 }
 
 fn has_database_backend_feature(features: &[String]) -> bool {
@@ -399,6 +411,25 @@ mod tests {
 
 		assert!(!should_add_required_feature(&features, "db-postgres"));
 		assert!(should_add_required_feature(&features, "commands"));
+	}
+
+	#[rstest::rstest]
+	fn required_minimal_runtime_respects_presets_but_repairs_explicit_pages_list() {
+		let default_pages_features = vec!["standard".to_string()];
+		assert!(!should_add_required_feature(
+			&default_pages_features,
+			"minimal"
+		));
+
+		let explicit_pages_features = vec![
+			"pages".to_string(),
+			"admin".to_string(),
+			"db-sqlite".to_string(),
+		];
+		assert!(should_add_required_feature(
+			&explicit_pages_features,
+			"minimal"
+		));
 	}
 
 	#[test]

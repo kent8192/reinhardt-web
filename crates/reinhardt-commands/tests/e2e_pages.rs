@@ -125,6 +125,20 @@ async fn project_pages_layout_matches_tutorial() {
 		makefile.contains("[tasks.install-tools]"),
 		"Pages project Makefile.toml must include the install-tools task advertised by startproject:\n{makefile}"
 	);
+	assert!(
+		makefile.contains("command = \"wasm-pack\"")
+			&& makefile.contains("\"--out-dir\", \"dist-wasm\""),
+		"Pages project Makefile.toml must build browser artifacts through wasm-pack:\n{makefile}"
+	);
+	assert!(
+		!makefile.contains("ls target/wasm32-unknown-unknown") && !makefile.contains("head -1"),
+		"Pages project Makefile.toml must not select an arbitrary .wasm artifact:\n{makefile}"
+	);
+	assert!(
+		project.join("scripts/wasm-build-dev.sh").exists()
+			&& project.join("scripts/wasm-build-release.sh").exists(),
+		"Pages project must include WASM post-build helper scripts"
+	);
 
 	let settings_rs =
 		fs::read_to_string(src.join("config").join("settings.rs")).expect("read settings.rs");
