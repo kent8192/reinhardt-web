@@ -44,7 +44,7 @@ Add to your `Cargo.toml`:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-query = { version = "0.3.0-rc.3" }
+reinhardt-query = { version = "0.3.0-rc.4" }
 ```
 
 ## Quick Start
