@@ -59,4 +59,4 @@ tokio = { version = "1", features = ["full"] }
 [dev-dependencies.reinhardt]
 version = "{{ reinhardt_version }}"
 package = "reinhardt-web"
-features = ["full", "test", "testcontainers"]
+features = ["test"]

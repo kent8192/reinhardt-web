@@ -6,7 +6,7 @@ A Reinhardt Pages project with WASM frontend and server-side rendering.
 
 - Rust 1.94.1 or later (2024 Edition)
 - wasm-bindgen-cli: `cargo install wasm-bindgen-cli`
-- PostgreSQL (optional, for database features)
+- SQLite for the generated local database
 
 ## Getting Started
 
@@ -66,7 +66,7 @@ cargo build --release
 # Create a new app
 cargo run --bin {{ project_name }} startapp myapp --with-pages
 
-# Database migrations (when using database features)
+# Database migrations
 cargo run --bin {{ project_name }} makemigrations
 cargo run --bin {{ project_name }} migrate
 
