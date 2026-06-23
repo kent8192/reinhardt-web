@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.2...reinhardt-commands@v0.3.0-rc.3) - 2026-06-23
+
+### Fixed
+
+- *(scaffolding)* generate target-neutral Pages apps
+- *(scaffolding)* split generated Pages routers
+
 ## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.0...reinhardt-commands@v0.3.0-rc.1) - 2026-06-18
 
 ### Added

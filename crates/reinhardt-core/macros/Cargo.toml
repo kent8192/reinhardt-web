@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-macros"
-version = "0.3.0-rc.2"
+version = "0.3.0-rc.3"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -36,6 +36,7 @@ async-trait = { workspace = true }
 chrono = { workspace = true }
 linkme = { workspace = true }
 rstest = { workspace = true }
+tempfile = { workspace = true }
 uuid = { workspace = true }
 # reinhardt-auth uses path-only (no version) to avoid crates.io resolution failures
 # during `cargo publish`. This is safe because dev-dependencies are not required
