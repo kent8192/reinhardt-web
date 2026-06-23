@@ -9,7 +9,7 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 // at the call site — see the per-handler `use` blocks below for examples.
 #[cfg(server)]
 use {
-	crate::apps::users::models::User,
+	crate::apps::users::server::models::User,
 	reinhardt::Model,
 	reinhardt::di::{Depends, FactoryOutput, injectable, injectable_key},
 	reinhardt::middleware::session::{SessionData, USER_ID_SESSION_KEY},
@@ -90,7 +90,7 @@ async fn session_user_factory(
 pub async fn get_questions(
 	#[inject] _db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<Vec<QuestionInfo>, ServerFnError> {
-	use crate::apps::polls::models::Question;
+	use crate::apps::polls::server::models::Question;
 	use reinhardt::Model;
 
 	let manager = Question::objects();
@@ -118,7 +118,7 @@ pub async fn get_question_detail(
 	question_id: i64,
 	#[inject] _db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<(QuestionInfo, Vec<ChoiceInfo>), ServerFnError> {
-	use crate::apps::polls::models::{Choice, Question};
+	use crate::apps::polls::server::models::{Choice, Question};
 	use reinhardt::Model;
 
 	// Get question
@@ -152,7 +152,7 @@ pub async fn get_question_results(
 	question_id: i64,
 	#[inject] _db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<(QuestionInfo, Vec<ChoiceInfo>, i32), ServerFnError> {
-	use crate::apps::polls::models::{Choice, Question};
+	use crate::apps::polls::server::models::{Choice, Question};
 	use reinhardt::Model;
 
 	// Get question
@@ -220,7 +220,7 @@ async fn vote_internal(
 	request: crate::shared::types::VoteRequest,
 	db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
-	use crate::apps::polls::models::Choice;
+	use crate::apps::polls::server::models::Choice;
 	use reinhardt::Model;
 	use reinhardt::atomic;
 
@@ -282,7 +282,7 @@ pub async fn create_question(
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
-	use crate::apps::polls::models::Question;
+	use crate::apps::polls::server::models::Question;
 
 	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 
@@ -315,7 +315,7 @@ pub async fn update_question(
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
 ) -> std::result::Result<QuestionInfo, ServerFnError> {
-	use crate::apps::polls::models::Question;
+	use crate::apps::polls::server::models::Question;
 
 	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 
@@ -359,7 +359,7 @@ pub async fn delete_question(
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
 ) -> std::result::Result<(), ServerFnError> {
-	use crate::apps::polls::models::Question;
+	use crate::apps::polls::server::models::Question;
 
 	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 
@@ -400,8 +400,8 @@ pub async fn delete_question(
 async fn require_question_author(
 	question_id: i64,
 	user: &User,
-) -> std::result::Result<crate::apps::polls::models::Question, ServerFnError> {
-	use crate::apps::polls::models::Question;
+) -> std::result::Result<crate::apps::polls::server::models::Question, ServerFnError> {
+	use crate::apps::polls::server::models::Question;
 
 	let question = Question::objects()
 		.get(question_id)
@@ -429,7 +429,7 @@ pub async fn create_choice(
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
-	use crate::apps::polls::models::Choice;
+	use crate::apps::polls::server::models::Choice;
 
 	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 	let question = require_question_author(question_id, user).await?;
@@ -464,7 +464,7 @@ pub async fn update_choice(
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
-	use crate::apps::polls::models::Choice;
+	use crate::apps::polls::server::models::Choice;
 
 	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 	let trimmed = choice_text.trim();
@@ -501,7 +501,7 @@ pub async fn delete_choice(
 	#[inject] _db: reinhardt::DatabaseConnection,
 	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
 ) -> std::result::Result<(), ServerFnError> {
-	use crate::apps::polls::models::Choice;
+	use crate::apps::polls::server::models::Choice;
 
 	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
 	let manager = Choice::objects();

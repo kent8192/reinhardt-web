@@ -1,18 +1,34 @@
 //! URL configuration for the polls application.
 //!
-//! - `server_url_patterns()` — server-side app router.
-//! - `client_url_patterns()` — client-side app router.
+//! This module is intentionally target-neutral. Native builds aggregate the
+//! split app-local router modules, while WASM builds use the same client route
+//! table and reverse helpers.
 
-#[cfg(server)]
-pub mod server_urls;
+use reinhardt::{ClientRouter, ServerRouter};
 
 pub mod client_router;
 
 #[cfg(server)]
-pub fn server_url_patterns() -> reinhardt::ServerRouter {
-	server_urls::server_url_patterns()
+pub mod server_router;
+
+/// Server-side app router.
+pub fn server_url_patterns() -> ServerRouter {
+	#[cfg(server)]
+	{
+		server_router::server_url_patterns()
+	}
+	#[cfg(not(server))]
+	{
+		ServerRouter::new()
+	}
 }
 
-pub fn client_url_patterns() -> reinhardt::ClientRouter {
+/// Client-side routing for the polls SPA.
+pub fn client_url_patterns() -> ClientRouter {
 	client_router::client_url_patterns()
+}
+
+/// Reverse a named polls client route.
+pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
+	client_router::reverse(name, params)
 }

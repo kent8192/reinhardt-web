@@ -4120,16 +4120,6 @@ impl MigrationAutodetector {
 		from_unique: Option<bool>,
 		to_unique: Option<bool>,
 	) -> bool {
-		// Field type and nullability are compared directly because the
-		// `nullable` bit on `FieldState` carries the authoritative NOT NULL
-		// status (the `not_null` / `null` params are advisory only).
-		if from_field.field_type != to_field.field_type {
-			return true;
-		}
-		if from_field.nullable != to_field.nullable {
-			return true;
-		}
-
 		// Schema-affecting bits are compared via the canonical
 		// `ColumnDefinition` form to absorb asymmetric param populations.
 		let mut from_def = super::ColumnDefinition::from_field_state(field_name, from_field);
@@ -4144,7 +4134,9 @@ impl MigrationAutodetector {
 		if let Some(unique) = to_unique {
 			to_def.unique = unique;
 		}
-		from_def.primary_key != to_def.primary_key
+		from_def.type_definition != to_def.type_definition
+			|| from_def.not_null != to_def.not_null
+			|| from_def.primary_key != to_def.primary_key
 			|| from_def.auto_increment != to_def.auto_increment
 			|| from_def.unique != to_def.unique
 	}
@@ -8227,6 +8219,111 @@ mod tests {
 			"generate_migrations() emitted spurious AlterColumn for unchanged `id` PK \
 			 under apply_migration_operations from_state. ops={:?}",
 			migration_ops
+		);
+	}
+
+	#[rstest]
+	fn generate_operations_no_spurious_altercolumn_for_replayed_foreign_key_column() {
+		// Arrange — regression for the basis tutorial migration check.
+		//
+		// The replayed migration state only knows the physical `_id` column
+		// type (`BigInteger`). The macro registry state keeps the
+		// `ForeignKeyField<T>` placeholder type (`Uuid`) plus `fk_target`
+		// params, and `ColumnDefinition::from_field_state` resolves that
+		// placeholder to the referenced model's PK type. The autodetector must
+		// compare the resolved column definitions, not the raw logical
+		// `FieldState.field_type`, or it emits a no-op AlterColumn.
+		let mut target_metadata = super::super::model_registry::ModelMetadata::new(
+			"fk_drift_target_app",
+			"FkDriftTarget",
+			"fk_drift_targets",
+		);
+		target_metadata.add_field(
+			"id".to_string(),
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::BigInteger)
+				.with_param("primary_key", "true")
+				.with_param("auto_increment", "true")
+				.with_param("not_null", "true")
+				.with_nullable(false),
+		);
+		super::super::model_registry::global_registry().register_model(target_metadata);
+
+		let create_sources = super::super::Operation::CreateTable {
+			name: "fk_drift_sources".to_string(),
+			columns: vec![
+				super::super::ColumnDefinition {
+					name: "id".to_string(),
+					type_definition: super::super::FieldType::BigInteger,
+					not_null: true,
+					unique: false,
+					primary_key: true,
+					auto_increment: true,
+					default: None,
+				},
+				super::super::ColumnDefinition {
+					name: "target_id".to_string(),
+					type_definition: super::super::FieldType::BigInteger,
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+			],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let mut from_state = ProjectState::new();
+		from_state.apply_migration_operations(&[create_sources], "fk_drift_source_app");
+
+		let mut source_metadata = super::super::model_registry::ModelMetadata::new(
+			"fk_drift_source_app",
+			"FkDriftSource",
+			"fk_drift_sources",
+		);
+		source_metadata.add_field(
+			"id".to_string(),
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::BigInteger)
+				.with_param("primary_key", "true")
+				.with_param("auto_increment", "true")
+				.with_param("not_null", "true")
+				.with_nullable(false),
+		);
+		source_metadata.add_field(
+			"target_id".to_string(),
+			super::super::model_registry::FieldMetadata::new(super::super::FieldType::Uuid)
+				.with_param("fk_target", "FkDriftTarget")
+				.with_param("fk_target_app", "fk_drift_target_app")
+				.with_param("not_null", "true")
+				.with_nullable(false),
+		);
+		let to_state = build_project_state(vec![(
+			(
+				"fk_drift_source_app".to_string(),
+				"FkDriftSource".to_string(),
+			),
+			source_metadata.to_model_state(),
+		)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert!(
+			!operations.iter().any(|op| matches!(
+				op,
+				super::super::Operation::AlterColumn { column, .. } if column == "target_id"
+			)),
+			"unchanged FK _id column must not emit no-op AlterColumn, got: {:?}",
+			operations
+		);
+		assert!(
+			operations.is_empty(),
+			"replayed FK column should be in sync with registry state, got: {:?}",
+			operations
 		);
 	}
 

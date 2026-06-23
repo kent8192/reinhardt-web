@@ -845,7 +845,7 @@ mod auth_tests {
 		SessionError, SessionUserKey, create_choice, create_question, delete_choice,
 		delete_question, update_choice, update_question,
 	};
-	use examples_tutorial_basis::apps::users::models::User;
+	use examples_tutorial_basis::apps::users::server::models::User;
 	use reinhardt::DatabaseConnection;
 	use reinhardt::di::Depends;
 	use rstest::*;

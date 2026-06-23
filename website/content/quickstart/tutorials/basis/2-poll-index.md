@@ -35,7 +35,7 @@ The completed example also registers `users`, but do not add it until Part 4.
 
 ## Add the Initial Models
 
-Open `src/apps/polls/models.rs` and add the first version of the poll models:
+Open `src/apps/polls/server/models.rs` and add the first version of the poll models:
 
 ```rust
 use chrono::{DateTime, Utc};
@@ -127,15 +127,64 @@ Operation::CreateTable {
 
 If `author_id` appears in `0001_initial.rs`, you have accidentally skipped ahead to Part 5.
 
-## Re-export the Shared Info Types
+## Define the Shared Info Types
 
-The `#[model]` macro generates model-info companion types that are safe to send to the browser. Re-export them from `src/shared/types.rs`:
+The model modules are server-only, so the browser should not import generated model companions from `src/apps/polls/server/models.rs`. Define explicit wire DTOs in `src/shared/types.rs` instead:
 
 ```rust
-pub use crate::apps::polls::models::{ChoiceInfo, QuestionInfo};
+use chrono::{DateTime, Utc};
+use reinhardt::model_info::{InfoModel, RelationInfo};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuestionInfo {
+    pub id: i64,
+    pub question_text: String,
+    pub pub_date: DateTime<Utc>,
+}
+
+impl InfoModel for QuestionInfo {
+    type PrimaryKey = i64;
+}
+
+#[cfg(server)]
+impl From<crate::apps::polls::server::models::Question> for QuestionInfo {
+    fn from(question: crate::apps::polls::server::models::Question) -> Self {
+        Self {
+            id: question.id,
+            question_text: question.question_text,
+            pub_date: question.pub_date,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChoiceInfo {
+    pub id: i64,
+    pub question: RelationInfo<QuestionInfo>,
+    pub choice_text: String,
+    pub votes: i32,
+}
+
+impl InfoModel for ChoiceInfo {
+    type PrimaryKey = i64;
+}
+
+#[cfg(server)]
+impl From<crate::apps::polls::server::models::Choice> for ChoiceInfo {
+    fn from(choice: crate::apps::polls::server::models::Choice) -> Self {
+        let question_id = *choice.question_id();
+        Self {
+            id: choice.id,
+            question: RelationInfo::new(question_id),
+            choice_text: choice.choice_text,
+            votes: choice.votes,
+        }
+    }
+}
 ```
 
-This keeps the server function return type and the WASM component type identical.
+This keeps the server function return type and the WASM component type identical without making the browser compile database models. Part 5 adds the `author` relation after the `users` app exists.
 
 ## Add the Server Function
 
@@ -149,7 +198,7 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 pub async fn get_questions(
     #[inject] _db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<Vec<QuestionInfo>, ServerFnError> {
-    use crate::apps::polls::models::Question;
+    use crate::apps::polls::server::models::Question;
     use reinhardt::Model;
 
     let manager = Question::objects();
@@ -173,27 +222,55 @@ The current reference implementation takes five rows from the manager query. Do 
 
 ## Split Server and Client Routes
 
-The app-level `src/apps/polls/urls.rs` exposes separate router builders for the two targets:
+The app-level `src/apps/polls/urls.rs` stays target-neutral. It aggregates the split router modules:
 
 ```rust
-#[cfg(server)]
-pub mod server_urls;
+use reinhardt::{ClientRouter, ServerRouter};
 
-#[cfg(client)]
 pub mod client_router;
 
 #[cfg(server)]
-pub fn server_url_patterns() -> reinhardt::ServerRouter {
-    server_urls::server_url_patterns()
+pub mod server_router;
+
+pub fn server_url_patterns() -> ServerRouter {
+    #[cfg(server)]
+    {
+        server_router::server_url_patterns()
+    }
+    #[cfg(not(server))]
+    {
+        ServerRouter::new()
+    }
 }
 
-#[cfg(client)]
-pub fn client_url_patterns() -> reinhardt::ClientRouter {
+pub fn client_url_patterns() -> ClientRouter {
     client_router::client_url_patterns()
+}
+
+pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
+    client_router::reverse(name, params)
 }
 ```
 
-Register the server function in `src/apps/polls/urls/server_urls.rs`:
+Put the client route table in `src/apps/polls/urls/client_router.rs`:
+
+```rust
+use reinhardt::ClientRouter;
+
+use crate::apps::polls::pages;
+
+pub fn client_url_patterns() -> ClientRouter {
+    ClientRouter::new().route("index", "/", pages::index_page)
+}
+
+pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
+    client_url_patterns()
+        .reverse(name, params)
+        .unwrap_or_else(|error| panic!("failed to reverse polls client route `{name}`: {error}"))
+}
+```
+
+Register the server function in `src/apps/polls/urls/server_router.rs`:
 
 ```rust
 use crate::apps::polls::server_fn::get_questions;
@@ -202,17 +279,6 @@ use reinhardt::pages::server_fn::ServerFnRouterExt;
 
 pub fn server_url_patterns() -> ServerRouter {
     ServerRouter::new().server_fn(get_questions::marker)
-}
-```
-
-Register the index client route in `src/apps/polls/urls/client_router.rs`:
-
-```rust
-use crate::client::pages::index_page;
-use reinhardt::ClientRouter;
-
-pub fn client_url_patterns() -> ClientRouter {
-    ClientRouter::new().route("index", "/", index_page)
 }
 ```
 
@@ -228,7 +294,6 @@ pub fn routes() -> UnifiedRouter {
         s.mount("/", crate::apps::polls::urls::server_url_patterns())
     });
 
-    #[cfg(client)]
     let router = router.mount_unified(
         "/",
         UnifiedRouter::new().client(|_| crate::apps::polls::urls::client_url_patterns()),
@@ -248,11 +313,23 @@ ClientLauncher::new("#root")
     .launch()
 ```
 
-The page aggregator maps the named route to the polls component:
+Create the app-local page entry in `src/apps/polls/pages.rs`. Native builds return `Page::Empty`; WASM builds wrap the polls component with the shared nav:
 
 ```rust
+use reinhardt::pages::component::Page;
+
+#[cfg(client)]
+use crate::client::components::nav::with_nav;
+
 pub fn index_page() -> Page {
-    with_nav(crate::apps::polls::client::components::polls_index())
+    #[cfg(client)]
+    {
+        with_nav(crate::apps::polls::client::components::polls_index())
+    }
+    #[cfg(not(client))]
+    {
+        Page::Empty
+    }
 }
 ```
 

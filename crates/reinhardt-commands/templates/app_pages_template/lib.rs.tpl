@@ -4,22 +4,18 @@
 //! under this directory:
 //!
 //! - `admin` / `models` / `serializers` / `views` — server-only
-//! - `server_fn` / `urls` — bi-target (gate internally)
+//! - `pages` / `server_fn` / `urls` — bi-target (gate internally)
 //! - `client` — WASM-only (per-app UI + page wrappers)
+//! - `server` — native-only implementation details
 
 #[cfg(server)]
 use reinhardt::app_config;
 
 #[cfg(server)]
-pub mod admin;
-#[cfg(server)]
-pub mod models;
-#[cfg(server)]
-pub mod serializers;
-#[cfg(server)]
-pub mod views;
+pub mod server;
 
 // Bi-target modules: both server and client portions live inside, gated internally.
+pub mod pages;
 pub mod server_fn;
 pub mod urls;
 

@@ -1,20 +1,18 @@
-//! Client-side routing for the users application (login/logout/signup pages).
-//!
-//! Each route is registered with a stable name (`users:login`,
-//! `users:logout`, `users:signup`) so callers can resolve URLs via the URL
-//! reverser.
+//! Client-side routes for login/logout/signup pages.
 
 use reinhardt::ClientRouter;
 
-use crate::client::pages::{login_page, logout_page, signup_page};
+use crate::apps::users::pages;
 
+/// Client-side routes for login/logout/signup pages.
 pub fn client_url_patterns() -> ClientRouter {
 	ClientRouter::new()
-		.route("login", "/login/", login_page)
-		.route("logout", "/logout/", logout_page)
-		.route("signup", "/signup/", signup_page)
+		.route("login", "/login/", pages::login_page)
+		.route("logout", "/logout/", pages::logout_page)
+		.route("signup", "/signup/", pages::signup_page)
 }
 
+/// Reverse a named users client route.
 pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
 	client_url_patterns()
 		.reverse(name, params)

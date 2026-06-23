@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2024"
 default-run = "manage"
 
+[workspace]
+resolver = "3"
+members = [
+]
+
 [profile.dev]
 codegen-units = 16
 debug = 0

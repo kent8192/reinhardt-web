@@ -12,7 +12,7 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
 #[cfg(server)]
 use {
-	crate::apps::users::models::{AuthUserManager, AuthUserManagerKey, User},
+	crate::apps::users::server::models::{AuthUserManager, AuthUserManagerKey, User},
 	reinhardt::BaseUser,
 	reinhardt::DatabaseConnection,
 	reinhardt::Validate,

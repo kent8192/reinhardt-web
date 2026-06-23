@@ -236,7 +236,7 @@ pub enum Commands {
 		index: Option<String>,
 	},
 
-	/// Display all registered URL patterns
+	/// Display all registered server URL patterns
 	Showurls {
 		/// Show only named URLs
 		#[arg(long)]

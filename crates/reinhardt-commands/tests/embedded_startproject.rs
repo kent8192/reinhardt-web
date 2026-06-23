@@ -92,9 +92,10 @@ async fn startproject_restful_honors_dependency_selection_flags() {
 	let cargo_toml = std::fs::read_to_string(tmp.path().join("feature_proj/Cargo.toml")).unwrap();
 	assert!(cargo_toml.contains("version = \"0.2.0-rc.4\""));
 	assert!(cargo_toml.contains("default-features = false"));
-	assert!(cargo_toml.contains(
-		"features = [\"minimal\", \"db-sqlite\", \"conf\", \"commands\", \"db-postgres\", \"api\"]"
-	));
+	assert!(
+		cargo_toml
+			.contains("features = [\"minimal\", \"db-sqlite\", \"conf\", \"commands\", \"api\"]")
+	);
 }
 
 #[rstest]
@@ -154,6 +155,10 @@ async fn startproject_pages_from_embedded_only() {
 			&& build_rs.contains("native: { not(target_arch = \"wasm32\") }"),
 		"generated pages build.rs must keep wasm/native compatibility aliases:\n{build_rs}"
 	);
+	assert!(
+		cargo_toml.contains("[workspace]") && cargo_toml.contains("members = ["),
+		"generated pages Cargo.toml must be a nested-workspace-safe root:\n{cargo_toml}"
+	);
 	let shared_types = std::fs::read_to_string(generated.join("src/shared/types.rs")).unwrap();
 	assert!(
 		!shared_types.contains("\nuse serde::{Deserialize, Serialize};"),
@@ -177,7 +182,10 @@ async fn startproject_pages_adds_required_pages_features() {
 	let mut ctx = CommandContext::new(vec!["pages_feature_proj".to_string()]);
 	let mut opts = HashMap::new();
 	opts.insert("with-pages".to_string(), vec!["true".to_string()]);
-	opts.insert("features".to_string(), vec!["minimal".to_string()]);
+	opts.insert(
+		"features".to_string(),
+		vec!["minimal,pages,client-router,server-fn,db-sqlite".to_string()],
+	);
 	opts.insert("no-interactive".to_string(), vec!["true".to_string()]);
 	ctx = ctx.with_options(opts);
 
@@ -188,7 +196,15 @@ async fn startproject_pages_adds_required_pages_features() {
 	let cargo_toml =
 		std::fs::read_to_string(tmp.path().join("pages_feature_proj/Cargo.toml")).unwrap();
 	assert!(cargo_toml.contains(
-		"features = [\"minimal\", \"pages\", \"admin\", \"conf\", \"commands\", \"db-postgres\"]"
+		"features = [\"minimal\", \"pages\", \"client-router\", \"db-sqlite\", \"admin\", \"conf\", \"commands\"]"
 	));
+	assert!(
+		!cargo_toml.contains("\"server-fn\""),
+		"stale server-fn feature alias must not be written to generated Cargo.toml:\n{cargo_toml}"
+	);
+	assert!(
+		!cargo_toml.contains("\"db-postgres\""),
+		"explicit db-sqlite selection must not be overwritten by db-postgres:\n{cargo_toml}"
+	);
 	assert_manifest_parses(&tmp.path().join("pages_feature_proj/Cargo.toml"));
 }

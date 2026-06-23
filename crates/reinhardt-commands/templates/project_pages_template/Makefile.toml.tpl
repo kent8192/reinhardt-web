@@ -19,6 +19,23 @@ WASM_TARGET = "wasm32-unknown-unknown"
 WASM_BINDGEN_VERSION = "0.2.122"
 
 # ============================================================================
+# Tooling
+# ============================================================================
+
+[tasks.install-tools]
+description = "Install development tools used by the generated Pages project"
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+rustup target add "${WASM_TARGET}"
+cargo install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked
+cargo install cargo-watch --locked
+
+echo "Development tools installed"
+'''
+
+# ============================================================================
 # Development Server
 # ============================================================================
 
@@ -330,6 +347,7 @@ description = "Show available tasks"
 script = '''
 echo "Available tasks:"
 echo "  Development:"
+echo "    install-tools      - Install WASM and watcher development tools"
 echo "    runserver          - Start the development server (with WASM); auto-reloads on changes"
 echo "    dev                - Run checks + build WASM + start server (auto-reloads)"
 echo ""

@@ -359,22 +359,23 @@ src/
 ├── apps/
 │   ├── polls.rs                  # per-app entry (sibling of polls/)
 │   └── polls/
-│       ├── admin.rs              # #[cfg(server)] admin registration
-│       ├── client.rs             # #[cfg(client)] aggregator: pub mod components; pub mod pages;
+│       ├── client.rs             # #[cfg(client)] aggregator: pub mod components;
 │       ├── client/
-│       │   ├── components.rs     # per-app UI (placeholder() returning Page)
-│       │   └── pages.rs          # per-app pages (placeholder_page wraps with_nav)
-│       ├── models.rs             # #[cfg(server)] models
-│       ├── models/               # (.gitkeep — user adds submodules here)
-│       ├── serializers.rs        # #[cfg(server)] serializers
-│       ├── serializers/          # (.gitkeep)
+│       │   └── components.rs     # per-app UI (placeholder() returning Page)
+│       ├── pages.rs              # target-neutral page entry points
+│       ├── server.rs             # #[cfg(server)] aggregator
+│       ├── server/
+│       │   ├── admin.rs          # admin registration
+│       │   ├── models.rs         # models
+│       │   ├── serializers.rs    # serializers
+│       │   ├── models/           # (.gitkeep — user adds submodules here)
+│       │   └── serializers/      # (.gitkeep)
 │       ├── server_fn.rs          # bi-target #[server_fn] handlers (placeholder)
 │       ├── tests/                # (.gitkeep)
-│       ├── urls.rs               # urls aggregator (cfg-gated submodules)
-│       ├── urls/
-│       │   ├── server_urls.rs    # #[url_patterns(InstalledApp::polls, mode = server)]
-│       │   └── client_router.rs  # #[url_patterns(InstalledApp::polls, mode = client)]
-│       └── views.rs              # #[cfg(server)] views
+│       ├── urls.rs               # target-neutral server/client router aggregate
+│       └── urls/
+│           ├── client_router.rs  # client route table and reverse helper
+│           └── server_router.rs  # server-function marker registration
 ├── bin/
 │   └── manage.rs                 # native-only management CLI entry
 ├── client.rs                     # #[cfg(client)] aggregator: pub mod lib; pub mod components;
@@ -427,9 +428,10 @@ pub fn server_url_patterns() -> ServerRouter {
 ```
 
 The `#[url_patterns]` attribute registers this router with the framework for
-automatic discovery. For Pages apps, use `mode = unified` and return
-`UnifiedRouter` instead (see the generated `urls/{server,client,ws}_urls.rs`
-submodules).
+automatic discovery. For Pages apps, keep the app-level `urls.rs` as the
+target-neutral aggregate and put route implementations in
+`urls/client_router.rs` and `urls/server_router.rs`; the project-level
+`src/config/urls.rs` mounts the aggregate functions.
 
 Include in `src/config/urls.rs`:
 
@@ -1156,7 +1158,7 @@ Register route with path parameter in `urls.rs`:
 // users/urls.rs
 use reinhardt::ServerRouter;
 
-use super::views;
+use crate::apps::users::views;
 
 pub fn url_patterns() -> ServerRouter {
 	ServerRouter::new()
