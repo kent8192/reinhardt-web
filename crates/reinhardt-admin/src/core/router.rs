@@ -152,7 +152,11 @@ admin_endpoint!(
 #[cfg(server)]
 fn resolve_admin_static(path: &str) -> String {
 	let admin_path = format!("admin/{}", path);
-	reinhardt_pages::static_resolver::resolve_static(&admin_path)
+	if reinhardt_pages::static_resolver::is_initialized() {
+		reinhardt_pages::static_resolver::resolve_static(&admin_path)
+	} else {
+		format!("/static/admin/{}", path.trim_start_matches('/'))
+	}
 }
 
 /// Generates the HTML shell for the admin SPA.

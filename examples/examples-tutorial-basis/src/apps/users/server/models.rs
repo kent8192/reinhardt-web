@@ -76,7 +76,7 @@ pub struct User {
 
 #[cfg(server)]
 mod manager {
-	use super::User;
+	use crate::apps::users::server::models::User;
 	use reinhardt::BaseUser;
 	use reinhardt::DatabaseConnection;
 	use reinhardt::Model;

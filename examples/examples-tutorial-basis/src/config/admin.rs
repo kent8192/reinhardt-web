@@ -4,7 +4,7 @@
 //! so the Django-style auto-generated admin UI is reachable at `/admin/`.
 //! Mounting and DI wiring happen in `crate::config::urls`.
 
-use crate::apps::polls::admin::{ChoiceAdmin, QuestionAdmin};
+use crate::apps::polls::server::admin::{ChoiceAdmin, QuestionAdmin};
 use crate::config::settings::get_settings;
 use reinhardt::HasCoreSettings;
 use reinhardt::admin::AdminSite;

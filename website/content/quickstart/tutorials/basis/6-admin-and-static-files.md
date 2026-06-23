@@ -9,16 +9,16 @@ sidebar_weight = 60
 
 # Part 6: The Admin and Static Files
 
-The application now has user-owned polls. In this part you will add the Reinhardt admin at `/admin/` and wire the static-file pipeline that serves the WASM bundle, CSS, images, and admin assets.
+The application now has user-owned polls. In this part you will add the Reinhardt admin route at `/admin/` and wire the static-file pipeline that serves the WASM bundle, CSS, images, and admin assets.
 
-The admin is useful for seeding and inspecting tutorial data. It is not a replacement for the owner-checked server functions from Part 5; it is an operator interface.
+The admin registration is useful for exercising model metadata, route wiring, and the admin API surface. It is not a replacement for the owner-checked server functions from Part 5.
 
 ## Register Poll Models with the Admin
 
-Create `src/apps/polls/admin.rs`. The example registers `Question` first:
+Create `src/apps/polls/server/admin.rs`. The example registers `Question` first:
 
 ```rust
-use crate::apps::polls::models::{Choice, Question};
+use crate::apps::polls::server::models::{Choice, Question};
 use reinhardt::admin;
 
 #[admin(model,
@@ -62,11 +62,18 @@ Part 2 already exposed the polls app from `src/apps.rs`:
 pub mod polls;
 ```
 
-Now expose the admin module from the polls app parent so the site configuration can import it:
+Now expose the server module from the polls app parent, and expose admin from `src/apps/polls/server.rs` so the site configuration can import it:
 
 ```rust
 #[cfg(server)]
+pub mod server;
+```
+
+```rust
 pub mod admin;
+pub mod models;
+pub mod serializers;
+pub mod urls;
 ```
 
 ## Configure the Admin Site
@@ -74,7 +81,7 @@ pub mod admin;
 Create `src/config/admin.rs` and register the app admins:
 
 ```rust
-use crate::apps::polls::admin::{ChoiceAdmin, QuestionAdmin};
+use crate::apps::polls::server::admin::{ChoiceAdmin, QuestionAdmin};
 use crate::config::settings::get_settings;
 use reinhardt::HasCoreSettings;
 use reinhardt::admin::AdminSite;
@@ -233,7 +240,7 @@ Run the admin-enabled app:
 cargo make dev
 ```
 
-Open `http://127.0.0.1:8000/admin/`. You should be able to manage `Question` and `Choice` records through the admin UI.
+Open `http://127.0.0.1:8000/admin/`. The route should load the embedded admin shell and `/static/admin/` assets. If the admin WASM SPA has not been built, the shell intentionally shows a placeholder message; the tutorial checkpoint is route/static wiring plus admin registration, not browser-based model editing.
 
 Before continuing:
 

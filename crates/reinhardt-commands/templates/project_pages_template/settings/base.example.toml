@@ -11,7 +11,7 @@
 
 [core]
 debug = false
-# secret_key = "uncomment-this-line-and-replace-with-a-long-random-string"
+secret_key = "{{ secret_key }}"
 allowed_hosts = []
 language_code = "en-us"
 time_zone = "UTC"
@@ -41,3 +41,7 @@ user = "postgres"
 [static]
 url = "/static/"
 root = "dist"
+
+[contacts]
+admins = []
+managers = []

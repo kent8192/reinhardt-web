@@ -5,9 +5,10 @@
 //! logout, sign-up, and current-user introspection via
 //! `crate::apps::users::server_fn`.
 
-pub mod models;
-
 #[cfg(client)]
 pub mod client;
+pub mod pages;
+#[cfg(server)]
+pub mod server;
 pub mod server_fn;
 pub mod urls;

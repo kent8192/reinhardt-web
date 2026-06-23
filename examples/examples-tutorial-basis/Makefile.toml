@@ -74,8 +74,20 @@ dependencies = ["infra-up"]
 script = '''
 #!/usr/bin/env bash
 set -euo pipefail
+eval "$(bash scripts/docker_host.sh)"
 eval "$(bash scripts/db_url.sh)"
 cargo run --bin manage makemigrations
+'''
+
+[tasks.makemigrations-check]
+description = "Verify committed migrations match the current model state"
+dependencies = ["infra-up"]
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+eval "$(bash scripts/docker_host.sh)"
+eval "$(bash scripts/db_url.sh)"
+cargo run --bin manage -- makemigrations --dry-run --check
 '''
 
 [tasks.migrate]
@@ -107,8 +119,13 @@ args = ["run", "--bin", "manage", "collectstatic"]
 
 [tasks.check]
 description = "Check the project for common issues"
-command = "cargo"
-args = ["run", "--bin", "manage", "check"]
+dependencies = ["infra-up"]
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+eval "$(bash scripts/db_url.sh)"
+cargo run --bin manage check
+'''
 
 [tasks.showurls]
 description = "Display all registered URL patterns"
@@ -126,18 +143,30 @@ args = ["run", "--bin", "manage", "shell"]
 
 [tasks.test]
 description = "Run all tests"
-command = "cargo"
-args = ["nextest", "run", "--all-features"]
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+eval "$(bash scripts/docker_host.sh)"
+cargo nextest run --all-features
+'''
 
 [tasks.test-unit]
 description = "Run unit tests only"
-command = "cargo"
-args = ["nextest", "run", "--lib", "--all-features"]
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+eval "$(bash scripts/docker_host.sh)"
+cargo nextest run --lib --all-features
+'''
 
 [tasks.test-integration]
 description = "Run integration tests only"
-command = "cargo"
-args = ["nextest", "run", "--test", "*", "--all-features"]
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+eval "$(bash scripts/docker_host.sh)"
+cargo nextest run --test "*" --all-features
+'''
 
 # ============================================================================
 # Code Quality

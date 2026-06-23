@@ -34,6 +34,9 @@
 use rstest::*;
 
 use crate::wasm::{MockCookies, MockStorage, Screen};
+// Kept as a compatibility re-export for tests that imported the mock fetch
+// helper from this fixture module before it moved under reinhardt-pages.
+#[allow(unused_imports, unreachable_pub)]
 pub use reinhardt_pages::testing::mock_fetch;
 
 // ============================================================================

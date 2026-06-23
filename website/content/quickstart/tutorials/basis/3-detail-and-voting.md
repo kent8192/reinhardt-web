@@ -11,7 +11,7 @@ sidebar_weight = 30
 
 The poll index now links to detail pages, but the detail route does not do useful work yet. In this part you will add the read path for one poll, a vote mutation, and a results page.
 
-The browser submits votes through `form!` and a `#[server_fn]`. The server keeps the database rules: it verifies that the selected choice belongs to the selected question, increments the vote in a transaction, and returns a generated `ChoiceInfo`.
+The browser submits votes through `form!` and a `#[server_fn]`. The server keeps the database rules: it verifies that the selected choice belongs to the selected question, increments the vote in a transaction, and returns the shared `ChoiceInfo` DTO.
 
 ## Add the Request Type
 
@@ -37,7 +37,7 @@ pub async fn get_question_detail(
     question_id: i64,
     #[inject] _db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<(QuestionInfo, Vec<ChoiceInfo>), ServerFnError> {
-    use crate::apps::polls::models::{Choice, Question};
+    use crate::apps::polls::server::models::{Choice, Question};
     use reinhardt::Model;
 
     let question_manager = Question::objects();
@@ -74,7 +74,7 @@ pub async fn get_question_results(
     question_id: i64,
     #[inject] _db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<(QuestionInfo, Vec<ChoiceInfo>, i32), ServerFnError> {
-    use crate::apps::polls::models::{Choice, Question};
+    use crate::apps::polls::server::models::{Choice, Question};
     use reinhardt::Model;
 
     let question_manager = Question::objects();
@@ -144,7 +144,7 @@ async fn vote_internal(
     request: crate::shared::types::VoteRequest,
     db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
-    use crate::apps::polls::models::Choice;
+    use crate::apps::polls::server::models::Choice;
     use reinhardt::Model;
     use reinhardt::atomic;
 
@@ -172,7 +172,7 @@ async fn vote_internal(
 }
 ```
 
-Add the `Choice::vote()` model helper in `src/apps/polls/models.rs`:
+Add the `Choice::vote()` model helper in `src/apps/polls/server/models.rs`:
 
 ```rust
 #[cfg(native)]
@@ -188,7 +188,7 @@ The helper increments `votes` and saves the row through the model lifecycle.
 
 ## Register the Server Functions
 
-Add the new markers in `src/apps/polls/urls/server_urls.rs`:
+Add the new markers in `src/apps/polls/urls/server_router.rs`:
 
 ```rust
 ServerRouter::new()
@@ -207,16 +207,16 @@ Add detail and results routes in `src/apps/polls/urls/client_router.rs`:
 
 ```rust
 ClientRouter::new()
-    .route("index", "/", index_page)
+    .route("index", "/", pages::index_page)
     .route_path(
         "detail",
         "/polls/{question_id}/",
-        |ClientPath(question_id): ClientPath<i64>| polls_detail_page(question_id),
+        |ClientPath(question_id): ClientPath<i64>| pages::polls_detail_page(question_id),
     )
     .route_path(
         "results",
         "/polls/{question_id}/results/",
-        |ClientPath(question_id): ClientPath<i64>| polls_results_page(question_id),
+        |ClientPath(question_id): ClientPath<i64>| pages::polls_results_page(question_id),
     )
 ```
 
