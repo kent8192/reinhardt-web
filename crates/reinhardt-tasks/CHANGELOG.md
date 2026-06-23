@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.3.0-rc.2...reinhardt-tasks@v0.3.0-rc.3) - 2026-06-23
+
+### Documentation
+
+- update version references to v0.3.0-rc.3
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.1.3...reinhardt-tasks@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-tasks` for the Reinhardt 0.2.0 line. This
