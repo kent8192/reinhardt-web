@@ -134,6 +134,15 @@ async fn startproject_pages_from_embedded_only() {
 	assert!(cargo_toml.contains(
 		"features = [\"standard\", \"pages\", \"admin\", \"conf\", \"commands\", \"db-postgres\"]"
 	));
+	assert!(
+		cargo_toml.contains("required-features = [\"with-reinhardt\"]"),
+		"generated pages manage binary must be native-feature gated:\n{cargo_toml}"
+	);
+	assert!(
+		cargo_toml.contains("default = [\"with-reinhardt\", \"client-router\"]")
+			&& cargo_toml.contains("msw = [\"reinhardt/msw\"]"),
+		"generated pages Cargo.toml must declare local feature gates used by WASM tests:\n{cargo_toml}"
+	);
 	let makefile_toml = std::fs::read_to_string(generated.join("Makefile.toml")).unwrap();
 	assert!(
 		makefile_toml.contains("\"--no-input\""),
@@ -142,6 +151,29 @@ async fn startproject_pages_from_embedded_only() {
 	assert!(
 		!makefile_toml.contains("\"--noinput\""),
 		"generated pages Makefile must not use the createsuperuser-only --noinput spelling"
+	);
+	assert!(
+		makefile_toml.contains("command = \"wasm-pack\"")
+			&& makefile_toml.contains("\"--out-dir\", \"dist-wasm\""),
+		"generated pages Makefile must build the browser bundle with wasm-pack into dist-wasm:\n{makefile_toml}"
+	);
+	assert!(
+		makefile_toml
+			.contains("args = [\"build\", \"--target\", \"wasm32-unknown-unknown\", \"--lib\"]")
+			&& makefile_toml.contains(
+				"args = [\"build\", \"--target\", \"wasm32-unknown-unknown\", \"--release\", \"--lib\"]"
+			),
+		"generated pages Makefile must compile only the library for WASM pre-checks:\n{makefile_toml}"
+	);
+	assert!(
+		!makefile_toml.contains("ls target/wasm32-unknown-unknown")
+			&& !makefile_toml.contains("head -1"),
+		"generated pages Makefile must not pick an arbitrary .wasm file such as manage.wasm:\n{makefile_toml}"
+	);
+	assert!(
+		generated.join("scripts/wasm-build-dev.sh").exists()
+			&& generated.join("scripts/wasm-build-release.sh").exists(),
+		"generated pages project must include WASM post-build scripts"
 	);
 	let build_rs = std::fs::read_to_string(generated.join("build.rs")).unwrap();
 	for cfg in ["client", "server", "wasm", "native"] {
@@ -207,4 +239,43 @@ async fn startproject_pages_adds_required_pages_features() {
 		"explicit db-sqlite selection must not be overwritten by db-postgres:\n{cargo_toml}"
 	);
 	assert_manifest_parses(&tmp.path().join("pages_feature_proj/Cargo.toml"));
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(cwd)]
+async fn startproject_pages_explicit_tutorial_features_get_minimal_runtime() {
+	let tmp = TempDir::new().unwrap();
+	let prev = std::env::current_dir().unwrap();
+	std::env::set_current_dir(tmp.path()).unwrap();
+
+	let mut ctx = CommandContext::new(vec!["pages_tutorial_proj".to_string()]);
+	let mut opts = HashMap::new();
+	opts.insert("with-pages".to_string(), vec!["true".to_string()]);
+	opts.insert(
+		"features".to_string(),
+		vec![
+			"pages,admin,conf,commands-server,commands-autoreload,db-sqlite,forms,auth-session,middleware,argon2-hasher,static-files"
+				.to_string(),
+		],
+	);
+	opts.insert("default-features".to_string(), vec!["false".to_string()]);
+	opts.insert("no-interactive".to_string(), vec!["true".to_string()]);
+	ctx = ctx.with_options(opts);
+
+	let res = StartProjectCommand.execute(&ctx).await;
+
+	std::env::set_current_dir(prev).unwrap();
+	res.expect("startproject --with-pages succeeds with tutorial-style explicit features");
+	let cargo_toml =
+		std::fs::read_to_string(tmp.path().join("pages_tutorial_proj/Cargo.toml")).unwrap();
+	assert!(
+		cargo_toml.contains("\"minimal\""),
+		"explicit Pages feature selections must be augmented with the minimal runtime facade:\n{cargo_toml}"
+	);
+	assert!(
+		cargo_toml.contains("\"db-sqlite\"") && !cargo_toml.contains("\"db-postgres\""),
+		"explicit SQLite selection must not be overwritten by db-postgres:\n{cargo_toml}"
+	);
+	assert_manifest_parses(&tmp.path().join("pages_tutorial_proj/Cargo.toml"));
 }

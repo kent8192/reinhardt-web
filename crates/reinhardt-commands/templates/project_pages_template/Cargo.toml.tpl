@@ -19,6 +19,7 @@ crate-type = ["cdylib", "rlib"]  # cdylib for WASM, rlib for server
 [[bin]]
 name = "manage"
 path = "src/bin/manage.rs"
+required-features = ["with-reinhardt"]
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
@@ -55,6 +56,12 @@ tokio = { version = "1", features = ["full"] }
 
 [build-dependencies]
 cfg_aliases = "0.2"
+
+[features]
+default = ["with-reinhardt", "client-router"]
+client-router = []
+with-reinhardt = []
+msw = ["reinhardt/msw"]
 
 [dev-dependencies]
 rstest = "0.26.1"
