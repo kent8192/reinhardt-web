@@ -60,7 +60,9 @@ pub fn nav_bar() -> Page {
 					class: "nav-actions flex items-center gap-3",
 					span {
 						class: "nav-username text-sm text-muted",
-						{ format!("Signed in as {}", user.username) }
+						{
+							format!("Signed in as {}", user.username)
+						}
 					}
 					a {
 						href: logout_href.clone(),
