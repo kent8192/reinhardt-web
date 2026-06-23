@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.0...reinhardt-commands@v0.2.1) - 2026-06-23
+
+### Fixed
+
+- *(scaffolding)* stabilize Pages basis tutorial scaffold
+
+### Maintenance
+
+- *(scaffolding)* stack issue 5426 fix on tutorial PR
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.3...reinhardt-commands@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-commands` for the Reinhardt 0.2.0 line. This

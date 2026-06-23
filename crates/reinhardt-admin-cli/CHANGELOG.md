@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.2.0...reinhardt-admin-cli@v0.2.1) - 2026-06-23
+
+### Documentation
+
+- *(tutorial)* align basis guide with sqlite pages setup
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.3...reinhardt-admin-cli@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-admin-cli` for the Reinhardt 0.2.0 line. This
