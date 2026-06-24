@@ -2,14 +2,14 @@
 
 use reinhardt::ClientRouter;
 
-use crate::apps::users::pages;
+use crate::apps::users::client::components;
 
 /// Client-side routes for login/logout/signup pages.
 pub fn client_url_patterns() -> ClientRouter {
 	ClientRouter::new()
-		.route("login", "/login/", pages::login_page)
-		.route("logout", "/logout/", pages::logout_page)
-		.route("signup", "/signup/", pages::signup_page)
+		.component(components::login_page::login_page)
+		.component(components::logout_page::logout_page)
+		.component(components::signup_page::signup_page)
 }
 
 /// Reverse a named users client route.

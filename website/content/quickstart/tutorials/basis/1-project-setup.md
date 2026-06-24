@@ -112,11 +112,11 @@ configuration features selected by `startproject`:
 
 ```toml
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-reinhardt = { version = "0.3.0-rc.2", package = "reinhardt-web", default-features = false, features = ["pages", "client-router"] }
+reinhardt = { version = "0.3.0-rc.3", package = "reinhardt-web", default-features = false, features = ["pages", "client-router"] }
 wasm-bindgen = "=0.2.122"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-reinhardt = { version = "0.3.0-rc.2", package = "reinhardt-web", default-features = false, features = [
+reinhardt = { version = "0.3.0-rc.3", package = "reinhardt-web", default-features = false, features = [
     "standard",
     "pages",
     "admin",
@@ -156,7 +156,7 @@ pub mod config;
 pub mod client;
 ```
 
-`apps` compiles on both targets. Each generated app gates `client` with `#[cfg(client)]` and `server` with `#[cfg(server)]`; route-backed components live under `src/apps/<app>/client/components/`, wire DTOs under `src/apps/<app>/serializers/`, and server-only forms/models/views under `src/apps/<app>/server/`.
+`apps` compiles on both targets. Each generated app gates `client` with `#[cfg(client)]` and gates server-only implementation modules at the declaration site. Route-backed components live under `src/apps/<app>/client/components/`, `#[model]` generates shared info DTOs from model modules, request DTOs live in `src/shared/types.rs`, and server-only admin/services/forms stay under server-gated modules.
 
 ## Inspect Settings
 

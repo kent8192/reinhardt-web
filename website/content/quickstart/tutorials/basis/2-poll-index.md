@@ -21,7 +21,7 @@ Generate a pages app:
 reinhardt-admin startapp polls --template pages
 ```
 
-The app should be registered in `src/config/apps.rs`:
+`startapp` updates `src/config/apps.rs` for you. Check that `polls` is present, but do not hand-edit this file unless you created the app directory manually:
 
 ```rust
 use reinhardt::installed_apps;
@@ -31,7 +31,7 @@ installed_apps! {
 }
 ```
 
-The completed example also registers `users`, but do not add it until Part 4.
+The completed example also contains `users`, but that entry is added by the Part 4 `startapp users --template pages` command.
 
 ## Add the Initial Models
 
@@ -127,80 +127,32 @@ Operation::CreateTable {
 
 If `author_id` appears in `0001_initial.rs`, you have accidentally skipped ahead to Part 5.
 
-## Define the App Wire DTOs
+## Use the Generated Model Info DTOs
 
-The model modules are server-only, so the browser should not import generated model companions from `src/apps/polls/server/models.rs`. Define explicit wire DTOs in `src/apps/polls/serializers.rs` instead:
+`#[model]` generates serializable info companions for models that are not marked `server_only`. In this tutorial, `QuestionInfo` and `ChoiceInfo` come from `src/apps/polls/server/models.rs`; do not hand-write duplicate DTOs.
+
+Keep the `models` module available on both targets, while server-only helpers such as migrations, admin, and service code stay behind their module-level gates. Then server functions and WASM components can import the same generated DTOs:
 
 ```rust
-use chrono::{DateTime, Utc};
-use reinhardt::model_info::{InfoModel, RelationInfo};
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QuestionInfo {
-    pub id: i64,
-    pub question_text: String,
-    pub pub_date: DateTime<Utc>,
-}
-
-impl InfoModel for QuestionInfo {
-    type PrimaryKey = i64;
-}
-
-#[cfg(server)]
-impl From<crate::apps::polls::server::models::Question> for QuestionInfo {
-    fn from(question: crate::apps::polls::server::models::Question) -> Self {
-        Self {
-            id: question.id,
-            question_text: question.question_text,
-            pub_date: question.pub_date,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChoiceInfo {
-    pub id: i64,
-    pub question: RelationInfo<QuestionInfo>,
-    pub choice_text: String,
-    pub votes: i32,
-}
-
-impl InfoModel for ChoiceInfo {
-    type PrimaryKey = i64;
-}
-
-#[cfg(server)]
-impl From<crate::apps::polls::server::models::Choice> for ChoiceInfo {
-    fn from(choice: crate::apps::polls::server::models::Choice) -> Self {
-        let question_id = *choice.question_id();
-        Self {
-            id: choice.id,
-            question: RelationInfo::new(question_id),
-            choice_text: choice.choice_text,
-            votes: choice.votes,
-        }
-    }
-}
+use crate::apps::polls::server::models::{ChoiceInfo, QuestionInfo};
 ```
 
-This keeps the server function return type and the WASM component type identical without making the browser compile database models. Part 5 adds the `author` relation after the `users` app exists.
+This keeps the server function return type and the WASM component type identical. Part 5 adds the generated `author` relation to `QuestionInfo` after the `users` app exists.
 
 ## Add the Server Function
 
 Create `src/apps/polls/server_fn.rs` and expose a query for the index page:
 
 ```rust
-use crate::apps::polls::serializers::QuestionInfo;
+use crate::apps::polls::server::models::{Question, QuestionInfo};
+use reinhardt::{DatabaseConnection, Model};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
+use std::result::Result;
 
 #[server_fn]
 pub async fn get_questions(
-    #[inject] _db: reinhardt::DatabaseConnection,
-) -> std::result::Result<Vec<QuestionInfo>, ServerFnError> {
-    use crate::apps::polls::server::models::Question;
-    use reinhardt::Model;
-
+    #[inject] _db: DatabaseConnection,
+) -> Result<Vec<QuestionInfo>, ServerFnError> {
     let manager = Question::objects();
     let questions = manager
         .all()
@@ -227,6 +179,7 @@ The app-level `src/apps/polls/urls.rs` stays target-neutral. It aggregates the s
 ```rust
 use reinhardt::{ClientRouter, ServerRouter};
 
+#[cfg(client)]
 pub mod client_router;
 
 #[cfg(server)]
@@ -244,11 +197,27 @@ pub fn server_url_patterns() -> ServerRouter {
 }
 
 pub fn client_url_patterns() -> ClientRouter {
-    client_router::client_url_patterns()
+    #[cfg(client)]
+    {
+        client_router::client_url_patterns()
+    }
+    #[cfg(not(client))]
+    {
+        ClientRouter::new()
+    }
 }
 
 pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
-    client_router::reverse(name, params)
+    #[cfg(client)]
+    {
+        client_router::reverse(name, params)
+    }
+    #[cfg(not(client))]
+    {
+        ClientRouter::new()
+            .reverse(name, params)
+            .unwrap_or_else(|error| panic!("failed to reverse polls client route `{name}`: {error}"))
+    }
 }
 ```
 
@@ -257,18 +226,10 @@ Put the client route table in `src/apps/polls/urls/client_router.rs`:
 ```rust
 use reinhardt::ClientRouter;
 
-#[cfg(client)]
 use crate::apps::polls::client::components;
 
 pub fn client_url_patterns() -> ClientRouter {
-    #[cfg(client)]
-    {
-        ClientRouter::new().component(components::polls_index::polls_index)
-    }
-    #[cfg(not(client))]
-    {
-        ClientRouter::new()
-    }
+    ClientRouter::new().component(components::polls_index::polls_index)
 }
 
 pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
@@ -293,18 +254,20 @@ pub fn server_url_patterns() -> ServerRouter {
 At the project level, aggregate app routers in `src/config/urls.rs`. Do not list individual poll server functions here:
 
 ```rust
+use crate::apps::polls::urls as polls_urls;
+
 #[routes]
 pub fn routes() -> UnifiedRouter {
     let router = UnifiedRouter::new();
 
     #[cfg(server)]
     let router = router.server(|s| {
-        s.mount("/", crate::apps::polls::urls::server_url_patterns())
+        s.mount("/", polls_urls::server_url_patterns())
     });
 
     let router = router.mount_unified(
         "/",
-        UnifiedRouter::new().client(|_| crate::apps::polls::urls::client_url_patterns()),
+        UnifiedRouter::new().client(|_| polls_urls::client_url_patterns()),
     );
 
     router
@@ -321,23 +284,21 @@ ClientLauncher::new("#root")
     .launch()
 ```
 
-Create the app-local route-backed component in `src/apps/polls/client/components/index.rs`. The component macro owns the route metadata, so no separate `pages.rs` wrapper is needed:
+Create the app-local route-backed wrapper in `src/apps/polls/client/components/polls_index.rs`. The component macro owns the route metadata, so no separate `pages.rs` wrapper is needed:
 
 ```rust
+use reinhardt::pages::component;
 use reinhardt::pages::component::Page;
-use reinhardt::pages::page;
 
 use crate::client::components::nav::with_nav;
 
-#[reinhardt::pages::component("/", "index")]
+#[component("/", "index")]
 pub fn polls_index() -> Page {
-    with_nav(page!(|| {
-        div { "Polls" }
-    })())
+    with_nav(super::polls_index())
 }
 ```
 
-Expand that component so it uses the server function as an async resource:
+Then implement the page body in `src/apps/polls/client/components.rs` so tests can exercise it directly and routes can wrap it with the shared nav:
 
 ```rust
 pub fn polls_index() -> Page {
@@ -390,21 +351,27 @@ The final example adds a "Create new poll" button and owner-only controls. Leave
 
 ## Seed a Poll
 
-Until the admin arrives in Part 6, the quickest local seed is SQL. Use the same database that `cargo make dev` points at:
+Until the admin arrives in Part 6, the quickest local seed is SQL. Use the same PostgreSQL database that `cargo make dev` points at. In the example profile, open it with:
 
-```sql
-with inserted_question as (
-    insert into questions (question_text, pub_date)
-    values ('What should we build next?', now())
-    returning id
-)
-insert into choices (question_id, choice_text, votes)
-select id, 'More tutorials', 0 from inserted_question
-union all
-select id, 'More examples', 0 from inserted_question;
+```bash
+PGPASSWORD=reinhardt psql -h localhost -p 5433 -U reinhardt -d examples_tutorial_basis
 ```
 
-If your database does not support `now()` or data-modifying common table expressions, use the timestamp and inserted-ID syntax it expects.
+Then paste:
+
+```sql
+WITH inserted_question AS (
+    INSERT INTO questions (question_text, pub_date)
+    VALUES ('What should we build next?', NOW())
+    RETURNING id
+)
+INSERT INTO choices (question_id, choice_text, votes)
+SELECT id, 'More tutorials', 0 FROM inserted_question
+UNION ALL
+SELECT id, 'More examples', 0 FROM inserted_question;
+```
+
+If you switch the tutorial profile to SQLite, open that database with `sqlite3 <path-to-db.sqlite3>` and use SQLite's inserted-ID syntax instead of `RETURNING`.
 
 ## Checkpoint
 

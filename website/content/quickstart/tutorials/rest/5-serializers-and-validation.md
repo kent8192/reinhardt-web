@@ -89,7 +89,7 @@ Look back at `create` in `src/apps/snippets/views.rs`:
 #[post("/snippets/", name = "snippets-create", pre_validate = true)]
 pub async fn create(
 	Json(serializer): Json<SnippetSerializer>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	let snippet = Snippet::build()
 		.title(serializer.title.clone())
@@ -126,7 +126,7 @@ The `update` handler looks similar, but it cannot use `pre_validate = true` toda
 pub async fn update(
 	Path(snippet_id): Path<i64>,
 	Json(serializer): Json<SnippetSerializer>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	serializer.validate()?;
 

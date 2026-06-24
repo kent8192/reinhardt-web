@@ -63,7 +63,7 @@ After installation, the command is `reinhardt-admin`.
 | 1 | [Project Setup](1-project-setup/) | Generate a REST project, inspect the settings layout, and run the empty server |
 | 2 | [Your First Endpoints](2-first-endpoints/) | Add temporary static JSON endpoints with `#[get]`, `#[post]`, `#[put]`, and `#[delete]` |
 | 3 | [Models and the Database](3-models-and-database/) | Define the `Snippet` model, create the migration, and apply the schema |
-| 4 | [Dependency Injection](4-dependency-injection/) | Replace the temporary handlers with real ORM access through `Depends<DatabaseConnection>` |
+| 4 | [Dependency Injection](4-dependency-injection/) | Replace the temporary handlers with real ORM access through injected `DatabaseConnection` and keyed `Depends<K, T>` |
 | 5 | [Serializers and Validation](5-serializers-and-validation/) | Validate request bodies, choose status codes, and return structured error responses |
 | 6 | [Bonus: ViewSets and Routers](6-viewsets-and-routers/) | Expose the same CRUD surface through `ModelViewSet` and router registration |
 

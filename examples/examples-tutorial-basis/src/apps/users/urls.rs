@@ -5,6 +5,7 @@
 
 use reinhardt::{ClientRouter, ServerRouter};
 
+#[cfg(client)]
 pub mod client_router;
 
 #[cfg(server)]
@@ -24,10 +25,28 @@ pub fn server_url_patterns() -> ServerRouter {
 
 /// Client-side routes for login/logout/signup pages.
 pub fn client_url_patterns() -> ClientRouter {
-	client_router::client_url_patterns()
+	#[cfg(client)]
+	{
+		client_router::client_url_patterns()
+	}
+	#[cfg(not(client))]
+	{
+		ClientRouter::new()
+	}
 }
 
 /// Reverse a named users client route.
 pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
-	client_router::reverse(name, params)
+	#[cfg(client)]
+	{
+		client_router::reverse(name, params)
+	}
+	#[cfg(not(client))]
+	{
+		ClientRouter::new()
+			.reverse(name, params)
+			.unwrap_or_else(|error| {
+				panic!("failed to reverse users client route `{name}`: {error}")
+			})
+	}
 }

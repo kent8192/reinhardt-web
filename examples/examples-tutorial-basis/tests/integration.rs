@@ -819,41 +819,25 @@ mod server_fn_tests {
 // Authorization tests for CUD server functions (Phase 4)
 // =========================================================================
 //
-// These tests cover the session-user DI factory's `SessionError` gate at
-// the entrance of every authenticated mutation (`create_question`,
-// `update_question`, `delete_question`, and the three Choice mirrors). The
-// gate runs *before* any database access, so these tests do not depend on
-// the schema and can run against an empty SQLite file. They guarantee that:
-//
-//   - An empty `SessionData` (no `user_id` key) →
-//     `Err(SessionError::Anonymous)` → `From<&SessionError>` returns
-//     401 Unauthorized.
-//   - The error originates from the `SessionError` gate, not from the
-//     model layer (i.e. the auth gate is never accidentally bypassed for
-//     any of the six CUD entry points).
-//
-// Session-positive ("author can update", "non-author gets 403") paths
-// require a `users` table + `author_id` column in the fixture — see the
-// follow-up note at the top of `sqlite_with_test_data`. They are
-// intentionally deferred until that fixture is rebuilt around
-// `reinhardt-test`'s model-driven schema generation rather than the
-// hand-written `CREATE TABLE` here.
+// Anonymous-user rejection belongs to the `CurrentUser<User>` injector and
+// happens before the server-function body is called. These direct-call tests
+// cover the handler-local active-user guard, which must still reject
+// inactive accounts before any database mutation path runs.
 
 #[cfg(with_reinhardt)]
 mod auth_tests {
 	use examples_tutorial_basis::apps::polls::server_fn::{
-		SessionError, SessionUserKey, create_choice, create_question, delete_choice,
-		delete_question, update_choice, update_question,
+		create_choice, create_question, delete_choice, delete_question, update_choice,
+		update_question,
 	};
 	use examples_tutorial_basis::apps::users::server::models::User;
-	use reinhardt::DatabaseConnection;
-	use reinhardt::di::Depends;
+	use reinhardt::{CurrentUser, DatabaseConnection};
 	use rstest::*;
 	use tempfile::NamedTempFile;
 
 	/// Fixture: an empty SQLite database + DatabaseConnection wired through
-	/// reinhardt-orm. No tables are created; the authorization tests below
-	/// short-circuit on the `SessionError` gate before any query runs.
+	/// reinhardt-orm. No tables are created; the inactive-user guard below
+	/// short-circuits before any query runs.
 	#[fixture]
 	async fn empty_db_conn() -> (NamedTempFile, DatabaseConnection) {
 		let temp_file = NamedTempFile::new().expect("Failed to create temp file");
@@ -865,34 +849,30 @@ mod auth_tests {
 		(temp_file, db_conn)
 	}
 
-	/// Anonymous session error wrapped in `Depends<SessionUserKey, Result<User, SessionError>>`
-	/// — the same value the request-scoped `session_user_factory` in
-	/// `apps::polls::server_fn` would produce for a `SessionData` without a
-	/// `user_id` key. We construct it directly with `Depends::from_value`
-	/// so the test does not need to spin up the middleware stack or the DI
-	/// container; the gate under test is `From<&SessionError> for
-	/// ServerFnError`, not the factory itself.
-	fn anonymous_session_user() -> Depends<SessionUserKey, Result<User, SessionError>> {
-		Depends::from_value(Err(SessionError::Anonymous))
+	fn inactive_current_user() -> CurrentUser<User> {
+		CurrentUser(
+			User::build()
+				.username("inactive-user".to_string())
+				.password_hash(None)
+				.is_active(false)
+				.is_superuser(false)
+				.finish(),
+		)
 	}
 
-	/// Helper: assert that a ServerFnError result represents a 401.
-	fn assert_unauthorized<T>(
+	/// Helper: assert that a ServerFnError result represents an inactive-user
+	/// 403 rather than a database/schema error.
+	fn assert_inactive_forbidden<T>(
 		result: std::result::Result<T, reinhardt::pages::server_fn::ServerFnError>,
 		operation: &str,
 	) {
 		let err = result
 			.err()
-			.unwrap_or_else(|| panic!("{} should reject anonymous callers", operation));
-		// The `From<&SessionError>` impl emits
-		// `ServerFnError::server(401, ...)`. We match on the Debug-formatted
-		// output because `ServerFnError` does not expose the inner status as
-		// a typed accessor in the public API, and its `Debug` impl is the
-		// most stable representation that includes the numeric status.
+			.unwrap_or_else(|| panic!("{} should reject inactive callers", operation));
 		let rendered = format!("{:?}", err);
 		assert!(
-			rendered.contains("401") || rendered.contains("Authentication required"),
-			"{} should fail with 401, got: {}",
+			rendered.contains("403") || rendered.contains("User account is inactive"),
+			"{} should fail with inactive-user 403, got: {}",
 			operation,
 			rendered
 		);
@@ -903,15 +883,12 @@ mod auth_tests {
 	async fn test_create_question_requires_auth(
 		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
 	) {
-		// Arrange
 		let (_file, db_conn) = empty_db_conn.await;
-		let session_user = anonymous_session_user();
+		let current_user = inactive_current_user();
 
-		// Act
-		let result = create_question("Anonymous attempt".to_string(), db_conn, session_user).await;
+		let result = create_question("Inactive attempt".to_string(), db_conn, current_user).await;
 
-		// Assert
-		assert_unauthorized(result, "create_question");
+		assert_inactive_forbidden(result, "create_question");
 	}
 
 	#[rstest]
@@ -920,11 +897,11 @@ mod auth_tests {
 		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
 	) {
 		let (_file, db_conn) = empty_db_conn.await;
-		let session_user = anonymous_session_user();
+		let current_user = inactive_current_user();
 
-		let result = update_question(1, "New text".to_string(), db_conn, session_user).await;
+		let result = update_question(1, "New text".to_string(), db_conn, current_user).await;
 
-		assert_unauthorized(result, "update_question");
+		assert_inactive_forbidden(result, "update_question");
 	}
 
 	#[rstest]
@@ -933,11 +910,11 @@ mod auth_tests {
 		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
 	) {
 		let (_file, db_conn) = empty_db_conn.await;
-		let session_user = anonymous_session_user();
+		let current_user = inactive_current_user();
 
-		let result = delete_question(1, db_conn, session_user).await;
+		let result = delete_question(1, db_conn, current_user).await;
 
-		assert_unauthorized(result, "delete_question");
+		assert_inactive_forbidden(result, "delete_question");
 	}
 
 	#[rstest]
@@ -946,11 +923,11 @@ mod auth_tests {
 		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
 	) {
 		let (_file, db_conn) = empty_db_conn.await;
-		let session_user = anonymous_session_user();
+		let current_user = inactive_current_user();
 
-		let result = create_choice(1, "Anonymous choice".to_string(), db_conn, session_user).await;
+		let result = create_choice(1, "Inactive choice".to_string(), db_conn, current_user).await;
 
-		assert_unauthorized(result, "create_choice");
+		assert_inactive_forbidden(result, "create_choice");
 	}
 
 	#[rstest]
@@ -959,11 +936,11 @@ mod auth_tests {
 		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
 	) {
 		let (_file, db_conn) = empty_db_conn.await;
-		let session_user = anonymous_session_user();
+		let current_user = inactive_current_user();
 
-		let result = update_choice(1, "Hijack".to_string(), db_conn, session_user).await;
+		let result = update_choice(1, "Hijack".to_string(), db_conn, current_user).await;
 
-		assert_unauthorized(result, "update_choice");
+		assert_inactive_forbidden(result, "update_choice");
 	}
 
 	#[rstest]
@@ -972,10 +949,10 @@ mod auth_tests {
 		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
 	) {
 		let (_file, db_conn) = empty_db_conn.await;
-		let session_user = anonymous_session_user();
+		let current_user = inactive_current_user();
 
-		let result = delete_choice(1, db_conn, session_user).await;
+		let result = delete_choice(1, db_conn, current_user).await;
 
-		assert_unauthorized(result, "delete_choice");
+		assert_inactive_forbidden(result, "delete_choice");
 	}
 }

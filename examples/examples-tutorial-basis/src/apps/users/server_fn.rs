@@ -5,7 +5,7 @@
 //! dependency are injected, the session ID is regenerated on successful login
 //! (fixation prevention), and `user_id` is persisted in the session map.
 
-use crate::shared::types::UserInfo;
+use crate::apps::users::server::models::UserInfo;
 #[cfg(server)]
 use crate::shared::types::{LoginRequest, RegisterRequest};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
@@ -14,15 +14,15 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use {
 	crate::apps::users::server::models::{AuthUserManager, AuthUserManagerKey, User},
 	reinhardt::BaseUser,
+	reinhardt::CurrentUser,
 	reinhardt::DatabaseConnection,
 	reinhardt::Validate,
 	reinhardt::db::orm::Model,
 	reinhardt::di::Depends,
-	reinhardt::middleware::session::{
-		SessionAuthExt, SessionData, SessionStore, SessionStoreKey, USER_ID_SESSION_KEY,
-	},
+	reinhardt::middleware::session::{SessionAuthExt, SessionData, SessionStore, SessionStoreKey},
 	reinhardt::reinhardt_auth::BaseUserManager,
 	std::collections::HashMap,
+	std::result::Result,
 	std::sync::Arc,
 };
 
@@ -37,7 +37,7 @@ pub async fn login(
 	#[inject] _db: DatabaseConnection,
 	#[inject] session: SessionData,
 	#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
-) -> std::result::Result<UserInfo, ServerFnError> {
+) -> Result<UserInfo, ServerFnError> {
 	let mut session = session;
 
 	let request = LoginRequest { username, password };
@@ -108,7 +108,7 @@ pub async fn register(
 	#[inject] user_manager: Depends<AuthUserManagerKey, AuthUserManager>,
 	#[inject] session: SessionData,
 	#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
-) -> std::result::Result<UserInfo, ServerFnError> {
+) -> Result<UserInfo, ServerFnError> {
 	let mut session = session;
 
 	let request = RegisterRequest {
@@ -166,17 +166,11 @@ pub async fn register(
 /// CSRF is supplied by the `#[server_fn]` client stub; see [`login`].
 #[server_fn]
 pub async fn logout(
+	#[inject] CurrentUser(_user): CurrentUser<User>,
 	#[inject] session: SessionData,
 	#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
-) -> std::result::Result<(), ServerFnError> {
+) -> Result<(), ServerFnError> {
 	let mut session = session;
-
-	// Only honor logout for sessions that actually carry an authenticated
-	// user; unauthenticated callers with a fresh cookie should not be able
-	// to drive session-store deletes.
-	if session.get::<i64>(USER_ID_SESSION_KEY).is_none() {
-		return Err(ServerFnError::server(401, "Not authenticated"));
-	}
 
 	// `SessionAuthExt::logout` rotates the session id, drops the user-id
 	// key, and persists the rotated session — see the docstring on
@@ -188,19 +182,7 @@ pub async fn logout(
 /// Return the currently authenticated user, if any.
 #[server_fn]
 pub async fn current_user(
-	#[inject] _db: DatabaseConnection,
-	#[inject] session: SessionData,
-) -> std::result::Result<Option<UserInfo>, ServerFnError> {
-	let user_id = match session.get::<i64>(USER_ID_SESSION_KEY) {
-		Some(id) => id,
-		None => return Ok(None),
-	};
-
-	let user = User::objects()
-		.filter(User::field_id().eq(user_id))
-		.first()
-		.await
-		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
-
-	Ok(user.map(UserInfo::from))
+	#[inject] CurrentUser(user): CurrentUser<User>,
+) -> Result<Option<UserInfo>, ServerFnError> {
+	Ok(Some(UserInfo::from(user)))
 }

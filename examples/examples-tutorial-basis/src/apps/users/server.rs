@@ -1,3 +1,3 @@
-//! Server-only implementation details for the users application.
+//! User model surface for the users application.
 
 pub mod models;

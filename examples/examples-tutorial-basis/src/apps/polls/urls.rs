@@ -6,6 +6,7 @@
 
 use reinhardt::{ClientRouter, ServerRouter};
 
+#[cfg(client)]
 pub mod client_router;
 
 #[cfg(server)]
@@ -25,10 +26,28 @@ pub fn server_url_patterns() -> ServerRouter {
 
 /// Client-side routing for the polls SPA.
 pub fn client_url_patterns() -> ClientRouter {
-	client_router::client_url_patterns()
+	#[cfg(client)]
+	{
+		client_router::client_url_patterns()
+	}
+	#[cfg(not(client))]
+	{
+		ClientRouter::new()
+	}
 }
 
 /// Reverse a named polls client route.
 pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
-	client_router::reverse(name, params)
+	#[cfg(client)]
+	{
+		client_router::reverse(name, params)
+	}
+	#[cfg(not(client))]
+	{
+		ClientRouter::new()
+			.reverse(name, params)
+			.unwrap_or_else(|error| {
+				panic!("failed to reverse polls client route `{name}`: {error}")
+			})
+	}
 }

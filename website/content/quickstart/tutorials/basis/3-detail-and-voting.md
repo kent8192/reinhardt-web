@@ -11,11 +11,11 @@ sidebar_weight = 30
 
 The poll index now links to detail pages, but the detail route does not do useful work yet. In this part you will add the read path for one poll, a vote mutation, and a results page.
 
-The browser submits votes through `form!` and a `#[server_fn]`. The server keeps the database rules: it verifies that the selected choice belongs to the selected question, increments the vote in a transaction, and returns the app-local `ChoiceInfo` DTO.
+The browser submits votes through `form!` and a `#[server_fn]`. The server keeps the database rules: it verifies that the selected choice belongs to the selected question, increments the vote in a transaction, and returns the generated `ChoiceInfo` DTO.
 
 ## Add the Request Type
 
-Open `src/apps/polls/serializers.rs` and add the vote request DTO:
+Open `src/shared/types.rs` and add the vote request DTO:
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,14 +32,15 @@ The browser form will use individual `question_id` and `choice_id` fields, but t
 Add `get_question_detail` to `src/apps/polls/server_fn.rs`:
 
 ```rust
+use crate::apps::polls::server::models::{Choice, Question};
+use reinhardt::{DatabaseConnection, Model};
+use std::result::Result;
+
 #[server_fn]
 pub async fn get_question_detail(
     question_id: i64,
-    #[inject] _db: reinhardt::DatabaseConnection,
-) -> std::result::Result<(QuestionInfo, Vec<ChoiceInfo>), ServerFnError> {
-    use crate::apps::polls::server::models::{Choice, Question};
-    use reinhardt::Model;
-
+    #[inject] _db: DatabaseConnection,
+) -> Result<(QuestionInfo, Vec<ChoiceInfo>), ServerFnError> {
     let question_manager = Question::objects();
     let question = question_manager
         .get(question_id)
@@ -69,14 +70,15 @@ The query uses generated field helpers (`Choice::field_question_id()`) instead o
 The results page needs the same question and choices plus a total vote count:
 
 ```rust
+use crate::apps::polls::server::models::{Choice, Question};
+use reinhardt::{DatabaseConnection, Model};
+use std::result::Result;
+
 #[server_fn]
 pub async fn get_question_results(
     question_id: i64,
-    #[inject] _db: reinhardt::DatabaseConnection,
-) -> std::result::Result<(QuestionInfo, Vec<ChoiceInfo>, i32), ServerFnError> {
-    use crate::apps::polls::server::models::{Choice, Question};
-    use reinhardt::Model;
-
+    #[inject] _db: DatabaseConnection,
+) -> Result<(QuestionInfo, Vec<ChoiceInfo>, i32), ServerFnError> {
     let question_manager = Question::objects();
     let question = question_manager
         .get(question_id)
@@ -113,11 +115,17 @@ The reference example exposes two entry points:
 Add both and share the implementation:
 
 ```rust
+use crate::apps::polls::server::models::ChoiceInfo;
+use crate::apps::polls::services::server::vote_internal;
+use crate::shared::types::VoteRequest;
+use reinhardt::DatabaseConnection;
+use std::result::Result;
+
 #[server_fn]
 pub async fn vote(
-    request: crate::apps::polls::serializers::VoteRequest,
-    #[inject] db: reinhardt::DatabaseConnection,
-) -> std::result::Result<ChoiceInfo, ServerFnError> {
+    request: crate::shared::types::VoteRequest,
+    #[inject] db: DatabaseConnection,
+) -> Result<ChoiceInfo, ServerFnError> {
     vote_internal(request, db).await
 }
 
@@ -125,9 +133,9 @@ pub async fn vote(
 pub async fn submit_vote(
     question_id: i64,
     choice_id: i64,
-    #[inject] db: reinhardt::DatabaseConnection,
-) -> std::result::Result<ChoiceInfo, ServerFnError> {
-    let request = crate::apps::polls::serializers::VoteRequest {
+    #[inject] db: DatabaseConnection,
+) -> Result<ChoiceInfo, ServerFnError> {
+    let request = VoteRequest {
         question_id,
         choice_id,
     };
@@ -136,17 +144,21 @@ pub async fn submit_vote(
 }
 ```
 
-The internal function wraps the read-modify-write in a transaction:
+The `vote` server function keeps the DTO argument on its canonical path because the generated marker code resolves that type from the `#[server_fn]` signature. The form wrapper still imports `VoteRequest` before constructing it.
+
+Place the shared implementation in the server-only service module `src/apps/polls/services/server.rs`. The module is already gated from the app parent, so the service function itself does not need a local `#[cfg(server)]` gate:
 
 ```rust
-#[cfg(server)]
-async fn vote_internal(
-    request: crate::apps::polls::serializers::VoteRequest,
-    db: reinhardt::DatabaseConnection,
-) -> std::result::Result<ChoiceInfo, ServerFnError> {
-    use crate::apps::polls::server::models::Choice;
-    use reinhardt::Model;
-    use reinhardt::atomic;
+use crate::apps::polls::server::models::{Choice, ChoiceInfo};
+use crate::shared::types::VoteRequest;
+use reinhardt::pages::server_fn::ServerFnError;
+use reinhardt::{DatabaseConnection, Model, atomic};
+use std::result::Result;
+
+pub async fn vote_internal(
+    request: VoteRequest,
+    db: DatabaseConnection,
+) -> Result<ChoiceInfo, ServerFnError> {
 
     let updated_choice = atomic(&db, || async {
         let choice_manager = Choice::objects();
@@ -175,9 +187,12 @@ async fn vote_internal(
 Add the `Choice::vote()` model helper in `src/apps/polls/server/models.rs`:
 
 ```rust
-#[cfg(native)]
+#[cfg(server)]
+use reinhardt::core::exception::Result;
+
+#[cfg(server)]
 impl Choice {
-    pub async fn vote(&mut self) -> reinhardt::core::exception::Result<()> {
+    pub async fn vote(&mut self) -> Result<()> {
         self.votes += 1;
         self.save().await
     }
@@ -282,7 +297,7 @@ let voting_form = form! {
 };
 ```
 
-`choices_from: "choices"` binds the radio options to the choices returned by `get_question_detail`. The generated `#[server_fn]` client stub supplies the CSRF header for WASM submits; you do not pass CSRF as a business argument.
+`choices_from: "choices"` binds the radio options to the choices returned by `get_question_detail`. The `watch` block stays in `form!` because it declares a render slot that depends on form state; the runtime state itself is still produced by the form runtime, and the static metadata path below explicitly calls `use_form(&form).build()`. The generated `#[server_fn]` client stub supplies the CSRF header for WASM submits; you do not pass CSRF as a business argument.
 
 The final example also hides owner-only edit/delete controls here. Defer those branches until Part 5.
 

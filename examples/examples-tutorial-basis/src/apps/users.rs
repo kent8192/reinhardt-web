@@ -7,8 +7,6 @@
 
 #[cfg(client)]
 pub mod client;
-pub mod pages;
-#[cfg(server)]
 pub mod server;
 pub mod server_fn;
 pub mod urls;

@@ -1,6 +1,6 @@
 +++
 title = "Part 4: Dependency Injection"
-description = "Inject a DatabaseConnection, query the real ORM, and register a fallible DI factory."
+description = "Inject a DatabaseConnection, query the real ORM, and register a fallible DI provider."
 weight = 40
 
 [extra]
@@ -11,7 +11,7 @@ sidebar_weight = 40
 
 Part 2 gave you static JSON. Part 3 gave you a database table. Now let's connect them.
 
-This is the central chapter of the REST tutorial. Reinhardt handlers are plain async functions, but they can ask the framework for dependencies with `#[inject]`. We will inject a `DatabaseConnection`, use the ORM manager, and add a small configuration endpoint that shows how factory return types are keyed in the DI registry.
+This is the central chapter of the REST tutorial. Reinhardt handlers are plain async functions, but they can ask the framework for dependencies with `#[inject]`. We will inject a `DatabaseConnection`, use the ORM manager, and add a small configuration endpoint that shows how provider return values are keyed in the DI registry.
 
 ## Add the Support Serializer Module
 
@@ -91,12 +91,10 @@ pub struct SnippetsConfig;
 Now create `src/apps/snippets/di.rs`:
 
 ```rust
-use reinhardt::di::{Depends, injectable, injectable_factory};
+use reinhardt::di::{Depends, FactoryOutput, injectable, injectable_key};
 
 /// Snippet listing configuration resolved through DI.
-#[injectable(scope = "singleton")]
 pub struct SnippetListConfig {
-	#[no_inject]
 	pub max_page_size: usize,
 }
 
@@ -106,41 +104,48 @@ impl Default for SnippetListConfig {
 	}
 }
 
+#[injectable_key]
+pub struct SnippetListConfigKey;
+
+#[injectable(scope = "singleton")]
+async fn snippet_list_config() -> FactoryOutput<SnippetListConfigKey, SnippetListConfig> {
+	FactoryOutput::new(SnippetListConfig::default())
+}
+
 /// Error type local to `checked_list_config`.
 #[derive(Debug)]
 pub struct ConfigError(pub String);
 
+#[injectable_key]
+pub struct CheckedSnippetListConfigKey;
+
 /// Fallible variant of `SnippetListConfig`, registered under the
-/// `Result<SnippetListConfig, ConfigError>` key.
-#[injectable_factory(scope = "singleton")]
+/// `CheckedSnippetListConfigKey` key.
+#[injectable(scope = "singleton")]
 async fn checked_list_config(
-	#[inject] base: Depends<SnippetListConfig>,
-) -> Result<SnippetListConfig, ConfigError> {
+	#[inject] base: Depends<SnippetListConfigKey, SnippetListConfig>,
+) -> FactoryOutput<CheckedSnippetListConfigKey, Result<SnippetListConfig, ConfigError>> {
 	if base.max_page_size == 0 {
-		return Err(ConfigError("max_page_size must be positive".into()));
+		return FactoryOutput::new(Err(ConfigError("max_page_size must be positive".into())));
 	}
-	Ok(SnippetListConfig {
+	FactoryOutput::new(Ok(SnippetListConfig {
 		max_page_size: base.max_page_size,
-	})
+	}))
 }
 ```
 
-`#[injectable]` is for types you own and can annotate directly. `SnippetListConfig` has no injected fields, so the macro builds it from `Default`; `#[no_inject]` tells the macro not to try to resolve `usize` from the container.
+`#[injectable]` can register provider functions as well as structs. In the provider form, return `FactoryOutput<K, T>`: `K` is the registry key, and `T` is the value resolved by `Depends<K, T>`.
 
-`#[injectable_factory]` is for async construction, validation, or types you cannot annotate directly. Factories can depend on other dependencies through `#[inject]` parameters. Here, `checked_list_config` asks for the plain config and returns a checked `Result`.
+Provider functions can be async and can depend on other dependencies through `#[inject]` parameters. Here, `checked_list_config` asks for the plain config and returns a checked `Result` under a different key.
 
 ## Understand Scopes and Caching
 
-Both DI macros accept a scope:
+The DI macro accepts a scope:
 
 ```rust
 #[injectable(scope = "singleton")]
 #[injectable(scope = "request")]
 #[injectable(scope = "transient")]
-
-#[injectable_factory(scope = "singleton")]
-#[injectable_factory(scope = "request")]
-#[injectable_factory(scope = "transient")]
 ```
 
 Use them this way:
@@ -152,7 +157,7 @@ Use them this way:
 Within one resolution path, dependencies are cached by default according to their scope. If you need a fresh value even when a cached value exists, write the injection as:
 
 ```rust
-#[inject(cache = false)] fresh: Depends<MyDependency>
+#[inject(cache = false)] fresh: Depends<MyDependencyKey, MyDependency>
 ```
 
 Most handlers should not need `cache = false`. It is an escape hatch, not the normal style.
@@ -161,29 +166,25 @@ Most handlers should not need `cache = false`. It is an escape hatch, not the no
 
 This is the part that saves you from confusing DI bugs.
 
-Reinhardt keys each factory by the `TypeId` of its literal return type. A factory returning `SnippetListConfig` and a factory returning `SnippetListConfig` are competing for the same key. One will shadow or collide with the other.
+Reinhardt keys each provider by the explicit key type in `FactoryOutput<K, T>`. Two providers can return the same value type as long as they use different key types.
 
-When you need a second flavor of the same success value, use one of these patterns:
-
-- Introduce a dedicated newtype, such as `CheckedSnippetListConfig(SnippetListConfig)`.
-- Return `Result<T, FactoryLocalError>` where the error type is local to that factory.
-
-The example uses the second pattern:
+When you need a second flavor of the same success value, introduce a second key:
 
 ```rust
 pub struct ConfigError(pub String);
 
-#[injectable_factory(scope = "singleton")]
+#[injectable_key]
+pub struct CheckedSnippetListConfigKey;
+
+#[injectable(scope = "singleton")]
 async fn checked_list_config(
-	#[inject] base: Depends<SnippetListConfig>,
-) -> Result<SnippetListConfig, ConfigError> {
+	#[inject] base: Depends<SnippetListConfigKey, SnippetListConfig>,
+) -> FactoryOutput<CheckedSnippetListConfigKey, Result<SnippetListConfig, ConfigError>> {
 	/* ... */
 }
 ```
 
-The plain config is registered as `TypeId::of::<SnippetListConfig>()`. The checked config is registered as `TypeId::of::<Result<SnippetListConfig, ConfigError>>()`. Those are different keys even though the success type is the same.
-
-`DependsResult<T, E>` is a sugar alias for `Depends<Result<T, E>>`. It works in `#[injectable]` fields and `#[injectable_factory]` parameters. In route handlers, spell out the literal `Depends<Result<T, E>>` form. The route macro currently recognizes only the single-generic-argument shape `Depends<T>`.
+The plain config is registered under `SnippetListConfigKey`. The checked config is registered under `CheckedSnippetListConfigKey` and resolves as `Depends<CheckedSnippetListConfigKey, Result<SnippetListConfig, ConfigError>>`.
 
 ## Respect the Pseudo Orphan Rule
 
@@ -208,16 +209,16 @@ use reinhardt::http::ViewResult;
 use reinhardt::{Json, Path, Response, StatusCode};
 use reinhardt::{delete, get, post, put};
 
-use super::di::{ConfigError, SnippetListConfig};
+use super::di::{CheckedSnippetListConfigKey, ConfigError, SnippetListConfig};
 use super::models::Snippet;
 use super::serializers::{SnippetResponse, SnippetSerializer};
 ```
 
-The new import is `Depends`, plus the database connection and ORM manager. The handlers will not create connections by hand. They ask for one:
+The handlers will not create connections by hand. They ask the route macro to inject one:
 
 ```rust
 #[get("/snippets/", name = "snippets-list")]
-pub async fn list(#[inject] db: Depends<DatabaseConnection>) -> ViewResult<Response> {
+pub async fn list(#[inject] db: DatabaseConnection) -> ViewResult<Response> {
 	let snippets = Manager::<Snippet>::new().all().all_with_db(&db).await?;
 	let snippet_responses: Vec<SnippetResponse> =
 		snippets.iter().map(SnippetResponse::from_model).collect();
@@ -230,7 +231,7 @@ pub async fn list(#[inject] db: Depends<DatabaseConnection>) -> ViewResult<Respo
 }
 ```
 
-`Depends<T>` implements `Deref<Target = T>`. When `all_with_db` wants `&DatabaseConnection`, passing `&db` works by deref coercion from `&Depends<DatabaseConnection>` to `&DatabaseConnection`. If you want to be explicit, write `&*db`: `*db` reaches the inner connection and `&*db` borrows it again.
+The framework-owned `DatabaseConnection` is injected directly. Use keyed `Depends<K, T>` for project-local providers where the key matters.
 
 Now replace `create` with a real insert:
 
@@ -238,7 +239,7 @@ Now replace `create` with a real insert:
 #[post("/snippets/", name = "snippets-create", pre_validate = true)]
 pub async fn create(
 	Json(serializer): Json<SnippetSerializer>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	let snippet = Snippet::build()
 		.title(serializer.title.clone())
@@ -270,7 +271,7 @@ Add retrieve:
 #[get("/snippets/{id}/", name = "snippets-retrieve")]
 pub async fn retrieve(
 	Path(snippet_id): Path<i64>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	let snippets = Manager::<Snippet>::new()
 		.get(snippet_id)
@@ -305,7 +306,7 @@ Add update:
 pub async fn update(
 	Path(snippet_id): Path<i64>,
 	Json(serializer): Json<SnippetSerializer>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	serializer.validate()?;
 
@@ -348,7 +349,7 @@ Add delete:
 #[delete("/snippets/{id}/", name = "snippets-delete")]
 pub async fn delete(
 	Path(snippet_id): Path<i64>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	let manager = Manager::<Snippet>::new();
 	let existing = manager.get(snippet_id).all_with_db(&db).await?;
@@ -368,12 +369,12 @@ pub async fn delete(
 
 ## Add the Config Endpoint
 
-Now add the endpoint that exercises the fallible factory:
+Now add the endpoint that exercises the fallible provider:
 
 ```rust
 #[get("/snippets/config/", name = "snippets-config")]
 pub async fn config(
-	#[inject] cfg: Depends<Result<SnippetListConfig, ConfigError>>,
+	#[inject] cfg: Depends<CheckedSnippetListConfigKey, Result<SnippetListConfig, ConfigError>>,
 ) -> ViewResult<Response> {
 	match (*cfg).as_ref() {
 		Ok(cfg) => {
@@ -392,9 +393,9 @@ pub async fn config(
 }
 ```
 
-The signature is intentionally `Depends<Result<SnippetListConfig, ConfigError>>`, not `DependsResult<SnippetListConfig, ConfigError>`. The alias names the idea, but route handlers need the literal form today.
+The key in `Depends<CheckedSnippetListConfigKey, Result<SnippetListConfig, ConfigError>>` selects the checked provider.
 
-The match uses `(*cfg).as_ref()`. `*cfg` dereferences `Depends<_>` into the inner `Result<_, _>`, and `.as_ref()` lets the handler inspect `Ok(&SnippetListConfig)` or `Err(&ConfigError)` without consuming the dependency wrapper.
+The match uses `(*cfg).as_ref()`. `*cfg` dereferences `Depends<_, _>` into the inner `Result<_, _>`, and `.as_ref()` lets the handler inspect `Ok(&SnippetListConfig)` or `Err(&ConfigError)` without consuming the dependency wrapper.
 
 ## Register the Routes
 
@@ -473,11 +474,10 @@ cargo check --all-features
 
 You replaced the temporary Part 2 handlers with real database-backed CRUD:
 
-- Handlers receive `#[inject] db: Depends<DatabaseConnection>`.
-- `Depends<T>` dereferences to `T`, so `&db`, `&*db`, and `(*cfg).as_ref()` are the tools you need.
+- CRUD handlers receive `#[inject] db: DatabaseConnection`.
+- Project-local providers resolve through keyed `Depends<K, T>`, so `(*cfg).as_ref()` is the tool you need for fallible dependencies.
 - `Manager::<Snippet>` queries, inserts, updates, and deletes rows through the injected connection.
-- `di.rs` registers a plain singleton and a fallible factory.
-- `Result<T, FactoryLocalError>` gives the checked factory a distinct registry key.
-- Route handlers spell fallible dependencies as `Depends<Result<T, E>>`.
+- `di.rs` registers plain and fallible providers with `#[injectable]` and `FactoryOutput<K, T>`.
+- Key types such as `SnippetListConfigKey` and `CheckedSnippetListConfigKey` select which provider to resolve.
 
 In [Part 5: Serializers and Validation](../5-serializers-and-validation/), you will focus on the request and response structs we used here and make the validation behavior explicit.

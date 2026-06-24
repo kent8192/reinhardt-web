@@ -2,97 +2,28 @@
 //!
 //! These functions provide the server-side API for the polling application.
 
-use crate::shared::types::{ChoiceInfo, QuestionInfo};
+use crate::apps::polls::server::models::{ChoiceInfo, QuestionInfo};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
+use std::result::Result;
 
-// Server-only imports. Each addition here MUST also be wired in `[cfg(server)]`
-// at the call site — see the per-handler `use` blocks below for examples.
 #[cfg(server)]
 use {
+	crate::apps::polls::server::models::{Choice, Question},
+	crate::apps::polls::services::server::vote_internal,
 	crate::apps::users::server::models::User,
+	crate::shared::types::VoteRequest,
+	reinhardt::CurrentUser,
+	reinhardt::DatabaseConnection,
 	reinhardt::Model,
-	reinhardt::di::{Depends, FactoryOutput, injectable, injectable_key},
-	reinhardt::middleware::session::{SessionData, USER_ID_SESSION_KEY},
 };
-
-/// Error variants for the session-based user lookup factory.
-///
-/// Three failure modes are distinguished so handlers can surface the
-/// correct HTTP status and so that an operational outage is not silently
-/// rewritten into a fake 401.
-#[cfg(server)]
-#[derive(Clone, Debug)]
-pub enum SessionError {
-	Anonymous,
-	Inactive,
-	Unavailable(String),
-}
-
-/// Convert a `SessionError` reference to a `ServerFnError` with the
-/// appropriate HTTP status code.
-#[cfg(server)]
-impl From<&SessionError> for ServerFnError {
-	fn from(err: &SessionError) -> Self {
-		match err {
-			SessionError::Anonymous => ServerFnError::server(401, "Authentication required"),
-			SessionError::Inactive => ServerFnError::server(403, "User account is inactive"),
-			SessionError::Unavailable(_) => {
-				ServerFnError::server(500, "User lookup temporarily unavailable")
-			}
-		}
-	}
-}
-
-#[cfg(server)]
-#[injectable_key]
-pub struct SessionUserKey;
-
-#[cfg(server)]
-#[injectable(scope = "request")]
-async fn session_user_factory(
-	#[inject] session: SessionData,
-) -> FactoryOutput<SessionUserKey, Result<User, SessionError>> {
-	let Some(user_id) = session.get::<i64>(USER_ID_SESSION_KEY) else {
-		return FactoryOutput::new(Err(SessionError::Anonymous));
-	};
-
-	let user = match User::objects()
-		.filter(User::field_id().eq(user_id))
-		.first()
-		.await
-	{
-		Ok(Some(user)) => user,
-		Ok(None) => return FactoryOutput::new(Err(SessionError::Anonymous)),
-		Err(err) => {
-			::tracing::warn!(
-				user_id = user_id,
-				error = %err,
-				"session_user_factory: user lookup failed"
-			);
-			return FactoryOutput::new(Err(SessionError::Unavailable(err.to_string())));
-		}
-	};
-
-	if user.is_active {
-		FactoryOutput::new(Ok(user))
-	} else {
-		FactoryOutput::new(Err(SessionError::Inactive))
-	}
-}
-
-// WASM-only imports
-// (None needed - all forms logic is server-side)
 
 /// Get all questions (latest 5)
 ///
 /// Returns the 5 most recent poll questions.
 #[server_fn]
 pub async fn get_questions(
-	#[inject] _db: reinhardt::DatabaseConnection,
-) -> std::result::Result<Vec<QuestionInfo>, ServerFnError> {
-	use crate::apps::polls::server::models::Question;
-	use reinhardt::Model;
-
+	#[inject] _db: DatabaseConnection,
+) -> Result<Vec<QuestionInfo>, ServerFnError> {
 	let manager = Question::objects();
 	let questions = manager
 		.all()
@@ -116,11 +47,8 @@ pub async fn get_questions(
 #[server_fn]
 pub async fn get_question_detail(
 	question_id: i64,
-	#[inject] _db: reinhardt::DatabaseConnection,
-) -> std::result::Result<(QuestionInfo, Vec<ChoiceInfo>), ServerFnError> {
-	use crate::apps::polls::server::models::{Choice, Question};
-	use reinhardt::Model;
-
+	#[inject] _db: DatabaseConnection,
+) -> Result<(QuestionInfo, Vec<ChoiceInfo>), ServerFnError> {
 	// Get question
 	let question_manager = Question::objects();
 	let question = question_manager
@@ -150,11 +78,8 @@ pub async fn get_question_detail(
 #[server_fn]
 pub async fn get_question_results(
 	question_id: i64,
-	#[inject] _db: reinhardt::DatabaseConnection,
-) -> std::result::Result<(QuestionInfo, Vec<ChoiceInfo>, i32), ServerFnError> {
-	use crate::apps::polls::server::models::{Choice, Question};
-	use reinhardt::Model;
-
+	#[inject] _db: DatabaseConnection,
+) -> Result<(QuestionInfo, Vec<ChoiceInfo>, i32), ServerFnError> {
 	// Get question
 	let question_manager = Question::objects();
 	let question = question_manager
@@ -187,8 +112,8 @@ pub async fn get_question_results(
 #[server_fn]
 pub async fn vote(
 	request: crate::shared::types::VoteRequest,
-	#[inject] db: reinhardt::DatabaseConnection,
-) -> std::result::Result<ChoiceInfo, ServerFnError> {
+	#[inject] db: DatabaseConnection,
+) -> Result<ChoiceInfo, ServerFnError> {
 	vote_internal(request, db).await
 }
 
@@ -203,59 +128,15 @@ pub async fn vote(
 pub async fn submit_vote(
 	question_id: i64,
 	choice_id: i64,
-	#[inject] db: reinhardt::DatabaseConnection,
-) -> std::result::Result<ChoiceInfo, ServerFnError> {
-	let request = crate::shared::types::VoteRequest {
+	#[inject] db: DatabaseConnection,
+) -> Result<ChoiceInfo, ServerFnError> {
+	let request = VoteRequest {
 		question_id,
 		choice_id,
 	};
 
 	// Reuse the existing vote logic
 	vote_internal(request, db).await
-}
-
-/// Internal vote implementation (shared between vote and submit_vote)
-#[cfg(server)]
-async fn vote_internal(
-	request: crate::shared::types::VoteRequest,
-	db: reinhardt::DatabaseConnection,
-) -> std::result::Result<ChoiceInfo, ServerFnError> {
-	use crate::apps::polls::server::models::Choice;
-	use reinhardt::Model;
-	use reinhardt::atomic;
-
-	// Wrap read-modify-write in a transaction to prevent race conditions
-	let updated_choice = atomic(&db, || async {
-		let choice_manager = Choice::objects();
-
-		// Get the choice
-		let mut choice = choice_manager
-			.get(request.choice_id)
-			.first()
-			.await
-			.map_err(|e| anyhow::anyhow!(e.to_string()))?
-			.ok_or_else(|| anyhow::anyhow!("Choice not found"))?;
-
-		// Verify the choice belongs to the question
-		if *choice.question_id() != request.question_id {
-			return Err(anyhow::anyhow!("Choice does not belong to this question"));
-		}
-
-		// Increment vote count AND persist in a single call.
-		// `Choice::vote()` returns `Result<(), exception::Error>` after
-		// invoking `Model::save()` internally — no separate
-		// `manager.update(&choice).await` is needed.
-		choice
-			.vote()
-			.await
-			.map_err(|e| anyhow::anyhow!(e.to_string()))?;
-
-		Ok(choice)
-	})
-	.await
-	.map_err(|e| ServerFnError::application(e.to_string()))?;
-
-	Ok(ChoiceInfo::from(updated_choice))
 }
 
 // =========================================================================
@@ -268,9 +149,8 @@ async fn vote_internal(
 //   definitions, so `HiddenField<i64>` reaches these handlers as `i64`.
 //   CSRF is supplied by the `#[server_fn]` client stub through `X-CSRFToken`
 //   and verified by middleware.
-// * Authentication is required: keyed `Depends` resolves the
-//   request-scoped factory in this module and exposes
-//   `.as_ref().map_err(ServerFnError::from)?` for the 401/403/500 surface.
+// * Authentication is required: `CurrentUser<User>` resolves the full user
+//   through the framework auth extractor before the handler body runs.
 // * For `update_question` and `delete_question`, ownership is enforced by
 //   comparing `question.author_id()` with the current user's id; mismatched
 //   ownership returns a 403.
@@ -279,12 +159,10 @@ async fn vote_internal(
 #[server_fn]
 pub async fn create_question(
 	question_text: String,
-	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
-) -> std::result::Result<QuestionInfo, ServerFnError> {
-	use crate::apps::polls::server::models::Question;
-
-	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
+	#[inject] _db: DatabaseConnection,
+	#[inject] CurrentUser(user): CurrentUser<User>,
+) -> Result<QuestionInfo, ServerFnError> {
+	require_active_user(&user)?;
 
 	let trimmed = question_text.trim();
 	if trimmed.is_empty() || trimmed.len() > 200 {
@@ -312,12 +190,10 @@ pub async fn create_question(
 pub async fn update_question(
 	question_id: i64,
 	question_text: String,
-	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
-) -> std::result::Result<QuestionInfo, ServerFnError> {
-	use crate::apps::polls::server::models::Question;
-
-	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
+	#[inject] _db: DatabaseConnection,
+	#[inject] CurrentUser(user): CurrentUser<User>,
+) -> Result<QuestionInfo, ServerFnError> {
+	require_active_user(&user)?;
 
 	let trimmed = question_text.trim();
 	if trimmed.is_empty() || trimmed.len() > 200 {
@@ -356,12 +232,10 @@ pub async fn update_question(
 #[server_fn]
 pub async fn delete_question(
 	question_id: i64,
-	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
-) -> std::result::Result<(), ServerFnError> {
-	use crate::apps::polls::server::models::Question;
-
-	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
+	#[inject] _db: DatabaseConnection,
+	#[inject] CurrentUser(user): CurrentUser<User>,
+) -> Result<(), ServerFnError> {
+	require_active_user(&user)?;
 
 	let manager = Question::objects();
 	let question = manager
@@ -394,15 +268,19 @@ pub async fn delete_question(
 // Question. Each mutation loads the Question first, verifies that the
 // caller authored it, then mutates the Choice.
 
+#[cfg(server)]
+fn require_active_user(user: &User) -> Result<(), ServerFnError> {
+	if user.is_active {
+		Ok(())
+	} else {
+		Err(ServerFnError::server(403, "User account is inactive"))
+	}
+}
+
 /// Internal helper: load a Question by id and ensure the given user is its
 /// author. Returns 401/403/404 as appropriate.
 #[cfg(server)]
-async fn require_question_author(
-	question_id: i64,
-	user: &User,
-) -> std::result::Result<crate::apps::polls::server::models::Question, ServerFnError> {
-	use crate::apps::polls::server::models::Question;
-
+async fn require_question_author(question_id: i64, user: &User) -> Result<Question, ServerFnError> {
 	let question = Question::objects()
 		.get(question_id)
 		.first()
@@ -426,13 +304,11 @@ async fn require_question_author(
 pub async fn create_choice(
 	question_id: i64,
 	choice_text: String,
-	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
-) -> std::result::Result<ChoiceInfo, ServerFnError> {
-	use crate::apps::polls::server::models::Choice;
-
-	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
-	let question = require_question_author(question_id, user).await?;
+	#[inject] _db: DatabaseConnection,
+	#[inject] CurrentUser(user): CurrentUser<User>,
+) -> Result<ChoiceInfo, ServerFnError> {
+	require_active_user(&user)?;
+	let question = require_question_author(question_id, &user).await?;
 
 	let trimmed = choice_text.trim();
 	if trimmed.is_empty() || trimmed.len() > 200 {
@@ -461,12 +337,10 @@ pub async fn create_choice(
 pub async fn update_choice(
 	choice_id: i64,
 	choice_text: String,
-	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
-) -> std::result::Result<ChoiceInfo, ServerFnError> {
-	use crate::apps::polls::server::models::Choice;
-
-	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
+	#[inject] _db: DatabaseConnection,
+	#[inject] CurrentUser(user): CurrentUser<User>,
+) -> Result<ChoiceInfo, ServerFnError> {
+	require_active_user(&user)?;
 	let trimmed = choice_text.trim();
 	if trimmed.is_empty() || trimmed.len() > 200 {
 		return Err(ServerFnError::server(
@@ -483,7 +357,7 @@ pub async fn update_choice(
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Choice not found"))?;
 
-	let _question = require_question_author(*choice.question_id(), user).await?;
+	let _question = require_question_author(*choice.question_id(), &user).await?;
 
 	choice.choice_text = trimmed.to_string();
 	let updated = manager
@@ -498,12 +372,10 @@ pub async fn update_choice(
 #[server_fn]
 pub async fn delete_choice(
 	choice_id: i64,
-	#[inject] _db: reinhardt::DatabaseConnection,
-	#[inject] session_user: Depends<SessionUserKey, Result<User, SessionError>>,
-) -> std::result::Result<(), ServerFnError> {
-	use crate::apps::polls::server::models::Choice;
-
-	let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
+	#[inject] _db: DatabaseConnection,
+	#[inject] CurrentUser(user): CurrentUser<User>,
+) -> Result<(), ServerFnError> {
+	require_active_user(&user)?;
 	let manager = Choice::objects();
 	let choice = manager
 		.get(choice_id)
@@ -512,7 +384,7 @@ pub async fn delete_choice(
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Choice not found"))?;
 
-	let _question = require_question_author(*choice.question_id(), user).await?;
+	let _question = require_question_author(*choice.question_id(), &user).await?;
 
 	manager
 		.delete(choice.id())

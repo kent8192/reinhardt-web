@@ -20,15 +20,15 @@ This example corresponds to the basis tutorial parts 1-7:
 
 - **`Question`** (`src/apps/polls/server/models.rs`) — poll question with `question_text`, `pub_date` (`auto_now_add`), and an `author` foreign key to `User` (`#[rel(foreign_key, related_name = "questions")]`).
 - **`Choice`** (`src/apps/polls/server/models.rs`) — answer option with a `question` foreign key (`#[rel(foreign_key, related_name = "choices")]`), `choice_text`, and a `votes` counter.
-- **`User`** (`src/apps/users/server/models.rs`) — minimal authentication model defined with `#[user(hasher = reinhardt::Argon2Hasher, username_field = "username", manager = false)]` on top of `#[model(app_label = "users", table_name = "users")]`. `manager = false` opts out of the auto-generated user manager so the example can register a project-local `AuthUserManager` via a keyed `#[injectable(scope = "transient")]` provider.
+- **`User`** (`src/apps/users/server/models.rs`) — minimal authentication model defined with `#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]` on top of `#[model(app_label = "users", table_name = "users")]`. `manager = false` opts out of the auto-generated user manager so the example can register a project-local `AuthUserManager` via a keyed `#[injectable(scope = "transient")]` provider.
 
 ### Server Functions and Pages
 
 The example exposes its dynamic business logic through the pages stack:
 
-- **Typed RPC server functions** in `src/apps/<app>/server_fn.rs` — `#[server_fn]` functions (`get_questions`, `get_question_detail`, `vote`, `create_question`, …, plus `login` / `logout` / `register` / `current_user` for the `users` app). The macro generates a typed client stub for WASM and a server-side handler for native; dependencies are resolved positionally with `#[inject]` (`DatabaseConnection`, `SessionData`, …).
+- **Typed RPC server functions** in `src/apps/<app>/server_fn.rs` — `#[server_fn]` functions (`get_questions`, `get_question_detail`, `vote`, `create_question`, …, plus `login` / `logout` / `register` / `current_user` for the `users` app). The macro generates a typed client stub for WASM and a server-side handler for native; dependencies are resolved positionally with `#[inject]` (`DatabaseConnection`, `SessionData`, `CurrentUser<User>`, …).
 - **Per-app URL modules** in `src/apps/<app>/urls.rs` — each app exposes `server_url_patterns()` and `client_url_patterns()` from one target-neutral aggregate; server-function markers stay in `src/apps/<app>/urls/server_router.rs`, client route tables stay in `src/apps/<app>/urls/client_router.rs`, and `src/config/urls.rs` only aggregates the app-level router functions.
-- **App-local page entry points** in `src/apps/<app>/pages.rs` — native builds use these functions for route metadata and WASM builds call into `src/apps/<app>/client/components.rs`.
+- **Route-backed components** in `src/apps/<app>/client/components/` — component macros own route metadata for pages such as login/logout/signup.
 - **Dynamic WASM forms** in `src/apps/polls/client/components.rs` — the poll detail route builds its `RadioSelect` voting form from the choices returned by `get_question_detail`, so each loaded choice becomes a submitted `choice_id` option.
 
 ### URL Structure
@@ -142,15 +142,27 @@ examples-tutorial-basis/
 │   ├── apps/
 │   │   ├── polls/
 │   │   │   ├── client/
-│   │   │   │   └── components.rs
+│   │   │   │   ├── components.rs
+│   │   │   │   └── components/
+│   │   │   │       ├── choice_delete.rs
+│   │   │   │       ├── choice_edit.rs
+│   │   │   │       ├── choice_new.rs
+│   │   │   │       ├── polls_detail.rs
+│   │   │   │       ├── polls_index.rs
+│   │   │   │       ├── polls_results.rs
+│   │   │   │       ├── question_delete.rs
+│   │   │   │       ├── question_edit.rs
+│   │   │   │       └── question_new.rs
 │   │   │   ├── client.rs
-│   │   │   ├── pages.rs
 │   │   │   ├── server/
 │   │   │   │   ├── admin.rs
 │   │   │   │   ├── models.rs
 │   │   │   │   └── serializers.rs
 │   │   │   ├── server.rs
 │   │   │   ├── server_fn.rs
+│   │   │   ├── services.rs
+│   │   │   ├── services/
+│   │   │   │   └── server.rs
 │   │   │   ├── urls.rs
 │   │   │   └── urls/
 │   │   │       ├── client_router.rs
@@ -158,9 +170,12 @@ examples-tutorial-basis/
 │   │   ├── polls.rs
 │   │   └── users/
 │   │       ├── client/
-│   │       │   └── components.rs
+│   │       │   ├── components.rs
+│   │       │   └── components/
+│   │       │       ├── login_page.rs
+│   │       │       ├── logout_page.rs
+│   │       │       └── signup_page.rs
 │   │       ├── client.rs
-│   │       ├── pages.rs
 │   │       ├── server/
 │   │       │   └── models.rs
 │   │       ├── server.rs
@@ -220,9 +235,9 @@ This example is designed to be studied alongside the basis tutorial:
 - `src/apps/polls/server_fn.rs` and `src/apps/users/server_fn.rs` expose typed `#[server_fn]` RPC handlers for the WASM client.
 - `src/apps/polls/urls.rs` and `src/apps/users/urls.rs` expose the app-level server and client router functions that `src/config/urls.rs` aggregates.
 - `src/apps/polls/urls/server_router.rs` and `src/apps/users/urls/server_router.rs` provide native `ServerRouter` registrations.
-- `src/apps/polls/pages.rs` and `src/apps/users/pages.rs` provide target-neutral page entry points used by the client routers.
 - `src/client/lib.rs` starts the browser app with `ClientLauncher::new("#root").register_routes_from_inventory().launch()`.
-- `src/apps/polls/client/components.rs`, `src/apps/users/client/components.rs`, and `src/client/components/nav.rs` define the page components used by the SPA.
+- `src/apps/polls/client/components.rs`, `src/apps/polls/client/components/*.rs`, `src/apps/users/client/components.rs`, `src/apps/users/client/components/*.rs`, and `src/client/components/nav.rs` define the page bodies and route-backed components used by the SPA.
+- `src/apps/users/client/components/{login_page,logout_page,signup_page}.rs` define route-backed auth components with the component macro.
 - `src/config/settings.rs`, `src/config/apps.rs`, `src/config/urls.rs`, `src/config/admin.rs`, and `src/config/wasm.rs` wire settings, app labels, routing, admin, and WASM static files.
 - `tests/integration.rs`, `tests/createsuperuser.rs`, `tests/wasm/polls_mock_test.rs`, and `tests/wasm/users_mock_test.rs` cover native and WASM behavior.
 

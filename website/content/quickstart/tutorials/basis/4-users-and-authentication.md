@@ -11,7 +11,7 @@ sidebar_weight = 40
 
 The poll app can list, display, and vote. Now add accounts: a `users` app, a minimal `User` model, login/register/logout/current-user server functions, session middleware, auth routes, and a shared navigation bar.
 
-This is the first basis tutorial part that uses dependency injection directly. Keep the DI surface small here. The REST tutorial's dependency-injection part goes deeper into factories, scopes, caching, and type keys.
+This is the first basis tutorial part that uses dependency injection directly. Keep the DI surface small here. The REST tutorial's dependency-injection part goes deeper into providers, scopes, caching, and type keys.
 
 ## Create the Users App
 
@@ -21,7 +21,7 @@ Generate the app:
 reinhardt-admin startapp users --template pages
 ```
 
-Register it next to `polls`:
+`startapp` updates `src/config/apps.rs` for you. Check that `users` was added next to `polls`:
 
 ```rust
 use reinhardt::installed_apps;
@@ -37,7 +37,18 @@ installed_apps! {
 Open `src/apps/users/server/models.rs`. The example uses a minimal user model, not `full = true`:
 
 ```rust
-#[user(hasher = reinhardt::Argon2Hasher, username_field = "username", manager = false)]
+use chrono::{DateTime, Utc};
+#[cfg(native)]
+use reinhardt::Argon2Hasher;
+use reinhardt::prelude::*;
+#[cfg(native)]
+use reinhardt::user;
+use serde::{Deserialize, Serialize};
+
+#[cfg_attr(
+    native,
+    user(hasher = Argon2Hasher, username_field = "username", manager = false)
+)]
 #[model(app_label = "users", table_name = "users")]
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -68,7 +79,7 @@ pub struct User {
 
 ## Add the Auth User Manager
 
-The manager is server-only. It stores a `DatabaseConnection` and is registered through an injectable factory:
+The manager is server-only. It stores a `DatabaseConnection` and is registered through a keyed injectable provider:
 
 ```rust
 #[derive(Clone)]
@@ -76,15 +87,18 @@ pub struct AuthUserManager {
     db: DatabaseConnection,
 }
 
-#[injectable_factory(scope = "transient")]
+#[injectable_key]
+pub struct AuthUserManagerKey;
+
+#[injectable(scope = "transient")]
 async fn auth_user_manager_factory(
-    #[inject] db: Depends<DatabaseConnection>,
-) -> AuthUserManager {
-    AuthUserManager { db: (*db).clone() }
+    #[inject] db: DatabaseConnection,
+) -> FactoryOutput<AuthUserManagerKey, AuthUserManager> {
+    FactoryOutput::new(AuthUserManager { db })
 }
 ```
 
-The `Depends<DatabaseConnection>` wrapper dereferences to the inner connection. Cloning here is cheap because the connection handle is internally shared.
+`FactoryOutput<AuthUserManagerKey, AuthUserManager>` registers the manager under an explicit key. Later, server functions ask for `Depends<AuthUserManagerKey, AuthUserManager>` so this provider is selected even if another provider returns the same value type.
 
 The manager implements `BaseUserManager<User>`:
 
@@ -110,31 +124,13 @@ impl BaseUserManager<User> for AuthUserManager {
 
 ## Share Auth DTOs
 
-Update `src/apps/users/serializers.rs` to add `UserInfo` and define login/register DTOs:
+`#[model]` generates `UserInfo` from the fields that are not marked `skip_info`; here that means `id`, `username`, and `is_active`. Server functions and WASM tests import it from the model module:
 
 ```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UserInfo {
-    pub id: i64,
-    pub username: String,
-    pub is_active: bool,
-}
-
-impl InfoModel for UserInfo {
-    type PrimaryKey = i64;
-}
-
-#[cfg(server)]
-impl From<crate::apps::users::server::models::User> for UserInfo {
-    fn from(user: crate::apps::users::server::models::User) -> Self {
-        Self {
-            id: user.id,
-            username: user.username,
-            is_active: user.is_active,
-        }
-    }
-}
+use crate::apps::users::server::models::UserInfo;
 ```
+
+The login/register request DTOs still live in `src/shared/types.rs`:
 
 ```rust
 #[dto]
@@ -172,14 +168,16 @@ impl RegisterRequest {
 Create `src/apps/users/server_fn.rs`. Login validates the request, checks the password, and rotates the session:
 
 ```rust
+use std::result::Result;
+
 #[server_fn]
 pub async fn login(
     username: String,
     password: String,
     #[inject] _db: DatabaseConnection,
     #[inject] session: SessionData,
-    #[inject] store: Depends<SessionStore>,
-) -> std::result::Result<UserInfo, ServerFnError> {
+    #[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
+) -> Result<UserInfo, ServerFnError> {
     let mut session = session;
 
     let request = LoginRequest { username, password };
@@ -223,10 +221,10 @@ pub async fn register(
     username: String,
     password: String,
     password_confirmation: String,
-    #[inject] user_manager: Depends<AuthUserManager>,
+    #[inject] user_manager: Depends<AuthUserManagerKey, AuthUserManager>,
     #[inject] session: SessionData,
-    #[inject] store: Depends<SessionStore>,
-) -> std::result::Result<UserInfo, ServerFnError> {
+    #[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
+) -> Result<UserInfo, ServerFnError> {
     let mut session = session;
 
     let request = RegisterRequest {
@@ -263,16 +261,15 @@ pub async fn register(
 Add logout and current-user lookup:
 
 ```rust
+use std::result::Result;
+
 #[server_fn]
 pub async fn logout(
+    #[inject] CurrentUser(_user): CurrentUser<User>,
     #[inject] session: SessionData,
-    #[inject] store: Depends<SessionStore>,
-) -> std::result::Result<(), ServerFnError> {
+    #[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
+) -> Result<(), ServerFnError> {
     let mut session = session;
-
-    if session.get::<i64>(USER_ID_SESSION_KEY).is_none() {
-        return Err(ServerFnError::server(401, "Not authenticated"));
-    }
 
     session.logout(&store);
     Ok(())
@@ -280,21 +277,9 @@ pub async fn logout(
 
 #[server_fn]
 pub async fn current_user(
-    #[inject] _db: DatabaseConnection,
-    #[inject] session: SessionData,
-) -> std::result::Result<Option<UserInfo>, ServerFnError> {
-    let user_id = match session.get::<i64>(USER_ID_SESSION_KEY) {
-        Some(id) => id,
-        None => return Ok(None),
-    };
-
-    let user = User::objects()
-        .filter(User::field_id().eq(user_id))
-        .first()
-        .await
-        .map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
-
-    Ok(user.map(UserInfo::from))
+    #[inject] CurrentUser(user): CurrentUser<User>,
+) -> Result<Option<UserInfo>, ServerFnError> {
+    Ok(Some(UserInfo::from(user)))
 }
 ```
 
@@ -305,6 +290,7 @@ The users app follows the same target-neutral route surface as polls. `src/apps/
 ```rust
 use reinhardt::{ClientRouter, ServerRouter};
 
+#[cfg(client)]
 pub mod client_router;
 
 #[cfg(server)]
@@ -322,7 +308,14 @@ pub fn server_url_patterns() -> ServerRouter {
 }
 
 pub fn client_url_patterns() -> ClientRouter {
-    client_router::client_url_patterns()
+    #[cfg(client)]
+    {
+        client_router::client_url_patterns()
+    }
+    #[cfg(not(client))]
+    {
+        ClientRouter::new()
+    }
 }
 ```
 
@@ -331,21 +324,13 @@ Client routes live in `src/apps/users/urls/client_router.rs`:
 ```rust
 use reinhardt::ClientRouter;
 
-#[cfg(client)]
 use crate::apps::users::client::components;
 
 pub fn client_url_patterns() -> ClientRouter {
-    #[cfg(client)]
-    {
-        ClientRouter::new()
-            .component(components::login_page::login_page)
-            .component(components::logout_page::logout_page)
-            .component(components::signup_page::signup_page)
-    }
-    #[cfg(not(client))]
-    {
-        ClientRouter::new()
-    }
+    ClientRouter::new()
+        .component(components::login_page::login_page)
+        .component(components::logout_page::logout_page)
+        .component(components::signup_page::signup_page)
 }
 ```
 
@@ -368,19 +353,26 @@ pub fn server_url_patterns() -> ServerRouter {
 App-local route-backed components in `src/apps/users/client/components/` wrap the users forms with the shared nav:
 
 ```rust
-#[reinhardt::pages::component("/login/", "login")]
+use reinhardt::pages::component;
+use reinhardt::pages::component::Page;
+
+use crate::client::components::nav::with_nav;
+
+#[component("/login/", "login")]
 pub fn login_page() -> Page {
-    with_nav(crate::apps::users::client::components::login_form())
+    with_nav(super::login_form())
 }
 ```
 
 Mount the users app in `src/config/urls.rs` on both targets:
 
 ```rust
+use crate::apps::{polls::urls as polls_urls, users::urls as users_urls};
+
 #[cfg(server)]
 let router = router.server(|s| {
-    s.mount("/", crate::apps::polls::urls::server_url_patterns())
-        .mount("/", crate::apps::users::urls::server_url_patterns())
+    s.mount("/", polls_urls::server_url_patterns())
+        .mount("/", users_urls::server_url_patterns())
 });
 ```
 
@@ -388,11 +380,11 @@ let router = router.server(|s| {
 let router = router
     .mount_unified(
         "/",
-        UnifiedRouter::new().client(|_| crate::apps::polls::urls::client_url_patterns()),
+        UnifiedRouter::new().client(|_| polls_urls::client_url_patterns()),
     )
     .mount_unified(
         "/",
-        UnifiedRouter::new().client(|_| crate::apps::users::urls::client_url_patterns()),
+        UnifiedRouter::new().client(|_| users_urls::client_url_patterns()),
     );
 ```
 
@@ -418,7 +410,7 @@ Then attach it to the project router:
 let router = router.with_middleware(create_session_middleware());
 ```
 
-After this, server functions can inject `SessionData` and `Depends<SessionStore>`.
+After this, login/register/logout can inject `SessionData` and `Depends<SessionStoreKey, Arc<SessionStore>>`, and authenticated handlers can inject `CurrentUser<User>` from the auth state derived by the middleware.
 
 ## Build the Auth Pages
 
@@ -455,19 +447,27 @@ pub fn login_form() -> Page {
 
 The signup form uses `register`; the logout form uses `logout` with no fields. The generated `#[server_fn]` client stubs handle the HTTP call and CSRF header.
 
-Each route-backed auth component wraps its form body in the shared nav:
+Each route-backed auth component uses the component macro and wraps its form body in the shared nav:
 
 ```rust
+use reinhardt::pages::component;
+use reinhardt::pages::component::Page;
+
+use crate::client::components::nav::with_nav;
+
+#[component("/login/", "login")]
 pub fn login_page() -> Page {
-    with_nav(crate::apps::users::client::components::login_form())
+    with_nav(super::login_form())
 }
 
+#[component("/logout/", "logout")]
 pub fn logout_page() -> Page {
-    with_nav(crate::apps::users::client::components::logout_form())
+    with_nav(super::logout_form())
 }
 
+#[component("/signup/", "signup")]
 pub fn signup_page() -> Page {
-    with_nav(crate::apps::users::client::components::signup_form())
+    with_nav(super::signup_form())
 }
 ```
 
@@ -512,7 +512,7 @@ if load_user.is_pending() {
 }
 ```
 
-The unauthenticated branch links to signup and login:
+When `CurrentUser<User>` cannot resolve, `current_user()` returns a server-function error and the nav falls through to its signed-out branch. That branch links to signup and login:
 
 ```rust
 let login_href = users_routes::reverse("login", &[]);
@@ -542,7 +542,7 @@ Open `/signup/`, create an account, and confirm that the nav changes from Sign u
 Before continuing:
 
 - `User` uses `#[user(..., manager = false)]` plus `#[model(...)]`.
-- `AuthUserManager` is registered with `#[injectable_factory(scope = "transient")]`.
+- `AuthUserManager` is registered with a keyed `#[injectable(scope = "transient")]` provider.
 - `login`, `register`, `logout`, and `current_user` are registered in the users server router.
 - Session middleware is attached once in `src/config/urls.rs`.
 - The nav resolves auth links through `users_routes::reverse(...)`.

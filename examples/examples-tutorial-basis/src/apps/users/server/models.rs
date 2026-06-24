@@ -28,7 +28,10 @@
 //! `register_superuser_creator` call is required.
 
 use chrono::{DateTime, Utc};
+#[cfg(native)]
+use reinhardt::Argon2Hasher;
 use reinhardt::prelude::*;
+#[cfg(native)]
 use reinhardt::user;
 use serde::{Deserialize, Serialize};
 
@@ -39,7 +42,10 @@ use serde::{Deserialize, Serialize};
 // auto-manager is also gated to `Uuid` / `Option<Uuid>` primary keys
 // (issue #4455), and this model uses `i64` to demonstrate auto-increment
 // integer PKs in the tutorial.
-#[user(hasher = reinhardt::Argon2Hasher, username_field = "username", manager = false)]
+#[cfg_attr(
+	native,
+	user(hasher = Argon2Hasher, username_field = "username", manager = false)
+)]
 #[model(app_label = "users", table_name = "users")]
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct User {
