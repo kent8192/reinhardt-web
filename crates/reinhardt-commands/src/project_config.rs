@@ -130,7 +130,7 @@ pub async fn resolve_dependency_selection(
 }
 
 fn default_noninteractive_features(required_features: &[&str]) -> Vec<String> {
-	if required_features.iter().any(|feature| *feature == "pages") {
+	if required_features.contains(&"pages") {
 		return required_features
 			.iter()
 			.map(|feature| (*feature).to_string())
