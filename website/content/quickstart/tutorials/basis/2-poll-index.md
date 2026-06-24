@@ -177,16 +177,11 @@ The current reference implementation takes five rows from the manager query. Do 
 The app-level `src/apps/polls/urls.rs` stays target-neutral. It aggregates the split router modules:
 
 ```rust
-#[cfg(not(client))]
-mod client_route_specs;
-
 #[cfg(client)]
 pub mod client_router;
 
 #[cfg(client)]
 pub use client_router::{client_url_patterns, reverse};
-#[cfg(not(client))]
-pub use client_route_specs::{client_url_patterns, reverse};
 
 #[cfg(server)]
 pub mod server_router;
@@ -212,22 +207,8 @@ pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
 }
 ```
 
-`client_router.rs` is gated by `#[cfg(client)]` at the module declaration. Native builds still need the same route names for `mount_unified()` and `reverse()`, so keep target-neutral metadata in `src/apps/polls/urls/client_route_specs.rs`:
+`client_router.rs` is gated by `#[cfg(client)]` at the module declaration. Native builds do not compile client component route tables; they only mount server-function routes.
 
-```rust
-use reinhardt::ClientRouter;
-use reinhardt::pages::component::Page;
-
-pub fn client_url_patterns() -> ClientRouter {
-    ClientRouter::new().route("index", "/", Page::empty)
-}
-
-pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
-    client_url_patterns()
-        .reverse(name, params)
-        .unwrap_or_else(|error| panic!("failed to reverse polls client route `{name}`: {error}"))
-}
-```
 
 Register the server function in `src/apps/polls/urls/server_router.rs`:
 
@@ -255,6 +236,7 @@ pub fn routes() -> UnifiedRouter {
         s.mount("/", polls_urls::server_url_patterns())
     });
 
+    #[cfg(client)]
     let router = router.mount_unified(
         "/",
         UnifiedRouter::new().client(|_| polls_urls::client_url_patterns()),
@@ -377,5 +359,5 @@ Before continuing:
 
 - `migrations/polls/0001_initial.rs` has no `author_id`.
 - `get_questions` returns `Vec<QuestionInfo>`.
-- `src/config/urls.rs` aggregates `polls::urls::server_url_patterns()` and `polls::urls::client_url_patterns()`.
+- `src/config/urls.rs` aggregates `polls::urls::server_url_patterns()` on the server target and `polls::urls::client_url_patterns()` on the client target.
 - The browser renders the poll index through `ClientLauncher`.

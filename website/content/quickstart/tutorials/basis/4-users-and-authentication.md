@@ -292,16 +292,11 @@ pub async fn current_user(
 The users app follows the same target-neutral route surface as polls. `src/apps/users/urls.rs` aggregates the split router modules:
 
 ```rust
-#[cfg(not(client))]
-mod client_route_specs;
-
 #[cfg(client)]
 pub mod client_router;
 
 #[cfg(client)]
 pub use client_router::{client_url_patterns, reverse};
-#[cfg(not(client))]
-pub use client_route_specs::{client_url_patterns, reverse};
 
 #[cfg(server)]
 pub mod server_router;
@@ -330,7 +325,8 @@ pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
 }
 ```
 
-Native builds keep the login/logout/signup route names in `src/apps/users/urls/client_route_specs.rs`, registered with `Page::empty`, so server-side route aggregation and `reverse()` still work without compiling client components.
+`client_router.rs` is client-only. Server builds register only the server-function markers below.
+
 
 Server routes register server-function markers in `src/apps/users/urls/server_router.rs`:
 
@@ -375,6 +371,7 @@ let router = router.server(|s| {
 ```
 
 ```rust
+#[cfg(client)]
 let router = router
     .mount_unified(
         "/",

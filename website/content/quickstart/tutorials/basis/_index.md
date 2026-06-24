@@ -95,7 +95,6 @@ examples-tutorial-basis/
 |   |   |   +-- services/
 |   |   |       +-- server.rs
 |   |   |   +-- urls/
-|   |   |       +-- client_route_specs.rs
 |   |   |       +-- client_router.rs
 |   |   |       +-- server_router.rs
 |   |   +-- users.rs
@@ -112,7 +111,6 @@ examples-tutorial-basis/
 |   |       |       +-- logout_page.rs
 |   |       |       +-- signup_page.rs
 |   |       +-- urls/
-|   |           +-- client_route_specs.rs
 |   |           +-- client_router.rs
 |   |           +-- server_router.rs
 |   +-- client/
@@ -139,7 +137,7 @@ Three rules keep this structure predictable:
 
 1. **Server and client are separate targets.** `#[cfg(server)]` code runs in the native server binary. `#[cfg(client)]` code runs in the browser as WASM. Model definitions stay importable so `#[model]` can generate shared info DTOs, while admin definitions and service implementations stay behind server-only module gates.
 2. **Server functions are the bridge.** Anything the WASM client needs from the database goes through a `#[server_fn]` in `src/apps/<app>/server_fn.rs`. The client receives generated `*Info` DTOs from `#[model]` and explicit request DTOs from `src/shared/types.rs`.
-3. **Routing belongs to each app.** Each app exposes `server_url_patterns()` and `client_url_patterns()` from `src/apps/<app>/urls.rs`, which aggregates `urls/server_router.rs`, client-only `urls/client_router.rs`, and native metadata in `urls/client_route_specs.rs`. Route-backed components use the `#[component]` macro under `src/apps/<app>/client/components/`. The project-level `src/config/urls.rs` aggregates those app routers, session middleware, admin routes, and static-file routes.
+3. **Routing belongs to each app.** Each app exposes target-specific route functions from `src/apps/<app>/urls.rs`, which gates `urls/server_router.rs` for server-function markers and `urls/client_router.rs` for client component routes. Route-backed components use the `#[component]` macro under `src/apps/<app>/client/components/`. The project-level `src/config/urls.rs` aggregates the active target's app routers, session middleware, admin routes, and static-file routes.
 
 ## Tutorial Structure
 
