@@ -292,9 +292,16 @@ pub async fn current_user(
 The users app follows the same target-neutral route surface as polls. `src/apps/users/urls.rs` aggregates the split router modules:
 
 ```rust
+#[cfg(not(client))]
+mod client_route_specs;
+
+#[cfg(client)]
 pub mod client_router;
 
+#[cfg(client)]
 pub use client_router::{client_url_patterns, reverse};
+#[cfg(not(client))]
+pub use client_route_specs::{client_url_patterns, reverse};
 
 #[cfg(server)]
 pub mod server_router;
@@ -306,27 +313,14 @@ pub use server_router::server_url_patterns;
 Client routes live in `src/apps/users/urls/client_router.rs`:
 
 ```rust
-#[cfg(not(client))]
-use reinhardt::pages::component::Page;
+use crate::apps::users::client::components;
 use reinhardt::ClientRouter;
 
-#[cfg(client)]
-use crate::apps::users::client::components;
-
 pub fn client_url_patterns() -> ClientRouter {
-    #[cfg(client)]
-    {
-        return ClientRouter::new()
-            .component(components::login_page::login_page)
-            .component(components::logout_page::logout_page)
-            .component(components::signup_page::signup_page);
-    }
-
-    #[cfg(not(client))]
     ClientRouter::new()
-        .route("login", "/login/", Page::empty)
-        .route("logout", "/logout/", Page::empty)
-        .route("signup", "/signup/", Page::empty)
+        .component(components::login_page::login_page)
+        .component(components::logout_page::logout_page)
+        .component(components::signup_page::signup_page)
 }
 
 pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
@@ -335,6 +329,8 @@ pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
         .unwrap_or_else(|error| panic!("failed to reverse users client route `{name}`: {error}"))
 }
 ```
+
+Native builds keep the login/logout/signup route names in `src/apps/users/urls/client_route_specs.rs`, registered with `Page::empty`, so server-side route aggregation and `reverse()` still work without compiling client components.
 
 Server routes register server-function markers in `src/apps/users/urls/server_router.rs`:
 

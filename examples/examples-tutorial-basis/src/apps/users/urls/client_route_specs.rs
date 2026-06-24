@@ -1,14 +1,14 @@
-//! Client-side routes for login/logout/signup pages.
+//! Native-side users route metadata for route aggregation and reversing.
 
-use crate::apps::users::client::components;
 use reinhardt::ClientRouter;
+use reinhardt::pages::component::Page;
 
-/// Client-side routes for login/logout/signup pages.
+/// Client route names and paths without WASM component bodies.
 pub fn client_url_patterns() -> ClientRouter {
 	ClientRouter::new()
-		.component(components::login_page::login_page)
-		.component(components::logout_page::logout_page)
-		.component(components::signup_page::signup_page)
+		.route("login", "/login/", Page::empty)
+		.route("logout", "/logout/", Page::empty)
+		.route("signup", "/signup/", Page::empty)
 }
 
 /// Reverse a named users client route.

@@ -27,7 +27,7 @@ This example corresponds to the basis tutorial parts 1-7:
 The example exposes its dynamic business logic through the pages stack:
 
 - **Typed RPC server functions** in `src/apps/<app>/server_fn.rs` — `#[server_fn]` functions (`get_questions`, `get_question_detail`, `vote`, `create_question`, …, plus `login` / `logout` / `register` / `current_user` for the `users` app). The macro generates a typed client stub for WASM and a server-side handler for native; dependencies are resolved positionally with `#[inject]` (`DatabaseConnection`, `SessionData`, `CurrentUser<User>`, …).
-- **Per-app URL modules** in `src/apps/<app>/urls.rs` — each app exposes `server_url_patterns()` and `client_url_patterns()` from one target-neutral aggregate; server-function markers stay in `src/apps/<app>/urls/server_router.rs`, client route tables stay in `src/apps/<app>/urls/client_router.rs`, and `src/config/urls.rs` only aggregates the app-level router functions.
+- **Per-app URL modules** in `src/apps/<app>/urls.rs` — each app exposes `server_url_patterns()` and `client_url_patterns()` from one target-neutral aggregate; server-function markers stay in `src/apps/<app>/urls/server_router.rs`, client component route tables stay in `src/apps/<app>/urls/client_router.rs`, native client-route metadata stays in `src/apps/<app>/urls/client_route_specs.rs`, and `src/config/urls.rs` only aggregates the app-level router functions.
 - **Route-backed components** in `src/apps/<app>/client/components/` — component macros own route metadata for pages such as login/logout/signup.
 - **Dynamic WASM forms** in `src/apps/polls/client/components.rs` — the poll detail route builds its `RadioSelect` voting form from the choices returned by `get_question_detail`, so each loaded choice becomes a submitted `choice_id` option.
 
@@ -165,6 +165,7 @@ examples-tutorial-basis/
 │   │   │   │   └── server.rs
 │   │   │   ├── urls.rs
 │   │   │   └── urls/
+│   │   │       ├── client_route_specs.rs
 │   │   │       ├── client_router.rs
 │   │   │       └── server_router.rs
 │   │   ├── polls.rs
@@ -181,6 +182,7 @@ examples-tutorial-basis/
 │   │       ├── server_fn.rs
 │   │       ├── urls.rs
 │   │       └── urls/
+│   │           ├── client_route_specs.rs
 │   │           ├── client_router.rs
 │   │           └── server_router.rs
 │   ├── apps.rs

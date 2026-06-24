@@ -177,9 +177,16 @@ The current reference implementation takes five rows from the manager query. Do 
 The app-level `src/apps/polls/urls.rs` stays target-neutral. It aggregates the split router modules:
 
 ```rust
+#[cfg(not(client))]
+mod client_route_specs;
+
+#[cfg(client)]
 pub mod client_router;
 
+#[cfg(client)]
 pub use client_router::{client_url_patterns, reverse};
+#[cfg(not(client))]
+pub use client_route_specs::{client_url_patterns, reverse};
 
 #[cfg(server)]
 pub mod server_router;
@@ -191,21 +198,11 @@ pub use server_router::server_url_patterns;
 Put the client route table in `src/apps/polls/urls/client_router.rs`:
 
 ```rust
-#[cfg(not(client))]
-use reinhardt::pages::component::Page;
+use crate::apps::polls::client::components;
 use reinhardt::ClientRouter;
 
-#[cfg(client)]
-use crate::apps::polls::client::components;
-
 pub fn client_url_patterns() -> ClientRouter {
-    #[cfg(client)]
-    {
-        return ClientRouter::new().component(components::polls_index::polls_index);
-    }
-
-    #[cfg(not(client))]
-    ClientRouter::new().route("index", "/", Page::empty)
+    ClientRouter::new().component(components::polls_index::polls_index)
 }
 
 pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
@@ -215,7 +212,22 @@ pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
 }
 ```
 
-The native branch keeps the same route names and paths registered with `Page::empty` so server-side code can call `reverse()` without importing client components.
+`client_router.rs` is gated by `#[cfg(client)]` at the module declaration. Native builds still need the same route names for `mount_unified()` and `reverse()`, so keep target-neutral metadata in `src/apps/polls/urls/client_route_specs.rs`:
+
+```rust
+use reinhardt::ClientRouter;
+use reinhardt::pages::component::Page;
+
+pub fn client_url_patterns() -> ClientRouter {
+    ClientRouter::new().route("index", "/", Page::empty)
+}
+
+pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
+    client_url_patterns()
+        .reverse(name, params)
+        .unwrap_or_else(|error| panic!("failed to reverse polls client route `{name}`: {error}"))
+}
+```
 
 Register the server function in `src/apps/polls/urls/server_router.rs`:
 
