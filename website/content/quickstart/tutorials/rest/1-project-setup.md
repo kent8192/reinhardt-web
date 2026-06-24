@@ -19,7 +19,7 @@ Install `reinhardt-admin-cli` once:
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.3.0-rc.3"
+cargo install reinhardt-admin-cli --version "0.3.0-rc.4"
 ```
 
 The installed command is named `reinhardt-admin`.
