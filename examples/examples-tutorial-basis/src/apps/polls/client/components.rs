@@ -25,12 +25,24 @@
 //!   that depend on the form's `error` / `loading` signals are rendered inline as
 //!   `{ .. }` blocks that read each signal exactly once.
 
-use crate::shared::types::{ChoiceInfo, QuestionInfo, UserInfo};
+pub mod choice_delete;
+pub mod choice_edit;
+pub mod choice_new;
+pub mod polls_detail;
+pub mod polls_index;
+pub mod polls_results;
+pub mod question_delete;
+pub mod question_edit;
+pub mod question_new;
+
+use crate::apps::polls::models::{ChoiceInfo, QuestionInfo};
+use crate::apps::users::models::UserInfo;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::use_effect;
 use reinhardt::pages::reactive::{Resource, ResourceState, Signal, use_resource};
+use reinhardt::pages::resolve_static;
 
 use crate::apps::polls::server_fn::{
 	create_choice, create_question, delete_choice, delete_question, get_question_detail,
@@ -67,6 +79,29 @@ fn format_server_error(raw: &str) -> String {
 		}
 	}
 	raw.to_string()
+}
+
+fn static_url(path: &str) -> String {
+	resolve_static(path)
+}
+
+/// Error page used as the polls router's `not_found` fallback.
+pub fn error_page(message: &str) -> Page {
+	let message = message.to_string();
+	page!(|message: String| {
+		div {
+			class: "layout-page",
+			div {
+				class: "alert-danger mb-4",
+				{ message }
+			}
+			a {
+				href: "/",
+				class: "btn-primary",
+				"Back to Home"
+			}
+		}
+	})(message)
 }
 
 /// Polls index page - List all polls
@@ -557,7 +592,7 @@ pub fn polls_index_with_logo() -> Page {
 			div {
 				class: "text-center mb-6",
 				img {
-					src: reinhardt::pages::resolve_static("images/poll-icon.svg"),
+					src: self::static_url("images/poll-icon.svg"),
 					alt: "Polls App",
 					class: "mx-auto w-16 h-16",
 				}
@@ -605,7 +640,7 @@ pub fn polls_index_with_logo() -> Page {
 									div {
 										class: "flex w-full justify-between items-center",
 										img {
-											src: reinhardt::pages::resolve_static("images/poll-icon.svg"),
+											src: self::static_url("images/poll-icon.svg"),
 											alt: "Poll",
 											class: "w-8 h-8 mr-3",
 										}

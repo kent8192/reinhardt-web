@@ -4,7 +4,7 @@
 //! polls models (Question, Choice) so they appear in the auto-generated
 //! `/admin/` interface.
 
-use crate::apps::polls::server::models::{Choice, Question};
+use crate::apps::polls::models::{Choice, Question};
 use reinhardt::admin;
 
 /// Admin configuration for the Question model.

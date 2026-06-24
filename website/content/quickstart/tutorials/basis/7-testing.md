@@ -150,28 +150,35 @@ Use `#[serial(server_fn_tests)]` for tests that share global ORM state.
 
 ## Test Auth Gates
 
-The current auth CUD tests focus on the authentication gate. They construct the same shape that the request-scoped factory would return for an anonymous session:
+Anonymous rejection is handled by the `CurrentUser<User>` injector before a server-function body runs. The direct-call CUD tests therefore focus on the handler-local inactive-user guard:
 
 ```rust
-fn anonymous_session_user() -> Depends<Result<User, SessionError>> {
-    Depends::from_value(Err(SessionError::Anonymous))
+fn inactive_current_user() -> CurrentUser<User> {
+    CurrentUser(
+        User::build()
+            .username("inactive-user".to_string())
+            .password_hash(None)
+            .is_active(false)
+            .is_superuser(false)
+            .finish(),
+    )
 }
 ```
 
-Then they call CUD functions and assert 401 before any database mutation path runs:
+Then they call CUD functions and assert a 403 before any database mutation path runs:
 
 ```rust
 let result = create_question(
-    "Anonymous question".to_string(),
+    "Inactive attempt".to_string(),
     db_conn,
-    anonymous_session_user(),
+    inactive_current_user(),
 )
 .await;
 
 assert!(result.is_err());
 ```
 
-Do not claim this fixture covers every ownership path. Author success and non-author 403 cases require a fixture with `users` plus `questions.author_id`.
+Do not claim this fixture covers every ownership path. Author success, non-author 403 cases, and anonymous-injector 401 cases require a request/DI fixture with `users` plus `questions.author_id`.
 
 ## Test Createsuperuser Wiring
 
@@ -240,7 +247,7 @@ async fn test_get_questions_returns_mocked_list() {
 }
 ```
 
-The rest of `polls_mock_test.rs` covers rendering, detail/results round trips, vote success/error paths, radio checked-state behavior, and serialization of app-local DTOs.
+The rest of `polls_mock_test.rs` covers rendering, detail/results round trips, vote success/error paths, radio checked-state behavior, and serialization of the generated model info DTOs.
 
 ## Add WASM Users Tests
 

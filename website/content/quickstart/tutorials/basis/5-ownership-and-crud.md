@@ -15,10 +15,10 @@ The client hides controls that do not apply to the current user, but that is onl
 
 ## Add the Author Field
 
-Open `src/apps/polls/server/models.rs`. Import the user model and add an author foreign key to `Question`:
+Open `src/apps/polls/models.rs`. Import the user model and add an author foreign key to `Question`:
 
 ```rust
-use crate::apps::users::server::models::User;
+use crate::apps::users::models::User;
 ```
 
 ```rust
@@ -41,28 +41,10 @@ pub struct Question {
 
 This is the schema change you intentionally deferred in Part 2.
 
-Update `QuestionInfo` in `src/apps/polls/serializers.rs` so the client can tell whether the current user owns a question:
+`#[model]` regenerates `QuestionInfo` with an `author: RelationInfo<User>` field, so the client can tell whether the current user owns a question. No hand-written DTO edit is needed:
 
 ```rust
-pub struct QuestionInfo {
-    pub id: i64,
-    pub question_text: String,
-    pub pub_date: DateTime<Utc>,
-    pub author: RelationInfo<UserInfo>,
-}
-
-#[cfg(server)]
-impl From<crate::apps::polls::server::models::Question> for QuestionInfo {
-    fn from(question: crate::apps::polls::server::models::Question) -> Self {
-        let author_id = *question.author_id();
-        Self {
-            id: question.id,
-            question_text: question.question_text,
-            pub_date: question.pub_date,
-            author: RelationInfo::new(author_id),
-        }
-    }
-}
+use crate::apps::polls::models::QuestionInfo;
 ```
 
 ## Generate Migration 0002
@@ -110,68 +92,53 @@ For a tutorial database, it is fine to reset and reseed. For real existing data,
 
 ## Inject the Current User
 
-The polls server functions need an authenticated user. Add a request-scoped factory in `src/apps/polls/server_fn.rs`:
+The polls server functions need an authenticated user. Inject `CurrentUser<User>` directly; the session middleware derives auth state from the session and the framework resolves the full `User` before the handler body runs:
 
 ```rust
-#[cfg(server)]
-#[derive(Clone, Debug)]
-pub enum SessionError {
-    Anonymous,
-    Inactive,
-    Unavailable(String),
+use crate::apps::users::models::User;
+use reinhardt::CurrentUser;
+
+#[server_fn]
+pub async fn create_question(
+    question_text: String,
+    #[inject] _db: DatabaseConnection,
+    #[inject] CurrentUser(user): CurrentUser<User>,
+) -> Result<QuestionInfo, ServerFnError> {
+    require_active_user(&user)?;
+    // ...
 }
 ```
 
+Anonymous users fail at injection time with 401. The tutorial still keeps a small handler-local active-user check so inactive accounts become 403:
+
 ```rust
 #[cfg(server)]
-#[injectable_factory(scope = "request")]
-async fn session_user_factory(#[inject] session: SessionData) -> Result<User, SessionError> {
-    let Some(user_id) = session.get::<i64>(USER_ID_SESSION_KEY) else {
-        return Err(SessionError::Anonymous);
-    };
-
-    let user = match User::objects()
-        .filter(User::field_id().eq(user_id))
-        .first()
-        .await
-    {
-        Ok(Some(user)) => user,
-        Ok(None) => return Err(SessionError::Anonymous),
-        Err(err) => {
-            return Err(SessionError::Unavailable(err.to_string()));
-        }
-    };
-
+fn require_active_user(user: &User) -> Result<(), ServerFnError> {
     if user.is_active {
-        Ok(user)
+        Ok(())
     } else {
-        Err(SessionError::Inactive)
+        Err(ServerFnError::server(403, "User account is inactive"))
     }
 }
 ```
-
-Handlers consume it as `Depends<Result<User, SessionError>>`:
-
-```rust
-let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
-```
-
-This keeps authentication failure explicit: anonymous users get 401, inactive users get 403, and lookup failures stay server errors.
 
 ## Create Questions
 
 Add the create server function:
 
 ```rust
+use crate::apps::polls::models::Question;
+use reinhardt::DatabaseConnection;
+use reinhardt::CurrentUser;
+use std::result::Result;
+
 #[server_fn]
 pub async fn create_question(
     question_text: String,
-    #[inject] _db: reinhardt::DatabaseConnection,
-    #[inject] session_user: Depends<Result<User, SessionError>>,
-) -> std::result::Result<QuestionInfo, ServerFnError> {
-    use crate::apps::polls::server::models::Question;
-
-    let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
+    #[inject] _db: DatabaseConnection,
+    #[inject] CurrentUser(user): CurrentUser<User>,
+) -> Result<QuestionInfo, ServerFnError> {
+    require_active_user(&user)?;
 
     let trimmed = question_text.trim();
     if trimmed.is_empty() || trimmed.len() > 200 {
@@ -241,13 +208,14 @@ Do not rely on the client to protect these actions. The comparison in the server
 `Choice` does not have its own author field. Ownership comes from the parent `Question`:
 
 ```rust
+use crate::apps::polls::models::Question;
+use std::result::Result;
+
 #[cfg(server)]
 async fn require_question_author(
     question_id: i64,
     user: &User,
-) -> std::result::Result<crate::apps::polls::server::models::Question, ServerFnError> {
-    use crate::apps::polls::server::models::Question;
-
+) -> Result<Question, ServerFnError> {
     let question = Question::objects()
         .get(question_id)
         .first()
@@ -266,11 +234,13 @@ async fn require_question_author(
 }
 ```
 
+This stays as a helper rather than an injectable provider because the rule depends on a route/form argument (`question_id`) and the loaded row. A route-wide `guard!` is useful for broad permissions, but this object-level check needs the current function's resource id and database lookup. The authentication part is already injected through `CurrentUser<User>`.
+
 `create_choice` verifies the parent question first:
 
 ```rust
-let user = (*session_user).as_ref().map_err(ServerFnError::from)?;
-let question = require_question_author(question_id, user).await?;
+require_active_user(&user)?;
+let question = require_question_author(question_id, &user).await?;
 
 let new_choice = Choice::build()
     .choice_text(trimmed)
@@ -279,7 +249,7 @@ let new_choice = Choice::build()
     .finish();
 ```
 
-`update_choice` and `delete_choice` load the choice, then call `require_question_author(*choice.question_id(), user)` before mutating the row.
+`update_choice` and `delete_choice` load the choice, then call `require_question_author(*choice.question_id(), &user)` before mutating the row.
 
 ## Register the CRUD Server Functions
 
@@ -394,7 +364,7 @@ polls_routes::reverse("detail", &[("question_id", question_id.to_string().as_str
 
 ## Hide Owner-Only Controls
 
-Detail and results pages should load the current user and compare it with `q.author_id`:
+Detail and results pages should load the current user and compare it with `q.author.id`:
 
 ```rust
 let load_current_user = use_resource(
@@ -406,7 +376,7 @@ let load_current_user = use_resource(
 ```rust
 let is_author = matches!(
     load_current_user.get(),
-    ResourceState::Success(Some(ref u)) if u.id == q.author_id
+    ResourceState::Success(Some(ref u)) if u.id == q.author.id
 );
 ```
 
@@ -426,6 +396,6 @@ Before continuing:
 
 - `0001_initial.rs` is still the anonymous poll schema.
 - `0002_question_author.rs` adds `questions.author_id`.
-- Question create/update/delete require `Depends<Result<User, SessionError>>`.
+- Question create/update/delete require `CurrentUser<User>`.
 - Choice create/update/delete call `require_question_author`.
 - Owner-only UI is only a convenience; server functions enforce the rule.

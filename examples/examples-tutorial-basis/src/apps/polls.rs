@@ -11,10 +11,11 @@ use reinhardt::app_config;
 
 #[cfg(client)]
 pub mod client;
-pub mod pages;
+pub mod models;
 #[cfg(server)]
 pub mod server;
 pub mod server_fn;
+pub mod services;
 pub mod urls;
 
 #[cfg(server)]

@@ -22,11 +22,12 @@ wasm_bindgen_test_configure!(run_in_browser);
 use examples_tutorial_basis::apps::polls::client::components::{
 	polls_detail, polls_index, polls_results,
 };
+use examples_tutorial_basis::apps::polls::models::{ChoiceInfo, QuestionInfo};
 use examples_tutorial_basis::apps::polls::server_fn::{
 	get_question_detail, get_question_results, get_questions, vote,
 };
 use examples_tutorial_basis::apps::users::server_fn::current_user;
-use examples_tutorial_basis::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
+use examples_tutorial_basis::shared::types::VoteRequest;
 use gloo_timers::future::TimeoutFuture;
 use reinhardt::model_info::RelationInfo;
 use reinhardt::pages::component::{Page, PageExt};

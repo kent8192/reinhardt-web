@@ -160,7 +160,7 @@ Open `src/apps.rs`. After `startapp snippets --template rest`, it should expose 
 pub mod snippets;
 ```
 
-Then open `src/config/apps.rs`. The generated app label should be registered:
+Then open `src/config/apps.rs`. `startapp` should have registered the generated app label automatically:
 
 ```rust
 use reinhardt::installed_apps;
@@ -174,7 +174,7 @@ pub fn get_installed_apps() -> Vec<String> {
 }
 ```
 
-This is why you used `startapp` instead of creating the directory by hand. Reinhardt can only discover migrations and app-level routes for apps that are registered here.
+This is why you used `startapp` instead of creating the directory by hand. Reinhardt can only discover migrations and app-level routes for apps that are registered here, but the scaffold command should do the registration for you.
 
 ## Check URL Mounting
 

@@ -18,7 +18,7 @@ The admin registration is useful for exercising model metadata, route wiring, an
 Create `src/apps/polls/server/admin.rs`. The example registers `Question` first:
 
 ```rust
-use crate::apps::polls::server::models::{Choice, Question};
+use crate::apps::polls::models::{Choice, Question};
 use reinhardt::admin;
 
 #[admin(model,
@@ -71,9 +71,7 @@ pub mod server;
 
 ```rust
 pub mod admin;
-pub mod models;
 pub mod serializers;
-pub mod urls;
 ```
 
 ## Configure the Admin Site
@@ -122,6 +120,8 @@ In `src/config/urls.rs`, import the admin helpers and your site configuration:
 ```rust
 #[cfg(server)]
 use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
+#[cfg(server)]
+use std::sync::Arc;
 
 #[cfg(server)]
 use crate::config::admin::configure_admin;
@@ -132,7 +132,7 @@ Mount `/admin/` and `/static/admin/`:
 ```rust
 #[cfg(server)]
 let router = {
-    let admin_site = std::sync::Arc::new(configure_admin());
+    let admin_site = Arc::new(configure_admin());
     let (admin_router, admin_di) = admin_routes_with_di(admin_site);
     router
         .mount("/admin/", admin_router)
