@@ -179,12 +179,9 @@ jobs:
   #   - Manual workflow_dispatch
   # Per-feature-branch pushes do not pay the headless Chrome cost.
   #
-  # Deferred to Phase 2b (Issue #4534): release self-hosted runner slots ~10 min
-  # earlier for jobs blocked on Spot vCPU quota. The defer is implemented in the
-  # orchestrator workflow (.github/workflows/ci.yml) by extending the
-  # `wasm-check` caller job's `needs:` list with `unit-test` and
-  # `intra-crate-integration-test`; reusable workflows cannot declare cross-
-  # workflow needs themselves.
+  # The orchestrator workflow (.github/workflows/ci.yml) starts this reusable
+  # workflow after the lightweight gates so browser/runtime coverage overlaps
+  # the long native integration-test tail.
   wasm-test:
     name: WASM Test (headless Chrome)
     # Always use GitHub-hosted x86_64 runner: browser-actions/setup-chrome

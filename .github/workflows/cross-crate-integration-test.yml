@@ -19,6 +19,14 @@ on:
         description: "Whether to run all tests"
         type: string
         default: "true"
+      partitions-json:
+        description: "JSON array of partition indices for dynamic matrix. Issue #2881"
+        type: string
+        default: "[1,2,3,4,5,6,7,8,9,10,11,12]"
+      partition-count:
+        description: "Total partition count for nextest --partition. Issue #2881"
+        type: string
+        default: "12"
   workflow_dispatch:
 
 env:
@@ -33,13 +41,13 @@ env:
 
 jobs:
   cross-crate-integration-test:
-    name: Cross-Crate Integration Tests (${{ matrix.partition }}/3)
+    name: Cross-Crate Integration Tests (${{ matrix.partition }}/${{ inputs.partition-count || '12' }})
     runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        partition: [1, 2, 3]
+        partition: ${{ fromJSON(inputs.partitions-json || '[1,2,3,4,5,6,7,8,9,10,11,12]') }}
     steps:
       - name: Free Disk Space (Ubuntu)
         if: ${{ !contains(inputs.runner, 'self-hosted') }}
@@ -133,10 +141,11 @@ jobs:
           echo "Disk usage after additional cleanup:"
           df -h
 
-      - name: Run cross-crate integration tests (partition ${{ matrix.partition }}/3)
+      - name: Run cross-crate integration tests (partition ${{ matrix.partition }}/${{ inputs.partition-count || '12' }})
         env:
           NEXTEST_FILTER_EXPR: ${{ inputs.nextest-filter }}
           RUN_ALL: ${{ inputs.run-all }}
+          PARTITION_COUNT: ${{ inputs.partition-count || '12' }}
         run: |
           FILTER_ARGS=()
           if [[ "$RUN_ALL" != "true" && -n "$NEXTEST_FILTER_EXPR" ]]; then
@@ -145,7 +154,7 @@ jobs:
           cargo nextest run \
             --package reinhardt-integration-tests \
             --all-features \
-            --partition hash:${{ matrix.partition }}/3 \
+            --partition "hash:${{ matrix.partition }}/$PARTITION_COUNT" \
             --no-fail-fast \
             --no-tests=warn \
             --status-level=none \
