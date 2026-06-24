@@ -15,11 +15,14 @@ The finished reference for this tutorial is `examples/examples-tutorial-basis`. 
 
 ## Install the Tools
 
+Use Rust 1.96.0 or newer. The `0.3.0-rc.4` generator and the generated Rust
+2024 project require that toolchain level.
+
 Install the Reinhardt project generator:
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.1"
+cargo install reinhardt-admin-cli --version "0.3.0-rc.4"
 ```
 
 The installed binary is `reinhardt-admin`.
@@ -39,7 +42,7 @@ your `Cargo.toml` matches the reference project:
 
 ```bash
 reinhardt-admin startproject tutorial --template pages \
-  --features pages,admin,conf,commands-server,commands-autoreload,db-sqlite,forms,auth-session,middleware,argon2-hasher,static-files \
+  --features minimal,pages,admin,conf,commands-server,commands-autoreload,db-sqlite,forms,auth-session,middleware,argon2-hasher,static-files \
   --default-features false \
   --no-interactive
 cd tutorial
@@ -115,6 +118,7 @@ wasm-bindgen = "=0.2.122"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 reinhardt = { workspace = true, features = [
+    "minimal",
     "pages",
     "conf",
     "commands-server",

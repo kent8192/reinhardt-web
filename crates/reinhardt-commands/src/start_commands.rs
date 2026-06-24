@@ -122,6 +122,7 @@ impl BaseCommand for StartProjectCommand {
 		let secret_key = format!("insecure-{}", generate_secret_key());
 		let required_features = if with_pages {
 			&[
+				"minimal",
 				"pages",
 				"admin",
 				"conf",

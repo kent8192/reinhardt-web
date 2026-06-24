@@ -110,7 +110,7 @@ pub async fn resolve_dependency_selection(
 		if interactive {
 			prompt_features()?
 		} else {
-			vec!["standard".to_string()]
+			default_noninteractive_features(required_features)
 		}
 	} else {
 		explicit_features
@@ -127,6 +127,16 @@ pub async fn resolve_dependency_selection(
 		default_features,
 		features: normalize_features(features),
 	})
+}
+
+fn default_noninteractive_features(required_features: &[&str]) -> Vec<String> {
+	if required_features.iter().any(|feature| *feature == "pages") {
+		return required_features
+			.iter()
+			.map(|feature| (*feature).to_string())
+			.collect();
+	}
+	vec!["standard".to_string()]
 }
 
 fn should_prompt(ctx: &CommandContext) -> bool {
@@ -359,6 +369,22 @@ mod tests {
 	#[test]
 	fn features_toml_formats_array_literal() {
 		assert_eq!(selection().features_toml(), "[\"minimal\", \"db-sqlite\"]");
+	}
+
+	#[test]
+	fn noninteractive_pages_default_uses_required_features() {
+		assert_eq!(
+			default_noninteractive_features(&["minimal", "pages", "db-sqlite"]),
+			vec!["minimal", "pages", "db-sqlite"]
+		);
+	}
+
+	#[test]
+	fn noninteractive_non_pages_default_keeps_standard_preset() {
+		assert_eq!(
+			default_noninteractive_features(&["conf", "commands", "db-postgres", "api"]),
+			vec!["standard"]
+		);
 	}
 
 	#[test]
