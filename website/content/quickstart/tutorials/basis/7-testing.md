@@ -240,7 +240,7 @@ async fn test_get_questions_returns_mocked_list() {
 }
 ```
 
-The rest of `polls_mock_test.rs` covers rendering, detail/results round trips, vote success/error paths, radio checked-state behavior, and serialization of shared DTOs.
+The rest of `polls_mock_test.rs` covers rendering, detail/results round trips, vote success/error paths, radio checked-state behavior, and serialization of app-local DTOs.
 
 ## Add WASM Users Tests
 

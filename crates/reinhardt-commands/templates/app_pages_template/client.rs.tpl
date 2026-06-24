@@ -3,9 +3,8 @@
 //! Reached only on the WASM target via `#[cfg(client)] pub mod client;`
 //! in the parent app aggregator; contents below need no additional gates.
 //!
-//! The freshly generated app contains a placeholder component / page in
-//! `components.rs` and `../pages.rs`. Register the placeholder route in
-//! `../urls.rs` to see the SPA boot, then replace both stubs
-//! with your real UI.
+//! The freshly generated app contains a route-backed placeholder component
+//! under `components/placeholder.rs`. Register additional components from
+//! `../urls/client_router.rs` as the app grows.
 
 pub mod components;

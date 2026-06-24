@@ -11,11 +11,11 @@ sidebar_weight = 30
 
 The poll index now links to detail pages, but the detail route does not do useful work yet. In this part you will add the read path for one poll, a vote mutation, and a results page.
 
-The browser submits votes through `form!` and a `#[server_fn]`. The server keeps the database rules: it verifies that the selected choice belongs to the selected question, increments the vote in a transaction, and returns the shared `ChoiceInfo` DTO.
+The browser submits votes through `form!` and a `#[server_fn]`. The server keeps the database rules: it verifies that the selected choice belongs to the selected question, increments the vote in a transaction, and returns the app-local `ChoiceInfo` DTO.
 
 ## Add the Request Type
 
-Open `src/shared/types.rs` and add the vote request DTO:
+Open `src/apps/polls/serializers.rs` and add the vote request DTO:
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,7 +115,7 @@ Add both and share the implementation:
 ```rust
 #[server_fn]
 pub async fn vote(
-    request: crate::shared::types::VoteRequest,
+    request: crate::apps::polls::serializers::VoteRequest,
     #[inject] db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
     vote_internal(request, db).await
@@ -127,7 +127,7 @@ pub async fn submit_vote(
     choice_id: i64,
     #[inject] db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
-    let request = crate::shared::types::VoteRequest {
+    let request = crate::apps::polls::serializers::VoteRequest {
         question_id,
         choice_id,
     };
@@ -141,7 +141,7 @@ The internal function wraps the read-modify-write in a transaction:
 ```rust
 #[cfg(server)]
 async fn vote_internal(
-    request: crate::shared::types::VoteRequest,
+    request: crate::apps::polls::serializers::VoteRequest,
     db: reinhardt::DatabaseConnection,
 ) -> std::result::Result<ChoiceInfo, ServerFnError> {
     use crate::apps::polls::server::models::Choice;
@@ -207,17 +207,9 @@ Add detail and results routes in `src/apps/polls/urls/client_router.rs`:
 
 ```rust
 ClientRouter::new()
-    .route("index", "/", pages::index_page)
-    .route_path(
-        "detail",
-        "/polls/{question_id}/",
-        |ClientPath(question_id): ClientPath<i64>| pages::polls_detail_page(question_id),
-    )
-    .route_path(
-        "results",
-        "/polls/{question_id}/results/",
-        |ClientPath(question_id): ClientPath<i64>| pages::polls_results_page(question_id),
-    )
+    .component(components::polls_index::polls_index)
+    .component(components::polls_detail::polls_detail)
+    .component(components::polls_results::polls_results)
 ```
 
 Keep the route names stable. Client components should reverse named routes:
@@ -296,7 +288,7 @@ The final example also hides owner-only edit/delete controls here. Defer those b
 
 ## Add Static Form Metadata
 
-The reference example also exposes server-side form metadata from `src/shared/forms.rs`:
+The reference example also exposes server-side form metadata from `src/apps/polls/server/forms.rs`:
 
 ```rust
 pub fn create_vote_form() -> StaticFormMetadata {
@@ -320,12 +312,10 @@ pub fn create_vote_form() -> StaticFormMetadata {
 }
 ```
 
-`src/shared.rs` gates this module because form metadata is server-only:
+`src/apps/polls/server.rs` gates this module because form metadata is server-only:
 
 ```rust
-#[cfg(server)]
 pub mod forms;
-pub mod types;
 ```
 
 ## Build the Results Page

@@ -191,14 +191,9 @@ async fn startproject_pages_from_embedded_only() {
 		cargo_toml.contains("[workspace]") && cargo_toml.contains("members = ["),
 		"generated pages Cargo.toml must be a nested-workspace-safe root:\n{cargo_toml}"
 	);
-	let shared_types = std::fs::read_to_string(generated.join("src/shared/types.rs")).unwrap();
 	assert!(
-		!shared_types.contains("\nuse serde::{Deserialize, Serialize};"),
-		"generated shared types placeholder must not create an unused import warning:\n{shared_types}"
-	);
-	assert!(
-		shared_types.contains("// use serde::{Deserialize, Serialize};"),
-		"generated shared types placeholder should keep the serde import in the commented example:\n{shared_types}"
+		!generated.join("src/shared.rs").exists() && !generated.join("src/shared").exists(),
+		"generated pages project must not create a root shared module"
 	);
 	assert_manifest_parses(&generated.join("Cargo.toml"));
 }

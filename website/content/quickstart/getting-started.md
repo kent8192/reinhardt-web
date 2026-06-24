@@ -105,18 +105,14 @@ my-app/
 │   │   └── manage.rs
 │   ├── client.rs
 │   ├── client/
-│   │   ├── router.rs
-│   │   └── state.rs
+│   │   ├── lib.rs
+│   │   └── components/
+│   │       └── nav.rs
 │   ├── config/
 │   │   ├── apps.rs
 │   │   ├── settings.rs
+│   │   ├── wasm.rs
 │   │   └── urls.rs
-│   ├── server/
-│   │   └── server_fn.rs
-│   ├── shared.rs
-│   └── shared/
-│       ├── errors.rs
-│       └── types.rs
 └── README.md
 ```
 

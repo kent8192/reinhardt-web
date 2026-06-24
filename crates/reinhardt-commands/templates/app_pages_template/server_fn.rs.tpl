@@ -10,25 +10,4 @@
 //! session middleware, models, ...) that are not compiled on the WASM
 //! target.
 
-use reinhardt::pages::server_fn::{ServerFnError, server_fn};
-
-// Example server-only imports (uncomment when you add real handlers):
-// #[cfg(server)]
-// use {
-//     crate::apps::{{ app_name }}::server::models::{{ camel_case_app_name }},
-//     reinhardt::DatabaseConnection,
-//     reinhardt::Model,
-// };
-
-// -----------------------------------------------------------------------------
-// PLACEHOLDER: delete or replace before shipping.
-//
-// Registers a no-op `placeholder` server function via inventory so the
-// freshly generated module compiles end-to-end. Remove this once you have
-// real `#[server_fn]` items — otherwise the WASM client can still call
-// `placeholder()` as a dead endpoint.
-// -----------------------------------------------------------------------------
-#[server_fn]
-pub async fn placeholder() -> std::result::Result<(), ServerFnError> {
-    Ok(())
-}
+pub mod placeholder;

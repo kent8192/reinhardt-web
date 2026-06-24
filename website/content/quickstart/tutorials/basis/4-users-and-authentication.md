@@ -110,7 +110,7 @@ impl BaseUserManager<User> for AuthUserManager {
 
 ## Share Auth DTOs
 
-Update `src/shared/types.rs` to add `UserInfo` next to the poll DTOs and define login/register DTOs:
+Update `src/apps/users/serializers.rs` to add `UserInfo` and define login/register DTOs:
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -331,13 +331,21 @@ Client routes live in `src/apps/users/urls/client_router.rs`:
 ```rust
 use reinhardt::ClientRouter;
 
-use crate::apps::users::pages;
+#[cfg(client)]
+use crate::apps::users::client::components;
 
 pub fn client_url_patterns() -> ClientRouter {
-    ClientRouter::new()
-        .route("login", "/login/", pages::login_page)
-        .route("logout", "/logout/", pages::logout_page)
-        .route("signup", "/signup/", pages::signup_page)
+    #[cfg(client)]
+    {
+        ClientRouter::new()
+            .component(components::login_page::login_page)
+            .component(components::logout_page::logout_page)
+            .component(components::signup_page::signup_page)
+    }
+    #[cfg(not(client))]
+    {
+        ClientRouter::new()
+    }
 }
 ```
 
@@ -357,18 +365,12 @@ pub fn server_url_patterns() -> ServerRouter {
 }
 ```
 
-App-local page entry points in `src/apps/users/pages.rs` wrap the users client components on WASM and return `Page::Empty` on native:
+App-local route-backed components in `src/apps/users/client/components/` wrap the users forms with the shared nav:
 
 ```rust
+#[reinhardt::pages::component("/login/", "login")]
 pub fn login_page() -> Page {
-    #[cfg(client)]
-    {
-        with_nav(crate::apps::users::client::components::login_form())
-    }
-    #[cfg(not(client))]
-    {
-        Page::Empty
-    }
+    with_nav(crate::apps::users::client::components::login_form())
 }
 ```
 
@@ -453,7 +455,7 @@ pub fn login_form() -> Page {
 
 The signup form uses `register`; the logout form uses `logout` with no fields. The generated `#[server_fn]` client stubs handle the HTTP call and CSRF header.
 
-The page aggregator wraps each auth form in the shared nav:
+Each route-backed auth component wraps its form body in the shared nav:
 
 ```rust
 pub fn login_page() -> Page {
