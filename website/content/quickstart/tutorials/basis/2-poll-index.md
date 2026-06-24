@@ -174,7 +174,7 @@ The current reference implementation takes five rows from the manager query. Do 
 
 ## Split Server and Client Routes
 
-The app-level `src/apps/polls/urls.rs` stays target-neutral. It aggregates the split router modules:
+The app-level `src/apps/polls/urls.rs` gates the split router modules at the declaration site:
 
 ```rust
 #[cfg(client)]

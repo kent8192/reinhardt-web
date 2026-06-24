@@ -1,23 +1,13 @@
 //! Client-side routing for the {{ app_name }} SPA.
 //!
-//! Route names are namespaced under `{{ app_name }}` (e.g.
-//! `{{ app_name }}:placeholder`) when `src/config/urls.rs` mounts this app's
-//! client router with `UnifiedRouter::with_namespace("{{ app_name }}")`.
+//! Route names are defined by this app's route-backed client components and
+//! registered only in client builds.
 
+{% if is_workspace == "true" %}use crate::client::components;{% else %}use crate::apps::{{ app_name }}::client::components;{% endif %}
 use reinhardt::ClientRouter;
 
-#[cfg(client)]
-{% if is_workspace == "true" %}use crate::client::components;{% else %}use crate::apps::{{ app_name }}::client::components;{% endif %}
-
 pub fn client_url_patterns() -> ClientRouter {
-    #[cfg(client)]
-    {
-        ClientRouter::new().component(components::placeholder::placeholder)
-    }
-    #[cfg(not(client))]
-    {
-        ClientRouter::new()
-    }
+    ClientRouter::new().component(components::placeholder::placeholder)
 }
 
 pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {

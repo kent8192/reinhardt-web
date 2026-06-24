@@ -289,7 +289,7 @@ pub async fn current_user(
 
 ## Register Auth Routes
 
-The users app follows the same target-neutral route surface as polls. `src/apps/users/urls.rs` aggregates the split router modules:
+The users app follows the same target-gated route surface as polls. `src/apps/users/urls.rs` aggregates the split router modules:
 
 ```rust
 #[cfg(client)]

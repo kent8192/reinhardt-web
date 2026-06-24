@@ -1,7 +1,7 @@
 //! Client-side code (WASM)
 //!
 //! This module contains all client-side code that runs in the browser.
-//! Client-side routing lives under each app's target-neutral `urls` module.
+//! Client-side routing lives under each app's client-gated `urls` module.
 
 //! Cross-app client shell.
 //!

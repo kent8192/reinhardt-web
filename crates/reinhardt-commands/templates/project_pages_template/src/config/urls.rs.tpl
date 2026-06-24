@@ -6,16 +6,23 @@
 //!
 //! Each app owns its server-function marker registrations in
 //! `src/apps/<app>/urls/server_router.rs` and exposes them through the
-//! target-neutral aggregate in `src/apps/<app>/urls.rs`. After running
+//! target-gated aggregate in `src/apps/<app>/urls.rs`. After running
 //! `reinhardt-admin startapp <name> --with-pages`, aggregate the app-level
 //! router functions here:
 //!
 //! ```rust,ignore
-//! let router = UnifiedRouter::new().mount_unified(
+//! let router = UnifiedRouter::new();
+//!
+//! #[cfg(server)]
+//! let router = router.mount_unified(
 //!     "/",
-//!     UnifiedRouter::new()
-//!         .server(|s| s.mount("/", crate::apps::<name>::urls::server_url_patterns()))
-//!         .client(|_| crate::apps::<name>::urls::client_url_patterns()),
+//!     UnifiedRouter::new().server(|s| s.mount("/", crate::apps::<name>::urls::server_url_patterns())),
+//! );
+//!
+//! #[cfg(client)]
+//! let router = router.mount_unified(
+//!     "/",
+//!     UnifiedRouter::new().client(|_| crate::apps::<name>::urls::client_url_patterns()),
 //! );
 //! ```
 //!
@@ -44,11 +51,17 @@ pub fn routes() -> UnifiedRouter {
     // Add Pages app routers here. Do not import each app's server functions
     // in this project-level file; each app's `urls` module owns that list.
     //
+    // #[cfg(server)]
     // let router = router.mount_unified(
     //     "/",
     //     UnifiedRouter::new()
-    //         .server(|s| s.mount("/", crate::apps::<your_app>::urls::server_url_patterns()))
-    //         .client(|_| crate::apps::<your_app>::urls::client_url_patterns()),
+    //         .server(|s| s.mount("/", crate::apps::<your_app>::urls::server_url_patterns())),
+    // );
+    //
+    // #[cfg(client)]
+    // let router = router.mount_unified(
+    //     "/",
+    //     UnifiedRouter::new().client(|_| crate::apps::<your_app>::urls::client_url_patterns()),
     // );
 
     router

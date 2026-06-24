@@ -55,11 +55,12 @@ cargo build --release
 │   │       ├── serializers.rs # Client/server wire DTO declarations
 │   │       ├── server_fn.rs   # Server-function declaration surface
 │   │       ├── services.rs    # Client/server service declaration surface
-│   │       ├── urls.rs        # App route aggregation/reverse helpers
+│   │       ├── urls.rs        # Target-gated app route exports
 │   │       ├── client/        # WASM-only UI and client services
 │   │       ├── serializers/   # DTO implementations
 │   │       ├── server_fn/     # Server-function implementations
 │   │       ├── services/      # Split client/server service implementations
+│   │       ├── urls/          # Split client/server route implementations
 │   │       └── server/        # Native-only models/forms/views/admin wiring
 │   └── config/       # Server configuration
 ├── dist/             # WASM build output

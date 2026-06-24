@@ -465,28 +465,28 @@ async fn app_pages_layout_matches_tutorial() {
 		"apps/polls/client/components/placeholder.rs must define the route-backed component:\n{placeholder_component}"
 	);
 
-	// 5. urls.rs is the target-neutral app router aggregate. It delegates
-	//    implementation details to urls/client_router.rs and urls/server_router.rs.
+	// 5. urls.rs is the app router aggregate. It gates the split router modules
+	//    at declaration time so target-specific files do not leak across builds.
 	let urls_rs = fs::read_to_string(polls_dir.join("urls.rs")).expect("read apps/polls/urls.rs");
 	assert!(
-		urls_rs.contains("pub fn server_url_patterns() -> ServerRouter"),
-		"apps/polls/urls.rs must expose server route aggregation through a target-neutral wrapper:\n{urls_rs}"
+		urls_rs.contains("#[cfg(client)]\npub mod client_router;")
+			&& urls_rs.contains("#[cfg(server)]\npub mod server_router;"),
+		"apps/polls/urls.rs must cfg-gate split router modules:\n{urls_rs}"
 	);
 	assert!(
-		urls_rs.contains("pub mod client_router") && urls_rs.contains("pub mod server_router"),
-		"apps/polls/urls.rs must aggregate client_router and server_router modules:\n{urls_rs}"
+		urls_rs.contains("#[cfg(client)]\npub use client_router::{client_url_patterns, reverse};"),
+		"apps/polls/urls.rs must expose client routes only on client builds:\n{urls_rs}"
 	);
 	assert!(
-		urls_rs.contains("pub fn client_url_patterns() -> ClientRouter"),
-		"apps/polls/urls.rs must expose client route aggregation without cfg-gating the function:\n{urls_rs}"
+		urls_rs.contains("#[cfg(server)]\npub use server_router::server_url_patterns;"),
+		"apps/polls/urls.rs must expose server routes only on server builds:\n{urls_rs}"
 	);
 	assert!(
-		urls_rs.contains("client_router::client_url_patterns()"),
-		"apps/polls/urls.rs must delegate client route implementation to client_router.rs:\n{urls_rs}"
-	);
-	assert!(
-		urls_rs.contains("pub fn reverse"),
-		"apps/polls/urls.rs must expose target-neutral reverse helpers:\n{urls_rs}"
+		!urls_rs.contains("pub fn client_url_patterns")
+			&& !urls_rs.contains("pub fn server_url_patterns")
+			&& !urls_rs.contains("ClientRouter")
+			&& !urls_rs.contains("ServerRouter"),
+		"apps/polls/urls.rs must not define native-safe client/server wrapper functions:\n{urls_rs}"
 	);
 	assert!(
 		!urls_rs.contains("unified_url_patterns"),
@@ -497,7 +497,7 @@ async fn app_pages_layout_matches_tutorial() {
 #[rstest]
 #[tokio::test]
 #[serial(cwd)]
-async fn startapp_pages_layout_has_target_neutral_route_surface() {
+async fn startapp_pages_layout_has_target_gated_route_surface() {
 	// Arrange — scaffold a project, then scaffold a pages app inside it.
 	let tmp = TempDir::new().unwrap();
 	let project_name = "polls_project";
@@ -516,7 +516,7 @@ async fn startapp_pages_layout_has_target_neutral_route_surface() {
 
 	let foo_dir = project_dir.join("src").join("apps").join("foo");
 
-	// 1. The target-neutral aggregator and split router modules exist.
+	// 1. The target-gated aggregator and split router modules exist.
 	let urls_rs = foo_dir.join("urls.rs");
 	let client_router = foo_dir.join("urls").join("client_router.rs");
 	let server_router = foo_dir.join("urls").join("server_router.rs");
@@ -536,36 +536,30 @@ async fn startapp_pages_layout_has_target_neutral_route_surface() {
 		"apps/foo/urls/ws_urls.rs must NOT be generated"
 	);
 
-	// 3. The app-level route surface keeps aggregate functions available on
-	//    both targets while the implementation modules gate target-specific
-	//    details internally.
+	// 3. The app-level route surface gates target-specific modules and exports
+	//    at declaration time.
 	let urls_contents = fs::read_to_string(&urls_rs).expect("read apps/foo/urls.rs");
 	assert!(
-		urls_contents.contains("pub fn server_url_patterns() -> ServerRouter"),
-		"apps/foo/urls.rs must expose a target-neutral server wrapper:\n{urls_contents}"
+		urls_contents.contains("#[cfg(client)]\npub mod client_router;")
+			&& urls_contents.contains("#[cfg(server)]\npub mod server_router;"),
+		"apps/foo/urls.rs must cfg-gate split router modules:\n{urls_contents}"
 	);
 	assert!(
-		urls_contents.contains("pub fn client_url_patterns() -> ClientRouter"),
-		"apps/foo/urls.rs must expose target-neutral client route metadata:\n{urls_contents}"
+		urls_contents
+			.contains("#[cfg(client)]\npub use client_router::{client_url_patterns, reverse};"),
+		"apps/foo/urls.rs must expose client routes only on client builds:\n{urls_contents}"
 	);
 	assert!(
-		urls_contents.contains("pub fn reverse"),
-		"apps/foo/urls.rs must expose target-neutral reverse helpers:\n{urls_contents}"
+		urls_contents.contains("#[cfg(server)]\npub use server_router::server_url_patterns;"),
+		"apps/foo/urls.rs must expose server routes only on server builds:\n{urls_contents}"
 	);
 	assert!(
-		urls_contents.contains("pub mod client_router")
-			&& urls_contents.contains("#[cfg(server)]\npub mod server_router"),
-		"apps/foo/urls.rs must aggregate split router modules:\n{urls_contents}"
-	);
-	assert!(
-		urls_contents.contains("client_router::client_url_patterns()")
-			&& urls_contents.contains("client_router::reverse(name, params)"),
-		"apps/foo/urls.rs must delegate client route implementation to client_router.rs:\n{urls_contents}"
-	);
-	assert!(
-		!urls_contents.contains("#[cfg(client)]\npub fn client_url_patterns")
-			&& !urls_contents.contains("#[cfg(client)]\npub fn reverse"),
-		"client route helpers must not be cfg-gated away from native builds:\n{urls_contents}"
+		!urls_contents.contains("pub fn client_url_patterns")
+			&& !urls_contents.contains("pub fn reverse")
+			&& !urls_contents.contains("pub fn server_url_patterns")
+			&& !urls_contents.contains("ClientRouter")
+			&& !urls_contents.contains("ServerRouter"),
+		"apps/foo/urls.rs must not keep native wrapper functions for target-specific routes:\n{urls_contents}"
 	);
 
 	// 4. Split router wiring defines url_patterns functions with generated
@@ -590,8 +584,8 @@ async fn startapp_pages_layout_has_target_neutral_route_surface() {
 		"client_router.rs must use the app client component path instead of super::super:::\n{client_contents}"
 	);
 	assert!(
-		client_contents.contains("#[cfg(client)]\nuse crate::apps::foo::client::components;"),
-		"client_router.rs must cfg-gate the client component import:\n{client_contents}"
+		!client_contents.contains("#[cfg("),
+		"client_router.rs must rely on urls.rs module gates instead of internal cfg gates:\n{client_contents}"
 	);
 	assert!(
 		client_contents.contains("pub fn reverse"),
@@ -836,9 +830,12 @@ async fn workspace_app_pages_uses_unified_template() {
 	);
 	assert!(
 		client_router.contains("use crate::client::components;")
-			&& client_router.contains("#[cfg(client)]")
 			&& !client_router.contains("super::super::"),
-		"workspace client_router.rs must import client components through crate:: behind cfg(client):\n{client_router}"
+		"workspace client_router.rs must import client components through crate:: without internal cfg gates:\n{client_router}"
+	);
+	assert!(
+		!client_router.contains("#[cfg("),
+		"workspace client_router.rs must rely on urls.rs module gates instead of internal cfg gates:\n{client_router}"
 	);
 
 	// 6. placeholder component imports with_nav from project crate, not crate::
@@ -944,9 +941,12 @@ async fn module_app_pages_does_not_generate_workspace_files() {
 	);
 	assert!(
 		client_router.contains("use crate::apps::baz::client::components;")
-			&& client_router.contains("#[cfg(client)]")
 			&& !client_router.contains("super::super::"),
-		"module client_router.rs must import client components through the app's absolute crate path behind cfg(client):\n{client_router}"
+		"module client_router.rs must import client components through the app's absolute crate path without internal cfg gates:\n{client_router}"
+	);
+	assert!(
+		!client_router.contains("#[cfg("),
+		"module client_router.rs must rely on urls.rs module gates instead of internal cfg gates:\n{client_router}"
 	);
 
 	// placeholder component with_nav import uses crate::, not project_crate_name::
