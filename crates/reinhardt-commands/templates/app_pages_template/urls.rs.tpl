@@ -1,8 +1,7 @@
 //! URL configuration for the {{ app_name }} application.
 //!
-//! This module is intentionally target-neutral. Native builds use it to
-//! aggregate app-local server and client routers, while WASM builds use the
-//! same client route table and reverse helpers.
+//! Server and client route implementations stay split so each side can use
+//! target-specific modules without leaking them across cfg boundaries.
 
 use reinhardt::{ClientRouter, ServerRouter};
 

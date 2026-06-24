@@ -58,7 +58,6 @@ tutorial/
     +-- lib.rs
     +-- apps.rs
     +-- config.rs
-    +-- shared.rs
     +-- client.rs
     +-- bin/
     |   +-- manage.rs
@@ -72,9 +71,6 @@ tutorial/
     |   +-- lib.rs
     |   +-- components/
     |       +-- nav.rs
-    +-- shared/
-        +-- forms.rs
-        +-- types.rs
 ```
 
 The reference example has more files because it is the completed project. You will add those files as each slice needs them.
@@ -158,11 +154,9 @@ pub mod config;
 
 #[cfg(client)]
 pub mod client;
-
-pub mod shared;
 ```
 
-`apps` and `shared` compile on both targets. App-level page entry points and URL tables stay target-neutral, while database models, admin definitions, serializers, and server URL marker registration live under each app's `server/` module.
+`apps` compiles on both targets. Each generated app gates `client` with `#[cfg(client)]` and `server` with `#[cfg(server)]`; route-backed components live under `src/apps/<app>/client/components/`, wire DTOs under `src/apps/<app>/serializers/`, and server-only forms/models/views under `src/apps/<app>/server/`.
 
 ## Inspect Settings
 
@@ -239,7 +233,7 @@ pub fn main() -> Result<(), JsValue> {
 }
 ```
 
-Later parts will register routes from the `polls` and `users` apps. Their page entry points will live under `src/apps/<app>/pages.rs`; `src/client/` remains the cross-app browser shell. For now, confirm that the browser can load the client bundle and that the server is serving the pages application.
+Later parts will register routes from the `polls` and `users` apps. Their route-backed components will live under `src/apps/<app>/client/components/`; `src/client/` remains the cross-app browser shell. For now, confirm that the browser can load the client bundle and that the server is serving the pages application.
 
 ## Run the Development Workflow
 

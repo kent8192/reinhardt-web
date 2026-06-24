@@ -17,7 +17,7 @@
 //!
 //! ServerRouter::new()
 //!     .endpoint(views::index)
-//!     .server_fn(server_fn::some_fn::marker)
+//!     .server_fn(server_fn::placeholder::marker)
 //! ```
 
 use reinhardt::ServerRouter;

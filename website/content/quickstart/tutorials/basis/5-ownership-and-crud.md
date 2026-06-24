@@ -41,7 +41,7 @@ pub struct Question {
 
 This is the schema change you intentionally deferred in Part 2.
 
-Update `QuestionInfo` in `src/shared/types.rs` so the client can tell whether the current user owns a question:
+Update `QuestionInfo` in `src/apps/polls/serializers.rs` so the client can tell whether the current user owns a question:
 
 ```rust
 pub struct QuestionInfo {
@@ -306,27 +306,11 @@ Add question and choice routes in `src/apps/polls/urls/client_router.rs`:
 
 ```rust
 ClientRouter::new()
-    .route("index", "/", pages::index_page)
-    .route("question_new", "/polls/new/", pages::question_new_page)
-    .route_path(
-        "choice_new",
-        "/polls/{question_id}/choices/new/",
-        |ClientPath(question_id): ClientPath<i64>| pages::choice_new_page(question_id),
-    )
-    .route_path(
-        "choice_edit",
-        "/polls/{question_id}/choices/{choice_id}/edit/",
-        |ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
-            pages::choice_edit_page(question_id, choice_id)
-        },
-    )
-    .route_path(
-        "choice_delete",
-        "/polls/{question_id}/choices/{choice_id}/delete/",
-        |ClientPath(question_id): ClientPath<i64>, ClientPath(choice_id): ClientPath<i64>| {
-            pages::choice_delete_page(question_id, choice_id)
-        },
-    )
+    .component(components::polls_index::polls_index)
+    .component(components::question_new::question_new)
+    .component(components::choice_new::choice_new)
+    .component(components::choice_edit::choice_edit)
+    .component(components::choice_delete::choice_delete)
 ```
 
 The existing detail/results routes remain below these.

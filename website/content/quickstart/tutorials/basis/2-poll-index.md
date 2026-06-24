@@ -127,9 +127,9 @@ Operation::CreateTable {
 
 If `author_id` appears in `0001_initial.rs`, you have accidentally skipped ahead to Part 5.
 
-## Define the Shared Info Types
+## Define the App Wire DTOs
 
-The model modules are server-only, so the browser should not import generated model companions from `src/apps/polls/server/models.rs`. Define explicit wire DTOs in `src/shared/types.rs` instead:
+The model modules are server-only, so the browser should not import generated model companions from `src/apps/polls/server/models.rs`. Define explicit wire DTOs in `src/apps/polls/serializers.rs` instead:
 
 ```rust
 use chrono::{DateTime, Utc};
@@ -191,7 +191,7 @@ This keeps the server function return type and the WASM component type identical
 Create `src/apps/polls/server_fn.rs` and expose a query for the index page:
 
 ```rust
-use crate::shared::types::QuestionInfo;
+use crate::apps::polls::serializers::QuestionInfo;
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
 #[server_fn]
@@ -257,10 +257,18 @@ Put the client route table in `src/apps/polls/urls/client_router.rs`:
 ```rust
 use reinhardt::ClientRouter;
 
-use crate::apps::polls::pages;
+#[cfg(client)]
+use crate::apps::polls::client::components;
 
 pub fn client_url_patterns() -> ClientRouter {
-    ClientRouter::new().route("index", "/", pages::index_page)
+    #[cfg(client)]
+    {
+        ClientRouter::new().component(components::polls_index::polls_index)
+    }
+    #[cfg(not(client))]
+    {
+        ClientRouter::new()
+    }
 }
 
 pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
@@ -313,27 +321,23 @@ ClientLauncher::new("#root")
     .launch()
 ```
 
-Create the app-local page entry in `src/apps/polls/pages.rs`. Native builds return `Page::Empty`; WASM builds wrap the polls component with the shared nav:
+Create the app-local route-backed component in `src/apps/polls/client/components/index.rs`. The component macro owns the route metadata, so no separate `pages.rs` wrapper is needed:
 
 ```rust
 use reinhardt::pages::component::Page;
+use reinhardt::pages::page;
 
-#[cfg(client)]
 use crate::client::components::nav::with_nav;
 
-pub fn index_page() -> Page {
-    #[cfg(client)]
-    {
-        with_nav(crate::apps::polls::client::components::polls_index())
-    }
-    #[cfg(not(client))]
-    {
-        Page::Empty
-    }
+#[reinhardt::pages::component("/", "index")]
+pub fn polls_index() -> Page {
+    with_nav(page!(|| {
+        div { "Polls" }
+    })())
 }
 ```
 
-The index component uses the server function as an async resource:
+Expand that component so it uses the server function as an async resource:
 
 ```rust
 pub fn polls_index() -> Page {

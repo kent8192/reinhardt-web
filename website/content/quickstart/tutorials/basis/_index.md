@@ -10,7 +10,7 @@ sidebar_weight = 10
 
 # Reinhardt Basis Tutorial
 
-Build a polling application on the Reinhardt pages template: a Rust/WASM client, typed server functions, shared DTOs, session-cookie authentication, ownership-checked CRUD, static assets, tests, and the Reinhardt admin.
+Build a polling application on the Reinhardt pages template: a Rust/WASM client, typed server functions, app-local DTOs, session-cookie authentication, ownership-checked CRUD, static assets, tests, and the Reinhardt admin.
 
 The reference implementation lives in [`examples/examples-tutorial-basis`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis). Treat that crate as the answer key. The tutorial introduces the same architecture one working slice at a time, so every part ends with something you can run or click.
 
@@ -59,7 +59,6 @@ examples-tutorial-basis/
 |   +-- lib.rs
 |   +-- apps.rs
 |   +-- config.rs
-|   +-- shared.rs
 |   +-- client.rs
 |   +-- bin/
 |   |   +-- manage.rs
@@ -69,36 +68,38 @@ examples-tutorial-basis/
 |   |   +-- settings.rs
 |   |   +-- urls.rs
 |   |   +-- wasm.rs
-|   +-- shared/
-|   |   +-- forms.rs
-|   |   +-- types.rs
 |   +-- apps/
 |   |   +-- polls.rs
 |   |   +-- polls/
 |   |   |   +-- client.rs
-|   |   |   +-- pages.rs
+|   |   |   +-- serializers.rs
 |   |   |   +-- server.rs
 |   |   |   +-- server_fn.rs
+|   |   |   +-- services.rs
 |   |   |   +-- urls.rs
 |   |   |   +-- client/
 |   |   |   |   +-- components.rs
+|   |   |   |   +-- components/
 |   |   |   +-- server/
 |   |   |       +-- admin.rs
+|   |   |       +-- forms.rs
 |   |   |       +-- models.rs
-|   |   |       +-- serializers.rs
 |   |   |   +-- urls/
 |   |   |       +-- client_router.rs
 |   |   |       +-- server_router.rs
 |   |   +-- users.rs
 |   |   +-- users/
 |   |       +-- client.rs
-|   |       +-- pages.rs
+|   |       +-- serializers.rs
 |   |       +-- server.rs
 |   |       +-- server_fn.rs
+|   |       +-- services.rs
 |   |       +-- urls.rs
 |   |       +-- client/
 |   |       |   +-- components.rs
+|   |       |   +-- components/
 |   |       +-- server/
+|   |       |   +-- forms.rs
 |   |       |   +-- models.rs
 |   |       +-- urls/
 |   |           +-- client_router.rs
@@ -125,15 +126,15 @@ examples-tutorial-basis/
 
 Three rules keep this structure predictable:
 
-1. **Server and client are separate targets.** `#[cfg(server)]` code runs in the native server binary. `#[cfg(client)]` code runs in the browser as WASM. Database models, admin definitions, and serializers live under each app's `server/` module; URL marker registration lives in `urls/server_router.rs` and is exposed through `urls.rs`.
-2. **Server functions are the bridge.** Anything the WASM client needs from the database goes through a `#[server_fn]` in `src/apps/<app>/server_fn.rs`. The client receives explicit wire DTOs from `src/shared/types.rs`, not server-only model modules.
-3. **Routing belongs to each app.** Each app exposes `server_url_patterns()` and `client_url_patterns()` from its target-neutral `src/apps/<app>/urls.rs`, which aggregates `urls/server_router.rs` and `urls/client_router.rs`. Page entry points live in `src/apps/<app>/pages.rs`. The project-level `src/config/urls.rs` aggregates those app routers, session middleware, admin routes, and static-file routes.
+1. **Server and client are separate targets.** `#[cfg(server)]` code runs in the native server binary. `#[cfg(client)]` code runs in the browser as WASM. Database models, admin definitions, and server-only forms live under each app's `server/` module.
+2. **Server functions are the bridge.** Anything the WASM client needs from the database goes through a `#[server_fn]` in `src/apps/<app>/server_fn/`. The client receives explicit wire DTOs from `src/apps/<app>/serializers/`, not server-only model modules.
+3. **Routing belongs to each app.** Each app exposes `server_url_patterns()` and `client_url_patterns()` from `src/apps/<app>/urls.rs`, which aggregates `urls/server_router.rs` and `urls/client_router.rs`. Route-backed components live in `src/apps/<app>/client/components/`. The project-level `src/config/urls.rs` aggregates those app routers, session middleware, admin routes, and static-file routes.
 
 ## Tutorial Structure
 
 ### [Part 1: Project Setup and SPA Shell](1-project-setup/)
 
-Generate a pages project, inspect the `src/{apps,config,shared,client,bin}` layout, wire settings through `ProjectSettings`, install the WASM tools, and run the empty SPA shell.
+Generate a pages project, inspect the `src/{apps,config,client,bin}` layout, wire settings through `ProjectSettings`, install the WASM tools, and run the empty SPA shell.
 
 ### [Part 2: Your First Feature - the Poll Index](2-poll-index/)
 
@@ -165,6 +166,6 @@ Work through the parts in order. Each part assumes the files from the previous o
 
 ## REST Tutorial Comparison
 
-Use this tutorial when you want the full-stack pages architecture: WASM client, typed server functions, shared DTOs, session auth, admin, and static assets.
+Use this tutorial when you want the full-stack pages architecture: WASM client, typed server functions, app-local DTOs, session auth, admin, and static assets.
 
 Use the [REST tutorial](../rest/) when you want classic JSON endpoints built with `#[get]`, `#[post]`, serializers, and viewsets. The model and migration APIs are shared between both tracks.

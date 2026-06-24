@@ -6,10 +6,18 @@
 
 use reinhardt::ClientRouter;
 
-{% if is_workspace == "true" %}use crate::pages;{% else %}use crate::apps::{{ app_name }}::pages;{% endif %}
+#[cfg(client)]
+{% if is_workspace == "true" %}use crate::client::components;{% else %}use crate::apps::{{ app_name }}::client::components;{% endif %}
 
 pub fn client_url_patterns() -> ClientRouter {
-    ClientRouter::new().component(pages::placeholder_page)
+    #[cfg(client)]
+    {
+        ClientRouter::new().component(components::placeholder::placeholder)
+    }
+    #[cfg(not(client))]
+    {
+        ClientRouter::new()
+    }
 }
 
 pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
