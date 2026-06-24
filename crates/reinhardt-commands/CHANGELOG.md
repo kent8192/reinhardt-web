@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.3...reinhardt-commands@v0.3.0-rc.4) - 2026-06-24
+
+### Changed
+
+- *(scaffolding)* align Pages app layout
+
+### Documentation
+
+- *(tutorial)* align pages scaffolding route gates
+
 ## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.2...reinhardt-commands@v0.3.0-rc.3) - 2026-06-23
 
 ### Fixed

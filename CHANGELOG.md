@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.3...reinhardt-web@v0.3.0-rc.4) - 2026-06-24
+
+### Changed
+
+- *(scaffolding)* align Pages app layout
+
+### Documentation
+
+- add release announcement(s)
+- *(tutorial)* align 0.3.0 tutorial scaffolding
+- *(tutorial)* address 0.3.0 review feedback
+- *(tutorial)* gate client route modules
+- *(tutorial)* remove native client route specs
+- *(tutorial)* align pages scaffolding route gates
+
 ## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.2...reinhardt-web@v0.3.0-rc.3) - 2026-06-23
 
 ### Added
