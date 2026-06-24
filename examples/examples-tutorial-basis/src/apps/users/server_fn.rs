@@ -5,21 +5,22 @@
 //! dependency are injected, the session ID is regenerated on successful login
 //! (fixation prevention), and `user_id` is persisted in the session map.
 
-use crate::apps::users::server::models::UserInfo;
+use crate::apps::users::models::UserInfo;
 #[cfg(server)]
 use crate::shared::types::{LoginRequest, RegisterRequest};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
 #[cfg(server)]
 use {
-	crate::apps::users::server::models::{AuthUserManager, AuthUserManagerKey, User},
+	crate::apps::users::models::{AuthUserManager, AuthUserManagerKey, User},
 	reinhardt::BaseUser,
-	reinhardt::CurrentUser,
 	reinhardt::DatabaseConnection,
 	reinhardt::Validate,
 	reinhardt::db::orm::Model,
 	reinhardt::di::Depends,
-	reinhardt::middleware::session::{SessionAuthExt, SessionData, SessionStore, SessionStoreKey},
+	reinhardt::middleware::session::{
+		SessionAuthExt, SessionData, SessionStore, SessionStoreKey, USER_ID_SESSION_KEY,
+	},
 	reinhardt::reinhardt_auth::BaseUserManager,
 	std::collections::HashMap,
 	std::result::Result,
@@ -166,7 +167,6 @@ pub async fn register(
 /// CSRF is supplied by the `#[server_fn]` client stub; see [`login`].
 #[server_fn]
 pub async fn logout(
-	#[inject] CurrentUser(_user): CurrentUser<User>,
 	#[inject] session: SessionData,
 	#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
 ) -> Result<(), ServerFnError> {
@@ -182,7 +182,18 @@ pub async fn logout(
 /// Return the currently authenticated user, if any.
 #[server_fn]
 pub async fn current_user(
-	#[inject] CurrentUser(user): CurrentUser<User>,
+	#[inject] _db: DatabaseConnection,
+	#[inject] session: SessionData,
 ) -> Result<Option<UserInfo>, ServerFnError> {
-	Ok(Some(UserInfo::from(user)))
+	let Some(user_id) = session.get::<i64>(USER_ID_SESSION_KEY) else {
+		return Ok(None);
+	};
+
+	let user = User::objects()
+		.filter(User::field_id().eq(user_id))
+		.first()
+		.await
+		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
+	Ok(user.map(UserInfo::from))
 }

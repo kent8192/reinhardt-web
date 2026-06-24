@@ -830,7 +830,8 @@ mod auth_tests {
 		create_choice, create_question, delete_choice, delete_question, update_choice,
 		update_question,
 	};
-	use examples_tutorial_basis::apps::users::server::models::User;
+	use examples_tutorial_basis::apps::users::models::User;
+	use reinhardt::pages::server_fn::ServerFnError;
 	use reinhardt::{CurrentUser, DatabaseConnection};
 	use rstest::*;
 	use tempfile::NamedTempFile;
@@ -863,19 +864,28 @@ mod auth_tests {
 	/// Helper: assert that a ServerFnError result represents an inactive-user
 	/// 403 rather than a database/schema error.
 	fn assert_inactive_forbidden<T>(
-		result: std::result::Result<T, reinhardt::pages::server_fn::ServerFnError>,
+		result: std::result::Result<T, ServerFnError>,
 		operation: &str,
 	) {
-		let err = result
-			.err()
-			.unwrap_or_else(|| panic!("{} should reject inactive callers", operation));
-		let rendered = format!("{:?}", err);
-		assert!(
-			rendered.contains("403") || rendered.contains("User account is inactive"),
-			"{} should fail with inactive-user 403, got: {}",
-			operation,
-			rendered
-		);
+		match result {
+			Ok(_) => panic!("{} should reject inactive callers", operation),
+			Err(ServerFnError::Server { status, message }) => {
+				assert_eq!(
+					status, 403,
+					"{} should fail with inactive-user status, got message: {}",
+					operation, message
+				);
+				assert_eq!(
+					message, "User account is inactive",
+					"{} should fail with inactive-user message",
+					operation
+				);
+			}
+			Err(err) => panic!(
+				"{} should fail with inactive-user 403, got: {:?}",
+				operation, err
+			),
+		}
 	}
 
 	#[rstest]

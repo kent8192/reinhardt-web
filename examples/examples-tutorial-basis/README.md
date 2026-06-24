@@ -18,9 +18,9 @@ This example corresponds to the basis tutorial parts 1-7:
 
 ### Models
 
-- **`Question`** (`src/apps/polls/server/models.rs`) — poll question with `question_text`, `pub_date` (`auto_now_add`), and an `author` foreign key to `User` (`#[rel(foreign_key, related_name = "questions")]`).
-- **`Choice`** (`src/apps/polls/server/models.rs`) — answer option with a `question` foreign key (`#[rel(foreign_key, related_name = "choices")]`), `choice_text`, and a `votes` counter.
-- **`User`** (`src/apps/users/server/models.rs`) — minimal authentication model defined with `#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]` on top of `#[model(app_label = "users", table_name = "users")]`. `manager = false` opts out of the auto-generated user manager so the example can register a project-local `AuthUserManager` via a keyed `#[injectable(scope = "transient")]` provider.
+- **`Question`** (`src/apps/polls/models.rs`) — poll question with `question_text`, `pub_date` (`auto_now_add`), and an `author` foreign key to `User` (`#[rel(foreign_key, related_name = "questions")]`).
+- **`Choice`** (`src/apps/polls/models.rs`) — answer option with a `question` foreign key (`#[rel(foreign_key, related_name = "choices")]`), `choice_text`, and a `votes` counter.
+- **`User`** (`src/apps/users/models.rs`) — minimal authentication model defined with `#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]` on top of `#[model(app_label = "users", table_name = "users")]`. `manager = false` opts out of the auto-generated user manager so the example can register a project-local `AuthUserManager` via a keyed `#[injectable(scope = "transient")]` provider.
 
 ### Server Functions and Pages
 
@@ -154,9 +154,9 @@ examples-tutorial-basis/
 │   │   │   │       ├── question_edit.rs
 │   │   │   │       └── question_new.rs
 │   │   │   ├── client.rs
+│   │   │   ├── models.rs
 │   │   │   ├── server/
 │   │   │   │   ├── admin.rs
-│   │   │   │   ├── models.rs
 │   │   │   │   └── serializers.rs
 │   │   │   ├── server.rs
 │   │   │   ├── server_fn.rs
@@ -176,8 +176,7 @@ examples-tutorial-basis/
 │   │       │       ├── logout_page.rs
 │   │       │       └── signup_page.rs
 │   │       ├── client.rs
-│   │       ├── server/
-│   │       │   └── models.rs
+│   │       ├── models.rs
 │   │       ├── server.rs
 │   │       ├── server_fn.rs
 │   │       ├── urls.rs
@@ -230,8 +229,8 @@ This example is designed to be studied alongside the basis tutorial:
 
 ## Key Concepts Demonstrated
 
-- `src/apps/polls/server/models.rs` defines the `Question` and `Choice` models with `#[model]`, `#[field]`, and `#[rel(foreign_key)]`.
-- `src/apps/users/server/models.rs` defines the tutorial `User` model with `#[user]` and the injectable `AuthUserManager`.
+- `src/apps/polls/models.rs` defines the `Question` and `Choice` models with `#[model]`, `#[field]`, and `#[rel(foreign_key)]`.
+- `src/apps/users/models.rs` defines the tutorial `User` model with `#[user]` and the injectable `AuthUserManager`.
 - `src/apps/polls/server_fn.rs` and `src/apps/users/server_fn.rs` expose typed `#[server_fn]` RPC handlers for the WASM client.
 - `src/apps/polls/urls.rs` and `src/apps/users/urls.rs` expose the app-level server and client router functions that `src/config/urls.rs` aggregates.
 - `src/apps/polls/urls/server_router.rs` and `src/apps/users/urls/server_router.rs` provide native `ServerRouter` registrations.

@@ -32,7 +32,7 @@ The browser form will use individual `question_id` and `choice_id` fields, but t
 Add `get_question_detail` to `src/apps/polls/server_fn.rs`:
 
 ```rust
-use crate::apps::polls::server::models::{Choice, Question};
+use crate::apps::polls::models::{Choice, Question};
 use reinhardt::{DatabaseConnection, Model};
 use std::result::Result;
 
@@ -70,7 +70,7 @@ The query uses generated field helpers (`Choice::field_question_id()`) instead o
 The results page needs the same question and choices plus a total vote count:
 
 ```rust
-use crate::apps::polls::server::models::{Choice, Question};
+use crate::apps::polls::models::{Choice, Question};
 use reinhardt::{DatabaseConnection, Model};
 use std::result::Result;
 
@@ -115,7 +115,7 @@ The reference example exposes two entry points:
 Add both and share the implementation:
 
 ```rust
-use crate::apps::polls::server::models::ChoiceInfo;
+use crate::apps::polls::models::ChoiceInfo;
 use crate::apps::polls::services::server::vote_internal;
 use crate::shared::types::VoteRequest;
 use reinhardt::DatabaseConnection;
@@ -146,20 +146,51 @@ pub async fn submit_vote(
 
 The `vote` server function keeps the DTO argument on its canonical path because the generated marker code resolves that type from the `#[server_fn]` signature. The form wrapper still imports `VoteRequest` before constructing it.
 
-Place the shared implementation in the server-only service module `src/apps/polls/services/server.rs`. The module is already gated from the app parent, so the service function itself does not need a local `#[cfg(server)]` gate:
+Place the shared implementation in the server-only service module `src/apps/polls/services/server.rs`. The `src/apps/polls/services.rs` module declaration gates the `server` child, so the service function itself does not need a local `#[cfg(server)]` gate:
 
 ```rust
-use crate::apps::polls::server::models::{Choice, ChoiceInfo};
+use crate::apps::polls::models::{Choice, ChoiceInfo};
 use crate::shared::types::VoteRequest;
 use reinhardt::pages::server_fn::ServerFnError;
 use reinhardt::{DatabaseConnection, Model, atomic};
+use std::fmt;
 use std::result::Result;
+
+#[derive(Debug)]
+enum VoteRequestError {
+    ChoiceNotFound,
+    ChoiceQuestionMismatch,
+}
+
+impl fmt::Display for VoteRequestError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ChoiceNotFound => f.write_str("Choice not found"),
+            Self::ChoiceQuestionMismatch => {
+                f.write_str("Choice does not belong to this question")
+            }
+        }
+    }
+}
+
+impl std::error::Error for VoteRequestError {}
+
+fn map_vote_error(error: anyhow::Error) -> ServerFnError {
+    match error.downcast_ref::<VoteRequestError>() {
+        Some(VoteRequestError::ChoiceNotFound) => {
+            ServerFnError::server(404, "Choice not found")
+        }
+        Some(VoteRequestError::ChoiceQuestionMismatch) => {
+            ServerFnError::server(400, "Choice does not belong to this question")
+        }
+        None => ServerFnError::application(error.to_string()),
+    }
+}
 
 pub async fn vote_internal(
     request: VoteRequest,
     db: DatabaseConnection,
 ) -> Result<ChoiceInfo, ServerFnError> {
-
     let updated_choice = atomic(&db, || async {
         let choice_manager = Choice::objects();
 
@@ -168,23 +199,23 @@ pub async fn vote_internal(
             .first()
             .await
             .map_err(|e| anyhow::anyhow!(e.to_string()))?
-            .ok_or_else(|| anyhow::anyhow!("Choice not found"))?;
+            .ok_or_else(|| anyhow::Error::new(VoteRequestError::ChoiceNotFound))?;
 
         if *choice.question_id() != request.question_id {
-            return Err(anyhow::anyhow!("Choice does not belong to question"));
+            return Err(anyhow::Error::new(VoteRequestError::ChoiceQuestionMismatch));
         }
 
         choice.vote().await.map_err(|e| anyhow::anyhow!(e.to_string()))?;
         Ok(choice)
     })
     .await
-    .map_err(|e| ServerFnError::application(e.to_string()))?;
+    .map_err(map_vote_error)?;
 
     Ok(ChoiceInfo::from(updated_choice))
 }
 ```
 
-Add the `Choice::vote()` model helper in `src/apps/polls/server/models.rs`:
+Add the `Choice::vote()` model helper in `src/apps/polls/models.rs`:
 
 ```rust
 #[cfg(server)]
@@ -297,41 +328,13 @@ let voting_form = form! {
 };
 ```
 
-`choices_from: "choices"` binds the radio options to the choices returned by `get_question_detail`. The `watch` block stays in `form!` because it declares a render slot that depends on form state; the runtime state itself is still produced by the form runtime, and the static metadata path below explicitly calls `use_form(&form).build()`. The generated `#[server_fn]` client stub supplies the CSRF header for WASM submits; you do not pass CSRF as a business argument.
+`choices_from: "choices"` binds the radio options to the choices returned by `get_question_detail`. The `watch` block stays in `form!` because it declares a render slot that depends on form state; the runtime state itself is produced when the form is turned into a page. The generated `#[server_fn]` client stub supplies the CSRF header for WASM submits; you do not pass CSRF as a business argument.
 
 The final example also hides owner-only edit/delete controls here. Defer those branches until Part 5.
 
-## Add Static Form Metadata
+## Keep Form Runtime Local
 
-The reference example also exposes server-side form metadata from `src/apps/polls/server/forms.rs`:
-
-```rust
-pub fn create_vote_form() -> StaticFormMetadata {
-    let form = form! {
-        name: VoteForm,
-        server_fn: submit_vote,
-        method: Post,
-        fields: {
-            question_id: HiddenField<i64> {
-                initial: 0i64,
-            }
-            choice_id: HiddenField<i64> {
-                initial: 0i64,
-                label: "Choice",
-                required,
-            }
-        }
-    };
-    let _runtime = use_form(&form).build();
-    form.metadata()
-}
-```
-
-`src/apps/polls/server.rs` gates this module because form metadata is server-only:
-
-```rust
-pub mod forms;
-```
+The reference example does not need a separate server-only form metadata module for voting. The dynamic choices are known only after `get_question_detail` resolves, so the client component builds the `form!` value from loaded data and consumes it with `into_page()`.
 
 ## Build the Results Page
 

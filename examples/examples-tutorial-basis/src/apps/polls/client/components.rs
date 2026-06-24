@@ -35,8 +35,8 @@ pub mod question_delete;
 pub mod question_edit;
 pub mod question_new;
 
-use crate::apps::polls::server::models::{ChoiceInfo, QuestionInfo};
-use crate::apps::users::server::models::UserInfo;
+use crate::apps::polls::models::{ChoiceInfo, QuestionInfo};
+use crate::apps::users::models::UserInfo;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;

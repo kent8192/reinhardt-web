@@ -35,7 +35,7 @@ The completed example also contains `users`, but that entry is added by the Part
 
 ## Add the Initial Models
 
-Open `src/apps/polls/server/models.rs` and add the first version of the poll models:
+Open `src/apps/polls/models.rs` and add the first version of the poll models:
 
 ```rust
 use chrono::{DateTime, Utc};
@@ -129,12 +129,12 @@ If `author_id` appears in `0001_initial.rs`, you have accidentally skipped ahead
 
 ## Use the Generated Model Info DTOs
 
-`#[model]` generates serializable info companions for models that are not marked `server_only`. In this tutorial, `QuestionInfo` and `ChoiceInfo` come from `src/apps/polls/server/models.rs`; do not hand-write duplicate DTOs.
+`#[model]` generates serializable info companions for models that are not marked `server_only`. In this tutorial, `QuestionInfo` and `ChoiceInfo` come from `src/apps/polls/models.rs`; do not hand-write duplicate DTOs.
 
 Keep the `models` module available on both targets, while server-only helpers such as migrations, admin, and service code stay behind their module-level gates. Then server functions and WASM components can import the same generated DTOs:
 
 ```rust
-use crate::apps::polls::server::models::{ChoiceInfo, QuestionInfo};
+use crate::apps::polls::models::{ChoiceInfo, QuestionInfo};
 ```
 
 This keeps the server function return type and the WASM component type identical. Part 5 adds the generated `author` relation to `QuestionInfo` after the `users` app exists.
@@ -144,7 +144,7 @@ This keeps the server function return type and the WASM component type identical
 Create `src/apps/polls/server_fn.rs` and expose a query for the index page:
 
 ```rust
-use crate::apps::polls::server::models::{Question, QuestionInfo};
+use crate::apps::polls::models::{Question, QuestionInfo};
 use reinhardt::{DatabaseConnection, Model};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use std::result::Result;
@@ -177,59 +177,35 @@ The current reference implementation takes five rows from the manager query. Do 
 The app-level `src/apps/polls/urls.rs` stays target-neutral. It aggregates the split router modules:
 
 ```rust
-use reinhardt::{ClientRouter, ServerRouter};
-
-#[cfg(client)]
 pub mod client_router;
+
+pub use client_router::{client_url_patterns, reverse};
 
 #[cfg(server)]
 pub mod server_router;
 
-pub fn server_url_patterns() -> ServerRouter {
-    #[cfg(server)]
-    {
-        server_router::server_url_patterns()
-    }
-    #[cfg(not(server))]
-    {
-        ServerRouter::new()
-    }
-}
-
-pub fn client_url_patterns() -> ClientRouter {
-    #[cfg(client)]
-    {
-        client_router::client_url_patterns()
-    }
-    #[cfg(not(client))]
-    {
-        ClientRouter::new()
-    }
-}
-
-pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
-    #[cfg(client)]
-    {
-        client_router::reverse(name, params)
-    }
-    #[cfg(not(client))]
-    {
-        ClientRouter::new()
-            .reverse(name, params)
-            .unwrap_or_else(|error| panic!("failed to reverse polls client route `{name}`: {error}"))
-    }
-}
+#[cfg(server)]
+pub use server_router::server_url_patterns;
 ```
 
 Put the client route table in `src/apps/polls/urls/client_router.rs`:
 
 ```rust
+#[cfg(not(client))]
+use reinhardt::pages::component::Page;
 use reinhardt::ClientRouter;
 
+#[cfg(client)]
 use crate::apps::polls::client::components;
 
 pub fn client_url_patterns() -> ClientRouter {
-    ClientRouter::new().component(components::polls_index::polls_index)
+    #[cfg(client)]
+    {
+        return ClientRouter::new().component(components::polls_index::polls_index);
+    }
+
+    #[cfg(not(client))]
+    ClientRouter::new().route("index", "/", Page::empty)
 }
 
 pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
@@ -238,6 +214,8 @@ pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
         .unwrap_or_else(|error| panic!("failed to reverse polls client route `{name}`: {error}"))
 }
 ```
+
+The native branch keeps the same route names and paths registered with `Page::empty` so server-side code can call `reverse()` without importing client components.
 
 Register the server function in `src/apps/polls/urls/server_router.rs`:
 

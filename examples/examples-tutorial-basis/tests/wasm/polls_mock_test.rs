@@ -22,7 +22,7 @@ wasm_bindgen_test_configure!(run_in_browser);
 use examples_tutorial_basis::apps::polls::client::components::{
 	polls_detail, polls_index, polls_results,
 };
-use examples_tutorial_basis::apps::polls::server::models::{ChoiceInfo, QuestionInfo};
+use examples_tutorial_basis::apps::polls::models::{ChoiceInfo, QuestionInfo};
 use examples_tutorial_basis::apps::polls::server_fn::{
 	get_question_detail, get_question_results, get_questions, vote,
 };

@@ -8,7 +8,7 @@
 //!
 //! All `href` values are resolved through each app's client router.
 use crate::apps::polls::urls as polls_routes;
-use crate::apps::users::server::models::UserInfo;
+use crate::apps::users::models::UserInfo;
 use crate::apps::users::server_fn::current_user;
 use crate::apps::users::urls as users_routes;
 use reinhardt::pages::component::Page;

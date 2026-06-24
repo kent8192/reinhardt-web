@@ -72,6 +72,7 @@ examples-tutorial-basis/
 |   |   +-- polls.rs
 |   |   +-- polls/
 |   |   |   +-- client.rs
+|   |   |   +-- models.rs
 |   |   |   +-- server.rs
 |   |   |   +-- server_fn.rs
 |   |   |   +-- services.rs
@@ -90,7 +91,6 @@ examples-tutorial-basis/
 |   |   |   |       +-- choice_delete.rs
 |   |   |   +-- server/
 |   |   |       +-- admin.rs
-|   |   |       +-- models.rs
 |   |   |       +-- serializers.rs
 |   |   |   +-- services/
 |   |   |       +-- server.rs
@@ -100,6 +100,7 @@ examples-tutorial-basis/
 |   |   +-- users.rs
 |   |   +-- users/
 |   |       +-- client.rs
+|   |       +-- models.rs
 |   |       +-- server.rs
 |   |       +-- server_fn.rs
 |   |       +-- urls.rs
@@ -109,8 +110,6 @@ examples-tutorial-basis/
 |   |       |       +-- login_page.rs
 |   |       |       +-- logout_page.rs
 |   |       |       +-- signup_page.rs
-|   |       +-- server/
-|   |       |   +-- models.rs
 |   |       +-- urls/
 |   |           +-- client_router.rs
 |   |           +-- server_router.rs

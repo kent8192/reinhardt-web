@@ -21,7 +21,7 @@ Generate the app:
 reinhardt-admin startapp users --template pages
 ```
 
-`startapp` updates `src/config/apps.rs` for you. Check that `users` was added next to `polls`:
+`startapp` updates `src/config/apps.rs` for you. Check that `users` was added next to `polls`, but do not hand-edit this file unless you created the app directory manually:
 
 ```rust
 use reinhardt::installed_apps;
@@ -34,21 +34,15 @@ installed_apps! {
 
 ## Define the User Model
 
-Open `src/apps/users/server/models.rs`. The example uses a minimal user model, not `full = true`:
+Open `src/apps/users/models.rs`. The example uses a minimal user model, not `full = true`:
 
 ```rust
 use chrono::{DateTime, Utc};
-#[cfg(native)]
-use reinhardt::Argon2Hasher;
 use reinhardt::prelude::*;
-#[cfg(native)]
 use reinhardt::user;
 use serde::{Deserialize, Serialize};
 
-#[cfg_attr(
-    native,
-    user(hasher = Argon2Hasher, username_field = "username", manager = false)
-)]
+#[user(hasher = reinhardt::Argon2Hasher, username_field = "username", manager = false)]
 #[model(app_label = "users", table_name = "users")]
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -127,7 +121,7 @@ impl BaseUserManager<User> for AuthUserManager {
 `#[model]` generates `UserInfo` from the fields that are not marked `skip_info`; here that means `id`, `username`, and `is_active`. Server functions and WASM tests import it from the model module:
 
 ```rust
-use crate::apps::users::server::models::UserInfo;
+use crate::apps::users::models::UserInfo;
 ```
 
 The login/register request DTOs still live in `src/shared/types.rs`:
@@ -265,7 +259,6 @@ use std::result::Result;
 
 #[server_fn]
 pub async fn logout(
-    #[inject] CurrentUser(_user): CurrentUser<User>,
     #[inject] session: SessionData,
     #[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
 ) -> Result<(), ServerFnError> {
@@ -277,9 +270,20 @@ pub async fn logout(
 
 #[server_fn]
 pub async fn current_user(
-    #[inject] CurrentUser(user): CurrentUser<User>,
+    #[inject] _db: DatabaseConnection,
+    #[inject] session: SessionData,
 ) -> Result<Option<UserInfo>, ServerFnError> {
-    Ok(Some(UserInfo::from(user)))
+    let Some(user_id) = session.get::<i64>(USER_ID_SESSION_KEY) else {
+        return Ok(None);
+    };
+
+    let user = User::objects()
+        .filter(User::field_id().eq(user_id))
+        .first()
+        .await
+        .map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?;
+
+    Ok(user.map(UserInfo::from))
 }
 ```
 
@@ -288,49 +292,47 @@ pub async fn current_user(
 The users app follows the same target-neutral route surface as polls. `src/apps/users/urls.rs` aggregates the split router modules:
 
 ```rust
-use reinhardt::{ClientRouter, ServerRouter};
-
-#[cfg(client)]
 pub mod client_router;
+
+pub use client_router::{client_url_patterns, reverse};
 
 #[cfg(server)]
 pub mod server_router;
 
-pub fn server_url_patterns() -> ServerRouter {
-    #[cfg(server)]
-    {
-        server_router::server_url_patterns()
-    }
-    #[cfg(not(server))]
-    {
-        ServerRouter::new()
-    }
-}
-
-pub fn client_url_patterns() -> ClientRouter {
-    #[cfg(client)]
-    {
-        client_router::client_url_patterns()
-    }
-    #[cfg(not(client))]
-    {
-        ClientRouter::new()
-    }
-}
+#[cfg(server)]
+pub use server_router::server_url_patterns;
 ```
 
 Client routes live in `src/apps/users/urls/client_router.rs`:
 
 ```rust
+#[cfg(not(client))]
+use reinhardt::pages::component::Page;
 use reinhardt::ClientRouter;
 
+#[cfg(client)]
 use crate::apps::users::client::components;
 
 pub fn client_url_patterns() -> ClientRouter {
+    #[cfg(client)]
+    {
+        return ClientRouter::new()
+            .component(components::login_page::login_page)
+            .component(components::logout_page::logout_page)
+            .component(components::signup_page::signup_page);
+    }
+
+    #[cfg(not(client))]
     ClientRouter::new()
-        .component(components::login_page::login_page)
-        .component(components::logout_page::logout_page)
-        .component(components::signup_page::signup_page)
+        .route("login", "/login/", Page::empty)
+        .route("logout", "/logout/", Page::empty)
+        .route("signup", "/signup/", Page::empty)
+}
+
+pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
+    client_url_patterns()
+        .reverse(name, params)
+        .unwrap_or_else(|error| panic!("failed to reverse users client route `{name}`: {error}"))
 }
 ```
 
@@ -410,7 +412,7 @@ Then attach it to the project router:
 let router = router.with_middleware(create_session_middleware());
 ```
 
-After this, login/register/logout can inject `SessionData` and `Depends<SessionStoreKey, Arc<SessionStore>>`, and authenticated handlers can inject `CurrentUser<User>` from the auth state derived by the middleware.
+After this, login/register/logout/current-user lookup can inject `SessionData` and `Depends<SessionStoreKey, Arc<SessionStore>>`. Protected poll handlers can inject `CurrentUser<User>` from the auth state derived by the middleware.
 
 ## Build the Auth Pages
 
@@ -512,7 +514,7 @@ if load_user.is_pending() {
 }
 ```
 
-When `CurrentUser<User>` cannot resolve, `current_user()` returns a server-function error and the nav falls through to its signed-out branch. That branch links to signup and login:
+When no user id is present in the session, `current_user()` returns `Ok(None)` and the nav falls through to its signed-out branch. That branch links to signup and login:
 
 ```rust
 let login_href = users_routes::reverse("login", &[]);

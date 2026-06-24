@@ -31,7 +31,7 @@
 // it pulls in (sqlx, etc.) do not build for `wasm32-unknown-unknown`.
 #![cfg(server)]
 
-use examples_tutorial_basis::apps::users::server::models::User;
+use examples_tutorial_basis::apps::users::models::User;
 use reinhardt::BaseUser;
 use reinhardt::reinhardt_auth::{SuperuserCreatorRegistration, SuperuserInit};
 use rstest::rstest;

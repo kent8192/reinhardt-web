@@ -18,7 +18,7 @@ The admin registration is useful for exercising model metadata, route wiring, an
 Create `src/apps/polls/server/admin.rs`. The example registers `Question` first:
 
 ```rust
-use crate::apps::polls::server::models::{Choice, Question};
+use crate::apps::polls::models::{Choice, Question};
 use reinhardt::admin;
 
 #[admin(model,
@@ -71,9 +71,7 @@ pub mod server;
 
 ```rust
 pub mod admin;
-pub mod models;
 pub mod serializers;
-pub mod urls;
 ```
 
 ## Configure the Admin Site

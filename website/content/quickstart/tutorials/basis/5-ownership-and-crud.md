@@ -15,10 +15,10 @@ The client hides controls that do not apply to the current user, but that is onl
 
 ## Add the Author Field
 
-Open `src/apps/polls/server/models.rs`. Import the user model and add an author foreign key to `Question`:
+Open `src/apps/polls/models.rs`. Import the user model and add an author foreign key to `Question`:
 
 ```rust
-use crate::apps::users::server::models::User;
+use crate::apps::users::models::User;
 ```
 
 ```rust
@@ -44,7 +44,7 @@ This is the schema change you intentionally deferred in Part 2.
 `#[model]` regenerates `QuestionInfo` with an `author: RelationInfo<User>` field, so the client can tell whether the current user owns a question. No hand-written DTO edit is needed:
 
 ```rust
-use crate::apps::polls::server::models::QuestionInfo;
+use crate::apps::polls::models::QuestionInfo;
 ```
 
 ## Generate Migration 0002
@@ -95,7 +95,7 @@ For a tutorial database, it is fine to reset and reseed. For real existing data,
 The polls server functions need an authenticated user. Inject `CurrentUser<User>` directly; the session middleware derives auth state from the session and the framework resolves the full `User` before the handler body runs:
 
 ```rust
-use crate::apps::users::server::models::User;
+use crate::apps::users::models::User;
 use reinhardt::CurrentUser;
 
 #[server_fn]
@@ -127,7 +127,7 @@ fn require_active_user(user: &User) -> Result<(), ServerFnError> {
 Add the create server function:
 
 ```rust
-use crate::apps::polls::server::models::Question;
+use crate::apps::polls::models::Question;
 use reinhardt::DatabaseConnection;
 use reinhardt::CurrentUser;
 use std::result::Result;
@@ -208,7 +208,7 @@ Do not rely on the client to protect these actions. The comparison in the server
 `Choice` does not have its own author field. Ownership comes from the parent `Question`:
 
 ```rust
-use crate::apps::polls::server::models::Question;
+use crate::apps::polls::models::Question;
 use std::result::Result;
 
 #[cfg(server)]

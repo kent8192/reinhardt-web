@@ -5,7 +5,7 @@ use reinhardt::db::associations::ForeignKeyField;
 use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::apps::users::server::models::User;
+use crate::apps::users::models::User;
 
 /// Question model representing a poll question
 #[model(app_label = "polls", table_name = "questions")]
@@ -71,7 +71,7 @@ impl Choice {
 
 #[cfg(all(test, native))]
 mod tests {
-	use crate::apps::polls::server::models::*;
+	use crate::apps::polls::models::*;
 	use rstest::rstest;
 
 	#[rstest]

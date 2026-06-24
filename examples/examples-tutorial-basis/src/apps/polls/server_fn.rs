@@ -2,15 +2,15 @@
 //!
 //! These functions provide the server-side API for the polling application.
 
-use crate::apps::polls::server::models::{ChoiceInfo, QuestionInfo};
+use crate::apps::polls::models::{ChoiceInfo, QuestionInfo};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use std::result::Result;
 
 #[cfg(server)]
 use {
-	crate::apps::polls::server::models::{Choice, Question},
+	crate::apps::polls::models::{Choice, Question},
 	crate::apps::polls::services::server::vote_internal,
-	crate::apps::users::server::models::User,
+	crate::apps::users::models::User,
 	crate::shared::types::VoteRequest,
 	reinhardt::CurrentUser,
 	reinhardt::DatabaseConnection,
