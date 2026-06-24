@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-mail@v0.3.0-rc.3...reinhardt-mail@v0.3.0-rc.4) - 2026-06-24
+
+### Documentation
+
+- update version references to v0.3.0-rc.4
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-mail@v0.1.3...reinhardt-mail@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-mail` for the Reinhardt 0.2.0 line. This
