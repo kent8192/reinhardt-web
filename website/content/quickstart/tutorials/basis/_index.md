@@ -22,9 +22,10 @@ The reference implementation lives in [`examples/examples-tutorial-basis`](https
 
 ## Prerequisites
 
-- Basic Rust and Cargo knowledge.
+- Rust 1.96.0 or newer, plus basic Rust and Cargo knowledge.
 - `cargo make` installed.
-- Docker Desktop running for the disposable PostgreSQL and Redis development containers.
+- `wasm32-unknown-unknown` target and `wasm-pack` installed.
+- SQLite support through the Reinhardt feature flags used in Part 1.
 - A browser capable of running WebAssembly.
 
 ## What You'll Build
