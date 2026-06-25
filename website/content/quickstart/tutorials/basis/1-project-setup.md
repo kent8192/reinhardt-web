@@ -15,6 +15,9 @@ The finished reference for this tutorial is `examples/examples-tutorial-basis`. 
 
 ## Install the Tools
 
+Use Rust 1.96.0 or newer. The `0.3.0-rc.4` generator and the generated Rust
+2024 project require that toolchain level.
+
 Install the Reinhardt project generator:
 
 <!-- reinhardt-version-sync -->
@@ -112,24 +115,26 @@ configuration features selected by `startproject`:
 
 ```toml
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-reinhardt = { version = "0.3.0-rc.3", package = "reinhardt-web", default-features = false, features = ["pages", "client-router"] }
+reinhardt = { version = "0.3.0-rc.4", package = "reinhardt-web", default-features = false, features = ["pages", "client-router"] }
 wasm-bindgen = "=0.2.122"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-reinhardt = { version = "0.3.0-rc.3", package = "reinhardt-web", default-features = false, features = [
-    "standard",
+reinhardt = { version = "0.3.0-rc.4", package = "reinhardt-web", default-features = false, features = [
+    "minimal",
     "pages",
     "admin",
     "conf",
     "commands",
-    "db-postgres",
+    "db-sqlite",
 ] }
 tokio = { version = "1", features = ["full"] }
 ```
 
-If you pass an explicit SQLite feature list, keep the Pages runtime facade in
-place. Current `startproject` adds the required `minimal` feature automatically
-when a custom Pages list lacks a preset such as `standard`.
+The generated native target uses SQLite by default so the first run does not
+require a PostgreSQL container. If you pass an explicit SQLite feature list,
+keep the Pages runtime facade in place. Current `startproject` adds the
+required `minimal` feature automatically when a custom Pages list lacks a
+preset such as `standard`.
 
 In an example project, import Reinhardt APIs through the `reinhardt` facade. Do not depend on internal `reinhardt-*` crates directly.
 
@@ -188,24 +193,26 @@ SettingsBuilder::new()
 The matching `settings/base.toml` must include `[contacts]` because `ProjectSettings` includes `ContactSettings`:
 
 ```toml
+[core]
+secret_key = "insecure-..."
+
 [contacts]
 admins = []
 managers = []
 ```
 
-The example's database settings target the disposable PostgreSQL container started by the `cargo make` tasks:
+The tutorial database is a local SQLite file:
 
 ```toml
 [core.databases.default]
-engine = "postgresql"
-host = "localhost"
-port = 5432
-name = "examples_tutorial_basis"
-user = "reinhardt"
-password = "reinhardt"
+engine = "sqlite"
+name = "db.sqlite3"
 ```
 
-Use your own database name if you generated a new project. Keep the schema shape the same.
+`cargo make migrate` and `cargo make dev` run the settings-aware `manage`
+binary, so database commands resolve `[core.databases.default]` and create the
+SQLite file on demand. No PostgreSQL or Redis container is required for this
+tutorial path.
 
 ## See the Browser Mount Point
 

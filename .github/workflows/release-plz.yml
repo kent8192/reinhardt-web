@@ -65,14 +65,31 @@ jobs:
   # With release_always = true in release-plz.toml:
   # - Regular pushes: release-plz keeps the next Release PR up to date
   # - Release PR merge: release-plz publishes every workspace crate whose
-  #   local version differs from crates.io
+  #   local version differs from crates.io, without regenerating another
+  #   Release PR on the same push
   #
   # Runner: Always uses self-hosted AWS runner for release operations
   # (faster builds, no disk space issues, no dpkg lock contention)
 
   release-plz-pr:
     name: Release PR
-    if: github.event_name == 'push'
+    # Skip Release PR merge pushes. Those pushes are handled by
+    # release-plz-release below; running release-pr in parallel creates a
+    # short-lived follow-up Release PR before crates.io publication completes.
+    if: |
+      github.event_name == 'push' && !(
+        (
+          startsWith(github.event.head_commit.message, 'Merge pull request #') &&
+          (
+            contains(github.event.head_commit.message, '/release-plz-') ||
+            contains(github.event.head_commit.message, '/develop-release-plz-')
+          )
+        ) ||
+        (
+          startsWith(github.event.head_commit.message, 'chore: release ') &&
+          contains(github.event.head_commit.message, '(#')
+        )
+      )
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
     timeout-minutes: 360
     concurrency:
@@ -280,8 +297,9 @@ jobs:
   release-plz-release:
     name: Release
     # Publish only after a verified Release PR merge. The release-plz-pr job
-    # above still runs on every main/develop push, so routine feature merges
-    # keep the next Release PR up to date without entering the publish path.
+    # above uses the inverse guard, so routine feature merges keep the next
+    # Release PR up to date while Release PR merges enter only this publish
+    # path.
     #
     # Accepted Release PR merge shapes:
     # - merge commit from release-plz-* or develop-release-plz-* branch

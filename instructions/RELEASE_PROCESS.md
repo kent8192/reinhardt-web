@@ -236,7 +236,8 @@ git push origin main
 
 ### Step 3: release-plz Creates Release PR
 
-When changes are pushed to main, release-plz automatically:
+When ordinary changes are pushed to `main` or `develop/*`, release-plz
+automatically:
 
 1. Analyzes commits since last release
 2. Determines version bumps for affected crates
@@ -258,7 +259,12 @@ When changes are pushed to main, release-plz automatically:
 
 ### Step 5: Automatic Publishing
 
-Upon merge, release-plz:
+Upon merging a generated Release PR, the workflow runs only the publish path.
+It intentionally skips the Release PR regeneration job for that push, so
+publication cannot create a short-lived follow-up Release PR while crates.io is
+still catching up.
+
+During this publish path, release-plz:
 
 1. Publishes crates to crates.io (in dependency order)
    - Automatically skips already-published versions
