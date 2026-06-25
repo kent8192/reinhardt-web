@@ -3,20 +3,15 @@
 use crate::server_fn::ServerFnError;
 
 /// Browser Fetch credentials mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FetchCredentials {
 	/// Do not send credentials with the request.
 	Omit,
 	/// Send credentials for same-origin requests.
+	#[default]
 	SameOrigin,
 	/// Send credentials for same-origin and cross-origin requests.
 	Include,
-}
-
-impl Default for FetchCredentials {
-	fn default() -> Self {
-		Self::SameOrigin
-	}
 }
 
 #[cfg(wasm)]
