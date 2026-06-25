@@ -310,35 +310,27 @@ impl AuthState {
 	#[cfg(wasm)]
 	pub async fn fetch_permissions(&self, endpoint: Option<&str>) -> Result<(), AuthError> {
 		use crate::csrf::csrf_headers;
-		use reqwest::Client;
+		use crate::fetch;
 
 		let endpoint = endpoint.unwrap_or("/api/auth/permissions");
-		let client = Client::new();
-		let mut request = client.get(endpoint);
-
+		let mut headers = Vec::new();
 		if let Some((header_name, header_value)) = csrf_headers() {
-			request = request.header(header_name, header_value);
+			headers.push((header_name.to_string(), header_value));
 		}
 
-		let response = request
-			.send()
+		let response = fetch::request("GET", endpoint, None, headers)
 			.await
 			.map_err(|e| AuthError::Network(e.to_string()))?;
 
-		if !response.status().is_success() {
+		if !response.is_success() {
 			return Err(AuthError::Server {
-				status: response.status().as_u16(),
-				message: response
-					.status()
-					.canonical_reason()
-					.unwrap_or("Unknown")
-					.to_string(),
+				status: response.status(),
+				message: response.into_text(),
 			});
 		}
 
 		let permissions: Vec<String> = response
 			.json()
-			.await
 			.map_err(|e| AuthError::Parse(e.to_string()))?;
 
 		self.permissions.set(permissions.into_iter().collect());
@@ -391,35 +383,26 @@ impl AuthState {
 	#[cfg(wasm)]
 	pub async fn fetch_from_server(&self, endpoint: &str) -> Result<(), AuthError> {
 		use crate::csrf::csrf_headers;
-		use reqwest::Client;
+		use crate::fetch;
 
-		let client = Client::new();
-		let mut request = client.get(endpoint);
-
-		// Add CSRF header if available
+		let mut headers = Vec::new();
 		if let Some((header_name, header_value)) = csrf_headers() {
-			request = request.header(header_name, header_value);
+			headers.push((header_name.to_string(), header_value));
 		}
 
-		let response = request
-			.send()
+		let response = fetch::request("GET", endpoint, None, headers)
 			.await
 			.map_err(|e| AuthError::Network(e.to_string()))?;
 
-		if !response.status().is_success() {
+		if !response.is_success() {
 			return Err(AuthError::Server {
-				status: response.status().as_u16(),
-				message: response
-					.status()
-					.canonical_reason()
-					.unwrap_or("Unknown")
-					.to_string(),
+				status: response.status(),
+				message: response.into_text(),
 			});
 		}
 
 		let data: AuthData = response
 			.json()
-			.await
 			.map_err(|e| AuthError::Parse(e.to_string()))?;
 
 		self.update(data);

@@ -619,11 +619,15 @@ fn generate_server_fn(info: &ServerFnInfo) -> proc_macro2::TokenStream {
 ///
 ///     let url = "/api/server_fn/get_user";
 ///     let args = Args { id };
-///     let response = reqwest::Client::new().post(url)
-///         .json(&args)
-///         .send()
-///         .await?;
-///     response.json().await
+///     let body = serde_json::to_string(&args)?;
+///     let response = reinhardt_pages::__private::fetch::request(
+///         "POST",
+///         url,
+///         Some(&body),
+///         vec![("Content-Type".to_string(), "application/json".to_string())],
+///     )
+///     .await?;
+///     response.json()
 /// }
 /// ```
 fn generate_client_stub(
@@ -698,7 +702,7 @@ fn generate_client_stub(
 			// Inject CSRF header if available (automatic CSRF protection)
 			use #pages_crate::csrf::csrf_headers;
 			if let Some((__csrf_header_name, __csrf_header_value)) = csrf_headers() {
-				__request_builder = __request_builder.header(__csrf_header_name, &__csrf_header_value);
+				__headers.push((__csrf_header_name.to_string(), __csrf_header_value));
 			}
 		}
 	};
@@ -711,7 +715,7 @@ fn generate_client_stub(
 		// Inject Authorization header if JWT token is available
 		use #pages_crate::auth::auth_headers;
 		if let Some((__auth_header_name, __auth_header_value)) = auth_headers() {
-			__request_builder = __request_builder.header(__auth_header_name, &__auth_header_value);
+			__headers.push((__auth_header_name.to_string(), __auth_header_value));
 		}
 	};
 
@@ -726,8 +730,6 @@ fn generate_client_stub(
 			quote! {
 				__response
 					.json()
-					.await
-					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))
 			},
 		),
 		"url" => (
@@ -737,8 +739,7 @@ fn generate_client_stub(
 					.map_err(|e| #pages_crate::server_fn::ServerFnError::serialization(e.to_string()))?;
 			},
 			quote! {
-				let __text = __response.text().await
-					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))?;
+				let __text = __response.into_text();
 				::serde_json::from_str(&__text)
 					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))
 			},
@@ -752,8 +753,7 @@ fn generate_client_stub(
 				let __body = ::base64::Engine::encode(&::base64::engine::general_purpose::STANDARD, &__body_bytes);
 			},
 			quote! {
-				let __text = __response.text().await
-					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))?;
+				let __text = __response.into_text();
 				let __bytes = ::base64::Engine::decode(&::base64::engine::general_purpose::STANDARD, &__text)
 					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))?;
 				::rmp_serde::from_slice(&__bytes)
@@ -792,42 +792,34 @@ fn generate_client_stub(
 			// Serialize arguments based on codec
 			#serialize_code
 
-			// Build HTTP client and POST request.
-			// WASM: fetch_credentials_include() sends browser cookies via
-			// the Fetch API's credentials: "include" mode, which is
-			// required for CSRF double-submit cookie validation.
-			let __client = #pages_crate::__private::reqwest::Client::builder()
-				.build()
-				.expect("Failed to build reqwest client");
-
-			let mut __request_builder = __client.post(&__endpoint)
-				.header("Content-Type", #content_type);
-
-			// WASM: include browser cookies (CSRF, auth session) via Fetch API
-			#[cfg(target_arch = "wasm32")]
-			{
-				__request_builder = __request_builder.fetch_credentials_include();
-			}
+			let mut __headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> =
+				::std::vec![("Content-Type".to_string(), #content_type.to_string())];
 
 			#csrf_injection_code
 			#auth_injection_code
 
 			// Send request
-			let __response = __request_builder
-				.body(__body)
-				.send()
+			let __response = #pages_crate::__private::fetch::request(
+					"POST",
+					&__endpoint,
+					Some(&__body),
+					__headers,
+				)
 				.await
-				.map_err(|e| #pages_crate::server_fn::ServerFnError::network(e.to_string()))?;
+				?;
 
 			// Check HTTP status
-			if !__response.status().is_success() {
-				let __status = __response.status().as_u16();
-				let __message = __response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-				return Err(#pages_crate::server_fn::ServerFnError::server(__status, __message));
+			if !__response.is_success() {
+				let __status = __response.status();
+				let __message = __response.into_text();
+				return Err(#pages_crate::server_fn::ServerFnError::server(__status, __message).into());
 			}
 
 			// Deserialize response based on codec
-			#deserialize_code
+			{
+				#deserialize_code
+			}
+			.map_err(::std::convert::Into::into)
 		}
 	}
 }

@@ -1893,7 +1893,7 @@ impl BaseCommand for RunServerCommand {
 				"watch-delay",
 				"Watch delay in milliseconds for file change debouncing",
 			)
-			.with_default("500"),
+			.with_default("120"),
 			CommandOption::flag(None, "nothreading", "Disable threading"),
 			CommandOption::flag(None, "insecure", "Serve static files in production mode"),
 			CommandOption::flag(
@@ -1964,6 +1964,12 @@ impl BaseCommand for RunServerCommand {
 		let noreload = ctx.has_option("noreload");
 		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let no_wasm_rebuild = ctx.has_option("no-wasm-rebuild");
+		#[cfg(feature = "autoreload")]
+		let watch_delay = ctx
+			.option("watch-delay")
+			.and_then(|raw| raw.parse::<u64>().ok())
+			.map(std::time::Duration::from_millis)
+			.unwrap_or(crate::debounced_watcher::DEBOUNCE_WINDOW);
 		let insecure = ctx.has_option("insecure");
 		#[cfg_attr(
 			not(any(feature = "server", feature = "openapi-router")),
@@ -2191,6 +2197,7 @@ impl BaseCommand for RunServerCommand {
 					no_override_wasm,
 					force_wasm_legacy,
 					wasm_optional,
+					watch_delay,
 				)
 				.await;
 			}
@@ -2568,6 +2575,7 @@ impl RunServerCommand {
 					no_override_wasm,
 					force_wasm,
 					wasm_optional,
+					crate::debounced_watcher::DEBOUNCE_WINDOW,
 				)
 				.await
 			}
@@ -2678,6 +2686,7 @@ impl RunServerCommand {
 		no_override_wasm: bool,
 		force_wasm: bool,
 		wasm_optional: bool,
+		debounce_window: std::time::Duration,
 	) -> CommandResult<()> {
 		// Resolve the cargo metadata for the current working directory.
 		let metadata = cargo_metadata::MetadataCommand::new().exec().map_err(|e| {
@@ -2796,6 +2805,7 @@ impl RunServerCommand {
 			bin_name,
 			address: address.to_string(),
 			roots,
+			debounce_window,
 			server_address: Some(address.to_string()),
 			no_wasm_rebuild,
 			#[cfg(feature = "pages")]
@@ -4564,6 +4574,15 @@ mod tests {
 			"--force-wasm must remain registered (deprecated alias)"
 		);
 		assert!(option_names.contains(&"no-wasm"));
+		let watch_delay = options
+			.iter()
+			.find(|option| option.long == "watch-delay")
+			.expect("--watch-delay must be registered as a runserver option");
+		assert_eq!(
+			watch_delay.default.as_deref(),
+			Some("120"),
+			"--watch-delay default must match the hot-reload debounce default"
+		);
 	}
 
 	#[test]

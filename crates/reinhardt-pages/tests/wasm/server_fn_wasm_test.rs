@@ -14,6 +14,35 @@ wasm_bindgen_test_configure!(run_in_browser);
 use reinhardt_pages::csrf::{CSRF_HEADER_NAME, csrf_headers};
 use reinhardt_pages::server_fn::resolve_endpoint;
 use reinhardt_pages::testing::{cleanup_csrf_fixtures, setup_csrf_cookie, setup_csrf_meta_tag};
+use reinhardt_pages_macros::server_fn;
+
+#[derive(Debug)]
+struct CustomClientError(String);
+
+impl std::fmt::Display for CustomClientError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(&self.0)
+	}
+}
+
+impl std::error::Error for CustomClientError {}
+
+impl From<reinhardt_pages::server_fn::ServerFnError> for CustomClientError {
+	fn from(err: reinhardt_pages::server_fn::ServerFnError) -> Self {
+		Self(err.to_string())
+	}
+}
+
+#[server_fn]
+async fn custom_error_server_fn(value: u32) -> Result<u32, CustomClientError> {
+	Ok(value)
+}
+
+#[wasm_bindgen_test]
+fn test_custom_client_error_display_contract() {
+	let error = CustomClientError("client error".to_string());
+	assert_eq!(error.to_string(), "client error");
+}
 
 // ============================================================================
 // csrf_headers() Integration Tests
@@ -76,7 +105,7 @@ fn test_csrf_header_name_django_compatible() {
 	assert_eq!(CSRF_HEADER_NAME, "X-CSRFToken");
 }
 
-/// Test headers can be used with reqwest Request builder pattern
+/// Test headers can be used with the browser Fetch API request path.
 #[wasm_bindgen_test]
 fn test_csrf_headers_usable_with_request() {
 	cleanup_csrf_fixtures();
@@ -88,7 +117,7 @@ fn test_csrf_headers_usable_with_request() {
 		assert_eq!(header_name, "X-CSRFToken");
 		assert!(!header_value.is_empty());
 
-		// Verify header value type is compatible with reqwest
+		// Verify header value type is compatible with generated request headers
 		let _: &str = header_name; // Static str
 		let _: &str = &header_value; // String reference
 	} else {
@@ -140,7 +169,7 @@ fn test_resolve_endpoint_absolutizes_wasm_path() {
 	let endpoint = resolve_endpoint("/api/server_fn/example");
 	assert!(
 		web_sys::Url::new(&endpoint).is_ok(),
-		"endpoint should be absolute for reqwest: {endpoint}"
+		"endpoint should be absolute for browser fetch: {endpoint}"
 	);
 	assert!(
 		endpoint.starts_with("http://") || endpoint.starts_with("https://"),

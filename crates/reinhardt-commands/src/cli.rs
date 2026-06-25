@@ -145,6 +145,10 @@ pub enum Commands {
 		#[arg(long)]
 		noreload: bool,
 
+		/// Watch delay in milliseconds for file change debouncing
+		#[arg(long = "watch-delay", default_value_t = 120)]
+		watch_delay: u64,
+
 		/// Disable the WASM rebuild pipeline during hot-reload (server pipeline still runs).
 		#[arg(long = "no-wasm-rebuild")]
 		no_wasm_rebuild: bool,
@@ -706,6 +710,7 @@ async fn run_command_core(
 		Commands::Runserver {
 			address,
 			noreload,
+			watch_delay,
 			no_wasm_rebuild,
 			no_wasm,
 			no_override_wasm,
@@ -721,6 +726,7 @@ async fn run_command_core(
 			execute_runserver(RunServerOptions {
 				address,
 				noreload,
+				watch_delay,
 				no_wasm_rebuild,
 				no_wasm,
 				no_override_wasm,
@@ -971,6 +977,7 @@ async fn execute_migrate(params: MigrateParams) -> Result<(), Box<dyn std::error
 struct RunServerOptions {
 	address: String,
 	noreload: bool,
+	watch_delay: u64,
 	no_wasm_rebuild: bool,
 	no_wasm: bool,
 	no_override_wasm: bool,
@@ -985,11 +992,11 @@ struct RunServerOptions {
 	verbosity: u8,
 }
 
-/// Execute the runserver command
-async fn execute_runserver(options: RunServerOptions) -> Result<(), Box<dyn std::error::Error>> {
+fn runserver_context_from_options(options: &RunServerOptions) -> CommandContext {
 	let mut ctx = CommandContext::default();
 	ctx.set_verbosity(options.verbosity);
-	ctx.add_arg(options.address);
+	ctx.add_arg(options.address.clone());
+	ctx.set_option("watch-delay".to_string(), options.watch_delay.to_string());
 
 	if options.noreload {
 		ctx.set_option("noreload".to_string(), "true".to_string());
@@ -1018,7 +1025,7 @@ async fn execute_runserver(options: RunServerOptions) -> Result<(), Box<dyn std:
 	if options.with_pages {
 		ctx.set_option("with-pages".to_string(), "true".to_string());
 	}
-	ctx.set_option("static-dir".to_string(), options.static_dir);
+	ctx.set_option("static-dir".to_string(), options.static_dir.clone());
 	if options.no_spa {
 		ctx.set_option("no-spa".to_string(), "true".to_string());
 	}
@@ -1026,6 +1033,12 @@ async fn execute_runserver(options: RunServerOptions) -> Result<(), Box<dyn std:
 		ctx.set_option("index".to_string(), index.clone());
 	}
 
+	ctx
+}
+
+/// Execute the runserver command
+async fn execute_runserver(options: RunServerOptions) -> Result<(), Box<dyn std::error::Error>> {
+	let ctx = runserver_context_from_options(&options);
 	let cmd = RunServerCommand;
 	cmd.execute(&ctx).await.map_err(|e| e.into())
 }
@@ -1551,6 +1564,7 @@ mod tests {
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
+			watch_delay: 120,
 			no_wasm_rebuild: false,
 			no_wasm: false,
 			no_override_wasm: false,
@@ -1739,6 +1753,7 @@ mod tests {
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
+			watch_delay: 120,
 			no_wasm_rebuild: false,
 			no_wasm: false,
 			no_override_wasm: false,
@@ -1766,6 +1781,7 @@ mod tests {
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
+			watch_delay: 120,
 			no_wasm_rebuild: false,
 			no_wasm: false,
 			no_override_wasm: false,
@@ -1793,6 +1809,7 @@ mod tests {
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
+			watch_delay: 120,
 			no_wasm_rebuild: false,
 			no_wasm: false,
 			no_override_wasm: false,
@@ -1821,6 +1838,7 @@ mod tests {
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
+			watch_delay: 120,
 			no_wasm_rebuild: false,
 			no_wasm: false,
 			no_override_wasm: false,
@@ -1852,6 +1870,7 @@ mod tests {
 		let options = RunServerOptions {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
+			watch_delay: 120,
 			no_wasm_rebuild: true,
 			no_wasm: false,
 			no_override_wasm: false,
@@ -1866,19 +1885,12 @@ mod tests {
 			verbosity: 0,
 		};
 
-		// Act: replicate execute_runserver's option propagation onto a CommandContext
-		let mut ctx = CommandContext::default();
-		ctx.set_verbosity(options.verbosity);
-		ctx.add_arg(options.address);
-		if options.noreload {
-			ctx.set_option("noreload".to_string(), "true".to_string());
-		}
-		if options.no_wasm_rebuild {
-			ctx.set_option("no-wasm-rebuild".to_string(), "true".to_string());
-		}
+		// Act
+		let ctx = runserver_context_from_options(&options);
 
 		// Assert
 		assert_eq!(ctx.option("no-wasm-rebuild"), Some(&"true".to_string()));
+		assert_eq!(ctx.option("watch-delay"), Some(&"120".to_string()));
 	}
 
 	#[rstest]
@@ -1887,6 +1899,7 @@ mod tests {
 		let options = RunServerOptions {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
+			watch_delay: 120,
 			no_wasm_rebuild: false,
 			no_wasm: false,
 			no_override_wasm: true,
@@ -1901,15 +1914,8 @@ mod tests {
 			verbosity: 0,
 		};
 
-		// Act: replicate execute_runserver's option propagation onto a CommandContext
-		let mut ctx = CommandContext::default();
-		ctx.add_arg(options.address);
-		if options.no_override_wasm {
-			ctx.set_option("no-override-wasm".to_string(), "true".to_string());
-		}
-		if options.with_pages {
-			ctx.set_option("with-pages".to_string(), "true".to_string());
-		}
+		// Act
+		let ctx = runserver_context_from_options(&options);
 
 		// Assert
 		assert_eq!(ctx.option("no-override-wasm"), Some(&"true".to_string()));
@@ -1924,6 +1930,7 @@ mod tests {
 		let options = RunServerOptions {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
+			watch_delay: 120,
 			no_wasm_rebuild: false,
 			no_wasm: false,
 			no_override_wasm: false,
@@ -1939,14 +1946,38 @@ mod tests {
 		};
 
 		// Act
-		let mut ctx = CommandContext::default();
-		ctx.add_arg(options.address);
-		if options.force_wasm {
-			ctx.set_option("force-wasm".to_string(), "true".to_string());
-		}
+		let ctx = runserver_context_from_options(&options);
 
 		// Assert
 		assert_eq!(ctx.option("force-wasm"), Some(&"true".to_string()));
+	}
+
+	#[rstest]
+	fn test_runserver_watch_delay_option_propagates() {
+		// Arrange
+		let options = RunServerOptions {
+			address: "127.0.0.1:8000".to_string(),
+			noreload: false,
+			watch_delay: 75,
+			no_wasm_rebuild: false,
+			no_wasm: false,
+			no_override_wasm: false,
+			force_wasm: false,
+			wasm_optional: false,
+			insecure: false,
+			no_docs: false,
+			with_pages: true,
+			static_dir: "dist".to_string(),
+			no_spa: false,
+			index: None,
+			verbosity: 0,
+		};
+
+		// Act
+		let ctx = runserver_context_from_options(&options);
+
+		// Assert
+		assert_eq!(ctx.option("watch-delay"), Some(&"75".to_string()));
 	}
 
 	#[rstest]
@@ -1960,13 +1991,32 @@ mod tests {
 		match cli.command {
 			Commands::Runserver {
 				with_pages,
+				watch_delay,
 				no_override_wasm,
 				force_wasm,
 				..
 			} => {
 				assert!(with_pages, "--with-pages should be parsed");
+				assert_eq!(watch_delay, 120, "--watch-delay should default to 120 ms");
 				assert!(no_override_wasm, "--no-override-wasm should be parsed");
 				assert!(!force_wasm, "--force-wasm was not provided");
+			}
+			#[allow(unreachable_patterns)]
+			_ => panic!("Expected Commands::Runserver"),
+		}
+	}
+
+	#[rstest]
+	fn test_runserver_clap_accepts_watch_delay() {
+		use clap::Parser;
+
+		// Arrange & Act
+		let cli = Cli::parse_from(["manage", "runserver", "--watch-delay", "75"]);
+
+		// Assert
+		match cli.command {
+			Commands::Runserver { watch_delay, .. } => {
+				assert_eq!(watch_delay, 75, "--watch-delay should be parsed");
 			}
 			#[allow(unreachable_patterns)]
 			_ => panic!("Expected Commands::Runserver"),
@@ -2022,6 +2072,7 @@ mod tests {
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
 			noreload: false,
+			watch_delay: 120,
 			no_wasm_rebuild: false,
 			no_wasm: false,
 			no_override_wasm: false,
