@@ -196,10 +196,10 @@ impl ServerRouter {
 			Cow::Owned(format!("{}/", search_path))
 		};
 
-		if alternate_path.as_ref() != search_path.as_ref() {
-			if let Ok(matched) = router.at(alternate_path.as_ref()) {
-				return_route_match!(matched);
-			}
+		if alternate_path.as_ref() != search_path.as_ref()
+			&& let Ok(matched) = router.at(alternate_path.as_ref())
+		{
+			return_route_match!(matched);
 		}
 
 		None
