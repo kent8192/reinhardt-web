@@ -68,7 +68,7 @@ fn mock_response_to_result(response: MockResponse) -> Result<(u16, String), Serv
 	}
 }
 
-/// Perform a real HTTP fetch using reqwest
+/// Perform a real HTTP fetch through the browser Fetch API.
 #[cfg(wasm)]
 async fn real_fetch(
 	url: &str,
@@ -76,43 +76,23 @@ async fn real_fetch(
 	body: Option<&str>,
 	headers: &[(&str, &str)],
 ) -> Result<(u16, String), ServerFnError> {
-	let client = reqwest::Client::new();
-
-	let mut request = match method.to_uppercase().as_str() {
-		"GET" => client.get(url),
-		"POST" => client.post(url),
-		"PUT" => client.put(url),
-		"DELETE" => client.delete(url),
-		"PATCH" => client.patch(url),
+	match method.to_uppercase().as_str() {
+		"GET" | "POST" | "PUT" | "DELETE" | "PATCH" => {}
 		_ => {
 			return Err(ServerFnError::application(format!(
 				"Unsupported HTTP method: {}",
 				method
 			)));
 		}
-	};
-
-	// Add headers
-	for (name, value) in headers {
-		request = request.header(*name, *value);
 	}
 
-	// Add body if present
-	if let Some(body) = body {
-		request = request.body(body.to_string());
-	}
-
-	// Send request
-	let response = request
-		.send()
-		.await
-		.map_err(|e| ServerFnError::network(e.to_string()))?;
-
-	let status = response.status().as_u16();
-	let text = response
-		.text()
-		.await
-		.map_err(|e| ServerFnError::deserialization(e.to_string()))?;
+	let headers = headers
+		.iter()
+		.map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+		.collect();
+	let response = crate::fetch::request(method, url, body, headers).await?;
+	let status = response.status();
+	let text = response.into_text();
 
 	if (200..300).contains(&status) {
 		Ok((status, text))
