@@ -407,6 +407,14 @@ release-plz's `opened_prs()` method (in `forge.rs`) searches ALL open PRs in the
 
 Since `release_always = true` on both branches, the branch prefix is **not** used for publish decisions — it only affects Release PR discovery and naming. The distinct prefixes are safe and do not interfere with the two-step release workflow.
 
+The release workflow must classify publish eligibility from verified PR metadata
+before entering the publish job. The Release PR head must be in this repository,
+start exactly with `release-plz-` or `develop-release-plz-`, target the pushed
+base branch, carry the `release` label, and have a merge commit matching the
+pushed SHA. Do not gate publishing from commit-message substring matches such as
+`/release-plz-`; normal fix branches can contain that text. (Ref:
+[#5457](https://github.com/kent8192/reinhardt-web/issues/5457))
+
 **`publish_no_verify = true`**
 
 During `cargo publish`, Cargo attempts to build the crate including dev-dependencies. If dev-dependencies reference other workspace crates that have not yet been published to crates.io, the build verification step fails. Setting `publish_no_verify = true` skips this verification, allowing crates to be published in dependency order without false failures. (Ref: [#181](https://github.com/kent8192/reinhardt-web/pull/181))
