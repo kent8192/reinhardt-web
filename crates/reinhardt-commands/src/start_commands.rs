@@ -121,14 +121,7 @@ impl BaseCommand for StartProjectCommand {
 		// Generate a random secret key
 		let secret_key = format!("insecure-{}", generate_secret_key());
 		let required_features = if with_pages {
-			&[
-				"minimal",
-				"pages",
-				"admin",
-				"conf",
-				"commands",
-				"db-postgres",
-			][..]
+			&["minimal", "pages", "admin", "conf", "commands", "db-sqlite"][..]
 		} else {
 			&["conf", "commands", "db-postgres", "api"][..]
 		};

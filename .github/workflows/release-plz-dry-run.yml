@@ -105,16 +105,19 @@ jobs:
           #
           # Ideal implementation (without workaround):
           #   release-plz release --dry-run --no-verify --git-token "$GITHUB_TOKEN"
+          skipped_crate_re='(reinhardt-[A-Za-z0-9_-]+)[[:space:]]+([^:[:space:]]+):[[:space:]]+due[[:space:]]+to[[:space:]]+dry,[[:space:]]+skipping'
+          requirement_re='^(reinhardt-[A-Za-z0-9_-]+)[[:space:]]*=[[:space:]]*"\^?([^"]+)"$'
+
           declare -A dry_skipped_crates=()
           while IFS= read -r line; do
-            if [[ "$line" =~ ^(reinhardt-[A-Za-z0-9_-]+)[[:space:]]+([^:[:space:]]+):[[:space:]]+due[[:space:]]+to[[:space:]]+dry,[[:space:]]+skipping ]]; then
+            if [[ "$line" =~ $skipped_crate_re ]]; then
               dry_skipped_crates["${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"]=1
             fi
           done < "$log"
 
           known_same_release_dependency_failure=false
           while IFS= read -r requirement; do
-            if [[ "$requirement" =~ ^(reinhardt-[A-Za-z0-9_-]+)[[:space:]]*=[[:space:]]*\"\^?([^\"]+)\"$ ]] \
+            if [[ "$requirement" =~ $requirement_re ]] \
               && [[ -n "${dry_skipped_crates["${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"]+set}" ]]
             then
               known_same_release_dependency_failure=true

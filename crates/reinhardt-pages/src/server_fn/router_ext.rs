@@ -109,11 +109,15 @@ impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 			_ => "application/json",
 		};
 
-		// Insert a shared cookie jar so the handler can set response cookies.
-		// Clones share the same backing store, so cookies added by the handler
-		// are visible to this adapter afterwards.
-		let cookie_jar = SharedResponseCookies::new();
-		req.extensions.insert(cookie_jar.clone());
+		// Insert a shared cookie jar only for handlers that can access request
+		// extensions. Plain body-only server functions cannot set response cookies.
+		let cookie_jar = if S::USES_RESPONSE_COOKIE_JAR {
+			let jar = SharedResponseCookies::new();
+			req.extensions.insert(jar.clone());
+			Some(jar)
+		} else {
+			None
+		};
 
 		let mut response = match handler(req).await {
 			Ok(body) => Response::ok()
@@ -140,9 +144,11 @@ impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 		};
 
 		// Apply response cookies from the shared cookie jar.
-		let cookies = cookie_jar.take();
-		for cookie in cookies.cookies() {
-			response = response.append_header("Set-Cookie", cookie);
+		if let Some(cookie_jar) = cookie_jar {
+			let cookies = cookie_jar.take();
+			for cookie in cookies.cookies() {
+				response = response.append_header("Set-Cookie", cookie);
+			}
 		}
 
 		Ok(response)
