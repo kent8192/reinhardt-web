@@ -42,6 +42,17 @@ cd benchmarks
 CARGO_TARGET_DIR=target cargo run --locked -- measure
 ```
 
+Run the concrete runtime HTTP benchmark executors:
+
+```bash
+cd benchmarks
+CARGO_TARGET_DIR=target cargo bench --locked --bench runtime_http -- --noplot
+```
+
+The `runtime_http` benchmark currently executes `hello_world`, `json_echo`,
+`path_params`, and `query_params` against Reinhardt, Axum, Actix Web, and Loco
+using in-process framework services.
+
 ## Categories
 
 Runtime scenarios measure in-process request handling behavior. Database

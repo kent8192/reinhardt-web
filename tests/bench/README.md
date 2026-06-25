@@ -29,6 +29,12 @@ compile-time, contract, and admin scenarios. Validate that matrix with:
 cargo make benchmark-suite-check
 ```
 
+Run the concrete runtime HTTP benchmark executors with:
+
+```bash
+cargo make benchmark-runtime-http
+```
+
 Run the request allocation probe:
 
 ```bash

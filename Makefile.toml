@@ -307,6 +307,16 @@ export CARGO_TARGET_DIR=target
 cargo run --locked -- measure
 '''
 
+[tasks.benchmark-runtime-http]
+description = "Run concrete runtime HTTP comparison benchmarks"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks
+export CARGO_TARGET_DIR=target
+cargo bench --locked --bench runtime_http -- --noplot
+'''
+
 [tasks.unit-test]
 description = "Run unit tests (src/)"
 command = "cargo"
