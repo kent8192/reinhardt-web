@@ -2,6 +2,34 @@
 
 use crate::server_fn::ServerFnError;
 
+/// Browser Fetch credentials mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FetchCredentials {
+	/// Do not send credentials with the request.
+	Omit,
+	/// Send credentials for same-origin requests.
+	SameOrigin,
+	/// Send credentials for same-origin and cross-origin requests.
+	Include,
+}
+
+impl Default for FetchCredentials {
+	fn default() -> Self {
+		Self::SameOrigin
+	}
+}
+
+#[cfg(wasm)]
+impl FetchCredentials {
+	fn into_request_credentials(self) -> web_sys::RequestCredentials {
+		match self {
+			Self::Omit => web_sys::RequestCredentials::Omit,
+			Self::SameOrigin => web_sys::RequestCredentials::SameOrigin,
+			Self::Include => web_sys::RequestCredentials::Include,
+		}
+	}
+}
+
 /// HTTP response body and status returned by the internal Fetch API wrapper.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FetchResponse {
@@ -40,22 +68,37 @@ impl FetchResponse {
 }
 
 /// Sends an HTTP request through the browser Fetch API.
-#[cfg(wasm)]
+///
+/// Requests use the browser default-equivalent `same-origin` credentials mode.
+/// Use [`request_with_credentials`] when a generated client must explicitly
+/// include cross-origin credentials.
 pub async fn request(
 	method: &str,
 	url: &str,
 	body: Option<&str>,
 	headers: Vec<(String, String)>,
 ) -> Result<FetchResponse, ServerFnError> {
+	request_with_credentials(method, url, body, headers, FetchCredentials::default()).await
+}
+
+/// Sends an HTTP request through the browser Fetch API with an explicit credentials mode.
+#[cfg(wasm)]
+pub async fn request_with_credentials(
+	method: &str,
+	url: &str,
+	body: Option<&str>,
+	headers: Vec<(String, String)>,
+	credentials: FetchCredentials,
+) -> Result<FetchResponse, ServerFnError> {
 	use wasm_bindgen::JsCast;
 	use wasm_bindgen::JsValue;
 	use wasm_bindgen_futures::JsFuture;
-	use web_sys::{Request, RequestCredentials, RequestInit, RequestMode, Response, window};
+	use web_sys::{Request, RequestInit, RequestMode, Response, window};
 
 	let init = RequestInit::new();
 	init.set_method(method);
 	init.set_mode(RequestMode::Cors);
-	init.set_credentials(RequestCredentials::Include);
+	init.set_credentials(credentials.into_request_credentials());
 	if let Some(body) = body {
 		init.set_body(&JsValue::from_str(body));
 	}
@@ -92,18 +135,29 @@ pub async fn request(
 
 /// Native placeholder for accidental non-WASM use.
 #[cfg(native)]
-pub async fn request(
+pub async fn request_with_credentials(
 	_method: &str,
 	_url: &str,
 	_body: Option<&str>,
 	_headers: Vec<(String, String)>,
+	_credentials: FetchCredentials,
 ) -> Result<FetchResponse, ServerFnError> {
 	Err(ServerFnError::network(
-		"Fetch API is not available outside browser WASM".to_string(),
+		"Fetch API is not available outside browser WASM",
 	))
 }
 
 #[cfg(wasm)]
 fn js_error_message(value: wasm_bindgen::JsValue) -> String {
 	value.as_string().unwrap_or_else(|| format!("{value:?}"))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::FetchCredentials;
+
+	#[test]
+	fn default_credentials_mode_is_same_origin() {
+		assert_eq!(FetchCredentials::default(), FetchCredentials::SameOrigin);
+	}
 }

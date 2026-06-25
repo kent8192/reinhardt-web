@@ -104,11 +104,12 @@ pub async fn create_user(
     let args = CreateUserArgs { username, email };
     let body = serde_json::to_string(&args)?;
 
-    let response = reinhardt_pages::__private::fetch::request(
+    let response = reinhardt_pages::__private::fetch::request_with_credentials(
         "POST",
         endpoint,
         Some(&body),
         vec![("Content-Type".to_string(), "application/json".to_string())],
+        reinhardt_pages::__private::fetch::FetchCredentials::Include,
     )
         .await?;
 

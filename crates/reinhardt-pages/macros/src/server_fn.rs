@@ -620,11 +620,12 @@ fn generate_server_fn(info: &ServerFnInfo) -> proc_macro2::TokenStream {
 ///     let url = "/api/server_fn/get_user";
 ///     let args = Args { id };
 ///     let body = serde_json::to_string(&args)?;
-///     let response = reinhardt_pages::__private::fetch::request(
+///     let response = reinhardt_pages::__private::fetch::request_with_credentials(
 ///         "POST",
 ///         url,
 ///         Some(&body),
 ///         vec![("Content-Type".to_string(), "application/json".to_string())],
+///         reinhardt_pages::__private::fetch::FetchCredentials::Include,
 ///     )
 ///     .await?;
 ///     response.json()
@@ -798,12 +799,13 @@ fn generate_client_stub(
 			#csrf_injection_code
 			#auth_injection_code
 
-			// Send request
-			let __response = #pages_crate::__private::fetch::request(
+			// Send request with credentials for cookie-backed server function sessions.
+			let __response = #pages_crate::__private::fetch::request_with_credentials(
 					"POST",
 					&__endpoint,
 					Some(&__body),
 					__headers,
+					#pages_crate::__private::fetch::FetchCredentials::Include,
 				)
 				.await
 				?;
