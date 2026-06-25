@@ -109,6 +109,30 @@ batched attribute builders instead of one chained method call per generated
 attribute, which reduces generated Rust for attribute-heavy templates when a
 rebuild is still required.
 
+## Develop 0.3.0 Browser-WASM Pruning
+
+The browser-WASM `reinhardt-web --features pages` check path must not pull
+native build-time tooling or an HTTP client abstraction that duplicates the
+browser Fetch API. The 2026-06-24 dependency-pruning pass removed the root
+package's unused `tonic-prost-build` build script path and replaced the
+`reinhardt-pages` client-side `reqwest` usage with a small internal Fetch API
+wrapper.
+
+Measured against `origin/develop/0.3.0` at `0a60cfc3d3` with fresh
+`CARGO_TARGET_DIR` and `CARGO_BUILD_BUILD_DIR` directories, local
+`rustc-wrapper` disabled, and the browser-WASM check path warmed by one prior
+run:
+
+| Measurement | Baseline | Current | Reduction |
+|---|---:|---:|---:|
+| `cargo check -p reinhardt-web --no-default-features --features pages --target wasm32-unknown-unknown` with empty build output dirs | 28.79s | 22.00s | 23.6% |
+| Unique normal/build dependency nodes for the same target | 140 | 111 | 20.7% |
+
+The removed browser-WASM dependency nodes are `reqwest`, `sync_wrapper`, and the
+root build path's `prost-build`/`tonic-build`/`tonic-prost-build` support
+stack. Keep future browser-WASM additions on native browser APIs unless a
+cross-target abstraction is required by generated user code.
+
 ## Hot-Reload Target Selection
 
 The autoreload watcher classifies debounced paths before dispatching rebuilds.

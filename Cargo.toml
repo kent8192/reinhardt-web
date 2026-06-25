@@ -376,9 +376,6 @@ toml = { workspace = true }
 [build-dependencies]
 cfg_aliases = "0.2"
 
-[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.build-dependencies]
-tonic-prost-build = { workspace = true }
-
 [workspace]
 resolver = "3"
 members = [
