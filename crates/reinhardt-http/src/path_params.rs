@@ -51,6 +51,13 @@ impl PathParams {
 		Self { inner: Vec::new() }
 	}
 
+	/// Create an empty `PathParams` with capacity for `capacity` entries.
+	pub fn with_capacity(capacity: usize) -> Self {
+		Self {
+			inner: Vec::with_capacity(capacity),
+		}
+	}
+
 	/// Number of stored parameters.
 	pub fn len(&self) -> usize {
 		self.inner.len()

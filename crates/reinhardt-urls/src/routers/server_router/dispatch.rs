@@ -7,6 +7,7 @@ use super::ServerRouter;
 use super::types::RouteMatch;
 use hyper::Method;
 use reinhardt_di::InjectionContext;
+use reinhardt_http::PathParams;
 use reinhardt_middleware::Middleware;
 use std::borrow::Cow;
 use std::sync::{Arc, PoisonError};
@@ -130,13 +131,11 @@ impl ServerRouter {
 		// Compile routes on first use (lazy compilation with interior mutability)
 		self.compile_routes();
 
-		// Normalize path for matchit lookup - routes are registered with leading slash
-		// When prefix is "/" and path is "/health", strip_prefix yields "health" but
-		// the route was registered as "/health". We need to ensure we search with "/health".
+		// Normalize path for matchit lookup - routes are registered with leading slash.
 		let search_path = if path.starts_with('/') {
-			path.to_string()
+			Cow::Borrowed(path)
 		} else {
-			format!("/{}", path)
+			Cow::Owned(format!("/{}", path))
 		};
 
 		// Use matchit to find matching route - O(m) complexity
@@ -153,38 +152,22 @@ impl ServerRouter {
 
 		let router = router_lock.read().unwrap_or_else(PoisonError::into_inner);
 
-		// Try matching with the original path first
-		// If that fails, try with trailing slash toggled (Django-style APPEND_SLASH behavior)
-		let paths_to_try = if search_path.ends_with('/') {
-			// Path has trailing slash, try without if not found
-			let without_slash = search_path.trim_end_matches('/').to_string();
-			let without_slash = if without_slash.is_empty() {
-				"/".to_string()
-			} else {
-				without_slash
-			};
-			vec![search_path.clone(), without_slash]
-		} else {
-			// Path has no trailing slash, try with if not found
-			vec![search_path.clone(), format!("{}/", search_path)]
-		};
-
-		for try_path in paths_to_try {
-			if let Ok(matched) = router.at(&try_path) {
+		macro_rules! return_route_match {
+			($matched:expr) => {{
+				let matched = $matched;
 				let route_handler = matched.value;
 
 				// Extract parameters from matchit. matchit's `Params` iterator
 				// yields parameters in URL pattern declaration order, so we
-				// collect into a `Vec` to preserve that ordering all the way
-				// down to the tuple extractor (see issue #4013).
-				let params: Vec<(String, String)> = matched
-					.params
-					.iter()
-					.map(|(k, v)| (k.to_string(), v.to_string()))
-					.collect();
+				// store them in ordered `PathParams` all the way down to the
+				// tuple extractor (see issue #4013).
+				let mut params = PathParams::with_capacity(matched.params.iter().count());
+				for (key, value) in matched.params.iter() {
+					params.insert(key, value);
+				}
 
-				// Combine router-level and route-level middleware
-				let mut combined_middleware = middleware_stack.clone();
+				// Combine router-level and route-level middleware.
+				let mut combined_middleware = middleware_stack;
 				combined_middleware.extend(route_handler.middleware.iter().cloned());
 
 				return Some(RouteMatch {
@@ -193,6 +176,29 @@ impl ServerRouter {
 					middleware_stack: combined_middleware,
 					di_context,
 				});
+			}};
+		}
+
+		// Try matching with the original path first. Only allocate the
+		// Django-style APPEND_SLASH fallback path if the primary lookup misses.
+		if let Ok(matched) = router.at(search_path.as_ref()) {
+			return_route_match!(matched);
+		}
+
+		let alternate_path = if search_path.ends_with('/') {
+			let without_slash = search_path.trim_end_matches('/');
+			if without_slash.is_empty() {
+				Cow::Borrowed("/")
+			} else {
+				Cow::Owned(without_slash.to_string())
+			}
+		} else {
+			Cow::Owned(format!("{}/", search_path))
+		};
+
+		if alternate_path.as_ref() != search_path.as_ref() {
+			if let Ok(matched) = router.at(alternate_path.as_ref()) {
+				return_route_match!(matched);
 			}
 		}
 
@@ -208,21 +214,19 @@ impl ServerRouter {
 
 		// Apply prefix stripping logic (same as resolve method, ensures leading `/`)
 		let search_path = match Self::strip_prefix_normalized(&self.prefix, path) {
-			Some(p) => p.into_owned(),
+			Some(p) => p,
 			None => return false,
 		};
 
-		// Build paths to try with trailing slash toggled (Django-style APPEND_SLASH)
-		let paths_to_try = if search_path.ends_with('/') {
-			let without_slash = search_path.trim_end_matches('/').to_string();
-			let without_slash = if without_slash.is_empty() {
-				"/".to_string()
+		let alternate_path = if search_path.ends_with('/') {
+			let without_slash = search_path.trim_end_matches('/');
+			if without_slash.is_empty() {
+				Cow::Borrowed("/")
 			} else {
-				without_slash
-			};
-			vec![search_path.clone(), without_slash]
+				Cow::Owned(without_slash.to_string())
+			}
 		} else {
-			vec![search_path.clone(), format!("{}/", search_path)]
+			Cow::Owned(format!("{}/", search_path))
 		};
 
 		let method_routers = [
@@ -237,19 +241,25 @@ impl ServerRouter {
 
 		for router_lock in method_routers {
 			let router = router_lock.read().unwrap_or_else(PoisonError::into_inner);
-			for try_path in &paths_to_try {
-				if router.at(try_path).is_ok() {
-					return true;
-				}
+			if router.at(search_path.as_ref()).is_ok() {
+				return true;
+			}
+			if alternate_path.as_ref() != search_path.as_ref()
+				&& router.at(alternate_path.as_ref()).is_ok()
+			{
+				return true;
 			}
 		}
 
 		// Also check children routers with remaining path
 		for child in &self.children {
-			for try_path in &paths_to_try {
-				if child.path_exists_for_any_method(try_path) {
-					return true;
-				}
+			if child.path_exists_for_any_method(search_path.as_ref()) {
+				return true;
+			}
+			if alternate_path.as_ref() != search_path.as_ref()
+				&& child.path_exists_for_any_method(alternate_path.as_ref())
+			{
+				return true;
 			}
 		}
 
