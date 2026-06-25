@@ -201,6 +201,17 @@ impl MiddlewareChain {
 		}
 	}
 
+	/// Creates a middleware chain from an existing middleware stack.
+	pub fn with_middlewares(
+		handler: Arc<dyn Handler>,
+		middlewares: Vec<Arc<dyn Middleware>>,
+	) -> Self {
+		Self {
+			middlewares,
+			handler,
+		}
+	}
+
 	/// Adds a middleware to the chain using builder pattern.
 	///
 	/// # Examples
@@ -286,16 +297,12 @@ impl Handler for MiddlewareChain {
 			inner: self.handler.clone(),
 		});
 
-		// Filter middleware based on should_continue condition
-		// This achieves the O(k) optimization where k is the number of middleware that should run
-		let active_middlewares: Vec<_> = self
+		for middleware in self
 			.middlewares
 			.iter()
 			.rev()
 			.filter(|mw| mw.should_continue(&request))
-			.collect();
-
-		for middleware in active_middlewares {
+		{
 			let mw = middleware.clone();
 			let handler = current_handler.clone();
 
