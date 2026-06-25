@@ -31,6 +31,25 @@ fn assert_manifest_parses(manifest: &Path) {
 	);
 }
 
+fn assert_generated_rust_sources_do_not_use_tab_indents(root: &Path) {
+	for relative in [
+		"build.rs",
+		"src/bin/manage.rs",
+		"src/client/components/nav.rs",
+		"src/client/lib.rs",
+		"src/config/settings.rs",
+		"src/config/wasm.rs",
+		"src/lib.rs",
+		"tests/integration.rs",
+	] {
+		let content = std::fs::read_to_string(root.join(relative)).unwrap();
+		assert!(
+			!content.contains('\t'),
+			"generated Rust source should be rustfmt-clean before cargo make dev: {relative}"
+		);
+	}
+}
+
 #[rstest]
 #[tokio::test]
 #[serial(cwd)]
@@ -132,8 +151,19 @@ async fn startproject_pages_from_embedded_only() {
 		"package = \"reinhardt-web\", default-features = false, features = [\"pages\", \"client-router\"]"
 	));
 	assert!(cargo_toml.contains(
-		"features = [\"standard\", \"pages\", \"admin\", \"conf\", \"commands\", \"db-postgres\"]"
+		"features = [\"minimal\", \"pages\", \"admin\", \"conf\", \"commands\", \"db-sqlite\"]"
 	));
+	assert!(
+		!cargo_toml.contains("\"standard\"") && !cargo_toml.contains("\"db-postgres\""),
+		"generated pages manifest must not require PostgreSQL defaults:\n{cargo_toml}"
+	);
+	let base_toml = std::fs::read_to_string(generated.join("settings/base.toml")).unwrap();
+	assert!(
+		base_toml.contains("engine = \"sqlite\"")
+			&& base_toml.contains("name = \"db.sqlite3\"")
+			&& !base_toml.contains("engine = \"postgresql\""),
+		"generated pages settings must match the SQLite feature default:\n{base_toml}"
+	);
 	assert!(
 		cargo_toml.contains("required-features = [\"with-reinhardt\"]"),
 		"generated pages manage binary must be native-feature gated:\n{cargo_toml}"
@@ -195,6 +225,7 @@ async fn startproject_pages_from_embedded_only() {
 		!generated.join("src/shared.rs").exists() && !generated.join("src/shared").exists(),
 		"generated pages project must not create a root shared module"
 	);
+	assert_generated_rust_sources_do_not_use_tab_indents(&generated);
 	assert_manifest_parses(&generated.join("Cargo.toml"));
 }
 

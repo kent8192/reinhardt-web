@@ -21,6 +21,12 @@ Current benchmark targets are `performance_benchmarks`, `auth_benchmarks`, `sett
 connection wrapper overhead can be tracked alongside the existing framework
 utility benchmarks.
 
+Run the request allocation probe:
+
+```bash
+cargo run --release -p reinhardt-benchmarks --bin request_alloc_probe
+```
+
 ## Adding New Benchmarks
 
 1. Create a new file in the `benches/` directory
