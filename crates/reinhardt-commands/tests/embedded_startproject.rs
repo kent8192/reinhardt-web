@@ -31,6 +31,25 @@ fn assert_manifest_parses(manifest: &Path) {
 	);
 }
 
+fn assert_generated_rust_sources_do_not_use_tab_indents(root: &Path) {
+	for relative in [
+		"build.rs",
+		"src/bin/manage.rs",
+		"src/client/components/nav.rs",
+		"src/client/lib.rs",
+		"src/config/settings.rs",
+		"src/config/wasm.rs",
+		"src/lib.rs",
+		"tests/integration.rs",
+	] {
+		let content = std::fs::read_to_string(root.join(relative)).unwrap();
+		assert!(
+			!content.contains('\t'),
+			"generated Rust source should be rustfmt-clean before cargo make dev: {relative}"
+		);
+	}
+}
+
 #[rstest]
 #[tokio::test]
 #[serial(cwd)]
@@ -131,8 +150,12 @@ async fn startproject_pages_from_embedded_only() {
 		"package = \"reinhardt-web\", default-features = false, features = [\"pages\", \"client-router\"]"
 	));
 	assert!(cargo_toml.contains(
-		"features = [\"standard\", \"pages\", \"admin\", \"conf\", \"commands-server\", \"commands-autoreload\", \"db-sqlite\", \"forms\", \"auth-session\", \"middleware\", \"argon2-hasher\", \"static-files\"]"
+		"features = [\"minimal\", \"pages\", \"admin\", \"conf\", \"commands-server\", \"commands-autoreload\", \"db-sqlite\", \"forms\", \"auth-session\", \"middleware\", \"argon2-hasher\", \"static-files\"]"
 	));
+	assert!(
+		!cargo_toml.contains("\"standard\"") && !cargo_toml.contains("\"db-postgres\""),
+		"generated pages manifest must not require PostgreSQL defaults:\n{cargo_toml}"
+	);
 	assert!(
 		cargo_toml.contains("required-features = [\"with-reinhardt\"]")
 			&& cargo_toml.contains("default = [\"with-reinhardt\"]"),
@@ -210,6 +233,7 @@ async fn startproject_pages_from_embedded_only() {
 		shared_types.contains("// use serde::{Deserialize, Serialize};"),
 		"generated shared types placeholder should keep the serde import in the commented example:\n{shared_types}"
 	);
+	assert_generated_rust_sources_do_not_use_tab_indents(&generated);
 	assert_manifest_parses(&generated.join("Cargo.toml"));
 }
 
