@@ -100,6 +100,21 @@ fixture WASM builds, 16-17% p95 for server-only rebuilds, and 8% p95 for
 framework Pages WASM builds. Treat these as planning estimates until
 browser-visible p50/p95 runtime measurements are added.
 
+## Migration Graph Plan Measurements
+
+Use a focused migration-graph probe before claiming plan-generation wins. The
+2026-06-25 probe built a 10,000-migration graph with 100 apps, diamond
+dependencies within each app, and cross-app dependencies every tenth migration,
+then measured `MigrationGraph::topological_sort()` five times in release mode.
+
+| Version | Median | Per migration | Reduction |
+|---|---:|---:|---:|
+| `origin/develop/0.3.0` | 777.38 ms | 77.74 us | baseline |
+| adjacency-list dependents | 6.12 ms | 611 ns | 99.2% |
+
+This measures the graph ordering phase only. It does not include database
+introspection, schema validation, or migration execution.
+
 ## Native Endpoint Runtime Measurements
 
 Use the native endpoint benchmark before claiming request-dispatch or
