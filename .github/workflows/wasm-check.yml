@@ -19,6 +19,7 @@ env:
   CARGO_TARGET_DIR: /tmp/cargo_target
   CARGO_INCREMENTAL: 0
   CARGO_BUILD_JOBS: ${{ inputs.cargo-build-jobs || '1' }}
+  CARGO_NET_RETRY: 10
 
 jobs:
   # Verify the WASM-target build for the four base targets and four

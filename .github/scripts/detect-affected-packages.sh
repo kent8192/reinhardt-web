@@ -69,8 +69,8 @@ if [[ "$RUN_ALL" == "true" ]]; then
   echo "nextest-filter=" >> "$GITHUB_OUTPUT"
   echo "affected-packages=" >> "$GITHUB_OUTPUT"
   echo "cargo-packages=" >> "$GITHUB_OUTPUT"
-  echo "partition-count=12" >> "$GITHUB_OUTPUT"
-  echo "partitions-json=[1,2,3,4,5,6,7,8,9,10,11,12]" >> "$GITHUB_OUTPUT"
+  echo "partition-count=5" >> "$GITHUB_OUTPUT"
+  echo "partitions-json=[1,2,3,4,5]" >> "$GITHUB_OUTPUT"
   exit 0
 fi
 
@@ -90,8 +90,8 @@ if ! METADATA=$(cargo metadata --format-version 1 --no-deps) \
   echo "nextest-filter=" >> "$GITHUB_OUTPUT"
   echo "affected-packages=" >> "$GITHUB_OUTPUT"
   echo "cargo-packages=" >> "$GITHUB_OUTPUT"
-  echo "partition-count=12" >> "$GITHUB_OUTPUT"
-  echo "partitions-json=[1,2,3,4,5,6,7,8,9,10,11,12]" >> "$GITHUB_OUTPUT"
+  echo "partition-count=5" >> "$GITHUB_OUTPUT"
+  echo "partitions-json=[1,2,3,4,5]" >> "$GITHUB_OUTPUT"
   exit 0
 fi
 
@@ -211,14 +211,15 @@ echo "::notice::Packages to compile (${RDEPS_COUNT} total, including rdeps): ${A
 
 # Compute dynamic partition count based on rdeps scope. Issue #2881
 # Fewer affected packages → fewer partitions to avoid wasting runners.
-# Max partition count is 12 for broad/full runs. Small affected scopes still use
-# fewer partitions to avoid wasting runners on empty shards.
+# Max partition count is 5 for broad/full runs. This keeps the four native test
+# suites at 20 total shards, which fits GitHub-hosted runner concurrency while
+# still reducing the long cross-crate tail from its former 3-shard split.
 if (( RDEPS_COUNT <= 2 )); then
   PARTITION_COUNT=2
 elif (( RDEPS_COUNT <= 8 )); then
   PARTITION_COUNT=$RDEPS_COUNT
 else
-  PARTITION_COUNT=12
+  PARTITION_COUNT=5
 fi
 # Build JSON array for dynamic matrix (e.g., [1,2,3])
 PARTITIONS_JSON=$(seq 1 "$PARTITION_COUNT" | jq -cs .)
