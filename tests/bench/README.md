@@ -17,6 +17,9 @@ cargo bench -p reinhardt-benchmarks --bench performance_benchmarks
 ```
 
 Current benchmark targets are `performance_benchmarks`, `auth_benchmarks`, `settings_benchmarks`, and `concurrent_benchmarks`.
+`performance_benchmarks` includes the DB pool acquire/release hot path so
+connection wrapper overhead can be tracked alongside the existing framework
+utility benchmarks.
 
 ## Adding New Benchmarks
 
