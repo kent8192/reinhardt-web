@@ -9,6 +9,13 @@ publish = false
 # this path. Refs #4203.
 [workspace]
 
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "z"
+panic = "abort"
+strip = true
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
