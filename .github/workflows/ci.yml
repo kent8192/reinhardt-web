@@ -120,23 +120,21 @@ jobs:
 
   wasm-check:
     name: WASM Check
-    # Deferred to Phase 2b (Issue #4534): release self-hosted runner slots
-    # ~10 min earlier for jobs blocked on Spot vCPU quota. wasm-check only
-    # starts once unit-test and intra-crate-integration-test have completed.
+    # Run after the lightweight gates and overlap the long native test tail.
+    # This keeps WASM coverage on the critical path only when it is slower than
+    # the integration-test shards, instead of always adding a Phase 2b tail.
     #
-    # The if-condition uses !cancelled() + explicit success/skipped checks
-    # because unit-test / intra-crate-integration-test are gated on
-    # detect-affected (selectively skipped when no Rust packages are affected).
-    # Without these guards, the default success() semantics on `needs:` would
-    # cascade the skip to wasm-check, and ci-success (which lists wasm-check in
-    # always_required) would then fail on wasm-check.result == "skipped".
-    # CodeRabbit review feedback on PR #4574.
-    needs: [determine-runner, check-branch-status, unit-test, intra-crate-integration-test]
+    # The if-condition uses !cancelled() plus explicit lightweight-gate success
+    # checks because wasm-check is always required by ci-success. If we let the
+    # default success() semantics interact with any selectively skipped native
+    # test job, wasm-check could be skipped and fail aggregation.
+    needs: [determine-runner, check-branch-status, check, fmt, clippy]
     if: >-
       ${{ !cancelled()
         && needs.check-branch-status.outputs.has-conflicts != 'true'
-        && (needs.unit-test.result == 'success' || needs.unit-test.result == 'skipped')
-        && (needs.intra-crate-integration-test.result == 'success' || needs.intra-crate-integration-test.result == 'skipped') }}
+        && needs.check.result == 'success'
+        && needs.fmt.result == 'success'
+        && needs.clippy.result == 'success' }}
     uses: ./.github/workflows/wasm-check.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
@@ -232,7 +230,8 @@ jobs:
       cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
 
   # Phase 2a: Core tests run after lightweight checks pass.
-  # These run in parallel (up to ~17 self-hosted runners).
+  # These run in parallel with dynamic sharding; broad/full runs use more
+  # smaller shards while small affected scopes keep the runner count low.
   # Note: Each job runs on its own runner (no shared disk), so parallel execution is safe.
   # Integration tests are split into intra-crate and cross-crate to reduce disk usage per job.
   unit-test:
@@ -276,6 +275,8 @@ jobs:
       cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
       nextest-filter: ${{ needs.detect-affected.outputs.nextest-filter }}
       run-all: ${{ needs.detect-affected.outputs.run-all }}
+      partitions-json: ${{ needs.detect-affected.outputs.partitions-json }}
+      partition-count: ${{ needs.detect-affected.outputs.partition-count }}
 
   doc-test:
     name: Documentation Tests
@@ -303,8 +304,7 @@ jobs:
     needs: [check, fmt, clippy]
 
   # Phase 2a (continued): UI tests run in parallel with unit/integration tests.
-  # Dynamic partitioning reduces runner count for small-scope PRs,
-  # mitigating vCPU quota pressure from parallel execution.
+  # Dynamic partitioning keeps small-scope PRs from paying the full shard count.
   ui-test:
     name: UI Tests
     uses: ./.github/workflows/ui-test.yml
@@ -319,15 +319,16 @@ jobs:
       partitions-json: ${{ needs.detect-affected.outputs.partitions-json }}
       partition-count: ${{ needs.detect-affected.outputs.partition-count }}
 
-  # Phase 2b: Additional tests run after core tests complete.
-  # This phased approach prevents exceeding the Spot vCPU quota by
-  # ensuring Phase 2a runners have terminated before Phase 2b starts.
+  # Additional runtime checks. MSRV does not depend on test artifacts, so it
+  # starts after lightweight gates and overlaps the long integration-test tail
+  # instead of extending the critical path after cross-crate tests finish.
   # Note: examples-test runs as a separate standalone workflow.
   # Coverage runs only on main branch pushes (not on PRs).
   msrv-test:
     name: MSRV Test
     uses: ./.github/workflows/msrv-test.yml
-    needs: [unit-test, intra-crate-integration-test, cross-crate-integration-test, determine-runner]
+    needs: [check, fmt, clippy, determine-runner, detect-affected]
+    if: needs.detect-affected.outputs.has-affected == 'true'
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
       cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}

@@ -22,11 +22,11 @@ on:
       partitions-json:
         description: "JSON array of partition indices for dynamic matrix. Issue #2881"
         type: string
-        default: "[1,2,3,4,5,6,7,8]"
+        default: "[1,2,3,4,5]"
       partition-count:
         description: "Total partition count for nextest --partition. Issue #2881"
         type: string
-        default: "8"
+        default: "5"
   workflow_dispatch:
 
 env:
@@ -47,13 +47,13 @@ env:
 
 jobs:
   ui-test:
-    name: UI Tests (${{ matrix.partition }}/${{ inputs.partition-count || '8' }})
+    name: UI Tests (${{ matrix.partition }}/${{ inputs.partition-count || '5' }})
     runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        partition: ${{ fromJSON(inputs.partitions-json || '[1,2,3,4,5,6,7,8]') }}
+        partition: ${{ fromJSON(inputs.partitions-json || '[1,2,3,4,5]') }}
     steps:
       - name: Free Disk Space (Ubuntu)
         if: ${{ !contains(inputs.runner, 'self-hosted') }}
@@ -146,11 +146,11 @@ jobs:
           echo "Disk usage after additional cleanup:"
           df -h
 
-      - name: Run UI tests (partition ${{ matrix.partition }}/${{ inputs.partition-count || '8' }})
+      - name: Run UI tests (partition ${{ matrix.partition }}/${{ inputs.partition-count || '5' }})
         env:
           NEXTEST_FILTER_EXPR: ${{ inputs.nextest-filter }}
           RUN_ALL: ${{ inputs.run-all }}
-          PARTITION_COUNT: ${{ inputs.partition-count || '8' }}
+          PARTITION_COUNT: ${{ inputs.partition-count || '5' }}
         run: |
           if [[ "$RUN_ALL" != "true" && -n "$NEXTEST_FILTER_EXPR" ]]; then
             FILTER_EXPR="binary(/ui/) & ($NEXTEST_FILTER_EXPR)"
@@ -161,7 +161,7 @@ jobs:
             --profile ui-test \
             --workspace \
             -E "$FILTER_EXPR" \
-            --partition hash:${{ matrix.partition }}/$PARTITION_COUNT \
+            --partition "hash:${{ matrix.partition }}/$PARTITION_COUNT" \
             --no-fail-fast \
             --no-tests=warn \
             --status-level=none \
