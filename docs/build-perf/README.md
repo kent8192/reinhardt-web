@@ -133,6 +133,24 @@ root build path's `prost-build`/`tonic-build`/`tonic-prost-build` support
 stack. Keep future browser-WASM additions on native browser APIs unless a
 cross-target abstraction is required by generated user code.
 
+Combining this measured browser-WASM pruning with the 120 ms autoreload debounce
+default gives the following browser-visible tail-latency planning estimates:
+
+| Edit loop | Baseline tail | Current tail | Estimated reduction |
+|---|---:|---:|---:|
+| Static `page!` hot patch | 305 ms | 125 ms | 59.0% |
+| App fixture WASM build | 864 ms | 684 ms | 20.8% |
+| Server-only rebuild | 1.010 s | 0.830 s | 17.8% |
+| Browser-WASM `reinhardt-web --features pages` check | 29.09 s | 22.12 s | 24.0% |
+| Pages client rebuild, applying the measured 23.6% browser-WASM pruning ratio to the 1.753 s build component | 2.053 s | 1.459 s | 28.9% |
+
+The combined numbers are estimates for browser-visible tails rather than a live
+browser timing run: they add the fixed watcher debounce to the measured build or
+hot-patch means. The static patch, app fixture, server-only, and browser-WASM
+check rows use directly measured component timings; the Pages client rebuild row
+projects the measured browser-WASM pruning ratio onto the client rebuild
+component to size the rebuild-heavy tail-latency opportunity.
+
 ## Hot-Reload Target Selection
 
 The autoreload watcher classifies debounced paths before dispatching rebuilds.
