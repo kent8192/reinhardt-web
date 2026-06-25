@@ -124,10 +124,10 @@ pub async fn request_with_credentials(
 	let status = response.status();
 	let text_promise = response
 		.text()
-		.map_err(|e| ServerFnError::deserialization(js_error_message(e)))?;
+		.map_err(|e| ServerFnError::network(js_error_message(e)))?;
 	let text_value = JsFuture::from(text_promise)
 		.await
-		.map_err(|e| ServerFnError::deserialization(js_error_message(e)))?;
+		.map_err(|e| ServerFnError::network(js_error_message(e)))?;
 	let body = text_value.as_string().unwrap_or_default();
 
 	Ok(FetchResponse::new(status, body))

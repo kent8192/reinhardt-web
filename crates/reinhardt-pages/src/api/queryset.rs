@@ -390,7 +390,9 @@ where
 	/// Returns the count of matching results.
 	#[cfg(wasm)]
 	pub async fn count(&self) -> Result<usize, ServerFnError> {
-		let url = format!("{}?count=true", self.build_url());
+		let base_url = self.build_url();
+		let separator = if base_url.contains('?') { '&' } else { '?' };
+		let url = format!("{base_url}{separator}count=true");
 
 		#[derive(Deserialize)]
 		struct CountResponse {

@@ -331,11 +331,15 @@ use crate::shared::types::UserInfo;
 **Cause**: Generated client code is compiled without the `reinhardt-pages`
 runtime crate path in scope.
 
-**Solution**: Import the runtime crate or set the macro crate path when using
-custom re-exports:
+**Solution**: Import the runtime crate under its canonical name, or alias your
+custom re-export to the same name before using `#[server_fn]`:
 
 ```rust
 use reinhardt_pages as reinhardt_pages;
+```
+
+```rust
+use my_framework::pages as reinhardt_pages;
 ```
 
 ### Issue: Function signature mismatch between server and client
