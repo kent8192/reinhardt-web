@@ -104,11 +104,12 @@ pub async fn create_user(
     let args = CreateUserArgs { username, email };
     let body = serde_json::to_string(&args)?;
 
-    let response = reinhardt_pages::__private::fetch::request(
+    let response = reinhardt_pages::__private::fetch::request_with_credentials(
         "POST",
         endpoint,
         Some(&body),
         vec![("Content-Type".to_string(), "application/json".to_string())],
+        reinhardt_pages::__private::fetch::FetchCredentials::Include,
     )
         .await?;
 
@@ -330,11 +331,16 @@ use crate::shared::types::UserInfo;
 **Cause**: Generated client code is compiled without the `reinhardt-pages`
 runtime crate path in scope.
 
-**Solution**: Import the runtime crate or set the macro crate path when using
-custom re-exports:
+**Solution**: Import the runtime crate under its canonical name, alias your
+custom re-export to the same name before using `#[server_fn]`, or set the macro
+crate path when using custom re-exports:
 
 ```rust
 use reinhardt_pages as reinhardt_pages;
+```
+
+```rust
+use my_framework::pages as reinhardt_pages;
 ```
 
 ### Issue: Function signature mismatch between server and client

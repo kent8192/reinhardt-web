@@ -40,8 +40,9 @@ async fn custom_error_server_fn(value: u32) -> Result<u32, CustomClientError> {
 
 #[wasm_bindgen_test]
 fn test_custom_client_error_display_contract() {
-	let error = CustomClientError("client error".to_string());
-	assert_eq!(error.to_string(), "client error");
+	let error: CustomClientError =
+		reinhardt_pages::server_fn::ServerFnError::network("client error").into();
+	assert_eq!(error.to_string(), "Network error: client error");
 }
 
 // ============================================================================

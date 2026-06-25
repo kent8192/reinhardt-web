@@ -299,7 +299,7 @@ pub mod component;
 pub mod auth;
 pub mod csrf;
 #[doc(hidden)]
-pub mod fetch;
+mod fetch;
 // Static form metadata types for form! macro (WASM-compatible)
 pub mod form_generated;
 // Typed form runtime state (WASM-compatible)
@@ -422,7 +422,11 @@ pub use reinhardt_pages_macros::{FromRequest, client_page, component, page_props
 // Private re-exports used by macro-generated code. Not part of the public API.
 #[doc(hidden)]
 pub mod __private {
-	pub use crate::fetch;
+	pub mod fetch {
+		pub use crate::fetch::{
+			FetchCredentials, FetchResponse, request, request_with_credentials,
+		};
+	}
 	pub use bon;
 	pub use inventory;
 	pub use reinhardt_urls;
