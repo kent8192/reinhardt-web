@@ -151,7 +151,7 @@ async fn startproject_pages_from_embedded_only() {
 		"package = \"reinhardt-web\", default-features = false, features = [\"pages\", \"client-router\"]"
 	));
 	assert!(cargo_toml.contains(
-		"features = [\"minimal\", \"pages\", \"admin\", \"conf\", \"commands\", \"db-sqlite\"]"
+		"features = [\"minimal\", \"pages\", \"admin\", \"conf\", \"commands\", \"commands-server\", \"commands-autoreload\", \"server\", \"db-sqlite\"]"
 	));
 	assert!(
 		!cargo_toml.contains("\"standard\"") && !cargo_toml.contains("\"db-postgres\""),
@@ -254,7 +254,7 @@ async fn startproject_pages_adds_required_pages_features() {
 	let cargo_toml =
 		std::fs::read_to_string(tmp.path().join("pages_feature_proj/Cargo.toml")).unwrap();
 	assert!(cargo_toml.contains(
-		"features = [\"minimal\", \"pages\", \"client-router\", \"db-sqlite\", \"admin\", \"conf\", \"commands\"]"
+		"features = [\"minimal\", \"pages\", \"client-router\", \"db-sqlite\", \"admin\", \"conf\", \"commands\", \"commands-server\", \"commands-autoreload\", \"server\"]"
 	));
 	assert!(
 		!cargo_toml.contains("\"server-fn\""),
@@ -298,6 +298,10 @@ async fn startproject_pages_explicit_tutorial_features_get_minimal_runtime() {
 	assert!(
 		cargo_toml.contains("\"minimal\""),
 		"explicit Pages feature selections must be augmented with the minimal runtime facade:\n{cargo_toml}"
+	);
+	assert!(
+		cargo_toml.contains("\"server\""),
+		"explicit Pages feature selections must be augmented with the HTTP server facade:\n{cargo_toml}"
 	);
 	assert!(
 		cargo_toml.contains("\"db-sqlite\"") && !cargo_toml.contains("\"db-postgres\""),
