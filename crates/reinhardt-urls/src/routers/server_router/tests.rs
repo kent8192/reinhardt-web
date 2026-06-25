@@ -365,8 +365,8 @@ async fn test_route_matching_correctness() {
 	assert_eq!(route_match.param("post_id"), Some("789"));
 	assert_eq!(route_match.param("comment_id"), Some("101"));
 	assert_eq!(
-		route_match.params,
-		vec![
+		route_match.params.as_slice(),
+		&[
 			("post_id".to_string(), "789".to_string()),
 			("comment_id".to_string(), "101".to_string()),
 		],
@@ -396,8 +396,8 @@ async fn test_route_matching_preserves_url_pattern_order_issue_4013() {
 
 	// Assert
 	assert_eq!(
-		route_match.params,
-		vec![
+		route_match.params.as_slice(),
+		&[
 			("org".to_string(), "myslug".to_string()),
 			("cluster_id".to_string(), "5".to_string()),
 		],

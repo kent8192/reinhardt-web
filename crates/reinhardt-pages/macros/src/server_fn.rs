@@ -619,11 +619,15 @@ fn generate_server_fn(info: &ServerFnInfo) -> proc_macro2::TokenStream {
 ///
 ///     let url = "/api/server_fn/get_user";
 ///     let args = Args { id };
-///     let response = reqwest::Client::new().post(url)
-///         .json(&args)
-///         .send()
-///         .await?;
-///     response.json().await
+///     let body = serde_json::to_string(&args)?;
+///     let response = reinhardt_pages::__private::fetch::request(
+///         "POST",
+///         url,
+///         Some(&body),
+///         vec![("Content-Type".to_string(), "application/json".to_string())],
+///     )
+///     .await?;
+///     response.json()
 /// }
 /// ```
 fn generate_client_stub(
@@ -698,7 +702,7 @@ fn generate_client_stub(
 			// Inject CSRF header if available (automatic CSRF protection)
 			use #pages_crate::csrf::csrf_headers;
 			if let Some((__csrf_header_name, __csrf_header_value)) = csrf_headers() {
-				__request_builder = __request_builder.header(__csrf_header_name, &__csrf_header_value);
+				__headers.push((__csrf_header_name.to_string(), __csrf_header_value));
 			}
 		}
 	};
@@ -711,7 +715,7 @@ fn generate_client_stub(
 		// Inject Authorization header if JWT token is available
 		use #pages_crate::auth::auth_headers;
 		if let Some((__auth_header_name, __auth_header_value)) = auth_headers() {
-			__request_builder = __request_builder.header(__auth_header_name, &__auth_header_value);
+			__headers.push((__auth_header_name.to_string(), __auth_header_value));
 		}
 	};
 
@@ -726,8 +730,6 @@ fn generate_client_stub(
 			quote! {
 				__response
 					.json()
-					.await
-					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))
 			},
 		),
 		"url" => (
@@ -737,8 +739,7 @@ fn generate_client_stub(
 					.map_err(|e| #pages_crate::server_fn::ServerFnError::serialization(e.to_string()))?;
 			},
 			quote! {
-				let __text = __response.text().await
-					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))?;
+				let __text = __response.into_text();
 				::serde_json::from_str(&__text)
 					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))
 			},
@@ -752,8 +753,7 @@ fn generate_client_stub(
 				let __body = ::base64::Engine::encode(&::base64::engine::general_purpose::STANDARD, &__body_bytes);
 			},
 			quote! {
-				let __text = __response.text().await
-					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))?;
+				let __text = __response.into_text();
 				let __bytes = ::base64::Engine::decode(&::base64::engine::general_purpose::STANDARD, &__text)
 					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))?;
 				::rmp_serde::from_slice(&__bytes)
@@ -792,42 +792,34 @@ fn generate_client_stub(
 			// Serialize arguments based on codec
 			#serialize_code
 
-			// Build HTTP client and POST request.
-			// WASM: fetch_credentials_include() sends browser cookies via
-			// the Fetch API's credentials: "include" mode, which is
-			// required for CSRF double-submit cookie validation.
-			let __client = #pages_crate::__private::reqwest::Client::builder()
-				.build()
-				.expect("Failed to build reqwest client");
-
-			let mut __request_builder = __client.post(&__endpoint)
-				.header("Content-Type", #content_type);
-
-			// WASM: include browser cookies (CSRF, auth session) via Fetch API
-			#[cfg(target_arch = "wasm32")]
-			{
-				__request_builder = __request_builder.fetch_credentials_include();
-			}
+			let mut __headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> =
+				::std::vec![("Content-Type".to_string(), #content_type.to_string())];
 
 			#csrf_injection_code
 			#auth_injection_code
 
 			// Send request
-			let __response = __request_builder
-				.body(__body)
-				.send()
+			let __response = #pages_crate::__private::fetch::request(
+					"POST",
+					&__endpoint,
+					Some(&__body),
+					__headers,
+				)
 				.await
-				.map_err(|e| #pages_crate::server_fn::ServerFnError::network(e.to_string()))?;
+				?;
 
 			// Check HTTP status
-			if !__response.status().is_success() {
-				let __status = __response.status().as_u16();
-				let __message = __response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-				return Err(#pages_crate::server_fn::ServerFnError::server(__status, __message));
+			if !__response.is_success() {
+				let __status = __response.status();
+				let __message = __response.into_text();
+				return Err(#pages_crate::server_fn::ServerFnError::server(__status, __message).into());
 			}
 
 			// Deserialize response based on codec
-			#deserialize_code
+			{
+				#deserialize_code
+			}
+			.map_err(::std::convert::Into::into)
 		}
 	}
 }
@@ -1057,7 +1049,7 @@ fn generate_server_handler(
 	// Generate codec-specific deserialization code for server
 	let deserialize_code = match codec {
 		"json" => quote! {
-			let args: #args_struct_name = ::serde_json::from_str(&body)
+			let args: #args_struct_name = ::serde_json::from_slice(body)
 				.map_err(|e| format!("Failed to deserialize arguments: {}", e))?;
 		},
 		"url" => quote! {
@@ -1135,62 +1127,63 @@ fn generate_server_handler(
 	// Dynamically resolve crate paths for body extraction and registration
 	let pages_crate = get_reinhardt_pages_crate();
 
-	// Generate handler signature based on whether DI or extractors are needed.
-	// Both DI (#[inject]) and FromRequest extractor params require access to the
-	// raw Request object, so the handler signature uses Request in both cases.
-	let needs_request = !inject_params.is_empty() || !extractor_params.is_empty();
-	let (handler_signature, handler_body_extraction, wrapper_body_extraction, wrapper_call_args) =
-		if needs_request {
-			// Dynamically resolve reinhardt_http crate path
-			let http_crate = get_reinhardt_http_crate();
-
-			// When we have inject or extractor params, handler receives Request.
-			// Body reading is only needed when regular (Args-deserialized) params exist.
-			// If all params are extractors, the extractors themselves read the body.
-			let body_extraction = if !regular_params.is_empty() {
-				quote! {
-					let __content_type = __req.get_header("content-type").unwrap_or_default();
-					let body = __req.read_body()
-						.map_err(|e| format!("Failed to read body: {}", e))?;
-					let body = ::std::string::String::from_utf8(body.to_vec())
+	// Generate handler signature and body extraction.
+	// The handler receives Request in every native configuration. This keeps body
+	// handling in one place and lets JSON decode directly from Bytes when content
+	// negotiation is not needed.
+	let http_crate = get_reinhardt_http_crate();
+	let handler_signature = quote! {
+		pub async fn #handler_name(__req: #http_crate::Request) -> ::std::result::Result<::std::string::String, ::std::string::String>
+	};
+	let handler_body_extraction = if regular_params.is_empty() {
+		quote! {}
+	} else {
+		match codec {
+			"json" => quote! {
+				let __content_type = __req
+					.headers
+					.get("content-type")
+					.and_then(|value| value.to_str().ok())
+					.unwrap_or("");
+				let body = __req.read_body()
+					.map_err(|e| format!("Failed to read body: {}", e))?;
+				let __media_type = __content_type
+					.split(';')
+					.next()
+					.unwrap_or("")
+					.trim();
+				let __converted_body;
+				let body: &[u8] = if __media_type.is_empty()
+					|| __media_type.eq_ignore_ascii_case("application/json")
+				{
+					body.as_ref()
+				} else {
+					let __body_text = ::std::string::String::from_utf8(body.to_vec())
 						.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
-					let body = #pages_crate::server_fn::convert_body_for_codec(body, &__content_type, #codec)?;
-				}
-			} else {
-				quote! {}
-			};
-
-			(
-				quote! {
-					pub async fn #handler_name(__req: #http_crate::Request) -> ::std::result::Result<::std::string::String, ::std::string::String>
-				},
-				body_extraction,
-				// Wrapper doesn't extract body when DI/extractors are enabled; passes Request directly
-				quote! {
-					// Pass Request directly to handler (which will read the body)
-				},
-				vec![quote! { req }],
-			)
-		} else {
-			// No DI or extractors needed, handler receives body directly
-			(
-				quote! {
-					pub async fn #handler_name(body: ::std::string::String) -> ::std::result::Result<::std::string::String, ::std::string::String>
-				},
-				// Handler doesn't need body extraction (body is already a parameter)
-				quote! {},
-				// Wrapper needs to extract body from req with Content-Type negotiation
-				quote! {
-					let __content_type = req.get_header("content-type").unwrap_or_default();
-					let body = req.read_body()
-						.map_err(|e| format!("Failed to read body: {}", e))?;
-					let body = ::std::string::String::from_utf8(body.to_vec())
-						.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
-					let body = #pages_crate::server_fn::convert_body_for_codec(body, &__content_type, #codec)?;
-				},
-				vec![quote! { body }],
-			)
-		};
+					__converted_body = #pages_crate::server_fn::convert_body_for_codec(
+						__body_text,
+						&__content_type,
+						#codec,
+					)?;
+					__converted_body.as_bytes()
+				};
+			},
+			_ => quote! {
+				let __content_type = __req
+					.headers
+					.get("content-type")
+					.and_then(|value| value.to_str().ok())
+					.unwrap_or("");
+				let body = __req.read_body()
+					.map_err(|e| format!("Failed to read body: {}", e))?;
+				let body = ::std::string::String::from_utf8(body.to_vec())
+					.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+				let body = #pages_crate::server_fn::convert_body_for_codec(body, &__content_type, #codec)?;
+			},
+		}
+	};
+	let wrapper_body_extraction = quote! {};
+	let wrapper_call_args = vec![quote! { req }];
 
 	// Generate unique name for the static wrapper function
 	let static_wrapper_name = quote::format_ident!("__server_fn_static_wrapper_{}", name);
@@ -1249,6 +1242,7 @@ fn generate_server_handler(
 			}
 		})
 		.collect();
+	let uses_response_cookie_jar = !inject_params.is_empty() || !extractor_params.is_empty();
 
 	// MSW: Generate server-side MockableServerFn tokens only when msw feature is enabled
 	let msw_server_tokens = if msw_enabled {
@@ -1350,6 +1344,7 @@ fn generate_server_handler(
 				const NAME: &'static str = #name_str;
 				const CODEC: &'static str = #codec;
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
+				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
 
 			#msw_wasm_inner_tokens
@@ -1480,6 +1475,7 @@ fn generate_server_handler(
 				const NAME: &'static str = #name_str;
 				const CODEC: &'static str = #codec;
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
+				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
 
 			// Native-only handler entry point for explicit router registration.

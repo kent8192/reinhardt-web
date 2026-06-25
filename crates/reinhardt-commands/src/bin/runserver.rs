@@ -79,8 +79,8 @@ struct Args {
 	#[arg(long)]
 	noreload: bool,
 
-	/// Watch delay in milliseconds for file change debouncing (default: 500)
-	#[arg(long, default_value = "500")]
+	/// Watch delay in milliseconds for file change debouncing (default: 120)
+	#[arg(long, default_value = "120")]
 	watch_delay: u64,
 
 	/// Disable threading

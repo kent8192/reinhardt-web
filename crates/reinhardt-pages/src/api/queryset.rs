@@ -296,41 +296,52 @@ where
 		}
 	}
 
+	#[cfg(wasm)]
+	async fn fetch_response(
+		&self,
+		method: &str,
+		url: &str,
+		body: Option<&str>,
+	) -> Result<crate::fetch::FetchResponse, ServerFnError> {
+		use crate::csrf::csrf_headers;
+		use crate::fetch;
+
+		let mut headers = Vec::new();
+		if body.is_some() {
+			headers.push(("Content-Type".to_string(), "application/json".to_string()));
+		}
+		if let Some((header_name, header_value)) = csrf_headers() {
+			headers.push((header_name.to_string(), header_value));
+		}
+
+		let response = fetch::request(method, url, body, headers).await?;
+		if !response.is_success() {
+			return Err(ServerFnError::server(
+				response.status(),
+				response.into_text(),
+			));
+		}
+		Ok(response)
+	}
+
+	#[cfg(wasm)]
+	async fn fetch_json<R>(
+		&self,
+		method: &str,
+		url: &str,
+		body: Option<&str>,
+	) -> Result<R, ServerFnError>
+	where
+		R: DeserializeOwned,
+	{
+		self.fetch_response(method, url, body).await?.json()
+	}
+
 	/// Fetches all matching results.
 	#[cfg(wasm)]
 	pub async fn all(&self) -> Result<Vec<T>, ServerFnError> {
-		use crate::csrf::csrf_headers;
-		use reqwest::Client;
-
 		let url = self.build_url();
-		let client = Client::new();
-		let mut request = client.get(&url);
-
-		// Add CSRF header
-		if let Some((header_name, header_value)) = csrf_headers() {
-			request = request.header(header_name, header_value);
-		}
-
-		let response = request
-			.send()
-			.await
-			.map_err(|e| ServerFnError::Network(e.to_string()))?;
-
-		if !response.status().is_success() {
-			return Err(ServerFnError::Server {
-				status: response.status().as_u16(),
-				message: response
-					.status()
-					.canonical_reason()
-					.unwrap_or("Unknown")
-					.to_string(),
-			});
-		}
-
-		response
-			.json()
-			.await
-			.map_err(|e| ServerFnError::Deserialization(e.to_string()))
+		self.fetch_json("GET", &url, None).await
 	}
 
 	/// Fetches all matching results (non-WASM stub).
@@ -364,37 +375,8 @@ where
 	/// Fetches a single result by primary key.
 	#[cfg(wasm)]
 	pub async fn get(&self, pk: impl std::fmt::Display) -> Result<T, ServerFnError> {
-		use crate::csrf::csrf_headers;
-		use reqwest::Client;
-
 		let url = format!("{}{}/", self.endpoint.trim_end_matches('/'), pk);
-		let client = Client::new();
-		let mut builder = client.get(&url);
-
-		if let Some((header_name, header_value)) = csrf_headers() {
-			builder = builder.header(header_name, header_value);
-		}
-
-		let response = builder
-			.send()
-			.await
-			.map_err(|e| ServerFnError::Network(e.to_string()))?;
-
-		if !response.status().is_success() {
-			return Err(ServerFnError::Server {
-				status: response.status().as_u16(),
-				message: response
-					.status()
-					.canonical_reason()
-					.unwrap_or("Unknown")
-					.to_string(),
-			});
-		}
-
-		response
-			.json()
-			.await
-			.map_err(|e| ServerFnError::Deserialization(e.to_string()))
+		self.fetch_json("GET", &url, None).await
 	}
 
 	/// Fetches a single result by primary key (non-WASM stub).
@@ -408,44 +390,14 @@ where
 	/// Returns the count of matching results.
 	#[cfg(wasm)]
 	pub async fn count(&self) -> Result<usize, ServerFnError> {
-		use crate::csrf::csrf_headers;
-		use reqwest::Client;
-
-		// Many APIs support a count endpoint or header
 		let url = format!("{}?count=true", self.build_url());
-		let client = Client::new();
-		let mut builder = client.get(&url);
-
-		if let Some((header_name, header_value)) = csrf_headers() {
-			builder = builder.header(header_name, header_value);
-		}
-
-		let response = builder
-			.send()
-			.await
-			.map_err(|e| ServerFnError::Network(e.to_string()))?;
-
-		if !response.status().is_success() {
-			return Err(ServerFnError::Server {
-				status: response.status().as_u16(),
-				message: response
-					.status()
-					.canonical_reason()
-					.unwrap_or("Unknown")
-					.to_string(),
-			});
-		}
 
 		#[derive(Deserialize)]
 		struct CountResponse {
 			count: usize,
 		}
 
-		let result: CountResponse = response
-			.json()
-			.await
-			.map_err(|e| ServerFnError::Deserialization(e.to_string()))?;
-
+		let result: CountResponse = self.fetch_json("GET", &url, None).await?;
 		Ok(result.count)
 	}
 
@@ -469,37 +421,9 @@ where
 	/// Creates a new record.
 	#[cfg(wasm)]
 	pub async fn create(&self, data: &T) -> Result<T, ServerFnError> {
-		use crate::csrf::csrf_headers;
-		use reqwest::Client;
-
-		let client = Client::new();
-		let mut builder = client.post(&self.endpoint);
-
-		if let Some((header_name, header_value)) = csrf_headers() {
-			builder = builder.header(header_name, header_value);
-		}
-
-		let response = builder
-			.json(data)
-			.send()
-			.await
-			.map_err(|e| ServerFnError::Network(e.to_string()))?;
-
-		if !response.status().is_success() {
-			return Err(ServerFnError::Server {
-				status: response.status().as_u16(),
-				message: response
-					.status()
-					.canonical_reason()
-					.unwrap_or("Unknown")
-					.to_string(),
-			});
-		}
-
-		response
-			.json()
-			.await
-			.map_err(|e| ServerFnError::Deserialization(e.to_string()))
+		let body =
+			serde_json::to_string(data).map_err(|e| ServerFnError::Serialization(e.to_string()))?;
+		self.fetch_json("POST", &self.endpoint, Some(&body)).await
 	}
 
 	/// Creates a new record (non-WASM stub).
@@ -513,38 +437,10 @@ where
 	/// Updates an existing record.
 	#[cfg(wasm)]
 	pub async fn update(&self, pk: impl std::fmt::Display, data: &T) -> Result<T, ServerFnError> {
-		use crate::csrf::csrf_headers;
-		use reqwest::Client;
-
 		let url = format!("{}{}/", self.endpoint.trim_end_matches('/'), pk);
-		let client = Client::new();
-		let mut builder = client.put(&url);
-
-		if let Some((header_name, header_value)) = csrf_headers() {
-			builder = builder.header(header_name, header_value);
-		}
-
-		let response = builder
-			.json(data)
-			.send()
-			.await
-			.map_err(|e| ServerFnError::Network(e.to_string()))?;
-
-		if !response.status().is_success() {
-			return Err(ServerFnError::Server {
-				status: response.status().as_u16(),
-				message: response
-					.status()
-					.canonical_reason()
-					.unwrap_or("Unknown")
-					.to_string(),
-			});
-		}
-
-		response
-			.json()
-			.await
-			.map_err(|e| ServerFnError::Deserialization(e.to_string()))
+		let body =
+			serde_json::to_string(data).map_err(|e| ServerFnError::Serialization(e.to_string()))?;
+		self.fetch_json("PUT", &url, Some(&body)).await
 	}
 
 	/// Updates an existing record (non-WASM stub).
@@ -562,38 +458,10 @@ where
 		pk: impl std::fmt::Display,
 		data: &serde_json::Value,
 	) -> Result<T, ServerFnError> {
-		use crate::csrf::csrf_headers;
-		use reqwest::Client;
-
 		let url = format!("{}{}/", self.endpoint.trim_end_matches('/'), pk);
-		let client = Client::new();
-		let mut builder = client.patch(&url);
-
-		if let Some((header_name, header_value)) = csrf_headers() {
-			builder = builder.header(header_name, header_value);
-		}
-
-		let response = builder
-			.json(data)
-			.send()
-			.await
-			.map_err(|e| ServerFnError::Network(e.to_string()))?;
-
-		if !response.status().is_success() {
-			return Err(ServerFnError::Server {
-				status: response.status().as_u16(),
-				message: response
-					.status()
-					.canonical_reason()
-					.unwrap_or("Unknown")
-					.to_string(),
-			});
-		}
-
-		response
-			.json()
-			.await
-			.map_err(|e| ServerFnError::Deserialization(e.to_string()))
+		let body =
+			serde_json::to_string(data).map_err(|e| ServerFnError::Serialization(e.to_string()))?;
+		self.fetch_json("PATCH", &url, Some(&body)).await
 	}
 
 	/// Partially updates an existing record (non-WASM stub).
@@ -611,33 +479,8 @@ where
 	/// Deletes a record by primary key.
 	#[cfg(wasm)]
 	pub async fn delete(&self, pk: impl std::fmt::Display) -> Result<(), ServerFnError> {
-		use crate::csrf::csrf_headers;
-		use reqwest::Client;
-
 		let url = format!("{}{}/", self.endpoint.trim_end_matches('/'), pk);
-		let client = Client::new();
-		let mut builder = client.delete(&url);
-
-		if let Some((header_name, header_value)) = csrf_headers() {
-			builder = builder.header(header_name, header_value);
-		}
-
-		let response = builder
-			.send()
-			.await
-			.map_err(|e| ServerFnError::Network(e.to_string()))?;
-
-		if !response.status().is_success() {
-			return Err(ServerFnError::Server {
-				status: response.status().as_u16(),
-				message: response
-					.status()
-					.canonical_reason()
-					.unwrap_or("Unknown")
-					.to_string(),
-			});
-		}
-
+		self.fetch_response("DELETE", &url, None).await?;
 		Ok(())
 	}
 

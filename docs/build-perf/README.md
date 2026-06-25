@@ -86,6 +86,45 @@ full reload only after the selected rebuild pipelines succeed. Reloads that
 depend on a native server respawn also wait briefly for the child server TCP
 address to become reachable. Runtime measurements still need to be added before
 claiming browser-visible latency numbers.
+The default debounce window for the autoreload watcher is 120 ms and can be
+overridden with `runserver --watch-delay <milliseconds>`. Include the effective
+debounce value when reporting browser-visible tail-latency measurements because
+it is part of the request-to-HMR critical path.
+This default reduces the fixed debounce component by 180 ms versus the previous
+300 ms watcher default. Using the Issue #5218 summarized means as p50 proxies,
+that maps to estimated p50 reductions of about 59% for compile-free static
+`page!` hot patches, 21% for app fixture WASM builds, 18% for server-only
+rebuilds, and 9% for framework Pages WASM builds. If p95 rebuild cost is 10-20%
+above those means, the same fixed debounce cut maps to about 18-20% p95 for app
+fixture WASM builds, 16-17% p95 for server-only rebuilds, and 8% p95 for
+framework Pages WASM builds. Treat these as planning estimates until
+browser-visible p50/p95 runtime measurements are added.
+
+## Native Endpoint Runtime Measurements
+
+Use the native endpoint benchmark before claiming request-dispatch or
+server-function hot-path improvements:
+
+```bash
+cargo bench -p reinhardt-pages --bench server_fn_endpoint_benchmarks -- --sample-size 30 --measurement-time 2
+```
+
+The 2026-06-25 measurement compared `origin/develop/0.3.0` with only the
+benchmark harness applied against the optimized branch. Values are the mean of
+two Criterion runs on the same host; Criterion's persisted `change` lines were
+ignored because each worktree had independent historical samples.
+
+| Benchmark | Baseline mean | Optimized mean | Reduction |
+|---|---:|---:|---:|
+| `http_endpoint_plain_get` | 343.38 ns | 276.47 ns | 19.5% |
+| `http_endpoint_path_param_get` | 414.14 ns | 337.18 ns | 18.6% |
+| `server_fn_json_post` | 915.86 ns | 611.51 ns | 33.2% |
+
+The optimized path avoids per-request path-string allocations when the input
+path is already normalized, avoids allocating alternate trailing-slash vectors,
+skips response-cookie jar creation for body-only server functions, and
+deserializes JSON server-function requests directly from bytes when content
+negotiation is not required.
 
 Static `page!(|| { ... })` edits under WASM-owned client source paths can use
 the compile-free development hot patch path. The HMR payload replaces `#app`
@@ -95,6 +134,48 @@ files still fall back to the normal rebuild path. The Pages macro also emits
 batched attribute builders instead of one chained method call per generated
 attribute, which reduces generated Rust for attribute-heavy templates when a
 rebuild is still required.
+
+## Develop 0.3.0 Browser-WASM Pruning
+
+The browser-WASM `reinhardt-web --features pages` check path must not pull
+native build-time tooling or an HTTP client abstraction that duplicates the
+browser Fetch API. The 2026-06-24 dependency-pruning pass removed the root
+package's unused `tonic-prost-build` build script path and replaced the
+`reinhardt-pages` client-side `reqwest` usage with a small internal Fetch API
+wrapper.
+
+Measured against `origin/develop/0.3.0` at `0a60cfc3d3` with fresh
+`CARGO_TARGET_DIR` and `CARGO_BUILD_BUILD_DIR` directories, local
+`rustc-wrapper` disabled, and the browser-WASM check path warmed by one prior
+run:
+
+| Measurement | Baseline | Current | Reduction |
+|---|---:|---:|---:|
+| `cargo check -p reinhardt-web --no-default-features --features pages --target wasm32-unknown-unknown` with empty build output dirs | 28.79s | 22.00s | 23.6% |
+| Unique normal/build dependency nodes for the same target | 140 | 111 | 20.7% |
+
+The removed browser-WASM dependency nodes are `reqwest`, `sync_wrapper`, and the
+root build path's `prost-build`/`tonic-build`/`tonic-prost-build` support
+stack. Keep future browser-WASM additions on native browser APIs unless a
+cross-target abstraction is required by generated user code.
+
+Combining this measured browser-WASM pruning with the 120 ms autoreload debounce
+default gives the following browser-visible tail-latency planning estimates:
+
+| Edit loop | Baseline tail | Current tail | Estimated reduction |
+|---|---:|---:|---:|
+| Static `page!` hot patch | 305 ms | 125 ms | 59.0% |
+| App fixture WASM build | 864 ms | 684 ms | 20.8% |
+| Server-only rebuild | 1.010 s | 0.830 s | 17.8% |
+| Browser-WASM `reinhardt-web --features pages` check | 29.09 s | 22.12 s | 24.0% |
+| Pages client rebuild, applying the measured 23.6% browser-WASM pruning ratio to the 1.753 s build component | 2.053 s | 1.459 s | 28.9% |
+
+The combined numbers are estimates for browser-visible tails rather than a live
+browser timing run: they add the fixed watcher debounce to the measured build or
+hot-patch means. The static patch, app fixture, server-only, and browser-WASM
+check rows use directly measured component timings; the Pages client rebuild row
+projects the measured browser-WASM pruning ratio onto the client rebuild
+component to size the rebuild-heavy tail-latency opportunity.
 
 ## Hot-Reload Target Selection
 

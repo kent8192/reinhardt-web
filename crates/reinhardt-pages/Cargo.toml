@@ -90,6 +90,12 @@ web-sys-full = [
 	"web-sys/History",
 	"web-sys/Location",
 	"web-sys/Url",
+	"web-sys/Headers",
+	"web-sys/Request",
+	"web-sys/RequestCredentials",
+	"web-sys/RequestInit",
+	"web-sys/RequestMode",
+	"web-sys/Response",
 	"web-sys/WebSocket",
 	"web-sys/MessageEvent",
 	"web-sys/CloseEvent",
@@ -190,6 +196,13 @@ web-sys = { version = "0.3.83", features = [
 	"History",
 	"Location",
 	"Url",
+	# Fetch API
+	"Headers",
+	"Request",
+	"RequestCredentials",
+	"RequestInit",
+	"RequestMode",
+	"Response",
 	# Storage API (for JWT token management)
 	"Storage",
 	# WebSocket API
@@ -205,7 +218,6 @@ reinhardt-core = {workspace = true, default-features = false, features = ["react
 smallvec = { workspace = true }
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 wasm-bindgen-futures = "0.4.56"
-reqwest = { workspace = true, default-features = false, features = ["json"] }
 getrandom = { version = "0.3", features = ["wasm_js"] }
 uuid = { version = "1.7", features = ["v7", "js"] }
 # Issue #4217: depend on reinhardt-urls on wasm to consume the canonical
@@ -283,6 +295,10 @@ crate-type = ["rlib"]
 
 [[bench]]
 name = "wasm_framework_benchmarks"
+harness = false
+
+[[bench]]
+name = "server_fn_endpoint_benchmarks"
 harness = false
 
 [[test]]

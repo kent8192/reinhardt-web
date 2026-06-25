@@ -104,13 +104,15 @@ pub async fn create_user(
     let args = CreateUserArgs { username, email };
     let body = serde_json::to_string(&args)?;
 
-    let response = reqwest::Client::new().post(endpoint)
-        .header("Content-Type", "application/json")
-        .body(body)
-        .send()
+    let response = reinhardt_pages::__private::fetch::request(
+        "POST",
+        endpoint,
+        Some(&body),
+        vec![("Content-Type".to_string(), "application/json".to_string())],
+    )
         .await?;
 
-    response.json().await
+    response.json()
 }
 
 // Server handler (cfg not wasm32)
@@ -323,15 +325,16 @@ use {
 use crate::shared::types::UserInfo;
 ```
 
-### Issue: "failed to resolve: could not find `reqwest`"
+### Issue: "failed to resolve: could not find `fetch`"
 
-**Cause**: Missing WASM dependency.
+**Cause**: Generated client code is compiled without the `reinhardt-pages`
+runtime crate path in scope.
 
-**Solution**: Add to `Cargo.toml`:
+**Solution**: Import the runtime crate or set the macro crate path when using
+custom re-exports:
 
-```toml
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-reqwest = { version = "0.12", features = ["json"] }
+```rust
+use reinhardt_pages as reinhardt_pages;
 ```
 
 ### Issue: Function signature mismatch between server and client
