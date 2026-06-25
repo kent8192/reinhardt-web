@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.2.2...reinhardt-core@v0.2.3) - 2026-06-25
+
+### Added
+
+- *(macros)* make user macro inert on wasm
+
+### Documentation
+
+- update version references to v0.2.1
+- update version references to v0.2.2
+
+### Fixed
+
+- *(macros)* preserve serde field attributes on Info structs
+
 ## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.2.0...reinhardt-core@v0.2.1) - 2026-06-23
 
 ### Added

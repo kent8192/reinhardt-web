@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.2...reinhardt-commands@v0.2.3) - 2026-06-25
+
+### Documentation
+
+- update version references to v0.2.1
+- update version references to v0.2.2
+
+### Fixed
+
+- *(scaffolding)* stabilize Pages basis tutorial scaffold
+- *(scaffolding)* default pages projects to sqlite
+- *(ci)* clear pages scaffold ci blockers
+
+### Maintenance
+
+- *(scaffolding)* stack issue 5426 fix on tutorial PR
+
 ## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.1...reinhardt-commands@v0.2.2) - 2026-06-25
 
 ### Documentation
