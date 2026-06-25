@@ -51,7 +51,7 @@ Install the Reinhardt project generator before starting Part 1:
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.1"
+cargo install reinhardt-admin-cli --version "0.2.2"
 ```
 
 After installation, the command is `reinhardt-admin`.

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.1...reinhardt-web@v0.2.2) - 2026-06-25
+
+### Documentation
+
+- *(views)* align viewset doctest serializers
+- update version references to v0.2.1
+
+### Fixed
+
+- *(macros)* preserve serde field attributes on Info structs
+- *(tests)* align viewset serializer fixtures
+- *(examples)* align tutorial viewset serializer
+- *(scaffolding)* stabilize Pages basis tutorial scaffold
+- *(scaffolding)* default pages projects to sqlite
+- *(ci)* clear pages scaffold ci blockers
+
+### Maintenance
+
+- *(scaffolding)* stack issue 5426 fix on tutorial PR
+- merge origin/main into user wasm branch
+
 ## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0...reinhardt-web@v0.2.1) - 2026-06-23
 
 ### Documentation
