@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::hint::black_box;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct EchoResponse {
+pub struct EchoResponse {
 	value: u32,
 	label: String,
 }
