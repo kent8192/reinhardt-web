@@ -132,10 +132,11 @@ impl ServerRouter {
 		self.compile_routes();
 
 		// Normalize path for matchit lookup - routes are registered with leading slash.
-		let search_path = if path.starts_with('/') {
+		// Borrow the common already-normalized path to avoid per-request allocation.
+		let search_path: Cow<'_, str> = if path.starts_with('/') {
 			Cow::Borrowed(path)
 		} else {
-			Cow::Owned(format!("/{}", path))
+			Cow::Owned(format!("/{path}"))
 		};
 
 		// Use matchit to find matching route - O(m) complexity
@@ -185,21 +186,24 @@ impl ServerRouter {
 			return_route_match!(matched);
 		}
 
-		let alternate_path = if search_path.ends_with('/') {
-			let without_slash = search_path.trim_end_matches('/');
-			if without_slash.is_empty() {
-				Cow::Borrowed("/")
+		if search_path.as_ref().ends_with('/') {
+			let without_slash = search_path.as_ref().trim_end_matches('/');
+			let fallback_path = if without_slash.is_empty() {
+				"/"
 			} else {
-				Cow::Owned(without_slash.to_string())
+				without_slash
+			};
+
+			if fallback_path != search_path.as_ref()
+				&& let Ok(matched) = router.at(fallback_path)
+			{
+				return_route_match!(matched);
 			}
 		} else {
-			Cow::Owned(format!("{}/", search_path))
-		};
-
-		if alternate_path.as_ref() != search_path.as_ref()
-			&& let Ok(matched) = router.at(alternate_path.as_ref())
-		{
-			return_route_match!(matched);
+			let fallback_path = format!("{}/", search_path.as_ref());
+			if let Ok(matched) = router.at(&fallback_path) {
+				return_route_match!(matched);
+			}
 		}
 
 		None
@@ -218,17 +222,6 @@ impl ServerRouter {
 			None => return false,
 		};
 
-		let alternate_path = if search_path.ends_with('/') {
-			let without_slash = search_path.trim_end_matches('/');
-			if without_slash.is_empty() {
-				Cow::Borrowed("/")
-			} else {
-				Cow::Owned(without_slash.to_string())
-			}
-		} else {
-			Cow::Owned(format!("{}/", search_path))
-		};
-
 		let method_routers = [
 			&self.get_router,
 			&self.post_router,
@@ -239,28 +232,44 @@ impl ServerRouter {
 			&self.options_router,
 		];
 
-		for router_lock in method_routers {
-			let router = router_lock.read().unwrap_or_else(PoisonError::into_inner);
-			if router.at(search_path.as_ref()).is_ok() {
-				return true;
+		let path_exists = |candidate_path: &str| {
+			for router_lock in method_routers {
+				let router = router_lock.read().unwrap_or_else(PoisonError::into_inner);
+				if router.at(candidate_path).is_ok() {
+					return true;
+				}
 			}
-			if alternate_path.as_ref() != search_path.as_ref()
-				&& router.at(alternate_path.as_ref()).is_ok()
-			{
-				return true;
+
+			// Also check children routers with remaining path.
+			for child in &self.children {
+				if child.path_exists_for_any_method(candidate_path) {
+					return true;
+				}
 			}
+
+			false
+		};
+
+		// Try matching with the original path first. If that fails, try with
+		// trailing slash toggled (Django-style APPEND_SLASH behavior).
+		if path_exists(search_path.as_ref()) {
+			return true;
 		}
 
-		// Also check children routers with remaining path
-		for child in &self.children {
-			if child.path_exists_for_any_method(search_path.as_ref()) {
-				return true;
+		if search_path.as_ref().ends_with('/') {
+			let without_slash = search_path.as_ref().trim_end_matches('/');
+			let fallback_path = if without_slash.is_empty() {
+				"/"
+			} else {
+				without_slash
+			};
+
+			if fallback_path != search_path.as_ref() {
+				return path_exists(fallback_path);
 			}
-			if alternate_path.as_ref() != search_path.as_ref()
-				&& child.path_exists_for_any_method(alternate_path.as_ref())
-			{
-				return true;
-			}
+		} else {
+			let fallback_path = format!("{}/", search_path.as_ref());
+			return path_exists(&fallback_path);
 		}
 
 		false
