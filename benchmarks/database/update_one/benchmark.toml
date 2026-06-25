@@ -1,0 +1,9 @@
+[scenario]
+category = "database"
+name = "update_one"
+runner = "criterion"
+metric = "mutation_latency"
+unit = "us/mutation"
+workload = "Update one row by primary key and decode the changed record."
+success = "One row is updated with the expected version counter."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

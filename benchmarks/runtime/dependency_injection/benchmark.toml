@@ -1,0 +1,9 @@
+[scenario]
+category = "runtime"
+name = "dependency_injection"
+runner = "criterion"
+metric = "request_latency"
+unit = "ns/request"
+workload = "GET /di resolves one singleton service and one request-scoped value."
+success = "HTTP 200 with values from both dependencies."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

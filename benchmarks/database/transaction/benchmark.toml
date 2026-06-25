@@ -1,0 +1,9 @@
+[scenario]
+category = "database"
+name = "transaction"
+runner = "criterion"
+metric = "transaction_latency"
+unit = "us/transaction"
+workload = "Run a transaction containing one insert, one update, and one select."
+success = "The transaction commits and returns the selected row."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

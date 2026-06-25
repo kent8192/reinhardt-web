@@ -267,6 +267,46 @@ description = "Run benchmark tests in tests/bench"
 command = "cargo"
 args = ["bench", "--manifest-path", "tests/bench/Cargo.toml"]
 
+[tasks.benchmark-suite-check]
+description = "Validate framework comparison benchmark suite manifests"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks
+export CARGO_TARGET_DIR=target
+cargo run --locked -- check
+'''
+
+[tasks.benchmark-suite-list]
+description = "List framework comparison benchmark suite scenarios"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks
+export CARGO_TARGET_DIR=target
+cargo run --locked -- list
+'''
+
+[tasks.benchmark-suite-dry-run]
+description = "Preview framework comparison benchmark suite runners and metrics"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks
+export CARGO_TARGET_DIR=target
+cargo run --locked -- dry-run
+'''
+
+[tasks.benchmark-suite-measure]
+description = "Measure framework comparison benchmark suite manifest coverage"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks
+export CARGO_TARGET_DIR=target
+cargo run --locked -- measure
+'''
+
 [tasks.unit-test]
 description = "Run unit tests (src/)"
 command = "cargo"

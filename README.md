@@ -311,6 +311,11 @@ For build-loop performance work, use `cargo make bench-builds-dry-run`
 to inspect the benchmark commands and `cargo make bench-builds` to write
 a reproducible report under `docs/build-perf/`. See
 [Build Performance](instructions/BUILD_PERFORMANCE.md) for details.
+For cross-framework comparisons against Reinhardt, Axum, Actix Web, and Loco,
+use `cargo make benchmark-suite-list` to inspect the matrix and
+`cargo make benchmark-suite-check` to validate the committed scenario manifests
+under `benchmarks/`. Use `cargo make benchmark-suite-measure` to record the
+scenario coverage and manifest validation timing for PR evidence.
 
 ### 4. Create Your First App
 

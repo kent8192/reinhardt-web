@@ -1,0 +1,9 @@
+[scenario]
+category = "contract"
+name = "validate_contract"
+runner = "criterion"
+metric = "validation_latency"
+unit = "us/run"
+workload = "Validate a generated contract for schema, route, and settings consistency."
+success = "Validation returns zero errors."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

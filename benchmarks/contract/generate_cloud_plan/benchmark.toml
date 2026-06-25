@@ -1,0 +1,9 @@
+[scenario]
+category = "contract"
+name = "generate_cloud_plan"
+runner = "criterion"
+metric = "plan_generation_latency"
+unit = "us/run"
+workload = "Generate a cloud deployment plan from a validated app contract."
+success = "The generated plan includes service, database, migration, and settings resources."
+targets = ["reinhardt", "axum", "actix-web", "loco"]
