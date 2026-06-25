@@ -7,6 +7,10 @@ use reinhardt_admin::core::database::{
 	AdminDatabase, build_composite_filter_condition, build_single_filter_expr,
 	filter_value_to_sea_value,
 };
+use reinhardt_db::backends::{
+	connection::DatabaseConnection as BackendsConnection,
+	types::{QueryValue, Row},
+};
 use reinhardt_db::orm::annotation::Expression;
 use reinhardt_db::orm::expressions::{F, OuterRef};
 use reinhardt_db::orm::{
@@ -15,6 +19,7 @@ use reinhardt_db::orm::{
 use reinhardt_query::{
 	Alias, ColumnRef, Condition, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
 };
+use reinhardt_test::fixtures::mock::MockDatabaseBackend;
 use reinhardt_test::fixtures::mock_connection;
 use rstest::*;
 use std::collections::HashMap;
@@ -28,6 +33,12 @@ struct User {
 }
 
 reinhardt_test::impl_test_model!(User, i64, "users");
+
+fn admin_database_from_mock(mock: MockDatabaseBackend) -> AdminDatabase {
+	let backends_conn = BackendsConnection::new(Arc::new(mock));
+	let conn = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
+	AdminDatabase::new(conn)
+}
 
 // ==================== AdminDatabase CRUD tests ====================
 
@@ -505,6 +516,101 @@ async fn test_count_with_condition_combined(mock_connection: DatabaseConnection)
 
 	// Assert
 	assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_list_with_condition_and_count_uses_single_query_for_non_empty_page() {
+	// Arrange
+	let mut mock = MockDatabaseBackend::new();
+	mock.expect_fetch_all()
+		.withf(|sql, _| {
+			sql.contains("COUNT(*) OVER()")
+				&& sql.contains("__reinhardt_total_count")
+				&& sql.contains("ORDER BY")
+		})
+		.times(1)
+		.returning(|_, _| {
+			let mut row = Row::new();
+			row.data.insert("id".to_string(), QueryValue::Int(42));
+			row.data
+				.insert("name".to_string(), QueryValue::String("Alice".to_string()));
+			row.data.insert(
+				"password_hash".to_string(),
+				QueryValue::String("secret".to_string()),
+			);
+			row.data
+				.insert("__reinhardt_total_count".to_string(), QueryValue::Int(3));
+			Ok(vec![row])
+		});
+	mock.expect_fetch_one().times(0);
+
+	let db = admin_database_from_mock(mock);
+
+	// Act
+	let (rows, count) = db
+		.list_with_condition_and_count::<User>("users", None, vec![], Some("-id"), 0, 50)
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(count, 3);
+	assert_eq!(rows.len(), 1);
+	assert_eq!(rows[0].get("name"), Some(&serde_json::json!("Alice")));
+	assert!(!rows[0].contains_key("__reinhardt_total_count"));
+	assert!(!rows[0].contains_key("password_hash"));
+}
+
+#[tokio::test]
+async fn test_list_with_condition_and_count_empty_first_page_uses_single_query() {
+	// Arrange
+	let mut mock = MockDatabaseBackend::new();
+	mock.expect_fetch_all()
+		.withf(|sql, _| sql.contains("COUNT(*) OVER()") && sql.contains("__reinhardt_total_count"))
+		.times(1)
+		.returning(|_, _| Ok(Vec::new()));
+	mock.expect_fetch_one().times(0);
+
+	let db = admin_database_from_mock(mock);
+
+	// Act
+	let (rows, count) = db
+		.list_with_condition_and_count::<User>("users", None, vec![], None, 0, 50)
+		.await
+		.unwrap();
+
+	// Assert
+	assert!(rows.is_empty());
+	assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn test_list_with_condition_and_count_empty_later_page_counts_for_pagination() {
+	// Arrange
+	let mut mock = MockDatabaseBackend::new();
+	mock.expect_fetch_all()
+		.withf(|sql, _| sql.contains("COUNT(*) OVER()") && sql.contains("__reinhardt_total_count"))
+		.times(1)
+		.returning(|_, _| Ok(Vec::new()));
+	mock.expect_fetch_one()
+		.withf(|sql, _| sql.contains("COUNT(*) AS count"))
+		.times(1)
+		.returning(|_, _| {
+			let mut row = Row::new();
+			row.data.insert("count".to_string(), QueryValue::Int(5));
+			Ok(row)
+		});
+
+	let db = admin_database_from_mock(mock);
+
+	// Act
+	let (rows, count) = db
+		.list_with_condition_and_count::<User>("users", None, vec![], None, 50, 50)
+		.await
+		.unwrap();
+
+	// Assert
+	assert!(rows.is_empty());
+	assert_eq!(count, 5);
 }
 
 // ==================== FieldRef/OuterRef/Expression filter tests ====================
