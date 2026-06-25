@@ -126,6 +126,24 @@ skips response-cookie jar creation for body-only server functions, and
 deserializes JSON server-function requests directly from bytes when content
 negotiation is not required.
 
+### Request Allocation Probe
+
+Use the allocation probe before claiming request-allocation changes:
+
+```bash
+cargo run --release -p reinhardt-benchmarks --bin request_alloc_probe
+```
+
+The 2026-06-25 measurement compared `origin/develop/0.3.0` with the same probe
+after inlining small path-parameter sets and adding the single-middleware chain
+fast path:
+
+| Probe | Baseline | Optimized | Reduction |
+|---|---:|---:|---:|
+| `server_router_static_build_plus_handle` | 6 alloc/request | 6 alloc/request | 0.0% |
+| `server_router_two_params_build_plus_handle` | 11 alloc/request | 10 alloc/request | 9.1% |
+| `server_router_one_middleware_build_plus_handle` | 15 alloc/request | 12 alloc/request | 20.0% |
+
 Static `page!(|| { ... })` edits under WASM-owned client source paths can use
 the compile-free development hot patch path. The HMR payload replaces `#app`
 contents, preserving the development script and page shell. Dynamic Rust
