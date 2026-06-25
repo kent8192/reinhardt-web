@@ -15,14 +15,14 @@ The finished reference for this tutorial is `examples/examples-tutorial-basis`. 
 
 ## Install the Tools
 
-Use Rust 1.96.0 or newer. The `0.3.0` generator and the generated Rust
+Use Rust 1.96.0 or newer. The `0.3.0-rc.4` generator and the generated Rust
 2024 project require that toolchain level.
 
 Install the Reinhardt project generator:
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.3.0"
+cargo install reinhardt-admin-cli --version "0.3.0-rc.4"
 ```
 
 The installed binary is `reinhardt-admin`.
@@ -115,11 +115,11 @@ configuration features selected by `startproject`:
 
 ```toml
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-reinhardt = { version = "0.3.0", package = "reinhardt-web", default-features = false, features = ["pages", "client-router"] }
+reinhardt = { version = "0.3.0-rc.4", package = "reinhardt-web", default-features = false, features = ["pages", "client-router"] }
 wasm-bindgen = "=0.2.122"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-reinhardt = { version = "0.3.0", package = "reinhardt-web", default-features = false, features = [
+reinhardt = { version = "0.3.0-rc.4", package = "reinhardt-web", default-features = false, features = [
     "minimal",
     "pages",
     "admin",

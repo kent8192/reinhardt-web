@@ -24,27 +24,25 @@ Cloud storage backend abstraction for the Reinhardt framework, inspired by
 
 Add this to your `Cargo.toml`:
 
-<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-storages = "0.3.0"
+reinhardt-storages = "0.2.0-rc.2"
 ```
 
 ### Feature Flags
 
 By default, `reinhardt-storages` enables the `s3` and `local` backends.
 
-<!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
 # Only local storage
-reinhardt-storages = { version = "0.3.0", default-features = false, features = ["local"] }
+reinhardt-storages = { version = "0.2.0-rc.2", default-features = false, features = ["local"] }
 
 # S3 only
-reinhardt-storages = { version = "0.3.0", default-features = false, features = ["s3"] }
+reinhardt-storages = { version = "0.2.0-rc.2", default-features = false, features = ["s3"] }
 
 # All available backends
-reinhardt-storages = { version = "0.3.0", features = ["all"] }
+reinhardt-storages = { version = "0.2.0-rc.2", features = ["all"] }
 ```
 
 Available features:
