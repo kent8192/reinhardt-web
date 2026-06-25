@@ -51,11 +51,11 @@ CARGO_TARGET_DIR=target cargo bench --locked --bench runtime_http -- --noplot
 
 The `runtime_http` benchmark currently executes `hello_world`, `json_echo`,
 `path_params`, and `query_params` against Reinhardt, Axum, Actix Web, and Loco
-using in-process framework services.
+using loopback HTTP servers and a shared HTTP client.
 
 ## Categories
 
-Runtime scenarios measure in-process request handling behavior. Database
+Runtime scenarios measure request handling behavior. Database
 scenarios measure app data-path behavior using the same fixture data shape per
 target. Compile-time scenarios measure scaffolded application build loops.
 Contract scenarios measure introspection and deployment-contract generation

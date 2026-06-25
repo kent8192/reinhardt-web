@@ -316,7 +316,7 @@ use `cargo make benchmark-suite-list` to inspect the matrix and
 `cargo make benchmark-suite-check` to validate the committed scenario manifests
 under `benchmarks/`. Use `cargo make benchmark-suite-measure` to record the
 scenario coverage and manifest validation timing for PR evidence. Use
-`cargo make benchmark-runtime-http` to run the concrete in-process HTTP runtime
+`cargo make benchmark-runtime-http` to run the concrete loopback HTTP runtime
 benchmarks for `hello_world`, `json_echo`, `path_params`, and `query_params`
 across all four targets.
 

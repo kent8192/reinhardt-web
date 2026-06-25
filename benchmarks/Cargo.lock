@@ -3329,11 +3329,12 @@ dependencies = [
  "loco-rs",
  "reinhardt-core",
  "reinhardt-http",
+ "reinhardt-server",
  "reinhardt-urls",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "tokio",
- "tower 0.5.3",
 ]
 
 [[package]]
@@ -3503,6 +3504,26 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "reinhardt-server"
+version = "0.3.0-rc.4"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "http 1.4.2",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "ipnet",
+ "reinhardt-conf",
+ "reinhardt-core",
+ "reinhardt-di",
+ "reinhardt-http",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
