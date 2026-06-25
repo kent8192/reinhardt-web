@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.4...reinhardt-commands@v0.3.0-rc.5) - 2026-06-25
+
+### Fixed
+
+- *(scaffolding)* default pages projects to sqlite
+
 ## [0.3.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.3...reinhardt-commands@v0.3.0-rc.4) - 2026-06-24
 
 ### Changed

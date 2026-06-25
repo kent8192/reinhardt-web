@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.0-rc.4...reinhardt-db@v0.3.0-rc.5) - 2026-06-25
+
+### Performance
+
+- *(db)* reduce pool acquire overhead
+
 ## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.0-rc.2...reinhardt-db@v0.3.0-rc.3) - 2026-06-23
 
 ### Fixed
