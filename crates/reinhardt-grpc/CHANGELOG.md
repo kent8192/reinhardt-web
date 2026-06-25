@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.2.1...reinhardt-grpc@v0.2.2) - 2026-06-25
+
+### Documentation
+
+- update version references to v0.2.1
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc@v0.1.3...reinhardt-grpc@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-grpc` for the Reinhardt 0.2.0 line. This
