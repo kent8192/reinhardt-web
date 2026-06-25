@@ -7,6 +7,7 @@ use super::ServerRouter;
 use super::types::RouteMatch;
 use hyper::Method;
 use reinhardt_di::InjectionContext;
+use reinhardt_http::PathParams;
 use reinhardt_middleware::Middleware;
 use std::borrow::Cow;
 use std::sync::{Arc, PoisonError};
@@ -152,55 +153,57 @@ impl ServerRouter {
 
 		let router = router_lock.read().unwrap_or_else(PoisonError::into_inner);
 
-		let build_route_match = |try_path: &str| {
-			if let Ok(matched) = router.at(try_path) {
+		macro_rules! return_route_match {
+			($matched:expr) => {{
+				let matched = $matched;
 				let route_handler = matched.value;
 
 				// Extract parameters from matchit. matchit's `Params` iterator
 				// yields parameters in URL pattern declaration order, so we
-				// collect into a `Vec` to preserve that ordering all the way
-				// down to the tuple extractor (see issue #4013).
-				let params: Vec<(String, String)> = matched
-					.params
-					.iter()
-					.map(|(k, v)| (k.to_string(), v.to_string()))
-					.collect();
+				// store them in ordered `PathParams` all the way down to the
+				// tuple extractor (see issue #4013).
+				let mut params = PathParams::with_capacity(matched.params.iter().count());
+				for (key, value) in matched.params.iter() {
+					params.insert(key, value);
+				}
 
-				// Combine router-level and route-level middleware
-				let mut combined_middleware = middleware_stack.clone();
+				// Combine router-level and route-level middleware.
+				let mut combined_middleware = middleware_stack;
 				combined_middleware.extend(route_handler.middleware.iter().cloned());
 
 				return Some(RouteMatch {
 					handler: route_handler.handler.clone(),
 					params,
 					middleware_stack: combined_middleware,
-					di_context: di_context.clone(),
+					di_context,
 				});
-			}
+			}};
+		}
 
-			None
-		};
-
-		// Try matching with the original path first. If that fails, try with
-		// trailing slash toggled (Django-style APPEND_SLASH behavior).
-		if let Some(route_match) = build_route_match(search_path.as_ref()) {
-			return Some(route_match);
+		// Try matching with the original path first. Only allocate the
+		// Django-style APPEND_SLASH fallback path if the primary lookup misses.
+		if let Ok(matched) = router.at(search_path.as_ref()) {
+			return_route_match!(matched);
 		}
 
 		if search_path.as_ref().ends_with('/') {
-			let without_slash = search_path.trim_end_matches('/');
+			let without_slash = search_path.as_ref().trim_end_matches('/');
 			let fallback_path = if without_slash.is_empty() {
 				"/"
 			} else {
 				without_slash
 			};
 
-			if fallback_path != search_path.as_ref() {
-				return build_route_match(fallback_path);
+			if fallback_path != search_path.as_ref()
+				&& let Ok(matched) = router.at(fallback_path)
+			{
+				return_route_match!(matched);
 			}
 		} else {
-			let fallback_path = format!("{}/", search_path);
-			return build_route_match(&fallback_path);
+			let fallback_path = format!("{}/", search_path.as_ref());
+			if let Ok(matched) = router.at(&fallback_path) {
+				return_route_match!(matched);
+			}
 		}
 
 		None
@@ -254,7 +257,7 @@ impl ServerRouter {
 		}
 
 		if search_path.as_ref().ends_with('/') {
-			let without_slash = search_path.trim_end_matches('/');
+			let without_slash = search_path.as_ref().trim_end_matches('/');
 			let fallback_path = if without_slash.is_empty() {
 				"/"
 			} else {
@@ -265,7 +268,7 @@ impl ServerRouter {
 				return path_exists(fallback_path);
 			}
 		} else {
-			let fallback_path = format!("{}/", search_path);
+			let fallback_path = format!("{}/", search_path.as_ref());
 			return path_exists(&fallback_path);
 		}
 
