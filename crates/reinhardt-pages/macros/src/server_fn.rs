@@ -1057,7 +1057,7 @@ fn generate_server_handler(
 	// Generate codec-specific deserialization code for server
 	let deserialize_code = match codec {
 		"json" => quote! {
-			let args: #args_struct_name = ::serde_json::from_str(&body)
+			let args: #args_struct_name = ::serde_json::from_slice(body)
 				.map_err(|e| format!("Failed to deserialize arguments: {}", e))?;
 		},
 		"url" => quote! {
@@ -1135,62 +1135,63 @@ fn generate_server_handler(
 	// Dynamically resolve crate paths for body extraction and registration
 	let pages_crate = get_reinhardt_pages_crate();
 
-	// Generate handler signature based on whether DI or extractors are needed.
-	// Both DI (#[inject]) and FromRequest extractor params require access to the
-	// raw Request object, so the handler signature uses Request in both cases.
-	let needs_request = !inject_params.is_empty() || !extractor_params.is_empty();
-	let (handler_signature, handler_body_extraction, wrapper_body_extraction, wrapper_call_args) =
-		if needs_request {
-			// Dynamically resolve reinhardt_http crate path
-			let http_crate = get_reinhardt_http_crate();
-
-			// When we have inject or extractor params, handler receives Request.
-			// Body reading is only needed when regular (Args-deserialized) params exist.
-			// If all params are extractors, the extractors themselves read the body.
-			let body_extraction = if !regular_params.is_empty() {
-				quote! {
-					let __content_type = __req.get_header("content-type").unwrap_or_default();
-					let body = __req.read_body()
-						.map_err(|e| format!("Failed to read body: {}", e))?;
-					let body = ::std::string::String::from_utf8(body.to_vec())
+	// Generate handler signature and body extraction.
+	// The handler receives Request in every native configuration. This keeps body
+	// handling in one place and lets JSON decode directly from Bytes when content
+	// negotiation is not needed.
+	let http_crate = get_reinhardt_http_crate();
+	let handler_signature = quote! {
+		pub async fn #handler_name(__req: #http_crate::Request) -> ::std::result::Result<::std::string::String, ::std::string::String>
+	};
+	let handler_body_extraction = if regular_params.is_empty() {
+		quote! {}
+	} else {
+		match codec {
+			"json" => quote! {
+				let __content_type = __req
+					.headers
+					.get("content-type")
+					.and_then(|value| value.to_str().ok())
+					.unwrap_or("");
+				let body = __req.read_body()
+					.map_err(|e| format!("Failed to read body: {}", e))?;
+				let __media_type = __content_type
+					.split(';')
+					.next()
+					.unwrap_or("")
+					.trim();
+				let __converted_body;
+				let body: &[u8] = if __media_type.is_empty()
+					|| __media_type.eq_ignore_ascii_case("application/json")
+				{
+					body.as_ref()
+				} else {
+					let __body_text = ::std::string::String::from_utf8(body.to_vec())
 						.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
-					let body = #pages_crate::server_fn::convert_body_for_codec(body, &__content_type, #codec)?;
-				}
-			} else {
-				quote! {}
-			};
-
-			(
-				quote! {
-					pub async fn #handler_name(__req: #http_crate::Request) -> ::std::result::Result<::std::string::String, ::std::string::String>
-				},
-				body_extraction,
-				// Wrapper doesn't extract body when DI/extractors are enabled; passes Request directly
-				quote! {
-					// Pass Request directly to handler (which will read the body)
-				},
-				vec![quote! { req }],
-			)
-		} else {
-			// No DI or extractors needed, handler receives body directly
-			(
-				quote! {
-					pub async fn #handler_name(body: ::std::string::String) -> ::std::result::Result<::std::string::String, ::std::string::String>
-				},
-				// Handler doesn't need body extraction (body is already a parameter)
-				quote! {},
-				// Wrapper needs to extract body from req with Content-Type negotiation
-				quote! {
-					let __content_type = req.get_header("content-type").unwrap_or_default();
-					let body = req.read_body()
-						.map_err(|e| format!("Failed to read body: {}", e))?;
-					let body = ::std::string::String::from_utf8(body.to_vec())
-						.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
-					let body = #pages_crate::server_fn::convert_body_for_codec(body, &__content_type, #codec)?;
-				},
-				vec![quote! { body }],
-			)
-		};
+					__converted_body = #pages_crate::server_fn::convert_body_for_codec(
+						__body_text,
+						&__content_type,
+						#codec,
+					)?;
+					__converted_body.as_bytes()
+				};
+			},
+			_ => quote! {
+				let __content_type = __req
+					.headers
+					.get("content-type")
+					.and_then(|value| value.to_str().ok())
+					.unwrap_or("");
+				let body = __req.read_body()
+					.map_err(|e| format!("Failed to read body: {}", e))?;
+				let body = ::std::string::String::from_utf8(body.to_vec())
+					.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+				let body = #pages_crate::server_fn::convert_body_for_codec(body, &__content_type, #codec)?;
+			},
+		}
+	};
+	let wrapper_body_extraction = quote! {};
+	let wrapper_call_args = vec![quote! { req }];
 
 	// Generate unique name for the static wrapper function
 	let static_wrapper_name = quote::format_ident!("__server_fn_static_wrapper_{}", name);
@@ -1249,6 +1250,7 @@ fn generate_server_handler(
 			}
 		})
 		.collect();
+	let uses_response_cookie_jar = !inject_params.is_empty() || !extractor_params.is_empty();
 
 	// MSW: Generate server-side MockableServerFn tokens only when msw feature is enabled
 	let msw_server_tokens = if msw_enabled {
@@ -1350,6 +1352,7 @@ fn generate_server_handler(
 				const NAME: &'static str = #name_str;
 				const CODEC: &'static str = #codec;
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
+				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
 
 			#msw_wasm_inner_tokens
@@ -1480,6 +1483,7 @@ fn generate_server_handler(
 				const NAME: &'static str = #name_str;
 				const CODEC: &'static str = #codec;
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
+				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
 
 			// Native-only handler entry point for explicit router registration.

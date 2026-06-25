@@ -130,13 +130,12 @@ impl ServerRouter {
 		// Compile routes on first use (lazy compilation with interior mutability)
 		self.compile_routes();
 
-		// Normalize path for matchit lookup - routes are registered with leading slash
-		// When prefix is "/" and path is "/health", strip_prefix yields "health" but
-		// the route was registered as "/health". We need to ensure we search with "/health".
-		let search_path = if path.starts_with('/') {
-			path.to_string()
+		// Normalize path for matchit lookup - routes are registered with leading slash.
+		// Borrow the common already-normalized path to avoid per-request allocation.
+		let search_path: Cow<'_, str> = if path.starts_with('/') {
+			Cow::Borrowed(path)
 		} else {
-			format!("/{}", path)
+			Cow::Owned(format!("/{path}"))
 		};
 
 		// Use matchit to find matching route - O(m) complexity
@@ -153,24 +152,8 @@ impl ServerRouter {
 
 		let router = router_lock.read().unwrap_or_else(PoisonError::into_inner);
 
-		// Try matching with the original path first
-		// If that fails, try with trailing slash toggled (Django-style APPEND_SLASH behavior)
-		let paths_to_try = if search_path.ends_with('/') {
-			// Path has trailing slash, try without if not found
-			let without_slash = search_path.trim_end_matches('/').to_string();
-			let without_slash = if without_slash.is_empty() {
-				"/".to_string()
-			} else {
-				without_slash
-			};
-			vec![search_path.clone(), without_slash]
-		} else {
-			// Path has no trailing slash, try with if not found
-			vec![search_path.clone(), format!("{}/", search_path)]
-		};
-
-		for try_path in paths_to_try {
-			if let Ok(matched) = router.at(&try_path) {
+		let build_route_match = |try_path: &str| {
+			if let Ok(matched) = router.at(try_path) {
 				let route_handler = matched.value;
 
 				// Extract parameters from matchit. matchit's `Params` iterator
@@ -191,9 +174,33 @@ impl ServerRouter {
 					handler: route_handler.handler.clone(),
 					params,
 					middleware_stack: combined_middleware,
-					di_context,
+					di_context: di_context.clone(),
 				});
 			}
+
+			None
+		};
+
+		// Try matching with the original path first. If that fails, try with
+		// trailing slash toggled (Django-style APPEND_SLASH behavior).
+		if let Some(route_match) = build_route_match(search_path.as_ref()) {
+			return Some(route_match);
+		}
+
+		if search_path.as_ref().ends_with('/') {
+			let without_slash = search_path.trim_end_matches('/');
+			let fallback_path = if without_slash.is_empty() {
+				"/"
+			} else {
+				without_slash
+			};
+
+			if fallback_path != search_path.as_ref() {
+				return build_route_match(fallback_path);
+			}
+		} else {
+			let fallback_path = format!("{}/", search_path);
+			return build_route_match(&fallback_path);
 		}
 
 		None
@@ -208,21 +215,8 @@ impl ServerRouter {
 
 		// Apply prefix stripping logic (same as resolve method, ensures leading `/`)
 		let search_path = match Self::strip_prefix_normalized(&self.prefix, path) {
-			Some(p) => p.into_owned(),
+			Some(p) => p,
 			None => return false,
-		};
-
-		// Build paths to try with trailing slash toggled (Django-style APPEND_SLASH)
-		let paths_to_try = if search_path.ends_with('/') {
-			let without_slash = search_path.trim_end_matches('/').to_string();
-			let without_slash = if without_slash.is_empty() {
-				"/".to_string()
-			} else {
-				without_slash
-			};
-			vec![search_path.clone(), without_slash]
-		} else {
-			vec![search_path.clone(), format!("{}/", search_path)]
 		};
 
 		let method_routers = [
@@ -235,22 +229,44 @@ impl ServerRouter {
 			&self.options_router,
 		];
 
-		for router_lock in method_routers {
-			let router = router_lock.read().unwrap_or_else(PoisonError::into_inner);
-			for try_path in &paths_to_try {
-				if router.at(try_path).is_ok() {
+		let path_exists = |candidate_path: &str| {
+			for router_lock in method_routers {
+				let router = router_lock.read().unwrap_or_else(PoisonError::into_inner);
+				if router.at(candidate_path).is_ok() {
 					return true;
 				}
 			}
+
+			// Also check children routers with remaining path.
+			for child in &self.children {
+				if child.path_exists_for_any_method(candidate_path) {
+					return true;
+				}
+			}
+
+			false
+		};
+
+		// Try matching with the original path first. If that fails, try with
+		// trailing slash toggled (Django-style APPEND_SLASH behavior).
+		if path_exists(search_path.as_ref()) {
+			return true;
 		}
 
-		// Also check children routers with remaining path
-		for child in &self.children {
-			for try_path in &paths_to_try {
-				if child.path_exists_for_any_method(try_path) {
-					return true;
-				}
+		if search_path.as_ref().ends_with('/') {
+			let without_slash = search_path.trim_end_matches('/');
+			let fallback_path = if without_slash.is_empty() {
+				"/"
+			} else {
+				without_slash
+			};
+
+			if fallback_path != search_path.as_ref() {
+				return path_exists(fallback_path);
 			}
+		} else {
+			let fallback_path = format!("{}/", search_path);
+			return path_exists(&fallback_path);
 		}
 
 		false

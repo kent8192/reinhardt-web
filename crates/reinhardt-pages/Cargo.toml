@@ -285,6 +285,10 @@ crate-type = ["rlib"]
 name = "wasm_framework_benchmarks"
 harness = false
 
+[[bench]]
+name = "server_fn_endpoint_benchmarks"
+harness = false
+
 [[test]]
 name = "csrf_wasm_test"
 path = "tests/wasm/csrf_wasm_test.rs"

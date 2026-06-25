@@ -87,6 +87,32 @@ depend on a native server respawn also wait briefly for the child server TCP
 address to become reachable. Runtime measurements still need to be added before
 claiming browser-visible latency numbers.
 
+## Native Endpoint Runtime Measurements
+
+Use the native endpoint benchmark before claiming request-dispatch or
+server-function hot-path improvements:
+
+```bash
+cargo bench -p reinhardt-pages --bench server_fn_endpoint_benchmarks -- --sample-size 30 --measurement-time 2
+```
+
+The 2026-06-25 measurement compared `origin/develop/0.3.0` with only the
+benchmark harness applied against the optimized branch. Values are the mean of
+two Criterion runs on the same host; Criterion's persisted `change` lines were
+ignored because each worktree had independent historical samples.
+
+| Benchmark | Baseline mean | Optimized mean | Reduction |
+|---|---:|---:|---:|
+| `http_endpoint_plain_get` | 343.38 ns | 276.47 ns | 19.5% |
+| `http_endpoint_path_param_get` | 414.14 ns | 337.18 ns | 18.6% |
+| `server_fn_json_post` | 915.86 ns | 611.51 ns | 33.2% |
+
+The optimized path avoids per-request path-string allocations when the input
+path is already normalized, avoids allocating alternate trailing-slash vectors,
+skips response-cookie jar creation for body-only server functions, and
+deserializes JSON server-function requests directly from bytes when content
+negotiation is not required.
+
 Static `page!(|| { ... })` edits under WASM-owned client source paths can use
 the compile-free development hot patch path. The HMR payload replaces `#app`
 contents, preserving the development script and page shell. Dynamic Rust
