@@ -86,6 +86,14 @@ full reload only after the selected rebuild pipelines succeed. Reloads that
 depend on a native server respawn also wait briefly for the child server TCP
 address to become reachable. Runtime measurements still need to be added before
 claiming browser-visible latency numbers.
+The default debounce window for the autoreload watcher is 120 ms and can be
+overridden with `runserver --watch-delay <milliseconds>`. Include the effective
+debounce value when reporting browser-visible tail-latency measurements because
+it is part of the request-to-HMR critical path.
+This default reduces the fixed debounce component by 180 ms versus the previous
+300 ms watcher default. On the Issue #5218 summarized loops, that maps to about
+9-10% less fixed latency for Pages client-edit loops and about 18-25% for
+server-only loops before any rebuild-time variance is considered.
 
 Static `page!(|| { ... })` edits under WASM-owned client source paths can use
 the compile-free development hot patch path. The HMR payload replaces `#app`

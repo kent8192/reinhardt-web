@@ -22,9 +22,9 @@ use tokio::time::{Instant, sleep, timeout_at};
 use crate::CommandContext;
 use crate::source_roots::SourceRoots;
 
-/// Time window over which bursts of events are coalesced into a single
-/// rebuild trigger. Matches cargo-leptos / dx serve precedent.
-pub const DEBOUNCE_WINDOW: Duration = Duration::from_millis(300);
+/// Default time window over which bursts of events are coalesced into a single
+/// rebuild trigger.
+pub const DEBOUNCE_WINDOW: Duration = Duration::from_millis(120);
 
 /// Decide whether a `notify::Event` should trigger a rebuild.
 ///
@@ -122,6 +122,8 @@ pub struct WatcherConfig {
 	pub address: String,
 	/// Source directories and manifest files to subscribe to.
 	pub roots: SourceRoots,
+	/// Time window used to coalesce bursty filesystem events.
+	pub debounce_window: Duration,
 	/// HTTP address used by the child server. When set, browser reloads that
 	/// depend on a server respawn wait briefly for this address to accept TCP.
 	pub server_address: Option<String>,
@@ -488,7 +490,7 @@ pub async fn run_watcher(
 				let _ = current_child.wait().await;
 				return Ok(());
 			}
-				debounced = debounce_next(&mut rx, DEBOUNCE_WINDOW) => {
+				debounced = debounce_next(&mut rx, config.debounce_window) => {
 					let Some(paths) = debounced else {
 						// Channel closed: the watcher dropped or the OS torn
 						// the subscription down. Treat as graceful shutdown.
@@ -618,6 +620,7 @@ mod tests {
 				manifest_files: vec![PathBuf::from("/project/Cargo.toml")],
 				lockfile: Some(PathBuf::from("/project/Cargo.lock")),
 			},
+			debounce_window: DEBOUNCE_WINDOW,
 			server_address: None,
 			no_wasm_rebuild,
 			pages_enabled: true,
