@@ -22,9 +22,9 @@ use tokio::time::{Instant, sleep, timeout_at};
 use crate::CommandContext;
 use crate::source_roots::SourceRoots;
 
-/// Time window over which bursts of events are coalesced into a single
-/// rebuild trigger. Matches cargo-leptos / dx serve precedent.
-pub const DEBOUNCE_WINDOW: Duration = Duration::from_millis(300);
+/// Default time window over which bursts of events are coalesced into a single
+/// rebuild trigger.
+pub const DEBOUNCE_WINDOW: Duration = Duration::from_millis(120);
 
 /// Decide whether a `notify::Event` should trigger a rebuild.
 ///
@@ -122,6 +122,8 @@ pub struct WatcherConfig {
 	pub address: String,
 	/// Source directories and manifest files to subscribe to.
 	pub roots: SourceRoots,
+	/// Time window used to coalesce bursty filesystem events.
+	pub debounce_window: Duration,
 	/// HTTP address used by the child server. When set, browser reloads that
 	/// depend on a server respawn wait briefly for this address to accept TCP.
 	pub server_address: Option<String>,
@@ -488,7 +490,7 @@ pub async fn run_watcher(
 				let _ = current_child.wait().await;
 				return Ok(());
 			}
-				debounced = debounce_next(&mut rx, DEBOUNCE_WINDOW) => {
+				debounced = debounce_next(&mut rx, config.debounce_window) => {
 					let Some(paths) = debounced else {
 						// Channel closed: the watcher dropped or the OS torn
 						// the subscription down. Treat as graceful shutdown.
@@ -595,6 +597,32 @@ mod tests {
 	}
 
 	#[tokio::test(flavor = "current_thread", start_paused = true)]
+	async fn debounce_waits_for_configured_window() {
+		// Arrange
+		let (tx, mut rx) = mpsc::channel::<Event>(8);
+		tx.send(ev(EventKind::Modify(ModifyKind::Any), "/p/src/a.rs"))
+			.await
+			.unwrap();
+		let started_at = Instant::now();
+		let window = Duration::from_millis(120);
+		let mut pending = Box::pin(debounce_next(&mut rx, window));
+
+		// Act: the debounce future must not complete before the configured
+		// window expires.
+		tokio::select! {
+			result = &mut pending => panic!("debounce completed too early: {result:?}"),
+			_ = tokio::time::sleep(window - Duration::from_millis(1)) => {}
+		}
+		assert_eq!(Instant::now() - started_at, Duration::from_millis(119));
+
+		let result = pending.await;
+
+		// Assert
+		assert_eq!(Instant::now() - started_at, window);
+		assert_eq!(result, Some(vec![PathBuf::from("/p/src/a.rs")]));
+	}
+
+	#[tokio::test(flavor = "current_thread", start_paused = true)]
 	async fn debounce_returns_none_when_channel_closed_without_events() {
 		// Arrange: drop the sender immediately so the channel closes with no
 		// pending messages.
@@ -618,6 +646,7 @@ mod tests {
 				manifest_files: vec![PathBuf::from("/project/Cargo.toml")],
 				lockfile: Some(PathBuf::from("/project/Cargo.lock")),
 			},
+			debounce_window: DEBOUNCE_WINDOW,
 			server_address: None,
 			no_wasm_rebuild,
 			pages_enabled: true,

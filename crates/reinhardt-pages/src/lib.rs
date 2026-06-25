@@ -298,6 +298,8 @@ pub mod component;
 // Form and security
 pub mod auth;
 pub mod csrf;
+#[doc(hidden)]
+pub mod fetch;
 // Static form metadata types for form! macro (WASM-compatible)
 pub mod form_generated;
 // Typed form runtime state (WASM-compatible)
@@ -420,21 +422,16 @@ pub use reinhardt_pages_macros::{FromRequest, client_page, component, page_props
 // Private re-exports used by macro-generated code. Not part of the public API.
 #[doc(hidden)]
 pub mod __private {
+	pub use crate::fetch;
 	pub use bon;
 	pub use inventory;
 	pub use reinhardt_urls;
-
-	// `reqwest` is enabled for all wasm32 targets (including WASI, wasm32-unknown-unknown, etc.)
-	// because the HTTP client is needed on any wasm32 platform.
-	#[cfg(target_arch = "wasm32")]
-	pub use reqwest;
 
 	// `tracing` is enabled for all targets *except* browser wasm (wasm32-unknown-unknown).
 	// Browser wasm uses a different logging mechanism, so tracing is intentionally excluded there.
 	// The `native` cfg alias (defined in build.rs as
 	// `not(all(target_family = "wasm", target_os = "unknown"))`) precisely targets every
 	// non-browser-wasm platform.
-	// This is intentionally different from the `reqwest` cfg above, which spans all wasm targets.
 	#[cfg(native)]
 	pub use tracing;
 }

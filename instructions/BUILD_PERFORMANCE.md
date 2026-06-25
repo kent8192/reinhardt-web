@@ -23,6 +23,9 @@ successful builds, or isolated code review alone.
    template/runtime path bypasses Rust macro recompilation. HMR reload
    notifications only reduce browser reflection delay after successful
    rebuilds.
+7. Record the effective `runserver --watch-delay` value for browser-visible
+   hot-reload measurements. The debounce window is part of the observed tail
+   latency even when no Rust or WASM rebuild is required.
 
 ## Prevention Guidelines
 
