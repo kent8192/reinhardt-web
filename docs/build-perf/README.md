@@ -91,9 +91,14 @@ overridden with `runserver --watch-delay <milliseconds>`. Include the effective
 debounce value when reporting browser-visible tail-latency measurements because
 it is part of the request-to-HMR critical path.
 This default reduces the fixed debounce component by 180 ms versus the previous
-300 ms watcher default. On the Issue #5218 summarized loops, that maps to about
-9-10% less fixed latency for Pages client-edit loops and about 18-25% for
-server-only loops before any rebuild-time variance is considered.
+300 ms watcher default. Using the Issue #5218 summarized means as p50 proxies,
+that maps to estimated p50 reductions of about 59% for compile-free static
+`page!` hot patches, 21% for app fixture WASM builds, 18% for server-only
+rebuilds, and 9% for framework Pages WASM builds. If p95 rebuild cost is 10-20%
+above those means, the same fixed debounce cut maps to about 18-20% p95 for app
+fixture WASM builds, 16-17% p95 for server-only rebuilds, and 8% p95 for
+framework Pages WASM builds. Treat these as planning estimates until
+browser-visible p50/p95 runtime measurements are added.
 
 Static `page!(|| { ... })` edits under WASM-owned client source paths can use
 the compile-free development hot patch path. The HMR payload replaces `#app`
