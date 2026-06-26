@@ -37,7 +37,8 @@ if [ -z "$commit_msg" ]; then
 	exit 0
 fi
 
-first_line=$(printf '%s\n' "$commit_msg" | head -n1)
+first_line="${commit_msg%%$'\n'*}"
+first_line="${first_line%$'\r'}"
 pr_number=""
 message_head_branch=""
 merge_style=""
