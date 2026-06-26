@@ -1,14 +1,10 @@
 [package]
-name = "reinhardt-comparison-benchmarks"
+name = "reinhardt-runtime-http-benchmarks"
 version = "0.1.0"
 edition = "2024"
 publish = false
 
 [workspace]
-
-[[bin]]
-name = "benchmark-suite"
-path = "src/main.rs"
 
 [[bench]]
 name = "runtime_http"

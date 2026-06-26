@@ -38,6 +38,10 @@ use tokio::{
 };
 
 const JSON_BODY: &[u8] = br#"{"id":42,"message":"benchmark"}"#;
+const EXPECTED_HELLO_BODY: &[u8] = b"hello";
+const EXPECTED_ECHO_BODY: &[u8] = JSON_BODY;
+const EXPECTED_PATH_BODY: &[u8] = br#"{"id":42,"owner_id":7}"#;
+const EXPECTED_QUERY_BODY: &[u8] = br#"{"q":"rust","page":2,"limit":25}"#;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct EchoPayload {
@@ -48,13 +52,14 @@ struct EchoPayload {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct PathPayload {
 	id: u64,
-	slug: String,
+	owner_id: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct SearchQuery {
 	q: String,
 	page: u32,
+	limit: u32,
 }
 
 struct ReinhardtHello;
@@ -108,7 +113,7 @@ struct ReinhardtPath;
 
 impl EndpointInfo for ReinhardtPath {
 	fn path() -> &'static str {
-		"/items/{id}/{slug}"
+		"/items/{id}/owners/{owner_id}"
 	}
 
 	fn method() -> Method {
@@ -128,12 +133,12 @@ impl ReinhardtHandler for ReinhardtPath {
 			.get("id")
 			.and_then(|value| value.parse::<u64>().ok())
 			.expect("id path parameter should parse");
-		let slug = req
+		let owner_id = req
 			.path_params
-			.get("slug")
-			.cloned()
-			.expect("slug path parameter should exist");
-		ReinhardtResponse::ok().with_json(&PathPayload { id, slug })
+			.get("owner_id")
+			.and_then(|value| value.parse::<u64>().ok())
+			.expect("owner_id path parameter should parse");
+		ReinhardtResponse::ok().with_json(&PathPayload { id, owner_id })
 	}
 }
 
@@ -166,7 +171,12 @@ impl ReinhardtHandler for ReinhardtQuery {
 			.get("page")
 			.and_then(|value| value.parse::<u32>().ok())
 			.expect("page query parameter should parse");
-		ReinhardtResponse::ok().with_json(&SearchQuery { q, page })
+		let limit = req
+			.query_params
+			.get("limit")
+			.and_then(|value| value.parse::<u32>().ok())
+			.expect("limit query parameter should parse");
+		ReinhardtResponse::ok().with_json(&SearchQuery { q, page, limit })
 	}
 }
 
@@ -186,8 +196,8 @@ async fn axum_echo(AxumJson(payload): AxumJson<EchoPayload>) -> AxumJson<EchoPay
 	AxumJson(payload)
 }
 
-async fn axum_path(AxumPath((id, slug)): AxumPath<(u64, String)>) -> AxumJson<PathPayload> {
-	AxumJson(PathPayload { id, slug })
+async fn axum_path(AxumPath((id, owner_id)): AxumPath<(u64, u64)>) -> AxumJson<PathPayload> {
+	AxumJson(PathPayload { id, owner_id })
 }
 
 async fn axum_query(AxumQuery(query): AxumQuery<SearchQuery>) -> AxumJson<SearchQuery> {
@@ -198,7 +208,7 @@ fn axum_router() -> AxumRouter {
 	AxumRouter::new()
 		.route("/hello", axum_get(axum_hello))
 		.route("/echo", axum_post(axum_echo))
-		.route("/items/{id}/{slug}", axum_get(axum_path))
+		.route("/items/{id}/owners/{owner_id}", axum_get(axum_path))
 		.route("/search", axum_get(axum_query))
 }
 
@@ -210,9 +220,9 @@ async fn actix_echo(payload: web::Json<EchoPayload>) -> HttpResponse {
 	HttpResponse::Ok().json(payload.into_inner())
 }
 
-async fn actix_path(path: web::Path<(u64, String)>) -> HttpResponse {
-	let (id, slug) = path.into_inner();
-	HttpResponse::Ok().json(PathPayload { id, slug })
+async fn actix_path(path: web::Path<(u64, u64)>) -> HttpResponse {
+	let (id, owner_id) = path.into_inner();
+	HttpResponse::Ok().json(PathPayload { id, owner_id })
 }
 
 async fn actix_query(query: web::Query<SearchQuery>) -> HttpResponse {
@@ -227,8 +237,8 @@ async fn loco_echo(LocoJson(payload): LocoJson<EchoPayload>) -> LocoResult<LocoR
 	format::json(payload)
 }
 
-async fn loco_path(LocoPath((id, slug)): LocoPath<(u64, String)>) -> LocoResult<LocoResponse> {
-	format::json(PathPayload { id, slug })
+async fn loco_path(LocoPath((id, owner_id)): LocoPath<(u64, u64)>) -> LocoResult<LocoResponse> {
+	format::json(PathPayload { id, owner_id })
 }
 
 async fn loco_query(LocoQuery(query): LocoQuery<SearchQuery>) -> LocoResult<LocoResponse> {
@@ -239,7 +249,7 @@ async fn loco_router() -> AxumRouter {
 	let routes = LocoRoutes::new()
 		.add("/hello", loco_get(loco_hello))
 		.add("/echo", loco_post(loco_echo))
-		.add("/items/{id}/{slug}", loco_get(loco_path))
+		.add("/items/{id}/owners/{owner_id}", loco_get(loco_path))
 		.add("/search", loco_get(loco_query));
 	let mut router = AxumRouter::new();
 	for handler in routes.handlers {
@@ -282,8 +292,8 @@ impl LoopbackServer {
 			name: self.name,
 			hello: self.url("/hello"),
 			echo: self.url("/echo"),
-			path: self.url("/items/42/widget"),
-			query: self.url("/search?q=bench&page=3"),
+			path: self.url("/items/42/owners/7"),
+			query: self.url("/search?q=rust&page=2&limit=25"),
 		}
 	}
 
@@ -296,13 +306,13 @@ impl LoopbackServer {
 		}
 		if let Some(mut join_handle) = self.join_handle.take() {
 			tokio::select! {
-				result = &mut join_handle => {
-					if let Err(err) = result
-						&& !err.is_cancelled()
-					{
-						eprintln!("{} benchmark server task failed: {err}", self.name);
+					result = &mut join_handle => {
+						if let Err(err) = result
+							&& !err.is_cancelled()
+						{
+							eprintln!("{} benchmark server task failed: {}", self.name, err);
+						}
 					}
-				}
 				_ = sleep(Duration::from_millis(250)) => {
 					join_handle.abort();
 					let _ = join_handle.await;
@@ -363,19 +373,19 @@ async fn spawn_reinhardt_server(client: &Client) -> LoopbackServer {
 					match result {
 						Ok((stream, socket_addr)) => {
 							let handler = handler.clone();
-							tokio::spawn(async move {
-								if let Err(err) =
-									ReinhardtHttpServer::handle_connection(stream, socket_addr, handler, None).await
-								{
-									eprintln!("Reinhardt benchmark connection failed: {err}");
-								}
-							});
+								tokio::spawn(async move {
+									if let Err(err) =
+										ReinhardtHttpServer::handle_connection(stream, socket_addr, handler, None).await
+									{
+										eprintln!("Reinhardt benchmark connection failed: {}", err);
+									}
+								});
+							}
+							Err(err) => {
+								eprintln!("Reinhardt benchmark accept failed: {}", err);
+								break;
+							}
 						}
-						Err(err) => {
-							eprintln!("Reinhardt benchmark accept failed: {err}");
-							break;
-						}
-					}
 				}
 			}
 		}
@@ -412,7 +422,7 @@ async fn spawn_axum_router_server(
 			let _ = shutdown_rx.await;
 		});
 		if let Err(err) = server.await {
-			eprintln!("{name} benchmark server failed: {err}");
+			eprintln!("{} benchmark server failed: {}", name, err);
 		}
 	});
 
@@ -431,7 +441,7 @@ async fn spawn_actix_server(client: &Client) -> LoopbackServer {
 		App::new()
 			.route("/hello", web::get().to(actix_hello))
 			.route("/echo", web::post().to(actix_echo))
-			.route("/items/{id}/{slug}", web::get().to(actix_path))
+			.route("/items/{id}/owners/{owner_id}", web::get().to(actix_path))
 			.route("/search", web::get().to(actix_query))
 	})
 	.workers(1)
@@ -441,7 +451,7 @@ async fn spawn_actix_server(client: &Client) -> LoopbackServer {
 	let actix_handle = server.handle();
 	let join_handle = tokio::spawn(async move {
 		if let Err(err) = server.await {
-			eprintln!("Actix benchmark server failed: {err}");
+			eprintln!("Actix benchmark server failed: {}", err);
 		}
 	});
 
@@ -512,6 +522,43 @@ async fn read_success_response(response: reqwest::Response) -> Bytes {
 		.expect("response body should be readable")
 }
 
+async fn validate_target(client: &Client, target: &TargetUrls) {
+	assert_body(
+		target.name,
+		"hello_world",
+		http_get(client, &target.hello).await,
+		EXPECTED_HELLO_BODY,
+	);
+	assert_body(
+		target.name,
+		"json_echo",
+		http_json_post(client, &target.echo).await,
+		EXPECTED_ECHO_BODY,
+	);
+	assert_body(
+		target.name,
+		"path_params",
+		http_get(client, &target.path).await,
+		EXPECTED_PATH_BODY,
+	);
+	assert_body(
+		target.name,
+		"query_params",
+		http_get(client, &target.query).await,
+		EXPECTED_QUERY_BODY,
+	);
+}
+
+fn assert_body(target: &str, scenario: &str, actual: Bytes, expected: &[u8]) {
+	assert_eq!(
+		actual.as_ref(),
+		expected,
+		"{} {} response body should match the scenario success contract",
+		target,
+		scenario
+	);
+}
+
 fn bench_http_target(
 	group: &mut criterion::BenchmarkGroup<'_, criterion::measurement::WallTime>,
 	rt: &tokio::runtime::Runtime,
@@ -540,6 +587,9 @@ fn runtime_http_benchmarks(c: &mut Criterion) {
 		.expect("HTTP client should build");
 	let servers = rt.block_on(spawn_bench_servers(&client));
 	let targets = servers.target_urls();
+	for target in &targets {
+		rt.block_on(validate_target(&client, target));
+	}
 
 	let mut group = c.benchmark_group("runtime_http_loopback");
 	group.sample_size(10);

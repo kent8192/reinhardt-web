@@ -3317,27 +3317,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
-name = "reinhardt-comparison-benchmarks"
-version = "0.1.0"
-dependencies = [
- "actix-web",
- "async-trait",
- "axum",
- "bytes",
- "criterion",
- "hyper",
- "loco-rs",
- "reinhardt-core",
- "reinhardt-http",
- "reinhardt-server",
- "reinhardt-urls",
- "reqwest 0.13.4",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "reinhardt-conf"
 version = "0.3.0-rc.4"
 dependencies = [
@@ -3504,6 +3483,27 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "reinhardt-runtime-http-benchmarks"
+version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "async-trait",
+ "axum",
+ "bytes",
+ "criterion",
+ "hyper",
+ "loco-rs",
+ "reinhardt-core",
+ "reinhardt-http",
+ "reinhardt-server",
+ "reinhardt-urls",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

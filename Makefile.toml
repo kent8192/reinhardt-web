@@ -274,7 +274,7 @@ script = '''
 set -e
 cd benchmarks
 export CARGO_TARGET_DIR=target
-cargo run --locked -- check
+cargo run --locked --manifest-path suite/Cargo.toml -- check
 '''
 
 [tasks.benchmark-suite-list]
@@ -284,7 +284,7 @@ script = '''
 set -e
 cd benchmarks
 export CARGO_TARGET_DIR=target
-cargo run --locked -- list
+cargo run --locked --manifest-path suite/Cargo.toml -- list
 '''
 
 [tasks.benchmark-suite-dry-run]
@@ -294,7 +294,7 @@ script = '''
 set -e
 cd benchmarks
 export CARGO_TARGET_DIR=target
-cargo run --locked -- dry-run
+cargo run --locked --manifest-path suite/Cargo.toml -- dry-run
 '''
 
 [tasks.benchmark-suite-measure]
@@ -304,7 +304,7 @@ script = '''
 set -e
 cd benchmarks
 export CARGO_TARGET_DIR=target
-cargo run --locked -- measure
+cargo run --locked --manifest-path suite/Cargo.toml -- measure
 '''
 
 [tasks.benchmark-runtime-http]

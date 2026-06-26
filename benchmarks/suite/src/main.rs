@@ -112,7 +112,7 @@ fn find_suite_root() -> Result<PathBuf, String> {
 }
 
 fn print_help() {
-	println!("Usage: benchmark-suite [list|check|dry-run]");
+	println!("Usage: benchmark-suite [list|check|dry-run|measure]");
 	println!();
 	println!("Commands:");
 	println!("  list     Print the category and scenario matrix");
