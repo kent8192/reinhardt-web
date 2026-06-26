@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.4...reinhardt-web@v0.3.0-rc.5) - 2026-06-26
+
+### Changed
+
+- *(pages)* derive fetch credentials default
+
+### Documentation
+
+- add release announcement(s)
+- *(tutorial)* fix SQLite poll seed snippet
+
+### Fixed
+
+- *(scaffolding)* default pages projects to sqlite
+- *(ci)* quote release-plz dry-run regex
+- *(ci)* satisfy server router clippy lint
+- *(commands)* repair pages quickstart scaffold defaults
+
+### Maintenance
+
+- merge develop 0.3.0 into build-time perf branch
+- merge latest develop 0.3.0 into build-time perf branch
+
 ## [0.3.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.3...reinhardt-web@v0.3.0-rc.4) - 2026-06-24
 
 ### Changed
