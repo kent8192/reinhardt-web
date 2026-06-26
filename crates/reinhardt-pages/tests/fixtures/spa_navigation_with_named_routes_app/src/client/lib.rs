@@ -13,6 +13,7 @@ use super::router;
 
 #[wasm_bindgen(start)]
 pub fn main() -> Result<(), JsValue> {
+	#[cfg(debug_assertions)]
 	console_error_panic_hook::set_once();
 	ClientLauncher::new("#app")
 		.router_client(router::init_router)
