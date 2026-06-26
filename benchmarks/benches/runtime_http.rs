@@ -2,7 +2,7 @@ use actix_web::{App, HttpResponse, HttpServer as ActixHttpServer, web};
 use async_trait::async_trait;
 use axum::{
 	Json as AxumJson, Router as AxumRouter,
-	extract::{Path as AxumPath, Query as AxumQuery},
+	extract::{Path as AxumPath, Query as AxumQuery, State as AxumState},
 	routing::{get as axum_get, post as axum_post},
 };
 use bytes::Bytes;
@@ -42,6 +42,9 @@ const EXPECTED_HELLO_BODY: &[u8] = b"hello";
 const EXPECTED_ECHO_BODY: &[u8] = JSON_BODY;
 const EXPECTED_PATH_BODY: &[u8] = br#"{"id":42,"owner_id":7}"#;
 const EXPECTED_QUERY_BODY: &[u8] = br#"{"q":"rust","page":2,"limit":25}"#;
+const EXPECTED_MIDDLEWARE_BODY: &[u8] = br#"{"scenario":"middleware_chain","value":302}"#;
+const EXPECTED_DI_BODY: &[u8] = br#"{"scenario":"dependency_injection","value":74}"#;
+const EXPECTED_SETTINGS_BODY: &[u8] = br#"{"scenario":"settings_access","value":33}"#;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct EchoPayload {
@@ -60,6 +63,44 @@ struct SearchQuery {
 	q: String,
 	page: u32,
 	limit: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct RuntimePayload {
+	scenario: &'static str,
+	value: u64,
+}
+
+#[derive(Clone)]
+struct RuntimeState {
+	base: u64,
+	tenant_offset: u64,
+	page_size: u64,
+}
+
+fn middleware_payload() -> RuntimePayload {
+	let mut value = 0_u64;
+	for layer in [3_u64, 5, 7, 11, 13] {
+		value = (value + layer) * 2;
+	}
+	RuntimePayload {
+		scenario: "middleware_chain",
+		value,
+	}
+}
+
+fn dependency_payload(state: &RuntimeState) -> RuntimePayload {
+	RuntimePayload {
+		scenario: "dependency_injection",
+		value: state.base + state.tenant_offset + state.page_size,
+	}
+}
+
+fn settings_payload() -> RuntimePayload {
+	RuntimePayload {
+		scenario: "settings_access",
+		value: "sqlite::memory:".len() as u64 + "benchmark".len() as u64 + 9,
+	}
 }
 
 struct ReinhardtHello;
@@ -180,12 +221,88 @@ impl ReinhardtHandler for ReinhardtQuery {
 	}
 }
 
+struct ReinhardtMiddleware;
+
+impl EndpointInfo for ReinhardtMiddleware {
+	fn path() -> &'static str {
+		"/middleware"
+	}
+
+	fn method() -> Method {
+		Method::GET
+	}
+
+	fn name() -> &'static str {
+		"runtime_middleware_chain"
+	}
+}
+
+#[async_trait]
+impl ReinhardtHandler for ReinhardtMiddleware {
+	async fn handle(&self, _req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
+		ReinhardtResponse::ok().with_json(&middleware_payload())
+	}
+}
+
+struct ReinhardtDependency;
+
+impl EndpointInfo for ReinhardtDependency {
+	fn path() -> &'static str {
+		"/di"
+	}
+
+	fn method() -> Method {
+		Method::GET
+	}
+
+	fn name() -> &'static str {
+		"runtime_dependency_injection"
+	}
+}
+
+#[async_trait]
+impl ReinhardtHandler for ReinhardtDependency {
+	async fn handle(&self, _req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
+		ReinhardtResponse::ok().with_json(&dependency_payload(&RuntimeState {
+			base: 42,
+			tenant_offset: 7,
+			page_size: 25,
+		}))
+	}
+}
+
+struct ReinhardtSettings;
+
+impl EndpointInfo for ReinhardtSettings {
+	fn path() -> &'static str {
+		"/settings"
+	}
+
+	fn method() -> Method {
+		Method::GET
+	}
+
+	fn name() -> &'static str {
+		"runtime_settings_access"
+	}
+}
+
+#[async_trait]
+impl ReinhardtHandler for ReinhardtSettings {
+	async fn handle(&self, _req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
+		ReinhardtResponse::ok().with_json(&settings_payload())
+	}
+}
+
 fn reinhardt_router() -> ServerRouter {
 	ServerRouter::new()
 		.endpoint(|| ReinhardtHello)
 		.endpoint(|| ReinhardtEcho)
 		.endpoint(|| ReinhardtPath)
 		.endpoint(|| ReinhardtQuery)
+		.endpoint(|| ReinhardtMiddleware)
+		.endpoint(|| ReinhardtDependency)
+		.endpoint(|| ReinhardtSettings)
 }
 
 async fn axum_hello() -> &'static str {
@@ -204,12 +321,32 @@ async fn axum_query(AxumQuery(query): AxumQuery<SearchQuery>) -> AxumJson<Search
 	AxumJson(query)
 }
 
+async fn axum_middleware() -> AxumJson<RuntimePayload> {
+	AxumJson(middleware_payload())
+}
+
+async fn axum_dependency(AxumState(state): AxumState<RuntimeState>) -> AxumJson<RuntimePayload> {
+	AxumJson(dependency_payload(&state))
+}
+
+async fn axum_settings() -> AxumJson<RuntimePayload> {
+	AxumJson(settings_payload())
+}
+
 fn axum_router() -> AxumRouter {
 	AxumRouter::new()
 		.route("/hello", axum_get(axum_hello))
 		.route("/echo", axum_post(axum_echo))
 		.route("/items/{id}/owners/{owner_id}", axum_get(axum_path))
 		.route("/search", axum_get(axum_query))
+		.route("/middleware", axum_get(axum_middleware))
+		.route("/di", axum_get(axum_dependency))
+		.route("/settings", axum_get(axum_settings))
+		.with_state(RuntimeState {
+			base: 42,
+			tenant_offset: 7,
+			page_size: 25,
+		})
 }
 
 async fn actix_hello() -> HttpResponse {
@@ -229,6 +366,18 @@ async fn actix_query(query: web::Query<SearchQuery>) -> HttpResponse {
 	HttpResponse::Ok().json(query.into_inner())
 }
 
+async fn actix_middleware() -> HttpResponse {
+	HttpResponse::Ok().json(middleware_payload())
+}
+
+async fn actix_dependency(state: web::Data<RuntimeState>) -> HttpResponse {
+	HttpResponse::Ok().json(dependency_payload(state.get_ref()))
+}
+
+async fn actix_settings() -> HttpResponse {
+	HttpResponse::Ok().json(settings_payload())
+}
+
 async fn loco_hello() -> LocoResult<LocoResponse> {
 	format::text("hello")
 }
@@ -245,12 +394,31 @@ async fn loco_query(LocoQuery(query): LocoQuery<SearchQuery>) -> LocoResult<Loco
 	format::json(query)
 }
 
+async fn loco_middleware() -> LocoResult<LocoResponse> {
+	format::json(middleware_payload())
+}
+
+async fn loco_dependency() -> LocoResult<LocoResponse> {
+	format::json(dependency_payload(&RuntimeState {
+		base: 42,
+		tenant_offset: 7,
+		page_size: 25,
+	}))
+}
+
+async fn loco_settings() -> LocoResult<LocoResponse> {
+	format::json(settings_payload())
+}
+
 async fn loco_router() -> AxumRouter {
 	let routes = LocoRoutes::new()
 		.add("/hello", loco_get(loco_hello))
 		.add("/echo", loco_post(loco_echo))
 		.add("/items/{id}/owners/{owner_id}", loco_get(loco_path))
-		.add("/search", loco_get(loco_query));
+		.add("/search", loco_get(loco_query))
+		.add("/middleware", loco_get(loco_middleware))
+		.add("/di", loco_get(loco_dependency))
+		.add("/settings", loco_get(loco_settings));
 	let mut router = AxumRouter::new();
 	for handler in routes.handlers {
 		router = router.route(&handler.uri, handler.method);
@@ -294,6 +462,9 @@ impl LoopbackServer {
 			echo: self.url("/echo"),
 			path: self.url("/items/42/owners/7"),
 			query: self.url("/search?q=rust&page=2&limit=25"),
+			middleware: self.url("/middleware"),
+			dependency: self.url("/di"),
+			settings: self.url("/settings"),
 		}
 	}
 
@@ -346,6 +517,9 @@ struct TargetUrls {
 	echo: String,
 	path: String,
 	query: String,
+	middleware: String,
+	dependency: String,
+	settings: String,
 }
 
 struct BenchServers {
@@ -457,10 +631,18 @@ async fn spawn_actix_server(client: &Client) -> LoopbackServer {
 		.expect("Actix listener should expose local address");
 	let server = ActixHttpServer::new(|| {
 		App::new()
+			.app_data(web::Data::new(RuntimeState {
+				base: 42,
+				tenant_offset: 7,
+				page_size: 25,
+			}))
 			.route("/hello", web::get().to(actix_hello))
 			.route("/echo", web::post().to(actix_echo))
 			.route("/items/{id}/owners/{owner_id}", web::get().to(actix_path))
 			.route("/search", web::get().to(actix_query))
+			.route("/middleware", web::get().to(actix_middleware))
+			.route("/di", web::get().to(actix_dependency))
+			.route("/settings", web::get().to(actix_settings))
 	})
 	.workers(1)
 	.listen(listener)
@@ -565,6 +747,24 @@ async fn validate_target(client: &Client, target: &TargetUrls) {
 		http_get(client, &target.query).await,
 		EXPECTED_QUERY_BODY,
 	);
+	assert_body(
+		target.name,
+		"middleware_chain",
+		http_get(client, &target.middleware).await,
+		EXPECTED_MIDDLEWARE_BODY,
+	);
+	assert_body(
+		target.name,
+		"dependency_injection",
+		http_get(client, &target.dependency).await,
+		EXPECTED_DI_BODY,
+	);
+	assert_body(
+		target.name,
+		"settings_access",
+		http_get(client, &target.settings).await,
+		EXPECTED_SETTINGS_BODY,
+	);
 }
 
 fn assert_body(target: &str, scenario: &str, actual: Bytes, expected: &[u8]) {
@@ -594,6 +794,15 @@ fn bench_http_target(
 	});
 	group.bench_function(BenchmarkId::new("query_params", target.name), |b| {
 		b.iter(|| black_box(rt.block_on(http_get(client, &target.query))))
+	});
+	group.bench_function(BenchmarkId::new("middleware_chain", target.name), |b| {
+		b.iter(|| black_box(rt.block_on(http_get(client, &target.middleware))))
+	});
+	group.bench_function(BenchmarkId::new("dependency_injection", target.name), |b| {
+		b.iter(|| black_box(rt.block_on(http_get(client, &target.dependency))))
+	});
+	group.bench_function(BenchmarkId::new("settings_access", target.name), |b| {
+		b.iter(|| black_box(rt.block_on(http_get(client, &target.settings))))
 	});
 }
 

@@ -49,9 +49,25 @@ cd benchmarks
 CARGO_TARGET_DIR=target cargo bench --locked --bench runtime_http -- --noplot
 ```
 
-The `runtime_http` benchmark currently executes `hello_world`, `json_echo`,
-`path_params`, and `query_params` against Reinhardt, Axum, Actix Web, and Loco
-using loopback HTTP servers and a shared HTTP client.
+The `runtime_http` benchmark currently executes all runtime scenarios against
+Reinhardt, Axum, Actix Web, and Loco using loopback HTTP servers and a shared
+HTTP client:
+
+- `hello_world`
+- `json_echo`
+- `path_params`
+- `query_params`
+- `middleware_chain`
+- `dependency_injection`
+- `settings_access`
+
+Run the concrete non-runtime matrix benchmark executors and write a dated
+Markdown report:
+
+```bash
+cd benchmarks
+CARGO_TARGET_DIR=target cargo run --locked --bin measure_matrix -- --output results/$(date +%F)-framework-comparison-non-runtime.md
+```
 
 The `suite` checker package intentionally has no third-party dependencies and
 is independent from the runtime benchmark package, so list/check/dry-run/measure

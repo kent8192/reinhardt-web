@@ -317,10 +317,12 @@ use `cargo make benchmark-suite-list` to inspect the matrix and
 under `benchmarks/`. Use `cargo make benchmark-suite-measure` to record the
 scenario coverage and manifest validation timing for PR evidence. Use
 `cargo make benchmark-runtime-http` to run the concrete loopback HTTP runtime
-benchmarks for `hello_world`, `json_echo`, `path_params`, and `query_params`
-across all four targets. The list/check/dry-run/measure tasks run through the
-std-only `benchmark-suite` checker package, while the runtime HTTP comparison
-framework dependencies live in the separate runtime benchmark package.
+benchmarks for all seven runtime scenarios across all four targets. Use
+`cargo make benchmark-matrix-measure` to run the concrete non-runtime
+comparison scenarios and write a dated Markdown report under
+`benchmarks/results/`. The list/check/dry-run/measure tasks run through the
+std-only `benchmark-suite` checker package, while the concrete comparison
+framework dependencies live in the separate benchmark package.
 
 ### 4. Create Your First App
 

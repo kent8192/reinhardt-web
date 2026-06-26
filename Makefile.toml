@@ -317,6 +317,17 @@ export CARGO_TARGET_DIR=target
 cargo bench --locked --bench runtime_http -- --noplot
 '''
 
+[tasks.benchmark-matrix-measure]
+description = "Run concrete non-runtime comparison benchmarks and write a dated report"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks
+export CARGO_TARGET_DIR=target
+date_stamp="$(date +%F)"
+cargo run --locked --bin measure_matrix -- --output "results/${date_stamp}-framework-comparison-non-runtime.md"
+'''
+
 [tasks.unit-test]
 description = "Run unit tests (src/)"
 command = "cargo"
