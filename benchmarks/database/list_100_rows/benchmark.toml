@@ -1,0 +1,9 @@
+[scenario]
+category = "database"
+name = "list_100_rows"
+runner = "criterion"
+metric = "query_latency"
+unit = "us/query"
+workload = "Select and decode the first 100 rows ordered by primary key."
+success = "Exactly 100 rows are returned in deterministic order."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

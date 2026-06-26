@@ -1,0 +1,9 @@
+[scenario]
+category = "compile_time"
+name = "cargo_check"
+runner = "hyperfine"
+metric = "wall_clock_time"
+unit = "s/check"
+workload = "Run cargo check on the warmed app fixture."
+success = "cargo check exits successfully."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

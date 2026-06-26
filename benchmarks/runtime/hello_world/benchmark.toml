@@ -1,0 +1,9 @@
+[scenario]
+category = "runtime"
+name = "hello_world"
+runner = "criterion"
+metric = "request_latency"
+unit = "ns/request"
+workload = "GET /hello returns a static 200 response body."
+success = "HTTP 200 with an exact static body match."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

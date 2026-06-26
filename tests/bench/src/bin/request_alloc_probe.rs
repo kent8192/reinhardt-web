@@ -100,7 +100,7 @@ where
 	);
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
 	let iterations = 10_000;
 
