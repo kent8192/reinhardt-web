@@ -41,6 +41,12 @@ Run the request allocation probe:
 cargo run --release -p reinhardt-benchmarks --bin request_alloc_probe
 ```
 
+Run the request latency percentile probe:
+
+```bash
+cargo run --release -p reinhardt-benchmarks --bin request_latency_percentile_probe
+```
+
 ## Adding New Benchmarks
 
 1. Create a new file in the `benches/` directory
