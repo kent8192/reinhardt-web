@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.0-rc.4...reinhardt-pages@v0.3.0-rc.5) - 2026-06-26
+
+### Changed
+
+- *(pages)* derive fetch credentials default
+
+### Fixed
+
+- *(ci)* expose benchmark server function response
+- *(pages)* allow wasm-opt fixture features
+
+### Maintenance
+
+- merge develop 0.3.0 into build-time perf branch
+
+### Performance
+
+- *(pages)* reduce native endpoint dispatch allocations
+- *(pages)* reduce fixture wasm release size
+
 ## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.2.0...reinhardt-pages@v0.3.0-rc.1) - 2026-06-18
 
 ### Added
