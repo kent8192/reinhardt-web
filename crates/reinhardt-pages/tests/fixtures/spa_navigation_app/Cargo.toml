@@ -10,6 +10,9 @@ publish = false
 # pattern for nested-but-detached crates.
 [workspace]
 
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O", "--all-features"]
+
 [profile.dev]
 codegen-units = 16
 debug = 0
