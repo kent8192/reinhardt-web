@@ -335,12 +335,13 @@ Then paste:
 BEGIN;
 
 INSERT INTO questions (question_text, pub_date)
-VALUES ('What should we build next?', datetime('now'));
+VALUES ('What should we build next?', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 
+WITH inserted_question(id) AS (SELECT last_insert_rowid())
 INSERT INTO choices (question_id, choice_text, votes)
-SELECT last_insert_rowid(), 'More tutorials', 0
+SELECT id, 'More tutorials', 0 FROM inserted_question
 UNION ALL
-SELECT last_insert_rowid(), 'More examples', 0;
+SELECT id, 'More examples', 0 FROM inserted_question;
 
 COMMIT;
 ```
