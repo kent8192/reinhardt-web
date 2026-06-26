@@ -1,0 +1,9 @@
+[scenario]
+category = "admin"
+name = "list_view_100k"
+runner = "criterion"
+metric = "render_latency"
+unit = "us/render"
+workload = "Render an admin list view over a 100,000-row fixture using indexed pagination."
+success = "The response includes one page of rows without scanning all decoded records."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

@@ -1,0 +1,9 @@
+[scenario]
+category = "contract"
+name = "introspect_medium_app"
+runner = "criterion"
+metric = "introspection_latency"
+unit = "us/run"
+workload = "Introspect a medium app with ten models, twenty routes, and three settings fragments."
+success = "The generated contract contains all declared entities in deterministic order."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

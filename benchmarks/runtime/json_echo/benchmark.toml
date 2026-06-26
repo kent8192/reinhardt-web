@@ -1,0 +1,9 @@
+[scenario]
+category = "runtime"
+name = "json_echo"
+runner = "criterion"
+metric = "request_latency"
+unit = "ns/request"
+workload = "POST /echo parses a small JSON payload and returns the same structure."
+success = "HTTP 200 with byte-equivalent JSON fields."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

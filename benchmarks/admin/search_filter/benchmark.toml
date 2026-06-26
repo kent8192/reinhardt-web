@@ -1,0 +1,9 @@
+[scenario]
+category = "admin"
+name = "search_filter"
+runner = "criterion"
+metric = "search_latency"
+unit = "us/search"
+workload = "Apply a text search and one boolean filter against the admin list fixture."
+success = "The response includes filtered rows and deterministic result counts."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

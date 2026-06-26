@@ -267,6 +267,67 @@ description = "Run benchmark tests in tests/bench"
 command = "cargo"
 args = ["bench", "--manifest-path", "tests/bench/Cargo.toml"]
 
+[tasks.benchmark-suite-check]
+description = "Validate framework comparison benchmark suite manifests"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks
+export CARGO_TARGET_DIR=target
+cargo run --locked --manifest-path suite/Cargo.toml -- check
+'''
+
+[tasks.benchmark-suite-list]
+description = "List framework comparison benchmark suite scenarios"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks
+export CARGO_TARGET_DIR=target
+cargo run --locked --manifest-path suite/Cargo.toml -- list
+'''
+
+[tasks.benchmark-suite-dry-run]
+description = "Preview framework comparison benchmark suite runners and metrics"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks
+export CARGO_TARGET_DIR=target
+cargo run --locked --manifest-path suite/Cargo.toml -- dry-run
+'''
+
+[tasks.benchmark-suite-measure]
+description = "Measure framework comparison benchmark suite manifest coverage"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks
+export CARGO_TARGET_DIR=target
+cargo run --locked --manifest-path suite/Cargo.toml -- measure
+'''
+
+[tasks.benchmark-runtime-http]
+description = "Run concrete runtime HTTP comparison benchmarks"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks
+export CARGO_TARGET_DIR=target
+cargo bench --locked --bench runtime_http -- --noplot
+'''
+
+[tasks.benchmark-matrix-measure]
+description = "Run concrete non-runtime comparison benchmarks and write a dated report"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks
+export CARGO_TARGET_DIR=target
+date_stamp="$(date +%F)"
+cargo run --locked --bin measure_matrix -- --output "results/${date_stamp}-framework-comparison-non-runtime.md"
+'''
+
 [tasks.unit-test]
 description = "Run unit tests (src/)"
 command = "cargo"

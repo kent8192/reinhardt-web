@@ -1,0 +1,9 @@
+[scenario]
+category = "database"
+name = "single_select"
+runner = "criterion"
+metric = "query_latency"
+unit = "us/query"
+workload = "Select one row by primary key from a warm SQLite fixture."
+success = "Exactly one row is returned and decoded."
+targets = ["reinhardt", "axum", "actix-web", "loco"]
