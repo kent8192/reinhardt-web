@@ -125,6 +125,9 @@ reinhardt = { version = "0.3.0-rc.4", package = "reinhardt-web", default-feature
     "admin",
     "conf",
     "commands",
+    "commands-server",
+    "commands-autoreload",
+    "server",
     "db-sqlite",
 ] }
 tokio = { version = "1", features = ["full"] }
@@ -132,9 +135,11 @@ tokio = { version = "1", features = ["full"] }
 
 The generated native target uses SQLite by default so the first run does not
 require a PostgreSQL container. If you pass an explicit SQLite feature list,
-keep the Pages runtime facade in place. Current `startproject` adds the
-required `minimal` feature automatically when a custom Pages list lacks a
-preset such as `standard`.
+keep the Pages runtime and command facades in place: `commands-server` enables
+`manage runserver`, `commands-autoreload` powers the generated dev watcher, and
+`server` provides the HTTP server facade. Current `startproject` adds the
+required `minimal` and server-side Pages features automatically when a custom
+Pages list lacks them.
 
 In an example project, import Reinhardt APIs through the `reinhardt` facade. Do not depend on internal `reinhardt-*` crates directly.
 
@@ -250,10 +255,10 @@ Start the dev workflow:
 cargo make dev
 ```
 
-In the reference example, `dev` runs the WASM build, applies migrations, and starts the pages server. The underlying `runserver` command passes `--with-pages`:
+In the generated project, `dev` runs the quality checks, builds the WASM bundle, and starts the pages server. Run `cargo make migrate` separately when you add migrations. The underlying `runserver` command passes `--with-pages` and reuses the bundle that `wasm-build-dev` just produced:
 
 ```bash
-cargo run --bin manage -- runserver --with-pages
+cargo run --bin manage -- runserver --with-pages --no-override-wasm
 ```
 
 Open `http://127.0.0.1:8000/`. At this point the application is only the shell. If the page loads without a missing-WASM error and the server logs show the pages runtime starting, the setup slice is complete.

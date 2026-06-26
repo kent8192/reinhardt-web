@@ -164,6 +164,26 @@ skips response-cookie jar creation for body-only server functions, and
 deserializes JSON server-function requests directly from bytes when content
 negotiation is not required.
 
+## Admin List Query Count Measurements
+
+Use the admin database mock tests before claiming query-count reductions on the
+admin list endpoint:
+
+```bash
+cargo test -p reinhardt-integration-tests test_list_with_condition_and_count -- --nocapture
+```
+
+The non-empty admin list path now uses `COUNT(*) OVER()` to return page rows and
+filtered pagination count from one SQL statement. Empty first pages also finish
+with the same single query. Empty out-of-range pages still issue the existing
+count query as a fallback so pagination metadata remains correct.
+
+| Request shape | Baseline DB calls | Current DB calls | Reduction |
+|---|---:|---:|---:|
+| Non-empty admin list page | 2 | 1 | 50.0% |
+| Empty first admin list page | 2 | 1 | 50.0% |
+| Empty out-of-range admin list page | 2 | 2 | 0.0% |
+
 Static `page!(|| { ... })` edits under WASM-owned client source paths can use
 the compile-free development hot patch path. The HMR payload replaces `#app`
 contents, preserving the development script and page shell. Dynamic Rust
