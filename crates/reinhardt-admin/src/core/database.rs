@@ -19,6 +19,9 @@ use reinhardt_query::prelude::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+const ADMIN_LIST_TOTAL_COUNT_ALIAS: &str = "__reinhardt_total_count";
+const SENSITIVE_FIELDS: &[&str] = &["password_hash", "password_salt"];
+
 /// Converts a `serde_json::Value` into a reinhardt-query `Value`.
 ///
 /// String values are inspected for ISO 8601 date/time patterns and converted
@@ -623,6 +626,53 @@ pub fn build_composite_filter_condition_with_depth(
 	}
 }
 
+fn build_combined_filter_condition(
+	filter_condition: Option<&FilterCondition>,
+	additional_filters: &[Filter],
+) -> AdminResult<(Condition, bool)> {
+	let mut combined = Condition::all();
+
+	if let Some(fc) = filter_condition
+		&& let Some(cond) = build_composite_filter_condition(fc)?
+	{
+		combined = combined.add(cond);
+	}
+
+	if let Some(simple_cond) = build_filter_condition(additional_filters) {
+		combined = combined.add(simple_cond);
+	}
+
+	Ok((
+		combined,
+		!additional_filters.is_empty() || filter_condition.is_some(),
+	))
+}
+
+fn extract_admin_list_total_count(
+	map: &serde_json::Map<String, serde_json::Value>,
+) -> AdminResult<u64> {
+	let count_value = map.get(ADMIN_LIST_TOTAL_COUNT_ALIAS).ok_or_else(|| {
+		AdminError::DatabaseError(format!(
+			"Admin list query result missing '{}' key",
+			ADMIN_LIST_TOTAL_COUNT_ALIAS
+		))
+	})?;
+
+	if let Some(count) = count_value.as_u64() {
+		return Ok(count);
+	}
+
+	count_value
+		.as_i64()
+		.and_then(|count| if count >= 0 { Some(count as u64) } else { None })
+		.ok_or_else(|| {
+			AdminError::DatabaseError(format!(
+				"Admin list query returned invalid total count: {}",
+				count_value
+			))
+		})
+}
+
 /// Admin database interface
 ///
 /// Provides CRUD operations for admin panel, leveraging reinhardt-orm.
@@ -784,23 +834,10 @@ impl AdminDatabase {
 			.column(ColumnRef::Asterisk)
 			.to_owned();
 
-		// Build combined condition
-		let mut combined = Condition::all();
+		let (combined, has_filter) =
+			build_combined_filter_condition(filter_condition, &additional_filters)?;
 
-		// Add composite filter condition (e.g., OR search across fields)
-		if let Some(fc) = filter_condition
-			&& let Some(cond) = build_composite_filter_condition(fc)?
-		{
-			combined = combined.add(cond);
-		}
-
-		// Add simple filters (AND logic)
-		if let Some(simple_cond) = build_filter_condition(&additional_filters) {
-			combined = combined.add(simple_cond);
-		}
-
-		// Only add condition if we have actual filters
-		if !additional_filters.is_empty() || filter_condition.is_some() {
+		if has_filter {
 			query.cond_where(combined);
 		}
 
@@ -832,9 +869,6 @@ impl AdminDatabase {
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
-		// Sensitive fields that must never be exposed in admin API responses
-		const SENSITIVE_FIELDS: &[&str] = &["password_hash", "password_salt"];
-
 		// Convert QueryRow to HashMap
 		Ok(rows
 			.into_iter()
@@ -850,6 +884,106 @@ impl AdminDatabase {
 				}
 			})
 			.collect())
+	}
+
+	/// List items and return the filtered total count with one query for non-empty pages.
+	///
+	/// This uses a windowed `COUNT(*) OVER()` expression so the admin list endpoint
+	/// can fetch page rows and pagination metadata without issuing a separate count
+	/// query on the common path.
+	pub async fn list_with_condition_and_count<M: Model>(
+		&self,
+		table_name: &str,
+		filter_condition: Option<&FilterCondition>,
+		additional_filters: Vec<Filter>,
+		sort_by: Option<&str>,
+		offset: u64,
+		limit: u64,
+	) -> AdminResult<(Vec<HashMap<String, serde_json::Value>>, u64)> {
+		// SELECT * is intentional: admin panel operates on dynamic schemas where
+		// the column set is not known at compile time. The synthetic total-count
+		// column is removed before returning API rows.
+		let mut query = Query::select()
+			.from(Alias::new(table_name))
+			.column(ColumnRef::Asterisk)
+			.expr_as(
+				Expr::cust("COUNT(*) OVER()"),
+				Alias::new(ADMIN_LIST_TOTAL_COUNT_ALIAS),
+			)
+			.to_owned();
+
+		let (combined, has_filter) =
+			build_combined_filter_condition(filter_condition, &additional_filters)?;
+
+		if has_filter {
+			query.cond_where(combined);
+		}
+
+		if let Some(sort_str) = sort_by {
+			let (field, is_desc) = if let Some(stripped) = sort_str.strip_prefix('-') {
+				(stripped, true)
+			} else {
+				(sort_str, false)
+			};
+
+			let col = Alias::new(field);
+			if is_desc {
+				query.order_by(col, Order::Desc);
+			} else {
+				query.order_by(col, Order::Asc);
+			}
+		}
+
+		query.limit(limit).offset(offset);
+
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
+		let rows = self
+			.connection
+			.query(&sql, params)
+			.await
+			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+
+		if rows.is_empty() {
+			if offset == 0 && limit > 0 {
+				return Ok((Vec::new(), 0));
+			}
+
+			let count = self
+				.count_with_condition::<M>(table_name, filter_condition, additional_filters)
+				.await?;
+			return Ok((Vec::new(), count));
+		}
+
+		let mut total_count = None;
+		let results = rows
+			.into_iter()
+			.filter_map(|row| {
+				if let serde_json::Value::Object(mut map) = row.data {
+					if total_count.is_none() {
+						total_count = Some(extract_admin_list_total_count(&map));
+					}
+
+					map.remove(ADMIN_LIST_TOTAL_COUNT_ALIAS);
+
+					Some(
+						map.into_iter()
+							.filter(|(key, _)| !SENSITIVE_FIELDS.contains(&key.as_str()))
+							.collect::<HashMap<String, serde_json::Value>>(),
+					)
+				} else {
+					None
+				}
+			})
+			.collect::<Vec<_>>();
+
+		let total_count = total_count.unwrap_or_else(|| {
+			Err(AdminError::DatabaseError(
+				"Admin list query returned no object rows".to_string(),
+			))
+		})?;
+
+		Ok((results, total_count))
 	}
 
 	/// Count items with composite filter conditions (supports AND/OR logic)
@@ -870,23 +1004,10 @@ impl AdminDatabase {
 			.expr(Expr::cust("COUNT(*) AS count"))
 			.to_owned();
 
-		// Build combined condition
-		let mut combined = Condition::all();
+		let (combined, has_filter) =
+			build_combined_filter_condition(filter_condition, &additional_filters)?;
 
-		// Add composite filter condition
-		if let Some(fc) = filter_condition
-			&& let Some(cond) = build_composite_filter_condition(fc)?
-		{
-			combined = combined.add(cond);
-		}
-
-		// Add simple filters
-		if let Some(simple_cond) = build_filter_condition(&additional_filters) {
-			combined = combined.add(simple_cond);
-		}
-
-		// Only add condition if we have actual filters
-		if !additional_filters.is_empty() || filter_condition.is_some() {
+		if has_filter {
 			query.cond_where(combined);
 		}
 
