@@ -17,7 +17,7 @@ members = [
 [workspace.dependencies]
 # Reinhardt framework from this repository.
 # reinhardt-version-sync
-reinhardt = { path = "..", version = "0.3.0-rc.4", package = "reinhardt-web" }
+reinhardt = { path = "..", version = "0.3.0-rc.5", package = "reinhardt-web" }
 
 # Testing
 testcontainers = { version = "0.27.2", features = ["blocking"] }

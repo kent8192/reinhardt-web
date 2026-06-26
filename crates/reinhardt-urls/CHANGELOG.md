@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.3.0-rc.4...reinhardt-urls@v0.3.0-rc.5) - 2026-06-26
+
+### Fixed
+
+- *(ci)* satisfy server router clippy lint
+
+### Performance
+
+- *(http)* reduce request allocation overhead
+
 ## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.2.0...reinhardt-urls@v0.3.0-rc.1) - 2026-06-18
 
 ### Added
