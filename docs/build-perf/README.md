@@ -182,6 +182,9 @@ The 2026-06-25 measurement compared `origin/develop/0.3.0` with the same probe
 after inlining small path-parameter sets and adding the single-middleware chain
 fast path:
 
+The probe uses a current-thread Tokio runtime so RSS measurements track the
+request path instead of idle worker-thread stacks.
+
 | Probe | Baseline | Optimized | Reduction |
 |---|---:|---:|---:|
 | `server_router_static_build_plus_handle` | 6 alloc/request | 6 alloc/request | 0.0% |
