@@ -945,7 +945,7 @@ impl AdminDatabase {
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
 		if rows.is_empty() {
-			if offset == 0 {
+			if offset == 0 && limit > 0 {
 				return Ok((Vec::new(), 0));
 			}
 

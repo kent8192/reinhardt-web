@@ -584,6 +584,36 @@ async fn test_list_with_condition_and_count_empty_first_page_uses_single_query()
 }
 
 #[tokio::test]
+async fn test_list_with_condition_and_count_zero_limit_first_page_counts_for_pagination() {
+	// Arrange
+	let mut mock = MockDatabaseBackend::new();
+	mock.expect_fetch_all()
+		.withf(|sql, _| sql.contains("COUNT(*) OVER()") && sql.contains("__reinhardt_total_count"))
+		.times(1)
+		.returning(|_, _| Ok(Vec::new()));
+	mock.expect_fetch_one()
+		.withf(|sql, _| sql.contains("COUNT(*) AS count"))
+		.times(1)
+		.returning(|_, _| {
+			let mut row = Row::new();
+			row.data.insert("count".to_string(), QueryValue::Int(5));
+			Ok(row)
+		});
+
+	let db = admin_database_from_mock(mock);
+
+	// Act
+	let (rows, count) = db
+		.list_with_condition_and_count::<User>("users", None, vec![], None, 0, 0)
+		.await
+		.unwrap();
+
+	// Assert
+	assert!(rows.is_empty());
+	assert_eq!(count, 5);
+}
+
+#[tokio::test]
 async fn test_list_with_condition_and_count_empty_later_page_counts_for_pagination() {
 	// Arrange
 	let mut mock = MockDatabaseBackend::new();
