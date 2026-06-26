@@ -151,7 +151,7 @@ async fn startproject_pages_from_embedded_only() {
 		"package = \"reinhardt-web\", default-features = false, features = [\"pages\", \"client-router\"]"
 	));
 	assert!(cargo_toml.contains(
-		"features = [\"minimal\", \"pages\", \"admin\", \"conf\", \"commands\", \"commands-server\", \"commands-autoreload\", \"server\", \"db-sqlite\"]"
+		"features = [\"minimal\", \"pages\", \"client-router\", \"admin\", \"conf\", \"commands\", \"commands-server\", \"commands-autoreload\", \"server\", \"db-sqlite\", \"forms\", \"auth-session\"]"
 	));
 	assert!(
 		!cargo_toml.contains("\"standard\"") && !cargo_toml.contains("\"db-postgres\""),
@@ -206,7 +206,7 @@ async fn startproject_pages_from_embedded_only() {
 		"generated pages project must include WASM post-build scripts"
 	);
 	let build_rs = std::fs::read_to_string(generated.join("build.rs")).unwrap();
-	for cfg in ["client", "server", "wasm", "native"] {
+	for cfg in ["with_reinhardt", "client", "server", "wasm", "native"] {
 		assert!(
 			build_rs.contains(&format!("cargo::rustc-check-cfg=cfg({cfg})")),
 			"generated pages build.rs must declare cfg({cfg}) for Rust 2024 check-cfg:\n{build_rs}"
@@ -254,7 +254,7 @@ async fn startproject_pages_adds_required_pages_features() {
 	let cargo_toml =
 		std::fs::read_to_string(tmp.path().join("pages_feature_proj/Cargo.toml")).unwrap();
 	assert!(cargo_toml.contains(
-		"features = [\"minimal\", \"pages\", \"client-router\", \"db-sqlite\", \"admin\", \"conf\", \"commands\", \"commands-server\", \"commands-autoreload\", \"server\"]"
+		"features = [\"minimal\", \"pages\", \"client-router\", \"db-sqlite\", \"admin\", \"conf\", \"commands\", \"commands-server\", \"commands-autoreload\", \"server\", \"forms\", \"auth-session\"]"
 	));
 	assert!(
 		!cargo_toml.contains("\"server-fn\""),

@@ -152,14 +152,16 @@ use reinhardt::reinhardt_apps::AppStaticFilesConfig;
 
 inventory::submit! {
     AppStaticFilesConfig {
-        app_label: "examples-tutorial-basis-wasm",
+        app_label: "tutorial-wasm",
         static_dir: "dist-wasm",
         url_prefix: "",
     }
 }
 ```
 
-This tells `collectstatic` that the generated WASM artifacts are application static files.
+The generated Pages template uses `<crate-name>-wasm` here, so a project named
+`tutorial` registers `tutorial-wasm`. This tells `collectstatic` that the
+generated WASM artifacts are application static files.
 
 ## Understand the Static Directories
 

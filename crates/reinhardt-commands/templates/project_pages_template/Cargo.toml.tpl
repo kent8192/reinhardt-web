@@ -65,10 +65,12 @@ msw = ["reinhardt/msw"]
 
 [dev-dependencies]
 rstest = "0.26.1"
-reqwest = { version = "0.12", features = ["json"] }
-tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies.reinhardt]
 version = "{{ reinhardt_version }}"
 package = "reinhardt-web"
 features = ["full", "test", "testcontainers"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["full"] }

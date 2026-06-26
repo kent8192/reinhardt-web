@@ -407,8 +407,22 @@ mod tests {
 	#[test]
 	fn noninteractive_pages_default_uses_required_features() {
 		assert_eq!(
-			default_noninteractive_features(&["minimal", "pages", "db-sqlite"]),
-			vec!["minimal", "pages", "db-sqlite"]
+			default_noninteractive_features(&[
+				"minimal",
+				"pages",
+				"client-router",
+				"db-sqlite",
+				"forms",
+				"auth-session",
+			]),
+			vec![
+				"minimal",
+				"pages",
+				"client-router",
+				"db-sqlite",
+				"forms",
+				"auth-session",
+			]
 		);
 	}
 

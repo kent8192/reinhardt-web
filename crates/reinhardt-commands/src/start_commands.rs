@@ -124,6 +124,7 @@ impl BaseCommand for StartProjectCommand {
 			&[
 				"minimal",
 				"pages",
+				"client-router",
 				"admin",
 				"conf",
 				"commands",
@@ -131,6 +132,8 @@ impl BaseCommand for StartProjectCommand {
 				"commands-autoreload",
 				"server",
 				"db-sqlite",
+				"forms",
+				"auth-session",
 			][..]
 		} else {
 			&["conf", "commands", "db-postgres", "api"][..]

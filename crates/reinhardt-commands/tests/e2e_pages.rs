@@ -123,6 +123,7 @@ async fn project_pages_layout_matches_tutorial() {
 	for feature in [
 		"minimal",
 		"pages",
+		"client-router",
 		"admin",
 		"conf",
 		"commands",
@@ -130,6 +131,8 @@ async fn project_pages_layout_matches_tutorial() {
 		"commands-autoreload",
 		"server",
 		"db-sqlite",
+		"forms",
+		"auth-session",
 	] {
 		assert!(
 			cargo_toml.contains(&format!("\"{feature}\"")),
@@ -149,6 +152,11 @@ async fn project_pages_layout_matches_tutorial() {
 		makefile.contains("command = \"wasm-pack\"")
 			&& makefile.contains("\"--out-dir\", \"dist-wasm\""),
 		"Pages project Makefile.toml must build browser artifacts through wasm-pack:\n{makefile}"
+	);
+	assert!(
+		makefile.contains("[tasks.wasm-test]")
+			&& makefile.contains("\"--features\", \"client-router,msw\""),
+		"Pages project Makefile.toml must include the browser test task used by the tutorial:\n{makefile}"
 	);
 	assert!(
 		!makefile.contains("ls target/wasm32-unknown-unknown") && !makefile.contains("head -1"),
@@ -279,8 +287,9 @@ async fn project_pages_layout_matches_tutorial() {
 		);
 	}
 
-	// 5. Root shared modules are not generated. DTOs and forms live inside
-	//    each app under serializers/ and server/forms/ respectively.
+	// 5. Root shared modules are not generated. Manual wire DTOs live inside
+	//    each app under serializers/, shared model info DTOs come from
+	//    app-level models.rs, and server forms live under server/forms/.
 	assert!(
 		!src.join("shared.rs").exists() && !src.join("shared").exists(),
 		"src/shared.rs and src/shared/ must not be generated"
@@ -339,20 +348,21 @@ async fn app_pages_layout_matches_tutorial() {
 		"apps/polls.rs must carry the #[app_config] attribute:\n{polls_rs}"
 	);
 
-	// 2. Server-only implementation submodules live under apps/<app>/server/.
+	// 2. Shared models live at the app root; server-only implementation
+	//    submodules live under apps/<app>/server/.
 	let polls_dir = apps.join("polls");
+	assert!(
+		polls_dir.join("models.rs").exists(),
+		"apps/polls/models.rs must exist so generated info DTOs are shared with WASM"
+	);
+	let models_rs =
+		fs::read_to_string(polls_dir.join("models.rs")).expect("read apps/polls/models.rs");
+	assert_models_placeholder_is_tutorial_safe(&models_rs, "polls", "PollsItem");
 	assert!(
 		polls_dir.join("server.rs").exists(),
 		"apps/polls/server.rs must exist as the server facade"
 	);
 	let server_dir = polls_dir.join("server");
-	assert!(
-		server_dir.join("models.rs").exists(),
-		"apps/polls/server/models.rs must exist"
-	);
-	let models_rs =
-		fs::read_to_string(server_dir.join("models.rs")).expect("read apps/polls/server/models.rs");
-	assert_models_placeholder_is_tutorial_safe(&models_rs, "polls", "PollsItem");
 	assert!(
 		server_dir.join("forms.rs").exists(),
 		"apps/polls/server/forms.rs must exist as the server forms facade"
@@ -371,12 +381,13 @@ async fn app_pages_layout_matches_tutorial() {
 	for unwanted in [
 		"admin.rs",
 		"models",
-		"models.rs",
 		"forms",
 		"forms.rs",
 		"views.rs",
 		"shared",
 		"pages.rs",
+		"server/models",
+		"server/models.rs",
 		"server/urls.rs",
 		"client/pages.rs",
 	] {
@@ -806,9 +817,14 @@ async fn workspace_app_pages_uses_unified_template() {
 			&& src.join("server").join("forms").join(".gitkeep").exists(),
 		"apps/bar/src/server/forms.rs and server/forms/.gitkeep must exist"
 	);
-	let workspace_models = fs::read_to_string(src.join("server").join("models.rs"))
-		.expect("read apps/bar/src/server/models.rs");
+	let workspace_models =
+		fs::read_to_string(src.join("models.rs")).expect("read apps/bar/src/models.rs");
 	assert_models_placeholder_is_tutorial_safe(&workspace_models, "bar", "BarItem");
+	assert!(
+		!src.join("server").join("models.rs").exists()
+			&& !src.join("server").join("models").exists(),
+		"apps/bar/src/server/models* must not exist because shared models live at src/models.rs"
+	);
 
 	// 4. lib.rs has cfg gates (shared template, not the old workspace-only version)
 	let lib_rs = fs::read_to_string(src.join("lib.rs")).expect("read lib.rs");

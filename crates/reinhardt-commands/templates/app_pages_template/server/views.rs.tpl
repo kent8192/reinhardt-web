@@ -17,7 +17,7 @@
 //! use reinhardt::viewset;
 //!
 //! // Import your model here
-//! // {% if is_workspace == "true" %}use crate::server::models::{{ camel_case_app_name }};{% else %}use crate::apps::{{ app_name }}::server::models::{{ camel_case_app_name }};{% endif %}
+//! // {% if is_workspace == "true" %}use crate::models::{{ camel_case_app_name }};{% else %}use crate::apps::{{ app_name }}::models::{{ camel_case_app_name }};{% endif %}
 //!
 //! #[viewset]
 //! pub struct {{ camel_case_app_name }}ViewSet;

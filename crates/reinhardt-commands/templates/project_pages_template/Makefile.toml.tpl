@@ -222,6 +222,11 @@ description = "Run integration tests only"
 command = "cargo"
 args = ["nextest", "run", "--test", "*", "--all-features"]
 
+[tasks.wasm-test]
+description = "Run WASM tests in headless Chrome"
+command = "wasm-pack"
+args = ["test", "--headless", "--chrome", "--", "--no-default-features", "--features", "client-router,msw"]
+
 # ============================================================================
 # Code Quality
 # ============================================================================
@@ -344,6 +349,7 @@ echo "  Testing:"
 echo "    test               - Run all tests"
 echo "    test-unit          - Run unit tests"
 echo "    test-integration   - Run integration tests"
+echo "    wasm-test          - Run browser/WASM tests"
 echo ""
 echo "  Code Quality:"
 echo "    fmt-check          - Check formatting"
