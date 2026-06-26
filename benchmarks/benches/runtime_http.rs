@@ -322,6 +322,24 @@ impl LoopbackServer {
 	}
 }
 
+impl Drop for LoopbackServer {
+	fn drop(&mut self) {
+		if let Some(handle) = self.actix_handle.take()
+			&& let Ok(runtime) = tokio::runtime::Handle::try_current()
+		{
+			runtime.spawn(async move {
+				handle.stop(false).await;
+			});
+		}
+		if let Some(tx) = self.shutdown_tx.take() {
+			let _ = tx.send(());
+		}
+		if let Some(join_handle) = self.join_handle.take() {
+			join_handle.abort();
+		}
+	}
+}
+
 struct TargetUrls {
 	name: &'static str,
 	hello: String,

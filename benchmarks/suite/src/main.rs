@@ -147,7 +147,7 @@ fn check_suite(root: &Path) -> Result<(), String> {
 		}
 
 		for scenario in category.scenarios {
-			if !suite.contains(&format!("\"{scenario}\"")) {
+			if !category_contains_scenario(&suite, category.name, scenario) {
 				return Err(format!(
 					"suite.toml category `{}` is missing scenario `{scenario}`",
 					category.name
@@ -163,6 +163,31 @@ fn check_suite(root: &Path) -> Result<(), String> {
 		TARGETS.len()
 	);
 	Ok(())
+}
+
+fn category_contains_scenario(suite: &str, category: &str, scenario: &str) -> bool {
+	let table = format!("[categories.{category}]");
+	let Some(section) = table_section(suite, &table) else {
+		return false;
+	};
+	let Some(list_start) = section.find("scenarios = [") else {
+		return false;
+	};
+	let list = &section[list_start..];
+	let Some(list_end) = list.find(']') else {
+		return false;
+	};
+	let scenario_token = format!("\"{scenario}\"");
+	list[..list_end]
+		.lines()
+		.any(|line| line.trim().trim_end_matches(',') == scenario_token)
+}
+
+fn table_section<'a>(suite: &'a str, table: &str) -> Option<&'a str> {
+	let start = suite.find(table)?;
+	let after_table = &suite[start + table.len()..];
+	let end = after_table.find("\n[").unwrap_or(after_table.len());
+	Some(&after_table[..end])
 }
 
 fn check_scenario(root: &Path, category: &str, scenario: &str) -> Result<(), String> {
@@ -275,4 +300,33 @@ fn extract_value<'a>(manifest: &'a str, key: &str) -> Option<&'a str> {
 
 fn read_file(path: &Path) -> Result<String, String> {
 	fs::read_to_string(path).map_err(|err| format!("failed to read {}: {err}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn scenario_lookup_is_scoped_to_category() {
+		let suite = r#"
+[categories.runtime]
+runner = "criterion"
+scenarios = [
+  "hello_world",
+]
+
+[categories.database]
+runner = "criterion"
+scenarios = [
+  "single_select",
+]
+"#;
+
+		assert!(category_contains_scenario(suite, "runtime", "hello_world"));
+		assert!(!category_contains_scenario(
+			suite,
+			"database",
+			"hello_world"
+		));
+	}
 }
