@@ -100,6 +100,44 @@ fixture WASM builds, 16-17% p95 for server-only rebuilds, and 8% p95 for
 framework Pages WASM builds. Treat these as planning estimates until
 browser-visible p50/p95 runtime measurements are added.
 
+## Pages WASM Binary Size Measurements
+
+Use a detached browser fixture release build before claiming browser artifact
+size improvements:
+
+```bash
+cargo build --manifest-path crates/reinhardt-pages/tests/fixtures/spa_navigation_app/Cargo.toml --target wasm32-unknown-unknown --release
+stat -f '%N %z bytes' target/wasm32-unknown-unknown/release/spa_navigation_app.wasm
+```
+
+The 2026-06-25 measurement compared `origin/develop/0.3.0` with the same
+fixture after applying a size-oriented release profile and excluding
+`console_error_panic_hook` from release startup. Values are raw `.wasm` bytes
+before `wasm-bindgen` or `wasm-opt` post-processing.
+
+| Fixture | Baseline | Optimized | Reduction |
+|---|---:|---:|---:|
+| `spa_navigation_app.wasm` | 2,541,068 bytes | 1,879,383 bytes | 26.0% |
+
+The optimized fixture uses `opt-level = "z"`, `lto = true`,
+`codegen-units = 1`, `panic = "abort"`, and `strip = true` for release builds.
+The development panic hook remains available in debug builds.
+
+## Migration Graph Plan Measurements
+
+Use a focused migration-graph probe before claiming plan-generation wins. The
+2026-06-25 probe built a 10,000-migration graph with 100 apps, diamond
+dependencies within each app, and cross-app dependencies every tenth migration,
+then measured `MigrationGraph::topological_sort()` five times in release mode.
+
+| Version | Median | Per migration | Reduction |
+|---|---:|---:|---:|
+| `origin/develop/0.3.0` | 777.38 ms | 77.74 us | baseline |
+| adjacency-list dependents | 6.12 ms | 611 ns | 99.2% |
+
+This measures the graph ordering phase only. It does not include database
+introspection, schema validation, or migration execution.
+
 ## Native Endpoint Runtime Measurements
 
 Use the native endpoint benchmark before claiming request-dispatch or
