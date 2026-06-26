@@ -120,6 +120,26 @@ async fn project_pages_layout_matches_tutorial() {
 		cargo_toml.contains("members = ["),
 		"Pages project Cargo.toml must include a members array for startapp --workspace:\n{cargo_toml}"
 	);
+	for feature in [
+		"minimal",
+		"pages",
+		"admin",
+		"conf",
+		"commands",
+		"commands-server",
+		"commands-autoreload",
+		"server",
+		"db-sqlite",
+	] {
+		assert!(
+			cargo_toml.contains(&format!("\"{feature}\"")),
+			"Pages project native dependency must include `{feature}` for the generated dev workflow:\n{cargo_toml}"
+		);
+	}
+	assert!(
+		!cargo_toml.contains("\"db-postgres\""),
+		"Pages project native dependency must keep the SQLite default:\n{cargo_toml}"
+	);
 	let makefile = fs::read_to_string(project.join("Makefile.toml")).expect("read Makefile.toml");
 	assert!(
 		makefile.contains("[tasks.install-tools]"),

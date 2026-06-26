@@ -202,8 +202,8 @@ args = [
 
 ```toml
 [tasks.dev]
-description = "Build WASM and start development server with frontend (auto-starts PostgreSQL/Redis via `migrate` -> `infra-up`)"
-dependencies = ["wasm-build-dev", "migrate", "run-dev-server"]
+description = "Start development environment (checks, builds WASM, runs server with auto-reload)"
+dependencies = ["clean-cache", "quality", "wasm-build-dev", "runserver"]
 ```
 
 ## Follow the Dev Build Path
@@ -221,7 +221,7 @@ echo "WASM build and collectstatic completed"
 The final `cargo make dev` step starts the server with pages enabled and avoids rebuilding over the just-created bundle:
 
 ```bash
-cargo run --bin manage -- runserver --with-pages --noreload --no-override-wasm
+cargo run --bin manage -- runserver --with-pages --no-override-wasm
 ```
 
 Release-mode local testing uses:
