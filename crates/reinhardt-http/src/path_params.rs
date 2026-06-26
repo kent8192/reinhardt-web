@@ -2,22 +2,27 @@
 //!
 //! `PathParams` preserves the order in which path parameters appear in the URL
 //! pattern, which is essential for correct tuple-based extraction such as
-//! `Path<(T1, T2)>`. Internally it is a `Vec<(String, String)>`, but it exposes
-//! a small subset of the `HashMap`-like API (`get`, `iter`, `len`, `is_empty`,
-//! `insert`, `values`) so existing callers can continue to look up parameters
-//! by name without any code changes.
+//! `Path<(T1, T2)>`. Internally it uses inline storage for the common small
+//! parameter sets, but it exposes a small subset of the `HashMap`-like API
+//! (`get`, `iter`, `len`, `is_empty`, `insert`, `values`) so existing callers
+//! can continue to look up parameters by name without any code changes.
 //!
-//! # Why a `Vec` and not a `HashMap`?
+//! # Why ordered storage and not a `HashMap`?
 //!
 //! `HashMap` iteration order is non-deterministic. URL routers (matchit in
 //! particular) yield parameters in URL declaration order, which is the order
-//! users expect when destructuring `Path<(T1, T2)>`. Storing parameters in a
-//! `Vec<(String, String)>` preserves that order all the way from the router to
-//! the extractor.
+//! users expect when destructuring `Path<(T1, T2)>`. Storing parameters as an
+//! ordered sequence preserves that order all the way from the router to the
+//! extractor.
 //!
 //! See issue #4013 for details.
 
 use std::collections::HashMap;
+
+use smallvec::SmallVec;
+
+const INLINE_PARAM_CAPACITY: usize = 4;
+type PathParamStorage = SmallVec<[(String, String); INLINE_PARAM_CAPACITY]>;
 
 /// Ordered collection of path parameters extracted from a URL pattern.
 ///
@@ -42,19 +47,21 @@ use std::collections::HashMap;
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PathParams {
-	inner: Vec<(String, String)>,
+	inner: PathParamStorage,
 }
 
 impl PathParams {
 	/// Create a new, empty `PathParams`.
 	pub fn new() -> Self {
-		Self { inner: Vec::new() }
+		Self {
+			inner: PathParamStorage::new(),
+		}
 	}
 
 	/// Create an empty `PathParams` with capacity for `capacity` entries.
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			inner: Vec::with_capacity(capacity),
+			inner: PathParamStorage::with_capacity(capacity),
 		}
 	}
 
@@ -107,7 +114,7 @@ impl PathParams {
 
 	/// Consume the wrapper and return the inner ordered `Vec`.
 	pub fn into_vec(self) -> Vec<(String, String)> {
-		self.inner
+		self.inner.into_vec()
 	}
 }
 
@@ -130,7 +137,7 @@ impl IntoIterator for PathParams {
 	type IntoIter = std::vec::IntoIter<(String, String)>;
 
 	fn into_iter(self) -> Self::IntoIter {
-		self.inner.into_iter()
+		self.inner.into_vec().into_iter()
 	}
 }
 
@@ -146,7 +153,9 @@ impl<'a> IntoIterator for &'a PathParams {
 impl From<Vec<(String, String)>> for PathParams {
 	fn from(inner: Vec<(String, String)>) -> Self {
 		// Caller is responsible for the ordering of the supplied vector.
-		Self { inner }
+		Self {
+			inner: PathParamStorage::from_vec(inner),
+		}
 	}
 }
 
@@ -244,5 +253,18 @@ mod tests {
 		// Assert
 		let order: Vec<&str> = params.iter().map(|(k, _)| k.as_str()).collect();
 		assert_eq!(order, vec!["z", "a"]);
+	}
+
+	#[rstest]
+	fn consuming_iterator_keeps_public_vec_iterator_type() {
+		// Arrange
+		let params = PathParams::from(vec![("org".to_string(), "myslug".to_string())]);
+
+		// Act
+		let mut iter: std::vec::IntoIter<(String, String)> = params.into_iter();
+
+		// Assert
+		assert_eq!(iter.next(), Some(("org".to_string(), "myslug".to_string())));
+		assert_eq!(iter.next(), None);
 	}
 }
