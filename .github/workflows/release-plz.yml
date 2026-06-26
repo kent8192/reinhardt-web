@@ -71,25 +71,40 @@ jobs:
   # Runner: Always uses self-hosted AWS runner for release operations
   # (faster builds, no disk space issues, no dpkg lock contention)
 
+  classify-release-push:
+    name: Classify Release Push
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      is_release_merge: ${{ steps.classify.outputs.is_release_merge }}
+      release_pr_number: ${{ steps.classify.outputs.release_pr_number }}
+      release_pr_head_branch: ${{ steps.classify.outputs.release_pr_head_branch }}
+      release_pr_base_branch: ${{ steps.classify.outputs.release_pr_base_branch }}
+      release_pr_merge_style: ${{ steps.classify.outputs.release_pr_merge_style }}
+    steps:
+      - name: Checkout release classifier
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github/scripts/classify-release-push.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Classify release push
+        id: classify
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/classify-release-push.sh
+
   release-plz-pr:
     name: Release PR
-    # Skip Release PR merge pushes. Those pushes are handled by
-    # release-plz-release below; running release-pr in parallel creates a
-    # short-lived follow-up Release PR before crates.io publication completes.
+    needs: classify-release-push
+    # Skip verified Release PR merge pushes. Those pushes are handled by
+    # release-plz-release below; ordinary branches containing "/release-plz-"
+    # still regenerate the next Release PR.
     if: |
-      github.event_name == 'push' && !(
-        (
-          startsWith(github.event.head_commit.message, 'Merge pull request #') &&
-          (
-            contains(github.event.head_commit.message, '/release-plz-') ||
-            contains(github.event.head_commit.message, '/develop-release-plz-')
-          )
-        ) ||
-        (
-          startsWith(github.event.head_commit.message, 'chore: release ') &&
-          contains(github.event.head_commit.message, '(#')
-        )
-      )
+      github.event_name == 'push' &&
+      needs.classify-release-push.outputs.is_release_merge == 'false'
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
     timeout-minutes: 360
     concurrency:
@@ -296,28 +311,16 @@ jobs:
 
   release-plz-release:
     name: Release
-    # Publish only after a verified Release PR merge. The release-plz-pr job
-    # above uses the inverse guard, so routine feature merges keep the next
-    # Release PR up to date while Release PR merges enter only this publish
-    # path.
+    needs: classify-release-push
+    # Publish only after the classifier verifies the PR metadata. Commit-message
+    # substring checks are intentionally not used for this gate.
     #
     # Accepted Release PR merge shapes:
     # - merge commit from release-plz-* or develop-release-plz-* branch
     # - squash commit titled "chore: release (#N)"
     if: |
-      github.event_name == 'push' && (
-        (
-          startsWith(github.event.head_commit.message, 'Merge pull request #') &&
-          (
-            contains(github.event.head_commit.message, '/release-plz-') ||
-            contains(github.event.head_commit.message, '/develop-release-plz-')
-          )
-        ) ||
-        (
-          startsWith(github.event.head_commit.message, 'chore: release ') &&
-          contains(github.event.head_commit.message, '(#')
-        )
-      )
+      github.event_name == 'push' &&
+      needs.classify-release-push.outputs.is_release_merge == 'true'
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
     timeout-minutes: 360
     outputs:
@@ -360,15 +363,11 @@ jobs:
           fi
 
       - name: Verify release branch name
-        if: "startsWith(github.event.head_commit.message, 'Merge pull request #')"
         env:
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          BRANCH: ${{ needs.classify-release-push.outputs.release_pr_head_branch }}
         run: |
-          # Extract branch name from merge commit message.
-          # Format: "Merge pull request #N from owner/BRANCH_NAME"
-          BRANCH=$(echo "$COMMIT_MSG" | grep -oP 'from [^/]+/\K.+$' || true)
           if [ -z "$BRANCH" ]; then
-            echo "::error::Could not extract branch name from commit message"
+            echo "::error::Release classifier did not emit a release branch name"
             exit 1
           fi
           echo "Extracted branch name: $BRANCH"
@@ -384,25 +383,31 @@ jobs:
           esac
 
       - name: Verify release PR label
-        if: "startsWith(github.event.head_commit.message, 'Merge pull request #') || (startsWith(github.event.head_commit.message, 'chore: release ') && contains(github.event.head_commit.message, '(#'))"
         env:
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+          PR_NUMBER: ${{ needs.classify-release-push.outputs.release_pr_number }}
+          EXPECTED_HEAD_BRANCH: ${{ needs.classify-release-push.outputs.release_pr_head_branch }}
+          EXPECTED_BASE_BRANCH: ${{ github.ref_name }}
         run: |
-          # Extract PR number from merge-commit or squash-merge commit message.
-          # Formats:
-          # - "Merge pull request #N from owner/BRANCH_NAME"
-          # - "chore: release (#N)"
-          PR_NUMBER=$(echo "$COMMIT_MSG" | grep -oP '^Merge pull request #\K\d+' || true)
           if [ -z "$PR_NUMBER" ]; then
-            PR_NUMBER=$(printf '%s\n' "$COMMIT_MSG" | head -n1 | sed -nE 's/^chore: release \(#([0-9]+)\).*$/\1/p')
-          fi
-          if [ -z "$PR_NUMBER" ]; then
-            echo "::error::Could not extract PR number from commit message"
+            echo "::error::Release classifier did not emit a release PR number"
             exit 1
           fi
           echo "Verifying PR #$PR_NUMBER has the 'release' label..."
-          LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' 2>/dev/null || echo "")
+
+          PR_JSON=$(gh pr view "$PR_NUMBER" --json labels,headRefName,baseRefName,mergeCommit)
+          HEAD_BRANCH=$(jq -r '.headRefName // ""' <<< "$PR_JSON")
+          BASE_BRANCH=$(jq -r '.baseRefName // ""' <<< "$PR_JSON")
+          LABELS=$(jq -r '.labels[].name' <<< "$PR_JSON")
+
+          if [ "$HEAD_BRANCH" != "$EXPECTED_HEAD_BRANCH" ]; then
+            echo "::error::PR #$PR_NUMBER head '$HEAD_BRANCH' does not match classifier output '$EXPECTED_HEAD_BRANCH'"
+            exit 1
+          fi
+          if [ "$BASE_BRANCH" != "$EXPECTED_BASE_BRANCH" ]; then
+            echo "::error::PR #$PR_NUMBER base '$BASE_BRANCH' does not match pushed ref '$EXPECTED_BASE_BRANCH'"
+            exit 1
+          fi
           if ! echo "$LABELS" | grep -qx 'release'; then
             echo "::error::PR #$PR_NUMBER does not have the 'release' label. Labels found: $LABELS"
             echo "::error::Only PRs with the 'release' label are allowed to publish. Refusing to publish."
@@ -410,7 +415,7 @@ jobs:
           fi
           echo "PR #$PR_NUMBER has the 'release' label — proceeding with publish"
 
-          MERGE_COMMIT_SHA=$(gh pr view "$PR_NUMBER" --json mergeCommit --jq '.mergeCommit.oid // ""' 2>/dev/null || echo "")
+          MERGE_COMMIT_SHA=$(jq -r '.mergeCommit.oid // ""' <<< "$PR_JSON")
           if [ -z "$MERGE_COMMIT_SHA" ]; then
             echo "::error::Could not determine merge commit SHA for PR #$PR_NUMBER"
             exit 1
