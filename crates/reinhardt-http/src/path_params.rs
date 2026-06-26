@@ -134,10 +134,10 @@ where
 
 impl IntoIterator for PathParams {
 	type Item = (String, String);
-	type IntoIter = smallvec::IntoIter<[(String, String); INLINE_PARAM_CAPACITY]>;
+	type IntoIter = std::vec::IntoIter<(String, String)>;
 
 	fn into_iter(self) -> Self::IntoIter {
-		self.inner.into_iter()
+		self.inner.into_vec().into_iter()
 	}
 }
 
@@ -253,5 +253,18 @@ mod tests {
 		// Assert
 		let order: Vec<&str> = params.iter().map(|(k, _)| k.as_str()).collect();
 		assert_eq!(order, vec!["z", "a"]);
+	}
+
+	#[rstest]
+	fn consuming_iterator_keeps_public_vec_iterator_type() {
+		// Arrange
+		let params = PathParams::from(vec![("org".to_string(), "myslug".to_string())]);
+
+		// Act
+		let mut iter: std::vec::IntoIter<(String, String)> = params.into_iter();
+
+		// Assert
+		assert_eq!(iter.next(), Some(("org".to_string(), "myslug".to_string())));
+		assert_eq!(iter.next(), None);
 	}
 }
