@@ -307,10 +307,33 @@ impl DatabaseMigrationExecutor {
 
 	/// Performs the apply migrations operation.
 	pub async fn apply_migrations(&mut self, migrations: &[Migration]) -> Result<ExecutionResult> {
-		let mut applied = Vec::new();
+		#[cfg(feature = "postgres")]
+		if self.connection.is_cockroachdb() {
+			return self
+				.apply_migrations_with_cockroachdb_schema_lock(migrations)
+				.await;
+		}
 
 		// Ensure the migration recorder table exists
 		self.recorder.ensure_schema_table().await?;
+		self.apply_migrations_after_schema_table(migrations).await
+	}
+
+	#[cfg(feature = "postgres")]
+	async fn apply_migrations_with_cockroachdb_schema_lock(
+		&mut self,
+		migrations: &[Migration],
+	) -> Result<ExecutionResult> {
+		let _lock = self.recorder.acquire_cockroachdb_schema_lock().await?;
+		self.recorder.ensure_schema_table_internal().await?;
+		self.apply_migrations_after_schema_table(migrations).await
+	}
+
+	async fn apply_migrations_after_schema_table(
+		&mut self,
+		migrations: &[Migration],
+	) -> Result<ExecutionResult> {
+		let mut applied = Vec::new();
 
 		// Build MigrationGraph for dependency resolution
 		let mut graph = super::graph::MigrationGraph::new();
@@ -391,10 +414,35 @@ impl DatabaseMigrationExecutor {
 		&mut self,
 		migrations: &[Migration],
 	) -> Result<ExecutionResult> {
-		let mut rolledback = Vec::new();
+		#[cfg(feature = "postgres")]
+		if self.connection.is_cockroachdb() {
+			return self
+				.rollback_migrations_with_cockroachdb_schema_lock(migrations)
+				.await;
+		}
 
 		// Ensure the migration recorder table exists
 		self.recorder.ensure_schema_table().await?;
+		self.rollback_migrations_after_schema_table(migrations)
+			.await
+	}
+
+	#[cfg(feature = "postgres")]
+	async fn rollback_migrations_with_cockroachdb_schema_lock(
+		&mut self,
+		migrations: &[Migration],
+	) -> Result<ExecutionResult> {
+		let _lock = self.recorder.acquire_cockroachdb_schema_lock().await?;
+		self.recorder.ensure_schema_table_internal().await?;
+		self.rollback_migrations_after_schema_table(migrations)
+			.await
+	}
+
+	async fn rollback_migrations_after_schema_table(
+		&mut self,
+		migrations: &[Migration],
+	) -> Result<ExecutionResult> {
+		let mut rolledback = Vec::new();
 
 		// Process migrations in reverse order (newest first)
 		for migration in migrations.iter().rev() {
@@ -654,10 +702,28 @@ impl DatabaseMigrationExecutor {
 	/// # });
 	/// ```
 	pub async fn apply(&mut self, plan: &MigrationPlan) -> Result<ExecutionResult> {
-		let mut applied = Vec::new();
+		#[cfg(feature = "postgres")]
+		if self.connection.is_cockroachdb() {
+			return self.apply_with_cockroachdb_schema_lock(plan).await;
+		}
 
 		// Ensure the migration recorder table exists
 		self.recorder.ensure_schema_table().await?;
+		self.apply_after_schema_table(plan).await
+	}
+
+	#[cfg(feature = "postgres")]
+	async fn apply_with_cockroachdb_schema_lock(
+		&mut self,
+		plan: &MigrationPlan,
+	) -> Result<ExecutionResult> {
+		let _lock = self.recorder.acquire_cockroachdb_schema_lock().await?;
+		self.recorder.ensure_schema_table_internal().await?;
+		self.apply_after_schema_table(plan).await
+	}
+
+	async fn apply_after_schema_table(&mut self, plan: &MigrationPlan) -> Result<ExecutionResult> {
+		let mut applied = Vec::new();
 
 		let dialect = match self.db_type {
 			DatabaseType::Postgres => SqlDialect::Postgres,
