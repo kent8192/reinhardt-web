@@ -10,9 +10,19 @@ publish = false
 # pattern for nested-but-detached crates.
 [workspace]
 
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O", "--all-features"]
+
 [profile.dev]
 codegen-units = 16
 debug = 0
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "z"
+panic = "abort"
+strip = true
 
 [lib]
 crate-type = ["cdylib", "rlib"]
