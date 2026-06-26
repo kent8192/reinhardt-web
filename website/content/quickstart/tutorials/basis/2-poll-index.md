@@ -323,27 +323,30 @@ The final example adds a "Create new poll" button and owner-only controls. Leave
 
 ## Seed a Poll
 
-Until the admin arrives in Part 6, the quickest local seed is SQL. Use the same PostgreSQL database that `cargo make dev` points at. In the example profile, open it with:
+Until the admin arrives in Part 6, the quickest local seed is SQL. The generated tutorial project uses SQLite by default, so open the local database created by `cargo make migrate`:
 
 ```bash
-PGPASSWORD=reinhardt psql -h localhost -p 5433 -U reinhardt -d examples_tutorial_basis
+sqlite3 db.sqlite3
 ```
 
 Then paste:
 
 ```sql
-WITH inserted_question AS (
-    INSERT INTO questions (question_text, pub_date)
-    VALUES ('What should we build next?', NOW())
-    RETURNING id
-)
+BEGIN;
+
+INSERT INTO questions (question_text, pub_date)
+VALUES ('What should we build next?', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+
+WITH inserted_question(id) AS (SELECT last_insert_rowid())
 INSERT INTO choices (question_id, choice_text, votes)
 SELECT id, 'More tutorials', 0 FROM inserted_question
 UNION ALL
 SELECT id, 'More examples', 0 FROM inserted_question;
+
+COMMIT;
 ```
 
-If you switch the tutorial profile to SQLite, open that database with `sqlite3 <path-to-db.sqlite3>` and use SQLite's inserted-ID syntax instead of `RETURNING`.
+If you switch the tutorial profile to PostgreSQL, open that database with `psql` and use PostgreSQL's `RETURNING` syntax instead of `last_insert_rowid()`.
 
 ## Checkpoint
 
