@@ -100,6 +100,44 @@ fixture WASM builds, 16-17% p95 for server-only rebuilds, and 8% p95 for
 framework Pages WASM builds. Treat these as planning estimates until
 browser-visible p50/p95 runtime measurements are added.
 
+## Pages WASM Binary Size Measurements
+
+Use a detached browser fixture release build before claiming browser artifact
+size improvements:
+
+```bash
+cargo build --manifest-path crates/reinhardt-pages/tests/fixtures/spa_navigation_app/Cargo.toml --target wasm32-unknown-unknown --release
+stat -f '%N %z bytes' target/wasm32-unknown-unknown/release/spa_navigation_app.wasm
+```
+
+The 2026-06-25 measurement compared `origin/develop/0.3.0` with the same
+fixture after applying a size-oriented release profile and excluding
+`console_error_panic_hook` from release startup. Values are raw `.wasm` bytes
+before `wasm-bindgen` or `wasm-opt` post-processing.
+
+| Fixture | Baseline | Optimized | Reduction |
+|---|---:|---:|---:|
+| `spa_navigation_app.wasm` | 2,541,068 bytes | 1,879,383 bytes | 26.0% |
+
+The optimized fixture uses `opt-level = "z"`, `lto = true`,
+`codegen-units = 1`, `panic = "abort"`, and `strip = true` for release builds.
+The development panic hook remains available in debug builds.
+
+## Migration Graph Plan Measurements
+
+Use a focused migration-graph probe before claiming plan-generation wins. The
+2026-06-25 probe built a 10,000-migration graph with 100 apps, diamond
+dependencies within each app, and cross-app dependencies every tenth migration,
+then measured `MigrationGraph::topological_sort()` five times in release mode.
+
+| Version | Median | Per migration | Reduction |
+|---|---:|---:|---:|
+| `origin/develop/0.3.0` | 777.38 ms | 77.74 us | baseline |
+| adjacency-list dependents | 6.12 ms | 611 ns | 99.2% |
+
+This measures the graph ordering phase only. It does not include database
+introspection, schema validation, or migration execution.
+
 ## Native Endpoint Runtime Measurements
 
 Use the native endpoint benchmark before claiming request-dispatch or
@@ -143,6 +181,26 @@ fast path:
 | `server_router_static_build_plus_handle` | 6 alloc/request | 6 alloc/request | 0.0% |
 | `server_router_two_params_build_plus_handle` | 11 alloc/request | 10 alloc/request | 9.1% |
 | `server_router_one_middleware_build_plus_handle` | 15 alloc/request | 12 alloc/request | 20.0% |
+
+## Admin List Query Count Measurements
+
+Use the admin database mock tests before claiming query-count reductions on the
+admin list endpoint:
+
+```bash
+cargo test -p reinhardt-integration-tests test_list_with_condition_and_count -- --nocapture
+```
+
+The non-empty admin list path now uses `COUNT(*) OVER()` to return page rows and
+filtered pagination count from one SQL statement. Empty first pages also finish
+with the same single query. Empty out-of-range pages still issue the existing
+count query as a fallback so pagination metadata remains correct.
+
+| Request shape | Baseline DB calls | Current DB calls | Reduction |
+|---|---:|---:|---:|
+| Non-empty admin list page | 2 | 1 | 50.0% |
+| Empty first admin list page | 2 | 1 | 50.0% |
+| Empty out-of-range admin list page | 2 | 2 | 0.0% |
 
 Static `page!(|| { ... })` edits under WASM-owned client source paths can use
 the compile-free development hot patch path. The HMR payload replaces `#app`

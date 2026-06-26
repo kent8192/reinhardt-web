@@ -3428,12 +3428,36 @@ impl CheckCommand {
 	///
 	/// Returns `None` when neither source produces a URL.
 	fn resolve_database_url(ctx: &CommandContext) -> Option<String> {
+		let env_database_url = std::env::var("DATABASE_URL").ok();
+
+		#[cfg(feature = "reinhardt-db")]
+		if let Some(settings) = ctx.settings.as_ref()
+			&& let Ok(url) = DatabaseConnection::database_url_from(
+				settings.as_ref(),
+				env_database_url.as_deref(),
+			) {
+			sync_database_url_to_env(env_database_url.as_deref(), &url, ctx);
+			return Some(url);
+		}
+
+		#[cfg(not(feature = "reinhardt-db"))]
 		if let Some(settings) = ctx.settings.as_ref()
 			&& let Some(db) = settings.core().databases.get("default")
 		{
 			return Some(db.to_url());
 		}
-		std::env::var("DATABASE_URL").ok()
+
+		if let Some(url) = env_database_url {
+			return Some(url);
+		}
+
+		#[cfg(feature = "reinhardt-db")]
+		if let Ok(url) = get_database_url_from_settings() {
+			sync_database_url_to_env(None, &url, ctx);
+			return Some(url);
+		}
+
+		None
 	}
 
 	/// Returns true when a static-files root is configured, either via
@@ -4254,6 +4278,56 @@ fn detect_database_type(url: &str) -> Result<DatabaseType, crate::CommandError> 
 mod tests {
 	use super::*;
 
+	#[cfg(feature = "reinhardt-db")]
+	struct EnvVarGuard {
+		key: &'static str,
+		original: Option<std::ffi::OsString>,
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	impl EnvVarGuard {
+		fn capture(key: &'static str) -> Self {
+			Self {
+				key,
+				original: std::env::var_os(key),
+			}
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	impl Drop for EnvVarGuard {
+		fn drop(&mut self) {
+			// SAFETY: tests that mutate process environment are serial-protected.
+			unsafe {
+				match &self.original {
+					Some(value) => std::env::set_var(self.key, value),
+					None => std::env::remove_var(self.key),
+				}
+			}
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	struct CurrentDirGuard {
+		original: std::path::PathBuf,
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	impl CurrentDirGuard {
+		fn enter(path: &std::path::Path) -> Self {
+			let original = std::env::current_dir().expect("read current directory");
+			std::env::set_current_dir(path).expect("set current directory");
+			Self { original }
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	impl Drop for CurrentDirGuard {
+		fn drop(&mut self) {
+			let _ = std::env::set_current_dir(&self.original);
+		}
+	}
+
 	#[tokio::test]
 	async fn test_check_command_basic() {
 		let cmd = CheckCommand;
@@ -4263,6 +4337,49 @@ mod tests {
 		let result = cmd.execute(&ctx).await;
 		// May fail if environment has strict checks, but should handle gracefully
 		assert!(result.is_ok() || result.is_err());
+	}
+
+	#[test]
+	#[cfg(feature = "reinhardt-db")]
+	#[serial_test::serial(env)]
+	fn test_check_resolves_database_url_from_settings_files() {
+		// Arrange
+		let _database_url = EnvVarGuard::capture("DATABASE_URL");
+		let _reinhardt_env = EnvVarGuard::capture("REINHARDT_ENV");
+		// SAFETY: env mutation in this test is protected by #[serial(env)].
+		unsafe {
+			std::env::remove_var("DATABASE_URL");
+			std::env::set_var("REINHARDT_ENV", "local");
+		}
+
+		let temp_dir = tempfile::TempDir::new().expect("create temp dir");
+		let settings_dir = temp_dir.path().join("settings");
+		std::fs::create_dir_all(&settings_dir).expect("create settings dir");
+		std::fs::write(
+			settings_dir.join("base.toml"),
+			r#"
+[core]
+secret_key = "test-secret"
+
+[core.databases.default]
+engine = "sqlite"
+name = "db.sqlite3"
+"#,
+		)
+		.expect("write base settings");
+		std::fs::write(settings_dir.join("local.toml"), "").expect("write local settings");
+		let _cwd = CurrentDirGuard::enter(temp_dir.path());
+
+		// Act
+		let resolved = CheckCommand::resolve_database_url(&CommandContext::default())
+			.expect("database URL should resolve from settings files");
+
+		// Assert
+		assert_eq!(resolved, "sqlite:db.sqlite3");
+		assert_eq!(
+			std::env::var("DATABASE_URL").expect("DATABASE_URL should be synced"),
+			resolved
+		);
 	}
 
 	#[tokio::test]
