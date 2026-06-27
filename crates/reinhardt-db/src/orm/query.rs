@@ -4651,13 +4651,15 @@ where
 			);
 		}
 
+		let Some(cond) = self.build_where_condition_or_false() else {
+			panic!(
+				"DELETE without WHERE clause is not allowed. Use .filter() to specify which rows to delete."
+			);
+		};
+
 		let mut stmt = Query::delete();
 		stmt.from_table(Alias::new(T::table_name()));
-
-		// Add WHERE conditions
-		if let Some(cond) = self.build_where_condition_or_false() {
-			stmt.cond_where(cond);
-		}
+		stmt.cond_where(cond);
 
 		stmt.to_owned()
 	}
@@ -6416,6 +6418,15 @@ mod tests {
 	)]
 	fn test_delete_sql_without_filters_panics() {
 		let queryset = QuerySet::<TestUser>::new();
+		let _ = queryset.delete_sql();
+	}
+
+	#[test]
+	#[should_panic(
+		expected = "DELETE without WHERE clause is not allowed. Use .filter() to specify which rows to delete."
+	)]
+	fn test_delete_sql_with_empty_composite_filter_panics() {
+		let queryset = QuerySet::<TestUser>::new().filter(FilterCondition::and(Vec::new()));
 		let _ = queryset.delete_sql();
 	}
 
