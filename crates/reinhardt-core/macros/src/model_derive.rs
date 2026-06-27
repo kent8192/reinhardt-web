@@ -4841,7 +4841,14 @@ fn generate_info_struct(
 			info_fields.push(InfoFieldSpec {
 				name: name.clone(),
 				ty,
-				serde_attrs: f.serde_attrs.clone(),
+				// Relation payloads (`RelationInfo`/`ManyToManyInfo`) are lightweight,
+				// serializable DTOs (Issue #5272). They must NOT inherit the model
+				// field's serde attrs: the `#[model]` attribute macro injects
+				// `#[serde(skip)]` onto relation model fields (only the `*_id` column
+				// serializes for the model), and propagating it here would both demand
+				// an unimplemented `Default` for `RelationInfo` and wrongly drop the
+				// payload during `{Model}Info` (de)serialization.
+				serde_attrs: Vec::new(),
 				validate_attrs: Vec::new(),
 				setter_kind: InfoSetterKind::Relation { target_ty },
 				from_model: quote! {
@@ -4864,7 +4871,8 @@ fn generate_info_struct(
 			info_fields.push(InfoFieldSpec {
 				name: name.clone(),
 				ty,
-				serde_attrs: f.serde_attrs.clone(),
+				// Relation payloads do not inherit model serde attrs (see FK branch above).
+				serde_attrs: Vec::new(),
 				validate_attrs: Vec::new(),
 				setter_kind: InfoSetterKind::ManyToMany { target_ty },
 				from_model: quote! {
