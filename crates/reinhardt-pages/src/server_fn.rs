@@ -113,7 +113,10 @@ pub use reinhardt_pages_macros::server_fn;
 ///
 /// On WASM targets, reads the `<meta name="server-fn-prefix">` tag from the
 /// document to determine the mount prefix. The prefix is cached after the first
-/// DOM lookup for performance.
+/// DOM lookup for performance. Only same-origin absolute path prefixes are
+/// honored; absolute URLs, scheme-relative URLs, and relative prefixes are
+/// ignored so credentialed server function requests cannot be redirected to a
+/// different origin by DOM-controlled metadata.
 ///
 /// On non-WASM targets, returns the path unchanged (server-side routing handles
 /// prefix resolution via router mounting).
@@ -126,7 +129,21 @@ pub use reinhardt_pages_macros::server_fn;
 ///
 /// // Without the meta tag:
 /// assert_eq!(resolve_endpoint("/api/server_fn/get_list"), "/api/server_fn/get_list");
+///
+/// // Cross-origin prefixes are ignored:
+/// assert_eq!(resolve_endpoint("/api/server_fn/get_list"), "/api/server_fn/get_list");
 /// ```
+#[cfg(any(wasm, test))]
+fn prefixed_same_origin_path(prefix: &str, path: &str) -> String {
+	let prefix = prefix.trim();
+	if prefix.is_empty() || !prefix.starts_with('/') || prefix.starts_with("//") {
+		return path.to_string();
+	}
+
+	let prefix = prefix.trim_end_matches('/');
+	format!("{}{}", prefix, path)
+}
+
 #[cfg(wasm)]
 pub fn resolve_endpoint(path: &str) -> String {
 	use std::cell::RefCell;
@@ -150,12 +167,7 @@ pub fn resolve_endpoint(path: &str) -> String {
 			*cache = Some(prefix);
 		}
 		let prefix = cache.as_deref().unwrap_or("");
-		let relative = if prefix.is_empty() {
-			path.to_string()
-		} else {
-			let prefix = prefix.trim_end_matches('/');
-			format!("{}{}", prefix, path)
-		};
+		let relative = prefixed_same_origin_path(prefix, path);
 
 		web_sys::window()
 			.and_then(|w| w.location().href().ok())
@@ -175,6 +187,31 @@ pub fn resolve_endpoint(path: &str) -> String {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+
+	#[rstest]
+	#[case("", "/api/server_fn/get_list", "/api/server_fn/get_list")]
+	#[case("/admin", "/api/server_fn/get_list", "/admin/api/server_fn/get_list")]
+	#[case("/admin/", "/api/server_fn/get_list", "/admin/api/server_fn/get_list")]
+	#[case(
+		"//attacker.example",
+		"/api/server_fn/get_list",
+		"/api/server_fn/get_list"
+	)]
+	#[case(
+		"https://attacker.example",
+		"/api/server_fn/get_list",
+		"/api/server_fn/get_list"
+	)]
+	#[case("admin", "/api/server_fn/get_list", "/api/server_fn/get_list")]
+	fn test_prefixed_same_origin_path_rejects_cross_origin_prefixes(
+		#[case] prefix: &str,
+		#[case] path: &str,
+		#[case] expected: &str,
+	) {
+		let result = prefixed_same_origin_path(prefix, path);
+
+		assert_eq!(result, expected);
+	}
 
 	#[rstest]
 	#[case("/api/server_fn/get_list", "/api/server_fn/get_list")]
