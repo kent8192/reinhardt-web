@@ -1644,6 +1644,15 @@ mod tests {
 		let ty: syn::Type = parse_quote!(Cookie<String>);
 		assert!(is_extractor_type(&ty), "Cookie should be an extractor");
 
+		let ty: syn::Type = parse_quote!(CookieNamed<SessionId, String>);
+		assert!(is_extractor_type(&ty), "CookieNamed should be an extractor");
+
+		let ty: syn::Type = parse_quote!(CookieStruct<MyCookies>);
+		assert!(
+			is_extractor_type(&ty),
+			"CookieStruct should be an extractor"
+		);
+
 		let ty: syn::Type = parse_quote!(Body);
 		assert!(is_extractor_type(&ty), "Body should be an extractor");
 	}

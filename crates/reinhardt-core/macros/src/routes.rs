@@ -91,8 +91,8 @@ fn detect_extractors(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<ExtractorInfo
 						| "Json" | "Query" | "Header"
 						| "Cookie" | "Form"
 						| "Body" | "HeaderNamed"
-						| "CookieNamed" | "SessionValue"
-						| "OptionalSessionValue"
+						| "CookieNamed" | "CookieStruct"
+						| "SessionValue" | "OptionalSessionValue"
 						| "SessionValueNamed"
 				) {
 					extractors.push(ExtractorInfo {
@@ -1316,6 +1316,24 @@ mod url_resolver_tests {
 			assert!(marker.contains("deprecated"));
 			assert!(marker.contains("user-detail"));
 		}
+	}
+
+	#[test]
+	fn detect_extractors_includes_cookie_struct() {
+		use syn::parse_quote;
+
+		let inputs: syn::punctuated::Punctuated<FnArg, Token![,]> = parse_quote! {
+			CookieStruct(cookies): CookieStruct<MyCookies>,
+			Query(query): Query<SearchParams>
+		};
+
+		let extractors = detect_extractors(&inputs);
+		let names: Vec<_> = extractors
+			.iter()
+			.map(|extractor| extractor.extractor_name.as_str())
+			.collect();
+
+		assert_eq!(names, vec!["CookieStruct", "Query"]);
 	}
 
 	#[test]
