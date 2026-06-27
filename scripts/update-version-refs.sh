@@ -49,7 +49,7 @@ fi
 # --- Resolve paths and target list ---
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="${REINHARDT_REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 if [ -n "${REINHARDT_VERSION_SYNC_TARGETS:-}" ]; then
 	# Space-separated override (for tests only)
