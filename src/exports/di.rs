@@ -10,4 +10,6 @@ pub use reinhardt_di::{
 };
 
 #[cfg(any(feature = "minimal", feature = "standard", feature = "di"))]
-pub use reinhardt_di::params::{Body, Cookie, Header, Json, Path, Query};
+pub use reinhardt_di::params::{
+	Body, Cookie, CookieName, CookieNamed, CookieStruct, Header, Json, Path, Query,
+};

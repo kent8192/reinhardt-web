@@ -700,8 +700,9 @@ async fn handler(
 - **`CookieStruct<T>`**: Extract multiple cookies into struct
   - RFC 6265-compliant cookie parsing
   - URL-decoding support
+  - Supported by HTTP route macros and server function macros
 - **`CookieNamed<N, T>`**: Compile-time cookie name specification
-  - Type-safe cookie names via marker types: `SessionId`, `CsrfToken`
+  - Type-safe cookie names via built-in or custom `CookieName` marker types
   - Support for `String` and `Option<String>`
   - Custom cookie name definition via `CookieName` trait
 

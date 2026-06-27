@@ -11,12 +11,15 @@ sidebar_weight = 10
 
 In this part you will create a Reinhardt pages project and run the browser shell. The polling features arrive in later parts; here the goal is to understand the project shape that lets one crate build both a native server and a WASM client.
 
-The finished reference for this tutorial is `examples/examples-tutorial-basis`. Use it as the answer key when your local project differs from the snippets below.
+The finished reference for this tutorial is `examples/examples-tutorial-basis`. Use its app source and tests as the comparison point when your local project differs from the snippets below. Its Cargo workspace and PostgreSQL/Redis helper tasks are repository-specific; the standalone project generated here starts with SQLite and does not need those files.
 
 ## Install the Tools
 
-Use Rust 1.96.0 or newer. The `0.3.0-rc.4` generator and the generated Rust
-2024 project require that toolchain level.
+Use Rust 1.96.0 or newer. The generated Rust 2024 project requires that
+toolchain level.
+
+<!-- reinhardt-version-sync -->
+This tutorial uses the `0.3.0-rc.5` Reinhardt generator.
 
 Install the Reinhardt project generator:
 
@@ -112,16 +115,20 @@ msw = ["reinhardt/msw"]
 The dependency split is the important design. WASM gets pages and client
 routing; the server gets the framework, database backend, commands, admin, and
 configuration features selected by `startproject`. The native feature list also
-includes the client router and the form/session features used by later parts of
-this tutorial:
+includes the client router, form/session, middleware, and password-hasher
+features used by later parts of this tutorial:
 
+<!-- reinhardt-version-sync -->
 ```toml
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-reinhardt = { version = "0.3.0-rc.4", package = "reinhardt-web", default-features = false, features = ["pages", "client-router"] }
+reinhardt = { version = "0.3.0-rc.5", package = "reinhardt-web", default-features = false, features = ["pages", "client-router"] }
 wasm-bindgen = "=0.2.122"
+```
 
+<!-- reinhardt-version-sync -->
+```toml
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-reinhardt = { version = "0.3.0-rc.4", package = "reinhardt-web", default-features = false, features = [
+reinhardt = { version = "0.3.0-rc.5", package = "reinhardt-web", default-features = false, features = [
     "minimal",
     "pages",
     "client-router",
@@ -134,6 +141,8 @@ reinhardt = { version = "0.3.0-rc.4", package = "reinhardt-web", default-feature
     "db-sqlite",
     "forms",
     "auth-session",
+    "middleware",
+    "argon2-hasher",
 ] }
 tokio = { version = "1", features = ["full"] }
 ```
@@ -143,8 +152,8 @@ require a PostgreSQL container. If you pass an explicit SQLite feature list,
 keep the Pages runtime and command facades in place: `commands-server` enables
 `manage runserver`, `commands-autoreload` powers the generated dev watcher, and
 `server` provides the HTTP server facade. Current `startproject` adds the
-required `minimal`, routing, form, session, and server-side Pages features
-automatically when a custom Pages list lacks them.
+required `minimal`, routing, form/session, middleware, password-hasher, and
+server-side Pages features automatically when a custom Pages list lacks them.
 
 In an example project, import Reinhardt APIs through the `reinhardt` facade. Do not depend on internal `reinhardt-*` crates directly.
 
