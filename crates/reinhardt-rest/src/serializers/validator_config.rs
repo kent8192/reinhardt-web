@@ -250,6 +250,7 @@ impl<M: Model> ValidatorConfig<M> {
 	/// # Errors
 	///
 	/// Returns `DatabaseValidatorError` if:
+	/// - Synchronous object-level validation fails
 	/// - Serialization fails
 	/// - Field not found in serialized data
 	/// - Unique constraint violated
@@ -276,6 +277,12 @@ impl<M: Model> ValidatorConfig<M> {
 		M: Serialize,
 		M::PrimaryKey: std::fmt::Display,
 	{
+		self.validate(instance)
+			.map_err(|e| DatabaseValidatorError::DatabaseError {
+				message: e.to_string(),
+				query: None,
+			})?;
+
 		// Convert model instance to JSON for field extraction
 		let value =
 			serde_json::to_value(instance).map_err(|e| DatabaseValidatorError::DatabaseError {
@@ -343,6 +350,12 @@ impl<M: Model> std::panic::RefUnwindSafe for ValidatorConfig<M> {}
 mod tests {
 	use super::*;
 	use crate::serializers::validators::{UniqueTogetherValidator, UniqueValidator};
+	use async_trait::async_trait;
+	use reinhardt_db::backends::DatabaseBackend;
+	use reinhardt_db::backends::types::{
+		DatabaseType, IsolationLevel, QueryResult, QueryValue, Row, TransactionExecutor,
+	};
+	use reinhardt_db::backends::{DatabaseConnection, DatabaseError};
 	use reinhardt_db::orm::FieldSelector;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -350,6 +363,7 @@ mod tests {
 		id: Option<i64>,
 		username: String,
 		email: String,
+		is_admin: bool,
 	}
 
 	#[derive(Debug, Clone)]
@@ -357,6 +371,89 @@ mod tests {
 
 	impl FieldSelector for TestUserFields {
 		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	#[derive(Debug)]
+	struct RejectAdminUsers;
+
+	impl ModelLevelValidator<TestUser> for RejectAdminUsers {
+		fn validate(&self, instance: &TestUser) -> Result<(), ValidatorError> {
+			if instance.is_admin {
+				return Err(ValidatorError::Custom {
+					message: "admin users cannot be created through this validator".to_string(),
+				});
+			}
+			Ok(())
+		}
+	}
+
+	#[derive(Debug)]
+	struct UnusedDatabaseBackend;
+
+	#[async_trait]
+	impl DatabaseBackend for UnusedDatabaseBackend {
+		fn database_type(&self) -> DatabaseType {
+			DatabaseType::Postgres
+		}
+
+		fn placeholder(&self, index: usize) -> String {
+			format!("${}", index)
+		}
+
+		fn supports_returning(&self) -> bool {
+			true
+		}
+
+		fn supports_on_conflict(&self) -> bool {
+			true
+		}
+
+		async fn execute(
+			&self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> Result<QueryResult, DatabaseError> {
+			panic!("synchronous validators should fail before database access")
+		}
+
+		async fn fetch_one(
+			&self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> Result<Row, DatabaseError> {
+			panic!("synchronous validators should fail before database access")
+		}
+
+		async fn fetch_all(
+			&self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> Result<Vec<Row>, DatabaseError> {
+			panic!("synchronous validators should fail before database access")
+		}
+
+		async fn fetch_optional(
+			&self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> Result<Option<Row>, DatabaseError> {
+			panic!("synchronous validators should fail before database access")
+		}
+
+		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>, DatabaseError> {
+			panic!("synchronous validators should fail before database access")
+		}
+
+		async fn begin_with_isolation(
+			&self,
+			_isolation_level: IsolationLevel,
+		) -> Result<Box<dyn TransactionExecutor>, DatabaseError> {
+			panic!("synchronous validators should fail before database access")
+		}
+
+		fn as_any(&self) -> &dyn std::any::Any {
 			self
 		}
 	}
@@ -421,5 +518,26 @@ mod tests {
 		assert_eq!(config.unique_validators().len(), 2);
 		assert_eq!(config.unique_together_validators().len(), 1);
 		assert!(config.has_validators());
+	}
+
+	#[tokio::test]
+	async fn validate_async_runs_sync_model_validators_before_database_checks() {
+		let mut config = ValidatorConfig::<TestUser>::new();
+		config.add_sync_model_validator(Arc::new(RejectAdminUsers));
+		let connection = DatabaseConnection::new(Arc::new(UnusedDatabaseBackend));
+		let user = TestUser {
+			id: None,
+			username: "root".to_string(),
+			email: "root@example.com".to_string(),
+			is_admin: true,
+		};
+
+		let result = config.validate_async(&connection, &user, None).await;
+
+		assert!(matches!(
+			result,
+			Err(DatabaseValidatorError::DatabaseError { message, query: None })
+				if message.contains("admin users cannot be created")
+		));
 	}
 }
