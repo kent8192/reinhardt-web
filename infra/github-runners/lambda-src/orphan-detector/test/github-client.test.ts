@@ -42,7 +42,7 @@ describe("listQueuedJobs", () => {
 							run_id: 999,
 							status: "queued",
 							created_at: "2026-04-22T10:00:00Z",
-							labels: ["self-hosted", "reinhardt-ci"],
+							labels: ["self-hosted", "linux", "arm64", "reinhardt-ci"],
 							workflow_name: "CI",
 							name: "Feature Check",
 						},
@@ -67,7 +67,9 @@ describe("listQueuedJobs", () => {
 	it("getRateLimitRemaining returns remaining count", async () => {
 		server.use(
 			http.get("https://api.github.com/rate_limit", () =>
-				HttpResponse.json({ rate: { limit: 5000, remaining: 4321, reset: 123 } }),
+				HttpResponse.json({
+					rate: { limit: 5000, remaining: 4321, reset: 123 },
+				}),
 			),
 		);
 		const octokit = new Octokit({ auth: "test-token" });
@@ -77,9 +79,7 @@ describe("listQueuedJobs", () => {
 
 	it("getRateLimitRemaining returns -1 on error", async () => {
 		server.use(
-			http.get("https://api.github.com/rate_limit", () =>
-				HttpResponse.error(),
-			),
+			http.get("https://api.github.com/rate_limit", () => HttpResponse.error()),
 		);
 		const octokit = new Octokit({ auth: "test-token" });
 		const remaining = await getRateLimitRemaining(octokit);
@@ -109,8 +109,9 @@ describe("listQueuedJobs", () => {
 					workflow_runs: [{ id: 2, status: "queued" }],
 				});
 			}),
-			http.get("https://api.github.com/repos/o/r/actions/runs/:runId/jobs", () =>
-				HttpResponse.json({ total_count: 0, jobs: [] }),
+			http.get(
+				"https://api.github.com/repos/o/r/actions/runs/:runId/jobs",
+				() => HttpResponse.json({ total_count: 0, jobs: [] }),
 			),
 		);
 		const octokit = new Octokit({ auth: "test-token" });
