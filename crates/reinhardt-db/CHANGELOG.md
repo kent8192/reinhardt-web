@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.2...reinhardt-db@v0.2.3) - 2026-06-27
+
+### Security
+
+- *(orm)* reject deletes without built where conditions
+
 ## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.1...reinhardt-db@v0.2.2) - 2026-06-25
 
 ### Maintenance
