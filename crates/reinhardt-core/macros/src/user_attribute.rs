@@ -171,6 +171,7 @@ fn inject_m2m_relationships(input: &mut ItemStruct, mapping: &FieldMapping) {
 
 					// Inject ManyToManyField for DB relationship
 					let m2m_field: syn::Field = syn::parse_quote! {
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 						#[serde(skip, default)]
 						#[rel(many_to_many, related_name = "users")]
 						#[field(skip_getter = true)]
@@ -187,6 +188,7 @@ fn inject_m2m_relationships(input: &mut ItemStruct, mapping: &FieldMapping) {
 					field.attrs.push(syn::parse_quote!(#[serde(skip)]));
 
 					let m2m_field: syn::Field = syn::parse_quote! {
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 						#[serde(skip, default)]
 						#[rel(many_to_many, related_name = "members")]
 						#[field(skip_getter = true)]
@@ -228,6 +230,7 @@ fn generate_base_user_impl(
 	let is_active_field = mapping.get(FieldRole::IsActive).expect("validated");
 
 	quote! {
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		impl #auth_crate::BaseUser for #struct_name {
 			type PrimaryKey = #pk_type;
 			type Hasher = #hasher;
@@ -278,6 +281,7 @@ fn generate_full_user_impl(
 	let date_joined_field = mapping.get(FieldRole::DateJoined).expect("validated");
 
 	quote! {
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		impl #auth_crate::FullUser for #struct_name {
 			fn username(&self) -> &str {
 				&self.#username_field_ident
@@ -320,6 +324,7 @@ fn generate_permissions_mixin_impl(
 	let auth_crate = get_reinhardt_auth_crate();
 
 	Some(quote! {
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		impl #auth_crate::PermissionsMixin for #struct_name {
 			fn is_superuser(&self) -> bool {
 				self.#is_superuser_field
@@ -396,6 +401,7 @@ fn generate_superuser_init_impl(
 	};
 
 	quote! {
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		impl #auth_crate::SuperuserInit for #struct_name {
 			fn init_superuser(username: &str, email: &str) -> Self {
 				let mut user = Self::default();
@@ -535,10 +541,12 @@ fn generate_user_manager_impl(
 		/// park while the lock is held. For DB-backed persistence or custom
 		/// uniqueness rules, opt out via `#[user(..., manager = false)]` and
 		/// hand-write a `BaseUserManager` implementation.
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		pub struct #manager_name {
 			users: ::std::sync::Arc<::std::sync::Mutex<::std::collections::HashMap<#pk_type, #struct_name>>>,
 		}
 
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		impl #manager_name {
 			/// Creates a new manager with an empty in-memory user store.
 			pub fn new() -> Self {
@@ -578,6 +586,7 @@ fn generate_user_manager_impl(
 			}
 		}
 
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		impl ::core::default::Default for #manager_name {
 			fn default() -> Self {
 				Self::new()
@@ -585,6 +594,7 @@ fn generate_user_manager_impl(
 		}
 
 		#[#async_trait_crate::async_trait]
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		impl #auth_crate::BaseUserManager<#struct_name> for #manager_name {
 			async fn create_user(
 				&mut self,
@@ -633,6 +643,7 @@ fn generate_auth_identity_impl(struct_name: &Ident, mapping: &FieldMapping) -> T
 	let is_superuser_field = mapping.get(FieldRole::IsSuperuser).expect("validated");
 
 	quote! {
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		impl #auth_crate::AuthIdentity for #struct_name {
 			fn id(&self) -> String {
 				self.#pk_field.to_string()
@@ -661,12 +672,15 @@ pub(crate) fn user_attribute_impl(args: TokenStream, mut input: ItemStruct) -> R
 		&input.fields,
 	)?;
 
+	let mut wasm_input = input.clone();
+
 	if has_model {
 		inject_skip_getter(&mut input, &mapping, &parsed_args);
 		inject_m2m_relationships(&mut input, &mapping);
 	}
 
 	strip_user_field_attrs(&mut input);
+	strip_user_field_attrs(&mut wasm_input);
 
 	let struct_name = &input.ident;
 	let base_user_impl = generate_base_user_impl(struct_name, &mapping, &parsed_args);
@@ -735,6 +749,7 @@ pub(crate) fn user_attribute_impl(args: TokenStream, mut input: ItemStruct) -> R
 		quote! {
 			#superuser_init
 
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			#reinhardt_crate::inventory::submit! {
 				#auth_crate::SuperuserCreatorRegistration::__macro_new(
 					|| #auth_crate::superuser_creator_for::<#struct_name>(),
@@ -751,7 +766,11 @@ pub(crate) fn user_attribute_impl(args: TokenStream, mut input: ItemStruct) -> R
 	};
 
 	Ok(quote! {
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#input
+
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+		#wasm_input
 
 		#base_user_impl
 		#full_user_impl

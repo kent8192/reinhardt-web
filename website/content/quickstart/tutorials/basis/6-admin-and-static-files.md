@@ -24,8 +24,8 @@ use reinhardt::admin;
 #[admin(model,
     for = Question,
     name = "Question",
-    list_display = [id, question_text, pub_date, author_id],
-    fields = [question_text, author_id],
+    list_display = [id, question_text, pub_date, author],
+    fields = [question_text, author],
     list_filter = [pub_date],
     search_fields = [question_text],
     ordering = [(pub_date, desc)],
@@ -54,7 +54,7 @@ Then register choices:
 pub struct ChoiceAdmin;
 ```
 
-`QuestionAdmin` includes `author_id` because Part 5 made question ownership part of the schema.
+`QuestionAdmin` includes `author` because Part 5 made question ownership part of the model.
 
 Part 2 already exposed the polls app from `src/apps.rs`:
 
@@ -195,7 +195,7 @@ args = [
 
 ```toml
 [tasks.dev]
-description = "Build WASM and start development server with frontend (auto-starts PostgreSQL/Redis via `migrate` -> `infra-up`)"
+description = "Build WASM, apply migrations, and start the pages development server"
 dependencies = ["wasm-build-dev", "migrate", "run-dev-server"]
 ```
 

@@ -17,7 +17,7 @@
 # `eval "$(bash scripts/db_url.sh)"` in their own shell, so the URL is set in
 # the same process that launches `cargo run`. Credentials come from the same
 # settings TOML the container is provisioned from, keeping the connection
-# string in lockstep with `infra_up.sh` (both consume `parse_local_toml.py`).
+# string in lockstep with the active settings profile.
 #
 # Usage (from the crate root, inside a cargo-make task):
 #   eval "$(bash scripts/db_url.sh)" && cargo run --bin manage migrate
@@ -38,18 +38,33 @@ if ! command -v python3 >/dev/null 2>&1; then
 	exit 1
 fi
 
-# parse_local_toml.py emits shell-quoted PG_* / RD_* assignments (the same
-# ones infra_up.sh consumes), so the resolved host/port/credentials match the
-# provisioned container exactly.
+# parse_local_toml.py emits shell-quoted DB_* / PG_* / RD_* assignments.
 SETTINGS=$(python3 "$SCRIPT_DIR/parse_local_toml.py" "$CONFIG") || exit $?
 eval "$SETTINGS"
 
-# Reuse python3's URL-encoding so passwords containing URL-reserved characters
-# (`@`, `:`, `/`, ...) survive being embedded in the DATABASE_URL authority.
-ENCODED_USER=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$PG_USER")
-ENCODED_PASS=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$PG_PASS")
-
-DATABASE_URL="postgresql://${ENCODED_USER}:${ENCODED_PASS}@${PG_HOST}:${PG_PORT}/${PG_DB}"
+case "$DB_ENGINE" in
+	sqlite)
+		if [ "$DB_NAME" = ":memory:" ]; then
+			DATABASE_URL="sqlite::memory:"
+		elif [[ "$DB_NAME" = /* ]]; then
+			DATABASE_URL="sqlite:///${DB_NAME}"
+		else
+			DATABASE_URL="sqlite:///${CRATE_DIR}/${DB_NAME}"
+		fi
+		;;
+	postgresql|postgres)
+		# Reuse python3's URL-encoding so passwords containing URL-reserved
+		# characters (`@`, `:`, `/`, ...) survive being embedded in the
+		# DATABASE_URL authority.
+		ENCODED_USER=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$PG_USER")
+		ENCODED_PASS=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$PG_PASS")
+		DATABASE_URL="postgresql://${ENCODED_USER}:${ENCODED_PASS}@${PG_HOST}:${PG_PORT}/${PG_DB}"
+		;;
+	*)
+		echo "Error: unsupported database engine '$DB_ENGINE'" >&2
+		exit 1
+		;;
+esac
 
 # Shell-quote the final value so the `eval` in the caller is safe.
 printf 'export DATABASE_URL=%q\n' "$DATABASE_URL"

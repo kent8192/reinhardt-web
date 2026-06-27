@@ -271,6 +271,19 @@ async fn app_pages_layout_matches_tutorial() {
 		polls_rs.contains("#[app_config(name = \"polls\", label = \"polls\")]"),
 		"apps/polls.rs must carry the #[app_config] attribute:\n{polls_rs}"
 	);
+	assert!(
+		polls_rs.contains("pub mod models;"),
+		"apps/polls.rs must expose models on both native and WASM targets:\n{polls_rs}"
+	);
+	let models_pos = polls_rs
+		.find("pub mod models;")
+		.expect("models module declaration checked above");
+	let models_prefix = &polls_rs[..models_pos];
+	let models_prior_line = models_prefix.lines().last().unwrap_or("").trim();
+	assert!(
+		!models_prior_line.starts_with("#[cfg("),
+		"`pub mod models;` must not be cfg-gated in apps/polls.rs (preceding line was: {models_prior_line:?}):\n{polls_rs}"
+	);
 
 	// 2. Sub-modules sit directly under apps/<app>/, mirroring the tutorial.
 	let polls_dir = apps.join("polls");
@@ -284,6 +297,10 @@ async fn app_pages_layout_matches_tutorial() {
 	assert!(
 		polls_dir.join("serializers.rs").exists(),
 		"apps/polls/serializers.rs must exist"
+	);
+	assert!(
+		polls_dir.join("services.rs").exists(),
+		"apps/polls/services.rs must exist"
 	);
 	assert!(
 		polls_dir.join("urls.rs").exists(),
@@ -490,8 +507,12 @@ async fn startapp_pages_layout_has_urls_submodule() {
 		foo_rs.contains("#[cfg(client)]\npub mod client;"),
 		"apps/foo.rs must declare `#[cfg(client)] pub mod client;`:\n{foo_rs}"
 	);
+	assert!(
+		foo_rs.contains("#[cfg(server)]\npub mod services;"),
+		"apps/foo.rs must declare `#[cfg(server)] pub mod services;`:\n{foo_rs}"
+	);
 	// Bi-target lines: ensure they have no cfg attr immediately preceding.
-	for bi_target in ["pub mod server_fn;", "pub mod urls;"] {
+	for bi_target in ["pub mod models;", "pub mod server_fn;", "pub mod urls;"] {
 		let pos = foo_rs
 			.find(bi_target)
 			.unwrap_or_else(|| panic!("`{bi_target}` not found in apps/foo.rs:\n{foo_rs}"));
@@ -586,6 +607,10 @@ async fn workspace_app_pages_uses_unified_template() {
 	assert!(
 		src.join("urls").join("client_router.rs").exists(),
 		"apps/bar/src/urls/client_router.rs must exist"
+	);
+	assert!(
+		src.join("services.rs").exists(),
+		"apps/bar/src/services.rs must exist"
 	);
 
 	// 3. The unified template now provides client/ and server_fn modules
