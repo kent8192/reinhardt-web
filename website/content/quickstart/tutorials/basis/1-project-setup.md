@@ -11,7 +11,7 @@ sidebar_weight = 10
 
 In this part you will create a Reinhardt pages project and run the browser shell. The polling features arrive in later parts; here the goal is to understand the project shape that lets one crate build both a native server and a WASM client.
 
-The finished reference for this tutorial is `examples/examples-tutorial-basis`. Use it as the answer key when your local project differs from the snippets below.
+The finished reference for this tutorial is `examples/examples-tutorial-basis`. Use its app source and tests as the comparison point when your local project differs from the snippets below. Its Cargo workspace and PostgreSQL/Redis helper tasks are repository-specific; the standalone project generated here starts with SQLite and does not need those files.
 
 ## Install the Tools
 

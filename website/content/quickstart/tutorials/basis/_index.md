@@ -12,7 +12,7 @@ sidebar_weight = 10
 
 Build a polling application on the Reinhardt pages template: a Rust/WASM client, typed server functions, generated model info DTOs, shared request DTOs, session-cookie authentication, ownership-checked CRUD, static assets, tests, and the Reinhardt admin.
 
-The reference implementation lives in [`examples/examples-tutorial-basis`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis). Treat its app source and tests as the answer key. Its Cargo workspace and local infrastructure files are repository-specific; the standalone project created in Part 1 uses the generated SQLite-first settings. The tutorial introduces the same architecture one working slice at a time, so every part ends with something you can run or click.
+The reference implementation lives in [`examples/examples-tutorial-basis`](https://github.com/kent8192/reinhardt-web/tree/develop/0.3.0/examples/examples-tutorial-basis). Use its app source and tests as the reference for completed slices. Its Cargo workspace and local infrastructure files are repository-specific; the standalone project created in Part 1 uses the generated SQLite-first settings. The tutorial introduces the same architecture one working slice at a time, so every part ends with something you can run or click.
 
 ## Who This Tutorial Is For
 
@@ -172,7 +172,7 @@ Run native integration tests with isolated SQLite fixtures, test management comm
 
 ## Recommended Learning Path
 
-Work through the parts in order. Each part assumes the files from the previous one exist and compile. When your project differs from the text, compare it with `examples/examples-tutorial-basis` before inventing a local workaround.
+Work through the parts in order. Each part assumes the files from the previous one exist and compile. When your project differs from the text, compare the app source and tests with `examples/examples-tutorial-basis` before inventing a local workaround. Do not copy the reference example's repository-only Cargo workspace or local PostgreSQL/Redis infrastructure into the standalone SQLite project.
 
 ## REST Tutorial Comparison
 
