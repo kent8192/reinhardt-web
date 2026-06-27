@@ -105,7 +105,7 @@ pub struct AzureConfig {
 	pub endpoint: Option<String>,
 	/// Account access key used for Shared Key and SAS signing.
 	pub access_key: Option<SecretString>,
-	/// Pre-generated SAS token appended to generated URLs.
+	/// Pre-generated SAS token used only for backend operations.
 	pub sas_token: Option<SecretString>,
 	/// Azure Storage connection string.
 	pub connection_string: Option<SecretString>,

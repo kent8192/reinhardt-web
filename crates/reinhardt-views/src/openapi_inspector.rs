@@ -45,7 +45,9 @@ use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
 /// #     fn new_fields() -> Self::Fields { UserFields }
 /// # }
 /// #
-/// # let viewset = ModelViewSet::<User, JsonSerializer<User>>::new("users");
+/// # type UserSerializer = JsonSerializer<User>;
+/// #
+/// # let viewset = ModelViewSet::<User, UserSerializer>::new("users");
 /// let inspector = ViewSetInspector::new();
 ///
 /// // Extract path information
@@ -136,7 +138,9 @@ impl ViewSetInspector {
 	/// #     fn set_primary_key(&mut self, v: i64) { self.id = Some(v); }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// # }
-	/// # let viewset = ModelViewSet::<User, JsonSerializer<User>>::new("users");
+	/// # type UserSerializer = JsonSerializer<User>;
+	/// #
+	/// # let viewset = ModelViewSet::<User, UserSerializer>::new("users");
 	/// let inspector = ViewSetInspector::new();
 	/// let paths = inspector.extract_paths(&viewset, "/api/users");
 	///
@@ -272,7 +276,9 @@ impl ViewSetInspector {
 	/// #     fn set_primary_key(&mut self, v: i64) { self.id = Some(v); }
 	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// # }
-	/// # let viewset = ModelViewSet::<User, JsonSerializer<User>>::new("users");
+	/// # type UserSerializer = JsonSerializer<User>;
+	/// #
+	/// # let viewset = ModelViewSet::<User, UserSerializer>::new("users");
 	/// let inspector = ViewSetInspector::new();
 	/// let operations = inspector.extract_operations(&viewset);
 	///

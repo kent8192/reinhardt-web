@@ -3670,7 +3670,15 @@ fn sync_database_url_to_env(
 /// in logs and startup banners.
 #[cfg(feature = "reinhardt-db")]
 fn sanitize_database_url(url: &str) -> String {
-	// Match scheme://user:pass@host pattern and redact credentials
+	if url == "sqlite::memory:" {
+		return url.to_string();
+	}
+
+	if url.starts_with("sqlite:") {
+		return "sqlite:***".to_string();
+	}
+
+	// Match scheme://user:pass@host pattern and redact credentials.
 	if let Some(scheme_end) = url.find("://") {
 		let after_scheme = &url[scheme_end + 3..];
 		if let Some(at_pos) = after_scheme.find('@') {
@@ -3678,7 +3686,7 @@ fn sanitize_database_url(url: &str) -> String {
 			return format!("{}://***{}", &url[..scheme_end], host_part);
 		}
 	}
-	// For non-URL formats (e.g., sqlite:file.db), return as-is
+
 	url.to_string()
 }
 
@@ -4842,7 +4850,7 @@ name = "db.sqlite3"
 		}
 
 		#[rstest]
-		fn test_sanitize_database_url_preserves_sqlite() {
+		fn test_sanitize_database_url_redacts_sqlite_path() {
 			// Arrange
 			let url = "sqlite:db.sqlite3";
 
@@ -4850,7 +4858,19 @@ name = "db.sqlite3"
 			let sanitized = sanitize_database_url(url);
 
 			// Assert
-			assert_eq!(sanitized, "sqlite:db.sqlite3");
+			assert_eq!(sanitized, "sqlite:***");
+		}
+
+		#[rstest]
+		fn test_sanitize_database_url_redacts_absolute_sqlite_path() {
+			// Arrange
+			let url = "sqlite:///tmp/secret.sqlite3";
+
+			// Act
+			let sanitized = sanitize_database_url(url);
+
+			// Assert
+			assert_eq!(sanitized, "sqlite:***");
 		}
 
 		#[rstest]

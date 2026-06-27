@@ -163,11 +163,12 @@ jobs:
             dir: infra/github-runners
             backend: s3
           # Note: `bootstrap` is intentionally excluded. See reinhardt-web#4145.
+          # Note: `organizations` is intentionally excluded from privileged
+          # plans. Backend-free validation still covers it above; applying or
+          # planning it with real state remains a manual management-account
+          # operation. See reinhardt-web#5393.
           - module: website
             dir: infra/website
-            backend: local
-          - module: organizations
-            dir: infra/organizations
             backend: local
           - module: repository
             dir: infra/repository
@@ -313,7 +314,6 @@ jobs:
           TF_VAR_dns_record_notes_id: ${{ secrets.TF_DNS_RECORD_NOTES_ID }}
           TF_VAR_dns_record_rc_id: ${{ secrets.TF_DNS_RECORD_RC_ID }}
           TF_VAR_dns_record_google_verification_id: ${{ secrets.TF_DNS_RECORD_GOOGLE_VERIFICATION_ID }}
-          TF_VAR_account_email: ${{ secrets.TF_ACCOUNT_EMAIL }}
           TF_VAR_organizations_account_email: ${{ secrets.TF_ACCOUNT_EMAIL }}
           TF_VAR_environment_reviewer_user_id: ${{ secrets.TF_ENVIRONMENT_REVIEWER_USER_ID }}
         run: |

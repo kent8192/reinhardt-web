@@ -340,11 +340,21 @@ let voting_form = form! {
 
 `choices_from: "choices"` binds the radio options to the choices returned by `get_question_detail`. The `watch` block stays in `form!` because it declares a render slot that depends on form state; the runtime state itself is produced when the form is turned into a page. The generated `#[server_fn]` client stub supplies the CSRF header for WASM submits; you do not pass CSRF as a business argument.
 
+The `watch` block is only for reactive UI around this static form definition:
+the submit button reads `form.loading()` so it can disable itself and switch
+labels while the vote is in flight. Field registration, server-function binding,
+and initial values stay in `form!`.
+
 The final example also hides owner-only edit/delete controls here. Defer those branches until Part 5.
 
 ## Keep Form Runtime Local
 
 The reference example does not need a separate server-only form metadata module for voting. The dynamic choices are known only after `get_question_detail` resolves, so the client component builds the `form!` value from loaded data and consumes it with `into_page()`.
+
+Use `form!` for the static form contract. Use `use_form(&form).build()` when a
+server-side helper needs the generated runtime contract, such as metadata and
+validation state. Do not move `server_fn`, field definitions, or initial values
+into `use_form`.
 
 ## Build the Results Page
 

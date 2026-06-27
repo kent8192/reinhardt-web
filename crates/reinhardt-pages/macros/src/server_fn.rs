@@ -1002,7 +1002,7 @@ fn generate_server_handler(
 						.await
 						.map_err(|e| {
 							#pages_crate_for_ext::__private::tracing::error!(
-								error = ?e,
+								error = %e,
 								param = stringify!(#ty),
 								"FromRequest extractor failed",
 							);
@@ -1603,6 +1603,34 @@ mod tests {
 		assert!(result.is_err());
 		let err = result.unwrap_err().to_string();
 		assert!(err.contains("fragment identifiers"));
+	}
+
+	/// Tests that generated extractor failure logs use Display formatting so raw
+	/// request data stored for debugging is not emitted through Debug output.
+	#[test]
+	fn test_extractor_error_logging_uses_display_formatting() {
+		use syn::parse_quote;
+
+		let func: syn::ItemFn = parse_quote! {
+			pub async fn login(form: Form<LoginRequest>) -> Result<(), ServerFnError> {
+				Ok(())
+			}
+		};
+		let info = ServerFnInfo {
+			func,
+			options: ServerFnOptions::default(),
+		};
+
+		let generated = generate_server_fn(&info).to_string();
+
+		assert!(
+			generated.contains("error = % e"),
+			"extractor errors should be logged with Display formatting: {generated}"
+		);
+		assert!(
+			!generated.contains("error = ? e"),
+			"extractor errors must not be logged with Debug formatting: {generated}"
+		);
 	}
 
 	/// Tests for `is_extractor_type` — verifies known extractor type detection.
