@@ -109,6 +109,8 @@ move through the documented alpha and RC lifecycle before stable publication.
 
 For per-release detail (changelog summary, upgrade notes, known issues),
 see the [Release category in GitHub Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+For 0.2.x applications moving to 0.3.0, use the
+[0.3 migration guide](instructions/MIGRATION_0.3.md).
 The full lifecycle policy lives in
 [Stability Policy](instructions/STABILITY_POLICY.md).
 
@@ -1331,16 +1333,16 @@ Reinhardt offers modular components you can mix and match:
 
 - 📚 [Getting Started Guide](https://reinhardt-web.dev/quickstart/getting-started/) - Step-by-step tutorial for beginners
 - 🎛️ [Feature Flags Guide](https://reinhardt-web.dev/docs/feature-flags/) - Optimize your build with granular feature control
-- 📖 [API Reference](https://docs.rs/reinhardt-web) (Coming soon)
+- 📖 [API Reference](https://docs.rs/reinhardt-web)
 - 📝 [Tutorials](https://reinhardt-web.dev/quickstart/tutorials/) - Learn by building real applications
 
-**For AI Assistants**: See [CLAUDE.md](CLAUDE.md) for project-specific coding standards, testing guidelines, and development conventions.
+For contributor automation and repository-specific development conventions,
+see [CLAUDE.md](CLAUDE.md).
 
 ## 💬 Getting Help
 
 Reinhardt is a community-driven project. Here's where you can get help:
 
-- 💬 **Discord**: Join our Discord server for real-time chat (coming soon)
 - 💭 **GitHub Discussions**: [Ask questions and share ideas](https://github.com/kent8192/reinhardt-web/discussions)
 - 🐛 **Issues**: [Report bugs](https://github.com/kent8192/reinhardt-web/issues)
 - 📖 **Documentation**: [Read the guides](docs/)
