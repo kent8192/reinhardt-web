@@ -59,8 +59,8 @@ pub struct StaticFilesConfig {
 	///
 	/// # Prefix format
 	///
-	/// Matching is `path.starts_with(prefix)` against the request URI path,
-	/// so prefix shape is significant:
+	/// Matching collapses duplicate `/` separators and ignores `.` path
+	/// segments before comparing prefixes, so prefix shape is significant:
 	///
 	/// - **Always start with `/`** so the prefix is matched against an
 	///   absolute path (the request URI path always begins with `/`).
@@ -467,6 +467,41 @@ impl StaticFilesMiddleware {
 		}
 	}
 
+	/// Normalize request paths for prefix comparisons that must match the
+	/// filesystem resolver's treatment of duplicate separators and `.` segments.
+	fn normalize_prefix_match_path(path: &str) -> String {
+		let mut normalized = String::with_capacity(path.len());
+		normalized.push('/');
+
+		let mut first = true;
+		for segment in path
+			.split('/')
+			.filter(|segment| !segment.is_empty() && *segment != ".")
+		{
+			if !first {
+				normalized.push('/');
+			}
+			normalized.push_str(segment);
+			first = false;
+		}
+
+		if path.ends_with('/') && !normalized.ends_with('/') {
+			normalized.push('/');
+		}
+
+		normalized
+	}
+
+	/// Check if a request path matches a passthrough prefix after applying
+	/// the same normalization that can affect static file resolution.
+	fn matches_passthrough_prefix(&self, path: &str) -> bool {
+		let normalized_path = Self::normalize_prefix_match_path(path);
+		self.config.passthrough_prefixes.iter().any(|prefix| {
+			let normalized_prefix = Self::normalize_prefix_match_path(prefix);
+			normalized_path.starts_with(&normalized_prefix)
+		})
+	}
+
 	/// Check if the request path matches the URL prefix.
 	fn matches_prefix(&self, path: &str) -> bool {
 		if self.config.url_prefix == "/" {
@@ -696,12 +731,7 @@ impl Middleware for StaticFilesMiddleware {
 		// Passthrough prefixes bypass this middleware entirely so that nested
 		// mounts owned by the application router (e.g. `/static/admin/`) win
 		// over a colliding file under `root_dir`.
-		if self
-			.config
-			.passthrough_prefixes
-			.iter()
-			.any(|p| path.starts_with(p))
-		{
+		if self.matches_passthrough_prefix(path) {
 			return next.handle(request).await;
 		}
 
@@ -1846,6 +1876,37 @@ mod tests {
 		assert_eq!(
 			body, "from-next-handler",
 			"passthrough prefix must bypass the middleware even when a colliding file exists"
+		);
+	}
+
+	#[rstest]
+	#[case("/static//admin/foo.css")]
+	#[case("/static/./admin/foo.css")]
+	#[tokio::test]
+	async fn test_passthrough_prefix_normalized_variants_fall_through(#[case] request_path: &str) {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::create_dir_all(dir.path().join("admin")).unwrap();
+		std::fs::write(dir.path().join("admin/foo.css"), "outer-collision").unwrap();
+
+		let config = StaticFilesConfig::new(dir.path())
+			.url_prefix("/static/")
+			.spa_mode(false)
+			.passthrough_prefixes(vec!["/static/admin/".to_string()]);
+		let middleware = StaticFilesMiddleware::new(config);
+		let next: Arc<dyn Handler> = Arc::new(PassthroughProbeHandler);
+
+		// Act
+		let response = middleware
+			.process(build_request(request_path), next)
+			.await
+			.unwrap();
+
+		// Assert
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(
+			body, "from-next-handler",
+			"normalized passthrough variants must bypass colliding root_dir files"
 		);
 	}
 
