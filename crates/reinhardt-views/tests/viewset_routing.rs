@@ -6,6 +6,7 @@ use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_db::orm::{FieldSelector, Model};
 use reinhardt_http::Request;
+use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_views::viewset_actions;
 use reinhardt_views::viewsets::{
 	Action, ActionMetadata, ActionType, FilterConfig, GenericViewSet, ModelViewSet, NestedResource,
@@ -56,8 +57,7 @@ impl Model for TestModel {
 	}
 }
 
-#[derive(Debug, Clone)]
-struct TestSerializer;
+type TestSerializer = JsonSerializer<TestModel>;
 
 fn make_request(method: Method, uri: &str) -> Request {
 	Request::builder()

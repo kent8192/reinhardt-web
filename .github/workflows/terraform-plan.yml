@@ -34,11 +34,12 @@ jobs:
           # as a new resource and fail apply with `BucketAlreadyExists`.
           # Bootstrap is run-once and must be applied manually with state in
           # hand. See reinhardt-web#4145.
+          # Note: `organizations` is also intentionally excluded from automatic
+          # plans. It uses local state plus AWS Organizations management-account
+          # credentials, so CI cannot produce a durable plan for it. Apply
+          # manually with state in hand. See reinhardt-web#5393.
           - module: website
             dir: infra/website
-            backend: local
-          - module: organizations
-            dir: infra/organizations
             backend: local
           - module: repository
             dir: infra/repository
@@ -90,14 +91,11 @@ jobs:
         if: env.SKIP_PLAN != 'true'
         env:
           TF_VAR_aws_account_id: ${{ secrets.TF_AWS_ACCOUNT_ID }}
-          TF_VAR_account_email: ${{ secrets.TF_ACCOUNT_EMAIL }}
           TF_VAR_cloudflare_account_id: ${{ secrets.TF_CLOUDFLARE_ACCOUNT_ID }}
         run: |
           case "${{ matrix.module }}" in
             github-runners)
               [ -z "$TF_VAR_aws_account_id" ] && SKIP=true ;;
-            organizations)
-              [ -z "$TF_VAR_account_email" ] && SKIP=true ;;
             website)
               [ -z "$TF_VAR_cloudflare_account_id" ] && SKIP=true ;;
           esac
@@ -154,8 +152,8 @@ jobs:
         if: env.SKIP_PLAN != 'true' && matrix.module == 'github-runners'
         working-directory: infra/github-runners/lambda-src/orphan-detector
         run: |
-          npm ci --no-audit --no-fund
-          npm run build
+          npm ci --ignore-scripts --no-audit --no-fund
+          node esbuild.config.mjs
           test -f dist/index.mjs || { echo "dist/index.mjs missing"; exit 1; }
 
       - name: Terraform Plan
@@ -180,7 +178,6 @@ jobs:
           TF_VAR_cloudflare_api_token: ${{ secrets.TF_CLOUDFLARE_API_TOKEN }}
           TF_VAR_cloudflare_account_id: ${{ secrets.TF_CLOUDFLARE_ACCOUNT_ID }}
           TF_VAR_budget_alert_email: ${{ secrets.TF_BUDGET_ALERT_EMAIL }}
-          TF_VAR_account_email: ${{ secrets.TF_ACCOUNT_EMAIL }}
           TF_VAR_pages_project_name: ${{ secrets.TF_PAGES_PROJECT_NAME }}
           TF_VAR_custom_domain: ${{ secrets.TF_CUSTOM_DOMAIN }}
           TF_VAR_google_site_verification: ${{ secrets.TF_GOOGLE_SITE_VERIFICATION }}

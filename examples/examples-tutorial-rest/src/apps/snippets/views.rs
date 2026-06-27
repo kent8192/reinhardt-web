@@ -303,7 +303,7 @@ pub async fn delete(
 /// database, so both observe an empty list until rows are inserted into the
 /// `snippets` table.
 #[reinhardt::viewset(basename = "snippet")]
-pub fn viewset() -> reinhardt::ModelViewSet<Snippet, SnippetSerializer> {
+pub fn viewset() -> reinhardt::ModelViewSet<Snippet, reinhardt::JsonSerializer<Snippet>> {
 	use reinhardt::ModelViewSet;
 	use reinhardt::views::viewsets::{FilterConfig, OrderingConfig, PaginationConfig};
 

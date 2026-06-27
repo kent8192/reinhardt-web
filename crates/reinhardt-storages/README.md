@@ -189,9 +189,11 @@ prefix = "uploads/"
 access_key = { secret = "base64-account-key" }
 ```
 
-`endpoint` is available for Azurite or custom endpoints. Temporary URLs use a
-configured `sas_token` when present, otherwise `access_key` or
-`connection_string` is used to generate a service SAS URL.
+`endpoint` is available for Azurite or custom endpoints. A configured
+`sas_token` is used only as a backend operation credential and is never returned
+from temporary URL generation. Temporary URLs require `access_key` or
+`connection_string` so Reinhardt can generate a per-blob read-only service SAS
+URL with the requested expiry.
 
 ### Local
 

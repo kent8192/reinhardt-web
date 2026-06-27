@@ -8,15 +8,15 @@ use reinhardt::pages::page;
 
 /// Render the shared navigation bar.
 pub fn nav_bar() -> Page {
-	page!(|| {
-		nav {
-			class: "navbar",
-			"{{ project_name }}"
-		}
-	})()
+    page!(|| {
+        nav {
+            class: "navbar",
+            "{{ project_name }}"
+        }
+    })()
 }
 
 /// Wrap an app body with the shared nav bar.
 pub fn with_nav(body: Page) -> Page {
-	Page::Fragment(vec![nav_bar(), body])
+    Page::Fragment(vec![nav_bar(), body])
 }
