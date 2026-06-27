@@ -165,9 +165,11 @@ impl CachedResponse {
 ///     fn new_fields() -> Self::Fields { UserFields }
 /// }
 ///
+/// type UserSerializer = JsonSerializer<User>;
+///
 /// # async fn example() {
 /// let cache = InMemoryCache::new();
-/// let inner_viewset = ModelViewSet::<User, JsonSerializer<User>>::new("users");
+/// let inner_viewset = ModelViewSet::<User, UserSerializer>::new("users");
 /// let config = CacheConfig::new("users")
 ///     .with_ttl(Duration::from_secs(300))
 ///     .cache_all();
