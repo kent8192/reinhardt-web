@@ -38,10 +38,7 @@ export interface SyntheticWebhook {
 }
 
 export function buildSyntheticWebhook(input: PayloadInput): SyntheticWebhook {
-	// Ensure 'self-hosted' is always in labels (defense against upstream assumptions).
-	const labels = input.job.labels.includes("self-hosted")
-		? [...input.job.labels]
-		: ["self-hosted", ...input.job.labels];
+	const labels = [...input.job.labels];
 
 	return {
 		deliveryId: randomUUID(),

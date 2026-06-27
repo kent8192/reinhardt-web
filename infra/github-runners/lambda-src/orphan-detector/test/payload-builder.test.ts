@@ -8,7 +8,7 @@ describe("buildSyntheticWebhook", () => {
 			run_id: 98765,
 			status: "queued" as const,
 			created_at: "2026-04-22T10:00:00Z",
-			labels: ["self-hosted", "reinhardt-ci"],
+			labels: ["self-hosted", "linux", "arm64", "reinhardt-ci"],
 			workflow_name: "CI",
 			name: "Feature Check",
 		},
@@ -26,7 +26,12 @@ describe("buildSyntheticWebhook", () => {
 		const { body } = buildSyntheticWebhook(baseInput);
 		expect(body.workflow_job.id).toBe(24772441693);
 		expect(body.workflow_job.run_id).toBe(98765);
-		expect(body.workflow_job.labels).toEqual(["self-hosted", "reinhardt-ci"]);
+		expect(body.workflow_job.labels).toEqual([
+			"self-hosted",
+			"linux",
+			"arm64",
+			"reinhardt-ci",
+		]);
 	});
 
 	it("sets repository.full_name = owner/repo", () => {
@@ -51,13 +56,12 @@ describe("buildSyntheticWebhook", () => {
 		);
 	});
 
-	it("labels include self-hosted when missing (defensive)", () => {
+	it("preserves labels exactly when self-hosted is missing", () => {
 		const input = {
 			...baseInput,
-			job: { ...baseInput.job, labels: ["reinhardt-ci"] },
+			job: { ...baseInput.job, labels: ["ubuntu-latest"] },
 		};
 		const { body } = buildSyntheticWebhook(input);
-		expect(body.workflow_job.labels).toContain("self-hosted");
-		expect(body.workflow_job.labels).toContain("reinhardt-ci");
+		expect(body.workflow_job.labels).toEqual(["ubuntu-latest"]);
 	});
 });
