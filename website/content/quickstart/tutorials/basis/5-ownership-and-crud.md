@@ -50,7 +50,7 @@ cargo make makemigrations
 cargo make migrate
 ```
 
-The new migration should add `author_id` to `questions`, not rewrite `0001_initial.rs`. The reference migration is `migrations/polls/0002_question_author.rs`:
+The new migration should add the `author` ownership field to `questions`, not rewrite `0001_initial.rs`. The database column generated for that foreign key is `author_id`, as shown in the reference migration `migrations/polls/0002_question_author.rs`:
 
 ```rust
 pub(super) fn migration() -> Migration {
@@ -417,7 +417,7 @@ Create two accounts. With account A, create a poll and choices. Log out, log in 
 Before continuing:
 
 - `0001_initial.rs` is still the anonymous poll schema.
-- `0002_question_author.rs` adds `questions.author_id`.
+- `0002_question_author.rs` adds the `Question.author` foreign key.
 - Question create/update/delete require `Depends<Result<User, SessionError>>`.
 - Choice create/update/delete call `require_question_author`.
 - Owner-only UI is only a convenience; server functions enforce the rule.

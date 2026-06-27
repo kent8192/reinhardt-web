@@ -1,17 +1,15 @@
 //! Regression test for tutorial issue #4521 / framework issue #4522.
 //!
-//! Verifies that the tutorial's minimal `User` struct (no `full = true`,
-//! `manager = false`) participates in the framework's auto-registration of
-//! `SuperuserCreator` once #4522 relaxed the `#[user]` macro guard from
-//! `parsed_args.full && has_model` to just `has_model`.
+//! Verifies that the tutorial's minimal `User` struct (`manager = false`, no
+//! expanded profile fields) participates in the framework's auto-registration
+//! of `SuperuserCreator` once #4522 allowed minimal user models with a model
+//! attribute.
 //!
 //! Before #4522, `cargo run --bin manage createsuperuser` against the
 //! tutorial failed with
 //!
 //! ```text
-//! Error: No SuperuserCreator registered. Ensure your user model has
-//!        #[user(hasher = ..., username_field = "...", full = true)] and
-//!        #[model(...)]. Auto-registration happens automatically.
+//! Error: No SuperuserCreator registered for this user model.
 //! ```
 //!
 //! and the tutorial had to manually impl `SuperuserInit` and call
@@ -87,8 +85,8 @@ fn tutorial_user_init_superuser_password_hashing_works() {
 #[rstest]
 fn tutorial_user_is_registered_in_superuser_creator_inventory() {
 	// Arrange -- since #4522 every `#[user] + #[model]` struct submits an
-	// inventory entry, regardless of `full = true`. The tutorial's `User`
-	// must therefore appear here.
+	// inventory entry, including minimal tutorial models. The tutorial's
+	// `User` must therefore appear here.
 	let registrations: Vec<&SuperuserCreatorRegistration> =
 		inventory::iter::<SuperuserCreatorRegistration>().collect();
 	let type_names: Vec<&str> = registrations.iter().map(|r| r.type_name).collect();

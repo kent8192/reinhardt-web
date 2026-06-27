@@ -37,16 +37,11 @@ struct User {
 	is_active: bool,
 }
 
-/// User serializer for testing
-#[derive(Debug, Clone)]
-struct UserSerializer;
-
 // Note: tests below that need a "second" model reuse `User` with a different
 // basename rather than introducing a separate `Post` struct. The `#[model]`
 // macro currently fails to generate `impl Model` for a second `#[model]`
-// struct in the same module — see Reinhardt #3985 follow-up. Reusing `User`
-// with `ModelViewSet::<User, UserSerializer>::new("posts")` is enough to
-// exercise multi-viewset path generation.
+// struct in the same module — see Reinhardt #3985 follow-up. Reusing `User` with `ModelViewSet::<User, JsonSerializer<User>>::new("posts")`
+// is enough to exercise multi-viewset path generation.
 
 /// Fixture: ViewSetInspector
 #[fixture]
@@ -73,7 +68,8 @@ fn generator() -> SchemaGenerator {
 #[test]
 fn test_model_viewset_openapi_paths_generation(inspector: ViewSetInspector) {
 	// Build ModelViewSet
-	let viewset = ModelViewSet::<User, UserSerializer>::new("users");
+	let viewset =
+		ModelViewSet::<User, reinhardt_rest::serializers::JsonSerializer<User>>::new("users");
 
 	// Extract paths
 	let paths = inspector.extract_paths(&viewset, "/api/users");
@@ -155,7 +151,10 @@ fn test_model_viewset_openapi_paths_generation(inspector: ViewSetInspector) {
 #[test]
 fn test_readonly_viewset_openapi_schema(inspector: ViewSetInspector) {
 	// Build ReadOnlyModelViewSet
-	let viewset = ReadOnlyModelViewSet::<User, UserSerializer>::new("users");
+	let viewset =
+		ReadOnlyModelViewSet::<User, reinhardt_rest::serializers::JsonSerializer<User>>::new(
+			"users",
+		);
 
 	// Extract paths
 	let paths = inspector.extract_paths(&viewset, "/api/users");
@@ -225,7 +224,8 @@ fn test_complete_openapi_schema_generation(
 	generator: SchemaGenerator,
 ) {
 	// Extract path information from ViewSet
-	let viewset = ModelViewSet::<User, UserSerializer>::new("users");
+	let viewset =
+		ModelViewSet::<User, reinhardt_rest::serializers::JsonSerializer<User>>::new("users");
 	let paths = inspector.extract_paths(&viewset, "/api/users");
 
 	// Verify that paths were generated
@@ -268,7 +268,8 @@ fn test_complete_openapi_schema_generation(
 #[rstest]
 #[test]
 fn test_viewset_response_schema_generation(inspector: ViewSetInspector) {
-	let viewset = ModelViewSet::<User, UserSerializer>::new("users");
+	let viewset =
+		ModelViewSet::<User, reinhardt_rest::serializers::JsonSerializer<User>>::new("users");
 	let paths = inspector.extract_paths(&viewset, "/api/users");
 
 	// GET operation on collection endpoint
@@ -333,7 +334,8 @@ fn test_inspector_config_customization() {
 	let inspector = ViewSetInspector::with_config(config);
 
 	// Build ViewSet
-	let viewset = ModelViewSet::<User, UserSerializer>::new("users");
+	let viewset =
+		ModelViewSet::<User, reinhardt_rest::serializers::JsonSerializer<User>>::new("users");
 
 	// Extract paths
 	let paths = inspector.extract_paths(&viewset, "/api/users");
@@ -370,13 +372,15 @@ fn test_inspector_config_customization() {
 #[test]
 fn test_multiple_viewsets_path_generation(inspector: ViewSetInspector) {
 	// User ViewSet
-	let user_viewset = ModelViewSet::<User, UserSerializer>::new("users");
+	let user_viewset =
+		ModelViewSet::<User, reinhardt_rest::serializers::JsonSerializer<User>>::new("users");
 	let user_paths = inspector.extract_paths(&user_viewset, "/api/users");
 
 	// Reuse the User model with a different basename — see file-top note about
 	// the macro limitation that prevents introducing a second `#[model]` struct
 	// in this module.
-	let post_viewset = ModelViewSet::<User, UserSerializer>::new("posts");
+	let post_viewset =
+		ModelViewSet::<User, reinhardt_rest::serializers::JsonSerializer<User>>::new("posts");
 	let post_paths = inspector.extract_paths(&post_viewset, "/api/posts");
 
 	// User paths
