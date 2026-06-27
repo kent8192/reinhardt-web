@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.5...reinhardt-storages@v0.2.6) - 2026-06-27
+
+### Maintenance
+
+- updated the following local packages: reinhardt-core, reinhardt-conf, reinhardt-providers
+
 ## [0.2.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.4...reinhardt-storages@v0.2.5) - 2026-06-26
 
 ### Maintenance
