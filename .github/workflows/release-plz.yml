@@ -213,6 +213,15 @@ jobs:
             exit 0
           fi
 
+          # Copy the version-sync script from the trusted base checkout before
+          # switching to the mutable release branch. The release branch is
+          # generated and later written with this job's App token, so executing
+          # scripts from that branch would give branch contents code execution
+          # with repository write credentials.
+          TRUSTED_VERSION_SYNC_SCRIPT="$RUNNER_TEMP/update-version-refs.sh"
+          cp scripts/update-version-refs.sh "$TRUSTED_VERSION_SYNC_SCRIPT"
+          chmod 700 "$TRUSTED_VERSION_SYNC_SCRIPT"
+
           # Sync the working tree to the release branch HEAD (created by
           # release-plz/action) so update-version-refs.sh edits the right
           # snapshot. We do NOT need a local commit -- the GraphQL mutation
@@ -224,7 +233,7 @@ jobs:
           VERSION=$(grep '^version = ' Cargo.toml | head -1 | \
                     sed 's/version = "\(.*\)"/\1/')
 
-          ./scripts/update-version-refs.sh "$VERSION"
+          REINHARDT_REPO_ROOT="$PWD" "$TRUSTED_VERSION_SYNC_SCRIPT" "$VERSION"
 
           if git diff --quiet; then
             echo "update-version-refs.sh produced no changes; skipping commit."
