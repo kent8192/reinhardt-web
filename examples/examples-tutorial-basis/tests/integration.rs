@@ -20,6 +20,51 @@
 #![cfg(server)]
 
 #[cfg(with_reinhardt)]
+#[path = "../migrations/polls/0001_initial.rs"]
+mod polls_initial_migration;
+
+#[cfg(with_reinhardt)]
+mod migration_regression_tests {
+	use reinhardt::db::migrations::{FieldType, Operation};
+	use std::path::Path;
+
+	#[test]
+	fn polls_choice_question_id_starts_as_big_integer() {
+		let migration = crate::polls_initial_migration::migration();
+
+		let choices_columns = migration
+			.operations
+			.iter()
+			.find_map(|operation| match operation {
+				Operation::CreateTable { name, columns, .. } if name == "choices" => Some(columns),
+				_ => None,
+			})
+			.expect("polls 0001_initial should create the choices table");
+
+		let question_id = choices_columns
+			.iter()
+			.find(|column| column.name == "question_id")
+			.expect("choices.question_id should be present in polls 0001_initial");
+
+		assert_eq!(question_id.type_definition, FieldType::BigInteger);
+		assert!(question_id.not_null);
+
+		let polls_migrations_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations/polls");
+		for obsolete_migration in [
+			"0002_alter_choices_question_id.rs",
+			"0003_questions_author_id_alter_choices_question__and_more.rs",
+		] {
+			let path = polls_migrations_dir.join(obsolete_migration);
+			assert!(
+				!path.exists(),
+				"obsolete uuid-to-bigint migration step should not exist: {}",
+				path.display()
+			);
+		}
+	}
+}
+
+#[cfg(with_reinhardt)]
 mod database_tests {
 	use rstest::*;
 	use sqlx::SqlitePool;
