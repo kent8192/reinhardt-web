@@ -11,7 +11,7 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
 pub fn main() -> Result<(), JsValue> {
-	ClientLauncher::new("#root")
-		.register_routes_from_inventory()
-		.launch()
+    ClientLauncher::new("#root")
+        .register_routes_from_inventory()
+        .launch()
 }

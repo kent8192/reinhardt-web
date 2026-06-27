@@ -9,13 +9,13 @@ use reinhardt::admin;
 
 /// Admin configuration for the Question model.
 ///
-/// Lists id / question_text / pub_date / author_id columns, supports
+/// Lists id / question_text / pub_date / author columns, supports
 /// search over the question text, and orders newest-first by default.
 #[admin(model,
 	for = Question,
 	name = "Question",
-	list_display = [id, question_text, pub_date, author_id],
-	fields = [question_text, author_id],
+	list_display = [id, question_text, pub_date, author],
+	fields = [question_text, author],
 	list_filter = [pub_date],
 	search_fields = [question_text],
 	ordering = [(pub_date, desc)],

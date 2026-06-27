@@ -734,7 +734,7 @@ pub fn model(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # Examples
 ///
 /// ```rust,ignore
-/// #[user(hasher = Argon2Hasher, username_field = "email", full = true)]
+/// #[user(hasher = reinhardt::Argon2Hasher, username_field = "email", full = true)]
 /// #[derive(Serialize, Deserialize)]
 /// pub struct MyUser {
 ///     pub id: Uuid,

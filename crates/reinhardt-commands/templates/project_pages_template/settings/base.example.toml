@@ -6,12 +6,12 @@
 # - staging.toml (staging environment)
 # - production.toml (production environment)
 #
-# IMPORTANT: Copy this file to base.toml and update the values.
+# IMPORTANT: Update generated base.toml values before production use.
 # Commit non-secret defaults only when they are meant to be shared.
 
 [core]
 debug = false
-# secret_key = "uncomment-this-line-and-replace-with-a-long-random-string"
+secret_key = "{{ secret_key }}"
 allowed_hosts = []
 language_code = "en-us"
 time_zone = "UTC"
@@ -31,13 +31,13 @@ secure_hsts_preload = false
 append_slash = true
 
 [core.databases.default]
-engine = "postgresql"
-host = "localhost"
-port = 5432
-name = "{{ project_name }}_db"
-user = "postgres"
-# password = "uncomment-this-line-and-replace-with-db-password"
+engine = "sqlite"
+name = "db.sqlite3"
 
 [static]
 url = "/static/"
 root = "dist"
+
+[contacts]
+admins = []
+managers = []

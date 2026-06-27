@@ -177,6 +177,65 @@ fn test_info_skip_field_default_on_roundtrip() {
 	assert_eq!(*model.password_hash(), "");
 }
 
+#[model(app_label = "test", table_name = "serde_redacted_users")]
+#[derive(Serialize, Deserialize)]
+struct SerdeRedactedUser {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[field(max_length = 100)]
+	username: String,
+
+	#[serde(skip_serializing)]
+	#[field(max_length = 255)]
+	password_hash: String,
+
+	#[serde(skip_deserializing)]
+	is_staff: bool,
+}
+
+#[test]
+fn test_info_preserves_serde_field_redaction() {
+	// Arrange
+	let info = SerdeRedactedUserInfo {
+		id: Some(1),
+		username: "alice".to_string(),
+		password_hash: "HASHED_SECRET".to_string(),
+		is_staff: true,
+	};
+
+	// Act
+	let json = serde_json::to_string(&info).unwrap();
+
+	// Assert
+	let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+	assert_eq!(value.get("password_hash"), None);
+	assert_eq!(value["username"], "alice");
+}
+
+#[test]
+fn test_info_preserves_serde_deserialization_redaction() {
+	// Arrange
+	let json = r#"{
+		"id": 1,
+		"username": "alice",
+		"password_hash": "ATTACKER_HASH",
+		"is_staff": true
+	}"#;
+
+	// Act
+	let info: SerdeRedactedUserInfo = serde_json::from_str(json).unwrap();
+
+	// Assert
+	assert_eq!(info.is_staff, false);
+
+	// Act
+	let model: SerdeRedactedUser = info.into();
+
+	// Assert
+	assert_eq!(model.is_staff(), false);
+}
+
 // --- Builder ---
 
 #[test]
