@@ -739,7 +739,7 @@ aquamarine = "0.6.0"
 topiary-tree-sitter-facade = { path = "vendor/topiary-tree-sitter-facade" }
 topiary-web-tree-sitter-sys = { path = "vendor/topiary-web-tree-sitter-sys" }
 
-# TODO: Monitor and upgrade when upstream fixes num-bigint-dig v0.8.x future incompatibility
+# Monitor and upgrade when upstream fixes num-bigint-dig v0.8.x future incompatibility
 # Issue: https://github.com/rust-lang/rust/issues/120192
 # Current: v0.8.6 via sqlx -> sqlx-mysql -> rsa v0.9.x
 # Fixed in: num-bigint-dig v0.9.0+
