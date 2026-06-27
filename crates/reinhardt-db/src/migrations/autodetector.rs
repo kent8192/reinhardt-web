@@ -1736,8 +1736,17 @@ pub struct MigrationAutodetector {
 	similarity_config: SimilarityConfig,
 }
 
-/// Type alias for moved model information: (from_app, to_app, model_name, rename_table, old_table, new_table)
-type MovedModelInfo = (String, String, String, bool, Option<String>, Option<String>);
+/// Type alias for moved model information:
+/// (from_app, from_model, to_app, to_model, rename_table, old_table, new_table)
+type MovedModelInfo = (
+	String,
+	String,
+	String,
+	String,
+	bool,
+	Option<String>,
+	Option<String>,
+);
 
 /// Type alias for model match result: ((deleted_app, deleted_model), (created_app, created_model), similarity_score)
 type ModelMatchResult = ((String, String), (String, String), f64);
@@ -1757,7 +1766,7 @@ pub struct DetectedChanges {
 	pub altered_fields: Vec<(String, String, String)>,
 	/// Models that were renamed: (app_label, old_name, new_name)
 	pub renamed_models: Vec<(String, String, String)>,
-	/// Models that were moved between apps: (from_app, to_app, model_name, rename_table, old_table, new_table)
+	/// Models that were moved between apps: (from_app, from_model, to_app, to_model, rename_table, old_table, new_table)
 	pub moved_models: Vec<MovedModelInfo>,
 	/// Fields that were renamed: (app_label, model_name, old_name, new_name)
 	pub renamed_fields: Vec<(String, String, String, String)>,
@@ -1837,7 +1846,7 @@ impl DetectedChanges {
 		}
 
 		for model in &self.moved_models {
-			let model_key = (model.1.clone(), model.2.clone()); // (to_app, model_name)
+			let model_key = (model.2.clone(), model.3.clone()); // (to_app, to_model_name)
 			all_models.insert(model_key.clone());
 			in_degree.entry(model_key).or_insert(0);
 		}
@@ -2045,9 +2054,10 @@ impl DetectedChanges {
 					to_app,
 					model_name,
 				} => {
-					// MovedModelInfo is (from_app, to_app, model_name, rename_table, old_table, new_table)
+					// MovedModelInfo is (from_app, from_model, to_app, to_model, rename_table, old_table, new_table)
 					self.moved_models.retain(|info| {
-						!(&info.0 == from_app && &info.1 == to_app && &info.2 == model_name)
+						!(&info.0 == from_app
+							&& &info.2 == to_app && (&info.1 == model_name || &info.3 == model_name))
 					});
 				}
 				OperationRef::AddedField {
@@ -3198,12 +3208,12 @@ impl InferenceEngine {
 		let model_moves: Vec<(String, String, String, String)> = changes
 			.moved_models
 			.iter()
-			.map(|(from_app, to_app, model, _, _, _)| {
+			.map(|(from_app, from_model, to_app, to_model, _, _, _)| {
 				(
 					from_app.clone(),
-					model.clone(),
+					from_model.clone(),
 					to_app.clone(),
-					model.clone(),
+					to_model.clone(),
 				)
 			})
 			.collect();
@@ -3254,11 +3264,12 @@ impl InferenceEngine {
 				}
 				// Model move evidence: "Model moved: from_app.model → to_app.model ..."
 				else if evidence_str.starts_with("Model moved:") {
-					for (from_app, to_app, model, _, _, _) in &changes.moved_models {
+					for (from_app, _from_model, to_app, to_model, _, _, _) in &changes.moved_models
+					{
 						intent.related_operations.push(OperationRef::MovedModel {
 							from_app: from_app.clone(),
 							to_app: to_app.clone(),
-							model_name: model.clone(),
+							model_name: to_model.clone(),
 						});
 					}
 				}
@@ -4116,6 +4127,17 @@ impl MigrationAutodetector {
 						self.from_state.get_model(app_label, old_name)
 					})
 			})
+			.or_else(|| {
+				changes
+					.moved_models
+					.iter()
+					.find(|(_from_app, _from_model, to_app, to_model, _, _, _)| {
+						to_app == app_label && to_model == to_model_name
+					})
+					.and_then(|(from_app, from_model, _to_app, _to_model, _, _, _)| {
+						self.from_state.get_model(from_app, from_model)
+					})
+			})
 	}
 
 	fn matching_to_model_for_from_model<'a>(
@@ -4136,6 +4158,17 @@ impl MigrationAutodetector {
 					})
 					.and_then(|(_app, _old_name, new_name)| {
 						self.to_state.get_model(app_label, new_name)
+					})
+			})
+			.or_else(|| {
+				changes
+					.moved_models
+					.iter()
+					.find(|(from_app, from_model, _to_app, _to_model, _, _, _)| {
+						from_app == app_label && from_model == from_model_name
+					})
+					.and_then(|(_from_app, _from_model, to_app, to_model, _, _, _)| {
+						self.to_state.get_model(to_app, to_model)
 					})
 			})
 	}
@@ -4302,12 +4335,23 @@ impl MigrationAutodetector {
 				let deleted_model_name = deleted_key.1.clone();
 				// Different apps: this is a move operation
 				// Determine if table needs to be renamed
-				let old_table = format!("{}_{}", from_app, deleted_model_name.to_lowercase());
-				let new_table = format!("{}_{}", to_app, model_name.to_lowercase());
-				let rename_table = old_table != new_table || deleted_model_name != model_name;
+				let old_table = self
+					.from_state
+					.get_model(&from_app, &deleted_model_name)
+					.map(|model| model.table_name.clone())
+					.unwrap_or_else(|| {
+						format!("{}_{}", from_app, deleted_model_name.to_lowercase())
+					});
+				let new_table = self
+					.to_state
+					.get_model(&to_app, &model_name)
+					.map(|model| model.table_name.clone())
+					.unwrap_or_else(|| format!("{}_{}", to_app, model_name.to_lowercase()));
+				let rename_table = old_table != new_table;
 
 				changes.moved_models.push((
 					from_app.clone(),
+					deleted_model_name.clone(),
 					to_app.clone(),
 					model_name.clone(),
 					rename_table,
@@ -4489,13 +4533,13 @@ impl MigrationAutodetector {
 				!(app == &app_label && model == &model_name && field == &new_name)
 			});
 			changes.removed_fields.retain(|(app, model, field)| {
-				!(app == &app_label && model == &from_model_name && field == &old_name)
-					&& !(app == &app_label
-						&& field == &old_name
-						&& self
+				!(app == &app_label
+					&& field == &old_name
+					&& (model == &from_model_name
+						|| self
 							.from_state
 							.get_model(app, model)
-							.is_some_and(|from_model| from_model.table_name == table_name))
+							.is_some_and(|from_model| from_model.table_name == table_name)))
 			});
 			changes.altered_fields.retain(|(app, model, field)| {
 				!(app == &app_label && model == &model_name && field == &new_name)
@@ -4780,9 +4824,8 @@ impl MigrationAutodetector {
 	/// From: django/db/migrations/autodetector.py:1500-1600
 	fn detect_added_indexes(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), to_model) in &self.to_state.models {
-			if let Some(from_model) = self
-				.from_state
-				.get_model_by_table_name(app_label, &to_model.table_name)
+			if let Some(from_model) =
+				self.matching_from_model_for_to_model(app_label, model_name, to_model, changes)
 			{
 				for to_index in &to_model.indexes {
 					// Check if this index exists in from_model
@@ -4808,9 +4851,8 @@ impl MigrationAutodetector {
 	/// From: django/db/migrations/autodetector.py:1600-1700
 	fn detect_removed_indexes(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), from_model) in &self.from_state.models {
-			if let Some(to_model) = self
-				.to_state
-				.get_model_by_table_name(app_label, &from_model.table_name)
+			if let Some(to_model) =
+				self.matching_to_model_for_from_model(app_label, model_name, from_model, changes)
 			{
 				for from_index in &from_model.indexes {
 					// Check if this index still exists in to_model
@@ -4856,9 +4898,8 @@ impl MigrationAutodetector {
 	/// From: django/db/migrations/autodetector.py:1700-1800
 	fn detect_added_constraints(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), to_model) in &self.to_state.models {
-			if let Some(from_model) = self
-				.from_state
-				.get_model_by_table_name(app_label, &to_model.table_name)
+			if let Some(from_model) =
+				self.matching_from_model_for_to_model(app_label, model_name, to_model, changes)
 			{
 				for to_constraint in &to_model.constraints {
 					if from_model
@@ -4907,9 +4948,8 @@ impl MigrationAutodetector {
 	/// From: django/db/migrations/autodetector.py:1800-1900
 	fn detect_removed_constraints(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), from_model) in &self.from_state.models {
-			if let Some(to_model) = self
-				.to_state
-				.get_model_by_table_name(app_label, &from_model.table_name)
+			if let Some(to_model) =
+				self.matching_to_model_for_from_model(app_label, model_name, from_model, changes)
 			{
 				for from_constraint in &from_model.constraints {
 					if to_model
@@ -5471,26 +5511,129 @@ impl MigrationAutodetector {
 		}
 	}
 
+	fn constraint_references_table(constraint: &super::Constraint, table_name: &str) -> bool {
+		match constraint {
+			super::Constraint::ForeignKey {
+				referenced_table, ..
+			}
+			| super::Constraint::OneToOne {
+				referenced_table, ..
+			} => referenced_table == table_name,
+			super::Constraint::ManyToMany {
+				target_table,
+				through_table,
+				..
+			} => target_table == table_name || through_table == table_name,
+			super::Constraint::PrimaryKey { .. }
+			| super::Constraint::Unique { .. }
+			| super::Constraint::Check { .. }
+			| super::Constraint::Exclude { .. } => false,
+		}
+	}
+
+	fn reference_tail_starts_with_table(tail: &str, table_name: &str) -> bool {
+		let tail = tail.trim_start();
+		let Some(first_char) = tail.chars().next() else {
+			return false;
+		};
+
+		let (referenced_table, rest) = if first_char == '"' {
+			let Some(end_quote) = tail[1..].find('"') else {
+				return false;
+			};
+			(&tail[1..=end_quote], &tail[end_quote + 2..])
+		} else {
+			let end = tail
+				.find(|ch: char| ch == '(' || ch.is_whitespace())
+				.unwrap_or(tail.len());
+			(&tail[..end], &tail[end..])
+		};
+
+		referenced_table == table_name
+			&& (rest.is_empty()
+				|| rest.starts_with('(')
+				|| rest.chars().next().is_some_and(char::is_whitespace))
+	}
+
+	fn constraint_sql_references_table(constraint_sql: &str, table_name: &str) -> bool {
+		let mut rest = constraint_sql;
+		while let Some(index) = rest.find("REFERENCES ") {
+			let tail = &rest[index + "REFERENCES ".len()..];
+			if Self::reference_tail_starts_with_table(tail, table_name) {
+				return true;
+			}
+			rest = tail;
+		}
+		false
+	}
+
+	fn operation_references_table(operation: &super::Operation, table_name: &str) -> bool {
+		match operation {
+			super::Operation::CreateTable { constraints, .. } => constraints
+				.iter()
+				.any(|constraint| Self::constraint_references_table(constraint, table_name)),
+			super::Operation::AddConstraint { constraint_sql, .. } => {
+				Self::constraint_sql_references_table(constraint_sql, table_name)
+			}
+			_ => false,
+		}
+	}
+
+	fn operation_needs_table_after_rename(
+		operation: &super::Operation,
+		new_table_name: &str,
+	) -> bool {
+		Self::operation_targets_table(operation, new_table_name)
+			|| Self::operation_references_table(operation, new_table_name)
+	}
+
+	fn table_rename_names(operation: &super::Operation) -> Option<(String, String)> {
+		match operation {
+			super::Operation::RenameTable { old_name, new_name } => {
+				Some((old_name.clone(), new_name.clone()))
+			}
+			super::Operation::MoveModel {
+				rename_table: true,
+				old_table_name: Some(old_name),
+				new_table_name: Some(new_name),
+				..
+			} => Some((old_name.clone(), new_name.clone())),
+			_ => None,
+		}
+	}
+
 	fn order_renamed_table_operations(operations: &mut Vec<super::Operation>) {
 		let mut index = 0;
 		while index < operations.len() {
-			let new_name = match &operations[index] {
-				super::Operation::RenameTable { new_name, .. } => new_name.clone(),
+			let (old_name, new_name) = match Self::table_rename_names(&operations[index]) {
+				Some(names) => names,
 				_ => {
 					index += 1;
 					continue;
 				}
 			};
 
-			if let Some(insert_at) = (0..index)
-				.find(|candidate| Self::operation_targets_table(&operations[*candidate], &new_name))
-			{
-				let operation = operations.remove(index);
-				operations.insert(insert_at, operation);
-				index = insert_at + 1;
-			} else {
-				index += 1;
+			let rename_operation = operations.remove(index);
+			let mut before_rename = Vec::new();
+			let mut after_rename = Vec::new();
+
+			for (candidate_index, operation) in std::mem::take(operations).into_iter().enumerate() {
+				if Self::operation_targets_table(&operation, &old_name) {
+					before_rename.push(operation);
+				} else if Self::operation_needs_table_after_rename(&operation, &new_name) {
+					after_rename.push(operation);
+				} else if candidate_index < index {
+					before_rename.push(operation);
+				} else {
+					after_rename.push(operation);
+				}
 			}
+
+			let next_index = before_rename.len() + 1;
+			before_rename.push(rename_operation);
+			before_rename.append(&mut after_rename);
+			*operations = before_rename;
+			index = next_index;
 		}
 	}
 
@@ -6017,29 +6160,36 @@ impl MigrationAutodetector {
 		}
 
 		// Handle cross-app model moves
-		// MovedModelInfo: (from_app, to_app, model_name, rename_table, old_table, new_table)
-		for (from_app, to_app, model_name, rename_table, old_table, new_table) in
-			&changes.moved_models
+		// MovedModelInfo: (from_app, from_model, to_app, to_model, rename_table, old_table, new_table)
+		for (
+			from_app,
+			from_model_name,
+			to_app,
+			to_model_name,
+			rename_table,
+			old_table,
+			new_table,
+		) in &changes.moved_models
 		{
 			// Get table names
 			let old_table_name = old_table.clone().unwrap_or_else(|| {
 				self.from_state
-					.get_model(from_app, model_name)
+					.get_model(from_app, from_model_name)
 					.map(|m| m.table_name.clone())
-					.unwrap_or_else(|| format!("{}_{}", from_app, model_name.to_lowercase()))
+					.unwrap_or_else(|| format!("{}_{}", from_app, from_model_name.to_lowercase()))
 			});
 
 			let new_table_name = new_table.clone().unwrap_or_else(|| {
 				self.to_state
-					.get_model(to_app, model_name)
+					.get_model(to_app, to_model_name)
 					.map(|m| m.table_name.clone())
-					.unwrap_or_else(|| format!("{}_{}", to_app, model_name.to_lowercase()))
+					.unwrap_or_else(|| format!("{}_{}", to_app, to_model_name.to_lowercase()))
 			});
 
 			// Add MoveModel operation to the target app's migrations
 			migrations_by_app.entry(to_app.clone()).or_default().push(
 				super::Operation::MoveModel {
-					model_name: model_name.clone(),
+					model_name: from_model_name.clone(),
 					from_app: from_app.clone(),
 					to_app: to_app.clone(),
 					rename_table: *rename_table,
@@ -6852,6 +7002,285 @@ mod tests {
 			&operations[1],
 			super::super::Operation::AddColumn { table, column, .. }
 				if table == "deployments_project" && column.name == "project_name"
+		));
+	}
+
+	#[rstest]
+	fn generate_migrations_keeps_old_table_drop_before_renaming_model_table() {
+		let from_model = build_model_state(
+			"deployments",
+			"Deployment",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("created_at", super::super::FieldType::DateTime, false),
+				FieldState::new("updated_at", super::super::FieldType::DateTime, false),
+				FieldState::new("legacy_payload", super::super::FieldType::Text, true),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"deployments",
+			"Project",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("created_at", super::super::FieldType::DateTime, false),
+				FieldState::new("updated_at", super::super::FieldType::DateTime, false),
+				FieldState::new("retry_count", super::super::FieldType::Integer, false),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("deployments".to_string(), "Deployment".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("deployments".to_string(), "Project".to_string()),
+				to_model,
+			)]),
+		);
+
+		let migrations = detector
+			.try_generate_migrations()
+			.expect("model rename with old-table drop should generate migrations");
+		assert_eq!(migrations.len(), 1, "unexpected migrations: {migrations:?}");
+		let operations = &migrations[0].operations;
+
+		assert_eq!(operations.len(), 3, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::DropColumn { table, column }
+				if table == "deployments_deployment" && column == "legacy_payload"
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::RenameTable { old_name, new_name }
+				if old_name == "deployments_deployment" && new_name == "deployments_project"
+		));
+		assert!(matches!(
+			&operations[2],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "deployments_project" && column.name == "retry_count"
+		));
+	}
+
+	#[rstest]
+	fn generate_migrations_adds_constraint_after_renaming_model_table() {
+		let from_model = build_model_state(
+			"deployments",
+			"Deployment",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("project_name", super::super::FieldType::VarChar(255), false),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"deployments",
+			"Project",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("project_name", super::super::FieldType::VarChar(255), false),
+			],
+			Vec::new(),
+			vec![ConstraintDefinition {
+				name: "deployments_project_project_name_not_empty".to_string(),
+				constraint_type: "check".to_string(),
+				fields: vec!["project_name".to_string()],
+				expression: Some("project_name <> ''".to_string()),
+				foreign_key_info: None,
+			}],
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("deployments".to_string(), "Deployment".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("deployments".to_string(), "Project".to_string()),
+				to_model,
+			)]),
+		);
+
+		let migrations = detector
+			.try_generate_migrations()
+			.expect("model rename with added constraint should generate migrations");
+		assert_eq!(migrations.len(), 1, "unexpected migrations: {migrations:?}");
+		let operations = &migrations[0].operations;
+
+		assert_eq!(operations.len(), 2, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::RenameTable { old_name, new_name }
+				if old_name == "deployments_deployment" && new_name == "deployments_project"
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::AddConstraint {
+				table,
+				constraint_sql
+			} if table == "deployments_project"
+				&& constraint_sql.contains("deployments_project_project_name_not_empty")
+				&& constraint_sql.contains("CHECK")
+				&& constraint_sql.contains("project_name")
+		));
+	}
+
+	#[rstest]
+	fn generate_migrations_preserves_field_changes_for_cross_app_move() {
+		let from_model = build_model_state(
+			"legacy",
+			"Deployment",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("created_at", super::super::FieldType::DateTime, false),
+				FieldState::new("updated_at", super::super::FieldType::DateTime, false),
+				FieldState::new("status", super::super::FieldType::VarChar(32), false),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"deployments",
+			"Project",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("created_at", super::super::FieldType::DateTime, false),
+				FieldState::new("updated_at", super::super::FieldType::DateTime, false),
+				FieldState::new("status", super::super::FieldType::VarChar(32), false),
+				FieldState::new("project_name", super::super::FieldType::VarChar(255), true),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("legacy".to_string(), "Deployment".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("deployments".to_string(), "Project".to_string()),
+				to_model,
+			)]),
+		);
+
+		let migrations = detector
+			.try_generate_migrations()
+			.expect("cross-app model move with added field should generate migrations");
+		assert_eq!(migrations.len(), 1, "unexpected migrations: {migrations:?}");
+		assert_eq!(migrations[0].app_label, "deployments");
+		let operations = &migrations[0].operations;
+
+		assert_eq!(operations.len(), 2, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::MoveModel {
+				model_name,
+				from_app,
+				to_app,
+				rename_table: true,
+				old_table_name: Some(old_table),
+				new_table_name: Some(new_table)
+			} if model_name == "Deployment"
+				&& from_app == "legacy"
+				&& to_app == "deployments"
+				&& old_table == "legacy_deployment"
+				&& new_table == "deployments_project"
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "deployments_project" && column.name == "project_name"
+		));
+	}
+
+	#[rstest]
+	fn generate_migrations_orders_referenced_table_constraint_after_rename() {
+		let from_account = build_model_state(
+			"crm",
+			"User",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("email", super::super::FieldType::VarChar(255), false),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		let from_profile = build_model_state(
+			"crm",
+			"Profile",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("account_id", super::super::FieldType::Integer, false),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_account = build_model_state(
+			"crm",
+			"Account",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("email", super::super::FieldType::VarChar(255), false),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_profile = build_model_state(
+			"crm",
+			"Profile",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("account_id", super::super::FieldType::Integer, false),
+			],
+			Vec::new(),
+			vec![ConstraintDefinition {
+				name: "crm_profile_account_id_fk".to_string(),
+				constraint_type: "foreign_key".to_string(),
+				fields: vec!["account_id".to_string()],
+				expression: None,
+				foreign_key_info: Some(ForeignKeyConstraintInfo {
+					referenced_table: "crm_account".to_string(),
+					referenced_columns: vec!["id".to_string()],
+					on_delete: ForeignKeyAction::Cascade,
+					on_update: ForeignKeyAction::Cascade,
+				}),
+			}],
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![
+				(("crm".to_string(), "User".to_string()), from_account),
+				(("crm".to_string(), "Profile".to_string()), from_profile),
+			]),
+			build_project_state(vec![
+				(("crm".to_string(), "Account".to_string()), to_account),
+				(("crm".to_string(), "Profile".to_string()), to_profile),
+			]),
+		);
+
+		let migrations = detector
+			.try_generate_migrations()
+			.expect("referenced table rename with added FK should generate migrations");
+		assert_eq!(migrations.len(), 1, "unexpected migrations: {migrations:?}");
+		let operations = &migrations[0].operations;
+
+		assert_eq!(operations.len(), 2, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::RenameTable { old_name, new_name }
+				if old_name == "crm_user" && new_name == "crm_account"
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::AddConstraint {
+				table,
+				constraint_sql
+			} if table == "crm_profile"
+				&& constraint_sql.contains("crm_profile_account_id_fk")
+				&& constraint_sql.contains("REFERENCES crm_account")
 		));
 	}
 
