@@ -293,9 +293,6 @@ mod tests {
 		}
 	}
 
-	#[derive(Debug, Clone)]
-	struct TestSerializer;
-
 	#[tokio::test]
 	async fn test_viewset_get_basename() {
 		let viewset = GenericViewSet::new("test", ());
@@ -304,7 +301,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_model_viewset_list_action() {
-		let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users");
+		let viewset: ModelViewSet<
+			TestModel,
+			reinhardt_rest::serializers::JsonSerializer<TestModel>,
+		> = ModelViewSet::new("users");
 		let request = Request::builder()
 			.method(Method::GET)
 			.uri("/users/")
@@ -325,11 +325,13 @@ mod tests {
 		// Provide an in-memory queryset and populate path_params so dispatch
 		// resolves through the embedded ModelViewSetHandler. This guards against
 		// the placeholder regression behind issue #3985.
-		let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users")
-			.with_queryset(vec![TestModel {
-				id: Some(1),
-				name: "alpha".into(),
-			}]);
+		let viewset: ModelViewSet<
+			TestModel,
+			reinhardt_rest::serializers::JsonSerializer<TestModel>,
+		> = ModelViewSet::new("users").with_queryset(vec![TestModel {
+			id: Some(1),
+			name: "alpha".into(),
+		}]);
 		let mut path_params = HashMap::new();
 		path_params.insert("id".to_string(), "1".to_string());
 		let request = Request::builder()
@@ -354,7 +356,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_model_viewset_create_action() {
-		let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users");
+		let viewset: ModelViewSet<
+			TestModel,
+			reinhardt_rest::serializers::JsonSerializer<TestModel>,
+		> = ModelViewSet::new("users");
 		let request = Request::builder()
 			.method(Method::POST)
 			.uri("/users/")
@@ -372,11 +377,13 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_model_viewset_update_action() {
-		let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users")
-			.with_queryset(vec![TestModel {
-				id: Some(1),
-				name: "alpha".into(),
-			}]);
+		let viewset: ModelViewSet<
+			TestModel,
+			reinhardt_rest::serializers::JsonSerializer<TestModel>,
+		> = ModelViewSet::new("users").with_queryset(vec![TestModel {
+			id: Some(1),
+			name: "alpha".into(),
+		}]);
 		let mut path_params = HashMap::new();
 		path_params.insert("id".to_string(), "1".to_string());
 		let request = Request::builder()
@@ -397,11 +404,13 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_model_viewset_destroy_action() {
-		let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users")
-			.with_queryset(vec![TestModel {
-				id: Some(1),
-				name: "alpha".into(),
-			}]);
+		let viewset: ModelViewSet<
+			TestModel,
+			reinhardt_rest::serializers::JsonSerializer<TestModel>,
+		> = ModelViewSet::new("users").with_queryset(vec![TestModel {
+			id: Some(1),
+			name: "alpha".into(),
+		}]);
 		let mut path_params = HashMap::new();
 		path_params.insert("id".to_string(), "1".to_string());
 		let request = Request::builder()
@@ -422,8 +431,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_readonly_viewset_list_allowed() {
-		let viewset: ReadOnlyModelViewSet<TestModel, TestSerializer> =
-			ReadOnlyModelViewSet::new("posts");
+		let viewset: ReadOnlyModelViewSet<
+			TestModel,
+			reinhardt_rest::serializers::JsonSerializer<TestModel>,
+		> = ReadOnlyModelViewSet::new("posts");
 		let request = Request::builder()
 			.method(Method::GET)
 			.uri("/posts/")
@@ -441,11 +452,13 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_readonly_viewset_retrieve_allowed() {
-		let viewset: ReadOnlyModelViewSet<TestModel, TestSerializer> =
-			ReadOnlyModelViewSet::new("posts").with_queryset(vec![TestModel {
-				id: Some(1),
-				name: "alpha".into(),
-			}]);
+		let viewset: ReadOnlyModelViewSet<
+			TestModel,
+			reinhardt_rest::serializers::JsonSerializer<TestModel>,
+		> = ReadOnlyModelViewSet::new("posts").with_queryset(vec![TestModel {
+			id: Some(1),
+			name: "alpha".into(),
+		}]);
 		let mut path_params = HashMap::new();
 		path_params.insert("id".to_string(), "1".to_string());
 		let request = Request::builder()
@@ -470,8 +483,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_readonly_viewset_create_denied() {
-		let viewset: ReadOnlyModelViewSet<TestModel, TestSerializer> =
-			ReadOnlyModelViewSet::new("posts");
+		let viewset: ReadOnlyModelViewSet<
+			TestModel,
+			reinhardt_rest::serializers::JsonSerializer<TestModel>,
+		> = ReadOnlyModelViewSet::new("posts");
 		let request = Request::builder()
 			.method(Method::POST)
 			.uri("/posts/")
@@ -489,8 +504,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_readonly_viewset_delete_denied() {
-		let viewset: ReadOnlyModelViewSet<TestModel, TestSerializer> =
-			ReadOnlyModelViewSet::new("posts");
+		let viewset: ReadOnlyModelViewSet<
+			TestModel,
+			reinhardt_rest::serializers::JsonSerializer<TestModel>,
+		> = ReadOnlyModelViewSet::new("posts");
 		let request = Request::builder()
 			.method(Method::DELETE)
 			.uri("/posts/1/")

@@ -7,9 +7,9 @@
 use reinhardt::reinhardt_apps::AppStaticFilesConfig;
 
 inventory::submit! {
-	AppStaticFilesConfig {
-		app_label: "{{ crate_name }}-wasm",
-		static_dir: "dist-wasm",
-		url_prefix: "",
-	}
+    AppStaticFilesConfig {
+        app_label: "{{ crate_name }}-wasm",
+        static_dir: "dist-wasm",
+        url_prefix: "",
+    }
 }
