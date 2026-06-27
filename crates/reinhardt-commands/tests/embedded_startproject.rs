@@ -31,6 +31,23 @@ fn assert_manifest_parses(manifest: &Path) {
 	);
 }
 
+fn assert_reinhardt_dependency_features(cargo_toml: &str, expected: &[&str]) {
+	let document = cargo_toml
+		.parse::<toml_edit::DocumentMut>()
+		.expect("generated Cargo.toml must parse as TOML");
+	let features = document["target"][r#"cfg(not(target_arch = "wasm32"))"#]["dependencies"]
+		["reinhardt"]["features"]
+		.as_array()
+		.expect("generated native reinhardt dependency must declare features");
+
+	for feature in expected {
+		assert!(
+			features.iter().any(|value| value.as_str() == Some(feature)),
+			"generated reinhardt dependency must include `{feature}`:\n{cargo_toml}"
+		);
+	}
+}
+
 fn assert_generated_rust_sources_do_not_use_tab_indents(root: &Path) {
 	for relative in [
 		"build.rs",
@@ -150,9 +167,23 @@ async fn startproject_pages_from_embedded_only() {
 	assert!(cargo_toml.contains(
 		"package = \"reinhardt-web\", default-features = false, features = [\"pages\", \"client-router\"]"
 	));
-	assert!(cargo_toml.contains(
-		"features = [\"minimal\", \"pages\", \"client-router\", \"admin\", \"conf\", \"commands\", \"commands-server\", \"commands-autoreload\", \"server\", \"db-sqlite\", \"forms\", \"auth-session\"]"
-	));
+	assert_reinhardt_dependency_features(
+		&cargo_toml,
+		&[
+			"minimal",
+			"pages",
+			"client-router",
+			"admin",
+			"conf",
+			"commands",
+			"commands-server",
+			"commands-autoreload",
+			"server",
+			"db-sqlite",
+			"forms",
+			"auth-session",
+		],
+	);
 	assert!(
 		!cargo_toml.contains("\"standard\"") && !cargo_toml.contains("\"db-postgres\""),
 		"generated pages manifest must not require PostgreSQL defaults:\n{cargo_toml}"
@@ -253,9 +284,23 @@ async fn startproject_pages_adds_required_pages_features() {
 	res.expect("startproject --with-pages succeeds with dependency selection flags");
 	let cargo_toml =
 		std::fs::read_to_string(tmp.path().join("pages_feature_proj/Cargo.toml")).unwrap();
-	assert!(cargo_toml.contains(
-		"features = [\"minimal\", \"pages\", \"client-router\", \"db-sqlite\", \"admin\", \"conf\", \"commands\", \"commands-server\", \"commands-autoreload\", \"server\", \"forms\", \"auth-session\"]"
-	));
+	assert_reinhardt_dependency_features(
+		&cargo_toml,
+		&[
+			"minimal",
+			"pages",
+			"client-router",
+			"db-sqlite",
+			"admin",
+			"conf",
+			"commands",
+			"commands-server",
+			"commands-autoreload",
+			"server",
+			"forms",
+			"auth-session",
+		],
+	);
 	assert!(
 		!cargo_toml.contains("\"server-fn\""),
 		"stale server-fn feature alias must not be written to generated Cargo.toml:\n{cargo_toml}"
