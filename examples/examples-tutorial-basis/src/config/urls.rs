@@ -60,7 +60,7 @@ pub fn routes() -> UnifiedRouter {
 	// `ClientRouter::merge` internally.
 	//
 	// The aggregation is `#[cfg(client)]` because the per-app `client_router`
-	// submodules are themselves wasm-only (they import `crate::client::pages::*`,
+	// submodules are themselves wasm-only (they import app-local page wrappers,
 	// which is wasm-only).
 	#[cfg(client)]
 	let router = router

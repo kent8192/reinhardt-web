@@ -17,39 +17,27 @@ skip_core_tasks = true
 CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = ["CARGO_TARGET_DIR"] } }
 
 # ============================================================================
-# Infrastructure (disposable PostgreSQL + Redis containers)
+# Database
 # ============================================================================
-#
-# These tasks mirror the `infra-up` / `infra-down` / `infra-reset` shape
-# from `reinhardt-cloud/dashboard/Makefile.toml` so the developer
-# experience is uniform across the Reinhardt family. The actual provisioning
-# is delegated to `scripts/infra_up.sh` (Docker required); credentials are
-# parsed from `settings/<profile>.toml`. `runserver` and `dev` chain
-# `migrate` (which itself depends on `infra-up`), so a contributor can
-# bootstrap the full local stack with a single `cargo make runserver`.
 
 [tasks.infra-up]
-description = "Start disposable PostgreSQL + Redis containers (docker run --rm); credentials parsed from settings/<profile>.toml"
-command = "bash"
-args = ["scripts/infra_up.sh"]
-env = { REINHARDT_ENV = "local" }
+description = "No-op: the tutorial uses SQLite by default"
+script = "echo 'SQLite is file-backed; no infrastructure to start.'"
 
 [tasks.infra-down]
-description = "Stop disposable PostgreSQL + Redis containers (data is wiped)"
-command = "bash"
-args = ["scripts/infra_down.sh"]
-env = { REINHARDT_ENV = "local" }
+description = "No-op: the tutorial uses SQLite by default"
+script = "echo 'SQLite is file-backed; no infrastructure to stop.'"
 
 [tasks.infra-reset]
-description = "Stop and recreate disposable infrastructure (wipes all data)"
-dependencies = ["infra-down", "infra-up"]
+description = "Delete the local SQLite database"
+script = "rm -f db.sqlite3"
 
 # ============================================================================
 # Development Server
 # ============================================================================
 
 [tasks.runserver]
-description = "Start the development server (auto-reloads on changes). Forwards extra args, e.g. `cargo make runserver -- -vv` for verbose output. Auto-starts PostgreSQL/Redis via `infra-up` (transitively through `migrate`)."
+description = "Start the development server (auto-reloads on changes). Forwards extra args, e.g. `cargo make runserver -- -vv` for verbose output."
 dependencies = ["migrate"]
 # `DATABASE_URL` is resolved via `db_url.sh` because the management CLI cannot
 # read `settings/*.toml` for an example crate (its command context has no
@@ -70,7 +58,6 @@ description = "Create new migrations based on model changes"
 # `DATABASE_URL` is resolved via `db_url.sh` (see scripts/db_url.sh): the
 # management CLI has no project settings in its command context, so it relies
 # on the env var for the connection string.
-dependencies = ["infra-up"]
 script = '''
 #!/usr/bin/env bash
 set -euo pipefail
@@ -79,12 +66,10 @@ cargo run --bin manage makemigrations
 '''
 
 [tasks.migrate]
-description = "Apply database migrations (auto-starts PostgreSQL/Redis via `infra-up`)"
-dependencies = ["infra-up"]
+description = "Apply database migrations to the local SQLite database"
 # `DATABASE_URL` is resolved via `db_url.sh` (see scripts/db_url.sh): the
 # management CLI has no project settings in its command context, so the
-# connection string must be supplied through the environment. `infra-up`
-# provisions the container from the same settings, so the credentials match.
+# connection string must be supplied through the environment.
 script = '''
 #!/usr/bin/env bash
 set -euo pipefail
@@ -276,7 +261,7 @@ script = { file = "scripts/clean-cache.sh" }
 # ============================================================================
 
 [tasks.dev]
-description = "Build WASM and start development server with frontend (auto-starts PostgreSQL/Redis via `migrate` → `infra-up`)"
+description = "Build WASM and start development server with frontend"
 dependencies = ["wasm-build-dev", "migrate", "run-dev-server"]
 
 [tasks.run-dev-server]
@@ -284,7 +269,7 @@ description = "Start development server with frontend (MUST run from project dir
 script = { file = "scripts/run-dev-server.sh" }
 
 [tasks.dev-release]
-description = "Build optimized WASM and start server (auto-starts PostgreSQL/Redis via `migrate` → `infra-up`)"
+description = "Build optimized WASM and start server"
 dependencies = ["wasm-build-release", "collectstatic", "migrate", "run-dev-release-server"]
 
 [tasks.run-dev-release-server]
