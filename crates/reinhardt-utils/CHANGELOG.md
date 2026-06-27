@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.3.0-rc.5...reinhardt-utils@v0.3.0-rc.6) - 2026-06-27
+
+### Fixed
+
+- *(staticfiles)* normalize passthrough prefix matching
+- *(staticfiles)* harden passthrough prefix normalization
+
+### Maintenance
+
+- merge main into develop/0.3.0
+
 ## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.3.0-rc.2...reinhardt-utils@v0.3.0-rc.3) - 2026-06-23
 
 ### Fixed
