@@ -142,7 +142,7 @@ pub struct AzureStorageSettings {
 	#[setting(optional)]
 	#[serde(default)]
 	pub access_key: Option<SecretString>,
-	/// Pre-generated SAS token.
+	/// Pre-generated SAS token used only for backend operations.
 	#[setting(optional)]
 	#[serde(default)]
 	pub sas_token: Option<SecretString>,

@@ -1020,6 +1020,8 @@ struct FieldInfo {
 	name: syn::Ident,
 	ty: Type,
 	config: FieldConfig,
+	/// Field-level `#[serde(...)]` attributes copied to generated companion fields.
+	serde_attrs: Vec<syn::Attribute>,
 	/// Optional relationship attribute from `#[rel(...)]`
 	///
 	/// This field is reserved for future accessor generation support.
@@ -1855,6 +1857,12 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		let ty = field.ty.clone();
 		let config = FieldConfig::from_attrs(&field.attrs)?;
 		config.validate()?;
+		let serde_attrs: Vec<syn::Attribute> = field
+			.attrs
+			.iter()
+			.filter(|attr| attr.path().is_ident("serde"))
+			.cloned()
+			.collect();
 
 		// Parse #[rel(...)] attribute if present
 		let rel = field
@@ -1873,6 +1881,7 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			name,
 			ty,
 			config,
+			serde_attrs,
 			rel,
 			is_fk_id_field,
 		});
@@ -4776,7 +4785,9 @@ fn generate_info_struct(
 			let name = &f.name;
 			let ty = &f.ty;
 			let validate_attrs = generate_validate_attrs(&f.config);
+			let serde_attrs = &f.serde_attrs;
 			quote! {
+				#(#serde_attrs)*
 				#(#validate_attrs)*
 				pub #name: #ty,
 			}

@@ -15,6 +15,7 @@ use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_apps::Request;
 use reinhardt_db::orm::query_types::DbBackend;
 use reinhardt_macros::model;
+use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_test::fixtures::testcontainers::{ContainerAsync, GenericImage, postgres_container};
 use reinhardt_urls::routers::{DefaultRouter, Router};
 use reinhardt_views::viewsets::{ModelViewSet, ReadOnlyModelViewSet};
@@ -34,8 +35,7 @@ struct Item {
 	name: String,
 }
 
-#[derive(Debug, Clone)]
-struct ItemSerializer;
+type ItemSerializer = JsonSerializer<Item>;
 
 /// Convert the typed `PgPool` from the shared fixture into the type-erased
 /// `AnyPool` that `ModelViewSetHandler::with_pool` expects, then create the

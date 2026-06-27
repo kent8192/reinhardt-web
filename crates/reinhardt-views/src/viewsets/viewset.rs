@@ -208,7 +208,7 @@ impl<T: Send + Sync> ViewSet for GenericViewSet<T> {
 pub struct ModelViewSet<M, S>
 where
 	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
-	S: Send + Sync + 'static,
+	S: Serializer<Input = M, Output = String> + Default + Send + Sync + 'static,
 {
 	basename: String,
 	lookup_field: String,
@@ -223,7 +223,7 @@ where
 impl<M, S> FilterableViewSet for ModelViewSet<M, S>
 where
 	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
-	S: Send + Sync + 'static,
+	S: Serializer<Input = M, Output = String> + Default + Send + Sync + 'static,
 {
 	fn get_filter_config(&self) -> Option<FilterConfig> {
 		self.filter_config.clone()
@@ -237,7 +237,7 @@ where
 impl<M, S> ModelViewSet<M, S>
 where
 	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
-	S: Send + Sync + 'static,
+	S: Serializer<Input = M, Output = String> + Default + Send + Sync + 'static,
 {
 	/// Creates a new `ModelViewSet` with the given basename.
 	///
@@ -281,7 +281,7 @@ where
 			pagination_config: Some(PaginationConfig::default()),
 			filter_config: None,
 			ordering_config: None,
-			handler: ModelViewSetHandler::<M>::new(),
+			handler: ModelViewSetHandler::<M>::new().with_serializer(Arc::new(S::default())),
 			_serializer: PhantomData,
 		}
 	}
@@ -318,7 +318,7 @@ where
 	///     fn new_fields() -> Self::Fields { UserFields }
 	/// }
 	///
-	/// let viewset = ModelViewSet::<User, ()>::new("users")
+	/// let viewset = ModelViewSet::<User, reinhardt_rest::serializers::JsonSerializer<User>>::new("users")
 	///     .with_lookup_field("username");
 	/// assert_eq!(viewset.get_lookup_field(), "username");
 	/// ```
@@ -348,15 +348,15 @@ where
 	/// #     fn new_fields() -> Self::Fields { ItemFields }
 	/// # }
 	/// // Page number pagination with custom page size
-	/// let viewset = ModelViewSet::<Item, ()>::new("items")
+	/// let viewset = ModelViewSet::<Item, reinhardt_rest::serializers::JsonSerializer<Item>>::new("items")
 	///     .with_pagination(PaginationConfig::page_number(20, Some(100)));
 	///
 	/// // Limit/offset pagination
-	/// let viewset = ModelViewSet::<Item, ()>::new("items")
+	/// let viewset = ModelViewSet::<Item, reinhardt_rest::serializers::JsonSerializer<Item>>::new("items")
 	///     .with_pagination(PaginationConfig::limit_offset(25, Some(500)));
 	///
 	/// // Disable pagination
-	/// let viewset = ModelViewSet::<Item, ()>::new("items")
+	/// let viewset = ModelViewSet::<Item, reinhardt_rest::serializers::JsonSerializer<Item>>::new("items")
 	///     .with_pagination(PaginationConfig::none());
 	/// ```
 	pub fn with_pagination(mut self, config: PaginationConfig) -> Self {
@@ -384,7 +384,7 @@ where
 	/// #     fn set_primary_key(&mut self, v: i64) { self.id = Some(v); }
 	/// #     fn new_fields() -> Self::Fields { ItemFields }
 	/// # }
-	/// let viewset = ModelViewSet::<Item, ()>::new("items")
+	/// let viewset = ModelViewSet::<Item, reinhardt_rest::serializers::JsonSerializer<Item>>::new("items")
 	///     .without_pagination();
 	/// ```
 	pub fn without_pagination(mut self) -> Self {
@@ -412,7 +412,7 @@ where
 	/// #     fn set_primary_key(&mut self, v: i64) { self.id = Some(v); }
 	/// #     fn new_fields() -> Self::Fields { ItemFields }
 	/// # }
-	/// let viewset = ModelViewSet::<Item, ()>::new("items")
+	/// let viewset = ModelViewSet::<Item, reinhardt_rest::serializers::JsonSerializer<Item>>::new("items")
 	///     .with_filters(
 	///         FilterConfig::new()
 	///             .with_filterable_fields(vec!["status", "category"])
@@ -444,7 +444,7 @@ where
 	/// #     fn set_primary_key(&mut self, v: i64) { self.id = Some(v); }
 	/// #     fn new_fields() -> Self::Fields { ItemFields }
 	/// # }
-	/// let viewset = ModelViewSet::<Item, ()>::new("items")
+	/// let viewset = ModelViewSet::<Item, reinhardt_rest::serializers::JsonSerializer<Item>>::new("items")
 	///     .with_ordering(
 	///         OrderingConfig::new()
 	///             .with_ordering_fields(vec!["created_at", "title", "id"])
@@ -509,7 +509,7 @@ where
 impl<M, S> ViewSet for ModelViewSet<M, S>
 where
 	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
-	S: Send + Sync + 'static,
+	S: Serializer<Input = M, Output = String> + Default + Send + Sync + 'static,
 {
 	fn get_basename(&self) -> &str {
 		&self.basename
@@ -550,7 +550,7 @@ where
 impl<M, S> PaginatedViewSet for ModelViewSet<M, S>
 where
 	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
-	S: Send + Sync + 'static,
+	S: Serializer<Input = M, Output = String> + Default + Send + Sync + 'static,
 {
 	fn get_pagination_config(&self) -> Option<PaginationConfig> {
 		self.pagination_config.clone()
@@ -564,7 +564,7 @@ where
 pub struct ReadOnlyModelViewSet<M, S>
 where
 	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
-	S: Send + Sync + 'static,
+	S: Serializer<Input = M, Output = String> + Default + Send + Sync + 'static,
 {
 	basename: String,
 	lookup_field: String,
@@ -578,7 +578,7 @@ where
 impl<M, S> ReadOnlyModelViewSet<M, S>
 where
 	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
-	S: Send + Sync + 'static,
+	S: Serializer<Input = M, Output = String> + Default + Send + Sync + 'static,
 {
 	/// Creates a new `ReadOnlyModelViewSet` with the given basename.
 	///
@@ -622,7 +622,7 @@ where
 			pagination_config: Some(PaginationConfig::default()),
 			filter_config: None,
 			ordering_config: None,
-			handler: ModelViewSetHandler::<M>::new(),
+			handler: ModelViewSetHandler::<M>::new().with_serializer(Arc::new(S::default())),
 			_serializer: PhantomData,
 		}
 	}
@@ -733,7 +733,7 @@ where
 impl<M, S> ViewSet for ReadOnlyModelViewSet<M, S>
 where
 	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
-	S: Send + Sync + 'static,
+	S: Serializer<Input = M, Output = String> + Default + Send + Sync + 'static,
 {
 	fn get_basename(&self) -> &str {
 		&self.basename
@@ -762,7 +762,7 @@ where
 impl<M, S> PaginatedViewSet for ReadOnlyModelViewSet<M, S>
 where
 	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
-	S: Send + Sync + 'static,
+	S: Serializer<Input = M, Output = String> + Default + Send + Sync + 'static,
 {
 	fn get_pagination_config(&self) -> Option<PaginationConfig> {
 		self.pagination_config.clone()
@@ -773,7 +773,7 @@ where
 impl<M, S> FilterableViewSet for ReadOnlyModelViewSet<M, S>
 where
 	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
-	S: Send + Sync + 'static,
+	S: Serializer<Input = M, Output = String> + Default + Send + Sync + 'static,
 {
 	fn get_filter_config(&self) -> Option<FilterConfig> {
 		self.filter_config.clone()
@@ -796,26 +796,26 @@ where
 impl<M, S> std::panic::UnwindSafe for ModelViewSet<M, S>
 where
 	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
-	S: Send + Sync + 'static,
+	S: Serializer<Input = M, Output = String> + Default + Send + Sync + 'static,
 {
 }
 impl<M, S> std::panic::RefUnwindSafe for ModelViewSet<M, S>
 where
 	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
-	S: Send + Sync + 'static,
+	S: Serializer<Input = M, Output = String> + Default + Send + Sync + 'static,
 {
 }
 
 impl<M, S> std::panic::UnwindSafe for ReadOnlyModelViewSet<M, S>
 where
 	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
-	S: Send + Sync + 'static,
+	S: Serializer<Input = M, Output = String> + Default + Send + Sync + 'static,
 {
 }
 impl<M, S> std::panic::RefUnwindSafe for ReadOnlyModelViewSet<M, S>
 where
 	M: Model + Serialize + DeserializeOwned + Clone + Send + Sync + 'static,
-	S: Send + Sync + 'static,
+	S: Serializer<Input = M, Output = String> + Default + Send + Sync + 'static,
 {
 }
 
@@ -829,11 +829,11 @@ mod tests {
 	use std::sync::Arc;
 
 	/// Minimal `Model` implementation used to satisfy the `ModelViewSet` trait
-	/// bounds in unit tests. The previous tests used `ModelViewSet::<(), ()>`,
-	/// but bare `()` does not implement `Model` once the bounds were tightened.
+	/// bounds in unit tests.
 	#[derive(Debug, Clone, Serialize, Deserialize)]
 	struct DummyModel {
 		id: Option<i64>,
+		secret: String,
 	}
 
 	#[derive(Clone)]
@@ -863,9 +863,71 @@ mod tests {
 		}
 	}
 
+	#[derive(Default)]
+	struct RedactingDummySerializer;
+
+	impl Serializer for RedactingDummySerializer {
+		type Input = DummyModel;
+		type Output = String;
+
+		fn serialize(
+			&self,
+			input: &Self::Input,
+		) -> std::result::Result<Self::Output, reinhardt_rest::serializers::SerializerError> {
+			serde_json::to_string(&serde_json::json!({ "id": input.id })).map_err(|e| {
+				reinhardt_rest::serializers::SerializerError::Serde {
+					message: format!("Serialization error: {}", e),
+				}
+			})
+		}
+
+		fn deserialize(
+			&self,
+			output: &Self::Output,
+		) -> std::result::Result<Self::Input, reinhardt_rest::serializers::SerializerError> {
+			let value: serde_json::Value = serde_json::from_str(output).map_err(|e| {
+				reinhardt_rest::serializers::SerializerError::Serde {
+					message: format!("Deserialization error: {}", e),
+				}
+			})?;
+			if value.get("secret").is_some() {
+				return Err(reinhardt_rest::serializers::SerializerError::Serde {
+					message: "secret is not writable".to_string(),
+				});
+			}
+			Ok(DummyModel {
+				id: value.get("id").and_then(serde_json::Value::as_i64),
+				secret: String::new(),
+			})
+		}
+	}
+
+	#[tokio::test]
+	async fn test_model_viewset_new_wires_declared_serializer() {
+		let viewset = ModelViewSet::<DummyModel, RedactingDummySerializer>::new("test")
+			.with_queryset(vec![DummyModel {
+				id: Some(7),
+				secret: "hidden".to_string(),
+			}]);
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/test/")
+			.body(bytes::Bytes::new())
+			.build()
+			.unwrap();
+
+		let response = viewset.dispatch(request, Action::list()).await.unwrap();
+
+		assert_eq!(response.status, hyper::StatusCode::OK);
+		assert_eq!(response.body, bytes::Bytes::from_static(br#"[{"id":7}]"#));
+	}
+
 	#[tokio::test]
 	async fn test_viewset_builder_validation_empty_actions() {
-		let viewset = ModelViewSet::<DummyModel, ()>::new("test");
+		let viewset = ModelViewSet::<
+			DummyModel,
+			reinhardt_rest::serializers::JsonSerializer<DummyModel>,
+		>::new("test");
 		let builder = viewset.as_view();
 
 		// Test that empty actions causes build to fail
@@ -884,7 +946,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_viewset_builder_name_suffix_mutual_exclusivity() {
-		let viewset = ModelViewSet::<DummyModel, ()>::new("test");
+		let viewset = ModelViewSet::<
+			DummyModel,
+			reinhardt_rest::serializers::JsonSerializer<DummyModel>,
+		>::new("test");
 		let builder = viewset.as_view();
 
 		// Test that providing both name and suffix fails
@@ -903,7 +968,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_viewset_builder_successful_build() {
-		let viewset = ModelViewSet::<DummyModel, ()>::new("test");
+		let viewset = ModelViewSet::<
+			DummyModel,
+			reinhardt_rest::serializers::JsonSerializer<DummyModel>,
+		>::new("test");
 		let mut actions = HashMap::new();
 		actions.insert(Method::GET, "list".to_string());
 
@@ -919,7 +987,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_viewset_builder_with_name() {
-		let viewset = ModelViewSet::<DummyModel, ()>::new("test");
+		let viewset = ModelViewSet::<
+			DummyModel,
+			reinhardt_rest::serializers::JsonSerializer<DummyModel>,
+		>::new("test");
 		let mut actions = HashMap::new();
 		actions.insert(Method::GET, "list".to_string());
 
@@ -934,7 +1005,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_viewset_builder_with_suffix() {
-		let viewset = ModelViewSet::<DummyModel, ()>::new("test");
+		let viewset = ModelViewSet::<
+			DummyModel,
+			reinhardt_rest::serializers::JsonSerializer<DummyModel>,
+		>::new("test");
 		let mut actions = HashMap::new();
 		actions.insert(Method::GET, "list".to_string());
 

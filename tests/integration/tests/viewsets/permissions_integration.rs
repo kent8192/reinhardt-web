@@ -20,6 +20,7 @@
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_http::{Request, Response};
+use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_test::fixtures::postgres_container;
 use reinhardt_views::viewsets::{ModelViewSet, ReadOnlyModelViewSet};
 use rstest::*;
@@ -42,8 +43,7 @@ struct Article {
 
 reinhardt_test::impl_test_model!(Article, i64, "articles");
 
-#[derive(Debug, Clone)]
-struct ArticleSerializer;
+type ArticleSerializer = JsonSerializer<Article>;
 
 // ============================================================================
 // Permission Classes
