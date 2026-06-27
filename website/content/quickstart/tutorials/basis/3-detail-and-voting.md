@@ -13,6 +13,16 @@ The poll index now links to detail pages, but the detail route does not do usefu
 
 The browser submits votes through `form!` and a `#[server_fn]`. The server keeps the database rules: it verifies that the selected choice belongs to the selected question, increments the vote in a transaction, and returns the generated `ChoiceInfo` DTO.
 
+## Add the Native Error Dependency
+
+The voting service maps domain errors through `anyhow`. Add it to the existing
+native dependency table in `Cargo.toml`:
+
+```toml
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+anyhow = "1"
+```
+
 ## Add the Request Type
 
 Open `src/shared/types.rs` and add the vote request DTO:

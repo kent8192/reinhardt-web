@@ -74,6 +74,10 @@ Gate native tests so `wasm-pack test` does not try to link `sqlx` for `wasm32-un
 #![cfg(server)]
 ```
 
+Keep those dependencies native-only. If `tokio`, `sqlx`, or `tempfile` are
+placed in the shared `[dev-dependencies]` table, `wasm-pack test` will try to
+compile their native transitive dependencies for `wasm32-unknown-unknown`.
+
 ## Build an Isolated SQLite Fixture
 
 The server-function fixture creates a temp SQLite database, initializes ORM state, and returns a `DatabaseConnection`:
@@ -205,6 +209,14 @@ The same file checks password hashing and `SuperuserCreatorRegistration` invento
 
 ## Add WASM Poll Tests
 
+Add the browser test dependencies:
+
+```toml
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+gloo-timers = { version = "0.3", features = ["futures"] }
+wasm-bindgen-test = "0.3"
+```
+
 WASM tests run in a browser:
 
 ```rust
@@ -218,10 +230,10 @@ wasm_bindgen_test_configure!(run_in_browser);
 The polls test imports real components and server-function markers:
 
 ```rust
-use examples_tutorial_basis::apps::polls::client::components::{
+use tutorial::apps::polls::client::components::{
     polls_detail, polls_index, polls_results,
 };
-use examples_tutorial_basis::apps::polls::server_fn::{
+use tutorial::apps::polls::server_fn::{
     get_question_detail, get_question_results, get_questions, vote,
 };
 use reinhardt::test::msw::MockServiceWorker;
@@ -254,10 +266,10 @@ The rest of `polls_mock_test.rs` covers rendering, detail/results round trips, v
 `tests/wasm/users_mock_test.rs` mirrors the polls test for auth:
 
 ```rust
-use examples_tutorial_basis::apps::users::client::components::{
+use tutorial::apps::users::client::components::{
     login_form, logout_form, signup_form,
 };
-use examples_tutorial_basis::apps::users::server_fn::{current_user, login, logout, register};
+use tutorial::apps::users::server_fn::{current_user, login, logout, register};
 use reinhardt::test::msw::MockServiceWorker;
 ```
 
@@ -286,7 +298,13 @@ command = "wasm-pack"
 args = ["test", "--headless", "--chrome", "--", "--no-default-features", "--features", "client-router,msw"]
 ```
 
-From the repository root, the focused package command is:
+Inside the standalone tutorial project, the focused native test command is:
+
+```bash
+cargo nextest run --all-features
+```
+
+From the Reinhardt repository root, the equivalent reference-example command is:
 
 ```bash
 cargo nextest run -p examples-tutorial-basis --all-features

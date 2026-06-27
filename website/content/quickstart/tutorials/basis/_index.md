@@ -12,7 +12,7 @@ sidebar_weight = 10
 
 Build a polling application on the Reinhardt pages template: a Rust/WASM client, typed server functions, generated model info DTOs, shared request DTOs, session-cookie authentication, ownership-checked CRUD, static assets, tests, and the Reinhardt admin.
 
-The reference implementation lives in [`examples/examples-tutorial-basis`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis). Treat that crate as the answer key. The tutorial introduces the same architecture one working slice at a time, so every part ends with something you can run or click.
+The reference implementation lives in [`examples/examples-tutorial-basis`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis). Treat its app source and tests as the answer key. Its Cargo workspace and local infrastructure files are repository-specific; the standalone project created in Part 1 uses the generated SQLite-first settings. The tutorial introduces the same architecture one working slice at a time, so every part ends with something you can run or click.
 
 ## Who This Tutorial Is For
 

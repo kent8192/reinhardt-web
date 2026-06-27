@@ -111,7 +111,9 @@ msw = ["reinhardt/msw"]
 
 The dependency split is the important design. WASM gets pages and client
 routing; the server gets the framework, database backend, commands, admin, and
-configuration features selected by `startproject`:
+configuration features selected by `startproject`. The native feature list also
+includes the client router and the form/session features used by later parts of
+this tutorial:
 
 ```toml
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -122,6 +124,7 @@ wasm-bindgen = "=0.2.122"
 reinhardt = { version = "0.3.0-rc.4", package = "reinhardt-web", default-features = false, features = [
     "minimal",
     "pages",
+    "client-router",
     "admin",
     "conf",
     "commands",
@@ -129,6 +132,8 @@ reinhardt = { version = "0.3.0-rc.4", package = "reinhardt-web", default-feature
     "commands-autoreload",
     "server",
     "db-sqlite",
+    "forms",
+    "auth-session",
 ] }
 tokio = { version = "1", features = ["full"] }
 ```
@@ -138,8 +143,8 @@ require a PostgreSQL container. If you pass an explicit SQLite feature list,
 keep the Pages runtime and command facades in place: `commands-server` enables
 `manage runserver`, `commands-autoreload` powers the generated dev watcher, and
 `server` provides the HTTP server facade. Current `startproject` adds the
-required `minimal` and server-side Pages features automatically when a custom
-Pages list lacks them.
+required `minimal`, routing, form, session, and server-side Pages features
+automatically when a custom Pages list lacks them.
 
 In an example project, import Reinhardt APIs through the `reinhardt` facade. Do not depend on internal `reinhardt-*` crates directly.
 

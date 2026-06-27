@@ -3,6 +3,7 @@
 //! A Reinhardt Pages app whose server-side and client-side code both live
 //! under this directory:
 //!
+//! - `models` — shared model definitions and generated info DTOs
 //! - `server` — native-only implementation details
 //! - `client` — WASM-only UI modules and client services
 //! - `serializers` / `server_fn` / `services` / `urls` — cross-target
@@ -17,6 +18,7 @@ pub mod client;
 #[cfg(server)]
 pub mod server;
 
+pub mod models;
 pub mod serializers;
 pub mod server_fn;
 pub mod services;
