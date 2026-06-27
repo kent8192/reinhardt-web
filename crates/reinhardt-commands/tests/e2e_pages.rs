@@ -133,6 +133,8 @@ async fn project_pages_layout_matches_tutorial() {
 		"db-sqlite",
 		"forms",
 		"auth-session",
+		"middleware",
+		"argon2-hasher",
 	] {
 		assert!(
 			cargo_toml.contains(&format!("\"{feature}\"")),

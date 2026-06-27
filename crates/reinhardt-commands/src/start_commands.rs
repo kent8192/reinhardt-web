@@ -134,6 +134,8 @@ impl BaseCommand for StartProjectCommand {
 				"db-sqlite",
 				"forms",
 				"auth-session",
+				"middleware",
+				"argon2-hasher",
 			][..]
 		} else {
 			&["conf", "commands", "db-postgres", "api"][..]

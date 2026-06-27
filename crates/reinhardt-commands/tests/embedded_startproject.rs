@@ -182,6 +182,8 @@ async fn startproject_pages_from_embedded_only() {
 			"db-sqlite",
 			"forms",
 			"auth-session",
+			"middleware",
+			"argon2-hasher",
 		],
 	);
 	assert!(
@@ -299,6 +301,8 @@ async fn startproject_pages_adds_required_pages_features() {
 			"server",
 			"forms",
 			"auth-session",
+			"middleware",
+			"argon2-hasher",
 		],
 	);
 	assert!(
