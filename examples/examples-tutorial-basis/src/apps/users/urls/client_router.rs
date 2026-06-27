@@ -6,7 +6,7 @@
 
 use reinhardt::ClientRouter;
 
-use crate::client::pages::{login_page, logout_page, signup_page};
+use crate::apps::users::client::pages::{login_page, logout_page, signup_page};
 
 pub fn client_url_patterns() -> ClientRouter {
 	ClientRouter::new()

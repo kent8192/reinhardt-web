@@ -15,7 +15,7 @@
 //!
 //! <!-- reinhardt-version-sync -->
 //! ```bash
-//! cargo install reinhardt-admin-cli --version "0.2.0"
+//! cargo install reinhardt-admin-cli --version "0.2.2"
 //! ```
 //!
 //! ## Usage
@@ -1033,7 +1033,7 @@ mod arg_group_tests {
 				"--template",
 				"pages",
 				"--features",
-				"standard,pages,admin,conf,commands,db-sqlite,forms,auth-session,argon2-hasher",
+				"pages,admin,conf,commands-server,commands-autoreload,db-sqlite,forms,auth-session,middleware,argon2-hasher,static-files",
 				"--no-interactive",
 			])
 			.is_ok(),
