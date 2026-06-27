@@ -774,8 +774,7 @@ fn create_secure_backup(source: &Path, backup_path: &Path) -> Result<(), std::io
 
 	let mut backup_file = OpenOptions::new()
 		.write(true)
-		.create(true)
-		.truncate(true)
+		.create_new(true)
 		.mode(0o600)
 		.open(backup_path)?;
 
@@ -791,17 +790,21 @@ fn create_secure_backup(source: &Path, backup_path: &Path) -> Result<(), std::io
 	let mut content = Vec::new();
 	let mut file = std::fs::File::open(source)?;
 	file.read_to_end(&mut content)?;
-	std::fs::write(backup_path, &content)?;
+	let mut backup_file = std::fs::OpenOptions::new()
+		.write(true)
+		.create_new(true)
+		.open(backup_path)?;
+	std::io::copy(&mut content.as_slice(), &mut backup_file)?;
 	content.zeroize();
 	Ok(())
 }
 
 fn create_temp_backup_path(source: &Path) -> PathBuf {
+	let temp_dir = std::env::temp_dir();
 	let file_name = source
 		.file_name()
 		.unwrap_or_else(|| std::ffi::OsStr::new("unknown"));
-	let backup_name = format!("reinhardt-fmt-{}.bak", file_name.to_string_lossy());
-	std::env::temp_dir().join(backup_name)
+	utils::unique_sibling_path(&temp_dir.join(file_name), "bak")
 }
 
 fn mask_path(path: &Path) -> String {
@@ -934,5 +937,59 @@ struct FormatLockGuard {
 impl Drop for FormatLockGuard {
 	fn drop(&mut self) {
 		let _ = std::fs::remove_file(&self.path);
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+
+	#[cfg(unix)]
+	#[rstest]
+	fn test_create_secure_backup_does_not_follow_existing_symlink() {
+		// Arrange
+		let dir = tempfile::tempdir().expect("failed to create temp dir");
+		let source = dir.path().join("lib.rs");
+		let backup_victim = dir.path().join("backup-victim.txt");
+		let backup_symlink = dir.path().join("reinhardt-fmt-lib.rs.bak");
+
+		std::fs::write(&source, "source").expect("write source");
+		std::fs::write(&backup_victim, "victim").expect("write victim");
+		std::os::unix::fs::symlink(&backup_victim, &backup_symlink).expect("create symlink");
+
+		// Act
+		let result = create_secure_backup(&source, &backup_symlink);
+
+		// Assert
+		assert_eq!(
+			result
+				.expect_err("existing symlink should not be opened")
+				.kind(),
+			std::io::ErrorKind::AlreadyExists
+		);
+		assert_eq!(
+			std::fs::read_to_string(&backup_victim).expect("read victim"),
+			"victim",
+			"backup symlink target must not be overwritten"
+		);
+	}
+
+	#[rstest]
+	fn test_create_temp_backup_path_is_not_deterministic() {
+		// Arrange
+		let source = Path::new("lib.rs");
+
+		// Act
+		let first = create_temp_backup_path(source);
+		let second = create_temp_backup_path(source);
+
+		// Assert
+		assert_ne!(first, second, "backup paths should be unique per call");
+		assert_eq!(
+			first.parent(),
+			Some(std::env::temp_dir().as_path()),
+			"backup files should remain in the system temp directory"
+		);
 	}
 }
