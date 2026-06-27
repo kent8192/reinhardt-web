@@ -466,12 +466,6 @@ mod tests {
 		assert_eq!(join_type, JoinType::Left);
 	}
 
-	// This test won't compile if uncommented - demonstrating type safety
-	// #[test]
-	// fn test_incompatible_types() {
-	//     let join = TypedJoin::on(
-	//         Field::<User, i64>::new(vec!["id"]),
-	//         Field::<Post, String>::new(vec!["title"]),  // Type mismatch!
-	//     );
-	// }
+	// Type mismatch coverage is compile-time only: a join between
+	// `Field<User, i64>` and `Field<Post, String>` is rejected by Rust's type checker.
 }

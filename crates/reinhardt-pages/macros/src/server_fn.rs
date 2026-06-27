@@ -1441,21 +1441,9 @@ fn generate_server_handler(
 		// function name. The module has the same name as the function and contains
 		// a `marker` struct that implements `ServerFnRegistration`.
 		//
-		// Example:
-		// ```ignore
-		// use reinhardt::pages::server_fn::ServerFnRouterExt;
-		// use crate::server_fn::auth::{login, logout};  // Import marker modules
-		//
-		// let router = UnifiedRouter::new()
-		//     .server_fn(login::marker)   // Use snake_case name + ::marker
-		//     .server_fn(logout::marker);
-		// ```
-		//
-		// Note: On WASM (client side), import and call the function directly:
-		// ```ignore
-		// use crate::server_fn::auth::login;  // Function (snake_case)
-		// login(email, password).await;
-		// ```
+		// Server-side explicit registration uses marker modules such as
+		// `login::marker` and `logout::marker`. WASM callers import and invoke
+		// the generated function directly.
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#vis mod #marker_module_name {
 			use super::*;
