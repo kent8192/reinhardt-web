@@ -70,7 +70,7 @@ pub struct StaticFilesConfig {
 	///   deliberately want segment-prefix matching.
 	/// - **Never include an empty string** — it would silently bypass the
 	///   middleware for every path. The [`StaticFilesConfig::passthrough_prefixes`]
-	///   builder panics if asked to install an empty prefix.
+	///   builder panics if asked to install an empty or relative prefix.
 	pub passthrough_prefixes: Vec<String>,
 	/// Cache control configuration for static file responses
 	pub cache_config: CacheControlConfig,
@@ -166,11 +166,11 @@ impl StaticFilesConfig {
 	///
 	/// # Panics
 	///
-	/// Panics if any prefix is the empty string. An empty prefix would
-	/// match every request path via `starts_with("")` and silently disable
-	/// static serving — this is treated as a configuration bug and rejected
-	/// at construction time rather than allowed to surface as a confusing
-	/// runtime symptom.
+	/// Panics if any prefix is the empty string or does not start with `/`.
+	/// An empty prefix would match every request path via `starts_with("")`,
+	/// and a relative prefix would be ambiguous against absolute URI paths.
+	/// Both are treated as configuration bugs and rejected at construction
+	/// time rather than allowed to surface as confusing runtime symptoms.
 	pub fn passthrough_prefixes(mut self, prefixes: Vec<String>) -> Self {
 		for prefix in &prefixes {
 			assert!(
@@ -178,6 +178,11 @@ impl StaticFilesConfig {
 				"passthrough_prefixes must not contain an empty string \
 				 (would bypass the middleware for every path and silently \
 				 disable static serving)"
+			);
+			assert!(
+				prefix.starts_with('/'),
+				"passthrough_prefixes entries must start with `/` \
+				 (request URI paths are absolute)"
 			);
 		}
 		self.passthrough_prefixes = prefixes;
@@ -472,6 +477,11 @@ impl StaticFilesMiddleware {
 	fn normalize_prefix_match_path(path: &str) -> String {
 		let mut normalized = String::with_capacity(path.len());
 		normalized.push('/');
+		let keep_trailing_separator = path.ends_with('/')
+			|| path
+				.rsplit('/')
+				.find(|segment| !segment.is_empty())
+				.is_some_and(|segment| segment == ".");
 
 		let mut first = true;
 		for segment in path
@@ -485,7 +495,7 @@ impl StaticFilesMiddleware {
 			first = false;
 		}
 
-		if path.ends_with('/') && !normalized.ends_with('/') {
+		if keep_trailing_separator && !normalized.ends_with('/') {
 			normalized.push('/');
 		}
 
@@ -804,6 +814,15 @@ mod tests {
 		assert_eq!(config.index_files.len(), 2);
 	}
 
+	#[rstest]
+	#[case("static/admin/")]
+	#[case(".")]
+	#[should_panic(expected = "must start with `/`")]
+	fn test_passthrough_prefixes_reject_relative_prefixes(#[case] prefix: &str) {
+		// Arrange & Act & Assert
+		StaticFilesConfig::new("dist").passthrough_prefixes(vec![prefix.to_string()]);
+	}
+
 	#[test]
 	fn test_matches_prefix() {
 		let config = StaticFilesConfig::new("dist").url_prefix("/static/");
@@ -833,6 +852,19 @@ mod tests {
 			middleware.get_file_path("/static/css/style.css"),
 			"css/style.css"
 		);
+	}
+
+	#[rstest]
+	#[case("/static//admin/foo.css", "/static/admin/foo.css")]
+	#[case("/static/./admin/foo.css", "/static/admin/foo.css")]
+	#[case("/static/admin/.", "/static/admin/")]
+	#[case("/static/admin//.", "/static/admin/")]
+	fn test_normalize_prefix_match_path(#[case] path: &str, #[case] expected: &str) {
+		// Arrange & Act
+		let normalized = StaticFilesMiddleware::normalize_prefix_match_path(path);
+
+		// Assert
+		assert_eq!(normalized, expected);
 	}
 
 	#[test]
@@ -1907,6 +1939,39 @@ mod tests {
 		assert_eq!(
 			body, "from-next-handler",
 			"normalized passthrough variants must bypass colliding root_dir files"
+		);
+	}
+
+	#[rstest]
+	#[case("/static/admin/.")]
+	#[case("/static/admin//.")]
+	#[tokio::test]
+	async fn test_passthrough_prefix_trailing_dot_variants_fall_through(
+		#[case] request_path: &str,
+	) {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::create_dir_all(dir.path().join("admin")).unwrap();
+		std::fs::write(dir.path().join("admin/index.html"), "outer-index-collision").unwrap();
+
+		let config = StaticFilesConfig::new(dir.path())
+			.url_prefix("/static/")
+			.spa_mode(false)
+			.passthrough_prefixes(vec!["/static/admin/".to_string()]);
+		let middleware = StaticFilesMiddleware::new(config);
+		let next: Arc<dyn Handler> = Arc::new(PassthroughProbeHandler);
+
+		// Act
+		let response = middleware
+			.process(build_request(request_path), next)
+			.await
+			.unwrap();
+
+		// Assert
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(
+			body, "from-next-handler",
+			"trailing dot passthrough variants must bypass colliding directory indexes"
 		);
 	}
 
