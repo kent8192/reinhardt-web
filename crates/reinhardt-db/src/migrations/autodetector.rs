@@ -6945,6 +6945,7 @@ mod tests {
 			.try_generate_operations()
 			.expect("unrelated add/drop should remain valid");
 
+		assert_eq!(operations.len(), 2, "unexpected operations: {operations:?}");
 		assert!(
 			operations.iter().any(|op| matches!(
 				op,
@@ -6958,6 +6959,12 @@ mod tests {
 				super::super::Operation::DropColumn { column, .. } if column == "legacy_payload"
 			)),
 			"expected DropColumn, got: {operations:?}"
+		);
+		assert!(
+			operations
+				.iter()
+				.all(|op| !matches!(op, super::super::Operation::RenameColumn { .. })),
+			"unrelated add/drop must not be collapsed into RenameColumn: {operations:?}"
 		);
 	}
 
@@ -7534,8 +7541,10 @@ mod tests {
 
 		// Act
 		let changes = detector.detect_changes();
+		let migrations = detector.generate_migrations();
 
-		// Assert: rename should be detected
+		// Assert: rename should be detected and emitted as a single table
+		// rename, matching Django's RenameModel-vs-create/drop contract.
 		assert_eq!(
 			changes.renamed_models.len(),
 			1,
@@ -7543,6 +7552,25 @@ mod tests {
 		);
 		assert_eq!(changes.renamed_models[0].1, "OldModel");
 		assert_eq!(changes.renamed_models[0].2, "NewModel");
+		assert!(
+			changes.created_models.is_empty(),
+			"confirmed model rename must not leave created_models noise: {:?}",
+			changes.created_models
+		);
+		assert!(
+			changes.deleted_models.is_empty(),
+			"confirmed model rename must not leave deleted_models noise: {:?}",
+			changes.deleted_models
+		);
+		assert_eq!(migrations.len(), 1, "unexpected migrations: {migrations:?}");
+		assert_eq!(migrations[0].app_label, "myapp");
+		let operations = &migrations[0].operations;
+		assert_eq!(operations.len(), 1, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::RenameTable { old_name, new_name }
+				if old_name == "old_table" && new_name == "new_table"
+		));
 	}
 
 	#[rstest]
