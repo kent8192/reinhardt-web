@@ -10,4 +10,6 @@ pub mod models;
 #[cfg(client)]
 pub mod client;
 pub mod server_fn;
+#[cfg(server)]
+pub mod services;
 pub mod urls;

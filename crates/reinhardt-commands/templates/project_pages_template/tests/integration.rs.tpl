@@ -15,10 +15,10 @@ use rstest::*;
 
 #[rstest]
 fn smoke_crate_compiles() {
-	// Arrange / Act
-	// The crate links because this binary is part of the same package.
-	let crate_name: &str = env!("CARGO_PKG_NAME");
+    // Arrange / Act
+    // The crate links because this binary is part of the same package.
+    let crate_name: &str = env!("CARGO_PKG_NAME");
 
-	// Assert
-	assert_eq!(crate_name, "{{ crate_name }}");
+    // Assert
+    assert_eq!(crate_name, "{{ crate_name }}");
 }
