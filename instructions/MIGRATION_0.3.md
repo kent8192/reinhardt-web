@@ -1,6 +1,7 @@
 # Migration Guide: 0.2.x to 0.3.0
 
-Release blockers: [#5405](https://github.com/kent8192/reinhardt-web/issues/5405),
+Related release-readiness tracking:
+[#5405](https://github.com/kent8192/reinhardt-web/issues/5405) and
 [#5410](https://github.com/kent8192/reinhardt-web/issues/5410).
 
 This guide covers the delta from the public 0.2.x line to the final 0.3.0
