@@ -277,11 +277,7 @@ impl<M: Model> ValidatorConfig<M> {
 		M: Serialize,
 		M::PrimaryKey: std::fmt::Display,
 	{
-		self.validate(instance)
-			.map_err(|e| DatabaseValidatorError::DatabaseError {
-				message: e.to_string(),
-				query: None,
-			})?;
+		self.validate(instance)?;
 
 		// Convert model instance to JSON for field extraction
 		let value =
@@ -534,10 +530,25 @@ mod tests {
 
 		let result = config.validate_async(&connection, &user, None).await;
 
-		assert!(matches!(
-			result,
-			Err(DatabaseValidatorError::DatabaseError { message, query: None })
-				if message.contains("admin users cannot be created")
-		));
+		let err = result.expect_err("expected sync validator failure");
+		assert_eq!(
+			err,
+			DatabaseValidatorError::ValidationError {
+				source: ValidatorError::Custom {
+					message: "admin users cannot be created through this validator".to_string(),
+				},
+			}
+		);
+
+		let response_error: reinhardt_core::exception::Error = err.into();
+		match response_error {
+			reinhardt_core::exception::Error::Validation(message) => {
+				assert_eq!(
+					message,
+					"Validation error: admin users cannot be created through this validator"
+				);
+			}
+			other => panic!("unexpected response error variant: {:?}", other),
+		}
 	}
 }
