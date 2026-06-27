@@ -304,9 +304,12 @@ Inside the standalone tutorial project, the focused native test command is:
 cargo nextest run --all-features
 ```
 
-From the Reinhardt repository root, the equivalent reference-example command is:
+The reference example lives in the repository's `examples` workspace. From a
+repository checkout, enter that workspace before running the equivalent package
+command:
 
 ```bash
+cd examples
 cargo nextest run -p examples-tutorial-basis --all-features
 ```
 
