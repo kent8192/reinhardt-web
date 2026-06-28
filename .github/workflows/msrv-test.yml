@@ -36,7 +36,7 @@ jobs:
       fail-fast: false
       matrix:
         # Verify compilation on MSRV (pinned), stable, and beta channels
-        rust: ["1.94.1", "stable", "beta"]
+        rust: ["1.96.0", "stable", "beta"]
 
     steps:
       - name: Free Disk Space (Ubuntu)

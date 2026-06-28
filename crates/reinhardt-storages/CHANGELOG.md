@@ -7,23 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.2...reinhardt-storages@v0.2.3) - 2026-06-27
+## [0.2.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.5...reinhardt-storages@v0.2.6) - 2026-06-27
 
-### Fixed
+### Maintenance
 
-- *(storages)* prevent Azure SAS credential exposure
+- merge main into develop/0.3.0
 
-## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.1...reinhardt-storages@v0.2.2) - 2026-06-25
+## [0.2.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.4...reinhardt-storages@v0.2.5) - 2026-06-26
 
-### Fixed
+### Maintenance
 
-- *(storages)* prevent Azure SAS credential exposure
+- updated the following local packages: reinhardt-core, reinhardt-conf, reinhardt-providers
 
-## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.0...reinhardt-storages@v0.2.1) - 2026-06-23
+## [0.2.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.3...reinhardt-storages@v0.2.4) - 2026-06-24
 
-### Fixed
+### Maintenance
 
-- *(storages)* prevent Azure SAS credential exposure
+- updated the following local packages: reinhardt-core, reinhardt-conf, reinhardt-providers
+
+## [0.2.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.2...reinhardt-storages@v0.2.3) - 2026-06-23
+
+### Maintenance
+
+- updated the following local packages: reinhardt-core, reinhardt-conf, reinhardt-providers
+
+## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.1...reinhardt-storages@v0.2.2) - 2026-06-19
+
+### Maintenance
+
+- updated the following local packages: reinhardt-core, reinhardt-conf, reinhardt-providers
+
+## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.0...reinhardt-storages@v0.2.1) - 2026-06-18
+
+### Maintenance
+
+- updated the following local packages: reinhardt-core, reinhardt-conf, reinhardt-providers
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/releases/tag/reinhardt-storages@v0.2.0) - 2026-06-11
 

@@ -13,16 +13,12 @@ fn main() {
 		div {
 			class: "user-card",
 			span { { name } }
-			span { {
-				age.to_string()
-			} }
+			span { { age.to_string() } }
 		}
 	});
 
 	// Props with trailing comma
 	let _trailing = page!(|x: i32| {
-		div { {
-			x.to_string()
-		} }
+		div { { x.to_string() } }
 	});
 }

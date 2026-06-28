@@ -358,7 +358,7 @@ where
 #[cfg(feature = "validation")]
 impl<T> super::validation::WithValidation for Path<T> {}
 
-// Bridge to the DI container so that `#[injectable_factory]` and any handler
+// Bridge to the DI container so that `#[injectable]` providers and any handler
 // using `#[inject] Path(x): Path<T>` can resolve path parameters from the
 // active request scope without touching ParamContext directly.
 //

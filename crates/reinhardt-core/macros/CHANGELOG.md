@@ -7,15 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.2.0...reinhardt-macros@v0.2.1) - 2026-06-23
+## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.3.0-rc.5...reinhardt-macros@v0.3.0-rc.6) - 2026-06-27
+
+### Added
+
+- *(params)* generalize cookie extractors
+
+### Fixed
+
+- *(macros)* stop propagating serde skip to Info relation fields
+
+### Maintenance
+
+- merge main into develop/0.3.0
+
+## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.3.0-rc.2...reinhardt-macros@v0.3.0-rc.3) - 2026-06-23
 
 ### Added
 
 - *(macros)* make user macro inert on wasm
 
+## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.2.0...reinhardt-macros@v0.3.0-rc.1) - 2026-06-18
+
+### Changed
+
+- [**breaking**] remove 0.3 deprecated public APIs
+
 ### Fixed
 
-- *(macros)* preserve serde field attributes on Info structs
+- *(ci)* update Rust 1.96 UI stderr expectations
+- *(conf)* keep sectionless settings nodes embedded
+- emit shared model info for parity
+- keep server-only model PK metadata
+
+### Maintenance
+
+- migrate Rust toolchain to 1.96.0
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.3...reinhardt-macros@v0.2.0) - 2026-06-11
 

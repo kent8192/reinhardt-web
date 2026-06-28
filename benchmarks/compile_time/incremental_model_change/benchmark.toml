@@ -1,0 +1,9 @@
+[scenario]
+category = "compile_time"
+name = "incremental_model_change"
+runner = "hyperfine"
+metric = "wall_clock_time"
+unit = "s/build"
+workload = "Apply one model-field edit and rebuild the warmed app fixture."
+success = "The rebuild succeeds and the changed model is compiled."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

@@ -258,7 +258,7 @@ impl RegistryValidator {
 					message: format!(
 						concat!(
 							"Type `{}` is a framework-managed type and cannot be ",
-							"registered via #[injectable_factory] or #[injectable]. ",
+							"registered via a #[injectable] provider. ",
 							"Framework-managed types are automatically provided by the framework. ",
 							"Help: Define your own wrapper type instead."
 						),
@@ -795,7 +795,7 @@ mod tests {
 	#[case("reinhardt_rest::serializers::Serializer", "rest sub-crate")]
 	#[case("reinhardt_middleware::Middleware", "middleware sub-crate")]
 	#[case(
-		"reinhardt_di::depends::Depends<my_app::MyType>",
+		"reinhardt_di::depends::Depends<my_app::MyKey, my_app::MyType>",
 		"generic framework type"
 	)]
 	fn test_framework_type_detected(#[case] type_name: &str, #[case] description: &str) {
@@ -847,7 +847,7 @@ mod tests {
 		"generic wrapping framework"
 	)]
 	#[case(
-		"core::option::Option<reinhardt_di::Depends<Foo>>",
+		"core::option::Option<reinhardt_di::Depends<FooKey, Foo>>",
 		false,
 		"option wrapping framework"
 	)]

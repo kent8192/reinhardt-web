@@ -68,6 +68,8 @@
 - Check known CI failure patterns before deep investigation
 - Run `cargo doc --no-deps` locally before pushing doc-related fixes
 - Run `cargo make semver-check` locally and post the output as a PR comment with the `<!-- local-semver-check -->` marker before converting Draft → Ready on any PR touching public API (see instructions/PR_GUIDELINE.md § RP-1a)
+- Cross-target APIs must declare P0/P1/P2 parity and follow
+  `instructions/API_PARITY.md`.
 - Execute merge/conflict resolution and straightforward operations immediately without Plan Mode
 - Update the Obsidian wiki frequently and proactively — at the end of every meaningful work unit and whenever you learn, decide, or discover something worth preserving; when in doubt, write a short page (OW-1)
 - Check Obsidian MCP availability before attempting wiki updates; skip entirely if unavailable (OW-2, OW-3)

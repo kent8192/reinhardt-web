@@ -23,50 +23,56 @@ use crate::crate_paths::{
 	get_reinhardt_pages_crate, get_reinhardt_pages_crate_info,
 };
 
-/// Extract the inner type from a Depends-family wrapper.
-///
-/// Recognises three shapes and returns the type that should be passed to
-/// `Depends::<...>::resolve_from_registry`:
-///
-/// - `Depends<T>` → `T`
-/// - `DependsResult<T, E>` → `Result<T, E>`
-/// - `DependsOption<T>` → `Option<T>`
-///
-/// Mirrors the helper in `crates/reinhardt-core/macros/src/routes_registration.rs`.
-/// Keep this implementation in sync with that file; the two proc-macro crates
-/// cannot share code directly without introducing a new non-proc-macro helper
-/// crate, and the helper is small enough that duplication is preferred.
-fn extract_depends_inner_type(ty: &syn::Type) -> Option<syn::Type> {
-	let syn::Type::Path(type_path) = ty else {
-		return None;
-	};
-	let last_segment = type_path.path.segments.last()?;
-	let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments else {
-		return None;
-	};
-
-	if last_segment.ident == "Depends"
-		&& args.args.len() == 1
-		&& let syn::GenericArgument::Type(inner) = args.args.first()?
-	{
-		return Some(inner.clone());
+fn generate_inject_resolver_expr(
+	di_crate: &proc_macro2::TokenStream,
+	ty: &syn::Type,
+	ctx: proc_macro2::TokenStream,
+	use_cache: bool,
+) -> proc_macro2::TokenStream {
+	fn depends_key_value_types(ty: &syn::Type) -> Option<(&syn::Type, &syn::Type)> {
+		let syn::Type::Path(type_path) = ty else {
+			return None;
+		};
+		let segment = type_path.path.segments.last()?;
+		if segment.ident != "Depends" {
+			return None;
+		}
+		let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+			return None;
+		};
+		if args.args.len() != 2 {
+			return None;
+		}
+		let mut generic_args = args.args.iter();
+		let syn::GenericArgument::Type(key_ty) = generic_args.next()? else {
+			return None;
+		};
+		let syn::GenericArgument::Type(value_ty) = generic_args.next()? else {
+			return None;
+		};
+		Some((key_ty, value_ty))
 	}
 
-	if last_segment.ident == "DependsResult" && args.args.len() == 2 {
-		let mut iter = args.args.iter();
-		let t = iter.next()?;
-		let e = iter.next()?;
-		return Some(syn::parse_quote! { ::core::result::Result<#t, #e> });
+	if let Some((key_ty, value_ty)) = depends_key_value_types(ty) {
+		quote! {
+			{
+				#di_crate::Depends::<#key_ty, #value_ty>::resolve_from_registry(#ctx, #use_cache)
+					.await
+			}
+		}
+	} else {
+		quote! {
+			{
+				use #di_crate::{
+					__InjectFallbackResolver as _,
+					__InjectWrapperResolver as _,
+				};
+				#di_crate::__InjectResolver::<#ty>::new()
+					.__resolve_inject_parameter(#ctx, #use_cache)
+					.await
+			}
+		}
 	}
-
-	if last_segment.ident == "DependsOption"
-		&& args.args.len() == 1
-		&& let Some(t) = args.args.first()
-	{
-		return Some(syn::parse_quote! { ::core::option::Option<#t> });
-	}
-
-	None
 }
 
 /// Convert snake_case identifier to UpperCamelCase for struct naming
@@ -613,11 +619,16 @@ fn generate_server_fn(info: &ServerFnInfo) -> proc_macro2::TokenStream {
 ///
 ///     let url = "/api/server_fn/get_user";
 ///     let args = Args { id };
-///     let response = reqwest::Client::new().post(url)
-///         .json(&args)
-///         .send()
-///         .await?;
-///     response.json().await
+///     let body = serde_json::to_string(&args)?;
+///     let response = reinhardt_pages::__private::fetch::request_with_credentials(
+///         "POST",
+///         url,
+///         Some(&body),
+///         vec![("Content-Type".to_string(), "application/json".to_string())],
+///         reinhardt_pages::__private::fetch::FetchCredentials::Include,
+///     )
+///     .await?;
+///     response.json()
 /// }
 /// ```
 fn generate_client_stub(
@@ -692,7 +703,7 @@ fn generate_client_stub(
 			// Inject CSRF header if available (automatic CSRF protection)
 			use #pages_crate::csrf::csrf_headers;
 			if let Some((__csrf_header_name, __csrf_header_value)) = csrf_headers() {
-				__request_builder = __request_builder.header(__csrf_header_name, &__csrf_header_value);
+				__headers.push((__csrf_header_name.to_string(), __csrf_header_value));
 			}
 		}
 	};
@@ -705,7 +716,7 @@ fn generate_client_stub(
 		// Inject Authorization header if JWT token is available
 		use #pages_crate::auth::auth_headers;
 		if let Some((__auth_header_name, __auth_header_value)) = auth_headers() {
-			__request_builder = __request_builder.header(__auth_header_name, &__auth_header_value);
+			__headers.push((__auth_header_name.to_string(), __auth_header_value));
 		}
 	};
 
@@ -720,8 +731,6 @@ fn generate_client_stub(
 			quote! {
 				__response
 					.json()
-					.await
-					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))
 			},
 		),
 		"url" => (
@@ -731,8 +740,7 @@ fn generate_client_stub(
 					.map_err(|e| #pages_crate::server_fn::ServerFnError::serialization(e.to_string()))?;
 			},
 			quote! {
-				let __text = __response.text().await
-					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))?;
+				let __text = __response.into_text();
 				::serde_json::from_str(&__text)
 					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))
 			},
@@ -746,8 +754,7 @@ fn generate_client_stub(
 				let __body = ::base64::Engine::encode(&::base64::engine::general_purpose::STANDARD, &__body_bytes);
 			},
 			quote! {
-				let __text = __response.text().await
-					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))?;
+				let __text = __response.into_text();
 				let __bytes = ::base64::Engine::decode(&::base64::engine::general_purpose::STANDARD, &__text)
 					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))?;
 				::rmp_serde::from_slice(&__bytes)
@@ -786,42 +793,35 @@ fn generate_client_stub(
 			// Serialize arguments based on codec
 			#serialize_code
 
-			// Build HTTP client and POST request.
-			// WASM: fetch_credentials_include() sends browser cookies via
-			// the Fetch API's credentials: "include" mode, which is
-			// required for CSRF double-submit cookie validation.
-			let __client = #pages_crate::__private::reqwest::Client::builder()
-				.build()
-				.expect("Failed to build reqwest client");
-
-			let mut __request_builder = __client.post(&__endpoint)
-				.header("Content-Type", #content_type);
-
-			// WASM: include browser cookies (CSRF, auth session) via Fetch API
-			#[cfg(target_arch = "wasm32")]
-			{
-				__request_builder = __request_builder.fetch_credentials_include();
-			}
+			let mut __headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> =
+				::std::vec![("Content-Type".to_string(), #content_type.to_string())];
 
 			#csrf_injection_code
 			#auth_injection_code
 
-			// Send request
-			let __response = __request_builder
-				.body(__body)
-				.send()
+			// Send request with credentials for cookie-backed server function sessions.
+			let __response = #pages_crate::__private::fetch::request_with_credentials(
+					"POST",
+					&__endpoint,
+					Some(&__body),
+					__headers,
+					#pages_crate::__private::fetch::FetchCredentials::Include,
+				)
 				.await
-				.map_err(|e| #pages_crate::server_fn::ServerFnError::network(e.to_string()))?;
+				?;
 
 			// Check HTTP status
-			if !__response.status().is_success() {
-				let __status = __response.status().as_u16();
-				let __message = __response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-				return Err(#pages_crate::server_fn::ServerFnError::server(__status, __message));
+			if !__response.is_success() {
+				let __status = __response.status();
+				let __message = __response.into_text();
+				return Err(#pages_crate::server_fn::ServerFnError::server(__status, __message).into());
 			}
 
 			// Deserialize response based on codec
-			#deserialize_code
+			{
+				#deserialize_code
+			}
+			.map_err(::std::convert::Into::into)
 		}
 	}
 }
@@ -923,13 +923,9 @@ fn generate_server_handler(
 		}
 	};
 
-	// Generate DI resolution code
-	//
-	// For `Depends<T>` parameters we resolve via `resolve_from_registry()`, which
-	// has no `T: Injectable` trait bound. This allows factory-produced types
-	// (registered via `#[injectable_factory]`) to be injected without manually
-	// implementing `Injectable`. This mirrors the fix applied to `#[routes]` in
-	// commit `98adb15b9`.
+	// Generate DI resolution code. Runtime trait dispatch resolves
+	// `InjectableType` wrappers from the registry and falls back to normal
+	// `Injectable` values for non-wrapper parameters.
 	let di_resolution = if !inject_params.is_empty() {
 		// Dynamically resolve crate paths
 		let di_crate = get_reinhardt_di_crate();
@@ -940,61 +936,32 @@ fn generate_server_handler(
 			.map(|p| {
 				let pat = &p.pat;
 				let ty = &p.ty;
-				if let Some(inner_ty) = extract_depends_inner_type(&p.ty) {
-					quote! {
-						let #pat: #ty =
-							#di_crate::Depends::<#inner_ty>::resolve_from_registry(&__di_ctx, true)
-								.await
-								.map_err(|e| {
-									// Auth errors (401/403) expose framework-provided user-facing
-									// messages. Any other DI failure is treated as an internal
-									// error: the detailed cause is logged server-side, and the
-									// client receives a generic message to avoid leaking internals.
-									let (status, msg) = match &e {
-										#di_crate::DiError::Authentication(m) => (401u16, m.clone()),
-										#di_crate::DiError::Authorization(m) => (403u16, m.clone()),
-										other => {
-											#pages_crate_for_di::__private::tracing::error!(
-												error = ?other,
-												param = stringify!(#ty),
-												"Dependency injection failed",
-											);
-											(500u16, "Internal server error".to_string())
-										}
-									};
-									let server_err = #pages_crate_for_di::server_fn::ServerFnError::server(status, msg);
-									::serde_json::to_string(&server_err)
-										.unwrap_or_else(|_| "Internal server error".to_string())
-								})?;
-					}
-				} else {
-					quote! {
-						let #pat: #ty =
-							#di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
-								.await
-								.map_err(|e| {
-									// Auth errors (401/403) expose framework-provided user-facing
-									// messages. Any other DI failure is treated as an internal
-									// error: the detailed cause is logged server-side, and the
-									// client receives a generic message to avoid leaking internals.
-									let (status, msg) = match &e {
-										#di_crate::DiError::Authentication(m) => (401u16, m.clone()),
-										#di_crate::DiError::Authorization(m) => (403u16, m.clone()),
-										other => {
-											#pages_crate_for_di::__private::tracing::error!(
-												error = ?other,
-												param = stringify!(#ty),
-												"Dependency injection failed",
-											);
-											(500u16, "Internal server error".to_string())
-										}
-									};
-									let server_err = #pages_crate_for_di::server_fn::ServerFnError::server(status, msg);
-									::serde_json::to_string(&server_err)
-										.unwrap_or_else(|_| "Internal server error".to_string())
-								})?
-								.into_inner();
-					}
+				let resolve_expr =
+					generate_inject_resolver_expr(&di_crate, ty, quote! { &__di_ctx }, true);
+				quote! {
+					let #pat: #ty =
+						#resolve_expr
+							.map_err(|e| {
+								// Auth errors (401/403) expose framework-provided user-facing
+								// messages. Any other DI failure is treated as an internal
+								// error: the detailed cause is logged server-side, and the
+								// client receives a generic message to avoid leaking internals.
+								let (status, msg) = match &e {
+									#di_crate::DiError::Authentication(m) => (401u16, m.clone()),
+									#di_crate::DiError::Authorization(m) => (403u16, m.clone()),
+									other => {
+										#pages_crate_for_di::__private::tracing::error!(
+											error = ?other,
+											param = stringify!(#ty),
+											"Dependency injection failed",
+										);
+										(500u16, "Internal server error".to_string())
+									}
+								};
+								let server_err = #pages_crate_for_di::server_fn::ServerFnError::server(status, msg);
+								::serde_json::to_string(&server_err)
+									.unwrap_or_else(|_| "Internal server error".to_string())
+							})?;
 				}
 			})
 			.collect();
@@ -1084,7 +1051,7 @@ fn generate_server_handler(
 	// Generate codec-specific deserialization code for server
 	let deserialize_code = match codec {
 		"json" => quote! {
-			let args: #args_struct_name = ::serde_json::from_str(&body)
+			let args: #args_struct_name = ::serde_json::from_slice(body)
 				.map_err(|e| format!("Failed to deserialize arguments: {}", e))?;
 		},
 		"url" => quote! {
@@ -1162,62 +1129,63 @@ fn generate_server_handler(
 	// Dynamically resolve crate paths for body extraction and registration
 	let pages_crate = get_reinhardt_pages_crate();
 
-	// Generate handler signature based on whether DI or extractors are needed.
-	// Both DI (#[inject]) and FromRequest extractor params require access to the
-	// raw Request object, so the handler signature uses Request in both cases.
-	let needs_request = !inject_params.is_empty() || !extractor_params.is_empty();
-	let (handler_signature, handler_body_extraction, wrapper_body_extraction, wrapper_call_args) =
-		if needs_request {
-			// Dynamically resolve reinhardt_http crate path
-			let http_crate = get_reinhardt_http_crate();
-
-			// When we have inject or extractor params, handler receives Request.
-			// Body reading is only needed when regular (Args-deserialized) params exist.
-			// If all params are extractors, the extractors themselves read the body.
-			let body_extraction = if !regular_params.is_empty() {
-				quote! {
-					let __content_type = __req.get_header("content-type").unwrap_or_default();
-					let body = __req.read_body()
-						.map_err(|e| format!("Failed to read body: {}", e))?;
-					let body = ::std::string::String::from_utf8(body.to_vec())
+	// Generate handler signature and body extraction.
+	// The handler receives Request in every native configuration. This keeps body
+	// handling in one place and lets JSON decode directly from Bytes when content
+	// negotiation is not needed.
+	let http_crate = get_reinhardt_http_crate();
+	let handler_signature = quote! {
+		pub async fn #handler_name(__req: #http_crate::Request) -> ::std::result::Result<::std::string::String, ::std::string::String>
+	};
+	let handler_body_extraction = if regular_params.is_empty() {
+		quote! {}
+	} else {
+		match codec {
+			"json" => quote! {
+				let __content_type = __req
+					.headers
+					.get("content-type")
+					.and_then(|value| value.to_str().ok())
+					.unwrap_or("");
+				let body = __req.read_body()
+					.map_err(|e| format!("Failed to read body: {}", e))?;
+				let __media_type = __content_type
+					.split(';')
+					.next()
+					.unwrap_or("")
+					.trim();
+				let __converted_body;
+				let body: &[u8] = if __media_type.is_empty()
+					|| __media_type.eq_ignore_ascii_case("application/json")
+				{
+					body.as_ref()
+				} else {
+					let __body_text = ::std::string::String::from_utf8(body.to_vec())
 						.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
-					let body = #pages_crate::server_fn::convert_body_for_codec(body, &__content_type, #codec)?;
-				}
-			} else {
-				quote! {}
-			};
-
-			(
-				quote! {
-					pub async fn #handler_name(__req: #http_crate::Request) -> ::std::result::Result<::std::string::String, ::std::string::String>
-				},
-				body_extraction,
-				// Wrapper doesn't extract body when DI/extractors are enabled; passes Request directly
-				quote! {
-					// Pass Request directly to handler (which will read the body)
-				},
-				vec![quote! { req }],
-			)
-		} else {
-			// No DI or extractors needed, handler receives body directly
-			(
-				quote! {
-					pub async fn #handler_name(body: ::std::string::String) -> ::std::result::Result<::std::string::String, ::std::string::String>
-				},
-				// Handler doesn't need body extraction (body is already a parameter)
-				quote! {},
-				// Wrapper needs to extract body from req with Content-Type negotiation
-				quote! {
-					let __content_type = req.get_header("content-type").unwrap_or_default();
-					let body = req.read_body()
-						.map_err(|e| format!("Failed to read body: {}", e))?;
-					let body = ::std::string::String::from_utf8(body.to_vec())
-						.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
-					let body = #pages_crate::server_fn::convert_body_for_codec(body, &__content_type, #codec)?;
-				},
-				vec![quote! { body }],
-			)
-		};
+					__converted_body = #pages_crate::server_fn::convert_body_for_codec(
+						__body_text,
+						&__content_type,
+						#codec,
+					)?;
+					__converted_body.as_bytes()
+				};
+			},
+			_ => quote! {
+				let __content_type = __req
+					.headers
+					.get("content-type")
+					.and_then(|value| value.to_str().ok())
+					.unwrap_or("");
+				let body = __req.read_body()
+					.map_err(|e| format!("Failed to read body: {}", e))?;
+				let body = ::std::string::String::from_utf8(body.to_vec())
+					.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+				let body = #pages_crate::server_fn::convert_body_for_codec(body, &__content_type, #codec)?;
+			},
+		}
+	};
+	let wrapper_body_extraction = quote! {};
+	let wrapper_call_args = vec![quote! { req }];
 
 	// Generate unique name for the static wrapper function
 	let static_wrapper_name = quote::format_ident!("__server_fn_static_wrapper_{}", name);
@@ -1276,6 +1244,7 @@ fn generate_server_handler(
 			}
 		})
 		.collect();
+	let uses_response_cookie_jar = !inject_params.is_empty() || !extractor_params.is_empty();
 
 	// MSW: Generate server-side MockableServerFn tokens only when msw feature is enabled
 	let msw_server_tokens = if msw_enabled {
@@ -1346,6 +1315,9 @@ fn generate_server_handler(
 	// active (#4711). The struct + ServerFnMetadata impl are always present;
 	// the optional `Args` struct and `MockableServerFn` impl live behind the
 	// inner `feature = "msw"` cfg (see `msw_wasm_inner_tokens` above).
+	// Parity: the marker module is P1. WASM emits the marker so
+	// `.server_fn(function_name::marker)` remains nameable in shared route
+	// declarations, but route registration is native-only behavior.
 	let wasm_marker_tokens = quote! {
 		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 		#vis mod #marker_module_name {
@@ -1362,7 +1334,11 @@ fn generate_server_handler(
 			#[allow(unused_imports)]
 			use super::*;
 
-			#[doc = concat!("Marker struct for server function `", #name_str, "` (use with `.server_fn()`)")]
+			#[doc = concat!("Marker struct for server function `", #name_str, "` (use with `.server_fn()`).")]
+			#[doc = ""]
+			#[doc = "Parity: P1."]
+			#[doc = ""]
+			#[doc = "The marker is emitted on WASM so shared route declarations can name it, but server route registration is native-only behavior."]
 			pub struct marker;
 
 			impl #pages_crate::server_fn::ServerFnMetadata for marker {
@@ -1370,6 +1346,7 @@ fn generate_server_handler(
 				const NAME: &'static str = #name_str;
 				const CODEC: &'static str = #codec;
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
+				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
 
 			#msw_wasm_inner_tokens
@@ -1464,26 +1441,18 @@ fn generate_server_handler(
 		// function name. The module has the same name as the function and contains
 		// a `marker` struct that implements `ServerFnRegistration`.
 		//
-		// Example:
-		// ```ignore
-		// use reinhardt::pages::server_fn::ServerFnRouterExt;
-		// use crate::server_fn::auth::{login, logout};  // Import marker modules
-		//
-		// let router = UnifiedRouter::new()
-		//     .server_fn(login::marker)   // Use snake_case name + ::marker
-		//     .server_fn(logout::marker);
-		// ```
-		//
-		// Note: On WASM (client side), import and call the function directly:
-		// ```ignore
-		// use crate::server_fn::auth::login;  // Function (snake_case)
-		// login(email, password).await;
-		// ```
+		// Server-side explicit registration uses marker modules such as
+		// `login::marker` and `logout::marker`. WASM callers import and invoke
+		// the generated function directly.
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#vis mod #marker_module_name {
 			use super::*;
 
-			#[doc = concat!("Marker struct for server function `", #name_str, "` (use with `.server_fn()`)")]
+			#[doc = concat!("Marker struct for server function `", #name_str, "` (use with `.server_fn()`).")]
+			#[doc = ""]
+			#[doc = "Parity: P1."]
+			#[doc = ""]
+			#[doc = "The marker is emitted on both native and WASM so shared route declarations can name it. Native builds register the server handler; WASM builds keep the marker metadata inert."]
 			pub struct marker;
 
 			// Cross-target metadata. ServerFnMetadata lives in reinhardt-pages
@@ -1496,6 +1465,7 @@ fn generate_server_handler(
 				const NAME: &'static str = #name_str;
 				const CODEC: &'static str = #codec;
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
+				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
 
 			// Native-only handler entry point for explicit router registration.
@@ -1689,6 +1659,15 @@ mod tests {
 
 		let ty: syn::Type = parse_quote!(Cookie<String>);
 		assert!(is_extractor_type(&ty), "Cookie should be an extractor");
+
+		let ty: syn::Type = parse_quote!(CookieNamed<SessionId, String>);
+		assert!(is_extractor_type(&ty), "CookieNamed should be an extractor");
+
+		let ty: syn::Type = parse_quote!(CookieStruct<MyCookies>);
+		assert!(
+			is_extractor_type(&ty),
+			"CookieStruct should be an extractor"
+		);
 
 		let ty: syn::Type = parse_quote!(Body);
 		assert!(is_extractor_type(&ty), "Body should be an extractor");

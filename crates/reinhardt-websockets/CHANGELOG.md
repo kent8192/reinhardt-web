@@ -7,11 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.2.1...reinhardt-websockets@v0.2.2) - 2026-06-25
+## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.2.0...reinhardt-websockets@v0.3.0-rc.1) - 2026-06-18
 
-### Documentation
+### Added
 
-- update version references to v0.2.1
+- feat!(di): introduce keyed injectable provider outputs
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.1.3...reinhardt-websockets@v0.2.0) - 2026-06-11
 

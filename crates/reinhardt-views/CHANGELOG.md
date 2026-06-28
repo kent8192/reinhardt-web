@@ -7,32 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.2.2...reinhardt-views@v0.2.3) - 2026-06-27
+## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.3.0-rc.5...reinhardt-views@v0.3.0-rc.6) - 2026-06-27
 
 ### Maintenance
 
-- update Cargo.toml dependencies
+- merge main into develop/0.3.0
 
-## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.2.1...reinhardt-views@v0.2.2) - 2026-06-25
-
-### Documentation
-
-- *(views)* align viewset doctest serializers
-- update version references to v0.2.1
+## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.3.0-rc.2...reinhardt-views@v0.3.0-rc.3) - 2026-06-23
 
 ### Fixed
 
+- *(views)* wire declared viewset serializers
 - *(tests)* align viewset serializer fixtures
+- *(views)* align viewset serializer examples
 
-## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.2.0...reinhardt-views@v0.2.1) - 2026-06-23
+## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.2.0...reinhardt-views@v0.3.0-rc.1) - 2026-06-18
 
-### Documentation
+### Added
 
-- *(views)* align viewset doctest serializers
-
-### Fixed
-
-- *(tests)* align viewset serializer fixtures
+- feat!(di): introduce keyed injectable provider outputs
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.3...reinhardt-views@v0.2.0) - 2026-06-11
 

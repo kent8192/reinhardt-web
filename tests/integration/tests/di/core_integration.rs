@@ -1,13 +1,20 @@
 //! Integration tests for reinhardt-di
 
-use reinhardt_di::{Depends, DiResult, Injectable, InjectionContext, SingletonScope};
+use reinhardt_di::{
+	Depends, DiResult, FactoryOutput, Injectable, InjectableKey, InjectionContext, SingletonScope,
+};
 use std::sync::Arc;
+use std::sync::Once;
 
 // Test structures
 #[derive(Clone, Debug, PartialEq)]
 struct Database {
 	connection_string: String,
 }
+
+struct DatabaseKey;
+
+impl InjectableKey for DatabaseKey {}
 
 #[derive(Clone, Debug, PartialEq)]
 struct UserRepository {
@@ -70,20 +77,15 @@ async fn test_nested_injection() {
 
 #[tokio::test]
 async fn test_depends_wrapper() {
-	// Register Database in the global registry for Depends<T> resolution
-	reinhardt_di::global_registry().register_async::<Database, _, _>(
-		reinhardt_di::DependencyScope::Request,
-		|_ctx| async {
-			Ok(Database {
-				connection_string: "postgres://localhost/test".to_string(),
-			})
-		},
-	);
+	register_database_output();
 
 	let singleton = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton).build();
 
-	let db = Depends::<Database>::builder().resolve(&ctx).await.unwrap();
+	let db = Depends::<DatabaseKey, Database>::builder()
+		.resolve(&ctx)
+		.await
+		.unwrap();
 	assert_eq!(db.connection_string, "postgres://localhost/test");
 }
 
@@ -161,24 +163,34 @@ async fn test_concurrent_request_scopes() {
 
 #[tokio::test]
 async fn test_di_integration_depends_clone() {
-	// Register Database in the global registry for Depends<T> resolution
-	reinhardt_di::global_registry().register_async::<Database, _, _>(
-		reinhardt_di::DependencyScope::Request,
-		|_ctx| async {
-			Ok(Database {
-				connection_string: "postgres://localhost/test".to_string(),
-			})
-		},
-	);
+	register_database_output();
 
 	let singleton = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton).build();
 
-	let db1 = Depends::<Database>::builder().resolve(&ctx).await.unwrap();
+	let db1 = Depends::<DatabaseKey, Database>::builder()
+		.resolve(&ctx)
+		.await
+		.unwrap();
 	let db2 = db1.clone();
 
 	// Both should point to the same underlying data
 	assert_eq!(db1.connection_string, db2.connection_string);
+}
+
+fn register_database_output() {
+	static REGISTER: Once = Once::new();
+	REGISTER.call_once(|| {
+		reinhardt_di::global_registry()
+			.register_async::<FactoryOutput<DatabaseKey, Database>, _, _>(
+				reinhardt_di::DependencyScope::Request,
+				|_ctx| async {
+					Ok(FactoryOutput::new(Database {
+						connection_string: "postgres://localhost/test".to_string(),
+					}))
+				},
+			);
+	});
 }
 
 #[tokio::test]

@@ -1,4 +1,4 @@
-//! Unified Router with closure-based server and client configuration.
+//! Unified Router with endpoint-based server and client configuration.
 //!
 //! This module provides [`UnifiedRouter`], a unified entry point for configuring
 //! both server-side HTTP routing and client-side SPA routing.
@@ -20,13 +20,12 @@
 //! ```rust,ignore
 //! use reinhardt_urls::routers::UnifiedRouter;
 //! use reinhardt_core::page::Page;
-//! use hyper::Method;
 //!
 //! let router = UnifiedRouter::new()
 //!     .server(|s| s
 //!         .with_prefix("/api/v1")
-//!         .function("/users", Method::GET, list_users)
-//!         .function("/users", Method::POST, create_user))
+//!         .endpoint(list_users)
+//!         .endpoint(create_user))
 //!     .client(|c| c
 //!         .route("home", "/", || home_page())
 //!         .route_path("user_detail", "/users/{id}", |Path(id): Path<i64>| user_page(id)));
@@ -38,6 +37,9 @@
 //!   `.server()` and `.client()` methods available.
 //! - When `client-router` feature is **disabled**: Server-only [`UnifiedRouter`] with
 //!   only `.server()` method available.
+//!
+//! Cross-target behavior follows the P0/P1/P2 contract documented in
+//! `instructions/API_PARITY.md`.
 
 #[cfg(native)]
 use crate::routers::server_router::ServerRouter;
@@ -45,18 +47,14 @@ use crate::routers::server_router::ServerRouter;
 #[cfg(feature = "client-router")]
 use crate::routers::client_router::ClientRouter;
 
-#[cfg(native)]
-use hyper::Method;
-#[cfg(native)]
+#[cfg(all(native, not(feature = "client-router")))]
 use reinhardt_core::exception::Result;
 #[cfg(native)]
 use reinhardt_di::InjectionContext;
-#[cfg(native)]
+#[cfg(all(native, not(feature = "client-router")))]
 use reinhardt_http::{Request, Response};
 #[cfg(native)]
 use reinhardt_middleware::Middleware;
-#[cfg(native)]
-use std::future::Future;
 #[cfg(native)]
 use std::sync::Arc;
 
@@ -77,7 +75,7 @@ use std::sync::Arc;
 /// use reinhardt_core::page::Page;
 ///
 /// let router = UnifiedRouter::new()
-///     .server(|s| s.function("/api/health", Method::GET, health_handler))
+///     .server(|s| s.endpoint(health_handler))
 ///     .client(|c| c.route("home", "/", || home_page()));
 /// ```
 ///
@@ -111,13 +109,19 @@ impl UnifiedRouter {
 	///
 	/// The closure receives a [`ServerRouter`] and should return a configured router.
 	///
+	/// Parity: P1.
+	///
+	/// Native builds execute the closure and store the configured `ServerRouter`.
+	/// WASM builds accept the same closure shape for type checking and return the
+	/// router unchanged without registration side effects.
+	///
 	/// # Example
 	///
 	/// ```rust,ignore
 	/// let router = UnifiedRouter::new()
 	///     .server(|s| s
 	///         .with_prefix("/api")
-	///         .function("/users", Method::GET, list_users));
+	///         .endpoint(list_users));
 	/// ```
 	pub fn server<F>(mut self, f: F) -> Self
 	where
@@ -253,7 +257,7 @@ impl UnifiedRouter {
 	///
 	/// ```rust,ignore
 	/// let client = UnifiedRouter::new()
-	///     .server(|s| s.function("/api/data", Method::GET, handler))
+	///     .server(|s| s.endpoint(api_data))
 	///     .client(|c| c.route("home", "/", || home_page()))
 	///     .register_globally();
 	///
@@ -381,37 +385,6 @@ impl UnifiedRouter {
 		self.server = self.server.endpoint(f);
 		self
 	}
-
-	/// Register a function-based route on server router.
-	///
-	/// This is a convenience method that delegates to [`ServerRouter::function`].
-	pub fn function<F, Fut>(mut self, path: &str, method: Method, func: F) -> Self
-	where
-		F: Fn(Request) -> Fut + Send + Sync + 'static,
-		Fut: Future<Output = Result<Response>> + Send + 'static,
-	{
-		self.server = self.server.function(path, method, func);
-		self
-	}
-
-	/// Register a named function-based route on server router.
-	///
-	/// This is a convenience method that delegates to [`ServerRouter::function_named`].
-	#[deprecated(
-		since = "0.2.0",
-		note = "Use `#[get(\"/path\", name = \"name\")]` + `.endpoint()` instead"
-	)]
-	pub fn function_named<F, Fut>(mut self, path: &str, method: Method, name: &str, func: F) -> Self
-	where
-		F: Fn(Request) -> Fut + Send + Sync + 'static,
-		Fut: Future<Output = Result<Response>> + Send + 'static,
-	{
-		#[allow(deprecated)]
-		{
-			self.server = self.server.function_named(path, method, name, func);
-		}
-		self
-	}
 }
 
 #[cfg(all(feature = "client-router", native))]
@@ -469,7 +442,7 @@ const _: fn() = || {
 /// use reinhardt_urls::routers::UnifiedRouter;
 ///
 /// let router = UnifiedRouter::new()
-///     .server(|s| s.function("/api/health", Method::GET, health_handler));
+///     .server(|s| s.endpoint(health_handler));
 /// ```
 #[cfg(not(feature = "client-router"))]
 pub struct UnifiedRouter {
@@ -492,6 +465,12 @@ impl UnifiedRouter {
 	}
 
 	/// Configure server-side routing with a closure.
+	///
+	/// Parity: P0 native-only.
+	///
+	/// This arm only exists when `client-router` is disabled, and `routers.rs`
+	/// only re-exports it on native targets. WASM builds require the
+	/// `client-router` feature for the P1 no-op `server` closure shape.
 	pub fn server<F>(mut self, f: F) -> Self
 	where
 		F: FnOnce(ServerRouter) -> ServerRouter,
@@ -625,33 +604,6 @@ impl UnifiedRouter {
 		self.server = self.server.endpoint(f);
 		self
 	}
-
-	/// Register a function-based route on server router.
-	pub fn function<F, Fut>(mut self, path: &str, method: Method, func: F) -> Self
-	where
-		F: Fn(Request) -> Fut + Send + Sync + 'static,
-		Fut: Future<Output = Result<Response>> + Send + 'static,
-	{
-		self.server = self.server.function(path, method, func);
-		self
-	}
-
-	/// Register a named function-based route on server router.
-	#[deprecated(
-		since = "0.2.0",
-		note = "Use `#[get(\"/path\", name = \"name\")]` + `.endpoint()` instead"
-	)]
-	pub fn function_named<F, Fut>(mut self, path: &str, method: Method, name: &str, func: F) -> Self
-	where
-		F: Fn(Request) -> Fut + Send + Sync + 'static,
-		Fut: Future<Output = Result<Response>> + Send + 'static,
-	{
-		#[allow(deprecated)]
-		{
-			self.server = self.server.function_named(path, method, name, func);
-		}
-		self
-	}
 }
 
 #[cfg(not(feature = "client-router"))]
@@ -694,7 +646,7 @@ impl reinhardt_http::Handler for UnifiedRouter {
 ///
 /// Because the type and its builder methods share their names with the
 /// native `ServerRouter`, the same
-/// `.server(|s| s.with_prefix(...).endpoint(...).function(...))` closure body
+/// `.server(|s| s.with_prefix(...).endpoint(...))` closure body
 /// compiles uniformly on both native and WASM targets (issue #4569).
 ///
 /// Generic bounds from the native `ServerRouter` are intentionally relaxed
@@ -752,26 +704,6 @@ impl ServerRouter {
 		self
 	}
 
-	/// No-op for `ServerRouter::function`.
-	pub fn function<M, F>(self, _path: &str, _method: M, _func: F) -> Self {
-		self
-	}
-
-	/// No-op for `ServerRouter::function_named`.
-	pub fn function_named<M, F>(self, _path: &str, _method: M, _name: &str, _func: F) -> Self {
-		self
-	}
-
-	/// No-op for `ServerRouter::route`.
-	pub fn route<M, F>(self, _path: &str, _method: M, _func: F) -> Self {
-		self
-	}
-
-	/// No-op for `ServerRouter::route_named`.
-	pub fn route_named<M, F>(self, _path: &str, _method: M, _name: &str, _func: F) -> Self {
-		self
-	}
-
 	/// No-op for `ServerRouter::handler`.
 	pub fn handler<H>(self, _path: &str, _handler: H) -> Self {
 		self
@@ -779,22 +711,6 @@ impl ServerRouter {
 
 	/// No-op for `ServerRouter::handler_arc`.
 	pub fn handler_arc<H>(self, _path: &str, _handler: H) -> Self {
-		self
-	}
-
-	/// No-op for `ServerRouter::handler_with_method`.
-	pub fn handler_with_method<M, H>(self, _path: &str, _method: M, _handler: H) -> Self {
-		self
-	}
-
-	/// No-op for `ServerRouter::handler_with_method_named`.
-	pub fn handler_with_method_named<M, H>(
-		self,
-		_path: &str,
-		_method: M,
-		_name: &str,
-		_handler: H,
-	) -> Self {
 		self
 	}
 
@@ -863,14 +779,8 @@ const _: fn() = || {
 				.exclude("/internal")
 				.mount("/v1/", ServerRouter::new())
 				.group(Vec::<ServerRouter>::new())
-				.function("/f", (), || ())
-				.function_named("/f", (), "f", || ())
-				.route("/r", (), || ())
-				.route_named("/r", (), "r", || ())
 				.handler("/h", ())
 				.handler_arc("/h", ())
-				.handler_with_method("/h", (), ())
-				.handler_with_method_named("/h", (), "h", ())
 				.view("/v", ())
 				.view_named("/v", "v", ())
 				.viewset("/vs/", ())
@@ -916,6 +826,12 @@ impl UnifiedRouter {
 	}
 
 	/// Accept and discard server-side routing configuration.
+	///
+	/// Parity: P1.
+	///
+	/// Native builds execute the closure and store the configured `ServerRouter`.
+	/// WASM builds accept the same closure shape for type checking and return the
+	/// router unchanged without registration side effects.
 	///
 	/// On WASM, server routing is not available. The closure is accepted for
 	/// cross-target type-checking — its `ServerRouter` parameter type is unified
@@ -1265,24 +1181,38 @@ mod tests {
 	mod route_registration {
 		use super::*;
 		use hyper::Method;
+		use reinhardt_core::endpoint::EndpointInfo;
 		use reinhardt_http::{Request, Response, Result};
 		use rstest::rstest;
 
-		async fn dummy_handler(_req: Request) -> Result<Response> {
-			Ok(Response::ok())
+		struct HealthEndpoint;
+
+		impl EndpointInfo for HealthEndpoint {
+			fn path() -> &'static str {
+				"/health"
+			}
+
+			fn method() -> Method {
+				Method::GET
+			}
+
+			fn name() -> &'static str {
+				"health"
+			}
+		}
+
+		#[async_trait::async_trait]
+		impl reinhardt_http::Handler for HealthEndpoint {
+			async fn handle(&self, _req: Request) -> Result<Response> {
+				Ok(Response::ok())
+			}
 		}
 
 		#[rstest]
 		fn into_server_registers_routes_for_reverse() {
 			// Arrange
-			let router = UnifiedRouter::new().server(|s| {
-				s.with_namespace("api").function_named(
-					"/health",
-					Method::GET,
-					"health",
-					dummy_handler,
-				)
-			});
+			let router = UnifiedRouter::new()
+				.server(|s| s.with_namespace("api").endpoint(|| HealthEndpoint));
 
 			// Act
 			let server = router.into_server();
@@ -1296,14 +1226,8 @@ mod tests {
 		#[rstest]
 		fn into_parts_registers_routes_for_reverse() {
 			// Arrange
-			let router = UnifiedRouter::new().server(|s| {
-				s.with_namespace("api").function_named(
-					"/health",
-					Method::GET,
-					"health",
-					dummy_handler,
-				)
-			});
+			let router = UnifiedRouter::new()
+				.server(|s| s.with_namespace("api").endpoint(|| HealthEndpoint));
 
 			// Act
 			let (server, _client) = router.into_parts();

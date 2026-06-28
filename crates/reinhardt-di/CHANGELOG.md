@@ -7,23 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.2.2...reinhardt-di@v0.2.3) - 2026-06-27
+## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.3.0-rc.5...reinhardt-di@v0.3.0-rc.6) - 2026-06-27
 
-### Maintenance
+### Added
 
-- update Cargo.toml dependencies
+- *(params)* generalize cookie extractors
 
-## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.2.1...reinhardt-di@v0.2.2) - 2026-06-25
+## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.2.0...reinhardt-di@v0.3.0-rc.1) - 2026-06-18
 
-### Maintenance
+### Added
 
-- update Cargo.toml dependencies
+- feat!(di): introduce keyed injectable provider outputs
+- *(di)* add wasm parity stubs for injectable macros
 
-## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.2.0...reinhardt-di@v0.2.1) - 2026-06-23
+### Changed
 
-### Maintenance
+- [**breaking**] remove 0.3 deprecated public APIs
 
-- update Cargo.toml dependencies
+### Fixed
+
+- *(di)* support trait-based inject wrapper resolution
+- *(di)* preserve Depends inject fallback
+- *(di)* honor cache false for keyed wrappers
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.3...reinhardt-di@v0.2.0) - 2026-06-11
 

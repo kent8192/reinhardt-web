@@ -17,7 +17,7 @@ the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.3"
+cargo install reinhardt-admin-cli --version "0.3.0-rc.6"
 ```
 
 ## 2. Create your project
@@ -54,3 +54,6 @@ cargo make runserver
 Visit `http://127.0.0.1:8000/hello` in your browser.
 
 See [Getting Started](/quickstart/getting-started/) for a complete guide, or explore the [Tutorials](/quickstart/tutorials/) to learn by building.
+
+Upgrading an existing 0.2.x application? Follow the
+[0.2.x to 0.3.0 migration guide](/quickstart/migration-guides/0-2-to-0-3/).

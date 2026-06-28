@@ -21,10 +21,10 @@ mod native {
     // `inventory::submit!` registrations survive dead-code elimination.
     // Referencing `get_settings` alone does not guarantee the whole crate
     // (and thus every inventory entry) is linked.
-    use reinhardt::commands::execute_from_command_line_with_settings;
-    use std::process;
     use {{ crate_name }} as _;
     use {{ crate_name }}::config::settings::get_settings;
+    use reinhardt::commands::execute_from_command_line_with_settings;
+    use std::process;
 
     #[tokio::main]
     pub(super) async fn main() {

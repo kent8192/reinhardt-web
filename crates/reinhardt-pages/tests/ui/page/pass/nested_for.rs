@@ -21,13 +21,9 @@ fn main() {
 			for(num, active)in items.clone() {
 				li {
 					if active {
-						strong { {
-							format!("{}", num)
-						} }
+						strong { { format!("{}", num) } }
 					} else {
-						span { {
-							format!("{}", num)
-						} }
+						span { { format!("{}", num) } }
 					}
 				}
 			}

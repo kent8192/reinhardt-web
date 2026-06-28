@@ -102,7 +102,7 @@ pub fn get_settings() -> ProjectSettings {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::config::settings::get_settings;
 
     #[test]
     fn test_get_settings() {

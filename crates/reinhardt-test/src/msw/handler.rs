@@ -1,11 +1,11 @@
 //! Handler types for intercepting and responding to requests.
 
-use std::cell::Cell;
 use std::collections::HashMap;
 use std::time::Duration;
 
 use super::matcher::{UrlMatcher, extract_path};
 use super::response::MockResponse;
+use super::state::{HandlerThreadSafety, OnceFlag, ResponseFn};
 
 /// An intercepted HTTP request extracted from JS.
 #[derive(Debug, Clone)]
@@ -43,7 +43,7 @@ impl Method {
 }
 
 /// Type-erased handler interface for heterogeneous storage.
-pub(crate) trait ErasedHandler {
+pub(crate) trait ErasedHandler: HandlerThreadSafety {
 	fn matches(&self, req: &InterceptedRequest) -> bool;
 	/// Build the response. Does NOT apply delay (caller handles that).
 	fn respond(&self, req: &InterceptedRequest) -> Option<MockResponse>;
@@ -58,9 +58,9 @@ pub(crate) trait ErasedHandler {
 pub struct RestHandler {
 	method: Method,
 	matcher: UrlMatcher,
-	response_fn: Option<Box<dyn Fn(&InterceptedRequest) -> MockResponse>>,
+	response_fn: Option<Box<ResponseFn>>,
 	once: bool,
-	consumed: Cell<bool>,
+	consumed: OnceFlag,
 	delay: Option<Duration>,
 	network_error: bool,
 }
@@ -69,7 +69,7 @@ impl RestHandler {
 	pub(crate) fn new(
 		method: Method,
 		matcher: UrlMatcher,
-		response_fn: Box<dyn Fn(&InterceptedRequest) -> MockResponse>,
+		response_fn: Box<ResponseFn>,
 		once: bool,
 		delay: Option<Duration>,
 	) -> Self {
@@ -78,7 +78,7 @@ impl RestHandler {
 			matcher,
 			response_fn: Some(response_fn),
 			once,
-			consumed: Cell::new(false),
+			consumed: OnceFlag::new(false),
 			delay,
 			network_error: false,
 		}
@@ -90,7 +90,7 @@ impl RestHandler {
 			matcher,
 			response_fn: None,
 			once,
-			consumed: Cell::new(false),
+			consumed: OnceFlag::new(false),
 			delay: None,
 			network_error: true,
 		}
@@ -132,25 +132,50 @@ use reinhardt_pages::server_fn::ServerFnError;
 
 use super::context::TestContext;
 
+#[cfg(native)]
+type ServerFnResponseFn<S> = dyn Fn(<S as MockableServerFn>::Args) -> Result<<S as MockableServerFn>::Response, ServerFnError>
+	+ Send
+	+ Sync;
+
+#[cfg(wasm)]
+type ServerFnResponseFn<S> = dyn Fn(
+	<S as MockableServerFn>::Args,
+) -> Result<<S as MockableServerFn>::Response, ServerFnError>;
+
+#[cfg(native)]
+type ServerFnContextResponseFn<S> = dyn Fn(
+		<S as MockableServerFn>::Args,
+		&TestContext,
+	) -> Result<<S as MockableServerFn>::Response, ServerFnError>
+	+ Send
+	+ Sync;
+
+#[cfg(wasm)]
+type ServerFnContextResponseFn<S> =
+	dyn Fn(
+		<S as MockableServerFn>::Args,
+		&TestContext,
+	) -> Result<<S as MockableServerFn>::Response, ServerFnError>;
+
 /// Type-safe handler for server functions.
 pub(crate) struct ServerFnHandler<S: MockableServerFn> {
-	response_fn: Box<dyn Fn(S::Args) -> Result<S::Response, ServerFnError>>,
+	response_fn: Box<ServerFnResponseFn<S>>,
 	once: bool,
-	consumed: Cell<bool>,
+	consumed: OnceFlag,
 	delay: Option<Duration>,
-	_marker: PhantomData<S>,
+	_marker: PhantomData<fn() -> S>,
 }
 
 impl<S: MockableServerFn> ServerFnHandler<S> {
 	pub(crate) fn new(
-		response_fn: Box<dyn Fn(S::Args) -> Result<S::Response, ServerFnError>>,
+		response_fn: Box<ServerFnResponseFn<S>>,
 		once: bool,
 		delay: Option<Duration>,
 	) -> Self {
 		Self {
 			response_fn,
 			once,
-			consumed: Cell::new(false),
+			consumed: OnceFlag::new(false),
 			delay,
 			_marker: PhantomData,
 		}
@@ -204,18 +229,18 @@ impl<S: MockableServerFn> ErasedHandler for ServerFnHandler<S> {
 
 /// Type-safe handler for server functions with DI test context.
 pub(crate) struct ServerFnContextHandler<S: MockableServerFn> {
-	response_fn: Box<dyn Fn(S::Args, &TestContext) -> Result<S::Response, ServerFnError>>,
+	response_fn: Box<ServerFnContextResponseFn<S>>,
 	context: TestContext,
 	once: bool,
-	consumed: Cell<bool>,
+	consumed: OnceFlag,
 	delay: Option<Duration>,
-	_marker: PhantomData<S>,
+	_marker: PhantomData<fn() -> S>,
 }
 
 impl<S: MockableServerFn> ServerFnContextHandler<S> {
 	pub(crate) fn new(
 		context: TestContext,
-		response_fn: Box<dyn Fn(S::Args, &TestContext) -> Result<S::Response, ServerFnError>>,
+		response_fn: Box<ServerFnContextResponseFn<S>>,
 		once: bool,
 		delay: Option<Duration>,
 	) -> Self {
@@ -223,7 +248,7 @@ impl<S: MockableServerFn> ServerFnContextHandler<S> {
 			response_fn,
 			context,
 			once,
-			consumed: Cell::new(false),
+			consumed: OnceFlag::new(false),
 			delay,
 			_marker: PhantomData,
 		}

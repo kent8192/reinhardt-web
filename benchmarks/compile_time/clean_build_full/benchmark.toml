@@ -1,0 +1,9 @@
+[scenario]
+category = "compile_time"
+name = "clean_build_full"
+runner = "hyperfine"
+metric = "wall_clock_time"
+unit = "s/build"
+workload = "Clean build of a full-feature app with database, routing, settings, and admin surfaces."
+success = "The app builds from a clean target directory."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

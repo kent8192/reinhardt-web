@@ -11,41 +11,40 @@ sidebar_weight = 10
 
 In this part you will create a Reinhardt pages project and run the browser shell. The polling features arrive in later parts; here the goal is to understand the project shape that lets one crate build both a native server and a WASM client.
 
-The finished reference for this tutorial is `examples/examples-tutorial-basis`. Use it as the answer key when your local project differs from the snippets below.
+The finished reference for this tutorial is `examples/examples-tutorial-basis`. Use its app source and tests as the comparison point when your local project differs from the snippets below. Its Cargo workspace and PostgreSQL/Redis helper tasks are repository-specific; the standalone project generated here starts with SQLite and does not need those files.
 
 ## Install the Tools
 
-Use Rust 1.96.0 or newer. The `0.3.0-rc.4` generator and the generated Rust
-2024 project require that toolchain level.
+Use Rust 1.96.0 or newer. The generated Rust 2024 project requires that
+toolchain level.
+
+<!-- reinhardt-version-sync -->
+This tutorial uses the `0.3.0-rc.6` Reinhardt generator.
 
 Install the Reinhardt project generator:
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.3"
+cargo install reinhardt-admin-cli --version "0.3.0-rc.6"
 ```
 
 The installed binary is `reinhardt-admin`.
 
-The pages template also needs the WASM target, `cargo-make`, and `wasm-pack`:
+Install `cargo-make`; the generated project can install the WASM target,
+`wasm-pack`, and the file watcher through its own `install-tools` task:
 
 ```bash
-rustup target add wasm32-unknown-unknown
-cargo install cargo-make wasm-pack
+cargo install cargo-make
 ```
 
 ## Create a Pages Project
 
-Create a new project from the pages template. `startproject` can prompt for
-feature flags interactively, but this tutorial uses a deterministic one-liner so
-your `Cargo.toml` matches the reference project:
+Create a new project from the pages template:
 
 ```bash
-reinhardt-admin startproject tutorial --template pages \
-  --features minimal,pages,admin,conf,commands-server,commands-autoreload,db-sqlite,forms,auth-session,middleware,argon2-hasher,static-files \
-  --default-features false \
-  --no-interactive
+reinhardt-admin startproject tutorial --template pages
 cd tutorial
+cargo make install-tools
 ```
 
 The completed tutorial will eventually add `polls` and `users` apps. Do not create them yet. The first milestone is a project that can compile the browser entry point and serve the SPA shell.
@@ -65,20 +64,19 @@ tutorial/
     +-- lib.rs
     +-- apps.rs
     +-- config.rs
-    +-- shared.rs
     +-- client.rs
     +-- bin/
     |   +-- manage.rs
     +-- config/
+    |   +-- apps.rs
     |   +-- settings.rs
     |   +-- urls.rs
     |   +-- wasm.rs
-    +-- shared/
-    |   +-- forms.rs
-    |   +-- types.rs
     +-- client/
-        +-- lib.rs
-        +-- components.rs
+    |   +-- components.rs
+    |   +-- lib.rs
+    |   +-- components/
+    |       +-- nav.rs
 ```
 
 The reference example has more files because it is the completed project. You will add those files as each slice needs them.
@@ -92,8 +90,10 @@ Open `Cargo.toml`. The pages example builds an `rlib` for the native server and 
 crate-type = ["cdylib", "rlib"]  # cdylib for WASM, rlib for server
 ```
 
-In the reference example, the management command is native-only, so the binary
-is gated behind the `with-reinhardt` feature:
+The management command is native-only, so the binary is gated behind the
+`with-reinhardt` feature. The generated project enables that feature by default
+for native development, while `wasm-pack test -- --no-default-features` can skip
+the native-only binary:
 
 ```toml
 [[bin]]
@@ -102,40 +102,58 @@ path = "src/bin/manage.rs"
 required-features = ["with-reinhardt"]
 ```
 
-That gate is required for the example's explicit native test target: `wasm-pack
-test` builds Cargo test targets for `wasm32-unknown-unknown`, and
-`required-features = ["with-reinhardt"]` keeps the native-only integration test
-and management binary out of that build when the WASM task uses
-`--no-default-features`.
-
-The dependency split is the important design. WASM gets pages and client
-routing; the server gets only the framework features this tutorial uses:
+The generated feature section keeps those local gates explicit:
 
 ```toml
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-reinhardt = { workspace = true, features = ["pages", "client-router"] }
-wasm-bindgen = "=0.2.122"
+[features]
+default = ["with-reinhardt", "client-router"]
+client-router = []
+with-reinhardt = []
+msw = ["reinhardt/msw"]
+```
 
+The dependency split is the important design. WASM gets pages and client
+routing; the server gets the framework, database backend, commands, admin, and
+configuration features selected by `startproject`. The native feature list also
+includes the client router, form/session, middleware, and password-hasher
+features used by later parts of this tutorial:
+
+<!-- reinhardt-version-sync -->
+```toml
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+reinhardt = { version = "0.3.0-rc.6", package = "reinhardt-web", default-features = false, features = ["pages", "client-router"] }
+wasm-bindgen = "=0.2.122"
+```
+
+<!-- reinhardt-version-sync -->
+```toml
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-reinhardt = { workspace = true, features = [
+reinhardt = { version = "0.3.0-rc.6", package = "reinhardt-web", default-features = false, features = [
     "minimal",
     "pages",
+    "client-router",
+    "admin",
     "conf",
+    "commands",
     "commands-server",
     "commands-autoreload",
+    "server",
     "db-sqlite",
     "forms",
     "auth-session",
     "middleware",
     "argon2-hasher",
-    "admin",
-    "static-files",
 ] }
-tokio = { version = "1.48.0", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 ```
 
-The `full` feature is intentionally absent. `tokio` still uses its own `full`
-runtime feature; that is unrelated to Reinhardt's `full` preset.
+The generated native target uses SQLite by default so the first run does not
+require a PostgreSQL container. If you pass an explicit SQLite feature list,
+keep the Pages runtime and command facades in place: `commands-server` enables
+`manage runserver`, `commands-autoreload` powers the generated dev watcher, and
+`server` provides the HTTP server facade. Current `startproject` adds the
+required `minimal`, routing, form/session, middleware, password-hasher, and
+server-side Pages features automatically when a custom Pages list lacks them.
 
 In an example project, import Reinhardt APIs through the `reinhardt` facade. Do not depend on internal `reinhardt-*` crates directly.
 
@@ -160,11 +178,9 @@ pub mod config;
 
 #[cfg(client)]
 pub mod client;
-
-pub mod shared;
 ```
 
-`apps` and `shared` compile on both targets. Server-only internals are gated inside those modules when they need database, forms, or admin APIs.
+`apps` compiles on both targets. Each generated app gates `client` with `#[cfg(client)]` and gates server-only implementation modules at the declaration site. Route-backed components live under `src/apps/<app>/client/components/`, `#[model]` generates shared info DTOs from model modules, request DTOs live in `src/shared/types.rs`, and server-only admin/services/forms stay under server-gated modules.
 
 ## Inspect Settings
 
@@ -175,19 +191,22 @@ Open `src/config/settings.rs`. The reference example composes the core settings 
 pub struct ProjectSettings;
 ```
 
-`get_settings()` loads defaults, `settings/base.toml`, the active profile file, and high-priority environment variables:
+`get_settings()` loads defaults, low-priority environment variables, `settings/base.toml`, and the active profile file:
 
 ```rust
 SettingsBuilder::new()
-    .profile(profile)
-    .add_source(DefaultSource::new())
+    .profile(Profile::parse(&profile_str))
+    .add_source(DefaultSource::new().with_value(
+        "core.base_dir",
+        json::Value::String(base_dir.to_string_lossy().to_string()),
+    ))
+    .add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
     .add_source(TomlFileSource::new(settings_dir.join("base.toml")))
     .add_source(TomlFileSource::new(
         settings_dir.join(format!("{}.toml", profile_str)),
     ))
-    .add_source(HighPriorityEnvSource::new().with_prefix("REINHARDT_"))
-    .build_composed::<ProjectSettings>()
-    .expect("Failed to build/compose settings")
+    .build_composed()
+    .expect("Failed to build settings")
 ```
 
 The matching `settings/base.toml` must include `[contacts]` because `ProjectSettings` includes `ContactSettings`:
@@ -209,9 +228,10 @@ engine = "sqlite"
 name = "db.sqlite3"
 ```
 
-`cargo make migrate` and `cargo make dev` resolve that setting through
-`scripts/db_url.sh` and create the file on demand. No PostgreSQL or Redis
-container is required for this tutorial path.
+`cargo make migrate` and `cargo make dev` run the settings-aware `manage`
+binary, so database commands resolve `[core.databases.default]` and create the
+SQLite file on demand. No PostgreSQL or Redis container is required for this
+tutorial path.
 
 ## See the Browser Mount Point
 
@@ -239,9 +259,7 @@ pub fn main() -> Result<(), JsValue> {
 }
 ```
 
-Later parts will register routes from the `polls` and `users` apps. For now, confirm that the browser can load the client bundle and that the server is serving the pages application.
-
-`cargo make wasm-build-dev` runs `wasm-pack` against the library target and copies the generated browser bundle from `dist-wasm/` into `dist/`. It does not require a separate `wasm-bindgen-cli` install and does not bind the native `manage` binary.
+Later parts will register routes from the `polls` and `users` apps. Their route-backed components will live under `src/apps/<app>/client/components/`; `src/client/` remains the cross-app browser shell. For now, confirm that the browser can load the client bundle and that the server is serving the pages application.
 
 ## Run the Development Workflow
 
@@ -251,10 +269,10 @@ Start the dev workflow:
 cargo make dev
 ```
 
-In the reference example, `dev` runs the WASM build, applies migrations, and starts the pages server. The underlying `runserver` command passes `--with-pages`:
+In the generated project, `dev` runs the quality checks, builds the WASM bundle, and starts the pages server. Run `cargo make migrate` separately when you add migrations. The underlying `runserver` command passes `--with-pages` and reuses the bundle that `wasm-build-dev` just produced:
 
 ```bash
-cargo run --bin manage -- runserver --with-pages
+cargo run --bin manage -- runserver --with-pages --no-override-wasm
 ```
 
 Open `http://127.0.0.1:8000/`. At this point the application is only the shell. If the page loads without a missing-WASM error and the server logs show the pages runtime starting, the setup slice is complete.
@@ -263,6 +281,7 @@ Open `http://127.0.0.1:8000/`. At this point the application is only the shell. 
 
 Before continuing:
 
+- `cargo make install-tools` has installed the WASM target and `wasm-pack`.
 - `cargo make dev` starts the server.
 - The browser reaches `http://127.0.0.1:8000/`.
 - `settings/base.toml` contains `[core]`, `[core.databases.default]`, and `[contacts]`.

@@ -7,37 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.2...reinhardt-commands@v0.2.3) - 2026-06-27
+## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.5...reinhardt-commands@v0.3.0-rc.6) - 2026-06-27
 
 ### Fixed
 
 - *(commands)* redact sqlite database paths in logs
 
-## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.1...reinhardt-commands@v0.2.2) - 2026-06-25
+### Maintenance
+
+- merge main into develop/0.3.0
+
+## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.4...reinhardt-commands@v0.3.0-rc.5) - 2026-06-26
+
+### Fixed
+
+- *(scaffolding)* default pages projects to sqlite
+- *(commands)* repair pages quickstart scaffold defaults
+
+## [0.3.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.3...reinhardt-commands@v0.3.0-rc.4) - 2026-06-24
+
+### Changed
+
+- *(scaffolding)* align Pages app layout
 
 ### Documentation
 
-- update version references to v0.2.1
+- *(tutorial)* align pages scaffolding route gates
+
+## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.2...reinhardt-commands@v0.3.0-rc.3) - 2026-06-23
 
 ### Fixed
 
-- *(scaffolding)* stabilize Pages basis tutorial scaffold
-- *(scaffolding)* default pages projects to sqlite
-- *(ci)* clear pages scaffold ci blockers
+- *(scaffolding)* generate target-neutral Pages apps
+- *(scaffolding)* split generated Pages routers
 
-### Maintenance
+## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.0...reinhardt-commands@v0.3.0-rc.1) - 2026-06-18
 
-- *(scaffolding)* stack issue 5426 fix on tutorial PR
+### Added
 
-## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.0...reinhardt-commands@v0.2.1) - 2026-06-23
-
-### Fixed
-
-- *(scaffolding)* stabilize Pages basis tutorial scaffold
-
-### Maintenance
-
-- *(scaffolding)* stack issue 5426 fix on tutorial PR
+- *(urls)* [**breaking**] remove raw server route registration APIs
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.3...reinhardt-commands@v0.2.0) - 2026-06-11
 

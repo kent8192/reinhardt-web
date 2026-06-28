@@ -1,0 +1,5 @@
+error: accept is only supported on file-like inputs
+  --> tests/ui/form/fail/file_attrs_reject_text_input.rs:10:5
+   |
+10 |                 accept: "image/png",
+   |                 ^^^^^^

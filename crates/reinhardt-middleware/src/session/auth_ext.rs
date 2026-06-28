@@ -29,25 +29,28 @@ use super::store::SessionStore;
 /// coupling.
 ///
 /// The `store` parameter is a `&SessionStore`. Callers that have
-/// `#[inject] store: Depends<SessionStore>` can pass `&store` directly —
-/// Rust deref coercion converts `&Depends<SessionStore>` to `&SessionStore`
-/// transparently via [`Depends<T>: Deref<Target = T>`][reinhardt_di::Depends].
+/// `#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>` can pass
+/// `&**store`, dereferencing first through [`Depends`][reinhardt_di::Depends]
+/// to the shared `Arc<SessionStore>` and then through `Arc` to `SessionStore`.
 ///
 /// # Usage
 ///
 /// ```rust,ignore
 /// use reinhardt::di::Depends;
-/// use reinhardt::middleware::session::{SessionAuthExt, SessionData, SessionStore};
+/// use reinhardt::middleware::session::{
+///     SessionAuthExt, SessionData, SessionStore, SessionStoreKey,
+/// };
+/// use std::sync::Arc;
 ///
 /// #[server_fn]
 /// pub async fn login(
 ///     username: String,
 ///     password: String,
 ///     #[inject] mut session: SessionData,
-///     #[inject] store: Depends<SessionStore>,
+///     #[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
 /// ) -> Result<(), ServerFnError> {
 ///     // … authenticate `user` …
-///     session.login(&store, user.id())
+///     session.login(&**store, user.id())
 ///         .map_err(|e| ServerFnError::application(e.to_string()))?;
 ///     Ok(())
 /// }

@@ -20,9 +20,7 @@ fn main() {
 		ul {
 			for(index, item)in items.clone() {
 				li {
-					span { {
-						index.to_string()
-					} }
+					span { { index.to_string() } }
 					span { { item } }
 				}
 			}

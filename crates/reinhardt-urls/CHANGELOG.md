@@ -7,11 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.2.1...reinhardt-urls@v0.2.2) - 2026-06-25
+## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.3.0-rc.4...reinhardt-urls@v0.3.0-rc.5) - 2026-06-26
+
+### Fixed
+
+- *(ci)* satisfy server router clippy lint
+
+### Performance
+
+- *(http)* reduce request allocation overhead
+
+## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.2.0...reinhardt-urls@v0.3.0-rc.1) - 2026-06-18
+
+### Added
+
+- *(urls)* [**breaking**] remove raw server route registration APIs
+- *(pages)* add route-backed component macros
 
 ### Documentation
 
-- update version references to v0.2.1
+- define wasm native API parity contract
+- clarify router parity level
+- clarify generated API parity docs
+
+### Fixed
+
+- *(urls)* remove duplicate validate_routes doctest import
+- *(urls)* hide route opt-out sigil in introspection
+
+### Maintenance
+
+- merge develop/0.3.0 into component route macros
+
+### Added
+
+- Added `ClientRouter::component(handler)` and component metadata traits for
+  registering route-backed page components without repeating path/name
+  metadata.
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.3...reinhardt-urls@v0.2.0) - 2026-06-11
 

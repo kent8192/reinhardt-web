@@ -23,15 +23,23 @@ static GLOBAL_DI_REGISTRATIONS: OnceCell<StdRwLock<Option<reinhardt_di::DiRegist
 ///
 /// ```rust,no_run
 /// use reinhardt_urls::routers::{ServerRouter, register_router};
-/// use hyper::Method;
-/// # use reinhardt_http::{Request, Response, Result};
-/// # async fn health_handler(_req: Request) -> Result<Response> {
-/// #     Ok(Response::ok())
+/// # use hyper::Method;
+/// # use reinhardt_core::endpoint::EndpointInfo;
+/// # use reinhardt_http::{Handler, Request, Response, Result};
+/// # struct Health;
+/// # impl EndpointInfo for Health {
+/// #     fn path() -> &'static str { "/health" }
+/// #     fn method() -> Method { Method::GET }
+/// #     fn name() -> &'static str { "health" }
+/// # }
+/// # #[async_trait::async_trait]
+/// # impl Handler for Health {
+/// #     async fn handle(&self, _req: Request) -> Result<Response> { Ok(Response::ok()) }
 /// # }
 ///
 /// let router = ServerRouter::new()
 ///     .with_prefix("/api/v1")
-///     .function("/health", Method::GET, health_handler);
+///     .endpoint(|| Health);
 ///
 /// // No Arc::new() needed!
 /// register_router(router);
@@ -174,6 +182,9 @@ pub fn clear_router() {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use hyper::Method;
+	use reinhardt_core::endpoint::EndpointInfo;
+	use reinhardt_http::{Handler, Request, Response};
 	use reinhardt_testkit::resource::{TeardownGuard, TestResource};
 	use rstest::{fixture, rstest};
 
@@ -195,6 +206,51 @@ mod tests {
 	#[fixture]
 	fn env() -> TeardownGuard<CleanGlobalRouter> {
 		TeardownGuard::new()
+	}
+
+	struct UserDetail;
+	struct HealthCheck;
+
+	impl EndpointInfo for UserDetail {
+		fn path() -> &'static str {
+			"/users/{id}/"
+		}
+
+		fn method() -> Method {
+			Method::GET
+		}
+
+		fn name() -> &'static str {
+			"user-detail"
+		}
+	}
+
+	impl EndpointInfo for HealthCheck {
+		fn path() -> &'static str {
+			"/health/"
+		}
+
+		fn method() -> Method {
+			Method::GET
+		}
+
+		fn name() -> &'static str {
+			"health-check"
+		}
+	}
+
+	#[async_trait::async_trait]
+	impl Handler for UserDetail {
+		async fn handle(&self, _req: Request) -> reinhardt_core::exception::Result<Response> {
+			Ok(Response::ok())
+		}
+	}
+
+	#[async_trait::async_trait]
+	impl Handler for HealthCheck {
+		async fn handle(&self, _req: Request) -> reinhardt_core::exception::Result<Response> {
+			Ok(Response::ok())
+		}
 	}
 
 	#[rstest]
@@ -247,12 +303,7 @@ mod tests {
 	#[serial_test::serial(global_router)]
 	fn global_reverser_populated_after_register_router(_env: TeardownGuard<CleanGlobalRouter>) {
 		// Arrange
-		let router = crate::routers::ServerRouter::new().function_named(
-			"/users/{id}/",
-			hyper::Method::GET,
-			"user-detail",
-			dummy_handler,
-		);
+		let router = crate::routers::ServerRouter::new().endpoint(|| UserDetail);
 
 		// Act
 		register_router(router);
@@ -268,12 +319,7 @@ mod tests {
 	#[serial_test::serial(global_router)]
 	fn global_reverser_cleared_on_clear_router(_env: TeardownGuard<CleanGlobalRouter>) {
 		// Arrange
-		let router = crate::routers::ServerRouter::new().function_named(
-			"/health/",
-			hyper::Method::GET,
-			"health-check",
-			dummy_handler,
-		);
+		let router = crate::routers::ServerRouter::new().endpoint(|| HealthCheck);
 		register_router(router);
 		assert!(crate::routers::UrlReverser::try_from_global().is_some());
 
@@ -288,12 +334,7 @@ mod tests {
 	#[serial_test::serial(global_router)]
 	fn server_router_reverse_works_after_global_population(_env: TeardownGuard<CleanGlobalRouter>) {
 		// Arrange
-		let router = crate::routers::ServerRouter::new().function_named(
-			"/users/{id}/",
-			hyper::Method::GET,
-			"user-detail",
-			dummy_handler,
-		);
+		let router = crate::routers::ServerRouter::new().endpoint(|| UserDetail);
 		register_router(router);
 
 		// Act
@@ -302,11 +343,5 @@ mod tests {
 
 		// Assert
 		assert_eq!(url, Some("/users/42/".to_string()));
-	}
-
-	async fn dummy_handler(
-		_req: reinhardt_http::Request,
-	) -> reinhardt_core::exception::Result<reinhardt_http::Response> {
-		Ok(reinhardt_http::Response::ok())
 	}
 }

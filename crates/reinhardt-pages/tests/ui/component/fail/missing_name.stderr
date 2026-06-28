@@ -1,0 +1,7 @@
+error: unexpected end of input, expected #[component("/path/", "name")]
+ --> tests/ui/component/fail/missing_name.rs:5:1
+  |
+5 | #[component("/users/{id}/")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `component` (in Nightly builds, run with -Z macro-backtrace for more info)

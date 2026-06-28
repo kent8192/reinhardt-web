@@ -136,8 +136,7 @@ impl FormSet {
 	///
 	/// let mut formset = FormSet::new("form".to_string());
 	/// formset.add_form(Form::new()).unwrap();
-	// Note: is_valid() requires mutable reference
-	// let is_valid = formset.is_valid();
+	/// let is_valid = formset.is_valid();
 	/// ```
 	pub fn is_valid(&mut self) -> bool {
 		self.errors.clear();

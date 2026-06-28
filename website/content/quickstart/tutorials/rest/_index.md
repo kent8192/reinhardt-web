@@ -42,7 +42,7 @@ The first group is written by hand so you can see the request extractors, respon
 
 You should have:
 
-- Rust 1.94.0 or later
+- Rust 1.96.0 or later
 - Docker Desktop running, because the example's `cargo make migrate` and `cargo make runserver` tasks start disposable PostgreSQL and Redis containers
 - Basic familiarity with Rust modules, `async fn`, and JSON serialization
 - The `cargo-make` subcommand available as `cargo make`
@@ -51,7 +51,7 @@ Install the Reinhardt project generator before starting Part 1:
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.3"
+cargo install reinhardt-admin-cli --version "0.3.0-rc.6"
 ```
 
 After installation, the command is `reinhardt-admin`.
@@ -63,7 +63,7 @@ After installation, the command is `reinhardt-admin`.
 | 1 | [Project Setup](1-project-setup/) | Generate a REST project, inspect the settings layout, and run the empty server |
 | 2 | [Your First Endpoints](2-first-endpoints/) | Add temporary static JSON endpoints with `#[get]`, `#[post]`, `#[put]`, and `#[delete]` |
 | 3 | [Models and the Database](3-models-and-database/) | Define the `Snippet` model, create the migration, and apply the schema |
-| 4 | [Dependency Injection](4-dependency-injection/) | Replace the temporary handlers with real ORM access through `Depends<DatabaseConnection>` |
+| 4 | [Dependency Injection](4-dependency-injection/) | Replace the temporary handlers with real ORM access through injected `DatabaseConnection` and keyed `Depends<K, T>` |
 | 5 | [Serializers and Validation](5-serializers-and-validation/) | Validate request bodies, choose status codes, and return structured error responses |
 | 6 | [Bonus: ViewSets and Routers](6-viewsets-and-routers/) | Expose the same CRUD surface through `ModelViewSet` and router registration |
 

@@ -7,23 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.2...reinhardt-db@v0.2.3) - 2026-06-27
+## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.0-rc.5...reinhardt-db@v0.3.0-rc.6) - 2026-06-27
+
+### Fixed
+
+- *(migrations)* handle field changes on renamed models
+- *(migrations)* address autodetector review gaps
+- *(todo-check)* clear public api audit markers
 
 ### Maintenance
 
-- update Cargo.toml dependencies
+- merge main into develop/0.3.0
 
-## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.1...reinhardt-db@v0.2.2) - 2026-06-25
+### Testing
+
+- *(migrations)* tighten autodetector assertions
+
+## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.0-rc.4...reinhardt-db@v0.3.0-rc.5) - 2026-06-26
+
+### Fixed
+
+- *(db)* serialize CockroachDB migrations
+
+### Performance
+
+- *(db)* reduce pool acquire overhead
+- *(db)* speed up migration graph topological sort
+
+## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.0-rc.2...reinhardt-db@v0.3.0-rc.3) - 2026-06-23
+
+### Fixed
+
+- *(tutorial)* suppress basis runtime drift
+
+## [0.3.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.0-rc.1...reinhardt-db@v0.3.0-rc.2) - 2026-06-19
+
+### Added
+
+- *(orm)* add QuerySet conditional partial updates
+
+### Fixed
+
+- *(db)* suppress replayed migration drift
+
+## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.0...reinhardt-db@v0.3.0-rc.1) - 2026-06-18
+
+### Fixed
+
+- add wasm safe model metadata substrate
 
 ### Maintenance
 
-- update Cargo.toml dependencies
-
-## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.0...reinhardt-db@v0.2.1) - 2026-06-23
-
-### Maintenance
-
-- update Cargo.toml dependencies
+- migrate Rust toolchain to 1.96.0
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.3...reinhardt-db@v0.2.0) - 2026-06-11
 

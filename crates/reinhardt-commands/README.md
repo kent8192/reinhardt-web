@@ -15,11 +15,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.2.3", features = ["commands"] }
+reinhardt = { version = "0.3.0-rc.6", features = ["commands"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.2.3", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.2.3", features = ["full"] }      # All features
+# reinhardt = { version = "0.3.0-rc.6", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.3.0-rc.6", features = ["full"] }      # All features
 ```
 
 Then import command features:
@@ -39,7 +39,7 @@ package:
 ```bash
 # Pin the documented Reinhardt release for reproducibility.
 # Omit --version to let Cargo choose the latest stable release.
-cargo install reinhardt-admin-cli --version "0.2.3"
+cargo install reinhardt-admin-cli --version "0.3.0-rc.6"
 ```
 
 This installs the `reinhardt-admin` command:
@@ -63,7 +63,7 @@ details.
 - **shell** - Run an interactive REPL
 - **check** - Check the project for common issues
 - **collectstatic** - Collect static files into `STATIC_ROOT`
-- **showurls** - Display all registered URL patterns (requires `routers`
+- **showurls** - Display all registered server URL patterns (requires `routers`
   feature)
 
 ### Feature Flags
@@ -129,7 +129,7 @@ use reinhardt::commands::TemplateContext;
 
 let mut context = TemplateContext::new();
 context.insert("project_name", "my_project");
-context.insert("version", "0.2.3");
+context.insert("version", "0.3.0-rc.6");
 context.insert("features", vec!["auth", "admin"]);  // Any Serialize type
 ```
 
@@ -190,6 +190,9 @@ The `infra` command manages project-local Docker containers derived from the
 resolved Reinhardt settings. Use `infra run` for short-lived management
 commands that need local infrastructure values. Keep long-running server
 processes on the normal `manage runserver` entrypoint.
+
+When a required service image is missing from the active Docker daemon,
+`infra up` pulls it before creating the container.
 
 ```bash
 # Start containers for services inferred from settings
@@ -320,7 +323,7 @@ Projects using `collect_migrations!` must add `linkme` as a dependency:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.2.3", features = ["standard"] }
+reinhardt = { version = "0.3.0-rc.6", features = ["standard"] }
 linkme = "0.3"
 ```
 

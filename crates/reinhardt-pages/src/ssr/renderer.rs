@@ -1,5 +1,7 @@
 //! SSR Renderer for Component-based server-side rendering.
 
+use std::collections::BTreeSet;
+
 use super::markers::{HydrationMarker, HydrationStrategy};
 use super::state::SsrState;
 use crate::auth::AuthData;
@@ -259,6 +261,8 @@ impl SsrRenderer {
 	/// * `content` - The rendered body content
 	/// * `view_head` - Optional head extracted from a View
 	fn wrap_in_html_with_head(&self, content: &str, view_head: Option<&Head>) -> String {
+		let view_head = view_head.map(Head::deduplicated);
+		let mut seen_head_entries = BTreeSet::new();
 		let mut html = String::with_capacity(content.len() + 1024);
 
 		// DOCTYPE and html opening
@@ -270,13 +274,19 @@ impl SsrRenderer {
 
 		// Head section
 		html.push_str("<head>\n");
-		html.push_str("<meta charset=\"UTF-8\">\n");
-		html.push_str(
-			"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n",
+		push_unique_head_entry(
+			&mut html,
+			&mut seen_head_entries,
+			"<meta charset=\"UTF-8\">",
+		);
+		push_unique_head_entry(
+			&mut html,
+			&mut seen_head_entries,
+			"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
 		);
 
 		// Add View's head elements
-		if let Some(head) = view_head {
+		if let Some(head) = view_head.as_ref() {
 			// Title from View's head
 			if let Some(ref title) = head.title {
 				html.push_str(&format!("<title>{}</title>\n", html_escape(title)));
@@ -284,22 +294,22 @@ impl SsrRenderer {
 
 			// View's meta tags
 			for meta in &head.meta_tags {
-				html.push_str(&meta.to_html());
+				push_unique_head_entry(&mut html, &mut seen_head_entries, meta.to_html());
 			}
 
 			// View's links
 			for link in &head.links {
-				html.push_str(&link.to_html());
+				push_unique_head_entry(&mut html, &mut seen_head_entries, link.to_html());
 			}
 
 			// View's styles
 			for style in &head.styles {
-				html.push_str(&style.to_html());
+				push_unique_head_entry(&mut html, &mut seen_head_entries, style.to_html());
 			}
 
 			// View's scripts (in head)
 			for script in &head.scripts {
-				html.push_str(&script.to_html());
+				push_unique_head_entry(&mut html, &mut seen_head_entries, script.to_html());
 			}
 		}
 
@@ -460,6 +470,20 @@ fn html_escape(s: &str) -> String {
 /// context - they will see `</script>` and close the tag, allowing XSS.
 fn escape_json_for_script(json: &str) -> String {
 	json.replace("</", "<\\/")
+}
+
+fn push_unique_head_entry(
+	html: &mut String,
+	seen: &mut BTreeSet<String>,
+	entry: impl Into<String>,
+) {
+	let entry = entry.into();
+	if seen.contains(&entry) {
+		return;
+	}
+	html.push_str(&entry);
+	html.push('\n');
+	seen.insert(entry);
 }
 
 /// Maximum input size for HTML minification (1 MiB).

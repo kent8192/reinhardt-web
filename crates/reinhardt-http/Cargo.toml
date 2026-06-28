@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-http"
-version = "0.2.3"
+version = "0.3.0-rc.6"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -18,6 +18,7 @@ hyper = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_urlencoded = { workspace = true }
+smallvec = { workspace = true }
 futures = "0.3.31"
 thiserror = { workspace = true }
 sha2 = { workspace = true }

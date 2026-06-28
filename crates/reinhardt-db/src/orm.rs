@@ -306,7 +306,10 @@ pub use reverse_accessor::ReverseAccessor;
 // Django ORM compatibility layer
 pub use manager::Manager;
 // Query types are always available
-pub use query::{Filter, FilterCondition, FilterOperator, FilterValue, OrmQuery, QuerySet};
+pub use query::{
+	FieldAssignment, Filter, FilterCondition, FilterOperator, FilterValue, OrmQuery, QuerySet,
+	UpdateValue,
+};
 
 // Advanced ORM features
 pub use absolute_url_overrides::{HasAbsoluteUrl, clear_url_overrides, register_url_override};

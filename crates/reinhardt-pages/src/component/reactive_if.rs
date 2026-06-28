@@ -16,21 +16,68 @@ use std::cell::RefCell;
 #[cfg(wasm)]
 use std::rc::Rc;
 
+#[cfg(wasm)]
+pub(crate) type ReactiveNodeStore = Rc<RefCell<Vec<Box<dyn std::any::Any>>>>;
+
 // Thread-local storage for reactive nodes to prevent them from being dropped.
 //
 // When a ReactiveIfNode is created during view mounting, it must be kept alive
 // for the lifetime of the DOM element. This storage prevents premature cleanup.
 #[cfg(wasm)]
 thread_local! {
-	static REACTIVE_NODES: RefCell<Vec<Box<dyn std::any::Any>>> = RefCell::new(Vec::new());
+	static ROOT_REACTIVE_NODES: ReactiveNodeStore = Rc::new(RefCell::new(Vec::new()));
+	static ACTIVE_REACTIVE_NODE_STORE: RefCell<Option<ReactiveNodeStore>> = RefCell::new(None);
+}
+
+#[cfg(wasm)]
+struct ActiveReactiveNodeStoreGuard {
+	previous: Option<ReactiveNodeStore>,
+}
+
+#[cfg(wasm)]
+impl Drop for ActiveReactiveNodeStoreGuard {
+	fn drop(&mut self) {
+		ACTIVE_REACTIVE_NODE_STORE.with(|active| {
+			active.replace(self.previous.take());
+		});
+	}
+}
+
+#[cfg(wasm)]
+fn root_reactive_node_store() -> ReactiveNodeStore {
+	ROOT_REACTIVE_NODES.with(Clone::clone)
+}
+
+#[cfg(wasm)]
+fn current_reactive_node_store() -> ReactiveNodeStore {
+	ACTIVE_REACTIVE_NODE_STORE
+		.with(|active| active.borrow().clone())
+		.unwrap_or_else(root_reactive_node_store)
+}
+
+#[cfg(wasm)]
+pub(crate) fn new_reactive_node_store() -> ReactiveNodeStore {
+	Rc::new(RefCell::new(Vec::new()))
+}
+
+#[cfg(wasm)]
+pub(crate) fn clear_reactive_node_store(store: &ReactiveNodeStore) {
+	store.borrow_mut().clear();
+}
+
+#[cfg(wasm)]
+pub(crate) fn with_reactive_node_store<R>(store: &ReactiveNodeStore, f: impl FnOnce() -> R) -> R {
+	let previous = ACTIVE_REACTIVE_NODE_STORE.with(|active| active.replace(Some(store.clone())));
+	let _guard = ActiveReactiveNodeStoreGuard { previous };
+	f()
 }
 
 /// Stores a reactive node to keep it alive.
 #[cfg(wasm)]
 pub fn store_reactive_node<T: 'static>(node: T) {
-	REACTIVE_NODES.with(|nodes| {
-		nodes.borrow_mut().push(Box::new(node));
-	});
+	current_reactive_node_store()
+		.borrow_mut()
+		.push(Box::new(node));
 }
 
 /// Cleanup function to release all reactive nodes.
@@ -39,9 +86,7 @@ pub fn store_reactive_node<T: 'static>(node: T) {
 /// when a complete re-render is needed.
 #[cfg(wasm)]
 pub fn cleanup_reactive_nodes() {
-	REACTIVE_NODES.with(|nodes| {
-		nodes.borrow_mut().clear();
-	});
+	clear_reactive_node_store(&root_reactive_node_store());
 }
 
 /// Manages DOM updates for reactive conditional rendering.
@@ -102,45 +147,48 @@ impl ReactiveIfNode {
 		let current_nodes_clone = current_nodes.clone();
 		let last_condition_clone = last_condition.clone();
 		let marker_clone = marker.clone();
+		let effect_reactive_node_store = current_reactive_node_store();
 
 		// Create the Effect that will re-run when condition dependencies change
 		let effect = Effect::new_with_timing(
 			move || {
-				// Evaluate the condition (this tracks Signal dependencies)
-				let new_condition = condition();
+				with_reactive_node_store(&effect_reactive_node_store, || {
+					// Evaluate the condition (this tracks Signal dependencies)
+					let new_condition = condition();
 
-				// Check if condition has changed
-				let mut last = last_condition_clone.borrow_mut();
-				if *last == Some(new_condition) {
-					// Condition hasn't changed, skip DOM update
-					return;
-				}
-				*last = Some(new_condition);
-				drop(last);
-
-				// Refs #5100: remove old nodes before mounting the replacement view. The
-				// mount path may synchronously run layout effects, so do not
-				// hold this RefCell borrow across `mount_before_marker`.
-				let old_nodes = {
-					let mut nodes = current_nodes_clone.borrow_mut();
-					nodes.drain(..).collect::<Vec<_>>()
-				};
-				for node in old_nodes {
-					if let Some(parent_node) = node.parent_node() {
-						let _ = parent_node.remove_child(&node);
+					// Check if condition has changed
+					let mut last = last_condition_clone.borrow_mut();
+					if *last == Some(new_condition) {
+						// Condition hasn't changed, skip DOM update
+						return;
 					}
-				}
+					*last = Some(new_condition);
+					drop(last);
 
-				// Generate the appropriate view
-				let view = if new_condition {
-					then_view()
-				} else {
-					else_view()
-				};
+					// Refs #5100: remove old nodes before mounting the replacement view. The
+					// mount path may synchronously run layout effects, so do not
+					// hold this RefCell borrow across `mount_before_marker`.
+					let old_nodes = {
+						let mut nodes = current_nodes_clone.borrow_mut();
+						nodes.drain(..).collect::<Vec<_>>()
+					};
+					for node in old_nodes {
+						if let Some(parent_node) = node.parent_node() {
+							let _ = parent_node.remove_child(&node);
+						}
+					}
 
-				// Mount new nodes before the marker
-				let new_nodes = mount_before_marker(&marker_clone, view);
-				*current_nodes_clone.borrow_mut() = new_nodes;
+					// Generate the appropriate view
+					let view = if new_condition {
+						then_view()
+					} else {
+						else_view()
+					};
+
+					// Mount new nodes before the marker
+					let new_nodes = mount_before_marker(&marker_clone, view);
+					*current_nodes_clone.borrow_mut() = new_nodes;
+				});
 			},
 			EffectTiming::Layout, // Use Layout timing for synchronous DOM updates
 		);
@@ -203,29 +251,36 @@ impl ReactiveNode {
 		// Clone references for the Effect closure
 		let current_nodes_clone = current_nodes.clone();
 		let marker_clone = marker.clone();
+		let effect_reactive_node_store = current_reactive_node_store();
 
 		// Create the Effect that will re-run when dependencies change
 		let effect = Effect::new_with_timing(
 			move || {
-				// Render the view (this tracks Signal dependencies)
-				let view = render();
+				with_reactive_node_store(&effect_reactive_node_store, || {
+					// Render the view (this tracks Signal dependencies)
+					let view = render();
 
-				// Refs #5100: remove old nodes before mounting the replacement view. The
-				// mount path may synchronously run layout effects, so do not
-				// hold this RefCell borrow across `mount_before_marker`.
-				let old_nodes = {
-					let mut nodes = current_nodes_clone.borrow_mut();
-					nodes.drain(..).collect::<Vec<_>>()
-				};
-				for node in old_nodes {
-					if let Some(parent_node) = node.parent_node() {
-						let _ = parent_node.remove_child(&node);
+					if update_activity_boundary_attrs(&current_nodes_clone, &view) {
+						return;
 					}
-				}
 
-				// Mount new nodes before the marker
-				let new_nodes = mount_before_marker(&marker_clone, view);
-				*current_nodes_clone.borrow_mut() = new_nodes;
+					// Refs #5100: remove old nodes before mounting the replacement view. The
+					// mount path may synchronously run layout effects, so do not
+					// hold this RefCell borrow across `mount_before_marker`.
+					let old_nodes = {
+						let mut nodes = current_nodes_clone.borrow_mut();
+						nodes.drain(..).collect::<Vec<_>>()
+					};
+					for node in old_nodes {
+						if let Some(parent_node) = node.parent_node() {
+							let _ = parent_node.remove_child(&node);
+						}
+					}
+
+					// Mount new nodes before the marker
+					let new_nodes = mount_before_marker(&marker_clone, view);
+					*current_nodes_clone.borrow_mut() = new_nodes;
+				});
 			},
 			EffectTiming::Layout, // Use Layout timing for synchronous DOM updates
 		);
@@ -236,6 +291,66 @@ impl ReactiveNode {
 			effect,
 		}
 	}
+}
+
+#[cfg(wasm)]
+fn update_activity_boundary_attrs(
+	current_nodes: &Rc<RefCell<Vec<web_sys::Node>>>,
+	view: &Page,
+) -> bool {
+	use wasm_bindgen::JsCast;
+
+	let Page::Element(element_view) = view else {
+		return false;
+	};
+
+	let Some(activity_mode) = element_view
+		.attrs()
+		.iter()
+		.find(|(name, _)| name.as_ref() == "data-rh-activity")
+		.map(|(_, value)| value.as_ref())
+	else {
+		return false;
+	};
+
+	if !element_view
+		.attrs()
+		.iter()
+		.any(|(name, value)| name.as_ref() == "data-rh-state-preserved" && value.as_ref() == "true")
+	{
+		return false;
+	}
+
+	let nodes = current_nodes.borrow();
+	if nodes.len() != 1 {
+		return false;
+	}
+
+	let Some(existing_element) = nodes[0].dyn_ref::<web_sys::Element>() else {
+		return false;
+	};
+
+	if existing_element
+		.get_attribute("data-rh-state-preserved")
+		.as_deref()
+		!= Some("true")
+		|| existing_element.get_attribute("data-rh-activity").is_none()
+	{
+		return false;
+	}
+
+	let _ = existing_element.set_attribute("data-rh-activity", activity_mode);
+	let _ = existing_element.set_attribute("data-rh-state-preserved", "true");
+
+	if activity_mode == "hidden" {
+		let _ = existing_element.set_attribute("hidden", "hidden");
+		let _ = existing_element.set_attribute("aria-hidden", "true");
+	} else {
+		let _ = existing_element.remove_attribute("hidden");
+		let _ = existing_element.remove_attribute("aria-hidden");
+	}
+
+	true
 }
 
 /// Mounts a Page before a marker node and returns the created DOM nodes.

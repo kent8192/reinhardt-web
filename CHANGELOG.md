@@ -7,53 +7,154 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.2...reinhardt-web@v0.2.3) - 2026-06-27
-
-### Fixed
-
-- *(staticfiles)* normalize passthrough prefix matching
-- *(staticfiles)* harden passthrough prefix normalization
-- *(ci)* run release version sync from trusted checkout
-- *(ci)* scan ignored files in OSV full job
-
-## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.1...reinhardt-web@v0.2.2) - 2026-06-25
+## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.5...reinhardt-web@v0.3.0-rc.6) - 2026-06-27
 
 ### Documentation
 
-- *(views)* align viewset doctest serializers
-- update version references to v0.2.1
+- add release announcement(s)
+- *(release)* expose 0.3 migration guide
+- *(pages)* document WASM server fn resolver
 
 ### Fixed
 
-- *(macros)* preserve serde field attributes on Info structs
-- *(tests)* align viewset serializer fixtures
-- *(examples)* align tutorial viewset serializer
-- *(scaffolding)* stabilize Pages basis tutorial scaffold
+- *(commands)* align pages tutorial scaffold
+- *(commands)* address scaffold review feedback
+- *(commands)* include auth tutorial scaffold features
+- *(migrations)* handle field changes on renamed models
+- *(migrations)* address autodetector review gaps
+- *(macros)* stop propagating serde skip to Info relation fields
+
+### Maintenance
+
+- merge main into develop/0.3.0
+
+### Testing
+
+- *(migrations)* tighten autodetector assertions
+- *(examples)* guard polls question FK migration type
+
+## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.4...reinhardt-web@v0.3.0-rc.5) - 2026-06-26
+
+### Changed
+
+- *(pages)* derive fetch credentials default
+
+### Documentation
+
+- add release announcement(s)
+- *(tutorial)* fix SQLite poll seed snippet
+
+### Fixed
+
 - *(scaffolding)* default pages projects to sqlite
-- *(ci)* clear pages scaffold ci blockers
+- *(ci)* quote release-plz dry-run regex
+- *(ci)* satisfy server router clippy lint
+- *(commands)* repair pages quickstart scaffold defaults
 
 ### Maintenance
 
-- *(scaffolding)* stack issue 5426 fix on tutorial PR
-- merge origin/main into user wasm branch
+- merge develop 0.3.0 into build-time perf branch
+- merge latest develop 0.3.0 into build-time perf branch
 
-## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0...reinhardt-web@v0.2.1) - 2026-06-23
+## [0.3.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.3...reinhardt-web@v0.3.0-rc.4) - 2026-06-24
+
+### Changed
+
+- *(scaffolding)* align Pages app layout
 
 ### Documentation
 
-- *(views)* align viewset doctest serializers
+- add release announcement(s)
+- *(tutorial)* align 0.3.0 tutorial scaffolding
+- *(tutorial)* address 0.3.0 review feedback
+- *(tutorial)* gate client route modules
+- *(tutorial)* remove native client route specs
+- *(tutorial)* align pages scaffolding route gates
+
+## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.2...reinhardt-web@v0.3.0-rc.3) - 2026-06-23
+
+### Added
+
+- *(website)* add technical notes domain
+- *(macros)* make user macro inert on wasm
 
 ### Fixed
 
-- *(macros)* preserve serde field attributes on Info structs
+- *(infra)* import website DNS records
+- *(ci)* restrict wasm cache seed to main pushes
+- *(views)* wire declared viewset serializers
 - *(tests)* align viewset serializer fixtures
-- *(examples)* align tutorial viewset serializer
-- *(scaffolding)* stabilize Pages basis tutorial scaffold
+- *(views)* align viewset serializer examples
+
+## [0.3.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.1...reinhardt-web@v0.3.0-rc.2) - 2026-06-19
+
+### Added
+
+- *(orm)* add QuerySet conditional partial updates
+
+### Fixed
+
+- *(db)* suppress replayed migration drift
+
+## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0...reinhardt-web@v0.3.0-rc.1) - 2026-06-18
+
+### Added
+
+- feat!(macros): expose relation-shaped model info fields
+- *(formatter)* add semantic page grammar nodes
+- *(formatter)* rustfmt page expression islands
+- *(website)* add technical notes domain
+
+### Changed
+
+- *(admin)* use keyed depends for server injections
+- [**breaking**] remove 0.3 deprecated public APIs
+
+### Documentation
+
+- *(formatter)* document page rustfmt islands
+
+### Fixed
+
+- *(ci)* pin brotli allocator dependency
+- *(examples)* align polls info fixtures with relations
+- *(formatter)* handle reviewed page rustfmt islands
+- add native stubs for client page functions
+- *(pages)* export client_page from prelude
+- *(di)* honor cache false for keyed wrappers
+- *(ci)* satisfy pages clippy lint
+- *(infra)* import website DNS records
+- *(pages)* re-export use_callback_with from reactive::hooks
 
 ### Maintenance
 
-- *(scaffolding)* stack issue 5426 fix on tutorial PR
-- merge origin/main into user wasm branch
+- *(release)* group tree-sitter crates
+- merge develop/0.3.0 into pr 5346
+
+### Styling
+
+- *(examples)* format tutorial basis pages
+- format di exports
+
+### Testing
+
+- *(pages)* isolate static resolver state
+
+### Removed
+
+- **BREAKING**: Removed the 0.2 compatibility extractor `AuthUser<U>`.
+  Use `CurrentUser<U>` for full authenticated-user extraction.
+- **BREAKING**: Removed the deprecated Pages resource constructors
+  `create_resource` and `create_resource_with_deps`. Use
+  `use_resource(fetcher, deps)`.
+- **BREAKING**: Removed the deprecated Pages hooks `use_effect_event` and
+  `use_effect_event_with`. Use `use_callback` / `use_callback_with` or read
+  latest signal values with `.get_untracked()` inside effects.
+
+### Migration Guide
+
+- Follow [`instructions/MIGRATION_0.3.md`](instructions/MIGRATION_0.3.md) for
+  the 0.2 to 0.3 compatibility-removal checklist.
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.3...reinhardt-web@v0.2.0) - 2026-06-11
 

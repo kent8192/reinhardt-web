@@ -26,19 +26,13 @@ const PRESETS: &[&str] = &[
 const ADDITIVE_FEATURES: &[&str] = &[
 	"admin",
 	"pages",
-	"conf",
 	"database",
 	"db-postgres",
 	"db-sqlite",
 	"db-mysql",
 	"auth",
-	"auth-session",
-	"argon2-hasher",
 	"sessions",
-	"middleware",
-	"forms",
 	"static-files",
-	"commands-server",
 	"openapi",
 	"openapi-swagger-ui",
 	"browsable-api",
@@ -117,7 +111,7 @@ pub async fn resolve_dependency_selection(
 	};
 
 	for feature in required_features {
-		if !features.iter().any(|existing| existing == feature) {
+		if should_add_required_feature(&features, feature) {
 			features.push((*feature).to_string());
 		}
 	}
@@ -262,11 +256,50 @@ fn explicit_feature_values(ctx: &CommandContext) -> CommandResult<Vec<String>> {
 fn normalize_features(features: Vec<String>) -> Vec<String> {
 	let mut normalized = Vec::new();
 	for feature in features {
+		let feature = normalize_feature_name(&feature).to_string();
 		if !normalized.iter().any(|existing| existing == &feature) {
 			normalized.push(feature);
 		}
 	}
 	normalized
+}
+
+fn normalize_feature_name(feature: &str) -> &str {
+	match feature {
+		"server-fn" => "pages",
+		_ => feature,
+	}
+}
+
+fn should_add_required_feature(features: &[String], feature: &str) -> bool {
+	if features.iter().any(|existing| existing == feature) {
+		return false;
+	}
+	if feature == "minimal" && has_minimal_preset_feature(features) {
+		return false;
+	}
+	if feature == "db-postgres" && has_database_backend_feature(features) {
+		return false;
+	}
+	true
+}
+
+fn has_minimal_preset_feature(features: &[String]) -> bool {
+	features.iter().any(|feature| {
+		matches!(
+			feature.as_str(),
+			"standard" | "full" | "api-only" | "graphql-server"
+		)
+	})
+}
+
+fn has_database_backend_feature(features: &[String]) -> bool {
+	features.iter().any(|feature| {
+		matches!(
+			feature.as_str(),
+			"db-postgres" | "db-sqlite" | "db-mysql" | "db-cockroachdb"
+		)
+	})
 }
 
 fn parse_bool_option(name: &str, value: &str) -> CommandResult<bool> {
@@ -374,8 +407,22 @@ mod tests {
 	#[test]
 	fn noninteractive_pages_default_uses_required_features() {
 		assert_eq!(
-			default_noninteractive_features(&["minimal", "pages", "db-sqlite"]),
-			vec!["minimal", "pages", "db-sqlite"]
+			default_noninteractive_features(&[
+				"minimal",
+				"pages",
+				"client-router",
+				"db-sqlite",
+				"forms",
+				"auth-session",
+			]),
+			vec![
+				"minimal",
+				"pages",
+				"client-router",
+				"db-sqlite",
+				"forms",
+				"auth-session",
+			]
 		);
 	}
 
@@ -385,6 +432,44 @@ mod tests {
 			default_noninteractive_features(&["conf", "commands", "db-postgres", "api"]),
 			vec!["standard"]
 		);
+	}
+
+	#[rstest::rstest]
+	fn normalize_features_maps_stale_server_fn_feature_to_pages() {
+		let normalized = normalize_features(vec![
+			"minimal".to_string(),
+			"server-fn".to_string(),
+			"pages".to_string(),
+		]);
+
+		assert_eq!(normalized, vec!["minimal".to_string(), "pages".to_string()]);
+	}
+
+	#[rstest::rstest]
+	fn required_postgres_backend_does_not_override_explicit_backend() {
+		let features = vec!["minimal".to_string(), "db-sqlite".to_string()];
+
+		assert!(!should_add_required_feature(&features, "db-postgres"));
+		assert!(should_add_required_feature(&features, "commands"));
+	}
+
+	#[rstest::rstest]
+	fn required_minimal_runtime_respects_presets_but_repairs_explicit_pages_list() {
+		let default_pages_features = vec!["standard".to_string()];
+		assert!(!should_add_required_feature(
+			&default_pages_features,
+			"minimal"
+		));
+
+		let explicit_pages_features = vec![
+			"pages".to_string(),
+			"admin".to_string(),
+			"db-sqlite".to_string(),
+		];
+		assert!(should_add_required_feature(
+			&explicit_pages_features,
+			"minimal"
+		));
 	}
 
 	#[test]
