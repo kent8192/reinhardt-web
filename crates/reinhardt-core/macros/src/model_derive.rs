@@ -1041,6 +1041,8 @@ struct FieldInfo {
 	config: FieldConfig,
 	/// Field-level `#[serde(...)]` attributes copied to generated companion fields.
 	serde_attrs: Vec<syn::Attribute>,
+	/// Whether `#[model]` injected the relation-model `#[serde(skip)]` attribute.
+	injected_relation_serde_skip: bool,
 	/// Optional relationship attribute from `#[rel(...)]`
 	///
 	/// This field is reserved for future accessor generation support.
@@ -1876,6 +1878,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		let ty = field.ty.clone();
 		let config = FieldConfig::from_attrs(&field.attrs)?;
 		config.validate()?;
+		let injected_relation_serde_skip = field.attrs.iter().any(|attr| {
+			attr.path()
+				.is_ident("reinhardt_internal_relation_serde_skip")
+		});
 		let serde_attrs: Vec<syn::Attribute> = field
 			.attrs
 			.iter()
@@ -1901,6 +1907,7 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			ty,
 			config,
 			serde_attrs,
+			injected_relation_serde_skip,
 			rel,
 			is_fk_id_field,
 		});
@@ -4792,6 +4799,31 @@ struct InfoFieldSpec {
 	from_model: TokenStream,
 }
 
+fn is_plain_serde_skip_attr(attr: &syn::Attribute) -> bool {
+	if !attr.path().is_ident("serde") {
+		return false;
+	}
+
+	let syn::Meta::List(meta_list) = &attr.meta else {
+		return false;
+	};
+
+	meta_list.tokens.to_string() == "skip"
+}
+
+fn relation_info_serde_attrs(field: &FieldInfo) -> Vec<syn::Attribute> {
+	if !field.injected_relation_serde_skip {
+		return field.serde_attrs.clone();
+	}
+
+	field
+		.serde_attrs
+		.iter()
+		.filter(|attr| !is_plain_serde_skip_attr(attr))
+		.cloned()
+		.collect()
+}
+
 /// Generate the `{Model}Info` companion struct with `From` conversions (Issues #4194, #5272).
 ///
 /// Relationship marker fields are represented with target-neutral lightweight
@@ -4841,14 +4873,7 @@ fn generate_info_struct(
 			info_fields.push(InfoFieldSpec {
 				name: name.clone(),
 				ty,
-				// Relation payloads (`RelationInfo`/`ManyToManyInfo`) are lightweight,
-				// serializable DTOs (Issue #5272). They must NOT inherit the model
-				// field's serde attrs: the `#[model]` attribute macro injects
-				// `#[serde(skip)]` onto relation model fields (only the `*_id` column
-				// serializes for the model), and propagating it here would both demand
-				// an unimplemented `Default` for `RelationInfo` and wrongly drop the
-				// payload during `{Model}Info` (de)serialization.
-				serde_attrs: Vec::new(),
+				serde_attrs: relation_info_serde_attrs(f),
 				validate_attrs: Vec::new(),
 				setter_kind: InfoSetterKind::Relation { target_ty },
 				from_model: quote! {
@@ -4871,8 +4896,7 @@ fn generate_info_struct(
 			info_fields.push(InfoFieldSpec {
 				name: name.clone(),
 				ty,
-				// Relation payloads do not inherit model serde attrs (see FK branch above).
-				serde_attrs: Vec::new(),
+				serde_attrs: relation_info_serde_attrs(f),
 				validate_attrs: Vec::new(),
 				setter_kind: InfoSetterKind::ManyToMany { target_ty },
 				from_model: quote! {

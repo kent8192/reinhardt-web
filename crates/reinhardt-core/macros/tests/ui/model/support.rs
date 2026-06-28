@@ -10,7 +10,11 @@ pub mod model_info {
 		type PrimaryKey;
 	}
 
-	#[derive(Debug, Clone, PartialEq)]
+	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+	#[serde(bound(
+		serialize = "T::PrimaryKey: serde::Serialize",
+		deserialize = "T::PrimaryKey: serde::Deserialize<'de>"
+	))]
 	pub struct RelationInfo<T: InfoModel> {
 		pub id: T::PrimaryKey,
 	}
@@ -25,7 +29,11 @@ pub mod model_info {
 		}
 	}
 
-	#[derive(Debug, Clone, PartialEq)]
+	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+	#[serde(bound(
+		serialize = "Target::PrimaryKey: serde::Serialize",
+		deserialize = "Target::PrimaryKey: serde::Deserialize<'de>"
+	))]
 	pub struct ManyToManyInfo<Source, Target: InfoModel> {
 		pub target_ids: Vec<Target::PrimaryKey>,
 		_source: core::marker::PhantomData<Source>,
@@ -52,6 +60,17 @@ pub mod model_info {
 }
 
 pub mod db {
+	pub mod associations {
+		#[derive(Debug, Clone, Copy)]
+		pub struct ForeignKeyField<T>(core::marker::PhantomData<T>);
+
+		#[derive(Debug, Clone, Copy)]
+		pub struct OneToOneField<T>(core::marker::PhantomData<T>);
+
+		#[derive(Debug, Clone, Copy)]
+		pub struct ManyToManyField<Source, Target>(core::marker::PhantomData<(Source, Target)>);
+	}
+
 	pub mod orm {
 		pub struct Manager<T>(core::marker::PhantomData<T>);
 
