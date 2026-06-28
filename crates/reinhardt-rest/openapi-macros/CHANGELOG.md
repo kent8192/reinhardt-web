@@ -31,6 +31,14 @@ stable release section.
 - Regenerate REST/OpenAPI macro output after moving to settings fragments.
 - See [`instructions/MIGRATION_0.2.md`](../../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
 ### Documentation
 
 - *(release)* enforce public API doc coverage

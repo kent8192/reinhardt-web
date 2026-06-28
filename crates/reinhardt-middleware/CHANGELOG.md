@@ -95,6 +95,7 @@ stable release section.
     `reinhardt::middleware::session::SessionStore` + `reinhardt::di::Depends`.
     Manual DI setup that called `singleton.set::<Arc<SessionStore>>(store)`
     should call `singleton.set_arc(store)` instead.
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Fixed
 
@@ -103,11 +104,18 @@ stable release section.
 - *(docs)* resolve rustdoc intra-doc link errors on develop/0.2.0
 - *(docs)* resolve additional rustdoc link errors for feature-gated types
 - complete downstream shielding for deprecated config re-exports
+- address CodeRabbit dependency gate review
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* address CodeRabbit review feedback
 
 ### Performance
 
 - atomize facade dependency feature gates
 - trim standard facade feature dependencies
+
+### Styling
+
+- apply formatter fixes across workspace
 
 ### Maintenance
 

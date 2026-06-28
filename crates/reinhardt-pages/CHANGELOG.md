@@ -222,6 +222,29 @@ stable release section.
 - **`src/router/params.rs`** (1 item, `0.1.0-rc.27`) — `Path` extractor.
   Use `reinhardt_urls::routers::Path`.
 
+#### BREAKING CHANGES — Router Relocation Cleanup
+
+**First of two PRs** removing reinhardt-pages's 16 RC-deprecated items per
+STABILITY_POLICY § SP-4 (umbrella Issue
+[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)).
+This PR removes the 8 router-relocation items (relocated to
+`reinhardt_urls::routers` since `0.1.0-rc.27`); the remaining 8
+items (App struct, launcher legacy, use_reducer migration, MSW
+migration, CSRF auto-inject) require selective Edit and ship in
+the follow-up `feat(pages)!:` PR.
+
+Removed in this PR (8 items):
+
+- **`src/router/core.rs`** (6 items, all deprecated `0.1.0-rc.27`,
+  refs #4234 / cloud#578) — `PathError`, `RouterError`,
+  `ClientRouteMatch` (RouteMatch), `ClientRoute` (Route),
+  `ClientRouter` (Router), `NavigationSubscription`. All relocated
+  to `reinhardt_urls::routers`.
+- **`src/router/pattern.rs`** (1 item, `0.1.0-rc.27`) — `ClientPathPattern`
+  (PathPattern). Use `reinhardt_urls::routers::ClientPathPattern`.
+- **`src/router/params.rs`** (1 item, `0.1.0-rc.27`) — `Path` extractor.
+  Use `reinhardt_urls::routers::Path`.
+
 ### Fixed
 
 - *(pages)* enable security feature for WASM builds
@@ -256,6 +279,15 @@ stable release section.
   fetch-once path.
 
 - *(commands)* align startproject scaffold defaults
+- *(build)* address CodeRabbit review feedback
+- *(ci)* recover develop release-plz prerelease
+- *(auth,urls,pages)* remove stale references and fix latent clippy lints
+- *(ci)* resolve all pre-existing compilation failures on develop/0.2.0
+- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
+- *(pages)* address CodeRabbit use_resource review
+- *(forms)* address review and CI failures
+- *(forms)* address review feedback
+- *(forms)* address bot review feedback
 
 ### Performance
 
@@ -279,6 +311,26 @@ stable release section.
 
 - *(pages)* replace skeleton spawn_task test with behavior assertion
 - *(forms)* align form runtime UI fixtures
+- *(ci)* refresh release CI expectations
+- *(pages)* address CodeRabbit review on hydration tests
+- *(pages)* sync trybuild .stderr with rustfmt-collapsed empty braces
+
+### Styling
+
+- apply formatter fixes across workspace
+- format files from merge resolution
+- apply rustfmt to non-DSL files on develop/0.2.0
+- *(pages)* reorder form component imports to satisfy rustfmt
+
+### Maintenance
+
+- forward merge main v0.1.1 changes into develop 0.2.0
+- forward merge main v0.1.2 changes into develop 0.2.0
+- *(ci)* merge develop into release docs fix
+
+### Other
+
+- resolve conflicts with develop/0.2.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-rc.30...reinhardt-pages@v0.1.0) - 2026-05-22
 

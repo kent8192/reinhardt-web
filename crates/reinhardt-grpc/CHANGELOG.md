@@ -42,9 +42,17 @@ stable release section.
 
 - *(grpc)* add GrpcServerSettings fragment for the grpc_server section
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
 ### Deprecated
 
 - *(grpc)* deprecate GrpcServerConfig in favor of GrpcServerSettings
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
 
 ### Maintenance
 

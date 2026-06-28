@@ -35,9 +35,17 @@ stable release section.
 
 - *(server)* add RateLimitSettings fragment
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
 ### Deprecated
 
 - *(server)* deprecate RateLimitConfig in favor of RateLimitSettings
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
 
 ### Performance
 

@@ -26,6 +26,10 @@ Stable release of `reinhardt-router` for the Reinhardt 0.2.0 line. This
 entry consolidates the 0.2.0 release-candidate series into one
 stable release section.
 
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
 ### Documentation
 
 - *(release)* enforce public API doc coverage

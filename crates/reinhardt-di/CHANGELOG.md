@@ -61,6 +61,7 @@ stable release section.
 
 - *(auth)* make CurrentUser canonical extractor
 - *(di)* delete deprecated Injected<T> and OptionalInjected<T> types
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Removed
 
@@ -71,12 +72,50 @@ stable release section.
 - **`OptionalInjected<T>` type alias** (`src/injected.rs`, deprecated
   since `0.1.0-rc.16`) — use `Option<Depends<T>>` instead.
 
+#### BREAKING CHANGES
+
+All public APIs deprecated during the `0.1.0-rc.*` cycle have been
+removed per STABILITY_POLICY § SP-4. Refs umbrella Issue
+[#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
+
+`reinhardt-di` removals (2 items):
+
+- **`Injected<T>` struct** (`src/injected.rs`, deprecated since
+  `0.1.0-rc.16`) — the FastAPI-inspired wrapper that previously coexisted
+  with [`Depends<T>`](src/depends.rs). All injection codegen now goes
+  through `Depends<T>` exclusively.
+- **`OptionalInjected<T>` type alias** (`src/injected.rs`, deprecated
+  since `0.1.0-rc.16`) — use `Option<Depends<T>>` instead.
+
+#### Macro behavior change
+
+`#[injectable]` no longer accepts `Injected<T>` / `OptionalInjected<T>`
+fields. The error message reads:
+
+```text
+#[inject] field must have type Depends<T> or Option<Depends<T>>
+```
+
+`InjectionMetadata` and `DependencyScope` (the supporting metadata
+types that previously co-resided with `Injected<T>`) remain in
+`crates/reinhardt-di/src/injected.rs` because they are still used by
+`Depends<T>`. The module's `Injected<T>`/`OptionalInjected<T>`
+content is gone but the file name (`injected.rs`) is preserved this
+release to keep the diff focused on RC-deprecated removals — a rename
+is a candidate for a follow-up PR.
+
+See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md#reinhardt-di)
+for the migration guide.
+
 ### Fixed
 
 - *(di)* enforce scope check on cache-hit path
 - *(di)* enforce scope check on pre-seeded request cache and bypass path
 - *(di)* collapse nested if-let into let-chain
 - *(di)* resolve DependsResult/DependsOption field injection from registry
+- *(ci)* recover develop release-plz prerelease
+- *(di)* address Copilot review feedback on scope hierarchy tests
+- apply CodeRabbit auto-fixes
 
 ### Documentation
 
@@ -85,6 +124,14 @@ stable release section.
 - *(di)* document Injected removal in CHANGELOG and migration guide (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
 - *(di)* update public docs to reflect per-context registry isolation
 - *(di,auth)* fix rustdoc link warnings on nightly
+
+### Styling
+
+- format files from merge resolution
+
+### Other
+
+- resolve conflicts with develop/0.2.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-rc.30...reinhardt-di@v0.1.0) - 2026-05-22
 

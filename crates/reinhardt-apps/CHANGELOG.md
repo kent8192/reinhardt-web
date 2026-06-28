@@ -34,12 +34,14 @@ stable release section.
 ### Changed
 
 - *(conf)* delete deprecated Settings, AdvancedSettings, JsonFileSource, and related APIs
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Fixed
 
 - *(docs)* resolve remaining cross-crate intra-doc link errors
 - shield downstream consumers of newly deprecated config types
 - complete downstream shielding for deprecated config re-exports
+- *(ci)* recover develop release-plz prerelease
 
 ### Performance
 

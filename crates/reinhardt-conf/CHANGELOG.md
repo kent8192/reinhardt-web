@@ -52,6 +52,7 @@ stable release section.
 ### Changed
 
 - *(conf)* delete deprecated Settings, AdvancedSettings, JsonFileSource, and related APIs
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Deprecated
 
@@ -72,6 +73,8 @@ stable release section.
 - *(conf)* emit fragment self settings impls
 
 - *(ci)* pin broken upstream transitive releases
+- *(ci)* recover develop release-plz prerelease
+- *(ci)* resolve all pre-existing compilation failures on develop/0.2.0
 
 ### Performance
 
@@ -82,6 +85,10 @@ stable release section.
 - *(conf)* document embedded settings nodes
 - *(settings)* document embedded schema nodes
 - *(mail,conf)* fix unresolved intra-doc links to settings fragments
+
+### Styling
+
+- apply formatter fixes across workspace
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-rc.30...reinhardt-conf@v0.1.0) - 2026-05-22
 

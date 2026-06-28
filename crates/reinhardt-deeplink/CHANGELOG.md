@@ -36,6 +36,10 @@ stable release section.
 
 - *(deeplink)* add DeeplinkSettings fragment
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
 ### Deprecated
 
 - *(deeplink)* deprecate DeeplinkConfig in favor of DeeplinkSettings
@@ -44,6 +48,8 @@ stable release section.
 
 - *(settings)* require explicit nested settings nodes
 - *(deeplink)* derive Default for DeeplinkSettings
+- *(build)* port Codex review follow-ups
+- *(ci)* recover develop release-plz prerelease
 
 ### Documentation
 

@@ -36,6 +36,15 @@ stable release section.
 - *(pages)* support keyed page list rendering
 - feat!(forms): route use_form through form definitions
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+- *(forms)* address bot review feedback
+
 ### Performance
 
 - *(pages)* trim wasm dependency graph

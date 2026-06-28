@@ -64,6 +64,7 @@ stable release section.
 
 - *(auth)* make CurrentUser canonical extractor
 - *(admin)* migrate create_resource to use_resource
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Removed
 
@@ -75,6 +76,26 @@ stable release section.
   `reinhardt_utils::staticfiles::vendor`. Admin's own assets are
   declared via `inventory::submit!` in `crates/reinhardt-admin/src/lib.rs`.
 
+#### BREAKING CHANGES
+
+**Final PR closing umbrella Issue
+[#4520](https://github.com/kent8192/reinhardt-web/issues/4520).**
+
+Removed all 6 RC-deprecated vendor-asset shim items from
+`reinhardt-admin` per STABILITY_POLICY § SP-4:
+
+- **`reinhardt-admin::core::vendor`** module gated with `#![cfg(any())]`
+  — contains the deprecated `VendorAsset`, `Verbosity`,
+  `verify_integrity`, `download_vendor_assets`,
+  `ensure_vendor_assets`, `admin_vendor_assets` (all deprecated since
+  `0.1.0-rc.27`). All items moved to
+  `reinhardt_utils::staticfiles::vendor`. Admin's own assets are
+  declared via `inventory::submit!` in `crates/reinhardt-admin/src/lib.rs`.
+
+With this PR merged, every `#[deprecated(since = "0.1.0-rc.X", ...)]`
+item documented in Issue #4520 has been removed across all 12 affected
+crates. The `since = "0.1.0-rc.*"` namespace is retired.
+
 ### Fixed
 
 - *(orm)* address lookup review edge cases
@@ -83,14 +104,28 @@ stable release section.
 - *(admin)* preserve multi-select mutation values
 - *(auth)* replace InternalUser in UserManager public API with ManagedUser
 - *(admin)* compile admin wasm browser tests
+- *(ci)* recover develop release-plz prerelease
+- *(forms)* address review and CI failures
+- *(forms)* address bot review feedback
 
 ### Documentation
 
 - *(admin)* remove broken DefaultUser intra-doc links
 
+### Styling
+
+- *(admin)* format admin feature controls
+- apply formatter fixes across workspace
+- apply rustfmt to non-DSL files on develop/0.2.0
+
 ### Maintenance
 
 - include all main v0.1.1 PR changes
+- forward merge main v0.1.2 changes into develop 0.2.0
+
+### Other
+
+- resolve conflicts with develop/0.2.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.0-rc.30...reinhardt-admin@v0.1.0) - 2026-05-22
 

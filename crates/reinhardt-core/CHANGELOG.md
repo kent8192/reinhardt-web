@@ -75,6 +75,10 @@ stable release section.
 
 - *(macros)* expose model info companions to wasm
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
 ### Removed
 
 - **`#[routes]` deprecated 2-level URL accessor codegen** (rc.16) —
@@ -102,6 +106,43 @@ stable release section.
   `UrlResolverUnprefixed` trait itself is removed in
   `reinhardt-urls` PR.
 
+#### BREAKING CHANGES
+
+All `reinhardt-core` public APIs deprecated during the `0.1.0-rc.*`
+cycle have been removed per STABILITY_POLICY § SP-4 ("APIs deprecated
+during RC MUST survive until the next major version"). Refs umbrella
+Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
+
+`reinhardt-core` removals (8 macro-emitted items):
+
+- **`#[routes]` deprecated 2-level URL accessor codegen** (rc.16) —
+  `urls.<app>()` is removed. Use the namespaced gateway
+  `urls.server().<app>()` instead. Affects every project that depends
+  on `#[routes]` and called the 2-level accessor.
+- **`#[routes]` deprecated 2-level client URL accessor codegen**
+  (rc.16) — `urls.<app>_client()` is removed. Use
+  `urls.client().<app>()` instead.
+- **`#[get(name = "...")]` / `#[post(name = "...")]` deprecated per-route
+  resolver-trait codegen** (rc.16) — the legacy `Resolve<Name>` trait
+  blanket-impl that produced flat `urls.<name>(...)` calls is removed.
+  Use the namespaced accessors `urls.server().<app>().<name>(...)`
+  emitted by the same macros.
+- **`#[viewset]` flat ViewSet accessor codegen** (rc.29, Issue
+  [#4507](https://github.com/kent8192/reinhardt-web/issues/4507)) —
+  the `Resolve<Pascal>List` / `Resolve<Pascal>Detail` traits and the
+  matching `urls.<basename>_list()` / `urls.<basename>_detail(id)`
+  flat accessors are removed (4 generated items). Use
+  `urls.server().<app>().<basename>_list()` /
+  `urls.server().<app>().<basename>_detail(id)` instead.
+- **`impl UrlResolverUnprefixed for ResolvedUrls`** override emitted by
+  `#[routes]` — removed because the flat ViewSet accessor that
+  required namespace-iterating fallback no longer exists. The
+  `UrlResolverUnprefixed` trait itself is removed in
+  `reinhardt-urls` PR.
+
+See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md#reinhardt-core)
+for the full migration guide.
+
 ### Fixed
 
 - stop implicit openapi schema macro output
@@ -116,6 +157,11 @@ stable release section.
 - *(macros)* keep unnamed EndpointMetadata.name None across codegen paths
 - *(pages)* rerender SPA links after cleanup
 - *(conf)* emit fragment self settings impls
+- *(core)* address Copilot review feedback on PR [[#4713](https://github.com/kent8192/reinhardt-web/issues/4713)](https://github.com/kent8192/reinhardt-web/issues/4713)
+- *(ci)* recover develop release-plz prerelease
+- *(ci)* resolve all pre-existing compilation failures on develop/0.2.0
+- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
+- *(pages)* address CodeRabbit use_resource review
 
 ### Performance
 
@@ -129,6 +175,10 @@ stable release section.
 
 - *(release)* enforce public API doc coverage
 - *(core)* scaffold MIGRATION_0.2.md and document BREAKING CHANGES (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+
+### Other
+
+- resolve conflicts with develop/0.2.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.30...reinhardt-core@v0.1.0) - 2026-05-22
 

@@ -31,6 +31,14 @@ stable release section.
 - Regenerate model and migration code after updating query/filter call sites.
 - See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db-macros@v0.1.0-rc.30...reinhardt-db-macros@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-db-macros` as part of the

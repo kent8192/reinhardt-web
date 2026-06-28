@@ -42,6 +42,10 @@ stable release section.
 
 - *(conf)* [**breaking**] remove legacy advanced settings types
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
 ### Deprecated
 
 - bridge SmtpConfig to the EmailSettings fragment
@@ -51,6 +55,8 @@ stable release section.
 
 - *(mail)* accept settings email fragments
 - *(conf)* [**breaking**] remove legacy advanced settings types
+- *(ci)* recover develop release-plz prerelease
+- *(ci)* unblock release docs and form tests
 
 ### Documentation
 

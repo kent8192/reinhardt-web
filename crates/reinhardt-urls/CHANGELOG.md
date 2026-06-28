@@ -111,8 +111,18 @@ stable release section.
   signature (1..=8 `Path<T>` extractors supported). Migration is a
   mechanical rename: drop the numeric suffix on every call site. Refs
   [#4637](https://github.com/kent8192/reinhardt-web/issues/4637).
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Removed
+
+- **`reverse_with_aho_corasick(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_with_aho_corasick` (the fallible variant).
+- **`reverse_single_pass(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_single_pass`.
+- **`UrlResolverUnprefixed` trait** (`src/routers/resolver.rs`, deprecated `0.1.0-rc.29`, refs #4507 defect #2) — only supported the removed flat ViewSet trait accessors emitted by `#[viewset]`. Prefer `urls.server().<app>().<route>()`.
+
+#### BREAKING CHANGES
+
+Removed 3 RC-deprecated items per STABILITY_POLICY § SP-4 (umbrella
+Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520)):
 
 - **`reverse_with_aho_corasick(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_with_aho_corasick` (the fallible variant).
 - **`reverse_single_pass(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_single_pass`.
@@ -131,6 +141,8 @@ stable release section.
 - *(urls)* populate global UrlReverser in register_router_arc() too
 - *(docs)* resolve rustdoc intra-doc link errors on develop/0.2.0
 - *(docs)* resolve remaining rustdoc doctest failures
+- *(ci)* recover develop release-plz prerelease
+- *(auth,urls,pages)* remove stale references and fix latent clippy lints
 
 ### Performance
 
@@ -139,6 +151,16 @@ stable release section.
 ### Documentation
 
 - *(urls)* align WASM UnifiedRouter::server doc with no-invoke behavior
+
+### Styling
+
+- apply formatter fixes across workspace
+- format files from merge resolution
+- apply rustfmt to non-DSL files on develop/0.2.0
+
+### Maintenance
+
+- resolve merge conflict in reinhardt-urls CHANGELOG.md (develop/0.2.0)
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.30...reinhardt-urls@v0.1.0) - 2026-05-22
 

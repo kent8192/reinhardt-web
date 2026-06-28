@@ -50,10 +50,12 @@ stable release section.
 ### Changed
 
 - *(di)* delete deprecated Injected<T> and OptionalInjected<T> types
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Fixed
 
 - *(di)* resolve DependsResult/DependsOption field injection from registry
+- *(ci)* recover develop release-plz prerelease
 
 ### Documentation
 

@@ -534,7 +534,7 @@ reinhardt-openapi = { path = "crates/reinhardt-openapi", version = "0.3.0" }
 
 # Feature crates (develop/0.2.0)
 reinhardt-providers = { path = "crates/reinhardt-providers", version = "0.3.0" }
-reinhardt-storages = { path = "crates/reinhardt-storages", version = "0.2.7" }
+reinhardt-storages = { path = "crates/reinhardt-storages", version = "0.3.0" }
 
 # Query subcrates
 reinhardt-query-macros = { path = "crates/reinhardt-query/macros", version = "0.3.0" }

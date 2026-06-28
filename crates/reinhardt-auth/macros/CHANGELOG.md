@@ -31,6 +31,10 @@ stable release section.
 - Regenerate auth models after moving to the final `CurrentUser<U>` and user trait contracts.
 - See [`instructions/MIGRATION_0.2.md`](../../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
 
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
 ### Documentation
 
 - *(release)* enforce public API doc coverage

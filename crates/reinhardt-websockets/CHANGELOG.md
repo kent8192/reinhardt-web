@@ -36,9 +36,17 @@ stable release section.
 
 - *(websockets)* add settings fragments for connection, reconnection, origin, rate limit, and redis
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
 ### Deprecated
 
 - *(websockets)* deprecate ad-hoc XxxConfig structs in favor of settings fragments
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
 
 ### Maintenance
 

@@ -89,6 +89,13 @@ stable release section.
 - *(commands)* use collectstatic no-input in pages template
 - *(commands)* make generated model placeholders tutorial-safe
 - *(commands)* ignore sqlite database in project templates
+- *(ci)* repair admin dependency config checks
+- *(build)* address CodeRabbit review feedback
+- *(build)* port Codex review follow-ups
+- address CodeRabbit review comments
+- address follow-up CodeRabbit comments
+- *(ci)* recover develop release-plz prerelease
+- *(ci)* update WASM consumer fixture for URL routing simplification
 
 ### Performance
 
@@ -108,9 +115,14 @@ stable release section.
 
 - *(tutorial)* aggregate app URL routers
 
+### Styling
+
+- apply formatter fixes across workspace
+
 ### Maintenance
 
 - *(commands)* ignore local infra state in templates
+- forward merge main v0.1.1 changes into develop 0.2.0
 
 ### Testing
 
@@ -120,6 +132,11 @@ stable release section.
 - *(commands)* cover migrate --migrations-dir flag parsing
 - *(commands)* drop needless #[allow(unreachable_patterns)] in migrate parse test
 - *(commands)* cover settings-based database URL resolution
+- *(ci)* refresh release CI expectations
+
+### Other
+
+- resolve conflicts with develop/0.2.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.30...reinhardt-commands@v0.1.0) - 2026-05-22
 

@@ -52,11 +52,16 @@ stable release section.
 - *(orm)* support composite filter combinators
 - *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
 ### Fixed
 
 - *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
 - *(db)* qualify Manager in rustdoc examples and add missing Objects type
 - *(views)* route generic queryset fallback through objects
+- *(ci)* recover develop release-plz prerelease
 
 ### Performance
 
@@ -67,6 +72,10 @@ stable release section.
 
 - *(views)* assert filter operator and value with matches! instead of Debug substring
 - *(views)* cover explicit queryset override on retrieve-update and retrieve-destroy views
+
+### Styling
+
+- apply formatter fixes across workspace
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.30...reinhardt-views@v0.1.0) - 2026-05-22
 

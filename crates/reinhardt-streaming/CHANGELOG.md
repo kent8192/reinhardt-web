@@ -30,6 +30,10 @@ stable release section.
 
 - remove StreamingRef accessor and stale ResolvedUrls references
 
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
 ### Documentation
 
 - *(release)* enforce public API doc coverage

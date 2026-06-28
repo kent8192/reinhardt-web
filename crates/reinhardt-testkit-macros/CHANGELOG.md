@@ -31,6 +31,10 @@ stable release section.
 - Use the final testkit override and auth helper APIs when regenerating fixtures.
 - See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
 
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
 ### Documentation
 
 - *(release)* enforce public API doc coverage

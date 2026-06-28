@@ -60,10 +60,22 @@ stable release section.
 - split formatter from admin cli
 
 - *(commands)* align startproject scaffold defaults
+- *(ci)* repair admin dependency config checks
+- *(admin-cli)* revert rustfmt-damaged migrate_v2 fixtures
+- *(admin-cli)* preserve migrate_v2 fixtures during fmt-all
+- *(admin-cli)* skip nested workspaces in fmt-all
 
 ### Documentation
 
 - *(release)* enforce public API doc coverage
+
+### Styling
+
+- apply rustfmt to non-DSL files on develop/0.2.0
+
+### Maintenance
+
+- forward merge main v0.1.2 changes into develop 0.2.0
 
 ## [0.1.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0...reinhardt-admin-cli@v0.1.1) - 2026-05-24
 ### Added

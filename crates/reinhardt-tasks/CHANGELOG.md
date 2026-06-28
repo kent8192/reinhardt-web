@@ -46,6 +46,10 @@ stable release section.
 
 - *(tasks)* add settings fragments and settings-first constructors
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
 ### Deprecated
 
 - *(tasks)* deprecate config structs in favor of settings fragments
@@ -56,6 +60,7 @@ stable release section.
 - *(tasks)* [**breaking**] remove misleading create_queue_from_settings API
 
 - *(ci)* pin broken upstream transitive releases
+- *(ci)* recover develop release-plz prerelease
 
 ### Documentation
 

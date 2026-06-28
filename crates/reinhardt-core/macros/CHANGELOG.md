@@ -84,6 +84,7 @@ stable release section.
 
 - *(settings)* share schema macro analysis
 - *(auth)* make CurrentUser canonical extractor
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Removed
 
@@ -112,11 +113,19 @@ stable release section.
 - *(macros)* suppress missing_docs on generated Info companion types
 - *(macros)* keep unnamed EndpointMetadata.name None across codegen paths
 - *(conf)* emit fragment self settings impls
+- *(core)* address Copilot review feedback on PR [[#4713](https://github.com/kent8192/reinhardt-web/issues/4713)](https://github.com/kent8192/reinhardt-web/issues/4713)
+- *(ci)* recover develop release-plz prerelease
+- *(macros)* address CodeRabbit review on model Info generation
+- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
 
 ### Documentation
 
 - *(release)* enforce public API doc coverage
 - *(settings)* document embedded schema nodes
+
+### Other
+
+- resolve conflicts with develop/0.2.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.1.0-rc.30...reinhardt-macros@v0.1.0) - 2026-05-22
 

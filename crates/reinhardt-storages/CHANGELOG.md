@@ -7,10 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.6...reinhardt-storages@v0.2.7) - 2026-06-28
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.6...reinhardt-storages@v0.3.0) - 2026-06-28
+
+Stable release of `reinhardt-storages` for the Reinhardt 0.3.0 line. This
+entry moves the crate onto the coordinated Reinhardt 0.3.0 release train and
+binds it to the shared release-plz version group used by the rest of the
+published libraries.
+
+### Migration Notes
+
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
 ### Maintenance
 
+- bind `reinhardt-storages` to the shared `reinhardt` release-plz version group.
 - updated the following local packages: reinhardt-core, reinhardt-conf, reinhardt-providers
 
 ## [0.2.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.2.5...reinhardt-storages@v0.2.6) - 2026-06-27
@@ -76,12 +86,22 @@ stable release section.
   integrations.
 
 - *(providers)* add minimal S3 provider client
+- Implemented Google Cloud Storage and Azure Blob Storage backends.
+- Added `StorageSettings` as the primary `#[settings]` fragment for storage configuration.
+- Added `create_storage_from_settings(&StorageSettings)` for settings-first backend construction.
+- Added fake-gcs-server and Azurite integration coverage for cloud backend behavior.
 
 ### Changed
 
 - *(storages)* consolidate test fixture submodules into single file
 - *(storages)* consolidate test utility submodules into single file
 - storage configuration now follows the explicit nested settings-node model.
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Deprecated
+
+- Deprecated `StorageConfig` and provider-specific `XxxConfig` structs in favor of `StorageSettings`.
+- Deprecated `StorageConfig::from_env()` in favor of composed settings loading.
 
 ### Fixed
 
@@ -103,11 +123,18 @@ stable release section.
 
 - *(providers)* preserve AWS credential chain
 - *(providers)* address CodeRabbit review
+- remove develop/0.2.0 content accidentally merged via PR [[#1918](https://github.com/kent8192/reinhardt-web/issues/1918)](https://github.com/kent8192/reinhardt-web/issues/1918)
+- resolve CI failures for unconditional reactive auto-wrap PR
+- *(ci)* recover develop release-plz prerelease
+- *(ci)* resolve all pre-existing compilation failures on develop/0.2.0
+- *(storages)* address CodeRabbit review feedback
+- apply CodeRabbit auto-fixes
 
 ### Security
 
 - *(storages)* reject path traversal in LocalStorage
 - *(storages)* reject Windows drive-letter absolute paths in validate_path
+- *(storages)* add symlink containment check and expand test coverage
 
 ### Documentation
 
@@ -115,9 +142,31 @@ stable release section.
 - *(storages)* document settings-first cloud storage
 - *(release)* enforce public API doc coverage
 
+### Testing
+
+- *(storages)* add test suite entry point and module organization
+- *(storages)* add comprehensive configuration and environment parsing tests
+- *(storages)* add factory pattern and backend creation tests
+- *(storages)* add test fixtures module organization
+- *(storages)* add test utilities module organization
+- *(storages)* add comprehensive local storage backend tests
+- *(storages)* add comprehensive S3 storage backend tests with LocalStack
+- *(storages)* align dangerous path test coverage across all methods
+- *(storages)* split Err/Ok arms to avoid Debug on dyn backend
+- *(storages)* wait for Azurite readiness log instead of fixed delay
+
+### Styling
+
+- *(storages)* apply rustfmt to test files
+- format files from merge resolution
+- *(storages)* wrap long config-error assertion to satisfy rustfmt
+
 ### Maintenance
 
 - updated the following local packages: reinhardt-core, reinhardt-conf
+- *(storages)* add test dependencies for comprehensive test suite
+- *(storages)* add serial_test dev-dependency
+- merge develop/0.2.0 and resolve CHANGELOG conflict
 
 ## [0.1.0] - 2026-01-24
 

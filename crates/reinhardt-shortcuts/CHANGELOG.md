@@ -46,6 +46,15 @@ stable release section.
 
 - *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(build)* port Codex review follow-ups
+- *(ci)* recover develop release-plz prerelease
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-rc.30...reinhardt-shortcuts@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-shortcuts` as part of the

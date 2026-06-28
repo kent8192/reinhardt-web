@@ -42,10 +42,23 @@ stable release section.
 - *(auth)* replace InternalUser in UserManager public API with ManagedUser
 - *(docs)* resolve remaining rustdoc doctest failures
 - *(forms)* stabilize form runtime and validator parity
+- *(ci)* recover develop release-plz prerelease
+- *(ci)* resolve all pre-existing compilation failures on develop/0.2.0
+- *(forms)* address review and CI failures
+- *(forms)* address review feedback
+- *(forms)* address bot review feedback
 
 ### Performance
 
 - *(pages)* trim wasm dependency graph
+
+### Styling
+
+- apply formatter fixes across workspace
+
+### Maintenance
+
+- forward merge main v0.1.1 changes into develop 0.2.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0-rc.30...reinhardt-manouche@v0.1.0) - 2026-05-22
 

@@ -37,6 +37,14 @@ stable release section.
 - Review the breaking changes listed below before upgrading from 0.1.x.
 - See the root CHANGELOG and `instructions/MIGRATION_0.2.md` for cross-crate migration guidance.
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
 ### Maintenance
 
 - update Cargo.toml dependencies

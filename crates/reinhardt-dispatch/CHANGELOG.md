@@ -46,6 +46,14 @@ stable release section.
 
 - [**breaking**] remove Route::with_name() builder method
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
+### Fixed
+
+- *(ci)* recover develop release-plz prerelease
+
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-rc.30...reinhardt-dispatch@v0.1.0) - 2026-05-22
 
 Initial stable release of `reinhardt-dispatch` as part of the

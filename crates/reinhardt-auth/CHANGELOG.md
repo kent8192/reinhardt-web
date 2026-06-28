@@ -59,6 +59,7 @@ stable release section.
 ### Changed
 
 - *(auth)* make CurrentUser canonical extractor
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Deprecated
 
@@ -85,12 +86,46 @@ stable release section.
   `AuthIdentity` + `BaseUser` / `FullUser` + `PermissionsMixin`
   instead.
 
+#### BREAKING CHANGES
+
+Removed all 3 RC-deprecated APIs from `reinhardt-auth` per
+STABILITY_POLICY § SP-4 (umbrella Issue
+[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)) plus
+closed companion Issue
+[#4652](https://github.com/kent8192/reinhardt-web/issues/4652).
+
+- **`CurrentUser<U>` struct** (`src/current_user.rs`, deprecated
+  `0.1.0-rc.12`) — entire module removed. Use the canonical
+  `AuthUser<U>` extractor (`src/auth_user.rs`) directly. Closes
+  Issue #4652.
+
+  Note: `CurrentUser` could **not** be retained as a type alias
+  (the original plan in #4652) because its on-the-wire shape
+  (`Option<U>` + `Option<Uuid>`) differs from `AuthUser`'s
+  tuple-struct shape — a type alias would break pattern-matching
+  call sites. Migration is therefore a struct-replacement rather
+  than a no-op alias.
+
+- **`DefaultUser` struct** (`src/default_user.rs`, deprecated
+  `0.1.0-rc.15`) — entire module removed. Define your own user type
+  with the `#[user]` attribute macro.
+
+- **`User` trait + `SimpleUser` + `AnonymousUser`** (`src/core/user.rs`,
+  deprecated `0.1.0-rc.15`) — entire module removed. Use
+  `AuthIdentity` + `BaseUser` / `FullUser` + `PermissionsMixin`
+  instead.
+
 ### Fixed
 
 - stop implicit openapi schema macro output
 - *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
 - *(auth)* replace InternalUser in UserManager public API with ManagedUser
 - *(macros)* suppress missing_docs on generated Info companion types
+- address CodeRabbit dependency gate review
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* address CodeRabbit review feedback
+- *(auth,urls,pages)* remove stale references and fix latent clippy lints
+- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
 
 ### Performance
 
@@ -102,6 +137,10 @@ stable release section.
 - *(auth)* update core.rs and lib.rs doc references for removed types
 - *(di,auth)* fix rustdoc link warnings on nightly
 
+### Styling
+
+- apply formatter fixes across workspace
+
 ### Maintenance
 
 - *(auth)* add reinhardt-conf dependency for settings fragments
@@ -109,6 +148,19 @@ stable release section.
 ### Testing
 
 - *(auth)* remove time-based permission clock flake
+
+### Known consumer migration follow-up
+
+This PR removes the symbols from `reinhardt-auth` itself. Workspace
+consumers that still reference the removed types — including
+`reinhardt-middleware`, `reinhardt-rest`, `reinhardt-http`,
+`reinhardt-views`, the `examples-tutorial-basis` app (per #4652's
+companion-PR section), and the workspace facade `reinhardt-web` — will
+need a coordinated migration in a follow-up PR. CI on this PR is
+expected to fail compilation on those crates until the follow-up lands.
+
+See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md#reinhardt-auth)
+for the migration guide.
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-rc.30...reinhardt-auth@v0.1.0) - 2026-05-22
 

@@ -51,6 +51,10 @@ stable release section.
 - *(rest)* [**breaking**] remove deprecated OpenApiConfig struct (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
 - *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
 ### Removed
 
 - **`OpenApiConfig` struct** (`src/openapi/config.rs`, deprecated since
@@ -58,11 +62,23 @@ stable release section.
   `OpenApiSettings` from `reinhardt_conf::settings::openapi` instead.
   Refs [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
 
+#### BREAKING CHANGES
+
+- **`OpenApiConfig` struct** (`src/openapi/config.rs`, deprecated since
+  `0.1.0-rc.16`) — removed per STABILITY_POLICY § SP-4. Use
+  `OpenApiSettings` from `reinhardt_conf::settings::openapi` instead.
+  Refs [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
+
+No workspace consumers referenced `OpenApiConfig` directly, so no
+follow-up consumer migration is required.
+
 ### Fixed
 
 - keep openapi facade feature standalone
 - *(rest)* remove deletion-history comments from openapi.rs
 - *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* address CodeRabbit review feedback
 
 ### Performance
 

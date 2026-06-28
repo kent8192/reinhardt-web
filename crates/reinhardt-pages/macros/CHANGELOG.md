@@ -99,6 +99,10 @@ stable release section.
 - *(forms)* stabilize form runtime and validator parity
 
 - *(forms)* omit unreachable focus path for empty forms
+- *(ci)* recover develop release-plz prerelease
+- *(forms)* address review and CI failures
+- *(forms)* address review feedback
+- *(forms)* address bot review feedback
 
 ### Performance
 
@@ -108,6 +112,15 @@ stable release section.
 
 - *(release)* enforce public API doc coverage
 - *(pages)* document Clone requirement for keyed for iterators
+
+### Testing
+
+- *(ci)* refresh release CI expectations
+
+### Maintenance
+
+- forward merge main v0.1.1 changes into develop 0.2.0
+- *(ci)* merge develop into release docs fix
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-rc.30...reinhardt-pages-macros@v0.1.0) - 2026-05-22
 
