@@ -7,138 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.5...reinhardt-web@v0.3.0-rc.6) - 2026-06-27
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0...reinhardt-web@v0.3.0) - 2026-06-28
 
-### Documentation
+Stable 0.3.0 is the first stable release of the Reinhardt 0.3 line. It
+promotes the 0.3.0 release-candidate train into one upgrade story:
+retire the deprecated 0.2 compatibility APIs, make Pages, Manouche,
+and server-function contracts explicit, stabilize ORM and migration
+metadata, and finish the release documentation required for stable
+publication.
 
-- add release announcement(s)
-- *(release)* expose 0.3 migration guide
-- *(pages)* document WASM server fn resolver
+This release is not a patch-style rollup. It is a migration release for
+applications that stayed on 0.2.x while the 0.3 APIs stabilized. The
+section below is a curated stable summary of the prerelease train and
+final release-polish changes.
 
-### Fixed
+### Upgrade Impact
 
-- *(commands)* align pages tutorial scaffold
-- *(commands)* address scaffold review feedback
-- *(commands)* include auth tutorial scaffold features
-- *(migrations)* handle field changes on renamed models
-- *(migrations)* address autodetector review gaps
-- *(macros)* stop propagating serde skip to Info relation fields
+| Area | What changes for application maintainers |
+|---|---|
+| Public API cleanup | Remove deprecated 0.2 compatibility extractors, Pages resource constructors, and effect-event hooks. |
+| Pages and Manouche | Update page bodies, hooks, client routes, server-function endpoint resolution, and WASM-only helper usage to the final 0.3 contracts. |
+| ORM and migrations | Review relation-shaped model metadata, conditional partial updates, renamed-field detection, database defaults, and replayed foreign-key constraints. |
+| Scaffolding and tutorials | Regenerate Pages projects with the 0.3 scaffold defaults, SQLite tutorial setup, target-neutral modules, and updated quickstart feature sets. |
+| Routing, HTTP, and admin | Adopt the refined cookie extractor, PathParams, request allocation, admin list-count, and route helper behavior stabilized during the RC train. |
+| Tooling and release flow | Use the Rust 1.96 toolchain, updated formatter/tree-sitter release grouping, public API doc coverage, and hardened release-plz dry-run checks. |
 
-### Maintenance
+### Release Highlights
 
-- merge main into develop/0.3.0
+- **The 0.2 compatibility surface is removed.** Projects should migrate
+  to `CurrentUser`, `use_resource(fetcher, deps)`, `use_callback`, and
+  explicit signal reads in effects before upgrading.
+- **Pages and WASM contracts are final for the 0.3 line.** Client page
+  helpers, server-function endpoint resolution, scaffolded route gates,
+  and tutorial layouts now match the stable target model.
+- **ORM and migration metadata are stricter.** Relation-shaped model info,
+  conditional partial updates, renamed-field handling, database defaults,
+  CockroachDB serialization, and replayed foreign-key constraints are all
+  represented in the stable release train.
+- **Runtime hot paths were tightened.** Request allocation, router
+  allocation, database pool acquisition, migration graph planning, and
+  admin list-count queries received targeted performance work.
+- **Release readiness was hardened.** Public API TODO audits, docs, CI
+  cache behavior, formatter output, release-plz classification, and
+  tutorial verification were aligned for the stable publication path.
 
-### Testing
+### Breaking Changes
 
-- *(migrations)* tighten autodetector assertions
-- *(examples)* guard polls question FK migration type
-
-## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.4...reinhardt-web@v0.3.0-rc.5) - 2026-06-26
-
-### Changed
-
-- *(pages)* derive fetch credentials default
-
-### Documentation
-
-- add release announcement(s)
-- *(tutorial)* fix SQLite poll seed snippet
-
-### Fixed
-
-- *(scaffolding)* default pages projects to sqlite
-- *(ci)* quote release-plz dry-run regex
-- *(ci)* satisfy server router clippy lint
-- *(commands)* repair pages quickstart scaffold defaults
-
-### Maintenance
-
-- merge develop 0.3.0 into build-time perf branch
-- merge latest develop 0.3.0 into build-time perf branch
-
-## [0.3.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.3...reinhardt-web@v0.3.0-rc.4) - 2026-06-24
-
-### Changed
-
-- *(scaffolding)* align Pages app layout
-
-### Documentation
-
-- add release announcement(s)
-- *(tutorial)* align 0.3.0 tutorial scaffolding
-- *(tutorial)* address 0.3.0 review feedback
-- *(tutorial)* gate client route modules
-- *(tutorial)* remove native client route specs
-- *(tutorial)* align pages scaffolding route gates
-
-## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.2...reinhardt-web@v0.3.0-rc.3) - 2026-06-23
+- **Deprecated 0.2 compatibility APIs are removed.** This includes the
+  `AuthUser<U>` extractor, deprecated Pages resource constructors, and
+  effect-event hooks. Use `CurrentUser<U>`, `use_resource(fetcher, deps)`,
+  `use_callback`, and explicit untracked signal reads instead.
+- **Pages code should target the final 0.3 hook and route contracts.**
+  Regenerate scaffolded Pages apps and review client route gates, server
+  function endpoint resolution, and WASM-only helper usage.
+- **ORM and migration diffs may become more explicit.** Relation-shaped
+  model metadata, renamed fields, database defaults, and replayed foreign
+  keys are now represented in the stable migration surface.
 
 ### Added
 
 - *(website)* add technical notes domain
 - *(macros)* make user macro inert on wasm
-
-### Fixed
-
-- *(infra)* import website DNS records
-- *(ci)* restrict wasm cache seed to main pushes
-- *(views)* wire declared viewset serializers
-- *(tests)* align viewset serializer fixtures
-- *(views)* align viewset serializer examples
-
-## [0.3.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.1...reinhardt-web@v0.3.0-rc.2) - 2026-06-19
-
-### Added
-
 - *(orm)* add QuerySet conditional partial updates
-
-### Fixed
-
-- *(db)* suppress replayed migration drift
-
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0...reinhardt-web@v0.3.0-rc.1) - 2026-06-18
-
-### Added
-
 - feat!(macros): expose relation-shaped model info fields
 - *(formatter)* add semantic page grammar nodes
 - *(formatter)* rustfmt page expression islands
-- *(website)* add technical notes domain
 
 ### Changed
 
+- *(pages)* derive fetch credentials default
+- *(scaffolding)* align Pages app layout
 - *(admin)* use keyed depends for server injections
-- [**breaking**] remove 0.3 deprecated public APIs
-
-### Documentation
-
-- *(formatter)* document page rustfmt islands
-
-### Fixed
-
-- *(ci)* pin brotli allocator dependency
-- *(examples)* align polls info fixtures with relations
-- *(formatter)* handle reviewed page rustfmt islands
-- add native stubs for client page functions
-- *(pages)* export client_page from prelude
-- *(di)* honor cache false for keyed wrappers
-- *(ci)* satisfy pages clippy lint
-- *(infra)* import website DNS records
-- *(pages)* re-export use_callback_with from reactive::hooks
-
-### Maintenance
-
-- *(release)* group tree-sitter crates
-- merge develop/0.3.0 into pr 5346
-
-### Styling
-
-- *(examples)* format tutorial basis pages
-- format di exports
-
-### Testing
-
-- *(pages)* isolate static resolver state
 
 ### Removed
 
@@ -151,6 +90,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `use_effect_event_with`. Use `use_callback` / `use_callback_with` or read
   latest signal values with `.get_untracked()` inside effects.
 
+### Fixed
+
+- *(db)* replay foreign key constraints and defaults
+- *(bench)* avoid unused server error bindings
+- *(db)* apply alter column defaults in migrations
+- *(commands)* align pages tutorial scaffold
+- *(commands)* address scaffold review feedback
+- *(commands)* include auth tutorial scaffold features
+- *(migrations)* handle field changes on renamed models
+- *(migrations)* address autodetector review gaps
+- *(macros)* stop propagating serde skip to Info relation fields
+- *(scaffolding)* default pages projects to sqlite
+- *(ci)* quote release-plz dry-run regex
+- *(ci)* satisfy server router clippy lint
+- *(commands)* repair pages quickstart scaffold defaults
+- *(infra)* import website DNS records
+- *(ci)* restrict wasm cache seed to main pushes
+- *(views)* wire declared viewset serializers
+- *(tests)* align viewset serializer fixtures
+- *(views)* align viewset serializer examples
+- *(db)* suppress replayed migration drift
+- *(ci)* pin brotli allocator dependency
+- *(examples)* align polls info fixtures with relations
+- *(formatter)* handle reviewed page rustfmt islands
+- add native stubs for client page functions
+- *(pages)* export client_page from prelude
+- *(di)* honor cache false for keyed wrappers
+- *(ci)* satisfy pages clippy lint
+- *(pages)* re-export use_callback_with from reactive::hooks
+
+### Documentation
+
+- add release announcement(s)
+- *(release)* expose 0.3 migration guide
+- *(pages)* document WASM server fn resolver
+- *(tutorial)* fix SQLite poll seed snippet
+- *(tutorial)* align 0.3.0 tutorial scaffolding
+- *(tutorial)* address 0.3.0 review feedback
+- *(tutorial)* gate client route modules
+- *(tutorial)* remove native client route specs
+- *(tutorial)* align pages scaffolding route gates
+- *(formatter)* document page rustfmt islands
+
+### Testing
+
+- *(migrations)* tighten autodetector assertions
+- *(examples)* guard polls question FK migration type
+- *(pages)* isolate static resolver state
+
+### Styling
+
+- *(examples)* format tutorial basis pages
+- format di exports
+
+### Maintenance
+
+- merge main into develop/0.3.0
+- merge develop 0.3.0 into build-time perf branch
+- merge latest develop 0.3.0 into build-time perf branch
+- *(release)* group tree-sitter crates
+- merge develop/0.3.0 into pr 5346
+
 ### Migration Guide
 
 - Follow [`instructions/MIGRATION_0.3.md`](instructions/MIGRATION_0.3.md) for
@@ -159,16 +160,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.3...reinhardt-web@v0.2.0) - 2026-06-11
 
 Stable 0.2.0 is the first release of the Reinhardt 0.2 line. It
-promotes the `0.2.0-rc.2` through `0.2.0-rc.6` train into one upgrade
+promotes the 0.2.0 release-candidate train into one upgrade
 story: remove the 0.1.x compatibility layer, adopt the final Manouche
 v2 page/form model, move application configuration to typed settings
 fragments, and make routing, testing, and local development more
 explicit.
 
 This release is not a patch-style rollup. It is a migration release for
-applications that stayed on 0.1.x while the 0.2 APIs stabilized. Earlier
-RC entries below preserve the detailed history; final release-polish
-changes are folded into this upgrade-oriented summary.
+applications that stayed on 0.1.x while the 0.2 APIs stabilized. The
+section below is a curated stable summary of the prerelease train and
+final release-polish changes.
 
 ### Upgrade Impact
 
@@ -249,6 +250,37 @@ changes are folded into this upgrade-oriented summary.
 - **Storage**: `StorageError` is non-exhaustive; downstream matches need
   wildcard arms.
 
+### Documentation
+
+- add release announcement(s)
+- align RC website docs.rs links
+- align CLI install version examples
+- *(build)* update wasm loop measurements
+- *(storages)* update test documentation to reflect wiremock replacement
+- *(admin)* remove broken DefaultUser intra-doc links
+- *(pages)* document spawn compat shim module
+- *(pages)* make wasm spawn_task example testable (ignore -> no_run)
+- mandate RAII pattern for resource management
+- *(wiki)* distribute Obsidian pages across categories and raise capture frequency
+- *(wiki)* sync CLAUDE.md/AGENTS.md Obsidian section with OW-7 policy
+- *(reinhardt-db)* fix QuerySet doctests for single-argument filter() API
+- *(reinhardt-db)* qualify Filter path in with_db doctests
+- *(mail,conf)* fix unresolved intra-doc links to settings fragments
+- *(deeplink)* document #![allow(deprecated)] allowances
+- *(tasks)* note that create_queue_from_settings does not retain settings
+- *(tasks)* correct tracking issue reference to [[#5068](https://github.com/kent8192/reinhardt-web/issues/5068)](https://github.com/kent8192/reinhardt-web/issues/5068)
+
+### Styling
+
+- apply formatter fixes across workspace
+- format files from merge resolution
+- apply rustfmt to non-DSL files on develop/0.2.0
+- *(pages)* reorder form component imports to satisfy rustfmt
+
+### Other
+
+- resolve conflicts with develop/0.2.0
+
 ### Migration Guide
 
 Follow [`instructions/MIGRATION_0.2.md`](instructions/MIGRATION_0.2.md)
@@ -271,6 +303,18 @@ database migrations, then run the verification commands in the guide.
   templates for 0.2.0 projects.
 - Generated model-info companion types are exported for WASM targets so
   tutorial and admin-style flows can share the same model metadata.
+- *(commands)* add interactive dependency configuration
+- *(orm)* add Django-like lookup helpers
+- *(orm)* support composite filter combinators
+- *(storages)* [**breaking**] add #[non_exhaustive] to StorageError
+- *(tasks)* add settings fragments and settings-first constructors
+- *(server)* add RateLimitSettings fragment
+- *(grpc)* add GrpcServerSettings fragment for the grpc_server section
+- *(deeplink)* add DeeplinkSettings fragment
+- *(websockets)* add settings fragments for connection, reconnection, origin, rate limit, and redis
+- *(auth)* add settings fragments for session, jwt, token rotation
+- *(middleware)* bridge CorsConfig to CorsSettings fragment
+- feat!(forms): route use_form through form definitions
 
 ### Changed
 
@@ -284,6 +328,8 @@ database migrations, then run the verification commands in the guide.
   through the published `reinhardt-formatter` crate.
 - Tutorial route contracts are aggregated or inlined where appropriate so
   the example apps match the final route and page-template structure.
+- *(auth)* make CurrentUser canonical extractor
+- *(pages)* unify spawn into platform/, expose spawn_task from prelude
 
 ### Deprecated
 
@@ -291,6 +337,15 @@ database migrations, then run the verification commands in the guide.
   only as migration aids and are documented for removal in a later train.
 - Legacy config structs are deprecated where settings fragments provide
   the final contract.
+- *(tasks)* deprecate config structs in favor of settings fragments
+- *(conf)* deprecate TemplateConfig in favor of TemplateSettings fragment
+- *(server)* deprecate RateLimitConfig in favor of RateLimitSettings
+- *(grpc)* deprecate GrpcServerConfig in favor of GrpcServerSettings
+- *(deeplink)* deprecate DeeplinkConfig in favor of DeeplinkSettings
+- *(websockets)* deprecate ad-hoc XxxConfig structs in favor of settings fragments
+- *(auth)* deprecate SessionConfig, JwtConfig, TokenRotationConfig
+- bridge SmtpConfig to the EmailSettings fragment
+- shield smtp_integration test from SmtpConfig deprecation
 
 ### Fixed
 
@@ -308,65 +363,6 @@ database migrations, then run the verification commands in the guide.
   ignores.
 - Release-branch CI is stabilized against the aws-runtime event-stream
   signer issue and broken upstream transitive releases.
-
-### Security
-
-- Storage integration tests moved away from LocalStack-only assumptions
-  and now use deterministic mock servers where appropriate.
-- Auth permission tests no longer depend on minute-precision wall-clock
-  boundaries.
-- URL, redirect, CSRF, and HTML-safety primitives from the 0.1 line remain
-  part of the stable security surface.
-
-### Performance
-
-- Hot reload skips unrelated rebuilds, reuses pages wasm artifacts when
-  stale checks allow it, and notifies browsers after rebuilds.
-- Generated page attributes are batched, unused runtime parser dependencies
-  are pruned, and non-browser wasm modules are feature-gated out.
-- Build-loop, pages wasm, server-loop, hot reload, and cold workspace
-  measurements informed the final dev-profile defaults.
-
-### Maintenance
-
-- Release-plz handling for develop trains, branch naming, publish checks,
-  stale generated release branches, and release announcements was hardened.
-- Public API documentation coverage, docs.rs links, website channel routing,
-  and release website deployment were aligned for stable publication.
-- Release announcements and tutorial documentation were synchronized with
-  route-contract, settings-fragment, typed-form, generated model-info, and
-  pages-template guidance.
-- Examples and generated templates were refreshed against the local 0.2.0
-  workspace instead of published RC assumptions.
-- Temporary vendored AWS runtime overrides were removed once the release
-  train no longer needed them.
-
-### Testing
-
-- Release CI expectations, WASM fixtures, trybuild output, migration
-  boundaries, HMR reload behavior, and auth clock-boundary tests were
-  refreshed for the stable line.
-- Tutorial basis CI now exercises the polling tests against the fixed
-  runtime expectations.
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0-rc.4...reinhardt-web@v0.2.0-rc.5) - 2026-06-11
-
-### Added
-
-- *(commands)* add interactive dependency configuration
-- *(orm)* add Django-like lookup helpers
-- *(orm)* support composite filter combinators
-
-### Documentation
-
-- add release announcement(s)
-- align RC website docs.rs links
-- align CLI install version examples
-- *(build)* update wasm loop measurements
-
-### Fixed
-
 - *(website)* treat PR previews as preview channel
 - *(website)* point stable selector to dev channel
 - *(ci)* install node before website deploy
@@ -379,116 +375,13 @@ database migrations, then run the verification commands in the guide.
 - *(orm)* address lookup review edge cases
 - *(db)* align LIKE escape SQL expectations
 - document wasm router stubs
-
-### Maintenance
-
-- trigger website deploy workflow changes
-- *(commands)* ignore local infra state in templates
-
-### Performance
-
-- *(build)* add build-loop benchmark harness
-- *(build)* tune dev profile for incremental builds
-- *(commands)* skip unrelated hot reload rebuilds
-- *(commands)* notify browsers after hot reload rebuilds
-- *(build)* keep measured dev profile defaults
-- *(commands)* use staleness check for pages wasm reuse
-- *(build)* measure pages wasm and server loops
-- *(pages)* batch generated page attributes
-- *(build)* measure hot reload target selection
-- *(pages)* prune unused runtime parser deps
-- *(pages)* trim wasm dependency graph
-- *(pages)* gate non-browser wasm modules
-- *(pages)* hot patch static page edits
-- *(build)* tune dev profile for hot reload
-- *(build)* measure cold workspace build
-
-### Testing
-
-- *(commands)* verify hmr reload after rebuild
-- *(ci)* refresh release CI expectations
-- *(auth)* remove time-based permission clock flake
-
-## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0-rc.3...reinhardt-web@v0.2.0-rc.4) - 2026-06-06
-
-### Changed
-
-- *(auth)* make CurrentUser canonical extractor
-
-### Documentation
-
-- add release announcement(s)
-
-### Fixed
-
 - *(staticfiles)* inject wasm loader for directory index
 - *(staticfiles)* preserve raw index in non-spa mode
 - *(staticfiles)* inject wasm loader for directory index without spa mode
 - *(conf)* support secret source maps
 - *(conf)* escape secret source test paths
-
-## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0-rc.2...reinhardt-web@v0.2.0-rc.3) - 2026-06-05
-
-### Fixed
-
 - *(ci)* stop masking release-plz 422 failures
 - *(pages)* enable security feature for WASM builds
-
-### Maintenance
-
-- remove examples-twitter from examples test workflow
-- create release announcement PRs for develop trains
-- run announcement posts for develop merges
-- cancel stale reusable workflow runs
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.3...reinhardt-web@v0.2.0-rc.2) - 2026-06-03
-
-### Added
-
-- *(storages)* [**breaking**] add #[non_exhaustive] to StorageError
-- *(tasks)* add settings fragments and settings-first constructors
-- *(server)* add RateLimitSettings fragment
-- *(grpc)* add GrpcServerSettings fragment for the grpc_server section
-- *(deeplink)* add DeeplinkSettings fragment
-- *(websockets)* add settings fragments for connection, reconnection, origin, rate limit, and redis
-- *(auth)* add settings fragments for session, jwt, token rotation
-- *(middleware)* bridge CorsConfig to CorsSettings fragment
-- feat!(forms): route use_form through form definitions
-
-### Changed
-
-- *(pages)* unify spawn into platform/, expose spawn_task from prelude
-
-### Deprecated
-
-- *(tasks)* deprecate config structs in favor of settings fragments
-- *(conf)* deprecate TemplateConfig in favor of TemplateSettings fragment
-- *(server)* deprecate RateLimitConfig in favor of RateLimitSettings
-- *(grpc)* deprecate GrpcServerConfig in favor of GrpcServerSettings
-- *(deeplink)* deprecate DeeplinkConfig in favor of DeeplinkSettings
-- *(websockets)* deprecate ad-hoc XxxConfig structs in favor of settings fragments
-- *(auth)* deprecate SessionConfig, JwtConfig, TokenRotationConfig
-- bridge SmtpConfig to the EmailSettings fragment
-- shield smtp_integration test from SmtpConfig deprecation
-
-### Documentation
-
-- *(storages)* update test documentation to reflect wiremock replacement
-- *(admin)* remove broken DefaultUser intra-doc links
-- *(pages)* document spawn compat shim module
-- *(pages)* make wasm spawn_task example testable (ignore -> no_run)
-- mandate RAII pattern for resource management
-- *(wiki)* distribute Obsidian pages across categories and raise capture frequency
-- *(wiki)* sync CLAUDE.md/AGENTS.md Obsidian section with OW-7 policy
-- *(reinhardt-db)* fix QuerySet doctests for single-argument filter() API
-- *(reinhardt-db)* qualify Filter path in with_db doctests
-- *(mail,conf)* fix unresolved intra-doc links to settings fragments
-- *(deeplink)* document #![allow(deprecated)] allowances
-- *(tasks)* note that create_queue_from_settings does not retain settings
-- *(tasks)* correct tracking issue reference to [[#5068](https://github.com/kent8192/reinhardt-web/issues/5068)](https://github.com/kent8192/reinhardt-web/issues/5068)
-
-### Fixed
-
 - address CodeRabbit review comments
 - address remaining CodeRabbit comments
 - address Copilot review comments
@@ -558,9 +451,61 @@ database migrations, then run the verification commands in the guide.
 - *(conf)* [**breaking**] remove legacy advanced settings types
 - *(conf)* emit fragment self settings impls
 - *(forms)* address bot review feedback
+- *(examples)* render basis tutorial poll vote choices after loading question detail data.
+- *(test)* expose the MSW testing facade on WASM builds when the `msw` feature is enabled.
+
+### Security
+
+- Storage integration tests moved away from LocalStack-only assumptions
+  and now use deterministic mock servers where appropriate.
+- Auth permission tests no longer depend on minute-precision wall-clock
+  boundaries.
+- URL, redirect, CSRF, and HTML-safety primitives from the 0.1 line remain
+  part of the stable security surface.
+
+### Performance
+
+- Hot reload skips unrelated rebuilds, reuses pages wasm artifacts when
+  stale checks allow it, and notifies browsers after rebuilds.
+- Generated page attributes are batched, unused runtime parser dependencies
+  are pruned, and non-browser wasm modules are feature-gated out.
+- Build-loop, pages wasm, server-loop, hot reload, and cold workspace
+  measurements informed the final dev-profile defaults.
+- *(build)* add build-loop benchmark harness
+- *(build)* tune dev profile for incremental builds
+- *(commands)* skip unrelated hot reload rebuilds
+- *(commands)* notify browsers after hot reload rebuilds
+- *(build)* keep measured dev profile defaults
+- *(commands)* use staleness check for pages wasm reuse
+- *(build)* measure pages wasm and server loops
+- *(pages)* batch generated page attributes
+- *(build)* measure hot reload target selection
+- *(pages)* prune unused runtime parser deps
+- *(pages)* trim wasm dependency graph
+- *(pages)* gate non-browser wasm modules
+- *(pages)* hot patch static page edits
+- *(build)* tune dev profile for hot reload
+- *(build)* measure cold workspace build
 
 ### Maintenance
 
+- Release-plz handling for develop trains, branch naming, publish checks,
+  stale generated release branches, and release announcements was hardened.
+- Public API documentation coverage, docs.rs links, website channel routing,
+  and release website deployment were aligned for stable publication.
+- Release announcements and tutorial documentation were synchronized with
+  route-contract, settings-fragment, typed-form, generated model-info, and
+  pages-template guidance.
+- Examples and generated templates were refreshed against the local 0.2.0
+  workspace instead of published RC assumptions.
+- Temporary vendored AWS runtime overrides were removed once the release
+  train no longer needed them.
+- trigger website deploy workflow changes
+- *(commands)* ignore local infra state in templates
+- remove examples-twitter from examples test workflow
+- create release announcement PRs for develop trains
+- run announcement posts for develop merges
+- cancel stale reusable workflow runs
 - forward merge main v0.1.1 changes into develop 0.2.0
 - include all main v0.1.1 PR changes
 - forward merge main v0.1.2 changes into develop 0.2.0
@@ -574,28 +519,19 @@ database migrations, then run the verification commands in the guide.
 - regenerate example migrations
 - *(ci)* merge develop into release docs fix
 
-### Other
-
-- resolve conflicts with develop/0.2.0
-
-### Styling
-
-- apply formatter fixes across workspace
-- format files from merge resolution
-- apply rustfmt to non-DSL files on develop/0.2.0
-- apply rustfmt to non-DSL files on develop/0.2.0
-- *(pages)* reorder form component imports to satisfy rustfmt
-
 ### Testing
 
+- Release CI expectations, WASM fixtures, trybuild output, migration
+  boundaries, HMR reload behavior, and auth clock-boundary tests were
+  refreshed for the stable line.
+- Tutorial basis CI now exercises the polling tests against the fixed
+  runtime expectations.
+- *(commands)* verify hmr reload after rebuild
+- *(ci)* refresh release CI expectations
+- *(auth)* remove time-based permission clock flake
 - *(pages)* address CodeRabbit review on hydration tests
 - *(pages)* replace skeleton spawn_task test with behavior assertion
 - *(forms)* align form runtime UI fixtures
-
-### Fixed
-
-- *(examples)* render basis tutorial poll vote choices after loading question detail data.
-- *(test)* expose the MSW testing facade on WASM builds when the `msw` feature is enabled.
 
 ## [0.1.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.1...reinhardt-web@v0.1.2) - 2026-05-25
 

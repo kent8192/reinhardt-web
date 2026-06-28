@@ -7,26 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.2.0...reinhardt-auth@v0.3.0-rc.1) - 2026-06-18
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.2.0...reinhardt-auth@v0.3.0) - 2026-06-28
+
+Stable release of `reinhardt-auth` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
+
+### Migration Notes
+
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
 ### Changed
 
 - [**breaking**] remove 0.3 deprecated public APIs
-
-### Fixed
-
-- *(ci)* pin brotli allocator dependency
 
 ### Removed
 
 - **BREAKING**: Removed the 0.2 compatibility extractor `AuthUser<U>`.
   Use `CurrentUser<U>` for full authenticated-user extraction.
 
+### Fixed
+
+- *(ci)* pin brotli allocator dependency
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.3...reinhardt-auth@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-auth` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -51,6 +59,7 @@ RC entries remain below as detailed history.
 ### Changed
 
 - *(auth)* make CurrentUser canonical extractor
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Deprecated
 
@@ -76,101 +85,6 @@ RC entries remain below as detailed history.
   deprecated `0.1.0-rc.15`) — entire module removed. Use
   `AuthIdentity` + `BaseUser` / `FullUser` + `PermissionsMixin`
   instead.
-
-### Fixed
-
-- stop implicit openapi schema macro output
-- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
-- *(auth)* replace InternalUser in UserManager public API with ManagedUser
-- *(macros)* suppress missing_docs on generated Info companion types
-
-### Performance
-
-- atomize facade dependency feature gates
-
-### Documentation
-
-- *(release)* enforce public API doc coverage
-- *(auth)* update core.rs and lib.rs doc references for removed types
-- *(di,auth)* fix rustdoc link warnings on nightly
-
-### Maintenance
-
-- *(auth)* add reinhardt-conf dependency for settings fragments
-
-### Testing
-
-- *(auth)* remove time-based permission clock flake
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.2.0-rc.4...reinhardt-auth@v0.2.0-rc.5) - 2026-06-11
-
-### Documentation
-
-- *(release)* enforce public API doc coverage
-
-### Testing
-
-- *(auth)* remove time-based permission clock flake
-
-## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.2.0-rc.3...reinhardt-auth@v0.2.0-rc.4) - 2026-06-06
-
-### Changed
-
-- *(auth)* make CurrentUser canonical extractor
-
-## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.2.0-rc.2...reinhardt-auth@v0.2.0-rc.3) - 2026-06-05
-
-### Fixed
-
-- address CodeRabbit dependency gate review
-- stop implicit openapi schema macro output
-
-### Performance
-
-- atomize facade dependency feature gates
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.3...reinhardt-auth@v0.2.0-rc.2) - 2026-06-03
-
-### Added
-
-- *(auth)* [**breaking**] remove RC-deprecated CurrentUser, DefaultUser, and User trait (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520), closes [[#4652](https://github.com/kent8192/reinhardt-web/issues/4652)](https://github.com/kent8192/reinhardt-web/issues/4652))
-- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
-- *(model)* [**breaking**] make new an alias for build
-- *(auth)* add settings fragments for session, jwt, token rotation
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-
-### Deprecated
-
-- *(auth)* deprecate SessionConfig, JwtConfig, TokenRotationConfig
-
-### Documentation
-
-- *(auth)* update core.rs and lib.rs doc references for removed types
-- *(di,auth)* fix rustdoc link warnings on nightly
-
-### Fixed
-
-- *(ci)* recover develop release-plz prerelease
-- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
-- *(auth)* address CodeRabbit review feedback
-- *(auth)* replace InternalUser in UserManager public API with ManagedUser
-- *(auth,urls,pages)* remove stale references and fix latent clippy lints
-- *(macros)* suppress missing_docs on generated Info companion types
-- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
-
-### Maintenance
-
-- *(auth)* add reinhardt-conf dependency for settings fragments
-
-### Styling
-
-- apply formatter fixes across workspace
-
-### Removed
 
 #### BREAKING CHANGES
 
@@ -200,6 +114,40 @@ closed companion Issue
   deprecated `0.1.0-rc.15`) — entire module removed. Use
   `AuthIdentity` + `BaseUser` / `FullUser` + `PermissionsMixin`
   instead.
+
+### Fixed
+
+- stop implicit openapi schema macro output
+- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(macros)* suppress missing_docs on generated Info companion types
+- address CodeRabbit dependency gate review
+- *(ci)* recover develop release-plz prerelease
+- *(auth)* address CodeRabbit review feedback
+- *(auth,urls,pages)* remove stale references and fix latent clippy lints
+- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
+
+### Performance
+
+- atomize facade dependency feature gates
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+- *(auth)* update core.rs and lib.rs doc references for removed types
+- *(di,auth)* fix rustdoc link warnings on nightly
+
+### Styling
+
+- apply formatter fixes across workspace
+
+### Maintenance
+
+- *(auth)* add reinhardt-conf dependency for settings fragments
+
+### Testing
+
+- *(auth)* remove time-based permission clock flake
 
 ### Known consumer migration follow-up
 

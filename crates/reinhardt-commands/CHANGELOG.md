@@ -7,51 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.5...reinhardt-commands@v0.3.0-rc.6) - 2026-06-27
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.0...reinhardt-commands@v0.3.0) - 2026-06-28
 
-### Fixed
+Stable release of `reinhardt-commands` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
 
-- *(commands)* redact sqlite database paths in logs
+### Migration Notes
 
-### Maintenance
-
-- merge main into develop/0.3.0
-
-## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.4...reinhardt-commands@v0.3.0-rc.5) - 2026-06-26
-
-### Fixed
-
-- *(scaffolding)* default pages projects to sqlite
-- *(commands)* repair pages quickstart scaffold defaults
-
-## [0.3.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.3...reinhardt-commands@v0.3.0-rc.4) - 2026-06-24
-
-### Changed
-
-- *(scaffolding)* align Pages app layout
-
-### Documentation
-
-- *(tutorial)* align pages scaffolding route gates
-
-## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.2...reinhardt-commands@v0.3.0-rc.3) - 2026-06-23
-
-### Fixed
-
-- *(scaffolding)* generate target-neutral Pages apps
-- *(scaffolding)* split generated Pages routers
-
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.0...reinhardt-commands@v0.3.0-rc.1) - 2026-06-18
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
 ### Added
 
 - *(urls)* [**breaking**] remove raw server route registration APIs
 
+### Changed
+
+- *(scaffolding)* align Pages app layout
+
+### Fixed
+
+- *(commands)* redact sqlite database paths in logs
+- *(scaffolding)* default pages projects to sqlite
+- *(commands)* repair pages quickstart scaffold defaults
+- *(scaffolding)* generate target-neutral Pages apps
+- *(scaffolding)* split generated Pages routers
+
+### Documentation
+
+- *(tutorial)* align pages scaffolding route gates
+
+### Maintenance
+
+- merge main into develop/0.3.0
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.3...reinhardt-commands@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-commands` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -95,6 +89,13 @@ RC entries remain below as detailed history.
 - *(commands)* use collectstatic no-input in pages template
 - *(commands)* make generated model placeholders tutorial-safe
 - *(commands)* ignore sqlite database in project templates
+- *(ci)* repair admin dependency config checks
+- *(build)* address CodeRabbit review feedback
+- *(build)* port Codex review follow-ups
+- address CodeRabbit review comments
+- address follow-up CodeRabbit comments
+- *(ci)* recover develop release-plz prerelease
+- *(ci)* update WASM consumer fixture for URL routing simplification
 
 ### Performance
 
@@ -114,117 +115,28 @@ RC entries remain below as detailed history.
 
 - *(tutorial)* aggregate app URL routers
 
-### Maintenance
-
-- *(commands)* ignore local infra state in templates
-
-### Testing
-
-- *(commands)* verify hmr reload after rebuild
-- *(commands)* drop stale InstalledApp import assertions in e2e_pages
-- *(commands)* add migrate-with-target E2E coverage
-- *(commands)* cover migrate --migrations-dir flag parsing
-- *(commands)* drop needless #[allow(unreachable_patterns)] in migrate parse test
-- *(commands)* cover settings-based database URL resolution
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.0-rc.4...reinhardt-commands@v0.2.0-rc.5) - 2026-06-11
-
-### Added
-
-- *(commands)* add interactive dependency configuration
-
-### Documentation
-
-- align CLI install version examples
-- *(release)* enforce public API doc coverage
-
-### Fixed
-
-- *(ci)* repair admin dependency config checks
-- *(build)* address CodeRabbit review feedback
-- *(commands)* adapt hot reload tests for develop
-- *(build)* port Codex review follow-ups
-
-### Maintenance
-
-- *(commands)* ignore local infra state in templates
-
-### Performance
-
-- *(commands)* skip unrelated hot reload rebuilds
-- *(commands)* notify browsers after hot reload rebuilds
-- *(commands)* use staleness check for pages wasm reuse
-- *(pages)* hot patch static page edits
-- *(build)* tune dev profile for hot reload
-
-### Testing
-
-- *(commands)* verify hmr reload after rebuild
-- *(ci)* refresh release CI expectations
-
-## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.0-rc.3...reinhardt-commands@v0.2.0-rc.4) - 2026-06-06
-
-### Changed
-
-- *(auth)* make CurrentUser canonical extractor
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.3...reinhardt-commands@v0.2.0-rc.2) - 2026-06-03
-
-### Added
-
-- *(commands)* add migrate-with-target direction detection
-- *(commands)* pass get_settings() from generated manage.rs templates
-
-### Changed
-
-- *(commands)* [**breaking**] remove workspace templates and consolidate onto non-workspace templates
-- *(commands)* replace loose contains() assertions with exact-line checks
-- *(commands)* simplify assert_eq!(expr, bool) to assert!(expr)
-
-### Documentation
-
-- *(commands)* document migrate-with-target semantics
-- *(commands)* clarify APP_LABEL/MIGRATION_NAME dependency
-- *(commands)* make execute_from_command_line_with_settings doc example compile
-
-### Fixed
-
-- address CodeRabbit review comments
-- address follow-up CodeRabbit comments
-- *(ci)* recover develop release-plz prerelease
-- *(auth)* replace InternalUser in UserManager public API with ManagedUser
-- *(commands)* use project_crate_name for with_nav import in workspace pages template
-- *(commands)* add parent project crate dependency to workspace app Cargo.toml
-- *(ci)* update WASM consumer fixture for URL routing simplification
-- *(commands)* compile migrate-with-target target handling
-- *(commands)* honor --fake and --plan on migrate-with-target paths
-- *(commands)* fail fast on recorder errors in migrate --plan
-- *(commands)* resolve management-command database URL from project settings
-- *(commands)* read [core.databases.default] in the settings disk loader
-- *(commands)* update pages template CDN
-- *(commands)* align wasm bindgen template
-- *(commands)* verify runserver reachability after hot reload
-
-### Maintenance
-
-- forward merge main v0.1.1 changes into develop 0.2.0
-
-### Other
-
-- resolve conflicts with develop/0.2.0
-
 ### Styling
 
 - apply formatter fixes across workspace
 
+### Maintenance
+
+- *(commands)* ignore local infra state in templates
+- forward merge main v0.1.1 changes into develop 0.2.0
+
 ### Testing
 
+- *(commands)* verify hmr reload after rebuild
 - *(commands)* drop stale InstalledApp import assertions in e2e_pages
 - *(commands)* add migrate-with-target E2E coverage
 - *(commands)* cover migrate --migrations-dir flag parsing
 - *(commands)* drop needless #[allow(unreachable_patterns)] in migrate parse test
 - *(commands)* cover settings-based database URL resolution
+- *(ci)* refresh release CI expectations
+
+### Other
+
+- resolve conflicts with develop/0.2.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-rc.30...reinhardt-commands@v0.1.0) - 2026-05-22
 

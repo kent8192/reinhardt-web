@@ -7,22 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.3.0-rc.4...reinhardt-urls@v0.3.0-rc.5) - 2026-06-26
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.2.0...reinhardt-urls@v0.3.0) - 2026-06-28
 
-### Fixed
+Stable release of `reinhardt-urls` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
 
-- *(ci)* satisfy server router clippy lint
+### Migration Notes
 
-### Performance
-
-- *(http)* reduce request allocation overhead
-
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.2.0...reinhardt-urls@v0.3.0-rc.1) - 2026-06-18
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
 ### Added
 
 - *(urls)* [**breaking**] remove raw server route registration APIs
 - *(pages)* add route-backed component macros
+- Added `ClientRouter::component(handler)` and component metadata traits for
+  registering route-backed page components without repeating path/name
+  metadata.
+
+### Fixed
+
+- *(ci)* satisfy server router clippy lint
+- *(urls)* remove duplicate validate_routes doctest import
+- *(urls)* hide route opt-out sigil in introspection
+
+### Performance
+
+- *(http)* reduce request allocation overhead
 
 ### Documentation
 
@@ -30,26 +41,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - clarify router parity level
 - clarify generated API parity docs
 
-### Fixed
-
-- *(urls)* remove duplicate validate_routes doctest import
-- *(urls)* hide route opt-out sigil in introspection
-
 ### Maintenance
 
 - merge develop/0.3.0 into component route macros
 
-### Added
-
-- Added `ClientRouter::component(handler)` and component metadata traits for
-  registering route-backed page components without repeating path/name
-  metadata.
-
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.3...reinhardt-urls@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-urls` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -111,128 +111,13 @@ RC entries remain below as detailed history.
   signature (1..=8 `Path<T>` extractors supported). Migration is a
   mechanical rename: drop the numeric suffix on every call site. Refs
   [#4637](https://github.com/kent8192/reinhardt-web/issues/4637).
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Removed
 
 - **`reverse_with_aho_corasick(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_with_aho_corasick` (the fallible variant).
 - **`reverse_single_pass(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_single_pass`.
 - **`UrlResolverUnprefixed` trait** (`src/routers/resolver.rs`, deprecated `0.1.0-rc.29`, refs #4507 defect #2) — only supported the removed flat ViewSet trait accessors emitted by `#[viewset]`. Prefer `urls.server().<app>().<route>()`.
-
-### Fixed
-
-- align urls routers macro feature graph
-- *(urls)* fix broken intra-doc link in try_reverse_single_pass doc
-- *(auth)* replace InternalUser in UserManager public API with ManagedUser
-- *(urls)* migrate reverse tests from removed panicking helpers to try_ variants
-- *(urls)* resolve UrlReverser Debug trait bound and dead code errors
-- *(urls)* correct WASM register_globally doc comment
-- *(urls)* panic on duplicate client route name registration
-- *(urls)* update tests for page() and reverse() API changes
-- *(urls)* populate global UrlReverser in register_router_arc() too
-- *(docs)* resolve rustdoc intra-doc link errors on develop/0.2.0
-- *(docs)* resolve remaining rustdoc doctest failures
-
-### Performance
-
-- atomize facade dependency feature gates
-
-### Documentation
-
-- *(urls)* align WASM UnifiedRouter::server doc with no-invoke behavior
-
-
-## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.2.0-rc.2...reinhardt-urls@v0.2.0-rc.3) - 2026-06-05
-
-### Fixed
-
-- align urls routers macro feature graph
-
-### Performance
-
-- atomize facade dependency feature gates
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.3...reinhardt-urls@v0.2.0-rc.2) - 2026-06-03
-
-### Added
-
-- *(urls)* [**breaking**] remove panicking reverse_* variants and UrlResolverUnprefixed (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-- *(urls)* auto-populate global UrlReverser in register_router()
-- *(urls)* [**breaking**] unify UnifiedRouter::server closure type to ServerRouter on wasm
-- *(urls)* warn when a reverse URL name is not kebab-case
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-
-### Documentation
-
-- *(urls)* align WASM UnifiedRouter::server doc with no-invoke behavior
-
-### Fixed
-
-- *(urls)* fix broken intra-doc link in try_reverse_single_pass doc
-- *(ci)* recover develop release-plz prerelease
-- *(auth)* replace InternalUser in UserManager public API with ManagedUser
-- *(auth,urls,pages)* remove stale references and fix latent clippy lints
-- *(urls)* migrate reverse tests from removed panicking helpers to try_ variants
-- *(urls)* resolve UrlReverser Debug trait bound and dead code errors
-- *(urls)* correct WASM register_globally doc comment
-- *(urls)* panic on duplicate client route name registration
-- *(urls)* update tests for page() and reverse() API changes
-- *(urls)* populate global UrlReverser in register_router_arc() too
-- *(docs)* resolve rustdoc intra-doc link errors on develop/0.2.0
-- *(docs)* resolve remaining rustdoc doctest failures
-
-### Maintenance
-
-- resolve merge conflict in reinhardt-urls CHANGELOG.md (develop/0.2.0)
-
-### Styling
-
-- apply formatter fixes across workspace
-- format files from merge resolution
-- apply rustfmt to non-DSL files on develop/0.2.0
-
-### Changed
-
-- **[breaking]** Collapse `ClientRouter::route_pathN` / `named_route_pathN`
-  into a single arity-generic `route_path` / `named_route_path` driven by
-  a sealed `Handler<Args>` trait. The arity is inferred from the closure
-  signature (1..=8 `Path<T>` extractors supported). Migration is a
-  mechanical rename: drop the numeric suffix on every call site. Refs
-  [#4637](https://github.com/kent8192/reinhardt-web/issues/4637).
-### Added
-
-- Emit a `tracing::warn!` when a route name registered for URL reversal is not
-  kebab-case (e.g. `user_detail`), suggesting the kebab-case form
-  (`user-detail`) to match ViewSet-generated names. The warning is advisory, not
-  an error: prefix the route-name segment with `!` to opt out (the sigil is
-  stripped before storage, so reverse lookups use the clean name) or set
-  `REINHARDT_URL_NAME_WARNINGS=0` to silence it globally. Refs
-  [#4901](https://github.com/kent8192/reinhardt-web/issues/4901).
-- `ClientRouter::page<F, P>(pattern, handler)` and
-  `ClientRouter::named_page<F, P>(name, pattern, handler)` accepting any
-  handler `Fn(P) -> Page` where `P: FromRequest`. The same Props struct
-  can be used both as a Component prop bag (Manouche DSL v2 spec §4.3)
-  and as a page function — "every page is a component." Path / query
-  extraction errors surface as a `Page::Text` at the router boundary
-  rather than panicking. (Refs #4668)
-- `reinhardt_urls::routers::client_router::from_request` module
-  exposing `FromRequest`, `RouteContext`, `ExtractError`,
-  `PathParam<T>`, and `QueryParam<T>` — the manual building blocks for
-  `ClientRouter::page` handlers. `#[derive(FromRequest)]` and
-  `#[derive(PageProps)]` proc-macros are deferred to spec §10.
-- `ClientRouteMatch::query: Option<String>` — populated by `match_path`
-  after stripping an optional `?query` suffix from the path before
-  pattern matching. Required for `QueryParam<T>` to see the query under
-  real routing.
-- `ParamContext::with_query(...)` / `ParamContext::query()` /
-  `ParamContext::params()` — `render_current` threads the captured
-  query through to the `RouteHandler` trait. Backward-compatible:
-  existing `ParamContext::new(...)` keeps the previous signature and
-  defaults the new field to `None`.
-
-### Removed
 
 #### BREAKING CHANGES
 
@@ -242,6 +127,40 @@ Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520)):
 - **`reverse_with_aho_corasick(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_with_aho_corasick` (the fallible variant).
 - **`reverse_single_pass(pattern, params)`** (`src/routers/reverse/runtime.rs`, deprecated `0.1.0-rc.29`) — use `try_reverse_single_pass`.
 - **`UrlResolverUnprefixed` trait** (`src/routers/resolver.rs`, deprecated `0.1.0-rc.29`, refs #4507 defect #2) — only supported the removed flat ViewSet trait accessors emitted by `#[viewset]`. Prefer `urls.server().<app>().<route>()`.
+
+### Fixed
+
+- align urls routers macro feature graph
+- *(urls)* fix broken intra-doc link in try_reverse_single_pass doc
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(urls)* migrate reverse tests from removed panicking helpers to try_ variants
+- *(urls)* resolve UrlReverser Debug trait bound and dead code errors
+- *(urls)* correct WASM register_globally doc comment
+- *(urls)* panic on duplicate client route name registration
+- *(urls)* update tests for page() and reverse() API changes
+- *(urls)* populate global UrlReverser in register_router_arc() too
+- *(docs)* resolve rustdoc intra-doc link errors on develop/0.2.0
+- *(docs)* resolve remaining rustdoc doctest failures
+- *(ci)* recover develop release-plz prerelease
+- *(auth,urls,pages)* remove stale references and fix latent clippy lints
+
+### Performance
+
+- atomize facade dependency feature gates
+
+### Documentation
+
+- *(urls)* align WASM UnifiedRouter::server doc with no-invoke behavior
+
+### Styling
+
+- apply formatter fixes across workspace
+- format files from merge resolution
+- apply rustfmt to non-DSL files on develop/0.2.0
+
+### Maintenance
+
+- resolve merge conflict in reinhardt-urls CHANGELOG.md (develop/0.2.0)
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-rc.30...reinhardt-urls@v0.1.0) - 2026-05-22
 
