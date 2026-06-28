@@ -1571,9 +1571,9 @@ impl ProjectState {
 					referenced_table,
 					referenced_columns,
 					on_delete: Self::foreign_key_action_from_clause(clauses, "ON DELETE")
-						.unwrap_or(ForeignKeyAction::Restrict),
+						.unwrap_or(ForeignKeyAction::NoAction),
 					on_update: Self::foreign_key_action_from_clause(clauses, "ON UPDATE")
-						.unwrap_or(ForeignKeyAction::Restrict),
+						.unwrap_or(ForeignKeyAction::NoAction),
 				}),
 			});
 		}
@@ -5890,12 +5890,19 @@ impl MigrationAutodetector {
 			if let Some(model) = self.to_state.get_model(app_label, model_name)
 				&& let Some(field) = model.get_field(field_name)
 			{
+				let old_definition = self
+					.from_state
+					.get_model(app_label, model_name)
+					.and_then(|from_model| from_model.get_field(field_name))
+					.map(|from_field| {
+						super::ColumnDefinition::from_field_state(field_name.clone(), from_field)
+					});
 				by_app
 					.entry(app_label.clone())
 					.or_default()
 					.push(super::Operation::AlterColumn {
 						table: model.table_name.clone(),
-						old_definition: None,
+						old_definition,
 						column: field_name.clone(),
 						new_definition: super::ColumnDefinition::from_field_state(
 							field_name.clone(),
@@ -6842,6 +6849,61 @@ mod tests {
 		assert_eq!(fk_info.referenced_table, "auth_users");
 		assert_eq!(fk_info.referenced_columns, vec!["id".to_string()]);
 		assert_eq!(fk_info.on_delete, ForeignKeyAction::Cascade);
+		assert_eq!(fk_info.on_update, ForeignKeyAction::NoAction);
+	}
+
+	#[rstest]
+	fn apply_migration_operations_replays_omitted_foreign_key_actions_as_no_action() {
+		// Arrange
+		let create_posts = super::super::Operation::CreateTable {
+			name: "blog_posts".to_string(),
+			columns: vec![
+				super::super::ColumnDefinition {
+					name: "id".to_string(),
+					type_definition: super::super::FieldType::BigInteger,
+					not_null: true,
+					unique: false,
+					primary_key: true,
+					auto_increment: true,
+					default: None,
+				},
+				super::super::ColumnDefinition {
+					name: "user_id".to_string(),
+					type_definition: super::super::FieldType::BigInteger,
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+			],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let add_user_fk = super::super::Operation::AddConstraint {
+			table: "blog_posts".to_string(),
+			constraint_sql:
+				"CONSTRAINT blog_posts_user_id_fk FOREIGN KEY (user_id) REFERENCES auth_users(id)"
+					.to_string(),
+		};
+		let mut state = ProjectState::new();
+
+		// Act
+		state.apply_migration_operations(&[create_posts, add_user_fk], "blog");
+
+		// Assert
+		let model = state
+			.find_model_by_table("blog_posts")
+			.expect("blog_posts model should be reconstructed");
+		let fk_info = model
+			.constraints
+			.iter()
+			.find(|constraint| constraint.name == "blog_posts_user_id_fk")
+			.and_then(|constraint| constraint.foreign_key_info.as_ref())
+			.expect("foreign key metadata should be reconstructed");
+		assert_eq!(fk_info.on_delete, ForeignKeyAction::NoAction);
 		assert_eq!(fk_info.on_update, ForeignKeyAction::NoAction);
 	}
 
@@ -8208,6 +8270,59 @@ mod tests {
 			changed,
 			"database default changes must be detected as schema-affecting field changes"
 		);
+	}
+
+	#[rstest]
+	fn generate_operations_carries_old_definition_for_database_default_changes() {
+		// Arrange
+		let mut from_field = FieldState::new("is_active", super::super::FieldType::Boolean, false);
+		from_field
+			.params
+			.insert("default".to_string(), "true".to_string());
+		let to_field = FieldState::new("is_active", super::super::FieldType::Boolean, false);
+		let from_model =
+			build_model_state("accounts", "User", vec![from_field], Vec::new(), Vec::new());
+		let to_model =
+			build_model_state("accounts", "User", vec![to_field], Vec::new(), Vec::new());
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		let operation = operations
+			.iter()
+			.find(|operation| {
+				matches!(
+					operation,
+					super::super::Operation::AlterColumn { column, .. } if column == "is_active"
+				)
+			})
+			.expect("default removal should emit AlterColumn");
+		let super::super::Operation::AlterColumn {
+			old_definition,
+			new_definition,
+			..
+		} = operation
+		else {
+			unreachable!("matched AlterColumn above");
+		};
+		assert_eq!(
+			old_definition
+				.as_ref()
+				.and_then(|definition| definition.default.as_deref()),
+			Some("true")
+		);
+		assert_eq!(new_definition.default, None);
 	}
 
 	#[rstest]
