@@ -7,13 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.3.0-rc.5...reinhardt-views@v0.3.0-rc.6) - 2026-06-27
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.2.0...reinhardt-views@v0.3.0) - 2026-06-28
 
-### Maintenance
+Stable release of `reinhardt-views` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
 
-- merge main into develop/0.3.0
+### Migration Notes
 
-## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.3.0-rc.2...reinhardt-views@v0.3.0-rc.3) - 2026-06-23
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
+
+### Added
+
+- feat!(di): introduce keyed injectable provider outputs
 
 ### Fixed
 
@@ -21,11 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(tests)* align viewset serializer fixtures
 - *(views)* align viewset serializer examples
 
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.2.0...reinhardt-views@v0.3.0-rc.1) - 2026-06-18
+### Maintenance
 
-### Added
-
-- feat!(di): introduce keyed injectable provider outputs
+- merge main into develop/0.3.0
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.3...reinhardt-views@v0.2.0) - 2026-06-11
 

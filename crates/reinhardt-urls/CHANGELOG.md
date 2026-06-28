@@ -7,22 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.3.0-rc.4...reinhardt-urls@v0.3.0-rc.5) - 2026-06-26
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.2.0...reinhardt-urls@v0.3.0) - 2026-06-28
 
-### Fixed
+Stable release of `reinhardt-urls` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
 
-- *(ci)* satisfy server router clippy lint
+### Migration Notes
 
-### Performance
-
-- *(http)* reduce request allocation overhead
-
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.2.0...reinhardt-urls@v0.3.0-rc.1) - 2026-06-18
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
 ### Added
 
 - *(urls)* [**breaking**] remove raw server route registration APIs
 - *(pages)* add route-backed component macros
+- Added `ClientRouter::component(handler)` and component metadata traits for
+  registering route-backed page components without repeating path/name
+  metadata.
+
+### Fixed
+
+- *(ci)* satisfy server router clippy lint
+- *(urls)* remove duplicate validate_routes doctest import
+- *(urls)* hide route opt-out sigil in introspection
+
+### Performance
+
+- *(http)* reduce request allocation overhead
 
 ### Documentation
 
@@ -30,20 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - clarify router parity level
 - clarify generated API parity docs
 
-### Fixed
-
-- *(urls)* remove duplicate validate_routes doctest import
-- *(urls)* hide route opt-out sigil in introspection
-
 ### Maintenance
 
 - merge develop/0.3.0 into component route macros
-
-### Added
-
-- Added `ClientRouter::component(handler)` and component metadata traits for
-  registering route-backed page components without repeating path/name
-  metadata.
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.3...reinhardt-urls@v0.2.0) - 2026-06-11
 

@@ -7,45 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.5...reinhardt-commands@v0.3.0-rc.6) - 2026-06-27
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.0...reinhardt-commands@v0.3.0) - 2026-06-28
 
-### Fixed
+Stable release of `reinhardt-commands` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
 
-- *(commands)* redact sqlite database paths in logs
+### Migration Notes
 
-### Maintenance
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
-- merge main into develop/0.3.0
+### Added
 
-## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.4...reinhardt-commands@v0.3.0-rc.5) - 2026-06-26
-
-### Fixed
-
-- *(scaffolding)* default pages projects to sqlite
-- *(commands)* repair pages quickstart scaffold defaults
-
-## [0.3.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.3...reinhardt-commands@v0.3.0-rc.4) - 2026-06-24
+- *(urls)* [**breaking**] remove raw server route registration APIs
 
 ### Changed
 
 - *(scaffolding)* align Pages app layout
 
+### Fixed
+
+- *(commands)* redact sqlite database paths in logs
+- *(scaffolding)* default pages projects to sqlite
+- *(commands)* repair pages quickstart scaffold defaults
+- *(scaffolding)* generate target-neutral Pages apps
+- *(scaffolding)* split generated Pages routers
+
 ### Documentation
 
 - *(tutorial)* align pages scaffolding route gates
 
-## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.0-rc.2...reinhardt-commands@v0.3.0-rc.3) - 2026-06-23
+### Maintenance
 
-### Fixed
-
-- *(scaffolding)* generate target-neutral Pages apps
-- *(scaffolding)* split generated Pages routers
-
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.2.0...reinhardt-commands@v0.3.0-rc.1) - 2026-06-18
-
-### Added
-
-- *(urls)* [**breaking**] remove raw server route registration APIs
+- merge main into develop/0.3.0
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.3...reinhardt-commands@v0.2.0) - 2026-06-11
 

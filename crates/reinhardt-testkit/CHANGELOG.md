@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.2.0...reinhardt-testkit@v0.3.0-rc.1) - 2026-06-18
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.2.0...reinhardt-testkit@v0.3.0) - 2026-06-28
+
+Stable release of `reinhardt-testkit` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
+
+### Migration Notes
+
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
 ### Added
 

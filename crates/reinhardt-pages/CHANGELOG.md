@@ -7,73 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.0-rc.5...reinhardt-pages@v0.3.0-rc.6) - 2026-06-27
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.2.0...reinhardt-pages@v0.3.0) - 2026-06-28
 
-### Documentation
+Stable release of `reinhardt-pages` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
 
-- *(pages)* document WASM server fn resolver
+### Migration Notes
 
-### Fixed
-
-- *(todo-check)* clear public api audit markers
-
-### Maintenance
-
-- merge main into develop/0.3.0
-
-## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.0-rc.4...reinhardt-pages@v0.3.0-rc.5) - 2026-06-26
-
-### Changed
-
-- *(pages)* derive fetch credentials default
-
-### Fixed
-
-- *(ci)* expose benchmark server function response
-- *(pages)* allow wasm-opt fixture features
-
-### Maintenance
-
-- merge develop 0.3.0 into build-time perf branch
-
-### Performance
-
-- *(pages)* reduce native endpoint dispatch allocations
-- *(pages)* reduce fixture wasm release size
-
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.2.0...reinhardt-pages@v0.3.0-rc.1) - 2026-06-18
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
 ### Added
 
 - *(pages)* add explicit asset loading helpers
+- Added route-backed component macro support via `#[component("/path", "name")]`,
+  generated plain props builders, and `Path(...)` / `Query(...)` extractor-style
+  component function arguments.
 
 ### Changed
 
+- *(pages)* derive fetch credentials default
 - [**breaking**] remove 0.3 deprecated public APIs
-
-### Documentation
-
-- *(pages)* classify React 19 parity outcomes
-
-### Fixed
-
-- *(ci)* update Rust 1.96 UI stderr expectations
-- *(pages)* align asset head helpers with review feedback
-- *(pages)* address CodeRabbit component macro review
-- *(formatter)* handle reviewed page rustfmt islands
-- add native stubs for client page functions
-- *(pages)* export client_page from prelude
-- *(ci)* satisfy pages clippy lint
-- *(pages)* re-export use_callback_with from reactive::hooks
-
-### Maintenance
-
-- merge develop/0.3.0 into component route macros
-- merge develop/0.3.0 into pr 5346
-
-### Testing
-
-- *(pages)* isolate static resolver state
 
 ### Removed
 
@@ -84,16 +38,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `use_effect_event_with`. Use `use_callback` / `use_callback_with` or read
   latest signal values with `.get_untracked()` inside effects.
 
-### Added
-
-- Added route-backed component macro support via `#[component("/path", "name")]`,
-  generated plain props builders, and `Path(...)` / `Query(...)` extractor-style
-  component function arguments.
-
 ### Fixed
 
+- *(todo-check)* clear public api audit markers
+- *(ci)* expose benchmark server function response
+- *(pages)* allow wasm-opt fixture features
+- *(ci)* update Rust 1.96 UI stderr expectations
+- *(pages)* align asset head helpers with review feedback
+- *(pages)* address CodeRabbit component macro review
+- *(formatter)* handle reviewed page rustfmt islands
+- add native stubs for client page functions
+- *(pages)* export client_page from prelude
+- *(ci)* satisfy pages clippy lint
+- *(pages)* re-export use_callback_with from reactive::hooks
 - Fixed route-backed component macro builders so downstream crates can use
   generated props without depending directly on `bon`.
+
+### Performance
+
+- *(pages)* reduce native endpoint dispatch allocations
+- *(pages)* reduce fixture wasm release size
+
+### Documentation
+
+- *(pages)* document WASM server fn resolver
+- *(pages)* classify React 19 parity outcomes
+
+### Testing
+
+- *(pages)* isolate static resolver state
+
+### Maintenance
+
+- merge main into develop/0.3.0
+- merge develop 0.3.0 into build-time perf branch
+- merge develop/0.3.0 into component route macros
+- merge develop/0.3.0 into pr 5346
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.3...reinhardt-pages@v0.2.0) - 2026-06-11
 

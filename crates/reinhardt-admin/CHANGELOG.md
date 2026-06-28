@@ -7,23 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.3.0-rc.4...reinhardt-admin@v0.3.0-rc.5) - 2026-06-26
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.2.0...reinhardt-admin@v0.3.0) - 2026-06-28
 
-### Fixed
+Stable release of `reinhardt-admin` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
 
-- *(admin)* count zero-limit list pages
+### Migration Notes
 
-### Performance
-
-- *(admin)* combine admin list count query
-
-## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.3.0-rc.2...reinhardt-admin@v0.3.0-rc.3) - 2026-06-23
-
-### Fixed
-
-- *(tutorial)* suppress basis runtime drift
-
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.2.0...reinhardt-admin@v0.3.0-rc.1) - 2026-06-18
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
 ### Added
 
@@ -37,7 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- *(admin)* count zero-limit list pages
+- *(tutorial)* suppress basis runtime drift
 - *(di)* honor cache false for keyed wrappers
+
+### Performance
+
+- *(admin)* combine admin list count query
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.3...reinhardt-admin@v0.2.0) - 2026-06-11
 

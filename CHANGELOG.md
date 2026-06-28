@@ -7,146 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.6...reinhardt-web@v0.3.0) - 2026-06-28
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0...reinhardt-web@v0.3.0) - 2026-06-28
 
-### Fixed
+Stable 0.3.0 is the first stable release of the Reinhardt 0.3 line. It
+promotes the 0.3.0 release-candidate train into one upgrade story:
+retire the deprecated 0.2 compatibility APIs, make Pages, Manouche,
+and server-function contracts explicit, stabilize ORM and migration
+metadata, and finish the release documentation required for stable
+publication.
 
-- *(db)* replay foreign key constraints and defaults
-- *(bench)* avoid unused server error bindings
-- *(db)* apply alter column defaults in migrations
+This release is not a patch-style rollup. It is a migration release for
+applications that stayed on 0.2.x while the 0.3 APIs stabilized. The
+section below is a curated stable summary of the prerelease train and
+final release-polish changes.
 
-## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.5...reinhardt-web@v0.3.0-rc.6) - 2026-06-27
+### Upgrade Impact
 
-### Documentation
+| Area | What changes for application maintainers |
+|---|---|
+| Public API cleanup | Remove deprecated 0.2 compatibility extractors, Pages resource constructors, and effect-event hooks. |
+| Pages and Manouche | Update page bodies, hooks, client routes, server-function endpoint resolution, and WASM-only helper usage to the final 0.3 contracts. |
+| ORM and migrations | Review relation-shaped model metadata, conditional partial updates, renamed-field detection, database defaults, and replayed foreign-key constraints. |
+| Scaffolding and tutorials | Regenerate Pages projects with the 0.3 scaffold defaults, SQLite tutorial setup, target-neutral modules, and updated quickstart feature sets. |
+| Routing, HTTP, and admin | Adopt the refined cookie extractor, PathParams, request allocation, admin list-count, and route helper behavior stabilized during the RC train. |
+| Tooling and release flow | Use the Rust 1.96 toolchain, updated formatter/tree-sitter release grouping, public API doc coverage, and hardened release-plz dry-run checks. |
 
-- add release announcement(s)
-- *(release)* expose 0.3 migration guide
-- *(pages)* document WASM server fn resolver
+### Release Highlights
 
-### Fixed
+- **The 0.2 compatibility surface is removed.** Projects should migrate
+  to `CurrentUser`, `use_resource(fetcher, deps)`, `use_callback`, and
+  explicit signal reads in effects before upgrading.
+- **Pages and WASM contracts are final for the 0.3 line.** Client page
+  helpers, server-function endpoint resolution, scaffolded route gates,
+  and tutorial layouts now match the stable target model.
+- **ORM and migration metadata are stricter.** Relation-shaped model info,
+  conditional partial updates, renamed-field handling, database defaults,
+  CockroachDB serialization, and replayed foreign-key constraints are all
+  represented in the stable release train.
+- **Runtime hot paths were tightened.** Request allocation, router
+  allocation, database pool acquisition, migration graph planning, and
+  admin list-count queries received targeted performance work.
+- **Release readiness was hardened.** Public API TODO audits, docs, CI
+  cache behavior, formatter output, release-plz classification, and
+  tutorial verification were aligned for the stable publication path.
 
-- *(commands)* align pages tutorial scaffold
-- *(commands)* address scaffold review feedback
-- *(commands)* include auth tutorial scaffold features
-- *(migrations)* handle field changes on renamed models
-- *(migrations)* address autodetector review gaps
-- *(macros)* stop propagating serde skip to Info relation fields
+### Breaking Changes
 
-### Maintenance
-
-- merge main into develop/0.3.0
-
-### Testing
-
-- *(migrations)* tighten autodetector assertions
-- *(examples)* guard polls question FK migration type
-
-## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.4...reinhardt-web@v0.3.0-rc.5) - 2026-06-26
-
-### Changed
-
-- *(pages)* derive fetch credentials default
-
-### Documentation
-
-- add release announcement(s)
-- *(tutorial)* fix SQLite poll seed snippet
-
-### Fixed
-
-- *(scaffolding)* default pages projects to sqlite
-- *(ci)* quote release-plz dry-run regex
-- *(ci)* satisfy server router clippy lint
-- *(commands)* repair pages quickstart scaffold defaults
-
-### Maintenance
-
-- merge develop 0.3.0 into build-time perf branch
-- merge latest develop 0.3.0 into build-time perf branch
-
-## [0.3.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.3...reinhardt-web@v0.3.0-rc.4) - 2026-06-24
-
-### Changed
-
-- *(scaffolding)* align Pages app layout
-
-### Documentation
-
-- add release announcement(s)
-- *(tutorial)* align 0.3.0 tutorial scaffolding
-- *(tutorial)* address 0.3.0 review feedback
-- *(tutorial)* gate client route modules
-- *(tutorial)* remove native client route specs
-- *(tutorial)* align pages scaffolding route gates
-
-## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.2...reinhardt-web@v0.3.0-rc.3) - 2026-06-23
+- **Deprecated 0.2 compatibility APIs are removed.** This includes the
+  `AuthUser<U>` extractor, deprecated Pages resource constructors, and
+  effect-event hooks. Use `CurrentUser<U>`, `use_resource(fetcher, deps)`,
+  `use_callback`, and explicit untracked signal reads instead.
+- **Pages code should target the final 0.3 hook and route contracts.**
+  Regenerate scaffolded Pages apps and review client route gates, server
+  function endpoint resolution, and WASM-only helper usage.
+- **ORM and migration diffs may become more explicit.** Relation-shaped
+  model metadata, renamed fields, database defaults, and replayed foreign
+  keys are now represented in the stable migration surface.
 
 ### Added
 
 - *(website)* add technical notes domain
 - *(macros)* make user macro inert on wasm
-
-### Fixed
-
-- *(infra)* import website DNS records
-- *(ci)* restrict wasm cache seed to main pushes
-- *(views)* wire declared viewset serializers
-- *(tests)* align viewset serializer fixtures
-- *(views)* align viewset serializer examples
-
-## [0.3.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.1...reinhardt-web@v0.3.0-rc.2) - 2026-06-19
-
-### Added
-
 - *(orm)* add QuerySet conditional partial updates
-
-### Fixed
-
-- *(db)* suppress replayed migration drift
-
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0...reinhardt-web@v0.3.0-rc.1) - 2026-06-18
-
-### Added
-
 - feat!(macros): expose relation-shaped model info fields
 - *(formatter)* add semantic page grammar nodes
 - *(formatter)* rustfmt page expression islands
-- *(website)* add technical notes domain
 
 ### Changed
 
+- *(pages)* derive fetch credentials default
+- *(scaffolding)* align Pages app layout
 - *(admin)* use keyed depends for server injections
-- [**breaking**] remove 0.3 deprecated public APIs
-
-### Documentation
-
-- *(formatter)* document page rustfmt islands
-
-### Fixed
-
-- *(ci)* pin brotli allocator dependency
-- *(examples)* align polls info fixtures with relations
-- *(formatter)* handle reviewed page rustfmt islands
-- add native stubs for client page functions
-- *(pages)* export client_page from prelude
-- *(di)* honor cache false for keyed wrappers
-- *(ci)* satisfy pages clippy lint
-- *(infra)* import website DNS records
-- *(pages)* re-export use_callback_with from reactive::hooks
-
-### Maintenance
-
-- *(release)* group tree-sitter crates
-- merge develop/0.3.0 into pr 5346
-
-### Styling
-
-- *(examples)* format tutorial basis pages
-- format di exports
-
-### Testing
-
-- *(pages)* isolate static resolver state
 
 ### Removed
 
@@ -158,6 +89,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**: Removed the deprecated Pages hooks `use_effect_event` and
   `use_effect_event_with`. Use `use_callback` / `use_callback_with` or read
   latest signal values with `.get_untracked()` inside effects.
+
+### Fixed
+
+- *(db)* replay foreign key constraints and defaults
+- *(bench)* avoid unused server error bindings
+- *(db)* apply alter column defaults in migrations
+- *(commands)* align pages tutorial scaffold
+- *(commands)* address scaffold review feedback
+- *(commands)* include auth tutorial scaffold features
+- *(migrations)* handle field changes on renamed models
+- *(migrations)* address autodetector review gaps
+- *(macros)* stop propagating serde skip to Info relation fields
+- *(scaffolding)* default pages projects to sqlite
+- *(ci)* quote release-plz dry-run regex
+- *(ci)* satisfy server router clippy lint
+- *(commands)* repair pages quickstart scaffold defaults
+- *(infra)* import website DNS records
+- *(ci)* restrict wasm cache seed to main pushes
+- *(views)* wire declared viewset serializers
+- *(tests)* align viewset serializer fixtures
+- *(views)* align viewset serializer examples
+- *(db)* suppress replayed migration drift
+- *(ci)* pin brotli allocator dependency
+- *(examples)* align polls info fixtures with relations
+- *(formatter)* handle reviewed page rustfmt islands
+- add native stubs for client page functions
+- *(pages)* export client_page from prelude
+- *(di)* honor cache false for keyed wrappers
+- *(ci)* satisfy pages clippy lint
+- *(pages)* re-export use_callback_with from reactive::hooks
+
+### Documentation
+
+- add release announcement(s)
+- *(release)* expose 0.3 migration guide
+- *(pages)* document WASM server fn resolver
+- *(tutorial)* fix SQLite poll seed snippet
+- *(tutorial)* align 0.3.0 tutorial scaffolding
+- *(tutorial)* address 0.3.0 review feedback
+- *(tutorial)* gate client route modules
+- *(tutorial)* remove native client route specs
+- *(tutorial)* align pages scaffolding route gates
+- *(formatter)* document page rustfmt islands
+
+### Testing
+
+- *(migrations)* tighten autodetector assertions
+- *(examples)* guard polls question FK migration type
+- *(pages)* isolate static resolver state
+
+### Styling
+
+- *(examples)* format tutorial basis pages
+- format di exports
+
+### Maintenance
+
+- merge main into develop/0.3.0
+- merge develop 0.3.0 into build-time perf branch
+- merge latest develop 0.3.0 into build-time perf branch
+- *(release)* group tree-sitter crates
+- merge develop/0.3.0 into pr 5346
 
 ### Migration Guide
 

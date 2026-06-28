@@ -7,47 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.3.0-rc.2...reinhardt-test@v0.3.0-rc.3) - 2026-06-23
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.2.0...reinhardt-test@v0.3.0) - 2026-06-28
 
-### Fixed
+Stable release of `reinhardt-test` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
 
-- *(scaffolding)* generate target-neutral Pages apps
+### Migration Notes
 
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.2.0...reinhardt-test@v0.3.0-rc.1) - 2026-06-18
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
 ### Added
 
 - *(test)* add native msw mock server
+- Native `reinhardt_test::msw::MockServiceWorker` support backed by a loopback
+  HTTP mock server for explicit endpoint injection.
 
 ### Changed
 
 - *(test)* share msw state across runtimes
 - *(test)* adapt wasm msw to shared state
 
-### Documentation
-
-- *(test)* document native msw endpoint injection
-
 ### Fixed
 
+- *(scaffolding)* generate target-neutral Pages apps
 - *(test)* consume native msw network error handlers
 - *(test)* reject concurrent native msw startup
 - *(test)* serialize native msw lifecycle state
 - *(test)* stop native MSW keep-alive tasks
 
-### Styling
+### Documentation
 
-- *(test)* format native msw changes
+- *(test)* document native msw endpoint injection
 
 ### Testing
 
 - *(test)* add native msw behavior coverage
 - *(test)* tighten native msw coverage
 
-### Added
+### Styling
 
-- Native `reinhardt_test::msw::MockServiceWorker` support backed by a loopback
-  HTTP mock server for explicit endpoint injection.
+- *(test)* format native msw changes
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.3...reinhardt-test@v0.2.0) - 2026-06-11
 
