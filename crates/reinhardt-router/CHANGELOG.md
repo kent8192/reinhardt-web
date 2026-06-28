@@ -23,25 +23,12 @@ crate moves with the coordinated Reinhardt 0.3.0 release train.
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-router@v0.1.3...reinhardt-router@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-router` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Documentation
 
 - *(release)* enforce public API doc coverage
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-router@v0.2.0-rc.4...reinhardt-router@v0.2.0-rc.5) - 2026-06-11
-
-### Documentation
-
-- *(release)* enforce public API doc coverage
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-router@v0.1.3...reinhardt-router@v0.2.0-rc.2) - 2026-06-03
-
-### Fixed
-
-- *(ci)* recover develop release-plz prerelease
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-router@v0.1.0-rc.30...reinhardt-router@v0.1.0) - 2026-05-22
 

@@ -23,8 +23,8 @@ crate moves with the coordinated Reinhardt 0.3.0 release train.
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.3...reinhardt-pages-ast@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-pages-ast` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -43,33 +43,6 @@ RC entries remain below as detailed history.
 ### Documentation
 
 - *(release)* enforce public API doc coverage
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.2.0-rc.4...reinhardt-pages-ast@v0.2.0-rc.5) - 2026-06-11
-
-### Documentation
-
-- *(release)* enforce public API doc coverage
-
-### Performance
-
-- *(pages)* trim wasm dependency graph
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.3...reinhardt-pages-ast@v0.2.0-rc.2) - 2026-06-03
-
-### Added
-
-- *(pages)* support keyed page list rendering
-- feat!(forms): route use_form through form definitions
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-
-### Fixed
-
-- *(ci)* recover develop release-plz prerelease
-- *(forms)* address bot review feedback
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-rc.30...reinhardt-pages-ast@v0.1.0) - 2026-05-22
 

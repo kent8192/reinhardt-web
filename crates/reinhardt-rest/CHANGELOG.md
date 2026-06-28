@@ -32,8 +32,8 @@ stable release section.
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.3...reinhardt-rest@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-rest` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -77,62 +77,6 @@ RC entries remain below as detailed history.
 
 - update Cargo.toml dependencies
 - *(examples)* remove examples-twitter
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.2.0-rc.4...reinhardt-rest@v0.2.0-rc.5) - 2026-06-11
-
-### Maintenance
-
-- update Cargo.toml dependencies
-
-## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.2.0-rc.2...reinhardt-rest@v0.2.0-rc.3) - 2026-06-05
-
-### Fixed
-
-- keep openapi facade feature standalone
-
-### Performance
-
-- atomize facade dependency feature gates
-- trim standard facade feature dependencies
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.3...reinhardt-rest@v0.2.0-rc.2) - 2026-06-03
-
-### Added
-
-- *(rest)* [**breaking**] remove deprecated OpenApiConfig struct (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-
-### Documentation
-
-- *(reinhardt-rest)* fix ModelSerializer doctests after DefaultUser removal
-
-### Fixed
-
-- *(rest)* remove deletion-history comments from openapi.rs
-- *(ci)* recover develop release-plz prerelease
-- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
-- *(auth)* address CodeRabbit review feedback
-
-### Maintenance
-
-- *(examples)* remove examples-twitter
-
-### Removed
-
-#### BREAKING CHANGES
-
-- **`OpenApiConfig` struct** (`src/openapi/config.rs`, deprecated since
-  `0.1.0-rc.16`) — removed per STABILITY_POLICY § SP-4. Use
-  `OpenApiSettings` from `reinhardt_conf::settings::openapi` instead.
-  Refs [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
-
-No workspace consumers referenced `OpenApiConfig` directly, so no
-follow-up consumer migration is required.
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-rc.30...reinhardt-rest@v0.1.0) - 2026-05-22
 

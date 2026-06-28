@@ -31,8 +31,8 @@ stable release section.
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.3...reinhardt-utils@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-utils` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -53,43 +53,6 @@ RC entries remain below as detailed history.
 - *(commands)* notify browsers after hot reload rebuilds
 - *(build)* measure cold workspace build
 - trim standard facade feature dependencies
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.2.0-rc.4...reinhardt-utils@v0.2.0-rc.5) - 2026-06-11
-
-### Fixed
-
-- *(build)* address CodeRabbit review feedback
-- *(build)* port strict hot patch regression assertion
-
-### Performance
-
-- *(commands)* notify browsers after hot reload rebuilds
-- *(build)* measure cold workspace build
-
-## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.2.0-rc.3...reinhardt-utils@v0.2.0-rc.4) - 2026-06-06
-
-### Fixed
-
-- *(staticfiles)* inject wasm loader for directory index
-- *(staticfiles)* preserve raw index in non-spa mode
-- *(staticfiles)* inject wasm loader for directory index without spa mode
-
-## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.2.0-rc.2...reinhardt-utils@v0.2.0-rc.3) - 2026-06-05
-
-### Performance
-
-- trim standard facade feature dependencies
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.3...reinhardt-utils@v0.2.0-rc.2) - 2026-06-03
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-
-### Fixed
-
-- *(ci)* recover develop release-plz prerelease
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-rc.30...reinhardt-utils@v0.1.0) - 2026-05-22
 

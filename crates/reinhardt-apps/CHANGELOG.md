@@ -23,8 +23,8 @@ crate moves with the coordinated Reinhardt 0.3.0 release train.
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.1.3...reinhardt-apps@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-apps` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -49,34 +49,6 @@ RC entries remain below as detailed history.
 ### Maintenance
 
 - update Cargo.toml dependencies
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.2.0-rc.4...reinhardt-apps@v0.2.0-rc.5) - 2026-06-11
-
-### Maintenance
-
-- update Cargo.toml dependencies
-
-## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.2.0-rc.2...reinhardt-apps@v0.2.0-rc.3) - 2026-06-05
-
-### Performance
-
-- atomize facade dependency feature gates
-- trim standard facade feature dependencies
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.1.3...reinhardt-apps@v0.2.0-rc.2) - 2026-06-03
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-- *(conf)* delete deprecated Settings, AdvancedSettings, JsonFileSource, and related APIs
-
-### Fixed
-
-- *(ci)* recover develop release-plz prerelease
-- *(docs)* resolve remaining cross-crate intra-doc link errors
-- shield downstream consumers of newly deprecated config types
-- complete downstream shielding for deprecated config re-exports
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.1.0-rc.30...reinhardt-apps@v0.1.0) - 2026-05-22
 
