@@ -22,7 +22,7 @@ Install the Reinhardt project generator:
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.2"
+cargo install reinhardt-admin-cli --version "0.2.3"
 ```
 
 The installed binary is `reinhardt-admin`.

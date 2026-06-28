@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.2...reinhardt-web@v0.2.3) - 2026-06-27
+
+### Fixed
+
+- *(staticfiles)* normalize passthrough prefix matching
+- *(staticfiles)* harden passthrough prefix normalization
+- *(ci)* run release version sync from trusted checkout
+- *(ci)* scan ignored files in OSV full job
+
 ## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.1...reinhardt-web@v0.2.2) - 2026-06-25
 
 ### Documentation
