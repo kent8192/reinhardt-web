@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.6...reinhardt-web@v0.3.0-rc.7) - 2026-06-28
+
+### Fixed
+
+- *(db)* replay foreign key constraints and defaults
+- *(bench)* avoid unused server error bindings
+- *(db)* apply alter column defaults in migrations
+
 ## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.5...reinhardt-web@v0.3.0-rc.6) - 2026-06-27
 
 ### Documentation
