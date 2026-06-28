@@ -3365,7 +3365,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reinhardt-conf"
-version = "0.3.0-rc.4"
+version = "0.3.0-rc.6"
 dependencies = [
  "base64",
  "chrono",
@@ -3392,7 +3392,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-core"
-version = "0.3.0-rc.4"
+version = "0.3.0-rc.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3436,7 +3436,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-di"
-version = "0.3.0-rc.4"
+version = "0.3.0-rc.6"
 dependencies = [
  "async-trait",
  "bytes",
@@ -3480,7 +3480,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-http"
-version = "0.3.0-rc.4"
+version = "0.3.0-rc.6"
 dependencies = [
  "async-trait",
  "bytes",
@@ -3501,7 +3501,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-macros"
-version = "0.3.0-rc.4"
+version = "0.3.0-rc.6"
 dependencies = [
  "ctor",
  "inventory",
@@ -3514,7 +3514,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-middleware"
-version = "0.3.0-rc.4"
+version = "0.3.0-rc.6"
 dependencies = [
  "async-trait",
  "base64",
@@ -3544,11 +3544,11 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-router"
-version = "0.3.0-rc.4"
+version = "0.3.0-rc.6"
 
 [[package]]
 name = "reinhardt-routers-macros"
-version = "0.3.0-rc.4"
+version = "0.3.0-rc.6"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3557,7 +3557,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-server"
-version = "0.3.0-rc.4"
+version = "0.3.0-rc.6"
 dependencies = [
  "async-trait",
  "bytes",
@@ -3577,7 +3577,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-urls"
-version = "0.3.0-rc.4"
+version = "0.3.0-rc.6"
 dependencies = [
  "aho-corasick",
  "async-trait",
@@ -3609,7 +3609,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-utils"
-version = "0.3.0-rc.4"
+version = "0.3.0-rc.6"
 dependencies = [
  "anyhow",
  "async-trait",
