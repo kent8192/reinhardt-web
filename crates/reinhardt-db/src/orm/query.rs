@@ -18,6 +18,7 @@ use reinhardt_query::types::PgBinOper;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::collections::HashMap;
+use std::time::Instant;
 use uuid::Uuid;
 
 // Django QuerySet API types
@@ -4101,7 +4102,24 @@ where
 		let sql = stmt.to_string(PostgresQueryBuilder);
 
 		// Execute query and deserialize results
-		let rows = conn.query(&sql, vec![]).await?;
+		let started_at = Instant::now();
+		let query_result = conn.query(&sql, vec![]).await;
+		let duration = started_at.elapsed();
+
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.query_end_with_params(&sql, &[], duration)
+					.await;
+				rows
+			}
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.query_error(&sql, &format!("{error:?}"), duration)
+					.await;
+				return Err(error.into());
+			}
+		};
 		rows.into_iter()
 			.map(|row| {
 				serde_json::from_value(serde_json::to_value(&row.data).map_err(|e| {
@@ -4339,7 +4357,24 @@ where
 
 		let sql = stmt.to_string(PostgresQueryBuilder);
 
-		let rows = conn.query(&sql, vec![]).await?;
+		let started_at = Instant::now();
+		let query_result = conn.query(&sql, vec![]).await;
+		let duration = started_at.elapsed();
+
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.query_end_with_params(&sql, &[], duration)
+					.await;
+				rows
+			}
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.query_error(&sql, &format!("{error:?}"), duration)
+					.await;
+				return Err(error.into());
+			}
+		};
 		rows.into_iter()
 			.map(|row| {
 				serde_json::from_value(serde_json::to_value(&row.data).map_err(|e| {
