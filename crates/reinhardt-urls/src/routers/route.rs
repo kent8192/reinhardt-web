@@ -1,4 +1,4 @@
-use reinhardt_http::Handler;
+use reinhardt_http::{Handler, SyncHandler, SyncHandlerAdapter};
 use reinhardt_middleware::Middleware;
 use std::sync::Arc;
 
@@ -10,6 +10,7 @@ pub struct Route {
 	/// URL path pattern (e.g., `"/users/{id}/"`)
 	pub path: String,
 	handler: Arc<dyn Handler>,
+	sync_handler: Option<Arc<dyn SyncHandler>>,
 	/// Optional route name for reverse URL lookup.
 	pub name: Option<String>,
 	/// Namespace for this route (e.g., "users", "api")
@@ -48,6 +49,7 @@ impl Route {
 		Self {
 			path: path.into(),
 			handler,
+			sync_handler: None,
 			name: None,
 			namespace: None,
 			middleware: Vec::new(),
@@ -85,6 +87,36 @@ impl Route {
 		Self {
 			path: path.into(),
 			handler: Arc::new(handler),
+			sync_handler: None,
+			name: None,
+			namespace: None,
+			middleware: Vec::new(),
+		}
+	}
+
+	/// Create a new route from a synchronous handler.
+	///
+	/// The route keeps both the synchronous handler and an async adapter. Routers
+	/// can call the synchronous handler directly when no middleware is present,
+	/// while middleware and legacy APIs continue to use the async handler trait.
+	pub fn from_sync_handler<H>(path: impl Into<String>, handler: H) -> Self
+	where
+		H: SyncHandler + 'static,
+	{
+		let sync_handler: Arc<dyn SyncHandler> = Arc::new(handler);
+		Self::from_sync_handler_arc(path, sync_handler)
+	}
+
+	/// Create a new route from an already shared synchronous handler.
+	pub fn from_sync_handler_arc(
+		path: impl Into<String>,
+		sync_handler: Arc<dyn SyncHandler>,
+	) -> Self {
+		let handler: Arc<dyn Handler> = Arc::new(SyncHandlerAdapter::new(sync_handler.clone()));
+		Self {
+			path: path.into(),
+			handler,
+			sync_handler: Some(sync_handler),
 			name: None,
 			namespace: None,
 			middleware: Vec::new(),
@@ -302,6 +334,10 @@ impl Route {
 	/// In most cases, you should use `handler()` instead to get a reference.
 	pub fn handler_arc(&self) -> Arc<dyn Handler> {
 		Arc::clone(&self.handler)
+	}
+
+	pub(crate) fn sync_handler_arc(&self) -> Option<Arc<dyn SyncHandler>> {
+		self.sync_handler.clone()
 	}
 }
 

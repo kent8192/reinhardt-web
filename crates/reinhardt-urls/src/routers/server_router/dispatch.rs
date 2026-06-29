@@ -176,6 +176,7 @@ impl ServerRouter {
 
 				return Some(RouteMatch {
 					handler: &route_handler.handler,
+					sync_handler: route_handler.sync_handler.as_ref(),
 					params,
 					middleware_stack: combined_middleware,
 					di_context,

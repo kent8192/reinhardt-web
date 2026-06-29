@@ -7,7 +7,7 @@ use super::ServerRouter;
 use super::types::{FunctionRoute, ViewRoute};
 use crate::routers::Route;
 use reinhardt_core::endpoint::EndpointInfo;
-use reinhardt_http::Handler;
+use reinhardt_http::{Handler, SyncHandler, SyncHandlerAdapter};
 use reinhardt_middleware::Middleware;
 #[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::ViewSet;
@@ -131,6 +131,35 @@ impl ServerRouter {
 			path,
 			method,
 			handler: Arc::new(view),
+			sync_handler: None,
+			name: Some(name),
+			middleware: Vec::new(),
+		});
+		self
+	}
+
+	/// Register a synchronous endpoint using the `EndpointInfo` trait.
+	///
+	/// This variant is for endpoints that can complete without awaiting I/O.
+	/// Routers call the synchronous handler directly when no middleware is
+	/// attached, avoiding the boxed future required by the async handler trait.
+	pub fn endpoint_sync<F, E>(mut self, f: F) -> Self
+	where
+		F: FnOnce() -> E,
+		E: EndpointInfo + SyncHandler + 'static,
+	{
+		let view = f();
+		let path = E::path().to_string();
+		let method = E::method();
+		let name = E::name().to_string();
+		let sync_handler: Arc<dyn SyncHandler> = Arc::new(view);
+		let handler: Arc<dyn Handler> = Arc::new(SyncHandlerAdapter::new(sync_handler.clone()));
+
+		self.functions.push(FunctionRoute {
+			path,
+			method,
+			handler,
+			sync_handler: Some(sync_handler),
 			name: Some(name),
 			middleware: Vec::new(),
 		});
@@ -164,6 +193,7 @@ impl ServerRouter {
 		self.views.push(ViewRoute {
 			path: path.to_string(),
 			handler: Arc::new(view),
+			sync_handler: None,
 			name: None,
 			middleware: Vec::new(),
 		});
@@ -206,6 +236,7 @@ impl ServerRouter {
 		self.views.push(ViewRoute {
 			path: path.to_string(),
 			handler: Arc::new(view),
+			sync_handler: None,
 			name: Some(name.to_string()),
 			middleware: Vec::new(),
 		});
@@ -240,6 +271,18 @@ impl ServerRouter {
 		H: Handler + 'static,
 	{
 		let route = Route::from_handler(path, handler);
+		self.routes.push(route);
+		self
+	}
+
+	/// Register a synchronous handler directly.
+	///
+	/// This is the raw-handler counterpart to [`Self::endpoint_sync`].
+	pub fn handler_sync<H>(mut self, path: &str, handler: H) -> Self
+	where
+		H: SyncHandler + 'static,
+	{
+		let route = Route::from_sync_handler(path, handler);
 		self.routes.push(route);
 		self
 	}
@@ -309,6 +352,89 @@ impl ServerRouter {
 			route.middleware.push(middleware);
 		}
 		self
+	}
+}
+
+#[cfg(test)]
+mod sync_handler_tests {
+	use super::*;
+	use async_trait::async_trait;
+	use hyper::StatusCode;
+	use reinhardt_http::{Request, Response, Result};
+
+	struct HealthEndpoint;
+
+	impl EndpointInfo for HealthEndpoint {
+		fn path() -> &'static str {
+			"/health"
+		}
+
+		fn method() -> hyper::Method {
+			hyper::Method::GET
+		}
+
+		fn name() -> &'static str {
+			"health"
+		}
+	}
+
+	impl SyncHandler for HealthEndpoint {
+		fn handle_sync(&self, _request: Request) -> Result<Response> {
+			Ok(Response::ok().with_static_body(b"ok"))
+		}
+	}
+
+	struct PassThroughMiddleware;
+
+	#[async_trait]
+	impl Middleware for PassThroughMiddleware {
+		async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
+			let mut response = next.handle(request).await?;
+			response.status = StatusCode::ACCEPTED;
+			Ok(response)
+		}
+	}
+
+	fn request(path: &str) -> Request {
+		Request::builder()
+			.method(hyper::Method::GET)
+			.uri(path)
+			.build()
+			.expect("request should build")
+	}
+
+	#[tokio::test]
+	async fn endpoint_sync_dispatches_synchronous_handler() {
+		// Arrange
+		let router = ServerRouter::new().endpoint_sync(|| HealthEndpoint);
+
+		// Act
+		let response = router
+			.dispatch(request("/health"))
+			.await
+			.expect("route should dispatch");
+
+		// Assert
+		assert_eq!(response.status, StatusCode::OK);
+		assert_eq!(response.body.as_ref(), b"ok");
+	}
+
+	#[tokio::test]
+	async fn handler_sync_still_runs_through_middleware_chain() {
+		// Arrange
+		let router = ServerRouter::new()
+			.with_middleware(PassThroughMiddleware)
+			.handler_sync("/health", HealthEndpoint);
+
+		// Act
+		let response = router
+			.dispatch(request("/health"))
+			.await
+			.expect("route should dispatch");
+
+		// Assert
+		assert_eq!(response.status, StatusCode::ACCEPTED);
+		assert_eq!(response.body.as_ref(), b"ok");
 	}
 }
 

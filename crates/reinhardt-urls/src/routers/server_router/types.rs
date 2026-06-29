@@ -8,7 +8,7 @@
 use hyper::Method;
 use matchit::Router as MatchitRouter;
 use reinhardt_di::InjectionContext;
-use reinhardt_http::{Handler, PathParams};
+use reinhardt_http::{Handler, PathParams, SyncHandler};
 use reinhardt_middleware::Middleware;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -167,6 +167,9 @@ pub(crate) struct RouteHandler {
 	/// The actual handler
 	pub(crate) handler: Arc<dyn Handler>,
 
+	/// Optional synchronous fast-path handler.
+	pub(crate) sync_handler: Option<Arc<dyn SyncHandler>>,
+
 	/// Route-level middleware
 	pub(crate) middleware: Vec<Arc<dyn Middleware>>,
 
@@ -178,6 +181,9 @@ pub(crate) struct RouteHandler {
 pub(crate) struct RouteMatch<'a> {
 	/// Matched handler
 	pub handler: &'a Arc<dyn Handler>,
+
+	/// Matched synchronous fast-path handler, when available.
+	pub sync_handler: Option<&'a Arc<dyn SyncHandler>>,
 
 	/// Extracted path parameters in URL pattern declaration order.
 	///
@@ -210,6 +216,7 @@ pub(crate) struct FunctionRoute {
 	pub path: String,
 	pub method: Method,
 	pub handler: Arc<dyn Handler>,
+	pub sync_handler: Option<Arc<dyn SyncHandler>>,
 	pub name: Option<String>,
 	/// Middleware stack for this route
 	pub middleware: Vec<Arc<dyn Middleware>>,
@@ -219,6 +226,7 @@ pub(crate) struct FunctionRoute {
 pub(crate) struct ViewRoute {
 	pub path: String,
 	pub handler: Arc<dyn Handler>,
+	pub sync_handler: Option<Arc<dyn SyncHandler>>,
 	pub name: Option<String>,
 	/// Middleware stack for this route
 	pub middleware: Vec<Arc<dyn Middleware>>,

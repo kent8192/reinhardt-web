@@ -56,6 +56,7 @@ impl ServerRouter {
 		for func_route in &self.functions {
 			let route_handler = RouteHandler {
 				handler: func_route.handler.clone(),
+				sync_handler: func_route.sync_handler.clone(),
 				middleware: func_route.middleware.clone(),
 				param_names: extract_path_param_names(&func_route.path),
 			};
@@ -85,6 +86,7 @@ impl ServerRouter {
 		for view_route in &self.views {
 			let route_handler = RouteHandler {
 				handler: view_route.handler.clone(),
+				sync_handler: view_route.sync_handler.clone(),
 				middleware: view_route.middleware.clone(),
 				param_names: extract_path_param_names(&view_route.path),
 			};
@@ -118,6 +120,7 @@ impl ServerRouter {
 		for route in &self.routes {
 			let route_handler = RouteHandler {
 				handler: route.handler_arc(),
+				sync_handler: route.sync_handler_arc(),
 				middleware: route.middleware.clone(),
 				param_names: extract_path_param_names(&route.path),
 			};
@@ -167,6 +170,7 @@ impl ServerRouter {
 					viewset: viewset.clone(),
 					action: Action::list(),
 				}),
+				sync_handler: None,
 				middleware: Vec::new(),
 				param_names: extract_path_param_names(&collection_path),
 			};
@@ -185,6 +189,7 @@ impl ServerRouter {
 					viewset: viewset.clone(),
 					action: Action::create(),
 				}),
+				sync_handler: None,
 				middleware: Vec::new(),
 				param_names: extract_path_param_names(&collection_path),
 			};
@@ -206,6 +211,7 @@ impl ServerRouter {
 					viewset: viewset.clone(),
 					action: Action::retrieve(),
 				}),
+				sync_handler: None,
 				middleware: Vec::new(),
 				param_names: extract_path_param_names(&detail_path),
 			};
@@ -224,6 +230,7 @@ impl ServerRouter {
 					viewset: viewset.clone(),
 					action: Action::update(),
 				}),
+				sync_handler: None,
 				middleware: Vec::new(),
 				param_names: extract_path_param_names(&detail_path),
 			};
@@ -242,6 +249,7 @@ impl ServerRouter {
 					viewset: viewset.clone(),
 					action: Action::destroy(),
 				}),
+				sync_handler: None,
 				middleware: Vec::new(),
 				param_names: extract_path_param_names(&detail_path),
 			};

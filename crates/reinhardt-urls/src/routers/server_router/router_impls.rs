@@ -98,6 +98,10 @@ impl ServerRouter {
 
 		// Apply middleware stack using MiddlewareChain
 		if route_match.middleware_stack.is_empty() {
+			if let Some(sync_handler) = route_match.sync_handler {
+				return sync_handler.handle_sync(req);
+			}
+
 			// No middleware, execute the trait object directly. Calling through
 			// `Arc<dyn Handler>` would add the blanket `Arc<T>` async-trait box.
 			route_match.handler.as_ref().handle(req).await
@@ -130,6 +134,7 @@ impl reinhardt_views::viewsets::RegisterViewSet for ServerRouter {
 		self.views.push(ViewRoute {
 			path: path.to_string(),
 			handler,
+			sync_handler: None,
 			name: None,
 			middleware: Vec::new(),
 		});

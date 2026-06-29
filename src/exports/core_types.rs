@@ -7,7 +7,10 @@ pub use reinhardt_core::{
 };
 
 #[cfg(all(feature = "core", native))]
-pub use reinhardt_http::{Handler, Middleware, MiddlewareChain, Request, Response, ViewResult};
+pub use reinhardt_http::{
+	Handler, Middleware, MiddlewareChain, Request, Response, SyncHandler, SyncHandlerAdapter,
+	ViewResult,
+};
 
 #[cfg(all(feature = "core", native))]
 pub use reinhardt_http::Extensions;

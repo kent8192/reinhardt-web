@@ -21,6 +21,23 @@
 //! }
 //! ```
 //!
+//! ## SyncHandler
+//!
+//! `SyncHandler` is a fast path for handlers that can produce a response
+//! without awaiting I/O:
+//!
+//! ```rust
+//! use reinhardt_http::{Request, Response, SyncHandler};
+//!
+//! struct HealthHandler;
+//!
+//! impl SyncHandler for HealthHandler {
+//!     fn handle_sync(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
+//!         Ok(Response::ok().with_body("ok"))
+//!     }
+//! }
+//! ```
+//!
 //! ## Middleware
 //!
 //! Middleware wraps handlers to add cross-cutting concerns:
@@ -69,6 +86,44 @@ pub trait Handler: Send + Sync {
 	///
 	/// Returns an error if the request cannot be processed.
 	async fn handle(&self, request: Request) -> Result<Response>;
+}
+
+/// Handler trait for request processing that does not need to await.
+///
+/// This is an optional fast path for simple routes such as health checks,
+/// static responses, and synchronous request parsing. Routers can call this
+/// trait directly to avoid creating the boxed future required by
+/// [`async_trait`] on [`Handler`].
+pub trait SyncHandler: Send + Sync {
+	/// Handles an HTTP request synchronously and produces a response.
+	///
+	/// # Errors
+	///
+	/// Returns an error if the request cannot be processed.
+	fn handle_sync(&self, request: Request) -> Result<Response>;
+}
+
+/// Adapter that exposes a [`SyncHandler`] through the async [`Handler`] trait.
+///
+/// Middleware chains still operate on `Arc<dyn Handler>`, so synchronous
+/// handlers use this adapter whenever they pass through middleware or any
+/// legacy async-only API.
+pub struct SyncHandlerAdapter {
+	inner: Arc<dyn SyncHandler>,
+}
+
+impl SyncHandlerAdapter {
+	/// Creates an adapter around a synchronous handler.
+	pub fn new(inner: Arc<dyn SyncHandler>) -> Self {
+		Self { inner }
+	}
+}
+
+#[async_trait]
+impl Handler for SyncHandlerAdapter {
+	async fn handle(&self, request: Request) -> Result<Response> {
+		self.inner.handle_sync(request)
+	}
 }
 
 /// Blanket implementation for `Arc<T>` where T: Handler.

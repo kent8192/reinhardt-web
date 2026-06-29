@@ -236,7 +236,7 @@ The integrated 2026-06-29 0.4 fast-path measurement combines lazy query
 parameters with raw `get` lookups, lazy extension backing-store initialization,
 empty HTTP/1 body skipping, shared route parameter names, inline path parameter
 values, an immutable compiled router table, borrowed matched handlers, and the
-concrete router dispatch fast path:
+concrete router dispatch and synchronous handler fast paths:
 
 | Probe | `develop/0.4.0` baseline | Integrated fast path | Reduction |
 |---|---:|---:|---:|
@@ -246,8 +246,8 @@ concrete router dispatch fast path:
 | `direct_handler_handle_only` | 2 alloc/request | 2 alloc/request | 0.0% |
 | `clone_for_di_empty_path` | 1 alloc/request | 1 alloc/request | 0.0% |
 | `clone_for_di_two_query_params` | 6 alloc/request | 0 alloc/request | 100.0% |
-| `server_router_static_build_plus_handle` | 6 alloc/request | 2 alloc/request | 66.7% |
-| `server_router_two_params_build_plus_handle` | 10 alloc/request | 2 alloc/request | 80.0% |
+| `server_router_static_build_plus_handle` | 6 alloc/request | 1 alloc/request | 83.3% |
+| `server_router_two_params_build_plus_handle` | 10 alloc/request | 1 alloc/request | 90.0% |
 | `server_router_one_middleware_build_plus_handle` | 12 alloc/request | 8 alloc/request | 33.3% |
 
 Runtime HTTP scorecard acceptance still requires a low-noise loopback rerun.
@@ -273,6 +273,11 @@ redundant after Hyper has already parsed the request.
 HTTP/1 and HTTP/2 adapters also share a single request-body plan step, so
 empty GET/HEAD requests skip body collection and content-length checks without
 duplicating header lookups across the size precheck and collector.
+
+Synchronous route handlers registered through `ServerRouter::endpoint_sync()`
+or `ServerRouter::handler_sync()` avoid the async trait-object boxed future
+when no middleware is attached. Middleware routes still use the async adapter
+because the middleware contract remains `Arc<dyn Handler>`.
 
 HTTP/1 and HTTP/2 adapters use Hyper `service_fn` concrete futures instead of a
 boxed `Service::Future` on each request. Response conversion also moves the

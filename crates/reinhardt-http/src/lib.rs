@@ -111,7 +111,8 @@ pub use extensions::{Extensions, IsActive, IsAdmin, IsAuthenticated};
 #[cfg(feature = "messages")]
 pub use messages_middleware::MessagesMiddleware;
 pub use middleware::{
-	ExcludeMiddleware, Handler, Middleware, MiddlewareChain, MiddlewareDiRegistration,
+	ExcludeMiddleware, Handler, Middleware, MiddlewareChain, MiddlewareDiRegistration, SyncHandler,
+	SyncHandlerAdapter,
 };
 pub use path_params::PathParams;
 pub use request::{QueryParams, Request, RequestBuilder, TrustedProxies};

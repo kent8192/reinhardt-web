@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use hyper::Method;
-use reinhardt_http::{Handler, Request, Response, Result};
+use reinhardt_http::{Handler, Request, Response, Result, SyncHandler};
 use reinhardt_middleware::Middleware;
 use reinhardt_urls::routers::ServerRouter;
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -39,6 +39,12 @@ struct EmptyHandler;
 #[async_trait]
 impl Handler for EmptyHandler {
 	async fn handle(&self, _request: Request) -> Result<Response> {
+		Ok(Response::ok())
+	}
+}
+
+impl SyncHandler for EmptyHandler {
+	fn handle_sync(&self, _request: Request) -> Result<Response> {
 		Ok(Response::ok())
 	}
 }
@@ -150,7 +156,7 @@ async fn main() {
 	})
 	.await;
 
-	let router = Arc::new(ServerRouter::new().handler("/health", EmptyHandler));
+	let router = Arc::new(ServerRouter::new().handler_sync("/health", EmptyHandler));
 	router.dispatch(request("/health")).await.unwrap();
 	measure("server_router_static_build_plus_handle", iterations, || {
 		let router = router.clone();
@@ -161,7 +167,7 @@ async fn main() {
 	.await;
 
 	let router_param =
-		Arc::new(ServerRouter::new().handler("/users/{id}/posts/{post_id}/", EmptyHandler));
+		Arc::new(ServerRouter::new().handler_sync("/users/{id}/posts/{post_id}/", EmptyHandler));
 	router_param
 		.dispatch(request("/users/123/posts/456/"))
 		.await
@@ -184,7 +190,7 @@ async fn main() {
 	let router_mw = Arc::new(
 		ServerRouter::new()
 			.with_middleware(TinyMiddleware)
-			.handler("/health", EmptyHandler),
+			.handler_sync("/health", EmptyHandler),
 	);
 	router_mw.dispatch(request("/health")).await.unwrap();
 	measure(
