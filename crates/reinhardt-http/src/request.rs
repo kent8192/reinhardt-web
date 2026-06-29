@@ -6,9 +6,9 @@ use crate::extensions::Extensions;
 use crate::path_params::PathParams;
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, Uri, Version};
+pub use params::QueryParams;
 #[cfg(feature = "parsers")]
 use reinhardt_core::parsers::parser::{ParsedData, Parser};
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::AtomicBool;
@@ -67,8 +67,8 @@ pub struct Request {
 	///
 	/// Stored in URL pattern declaration order (see [`PathParams`]).
 	pub path_params: PathParams,
-	/// Query string parameters parsed from the URI.
-	pub query_params: HashMap<String, String>,
+	/// Query string parameters parsed lazily from the URI.
+	pub query_params: QueryParams,
 	/// Indicates if this request came over HTTPS
 	pub is_secure: bool,
 	/// Remote address of the client (if available)
@@ -165,7 +165,7 @@ impl RequestBuilder {
 
 	/// Set the request URI.
 	///
-	/// Accepts either a `&str` or `Uri`. Query parameters will be automatically parsed.
+	/// Accepts either a `&str` or `Uri`. Query parameters are parsed on first access.
 	///
 	/// # Examples
 	///
@@ -444,7 +444,7 @@ impl RequestBuilder {
 			return Err(err);
 		}
 		let uri = self.uri.ok_or_else(|| "URI is required".to_string())?;
-		let query_params = Request::parse_query_params(&uri);
+		let query_params = QueryParams::from_uri(&uri);
 
 		Ok(Request {
 			method: self.method,
@@ -947,7 +947,7 @@ impl Request {
 	/// assert!(result.is_err());
 	/// ```
 	pub fn query_as<T: serde::de::DeserializeOwned>(&self) -> crate::Result<T> {
-		// Convert HashMap<String, String> to Vec<(String, String)> for serde_urlencoded
+		// Convert query parameters to pairs for serde_urlencoded.
 		let params: Vec<(String, String)> = self
 			.query_params
 			.iter()

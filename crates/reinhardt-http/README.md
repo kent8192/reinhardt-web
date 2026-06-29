@@ -14,7 +14,7 @@ Core HTTP abstractions for the Reinhardt framework. Provides comprehensive reque
 
 - **Complete HTTP request representation** with all standard components
   - HTTP method, URI, version, headers, body
-  - Path parameters (`path_params`) and query string parsing (`query_params`)
+  - Path parameters (`path_params`) and lazy query string parsing (`query_params`)
   - HTTPS detection (`is_secure`)
   - Remote address tracking (`remote_addr`)
   - Type-safe extensions system (`Extensions`)
@@ -299,7 +299,7 @@ let response = StreamingResponse::with_status(
 - `version: Version` - HTTP version
 - `headers: HeaderMap` - HTTP headers
 - `path_params: HashMap<String, String>` - Path parameters from URL routing
-- `query_params: HashMap<String, String>` - Query string parameters
+- `query_params: QueryParams` - Lazily parsed query string parameters
 - `is_secure: bool` - Whether request is over HTTPS
 - `remote_addr: Option<SocketAddr>` - Client's remote address
 - `extensions: Extensions` - Type-safe extension storage
