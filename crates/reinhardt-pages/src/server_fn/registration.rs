@@ -24,7 +24,8 @@ use super::registry::ServerFnHandler;
 ///
 /// Extends [`ServerFnMetadata`] (which provides `PATH`, `NAME`, `CODEC`, and
 /// `INJECTED_PARAMS`) with the handler entry point used by the router on
-/// the server side. The handler is intentionally absent on wasm — the
+/// the server side. The handler returns already serialized bytes and is
+/// intentionally absent on wasm — the
 /// client target only sees the function's request stub, not its handler
 /// function pointer.
 ///

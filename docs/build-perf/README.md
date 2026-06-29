@@ -196,7 +196,9 @@ The optimized path avoids per-request path-string allocations when the input
 path is already normalized, avoids allocating alternate trailing-slash vectors,
 skips response-cookie jar creation for body-only server functions, and
 deserializes JSON server-function requests directly from bytes when content
-negotiation is not required.
+negotiation is not required. The 0.4 server-function dispatch path also keeps
+serialized responses as `bytes::Bytes` and writes static typed response
+content-type headers.
 
 ## Reinhardt 0.4 Performance Scorecard
 

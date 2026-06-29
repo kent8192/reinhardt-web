@@ -1098,23 +1098,36 @@ fn generate_server_handler(
 		quote! {}
 	};
 
+	// Dynamically resolve crate paths for body extraction, serialization, and registration
+	let pages_crate = get_reinhardt_pages_crate();
+
 	// Generate codec-specific serialization code for server response
 	let serialize_response_code = match codec {
 		"json" => quote! {
-			::serde_json::to_string(&value)
-				.map_err(|e| format!("Failed to serialize response: {}", e))
+			::serde_json::to_vec(&value)
+				.map(#pages_crate::__private::bytes::Bytes::from)
+				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+					format!("Failed to serialize response: {}", e)
+				))
 		},
 		"url" => quote! {
 			// For URL-encoded codec, response is still JSON
-			::serde_json::to_string(&value)
-				.map_err(|e| format!("Failed to serialize response: {}", e))
+			::serde_json::to_vec(&value)
+				.map(#pages_crate::__private::bytes::Bytes::from)
+				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+					format!("Failed to serialize response: {}", e)
+				))
 		},
 		"msgpack" => quote! {
 			// Serialize to msgpack bytes
 			let bytes = ::rmp_serde::to_vec(&value)
-				.map_err(|e| format!("Failed to serialize response: {}", e))?;
+				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+					format!("Failed to serialize response: {}", e)
+				))?;
 			// Encode as base64 for HTTP transport
-			Ok(::base64::Engine::encode(&::base64::engine::general_purpose::STANDARD, &bytes))
+			Ok(#pages_crate::__private::bytes::Bytes::from(
+				::base64::Engine::encode(&::base64::engine::general_purpose::STANDARD, &bytes)
+			))
 		},
 		// Fixes #843: emit compile error for unknown codec instead of silent fallback
 		unknown => {
@@ -1126,16 +1139,13 @@ fn generate_server_handler(
 		}
 	};
 
-	// Dynamically resolve crate paths for body extraction and registration
-	let pages_crate = get_reinhardt_pages_crate();
-
 	// Generate handler signature and body extraction.
 	// The handler receives Request in every native configuration. This keeps body
 	// handling in one place and lets JSON decode directly from Bytes when content
 	// negotiation is not needed.
 	let http_crate = get_reinhardt_http_crate();
 	let handler_signature = quote! {
-		pub async fn #handler_name(__req: #http_crate::Request) -> ::std::result::Result<::std::string::String, ::std::string::String>
+		pub async fn #handler_name(__req: #http_crate::Request) -> ::std::result::Result<#pages_crate::__private::bytes::Bytes, #pages_crate::__private::bytes::Bytes>
 	};
 	let handler_body_extraction = if regular_params.is_empty() {
 		quote! {}
@@ -1396,8 +1406,10 @@ fn generate_server_handler(
 				Err(e) => {
 					// Serialize the error as ServerFnError
 					let error_json = ::serde_json::to_string(&e)
-						.map_err(|e| format!("Failed to serialize error: {}", e))?;
-					Err(error_json)
+						.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+							format!("Failed to serialize error: {}", e)
+						))?;
+					Err(#pages_crate::__private::bytes::Bytes::from(error_json))
 				}
 			}
 		}
@@ -1426,7 +1438,7 @@ fn generate_server_handler(
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		fn #static_wrapper_name(
 			req: #http_crate_for_wrapper::Request
-		) -> ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = ::std::result::Result<::std::string::String, ::std::string::String>> + ::std::marker::Send>> {
+		) -> ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = ::std::result::Result<#pages_crate::__private::bytes::Bytes, #pages_crate::__private::bytes::Bytes>> + ::std::marker::Send>> {
 			::std::boxed::Box::pin(async move {
 				// When DI is enabled, pass Request directly
 				// When DI is disabled, extract body from Request

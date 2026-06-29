@@ -236,6 +236,7 @@ reinhardt-urls = { workspace = true, default-features = false, features = ["rout
 reinhardt-server = { workspace = true }
 reinhardt-utils = { workspace = true, features = ["staticfiles"] }
 hyper = { workspace = true }
+bytes = { workspace = true }
 async-trait = "0.1"
 uuid = { version = "1.7", features = ["v4", "v7"] }
 tokio = { workspace = true }
@@ -272,7 +273,6 @@ criterion = { workspace = true }
 proptest = { workspace = true }
 hyper-util = { workspace = true }
 http-body-util = { workspace = true }
-bytes = { workspace = true }
 tokio-tungstenite = "0.26"
 futures-util = "0.3"
 # Enable `validation` feature for trybuild UI tests that exercise

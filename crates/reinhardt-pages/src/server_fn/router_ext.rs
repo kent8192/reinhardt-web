@@ -19,6 +19,7 @@
 
 use super::ServerFnError;
 use super::registration::ServerFnRegistration;
+use hyper::header::{CONTENT_TYPE, HeaderValue};
 use hyper::{Method, StatusCode};
 use reinhardt_core::endpoint::EndpointInfo;
 use reinhardt_http::{Handler, Request, Response, Result, SharedResponseCookies};
@@ -105,8 +106,8 @@ impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 		// Response Content-Type based on codec.
 		// "url" codec still returns JSON responses (only request format differs).
 		let response_content_type = match S::CODEC {
-			"msgpack" => "application/msgpack",
-			_ => "application/json",
+			"msgpack" => HeaderValue::from_static("application/msgpack"),
+			_ => HeaderValue::from_static("application/json"),
 		};
 
 		// Insert a shared cookie jar only for handlers that can access request
@@ -121,14 +122,19 @@ impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 
 		let mut response = match handler(req).await {
 			Ok(body) => Response::ok()
-				.with_header("Content-Type", response_content_type)
+				.with_typed_header(CONTENT_TYPE, response_content_type.clone())
 				.with_body(body),
 			Err(error_body) => {
 				// Log the error to stderr for debugging.
-				eprintln!("[server_fn ERROR] {} ({}): {}", name, path, error_body);
+				eprintln!(
+					"[server_fn ERROR] {} ({}): {}",
+					name,
+					path,
+					String::from_utf8_lossy(&error_body)
+				);
 
 				// Extract status code from ServerFnError if possible.
-				let status_code = serde_json::from_str::<ServerFnError>(&error_body)
+				let status_code = serde_json::from_slice::<ServerFnError>(&error_body)
 					.ok()
 					.map(|err| match err {
 						ServerFnError::Server { status, .. } => StatusCode::from_u16(status)
@@ -138,7 +144,7 @@ impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 					.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
 				Response::new(status_code)
-					.with_header("Content-Type", response_content_type)
+					.with_typed_header(CONTENT_TYPE, response_content_type)
 					.with_body(error_body)
 			}
 		};
