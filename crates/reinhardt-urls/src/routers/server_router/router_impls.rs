@@ -48,10 +48,13 @@ impl Handler for FixedResponseHandler {
 	}
 }
 
-/// Handler implementation for ServerRouter
-#[async_trait]
-impl Handler for ServerRouter {
-	async fn handle(&self, mut req: Request) -> Result<Response> {
+impl ServerRouter {
+	/// Dispatch a request through this router without a trait-object handler wrapper.
+	///
+	/// This has the same routing behavior as the [`Handler`] implementation, but
+	/// concrete callers can await the router's inherent future directly instead of
+	/// going through the boxed future produced by `async_trait`.
+	pub async fn dispatch(&self, mut req: Request) -> Result<Response> {
 		let path = req.uri.path();
 		let method = &req.method;
 
@@ -106,6 +109,14 @@ impl Handler for ServerRouter {
 			// Execute chain
 			chain.handle(req).await
 		}
+	}
+}
+
+/// Handler implementation for ServerRouter
+#[async_trait]
+impl Handler for ServerRouter {
+	async fn handle(&self, req: Request) -> Result<Response> {
+		self.dispatch(req).await
 	}
 }
 

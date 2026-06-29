@@ -8,6 +8,7 @@ use hyper_util::rt::TokioIo;
 use reinhardt_di::InjectionContext;
 use reinhardt_http::{Handler, Middleware, MiddlewareChain};
 use reinhardt_http::{Request, Response};
+use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
@@ -311,12 +312,39 @@ impl HttpServer {
 		handler: Arc<dyn Handler>,
 		di_context: Option<Arc<InjectionContext>>,
 	) -> Result<(), Box<dyn std::error::Error>> {
+		Self::handle_connection_with(
+			stream,
+			socket_addr,
+			move |request| {
+				let handler = Arc::clone(&handler);
+				async move { handler.handle(request).await }
+			},
+			di_context,
+		)
+		.await
+	}
+
+	/// Handle a single TCP connection with a concrete request handler function.
+	///
+	/// This lower-level adapter is useful when callers can keep their routing
+	/// entry point concrete, avoiding the boxed future required by
+	/// `Arc<dyn Handler>`.
+	pub async fn handle_connection_with<F, Fut>(
+		stream: TcpStream,
+		socket_addr: SocketAddr,
+		handler: F,
+		di_context: Option<Arc<InjectionContext>>,
+	) -> Result<(), Box<dyn std::error::Error>>
+	where
+		F: Fn(Request) -> Fut + Clone + Send + Sync + 'static,
+		Fut: Future<Output = reinhardt_http::Result<Response>> + Send + 'static,
+	{
 		let io = TokioIo::new(stream);
 		let service = service_fn(move |req| {
 			let handler = handler.clone();
 			let di_context = di_context.clone();
 
-			handle_request(req, handler, socket_addr, di_context, DEFAULT_MAX_BODY_SIZE)
+			handle_request_with(req, handler, socket_addr, di_context, DEFAULT_MAX_BODY_SIZE)
 		});
 
 		http1::Builder::new().serve_connection(io, service).await?;
@@ -329,13 +357,17 @@ impl HttpServer {
 const DEFAULT_MAX_BODY_SIZE: u64 = 10 * 1024 * 1024;
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
-async fn handle_request(
+async fn handle_request_with<F, Fut>(
 	req: hyper::Request<Incoming>,
-	handler: Arc<dyn Handler>,
+	handler: F,
 	remote_addr: SocketAddr,
 	di_context: Option<Arc<InjectionContext>>,
 	max_body_size: u64,
-) -> Result<hyper::Response<Full<Bytes>>, BoxError> {
+) -> Result<hyper::Response<Full<Bytes>>, BoxError>
+where
+	F: Fn(Request) -> Fut + Clone + Send + Sync + 'static,
+	Fut: Future<Output = reinhardt_http::Result<Response>> + Send + 'static,
+{
 	// Check Content-Length before reading body
 	if let Some(content_length) = req.headers().get(hyper::header::CONTENT_LENGTH)
 		&& let Ok(len_str) = content_length.to_str()
@@ -382,7 +414,7 @@ async fn handle_request(
 			None
 		}
 	};
-	let response = handler.handle(request).await.unwrap_or_else(|e| {
+	let response = handler(request).await.unwrap_or_else(|e| {
 		if let Some(request_path) = request_path_for_warning.as_deref() {
 			eprintln!(
 				"[reinhardt WARN] Non-API request hit error-to-JSON conversion: path={}, error={}",

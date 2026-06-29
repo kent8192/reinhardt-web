@@ -554,7 +554,7 @@ async fn spawn_reinhardt_server(client: &Client) -> LoopbackServer {
 	let addr = listener
 		.local_addr()
 		.expect("Reinhardt listener should expose local address");
-	let handler: Arc<dyn ReinhardtHandler> = Arc::new(reinhardt_router());
+	let router = Arc::new(reinhardt_router());
 	let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
 
 	let join_handle = tokio::spawn(async move {
@@ -564,20 +564,28 @@ async fn spawn_reinhardt_server(client: &Client) -> LoopbackServer {
 				result = listener.accept() => {
 					match result {
 						Ok((stream, socket_addr)) => {
-							let handler = handler.clone();
-								tokio::spawn(async move {
-									if let Err(err) =
-										ReinhardtHttpServer::handle_connection(stream, socket_addr, handler, None).await
-									{
-										eprintln!("Reinhardt benchmark connection failed: {}", err);
-									}
-								});
-							}
-							Err(err) => {
-								eprintln!("Reinhardt benchmark accept failed: {}", err);
-								break;
-							}
+							let router = router.clone();
+							tokio::spawn(async move {
+								if let Err(err) = ReinhardtHttpServer::handle_connection_with(
+									stream,
+									socket_addr,
+									move |request| {
+										let router = router.clone();
+										async move { router.dispatch(request).await }
+									},
+									None,
+								)
+								.await
+								{
+									eprintln!("Reinhardt benchmark connection failed: {}", err);
+								}
+							});
 						}
+						Err(err) => {
+							eprintln!("Reinhardt benchmark accept failed: {}", err);
+							break;
+						}
+					}
 				}
 			}
 		}

@@ -235,7 +235,8 @@ a Reinhardt `Request`.
 The integrated 2026-06-29 0.4 fast-path measurement combines lazy query
 parameters with raw `get` lookups, lazy extension backing-store initialization,
 empty HTTP/1 body skipping, shared route parameter names, inline path parameter
-values, and an immutable compiled router table:
+values, an immutable compiled router table, borrowed matched handlers, and the
+concrete router dispatch fast path:
 
 | Probe | `develop/0.4.0` baseline | Integrated fast path | Reduction |
 |---|---:|---:|---:|
@@ -245,9 +246,9 @@ values, and an immutable compiled router table:
 | `direct_handler_handle_only` | 2 alloc/request | 2 alloc/request | 0.0% |
 | `clone_for_di_empty_path` | 1 alloc/request | 1 alloc/request | 0.0% |
 | `clone_for_di_two_query_params` | 6 alloc/request | 0 alloc/request | 100.0% |
-| `server_router_static_build_plus_handle` | 6 alloc/request | 5 alloc/request | 16.7% |
-| `server_router_two_params_build_plus_handle` | 10 alloc/request | 5 alloc/request | 50.0% |
-| `server_router_one_middleware_build_plus_handle` | 12 alloc/request | 11 alloc/request | 8.3% |
+| `server_router_static_build_plus_handle` | 6 alloc/request | 3 alloc/request | 50.0% |
+| `server_router_two_params_build_plus_handle` | 10 alloc/request | 3 alloc/request | 70.0% |
+| `server_router_one_middleware_build_plus_handle` | 12 alloc/request | 9 alloc/request | 25.0% |
 
 Runtime HTTP scorecard acceptance still requires a low-noise loopback rerun.
 During the inline path-parameter measurement, system load was above normal and
@@ -282,6 +283,14 @@ a handler reads several known parameters from the same request.
 Router matches borrow the compiled route handler and only clone its `Arc` when
 middleware composition needs an owned handler. The common no-middleware route
 path calls the matched handler through the borrowed compiled-route entry.
+
+`ServerRouter::dispatch` exposes the router's concrete request future for
+callers that do not need to erase the router behind `dyn Handler`.
+`HttpServer::handle_connection_with` accepts a concrete request-handler
+closure, so benchmark and embedding code can keep the router concrete and avoid
+one `async_trait` boxed future on the HTTP adapter -> router boundary. The
+existing `handle_connection` API remains available for arbitrary `Handler`
+trait objects.
 
 ## Admin List Query Count Measurements
 

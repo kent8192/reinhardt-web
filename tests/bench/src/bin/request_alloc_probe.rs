@@ -151,11 +151,11 @@ async fn main() {
 	.await;
 
 	let router = Arc::new(ServerRouter::new().handler("/health", EmptyHandler));
-	router.handle(request("/health")).await.unwrap();
+	router.dispatch(request("/health")).await.unwrap();
 	measure("server_router_static_build_plus_handle", iterations, || {
 		let router = router.clone();
 		async move {
-			let _ = router.handle(request("/health")).await.unwrap();
+			let _ = router.dispatch(request("/health")).await.unwrap();
 		}
 	})
 	.await;
@@ -163,7 +163,7 @@ async fn main() {
 	let router_param =
 		Arc::new(ServerRouter::new().handler("/users/{id}/posts/{post_id}/", EmptyHandler));
 	router_param
-		.handle(request("/users/123/posts/456/"))
+		.dispatch(request("/users/123/posts/456/"))
 		.await
 		.unwrap();
 	measure(
@@ -173,7 +173,7 @@ async fn main() {
 			let router = router_param.clone();
 			async move {
 				let _ = router
-					.handle(request("/users/123/posts/456/"))
+					.dispatch(request("/users/123/posts/456/"))
 					.await
 					.unwrap();
 			}
@@ -186,14 +186,14 @@ async fn main() {
 			.with_middleware(TinyMiddleware)
 			.handler("/health", EmptyHandler),
 	);
-	router_mw.handle(request("/health")).await.unwrap();
+	router_mw.dispatch(request("/health")).await.unwrap();
 	measure(
 		"server_router_one_middleware_build_plus_handle",
 		iterations,
 		|| {
 			let router = router_mw.clone();
 			async move {
-				let _ = router.handle(request("/health")).await.unwrap();
+				let _ = router.dispatch(request("/health")).await.unwrap();
 			}
 		},
 	)
