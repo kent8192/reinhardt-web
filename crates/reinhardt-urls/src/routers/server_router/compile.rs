@@ -6,7 +6,7 @@
 use super::ServerRouter;
 #[cfg(feature = "viewsets")]
 use super::handlers::ViewSetHandler;
-use super::types::{CompiledRoutes, ExactRoute, RouteHandler};
+use super::types::{CompiledRoutes, RouteHandler};
 use hyper::Method;
 #[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::Action;
@@ -47,10 +47,9 @@ fn insert_compiled_route(
 		.insert(route_path, route_handler)
 		.map_err(|error| error.to_string())?;
 	if let Some(route_handler) = exact_handler {
-		compiled.exact_for_method_mut(method).push(ExactRoute {
-			path: route_path.into(),
-			handler: route_handler,
-		});
+		compiled
+			.exact_for_method_mut(method)
+			.insert(route_path.to_string(), route_handler);
 	}
 	Ok(())
 }

@@ -169,12 +169,11 @@ impl ServerRouter {
 			}};
 		}
 
-		if let Some(exact_route) = compiled_routes
+		if let Some(route_handler) = compiled_routes
 			.exact_for_method(method)
-			.iter()
-			.find(|route| route.path.as_ref() == search_path.as_ref())
+			.get(search_path.as_ref())
 		{
-			return_route_handler_match!(&exact_route.handler, None);
+			return_route_handler_match!(route_handler, None);
 		}
 
 		// Try matching with the original path first. Only allocate the

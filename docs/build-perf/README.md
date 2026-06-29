@@ -151,7 +151,10 @@ Record at least three runs and report the median of Criterion's point
 estimates. This benchmark is the backend/native endpoint complement to the
 loopback HTTP runtime comparison: it measures in-process Reinhardt endpoint and
 `server_fn` dispatch without the socket and HTTP client costs used by
-`cargo make benchmark-runtime-http`. For automated aggregation, read
+`cargo make benchmark-runtime-http`. The benchmark keeps using the legacy
+`ServerRouter::handle()` entry point so its values remain comparable with the
+0.3 baseline; measure `dispatch()` or `try_dispatch_sync()` with a separate
+probe when validating those newer fast paths. For automated aggregation, read
 `median.point_estimate` from `target/criterion/**/new/estimates.json` after
 each run and take the median across runs; ignore Criterion's persisted
 `change` lines when comparing separate worktrees.
