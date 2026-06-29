@@ -361,6 +361,29 @@ impl Instrumentation {
 	/// # });
 	/// ```
 	pub async fn query_end(&self, query: &str, duration: Duration) {
+		self.query_end_with_params(query, &[], duration).await;
+	}
+
+	/// Notifies all listeners that a query has ended with bound parameter context
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_db::orm::instrumentation::Instrumentation;
+	/// use std::time::Duration;
+	///
+	/// # tokio_test::block_on(async {
+	/// let instrumentation = Instrumentation::new();
+	/// instrumentation.query_end_with_params(
+	///     "SELECT * FROM users WHERE id = $1",
+	///     &["1".to_string()],
+	///     Duration::from_millis(50)
+	/// ).await;
+	/// // Verify the method executes successfully and records metrics
+	/// assert_eq!(instrumentation.listener_count(), 0);
+	/// # });
+	/// ```
+	pub async fn query_end_with_params(&self, query: &str, params: &[String], duration: Duration) {
 		let metrics = QueryMetrics::new(query.to_string(), duration);
 
 		self.statistics.write().record_query(&metrics);
@@ -369,6 +392,8 @@ impl Instrumentation {
 			.entry(query.to_string())
 			.or_default()
 			.push(metrics);
+
+		super::n_plus_one::record_query(query, params, duration);
 
 		for entry in self.listeners.iter() {
 			entry.value().on_query_end(query, duration).await;
@@ -585,6 +610,7 @@ pub fn instrumentation() -> &'static Instrumentation {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::orm::{NPlusOneConfig, NPlusOneScope};
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
 	struct TestListener {
@@ -593,6 +619,13 @@ mod tests {
 		query_error_count: Arc<AtomicUsize>,
 		transaction_start_count: Arc<AtomicUsize>,
 		transaction_end_count: Arc<AtomicUsize>,
+	}
+
+	fn low_threshold_config() -> NPlusOneConfig {
+		let mut config = NPlusOneConfig::default();
+		config.threshold = 3;
+		config.min_distinct_params = 3;
+		config
 	}
 
 	#[async_trait]
@@ -662,6 +695,136 @@ mod tests {
 		let stats = instr.statistics();
 		assert_eq!(stats.total_queries, 1);
 		assert_eq!(stats.successful_queries, 1);
+	}
+
+	#[tokio::test]
+	async fn test_query_end_with_params_records_n_plus_one_scope() {
+		let instrumentation = Instrumentation::new();
+
+		let (_, report) = NPlusOneScope::warn("instrumentation", low_threshold_config())
+			.run_with_report(async {
+				for id in ["1", "2", "3"] {
+					instrumentation
+						.query_end_with_params(
+							"SELECT * FROM posts WHERE author_id = $1",
+							&[id.to_string()],
+							Duration::from_millis(1),
+						)
+						.await;
+				}
+			})
+			.await;
+
+		assert_eq!(report.findings.len(), 1);
+	}
+
+	#[tokio::test]
+	async fn test_query_end_with_params_ignores_same_bind_signature() {
+		let instrumentation = Instrumentation::new();
+
+		let (_, report) = NPlusOneScope::warn("instrumentation", low_threshold_config())
+			.run_with_report(async {
+				for _ in 0..3 {
+					instrumentation
+						.query_end_with_params(
+							"SELECT * FROM posts WHERE author_id = $1",
+							&["1".to_string()],
+							Duration::from_millis(1),
+						)
+						.await;
+				}
+			})
+			.await;
+
+		assert!(report.findings.is_empty());
+	}
+
+	#[tokio::test]
+	async fn test_query_end_with_params_does_not_report_single_join_query() {
+		let instrumentation = Instrumentation::new();
+
+		let (_, report) = NPlusOneScope::warn("instrumentation", low_threshold_config())
+			.run_with_report(async {
+				instrumentation
+					.query_end_with_params(
+						"SELECT posts.*, authors.* FROM posts JOIN authors ON posts.author_id = authors.id",
+						&[],
+						Duration::from_millis(3),
+					)
+					.await;
+			})
+			.await;
+
+		assert!(report.findings.is_empty());
+	}
+
+	#[tokio::test]
+	async fn test_query_end_with_params_does_not_report_single_batched_query() {
+		let instrumentation = Instrumentation::new();
+
+		let (_, report) = NPlusOneScope::warn("instrumentation", low_threshold_config())
+			.run_with_report(async {
+				instrumentation
+					.query_end_with_params(
+						"SELECT * FROM posts WHERE author_id IN ($1, $2, $3)",
+						&["1".to_string(), "2".to_string(), "3".to_string()],
+						Duration::from_millis(3),
+					)
+					.await;
+			})
+			.await;
+
+		assert!(report.findings.is_empty());
+	}
+
+	#[tokio::test]
+	async fn test_query_end_with_params_respects_ignored_fingerprint() {
+		let instrumentation = Instrumentation::new();
+		let mut config = low_threshold_config();
+		config
+			.ignored_fingerprints
+			.insert("SELECT * FROM posts WHERE author_id = ?".to_string());
+
+		let (_, report) = NPlusOneScope::warn("instrumentation", config)
+			.run_with_report(async {
+				for id in ["1", "2", "3"] {
+					instrumentation
+						.query_end_with_params(
+							"SELECT * FROM posts WHERE author_id = $1",
+							&[id.to_string()],
+							Duration::from_millis(1),
+						)
+						.await;
+				}
+			})
+			.await;
+
+		assert!(report.findings.is_empty());
+	}
+
+	#[tokio::test]
+	async fn test_query_end_with_params_reports_dropped_samples() {
+		let instrumentation = Instrumentation::new();
+		let mut config = low_threshold_config();
+		config.max_records_per_scope = 2;
+
+		let (_, report) = NPlusOneScope::warn("instrumentation", config)
+			.run_with_report(async {
+				for id in ["1", "2", "3"] {
+					instrumentation
+						.query_end_with_params(
+							"SELECT * FROM posts WHERE author_id = $1",
+							&[id.to_string()],
+							Duration::from_millis(1),
+						)
+						.await;
+				}
+			})
+			.await;
+
+		assert_eq!(report.total_recorded_queries, 2);
+		assert_eq!(report.dropped_sample_count, 1);
+		assert!(report.findings.is_empty());
 	}
 
 	#[tokio::test]
