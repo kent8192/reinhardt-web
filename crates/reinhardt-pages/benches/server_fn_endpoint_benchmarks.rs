@@ -66,7 +66,7 @@ impl Handler for PathParamEndpoint {
 		let value = req
 			.path_params
 			.get("id")
-			.cloned()
+			.map(str::to_owned)
 			.unwrap_or_else(|| "missing".to_string());
 		Ok(Response::ok().with_body(value))
 	}
