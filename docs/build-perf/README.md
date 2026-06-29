@@ -224,6 +224,14 @@ backing-store initialization:
 | `server_router_two_params_build_plus_handle` | 10 alloc/request | 9 alloc/request | 10.0% |
 | `server_router_one_middleware_build_plus_handle` | 12 alloc/request | 11 alloc/request | 8.3% |
 
+The 0.4 HTTP/1 adapter fast path skips request body collection for `GET` and
+`HEAD` requests that declare neither a positive `Content-Length` nor
+`Transfer-Encoding`. HTTP/2 keeps the existing collection path because DATA
+frames can appear without a `Content-Length`. This reduces loopback HTTP
+overhead for the common empty request path, but it is not visible in
+`request_alloc_probe` because that probe starts after Hyper has already produced
+a Reinhardt `Request`.
+
 ## Admin List Query Count Measurements
 
 Use the admin database mock tests before claiming query-count reductions on the

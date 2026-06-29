@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use http_body_util::{BodyExt, Full};
+use http_body_util::Full;
 use hyper::StatusCode;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
@@ -15,6 +15,8 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::shutdown::ShutdownCoordinator;
+
+use super::body::collect_request_body;
 
 /// HTTP Server with middleware support
 pub struct HttpServer {
@@ -364,17 +366,8 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 			// Extract request parts
 			let (parts, body) = req.into_parts();
 
-			// Read body with size limit
-			let body_bytes = http_body_util::Limited::new(body, max_body_size as usize)
-				.collect()
-				.await
-				.map_err(|_| {
-					Box::new(std::io::Error::new(
-						std::io::ErrorKind::InvalidData,
-						"Request body exceeds size limit",
-					)) as Box<dyn std::error::Error + Send + Sync>
-				})?
-				.to_bytes();
+			let body_bytes =
+				collect_request_body(&parts.method, &parts.headers, body, max_body_size).await?;
 
 			// Create reinhardt Request
 			let mut request = Request::builder()

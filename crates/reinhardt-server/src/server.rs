@@ -33,6 +33,8 @@
 //! // let handler_clone = server.handler();  // Returns Arc<dyn Handler>
 //! ```
 
+// Shared request body handling for Hyper adapters.
+mod body;
 /// HTTP/1.1 server implementation based on Hyper.
 pub mod http;
 /// HTTP/2 server implementation with TLS support.
