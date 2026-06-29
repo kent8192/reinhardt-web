@@ -12,8 +12,24 @@ struct Tenant {
 	name: String,
 }
 
-fn default_tenant() -> model_info::RelationInfo<Tenant> {
-	model_info::RelationInfo::new(0)
+trait DefaultTenantRelation {
+	fn default_tenant() -> Self;
+}
+
+impl DefaultTenantRelation for db::associations::ForeignKeyField<Tenant> {
+	fn default_tenant() -> Self {
+		Self::default()
+	}
+}
+
+impl DefaultTenantRelation for model_info::RelationInfo<Tenant> {
+	fn default_tenant() -> Self {
+		model_info::RelationInfo::new(0)
+	}
+}
+
+fn default_tenant<T: DefaultTenantRelation>() -> T {
+	T::default_tenant()
 }
 
 #[model(table_name = "documents")]
@@ -23,7 +39,6 @@ struct Document {
 	id: i64,
 	#[field(max_length = 120)]
 	title: String,
-	tenant_id: i64,
 	#[serde(skip_serializing, skip_deserializing, default = "default_tenant")]
 	#[rel(foreign_key)]
 	tenant: db::associations::ForeignKeyField<Tenant>,
