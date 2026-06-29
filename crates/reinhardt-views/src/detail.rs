@@ -441,7 +441,7 @@ where
 				FilterValue::Integer(int_pk)
 			} else {
 				// Fallback to string if not a valid integer
-				FilterValue::String(pk_value.clone())
+				FilterValue::String(pk_value.to_string())
 			};
 
 			let results = queryset
@@ -462,7 +462,7 @@ where
 				.filter(Filter::new(
 					self.get_slug_field(),
 					FilterOperator::Eq,
-					FilterValue::String(slug_value.clone()),
+					FilterValue::String(slug_value.to_string()),
 				))
 				.all()
 				.await?;

@@ -365,8 +365,8 @@ async fn test_route_matching_correctness() {
 	assert_eq!(route_match.param("post_id"), Some("789"));
 	assert_eq!(route_match.param("comment_id"), Some("101"));
 	assert_eq!(
-		route_match.params.as_slice(),
-		&[
+		route_match.params.to_vec(),
+		vec![
 			("post_id".to_string(), "789".to_string()),
 			("comment_id".to_string(), "101".to_string()),
 		],
@@ -396,8 +396,8 @@ async fn test_route_matching_preserves_url_pattern_order_issue_4013() {
 
 	// Assert
 	assert_eq!(
-		route_match.params.as_slice(),
-		&[
+		route_match.params.to_vec(),
+		vec![
 			("org".to_string(), "myslug".to_string()),
 			("cluster_id".to_string(), "5".to_string()),
 		],
@@ -472,21 +472,17 @@ fn test_validate_routes_returns_errors_for_invalid_patterns() {
 }
 
 #[rstest]
-fn test_router_recovers_from_poisoned_rwlock() {
+fn test_router_reuses_compiled_routes() {
 	// Arrange
 	let router = ServerRouter::new().endpoint(|| TestEndpoint::<1>);
 
-	// Poison the routes_compiled RwLock by panicking while holding write guard
-	let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-		let _guard = router.routes_compiled.write().unwrap();
-		panic!("intentional panic to poison lock");
-	}));
-
-	// Act - compile_routes should recover from poisoned lock
-	let errors = router.compile_routes();
+	// Act
+	let first_errors = router.compile_routes();
+	let second_errors = router.compile_routes();
 
 	// Assert
-	assert!(errors.is_empty());
+	assert!(first_errors.is_empty());
+	assert!(second_errors.is_empty());
 	let result = router.match_own_routes("/health", &Method::GET);
 	assert!(result.is_some());
 }

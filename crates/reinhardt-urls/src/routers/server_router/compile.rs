@@ -1,8 +1,7 @@
 //! Route compilation and validation for [`ServerRouter`].
 //!
 //! These methods build the per-method `matchit` routers and surface any
-//! pattern errors at startup. Compilation is lazy and recovers from
-//! `RwLock` poisoning to avoid cascade failures.
+//! pattern errors at startup. Compilation is lazy and caches the first result.
 
 use super::ServerRouter;
 #[cfg(feature = "viewsets")]
@@ -12,9 +11,27 @@ use hyper::Method;
 #[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::Action;
 use std::borrow::Cow;
-#[cfg(feature = "viewsets")]
 use std::sync::Arc;
 use std::sync::PoisonError;
+
+fn extract_path_param_names(path: &str) -> Arc<[String]> {
+	let mut names = Vec::new();
+	let mut rest = path;
+	while let Some(start) = rest.find('{') {
+		let after_start = &rest[start + 1..];
+		let Some(end) = after_start.find('}') else {
+			break;
+		};
+		let raw_name = &after_start[..end];
+		let raw_name = raw_name.strip_prefix('*').unwrap_or(raw_name);
+		let name = raw_name.split_once(':').map_or(raw_name, |(name, _)| name);
+		if !name.is_empty() {
+			names.push(name.to_string());
+		}
+		rest = &after_start[end + 1..];
+	}
+	names.into()
+}
 
 impl ServerRouter {
 	/// Compile all routes into matchit routers.
@@ -26,15 +43,12 @@ impl ServerRouter {
 	/// all routes compiled successfully. RwLock poisoning is recovered from
 	/// via `PoisonError::into_inner` to prevent cascade failures.
 	pub(crate) fn compile_routes(&self) -> Vec<String> {
-		// Check if already compiled (read lock, recovers from poisoning)
-		if *self
-			.routes_compiled
-			.read()
-			.unwrap_or_else(PoisonError::into_inner)
-		{
-			return Vec::new();
-		}
+		self.compiled_route_errors
+			.get_or_init(|| self.compile_routes_once())
+			.clone()
+	}
 
+	fn compile_routes_once(&self) -> Vec<String> {
 		let mut errors = Vec::new();
 
 		// Compile endpoint routes
@@ -42,6 +56,7 @@ impl ServerRouter {
 			let route_handler = RouteHandler {
 				handler: func_route.handler.clone(),
 				middleware: func_route.middleware.clone(),
+				param_names: extract_path_param_names(&func_route.path),
 			};
 
 			// Strip prefix from route path to avoid double-prefix matching.
@@ -81,6 +96,7 @@ impl ServerRouter {
 			let route_handler = RouteHandler {
 				handler: view_route.handler.clone(),
 				middleware: view_route.middleware.clone(),
+				param_names: extract_path_param_names(&view_route.path),
 			};
 
 			// Strip prefix from route path (same reason as endpoint routes above)
@@ -114,6 +130,7 @@ impl ServerRouter {
 			let route_handler = RouteHandler {
 				handler: route.handler_arc(),
 				middleware: route.middleware.clone(),
+				param_names: extract_path_param_names(&route.path),
 			};
 
 			// Strip prefix from route path (same reason as endpoint routes above)
@@ -145,12 +162,6 @@ impl ServerRouter {
 		#[cfg(feature = "viewsets")]
 		self.compile_viewset_routes(&mut errors);
 
-		// Mark routes as compiled
-		*self
-			.routes_compiled
-			.write()
-			.unwrap_or_else(PoisonError::into_inner) = true;
-
 		errors
 	}
 
@@ -169,6 +180,7 @@ impl ServerRouter {
 					action: Action::list(),
 				}),
 				middleware: Vec::new(),
+				param_names: extract_path_param_names(&collection_path),
 			};
 			if let Err(e) = self
 				.get_router
@@ -188,6 +200,7 @@ impl ServerRouter {
 					action: Action::create(),
 				}),
 				middleware: Vec::new(),
+				param_names: extract_path_param_names(&collection_path),
 			};
 			if let Err(e) = self
 				.post_router
@@ -210,6 +223,7 @@ impl ServerRouter {
 					action: Action::retrieve(),
 				}),
 				middleware: Vec::new(),
+				param_names: extract_path_param_names(&detail_path),
 			};
 			if let Err(e) = self
 				.get_router
@@ -229,6 +243,7 @@ impl ServerRouter {
 					action: Action::update(),
 				}),
 				middleware: Vec::new(),
+				param_names: extract_path_param_names(&detail_path),
 			};
 			if let Err(e) = self
 				.put_router
@@ -248,6 +263,7 @@ impl ServerRouter {
 					action: Action::destroy(),
 				}),
 				middleware: Vec::new(),
+				param_names: extract_path_param_names(&detail_path),
 			};
 			if let Err(e) = self
 				.delete_router

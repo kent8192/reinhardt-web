@@ -12,7 +12,7 @@ use reinhardt_http::ExcludeMiddleware;
 use reinhardt_middleware::Middleware;
 #[cfg(feature = "viewsets")]
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 impl ServerRouter {
 	/// Validate that a prefix for `mount`/`include` follows Django URL conventions.
@@ -102,7 +102,7 @@ impl ServerRouter {
 			patch_router: RwLock::new(MatchitRouter::new()),
 			head_router: RwLock::new(MatchitRouter::new()),
 			options_router: RwLock::new(MatchitRouter::new()),
-			routes_compiled: RwLock::new(false),
+			compiled_route_errors: OnceLock::new(),
 		}
 	}
 

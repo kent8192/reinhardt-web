@@ -20,7 +20,7 @@
 //!
 //! Each HTTP method has its own matchit router for optimal performance:
 //! - `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`
-//! - Routes are compiled lazily on first access (thread-safe with RwLock)
+//! - Routes are compiled lazily on first access (thread-safe with OnceLock)
 //! - Parameters are extracted directly from matchit's Params
 //!
 //! # Module Layout
@@ -50,7 +50,7 @@ use reinhardt_di::InjectionContext;
 use reinhardt_middleware::Middleware;
 #[cfg(feature = "viewsets")]
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 pub mod global;
 mod handlers;
@@ -209,6 +209,6 @@ pub struct ServerRouter {
 	/// Matchit router for OPTIONS requests
 	pub(crate) options_router: RwLock<MatchitRouter<RouteHandler>>,
 
-	/// Flag indicating if routes have been compiled (uses RwLock for thread-safety)
-	pub(crate) routes_compiled: RwLock<bool>,
+	/// Cached route compilation result.
+	pub(crate) compiled_route_errors: OnceLock<Vec<String>>,
 }

@@ -520,11 +520,9 @@ fn test_path_parameters() {
 		.unwrap();
 
 	// Manually set path params (normally done by router)
-	request
-		.path_params
-		.insert("id".to_string(), "123".to_string());
+	request.path_params.insert("id", "123");
 
-	assert_eq!(request.path_params.get("id"), Some(&"123".to_string()));
+	assert_eq!(request.path_params.get("id"), Some("123"));
 }
 
 /// Test: Empty query string

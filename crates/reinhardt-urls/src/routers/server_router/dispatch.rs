@@ -162,10 +162,10 @@ impl ServerRouter {
 				// yields parameters in URL pattern declaration order, so we
 				// store them in ordered `PathParams` all the way down to the
 				// tuple extractor (see issue #4013).
-				let mut params = PathParams::with_capacity(matched.params.iter().count());
-				for (key, value) in matched.params.iter() {
-					params.insert(key, value);
-				}
+				let params = PathParams::from_shared_names(
+					route_handler.param_names.clone(),
+					matched.params.iter().map(|(_, value)| value),
+				);
 
 				// Combine router-level and route-level middleware.
 				let mut combined_middleware = middleware_stack;

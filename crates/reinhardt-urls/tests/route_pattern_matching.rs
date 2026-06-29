@@ -680,7 +680,7 @@ fn path_matcher_linear_param_match() {
 	assert!(result.is_some());
 	let (handler_id, params) = result.unwrap();
 	assert_eq!(handler_id, "users_detail");
-	assert_eq!(params.get("id"), Some(&"42".to_string()));
+	assert_eq!(params.get("id"), Some("42"));
 }
 
 #[rstest]
@@ -721,7 +721,7 @@ fn path_matcher_radix_mode() {
 	assert!(result.is_some());
 	let (handler_id, params) = result.unwrap();
 	assert_eq!(handler_id, "users_detail");
-	assert_eq!(params.get("id"), Some(&"42".to_string()));
+	assert_eq!(params.get("id"), Some("42"));
 }
 
 #[rstest]

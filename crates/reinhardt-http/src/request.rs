@@ -409,7 +409,7 @@ impl RequestBuilder {
 	///     .build()
 	///     .unwrap();
 	///
-	/// assert_eq!(request.path_params.get("id"), Some(&"42".to_string()));
+	/// assert_eq!(request.path_params.get("id"), Some("42"));
 	/// ```
 	pub fn path_params(mut self, params: impl Into<PathParams>) -> Self {
 		self.path_params = params.into();

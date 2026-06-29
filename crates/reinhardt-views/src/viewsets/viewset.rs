@@ -23,7 +23,7 @@ fn extract_pk(request: &Request, lookup_field: &str) -> Result<serde_json::Value
 	request
 		.path_params
 		.get(lookup_field)
-		.map(|v| serde_json::Value::String(v.clone()))
+		.map(|v| serde_json::Value::String(v.to_string()))
 		.ok_or_else(|| {
 			reinhardt_core::exception::Error::Http(format!(
 				"Missing path parameter: {}",

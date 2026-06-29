@@ -94,6 +94,9 @@ pub(crate) struct RouteHandler {
 
 	/// Route-level middleware
 	pub(crate) middleware: Vec<Arc<dyn Middleware>>,
+
+	/// Path parameter names in URL pattern declaration order.
+	pub(crate) param_names: Arc<[String]>,
 }
 
 /// Route match result with metadata
@@ -124,10 +127,7 @@ impl RouteMatch {
 	/// `HashMap` lookup.
 	#[cfg(test)]
 	pub(crate) fn param(&self, name: &str) -> Option<&str> {
-		self.params
-			.iter()
-			.find(|(k, _)| k == name)
-			.map(|(_, v)| v.as_str())
+		self.params.iter().find(|(k, _)| *k == name).map(|(_, v)| v)
 	}
 }
 

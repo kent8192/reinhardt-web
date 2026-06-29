@@ -224,9 +224,9 @@ impl Request {
 	///     .unwrap();
 	///
 	/// request.set_path_param("id", "123");
-	/// assert_eq!(request.path_params.get("id"), Some(&"123".to_string()));
+	/// assert_eq!(request.path_params.get("id"), Some("123"));
 	/// ```
-	pub fn set_path_param(&mut self, key: impl Into<String>, value: impl Into<String>) {
+	pub fn set_path_param(&mut self, key: impl Into<String>, value: impl AsRef<str>) {
 		self.path_params.insert(key, value);
 	}
 

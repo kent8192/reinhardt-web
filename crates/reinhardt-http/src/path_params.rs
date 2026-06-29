@@ -17,12 +17,126 @@
 //!
 //! See issue #4013 for details.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use smallvec::SmallVec;
 
 const INLINE_PARAM_CAPACITY: usize = 4;
-type PathParamStorage = SmallVec<[(String, String); INLINE_PARAM_CAPACITY]>;
+const INLINE_VALUE_CAPACITY: usize = 32;
+type PathParamNames = SmallVec<[String; INLINE_PARAM_CAPACITY]>;
+type PathParamValues = SmallVec<[PathParamValue; INLINE_PARAM_CAPACITY]>;
+type PathParamValueBytes = SmallVec<[u8; INLINE_VALUE_CAPACITY]>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PathParamValue {
+	inner: PathParamValueBytes,
+}
+
+impl PathParamValue {
+	fn as_str(&self) -> &str {
+		std::str::from_utf8(&self.inner)
+			.expect("path parameter values are created from valid UTF-8 strings")
+	}
+
+	fn into_string(self) -> String {
+		String::from_utf8(self.inner.into_vec())
+			.expect("path parameter values are created from valid UTF-8 strings")
+	}
+}
+
+impl From<&str> for PathParamValue {
+	fn from(value: &str) -> Self {
+		Self {
+			inner: value.as_bytes().iter().copied().collect(),
+		}
+	}
+}
+
+impl From<String> for PathParamValue {
+	fn from(value: String) -> Self {
+		Self {
+			inner: value.into_bytes().into_iter().collect(),
+		}
+	}
+}
+
+impl From<&String> for PathParamValue {
+	fn from(value: &String) -> Self {
+		value.as_str().into()
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PathParamNameStorage {
+	Owned(PathParamNames),
+	Shared(Arc<[String]>),
+}
+
+impl Default for PathParamNameStorage {
+	fn default() -> Self {
+		Self::Owned(PathParamNames::new())
+	}
+}
+
+impl PathParamNameStorage {
+	fn with_capacity(capacity: usize) -> Self {
+		Self::Owned(PathParamNames::with_capacity(capacity))
+	}
+
+	fn get(&self, index: usize) -> Option<&String> {
+		match self {
+			Self::Owned(names) => names.get(index),
+			Self::Shared(names) => names.get(index),
+		}
+	}
+
+	fn position(&self, key: &str) -> Option<usize> {
+		match self {
+			Self::Owned(names) => names.iter().position(|name| name == key),
+			Self::Shared(names) => names.iter().position(|name| name == key),
+		}
+	}
+
+	fn push(&mut self, key: String) {
+		self.ensure_owned().push(key);
+	}
+
+	fn ensure_owned(&mut self) -> &mut PathParamNames {
+		if let Self::Shared(names) = self {
+			*self = Self::Owned(names.iter().cloned().collect());
+		}
+		match self {
+			Self::Owned(names) => names,
+			Self::Shared(_) => unreachable!("shared names are materialized before mutation"),
+		}
+	}
+}
+
+/// Iterator over `(key, value)` pairs in declaration order.
+pub struct PathParamsIter<'a> {
+	params: &'a PathParams,
+	index: usize,
+}
+
+impl<'a> Iterator for PathParamsIter<'a> {
+	type Item = (&'a String, &'a str);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let index = self.index;
+		self.index += 1;
+		Some((
+			self.params.names.get(index)?,
+			self.params.values.get(index)?.as_str(),
+		))
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let remaining = self.params.len().saturating_sub(self.index);
+		(remaining, Some(remaining))
+	}
+}
+
+impl ExactSizeIterator for PathParamsIter<'_> {}
 
 /// Ordered collection of path parameters extracted from a URL pattern.
 ///
@@ -39,89 +153,140 @@ type PathParamStorage = SmallVec<[(String, String); INLINE_PARAM_CAPACITY]>;
 /// params.insert("cluster_id", "5");
 ///
 /// // Insertion order is preserved.
-/// let collected: Vec<_> = params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+/// let collected: Vec<_> = params.iter().map(|(k, v)| (k.as_str(), v)).collect();
 /// assert_eq!(collected, vec![("org", "myslug"), ("cluster_id", "5")]);
 ///
 /// // Named lookup still works.
-/// assert_eq!(params.get("org").map(String::as_str), Some("myslug"));
+/// assert_eq!(params.get("org"), Some("myslug"));
 /// ```
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default)]
 pub struct PathParams {
-	inner: PathParamStorage,
+	names: PathParamNameStorage,
+	values: PathParamValues,
 }
+
+impl PartialEq for PathParams {
+	fn eq(&self, other: &Self) -> bool {
+		self.iter().eq(other.iter())
+	}
+}
+
+impl Eq for PathParams {}
 
 impl PathParams {
 	/// Create a new, empty `PathParams`.
 	pub fn new() -> Self {
 		Self {
-			inner: PathParamStorage::new(),
+			names: PathParamNameStorage::default(),
+			values: PathParamValues::new(),
 		}
 	}
 
 	/// Create an empty `PathParams` with capacity for `capacity` entries.
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			inner: PathParamStorage::with_capacity(capacity),
+			names: PathParamNameStorage::with_capacity(capacity),
+			values: PathParamValues::with_capacity(capacity),
+		}
+	}
+
+	/// Build path params from shared route parameter names and request-local values.
+	///
+	/// Routers use this to avoid allocating key strings on every request.
+	pub fn from_shared_names<I, V>(names: Arc<[String]>, values: I) -> Self
+	where
+		I: IntoIterator<Item = V>,
+		V: AsRef<str>,
+	{
+		let values: PathParamValues = values
+			.into_iter()
+			.map(|value| PathParamValue::from(value.as_ref()))
+			.collect();
+		assert_eq!(
+			names.len(),
+			values.len(),
+			"shared path parameter names and values must have the same length"
+		);
+		Self {
+			names: PathParamNameStorage::Shared(names),
+			values,
 		}
 	}
 
 	/// Number of stored parameters.
 	pub fn len(&self) -> usize {
-		self.inner.len()
+		self.values.len()
 	}
 
 	/// `true` if no parameters are stored.
 	pub fn is_empty(&self) -> bool {
-		self.inner.is_empty()
+		self.values.is_empty()
 	}
 
 	/// Look up a parameter by name.
 	///
 	/// Returns the first match if multiple entries share the same name (which
 	/// should not happen in practice because URL patterns require unique names).
-	pub fn get(&self, key: &str) -> Option<&String> {
-		self.inner.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+	pub fn get(&self, key: &str) -> Option<&str> {
+		let index = self.names.position(key)?;
+		self.values.get(index).map(PathParamValue::as_str)
 	}
 
 	/// Insert or update a parameter.
 	///
 	/// If `key` already exists, its value is replaced and its position is kept.
 	/// Otherwise the new entry is appended, preserving insertion order.
-	pub fn insert(&mut self, key: impl Into<String>, value: impl Into<String>) {
+	pub fn insert(&mut self, key: impl Into<String>, value: impl AsRef<str>) {
 		let key = key.into();
-		let value = value.into();
-		if let Some(slot) = self.inner.iter_mut().find(|(k, _)| *k == key) {
-			slot.1 = value;
+		let value = PathParamValue::from(value.as_ref());
+		if let Some(index) = self.names.position(&key) {
+			self.values[index] = value;
 		} else {
-			self.inner.push((key, value));
+			self.names.push(key);
+			self.values.push(value);
 		}
 	}
 
 	/// Iterate over `(key, value)` pairs in insertion order.
-	pub fn iter(&self) -> std::slice::Iter<'_, (String, String)> {
-		self.inner.iter()
+	pub fn iter(&self) -> PathParamsIter<'_> {
+		PathParamsIter {
+			params: self,
+			index: 0,
+		}
 	}
 
 	/// Iterate over values in insertion order.
-	pub fn values(&self) -> impl Iterator<Item = &String> {
-		self.inner.iter().map(|(_, v)| v)
+	pub fn values(&self) -> impl Iterator<Item = &str> {
+		self.values.iter().map(PathParamValue::as_str)
 	}
 
-	/// Borrow the underlying ordered slice of `(key, value)` pairs.
-	pub fn as_slice(&self) -> &[(String, String)] {
-		&self.inner
+	/// Clone the ordered `(key, value)` pairs into a `Vec`.
+	pub fn to_vec(&self) -> Vec<(String, String)> {
+		self.iter()
+			.map(|(key, value)| (key.clone(), value.to_string()))
+			.collect()
 	}
 
 	/// Consume the wrapper and return the inner ordered `Vec`.
 	pub fn into_vec(self) -> Vec<(String, String)> {
-		self.inner.into_vec()
+		match self.names {
+			PathParamNameStorage::Owned(names) => names
+				.into_iter()
+				.zip(self.values.into_iter().map(PathParamValue::into_string))
+				.collect(),
+			PathParamNameStorage::Shared(names) => names
+				.iter()
+				.cloned()
+				.zip(self.values.into_iter().map(PathParamValue::into_string))
+				.collect(),
+		}
 	}
 }
 
 impl<K, V> FromIterator<(K, V)> for PathParams
 where
 	K: Into<String>,
-	V: Into<String>,
+	V: AsRef<str>,
 {
 	fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
 		let mut params = PathParams::new();
@@ -137,25 +302,27 @@ impl IntoIterator for PathParams {
 	type IntoIter = std::vec::IntoIter<(String, String)>;
 
 	fn into_iter(self) -> Self::IntoIter {
-		self.inner.into_vec().into_iter()
+		self.into_vec().into_iter()
 	}
 }
 
 impl<'a> IntoIterator for &'a PathParams {
-	type Item = &'a (String, String);
-	type IntoIter = std::slice::Iter<'a, (String, String)>;
+	type Item = (&'a String, &'a str);
+	type IntoIter = PathParamsIter<'a>;
 
 	fn into_iter(self) -> Self::IntoIter {
-		self.inner.iter()
+		self.iter()
 	}
 }
 
 impl From<Vec<(String, String)>> for PathParams {
 	fn from(inner: Vec<(String, String)>) -> Self {
 		// Caller is responsible for the ordering of the supplied vector.
-		Self {
-			inner: PathParamStorage::from_vec(inner),
+		let mut params = Self::with_capacity(inner.len());
+		for (key, value) in inner {
+			params.insert(key, value);
 		}
+		params
 	}
 }
 
@@ -164,9 +331,7 @@ impl From<HashMap<String, String>> for PathParams {
 	/// `HashMap` does not have a defined order. Prefer `From<Vec<_>>` when
 	/// order matters.
 	fn from(map: HashMap<String, String>) -> Self {
-		Self {
-			inner: map.into_iter().collect(),
-		}
+		map.into_iter().collect()
 	}
 }
 
@@ -203,8 +368,8 @@ mod tests {
 		let missing = params.get("missing");
 
 		// Assert
-		assert_eq!(org.map(String::as_str), Some("myslug"));
-		assert_eq!(cluster_id.map(String::as_str), Some("5"));
+		assert_eq!(org, Some("myslug"));
+		assert_eq!(cluster_id, Some("5"));
 		assert_eq!(missing, None);
 	}
 
@@ -219,10 +384,7 @@ mod tests {
 		params.insert("a", "updated");
 
 		// Assert: order unchanged, value replaced
-		let collected: Vec<_> = params
-			.iter()
-			.map(|(k, v)| (k.as_str(), v.as_str()))
-			.collect();
+		let collected: Vec<_> = params.iter().map(|(k, v)| (k.as_str(), v)).collect();
 		assert_eq!(collected, vec![("a", "updated"), ("b", "2")]);
 	}
 
