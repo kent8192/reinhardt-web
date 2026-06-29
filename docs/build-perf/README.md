@@ -233,9 +233,9 @@ overhead for the common empty request path, but it is not visible in
 a Reinhardt `Request`.
 
 The integrated 2026-06-29 0.4 fast-path measurement combines lazy query
-parameters, lazy extension backing-store initialization, empty HTTP/1 body
-skipping, shared route parameter names, inline path parameter values, and an
-immutable compiled router table:
+parameters with raw `get` lookups, lazy extension backing-store initialization,
+empty HTTP/1 body skipping, shared route parameter names, inline path parameter
+values, and an immutable compiled router table:
 
 | Probe | `develop/0.4.0` baseline | Integrated fast path | Reduction |
 |---|---:|---:|---:|
@@ -244,7 +244,7 @@ immutable compiled router table:
 | `direct_handler_build_plus_handle` | 4 alloc/request | 3 alloc/request | 25.0% |
 | `direct_handler_handle_only` | 2 alloc/request | 2 alloc/request | 0.0% |
 | `clone_for_di_empty_path` | 1 alloc/request | 1 alloc/request | 0.0% |
-| `clone_for_di_two_query_params` | 6 alloc/request | 2 alloc/request | 66.7% |
+| `clone_for_di_two_query_params` | 6 alloc/request | 0 alloc/request | 100.0% |
 | `server_router_static_build_plus_handle` | 6 alloc/request | 5 alloc/request | 16.7% |
 | `server_router_two_params_build_plus_handle` | 10 alloc/request | 5 alloc/request | 50.0% |
 | `server_router_one_middleware_build_plus_handle` | 12 alloc/request | 11 alloc/request | 8.3% |

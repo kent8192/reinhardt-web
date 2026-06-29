@@ -286,7 +286,7 @@ where
 					let filter = Filter::new(
 						field.clone(),
 						FilterOperator::Eq,
-						FilterValue::String(value.clone()),
+						FilterValue::String(value.to_owned()),
 					);
 					queryset = queryset.filter(filter);
 				}

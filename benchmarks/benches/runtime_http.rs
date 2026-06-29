@@ -205,7 +205,7 @@ impl ReinhardtHandler for ReinhardtQuery {
 		let q = req
 			.query_params
 			.get("q")
-			.cloned()
+			.map(str::to_owned)
 			.expect("q query parameter should exist");
 		let page = req
 			.query_params

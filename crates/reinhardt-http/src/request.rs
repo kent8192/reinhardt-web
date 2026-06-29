@@ -103,7 +103,7 @@ pub struct Request {
 ///
 /// assert_eq!(request.method, Method::GET);
 /// assert_eq!(request.path(), "/api/users");
-/// assert_eq!(request.query_params.get("page"), Some(&"1".to_string()));
+/// assert_eq!(request.query_params.get("page"), Some("1"));
 /// ```
 pub struct RequestBuilder {
 	method: Method,
@@ -180,8 +180,8 @@ impl RequestBuilder {
 	///     .unwrap();
 	///
 	/// assert_eq!(request.path(), "/api/users");
-	/// assert_eq!(request.query_params.get("page"), Some(&"1".to_string()));
-	/// assert_eq!(request.query_params.get("limit"), Some(&"10".to_string()));
+	/// assert_eq!(request.query_params.get("page"), Some("1"));
+	/// assert_eq!(request.query_params.get("limit"), Some("10"));
 	/// ```
 	pub fn uri<T>(mut self, uri: T) -> Self
 	where
@@ -1232,7 +1232,7 @@ mod tests {
 		assert_eq!(cloned.uri.path(), "/api/users/42");
 		assert_eq!(cloned.version, Version::HTTP_11);
 		assert!(cloned.headers.contains_key(header::CONTENT_TYPE));
-		assert_eq!(cloned.query_params.get("page"), Some(&"1".to_string()));
+		assert_eq!(cloned.query_params.get("page"), Some("1"));
 
 		// Body should be empty (not needed for DI)
 		assert!(cloned.body().is_empty());

@@ -197,8 +197,8 @@ mod tests {
 			.build()
 			.unwrap();
 
-		assert_eq!(request.query_params.get("foo"), Some(&"bar".to_string()));
-		assert_eq!(request.query_params.get("baz"), Some(&"qux".to_string()));
+		assert_eq!(request.query_params.get("foo"), Some("bar"));
+		assert_eq!(request.query_params.get("baz"), Some("qux"));
 	}
 
 	#[test]

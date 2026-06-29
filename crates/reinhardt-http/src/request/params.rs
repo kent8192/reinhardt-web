@@ -8,13 +8,14 @@ use std::sync::OnceLock;
 
 /// Lazily parsed query string parameters.
 ///
-/// `QueryParams` stores the raw query string captured when the request is
-/// built and parses it only when parameter values are read. This keeps
-/// request construction cheap for handlers that do not inspect query
-/// parameters while preserving the common `HashMap`-like read API.
+/// `QueryParams` keeps a cheap URI clone when a query string exists. Direct
+/// `get` lookups scan the raw query string, while map-shaped APIs materialize
+/// a `HashMap` on first use. This keeps request construction cheap for handlers
+/// that do not inspect query parameters while preserving the common
+/// `HashMap`-like read API.
 #[derive(Debug)]
 pub struct QueryParams {
-	raw_query: Option<Box<str>>,
+	uri_with_query: Option<Uri>,
 	parsed: OnceLock<HashMap<String, String>>,
 }
 
@@ -22,7 +23,7 @@ impl QueryParams {
 	/// Create an empty query parameter set.
 	pub fn empty() -> Self {
 		Self {
-			raw_query: None,
+			uri_with_query: None,
 			parsed: OnceLock::new(),
 		}
 	}
@@ -30,21 +31,21 @@ impl QueryParams {
 	/// Capture query parameters from a URI without parsing them.
 	pub fn from_uri(uri: &Uri) -> Self {
 		Self {
-			raw_query: uri.query().map(Into::into),
+			uri_with_query: uri.query().map(|_| uri.clone()),
 			parsed: OnceLock::new(),
 		}
 	}
 
 	/// Return the raw query string captured from the URI, if present.
 	pub fn raw_query(&self) -> Option<&str> {
-		self.raw_query.as_deref()
+		self.uri_with_query.as_ref().and_then(Uri::query)
 	}
 
 	/// Return the parsed query parameters as a map.
 	///
 	/// Calling this method initializes the parsed map on first access.
 	pub fn as_map(&self) -> &HashMap<String, String> {
-		self.parsed.get_or_init(|| match self.raw_query.as_deref() {
+		self.parsed.get_or_init(|| match self.raw_query() {
 			Some(query) => Self::parse_raw(query),
 			None => HashMap::new(),
 		})
@@ -56,13 +57,23 @@ impl QueryParams {
 	}
 
 	/// Return the value for a query parameter key.
-	pub fn get(&self, key: &str) -> Option<&String> {
-		self.as_map().get(key)
+	///
+	/// This looks up the raw query string directly when available, avoiding
+	/// `HashMap` initialization for handlers that only need a small number of
+	/// known parameters.
+	pub fn get(&self, key: &str) -> Option<&str> {
+		self.raw_query()
+			.and_then(|query| Self::find_raw_value(query, key))
+			.or_else(|| {
+				self.parsed
+					.get()
+					.and_then(|map| map.get(key).map(String::as_str))
+			})
 	}
 
 	/// Return `true` when the query parameter key exists.
 	pub fn contains_key(&self, key: &str) -> bool {
-		self.as_map().contains_key(key)
+		self.get(key).is_some()
 	}
 
 	/// Return `true` when there are no query parameters.
@@ -94,6 +105,17 @@ impl QueryParams {
 			.collect()
 	}
 
+	fn find_raw_value<'a>(query: &'a str, key: &str) -> Option<&'a str> {
+		let mut value = None;
+		for pair in query.split('&') {
+			let mut parts = pair.splitn(2, '=');
+			if parts.next() == Some(key) {
+				value = Some(parts.next().unwrap_or(""));
+			}
+		}
+		value
+	}
+
 	#[cfg(test)]
 	fn is_parsed(&self) -> bool {
 		self.parsed.get().is_some()
@@ -110,7 +132,7 @@ impl Clone for QueryParams {
 		}
 
 		Self {
-			raw_query: self.raw_query.clone(),
+			uri_with_query: self.uri_with_query.clone(),
 			parsed,
 		}
 	}
@@ -485,7 +507,14 @@ mod tests {
 		let value = params.get("key");
 
 		// Assert
-		assert_eq!(value, Some(&"value".to_string()));
+		assert_eq!(value, Some("value"));
+		assert!(!params.is_parsed());
+
+		// Act
+		let parsed = params.as_map();
+
+		// Assert
+		assert_eq!(parsed.get("key"), Some(&"value".to_string()));
 		assert!(params.is_parsed());
 	}
 
@@ -501,9 +530,9 @@ mod tests {
 		// Assert
 		assert!(!params.is_parsed());
 		assert!(!cloned.is_parsed());
-		assert_eq!(cloned.get("key"), Some(&"value".to_string()));
+		assert_eq!(cloned.get("key"), Some("value"));
 		assert!(!params.is_parsed());
-		assert!(cloned.is_parsed());
+		assert!(!cloned.is_parsed());
 	}
 
 	#[rstest]
@@ -511,14 +540,14 @@ mod tests {
 		// Arrange
 		let uri: hyper::Uri = "/test?key=value".parse().unwrap();
 		let params = QueryParams::from_uri(&uri);
-		assert_eq!(params.get("key"), Some(&"value".to_string()));
+		assert_eq!(params.as_map().get("key"), Some(&"value".to_string()));
 
 		// Act
 		let cloned = params.clone();
 
 		// Assert
 		assert!(cloned.is_parsed());
-		assert_eq!(cloned.get("key"), Some(&"value".to_string()));
+		assert_eq!(cloned.get("key"), Some("value"));
 	}
 
 	#[rstest]
