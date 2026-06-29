@@ -32,6 +32,28 @@ fn extract_path_param_names(path: &str) -> Arc<[String]> {
 	names.into()
 }
 
+fn insert_compiled_route(
+	compiled: &mut CompiledRoutes,
+	method: &Method,
+	route_path: &str,
+	route_handler: RouteHandler,
+) -> Result<(), String> {
+	let exact_handler = route_handler
+		.param_names
+		.is_empty()
+		.then(|| route_handler.clone());
+	compiled
+		.router_for_method_mut(method)
+		.insert(route_path, route_handler)
+		.map_err(|error| error.to_string())?;
+	if let Some(route_handler) = exact_handler {
+		compiled
+			.exact_for_method_mut(method)
+			.insert(route_path.to_string(), route_handler);
+	}
+	Ok(())
+}
+
 impl ServerRouter {
 	/// Compile all routes into matchit routers.
 	///
@@ -71,9 +93,8 @@ impl ServerRouter {
 			let route_path: &str = &route_path_owned;
 
 			// matchit uses {name} format which matches our pattern
-			if let Err(e) = compiled
-				.router_for_method_mut(&func_route.method)
-				.insert(route_path, route_handler)
+			if let Err(e) =
+				insert_compiled_route(&mut compiled, &func_route.method, route_path, route_handler)
 			{
 				compiled.errors.push(format!(
 					"Failed to compile route '{}' ({}): {}",
@@ -104,9 +125,8 @@ impl ServerRouter {
 				Method::DELETE,
 				Method::PATCH,
 			] {
-				if let Err(e) = compiled
-					.router_for_method_mut(&method)
-					.insert(route_path, route_handler.clone())
+				if let Err(e) =
+					insert_compiled_route(&mut compiled, &method, route_path, route_handler.clone())
 				{
 					compiled.errors.push(format!(
 						"Failed to compile view route '{}': {}",
@@ -138,9 +158,8 @@ impl ServerRouter {
 				Method::DELETE,
 				Method::PATCH,
 			] {
-				if let Err(e) = compiled
-					.router_for_method_mut(&method)
-					.insert(route_path, route_handler.clone())
+				if let Err(e) =
+					insert_compiled_route(&mut compiled, &method, route_path, route_handler.clone())
 				{
 					compiled.errors.push(format!(
 						"Failed to compile raw route '{}': {}",
@@ -174,9 +193,8 @@ impl ServerRouter {
 				middleware: Vec::new(),
 				param_names: extract_path_param_names(&collection_path),
 			};
-			if let Err(e) = compiled
-				.router_for_method_mut(&Method::GET)
-				.insert(&collection_path, list_handler)
+			if let Err(e) =
+				insert_compiled_route(compiled, &Method::GET, &collection_path, list_handler)
 			{
 				compiled.errors.push(format!(
 					"Failed to compile ViewSet list route '{}': {}",
@@ -193,9 +211,8 @@ impl ServerRouter {
 				middleware: Vec::new(),
 				param_names: extract_path_param_names(&collection_path),
 			};
-			if let Err(e) = compiled
-				.router_for_method_mut(&Method::POST)
-				.insert(&collection_path, create_handler)
+			if let Err(e) =
+				insert_compiled_route(compiled, &Method::POST, &collection_path, create_handler)
 			{
 				compiled.errors.push(format!(
 					"Failed to compile ViewSet create route '{}': {}",
@@ -215,9 +232,8 @@ impl ServerRouter {
 				middleware: Vec::new(),
 				param_names: extract_path_param_names(&detail_path),
 			};
-			if let Err(e) = compiled
-				.router_for_method_mut(&Method::GET)
-				.insert(&detail_path, retrieve_handler)
+			if let Err(e) =
+				insert_compiled_route(compiled, &Method::GET, &detail_path, retrieve_handler)
 			{
 				compiled.errors.push(format!(
 					"Failed to compile ViewSet retrieve route '{}': {}",
@@ -234,9 +250,8 @@ impl ServerRouter {
 				middleware: Vec::new(),
 				param_names: extract_path_param_names(&detail_path),
 			};
-			if let Err(e) = compiled
-				.router_for_method_mut(&Method::PUT)
-				.insert(&detail_path, update_handler)
+			if let Err(e) =
+				insert_compiled_route(compiled, &Method::PUT, &detail_path, update_handler)
 			{
 				compiled.errors.push(format!(
 					"Failed to compile ViewSet update route '{}': {}",
@@ -253,9 +268,8 @@ impl ServerRouter {
 				middleware: Vec::new(),
 				param_names: extract_path_param_names(&detail_path),
 			};
-			if let Err(e) = compiled
-				.router_for_method_mut(&Method::DELETE)
-				.insert(&detail_path, destroy_handler)
+			if let Err(e) =
+				insert_compiled_route(compiled, &Method::DELETE, &detail_path, destroy_handler)
 			{
 				compiled.errors.push(format!(
 					"Failed to compile ViewSet destroy route '{}': {}",

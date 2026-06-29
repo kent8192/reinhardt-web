@@ -365,7 +365,11 @@ async fn test_route_matching_correctness() {
 	assert_eq!(route_match.param("post_id"), Some("789"));
 	assert_eq!(route_match.param("comment_id"), Some("101"));
 	assert_eq!(
-		route_match.params.to_vec(),
+		route_match
+			.params
+			.as_ref()
+			.expect("parameterized route should expose path params")
+			.to_vec(),
 		vec![
 			("post_id".to_string(), "789".to_string()),
 			("comment_id".to_string(), "101".to_string()),
@@ -376,6 +380,36 @@ async fn test_route_matching_correctness() {
 	// Act & Assert - non-matching route
 	let result = router.match_own_routes("/nonexistent", &Method::GET);
 	assert!(result.is_none());
+}
+
+#[test]
+fn test_compile_routes_populates_exact_static_route_table() {
+	// Arrange
+	let router = ServerRouter::new()
+		.endpoint(|| TestEndpoint::<1>)
+		.endpoint(|| TestEndpoint::<3>);
+
+	// Act
+	router.compile_routes();
+	let compiled = router.compiled_routes();
+
+	// Assert
+	assert!(
+		compiled
+			.exact_for_method(&Method::GET)
+			.contains_key("/health")
+	);
+	assert!(
+		!compiled
+			.exact_for_method(&Method::GET)
+			.contains_key("/users/{id}")
+	);
+	assert!(
+		compiled
+			.router_for_method(&Method::GET)
+			.at("/users/123")
+			.is_ok()
+	);
 }
 
 #[tokio::test]
@@ -396,7 +430,11 @@ async fn test_route_matching_preserves_url_pattern_order_issue_4013() {
 
 	// Assert
 	assert_eq!(
-		route_match.params.to_vec(),
+		route_match
+			.params
+			.as_ref()
+			.expect("parameterized route should expose path params")
+			.to_vec(),
 		vec![
 			("org".to_string(), "myslug".to_string()),
 			("cluster_id".to_string(), "5".to_string()),

@@ -152,24 +152,9 @@ impl ServerRouter {
 		// Use matchit to find matching route - O(m) complexity.
 		let router = compiled_routes.router_for_method(method);
 
-		macro_rules! return_route_match {
-			($matched:expr) => {{
-				let matched = $matched;
-				let route_handler = matched.value;
-
-				// Extract parameters from matchit. matchit's `Params` iterator
-				// yields parameters in URL pattern declaration order, so we
-				// store them in ordered `PathParams` all the way down to the
-				// tuple extractor (see issue #4013).
-				let params = if route_handler.param_names.is_empty() {
-					PathParams::new()
-				} else {
-					PathParams::from_shared_names(
-						route_handler.param_names.clone(),
-						matched.params.iter().map(|(_, value)| value),
-					)
-				};
-
+		macro_rules! return_route_handler_match {
+			($route_handler:expr, $params:expr) => {{
+				let route_handler = $route_handler;
 				// Combine router-level and route-level middleware.
 				let mut combined_middleware = middleware_stack;
 				combined_middleware.extend(route_handler.middleware.iter().cloned());
@@ -177,17 +162,37 @@ impl ServerRouter {
 				return Some(RouteMatch {
 					handler: &route_handler.handler,
 					sync_handler: route_handler.sync_handler.as_ref(),
-					params,
+					params: $params,
 					middleware_stack: combined_middleware,
 					di_context,
 				});
 			}};
 		}
 
+		if let Some(route_handler) = compiled_routes
+			.exact_for_method(method)
+			.get(search_path.as_ref())
+		{
+			return_route_handler_match!(route_handler, None);
+		}
+
 		// Try matching with the original path first. Only allocate the
 		// Django-style APPEND_SLASH fallback path if the primary lookup misses.
 		if let Ok(matched) = router.at(search_path.as_ref()) {
-			return_route_match!(matched);
+			let route_handler = matched.value;
+			// Extract parameters from matchit. matchit's `Params` iterator
+			// yields parameters in URL pattern declaration order, so we
+			// store them in ordered `PathParams` all the way down to the
+			// tuple extractor (see issue #4013).
+			let params = if route_handler.param_names.is_empty() {
+				None
+			} else {
+				Some(PathParams::from_shared_names(
+					route_handler.param_names.clone(),
+					matched.params.iter().map(|(_, value)| value),
+				))
+			};
+			return_route_handler_match!(route_handler, params);
 		}
 
 		if search_path.as_ref().ends_with('/') {
@@ -201,12 +206,30 @@ impl ServerRouter {
 			if fallback_path != search_path.as_ref()
 				&& let Ok(matched) = router.at(fallback_path)
 			{
-				return_route_match!(matched);
+				let route_handler = matched.value;
+				let params = if route_handler.param_names.is_empty() {
+					None
+				} else {
+					Some(PathParams::from_shared_names(
+						route_handler.param_names.clone(),
+						matched.params.iter().map(|(_, value)| value),
+					))
+				};
+				return_route_handler_match!(route_handler, params);
 			}
 		} else {
 			let fallback_path = format!("{}/", search_path.as_ref());
 			if let Ok(matched) = router.at(&fallback_path) {
-				return_route_match!(matched);
+				let route_handler = matched.value;
+				let params = if route_handler.param_names.is_empty() {
+					None
+				} else {
+					Some(PathParams::from_shared_names(
+						route_handler.param_names.clone(),
+						matched.params.iter().map(|(_, value)| value),
+					))
+				};
+				return_route_handler_match!(route_handler, params);
 			}
 		}
 

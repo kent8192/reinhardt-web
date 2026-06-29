@@ -402,6 +402,7 @@ where
 	// (in ConditionalComposedHandler) so that middleware post-processing
 	// always runs. This unwrap_or_else is a safety net for errors that
 	// escape the chain (e.g., middleware-internal failures without a chain).
+	#[cfg(debug_assertions)]
 	let request_path_for_warning = {
 		let path = request.uri.path();
 		if path.contains('.') && !path.ends_with(".json") {
@@ -411,6 +412,7 @@ where
 		}
 	};
 	let response = handler(request).await.unwrap_or_else(|e| {
+		#[cfg(debug_assertions)]
 		if let Some(request_path) = request_path_for_warning.as_deref() {
 			eprintln!(
 				"[reinhardt WARN] Non-API request hit error-to-JSON conversion: path={}, error={}",

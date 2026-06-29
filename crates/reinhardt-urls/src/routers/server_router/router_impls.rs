@@ -85,7 +85,9 @@ macro_rules! dispatch_router_request {
 			}
 		};
 
-		req.path_params = route_match.params;
+		if let Some(params) = route_match.params {
+			req.path_params = params;
+		}
 
 		// Set DI context if available
 		if let Some(di_ctx) = &route_match.di_context {

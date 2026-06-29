@@ -11,6 +11,7 @@ use reinhardt_di::InjectionContext;
 use reinhardt_http::{Handler, PathParams, SyncHandler};
 use reinhardt_middleware::Middleware;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Information about a registered middleware
@@ -56,6 +57,13 @@ pub(crate) struct CompiledRoutes {
 	pub(crate) patch: MatchitRouter<RouteHandler>,
 	pub(crate) head: MatchitRouter<RouteHandler>,
 	pub(crate) options: MatchitRouter<RouteHandler>,
+	pub(crate) exact_get: HashMap<String, RouteHandler>,
+	pub(crate) exact_post: HashMap<String, RouteHandler>,
+	pub(crate) exact_put: HashMap<String, RouteHandler>,
+	pub(crate) exact_delete: HashMap<String, RouteHandler>,
+	pub(crate) exact_patch: HashMap<String, RouteHandler>,
+	pub(crate) exact_head: HashMap<String, RouteHandler>,
+	pub(crate) exact_options: HashMap<String, RouteHandler>,
 	pub(crate) errors: Vec<String>,
 }
 
@@ -69,12 +77,48 @@ impl Default for CompiledRoutes {
 			patch: MatchitRouter::new(),
 			head: MatchitRouter::new(),
 			options: MatchitRouter::new(),
+			exact_get: HashMap::new(),
+			exact_post: HashMap::new(),
+			exact_put: HashMap::new(),
+			exact_delete: HashMap::new(),
+			exact_patch: HashMap::new(),
+			exact_head: HashMap::new(),
+			exact_options: HashMap::new(),
 			errors: Vec::new(),
 		}
 	}
 }
 
 impl CompiledRoutes {
+	pub(crate) fn exact_for_method(&self, method: &Method) -> &HashMap<String, RouteHandler> {
+		match *method {
+			Method::GET => &self.exact_get,
+			Method::POST => &self.exact_post,
+			Method::PUT => &self.exact_put,
+			Method::DELETE => &self.exact_delete,
+			Method::PATCH => &self.exact_patch,
+			Method::HEAD => &self.exact_head,
+			Method::OPTIONS => &self.exact_options,
+			_ => &self.exact_get,
+		}
+	}
+
+	pub(crate) fn exact_for_method_mut(
+		&mut self,
+		method: &Method,
+	) -> &mut HashMap<String, RouteHandler> {
+		match *method {
+			Method::GET => &mut self.exact_get,
+			Method::POST => &mut self.exact_post,
+			Method::PUT => &mut self.exact_put,
+			Method::DELETE => &mut self.exact_delete,
+			Method::PATCH => &mut self.exact_patch,
+			Method::HEAD => &mut self.exact_head,
+			Method::OPTIONS => &mut self.exact_options,
+			_ => &mut self.exact_get,
+		}
+	}
+
 	pub(crate) fn router_for_method(&self, method: &Method) -> &MatchitRouter<RouteHandler> {
 		match *method {
 			Method::GET => &self.get,
@@ -189,7 +233,7 @@ pub(crate) struct RouteMatch<'a> {
 	///
 	/// Stored as ordered [`PathParams`] so downstream extractors such
 	/// as `Path<(T1, T2)>` can rely on URL declaration order. See issue #4013.
-	pub params: PathParams,
+	pub params: Option<PathParams>,
 
 	/// Middleware stack to apply (parent → child order)
 	pub middleware_stack: Vec<Arc<dyn Middleware>>,
@@ -207,7 +251,11 @@ impl RouteMatch<'_> {
 	/// `HashMap` lookup.
 	#[cfg(test)]
 	pub(crate) fn param(&self, name: &str) -> Option<&str> {
-		self.params.iter().find(|(k, _)| *k == name).map(|(_, v)| v)
+		self.params
+			.as_ref()?
+			.iter()
+			.find(|(k, _)| *k == name)
+			.map(|(_, v)| v)
 	}
 }
 
