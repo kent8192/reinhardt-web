@@ -170,22 +170,16 @@ are recorded in
 
 The 2026-06-29 UTC same-host Codespaces backend run compared
 `origin/develop/0.3.0` at `b046f6184b3047010dd184383bd1fbf22dd5e6c7` with the
-0.4 integrated head at `312d94152dd1e536a40cafee150f49570c393b52` on a
+0.4 integrated head at `292af106f392e12becf3523895cee8e200cb028a` on a
 `largePremiumLinux` Codespace with an AMD EPYC 7763 CPU and `rustc 1.96.0`.
-Values are the median of five Criterion point estimates from the native
+Values are the median of three Criterion point estimates from the native
 endpoint benchmark:
 
 | Benchmark | Baseline median | Integrated median | Reduction |
 |---|---:|---:|---:|
-| `http_endpoint_plain_get` | 475.3 ns | 455.3 ns | 4.2% |
-| `http_endpoint_path_param_get` | 600.2 ns | 552.8 ns | 7.9% |
-| `server_fn_json_post` | 1.189 us | 1.165 us | 2.0% |
-
-A later synchronous HTTP adapter follow-up at
-`48860863a63b7878c9dae9ef4dc88b74096c1055` did not refresh this backend table
-because that change affects the Hyper HTTP adapter path, not the legacy
-`ServerRouter::handle()` entry point measured here. Re-run this benchmark only
-when endpoint dispatch, `server_fn` conversion, or router handling changes.
+| `http_endpoint_plain_get` | 516.1 ns | 479.1 ns | 7.2% |
+| `http_endpoint_path_param_get` | 599.5 ns | 561.1 ns | 6.4% |
+| `server_fn_json_post` | 1.208 us | 1.180 us | 2.4% |
 
 The 2026-06-25 measurement compared `origin/develop/0.3.0` with only the
 benchmark harness applied against the optimized branch. Values are the mean of
