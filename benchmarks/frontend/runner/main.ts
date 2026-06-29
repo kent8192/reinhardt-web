@@ -1,0 +1,213 @@
+import os from "node:os";
+import path from "node:path";
+import { collectBundleMetrics } from "./bundles.js";
+import { logExcerpt, runShellCommand } from "./commands.js";
+import { patchSource, restoreSource, snapshotSource, type SourceSnapshot } from "./dev-loop.js";
+import { loadManifest } from "./manifest.js";
+import { writeReports } from "./report.js";
+import { measureDevUpdate, runRuntimeMeasurements } from "./runtime.js";
+import { startServer, stopServer, type ManagedServer } from "./servers.js";
+import type { BenchmarkManifest, BenchmarkResult, TargetConfig } from "./types.js";
+
+const frontendRoot = path.resolve(new URL("..", import.meta.url).pathname);
+const command = process.argv[2] ?? "check";
+
+async function main(): Promise<void> {
+  const manifest = loadManifest(frontendRoot);
+  if (command === "check") {
+    console.log(`frontend-benchmark: checked ${manifest.scenarios.length} scenarios across ${manifest.targets.length} targets`);
+    return;
+  }
+  if (command === "runtime") {
+    await writeRun(manifest, await runRuntime(manifest));
+    return;
+  }
+  if (command === "build") {
+    await writeRun(manifest, await runBuild(manifest));
+    return;
+  }
+  if (command === "measure") {
+    const buildResults = await runBuild(manifest);
+    const runtimeResults = await runRuntime(manifest);
+    await writeRun(manifest, [...buildResults, ...runtimeResults]);
+    return;
+  }
+  throw new Error(`unknown command: ${command}`);
+}
+
+async function runRuntime(manifest: BenchmarkManifest): Promise<BenchmarkResult[]> {
+  const results: BenchmarkResult[] = [];
+  for (const target of manifest.targets) {
+    let server: ManagedServer | undefined;
+    try {
+      await installAndBuild(target, manifest.suite.timeout_ms);
+      server = await startServer(target.preview, target.root, target.url, manifest.suite.timeout_ms);
+      results.push(...await runRuntimeMeasurements(manifest, target));
+    } catch (error) {
+      results.push(failedRuntime(target, error));
+    } finally {
+      if (server) {
+        await stopServer(server);
+      }
+    }
+  }
+  return results;
+}
+
+async function runBuild(manifest: BenchmarkManifest): Promise<BenchmarkResult[]> {
+  const results: BenchmarkResult[] = [];
+  for (const target of manifest.targets) {
+    let prodServer: ManagedServer | undefined;
+    try {
+      debug(`${target.id}: production build start`);
+      const buildResult = await installAndBuild(target, manifest.suite.timeout_ms);
+      const bundle = collectBundleMetrics(target);
+      debug(`${target.id}: production preview start`);
+      prodServer = await startServer(target.preview, target.root, target.url, manifest.suite.timeout_ms);
+      results.push({
+        type: "build",
+        target: target.id,
+        prod_build_ms: buildResult.durationMs,
+        prod_start_ms: prodServer.startMs,
+        ...bundle,
+        status: "ok"
+      });
+      debug(`${target.id}: production build recorded`);
+    } catch (error) {
+      debug(`${target.id}: production build failed`);
+      results.push({
+        type: "build",
+        target: target.id,
+        status: "failed",
+        error: errorToBenchmarkError(error)
+      });
+    } finally {
+      if (prodServer) {
+        debug(`${target.id}: production preview stop`);
+        await stopServer(prodServer);
+      }
+    }
+
+    let devServer: ManagedServer | undefined;
+    let sourceSnapshot: SourceSnapshot | undefined;
+    try {
+      debug(`${target.id}: dev source snapshot`);
+      sourceSnapshot = snapshotSource(target.root, target.source_patch_file);
+      debug(`${target.id}: dev server start`);
+      devServer = await startServer(target.dev, target.root, target.dev_url, manifest.suite.timeout_ms);
+      debug(`${target.id}: dev update measure`);
+      const hmrMs = await measureDevUpdate(
+        target.dev_url,
+        () => patchSource(target.root, target.source_patch_file),
+        manifest.suite.timeout_ms
+      );
+      results.push({
+        type: "dev",
+        target: target.id,
+        dev_start_ms: devServer.startMs,
+        hmr_update_ms: hmrMs,
+        status: "ok"
+      });
+      debug(`${target.id}: dev metric recorded`);
+    } catch (error) {
+      debug(`${target.id}: dev metric failed`);
+      results.push({
+        type: "dev",
+        target: target.id,
+        status: "failed",
+        error: errorToBenchmarkError(error)
+      });
+    } finally {
+      if (devServer) {
+        debug(`${target.id}: dev server stop`);
+        await stopServer(devServer);
+      }
+      if (sourceSnapshot) {
+        restoreSource(sourceSnapshot);
+      }
+    }
+  }
+  return results;
+}
+
+async function installAndBuild(target: TargetConfig, timeoutMs: number) {
+  await runRequired(target.install, target.root, timeoutMs);
+  return runRequired(target.build, target.root, timeoutMs);
+}
+
+async function runRequired(commandText: string, cwd: string, timeoutMs: number) {
+  debug(`command start: ${commandText}`);
+  const result = await runShellCommand(commandText, cwd, timeoutMs);
+  if (result.exitCode !== 0) {
+    const error = new Error(`command failed: ${commandText}`);
+    Object.assign(error, { commandResult: result });
+    throw error;
+  }
+  debug(`command ok: ${commandText}`);
+  return result;
+}
+
+async function writeRun(manifest: BenchmarkManifest, results: BenchmarkResult[]): Promise<void> {
+  const output = writeReports(path.join(frontendRoot, "results"), {
+    measuredAt: new Date().toISOString(),
+    suite: manifest.suite,
+    targets: manifest.targets.map((target) => ({
+      id: target.id,
+      label: target.label,
+      mode: target.mode
+    })),
+    scenarios: manifest.scenarios,
+    results,
+    environment: {
+      node: process.version,
+      platform: os.platform(),
+      arch: os.arch()
+    }
+  });
+  console.log(`frontend-benchmark: wrote ${path.relative(frontendRoot, output.jsonPath)}`);
+  console.log(`frontend-benchmark: wrote ${path.relative(frontendRoot, output.markdownPath)}`);
+}
+
+function failedRuntime(target: TargetConfig, error: unknown): BenchmarkResult {
+  return {
+    type: "runtime",
+    target: target.id,
+    scenario: "suite",
+    metric: "runtime",
+    valuesMs: [],
+    meanMs: 0,
+    minMs: 0,
+    maxMs: 0,
+    status: "failed",
+    error: errorToBenchmarkError(error)
+  };
+}
+
+function errorToBenchmarkError(error: unknown) {
+  if (error instanceof Error) {
+    const commandResult = (error as Error & { commandResult?: { command: string; exitCode: number; stdout: string; stderr: string } }).commandResult;
+    return {
+      kind: "error",
+      message: error.message,
+      command: commandResult?.command,
+      exitCode: commandResult?.exitCode,
+      logExcerpt: commandResult ? logExcerpt(commandResult.stdout, commandResult.stderr) : undefined
+    };
+  }
+  return {
+    kind: "error",
+    message: String(error)
+  };
+}
+
+function debug(message: string): void {
+  if (process.env.FRONTEND_BENCHMARK_DEBUG === "1") {
+    console.error(`frontend-benchmark: ${message}`);
+  }
+}
+
+main().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`frontend-benchmark: ${message}`);
+  process.exitCode = 1;
+});

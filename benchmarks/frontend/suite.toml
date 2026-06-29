@@ -1,0 +1,86 @@
+[suite]
+name = "frontend-framework-comparison"
+sample_count = 3
+warmup_count = 1
+browser = "chromium"
+timeout_ms = 120000
+
+[scenarios.counter]
+label = "Counter click update"
+
+[scenarios.keyed-list]
+label = "Keyed 1k list mutation"
+
+[scenarios.form-input]
+label = "Controlled input update"
+
+[scenarios.router]
+label = "Client route navigation"
+
+[scenarios.hydration]
+label = "Boot and hydration readiness"
+
+[targets.reinhardt-pages]
+label = "Reinhardt Pages"
+mode = "wasm"
+root = "fixtures/reinhardt-pages"
+install = "npm install"
+build = "npm run build"
+preview = "node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4310"
+dev = "CARGO_BUILD_JOBS=1 wasm-pack build --target web --out-dir pkg && node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4410"
+url = "http://127.0.0.1:4310"
+dev_url = "http://127.0.0.1:4410"
+bundle_paths = ["dist"]
+source_patch_file = "index.html"
+
+[targets.vite-react]
+label = "Vite React"
+mode = "csr"
+root = "fixtures/vite-react"
+install = "npm install"
+build = "npm run build"
+preview = "node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4311"
+dev = "node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4411"
+url = "http://127.0.0.1:4311"
+dev_url = "http://127.0.0.1:4411"
+bundle_paths = ["dist"]
+source_patch_file = "src/App.jsx"
+
+[targets.vite-vue]
+label = "Vite Vue"
+mode = "csr"
+root = "fixtures/vite-vue"
+install = "npm install"
+build = "npm run build"
+preview = "node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4312"
+dev = "node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4412"
+url = "http://127.0.0.1:4312"
+dev_url = "http://127.0.0.1:4412"
+bundle_paths = ["dist"]
+source_patch_file = "src/App.vue"
+
+[targets.next]
+label = "Next.js"
+mode = "ssr"
+root = "fixtures/next"
+install = "npm install"
+build = "npm run build"
+preview = "node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 4313"
+dev = "node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port 4413"
+url = "http://127.0.0.1:4313"
+dev_url = "http://127.0.0.1:4413"
+bundle_paths = [".next/static"]
+source_patch_file = "app/page.jsx"
+
+[targets.nuxt]
+label = "Nuxt"
+mode = "ssr"
+root = "fixtures/nuxt"
+install = "npm install"
+build = "npm run build"
+preview = "NITRO_HOST=127.0.0.1 node node_modules/nuxt/bin/nuxt.mjs preview -p 4314"
+dev = "node node_modules/nuxt/bin/nuxt.mjs dev --host 127.0.0.1 --port 4414"
+url = "http://127.0.0.1:4314"
+dev_url = "http://127.0.0.1:4414"
+bundle_paths = [".output/public"]
+source_patch_file = "app.vue"

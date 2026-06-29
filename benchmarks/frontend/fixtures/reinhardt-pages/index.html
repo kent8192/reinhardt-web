@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reinhardt Pages Benchmark</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body data-benchmark-version="baseline-version">
+    <div id="root"></div>
+    <script type="module">
+      import init, { mount_benchmark_app } from "./pkg/frontend_benchmark_reinhardt_pages.js";
+      await init();
+      mount_benchmark_app();
+    </script>
+  </body>
+</html>
