@@ -191,6 +191,21 @@ request path instead of idle worker-thread stacks.
 | `server_router_two_params_build_plus_handle` | 11 alloc/request | 10 alloc/request | 9.1% |
 | `server_router_one_middleware_build_plus_handle` | 15 alloc/request | 12 alloc/request | 20.0% |
 
+The 2026-06-29 measurement compared `develop/0.4.0` with lazy request extension
+backing-store initialization:
+
+| Probe | Baseline | Optimized | Reduction |
+|---|---:|---:|---:|
+| `request_build_empty_path` | 2 alloc/request | 1 alloc/request | 50.0% |
+| `request_build_two_query_params` | 7 alloc/request | 6 alloc/request | 14.3% |
+| `direct_handler_build_plus_handle` | 4 alloc/request | 3 alloc/request | 25.0% |
+| `direct_handler_handle_only` | 2 alloc/request | 2 alloc/request | 0.0% |
+| `clone_for_di_empty_path` | 1 alloc/request | 1 alloc/request | 0.0% |
+| `clone_for_di_two_query_params` | 6 alloc/request | 6 alloc/request | 0.0% |
+| `server_router_static_build_plus_handle` | 6 alloc/request | 5 alloc/request | 16.7% |
+| `server_router_two_params_build_plus_handle` | 10 alloc/request | 9 alloc/request | 10.0% |
+| `server_router_one_middleware_build_plus_handle` | 12 alloc/request | 11 alloc/request | 8.3% |
+
 ## Admin List Query Count Measurements
 
 Use the admin database mock tests before claiming query-count reductions on the

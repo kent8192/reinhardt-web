@@ -962,9 +962,10 @@ impl Request {
 
 	/// Creates a lightweight copy of this request for dependency injection.
 	///
-	/// The clone shares the same extensions store (via internal `Arc`),
-	/// so `AuthState` and other extensions set on the original request
-	/// are accessible in the clone. Body and parsers are not copied
+	/// The clone shares the same initialized extensions store (via internal
+	/// `Arc`), so `AuthState` and other extensions set on the original request
+	/// are accessible in the clone. Empty extension stores stay uninitialized
+	/// until either request writes an extension. Body and parsers are not copied
 	/// as they are not needed for DI resolution.
 	pub fn clone_for_di(&self) -> Self {
 		Request {
@@ -982,7 +983,7 @@ impl Request {
 			#[cfg(feature = "parsers")]
 			parsed_data: Mutex::new(None),
 			body_consumed: AtomicBool::new(false),
-			extensions: self.extensions.clone(),
+			extensions: self.extensions.clone_if_initialized(),
 		}
 	}
 }
@@ -1238,7 +1239,7 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_clone_for_di_shares_extensions_bidirectionally() {
+	fn test_clone_for_di_keeps_empty_extensions_independent_until_used() {
 		// Arrange
 		let request = Request::builder()
 			.method(Method::GET)
@@ -1251,9 +1252,10 @@ mod tests {
 		// Act - insert into cloned extensions
 		cloned.extensions.insert("from_clone".to_string());
 
-		// Assert - original also sees it (shared backing store)
+		// Assert - empty stores are not initialized solely by clone_for_di
+		assert_eq!(request.extensions.get::<String>(), None);
 		assert_eq!(
-			request.extensions.get::<String>(),
+			cloned.extensions.get::<String>(),
 			Some("from_clone".to_string())
 		);
 	}
