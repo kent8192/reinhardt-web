@@ -3,7 +3,7 @@
 use super::*;
 use hyper::Method;
 use reinhardt_core::endpoint::EndpointInfo;
-use reinhardt_http::{Handler, Request, Response, Result};
+use reinhardt_http::{Handler, Request, Response, Result, SyncHandler};
 use rstest::rstest;
 use std::sync::Arc;
 
@@ -91,6 +91,23 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 impl<const ID: u8> Handler for TestEndpoint<ID> {
 	async fn handle(&self, _req: Request) -> Result<Response> {
 		Ok(Response::ok())
+	}
+}
+
+struct PathParamCountHandler;
+
+#[async_trait::async_trait]
+impl Handler for PathParamCountHandler {
+	async fn handle(&self, req: Request) -> Result<Response> {
+		Ok(Response::ok().with_body(req.path_params.len().to_string()))
+	}
+}
+
+struct PathParamCountSyncHandler;
+
+impl SyncHandler for PathParamCountSyncHandler {
+	fn handle_sync(&self, req: Request) -> Result<Response> {
+		Ok(Response::ok().with_body(req.path_params.len().to_string()))
 	}
 }
 
@@ -553,6 +570,62 @@ fn create_test_request(path: &str) -> reinhardt_http::Request {
 		.body(bytes::Bytes::new())
 		.build()
 		.unwrap()
+}
+
+fn create_test_request_with_path_params(path: &str) -> reinhardt_http::Request {
+	reinhardt_http::Request::builder()
+		.method(Method::GET)
+		.uri(path)
+		.version(hyper::Version::HTTP_11)
+		.headers(hyper::HeaderMap::new())
+		.body(bytes::Bytes::new())
+		.path_params(vec![("id".to_string(), "stale".to_string())])
+		.build()
+		.unwrap()
+}
+
+#[rstest]
+#[tokio::test]
+async fn static_route_dispatch_clears_existing_path_params() {
+	// Arrange
+	let router = ServerRouter::new().handler("/health", PathParamCountHandler);
+	let request = create_test_request_with_path_params("/health");
+
+	// Act
+	let response = Handler::handle(&router, request).await.unwrap();
+
+	// Assert
+	assert_eq!(response.body, bytes::Bytes::from_static(b"0"));
+}
+
+#[rstest]
+fn static_route_sync_dispatch_clears_existing_path_params() {
+	// Arrange
+	let router = ServerRouter::new().handler_sync("/health", PathParamCountSyncHandler);
+	let request = create_test_request_with_path_params("/health");
+
+	// Act
+	let response = router
+		.try_dispatch_sync(request)
+		.expect("static sync route should use sync fast path")
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.body, bytes::Bytes::from_static(b"0"));
+}
+
+#[rstest]
+fn escaped_literal_brace_route_resolves_without_path_params() {
+	// Arrange
+	let router = ServerRouter::new().handler("/{{hello}}", PathParamCountHandler);
+
+	// Act
+	let route_match = router
+		.resolve("/{hello}", &Method::GET)
+		.expect("literal brace route should resolve");
+
+	// Assert
+	assert!(route_match.params.is_none());
 }
 
 #[rstest]

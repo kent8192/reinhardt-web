@@ -34,6 +34,23 @@ pub(super) fn request_body_plan(
 	headers: &HeaderMap,
 	max_body_size: u64,
 ) -> RequestBodyPlan {
+	request_body_plan_with_empty_fast_path(method, headers, max_body_size, true)
+}
+
+pub(super) fn request_body_plan_collecting_unsized(
+	method: &Method,
+	headers: &HeaderMap,
+	max_body_size: u64,
+) -> RequestBodyPlan {
+	request_body_plan_with_empty_fast_path(method, headers, max_body_size, false)
+}
+
+fn request_body_plan_with_empty_fast_path(
+	method: &Method,
+	headers: &HeaderMap,
+	max_body_size: u64,
+	allow_empty_fast_path: bool,
+) -> RequestBodyPlan {
 	let has_transfer_encoding = headers.contains_key(TRANSFER_ENCODING);
 	let content_length_header = headers.get(CONTENT_LENGTH);
 	let content_length = content_length_header
@@ -44,7 +61,8 @@ pub(super) fn request_body_plan(
 		return RequestBodyPlan::RejectTooLarge;
 	}
 
-	if is_empty_body_fast_path_method(method)
+	if allow_empty_fast_path
+		&& is_empty_body_fast_path_method(method)
 		&& !has_transfer_encoding
 		&& matches!(
 			(content_length_header, content_length),
@@ -74,6 +92,14 @@ mod tests {
 	}
 
 	#[test]
+	fn collects_get_without_declared_body_when_empty_fast_path_disabled() {
+		assert_eq!(
+			request_body_plan_collecting_unsized(&Method::GET, &HeaderMap::new(), 10),
+			RequestBodyPlan::Collect
+		);
+	}
+
+	#[test]
 	fn skips_head_with_zero_content_length() {
 		let mut headers = HeaderMap::new();
 		headers.insert(CONTENT_LENGTH, HeaderValue::from_static("0"));
@@ -81,6 +107,17 @@ mod tests {
 		assert_eq!(
 			request_body_plan(&Method::HEAD, &headers, 10),
 			RequestBodyPlan::Empty
+		);
+	}
+
+	#[test]
+	fn collects_head_with_zero_content_length_when_empty_fast_path_disabled() {
+		let mut headers = HeaderMap::new();
+		headers.insert(CONTENT_LENGTH, HeaderValue::from_static("0"));
+
+		assert_eq!(
+			request_body_plan_collecting_unsized(&Method::HEAD, &headers, 10),
+			RequestBodyPlan::Collect
 		);
 	}
 

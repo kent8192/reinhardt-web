@@ -15,9 +15,14 @@ use std::sync::Arc;
 
 fn extract_path_param_names(path: &str) -> Arc<[String]> {
 	let mut names = Vec::new();
-	let mut rest = path;
-	while let Some(start) = rest.find('{') {
-		let after_start = &rest[start + 1..];
+	let mut search_start = 0;
+	while let Some(start_offset) = path[search_start..].find('{') {
+		let start = search_start + start_offset;
+		let after_start = &path[start + 1..];
+		if after_start.starts_with('{') {
+			search_start = start + 2;
+			continue;
+		}
 		let Some(end) = after_start.find('}') else {
 			break;
 		};
@@ -27,9 +32,28 @@ fn extract_path_param_names(path: &str) -> Arc<[String]> {
 		if !name.is_empty() {
 			names.push(name.to_string());
 		}
-		rest = &after_start[end + 1..];
+		search_start = start + end + 2;
 	}
 	names.into()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::extract_path_param_names;
+
+	#[test]
+	fn path_param_names_ignore_escaped_literal_braces() {
+		let names = extract_path_param_names("/{{hello}}/");
+
+		assert!(names.is_empty());
+	}
+
+	#[test]
+	fn path_param_names_keep_params_after_escaped_literal_braces() {
+		let names = extract_path_param_names("/{{hello}}/{id}/{{literal}}/{*tail}");
+
+		assert_eq!(&*names, ["id".to_string(), "tail".to_string()].as_slice());
+	}
 }
 
 fn insert_compiled_route(

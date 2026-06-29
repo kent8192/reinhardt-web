@@ -87,6 +87,8 @@ macro_rules! dispatch_router_request {
 
 		if let Some(params) = route_match.params {
 			req.path_params = params;
+		} else if !req.path_params.is_empty() {
+			req.path_params = Default::default();
 		}
 
 		// Set DI context if available
@@ -148,6 +150,8 @@ impl ServerRouter {
 		let sync_handler = route_match.sync_handler?;
 		if let Some(params) = route_match.params {
 			req.path_params = params;
+		} else if !req.path_params.is_empty() {
+			req.path_params = Default::default();
 		}
 		if let Some(di_ctx) = &route_match.di_context {
 			req.set_di_context(di_ctx.clone());
