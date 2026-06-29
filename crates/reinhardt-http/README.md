@@ -329,6 +329,7 @@ let response = StreamingResponse::with_status(
 - `Request::builder()` - Create builder
 - `.path()` - Get URI path without query
 - `.body()` - Get request body as `Option<&Bytes>`
+- `.read_body()` - Read the body with consumption tracking
 - `.json::<T>()` - Parse body as JSON (requires `parsers` feature)
 - `.post()` - Parse POST data (form/JSON, requires `parsers` feature)
 - `.data()` - Get parsed data from body

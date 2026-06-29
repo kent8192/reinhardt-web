@@ -1151,35 +1151,67 @@ fn generate_server_handler(
 		quote! {}
 	} else {
 		match codec {
-			"json" => quote! {
-				let __content_type = __req
-					.headers
-					.get("content-type")
-					.and_then(|value| value.to_str().ok())
-					.unwrap_or("");
-				let body = __req.read_body()
-					.map_err(|e| format!("Failed to read body: {}", e))?;
-				let __media_type = __content_type
-					.split(';')
-					.next()
-					.unwrap_or("")
-					.trim();
-				let __converted_body;
-				let body: &[u8] = if __media_type.is_empty()
-					|| __media_type.eq_ignore_ascii_case("application/json")
-				{
-					body.as_ref()
-				} else {
-					let __body_text = ::std::string::String::from_utf8(body.to_vec())
-						.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
-					__converted_body = #pages_crate::server_fn::convert_body_for_codec(
-						__body_text,
-						&__content_type,
-						#codec,
-					)?;
-					__converted_body.as_bytes()
-				};
-			},
+			"json" if !has_inject_or_extractor => {
+				quote! {
+					let __content_type = __req
+						.headers
+						.get("content-type")
+						.and_then(|value| value.to_str().ok())
+						.unwrap_or("");
+					let body = __req.body();
+					let __media_type = __content_type
+						.split(';')
+						.next()
+						.unwrap_or("")
+						.trim();
+					let __converted_body;
+					let body: &[u8] = if __media_type.is_empty()
+						|| __media_type.eq_ignore_ascii_case("application/json")
+					{
+						body.as_ref()
+					} else {
+						let __body_text = ::std::string::String::from_utf8(body.to_vec())
+							.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+						__converted_body = #pages_crate::server_fn::convert_body_for_codec(
+							__body_text,
+							&__content_type,
+							#codec,
+						)?;
+						__converted_body.as_bytes()
+					};
+				}
+			}
+			"json" => {
+				quote! {
+					let __content_type = __req
+						.headers
+						.get("content-type")
+						.and_then(|value| value.to_str().ok())
+						.unwrap_or("");
+					let body = __req.read_body()
+						.map_err(|e| format!("Failed to read body: {}", e))?;
+					let __media_type = __content_type
+						.split(';')
+						.next()
+						.unwrap_or("")
+						.trim();
+					let __converted_body;
+					let body: &[u8] = if __media_type.is_empty()
+						|| __media_type.eq_ignore_ascii_case("application/json")
+					{
+						body.as_ref()
+					} else {
+						let __body_text = ::std::string::String::from_utf8(body.to_vec())
+							.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+						__converted_body = #pages_crate::server_fn::convert_body_for_codec(
+							__body_text,
+							&__content_type,
+							#codec,
+						)?;
+						__converted_body.as_bytes()
+					};
+				}
+			}
 			_ => quote! {
 				let __content_type = __req
 					.headers
