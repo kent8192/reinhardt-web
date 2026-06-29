@@ -334,6 +334,13 @@ impl Instrumentation {
 			.collect()
 	}
 
+	async fn notify_query_end_listeners(&self, query: &str, duration: Duration) {
+		let listeners = self.listener_snapshot();
+		for listener in listeners {
+			listener.on_query_end(query, duration).await;
+		}
+	}
+
 	/// Notifies all listeners that a query has started
 	///
 	/// # Examples
@@ -405,10 +412,17 @@ impl Instrumentation {
 
 		super::n_plus_one::record_query(query, params, duration);
 
-		let listeners = self.listener_snapshot();
-		for listener in listeners {
-			listener.on_query_end(query, duration).await;
-		}
+		self.notify_query_end_listeners(query, duration).await;
+	}
+
+	pub(crate) async fn orm_query_end_with_params(
+		&self,
+		query: &str,
+		params: &[String],
+		duration: Duration,
+	) {
+		super::n_plus_one::record_query(query, params, duration);
+		self.notify_query_end_listeners(query, duration).await;
 	}
 
 	/// Notifies all listeners that a query has failed
@@ -720,6 +734,40 @@ mod tests {
 				for id in ["1", "2", "3"] {
 					instrumentation
 						.query_end_with_params(
+							"SELECT * FROM posts WHERE author_id = $1",
+							&[id.to_string()],
+							Duration::from_millis(1),
+						)
+						.await;
+				}
+			})
+			.await;
+
+		assert_eq!(report.findings.len(), 1);
+	}
+
+	#[tokio::test]
+	async fn test_orm_query_end_with_params_does_not_retain_metrics() {
+		let instrumentation = Instrumentation::new();
+		let query = "SELECT * FROM posts WHERE author_id = $1";
+
+		instrumentation
+			.orm_query_end_with_params(query, &["1".to_string()], Duration::from_millis(1))
+			.await;
+
+		assert!(instrumentation.query_metrics(query).is_empty());
+		assert_eq!(instrumentation.statistics().total_queries, 0);
+	}
+
+	#[tokio::test]
+	async fn test_orm_query_end_with_params_records_n_plus_one_scope() {
+		let instrumentation = Instrumentation::new();
+
+		let (_, report) = NPlusOneScope::warn("instrumentation", low_threshold_config())
+			.run_with_report(async {
+				for id in ["1", "2", "3"] {
+					instrumentation
+						.orm_query_end_with_params(
 							"SELECT * FROM posts WHERE author_id = $1",
 							&[id.to_string()],
 							Duration::from_millis(1),

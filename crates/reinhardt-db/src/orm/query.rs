@@ -4109,7 +4109,7 @@ where
 		let rows = match query_result {
 			Ok(rows) => {
 				super::instrumentation::instrumentation()
-					.query_end_with_params(&sql, &[], duration)
+					.orm_query_end_with_params(&sql, &[], duration)
 					.await;
 				rows
 			}
@@ -4364,7 +4364,7 @@ where
 		let rows = match query_result {
 			Ok(rows) => {
 				super::instrumentation::instrumentation()
-					.query_end_with_params(&sql, &[], duration)
+					.orm_query_end_with_params(&sql, &[], duration)
 					.await;
 				rows
 			}
