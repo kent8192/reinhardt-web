@@ -83,6 +83,13 @@ impl ServerFnRouterExt for ServerRouter {
 
 struct ServerFnEndpoint<S>(PhantomData<S>);
 
+fn response_content_type(codec: &str) -> HeaderValue {
+	match codec {
+		"msgpack" => HeaderValue::from_static("application/msgpack"),
+		_ => HeaderValue::from_static("application/json"),
+	}
+}
+
 impl<S: ServerFnRegistration> EndpointInfo for ServerFnEndpoint<S> {
 	fn path() -> &'static str {
 		S::PATH
@@ -100,15 +107,6 @@ impl<S: ServerFnRegistration> EndpointInfo for ServerFnEndpoint<S> {
 #[async_trait::async_trait]
 impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 	async fn handle(&self, req: Request) -> Result<Response> {
-		let path = S::PATH;
-		let name = S::NAME;
-		// Response Content-Type based on codec.
-		// "url" codec still returns JSON responses (only request format differs).
-		let response_content_type = match S::CODEC {
-			"msgpack" => HeaderValue::from_static("application/msgpack"),
-			_ => HeaderValue::from_static("application/json"),
-		};
-
 		// Insert a shared cookie jar only for handlers that can access request
 		// extensions. Plain body-only server functions cannot set response cookies.
 		let cookie_jar = if S::USES_RESPONSE_COOKIE_JAR {
@@ -121,9 +119,11 @@ impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 
 		let mut response = match S::handle(req).await {
 			Ok(body) => Response::ok()
-				.with_typed_header(CONTENT_TYPE, response_content_type.clone())
+				.with_typed_header(CONTENT_TYPE, response_content_type(S::CODEC))
 				.with_body(body),
 			Err(error_body) => {
+				let name = S::NAME;
+				let path = S::PATH;
 				// Log the error to stderr for debugging.
 				eprintln!(
 					"[server_fn ERROR] {} ({}): {}",
@@ -143,7 +143,7 @@ impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 					.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
 				Response::new(status_code)
-					.with_typed_header(CONTENT_TYPE, response_content_type)
+					.with_typed_header(CONTENT_TYPE, response_content_type(S::CODEC))
 					.with_body(error_body)
 			}
 		};
