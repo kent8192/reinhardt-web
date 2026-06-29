@@ -74,12 +74,17 @@ command leaves a worktree diff.
 
 ## 6. Token and Push Model
 
+The job runs formatter and Clippy fix commands without a write token available to
+the checkout. The checkout uses `persist-credentials: false`, and the GitHub App
+token is generated only after the fix commands have completed and a worktree diff
+has been detected.
+
 Use the existing GitHub App token pattern that is already present in repository
 workflows that need write access. This avoids relying on `GITHUB_TOKEN` behavior
 for triggering follow-up workflows after a push.
 
-The checkout step uses the generated app token. The push target is the exact
-pull-request head branch. The workflow never pushes to protected or
+The generated token is used only by the final push step. The push target is the
+exact pull-request head branch. The workflow never pushes to protected or
 release-managed branches.
 
 ## 7. Failure Handling
