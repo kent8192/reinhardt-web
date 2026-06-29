@@ -93,7 +93,7 @@ fn build_server_fn_request() -> Request {
 fn warm_router(router: &ServerRouter, request: Request) {
 	let rt = tokio::runtime::Runtime::new().expect("tokio runtime should build");
 	let response = rt
-		.block_on(router.handle(request))
+		.block_on(router.dispatch(request))
 		.expect("warmup request should succeed");
 	assert!(response.status.is_success());
 }
@@ -108,7 +108,7 @@ fn bench_http_endpoint(c: &mut Criterion) {
 			|| build_get_request("/api/plain"),
 			|request| {
 				let response = rt
-					.block_on(router.handle(request))
+					.block_on(router.dispatch(request))
 					.expect("plain endpoint request should succeed");
 				black_box(response)
 			},
@@ -127,7 +127,7 @@ fn bench_http_path_param_endpoint(c: &mut Criterion) {
 			|| build_get_request("/api/items/42/"),
 			|request| {
 				let response = rt
-					.block_on(router.handle(request))
+					.block_on(router.dispatch(request))
 					.expect("path endpoint request should succeed");
 				black_box(response)
 			},
@@ -146,7 +146,7 @@ fn bench_server_fn_endpoint(c: &mut Criterion) {
 			build_server_fn_request,
 			|request| {
 				let response = rt
-					.block_on(router.handle(request))
+					.block_on(router.dispatch(request))
 					.expect("server_fn request should succeed");
 				black_box(response)
 			},

@@ -397,12 +397,14 @@ fn test_compile_routes_populates_exact_static_route_table() {
 	assert!(
 		compiled
 			.exact_for_method(&Method::GET)
-			.contains_key("/health")
+			.iter()
+			.any(|route| route.path.as_ref() == "/health")
 	);
 	assert!(
 		!compiled
 			.exact_for_method(&Method::GET)
-			.contains_key("/users/{id}")
+			.iter()
+			.any(|route| route.path.as_ref() == "/users/{id}")
 	);
 	assert!(
 		compiled

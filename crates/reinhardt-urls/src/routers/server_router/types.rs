@@ -11,7 +11,6 @@ use reinhardt_di::InjectionContext;
 use reinhardt_http::{Handler, PathParams, SyncHandler};
 use reinhardt_middleware::Middleware;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Information about a registered middleware
@@ -57,13 +56,13 @@ pub(crate) struct CompiledRoutes {
 	pub(crate) patch: MatchitRouter<RouteHandler>,
 	pub(crate) head: MatchitRouter<RouteHandler>,
 	pub(crate) options: MatchitRouter<RouteHandler>,
-	pub(crate) exact_get: HashMap<String, RouteHandler>,
-	pub(crate) exact_post: HashMap<String, RouteHandler>,
-	pub(crate) exact_put: HashMap<String, RouteHandler>,
-	pub(crate) exact_delete: HashMap<String, RouteHandler>,
-	pub(crate) exact_patch: HashMap<String, RouteHandler>,
-	pub(crate) exact_head: HashMap<String, RouteHandler>,
-	pub(crate) exact_options: HashMap<String, RouteHandler>,
+	pub(crate) exact_get: Vec<ExactRoute>,
+	pub(crate) exact_post: Vec<ExactRoute>,
+	pub(crate) exact_put: Vec<ExactRoute>,
+	pub(crate) exact_delete: Vec<ExactRoute>,
+	pub(crate) exact_patch: Vec<ExactRoute>,
+	pub(crate) exact_head: Vec<ExactRoute>,
+	pub(crate) exact_options: Vec<ExactRoute>,
 	pub(crate) errors: Vec<String>,
 }
 
@@ -77,20 +76,20 @@ impl Default for CompiledRoutes {
 			patch: MatchitRouter::new(),
 			head: MatchitRouter::new(),
 			options: MatchitRouter::new(),
-			exact_get: HashMap::new(),
-			exact_post: HashMap::new(),
-			exact_put: HashMap::new(),
-			exact_delete: HashMap::new(),
-			exact_patch: HashMap::new(),
-			exact_head: HashMap::new(),
-			exact_options: HashMap::new(),
+			exact_get: Vec::new(),
+			exact_post: Vec::new(),
+			exact_put: Vec::new(),
+			exact_delete: Vec::new(),
+			exact_patch: Vec::new(),
+			exact_head: Vec::new(),
+			exact_options: Vec::new(),
 			errors: Vec::new(),
 		}
 	}
 }
 
 impl CompiledRoutes {
-	pub(crate) fn exact_for_method(&self, method: &Method) -> &HashMap<String, RouteHandler> {
+	pub(crate) fn exact_for_method(&self, method: &Method) -> &[ExactRoute] {
 		match *method {
 			Method::GET => &self.exact_get,
 			Method::POST => &self.exact_post,
@@ -103,10 +102,7 @@ impl CompiledRoutes {
 		}
 	}
 
-	pub(crate) fn exact_for_method_mut(
-		&mut self,
-		method: &Method,
-	) -> &mut HashMap<String, RouteHandler> {
+	pub(crate) fn exact_for_method_mut(&mut self, method: &Method) -> &mut Vec<ExactRoute> {
 		match *method {
 			Method::GET => &mut self.exact_get,
 			Method::POST => &mut self.exact_post,
@@ -159,6 +155,16 @@ impl CompiledRoutes {
 			&self.options,
 		]
 	}
+}
+
+/// Param-free route entry for method-specific exact matching.
+///
+/// Most routers have only a handful of static endpoints, so a compact linear
+/// table avoids per-request hashing before falling back to matchit.
+#[derive(Clone)]
+pub(crate) struct ExactRoute {
+	pub(crate) path: Box<str>,
+	pub(crate) handler: RouteHandler,
 }
 
 /// Join two path segments, normalizing any double slashes.
