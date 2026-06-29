@@ -370,15 +370,14 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 				collect_request_body(&parts.method, &parts.headers, body, max_body_size).await?;
 
 			// Create reinhardt Request
-			let mut request = Request::builder()
-				.method(parts.method)
-				.uri(parts.uri)
-				.version(parts.version)
-				.headers(parts.headers)
-				.body(body_bytes)
-				.remote_addr(remote_addr)
-				.build()
-				.expect("Failed to build request");
+			let mut request = Request::from_hyper_parts(
+				parts.method,
+				parts.uri,
+				parts.version,
+				parts.headers,
+				body_bytes,
+				Some(remote_addr),
+			);
 
 			// Set DI context if available
 			if let Some(ctx) = di_context {

@@ -487,6 +487,40 @@ impl Request {
 		RequestBuilder::default()
 	}
 
+	/// Create a request from already-validated HTTP parser parts.
+	///
+	/// This constructor is intended for server adapters that receive typed
+	/// Hyper request parts. Use [`Request::builder()`] when constructing a
+	/// request from user-provided string inputs that still need validation.
+	pub fn from_hyper_parts(
+		method: Method,
+		uri: Uri,
+		version: Version,
+		headers: HeaderMap,
+		body: Bytes,
+		remote_addr: Option<SocketAddr>,
+	) -> Self {
+		let query_params = QueryParams::from_uri(&uri);
+
+		Self {
+			method,
+			uri,
+			version,
+			headers,
+			body,
+			path_params: PathParams::new(),
+			query_params,
+			is_secure: false,
+			remote_addr,
+			#[cfg(feature = "parsers")]
+			parsers: Vec::new(),
+			#[cfg(feature = "parsers")]
+			parsed_data: Mutex::new(None),
+			body_consumed: AtomicBool::new(false),
+			extensions: Extensions::new(),
+		}
+	}
+
 	/// Set the DI context for this request (used by routers with dependency injection)
 	///
 	/// This method stores the DI context in the request's extensions,
@@ -994,6 +1028,30 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version, header};
 	use rstest::rstest;
+
+	#[test]
+	fn from_hyper_parts_initializes_runtime_request_fields() {
+		let mut headers = HeaderMap::new();
+		headers.insert(header::USER_AGENT, "TestClient/1.0".parse().unwrap());
+		let remote_addr = "127.0.0.1:3000".parse().unwrap();
+
+		let request = Request::from_hyper_parts(
+			Method::POST,
+			"/search?q=rust&page=2".parse().unwrap(),
+			Version::HTTP_11,
+			headers,
+			Bytes::from_static(b"body"),
+			Some(remote_addr),
+		);
+
+		assert_eq!(request.method, Method::POST);
+		assert_eq!(request.path(), "/search");
+		assert_eq!(request.query_params.get("q"), Some("rust"));
+		assert_eq!(request.query_params.get("page"), Some("2"));
+		assert_eq!(request.body(), &Bytes::from_static(b"body"));
+		assert_eq!(request.remote_addr, Some(remote_addr));
+		assert!(request.path_params.is_empty());
+	}
 
 	#[rstest]
 	fn test_extract_bearer_token() {

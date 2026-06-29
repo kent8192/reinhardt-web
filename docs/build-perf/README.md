@@ -265,6 +265,11 @@ path-parameter name storage, and the router skips middleware-stack assembly
 when no middleware can run. These changes are fixed-cost latency reductions and
 do not change the allocation probe counts above.
 
+Server adapters construct `Request` directly from validated Hyper parts instead
+of round-tripping through `RequestBuilder`. This bypasses validation branches
+and optional-field checks that are useful for public request construction but
+redundant after Hyper has already parsed the request.
+
 ## Admin List Query Count Measurements
 
 Use the admin database mock tests before claiming query-count reductions on the

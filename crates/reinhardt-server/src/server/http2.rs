@@ -271,14 +271,14 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 				.to_bytes();
 
 			// Create reinhardt Request
-			let request = Request::builder()
-				.method(parts.method)
-				.uri(parts.uri)
-				.version(parts.version)
-				.headers(parts.headers)
-				.body(body_bytes)
-				.build()
-				.expect("Failed to build request");
+			let request = Request::from_hyper_parts(
+				parts.method,
+				parts.uri,
+				parts.version,
+				parts.headers,
+				body_bytes,
+				None,
+			);
 
 			// Handle request
 			let response = handler
