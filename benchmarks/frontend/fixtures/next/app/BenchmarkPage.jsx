@@ -1,5 +1,7 @@
-import React, { useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router";
+"use client";
+
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 const BENCHMARK_VERSION = "baseline-version";
 
@@ -10,31 +12,45 @@ function initialRows() {
   }));
 }
 
-export function App() {
-  const location = useLocation();
-  const navigate = useNavigate();
+function routeFromPath(pathname) {
+  if (pathname === "/detail") {
+    return "detail";
+  }
+  if (pathname === "/form") {
+    return "form";
+  }
+  return "home";
+}
+
+export default function BenchmarkPage() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [hydrated, setHydrated] = useState(false);
   const [count, setCount] = useState(0);
   const [text, setText] = useState("");
   const [rows, setRows] = useState(initialRows);
-  const route = location.pathname === "/detail" ? "detail" : location.pathname === "/form" ? "form" : "home";
-
+  const route = routeFromPath(pathname);
   const routeLabel = useMemo(() => `Route: ${route}`, [route]);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   function appendRow() {
     setRows((current) => [...current, { id: current.length + 1, label: `Row ${current.length + 1}` }]);
   }
 
   function reorderRows() {
-    setRows((current) => {
-      const copy = [...current];
-      copy.reverse();
-      return copy;
-    });
+    setRows((current) => [...current].reverse());
   }
 
   return (
-    <main data-benchmark-ready="true" data-benchmark-hydrated="true" className="bench-shell">
-      <h1>Vite React Benchmark</h1>
+    <main
+      data-benchmark-ready="true"
+      data-benchmark-hydrated={hydrated ? "true" : "false"}
+      className="bench-shell"
+    >
+      <h1>Next Benchmark</h1>
       <p data-benchmark-value="version">{BENCHMARK_VERSION}</p>
 
       <section data-benchmark-scenario="counter">
@@ -58,9 +74,9 @@ export function App() {
 
       <section data-benchmark-scenario="router">
         <nav>
-          <button data-benchmark-action="route-home" onClick={() => navigate("/")}>Home</button>
-          <button data-benchmark-action="route-detail" onClick={() => navigate("/detail")}>Detail</button>
-          <button data-benchmark-action="route-form" onClick={() => navigate("/form")}>Form</button>
+          <button data-benchmark-action="route-home" onClick={() => router.push("/")}>Home</button>
+          <button data-benchmark-action="route-detail" onClick={() => router.push("/detail")}>Detail</button>
+          <button data-benchmark-action="route-form" onClick={() => router.push("/form")}>Form</button>
         </nav>
         <output data-benchmark-value="route">{routeLabel}</output>
       </section>

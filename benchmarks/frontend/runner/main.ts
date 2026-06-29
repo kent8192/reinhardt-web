@@ -1,4 +1,5 @@
 import os from "node:os";
+import fs from "node:fs";
 import path from "node:path";
 import { collectBundleMetrics } from "./bundles.js";
 import { logExcerpt, runShellCommand } from "./commands.js";
@@ -11,6 +12,7 @@ import type { BenchmarkManifest, BenchmarkResult, TargetConfig } from "./types.j
 
 const frontendRoot = path.resolve(new URL("..", import.meta.url).pathname);
 const command = process.argv[2] ?? "check";
+const buildArtifactPaths = ["dist", ".next", ".nuxt", ".output", "pkg", "target"];
 
 async function main(): Promise<void> {
   const manifest = loadManifest(frontendRoot);
@@ -60,7 +62,9 @@ async function runBuild(manifest: BenchmarkManifest): Promise<BenchmarkResult[]>
     let prodServer: ManagedServer | undefined;
     try {
       debug(`${target.id}: production build start`);
-      const buildResult = await installAndBuild(target, manifest.suite.timeout_ms);
+      await installTarget(target, manifest.suite.timeout_ms);
+      cleanBuildArtifacts(target);
+      const buildResult = await buildTarget(target, manifest.suite.timeout_ms);
       const bundle = collectBundleMetrics(target);
       debug(`${target.id}: production preview start`);
       prodServer = await startServer(target.preview, target.root, target.url, manifest.suite.timeout_ms);
@@ -131,8 +135,22 @@ async function runBuild(manifest: BenchmarkManifest): Promise<BenchmarkResult[]>
 }
 
 async function installAndBuild(target: TargetConfig, timeoutMs: number) {
+  await installTarget(target, timeoutMs);
+  return buildTarget(target, timeoutMs);
+}
+
+async function installTarget(target: TargetConfig, timeoutMs: number): Promise<void> {
   await runRequired(target.install, target.root, timeoutMs);
+}
+
+async function buildTarget(target: TargetConfig, timeoutMs: number) {
   return runRequired(target.build, target.root, timeoutMs);
+}
+
+function cleanBuildArtifacts(target: TargetConfig): void {
+  for (const artifact of buildArtifactPaths) {
+    fs.rmSync(path.join(target.root, artifact), { recursive: true, force: true });
+  }
 }
 
 async function runRequired(commandText: string, cwd: string, timeoutMs: number) {
@@ -174,10 +192,6 @@ function failedRuntime(target: TargetConfig, error: unknown): BenchmarkResult {
     target: target.id,
     scenario: "suite",
     metric: "runtime",
-    valuesMs: [],
-    meanMs: 0,
-    minMs: 0,
-    maxMs: 0,
     status: "failed",
     error: errorToBenchmarkError(error)
   };

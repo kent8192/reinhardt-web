@@ -22,11 +22,7 @@ pub fn mount_benchmark_app() {
 			.get_element_by_id("root")
 			.expect("root element is available"),
 	);
-	let benchmark_version = document
-		.body()
-		.and_then(|body| body.get_attribute("data-benchmark-version"))
-		.unwrap_or_else(|| BENCHMARK_VERSION.to_string());
-	benchmark_page(benchmark_version)
+	benchmark_page(BENCHMARK_VERSION.to_string())
 		.mount(&root)
 		.expect("mount benchmark app");
 }
@@ -34,7 +30,7 @@ pub fn mount_benchmark_app() {
 fn benchmark_page(benchmark_version: String) -> Page {
 	let (counter, set_counter) = use_shared_state(0usize);
 	let (input_text, set_input_text) = use_shared_state(String::new());
-	let (route, set_route) = use_shared_state("home".to_string());
+	let (route, set_route) = use_shared_state(current_route());
 	let (rows, set_rows) = use_shared_state(initial_rows());
 
 	let increment_counter = Callback::new({
@@ -55,9 +51,9 @@ fn benchmark_page(benchmark_version: String) -> Page {
 			set_input_text(value);
 		}
 	});
-	let route_home = route_callback(&set_route, "home");
-	let route_detail = route_callback(&set_route, "detail");
-	let route_form = route_callback(&set_route, "form");
+	let route_home = route_callback(&set_route, "home", "/");
+	let route_detail = route_callback(&set_route, "detail", "/detail");
+	let route_form = route_callback(&set_route, "form", "/form");
 	let append_row = Callback::new({
 		let rows = rows.clone();
 		let set_rows = set_rows.clone();
@@ -187,7 +183,10 @@ fn benchmark_page(benchmark_version: String) -> Page {
 				}
 				ul {
 					for row in rows_list.get().into_iter().take(25) @key(row.id.to_string()) {
-						li { { row.label.clone() } }
+						li {
+							data_benchmark_row: row.id.to_string(),
+							{ row.label.clone() }
+						}
 					}
 				}
 			}
@@ -211,12 +210,30 @@ fn benchmark_page(benchmark_version: String) -> Page {
 	)
 }
 
-fn route_callback(set_route: &SharedSetState<String>, route: &str) -> Callback {
+fn route_callback(set_route: &SharedSetState<String>, route: &str, path: &str) -> Callback {
 	let set_route = set_route.clone();
 	let route = route.to_string();
+	let path = path.to_string();
 	Callback::new(move |_| {
+		if let Some(window) = window() {
+			if let Ok(history) = window.history() {
+				let _ = history.push_state_with_url(&JsValue::NULL, "", Some(&path));
+			}
+		}
 		set_route(route.clone());
 	})
+}
+
+fn current_route() -> String {
+	let pathname = window()
+		.and_then(|window| window.location().pathname().ok())
+		.unwrap_or_default();
+	match pathname.as_str() {
+		"/detail" => "detail",
+		"/form" => "form",
+		_ => "home",
+	}
+	.to_string()
 }
 
 fn initial_rows() -> Vec<Row> {

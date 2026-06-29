@@ -27,11 +27,11 @@ root = "fixtures/reinhardt-pages"
 install = "npm install"
 build = "npm run build"
 preview = "node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4310"
-dev = "CARGO_BUILD_JOBS=1 wasm-pack build --target web --out-dir pkg && node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4410"
+dev = "node scripts/reinhardt-dev.mjs --host 127.0.0.1 --port 4410"
 url = "http://127.0.0.1:4310"
 dev_url = "http://127.0.0.1:4410"
 bundle_paths = ["dist"]
-source_patch_file = "index.html"
+source_patch_file = "src/client.rs"
 
 [targets.vite-react]
 label = "Vite React"
@@ -70,7 +70,7 @@ dev = "node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port 4413
 url = "http://127.0.0.1:4313"
 dev_url = "http://127.0.0.1:4413"
 bundle_paths = [".next/static"]
-source_patch_file = "app/page.jsx"
+source_patch_file = "app/BenchmarkPage.jsx"
 
 [targets.nuxt]
 label = "Nuxt"
@@ -83,4 +83,4 @@ dev = "node node_modules/nuxt/bin/nuxt.mjs dev --host 127.0.0.1 --port 4414"
 url = "http://127.0.0.1:4314"
 dev_url = "http://127.0.0.1:4414"
 bundle_paths = [".output/public"]
-source_patch_file = "app.vue"
+source_patch_file = "components/BenchmarkPage.vue"

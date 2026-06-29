@@ -1,6 +1,5 @@
 <script setup>
-import { computed, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { computed, onMounted, ref } from "vue";
 
 const BENCHMARK_VERSION = "baseline-version";
 
@@ -11,13 +10,17 @@ function initialRows() {
   }));
 }
 
+const route = useRoute();
+const hydrated = ref(false);
 const count = ref(0);
 const text = ref("");
 const rows = ref(initialRows());
-const currentRoute = useRoute();
-const router = useRouter();
-const route = computed(() => currentRoute.path === "/detail" ? "detail" : currentRoute.path === "/form" ? "form" : "home");
-const routeLabel = computed(() => `Route: ${route.value}`);
+const routeName = computed(() => route.path === "/detail" ? "detail" : route.path === "/form" ? "form" : "home");
+const routeLabel = computed(() => `Route: ${routeName.value}`);
+
+onMounted(() => {
+  hydrated.value = true;
+});
 
 function appendRow() {
   rows.value = [...rows.value, { id: rows.value.length + 1, label: `Row ${rows.value.length + 1}` }];
@@ -29,8 +32,12 @@ function reorderRows() {
 </script>
 
 <template>
-  <main data-benchmark-ready="true" data-benchmark-hydrated="true" class="bench-shell">
-    <h1>Vite Vue Benchmark</h1>
+  <main
+    data-benchmark-ready="true"
+    :data-benchmark-hydrated="hydrated ? 'true' : 'false'"
+    class="bench-shell"
+  >
+    <h1>Nuxt Benchmark</h1>
     <p data-benchmark-value="version">{{ BENCHMARK_VERSION }}</p>
 
     <section data-benchmark-scenario="counter">
@@ -48,9 +55,9 @@ function reorderRows() {
 
     <section data-benchmark-scenario="router">
       <nav>
-        <button data-benchmark-action="route-home" @click="router.push('/')">Home</button>
-        <button data-benchmark-action="route-detail" @click="router.push('/detail')">Detail</button>
-        <button data-benchmark-action="route-form" @click="router.push('/form')">Form</button>
+        <button data-benchmark-action="route-home" @click="navigateTo('/')">Home</button>
+        <button data-benchmark-action="route-detail" @click="navigateTo('/detail')">Detail</button>
+        <button data-benchmark-action="route-form" @click="navigateTo('/form')">Form</button>
       </nav>
       <output data-benchmark-value="route">{{ routeLabel }}</output>
     </section>

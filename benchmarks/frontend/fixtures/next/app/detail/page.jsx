@@ -1,4 +1,4 @@
-import BenchmarkPage from "./BenchmarkPage.jsx";
+import BenchmarkPage from "../BenchmarkPage.jsx";
 
 export default function Page() {
   return <BenchmarkPage />;

@@ -16,27 +16,55 @@ export function runShellCommand(command: string, cwd: string, timeoutMs: number)
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let resolved = false;
+    let killTimer: NodeJS.Timeout | undefined;
+    let forceTimer: NodeJS.Timeout | undefined;
     const timer = setTimeout(() => {
       timedOut = true;
       terminateProcessTree(child, "SIGTERM");
+      killTimer = setTimeout(() => {
+        terminateProcessTree(child, "SIGKILL");
+      }, 2_000);
+      forceTimer = setTimeout(() => {
+        finish(124);
+      }, 2_500);
     }, timeoutMs);
+    function finish(code: number): void {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      clearTimeout(timer);
+      if (killTimer) {
+        clearTimeout(killTimer);
+      }
+      if (forceTimer) {
+        clearTimeout(forceTimer);
+      }
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      resolve({
+        command,
+        cwd,
+        exitCode: code,
+        stdout,
+        stderr,
+        durationMs: performance.now() - start,
+        timedOut
+      });
+    }
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
     });
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
+    child.on("error", (error) => {
+      stderr += `\n${error.message}`;
+      finish(1);
+    });
     child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({
-        command,
-        cwd,
-        exitCode: code ?? 1,
-        stdout,
-        stderr,
-        durationMs: performance.now() - start,
-        timedOut
-      });
+      finish(code ?? (timedOut ? 124 : 1));
     });
   });
 }

@@ -59,10 +59,10 @@ export interface RuntimeMetric {
   target: string;
   scenario: string;
   metric: string;
-  valuesMs: number[];
-  meanMs: number;
-  minMs: number;
-  maxMs: number;
+  valuesMs?: number[];
+  meanMs?: number;
+  minMs?: number;
+  maxMs?: number;
   status: ResultStatus;
   error?: BenchmarkError;
 }

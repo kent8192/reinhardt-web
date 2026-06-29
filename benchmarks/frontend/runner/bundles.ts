@@ -14,7 +14,7 @@ export interface BundleMetrics {
 
 function walk(dir: string): string[] {
   if (!fs.existsSync(dir)) {
-    return [];
+    throw new Error(`configured bundle path does not exist: ${dir}`);
   }
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const fullPath = path.join(dir, entry.name);
@@ -26,6 +26,9 @@ export function collectBundleMetrics(target: TargetConfig): BundleMetrics {
   const files = target.bundle_paths
     .flatMap((bundlePath) => walk(path.join(target.root, bundlePath)))
     .filter((file) => countedExtensions.has(path.extname(file)));
+  if (files.length === 0) {
+    throw new Error(`configured bundle paths contain no counted assets: ${target.bundle_paths.join(", ")}`);
+  }
 
   let bundle_bytes = 0;
   let bundle_gzip_bytes = 0;

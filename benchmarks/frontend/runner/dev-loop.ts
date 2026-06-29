@@ -23,8 +23,7 @@ export function patchSource(root: string, sourcePatchFile: string): string {
   const original = fs.readFileSync(file, "utf8");
   const marker = `benchmark-patch-${Date.now()}`;
   if (!original.includes("baseline-version")) {
-    fs.writeFileSync(file, `${original}\n// ${marker}\n`);
-    return "baseline-version";
+    throw new Error(`source patch marker not found: ${sourcePatchFile}`);
   }
   fs.writeFileSync(file, original.replace("baseline-version", marker));
   return marker;

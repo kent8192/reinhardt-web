@@ -20,6 +20,9 @@ cargo make frontend-benchmark-measure
 Runtime measurements use Playwright with Chromium and fresh browser contexts.
 Production runtime uses production build artifacts only. Build, bundle, and
 development-loop metrics are reported separately from browser runtime metrics.
+Build timing removes prior generated artifacts before the production build is
+measured. Development-loop timing patches each target's component source; the
+Reinhardt Pages dev target rebuilds the WASM package when that source changes.
 
 ## Metrics
 
@@ -41,5 +44,7 @@ development-loop metrics are reported separately from browser runtime metrics.
 
 Vite React and Vite Vue are CSR targets. Next.js and Nuxt are SSR plus
 hydration targets. Reinhardt Pages is measured on the recommended WASM path.
+The router scenario waits for URL navigation to `/detail`; the keyed-list
+scenario waits for row `1000` to enter the rendered list after a keyed reorder.
 The report avoids an overall ranking and ranks only within individual metric
 tables.
