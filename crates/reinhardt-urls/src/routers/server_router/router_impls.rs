@@ -98,6 +98,9 @@ macro_rules! dispatch_router_request {
 
 		// Apply middleware stack using MiddlewareChain
 		if route_match.middleware_stack.is_empty() {
+			if let Some(requestless_handler) = route_match.requestless_sync_handler {
+				return requestless_handler.handle_requestless_sync();
+			}
 			if let Some(sync_handler) = route_match.sync_handler {
 				return sync_handler.handle_sync(req);
 			}
@@ -147,6 +150,10 @@ impl ServerRouter {
 			return None;
 		}
 
+		if let Some(requestless_handler) = route_match.requestless_sync_handler {
+			return Some(requestless_handler.handle_requestless_sync());
+		}
+
 		let sync_handler = route_match.sync_handler?;
 		if let Some(params) = route_match.params {
 			req.path_params = params;
@@ -158,6 +165,28 @@ impl ServerRouter {
 		}
 
 		Some(sync_handler.handle_sync(req))
+	}
+
+	/// Try to dispatch a requestless synchronous route before building a request.
+	///
+	/// This only succeeds for routes that need no request state: no middleware,
+	/// no path parameters, and no DI context. HTTP adapters can use this after
+	/// validating that the incoming request has no body.
+	pub fn try_dispatch_requestless_sync(
+		&self,
+		path: &str,
+		method: &hyper::Method,
+	) -> Option<Result<Response>> {
+		let route_match = self.resolve(path, method)?;
+		if !route_match.middleware_stack.is_empty()
+			|| route_match.params.is_some()
+			|| route_match.di_context.is_some()
+		{
+			return None;
+		}
+
+		let requestless_handler = route_match.requestless_sync_handler?;
+		Some(requestless_handler.handle_requestless_sync())
 	}
 
 	/// Dispatch a request through this router without a trait-object handler wrapper.
@@ -188,6 +217,7 @@ impl reinhardt_views::viewsets::RegisterViewSet for ServerRouter {
 			path: path.to_string(),
 			handler,
 			sync_handler: None,
+			requestless_sync_handler: None,
 			name: None,
 			middleware: Vec::new(),
 		});

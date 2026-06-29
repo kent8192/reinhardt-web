@@ -103,6 +103,21 @@ pub trait SyncHandler: Send + Sync {
 	fn handle_sync(&self, request: Request) -> Result<Response>;
 }
 
+/// Synchronous handler for endpoints that do not inspect the request.
+///
+/// This is a lower-level fast path for generated endpoints whose signature has
+/// no request, parameter, extractor, middleware, or dependency input. Routers
+/// and server adapters can call this trait before constructing a full
+/// [`Request`].
+pub trait RequestlessSyncHandler: Send + Sync {
+	/// Produces a response without reading request state.
+	///
+	/// # Errors
+	///
+	/// Returns an error if the endpoint cannot produce a response.
+	fn handle_requestless_sync(&self) -> Result<Response>;
+}
+
 /// Adapter that exposes a [`SyncHandler`] through the async [`Handler`] trait.
 ///
 /// Middleware chains still operate on `Arc<dyn Handler>`, so synchronous
@@ -123,6 +138,32 @@ impl SyncHandlerAdapter {
 impl Handler for SyncHandlerAdapter {
 	async fn handle(&self, request: Request) -> Result<Response> {
 		self.inner.handle_sync(request)
+	}
+}
+
+/// Adapter that exposes a [`RequestlessSyncHandler`] through request-shaped
+/// handler traits.
+pub struct RequestlessSyncHandlerAdapter {
+	inner: Arc<dyn RequestlessSyncHandler>,
+}
+
+impl RequestlessSyncHandlerAdapter {
+	/// Creates an adapter around a requestless synchronous handler.
+	pub fn new(inner: Arc<dyn RequestlessSyncHandler>) -> Self {
+		Self { inner }
+	}
+}
+
+impl SyncHandler for RequestlessSyncHandlerAdapter {
+	fn handle_sync(&self, _request: Request) -> Result<Response> {
+		self.inner.handle_requestless_sync()
+	}
+}
+
+#[async_trait]
+impl Handler for RequestlessSyncHandlerAdapter {
+	async fn handle(&self, _request: Request) -> Result<Response> {
+		self.inner.handle_requestless_sync()
 	}
 }
 

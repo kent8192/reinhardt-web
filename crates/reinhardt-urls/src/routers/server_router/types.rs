@@ -8,7 +8,7 @@
 use hyper::Method;
 use matchit::Router as MatchitRouter;
 use reinhardt_di::InjectionContext;
-use reinhardt_http::{Handler, PathParams, SyncHandler};
+use reinhardt_http::{Handler, PathParams, RequestlessSyncHandler, SyncHandler};
 use reinhardt_middleware::Middleware;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -214,6 +214,9 @@ pub(crate) struct RouteHandler {
 	/// Optional synchronous fast-path handler.
 	pub(crate) sync_handler: Option<Arc<dyn SyncHandler>>,
 
+	/// Optional requestless synchronous fast-path handler.
+	pub(crate) requestless_sync_handler: Option<Arc<dyn RequestlessSyncHandler>>,
+
 	/// Route-level middleware
 	pub(crate) middleware: Vec<Arc<dyn Middleware>>,
 
@@ -228,6 +231,9 @@ pub(crate) struct RouteMatch<'a> {
 
 	/// Matched synchronous fast-path handler, when available.
 	pub sync_handler: Option<&'a Arc<dyn SyncHandler>>,
+
+	/// Matched requestless synchronous fast-path handler, when available.
+	pub requestless_sync_handler: Option<&'a Arc<dyn RequestlessSyncHandler>>,
 
 	/// Extracted path parameters in URL pattern declaration order.
 	///
@@ -265,6 +271,7 @@ pub(crate) struct FunctionRoute {
 	pub method: Method,
 	pub handler: Arc<dyn Handler>,
 	pub sync_handler: Option<Arc<dyn SyncHandler>>,
+	pub requestless_sync_handler: Option<Arc<dyn RequestlessSyncHandler>>,
 	pub name: Option<String>,
 	/// Middleware stack for this route
 	pub middleware: Vec<Arc<dyn Middleware>>,
@@ -275,6 +282,7 @@ pub(crate) struct ViewRoute {
 	pub path: String,
 	pub handler: Arc<dyn Handler>,
 	pub sync_handler: Option<Arc<dyn SyncHandler>>,
+	pub requestless_sync_handler: Option<Arc<dyn RequestlessSyncHandler>>,
 	pub name: Option<String>,
 	/// Middleware stack for this route
 	pub middleware: Vec<Arc<dyn Middleware>>,

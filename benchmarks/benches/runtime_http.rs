@@ -17,7 +17,7 @@ use loco_rs::{
 use reinhardt_core::endpoint::EndpointInfo;
 use reinhardt_http::{
 	Request as ReinhardtRequest, Response as ReinhardtResponse, Result as ReinhardtResult,
-	SyncHandler as ReinhardtSyncHandler,
+	RequestlessSyncHandler as ReinhardtRequestlessSyncHandler, SyncHandler as ReinhardtSyncHandler,
 };
 use reinhardt_server::server::HttpServer as ReinhardtHttpServer;
 use reinhardt_urls::routers::ServerRouter;
@@ -125,8 +125,8 @@ impl EndpointInfo for ReinhardtHello {
 	}
 }
 
-impl ReinhardtSyncHandler for ReinhardtHello {
-	fn handle_sync(&self, _req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
+impl ReinhardtRequestlessSyncHandler for ReinhardtHello {
+	fn handle_requestless_sync(&self) -> ReinhardtResult<ReinhardtResponse> {
 		Ok(ReinhardtResponse::ok().with_static_body(b"hello"))
 	}
 }
@@ -238,8 +238,8 @@ impl EndpointInfo for ReinhardtMiddleware {
 	}
 }
 
-impl ReinhardtSyncHandler for ReinhardtMiddleware {
-	fn handle_sync(&self, _req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
+impl ReinhardtRequestlessSyncHandler for ReinhardtMiddleware {
+	fn handle_requestless_sync(&self) -> ReinhardtResult<ReinhardtResponse> {
 		ReinhardtResponse::ok().with_json(&middleware_payload())
 	}
 }
@@ -260,8 +260,8 @@ impl EndpointInfo for ReinhardtDependency {
 	}
 }
 
-impl ReinhardtSyncHandler for ReinhardtDependency {
-	fn handle_sync(&self, _req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
+impl ReinhardtRequestlessSyncHandler for ReinhardtDependency {
+	fn handle_requestless_sync(&self) -> ReinhardtResult<ReinhardtResponse> {
 		ReinhardtResponse::ok().with_json(&dependency_payload(&RuntimeState {
 			base: 42,
 			tenant_offset: 7,
@@ -286,21 +286,21 @@ impl EndpointInfo for ReinhardtSettings {
 	}
 }
 
-impl ReinhardtSyncHandler for ReinhardtSettings {
-	fn handle_sync(&self, _req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
+impl ReinhardtRequestlessSyncHandler for ReinhardtSettings {
+	fn handle_requestless_sync(&self) -> ReinhardtResult<ReinhardtResponse> {
 		ReinhardtResponse::ok().with_json(&settings_payload())
 	}
 }
 
 fn reinhardt_router() -> ServerRouter {
 	ServerRouter::new()
-		.endpoint_sync(|| ReinhardtHello)
+		.endpoint_requestless_sync(|| ReinhardtHello)
 		.endpoint_sync(|| ReinhardtEcho)
 		.endpoint_sync(|| ReinhardtPath)
 		.endpoint_sync(|| ReinhardtQuery)
-		.endpoint_sync(|| ReinhardtMiddleware)
-		.endpoint_sync(|| ReinhardtDependency)
-		.endpoint_sync(|| ReinhardtSettings)
+		.endpoint_requestless_sync(|| ReinhardtMiddleware)
+		.endpoint_requestless_sync(|| ReinhardtDependency)
+		.endpoint_requestless_sync(|| ReinhardtSettings)
 }
 
 async fn axum_hello() -> &'static str {
@@ -564,9 +564,14 @@ async fn spawn_reinhardt_server(client: &Client) -> LoopbackServer {
 						Ok((stream, socket_addr)) => {
 							let router = router.clone();
 							tokio::spawn(async move {
-								if let Err(err) = ReinhardtHttpServer::handle_connection_sync(
+								let precheck_router = router.clone();
+								if let Err(err) = ReinhardtHttpServer::handle_connection_sync_with_precheck(
 									stream,
 									socket_addr,
+									move |method, uri, _headers| {
+										precheck_router
+											.try_dispatch_requestless_sync(uri.path(), method)
+									},
 									move |request| {
 										router
 											.try_dispatch_sync(request)

@@ -1,9 +1,9 @@
 use bytes::Bytes;
 use http_body_util::Full;
-use hyper::StatusCode;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
+use hyper::{HeaderMap, Method, StatusCode, Uri};
 use hyper_util::rt::TokioIo;
 use reinhardt_di::InjectionContext;
 use reinhardt_http::{Handler, Middleware, MiddlewareChain};
@@ -365,12 +365,51 @@ impl HttpServer {
 	where
 		F: Fn(Request) -> reinhardt_http::Result<Response> + Clone + Send + Sync + 'static,
 	{
+		Self::handle_connection_sync_with_precheck(
+			stream,
+			socket_addr,
+			|_, _, _| None,
+			handler,
+			di_context,
+		)
+		.await
+	}
+
+	/// Handle a single TCP connection with a synchronous request handler and a
+	/// pre-request fast path.
+	///
+	/// The precheck runs only after the adapter has verified that the incoming
+	/// request has no body. When it returns a response, the adapter skips full
+	/// [`Request`] construction.
+	pub async fn handle_connection_sync_with_precheck<F, P>(
+		stream: TcpStream,
+		socket_addr: SocketAddr,
+		precheck: P,
+		handler: F,
+		di_context: Option<Arc<InjectionContext>>,
+	) -> Result<(), Box<dyn std::error::Error>>
+	where
+		F: Fn(Request) -> reinhardt_http::Result<Response> + Clone + Send + Sync + 'static,
+		P: Fn(&Method, &Uri, &HeaderMap) -> Option<reinhardt_http::Result<Response>>
+			+ Clone
+			+ Send
+			+ Sync
+			+ 'static,
+	{
 		let io = TokioIo::new(stream);
 		let service = service_fn(move |req| {
 			let handler = handler.clone();
+			let precheck = precheck.clone();
 			let di_context = di_context.clone();
 
-			handle_request_sync(req, handler, socket_addr, di_context, DEFAULT_MAX_BODY_SIZE)
+			handle_request_sync_with_precheck(
+				req,
+				precheck,
+				handler,
+				socket_addr,
+				di_context,
+				DEFAULT_MAX_BODY_SIZE,
+			)
 		});
 
 		http1::Builder::new().serve_connection(io, service).await?;
@@ -451,8 +490,9 @@ where
 	Ok(into_hyper_response(response))
 }
 
-async fn handle_request_sync<F>(
+async fn handle_request_sync_with_precheck<F, P>(
 	req: hyper::Request<Incoming>,
+	precheck: P,
 	handler: F,
 	remote_addr: SocketAddr,
 	di_context: Option<Arc<InjectionContext>>,
@@ -460,10 +500,25 @@ async fn handle_request_sync<F>(
 ) -> Result<hyper::Response<Full<Bytes>>, BoxError>
 where
 	F: Fn(Request) -> reinhardt_http::Result<Response> + Clone + Send + Sync + 'static,
+	P: Fn(&Method, &Uri, &HeaderMap) -> Option<reinhardt_http::Result<Response>>
+		+ Clone
+		+ Send
+		+ Sync
+		+ 'static,
 {
 	let (parts, body) = req.into_parts();
 
-	let body_bytes = match request_body_plan(&parts.method, &parts.headers, max_body_size) {
+	let body_plan = request_body_plan(&parts.method, &parts.headers, max_body_size);
+	if body_plan == RequestBodyPlan::Empty
+		&& di_context.is_none()
+		&& let Some(response) = precheck(&parts.method, &parts.uri, &parts.headers)
+	{
+		return Ok(into_hyper_response(
+			response.unwrap_or_else(reinhardt_http::Response::from),
+		));
+	}
+
+	let body_bytes = match body_plan {
 		RequestBodyPlan::Empty => Bytes::new(),
 		RequestBodyPlan::Collect => collect_request_body(body, max_body_size).await?,
 		RequestBodyPlan::RejectTooLarge => {

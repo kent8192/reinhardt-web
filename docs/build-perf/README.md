@@ -318,6 +318,12 @@ Synchronous route handlers registered through `ServerRouter::endpoint_sync()`
 or `ServerRouter::handler_sync()` avoid the async trait-object boxed future
 when no middleware is attached. Middleware routes still use the async adapter
 because the middleware contract remains `Arc<dyn Handler>`.
+Requestless synchronous route handlers registered through
+`ServerRouter::endpoint_requestless_sync()` or
+`ServerRouter::handler_requestless_sync()` go one step further: the HTTP/1
+adapter can serve eligible empty-body routes before constructing a full
+`Request`. Use this path only for routes that do not inspect headers, query
+strings, path parameters, body bytes, extensions, or DI state.
 
 Follow-up fixed-cost reductions keep `QueryParams::get()` duplicate-key
 semantics while scanning cached raw pairs from the end, so last-value lookups

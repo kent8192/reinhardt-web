@@ -7,7 +7,9 @@ use super::ServerRouter;
 use super::types::{FunctionRoute, ViewRoute};
 use crate::routers::Route;
 use reinhardt_core::endpoint::EndpointInfo;
-use reinhardt_http::{Handler, SyncHandler, SyncHandlerAdapter};
+use reinhardt_http::{
+	Handler, RequestlessSyncHandler, RequestlessSyncHandlerAdapter, SyncHandler, SyncHandlerAdapter,
+};
 use reinhardt_middleware::Middleware;
 #[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::ViewSet;
@@ -132,6 +134,7 @@ impl ServerRouter {
 			method,
 			handler: Arc::new(view),
 			sync_handler: None,
+			requestless_sync_handler: None,
 			name: Some(name),
 			middleware: Vec::new(),
 		});
@@ -160,6 +163,40 @@ impl ServerRouter {
 			method,
 			handler,
 			sync_handler: Some(sync_handler),
+			requestless_sync_handler: None,
+			name: Some(name),
+			middleware: Vec::new(),
+		});
+		self
+	}
+
+	/// Register a synchronous endpoint that does not inspect request state.
+	///
+	/// This is the lowest-overhead endpoint registration path. HTTP adapters can
+	/// execute these routes before constructing a full request when the incoming
+	/// request has no body and the route has no middleware or path parameters.
+	pub fn endpoint_requestless_sync<F, E>(mut self, f: F) -> Self
+	where
+		F: FnOnce() -> E,
+		E: EndpointInfo + RequestlessSyncHandler + 'static,
+	{
+		let view = f();
+		let path = E::path().to_string();
+		let method = E::method();
+		let name = E::name().to_string();
+		let requestless_handler: Arc<dyn RequestlessSyncHandler> = Arc::new(view);
+		let adapter = Arc::new(RequestlessSyncHandlerAdapter::new(
+			requestless_handler.clone(),
+		));
+		let handler: Arc<dyn Handler> = adapter.clone();
+		let sync_handler: Arc<dyn SyncHandler> = adapter;
+
+		self.functions.push(FunctionRoute {
+			path,
+			method,
+			handler,
+			sync_handler: Some(sync_handler),
+			requestless_sync_handler: Some(requestless_handler),
 			name: Some(name),
 			middleware: Vec::new(),
 		});
@@ -194,6 +231,7 @@ impl ServerRouter {
 			path: path.to_string(),
 			handler: Arc::new(view),
 			sync_handler: None,
+			requestless_sync_handler: None,
 			name: None,
 			middleware: Vec::new(),
 		});
@@ -237,6 +275,7 @@ impl ServerRouter {
 			path: path.to_string(),
 			handler: Arc::new(view),
 			sync_handler: None,
+			requestless_sync_handler: None,
 			name: Some(name.to_string()),
 			middleware: Vec::new(),
 		});
@@ -283,6 +322,19 @@ impl ServerRouter {
 		H: SyncHandler + 'static,
 	{
 		let route = Route::from_sync_handler(path, handler);
+		self.routes.push(route);
+		self
+	}
+
+	/// Register a requestless synchronous handler directly.
+	///
+	/// This is the raw-handler counterpart to
+	/// [`Self::endpoint_requestless_sync`].
+	pub fn handler_requestless_sync<H>(mut self, path: &str, handler: H) -> Self
+	where
+		H: RequestlessSyncHandler + 'static,
+	{
+		let route = Route::from_requestless_sync_handler(path, handler);
 		self.routes.push(route);
 		self
 	}
@@ -384,6 +436,28 @@ mod sync_handler_tests {
 		}
 	}
 
+	struct RequestlessHealthEndpoint;
+
+	impl EndpointInfo for RequestlessHealthEndpoint {
+		fn path() -> &'static str {
+			"/requestless-health"
+		}
+
+		fn method() -> hyper::Method {
+			hyper::Method::GET
+		}
+
+		fn name() -> &'static str {
+			"requestless_health"
+		}
+	}
+
+	impl RequestlessSyncHandler for RequestlessHealthEndpoint {
+		fn handle_requestless_sync(&self) -> Result<Response> {
+			Ok(Response::ok().with_static_body(b"ok"))
+		}
+	}
+
 	struct PassThroughMiddleware;
 
 	#[async_trait]
@@ -433,6 +507,37 @@ mod sync_handler_tests {
 		// Assert
 		assert_eq!(response.status, StatusCode::OK);
 		assert_eq!(response.body.as_ref(), b"ok");
+	}
+
+	#[test]
+	fn endpoint_requestless_sync_dispatches_without_request() {
+		// Arrange
+		let router = ServerRouter::new().endpoint_requestless_sync(|| RequestlessHealthEndpoint);
+
+		// Act
+		let response = router
+			.try_dispatch_requestless_sync("/requestless-health", &hyper::Method::GET)
+			.expect("requestless route should use the requestless dispatch path")
+			.expect("route should dispatch");
+
+		// Assert
+		assert_eq!(response.status, StatusCode::OK);
+		assert_eq!(response.body.as_ref(), b"ok");
+	}
+
+	#[test]
+	fn endpoint_requestless_sync_with_middleware_declines_requestless_path() {
+		// Arrange
+		let router = ServerRouter::new()
+			.with_middleware(PassThroughMiddleware)
+			.endpoint_requestless_sync(|| RequestlessHealthEndpoint);
+
+		// Act & Assert
+		assert!(
+			router
+				.try_dispatch_requestless_sync("/requestless-health", &hyper::Method::GET)
+				.is_none()
+		);
 	}
 
 	#[test]
