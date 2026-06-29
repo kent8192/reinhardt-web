@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use http_body_util::{BodyExt, Full};
+use http_body_util::Full;
 use hyper::StatusCode;
 use hyper::body::Incoming;
 use hyper::server::conn::http2;
@@ -12,6 +12,8 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::shutdown::ShutdownCoordinator;
+
+use super::body::{RequestBodyPlan, collect_request_body, request_body_plan};
 
 /// HTTP/2 Server
 ///
@@ -232,32 +234,19 @@ async fn handle_request(
 	handler: Arc<dyn Handler>,
 	max_body_size: u64,
 ) -> Result<hyper::Response<Full<Bytes>>, BoxError> {
-	// Check Content-Length before reading body
-	if let Some(content_length) = req.headers().get(hyper::header::CONTENT_LENGTH)
-		&& let Ok(len_str) = content_length.to_str()
-		&& let Ok(len) = len_str.parse::<u64>()
-		&& len > max_body_size
-	{
-		return Ok(hyper::Response::builder()
-			.status(StatusCode::PAYLOAD_TOO_LARGE)
-			.body(Full::new(Bytes::from("Request body too large")))
-			.expect("Failed to build 413 response"));
-	}
-
 	// Extract request parts
 	let (parts, body) = req.into_parts();
 
-	// Read body with size limit
-	let body_bytes = http_body_util::Limited::new(body, max_body_size as usize)
-		.collect()
-		.await
-		.map_err(|_| {
-			Box::new(std::io::Error::new(
-				std::io::ErrorKind::InvalidData,
-				"Request body exceeds size limit",
-			)) as BoxError
-		})?
-		.to_bytes();
+	let body_bytes = match request_body_plan(&parts.method, &parts.headers, max_body_size) {
+		RequestBodyPlan::Empty => Bytes::new(),
+		RequestBodyPlan::Collect => collect_request_body(body, max_body_size).await?,
+		RequestBodyPlan::RejectTooLarge => {
+			return Ok(hyper::Response::builder()
+				.status(StatusCode::PAYLOAD_TOO_LARGE)
+				.body(Full::new(Bytes::from_static(b"Request body too large")))
+				.expect("Failed to build 413 response"));
+		}
+	};
 
 	// Create reinhardt Request
 	let request = Request::from_hyper_parts(

@@ -15,7 +15,7 @@ use tokio::net::{TcpListener, TcpStream};
 
 use crate::shutdown::ShutdownCoordinator;
 
-use super::body::collect_request_body;
+use super::body::{RequestBodyPlan, collect_request_body, request_body_plan};
 
 /// HTTP Server with middleware support
 pub struct HttpServer {
@@ -368,23 +368,19 @@ where
 	F: Fn(Request) -> Fut + Clone + Send + Sync + 'static,
 	Fut: Future<Output = reinhardt_http::Result<Response>> + Send + 'static,
 {
-	// Check Content-Length before reading body
-	if let Some(content_length) = req.headers().get(hyper::header::CONTENT_LENGTH)
-		&& let Ok(len_str) = content_length.to_str()
-		&& let Ok(len) = len_str.parse::<u64>()
-		&& len > max_body_size
-	{
-		return Ok(hyper::Response::builder()
-			.status(StatusCode::PAYLOAD_TOO_LARGE)
-			.body(Full::new(Bytes::from("Request body too large")))
-			.expect("Failed to build 413 response"));
-	}
-
 	// Extract request parts
 	let (parts, body) = req.into_parts();
 
-	let body_bytes =
-		collect_request_body(&parts.method, &parts.headers, body, max_body_size).await?;
+	let body_bytes = match request_body_plan(&parts.method, &parts.headers, max_body_size) {
+		RequestBodyPlan::Empty => Bytes::new(),
+		RequestBodyPlan::Collect => collect_request_body(body, max_body_size).await?,
+		RequestBodyPlan::RejectTooLarge => {
+			return Ok(hyper::Response::builder()
+				.status(StatusCode::PAYLOAD_TOO_LARGE)
+				.body(Full::new(Bytes::from_static(b"Request body too large")))
+				.expect("Failed to build 413 response"));
+		}
+	};
 
 	// Create reinhardt Request
 	let mut request = Request::from_hyper_parts(

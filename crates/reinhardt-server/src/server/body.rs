@@ -7,15 +7,9 @@ use hyper::{HeaderMap, Method};
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 pub(super) async fn collect_request_body(
-	method: &Method,
-	headers: &HeaderMap,
 	body: Incoming,
 	max_body_size: u64,
 ) -> Result<Bytes, BoxError> {
-	if can_skip_body_collect(method, headers) {
-		return Ok(Bytes::new());
-	}
-
 	http_body_util::Limited::new(body, max_body_size as usize)
 		.collect()
 		.await
@@ -28,31 +22,42 @@ pub(super) async fn collect_request_body(
 		.map(|collected| collected.to_bytes())
 }
 
-fn can_skip_body_collect(method: &Method, headers: &HeaderMap) -> bool {
-	is_empty_body_fast_path_method(method) && !has_declared_body(headers)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RequestBodyPlan {
+	Empty,
+	Collect,
+	RejectTooLarge,
+}
+
+pub(super) fn request_body_plan(
+	method: &Method,
+	headers: &HeaderMap,
+	max_body_size: u64,
+) -> RequestBodyPlan {
+	let has_transfer_encoding = headers.contains_key(TRANSFER_ENCODING);
+	let content_length_header = headers.get(CONTENT_LENGTH);
+	let content_length = content_length_header
+		.and_then(|value| value.to_str().ok())
+		.and_then(|value| value.parse::<u64>().ok());
+
+	if content_length.is_some_and(|len| len > max_body_size) {
+		return RequestBodyPlan::RejectTooLarge;
+	}
+
+	if is_empty_body_fast_path_method(method)
+		&& !has_transfer_encoding
+		&& matches!(
+			(content_length_header, content_length),
+			(None, _) | (Some(_), Some(0))
+		) {
+		return RequestBodyPlan::Empty;
+	}
+
+	RequestBodyPlan::Collect
 }
 
 fn is_empty_body_fast_path_method(method: &Method) -> bool {
 	method == Method::GET || method == Method::HEAD
-}
-
-fn has_declared_body(headers: &HeaderMap) -> bool {
-	if headers.contains_key(TRANSFER_ENCODING) {
-		return true;
-	}
-
-	let Some(content_length) = headers.get(CONTENT_LENGTH) else {
-		return false;
-	};
-
-	match content_length
-		.to_str()
-		.ok()
-		.and_then(|value| value.parse::<u64>().ok())
-	{
-		Some(0) => false,
-		Some(_) | None => true,
-	}
 }
 
 #[cfg(test)]
@@ -62,7 +67,10 @@ mod tests {
 
 	#[test]
 	fn skips_get_without_declared_body() {
-		assert!(can_skip_body_collect(&Method::GET, &HeaderMap::new()));
+		assert_eq!(
+			request_body_plan(&Method::GET, &HeaderMap::new(), 10),
+			RequestBodyPlan::Empty
+		);
 	}
 
 	#[test]
@@ -70,7 +78,10 @@ mod tests {
 		let mut headers = HeaderMap::new();
 		headers.insert(CONTENT_LENGTH, HeaderValue::from_static("0"));
 
-		assert!(can_skip_body_collect(&Method::HEAD, &headers));
+		assert_eq!(
+			request_body_plan(&Method::HEAD, &headers, 10),
+			RequestBodyPlan::Empty
+		);
 	}
 
 	#[test]
@@ -78,7 +89,10 @@ mod tests {
 		let mut headers = HeaderMap::new();
 		headers.insert(CONTENT_LENGTH, HeaderValue::from_static("3"));
 
-		assert!(!can_skip_body_collect(&Method::GET, &headers));
+		assert_eq!(
+			request_body_plan(&Method::GET, &headers, 10),
+			RequestBodyPlan::Collect
+		);
 	}
 
 	#[test]
@@ -86,12 +100,18 @@ mod tests {
 		let mut headers = HeaderMap::new();
 		headers.insert(TRANSFER_ENCODING, HeaderValue::from_static("chunked"));
 
-		assert!(!can_skip_body_collect(&Method::GET, &headers));
+		assert_eq!(
+			request_body_plan(&Method::GET, &headers, 10),
+			RequestBodyPlan::Collect
+		);
 	}
 
 	#[test]
 	fn collects_post_without_declared_body() {
-		assert!(!can_skip_body_collect(&Method::POST, &HeaderMap::new()));
+		assert_eq!(
+			request_body_plan(&Method::POST, &HeaderMap::new(), 10),
+			RequestBodyPlan::Collect
+		);
 	}
 
 	#[test]
@@ -99,6 +119,20 @@ mod tests {
 		let mut headers = HeaderMap::new();
 		headers.insert(CONTENT_LENGTH, HeaderValue::from_static("invalid"));
 
-		assert!(!can_skip_body_collect(&Method::GET, &headers));
+		assert_eq!(
+			request_body_plan(&Method::GET, &headers, 10),
+			RequestBodyPlan::Collect
+		);
+	}
+
+	#[test]
+	fn rejects_content_length_above_limit() {
+		let mut headers = HeaderMap::new();
+		headers.insert(CONTENT_LENGTH, HeaderValue::from_static("11"));
+
+		assert_eq!(
+			request_body_plan(&Method::POST, &headers, 10),
+			RequestBodyPlan::RejectTooLarge
+		);
 	}
 }

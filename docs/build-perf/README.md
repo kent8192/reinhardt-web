@@ -270,6 +270,9 @@ Server adapters construct `Request` directly from validated Hyper parts instead
 of round-tripping through `RequestBuilder`. This bypasses validation branches
 and optional-field checks that are useful for public request construction but
 redundant after Hyper has already parsed the request.
+HTTP/1 and HTTP/2 adapters also share a single request-body plan step, so
+empty GET/HEAD requests skip body collection and content-length checks without
+duplicating header lookups across the size precheck and collector.
 
 HTTP/1 and HTTP/2 adapters use Hyper `service_fn` concrete futures instead of a
 boxed `Service::Future` on each request. Response conversion also moves the
