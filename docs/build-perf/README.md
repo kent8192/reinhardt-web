@@ -270,6 +270,11 @@ of round-tripping through `RequestBuilder`. This bypasses validation branches
 and optional-field checks that are useful for public request construction but
 redundant after Hyper has already parsed the request.
 
+HTTP/1 and HTTP/2 adapters use Hyper `service_fn` concrete futures instead of a
+boxed `Service::Future` on each request. Response conversion also moves the
+already-validated Reinhardt `HeaderMap` into the Hyper response instead of
+re-inserting every header through `Response::builder`.
+
 ## Admin List Query Count Measurements
 
 Use the admin database mock tests before claiming query-count reductions on the

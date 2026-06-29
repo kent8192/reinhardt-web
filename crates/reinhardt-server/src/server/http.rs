@@ -3,14 +3,12 @@ use http_body_util::Full;
 use hyper::StatusCode;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
-use hyper::service::Service;
+use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use reinhardt_di::InjectionContext;
 use reinhardt_http::{Handler, Middleware, MiddlewareChain};
 use reinhardt_http::{Request, Response};
-use std::future::Future;
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
@@ -314,12 +312,12 @@ impl HttpServer {
 		di_context: Option<Arc<InjectionContext>>,
 	) -> Result<(), Box<dyn std::error::Error>> {
 		let io = TokioIo::new(stream);
-		let service = RequestService {
-			handler,
-			remote_addr: socket_addr,
-			di_context,
-			max_body_size: DEFAULT_MAX_BODY_SIZE,
-		};
+		let service = service_fn(move |req| {
+			let handler = handler.clone();
+			let di_context = di_context.clone();
+
+			handle_request(req, handler, socket_addr, di_context, DEFAULT_MAX_BODY_SIZE)
+		});
 
 		http1::Builder::new().serve_connection(io, service).await?;
 
@@ -329,95 +327,79 @@ impl HttpServer {
 
 /// Default maximum request body size (10 MB)
 const DEFAULT_MAX_BODY_SIZE: u64 = 10 * 1024 * 1024;
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
-/// Service implementation for hyper
-struct RequestService {
+async fn handle_request(
+	req: hyper::Request<Incoming>,
 	handler: Arc<dyn Handler>,
 	remote_addr: SocketAddr,
 	di_context: Option<Arc<InjectionContext>>,
 	max_body_size: u64,
+) -> Result<hyper::Response<Full<Bytes>>, BoxError> {
+	// Check Content-Length before reading body
+	if let Some(content_length) = req.headers().get(hyper::header::CONTENT_LENGTH)
+		&& let Ok(len_str) = content_length.to_str()
+		&& let Ok(len) = len_str.parse::<u64>()
+		&& len > max_body_size
+	{
+		return Ok(hyper::Response::builder()
+			.status(StatusCode::PAYLOAD_TOO_LARGE)
+			.body(Full::new(Bytes::from("Request body too large")))
+			.expect("Failed to build 413 response"));
+	}
+
+	// Extract request parts
+	let (parts, body) = req.into_parts();
+
+	let body_bytes =
+		collect_request_body(&parts.method, &parts.headers, body, max_body_size).await?;
+
+	// Create reinhardt Request
+	let mut request = Request::from_hyper_parts(
+		parts.method,
+		parts.uri,
+		parts.version,
+		parts.headers,
+		body_bytes,
+		Some(remote_addr),
+	);
+
+	// Set DI context if available
+	if let Some(ctx) = di_context {
+		request.set_di_context(ctx);
+	}
+
+	// Handle request.
+	// The middleware chain converts handler errors to responses internally
+	// (in ConditionalComposedHandler) so that middleware post-processing
+	// always runs. This unwrap_or_else is a safety net for errors that
+	// escape the chain (e.g., middleware-internal failures without a chain).
+	let request_path_for_warning = {
+		let path = request.uri.path();
+		if path.contains('.') && !path.ends_with(".json") {
+			Some(path.to_string())
+		} else {
+			None
+		}
+	};
+	let response = handler.handle(request).await.unwrap_or_else(|e| {
+		if let Some(request_path) = request_path_for_warning.as_deref() {
+			eprintln!(
+				"[reinhardt WARN] Non-API request hit error-to-JSON conversion: path={}, error={}",
+				request_path, e
+			);
+		}
+		Response::from(e)
+	});
+
+	Ok(into_hyper_response(response))
 }
 
-impl Service<hyper::Request<Incoming>> for RequestService {
-	type Response = hyper::Response<Full<Bytes>>;
-	type Error = Box<dyn std::error::Error + Send + Sync>;
-	type Future =
-		Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
-
-	fn call(&self, req: hyper::Request<Incoming>) -> Self::Future {
-		let handler = self.handler.clone();
-		let remote_addr = self.remote_addr;
-		let di_context = self.di_context.clone();
-		let max_body_size = self.max_body_size;
-
-		Box::pin(async move {
-			// Check Content-Length before reading body
-			if let Some(content_length) = req.headers().get(hyper::header::CONTENT_LENGTH)
-				&& let Ok(len_str) = content_length.to_str()
-				&& let Ok(len) = len_str.parse::<u64>()
-				&& len > max_body_size
-			{
-				return Ok(hyper::Response::builder()
-					.status(StatusCode::PAYLOAD_TOO_LARGE)
-					.body(Full::new(Bytes::from("Request body too large")))
-					.expect("Failed to build 413 response"));
-			}
-
-			// Extract request parts
-			let (parts, body) = req.into_parts();
-
-			let body_bytes =
-				collect_request_body(&parts.method, &parts.headers, body, max_body_size).await?;
-
-			// Create reinhardt Request
-			let mut request = Request::from_hyper_parts(
-				parts.method,
-				parts.uri,
-				parts.version,
-				parts.headers,
-				body_bytes,
-				Some(remote_addr),
-			);
-
-			// Set DI context if available
-			if let Some(ctx) = di_context {
-				request.set_di_context(ctx);
-			}
-
-			// Handle request.
-			// The middleware chain converts handler errors to responses internally
-			// (in ConditionalComposedHandler) so that middleware post-processing
-			// always runs. This unwrap_or_else is a safety net for errors that
-			// escape the chain (e.g., middleware-internal failures without a chain).
-			let request_path_for_warning = {
-				let path = request.uri.path();
-				if path.contains('.') && !path.ends_with(".json") {
-					Some(path.to_string())
-				} else {
-					None
-				}
-			};
-			let response = handler.handle(request).await.unwrap_or_else(|e| {
-				if let Some(request_path) = request_path_for_warning.as_deref() {
-					eprintln!(
-						"[reinhardt WARN] Non-API request hit error-to-JSON conversion: path={}, error={}",
-						request_path, e
-					);
-				}
-				Response::from(e)
-			});
-
-			// Convert to hyper response
-			let mut hyper_response = hyper::Response::builder().status(response.status);
-
-			// Add headers
-			for (key, value) in response.headers.iter() {
-				hyper_response = hyper_response.header(key, value);
-			}
-
-			Ok(hyper_response.body(Full::new(response.body))?)
-		})
-	}
+fn into_hyper_response(response: Response) -> hyper::Response<Full<Bytes>> {
+	let mut hyper_response = hyper::Response::new(Full::new(response.body));
+	*hyper_response.status_mut() = response.status;
+	*hyper_response.headers_mut() = response.headers;
+	hyper_response
 }
 /// Helper function to create and run a server
 ///
