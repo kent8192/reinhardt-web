@@ -232,6 +232,27 @@ overhead for the common empty request path, but it is not visible in
 `request_alloc_probe` because that probe starts after Hyper has already produced
 a Reinhardt `Request`.
 
+The integrated 2026-06-29 0.4 fast-path measurement combines lazy query
+parameters, lazy extension backing-store initialization, empty HTTP/1 body
+skipping, shared route parameter names, and inline path parameter values:
+
+| Probe | `develop/0.4.0` baseline | Integrated fast path | Reduction |
+|---|---:|---:|---:|
+| `request_build_empty_path` | 2 alloc/request | 1 alloc/request | 50.0% |
+| `request_build_two_query_params` | 7 alloc/request | 2 alloc/request | 71.4% |
+| `direct_handler_build_plus_handle` | 4 alloc/request | 3 alloc/request | 25.0% |
+| `direct_handler_handle_only` | 2 alloc/request | 2 alloc/request | 0.0% |
+| `clone_for_di_empty_path` | 1 alloc/request | 1 alloc/request | 0.0% |
+| `clone_for_di_two_query_params` | 6 alloc/request | 2 alloc/request | 66.7% |
+| `server_router_static_build_plus_handle` | 6 alloc/request | 5 alloc/request | 16.7% |
+| `server_router_two_params_build_plus_handle` | 10 alloc/request | 5 alloc/request | 50.0% |
+| `server_router_one_middleware_build_plus_handle` | 12 alloc/request | 11 alloc/request | 8.3% |
+
+Runtime HTTP scorecard acceptance still requires a low-noise loopback rerun.
+During the inline path-parameter measurement, system load was above normal and
+all compared frameworks regressed together, so those runtime samples were not
+used as acceptance evidence.
+
 ## Admin List Query Count Measurements
 
 Use the admin database mock tests before claiming query-count reductions on the
