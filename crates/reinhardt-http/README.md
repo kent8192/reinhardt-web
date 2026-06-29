@@ -73,7 +73,7 @@ Core HTTP abstractions for the Reinhardt framework. Provides comprehensive reque
 - **Type-safe request extensions** for storing arbitrary typed data
   - `request.extensions.insert::<T>(value)` - Store typed data
   - `request.extensions.get::<T>()` - Retrieve typed data
-  - Thread-safe with `Arc<Mutex<TypeMap>>`
+  - Thread-safe with lazily initialized `Arc<Mutex<TypeMap>>`
   - Common use cases: authentication context, request ID, user data
 
 #### Error Integration
