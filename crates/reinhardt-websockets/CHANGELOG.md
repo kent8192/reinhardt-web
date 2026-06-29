@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.2.0...reinhardt-websockets@v0.3.0-rc.1) - 2026-06-18
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.2.0...reinhardt-websockets@v0.3.0) - 2026-06-28
+
+Stable release of `reinhardt-websockets` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
+
+### Migration Notes
+
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
 ### Added
 
@@ -16,28 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.1.3...reinhardt-websockets@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-websockets` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
 - Review the breaking changes listed below before upgrading from 0.1.x.
 - See the root CHANGELOG and `instructions/MIGRATION_0.2.md` for cross-crate migration guidance.
-
-### Added
-
-- *(websockets)* add settings fragments for connection, reconnection, origin, rate limit, and redis
-
-### Deprecated
-
-- *(websockets)* deprecate ad-hoc XxxConfig structs in favor of settings fragments
-
-### Maintenance
-
-- *(websockets)* depend on reinhardt-conf for settings fragments
-
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.1.3...reinhardt-websockets@v0.2.0-rc.2) - 2026-06-03
 
 ### Added
 

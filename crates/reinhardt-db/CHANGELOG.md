@@ -7,40 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.0-rc.5...reinhardt-db@v0.3.0-rc.6) - 2026-06-27
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.0...reinhardt-db@v0.3.0) - 2026-06-28
 
-### Fixed
+Stable release of `reinhardt-db` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
 
-- *(migrations)* handle field changes on renamed models
-- *(migrations)* address autodetector review gaps
-- *(todo-check)* clear public api audit markers
+### Migration Notes
 
-### Maintenance
-
-- merge main into develop/0.3.0
-
-### Testing
-
-- *(migrations)* tighten autodetector assertions
-
-## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.0-rc.4...reinhardt-db@v0.3.0-rc.5) - 2026-06-26
-
-### Fixed
-
-- *(db)* serialize CockroachDB migrations
-
-### Performance
-
-- *(db)* reduce pool acquire overhead
-- *(db)* speed up migration graph topological sort
-
-## [0.3.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.0-rc.2...reinhardt-db@v0.3.0-rc.3) - 2026-06-23
-
-### Fixed
-
-- *(tutorial)* suppress basis runtime drift
-
-## [0.3.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.0-rc.1...reinhardt-db@v0.3.0-rc.2) - 2026-06-19
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
 ### Added
 
@@ -48,23 +23,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- *(db)* replay foreign key constraints and defaults
+- *(db)* apply alter column defaults in migrations
+- *(migrations)* handle field changes on renamed models
+- *(migrations)* address autodetector review gaps
+- *(todo-check)* clear public api audit markers
+- *(db)* serialize CockroachDB migrations
+- *(tutorial)* suppress basis runtime drift
 - *(db)* suppress replayed migration drift
-
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.0...reinhardt-db@v0.3.0-rc.1) - 2026-06-18
-
-### Fixed
-
 - add wasm safe model metadata substrate
+
+### Performance
+
+- *(db)* reduce pool acquire overhead
+- *(db)* speed up migration graph topological sort
+
+### Testing
+
+- *(migrations)* tighten autodetector assertions
 
 ### Maintenance
 
+- merge main into develop/0.3.0
 - migrate Rust toolchain to 1.96.0
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.3...reinhardt-db@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-db` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -90,6 +77,10 @@ RC entries remain below as detailed history.
 - *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
 - *(model)* [**breaking**] make new an alias for build
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
 ### Removed
 
 - **`DatabaseConnection::get_database_url_from_env_or_settings(base_dir)`**
@@ -99,98 +90,6 @@ RC entries remain below as detailed history.
   call, duplicating the framework's settings-loading logic. Use
   `DatabaseConnection::database_url_from(settings, env_override)` with
   a pre-built `ProjectSettings` instead.
-
-### Fixed
-
-- *(orm)* address lookup review edge cases
-- *(db)* align LIKE escape SQL expectations
-- *(db)* qualify Manager in rustdoc examples and add missing Objects type
-- *(docs)* resolve remaining cross-crate intra-doc link errors
-- repair release examples tests
-
-- *(ci)* pin broken upstream transitive releases
-
-### Performance
-
-- atomize facade dependency feature gates
-- trim standard facade feature dependencies
-
-### Documentation
-
-- *(reinhardt-db)* fix QuerySet doctests for single-argument filter() API
-- *(reinhardt-db)* qualify Filter path in with_db doctests
-
-### Maintenance
-
-- *(examples)* remove examples-twitter
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.0-rc.4...reinhardt-db@v0.2.0-rc.5) - 2026-06-11
-
-### Added
-
-- *(orm)* add Django-like lookup helpers
-- *(orm)* support composite filter combinators
-
-### Fixed
-
-- *(orm)* address lookup review edge cases
-- *(db)* align LIKE escape SQL expectations
-
-## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.2.0-rc.2...reinhardt-db@v0.2.0-rc.3) - 2026-06-05
-
-### Fixed
-
-- address CodeRabbit dependency gate review
-
-### Performance
-
-- atomize facade dependency feature gates
-- trim standard facade feature dependencies
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.3...reinhardt-db@v0.2.0-rc.2) - 2026-06-03
-
-### Added
-
-- *(db)* introduce type-safe nullable field on FieldMetadata
-- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
-- *(model)* [**breaking**] make new an alias for build
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-
-### Documentation
-
-- *(reinhardt-db)* fix QuerySet doctests for single-argument filter() API
-- *(reinhardt-db)* qualify Filter path in with_db doctests
-
-### Fixed
-
-- *(db)* address CodeRabbit review on CHANGELOG and with_param normalization
-- *(ci)* recover develop release-plz prerelease
-- *(db)* qualify Manager in rustdoc examples and add missing Objects type
-- *(docs)* resolve remaining cross-crate intra-doc link errors
-- repair release examples tests
-
-### Maintenance
-
-- *(examples)* remove examples-twitter
-
-### Styling
-
-- apply formatter fixes across workspace
-- apply rustfmt to non-DSL files on develop/0.2.0
-
-### Breaking Changes
-
-- **`FieldMetadata` gains type-safe `nullable: bool` field** ([#4439](https://github.com/kent8192/reinhardt-web/issues/4439)).
-  `is_nullable()` reads the struct field. `with_nullable()` sets it as
-  the canonical source of truth. `with_param("null", ...)` still works
-  (auto-syncs the struct field) but should migrate to `with_nullable()`.
-  `to_model_state()` no longer copies `"null"` into `FieldState.params`.
-
-### Removed
 
 #### BREAKING CHANGES
 
@@ -212,6 +111,38 @@ database_url_from` PR.
 
 See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md#reinhardt-db)
 for the migration guide.
+
+### Fixed
+
+- *(orm)* address lookup review edge cases
+- *(db)* align LIKE escape SQL expectations
+- *(db)* qualify Manager in rustdoc examples and add missing Objects type
+- *(docs)* resolve remaining cross-crate intra-doc link errors
+- repair release examples tests
+
+- *(ci)* pin broken upstream transitive releases
+- address CodeRabbit dependency gate review
+- *(db)* address CodeRabbit review on CHANGELOG and with_param normalization
+- *(ci)* recover develop release-plz prerelease
+
+### Performance
+
+- atomize facade dependency feature gates
+- trim standard facade feature dependencies
+
+### Documentation
+
+- *(reinhardt-db)* fix QuerySet doctests for single-argument filter() API
+- *(reinhardt-db)* qualify Filter path in with_db doctests
+
+### Styling
+
+- apply formatter fixes across workspace
+- apply rustfmt to non-DSL files on develop/0.2.0
+
+### Maintenance
+
+- *(examples)* remove examples-twitter
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-rc.30...reinhardt-db@v0.1.0) - 2026-05-22
 

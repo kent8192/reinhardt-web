@@ -7,23 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.3.0-rc.5...reinhardt-admin-cli@v0.3.0-rc.6) - 2026-06-27
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.2.0...reinhardt-admin-cli@v0.3.0) - 2026-06-28
+
+Stable release of `reinhardt-admin-cli` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
+
+### Migration Notes
+
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
 ### Documentation
 
 - *(release)* expose 0.3 migration guide
-
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.2.0...reinhardt-admin-cli@v0.3.0-rc.1) - 2026-06-18
-
-### Documentation
-
 - *(formatter)* document page rustfmt islands
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.3...reinhardt-admin-cli@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-admin-cli` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -57,59 +60,22 @@ RC entries remain below as detailed history.
 - split formatter from admin cli
 
 - *(commands)* align startproject scaffold defaults
-
-### Documentation
-
-- *(release)* enforce public API doc coverage
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.2.0-rc.4...reinhardt-admin-cli@v0.2.0-rc.5) - 2026-06-11
-
-### Added
-
-- *(commands)* add interactive dependency configuration
-
-### Documentation
-
-- *(release)* enforce public API doc coverage
-
-### Fixed
-
 - *(ci)* repair admin dependency config checks
-
-### Fixed
-
-- *(admin-cli)* keep `migrate-manouche-v2` idempotent for already wrapped page expression slots.
-- *(admin-cli)* preserve item attributes when `migrate-manouche-v2` rewrites attributed items.
-- *(admin-cli)* avoid treating control-flow syntax variables as page children in `migrate-manouche-v2`.
-- *(admin-cli)* keep `migrate-manouche-v2` from rewriting `match` patterns and `let` bindings as page children.
-- *(admin-cli)* preserve inner module docs and migrate element bodies inside `let` initializers in `migrate-manouche-v2`.
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.3...reinhardt-admin-cli@v0.2.0-rc.2) - 2026-06-03
-
-### Fixed
-
-- *(admin-cli)* restore Topiary formatter wiring from main
-- *(admin-cli)* run rustfmt on DSL-skipped files in fmt command
-- *(admin-cli)* pass ignore-all files through rustfmt in fmt command
 - *(admin-cli)* revert rustfmt-damaged migrate_v2 fixtures
-- *(admin-cli)* update migrate_v2 expected fixtures to match prettyplease output
 - *(admin-cli)* preserve migrate_v2 fixtures during fmt-all
-- *(admin-cli)* reject commented-out `#![rustfmt::skip]` in `rustfmt_skip_attr_matches`
 - *(admin-cli)* skip nested workspaces in fmt-all
-- split formatter from admin cli
 
-### Maintenance
+### Documentation
 
-- forward merge main v0.1.2 changes into develop 0.2.0
+- *(release)* enforce public API doc coverage
 
 ### Styling
 
 - apply rustfmt to non-DSL files on develop/0.2.0
 
-### Changed
+### Maintenance
 
-- *(admin-cli)* replace the imperative AST formatter with a tree-sitter and Topiary pipeline for `page!`, `form!`, and `head!` DSL macros.
+- forward merge main v0.1.2 changes into develop 0.2.0
 
 ## [0.1.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0...reinhardt-admin-cli@v0.1.1) - 2026-05-24
 ### Added

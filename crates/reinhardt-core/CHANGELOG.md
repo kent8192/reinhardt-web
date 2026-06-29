@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.2.0...reinhardt-core@v0.3.0-rc.1) - 2026-06-18
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.2.0...reinhardt-core@v0.3.0) - 2026-06-28
+
+Stable release of `reinhardt-core` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
+
+### Migration Notes
+
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
 ### Added
 
@@ -33,8 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.3...reinhardt-core@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-core` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -67,6 +75,10 @@ RC entries remain below as detailed history.
 
 - *(macros)* expose model info companions to wasm
 
+### Changed
+
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
+
 ### Removed
 
 - **`#[routes]` deprecated 2-level URL accessor codegen** (rc.16) —
@@ -93,114 +105,6 @@ RC entries remain below as detailed history.
   required namespace-iterating fallback no longer exists. The
   `UrlResolverUnprefixed` trait itself is removed in
   `reinhardt-urls` PR.
-
-### Fixed
-
-- stop implicit openapi schema macro output
-- *(core)* drop leftover empty test definition in viewset_macro tests (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-- *(auth)* replace InternalUser in UserManager public API with ManagedUser
-- *(macros)* propagate serde derives to Info companion struct via model_config
-- *(macros)* remove unused has_derive_trait from model_derive
-- *(macros)* suppress missing_docs on generated Info companion types
-- *(core)* dispose Memo only on last clone drop
-- *(core)* drop disposed-flag clone from Memo compute closure
-- *(core)* drop unused mut on Memo::new parameter
-- *(macros)* keep unnamed EndpointMetadata.name None across codegen paths
-- *(pages)* rerender SPA links after cleanup
-- *(conf)* emit fragment self settings impls
-
-### Performance
-
-- *(pages)* batch generated page attributes
-- *(pages)* trim wasm dependency graph
-- *(build)* measure cold workspace build
-- atomize facade dependency feature gates
-- trim standard facade feature dependencies
-
-### Documentation
-
-- *(release)* enforce public API doc coverage
-- *(core)* scaffold MIGRATION_0.2.md and document BREAKING CHANGES (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.2.0-rc.4...reinhardt-core@v0.2.0-rc.5) - 2026-06-11
-
-### Documentation
-
-- *(release)* enforce public API doc coverage
-
-### Performance
-
-- *(pages)* batch generated page attributes
-- *(pages)* trim wasm dependency graph
-- *(build)* measure cold workspace build
-
-## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.2.0-rc.2...reinhardt-core@v0.2.0-rc.3) - 2026-06-05
-
-### Fixed
-
-- stop implicit openapi schema macro output
-
-### Performance
-
-- atomize facade dependency feature gates
-- trim standard facade feature dependencies
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.3...reinhardt-core@v0.2.0-rc.2) - 2026-06-03
-
-### Added
-
-- *(core)* [**breaking**] remove 0.1.0-rc deprecated URL resolver codegen (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-- *(pages)* support keyed page list rendering
-- *(macros)* compile-time kebab-case URL-name warning; drop dead url-resolver codegen
-- *(pages)* unify resource hooks into use_resource(fetcher, deps)
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-
-### Documentation
-
-- *(core)* scaffold MIGRATION_0.2.md and document BREAKING CHANGES (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-
-### Fixed
-
-- *(core)* drop leftover empty test definition in viewset_macro tests (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-- *(core)* address Copilot review feedback on PR [[#4713](https://github.com/kent8192/reinhardt-web/issues/4713)](https://github.com/kent8192/reinhardt-web/issues/4713)
-- *(ci)* recover develop release-plz prerelease
-- *(auth)* replace InternalUser in UserManager public API with ManagedUser
-- *(ci)* resolve all pre-existing compilation failures on develop/0.2.0
-- *(macros)* propagate serde derives to Info companion struct via model_config
-- *(macros)* remove unused has_derive_trait from model_derive
-- *(macros)* suppress missing_docs on generated Info companion types
-- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
-- *(core)* dispose Memo only on last clone drop
-- *(core)* drop disposed-flag clone from Memo compute closure
-- *(core)* drop unused mut on Memo::new parameter
-- *(macros)* keep unnamed EndpointMetadata.name None across codegen paths
-- *(pages)* address CodeRabbit use_resource review
-- *(pages)* rerender SPA links after cleanup
-- *(conf)* emit fragment self settings impls
-
-### Other
-
-- resolve conflicts with develop/0.2.0
-
-### Added
-
-- `reactive::deps` module with `Trackable` trait, `Deps` opaque container, and
-  `IntoDeps` for tuples arity 0..=12. Enables the React-aligned
-  `(closure, deps)` hook signatures in `reinhardt-pages` (#4195).
-- `Effect::new_with_deps` and `Effect::new_with_deps_and_timing` constructors
-  with Option A semantics (closure runs without active Observer; only listed
-  deps subscribe) and optional `FnOnce` cleanup return.
-- `Memo::new_with_deps` constructor mirroring the same Option A semantics for
-  derived values. Adds an internal `MEMO_DIRTY` thread-local for type-agnostic
-  invalidation by a hidden Layout-timing Effect that subscribes to the deps.
-- `impl Trackable for Signal<T>` and `impl Trackable for Memo<T>`, enabling
-  these primitives to participate in hook deps tuples.
-
-### Removed
 
 #### BREAKING CHANGES
 
@@ -238,6 +142,43 @@ Issue [#4520](https://github.com/kent8192/reinhardt-web/issues/4520).
 
 See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md#reinhardt-core)
 for the full migration guide.
+
+### Fixed
+
+- stop implicit openapi schema macro output
+- *(core)* drop leftover empty test definition in viewset_macro tests (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(macros)* propagate serde derives to Info companion struct via model_config
+- *(macros)* remove unused has_derive_trait from model_derive
+- *(macros)* suppress missing_docs on generated Info companion types
+- *(core)* dispose Memo only on last clone drop
+- *(core)* drop disposed-flag clone from Memo compute closure
+- *(core)* drop unused mut on Memo::new parameter
+- *(macros)* keep unnamed EndpointMetadata.name None across codegen paths
+- *(pages)* rerender SPA links after cleanup
+- *(conf)* emit fragment self settings impls
+- *(core)* address Copilot review feedback on PR [[#4713](https://github.com/kent8192/reinhardt-web/issues/4713)](https://github.com/kent8192/reinhardt-web/issues/4713)
+- *(ci)* recover develop release-plz prerelease
+- *(ci)* resolve all pre-existing compilation failures on develop/0.2.0
+- *(ci)* update test snapshots and assertions for v0.2.0 breaking changes
+- *(pages)* address CodeRabbit use_resource review
+
+### Performance
+
+- *(pages)* batch generated page attributes
+- *(pages)* trim wasm dependency graph
+- *(build)* measure cold workspace build
+- atomize facade dependency feature gates
+- trim standard facade feature dependencies
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+- *(core)* scaffold MIGRATION_0.2.md and document BREAKING CHANGES (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+
+### Other
+
+- resolve conflicts with develop/0.2.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-rc.30...reinhardt-core@v0.1.0) - 2026-05-22
 

@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.3.0-rc.5...reinhardt-forms@v0.3.0-rc.6) - 2026-06-27
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.2.2...reinhardt-forms@v0.3.0) - 2026-06-28
+
+Stable release of `reinhardt-forms` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
+
+### Migration Notes
+
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
 ### Fixed
 
@@ -26,16 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.3...reinhardt-forms@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-forms` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
 - Route form UI through `use_form` and form definitions; update typed field generics where server functions expect non-string values.
 - See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md) for the workspace migration checklist.
-
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.1.3...reinhardt-forms@v0.2.0-rc.2) - 2026-06-03
 
 ### Changed
 
