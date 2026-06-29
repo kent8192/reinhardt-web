@@ -1,21 +1,33 @@
 use super::Request;
 use hyper::Uri;
 use percent_encoding::percent_decode_str;
+use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::collections::hash_map::Iter;
 use std::ops::Deref;
+use std::ops::Range;
 use std::sync::OnceLock;
+
+const INLINE_QUERY_PAIR_CAPACITY: usize = 8;
+
+#[derive(Clone, Debug)]
+struct RawQueryPair {
+	key: Range<usize>,
+	value: Range<usize>,
+}
 
 /// Lazily parsed query string parameters.
 ///
 /// `QueryParams` keeps a cheap URI clone when a query string exists. Direct
-/// `get` lookups scan the raw query string, while map-shaped APIs materialize
-/// a `HashMap` on first use. This keeps request construction cheap for handlers
-/// that do not inspect query parameters while preserving the common
-/// `HashMap`-like read API.
+/// `get` lookups cache raw query key/value byte ranges without allocating for
+/// common small query strings, while map-shaped APIs materialize a `HashMap` on
+/// first use. This keeps request construction cheap for handlers that do not
+/// inspect query parameters while preserving the common `HashMap`-like read
+/// API.
 #[derive(Debug)]
 pub struct QueryParams {
 	uri_with_query: Option<Uri>,
+	raw_pairs: OnceLock<SmallVec<[RawQueryPair; INLINE_QUERY_PAIR_CAPACITY]>>,
 	parsed: OnceLock<HashMap<String, String>>,
 }
 
@@ -24,6 +36,7 @@ impl QueryParams {
 	pub fn empty() -> Self {
 		Self {
 			uri_with_query: None,
+			raw_pairs: OnceLock::new(),
 			parsed: OnceLock::new(),
 		}
 	}
@@ -32,6 +45,7 @@ impl QueryParams {
 	pub fn from_uri(uri: &Uri) -> Self {
 		Self {
 			uri_with_query: uri.query().map(|_| uri.clone()),
+			raw_pairs: OnceLock::new(),
 			parsed: OnceLock::new(),
 		}
 	}
@@ -58,12 +72,12 @@ impl QueryParams {
 
 	/// Return the value for a query parameter key.
 	///
-	/// This looks up the raw query string directly when available, avoiding
-	/// `HashMap` initialization for handlers that only need a small number of
-	/// known parameters.
+	/// This looks up cached raw query ranges when available, avoiding `HashMap`
+	/// initialization for handlers that only need a small number of known
+	/// parameters.
 	pub fn get(&self, key: &str) -> Option<&str> {
 		self.raw_query()
-			.and_then(|query| Self::find_raw_value(query, key))
+			.and_then(|query| self.find_cached_raw_value(query, key))
 			.or_else(|| {
 				self.parsed
 					.get()
@@ -105,12 +119,35 @@ impl QueryParams {
 			.collect()
 	}
 
-	fn find_raw_value<'a>(query: &'a str, key: &str) -> Option<&'a str> {
-		let mut value = None;
+	fn raw_pairs(&self, query: &str) -> &SmallVec<[RawQueryPair; INLINE_QUERY_PAIR_CAPACITY]> {
+		self.raw_pairs.get_or_init(|| Self::parse_raw_pairs(query))
+	}
+
+	fn parse_raw_pairs(query: &str) -> SmallVec<[RawQueryPair; INLINE_QUERY_PAIR_CAPACITY]> {
+		let mut pairs = SmallVec::new();
+		let mut offset = 0;
 		for pair in query.split('&') {
-			let mut parts = pair.splitn(2, '=');
-			if parts.next() == Some(key) {
-				value = Some(parts.next().unwrap_or(""));
+			let pair_start = offset;
+			let pair_end = pair_start + pair.len();
+			let (key, value) = match pair.find('=') {
+				Some(separator) => {
+					let key = pair_start..pair_start + separator;
+					let value = pair_start + separator + 1..pair_end;
+					(key, value)
+				}
+				None => (pair_start..pair_end, pair_end..pair_end),
+			};
+			pairs.push(RawQueryPair { key, value });
+			offset = pair_end + 1;
+		}
+		pairs
+	}
+
+	fn find_cached_raw_value<'a>(&self, query: &'a str, key: &str) -> Option<&'a str> {
+		let mut value = None;
+		for pair in self.raw_pairs(query) {
+			if &query[pair.key.clone()] == key {
+				value = Some(&query[pair.value.clone()]);
 			}
 		}
 		value
@@ -119,6 +156,11 @@ impl QueryParams {
 	#[cfg(test)]
 	fn is_parsed(&self) -> bool {
 		self.parsed.get().is_some()
+	}
+
+	#[cfg(test)]
+	fn has_raw_pair_cache(&self) -> bool {
+		self.raw_pairs.get().is_some()
 	}
 }
 
@@ -130,9 +172,16 @@ impl Clone for QueryParams {
 				.set(map.clone())
 				.expect("new OnceLock must accept initial query params");
 		}
+		let raw_pairs = OnceLock::new();
+		if let Some(pairs) = self.raw_pairs.get() {
+			raw_pairs
+				.set(pairs.clone())
+				.expect("new OnceLock must accept initial raw query pairs");
+		}
 
 		Self {
 			uri_with_query: self.uri_with_query.clone(),
+			raw_pairs,
 			parsed,
 		}
 	}
@@ -502,8 +551,17 @@ mod tests {
 		// Assert
 		assert_eq!(params.raw_query(), Some("key=value"));
 		assert!(!params.is_parsed());
+		assert!(!params.has_raw_pair_cache());
 
 		// Act
+		let value = params.get("key");
+
+		// Assert
+		assert_eq!(value, Some("value"));
+		assert!(!params.is_parsed());
+		assert!(params.has_raw_pair_cache());
+
+		// Act - repeated lookups reuse the cached raw ranges without building a map.
 		let value = params.get("key");
 
 		// Assert
@@ -533,6 +591,19 @@ mod tests {
 		assert_eq!(cloned.get("key"), Some("value"));
 		assert!(!params.is_parsed());
 		assert!(!cloned.is_parsed());
+	}
+
+	#[rstest]
+	fn test_query_params_get_uses_last_duplicate_value() {
+		// Arrange
+		let uri: hyper::Uri = "/test?tag=rust&tag=web&page=2".parse().unwrap();
+		let params = QueryParams::from_uri(&uri);
+
+		// Act + Assert
+		assert_eq!(params.get("tag"), Some("web"));
+		assert_eq!(params.get("page"), Some("2"));
+		assert!(!params.is_parsed());
+		assert!(params.has_raw_pair_cache());
 	}
 
 	#[rstest]

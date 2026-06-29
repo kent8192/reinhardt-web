@@ -275,6 +275,10 @@ boxed `Service::Future` on each request. Response conversion also moves the
 already-validated Reinhardt `HeaderMap` into the Hyper response instead of
 re-inserting every header through `Response::builder`.
 
+`QueryParams::get` caches raw query key/value ranges on first lookup. This keeps
+the zero-`HashMap` behavior while avoiding repeated query-string splitting when
+a handler reads several known parameters from the same request.
+
 ## Admin List Query Count Measurements
 
 Use the admin database mock tests before claiming query-count reductions on the
