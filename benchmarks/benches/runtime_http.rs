@@ -64,6 +64,13 @@ struct SearchQuery {
 	limit: u32,
 }
 
+#[derive(Debug, Serialize)]
+struct ReinhardtSearchQuery<'a> {
+	q: &'a str,
+	page: u32,
+	limit: u32,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct RuntimePayload {
 	scenario: &'static str,
@@ -200,7 +207,6 @@ impl ReinhardtSyncHandler for ReinhardtQuery {
 		let q = req
 			.query_params
 			.get("q")
-			.map(str::to_owned)
 			.expect("q query parameter should exist");
 		let page = req
 			.query_params
@@ -212,7 +218,7 @@ impl ReinhardtSyncHandler for ReinhardtQuery {
 			.get("limit")
 			.and_then(|value| value.parse::<u32>().ok())
 			.expect("limit query parameter should parse");
-		ReinhardtResponse::ok().with_json(&SearchQuery { q, page, limit })
+		ReinhardtResponse::ok().with_json(&ReinhardtSearchQuery { q, page, limit })
 	}
 }
 

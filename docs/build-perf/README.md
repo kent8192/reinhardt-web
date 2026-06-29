@@ -279,6 +279,12 @@ or `ServerRouter::handler_sync()` avoid the async trait-object boxed future
 when no middleware is attached. Middleware routes still use the async adapter
 because the middleware contract remains `Arc<dyn Handler>`.
 
+Follow-up fixed-cost reductions keep `QueryParams::get()` duplicate-key
+semantics while scanning cached raw pairs from the end, so last-value lookups
+can stop early. Server response conversion also skips status and header-map
+mutation when the Reinhardt response is the common `200 OK` response with no
+headers.
+
 HTTP/1 and HTTP/2 adapters use Hyper `service_fn` concrete futures instead of a
 boxed `Service::Future` on each request. Response conversion also moves the
 already-validated Reinhardt `HeaderMap` into the Hyper response instead of

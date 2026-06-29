@@ -269,9 +269,15 @@ async fn handle_request(
 }
 
 fn into_hyper_response(response: Response) -> hyper::Response<Full<Bytes>> {
+	let status = response.status;
+	let headers = response.headers;
 	let mut hyper_response = hyper::Response::new(Full::new(response.body));
-	*hyper_response.status_mut() = response.status;
-	*hyper_response.headers_mut() = response.headers;
+	if status != StatusCode::OK {
+		*hyper_response.status_mut() = status;
+	}
+	if !headers.is_empty() {
+		*hyper_response.headers_mut() = headers;
+	}
 	hyper_response
 }
 

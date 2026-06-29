@@ -144,13 +144,12 @@ impl QueryParams {
 	}
 
 	fn find_cached_raw_value<'a>(&self, query: &'a str, key: &str) -> Option<&'a str> {
-		let mut value = None;
-		for pair in self.raw_pairs(query) {
+		for pair in self.raw_pairs(query).iter().rev() {
 			if &query[pair.key.clone()] == key {
-				value = Some(&query[pair.value.clone()]);
+				return Some(&query[pair.value.clone()]);
 			}
 		}
-		value
+		None
 	}
 
 	#[cfg(test)]
