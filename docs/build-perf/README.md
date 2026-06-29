@@ -151,7 +151,10 @@ Record at least three runs and report the median of Criterion's point
 estimates. This benchmark is the backend/native endpoint complement to the
 loopback HTTP runtime comparison: it measures in-process Reinhardt endpoint and
 `server_fn` dispatch without the socket and HTTP client costs used by
-`cargo make benchmark-runtime-http`.
+`cargo make benchmark-runtime-http`. For automated aggregation, read
+`median.point_estimate` from `target/criterion/**/new/estimates.json` after
+each run and take the median across runs; ignore Criterion's persisted
+`change` lines when comparing separate worktrees.
 
 For disposable remote validation, prefer a GitHub Codespaces
 `largePremiumLinux` machine and record the machine type, CPU model, toolchain,
@@ -161,6 +164,19 @@ baseline on the same remote host class when making absolute pass/fail claims.
 The detailed remote procedure and the 2026-06-29 UTC Codespaces measurements
 are recorded in
 [`0.4-performance-scorecard.md`](0.4-performance-scorecard.md).
+
+The 2026-06-29 UTC same-host Codespaces backend run compared
+`origin/develop/0.3.0` at `b046f6184b3047010dd184383bd1fbf22dd5e6c7` with the
+0.4 integrated head at `58bc3fc581343a6adf9324d7586b99b70d6d56e7` on a
+`largePremiumLinux` Codespace with an AMD EPYC 7763 CPU and `rustc 1.96.0`.
+Values are the median of five Criterion point estimates from the native
+endpoint benchmark:
+
+| Benchmark | Baseline median | Integrated median | Reduction |
+|---|---:|---:|---:|
+| `http_endpoint_plain_get` | 477.5 ns | 467.9 ns | 2.0% |
+| `http_endpoint_path_param_get` | 608.3 ns | 542.2 ns | 10.9% |
+| `server_fn_json_post` | 1.191 us | 1.187 us | 0.3% |
 
 The 2026-06-25 measurement compared `origin/develop/0.3.0` with only the
 benchmark harness applied against the optimized branch. Values are the mean of
