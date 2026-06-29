@@ -181,6 +181,12 @@ endpoint benchmark:
 | `http_endpoint_path_param_get` | 600.2 ns | 552.8 ns | 7.9% |
 | `server_fn_json_post` | 1.189 us | 1.165 us | 2.0% |
 
+A later synchronous HTTP adapter follow-up at
+`48860863a63b7878c9dae9ef4dc88b74096c1055` did not refresh this backend table
+because that change affects the Hyper HTTP adapter path, not the legacy
+`ServerRouter::handle()` entry point measured here. Re-run this benchmark only
+when endpoint dispatch, `server_fn` conversion, or router handling changes.
+
 The 2026-06-25 measurement compared `origin/develop/0.3.0` with only the
 benchmark harness applied against the optimized branch. Values are the mean of
 two Criterion runs on the same host; Criterion's persisted `change` lines were
