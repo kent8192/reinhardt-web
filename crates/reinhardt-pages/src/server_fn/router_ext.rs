@@ -100,7 +100,6 @@ impl<S: ServerFnRegistration> EndpointInfo for ServerFnEndpoint<S> {
 #[async_trait::async_trait]
 impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 	async fn handle(&self, req: Request) -> Result<Response> {
-		let handler = S::handler();
 		let path = S::PATH;
 		let name = S::NAME;
 		// Response Content-Type based on codec.
@@ -120,7 +119,7 @@ impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 			None
 		};
 
-		let mut response = match handler(req).await {
+		let mut response = match S::handle(req).await {
 			Ok(body) => Response::ok()
 				.with_typed_header(CONTENT_TYPE, response_content_type.clone())
 				.with_body(body),

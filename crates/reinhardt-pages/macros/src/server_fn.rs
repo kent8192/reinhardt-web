@@ -1517,6 +1517,12 @@ fn generate_server_handler(
 				fn handler() -> #pages_crate::server_fn::ServerFnHandler {
 					super::#static_wrapper_name
 				}
+
+				fn handle(
+					req: #http_crate_for_wrapper::Request
+				) -> impl ::std::future::Future<Output = ::std::result::Result<#pages_crate::__private::bytes::Bytes, #pages_crate::__private::bytes::Bytes>> + ::std::marker::Send {
+					super::#handler_name(req)
+				}
 			}
 
 			// MSW: server-side MockableServerFn (conditionally generated; Issue #3673)
