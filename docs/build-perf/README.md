@@ -294,6 +294,10 @@ one `async_trait` boxed future on the HTTP adapter -> router boundary. The
 existing `handle_connection` API remains available for arbitrary `Handler`
 trait objects.
 
+`Response::with_static_body` sets a response body from `Bytes::from_static`.
+Small constant responses such as health checks can avoid copying static string
+data into an owned `Bytes` allocation.
+
 ## Admin List Query Count Measurements
 
 Use the admin database mock tests before claiming query-count reductions on the

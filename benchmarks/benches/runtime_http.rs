@@ -122,7 +122,7 @@ impl EndpointInfo for ReinhardtHello {
 #[async_trait]
 impl ReinhardtHandler for ReinhardtHello {
 	async fn handle(&self, _req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
-		Ok(ReinhardtResponse::ok().with_body("hello"))
+		Ok(ReinhardtResponse::ok().with_static_body(b"hello"))
 	}
 }
 

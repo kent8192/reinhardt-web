@@ -442,6 +442,23 @@ impl Response {
 		self.body = body.into();
 		self
 	}
+	/// Set the response body from static bytes without allocating.
+	///
+	/// This is useful for small constant responses such as health checks.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_http::Response;
+	/// use bytes::Bytes;
+	///
+	/// let response = Response::ok().with_static_body(b"ok");
+	/// assert_eq!(response.body, Bytes::from_static(b"ok"));
+	/// ```
+	pub fn with_static_body(mut self, body: &'static [u8]) -> Self {
+		self.body = Bytes::from_static(body);
+		self
+	}
 	/// Try to add a custom header to the response, returning an error on invalid inputs.
 	///
 	/// # Errors
