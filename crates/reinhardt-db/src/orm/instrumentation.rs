@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 /// Event listener for database operations
 #[async_trait]
-pub trait EventListener: Send + Sync {
+pub trait EventListener: Send + Sync + 'static {
 	/// Called when a query starts execution
 	async fn on_query_start(&self, _query: &str) {}
 
@@ -35,6 +35,8 @@ pub trait EventListener: Send + Sync {
 	/// Called when a transaction fails
 	async fn on_transaction_error(&self, _error: &str) {}
 }
+
+type SharedEventListener = Arc<dyn EventListener + 'static>;
 
 /// Metrics collected for a single query execution
 #[derive(Debug, Clone)]
@@ -237,7 +239,7 @@ impl Statistics {
 
 /// Main instrumentation system for tracking database operations
 pub struct Instrumentation {
-	listeners: Arc<DashMap<String, Arc<dyn EventListener>>>,
+	listeners: Arc<DashMap<String, SharedEventListener>>,
 	query_metrics: Arc<DashMap<String, Vec<QueryMetrics>>>,
 	transaction_metrics: Arc<DashMap<String, Vec<TransactionMetrics>>>,
 	statistics: Arc<parking_lot::RwLock<Statistics>>,
@@ -284,7 +286,7 @@ impl Instrumentation {
 	/// instrumentation.add_listener("my_listener".to_string(), Arc::new(MyListener));
 	/// assert_eq!(instrumentation.listener_count(), 1);
 	/// ```
-	pub fn add_listener(&self, id: String, listener: Arc<dyn EventListener>) {
+	pub fn add_listener(&self, id: String, listener: SharedEventListener) {
 		self.listeners.insert(id, listener);
 	}
 
@@ -325,6 +327,13 @@ impl Instrumentation {
 		self.listeners.len()
 	}
 
+	fn listener_snapshot(&self) -> Vec<SharedEventListener> {
+		self.listeners
+			.iter()
+			.map(|entry| Arc::clone(entry.value()))
+			.collect()
+	}
+
 	/// Notifies all listeners that a query has started
 	///
 	/// # Examples
@@ -340,8 +349,9 @@ impl Instrumentation {
 	/// # });
 	/// ```
 	pub async fn query_start(&self, query: &str) {
-		for entry in self.listeners.iter() {
-			entry.value().on_query_start(query).await;
+		let listeners = self.listener_snapshot();
+		for listener in listeners {
+			listener.on_query_start(query).await;
 		}
 	}
 
@@ -395,8 +405,9 @@ impl Instrumentation {
 
 		super::n_plus_one::record_query(query, params, duration);
 
-		for entry in self.listeners.iter() {
-			entry.value().on_query_end(query, duration).await;
+		let listeners = self.listener_snapshot();
+		for listener in listeners {
+			listener.on_query_end(query, duration).await;
 		}
 	}
 
@@ -429,8 +440,9 @@ impl Instrumentation {
 			.or_default()
 			.push(metrics);
 
-		for entry in self.listeners.iter() {
-			entry.value().on_query_error(query, error).await;
+		let listeners = self.listener_snapshot();
+		for listener in listeners {
+			listener.on_query_error(query, error).await;
 		}
 	}
 
@@ -449,8 +461,9 @@ impl Instrumentation {
 	/// # });
 	/// ```
 	pub async fn transaction_start(&self) {
-		for entry in self.listeners.iter() {
-			entry.value().on_transaction_start().await;
+		let listeners = self.listener_snapshot();
+		for listener in listeners {
+			listener.on_transaction_start().await;
 		}
 	}
 
@@ -469,8 +482,9 @@ impl Instrumentation {
 	/// # });
 	/// ```
 	pub async fn transaction_end(&self, committed: bool) {
-		for entry in self.listeners.iter() {
-			entry.value().on_transaction_end(committed).await;
+		let listeners = self.listener_snapshot();
+		for listener in listeners {
+			listener.on_transaction_end(committed).await;
 		}
 	}
 
