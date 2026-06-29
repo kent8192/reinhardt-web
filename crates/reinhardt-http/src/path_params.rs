@@ -47,7 +47,7 @@ impl PathParamValue {
 impl From<&str> for PathParamValue {
 	fn from(value: &str) -> Self {
 		Self {
-			inner: value.as_bytes().iter().copied().collect(),
+			inner: PathParamValueBytes::from_slice(value.as_bytes()),
 		}
 	}
 }
@@ -198,18 +198,18 @@ impl PathParams {
 		I: IntoIterator<Item = V>,
 		V: AsRef<str>,
 	{
-		let values: PathParamValues = values
-			.into_iter()
-			.map(|value| PathParamValue::from(value.as_ref()))
-			.collect();
+		let mut path_values = PathParamValues::with_capacity(names.len());
+		for value in values {
+			path_values.push(PathParamValue::from(value.as_ref()));
+		}
 		assert_eq!(
 			names.len(),
-			values.len(),
+			path_values.len(),
 			"shared path parameter names and values must have the same length"
 		);
 		Self {
 			names: PathParamNameStorage::Shared(names),
-			values,
+			values: path_values,
 		}
 	}
 

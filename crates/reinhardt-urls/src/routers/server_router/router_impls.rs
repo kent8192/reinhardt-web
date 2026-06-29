@@ -48,23 +48,19 @@ impl Handler for FixedResponseHandler {
 	}
 }
 
-impl ServerRouter {
-	/// Dispatch a request through this router without a trait-object handler wrapper.
-	///
-	/// This has the same routing behavior as the [`Handler`] implementation, but
-	/// concrete callers can await the router's inherent future directly instead of
-	/// going through the boxed future produced by `async_trait`.
-	pub async fn dispatch(&self, mut req: Request) -> Result<Response> {
+macro_rules! dispatch_router_request {
+	($router:expr, $req:expr) => {{
+		let mut req = $req;
 		let path = req.uri.path();
 		let method = &req.method;
 
 		// Resolve route with HTTP method for matchit routing
-		let route_match = match self.resolve(path, method) {
+		let route_match = match $router.resolve(path, method) {
 			Some(m) => m,
 			None => {
 				// Route not found for this method
 				// Check if path exists for any other method to determine 404 vs 405
-				let error = if self.path_exists_for_any_method(path) {
+				let error = if $router.path_exists_for_any_method(path) {
 					Error::MethodNotAllowed(format!("Method {} not allowed for {}", method, path))
 				} else {
 					Error::NotFound(format!("No route for {} {}", method, path))
@@ -73,7 +69,7 @@ impl ServerRouter {
 				// If router has middleware, route the error response through the
 				// middleware chain so post-processing (e.g., security headers) is
 				// applied to framework-level 404/405 responses. (#3234)
-				let own_middleware = self.build_middleware_with_exclusions();
+				let own_middleware = $router.build_middleware_with_exclusions();
 				if own_middleware.is_empty() {
 					return Err(error);
 				}
@@ -114,6 +110,17 @@ impl ServerRouter {
 			// Execute chain
 			chain.handle(req).await
 		}
+	}};
+}
+
+impl ServerRouter {
+	/// Dispatch a request through this router without a trait-object handler wrapper.
+	///
+	/// This has the same routing behavior as the [`Handler`] implementation, but
+	/// concrete callers can await the router's inherent future directly instead of
+	/// going through the boxed future produced by `async_trait`.
+	pub async fn dispatch(&self, req: Request) -> Result<Response> {
+		dispatch_router_request!(self, req)
 	}
 }
 
@@ -121,7 +128,7 @@ impl ServerRouter {
 #[async_trait]
 impl Handler for ServerRouter {
 	async fn handle(&self, req: Request) -> Result<Response> {
-		self.dispatch(req).await
+		dispatch_router_request!(self, req)
 	}
 }
 
