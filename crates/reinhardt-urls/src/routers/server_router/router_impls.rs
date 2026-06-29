@@ -98,8 +98,9 @@ impl ServerRouter {
 
 		// Apply middleware stack using MiddlewareChain
 		if route_match.middleware_stack.is_empty() {
-			// No middleware, execute handler directly
-			route_match.handler.handle(req).await
+			// No middleware, execute the trait object directly. Calling through
+			// `Arc<dyn Handler>` would add the blanket `Arc<T>` async-trait box.
+			route_match.handler.as_ref().handle(req).await
 		} else {
 			let chain = MiddlewareChain::with_middlewares(
 				Arc::clone(route_match.handler),
