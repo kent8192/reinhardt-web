@@ -351,6 +351,32 @@ impl HttpServer {
 
 		Ok(())
 	}
+
+	/// Handle a single TCP connection with a synchronous request handler.
+	///
+	/// This is a lower-overhead variant for routes that complete without
+	/// awaiting after the request body has been collected.
+	pub async fn handle_connection_sync<F>(
+		stream: TcpStream,
+		socket_addr: SocketAddr,
+		handler: F,
+		di_context: Option<Arc<InjectionContext>>,
+	) -> Result<(), Box<dyn std::error::Error>>
+	where
+		F: Fn(Request) -> reinhardt_http::Result<Response> + Clone + Send + Sync + 'static,
+	{
+		let io = TokioIo::new(stream);
+		let service = service_fn(move |req| {
+			let handler = handler.clone();
+			let di_context = di_context.clone();
+
+			handle_request_sync(req, handler, socket_addr, di_context, DEFAULT_MAX_BODY_SIZE)
+		});
+
+		http1::Builder::new().serve_connection(io, service).await?;
+
+		Ok(())
+	}
 }
 
 /// Default maximum request body size (10 MB)
@@ -412,6 +438,65 @@ where
 		}
 	};
 	let response = handler(request).await.unwrap_or_else(|e| {
+		#[cfg(debug_assertions)]
+		if let Some(request_path) = request_path_for_warning.as_deref() {
+			eprintln!(
+				"[reinhardt WARN] Non-API request hit error-to-JSON conversion: path={}, error={}",
+				request_path, e
+			);
+		}
+		Response::from(e)
+	});
+
+	Ok(into_hyper_response(response))
+}
+
+async fn handle_request_sync<F>(
+	req: hyper::Request<Incoming>,
+	handler: F,
+	remote_addr: SocketAddr,
+	di_context: Option<Arc<InjectionContext>>,
+	max_body_size: u64,
+) -> Result<hyper::Response<Full<Bytes>>, BoxError>
+where
+	F: Fn(Request) -> reinhardt_http::Result<Response> + Clone + Send + Sync + 'static,
+{
+	let (parts, body) = req.into_parts();
+
+	let body_bytes = match request_body_plan(&parts.method, &parts.headers, max_body_size) {
+		RequestBodyPlan::Empty => Bytes::new(),
+		RequestBodyPlan::Collect => collect_request_body(body, max_body_size).await?,
+		RequestBodyPlan::RejectTooLarge => {
+			return Ok(hyper::Response::builder()
+				.status(StatusCode::PAYLOAD_TOO_LARGE)
+				.body(Full::new(Bytes::from_static(b"Request body too large")))
+				.expect("Failed to build 413 response"));
+		}
+	};
+
+	let mut request = Request::from_hyper_parts(
+		parts.method,
+		parts.uri,
+		parts.version,
+		parts.headers,
+		body_bytes,
+		Some(remote_addr),
+	);
+
+	if let Some(ctx) = di_context {
+		request.set_di_context(ctx);
+	}
+
+	#[cfg(debug_assertions)]
+	let request_path_for_warning = {
+		let path = request.uri.path();
+		if path.contains('.') && !path.ends_with(".json") {
+			Some(path.to_string())
+		} else {
+			None
+		}
+	};
+	let response = handler(request).unwrap_or_else(|e| {
 		#[cfg(debug_assertions)]
 		if let Some(request_path) = request_path_for_warning.as_deref() {
 			eprintln!(

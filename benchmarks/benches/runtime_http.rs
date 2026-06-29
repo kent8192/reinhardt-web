@@ -564,16 +564,13 @@ async fn spawn_reinhardt_server(client: &Client) -> LoopbackServer {
 						Ok((stream, socket_addr)) => {
 							let router = router.clone();
 							tokio::spawn(async move {
-								if let Err(err) = ReinhardtHttpServer::handle_connection_with(
+								if let Err(err) = ReinhardtHttpServer::handle_connection_sync(
 									stream,
 									socket_addr,
 									move |request| {
-										let router = router.clone();
-										async move {
-											router
-												.try_dispatch_sync(request)
-												.expect("runtime benchmark routes should be synchronous")
-										}
+										router
+											.try_dispatch_sync(request)
+											.expect("runtime benchmark routes should be synchronous")
 									},
 									None,
 								)
