@@ -25,8 +25,8 @@ Using plain `cargo fmt` would not match the existing CI gate.
 
 ## 2. Goals
 
-Automatically commit and push safe style fixes when a pull request fails the
-format or Clippy gate.
+Automatically commit safe style fixes when a pull request fails the format or
+Clippy gate.
 
 Keep the write boundary narrow:
 
@@ -47,67 +47,88 @@ Keep the write boundary narrow:
 
 ## 4. Selected Approach
 
-Add an `auto-fix-style` job to `.github/workflows/ci.yml`.
+Add three downstream jobs to `.github/workflows/ci.yml`:
 
-The job runs only when the reusable `fmt` or `clippy` job fails. It is gated to
-`pull_request` events where the pull-request head repository is the same as the
-base repository, and where the head branch is not protected or release-managed.
+- `auto-fix-style-target` checks whether the pull-request head is eligible;
+- `auto-fix-style` runs the formatter and Clippy fix commands without write
+  credentials and exports a patch artifact when changes are produced;
+- `commit-auto-fix-style` applies the patch in a clean checkout and writes the
+  commit through GitHub GraphQL.
 
-The job checks out the pull-request head branch, installs the same tools used by
-the style gates, runs the matching fix command, and commits only when the fix
-command leaves a worktree diff.
+The target job runs only when the reusable `fmt` or `clippy` job fails. It is
+gated to `pull_request` events where the pull-request head repository is the
+same as the base repository. It also checks the repository branch API so the
+write path is disabled when the PR head branch is actually protected, not just
+when its name matches a local denylist.
+
+The fix job checks out the pull-request head branch, installs the same tools
+used by the style gates, runs the matching fix command, and uploads a binary
+patch only when the fix command leaves a worktree diff.
 
 ## 5. Execution Flow
 
 1. `ci.yml` runs the existing `fmt` and `clippy` reusable workflows.
-2. If either job fails, `auto-fix-style` evaluates its safety gate.
-3. If the pull request is ineligible, the job exits without pushing.
-4. If eligible, the job checks out the PR head branch.
-5. The job installs Rust, `rustfmt`, `clippy`, `protoc`, and `cargo-make`.
-6. The job runs:
+2. If either job fails, `auto-fix-style-target` evaluates the same-repository,
+   release-managed, project read-only branch, and branch-protection gates.
+3. If the pull request is ineligible, the downstream fix and write jobs are
+   skipped.
+4. If eligible, `auto-fix-style` checks out the PR head branch.
+5. The fix job installs Rust, `rustfmt`, `clippy`, `protoc`, and `cargo-make`.
+6. The fix job runs:
    - `cargo make fmt-fix` when only formatting failed;
    - `cargo make clippy-fix` when only Clippy failed;
    - `cargo make auto-fix` when both failed.
-7. If there is no diff after the fix command, the job exits without committing.
-8. If there is a diff, the job commits it as `ci: auto-fix fmt and clippy`.
-9. The job pushes the new commit to the pull-request head branch.
+7. If there is no diff after the fix command, the workflow exits without
+   committing.
+8. If there is a diff, the fix job uploads a binary patch artifact.
+9. `commit-auto-fix-style` checks out a clean copy of the PR head branch and
+   applies the patch without executing PR-controlled build or make code.
+10. The write job rechecks the target branch protection state before generating
+    a write-capable token.
+11. If the branch is still eligible, the write job creates the commit with
+    GitHub GraphQL `createCommitOnBranch`.
 
 ## 6. Token and Push Model
 
-The job runs formatter and Clippy fix commands without a write token available to
-the checkout. The checkout uses `persist-credentials: false`, and the GitHub App
-token is generated only after the fix commands have completed and a worktree diff
-has been detected.
+The fix job runs formatter and Clippy fix commands without a write token
+available to the checkout. The checkout uses `persist-credentials: false`, and
+the job exports only a patch artifact.
 
-Use the existing GitHub App token pattern that is already present in repository
-workflows that need write access. This avoids relying on `GITHUB_TOKEN` behavior
-for triggering follow-up workflows after a push.
+The write job starts from a clean checkout, downloads the patch, and applies it
+with `git apply --index`. It does not run `cargo make`, build scripts,
+proc-macros, or repository hooks before generating the write token.
 
-The generated token is used only by the final push step. The push target is the
-exact pull-request head branch. The workflow never pushes to protected or
-release-managed branches.
+The GitHub App token is generated only in the write job after the patch is
+applied and the target branch protection state is rechecked. The token requests
+only `permission-contents: write`.
+
+The write job uses the existing repository pattern based on GraphQL
+`createCommitOnBranch`, instead of local `git commit` plus `git push`. This
+matches the release workflow's web-flow commit path and avoids the
+`github-actions[bot]` push behavior that can suppress `pull_request:
+synchronize` check runs.
 
 ## 7. Failure Handling
 
-The auto-fix job does not mask the original style failure unless it successfully
-pushes a new commit.
+The auto-fix workflow does not mask the original style failure unless it
+successfully creates a new commit.
 
 If the fix command fails, the job fails and pushes nothing. If the fix command
-succeeds but leaves no diff, the job pushes nothing. If the push fails, the job
-fails and leaves the pull request in its original failing state.
+succeeds but leaves no diff, the workflow writes nothing. If patch application
+or GraphQL commit creation fails, the write job fails and leaves the pull
+request in its original failing state.
 
 This keeps false-positive auto-fix runs visible while still allowing a successful
-push to trigger a fresh CI run on the corrected branch.
+web-flow commit to trigger a fresh CI run on the corrected branch.
 
 ## 8. Commit Shape
 
 The auto-fix commit uses:
 
-- author: `github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>`;
 - message: `ci: auto-fix fmt and clippy`;
 - body: a short note with the workflow run URL.
 
-The workflow does not post PR comments. The pushed commit is the audit trail.
+The workflow does not post PR comments. The GraphQL commit is the audit trail.
 
 ## 9. Validation
 
@@ -115,14 +136,18 @@ Local validation for the workflow change:
 
 - `actionlint -shellcheck= .github/workflows/ci.yml`
 - shell syntax checks for any extracted multi-line shell script used by the job
+- inspection that the target job uses the branch API before the write-capable
+  path can run
+- inspection that the App token step requests only `permission-contents: write`
 
 Hosted validation:
 
 - create or update a same-repository test PR with intentional formatter drift;
-- confirm the `auto-fix-style` job pushes a fix commit;
-- confirm the new pushed commit triggers a fresh CI run;
-- confirm fork and protected-branch cases remain read-only by inspection of the
-  workflow conditions.
+- confirm the fix job uploads a patch artifact and the write job creates a
+  GraphQL commit;
+- confirm the new GraphQL commit triggers a fresh CI run;
+- confirm fork, protected-branch, and project read-only branch cases remain
+  read-only by inspection of the workflow gates.
 
 ## 10. Open Risks
 
