@@ -390,9 +390,16 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 			// (in ConditionalComposedHandler) so that middleware post-processing
 			// always runs. This unwrap_or_else is a safety net for errors that
 			// escape the chain (e.g., middleware-internal failures without a chain).
-			let request_path = request.uri.path().to_string();
+			let request_path_for_warning = {
+				let path = request.uri.path();
+				if path.contains('.') && !path.ends_with(".json") {
+					Some(path.to_string())
+				} else {
+					None
+				}
+			};
 			let response = handler.handle(request).await.unwrap_or_else(|e| {
-				if request_path.contains('.') && !request_path.ends_with(".json") {
+				if let Some(request_path) = request_path_for_warning.as_deref() {
 					eprintln!(
 						"[reinhardt WARN] Non-API request hit error-to-JSON conversion: path={}, error={}",
 						request_path, e
