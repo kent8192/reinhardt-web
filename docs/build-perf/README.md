@@ -167,16 +167,16 @@ are recorded in
 
 The 2026-06-29 UTC same-host Codespaces backend run compared
 `origin/develop/0.3.0` at `b046f6184b3047010dd184383bd1fbf22dd5e6c7` with the
-0.4 integrated head at `58bc3fc581343a6adf9324d7586b99b70d6d56e7` on a
+0.4 integrated head at `312d94152dd1e536a40cafee150f49570c393b52` on a
 `largePremiumLinux` Codespace with an AMD EPYC 7763 CPU and `rustc 1.96.0`.
 Values are the median of five Criterion point estimates from the native
 endpoint benchmark:
 
 | Benchmark | Baseline median | Integrated median | Reduction |
 |---|---:|---:|---:|
-| `http_endpoint_plain_get` | 477.5 ns | 467.9 ns | 2.0% |
-| `http_endpoint_path_param_get` | 608.3 ns | 542.2 ns | 10.9% |
-| `server_fn_json_post` | 1.191 us | 1.187 us | 0.3% |
+| `http_endpoint_plain_get` | 475.3 ns | 455.3 ns | 4.2% |
+| `http_endpoint_path_param_get` | 600.2 ns | 552.8 ns | 7.9% |
+| `server_fn_json_post` | 1.189 us | 1.165 us | 2.0% |
 
 The 2026-06-25 measurement compared `origin/develop/0.3.0` with only the
 benchmark harness applied against the optimized branch. Values are the mean of
