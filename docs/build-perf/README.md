@@ -248,7 +248,7 @@ concrete router dispatch fast path:
 | `clone_for_di_two_query_params` | 6 alloc/request | 0 alloc/request | 100.0% |
 | `server_router_static_build_plus_handle` | 6 alloc/request | 2 alloc/request | 66.7% |
 | `server_router_two_params_build_plus_handle` | 10 alloc/request | 2 alloc/request | 80.0% |
-| `server_router_one_middleware_build_plus_handle` | 12 alloc/request | 9 alloc/request | 25.0% |
+| `server_router_one_middleware_build_plus_handle` | 12 alloc/request | 8 alloc/request | 33.3% |
 
 Runtime HTTP scorecard acceptance still requires a low-noise loopback rerun.
 During the inline path-parameter measurement, system load was above normal and
@@ -288,6 +288,9 @@ middleware composition needs an owned handler. The common no-middleware route
 path calls the matched handler through the borrowed compiled-route entry and
 dispatches directly to the `dyn Handler`, avoiding the extra `async_trait` box
 from the blanket `Arc<T>` handler implementation.
+The middleware chain uses the same direct trait-object dispatch for internal
+handler calls, reducing one boxed future on skipped middleware and final handler
+execution paths.
 
 `ServerRouter::dispatch` exposes the router's concrete request future for
 callers that do not need to erase the router behind `dyn Handler`.

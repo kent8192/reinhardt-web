@@ -280,13 +280,13 @@ impl MiddlewareChain {
 impl Handler for MiddlewareChain {
 	async fn handle(&self, request: Request) -> Result<Response> {
 		if self.middlewares.is_empty() {
-			return self.handler.handle(request).await;
+			return self.handler.as_ref().handle(request).await;
 		}
 
 		if self.middlewares.len() == 1 {
 			let middleware = &self.middlewares[0];
 			if !middleware.should_continue(&request) {
-				return match self.handler.handle(request).await {
+				return match self.handler.as_ref().handle(request).await {
 					Ok(response) => Ok(response),
 					Err(e) => Ok(Response::from(e)),
 				};
@@ -331,7 +331,7 @@ impl Handler for MiddlewareChain {
 			});
 		}
 
-		current_handler.handle(request).await
+		current_handler.as_ref().handle(request).await
 	}
 }
 
@@ -444,7 +444,7 @@ struct ErrorToResponseHandler {
 #[async_trait]
 impl Handler for ErrorToResponseHandler {
 	async fn handle(&self, request: Request) -> Result<Response> {
-		match self.inner.handle(request).await {
+		match self.inner.as_ref().handle(request).await {
 			Ok(response) => Ok(response),
 			Err(e) => Ok(Response::from(e)),
 		}

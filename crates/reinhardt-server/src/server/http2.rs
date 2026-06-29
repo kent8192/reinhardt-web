@@ -260,6 +260,7 @@ async fn handle_request(
 
 	// Handle request
 	let response = handler
+		.as_ref()
 		.handle(request)
 		.await
 		.unwrap_or_else(|_| Response::internal_server_error());

@@ -317,7 +317,7 @@ impl HttpServer {
 			socket_addr,
 			move |request| {
 				let handler = Arc::clone(&handler);
-				async move { handler.handle(request).await }
+				async move { handler.as_ref().handle(request).await }
 			},
 			di_context,
 		)
