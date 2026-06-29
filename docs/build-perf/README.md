@@ -259,6 +259,12 @@ from method dispatch. It does not change `request_alloc_probe` counts because
 the previous lock guard did not allocate; the expected benefit is lower
 loopback latency and less contention under concurrent request load.
 
+The zero-child, zero-middleware router path also dispatches directly to the
+router's own compiled route table. Static routes avoid cloning empty shared
+path-parameter name storage, and the router skips middleware-stack assembly
+when no middleware can run. These changes are fixed-cost latency reductions and
+do not change the allocation probe counts above.
+
 ## Admin List Query Count Measurements
 
 Use the admin database mock tests before claiming query-count reductions on the

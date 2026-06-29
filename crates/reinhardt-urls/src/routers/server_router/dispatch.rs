@@ -56,6 +56,15 @@ impl ServerRouter {
 		// 1. Check prefix and normalize remaining path (ensures leading `/`)
 		let remaining_path = Self::strip_prefix_normalized(&self.prefix, path)?;
 
+		if self.children.is_empty() && self.middleware.is_empty() {
+			return self.match_own_routes_with_context(
+				&remaining_path,
+				method,
+				Vec::new(),
+				self.di_context.clone(),
+			);
+		}
+
 		// 2. Try child routers first
 		let own_middleware = self.build_middleware_with_exclusions();
 		for child in &self.children {
@@ -152,10 +161,14 @@ impl ServerRouter {
 				// yields parameters in URL pattern declaration order, so we
 				// store them in ordered `PathParams` all the way down to the
 				// tuple extractor (see issue #4013).
-				let params = PathParams::from_shared_names(
-					route_handler.param_names.clone(),
-					matched.params.iter().map(|(_, value)| value),
-				);
+				let params = if route_handler.param_names.is_empty() {
+					PathParams::new()
+				} else {
+					PathParams::from_shared_names(
+						route_handler.param_names.clone(),
+						matched.params.iter().map(|(_, value)| value),
+					)
+				};
 
 				// Combine router-level and route-level middleware.
 				let mut combined_middleware = middleware_stack;
