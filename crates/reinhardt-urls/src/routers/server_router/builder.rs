@@ -6,13 +6,12 @@
 use super::ServerRouter;
 use super::types::MiddlewareInfo;
 use crate::routers::UrlReverser;
-use matchit::Router as MatchitRouter;
 use reinhardt_di::InjectionContext;
 use reinhardt_http::ExcludeMiddleware;
 use reinhardt_middleware::Middleware;
 #[cfg(feature = "viewsets")]
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock};
 
 impl ServerRouter {
 	/// Validate that a prefix for `mount`/`include` follows Django URL conventions.
@@ -95,14 +94,7 @@ impl ServerRouter {
 			middleware_names: Vec::new(),
 			middleware_exclusions: Vec::new(),
 			reverser: UrlReverser::new(),
-			get_router: RwLock::new(MatchitRouter::new()),
-			post_router: RwLock::new(MatchitRouter::new()),
-			put_router: RwLock::new(MatchitRouter::new()),
-			delete_router: RwLock::new(MatchitRouter::new()),
-			patch_router: RwLock::new(MatchitRouter::new()),
-			head_router: RwLock::new(MatchitRouter::new()),
-			options_router: RwLock::new(MatchitRouter::new()),
-			compiled_route_errors: OnceLock::new(),
+			compiled_routes: OnceLock::new(),
 		}
 	}
 

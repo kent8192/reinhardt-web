@@ -6,6 +6,7 @@
 //! `compile`, `introspection`, `dispatch`).
 
 use hyper::Method;
+use matchit::Router as MatchitRouter;
 use reinhardt_di::InjectionContext;
 use reinhardt_http::{Handler, PathParams};
 use reinhardt_middleware::Middleware;
@@ -41,6 +42,80 @@ pub struct MiddlewareInfo {
 
 /// Route information tuple: (path, name, namespace, methods)
 pub type RouteInfo = Vec<(String, Option<String>, Option<String>, Vec<Method>)>;
+
+/// Immutable method-indexed route table built from registered routes.
+///
+/// `ServerRouter` stores this behind `OnceLock` so route compilation remains
+/// lazy while dispatch can read compiled matchit routers without a per-request
+/// lock.
+pub(crate) struct CompiledRoutes {
+	pub(crate) get: MatchitRouter<RouteHandler>,
+	pub(crate) post: MatchitRouter<RouteHandler>,
+	pub(crate) put: MatchitRouter<RouteHandler>,
+	pub(crate) delete: MatchitRouter<RouteHandler>,
+	pub(crate) patch: MatchitRouter<RouteHandler>,
+	pub(crate) head: MatchitRouter<RouteHandler>,
+	pub(crate) options: MatchitRouter<RouteHandler>,
+	pub(crate) errors: Vec<String>,
+}
+
+impl Default for CompiledRoutes {
+	fn default() -> Self {
+		Self {
+			get: MatchitRouter::new(),
+			post: MatchitRouter::new(),
+			put: MatchitRouter::new(),
+			delete: MatchitRouter::new(),
+			patch: MatchitRouter::new(),
+			head: MatchitRouter::new(),
+			options: MatchitRouter::new(),
+			errors: Vec::new(),
+		}
+	}
+}
+
+impl CompiledRoutes {
+	pub(crate) fn router_for_method(&self, method: &Method) -> &MatchitRouter<RouteHandler> {
+		match *method {
+			Method::GET => &self.get,
+			Method::POST => &self.post,
+			Method::PUT => &self.put,
+			Method::DELETE => &self.delete,
+			Method::PATCH => &self.patch,
+			Method::HEAD => &self.head,
+			Method::OPTIONS => &self.options,
+			_ => &self.get,
+		}
+	}
+
+	pub(crate) fn router_for_method_mut(
+		&mut self,
+		method: &Method,
+	) -> &mut MatchitRouter<RouteHandler> {
+		match *method {
+			Method::GET => &mut self.get,
+			Method::POST => &mut self.post,
+			Method::PUT => &mut self.put,
+			Method::DELETE => &mut self.delete,
+			Method::PATCH => &mut self.patch,
+			Method::HEAD => &mut self.head,
+			Method::OPTIONS => &mut self.options,
+			_ => &mut self.get,
+		}
+	}
+
+	pub(crate) fn method_routers(&self) -> [&MatchitRouter<RouteHandler>; 7] {
+		[
+			&self.get,
+			&self.post,
+			&self.put,
+			&self.delete,
+			&self.patch,
+			&self.head,
+			&self.options,
+		]
+	}
+}
 
 /// Join two path segments, normalizing any double slashes.
 ///

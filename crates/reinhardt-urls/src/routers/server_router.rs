@@ -20,7 +20,7 @@
 //!
 //! Each HTTP method has its own matchit router for optimal performance:
 //! - `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`
-//! - Routes are compiled lazily on first access (thread-safe with OnceLock)
+//! - Routes are compiled lazily on first access into an immutable route table
 //! - Parameters are extracted directly from matchit's Params
 //!
 //! # Module Layout
@@ -45,12 +45,11 @@
 //! - `global`   — global router registry used by `showurls`
 
 use crate::routers::UrlReverser;
-use matchit::Router as MatchitRouter;
 use reinhardt_di::InjectionContext;
 use reinhardt_middleware::Middleware;
 #[cfg(feature = "viewsets")]
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock};
 
 pub mod global;
 mod handlers;
@@ -67,7 +66,7 @@ mod types;
 #[cfg(test)]
 mod tests;
 
-use self::types::{FunctionRoute, RouteHandler, ViewRoute};
+use self::types::{CompiledRoutes, FunctionRoute, ViewRoute};
 
 pub use self::global::{
 	clear_router, get_router, get_router_di_context, is_router_registered,
@@ -188,27 +187,6 @@ pub struct ServerRouter {
 	/// URL reverser
 	pub(crate) reverser: UrlReverser,
 
-	/// Matchit router for GET requests (uses RwLock for thread-safe lazy compilation)
-	pub(crate) get_router: RwLock<MatchitRouter<RouteHandler>>,
-
-	/// Matchit router for POST requests
-	pub(crate) post_router: RwLock<MatchitRouter<RouteHandler>>,
-
-	/// Matchit router for PUT requests
-	pub(crate) put_router: RwLock<MatchitRouter<RouteHandler>>,
-
-	/// Matchit router for DELETE requests
-	pub(crate) delete_router: RwLock<MatchitRouter<RouteHandler>>,
-
-	/// Matchit router for PATCH requests
-	pub(crate) patch_router: RwLock<MatchitRouter<RouteHandler>>,
-
-	/// Matchit router for HEAD requests
-	pub(crate) head_router: RwLock<MatchitRouter<RouteHandler>>,
-
-	/// Matchit router for OPTIONS requests
-	pub(crate) options_router: RwLock<MatchitRouter<RouteHandler>>,
-
-	/// Cached route compilation result.
-	pub(crate) compiled_route_errors: OnceLock<Vec<String>>,
+	/// Cached immutable route table and route compilation errors.
+	pub(crate) compiled_routes: OnceLock<CompiledRoutes>,
 }

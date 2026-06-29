@@ -479,30 +479,14 @@ fn test_router_reuses_compiled_routes() {
 	// Act
 	let first_errors = router.compile_routes();
 	let second_errors = router.compile_routes();
+	let first_table = router.compiled_routes() as *const _;
+	let second_table = router.compiled_routes() as *const _;
 
 	// Assert
 	assert!(first_errors.is_empty());
 	assert!(second_errors.is_empty());
+	assert_eq!(first_table, second_table);
 	let result = router.match_own_routes("/health", &Method::GET);
-	assert!(result.is_some());
-}
-
-#[rstest]
-fn test_route_matching_recovers_from_poisoned_method_router() {
-	// Arrange
-	let router = ServerRouter::new().endpoint(|| TestEndpoint::<1>);
-	router.compile_routes();
-
-	// Poison the get_router RwLock
-	let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-		let _guard = router.get_router.write().unwrap();
-		panic!("intentional panic to poison lock");
-	}));
-
-	// Act - match_own_routes should recover from poisoned lock
-	let result = router.match_own_routes("/health", &Method::GET);
-
-	// Assert - route matching should still work
 	assert!(result.is_some());
 }
 

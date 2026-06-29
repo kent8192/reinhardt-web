@@ -10,7 +10,7 @@ use reinhardt_di::InjectionContext;
 use reinhardt_http::PathParams;
 use reinhardt_middleware::Middleware;
 use std::borrow::Cow;
-use std::sync::{Arc, PoisonError};
+use std::sync::Arc;
 
 impl ServerRouter {
 	/// Strip `prefix` from `path` and ensure the result always has a leading `/`.
@@ -128,8 +128,9 @@ impl ServerRouter {
 		middleware_stack: Vec<Arc<dyn Middleware>>,
 		di_context: Option<Arc<InjectionContext>>,
 	) -> Option<RouteMatch> {
-		// Compile routes on first use (lazy compilation with interior mutability)
-		self.compile_routes();
+		// Compile routes on first use, then read immutable method routers
+		// without taking a per-request lock.
+		let compiled_routes = self.compiled_routes();
 
 		// Normalize path for matchit lookup - routes are registered with leading slash.
 		// Borrow the common already-normalized path to avoid per-request allocation.
@@ -139,19 +140,8 @@ impl ServerRouter {
 			Cow::Owned(format!("/{path}"))
 		};
 
-		// Use matchit to find matching route - O(m) complexity
-		let router_lock = match *method {
-			Method::GET => &self.get_router,
-			Method::POST => &self.post_router,
-			Method::PUT => &self.put_router,
-			Method::DELETE => &self.delete_router,
-			Method::PATCH => &self.patch_router,
-			Method::HEAD => &self.head_router,
-			Method::OPTIONS => &self.options_router,
-			_ => &self.get_router,
-		};
-
-		let router = router_lock.read().unwrap_or_else(PoisonError::into_inner);
+		// Use matchit to find matching route - O(m) complexity.
+		let router = compiled_routes.router_for_method(method);
 
 		macro_rules! return_route_match {
 			($matched:expr) => {{
@@ -214,7 +204,7 @@ impl ServerRouter {
 	/// This is used to determine whether to return 404 (path not found)
 	/// or 405 (method not allowed) when a route doesn't match.
 	pub(crate) fn path_exists_for_any_method(&self, path: &str) -> bool {
-		self.compile_routes();
+		let compiled_routes = self.compiled_routes();
 
 		// Apply prefix stripping logic (same as resolve method, ensures leading `/`)
 		let search_path = match Self::strip_prefix_normalized(&self.prefix, path) {
@@ -222,19 +212,8 @@ impl ServerRouter {
 			None => return false,
 		};
 
-		let method_routers = [
-			&self.get_router,
-			&self.post_router,
-			&self.put_router,
-			&self.delete_router,
-			&self.patch_router,
-			&self.head_router,
-			&self.options_router,
-		];
-
 		let path_exists = |candidate_path: &str| {
-			for router_lock in method_routers {
-				let router = router_lock.read().unwrap_or_else(PoisonError::into_inner);
+			for router in compiled_routes.method_routers() {
 				if router.at(candidate_path).is_ok() {
 					return true;
 				}

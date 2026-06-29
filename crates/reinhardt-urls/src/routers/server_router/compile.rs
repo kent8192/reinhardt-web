@@ -6,13 +6,12 @@
 use super::ServerRouter;
 #[cfg(feature = "viewsets")]
 use super::handlers::ViewSetHandler;
-use super::types::RouteHandler;
+use super::types::{CompiledRoutes, RouteHandler};
 use hyper::Method;
 #[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::Action;
 use std::borrow::Cow;
 use std::sync::Arc;
-use std::sync::PoisonError;
 
 fn extract_path_param_names(path: &str) -> Arc<[String]> {
 	let mut names = Vec::new();
@@ -40,16 +39,18 @@ impl ServerRouter {
 	/// It converts patterns like "/users/{id}" to matchit format.
 	///
 	/// Returns a list of route compilation errors (if any). Empty list means
-	/// all routes compiled successfully. RwLock poisoning is recovered from
-	/// via `PoisonError::into_inner` to prevent cascade failures.
+	/// all routes compiled successfully.
 	pub(crate) fn compile_routes(&self) -> Vec<String> {
-		self.compiled_route_errors
-			.get_or_init(|| self.compile_routes_once())
-			.clone()
+		self.compiled_routes().errors.clone()
 	}
 
-	fn compile_routes_once(&self) -> Vec<String> {
-		let mut errors = Vec::new();
+	pub(crate) fn compiled_routes(&self) -> &CompiledRoutes {
+		self.compiled_routes
+			.get_or_init(|| self.compile_routes_once())
+	}
+
+	fn compile_routes_once(&self) -> CompiledRoutes {
+		let mut compiled = CompiledRoutes::default();
 
 		// Compile endpoint routes
 		for func_route in &self.functions {
@@ -69,22 +70,11 @@ impl ServerRouter {
 			let route_path: &str = &route_path_owned;
 
 			// matchit uses {name} format which matches our pattern
-			let router_lock = match func_route.method {
-				Method::GET => &self.get_router,
-				Method::POST => &self.post_router,
-				Method::PUT => &self.put_router,
-				Method::DELETE => &self.delete_router,
-				Method::PATCH => &self.patch_router,
-				Method::HEAD => &self.head_router,
-				Method::OPTIONS => &self.options_router,
-				_ => &self.get_router,
-			};
-			if let Err(e) = router_lock
-				.write()
-				.unwrap_or_else(PoisonError::into_inner)
+			if let Err(e) = compiled
+				.router_for_method_mut(&func_route.method)
 				.insert(route_path, route_handler)
 			{
-				errors.push(format!(
+				compiled.errors.push(format!(
 					"Failed to compile route '{}' ({}): {}",
 					func_route.path, func_route.method, e
 				));
@@ -105,19 +95,18 @@ impl ServerRouter {
 			let route_path: &str = &route_path_owned;
 
 			// Register view for all common HTTP methods
-			for router_lock in &[
-				&self.get_router,
-				&self.post_router,
-				&self.put_router,
-				&self.delete_router,
-				&self.patch_router,
+			for method in [
+				Method::GET,
+				Method::POST,
+				Method::PUT,
+				Method::DELETE,
+				Method::PATCH,
 			] {
-				if let Err(e) = router_lock
-					.write()
-					.unwrap_or_else(PoisonError::into_inner)
+				if let Err(e) = compiled
+					.router_for_method_mut(&method)
 					.insert(route_path, route_handler.clone())
 				{
-					errors.push(format!(
+					compiled.errors.push(format!(
 						"Failed to compile view route '{}': {}",
 						view_route.path, e
 					));
@@ -139,19 +128,18 @@ impl ServerRouter {
 			let route_path: &str = &route_path_owned;
 
 			// Register raw route for all common HTTP methods
-			for router_lock in &[
-				&self.get_router,
-				&self.post_router,
-				&self.put_router,
-				&self.delete_router,
-				&self.patch_router,
+			for method in [
+				Method::GET,
+				Method::POST,
+				Method::PUT,
+				Method::DELETE,
+				Method::PATCH,
 			] {
-				if let Err(e) = router_lock
-					.write()
-					.unwrap_or_else(PoisonError::into_inner)
+				if let Err(e) = compiled
+					.router_for_method_mut(&method)
 					.insert(route_path, route_handler.clone())
 				{
-					errors.push(format!(
+					compiled.errors.push(format!(
 						"Failed to compile raw route '{}': {}",
 						route.path, e
 					));
@@ -160,13 +148,13 @@ impl ServerRouter {
 		}
 
 		#[cfg(feature = "viewsets")]
-		self.compile_viewset_routes(&mut errors);
+		self.compile_viewset_routes(&mut compiled);
 
-		errors
+		compiled
 	}
 
 	#[cfg(feature = "viewsets")]
-	fn compile_viewset_routes(&self, errors: &mut Vec<String>) {
+	fn compile_viewset_routes(&self, compiled: &mut CompiledRoutes) {
 		// ViewSet base_path must NOT include self.prefix because resolve() strips
 		// the prefix from incoming request paths before matching against matchit.
 		for (prefix, viewset) in &self.viewsets {
@@ -182,13 +170,11 @@ impl ServerRouter {
 				middleware: Vec::new(),
 				param_names: extract_path_param_names(&collection_path),
 			};
-			if let Err(e) = self
-				.get_router
-				.write()
-				.unwrap_or_else(PoisonError::into_inner)
+			if let Err(e) = compiled
+				.router_for_method_mut(&Method::GET)
 				.insert(&collection_path, list_handler)
 			{
-				errors.push(format!(
+				compiled.errors.push(format!(
 					"Failed to compile ViewSet list route '{}': {}",
 					collection_path, e
 				));
@@ -202,13 +188,11 @@ impl ServerRouter {
 				middleware: Vec::new(),
 				param_names: extract_path_param_names(&collection_path),
 			};
-			if let Err(e) = self
-				.post_router
-				.write()
-				.unwrap_or_else(PoisonError::into_inner)
+			if let Err(e) = compiled
+				.router_for_method_mut(&Method::POST)
 				.insert(&collection_path, create_handler)
 			{
-				errors.push(format!(
+				compiled.errors.push(format!(
 					"Failed to compile ViewSet create route '{}': {}",
 					collection_path, e
 				));
@@ -225,13 +209,11 @@ impl ServerRouter {
 				middleware: Vec::new(),
 				param_names: extract_path_param_names(&detail_path),
 			};
-			if let Err(e) = self
-				.get_router
-				.write()
-				.unwrap_or_else(PoisonError::into_inner)
+			if let Err(e) = compiled
+				.router_for_method_mut(&Method::GET)
 				.insert(&detail_path, retrieve_handler)
 			{
-				errors.push(format!(
+				compiled.errors.push(format!(
 					"Failed to compile ViewSet retrieve route '{}': {}",
 					detail_path, e
 				));
@@ -245,13 +227,11 @@ impl ServerRouter {
 				middleware: Vec::new(),
 				param_names: extract_path_param_names(&detail_path),
 			};
-			if let Err(e) = self
-				.put_router
-				.write()
-				.unwrap_or_else(PoisonError::into_inner)
+			if let Err(e) = compiled
+				.router_for_method_mut(&Method::PUT)
 				.insert(&detail_path, update_handler)
 			{
-				errors.push(format!(
+				compiled.errors.push(format!(
 					"Failed to compile ViewSet update route '{}': {}",
 					detail_path, e
 				));
@@ -265,13 +245,11 @@ impl ServerRouter {
 				middleware: Vec::new(),
 				param_names: extract_path_param_names(&detail_path),
 			};
-			if let Err(e) = self
-				.delete_router
-				.write()
-				.unwrap_or_else(PoisonError::into_inner)
+			if let Err(e) = compiled
+				.router_for_method_mut(&Method::DELETE)
 				.insert(&detail_path, destroy_handler)
 			{
-				errors.push(format!(
+				compiled.errors.push(format!(
 					"Failed to compile ViewSet destroy route '{}': {}",
 					detail_path, e
 				));

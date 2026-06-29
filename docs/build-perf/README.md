@@ -234,7 +234,8 @@ a Reinhardt `Request`.
 
 The integrated 2026-06-29 0.4 fast-path measurement combines lazy query
 parameters, lazy extension backing-store initialization, empty HTTP/1 body
-skipping, shared route parameter names, and inline path parameter values:
+skipping, shared route parameter names, inline path parameter values, and an
+immutable compiled router table:
 
 | Probe | `develop/0.4.0` baseline | Integrated fast path | Reduction |
 |---|---:|---:|---:|
@@ -252,6 +253,11 @@ Runtime HTTP scorecard acceptance still requires a low-noise loopback rerun.
 During the inline path-parameter measurement, system load was above normal and
 all compared frameworks regressed together, so those runtime samples were not
 used as acceptance evidence.
+
+The immutable compiled router table removes per-request `RwLock::read()` calls
+from method dispatch. It does not change `request_alloc_probe` counts because
+the previous lock guard did not allocate; the expected benefit is lower
+loopback latency and less contention under concurrent request load.
 
 ## Admin List Query Count Measurements
 
