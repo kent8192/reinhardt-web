@@ -147,6 +147,21 @@ server-function hot-path improvements:
 cargo bench -p reinhardt-pages --bench server_fn_endpoint_benchmarks -- --sample-size 30 --measurement-time 2
 ```
 
+Record at least three runs and report the median of Criterion's point
+estimates. This benchmark is the backend/native endpoint complement to the
+loopback HTTP runtime comparison: it measures in-process Reinhardt endpoint and
+`server_fn` dispatch without the socket and HTTP client costs used by
+`cargo make benchmark-runtime-http`.
+
+For disposable remote validation, prefer a GitHub Codespaces
+`largePremiumLinux` machine and record the machine type, CPU model, toolchain,
+commit, and exact commands with the results. Do not compare remote x86_64 VM
+absolute timings directly with local macOS baseline target ranges; re-run the
+baseline on the same remote host class when making absolute pass/fail claims.
+The detailed remote procedure and the 2026-06-29 UTC Codespaces measurements
+are recorded in
+[`0.4-performance-scorecard.md`](0.4-performance-scorecard.md).
+
 The 2026-06-25 measurement compared `origin/develop/0.3.0` with only the
 benchmark harness applied against the optimized branch. Values are the mean of
 two Criterion runs on the same host; Criterion's persisted `change` lines were
