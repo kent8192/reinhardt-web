@@ -175,10 +175,9 @@ pub(crate) struct RouteHandler {
 }
 
 /// Route match result with metadata
-#[derive(Clone)]
-pub(crate) struct RouteMatch {
+pub(crate) struct RouteMatch<'a> {
 	/// Matched handler
-	pub handler: Arc<dyn Handler>,
+	pub handler: &'a Arc<dyn Handler>,
 
 	/// Extracted path parameters in URL pattern declaration order.
 	///
@@ -193,7 +192,7 @@ pub(crate) struct RouteMatch {
 	pub di_context: Option<Arc<InjectionContext>>,
 }
 
-impl RouteMatch {
+impl RouteMatch<'_> {
 	/// Look up a path parameter by name.
 	///
 	/// `params` is stored in declaration order (see issue #4013) so this helper

@@ -99,7 +99,7 @@ impl Handler for ServerRouter {
 			route_match.handler.handle(req).await
 		} else {
 			let chain = MiddlewareChain::with_middlewares(
-				route_match.handler.clone(),
+				Arc::clone(route_match.handler),
 				route_match.middleware_stack,
 			);
 

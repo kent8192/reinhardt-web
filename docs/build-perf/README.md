@@ -279,6 +279,10 @@ re-inserting every header through `Response::builder`.
 the zero-`HashMap` behavior while avoiding repeated query-string splitting when
 a handler reads several known parameters from the same request.
 
+Router matches borrow the compiled route handler and only clone its `Arc` when
+middleware composition needs an owned handler. The common no-middleware route
+path calls the matched handler through the borrowed compiled-route entry.
+
 ## Admin List Query Count Measurements
 
 Use the admin database mock tests before claiming query-count reductions on the

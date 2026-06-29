@@ -52,7 +52,7 @@ impl ServerRouter {
 	/// 1. Check prefix match
 	/// 2. Try child routers first (depth-first search)
 	/// 3. Try own routes
-	pub(crate) fn resolve(&self, path: &str, method: &Method) -> Option<RouteMatch> {
+	pub(crate) fn resolve(&self, path: &str, method: &Method) -> Option<RouteMatch<'_>> {
 		// 1. Check prefix and normalize remaining path (ensures leading `/`)
 		let remaining_path = Self::strip_prefix_normalized(&self.prefix, path)?;
 
@@ -91,7 +91,7 @@ impl ServerRouter {
 		method: &Method,
 		parent_middleware: &[Arc<dyn Middleware>],
 		parent_di: &Option<Arc<InjectionContext>>,
-	) -> Option<RouteMatch> {
+	) -> Option<RouteMatch<'_>> {
 		// Check prefix and normalize remaining path (ensures leading `/`)
 		let remaining_path = Self::strip_prefix_normalized(&self.prefix, path)?;
 
@@ -117,7 +117,7 @@ impl ServerRouter {
 
 	/// Match routes in this router (without context)
 	#[cfg(test)]
-	pub(crate) fn match_own_routes(&self, path: &str, method: &Method) -> Option<RouteMatch> {
+	pub(crate) fn match_own_routes(&self, path: &str, method: &Method) -> Option<RouteMatch<'_>> {
 		self.match_own_routes_with_context(
 			path,
 			method,
@@ -136,7 +136,7 @@ impl ServerRouter {
 		method: &Method,
 		middleware_stack: Vec<Arc<dyn Middleware>>,
 		di_context: Option<Arc<InjectionContext>>,
-	) -> Option<RouteMatch> {
+	) -> Option<RouteMatch<'_>> {
 		// Compile routes on first use, then read immutable method routers
 		// without taking a per-request lock.
 		let compiled_routes = self.compiled_routes();
@@ -175,7 +175,7 @@ impl ServerRouter {
 				combined_middleware.extend(route_handler.middleware.iter().cloned());
 
 				return Some(RouteMatch {
-					handler: route_handler.handler.clone(),
+					handler: &route_handler.handler,
 					params,
 					middleware_stack: combined_middleware,
 					di_context,
