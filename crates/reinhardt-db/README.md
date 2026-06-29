@@ -286,7 +286,8 @@ let updated = User::objects()
 
 Use `NPlusOneScope` around development diagnostics or focused tests to detect
 repeated query shapes with different bind or inline literal values. The
-detector is opt-in and is disabled when no scope is active.
+detector is opt-in and is disabled when no scope is active. QuerySet execution
+and relationship accessors are recorded by active scopes.
 
 ```rust
 use reinhardt_db::orm::{NPlusOneConfig, NPlusOneScope};
@@ -304,6 +305,8 @@ For tests that should fail on suspicious repeated query shapes, use
 `NPlusOneScope::fail(...).run(...)` around the focused code path. Fix reported
 patterns by using `select_related()` for single-object relationships and
 `prefetch_related()` or explicit batch queries for collection relationships.
+Use `NPlusOneScope::spawn(...)` for spawned tasks that should inherit the active
+scope.
 
 ### Create Migrations
 

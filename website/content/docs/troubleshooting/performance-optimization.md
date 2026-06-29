@@ -131,8 +131,10 @@ for finding in report.findings {
 ```
 
 Use `NPlusOneScope::fail(...).run(...)` in focused tests when a path must stay
-batched. The detector is disabled unless a scope is installed, so production
-requests are unchanged by default.
+batched. QuerySet execution and relationship accessors are recorded by active
+scopes. Use `NPlusOneScope::spawn(...)` for spawned tasks that should inherit
+the active scope. The detector is disabled unless a scope is installed, so
+production requests are unchanged by default.
 
 ---
 

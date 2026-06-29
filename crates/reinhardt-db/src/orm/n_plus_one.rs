@@ -91,7 +91,7 @@ impl QueryFingerprint {
 
 		while let Some(ch) = chars.next() {
 			match ch {
-				'\'' | '"' => {
+				'\'' => {
 					let literal = consume_quoted_literal(ch, &mut chars);
 					normalized.push('?');
 					literal_samples.push(mask_value(&literal));
@@ -296,6 +296,18 @@ impl NPlusOneScope {
 
 		(output, report)
 	}
+
+	/// Spawns a task that inherits the active N+1 scope when one exists.
+	pub fn spawn<F, T>(future: F) -> tokio::task::JoinHandle<T>
+	where
+		F: Future<Output = T> + Send + 'static,
+		T: Send + 'static,
+	{
+		match CURRENT_N_PLUS_ONE_SCOPE.try_with(Arc::clone) {
+			Ok(state) => tokio::spawn(CURRENT_N_PLUS_ONE_SCOPE.scope(state, future)),
+			Err(_) => tokio::spawn(future),
+		}
+	}
 }
 
 pub(crate) fn record_query(query: &str, params: &[String], duration: Duration) -> bool {
@@ -493,6 +505,23 @@ mod tests {
 			fingerprint.normalized,
 			"SELECT * FROM posts WHERE author_id = ? AND status = ?"
 		);
+	}
+
+	#[test]
+	fn preserves_double_quoted_identifiers() {
+		let posts = QueryFingerprint::from_sql(r#"SELECT * FROM "posts" WHERE "author_id" = 1"#);
+		let comments =
+			QueryFingerprint::from_sql(r#"SELECT * FROM "comments" WHERE "post_id" = 2"#);
+
+		assert_eq!(
+			posts.normalized,
+			r#"SELECT * FROM "posts" WHERE "author_id" = ?"#
+		);
+		assert_eq!(
+			comments.normalized,
+			r#"SELECT * FROM "comments" WHERE "post_id" = ?"#
+		);
+		assert_ne!(posts.normalized, comments.normalized);
 	}
 
 	#[test]
@@ -735,6 +764,31 @@ mod tests {
 		assert!(second_report.findings.is_empty());
 		assert_eq!(first_report.total_recorded_queries, 3);
 		assert_eq!(second_report.total_recorded_queries, 1);
+	}
+
+	#[tokio::test]
+	async fn spawned_scope_tasks_share_query_samples() {
+		let (_, report) = NPlusOneScope::warn("posts.index", low_threshold_config())
+			.run_with_report(async {
+				let mut handles = Vec::new();
+				for author_id in ["1", "2", "3"] {
+					handles.push(NPlusOneScope::spawn(async move {
+						record_query(
+							"SELECT * FROM posts WHERE author_id = $1",
+							&[author_id.to_string()],
+							Duration::from_millis(1),
+						);
+					}));
+				}
+
+				for handle in handles {
+					handle.await.expect("scoped task should complete");
+				}
+			})
+			.await;
+
+		assert_eq!(report.findings.len(), 1);
+		assert_eq!(report.total_recorded_queries, 3);
 	}
 
 	#[test]
