@@ -164,6 +164,14 @@ skips response-cookie jar creation for body-only server functions, and
 deserializes JSON server-function requests directly from bytes when content
 negotiation is not required.
 
+## Reinhardt 0.4 Performance Scorecard
+
+The `develop/0.4.0` breaking-change line uses
+[`0.4-performance-scorecard.md`](0.4-performance-scorecard.md) as the planning
+contract for runtime HTTP, endpoint dispatch, request allocation, and
+compile-time feature-graph reductions. Use it before removing compatibility
+APIs or claiming cross-framework runtime parity.
+
 ### Request Allocation Probe
 
 Use the allocation probe before claiming request-allocation changes:
