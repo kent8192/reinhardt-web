@@ -114,7 +114,7 @@ pub use middleware::{
 	ExcludeMiddleware, Handler, Middleware, MiddlewareChain, MiddlewareDiRegistration,
 };
 pub use path_params::PathParams;
-pub use request::{Request, RequestBuilder, TrustedProxies};
+pub use request::{QueryParams, Request, RequestBuilder, TrustedProxies};
 pub use response::{Response, SafeErrorResponse, StreamBody, StreamingResponse};
 pub use response_cookies::{ResponseCookies, SharedResponseCookies};
 pub use upload::{FileUploadError, FileUploadHandler, MemoryFileUpload, TemporaryFileUpload};
