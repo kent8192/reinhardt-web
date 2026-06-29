@@ -116,6 +116,46 @@ macro_rules! dispatch_router_request {
 }
 
 impl ServerRouter {
+	/// Try to dispatch a request through the synchronous route fast path.
+	///
+	/// Returns `None` when the matched route requires async handling or a
+	/// middleware chain. Callers that need general routing should fall back to
+	/// [`Self::dispatch`] in that case.
+	pub fn try_dispatch_sync(&self, mut req: Request) -> Option<Result<Response>> {
+		let path = req.uri.path();
+		let method = &req.method;
+
+		let route_match = match self.resolve(path, method) {
+			Some(m) => m,
+			None => {
+				let error = if self.path_exists_for_any_method(path) {
+					Error::MethodNotAllowed(format!("Method {} not allowed for {}", method, path))
+				} else {
+					Error::NotFound(format!("No route for {} {}", method, path))
+				};
+
+				if self.build_middleware_with_exclusions().is_empty() {
+					return Some(Err(error));
+				}
+				return None;
+			}
+		};
+
+		if !route_match.middleware_stack.is_empty() {
+			return None;
+		}
+
+		let sync_handler = route_match.sync_handler?;
+		if let Some(params) = route_match.params {
+			req.path_params = params;
+		}
+		if let Some(di_ctx) = &route_match.di_context {
+			req.set_di_context(di_ctx.clone());
+		}
+
+		Some(sync_handler.handle_sync(req))
+	}
+
 	/// Dispatch a request through this router without a trait-object handler wrapper.
 	///
 	/// This has the same routing behavior as the [`Handler`] implementation, but

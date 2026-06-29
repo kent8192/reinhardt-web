@@ -569,7 +569,11 @@ async fn spawn_reinhardt_server(client: &Client) -> LoopbackServer {
 									socket_addr,
 									move |request| {
 										let router = router.clone();
-										async move { router.dispatch(request).await }
+										async move {
+											router
+												.try_dispatch_sync(request)
+												.expect("runtime benchmark routes should be synchronous")
+										}
 									},
 									None,
 								)

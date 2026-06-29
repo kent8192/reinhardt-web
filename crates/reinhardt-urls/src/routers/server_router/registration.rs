@@ -419,6 +419,33 @@ mod sync_handler_tests {
 		assert_eq!(response.body.as_ref(), b"ok");
 	}
 
+	#[test]
+	fn endpoint_sync_dispatches_through_synchronous_router_path() {
+		// Arrange
+		let router = ServerRouter::new().endpoint_sync(|| HealthEndpoint);
+
+		// Act
+		let response = router
+			.try_dispatch_sync(request("/health"))
+			.expect("sync route should use the synchronous dispatch path")
+			.expect("route should dispatch");
+
+		// Assert
+		assert_eq!(response.status, StatusCode::OK);
+		assert_eq!(response.body.as_ref(), b"ok");
+	}
+
+	#[test]
+	fn endpoint_sync_with_middleware_declines_synchronous_router_path() {
+		// Arrange
+		let router = ServerRouter::new()
+			.with_middleware(PassThroughMiddleware)
+			.endpoint_sync(|| HealthEndpoint);
+
+		// Act & Assert
+		assert!(router.try_dispatch_sync(request("/health")).is_none());
+	}
+
 	#[tokio::test]
 	async fn handler_sync_still_runs_through_middleware_chain() {
 		// Arrange
