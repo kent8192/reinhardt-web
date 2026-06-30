@@ -3,6 +3,20 @@ use futures::stream::Stream;
 use hyper::{HeaderMap, StatusCode};
 use serde::Serialize;
 use std::pin::Pin;
+use std::sync::OnceLock;
+
+static JSON_CONTENT_TYPE_HEADERS: OnceLock<HeaderMap> = OnceLock::new();
+
+fn json_content_type_headers() -> &'static HeaderMap {
+	JSON_CONTENT_TYPE_HEADERS.get_or_init(|| {
+		let mut headers = HeaderMap::with_capacity(1);
+		headers.insert(
+			hyper::header::CONTENT_TYPE,
+			hyper::header::HeaderValue::from_static("application/json"),
+		);
+		headers
+	})
+}
 
 /// Returns a safe, client-facing error message based on the HTTP status code.
 ///
@@ -266,6 +280,7 @@ impl Response {
 	/// assert_eq!(response.status, StatusCode::OK);
 	/// assert_eq!(response.headers.get(header::CONTENT_TYPE).unwrap(), "application/json");
 	/// ```
+	#[inline]
 	pub fn from_typed_header_body(
 		status: StatusCode,
 		key: hyper::header::HeaderName,
@@ -277,6 +292,20 @@ impl Response {
 		Self {
 			status,
 			headers,
+			body: body.into(),
+			stop_chain: false,
+		}
+	}
+
+	/// Create a JSON response body with a prebuilt `Content-Type` header map.
+	///
+	/// This is intended for hot paths that already serialized the body and only
+	/// need the standard JSON content type.
+	#[inline]
+	pub fn from_json_body(status: StatusCode, body: impl Into<Bytes>) -> Self {
+		Self {
+			status,
+			headers: json_content_type_headers().clone(),
 			body: body.into(),
 			stop_chain: false,
 		}

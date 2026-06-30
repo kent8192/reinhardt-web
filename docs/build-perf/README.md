@@ -211,9 +211,12 @@ negotiation is not required. The 0.4 server-function dispatch path also keeps
 serialized responses as `bytes::Bytes` and writes static typed response
 content-type headers. Generated JSON server-function handlers borrow request
 bodies directly when extractor or DI parameters do not need body-consumption
-state after decoding. Generated `ServerFnRegistration::handle()` implementations
-return their concrete future, while the legacy `ServerRouter::handle()` backend
-benchmark still includes the outer route `Handler` trait-object box.
+state after decoding. That no-extractor/no-DI JSON path now assumes a JSON
+request body and skips server-side content negotiation; use `codec = "url"` for
+URL-encoded server-function payloads. Generated
+`ServerFnRegistration::handle()` implementations return their concrete future,
+while the legacy `ServerRouter::handle()` backend benchmark still includes the
+outer route `Handler` trait-object box.
 
 ## Reinhardt 0.4 Performance Scorecard
 

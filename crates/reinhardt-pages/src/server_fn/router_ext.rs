@@ -83,10 +83,24 @@ impl ServerFnRouterExt for ServerRouter {
 
 struct ServerFnEndpoint<S>(PhantomData<S>);
 
+#[inline]
 fn response_content_type(codec: &str) -> HeaderValue {
 	match codec {
 		"msgpack" => HeaderValue::from_static("application/msgpack"),
 		_ => HeaderValue::from_static("application/json"),
+	}
+}
+
+#[inline]
+fn response_with_codec_body(status: StatusCode, codec: &str, body: bytes::Bytes) -> Response {
+	match codec {
+		"json" => Response::from_json_body(status, body),
+		_ => Response::from_typed_header_body(
+			status,
+			CONTENT_TYPE,
+			response_content_type(codec),
+			body,
+		),
 	}
 }
 
@@ -118,12 +132,7 @@ impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 		};
 
 		let mut response = match S::handle(req).await {
-			Ok(body) => Response::from_typed_header_body(
-				StatusCode::OK,
-				CONTENT_TYPE,
-				response_content_type(S::CODEC),
-				body,
-			),
+			Ok(body) => response_with_codec_body(StatusCode::OK, S::CODEC, body),
 			Err(error_body) => {
 				let name = S::NAME;
 				let path = S::PATH;
@@ -145,12 +154,7 @@ impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 					})
 					.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
-				Response::from_typed_header_body(
-					status_code,
-					CONTENT_TYPE,
-					response_content_type(S::CODEC),
-					error_body,
-				)
+				response_with_codec_body(status_code, S::CODEC, error_body)
 			}
 		};
 

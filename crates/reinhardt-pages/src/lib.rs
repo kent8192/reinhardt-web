@@ -429,6 +429,8 @@ pub mod __private {
 	}
 	pub use bon;
 	pub use bytes;
+	#[cfg(native)]
+	pub use hyper;
 	pub use inventory;
 	pub use reinhardt_urls;
 

@@ -1153,46 +1153,14 @@ fn generate_server_handler(
 		match codec {
 			"json" if !has_inject_or_extractor => {
 				quote! {
-					let __content_type = __req.headers.get("content-type");
-					let body = __req.body();
-					let __converted_body;
-					let body: &[u8] = match __content_type {
-						None => body.as_ref(),
-						Some(__value)
-							if __value.as_bytes().eq_ignore_ascii_case(b"application/json") =>
-						{
-							body.as_ref()
-						}
-						Some(__value) => {
-							let __content_type = __value.to_str().unwrap_or("");
-							let __media_type = __content_type
-								.split(';')
-								.next()
-								.unwrap_or("")
-								.trim();
-							if __media_type.is_empty()
-								|| __media_type.eq_ignore_ascii_case("application/json")
-							{
-								body.as_ref()
-							} else {
-								let __body_text = ::std::string::String::from_utf8(body.to_vec())
-									.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
-								__converted_body = #pages_crate::server_fn::convert_body_for_codec(
-									__body_text,
-									__content_type,
-									#codec,
-								)?;
-								__converted_body.as_bytes()
-							}
-						}
-					};
+					let body: &[u8] = __req.body().as_ref();
 				}
 			}
 			"json" => {
 				quote! {
 					let __content_type = __req
 						.headers
-						.get("content-type")
+						.get(#pages_crate::__private::hyper::header::CONTENT_TYPE)
 						.and_then(|value| value.to_str().ok())
 						.unwrap_or("");
 					let body = __req.read_body()
@@ -1222,7 +1190,7 @@ fn generate_server_handler(
 			_ => quote! {
 				let __content_type = __req
 					.headers
-					.get("content-type")
+					.get(#pages_crate::__private::hyper::header::CONTENT_TYPE)
 					.and_then(|value| value.to_str().ok())
 					.unwrap_or("");
 				let body = __req.read_body()
