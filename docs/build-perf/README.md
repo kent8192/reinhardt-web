@@ -181,6 +181,17 @@ endpoint benchmark:
 | `http_endpoint_path_param_get` | 599.5 ns | 561.1 ns | 6.4% |
 | `server_fn_json_post` | 1.208 us | 1.180 us | 2.4% |
 
+A 2026-06-29 UTC backend-only follow-up on the same Codespaces host class
+compared `b046f6184b3047010dd184383bd1fbf22dd5e6c7` with
+`52067ef9f712d8a60c07b3f4e674ebec4984dad4`. Values are the median of three
+Criterion point estimates:
+
+| Benchmark | Baseline median | Final head median | Reduction |
+|---|---:|---:|---:|
+| `http_endpoint_plain_get` | 488.0 ns | 459.2 ns | 5.9% |
+| `http_endpoint_path_param_get` | 601.3 ns | 553.0 ns | 8.0% |
+| `server_fn_json_post` | 1.185 us | 943.3 ns | 20.4% |
+
 The 2026-06-25 measurement compared `origin/develop/0.3.0` with only the
 benchmark harness applied against the optimized branch. Values are the mean of
 two Criterion runs on the same host; Criterion's persisted `change` lines were
