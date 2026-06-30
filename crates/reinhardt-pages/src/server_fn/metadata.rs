@@ -58,7 +58,7 @@ pub trait ServerFnMetadata: 'static {
 	///
 	/// This mirrors [`Self::CODEC`] as a boolean so native hot paths can avoid
 	/// per-request string comparisons when selecting response assembly.
-	const IS_JSON_CODEC: bool = true;
+	const IS_JSON_CODEC: bool;
 
 	/// Names of `#[inject]` parameters (for documentation / debugging).
 	const INJECTED_PARAMS: &'static [&'static str] = &[];

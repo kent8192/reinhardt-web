@@ -53,6 +53,7 @@ use reinhardt_http::Request;
 ///         const PATH: &'static str = "/api/server_fn/login";
 ///         const NAME: &'static str = "login";
 ///         const CODEC: &'static str = "json";
+///         const IS_JSON_CODEC: bool = true;
 ///     }
 ///
 ///     impl ::reinhardt_pages::server_fn::ServerFnRegistration for marker {
