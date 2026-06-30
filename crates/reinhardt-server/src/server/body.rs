@@ -143,7 +143,12 @@ mod tests {
 		.expect_err("body should exceed the configured limit");
 		let error = CollectRequestBodyError::from(error);
 
-		assert!(error.is_too_large());
+		match error {
+			CollectRequestBodyError::TooLarge => {}
+			CollectRequestBodyError::Read(error) => {
+				panic!("expected request body limit error, got read error: {error}")
+			}
+		}
 	}
 
 	#[test]

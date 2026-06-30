@@ -371,8 +371,9 @@ mod tests {
 	#[test]
 	fn path_param_names_ignore_escaped_literal_braces() {
 		let names = extract_path_param_names("/{{hello}}/");
+		let expected: &[String] = &[];
 
-		assert!(names.is_empty());
+		assert_eq!(&*names, expected);
 	}
 
 	#[test]
