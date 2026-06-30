@@ -121,12 +121,63 @@ macro_rules! dispatch_router_request {
 }
 
 impl ServerRouter {
+	fn try_dispatch_exact_requestless_sync(
+		&self,
+		path: &str,
+		method: &hyper::Method,
+	) -> Option<Result<Response>> {
+		if !self.children.is_empty() || !self.middleware.is_empty() || self.di_context.is_some() {
+			return None;
+		}
+
+		let remaining_path = Self::strip_prefix_normalized(&self.prefix, path)?;
+		let route_handler = self
+			.compiled_routes()
+			.exact_for_method(method)?
+			.get(remaining_path.as_ref())?;
+
+		if !route_handler.middleware.is_empty() || !route_handler.param_names.is_empty() {
+			return None;
+		}
+
+		route_handler
+			.requestless_sync_handler
+			.as_ref()
+			.map(|handler| handler.handle_requestless_sync())
+	}
+
 	/// Try to dispatch a request through the synchronous route fast path.
 	///
 	/// Returns `None` when the matched route requires async handling or a
 	/// middleware chain. Callers that need general routing should fall back to
 	/// [`Self::dispatch`] in that case.
 	pub fn try_dispatch_sync(&self, mut req: Request) -> Option<Result<Response>> {
+		if self.children.is_empty()
+			&& self.middleware.is_empty()
+			&& let Some(remaining_path) =
+				Self::strip_prefix_normalized(&self.prefix, req.uri.path())
+			&& let Some(exact_routes) = self.compiled_routes().exact_for_method(&req.method)
+			&& let Some(route_handler) = exact_routes.get(remaining_path.as_ref())
+			&& route_handler.middleware.is_empty()
+			&& route_handler.param_names.is_empty()
+		{
+			if let Some(requestless_handler) = route_handler.requestless_sync_handler.as_ref()
+				&& self.di_context.is_none()
+			{
+				return Some(requestless_handler.handle_requestless_sync());
+			}
+
+			if let Some(sync_handler) = route_handler.sync_handler.as_ref() {
+				if !req.path_params.is_empty() {
+					req.path_params = Default::default();
+				}
+				if let Some(di_ctx) = &self.di_context {
+					req.set_di_context(di_ctx.clone());
+				}
+				return Some(sync_handler.handle_sync(req));
+			}
+		}
+
 		let path = req.uri.path();
 		let method = &req.method;
 
@@ -177,6 +228,10 @@ impl ServerRouter {
 		path: &str,
 		method: &hyper::Method,
 	) -> Option<Result<Response>> {
+		if let Some(response) = self.try_dispatch_exact_requestless_sync(path, method) {
+			return Some(response);
+		}
+
 		let route_match = self.resolve(path, method)?;
 		if !route_match.middleware_stack.is_empty()
 			|| route_match.params.is_some()
