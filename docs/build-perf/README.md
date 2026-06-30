@@ -180,6 +180,10 @@ baseline on the same remote host class when making absolute pass/fail claims.
 The detailed remote procedure and the 2026-06-29 UTC Codespaces measurements
 are recorded in
 [`0.4-performance-scorecard.md`](0.4-performance-scorecard.md).
+When a local loopback run already sits at the client/server floor, use it only
+to check absolute target ranges and cross-framework parity. It does not prove a
+relative 20% runtime gate unless the same-host 0.3 baseline is far enough above
+the floor for fixed-cost framework changes to be visible.
 
 The 2026-06-29 UTC same-host Codespaces backend run compared
 `origin/develop/0.3.0` at `b046f6184b3047010dd184383bd1fbf22dd5e6c7` with the
