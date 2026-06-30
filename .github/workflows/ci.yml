@@ -189,6 +189,16 @@ jobs:
         && needs.auto-fix-style-target.outputs.eligible == 'true' }}
     runs-on: ${{ fromJSON(needs.determine-runner.outputs.runner) }}
     timeout-minutes: 360
+    env:
+      CARGO_TARGET_DIR: /tmp/cargo_target
+      CARGO_BUILD_JOBS: ${{ needs.determine-runner.outputs.cargo-build-jobs || '1' }}
+      # Workaround for arduino/setup-protoc#112, cloudflare/wrangler-action#413,
+      # hashicorp/setup-packer#162 (tracked in reinhardt-web#4125). Remove this
+      # once all three upstreams ship node24 releases.
+      #
+      # Ideal implementation (without workaround):
+      #   (no env override; let runner default kick in)
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     outputs:
       changed: ${{ steps.diff.outputs.changed }}
     steps:
@@ -204,10 +214,10 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      - name: Checkout pull request branch
+      - name: Checkout pull request head SHA
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           repository: ${{ github.repository }}
           persist-credentials: false
 
@@ -291,10 +301,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout pull request branch
+      - name: Checkout pull request head SHA
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           repository: ${{ github.repository }}
           persist-credentials: false
 
@@ -315,6 +325,28 @@ jobs:
             exit 1
           fi
           git diff --cached --stat
+
+      - name: Validate auto-fix patch
+        run: |
+          set -euo pipefail
+
+          while IFS=$'\t' read -r status path extra; do
+            case "$status" in
+              M|A)
+                mode="$(git ls-files -s -- "$path" | awk '{print $1}')"
+                if [[ "$mode" == "120000" ]]; then
+                  echo "::error::Auto-fix cannot commit symlink path '$path'."
+                  exit 1
+                fi
+                ;;
+              D)
+                ;;
+              *)
+                echo "::error::Unsupported auto-fix diff status '$status' for path '$path'."
+                exit 1
+                ;;
+            esac
+          done < <(git diff --cached --name-status HEAD)
 
       - name: Recheck auto-fix target branch
         id: recheck-target
@@ -379,12 +411,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
-          HEAD_OID="$(git rev-parse HEAD)"
+          HEAD_OID="$HEAD_SHA"
           TMP_DIR="$(mktemp -d)"
           trap 'rm -rf "$TMP_DIR"' EXIT
           ADDITIONS_FILE="$TMP_DIR/additions.ndjson"
@@ -396,8 +429,8 @@ jobs:
           while IFS=$'\t' read -r status path extra; do
             case "$status" in
               M|A)
-                base64 -w0 < "$path" \
-                  | jq -ncR --arg p "$path" '{path: $p, contents: input}' \
+                contents="$(git cat-file blob ":$path" | base64 -w0)"
+                jq -nc --arg p "$path" --arg c "$contents" '{path: $p, contents: $c}' \
                   >> "$ADDITIONS_FILE"
                 ;;
               D)
