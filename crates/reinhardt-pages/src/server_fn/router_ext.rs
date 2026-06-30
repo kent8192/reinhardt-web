@@ -118,9 +118,12 @@ impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 		};
 
 		let mut response = match S::handle(req).await {
-			Ok(body) => Response::ok()
-				.with_typed_header(CONTENT_TYPE, response_content_type(S::CODEC))
-				.with_body(body),
+			Ok(body) => Response::from_typed_header_body(
+				StatusCode::OK,
+				CONTENT_TYPE,
+				response_content_type(S::CODEC),
+				body,
+			),
 			Err(error_body) => {
 				let name = S::NAME;
 				let path = S::PATH;
@@ -142,9 +145,12 @@ impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 					})
 					.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
-				Response::new(status_code)
-					.with_typed_header(CONTENT_TYPE, response_content_type(S::CODEC))
-					.with_body(error_body)
+				Response::from_typed_header_body(
+					status_code,
+					CONTENT_TYPE,
+					response_content_type(S::CODEC),
+					error_body,
+				)
 			}
 		};
 

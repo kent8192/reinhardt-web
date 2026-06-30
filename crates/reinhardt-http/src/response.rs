@@ -243,6 +243,44 @@ impl Response {
 			stop_chain: false,
 		}
 	}
+
+	/// Create a response with one typed header and a body.
+	///
+	/// This constructor is useful for hot paths that always set a single
+	/// framework-controlled header, such as RPC codecs.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use bytes::Bytes;
+	/// use hyper::{StatusCode, header};
+	/// use reinhardt_http::Response;
+	///
+	/// let response = Response::from_typed_header_body(
+	///     StatusCode::OK,
+	///     header::CONTENT_TYPE,
+	///     "application/json".parse().unwrap(),
+	///     Bytes::from_static(br#"{"ok":true}"#),
+	/// );
+	///
+	/// assert_eq!(response.status, StatusCode::OK);
+	/// assert_eq!(response.headers.get(header::CONTENT_TYPE).unwrap(), "application/json");
+	/// ```
+	pub fn from_typed_header_body(
+		status: StatusCode,
+		key: hyper::header::HeaderName,
+		value: hyper::header::HeaderValue,
+		body: impl Into<Bytes>,
+	) -> Self {
+		let mut headers = HeaderMap::with_capacity(1);
+		headers.insert(key, value);
+		Self {
+			status,
+			headers,
+			body: body.into(),
+			stop_chain: false,
+		}
+	}
 	/// Create a Response with HTTP 200 OK status
 	///
 	/// # Examples
