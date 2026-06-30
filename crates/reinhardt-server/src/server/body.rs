@@ -3,22 +3,71 @@ use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::header::{CONTENT_LENGTH, TRANSFER_ENCODING};
 use hyper::{HeaderMap, Method};
+use std::fmt;
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
+#[derive(Debug)]
+pub(super) enum CollectRequestBodyError {
+	TooLarge,
+	Read(BoxError),
+}
+
+impl CollectRequestBodyError {
+	pub(super) fn is_too_large(&self) -> bool {
+		matches!(self, Self::TooLarge)
+	}
+
+	pub(super) fn into_box_error(self) -> BoxError {
+		match self {
+			Self::TooLarge => Box::new(std::io::Error::new(
+				std::io::ErrorKind::InvalidData,
+				"Request body exceeds size limit",
+			)),
+			Self::Read(error) => error,
+		}
+	}
+}
+
+impl From<BoxError> for CollectRequestBodyError {
+	fn from(error: BoxError) -> Self {
+		if error
+			.downcast_ref::<http_body_util::LengthLimitError>()
+			.is_some()
+		{
+			Self::TooLarge
+		} else {
+			Self::Read(error)
+		}
+	}
+}
+
+impl fmt::Display for CollectRequestBodyError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::TooLarge => f.write_str("Request body exceeds size limit"),
+			Self::Read(error) => fmt::Display::fmt(error, f),
+		}
+	}
+}
+
+impl std::error::Error for CollectRequestBodyError {
+	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+		match self {
+			Self::TooLarge => None,
+			Self::Read(error) => Some(error.as_ref()),
+		}
+	}
+}
 
 pub(super) async fn collect_request_body(
 	body: Incoming,
 	max_body_size: u64,
-) -> Result<Bytes, BoxError> {
+) -> Result<Bytes, CollectRequestBodyError> {
 	http_body_util::Limited::new(body, max_body_size as usize)
 		.collect()
 		.await
-		.map_err(|_| {
-			Box::new(std::io::Error::new(
-				std::io::ErrorKind::InvalidData,
-				"Request body exceeds size limit",
-			)) as BoxError
-		})
+		.map_err(CollectRequestBodyError::from)
 		.map(|collected| collected.to_bytes())
 }
 
@@ -82,6 +131,20 @@ fn is_empty_body_fast_path_method(method: &Method) -> bool {
 mod tests {
 	use super::*;
 	use hyper::header::HeaderValue;
+
+	#[tokio::test]
+	async fn collect_error_identifies_length_limit_errors() {
+		let error = http_body_util::Limited::new(
+			http_body_util::Full::new(Bytes::from_static(b"too large")),
+			1,
+		)
+		.collect()
+		.await
+		.expect_err("body should exceed the configured limit");
+		let error = CollectRequestBodyError::from(error);
+
+		assert!(error.is_too_large());
+	}
 
 	#[test]
 	fn skips_get_without_declared_body() {

@@ -414,16 +414,19 @@ fn test_compile_routes_populates_exact_static_route_table() {
 	assert!(
 		compiled
 			.exact_for_method(&Method::GET)
+			.expect("GET exact routes should be available")
 			.contains_key("/health")
 	);
 	assert!(
 		!compiled
 			.exact_for_method(&Method::GET)
+			.expect("GET exact routes should be available")
 			.contains_key("/users/{id}")
 	);
 	assert!(
 		compiled
 			.router_for_method(&Method::GET)
+			.expect("GET router should be available")
 			.at("/users/123")
 			.is_ok()
 	);
@@ -479,6 +482,20 @@ async fn test_route_matching_different_methods() {
 	// Act & Assert - unsupported method
 	let result = router.match_own_routes("/users", &Method::DELETE);
 	assert!(result.is_none());
+}
+
+#[rstest]
+fn test_unsupported_methods_do_not_fall_back_to_get_routes() {
+	// Arrange
+	let router = ServerRouter::new().endpoint(|| TestEndpoint::<1>);
+	router.compile_routes();
+	let trace = Method::from_bytes(b"TRACE").unwrap();
+	let custom = Method::from_bytes(b"BREW").unwrap();
+
+	// Act & Assert
+	assert!(router.match_own_routes("/health", &trace).is_none());
+	assert!(router.match_own_routes("/health", &custom).is_none());
+	assert!(router.path_exists_for_any_method("/health"));
 }
 
 #[rstest]
@@ -543,6 +560,21 @@ fn test_router_reuses_compiled_routes() {
 	assert_eq!(first_table, second_table);
 	let result = router.match_own_routes("/health", &Method::GET);
 	assert!(result.is_some());
+}
+
+#[rstest]
+fn test_router_rebuilds_compiled_routes_after_endpoint_registration() {
+	// Arrange
+	let router = ServerRouter::new().endpoint(|| TestEndpoint::<1>);
+	router.compile_routes();
+	assert!(router.match_own_routes("/list", &Method::GET).is_none());
+
+	// Act
+	let router = router.endpoint(|| TestEndpoint::<2>);
+
+	// Assert
+	assert!(router.match_own_routes("/health", &Method::GET).is_some());
+	assert!(router.match_own_routes("/list", &Method::GET).is_some());
 }
 
 // --- ServerRouter::exclude() tests ---

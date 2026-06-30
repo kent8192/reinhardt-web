@@ -37,25 +37,6 @@ fn extract_path_param_names(path: &str) -> Arc<[String]> {
 	names.into()
 }
 
-#[cfg(test)]
-mod tests {
-	use super::extract_path_param_names;
-
-	#[test]
-	fn path_param_names_ignore_escaped_literal_braces() {
-		let names = extract_path_param_names("/{{hello}}/");
-
-		assert!(names.is_empty());
-	}
-
-	#[test]
-	fn path_param_names_keep_params_after_escaped_literal_braces() {
-		let names = extract_path_param_names("/{{hello}}/{id}/{{literal}}/{*tail}");
-
-		assert_eq!(&*names, ["id".to_string(), "tail".to_string()].as_slice());
-	}
-}
-
 fn insert_compiled_route(
 	compiled: &mut CompiledRoutes,
 	method: &Method,
@@ -68,11 +49,13 @@ fn insert_compiled_route(
 		.then(|| route_handler.clone());
 	compiled
 		.router_for_method_mut(method)
+		.ok_or_else(|| format!("unsupported HTTP method '{method}'"))?
 		.insert(route_path, route_handler)
 		.map_err(|error| error.to_string())?;
 	if let Some(route_handler) = exact_handler {
 		compiled
 			.exact_for_method_mut(method)
+			.ok_or_else(|| format!("unsupported HTTP method '{method}'"))?
 			.insert(route_path.to_string(), route_handler);
 	}
 	Ok(())
@@ -93,6 +76,10 @@ impl ServerRouter {
 	pub(crate) fn compiled_routes(&self) -> &CompiledRoutes {
 		self.compiled_routes
 			.get_or_init(|| self.compile_routes_once())
+	}
+
+	pub(crate) fn invalidate_compiled_routes(&mut self) {
+		self.compiled_routes.take();
 	}
 
 	fn compile_routes_once(&self) -> CompiledRoutes {
@@ -374,5 +361,24 @@ impl ServerRouter {
 		} else {
 			Err(errors)
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::extract_path_param_names;
+
+	#[test]
+	fn path_param_names_ignore_escaped_literal_braces() {
+		let names = extract_path_param_names("/{{hello}}/");
+
+		assert!(names.is_empty());
+	}
+
+	#[test]
+	fn path_param_names_keep_params_after_escaped_literal_braces() {
+		let names = extract_path_param_names("/{{hello}}/{id}/{{literal}}/{*tail}");
+
+		assert_eq!(&*names, ["id".to_string(), "tail".to_string()].as_slice());
 	}
 }

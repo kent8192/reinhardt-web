@@ -150,7 +150,7 @@ impl ServerRouter {
 		};
 
 		// Use matchit to find matching route - O(m) complexity.
-		let router = compiled_routes.router_for_method(method);
+		let router = compiled_routes.router_for_method(method)?;
 
 		macro_rules! return_route_handler_match {
 			($route_handler:expr, $params:expr) => {{
@@ -172,7 +172,7 @@ impl ServerRouter {
 
 		if let Some(route_handler) = compiled_routes
 			.exact_for_method(method)
-			.get(search_path.as_ref())
+			.and_then(|routes| routes.get(search_path.as_ref()))
 		{
 			return_route_handler_match!(route_handler, None);
 		}

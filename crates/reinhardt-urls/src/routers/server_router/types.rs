@@ -90,61 +90,67 @@ impl Default for CompiledRoutes {
 }
 
 impl CompiledRoutes {
-	pub(crate) fn exact_for_method(&self, method: &Method) -> &HashMap<String, RouteHandler> {
+	pub(crate) fn exact_for_method(
+		&self,
+		method: &Method,
+	) -> Option<&HashMap<String, RouteHandler>> {
 		match *method {
-			Method::GET => &self.exact_get,
-			Method::POST => &self.exact_post,
-			Method::PUT => &self.exact_put,
-			Method::DELETE => &self.exact_delete,
-			Method::PATCH => &self.exact_patch,
-			Method::HEAD => &self.exact_head,
-			Method::OPTIONS => &self.exact_options,
-			_ => &self.exact_get,
+			Method::GET => Some(&self.exact_get),
+			Method::POST => Some(&self.exact_post),
+			Method::PUT => Some(&self.exact_put),
+			Method::DELETE => Some(&self.exact_delete),
+			Method::PATCH => Some(&self.exact_patch),
+			Method::HEAD => Some(&self.exact_head),
+			Method::OPTIONS => Some(&self.exact_options),
+			_ => None,
 		}
 	}
 
 	pub(crate) fn exact_for_method_mut(
 		&mut self,
 		method: &Method,
-	) -> &mut HashMap<String, RouteHandler> {
+	) -> Option<&mut HashMap<String, RouteHandler>> {
 		match *method {
-			Method::GET => &mut self.exact_get,
-			Method::POST => &mut self.exact_post,
-			Method::PUT => &mut self.exact_put,
-			Method::DELETE => &mut self.exact_delete,
-			Method::PATCH => &mut self.exact_patch,
-			Method::HEAD => &mut self.exact_head,
-			Method::OPTIONS => &mut self.exact_options,
-			_ => &mut self.exact_get,
+			Method::GET => Some(&mut self.exact_get),
+			Method::POST => Some(&mut self.exact_post),
+			Method::PUT => Some(&mut self.exact_put),
+			Method::DELETE => Some(&mut self.exact_delete),
+			Method::PATCH => Some(&mut self.exact_patch),
+			Method::HEAD => Some(&mut self.exact_head),
+			Method::OPTIONS => Some(&mut self.exact_options),
+			_ => None,
 		}
 	}
 
-	pub(crate) fn router_for_method(&self, method: &Method) -> &MatchitRouter<RouteHandler> {
+	pub(crate) fn router_for_method(
+		&self,
+		method: &Method,
+	) -> Option<&MatchitRouter<RouteHandler>> {
 		match *method {
-			Method::GET => &self.get,
-			Method::POST => &self.post,
-			Method::PUT => &self.put,
-			Method::DELETE => &self.delete,
-			Method::PATCH => &self.patch,
-			Method::HEAD => &self.head,
-			Method::OPTIONS => &self.options,
-			_ => &self.get,
+			Method::GET => Some(&self.get),
+			Method::POST => Some(&self.post),
+			Method::PUT => Some(&self.put),
+			Method::DELETE => Some(&self.delete),
+			Method::PATCH => Some(&self.patch),
+			Method::HEAD => Some(&self.head),
+			Method::OPTIONS => Some(&self.options),
+			_ => None,
 		}
 	}
 
 	pub(crate) fn router_for_method_mut(
 		&mut self,
 		method: &Method,
-	) -> &mut MatchitRouter<RouteHandler> {
+	) -> Option<&mut MatchitRouter<RouteHandler>> {
 		match *method {
-			Method::GET => &mut self.get,
-			Method::POST => &mut self.post,
-			Method::PUT => &mut self.put,
-			Method::DELETE => &mut self.delete,
-			Method::PATCH => &mut self.patch,
-			Method::HEAD => &mut self.head,
-			Method::OPTIONS => &mut self.options,
-			_ => &mut self.get,
+			Method::GET => Some(&mut self.get),
+			Method::POST => Some(&mut self.post),
+			Method::PUT => Some(&mut self.put),
+			Method::DELETE => Some(&mut self.delete),
+			Method::PATCH => Some(&mut self.patch),
+			Method::HEAD => Some(&mut self.head),
+			Method::OPTIONS => Some(&mut self.options),
+			_ => None,
 		}
 	}
 

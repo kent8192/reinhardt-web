@@ -498,6 +498,7 @@ impl Request {
 		version: Version,
 		headers: HeaderMap,
 		body: Bytes,
+		is_secure: bool,
 		remote_addr: Option<SocketAddr>,
 	) -> Self {
 		let query_params = QueryParams::from_uri(&uri);
@@ -510,7 +511,7 @@ impl Request {
 			body,
 			path_params: PathParams::new(),
 			query_params,
-			is_secure: false,
+			is_secure,
 			remote_addr,
 			#[cfg(feature = "parsers")]
 			parsers: Vec::new(),
@@ -1041,6 +1042,7 @@ mod tests {
 			Version::HTTP_11,
 			headers,
 			Bytes::from_static(b"body"),
+			true,
 			Some(remote_addr),
 		);
 
@@ -1049,6 +1051,8 @@ mod tests {
 		assert_eq!(request.query_params.get("q"), Some("rust"));
 		assert_eq!(request.query_params.get("page"), Some("2"));
 		assert_eq!(request.body(), &Bytes::from_static(b"body"));
+		assert!(request.is_secure());
+		assert_eq!(request.scheme(), "https");
 		assert_eq!(request.remote_addr, Some(remote_addr));
 		assert!(request.path_params.is_empty());
 	}

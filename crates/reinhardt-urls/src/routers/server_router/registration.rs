@@ -39,6 +39,7 @@ impl ServerRouter {
 	/// ```
 	#[cfg(feature = "viewsets")]
 	pub fn viewset<V: ViewSet + 'static>(mut self, prefix: &str, viewset: V) -> Self {
+		self.invalidate_compiled_routes();
 		self.viewsets.insert(prefix.to_string(), Arc::new(viewset));
 		self
 	}
@@ -124,6 +125,7 @@ impl ServerRouter {
 		F: FnOnce() -> E,
 		E: EndpointInfo + Handler + 'static,
 	{
+		self.invalidate_compiled_routes();
 		let view = f();
 		let path = E::path().to_string();
 		let method = E::method();
@@ -151,6 +153,7 @@ impl ServerRouter {
 		F: FnOnce() -> E,
 		E: EndpointInfo + SyncHandler + 'static,
 	{
+		self.invalidate_compiled_routes();
 		let view = f();
 		let path = E::path().to_string();
 		let method = E::method();
@@ -180,6 +183,7 @@ impl ServerRouter {
 		F: FnOnce() -> E,
 		E: EndpointInfo + RequestlessSyncHandler + 'static,
 	{
+		self.invalidate_compiled_routes();
 		let view = f();
 		let path = E::path().to_string();
 		let method = E::method();
@@ -227,6 +231,7 @@ impl ServerRouter {
 	where
 		V: Handler + 'static,
 	{
+		self.invalidate_compiled_routes();
 		self.views.push(ViewRoute {
 			path: path.to_string(),
 			handler: Arc::new(view),
@@ -271,6 +276,7 @@ impl ServerRouter {
 	where
 		V: Handler + 'static,
 	{
+		self.invalidate_compiled_routes();
 		self.views.push(ViewRoute {
 			path: path.to_string(),
 			handler: Arc::new(view),
@@ -309,6 +315,7 @@ impl ServerRouter {
 	where
 		H: Handler + 'static,
 	{
+		self.invalidate_compiled_routes();
 		let route = Route::from_handler(path, handler);
 		self.routes.push(route);
 		self
@@ -321,6 +328,7 @@ impl ServerRouter {
 	where
 		H: SyncHandler + 'static,
 	{
+		self.invalidate_compiled_routes();
 		let route = Route::from_sync_handler(path, handler);
 		self.routes.push(route);
 		self
@@ -334,6 +342,7 @@ impl ServerRouter {
 	where
 		H: RequestlessSyncHandler + 'static,
 	{
+		self.invalidate_compiled_routes();
 		let route = Route::from_requestless_sync_handler(path, handler);
 		self.routes.push(route);
 		self
@@ -364,6 +373,7 @@ impl ServerRouter {
 	///     .handler_arc("/custom", handler);
 	/// ```
 	pub fn handler_arc(mut self, path: &str, handler: Arc<dyn Handler>) -> Self {
+		self.invalidate_compiled_routes();
 		let route = Route::new(path, handler);
 		self.routes.push(route);
 		self
@@ -395,6 +405,7 @@ impl ServerRouter {
 	///     .with_route_middleware(LoggingMiddleware::new());
 	/// ```
 	pub fn with_route_middleware<M: Middleware + 'static>(mut self, middleware: M) -> Self {
+		self.invalidate_compiled_routes();
 		let middleware = Arc::new(middleware);
 		if let Some(route) = self.functions.last_mut() {
 			route.middleware.push(middleware.clone());

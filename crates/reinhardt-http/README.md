@@ -319,7 +319,7 @@ let response = StreamingResponse::with_status(
 - `uri: Uri` - Request URI
 - `version: Version` - HTTP version
 - `headers: HeaderMap` - HTTP headers
-- `path_params: HashMap<String, String>` - Path parameters from URL routing
+- `path_params: PathParams` - Path parameters from URL routing
 - `query_params: QueryParams` - Lazily parsed query string parameters
 - `is_secure: bool` - Whether request is over HTTPS
 - `remote_addr: Option<SocketAddr>` - Client's remote address

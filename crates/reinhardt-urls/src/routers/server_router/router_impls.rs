@@ -213,6 +213,7 @@ impl Handler for ServerRouter {
 #[cfg(feature = "viewsets")]
 impl reinhardt_views::viewsets::RegisterViewSet for ServerRouter {
 	fn register_handler(&mut self, path: &str, handler: Arc<dyn Handler>) {
+		self.invalidate_compiled_routes();
 		self.views.push(ViewRoute {
 			path: path.to_string(),
 			handler,

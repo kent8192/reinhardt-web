@@ -240,13 +240,12 @@ async fn handle_request(
 	let body_bytes =
 		match request_body_plan_collecting_unsized(&parts.method, &parts.headers, max_body_size) {
 			RequestBodyPlan::Empty => Bytes::new(),
-			RequestBodyPlan::Collect => collect_request_body(body, max_body_size).await?,
-			RequestBodyPlan::RejectTooLarge => {
-				return Ok(hyper::Response::builder()
-					.status(StatusCode::PAYLOAD_TOO_LARGE)
-					.body(Full::new(Bytes::from_static(b"Request body too large")))
-					.expect("Failed to build 413 response"));
-			}
+			RequestBodyPlan::Collect => match collect_request_body(body, max_body_size).await {
+				Ok(body) => body,
+				Err(error) if error.is_too_large() => return Ok(request_body_too_large_response()),
+				Err(error) => return Err(error.into_box_error()),
+			},
+			RequestBodyPlan::RejectTooLarge => return Ok(request_body_too_large_response()),
 		};
 
 	// Create reinhardt Request
@@ -256,6 +255,7 @@ async fn handle_request(
 		parts.version,
 		parts.headers,
 		body_bytes,
+		false,
 		None,
 	);
 
@@ -264,7 +264,7 @@ async fn handle_request(
 		.as_ref()
 		.handle(request)
 		.await
-		.unwrap_or_else(|_| Response::internal_server_error());
+		.unwrap_or_else(Response::from);
 
 	Ok(into_hyper_response(response))
 }
@@ -280,6 +280,13 @@ fn into_hyper_response(response: Response) -> hyper::Response<Full<Bytes>> {
 		*hyper_response.headers_mut() = headers;
 	}
 	hyper_response
+}
+
+fn request_body_too_large_response() -> hyper::Response<Full<Bytes>> {
+	hyper::Response::builder()
+		.status(StatusCode::PAYLOAD_TOO_LARGE)
+		.body(Full::new(Bytes::from_static(b"Request body too large")))
+		.expect("Failed to build 413 response")
 }
 
 /// Helper function to create and run an HTTP/2 server

@@ -163,7 +163,7 @@ where
 		let filter_value = if let Ok(int_value) = lookup_value.parse::<i64>() {
 			FilterValue::Integer(int_value)
 		} else {
-			FilterValue::String(lookup_value.to_string())
+			FilterValue::String(lookup_value.to_owned())
 		};
 
 		let filter = Filter::new(self.lookup_field.clone(), FilterOperator::Eq, filter_value);
