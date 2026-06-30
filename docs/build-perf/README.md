@@ -180,10 +180,11 @@ baseline on the same remote host class when making absolute pass/fail claims.
 The detailed remote procedure and the 2026-06-29 UTC Codespaces measurements
 are recorded in
 [`0.4-performance-scorecard.md`](0.4-performance-scorecard.md).
-When a local loopback run already sits at the client/server floor, use it only
-to check absolute target ranges and cross-framework parity. It does not prove a
-relative 20% runtime gate unless the same-host 0.3 baseline is far enough above
-the floor for fixed-cost framework changes to be visible.
+When a local loopback run already sits at the client/server floor, use it to
+check absolute target ranges, cross-framework parity, and regressions. Do not
+use same-host relative percentage as a blocking promotion gate unless the 0.3
+baseline is far enough above the floor for fixed-cost framework changes to be
+visible.
 
 The 2026-06-29 UTC same-host Codespaces backend run compared
 `origin/develop/0.3.0` at `b046f6184b3047010dd184383bd1fbf22dd5e6c7` with the
@@ -221,7 +222,7 @@ benchmark and three-run median aggregation:
 | `server_fn_json_post` | 1.202 us | 1.026 us | 14.6% |
 
 This full follow-up did not reproduce the earlier backend-only 20% reduction
-for `server_fn_json_post`; keep the backend gate open until the next
+for `server_fn_json_post`; treat that level as a stretch target until the next
 server-function dispatch change is implemented and remeasured.
 
 A 2026-06-30 local decomposition run on Apple M4 Pro, macOS Darwin 25.5.0, and
