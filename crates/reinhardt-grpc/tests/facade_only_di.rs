@@ -1,0 +1,87 @@
+#![cfg(not(target_arch = "wasm32"))]
+
+use std::fs;
+use std::process::Command;
+
+#[test]
+fn facade_only_dependency_compiles_grpc_handler_di() {
+	let crate_dir = tempfile::tempdir().expect("create downstream fixture directory");
+	let target_dir = tempfile::tempdir().expect("create downstream target directory");
+	let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+		.join("../..")
+		.canonicalize()
+		.expect("resolve repository root");
+
+	fs::create_dir(crate_dir.path().join("src")).expect("create downstream src directory");
+	fs::write(
+		crate_dir.path().join("Cargo.toml"),
+		format!(
+			r#"[package]
+name = "reinhardt-grpc-facade-only-di-fixture"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+reinhardt = {{ path = "{}", package = "reinhardt-web", default-features = false, features = ["minimal", "grpc"] }}
+tonic = "0.14.2"
+"#,
+			repo_root.display()
+		),
+	)
+	.expect("write downstream manifest");
+	fs::write(
+		crate_dir.path().join("src/main.rs"),
+		r#"use reinhardt::di::{Depends, InjectableKey, InjectionContext};
+use reinhardt::grpc::{GrpcRequestExt, grpc_handler};
+use std::sync::Arc;
+use tonic::{Request, Response, Status};
+
+struct ConfigKey;
+
+impl InjectableKey for ConfigKey {}
+
+struct ConfigService;
+struct MyRequest;
+struct MyResponse;
+
+#[grpc_handler]
+async fn handler(
+	request: Request<MyRequest>,
+	#[inject] _service: Depends<ConfigKey, ConfigService>,
+) -> Result<Response<MyResponse>, Status> {
+	let _ = request.into_inner();
+	Ok(Response::new(MyResponse))
+}
+
+fn context_from_request(request: &Request<MyRequest>) -> Option<Arc<InjectionContext>> {
+	request.get_di_context::<Arc<InjectionContext>>()
+}
+
+fn main() {
+	let _handler = handler;
+	let _extractor = context_from_request;
+}
+"#,
+	)
+	.expect("write downstream source");
+
+	let output = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+		.arg("check")
+		.arg("--manifest-path")
+		.arg(crate_dir.path().join("Cargo.toml"))
+		.arg("--target-dir")
+		.arg(target_dir.path())
+		.arg("--offline")
+		.output()
+		.expect("run downstream facade-only cargo check");
+
+	assert!(
+		output.status.success(),
+		"facade-only gRPC DI fixture should compile\nstdout:\n{}\nstderr:\n{}",
+		String::from_utf8_lossy(&output.stdout),
+		String::from_utf8_lossy(&output.stderr)
+	);
+}
