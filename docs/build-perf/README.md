@@ -192,6 +192,21 @@ Criterion point estimates:
 | `http_endpoint_path_param_get` | 601.3 ns | 553.0 ns | 8.0% |
 | `server_fn_json_post` | 1.185 us | 943.3 ns | 20.4% |
 
+A 2026-06-30 UTC full follow-up on GitHub Codespaces `largePremiumLinux`
+host `codespaces-34de70` compared `b046f6184b3047010dd184383bd1fbf22dd5e6c7`
+with `7f6650f197425198438da6e4f1e10067eb03ac45` using the same backend
+benchmark and three-run median aggregation:
+
+| Benchmark | Baseline median | Head median | Reduction |
+|---|---:|---:|---:|
+| `http_endpoint_plain_get` | 484.9 ns | 457.5 ns | 5.6% |
+| `http_endpoint_path_param_get` | 603.8 ns | 574.0 ns | 4.9% |
+| `server_fn_json_post` | 1.202 us | 1.026 us | 14.6% |
+
+This full follow-up did not reproduce the earlier backend-only 20% reduction
+for `server_fn_json_post`; keep the backend gate open until the next
+server-function dispatch change is implemented and remeasured.
+
 The 2026-06-25 measurement compared `origin/develop/0.3.0` with only the
 benchmark harness applied against the optimized branch. Values are the mean of
 two Criterion runs on the same host; Criterion's persisted `change` lines were
