@@ -1,0 +1,21 @@
+{
+  "name": "reinhardt-frontend-benchmarks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsx runner/main.ts check",
+    "runtime": "tsx runner/main.ts runtime",
+    "build": "tsx runner/main.ts build",
+    "measure": "tsx runner/main.ts measure",
+    "test": "tsx --test runner/__tests__/*.test.ts"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.61.0",
+    "toml": "^3.0.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0"
+  }
+}
