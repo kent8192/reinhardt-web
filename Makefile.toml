@@ -328,6 +328,46 @@ date_stamp="$(date +%F)"
 cargo run --locked --bin measure_matrix -- --output "results/${date_stamp}-framework-comparison-non-runtime.md"
 '''
 
+[tasks.frontend-benchmark-check]
+description = "Validate frontend framework comparison benchmark suite manifests"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks/frontend
+npm install
+./node_modules/.bin/tsx runner/main.ts check
+'''
+
+[tasks.frontend-benchmark-runtime]
+description = "Run frontend framework runtime browser benchmarks"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks/frontend
+npm install
+./node_modules/.bin/tsx runner/main.ts runtime
+'''
+
+[tasks.frontend-benchmark-build]
+description = "Run frontend framework build, bundle, and dev-loop benchmarks"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks/frontend
+npm install
+./node_modules/.bin/tsx runner/main.ts build
+'''
+
+[tasks.frontend-benchmark-measure]
+description = "Run frontend framework runtime and build benchmark suite"
+script_runner = "sh"
+script = '''
+set -e
+cd benchmarks/frontend
+npm install
+./node_modules/.bin/tsx runner/main.ts measure
+'''
+
 [tasks.unit-test]
 description = "Run unit tests (src/)"
 command = "cargo"
