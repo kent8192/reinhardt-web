@@ -32,6 +32,7 @@
 ///         const PATH: &'static str = "/api/server_fn/login";
 ///         const NAME: &'static str = "login";
 ///         const CODEC: &'static str = "json";
+///         const IS_JSON_CODEC: bool = true;
 ///     }
 /// }
 /// ```
@@ -52,6 +53,12 @@ pub trait ServerFnMetadata: 'static {
 	/// for example, the `"url"` codec still returns JSON responses while
 	/// only the request format differs.
 	const CODEC: &'static str = "json";
+
+	/// Whether this server function uses the default JSON request codec.
+	///
+	/// This mirrors [`Self::CODEC`] as a boolean so native hot paths can avoid
+	/// per-request string comparisons when selecting response assembly.
+	const IS_JSON_CODEC: bool = true;
 
 	/// Names of `#[inject]` parameters (for documentation / debugging).
 	const INJECTED_PARAMS: &'static [&'static str] = &[];

@@ -1207,6 +1207,7 @@ fn generate_server_handler(
 	// Generate unique name for the static wrapper function
 	let static_wrapper_name = quote::format_ident!("__server_fn_static_wrapper_{}", name);
 	let name_str = name.to_string();
+	let is_json_codec = codec == "json";
 
 	// Note: pages_crate is already resolved above for body extraction.
 	// http_crate is resolved above when inject_params is not empty,
@@ -1362,6 +1363,7 @@ fn generate_server_handler(
 				const PATH: &'static str = #endpoint;
 				const NAME: &'static str = #name_str;
 				const CODEC: &'static str = #codec;
+				const IS_JSON_CODEC: bool = #is_json_codec;
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
 				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
@@ -1483,6 +1485,7 @@ fn generate_server_handler(
 				const PATH: &'static str = #endpoint;
 				const NAME: &'static str = #name_str;
 				const CODEC: &'static str = #codec;
+				const IS_JSON_CODEC: bool = #is_json_codec;
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
 				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}

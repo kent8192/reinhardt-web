@@ -159,6 +159,19 @@ probe when validating those newer fast paths. For automated aggregation, read
 each run and take the median across runs; ignore Criterion's persisted
 `change` lines when comparing separate worktrees.
 
+The server-function benchmark also includes decomposition probes for the native
+backend path:
+
+| Benchmark | Measures |
+|---|---|
+| `server_fn_json_post` | Full `ServerRouter::handle()` backend path for the generated JSON server function. |
+| `server_fn_direct_json_post` | Generated `ServerFnRegistration::handle()` plus JSON response assembly without router dispatch. |
+| `server_fn_boxed_direct_json_post` | Synthetic boxed direct handler lower-bound for dispatch-shape experiments. |
+
+Use the direct probes only to locate remaining backend overhead. Do not compare
+them with 0.3 end-to-end backend baselines because they intentionally skip route
+matching and endpoint compatibility dispatch.
+
 For disposable remote validation, prefer a GitHub Codespaces
 `largePremiumLinux` machine and record the machine type, CPU model, toolchain,
 commit, and exact commands with the results. Do not compare remote x86_64 VM
@@ -206,6 +219,21 @@ benchmark and three-run median aggregation:
 This full follow-up did not reproduce the earlier backend-only 20% reduction
 for `server_fn_json_post`; keep the backend gate open until the next
 server-function dispatch change is implemented and remeasured.
+
+A 2026-06-30 local decomposition run on Apple M4 Pro, macOS Darwin 25.5.0, and
+`rustc 1.96.0` used the same command with the direct server-function probes.
+Values are Criterion median point estimates from one focused local run:
+
+| Benchmark | Median | Interpretation |
+|---|---:|---|
+| `server_fn_json_post` | 461.1 ns | Normal router-backed backend path. |
+| `server_fn_direct_json_post` | 325.4 ns | Generated server-function body plus response assembly. |
+| `server_fn_boxed_direct_json_post` | 302.3 ns | Synthetic boxed direct lower-bound. |
+
+The normal path was about 136 ns slower than direct generated-handler execution
+on this host. That remaining cost is in route lookup, route match handling,
+trait-object endpoint dispatch, and the outer async `Handler` compatibility
+box, not in the generated server-function body itself.
 
 The 2026-06-25 measurement compared `origin/develop/0.3.0` with only the
 benchmark harness applied against the optimized branch. Values are the mean of
