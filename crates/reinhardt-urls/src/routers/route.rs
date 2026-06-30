@@ -1,4 +1,6 @@
-use reinhardt_http::Handler;
+use reinhardt_http::{
+	Handler, RequestlessSyncHandler, RequestlessSyncHandlerAdapter, SyncHandler, SyncHandlerAdapter,
+};
 use reinhardt_middleware::Middleware;
 use std::sync::Arc;
 
@@ -10,6 +12,8 @@ pub struct Route {
 	/// URL path pattern (e.g., `"/users/{id}/"`)
 	pub path: String,
 	handler: Arc<dyn Handler>,
+	sync_handler: Option<Arc<dyn SyncHandler>>,
+	requestless_sync_handler: Option<Arc<dyn RequestlessSyncHandler>>,
 	/// Optional route name for reverse URL lookup.
 	pub name: Option<String>,
 	/// Namespace for this route (e.g., "users", "api")
@@ -48,6 +52,8 @@ impl Route {
 		Self {
 			path: path.into(),
 			handler,
+			sync_handler: None,
+			requestless_sync_handler: None,
 			name: None,
 			namespace: None,
 			middleware: Vec::new(),
@@ -85,6 +91,72 @@ impl Route {
 		Self {
 			path: path.into(),
 			handler: Arc::new(handler),
+			sync_handler: None,
+			requestless_sync_handler: None,
+			name: None,
+			namespace: None,
+			middleware: Vec::new(),
+		}
+	}
+
+	/// Create a new route from a synchronous handler.
+	///
+	/// The route keeps both the synchronous handler and an async adapter. Routers
+	/// can call the synchronous handler directly when no middleware is present,
+	/// while middleware and legacy APIs continue to use the async handler trait.
+	pub fn from_sync_handler<H>(path: impl Into<String>, handler: H) -> Self
+	where
+		H: SyncHandler + 'static,
+	{
+		let sync_handler: Arc<dyn SyncHandler> = Arc::new(handler);
+		Self::from_sync_handler_arc(path, sync_handler)
+	}
+
+	/// Create a new route from an already shared synchronous handler.
+	pub fn from_sync_handler_arc(
+		path: impl Into<String>,
+		sync_handler: Arc<dyn SyncHandler>,
+	) -> Self {
+		let handler: Arc<dyn Handler> = Arc::new(SyncHandlerAdapter::new(sync_handler.clone()));
+		Self {
+			path: path.into(),
+			handler,
+			sync_handler: Some(sync_handler),
+			requestless_sync_handler: None,
+			name: None,
+			namespace: None,
+			middleware: Vec::new(),
+		}
+	}
+
+	/// Create a new route from a requestless synchronous handler.
+	///
+	/// The route keeps a requestless handler for server adapters that can
+	/// produce the response before constructing a full request. It also keeps
+	/// request-shaped adapters so middleware and legacy APIs remain usable.
+	pub fn from_requestless_sync_handler<H>(path: impl Into<String>, handler: H) -> Self
+	where
+		H: RequestlessSyncHandler + 'static,
+	{
+		let requestless_handler: Arc<dyn RequestlessSyncHandler> = Arc::new(handler);
+		Self::from_requestless_sync_handler_arc(path, requestless_handler)
+	}
+
+	/// Create a new route from an already shared requestless synchronous handler.
+	pub fn from_requestless_sync_handler_arc(
+		path: impl Into<String>,
+		requestless_handler: Arc<dyn RequestlessSyncHandler>,
+	) -> Self {
+		let adapter = Arc::new(RequestlessSyncHandlerAdapter::new(
+			requestless_handler.clone(),
+		));
+		let handler: Arc<dyn Handler> = adapter.clone();
+		let sync_handler: Arc<dyn SyncHandler> = adapter;
+		Self {
+			path: path.into(),
+			handler,
+			sync_handler: Some(sync_handler),
+			requestless_sync_handler: Some(requestless_handler),
 			name: None,
 			namespace: None,
 			middleware: Vec::new(),
@@ -302,6 +374,14 @@ impl Route {
 	/// In most cases, you should use `handler()` instead to get a reference.
 	pub fn handler_arc(&self) -> Arc<dyn Handler> {
 		Arc::clone(&self.handler)
+	}
+
+	pub(crate) fn sync_handler_arc(&self) -> Option<Arc<dyn SyncHandler>> {
+		self.sync_handler.clone()
+	}
+
+	pub(crate) fn requestless_sync_handler_arc(&self) -> Option<Arc<dyn RequestlessSyncHandler>> {
+		self.requestless_sync_handler.clone()
 	}
 }
 

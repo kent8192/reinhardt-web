@@ -19,6 +19,7 @@ This crate provides the following modules:
   - URL reversal capabilities
   - PathPattern for URL pattern matching
   - DefaultRouter with automatic endpoint generation
+  - ServerRouter synchronous endpoint and handler fast paths
   - Custom action support (list and detail-level)
 
 - **Routers Macros**: Routing-related procedural macros
@@ -93,6 +94,26 @@ router.add_route(Route::new("/custom/", custom_handler));
 if let Some((handler, params)) = router.match_request(&request) {
     handler.handle(request, params).await?;
 }
+```
+
+### Synchronous Server Routes
+
+Use `endpoint_sync` or `handler_sync` for routes that can build a response
+without awaiting I/O:
+
+```rust
+use reinhardt::http::{Request, Response, Result, SyncHandler};
+use reinhardt::urls::routers::ServerRouter;
+
+struct HealthHandler;
+
+impl SyncHandler for HealthHandler {
+    fn handle_sync(&self, _request: Request) -> Result<Response> {
+        Ok(Response::ok().with_static_body(b"ok"))
+    }
+}
+
+let router = ServerRouter::new().handler_sync("/health", HealthHandler);
 ```
 
 ### URL Reversal

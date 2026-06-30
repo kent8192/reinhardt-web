@@ -288,8 +288,8 @@ fn test_request_properties() {
 	// Verify basic properties
 	assert_eq!(request.method, Method::POST);
 	assert_eq!(request.path(), "/api/users");
-	assert_eq!(request.query_params.get("page"), Some(&"1".to_string()));
-	assert_eq!(request.query_params.get("limit"), Some(&"10".to_string()));
+	assert_eq!(request.query_params.get("page"), Some("1"));
+	assert_eq!(request.query_params.get("limit"), Some("10"));
 }
 
 /// Test: Query parameters parsing
@@ -305,12 +305,9 @@ fn test_query_parameters() {
 		.build()
 		.unwrap();
 
-	assert_eq!(request.query_params.get("q"), Some(&"test".to_string()));
-	assert_eq!(
-		request.query_params.get("category"),
-		Some(&"books".to_string())
-	);
-	assert_eq!(request.query_params.get("page"), Some(&"2".to_string()));
+	assert_eq!(request.query_params.get("q"), Some("test"));
+	assert_eq!(request.query_params.get("category"), Some("books"));
+	assert_eq!(request.query_params.get("page"), Some("2"));
 }
 
 /// Test: Path extraction
@@ -520,11 +517,9 @@ fn test_path_parameters() {
 		.unwrap();
 
 	// Manually set path params (normally done by router)
-	request
-		.path_params
-		.insert("id".to_string(), "123".to_string());
+	request.path_params.insert("id", "123");
 
-	assert_eq!(request.path_params.get("id"), Some(&"123".to_string()));
+	assert_eq!(request.path_params.get("id"), Some("123"));
 }
 
 /// Test: Empty query string
@@ -555,7 +550,7 @@ fn test_query_param_single_value() {
 		.build()
 		.unwrap();
 
-	assert_eq!(request.query_params.get("tag"), Some(&"rust".to_string()));
+	assert_eq!(request.query_params.get("tag"), Some("rust"));
 }
 
 /// Test: Invalid language codes are rejected

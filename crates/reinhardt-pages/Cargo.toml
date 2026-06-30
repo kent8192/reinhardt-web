@@ -216,6 +216,7 @@ web-sys = { version = "0.3.83", features = [
 # Async support for WASM
 reinhardt-core = {workspace = true, default-features = false, features = ["reactive", "page", "security"]}
 smallvec = { workspace = true }
+bytes = { workspace = true }
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 wasm-bindgen-futures = "0.4.56"
 getrandom = { version = "0.3", features = ["wasm_js"] }
@@ -272,7 +273,6 @@ criterion = { workspace = true }
 proptest = { workspace = true }
 hyper-util = { workspace = true }
 http-body-util = { workspace = true }
-bytes = { workspace = true }
 tokio-tungstenite = "0.26"
 futures-util = "0.3"
 # Enable `validation` feature for trybuild UI tests that exercise

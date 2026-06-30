@@ -1,20 +1,21 @@
 use bytes::Bytes;
-use http_body_util::{BodyExt, Full};
-use hyper::StatusCode;
+use http_body_util::Full;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
-use hyper::service::Service;
+use hyper::service::service_fn;
+use hyper::{HeaderMap, Method, StatusCode, Uri};
 use hyper_util::rt::TokioIo;
 use reinhardt_di::InjectionContext;
 use reinhardt_http::{Handler, Middleware, MiddlewareChain};
 use reinhardt_http::{Request, Response};
 use std::future::Future;
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::shutdown::ShutdownCoordinator;
+
+use super::body::{RequestBodyPlan, collect_request_body, request_body_plan};
 
 /// HTTP Server with middleware support
 pub struct HttpServer {
@@ -311,13 +312,105 @@ impl HttpServer {
 		handler: Arc<dyn Handler>,
 		di_context: Option<Arc<InjectionContext>>,
 	) -> Result<(), Box<dyn std::error::Error>> {
-		let io = TokioIo::new(stream);
-		let service = RequestService {
-			handler,
-			remote_addr: socket_addr,
+		Self::handle_connection_with(
+			stream,
+			socket_addr,
+			move |request| {
+				let handler = Arc::clone(&handler);
+				async move { handler.as_ref().handle(request).await }
+			},
 			di_context,
-			max_body_size: DEFAULT_MAX_BODY_SIZE,
-		};
+		)
+		.await
+	}
+
+	/// Handle a single TCP connection with a concrete request handler function.
+	///
+	/// This lower-level adapter is useful when callers can keep their routing
+	/// entry point concrete, avoiding the boxed future required by
+	/// `Arc<dyn Handler>`.
+	pub async fn handle_connection_with<F, Fut>(
+		stream: TcpStream,
+		socket_addr: SocketAddr,
+		handler: F,
+		di_context: Option<Arc<InjectionContext>>,
+	) -> Result<(), Box<dyn std::error::Error>>
+	where
+		F: Fn(Request) -> Fut + Clone + Send + Sync + 'static,
+		Fut: Future<Output = reinhardt_http::Result<Response>> + Send + 'static,
+	{
+		let io = TokioIo::new(stream);
+		let service = service_fn(move |req| {
+			let handler = handler.clone();
+			let di_context = di_context.clone();
+
+			handle_request_with(req, handler, socket_addr, di_context, DEFAULT_MAX_BODY_SIZE)
+		});
+
+		http1::Builder::new().serve_connection(io, service).await?;
+
+		Ok(())
+	}
+
+	/// Handle a single TCP connection with a synchronous request handler.
+	///
+	/// This is a lower-overhead variant for routes that complete without
+	/// awaiting after the request body has been collected.
+	pub async fn handle_connection_sync<F>(
+		stream: TcpStream,
+		socket_addr: SocketAddr,
+		handler: F,
+		di_context: Option<Arc<InjectionContext>>,
+	) -> Result<(), Box<dyn std::error::Error>>
+	where
+		F: Fn(Request) -> reinhardt_http::Result<Response> + Clone + Send + Sync + 'static,
+	{
+		Self::handle_connection_sync_with_precheck(
+			stream,
+			socket_addr,
+			|_, _, _| None,
+			handler,
+			di_context,
+		)
+		.await
+	}
+
+	/// Handle a single TCP connection with a synchronous request handler and a
+	/// pre-request fast path.
+	///
+	/// The precheck runs only after the adapter has verified that the incoming
+	/// request has no body. When it returns a response, the adapter skips full
+	/// [`Request`] construction.
+	pub async fn handle_connection_sync_with_precheck<F, P>(
+		stream: TcpStream,
+		socket_addr: SocketAddr,
+		precheck: P,
+		handler: F,
+		di_context: Option<Arc<InjectionContext>>,
+	) -> Result<(), Box<dyn std::error::Error>>
+	where
+		F: Fn(Request) -> reinhardt_http::Result<Response> + Clone + Send + Sync + 'static,
+		P: Fn(&Method, &Uri, &HeaderMap) -> Option<reinhardt_http::Result<Response>>
+			+ Clone
+			+ Send
+			+ Sync
+			+ 'static,
+	{
+		let io = TokioIo::new(stream);
+		let service = service_fn(move |req| {
+			let handler = handler.clone();
+			let precheck = precheck.clone();
+			let di_context = di_context.clone();
+
+			handle_request_sync_with_precheck(
+				req,
+				precheck,
+				handler,
+				socket_addr,
+				di_context,
+				DEFAULT_MAX_BODY_SIZE,
+			)
+		});
 
 		http1::Builder::new().serve_connection(io, service).await?;
 
@@ -327,99 +420,171 @@ impl HttpServer {
 
 /// Default maximum request body size (10 MB)
 const DEFAULT_MAX_BODY_SIZE: u64 = 10 * 1024 * 1024;
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
-/// Service implementation for hyper
-struct RequestService {
-	handler: Arc<dyn Handler>,
+async fn handle_request_with<F, Fut>(
+	req: hyper::Request<Incoming>,
+	handler: F,
 	remote_addr: SocketAddr,
 	di_context: Option<Arc<InjectionContext>>,
 	max_body_size: u64,
-}
+) -> Result<hyper::Response<Full<Bytes>>, BoxError>
+where
+	F: Fn(Request) -> Fut + Clone + Send + Sync + 'static,
+	Fut: Future<Output = reinhardt_http::Result<Response>> + Send + 'static,
+{
+	// Extract request parts
+	let (parts, body) = req.into_parts();
 
-impl Service<hyper::Request<Incoming>> for RequestService {
-	type Response = hyper::Response<Full<Bytes>>;
-	type Error = Box<dyn std::error::Error + Send + Sync>;
-	type Future =
-		Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+	let body_bytes = match request_body_plan(&parts.method, &parts.headers, max_body_size) {
+		RequestBodyPlan::Empty => Bytes::new(),
+		RequestBodyPlan::Collect => match collect_request_body(body, max_body_size).await {
+			Ok(body) => body,
+			Err(error) if error.is_too_large() => return Ok(request_body_too_large_response()),
+			Err(error) => return Err(error.into_box_error()),
+		},
+		RequestBodyPlan::RejectTooLarge => return Ok(request_body_too_large_response()),
+	};
 
-	fn call(&self, req: hyper::Request<Incoming>) -> Self::Future {
-		let handler = self.handler.clone();
-		let remote_addr = self.remote_addr;
-		let di_context = self.di_context.clone();
-		let max_body_size = self.max_body_size;
+	// Create reinhardt Request
+	let mut request = Request::from_hyper_parts(
+		parts.method,
+		parts.uri,
+		parts.version,
+		parts.headers,
+		body_bytes,
+		false,
+		Some(remote_addr),
+	);
 
-		Box::pin(async move {
-			// Check Content-Length before reading body
-			if let Some(content_length) = req.headers().get(hyper::header::CONTENT_LENGTH)
-				&& let Ok(len_str) = content_length.to_str()
-				&& let Ok(len) = len_str.parse::<u64>()
-				&& len > max_body_size
-			{
-				return Ok(hyper::Response::builder()
-					.status(StatusCode::PAYLOAD_TOO_LARGE)
-					.body(Full::new(Bytes::from("Request body too large")))
-					.expect("Failed to build 413 response"));
-			}
-
-			// Extract request parts
-			let (parts, body) = req.into_parts();
-
-			// Read body with size limit
-			let body_bytes = http_body_util::Limited::new(body, max_body_size as usize)
-				.collect()
-				.await
-				.map_err(|_| {
-					Box::new(std::io::Error::new(
-						std::io::ErrorKind::InvalidData,
-						"Request body exceeds size limit",
-					)) as Box<dyn std::error::Error + Send + Sync>
-				})?
-				.to_bytes();
-
-			// Create reinhardt Request
-			let mut request = Request::builder()
-				.method(parts.method)
-				.uri(parts.uri)
-				.version(parts.version)
-				.headers(parts.headers)
-				.body(body_bytes)
-				.remote_addr(remote_addr)
-				.build()
-				.expect("Failed to build request");
-
-			// Set DI context if available
-			if let Some(ctx) = di_context {
-				request.set_di_context(ctx);
-			}
-
-			// Handle request.
-			// The middleware chain converts handler errors to responses internally
-			// (in ConditionalComposedHandler) so that middleware post-processing
-			// always runs. This unwrap_or_else is a safety net for errors that
-			// escape the chain (e.g., middleware-internal failures without a chain).
-			let request_path = request.uri.path().to_string();
-			let response = handler.handle(request).await.unwrap_or_else(|e| {
-				if request_path.contains('.') && !request_path.ends_with(".json") {
-					eprintln!(
-						"[reinhardt WARN] Non-API request hit error-to-JSON conversion: path={}, error={}",
-						request_path, e
-					);
-				}
-				Response::from(e)
-			});
-
-			// Convert to hyper response
-			let mut hyper_response = hyper::Response::builder().status(response.status);
-
-			// Add headers
-			for (key, value) in response.headers.iter() {
-				hyper_response = hyper_response.header(key, value);
-			}
-
-			Ok(hyper_response.body(Full::new(response.body))?)
-		})
+	// Set DI context if available
+	if let Some(ctx) = di_context {
+		request.set_di_context(ctx);
 	}
+
+	// Handle request.
+	// The middleware chain converts handler errors to responses internally
+	// (in ConditionalComposedHandler) so that middleware post-processing
+	// always runs. This unwrap_or_else is a safety net for errors that
+	// escape the chain (e.g., middleware-internal failures without a chain).
+	#[cfg(debug_assertions)]
+	let request_path_for_warning = {
+		let path = request.uri.path();
+		if path.contains('.') && !path.ends_with(".json") {
+			Some(path.to_string())
+		} else {
+			None
+		}
+	};
+	let response = handler(request).await.unwrap_or_else(|e| {
+		#[cfg(debug_assertions)]
+		if let Some(request_path) = request_path_for_warning.as_deref() {
+			eprintln!(
+				"[reinhardt WARN] Non-API request hit error-to-JSON conversion: path={}, error={}",
+				request_path, e
+			);
+		}
+		Response::from(e)
+	});
+
+	Ok(into_hyper_response(response))
 }
+
+async fn handle_request_sync_with_precheck<F, P>(
+	req: hyper::Request<Incoming>,
+	precheck: P,
+	handler: F,
+	remote_addr: SocketAddr,
+	di_context: Option<Arc<InjectionContext>>,
+	max_body_size: u64,
+) -> Result<hyper::Response<Full<Bytes>>, BoxError>
+where
+	F: Fn(Request) -> reinhardt_http::Result<Response> + Clone + Send + Sync + 'static,
+	P: Fn(&Method, &Uri, &HeaderMap) -> Option<reinhardt_http::Result<Response>>
+		+ Clone
+		+ Send
+		+ Sync
+		+ 'static,
+{
+	let (parts, body) = req.into_parts();
+
+	let body_plan = request_body_plan(&parts.method, &parts.headers, max_body_size);
+	if body_plan == RequestBodyPlan::Empty
+		&& di_context.is_none()
+		&& let Some(response) = precheck(&parts.method, &parts.uri, &parts.headers)
+	{
+		return Ok(into_hyper_response(
+			response.unwrap_or_else(reinhardt_http::Response::from),
+		));
+	}
+
+	let body_bytes = match body_plan {
+		RequestBodyPlan::Empty => Bytes::new(),
+		RequestBodyPlan::Collect => match collect_request_body(body, max_body_size).await {
+			Ok(body) => body,
+			Err(error) if error.is_too_large() => return Ok(request_body_too_large_response()),
+			Err(error) => return Err(error.into_box_error()),
+		},
+		RequestBodyPlan::RejectTooLarge => return Ok(request_body_too_large_response()),
+	};
+
+	let mut request = Request::from_hyper_parts(
+		parts.method,
+		parts.uri,
+		parts.version,
+		parts.headers,
+		body_bytes,
+		false,
+		Some(remote_addr),
+	);
+
+	if let Some(ctx) = di_context {
+		request.set_di_context(ctx);
+	}
+
+	#[cfg(debug_assertions)]
+	let request_path_for_warning = {
+		let path = request.uri.path();
+		if path.contains('.') && !path.ends_with(".json") {
+			Some(path.to_string())
+		} else {
+			None
+		}
+	};
+	let response = handler(request).unwrap_or_else(|e| {
+		#[cfg(debug_assertions)]
+		if let Some(request_path) = request_path_for_warning.as_deref() {
+			eprintln!(
+				"[reinhardt WARN] Non-API request hit error-to-JSON conversion: path={}, error={}",
+				request_path, e
+			);
+		}
+		Response::from(e)
+	});
+
+	Ok(into_hyper_response(response))
+}
+
+fn into_hyper_response(response: Response) -> hyper::Response<Full<Bytes>> {
+	let status = response.status;
+	let headers = response.headers;
+	let mut hyper_response = hyper::Response::new(Full::new(response.body));
+	if status != StatusCode::OK {
+		*hyper_response.status_mut() = status;
+	}
+	if !headers.is_empty() {
+		*hyper_response.headers_mut() = headers;
+	}
+	hyper_response
+}
+
+fn request_body_too_large_response() -> hyper::Response<Full<Bytes>> {
+	hyper::Response::builder()
+		.status(StatusCode::PAYLOAD_TOO_LARGE)
+		.body(Full::new(Bytes::from_static(b"Request body too large")))
+		.expect("Failed to build 413 response")
+}
+
 /// Helper function to create and run a server
 ///
 /// This is a convenience function that creates an `HttpServer` and starts listening.

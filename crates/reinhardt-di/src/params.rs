@@ -345,7 +345,7 @@ impl ParamContext {
 	/// assert_eq!(ctx.get_path_param("missing"), None);
 	/// ```
 	pub fn get_path_param(&self, name: &str) -> Option<&str> {
-		self.path_params.get(name).map(|s| s.as_str())
+		self.path_params.get(name)
 	}
 
 	/// Register a header name for the given value type `T`

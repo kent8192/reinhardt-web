@@ -1,19 +1,19 @@
 use bytes::Bytes;
-use http_body_util::{BodyExt, Full};
+use http_body_util::Full;
 use hyper::StatusCode;
 use hyper::body::Incoming;
 use hyper::server::conn::http2;
-use hyper::service::Service;
+use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
-use std::future::Future;
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::shutdown::ShutdownCoordinator;
+
+use super::body::{RequestBodyPlan, collect_request_body, request_body_plan_collecting_unsized};
 
 /// HTTP/2 Server
 ///
@@ -211,10 +211,11 @@ impl Http2Server {
 		handler: Arc<dyn Handler>,
 	) -> Result<(), Box<dyn std::error::Error>> {
 		let io = TokioIo::new(stream);
-		let service = RequestService {
-			handler,
-			max_body_size: DEFAULT_MAX_BODY_SIZE,
-		};
+		let service = service_fn(move |req| {
+			let handler = handler.clone();
+
+			handle_request(req, handler, DEFAULT_MAX_BODY_SIZE)
+		});
 
 		http2::Builder::new(hyper_util::rt::TokioExecutor::new())
 			.serve_connection(io, service)
@@ -226,77 +227,66 @@ impl Http2Server {
 
 /// Default maximum request body size (10 MB)
 const DEFAULT_MAX_BODY_SIZE: u64 = 10 * 1024 * 1024;
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
-/// Service implementation for hyper
-struct RequestService {
+async fn handle_request(
+	req: hyper::Request<Incoming>,
 	handler: Arc<dyn Handler>,
 	max_body_size: u64,
+) -> Result<hyper::Response<Full<Bytes>>, BoxError> {
+	// Extract request parts
+	let (parts, body) = req.into_parts();
+
+	let body_bytes =
+		match request_body_plan_collecting_unsized(&parts.method, &parts.headers, max_body_size) {
+			RequestBodyPlan::Empty => Bytes::new(),
+			RequestBodyPlan::Collect => match collect_request_body(body, max_body_size).await {
+				Ok(body) => body,
+				Err(error) if error.is_too_large() => return Ok(request_body_too_large_response()),
+				Err(error) => return Err(error.into_box_error()),
+			},
+			RequestBodyPlan::RejectTooLarge => return Ok(request_body_too_large_response()),
+		};
+
+	// Create reinhardt Request
+	let request = Request::from_hyper_parts(
+		parts.method,
+		parts.uri,
+		parts.version,
+		parts.headers,
+		body_bytes,
+		false,
+		None,
+	);
+
+	// Handle request
+	let response = handler
+		.as_ref()
+		.handle(request)
+		.await
+		.unwrap_or_else(Response::from);
+
+	Ok(into_hyper_response(response))
 }
 
-impl Service<hyper::Request<Incoming>> for RequestService {
-	type Response = hyper::Response<Full<Bytes>>;
-	type Error = Box<dyn std::error::Error + Send + Sync>;
-	type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-	fn call(&self, req: hyper::Request<Incoming>) -> Self::Future {
-		let handler = self.handler.clone();
-		let max_body_size = self.max_body_size;
-
-		Box::pin(async move {
-			// Check Content-Length before reading body
-			if let Some(content_length) = req.headers().get(hyper::header::CONTENT_LENGTH)
-				&& let Ok(len_str) = content_length.to_str()
-				&& let Ok(len) = len_str.parse::<u64>()
-				&& len > max_body_size
-			{
-				return Ok(hyper::Response::builder()
-					.status(StatusCode::PAYLOAD_TOO_LARGE)
-					.body(Full::new(Bytes::from("Request body too large")))
-					.expect("Failed to build 413 response"));
-			}
-
-			// Extract request parts
-			let (parts, body) = req.into_parts();
-
-			// Read body with size limit
-			let body_bytes = http_body_util::Limited::new(body, max_body_size as usize)
-				.collect()
-				.await
-				.map_err(|_| {
-					Box::new(std::io::Error::new(
-						std::io::ErrorKind::InvalidData,
-						"Request body exceeds size limit",
-					)) as Box<dyn std::error::Error + Send + Sync>
-				})?
-				.to_bytes();
-
-			// Create reinhardt Request
-			let request = Request::builder()
-				.method(parts.method)
-				.uri(parts.uri)
-				.version(parts.version)
-				.headers(parts.headers)
-				.body(body_bytes)
-				.build()
-				.expect("Failed to build request");
-
-			// Handle request
-			let response = handler
-				.handle(request)
-				.await
-				.unwrap_or_else(|_| Response::internal_server_error());
-
-			// Convert to hyper response
-			let mut hyper_response = hyper::Response::builder().status(response.status);
-
-			// Add headers
-			for (key, value) in response.headers.iter() {
-				hyper_response = hyper_response.header(key, value);
-			}
-
-			Ok(hyper_response.body(Full::new(response.body))?)
-		})
+fn into_hyper_response(response: Response) -> hyper::Response<Full<Bytes>> {
+	let status = response.status;
+	let headers = response.headers;
+	let mut hyper_response = hyper::Response::new(Full::new(response.body));
+	if status != StatusCode::OK {
+		*hyper_response.status_mut() = status;
 	}
+	if !headers.is_empty() {
+		*hyper_response.headers_mut() = headers;
+	}
+	hyper_response
+}
+
+fn request_body_too_large_response() -> hyper::Response<Full<Bytes>> {
+	hyper::Response::builder()
+		.status(StatusCode::PAYLOAD_TOO_LARGE)
+		.body(Full::new(Bytes::from_static(b"Request body too large")))
+		.expect("Failed to build 413 response")
 }
 
 /// Helper function to create and run an HTTP/2 server

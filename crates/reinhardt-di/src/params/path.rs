@@ -167,7 +167,7 @@ macro_rules! impl_path_tuple2_from_str {
                     // (preserved end-to-end from matchit through `PathParams`).
                     // Tuple element `T_n` is populated from the n-th parameter
                     // declared in the route pattern. See issue #4013.
-                    let values: Vec<&String> = ctx.path_params.iter().map(|(_, v)| v).collect();
+                    let values: Vec<&str> = ctx.path_params.iter().map(|(_, v)| v).collect();
                     if values.len() != 2 {
                         return Err(ParamError::InvalidParameter(Box::new(
                             ParamErrorContext::new(
@@ -186,7 +186,7 @@ macro_rules! impl_path_tuple2_from_str {
                             )
                             .with_field("path[0]")
                             .with_expected_type::<$t1>()
-                            .with_raw_value(values[0].as_str())
+                            .with_raw_value(values[0])
                             .with_source(Box::new(std::io::Error::new(
                                 std::io::ErrorKind::InvalidData,
                                 e.to_string(),
@@ -202,7 +202,7 @@ macro_rules! impl_path_tuple2_from_str {
                             )
                             .with_field("path[1]")
                             .with_expected_type::<$t2>()
-                            .with_raw_value(values[1].as_str())
+                            .with_raw_value(values[1])
                             .with_source(Box::new(std::io::Error::new(
                                 std::io::ErrorKind::InvalidData,
                                 e.to_string(),
@@ -252,7 +252,7 @@ impl FromRequest for Path<String> {
 			)));
 		}
 
-		let value = ctx.path_params.values().next().unwrap().clone();
+		let value = ctx.path_params.values().next().unwrap().to_string();
 		Ok(Path(value))
 	}
 }
@@ -335,9 +335,8 @@ where
 	async fn from_request(_req: &Request, ctx: &ParamContext) -> ParamResult<Self> {
 		// Convert path params to URL-encoded format for deserialization.
 		// This enables proper type coercion from strings (e.g., "42" -> 42).
-		// `serde_urlencoded` accepts a slice of `(K, V)` pairs, matching the
-		// internal representation of `PathParams`.
-		let encoded = serde_urlencoded::to_string(ctx.path_params.as_slice()).map_err(|e| {
+		// `serde_urlencoded` accepts a serializable sequence of `(K, V)` pairs.
+		let encoded = serde_urlencoded::to_string(ctx.path_params.to_vec()).map_err(|e| {
 			ParamError::ParseError(Box::new(
 				ParamErrorContext::new(
 					ParamType::Path,

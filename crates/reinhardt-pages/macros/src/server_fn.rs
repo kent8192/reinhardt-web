@@ -1098,23 +1098,36 @@ fn generate_server_handler(
 		quote! {}
 	};
 
+	// Dynamically resolve crate paths for body extraction, serialization, and registration
+	let pages_crate = get_reinhardt_pages_crate();
+
 	// Generate codec-specific serialization code for server response
 	let serialize_response_code = match codec {
 		"json" => quote! {
-			::serde_json::to_string(&value)
-				.map_err(|e| format!("Failed to serialize response: {}", e))
+			::serde_json::to_vec(&value)
+				.map(#pages_crate::__private::bytes::Bytes::from)
+				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+					format!("Failed to serialize response: {}", e)
+				))
 		},
 		"url" => quote! {
 			// For URL-encoded codec, response is still JSON
-			::serde_json::to_string(&value)
-				.map_err(|e| format!("Failed to serialize response: {}", e))
+			::serde_json::to_vec(&value)
+				.map(#pages_crate::__private::bytes::Bytes::from)
+				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+					format!("Failed to serialize response: {}", e)
+				))
 		},
 		"msgpack" => quote! {
 			// Serialize to msgpack bytes
 			let bytes = ::rmp_serde::to_vec(&value)
-				.map_err(|e| format!("Failed to serialize response: {}", e))?;
+				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+					format!("Failed to serialize response: {}", e)
+				))?;
 			// Encode as base64 for HTTP transport
-			Ok(::base64::Engine::encode(&::base64::engine::general_purpose::STANDARD, &bytes))
+			Ok(#pages_crate::__private::bytes::Bytes::from(
+				::base64::Engine::encode(&::base64::engine::general_purpose::STANDARD, &bytes)
+			))
 		},
 		// Fixes #843: emit compile error for unknown codec instead of silent fallback
 		unknown => {
@@ -1126,54 +1139,82 @@ fn generate_server_handler(
 		}
 	};
 
-	// Dynamically resolve crate paths for body extraction and registration
-	let pages_crate = get_reinhardt_pages_crate();
-
 	// Generate handler signature and body extraction.
 	// The handler receives Request in every native configuration. This keeps body
 	// handling in one place and lets JSON decode directly from Bytes when content
 	// negotiation is not needed.
 	let http_crate = get_reinhardt_http_crate();
 	let handler_signature = quote! {
-		pub async fn #handler_name(__req: #http_crate::Request) -> ::std::result::Result<::std::string::String, ::std::string::String>
+		pub async fn #handler_name(__req: #http_crate::Request) -> ::std::result::Result<#pages_crate::__private::bytes::Bytes, #pages_crate::__private::bytes::Bytes>
 	};
 	let handler_body_extraction = if regular_params.is_empty() {
 		quote! {}
 	} else {
 		match codec {
-			"json" => quote! {
-				let __content_type = __req
-					.headers
-					.get("content-type")
-					.and_then(|value| value.to_str().ok())
-					.unwrap_or("");
-				let body = __req.read_body()
-					.map_err(|e| format!("Failed to read body: {}", e))?;
-				let __media_type = __content_type
-					.split(';')
-					.next()
-					.unwrap_or("")
-					.trim();
-				let __converted_body;
-				let body: &[u8] = if __media_type.is_empty()
-					|| __media_type.eq_ignore_ascii_case("application/json")
-				{
-					body.as_ref()
-				} else {
-					let __body_text = ::std::string::String::from_utf8(body.to_vec())
-						.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
-					__converted_body = #pages_crate::server_fn::convert_body_for_codec(
-						__body_text,
-						&__content_type,
-						#codec,
-					)?;
-					__converted_body.as_bytes()
-				};
-			},
+			"json" if !has_inject_or_extractor => {
+				quote! {
+					let __content_type = __req
+						.headers
+						.get(#pages_crate::__private::hyper::header::CONTENT_TYPE)
+						.and_then(|value| value.to_str().ok())
+						.unwrap_or("");
+					let __media_type = __content_type
+						.split(';')
+						.next()
+						.unwrap_or("")
+						.trim();
+					let __converted_body;
+					let body: &[u8] = if __media_type.is_empty()
+						|| __media_type.eq_ignore_ascii_case("application/json")
+					{
+						__req.body().as_ref()
+					} else {
+						let __body_text = ::std::string::String::from_utf8(__req.body().to_vec())
+							.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+						__converted_body = #pages_crate::server_fn::convert_body_for_codec(
+							__body_text,
+							&__content_type,
+							#codec,
+						)?;
+						__converted_body.as_bytes()
+					};
+				}
+			}
+			"json" => {
+				quote! {
+					let __content_type = __req
+						.headers
+						.get(#pages_crate::__private::hyper::header::CONTENT_TYPE)
+						.and_then(|value| value.to_str().ok())
+						.unwrap_or("");
+					let body = __req.read_body()
+						.map_err(|e| format!("Failed to read body: {}", e))?;
+					let __media_type = __content_type
+						.split(';')
+						.next()
+						.unwrap_or("")
+						.trim();
+					let __converted_body;
+					let body: &[u8] = if __media_type.is_empty()
+						|| __media_type.eq_ignore_ascii_case("application/json")
+					{
+						body.as_ref()
+					} else {
+						let __body_text = ::std::string::String::from_utf8(body.to_vec())
+							.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+						__converted_body = #pages_crate::server_fn::convert_body_for_codec(
+							__body_text,
+							&__content_type,
+							#codec,
+						)?;
+						__converted_body.as_bytes()
+					};
+				}
+			}
 			_ => quote! {
 				let __content_type = __req
 					.headers
-					.get("content-type")
+					.get(#pages_crate::__private::hyper::header::CONTENT_TYPE)
 					.and_then(|value| value.to_str().ok())
 					.unwrap_or("");
 				let body = __req.read_body()
@@ -1190,6 +1231,7 @@ fn generate_server_handler(
 	// Generate unique name for the static wrapper function
 	let static_wrapper_name = quote::format_ident!("__server_fn_static_wrapper_{}", name);
 	let name_str = name.to_string();
+	let is_json_codec = codec == "json";
 
 	// Note: pages_crate is already resolved above for body extraction.
 	// http_crate is resolved above when inject_params is not empty,
@@ -1345,6 +1387,7 @@ fn generate_server_handler(
 				const PATH: &'static str = #endpoint;
 				const NAME: &'static str = #name_str;
 				const CODEC: &'static str = #codec;
+				const IS_JSON_CODEC: bool = #is_json_codec;
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
 				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
@@ -1396,8 +1439,10 @@ fn generate_server_handler(
 				Err(e) => {
 					// Serialize the error as ServerFnError
 					let error_json = ::serde_json::to_string(&e)
-						.map_err(|e| format!("Failed to serialize error: {}", e))?;
-					Err(error_json)
+						.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+							format!("Failed to serialize error: {}", e)
+						))?;
+					Err(#pages_crate::__private::bytes::Bytes::from(error_json))
 				}
 			}
 		}
@@ -1426,7 +1471,7 @@ fn generate_server_handler(
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		fn #static_wrapper_name(
 			req: #http_crate_for_wrapper::Request
-		) -> ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = ::std::result::Result<::std::string::String, ::std::string::String>> + ::std::marker::Send>> {
+		) -> ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = ::std::result::Result<#pages_crate::__private::bytes::Bytes, #pages_crate::__private::bytes::Bytes>> + ::std::marker::Send>> {
 			::std::boxed::Box::pin(async move {
 				// When DI is enabled, pass Request directly
 				// When DI is disabled, extract body from Request
@@ -1464,6 +1509,7 @@ fn generate_server_handler(
 				const PATH: &'static str = #endpoint;
 				const NAME: &'static str = #name_str;
 				const CODEC: &'static str = #codec;
+				const IS_JSON_CODEC: bool = #is_json_codec;
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
 				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
@@ -1472,6 +1518,12 @@ fn generate_server_handler(
 			impl #pages_crate::server_fn::ServerFnRegistration for marker {
 				fn handler() -> #pages_crate::server_fn::ServerFnHandler {
 					super::#static_wrapper_name
+				}
+
+				fn handle(
+					req: #http_crate_for_wrapper::Request
+				) -> impl ::std::future::Future<Output = ::std::result::Result<#pages_crate::__private::bytes::Bytes, #pages_crate::__private::bytes::Bytes>> + ::std::marker::Send {
+					super::#handler_name(req)
 				}
 			}
 
