@@ -40,6 +40,8 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 			26 => "/items",
 			27 => "/users",
 			28 => "/profile",
+			29 => "/trace",
+			30 => "/webdav",
 			_ => unreachable!("unsupported test endpoint"),
 		}
 	}
@@ -48,6 +50,8 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 		match ID {
 			8 | 11 | 12 | 13 | 14 | 18 | 27 => Method::POST,
 			21 => Method::PUT,
+			29 => Method::TRACE,
+			30 => Method::from_bytes(b"PROPFIND").unwrap(),
 			_ => Method::GET,
 		}
 	}
@@ -82,6 +86,8 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 			26 => "items-list",
 			27 => "users-create",
 			28 => "!profile_detail",
+			29 => "trace",
+			30 => "webdav",
 			_ => unreachable!("unsupported test endpoint"),
 		}
 	}
@@ -432,6 +438,31 @@ fn test_compile_routes_populates_exact_static_route_table() {
 	);
 }
 
+#[test]
+fn test_compile_routes_skips_exact_table_for_escaped_static_routes() {
+	// Arrange
+	let router = ServerRouter::new().handler("/{{hello}}", PathParamCountHandler);
+
+	// Act
+	router.compile_routes();
+	let compiled = router.compiled_routes();
+
+	// Assert
+	assert!(
+		!compiled
+			.exact_for_method(&Method::GET)
+			.expect("GET exact routes should be available")
+			.contains_key("/{{hello}}")
+	);
+	assert!(
+		compiled
+			.router_for_method(&Method::GET)
+			.expect("GET router should be available")
+			.at("/{hello}")
+			.is_ok()
+	);
+}
+
 #[tokio::test]
 async fn test_route_matching_preserves_url_pattern_order_issue_4013() {
 	// Regression test for issue #4013: path parameters must be exposed in
@@ -496,6 +527,22 @@ fn test_unsupported_methods_do_not_fall_back_to_get_routes() {
 	assert!(router.match_own_routes("/health", &trace).is_none());
 	assert!(router.match_own_routes("/health", &custom).is_none());
 	assert!(router.path_exists_for_any_method("/health"));
+}
+
+#[rstest]
+fn test_registered_non_default_methods_resolve() {
+	// Arrange
+	let router = ServerRouter::new()
+		.endpoint(|| TestEndpoint::<29>)
+		.endpoint(|| TestEndpoint::<30>);
+	router.compile_routes();
+	let propfind = Method::from_bytes(b"PROPFIND").unwrap();
+
+	// Act & Assert
+	assert!(router.match_own_routes("/trace", &Method::TRACE).is_some());
+	assert!(router.match_own_routes("/webdav", &propfind).is_some());
+	assert!(router.match_own_routes("/trace", &Method::GET).is_none());
+	assert!(router.path_exists_for_any_method("/webdav"));
 }
 
 #[rstest]
@@ -658,6 +705,7 @@ fn escaped_literal_brace_route_resolves_without_path_params() {
 
 	// Assert
 	assert!(route_match.params.is_none());
+	assert!(router.resolve("/{{hello}}", &Method::GET).is_none());
 }
 
 #[rstest]

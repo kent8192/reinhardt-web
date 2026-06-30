@@ -37,15 +37,17 @@ fn extract_path_param_names(path: &str) -> Arc<[String]> {
 	names.into()
 }
 
+fn uses_matchit_escape(path: &str) -> bool {
+	path.contains("{{") || path.contains("}}")
+}
+
 fn insert_compiled_route(
 	compiled: &mut CompiledRoutes,
 	method: &Method,
 	route_path: &str,
 	route_handler: RouteHandler,
 ) -> Result<(), String> {
-	let exact_handler = route_handler
-		.param_names
-		.is_empty()
+	let exact_handler = (route_handler.param_names.is_empty() && !uses_matchit_escape(route_path))
 		.then(|| route_handler.clone());
 	compiled
 		.router_for_method_mut(method)

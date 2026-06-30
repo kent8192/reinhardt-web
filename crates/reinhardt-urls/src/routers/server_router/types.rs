@@ -64,6 +64,8 @@ pub(crate) struct CompiledRoutes {
 	pub(crate) exact_patch: HashMap<String, RouteHandler>,
 	pub(crate) exact_head: HashMap<String, RouteHandler>,
 	pub(crate) exact_options: HashMap<String, RouteHandler>,
+	pub(crate) custom: HashMap<Method, MatchitRouter<RouteHandler>>,
+	pub(crate) exact_custom: HashMap<Method, HashMap<String, RouteHandler>>,
 	pub(crate) errors: Vec<String>,
 }
 
@@ -84,6 +86,8 @@ impl Default for CompiledRoutes {
 			exact_patch: HashMap::new(),
 			exact_head: HashMap::new(),
 			exact_options: HashMap::new(),
+			custom: HashMap::new(),
+			exact_custom: HashMap::new(),
 			errors: Vec::new(),
 		}
 	}
@@ -102,7 +106,7 @@ impl CompiledRoutes {
 			Method::PATCH => Some(&self.exact_patch),
 			Method::HEAD => Some(&self.exact_head),
 			Method::OPTIONS => Some(&self.exact_options),
-			_ => None,
+			_ => self.exact_custom.get(method),
 		}
 	}
 
@@ -118,7 +122,7 @@ impl CompiledRoutes {
 			Method::PATCH => Some(&mut self.exact_patch),
 			Method::HEAD => Some(&mut self.exact_head),
 			Method::OPTIONS => Some(&mut self.exact_options),
-			_ => None,
+			_ => Some(self.exact_custom.entry(method.clone()).or_default()),
 		}
 	}
 
@@ -134,7 +138,7 @@ impl CompiledRoutes {
 			Method::PATCH => Some(&self.patch),
 			Method::HEAD => Some(&self.head),
 			Method::OPTIONS => Some(&self.options),
-			_ => None,
+			_ => self.custom.get(method),
 		}
 	}
 
@@ -150,11 +154,11 @@ impl CompiledRoutes {
 			Method::PATCH => Some(&mut self.patch),
 			Method::HEAD => Some(&mut self.head),
 			Method::OPTIONS => Some(&mut self.options),
-			_ => None,
+			_ => Some(self.custom.entry(method.clone()).or_default()),
 		}
 	}
 
-	pub(crate) fn method_routers(&self) -> [&MatchitRouter<RouteHandler>; 7] {
+	pub(crate) fn method_routers(&self) -> impl Iterator<Item = &MatchitRouter<RouteHandler>> {
 		[
 			&self.get,
 			&self.post,
@@ -164,6 +168,8 @@ impl CompiledRoutes {
 			&self.head,
 			&self.options,
 		]
+		.into_iter()
+		.chain(self.custom.values())
 	}
 }
 
