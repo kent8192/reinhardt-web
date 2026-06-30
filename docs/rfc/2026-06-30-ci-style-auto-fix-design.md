@@ -106,8 +106,9 @@ Unsupported file statuses and symlink additions are rejected, and GraphQL file
 contents are read from staged blobs instead of following working-tree paths.
 
 The GitHub App token is generated only in the write job after the patch is
-applied and the target branch protection state is rechecked. The token requests
-only `permission-contents: write`.
+applied and the target branch protection state is rechecked. The
+`permission-contents: write` action input grants only the GitHub App
+`contents: write` repository permission.
 
 The GraphQL commit uses the triggering pull-request head SHA as
 `expectedHeadOid`. If the contributor pushes another commit while the auto-fix
@@ -150,7 +151,8 @@ Local validation for the workflow change:
 - shell syntax checks for any extracted multi-line shell script used by the job
 - inspection that the target job uses the branch API before the write-capable
   path can run
-- inspection that the App token step requests only `permission-contents: write`
+- inspection that the App token step grants only the `contents: write`
+  repository permission
 - inspection that both auto-fix jobs check out the triggering PR head SHA
 - inspection that the GraphQL commit uses that same SHA as `expectedHeadOid`
 - inspection that staged additions are read from the index and symlinks are
