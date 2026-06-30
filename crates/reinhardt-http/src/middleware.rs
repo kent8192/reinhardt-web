@@ -93,7 +93,7 @@ pub trait Handler: Send + Sync {
 /// This is an optional fast path for simple routes such as health checks,
 /// static responses, and synchronous request parsing. Routers can call this
 /// trait directly to avoid creating the boxed future required by
-/// [`async_trait`] on [`Handler`].
+/// `async_trait` on [`Handler`].
 pub trait SyncHandler: Send + Sync {
 	/// Handles an HTTP request synchronously and produces a response.
 	///
