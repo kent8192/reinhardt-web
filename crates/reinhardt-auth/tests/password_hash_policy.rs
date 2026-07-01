@@ -238,3 +238,60 @@ fn base_user_default_update_helper_preserves_single_hasher_compatibility() {
 	assert_eq!(result, PasswordCheck::Valid);
 	assert_eq!(user.password_hash(), Some("new$secret"));
 }
+
+#[cfg(all(feature = "argon2-hasher", feature = "bcrypt-hasher"))]
+mod bcrypt_policy_tests {
+	use reinhardt_auth::{
+		Argon2Hasher, BcryptHasher, PasswordHashPolicy, PasswordHasher, PasswordVerification,
+	};
+
+	#[test]
+	fn policy_rehashes_argon2_to_bcrypt_when_bcrypt_is_preferred() {
+		let password = "secret";
+		let argon2 = Argon2Hasher::new();
+		let bcrypt = BcryptHasher::new();
+		let stored_hash = argon2
+			.hash(password)
+			.expect("Argon2 should hash the password");
+		let policy = PasswordHashPolicy::new(bcrypt.clone()).with_legacy(Argon2Hasher::new());
+
+		let result = policy
+			.verify_with_update(password, &stored_hash)
+			.expect("policy verification should succeed");
+
+		let PasswordVerification::ValidNeedsRehash { updated_hash } = result else {
+			panic!("Argon2 legacy hash should be rehashed with bcrypt");
+		};
+		assert!(bcrypt.identify(&updated_hash));
+		assert!(
+			bcrypt
+				.verify(password, &updated_hash)
+				.expect("bcrypt should verify updated hash")
+		);
+	}
+
+	#[test]
+	fn policy_rehashes_bcrypt_to_argon2_when_argon2_is_preferred() {
+		let password = "secret";
+		let bcrypt = BcryptHasher::new();
+		let argon2 = Argon2Hasher::new();
+		let stored_hash = bcrypt
+			.hash(password)
+			.expect("bcrypt should hash the password");
+		let policy = PasswordHashPolicy::new(argon2.clone()).with_legacy(BcryptHasher::new());
+
+		let result = policy
+			.verify_with_update(password, &stored_hash)
+			.expect("policy verification should succeed");
+
+		let PasswordVerification::ValidNeedsRehash { updated_hash } = result else {
+			panic!("bcrypt legacy hash should be rehashed with Argon2");
+		};
+		assert!(argon2.identify(&updated_hash));
+		assert!(
+			argon2
+				.verify(password, &updated_hash)
+				.expect("Argon2 should verify updated hash")
+		);
+	}
+}

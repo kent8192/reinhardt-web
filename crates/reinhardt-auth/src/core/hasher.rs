@@ -302,3 +302,61 @@ impl PasswordHasher for Argon2Hasher {
 			|| stored_params.p_cost() != current_params.p_cost())
 	}
 }
+
+/// Bcrypt password hasher for compatibility with bcrypt-backed applications.
+#[cfg(feature = "bcrypt-hasher")]
+#[derive(Clone)]
+pub struct BcryptHasher {
+	cost: u32,
+}
+
+#[cfg(feature = "bcrypt-hasher")]
+impl BcryptHasher {
+	/// Creates a bcrypt hasher using the bcrypt crate's default cost.
+	pub fn new() -> Self {
+		Self {
+			cost: bcrypt::DEFAULT_COST,
+		}
+	}
+
+	/// Creates a bcrypt hasher with an explicit cost.
+	pub fn with_cost(cost: u32) -> Self {
+		Self { cost }
+	}
+}
+
+#[cfg(feature = "bcrypt-hasher")]
+impl Default for BcryptHasher {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+#[cfg(feature = "bcrypt-hasher")]
+impl PasswordHasher for BcryptHasher {
+	fn hash(&self, password: &str) -> Result<String, reinhardt_core::exception::Error> {
+		bcrypt::hash(password, self.cost)
+			.map_err(|e| reinhardt_core::exception::Error::Authentication(e.to_string()))
+	}
+
+	fn verify(&self, password: &str, hash: &str) -> Result<bool, reinhardt_core::exception::Error> {
+		bcrypt::verify(password, hash)
+			.map_err(|e| reinhardt_core::exception::Error::Authentication(e.to_string()))
+	}
+
+	fn algorithm(&self) -> Option<&'static str> {
+		Some("bcrypt")
+	}
+
+	fn identify(&self, hash: &str) -> bool {
+		hash.starts_with("$2a$") || hash.starts_with("$2b$") || hash.starts_with("$2y$")
+	}
+
+	fn must_update(&self, hash: &str) -> Result<bool, reinhardt_core::exception::Error> {
+		let parts = hash
+			.parse::<bcrypt::HashParts>()
+			.map_err(|e| reinhardt_core::exception::Error::Authentication(e.to_string()))?;
+
+		Ok(parts.get_cost() != self.cost)
+	}
+}

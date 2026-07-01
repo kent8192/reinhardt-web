@@ -44,7 +44,8 @@
 //! | `sessions` | disabled | Session-based authentication |
 //! | `oauth` | disabled | OAuth2 authorization code flow |
 //! | `token` | disabled | Token-based authentication |
-//! | `argon2-hasher` | disabled | Argon2 password hashing (alternative to bcrypt) |
+//! | `argon2-hasher` | disabled | Argon2 password hashing |
+//! | `bcrypt-hasher` | disabled | bcrypt password hashing for compatibility |
 //! | `social` | disabled | Social authentication (OAuth2/OIDC providers) |
 //! | `database` | disabled | Database-backed user/group storage via ORM |
 //!
@@ -106,6 +107,9 @@ pub use core::{
 
 #[cfg(feature = "argon2-hasher")]
 pub use core::Argon2Hasher;
+
+#[cfg(feature = "bcrypt-hasher")]
+pub use core::BcryptHasher;
 
 // Re-export permission operators from core
 pub use core::permission_operators;

@@ -8,11 +8,12 @@
 //! - **User traits**: `BaseUser`, `FullUser` for representing authenticated users
 //! - **Permission system**: `Permission` trait and common permission classes
 //! - **Authentication backends**: `AuthBackend` trait for custom authentication
-//! - **Password hashing**: `PasswordHasher` trait and Argon2 implementation
+//! - **Password hashing**: `PasswordHasher` trait with Argon2 and bcrypt implementations
 //!
 //! ## Features
 //!
-//! - `argon2-hasher` (default): Enables Argon2id password hashing
+//! - `argon2-hasher` (optional): Enables Argon2id password hashing
+//! - `bcrypt-hasher` (optional): Enables bcrypt password hashing
 //!
 //! ## Examples
 //!
@@ -189,3 +190,7 @@ pub use superuser_creator::{
 // Re-export Argon2Hasher when feature is enabled
 #[cfg(feature = "argon2-hasher")]
 pub use hasher::Argon2Hasher;
+
+// Re-export BcryptHasher when feature is enabled
+#[cfg(feature = "bcrypt-hasher")]
+pub use hasher::BcryptHasher;
