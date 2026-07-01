@@ -190,7 +190,7 @@ use reinhardt::grpc::proto::common::{Empty, Timestamp, PageInfo};
 
 Facade consumers can enable `grpc` alongside a preset that includes DI:
 
-<!-- reinhardt-version-sync:2 -->
+<!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
 reinhardt = { version = "0.3.0", package = "reinhardt-web", default-features = false, features = ["minimal", "grpc"] }
