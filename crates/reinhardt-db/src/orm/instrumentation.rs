@@ -341,6 +341,13 @@ impl Instrumentation {
 		}
 	}
 
+	async fn notify_query_error_listeners(&self, query: &str, error: &str) {
+		let listeners = self.listener_snapshot();
+		for listener in listeners {
+			listener.on_query_error(query, error).await;
+		}
+	}
+
 	/// Notifies all listeners that a query has started
 	///
 	/// # Examples
@@ -425,6 +432,10 @@ impl Instrumentation {
 		self.notify_query_end_listeners(query, duration).await;
 	}
 
+	pub(crate) async fn orm_query_error(&self, query: &str, error: &str) {
+		self.notify_query_error_listeners(query, error).await;
+	}
+
 	/// Notifies all listeners that a query has failed
 	///
 	/// # Examples
@@ -454,10 +465,7 @@ impl Instrumentation {
 			.or_default()
 			.push(metrics);
 
-		let listeners = self.listener_snapshot();
-		for listener in listeners {
-			listener.on_query_error(query, error).await;
-		}
+		self.notify_query_error_listeners(query, error).await;
 	}
 
 	/// Notifies all listeners that a transaction has started
@@ -778,6 +786,28 @@ mod tests {
 			.await;
 
 		assert_eq!(report.findings.len(), 1);
+	}
+
+	#[tokio::test]
+	async fn test_orm_query_error_does_not_retain_metrics() {
+		let instr = Instrumentation::new();
+		let query_error = Arc::new(AtomicUsize::new(0));
+		let query = "SELECT * FROM posts WHERE author_id = 1";
+
+		let listener = Arc::new(TestListener {
+			query_start_count: Arc::new(AtomicUsize::new(0)),
+			query_end_count: Arc::new(AtomicUsize::new(0)),
+			query_error_count: query_error.clone(),
+			transaction_start_count: Arc::new(AtomicUsize::new(0)),
+			transaction_end_count: Arc::new(AtomicUsize::new(0)),
+		});
+
+		instr.add_listener("test".to_string(), listener);
+		instr.orm_query_error(query, "table not found").await;
+
+		assert_eq!(query_error.load(Ordering::SeqCst), 1);
+		assert!(instr.query_metrics(query).is_empty());
+		assert_eq!(instr.statistics().total_queries, 0);
 	}
 
 	#[tokio::test]

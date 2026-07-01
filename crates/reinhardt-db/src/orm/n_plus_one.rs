@@ -53,7 +53,7 @@ pub struct NPlusOneFinding {
 	pub execution_count: usize,
 	/// Number of distinct bind or inline literal signatures.
 	pub distinct_bind_signature_count: usize,
-	/// First SQL statement observed for this fingerprint.
+	/// Normalized SQL statement for this fingerprint with literal values redacted.
 	pub representative_sql: String,
 	/// Bounded, masked bind or literal samples.
 	pub representative_bind_samples: Vec<String>,
@@ -142,9 +142,9 @@ struct QueryAggregate {
 }
 
 impl QueryAggregate {
-	fn new(sql: &str) -> Self {
+	fn new(representative_sql: String) -> Self {
 		Self {
-			representative_sql: sql.to_string(),
+			representative_sql,
 			bind_signatures: BTreeSet::new(),
 			representative_bind_samples: Vec::new(),
 			execution_count: 0,
@@ -174,6 +174,15 @@ impl ScopeState {
 	}
 
 	fn record_query(&mut self, query: &str, params: &[String], duration: Duration) {
+		let fingerprint = QueryFingerprint::from_sql(query);
+		if self
+			.config
+			.ignored_fingerprints
+			.contains(&fingerprint.normalized)
+		{
+			return;
+		}
+
 		if self.total_recorded_queries >= self.config.max_records_per_scope {
 			self.dropped_sample_count += 1;
 			return;
@@ -181,14 +190,14 @@ impl ScopeState {
 
 		self.total_recorded_queries += 1;
 
-		let fingerprint = QueryFingerprint::from_sql(query);
 		let bind_signature = bind_signature(params, &fingerprint);
 		let bind_samples = bind_samples(params, &fingerprint);
+		let normalized = fingerprint.normalized;
 
 		let aggregate = self
 			.aggregates
-			.entry(fingerprint.normalized)
-			.or_insert_with(|| QueryAggregate::new(query));
+			.entry(normalized.clone())
+			.or_insert_with(|| QueryAggregate::new(normalized));
 
 		aggregate.execution_count += 1;
 		aggregate.cumulative_duration += duration;
@@ -574,6 +583,34 @@ mod tests {
 	}
 
 	#[test]
+	fn representative_sql_uses_normalized_fingerprint() {
+		let mut state = ScopeState::new("users.index".to_string(), low_threshold_config());
+		for email in [
+			"a@example.com",
+			"b@example.com",
+			"private-token@example.com",
+		] {
+			state.record_query(
+				&format!("SELECT * FROM users WHERE email = '{email}'"),
+				&[],
+				Duration::from_millis(1),
+			);
+		}
+
+		let report = state.finish_report();
+		assert_eq!(report.findings.len(), 1);
+		assert_eq!(
+			report.findings[0].representative_sql,
+			"SELECT * FROM users WHERE email = ?"
+		);
+		assert!(
+			!report.findings[0]
+				.representative_sql
+				.contains("private-token")
+		);
+	}
+
+	#[test]
 	fn ignores_repeated_query_with_same_bind_signature() {
 		let mut config = NPlusOneConfig::default();
 		config.threshold = 3;
@@ -610,6 +647,42 @@ mod tests {
 
 		let report = state.finish_report();
 		assert!(report.findings.is_empty());
+		assert_eq!(report.total_recorded_queries, 0);
+		assert_eq!(report.dropped_sample_count, 0);
+	}
+
+	#[test]
+	fn ignored_fingerprints_do_not_consume_record_cap() {
+		let mut config = low_threshold_config();
+		config.max_records_per_scope = 3;
+		config
+			.ignored_fingerprints
+			.insert("SELECT * FROM posts WHERE author_id = ?".to_string());
+
+		let mut state = ScopeState::new("posts.index".to_string(), config);
+		for author_id in ["1", "2", "3"] {
+			state.record_query(
+				"SELECT * FROM posts WHERE author_id = $1",
+				&[author_id.to_string()],
+				Duration::from_millis(1),
+			);
+		}
+		for post_id in ["1", "2", "3"] {
+			state.record_query(
+				"SELECT * FROM comments WHERE post_id = $1",
+				&[post_id.to_string()],
+				Duration::from_millis(1),
+			);
+		}
+
+		let report = state.finish_report();
+		assert_eq!(report.total_recorded_queries, 3);
+		assert_eq!(report.dropped_sample_count, 0);
+		assert_eq!(report.findings.len(), 1);
+		assert_eq!(
+			report.findings[0].fingerprint,
+			"SELECT * FROM comments WHERE post_id = ?"
+		);
 	}
 
 	#[test]

@@ -4115,7 +4115,7 @@ where
 			}
 			Err(error) => {
 				super::instrumentation::instrumentation()
-					.query_error(&sql, &format!("{error:?}"), duration)
+					.orm_query_error(&sql, &format!("{error:?}"))
 					.await;
 				return Err(error.into());
 			}
@@ -4370,7 +4370,7 @@ where
 			}
 			Err(error) => {
 				super::instrumentation::instrumentation()
-					.query_error(&sql, &format!("{error:?}"), duration)
+					.orm_query_error(&sql, &format!("{error:?}"))
 					.await;
 				return Err(error.into());
 			}
