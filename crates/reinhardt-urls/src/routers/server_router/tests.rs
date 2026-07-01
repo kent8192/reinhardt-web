@@ -3,7 +3,7 @@
 use super::*;
 use hyper::Method;
 use reinhardt_core::endpoint::EndpointInfo;
-use reinhardt_http::{Handler, Request, Response, Result};
+use reinhardt_http::{Handler, Request, Response, Result, SyncHandler};
 use rstest::rstest;
 use std::sync::Arc;
 
@@ -40,6 +40,8 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 			26 => "/items",
 			27 => "/users",
 			28 => "/profile",
+			29 => "/trace",
+			30 => "/webdav",
 			_ => unreachable!("unsupported test endpoint"),
 		}
 	}
@@ -48,6 +50,8 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 		match ID {
 			8 | 11 | 12 | 13 | 14 | 18 | 27 => Method::POST,
 			21 => Method::PUT,
+			29 => Method::TRACE,
+			30 => Method::from_bytes(b"PROPFIND").unwrap(),
 			_ => Method::GET,
 		}
 	}
@@ -82,6 +86,8 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 			26 => "items-list",
 			27 => "users-create",
 			28 => "!profile_detail",
+			29 => "trace",
+			30 => "webdav",
 			_ => unreachable!("unsupported test endpoint"),
 		}
 	}
@@ -91,6 +97,23 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 impl<const ID: u8> Handler for TestEndpoint<ID> {
 	async fn handle(&self, _req: Request) -> Result<Response> {
 		Ok(Response::ok())
+	}
+}
+
+struct PathParamCountHandler;
+
+#[async_trait::async_trait]
+impl Handler for PathParamCountHandler {
+	async fn handle(&self, req: Request) -> Result<Response> {
+		Ok(Response::ok().with_body(req.path_params.len().to_string()))
+	}
+}
+
+struct PathParamCountSyncHandler;
+
+impl SyncHandler for PathParamCountSyncHandler {
+	fn handle_sync(&self, req: Request) -> Result<Response> {
+		Ok(Response::ok().with_body(req.path_params.len().to_string()))
 	}
 }
 
@@ -365,8 +388,12 @@ async fn test_route_matching_correctness() {
 	assert_eq!(route_match.param("post_id"), Some("789"));
 	assert_eq!(route_match.param("comment_id"), Some("101"));
 	assert_eq!(
-		route_match.params.as_slice(),
-		&[
+		route_match
+			.params
+			.as_ref()
+			.expect("parameterized route should expose path params")
+			.to_vec(),
+		vec![
 			("post_id".to_string(), "789".to_string()),
 			("comment_id".to_string(), "101".to_string()),
 		],
@@ -376,6 +403,64 @@ async fn test_route_matching_correctness() {
 	// Act & Assert - non-matching route
 	let result = router.match_own_routes("/nonexistent", &Method::GET);
 	assert!(result.is_none());
+}
+
+#[test]
+fn test_compile_routes_populates_exact_static_route_table() {
+	// Arrange
+	let router = ServerRouter::new()
+		.endpoint(|| TestEndpoint::<1>)
+		.endpoint(|| TestEndpoint::<3>);
+
+	// Act
+	router.compile_routes();
+	let compiled = router.compiled_routes();
+
+	// Assert
+	assert!(
+		compiled
+			.exact_for_method(&Method::GET)
+			.expect("GET exact routes should be available")
+			.contains_key("/health")
+	);
+	assert!(
+		!compiled
+			.exact_for_method(&Method::GET)
+			.expect("GET exact routes should be available")
+			.contains_key("/users/{id}")
+	);
+	assert!(
+		compiled
+			.router_for_method(&Method::GET)
+			.expect("GET router should be available")
+			.at("/users/123")
+			.is_ok()
+	);
+}
+
+#[test]
+fn test_compile_routes_skips_exact_table_for_escaped_static_routes() {
+	// Arrange
+	let router = ServerRouter::new().handler("/{{hello}}", PathParamCountHandler);
+
+	// Act
+	router.compile_routes();
+	let compiled = router.compiled_routes();
+
+	// Assert
+	assert!(
+		!compiled
+			.exact_for_method(&Method::GET)
+			.expect("GET exact routes should be available")
+			.contains_key("/{{hello}}")
+	);
+	assert!(
+		compiled
+			.router_for_method(&Method::GET)
+			.expect("GET router should be available")
+			.at("/{hello}")
+			.is_ok()
+	);
 }
 
 #[tokio::test]
@@ -396,8 +481,12 @@ async fn test_route_matching_preserves_url_pattern_order_issue_4013() {
 
 	// Assert
 	assert_eq!(
-		route_match.params.as_slice(),
-		&[
+		route_match
+			.params
+			.as_ref()
+			.expect("parameterized route should expose path params")
+			.to_vec(),
+		vec![
 			("org".to_string(), "myslug".to_string()),
 			("cluster_id".to_string(), "5".to_string()),
 		],
@@ -424,6 +513,36 @@ async fn test_route_matching_different_methods() {
 	// Act & Assert - unsupported method
 	let result = router.match_own_routes("/users", &Method::DELETE);
 	assert!(result.is_none());
+}
+
+#[rstest]
+fn test_unsupported_methods_do_not_fall_back_to_get_routes() {
+	// Arrange
+	let router = ServerRouter::new().endpoint(|| TestEndpoint::<1>);
+	router.compile_routes();
+	let trace = Method::from_bytes(b"TRACE").unwrap();
+	let custom = Method::from_bytes(b"BREW").unwrap();
+
+	// Act & Assert
+	assert!(router.match_own_routes("/health", &trace).is_none());
+	assert!(router.match_own_routes("/health", &custom).is_none());
+	assert!(router.path_exists_for_any_method("/health"));
+}
+
+#[rstest]
+fn test_registered_non_default_methods_resolve() {
+	// Arrange
+	let router = ServerRouter::new()
+		.endpoint(|| TestEndpoint::<29>)
+		.endpoint(|| TestEndpoint::<30>);
+	router.compile_routes();
+	let propfind = Method::from_bytes(b"PROPFIND").unwrap();
+
+	// Act & Assert
+	assert!(router.match_own_routes("/trace", &Method::TRACE).is_some());
+	assert!(router.match_own_routes("/webdav", &propfind).is_some());
+	assert!(router.match_own_routes("/trace", &Method::GET).is_none());
+	assert!(router.path_exists_for_any_method("/webdav"));
 }
 
 #[rstest]
@@ -472,42 +591,37 @@ fn test_validate_routes_returns_errors_for_invalid_patterns() {
 }
 
 #[rstest]
-fn test_router_recovers_from_poisoned_rwlock() {
+fn test_router_reuses_compiled_routes() {
 	// Arrange
 	let router = ServerRouter::new().endpoint(|| TestEndpoint::<1>);
 
-	// Poison the routes_compiled RwLock by panicking while holding write guard
-	let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-		let _guard = router.routes_compiled.write().unwrap();
-		panic!("intentional panic to poison lock");
-	}));
-
-	// Act - compile_routes should recover from poisoned lock
-	let errors = router.compile_routes();
+	// Act
+	let first_errors = router.compile_routes();
+	let second_errors = router.compile_routes();
+	let first_table = router.compiled_routes() as *const _;
+	let second_table = router.compiled_routes() as *const _;
 
 	// Assert
-	assert!(errors.is_empty());
+	assert!(first_errors.is_empty());
+	assert!(second_errors.is_empty());
+	assert_eq!(first_table, second_table);
 	let result = router.match_own_routes("/health", &Method::GET);
 	assert!(result.is_some());
 }
 
 #[rstest]
-fn test_route_matching_recovers_from_poisoned_method_router() {
+fn test_router_rebuilds_compiled_routes_after_endpoint_registration() {
 	// Arrange
 	let router = ServerRouter::new().endpoint(|| TestEndpoint::<1>);
 	router.compile_routes();
+	assert!(router.match_own_routes("/list", &Method::GET).is_none());
 
-	// Poison the get_router RwLock
-	let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-		let _guard = router.get_router.write().unwrap();
-		panic!("intentional panic to poison lock");
-	}));
+	// Act
+	let router = router.endpoint(|| TestEndpoint::<2>);
 
-	// Act - match_own_routes should recover from poisoned lock
-	let result = router.match_own_routes("/health", &Method::GET);
-
-	// Assert - route matching should still work
-	assert!(result.is_some());
+	// Assert
+	assert!(router.match_own_routes("/health", &Method::GET).is_some());
+	assert!(router.match_own_routes("/list", &Method::GET).is_some());
 }
 
 // --- ServerRouter::exclude() tests ---
@@ -535,6 +649,63 @@ fn create_test_request(path: &str) -> reinhardt_http::Request {
 		.body(bytes::Bytes::new())
 		.build()
 		.unwrap()
+}
+
+fn create_test_request_with_path_params(path: &str) -> reinhardt_http::Request {
+	reinhardt_http::Request::builder()
+		.method(Method::GET)
+		.uri(path)
+		.version(hyper::Version::HTTP_11)
+		.headers(hyper::HeaderMap::new())
+		.body(bytes::Bytes::new())
+		.path_params(vec![("id".to_string(), "stale".to_string())])
+		.build()
+		.unwrap()
+}
+
+#[rstest]
+#[tokio::test]
+async fn static_route_dispatch_clears_existing_path_params() {
+	// Arrange
+	let router = ServerRouter::new().handler("/health", PathParamCountHandler);
+	let request = create_test_request_with_path_params("/health");
+
+	// Act
+	let response = Handler::handle(&router, request).await.unwrap();
+
+	// Assert
+	assert_eq!(response.body, bytes::Bytes::from_static(b"0"));
+}
+
+#[rstest]
+fn static_route_sync_dispatch_clears_existing_path_params() {
+	// Arrange
+	let router = ServerRouter::new().handler_sync("/health", PathParamCountSyncHandler);
+	let request = create_test_request_with_path_params("/health");
+
+	// Act
+	let response = router
+		.try_dispatch_sync(request)
+		.expect("static sync route should use sync fast path")
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.body, bytes::Bytes::from_static(b"0"));
+}
+
+#[rstest]
+fn escaped_literal_brace_route_resolves_without_path_params() {
+	// Arrange
+	let router = ServerRouter::new().handler("/{{hello}}", PathParamCountHandler);
+
+	// Act
+	let route_match = router
+		.resolve("/{hello}", &Method::GET)
+		.expect("literal brace route should resolve");
+
+	// Assert
+	assert!(route_match.params.is_none());
+	assert!(router.resolve("/{{hello}}", &Method::GET).is_none());
 }
 
 #[rstest]

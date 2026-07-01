@@ -787,7 +787,10 @@ mod tests {
 
 		let route_match = route_match.unwrap();
 		assert_eq!(route_match.route.name(), Some("list"));
-		assert_eq!(route_match.params.get("model"), Some(&"users".to_string()));
+		assert_eq!(
+			route_match.params.get("model").map(String::as_str),
+			Some("users")
+		);
 	}
 
 	#[test]
@@ -798,8 +801,11 @@ mod tests {
 
 		let route_match = route_match.unwrap();
 		assert_eq!(route_match.route.name(), Some("detail"));
-		assert_eq!(route_match.params.get("model"), Some(&"users".to_string()));
-		assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
+		assert_eq!(
+			route_match.params.get("model").map(String::as_str),
+			Some("users")
+		);
+		assert_eq!(route_match.params.get("id").map(String::as_str), Some("42"));
 	}
 
 	#[test]
@@ -810,7 +816,10 @@ mod tests {
 
 		let route_match = route_match.unwrap();
 		assert_eq!(route_match.route.name(), Some("create"));
-		assert_eq!(route_match.params.get("model"), Some(&"users".to_string()));
+		assert_eq!(
+			route_match.params.get("model").map(String::as_str),
+			Some("users")
+		);
 	}
 
 	#[test]
@@ -821,8 +830,11 @@ mod tests {
 
 		let route_match = route_match.unwrap();
 		assert_eq!(route_match.route.name(), Some("edit"));
-		assert_eq!(route_match.params.get("model"), Some(&"users".to_string()));
-		assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
+		assert_eq!(
+			route_match.params.get("model").map(String::as_str),
+			Some("users")
+		);
+		assert_eq!(route_match.params.get("id").map(String::as_str), Some("42"));
 	}
 
 	#[test]

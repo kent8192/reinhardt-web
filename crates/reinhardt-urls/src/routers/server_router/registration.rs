@@ -7,7 +7,9 @@ use super::ServerRouter;
 use super::types::{FunctionRoute, ViewRoute};
 use crate::routers::Route;
 use reinhardt_core::endpoint::EndpointInfo;
-use reinhardt_http::Handler;
+use reinhardt_http::{
+	Handler, RequestlessSyncHandler, RequestlessSyncHandlerAdapter, SyncHandler, SyncHandlerAdapter,
+};
 use reinhardt_middleware::Middleware;
 #[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::ViewSet;
@@ -37,6 +39,7 @@ impl ServerRouter {
 	/// ```
 	#[cfg(feature = "viewsets")]
 	pub fn viewset<V: ViewSet + 'static>(mut self, prefix: &str, viewset: V) -> Self {
+		self.invalidate_compiled_routes();
 		self.viewsets.insert(prefix.to_string(), Arc::new(viewset));
 		self
 	}
@@ -122,6 +125,7 @@ impl ServerRouter {
 		F: FnOnce() -> E,
 		E: EndpointInfo + Handler + 'static,
 	{
+		self.invalidate_compiled_routes();
 		let view = f();
 		let path = E::path().to_string();
 		let method = E::method();
@@ -131,6 +135,72 @@ impl ServerRouter {
 			path,
 			method,
 			handler: Arc::new(view),
+			sync_handler: None,
+			requestless_sync_handler: None,
+			name: Some(name),
+			middleware: Vec::new(),
+		});
+		self
+	}
+
+	/// Register a synchronous endpoint using the `EndpointInfo` trait.
+	///
+	/// This variant is for endpoints that can complete without awaiting I/O.
+	/// Routers call the synchronous handler directly when no middleware is
+	/// attached, avoiding the boxed future required by the async handler trait.
+	pub fn endpoint_sync<F, E>(mut self, f: F) -> Self
+	where
+		F: FnOnce() -> E,
+		E: EndpointInfo + SyncHandler + 'static,
+	{
+		self.invalidate_compiled_routes();
+		let view = f();
+		let path = E::path().to_string();
+		let method = E::method();
+		let name = E::name().to_string();
+		let sync_handler: Arc<dyn SyncHandler> = Arc::new(view);
+		let handler: Arc<dyn Handler> = Arc::new(SyncHandlerAdapter::new(sync_handler.clone()));
+
+		self.functions.push(FunctionRoute {
+			path,
+			method,
+			handler,
+			sync_handler: Some(sync_handler),
+			requestless_sync_handler: None,
+			name: Some(name),
+			middleware: Vec::new(),
+		});
+		self
+	}
+
+	/// Register a synchronous endpoint that does not inspect request state.
+	///
+	/// This is the lowest-overhead endpoint registration path. HTTP adapters can
+	/// execute these routes before constructing a full request when the incoming
+	/// request has no body and the route has no middleware or path parameters.
+	pub fn endpoint_requestless_sync<F, E>(mut self, f: F) -> Self
+	where
+		F: FnOnce() -> E,
+		E: EndpointInfo + RequestlessSyncHandler + 'static,
+	{
+		self.invalidate_compiled_routes();
+		let view = f();
+		let path = E::path().to_string();
+		let method = E::method();
+		let name = E::name().to_string();
+		let requestless_handler: Arc<dyn RequestlessSyncHandler> = Arc::new(view);
+		let adapter = Arc::new(RequestlessSyncHandlerAdapter::new(
+			requestless_handler.clone(),
+		));
+		let handler: Arc<dyn Handler> = adapter.clone();
+		let sync_handler: Arc<dyn SyncHandler> = adapter;
+
+		self.functions.push(FunctionRoute {
+			path,
+			method,
+			handler,
+			sync_handler: Some(sync_handler),
+			requestless_sync_handler: Some(requestless_handler),
 			name: Some(name),
 			middleware: Vec::new(),
 		});
@@ -161,9 +231,12 @@ impl ServerRouter {
 	where
 		V: Handler + 'static,
 	{
+		self.invalidate_compiled_routes();
 		self.views.push(ViewRoute {
 			path: path.to_string(),
 			handler: Arc::new(view),
+			sync_handler: None,
+			requestless_sync_handler: None,
 			name: None,
 			middleware: Vec::new(),
 		});
@@ -203,9 +276,12 @@ impl ServerRouter {
 	where
 		V: Handler + 'static,
 	{
+		self.invalidate_compiled_routes();
 		self.views.push(ViewRoute {
 			path: path.to_string(),
 			handler: Arc::new(view),
+			sync_handler: None,
+			requestless_sync_handler: None,
 			name: Some(name.to_string()),
 			middleware: Vec::new(),
 		});
@@ -239,7 +315,35 @@ impl ServerRouter {
 	where
 		H: Handler + 'static,
 	{
+		self.invalidate_compiled_routes();
 		let route = Route::from_handler(path, handler);
+		self.routes.push(route);
+		self
+	}
+
+	/// Register a synchronous handler directly.
+	///
+	/// This is the raw-handler counterpart to [`Self::endpoint_sync`].
+	pub fn handler_sync<H>(mut self, path: &str, handler: H) -> Self
+	where
+		H: SyncHandler + 'static,
+	{
+		self.invalidate_compiled_routes();
+		let route = Route::from_sync_handler(path, handler);
+		self.routes.push(route);
+		self
+	}
+
+	/// Register a requestless synchronous handler directly.
+	///
+	/// This is the raw-handler counterpart to
+	/// [`Self::endpoint_requestless_sync`].
+	pub fn handler_requestless_sync<H>(mut self, path: &str, handler: H) -> Self
+	where
+		H: RequestlessSyncHandler + 'static,
+	{
+		self.invalidate_compiled_routes();
+		let route = Route::from_requestless_sync_handler(path, handler);
 		self.routes.push(route);
 		self
 	}
@@ -269,6 +373,7 @@ impl ServerRouter {
 	///     .handler_arc("/custom", handler);
 	/// ```
 	pub fn handler_arc(mut self, path: &str, handler: Arc<dyn Handler>) -> Self {
+		self.invalidate_compiled_routes();
 		let route = Route::new(path, handler);
 		self.routes.push(route);
 		self
@@ -300,6 +405,7 @@ impl ServerRouter {
 	///     .with_route_middleware(LoggingMiddleware::new());
 	/// ```
 	pub fn with_route_middleware<M: Middleware + 'static>(mut self, middleware: M) -> Self {
+		self.invalidate_compiled_routes();
 		let middleware = Arc::new(middleware);
 		if let Some(route) = self.functions.last_mut() {
 			route.middleware.push(middleware.clone());
@@ -309,6 +415,169 @@ impl ServerRouter {
 			route.middleware.push(middleware);
 		}
 		self
+	}
+}
+
+#[cfg(test)]
+mod sync_handler_tests {
+	use super::*;
+	use async_trait::async_trait;
+	use hyper::StatusCode;
+	use reinhardt_http::{Request, Response, Result};
+
+	struct HealthEndpoint;
+
+	impl EndpointInfo for HealthEndpoint {
+		fn path() -> &'static str {
+			"/health"
+		}
+
+		fn method() -> hyper::Method {
+			hyper::Method::GET
+		}
+
+		fn name() -> &'static str {
+			"health"
+		}
+	}
+
+	impl SyncHandler for HealthEndpoint {
+		fn handle_sync(&self, _request: Request) -> Result<Response> {
+			Ok(Response::ok().with_static_body(b"ok"))
+		}
+	}
+
+	struct RequestlessHealthEndpoint;
+
+	impl EndpointInfo for RequestlessHealthEndpoint {
+		fn path() -> &'static str {
+			"/requestless-health"
+		}
+
+		fn method() -> hyper::Method {
+			hyper::Method::GET
+		}
+
+		fn name() -> &'static str {
+			"requestless_health"
+		}
+	}
+
+	impl RequestlessSyncHandler for RequestlessHealthEndpoint {
+		fn handle_requestless_sync(&self) -> Result<Response> {
+			Ok(Response::ok().with_static_body(b"ok"))
+		}
+	}
+
+	struct PassThroughMiddleware;
+
+	#[async_trait]
+	impl Middleware for PassThroughMiddleware {
+		async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
+			let mut response = next.handle(request).await?;
+			response.status = StatusCode::ACCEPTED;
+			Ok(response)
+		}
+	}
+
+	fn request(path: &str) -> Request {
+		Request::builder()
+			.method(hyper::Method::GET)
+			.uri(path)
+			.build()
+			.expect("request should build")
+	}
+
+	#[tokio::test]
+	async fn endpoint_sync_dispatches_synchronous_handler() {
+		// Arrange
+		let router = ServerRouter::new().endpoint_sync(|| HealthEndpoint);
+
+		// Act
+		let response = router
+			.dispatch(request("/health"))
+			.await
+			.expect("route should dispatch");
+
+		// Assert
+		assert_eq!(response.status, StatusCode::OK);
+		assert_eq!(response.body.as_ref(), b"ok");
+	}
+
+	#[test]
+	fn endpoint_sync_dispatches_through_synchronous_router_path() {
+		// Arrange
+		let router = ServerRouter::new().endpoint_sync(|| HealthEndpoint);
+
+		// Act
+		let response = router
+			.try_dispatch_sync(request("/health"))
+			.expect("sync route should use the synchronous dispatch path")
+			.expect("route should dispatch");
+
+		// Assert
+		assert_eq!(response.status, StatusCode::OK);
+		assert_eq!(response.body.as_ref(), b"ok");
+	}
+
+	#[test]
+	fn endpoint_requestless_sync_dispatches_without_request() {
+		// Arrange
+		let router = ServerRouter::new().endpoint_requestless_sync(|| RequestlessHealthEndpoint);
+
+		// Act
+		let response = router
+			.try_dispatch_requestless_sync("/requestless-health", &hyper::Method::GET)
+			.expect("requestless route should use the requestless dispatch path")
+			.expect("route should dispatch");
+
+		// Assert
+		assert_eq!(response.status, StatusCode::OK);
+		assert_eq!(response.body.as_ref(), b"ok");
+	}
+
+	#[test]
+	fn endpoint_requestless_sync_with_middleware_declines_requestless_path() {
+		// Arrange
+		let router = ServerRouter::new()
+			.with_middleware(PassThroughMiddleware)
+			.endpoint_requestless_sync(|| RequestlessHealthEndpoint);
+
+		// Act & Assert
+		assert!(
+			router
+				.try_dispatch_requestless_sync("/requestless-health", &hyper::Method::GET)
+				.is_none()
+		);
+	}
+
+	#[test]
+	fn endpoint_sync_with_middleware_declines_synchronous_router_path() {
+		// Arrange
+		let router = ServerRouter::new()
+			.with_middleware(PassThroughMiddleware)
+			.endpoint_sync(|| HealthEndpoint);
+
+		// Act & Assert
+		assert!(router.try_dispatch_sync(request("/health")).is_none());
+	}
+
+	#[tokio::test]
+	async fn handler_sync_still_runs_through_middleware_chain() {
+		// Arrange
+		let router = ServerRouter::new()
+			.with_middleware(PassThroughMiddleware)
+			.handler_sync("/health", HealthEndpoint);
+
+		// Act
+		let response = router
+			.dispatch(request("/health"))
+			.await
+			.expect("route should dispatch");
+
+		// Assert
+		assert_eq!(response.status, StatusCode::ACCEPTED);
+		assert_eq!(response.body.as_ref(), b"ok");
 	}
 }
 

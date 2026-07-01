@@ -304,7 +304,7 @@ impl<P: Paginator> PaginatedViewSet<P> {
 		if let Some(category) = request.query_params.get("category") {
 			products
 				.iter()
-				.filter(|p| &p.category == category)
+				.filter(|p| p.category == category)
 				.cloned()
 				.collect()
 		} else {

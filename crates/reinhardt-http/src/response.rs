@@ -3,6 +3,20 @@ use futures::stream::Stream;
 use hyper::{HeaderMap, StatusCode};
 use serde::Serialize;
 use std::pin::Pin;
+use std::sync::OnceLock;
+
+static JSON_CONTENT_TYPE_HEADERS: OnceLock<HeaderMap> = OnceLock::new();
+
+fn json_content_type_headers() -> &'static HeaderMap {
+	JSON_CONTENT_TYPE_HEADERS.get_or_init(|| {
+		let mut headers = HeaderMap::with_capacity(1);
+		headers.insert(
+			hyper::header::CONTENT_TYPE,
+			hyper::header::HeaderValue::from_static("application/json"),
+		);
+		headers
+	})
+}
 
 /// Returns a safe, client-facing error message based on the HTTP status code.
 ///
@@ -243,6 +257,59 @@ impl Response {
 			stop_chain: false,
 		}
 	}
+
+	/// Create a response with one typed header and a body.
+	///
+	/// This constructor is useful for hot paths that always set a single
+	/// framework-controlled header, such as RPC codecs.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use bytes::Bytes;
+	/// use hyper::{StatusCode, header};
+	/// use reinhardt_http::Response;
+	///
+	/// let response = Response::from_typed_header_body(
+	///     StatusCode::OK,
+	///     header::CONTENT_TYPE,
+	///     "application/json".parse().unwrap(),
+	///     Bytes::from_static(br#"{"ok":true}"#),
+	/// );
+	///
+	/// assert_eq!(response.status, StatusCode::OK);
+	/// assert_eq!(response.headers.get(header::CONTENT_TYPE).unwrap(), "application/json");
+	/// ```
+	#[inline]
+	pub fn from_typed_header_body(
+		status: StatusCode,
+		key: hyper::header::HeaderName,
+		value: hyper::header::HeaderValue,
+		body: impl Into<Bytes>,
+	) -> Self {
+		let mut headers = HeaderMap::with_capacity(1);
+		headers.insert(key, value);
+		Self {
+			status,
+			headers,
+			body: body.into(),
+			stop_chain: false,
+		}
+	}
+
+	/// Create a JSON response body with a prebuilt `Content-Type` header map.
+	///
+	/// This is intended for hot paths that already serialized the body and only
+	/// need the standard JSON content type.
+	#[inline]
+	pub fn from_json_body(status: StatusCode, body: impl Into<Bytes>) -> Self {
+		Self {
+			status,
+			headers: json_content_type_headers().clone(),
+			body: body.into(),
+			stop_chain: false,
+		}
+	}
 	/// Create a Response with HTTP 200 OK status
 	///
 	/// # Examples
@@ -440,6 +507,23 @@ impl Response {
 	/// ```
 	pub fn with_body(mut self, body: impl Into<Bytes>) -> Self {
 		self.body = body.into();
+		self
+	}
+	/// Set the response body from static bytes without allocating.
+	///
+	/// This is useful for small constant responses such as health checks.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_http::Response;
+	/// use bytes::Bytes;
+	///
+	/// let response = Response::ok().with_static_body(b"ok");
+	/// assert_eq!(response.body, Bytes::from_static(b"ok"));
+	/// ```
+	pub fn with_static_body(mut self, body: &'static [u8]) -> Self {
+		self.body = Bytes::from_static(body);
 		self
 	}
 	/// Try to add a custom header to the response, returning an error on invalid inputs.
