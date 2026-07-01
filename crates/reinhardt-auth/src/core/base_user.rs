@@ -263,10 +263,16 @@ pub trait BaseUser: Send + Sync + Serialize + for<'de> Deserialize<'de> {
 		self.check_password_with_policy_update(password, &policy)
 	}
 
-	/// Checks the password against a hash policy and stores a refreshed hash when needed.
+	/// Checks the password against an ordered hash policy and stores a refreshed hash when needed.
 	///
-	/// Callers remain responsible for persisting the user after
-	/// [`PasswordCheck::ValidUpdated`] is returned.
+	/// The policy verifies the preferred hasher first, then each legacy hasher in
+	/// registration order. When a legacy hash matches, or when the preferred
+	/// hasher reports that its cost parameters need an upgrade, the password is
+	/// rehashed with the preferred hasher.
+	///
+	/// This method updates only the in-memory user value by replacing the stored
+	/// password hash. Callers must save or persist the user through their manager
+	/// or repository after [`PasswordCheck::ValidUpdated`] is returned.
 	fn check_password_with_policy_update(
 		&mut self,
 		password: &str,

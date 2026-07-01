@@ -28,6 +28,40 @@ pub enum PasswordCheck {
 }
 
 /// Ordered password hash policy with one preferred hasher and legacy hashers.
+///
+/// The preferred hasher is used for new password hashes and upgrade rehashes.
+/// Verification checks the preferred hasher first, then checks legacy hashers in
+/// registration order. A password that matches a legacy hash returns
+/// [`PasswordVerification::ValidNeedsRehash`] with a replacement hash generated
+/// by the preferred hasher.
+///
+/// # Password hash upgrades
+///
+/// ```
+/// use reinhardt_auth::{PasswordHashPolicy, PasswordHasher};
+/// #[cfg(feature = "argon2-hasher")]
+/// use reinhardt_auth::Argon2Hasher;
+///
+/// # #[cfg(feature = "argon2-hasher")]
+/// # {
+/// let policy = PasswordHashPolicy::new(Argon2Hasher::default());
+/// let hash = policy.hash("secret").unwrap();
+///
+/// assert!(Argon2Hasher::default().identify(&hash));
+/// # }
+/// ```
+///
+/// ```
+/// #[cfg(all(feature = "argon2-hasher", feature = "bcrypt-hasher"))]
+/// use reinhardt_auth::{Argon2Hasher, BcryptHasher, PasswordHashPolicy};
+///
+/// # #[cfg(all(feature = "argon2-hasher", feature = "bcrypt-hasher"))]
+/// # {
+/// let policy = PasswordHashPolicy::new(BcryptHasher::default())
+///     .with_legacy(Argon2Hasher::default());
+/// # let _ = policy;
+/// # }
+/// ```
 #[derive(Clone)]
 pub struct PasswordHashPolicy {
 	/// Hasher used for new passwords and upgrade rehashes.
