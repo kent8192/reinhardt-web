@@ -1,18 +1,19 @@
 //! HTTP Basic Authentication
 //!
-//! Passwords are hashed with Argon2id on storage and verified using
-//! constant-time comparison provided by the `argon2` crate.
+//! Passwords are hashed with Argon2id by default on storage and verified using
+//! constant-time comparison provided by the configured hasher.
 //!
 //! Implements [`AuthBackend`] returning [`AuthIdentity`] trait objects.
 
 use crate::core::AuthIdentity;
-use crate::core::hasher::PasswordHasher;
+use crate::core::hasher::{PasswordHashPolicy, PasswordHasher, PasswordVerification};
 use crate::internal_user::InternalUser;
 use crate::rest_authentication::RestAuthentication;
 use crate::{AuthBackend, AuthenticationError};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use reinhardt_http::Request;
 use std::collections::HashMap;
+use std::sync::RwLock;
 use uuid::Uuid;
 
 /// Argon2-based password hasher used internally by `BasicAuthentication`.
@@ -47,16 +48,52 @@ impl PasswordHasher for InternalArgon2Hasher {
 			.verify_password(password.as_bytes(), &parsed_hash)
 			.is_ok())
 	}
+
+	fn algorithm(&self) -> Option<&'static str> {
+		Some("argon2id")
+	}
+
+	fn identify(&self, hash: &str) -> bool {
+		use password_hash::PasswordHash;
+
+		PasswordHash::new(hash)
+			.map(|parsed| parsed.algorithm.as_str() == "argon2id")
+			.unwrap_or(false)
+	}
+
+	fn must_update(&self, hash: &str) -> Result<bool, reinhardt_core::exception::Error> {
+		use argon2::{Argon2, Params, Version};
+		use password_hash::PasswordHash;
+
+		let parsed_hash = PasswordHash::new(hash)
+			.map_err(|e| reinhardt_core::exception::Error::Authentication(e.to_string()))?;
+		let stored_params = Params::try_from(&parsed_hash)
+			.map_err(|e| reinhardt_core::exception::Error::Authentication(e.to_string()))?;
+		let current = Argon2::default();
+		let current_params = current.params();
+		let stored_output_len = stored_params
+			.output_len()
+			.unwrap_or(Params::DEFAULT_OUTPUT_LEN);
+		let current_output_len = current_params
+			.output_len()
+			.unwrap_or(Params::DEFAULT_OUTPUT_LEN);
+
+		Ok(parsed_hash.version != Some(u32::from(Version::default()))
+			|| stored_output_len != current_output_len
+			|| stored_params.m_cost() != current_params.m_cost()
+			|| stored_params.t_cost() != current_params.t_cost()
+			|| stored_params.p_cost() != current_params.p_cost())
+	}
 }
 
 /// Basic Authentication backend
 ///
-/// Passwords are hashed with Argon2id before storage.
-/// Verification uses the constant-time comparison built into Argon2.
+/// Passwords are hashed with the configured policy before storage.
+/// The default policy uses Argon2id.
 pub struct BasicAuthentication {
-	/// username -> argon2 password hash
-	users: HashMap<String, String>,
-	hasher: InternalArgon2Hasher,
+	/// username -> password hash
+	users: RwLock<HashMap<String, String>>,
+	policy: PasswordHashPolicy,
 }
 
 impl BasicAuthentication {
@@ -89,14 +126,22 @@ impl BasicAuthentication {
 	/// ```
 	pub fn new() -> Self {
 		Self {
-			users: HashMap::new(),
-			hasher: InternalArgon2Hasher,
+			users: RwLock::new(HashMap::new()),
+			policy: PasswordHashPolicy::new(InternalArgon2Hasher),
+		}
+	}
+
+	/// Creates a new BasicAuthentication backend with a custom password policy.
+	pub fn with_policy(policy: PasswordHashPolicy) -> Self {
+		Self {
+			users: RwLock::new(HashMap::new()),
+			policy,
 		}
 	}
 
 	/// Adds a user with the given username and password.
 	///
-	/// The password is hashed with Argon2id before storage.
+	/// The password is hashed with the configured policy before storage.
 	///
 	/// # Panics
 	///
@@ -134,12 +179,12 @@ impl BasicAuthentication {
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
-	pub fn add_user(&mut self, username: impl Into<String>, password: impl Into<String>) {
+	pub fn add_user(&self, username: impl Into<String>, password: impl Into<String>) {
 		let hash = self
-			.hasher
+			.policy
 			.hash(&password.into())
-			.expect("Argon2 hashing should not fail");
-		self.users.insert(username.into(), hash);
+			.expect("password hashing should not fail");
+		self.users.write().unwrap().insert(username.into(), hash);
 	}
 
 	/// Parse Authorization header
@@ -158,6 +203,18 @@ impl BasicAuthentication {
 		}
 
 		Some((parts[0].to_string(), parts[1].to_string()))
+	}
+
+	fn internal_user(username: &str) -> InternalUser {
+		InternalUser {
+			id: Uuid::new_v5(&crate::USER_ID_NAMESPACE, username.as_bytes()),
+			username: username.to_string(),
+			email: String::new(),
+			is_active: true,
+			is_admin: false,
+			is_staff: false,
+			is_superuser: false,
+		}
 	}
 }
 
@@ -181,19 +238,28 @@ impl AuthBackend for BasicAuthentication {
 		if let Some(header) = auth_header
 			&& let Some((username, password)) = self.parse_auth_header(header)
 		{
-			if let Some(stored_hash) = self.users.get(&username) {
-				// Argon2 verify uses constant-time comparison internally
-				let is_valid = self.hasher.verify(&password, stored_hash).unwrap_or(false);
-				if is_valid {
-					return Ok(Some(Box::new(InternalUser {
-						id: Uuid::new_v5(&crate::USER_ID_NAMESPACE, username.as_bytes()),
-						username: username.clone(),
-						email: String::new(),
-						is_active: true,
-						is_admin: false,
-						is_staff: false,
-						is_superuser: false,
-					})));
+			let stored_hash = self.users.read().unwrap().get(&username).cloned();
+
+			if let Some(stored_hash) = stored_hash {
+				let verification = self
+					.policy
+					.verify_with_update(&password, &stored_hash)
+					.unwrap_or(PasswordVerification::Invalid);
+
+				match verification {
+					PasswordVerification::Valid => {
+						return Ok(Some(Box::new(Self::internal_user(&username))));
+					}
+					PasswordVerification::ValidNeedsRehash { updated_hash } => {
+						{
+							self.users
+								.write()
+								.unwrap()
+								.insert(username.clone(), updated_hash);
+						}
+						return Ok(Some(Box::new(Self::internal_user(&username))));
+					}
+					PasswordVerification::Invalid => {}
 				}
 			}
 			return Err(AuthenticationError::InvalidCredentials);
@@ -206,16 +272,8 @@ impl AuthBackend for BasicAuthentication {
 		&self,
 		user_id: &str,
 	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
-		if self.users.contains_key(user_id) {
-			Ok(Some(Box::new(InternalUser {
-				id: Uuid::new_v5(&crate::USER_ID_NAMESPACE, user_id.as_bytes()),
-				username: user_id.to_string(),
-				email: String::new(),
-				is_active: true,
-				is_admin: false,
-				is_staff: false,
-				is_superuser: false,
-			})))
+		if self.users.read().unwrap().contains_key(user_id) {
+			Ok(Some(Box::new(Self::internal_user(user_id))))
 		} else {
 			Ok(None)
 		}
@@ -257,7 +315,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_basic_auth_success() {
 		// Arrange
-		let mut backend = BasicAuthentication::new();
+		let backend = BasicAuthentication::new();
 		backend.add_user("testuser", "testpass");
 
 		// Base64 encode "testuser:testpass"
@@ -278,7 +336,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_basic_auth_invalid_password() {
 		// Arrange
-		let mut backend = BasicAuthentication::new();
+		let backend = BasicAuthentication::new();
 		backend.add_user("testuser", "correctpass");
 
 		// Base64 encode "testuser:wrongpass"
@@ -328,7 +386,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_get_user() {
 		// Arrange
-		let mut backend = BasicAuthentication::new();
+		let backend = BasicAuthentication::new();
 		backend.add_user("testuser", "testpass");
 
 		// Act
@@ -346,13 +404,14 @@ mod tests {
 	#[rstest]
 	fn test_password_is_hashed_on_storage() {
 		// Arrange
-		let mut backend = BasicAuthentication::new();
+		let backend = BasicAuthentication::new();
 
 		// Act
 		backend.add_user("testuser", "plaintext_password");
 
 		// Assert
-		let stored = backend.users.get("testuser").unwrap();
+		let users = backend.users.read().unwrap();
+		let stored = users.get("testuser").unwrap();
 		// Argon2 hashes start with "$argon2"
 		assert!(
 			stored.starts_with("$argon2"),
@@ -362,11 +421,41 @@ mod tests {
 		assert_ne!(stored, "plaintext_password");
 	}
 
+	#[cfg(all(feature = "argon2-hasher", feature = "bcrypt-hasher"))]
+	#[test]
+	fn test_basic_auth_rehashes_legacy_argon2_to_bcrypt_policy() {
+		use crate::{Argon2Hasher, BcryptHasher, PasswordHashPolicy};
+
+		// Arrange
+		let backend = BasicAuthentication::with_policy(
+			PasswordHashPolicy::new(BcryptHasher::default()).with_legacy(Argon2Hasher::default()),
+		);
+		let legacy_hash = Argon2Hasher::default().hash("secret").unwrap();
+		backend
+			.users
+			.write()
+			.unwrap()
+			.insert("alice".to_string(), legacy_hash);
+
+		let request = create_request_with_auth("Basic YWxpY2U6c2VjcmV0");
+
+		// Act
+		let result = tokio::runtime::Runtime::new()
+			.unwrap()
+			.block_on(async { AuthBackend::authenticate(&backend, &request).await.unwrap() });
+
+		// Assert
+		assert!(result.is_some());
+		let users = backend.users.read().unwrap();
+		let stored = users.get("alice").unwrap();
+		assert!(BcryptHasher::default().identify(stored));
+	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_authenticate_same_username_produces_same_id() {
 		// Arrange
-		let mut backend = BasicAuthentication::new();
+		let backend = BasicAuthentication::new();
 		backend.add_user("testuser", "testpass");
 
 		let auth = "Basic dGVzdHVzZXI6dGVzdHBhc3M=";
@@ -395,7 +484,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_authenticated_user_id_is_deterministic_uuidv5() {
 		// Arrange
-		let mut backend = BasicAuthentication::new();
+		let backend = BasicAuthentication::new();
 		backend.add_user("testuser", "testpass");
 
 		let auth = "Basic dGVzdHVzZXI6dGVzdHBhc3M=";
@@ -421,7 +510,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_authenticated_user_has_default_privilege_flags() {
 		// Arrange
-		let mut backend = BasicAuthentication::new();
+		let backend = BasicAuthentication::new();
 		backend.add_user("testuser", "testpass");
 
 		let auth = "Basic dGVzdHVzZXI6dGVzdHBhc3M=";
@@ -442,7 +531,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_get_user_same_username_produces_same_id() {
 		// Arrange
-		let mut backend = BasicAuthentication::new();
+		let backend = BasicAuthentication::new();
 		backend.add_user("testuser", "testpass");
 
 		// Act
