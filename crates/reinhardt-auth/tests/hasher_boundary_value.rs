@@ -18,7 +18,7 @@ use rstest::*;
 
 #[fixture]
 fn argon2_hasher() -> Argon2Hasher {
-	Argon2Hasher::default()
+	Argon2Hasher::new()
 }
 
 // =============================================================================
@@ -377,7 +377,7 @@ fn test_argon2_hasher_requires_update_for_stale_parameters() {
 		.expect("stale hash should be generated")
 		.to_string();
 
-	let current = Argon2Hasher::default();
+	let current = Argon2Hasher::new();
 
 	assert!(
 		current
@@ -399,7 +399,7 @@ fn test_argon2_hasher_requires_update_for_stale_version() {
 		.expect("stale version hash should be generated")
 		.to_string();
 
-	let current = Argon2Hasher::default();
+	let current = Argon2Hasher::new();
 
 	assert!(
 		current
@@ -429,7 +429,7 @@ fn test_argon2_hasher_requires_update_for_stale_output_length() {
 		.expect("stale output length hash should be generated")
 		.to_string();
 
-	let current = Argon2Hasher::default();
+	let current = Argon2Hasher::new();
 
 	assert!(
 		current

@@ -459,9 +459,9 @@ mod tests {
 
 		// Arrange
 		let backend = BasicAuthentication::with_policy(
-			PasswordHashPolicy::new(BcryptHasher::default()).with_legacy(Argon2Hasher::default()),
+			PasswordHashPolicy::new(BcryptHasher::default()).with_legacy(Argon2Hasher::new()),
 		);
-		let legacy_hash = Argon2Hasher::default().hash("secret").unwrap();
+		let legacy_hash = Argon2Hasher::new().hash("secret").unwrap();
 		backend
 			.users
 			.write()
