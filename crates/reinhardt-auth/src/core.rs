@@ -173,7 +173,7 @@ pub use auth_identity::AuthIdentity;
 pub use backend::{AuthBackend, CompositeAuthBackend};
 pub use base_user::BaseUser;
 pub use full_user::FullUser;
-pub use hasher::PasswordHasher;
+pub use hasher::{PasswordCheck, PasswordHashPolicy, PasswordHasher, PasswordVerification};
 pub use permission::{
 	AllowAny, IsActiveUser, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, Permission,
 	PermissionContext,

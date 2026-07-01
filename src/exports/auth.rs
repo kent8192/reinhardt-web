@@ -2,7 +2,8 @@
 
 pub use reinhardt_auth::{
 	AllowAny, AuthBackend, AuthIdentity, AuthInfo, BaseUser, CurrentUser, FullUser, IsAdminUser,
-	IsAuthenticated, PasswordHasher, Permission, PermissionsMixin, validate_auth_extractors,
+	IsAuthenticated, PasswordCheck, PasswordHashPolicy, PasswordHasher, PasswordVerification,
+	Permission, PermissionsMixin, validate_auth_extractors,
 };
 
 #[cfg(feature = "argon2-hasher")]

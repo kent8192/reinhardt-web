@@ -97,10 +97,11 @@ pub(crate) mod internal_user;
 // `FullUser` + `PermissionsMixin` instead.
 pub use core::{
 	AllowAny, AuthBackend, AuthIdentity, BaseUser, CompositeAuthBackend, FullUser, IsActiveUser,
-	IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, PasswordHasher, Permission,
-	PermissionContext, PermissionsMixin, SuperuserCreator, SuperuserCreatorRegistration,
-	SuperuserInit, TypedSuperuserCreator, auto_register_superuser_creator, get_superuser_creator,
-	register_superuser_creator, superuser_creator_for,
+	IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, PasswordCheck, PasswordHashPolicy,
+	PasswordHasher, PasswordVerification, Permission, PermissionContext, PermissionsMixin,
+	SuperuserCreator, SuperuserCreatorRegistration, SuperuserInit, TypedSuperuserCreator,
+	auto_register_superuser_creator, get_superuser_creator, register_superuser_creator,
+	superuser_creator_for,
 };
 
 #[cfg(feature = "argon2-hasher")]
