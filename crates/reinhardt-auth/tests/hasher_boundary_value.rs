@@ -388,6 +388,58 @@ fn test_argon2_hasher_requires_update_for_stale_parameters() {
 }
 
 #[rstest]
+fn test_argon2_hasher_requires_update_for_stale_version() {
+	use argon2::{Algorithm, Argon2, Params, Version};
+	use password_hash::{PasswordHasher as _, SaltString, rand_core::OsRng};
+
+	let stale_argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x10, Params::default());
+	let salt = SaltString::generate(&mut OsRng);
+	let stale_hash = stale_argon2
+		.hash_password("password".as_bytes(), &salt)
+		.expect("stale version hash should be generated")
+		.to_string();
+
+	let current = Argon2Hasher::default();
+
+	assert!(
+		current
+			.must_update(&stale_hash)
+			.expect("Argon2 must_update should parse stale version hash"),
+		"old Argon2 version should request rehash"
+	);
+}
+
+#[rstest]
+fn test_argon2_hasher_requires_update_for_stale_output_length() {
+	use argon2::{Algorithm, Argon2, Params, Version};
+	use password_hash::{PasswordHasher as _, SaltString, rand_core::OsRng};
+
+	let current_params = Params::default();
+	let stale_params = Params::new(
+		current_params.m_cost(),
+		current_params.t_cost(),
+		current_params.p_cost(),
+		Some(16),
+	)
+	.expect("stale output length params are valid");
+	let stale_argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, stale_params);
+	let salt = SaltString::generate(&mut OsRng);
+	let stale_hash = stale_argon2
+		.hash_password("password".as_bytes(), &salt)
+		.expect("stale output length hash should be generated")
+		.to_string();
+
+	let current = Argon2Hasher::default();
+
+	assert!(
+		current
+			.must_update(&stale_hash)
+			.expect("Argon2 must_update should parse stale output length hash"),
+		"non-default Argon2 output length should request rehash"
+	);
+}
+
+#[rstest]
 fn test_argon2_hasher_does_not_update_current_parameters(argon2_hasher: Argon2Hasher) {
 	let hash = argon2_hasher
 		.hash("password")
