@@ -294,4 +294,95 @@ mod bcrypt_policy_tests {
 				.expect("Argon2 should verify updated hash")
 		);
 	}
+
+	#[test]
+	fn bcrypt_hasher_roundtrips_password_at_low_cost() {
+		let hasher = BcryptHasher::with_cost(4);
+		let hash = hasher
+			.hash("secret")
+			.expect("bcrypt should hash the password");
+
+		assert!(
+			hasher
+				.verify("secret", &hash)
+				.expect("bcrypt should verify the right password")
+		);
+		assert!(
+			!hasher
+				.verify("wrong", &hash)
+				.expect("bcrypt should reject the wrong password")
+		);
+	}
+
+	#[test]
+	fn bcrypt_hasher_identify_rejects_malformed_prefix() {
+		assert!(!BcryptHasher::default().identify("$2b$"));
+	}
+
+	#[test]
+	fn bcrypt_hasher_identifies_supported_valid_prefixes() {
+		let hash = BcryptHasher::with_cost(4)
+			.hash("secret")
+			.expect("bcrypt should hash the password");
+		let parts = hash
+			.parse::<bcrypt::HashParts>()
+			.expect("bcrypt hash should parse into parts");
+		let hasher = BcryptHasher::default();
+
+		for version in [
+			bcrypt::Version::TwoA,
+			bcrypt::Version::TwoB,
+			bcrypt::Version::TwoX,
+			bcrypt::Version::TwoY,
+		] {
+			let formatted_hash = parts.format_for_version(version);
+
+			assert!(hasher.identify(&formatted_hash));
+		}
+	}
+
+	#[test]
+	fn bcrypt_hasher_requests_rehash_for_non_two_b_prefixes() {
+		let hasher = BcryptHasher::with_cost(4);
+		let hash = hasher
+			.hash("secret")
+			.expect("bcrypt should hash the password");
+		let parts = hash
+			.parse::<bcrypt::HashParts>()
+			.expect("bcrypt hash should parse into parts");
+
+		let two_b_hash = parts.format_for_version(bcrypt::Version::TwoB);
+		assert!(
+			!hasher
+				.must_update(&two_b_hash)
+				.expect("same-cost 2b hash should be current")
+		);
+
+		for version in [
+			bcrypt::Version::TwoA,
+			bcrypt::Version::TwoX,
+			bcrypt::Version::TwoY,
+		] {
+			let formatted_hash = parts.format_for_version(version);
+
+			assert!(
+				hasher
+					.must_update(&formatted_hash)
+					.expect("same-cost non-2b hash should be parsed")
+			);
+		}
+	}
+
+	#[test]
+	fn bcrypt_hasher_detects_cost_drift() {
+		let hash = BcryptHasher::with_cost(4)
+			.hash("secret")
+			.expect("bcrypt should hash the password");
+
+		assert!(
+			BcryptHasher::with_cost(5)
+				.must_update(&hash)
+				.expect("bcrypt hash should parse for policy comparison")
+		);
+	}
 }

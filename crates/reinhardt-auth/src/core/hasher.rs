@@ -349,14 +349,18 @@ impl PasswordHasher for BcryptHasher {
 	}
 
 	fn identify(&self, hash: &str) -> bool {
-		hash.starts_with("$2a$") || hash.starts_with("$2b$") || hash.starts_with("$2y$")
+		hash.parse::<bcrypt::HashParts>().is_ok()
 	}
 
 	fn must_update(&self, hash: &str) -> Result<bool, reinhardt_core::exception::Error> {
+		if !self.identify(hash) {
+			return Ok(false);
+		}
+
 		let parts = hash
 			.parse::<bcrypt::HashParts>()
 			.map_err(|e| reinhardt_core::exception::Error::Authentication(e.to_string()))?;
 
-		Ok(parts.get_cost() != self.cost)
+		Ok(parts.get_cost() != self.cost || !hash.starts_with("$2b$"))
 	}
 }
