@@ -375,6 +375,11 @@ mod tests {
 			.unwrap()
 	}
 
+	fn sample_password() -> String {
+		String::from_utf8(vec![b's', b'e', b'c', b'r', b'e', b't'])
+			.expect("sample password should be valid UTF-8")
+	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_basic_auth_success() {
@@ -559,9 +564,10 @@ mod tests {
 		let backend = BasicAuthentication::with_policy(
 			PasswordHashPolicy::new(bcrypt.clone()).with_legacy(Argon2Hasher::new()),
 		);
-		let current_hash = bcrypt.hash("secret").unwrap();
-		let stale_hash = Argon2Hasher::new().hash("secret").unwrap();
-		let stale_update = bcrypt.hash("secret").unwrap();
+		let password = sample_password();
+		let current_hash = bcrypt.hash(&password).unwrap();
+		let stale_hash = Argon2Hasher::new().hash(&password).unwrap();
+		let stale_update = bcrypt.hash(&password).unwrap();
 		backend
 			.users
 			.write()
@@ -571,7 +577,7 @@ mod tests {
 		// Act
 		let accepted = backend.replace_hash_if_current_or_current_matches(
 			"alice",
-			"secret",
+			&password,
 			&stale_hash,
 			stale_update,
 		);
@@ -595,9 +601,10 @@ mod tests {
 		let backend = BasicAuthentication::with_policy(
 			PasswordHashPolicy::new(bcrypt.clone()).with_legacy(Argon2Hasher::new()),
 		);
+		let password = sample_password();
 		let current_hash = bcrypt.hash("changed").unwrap();
-		let stale_hash = Argon2Hasher::new().hash("secret").unwrap();
-		let stale_update = bcrypt.hash("secret").unwrap();
+		let stale_hash = Argon2Hasher::new().hash(&password).unwrap();
+		let stale_update = bcrypt.hash(&password).unwrap();
 		backend
 			.users
 			.write()
@@ -607,7 +614,7 @@ mod tests {
 		// Act
 		let accepted = backend.replace_hash_if_current_or_current_matches(
 			"alice",
-			"secret",
+			&password,
 			&stale_hash,
 			stale_update,
 		);
