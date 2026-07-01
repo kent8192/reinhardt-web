@@ -79,10 +79,10 @@ impl PasswordHasher for InternalArgon2Hasher {
 			.unwrap_or(Params::DEFAULT_OUTPUT_LEN);
 
 		Ok(parsed_hash.version != Some(u32::from(Version::default()))
-			|| stored_output_len != current_output_len
-			|| stored_params.m_cost() != current_params.m_cost()
-			|| stored_params.t_cost() != current_params.t_cost()
-			|| stored_params.p_cost() != current_params.p_cost())
+			|| stored_output_len < current_output_len
+			|| stored_params.m_cost() < current_params.m_cost()
+			|| stored_params.t_cost() < current_params.t_cost()
+			|| stored_params.p_cost() < current_params.p_cost())
 	}
 }
 
@@ -331,16 +331,24 @@ impl AuthBackend for BasicAuthentication {
 		&self,
 		user_id: &str,
 	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
-		if self
+		let users = self
 			.users
 			.read()
-			.expect("basic auth users lock should not be poisoned")
-			.contains_key(user_id)
-		{
-			Ok(Some(Box::new(Self::internal_user(user_id))))
+			.expect("basic auth users lock should not be poisoned");
+		let username = if users.contains_key(user_id) {
+			Some(user_id.to_string())
 		} else {
-			Ok(None)
-		}
+			users
+				.keys()
+				.find(|username| {
+					Uuid::new_v5(&crate::USER_ID_NAMESPACE, username.as_bytes()).to_string()
+						== user_id
+				})
+				.cloned()
+		};
+
+		Ok(username
+			.map(|username| Box::new(Self::internal_user(&username)) as Box<dyn AuthIdentity>))
 	}
 }
 
@@ -681,6 +689,29 @@ mod tests {
 			uuid::Variant::RFC4122,
 			"user ID must use RFC 4122 variant"
 		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_get_user_accepts_authenticated_user_id() {
+		// Arrange
+		let backend = BasicAuthentication::new();
+		backend.add_user("testuser", "testpass");
+
+		let auth = "Basic dGVzdHVzZXI6dGVzdHBhc3M=";
+		let request = create_request_with_auth(auth);
+		let authenticated = AuthBackend::authenticate(&backend, &request)
+			.await
+			.unwrap()
+			.unwrap();
+
+		// Act
+		let resolved = backend.get_user(&authenticated.id()).await.unwrap();
+
+		// Assert
+		let resolved = resolved.expect("authenticated user ID should resolve");
+		assert_eq!(resolved.id(), authenticated.id());
+		assert!(resolved.is_authenticated());
 	}
 
 	#[rstest]

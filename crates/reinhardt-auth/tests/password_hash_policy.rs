@@ -68,6 +68,19 @@ impl Default for PrefixHasher {
 	}
 }
 
+#[derive(Clone)]
+struct DefaultIdentifierHasher;
+
+impl PasswordHasher for DefaultIdentifierHasher {
+	fn hash(&self, password: &str) -> Result<String, Error> {
+		Ok(format!("legacy${password}"))
+	}
+
+	fn verify(&self, password: &str, hash: &str) -> Result<bool, Error> {
+		Ok(hash == format!("legacy${password}"))
+	}
+}
+
 #[test]
 fn policy_accepts_current_preferred_hash_without_update() {
 	let policy =
@@ -147,6 +160,23 @@ fn policy_rejects_unknown_algorithm_without_rehashing() {
 	let result = policy.verify_with_update("secret", "unknown$secret");
 
 	assert!(result.is_err(), "unknown algorithms should not be accepted");
+}
+
+#[test]
+fn policy_rehashes_legacy_hashers_with_default_identifier_methods() {
+	let policy =
+		PasswordHashPolicy::new(PrefixHasher::new("new")).with_legacy(DefaultIdentifierHasher);
+
+	let result = policy
+		.verify_with_update("secret", "legacy$secret")
+		.expect("default identifier legacy hasher should be checked");
+
+	assert_eq!(
+		result,
+		PasswordVerification::ValidNeedsRehash {
+			updated_hash: "new$secret".to_string(),
+		}
+	);
 }
 
 #[derive(Serialize, Deserialize)]
@@ -315,6 +345,37 @@ mod bcrypt_policy_tests {
 	}
 
 	#[test]
+	fn bcrypt_hasher_rejects_passwords_over_72_bytes() {
+		let hasher = BcryptHasher::with_cost(4);
+		let max_password = "x".repeat(72);
+		let overlong_password = "x".repeat(73);
+		let hash = hasher
+			.hash(&max_password)
+			.expect("72-byte bcrypt password should hash");
+
+		assert!(
+			hasher.hash(&overlong_password).is_err(),
+			"bcrypt should reject overlong passwords before hashing"
+		);
+		assert!(
+			hasher.verify(&overlong_password, &hash).is_err(),
+			"bcrypt should reject overlong password candidates before verification"
+		);
+	}
+
+	#[test]
+	#[should_panic(expected = "bcrypt cost must be in")]
+	fn bcrypt_hasher_rejects_too_low_cost_on_construction() {
+		let _ = BcryptHasher::with_cost(3);
+	}
+
+	#[test]
+	#[should_panic(expected = "bcrypt cost must be in")]
+	fn bcrypt_hasher_rejects_too_high_cost_on_construction() {
+		let _ = BcryptHasher::with_cost(32);
+	}
+
+	#[test]
 	fn bcrypt_hasher_identify_rejects_malformed_prefix() {
 		assert!(!BcryptHasher::default().identify("$2b$"));
 	}
@@ -402,6 +463,28 @@ mod bcrypt_policy_tests {
 			BcryptHasher::with_cost(5)
 				.must_update(&hash)
 				.expect("bcrypt hash should parse for policy comparison")
+		);
+	}
+
+	#[test]
+	fn bcrypt_hasher_preserves_higher_cost_hashes() {
+		let hash = BcryptHasher::with_cost(5)
+			.hash("secret")
+			.expect("higher-cost bcrypt should hash the password");
+		let parts = hash
+			.parse::<bcrypt::HashParts>()
+			.expect("bcrypt hash should parse into parts");
+		let legacy_prefix_hash = parts.format_for_version(bcrypt::Version::TwoA);
+
+		assert!(
+			!BcryptHasher::with_cost(4)
+				.must_update(&hash)
+				.expect("higher-cost bcrypt hash should parse")
+		);
+		assert!(
+			!BcryptHasher::with_cost(4)
+				.must_update(&legacy_prefix_hash)
+				.expect("higher-cost legacy-prefix bcrypt hash should parse")
 		);
 	}
 }

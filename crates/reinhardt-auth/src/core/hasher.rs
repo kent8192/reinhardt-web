@@ -205,6 +205,14 @@ impl PasswordHashPolicy {
 			};
 		}
 
+		for legacy in &self.legacy {
+			if legacy.algorithm().is_none() && legacy.verify(password, hash)? {
+				return Ok(PasswordVerification::ValidNeedsRehash {
+					updated_hash: self.preferred.hash(password)?,
+				});
+			}
+		}
+
 		Err(Error::Authentication(
 			"Unknown password hashing algorithm".to_string(),
 		))
@@ -330,10 +338,10 @@ impl PasswordHasher for Argon2Hasher {
 			.unwrap_or(Params::DEFAULT_OUTPUT_LEN);
 
 		Ok(parsed_hash.version != Some(u32::from(Version::default()))
-			|| stored_output_len != current_output_len
-			|| stored_params.m_cost() != current_params.m_cost()
-			|| stored_params.t_cost() != current_params.t_cost()
-			|| stored_params.p_cost() != current_params.p_cost())
+			|| stored_output_len < current_output_len
+			|| stored_params.m_cost() < current_params.m_cost()
+			|| stored_params.t_cost() < current_params.t_cost()
+			|| stored_params.p_cost() < current_params.p_cost())
 	}
 }
 
@@ -348,12 +356,25 @@ pub struct BcryptHasher {
 const BCRYPT_MIN_COST: u32 = 4;
 #[cfg(feature = "bcrypt-hasher")]
 const BCRYPT_MAX_COST: u32 = 31;
+#[cfg(feature = "bcrypt-hasher")]
+const BCRYPT_MAX_PASSWORD_BYTES: usize = 72;
 
 #[cfg(feature = "bcrypt-hasher")]
 fn parse_bcrypt_hash_parts(hash: &str) -> Option<bcrypt::HashParts> {
 	hash.parse::<bcrypt::HashParts>()
 		.ok()
 		.filter(|parts| (BCRYPT_MIN_COST..=BCRYPT_MAX_COST).contains(&parts.get_cost()))
+}
+
+#[cfg(feature = "bcrypt-hasher")]
+fn validate_bcrypt_password(password: &str) -> Result<(), Error> {
+	if password.as_bytes().len() > BCRYPT_MAX_PASSWORD_BYTES {
+		return Err(Error::Authentication(format!(
+			"bcrypt passwords must be at most {BCRYPT_MAX_PASSWORD_BYTES} bytes"
+		)));
+	}
+
+	Ok(())
 }
 
 #[cfg(feature = "bcrypt-hasher")]
@@ -367,6 +388,10 @@ impl BcryptHasher {
 
 	/// Creates a bcrypt hasher with an explicit cost.
 	pub fn with_cost(cost: u32) -> Self {
+		assert!(
+			(BCRYPT_MIN_COST..=BCRYPT_MAX_COST).contains(&cost),
+			"bcrypt cost must be in {BCRYPT_MIN_COST}..={BCRYPT_MAX_COST}"
+		);
 		Self { cost }
 	}
 }
@@ -381,11 +406,13 @@ impl Default for BcryptHasher {
 #[cfg(feature = "bcrypt-hasher")]
 impl PasswordHasher for BcryptHasher {
 	fn hash(&self, password: &str) -> Result<String, reinhardt_core::exception::Error> {
+		validate_bcrypt_password(password)?;
 		bcrypt::hash(password, self.cost)
 			.map_err(|e| reinhardt_core::exception::Error::Authentication(e.to_string()))
 	}
 
 	fn verify(&self, password: &str, hash: &str) -> Result<bool, reinhardt_core::exception::Error> {
+		validate_bcrypt_password(password)?;
 		bcrypt::verify(password, hash)
 			.map_err(|e| reinhardt_core::exception::Error::Authentication(e.to_string()))
 	}
@@ -403,6 +430,7 @@ impl PasswordHasher for BcryptHasher {
 			return Ok(false);
 		};
 
-		Ok(parts.get_cost() != self.cost || !hash.starts_with("$2b$"))
+		Ok(parts.get_cost() < self.cost
+			|| (!hash.starts_with("$2b$") && parts.get_cost() <= self.cost))
 	}
 }

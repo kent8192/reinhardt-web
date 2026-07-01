@@ -454,6 +454,39 @@ fn test_argon2_hasher_does_not_update_current_parameters(argon2_hasher: Argon2Ha
 }
 
 #[rstest]
+fn test_argon2_hasher_preserves_stronger_parameters() {
+	use argon2::{Algorithm, Argon2, Params, Version};
+	use password_hash::{PasswordHasher as _, SaltString, rand_core::OsRng};
+
+	let current_params = Params::default();
+	let current_output_len = current_params
+		.output_len()
+		.unwrap_or(Params::DEFAULT_OUTPUT_LEN);
+	let stronger_params = Params::new(
+		current_params.m_cost() * 2,
+		current_params.t_cost() + 1,
+		current_params.p_cost(),
+		Some(current_output_len + 16),
+	)
+	.expect("stronger params are valid");
+	let stronger_argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, stronger_params);
+	let salt = SaltString::generate(&mut OsRng);
+	let stronger_hash = stronger_argon2
+		.hash_password("password".as_bytes(), &salt)
+		.expect("stronger hash should be generated")
+		.to_string();
+
+	let current = Argon2Hasher::new();
+
+	assert!(
+		!current
+			.must_update(&stronger_hash)
+			.expect("Argon2 must_update should parse stronger hash"),
+		"stronger Argon2 parameters should not request rehash"
+	);
+}
+
+#[rstest]
 fn test_different_passwords_different_hashes(argon2_hasher: Argon2Hasher) {
 	let password1 = "password1";
 	let password2 = "password2";
