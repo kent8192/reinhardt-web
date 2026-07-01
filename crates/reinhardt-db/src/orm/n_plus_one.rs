@@ -1,9 +1,9 @@
 //! Scoped N+1 query detection for ORM workloads.
 
-use std::collections::{BTreeSet, HashMap, HashSet, hash_map::DefaultHasher};
+use std::collections::{BTreeSet, HashMap, HashSet, hash_map::RandomState};
 use std::future::Future;
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+use std::hash::{BuildHasher, Hash, Hasher};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use parking_lot::Mutex;
@@ -253,6 +253,8 @@ tokio::task_local! {
 	static CURRENT_N_PLUS_ONE_SCOPE: Arc<Mutex<ScopeState>>;
 }
 
+static MASK_HASH_STATE: OnceLock<RandomState> = OnceLock::new();
+
 /// Scoped N+1 query detector.
 #[derive(Debug, Clone)]
 pub struct NPlusOneScope {
@@ -349,7 +351,7 @@ fn bind_samples(params: &[String], fingerprint: &QueryFingerprint) -> Vec<String
 
 fn mask_value(value: &str) -> String {
 	let class = classify_value(value);
-	let mut hasher = DefaultHasher::new();
+	let mut hasher = MASK_HASH_STATE.get_or_init(RandomState::new).build_hasher();
 	value.hash(&mut hasher);
 	format!("{class}#{:016x}", hasher.finish())
 }

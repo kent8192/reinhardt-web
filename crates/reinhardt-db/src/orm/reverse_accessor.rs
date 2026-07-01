@@ -187,8 +187,9 @@ where
 		let query = query.to_owned();
 		let (sql, values) = build_select_sql(&query, self.db.backend());
 		let params = value_samples(&values);
+		let query_values = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = self.db.query(&sql, vec![]).await;
+		let query_result = self.db.query(&sql, query_values).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -197,7 +198,12 @@ where
 					.await;
 				rows
 			}
-			Err(error) => return Err(error.to_string()),
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &error.to_string())
+					.await;
+				return Err(error.to_string());
+			}
 		};
 
 		rows.into_iter()
@@ -231,8 +237,9 @@ where
 
 		let (sql, values) = build_select_sql(&query, self.db.backend());
 		let params = value_samples(&values);
+		let query_values = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = self.db.query(&sql, vec![]).await;
+		let query_result = self.db.query(&sql, query_values).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -241,7 +248,12 @@ where
 					.await;
 				rows
 			}
-			Err(error) => return Err(error.to_string()),
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &error.to_string())
+					.await;
+				return Err(error.to_string());
+			}
 		};
 
 		if let Some(row) = rows.first()

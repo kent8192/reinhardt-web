@@ -4547,12 +4547,32 @@ where
 
 		// Convert to SQL and extract parameter values
 		let (sql, values) = PostgresQueryBuilder.build_select(&stmt);
+		let param_samples = values
+			.iter()
+			.map(|value| value.to_sql_literal())
+			.collect::<Vec<_>>();
 
 		// Convert reinhardt_query::value::Values to QueryValue
 		let params = super::execution::convert_values(values);
 
 		// Execute query with parameters
-		let rows = conn.query(&sql, params).await?;
+		let started_at = Instant::now();
+		let query_result = conn.query(&sql, params).await;
+		let duration = started_at.elapsed();
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &param_samples, duration)
+					.await;
+				rows
+			}
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &format!("{error:?}"))
+					.await;
+				return Err(error.into());
+			}
+		};
 		if let Some(row) = rows.first() {
 			// Extract count from first row
 			if let Some(count_value) = row.data.get("count")
