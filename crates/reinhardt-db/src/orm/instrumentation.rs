@@ -422,7 +422,6 @@ impl Instrumentation {
 		duration: Duration,
 	) {
 		super::n_plus_one::record_query(query, params, duration);
-		self.notify_query_end_listeners(query, duration).await;
 	}
 
 	/// Notifies all listeners that a query has failed
@@ -757,6 +756,32 @@ mod tests {
 
 		assert!(instrumentation.query_metrics(query).is_empty());
 		assert_eq!(instrumentation.statistics().total_queries, 0);
+	}
+
+	#[tokio::test]
+	async fn test_orm_query_end_with_params_does_not_emit_unpaired_listener_end() {
+		let instrumentation = Instrumentation::new();
+		let query_start = Arc::new(AtomicUsize::new(0));
+		let query_end = Arc::new(AtomicUsize::new(0));
+		let listener = Arc::new(TestListener {
+			query_start_count: query_start.clone(),
+			query_end_count: query_end.clone(),
+			query_error_count: Arc::new(AtomicUsize::new(0)),
+			transaction_start_count: Arc::new(AtomicUsize::new(0)),
+			transaction_end_count: Arc::new(AtomicUsize::new(0)),
+		});
+
+		instrumentation.add_listener("test".to_string(), listener);
+		instrumentation
+			.orm_query_end_with_params(
+				"SELECT * FROM posts WHERE author_id = $1",
+				&["1".to_string()],
+				Duration::from_millis(1),
+			)
+			.await;
+
+		assert_eq!(query_start.load(Ordering::SeqCst), 0);
+		assert_eq!(query_end.load(Ordering::SeqCst), 0);
 	}
 
 	#[tokio::test]

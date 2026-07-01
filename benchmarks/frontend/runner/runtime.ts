@@ -25,13 +25,17 @@ async function measureOnce(
     await page.goto(target.url, { timeout: timeoutMs });
     const navigationStart = await page.evaluate(() => performance.timeOrigin);
     await page.locator("[data-benchmark-ready='true']").waitFor({ timeout: timeoutMs });
+    const hydrated = page.locator("[data-benchmark-hydrated='true']");
     if (scenario === "hydration") {
       const metric = target.mode === "ssr" ? "hydration_ready_ms" : "boot_ready_ms";
       if (target.mode === "ssr") {
-        await page.locator("[data-benchmark-hydrated='true']").waitFor({ timeout: timeoutMs });
+        await hydrated.waitFor({ timeout: timeoutMs });
       }
       const valueMs = await page.evaluate((start) => Date.now() - start, navigationStart);
       return { metric, valueMs };
+    }
+    if (target.mode === "ssr") {
+      await hydrated.waitFor({ timeout: timeoutMs });
     }
     if (scenario === "counter") {
       return { metric: "click_update_ms", valueMs: await measureClick(page, "counter-increment", "counter", /Counter: 1/, timeoutMs) };

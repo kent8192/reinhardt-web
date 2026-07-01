@@ -191,6 +191,7 @@ jobs:
     timeout-minutes: 360
     outputs:
       changed: ${{ steps.diff.outputs.changed }}
+      source-sha: ${{ steps.source-sha.outputs.sha }}
     steps:
       - name: Free Disk Space (Ubuntu)
         if: ${{ !contains(needs.determine-runner.outputs.runner, 'self-hosted') }}
@@ -210,6 +211,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.repository }}
           persist-credentials: false
+
+      - name: Capture source SHA
+        id: source-sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Setup Rust with style components
         uses: ./.github/actions/setup-rust
@@ -294,7 +299,7 @@ jobs:
       - name: Checkout pull request branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: ${{ needs.auto-fix-style.outputs.source-sha }}
           repository: ${{ github.repository }}
           persist-credentials: false
 
@@ -363,6 +368,11 @@ jobs:
               return;
             }
 
+            if (branch.commit.sha !== '${{ needs.auto-fix-style.outputs.source-sha }}') {
+              finish(false, 'head-sha-changed');
+              return;
+            }
+
             finish(!branch.protected, branch.protected ? 'protected-branch' : 'eligible');
 
       - name: Generate GitHub token
@@ -384,7 +394,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          HEAD_OID="$(git rev-parse HEAD)"
+          HEAD_OID="${{ needs.auto-fix-style.outputs.source-sha }}"
           TMP_DIR="$(mktemp -d)"
           trap 'rm -rf "$TMP_DIR"' EXIT
           ADDITIONS_FILE="$TMP_DIR/additions.ndjson"

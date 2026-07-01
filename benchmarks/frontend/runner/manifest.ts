@@ -19,6 +19,13 @@ function requireNumber(value: unknown, pathName: string): number {
   return value;
 }
 
+function requireInteger(value: unknown, pathName: string): number {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${pathName} must be a positive integer`);
+  }
+  return value;
+}
+
 function requireStringArray(value: unknown, pathName: string): string[] {
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error(`${pathName} must be a non-empty string array`);
@@ -56,7 +63,12 @@ function targetEntries(value: unknown, frontendRoot: string): TargetConfig[] {
       throw new Error(`targets.${id}.root does not exist: ${root}`);
     }
     const sourcePatchFile = requireString(table.source_patch_file, `targets.${id}.source_patch_file`);
-    if (!fs.existsSync(path.join(root, sourcePatchFile))) {
+    const sourcePatchPath = path.resolve(root, sourcePatchFile);
+    const relativePatchPath = path.relative(root, sourcePatchPath);
+    if (relativePatchPath.startsWith("..") || path.isAbsolute(relativePatchPath)) {
+      throw new Error(`targets.${id}.source_patch_file must stay within target root`);
+    }
+    if (!fs.existsSync(sourcePatchPath)) {
       throw new Error(`targets.${id}.source_patch_file does not exist: ${sourcePatchFile}`);
     }
     return {
@@ -81,8 +93,8 @@ export function loadManifest(frontendRoot: string): BenchmarkManifest {
   const parsed = toml.parse(fs.readFileSync(manifestPath, "utf8"));
   const suite = {
     name: requireString(parsed.suite?.name, "suite.name"),
-    sample_count: requireNumber(parsed.suite?.sample_count, "suite.sample_count"),
-    warmup_count: requireNumber(parsed.suite?.warmup_count, "suite.warmup_count"),
+    sample_count: requireInteger(parsed.suite?.sample_count, "suite.sample_count"),
+    warmup_count: requireInteger(parsed.suite?.warmup_count, "suite.warmup_count"),
     browser: requireString(parsed.suite?.browser, "suite.browser") as "chromium",
     timeout_ms: requireNumber(parsed.suite?.timeout_ms, "suite.timeout_ms")
   };

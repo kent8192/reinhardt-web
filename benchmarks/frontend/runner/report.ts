@@ -4,9 +4,9 @@ import type { BenchmarkResult, ReportPayload } from "./types.js";
 
 export function writeReports(resultsDir: string, payload: ReportPayload): { jsonPath: string; markdownPath: string } {
   fs.mkdirSync(resultsDir, { recursive: true });
-  const date = payload.measuredAt.slice(0, 10);
-  const jsonPath = path.join(resultsDir, `${date}-framework-ui-comparison.json`);
-  const markdownPath = path.join(resultsDir, `${date}-framework-ui-comparison.md`);
+  const stamp = payload.measuredAt.replaceAll(":", "-");
+  const jsonPath = path.join(resultsDir, `${stamp}-framework-ui-comparison.json`);
+  const markdownPath = path.join(resultsDir, `${stamp}-framework-ui-comparison.md`);
   fs.writeFileSync(jsonPath, `${JSON.stringify(payload, null, 2)}\n`);
   fs.writeFileSync(markdownPath, renderMarkdown(payload));
   return { jsonPath, markdownPath };

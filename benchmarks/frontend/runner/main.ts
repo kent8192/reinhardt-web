@@ -1,6 +1,7 @@
 import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { collectBundleMetrics } from "./bundles.js";
 import { logExcerpt, runShellCommand } from "./commands.js";
 import { patchSource, restoreSource, snapshotSource, type SourceSnapshot } from "./dev-loop.js";
@@ -10,7 +11,7 @@ import { measureDevUpdate, runRuntimeMeasurements } from "./runtime.js";
 import { startServer, stopServer, type ManagedServer } from "./servers.js";
 import type { BenchmarkManifest, BenchmarkResult, TargetConfig } from "./types.js";
 
-const frontendRoot = path.resolve(new URL("..", import.meta.url).pathname);
+const frontendRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const command = process.argv[2] ?? "check";
 const buildArtifactPaths = ["dist", ".next", ".nuxt", ".output", "pkg", "target"];
 
@@ -49,7 +50,7 @@ async function runRuntime(manifest: BenchmarkManifest): Promise<BenchmarkResult[
       results.push(failedRuntime(target, error));
     } finally {
       if (server) {
-        await stopServer(server);
+        await safeStopServer(server, `${target.id}: runtime stop`);
       }
     }
   }
@@ -88,7 +89,7 @@ async function runBuild(manifest: BenchmarkManifest): Promise<BenchmarkResult[]>
     } finally {
       if (prodServer) {
         debug(`${target.id}: production preview stop`);
-        await stopServer(prodServer);
+        await safeStopServer(prodServer, `${target.id}: production preview stop`);
       }
     }
 
@@ -124,10 +125,10 @@ async function runBuild(manifest: BenchmarkManifest): Promise<BenchmarkResult[]>
     } finally {
       if (devServer) {
         debug(`${target.id}: dev server stop`);
-        await stopServer(devServer);
+        await safeStopServer(devServer, `${target.id}: dev server stop`);
       }
       if (sourceSnapshot) {
-        restoreSource(sourceSnapshot);
+        safeRestoreSource(sourceSnapshot, `${target.id}: source restore`);
       }
     }
   }
@@ -217,6 +218,22 @@ function errorToBenchmarkError(error: unknown) {
 function debug(message: string): void {
   if (process.env.FRONTEND_BENCHMARK_DEBUG === "1") {
     console.error(`frontend-benchmark: ${message}`);
+  }
+}
+
+async function safeStopServer(server: ManagedServer, label: string): Promise<void> {
+  try {
+    await stopServer(server);
+  } catch (error) {
+    debug(`${label}: ${errorToBenchmarkError(error).message}`);
+  }
+}
+
+function safeRestoreSource(snapshot: SourceSnapshot, label: string): void {
+  try {
+    restoreSource(snapshot);
+  } catch (error) {
+    debug(`${label}: ${errorToBenchmarkError(error).message}`);
   }
 }
 

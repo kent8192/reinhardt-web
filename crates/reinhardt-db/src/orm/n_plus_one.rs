@@ -53,7 +53,7 @@ pub struct NPlusOneFinding {
 	pub execution_count: usize,
 	/// Number of distinct bind or inline literal signatures.
 	pub distinct_bind_signature_count: usize,
-	/// First SQL statement observed for this fingerprint.
+	/// Redacted representative SQL fingerprint.
 	pub representative_sql: String,
 	/// Bounded, masked bind or literal samples.
 	pub representative_bind_samples: Vec<String>,
@@ -100,6 +100,11 @@ impl QueryFingerprint {
 					normalized.push('?');
 					consume_ascii_digits(&mut chars);
 				}
+				':' if chars.peek() == Some(&':') => {
+					normalized.push(':');
+					normalized.push(':');
+					let _ = chars.next();
+				}
 				':' if chars
 					.peek()
 					.is_some_and(|next| next.is_ascii_alphabetic() || *next == '_') =>
@@ -142,9 +147,9 @@ struct QueryAggregate {
 }
 
 impl QueryAggregate {
-	fn new(sql: &str) -> Self {
+	fn new(representative_sql: &str) -> Self {
 		Self {
-			representative_sql: sql.to_string(),
+			representative_sql: representative_sql.to_string(),
 			bind_signatures: BTreeSet::new(),
 			representative_bind_samples: Vec::new(),
 			execution_count: 0,
@@ -185,10 +190,11 @@ impl ScopeState {
 		let bind_signature = bind_signature(params, &fingerprint);
 		let bind_samples = bind_samples(params, &fingerprint);
 
+		let fingerprint_key = fingerprint.normalized.clone();
 		let aggregate = self
 			.aggregates
-			.entry(fingerprint.normalized)
-			.or_insert_with(|| QueryAggregate::new(query));
+			.entry(fingerprint_key.clone())
+			.or_insert_with(|| QueryAggregate::new(&fingerprint_key));
 
 		aggregate.execution_count += 1;
 		aggregate.cumulative_duration += duration;
@@ -537,6 +543,18 @@ mod tests {
 	}
 
 	#[test]
+	fn preserves_postgres_cast_operators() {
+		let fingerprint = QueryFingerprint::from_sql(
+			"SELECT payload::jsonb FROM posts WHERE id = $1 AND status = 'published'::text",
+		);
+
+		assert_eq!(
+			fingerprint.normalized,
+			"SELECT payload::jsonb FROM posts WHERE id = ? AND status = ?::text"
+		);
+	}
+
+	#[test]
 	fn reports_same_shape_with_distinct_bind_values() {
 		let mut state = ScopeState::new("posts.index".to_string(), low_threshold_config());
 		for author_id in ["1", "2", "3"] {
@@ -688,6 +706,35 @@ mod tests {
 				.representative_bind_samples
 				.iter()
 				.all(|sample| !sample.contains('@') && !sample.contains("private-token"))
+		);
+	}
+
+	#[test]
+	fn does_not_expose_raw_inline_sql_in_representative_sql() {
+		let mut state = ScopeState::new("users.index".to_string(), low_threshold_config());
+		for email in [
+			"a@example.com",
+			"b@example.com",
+			"private-token@example.com",
+		] {
+			state.record_query(
+				&format!("SELECT * FROM users WHERE email = '{email}'"),
+				&[],
+				Duration::from_millis(1),
+			);
+		}
+
+		let report = state.finish_report();
+		assert_eq!(report.findings.len(), 1);
+		assert_eq!(
+			report.findings[0].representative_sql,
+			"SELECT * FROM users WHERE email = ?"
+		);
+		assert!(!report.findings[0].representative_sql.contains('@'));
+		assert!(
+			!report.findings[0]
+				.representative_sql
+				.contains("private-token")
 		);
 	}
 

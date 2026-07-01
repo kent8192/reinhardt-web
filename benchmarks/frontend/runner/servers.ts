@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import net from "node:net";
 import { performance } from "node:perf_hooks";
 import { logExcerpt } from "./commands.js";
 import { terminateProcessTree } from "./process-tree.js";
@@ -17,6 +18,7 @@ function delay(ms: number): Promise<void> {
 }
 
 export async function startServer(command: string, cwd: string, url: string, timeoutMs: number): Promise<ManagedServer> {
+  await assertPortAvailable(url);
   const started = performance.now();
   const child = spawn(command, {
     cwd,
@@ -24,6 +26,10 @@ export async function startServer(command: string, cwd: string, url: string, tim
     shell: true,
     env: { ...process.env, CI: "1", NEXT_TELEMETRY_DISABLED: "1", NUXT_TELEMETRY_DISABLED: "1" },
     stdio: ["ignore", "pipe", "pipe"]
+  });
+  let spawnError: Error | undefined;
+  child.once("error", (error) => {
+    spawnError = error;
   });
   const server: ManagedServer = { command, cwd, process: child, stdout: "", stderr: "", startMs: 0 };
   child.stdout.on("data", (chunk) => {
@@ -34,6 +40,10 @@ export async function startServer(command: string, cwd: string, url: string, tim
   });
 
   while (performance.now() - started < timeoutMs) {
+    if (spawnError) {
+      await stopServer(server);
+      throw new Error(`server failed to start: ${spawnError.message}`);
+    }
     if (child.exitCode !== null) {
       throw new Error(`server exited before readiness: ${logExcerpt(server.stdout, server.stderr)}`);
     }
@@ -43,6 +53,7 @@ export async function startServer(command: string, cwd: string, url: string, tim
         server.startMs = performance.now() - started;
         return server;
       }
+      await delay(100);
     } catch {
       await delay(100);
     }
@@ -77,4 +88,37 @@ export async function stopServer(server: ManagedServer): Promise<void> {
   child.stdout?.destroy();
   child.stderr?.destroy();
   child.unref();
+}
+
+async function assertPortAvailable(urlText: string): Promise<void> {
+  const url = new URL(urlText);
+  const port = Number(url.port || (url.protocol === "https:" ? 443 : 80));
+  await new Promise<void>((resolve, reject) => {
+    const socket = net.createConnection({ host: url.hostname, port });
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      socket.destroy();
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    };
+    socket.setTimeout(500);
+    socket.once("connect", () => {
+      finish(new Error(`server port is already in use before startup: ${urlText}`));
+    });
+    socket.once("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "ECONNREFUSED") {
+        finish();
+      } else {
+        finish(error);
+      }
+    });
+    socket.once("timeout", () => finish());
+  });
 }
