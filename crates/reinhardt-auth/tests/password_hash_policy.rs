@@ -1,7 +1,11 @@
 //! Password hash policy upgrade tests.
 
-use reinhardt_auth::{PasswordHashPolicy, PasswordHasher, PasswordVerification};
+use chrono::{DateTime, Utc};
+use reinhardt_auth::{
+	BaseUser, PasswordCheck, PasswordHashPolicy, PasswordHasher, PasswordVerification,
+};
 use reinhardt_core::exception::Error;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone)]
 struct PrefixHasher {
@@ -55,6 +59,12 @@ impl PasswordHasher for PrefixHasher {
 
 	fn must_update(&self, hash: &str) -> Result<bool, Error> {
 		Ok(self.identify(hash) && self.stale)
+	}
+}
+
+impl Default for PrefixHasher {
+	fn default() -> Self {
+		Self::new("new")
 	}
 }
 
@@ -137,4 +147,94 @@ fn policy_rejects_unknown_algorithm_without_rehashing() {
 	let result = policy.verify_with_update("secret", "unknown$secret");
 
 	assert!(result.is_err(), "unknown algorithms should not be accepted");
+}
+
+#[derive(Serialize, Deserialize)]
+struct PolicyUser {
+	username: String,
+	password_hash: Option<String>,
+	last_login: Option<DateTime<Utc>>,
+	is_active: bool,
+}
+
+impl BaseUser for PolicyUser {
+	type PrimaryKey = String;
+	type Hasher = PrefixHasher;
+
+	fn get_username_field() -> &'static str {
+		"username"
+	}
+
+	fn get_username(&self) -> &str {
+		&self.username
+	}
+
+	fn password_hash(&self) -> Option<&str> {
+		self.password_hash.as_deref()
+	}
+
+	fn set_password_hash(&mut self, hash: String) {
+		self.password_hash = Some(hash);
+	}
+
+	fn last_login(&self) -> Option<DateTime<Utc>> {
+		self.last_login
+	}
+
+	fn set_last_login(&mut self, time: DateTime<Utc>) {
+		self.last_login = Some(time);
+	}
+
+	fn is_active(&self) -> bool {
+		self.is_active
+	}
+}
+
+fn policy_user_with_hash(hash: &str) -> PolicyUser {
+	PolicyUser {
+		username: "alice".to_string(),
+		password_hash: Some(hash.to_string()),
+		last_login: None,
+		is_active: true,
+	}
+}
+
+#[test]
+fn base_user_updates_legacy_hash_in_memory() {
+	let policy =
+		PasswordHashPolicy::new(PrefixHasher::new("new")).with_legacy(PrefixHasher::new("old"));
+	let mut user = policy_user_with_hash("old$secret");
+
+	let result = user
+		.check_password_with_policy_update("secret", &policy)
+		.expect("policy verification should succeed");
+
+	assert_eq!(result, PasswordCheck::ValidUpdated);
+	assert_eq!(user.password_hash(), Some("new$secret"));
+}
+
+#[test]
+fn base_user_does_not_update_wrong_password() {
+	let policy =
+		PasswordHashPolicy::new(PrefixHasher::new("new")).with_legacy(PrefixHasher::new("old"));
+	let mut user = policy_user_with_hash("old$secret");
+
+	let result = user
+		.check_password_with_policy_update("wrong", &policy)
+		.expect("policy verification should succeed");
+
+	assert_eq!(result, PasswordCheck::Invalid);
+	assert_eq!(user.password_hash(), Some("old$secret"));
+}
+
+#[test]
+fn base_user_default_update_helper_preserves_single_hasher_compatibility() {
+	let mut user = policy_user_with_hash("new$secret");
+
+	let result = user
+		.check_password_with_update("secret")
+		.expect("password verification should succeed");
+
+	assert_eq!(result, PasswordCheck::Valid);
+	assert_eq!(user.password_hash(), Some("new$secret"));
 }
