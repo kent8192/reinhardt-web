@@ -352,6 +352,56 @@ fn test_hash_output_format(argon2_hasher: Argon2Hasher) {
 }
 
 #[rstest]
+fn test_argon2_hasher_identifies_phc_strings(argon2_hasher: Argon2Hasher) {
+	let hash = argon2_hasher
+		.hash("password")
+		.expect("Argon2 hashing should succeed");
+
+	assert_eq!(argon2_hasher.algorithm(), Some("argon2id"));
+	assert!(argon2_hasher.identify(&hash));
+	assert!(
+		!argon2_hasher.identify("$2b$12$abcdefghijklmnopqrstuu8S4otHa9kX9SXE1YJvnz8fUQwWVgTzK")
+	);
+}
+
+#[rstest]
+fn test_argon2_hasher_requires_update_for_stale_parameters() {
+	use argon2::{Algorithm, Argon2, Params, Version};
+	use password_hash::{PasswordHasher as _, SaltString, rand_core::OsRng};
+
+	let stale_params = Params::new(8, 1, 1, None).expect("stale params are valid");
+	let stale_argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, stale_params);
+	let salt = SaltString::generate(&mut OsRng);
+	let stale_hash = stale_argon2
+		.hash_password("password".as_bytes(), &salt)
+		.expect("stale hash should be generated")
+		.to_string();
+
+	let current = Argon2Hasher::default();
+
+	assert!(
+		current
+			.must_update(&stale_hash)
+			.expect("Argon2 must_update should parse stale hash"),
+		"weaker Argon2 parameters should request rehash"
+	);
+}
+
+#[rstest]
+fn test_argon2_hasher_does_not_update_current_parameters(argon2_hasher: Argon2Hasher) {
+	let hash = argon2_hasher
+		.hash("password")
+		.expect("Argon2 hashing should succeed");
+
+	assert!(
+		!argon2_hasher
+			.must_update(&hash)
+			.expect("Argon2 must_update should parse current hash"),
+		"current Argon2 parameters should not request rehash"
+	);
+}
+
+#[rstest]
 fn test_different_passwords_different_hashes(argon2_hasher: Argon2Hasher) {
 	let password1 = "password1";
 	let password2 = "password2";

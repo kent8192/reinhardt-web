@@ -218,11 +218,11 @@ impl PasswordHashPolicy {
 /// assert!(!hasher.verify("wrong_password", &hash).unwrap());
 /// # }
 /// ```
-#[cfg(feature = "argon2-hasher")]
+#[cfg(any(feature = "basic", feature = "argon2-hasher"))]
 #[derive(Clone)]
 pub struct Argon2Hasher;
 
-#[cfg(feature = "argon2-hasher")]
+#[cfg(any(feature = "basic", feature = "argon2-hasher"))]
 impl Argon2Hasher {
 	/// Creates a new Argon2 password hasher
 	pub fn new() -> Self {
@@ -230,14 +230,14 @@ impl Argon2Hasher {
 	}
 }
 
-#[cfg(feature = "argon2-hasher")]
+#[cfg(any(feature = "basic", feature = "argon2-hasher"))]
 impl Default for Argon2Hasher {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-#[cfg(feature = "argon2-hasher")]
+#[cfg(any(feature = "basic", feature = "argon2-hasher"))]
 impl PasswordHasher for Argon2Hasher {
 	fn hash(&self, password: &str) -> Result<String, reinhardt_core::exception::Error> {
 		use argon2::Argon2;
@@ -264,5 +264,33 @@ impl PasswordHasher for Argon2Hasher {
 		Ok(Argon2::default()
 			.verify_password(password.as_bytes(), &parsed_hash)
 			.is_ok())
+	}
+
+	fn algorithm(&self) -> Option<&'static str> {
+		Some("argon2id")
+	}
+
+	fn identify(&self, hash: &str) -> bool {
+		use password_hash::PasswordHash;
+
+		PasswordHash::new(hash)
+			.map(|parsed| parsed.algorithm.as_str() == "argon2id")
+			.unwrap_or(false)
+	}
+
+	fn must_update(&self, hash: &str) -> Result<bool, reinhardt_core::exception::Error> {
+		use argon2::{Argon2, Params};
+		use password_hash::PasswordHash;
+
+		let parsed_hash = PasswordHash::new(hash)
+			.map_err(|e| reinhardt_core::exception::Error::Authentication(e.to_string()))?;
+		let stored_params = Params::try_from(&parsed_hash)
+			.map_err(|e| reinhardt_core::exception::Error::Authentication(e.to_string()))?;
+		let current = Argon2::default();
+		let current_params = current.params();
+
+		Ok(stored_params.m_cost() != current_params.m_cost()
+			|| stored_params.t_cost() != current_params.t_cost()
+			|| stored_params.p_cost() != current_params.p_cost())
 	}
 }
