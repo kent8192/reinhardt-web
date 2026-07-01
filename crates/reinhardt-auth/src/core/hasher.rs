@@ -345,6 +345,18 @@ pub struct BcryptHasher {
 }
 
 #[cfg(feature = "bcrypt-hasher")]
+const BCRYPT_MIN_COST: u32 = 4;
+#[cfg(feature = "bcrypt-hasher")]
+const BCRYPT_MAX_COST: u32 = 31;
+
+#[cfg(feature = "bcrypt-hasher")]
+fn parse_bcrypt_hash_parts(hash: &str) -> Option<bcrypt::HashParts> {
+	hash.parse::<bcrypt::HashParts>()
+		.ok()
+		.filter(|parts| (BCRYPT_MIN_COST..=BCRYPT_MAX_COST).contains(&parts.get_cost()))
+}
+
+#[cfg(feature = "bcrypt-hasher")]
 impl BcryptHasher {
 	/// Creates a bcrypt hasher using the bcrypt crate's default cost.
 	pub fn new() -> Self {
@@ -383,17 +395,13 @@ impl PasswordHasher for BcryptHasher {
 	}
 
 	fn identify(&self, hash: &str) -> bool {
-		hash.parse::<bcrypt::HashParts>().is_ok()
+		parse_bcrypt_hash_parts(hash).is_some()
 	}
 
 	fn must_update(&self, hash: &str) -> Result<bool, reinhardt_core::exception::Error> {
-		if !self.identify(hash) {
+		let Some(parts) = parse_bcrypt_hash_parts(hash) else {
 			return Ok(false);
-		}
-
-		let parts = hash
-			.parse::<bcrypt::HashParts>()
-			.map_err(|e| reinhardt_core::exception::Error::Authentication(e.to_string()))?;
+		};
 
 		Ok(parts.get_cost() != self.cost || !hash.starts_with("$2b$"))
 	}

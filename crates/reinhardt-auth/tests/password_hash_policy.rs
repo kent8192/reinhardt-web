@@ -320,6 +320,25 @@ mod bcrypt_policy_tests {
 	}
 
 	#[test]
+	fn bcrypt_hasher_identify_rejects_out_of_range_costs() {
+		let hash = BcryptHasher::with_cost(4)
+			.hash("secret")
+			.expect("bcrypt should hash the password");
+		let hasher = BcryptHasher::default();
+
+		for invalid_cost in ["03", "32"] {
+			let malformed_hash = format!("{}{}{}", &hash[..4], invalid_cost, &hash[6..]);
+
+			assert!(!hasher.identify(&malformed_hash));
+			assert!(
+				!hasher
+					.must_update(&malformed_hash)
+					.expect("invalid bcrypt cost should not request an update")
+			);
+		}
+	}
+
+	#[test]
 	fn bcrypt_hasher_identifies_supported_valid_prefixes() {
 		let hash = BcryptHasher::with_cost(4)
 			.hash("secret")

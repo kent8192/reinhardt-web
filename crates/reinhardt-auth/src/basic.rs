@@ -238,6 +238,37 @@ impl BasicAuthentication {
 			_ => false,
 		}
 	}
+
+	fn current_hash_matches_password(&self, username: &str, password: &str) -> bool {
+		let current_hash = self
+			.users
+			.read()
+			.expect("basic auth users lock should not be poisoned")
+			.get(username)
+			.cloned();
+
+		let Some(current_hash) = current_hash else {
+			return false;
+		};
+
+		!matches!(
+			self.policy
+				.verify_with_update(password, &current_hash)
+				.unwrap_or(PasswordVerification::Invalid),
+			PasswordVerification::Invalid
+		)
+	}
+
+	fn replace_hash_if_current_or_current_matches(
+		&self,
+		username: &str,
+		password: &str,
+		expected_hash: &str,
+		updated_hash: String,
+	) -> bool {
+		self.replace_hash_if_current(username, expected_hash, updated_hash)
+			|| self.current_hash_matches_password(username, password)
+	}
 }
 
 impl Default for BasicAuthentication {
@@ -278,7 +309,12 @@ impl AuthBackend for BasicAuthentication {
 						return Ok(Some(Box::new(Self::internal_user(&username))));
 					}
 					PasswordVerification::ValidNeedsRehash { updated_hash } => {
-						if self.replace_hash_if_current(&username, &stored_hash, updated_hash) {
+						if self.replace_hash_if_current_or_current_matches(
+							&username,
+							&password,
+							&stored_hash,
+							updated_hash,
+						) {
 							return Ok(Some(Box::new(Self::internal_user(&username))));
 						}
 					}
@@ -511,6 +547,78 @@ mod tests {
 			.read()
 			.expect("basic auth users lock should not be poisoned");
 		assert_eq!(users.get("alice").map(String::as_str), Some("new$secret"));
+	}
+
+	#[cfg(all(feature = "argon2-hasher", feature = "bcrypt-hasher"))]
+	#[test]
+	fn test_rehash_race_accepts_already_updated_current_password() {
+		use crate::{Argon2Hasher, BcryptHasher, PasswordHashPolicy};
+
+		// Arrange
+		let bcrypt = BcryptHasher::with_cost(4);
+		let backend = BasicAuthentication::with_policy(
+			PasswordHashPolicy::new(bcrypt.clone()).with_legacy(Argon2Hasher::new()),
+		);
+		let current_hash = bcrypt.hash("secret").unwrap();
+		let stale_hash = Argon2Hasher::new().hash("secret").unwrap();
+		let stale_update = bcrypt.hash("secret").unwrap();
+		backend
+			.users
+			.write()
+			.expect("basic auth users lock should not be poisoned")
+			.insert("alice".to_string(), current_hash.clone());
+
+		// Act
+		let accepted = backend.replace_hash_if_current_or_current_matches(
+			"alice",
+			"secret",
+			&stale_hash,
+			stale_update,
+		);
+
+		// Assert
+		assert!(accepted);
+		let users = backend
+			.users
+			.read()
+			.expect("basic auth users lock should not be poisoned");
+		assert_eq!(users.get("alice"), Some(&current_hash));
+	}
+
+	#[cfg(all(feature = "argon2-hasher", feature = "bcrypt-hasher"))]
+	#[test]
+	fn test_rehash_race_rejects_changed_current_password() {
+		use crate::{Argon2Hasher, BcryptHasher, PasswordHashPolicy};
+
+		// Arrange
+		let bcrypt = BcryptHasher::with_cost(4);
+		let backend = BasicAuthentication::with_policy(
+			PasswordHashPolicy::new(bcrypt.clone()).with_legacy(Argon2Hasher::new()),
+		);
+		let current_hash = bcrypt.hash("changed").unwrap();
+		let stale_hash = Argon2Hasher::new().hash("secret").unwrap();
+		let stale_update = bcrypt.hash("secret").unwrap();
+		backend
+			.users
+			.write()
+			.expect("basic auth users lock should not be poisoned")
+			.insert("alice".to_string(), current_hash.clone());
+
+		// Act
+		let accepted = backend.replace_hash_if_current_or_current_matches(
+			"alice",
+			"secret",
+			&stale_hash,
+			stale_update,
+		);
+
+		// Assert
+		assert!(!accepted);
+		let users = backend
+			.users
+			.read()
+			.expect("basic auth users lock should not be poisoned");
+		assert_eq!(users.get("alice"), Some(&current_hash));
 	}
 
 	#[rstest]
