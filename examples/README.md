@@ -57,6 +57,8 @@ cargo make local-examples-test
 
 - `examples/Cargo.toml` declares `reinhardt` with `path = ".."` and the expected version
 - Cargo uses the local checkout while still checking that the example version stays in sync
+- The standalone examples workspace mirrors the root `time` compatibility
+  constraint so fresh CI resolution stays aligned with the main workspace
 - `.cargo/config.local.toml` remains as a compatibility template for workflows that need an explicit `[patch.crates-io]` override
 
 ## Testing
