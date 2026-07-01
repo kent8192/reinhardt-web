@@ -184,7 +184,10 @@ impl BasicAuthentication {
 			.policy
 			.hash(&password.into())
 			.expect("password hashing should not fail");
-		self.users.write().unwrap().insert(username.into(), hash);
+		self.users
+			.write()
+			.expect("basic auth users lock should not be poisoned")
+			.insert(username.into(), hash);
 	}
 
 	/// Parse Authorization header
@@ -216,6 +219,25 @@ impl BasicAuthentication {
 			is_superuser: false,
 		}
 	}
+
+	fn replace_hash_if_current(
+		&self,
+		username: &str,
+		expected_hash: &str,
+		updated_hash: String,
+	) -> bool {
+		let mut users = self
+			.users
+			.write()
+			.expect("basic auth users lock should not be poisoned");
+		match users.get_mut(username) {
+			Some(current_hash) if current_hash == expected_hash => {
+				*current_hash = updated_hash;
+				true
+			}
+			_ => false,
+		}
+	}
 }
 
 impl Default for BasicAuthentication {
@@ -238,7 +260,12 @@ impl AuthBackend for BasicAuthentication {
 		if let Some(header) = auth_header
 			&& let Some((username, password)) = self.parse_auth_header(header)
 		{
-			let stored_hash = self.users.read().unwrap().get(&username).cloned();
+			let stored_hash = self
+				.users
+				.read()
+				.expect("basic auth users lock should not be poisoned")
+				.get(&username)
+				.cloned();
 
 			if let Some(stored_hash) = stored_hash {
 				let verification = self
@@ -251,13 +278,9 @@ impl AuthBackend for BasicAuthentication {
 						return Ok(Some(Box::new(Self::internal_user(&username))));
 					}
 					PasswordVerification::ValidNeedsRehash { updated_hash } => {
-						{
-							self.users
-								.write()
-								.unwrap()
-								.insert(username.clone(), updated_hash);
+						if self.replace_hash_if_current(&username, &stored_hash, updated_hash) {
+							return Ok(Some(Box::new(Self::internal_user(&username))));
 						}
-						return Ok(Some(Box::new(Self::internal_user(&username))));
 					}
 					PasswordVerification::Invalid => {}
 				}
@@ -272,7 +295,12 @@ impl AuthBackend for BasicAuthentication {
 		&self,
 		user_id: &str,
 	) -> Result<Option<Box<dyn AuthIdentity>>, AuthenticationError> {
-		if self.users.read().unwrap().contains_key(user_id) {
+		if self
+			.users
+			.read()
+			.expect("basic auth users lock should not be poisoned")
+			.contains_key(user_id)
+		{
 			Ok(Some(Box::new(Self::internal_user(user_id))))
 		} else {
 			Ok(None)
@@ -410,7 +438,10 @@ mod tests {
 		backend.add_user("testuser", "plaintext_password");
 
 		// Assert
-		let users = backend.users.read().unwrap();
+		let users = backend
+			.users
+			.read()
+			.expect("basic auth users lock should not be poisoned");
 		let stored = users.get("testuser").unwrap();
 		// Argon2 hashes start with "$argon2"
 		assert!(
@@ -434,7 +465,7 @@ mod tests {
 		backend
 			.users
 			.write()
-			.unwrap()
+			.expect("basic auth users lock should not be poisoned")
 			.insert("alice".to_string(), legacy_hash);
 
 		let request = create_request_with_auth("Basic YWxpY2U6c2VjcmV0");
@@ -446,9 +477,40 @@ mod tests {
 
 		// Assert
 		assert!(result.is_some());
-		let users = backend.users.read().unwrap();
+		let users = backend
+			.users
+			.read()
+			.expect("basic auth users lock should not be poisoned");
 		let stored = users.get("alice").unwrap();
 		assert!(BcryptHasher::default().identify(stored));
+	}
+
+	#[rstest]
+	fn test_replace_hash_if_current_rejects_stale_rehash() {
+		// Arrange
+		let backend = BasicAuthentication::new();
+		backend
+			.users
+			.write()
+			.expect("basic auth users lock should not be poisoned")
+			.insert("alice".to_string(), "old$secret".to_string());
+		backend
+			.users
+			.write()
+			.expect("basic auth users lock should not be poisoned")
+			.insert("alice".to_string(), "new$secret".to_string());
+
+		// Act
+		let replaced =
+			backend.replace_hash_if_current("alice", "old$secret", "updated$secret".to_string());
+
+		// Assert
+		assert!(!replaced);
+		let users = backend
+			.users
+			.read()
+			.expect("basic auth users lock should not be poisoned");
+		assert_eq!(users.get("alice").map(String::as_str), Some("new$secret"));
 	}
 
 	#[rstest]
