@@ -36,7 +36,7 @@
 //! - [`use_ref`], [`use_reducer`], [`use_transition`], [`use_deferred_value`]
 //! - [`use_id`], [`use_layout_effect`], [`use_debug_value`]
 //! - [`use_optimistic`], [`use_shared_state`]
-//! - [`use_action`], [`use_sync_external_store`]
+//! - [`use_action`], [`use_action_state`], [`use_sync_external_store`]
 //!
 //! ## Component System
 //! - [`Component`], [`PageElement`], [`IntoPage`], [`Page`], [`Props`]
@@ -83,7 +83,7 @@ pub use crate::reactive::{
 };
 
 // Hooks API
-pub use crate::reactive::{Action, ActionPhase, use_action};
+pub use crate::reactive::{Action, ActionPhase, ActionStateBuilder, use_action, use_action_state};
 pub use crate::reactive::{
 	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
 	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_id,
