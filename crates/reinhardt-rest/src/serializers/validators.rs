@@ -33,8 +33,12 @@
 //!     fn with_alias(self, _alias: &str) -> Self { self }
 //! }
 //!
+//! # fn configured_database_connection() -> DatabaseConnection {
+//! #     panic!("provide a configured database connection")
+//! # }
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let connection = DatabaseConnection::connect_postgres("postgres://localhost/test").await?;
+//! // Use the database connection configured for your application.
+//! # let connection = configured_database_connection();
 //!
 //! // Validate that username is unique
 //! let validator = UniqueValidator::<User>::new("username");
@@ -213,8 +217,12 @@ impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// #
+/// # fn configured_database_connection() -> DatabaseConnection {
+/// #     panic!("provide a configured database connection")
+/// # }
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let connection = DatabaseConnection::connect_postgres("postgres://localhost/test").await?;
+/// // Use the database connection configured for your application.
+/// # let connection = configured_database_connection();
 /// let validator = UniqueValidator::<User>::new("username");
 ///
 /// // Check if "alice" is unique
@@ -401,8 +409,12 @@ impl<M: Model> UniqueValidator<M> {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// #
+/// # fn configured_database_connection() -> DatabaseConnection {
+/// #     panic!("provide a configured database connection")
+/// # }
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let connection = DatabaseConnection::connect_postgres("postgres://localhost/test").await?;
+/// // Use the database connection configured for your application.
+/// # let connection = configured_database_connection();
 /// let validator = UniqueTogetherValidator::<User>::new(vec!["username", "email"]);
 ///
 /// let mut values = HashMap::new();

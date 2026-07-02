@@ -166,6 +166,7 @@ pub mod instrumentation;
 pub mod loading;
 pub mod many_to_many;
 pub mod many_to_many_accessor;
+pub mod n_plus_one;
 pub mod polymorphic;
 pub mod query_execution;
 pub mod query_options;
@@ -300,6 +301,9 @@ pub use engine::{Engine, EngineConfig, create_engine, create_engine_with_config}
 pub use fk_accessor::ForeignKeyAccessor;
 pub use many_to_many::{AssociationTable, ManyToMany, association_table};
 pub use many_to_many_accessor::ManyToManyAccessor;
+pub use n_plus_one::{
+	NPlusOneConfig, NPlusOneFinding, NPlusOneMode, NPlusOneReport, NPlusOneScope,
+};
 pub use query_execution::{ExecutableQuery, QueryCompiler};
 pub use reverse_accessor::ReverseAccessor;
 
