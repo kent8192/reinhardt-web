@@ -259,7 +259,7 @@ where
 		})(text)
 	} else {
 		let handler: Arc<dyn Fn(Signal<u64>)> = Arc::new(handler);
-		page!(|text: String, _signal: Signal<u64>, _handler: Arc<dyn Fn(Signal<u64>) >| {
+		page!(|text: String, _signal: Signal<u64>, _handler: Arc<dyn Fn(Signal<u64>)>| {
 			a {
 				class: "admin-page-link",
 				href: "#",
