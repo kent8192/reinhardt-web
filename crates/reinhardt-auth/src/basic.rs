@@ -728,9 +728,11 @@ mod tests {
 	async fn test_get_user_prefers_generated_uuid_over_uuid_shaped_username() {
 		// Arrange
 		let backend = BasicAuthentication::new();
-		backend.add_user("alice", "secret");
+		backend.add_user("alice", sample_password());
 		let alice_id = Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"alice").to_string();
-		backend.add_user(&alice_id, "other-secret");
+		let mut alternate_password = sample_password();
+		alternate_password.push_str("-alternate");
+		backend.add_user(&alice_id, alternate_password);
 
 		// Act
 		let resolved = backend.get_user(&alice_id).await.unwrap();
