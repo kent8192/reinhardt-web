@@ -30,7 +30,6 @@ serde_json = "1.0.145"
 # workspace cap for transitive cookie/time compatibility.
 time = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
-time = { workspace = true }
 syntect = "5.2"
 ctor = "0.6.1"
 inventory = "0.3"
