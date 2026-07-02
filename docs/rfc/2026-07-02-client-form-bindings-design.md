@@ -1,0 +1,257 @@
+# Client Form Bindings From DTOs Design
+
+## Summary
+
+Issue #5550 adds an opt-in generated client form contract for request DTOs. A
+DTO annotated with `#[derive(ClientForm)]` gains companion form types that can be
+used with the existing `use_form(&form)` runtime and can assemble a typed request
+DTO without manual DOM ids, field lookups, trimming glue, or repeated request
+construction.
+
+The initial target is a practical middle ground: common scalar fields,
+`Option<String>` fields, and enum choice fields are supported. The generated
+form can also expose an optional server function submit helper when the DTO
+author declares the target server function.
+
+## Goals
+
+- Keep request DTOs as the source of truth for form field names and request
+  shape.
+- Generate a `FormRuntimeSource` compatible companion form for DTOs.
+- Support `String`, `Option<String>`, primitive numeric fields, `bool`, and enum
+  choice fields.
+- Convert `Option<String>` through a text-editing value with empty or
+  whitespace-only input marshalled to `None`.
+- Generate DTO assembly helpers so app code can submit a typed request without
+  rebuilding the DTO field by field.
+- Support an optional server function helper for forms that want generated
+  submit wiring.
+- Preserve the existing boundary where static form contracts are generated and
+  `use_form` owns runtime lifecycle.
+
+## Non-Goals
+
+- This design does not replace the existing `form!` DSL.
+- This design does not add custom enum labels in the first implementation.
+- This design does not infer rich widgets, layouts, field groups, file fields,
+  collections, or nested DTOs.
+- This design does not make `#[reinhardt::dto]` depend on `reinhardt-pages`.
+- This design does not silently skip unsupported DTO fields.
+
+## Public API
+
+The derive lives in `reinhardt-pages-macros` and is re-exported from
+`reinhardt-pages`.
+
+```rust
+use reinhardt_pages::{ClientForm, use_form};
+
+#[reinhardt::dto]
+#[derive(Clone, Serialize, Deserialize, ClientForm)]
+#[client_form(server_fn = crate::apps::projects::server_fn::update_project)]
+pub struct ProjectUpdateRequest {
+    pub project_id: i64,
+    pub title: Option<String>,
+    pub idea: Option<String>,
+    pub provider_mode: Option<ProviderMode>,
+    pub chat_model: Option<String>,
+    pub embedding_model: Option<String>,
+}
+
+let form = ProjectUpdateRequestClientForm::new()
+    .with_defaults(project.into_update_request());
+let runtime = use_form(&form).build();
+let request = ProjectUpdateRequestClientForm::to_request(&runtime);
+```
+
+The generated names are deterministic:
+
+- `ProjectUpdateRequestClientForm`
+- `ProjectUpdateRequestClientFormValues`
+- `ProjectUpdateRequestClientFormField`
+
+Generated item visibility follows the DTO visibility because derive output is
+emitted at module item scope. A public DTO therefore receives public companion
+types, preventing public `FormRuntimeSource` associated types from leaking
+private generated enums or value structs.
+
+The generated form exposes source-order field token accessors:
+
+```rust
+runtime.set_value(ProjectUpdateRequestClientFormField::Title, "New title".to_string());
+let title = runtime.watch_field::<String>(ProjectUpdateRequestClientFormField::Title);
+```
+
+For optional server function binding, the generated form exposes a submit helper
+instead of changing `UseFormReturn::handle_submit` semantics:
+
+```rust
+let outcome = form.submit(&runtime).await?;
+```
+
+`handle_submit` remains the generic runtime validation and lifecycle callback
+entry point. Server function submission is DTO-form-specific orchestration built
+on top of a new additive async runtime primitive described below.
+
+## Generated Types
+
+`ProjectUpdateRequestClientForm` owns one `Signal<T>` per editable field plus a
+private default-value cell, mirroring the current `form!` runtime contract
+pattern.
+
+`ProjectUpdateRequestClientFormValues` is the editable form value shape, not
+always identical to the DTO. Most fields keep the same type. `Option<String>` uses
+`String` in values so text inputs can edit naturally; conversion to the request
+DTO trims and maps empty strings to `None`.
+
+`ProjectUpdateRequestClientFormField` is a copyable field token enum used by
+`FormRuntimeSource`, `FormState`, and `UseFormReturn` field APIs.
+
+## Field Mapping
+
+| DTO field type | Form value type | Default | Request conversion |
+|---|---|---|---|
+| `String` | `String` | `String::new()` | unchanged |
+| `Option<String>` | `String` | `String::new()` | `trim(); empty => None` |
+| integer primitives | same primitive | `Default::default()` | unchanged |
+| float primitives | same primitive | `Default::default()` | unchanged |
+| `bool` | `bool` | `false` | unchanged |
+| enum | enum | first declared variant or `Default` when present | unchanged |
+| `Option<enum>` | `Option<enum>` | `None` | unchanged |
+
+Enum choices use the serialized enum value as both `value` and `label`. The
+derive recognizes `serde(rename_all = "...")` and variant-level
+`serde(rename = "...")` for supported serde rename cases. If the enum metadata
+cannot be resolved by the derive, compilation fails with a message pointing at
+the field.
+
+## Attributes
+
+The derive accepts a struct-level `#[client_form(...)]` helper attribute:
+
+```rust
+#[client_form(
+    name = ProjectSettingsForm,
+    server_fn = crate::apps::projects::server_fn::update_project
+)]
+```
+
+`name` overrides the generated form type stem. `server_fn` enables the generated
+async submit helper. Neither attribute is required.
+
+Field-level attributes are intentionally small:
+
+```rust
+#[client_form(skip)]
+pub csrf_token: String,
+```
+
+`skip` removes a DTO field from the generated form only when the DTO field has a
+defaultable request value path. The first implementation supports skip for
+`Option<T>` and fields with a `Default` value. Required skipped fields produce a
+compile error.
+
+## Validation
+
+`#[reinhardt::dto]` already normalizes DTO validation through `Validate`. The
+generated form uses that existing DTO validation when the DTO implements the
+validation trait:
+
+1. Convert current form values to the request DTO.
+2. Run DTO validation.
+3. Map field validation errors back to `ProjectUpdateRequestClientFormField`.
+
+The first implementation maps direct field-name errors only. Struct-level
+validation errors become `form_error`. Nested validation paths are unsupported
+for the MVP and fail as form-level errors rather than being dropped.
+
+## Data Flow
+
+Defaults enter through the generated form, not through a new `use_form` builder
+method:
+
+```rust
+let form = ProjectUpdateRequestClientForm::new().with_defaults(request);
+let runtime = use_form(&form).build();
+```
+
+This keeps `UseFormBuilder` generic and avoids adding DTO-specific concerns to
+the runtime. If defaults change later, app code can build a refreshed form and
+call the existing `runtime.reconcile_from(&form, deps)` path.
+
+Submit flow without `server_fn`:
+
+1. UI edits update generated field signals.
+2. `runtime.trigger()` runs generated validation.
+3. `ProjectUpdateRequestClientForm::to_request(&runtime)` returns the typed DTO.
+4. App code passes the DTO to `use_action`, a server function client stub, or
+   custom submit code.
+
+Submit flow with `server_fn`:
+
+1. `form.submit(&runtime).await` delegates to a new
+   `UseFormReturn::submit_async(...)` primitive.
+2. On validation success, it converts current values to the request DTO.
+3. It calls the configured server function as `server_fn(request).await`.
+4. It returns the server function result or error to the caller.
+
+The new `submit_async` primitive is additive and generic. It owns
+`is_submitting`, `is_submit_successful`, `submit_error`, validation blocking,
+and submit lifecycle callbacks for async submissions. The existing synchronous
+`handle_submit()` behavior remains unchanged.
+
+## Error Handling
+
+Unsupported DTO shapes fail at compile time. Examples include tuple structs,
+unit structs, nested DTO fields, collections, maps, unsupported generic fields,
+and enum fields whose variants cannot be enumerated.
+
+Runtime request assembly should not panic for user-editable values. Invalid
+generated-widget parsing errors surface through `FormValidationError` and
+`FieldError`. Server function errors are returned by the generated submit helper
+without being converted to validation errors.
+
+## Implementation Boundaries
+
+`reinhardt-pages-macros` owns the derive parser and code generation.
+`reinhardt-pages` owns any small runtime helper traits that generated code needs.
+`reinhardt-core` remains unchanged.
+
+The field-type mapping used by `form!` is extracted into a small shared helper
+module inside `reinhardt-pages-macros`. The derive does not copy a second
+unrelated mapping table that can drift from `form!`.
+
+## Testing
+
+Tests cover compile-time and runtime behavior:
+
+- trybuild pass test for a DTO with `String`, `Option<String>`, scalar, enum,
+  and optional enum fields.
+- trybuild pass test for `#[client_form(name = ...)]`.
+- trybuild pass test for `#[client_form(server_fn = ...)]` expansion.
+- trybuild fail tests for unsupported tuple structs, unit structs, nested DTOs,
+  unsupported collection fields, and required skipped fields.
+- runtime integration tests for `use_form(&dto_form).build()`, dirty state,
+  `set_value`, `watch_field`, `with_defaults`, and `reconcile_from`.
+- validation tests proving DTO validation errors map to generated field tokens.
+- request conversion tests proving `Option<String>` trims and maps empty input
+  to `None`.
+- enum choice metadata tests proving serde rename values are used for both
+  value and label.
+- async submit tests proving the generated server function helper does not call
+  the server function on validation failure and updates pending, success, and
+  submit-error state through `submit_async`.
+- trybuild fail tests for server function signatures that do not accept the DTO
+  request as the first argument.
+
+## Documentation
+
+Update `crates/reinhardt-pages/README.md` and `crates/reinhardt-pages/src/lib.rs`
+with a short DTO-derived form example. The docs position `ClientForm` as an
+opt-in companion to `form!`, not as a replacement.
+
+## Compatibility
+
+The change is additive and backward-compatible. Existing `form!`, `use_form`,
+and `#[reinhardt::dto]` users are unaffected unless they opt in to
+`ClientForm`.
