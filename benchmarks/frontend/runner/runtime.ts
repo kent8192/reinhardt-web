@@ -91,7 +91,7 @@ async function measureKeyedListUpdate(page: Page, timeoutMs: number): Promise<nu
 }
 
 export async function measureDevUpdate(
-  url: string,
+  target: TargetConfig,
   patch: () => string | Promise<string>,
   timeoutMs: number
 ): Promise<number> {
@@ -100,8 +100,11 @@ export async function measureDevUpdate(
   const page = await context.newPage();
   page.setDefaultTimeout(timeoutMs);
   try {
-    await page.goto(url, { timeout: timeoutMs });
+    await page.goto(target.dev_url, { timeout: timeoutMs });
     await page.locator("[data-benchmark-ready='true']").waitFor({ timeout: timeoutMs });
+    if (target.mode === "ssr") {
+      await page.locator("[data-benchmark-hydrated='true']").waitFor({ timeout: timeoutMs });
+    }
     const version = page.locator("[data-benchmark-value='version']");
     await version.filter({ hasText: "baseline-version" }).waitFor({ timeout: timeoutMs });
     const start = performance.now();

@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectBundleMetrics } from "./bundles.js";
 import { logExcerpt, runShellCommand } from "./commands.js";
-import { patchSource, restoreSource, snapshotSource, type SourceSnapshot } from "./dev-loop.js";
+import { installSourceSignalCleanup, patchSource, restoreSource, snapshotSource, type SourceSnapshot } from "./dev-loop.js";
 import { loadManifest } from "./manifest.js";
 import { writeReports } from "./report.js";
 import { measureDevUpdate, runRuntimeMeasurements } from "./runtime.js";
@@ -95,14 +95,18 @@ async function runBuild(manifest: BenchmarkManifest): Promise<BenchmarkResult[]>
 
     let devServer: ManagedServer | undefined;
     let sourceSnapshot: SourceSnapshot | undefined;
+    let removeSourceSignalCleanup: (() => void) | undefined;
     try {
+      debug(`${target.id}: dev build artifacts clean`);
+      cleanBuildArtifacts(target);
       debug(`${target.id}: dev source snapshot`);
       sourceSnapshot = snapshotSource(target.root, target.source_patch_file);
+      removeSourceSignalCleanup = installSourceSignalCleanup(sourceSnapshot);
       debug(`${target.id}: dev server start`);
       devServer = await startServer(target.dev, target.root, target.dev_url, manifest.suite.timeout_ms);
       debug(`${target.id}: dev update measure`);
       const hmrMs = await measureDevUpdate(
-        target.dev_url,
+        target,
         () => patchSource(target.root, target.source_patch_file),
         manifest.suite.timeout_ms
       );
@@ -129,6 +133,9 @@ async function runBuild(manifest: BenchmarkManifest): Promise<BenchmarkResult[]>
       }
       if (sourceSnapshot) {
         safeRestoreSource(sourceSnapshot, `${target.id}: source restore`);
+      }
+      if (removeSourceSignalCleanup) {
+        removeSourceSignalCleanup();
       }
     }
   }

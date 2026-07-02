@@ -1,9 +1,9 @@
 //! Scoped N+1 query detection for ORM workloads.
 
-use std::collections::{BTreeSet, HashMap, HashSet, hash_map::DefaultHasher};
+use std::collections::{BTreeSet, HashMap, HashSet, hash_map::RandomState};
 use std::future::Future;
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+use std::hash::BuildHasher;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use parking_lot::Mutex;
@@ -113,6 +113,10 @@ impl QueryFingerprint {
 					consume_identifier(&mut chars);
 				}
 				'?' => normalized.push('?'),
+				c if c.is_ascii_alphabetic() || c == '_' => {
+					normalized.push(c);
+					consume_identifier_into(&mut normalized, &mut chars);
+				}
 				c if c.is_ascii_digit() => {
 					let literal = consume_number_literal(c, &mut chars);
 					normalized.push('?');
@@ -179,6 +183,13 @@ impl ScopeState {
 	}
 
 	fn record_query(&mut self, query: &str, params: &[String], duration: Duration) {
+		let fingerprint = QueryFingerprint::from_sql(query);
+		let fingerprint_key = fingerprint.normalized.clone();
+
+		if self.config.ignored_fingerprints.contains(&fingerprint_key) {
+			return;
+		}
+
 		if self.total_recorded_queries >= self.config.max_records_per_scope {
 			self.dropped_sample_count += 1;
 			return;
@@ -186,11 +197,9 @@ impl ScopeState {
 
 		self.total_recorded_queries += 1;
 
-		let fingerprint = QueryFingerprint::from_sql(query);
 		let bind_signature = bind_signature(params, &fingerprint);
 		let bind_samples = bind_samples(params, &fingerprint);
 
-		let fingerprint_key = fingerprint.normalized.clone();
 		let aggregate = self
 			.aggregates
 			.entry(fingerprint_key.clone())
@@ -346,10 +355,13 @@ fn bind_samples(params: &[String], fingerprint: &QueryFingerprint) -> Vec<String
 
 fn mask_value(value: &str) -> String {
 	let class = classify_value(value);
-	let mut hasher = DefaultHasher::new();
-	value.hash(&mut hasher);
-	format!("{class}#{:016x}", hasher.finish())
+	let hash = MASK_HASH_STATE
+		.get_or_init(RandomState::new)
+		.hash_one(value);
+	format!("{class}#{hash:016x}")
 }
+
+static MASK_HASH_STATE: OnceLock<RandomState> = OnceLock::new();
 
 fn classify_value(value: &str) -> &'static str {
 	if value.parse::<i128>().is_ok() {
@@ -411,6 +423,20 @@ where
 	}
 }
 
+fn consume_identifier_into<I>(target: &mut String, chars: &mut std::iter::Peekable<I>)
+where
+	I: Iterator<Item = char>,
+{
+	while chars
+		.peek()
+		.is_some_and(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+	{
+		if let Some(ch) = chars.next() {
+			target.push(ch);
+		}
+	}
+}
+
 fn consume_number_literal<I>(first: char, chars: &mut std::iter::Peekable<I>) -> String
 where
 	I: Iterator<Item = char>,
@@ -444,7 +470,7 @@ fn collapse_whitespace(input: &str) -> String {
 }
 
 fn suggested_action() -> String {
-	"Repeated query shape detected. If this is a single-object relationship, consider select_related(). If this is a collection relationship, consider prefetch_related() or a batch query.".to_string()
+	"Repeated query shape detected. If this is a single-object relationship, consider select_related(). If this is a collection relationship, use an explicit batch query.".to_string()
 }
 
 fn warn_for_findings(report: &NPlusOneReport) {
@@ -555,6 +581,16 @@ mod tests {
 	}
 
 	#[test]
+	fn preserves_digits_inside_identifiers() {
+		let field1 = QueryFingerprint::from_sql("SELECT field1 FROM posts WHERE id = 1");
+		let field2 = QueryFingerprint::from_sql("SELECT field2 FROM posts WHERE id = 2");
+
+		assert_eq!(field1.normalized, "SELECT field1 FROM posts WHERE id = ?");
+		assert_eq!(field2.normalized, "SELECT field2 FROM posts WHERE id = ?");
+		assert_ne!(field1.normalized, field2.normalized);
+	}
+
+	#[test]
 	fn reports_same_shape_with_distinct_bind_values() {
 		let mut state = ScopeState::new("posts.index".to_string(), low_threshold_config());
 		for author_id in ["1", "2", "3"] {
@@ -647,6 +683,36 @@ mod tests {
 		let report = state.finish_report();
 		assert_eq!(report.total_recorded_queries, 2);
 		assert_eq!(report.dropped_sample_count, 1);
+		assert!(report.findings.is_empty());
+	}
+
+	#[test]
+	fn ignored_fingerprints_do_not_consume_record_cap() {
+		let mut config = low_threshold_config();
+		config.max_records_per_scope = 2;
+		config
+			.ignored_fingerprints
+			.insert("SELECT * FROM health_checks WHERE id = ?".to_string());
+
+		let mut state = ScopeState::new("posts.index".to_string(), config);
+		for id in ["1", "2", "3"] {
+			state.record_query(
+				"SELECT * FROM health_checks WHERE id = $1",
+				&[id.to_string()],
+				Duration::from_millis(1),
+			);
+		}
+		for author_id in ["1", "2"] {
+			state.record_query(
+				"SELECT * FROM posts WHERE author_id = $1",
+				&[author_id.to_string()],
+				Duration::from_millis(1),
+			);
+		}
+
+		let report = state.finish_report();
+		assert_eq!(report.total_recorded_queries, 2);
+		assert_eq!(report.dropped_sample_count, 0);
 		assert!(report.findings.is_empty());
 	}
 

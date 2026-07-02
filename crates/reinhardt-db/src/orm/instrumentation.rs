@@ -424,6 +424,8 @@ impl Instrumentation {
 		super::n_plus_one::record_query(query, params, duration);
 	}
 
+	pub(crate) async fn orm_query_error(&self, _query: &str, _error: &str) {}
+
 	/// Notifies all listeners that a query has failed
 	///
 	/// # Examples
@@ -782,6 +784,32 @@ mod tests {
 
 		assert_eq!(query_start.load(Ordering::SeqCst), 0);
 		assert_eq!(query_end.load(Ordering::SeqCst), 0);
+	}
+
+	#[tokio::test]
+	async fn test_orm_query_error_does_not_retain_metrics_or_emit_listener_error() {
+		let instrumentation = Instrumentation::new();
+		let query_error = Arc::new(AtomicUsize::new(0));
+		let listener = Arc::new(TestListener {
+			query_start_count: Arc::new(AtomicUsize::new(0)),
+			query_end_count: Arc::new(AtomicUsize::new(0)),
+			query_error_count: query_error.clone(),
+			transaction_start_count: Arc::new(AtomicUsize::new(0)),
+			transaction_end_count: Arc::new(AtomicUsize::new(0)),
+		});
+
+		instrumentation.add_listener("test".to_string(), listener);
+		instrumentation
+			.orm_query_error("SELECT * FROM invalid", "table not found")
+			.await;
+
+		assert!(
+			instrumentation
+				.query_metrics("SELECT * FROM invalid")
+				.is_empty()
+		);
+		assert_eq!(instrumentation.statistics().total_queries, 0);
+		assert_eq!(query_error.load(Ordering::SeqCst), 0);
 	}
 
 	#[tokio::test]

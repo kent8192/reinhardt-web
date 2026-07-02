@@ -4115,7 +4115,7 @@ where
 			}
 			Err(error) => {
 				super::instrumentation::instrumentation()
-					.query_error(&sql, &format!("{error:?}"), duration)
+					.orm_query_error(&sql, &format!("{error:?}"))
 					.await;
 				return Err(error.into());
 			}
@@ -4370,7 +4370,7 @@ where
 			}
 			Err(error) => {
 				super::instrumentation::instrumentation()
-					.query_error(&sql, &format!("{error:?}"), duration)
+					.orm_query_error(&sql, &format!("{error:?}"))
 					.await;
 				return Err(error.into());
 			}
@@ -4547,12 +4547,33 @@ where
 
 		// Convert to SQL and extract parameter values
 		let (sql, values) = PostgresQueryBuilder.build_select(&stmt);
+		let value_samples = values
+			.iter()
+			.map(|value| value.to_sql_literal())
+			.collect::<Vec<_>>();
 
 		// Convert reinhardt_query::value::Values to QueryValue
 		let params = super::execution::convert_values(values);
 
 		// Execute query with parameters
-		let rows = conn.query(&sql, params).await?;
+		let started_at = Instant::now();
+		let query_result = conn.query(&sql, params).await;
+		let duration = started_at.elapsed();
+
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &value_samples, duration)
+					.await;
+				rows
+			}
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &format!("{error:?}"))
+					.await;
+				return Err(error.into());
+			}
+		};
 		if let Some(row) = rows.first() {
 			// Extract count from first row
 			if let Some(count_value) = row.data.get("count")
@@ -5102,14 +5123,36 @@ where
 			}
 		}
 
-		// Build SQL with inline values (no placeholders)
-		let sql = query.to_string(PostgresQueryBuilder);
+		// Build SQL with bind placeholders and captured values
+		let (sql, values) = PostgresQueryBuilder.build_select(&query);
+		let value_samples = values
+			.iter()
+			.map(|value| value.to_sql_literal())
+			.collect::<Vec<_>>();
+		let params = super::execution::convert_values(values);
 
 		// Execute query using database connection
 		let conn = super::manager::get_connection().await?;
 
 		// Execute the SELECT query
-		let rows = conn.query(&sql, vec![]).await?;
+		let started_at = Instant::now();
+		let query_result = conn.query(&sql, params).await;
+		let duration = started_at.elapsed();
+
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &value_samples, duration)
+					.await;
+				rows
+			}
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &format!("{error:?}"))
+					.await;
+				return Err(error.into());
+			}
+		};
 
 		// Composite PK queries should return exactly one row
 		if rows.is_empty() {
