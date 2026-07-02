@@ -197,12 +197,8 @@ impl PasswordHashPolicy {
 			}
 		}
 
-		if self.preferred.algorithm().is_none() {
-			return if self.preferred.verify(password, hash)? {
-				Ok(PasswordVerification::Valid)
-			} else {
-				Ok(PasswordVerification::Invalid)
-			};
+		if self.preferred.algorithm().is_none() && self.preferred.verify(password, hash)? {
+			return self.verify_preferred(password, hash);
 		}
 
 		for legacy in &self.legacy {
@@ -361,6 +357,10 @@ const BCRYPT_MAX_PASSWORD_BYTES: usize = 72;
 
 #[cfg(feature = "bcrypt-hasher")]
 fn parse_bcrypt_hash_parts(hash: &str) -> Option<bcrypt::HashParts> {
+	if hash.starts_with("$2x$") {
+		return None;
+	}
+
 	hash.parse::<bcrypt::HashParts>()
 		.ok()
 		.filter(|parts| (BCRYPT_MIN_COST..=BCRYPT_MAX_COST).contains(&parts.get_cost()))

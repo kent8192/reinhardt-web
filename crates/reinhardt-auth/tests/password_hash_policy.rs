@@ -81,6 +81,57 @@ impl PasswordHasher for DefaultIdentifierHasher {
 	}
 }
 
+#[derive(Clone)]
+struct DefaultIdentifierPreferredHasher {
+	stale: bool,
+	accepts: bool,
+}
+
+impl DefaultIdentifierPreferredHasher {
+	fn accepting(stale: bool) -> Self {
+		Self {
+			stale,
+			accepts: true,
+		}
+	}
+
+	fn rejecting() -> Self {
+		Self {
+			stale: false,
+			accepts: false,
+		}
+	}
+}
+
+impl PasswordHasher for DefaultIdentifierPreferredHasher {
+	fn hash(&self, password: &str) -> Result<String, Error> {
+		Ok(format!("new${password}"))
+	}
+
+	fn verify(&self, password: &str, hash: &str) -> Result<bool, Error> {
+		Ok(self.accepts && hash == format!("new${password}"))
+	}
+
+	fn must_update(&self, _hash: &str) -> Result<bool, Error> {
+		Ok(self.stale)
+	}
+}
+
+#[cfg(feature = "bcrypt-hasher")]
+#[derive(Clone)]
+struct Bcrypt2xCompatibilityHasher;
+
+#[cfg(feature = "bcrypt-hasher")]
+impl PasswordHasher for Bcrypt2xCompatibilityHasher {
+	fn hash(&self, password: &str) -> Result<String, Error> {
+		Ok(format!("new${password}"))
+	}
+
+	fn verify(&self, password: &str, hash: &str) -> Result<bool, Error> {
+		Ok(password == "secret" && hash.starts_with("$2x$"))
+	}
+}
+
 #[test]
 fn policy_accepts_current_preferred_hash_without_update() {
 	let policy =
@@ -170,6 +221,64 @@ fn policy_rehashes_legacy_hashers_with_default_identifier_methods() {
 	let result = policy
 		.verify_with_update("secret", "legacy$secret")
 		.expect("default identifier legacy hasher should be checked");
+
+	assert_eq!(
+		result,
+		PasswordVerification::ValidNeedsRehash {
+			updated_hash: "new$secret".to_string(),
+		}
+	);
+}
+
+#[test]
+fn policy_rehashes_stale_preferred_hashers_with_default_identifier_methods() {
+	let policy = PasswordHashPolicy::new(DefaultIdentifierPreferredHasher::accepting(true));
+
+	let result = policy
+		.verify_with_update("secret", "new$secret")
+		.expect("default identifier preferred hasher should be checked");
+
+	assert_eq!(
+		result,
+		PasswordVerification::ValidNeedsRehash {
+			updated_hash: "new$secret".to_string(),
+		}
+	);
+}
+
+#[test]
+fn policy_checks_default_identifier_legacy_after_preferred_miss() {
+	let policy = PasswordHashPolicy::new(DefaultIdentifierPreferredHasher::rejecting())
+		.with_legacy(DefaultIdentifierHasher);
+
+	let result = policy
+		.verify_with_update("secret", "legacy$secret")
+		.expect("default identifier legacy hasher should be checked after preferred miss");
+
+	assert_eq!(
+		result,
+		PasswordVerification::ValidNeedsRehash {
+			updated_hash: "new$secret".to_string(),
+		}
+	);
+}
+
+#[cfg(feature = "bcrypt-hasher")]
+#[test]
+fn policy_lets_compatible_legacy_hasher_handle_bcrypt_2x_hashes() {
+	use reinhardt_auth::BcryptHasher;
+
+	let bcrypt_hash = BcryptHasher::with_cost(4).hash("secret").unwrap();
+	let bcrypt_2x_hash = bcrypt_hash.replacen("$2b$", "$2x$", 1);
+	let policy = PasswordHashPolicy::new(PrefixHasher::new("new"))
+		.with_legacy(BcryptHasher::with_cost(4))
+		.with_legacy(Bcrypt2xCompatibilityHasher);
+
+	assert!(!BcryptHasher::with_cost(4).identify(&bcrypt_2x_hash));
+
+	let result = policy
+		.verify_with_update("secret", &bcrypt_2x_hash)
+		.expect("compatible legacy hasher should handle bcrypt 2x hash");
 
 	assert_eq!(
 		result,
@@ -412,13 +521,15 @@ mod bcrypt_policy_tests {
 		for version in [
 			bcrypt::Version::TwoA,
 			bcrypt::Version::TwoB,
-			bcrypt::Version::TwoX,
 			bcrypt::Version::TwoY,
 		] {
 			let formatted_hash = parts.format_for_version(version);
 
 			assert!(hasher.identify(&formatted_hash));
 		}
+
+		let two_x_hash = parts.format_for_version(bcrypt::Version::TwoX);
+		assert!(!hasher.identify(&two_x_hash));
 	}
 
 	#[test]
@@ -438,11 +549,7 @@ mod bcrypt_policy_tests {
 				.expect("same-cost 2b hash should be current")
 		);
 
-		for version in [
-			bcrypt::Version::TwoA,
-			bcrypt::Version::TwoX,
-			bcrypt::Version::TwoY,
-		] {
+		for version in [bcrypt::Version::TwoA, bcrypt::Version::TwoY] {
 			let formatted_hash = parts.format_for_version(version);
 
 			assert!(
@@ -451,6 +558,13 @@ mod bcrypt_policy_tests {
 					.expect("same-cost non-2b hash should be parsed")
 			);
 		}
+
+		let two_x_hash = parts.format_for_version(bcrypt::Version::TwoX);
+		assert!(
+			!hasher
+				.must_update(&two_x_hash)
+				.expect("unsupported 2x hash should not be parsed for updates")
+		);
 	}
 
 	#[test]

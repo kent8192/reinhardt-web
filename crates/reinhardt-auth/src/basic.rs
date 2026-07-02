@@ -335,7 +335,16 @@ impl AuthBackend for BasicAuthentication {
 			.users
 			.read()
 			.expect("basic auth users lock should not be poisoned");
-		let username = if users.contains_key(user_id) {
+		let username = if Uuid::parse_str(user_id).is_ok() {
+			users
+				.keys()
+				.find(|username| {
+					Uuid::new_v5(&crate::USER_ID_NAMESPACE, username.as_bytes()).to_string()
+						== user_id
+				})
+				.cloned()
+				.or_else(|| users.contains_key(user_id).then(|| user_id.to_string()))
+		} else if users.contains_key(user_id) {
 			Some(user_id.to_string())
 		} else {
 			users
@@ -712,6 +721,23 @@ mod tests {
 		let resolved = resolved.expect("authenticated user ID should resolve");
 		assert_eq!(resolved.id(), authenticated.id());
 		assert!(resolved.is_authenticated());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_get_user_prefers_generated_uuid_over_uuid_shaped_username() {
+		// Arrange
+		let backend = BasicAuthentication::new();
+		backend.add_user("alice", "secret");
+		let alice_id = Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"alice").to_string();
+		backend.add_user(&alice_id, "other-secret");
+
+		// Act
+		let resolved = backend.get_user(&alice_id).await.unwrap();
+
+		// Assert
+		let resolved = resolved.expect("generated UUID should resolve to original user");
+		assert_eq!(resolved.id(), alice_id);
 	}
 
 	#[rstest]
