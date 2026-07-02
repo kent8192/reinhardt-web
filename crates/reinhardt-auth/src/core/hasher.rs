@@ -368,7 +368,7 @@ fn parse_bcrypt_hash_parts(hash: &str) -> Option<bcrypt::HashParts> {
 
 #[cfg(feature = "bcrypt-hasher")]
 fn validate_bcrypt_password(password: &str) -> Result<(), Error> {
-	if password.as_bytes().len() > BCRYPT_MAX_PASSWORD_BYTES {
+	if password.len() > BCRYPT_MAX_PASSWORD_BYTES {
 		return Err(Error::Authentication(format!(
 			"bcrypt passwords must be at most {BCRYPT_MAX_PASSWORD_BYTES} bytes"
 		)));
