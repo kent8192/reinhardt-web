@@ -1,16 +1,17 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[test]
 fn facade_only_dependency_compiles_grpc_handler_di() {
 	let crate_dir = tempfile::tempdir().expect("create downstream fixture directory");
-	let target_dir = tempfile::tempdir().expect("create downstream target directory");
-	let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+	let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
 		.join("../..")
 		.canonicalize()
 		.expect("resolve repository root");
+	let target_dir = shared_target_dir(&repo_root);
 
 	fs::create_dir(crate_dir.path().join("src")).expect("create downstream src directory");
 	fs::write(
@@ -73,7 +74,7 @@ fn main() {
 		.arg("--manifest-path")
 		.arg(crate_dir.path().join("Cargo.toml"))
 		.arg("--target-dir")
-		.arg(target_dir.path())
+		.arg(target_dir)
 		.arg("--offline")
 		.output()
 		.expect("run downstream facade-only cargo check");
@@ -84,4 +85,34 @@ fn main() {
 		String::from_utf8_lossy(&output.stdout),
 		String::from_utf8_lossy(&output.stderr)
 	);
+}
+
+fn shared_target_dir(repo_root: &Path) -> PathBuf {
+	if let Some(target_dir) = std::env::var_os("CARGO_TARGET_DIR") {
+		let target_dir = PathBuf::from(target_dir);
+		return if target_dir.is_absolute() {
+			target_dir
+		} else {
+			repo_root.join(target_dir)
+		};
+	}
+
+	if let Some(target_dir) = current_test_target_dir() {
+		return target_dir;
+	}
+
+	repo_root.join("target")
+}
+
+fn current_test_target_dir() -> Option<PathBuf> {
+	let current_exe = std::env::current_exe().ok()?;
+	for ancestor in current_exe.ancestors() {
+		let Some(name) = ancestor.file_name().and_then(|name| name.to_str()) else {
+			continue;
+		};
+		if matches!(name, "debug" | "release") {
+			return ancestor.parent().map(Path::to_path_buf);
+		}
+	}
+	None
 }
