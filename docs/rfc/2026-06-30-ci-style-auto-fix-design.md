@@ -61,9 +61,10 @@ same as the base repository. It also checks the repository branch API so the
 write path is disabled when the PR head branch is actually protected, not just
 when its name matches a local denylist.
 
-The fix job checks out the pull-request head branch, installs the same tools
-used by the style gates, runs the matching fix command, and uploads a binary
-patch only when the fix command leaves a worktree diff.
+The fix job checks out the pull-request head SHA that triggered the workflow,
+installs the same tools and environment used by the style gates, runs the
+matching fix command, and uploads a binary patch only when the fix command
+leaves a worktree diff.
 
 ## 5. Execution Flow
 
@@ -72,7 +73,8 @@ patch only when the fix command leaves a worktree diff.
    release-managed, project read-only branch, and branch-protection gates.
 3. If the pull request is ineligible, the downstream fix and write jobs are
    skipped.
-4. If eligible, `auto-fix-style` checks out the PR head branch.
+4. If eligible, `auto-fix-style` checks out the PR head SHA that triggered the
+   workflow.
 5. The fix job installs Rust, `rustfmt`, `clippy`, `protoc`, and `cargo-make`.
 6. The fix job runs:
    - `cargo make fmt-fix` when only formatting failed;
@@ -81,12 +83,13 @@ patch only when the fix command leaves a worktree diff.
 7. If there is no diff after the fix command, the workflow exits without
    committing.
 8. If there is a diff, the fix job uploads a binary patch artifact.
-9. `commit-auto-fix-style` checks out a clean copy of the PR head branch and
+9. `commit-auto-fix-style` checks out a clean copy of the same PR head SHA and
    applies the patch without executing PR-controlled build or make code.
 10. The write job rechecks the target branch protection state before generating
     a write-capable token.
 11. If the branch is still eligible, the write job creates the commit with
-    GitHub GraphQL `createCommitOnBranch`.
+    GitHub GraphQL `createCommitOnBranch`, using the triggering head SHA as the
+    expected branch head.
 
 ## 6. Token and Push Model
 
@@ -98,9 +101,19 @@ The write job starts from a clean checkout, downloads the patch, and applies it
 with `git apply --index`. It does not run `cargo make`, build scripts,
 proc-macros, or repository hooks before generating the write token.
 
+The write job validates the staged patch before generating the write token.
+Unsupported file statuses and symlink additions are rejected, and GraphQL file
+contents are read from staged blobs instead of following working-tree paths.
+
 The GitHub App token is generated only in the write job after the patch is
-applied and the target branch protection state is rechecked. The token requests
-only `permission-contents: write`.
+applied and the target branch protection state is rechecked. The
+`permission-contents: write` action input grants only the GitHub App
+`contents: write` repository permission.
+
+The GraphQL commit uses the triggering pull-request head SHA as
+`expectedHeadOid`. If the contributor pushes another commit while the auto-fix
+run is in flight, commit creation fails closed instead of applying a stale
+patch to the newer branch tip.
 
 The write job uses the existing repository pattern based on GraphQL
 `createCommitOnBranch`, instead of local `git commit` plus `git push`. This
@@ -138,7 +151,12 @@ Local validation for the workflow change:
 - shell syntax checks for any extracted multi-line shell script used by the job
 - inspection that the target job uses the branch API before the write-capable
   path can run
-- inspection that the App token step requests only `permission-contents: write`
+- inspection that the App token step grants only the `contents: write`
+  repository permission
+- inspection that both auto-fix jobs check out the triggering PR head SHA
+- inspection that the GraphQL commit uses that same SHA as `expectedHeadOid`
+- inspection that staged additions are read from the index and symlinks are
+  rejected before token generation
 
 Hosted validation:
 

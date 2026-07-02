@@ -10,6 +10,7 @@ pub use reinhardt_macros::settings;
 
 pub use reinhardt_macros::{Model, model};
 
+pub use reinhardt_macros::Validate;
 pub use reinhardt_macros::dto;
 pub use reinhardt_macros::user;
 

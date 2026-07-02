@@ -1,6 +1,5 @@
-//! Verifies that legacy `#[cfg_attr(native, derive(Validate))]` annotations are
-//! normalized by `#[dto]` while the trybuild environment exercises the shared
-//! non-native validation expansion.
+//! Verifies that `#[dto]` accepts an unconditional `#[derive(Validate)]`
+//! annotation and preserves shared validation expansion.
 
 #![allow(unexpected_cfgs)]
 
@@ -15,14 +14,14 @@ pub use support::validators;
 use reinhardt_macros::dto;
 
 #[dto]
-#[cfg_attr(native, derive(Validate))]
-pub struct Mixed {
+#[derive(Validate)]
+pub struct ExplicitValidate {
 	#[validate(length(min = 1))]
 	pub label: String,
 }
 
 fn main() {
-	let value = Mixed {
+	let value = ExplicitValidate {
 		label: String::from("hello"),
 	};
 	assert!(reinhardt_core::validators::Validate::validate(&value).is_ok());
