@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet, hash_map::RandomState};
 use std::future::Future;
-use std::hash::{BuildHasher, Hash, Hasher};
+use std::hash::BuildHasher;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -351,9 +351,10 @@ fn bind_samples(params: &[String], fingerprint: &QueryFingerprint) -> Vec<String
 
 fn mask_value(value: &str) -> String {
 	let class = classify_value(value);
-	let mut hasher = MASK_HASH_STATE.get_or_init(RandomState::new).build_hasher();
-	value.hash(&mut hasher);
-	format!("{class}#{:016x}", hasher.finish())
+	let hash = MASK_HASH_STATE
+		.get_or_init(RandomState::new)
+		.hash_one(value);
+	format!("{class}#{hash:016x}")
 }
 
 fn classify_value(value: &str) -> &'static str {
