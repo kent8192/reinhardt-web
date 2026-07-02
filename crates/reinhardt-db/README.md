@@ -304,9 +304,8 @@ assert!(report.findings.is_empty());
 For tests that should fail on suspicious repeated query shapes, use
 `NPlusOneScope::fail(...).run(...)` around the focused code path. Fix reported
 patterns by using `select_related()` for single-object relationships and
-`prefetch_related()` or explicit batch queries for collection relationships.
-Use `NPlusOneScope::spawn(...)` for spawned tasks that should inherit the active
-scope.
+explicit batch queries for collection relationships. Use
+`NPlusOneScope::spawn(...)` for spawned tasks that should inherit the active scope.
 
 ### Create Migrations
 

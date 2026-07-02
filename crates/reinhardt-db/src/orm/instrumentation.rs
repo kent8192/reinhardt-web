@@ -429,12 +429,9 @@ impl Instrumentation {
 		duration: Duration,
 	) {
 		super::n_plus_one::record_query(query, params, duration);
-		self.notify_query_end_listeners(query, duration).await;
 	}
 
-	pub(crate) async fn orm_query_error(&self, query: &str, error: &str) {
-		self.notify_query_error_listeners(query, error).await;
-	}
+	pub(crate) async fn orm_query_error(&self, _query: &str, _error: &str) {}
 
 	/// Notifies all listeners that a query has failed
 	///
@@ -757,12 +754,23 @@ mod tests {
 	#[tokio::test]
 	async fn test_orm_query_end_with_params_does_not_retain_metrics() {
 		let instrumentation = Instrumentation::new();
+		let query_end = Arc::new(AtomicUsize::new(0));
 		let query = "SELECT * FROM posts WHERE author_id = $1";
 
+		let listener = Arc::new(TestListener {
+			query_start_count: Arc::new(AtomicUsize::new(0)),
+			query_end_count: query_end.clone(),
+			query_error_count: Arc::new(AtomicUsize::new(0)),
+			transaction_start_count: Arc::new(AtomicUsize::new(0)),
+			transaction_end_count: Arc::new(AtomicUsize::new(0)),
+		});
+
+		instrumentation.add_listener("test".to_string(), listener);
 		instrumentation
 			.orm_query_end_with_params(query, &["1".to_string()], Duration::from_millis(1))
 			.await;
 
+		assert_eq!(query_end.load(Ordering::SeqCst), 0);
 		assert!(instrumentation.query_metrics(query).is_empty());
 		assert_eq!(instrumentation.statistics().total_queries, 0);
 	}
@@ -805,7 +813,7 @@ mod tests {
 		instr.add_listener("test".to_string(), listener);
 		instr.orm_query_error(query, "table not found").await;
 
-		assert_eq!(query_error.load(Ordering::SeqCst), 1);
+		assert_eq!(query_error.load(Ordering::SeqCst), 0);
 		assert!(instr.query_metrics(query).is_empty());
 		assert_eq!(instr.statistics().total_queries, 0);
 	}

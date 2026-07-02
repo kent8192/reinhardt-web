@@ -5065,7 +5065,7 @@ where
 		T: super::Model + Clone,
 	{
 		use reinhardt_query::prelude::{
-			Alias, BinOper, ColumnRef, Expr, PostgresQueryBuilder, Value,
+			Alias, BinOper, ColumnRef, Expr, PostgresQueryBuilder, QueryBuilder, Value,
 		};
 
 		// Get composite primary key definition from the model
@@ -5122,14 +5122,31 @@ where
 			}
 		}
 
-		// Build SQL with inline values (no placeholders)
-		let sql = query.to_string(PostgresQueryBuilder);
-
-		// Execute query using database connection
+		let (sql, values) = PostgresQueryBuilder.build_select(&query);
+		let param_samples = values
+			.iter()
+			.map(|value| value.to_sql_literal())
+			.collect::<Vec<_>>();
+		let params = super::execution::convert_values(values);
 		let conn = super::manager::get_connection().await?;
 
-		// Execute the SELECT query
-		let rows = conn.query(&sql, vec![]).await?;
+		let started_at = Instant::now();
+		let query_result = conn.query(&sql, params).await;
+		let duration = started_at.elapsed();
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &param_samples, duration)
+					.await;
+				rows
+			}
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &format!("{error:?}"))
+					.await;
+				return Err(error.into());
+			}
+		};
 
 		// Composite PK queries should return exactly one row
 		if rows.is_empty() {

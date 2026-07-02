@@ -122,6 +122,7 @@ where
 impl<S, T> ReverseAccessor<S, T>
 where
 	S: Model,
+	S::PrimaryKey: reinhardt_query::IntoValue,
 	T: Model + Serialize + DeserializeOwned,
 {
 	/// Create a new ReverseAccessor.
@@ -173,7 +174,7 @@ where
 			.column(ColumnRef::table_asterisk(Alias::new(T::table_name())))
 			.and_where(
 				Expr::col(Alias::new(&self.foreign_key_field))
-					.binary(BinOper::Equal, Expr::val(self.source_id.to_string())),
+					.binary(BinOper::Equal, Expr::val(self.source_id.clone())),
 			);
 
 		// Apply LIMIT/OFFSET
@@ -231,7 +232,7 @@ where
 			.expr(Func::count(Expr::asterisk().into_simple_expr()))
 			.and_where(
 				Expr::col(Alias::new(&self.foreign_key_field))
-					.binary(BinOper::Equal, Expr::val(self.source_id.to_string())),
+					.binary(BinOper::Equal, Expr::val(self.source_id.clone())),
 			)
 			.to_owned();
 

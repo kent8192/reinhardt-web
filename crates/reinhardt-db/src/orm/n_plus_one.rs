@@ -100,6 +100,11 @@ impl QueryFingerprint {
 					normalized.push('?');
 					consume_ascii_digits(&mut chars);
 				}
+				':' if chars.peek() == Some(&':') => {
+					normalized.push(':');
+					normalized.push(':');
+					let _ = chars.next();
+				}
 				':' if chars
 					.peek()
 					.is_some_and(|next| next.is_ascii_alphabetic() || *next == '_') =>
@@ -108,6 +113,14 @@ impl QueryFingerprint {
 					consume_identifier(&mut chars);
 				}
 				'?' => normalized.push('?'),
+				'"' | '`' => {
+					normalized.push(ch);
+					consume_quoted_identifier(ch, &mut chars, &mut normalized);
+				}
+				c if is_identifier_start(c) => {
+					normalized.push(c);
+					consume_identifier_text(&mut chars, &mut normalized);
+				}
 				c if c.is_ascii_digit() => {
 					let literal = consume_number_literal(c, &mut chars);
 					normalized.push('?');
@@ -417,6 +430,45 @@ where
 	}
 }
 
+fn consume_identifier_text<I>(chars: &mut std::iter::Peekable<I>, output: &mut String)
+where
+	I: Iterator<Item = char>,
+{
+	while chars
+		.peek()
+		.is_some_and(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+	{
+		if let Some(ch) = chars.next() {
+			output.push(ch);
+		}
+	}
+}
+
+fn consume_quoted_identifier<I>(
+	quote: char,
+	chars: &mut std::iter::Peekable<I>,
+	output: &mut String,
+) where
+	I: Iterator<Item = char>,
+{
+	while let Some(ch) = chars.next() {
+		output.push(ch);
+		if ch == quote {
+			if chars.peek().is_some_and(|next| *next == quote) {
+				if let Some(escaped) = chars.next() {
+					output.push(escaped);
+				}
+				continue;
+			}
+			break;
+		}
+	}
+}
+
+fn is_identifier_start(ch: char) -> bool {
+	ch.is_ascii_alphabetic() || ch == '_'
+}
+
 fn consume_number_literal<I>(first: char, chars: &mut std::iter::Peekable<I>) -> String
 where
 	I: Iterator<Item = char>,
@@ -537,6 +589,31 @@ mod tests {
 	}
 
 	#[test]
+	fn preserves_digits_inside_identifiers() {
+		let line1 =
+			QueryFingerprint::from_sql("SELECT address_line1 FROM events_2025 WHERE tenant_id = 1");
+		let line2 =
+			QueryFingerprint::from_sql("SELECT address_line2 FROM events_2026 WHERE tenant_id = 2");
+		let quoted = QueryFingerprint::from_sql(
+			r#"SELECT "address_line1" FROM "events_2025" WHERE "tenant_id" = 1"#,
+		);
+
+		assert_eq!(
+			line1.normalized,
+			"SELECT address_line1 FROM events_2025 WHERE tenant_id = ?"
+		);
+		assert_eq!(
+			line2.normalized,
+			"SELECT address_line2 FROM events_2026 WHERE tenant_id = ?"
+		);
+		assert_eq!(
+			quoted.normalized,
+			r#"SELECT "address_line1" FROM "events_2025" WHERE "tenant_id" = ?"#
+		);
+		assert_ne!(line1.normalized, line2.normalized);
+	}
+
+	#[test]
 	fn normalizes_bind_placeholders() {
 		let fingerprint = QueryFingerprint::from_sql(
 			"SELECT * FROM posts WHERE author_id = $1 AND category_id = :category_id",
@@ -545,6 +622,18 @@ mod tests {
 		assert_eq!(
 			fingerprint.normalized,
 			"SELECT * FROM posts WHERE author_id = ? AND category_id = ?"
+		);
+	}
+
+	#[test]
+	fn preserves_postgres_cast_operators() {
+		let fingerprint = QueryFingerprint::from_sql(
+			"SELECT * FROM events WHERE payload @> $1::jsonb AND kind = :kind",
+		);
+
+		assert_eq!(
+			fingerprint.normalized,
+			"SELECT * FROM events WHERE payload @> ?::jsonb AND kind = ?"
 		);
 	}
 
