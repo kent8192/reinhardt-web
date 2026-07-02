@@ -136,7 +136,7 @@ fn component_macro_props_render_like_page_brace_invocation() {
 	use reinhardt_pages::router::ClientRouter;
 	use reinhardt_pages::{Path, component};
 
-	#[component("/users/{id}/", "user-detail")]
+	#[component("/users/{id}/", name = "user-detail")]
 	fn user_page(Path(id): Path<i64>) -> Page {
 		page!(|id: i64| {
 			div { { format!("user {id}") } }
