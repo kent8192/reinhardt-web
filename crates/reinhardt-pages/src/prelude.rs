@@ -65,7 +65,7 @@
 //! - [`is_initialized`] - Check if static resolver is initialized
 //!
 //! ## Typed Forms
-//! - [`use_form`], [`UseFormReturn`], [`UseFormBuilder`]
+//! - [`use_form`], [`use_form_action`], [`UseFormReturn`], [`UseFormBuilder`], [`FormAction`]
 //!
 //! ## Task Spawning
 //! - [`spawn_task`], [`defer_yield`] - cross-target async task spawning
@@ -172,10 +172,10 @@ pub use crate::static_resolver::{init_static_resolver, is_initialized, resolve_s
 
 pub use crate::form_state::{
 	CollectionItem, CollectionItemKey, CollectionState, CustomWidgetContext, CustomWidgetRawValue,
-	FieldError, FieldPathState, FieldState, FocusError, FormCollectionRuntimeSource, FormEvent,
-	FormRuntimeSource, FormState, FormSubscription, FormValidationError, FormWidgetAdapter,
-	FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder,
-	UseFormReturn, UseFormSubmitOutcome, use_form,
+	FieldError, FieldPathState, FieldState, FocusError, FormAction, FormCollectionRuntimeSource,
+	FormEvent, FormRuntimeSource, FormState, FormSubscription, FormValidationError,
+	FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn,
+	UseFormBuilder, UseFormReturn, UseFormSubmitOutcome, use_form, use_form_action,
 };
 
 #[cfg(native)]

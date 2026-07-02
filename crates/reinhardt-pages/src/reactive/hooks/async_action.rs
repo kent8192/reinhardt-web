@@ -12,10 +12,10 @@ use super::action::OptimisticState;
 use crate::reactive::Signal;
 use reinhardt_core::reactive::deps::Trackable;
 
-type ErrorCallback = Rc<dyn Fn()>;
+type ErrorCallback<E> = Rc<dyn Fn(&E)>;
 type SuccessCallback<T> = Rc<dyn Fn(&T)>;
-type SharedErrorCallback = Rc<RefCell<ErrorCallback>>;
-type SharedSuccessCallback<T> = Rc<RefCell<SuccessCallback<T>>>;
+type SharedErrorCallbacks<E> = Rc<RefCell<Vec<ErrorCallback<E>>>>;
+type SharedSuccessCallbacks<T> = Rc<RefCell<Vec<SuccessCallback<T>>>>;
 
 /// Represents the current phase of an async action.
 ///
@@ -118,8 +118,8 @@ pub struct Action<T: Clone + 'static, E: Clone + 'static> {
 	dispatch_fn: Rc<dyn Fn()>,
 	/// Stores the payload setter so dispatch can pass payload before triggering.
 	payload_setter: Rc<dyn Fn(Box<dyn std::any::Any>)>,
-	on_error: SharedErrorCallback,
-	on_success: SharedSuccessCallback<T>,
+	on_error: SharedErrorCallbacks<E>,
+	on_success: SharedSuccessCallbacks<T>,
 }
 
 impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
@@ -175,14 +175,36 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	/// result; failures revert it to the last confirmed value.
 	pub fn with_optimistic(self, optimistic: OptimisticState<T>) -> Self {
 		let optimistic_for_error = optimistic.clone();
-		*self.on_error.borrow_mut() = Rc::new(move || {
+		self.on_error.borrow_mut().push(Rc::new(move |_: &E| {
 			optimistic_for_error.revert();
-		});
+		}));
 
-		*self.on_success.borrow_mut() = Rc::new(move |value: &T| {
+		self.on_success.borrow_mut().push(Rc::new(move |value: &T| {
 			optimistic.confirm(value.clone());
-		});
+		}));
 
+		self
+	}
+
+	/// Registers a callback to run after a successful WASM action.
+	///
+	/// Native actions do not poll the future, so callbacks only run on WASM.
+	pub fn on_success<Callback>(self, callback: Callback) -> Self
+	where
+		Callback: Fn(&T) + 'static,
+	{
+		self.on_success.borrow_mut().push(Rc::new(callback));
+		self
+	}
+
+	/// Registers a callback to run after a failed WASM action.
+	///
+	/// Native actions do not poll the future, so callbacks only run on WASM.
+	pub fn on_error<Callback>(self, callback: Callback) -> Self
+	where
+		Callback: Fn(&E) + 'static,
+	{
+		self.on_error.borrow_mut().push(Rc::new(callback));
 		self
 	}
 
@@ -190,7 +212,9 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	fn force_error_for_test(&self, err: E) {
 		let on_error = self.on_error.borrow().clone();
 		crate::reactive::batch(|| {
-			on_error();
+			for callback in on_error {
+				callback(&err);
+			}
 			self.state.set(ActionPhase::Error(err));
 		});
 	}
@@ -199,7 +223,9 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	fn force_success_for_test(&self, value: T) {
 		let on_success = self.on_success.borrow().clone();
 		crate::reactive::batch(|| {
-			on_success(&value);
+			for callback in on_success {
+				callback(&value);
+			}
 			self.state.set(ActionPhase::Success(value));
 		});
 	}
@@ -293,8 +319,8 @@ where
 	Fut: Future<Output = Result<T, E>> + 'static,
 {
 	let state = Signal::new(ActionPhase::Idle);
-	let on_error: SharedErrorCallback = Rc::new(RefCell::new(Rc::new(|| {})));
-	let on_success: SharedSuccessCallback<T> = Rc::new(RefCell::new(Rc::new(|_: &T| {})));
+	let on_error: SharedErrorCallbacks<E> = Rc::new(RefCell::new(Vec::new()));
+	let on_success: SharedSuccessCallbacks<T> = Rc::new(RefCell::new(Vec::new()));
 
 	// Store the payload in a shared cell so dispatch_fn can access it
 	let payload_cell: Rc<RefCell<Option<Box<dyn std::any::Any>>>> = Rc::new(RefCell::new(None));
@@ -337,14 +363,18 @@ where
 						Ok(val) => {
 							let on_success = on_success.borrow().clone();
 							crate::reactive::batch(|| {
-								on_success(&val);
+								for callback in on_success {
+									callback(&val);
+								}
 								state.set(ActionPhase::Success(val));
 							});
 						}
 						Err(err) => {
 							let on_error = on_error.borrow().clone();
 							crate::reactive::batch(|| {
-								on_error();
+								for callback in on_error {
+									callback(&err);
+								}
 								state.set(ActionPhase::Error(err));
 							});
 						}
@@ -517,5 +547,46 @@ mod tests {
 		assert_eq!(optimistic.get(), 25);
 		assert!(!optimistic.is_optimistic());
 		assert_eq!(action.phase(), ActionPhase::Success(25));
+	}
+
+	#[rstest]
+	fn test_action_success_callbacks_are_additive() {
+		// Arrange
+		let callback_count = Rc::new(RefCell::new(0));
+		let first_count = Rc::clone(&callback_count);
+		let second_count = Rc::clone(&callback_count);
+		let action = use_action(|_: ()| async { Ok::<i32, String>(25) })
+			.on_success(move |value| {
+				assert_eq!(*value, 25);
+				*first_count.borrow_mut() += 1;
+			})
+			.on_success(move |value| {
+				assert_eq!(*value, 25);
+				*second_count.borrow_mut() += 1;
+			});
+
+		// Act
+		action.force_success_for_test(25);
+
+		// Assert
+		assert_eq!(*callback_count.borrow(), 2);
+	}
+
+	#[rstest]
+	fn test_action_error_callbacks_receive_error() {
+		// Arrange
+		let captured_error = Rc::new(RefCell::new(None));
+		let captured_error_for_callback = Rc::clone(&captured_error);
+		let action = use_action(|_: ()| async { Err::<i32, String>("fail".to_string()) }).on_error(
+			move |error| {
+				*captured_error_for_callback.borrow_mut() = Some(error.clone());
+			},
+		);
+
+		// Act
+		action.force_error_for_test("fail".to_string());
+
+		// Assert
+		assert_eq!(captured_error.borrow().as_deref(), Some("fail"));
 	}
 }
