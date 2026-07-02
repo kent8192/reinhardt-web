@@ -8,8 +8,8 @@ use crate::exception::Error;
 use async_trait::async_trait;
 use bytes::Bytes;
 use http::HeaderMap;
-use quick_xml::Reader;
 use quick_xml::events::{Event, attributes::Attributes};
+use quick_xml::{Reader, XmlVersion};
 use serde_json::{Map, Value, json};
 
 /// XML parser configuration
@@ -247,7 +247,7 @@ impl XMLParser {
 
 				Ok(Event::Text(e)) => {
 					let text = e
-						.xml_content()
+						.xml_content(XmlVersion::Implicit1_0)
 						.map_err(|e| Error::Validation(format!("XML decode error: {}", e)))?;
 
 					if self.config.trim_text {

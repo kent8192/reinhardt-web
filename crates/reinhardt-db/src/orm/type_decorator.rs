@@ -193,9 +193,40 @@ impl<T: Serialize + for<'de> Deserialize<'de>> Default for JsonType<T> {
 	}
 }
 
-/// Phone number type with validation and formatting using phonenumber crate
+/// Phone number type with validation and formatting.
 pub struct PhoneNumberType {
-	default_country: phonenumber::country::Id,
+	default_country: PhoneCountry,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PhoneCountry {
+	Us,
+	Gb,
+	Jp,
+	De,
+	Fr,
+}
+
+impl PhoneCountry {
+	fn from_code(code: &str) -> Self {
+		match code {
+			"GB" => Self::Gb,
+			"JP" => Self::Jp,
+			"DE" => Self::De,
+			"FR" => Self::Fr,
+			_ => Self::Us,
+		}
+	}
+
+	fn calling_code(self) -> &'static str {
+		match self {
+			Self::Us => "1",
+			Self::Gb => "44",
+			Self::Jp => "81",
+			Self::De => "49",
+			Self::Fr => "33",
+		}
+	}
 }
 
 impl PhoneNumberType {
@@ -214,14 +245,7 @@ impl PhoneNumberType {
 	/// ```
 	pub fn new(country_code: impl Into<String>) -> Self {
 		let code = country_code.into();
-		let country = match code.as_str() {
-			"US" => phonenumber::country::Id::US,
-			"GB" => phonenumber::country::Id::GB,
-			"JP" => phonenumber::country::Id::JP,
-			"DE" => phonenumber::country::Id::DE,
-			"FR" => phonenumber::country::Id::FR,
-			_ => phonenumber::country::Id::US, // Default to US
-		};
+		let country = PhoneCountry::from_code(code.as_str());
 
 		Self {
 			default_country: country,
@@ -229,26 +253,34 @@ impl PhoneNumberType {
 	}
 
 	fn validate(&self, number: &str) -> Result<(), TypeError> {
-		phonenumber::parse(Some(self.default_country), number)
-			.map_err(|e| TypeError::ValidationError(format!("Invalid phone number: {}", e)))?;
+		let digits = Self::digits(number);
+		if digits.is_empty() || digits.len() > 15 {
+			return Err(TypeError::ValidationError(
+				"Invalid phone number".to_string(),
+			));
+		}
 		Ok(())
 	}
 
 	fn format(&self, number: &str) -> String {
-		match phonenumber::parse(Some(self.default_country), number) {
-			Ok(parsed) => {
-				// Format as E.164 (international format)
-				parsed.format().mode(phonenumber::Mode::E164).to_string()
-			}
-			Err(_) => {
-				// Fallback: Remove non-numeric characters
-				number.chars().filter(|c| c.is_numeric()).collect()
-			}
+		let digits = Self::digits(number);
+		if number.trim_start().starts_with('+') {
+			return digits;
+		}
+		let calling_code = self.default_country.calling_code();
+		if digits.starts_with(calling_code) {
+			digits
+		} else {
+			format!("{calling_code}{digits}")
 		}
 	}
 
 	fn unformat(&self, formatted: &str) -> String {
-		formatted.chars().filter(|c| c.is_numeric()).collect()
+		Self::digits(formatted)
+	}
+
+	fn digits(value: &str) -> String {
+		value.chars().filter(|c| c.is_ascii_digit()).collect()
 	}
 }
 
