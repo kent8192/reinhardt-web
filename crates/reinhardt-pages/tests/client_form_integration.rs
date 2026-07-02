@@ -1,0 +1,176 @@
+#![cfg(not(target_arch = "wasm32"))]
+
+use std::cell::Cell;
+
+use reinhardt_core::validators::{Validate, ValidationError, ValidationErrors};
+use reinhardt_pages::server_fn::ServerFnError;
+use reinhardt_pages::server_fn::server_fn;
+use reinhardt_pages::{
+	ClientForm, ClientFormChoiceSource, ClientFormChoices, FieldError, UseFormAsyncSubmitOutcome,
+	use_form,
+};
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Default, Debug, PartialEq, ClientFormChoices)]
+#[serde(rename_all = "snake_case")]
+enum ProviderMode {
+	#[default]
+	Fake,
+	LiveApi,
+}
+
+#[derive(Clone, Debug, PartialEq, ClientForm)]
+struct ProjectRequest {
+	name: String,
+	title: Option<String>,
+	retry_count: i32,
+	active: bool,
+	provider_mode: ProviderMode,
+	optional_mode: Option<ProviderMode>,
+}
+
+impl Validate for ProjectRequest {
+	fn validate(&self) -> Result<(), ValidationErrors> {
+		let mut errors = ValidationErrors::new();
+		if self.name.trim().is_empty() {
+			errors.add("name", ValidationError::TooShort { length: 0, min: 1 });
+		}
+		if errors.is_empty() {
+			Ok(())
+		} else {
+			Err(errors)
+		}
+	}
+}
+
+#[test]
+fn client_form_defaults_and_request_conversion() {
+	let form = ProjectRequestClientForm::new().with_defaults(ProjectRequest {
+		name: "demo".to_string(),
+		title: Some("Seed".to_string()),
+		retry_count: 2,
+		active: true,
+		provider_mode: ProviderMode::LiveApi,
+		optional_mode: Some(ProviderMode::Fake),
+	});
+	let runtime = use_form(&form).build();
+
+	assert_eq!(
+		runtime.watch_field::<String>(form.name_field()).get(),
+		"demo"
+	);
+	assert_eq!(
+		runtime
+			.watch_field::<ProviderMode>(form.provider_mode_field())
+			.get(),
+		ProviderMode::LiveApi
+	);
+
+	runtime.set_value(ProjectRequestClientFormField::Title, "   ".to_string());
+	let request = ProjectRequestClientForm::to_request(&runtime);
+
+	assert_eq!(request.title, None);
+	assert_eq!(request.retry_count, 2);
+	assert!(request.active);
+	assert_eq!(request.optional_mode, Some(ProviderMode::Fake));
+}
+
+#[test]
+fn client_form_enum_choice_metadata_uses_serialized_values() {
+	let form = ProjectRequestClientForm::new();
+	let choices = form.provider_mode_choices();
+
+	assert_eq!(choices.len(), 2);
+	assert_eq!(choices[0].serialized_value, "fake");
+	assert_eq!(choices[0].label, "fake");
+	assert_eq!(choices[1].serialized_value, "live_api");
+	assert_eq!(choices[1].label, "live_api");
+	assert_eq!(ProviderMode::client_form_default(), ProviderMode::Fake);
+}
+
+#[test]
+fn client_form_validation_maps_dto_field_errors() {
+	let form = ProjectRequestClientForm::new();
+	let runtime = use_form(&form).build();
+
+	let result = runtime.trigger();
+
+	assert!(result.is_err());
+	assert_eq!(
+		runtime
+			.get_field_state(ProjectRequestClientFormField::Name)
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("Length too short: 0 (minimum: 1)")
+	);
+}
+
+thread_local! {
+	static SUBMIT_CALL_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ClientForm)]
+#[client_form(server_fn = submit_project)]
+struct SubmitProjectRequest {
+	name: String,
+}
+
+impl Validate for SubmitProjectRequest {
+	fn validate(&self) -> Result<(), ValidationErrors> {
+		let mut errors = ValidationErrors::new();
+		if self.name.is_empty() {
+			errors.add("name", ValidationError::TooShort { length: 0, min: 1 });
+		}
+		if errors.is_empty() {
+			Ok(())
+		} else {
+			Err(errors)
+		}
+	}
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SubmitProjectResponse {
+	name: String,
+}
+
+#[server_fn]
+async fn submit_project(
+	request: crate::SubmitProjectRequest,
+) -> Result<SubmitProjectResponse, ServerFnError> {
+	SUBMIT_CALL_COUNT.with(|count| count.set(count.get() + 1));
+	Ok(SubmitProjectResponse { name: request.name })
+}
+
+#[tokio::test]
+async fn client_form_server_submit_blocks_validation_failure() {
+	SUBMIT_CALL_COUNT.with(|count| count.set(0));
+	let form = SubmitProjectRequestClientForm::new();
+	let runtime = use_form(&form).build();
+
+	let outcome = form.submit(&runtime).await.expect("validation outcome");
+
+	assert_eq!(outcome, UseFormAsyncSubmitOutcome::ValidationFailed);
+	assert_eq!(SUBMIT_CALL_COUNT.with(Cell::get), 0);
+}
+
+#[tokio::test]
+async fn client_form_server_submit_calls_server_function_on_success() {
+	SUBMIT_CALL_COUNT.with(|count| count.set(0));
+	let form = SubmitProjectRequestClientForm::new().with_defaults(SubmitProjectRequest {
+		name: "demo".to_string(),
+	});
+	let runtime = use_form(&form).build();
+
+	let outcome = form.submit(&runtime).await.expect("submit succeeds");
+
+	assert_eq!(
+		outcome,
+		UseFormAsyncSubmitOutcome::Submitted(SubmitProjectResponse {
+			name: "demo".to_string()
+		})
+	);
+	assert_eq!(SUBMIT_CALL_COUNT.with(Cell::get), 1);
+	assert!(runtime.form_state().is_submit_successful.get());
+}

@@ -229,12 +229,13 @@ response type:
 ```rust
 pub trait ServerFnResponseMetadata: ServerFnMetadata {
     type Response: serde::Serialize + serde::de::DeserializeOwned + 'static;
+    type Error: std::fmt::Display + 'static;
 }
 ```
 
 `#[server_fn]` implements this trait for its generated marker type, and
 `ClientForm` uses `<server_fn_path::marker as ServerFnResponseMetadata>::Response`
-for the generated submit helper output.
+for the generated submit helper output and `Error` for the helper error type.
 
 ## Error Handling
 

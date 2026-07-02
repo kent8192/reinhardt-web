@@ -170,12 +170,13 @@ pub use crate::static_resolver::{init_static_resolver, is_initialized, resolve_s
 // Forms (native only)
 // ============================================================================
 
+pub use crate::client_form::{ClientFormChoice, ClientFormChoiceSource};
 pub use crate::form_state::{
 	CollectionItem, CollectionItemKey, CollectionState, CustomWidgetContext, CustomWidgetRawValue,
 	FieldError, FieldPathState, FieldState, FocusError, FormCollectionRuntimeSource, FormEvent,
 	FormRuntimeSource, FormState, FormSubscription, FormValidationError, FormWidgetAdapter,
-	FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder,
-	UseFormReturn, UseFormSubmitOutcome, use_form,
+	FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn,
+	UseFormAsyncSubmitOutcome, UseFormBuilder, UseFormReturn, UseFormSubmitOutcome, use_form,
 };
 
 #[cfg(native)]
@@ -191,6 +192,8 @@ pub use reinhardt_forms::{
 // Macros
 // ============================================================================
 
+pub use crate::ClientForm;
+pub use crate::ClientFormChoices;
 pub use crate::client_page;
 pub use crate::form;
 pub use crate::head;

@@ -164,6 +164,39 @@ let runtime = use_form(&login_form).build();
 runtime.set_value(login_form.username_field(), "ada".to_string());
 ```
 
+DTO request types can opt in to generated client-form companions with
+`ClientForm`. This keeps request field names, enum choices, client validation,
+and typed request assembly tied to the DTO while still using the same
+`use_form` runtime:
+
+```rust,ignore
+use reinhardt_pages::{ClientForm, ClientFormChoices, use_form};
+
+#[derive(Clone, Default, PartialEq, ClientFormChoices)]
+#[serde(rename_all = "snake_case")]
+enum ProviderMode {
+    #[default]
+    Fake,
+    LiveApi,
+}
+
+#[reinhardt::dto]
+#[derive(Clone, serde::Serialize, serde::Deserialize, ClientForm)]
+#[client_form(server_fn = crate::server::submit_project)]
+struct ProjectRequest {
+    name: String,
+    title: Option<String>,
+    provider_mode: ProviderMode,
+}
+
+let form = ProjectRequestClientForm::new();
+let runtime = use_form(&form).build();
+runtime.set_value(ProjectRequestClientFormField::Title, "  ".to_string());
+let request = ProjectRequestClientForm::to_request(&runtime);
+assert_eq!(request.title, None);
+let outcome = form.submit(&runtime).await?;
+```
+
 `FileField` and `ImageField` also participate in the generated runtime
 contract as `Option<web_sys::File>` values. File values are browser-owned and
 are tracked for dirty/touched state without treating the file payload as a

@@ -1274,6 +1274,7 @@ fn generate_server_handler(
 
 	// MSW: Extract the Ok type from Result<T, ServerFnError> for MockableServerFn::Response
 	let response_type = extract_result_ok_type(return_type);
+	let error_type = extract_result_err_type(return_type);
 
 	// Convert inject param names to string literals for INJECTED_PARAMS const
 	let inject_param_name_strs: Vec<String> = inject_params
@@ -1390,6 +1391,11 @@ fn generate_server_handler(
 				const IS_JSON_CODEC: bool = #is_json_codec;
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
 				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
+			}
+
+			impl #pages_crate::server_fn::ServerFnResponseMetadata for marker {
+				type Response = #response_type;
+				type Error = #error_type;
 			}
 
 			#msw_wasm_inner_tokens
@@ -1514,6 +1520,11 @@ fn generate_server_handler(
 				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
 
+			impl #pages_crate::server_fn::ServerFnResponseMetadata for marker {
+				type Response = #response_type;
+				type Error = #error_type;
+			}
+
 			// Native-only handler entry point for explicit router registration.
 			impl #pages_crate::server_fn::ServerFnRegistration for marker {
 				fn handler() -> #pages_crate::server_fn::ServerFnHandler {
@@ -1551,6 +1562,21 @@ fn extract_result_ok_type(return_type: &syn::Type) -> proc_macro2::TokenStream {
 		return quote! { #ok_type };
 	}
 	// Fallback: use the full type
+	quote! { #return_type }
+}
+
+/// Extracts the second generic argument `E` from `Result<T, E>`.
+fn extract_result_err_type(return_type: &syn::Type) -> proc_macro2::TokenStream {
+	if let syn::Type::Path(type_path) = return_type
+		&& let Some(segment) = type_path.path.segments.last()
+		&& segment.ident == "Result"
+		&& let syn::PathArguments::AngleBracketed(args) = &segment.arguments
+		&& args.args.len() >= 2
+		&& let Some(syn::GenericArgument::Type(err_type)) = args.args.iter().nth(1)
+	{
+		return quote! { #err_type };
+	}
+
 	quote! { #return_type }
 }
 

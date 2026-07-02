@@ -65,6 +65,8 @@
 
 use proc_macro::TokenStream;
 
+mod client_form;
+mod client_form_choices;
 mod client_page;
 mod component;
 mod crate_paths;
@@ -119,6 +121,18 @@ pub fn client_page(args: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_derive(FromRequest, attributes(from_request))]
 pub fn derive_from_request(input: TokenStream) -> TokenStream {
 	from_request::derive_from_request_impl(input)
+}
+
+/// Derives client-form choice metadata for fieldless enums.
+#[proc_macro_derive(ClientFormChoices, attributes(serde))]
+pub fn derive_client_form_choices(input: TokenStream) -> TokenStream {
+	client_form_choices::derive_client_form_choices_impl(input)
+}
+
+/// Derives a `use_form` compatible companion form for a DTO request type.
+#[proc_macro_derive(ClientForm, attributes(client_form))]
+pub fn derive_client_form(input: TokenStream) -> TokenStream {
+	client_form::derive_client_form_impl(input)
 }
 
 /// Adds builder support and `FromRequest` extraction to a named props struct.

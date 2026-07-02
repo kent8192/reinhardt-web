@@ -5,6 +5,8 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::fmt::Display;
+use std::future::Future;
 use std::hash::Hash;
 use std::rc::{Rc, Weak};
 
@@ -446,6 +448,17 @@ where
 pub enum UseFormSubmitOutcome {
 	/// Submit was accepted.
 	Submitted,
+	/// Submit was rejected because another submit is pending.
+	AlreadyPending,
+	/// Submit was rejected by validation.
+	ValidationFailed,
+}
+
+/// Result of `UseFormReturn::submit_async`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum UseFormAsyncSubmitOutcome<T> {
+	/// Submit was accepted and completed with the async output.
+	Submitted(T),
 	/// Submit was rejected because another submit is pending.
 	AlreadyPending,
 	/// Submit was rejected by validation.
@@ -1408,6 +1421,62 @@ where
 		}
 		self.notify(FormEvent::Submitted);
 		UseFormSubmitOutcome::Submitted
+	}
+
+	/// Runs validation and async submit lifecycle callbacks.
+	pub async fn submit_async<Submit, Fut, Output, Error>(
+		&self,
+		submit: Submit,
+	) -> Result<UseFormAsyncSubmitOutcome<Output>, Error>
+	where
+		Submit: FnOnce() -> Fut,
+		Fut: Future<Output = Result<Output, Error>>,
+		Error: Display,
+	{
+		if self.state.is_submitting.get() {
+			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
+		}
+
+		self.state.is_submitting.set(true);
+		self.state.is_submit_successful.set(false);
+		self.state.submit_error.set(None);
+		self.sync_first_error();
+		self.notify(FormEvent::SubmitStarted);
+		if let Some(callback) = &self.on_submit_start {
+			callback(self);
+		}
+
+		if self.trigger().is_err() {
+			self.state.is_submitting.set(false);
+			if let Some(callback) = &self.on_submit_error {
+				callback(self);
+			}
+			self.notify(FormEvent::SubmitFailed);
+			return Ok(UseFormAsyncSubmitOutcome::ValidationFailed);
+		}
+
+		match submit().await {
+			Ok(output) => {
+				self.state.is_submitting.set(false);
+				self.state.is_submit_successful.set(true);
+				if let Some(callback) = &self.on_submit_success {
+					callback(self);
+				}
+				self.notify(FormEvent::Submitted);
+				Ok(UseFormAsyncSubmitOutcome::Submitted(output))
+			}
+			Err(error) => {
+				self.state.is_submitting.set(false);
+				self.state.is_submit_successful.set(false);
+				self.state.submit_error.set(Some(error.to_string()));
+				self.sync_first_error();
+				if let Some(callback) = &self.on_submit_error {
+					callback(self);
+				}
+				self.notify(FormEvent::SubmitFailed);
+				Err(error)
+			}
+		}
 	}
 
 	/// Reconciles values and defaults from a newly generated form instance.

@@ -1,0 +1,5 @@
+error: ClientFormChoices supports snake_case, kebab-case, and camelCase rename_all rules
+ --> tests/ui/client_form/choices/fail/unsupported_rename_all.rs:4:9
+  |
+4 | #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

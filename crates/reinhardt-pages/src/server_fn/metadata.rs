@@ -70,3 +70,16 @@ pub trait ServerFnMetadata: 'static {
 	/// response-cookie jar on that hot path.
 	const USES_RESPONSE_COOKIE_JAR: bool = false;
 }
+
+/// Exposes the success response type of a `#[server_fn]` marker.
+///
+/// This is implemented by the `#[server_fn]` macro for the same marker struct
+/// as [`ServerFnMetadata`]. Generated code can use it to name the declared
+/// `Ok(T)` response type without changing the public server function call
+/// signature.
+pub trait ServerFnResponseMetadata: ServerFnMetadata {
+	/// Success response type (the `Ok` variant of the function's return type).
+	type Response: serde::Serialize + serde::de::DeserializeOwned + 'static;
+	/// Error type returned by the public server function stub.
+	type Error: std::fmt::Display + 'static;
+}
