@@ -111,7 +111,7 @@
 //! }
 //!
 //! // Brace form (spec §3.5).
-//! let _ = page!(|| { div { Card { item: "hello".to_string() } } });
+//! let _ = page!({ div { Card { item: "hello".to_string() } } });
 //! ```
 //!
 //! See `reinhardt-pages/CHANGELOG.md` `### Added` entry and the design

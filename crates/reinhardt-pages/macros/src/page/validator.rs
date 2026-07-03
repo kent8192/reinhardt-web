@@ -31,8 +31,9 @@
 
 use proc_macro2::Span;
 use std::collections::HashSet;
+use syn::punctuated::Punctuated;
 use syn::visit::{self, Visit};
-use syn::{Expr, Result};
+use syn::{Expr, Result, Token};
 
 use reinhardt_manouche::core::{
 	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageExpression, PageFor,
@@ -336,6 +337,17 @@ impl<'ast> Visit<'ast> for ExprIdentVisitor<'_> {
 		self.checker.locals_stack.push(locals);
 		self.visit_block(&f.body);
 		self.checker.locals_stack.pop();
+	}
+
+	fn visit_expr_macro(&mut self, expr_macro: &'ast syn::ExprMacro) {
+		if let Ok(args) = expr_macro
+			.mac
+			.parse_body_with(Punctuated::<Expr, Token![,]>::parse_terminated)
+		{
+			for arg in args {
+				self.visit_expr(&arg);
+			}
+		}
 	}
 
 	fn visit_block(&mut self, b: &'ast syn::Block) {
@@ -1963,6 +1975,21 @@ mod capture_tests {
 	}
 
 	#[rstest]
+	fn strict_form_rejects_macro_argument_capture() {
+		// Arrange
+		let ast = parse(quote! {
+			|| { p { {format!("value={}", outer_value)} } }
+		});
+
+		// Act
+		let result = enforce_strict_captures(ast.body(), ast.params());
+
+		// Assert
+		let err = result.expect_err("macro arguments should still be scanned");
+		assert!(err.to_string().contains("outer_value"));
+	}
+
+	#[rstest]
 	fn accepts_pascal_case_type_or_component() {
 		// Arrange
 		let ast = parse(quote! {
@@ -2101,6 +2128,25 @@ mod capture_tests {
 			.collect();
 		assert_eq!(captures, vec!["items", "route_id"]);
 		assert!(!captures.iter().any(|capture| capture == "item"));
+	}
+
+	#[rstest]
+	fn body_only_form_records_macro_argument_capture() {
+		// Arrange
+		let ast = parse(quote! {
+			{ p { {format!("value={}", outer_value)} } }
+		});
+
+		// Act
+		let result = validate(&ast).expect("implicit body should validate");
+		let captures: Vec<String> = result
+			.implicit_captures()
+			.iter()
+			.map(|capture| capture.ident.to_string())
+			.collect();
+
+		// Assert
+		assert_eq!(captures, vec!["outer_value"]);
 	}
 
 	#[rstest]

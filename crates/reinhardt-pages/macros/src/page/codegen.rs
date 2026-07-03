@@ -27,8 +27,9 @@
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use std::collections::HashSet;
-use syn::LitStr;
+use syn::punctuated::Punctuated;
 use syn::visit::{self, Visit};
+use syn::{LitStr, Token};
 
 // Import AST types from reinhardt-manouche
 use crate::crate_paths::get_reinhardt_pages_crate_info;
@@ -131,6 +132,30 @@ impl CodegenContext {
 		collector.visit_node(node);
 		collector.expr_collector.captures
 	}
+
+	fn captures_in_for_iteration(&self, for_node: &TypedPageFor) -> Vec<syn::Ident> {
+		let mut collector = NodeCaptureCollector {
+			expr_collector: ExprCaptureCollector {
+				capture_names: &self.capture_names,
+				locals_stack: Vec::new(),
+				seen: HashSet::new(),
+				captures: Vec::new(),
+			},
+		};
+
+		let mut locals = HashSet::new();
+		collect_pat_idents(&for_node.pat, &mut locals);
+		collector.expr_collector.locals_stack.push(locals);
+		if let Some(key) = &for_node.key {
+			collector.expr_collector.visit_expr(key);
+		}
+		for node in &for_node.body {
+			collector.visit_node(node);
+		}
+		collector.expr_collector.locals_stack.pop();
+
+		collector.expr_collector.captures
+	}
 }
 
 struct ExprCaptureCollector<'a> {
@@ -213,6 +238,17 @@ impl<'ast> Visit<'ast> for ExprCaptureCollector<'_> {
 		self.locals_stack.push(locals);
 		self.visit_block(&f.body);
 		self.locals_stack.pop();
+	}
+
+	fn visit_expr_macro(&mut self, expr_macro: &'ast syn::ExprMacro) {
+		if let Ok(args) = expr_macro
+			.mac
+			.parse_body_with(Punctuated::<syn::Expr, Token![,]>::parse_terminated)
+		{
+			for arg in args {
+				self.visit_expr(&arg);
+			}
+		}
 	}
 
 	fn visit_block(&mut self, b: &'ast syn::Block) {
@@ -968,22 +1004,30 @@ fn generate_for(
 	let pat = &for_node.pat;
 	let iter = &for_node.iter;
 	let body = generate_if_branch(&for_node.body, pages_crate, ctx);
+	let iteration_captures = ctx.captures_in_for_iteration(for_node);
+	let iteration_capture_statements = capture_statements(&iteration_captures, pages_crate);
 
 	if let Some(key) = &for_node.key {
 		quote! {
-			#pages_crate::component::Page::keyed_fragment(
-				(#iter).clone().into_iter().map(|#pat| {
-					(#key, #body)
-				}).collect::<::std::vec::Vec<_>>()
-			)
+			{
+				#(#iteration_capture_statements)*
+				#pages_crate::component::Page::keyed_fragment(
+					(#iter).clone().into_iter().map(move |#pat| {
+						(#key, #body)
+					}).collect::<::std::vec::Vec<_>>()
+				)
+			}
 		}
 	} else {
 		quote! {
-			#pages_crate::component::Page::fragment(
-				(#iter).clone().into_iter().map(|#pat| {
-					#body
-				}).collect::<::std::vec::Vec<_>>()
-			)
+			{
+				#(#iteration_capture_statements)*
+				#pages_crate::component::Page::fragment(
+					(#iter).clone().into_iter().map(move |#pat| {
+						#body
+					}).collect::<::std::vec::Vec<_>>()
+				)
+			}
 		}
 	}
 }
@@ -1508,5 +1552,34 @@ mod tests {
 			.collect();
 
 		assert_eq!(captures, vec!["items"]);
+	}
+
+	#[test]
+	fn test_for_key_iteration_captures_macro_arguments() {
+		let input = quote::quote!({
+			ul {
+				for todo in todos @key(format!("{}:{}", selected.as_str(), todo.id)) {
+					li { { todo.title.clone() } }
+				}
+			}
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let for_node = match &typed_ast.body().nodes[0] {
+			TypedPageNode::Element(element) => &element.children[0],
+			_ => panic!("expected root element"),
+		};
+		let TypedPageNode::For(for_node) = for_node else {
+			panic!("expected for node");
+		};
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_for_iteration(for_node)
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["selected"]);
 	}
 }

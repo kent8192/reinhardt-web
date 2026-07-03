@@ -113,13 +113,13 @@ struct UserCardProps {
 }
 
 fn user_card(props: UserCardProps) -> Page {
-    page!(|props: UserCardProps| {
+    page!({
         article {
             class: "user-card",
             h2 { { props.name.clone() } }
             p { { props.role.clone() } }
         }
-    })(props)
+    })
 }
 ```
 
@@ -131,13 +131,13 @@ multiple children without adding a wrapper.
 use reinhardt::pages::prelude::*;
 
 fn panel(title: String, body: Page) -> Page {
-    page!(|title: String, body: Page| {
+    page!({
         section {
             class: "panel",
             h2 { { title.clone() } }
             { { body.clone() } }
         }
-    })(title, body)
+    })
 }
 ```
 
@@ -151,7 +151,7 @@ with other pages.
 use reinhardt::pages::prelude::*;
 
 fn counter_button(count: Signal<i32>, set_count: SetState<i32>) -> Page {
-    page!(|count: Signal<i32>, set_count: SetState<i32>| {
+    page!({
         button {
             class: "counter",
             @click: {
@@ -162,7 +162,7 @@ fn counter_button(count: Signal<i32>, set_count: SetState<i32>) -> Page {
             "Count: "
             { count.get().to_string() }
         }
-    })(count, set_count)
+    })
 }
 ```
 
@@ -171,8 +171,12 @@ The syntax is intentionally Rust-first:
 - Attribute names are Rust identifiers where possible, such as `class`.
 - Event handlers use `@event_name`, such as `@click`.
 - Rust expressions are written in braces.
-- Values captured by reactive closures should usually be cloned before moving
-  them into nested event handlers or `watch` blocks.
+- `page!({ ... })` is the usual form for functions that return a `Page`; free
+  value identifiers from the surrounding scope are implicit captures and must
+  implement `Clone`.
+- `page!(|| { ... })` and `page!(|props: Props| { ... })` remain available for
+  reusable factories that are called later. Closure forms keep strict capture
+  discipline, so values used in the body must be declared as parameters.
 
 ## State and reactivity
 
@@ -189,19 +193,19 @@ fn counter() -> Page {
 }
 ```
 
-Use `watch { ... }` when a `page!` branch should re-evaluate as signals change.
-Static `if` expressions are evaluated only when that `Page` is built.
+Expression, `if`, and `for` nodes inside `page!` are auto-wrapped in reactive
+render scopes. Read signals inside the page body when a branch should
+re-evaluate as signals change. Values extracted before `page!` are static
+snapshots.
 
 ```rust,ignore
-page!(|count: Signal<i32>| {
-    watch {
-        if count.get() == 0 {
-            p { "No clicks yet" }
-        } else {
-            p { { format!("Clicked {}", count.get()) } }
-        }
+page!({
+    if count.get() == 0 {
+        p { "No clicks yet" }
+    } else {
+        p { { format!("Clicked {}", count.get()) } }
     }
-})(count)
+})
 ```
 
 `Signal::clone()` is cheap. Prefer cloning the signal handle instead of
@@ -385,7 +389,7 @@ let details_open = use_state(|| false);
 
 let details = ActivityBoundary::default()
     .visible_when(details_open.0.get())
-    .content(|| page!(|| {
+    .content(|| page!({
         section {
             h2 { "Details" }
             p { "The subtree stays rendered while hidden." }
@@ -402,7 +406,7 @@ so dynamic ids or slugs cannot inject style declarations.
 ```rust,ignore
 let card = ViewTransitionBoundary::new()
     .name("selected-card")
-    .content(|| page!(|| {
+    .content(|| page!({
         article { "Selected" }
     }));
 ```
@@ -463,7 +467,7 @@ fn todo_form() -> Page {
         create_todo(title).await.map_err(|error| error.to_string())
     });
 
-    page!(|create: Action<Todo, String>| {
+    page!({
         button {
             disabled: create.is_pending(),
             @click: {
@@ -484,7 +488,7 @@ fn todo_form() -> Page {
                 { create.error().unwrap_or_default() }
             }
         }
-    })(create)
+    })
 }
 ```
 
@@ -520,13 +524,13 @@ use reinhardt::pages::prelude::*;
 use reinhardt::ClientRouter;
 
 fn home() -> Page {
-    page!(|| { h1 { "Home" } })()
+    page!({ h1 { "Home" } })
 }
 
 fn app_router() -> ClientRouter {
     ClientRouter::new()
         .route("home", "/", home)
-        .not_found(|| page!(|| { h1 { "Not found" } })())
+        .not_found(|| page!({ h1 { "Not found" } }))
 }
 ```
 
@@ -546,12 +550,12 @@ use reinhardt::pages::prelude::*;
 fn open_dialog() -> Result<PortalHandle, PortalError> {
     mount_portal(
         PortalTarget::element_id("modal-root"),
-        page!(|| {
+        page!({
             div {
                 role: "dialog",
                 "Dialog content"
             }
-        })(),
+        }),
     )
 }
 ```
@@ -583,7 +587,8 @@ Practical consequences:
   duplicating API request stubs.
 - Treat `#[server_fn]` as typed RPC, not as React Server Actions reference
   serialization.
-- Prefer signal reads inside `watch { ... }` for reactive view branches.
+- Prefer signal reads inside `page!` expression, `if`, and `for` nodes for
+  reactive view branches.
 
 ## Intentional differences from React
 
@@ -594,7 +599,7 @@ intentional:
   return handles such as `Signal<T>`, `Memo<T>`, `Ref<T>`, and `Action<T, E>`,
   so there is no hook-call-order rule for preserving slot identity. Still,
   create long-lived state at component construction time instead of inside
-  frequently re-run `watch` bodies unless new state is intended.
+  frequently re-run reactive page branches unless new state is intended.
 - Effect, memo, and callback dependencies are explicit tuples, not arrays and
   not implicit captures.
 - Updates are fine-grained through signals instead of virtual DOM diffing.

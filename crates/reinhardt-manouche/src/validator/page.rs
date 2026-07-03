@@ -13,8 +13,9 @@
 
 use proc_macro2::Span;
 use std::collections::HashSet;
+use syn::punctuated::Punctuated;
 use syn::visit::{self, Visit};
-use syn::{Expr, Result};
+use syn::{Expr, Result, Token};
 
 use crate::core::{
 	ImplicitPageCapture, PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent,
@@ -38,10 +39,13 @@ use crate::core::{
 /// A `TypedPageMacro` with validated and type-safe attribute values.
 pub fn validate_page(ast: &PageMacro) -> Result<TypedPageMacro> {
 	let form = match &ast.form {
-		PageMacroForm::StrictClosure { params, body } => TypedPageMacroForm::StrictClosure {
-			params: params.clone(),
-			body: transform_body(body, &[])?,
-		},
+		PageMacroForm::StrictClosure { params, body } => {
+			enforce_strict_captures(body, params)?;
+			TypedPageMacroForm::StrictClosure {
+				params: params.clone(),
+				body: transform_body(body, &[])?,
+			}
+		}
 		PageMacroForm::ImplicitBody { body } => TypedPageMacroForm::ImplicitBody {
 			captures: collect_free_idents(body, &[]),
 			body: transform_body(body, &[])?,
@@ -66,6 +70,13 @@ fn collect_free_idents(body: &PageBody, params: &[PageParam]) -> Vec<ImplicitPag
 	};
 	collector.visit_body(body);
 	collector.captures
+}
+
+fn enforce_strict_captures(body: &PageBody, params: &[PageParam]) -> Result<()> {
+	if let Some(capture) = collect_free_idents(body, params).into_iter().next() {
+		return Err(missing_param_error(&capture.ident));
+	}
+	Ok(())
 }
 
 struct CaptureCollector {
@@ -250,6 +261,17 @@ impl<'ast> Visit<'ast> for ExprIdentVisitor<'_> {
 		self.collector.locals_stack.pop();
 	}
 
+	fn visit_expr_macro(&mut self, expr_macro: &'ast syn::ExprMacro) {
+		if let Ok(args) = expr_macro
+			.mac
+			.parse_body_with(Punctuated::<Expr, Token![,]>::parse_terminated)
+		{
+			for arg in args {
+				self.visit_expr(&arg);
+			}
+		}
+	}
+
 	fn visit_block(&mut self, block: &'ast syn::Block) {
 		let mut pushed = 0_usize;
 		for stmt in &block.stmts {
@@ -324,6 +346,13 @@ fn is_value_ident(name: &str) -> bool {
 		.chars()
 		.all(|c| c.is_ascii_uppercase() || c == '_' || c.is_ascii_digit());
 	starts_lowercase && !all_screaming
+}
+
+fn missing_param_error(ident: &syn::Ident) -> syn::Error {
+	syn::Error::new(
+		ident.span(),
+		format!("identifier `{ident}` used inside `page!` is not declared as a parameter"),
+	)
 }
 
 /// Transforms a PageBody into a TypedPageBody.
@@ -1180,6 +1209,20 @@ mod tests {
 	}
 
 	#[rstest]
+	fn test_implicit_body_records_macro_argument_captures() {
+		// Arrange
+		let ast = parse(quote! {
+			{ p { {format!("value={}", outer_value)} } }
+		});
+
+		// Act
+		let captures = implicit_capture_names(&ast);
+
+		// Assert
+		assert_eq!(captures, vec!["outer_value"]);
+	}
+
+	#[rstest]
 	fn test_implicit_body_records_page_for_iter_and_key_captures() {
 		// Arrange
 		let ast = parse(quote! {
@@ -1218,6 +1261,24 @@ mod tests {
 
 		// Assert
 		assert_eq!(captures, vec!["items"]);
+	}
+
+	#[rstest]
+	fn test_strict_closure_rejects_implicit_capture() {
+		// Arrange
+		let ast = parse(quote! {
+			|| { div { {outer_count.get()} } }
+		});
+
+		// Act
+		let result = validate_page(&ast);
+
+		// Assert
+		let err = result.expect_err("strict closure must reject implicit capture");
+		assert!(
+			err.to_string().contains("outer_count"),
+			"diagnostic should name the missing parameter: {err}"
+		);
 	}
 
 	#[rstest]
