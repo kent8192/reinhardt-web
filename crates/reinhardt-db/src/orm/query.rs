@@ -4848,6 +4848,17 @@ where
 		}
 	}
 
+	fn build_select_for_backend(
+		stmt: &SelectStatement,
+		backend: super::connection::DatabaseBackend,
+	) -> (String, reinhardt_query::prelude::Values) {
+		match backend {
+			super::connection::DatabaseBackend::Postgres => PostgresQueryBuilder.build_select(stmt),
+			super::connection::DatabaseBackend::MySql => MySqlQueryBuilder.build_select(stmt),
+			super::connection::DatabaseBackend::Sqlite => SqliteQueryBuilder.build_select(stmt),
+		}
+	}
+
 	fn update_value_to_query_expr(value: &UpdateValue) -> Expr {
 		match value {
 			UpdateValue::String(s) => Expr::val(s.clone()),
@@ -5064,9 +5075,7 @@ where
 	where
 		T: super::Model + Clone,
 	{
-		use reinhardt_query::prelude::{
-			Alias, BinOper, ColumnRef, Expr, PostgresQueryBuilder, QueryBuilder, Value,
-		};
+		use reinhardt_query::prelude::{Alias, BinOper, ColumnRef, Expr, Value};
 
 		// Get composite primary key definition from the model
 		let composite_pk = T::composite_primary_key().ok_or_else(|| {
@@ -5122,13 +5131,13 @@ where
 			}
 		}
 
-		let (sql, values) = PostgresQueryBuilder.build_select(&query);
+		let conn = super::manager::get_connection().await?;
+		let (sql, values) = Self::build_select_for_backend(&query, conn.backend());
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
 		let params = super::execution::convert_values(values);
-		let conn = super::manager::get_connection().await?;
 
 		let started_at = Instant::now();
 		let query_result = conn.query(&sql, params).await;

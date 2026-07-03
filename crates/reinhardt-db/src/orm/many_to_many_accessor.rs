@@ -89,7 +89,9 @@ fn build_delete_sql(stmt: &DeleteStatement, backend: DatabaseBackend) -> (String
 pub struct ManyToManyAccessor<S, T>
 where
 	S: Model,
+	S::PrimaryKey: reinhardt_query::IntoValue,
 	T: Model + Serialize + DeserializeOwned,
+	T::PrimaryKey: reinhardt_query::IntoValue,
 {
 	source_id: S::PrimaryKey,
 	through_table: String,
@@ -105,7 +107,9 @@ where
 impl<S, T> ManyToManyAccessor<S, T>
 where
 	S: Model,
+	S::PrimaryKey: reinhardt_query::IntoValue,
 	T: Model + Serialize + DeserializeOwned,
+	T::PrimaryKey: reinhardt_query::IntoValue,
 {
 	/// Create a new ManyToManyAccessor.
 	///
@@ -323,7 +327,7 @@ where
 			.expr(Func::count(Expr::asterisk().into_simple_expr()))
 			.and_where(
 				Expr::col(Alias::new(&self.source_field))
-					.binary(BinOper::Equal, Expr::val(self.source_id.to_string())),
+					.binary(BinOper::Equal, Expr::val(self.source_id.clone())),
 			);
 
 		let query = query.to_owned();
@@ -405,7 +409,7 @@ where
 					Alias::new(&self.through_table),
 					Alias::new(&self.source_field),
 				))
-				.binary(BinOper::Equal, Expr::val(self.source_id.to_string())),
+				.binary(BinOper::Equal, Expr::val(self.source_id.clone())),
 			);
 
 		// Apply LIMIT/OFFSET
@@ -650,7 +654,7 @@ where
 			)
 			.and_where(
 				Expr::col((Alias::new(&through_table), Alias::new(&target_field)))
-					.binary(BinOper::Equal, Expr::val(target_id.to_string())),
+					.binary(BinOper::Equal, Expr::val(target_id.clone())),
 			)
 			.to_owned();
 
