@@ -6,7 +6,7 @@ use reinhardt::pages::component::Page;
 
 use crate::client::components::nav::with_nav;
 
-#[component("/polls/{question_id}/edit/", "question_edit")]
+#[component("/polls/{question_id}/edit/", name = "question_edit")]
 pub fn question_edit(Path(question_id): Path<i64>) -> Page {
 	with_nav(super::question_edit(question_id))
 }
