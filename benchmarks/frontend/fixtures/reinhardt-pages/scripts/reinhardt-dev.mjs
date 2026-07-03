@@ -30,7 +30,7 @@ function readArg(name, fallback) {
 
 function buildWasm() {
   return new Promise((resolve, reject) => {
-    activeBuild = spawn("wasm-pack", ["build", "--target", "web", "--out-dir", "pkg"], {
+    activeBuild = spawn("wasm-pack", ["build", "--dev", "--target", "web", "--out-dir", "pkg"], {
       cwd: root,
       detached: true,
       env: { ...process.env, CARGO_BUILD_JOBS: "1" },

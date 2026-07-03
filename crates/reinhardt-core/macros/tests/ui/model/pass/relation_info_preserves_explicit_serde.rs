@@ -12,24 +12,8 @@ struct Tenant {
 	name: String,
 }
 
-trait DefaultTenantRelation {
-	fn default_tenant() -> Self;
-}
-
-impl DefaultTenantRelation for db::associations::ForeignKeyField<Tenant> {
-	fn default_tenant() -> Self {
-		Self::default()
-	}
-}
-
-impl DefaultTenantRelation for model_info::RelationInfo<Tenant> {
-	fn default_tenant() -> Self {
-		model_info::RelationInfo::new(0)
-	}
-}
-
-fn default_tenant<T: DefaultTenantRelation>() -> T {
-	T::default_tenant()
+fn default_tenant() -> db::associations::ForeignKeyField<Tenant> {
+	db::associations::ForeignKeyField::default()
 }
 
 #[model(table_name = "documents")]

@@ -35,24 +35,8 @@ struct Tenant {
 	name: String,
 }
 
-trait DefaultTenantRelation {
-	fn default_tenant() -> Self;
-}
-
-impl DefaultTenantRelation for db::associations::ForeignKeyField<Tenant> {
-	fn default_tenant() -> Self {
-		Self::default()
-	}
-}
-
-impl DefaultTenantRelation for model_info::RelationInfo<Tenant> {
-	fn default_tenant() -> Self {
-		model_info::RelationInfo::new(0)
-	}
-}
-
-fn default_tenant<T: DefaultTenantRelation>() -> T {
-	T::default_tenant()
+fn default_tenant() -> db::associations::ForeignKeyField<Tenant> {
+	db::associations::ForeignKeyField::default()
 }
 
 #[model(table_name = "documents")]
@@ -102,5 +86,5 @@ fn relation_info_preserves_explicit_serde_round_trip() {
 	let decoded: DocumentInfo =
 		serde_json::from_str(r#"{"id":1,"title":"private","tenant":{"id":999}}"#).unwrap();
 	let model: Document = decoded.into();
-	assert_eq!(model.tenant_id, 0);
+	assert_eq!(model.tenant_id, 999);
 }

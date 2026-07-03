@@ -28,6 +28,8 @@ use std::collections::HashMap;
 
 use proc_macro2::TokenStream;
 use quote::quote;
+use syn::Token;
+use syn::punctuated::Punctuated;
 use syn::{Data, DeriveInput, Fields, GenericArgument, PathArguments, Result, Type, parse_quote};
 use syn::{Ident, LitBool, LitStr, bracketed, parenthesized};
 
@@ -4799,28 +4801,55 @@ struct InfoFieldSpec {
 	from_model: TokenStream,
 }
 
-fn is_plain_serde_skip_attr(attr: &syn::Attribute) -> bool {
-	if !attr.path().is_ident("serde") {
-		return false;
-	}
-
-	let syn::Meta::List(meta_list) = &attr.meta else {
+fn relation_info_serde_meta_is_safe(meta: &syn::Meta) -> bool {
+	let Some(name) = meta.path().get_ident().map(ToString::to_string) else {
 		return false;
 	};
 
-	meta_list.tokens.to_string() == "skip"
+	matches!(
+		name.as_str(),
+		"skip_serializing" | "rename" | "alias" | "flatten"
+	)
+}
+
+fn relation_info_serde_attr(
+	attr: &syn::Attribute,
+	injected_relation_serde_skip: bool,
+) -> Option<syn::Attribute> {
+	if !attr.path().is_ident("serde") {
+		return Some(attr.clone());
+	}
+
+	let syn::Meta::List(meta_list) = &attr.meta else {
+		return Some(attr.clone());
+	};
+
+	let nested = meta_list
+		.parse_args_with(Punctuated::<syn::Meta, Token![,]>::parse_terminated)
+		.ok()?;
+	let kept = nested
+		.into_iter()
+		.filter(|meta| {
+			!(injected_relation_serde_skip
+				&& matches!(meta, syn::Meta::Path(path) if path.is_ident("skip")))
+		})
+		.filter(relation_info_serde_meta_is_safe)
+		.collect::<Vec<_>>();
+
+	if kept.is_empty() {
+		return None;
+	}
+
+	Some(parse_quote! {
+		#[serde(#(#kept),*)]
+	})
 }
 
 fn relation_info_serde_attrs(field: &FieldInfo) -> Vec<syn::Attribute> {
-	if !field.injected_relation_serde_skip {
-		return field.serde_attrs.clone();
-	}
-
 	field
 		.serde_attrs
 		.iter()
-		.filter(|attr| !is_plain_serde_skip_attr(attr))
-		.cloned()
+		.filter_map(|attr| relation_info_serde_attr(attr, field.injected_relation_serde_skip))
 		.collect()
 }
 
