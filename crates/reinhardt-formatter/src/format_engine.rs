@@ -615,12 +615,8 @@ fn format_closure_args(
 		return None;
 	}
 	let formatted_wrapper = String::from_utf8(output.stdout).ok()?;
-	let (formatted, wrapper_indent) = unwrap_rustfmt_closure_args(&formatted_wrapper)?;
-	Some(reindent_multiline_closure_args(
-		formatted,
-		line_indent,
-		wrapper_indent,
-	))
+	let formatted = unwrap_rustfmt_closure_args(&formatted_wrapper)?;
+	Some(reindent_multiline_closure_args(formatted, line_indent))
 }
 
 fn collect_rustfmt_island_ranges(node: Node<'_>, ranges: &mut Vec<(usize, usize)>) {
@@ -851,7 +847,7 @@ fn unwrap_rustfmt_island(formatted_wrapper: &str) -> Option<&str> {
 	value.utf8_text(formatted_wrapper.as_bytes()).ok()
 }
 
-fn unwrap_rustfmt_closure_args(formatted_wrapper: &str) -> Option<(&str, &str)> {
+fn unwrap_rustfmt_closure_args(formatted_wrapper: &str) -> Option<&str> {
 	let mut parser = Parser::new();
 	let language = tree_sitter_rust::LANGUAGE.into();
 	parser.set_language(&language).ok()?;
@@ -861,9 +857,7 @@ fn unwrap_rustfmt_closure_args(formatted_wrapper: &str) -> Option<(&str, &str)> 
 	}
 	let closure = find_first_node_kind(tree.root_node(), "closure_expression")?;
 	let parameters = closure.child_by_field_name("parameters")?;
-	let wrapper_indent = line_indent_for_offset(formatted_wrapper, parameters.start_byte());
-	let formatted = parameters.utf8_text(formatted_wrapper.as_bytes()).ok()?;
-	Some((formatted, wrapper_indent))
+	parameters.utf8_text(formatted_wrapper.as_bytes()).ok()
 }
 
 fn find_first_node_kind<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
@@ -896,11 +890,7 @@ fn reindent_multiline_island(input: &str, line_indent: &str) -> String {
 	result
 }
 
-fn reindent_multiline_closure_args(
-	input: &str,
-	line_indent: &str,
-	wrapper_line_indent: &str,
-) -> String {
+fn reindent_multiline_closure_args(input: &str, line_indent: &str) -> String {
 	let mut lines = input.lines();
 	let Some(first) = lines.next() else {
 		return String::new();
@@ -908,16 +898,14 @@ fn reindent_multiline_closure_args(
 	let mut result = first.to_string();
 	for line in lines {
 		result.push('\n');
-		if !line.is_empty() {
+		let trimmed = line.trim_start_matches([' ', '\t']);
+		if !trimmed.is_empty() {
 			result.push_str(line_indent);
+			result.push(' ');
+			result.push_str(trimmed);
 		}
-		result.push_str(strip_leading_exact_indent(line, wrapper_line_indent));
 	}
 	result
-}
-
-fn strip_leading_exact_indent<'a>(line: &'a str, indent: &str) -> &'a str {
-	line.strip_prefix(indent).unwrap_or(line)
 }
 
 fn common_continuation_indent(lines: &[&str]) -> usize {
@@ -1169,11 +1157,39 @@ mod tests {
 			formatted.contains("\n small_box_id: i64,"),
 			"wrapped closure args should keep later parameters on separate lines: {formatted}"
 		);
+		let small_box_line = formatted
+			.lines()
+			.find(|line| line.contains("small_box_id: i64,"))
+			.expect("small_box_id line");
+		assert_eq!(
+			small_box_line, " small_box_id: i64,",
+			"wrapped closure args should not preserve rustfmt alignment padding: {formatted}"
+		);
 		assert!(
 			!formatted.contains("project_id: i64, small_box_id: i64, instruction_id: String"),
 			"long closure args should not stay on one line: {formatted}"
 		);
 		assert_eq!(second, formatted);
+
+		let hard_tabs_options = RustfmtOptions {
+			config: Some("hard_tabs=true".to_string()),
+			..RustfmtOptions::default()
+		};
+		let hard_tabs_formatted =
+			format_dsl_with_options(MacroKind::Page, input, &hard_tabs_options)
+				.expect("format page DSL with hard tabs");
+		let hard_tabs_second =
+			format_dsl_with_options(MacroKind::Page, &hard_tabs_formatted, &hard_tabs_options)
+				.expect("format page DSL with hard tabs again");
+		let hard_tabs_small_box_line = hard_tabs_formatted
+			.lines()
+			.find(|line| line.contains("small_box_id: i64,"))
+			.expect("hard-tabs small_box_id line");
+		assert_eq!(
+			hard_tabs_small_box_line, " small_box_id: i64,",
+			"wrapped closure args should normalize hard-tabs rustfmt alignment padding: {hard_tabs_formatted}"
+		);
+		assert_eq!(hard_tabs_second, hard_tabs_formatted);
 	}
 
 	#[rstest]
