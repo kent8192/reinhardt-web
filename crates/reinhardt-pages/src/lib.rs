@@ -427,6 +427,10 @@ pub use reinhardt_pages_macros::{FromRequest, client_page, component, page_props
 // Private re-exports used by macro-generated code. Not part of the public API.
 #[doc(hidden)]
 pub mod __private {
+	pub fn capture<T: Clone>(value: &T) -> T {
+		value.clone()
+	}
+
 	pub mod fetch {
 		pub use crate::fetch::{
 			FetchCredentials, FetchResponse, request, request_with_credentials,

@@ -36,9 +36,10 @@ use syn::{Expr, Result};
 
 use reinhardt_manouche::core::{
 	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageExpression, PageFor,
-	PageIf, PageMacro, PageNode, PageWatch, TypedNamedSlot, TypedPageAttr, TypedPageBody,
-	TypedPageComponent, TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro,
-	TypedPageNode, TypedPageWatch, types::AttrValue,
+	PageIf, PageMacro, PageMacroForm, PageNode, PageParam, PageWatch, TypedNamedSlot,
+	TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse,
+	TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageMacroForm, TypedPageNode, TypedPageWatch,
+	types::AttrValue,
 };
 
 use super::scope_utils::collect_pat_idents;
@@ -77,15 +78,42 @@ fn is_safe_url(url: &str) -> bool {
 ///
 /// A `TypedPageMacro` with validated and type-safe attribute values.
 pub(super) fn validate(ast: &PageMacro) -> Result<TypedPageMacro> {
-	enforce_capture_discipline(ast)?;
-	let typed_body = transform_body(&ast.body, &[])?;
+	let form = match &ast.form {
+		PageMacroForm::StrictClosure { params, body } => {
+			enforce_strict_captures(body, params)?;
+			TypedPageMacroForm::StrictClosure {
+				params: params.clone(),
+				body: transform_body(body, &[])?,
+			}
+		}
+		PageMacroForm::ImplicitBody { body } => TypedPageMacroForm::ImplicitBody {
+			captures: collect_free_idents(body, &[]),
+			body: transform_body(body, &[])?,
+		},
+	};
 
 	Ok(TypedPageMacro {
 		head: ast.head.clone(),
-		params: ast.params.clone(),
-		body: typed_body,
+		form,
 		span: ast.span,
 	})
+}
+
+/// Collects value identifiers used in `body` that are not params or locals.
+fn collect_free_idents(
+	body: &PageBody,
+	params: &[PageParam],
+) -> Vec<reinhardt_manouche::core::ImplicitPageCapture> {
+	let allowed: HashSet<String> = params.iter().map(|p| p.name.to_string()).collect();
+
+	let mut checker = CaptureChecker {
+		allowed,
+		locals_stack: Vec::new(),
+		seen: HashSet::new(),
+		captures: Vec::new(),
+	};
+	checker.visit_body(body);
+	checker.captures
 }
 
 /// Verifies that no body identifier is an implicit capture.
@@ -94,21 +122,9 @@ pub(super) fn validate(ast: &PageMacro) -> Result<TypedPageMacro> {
 /// `params` list. Item paths (`crate::util::fmt`), type identifiers
 /// (`Vec`, `Option`), constants (`MAX_LEN`), and macro invocations
 /// (`format!`) are exempt.
-fn enforce_capture_discipline(ast: &PageMacro) -> Result<()> {
-	let params: HashSet<String> = ast.params.iter().map(|p| p.name.to_string()).collect();
-
-	let mut checker = CaptureChecker {
-		allowed: params,
-		// `for x in iter { ... }` and `|x| ...` introduce locals for the
-		// duration of their body. Track a layered stack so nested scopes
-		// shadow correctly.
-		locals_stack: Vec::new(),
-		errors: Vec::new(),
-	};
-	checker.visit_body(&ast.body);
-
-	if let Some(err) = checker.errors.into_iter().next() {
-		return Err(err);
+fn enforce_strict_captures(body: &PageBody, params: &[PageParam]) -> Result<()> {
+	if let Some(capture) = collect_free_idents(body, params).into_iter().next() {
+		return Err(missing_param_error(&capture.ident));
 	}
 	Ok(())
 }
@@ -118,12 +134,24 @@ fn enforce_capture_discipline(ast: &PageMacro) -> Result<()> {
 struct CaptureChecker {
 	allowed: HashSet<String>,
 	locals_stack: Vec<HashSet<String>>,
-	errors: Vec<syn::Error>,
+	seen: HashSet<String>,
+	captures: Vec<reinhardt_manouche::core::ImplicitPageCapture>,
 }
 
 impl CaptureChecker {
 	fn is_known(&self, name: &str) -> bool {
 		self.allowed.contains(name) || self.locals_stack.iter().any(|s| s.contains(name))
+	}
+
+	fn record_capture(&mut self, ident: &syn::Ident) {
+		let name = ident.to_string();
+		if self.seen.insert(name) {
+			self.captures
+				.push(reinhardt_manouche::core::ImplicitPageCapture {
+					ident: ident.clone(),
+					span: ident.span(),
+				});
+		}
 	}
 
 	fn visit_body(&mut self, body: &PageBody) {
@@ -234,7 +262,7 @@ impl<'ast> Visit<'ast> for ExprIdentVisitor<'_> {
 			let seg = &ep.path.segments[0];
 			let name = seg.ident.to_string();
 			if is_value_ident(&name) && !self.checker.is_known(&name) {
-				self.checker.errors.push(missing_param_error(&seg.ident));
+				self.checker.record_capture(&seg.ident);
 			}
 		}
 		visit::visit_expr_path(self, ep);
@@ -1880,7 +1908,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_capture_discipline(&ast);
+		let result = enforce_strict_captures(ast.body(), ast.params());
 
 		// Assert
 		let err = result.unwrap_err();
@@ -1897,7 +1925,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_capture_discipline(&ast);
+		let result = enforce_strict_captures(ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
@@ -1911,7 +1939,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_capture_discipline(&ast);
+		let result = enforce_strict_captures(ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
@@ -1925,7 +1953,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_capture_discipline(&ast);
+		let result = enforce_strict_captures(ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
@@ -1939,7 +1967,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_capture_discipline(&ast);
+		let result = enforce_strict_captures(ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
@@ -1957,9 +1985,40 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_capture_discipline(&ast);
+		let result = enforce_strict_captures(ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn body_only_form_records_implicit_captures() {
+		// Arrange
+		let ast = parse(quote! {
+			{ div { {outer_count.get()} } }
+		});
+
+		// Act
+		let result = validate(&ast).unwrap();
+
+		// Assert
+		let captures = result.implicit_captures();
+		assert_eq!(captures.len(), 1);
+		assert_eq!(captures[0].ident.to_string(), "outer_count");
+	}
+
+	#[rstest]
+	fn strict_form_still_rejects_implicit_captures() {
+		// Arrange
+		let ast = parse(quote! {
+			|| { div { {outer_count.get()} } }
+		});
+
+		// Act
+		let result = validate(&ast);
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(err.to_string().contains("outer_count"));
 	}
 }
