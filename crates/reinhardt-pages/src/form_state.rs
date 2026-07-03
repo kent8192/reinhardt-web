@@ -1650,11 +1650,6 @@ where
 		self.form.clone()
 	}
 
-	/// Returns the underlying action handle.
-	pub fn action(&self) -> Action<T, E> {
-		self.action.clone()
-	}
-
 	/// Returns the current action phase.
 	pub fn phase(&self) -> ActionPhase<T, E> {
 		self.action.phase()
@@ -1667,7 +1662,7 @@ where
 
 	/// Returns `true` when the action completed successfully.
 	pub fn is_success(&self) -> bool {
-		self.form.state.is_submit_successful.get() || self.action.is_success()
+		self.form.state.is_submit_successful.get()
 	}
 
 	/// Returns the latest successful action result.
