@@ -209,7 +209,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	}
 
 	#[cfg(test)]
-	fn force_error_for_test(&self, err: E) {
+	pub(crate) fn force_error_for_test(&self, err: E) {
 		let on_error = self.on_error.borrow().clone();
 		crate::reactive::batch(|| {
 			for callback in on_error {
@@ -220,7 +220,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	}
 
 	#[cfg(test)]
-	fn force_success_for_test(&self, value: T) {
+	pub(crate) fn force_success_for_test(&self, value: T) {
 		let on_success = self.on_success.borrow().clone();
 		crate::reactive::batch(|| {
 			for callback in on_success {

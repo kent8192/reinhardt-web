@@ -347,6 +347,7 @@ The prelude includes:
 
 ### Reactive System
 - `Signal`, `Effect`, `Memo`, `Resource`, `ResourceState`
+- `LatestResourceValue`, `LatestResourceState`, `use_latest_resource_value`
 - Context: `Context`, `ContextGuard`, `create_context`, `get_context`, `provide_context`, `remove_context`
 - Explicit batching: `reinhardt_pages::reactive::batch`
 
@@ -356,6 +357,8 @@ The prelude includes:
 - `use_id`, `use_layout_effect`, `use_debug_value`
 - `use_optimistic`, `use_action`, `Action::with_optimistic`, `use_shared_state`, `use_sync_external_store`
 - `use_resource` (async data fetching; `use_resource(fetcher, deps)` with `()` fetches once on WASM, while non-WASM targets drop the `fetcher` future, ignore `deps`, and stay `Loading` until hydration/client execution)
+
+`Resource::latest_after(&action)` and `use_latest_resource_value(resource)` compose loaded resource state with one or more `Action` success values. Later actions have higher priority, and `refetch_on_success()` can automatically refresh the resource after a mutation succeeds.
 
 ### Component System
 - `Component`, `ElementView`, `IntoView`, `View`, `Props`, `ViewEventHandler`
