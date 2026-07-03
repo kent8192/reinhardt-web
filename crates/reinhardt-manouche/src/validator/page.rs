@@ -16,9 +16,9 @@ use syn::{Expr, Result};
 
 use crate::core::{
 	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageFor, PageIf,
-	PageMacro, PageNode, PageWatch, TypedNamedSlot, TypedPageAttr, TypedPageBody,
+	PageMacro, PageMacroForm, PageNode, PageWatch, TypedNamedSlot, TypedPageAttr, TypedPageBody,
 	TypedPageComponent, TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro,
-	TypedPageNode, TypedPageWatch, types::AttrValue,
+	TypedPageMacroForm, TypedPageNode, TypedPageWatch, types::AttrValue,
 };
 
 /// Validates and transforms the entire PageMacro AST into a typed AST.
@@ -34,12 +34,20 @@ use crate::core::{
 ///
 /// A `TypedPageMacro` with validated and type-safe attribute values.
 pub fn validate_page(ast: &PageMacro) -> Result<TypedPageMacro> {
-	let typed_body = transform_body(&ast.body, &[])?;
+	let form = match &ast.form {
+		PageMacroForm::StrictClosure { params, body } => TypedPageMacroForm::StrictClosure {
+			params: params.clone(),
+			body: transform_body(body, &[])?,
+		},
+		PageMacroForm::ImplicitBody { body } => TypedPageMacroForm::ImplicitBody {
+			captures: Vec::new(),
+			body: transform_body(body, &[])?,
+		},
+	};
 
 	Ok(TypedPageMacro {
 		head: ast.head.clone(),
-		params: ast.params.clone(),
-		body: typed_body,
+		form,
 		span: ast.span,
 	})
 }
