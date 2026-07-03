@@ -150,9 +150,9 @@ Use `page!(|| { ... })` or `page!(|props: Props| { ... })` when you want a
 reusable factory that is called later. Closure-form pages keep strict capture
 discipline: every value used in the body must be listed as a closure parameter.
 Existing body-only pages that relied on surrounding values should migrate to
-`page!({ ... })`. If a no-argument page must remain a reusable factory, move
-those surrounding values into explicit parameters such as
-`page!(|value: Value| { ... })`.
+`page!({ ... })`. Use `page!(|| { ... })` for no-argument factories that must
+remain callable, and use `page!(|value: Value| { ... })` when a factory needs
+caller-supplied state.
 
 ### Forms: Static Definition and Dynamic Behavior
 
