@@ -81,5 +81,5 @@ pub trait ServerFnResponseMetadata: ServerFnMetadata {
 	/// Success response type (the `Ok` variant of the function's return type).
 	type Response: serde::Serialize + serde::de::DeserializeOwned + 'static;
 	/// Error type returned by the public server function stub.
-	type Error: std::fmt::Display + 'static;
+	type Error: 'static;
 }

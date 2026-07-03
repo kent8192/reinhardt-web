@@ -1,9 +1,5 @@
 # Client Form Bindings Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> superpowers:subagent-driven-development to implement this plan task-by-task.
-> Track progress by updating the checkbox list in this file.
-
 **Goal:** Add opt-in DTO-derived client form bindings for issue #5550, including
 typed form runtime integration, DTO assembly, enum choices, validation, and an
 optional server function submit helper.
@@ -151,7 +147,7 @@ git commit -m "feat(pages): add client form support traits"
 ```rust
 pub trait ServerFnResponseMetadata: ServerFnMetadata {
     type Response: serde::Serialize + serde::de::DeserializeOwned + 'static;
-    type Error: std::fmt::Display + 'static;
+    type Error: 'static;
 }
 ```
 
@@ -285,10 +281,10 @@ git commit -m "feat(pages): map DTO validation into client forms"
 
 - [x] Implement struct-level
   `#[client_form(server_fn = path::to::server_fn)]`.
-- [x] Generate `form.submit(&runtime).await` using
+- [x] Generate WASM `form.submit(&runtime).await` using
   `UseFormReturn::submit_async`.
 - [x] Assemble the DTO only after runtime validation passes.
-- [x] Call the server function as `server_fn(request).await`.
+- [x] Call the WASM server function stub as `server_fn(request).await`.
 - [x] Type the success output as
   `<path::to::server_fn::marker as ServerFnResponseMetadata>::Response`.
 - [x] Add trybuild failures for server functions whose first parameter is not

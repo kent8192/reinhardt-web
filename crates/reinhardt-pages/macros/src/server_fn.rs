@@ -1382,7 +1382,7 @@ fn generate_server_handler(
 			#[doc = "Parity: P1."]
 			#[doc = ""]
 			#[doc = "The marker is emitted on WASM so shared route declarations can name it, but server route registration is native-only behavior."]
-			pub struct marker;
+			#vis struct marker;
 
 			impl #pages_crate::server_fn::ServerFnMetadata for marker {
 				const PATH: &'static str = #endpoint;
@@ -1504,7 +1504,7 @@ fn generate_server_handler(
 			#[doc = "Parity: P1."]
 			#[doc = ""]
 			#[doc = "The marker is emitted on both native and WASM so shared route declarations can name it. Native builds register the server handler; WASM builds keep the marker metadata inert."]
-			pub struct marker;
+			#vis struct marker;
 
 			// Cross-target metadata. ServerFnMetadata lives in reinhardt-pages
 			// and is available on both native and wasm — the constants below

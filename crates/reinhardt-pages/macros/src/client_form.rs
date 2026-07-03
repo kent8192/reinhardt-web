@@ -64,7 +64,10 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 		let field_options = ClientFormFieldOptions::parse(&field.attrs)?;
 		if field_options.skip {
 			ensure_skippable(&field.ty)?;
-			skipped_fields.push(SkippedField { name: field_ident });
+			skipped_fields.push(SkippedField {
+				name: field_ident,
+				ty: field.ty,
+			});
 			continue;
 		}
 
@@ -132,6 +135,11 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 		let value_ty = field.value_ty();
 		quote! { #name: #value_ty }
 	});
+	let skipped_value_field_defs = skipped_fields.iter().map(|field| {
+		let name = &field.name;
+		let ty = &field.ty;
+		quote! { #name: #ty }
+	});
 	let form_field_defs = fields.iter().map(|field| {
 		let name = &field.name;
 		let value_ty = field.value_ty();
@@ -162,6 +170,10 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 		let default_expr = field.default_expr(pages_crate);
 		quote! { #name: #default_expr }
 	});
+	let skipped_default_value_fields = skipped_fields.iter().map(|field| {
+		let name = &field.name;
+		quote! { #name: ::core::default::Default::default() }
+	});
 	let signal_initializers = fields.iter().map(|field| {
 		let name = &field.name;
 		quote! { #name: #pages_crate::reactive::Signal::new(__initial_values.#name.clone()) }
@@ -170,9 +182,17 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 		let name = &field.name;
 		quote! { #name: self.#name.get() }
 	});
+	let current_skipped_value_fields = skipped_fields.iter().map(|field| {
+		let name = &field.name;
+		quote! { #name: __initial_values.#name.clone() }
+	});
 	let apply_values = fields.iter().map(|field| {
 		let name = &field.name;
 		quote! { self.#name.set(values.#name.clone()); }
+	});
+	let apply_skipped_values = skipped_fields.iter().map(|field| {
+		let name = &field.name;
+		quote! { __initial_values.#name = values.#name.clone(); }
 	});
 	let set_field_arms = fields.iter().map(|field| {
 		let name = &field.name;
@@ -227,6 +247,10 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 		let expr = field.default_from_request_expr();
 		quote! { #name: #expr }
 	});
+	let skipped_defaults_from_request = skipped_fields.iter().map(|field| {
+		let name = &field.name;
+		quote! { #name: defaults.#name }
+	});
 	let request_fields = fields.iter().map(|field| {
 		let name = &field.name;
 		let expr = field.request_expr();
@@ -234,7 +258,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 	});
 	let skipped_request_fields = skipped_fields.iter().map(|field| {
 		let name = &field.name;
-		quote! { #name: ::core::default::Default::default() }
+		quote! { #name: values.#name.clone() }
 	});
 	let field_name_arms = fields.iter().map(|field| {
 		let name = field.name.to_string();
@@ -249,10 +273,11 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 			#(#form_field_defs,)*
 		}
 
-		#[derive(Clone, PartialEq)]
-		#dto_vis struct #values_ident {
-			#(#value_field_defs,)*
-		}
+			#[derive(Clone, PartialEq)]
+			#dto_vis struct #values_ident {
+				#(#value_field_defs,)*
+				#(#skipped_value_field_defs,)*
+			}
 
 		#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 		#dto_vis enum #field_ident {
@@ -263,6 +288,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 			pub fn new() -> Self {
 				let __initial_values = #values_ident {
 					#(#default_value_fields,)*
+					#(#skipped_default_value_fields,)*
 				};
 				Self {
 					__initial_values: ::std::rc::Rc::new(::std::cell::RefCell::new(__initial_values.clone())),
@@ -273,6 +299,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 			pub fn with_defaults(self, defaults: #dto_ident) -> Self {
 				let values = #values_ident {
 					#(#defaults_from_request,)*
+					#(#skipped_defaults_from_request,)*
 				};
 				<#form_ident as #pages_crate::FormRuntimeSource>::runtime_apply_values(&self, &values);
 				*self.__initial_values.borrow_mut() = values;
@@ -313,12 +340,18 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 			}
 
 			fn runtime_current_values(&self) -> Self::Values {
+				let __initial_values = self.__initial_values.borrow();
 				#values_ident {
 					#(#current_value_fields,)*
+					#(#current_skipped_value_fields,)*
 				}
 			}
 
 			fn runtime_apply_values(&self, values: &Self::Values) {
+				{
+					let mut __initial_values = self.__initial_values.borrow_mut();
+					#(#apply_skipped_values)*
+				}
 				#(#apply_values)*
 			}
 
@@ -381,6 +414,7 @@ fn generate_submit_method(
 	pages_crate: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
 	quote! {
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 		pub async fn submit<Deps>(
 			&self,
 			runtime: &#pages_crate::UseFormReturn<Self, Deps>,
@@ -390,9 +424,11 @@ fn generate_submit_method(
 			>,
 			<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Error,
 		>
-		where
-			Deps: ::core::clone::Clone + ::core::cmp::PartialEq + 'static,
-		{
+			where
+				Deps: ::core::clone::Clone + ::core::cmp::PartialEq + 'static,
+				<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Error:
+					::core::fmt::Display,
+			{
 			let _ = self;
 			runtime
 				.submit_async(|| {
@@ -544,6 +580,7 @@ impl EditableField {
 
 struct SkippedField {
 	name: Ident,
+	ty: Type,
 }
 
 enum FieldKind {

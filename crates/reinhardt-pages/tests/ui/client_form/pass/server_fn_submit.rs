@@ -37,7 +37,7 @@ fn assert_submit_output(
 fn main() {
 	let form = SettingsRequestClientForm::new();
 	let runtime = use_form(&form).build();
-	let _future = async {
-		assert_submit_output(form.submit(&runtime).await)
-	};
+	#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+	let _future = async { assert_submit_output(form.submit(&runtime).await) };
+	let _ = (form, runtime);
 }

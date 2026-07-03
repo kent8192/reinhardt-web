@@ -1438,6 +1438,7 @@ where
 		}
 
 		self.state.is_submitting.set(true);
+		let mut pending_guard = SubmitPendingGuard::new(self.state.is_submitting.clone());
 		self.state.is_submit_successful.set(false);
 		self.state.submit_error.set(None);
 		self.sync_first_error();
@@ -1448,6 +1449,7 @@ where
 
 		if self.trigger().is_err() {
 			self.state.is_submitting.set(false);
+			pending_guard.disarm();
 			if let Some(callback) = &self.on_submit_error {
 				callback(self);
 			}
@@ -1458,6 +1460,7 @@ where
 		match submit().await {
 			Ok(output) => {
 				self.state.is_submitting.set(false);
+				pending_guard.disarm();
 				self.state.is_submit_successful.set(true);
 				if let Some(callback) = &self.on_submit_success {
 					callback(self);
@@ -1467,6 +1470,7 @@ where
 			}
 			Err(error) => {
 				self.state.is_submitting.set(false);
+				pending_guard.disarm();
 				self.state.is_submit_successful.set(false);
 				self.state.submit_error.set(Some(error.to_string()));
 				self.sync_first_error();
@@ -1858,6 +1862,32 @@ struct SignalSyncGuard {
 impl Drop for SignalSyncGuard {
 	fn drop(&mut self) {
 		self.suppressed.set(false);
+	}
+}
+
+struct SubmitPendingGuard {
+	is_submitting: Signal<bool>,
+	active: bool,
+}
+
+impl SubmitPendingGuard {
+	fn new(is_submitting: Signal<bool>) -> Self {
+		Self {
+			is_submitting,
+			active: true,
+		}
+	}
+
+	fn disarm(&mut self) {
+		self.active = false;
+	}
+}
+
+impl Drop for SubmitPendingGuard {
+	fn drop(&mut self) {
+		if self.active {
+			self.is_submitting.set(false);
+		}
 	}
 }
 

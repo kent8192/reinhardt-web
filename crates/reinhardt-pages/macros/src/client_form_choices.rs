@@ -1,6 +1,5 @@
 //! `ClientFormChoices` derive implementation.
 
-use convert_case::{Case, Casing};
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, LitStr, parse_macro_input};
@@ -134,8 +133,29 @@ fn serde_variant_rename(attrs: &[syn::Attribute]) -> syn::Result<Option<String>>
 fn apply_rename_rule(name: &str, rename_rule: RenameRule) -> String {
 	match rename_rule {
 		RenameRule::Verbatim => name.to_string(),
-		RenameRule::SnakeCase => name.to_case(Case::Snake),
-		RenameRule::KebabCase => name.to_case(Case::Kebab),
-		RenameRule::CamelCase => name.to_case(Case::Camel),
+		RenameRule::SnakeCase => serde_snake_case_variant(name),
+		RenameRule::KebabCase => serde_snake_case_variant(name).replace('_', "-"),
+		RenameRule::CamelCase => serde_camel_case_variant(name),
 	}
+}
+
+fn serde_snake_case_variant(name: &str) -> String {
+	let mut snake = String::new();
+	for (index, ch) in name.char_indices() {
+		if index > 0 && ch.is_uppercase() {
+			snake.push('_');
+		}
+		snake.push(ch.to_ascii_lowercase());
+	}
+	snake
+}
+
+fn serde_camel_case_variant(name: &str) -> String {
+	let Some((_, first)) = name.char_indices().next() else {
+		return String::new();
+	};
+	let next_index = first.len_utf8();
+	let mut camel = first.to_ascii_lowercase().to_string();
+	camel.push_str(&name[next_index..]);
+	camel
 }

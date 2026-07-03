@@ -17,6 +17,7 @@ enum ProviderMode {
 	#[default]
 	Fake,
 	LiveApi,
+	HTTPStatus,
 }
 
 #[derive(Clone, Debug, PartialEq, ClientForm)]
@@ -27,6 +28,10 @@ struct ProjectRequest {
 	active: bool,
 	provider_mode: ProviderMode,
 	optional_mode: Option<ProviderMode>,
+	#[client_form(skip)]
+	tenant_id: Option<String>,
+	#[client_form(skip)]
+	revision: u32,
 }
 
 impl Validate for ProjectRequest {
@@ -52,6 +57,8 @@ fn client_form_defaults_and_request_conversion() {
 		active: true,
 		provider_mode: ProviderMode::LiveApi,
 		optional_mode: Some(ProviderMode::Fake),
+		tenant_id: Some("tenant-a".to_string()),
+		revision: 7,
 	});
 	let runtime = use_form(&form).build();
 
@@ -73,6 +80,8 @@ fn client_form_defaults_and_request_conversion() {
 	assert_eq!(request.retry_count, 2);
 	assert!(request.active);
 	assert_eq!(request.optional_mode, Some(ProviderMode::Fake));
+	assert_eq!(request.tenant_id.as_deref(), Some("tenant-a"));
+	assert_eq!(request.revision, 7);
 }
 
 #[test]
@@ -80,11 +89,13 @@ fn client_form_enum_choice_metadata_uses_serialized_values() {
 	let form = ProjectRequestClientForm::new();
 	let choices = form.provider_mode_choices();
 
-	assert_eq!(choices.len(), 2);
+	assert_eq!(choices.len(), 3);
 	assert_eq!(choices[0].serialized_value, "fake");
 	assert_eq!(choices[0].label, "fake");
 	assert_eq!(choices[1].serialized_value, "live_api");
 	assert_eq!(choices[1].label, "live_api");
+	assert_eq!(choices[2].serialized_value, "h_t_t_p_status");
+	assert_eq!(choices[2].label, "h_t_t_p_status");
 	assert_eq!(ProviderMode::client_form_default(), ProviderMode::Fake);
 }
 
@@ -149,7 +160,13 @@ async fn client_form_server_submit_blocks_validation_failure() {
 	let form = SubmitProjectRequestClientForm::new();
 	let runtime = use_form(&form).build();
 
-	let outcome = form.submit(&runtime).await.expect("validation outcome");
+	let outcome = runtime
+		.submit_async(|| {
+			let request = SubmitProjectRequestClientForm::to_request(&runtime);
+			async move { submit_project(request).await }
+		})
+		.await
+		.expect("validation outcome");
 
 	assert_eq!(outcome, UseFormAsyncSubmitOutcome::ValidationFailed);
 	assert_eq!(SUBMIT_CALL_COUNT.with(Cell::get), 0);
@@ -163,7 +180,13 @@ async fn client_form_server_submit_calls_server_function_on_success() {
 	});
 	let runtime = use_form(&form).build();
 
-	let outcome = form.submit(&runtime).await.expect("submit succeeds");
+	let outcome = runtime
+		.submit_async(|| {
+			let request = SubmitProjectRequestClientForm::to_request(&runtime);
+			async move { submit_project(request).await }
+		})
+		.await
+		.expect("submit succeeds");
 
 	assert_eq!(
 		outcome,
