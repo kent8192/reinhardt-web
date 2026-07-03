@@ -288,12 +288,12 @@ impl NodeCaptureCollector<'_> {
 
 	fn visit_for(&mut self, for_node: &TypedPageFor) {
 		self.expr_collector.visit_expr(&for_node.iter);
-		if let Some(key) = &for_node.key {
-			self.expr_collector.visit_expr(key);
-		}
 		let mut locals = HashSet::new();
 		collect_pat_idents(&for_node.pat, &mut locals);
 		self.expr_collector.locals_stack.push(locals);
+		if let Some(key) = &for_node.key {
+			self.expr_collector.visit_expr(key);
+		}
 		for node in &for_node.body {
 			self.visit_node(node);
 		}
@@ -1481,5 +1481,32 @@ mod tests {
 		// No builder chain for simple component
 		assert!(output_str.contains("MyButton"));
 		assert!(!output_str.contains(". build ()"));
+	}
+
+	#[test]
+	fn test_for_key_capture_scope_uses_loop_local() {
+		let input = quote::quote!({
+			div {
+				{ item.clone() }
+				for item in items @key(item.clone()) {
+					li { { item.clone() } }
+				}
+			}
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let for_node = match &typed_ast.body().nodes[0] {
+			TypedPageNode::Element(element) => &element.children[1],
+			_ => panic!("expected root element"),
+		};
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_node(for_node)
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["items"]);
 	}
 }

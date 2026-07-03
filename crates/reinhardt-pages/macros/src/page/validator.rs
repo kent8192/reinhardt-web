@@ -214,6 +214,9 @@ impl CaptureChecker {
 		let mut locals = HashSet::new();
 		collect_pat_idents(&p.pat, &mut locals);
 		self.locals_stack.push(locals);
+		if let Some(key) = &p.key {
+			self.visit_expr(key);
+		}
 		for n in &p.body {
 			self.visit_node(n);
 		}
@@ -1992,6 +1995,73 @@ mod capture_tests {
 	}
 
 	#[rstest]
+	fn accepts_page_for_key_loop_local_binding() {
+		// Arrange
+		let ast = parse(quote! {
+			|items: Vec<String>| {
+				ul {
+					for item in items @key(item.clone()) {
+						li { {item.clone()} }
+					}
+				}
+			}
+		});
+
+		// Act
+		let result = enforce_strict_captures(ast.body(), ast.params());
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn strict_form_rejects_page_for_key_outer_capture() {
+		// Arrange
+		let ast = parse(quote! {
+			|items: Vec<String>| {
+				ul {
+					for item in items @key(route_id.to_string()) {
+						li { {item.clone()} }
+					}
+				}
+			}
+		});
+
+		// Act
+		let result = enforce_strict_captures(ast.body(), ast.params());
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(err.to_string().contains("route_id"));
+	}
+
+	#[rstest]
+	fn strict_form_records_page_for_iter_and_key_captures() {
+		// Arrange
+		let ast = parse(quote! {
+			|| {
+				ul {
+					for item in items @key(route_id.to_string()) {
+						li { {item.clone()} }
+					}
+				}
+			}
+		});
+
+		// Act
+		let result = enforce_strict_captures(ast.body(), ast.params());
+		let captures: Vec<String> = collect_free_idents(ast.body(), ast.params())
+			.into_iter()
+			.map(|capture| capture.ident.to_string())
+			.collect();
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(err.to_string().contains("items"));
+		assert_eq!(captures, vec!["items", "route_id"]);
+	}
+
+	#[rstest]
 	fn body_only_form_records_implicit_captures() {
 		// Arrange
 		let ast = parse(quote! {
@@ -2005,6 +2075,32 @@ mod capture_tests {
 		let captures = result.implicit_captures();
 		assert_eq!(captures.len(), 1);
 		assert_eq!(captures[0].ident.to_string(), "outer_count");
+	}
+
+	#[rstest]
+	fn body_only_form_records_page_for_key_outer_capture() {
+		// Arrange
+		let ast = parse(quote! {
+			{
+				ul {
+					for item in items @key(route_id.to_string()) {
+						li { {item.clone()} }
+					}
+				}
+			}
+		});
+
+		// Act
+		let result = validate(&ast).unwrap();
+
+		// Assert
+		let captures: Vec<String> = result
+			.implicit_captures()
+			.iter()
+			.map(|capture| capture.ident.to_string())
+			.collect();
+		assert_eq!(captures, vec!["items", "route_id"]);
+		assert!(!captures.iter().any(|capture| capture == "item"));
 	}
 
 	#[rstest]

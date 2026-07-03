@@ -19,8 +19,7 @@ use syn::{
 
 use crate::{
 	PageAttr, PageBody, PageComponent, PageComponentArg, PageElement, PageElse, PageEvent,
-	PageExpression, PageFor, PageIf, PageMacro, PageMacroForm, PageNode, PageParam, PageText,
-	PageWatch,
+	PageExpression, PageFor, PageIf, PageMacro, PageNode, PageParam, PageText, PageWatch,
 };
 
 /// Maximum nesting depth for page elements.
@@ -52,16 +51,22 @@ impl Parse for PageMacro {
 			None
 		};
 
-		let form = if input.peek(Token![|]) {
-			let params = parse_closure_params(input)?;
-			let body = input.parse::<PageBody>()?;
-			PageMacroForm::StrictClosure { params, body }
+		// Parse closure-style parameters: |param1: Type1, param2: Type2|
+		let params = if input.peek(Token![|]) {
+			parse_closure_params(input)?
 		} else {
-			let body = input.parse::<PageBody>()?;
-			PageMacroForm::ImplicitBody { body }
+			Vec::new()
 		};
 
-		Ok(Self { head, form, span })
+		// Parse the body: { ... }
+		let body = input.parse::<PageBody>()?;
+
+		Ok(Self {
+			head,
+			params,
+			body,
+			span,
+		})
 	}
 }
 
@@ -542,45 +547,25 @@ mod tests {
 	fn test_parse_empty_params() {
 		let input = quote!(|| { div { "hello" } });
 		let result: PageMacro = syn::parse2(input).unwrap();
-		assert!(result.params().is_empty());
-		assert_eq!(result.body().nodes.len(), 1);
-	}
-
-	#[test]
-	fn test_parse_body_only_as_implicit_body() {
-		let input = quote!({ div { "Hello" } });
-		let result: PageMacro = syn::parse2(input).unwrap();
-		assert!(result.is_implicit_body());
-		assert!(matches!(result.form, PageMacroForm::ImplicitBody { .. }));
-		assert!(result.params().is_empty());
-		assert_eq!(result.body().nodes.len(), 1);
-	}
-
-	#[test]
-	fn test_parse_empty_closure_as_strict_closure() {
-		let input = quote!(|| { div { "Static" } });
-		let result: PageMacro = syn::parse2(input).unwrap();
-		assert!(!result.is_implicit_body());
-		assert!(matches!(result.form, PageMacroForm::StrictClosure { .. }));
-		assert!(result.params().is_empty());
-		assert_eq!(result.body().nodes.len(), 1);
+		assert!(result.params.is_empty());
+		assert_eq!(result.body.nodes.len(), 1);
 	}
 
 	#[test]
 	fn test_parse_single_param() {
 		let input = quote!(|name: String| { div { "hello" } });
 		let result: PageMacro = syn::parse2(input).unwrap();
-		assert_eq!(result.params().len(), 1);
-		assert_eq!(result.params()[0].name.to_string(), "name");
+		assert_eq!(result.params.len(), 1);
+		assert_eq!(result.params[0].name.to_string(), "name");
 	}
 
 	#[test]
 	fn test_parse_multiple_params() {
 		let input = quote!(|name: String, count: i32| { div { "hello" } });
 		let result: PageMacro = syn::parse2(input).unwrap();
-		assert_eq!(result.params().len(), 2);
-		assert_eq!(result.params()[0].name.to_string(), "name");
-		assert_eq!(result.params()[1].name.to_string(), "count");
+		assert_eq!(result.params.len(), 2);
+		assert_eq!(result.params[0].name.to_string(), "name");
+		assert_eq!(result.params[1].name.to_string(), "count");
 	}
 
 	#[test]
@@ -588,7 +573,7 @@ mod tests {
 		let input = quote!(|| { div { "hello" } });
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::Element(elem) => {
 				assert_eq!(elem.tag.to_string(), "div");
 				assert_eq!(elem.children.len(), 1);
@@ -608,7 +593,7 @@ mod tests {
 		});
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::Element(elem) => {
 				assert_eq!(elem.attrs.len(), 2);
 				assert_eq!(elem.attrs[0].name.to_string(), "class");
@@ -629,7 +614,7 @@ mod tests {
 		});
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::Element(elem) => {
 				assert_eq!(elem.tag.to_string(), "button");
 				assert_eq!(elem.events.len(), 1);
@@ -649,7 +634,7 @@ mod tests {
 		});
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::Element(elem) => {
 				assert_eq!(elem.tag.to_string(), "div");
 				assert_eq!(elem.children.len(), 2);
@@ -673,7 +658,7 @@ mod tests {
 		let input = quote!(|| { "Hello, World!" });
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::Text(text) => {
 				assert_eq!(text.content, "Hello, World!");
 			}
@@ -690,7 +675,7 @@ mod tests {
 		});
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::If(if_node) => {
 				assert_eq!(if_node.then_branch.len(), 1);
 				assert!(if_node.else_branch.is_none());
@@ -710,7 +695,7 @@ mod tests {
 		});
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::If(if_node) => {
 				assert!(if_node.else_branch.is_some());
 				match &if_node.else_branch {
@@ -733,7 +718,7 @@ mod tests {
 		});
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::For(for_node) => {
 				assert_eq!(for_node.body.len(), 1);
 			}
@@ -750,7 +735,7 @@ mod tests {
 		});
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::For(for_node) => {
 				assert!(for_node.key.is_some());
 				assert_eq!(for_node.body.len(), 1);
@@ -766,7 +751,7 @@ mod tests {
 		});
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::Component(comp) => {
 				assert_eq!(comp.name.to_string(), "MyButton");
 				assert_eq!(comp.args.len(), 1);
@@ -784,7 +769,7 @@ mod tests {
 		});
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::Component(comp) => {
 				assert_eq!(comp.name.to_string(), "MyButton");
 				assert_eq!(comp.args.len(), 3);
@@ -805,7 +790,7 @@ mod tests {
 		});
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::Component(comp) => {
 				assert_eq!(comp.name.to_string(), "MyWrapper");
 				assert_eq!(comp.args.len(), 1);
@@ -821,7 +806,7 @@ mod tests {
 		let input = quote!(|| { MyComponent() });
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::Component(comp) => {
 				assert_eq!(comp.name.to_string(), "MyComponent");
 				assert!(comp.args.is_empty());
@@ -838,7 +823,7 @@ mod tests {
 		});
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::Component(comp) => {
 				assert_eq!(comp.args.len(), 1);
 			}
@@ -853,7 +838,7 @@ mod tests {
 		});
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::Component(comp) => {
 				assert_eq!(comp.args.len(), 1);
 				assert_eq!(comp.args[0].name.to_string(), "count");
@@ -872,7 +857,7 @@ mod tests {
 		});
 		let result: PageMacro = syn::parse2(input).unwrap();
 
-		match &result.body().nodes[0] {
+		match &result.body.nodes[0] {
 			PageNode::Element(elem) => {
 				assert_eq!(elem.tag.to_string(), "div");
 				assert_eq!(elem.children.len(), 2);
@@ -906,23 +891,8 @@ mod tests {
 		};
 		let result: PageMacro = syn::parse2(input).unwrap();
 		assert!(result.head.is_some());
-		assert!(result.params().is_empty());
-		assert_eq!(result.body().nodes.len(), 1);
-	}
-
-	#[test]
-	fn test_parse_with_head_directive_and_implicit_body() {
-		use proc_macro2::{Punct, Spacing};
-		let pound = Punct::new('#', Spacing::Alone);
-		let input = quote! {
-			#pound head: page_head,
-			{ main { "Project settings" } }
-		};
-		let result: PageMacro = syn::parse2(input).unwrap();
-		assert!(result.head.is_some());
-		assert!(result.is_implicit_body());
-		assert!(result.params().is_empty());
-		assert_eq!(result.body().nodes.len(), 1);
+		assert!(result.params.is_empty());
+		assert_eq!(result.body.nodes.len(), 1);
 	}
 
 	#[test]
@@ -935,8 +905,8 @@ mod tests {
 		};
 		let result: PageMacro = syn::parse2(input).unwrap();
 		assert!(result.head.is_some());
-		assert_eq!(result.params().len(), 1);
-		assert_eq!(result.params()[0].name.to_string(), "name");
+		assert_eq!(result.params.len(), 1);
+		assert_eq!(result.params[0].name.to_string(), "name");
 	}
 
 	#[test]

@@ -21,69 +21,12 @@ pub struct TypedPageMacro {
 	///
 	/// When present, the generated view will be wrapped with `.with_head(head_expr)`.
 	pub head: Option<syn::Expr>,
-	/// The validated and typed page macro form.
-	pub form: TypedPageMacroForm,
+	/// Closure-style parameters (props)
+	pub params: Vec<PageParam>,
+	/// The validated and typed body
+	pub body: TypedPageBody,
 	/// Span for error reporting
 	pub span: Span,
-}
-
-impl TypedPageMacro {
-	/// Returns the validated and typed body.
-	pub fn body(&self) -> &TypedPageBody {
-		match &self.form {
-			TypedPageMacroForm::StrictClosure { body, .. }
-			| TypedPageMacroForm::ImplicitBody { body, .. } => body,
-		}
-	}
-
-	/// Returns the closure-style parameters when this macro uses strict closure form.
-	pub fn params(&self) -> &[PageParam] {
-		match &self.form {
-			TypedPageMacroForm::StrictClosure { params, .. } => params,
-			TypedPageMacroForm::ImplicitBody { .. } => &[],
-		}
-	}
-
-	/// Returns implicit captures discovered for body-only form.
-	pub fn implicit_captures(&self) -> &[ImplicitPageCapture] {
-		match &self.form {
-			TypedPageMacroForm::StrictClosure { .. } => &[],
-			TypedPageMacroForm::ImplicitBody { captures, .. } => captures,
-		}
-	}
-
-	/// Returns `true` when this macro uses body-only implicit capture form.
-	pub fn is_implicit_body(&self) -> bool {
-		matches!(self.form, TypedPageMacroForm::ImplicitBody { .. })
-	}
-}
-
-/// A captured identifier used by body-only `page!` form.
-#[derive(Debug, Clone)]
-pub struct ImplicitPageCapture {
-	/// Captured identifier.
-	pub ident: syn::Ident,
-	/// Span for error reporting.
-	pub span: Span,
-}
-
-/// The typed syntactic form used by a `page!` macro invocation.
-#[derive(Debug)]
-pub enum TypedPageMacroForm {
-	/// A strict closure form such as `page!(|name: String| { ... })`.
-	StrictClosure {
-		/// Closure-style parameters (props).
-		params: Vec<PageParam>,
-		/// The validated and typed body.
-		body: TypedPageBody,
-	},
-	/// A body-only form with implicit captures.
-	ImplicitBody {
-		/// Captured identifiers discovered in the body.
-		captures: Vec<ImplicitPageCapture>,
-		/// The validated and typed body.
-		body: TypedPageBody,
-	},
 }
 
 /// The typed body of a page! macro, containing validated nodes.
