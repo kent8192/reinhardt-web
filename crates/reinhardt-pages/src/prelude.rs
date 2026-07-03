@@ -28,6 +28,8 @@
 //!
 //! ## Reactive System
 //! - [`Signal`], [`Effect`], [`Memo`], [`Resource`], [`ResourceState`]
+//! - [`LatestResourceValue`], [`LatestResourceState`],
+//!   [`use_latest_resource_value`]
 //! - Context: [`Context`], [`ContextGuard`], [`create_context`], [`get_context`],
 //!   [`provide_context`], [`remove_context`]
 //!
@@ -75,7 +77,10 @@
 // Reactive System
 // ============================================================================
 
-pub use crate::reactive::{Effect, Memo, Resource, ResourceState, Signal};
+pub use crate::reactive::{
+	Effect, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, Memo, Resource,
+	ResourceState, Signal, use_latest_resource_value,
+};
 
 // Context system
 pub use crate::reactive::{
