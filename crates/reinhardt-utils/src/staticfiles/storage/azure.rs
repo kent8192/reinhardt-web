@@ -32,7 +32,10 @@ pub struct AzureBlobConfig {
 	pub container: String,
 	/// Path prefix within container
 	pub prefix: Option<String>,
-	/// Base URL for generating file URLs
+	/// Public base URL for generated file URLs.
+	///
+	/// Blob service API calls always use the Azure account endpoint derived
+	/// from `account_name` and `container`.
 	pub base_url: String,
 }
 
@@ -83,7 +86,7 @@ impl AzureBlobConfig {
 		self
 	}
 
-	/// Set base URL for file URLs
+	/// Set the public base URL for generated file URLs.
 	pub fn with_base_url(mut self, base_url: String) -> Self {
 		self.base_url = base_url.trim_end_matches('/').to_string();
 		self
@@ -156,10 +159,17 @@ impl AzureBlobStorage {
 		}
 	}
 
+	fn service_base_url(&self) -> String {
+		format!(
+			"https://{}.blob.core.windows.net/{}",
+			self.config.account_name, self.config.container
+		)
+	}
+
 	fn blob_url(&self, blob_name: &str) -> String {
 		format!(
 			"{}/{}",
-			self.config.base_url.trim_end_matches('/'),
+			self.service_base_url(),
 			utf8_percent_encode(blob_name, NON_ALPHANUMERIC)
 		)
 	}
@@ -523,5 +533,18 @@ mod tests {
 		let storage = storage(config);
 
 		assert_eq!(storage.url("file.txt"), "https://cdn.example.com/file.txt");
+	}
+
+	#[test]
+	fn test_blob_requests_use_service_endpoint_with_custom_public_base() {
+		let config = AzureBlobConfig::new("teststorage".to_string(), "testcontainer".to_string())
+			.with_base_url("https://cdn.example.com".to_string());
+
+		let storage = storage(config);
+
+		assert_eq!(
+			storage.blob_url("static/file.txt"),
+			"https://teststorage.blob.core.windows.net/testcontainer/static%2Ffile%2Etxt"
+		);
 	}
 }

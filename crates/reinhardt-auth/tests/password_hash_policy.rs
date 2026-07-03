@@ -117,6 +117,21 @@ impl PasswordHasher for DefaultIdentifierPreferredHasher {
 	}
 }
 
+#[derive(Clone)]
+struct ErroringDefaultIdentifierPreferredHasher;
+
+impl PasswordHasher for ErroringDefaultIdentifierPreferredHasher {
+	fn hash(&self, password: &str) -> Result<String, Error> {
+		Ok(format!("new${password}"))
+	}
+
+	fn verify(&self, _password: &str, _hash: &str) -> Result<bool, Error> {
+		Err(Error::Authentication(
+			"preferred hasher could not parse this hash".to_string(),
+		))
+	}
+}
+
 #[cfg(feature = "bcrypt-hasher")]
 #[derive(Clone)]
 struct Bcrypt2xCompatibilityHasher;
@@ -254,6 +269,23 @@ fn policy_checks_default_identifier_legacy_after_preferred_miss() {
 	let result = policy
 		.verify_with_update("secret", "legacy$secret")
 		.expect("default identifier legacy hasher should be checked after preferred miss");
+
+	assert_eq!(
+		result,
+		PasswordVerification::ValidNeedsRehash {
+			updated_hash: "new$secret".to_string(),
+		}
+	);
+}
+
+#[test]
+fn policy_checks_default_identifier_legacy_after_preferred_parse_error() {
+	let policy = PasswordHashPolicy::new(ErroringDefaultIdentifierPreferredHasher)
+		.with_legacy(DefaultIdentifierHasher);
+
+	let result = policy
+		.verify_with_update("secret", "legacy$secret")
+		.expect("legacy hasher should be checked after preferred parse errors");
 
 	assert_eq!(
 		result,

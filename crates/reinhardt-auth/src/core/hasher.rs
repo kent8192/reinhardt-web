@@ -197,12 +197,14 @@ impl PasswordHashPolicy {
 			}
 		}
 
-		if self.preferred.algorithm().is_none() && self.preferred.verify(password, hash)? {
+		if self.preferred.algorithm().is_none()
+			&& self.preferred.verify(password, hash).unwrap_or(false)
+		{
 			return self.verify_preferred(password, hash);
 		}
 
 		for legacy in &self.legacy {
-			if legacy.algorithm().is_none() && legacy.verify(password, hash)? {
+			if legacy.algorithm().is_none() && legacy.verify(password, hash).unwrap_or(false) {
 				return Ok(PasswordVerification::ValidNeedsRehash {
 					updated_hash: self.preferred.hash(password)?,
 				});

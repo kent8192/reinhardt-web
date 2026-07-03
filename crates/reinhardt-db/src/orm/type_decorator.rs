@@ -227,6 +227,13 @@ impl PhoneCountry {
 			Self::Fr => "33",
 		}
 	}
+
+	fn national_lengths(self) -> &'static [usize] {
+		match self {
+			Self::Us => &[10],
+			Self::Gb | Self::Jp | Self::De | Self::Fr => &[10, 11],
+		}
+	}
 }
 
 impl PhoneNumberType {
@@ -254,12 +261,30 @@ impl PhoneNumberType {
 
 	fn validate(&self, number: &str) -> Result<(), TypeError> {
 		let digits = Self::digits(number);
-		if digits.is_empty() || digits.len() > 15 {
+		if digits.is_empty() || digits.len() > 15 || !self.country_matches(&digits) {
 			return Err(TypeError::ValidationError(
 				"Invalid phone number".to_string(),
 			));
 		}
 		Ok(())
+	}
+
+	fn country_matches(&self, digits: &str) -> bool {
+		if self
+			.default_country
+			.national_lengths()
+			.contains(&digits.len())
+		{
+			return true;
+		}
+
+		digits
+			.strip_prefix(self.default_country.calling_code())
+			.is_some_and(|national| {
+				self.default_country
+					.national_lengths()
+					.contains(&national.len())
+			})
 	}
 
 	fn format(&self, number: &str) -> String {
@@ -594,9 +619,18 @@ mod tests {
 		let valid = "555-123-4567".to_string();
 		assert!(decorator.process_bind_param(&valid).is_ok());
 
-		// Test empty string
-		let invalid = "".to_string();
-		assert!(decorator.process_bind_param(&invalid).is_err());
+		for invalid in ["", "123"] {
+			assert!(decorator.process_bind_param(&invalid.to_string()).is_err());
+		}
+	}
+
+	#[test]
+	fn test_phone_number_validation_uses_configured_country() {
+		let decorator = PhoneNumberType::new("US");
+
+		let gb_number = "+44 20 7123 4567".to_string();
+
+		assert!(decorator.process_bind_param(&gb_number).is_err());
 	}
 
 	#[test]
