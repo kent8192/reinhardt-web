@@ -13,6 +13,11 @@ export interface ManagedServer {
   startMs: number;
 }
 
+const activeServers = new Set<ManagedServer>();
+const cleanupSignals: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
+let signalCleanupInstalled = false;
+let handlingCleanupSignal = false;
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -32,6 +37,7 @@ export async function startServer(command: string, cwd: string, url: string, tim
     spawnError = error;
   });
   const server: ManagedServer = { command, cwd, process: child, stdout: "", stderr: "", startMs: 0 };
+  registerServer(server);
   child.stdout.on("data", (chunk) => {
     server.stdout += chunk.toString();
   });
@@ -64,30 +70,63 @@ export async function startServer(command: string, cwd: string, url: string, tim
 
 export async function stopServer(server: ManagedServer): Promise<void> {
   const child = server.process;
-  if (!child.pid) {
+  try {
+    if (!child.pid) {
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      return;
+    }
+
+    const alreadyClosed = child.exitCode !== null || child.signalCode !== null;
+    const closed = alreadyClosed
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => {
+          child.once("close", () => resolve());
+        });
+    terminateProcessTree(child, "SIGTERM");
+    const closedGracefully = await Promise.race([
+      closed.then(() => true),
+      delay(2_000).then(() => false)
+    ]);
+    if (!closedGracefully) {
+      terminateProcessTree(child, "SIGKILL");
+      await Promise.race([closed, delay(500)]);
+    }
     child.stdout?.destroy();
     child.stderr?.destroy();
+    child.unref();
+  } finally {
+    activeServers.delete(server);
+  }
+}
+
+function registerServer(server: ManagedServer): void {
+  activeServers.add(server);
+  installServerSignalCleanup();
+}
+
+function installServerSignalCleanup(): void {
+  if (signalCleanupInstalled) {
     return;
   }
-
-  const alreadyClosed = child.exitCode !== null || child.signalCode !== null;
-  const closed = alreadyClosed
-    ? Promise.resolve()
-    : new Promise<void>((resolve) => {
-        child.once("close", () => resolve());
-      });
-  terminateProcessTree(child, "SIGTERM");
-  const closedGracefully = await Promise.race([
-    closed.then(() => true),
-    delay(2_000).then(() => false)
-  ]);
-  if (!closedGracefully) {
-    terminateProcessTree(child, "SIGKILL");
-    await Promise.race([closed, delay(500)]);
+  signalCleanupInstalled = true;
+  for (const signal of cleanupSignals) {
+    process.once(signal, () => {
+      void stopActiveServersForSignal(signal);
+    });
   }
-  child.stdout?.destroy();
-  child.stderr?.destroy();
-  child.unref();
+}
+
+async function stopActiveServersForSignal(signal: NodeJS.Signals): Promise<void> {
+  if (handlingCleanupSignal) {
+    return;
+  }
+  handlingCleanupSignal = true;
+  try {
+    await Promise.allSettled([...activeServers].map((server) => stopServer(server)));
+  } finally {
+    process.exit(signal === "SIGINT" ? 130 : 143);
+  }
 }
 
 async function assertPortAvailable(urlText: string): Promise<void> {
