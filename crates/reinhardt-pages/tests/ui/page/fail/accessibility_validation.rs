@@ -3,12 +3,58 @@
 // reinhardt-fmt: ignore-all
 
 use reinhardt_pages::page;
+use reinhardt_pages::component::Page;
+
+#[derive(bon::Builder)]
+struct WrapperProps {
+	children: Option<Page>,
+}
+
+fn wrapper(_p: WrapperProps) -> Page {
+	page!(|| {
+		div {}
+	})()
+}
 
 fn main() {
 	let _unlabelled_input = page!(|| {
 		input {
 			r#type: "text",
 			name: "query",
+		}
+	});
+
+	let _empty_wrapping_label = page!(|| {
+		label {
+			input {
+				r#type: "text",
+				name: "email",
+			}
+		}
+	});
+
+	let _empty_for_label = page!(|| {
+		label {
+			r#for: "email-empty",
+		}
+		input {
+			id: "email-empty",
+			r#type: "text",
+			name: "email",
+		}
+	});
+
+	let _component_child_label_does_not_label_sibling = page!(|| {
+		Wrapper {
+			label {
+				r#for: "component-email",
+				"Email"
+			}
+		}
+		input {
+			id: "component-email",
+			r#type: "text",
+			name: "email",
 		}
 	});
 

@@ -477,14 +477,7 @@ fn collect_static_scope_label_targets(nodes: &[TypedPageNode], labels: &mut A11y
 				collect_label_target_from_element(elem, labels);
 				collect_static_scope_label_targets(&elem.children, labels);
 			}
-			TypedPageNode::Component(component) => {
-				if let Some(children) = &component.children {
-					collect_static_scope_label_targets(children, labels);
-				}
-				for slot in &component.named_slots {
-					collect_static_scope_label_targets(&slot.children, labels);
-				}
-			}
+			TypedPageNode::Component(_) => {}
 			TypedPageNode::Watch(watch_node) => {
 				collect_static_scope_label_target_in_node(&watch_node.expr, labels);
 			}
@@ -498,6 +491,7 @@ fn collect_static_scope_label_targets(nodes: &[TypedPageNode], labels: &mut A11y
 
 fn collect_label_target_from_element(elem: &TypedPageElement, labels: &mut A11yLabels) {
 	if elem.tag == "label"
+		&& label_has_accessible_content(elem)
 		&& let Some(attr) = find_attr(&elem.attrs, "for")
 	{
 		if let Some(value) = attr.value.as_string() {
@@ -516,14 +510,7 @@ fn collect_static_scope_label_target_in_node(node: &TypedPageNode, labels: &mut 
 			collect_label_target_from_element(elem, labels);
 			collect_static_scope_label_targets(&elem.children, labels);
 		}
-		TypedPageNode::Component(component) => {
-			if let Some(children) = &component.children {
-				collect_static_scope_label_targets(children, labels);
-			}
-			for slot in &component.named_slots {
-				collect_static_scope_label_targets(&slot.children, labels);
-			}
-		}
+		TypedPageNode::Component(_) => {}
 		TypedPageNode::Watch(watch_node) => {
 			collect_static_scope_label_target_in_node(&watch_node.expr, labels);
 		}
@@ -604,7 +591,9 @@ fn validate_element_accessibility(
 	inside_label: bool,
 ) -> Result<()> {
 	let tag = elem.tag.to_string();
-	let nested_inside_label = inside_label || tag == "label";
+	let nested_inside_label =
+		inside_label || (tag == "label" && label_has_accessible_content(elem));
+	let statically_hidden = element_is_statically_hidden(&elem.attrs);
 
 	if !elem.a11y_disabled {
 		validate_role_value(&elem.attrs)?;
@@ -612,10 +601,16 @@ fn validate_element_accessibility(
 		validate_iframe_title(&tag, &elem.attrs, elem.span)?;
 
 		match tag.as_str() {
-			"button" | "a" => {
+			"button" if !statically_hidden => {
 				validate_interactive_accessibility(&tag, &elem.attrs, &elem.children, elem.span)?;
 			}
-			"input" if !input_is_hidden_or_dynamic_type(&elem.attrs) => {
+			"a" if !statically_hidden && anchor_is_interactive(elem) => {
+				validate_interactive_accessibility(&tag, &elem.attrs, &elem.children, elem.span)?;
+			}
+			"input" if !statically_hidden && input_is_button_style(&elem.attrs) => {
+				validate_input_button_accessibility(&elem.attrs, elem.span)?;
+			}
+			"input" if !statically_hidden && !input_is_hidden_or_dynamic_type(&elem.attrs) => {
 				validate_form_control_accessibility(
 					&tag,
 					&elem.attrs,
@@ -624,7 +619,7 @@ fn validate_element_accessibility(
 					elem.span,
 				)?;
 			}
-			"select" | "textarea" => {
+			"select" | "textarea" if !statically_hidden => {
 				validate_form_control_accessibility(
 					&tag,
 					&elem.attrs,
@@ -656,6 +651,17 @@ fn has_accessible_name_attr(attrs: &[TypedPageAttr]) -> bool {
 		|| has_non_empty_or_dynamic_attr(attrs, "aria-labelledby")
 }
 
+fn label_has_accessible_content(elem: &TypedPageElement) -> bool {
+	has_accessible_name_attr(&elem.attrs) || has_accessible_content(&elem.children)
+}
+
+fn element_is_statically_hidden(attrs: &[TypedPageAttr]) -> bool {
+	find_attr(attrs, "hidden").is_some_and(|attr| match &attr.value {
+		AttrValue::BoolLit(value) => value.value(),
+		_ => false,
+	})
+}
+
 fn input_is_hidden_or_dynamic_type(attrs: &[TypedPageAttr]) -> bool {
 	let Some(attr) = find_attr(attrs, "type") else {
 		return false;
@@ -665,6 +671,45 @@ fn input_is_hidden_or_dynamic_type(attrs: &[TypedPageAttr]) -> bool {
 		Some(value) => value.eq_ignore_ascii_case("hidden"),
 		None => true,
 	}
+}
+
+fn input_static_type(attrs: &[TypedPageAttr]) -> Option<String> {
+	find_attr(attrs, "type")
+		.and_then(|attr| attr.value.as_string())
+		.map(|value| value.to_ascii_lowercase())
+}
+
+fn input_is_button_style(attrs: &[TypedPageAttr]) -> bool {
+	matches!(
+		input_static_type(attrs).as_deref(),
+		Some("submit" | "button" | "reset" | "image")
+	)
+}
+
+fn validate_input_button_accessibility(attrs: &[TypedPageAttr], span: Span) -> Result<()> {
+	if has_accessible_name_attr(attrs) {
+		return Ok(());
+	}
+
+	let input_type = input_static_type(attrs);
+	let names_from_alt = matches!(input_type.as_deref(), Some("image"));
+	let label_attr = if names_from_alt { "alt" } else { "value" };
+	if has_non_empty_or_dynamic_attr(attrs, label_attr) {
+		return Ok(());
+	}
+
+	Err(syn::Error::new(
+		span,
+		format!(
+			"Element <input type=\"{}\"> requires an accessible name. Provide a non-empty `{}` or use `aria_label`/`aria_labelledby`.",
+			input_type.as_deref().unwrap_or("button"),
+			label_attr
+		),
+	))
+}
+
+fn anchor_is_interactive(elem: &TypedPageElement) -> bool {
+	find_attr(&elem.attrs, "href").is_some() || !elem.events.is_empty()
 }
 
 fn validate_form_control_accessibility(

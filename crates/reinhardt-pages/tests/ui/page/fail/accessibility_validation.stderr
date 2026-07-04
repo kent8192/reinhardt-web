@@ -1,9 +1,30 @@
 error: Element <input> requires an accessible label.
        Provide a wrapping label, a label with matching `for`/`id`, or use `aria_label`/`aria_labelledby`.
- --> tests/ui/page/fail/accessibility_validation.rs:9:3
-  |
-9 |         input {
-  |         ^^^^^
+  --> tests/ui/page/fail/accessibility_validation.rs:21:3
+   |
+21 |         input {
+   |         ^^^^^
+
+error: Element <input> requires an accessible label.
+       Provide a wrapping label, a label with matching `for`/`id`, or use `aria_label`/`aria_labelledby`.
+  --> tests/ui/page/fail/accessibility_validation.rs:29:4
+   |
+29 |             input {
+   |             ^^^^^
+
+error: Element <input> requires an accessible label.
+       Provide a wrapping label, a label with matching `for`/`id`, or use `aria_label`/`aria_labelledby`.
+  --> tests/ui/page/fail/accessibility_validation.rs:40:3
+   |
+40 |         input {
+   |         ^^^^^
+
+error: Element <input> requires an accessible label.
+       Provide a wrapping label, a label with matching `for`/`id`, or use `aria_label`/`aria_labelledby`.
+  --> tests/ui/page/fail/accessibility_validation.rs:54:3
+   |
+54 |         input {
+   |         ^^^^^
 
 error: Element <button> requires an accessible name.
        Either provide text content, an img child with non-empty alt text, or use 'aria_label'/'aria_labelledby'.
@@ -13,9 +34,9 @@ error: Element <button> requires an accessible name.
        Correct:   button { aria_label: "Close" }
        Correct:   button { span { "Submit" } }
        Incorrect: button { }
-  --> tests/ui/page/fail/accessibility_validation.rs:16:3
+  --> tests/ui/page/fail/accessibility_validation.rs:62:3
    |
-16 |         button {}
+62 |         button {}
    |         ^^^^^^
 
 error: Element <a> requires an accessible name.
@@ -26,31 +47,31 @@ error: Element <a> requires an accessible name.
        Correct:   a { aria_label: "Close" }
        Correct:   a { span { "Submit" } }
        Incorrect: a { }
-  --> tests/ui/page/fail/accessibility_validation.rs:20:3
+  --> tests/ui/page/fail/accessibility_validation.rs:66:3
    |
-20 |         a { href: "/missing-name" }
+66 |         a { href: "/missing-name" }
    |         ^
 
 error: Invalid ARIA role value `made-up-role`
-  --> tests/ui/page/fail/accessibility_validation.rs:25:4
+  --> tests/ui/page/fail/accessibility_validation.rs:71:4
    |
-25 |             role: "made-up-role",
+71 |             role: "made-up-role",
    |             ^^^^
 
 error: Attribute `tabindex` only allows static values `0` and `-1`; positive values hijack keyboard tab order
-  --> tests/ui/page/fail/accessibility_validation.rs:32:4
+  --> tests/ui/page/fail/accessibility_validation.rs:78:4
    |
-32 |             tabindex: 3,
+78 |             tabindex: 3,
    |             ^^^^^^^^
 
 error: Element <iframe> requires a non-empty `title` attribute for accessibility
-  --> tests/ui/page/fail/accessibility_validation.rs:38:3
+  --> tests/ui/page/fail/accessibility_validation.rs:84:3
    |
-38 |         iframe { src: "/embed" }
+84 |         iframe { src: "/embed" }
    |         ^^^^^^
 
 error: `a11y` accepts only `off` as an opt-out marker: `a11y: off`
-  --> tests/ui/page/fail/accessibility_validation.rs:45:10
+  --> tests/ui/page/fail/accessibility_validation.rs:91:10
    |
-45 |             a11y: true,
+91 |             a11y: true,
    |                   ^^^^

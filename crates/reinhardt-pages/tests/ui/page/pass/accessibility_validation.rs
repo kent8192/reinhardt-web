@@ -53,6 +53,31 @@ fn main() {
 		}
 	});
 
+	let input_button_names = page!(|| {
+		input {
+			r#type: "submit",
+			value: "Save",
+		}
+		input {
+			r#type: "image",
+			src: "/icons/save.svg",
+			alt: "Save",
+		}
+	});
+
+	let hidden_or_noninteractive = page!(|| {
+		input {
+			hidden: true,
+			name: "token",
+		}
+		button {
+			hidden: true,
+		}
+		a {
+			id: "top",
+		}
+	});
+
 	let role_tabindex_and_iframe = page!(|| {
 		div {
 			role: "region",
@@ -90,6 +115,8 @@ fn main() {
 		wrapped_control,
 		aria_labelled_controls,
 		named_interactions,
+		input_button_names,
+		hidden_or_noninteractive,
 		role_tabindex_and_iframe,
 		opt_out,
 	);
