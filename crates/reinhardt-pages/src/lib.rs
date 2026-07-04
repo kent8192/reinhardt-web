@@ -94,9 +94,10 @@
 //! ```
 //!
 //! DTO request types can opt in to generated client-form companions with
-//! [`ClientForm`]. The generated form keeps enum choices, DTO validation, and
-//! typed request assembly tied to the request type while using the same
-//! [`use_form`] runtime:
+//! [`ClientForm`]. The generated form keeps enum choices and typed request
+//! assembly tied to the request type while using the same [`use_form`] runtime.
+//! Add `#[client_form(validate)]` when the DTO implements `Validate` and should
+//! feed those errors into the generated form runtime:
 //!
 //! ```ignore
 //! use reinhardt_pages::{ClientForm, ClientFormChoices, use_form};
@@ -111,7 +112,7 @@
 //!
 //! #[reinhardt::dto]
 //! #[derive(Clone, serde::Serialize, serde::Deserialize, ClientForm)]
-//! #[client_form(server_fn = crate::server::submit_project)]
+//! #[client_form(server_fn = crate::server::submit_project, validate)]
 //! struct ProjectRequest {
 //!     name: String,
 //!     title: Option<String>,

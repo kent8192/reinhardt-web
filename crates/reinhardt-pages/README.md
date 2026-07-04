@@ -165,9 +165,10 @@ runtime.set_value(login_form.username_field(), "ada".to_string());
 ```
 
 DTO request types can opt in to generated client-form companions with
-`ClientForm`. This keeps request field names, enum choices, client validation,
-and typed request assembly tied to the DTO while still using the same
-`use_form` runtime:
+`ClientForm`. This keeps request field names, enum choices, and typed request
+assembly tied to the DTO while still using the same `use_form` runtime. Add
+`#[client_form(validate)]` when the DTO implements `Validate` and should feed
+those errors into the generated form runtime:
 
 ```rust,ignore
 use reinhardt_pages::{ClientForm, ClientFormChoices, use_form};
@@ -182,7 +183,7 @@ enum ProviderMode {
 
 #[reinhardt::dto]
 #[derive(Clone, serde::Serialize, serde::Deserialize, ClientForm)]
-#[client_form(server_fn = crate::server::submit_project)]
+#[client_form(server_fn = crate::server::submit_project, validate)]
 struct ProjectRequest {
     name: String,
     title: Option<String>,

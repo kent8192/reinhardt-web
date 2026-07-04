@@ -79,7 +79,7 @@ pub trait ServerFnMetadata: 'static {
 /// signature.
 pub trait ServerFnResponseMetadata: ServerFnMetadata {
 	/// Success response type (the `Ok` variant of the function's return type).
-	type Response: serde::Serialize + serde::de::DeserializeOwned + 'static;
+	type Response: serde::Serialize + 'static;
 	/// Error type returned by the public server function stub.
 	type Error: 'static;
 }

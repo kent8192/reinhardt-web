@@ -8,6 +8,8 @@ enum ProviderMode {
 	#[serde(rename = "live_api")]
 	LiveApi,
 	HTTPStatus,
+	#[serde(skip)]
+	Archived,
 }
 
 fn main() {
@@ -19,6 +21,10 @@ fn main() {
 	assert_eq!(choices[1].label, "live_api");
 	assert_eq!(choices[2].serialized_value, "h_t_t_p_status");
 	assert_eq!(choices[2].label, "h_t_t_p_status");
+	assert!(!choices
+		.iter()
+		.any(|choice| choice.serialized_value == "archived"));
+	assert!(matches!(ProviderMode::Archived, ProviderMode::Archived));
 	assert!(matches!(
 		ProviderMode::client_form_default(),
 		ProviderMode::Fake

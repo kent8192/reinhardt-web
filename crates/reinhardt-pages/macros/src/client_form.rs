@@ -91,6 +91,7 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 		fields: &editable_fields,
 		skipped_fields: &skipped_fields,
 		pages_crate: &pages_crate,
+		validate: options.validate,
 	});
 	let submit_method = options
 		.server_fn
@@ -116,6 +117,7 @@ struct FormItemContext<'a> {
 	fields: &'a [EditableField],
 	skipped_fields: &'a [SkippedField],
 	pages_crate: &'a proc_macro2::TokenStream,
+	validate: bool,
 }
 
 fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream {
@@ -128,6 +130,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 		fields,
 		skipped_fields,
 		pages_crate,
+		validate,
 	} = context;
 
 	let value_field_defs = fields.iter().map(|field| {
@@ -193,6 +196,14 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 	let apply_skipped_values = skipped_fields.iter().map(|field| {
 		let name = &field.name;
 		quote! { __initial_values.#name = values.#name.clone(); }
+	});
+	let apply_pristine_skipped_values = skipped_fields.iter().map(|field| {
+		let name = &field.name;
+		quote! { __initial_values.#name = new_defaults.#name.clone(); }
+	});
+	let value_eq_fields = fields.iter().map(|field| {
+		let name = &field.name;
+		quote! { self.#name == other.#name }
 	});
 	let set_field_arms = fields.iter().map(|field| {
 		let name = &field.name;
@@ -265,6 +276,19 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 		let variant = &field.variant;
 		quote! { #name => ::core::option::Option::Some(#field_ident::#variant) }
 	});
+	let runtime_validate_method = if validate {
+		quote! {
+			fn runtime_validate(&self) -> ::core::result::Result<(), #pages_crate::FormValidationError<Self::Field>> {
+				let request = #form_ident::values_to_request(&self.runtime_current_values());
+				#pages_crate::__private::client_form::validate_dto_request(
+					&request,
+					#form_ident::field_from_name,
+				)
+			}
+		}
+	} else {
+		quote! {}
+	};
 
 	quote! {
 		#[derive(Clone)]
@@ -273,11 +297,17 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 			#(#form_field_defs,)*
 		}
 
-			#[derive(Clone, PartialEq)]
-			#dto_vis struct #values_ident {
-				#(#value_field_defs,)*
-				#(#skipped_value_field_defs,)*
+		#[derive(Clone)]
+		#dto_vis struct #values_ident {
+			#(#value_field_defs,)*
+			#(#skipped_value_field_defs,)*
+		}
+
+		impl ::core::cmp::PartialEq for #values_ident {
+			fn eq(&self, other: &Self) -> bool {
+				#(#value_eq_fields)&&*
 			}
+		}
 
 		#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 		#dto_vis enum #field_ident {
@@ -355,6 +385,24 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 				#(#apply_values)*
 			}
 
+			fn runtime_apply_pristine_values(
+				&self,
+				current: &Self::Values,
+				old_defaults: &Self::Values,
+				new_defaults: &Self::Values,
+			) {
+				{
+					let mut __initial_values = self.__initial_values.borrow_mut();
+					#(#apply_pristine_skipped_values)*
+				}
+				for field in self.runtime_fields() {
+					let field = *field;
+					if !self.runtime_field_is_dirty(field, current, old_defaults) {
+						self.runtime_apply_field_value(field, new_defaults);
+					}
+				}
+			}
+
 			fn runtime_set_field_value<T>(&self, field: Self::Field, value: T)
 			where
 				T: ::core::any::Any + 'static,
@@ -393,13 +441,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 				}
 			}
 
-			fn runtime_validate(&self) -> ::core::result::Result<(), #pages_crate::FormValidationError<Self::Field>> {
-				let request = #form_ident::values_to_request(&self.runtime_current_values());
-				#pages_crate::__private::client_form::validate_dto_request(
-					&request,
-					#form_ident::field_from_name,
-				)
-			}
+			#runtime_validate_method
 
 			fn runtime_fields(&self) -> &'static [Self::Field] {
 				&[#(#fields_slice),*]
@@ -443,6 +485,7 @@ fn generate_submit_method(
 struct ClientFormOptions {
 	name: Option<Ident>,
 	server_fn: Option<Path>,
+	validate: bool,
 }
 
 impl ClientFormOptions {
@@ -450,6 +493,7 @@ impl ClientFormOptions {
 		let mut options = Self {
 			name: None,
 			server_fn: None,
+			validate: false,
 		};
 		for attr in attrs {
 			if !attr.path().is_ident("client_form") {
@@ -462,6 +506,8 @@ impl ClientFormOptions {
 				} else if meta.path.is_ident("server_fn") {
 					let value = meta.value()?.parse::<Path>()?;
 					options.server_fn = Some(value);
+				} else if meta.path.is_ident("validate") {
+					options.validate = true;
 				} else {
 					return Err(meta.error("unsupported client_form attribute"));
 				}
@@ -517,6 +563,8 @@ impl EditableField {
 	fn value_ty(&self) -> proc_macro2::TokenStream {
 		match &self.kind {
 			FieldKind::String
+			| FieldKind::OptionScalar
+			| FieldKind::OptionBool
 			| FieldKind::Scalar
 			| FieldKind::Bool
 			| FieldKind::Enum
@@ -544,6 +592,9 @@ impl EditableField {
 			FieldKind::String | FieldKind::OptionString => quote! { ::std::string::String::new() },
 			FieldKind::Bool => quote! { false },
 			FieldKind::Scalar => quote! { ::core::default::Default::default() },
+			FieldKind::OptionScalar | FieldKind::OptionBool => {
+				quote! { ::core::option::Option::None }
+			}
 			FieldKind::Enum => {
 				let ty = &self.ty;
 				quote! { <#ty as #pages_crate::ClientFormChoiceSource>::client_form_default() }
@@ -587,7 +638,9 @@ enum FieldKind {
 	String,
 	OptionString,
 	Scalar,
+	OptionScalar,
 	Bool,
+	OptionBool,
 	Enum,
 	OptionEnum,
 }
@@ -606,6 +659,12 @@ impl FieldKind {
 		if let Some(inner) = option_inner_type(ty) {
 			if is_string_type(inner) {
 				return Ok(Self::OptionString);
+			}
+			if is_bool_type(inner) {
+				return Ok(Self::OptionBool);
+			}
+			if is_numeric_primitive(inner) {
+				return Ok(Self::OptionScalar);
 			}
 			if is_unsupported_container(inner) || has_type_arguments(inner) {
 				return Err(syn::Error::new_spanned(

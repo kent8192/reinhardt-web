@@ -39,6 +39,10 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 	let mut choice_values = Vec::new();
 
 	for variant in data_enum.variants {
+		let variant_options = serde_variant_options(&variant.attrs)?;
+		if variant_options.skip {
+			continue;
+		}
 		if !matches!(variant.fields, Fields::Unit) {
 			return Err(syn::Error::new_spanned(
 				variant,
@@ -47,7 +51,8 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 		}
 
 		let variant_ident = variant.ident;
-		let serialized = serde_variant_rename(&variant.attrs)?
+		let serialized = variant_options
+			.rename
 			.unwrap_or_else(|| apply_rename_rule(&variant_ident.to_string(), rename_rule));
 		choice_values.push(quote! {
 			#pages_crate::ClientFormChoice {
@@ -113,8 +118,16 @@ fn serde_rename_all(attrs: &[syn::Attribute]) -> syn::Result<RenameRule> {
 	Ok(rename_rule)
 }
 
-fn serde_variant_rename(attrs: &[syn::Attribute]) -> syn::Result<Option<String>> {
-	let mut renamed = None;
+struct SerdeVariantOptions {
+	rename: Option<String>,
+	skip: bool,
+}
+
+fn serde_variant_options(attrs: &[syn::Attribute]) -> syn::Result<SerdeVariantOptions> {
+	let mut options = SerdeVariantOptions {
+		rename: None,
+		skip: false,
+	};
 	for attr in attrs {
 		if !attr.path().is_ident("serde") {
 			continue;
@@ -122,12 +135,17 @@ fn serde_variant_rename(attrs: &[syn::Attribute]) -> syn::Result<Option<String>>
 		attr.parse_nested_meta(|meta| {
 			if meta.path.is_ident("rename") {
 				let value = meta.value()?.parse::<LitStr>()?;
-				renamed = Some(value.value());
+				options.rename = Some(value.value());
+			} else if meta.path.is_ident("skip")
+				|| meta.path.is_ident("skip_serializing")
+				|| meta.path.is_ident("skip_deserializing")
+			{
+				options.skip = true;
 			}
 			Ok(())
 		})?;
 	}
-	Ok(renamed)
+	Ok(options)
 }
 
 fn apply_rename_rule(name: &str, rename_rule: RenameRule) -> String {

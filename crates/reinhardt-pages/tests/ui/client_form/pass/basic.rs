@@ -1,4 +1,3 @@
-use reinhardt_core::validators::{Validate, ValidationErrors};
 use reinhardt_pages::{
 	ClientForm, ClientFormChoiceSource, ClientFormChoices, FormRuntimeSource, use_form,
 };
@@ -16,15 +15,11 @@ struct ProfileRequest {
 	name: String,
 	title: Option<String>,
 	count: i32,
+	optional_count: Option<i32>,
 	active: bool,
+	optional_active: Option<bool>,
 	provider_mode: ProviderMode,
 	optional_mode: Option<ProviderMode>,
-}
-
-impl Validate for ProfileRequest {
-	fn validate(&self) -> Result<(), ValidationErrors> {
-		Ok(())
-	}
 }
 
 fn main() {
@@ -43,7 +38,9 @@ fn main() {
 			ProfileRequestClientFormField::Name,
 			ProfileRequestClientFormField::Title,
 			ProfileRequestClientFormField::Count,
+			ProfileRequestClientFormField::OptionalCount,
 			ProfileRequestClientFormField::Active,
+			ProfileRequestClientFormField::OptionalActive,
 			ProfileRequestClientFormField::ProviderMode,
 			ProfileRequestClientFormField::OptionalMode,
 		]

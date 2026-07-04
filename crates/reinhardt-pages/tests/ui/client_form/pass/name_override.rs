@@ -2,7 +2,7 @@ use reinhardt_core::validators::{Validate, ValidationErrors};
 use reinhardt_pages::ClientForm;
 
 #[derive(Clone, PartialEq, ClientForm)]
-#[client_form(name = SettingsForm)]
+#[client_form(name = SettingsForm, validate)]
 struct SettingsRequest {
 	name: String,
 }

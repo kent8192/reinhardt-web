@@ -6,8 +6,8 @@ use reinhardt_core::validators::{Validate, ValidationError, ValidationErrors};
 use reinhardt_pages::server_fn::ServerFnError;
 use reinhardt_pages::server_fn::server_fn;
 use reinhardt_pages::{
-	ClientForm, ClientFormChoiceSource, ClientFormChoices, FieldError, UseFormAsyncSubmitOutcome,
-	use_form,
+	ClientForm, ClientFormChoiceSource, ClientFormChoices, FieldError, ResetOnDeps,
+	UseFormAsyncSubmitOutcome, use_form,
 };
 use serde::{Deserialize, Serialize};
 
@@ -18,14 +18,19 @@ enum ProviderMode {
 	Fake,
 	LiveApi,
 	HTTPStatus,
+	#[serde(skip)]
+	Archived,
 }
 
 #[derive(Clone, Debug, PartialEq, ClientForm)]
+#[client_form(validate)]
 struct ProjectRequest {
 	name: String,
 	title: Option<String>,
 	retry_count: i32,
+	optional_retry_count: Option<i32>,
 	active: bool,
+	optional_active: Option<bool>,
 	provider_mode: ProviderMode,
 	optional_mode: Option<ProviderMode>,
 	#[client_form(skip)]
@@ -54,7 +59,9 @@ fn client_form_defaults_and_request_conversion() {
 		name: "demo".to_string(),
 		title: Some("Seed".to_string()),
 		retry_count: 2,
+		optional_retry_count: Some(5),
 		active: true,
+		optional_active: Some(false),
 		provider_mode: ProviderMode::LiveApi,
 		optional_mode: Some(ProviderMode::Fake),
 		tenant_id: Some("tenant-a".to_string()),
@@ -78,7 +85,9 @@ fn client_form_defaults_and_request_conversion() {
 
 	assert_eq!(request.title, None);
 	assert_eq!(request.retry_count, 2);
+	assert_eq!(request.optional_retry_count, Some(5));
 	assert!(request.active);
+	assert_eq!(request.optional_active, Some(false));
 	assert_eq!(request.optional_mode, Some(ProviderMode::Fake));
 	assert_eq!(request.tenant_id.as_deref(), Some("tenant-a"));
 	assert_eq!(request.revision, 7);
@@ -97,6 +106,48 @@ fn client_form_enum_choice_metadata_uses_serialized_values() {
 	assert_eq!(choices[2].serialized_value, "h_t_t_p_status");
 	assert_eq!(choices[2].label, "h_t_t_p_status");
 	assert_eq!(ProviderMode::client_form_default(), ProviderMode::Fake);
+	assert!(matches!(ProviderMode::Archived, ProviderMode::Archived));
+}
+
+#[test]
+fn client_form_reconcile_refreshes_skipped_defaults() {
+	let form = ProjectRequestClientForm::new().with_defaults(ProjectRequest {
+		name: "demo".to_string(),
+		title: Some("Seed".to_string()),
+		retry_count: 2,
+		optional_retry_count: Some(5),
+		active: true,
+		optional_active: Some(false),
+		provider_mode: ProviderMode::LiveApi,
+		optional_mode: Some(ProviderMode::Fake),
+		tenant_id: Some("tenant-a".to_string()),
+		revision: 7,
+	});
+	let runtime = use_form(&form)
+		.deps(0_u8)
+		.reset_on_deps(ResetOnDeps::KeepDirtyValues)
+		.build();
+	runtime.set_value(ProjectRequestClientFormField::Name, "edited".to_string());
+
+	let refreshed = ProjectRequestClientForm::new().with_defaults(ProjectRequest {
+		name: "server".to_string(),
+		title: Some("Server".to_string()),
+		retry_count: 3,
+		optional_retry_count: Some(8),
+		active: false,
+		optional_active: Some(true),
+		provider_mode: ProviderMode::Fake,
+		optional_mode: None,
+		tenant_id: Some("tenant-b".to_string()),
+		revision: 8,
+	});
+	runtime.reconcile_from(&refreshed, 1_u8);
+	let request = ProjectRequestClientForm::to_request(&runtime);
+
+	assert_eq!(request.name, "edited");
+	assert_eq!(request.title.as_deref(), Some("Server"));
+	assert_eq!(request.tenant_id.as_deref(), Some("tenant-b"));
+	assert_eq!(request.revision, 8);
 }
 
 #[test]
@@ -122,7 +173,7 @@ thread_local! {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ClientForm)]
-#[client_form(server_fn = submit_project)]
+#[client_form(server_fn = submit_project, validate)]
 struct SubmitProjectRequest {
 	name: String,
 }

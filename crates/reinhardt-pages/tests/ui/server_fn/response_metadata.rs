@@ -25,7 +25,7 @@ impl From<serde_json::Error> for ServerFnError {
 	}
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 pub struct DeclaredResponse {
 	value: String,
 }
@@ -53,9 +53,37 @@ fn assert_declared_error(value: GeneratedError) -> ServerFnError {
 	value
 }
 
+mod scoped {
+	use super::*;
+
+	pub(super) mod endpoint {
+		use super::*;
+
+		#[server_fn]
+		pub(super) async fn scoped_response_metadata_sample(
+			value: String,
+		) -> Result<DeclaredResponse, ServerFnError> {
+			Ok(DeclaredResponse { value })
+		}
+	}
+
+	type ScopedResponse =
+		<endpoint::scoped_response_metadata_sample::marker as ServerFnResponseMetadata>::Response;
+
+	fn assert_scoped_response(value: ScopedResponse) -> DeclaredResponse {
+		value
+	}
+
+	pub fn assert_scoped_marker_is_nameable() {
+		assert_response_metadata::<endpoint::scoped_response_metadata_sample::marker>();
+		let _assert_scoped_response: fn(ScopedResponse) -> DeclaredResponse = assert_scoped_response;
+	}
+}
+
 fn main() {
 	assert_response_metadata::<response_metadata_sample::marker>();
 	let _assert_declared_response: fn(GeneratedResponse) -> DeclaredResponse =
 		assert_declared_response;
 	let _assert_declared_error: fn(GeneratedError) -> ServerFnError = assert_declared_error;
+	scoped::assert_scoped_marker_is_nameable();
 }

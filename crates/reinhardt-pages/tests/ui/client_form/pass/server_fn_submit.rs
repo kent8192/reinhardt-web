@@ -5,7 +5,7 @@ use reinhardt_pages::{ClientForm, UseFormAsyncSubmitOutcome, use_form};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, ClientForm)]
-#[client_form(server_fn = submit_settings)]
+#[client_form(server_fn = submit_settings, validate)]
 pub struct SettingsRequest {
 	name: String,
 }
