@@ -1,6 +1,6 @@
 //! Route tree model for nested client layout routes.
 
-use super::core::{ClientRoute, ClientRouteMatch, RouteMetadata};
+use super::core::{ClientRoute, ClientRouteMatch, RouteGuard, RouteMetadata};
 use std::collections::HashMap;
 
 /// The structural kind of a route tree node.
@@ -213,6 +213,20 @@ impl RouteNode {
 		}
 		for child in &mut self.children {
 			updated |= child.update_metadata_for_name(name, metadata.clone());
+		}
+		updated
+	}
+
+	pub(crate) fn update_guard_for_name(&mut self, name: &str, guard: RouteGuard) -> bool {
+		let mut updated = false;
+		if self.metadata.name() == Some(name) {
+			if let Some(route) = &mut self.route {
+				route.set_guard(guard.clone());
+			}
+			updated = true;
+		}
+		for child in &mut self.children {
+			updated |= child.update_guard_for_name(name, guard.clone());
 		}
 		updated
 	}

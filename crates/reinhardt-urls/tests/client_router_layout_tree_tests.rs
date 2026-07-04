@@ -2,7 +2,8 @@
 
 use reinhardt_core::page::{IntoPage, Outlet, Page};
 use reinhardt_urls::routers::client_router::{
-	ClientRouter, FromRequest, LayoutInfo, PathParam, RouteContext, RouteRegistrationError,
+	ClientRouter, FromRequest, LayoutInfo, PathParam, RouteContext, RouteMetadata,
+	RouteRegistrationError,
 };
 
 #[derive(Debug)]
@@ -154,6 +155,46 @@ fn nested_layout_key_includes_ancestor_params() {
 		project_key.params(),
 		&[("org_id".to_string(), "acme".to_string())]
 	);
+}
+
+#[test]
+fn layout_guard_rejects_descendant_routes() {
+	let router = ClientRouter::new()
+		.try_routes(|routes| routes.layout(workspace_shell, |children| children.component(jobs)))
+		.expect("route tree should register")
+		.with_route_guard("writing-workspace", |matched| {
+			matched.params.get("project_id").map(String::as_str) == Some("7")
+		});
+
+	assert!(router.match_tree("/writing/projects/7/jobs/").is_some());
+	assert!(router.match_tree("/writing/projects/8/jobs/").is_none());
+	assert!(router.match_path("/writing/projects/8/jobs/").is_none());
+}
+
+#[test]
+fn layout_and_leaf_metadata_compose_in_match_order() {
+	let router = ClientRouter::new()
+		.try_routes(|routes| routes.layout(workspace_shell, |children| children.component(jobs)))
+		.expect("route tree should register")
+		.with_route_metadata(
+			"writing-workspace",
+			RouteMetadata::new()
+				.with_title("Workspace")
+				.with_requires_auth(true),
+		)
+		.with_route_metadata("writing-jobs", RouteMetadata::new().with_breadcrumb("Jobs"));
+
+	let matched = router
+		.match_tree("/writing/projects/7/jobs/")
+		.expect("route should match");
+	let metadata = matched.metadata_chain();
+
+	assert_eq!(metadata.len(), 2);
+	assert_eq!(metadata[0].name(), Some("writing-workspace"));
+	assert_eq!(metadata[0].route_metadata().title(), Some("Workspace"));
+	assert!(metadata[0].route_metadata().requires_auth());
+	assert_eq!(metadata[1].name(), Some("writing-jobs"));
+	assert_eq!(metadata[1].route_metadata().breadcrumb(), Some("Jobs"));
 }
 
 #[test]

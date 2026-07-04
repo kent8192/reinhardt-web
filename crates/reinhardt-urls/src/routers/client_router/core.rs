@@ -293,6 +293,10 @@ impl ClientRoute {
 		self.metadata = metadata;
 	}
 
+	pub(crate) fn set_guard(&mut self, guard: RouteGuard) {
+		self.guard = Some(guard);
+	}
+
 	pub(crate) fn prefix_name(&mut self, namespace: &str) {
 		if let Some(name) = &mut self.name {
 			*name = format!("{namespace}:{name}");
@@ -623,21 +627,50 @@ impl ClientRouter {
 		}
 	}
 
-	/// Adds metadata to an already-registered named route.
+	/// Adds metadata to an already-registered named route or layout.
 	///
 	/// # Panics
 	///
 	/// Panics if `name` is not registered.
 	pub fn with_route_metadata(mut self, name: &str, metadata: RouteMetadata) -> Self {
-		let index = *self.named_routes.get(name).unwrap_or_else(|| {
+		let mut updated = false;
+		if let Some(index) = self.named_routes.get(name).copied() {
+			self.routes[index].set_metadata(metadata.clone());
+			updated = true;
+		}
+		updated |= self
+			.route_tree
+			.update_metadata_for_name(name, metadata.clone());
+		if !updated {
 			panic!(
 				"Unknown client route name '{}': cannot attach metadata",
 				name
 			)
-		});
-		self.routes[index] = self.routes[index].clone().with_metadata(metadata.clone());
-		self.route_tree
-			.update_metadata_for_name(name, metadata.clone());
+		}
+		self
+	}
+
+	/// Adds a guard to an already-registered named route or layout.
+	///
+	/// Layout guards are evaluated for every matched descendant route.
+	///
+	/// # Panics
+	///
+	/// Panics if `name` is not registered.
+	pub fn with_route_guard<G>(mut self, name: &str, guard: G) -> Self
+	where
+		G: Fn(&ClientRouteMatch) -> bool + Send + Sync + 'static,
+	{
+		let guard: RouteGuard = Arc::new(guard);
+		let mut updated = false;
+		if let Some(index) = self.named_routes.get(name).copied() {
+			self.routes[index].set_guard(Arc::clone(&guard));
+			updated = true;
+		}
+		updated |= self.route_tree.update_guard_for_name(name, guard);
+		if !updated {
+			panic!("Unknown client route name '{}': cannot attach guard", name)
+		}
 		self
 	}
 
@@ -894,7 +927,8 @@ impl ClientRouter {
 	///
 	/// [`QueryParam`]: super::from_request::QueryParam
 	pub fn match_path(&self, path: &str) -> Option<ClientRouteMatch> {
-		self.match_path_filtered(path, |_, _| true)
+		self.match_tree(path)
+			.map(|matched| matched.leaf_match().clone())
 	}
 
 	fn match_legacy_path(&self, path: &str) -> Option<ClientRouteMatch> {
@@ -1435,7 +1469,7 @@ mod tests {
 		router.route_tree = RouteNode::root();
 
 		assert!(router.match_tree("/tree/").is_none());
-		assert!(router.match_path("/tree/").is_some());
+		assert!(router.match_path("/tree/").is_none());
 	}
 
 	#[test]
@@ -1500,6 +1534,15 @@ mod tests {
 		assert!(router.match_path("/admin/").is_none());
 		// No guard
 		assert!(router.match_path("/public/").is_some());
+	}
+
+	#[test]
+	fn named_route_guard_rejects_flat_route() {
+		let router = ClientRouter::new()
+			.route("admin", "/admin/", test_page)
+			.with_route_guard("admin", |_| false);
+
+		assert!(router.match_path("/admin/").is_none());
 	}
 
 	#[test]
