@@ -200,6 +200,13 @@ pub mod reinhardt_core {
 	pub use reinhardt_core::*;
 }
 
+#[cfg(all(feature = "core", not(native)))]
+#[doc(hidden)]
+pub mod reinhardt_core {
+	pub use reinhardt_core::model_info;
+	pub use reinhardt_core::validators;
+}
+
 #[cfg(all(feature = "core", native))]
 #[doc(hidden)]
 pub mod reinhardt_http {
