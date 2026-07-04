@@ -18,6 +18,7 @@ use reinhardt_query::types::PgBinOper;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::collections::HashMap;
+use std::time::Instant;
 use uuid::Uuid;
 
 // Django QuerySet API types
@@ -4101,7 +4102,24 @@ where
 		let sql = stmt.to_string(PostgresQueryBuilder);
 
 		// Execute query and deserialize results
-		let rows = conn.query(&sql, vec![]).await?;
+		let started_at = Instant::now();
+		let query_result = conn.query(&sql, vec![]).await;
+		let duration = started_at.elapsed();
+
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &[], duration)
+					.await;
+				rows
+			}
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &format!("{error:?}"))
+					.await;
+				return Err(error.into());
+			}
+		};
 		rows.into_iter()
 			.map(|row| {
 				serde_json::from_value(serde_json::to_value(&row.data).map_err(|e| {
@@ -4339,7 +4357,24 @@ where
 
 		let sql = stmt.to_string(PostgresQueryBuilder);
 
-		let rows = conn.query(&sql, vec![]).await?;
+		let started_at = Instant::now();
+		let query_result = conn.query(&sql, vec![]).await;
+		let duration = started_at.elapsed();
+
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &[], duration)
+					.await;
+				rows
+			}
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &format!("{error:?}"))
+					.await;
+				return Err(error.into());
+			}
+		};
 		rows.into_iter()
 			.map(|row| {
 				serde_json::from_value(serde_json::to_value(&row.data).map_err(|e| {
@@ -4512,12 +4547,32 @@ where
 
 		// Convert to SQL and extract parameter values
 		let (sql, values) = PostgresQueryBuilder.build_select(&stmt);
+		let param_samples = values
+			.iter()
+			.map(|value| value.to_sql_literal())
+			.collect::<Vec<_>>();
 
 		// Convert reinhardt_query::value::Values to QueryValue
 		let params = super::execution::convert_values(values);
 
 		// Execute query with parameters
-		let rows = conn.query(&sql, params).await?;
+		let started_at = Instant::now();
+		let query_result = conn.query(&sql, params).await;
+		let duration = started_at.elapsed();
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &param_samples, duration)
+					.await;
+				rows
+			}
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &format!("{error:?}"))
+					.await;
+				return Err(error.into());
+			}
+		};
 		if let Some(row) = rows.first() {
 			// Extract count from first row
 			if let Some(count_value) = row.data.get("count")
@@ -4793,6 +4848,17 @@ where
 		}
 	}
 
+	fn build_select_for_backend(
+		stmt: &SelectStatement,
+		backend: super::connection::DatabaseBackend,
+	) -> (String, reinhardt_query::prelude::Values) {
+		match backend {
+			super::connection::DatabaseBackend::Postgres => PostgresQueryBuilder.build_select(stmt),
+			super::connection::DatabaseBackend::MySql => MySqlQueryBuilder.build_select(stmt),
+			super::connection::DatabaseBackend::Sqlite => SqliteQueryBuilder.build_select(stmt),
+		}
+	}
+
 	fn update_value_to_query_expr(value: &UpdateValue) -> Expr {
 		match value {
 			UpdateValue::String(s) => Expr::val(s.clone()),
@@ -5009,9 +5075,7 @@ where
 	where
 		T: super::Model + Clone,
 	{
-		use reinhardt_query::prelude::{
-			Alias, BinOper, ColumnRef, Expr, PostgresQueryBuilder, Value,
-		};
+		use reinhardt_query::prelude::{Alias, BinOper, ColumnRef, Expr, Value};
 
 		// Get composite primary key definition from the model
 		let composite_pk = T::composite_primary_key().ok_or_else(|| {
@@ -5067,14 +5131,31 @@ where
 			}
 		}
 
-		// Build SQL with inline values (no placeholders)
-		let sql = query.to_string(PostgresQueryBuilder);
-
-		// Execute query using database connection
 		let conn = super::manager::get_connection().await?;
+		let (sql, values) = Self::build_select_for_backend(&query, conn.backend());
+		let param_samples = values
+			.iter()
+			.map(|value| value.to_sql_literal())
+			.collect::<Vec<_>>();
+		let params = super::execution::convert_values(values);
 
-		// Execute the SELECT query
-		let rows = conn.query(&sql, vec![]).await?;
+		let started_at = Instant::now();
+		let query_result = conn.query(&sql, params).await;
+		let duration = started_at.elapsed();
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &param_samples, duration)
+					.await;
+				rows
+			}
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &format!("{error:?}"))
+					.await;
+				return Err(error.into());
+			}
+		};
 
 		// Composite PK queries should return exactly one row
 		if rows.is_empty() {

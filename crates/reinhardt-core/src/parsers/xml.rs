@@ -208,6 +208,7 @@ impl XMLParser {
 		let mut reader = Reader::from_reader(bytes);
 		let mut stack: Vec<(String, Map<String, Value>)> = Vec::new();
 		let mut current_text = String::new();
+		let mut xml_version = XmlVersion::default();
 
 		loop {
 			match reader.read_event() {
@@ -247,7 +248,7 @@ impl XMLParser {
 
 				Ok(Event::Text(e)) => {
 					let text = e
-						.xml_content(XmlVersion::Implicit1_0)
+						.xml_content(xml_version)
 						.map_err(|e| Error::Validation(format!("XML decode error: {}", e)))?;
 
 					if self.config.trim_text {
@@ -289,6 +290,12 @@ impl XMLParser {
 					} else {
 						return Ok(json!({ name: value }));
 					}
+				}
+
+				Ok(Event::Decl(e)) => {
+					xml_version = e
+						.xml_version()
+						.map_err(|e| Error::Validation(format!("XML declaration error: {}", e)))?;
 				}
 
 				Ok(Event::Eof) => break,
@@ -412,6 +419,26 @@ mod tests {
 				assert!(value.is_object());
 				let root = value.get("root").unwrap();
 				assert_eq!(root.get("#text"), None);
+			}
+			_ => panic!("Expected XML"),
+		}
+	}
+
+	#[tokio::test]
+	async fn test_xml_parser_with_declaration() {
+		let parser = XMLParser::new();
+		let xml = Bytes::from(r#"<?xml version="1.1"?><root>John</root>"#);
+
+		let headers = HeaderMap::new();
+
+		let result = parser
+			.parse(Some("application/xml"), xml, &headers)
+			.await
+			.unwrap();
+		match result {
+			ParsedData::Xml(value) => {
+				let root = value.get("root").unwrap();
+				assert_eq!(root.get("#text").unwrap(), "John");
 			}
 			_ => panic!("Expected XML"),
 		}

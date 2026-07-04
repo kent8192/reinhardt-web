@@ -6,7 +6,9 @@
 //! Use [`reactive::batch`] to group related reactive writes into one update
 //! cycle. Async [`Action`] handles can be connected to [`OptimisticState`] with
 //! [`Action::with_optimistic`] so failed mutations automatically roll back
-//! optimistic UI state.
+//! optimistic UI state. [`Resource::latest_after`] and
+//! [`use_latest_resource_value`] compose loaded resource state with action
+//! success values so screens can render the latest loaded or mutated data.
 //!
 //! ## Features
 //!
@@ -380,14 +382,17 @@ pub use form_state::{
 };
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
-pub use reactive::{Effect, Memo, Resource, ResourceState, Signal, use_resource};
+pub use reactive::{
+	Effect, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, Memo, Resource,
+	ResourceState, Signal, use_latest_resource_value, use_resource,
+};
 // Re-export Context system
 pub use reactive::{
 	Context, ContextGuard, create_context, get_context, provide_context, remove_context,
 };
 // Re-export Hooks API
 pub use app::{ClientLauncher, LaunchCtx, PathCtx, PathParams};
-pub use reactive::{Action, ActionPhase, use_action};
+pub use reactive::{Action, ActionPhase, ActionStateBuilder, use_action, use_action_state};
 pub use reactive::{
 	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
 	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_id,
@@ -422,6 +427,10 @@ pub use reinhardt_pages_macros::{FromRequest, client_page, component, page_props
 // Private re-exports used by macro-generated code. Not part of the public API.
 #[doc(hidden)]
 pub mod __private {
+	pub fn capture<T: Clone>(value: &T) -> T {
+		value.clone()
+	}
+
 	pub mod fetch {
 		pub use crate::fetch::{
 			FetchCredentials, FetchResponse, request, request_with_credentials,

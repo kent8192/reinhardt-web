@@ -28,6 +28,8 @@
 //!
 //! ## Reactive System
 //! - [`Signal`], [`Effect`], [`Memo`], [`Resource`], [`ResourceState`]
+//! - [`LatestResourceValue`], [`LatestResourceState`],
+//!   [`use_latest_resource_value`]
 //! - Context: [`Context`], [`ContextGuard`], [`create_context`], [`get_context`],
 //!   [`provide_context`], [`remove_context`]
 //!
@@ -36,7 +38,7 @@
 //! - [`use_ref`], [`use_reducer`], [`use_transition`], [`use_deferred_value`]
 //! - [`use_id`], [`use_layout_effect`], [`use_debug_value`]
 //! - [`use_optimistic`], [`use_shared_state`]
-//! - [`use_action`], [`use_sync_external_store`]
+//! - [`use_action`], [`use_action_state`], [`use_sync_external_store`]
 //!
 //! ## Component System
 //! - [`Component`], [`PageElement`], [`IntoPage`], [`Page`], [`Props`]
@@ -75,7 +77,10 @@
 // Reactive System
 // ============================================================================
 
-pub use crate::reactive::{Effect, Memo, Resource, ResourceState, Signal};
+pub use crate::reactive::{
+	Effect, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, Memo, Resource,
+	ResourceState, Signal, use_latest_resource_value,
+};
 
 // Context system
 pub use crate::reactive::{
@@ -83,7 +88,7 @@ pub use crate::reactive::{
 };
 
 // Hooks API
-pub use crate::reactive::{Action, ActionPhase, use_action};
+pub use crate::reactive::{Action, ActionPhase, ActionStateBuilder, use_action, use_action_state};
 pub use crate::reactive::{
 	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
 	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_id,
