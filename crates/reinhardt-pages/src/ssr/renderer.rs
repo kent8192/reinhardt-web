@@ -1,11 +1,22 @@
 //! SSR Renderer for Component-based server-side rendering.
 
+use std::cell::RefCell;
 use std::collections::BTreeSet;
+use std::rc::Rc;
+use std::time::Duration;
 
 use super::markers::{HydrationMarker, HydrationStrategy};
+use super::resource_context::{
+	SsrResourceContext, install_context, resolve_boundary_resources, resolve_external_resources,
+};
 use super::state::SsrState;
+use super::stream::{SsrChunk, SsrStream};
 use crate::auth::AuthData;
 use crate::component::{Component, Head, IntoPage, Page};
+use futures_util::StreamExt;
+use futures_util::future::{FutureExt, LocalBoxFuture};
+use futures_util::stream::{self, FuturesUnordered};
+use reinhardt_core::types::page::{BOOLEAN_ATTRS, SuspenseNode, is_boolean_attr_truthy};
 
 /// Options for SSR rendering.
 #[derive(Debug, Clone)]
@@ -34,6 +45,12 @@ pub struct SsrOptions {
 	/// - `Island`: Mark as interactive islands
 	/// - `Static`: Mark as static content (no hydration)
 	pub default_hydration_strategy: HydrationStrategy,
+	/// Maximum time to wait for server resource resolution.
+	pub resource_timeout: Duration,
+	/// Enables streaming Suspense replacement chunks.
+	pub suspense_streaming: bool,
+	/// Optional nonce for inline streaming scripts.
+	pub script_nonce: Option<String>,
 }
 
 impl Default for SsrOptions {
@@ -47,6 +64,9 @@ impl Default for SsrOptions {
 			auth_data: None,
 			enable_partial_hydration: false,
 			default_hydration_strategy: HydrationStrategy::Full,
+			resource_timeout: Duration::from_secs(2),
+			suspense_streaming: true,
+			script_nonce: None,
 		}
 	}
 }
@@ -134,6 +154,24 @@ impl SsrOptions {
 		self.default_hydration_strategy = HydrationStrategy::Island;
 		self
 	}
+
+	/// Sets the server resource timeout.
+	pub fn resource_timeout(mut self, timeout: Duration) -> Self {
+		self.resource_timeout = timeout;
+		self
+	}
+
+	/// Enables or disables Suspense streaming.
+	pub fn suspense_streaming(mut self, enabled: bool) -> Self {
+		self.suspense_streaming = enabled;
+		self
+	}
+
+	/// Sets the nonce used by inline Suspense replacement scripts.
+	pub fn script_nonce(mut self, nonce: impl Into<String>) -> Self {
+		self.script_nonce = Some(nonce.into());
+		self
+	}
 }
 
 /// The main SSR renderer.
@@ -141,6 +179,29 @@ pub struct SsrRenderer {
 	options: SsrOptions,
 	state: SsrState,
 	hydration_marker_counter: u64,
+	suspense_boundary_counter: u64,
+}
+
+struct PendingSuspenseBoundary {
+	boundary_id: String,
+	node: SuspenseNode,
+	boundary_start_index: Option<usize>,
+	boundary_end_index: Option<usize>,
+}
+
+struct SuspenseStreamRuntime {
+	renderer: SsrRenderer,
+	context: Rc<RefCell<SsrResourceContext>>,
+	boundaries: FuturesUnordered<LocalBoxFuture<'static, (PendingSuspenseBoundary, bool)>>,
+}
+
+enum SuspenseStreamState {
+	Shell {
+		shell: String,
+		runtime: SuspenseStreamRuntime,
+	},
+	Boundaries(SuspenseStreamRuntime),
+	Done,
 }
 
 impl Default for SsrRenderer {
@@ -156,6 +217,7 @@ impl SsrRenderer {
 			options: SsrOptions::default(),
 			state: SsrState::new(),
 			hydration_marker_counter: 0,
+			suspense_boundary_counter: 0,
 		}
 	}
 
@@ -165,6 +227,7 @@ impl SsrRenderer {
 			options,
 			state: SsrState::new(),
 			hydration_marker_counter: 0,
+			suspense_boundary_counter: 0,
 		}
 	}
 
@@ -179,20 +242,19 @@ impl SsrRenderer {
 	}
 
 	/// Renders a component to an HTML string.
-	pub fn render<C: Component>(&mut self, component: &C) -> String {
-		let view = component.render();
-		self.render_view(&view)
+	pub async fn render<C: Component>(&mut self, component: &C) -> String {
+		self.render_view_factory(|| component.render()).await
 	}
 
 	/// Renders an IntoPage to an HTML string.
-	pub fn render_into_page<V: IntoPage>(&mut self, view: V) -> String {
+	pub async fn render_into_page<V: IntoPage>(&mut self, view: V) -> String {
 		let view = view.into_page();
-		self.render_view(&view)
+		self.render_view(&view).await
 	}
 
 	/// Renders a View to an HTML string.
-	pub fn render_view(&self, view: &Page) -> String {
-		view.render_to_string()
+	pub async fn render_view(&mut self, view: &Page) -> String {
+		self.render_view_factory(|| view.clone()).await
 	}
 
 	fn next_hydration_marker_id(&mut self) -> String {
@@ -201,16 +263,45 @@ impl SsrRenderer {
 		format!("rh-{}", id)
 	}
 
+	fn next_suspense_boundary_id(&mut self) -> String {
+		let id = self.suspense_boundary_counter;
+		self.suspense_boundary_counter += 1;
+		format!("rh-suspense-{id}")
+	}
+
 	/// Renders a component to a full HTML page.
-	pub fn render_page<C: Component>(&mut self, component: &C) -> String {
-		let content = self.render(component);
-		self.wrap_in_html(&content)
+	pub async fn render_page<C: Component>(&mut self, component: &C) -> SsrStream {
+		if self.options.suspense_streaming && !self.options.minify {
+			return self
+				.render_page_stream_from_factory(|| component.render())
+				.await;
+		}
+
+		let (view, content, body_tail) = self
+			.render_view_parts_from_factory(|| component.render())
+			.await;
+		let view_head = view.find_topmost_head().cloned();
+		SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
+			&content,
+			&body_tail,
+			view_head.as_ref(),
+		))
 	}
 
 	/// Renders an IntoPage to a full HTML page.
-	pub fn render_page_into_page<V: IntoPage>(&mut self, view: V) -> String {
-		let content = self.render_into_page(view);
-		self.wrap_in_html(&content)
+	pub async fn render_page_into_page<V: IntoPage>(&mut self, view: V) -> SsrStream {
+		let view = view.into_page();
+		if self.options.suspense_streaming && !self.options.minify {
+			return self.render_page_stream_from_factory(|| view.clone()).await;
+		}
+
+		let (view, content, body_tail) = self.render_view_parts_from_factory(|| view.clone()).await;
+		let view_head = view.find_topmost_head().cloned();
+		SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
+			&content,
+			&body_tail,
+			view_head.as_ref(),
+		))
 	}
 
 	/// Renders a View to a full HTML page, using the View's attached head if present.
@@ -236,18 +327,612 @@ impl SsrRenderer {
 	/// let view = page!(|| { div { "Hello" } })().with_head(my_head);
 	///
 	/// let mut renderer = SsrRenderer::new();
-	/// let html = renderer.render_page_with_view_head(view);
+	/// let html = renderer.render_page_with_view_head_to_string(view).await;
 	/// // html contains <title>My Page</title> in the head
 	/// ```
-	pub fn render_page_with_view_head(&mut self, view: Page) -> String {
-		// Extract head from the view tree
+	pub async fn render_page_with_view_head(&mut self, view: Page) -> SsrStream {
+		if self.options.suspense_streaming && !self.options.minify {
+			return self.render_page_stream_from_factory(|| view.clone()).await;
+		}
+
+		let (view, content, body_tail) = self.render_view_parts_from_factory(|| view.clone()).await;
 		let view_head = view.find_topmost_head().cloned();
+		SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
+			&content,
+			&body_tail,
+			view_head.as_ref(),
+		))
+	}
 
-		// Render the view content
-		let content = self.render_view(&view);
+	/// Renders a component to a buffered full HTML page.
+	pub async fn render_page_to_string<C: Component>(&mut self, component: &C) -> String {
+		let (view, content, body_tail) = self
+			.render_view_parts_from_factory(|| component.render())
+			.await;
+		let view_head = view.find_topmost_head().cloned();
+		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())
+	}
 
-		// Wrap in HTML using the extracted head
-		self.wrap_in_html_with_head(&content, view_head.as_ref())
+	/// Renders an IntoPage to a buffered full HTML page.
+	pub async fn render_page_into_page_to_string<V: IntoPage>(&mut self, view: V) -> String {
+		let view = view.into_page();
+		let (view, content, body_tail) = self.render_view_parts_from_factory(|| view.clone()).await;
+		let view_head = view.find_topmost_head().cloned();
+		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())
+	}
+
+	/// Renders a View to a buffered full HTML page, using attached head data.
+	pub async fn render_page_with_view_head_to_string(&mut self, view: Page) -> String {
+		let (view, content, body_tail) = self.render_view_parts_from_factory(|| view.clone()).await;
+		let view_head = view.find_topmost_head().cloned();
+		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())
+	}
+
+	async fn render_page_stream_from_factory<F>(&mut self, mut view_factory: F) -> SsrStream
+	where
+		F: FnMut() -> Page,
+	{
+		let context = Rc::new(RefCell::new(SsrResourceContext::new(
+			self.options.resource_timeout,
+		)));
+		let guard = install_context(Rc::clone(&context));
+		let discovery_view = view_factory();
+
+		let mut discovery_replacements = Vec::new();
+		let _ = self
+			.render_async_page(&discovery_view, &mut discovery_replacements, false)
+			.await;
+		drop(discovery_view);
+
+		resolve_external_resources(&context).await;
+		context.borrow_mut().reset_call_order_keys();
+		self.suspense_boundary_counter = 0;
+
+		let view = view_factory();
+		let mut boundaries = Vec::new();
+		let content = self.render_stream_shell_page(&view, &mut boundaries).await;
+		let view_head = view.find_topmost_head().cloned();
+		self.add_resolved_resources_to_state(&context);
+		drop(guard);
+
+		let shell = self.wrap_in_html_shell(&content, view_head.as_ref());
+		let boundary_futures = boundaries
+			.into_iter()
+			.map(|boundary| {
+				let context = Rc::clone(&context);
+				async move {
+					let boundary_resolved =
+						resolve_boundary_resources(&context, &boundary.boundary_id).await;
+					(boundary, boundary_resolved)
+				}
+				.boxed_local()
+			})
+			.collect::<FuturesUnordered<_>>();
+
+		let runtime = SuspenseStreamRuntime {
+			renderer: SsrRenderer {
+				options: self.options.clone(),
+				state: self.state.clone(),
+				hydration_marker_counter: self.hydration_marker_counter,
+				suspense_boundary_counter: self.suspense_boundary_counter,
+			},
+			context,
+			boundaries: boundary_futures,
+		};
+
+		SsrStream::from_stream(stream::unfold(
+			SuspenseStreamState::Shell { shell, runtime },
+			|state| async move {
+				match state {
+					SuspenseStreamState::Shell { shell, runtime } => Some((
+						SsrChunk::Html(shell),
+						SuspenseStreamState::Boundaries(runtime),
+					)),
+					SuspenseStreamState::Boundaries(mut runtime) => {
+						while let Some((boundary, resolved)) = runtime.boundaries.next().await {
+							if !resolved {
+								continue;
+							}
+
+							let guard = install_context(Rc::clone(&runtime.context));
+							if let Some(index) = boundary.boundary_start_index {
+								runtime.context.borrow_mut().set_call_order_index(index);
+							}
+							let replacement_page = boundary.node.render_content();
+							let mut nested_replacements = Vec::new();
+							let replacement = runtime
+								.renderer
+								.render_async_page(
+									&replacement_page,
+									&mut nested_replacements,
+									false,
+								)
+								.await;
+							if let Some(index) = boundary.boundary_end_index {
+								runtime.context.borrow_mut().set_call_order_index(index);
+							}
+							runtime
+								.renderer
+								.add_resolved_resources_to_state(&runtime.context);
+							drop(guard);
+
+							let chunk = runtime
+								.renderer
+								.render_suspense_replacement(&boundary.boundary_id, replacement);
+							return Some((
+								SsrChunk::Html(chunk),
+								SuspenseStreamState::Boundaries(runtime),
+							));
+						}
+
+						runtime
+							.renderer
+							.add_resolved_resources_to_state(&runtime.context);
+						Some((
+							SsrChunk::Html(runtime.renderer.wrap_in_html_suffix()),
+							SuspenseStreamState::Done,
+						))
+					}
+					SuspenseStreamState::Done => None,
+				}
+			},
+		))
+	}
+
+	async fn render_view_factory<F>(&mut self, view_factory: F) -> String
+	where
+		F: FnMut() -> Page,
+	{
+		let (_, content, body_tail) = self.render_view_parts_from_factory(view_factory).await;
+		format!("{content}{body_tail}")
+	}
+
+	async fn render_view_parts_from_factory<F>(
+		&mut self,
+		mut view_factory: F,
+	) -> (Page, String, String)
+	where
+		F: FnMut() -> Page,
+	{
+		let context = Rc::new(RefCell::new(SsrResourceContext::new(
+			self.options.resource_timeout,
+		)));
+		let guard = install_context(Rc::clone(&context));
+		let discovery_view = view_factory();
+
+		let mut discovery_replacements = Vec::new();
+		let _ = self
+			.render_async_page(&discovery_view, &mut discovery_replacements, false)
+			.await;
+		drop(discovery_view);
+
+		resolve_external_resources(&context).await;
+		context.borrow_mut().reset_call_order_keys();
+		self.suspense_boundary_counter = 0;
+
+		let view = view_factory();
+		let mut replacements = Vec::new();
+		let content = self.render_async_page(&view, &mut replacements, true).await;
+
+		for (id, value) in context.borrow().resolved_resources() {
+			self.state.add_resource_state(id, value.clone());
+		}
+
+		drop(guard);
+
+		(view, content, replacements.join(""))
+	}
+
+	fn add_resolved_resources_to_state(&mut self, context: &Rc<RefCell<SsrResourceContext>>) {
+		for (id, value) in context.borrow().resolved_resources() {
+			self.state.add_resource_state(id, value.clone());
+		}
+	}
+
+	fn render_stream_shell_page<'a>(
+		&'a mut self,
+		view: &'a Page,
+		boundaries: &'a mut Vec<PendingSuspenseBoundary>,
+	) -> LocalBoxFuture<'a, String> {
+		Box::pin(async move {
+			match view {
+				Page::Element(el) => {
+					let mut html = String::new();
+					html.push('<');
+					html.push_str(el.tag_name());
+
+					for (name, value) in el.attrs() {
+						let name_str = name.as_ref();
+						if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value) {
+							continue;
+						}
+
+						html.push(' ');
+						html.push_str(name.as_ref());
+						html.push_str("=\"");
+						html.push_str(&html_escape(value));
+						html.push('"');
+					}
+
+					if el.is_void() {
+						html.push_str(" />");
+					} else {
+						html.push('>');
+						for child in el.child_views() {
+							html.push_str(&self.render_stream_shell_page(child, boundaries).await);
+						}
+						html.push_str("</");
+						html.push_str(el.tag_name());
+						html.push('>');
+					}
+
+					html
+				}
+				Page::Text(text) => html_escape(text),
+				Page::Fragment(children) => {
+					let mut html = String::new();
+					for child in children {
+						html.push_str(&self.render_stream_shell_page(child, boundaries).await);
+					}
+					html
+				}
+				Page::KeyedFragment(children) => {
+					let mut html = String::new();
+					for (_, child) in children {
+						html.push_str(&self.render_stream_shell_page(child, boundaries).await);
+					}
+					html
+				}
+				Page::Empty => String::new(),
+				Page::WithHead { view, .. } => {
+					self.render_stream_shell_page(view, boundaries).await
+				}
+				Page::ReactiveIf(reactive_if) => {
+					let branch = if reactive_if.condition() {
+						reactive_if.then_view()
+					} else {
+						reactive_if.else_view()
+					};
+					self.render_stream_shell_page(&branch, boundaries).await
+				}
+				Page::Reactive(reactive) => {
+					let rendered = reactive.render();
+					self.render_stream_shell_page(&rendered, boundaries).await
+				}
+				Page::Suspense(node) => {
+					let boundary_id = node
+						.boundary_id()
+						.map(str::to_owned)
+						.unwrap_or_else(|| self.next_suspense_boundary_id());
+
+					let boundary_start_index = if let Some(context) =
+						super::resource_context::with_active_context(Rc::clone)
+					{
+						let mut context = context.borrow_mut();
+						let index = context.call_order_index();
+						context.push_boundary(boundary_id.clone());
+						context.assign_resources_to_boundary(
+							node.tracked_resource_ids(),
+							&boundary_id,
+						);
+						Some(index)
+					} else {
+						None
+					};
+
+					let content_page = node.render_content();
+					let content = self
+						.render_stream_shell_page(&content_page, boundaries)
+						.await;
+					let boundary_end_index =
+						super::resource_context::with_active_context(|context| {
+							context.borrow().call_order_index()
+						});
+
+					if let Some(context) = super::resource_context::with_active_context(Rc::clone) {
+						context.borrow_mut().pop_boundary();
+					}
+
+					let has_pending = super::resource_context::with_active_context(|context| {
+						context.borrow().has_pending_for_boundary(&boundary_id)
+					})
+					.unwrap_or(false);
+
+					if has_pending && !node.tracked_resource_ids().is_empty() {
+						let fallback_page = node.render_fallback();
+						let mut ignored_replacements = Vec::new();
+						let fallback = self
+							.render_async_page(&fallback_page, &mut ignored_replacements, false)
+							.await;
+						boundaries.push(PendingSuspenseBoundary {
+							boundary_id: boundary_id.clone(),
+							node: node.clone(),
+							boundary_start_index,
+							boundary_end_index,
+						});
+						self.render_suspense_fallback(&boundary_id, fallback)
+					} else {
+						content
+					}
+				}
+				Page::Deferred(node) => {
+					let content = node.render_content();
+					self.render_stream_shell_page(&content, boundaries).await
+				}
+			}
+		})
+	}
+
+	fn render_async_page<'a>(
+		&'a mut self,
+		view: &'a Page,
+		replacements: &'a mut Vec<String>,
+		emit_replacements: bool,
+	) -> LocalBoxFuture<'a, String> {
+		Box::pin(async move {
+			match view {
+				Page::Element(el) => {
+					let mut html = String::new();
+					html.push('<');
+					html.push_str(el.tag_name());
+
+					for (name, value) in el.attrs() {
+						let name_str = name.as_ref();
+						if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value) {
+							continue;
+						}
+
+						html.push(' ');
+						html.push_str(name.as_ref());
+						html.push_str("=\"");
+						html.push_str(&html_escape(value));
+						html.push('"');
+					}
+
+					if el.is_void() {
+						html.push_str(" />");
+					} else {
+						html.push('>');
+						for child in el.child_views() {
+							html.push_str(
+								&self
+									.render_async_page(child, replacements, emit_replacements)
+									.await,
+							);
+						}
+						html.push_str("</");
+						html.push_str(el.tag_name());
+						html.push('>');
+					}
+
+					html
+				}
+				Page::Text(text) => html_escape(text),
+				Page::Fragment(children) => {
+					let mut html = String::new();
+					for child in children {
+						html.push_str(
+							&self
+								.render_async_page(child, replacements, emit_replacements)
+								.await,
+						);
+					}
+					html
+				}
+				Page::KeyedFragment(children) => {
+					let mut html = String::new();
+					for (_, child) in children {
+						html.push_str(
+							&self
+								.render_async_page(child, replacements, emit_replacements)
+								.await,
+						);
+					}
+					html
+				}
+				Page::Empty => String::new(),
+				Page::WithHead { view, .. } => {
+					self.render_async_page(view, replacements, emit_replacements)
+						.await
+				}
+				Page::ReactiveIf(reactive_if) => {
+					let branch = if reactive_if.condition() {
+						reactive_if.then_view()
+					} else {
+						reactive_if.else_view()
+					};
+					self.render_async_page(&branch, replacements, emit_replacements)
+						.await
+				}
+				Page::Reactive(reactive) => {
+					let rendered = reactive.render();
+					self.render_async_page(&rendered, replacements, emit_replacements)
+						.await
+				}
+				Page::Suspense(node) => {
+					let boundary_id = node
+						.boundary_id()
+						.map(str::to_owned)
+						.unwrap_or_else(|| self.next_suspense_boundary_id());
+
+					let boundary_start_index = if let Some(context) =
+						super::resource_context::with_active_context(Rc::clone)
+					{
+						let mut context = context.borrow_mut();
+						let index = context.call_order_index();
+						context.push_boundary(boundary_id.clone());
+						context.assign_resources_to_boundary(
+							node.tracked_resource_ids(),
+							&boundary_id,
+						);
+						Some(index)
+					} else {
+						None
+					};
+
+					let content_page = node.render_content();
+					let content = self
+						.render_async_page(&content_page, replacements, emit_replacements)
+						.await;
+					let boundary_end_index =
+						super::resource_context::with_active_context(|context| {
+							context.borrow().call_order_index()
+						});
+
+					if let Some(context) = super::resource_context::with_active_context(Rc::clone) {
+						context.borrow_mut().pop_boundary();
+					}
+
+					let has_pending = super::resource_context::with_active_context(|context| {
+						context.borrow().has_pending_for_boundary(&boundary_id)
+					})
+					.unwrap_or(false);
+
+					if emit_replacements && has_pending {
+						let fallback_page = node.render_fallback();
+						let fallback = self
+							.render_async_page(&fallback_page, replacements, false)
+							.await;
+
+						if let Some(context) =
+							super::resource_context::with_active_context(|context| {
+								Rc::clone(context)
+							}) {
+							let boundary_resolved =
+								resolve_boundary_resources(&context, &boundary_id).await;
+							if !boundary_resolved {
+								if node.tracked_resource_ids().is_empty() {
+									return content;
+								}
+								return self.render_suspense_fallback(&boundary_id, fallback);
+							}
+							if let Some(index) = boundary_start_index {
+								context.borrow_mut().set_call_order_index(index);
+							}
+						}
+
+						let replacement_page = node.render_content();
+						let replacement = self
+							.render_async_page(&replacement_page, replacements, false)
+							.await;
+						if let Some(index) = boundary_end_index
+							&& let Some(context) =
+								super::resource_context::with_active_context(Rc::clone)
+						{
+							context.borrow_mut().set_call_order_index(index);
+						}
+
+						if self.options.suspense_streaming {
+							replacements
+								.push(self.render_suspense_replacement(&boundary_id, replacement));
+							self.render_suspense_fallback(&boundary_id, fallback)
+						} else {
+							replacement
+						}
+					} else {
+						content
+					}
+				}
+				Page::Deferred(node) => {
+					let content = node.render_content();
+					self.render_async_page(&content, replacements, emit_replacements)
+						.await
+				}
+			}
+		})
+	}
+
+	fn render_suspense_fallback(&self, id: &str, fallback: String) -> String {
+		format!(
+			"<!--rh-suspense-start:{id}--><div data-rh-suspense=\"pending\">{fallback}</div><!--rh-suspense-end:{id}-->"
+		)
+	}
+
+	fn render_suspense_replacement(&self, id: &str, content: String) -> String {
+		let escaped_id = html_escape(id);
+		let nonce = self
+			.options
+			.script_nonce
+			.as_ref()
+			.map(|value| format!(" nonce=\"{}\"", html_escape(value)))
+			.unwrap_or_default();
+		let id_json = serde_json::to_string(id).unwrap_or_else(|_| "\"\"".to_string());
+		format!(
+			"<template data-rh-suspense-chunk=\"{escaped_id}\">{content}</template><script{nonce}>(function(id){{var template=document.querySelector('template[data-rh-suspense-chunk=\"'+id+'\"]');if(!template)return;var start=document.createComment('');var walker=document.createTreeWalker(document.body,128);while(start=walker.nextNode()){{if(start.nodeValue==='rh-suspense-start:'+id)break;}}if(!start)return;var end=start;while(end=end.nextSibling){{if(end.nodeType===8&&end.nodeValue==='rh-suspense-end:'+id)break;}}if(!end)return;var fragment=template.content.cloneNode(true);var parent=start.parentNode;var node=start.nextSibling;while(node&&node!==end){{var next=node.nextSibling;parent.removeChild(node);node=next;}}parent.insertBefore(fragment,end);template.remove();}})({id_json});</script>"
+		)
+	}
+
+	fn wrap_in_html_shell(&self, content: &str, view_head: Option<&Head>) -> String {
+		let view_head = view_head.map(Head::deduplicated);
+		let mut seen_head_entries = BTreeSet::new();
+		let mut shell = String::with_capacity(content.len() + 1024);
+
+		shell.push_str("<!DOCTYPE html>\n");
+		shell.push_str(&format!(
+			"<html lang=\"{}\">\n",
+			html_escape(&self.options.lang)
+		));
+		shell.push_str("<head>\n");
+		push_unique_head_entry(
+			&mut shell,
+			&mut seen_head_entries,
+			"<meta charset=\"UTF-8\">",
+		);
+		push_unique_head_entry(
+			&mut shell,
+			&mut seen_head_entries,
+			"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
+		);
+
+		if let Some(head) = view_head.as_ref() {
+			if let Some(ref title) = head.title {
+				shell.push_str(&format!("<title>{}</title>\n", html_escape(title)));
+			}
+			for meta in &head.meta_tags {
+				push_unique_head_entry(&mut shell, &mut seen_head_entries, meta.to_html());
+			}
+			for link in &head.links {
+				push_unique_head_entry(&mut shell, &mut seen_head_entries, link.to_html());
+			}
+			for style in &head.styles {
+				push_unique_head_entry(&mut shell, &mut seen_head_entries, style.to_html());
+			}
+			for script in &head.scripts {
+				push_unique_head_entry(&mut shell, &mut seen_head_entries, script.to_html());
+			}
+		}
+
+		if let Some(ref token) = self.options.csrf_token {
+			shell.push_str(&format!(
+				"<meta name=\"csrf-token\" content=\"{}\">\n",
+				html_escape(token)
+			));
+		}
+
+		shell.push_str("</head>\n<body>\n<div id=\"app\">");
+		shell.push_str(content);
+		shell.push_str("</div>\n");
+		shell
+	}
+
+	fn wrap_in_html_suffix(&self) -> String {
+		let mut suffix = String::new();
+		if let Some(ref auth_data) = self.options.auth_data
+			&& let Ok(json) = serde_json::to_string(auth_data)
+		{
+			let safe_json = escape_json_for_script(&json);
+			suffix.push_str(&format!(
+				"<script id=\"auth-data\" type=\"application/json\">{}</script>\n",
+				safe_json
+			));
+		}
+
+		if self.options.include_state_script && !self.state.is_empty() {
+			suffix.push_str(&self.state.to_script_tag());
+			suffix.push('\n');
+		}
+		suffix.push_str("</body>\n</html>");
+		suffix
 	}
 
 	/// Wraps content in a full HTML document with View's head elements.
@@ -260,7 +945,100 @@ impl SsrRenderer {
 	///
 	/// * `content` - The rendered body content
 	/// * `view_head` - Optional head extracted from a View
-	fn wrap_in_html_with_head(&self, content: &str, view_head: Option<&Head>) -> String {
+	fn wrap_in_html_with_head_and_body_tail_chunks(
+		&self,
+		content: &str,
+		body_tail: &str,
+		view_head: Option<&Head>,
+	) -> Vec<SsrChunk> {
+		if self.options.minify {
+			return vec![SsrChunk::Html(self.wrap_in_html_with_head_and_body_tail(
+				content, body_tail, view_head,
+			))];
+		}
+
+		let view_head = view_head.map(Head::deduplicated);
+		let mut seen_head_entries = BTreeSet::new();
+		let mut shell = String::with_capacity(content.len() + 1024);
+
+		shell.push_str("<!DOCTYPE html>\n");
+		shell.push_str(&format!(
+			"<html lang=\"{}\">\n",
+			html_escape(&self.options.lang)
+		));
+		shell.push_str("<head>\n");
+		push_unique_head_entry(
+			&mut shell,
+			&mut seen_head_entries,
+			"<meta charset=\"UTF-8\">",
+		);
+		push_unique_head_entry(
+			&mut shell,
+			&mut seen_head_entries,
+			"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
+		);
+
+		if let Some(head) = view_head.as_ref() {
+			if let Some(ref title) = head.title {
+				shell.push_str(&format!("<title>{}</title>\n", html_escape(title)));
+			}
+
+			for meta in &head.meta_tags {
+				push_unique_head_entry(&mut shell, &mut seen_head_entries, meta.to_html());
+			}
+			for link in &head.links {
+				push_unique_head_entry(&mut shell, &mut seen_head_entries, link.to_html());
+			}
+			for style in &head.styles {
+				push_unique_head_entry(&mut shell, &mut seen_head_entries, style.to_html());
+			}
+			for script in &head.scripts {
+				push_unique_head_entry(&mut shell, &mut seen_head_entries, script.to_html());
+			}
+		}
+
+		if let Some(ref token) = self.options.csrf_token {
+			shell.push_str(&format!(
+				"<meta name=\"csrf-token\" content=\"{}\">\n",
+				html_escape(token)
+			));
+		}
+
+		shell.push_str("</head>\n<body>\n<div id=\"app\">");
+		shell.push_str(content);
+		shell.push_str("</div>\n");
+
+		let mut suffix = String::new();
+		if let Some(ref auth_data) = self.options.auth_data
+			&& let Ok(json) = serde_json::to_string(auth_data)
+		{
+			let safe_json = escape_json_for_script(&json);
+			suffix.push_str(&format!(
+				"<script id=\"auth-data\" type=\"application/json\">{}</script>\n",
+				safe_json
+			));
+		}
+
+		if self.options.include_state_script && !self.state.is_empty() {
+			suffix.push_str(&self.state.to_script_tag());
+			suffix.push('\n');
+		}
+		suffix.push_str("</body>\n</html>");
+
+		let mut chunks = vec![SsrChunk::Html(shell)];
+		if !body_tail.is_empty() {
+			chunks.push(SsrChunk::Html(body_tail.to_string()));
+		}
+		chunks.push(SsrChunk::Html(suffix));
+		chunks
+	}
+
+	fn wrap_in_html_with_head_and_body_tail(
+		&self,
+		content: &str,
+		body_tail: &str,
+		view_head: Option<&Head>,
+	) -> String {
 		let view_head = view_head.map(Head::deduplicated);
 		let mut seen_head_entries = BTreeSet::new();
 		let mut html = String::with_capacity(content.len() + 1024);
@@ -328,6 +1106,7 @@ impl SsrRenderer {
 		html.push_str("<div id=\"app\">");
 		html.push_str(content);
 		html.push_str("</div>\n");
+		html.push_str(body_tail);
 
 		// Auth data script (if provided)
 		// Note: We escape </script> sequences to prevent XSS attacks where
@@ -428,9 +1207,8 @@ impl SsrRenderer {
 	}
 
 	/// Renders a component with hydration marker.
-	pub fn render_with_marker<C: Component>(&mut self, component: &C) -> String {
-		let view = component.render();
-		let content = view.render_to_string();
+	pub async fn render_with_marker<C: Component>(&mut self, component: &C) -> String {
+		let content = self.render_view_factory(|| component.render()).await;
 
 		if self.options.include_hydration_markers {
 			let marker = HydrationMarker {
@@ -574,17 +1352,17 @@ fn minify_html(html: &str) -> String {
 /// Helper function for simple component rendering.
 // Allow dead_code: convenience function for internal module use and tests
 #[allow(dead_code)]
-pub(super) fn render<C: Component>(component: &C) -> String {
+pub(super) async fn render<C: Component>(component: &C) -> String {
 	let mut renderer = SsrRenderer::new();
-	renderer.render(component)
+	renderer.render(component).await
 }
 
 /// Helper function for rendering to a full HTML page.
 // Allow dead_code: convenience function for internal module use and tests
 #[allow(dead_code)]
-pub(super) fn render_page<C: Component>(component: &C, options: SsrOptions) -> String {
+pub(super) async fn render_page<C: Component>(component: &C, options: SsrOptions) -> String {
 	let mut renderer = SsrRenderer::with_options(options);
-	renderer.render_page(component)
+	renderer.render_page_to_string(component).await
 }
 
 // Phase 2-B Tests: SsrOptions Extension
@@ -594,6 +1372,9 @@ fn test_ssr_options_partial_hydration_default() {
 	let opts = SsrOptions::default();
 	assert!(!opts.enable_partial_hydration);
 	assert_eq!(opts.default_hydration_strategy, HydrationStrategy::Full);
+	assert_eq!(opts.resource_timeout, Duration::from_secs(2));
+	assert!(opts.suspense_streaming);
+	assert_eq!(opts.script_nonce, None);
 }
 
 #[test]
@@ -650,63 +1431,65 @@ mod tests {
 		assert!(opts.include_hydration_markers);
 		assert!(!opts.minify);
 		assert_eq!(opts.lang, "en");
+		assert_eq!(opts.resource_timeout, Duration::from_secs(2));
+		assert!(opts.suspense_streaming);
 	}
 
-	#[test]
-	fn test_ssr_renderer_render() {
+	#[tokio::test]
+	async fn test_ssr_renderer_render() {
 		let component = TestComponent {
 			message: "Hello".to_string(),
 		};
 		let mut renderer = SsrRenderer::new();
-		let html = renderer.render(&component);
+		let html = renderer.render(&component).await;
 		assert_eq!(html, "<div class=\"test\">Hello</div>");
 	}
 
-	#[test]
-	fn test_ssr_renderer_with_csrf() {
+	#[tokio::test]
+	async fn test_ssr_renderer_with_csrf() {
 		let component = TestComponent {
 			message: "Secure".to_string(),
 		};
 		let opts = SsrOptions::new().csrf("test-token-123");
 		let mut renderer = SsrRenderer::with_options(opts);
-		let html = renderer.render_page(&component);
+		let html = renderer.render_page_to_string(&component).await;
 
 		assert!(html.contains("csrf-token"));
 		assert!(html.contains("test-token-123"));
 	}
 
-	#[test]
-	fn test_ssr_renderer_with_auth() {
+	#[tokio::test]
+	async fn test_ssr_renderer_with_auth() {
 		let component = TestComponent {
 			message: "Auth".to_string(),
 		};
 		let auth = AuthData::authenticated("1", "testuser");
 		let opts = SsrOptions::new().auth(auth);
 		let mut renderer = SsrRenderer::with_options(opts);
-		let html = renderer.render_page(&component);
+		let html = renderer.render_page_to_string(&component).await;
 
 		assert!(html.contains("auth-data"));
 		assert!(html.contains("testuser"));
 	}
 
-	#[test]
-	fn test_ssr_renderer_with_marker() {
+	#[tokio::test]
+	async fn test_ssr_renderer_with_marker() {
 		let component = TestComponent {
 			message: "Hydrate".to_string(),
 		};
 		let mut renderer = SsrRenderer::new();
-		let html = renderer.render_with_marker(&component);
+		let html = renderer.render_with_marker(&component).await;
 
 		assert!(html.contains("data-rh-id"));
 		assert!(html.contains("data-rh-component=\"TestComponent\""));
 	}
 
-	#[test]
-	fn test_render_helper() {
+	#[tokio::test]
+	async fn test_render_helper() {
 		let component = TestComponent {
 			message: "Helper".to_string(),
 		};
-		let html = render(&component);
+		let html = render(&component).await;
 		assert_eq!(html, "<div class=\"test\">Helper</div>");
 	}
 
@@ -733,8 +1516,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_ssr_renderer_with_auth_xss_prevention() {
+	#[tokio::test]
+	async fn test_ssr_renderer_with_auth_xss_prevention() {
 		// Test that auth data with </script> in username is properly escaped
 		let component = TestComponent {
 			message: "Auth".to_string(),
@@ -744,7 +1527,7 @@ mod tests {
 		let auth = AuthData::authenticated("1", malicious_username);
 		let opts = SsrOptions::new().auth(auth);
 		let mut renderer = SsrRenderer::with_options(opts);
-		let html = renderer.render_page(&component);
+		let html = renderer.render_page_to_string(&component).await;
 
 		// Verify the auth-data script tag exists
 		assert!(html.contains("auth-data"));
@@ -757,8 +1540,8 @@ mod tests {
 		assert!(html.contains("<\\/script>"));
 	}
 
-	#[test]
-	fn test_ssr_renderer_with_auth_xss_prevention_wrap_in_html_with_head() {
+	#[tokio::test]
+	async fn test_ssr_renderer_with_auth_xss_prevention_wrap_in_html_with_head() {
 		use crate::component::PageElement;
 
 		// Test XSS prevention via wrap_in_html_with_head path
@@ -787,7 +1570,7 @@ mod tests {
 		let opts = SsrOptions::new().auth(auth);
 		let mut renderer = SsrRenderer::with_options(opts);
 		let view = component.render();
-		let html = renderer.render_page_with_view_head(view);
+		let html = renderer.render_page_with_view_head_to_string(view).await;
 
 		// Verify that raw </script> does not appear (it should be escaped)
 		assert!(!html.contains("</script><img"));
@@ -795,8 +1578,8 @@ mod tests {
 		assert!(html.contains("<\\/script>"));
 	}
 
-	#[test]
-	fn test_ssr_renderer_lang_escaping() {
+	#[tokio::test]
+	async fn test_ssr_renderer_lang_escaping() {
 		// Arrange
 		let component = TestComponent {
 			message: "Test".to_string(),
@@ -805,7 +1588,7 @@ mod tests {
 		let mut renderer = SsrRenderer::with_options(opts);
 
 		// Act
-		let html = renderer.render_page(&component);
+		let html = renderer.render_page_to_string(&component).await;
 
 		// Assert - the quote in the lang value should be escaped, preventing attribute breakout
 		assert!(html.contains("&quot;"));
@@ -867,8 +1650,8 @@ mod tests {
 		assert_eq!(result, expected);
 	}
 
-	#[test]
-	fn test_ssr_renderer_lang_escaping_angle_brackets() {
+	#[tokio::test]
+	async fn test_ssr_renderer_lang_escaping_angle_brackets() {
 		// Arrange
 		let component = TestComponent {
 			message: "Test".to_string(),
@@ -877,7 +1660,7 @@ mod tests {
 		let mut renderer = SsrRenderer::with_options(opts);
 
 		// Act
-		let html = renderer.render_page(&component);
+		let html = renderer.render_page_to_string(&component).await;
 
 		// Assert - angle brackets should be escaped
 		assert!(html.contains("&lt;script&gt;"));

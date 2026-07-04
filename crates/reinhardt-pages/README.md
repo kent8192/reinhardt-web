@@ -334,7 +334,7 @@ The prelude includes:
 - `use_ref`, `use_reducer`, `use_transition`, `use_deferred_value`
 - `use_id`, `use_layout_effect`, `use_debug_value`
 - `use_optimistic`, `use_action`, `Action::with_optimistic`, `use_shared_state`, `use_sync_external_store`
-- `use_resource` (async data fetching; `use_resource(fetcher, deps)` with `()` fetches once on WASM, while non-WASM targets drop the `fetcher` future, ignore `deps`, and stay `Loading` until hydration/client execution)
+- `use_resource` (async data fetching; `use_resource(fetcher, deps)` with `()` fetches once on WASM, while SSR registers the fetcher in the request context, awaits it up to `SsrOptions::resource_timeout`, and serializes resolved state for hydration)
 
 `Resource::latest_after(&action)` and `use_latest_resource_value(resource)` compose loaded resource state with one or more `Action` success values. Later actions have higher priority, and `refetch_on_success()` can automatically refresh the resource after a mutation succeeds.
 
@@ -366,7 +366,25 @@ The prelude includes:
 
 ### SSR and Hydration
 - `HydrationContext`, `HydrationError`, `hydrate`
-- `SsrOptions`, `SsrRenderer`, `SsrState`
+- `SsrOptions`, `SsrRenderer`, `SsrStream`, `SsrState`
+
+SSR rendering APIs are async. Use `render_page(...).await` for streamed output
+or `render_page_to_string(...).await` when a buffered string is needed:
+
+```rust,ignore
+let mut renderer = SsrRenderer::new();
+let stream = renderer.render_page(&app).await;
+
+let mut renderer = SsrRenderer::with_options(
+    SsrOptions::new().resource_timeout(std::time::Duration::from_secs(1)),
+);
+let html = renderer.render_page_to_string(&app).await;
+```
+
+Resources created with `use_resource` during SSR are keyed deterministically,
+resolved on the server, and embedded in the hydration payload. Use
+`use_resource_with_key` when a resource hook is conditionally rendered and needs
+a stable explicit hydration key.
 
 ### Forms (native only)
 - `FormBinding`, `FormComponent`

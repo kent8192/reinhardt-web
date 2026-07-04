@@ -143,6 +143,11 @@ impl HydrationContext {
 		self.props.get(id).or_else(|| self.state.get_props(id))
 	}
 
+	/// Gets resource state by deterministic resource ID.
+	pub fn get_resource_state(&self, id: &str) -> Option<&serde_json::Value> {
+		self.state.get_resource_state(id)
+	}
+
 	/// Marks hydration as complete.
 	pub fn mark_hydrated(&mut self) {
 		self.hydrated = true;
@@ -166,6 +171,7 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	let mut context = HydrationContext::from_window()?;
 
 	// 2. Render the component to get expected structure
+	crate::reactive::resource::reset_client_resource_counter();
 	let view = component.render();
 	web_sys::console::log_1(&"[Hydration] View rendered".into());
 
@@ -330,6 +336,14 @@ pub(crate) fn attach_events_recursive(
 			let rendered_view = reactive.render();
 			attach_events_recursive(element, &rendered_view, registry)?;
 		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			attach_events_recursive(element, &branch_view, registry)?;
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			attach_events_recursive(element, &content_view, registry)?;
+		}
 	}
 
 	Ok(())
@@ -443,6 +457,17 @@ mod tests {
 		state.add_signal("count", 42);
 		let ctx = HydrationContext::from_state(state);
 		assert_eq!(ctx.get_signal("count"), Some(&serde_json::json!(42)));
+	}
+
+	#[test]
+	fn test_hydration_context_get_resource_state() {
+		let mut state = SsrState::new();
+		state.add_resource_state("rh-res-0", serde_json::json!({"Success": {"name": "Ada"}}));
+		let ctx = HydrationContext::from_state(state);
+		assert_eq!(
+			ctx.get_resource_state("rh-res-0"),
+			Some(&serde_json::json!({"Success": {"name": "Ada"}}))
+		);
 	}
 
 	#[test]

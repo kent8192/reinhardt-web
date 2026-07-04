@@ -5,8 +5,9 @@
 //! reactivity system.
 
 use super::{Effect, Signal};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::rc::Rc;
 
@@ -17,6 +18,26 @@ use reinhardt_core::reactive::deps::IntoDeps;
 ///
 /// This reduces type complexity for the `Resource` struct's `refetch_fn` field.
 type RefetchCallback = Rc<RefCell<Option<Box<dyn Fn()>>>>;
+
+#[cfg(wasm)]
+thread_local! {
+	static CLIENT_RESOURCE_COUNTER: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Resets client call-order resource IDs before hydration rendering.
+#[cfg(wasm)]
+pub(crate) fn reset_client_resource_counter() {
+	CLIENT_RESOURCE_COUNTER.with(|counter| counter.set(0));
+}
+
+#[cfg(wasm)]
+fn next_client_resource_key() -> String {
+	CLIENT_RESOURCE_COUNTER.with(|counter| {
+		let id = counter.get();
+		counter.set(id + 1);
+		format!("rh-res-{id}")
+	})
+}
 
 /// State of a Resource
 ///
@@ -103,6 +124,7 @@ impl<T: fmt::Display, E: fmt::Display> fmt::Display for ResourceState<T, E> {
 pub struct Resource<T: Clone + 'static, E: Clone + 'static = String> {
 	state: Signal<ResourceState<T, E>>,
 	refetch_fn: RefetchCallback,
+	ssr_key: Option<String>,
 	/// RAII anchor that keeps the dependency-tracking `Effect` alive for the
 	/// lifetime of the `Resource`. An `Effect` disposes itself on drop (removing
 	/// its node from the runtime graph), so without holding the handle here the
@@ -116,6 +138,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Clone for Resource<T, E> {
 		Resource {
 			state: self.state.clone(),
 			refetch_fn: Rc::clone(&self.refetch_fn),
+			ssr_key: self.ssr_key.clone(),
 			effect_guard: Rc::clone(&self.effect_guard),
 		}
 	}
@@ -160,6 +183,11 @@ impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
 	pub fn is_error(&self) -> bool {
 		self.state.with_untracked(|s| s.is_error())
 	}
+
+	/// Returns this resource's deterministic SSR hydration key, if known.
+	pub fn ssr_key(&self) -> Option<&str> {
+		self.ssr_key.as_deref()
+	}
 }
 
 impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Trackable
@@ -200,9 +228,13 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 /// targets:
 ///
 /// - **WASM**: the fetcher runs via `spawn_task` on the browser event loop.
-/// - **Non-WASM (SSR)**: `spawn_task` drops the future, so the fetcher never
-///   runs and the `Resource` stays `Loading`. The server renders the loading
-///   state and the client performs the real fetch after hydration.
+/// - **Non-WASM (SSR)**: when called under [`SsrRenderer`](crate::ssr::SsrRenderer),
+///   the fetcher is registered in the request-scoped SSR resource context. The
+///   renderer awaits it up to [`SsrOptions::resource_timeout`](crate::ssr::SsrOptions::resource_timeout),
+///   serializes resolved `Success`/`Error` state into the hydration payload,
+///   and replays the render so the client can adopt the server value instead of
+///   refetching on mount. Outside an SSR context, native `spawn_task` remains a
+///   no-op and the resource stays `Loading`.
 ///
 /// # Example
 ///
@@ -228,14 +260,81 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 /// ```
 pub fn use_resource<T, E, F, Fut, D>(fetcher: F, deps: D) -> Resource<T, E>
 where
-	T: Clone + 'static,
-	E: Clone + 'static,
+	T: Clone + Serialize + DeserializeOwned + 'static,
+	E: Clone + Serialize + DeserializeOwned + 'static,
 	F: Fn() -> Fut + 'static,
 	Fut: std::future::Future<Output = Result<T, E>> + 'static,
 	D: IntoDeps,
 {
-	let state = Signal::new(ResourceState::Loading);
+	use_resource_with_optional_key(None, fetcher, deps)
+}
+
+/// Reactive async data hook with an explicit SSR hydration key.
+///
+/// Prefer this when call-order keys would be unstable across server and client
+/// renders, such as conditionally rendered resource hooks.
+pub fn use_resource_with_key<K, T, E, F, Fut, D>(key: K, fetcher: F, deps: D) -> Resource<T, E>
+where
+	K: Into<String>,
+	T: Clone + Serialize + DeserializeOwned + 'static,
+	E: Clone + Serialize + DeserializeOwned + 'static,
+	F: Fn() -> Fut + 'static,
+	Fut: std::future::Future<Output = Result<T, E>> + 'static,
+	D: IntoDeps,
+{
+	use_resource_with_optional_key(Some(key.into()), fetcher, deps)
+}
+
+fn use_resource_with_optional_key<T, E, F, Fut, D>(
+	key: Option<String>,
+	fetcher: F,
+	deps: D,
+) -> Resource<T, E>
+where
+	T: Clone + Serialize + DeserializeOwned + 'static,
+	E: Clone + Serialize + DeserializeOwned + 'static,
+	F: Fn() -> Fut + 'static,
+	Fut: std::future::Future<Output = Result<T, E>> + 'static,
+	D: IntoDeps,
+{
 	let fetcher = Rc::new(fetcher);
+
+	#[cfg(native)]
+	if let Some(resource) = try_create_ssr_resource(key.clone(), Rc::clone(&fetcher)) {
+		return resource;
+	}
+
+	create_client_resource(key, fetcher, deps)
+}
+
+fn create_client_resource<T, E, F, Fut, D>(
+	resource_key: Option<String>,
+	fetcher: Rc<F>,
+	deps: D,
+) -> Resource<T, E>
+where
+	T: Clone + Serialize + DeserializeOwned + 'static,
+	E: Clone + Serialize + DeserializeOwned + 'static,
+	F: Fn() -> Fut + 'static,
+	Fut: std::future::Future<Output = Result<T, E>> + 'static,
+	D: IntoDeps,
+{
+	let ssr_key = resource_key.clone();
+
+	#[cfg(wasm)]
+	let initial_state = {
+		let key = resource_key.unwrap_or_else(next_client_resource_key);
+		hydrated_resource_state(&key)
+	};
+
+	#[cfg(native)]
+	let initial_state = {
+		let _ = resource_key;
+		None
+	};
+
+	let run_initial_fetch = initial_state.is_none();
+	let state = Signal::new(initial_state.unwrap_or(ResourceState::Loading));
 
 	// Single fetch routine shared by the dependency-driven Effect and manual
 	// refetch. `defer_yield` runs on every path (initial, dependency change, and
@@ -262,11 +361,31 @@ where
 	// (not `new`) means only the explicitly listed `deps` trigger re-runs; the
 	// Effect is stored in the returned `Resource` (see `effect_guard`) so it
 	// stays alive for the Resource's lifetime instead of being disposed on drop.
+	build_resource_from_run(state, run, deps, run_initial_fetch, ssr_key)
+}
+
+fn build_resource_from_run<T, E, D>(
+	state: Signal<ResourceState<T, E>>,
+	run: Rc<dyn Fn()>,
+	deps: D,
+	run_initial_fetch: bool,
+	ssr_key: Option<String>,
+) -> Resource<T, E>
+where
+	T: Clone + 'static,
+	E: Clone + 'static,
+	D: IntoDeps,
+{
+	let first_run = Rc::new(Cell::new(true));
 	let effect = {
 		let run = Rc::clone(&run);
+		let first_run = Rc::clone(&first_run);
 		Effect::new_with_deps(
 			move || {
-				run();
+				let is_first = first_run.replace(false);
+				if run_initial_fetch || !is_first {
+					run();
+				}
 				None::<fn()>
 			},
 			deps.into_deps(),
@@ -281,8 +400,64 @@ where
 	Resource {
 		state,
 		refetch_fn,
+		ssr_key,
 		effect_guard: Rc::new(effect),
 	}
+}
+
+#[cfg(native)]
+fn try_create_ssr_resource<T, E, F, Fut>(
+	explicit_key: Option<String>,
+	fetcher: Rc<F>,
+) -> Option<Resource<T, E>>
+where
+	T: Clone + Serialize + DeserializeOwned + 'static,
+	E: Clone + Serialize + DeserializeOwned + 'static,
+	F: Fn() -> Fut + 'static,
+	Fut: std::future::Future<Output = Result<T, E>> + 'static,
+{
+	crate::ssr::resource_context::with_active_context(|context| {
+		let mut context = context.borrow_mut();
+		let key = explicit_key.unwrap_or_else(|| context.next_call_order_key());
+		if let Some(resolved_state) = context.resolved_resource_state::<T, E>(&key) {
+			let state = Signal::new(resolved_state);
+			let run: Rc<dyn Fn()> = Rc::new({
+				let state = state.clone();
+				move || state.set(ResourceState::Loading)
+			});
+			build_resource_from_run(state, run, (), false, Some(key))
+		} else {
+			let state = Signal::new(ResourceState::Loading);
+			context.register_resource::<T, E, Fut>(key.clone(), fetcher(), state.clone());
+
+			let run: Rc<dyn Fn()> = Rc::new({
+				let state = state.clone();
+				move || state.set(ResourceState::Loading)
+			});
+
+			build_resource_from_run(state, run, (), false, Some(key))
+		}
+	})
+}
+
+#[cfg(any(wasm, test))]
+fn deserialize_resource_state<T, E>(value: &serde_json::Value) -> Option<ResourceState<T, E>>
+where
+	T: Clone + Serialize + DeserializeOwned + 'static,
+	E: Clone + Serialize + DeserializeOwned + 'static,
+{
+	serde_json::from_value(value.clone()).ok()
+}
+
+#[cfg(wasm)]
+fn hydrated_resource_state<T, E>(key: &str) -> Option<ResourceState<T, E>>
+where
+	T: Clone + Serialize + DeserializeOwned + 'static,
+	E: Clone + Serialize + DeserializeOwned + 'static,
+{
+	let context = crate::hydration::HydrationContext::from_window().ok()?;
+	let value = context.get_resource_state(key)?;
+	deserialize_resource_state(value)
 }
 
 #[cfg(test)]
@@ -320,5 +495,12 @@ mod tests {
 		let error: ResourceState<String, String> =
 			ResourceState::Error("Connection failed".to_string());
 		assert_eq!(format!("{}", error), "Error: Connection failed");
+	}
+
+	#[test]
+	fn test_deserialize_resource_state() {
+		let value = serde_json::json!({"Success": "server"});
+		let state: ResourceState<String, String> = deserialize_resource_state(&value).unwrap();
+		assert_eq!(state, ResourceState::Success("server".to_string()));
 	}
 }

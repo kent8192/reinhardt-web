@@ -280,6 +280,14 @@ fn reconcile_at_path(
 			let rendered_view = reactive.render();
 			reconcile_at_path(element, &rendered_view, path)
 		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			reconcile_at_path(element, &branch_view, path)
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			reconcile_at_path(element, &content_view, path)
+		}
 	}
 }
 
@@ -382,6 +390,14 @@ fn reconcile_dom_node_at_path(
 		Page::Reactive(reactive) => {
 			let rendered_view = reactive.render();
 			reconcile_dom_node_at_path(node, &rendered_view, path)
+		}
+		Page::Suspense(suspense_node) => {
+			let branch_view = suspense_node.render_branch();
+			reconcile_dom_node_at_path(node, &branch_view, path)
+		}
+		Page::Deferred(deferred_node) => {
+			let content_view = deferred_node.content();
+			reconcile_dom_node_at_path(node, &content_view, path)
 		}
 	}
 }
@@ -499,6 +515,14 @@ fn collect_expected_child(
 		Page::Reactive(reactive) => {
 			let rendered_view = reactive.render();
 			collect_expected_child(&rendered_view, path, children);
+		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			collect_expected_child(&branch_view, path, children);
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			collect_expected_child(&content_view, path, children);
 		}
 		Page::Text(text) => {
 			if let Some((_, Page::Text(previous_text))) = children.last_mut() {
@@ -668,6 +692,14 @@ fn reconcile_options_children_at_path(
 		Page::Reactive(reactive) => {
 			let rendered_view = reactive.render();
 			return reconcile_options_children_at_path(element, &rendered_view, options, path);
+		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			return reconcile_options_children_at_path(element, &branch_view, options, path);
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			return reconcile_options_children_at_path(element, &content_view, options, path);
 		}
 		Page::Text(_) | Page::Empty => return Ok(()),
 	};
@@ -894,6 +926,14 @@ fn compare_recursive(element: &Element, view: &Page, path: &str, differences: &m
 			// For comparison, evaluate the render closure and compare the resulting view
 			let rendered_view = reactive.render();
 			compare_recursive(element, &rendered_view, path, differences);
+		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			compare_recursive(element, &branch_view, path, differences);
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			compare_recursive(element, &content_view, path, differences);
 		}
 	}
 }

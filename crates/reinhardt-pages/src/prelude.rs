@@ -96,8 +96,8 @@ pub use crate::reactive::{
 	use_sync_external_store, use_transition,
 };
 
-// Unified resource hook (available on all targets)
-pub use crate::reactive::use_resource;
+// Unified resource hooks (available on all targets)
+pub use crate::reactive::{use_resource, use_resource_with_key};
 
 // ============================================================================
 // Component System
@@ -163,7 +163,7 @@ pub use crate::hydration::{
 pub use crate::hydration::mark_hydration_complete;
 pub use crate::ssr::SsrState;
 #[cfg(native)]
-pub use crate::ssr::{SsrOptions, SsrRenderer};
+pub use crate::ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
 
 // ============================================================================
 // Static File URL Resolver

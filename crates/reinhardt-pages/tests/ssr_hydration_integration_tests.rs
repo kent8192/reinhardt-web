@@ -165,15 +165,15 @@ fn test_ssr_state_complex_values() {
 }
 
 /// Success Criterion 3: SSR renderer with hydration markers
-#[test]
-fn test_ssr_renderer_with_hydration_markers() {
+#[tokio::test]
+async fn test_ssr_renderer_with_hydration_markers() {
 	let counter = Counter::new(10);
 
 	let options = SsrOptions::new();
 
 	let mut renderer = SsrRenderer::with_options(options);
 	// Use render_with_marker to get hydration markers
-	let html = renderer.render_with_marker(&counter);
+	let html = renderer.render_with_marker(&counter).await;
 
 	// Should contain hydration marker
 	assert!(html.contains("data-rh-id"));
@@ -182,18 +182,18 @@ fn test_ssr_renderer_with_hydration_markers() {
 }
 
 /// Regression test for #4972: hydration IDs must be deterministic per render.
-#[test]
-fn test_hydration_marker_ids_reset_for_each_render_context() {
+#[tokio::test]
+async fn test_hydration_marker_ids_reset_for_each_render_context() {
 	let counter = Counter::new(7);
 	let card = UserCard::new("Alice", "alice@example.com");
 
 	let mut first_renderer = SsrRenderer::new();
-	let first_counter = first_renderer.render_with_marker(&counter);
-	let first_card = first_renderer.render_with_marker(&card);
+	let first_counter = first_renderer.render_with_marker(&counter).await;
+	let first_card = first_renderer.render_with_marker(&card).await;
 
 	let mut second_renderer = SsrRenderer::new();
-	let second_counter = second_renderer.render_with_marker(&counter);
-	let second_card = second_renderer.render_with_marker(&card);
+	let second_counter = second_renderer.render_with_marker(&counter).await;
+	let second_card = second_renderer.render_with_marker(&card).await;
 
 	assert_eq!(first_counter, second_counter);
 	assert_eq!(first_card, second_card);
@@ -202,8 +202,8 @@ fn test_hydration_marker_ids_reset_for_each_render_context() {
 }
 
 /// Success Criterion 3: SSR renderer without hydration markers
-#[test]
-fn test_ssr_renderer_without_hydration_markers() {
+#[tokio::test]
+async fn test_ssr_renderer_without_hydration_markers() {
 	let counter = Counter::new(5);
 
 	// Use no_hydration() to disable hydration markers
@@ -211,7 +211,7 @@ fn test_ssr_renderer_without_hydration_markers() {
 
 	let mut renderer = SsrRenderer::with_options(options);
 	// render_with_marker respects the no_hydration option
-	let html = renderer.render_with_marker(&counter);
+	let html = renderer.render_with_marker(&counter).await;
 
 	// Should NOT contain hydration marker when disabled
 	assert!(!html.contains("data-rh-id"));
@@ -237,8 +237,8 @@ fn test_view_empty_rendering() {
 }
 
 /// Integration test: Full SSR flow with state
-#[test]
-fn test_full_ssr_flow() {
+#[tokio::test]
+async fn test_full_ssr_flow() {
 	// 1. Create component
 	let counter = Counter::new(100);
 
@@ -248,7 +248,7 @@ fn test_full_ssr_flow() {
 
 	// 3. Render component
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render(&counter);
+	let html = renderer.render(&counter).await;
 
 	// 4. Serialize state
 	let state_json = state.to_json().expect("State serialization failed");

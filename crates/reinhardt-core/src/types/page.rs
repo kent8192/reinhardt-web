@@ -31,7 +31,7 @@ pub(crate) use util::html_escape;
 pub use util::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
 
 use std::borrow::Cow;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 /// Type alias for event handler functions.
 #[cfg(wasm)]
@@ -127,6 +127,42 @@ pub struct Reactive {
 	render: std::sync::Arc<dyn Fn() -> Page + 'static>,
 }
 
+/// Suspense view node with lazy branch factories.
+///
+/// The branch factories are stored as `Arc<dyn Fn>` so the enclosing `Page`
+/// remains cloneable while each traversal can render a fresh branch.
+#[derive(Clone)]
+pub struct SuspenseNode {
+	/// Optional boundary identifier for matching SSR and hydration boundaries.
+	boundary_id: Option<String>,
+	/// Resource hydration keys explicitly tracked by this boundary.
+	tracked_resource_ids: Vec<String>,
+	/// Pending-state closure used to choose the active branch on the client.
+	is_pending: Arc<dyn Fn() -> bool + 'static>,
+	/// Fallback view factory invoked while the boundary is pending.
+	fallback: Arc<dyn Fn() -> Page + 'static>,
+	/// Content view factory invoked after the boundary has resolved.
+	content: Arc<dyn Fn() -> Page + 'static>,
+	/// Cached topmost head extracted from the content branch.
+	content_head: Arc<OnceLock<Option<Head>>>,
+}
+
+/// Deferred view node with lazy fallback and content factories.
+///
+/// Deferred nodes preserve both branches for async SSR orchestration while
+/// normal page traversal renders the content branch.
+#[derive(Clone)]
+pub struct DeferredNode {
+	/// Stable node identifier for SSR and hydration coordination.
+	node_id: String,
+	/// Fallback view factory reserved for deferred streaming boundaries.
+	fallback: Arc<dyn Fn() -> Page + 'static>,
+	/// Content view factory rendered by normal traversal.
+	content: Arc<dyn Fn() -> Page + 'static>,
+	/// Cached topmost head extracted from the content branch.
+	content_head: Arc<OnceLock<Option<Head>>>,
+}
+
 impl std::fmt::Debug for Reactive {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("Reactive")
@@ -144,6 +180,155 @@ impl Reactive {
 	/// Consumes the Reactive and returns the render closure.
 	pub fn into_render(self) -> std::sync::Arc<dyn Fn() -> Page + 'static> {
 		self.render
+	}
+}
+
+impl std::fmt::Debug for SuspenseNode {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("SuspenseNode")
+			.field("boundary_id", &self.boundary_id)
+			.field("tracked_resource_ids", &self.tracked_resource_ids)
+			.field("is_pending", &"<closure>")
+			.field("fallback", &"<closure>")
+			.field("content", &"<closure>")
+			.finish()
+	}
+}
+
+impl SuspenseNode {
+	/// Creates a new suspense node.
+	pub fn new(
+		boundary_id: Option<String>,
+		is_pending: impl Fn() -> bool + 'static,
+		fallback: impl Fn() -> Page + 'static,
+		content: impl Fn() -> Page + 'static,
+	) -> Self {
+		Self::new_with_tracked_resources(boundary_id, Vec::new(), is_pending, fallback, content)
+	}
+
+	/// Creates a new suspense node with tracked SSR resource keys.
+	pub fn new_with_tracked_resources(
+		boundary_id: Option<String>,
+		tracked_resource_ids: Vec<String>,
+		is_pending: impl Fn() -> bool + 'static,
+		fallback: impl Fn() -> Page + 'static,
+		content: impl Fn() -> Page + 'static,
+	) -> Self {
+		Self {
+			boundary_id,
+			tracked_resource_ids,
+			is_pending: Arc::new(is_pending),
+			fallback: Arc::new(fallback),
+			content: Arc::new(content),
+			content_head: Arc::new(OnceLock::new()),
+		}
+	}
+
+	/// Returns the optional boundary identifier.
+	pub fn boundary_id(&self) -> Option<&str> {
+		self.boundary_id.as_deref()
+	}
+
+	/// Returns resource hydration keys explicitly tracked by this boundary.
+	pub fn tracked_resource_ids(&self) -> &[String] {
+		&self.tracked_resource_ids
+	}
+
+	/// Returns `true` when the fallback branch should render.
+	pub fn is_pending(&self) -> bool {
+		(self.is_pending)()
+	}
+
+	/// Renders the fallback branch.
+	pub fn fallback(&self) -> Page {
+		(self.fallback)()
+	}
+
+	/// Renders the fallback branch.
+	pub fn render_fallback(&self) -> Page {
+		self.fallback()
+	}
+
+	/// Renders the content branch.
+	pub fn content(&self) -> Page {
+		(self.content)()
+	}
+
+	/// Renders the content branch.
+	pub fn render_content(&self) -> Page {
+		self.content()
+	}
+
+	/// Renders the currently active branch.
+	pub fn render_branch(&self) -> Page {
+		if self.is_pending() {
+			self.fallback()
+		} else {
+			self.content()
+		}
+	}
+
+	fn find_topmost_content_head(&self) -> Option<&Head> {
+		self.content_head
+			.get_or_init(|| self.content().find_topmost_head().cloned())
+			.as_ref()
+	}
+}
+
+impl std::fmt::Debug for DeferredNode {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("DeferredNode")
+			.field("node_id", &self.node_id)
+			.field("fallback", &"<closure>")
+			.field("content", &"<closure>")
+			.finish()
+	}
+}
+
+impl DeferredNode {
+	/// Creates a new deferred node.
+	pub fn new(
+		node_id: impl Into<String>,
+		fallback: impl Fn() -> Page + 'static,
+		content: impl Fn() -> Page + 'static,
+	) -> Self {
+		Self {
+			node_id: node_id.into(),
+			fallback: Arc::new(fallback),
+			content: Arc::new(content),
+			content_head: Arc::new(OnceLock::new()),
+		}
+	}
+
+	/// Returns the stable node identifier.
+	pub fn node_id(&self) -> &str {
+		&self.node_id
+	}
+
+	/// Renders the fallback branch.
+	pub fn fallback(&self) -> Page {
+		(self.fallback)()
+	}
+
+	/// Renders the fallback branch.
+	pub fn render_fallback(&self) -> Page {
+		self.fallback()
+	}
+
+	/// Renders the content branch.
+	pub fn content(&self) -> Page {
+		(self.content)()
+	}
+
+	/// Renders the content branch.
+	pub fn render_content(&self) -> Page {
+		self.content()
+	}
+
+	fn find_topmost_content_head(&self) -> Option<&Head> {
+		self.content_head
+			.get_or_init(|| self.content().find_topmost_head().cloned())
+			.as_ref()
 	}
 }
 
@@ -232,6 +417,10 @@ pub enum Page {
 	/// automatic DOM updates when Signal values accessed within the
 	/// closure change.
 	Reactive(Reactive),
+	/// A suspense boundary with pending and resolved branch factories.
+	Suspense(SuspenseNode),
+	/// A deferred node with fallback and content branch factories.
+	Deferred(DeferredNode),
 }
 
 /// Represents a DOM element in the view tree.
@@ -671,15 +860,22 @@ impl Page {
 	/// # Search Order
 	///
 	/// 1. If this view is a `WithHead`, returns its head
-	/// 2. For `Fragment` views, searches children in order and returns the first found
-	/// 3. For other variants, returns `None`
+	/// 2. For element and fragment views, searches children in order and returns the first found
+	/// 3. For Suspense/Deferred views, searches the content branch
+	/// 4. For other variants, returns `None`
 	pub fn find_topmost_head(&self) -> Option<&Head> {
 		match self {
 			Page::WithHead { head, .. } => Some(head),
+			Page::Element(element) => element
+				.child_views()
+				.iter()
+				.find_map(|view| view.find_topmost_head()),
 			Page::Fragment(children) => children.iter().find_map(|v| v.find_topmost_head()),
 			Page::KeyedFragment(children) => {
 				children.iter().find_map(|(_, v)| v.find_topmost_head())
 			}
+			Page::Suspense(node) => node.find_topmost_content_head(),
+			Page::Deferred(node) => node.find_topmost_content_head(),
 			_ => None,
 		}
 	}
@@ -756,6 +952,14 @@ impl Page {
 			Page::Reactive(reactive) => {
 				// For SSR, evaluate render once and render the result
 				let view = reactive.render();
+				view.render_to_string_inner(output);
+			}
+			Page::Suspense(node) => {
+				let view = node.content();
+				view.render_to_string_inner(output);
+			}
+			Page::Deferred(node) => {
+				let view = node.content();
 				view.render_to_string_inner(output);
 			}
 		}
