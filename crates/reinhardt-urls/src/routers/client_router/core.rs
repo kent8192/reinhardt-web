@@ -20,7 +20,7 @@ use super::tree::{ClientRouteTreeMatch, ResolvedRouteMetadata, RouteNode};
 use reinhardt_core::page::Outlet;
 use reinhardt_core::page::Page;
 use reinhardt_core::reactive::Signal;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// Type alias for route guard functions.
@@ -371,6 +371,8 @@ impl ClientRoute {
 pub struct ClientRouter {
 	/// Registered routes.
 	routes: Vec<ClientRoute>,
+	/// Route table indices registered through the nested route tree API.
+	tree_route_indices: HashSet<usize>,
 	/// Nested route tree for layout-aware rendering.
 	route_tree: RouteNode,
 	/// Named routes for reverse lookups.
@@ -436,6 +438,7 @@ impl ClientRouter {
 
 		Self {
 			routes: Vec::new(),
+			tree_route_indices: HashSet::new(),
 			route_tree: RouteNode::root(),
 			named_routes: HashMap::new(),
 			current_path: Signal::new(initial_path),
@@ -485,6 +488,7 @@ impl ClientRouter {
 			if let Some(name) = route.name() {
 				self.insert_named_route(name, offset + idx);
 			}
+			self.tree_route_indices.insert(offset + idx);
 		}
 		self.routes.extend(registered.routes);
 		self.route_tree.extend_children(registered.nodes);
@@ -532,6 +536,9 @@ impl ClientRouter {
 	pub fn merge(mut self, other: ClientRouter) -> Self {
 		let offset = self.routes.len();
 		let other_tree_children = other.route_tree.children().to_vec();
+		for index in other.tree_route_indices {
+			self.tree_route_indices.insert(index + offset);
+		}
 		for (name, idx) in other.named_routes {
 			self.named_routes.insert(name, idx + offset);
 		}
@@ -887,11 +894,25 @@ impl ClientRouter {
 	///
 	/// [`QueryParam`]: super::from_request::QueryParam
 	pub fn match_path(&self, path: &str) -> Option<ClientRouteMatch> {
+		self.match_path_filtered(path, |_, _| true)
+	}
+
+	fn match_legacy_path(&self, path: &str) -> Option<ClientRouteMatch> {
+		self.match_path_filtered(path, |index, _| !self.tree_route_indices.contains(&index))
+	}
+
+	fn match_path_filtered<F>(&self, path: &str, route_filter: F) -> Option<ClientRouteMatch>
+	where
+		F: Fn(usize, &ClientRoute) -> bool,
+	{
 		let (path_only, query) = match path.split_once('?') {
 			Some((p, q)) => (p, Some(q.to_string())),
 			None => (path, None),
 		};
-		for route in &self.routes {
+		for (index, route) in self.routes.iter().enumerate() {
+			if !route_filter(index, route) {
+				continue;
+			}
 			if let Some((params, param_values)) = route.pattern.matches(path_only) {
 				let route_match = ClientRouteMatch {
 					route: route.clone(),
@@ -919,7 +940,7 @@ impl ClientRouter {
 		if let Some(route_match) = self.route_tree.match_path(path_only, query.clone()) {
 			return Some(route_match);
 		}
-		self.match_path(path).map(|leaf| {
+		self.match_legacy_path(path).map(|leaf| {
 			let leaf_metadata = ResolvedRouteMetadata::new(
 				leaf.route.name().map(str::to_string),
 				leaf.route.pattern().pattern().to_string(),
@@ -1403,6 +1424,18 @@ mod tests {
 		assert!(router.match_path("/").is_some());
 		assert!(router.match_path("/users/").is_some());
 		assert!(router.match_path("/nonexistent/").is_none());
+	}
+
+	#[test]
+	fn match_tree_does_not_fall_back_to_flat_copy_for_tree_routes() {
+		let mut router = ClientRouter::new()
+			.routes(|routes| routes.route("tree", "/tree/", || page_with_text("Tree")));
+		assert!(router.match_tree("/tree/").is_some());
+
+		router.route_tree = RouteNode::root();
+
+		assert!(router.match_tree("/tree/").is_none());
+		assert!(router.match_path("/tree/").is_some());
 	}
 
 	#[test]

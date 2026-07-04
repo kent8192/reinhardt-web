@@ -124,6 +124,39 @@ fn layout_child_route_uses_composed_path_and_shared_params() {
 }
 
 #[test]
+fn nested_layout_key_includes_ancestor_params() {
+	let router = ClientRouter::new()
+		.try_routes(|routes| {
+			routes.layout_route(
+				"org",
+				"/orgs/{org_id}/",
+				|outlet| outlet.into_page(),
+				|children| {
+					children.layout_route(
+						"projects",
+						"projects/",
+						|outlet| outlet.into_page(),
+						|children| children.index_route("overview", || Page::text("overview")),
+					)
+				},
+			)
+		})
+		.expect("nested layouts should register");
+
+	let matched = router
+		.match_tree("/orgs/acme/projects/")
+		.expect("nested index route should match");
+	let project_key = matched.layouts()[1].key();
+
+	assert_eq!(project_key.name(), Some("projects"));
+	assert_eq!(project_key.full_pattern(), "/orgs/{org_id}/projects/");
+	assert_eq!(
+		project_key.params(),
+		&[("org_id".to_string(), "acme".to_string())]
+	);
+}
+
+#[test]
 fn layout_child_rejects_absolute_component_path() {
 	#[derive(Debug)]
 	struct BadProps;

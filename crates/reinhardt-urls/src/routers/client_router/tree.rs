@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 /// The structural kind of a route tree node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RouteNodeKind {
 	/// Synthetic root node.
 	Root,
@@ -278,8 +279,9 @@ impl RouteNode {
 
 	fn to_matched_layout(&self, leaf_match: &ClientRouteMatch) -> Option<MatchedLayout> {
 		let route = self.route.as_ref()?.clone();
-		let key_params = self
-			.own_param_names
+		let key_params = route
+			.pattern()
+			.param_names()
 			.iter()
 			.filter_map(|name| {
 				leaf_match

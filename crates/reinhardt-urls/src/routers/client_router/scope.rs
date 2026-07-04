@@ -98,8 +98,7 @@ impl RouteScope {
 		self
 	}
 
-	/// Registers a component route using `ComponentInfo` metadata.
-	pub fn try_component<F, P>(&mut self, handler: F) -> Result<(), RouteRegistrationError>
+	fn try_component<F, P>(&mut self, handler: F) -> Result<(), RouteRegistrationError>
 	where
 		F: Fn(P) -> Page + Send + Sync + 'static,
 		P: FromRequest + ComponentInfo + Send + Sync + 'static,
@@ -146,12 +145,7 @@ impl RouteScope {
 		self
 	}
 
-	/// Registers a layout route and its child scope.
-	pub fn try_layout<F, P, C>(
-		&mut self,
-		handler: F,
-		children: C,
-	) -> Result<(), RouteRegistrationError>
+	fn try_layout<F, P, C>(&mut self, handler: F, children: C) -> Result<(), RouteRegistrationError>
 	where
 		F: Fn(P) -> Page + Send + Sync + 'static,
 		P: FromLayoutRequest + LayoutInfo + 'static,
@@ -207,8 +201,7 @@ impl RouteScope {
 		self
 	}
 
-	/// Registers an index route at this scope's base path.
-	pub fn try_index<F, P>(&mut self, handler: F) -> Result<(), RouteRegistrationError>
+	fn try_index<F, P>(&mut self, handler: F) -> Result<(), RouteRegistrationError>
 	where
 		F: Fn(P) -> Page + Send + Sync + 'static,
 		P: FromRequest + ComponentInfo + Send + Sync + 'static,
@@ -256,8 +249,7 @@ impl RouteScope {
 		self
 	}
 
-	/// Registers a closure-backed leaf route.
-	pub fn try_route<F>(
+	fn try_route<F>(
 		&mut self,
 		name: &str,
 		path: &str,
@@ -306,8 +298,7 @@ impl RouteScope {
 		self
 	}
 
-	/// Registers a closure-backed layout route.
-	pub fn try_layout_route<F, C>(
+	fn try_layout_route<F, C>(
 		&mut self,
 		name: &str,
 		path: &str,
@@ -366,12 +357,7 @@ impl RouteScope {
 		self
 	}
 
-	/// Registers a closure-backed index route.
-	pub fn try_index_route<F>(
-		&mut self,
-		name: &str,
-		handler: F,
-	) -> Result<(), RouteRegistrationError>
+	fn try_index_route<F>(&mut self, name: &str, handler: F) -> Result<(), RouteRegistrationError>
 	where
 		F: Fn() -> Page + Send + Sync + 'static,
 	{

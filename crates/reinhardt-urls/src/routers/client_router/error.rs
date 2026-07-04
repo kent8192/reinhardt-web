@@ -64,6 +64,7 @@ impl std::error::Error for PathError {}
 
 /// Error returned when building a client route tree fails validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RouteRegistrationError {
 	/// A route declared in the root scope used a relative path.
 	RootPathMustBeAbsolute {
