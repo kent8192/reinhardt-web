@@ -33,7 +33,10 @@ pub enum PasswordCheck {
 /// Verification checks the preferred hasher first, then checks legacy hashers in
 /// registration order. A password that matches a legacy hash returns
 /// [`PasswordVerification::ValidNeedsRehash`] with a replacement hash generated
-/// by the preferred hasher.
+/// by the preferred hasher. If a verified legacy password cannot be rehashed
+/// with the preferred hasher, verification still succeeds as
+/// [`PasswordVerification::Valid`] so authentication is not rejected solely
+/// because the opportunistic upgrade failed.
 ///
 /// # Password hash upgrades
 ///
@@ -191,9 +194,7 @@ impl PasswordHashPolicy {
 					return Ok(PasswordVerification::Invalid);
 				}
 
-				return Ok(PasswordVerification::ValidNeedsRehash {
-					updated_hash: self.preferred.hash(password)?,
-				});
+				return Ok(self.verified_legacy_result(password));
 			}
 		}
 
@@ -205,9 +206,7 @@ impl PasswordHashPolicy {
 
 		for legacy in &self.legacy {
 			if legacy.algorithm().is_none() && legacy.verify(password, hash).unwrap_or(false) {
-				return Ok(PasswordVerification::ValidNeedsRehash {
-					updated_hash: self.preferred.hash(password)?,
-				});
+				return Ok(self.verified_legacy_result(password));
 			}
 		}
 
@@ -228,6 +227,13 @@ impl PasswordHashPolicy {
 		}
 
 		Ok(PasswordVerification::Valid)
+	}
+
+	fn verified_legacy_result(&self, password: &str) -> PasswordVerification {
+		match self.preferred.hash(password) {
+			Ok(updated_hash) => PasswordVerification::ValidNeedsRehash { updated_hash },
+			Err(_) => PasswordVerification::Valid,
+		}
 	}
 }
 

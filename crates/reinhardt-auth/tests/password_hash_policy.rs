@@ -132,6 +132,30 @@ impl PasswordHasher for ErroringDefaultIdentifierPreferredHasher {
 	}
 }
 
+#[derive(Clone)]
+struct ErroringHashPreferredHasher;
+
+impl PasswordHasher for ErroringHashPreferredHasher {
+	fn hash(&self, _password: &str) -> Result<String, Error> {
+		Err(Error::Authentication(
+			"preferred hasher could not hash this password".to_string(),
+		))
+	}
+
+	fn verify(&self, password: &str, hash: &str) -> Result<bool, Error> {
+		Ok(hash == format!("new${password}"))
+	}
+
+	fn algorithm(&self) -> Option<&'static str> {
+		Some("new")
+	}
+
+	fn identify(&self, hash: &str) -> bool {
+		hash.strip_prefix("new")
+			.is_some_and(|remaining| remaining.starts_with('$'))
+	}
+}
+
 #[cfg(feature = "bcrypt-hasher")]
 #[derive(Clone)]
 struct Bcrypt2xCompatibilityHasher;
@@ -174,6 +198,18 @@ fn policy_rehashes_legacy_algorithm_with_preferred_hasher() {
 			updated_hash: "new$secret".to_string(),
 		}
 	);
+}
+
+#[test]
+fn policy_accepts_legacy_password_when_preferred_rehash_fails() {
+	let policy =
+		PasswordHashPolicy::new(ErroringHashPreferredHasher).with_legacy(PrefixHasher::new("old"));
+
+	let result = policy
+		.verify_with_update("secret", "old$secret")
+		.expect("legacy verification should not fail when rehashing fails");
+
+	assert_eq!(result, PasswordVerification::Valid);
 }
 
 #[test]
