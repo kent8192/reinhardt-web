@@ -192,6 +192,10 @@ impl<M: Model> Manager<M> {
 		}
 	}
 
+	fn is_generated_field(field: &str) -> bool {
+		M::generated_field_names().contains(&field)
+	}
+
 	/// Get all records
 	pub fn all(&self) -> QuerySet<M> {
 		QuerySet::new()
@@ -713,6 +717,9 @@ impl<M: Model> Manager<M> {
 			.iter()
 			.filter(|(k, v)| {
 				let key = k.as_str();
+				if Self::is_generated_field(key) {
+					return false;
+				}
 				// Exclude primary key field if it's null or 0 (auto-increment)
 				if key == pk_field {
 					if v.is_null() {
@@ -974,10 +981,10 @@ impl<M: Model> Manager<M> {
 		stmt.table(Alias::new(M::table_name()));
 
 		// Add SET clauses for all fields except primary key
-		for (k, v) in obj
-			.iter()
-			.filter(|(k, _)| k.as_str() != M::primary_key_field())
-		{
+		for (k, v) in obj.iter().filter(|(k, _)| {
+			let key = k.as_str();
+			key != M::primary_key_field() && !Self::is_generated_field(key)
+		}) {
 			if v.is_null() {
 				// Use untyped NULL to avoid PostgreSQL type mismatch errors
 				// (e.g., setting timestamp column to NULL would fail with Int(None))
@@ -1156,7 +1163,18 @@ impl<M: Model> Manager<M> {
 		// Get field names from first model
 		let first_obj = json_values[0].as_object()?;
 
-		let fields: Vec<_> = first_obj.keys().map(|k| Alias::new(k.as_str())).collect();
+		let field_names: Vec<_> = first_obj
+			.keys()
+			.filter(|field| !Self::is_generated_field(field.as_str()))
+			.cloned()
+			.collect();
+		let fields: Vec<_> = field_names
+			.iter()
+			.map(|field| Alias::new(field.as_str()))
+			.collect();
+		if fields.is_empty() {
+			return None;
+		}
 
 		// Build reinhardt-query INSERT statement
 		let mut stmt = Query::insert();
@@ -1165,8 +1183,8 @@ impl<M: Model> Manager<M> {
 		// Add value rows for each model
 		for val in &json_values {
 			if let Some(obj) = val.as_object() {
-				let values: Vec<reinhardt_query::value::Value> = first_obj
-					.keys()
+				let values: Vec<reinhardt_query::value::Value> = field_names
+					.iter()
 					.map(|field| {
 						obj.get(field)
 							.map(|v| {
@@ -1324,7 +1342,7 @@ impl<M: Model> Manager<M> {
 			let field_names: Vec<String> = obj
 				.iter()
 				.filter_map(|(k, v)| {
-					if k == pk_field && v.is_null() {
+					if Self::is_generated_field(k.as_str()) || (k == pk_field && v.is_null()) {
 						None
 					} else {
 						Some(k.clone())
@@ -1343,6 +1361,9 @@ impl<M: Model> Manager<M> {
 				.collect();
 
 			let sql = self.bulk_create_sql_detailed(&field_names, &value_rows, ignore_conflicts);
+			if sql.is_empty() {
+				continue;
+			}
 
 			// Execute and get results
 			if ignore_conflicts {
@@ -1399,7 +1420,10 @@ impl<M: Model> Manager<M> {
 					let obj = json.as_object()?;
 
 					let mut field_map = HashMap::new();
-					for field in &fields {
+					for field in fields
+						.iter()
+						.filter(|field| !Self::is_generated_field(field.as_str()))
+					{
 						if let Some(val) = obj.get(field) {
 							field_map.insert(field.clone(), val.clone());
 						}
@@ -1411,6 +1435,9 @@ impl<M: Model> Manager<M> {
 
 			if !updates.is_empty() {
 				let sql = self.bulk_update_sql_detailed(&updates, &fields, conn.backend());
+				if sql.is_empty() {
+					continue;
+				}
 				let rows_affected = conn.execute(&sql, vec![]).await?;
 				total_updated += rows_affected as usize;
 			}
@@ -1488,11 +1515,31 @@ impl<M: Model> Manager<M> {
 			return String::new();
 		}
 
+		let writable_indexes: Vec<_> = field_names
+			.iter()
+			.enumerate()
+			.filter_map(|(index, field)| {
+				if Self::is_generated_field(field) {
+					None
+				} else {
+					Some(index)
+				}
+			})
+			.collect();
+		let writable_field_names: Vec<_> = writable_indexes
+			.iter()
+			.map(|index| field_names[*index].clone())
+			.collect();
+		if writable_field_names.is_empty() {
+			return String::new();
+		}
+
 		let values_clause: Vec<String> = value_rows
 			.iter()
 			.map(|row| {
-				let values = row
+				let values = writable_indexes
 					.iter()
+					.filter_map(|index| row.get(*index))
 					.map(|v| match v {
 						serde_json::Value::Null => "NULL".to_string(),
 						serde_json::Value::Number(n) => n.to_string(),
@@ -1515,7 +1562,7 @@ impl<M: Model> Manager<M> {
 		let mut sql = format!(
 			"INSERT INTO {} ({}) VALUES {}",
 			M::table_name(),
-			field_names.join(", "),
+			writable_field_names.join(", "),
 			values_clause.join(", ")
 		);
 
@@ -1546,7 +1593,10 @@ impl<M: Model> Manager<M> {
 		let table_name = M::table_name();
 		let mut set_clauses = Vec::new();
 
-		for field in fields {
+		for field in fields
+			.iter()
+			.filter(|field| !Self::is_generated_field(field.as_str()))
+		{
 			let mut when_clauses = Vec::new();
 
 			for (pk, field_map) in updates.iter() {
@@ -1575,6 +1625,10 @@ impl<M: Model> Manager<M> {
 					when_clauses.join(" ")
 				));
 			}
+		}
+
+		if set_clauses.is_empty() {
+			return String::new();
 		}
 
 		let ids: Vec<String> = updates
@@ -1660,6 +1714,53 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone, Serialize, Deserialize)]
+	struct GeneratedUser {
+		id: Option<i64>,
+		name: String,
+		email: String,
+		full_name: String,
+	}
+
+	#[derive(Debug, Clone)]
+	struct GeneratedUserFields;
+
+	impl FieldSelector for GeneratedUserFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for GeneratedUser {
+		type PrimaryKey = i64;
+		type Fields = GeneratedUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"generated_user"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn generated_field_names() -> &'static [&'static str] {
+			&["full_name"]
+		}
+
+		fn new_fields() -> Self::Fields {
+			GeneratedUserFields
+		}
+	}
+
 	#[test]
 	fn test_get_or_create_sql() {
 		let manager = TestUser::objects();
@@ -1720,6 +1821,42 @@ mod tests {
 	}
 
 	#[test]
+	fn test_bulk_create_sql_detailed_omits_generated_fields() {
+		use serde_json::json;
+		let manager = GeneratedUser::objects();
+		let fields = vec![
+			"name".to_string(),
+			"email".to_string(),
+			"full_name".to_string(),
+		];
+		let values = vec![vec![
+			json!("Alice"),
+			json!("alice@example.com"),
+			json!("Alice Smith"),
+		]];
+
+		let sql = manager.bulk_create_sql_detailed(&fields, &values, false);
+
+		assert!(sql.contains("INSERT INTO generated_user"));
+		assert!(sql.contains("name"));
+		assert!(sql.contains("email"));
+		assert!(!sql.contains("full_name"));
+		assert!(!sql.contains("Alice Smith"));
+	}
+
+	#[test]
+	fn test_bulk_create_sql_detailed_returns_empty_for_only_generated_fields() {
+		use serde_json::json;
+		let manager = GeneratedUser::objects();
+		let fields = vec!["full_name".to_string()];
+		let values = vec![vec![json!("Alice Smith")]];
+
+		let sql = manager.bulk_create_sql_detailed(&fields, &values, false);
+
+		assert!(sql.is_empty());
+	}
+
+	#[test]
 	fn test_bulk_update_sql() {
 		use serde_json::json;
 		let manager = TestUser::objects();
@@ -1748,6 +1885,41 @@ mod tests {
 		assert!(sql.contains("Alice Updated"));
 		assert!(sql.contains("Bob Updated"));
 		assert!(sql.contains("WHERE"));
+	}
+
+	#[test]
+	fn test_bulk_update_sql_detailed_omits_generated_fields() {
+		use serde_json::json;
+		let manager = GeneratedUser::objects();
+		let mut updates = Vec::new();
+		let mut fields_map = HashMap::new();
+		fields_map.insert("name".to_string(), json!("Alice Updated"));
+		fields_map.insert("full_name".to_string(), json!("Alice Smith"));
+		updates.push((1i64, fields_map));
+		let fields = vec!["name".to_string(), "full_name".to_string()];
+
+		let sql = manager.bulk_update_sql_detailed(&updates, &fields, DatabaseBackend::Postgres);
+
+		assert!(sql.contains("UPDATE \"generated_user\""));
+		assert!(sql.contains("\"name\""));
+		assert!(sql.contains("Alice Updated"));
+		assert!(!sql.contains("full_name"));
+		assert!(!sql.contains("Alice Smith"));
+	}
+
+	#[test]
+	fn test_bulk_update_sql_detailed_returns_empty_for_only_generated_fields() {
+		use serde_json::json;
+		let manager = GeneratedUser::objects();
+		let mut updates = Vec::new();
+		let mut fields_map = HashMap::new();
+		fields_map.insert("full_name".to_string(), json!("Alice Smith"));
+		updates.push((1i64, fields_map));
+		let fields = vec!["full_name".to_string()];
+
+		let sql = manager.bulk_update_sql_detailed(&updates, &fields, DatabaseBackend::Postgres);
+
+		assert!(sql.is_empty());
 	}
 
 	#[test]

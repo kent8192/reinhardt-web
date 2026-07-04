@@ -69,6 +69,8 @@ struct IdentityEntry {
 	data: Value,
 	/// Type ID for runtime type checking
 	type_id: TypeId,
+	/// Database-generated columns that must be omitted from INSERT/UPDATE writes.
+	generated_fields: HashSet<String>,
 	/// Whether the object has been modified
 	// Allow dead_code: dirty tracking flag set internally, read by future flush/commit logic
 	#[allow(dead_code)]
@@ -223,6 +225,10 @@ impl Session {
 			IdentityEntry {
 				data,
 				type_id: TypeId::of::<T>(),
+				generated_fields: T::generated_field_names()
+					.iter()
+					.map(|field| (*field).to_string())
+					.collect(),
 				is_dirty: true,
 			},
 		);
@@ -436,6 +442,10 @@ impl Session {
 			IdentityEntry {
 				data: obj_data,
 				type_id: TypeId::of::<T>(),
+				generated_fields: T::generated_field_names()
+					.iter()
+					.map(|field| (*field).to_string())
+					.collect(),
 				is_dirty: false,
 			},
 		);
@@ -773,6 +783,9 @@ impl Session {
 							if col_name == "id" || col_name.ends_with("_id") {
 								continue; // Skip primary key columns
 							}
+							if entry.generated_fields.contains(col_name) {
+								continue;
+							}
 							// Skip null values to avoid type inference issues
 							// (e.g., NULL being bound as integer for timestamp columns)
 							if col_value.is_null() {
@@ -823,6 +836,9 @@ impl Session {
 						for (col_name, col_value) in obj {
 							// Skip id/primary key column - auto-generated
 							if col_name == "id" || col_name.ends_with("_id") {
+								continue;
+							}
+							if entry.generated_fields.contains(col_name) {
 								continue;
 							}
 							// Skip null datetime fields to let database DEFAULT apply

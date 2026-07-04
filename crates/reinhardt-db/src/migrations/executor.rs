@@ -1069,6 +1069,16 @@ impl DatabaseMigrationExecutor {
 		// would silently rebuild the table from a stale column set — the
 		// root cause of reinhardt-web#4447.
 		let recreation = match operation {
+			Operation::AddColumn { table, column, .. } => {
+				tracing::debug!(
+					"Handling SQLite table recreation for AddColumn: table={}, column={}",
+					table,
+					column.name
+				);
+				let (columns, constraints) =
+					Self::read_sqlite_table_via_editor(editor, table).await?;
+				SqliteTableRecreation::for_add_column(table, columns, column.clone(), constraints)
+			}
 			Operation::DropColumn { table, column } => {
 				tracing::debug!(
 					"Handling SQLite table recreation for DropColumn: table={}, column={}",

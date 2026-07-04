@@ -5,6 +5,7 @@
 
 use super::{Migration, Result};
 use quote::ToTokens;
+use reinhardt_query::value::Value as QueryValue;
 use syn::{Expr, File, Item, ItemFn, Stmt};
 
 /// Extract migration metadata from parsed AST
@@ -364,7 +365,8 @@ fn extract_optional_expr_tokens_field(
 				&& func_path.path.is_ident("Some")
 				&& expr_call.args.len() == 1
 			{
-				return Some(expr_call.args[0].to_token_stream().to_string());
+				let expr = unwrap_box_new_expr(&expr_call.args[0]).unwrap_or(&expr_call.args[0]);
+				return Some(expr.to_token_stream().to_string());
 			}
 		}
 	}
@@ -831,18 +833,299 @@ fn parse_generated_column_definition(expr: &Expr) -> Option<super::GeneratedColu
 
 		let expr_tokens = extract_optional_str_field(&expr_struct.fields, "expr_tokens")
 			.or_else(|| extract_optional_expr_tokens_field(&expr_struct.fields, "expr"));
+		let expr = extract_optional_schema_expr_field(&expr_struct.fields, "expr")
+			.or_else(|| expr_tokens.as_deref().and_then(parse_schema_expr_tokens));
 		let raw_sql = extract_optional_str_field(&expr_struct.fields, "raw_sql");
 		let storage = extract_generated_storage_field(&expr_struct.fields)
 			.unwrap_or(super::GeneratedStorage::Stored);
 
 		return Some(super::GeneratedColumnDefinition {
-			expr: None,
+			expr: expr.map(Box::new),
 			expr_tokens,
 			raw_sql,
 			storage,
 		});
 	}
 
+	None
+}
+
+fn parse_schema_expr_tokens(tokens: &str) -> Option<super::SchemaExpr> {
+	syn::parse_str::<Expr>(tokens)
+		.ok()
+		.and_then(|expr| parse_schema_expr(&expr))
+}
+
+fn extract_optional_schema_expr_field(
+	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
+	field_name: &str,
+) -> Option<super::SchemaExpr> {
+	for field in fields {
+		if let syn::Member::Named(ident) = &field.member
+			&& ident == field_name
+		{
+			return parse_optional_schema_expr(&field.expr);
+		}
+	}
+	None
+}
+
+fn parse_optional_schema_expr(expr: &Expr) -> Option<super::SchemaExpr> {
+	if let Expr::Path(expr_path) = expr
+		&& expr_path.path.is_ident("None")
+	{
+		return None;
+	}
+
+	if let Expr::Call(expr_call) = expr
+		&& let Expr::Path(func_path) = &*expr_call.func
+		&& func_path.path.is_ident("Some")
+		&& expr_call.args.len() == 1
+	{
+		let expr = unwrap_box_new_expr(&expr_call.args[0]).unwrap_or(&expr_call.args[0]);
+		return parse_schema_expr(expr);
+	}
+
+	None
+}
+
+fn parse_schema_expr(expr: &Expr) -> Option<super::SchemaExpr> {
+	match expr {
+		Expr::Paren(expr_paren) => parse_schema_expr(&expr_paren.expr),
+		Expr::Group(expr_group) => parse_schema_expr(&expr_group.expr),
+		Expr::MethodCall(method_call) => {
+			let receiver = parse_schema_expr(&method_call.receiver)?;
+			match method_call.method.to_string().as_str() {
+				"binary" if method_call.args.len() == 2 => {
+					let op = parse_schema_bin_oper(&method_call.args[0])?;
+					let right = parse_schema_expr(&method_call.args[1])?;
+					Some(receiver.binary(op, right))
+				}
+				"cast" if method_call.args.len() == 1 => {
+					let ty = parse_query_column_type(&method_call.args[0])?;
+					Some(receiver.cast(ty))
+				}
+				_ => None,
+			}
+		}
+		Expr::Call(expr_call) => {
+			let Expr::Path(func_path) = &*expr_call.func else {
+				return None;
+			};
+			let func = func_path.path.segments.last()?.ident.to_string();
+			match func.as_str() {
+				"col" if expr_call.args.len() == 1 => {
+					let name = extract_string_literal(&expr_call.args[0])?;
+					Some(super::SchemaExpr::col(name))
+				}
+				"val" if expr_call.args.len() == 1 => {
+					let value = parse_schema_value(&expr_call.args[0])?;
+					Some(super::SchemaExpr::Value(value))
+				}
+				"concat" if expr_call.args.len() == 1 => {
+					let args = parse_schema_expr_items(&expr_call.args[0])?;
+					Some(super::SchemaExpr::concat(args))
+				}
+				"coalesce" if expr_call.args.len() == 1 => {
+					let args = parse_schema_expr_items(&expr_call.args[0])?;
+					Some(super::SchemaExpr::coalesce(args))
+				}
+				_ => None,
+			}
+		}
+		_ => None,
+	}
+}
+
+fn parse_schema_expr_items(expr: &Expr) -> Option<Vec<super::SchemaExpr>> {
+	match expr {
+		Expr::Array(expr_array) => expr_array.elems.iter().map(parse_schema_expr).collect(),
+		Expr::Macro(expr_macro) if expr_macro.mac.path.is_ident("vec") => {
+			let tokens = &expr_macro.mac.tokens;
+			let parsed = syn::parse2::<syn::ExprArray>(quote::quote! { [#tokens] }).ok()?;
+			parsed.elems.iter().map(parse_schema_expr).collect()
+		}
+		_ => None,
+	}
+}
+
+fn parse_schema_bin_oper(expr: &Expr) -> Option<super::SchemaBinOper> {
+	let Expr::Path(expr_path) = expr else {
+		return None;
+	};
+	match expr_path.path.segments.last()?.ident.to_string().as_str() {
+		"Add" => Some(super::SchemaBinOper::Add),
+		"Sub" => Some(super::SchemaBinOper::Sub),
+		"Mul" => Some(super::SchemaBinOper::Mul),
+		"Div" => Some(super::SchemaBinOper::Div),
+		_ => None,
+	}
+}
+
+fn parse_schema_value(expr: &Expr) -> Option<QueryValue> {
+	match expr {
+		Expr::Lit(expr_lit) => match &expr_lit.lit {
+			syn::Lit::Str(lit_str) => Some(QueryValue::String(Some(Box::new(lit_str.value())))),
+			syn::Lit::Bool(lit_bool) => Some(QueryValue::Bool(Some(lit_bool.value))),
+			syn::Lit::Char(lit_char) => Some(QueryValue::Char(Some(lit_char.value()))),
+			syn::Lit::Int(lit_int) => lit_int
+				.base10_parse::<i32>()
+				.map(|value| QueryValue::Int(Some(value)))
+				.or_else(|_| {
+					lit_int
+						.base10_parse::<i64>()
+						.map(|value| QueryValue::BigInt(Some(value)))
+				})
+				.ok(),
+			syn::Lit::Float(lit_float) => lit_float
+				.base10_parse::<f64>()
+				.map(|value| QueryValue::Double(Some(value)))
+				.ok(),
+			_ => None,
+		},
+		Expr::Unary(expr_unary) => {
+			if !matches!(expr_unary.op, syn::UnOp::Neg(_)) {
+				return None;
+			}
+			match parse_schema_value(&expr_unary.expr)? {
+				QueryValue::Int(Some(value)) => Some(QueryValue::Int(Some(-value))),
+				QueryValue::BigInt(Some(value)) => Some(QueryValue::BigInt(Some(-value))),
+				QueryValue::Float(Some(value)) => Some(QueryValue::Float(Some(-value))),
+				QueryValue::Double(Some(value)) => Some(QueryValue::Double(Some(-value))),
+				_ => None,
+			}
+		}
+		_ => None,
+	}
+}
+
+fn parse_query_column_type(expr: &Expr) -> Option<super::ColumnType> {
+	match expr {
+		Expr::Path(expr_path) => match expr_path.path.segments.last()?.ident.to_string().as_str() {
+			"Text" => Some(super::ColumnType::Text),
+			"TinyInteger" => Some(super::ColumnType::TinyInteger),
+			"SmallInteger" => Some(super::ColumnType::SmallInteger),
+			"Integer" => Some(super::ColumnType::Integer),
+			"BigInteger" => Some(super::ColumnType::BigInteger),
+			"Float" => Some(super::ColumnType::Float),
+			"Double" => Some(super::ColumnType::Double),
+			"Boolean" => Some(super::ColumnType::Boolean),
+			"Date" => Some(super::ColumnType::Date),
+			"Time" => Some(super::ColumnType::Time),
+			"DateTime" => Some(super::ColumnType::DateTime),
+			"Timestamp" => Some(super::ColumnType::Timestamp),
+			"TimestampWithTimeZone" => Some(super::ColumnType::TimestampWithTimeZone),
+			"Blob" => Some(super::ColumnType::Blob),
+			"Uuid" => Some(super::ColumnType::Uuid),
+			"Json" => Some(super::ColumnType::Json),
+			"JsonBinary" => Some(super::ColumnType::JsonBinary),
+			_ => None,
+		},
+		Expr::Call(expr_call) => {
+			let Expr::Path(func_path) = &*expr_call.func else {
+				return None;
+			};
+			let variant = func_path.path.segments.last()?.ident.to_string();
+			match variant.as_str() {
+				"Char" if expr_call.args.len() == 1 => Some(super::ColumnType::Char(
+					parse_optional_u32(&expr_call.args[0])?,
+				)),
+				"String" if expr_call.args.len() == 1 => Some(super::ColumnType::String(
+					parse_optional_u32(&expr_call.args[0])?,
+				)),
+				"Decimal" if expr_call.args.len() == 1 => Some(super::ColumnType::Decimal(
+					parse_optional_u32_pair(&expr_call.args[0])?,
+				)),
+				"Binary" if expr_call.args.len() == 1 => Some(super::ColumnType::Binary(
+					parse_optional_u32(&expr_call.args[0])?,
+				)),
+				"VarBinary" if expr_call.args.len() == 1 => Some(super::ColumnType::VarBinary(
+					parse_u32_literal(&expr_call.args[0])?,
+				)),
+				"Array" if expr_call.args.len() == 1 => {
+					let inner = unwrap_box_new_expr(&expr_call.args[0])?;
+					Some(super::ColumnType::Array(Box::new(parse_query_column_type(
+						inner,
+					)?)))
+				}
+				"Custom" if expr_call.args.len() == 1 => Some(super::ColumnType::Custom(
+					extract_string_literal(&expr_call.args[0])?,
+				)),
+				_ => None,
+			}
+		}
+		_ => None,
+	}
+}
+
+fn parse_optional_u32(expr: &Expr) -> Option<Option<u32>> {
+	if let Expr::Path(expr_path) = expr
+		&& expr_path.path.is_ident("None")
+	{
+		return Some(None);
+	}
+	if let Expr::Call(expr_call) = expr
+		&& let Expr::Path(func_path) = &*expr_call.func
+		&& func_path.path.is_ident("Some")
+		&& expr_call.args.len() == 1
+	{
+		return Some(Some(parse_u32_literal(&expr_call.args[0])?));
+	}
+	None
+}
+
+fn parse_optional_u32_pair(expr: &Expr) -> Option<Option<(u32, u32)>> {
+	if let Expr::Path(expr_path) = expr
+		&& expr_path.path.is_ident("None")
+	{
+		return Some(None);
+	}
+	if let Expr::Call(expr_call) = expr
+		&& let Expr::Path(func_path) = &*expr_call.func
+		&& func_path.path.is_ident("Some")
+		&& expr_call.args.len() == 1
+		&& let Expr::Tuple(tuple) = &expr_call.args[0]
+		&& tuple.elems.len() == 2
+	{
+		return Some(Some((
+			parse_u32_literal(&tuple.elems[0])?,
+			parse_u32_literal(&tuple.elems[1])?,
+		)));
+	}
+	None
+}
+
+fn parse_u32_literal(expr: &Expr) -> Option<u32> {
+	let Expr::Lit(expr_lit) = expr else {
+		return None;
+	};
+	let syn::Lit::Int(lit_int) = &expr_lit.lit else {
+		return None;
+	};
+	lit_int.base10_parse::<u32>().ok()
+}
+
+fn unwrap_box_new_expr(expr: &Expr) -> Option<&Expr> {
+	let Expr::Call(expr_call) = expr else {
+		return None;
+	};
+	let Expr::Path(func_path) = &*expr_call.func else {
+		return None;
+	};
+	if func_path
+		.path
+		.segments
+		.last()
+		.is_some_and(|segment| segment.ident == "new")
+		&& func_path
+			.path
+			.segments
+			.iter()
+			.any(|segment| segment.ident == "Box")
+		&& expr_call.args.len() == 1
+	{
+		return Some(&expr_call.args[0]);
+	}
 	None
 }
 
@@ -951,6 +1234,80 @@ fn parse_bool_return(func: &ItemFn) -> Option<bool> {
 		return Some(lit_bool.value);
 	}
 	None
+}
+
+#[cfg(test)]
+mod tests {
+	use super::extract_migration_metadata;
+	use crate::migrations::{GeneratedStorage, Operation, SchemaExpr};
+
+	#[test]
+	fn extract_migration_metadata_restores_typed_generated_expression() {
+		let source = r#"
+use reinhardt_db::migrations::prelude::*;
+
+pub(super) fn migration() -> Migration {
+	Migration {
+		app_label: "accounts".to_string(),
+		name: "0002_full_name".to_string(),
+		operations: vec![
+			Operation::AddColumn {
+				table: "users".to_string(),
+				column: ColumnDefinition {
+					name: "full_name".to_string(),
+					type_definition: FieldType::VarChar(201),
+					not_null: false,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+					generated: Some(GeneratedColumnDefinition {
+						expr: Some(Box::new(SchemaExpr::concat([
+							SchemaExpr::col("first_name"),
+							SchemaExpr::val(" "),
+							SchemaExpr::col("last_name"),
+						]))),
+						expr_tokens: Some("SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])".to_string()),
+						raw_sql: None,
+						storage: GeneratedStorage::Stored,
+					}),
+				},
+				mysql_options: None,
+			},
+		],
+		dependencies: vec![],
+		atomic: true,
+		replaces: vec![],
+		initial: None,
+		state_only: false,
+		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
+	}
+}
+"#;
+		let ast = syn::parse_file(source).expect("migration source must parse");
+
+		let migration = extract_migration_metadata(&ast, "accounts", "0002_full_name")
+			.expect("migration metadata must parse");
+
+		let Operation::AddColumn { column, .. } = &migration.operations[0] else {
+			panic!("expected AddColumn operation");
+		};
+		let generated = column
+			.generated
+			.as_ref()
+			.expect("generated metadata must be restored");
+		assert_eq!(generated.storage, GeneratedStorage::Stored);
+		assert_eq!(
+			generated.expr.as_deref(),
+			Some(&SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]))
+		);
+	}
 }
 
 /// Extract FieldType from type_definition field

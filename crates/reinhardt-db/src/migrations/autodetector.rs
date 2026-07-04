@@ -4316,6 +4316,7 @@ impl MigrationAutodetector {
 			|| from_def.auto_increment != to_def.auto_increment
 			|| from_def.unique != to_def.unique
 			|| from_def.default != to_def.default
+			|| from_def.generated != to_def.generated
 	}
 
 	fn canonical_auto_increment(field_type: &super::FieldType, auto_increment: bool) -> bool {
@@ -8286,6 +8287,34 @@ mod tests {
 		assert!(
 			changed,
 			"database default changes must be detected as schema-affecting field changes"
+		);
+	}
+
+	#[rstest]
+	fn has_field_changed_detects_generated_column_changes() {
+		// Arrange
+		let from_field = FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let mut to_field =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		to_field.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::concat([
+				super::super::SchemaExpr::col("first_name"),
+				super::super::SchemaExpr::val(" "),
+				super::super::SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			super::super::GeneratedStorage::Stored,
+		));
+		let detector = MigrationAutodetector::new(ProjectState::new(), ProjectState::new());
+
+		// Act
+		let changed =
+			detector.has_field_changed_with_unique("full_name", &from_field, &to_field, None, None);
+
+		// Assert
+		assert!(
+			changed,
+			"generated column metadata changes must be detected as schema-affecting field changes"
 		);
 	}
 
