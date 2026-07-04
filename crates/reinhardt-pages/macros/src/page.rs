@@ -7,11 +7,15 @@
 //!
 //! Per the Manouche v2 design, `page!` enforces three rules at compile time:
 //!
-//! 1. **No implicit captures** (spec §3.7). Every value identifier inside
-//!    the body must appear in the closure parameter list. Item paths
-//!    (multi-segment like `crate::util::fmt`), type identifiers (`Vec`,
-//!    `Option`), constants (`MAX_LEN`), and macro invocations (`format!`)
-//!    are exempt. Free function calls should use `self::` (or any module
+//! 1. **Strict closure capture discipline** (spec §3.7). In
+//!    `page!(|...| { ... })`, every value identifier inside the body must
+//!    appear in the closure parameter list. In `page!({ ... })`, free value
+//!    identifiers are treated as implicit captures and cloned into generated
+//!    closure contexts. Item paths (multi-segment like `crate::util::fmt`),
+//!    type identifiers (`Vec`, `Option`), and constants (`MAX_LEN`) are
+//!    exempt. Macro invocation names (`format!`) are exempt, but macro
+//!    arguments are scanned for free identifiers when they parse as Rust
+//!    expressions. Free function calls should use `self::` (or any module
 //!    prefix) so the path is multi-segment.
 //!
 //! 2. **Unconditional auto-wrap** (spec §4.1). Every `{expr}` and every
@@ -109,7 +113,7 @@
 //! }
 //!
 //! // Brace form (spec §3.5).
-//! let _ = page!(|| { div { Card { item: "hello".to_string() } } });
+//! let _ = page!({ div { Card { item: "hello".to_string() } } });
 //! ```
 //!
 //! See `reinhardt-pages/CHANGELOG.md` `### Added` entry and the design
@@ -255,5 +259,32 @@ mod tests {
 		assert!(output_str.contains("\"header\""));
 		assert!(output_str.contains("\"main\""));
 		assert!(output_str.contains("\"footer\""));
+	}
+
+	#[test]
+	fn test_body_only_form_records_capture_and_generates_page_expression() {
+		let input = quote!({
+			div { {outer_count.get()} }
+		});
+		let untyped_ast: PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = validator::validate(&untyped_ast).unwrap();
+		let captures = typed_ast.implicit_captures();
+
+		assert_eq!(captures.len(), 1);
+		assert_eq!(captures[0].ident.to_string(), "outer_count");
+
+		let output = codegen::generate(&typed_ast).to_string();
+		assert!(output.contains("__private :: capture"));
+		assert!(!output.contains("->"));
+	}
+
+	#[test]
+	fn test_strict_form_still_generates_closure() {
+		let input = quote!(|| { div { "hello" } });
+		let untyped_ast: PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = validator::validate(&untyped_ast).unwrap();
+		let output = codegen::generate(&typed_ast).to_string();
+
+		assert!(output.contains("->"));
 	}
 }
