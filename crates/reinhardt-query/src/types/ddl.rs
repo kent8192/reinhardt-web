@@ -10,7 +10,7 @@
 
 use crate::{
 	expr::SimpleExpr,
-	types::{DynIden, IntoIden, TableRef},
+	types::{DynIden, GeneratedColumn, GeneratedStorage, IntoIden, SchemaExpr, TableRef},
 };
 
 /// SQL column types
@@ -105,6 +105,7 @@ pub struct ColumnDef {
 	pub(crate) auto_increment: bool,
 	pub(crate) default: Option<SimpleExpr>,
 	pub(crate) check: Option<SimpleExpr>,
+	pub(crate) generated: Option<GeneratedColumn>,
 	pub(crate) comment: Option<String>,
 }
 
@@ -123,6 +124,7 @@ impl ColumnDef {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		}
 	}
@@ -166,6 +168,31 @@ impl ColumnDef {
 	/// Set CHECK constraint
 	pub fn check(mut self, expr: SimpleExpr) -> Self {
 		self.check = Some(expr);
+		self
+	}
+
+	/// Set generated-column metadata from a typed schema expression.
+	pub fn generated(mut self, expr: SchemaExpr, storage: GeneratedStorage) -> Self {
+		self.generated = Some(GeneratedColumn::typed(expr, storage));
+		self
+	}
+
+	/// Set a stored generated-column expression.
+	pub fn generated_stored(self, expr: SchemaExpr) -> Self {
+		self.generated(expr, GeneratedStorage::Stored)
+	}
+
+	/// Set a virtual generated-column expression.
+	pub fn generated_virtual(self, expr: SchemaExpr) -> Self {
+		self.generated(expr, GeneratedStorage::Virtual)
+	}
+
+	/// Set explicit raw SQL generated-column metadata.
+	///
+	/// Prefer [`Self::generated`] for backend-aware typed expressions. This
+	/// escape hatch is intended for trusted backend-specific SQL fragments.
+	pub fn generated_sql(mut self, sql: impl Into<String>, storage: GeneratedStorage) -> Self {
+		self.generated = Some(GeneratedColumn::raw_sql(sql, storage));
 		self
 	}
 

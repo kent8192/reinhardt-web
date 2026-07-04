@@ -2384,6 +2384,8 @@ async fn edg_10_deep_dependency_chain() {
 					unique: false,
 					primary_key: true,
 					auto_increment: true,
+
+					generated: None,
 				}],
 				constraints: Vec::new(),
 				without_rowid: None,
@@ -2720,6 +2722,8 @@ async fn edg_14_cross_app_dependencies() {
 				unique: false,
 				primary_key: true,
 				auto_increment: true,
+
+				generated: None,
 			}],
 			constraints: Vec::new(),
 			without_rowid: None,
@@ -2753,6 +2757,8 @@ async fn edg_14_cross_app_dependencies() {
 					unique: false,
 					primary_key: true,
 					auto_increment: true,
+
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "user_id".to_string(),
@@ -2762,6 +2768,8 @@ async fn edg_14_cross_app_dependencies() {
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
+
+					generated: None,
 				},
 			],
 			constraints: Vec::new(),

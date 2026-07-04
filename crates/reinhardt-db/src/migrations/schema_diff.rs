@@ -399,6 +399,7 @@ impl SchemaDiff {
 							unique,
 							primary_key: col.primary_key,
 							auto_increment,
+							generated: None,
 						}
 					})
 					.collect();
@@ -458,6 +459,7 @@ impl SchemaDiff {
 						unique,
 						primary_key: col_schema.primary_key,
 						auto_increment,
+						generated: None,
 					},
 					mysql_options: None,
 				});
@@ -488,6 +490,7 @@ impl SchemaDiff {
 					unique: old_unique,
 					primary_key: old_col.primary_key,
 					auto_increment: Self::is_auto_increment(old_col),
+					generated: None,
 				}),
 				new_definition: ColumnDefinition {
 					name: col_name.clone(),
@@ -497,6 +500,7 @@ impl SchemaDiff {
 					unique: new_unique,
 					primary_key: new_col.primary_key,
 					auto_increment: Self::is_auto_increment(new_col),
+					generated: None,
 				},
 				mysql_options: None,
 			});

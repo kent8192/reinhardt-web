@@ -895,6 +895,7 @@ impl DatabaseMigrationExecutor {
 					primary_key: is_pk,
 					auto_increment: is_auto,
 					default,
+					generated: None,
 				}
 			})
 			.collect();

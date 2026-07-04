@@ -32,6 +32,7 @@ fn pk_column(name: &str) -> ColumnDefinition {
 		primary_key: true,
 		auto_increment: true,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -90,6 +91,8 @@ async fn issue_4454_string_default_survives_drop_column_recreation() {
 					primary_key: false,
 					auto_increment: false,
 					default: Some("'pending'".to_string()),
+
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "note".to_string(),
@@ -99,6 +102,8 @@ async fn issue_4454_string_default_survives_drop_column_recreation() {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 			],
 			constraints: vec![],

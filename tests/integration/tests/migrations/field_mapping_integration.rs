@@ -330,6 +330,8 @@ fn test_column_definition_field_types(#[case] field_type: FieldType, #[case] nam
 		primary_key: false,
 		auto_increment: false,
 		default: None,
+
+		generated: None,
 	};
 
 	// Assert
@@ -356,6 +358,8 @@ fn test_column_definition_not_null() {
 		primary_key: false,
 		auto_increment: false,
 		default: None,
+
+		generated: None,
 	};
 
 	// Assert
@@ -376,6 +380,8 @@ fn test_column_definition_with_default() {
 		primary_key: false,
 		auto_increment: false,
 		default: Some("'active'".to_string()),
+
+		generated: None,
 	};
 
 	// Assert
@@ -396,6 +402,8 @@ fn test_column_definition_unique() {
 		primary_key: false,
 		auto_increment: false,
 		default: None,
+
+		generated: None,
 	};
 
 	// Assert
@@ -416,6 +424,8 @@ fn test_column_definition_auto_increment_integer() {
 		primary_key: true,
 		auto_increment: true,
 		default: None,
+
+		generated: None,
 	};
 
 	// Assert
@@ -439,6 +449,8 @@ fn test_column_definition_auto_increment_big_integer() {
 		primary_key: true,
 		auto_increment: true,
 		default: None,
+
+		generated: None,
 	};
 
 	// Assert
@@ -461,6 +473,8 @@ fn test_column_definition_auto_increment_small_integer() {
 		primary_key: true,
 		auto_increment: true,
 		default: None,
+
+		generated: None,
 	};
 
 	// Assert
