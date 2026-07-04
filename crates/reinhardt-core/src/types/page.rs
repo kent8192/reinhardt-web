@@ -197,10 +197,10 @@ pub struct Outlet {
 
 impl Outlet {
 	/// Creates an inline outlet for stateless native and SSR rendering.
-	pub fn inline(child: Page) -> Self {
+	pub fn inline(child: impl IntoPage) -> Self {
 		Self {
 			id: None,
-			child: Some(Box::new(child)),
+			child: Some(Box::new(child.into_page())),
 		}
 	}
 
@@ -718,8 +718,10 @@ impl Page {
 	/// # Search Order
 	///
 	/// 1. If this view is a `WithHead`, returns its head
-	/// 2. For `Fragment` views, searches children in order and returns the first found
-	/// 3. For other variants, returns `None`
+	/// 2. For `Fragment` and `KeyedFragment` views, searches children in order
+	///    and returns the first found
+	/// 3. For inline `Outlet` views, searches the child page
+	/// 4. For other variants, returns `None`
 	pub fn find_topmost_head(&self) -> Option<&Head> {
 		match self {
 			Page::WithHead { head, .. } => Some(head),
@@ -1047,6 +1049,19 @@ mod tests {
 		let view = Page::outlet(Outlet::placeholder("layout-0"));
 
 		assert_eq!(view.render_to_string(), "");
+	}
+
+	#[test]
+	fn outlet_inline_participates_in_head_lookup() {
+		let view = Page::outlet(Outlet::inline(
+			Page::text("Child").with_head(Head::new().title("Child")),
+		));
+
+		assert_eq!(
+			view.find_topmost_head()
+				.and_then(|head| head.title.as_deref()),
+			Some("Child")
+		);
 	}
 
 	#[test]
