@@ -1,0 +1,5 @@
+error: expected route name argument `name = "..."`
+ --> tests/ui/component/fail/identifier_name.rs:5:29
+  |
+5 | #[component("/users/{id}/", user_detail)]
+  |                             ^^^^^^^^^^^
