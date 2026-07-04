@@ -72,6 +72,10 @@
 //! ## Task Spawning
 //! - [`spawn_task`], [`defer_yield`] - cross-target async task spawning
 //!   (no-op on native; replaces the deprecated `spawn_local` re-export)
+//!
+//! ## I18n
+//! - [`I18nContext`], [`TranslatedText`], [`tr`], [`tn`], [`tp`], [`tnp`]
+//! - [`t!`] for inline page translations with named interpolation
 
 // ============================================================================
 // Reactive System
@@ -166,6 +170,16 @@ pub use crate::ssr::SsrState;
 pub use crate::ssr::{SsrOptions, SsrRenderer};
 
 // ============================================================================
+// I18n
+// ============================================================================
+
+#[cfg(feature = "i18n")]
+pub use crate::i18n::{
+	I18nContext, I18nStateError, TranslatedText, locale, provide_i18n_context, set_locale, tn, tnp,
+	tp, tr, use_i18n_context, with_i18n_context,
+};
+
+// ============================================================================
 // Static File URL Resolver
 // ============================================================================
 
@@ -200,6 +214,8 @@ pub use crate::client_page;
 pub use crate::form;
 pub use crate::head;
 pub use crate::page;
+#[cfg(feature = "i18n")]
+pub use crate::t;
 pub use crate::wasm_server_api;
 
 // ============================================================================

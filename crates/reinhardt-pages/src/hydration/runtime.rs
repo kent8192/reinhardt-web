@@ -143,6 +143,11 @@ impl HydrationContext {
 		self.props.get(id).or_else(|| self.state.get_props(id))
 	}
 
+	/// Gets SSR metadata by key.
+	pub fn get_metadata(&self, key: &str) -> Option<&serde_json::Value> {
+		self.state.get_metadata(key)
+	}
+
 	/// Marks hydration as complete.
 	pub fn mark_hydrated(&mut self) {
 		self.hydrated = true;
@@ -164,6 +169,10 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 
 	// 1. Restore SSR state
 	let mut context = HydrationContext::from_window()?;
+	#[cfg(feature = "i18n")]
+	let _i18n_guard = crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
+		HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
+	})?;
 
 	// 2. Render the component to get expected structure
 	let view = component.render();

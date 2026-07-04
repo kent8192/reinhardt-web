@@ -34,13 +34,18 @@
 //! When the `di` feature is enabled, `TranslationContext` implements `Injectable`:
 //!
 //! ```no_run
+//! #[cfg(feature = "di")]
 //! use reinhardt_di::{InjectionContext, SingletonScope, Injectable};
+//! #[cfg(feature = "di")]
 //! use reinhardt_i18n::TranslationContext;
 //!
+//! #[cfg(feature = "di")]
 //! async fn handler(ctx: &InjectionContext) {
 //!     let translation = TranslationContext::inject(ctx).await.unwrap();
 //!     // Use translation...
 //! }
+//!
+//! fn main() {}
 //! ```
 
 use std::cell::RefCell;
@@ -289,6 +294,13 @@ impl TranslationContext {
 	/// Returns the catalog for the given locale.
 	pub fn get_catalog(&self, locale: &str) -> Option<&MessageCatalog> {
 		self.catalogs.get(locale)
+	}
+
+	/// Iterates over all registered catalogs.
+	pub fn catalogs(&self) -> impl Iterator<Item = (&str, &MessageCatalog)> {
+		self.catalogs
+			.iter()
+			.map(|(locale, catalog)| (locale.as_str(), catalog))
 	}
 
 	/// Sets the current locale.

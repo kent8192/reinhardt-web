@@ -155,6 +155,34 @@ Existing body-only pages that relied on surrounding values should migrate to
 remain callable, and use `page!(|value: Value| { ... })` when a factory needs
 caller-supplied state.
 
+### Reactive I18n
+
+Enable the `i18n` feature to use `reinhardt-i18n` catalogs directly from
+`page!`. `t!` returns lazily translated page text, so SSR renders the current
+locale and later locale switches update reactive snapshots without explicitly
+threading a resource through each component.
+
+```rust,ignore
+use reinhardt_i18n::{MessageCatalog, TranslationContext};
+use reinhardt_pages::prelude::*;
+
+let mut translations = TranslationContext::new("ja", "en-US");
+let mut ja = MessageCatalog::new("ja");
+ja.add_translation("dashboard.title", "ダッシュボード");
+translations.add_catalog("ja", ja)?;
+
+let i18n = I18nContext::new(translations);
+let mut renderer = SsrRenderer::with_options(SsrOptions::new().i18n_context(i18n));
+
+let html = renderer.render_page_with_view_head(page!(|| {
+    h1 { { t!("dashboard.title") } }
+})());
+```
+
+The SSR renderer serializes resolved catalogs into the hydration state under
+`pages.i18n`, so client hydration can restore translations without refetching
+the catalog.
+
 ### Forms: Static Definition and Dynamic Behavior
 
 `form!` defines static form structure: field names, widgets, labels,
@@ -368,6 +396,10 @@ The prelude includes:
 - `HydrationContext`, `HydrationError`, `hydrate`
 - `SsrOptions`, `SsrRenderer`, `SsrState`
 
+### I18n
+- `I18nContext`, `TranslatedText`, `tr`, `tn`, `tp`, `tnp`
+- `provide_i18n_context`, `use_i18n_context`, `set_locale`, `locale`
+
 ### Forms (native only)
 - `FormBinding`, `FormComponent`
 - `Widget`, `FieldMetadata`, `FormMetadata`
@@ -376,6 +408,7 @@ The prelude includes:
 - `page!`
 - `head!`
 - `form!`
+- `t!` (with the `i18n` feature)
 - `client_page`
 - `wasm_server_api`
 

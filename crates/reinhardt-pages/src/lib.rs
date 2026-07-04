@@ -64,6 +64,7 @@
 //! - [`hydration`]: Client-side hydration
 //! - [`router`]: Client-side routing (reinhardt-urls compatible)
 //! - [`portal`]: Explicit portal mounting into existing DOM targets
+//! - [`i18n`](mod@i18n): Reactive page translations with SSR-resolved catalogs
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
 //!
 //! ## Forms
@@ -149,6 +150,7 @@
 //! - [`page!`]: JSX-like macro for defining view components
 //! - [`head!`]: JSX-like macro for defining HTML head sections
 //! - [`form!`]: Type-safe form component macro
+//! - [`t!`]: Reactive page translation macro (with the `i18n` feature)
 //! - [`client_page`]: Client page function macro with native route-table stubs
 //! - [`wasm_server_api`]: WASM/server API parity macro
 //!
@@ -265,6 +267,8 @@ pub use reinhardt_pages_ast as ast;
 pub mod builder;
 pub mod callback;
 pub mod dom;
+#[cfg(feature = "i18n")]
+pub mod i18n;
 pub mod logging;
 pub mod reactive;
 
@@ -416,6 +420,12 @@ pub use ssr::SsrState;
 #[cfg(native)]
 pub use ssr::{SsrOptions, SsrRenderer};
 pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
+
+#[cfg(feature = "i18n")]
+pub use i18n::{
+	I18nContext, I18nStateError, TranslatedText, locale, provide_i18n_context, set_locale, tn, tnp,
+	tp, tr, use_i18n_context, with_i18n_context,
+};
 
 // Re-export procedural macros
 pub use reinhardt_pages_macros::form;

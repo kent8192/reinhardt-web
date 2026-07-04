@@ -18,6 +18,9 @@ pub struct SsrOptions {
 	pub include_state_script: bool,
 	/// Language attribute for HTML element.
 	pub lang: String,
+	/// Reactive i18n context to use while rendering.
+	#[cfg(feature = "i18n")]
+	pub i18n_context: Option<crate::i18n::I18nContext>,
 	/// CSRF token to embed.
 	pub csrf_token: Option<String>,
 	/// Authentication data to embed.
@@ -43,6 +46,8 @@ impl Default for SsrOptions {
 			minify: false,
 			include_state_script: true,
 			lang: "en".to_string(),
+			#[cfg(feature = "i18n")]
+			i18n_context: None,
 			csrf_token: None,
 			auth_data: None,
 			enable_partial_hydration: false,
@@ -60,6 +65,14 @@ impl SsrOptions {
 	/// Sets the language.
 	pub fn lang(mut self, lang: impl Into<String>) -> Self {
 		self.lang = lang.into();
+		self
+	}
+
+	/// Sets the reactive i18n context for SSR and hydration.
+	#[cfg(feature = "i18n")]
+	pub fn i18n_context(mut self, context: crate::i18n::I18nContext) -> Self {
+		self.lang = context.locale();
+		self.i18n_context = Some(context);
 		self
 	}
 
@@ -180,19 +193,51 @@ impl SsrRenderer {
 
 	/// Renders a component to an HTML string.
 	pub fn render<C: Component>(&mut self, component: &C) -> String {
-		let view = component.render();
-		self.render_view(&view)
+		self.with_i18n_context(|| {
+			let view = component.render();
+			view.render_to_string()
+		})
 	}
 
 	/// Renders an IntoPage to an HTML string.
 	pub fn render_into_page<V: IntoPage>(&mut self, view: V) -> String {
-		let view = view.into_page();
-		self.render_view(&view)
+		self.with_i18n_context(|| {
+			let view = view.into_page();
+			view.render_to_string()
+		})
 	}
 
 	/// Renders a View to an HTML string.
 	pub fn render_view(&self, view: &Page) -> String {
-		view.render_to_string()
+		self.with_i18n_context(|| view.render_to_string())
+	}
+
+	fn with_i18n_context<R>(&self, f: impl FnOnce() -> R) -> R {
+		#[cfg(feature = "i18n")]
+		{
+			if let Some(context) = self.options.i18n_context.as_ref() {
+				return crate::i18n::with_i18n_context(context, f);
+			}
+		}
+		f()
+	}
+
+	fn state_script_tag(&self) -> Option<String> {
+		if !self.options.include_state_script {
+			return None;
+		}
+
+		let mut state = self.state.clone();
+		#[cfg(feature = "i18n")]
+		if let Some(context) = self.options.i18n_context.as_ref() {
+			crate::i18n::write_i18n_ssr_state(&mut state, context);
+		}
+
+		if state.is_empty() {
+			None
+		} else {
+			Some(state.to_script_tag())
+		}
 	}
 
 	fn next_hydration_marker_id(&mut self) -> String {
@@ -343,8 +388,8 @@ impl SsrRenderer {
 		}
 
 		// SSR state script (if enabled)
-		if self.options.include_state_script && !self.state.is_empty() {
-			html.push_str(&self.state.to_script_tag());
+		if let Some(state_script) = self.state_script_tag() {
+			html.push_str(&state_script);
 			html.push('\n');
 		}
 
@@ -412,8 +457,8 @@ impl SsrRenderer {
 		}
 
 		// SSR state script (if enabled)
-		if self.options.include_state_script && !self.state.is_empty() {
-			html.push_str(&self.state.to_script_tag());
+		if let Some(state_script) = self.state_script_tag() {
+			html.push_str(&state_script);
 			html.push('\n');
 		}
 
@@ -429,8 +474,10 @@ impl SsrRenderer {
 
 	/// Renders a component with hydration marker.
 	pub fn render_with_marker<C: Component>(&mut self, component: &C) -> String {
-		let view = component.render();
-		let content = view.render_to_string();
+		let content = self.with_i18n_context(|| {
+			let view = component.render();
+			view.render_to_string()
+		});
 
 		if self.options.include_hydration_markers {
 			let marker = HydrationMarker {

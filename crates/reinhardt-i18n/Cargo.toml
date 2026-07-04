@@ -16,13 +16,15 @@ reinhardt-utils = { workspace = true }
 
 # DI integration (optional)
 reinhardt-di = { workspace = true, optional = true }
-reinhardt-test = { workspace = true, optional = true }
 
 [features]
 default = []
 full = ["di"]
 di = ["dep:reinhardt-di"]
-test-utils = ["dep:reinhardt-test"]
+# Kept for feature-name compatibility. Test helpers for this crate are provided
+# through dev-dependencies so pages can depend on i18n without pulling the
+# reinhardt-test -> reinhardt-pages cycle into the normal dependency graph.
+test-utils = []
 
 [dev-dependencies]
 insta = { workspace = true }
