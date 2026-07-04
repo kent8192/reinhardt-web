@@ -50,12 +50,51 @@ pub struct PageMacro {
 	///
 	/// When present, the generated view will be wrapped with `.with_head(head_expr)`.
 	pub head: Option<Expr>,
-	/// Closure-style parameters (props)
-	pub params: Vec<PageParam>,
-	/// The body containing the view tree
-	pub body: PageBody,
+	/// The parsed page macro form.
+	pub form: PageMacroForm,
 	/// Span for error reporting
 	pub span: Span,
+}
+
+impl PageMacro {
+	/// Returns the body containing the view tree.
+	pub fn body(&self) -> &PageBody {
+		match &self.form {
+			PageMacroForm::StrictClosure { body, .. } | PageMacroForm::ImplicitBody { body } => {
+				body
+			}
+		}
+	}
+
+	/// Returns the closure-style parameters when the macro uses strict closure form.
+	pub fn params(&self) -> &[PageParam] {
+		match &self.form {
+			PageMacroForm::StrictClosure { params, .. } => params,
+			PageMacroForm::ImplicitBody { .. } => &[],
+		}
+	}
+
+	/// Returns `true` when this macro uses body-only implicit capture form.
+	pub fn is_implicit_body(&self) -> bool {
+		matches!(self.form, PageMacroForm::ImplicitBody { .. })
+	}
+}
+
+/// The syntactic form used by a `page!` macro invocation.
+#[derive(Debug)]
+pub enum PageMacroForm {
+	/// A strict closure form such as `page!(|name: String| { ... })`.
+	StrictClosure {
+		/// Closure-style parameters (props).
+		params: Vec<PageParam>,
+		/// The body containing the view tree.
+		body: PageBody,
+	},
+	/// A body-only form such as `page!({ ... })`.
+	ImplicitBody {
+		/// The body containing the view tree.
+		body: PageBody,
+	},
 }
 
 /// A single parameter in the page! macro's closure-style signature.
