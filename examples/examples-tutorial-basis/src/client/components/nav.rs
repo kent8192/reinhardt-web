@@ -30,7 +30,11 @@ pub fn nav_bar() -> Page {
 	let login_href = users_routes::reverse("login", &[]);
 	let logout_href = users_routes::reverse("logout", &[]);
 	let signup_href = users_routes::reverse("signup", &[]);
-	page!(|auth_signal: Action<Option<UserInfo>, String>, polls_index_href: String, login_href: String, logout_href: String, signup_href: String| {
+	page!(|auth_signal: Action<Option<UserInfo>, String>,
+	 polls_index_href: String,
+	 login_href: String,
+	 logout_href: String,
+	 signup_href: String| {
 		nav {
 			class: "nav-bar",
 			a {
