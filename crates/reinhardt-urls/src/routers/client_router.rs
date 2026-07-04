@@ -87,7 +87,9 @@ mod pattern;
 pub mod scope;
 pub mod tree;
 // Public re-exports
-pub use component::{ComponentInfo, ComponentMetadata, FromLayoutRequest, LayoutInfo};
+pub use component::{
+	ComponentInfo, ComponentMetadata, FromLayoutRequest, LayoutInfo, LayoutMetadata,
+};
 pub use core::{
 	ClientRoute, ClientRouteMatch, ClientRouter, NavigationSubscription, RouteMetadata,
 };

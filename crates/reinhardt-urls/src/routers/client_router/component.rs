@@ -67,3 +67,21 @@ pub struct ComponentMetadata {
 }
 
 inventory::collect!(ComponentMetadata);
+
+/// Static metadata submitted by `#[layout]` for diagnostics and tooling.
+pub struct LayoutMetadata {
+	/// Client layout route pattern.
+	pub path: &'static str,
+	/// Layout route name used by `ClientRouter`.
+	pub name: &'static str,
+	/// PascalCase component name.
+	pub component_name: &'static str,
+	/// Render function name.
+	pub function_name: &'static str,
+	/// Generated props type name.
+	pub props_type_name: &'static str,
+	/// Rust module path containing the layout declaration.
+	pub module_path: &'static str,
+}
+
+inventory::collect!(LayoutMetadata);

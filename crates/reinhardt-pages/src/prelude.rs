@@ -60,6 +60,7 @@
 //! ## Macros
 //! - [`page`] - Component DSL for defining views
 //! - [`head`] - HTML head section DSL
+//! - `#[component]` / `#[layout]` - Route-backed SPA component declarations
 //!
 //! ## Static Files
 //! - [`resolve_static`] - Resolve static file URLs
@@ -105,7 +106,7 @@ pub use crate::reactive::use_resource;
 
 pub use crate::component::{
 	ActivityBoundary, ActivityMode, BoundaryError, Component, ErrorBoundary, ErrorTracker, Head,
-	IntoPage, LinkTag, MetaTag, Page, PageElement, PageEventHandler, PageExt, Props,
+	IntoPage, LinkTag, MetaTag, Outlet, Page, PageElement, PageEventHandler, PageExt, Props,
 	ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary,
 	ViewTransitionHandle, ViewTransitionStatus, start_view_transition,
 };
@@ -197,9 +198,12 @@ pub use reinhardt_forms::{
 // ============================================================================
 
 pub use crate::client_page;
+pub use crate::component;
 pub use crate::form;
 pub use crate::head;
+pub use crate::layout;
 pub use crate::page;
+pub use crate::page_props;
 pub use crate::wasm_server_api;
 
 // ============================================================================

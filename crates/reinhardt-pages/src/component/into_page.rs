@@ -5,8 +5,8 @@
 
 // Re-export core types from reinhardt-types
 pub use reinhardt_core::types::page::{
-	Head, IntoPage, LinkTag, MetaTag, MountError, Page, PageElement, PageEventHandler, Reactive,
-	ReactiveIf, ScriptTag, StyleTag,
+	Head, IntoPage, LinkTag, MetaTag, MountError, Outlet, Page, PageElement, PageEventHandler,
+	Reactive, ReactiveIf, ScriptTag, StyleTag,
 };
 
 // DummyEvent is only available on non-WASM targets
