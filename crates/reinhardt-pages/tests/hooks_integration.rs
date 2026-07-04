@@ -144,7 +144,7 @@ fn test_hooks_circular_dependency_detection() {
 	);
 
 	// If circular dependencies are properly handled, this should not hang
-	assert!(true);
+	assert_eq!(signal_b.get(), 1);
 }
 
 /// Tests infinite loop protection in effects
@@ -313,7 +313,7 @@ fn test_hooks_cleanup_on_unmount() {
 	// Cleanup may or may not have been called immediately
 	// (depends on when effect runs)
 	// Just verify the ref was updated
-	assert_eq!(*component_ref.current(), false);
+	assert!(!*component_ref.current());
 }
 
 // ============================================================================
@@ -364,9 +364,8 @@ fn test_hooks_use_case_form_validation() {
 
 	set_email("user@example.com".to_string());
 	// Memo may not have recomputed yet
-	let is_valid2 = is_valid_email.get();
-	// Could be old value or new value depending on timing
-	assert!(is_valid2 || !is_valid2); // Always true, but documents the behavior
+	let _is_valid2 = is_valid_email.get();
+	assert_eq!(email.get(), "user@example.com");
 }
 
 // ============================================================================
@@ -391,8 +390,9 @@ fn test_hooks_property_memo_deterministic() {
 
 		// Results should be the same (memoization)
 		prop_assert_eq!(result1, result2);
-		// Result should be input * 2 (may vary by timing)
-		prop_assert!(result1 == input * 2 || result1 == 0 * 2);
+		// Result should be input * 2 once memoized; some native timing paths can still expose the initial value.
+		let initial_result = 0;
+		prop_assert!(result1 == input * 2 || result1 == initial_result);
 	});
 }
 

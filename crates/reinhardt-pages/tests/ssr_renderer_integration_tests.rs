@@ -159,7 +159,7 @@ fn test_conditional_rendering() {
 
 #[test]
 fn test_list_rendering() {
-	let items = vec!["Apple", "Banana", "Cherry"];
+	let items = ["Apple", "Banana", "Cherry"];
 	let list = PageElement::new("ul");
 
 	let list_with_items = items.iter().fold(list, |acc, item| {
