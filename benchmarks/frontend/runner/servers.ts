@@ -3,6 +3,7 @@ import net from "node:net";
 import { performance } from "node:perf_hooks";
 import { logExcerpt } from "./commands.js";
 import { terminateProcessTree } from "./process-tree.js";
+import { registerSignalCleanup } from "./signal-cleanup.js";
 
 export interface ManagedServer {
   command: string;
@@ -14,9 +15,7 @@ export interface ManagedServer {
 }
 
 const activeServers = new Set<ManagedServer>();
-const cleanupSignals: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
-let signalCleanupInstalled = false;
-let handlingCleanupSignal = false;
+let removeServerSignalCleanup: (() => void) | undefined;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -97,6 +96,7 @@ export async function stopServer(server: ManagedServer): Promise<void> {
     child.unref();
   } finally {
     activeServers.delete(server);
+    unregisterServerSignalCleanupIfIdle();
   }
 }
 
@@ -106,27 +106,22 @@ function registerServer(server: ManagedServer): void {
 }
 
 function installServerSignalCleanup(): void {
-  if (signalCleanupInstalled) {
+  if (removeServerSignalCleanup) {
     return;
   }
-  signalCleanupInstalled = true;
-  for (const signal of cleanupSignals) {
-    process.once(signal, () => {
-      void stopActiveServersForSignal(signal);
-    });
-  }
+  removeServerSignalCleanup = registerSignalCleanup(stopActiveServersForSignal);
 }
 
-async function stopActiveServersForSignal(signal: NodeJS.Signals): Promise<void> {
-  if (handlingCleanupSignal) {
+async function stopActiveServersForSignal(): Promise<void> {
+  await Promise.allSettled([...activeServers].map((server) => stopServer(server)));
+}
+
+function unregisterServerSignalCleanupIfIdle(): void {
+  if (activeServers.size > 0 || !removeServerSignalCleanup) {
     return;
   }
-  handlingCleanupSignal = true;
-  try {
-    await Promise.allSettled([...activeServers].map((server) => stopServer(server)));
-  } finally {
-    process.exit(signal === "SIGINT" ? 130 : 143);
-  }
+  removeServerSignalCleanup();
+  removeServerSignalCleanup = undefined;
 }
 
 async function assertPortAvailable(urlText: string): Promise<void> {
