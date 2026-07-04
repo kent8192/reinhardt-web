@@ -12,13 +12,17 @@
 //! 5. **Attribute Types**: Certain attributes must be specific types (e.g., img src must be string literal)
 
 use proc_macro2::Span;
-use syn::{Expr, Result};
+use std::collections::HashSet;
+use syn::punctuated::Punctuated;
+use syn::visit::{self, Visit};
+use syn::{Expr, Result, Token};
 
 use crate::core::{
-	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageFor, PageIf,
-	PageMacro, PageNode, PageWatch, TypedNamedSlot, TypedPageAttr, TypedPageBody,
-	TypedPageComponent, TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro,
-	TypedPageNode, TypedPageWatch, types::AttrValue,
+	ImplicitPageCapture, PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent,
+	PageExpression, PageFor, PageIf, PageMacro, PageMacroForm, PageNode, PageParam, PageWatch,
+	TypedNamedSlot, TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement,
+	TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageMacroForm, TypedPageNode,
+	TypedPageWatch, types::AttrValue,
 };
 
 /// Validates and transforms the entire PageMacro AST into a typed AST.
@@ -34,14 +38,350 @@ use crate::core::{
 ///
 /// A `TypedPageMacro` with validated and type-safe attribute values.
 pub fn validate_page(ast: &PageMacro) -> Result<TypedPageMacro> {
-	let typed_body = transform_body(&ast.body, &[])?;
+	let form = match &ast.form {
+		PageMacroForm::StrictClosure { params, body } => {
+			enforce_strict_captures(ast.head.as_ref(), body, params)?;
+			TypedPageMacroForm::StrictClosure {
+				params: params.clone(),
+				body: transform_body(body, &[])?,
+			}
+		}
+		PageMacroForm::ImplicitBody { body } => TypedPageMacroForm::ImplicitBody {
+			captures: collect_free_idents(ast.head.as_ref(), body, &[]),
+			body: transform_body(body, &[])?,
+		},
+	};
 
 	Ok(TypedPageMacro {
 		head: ast.head.clone(),
-		params: ast.params.clone(),
-		body: typed_body,
+		form,
 		span: ast.span,
 	})
+}
+
+fn collect_free_idents(
+	head: Option<&Expr>,
+	body: &PageBody,
+	params: &[PageParam],
+) -> Vec<ImplicitPageCapture> {
+	let allowed: HashSet<String> = params.iter().map(|p| p.name.to_string()).collect();
+
+	let mut collector = CaptureCollector {
+		allowed,
+		locals_stack: Vec::new(),
+		seen: HashSet::new(),
+		captures: Vec::new(),
+	};
+	if let Some(head_expr) = head {
+		collector.visit_expr(head_expr);
+	}
+	collector.visit_body(body);
+	collector.captures
+}
+
+fn enforce_strict_captures(
+	head: Option<&Expr>,
+	body: &PageBody,
+	params: &[PageParam],
+) -> Result<()> {
+	if let Some(capture) = collect_free_idents(head, body, params).into_iter().next() {
+		return Err(missing_param_error(&capture.ident));
+	}
+	Ok(())
+}
+
+struct CaptureCollector {
+	allowed: HashSet<String>,
+	locals_stack: Vec<HashSet<String>>,
+	seen: HashSet<String>,
+	captures: Vec<ImplicitPageCapture>,
+}
+
+impl CaptureCollector {
+	fn is_known(&self, name: &str) -> bool {
+		self.allowed.contains(name) || self.locals_stack.iter().any(|s| s.contains(name))
+	}
+
+	fn record_capture(&mut self, ident: &syn::Ident) {
+		let name = ident.to_string();
+		if self.seen.insert(name) {
+			self.captures.push(ImplicitPageCapture {
+				ident: ident.clone(),
+				span: ident.span(),
+			});
+		}
+	}
+
+	fn visit_body(&mut self, body: &PageBody) {
+		for node in &body.nodes {
+			self.visit_node(node);
+		}
+	}
+
+	fn visit_node(&mut self, node: &PageNode) {
+		match node {
+			PageNode::Element(el) => self.visit_element(el),
+			PageNode::Text(_) => {}
+			PageNode::Expression(expr) => self.visit_expression(expr),
+			PageNode::If(if_node) => self.visit_if(if_node),
+			PageNode::For(for_node) => self.visit_for(for_node),
+			PageNode::Component(comp) => self.visit_component(comp),
+			PageNode::Watch(watch) => self.visit_node(&watch.expr),
+		}
+	}
+
+	fn visit_element(&mut self, el: &PageElement) {
+		for attr in &el.attrs {
+			self.visit_expr(&attr.value);
+		}
+		for event in &el.events {
+			self.visit_expr(&event.handler);
+		}
+		for child in &el.children {
+			self.visit_node(child);
+		}
+	}
+
+	fn visit_expression(&mut self, expr: &PageExpression) {
+		self.visit_expr(&expr.expr);
+	}
+
+	fn visit_if(&mut self, if_node: &PageIf) {
+		let mut then_locals = None;
+		if let Expr::Let(let_expr) = &if_node.condition {
+			let mut locals = HashSet::new();
+			collect_pat_idents(&let_expr.pat, &mut locals);
+			self.visit_expr(&let_expr.expr);
+			then_locals = Some(locals);
+		} else {
+			self.visit_expr(&if_node.condition);
+		}
+		let pushed_then_locals = then_locals.is_some();
+		if let Some(locals) = then_locals {
+			self.locals_stack.push(locals);
+		}
+		for node in &if_node.then_branch {
+			self.visit_node(node);
+		}
+		if pushed_then_locals {
+			self.locals_stack.pop();
+		}
+		if let Some(else_branch) = &if_node.else_branch {
+			match else_branch {
+				PageElse::Block(nodes) => {
+					for node in nodes {
+						self.visit_node(node);
+					}
+				}
+				PageElse::If(inner) => self.visit_if(inner),
+			}
+		}
+	}
+
+	fn visit_for(&mut self, for_node: &PageFor) {
+		self.visit_expr(&for_node.iter);
+		let mut locals = HashSet::new();
+		collect_pat_idents(&for_node.pat, &mut locals);
+		self.locals_stack.push(locals);
+		if let Some(key) = &for_node.key {
+			self.visit_expr(key);
+		}
+		for node in &for_node.body {
+			self.visit_node(node);
+		}
+		self.locals_stack.pop();
+	}
+
+	fn visit_component(&mut self, comp: &PageComponent) {
+		for arg in &comp.args {
+			self.visit_expr(&arg.value);
+		}
+		for event in &comp.events {
+			self.visit_expr(&event.handler);
+		}
+		if let Some(children) = &comp.children {
+			for child in children {
+				self.visit_node(child);
+			}
+		}
+		for slot in &comp.named_slots {
+			for child in &slot.children {
+				self.visit_node(child);
+			}
+		}
+	}
+
+	fn visit_expr(&mut self, expr: &Expr) {
+		let mut visitor = ExprIdentVisitor { collector: self };
+		visitor.visit_expr(expr);
+	}
+}
+
+struct ExprIdentVisitor<'a> {
+	collector: &'a mut CaptureCollector,
+}
+
+impl<'ast> Visit<'ast> for ExprIdentVisitor<'_> {
+	fn visit_expr_path(&mut self, expr_path: &'ast syn::ExprPath) {
+		if expr_path.qself.is_none() && expr_path.path.segments.len() == 1 {
+			let segment = &expr_path.path.segments[0];
+			let name = segment.ident.to_string();
+			if is_value_ident(&name) && !self.collector.is_known(&name) {
+				self.collector.record_capture(&segment.ident);
+			}
+		}
+		visit::visit_expr_path(self, expr_path);
+	}
+
+	fn visit_expr_closure(&mut self, closure: &'ast syn::ExprClosure) {
+		let mut locals = HashSet::new();
+		for input in &closure.inputs {
+			collect_pat_idents(input, &mut locals);
+		}
+		self.collector.locals_stack.push(locals);
+		visit::visit_expr_closure(self, closure);
+		self.collector.locals_stack.pop();
+	}
+
+	fn visit_expr_let(&mut self, let_expr: &'ast syn::ExprLet) {
+		let mut locals = HashSet::new();
+		collect_pat_idents(&let_expr.pat, &mut locals);
+		self.collector.locals_stack.push(locals);
+		visit::visit_expr_let(self, let_expr);
+		self.collector.locals_stack.pop();
+	}
+
+	fn visit_expr_if(&mut self, if_expr: &'ast syn::ExprIf) {
+		if let syn::Expr::Let(let_expr) = &*if_expr.cond {
+			let mut locals = HashSet::new();
+			collect_pat_idents(&let_expr.pat, &mut locals);
+			self.visit_expr(&let_expr.expr);
+			self.collector.locals_stack.push(locals);
+			self.visit_block(&if_expr.then_branch);
+			self.collector.locals_stack.pop();
+			if let Some((_, else_branch)) = &if_expr.else_branch {
+				self.visit_expr(else_branch);
+			}
+		} else {
+			visit::visit_expr_if(self, if_expr);
+		}
+	}
+
+	fn visit_arm(&mut self, arm: &'ast syn::Arm) {
+		let mut locals = HashSet::new();
+		collect_pat_idents(&arm.pat, &mut locals);
+		self.collector.locals_stack.push(locals);
+		if let Some((_, guard)) = &arm.guard {
+			self.visit_expr(guard);
+		}
+		self.visit_expr(&arm.body);
+		self.collector.locals_stack.pop();
+	}
+
+	fn visit_expr_for_loop(&mut self, for_loop: &'ast syn::ExprForLoop) {
+		self.visit_expr(&for_loop.expr);
+		let mut locals = HashSet::new();
+		collect_pat_idents(&for_loop.pat, &mut locals);
+		self.collector.locals_stack.push(locals);
+		self.visit_block(&for_loop.body);
+		self.collector.locals_stack.pop();
+	}
+
+	fn visit_expr_macro(&mut self, expr_macro: &'ast syn::ExprMacro) {
+		if let Ok(args) = expr_macro
+			.mac
+			.parse_body_with(Punctuated::<Expr, Token![,]>::parse_terminated)
+		{
+			for arg in args {
+				self.visit_expr(&arg);
+			}
+		}
+	}
+
+	fn visit_block(&mut self, block: &'ast syn::Block) {
+		let mut pushed = 0_usize;
+		for stmt in &block.stmts {
+			match stmt {
+				syn::Stmt::Local(local) => {
+					if let Some(init) = &local.init {
+						self.visit_expr(&init.expr);
+						if let Some((_, diverge)) = &init.diverge {
+							self.visit_expr(diverge);
+						}
+					}
+					let mut locals = HashSet::new();
+					collect_pat_idents(&local.pat, &mut locals);
+					self.collector.locals_stack.push(locals);
+					pushed += 1;
+				}
+				syn::Stmt::Item(_) => {}
+				syn::Stmt::Expr(expr, _) => self.visit_expr(expr),
+				syn::Stmt::Macro(mac) => visit::visit_stmt_macro(self, mac),
+			}
+		}
+		for _ in 0..pushed {
+			self.collector.locals_stack.pop();
+		}
+	}
+}
+
+fn collect_pat_idents(pat: &syn::Pat, out: &mut HashSet<String>) {
+	match pat {
+		syn::Pat::Ident(ident) => {
+			out.insert(ident.ident.to_string());
+			if let Some((_, subpat)) = &ident.subpat {
+				collect_pat_idents(subpat, out);
+			}
+		}
+		syn::Pat::Tuple(tuple) => {
+			for elem in &tuple.elems {
+				collect_pat_idents(elem, out);
+			}
+		}
+		syn::Pat::TupleStruct(tuple_struct) => {
+			for elem in &tuple_struct.elems {
+				collect_pat_idents(elem, out);
+			}
+		}
+		syn::Pat::Struct(struct_pat) => {
+			for field in &struct_pat.fields {
+				collect_pat_idents(&field.pat, out);
+			}
+		}
+		syn::Pat::Reference(reference) => collect_pat_idents(&reference.pat, out),
+		syn::Pat::Type(typed) => collect_pat_idents(&typed.pat, out),
+		syn::Pat::Or(or_pat) => {
+			for case in &or_pat.cases {
+				collect_pat_idents(case, out);
+			}
+		}
+		syn::Pat::Slice(slice) => {
+			for elem in &slice.elems {
+				collect_pat_idents(elem, out);
+			}
+		}
+		syn::Pat::Paren(paren) => collect_pat_idents(&paren.pat, out),
+		_ => {}
+	}
+}
+
+fn is_value_ident(name: &str) -> bool {
+	let starts_lowercase = name
+		.chars()
+		.next()
+		.map(|c| c.is_ascii_lowercase())
+		.unwrap_or(false);
+	let all_screaming = name
+		.chars()
+		.all(|c| c.is_ascii_uppercase() || c == '_' || c.is_ascii_digit());
+	starts_lowercase && !all_screaming
+}
+
+fn missing_param_error(ident: &syn::Ident) -> syn::Error {
+	syn::Error::new(
+		ident.span(),
+		format!("identifier `{ident}` used inside `page!` is not declared as a parameter"),
+	)
 }
 
 /// Transforms a PageBody into a TypedPageBody.
@@ -866,8 +1206,185 @@ fn validate_required_attributes(tag: &str, attrs: &[TypedPageAttr], span: Span) 
 mod tests {
 	use super::*;
 	use crate::core::{PageExpression, PageText, TypedPageElement};
+	use quote::quote;
 	use rstest::rstest;
 	use syn::parse_quote;
+
+	fn parse(input: proc_macro2::TokenStream) -> PageMacro {
+		syn::parse2(input).expect("input must be a valid page! macro")
+	}
+
+	fn implicit_capture_names(ast: &PageMacro) -> Vec<String> {
+		validate_page(ast)
+			.unwrap()
+			.implicit_captures()
+			.iter()
+			.map(|capture| capture.ident.to_string())
+			.collect()
+	}
+
+	#[rstest]
+	fn test_implicit_body_records_captures() {
+		// Arrange
+		let ast = parse(quote! {
+			{ div { {outer_count.get()} } }
+		});
+
+		// Act
+		let captures = implicit_capture_names(&ast);
+
+		// Assert
+		assert_eq!(captures, vec!["outer_count"]);
+	}
+
+	#[rstest]
+	fn test_implicit_body_records_head_capture() {
+		// Arrange
+		use proc_macro2::{Punct, Spacing};
+		let pound = Punct::new('#', Spacing::Alone);
+		let ast = parse(quote! {
+			#pound head: page_head.clone(),
+			{ div { "content" } }
+		});
+
+		// Act
+		let captures = implicit_capture_names(&ast);
+
+		// Assert
+		assert_eq!(captures, vec!["page_head"]);
+	}
+
+	#[rstest]
+	fn test_implicit_body_records_macro_argument_captures() {
+		// Arrange
+		let ast = parse(quote! {
+			{ p { {format!("value={}", outer_value)} } }
+		});
+
+		// Act
+		let captures = implicit_capture_names(&ast);
+
+		// Assert
+		assert_eq!(captures, vec!["outer_value"]);
+	}
+
+	#[rstest]
+	fn test_implicit_body_keeps_page_if_let_binding_local() {
+		// Arrange
+		let ast = parse(quote! {
+			{
+				if let Some(item) = maybe {
+					div { {item.clone()} }
+				}
+			}
+		});
+
+		// Act
+		let captures = implicit_capture_names(&ast);
+
+		// Assert
+		assert_eq!(captures, vec!["maybe"]);
+	}
+
+	#[rstest]
+	fn test_implicit_body_records_page_for_iter_and_key_captures() {
+		// Arrange
+		let ast = parse(quote! {
+			{
+				ul {
+					for item in items @key(route_id.to_string()) {
+						li { {item.clone()} }
+					}
+				}
+			}
+		});
+
+		// Act
+		let captures = implicit_capture_names(&ast);
+
+		// Assert
+		assert_eq!(captures, vec!["items", "route_id"]);
+		assert!(!captures.iter().any(|capture| capture == "item"));
+	}
+
+	#[rstest]
+	fn test_implicit_body_treats_page_for_key_pattern_as_local() {
+		// Arrange
+		let ast = parse(quote! {
+			{
+				ul {
+					for item in items @key(item.clone()) {
+						li { {item.clone()} }
+					}
+				}
+			}
+		});
+
+		// Act
+		let captures = implicit_capture_names(&ast);
+
+		// Assert
+		assert_eq!(captures, vec!["items"]);
+	}
+
+	#[rstest]
+	fn test_implicit_body_treats_at_subpattern_bindings_as_local() {
+		// Arrange
+		let ast = parse(quote! {
+			{
+				ul {
+					for item @ Some(alias) in items {
+						li { {item.clone()} {alias.clone()} }
+					}
+				}
+			}
+		});
+
+		// Act
+		let captures = implicit_capture_names(&ast);
+
+		// Assert
+		assert_eq!(captures, vec!["items"]);
+	}
+
+	#[rstest]
+	fn test_strict_closure_rejects_implicit_capture() {
+		// Arrange
+		let ast = parse(quote! {
+			|| { div { {outer_count.get()} } }
+		});
+
+		// Act
+		let result = validate_page(&ast);
+
+		// Assert
+		let err = result.expect_err("strict closure must reject implicit capture");
+		assert_eq!(
+			err.to_string(),
+			"identifier `outer_count` used inside `page!` is not declared as a parameter"
+		);
+	}
+
+	#[rstest]
+	fn test_strict_closure_rejects_head_capture() {
+		// Arrange
+		use proc_macro2::{Punct, Spacing};
+		let pound = Punct::new('#', Spacing::Alone);
+		let ast = parse(quote! {
+			#pound head: page_head.clone(),
+			|| { div { "content" } }
+		});
+
+		// Act
+		let result = validate_page(&ast);
+
+		// Assert
+		let err = result.expect_err("strict closure must reject head capture");
+		assert_eq!(
+			err.to_string(),
+			"identifier `page_head` used inside `page!` is not declared as a parameter"
+		);
+	}
 
 	#[rstest]
 	fn test_validate_valid_closure() {

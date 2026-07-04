@@ -102,12 +102,16 @@ pub use reinhardt_core::reactive::{
 // WASM-specific modules (kept in reinhardt-pages)
 pub mod hooks;
 pub mod resource;
+pub mod resource_value;
 pub mod trackable;
 
 pub use trackable::Trackable;
 
 // Re-export resource types and the unified hook (available on all targets)
 pub use resource::{Resource, ResourceState, use_resource};
+pub use resource_value::{
+	LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, use_latest_resource_value,
+};
 
 // Re-export hooks
 pub use hooks::{

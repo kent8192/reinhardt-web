@@ -35,6 +35,7 @@
 //! - **QuerySet API**: Chainable query builder with conditional partial updates
 //! - **Field Types**: Rich set of field types with validation
 //! - **Relationships**: ForeignKey, ManyToMany, OneToOne
+//! - **Scoped N+1 Detection**: Opt-in query shape detection for focused diagnostics and tests
 //!
 //! ### Migrations (`migrations` module)
 //!
@@ -66,6 +67,7 @@
 //! - **Connection Pool Optimization**: Idle timeout, dynamic sizing, health checks
 //! - **Query Caching**: LRU cache with TTL for prepared statements and results
 //! - **Batch Operations**: Efficient bulk insert, update, and delete operations
+//! - **N+1 Diagnostics**: Scoped warnings or test failures for repeated query shapes
 //!
 //! ## Enhanced Migration Tools ✅
 //!
