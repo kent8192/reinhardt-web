@@ -502,7 +502,7 @@ fn collapse_whitespace(input: &str) -> String {
 }
 
 fn suggested_action() -> String {
-	"Repeated query shape detected. If this is a single-object relationship, consider select_related(). If this is a collection relationship, consider prefetch_related() or a batch query.".to_string()
+	"Repeated query shape detected. If this is a single-object relationship, consider select_related(). For collection relationships, use an explicit batch query until automatic prefetch execution is available.".to_string()
 }
 
 fn warn_for_findings(report: &NPlusOneReport) {
@@ -652,6 +652,23 @@ mod tests {
 		assert_eq!(report.findings.len(), 1);
 		assert_eq!(report.findings[0].execution_count, 3);
 		assert_eq!(report.findings[0].distinct_bind_signature_count, 3);
+	}
+
+	#[test]
+	fn suggested_action_does_not_recommend_inactive_prefetch_related() {
+		let mut state = ScopeState::new("posts.index".to_string(), low_threshold_config());
+		for author_id in ["1", "2", "3"] {
+			state.record_query(
+				"SELECT * FROM posts WHERE author_id = $1",
+				&[author_id.to_string()],
+				Duration::from_millis(1),
+			);
+		}
+
+		let report = state.finish_report();
+		let action = &report.findings[0].suggested_action;
+		assert!(!action.contains("prefetch_related()"));
+		assert!(action.contains("explicit batch query"));
 	}
 
 	#[test]
