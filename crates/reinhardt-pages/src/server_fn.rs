@@ -88,6 +88,8 @@ pub mod router_ext;
 pub mod server_fn_trait;
 
 // Re-exports
+#[cfg(all(native, any(test, feature = "testing"), feature = "msw"))]
+pub use crate::testing::component::server_fn_mock::try_call_active_mock;
 #[cfg(feature = "msgpack")]
 pub use codec::MessagePackCodec;
 pub use codec::{Codec, JsonCodec, UrlCodec};

@@ -1,0 +1,94 @@
+//! Native async scheduler for component tests.
+
+use std::cell::RefCell;
+use std::collections::VecDeque;
+use std::future::Future;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::task::{Context, Poll, Waker};
+
+use crate::platform;
+
+type BoxedTask = Pin<Box<dyn Future<Output = ()> + 'static>>;
+
+/// Error returned when the native component scheduler cannot settle.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SettleError {
+	/// Pending work did not quiesce before the harness limit.
+	DidNotQuiesce {
+		/// Number of settle iterations attempted.
+		iterations: usize,
+		/// Number of tasks still pending after the last iteration.
+		pending_tasks: usize,
+		/// Pretty DOM output captured when settle failed.
+		dom: String,
+	},
+}
+
+impl std::fmt::Display for SettleError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::DidNotQuiesce {
+				iterations,
+				pending_tasks,
+				dom,
+			} => write!(
+				f,
+				"scheduled work did not quiesce after {iterations} iterations with {pending_tasks} pending tasks\n\n{dom}"
+			),
+		}
+	}
+}
+
+impl std::error::Error for SettleError {}
+
+#[derive(Default)]
+pub(crate) struct TestScheduler {
+	tasks: VecDeque<BoxedTask>,
+}
+
+pub(crate) struct SchedulerScope {
+	scheduler: Rc<RefCell<TestScheduler>>,
+	_guard: platform::NativeTaskSinkGuard,
+}
+
+impl SchedulerScope {
+	pub(crate) fn new() -> Self {
+		let scheduler = Rc::new(RefCell::new(TestScheduler::default()));
+		let scheduler_for_sink = Rc::clone(&scheduler);
+		let guard = platform::install_task_sink(move |task| {
+			scheduler_for_sink.borrow_mut().tasks.push_back(task);
+		});
+		Self {
+			scheduler,
+			_guard: guard,
+		}
+	}
+
+	pub(crate) async fn settle(&self, dom: impl Fn() -> String) -> Result<(), SettleError> {
+		let mut cx = Context::from_waker(Waker::noop());
+		for iteration in 0..100 {
+			let mut pending = VecDeque::new();
+			while let Some(mut task) = self.scheduler.borrow_mut().tasks.pop_front() {
+				match task.as_mut().poll(&mut cx) {
+					Poll::Ready(()) => {}
+					Poll::Pending => pending.push_back(task),
+				}
+			}
+			let pending_tasks = pending.len();
+			self.scheduler.borrow_mut().tasks = pending;
+			if pending_tasks == 0 {
+				return Ok(());
+			}
+			tokio::task::yield_now().await;
+			if iteration == 99 {
+				return Err(SettleError::DidNotQuiesce {
+					iterations: 100,
+					pending_tasks,
+					dom: dom(),
+				});
+			}
+		}
+		unreachable!("settle loop returns inside fixed iteration range")
+	}
+}
