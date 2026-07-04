@@ -1,0 +1,7 @@
+error: ClientFormChoices default variant cannot be skipped by serde
+ --> tests/ui/client_form/choices/fail/skipped_default.rs:5:2
+  |
+5 | /     #[default]
+6 | |     #[serde(skip)]
+7 | |     Archived,
+  | |____________^

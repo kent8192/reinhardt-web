@@ -73,10 +73,13 @@ pub trait ServerFnMetadata: 'static {
 
 /// Exposes the success response type of a `#[server_fn]` marker.
 ///
-/// This is implemented by the `#[server_fn]` macro for the same marker struct
-/// as [`ServerFnMetadata`]. Generated code can use it to name the declared
-/// `Ok(T)` response type without changing the public server function call
-/// signature.
+/// This is implemented by the `#[server_fn]` macro for public server function
+/// markers whose return type is a direct `Result<T, E>`. Generated code can
+/// use it to name the declared `Ok(T)` response type without changing the
+/// public server function call signature. Scoped or private server functions
+/// keep their basic [`ServerFnMetadata`] and native registration metadata, but
+/// do not expose typed response metadata because the associated types may be
+/// private to the defining module.
 pub trait ServerFnResponseMetadata: ServerFnMetadata {
 	/// Success response type (the `Ok` variant of the function's return type).
 	type Response: serde::Serialize + 'static;

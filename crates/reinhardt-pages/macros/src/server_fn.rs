@@ -1272,9 +1272,21 @@ fn generate_server_handler(
 	// `reinhardt-web/msw`) so that `MockableServerFn` is in scope.
 	let msw_enabled = cfg!(feature = "msw");
 
-	// MSW: Extract the Ok type from Result<T, ServerFnError> for MockableServerFn::Response
-	let response_type = extract_result_ok_type(return_type);
-	let error_type = extract_result_err_type(return_type);
+	let (response_type, error_type) = match extract_result_types(return_type) {
+		Ok(types) => types,
+		Err(error) => return error.to_compile_error(),
+	};
+	let emits_typed_response_metadata = matches!(vis, syn::Visibility::Public(_));
+	let response_metadata_impl = if emits_typed_response_metadata {
+		quote! {
+			impl #pages_crate::server_fn::ServerFnResponseMetadata for marker {
+				type Response = #response_type;
+				type Error = #error_type;
+			}
+		}
+	} else {
+		quote! {}
+	};
 
 	// Convert inject param names to string literals for INJECTED_PARAMS const
 	let inject_param_name_strs: Vec<String> = inject_params
@@ -1290,7 +1302,7 @@ fn generate_server_handler(
 	let uses_response_cookie_jar = !inject_params.is_empty() || !extractor_params.is_empty();
 
 	// MSW: Generate server-side MockableServerFn tokens only when msw feature is enabled
-	let msw_server_tokens = if msw_enabled {
+	let msw_server_tokens = if msw_enabled && emits_typed_response_metadata {
 		quote! {
 			mod __msw {
 				use ::serde::{Serialize, Deserialize};
@@ -1322,7 +1334,7 @@ fn generate_server_handler(
 	// the `MockableServerFn` impl whose trait isn't in scope for them.
 	// `#[allow(unexpected_cfgs)]` keeps the cfg quiet in consumer crates
 	// that don't themselves declare an `msw` feature.
-	let msw_wasm_inner_tokens = if msw_enabled {
+	let msw_wasm_inner_tokens = if msw_enabled && emits_typed_response_metadata {
 		quote! {
 			#[cfg(feature = "msw")]
 			#[allow(unexpected_cfgs)]
@@ -1393,10 +1405,7 @@ fn generate_server_handler(
 				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
 
-			impl #pages_crate::server_fn::ServerFnResponseMetadata for marker {
-				type Response = #response_type;
-				type Error = #error_type;
-			}
+			#response_metadata_impl
 
 			#msw_wasm_inner_tokens
 		}
@@ -1520,10 +1529,7 @@ fn generate_server_handler(
 				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
 
-			impl #pages_crate::server_fn::ServerFnResponseMetadata for marker {
-				type Response = #response_type;
-				type Error = #error_type;
-			}
+			#response_metadata_impl
 
 			// Native-only handler entry point for explicit router registration.
 			impl #pages_crate::server_fn::ServerFnRegistration for marker {
@@ -1548,36 +1554,23 @@ fn generate_server_handler(
 	}
 }
 
-/// Extracts the first generic argument `T` from `Result<T, E>`.
-///
-/// Given `Result<User, ServerFnError>`, returns the token stream for `User`.
-/// Falls back to the full return type if it cannot be parsed as `Result<T, E>`.
-fn extract_result_ok_type(return_type: &syn::Type) -> proc_macro2::TokenStream {
+fn extract_result_types(
+	return_type: &syn::Type,
+) -> syn::Result<(proc_macro2::TokenStream, proc_macro2::TokenStream)> {
 	if let syn::Type::Path(type_path) = return_type
 		&& let Some(segment) = type_path.path.segments.last()
 		&& segment.ident == "Result"
 		&& let syn::PathArguments::AngleBracketed(args) = &segment.arguments
 		&& let Some(syn::GenericArgument::Type(ok_type)) = args.args.first()
-	{
-		return quote! { #ok_type };
-	}
-	// Fallback: use the full type
-	quote! { #return_type }
-}
-
-/// Extracts the second generic argument `E` from `Result<T, E>`.
-fn extract_result_err_type(return_type: &syn::Type) -> proc_macro2::TokenStream {
-	if let syn::Type::Path(type_path) = return_type
-		&& let Some(segment) = type_path.path.segments.last()
-		&& segment.ident == "Result"
-		&& let syn::PathArguments::AngleBracketed(args) = &segment.arguments
 		&& args.args.len() >= 2
 		&& let Some(syn::GenericArgument::Type(err_type)) = args.args.iter().nth(1)
 	{
-		return quote! { #err_type };
+		return Ok((quote! { #ok_type }, quote! { #err_type }));
 	}
-
-	quote! { #return_type }
+	Err(syn::Error::new_spanned(
+		return_type,
+		"server_fn return type must be a direct Result<T, E>; type aliases are not supported for response metadata",
+	))
 }
 
 #[cfg(test)]

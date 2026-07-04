@@ -46,6 +46,12 @@ fn test_server_fn_macro_ui() {
 }
 
 #[test]
+fn test_server_fn_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/server_fn/fail/*.rs");
+}
+
+#[test]
 fn test_client_form_choices_pass() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/client_form/choices/pass/*.rs");

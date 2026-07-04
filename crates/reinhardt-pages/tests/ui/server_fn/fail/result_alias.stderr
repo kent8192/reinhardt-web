@@ -1,0 +1,5 @@
+error: server_fn return type must be a direct Result<T, E>; type aliases are not supported for response metadata
+  --> tests/ui/server_fn/fail/result_alias.rs:12:30
+   |
+12 | async fn aliased_result() -> ApiResult<SaveResponse> {
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^

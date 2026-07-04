@@ -40,6 +40,12 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 
 	for variant in data_enum.variants {
 		let variant_options = serde_variant_options(&variant.attrs)?;
+		if variant_options.skip && variant_options.default {
+			return Err(syn::Error::new_spanned(
+				variant,
+				"ClientFormChoices default variant cannot be skipped by serde",
+			));
+		}
 		if variant_options.skip {
 			continue;
 		}
@@ -121,14 +127,20 @@ fn serde_rename_all(attrs: &[syn::Attribute]) -> syn::Result<RenameRule> {
 struct SerdeVariantOptions {
 	rename: Option<String>,
 	skip: bool,
+	default: bool,
 }
 
 fn serde_variant_options(attrs: &[syn::Attribute]) -> syn::Result<SerdeVariantOptions> {
 	let mut options = SerdeVariantOptions {
 		rename: None,
 		skip: false,
+		default: false,
 	};
 	for attr in attrs {
+		if attr.path().is_ident("default") {
+			options.default = true;
+			continue;
+		}
 		if !attr.path().is_ident("serde") {
 			continue;
 		}

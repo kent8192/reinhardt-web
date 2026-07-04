@@ -5,6 +5,7 @@
 //! `Response` type is the declared `Ok` type from the server function result.
 
 use reinhardt_pages::server_fn::ServerFnResponseMetadata;
+use reinhardt_pages::server_fn::{ServerFnMetadata, ServerFnRegistration};
 use reinhardt_pages_macros::server_fn;
 use serde::{Deserialize, Serialize};
 
@@ -31,7 +32,7 @@ pub struct DeclaredResponse {
 }
 
 #[server_fn]
-async fn response_metadata_sample(value: String) -> Result<DeclaredResponse, ServerFnError> {
+pub async fn response_metadata_sample(value: String) -> Result<DeclaredResponse, ServerFnError> {
 	Ok(DeclaredResponse { value })
 }
 
@@ -59,24 +60,27 @@ mod scoped {
 	pub(super) mod endpoint {
 		use super::*;
 
+		#[derive(Debug, Serialize)]
+		struct ScopedResponse {
+			value: String,
+		}
+
 		#[server_fn]
+		#[allow(private_interfaces)]
 		pub(super) async fn scoped_response_metadata_sample(
 			value: String,
-		) -> Result<DeclaredResponse, ServerFnError> {
-			Ok(DeclaredResponse { value })
+		) -> Result<ScopedResponse, ServerFnError> {
+			Ok(ScopedResponse { value })
 		}
 	}
 
-	type ScopedResponse =
-		<endpoint::scoped_response_metadata_sample::marker as ServerFnResponseMetadata>::Response;
-
-	fn assert_scoped_response(value: ScopedResponse) -> DeclaredResponse {
-		value
-	}
-
 	pub fn assert_scoped_marker_is_nameable() {
-		assert_response_metadata::<endpoint::scoped_response_metadata_sample::marker>();
-		let _assert_scoped_response: fn(ScopedResponse) -> DeclaredResponse = assert_scoped_response;
+		let _marker = endpoint::scoped_response_metadata_sample::marker;
+		assert_eq!(
+			<endpoint::scoped_response_metadata_sample::marker as ServerFnMetadata>::NAME,
+			"scoped_response_metadata_sample"
+		);
+		let _handler = <endpoint::scoped_response_metadata_sample::marker as ServerFnRegistration>::handler();
 	}
 }
 
