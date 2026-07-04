@@ -1,6 +1,6 @@
 use reinhardt_pages::{Page, Path, Query, component, page};
 
-#[component("/users/{id}/", "user-detail")]
+#[component("/users/{id}/", name = "user-detail")]
 fn user_page(Path(id): Path<i64>, Query(tab): Query<String>) -> Page {
 	page!(|id: i64, tab: String| {
 		div { { format!("{id}:{tab}") } }
