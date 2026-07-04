@@ -409,6 +409,7 @@ fn format_dsl_with_options_preserving_markers(
 	let mut normalized = normalize_dsl_output(formatted.trim());
 	if kind == MacroKind::Page {
 		normalized = format_page_rustfmt_islands(&normalized, rustfmt_options);
+		normalized = format_page_closure_args(&normalized, rustfmt_options);
 	}
 	Ok(FormattedDsl {
 		output: normalized,
@@ -529,6 +530,93 @@ fn format_page_rustfmt_islands(input: &str, rustfmt_options: &RustfmtOptions) ->
 		}
 	}
 	output
+}
+
+fn format_page_closure_args(input: &str, rustfmt_options: &RustfmtOptions) -> String {
+	let mut parser = Parser::new();
+	let language = tree_sitter_reinhardt_page::LANGUAGE.into();
+	if parser.set_language(&language).is_err() {
+		return input.to_string();
+	}
+	let Some(tree) = parser.parse(input, None) else {
+		return input.to_string();
+	};
+	if tree.root_node().has_error() {
+		return input.to_string();
+	}
+
+	let mut ranges = Vec::new();
+	collect_page_closure_arg_ranges(tree.root_node(), &mut ranges);
+	let ranges = non_nested_ranges(ranges);
+
+	let mut output = input.to_string();
+	for (start, end) in ranges.into_iter().rev() {
+		let closure_args = &input[start..end];
+		let line_indent = line_indent_for_offset(input, start);
+		if let Some(formatted) = format_closure_args(closure_args, line_indent, rustfmt_options) {
+			output.replace_range(start..end, &formatted);
+		}
+	}
+	output
+}
+
+fn collect_page_closure_arg_ranges(node: Node<'_>, ranges: &mut Vec<(usize, usize)>) {
+	if node.kind() == "page_closure" {
+		let mut cursor = node.walk();
+		for child in node.children(&mut cursor) {
+			if child.kind() == "closure_args" {
+				let start = child.start_byte();
+				let end = child.end_byte();
+				if start < end {
+					ranges.push((start, end));
+				}
+				break;
+			}
+		}
+		return;
+	}
+
+	let mut cursor = node.walk();
+	for child in node.children(&mut cursor) {
+		collect_page_closure_arg_ranges(child, ranges);
+	}
+}
+
+fn format_closure_args(
+	closure_args: &str,
+	line_indent: &str,
+	rustfmt_options: &RustfmtOptions,
+) -> Option<String> {
+	let wrapped = format!("fn main() {{ let __reinhardt_fmt = {closure_args} (); }}\n");
+	let mut cmd = Command::new("rustfmt");
+	rustfmt_options.apply_to_island_command(&mut cmd);
+	let mut child = cmd
+		.arg("--emit=stdout")
+		.stdin(Stdio::piped())
+		.stdout(Stdio::piped())
+		.stderr(Stdio::null())
+		.spawn()
+		.ok()?;
+	let Some(mut stdin) = child.stdin.take() else {
+		let _ = child.kill();
+		let _ = child.wait();
+		return None;
+	};
+	if stdin.write_all(wrapped.as_bytes()).is_err() {
+		drop(stdin);
+		let _ = child.kill();
+		let _ = child.wait();
+		return None;
+	}
+	drop(stdin);
+
+	let output = child.wait_with_output().ok()?;
+	if !output.status.success() {
+		return None;
+	}
+	let formatted_wrapper = String::from_utf8(output.stdout).ok()?;
+	let formatted = unwrap_rustfmt_closure_args(&formatted_wrapper)?;
+	Some(reindent_multiline_closure_args(formatted, line_indent))
 }
 
 fn collect_rustfmt_island_ranges(node: Node<'_>, ranges: &mut Vec<(usize, usize)>) {
@@ -759,6 +847,19 @@ fn unwrap_rustfmt_island(formatted_wrapper: &str) -> Option<&str> {
 	value.utf8_text(formatted_wrapper.as_bytes()).ok()
 }
 
+fn unwrap_rustfmt_closure_args(formatted_wrapper: &str) -> Option<&str> {
+	let mut parser = Parser::new();
+	let language = tree_sitter_rust::LANGUAGE.into();
+	parser.set_language(&language).ok()?;
+	let tree = parser.parse(formatted_wrapper, None)?;
+	if tree.root_node().has_error() {
+		return None;
+	}
+	let closure = find_first_node_kind(tree.root_node(), "closure_expression")?;
+	let parameters = closure.child_by_field_name("parameters")?;
+	parameters.utf8_text(formatted_wrapper.as_bytes()).ok()
+}
+
 fn find_first_node_kind<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
 	if node.kind() == kind {
 		return Some(node);
@@ -785,6 +886,24 @@ fn reindent_multiline_island(input: &str, line_indent: &str) -> String {
 			result.push_str(line_indent);
 		}
 		result.push_str(strip_leading_indent(line, strip_indent));
+	}
+	result
+}
+
+fn reindent_multiline_closure_args(input: &str, line_indent: &str) -> String {
+	let mut lines = input.lines();
+	let Some(first) = lines.next() else {
+		return String::new();
+	};
+	let mut result = first.to_string();
+	for line in lines {
+		result.push('\n');
+		let trimmed = line.trim_start_matches([' ', '\t']);
+		if !trimmed.is_empty() {
+			result.push_str(line_indent);
+			result.push(' ');
+			result.push_str(trimmed);
+		}
 	}
 	result
 }
@@ -1003,6 +1122,74 @@ mod tests {
 
 		// Assert
 		assert_eq!(formatted, "|| {\n\tdiv { \"x\" }\n}");
+	}
+
+	#[rstest]
+	fn formats_long_page_closure_args_as_multiline() {
+		// Arrange
+		let input = concat!(
+			"|project_id: i64, ",
+			"small_box_id: i64, ",
+			"instruction_id: String, ",
+			"generate_pending_action: VersionAction, ",
+			"generate_click: ClickHandler, ",
+			"retake_pending_action: VersionAction, ",
+			"retake_click: ClickHandler, ",
+			"accept_pending_action: VersionAction, ",
+			"accept_click: ClickHandler, ",
+			"compare_pending_action: CompareAction, ",
+			"compare_click: ClickHandler, ",
+			"manuscript_badge_handles: ManuscriptResultHandles, ",
+			"manuscript_summary_handles: ManuscriptResultHandles| ",
+			r#"{ section { class: "grid gap-5 p-6", } }"#,
+		);
+
+		// Act
+		let formatted = format_dsl(MacroKind::Page, input).expect("format page DSL");
+		let second = format_dsl(MacroKind::Page, &formatted).expect("format page DSL again");
+
+		// Assert
+		assert!(
+			formatted.contains("|project_id: i64,\n"),
+			"long closure args should wrap after the first parameter: {formatted}"
+		);
+		assert!(
+			formatted.contains("\n small_box_id: i64,"),
+			"wrapped closure args should keep later parameters on separate lines: {formatted}"
+		);
+		let small_box_line = formatted
+			.lines()
+			.find(|line| line.contains("small_box_id: i64,"))
+			.expect("small_box_id line");
+		assert_eq!(
+			small_box_line, " small_box_id: i64,",
+			"wrapped closure args should not preserve rustfmt alignment padding: {formatted}"
+		);
+		assert!(
+			!formatted.contains("project_id: i64, small_box_id: i64, instruction_id: String"),
+			"long closure args should not stay on one line: {formatted}"
+		);
+		assert_eq!(second, formatted);
+
+		let hard_tabs_options = RustfmtOptions {
+			config: Some("hard_tabs=true".to_string()),
+			..RustfmtOptions::default()
+		};
+		let hard_tabs_formatted =
+			format_dsl_with_options(MacroKind::Page, input, &hard_tabs_options)
+				.expect("format page DSL with hard tabs");
+		let hard_tabs_second =
+			format_dsl_with_options(MacroKind::Page, &hard_tabs_formatted, &hard_tabs_options)
+				.expect("format page DSL with hard tabs again");
+		let hard_tabs_small_box_line = hard_tabs_formatted
+			.lines()
+			.find(|line| line.contains("small_box_id: i64,"))
+			.expect("hard-tabs small_box_id line");
+		assert_eq!(
+			hard_tabs_small_box_line, " small_box_id: i64,",
+			"wrapped closure args should normalize hard-tabs rustfmt alignment padding: {hard_tabs_formatted}"
+		);
+		assert_eq!(hard_tabs_second, hard_tabs_formatted);
 	}
 
 	#[rstest]
