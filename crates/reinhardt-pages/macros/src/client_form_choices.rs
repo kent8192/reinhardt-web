@@ -2,7 +2,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Fields, LitStr, parse_macro_input};
+use syn::{Data, DeriveInput, Fields, LitStr, Token, parse_macro_input};
 
 use crate::crate_paths::get_reinhardt_pages_crate;
 
@@ -117,6 +117,13 @@ fn serde_rename_all(attrs: &[syn::Attribute]) -> syn::Result<RenameRule> {
 						);
 					}
 				};
+			} else if meta.path.is_ident("tag")
+				|| meta.path.is_ident("content")
+				|| meta.path.is_ident("untagged")
+			{
+				return Err(meta.error(
+					"ClientFormChoices requires externally tagged string enum representation",
+				));
 			}
 			Ok(())
 		})?;
@@ -146,8 +153,27 @@ fn serde_variant_options(attrs: &[syn::Attribute]) -> syn::Result<SerdeVariantOp
 		}
 		attr.parse_nested_meta(|meta| {
 			if meta.path.is_ident("rename") {
-				let value = meta.value()?.parse::<LitStr>()?;
-				options.rename = Some(value.value());
+				if meta.input.peek(Token![=]) {
+					let value = meta.value()?.parse::<LitStr>()?;
+					options.rename = Some(value.value());
+				} else {
+					let mut serialize_rename = None;
+					meta.parse_nested_meta(|rename_meta| {
+						if rename_meta.path.is_ident("serialize") {
+							let value = rename_meta.value()?.parse::<LitStr>()?;
+							serialize_rename = Some(value.value());
+						} else if rename_meta.path.is_ident("deserialize") {
+							let _value = rename_meta.value()?.parse::<LitStr>()?;
+						} else {
+							return Err(rename_meta
+								.error("unsupported serde rename option for ClientFormChoices"));
+						}
+						Ok(())
+					})?;
+					if let Some(value) = serialize_rename {
+						options.rename = Some(value);
+					}
+				}
 			} else if meta.path.is_ident("skip")
 				|| meta.path.is_ident("skip_serializing")
 				|| meta.path.is_ident("skip_deserializing")

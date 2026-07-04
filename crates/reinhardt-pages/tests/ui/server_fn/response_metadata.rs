@@ -65,6 +65,11 @@ mod scoped {
 			value: String,
 		}
 
+		#[derive(Debug, Serialize)]
+		pub(super) struct ScopedVisibleResponse {
+			value: String,
+		}
+
 		#[server_fn]
 		#[allow(private_interfaces)]
 		pub(super) async fn scoped_response_metadata_sample(
@@ -72,9 +77,29 @@ mod scoped {
 		) -> Result<ScopedResponse, ServerFnError> {
 			Ok(ScopedResponse { value })
 		}
+
+		#[server_fn]
+		pub(super) async fn scoped_visible_response_metadata_sample(
+			value: String,
+		) -> Result<ScopedVisibleResponse, ServerFnError> {
+			Ok(ScopedVisibleResponse { value })
+		}
+
+		fn assert_scoped_visible_response_metadata<T>()
+		where
+			T: ServerFnResponseMetadata<Response = ScopedVisibleResponse, Error = ServerFnError>,
+		{
+		}
+
+		pub(super) fn assert_scoped_visible_response_metadata_is_available() {
+			assert_scoped_visible_response_metadata::<
+				scoped_visible_response_metadata_sample::marker,
+			>();
+		}
 	}
 
 	pub fn assert_scoped_marker_is_nameable() {
+		endpoint::assert_scoped_visible_response_metadata_is_available();
 		let _marker = endpoint::scoped_response_metadata_sample::marker;
 		assert_eq!(
 			<endpoint::scoped_response_metadata_sample::marker as ServerFnMetadata>::NAME,

@@ -8,19 +8,23 @@ enum ProviderMode {
 	#[serde(rename = "live_api")]
 	LiveApi,
 	HTTPStatus,
+	#[serde(rename(serialize = "wire_api", deserialize = "legacy_api"))]
+	DirectionalRename,
 	#[serde(skip)]
 	Archived,
 }
 
 fn main() {
 	let choices = ProviderMode::client_form_choices();
-	assert_eq!(choices.len(), 3);
+	assert_eq!(choices.len(), 4);
 	assert_eq!(choices[0].serialized_value, "fake");
 	assert_eq!(choices[0].label, "fake");
 	assert_eq!(choices[1].serialized_value, "live_api");
 	assert_eq!(choices[1].label, "live_api");
 	assert_eq!(choices[2].serialized_value, "h_t_t_p_status");
 	assert_eq!(choices[2].label, "h_t_t_p_status");
+	assert_eq!(choices[3].serialized_value, "wire_api");
+	assert_eq!(choices[3].label, "wire_api");
 	assert!(!choices
 		.iter()
 		.any(|choice| choice.serialized_value == "archived"));

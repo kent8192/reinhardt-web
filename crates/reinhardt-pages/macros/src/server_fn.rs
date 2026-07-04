@@ -442,6 +442,13 @@ impl ServerFnInfo {
 		&self.func.vis
 	}
 
+	fn allows_private_interfaces(&self) -> bool {
+		self.func
+			.attrs
+			.iter()
+			.any(attribute_allows_private_interfaces)
+	}
+
 	/// Get the endpoint path
 	///
 	/// Returns the custom endpoint if specified, otherwise generates default.
@@ -460,6 +467,39 @@ impl ServerFnInfo {
 	/// Check if the deprecated `use_inject` option is enabled (for deprecation warning)
 	fn use_inject_enabled(&self) -> bool {
 		self.options.use_inject
+	}
+}
+
+fn attribute_allows_private_interfaces(attr: &syn::Attribute) -> bool {
+	if !attr.path().is_ident("allow") {
+		return false;
+	}
+	let mut found = false;
+	let _ = attr.parse_nested_meta(|meta| {
+		if meta.path.is_ident("private_interfaces") {
+			found = true;
+		}
+		Ok(())
+	});
+	found
+}
+
+fn marker_struct_visibility(vis: &syn::Visibility) -> proc_macro2::TokenStream {
+	match vis {
+		syn::Visibility::Public(_) => quote! { pub },
+		syn::Visibility::Restricted(restricted) => {
+			let path = &restricted.path;
+			if path.is_ident("crate") {
+				quote! { pub(crate) }
+			} else if path.is_ident("super") {
+				quote! { pub(in super::super) }
+			} else if path.is_ident("self") {
+				quote! { pub(super) }
+			} else {
+				quote! { pub(in #path) }
+			}
+		}
+		syn::Visibility::Inherited => quote! { pub(super) },
 	}
 }
 
@@ -1240,6 +1280,7 @@ fn generate_server_handler(
 
 	// Get visibility for marker struct (same as original function)
 	let vis = info.vis();
+	let marker_struct_vis = marker_struct_visibility(vis);
 
 	// Generate marker module name for `.server_fn(login::marker)` pattern
 	// Example: login -> pub mod login { pub struct marker; }
@@ -1276,7 +1317,7 @@ fn generate_server_handler(
 		Ok(types) => types,
 		Err(error) => return error.to_compile_error(),
 	};
-	let emits_typed_response_metadata = matches!(vis, syn::Visibility::Public(_));
+	let emits_typed_response_metadata = !info.allows_private_interfaces();
 	let response_metadata_impl = if emits_typed_response_metadata {
 		quote! {
 			impl #pages_crate::server_fn::ServerFnResponseMetadata for marker {
@@ -1394,7 +1435,7 @@ fn generate_server_handler(
 			#[doc = "Parity: P1."]
 			#[doc = ""]
 			#[doc = "The marker is emitted on WASM so shared route declarations can name it, but server route registration is native-only behavior."]
-			pub struct marker;
+			#marker_struct_vis struct marker;
 
 			impl #pages_crate::server_fn::ServerFnMetadata for marker {
 				const PATH: &'static str = #endpoint;
@@ -1513,7 +1554,7 @@ fn generate_server_handler(
 			#[doc = "Parity: P1."]
 			#[doc = ""]
 			#[doc = "The marker is emitted on both native and WASM so shared route declarations can name it. Native builds register the server handler; WASM builds keep the marker metadata inert."]
-			pub struct marker;
+			#marker_struct_vis struct marker;
 
 			// Cross-target metadata. ServerFnMetadata lives in reinhardt-pages
 			// and is available on both native and wasm — the constants below

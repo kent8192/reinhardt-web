@@ -456,6 +456,16 @@ fn generate_submit_method(
 	pages_crate: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
 	quote! {
+		// Compile the response metadata requirement on native targets too so
+		// scoped server_fn bindings do not fail only in the wasm-only submit
+		// helper.
+		#[allow(dead_code)]
+		fn __assert_server_fn_response_metadata()
+		where
+			#server_fn::marker: #pages_crate::server_fn::ServerFnResponseMetadata,
+		{
+		}
+
 		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 		pub async fn submit<Deps>(
 			&self,

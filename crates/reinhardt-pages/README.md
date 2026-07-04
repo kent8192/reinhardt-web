@@ -198,6 +198,11 @@ assert_eq!(request.title, None);
 let outcome = form.submit(&runtime).await?;
 ```
 
+`ClientFormChoices` mirrors serde's externally tagged string names for unit
+variants, including `rename_all` and serialize-side variant `rename`; tagged
+and untagged enum representations are rejected because form choices submit bare
+strings.
+
 `FileField` and `ImageField` also participate in the generated runtime
 contract as `Option<web_sys::File>` values. File values are browser-owned and
 are tracked for dirty/touched state without treating the file payload as a
