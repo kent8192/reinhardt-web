@@ -12,9 +12,11 @@
 //!    appear in the closure parameter list. In `page!({ ... })`, free value
 //!    identifiers are treated as implicit captures and cloned into generated
 //!    closure contexts. Item paths (multi-segment like `crate::util::fmt`),
-//!    type identifiers (`Vec`, `Option`), constants (`MAX_LEN`), and macro
-//!    invocations (`format!`) are exempt. Free function calls should use
-//!    `self::` (or any module prefix) so the path is multi-segment.
+//!    type identifiers (`Vec`, `Option`), and constants (`MAX_LEN`) are
+//!    exempt. Macro invocation names (`format!`) are exempt, but macro
+//!    arguments are scanned for free identifiers when they parse as Rust
+//!    expressions. Free function calls should use `self::` (or any module
+//!    prefix) so the path is multi-segment.
 //!
 //! 2. **Unconditional auto-wrap** (spec §4.1). Every `{expr}` and every
 //!    `if` / `for` control-flow block is wrapped in

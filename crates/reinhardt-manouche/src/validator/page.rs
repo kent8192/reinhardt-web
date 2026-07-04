@@ -40,14 +40,14 @@ use crate::core::{
 pub fn validate_page(ast: &PageMacro) -> Result<TypedPageMacro> {
 	let form = match &ast.form {
 		PageMacroForm::StrictClosure { params, body } => {
-			enforce_strict_captures(body, params)?;
+			enforce_strict_captures(ast.head.as_ref(), body, params)?;
 			TypedPageMacroForm::StrictClosure {
 				params: params.clone(),
 				body: transform_body(body, &[])?,
 			}
 		}
 		PageMacroForm::ImplicitBody { body } => TypedPageMacroForm::ImplicitBody {
-			captures: collect_free_idents(body, &[]),
+			captures: collect_free_idents(ast.head.as_ref(), body, &[]),
 			body: transform_body(body, &[])?,
 		},
 	};
@@ -59,7 +59,11 @@ pub fn validate_page(ast: &PageMacro) -> Result<TypedPageMacro> {
 	})
 }
 
-fn collect_free_idents(body: &PageBody, params: &[PageParam]) -> Vec<ImplicitPageCapture> {
+fn collect_free_idents(
+	head: Option<&Expr>,
+	body: &PageBody,
+	params: &[PageParam],
+) -> Vec<ImplicitPageCapture> {
 	let allowed: HashSet<String> = params.iter().map(|p| p.name.to_string()).collect();
 
 	let mut collector = CaptureCollector {
@@ -68,12 +72,19 @@ fn collect_free_idents(body: &PageBody, params: &[PageParam]) -> Vec<ImplicitPag
 		seen: HashSet::new(),
 		captures: Vec::new(),
 	};
+	if let Some(head_expr) = head {
+		collector.visit_expr(head_expr);
+	}
 	collector.visit_body(body);
 	collector.captures
 }
 
-fn enforce_strict_captures(body: &PageBody, params: &[PageParam]) -> Result<()> {
-	if let Some(capture) = collect_free_idents(body, params).into_iter().next() {
+fn enforce_strict_captures(
+	head: Option<&Expr>,
+	body: &PageBody,
+	params: &[PageParam],
+) -> Result<()> {
+	if let Some(capture) = collect_free_idents(head, body, params).into_iter().next() {
 		return Err(missing_param_error(&capture.ident));
 	}
 	Ok(())
@@ -136,9 +147,24 @@ impl CaptureCollector {
 	}
 
 	fn visit_if(&mut self, if_node: &PageIf) {
-		self.visit_expr(&if_node.condition);
+		let mut then_locals = None;
+		if let Expr::Let(let_expr) = &if_node.condition {
+			let mut locals = HashSet::new();
+			collect_pat_idents(&let_expr.pat, &mut locals);
+			self.visit_expr(&let_expr.expr);
+			then_locals = Some(locals);
+		} else {
+			self.visit_expr(&if_node.condition);
+		}
+		let pushed_then_locals = then_locals.is_some();
+		if let Some(locals) = then_locals {
+			self.locals_stack.push(locals);
+		}
 		for node in &if_node.then_branch {
 			self.visit_node(node);
+		}
+		if pushed_then_locals {
+			self.locals_stack.pop();
 		}
 		if let Some(else_branch) = &if_node.else_branch {
 			match else_branch {
@@ -303,6 +329,9 @@ fn collect_pat_idents(pat: &syn::Pat, out: &mut HashSet<String>) {
 	match pat {
 		syn::Pat::Ident(ident) => {
 			out.insert(ident.ident.to_string());
+			if let Some((_, subpat)) = &ident.subpat {
+				collect_pat_idents(subpat, out);
+			}
 		}
 		syn::Pat::Tuple(tuple) => {
 			for elem in &tuple.elems {
@@ -1209,6 +1238,23 @@ mod tests {
 	}
 
 	#[rstest]
+	fn test_implicit_body_records_head_capture() {
+		// Arrange
+		use proc_macro2::{Punct, Spacing};
+		let pound = Punct::new('#', Spacing::Alone);
+		let ast = parse(quote! {
+			#pound head: page_head.clone(),
+			{ div { "content" } }
+		});
+
+		// Act
+		let captures = implicit_capture_names(&ast);
+
+		// Assert
+		assert_eq!(captures, vec!["page_head"]);
+	}
+
+	#[rstest]
 	fn test_implicit_body_records_macro_argument_captures() {
 		// Arrange
 		let ast = parse(quote! {
@@ -1220,6 +1266,24 @@ mod tests {
 
 		// Assert
 		assert_eq!(captures, vec!["outer_value"]);
+	}
+
+	#[rstest]
+	fn test_implicit_body_keeps_page_if_let_binding_local() {
+		// Arrange
+		let ast = parse(quote! {
+			{
+				if let Some(item) = maybe {
+					div { {item.clone()} }
+				}
+			}
+		});
+
+		// Act
+		let captures = implicit_capture_names(&ast);
+
+		// Assert
+		assert_eq!(captures, vec!["maybe"]);
 	}
 
 	#[rstest]
@@ -1264,6 +1328,26 @@ mod tests {
 	}
 
 	#[rstest]
+	fn test_implicit_body_treats_at_subpattern_bindings_as_local() {
+		// Arrange
+		let ast = parse(quote! {
+			{
+				ul {
+					for item @ Some(alias) in items {
+						li { {item.clone()} {alias.clone()} }
+					}
+				}
+			}
+		});
+
+		// Act
+		let captures = implicit_capture_names(&ast);
+
+		// Assert
+		assert_eq!(captures, vec!["items"]);
+	}
+
+	#[rstest]
 	fn test_strict_closure_rejects_implicit_capture() {
 		// Arrange
 		let ast = parse(quote! {
@@ -1275,9 +1359,30 @@ mod tests {
 
 		// Assert
 		let err = result.expect_err("strict closure must reject implicit capture");
-		assert!(
-			err.to_string().contains("outer_count"),
-			"diagnostic should name the missing parameter: {err}"
+		assert_eq!(
+			err.to_string(),
+			"identifier `outer_count` used inside `page!` is not declared as a parameter"
+		);
+	}
+
+	#[rstest]
+	fn test_strict_closure_rejects_head_capture() {
+		// Arrange
+		use proc_macro2::{Punct, Spacing};
+		let pound = Punct::new('#', Spacing::Alone);
+		let ast = parse(quote! {
+			#pound head: page_head.clone(),
+			|| { div { "content" } }
+		});
+
+		// Act
+		let result = validate_page(&ast);
+
+		// Assert
+		let err = result.expect_err("strict closure must reject head capture");
+		assert_eq!(
+			err.to_string(),
+			"identifier `page_head` used inside `page!` is not declared as a parameter"
 		);
 	}
 

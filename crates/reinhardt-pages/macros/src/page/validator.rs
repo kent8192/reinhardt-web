@@ -81,14 +81,14 @@ fn is_safe_url(url: &str) -> bool {
 pub(super) fn validate(ast: &PageMacro) -> Result<TypedPageMacro> {
 	let form = match &ast.form {
 		PageMacroForm::StrictClosure { params, body } => {
-			enforce_strict_captures(body, params)?;
+			enforce_strict_captures(ast.head.as_ref(), body, params)?;
 			TypedPageMacroForm::StrictClosure {
 				params: params.clone(),
 				body: transform_body(body, &[])?,
 			}
 		}
 		PageMacroForm::ImplicitBody { body } => TypedPageMacroForm::ImplicitBody {
-			captures: collect_free_idents(body, &[]),
+			captures: collect_free_idents(ast.head.as_ref(), body, &[]),
 			body: transform_body(body, &[])?,
 		},
 	};
@@ -102,6 +102,7 @@ pub(super) fn validate(ast: &PageMacro) -> Result<TypedPageMacro> {
 
 /// Collects value identifiers used in `body` that are not params or locals.
 fn collect_free_idents(
+	head: Option<&Expr>,
 	body: &PageBody,
 	params: &[PageParam],
 ) -> Vec<reinhardt_manouche::core::ImplicitPageCapture> {
@@ -113,6 +114,9 @@ fn collect_free_idents(
 		seen: HashSet::new(),
 		captures: Vec::new(),
 	};
+	if let Some(head_expr) = head {
+		checker.visit_expr(head_expr);
+	}
 	checker.visit_body(body);
 	checker.captures
 }
@@ -121,10 +125,15 @@ fn collect_free_idents(
 ///
 /// Per spec §3.7, every value identifier inside the body must appear in the
 /// `params` list. Item paths (`crate::util::fmt`), type identifiers
-/// (`Vec`, `Option`), constants (`MAX_LEN`), and macro invocations
-/// (`format!`) are exempt.
-fn enforce_strict_captures(body: &PageBody, params: &[PageParam]) -> Result<()> {
-	if let Some(capture) = collect_free_idents(body, params).into_iter().next() {
+/// (`Vec`, `Option`), and constants (`MAX_LEN`) are exempt. Macro invocation
+/// names (`format!`) are exempt, but macro arguments are scanned for free
+/// identifiers when they parse as Rust expressions.
+fn enforce_strict_captures(
+	head: Option<&Expr>,
+	body: &PageBody,
+	params: &[PageParam],
+) -> Result<()> {
+	if let Some(capture) = collect_free_idents(head, body, params).into_iter().next() {
 		return Err(missing_param_error(&capture.ident));
 	}
 	Ok(())
@@ -194,9 +203,24 @@ impl CaptureChecker {
 	}
 
 	fn visit_if(&mut self, p: &PageIf) {
-		self.visit_expr(&p.condition);
+		let mut then_locals = None;
+		if let Expr::Let(let_expr) = &p.condition {
+			let mut locals = HashSet::new();
+			collect_pat_idents(&let_expr.pat, &mut locals);
+			self.visit_expr(&let_expr.expr);
+			then_locals = Some(locals);
+		} else {
+			self.visit_expr(&p.condition);
+		}
+		let pushed_then_locals = then_locals.is_some();
+		if let Some(locals) = then_locals {
+			self.locals_stack.push(locals);
+		}
 		for n in &p.then_branch {
 			self.visit_node(n);
+		}
+		if pushed_then_locals {
+			self.locals_stack.pop();
 		}
 		if let Some(els) = &p.else_branch {
 			match els {
@@ -1923,7 +1947,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_strict_captures(ast.body(), ast.params());
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
 		let err = result.unwrap_err();
@@ -1940,7 +1964,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_strict_captures(ast.body(), ast.params());
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
@@ -1954,7 +1978,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_strict_captures(ast.body(), ast.params());
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
@@ -1968,7 +1992,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_strict_captures(ast.body(), ast.params());
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
@@ -1982,7 +2006,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_strict_captures(ast.body(), ast.params());
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
 		let err = result.expect_err("macro arguments should still be scanned");
@@ -1997,7 +2021,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_strict_captures(ast.body(), ast.params());
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
@@ -2015,7 +2039,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_strict_captures(ast.body(), ast.params());
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
@@ -2035,7 +2059,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_strict_captures(ast.body(), ast.params());
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
@@ -2055,7 +2079,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_strict_captures(ast.body(), ast.params());
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
 		let err = result.unwrap_err();
@@ -2076,11 +2100,12 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_strict_captures(ast.body(), ast.params());
-		let captures: Vec<String> = collect_free_idents(ast.body(), ast.params())
-			.into_iter()
-			.map(|capture| capture.ident.to_string())
-			.collect();
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
+		let captures: Vec<String> =
+			collect_free_idents(ast.head.as_ref(), ast.body(), ast.params())
+				.into_iter()
+				.map(|capture| capture.ident.to_string())
+				.collect();
 
 		// Assert
 		let err = result.unwrap_err();

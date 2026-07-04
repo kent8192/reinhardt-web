@@ -306,9 +306,24 @@ impl NodeCaptureCollector<'_> {
 	}
 
 	fn visit_if(&mut self, if_node: &TypedPageIf) {
-		self.expr_collector.visit_expr(&if_node.condition);
+		let mut then_locals = None;
+		if let syn::Expr::Let(let_expr) = &if_node.condition {
+			let mut locals = HashSet::new();
+			collect_pat_idents(&let_expr.pat, &mut locals);
+			self.expr_collector.visit_expr(&let_expr.expr);
+			then_locals = Some(locals);
+		} else {
+			self.expr_collector.visit_expr(&if_node.condition);
+		}
+		let pushed_then_locals = then_locals.is_some();
+		if let Some(locals) = then_locals {
+			self.expr_collector.locals_stack.push(locals);
+		}
 		for node in &if_node.then_branch {
 			self.visit_node(node);
+		}
+		if pushed_then_locals {
+			self.expr_collector.locals_stack.pop();
 		}
 		if let Some(else_branch) = &if_node.else_branch {
 			match else_branch {
