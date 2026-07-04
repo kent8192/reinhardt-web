@@ -133,6 +133,228 @@ fn validate_sql_expression(sql: &str, attr_name: &str) -> Result<()> {
 	Ok(())
 }
 
+fn validate_generated_schema_expr(expr: &syn::Expr) -> Result<()> {
+	if generated_schema_expr_is_supported(expr) {
+		return Ok(());
+	}
+
+	Err(syn::Error::new_spanned(
+		expr,
+		"generated expects a reconstructable SchemaExpr expression; supported forms are SchemaExpr::col(...), SchemaExpr::val(...), SchemaExpr::concat([...]), SchemaExpr::coalesce([...]), and chained .binary(...) or .cast(...) calls. Use generated_sql = \"...\" for raw SQL or unsupported expression builders.",
+	))
+}
+
+fn generated_schema_expr_is_supported(expr: &syn::Expr) -> bool {
+	match expr {
+		syn::Expr::Paren(expr_paren) => generated_schema_expr_is_supported(&expr_paren.expr),
+		syn::Expr::Group(expr_group) => generated_schema_expr_is_supported(&expr_group.expr),
+		syn::Expr::MethodCall(method_call) => {
+			generated_schema_expr_is_supported(&method_call.receiver)
+				&& match method_call.method.to_string().as_str() {
+					"binary" if method_call.args.len() == 2 => {
+						generated_schema_bin_oper_is_supported(&method_call.args[0])
+							&& generated_schema_expr_is_supported(&method_call.args[1])
+					}
+					"cast" if method_call.args.len() == 1 => {
+						generated_column_type_is_supported(&method_call.args[0])
+					}
+					_ => false,
+				}
+		}
+		syn::Expr::Call(expr_call) => {
+			let syn::Expr::Path(func_path) = &*expr_call.func else {
+				return false;
+			};
+			let Some(func) = func_path
+				.path
+				.segments
+				.last()
+				.map(|segment| segment.ident.to_string())
+			else {
+				return false;
+			};
+			match func.as_str() {
+				"col" if expr_call.args.len() == 1 => {
+					matches!(&expr_call.args[0], syn::Expr::Lit(expr_lit) if matches!(&expr_lit.lit, syn::Lit::Str(_)))
+				}
+				"val" if expr_call.args.len() == 1 => {
+					generated_schema_value_is_supported(&expr_call.args[0])
+				}
+				"concat" | "coalesce" if expr_call.args.len() == 1 => {
+					generated_schema_expr_list_is_supported(&expr_call.args[0])
+				}
+				_ => false,
+			}
+		}
+		_ => false,
+	}
+}
+
+fn generated_schema_expr_list_is_supported(expr: &syn::Expr) -> bool {
+	match expr {
+		syn::Expr::Array(expr_array) => expr_array
+			.elems
+			.iter()
+			.all(generated_schema_expr_is_supported),
+		syn::Expr::Macro(expr_macro) if expr_macro.mac.path.is_ident("vec") => {
+			let tokens = &expr_macro.mac.tokens;
+			let Ok(parsed) = syn::parse2::<syn::ExprArray>(quote! { [#tokens] }) else {
+				return false;
+			};
+			parsed.elems.iter().all(generated_schema_expr_is_supported)
+		}
+		_ => false,
+	}
+}
+
+fn generated_schema_bin_oper_is_supported(expr: &syn::Expr) -> bool {
+	let syn::Expr::Path(expr_path) = expr else {
+		return false;
+	};
+	expr_path.path.segments.last().is_some_and(|segment| {
+		matches!(
+			segment.ident.to_string().as_str(),
+			"Add" | "Sub" | "Mul" | "Div"
+		)
+	})
+}
+
+fn generated_schema_value_is_supported(expr: &syn::Expr) -> bool {
+	match expr {
+		syn::Expr::Lit(expr_lit) => match &expr_lit.lit {
+			syn::Lit::Str(_) | syn::Lit::Bool(_) | syn::Lit::Char(_) => true,
+			syn::Lit::Int(lit_int) => {
+				lit_int.base10_parse::<i32>().is_ok() || lit_int.base10_parse::<i64>().is_ok()
+			}
+			syn::Lit::Float(lit_float) => lit_float.base10_parse::<f64>().is_ok(),
+			_ => false,
+		},
+		syn::Expr::Unary(expr_unary) => {
+			matches!(expr_unary.op, syn::UnOp::Neg(_))
+				&& generated_schema_value_is_supported(&expr_unary.expr)
+		}
+		_ => false,
+	}
+}
+
+fn generated_column_type_is_supported(expr: &syn::Expr) -> bool {
+	match expr {
+		syn::Expr::Path(expr_path) => expr_path.path.segments.last().is_some_and(|segment| {
+			matches!(
+				segment.ident.to_string().as_str(),
+				"Text"
+					| "TinyInteger" | "SmallInteger"
+					| "Integer" | "BigInteger"
+					| "Float" | "Double"
+					| "Boolean" | "Date"
+					| "Time" | "DateTime"
+					| "Timestamp" | "TimestampWithTimeZone"
+					| "Blob" | "Uuid"
+					| "Json" | "JsonBinary"
+			)
+		}),
+		syn::Expr::Call(expr_call) => {
+			let syn::Expr::Path(func_path) = &*expr_call.func else {
+				return false;
+			};
+			let Some(variant) = func_path
+				.path
+				.segments
+				.last()
+				.map(|segment| segment.ident.to_string())
+			else {
+				return false;
+			};
+			match variant.as_str() {
+				"Char" | "String" | "Binary" if expr_call.args.len() == 1 => {
+					generated_optional_u32_is_supported(&expr_call.args[0])
+				}
+				"Decimal" if expr_call.args.len() == 1 => {
+					generated_optional_u32_pair_is_supported(&expr_call.args[0])
+				}
+				"VarBinary" if expr_call.args.len() == 1 => {
+					generated_u32_literal_is_supported(&expr_call.args[0])
+				}
+				"Array" if expr_call.args.len() == 1 => generated_box_new_expr(&expr_call.args[0])
+					.is_some_and(generated_column_type_is_supported),
+				"Custom" if expr_call.args.len() == 1 => {
+					matches!(&expr_call.args[0], syn::Expr::Lit(expr_lit) if matches!(&expr_lit.lit, syn::Lit::Str(_)))
+				}
+				_ => false,
+			}
+		}
+		_ => false,
+	}
+}
+
+fn generated_box_new_expr(expr: &syn::Expr) -> Option<&syn::Expr> {
+	let syn::Expr::Call(expr_call) = expr else {
+		return None;
+	};
+	let syn::Expr::Path(func_path) = &*expr_call.func else {
+		return None;
+	};
+	if func_path
+		.path
+		.segments
+		.last()
+		.is_some_and(|segment| segment.ident == "new")
+		&& func_path
+			.path
+			.segments
+			.iter()
+			.any(|segment| segment.ident == "Box")
+		&& expr_call.args.len() == 1
+	{
+		return Some(&expr_call.args[0]);
+	}
+	None
+}
+
+fn generated_optional_u32_is_supported(expr: &syn::Expr) -> bool {
+	if let syn::Expr::Path(expr_path) = expr
+		&& expr_path.path.is_ident("None")
+	{
+		return true;
+	}
+	if let syn::Expr::Call(expr_call) = expr
+		&& let syn::Expr::Path(func_path) = &*expr_call.func
+		&& func_path.path.is_ident("Some")
+		&& expr_call.args.len() == 1
+	{
+		return generated_u32_literal_is_supported(&expr_call.args[0]);
+	}
+	false
+}
+
+fn generated_optional_u32_pair_is_supported(expr: &syn::Expr) -> bool {
+	if let syn::Expr::Path(expr_path) = expr
+		&& expr_path.path.is_ident("None")
+	{
+		return true;
+	}
+	if let syn::Expr::Call(expr_call) = expr
+		&& let syn::Expr::Path(func_path) = &*expr_call.func
+		&& func_path.path.is_ident("Some")
+		&& expr_call.args.len() == 1
+		&& let syn::Expr::Tuple(tuple) = &expr_call.args[0]
+		&& tuple.elems.len() == 2
+	{
+		return tuple.elems.iter().all(generated_u32_literal_is_supported);
+	}
+	false
+}
+
+fn generated_u32_literal_is_supported(expr: &syn::Expr) -> bool {
+	let syn::Expr::Lit(expr_lit) = expr else {
+		return false;
+	};
+	let syn::Lit::Int(lit_int) = &expr_lit.lit else {
+		return false;
+	};
+	lit_int.base10_parse::<u32>().is_ok()
+}
+
 /// Model configuration from `#[model(...)]` attribute
 #[derive(Debug, Clone)]
 struct ModelConfig {
@@ -714,6 +936,7 @@ impl FieldConfig {
 							"generated expects a SchemaExpr expression; use generated_sql = \"...\" for raw SQL",
 						));
 					}
+					validate_generated_schema_expr(&expr)?;
 					config.generated = Some(expr);
 					Ok(())
 				} else if meta.path.is_ident("generated_sql") {
@@ -5419,6 +5642,36 @@ fn generate_info_builder(
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn test_generated_schema_expr_validation_accepts_reconstructable_expr() {
+		let expr: syn::Expr = parse_quote! {
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			])
+			.cast(ColumnType::String(Some(201)))
+		};
+
+		assert!(validate_generated_schema_expr(&expr).is_ok());
+	}
+
+	#[test]
+	fn test_generated_schema_expr_validation_rejects_unsupported_builder() {
+		let expr: syn::Expr = parse_quote! {
+			build_full_name_expr()
+		};
+
+		let error = validate_generated_schema_expr(&expr)
+			.expect_err("unsupported builders must be rejected");
+
+		assert!(
+			error
+				.to_string()
+				.contains("generated expects a reconstructable SchemaExpr expression")
+		);
+	}
 
 	#[test]
 	fn test_fields_are_private() {
