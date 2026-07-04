@@ -546,7 +546,7 @@ mod tests {
 
 		let handler: PageEventHandler = into_event_handler(|_: DummyEvent| {});
 		// Verify it's callable
-		handler(DummyEvent::default());
+		handler(DummyEvent);
 	}
 }
 
