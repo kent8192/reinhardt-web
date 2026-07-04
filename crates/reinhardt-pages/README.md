@@ -10,6 +10,7 @@ WASM-based reactive frontend framework for Reinhardt with Django-like API.
 - **Low-level Only**: Built on wasm-bindgen, web-sys, and js-sys (no high-level framework dependencies)
 - **Security First**: Built-in CSRF protection, XSS prevention, and session management
 - **Simplified Conditional Compilation**: `cfg_aliases` integration and automatic event handler handling
+- **Action State Helpers**: `use_action_state` and `Action::dispatching*` reduce async mutation boilerplate
 
 For a React concept mapping, see
 [Reinhardt Pages for React developers](docs/react_to_reinhardt.md).

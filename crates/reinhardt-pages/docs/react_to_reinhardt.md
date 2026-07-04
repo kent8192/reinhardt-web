@@ -33,7 +33,7 @@ React API names.
 
 | React concept | Reinhardt classification | Tracking |
 | --- | --- | --- |
-| `useActionState` | Documentation-only mapping to `form!`, `use_form`, `use_action`, and `#[server_fn]`; no React-named clone. | #5309 |
+| `useActionState` | `use_action_state` wraps `use_action` with lifecycle callbacks, dispatch helpers, and result/error rendering helpers; form validation remains explicit through `form!` / `use_form`. | #5548 |
 | `<form action={function}>` | Explicit non-goal. Reinhardt keeps static form contracts and typed RPC bindings separate. | #5309 |
 | Generic `use(...)` for Promise reads | Explicit non-goal. Use `use_resource(fetcher, deps)` for async data. | #5310 |
 | Generic `use(...)` for Context reads | Explicit non-goal. Use typed `Context<T>` with `use_context`. | #5310 |
@@ -439,12 +439,15 @@ Pages:
   stub.
 - `use_action` wraps an async mutation and exposes `Idle`, `Pending`,
   `Success`, and `Error` phases.
+- `use_action_state` builds the same action handle with success/error
+  callbacks, optional reset-on-success behavior, and dispatch callbacks for
+  UI event handlers.
 
 React `useActionState` combines form submission, pending state, result state,
-and errors behind one hook. Reinhardt keeps those responsibilities explicit:
-use `use_form` for typed form state and validation, then use `use_action` to
-run the `#[server_fn]` mutation after the form is valid. React's DOM
-`action={function}` behavior is not supported directly.
+and errors behind one hook. Reinhardt keeps form validation explicit: use
+`use_form` for typed form state and validation, then use `use_action_state`
+or `use_action` to run the `#[server_fn]` mutation after the form is valid.
+React's DOM `action={function}` behavior is not supported directly.
 
 ```rust,ignore
 use reinhardt::pages::prelude::*;
@@ -463,29 +466,30 @@ pub async fn create_todo(title: String) -> Result<Todo, ServerFnError> {
 }
 
 fn todo_form() -> Page {
-    let create = use_action(|title: String| async move {
+    let create = use_action_state(|title: String| async move {
         create_todo(title).await.map_err(|error| error.to_string())
-    });
+    })
+    .on_success(|todo| {
+        log::info!("created todo {}", todo.id);
+    })
+    .build();
 
     page!({
         button {
             disabled: create.is_pending(),
-            @click: {
-                let create = create.clone();
-                move |_event| create.dispatch("Write docs".to_string())
-            },
+            @click: create.dispatching("Write docs".to_string()),
             "Create"
         }
-        if create.result().is_some() {
+        if create.last_result().is_some() {
             p {
                 role: "status",
                 "Todo created"
             }
         }
-        if create.error().is_some() {
+        if create.last_error().is_some() {
             p {
                 role: "alert",
-                { create.error().unwrap_or_default() }
+                { create.last_error().unwrap_or_default() }
             }
         }
     })
