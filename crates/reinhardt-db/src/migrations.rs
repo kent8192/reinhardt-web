@@ -122,7 +122,9 @@ pub use operations::{
 	field_type_string_to_field_type,
 };
 pub use plan::{MigrationPlan, TransactionMode};
-pub use reinhardt_query::prelude::{GeneratedStorage, SchemaBinOper, SchemaExpr, SchemaFunc};
+pub use reinhardt_query::prelude::{
+	ColumnType, GeneratedStorage, SchemaBinOper, SchemaExpr, SchemaFunc,
+};
 
 // New operations from refactored modules
 pub use auto_migration::{
@@ -296,5 +298,8 @@ pub type Result<T> = std::result::Result<T, MigrationError>;
 /// Prelude module.
 pub mod prelude {
 	pub use super::fields::prelude::*;
-	pub use super::{ColumnDefinition, Constraint, ForeignKeyAction, Migration, Operation};
+	pub use super::{
+		ColumnDefinition, ColumnType, Constraint, ForeignKeyAction, GeneratedColumnDefinition,
+		GeneratedStorage, Migration, Operation, SchemaBinOper, SchemaExpr, SchemaFunc,
+	};
 }

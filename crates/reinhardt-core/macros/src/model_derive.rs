@@ -2333,6 +2333,11 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		Some(path) => quote! { #path },
 		None => quote! { #orm_crate::Manager<Self> },
 	};
+	let generated_field_names: Vec<_> = field_infos
+		.iter()
+		.filter(|field| field.config.generated.is_some() || field.config.generated_sql.is_some())
+		.map(|field| LitStr::new(&field.name.to_string(), field.name.span()))
+		.collect();
 
 	// Generate the Model implementation
 	let expanded = quote! {
@@ -2438,6 +2443,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 					});
 				)*
 				constraints
+			}
+
+			fn generated_field_names() -> &'static [&'static str] {
+				&[#(#generated_field_names),*]
 			}
 
 			#relationship_metadata

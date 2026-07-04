@@ -1173,11 +1173,12 @@ impl Operation {
 			Operation::CreateTable { name, columns, .. } => {
 				let mut model = ModelState::new(app_label, name.clone());
 				for column in columns {
-					let field = FieldState::new(
+					let mut field = FieldState::new(
 						column.name.to_string(),
 						column.type_definition.clone(),
 						false,
 					);
+					field.generated = column.generated.clone();
 					model.add_field(field);
 				}
 				state.add_model(model);
@@ -1187,11 +1188,12 @@ impl Operation {
 			}
 			Operation::AddColumn { table, column, .. } => {
 				if let Some(model) = state.get_model_mut(app_label, table) {
-					let field = FieldState::new(
+					let mut field = FieldState::new(
 						column.name.to_string(),
 						column.type_definition.clone(),
 						false,
 					);
+					field.generated = column.generated.clone();
 					model.add_field(field);
 				}
 			}
@@ -1207,11 +1209,12 @@ impl Operation {
 				..
 			} => {
 				if let Some(model) = state.get_model_mut(app_label, table) {
-					let field = FieldState::new(
+					let mut field = FieldState::new(
 						column.to_string(),
 						new_definition.type_definition.clone(),
 						false,
 					);
+					field.generated = new_definition.generated.clone();
 					model.alter_field(column, field);
 				}
 			}
@@ -1494,10 +1497,15 @@ impl Operation {
 
 	fn query_column_type_to_sql(ty: &QueryColumnType, dialect: &SqlDialect) -> String {
 		match ty {
-			QueryColumnType::Char(Some(len)) => format!("CHAR({len})"),
-			QueryColumnType::Char(None) => "CHAR".to_string(),
+			QueryColumnType::Char(len) => format!("CHAR({})", len.unwrap_or(1)),
 			QueryColumnType::String(Some(len)) => format!("VARCHAR({len})"),
-			QueryColumnType::String(None) => "VARCHAR".to_string(),
+			QueryColumnType::String(None) => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"VARCHAR".to_string()
+				}
+			}
 			QueryColumnType::Text => "TEXT".to_string(),
 			QueryColumnType::Integer => {
 				if matches!(dialect, SqlDialect::Mysql) {
@@ -1506,12 +1514,179 @@ impl Operation {
 					"INTEGER".to_string()
 				}
 			}
-			QueryColumnType::BigInteger => "BIGINT".to_string(),
-			QueryColumnType::SmallInteger => "SMALLINT".to_string(),
-			QueryColumnType::TinyInteger => "TINYINT".to_string(),
-			QueryColumnType::Boolean => "BOOLEAN".to_string(),
+			QueryColumnType::BigInteger => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"INTEGER".to_string()
+				} else {
+					"BIGINT".to_string()
+				}
+			}
+			QueryColumnType::SmallInteger => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"INTEGER".to_string()
+				} else {
+					"SMALLINT".to_string()
+				}
+			}
+			QueryColumnType::TinyInteger => {
+				if matches!(dialect, SqlDialect::Mysql) {
+					"TINYINT".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"INTEGER".to_string()
+				} else {
+					"SMALLINT".to_string()
+				}
+			}
+			QueryColumnType::Float => {
+				if matches!(dialect, SqlDialect::Mysql) {
+					"FLOAT".to_string()
+				} else {
+					"REAL".to_string()
+				}
+			}
+			QueryColumnType::Double => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"DOUBLE PRECISION".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"REAL".to_string()
+				} else {
+					"DOUBLE".to_string()
+				}
+			}
+			QueryColumnType::Decimal(Some((precision, scale))) => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					format!("NUMERIC({precision}, {scale})")
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"REAL".to_string()
+				} else {
+					format!("DECIMAL({precision}, {scale})")
+				}
+			}
+			QueryColumnType::Decimal(None) => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"NUMERIC".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"REAL".to_string()
+				} else {
+					"DECIMAL".to_string()
+				}
+			}
+			QueryColumnType::Boolean => {
+				if matches!(dialect, SqlDialect::Mysql) {
+					"TINYINT(1)".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"INTEGER".to_string()
+				} else {
+					"BOOLEAN".to_string()
+				}
+			}
+			QueryColumnType::Date => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"DATE".to_string()
+				}
+			}
+			QueryColumnType::Time => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"TIME".to_string()
+				}
+			}
+			QueryColumnType::DateTime => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"TIMESTAMP".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"DATETIME".to_string()
+				}
+			}
+			QueryColumnType::Timestamp => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"INTEGER".to_string()
+				} else {
+					"TIMESTAMP".to_string()
+				}
+			}
+			QueryColumnType::TimestampWithTimeZone => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"TIMESTAMP WITH TIME ZONE".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"TIMESTAMP".to_string()
+				}
+			}
+			QueryColumnType::Binary(Some(len)) => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"BYTEA".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					format!("BLOB({len})")
+				} else {
+					format!("BLOB({len})")
+				}
+			}
+			QueryColumnType::Binary(None) => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"BYTEA".to_string()
+				} else {
+					"BLOB".to_string()
+				}
+			}
+			QueryColumnType::VarBinary(len) => {
+				if matches!(dialect, SqlDialect::Mysql) {
+					format!("VARBINARY({len})")
+				} else if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"BYTEA".to_string()
+				} else {
+					format!("BLOB({len})")
+				}
+			}
+			QueryColumnType::Blob => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"BYTEA".to_string()
+				} else {
+					"BLOB".to_string()
+				}
+			}
+			QueryColumnType::Uuid => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"UUID".to_string()
+				} else if matches!(dialect, SqlDialect::Mysql) {
+					"CHAR(36)".to_string()
+				} else {
+					"TEXT".to_string()
+				}
+			}
+			QueryColumnType::Json => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"JSON".to_string()
+				}
+			}
+			QueryColumnType::JsonBinary => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"JSONB".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"JSON".to_string()
+				}
+			}
+			QueryColumnType::Array(inner) => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					format!("{}[]", Self::query_column_type_to_sql(inner, dialect))
+				} else if matches!(dialect, SqlDialect::Mysql) {
+					"JSON".to_string()
+				} else {
+					"TEXT".to_string()
+				}
+			}
 			QueryColumnType::Custom(custom) => custom.clone(),
-			other => format!("{other:?}").to_uppercase(),
+			_ => panic!("unsupported generated-column cast column type"),
 		}
 	}
 
@@ -1726,6 +1901,15 @@ impl Operation {
 				column,
 				mysql_options,
 			} => {
+				if matches!(dialect, SqlDialect::Sqlite)
+					&& column
+						.generated
+						.as_ref()
+						.is_some_and(|generated| generated.storage == GeneratedStorage::Stored)
+				{
+					panic!("SQLite ADD COLUMN does not support stored generated columns");
+				}
+
 				let base_sql = format!(
 					"ALTER TABLE {} ADD COLUMN {}",
 					quote_identifier(table),
@@ -3408,6 +3592,32 @@ pub struct SqliteTableRecreation {
 }
 
 impl SqliteTableRecreation {
+	/// Create a new table recreation for adding a column.
+	pub fn for_add_column(
+		table_name: impl Into<String>,
+		current_columns: Vec<ColumnDefinition>,
+		column_to_add: ColumnDefinition,
+		current_constraints: Vec<Constraint>,
+	) -> Self {
+		let table_name = table_name.into();
+		let columns_to_copy: Vec<_> = current_columns
+			.iter()
+			.filter(|column| column.generated.is_none())
+			.map(|column| column.name.to_string())
+			.collect();
+		let mut new_columns = current_columns;
+		new_columns.push(column_to_add);
+
+		Self {
+			table_name,
+			new_columns,
+			columns_to_copy,
+			constraints: current_constraints,
+			raw_constraint_sqls: Vec::new(),
+			without_rowid: false,
+		}
+	}
+
 	/// Create a new table recreation for dropping a column
 	pub fn for_drop_column(
 		table_name: impl Into<String>,
@@ -3557,8 +3767,8 @@ impl SqliteTableRecreation {
 			.collect::<Vec<_>>()
 			.join(", ");
 		let insert_sql = format!(
-			"INSERT INTO \"{}\" SELECT {} FROM \"{}\";",
-			temp_table, columns_list, self.table_name
+			"INSERT INTO \"{}\" ({}) SELECT {} FROM \"{}\";",
+			temp_table, columns_list, columns_list, self.table_name
 		);
 
 		// Step 3: Drop old table
@@ -3611,6 +3821,13 @@ impl Operation {
 				| Operation::AlterColumn { .. }
 				| Operation::AddConstraint { .. }
 				| Operation::DropConstraint { .. }
+		) || matches!(
+			self,
+			Operation::AddColumn { column, .. }
+				if column
+					.generated
+					.as_ref()
+					.is_some_and(|generated| generated.storage == GeneratedStorage::Stored)
 		)
 	}
 
@@ -7437,6 +7654,80 @@ mod tests {
 		assert_eq!(
 			sql,
 			"full_name VARCHAR(201) GENERATED ALWAYS AS (first_name || ' ' || last_name) VIRTUAL"
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_postgres_cast_generated_column_uses_sql_type() {
+		let mut col = ColumnDefinition::new("amount_text", FieldType::VarChar(64));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("amount").cast(QueryColumnType::Decimal(Some((10, 2)))),
+			"SchemaExpr::col(\"amount\").cast(ColumnType::Decimal(Some((10, 2))))",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Postgres);
+
+		assert_eq!(
+			sql,
+			"amount_text VARCHAR(64) GENERATED ALWAYS AS (CAST(amount AS NUMERIC(10, 2))) STORED"
+		);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite ADD COLUMN does not support stored generated columns")]
+	fn test_add_column_sqlite_rejects_stored_generated_column() {
+		let mut column = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		column.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Stored,
+		));
+		let op = Operation::AddColumn {
+			table: "users".to_string(),
+			column,
+			mysql_options: None,
+		};
+
+		let _ = op.to_sql(&SqlDialect::Sqlite);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_for_stored_generated_add_column_omits_generated_copy() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let first_name = ColumnDefinition::new("first_name", FieldType::VarChar(100));
+		let last_name = ColumnDefinition::new("last_name", FieldType::VarChar(100));
+		let mut full_name = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		full_name.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Stored,
+		));
+
+		let recreation = SqliteTableRecreation::for_add_column(
+			"users",
+			vec![id, first_name, last_name],
+			full_name,
+			vec![],
+		);
+		let sql = recreation.to_sql_statements();
+
+		assert!(
+			sql[0].contains("full_name VARCHAR(201) GENERATED ALWAYS AS"),
+			"new schema must include the stored generated column: {}",
+			sql[0]
+		);
+		assert_eq!(
+			sql[1],
+			"INSERT INTO \"users_new\" (\"id\", \"first_name\", \"last_name\") SELECT \"id\", \"first_name\", \"last_name\" FROM \"users\";"
 		);
 	}
 
