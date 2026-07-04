@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add native component testing utilities under
+  `reinhardt_pages::testing::component`, including in-memory `Page` rendering,
+  role/text/label queries, event helpers, async settling, pretty DOM output,
+  and in-process `server_fn` mocks for `MockableServerFn` markers.
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.2.0...reinhardt-pages@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-pages` for the Reinhardt 0.3.0 line. This

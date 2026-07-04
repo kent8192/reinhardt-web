@@ -303,6 +303,32 @@ page!(|state: Signal<AppState>| {
 3. **Single expression**: `watch` blocks must contain exactly one expression
 4. **Avoid nesting**: Don't nest `watch` blocks (performance concern)
 
+## Testing
+
+### Native Component Tests
+
+Use `reinhardt_pages::testing::component::render` for fast interaction tests
+that do not need a browser:
+
+```rust
+use reinhardt_pages::testing::component::{Role, render};
+
+#[tokio::test]
+async fn refresh_loads_jobs() {
+    let screen = render(jobs_page);
+    screen.mock_server_fn::<load_jobs::marker>(|_args| Ok(vec!["Index job".to_string()]));
+
+    screen.get_by_role(Role::Button, "Refresh").click();
+    screen.settle().await;
+
+    assert!(screen.query_by_text("Index job").is_some());
+}
+```
+
+The mock API uses `MockableServerFn` markers and therefore requires the
+`msw` feature. Use direct `server_fn` calls for business logic tests and
+WASM/browser tests for hydration or browser API coverage.
+
 ## Architecture
 
 This framework consists of several key modules:
