@@ -14,7 +14,7 @@ struct User {
 
 	#[field(
 		max_length = 201,
-		generated = "first_name || ' ' || last_name",
+		generated_sql = "first_name || ' ' || last_name",
 		generated_stored = true
 	)]
 	full_name: String,

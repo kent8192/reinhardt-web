@@ -55,10 +55,11 @@ pub use special::{RunCode, RunSQL, StateOperation};
 use super::{FieldState, FieldType, ModelState, ProjectState};
 use pg_escape::{quote_identifier, quote_literal};
 use reinhardt_query::prelude::{
-	Alias, AlterTableStatement, ColumnDef, CreateIndexStatement, CreateTableStatement,
-	DropIndexStatement, DropTableStatement, Query, SimpleExpr, Value,
+	Alias, AlterTableStatement, ColumnDef, ColumnType as QueryColumnType, CreateIndexStatement,
+	CreateTableStatement, DropIndexStatement, DropTableStatement, GeneratedColumn,
+	GeneratedStorage, Query, SchemaExpr, SchemaFunc, SimpleExpr, Value,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, ser::SerializeStruct};
 
 /// Index type for database indexes
 ///
@@ -1390,6 +1391,10 @@ impl Operation {
 			parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
 		}
 
+		if let Some(generated) = &col.generated {
+			parts.push(Self::generated_column_to_sql(generated, dialect).into());
+		}
+
 		// NOT NULL constraint
 		if col.not_null {
 			parts.push("NOT NULL".to_string().into());
@@ -1406,6 +1411,108 @@ impl Operation {
 		}
 
 		parts.join(" ")
+	}
+
+	fn generated_column_to_sql(
+		generated: &GeneratedColumnDefinition,
+		dialect: &SqlDialect,
+	) -> String {
+		if generated.storage == GeneratedStorage::Virtual
+			&& matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb)
+		{
+			panic!("PostgreSQL-compatible generated columns require STORED storage");
+		}
+
+		let expr_sql = if let Some(expr) = &generated.expr {
+			Self::schema_expr_to_sql(expr, dialect)
+		} else if let Some(raw_sql) = &generated.raw_sql {
+			raw_sql.clone()
+		} else {
+			panic!("generated columns require a typed expression or raw SQL body");
+		};
+
+		format!(
+			"GENERATED ALWAYS AS ({}) {}",
+			expr_sql,
+			generated.storage.as_str()
+		)
+	}
+
+	fn schema_expr_to_sql(expr: &SchemaExpr, dialect: &SqlDialect) -> String {
+		match expr {
+			SchemaExpr::Column(iden) => Self::quote_schema_identifier(&iden.to_string(), dialect),
+			SchemaExpr::Value(value) => value.to_sql_literal(),
+			SchemaExpr::Binary { left, op, right } => format!(
+				"({} {} {})",
+				Self::schema_expr_to_sql(left, dialect),
+				op.as_str(),
+				Self::schema_expr_to_sql(right, dialect)
+			),
+			SchemaExpr::Function { func, args } => match func {
+				SchemaFunc::Concat if matches!(dialect, SqlDialect::Mysql) => format!(
+					"CONCAT({})",
+					args.iter()
+						.map(|arg| Self::schema_expr_to_sql(arg, dialect))
+						.collect::<Vec<_>>()
+						.join(", ")
+				),
+				SchemaFunc::Concat => {
+					if args.is_empty() {
+						"''".to_string()
+					} else {
+						args.iter()
+							.map(|arg| Self::schema_expr_to_sql(arg, dialect))
+							.collect::<Vec<_>>()
+							.join(" || ")
+					}
+				}
+				SchemaFunc::Coalesce => format!(
+					"COALESCE({})",
+					args.iter()
+						.map(|arg| Self::schema_expr_to_sql(arg, dialect))
+						.collect::<Vec<_>>()
+						.join(", ")
+				),
+				_ => panic!("unsupported generated-column schema function"),
+			},
+			SchemaExpr::Cast { expr, ty } => format!(
+				"CAST({} AS {})",
+				Self::schema_expr_to_sql(expr, dialect),
+				Self::query_column_type_to_sql(ty, dialect)
+			),
+			_ => panic!("unsupported generated-column schema expression"),
+		}
+	}
+
+	fn quote_schema_identifier(ident: &str, dialect: &SqlDialect) -> String {
+		if matches!(dialect, SqlDialect::Mysql) {
+			format!("`{}`", ident.replace('`', "``"))
+		} else {
+			quote_identifier(ident).to_string()
+		}
+	}
+
+	fn query_column_type_to_sql(ty: &QueryColumnType, dialect: &SqlDialect) -> String {
+		match ty {
+			QueryColumnType::Char(Some(len)) => format!("CHAR({len})"),
+			QueryColumnType::Char(None) => "CHAR".to_string(),
+			QueryColumnType::String(Some(len)) => format!("VARCHAR({len})"),
+			QueryColumnType::String(None) => "VARCHAR".to_string(),
+			QueryColumnType::Text => "TEXT".to_string(),
+			QueryColumnType::Integer => {
+				if matches!(dialect, SqlDialect::Mysql) {
+					"INT".to_string()
+				} else {
+					"INTEGER".to_string()
+				}
+			}
+			QueryColumnType::BigInteger => "BIGINT".to_string(),
+			QueryColumnType::SmallInteger => "SMALLINT".to_string(),
+			QueryColumnType::TinyInteger => "TINYINT".to_string(),
+			QueryColumnType::Boolean => "BOOLEAN".to_string(),
+			QueryColumnType::Custom(custom) => custom.clone(),
+			other => format!("{other:?}").to_uppercase(),
+		}
 	}
 
 	/// Generate column SQL with all constraints
@@ -1492,6 +1599,10 @@ impl Operation {
 			}
 		} else {
 			parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
+		}
+
+		if let Some(generated) = &col.generated {
+			parts.push(Self::generated_column_to_sql(generated, dialect).into());
 		}
 
 		// NOT NULL constraint
@@ -2802,6 +2913,9 @@ pub struct ColumnDefinition {
 	#[serde(default)]
 	/// The default.
 	pub default: Option<String>,
+	#[serde(default)]
+	/// Generated-column metadata.
+	pub generated: Option<GeneratedColumnDefinition>,
 }
 
 impl ColumnDefinition {
@@ -2815,6 +2929,7 @@ impl ColumnDefinition {
 			primary_key: false,
 			auto_increment: false,
 			default: None,
+			generated: None,
 		}
 	}
 
@@ -2875,6 +2990,7 @@ impl ColumnDefinition {
 			.unwrap_or(false);
 
 		let default = params.get("default").cloned();
+		let generated = field_state.generated.clone();
 
 		// Resolve ForeignKey column type from the referenced model's primary
 		// key in the global `ModelRegistry`. This addresses the macro-level
@@ -2899,7 +3015,115 @@ impl ColumnDefinition {
 			primary_key,
 			auto_increment,
 			default,
+			generated,
 		}
+	}
+}
+
+/// Generated-column metadata for migration operations.
+#[derive(Debug, Clone)]
+pub struct GeneratedColumnDefinition {
+	/// Runtime typed generated expression.
+	pub expr: Option<Box<SchemaExpr>>,
+	/// Canonical Rust tokens used when writing migration files.
+	pub expr_tokens: Option<String>,
+	/// Explicit backend-specific raw SQL body.
+	pub raw_sql: Option<String>,
+	/// Generated-column storage mode.
+	pub storage: GeneratedStorage,
+}
+
+impl PartialEq for GeneratedColumnDefinition {
+	fn eq(&self, other: &Self) -> bool {
+		self.expr_tokens == other.expr_tokens
+			&& self.raw_sql == other.raw_sql
+			&& self.storage == other.storage
+			&& (self.expr_tokens.is_some() || self.expr == other.expr)
+	}
+}
+
+impl GeneratedColumnDefinition {
+	/// Create a typed generated-column definition.
+	pub fn typed(
+		expr: SchemaExpr,
+		expr_tokens: impl Into<String>,
+		storage: GeneratedStorage,
+	) -> Self {
+		Self {
+			expr: Some(Box::new(expr)),
+			expr_tokens: Some(expr_tokens.into()),
+			raw_sql: None,
+			storage,
+		}
+	}
+
+	/// Create an explicit raw-SQL generated-column definition.
+	pub fn raw_sql(sql: impl Into<String>, storage: GeneratedStorage) -> Self {
+		Self {
+			expr: None,
+			expr_tokens: None,
+			raw_sql: Some(sql.into()),
+			storage,
+		}
+	}
+
+	/// Convert to the query-layer generated-column metadata.
+	pub fn to_query_generated(&self) -> Option<GeneratedColumn> {
+		if let Some(expr) = &self.expr {
+			Some(GeneratedColumn::typed(expr.as_ref().clone(), self.storage))
+		} else {
+			self.raw_sql
+				.as_ref()
+				.map(|sql| GeneratedColumn::raw_sql(sql.clone(), self.storage))
+		}
+	}
+}
+
+impl Serialize for GeneratedColumnDefinition {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		let mut state = serializer.serialize_struct("GeneratedColumnDefinition", 4)?;
+		state.serialize_field("expr_tokens", &self.expr_tokens)?;
+		state.serialize_field("raw_sql", &self.raw_sql)?;
+		let storage = match self.storage {
+			GeneratedStorage::Stored => "stored",
+			GeneratedStorage::Virtual => "virtual",
+			_ => "stored",
+		};
+		state.serialize_field("storage", storage)?;
+		state.end()
+	}
+}
+
+impl<'de> Deserialize<'de> for GeneratedColumnDefinition {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		struct Helper {
+			#[serde(default)]
+			expr_tokens: Option<String>,
+			#[serde(default)]
+			raw_sql: Option<String>,
+			storage: String,
+		}
+
+		let helper = Helper::deserialize(deserializer)?;
+		let storage = match helper.storage.as_str() {
+			"stored" | "Stored" | "STORED" => GeneratedStorage::Stored,
+			"virtual" | "Virtual" | "VIRTUAL" => GeneratedStorage::Virtual,
+			_ => GeneratedStorage::Stored,
+		};
+
+		Ok(Self {
+			expr: None,
+			expr_tokens: helper.expr_tokens,
+			raw_sql: helper.raw_sql,
+			storage,
+		})
 	}
 }
 
@@ -3986,6 +4210,9 @@ impl Operation {
 			if let Some(default) = &col.default {
 				column = column.default(SimpleExpr::from(self.convert_default_value(default)));
 			}
+			if let Some(generated) = &col.generated {
+				column = self.apply_generated_column(column, generated);
+			}
 
 			stmt.col(column);
 		}
@@ -4095,6 +4322,9 @@ impl Operation {
 		if let Some(default) = &column.default {
 			col_def = col_def.default(SimpleExpr::from(self.convert_default_value(default)));
 		}
+		if let Some(generated) = &column.generated {
+			col_def = self.apply_generated_column(col_def, generated);
+		}
 
 		stmt.add_column(col_def);
 		stmt.to_owned()
@@ -4123,6 +4353,9 @@ impl Operation {
 
 		if new_definition.not_null {
 			col_def = col_def.not_null(true);
+		}
+		if let Some(generated) = &new_definition.generated {
+			col_def = self.apply_generated_column(col_def, generated);
 		}
 
 		stmt.modify_column(col_def);
@@ -4236,6 +4469,23 @@ impl Operation {
 			FieldType::TsVector => col_def.custom(Alias::new("TSVECTOR")),
 			FieldType::TsQuery => col_def.custom(Alias::new("TSQUERY")),
 			FieldType::Custom(custom_type) => col_def.custom(Alias::new(custom_type)),
+		}
+	}
+
+	/// Apply generated-column metadata to a query column definition.
+	fn apply_generated_column(
+		&self,
+		col_def: ColumnDef,
+		generated: &GeneratedColumnDefinition,
+	) -> ColumnDef {
+		if let Some(query_generated) = generated.to_query_generated() {
+			match (query_generated.expr, query_generated.raw_sql) {
+				(Some(expr), None) => col_def.generated(expr, query_generated.storage),
+				(None, Some(raw_sql)) => col_def.generated_sql(raw_sql, query_generated.storage),
+				_ => col_def,
+			}
+		} else {
+			col_def
 		}
 	}
 
@@ -4661,6 +4911,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "name".to_string(),
@@ -4670,6 +4921,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			],
 			constraints: vec![],
@@ -4734,6 +4986,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: Some("''".to_string()),
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -4807,6 +5060,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -5188,6 +5442,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: Some("1".to_string()),
+				generated: None,
 			}],
 			base_table: "users".to_string(),
 			join_column: "user_id".to_string(),
@@ -5258,6 +5513,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "name".to_string(),
@@ -5267,6 +5523,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			],
 			constraints: vec![],
@@ -5330,6 +5587,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -5487,6 +5745,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -5526,6 +5785,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			}),
 			new_definition: ColumnDefinition {
 				name: "name".to_string(),
@@ -5535,6 +5795,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			mysql_options: None,
 		}
@@ -5648,6 +5909,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			}),
 			new_definition: ColumnDefinition {
 				name: "is_active".to_string(),
@@ -5657,6 +5919,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: Some("true".to_string()),
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -5688,6 +5951,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: Some("true".to_string()),
+				generated: None,
 			}),
 			new_definition: ColumnDefinition {
 				name: "is_active".to_string(),
@@ -5697,6 +5961,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -5727,6 +5992,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: Some("true".to_string()),
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -6422,6 +6688,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -6450,6 +6717,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			}],
 			base_table: "users".to_string(),
 			join_column: "user_id".to_string(),
@@ -6541,6 +6809,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -7106,6 +7375,84 @@ mod tests {
 			"SQLite auto_increment must not emit BIGINT in composite PK path: {}",
 			sql
 		);
+	}
+
+	#[test]
+	fn test_column_to_sql_postgres_typed_generated_column() {
+		let mut col = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Postgres);
+
+		assert_eq!(
+			sql,
+			"full_name VARCHAR(201) GENERATED ALWAYS AS (first_name || ' ' || last_name) STORED"
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_mysql_typed_generated_column() {
+		let mut col = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Mysql);
+
+		assert_eq!(
+			sql,
+			"full_name VARCHAR(201) GENERATED ALWAYS AS (CONCAT(`first_name`, ' ', `last_name`)) STORED"
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_sqlite_virtual_generated_column() {
+		let mut col = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Virtual,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Sqlite);
+
+		assert_eq!(
+			sql,
+			"full_name VARCHAR(201) GENERATED ALWAYS AS (first_name || ' ' || last_name) VIRTUAL"
+		);
+	}
+
+	#[test]
+	fn test_from_field_state_preserves_generated_metadata() {
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("source_name"),
+			"SchemaExpr::col(\"source_name\")",
+			GeneratedStorage::Stored,
+		);
+		let mut field_state = FieldState::new("display_name", FieldType::VarChar(255), false);
+		field_state.generated = Some(generated.clone());
+
+		let col = ColumnDefinition::from_field_state("display_name", &field_state);
+
+		assert_eq!(col.generated, Some(generated));
 	}
 
 	mod resolve_foreign_key_column_type_tests {

@@ -30,6 +30,7 @@ fn pk_column(name: &str) -> ColumnDefinition {
 		primary_key: true,
 		auto_increment: true,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -42,6 +43,7 @@ fn col(name: &str, ty: FieldType, not_null: bool) -> ColumnDefinition {
 		primary_key: false,
 		auto_increment: false,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -111,6 +113,8 @@ async fn issue_4447_add_column_then_add_constraint_preserves_column() {
 					// Note: a default IS provided here. The "no default" path
 					// is exercised by the macro-level regression test.
 					default: Some("false".to_string()),
+
+					generated: None,
 				},
 				mysql_options: None,
 			},
@@ -245,6 +249,8 @@ async fn issue_4447_failed_add_column_does_not_record_applied() {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+
+				generated: None,
 			},
 			mysql_options: None,
 		}],

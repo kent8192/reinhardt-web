@@ -4,6 +4,7 @@
 //! from parsed Rust ASTs.
 
 use super::{Migration, Result};
+use quote::ToTokens;
 use syn::{Expr, File, Item, ItemFn, Stmt};
 
 /// Extract migration metadata from parsed AST
@@ -339,6 +340,31 @@ fn extract_optional_str_field(
 					return extract_string_literal(&method_call.receiver);
 				}
 				return extract_string_literal(&expr_call.args[0]);
+			}
+		}
+	}
+	None
+}
+
+fn extract_optional_expr_tokens_field(
+	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
+	field_name: &str,
+) -> Option<String> {
+	for field in fields {
+		if let syn::Member::Named(ident) = &field.member
+			&& ident == field_name
+		{
+			if let Expr::Path(expr_path) = &field.expr
+				&& expr_path.path.is_ident("None")
+			{
+				return None;
+			}
+			if let Expr::Call(expr_call) = &field.expr
+				&& let Expr::Path(func_path) = &*expr_call.func
+				&& func_path.path.is_ident("Some")
+				&& expr_call.args.len() == 1
+			{
+				return Some(expr_call.args[0].to_token_stream().to_string());
 			}
 		}
 	}
@@ -746,6 +772,7 @@ fn parse_column_definition(expr: &Expr) -> Option<super::ColumnDefinition> {
 		let auto_increment =
 			extract_bool_field(&expr_struct.fields, "auto_increment").unwrap_or(false);
 		let default = extract_optional_str_field(&expr_struct.fields, "default");
+		let generated = extract_generated_column_field(&expr_struct.fields);
 
 		return Some(super::ColumnDefinition {
 			name,
@@ -755,9 +782,86 @@ fn parse_column_definition(expr: &Expr) -> Option<super::ColumnDefinition> {
 			primary_key,
 			auto_increment,
 			default,
+			generated,
 		});
 	}
 
+	None
+}
+
+fn extract_generated_column_field(
+	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
+) -> Option<super::GeneratedColumnDefinition> {
+	for field in fields {
+		if let syn::Member::Named(ident) = &field.member
+			&& ident == "generated"
+		{
+			return parse_optional_generated_column_definition(&field.expr);
+		}
+	}
+	None
+}
+
+fn parse_optional_generated_column_definition(
+	expr: &Expr,
+) -> Option<super::GeneratedColumnDefinition> {
+	if let Expr::Path(expr_path) = expr
+		&& expr_path.path.is_ident("None")
+	{
+		return None;
+	}
+
+	if let Expr::Call(expr_call) = expr
+		&& let Expr::Path(func_path) = &*expr_call.func
+		&& func_path.path.is_ident("Some")
+		&& expr_call.args.len() == 1
+	{
+		return parse_generated_column_definition(&expr_call.args[0]);
+	}
+
+	None
+}
+
+fn parse_generated_column_definition(expr: &Expr) -> Option<super::GeneratedColumnDefinition> {
+	if let Expr::Struct(expr_struct) = expr {
+		let struct_name = expr_struct.path.segments.last()?.ident.to_string();
+		if struct_name != "GeneratedColumnDefinition" {
+			return None;
+		}
+
+		let expr_tokens = extract_optional_str_field(&expr_struct.fields, "expr_tokens")
+			.or_else(|| extract_optional_expr_tokens_field(&expr_struct.fields, "expr"));
+		let raw_sql = extract_optional_str_field(&expr_struct.fields, "raw_sql");
+		let storage = extract_generated_storage_field(&expr_struct.fields)
+			.unwrap_or(super::GeneratedStorage::Stored);
+
+		return Some(super::GeneratedColumnDefinition {
+			expr: None,
+			expr_tokens,
+			raw_sql,
+			storage,
+		});
+	}
+
+	None
+}
+
+fn extract_generated_storage_field(
+	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
+) -> Option<super::GeneratedStorage> {
+	for field in fields {
+		if let syn::Member::Named(ident) = &field.member
+			&& ident == "storage"
+			&& let Expr::Path(expr_path) = &field.expr
+			&& let Some(last_segment) = expr_path.path.segments.last()
+		{
+			return match last_segment.ident.to_string().as_str() {
+				"Stored" => Some(super::GeneratedStorage::Stored),
+				"Virtual" => Some(super::GeneratedStorage::Virtual),
+				_ => None,
+			};
+		}
+	}
 	None
 }
 

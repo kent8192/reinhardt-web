@@ -487,7 +487,8 @@ struct FieldConfig {
 	foreign_key: Option<ForeignKeySpec>,
 
 	// Generated Columns (all DBMS)
-	generated: Option<String>,
+	generated: Option<syn::Expr>,
+	generated_sql: Option<String>,
 	generated_stored: Option<bool>,
 	#[cfg(any(feature = "db-mysql", feature = "db-sqlite"))]
 	generated_virtual: Option<bool>,
@@ -699,10 +700,25 @@ impl FieldConfig {
 				}
 				// Generated Columns
 				else if meta.path.is_ident("generated") {
+					let expr: syn::Expr = meta.value()?.parse()?;
+					if matches!(
+						&expr,
+						syn::Expr::Lit(syn::ExprLit {
+							lit: syn::Lit::Str(_),
+							..
+						})
+					) {
+						return Err(meta.error(
+							"generated expects a SchemaExpr expression; use generated_sql = \"...\" for raw SQL",
+						));
+					}
+					config.generated = Some(expr);
+					Ok(())
+				} else if meta.path.is_ident("generated_sql") {
 					let value: syn::LitStr = meta.value()?.parse()?;
 					let gen_str = value.value();
-					validate_sql_expression(&gen_str, "generated")?;
-					config.generated = Some(gen_str);
+					validate_sql_expression(&gen_str, "generated_sql")?;
+					config.generated_sql = Some(gen_str);
 					Ok(())
 				} else if meta.path.is_ident("generated_stored") {
 					let value: syn::LitBool = meta.value()?.parse()?;
@@ -997,8 +1013,17 @@ impl FieldConfig {
 			));
 		}
 
+		let has_generated = self.generated.is_some() || self.generated_sql.is_some();
+
+		if self.generated.is_some() && self.generated_sql.is_some() {
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"Generated columns must use either generated or generated_sql, not both",
+			));
+		}
+
 		// Generated columns cannot have default values
-		if self.generated.is_some() && self.default.is_some() {
+		if has_generated && self.default.is_some() {
 			return Err(syn::Error::new(
 				proc_macro2::Span::call_site(),
 				"Generated columns cannot have default values",
@@ -1006,7 +1031,7 @@ impl FieldConfig {
 		}
 
 		// Generated columns should have either generated_stored or generated_virtual
-		if self.generated.is_some() {
+		if has_generated {
 			let has_stored = self.generated_stored.unwrap_or(false);
 
 			#[cfg(any(feature = "db-mysql", feature = "db-sqlite"))]
@@ -1167,6 +1192,41 @@ fn serialize_field_default(expr: &syn::Expr) -> Option<String> {
 		syn::Lit::Float(f) => Some(f.base10_digits().to_string()),
 		syn::Lit::Str(s) => Some(format!("'{}'", s.value().replace('\'', "''"))),
 		_ => None,
+	}
+}
+
+fn generated_column_registration(
+	config: &FieldConfig,
+	migrations_crate: &TokenStream,
+) -> TokenStream {
+	if config.generated.is_none() && config.generated_sql.is_none() {
+		return quote! {};
+	}
+
+	let storage = if config.generated_stored.unwrap_or(false) {
+		quote! { #migrations_crate::GeneratedStorage::Stored }
+	} else {
+		quote! { #migrations_crate::GeneratedStorage::Virtual }
+	};
+
+	if let Some(generated_expr) = &config.generated {
+		let expr_tokens = quote! { #generated_expr }.to_string();
+		quote! {
+			.with_generated(#migrations_crate::GeneratedColumnDefinition::typed(
+				#generated_expr,
+				#expr_tokens,
+				#storage,
+			))
+		}
+	} else if let Some(generated_sql) = &config.generated_sql {
+		quote! {
+			.with_generated(#migrations_crate::GeneratedColumnDefinition::raw_sql(
+				#generated_sql,
+				#storage,
+			))
+		}
+	} else {
+		quote! {}
 	}
 }
 
@@ -2501,10 +2561,19 @@ fn generate_field_metadata(
 
 		// Generated Columns
 		if let Some(ref generated_expr) = config.generated {
+			let generated_expr = quote! { #generated_expr }.to_string();
 			attrs.push(quote! {
 				attributes.insert(
 					"generated".to_string(),
 					#orm_crate::fields::FieldKwarg::String(#generated_expr.to_string())
+				);
+			});
+		}
+		if let Some(ref generated_sql) = config.generated_sql {
+			attrs.push(quote! {
+				attributes.insert(
+					"generated_sql".to_string(),
+					#orm_crate::fields::FieldKwarg::String(#generated_sql.to_string())
 				);
 			});
 		}
@@ -2925,11 +2994,14 @@ fn generate_registration_code(
 			quote! {}
 		};
 
+		let generated_registration = generated_column_registration(config, &migrations_crate);
+
 		field_registrations.push(quote! {
 			metadata.add_field(
 				#field_name.to_string(),
 				#migrations_crate::model_registry::FieldMetadata::new(#field_type)
 					#(#params)*
+					#generated_registration
 					#fk_registration
 			);
 		});
@@ -3850,7 +3922,7 @@ fn is_auto_generated_field(field: &FieldInfo) -> bool {
 	}
 
 	// Generated columns
-	if config.generated.is_some() {
+	if config.generated.is_some() || config.generated_sql.is_some() {
 		return true;
 	}
 

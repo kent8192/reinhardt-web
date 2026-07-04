@@ -139,6 +139,8 @@ pub struct FieldState {
 	pub nullable: bool,
 	/// The params.
 	pub params: std::collections::HashMap<String, String>,
+	/// Generated-column metadata.
+	pub generated: Option<super::GeneratedColumnDefinition>,
 	/// ForeignKey information if this field is a foreign key
 	pub foreign_key: Option<ForeignKeyInfo>,
 }
@@ -151,6 +153,7 @@ impl FieldState {
 			field_type,
 			nullable,
 			params: std::collections::HashMap::new(),
+			generated: None,
 			foreign_key: None,
 		}
 	}
@@ -167,6 +170,7 @@ impl FieldState {
 			field_type,
 			nullable,
 			params: std::collections::HashMap::new(),
+			generated: None,
 			foreign_key: Some(foreign_key),
 		}
 	}
@@ -1602,6 +1606,7 @@ impl ProjectState {
 			field_type: col.type_definition.clone(),
 			nullable: !col.not_null,
 			params,
+			generated: col.generated.clone(),
 			foreign_key: None,
 		}
 	}
@@ -5429,6 +5434,7 @@ impl MigrationAutodetector {
 				primary_key: true,
 				auto_increment: true,
 				default: None,
+				generated: None,
 			},
 			// source_id column
 			super::ColumnDefinition {
@@ -5439,6 +5445,7 @@ impl MigrationAutodetector {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			// target_id column
 			super::ColumnDefinition {
@@ -5449,6 +5456,7 @@ impl MigrationAutodetector {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 		];
 
@@ -6174,6 +6182,7 @@ impl MigrationAutodetector {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				super::ColumnDefinition {
 					name: source_column.clone(),
@@ -6183,6 +6192,7 @@ impl MigrationAutodetector {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 				super::ColumnDefinition {
 					name: target_column.clone(),
@@ -6192,6 +6202,7 @@ impl MigrationAutodetector {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			];
 
@@ -6806,6 +6817,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -6815,6 +6827,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			],
 			constraints: vec![],
@@ -6866,6 +6879,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -6875,6 +6889,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			],
 			constraints: vec![],
@@ -8224,6 +8239,7 @@ mod tests {
 			field_type: super::super::FieldType::VarChar(255),
 			nullable: false,
 			params: std::collections::HashMap::new(),
+			generated: None,
 			foreign_key: None,
 		};
 		let mut to_params = std::collections::HashMap::new();
@@ -8235,6 +8251,7 @@ mod tests {
 			field_type: super::super::FieldType::VarChar(255),
 			nullable: false,
 			params: to_params,
+			generated: None,
 			foreign_key: None,
 		};
 
@@ -8915,6 +8932,7 @@ mod tests {
 			field_type: super::super::FieldType::BigInteger,
 			nullable: false,
 			params: from_params,
+			generated: None,
 			foreign_key: None,
 		};
 
@@ -8936,6 +8954,7 @@ mod tests {
 			field_type: super::super::FieldType::BigInteger,
 			nullable: false,
 			params: to_params,
+			generated: None,
 			foreign_key: None,
 		};
 
@@ -8976,6 +8995,7 @@ mod tests {
 			field_type: super::super::FieldType::BigInteger,
 			nullable: false,
 			params: from_id_params,
+			generated: None,
 			foreign_key: None,
 		};
 		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
@@ -9009,6 +9029,7 @@ mod tests {
 			field_type: super::super::FieldType::BigInteger,
 			nullable: false,
 			params: to_id_params,
+			generated: None,
 			foreign_key: None,
 		};
 		let unique_constraint = ConstraintDefinition {
@@ -9149,6 +9170,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "name".to_string(),
@@ -9158,6 +9180,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			],
 			constraints: vec![],
@@ -9254,6 +9277,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "target_id".to_string(),
@@ -9263,6 +9287,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			],
 			constraints: vec![],
@@ -9344,6 +9369,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "username".to_string(),
@@ -9353,6 +9379,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "email".to_string(),
@@ -9362,6 +9389,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "first_name".to_string(),
@@ -9371,6 +9399,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: Some("''".to_string()),
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "last_name".to_string(),
@@ -9380,6 +9409,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: Some("''".to_string()),
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_active".to_string(),
@@ -9389,6 +9419,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: Some("true".to_string()),
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_staff".to_string(),
@@ -9398,6 +9429,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: Some("false".to_string()),
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_superuser".to_string(),
@@ -9407,6 +9439,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: Some("false".to_string()),
+					generated: None,
 				},
 			],
 			constraints: vec![super::super::operations::Constraint::Unique {
@@ -9432,6 +9465,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "name".to_string(),
@@ -9441,6 +9475,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			],
 			constraints: vec![],
@@ -10112,6 +10147,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 				mysql_options: None,
 			},

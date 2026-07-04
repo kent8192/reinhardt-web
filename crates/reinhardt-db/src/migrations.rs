@@ -116,11 +116,13 @@ pub use crate::m2m_naming::{default_m2m_columns, default_through_table};
 pub use operation_trait::MigrationOperation;
 pub use operations::{
 	AddColumn, AlterColumn, AlterTableOptions, BulkLoadFormat, BulkLoadOptions, BulkLoadSource,
-	ColumnDefinition, Constraint, CreateTable, DeferrableOption, DropColumn, IndexType,
-	InterleaveSpec, MySqlAlgorithm, MySqlLock, Operation, PartitionDef, PartitionOptions,
-	PartitionType, PartitionValues, SqlDialect, field_type_string_to_field_type,
+	ColumnDefinition, Constraint, CreateTable, DeferrableOption, DropColumn,
+	GeneratedColumnDefinition, IndexType, InterleaveSpec, MySqlAlgorithm, MySqlLock, Operation,
+	PartitionDef, PartitionOptions, PartitionType, PartitionValues, SqlDialect,
+	field_type_string_to_field_type,
 };
 pub use plan::{MigrationPlan, TransactionMode};
+pub use reinhardt_query::prelude::{GeneratedStorage, SchemaBinOper, SchemaExpr, SchemaFunc};
 
 // New operations from refactored modules
 pub use auto_migration::{

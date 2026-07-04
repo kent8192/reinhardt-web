@@ -3,11 +3,12 @@ use super::{
 	PartitionType, PartitionValues,
 };
 use crate::migrations::{
-	ColumnDefinition, Constraint, DeferrableOption, FieldType, ForeignKeyAction, IndexType,
-	Operation,
+	ColumnDefinition, Constraint, DeferrableOption, FieldType, ForeignKeyAction,
+	GeneratedColumnDefinition, IndexType, Operation,
 };
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
+use reinhardt_query::prelude::GeneratedStorage;
 
 /// Helper function to convert FieldType to TokenStream (for recursive Array handling)
 fn field_type_to_tokens(field_type: &FieldType) -> TokenStream {
@@ -871,6 +872,10 @@ impl ToTokens for ColumnDefinition {
 			Some(s) => quote! { Some(#s.to_string()) },
 			None => quote! { None },
 		};
+		let generated_token = match &self.generated {
+			Some(generated) => quote! { Some(#generated) },
+			None => quote! { None },
+		};
 
 		// Generate FieldType token based on the actual type
 		let field_type_token = match &self.type_definition {
@@ -1002,6 +1007,44 @@ impl ToTokens for ColumnDefinition {
 				primary_key: #primary_key,
 				auto_increment: #auto_increment,
 				default: #default_token,
+				generated: #generated_token,
+			}
+		});
+	}
+}
+
+impl ToTokens for GeneratedColumnDefinition {
+	fn to_tokens(&self, tokens: &mut TokenStream) {
+		let storage_token = match self.storage {
+			GeneratedStorage::Stored => quote! { GeneratedStorage::Stored },
+			GeneratedStorage::Virtual => quote! { GeneratedStorage::Virtual },
+			_ => quote! { GeneratedStorage::Stored },
+		};
+
+		let expr_token = match &self.expr_tokens {
+			Some(expr_tokens) => {
+				let expr_stream = expr_tokens
+					.parse::<TokenStream>()
+					.expect("generated column expression tokens must parse");
+				quote! { Some(Box::new(#expr_stream)) }
+			}
+			None => quote! { None },
+		};
+		let expr_tokens_token = match &self.expr_tokens {
+			Some(expr_tokens) => quote! { Some(#expr_tokens.to_string()) },
+			None => quote! { None },
+		};
+		let raw_sql_token = match &self.raw_sql {
+			Some(raw_sql) => quote! { Some(#raw_sql.to_string()) },
+			None => quote! { None },
+		};
+
+		tokens.extend(quote! {
+			GeneratedColumnDefinition {
+				expr: #expr_token,
+				expr_tokens: #expr_tokens_token,
+				raw_sql: #raw_sql_token,
+				storage: #storage_token,
 			}
 		});
 	}

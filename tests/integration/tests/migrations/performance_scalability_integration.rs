@@ -65,6 +65,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		primary_key: false,
 		auto_increment: false,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -82,6 +83,7 @@ fn create_column_with_default(
 		primary_key: false,
 		auto_increment: false,
 		default: Some(default),
+		generated: None,
 	}
 }
 
@@ -129,6 +131,8 @@ async fn test_incremental_migration_performance(
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+
+					generated: None,
 				},
 				create_basic_column("username", FieldType::VarChar(Some(100))),
 				create_basic_column("email", FieldType::VarChar(Some(255))),
@@ -373,6 +377,8 @@ async fn test_memory_usage_with_large_state(
 			primary_key: true,
 			auto_increment: true,
 			default: None,
+
+			generated: None,
 		}];
 
 		// Add fields
@@ -598,6 +604,8 @@ async fn test_concurrent_migration_throughput(
 							primary_key: true,
 							auto_increment: true,
 							default: None,
+
+							generated: None,
 						},
 						create_basic_column("data", FieldType::VarChar(Some(100))),
 					],
@@ -678,6 +686,8 @@ async fn test_concurrent_migration_throughput(
 								primary_key: true,
 								auto_increment: true,
 								default: None,
+
+								generated: None,
 							},
 							create_basic_column("data", FieldType::VarChar(Some(100))),
 						],
