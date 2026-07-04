@@ -28,6 +28,10 @@ fn main() {
 	});
 
 	let aria_labelled_controls = page!(|| {
+		h2 {
+			id: "notes-heading",
+			"Notes"
+		}
 		select {
 			name: "country",
 			aria_label: "Country",
@@ -59,6 +63,12 @@ fn main() {
 			value: "Save",
 		}
 		input {
+			r#type: "submit",
+		}
+		input {
+			r#type: "reset",
+		}
+		input {
 			r#type: "image",
 			src: "/icons/save.svg",
 			alt: "Save",
@@ -72,6 +82,17 @@ fn main() {
 		}
 		button {
 			hidden: true,
+		}
+		div {
+			hidden: true,
+			input {
+				r#type: "text",
+				name: "hidden-query",
+			}
+			select {
+				name: "hidden-country",
+			}
+			button {}
 		}
 		a {
 			id: "top",

@@ -58,8 +58,37 @@ fn main() {
 		}
 	});
 
+	let _hidden_label_does_not_label_visible_control = page!(|| {
+		div {
+			hidden: true,
+			label {
+				r#for: "hidden-label-email",
+				"Email"
+			}
+		}
+		input {
+			id: "hidden-label-email",
+			r#type: "text",
+			name: "email",
+		}
+	});
+
+	let _missing_aria_labelledby_target = page!(|| {
+		input {
+			r#type: "text",
+			name: "search",
+			aria_labelledby: "missing-label",
+		}
+	});
+
 	let _empty_button = page!(|| {
 		button {}
+	});
+
+	let _input_button_without_value = page!(|| {
+		input {
+			r#type: "button",
+		}
 	});
 
 	let _empty_link = page!(|| {

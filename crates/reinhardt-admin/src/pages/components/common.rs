@@ -303,6 +303,7 @@ pub fn search_bar(value: Signal<String>, placeholder: &str) -> Page {
 			input {
 				class: "admin-input rounded-l-none border-l-0",
 				type: "text",
+				aria_label: "Search",
 				placeholder: placeholder,
 				value: current_value,
 			}
