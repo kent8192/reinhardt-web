@@ -995,15 +995,39 @@ impl ClientRouter {
 	}
 
 	fn render_tree_match(&self, route_match: &ClientRouteTreeMatch) -> Option<Page> {
-		let ctx = Self::param_context_from_match(route_match.leaf_match());
-		let mut page = route_match.leaf().handle_leaf(&ctx).ok()?;
-		for layout in route_match.layouts().iter().rev() {
-			page = layout
-				.route()
-				.handle_layout(&ctx, Outlet::inline(page))
-				.ok()?;
+		let mut page = self.__render_tree_leaf(route_match)?;
+		for index in (0..route_match.layouts().len()).rev() {
+			page = self.__render_tree_layout(route_match, index, Outlet::inline(page))?;
 		}
 		Some(page)
+	}
+
+	/// Renders only the leaf route for a tree match.
+	///
+	/// Hidden cross-crate hook for the WASM layout persistence mount path.
+	#[doc(hidden)]
+	pub fn __render_tree_leaf(&self, route_match: &ClientRouteTreeMatch) -> Option<Page> {
+		let ctx = Self::param_context_from_match(route_match.leaf_match());
+		route_match.leaf().handle_leaf(&ctx).ok()
+	}
+
+	/// Renders one matched layout using the provided outlet.
+	///
+	/// Hidden cross-crate hook for the WASM layout persistence mount path.
+	#[doc(hidden)]
+	pub fn __render_tree_layout(
+		&self,
+		route_match: &ClientRouteTreeMatch,
+		layout_index: usize,
+		outlet: Outlet,
+	) -> Option<Page> {
+		let ctx = Self::param_context_from_match(route_match.leaf_match());
+		route_match
+			.layouts()
+			.get(layout_index)?
+			.route()
+			.handle_layout(&ctx, outlet)
+			.ok()
 	}
 
 	/// Renders a path without mutating router navigation state.

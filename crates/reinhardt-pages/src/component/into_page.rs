@@ -134,6 +134,24 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 				mount_inner(child, parent)?;
 			}
 		}
+		Page::Outlet(outlet) => {
+			let id = outlet.id().map(str::to_string);
+			if let Some(child) = outlet.into_child() {
+				mount_inner(child, parent)?;
+			} else if let Some(id) = id {
+				let doc = document();
+				let host = doc
+					.create_element("reinhardt-outlet")
+					.map_err(|_| MountError::CreateElementFailed)?;
+				host.set_attribute("data-rh-outlet-id", &id)
+					.map_err(|_| MountError::SetAttributeFailed)?;
+				host.set_attribute("style", "display: contents;")
+					.map_err(|_| MountError::SetAttributeFailed)?;
+				parent
+					.append_child(host)
+					.map_err(|_| MountError::AppendChildFailed)?;
+			}
+		}
 		Page::Empty => {}
 		Page::WithHead { view, .. } => {
 			// On client-side, head is handled separately; just mount the content
