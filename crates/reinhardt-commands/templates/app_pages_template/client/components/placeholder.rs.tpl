@@ -8,7 +8,7 @@ use reinhardt::pages::page;
 #[cfg(client)]
 {% if is_workspace == "true" %}use {{ project_crate_name }}::client::components::nav::with_nav;{% else %}use crate::client::components::nav::with_nav;{% endif %}
 
-#[reinhardt::pages::component("/{{ app_name }}/", "placeholder")]
+#[reinhardt::pages::component("/{{ app_name }}/", name = "placeholder")]
 pub fn placeholder() -> Page {
     with_nav(page!(|| {
         div {

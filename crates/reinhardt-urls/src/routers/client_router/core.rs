@@ -803,7 +803,7 @@ impl ClientRouter {
 	/// use reinhardt_pages::{Page, Path, component, page};
 	/// use reinhardt_urls::routers::ClientRouter;
 	///
-	/// #[component("/users/{id}/", "user-detail")]
+	/// #[component("/users/{id}/", name = "user-detail")]
 	/// fn user_page(Path(id): Path<i64>) -> Page {
 	///     page!(|id: i64| { div { { id.to_string() } } })(id)
 	/// }
