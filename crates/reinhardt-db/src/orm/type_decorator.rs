@@ -231,7 +231,17 @@ impl PhoneCountry {
 	fn national_lengths(self) -> &'static [usize] {
 		match self {
 			Self::Us => &[10],
-			Self::Gb | Self::Jp | Self::De | Self::Fr => &[10, 11],
+			Self::Gb => &[10],
+			Self::Jp => &[9, 10],
+			Self::De => &[9, 10, 11],
+			Self::Fr => &[9],
+		}
+	}
+
+	fn national_trunk_prefix(self) -> Option<&'static str> {
+		match self {
+			Self::Us => None,
+			Self::Gb | Self::Jp | Self::De | Self::Fr => Some("0"),
 		}
 	}
 }
@@ -260,8 +270,7 @@ impl PhoneNumberType {
 	}
 
 	fn validate(&self, number: &str) -> Result<(), TypeError> {
-		let digits = Self::digits(number);
-		if digits.is_empty() || digits.len() > 15 || !self.country_matches(&digits) {
+		if self.normalized_digits(number).is_none() {
 			return Err(TypeError::ValidationError(
 				"Invalid phone number".to_string(),
 			));
@@ -269,35 +278,49 @@ impl PhoneNumberType {
 		Ok(())
 	}
 
-	fn country_matches(&self, digits: &str) -> bool {
+	fn format(&self, number: &str) -> String {
+		self.normalized_digits(number)
+			.expect("validated phone number should normalize")
+	}
+
+	fn normalized_digits(&self, number: &str) -> Option<String> {
+		let digits = Self::digits(number);
+		if digits.is_empty() {
+			return None;
+		}
+		let calling_code = self.default_country.calling_code();
+
+		let national = if let Some(national) = digits.strip_prefix(calling_code) {
+			self.normalize_national_digits(national)?
+		} else {
+			self.normalize_national_digits(&digits)?
+		};
+		let normalized = format!("{calling_code}{national}");
+		(normalized.len() <= 15).then_some(normalized)
+	}
+
+	fn normalize_national_digits<'a>(&self, digits: &'a str) -> Option<&'a str> {
+		if let Some(stripped) = self
+			.default_country
+			.national_trunk_prefix()
+			.and_then(|prefix| digits.strip_prefix(prefix))
+			.filter(|stripped| {
+				self.default_country
+					.national_lengths()
+					.contains(&stripped.len())
+			}) {
+			return Some(stripped);
+		}
+
 		if self
 			.default_country
 			.national_lengths()
 			.contains(&digits.len())
 		{
-			return true;
+			return Some(digits);
 		}
 
-		digits
-			.strip_prefix(self.default_country.calling_code())
-			.is_some_and(|national| {
-				self.default_country
-					.national_lengths()
-					.contains(&national.len())
-			})
-	}
-
-	fn format(&self, number: &str) -> String {
-		let digits = Self::digits(number);
-		if number.trim_start().starts_with('+') {
-			return digits;
-		}
-		let calling_code = self.default_country.calling_code();
-		if digits.starts_with(calling_code) {
-			digits
-		} else {
-			format!("{calling_code}{digits}")
-		}
+		None
 	}
 
 	fn unformat(&self, formatted: &str) -> String {
@@ -642,6 +665,21 @@ mod tests {
 		let retrieved = decorator.process_result_value(&stored).unwrap();
 
 		assert_eq!(retrieved, "15551234567");
+	}
+
+	#[test]
+	fn test_phone_number_formatting_strips_national_trunk_prefix() {
+		for (country, number, expected) in [
+			("GB", "020 7123 4567", "442071234567"),
+			("JP", "03-1234-5678", "81312345678"),
+			("FR", "01 42 68 53 00", "33142685300"),
+		] {
+			let decorator = PhoneNumberType::new(country);
+			let stored = decorator.process_bind_param(&number.to_string()).unwrap();
+			let retrieved = decorator.process_result_value(&stored).unwrap();
+
+			assert_eq!(retrieved, expected);
+		}
 	}
 
 	#[test]
