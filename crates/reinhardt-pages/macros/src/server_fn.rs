@@ -488,19 +488,34 @@ fn marker_struct_visibility(vis: &syn::Visibility) -> proc_macro2::TokenStream {
 	match vis {
 		syn::Visibility::Public(_) => quote! { pub },
 		syn::Visibility::Restricted(restricted) => {
-			let path = &restricted.path;
+			let path = marker_struct_restricted_visibility_path(&restricted.path);
 			if path.is_ident("crate") {
 				quote! { pub(crate) }
-			} else if path.is_ident("super") {
-				quote! { pub(in super::super) }
-			} else if path.is_ident("self") {
-				quote! { pub(super) }
 			} else {
 				quote! { pub(in #path) }
 			}
 		}
 		syn::Visibility::Inherited => quote! { pub(super) },
 	}
+}
+
+fn marker_struct_restricted_visibility_path(path: &syn::Path) -> syn::Path {
+	let mut marker_path = path.clone();
+	if marker_path.leading_colon.is_none()
+		&& let Some(first_segment) = marker_path.segments.first_mut()
+	{
+		if first_segment.ident == "crate" {
+			return marker_path;
+		}
+		if first_segment.ident == "self" {
+			first_segment.ident = quote::format_ident!("super");
+			return marker_path;
+		}
+		if first_segment.ident == "super" {
+			return syn::parse_quote!(super::#marker_path);
+		}
+	}
+	marker_path
 }
 
 /// Validate server_fn endpoint path.
@@ -1617,6 +1632,41 @@ fn extract_result_types(
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn test_marker_struct_visibility_rewrites_relative_restrictions_for_marker_module() {
+		use syn::parse_quote;
+
+		let crate_vis: syn::Visibility = parse_quote!(pub(crate));
+		assert_eq!(
+			marker_struct_visibility(&crate_vis).to_string(),
+			quote! { pub(crate) }.to_string()
+		);
+
+		let super_vis: syn::Visibility = parse_quote!(pub(super));
+		assert_eq!(
+			marker_struct_visibility(&super_vis).to_string(),
+			quote! { pub(in super::super) }.to_string()
+		);
+
+		let super_nested_vis: syn::Visibility = parse_quote!(pub(in super::endpoints));
+		assert_eq!(
+			marker_struct_visibility(&super_nested_vis).to_string(),
+			quote! { pub(in super::super::endpoints) }.to_string()
+		);
+
+		let self_vis: syn::Visibility = parse_quote!(pub(self));
+		assert_eq!(
+			marker_struct_visibility(&self_vis).to_string(),
+			quote! { pub(in super) }.to_string()
+		);
+
+		let self_nested_vis: syn::Visibility = parse_quote!(pub(in self::endpoints));
+		assert_eq!(
+			marker_struct_visibility(&self_nested_vis).to_string(),
+			quote! { pub(in super::endpoints) }.to_string()
+		);
+	}
 
 	#[test]
 	fn test_server_fn_options_default() {
