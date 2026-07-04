@@ -3592,6 +3592,14 @@ pub struct SqliteTableRecreation {
 }
 
 impl SqliteTableRecreation {
+	fn columns_to_copy(columns: &[ColumnDefinition]) -> Vec<String> {
+		columns
+			.iter()
+			.filter(|column| column.generated.is_none())
+			.map(|column| column.name.to_string())
+			.collect()
+	}
+
 	/// Create a new table recreation for adding a column.
 	pub fn for_add_column(
 		table_name: impl Into<String>,
@@ -3600,11 +3608,7 @@ impl SqliteTableRecreation {
 		current_constraints: Vec<Constraint>,
 	) -> Self {
 		let table_name = table_name.into();
-		let columns_to_copy: Vec<_> = current_columns
-			.iter()
-			.filter(|column| column.generated.is_none())
-			.map(|column| column.name.to_string())
-			.collect();
+		let columns_to_copy = Self::columns_to_copy(&current_columns);
 		let mut new_columns = current_columns;
 		new_columns.push(column_to_add);
 
@@ -3630,7 +3634,7 @@ impl SqliteTableRecreation {
 			.into_iter()
 			.filter(|c| c.name != column_to_drop)
 			.collect();
-		let columns_to_copy: Vec<_> = new_columns.iter().map(|c| c.name.to_string()).collect();
+		let columns_to_copy = Self::columns_to_copy(&new_columns);
 
 		// Filter out constraints that reference the dropped column
 		let constraints: Vec<_> = current_constraints
@@ -3667,7 +3671,7 @@ impl SqliteTableRecreation {
 				}
 			})
 			.collect();
-		let columns_to_copy: Vec<_> = new_columns.iter().map(|c| c.name.to_string()).collect();
+		let columns_to_copy = Self::columns_to_copy(&new_columns);
 
 		Self {
 			table_name,
@@ -3690,7 +3694,7 @@ impl SqliteTableRecreation {
 		constraint_sql: String,
 	) -> Self {
 		let table_name = table_name.into();
-		let columns_to_copy: Vec<_> = current_columns.iter().map(|c| c.name.to_string()).collect();
+		let columns_to_copy = Self::columns_to_copy(&current_columns);
 
 		Self {
 			table_name,
@@ -3713,7 +3717,7 @@ impl SqliteTableRecreation {
 		constraint_name: &str,
 	) -> Self {
 		let table_name = table_name.into();
-		let columns_to_copy: Vec<_> = current_columns.iter().map(|c| c.name.to_string()).collect();
+		let columns_to_copy = Self::columns_to_copy(&current_columns);
 
 		// Filter out the constraint by name
 		let constraints: Vec<_> = current_constraints
@@ -7696,11 +7700,7 @@ mod tests {
 		let _ = op.to_sql(&SqlDialect::Sqlite);
 	}
 
-	#[test]
-	fn test_sqlite_recreation_for_stored_generated_add_column_omits_generated_copy() {
-		let id = ColumnDefinition::new("id", FieldType::Integer);
-		let first_name = ColumnDefinition::new("first_name", FieldType::VarChar(100));
-		let last_name = ColumnDefinition::new("last_name", FieldType::VarChar(100));
+	fn generated_full_name_column() -> ColumnDefinition {
 		let mut full_name = ColumnDefinition::new("full_name", FieldType::VarChar(201));
 		full_name.generated = Some(GeneratedColumnDefinition::typed(
 			SchemaExpr::concat([
@@ -7711,6 +7711,15 @@ mod tests {
 			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
 			GeneratedStorage::Stored,
 		));
+		full_name
+	}
+
+	#[test]
+	fn test_sqlite_recreation_for_stored_generated_add_column_omits_generated_copy() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let first_name = ColumnDefinition::new("first_name", FieldType::VarChar(100));
+		let last_name = ColumnDefinition::new("last_name", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
 
 		let recreation = SqliteTableRecreation::for_add_column(
 			"users",
@@ -7728,6 +7737,53 @@ mod tests {
 		assert_eq!(
 			sql[1],
 			"INSERT INTO \"users_new\" (\"id\", \"first_name\", \"last_name\") SELECT \"id\", \"first_name\", \"last_name\" FROM \"users\";"
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_copy_lists_omit_existing_generated_columns() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let first_name = ColumnDefinition::new("first_name", FieldType::VarChar(100));
+		let last_name = ColumnDefinition::new("last_name", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+		let current_columns = vec![id, first_name, last_name, full_name];
+
+		let drop_column = SqliteTableRecreation::for_drop_column(
+			"users",
+			current_columns.clone(),
+			"last_name",
+			vec![],
+		);
+		assert_eq!(drop_column.columns_to_copy, vec!["id", "first_name"]);
+
+		let alter_column = SqliteTableRecreation::for_alter_column(
+			"users",
+			current_columns.clone(),
+			"first_name",
+			ColumnDefinition::new("first_name", FieldType::VarChar(150)),
+			vec![],
+		);
+		assert_eq!(
+			alter_column.columns_to_copy,
+			vec!["id", "first_name", "last_name"]
+		);
+
+		let add_constraint = SqliteTableRecreation::for_add_constraint(
+			"users",
+			current_columns.clone(),
+			vec![],
+			"CONSTRAINT users_name_unique UNIQUE (first_name, last_name)".to_string(),
+		);
+		assert_eq!(
+			add_constraint.columns_to_copy,
+			vec!["id", "first_name", "last_name"]
+		);
+
+		let drop_constraint =
+			SqliteTableRecreation::for_drop_constraint("users", current_columns, vec![], "old");
+		assert_eq!(
+			drop_constraint.columns_to_copy,
+			vec!["id", "first_name", "last_name"]
 		);
 	}
 

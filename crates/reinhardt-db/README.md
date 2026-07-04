@@ -239,6 +239,11 @@ For a complete list of field attributes, see the `#[field(...)]` macro documenta
 Generated columns should use `reinhardt_db::migrations::SchemaExpr` when the
 expression can be represented with the portable DDL-safe subset:
 
+The typed `generated` form accepts `SchemaExpr::col`, `SchemaExpr::val`,
+`SchemaExpr::concat`, and `SchemaExpr::coalesce`, plus chained `binary` and
+`cast` calls. Use `generated_sql` for backend-specific functions or expression
+forms that cannot be reconstructed from migration files.
+
 ```rust
 use reinhardt_db::migrations::SchemaExpr;
 

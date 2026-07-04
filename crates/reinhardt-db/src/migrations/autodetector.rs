@@ -4298,18 +4298,8 @@ impl MigrationAutodetector {
 	) -> bool {
 		// Schema-affecting bits are compared via the canonical
 		// `ColumnDefinition` form to absorb asymmetric param populations.
-		let mut from_def = super::ColumnDefinition::from_field_state(field_name, from_field);
-		let mut to_def = super::ColumnDefinition::from_field_state(field_name, to_field);
-		from_def.auto_increment =
-			Self::canonical_auto_increment(&from_def.type_definition, from_def.auto_increment);
-		to_def.auto_increment =
-			Self::canonical_auto_increment(&to_def.type_definition, to_def.auto_increment);
-		if let Some(unique) = from_unique {
-			from_def.unique = unique;
-		}
-		if let Some(unique) = to_unique {
-			to_def.unique = unique;
-		}
+		let from_def = Self::normalized_column_definition(field_name, from_field, from_unique);
+		let to_def = Self::normalized_column_definition(field_name, to_field, to_unique);
 		from_def.type_definition != to_def.type_definition
 			|| from_def.not_null != to_def.not_null
 			|| from_def.primary_key != to_def.primary_key
@@ -4317,6 +4307,38 @@ impl MigrationAutodetector {
 			|| from_def.unique != to_def.unique
 			|| from_def.default != to_def.default
 			|| from_def.generated != to_def.generated
+	}
+
+	fn field_change_is_generated_only(
+		field_name: &str,
+		from_field: &FieldState,
+		to_field: &FieldState,
+		from_unique: Option<bool>,
+		to_unique: Option<bool>,
+	) -> bool {
+		let mut from_def = Self::normalized_column_definition(field_name, from_field, from_unique);
+		let mut to_def = Self::normalized_column_definition(field_name, to_field, to_unique);
+		if from_def.generated == to_def.generated {
+			return false;
+		}
+
+		from_def.generated = None;
+		to_def.generated = None;
+		from_def == to_def
+	}
+
+	fn normalized_column_definition(
+		field_name: &str,
+		field: &FieldState,
+		unique: Option<bool>,
+	) -> super::ColumnDefinition {
+		let mut def = super::ColumnDefinition::from_field_state(field_name, field);
+		def.auto_increment =
+			Self::canonical_auto_increment(&def.type_definition, def.auto_increment);
+		if let Some(unique) = unique {
+			def.unique = unique;
+		}
+		def
 	}
 
 	fn canonical_auto_increment(field_type: &super::FieldType, auto_increment: bool) -> bool {
@@ -5549,7 +5571,7 @@ impl MigrationAutodetector {
 	///
 	/// This method reorders operations to prevent execution errors:
 	/// 1. CreateTable operations first (tables must exist before modification)
-	/// 2. AddColumn/AlterColumn operations next (field modifications)
+	/// 2. AddColumn/AlterColumn/DropColumn operations next (field modifications)
 	/// 3. Other operations last (indexes, constraints, etc.)
 	fn sort_operations_by_dependency(
 		&self,
@@ -5571,7 +5593,9 @@ impl MigrationAutodetector {
 			.filter(|op| {
 				matches!(
 					op,
-					super::Operation::AddColumn { .. } | super::Operation::AlterColumn { .. }
+					super::Operation::AddColumn { .. }
+						| super::Operation::AlterColumn { .. }
+						| super::Operation::DropColumn { .. }
 				)
 			})
 			.cloned()
@@ -5579,7 +5603,9 @@ impl MigrationAutodetector {
 		operations.retain(|op| {
 			!matches!(
 				op,
-				super::Operation::AddColumn { .. } | super::Operation::AlterColumn { .. }
+				super::Operation::AddColumn { .. }
+					| super::Operation::AlterColumn { .. }
+					| super::Operation::DropColumn { .. }
 			)
 		});
 
@@ -5595,6 +5621,7 @@ impl MigrationAutodetector {
 		match operation {
 			super::Operation::AddColumn { table, .. }
 			| super::Operation::AlterColumn { table, .. }
+			| super::Operation::DropColumn { table, .. }
 			| super::Operation::RenameColumn { table, .. }
 			| super::Operation::AddConstraint { table, .. }
 			| super::Operation::DropConstraint { table, .. }
@@ -5906,19 +5933,51 @@ impl MigrationAutodetector {
 					.map(|from_field| {
 						super::ColumnDefinition::from_field_state(field_name.clone(), from_field)
 					});
-				by_app
-					.entry(app_label.clone())
-					.or_default()
-					.push(super::Operation::AlterColumn {
+				let new_definition =
+					super::ColumnDefinition::from_field_state(field_name.clone(), field);
+				let generated_only_change = self
+					.from_state
+					.get_model(app_label, model_name)
+					.and_then(|from_model| {
+						from_model
+							.get_field(field_name)
+							.map(|from_field| (from_model, from_field))
+					})
+					.is_some_and(|(from_model, from_field)| {
+						let from_unique = Self::single_field_unique_column_already_present(
+							from_model, field_name,
+						);
+						let to_unique =
+							Self::single_field_unique_column_already_present(model, field_name);
+						Self::field_change_is_generated_only(
+							field_name,
+							from_field,
+							field,
+							Some(from_unique),
+							Some(to_unique),
+						)
+					});
+
+				let operations = by_app.entry(app_label.clone()).or_default();
+				if generated_only_change {
+					operations.push(super::Operation::DropColumn {
+						table: model.table_name.clone(),
+						column: field_name.clone(),
+					});
+					operations.push(super::Operation::AddColumn {
+						table: model.table_name.clone(),
+						column: new_definition,
+						mysql_options: None,
+					});
+				} else {
+					operations.push(super::Operation::AlterColumn {
 						table: model.table_name.clone(),
 						old_definition,
 						column: field_name.clone(),
-						new_definition: super::ColumnDefinition::from_field_state(
-							field_name.clone(),
-							field,
-						),
+						new_definition,
 						mysql_options: None,
 					});
+				}
 			}
 		}
 
@@ -8315,6 +8374,68 @@ mod tests {
 		assert!(
 			changed,
 			"generated column metadata changes must be detected as schema-affecting field changes"
+		);
+	}
+
+	#[rstest]
+	fn generated_column_changes_emit_drop_and_add_not_alter() {
+		// Arrange
+		let mut from_field =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		from_field.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::concat([
+				super::super::SchemaExpr::col("first_name"),
+				super::super::SchemaExpr::val(" "),
+				super::super::SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			super::super::GeneratedStorage::Stored,
+		));
+		let mut to_field =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let to_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("display_name"),
+			"SchemaExpr::col(\"display_name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		to_field.generated = Some(to_generated.clone());
+		let from_model =
+			build_model_state("accounts", "User", vec![from_field], Vec::new(), Vec::new());
+		let to_model =
+			build_model_state("accounts", "User", vec![to_field], Vec::new(), Vec::new());
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 2, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::DropColumn { table, column }
+				if table == "accounts_user" && column == "full_name"
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user"
+					&& column.name == "full_name"
+					&& column.generated == Some(to_generated.clone())
+		));
+		assert!(
+			!operations
+				.iter()
+				.any(|operation| matches!(operation, super::super::Operation::AlterColumn { .. })),
+			"generated column changes must not emit no-op AlterColumn: {operations:?}"
 		);
 	}
 
