@@ -996,6 +996,25 @@ mod tests {
 	}
 
 	#[rstest]
+	fn formats_page_macro_with_direct_body() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let source = r#"fn main() {
+	let view = page!({ div { "x" } });
+}"#;
+
+		// Act
+		let result = formatter.format(source).expect("format source");
+
+		// Assert
+		assert_eq!(
+			result.content,
+			"fn main() {\n\tlet view = page!({\n\t\tdiv { \"x\" }\n\t});\n}"
+		);
+		assert_eq!(result.skipped, None);
+	}
+
+	#[rstest]
 	fn formats_page_dsl_directly_with_topiary_query() {
 		// Act
 		let formatted =
@@ -1003,6 +1022,15 @@ mod tests {
 
 		// Assert
 		assert_eq!(formatted, "|| {\n\tdiv { \"x\" }\n}");
+	}
+
+	#[rstest]
+	fn formats_page_direct_body_dsl_directly_with_topiary_query() {
+		// Act
+		let formatted = format_dsl(MacroKind::Page, r#"{ div { "x" } }"#).expect("format page DSL");
+
+		// Assert
+		assert_eq!(formatted, "{\n\tdiv { \"x\" }\n}");
 	}
 
 	#[rstest]

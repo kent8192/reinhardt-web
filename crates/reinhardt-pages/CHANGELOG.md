@@ -130,6 +130,8 @@ stable release section.
 
 ### Added
 
+- *(pages)* add `use_action_state`, `Action::dispatching*`, and
+  `last_result` / `last_error` / `render_*` helpers for async mutations
 - *(pages)* unify resource hooks into use_resource(fetcher, deps)
 - *(forms)* add typed use_form ergonomics
 - feat!(forms): route use_form through form definitions
