@@ -4,6 +4,14 @@
 
 #![allow(unexpected_cfgs)]
 
+extern crate self as reinhardt_core;
+
+#[path = "../support.rs"]
+mod support;
+
+pub use reinhardt_macros::Validate;
+pub use support::validators;
+
 use reinhardt_macros::dto;
 
 #[dto]
@@ -15,10 +23,11 @@ pub struct UserInfo {
 }
 
 fn main() {
-	let _ = UserInfo {
+	let value = UserInfo {
 		id: 1,
 		username: String::from("alice"),
 		email: String::from("alice@example.com"),
 		is_active: true,
 	};
+	assert!(reinhardt_core::validators::Validate::validate(&value).is_ok());
 }
