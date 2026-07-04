@@ -84,12 +84,14 @@ mod handler;
 pub mod history;
 mod params;
 mod pattern;
+pub mod scope;
+pub mod tree;
 // Public re-exports
-pub use component::{ComponentInfo, ComponentMetadata};
+pub use component::{ComponentInfo, ComponentMetadata, FromLayoutRequest, LayoutInfo};
 pub use core::{
 	ClientRoute, ClientRouteMatch, ClientRouter, NavigationSubscription, RouteMetadata,
 };
-pub use error::{MergeError, PathError, RouterError};
+pub use error::{MergeError, PathError, RouteRegistrationError, RouterError};
 // Re-export the `FromRequest` building blocks at the
 // `client_router` module level so callers can write
 // `use reinhardt_urls::routers::client_router::{FromRequest, ...}`.
@@ -102,3 +104,7 @@ pub use handler::RouteHandler;
 pub use history::{HistoryState, NavigationType};
 pub use params::{FromPath, ParamContext, Path, SingleFromPath};
 pub use pattern::ClientPathPattern;
+pub use scope::{RouteScope, ScopeKind};
+pub use tree::{
+	ClientRouteTreeMatch, LayoutKey, MatchedLayout, ResolvedRouteMetadata, RouteNode, RouteNodeKind,
+};
