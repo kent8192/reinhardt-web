@@ -74,7 +74,9 @@
 //!   (no-op on native; replaces the deprecated `spawn_local` re-export)
 //!
 //! ## I18n
-//! - [`I18nContext`], [`TranslatedText`], [`tr`], [`tn`], [`tp`], [`tnp`]
+//! - [`I18nContext`], [`I18nStateError`], [`TranslatedText`], [`tr`], [`tn`], [`tp`], [`tnp`]
+//! - [`provide_i18n_context`], [`use_i18n_context`], [`with_i18n_context`]
+//! - [`set_locale`], [`locale`]
 //! - [`t!`] for inline page translations with named interpolation
 
 // ============================================================================

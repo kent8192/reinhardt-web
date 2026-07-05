@@ -310,11 +310,22 @@ impl TranslationContext {
 	/// Returns `I18nError::InvalidLocale` if the locale string format is invalid.
 	pub fn set_locale(&mut self, locale: impl Into<String>) -> Result<(), I18nError> {
 		let locale = locale.into();
-		// Allow empty string for deactivation (reset to default)
-		if !locale.is_empty() {
-			validate_locale(&locale)?;
-		}
+		Self::validate_locale_tag(&locale)?;
 		self.current_locale = locale;
+		Ok(())
+	}
+
+	/// Validates a locale tag accepted by translation contexts.
+	///
+	/// Empty locale strings are accepted and resolve to the default locale.
+	///
+	/// # Errors
+	///
+	/// Returns `I18nError::InvalidLocale` if the locale string format is invalid.
+	pub fn validate_locale_tag(locale: &str) -> Result<(), I18nError> {
+		if !locale.is_empty() {
+			validate_locale(locale)?;
+		}
 		Ok(())
 	}
 
@@ -352,7 +363,14 @@ impl TranslationContext {
 	///
 	/// Falls back to the fallback locale if translation is not found.
 	pub fn translate(&self, message: &str) -> String {
-		let locale = self.get_locale();
+		self.translate_for_locale(self.get_locale(), message)
+	}
+
+	/// Translates a message using the provided locale.
+	///
+	/// Falls back to the fallback locale if translation is not found.
+	pub fn translate_for_locale(&self, locale: &str, message: &str) -> String {
+		let locale = normalize_locale(locale);
 
 		if let Some(translation) = self.get_catalog(locale).and_then(|c| c.get(message)) {
 			return translation.clone();
@@ -372,7 +390,18 @@ impl TranslationContext {
 
 	/// Translates a message with plural support.
 	pub fn translate_plural(&self, singular: &str, plural: &str, count: usize) -> String {
-		let locale = self.get_locale();
+		self.translate_plural_for_locale(self.get_locale(), singular, plural, count)
+	}
+
+	/// Translates a plural message using the provided locale.
+	pub fn translate_plural_for_locale(
+		&self,
+		locale: &str,
+		singular: &str,
+		plural: &str,
+		count: usize,
+	) -> String {
+		let locale = normalize_locale(locale);
 
 		if let Some(translation) = self
 			.get_catalog(locale)
@@ -397,7 +426,17 @@ impl TranslationContext {
 
 	/// Translates a message with context.
 	pub fn translate_context(&self, context: &str, message: &str) -> String {
-		let locale = self.get_locale();
+		self.translate_context_for_locale(self.get_locale(), context, message)
+	}
+
+	/// Translates a contextual message using the provided locale.
+	pub fn translate_context_for_locale(
+		&self,
+		locale: &str,
+		context: &str,
+		message: &str,
+	) -> String {
+		let locale = normalize_locale(locale);
 
 		if let Some(translation) = self
 			.get_catalog(locale)
@@ -428,7 +467,25 @@ impl TranslationContext {
 		plural: &str,
 		count: usize,
 	) -> String {
-		let locale = self.get_locale();
+		self.translate_context_plural_for_locale(
+			self.get_locale(),
+			context,
+			singular,
+			plural,
+			count,
+		)
+	}
+
+	/// Translates a contextual plural message using the provided locale.
+	pub fn translate_context_plural_for_locale(
+		&self,
+		locale: &str,
+		context: &str,
+		singular: &str,
+		plural: &str,
+		count: usize,
+	) -> String {
+		let locale = normalize_locale(locale);
 
 		if let Some(translation) = self
 			.get_catalog(locale)
@@ -450,6 +507,10 @@ impl TranslationContext {
 		// Use default English plural rules
 		if count == 1 { singular } else { plural }.to_string()
 	}
+}
+
+fn normalize_locale(locale: &str) -> &str {
+	if locale.is_empty() { "en-US" } else { locale }
 }
 
 /// RAII guard for active TranslationContext scope.

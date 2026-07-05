@@ -193,23 +193,29 @@ impl SsrRenderer {
 
 	/// Renders a component to an HTML string.
 	pub fn render<C: Component>(&mut self, component: &C) -> String {
-		self.with_i18n_context(|| {
+		let html = self.with_i18n_context(|| {
 			let view = component.render();
 			view.render_to_string()
-		})
+		});
+		self.sync_i18n_state();
+		html
 	}
 
 	/// Renders an IntoPage to an HTML string.
 	pub fn render_into_page<V: IntoPage>(&mut self, view: V) -> String {
-		self.with_i18n_context(|| {
+		let html = self.with_i18n_context(|| {
 			let view = view.into_page();
 			view.render_to_string()
-		})
+		});
+		self.sync_i18n_state();
+		html
 	}
 
 	/// Renders a View to an HTML string.
-	pub fn render_view(&self, view: &Page) -> String {
-		self.with_i18n_context(|| view.render_to_string())
+	pub fn render_view(&mut self, view: &Page) -> String {
+		let html = self.with_i18n_context(|| view.render_to_string());
+		self.sync_i18n_state();
+		html
 	}
 
 	fn with_i18n_context<R>(&self, f: impl FnOnce() -> R) -> R {
@@ -220,6 +226,21 @@ impl SsrRenderer {
 			}
 		}
 		f()
+	}
+
+	fn sync_i18n_state(&mut self) {
+		#[cfg(feature = "i18n")]
+		if let Some(context) = self.options.i18n_context.as_ref() {
+			crate::i18n::write_i18n_ssr_state(&mut self.state, context);
+		}
+	}
+
+	fn html_lang(&self) -> String {
+		#[cfg(feature = "i18n")]
+		if let Some(context) = self.options.i18n_context.as_ref() {
+			return context.locale();
+		}
+		self.options.lang.clone()
 	}
 
 	fn state_script_tag(&self) -> Option<String> {
@@ -309,13 +330,11 @@ impl SsrRenderer {
 		let view_head = view_head.map(Head::deduplicated);
 		let mut seen_head_entries = BTreeSet::new();
 		let mut html = String::with_capacity(content.len() + 1024);
+		let lang = self.html_lang();
 
 		// DOCTYPE and html opening
 		html.push_str("<!DOCTYPE html>\n");
-		html.push_str(&format!(
-			"<html lang=\"{}\">\n",
-			html_escape(&self.options.lang)
-		));
+		html.push_str(&format!("<html lang=\"{}\">\n", html_escape(&lang)));
 
 		// Head section
 		html.push_str("<head>\n");
@@ -410,13 +429,11 @@ impl SsrRenderer {
 	/// that require title, meta tags, CSS, or JS.
 	pub fn wrap_in_html(&self, content: &str) -> String {
 		let mut html = String::with_capacity(content.len() + 1024);
+		let lang = self.html_lang();
 
 		// DOCTYPE and html opening
 		html.push_str("<!DOCTYPE html>\n");
-		html.push_str(&format!(
-			"<html lang=\"{}\">\n",
-			html_escape(&self.options.lang)
-		));
+		html.push_str(&format!("<html lang=\"{}\">\n", html_escape(&lang)));
 
 		// Head section
 		html.push_str("<head>\n");
@@ -478,6 +495,7 @@ impl SsrRenderer {
 			let view = component.render();
 			view.render_to_string()
 		});
+		self.sync_i18n_state();
 
 		if self.options.include_hydration_markers {
 			let marker = HydrationMarker {

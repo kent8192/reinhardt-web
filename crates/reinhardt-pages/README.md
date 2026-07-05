@@ -397,8 +397,9 @@ The prelude includes:
 - `SsrOptions`, `SsrRenderer`, `SsrState`
 
 ### I18n
-- `I18nContext`, `TranslatedText`, `tr`, `tn`, `tp`, `tnp`
+- `I18nContext`, `I18nStateError`, `TranslatedText`, `tr`, `tn`, `tp`, `tnp`
 - `provide_i18n_context`, `use_i18n_context`, `set_locale`, `locale`
+- `with_i18n_context`
 
 ### Forms (native only)
 - `FormBinding`, `FormComponent`

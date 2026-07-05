@@ -4,8 +4,10 @@
 //! and client hydration.
 
 use std::borrow::Cow;
+#[cfg(wasm)]
+use std::cell::RefCell;
 use std::fmt;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 use reinhardt_i18n::{I18nError, MessageCatalog, TranslationContext};
 use serde::{Deserialize, Serialize};
@@ -18,7 +20,15 @@ use crate::ssr::SsrState;
 /// Metadata key used for i18n catalogs in the SSR state script.
 pub const SSR_I18N_METADATA_KEY: &str = "pages.i18n";
 
-static I18N_CONTEXT: LazyLock<Context<I18nContext>> = LazyLock::new(Context::new);
+thread_local! {
+	static I18N_CONTEXT: Context<I18nContext> = Context::new();
+}
+
+#[cfg(wasm)]
+thread_local! {
+	static HYDRATED_I18N_GUARDS: RefCell<Vec<ContextGuard<I18nContext>>> =
+		const { RefCell::new(Vec::new()) };
+}
 
 /// Errors raised while reading or writing i18n state.
 #[derive(Debug, thiserror::Error)]
@@ -79,38 +89,36 @@ impl I18nContext {
 	/// Returns an i18n error when the locale is invalid.
 	pub fn set_locale(&self, locale: impl Into<String>) -> Result<(), I18nError> {
 		let locale = locale.into();
-		let mut translations = (*self.translations).clone();
-		translations.set_locale(locale.clone())?;
+		TranslationContext::validate_locale_tag(&locale)?;
 		self.locale.set(locale);
 		Ok(())
 	}
 
-	/// Returns a translation context with the current reactive locale applied.
-	pub fn translation_context(&self) -> TranslationContext {
-		let mut translations = (*self.translations).clone();
-		let _ = translations.set_locale(self.locale.get_untracked());
-		translations
+	/// Returns the read-only translation context backing this page context.
+	pub fn translation_context(&self) -> &TranslationContext {
+		self.translations.as_ref()
+	}
+
+	fn locale_untracked(&self) -> String {
+		self.locale.get_untracked()
 	}
 
 	/// Translates a simple message.
 	pub fn translate(&self, message: &str) -> String {
-		let mut translations = (*self.translations).clone();
-		let _ = translations.set_locale(self.locale.get());
-		translations.translate(message)
+		self.translations
+			.translate_for_locale(&self.locale.get(), message)
 	}
 
 	/// Translates a plural message.
 	pub fn translate_plural(&self, singular: &str, plural: &str, count: usize) -> String {
-		let mut translations = (*self.translations).clone();
-		let _ = translations.set_locale(self.locale.get());
-		translations.translate_plural(singular, plural, count)
+		self.translations
+			.translate_plural_for_locale(&self.locale.get(), singular, plural, count)
 	}
 
 	/// Translates a contextual message.
 	pub fn translate_context(&self, context: &str, message: &str) -> String {
-		let mut translations = (*self.translations).clone();
-		let _ = translations.set_locale(self.locale.get());
-		translations.translate_context(context, message)
+		self.translations
+			.translate_context_for_locale(&self.locale.get(), context, message)
 	}
 
 	/// Translates a contextual plural message.
@@ -121,9 +129,13 @@ impl I18nContext {
 		plural: &str,
 		count: usize,
 	) -> String {
-		let mut translations = (*self.translations).clone();
-		let _ = translations.set_locale(self.locale.get());
-		translations.translate_context_plural(context, singular, plural, count)
+		self.translations.translate_context_plural_for_locale(
+			&self.locale.get(),
+			context,
+			singular,
+			plural,
+			count,
+		)
 	}
 }
 
@@ -131,12 +143,12 @@ impl I18nContext {
 ///
 /// The returned guard removes the context when dropped.
 pub fn provide_i18n_context(context: I18nContext) -> ContextGuard<I18nContext> {
-	ContextGuard::new(&I18N_CONTEXT, context)
+	I18N_CONTEXT.with(|i18n_context| ContextGuard::new(i18n_context, context))
 }
 
 /// Returns the current i18n context when one is available.
 pub fn use_i18n_context() -> Option<I18nContext> {
-	get_context(&I18N_CONTEXT)
+	I18N_CONTEXT.with(get_context)
 }
 
 /// Runs a closure with an i18n context installed.
@@ -242,7 +254,7 @@ impl fmt::Display for TranslatedText {
 
 impl IntoPage for TranslatedText {
 	fn into_page(self) -> Page {
-		Page::text(self.render_string())
+		Page::reactive(move || Page::text(self.render_string()))
 	}
 }
 
@@ -334,7 +346,7 @@ pub fn tnp(
 
 /// Writes the current page i18n context into SSR state.
 pub fn write_i18n_ssr_state(state: &mut SsrState, context: &I18nContext) {
-	let snapshot = I18nSsrSnapshot::from_translation_context(&context.translation_context());
+	let snapshot = I18nSsrSnapshot::from_i18n_context(context);
 	state.add_metadata(SSR_I18N_METADATA_KEY, snapshot);
 }
 
@@ -377,6 +389,11 @@ pub fn provide_i18n_from_hydration_context(
 		.transpose()
 }
 
+#[cfg(wasm)]
+pub(crate) fn retain_hydrated_i18n_context(guard: ContextGuard<I18nContext>) {
+	HYDRATED_I18N_GUARDS.with(|guards| guards.borrow_mut().push(guard));
+}
+
 fn interpolate_named(mut rendered: String, args: &[TranslationArg]) -> String {
 	for arg in args {
 		let placeholder = format!("{{{}}}", arg.name);
@@ -393,13 +410,17 @@ struct I18nSsrSnapshot {
 }
 
 impl I18nSsrSnapshot {
-	fn from_translation_context(context: &TranslationContext) -> Self {
+	fn from_i18n_context(context: &I18nContext) -> Self {
+		Self::from_translation_context(context.translation_context(), &context.locale_untracked())
+	}
+
+	fn from_translation_context(context: &TranslationContext, current_locale: &str) -> Self {
 		Self {
-			current_locale: context.get_locale().to_string(),
+			current_locale: current_locale.to_string(),
 			fallback_locale: context.get_fallback_locale().to_string(),
 			catalogs: context
 				.catalogs()
-				.map(|(_, catalog)| I18nCatalogSnapshot::from_catalog(catalog))
+				.map(|(locale, catalog)| I18nCatalogSnapshot::from_catalog(locale, catalog))
 				.collect(),
 		}
 	}
@@ -407,8 +428,8 @@ impl I18nSsrSnapshot {
 	fn into_translation_context(self) -> Result<TranslationContext, I18nError> {
 		let mut context = TranslationContext::new(self.current_locale, self.fallback_locale);
 		for catalog in self.catalogs {
-			let locale = catalog.locale.clone();
-			context.add_catalog(locale, catalog.into_catalog())?;
+			let registration_locale = catalog.registration_locale();
+			context.add_catalog(registration_locale, catalog.into_catalog())?;
 		}
 		Ok(context)
 	}
@@ -416,6 +437,8 @@ impl I18nSsrSnapshot {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct I18nCatalogSnapshot {
+	#[serde(default)]
+	registration_locale: String,
 	locale: String,
 	messages: Vec<I18nMessageSnapshot>,
 	plurals: Vec<I18nPluralSnapshot>,
@@ -424,8 +447,9 @@ struct I18nCatalogSnapshot {
 }
 
 impl I18nCatalogSnapshot {
-	fn from_catalog(catalog: &MessageCatalog) -> Self {
+	fn from_catalog(registration_locale: &str, catalog: &MessageCatalog) -> Self {
 		Self {
+			registration_locale: registration_locale.to_string(),
 			locale: catalog.locale().to_string(),
 			messages: catalog
 				.translations()
@@ -477,6 +501,14 @@ impl I18nCatalogSnapshot {
 			catalog.add_context_plural_forms(plural.context, plural.singular, plural.forms);
 		}
 		catalog
+	}
+
+	fn registration_locale(&self) -> String {
+		if self.registration_locale.is_empty() {
+			self.locale.clone()
+		} else {
+			self.registration_locale.clone()
+		}
 	}
 }
 

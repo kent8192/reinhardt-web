@@ -170,9 +170,12 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	// 1. Restore SSR state
 	let mut context = HydrationContext::from_window()?;
 	#[cfg(feature = "i18n")]
-	let _i18n_guard = crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
-		HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
-	})?;
+	if let Some(i18n_guard) =
+		crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
+			HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
+		})? {
+		crate::i18n::retain_hydrated_i18n_context(i18n_guard);
+	}
 
 	// 2. Render the component to get expected structure
 	let view = component.render();
