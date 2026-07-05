@@ -231,7 +231,7 @@ impl PhoneCountry {
 	fn national_lengths(self) -> &'static [usize] {
 		match self {
 			Self::Us => &[10],
-			Self::Gb => &[10],
+			Self::Gb => &[9, 10],
 			Self::Jp => &[9, 10],
 			Self::De => &[5, 6, 7, 8, 9, 10, 11, 12, 13],
 			Self::Fr => &[9],
@@ -671,6 +671,8 @@ mod tests {
 	fn test_phone_number_formatting_strips_national_trunk_prefix() {
 		for (country, number, expected) in [
 			("GB", "020 7123 4567", "442071234567"),
+			("GB", "0800 111111", "44800111111"),
+			("GB", "+44 800 111111", "44800111111"),
 			("JP", "03-1234-5678", "81312345678"),
 			("DE", "030 123456", "4930123456"),
 			("FR", "01 42 68 53 00", "33142685300"),
