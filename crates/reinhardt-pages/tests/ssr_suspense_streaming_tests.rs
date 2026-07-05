@@ -165,11 +165,84 @@ async fn suspense_replacement_escapes_boundary_id_for_script() {
 
 	let mut renderer = SsrRenderer::new();
 	let mut stream = renderer.render_page_with_view_head(view).await;
-	let _shell = stream.next().await.unwrap();
+	let shell = stream.next().await.unwrap().into_string();
 	let replacement = stream.next().await.unwrap().into_string();
 
+	assert!(!shell.contains(boundary_id));
+	assert!(!replacement.contains(boundary_id));
+	assert!(shell.contains("rh-suspense-start:rh-suspense-id-"));
+	assert!(replacement.contains(r#"data-rh-suspense-chunk="rh-suspense-id-"#));
 	assert_eq!(replacement.matches("</script>").count(), 1);
-	assert!(replacement.contains(r#"<\/script>"#));
+	assert!(!replacement.contains("<script>alert(1)</script>"));
+}
+
+#[tokio::test]
+async fn streaming_shared_resource_replaces_every_tracking_boundary() {
+	let view = Page::reactive(|| {
+		let resource = use_resource(
+			|| async {
+				tokio::time::sleep(Duration::from_millis(5)).await;
+				Ok::<_, String>("shared".to_string())
+			},
+			(),
+		);
+		let tracked_key = resource.ssr_key().unwrap().to_string();
+		let first_pending = resource.clone();
+		let first_content = resource.clone();
+		let second_pending = resource.clone();
+		let second_content = resource.clone();
+
+		Page::fragment([
+			Page::Suspense(SuspenseNode::new_with_tracked_resources(
+				Some("first".to_string()),
+				vec![tracked_key.clone()],
+				move || first_pending.is_loading(),
+				|| PageElement::new("span").child("first-fallback").into_page(),
+				move || match first_content.get() {
+					ResourceState::Success(value) => PageElement::new("strong")
+						.child(format!("first-{value}"))
+						.into_page(),
+					ResourceState::Loading => {
+						PageElement::new("em").child("first-loading").into_page()
+					}
+					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				},
+			)),
+			Page::Suspense(SuspenseNode::new_with_tracked_resources(
+				Some("second".to_string()),
+				vec![tracked_key],
+				move || second_pending.is_loading(),
+				|| {
+					PageElement::new("span")
+						.child("second-fallback")
+						.into_page()
+				},
+				move || match second_content.get() {
+					ResourceState::Success(value) => PageElement::new("strong")
+						.child(format!("second-{value}"))
+						.into_page(),
+					ResourceState::Loading => {
+						PageElement::new("em").child("second-loading").into_page()
+					}
+					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				},
+			)),
+		])
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let mut stream = renderer.render_page_with_view_head(view).await;
+	let shell = stream.next().await.unwrap().into_string();
+	let first_replacement = stream.next().await.unwrap().into_string();
+	let second_replacement = stream.next().await.unwrap().into_string();
+	let combined_replacements = format!("{first_replacement}{second_replacement}");
+
+	assert!(shell.contains("first-fallback"));
+	assert!(shell.contains("second-fallback"));
+	assert!(combined_replacements.contains(r#"data-rh-suspense-chunk="first""#));
+	assert!(combined_replacements.contains(r#"data-rh-suspense-chunk="second""#));
+	assert!(combined_replacements.contains("first-shared"));
+	assert!(combined_replacements.contains("second-shared"));
 }
 
 #[tokio::test]

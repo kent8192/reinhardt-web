@@ -1,7 +1,8 @@
 //! SSR Renderer for Component-based server-side rendering.
 
 use std::cell::RefCell;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, VecDeque};
+use std::fmt::Write as _;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -14,6 +15,7 @@ use super::state::SsrState;
 use super::stream::{SsrChunk, SsrStream};
 use crate::auth::AuthData;
 use crate::component::{Component, Head, IntoPage, Page};
+use crate::reactive::hooks::id::reset_id_counter;
 use futures_util::StreamExt;
 use futures_util::future::{FutureExt, LocalBoxFuture};
 use futures_util::stream::{self, FuturesUnordered};
@@ -197,10 +199,14 @@ struct PendingSuspenseBoundary {
 	boundary_end_index: Option<usize>,
 }
 
+type SuspenseBoundaryResult = (PendingSuspenseBoundary, bool);
+type SuspenseBoundaryFuture = LocalBoxFuture<'static, Vec<SuspenseBoundaryResult>>;
+
 struct SuspenseStreamRuntime {
 	renderer: SsrRenderer,
 	context: Rc<RefCell<SsrResourceContext>>,
-	boundaries: FuturesUnordered<LocalBoxFuture<'static, (PendingSuspenseBoundary, bool)>>,
+	boundaries: FuturesUnordered<SuspenseBoundaryFuture>,
+	ready_boundaries: VecDeque<SuspenseBoundaryResult>,
 }
 
 enum SuspenseStreamState {
@@ -215,18 +221,75 @@ enum SuspenseStreamState {
 fn suspense_boundary_futures(
 	context: &Rc<RefCell<SsrResourceContext>>,
 	boundaries: Vec<PendingSuspenseBoundary>,
-) -> FuturesUnordered<LocalBoxFuture<'static, (PendingSuspenseBoundary, bool)>> {
-	boundaries
+) -> FuturesUnordered<SuspenseBoundaryFuture> {
+	suspense_boundary_groups(context, boundaries)
 		.into_iter()
-		.map(|boundary| {
+		.map(|boundaries| {
 			let context = Rc::clone(context);
 			async move {
-				let boundary_resolved =
-					resolve_boundary_resources(&context, &boundary.boundary_id).await;
-				(boundary, boundary_resolved)
+				let mut results = Vec::new();
+				let mut group_resolved = true;
+
+				for boundary in boundaries {
+					let boundary_resolved =
+						resolve_boundary_resources(&context, &boundary.boundary_id).await;
+					group_resolved &= boundary_resolved;
+					results.push((boundary, boundary_resolved));
+				}
+
+				if group_resolved {
+					results
+				} else {
+					results
+						.into_iter()
+						.map(|(boundary, _)| (boundary, false))
+						.collect()
+				}
 			}
 			.boxed_local()
 		})
+		.collect()
+}
+
+fn suspense_boundary_groups(
+	context: &Rc<RefCell<SsrResourceContext>>,
+	boundaries: Vec<PendingSuspenseBoundary>,
+) -> Vec<Vec<PendingSuspenseBoundary>> {
+	let pending_ids_by_boundary = {
+		let context = context.borrow();
+		boundaries
+			.iter()
+			.map(|boundary| {
+				context
+					.pending_ids_for_boundary(&boundary.boundary_id)
+					.into_iter()
+					.collect::<BTreeSet<_>>()
+			})
+			.collect::<Vec<_>>()
+	};
+
+	let mut groups: Vec<(BTreeSet<String>, Vec<PendingSuspenseBoundary>)> = Vec::new();
+	for (boundary, pending_ids) in boundaries.into_iter().zip(pending_ids_by_boundary) {
+		let mut group_pending_ids = pending_ids;
+		let mut group_boundaries = vec![boundary];
+		let mut index = 0;
+
+		while index < groups.len() {
+			if !group_pending_ids.is_empty() && !group_pending_ids.is_disjoint(&groups[index].0) {
+				let (pending_ids, mut boundaries) = groups.remove(index);
+				group_pending_ids.extend(pending_ids);
+				group_boundaries.append(&mut boundaries);
+			} else {
+				index += 1;
+			}
+		}
+
+		groups.push((group_pending_ids, group_boundaries));
+	}
+
+	groups
+		.into_iter()
+		.map(|(_, boundaries)| boundaries)
 		.collect()
 }
 
@@ -299,9 +362,20 @@ impl SsrRenderer {
 		format!("rh-suspense-{id}")
 	}
 
+	fn suspense_boundary_id(&mut self, node: &SuspenseNode) -> String {
+		node.boundary_id()
+			.map(normalize_suspense_boundary_id)
+			.unwrap_or_else(|| self.next_suspense_boundary_id())
+	}
+
+	fn reset_deterministic_render_counters(&mut self) {
+		self.suspense_boundary_counter = 0;
+		reset_id_counter();
+	}
+
 	fn begin_render(&mut self) {
 		self.state.clear_resource_states();
-		self.suspense_boundary_counter = 0;
+		self.reset_deterministic_render_counters();
 	}
 
 	/// Renders a component to a full HTML page.
@@ -421,7 +495,7 @@ impl SsrRenderer {
 
 			resolve_external_resources(&context).await;
 			context.borrow_mut().reset_call_order_keys();
-			self.suspense_boundary_counter = 0;
+			self.reset_deterministic_render_counters();
 
 			let view = view_factory();
 			let mut boundaries = Vec::new();
@@ -436,6 +510,7 @@ impl SsrRenderer {
 				renderer: self.clone(),
 				context,
 				boundaries: boundary_futures,
+				ready_boundaries: VecDeque::new(),
 			};
 
 			SsrStream::from_stream(stream::unfold(
@@ -447,7 +522,18 @@ impl SsrRenderer {
 							SuspenseStreamState::Boundaries(runtime),
 						)),
 						SuspenseStreamState::Boundaries(mut runtime) => {
-							while let Some((boundary, resolved)) = runtime.boundaries.next().await {
+							loop {
+								let Some((boundary, resolved)) =
+									runtime.ready_boundaries.pop_front()
+								else {
+									let Some(resolved_boundaries) = runtime.boundaries.next().await
+									else {
+										break;
+									};
+									runtime.ready_boundaries.extend(resolved_boundaries);
+									continue;
+								};
+
 								if !resolved {
 									continue;
 								}
@@ -543,17 +629,24 @@ impl SsrRenderer {
 
 			resolve_external_resources(&context).await;
 			resolve_pending_resources(&context).await;
-			context.borrow_mut().reset_call_order_keys();
-			self.suspense_boundary_counter = 0;
 
-			let view = view_factory();
-			let content = self
-				.render_async_page(&view, AsyncRenderMode::Buffered)
-				.await;
+			loop {
+				context.borrow_mut().reset_call_order_keys();
+				self.reset_deterministic_render_counters();
 
-			self.add_resolved_resources_to_state(&context);
+				let view = view_factory();
+				let content = self
+					.render_async_page(&view, AsyncRenderMode::Buffered)
+					.await;
 
-			(view, content, String::new())
+				if !context.borrow().has_pending() {
+					self.add_resolved_resources_to_state(&context);
+					return (view, content, String::new());
+				}
+
+				drop(view);
+				resolve_pending_resources(&context).await;
+			}
 		})
 		.await
 	}
@@ -635,10 +728,7 @@ impl SsrRenderer {
 					self.render_stream_shell_page(&rendered, boundaries).await
 				}
 				Page::Suspense(node) => {
-					let boundary_id = node
-						.boundary_id()
-						.map(str::to_owned)
-						.unwrap_or_else(|| self.next_suspense_boundary_id());
+					let boundary_id = self.suspense_boundary_id(node);
 
 					let boundary_start_index = if let Some(context) =
 						super::resource_context::with_active_context(Rc::clone)
@@ -767,10 +857,7 @@ impl SsrRenderer {
 					self.render_async_page(&rendered, mode).await
 				}
 				Page::Suspense(node) => {
-					let boundary_id = node
-						.boundary_id()
-						.map(str::to_owned)
-						.unwrap_or_else(|| self.next_suspense_boundary_id());
+					let boundary_id = self.suspense_boundary_id(node);
 
 					let boundary_start_index = if let Some(context) =
 						super::resource_context::with_active_context(Rc::clone)
@@ -1137,6 +1224,30 @@ fn html_escape(s: &str) -> String {
 /// context - they will see `</script>` and close the tag, allowing XSS.
 fn escape_json_for_script(json: &str) -> String {
 	json.replace("</", "<\\/")
+}
+
+fn is_comment_safe_suspense_id(id: &str) -> bool {
+	!id.is_empty()
+		&& !id.contains("--")
+		&& !id.ends_with('-')
+		&& id.bytes().all(|byte| {
+			matches!(
+				byte,
+				b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'-' | b':' | b'.'
+			)
+		})
+}
+
+fn normalize_suspense_boundary_id(id: &str) -> String {
+	if is_comment_safe_suspense_id(id) {
+		return id.to_string();
+	}
+
+	let mut normalized = String::from("rh-suspense-id-");
+	for byte in id.as_bytes() {
+		let _ = write!(&mut normalized, "{byte:02x}");
+	}
+	normalized
 }
 
 fn push_unique_head_entry(

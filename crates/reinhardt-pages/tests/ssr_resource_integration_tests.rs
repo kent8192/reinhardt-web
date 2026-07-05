@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
-use reinhardt_pages::reactive::{ResourceState, use_resource, use_resource_with_key};
+use reinhardt_pages::reactive::{ResourceState, use_id, use_resource, use_resource_with_key};
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
 use std::time::Duration;
 
@@ -58,6 +58,68 @@ async fn ssr_replays_component_render_for_top_level_resource() {
 
 	assert!(html.contains("component-server-value"));
 	assert!(!html.contains(">loading<"));
+}
+
+#[tokio::test]
+async fn buffered_ssr_resolves_resources_discovered_during_replay() {
+	let view = Page::reactive(|| {
+		let outer = use_resource(|| async { Ok::<_, String>("outer".to_string()) }, ());
+
+		match outer.get() {
+			ResourceState::Success(_) => Page::reactive(|| {
+				let inner = use_resource(|| async { Ok::<_, String>("inner".to_string()) }, ());
+
+				match inner.get() {
+					ResourceState::Success(value) => {
+						PageElement::new("div").child(value).into_page()
+					}
+					ResourceState::Loading => {
+						PageElement::new("div").child("inner-loading").into_page()
+					}
+					ResourceState::Error(error) => PageElement::new("div").child(error).into_page(),
+				}
+			}),
+			ResourceState::Loading => PageElement::new("div").child("outer-loading").into_page(),
+			ResourceState::Error(error) => PageElement::new("div").child(error).into_page(),
+		}
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	assert!(html.contains(">inner<"));
+	assert!(!html.contains("outer-loading"));
+	assert!(!html.contains("inner-loading"));
+	assert_eq!(renderer.state().resource_count(), 2);
+}
+
+#[tokio::test]
+async fn buffered_ssr_resets_use_id_between_discovery_and_replay() {
+	let view = Page::reactive(|| {
+		let input_id = use_id();
+		let resource = use_resource(|| async { Ok::<_, String>("ready".to_string()) }, ());
+
+		match resource.get() {
+			ResourceState::Success(value) => Page::fragment([
+				PageElement::new("label")
+					.attr("for", input_id.clone())
+					.child(value),
+				PageElement::new("input").attr("id", input_id),
+			]),
+			ResourceState::Loading => PageElement::new("span")
+				.attr("id", input_id)
+				.child("loading")
+				.into_page(),
+			ResourceState::Error(error) => PageElement::new("span").child(error).into_page(),
+		}
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	assert!(html.contains(r#"for="reinhardt-id-0""#));
+	assert!(html.contains(r#"id="reinhardt-id-0""#));
+	assert!(!html.contains("reinhardt-id-1"));
 }
 
 #[tokio::test]

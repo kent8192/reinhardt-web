@@ -21,7 +21,7 @@ type PendingResourceSubscriber = Box<dyn Fn(Value) + 'static>;
 
 struct PendingResource {
 	id: String,
-	boundary_id: Option<String>,
+	boundary_ids: Vec<String>,
 	future: PendingResourceFuture,
 	subscribers: Vec<PendingResourceSubscriber>,
 }
@@ -110,7 +110,16 @@ impl SsrResourceContext {
 			}
 		});
 
+		let current_boundary_id = self.current_boundary_id();
 		if let Some(pending) = self.pending.iter_mut().find(|pending| pending.id == key) {
+			if let Some(boundary_id) = current_boundary_id
+				&& !pending
+					.boundary_ids
+					.iter()
+					.any(|candidate| candidate == &boundary_id)
+			{
+				pending.boundary_ids.push(boundary_id);
+			}
 			pending.subscribers.push(subscriber);
 			return;
 		}
@@ -127,7 +136,7 @@ impl SsrResourceContext {
 
 		self.pending.push(PendingResource {
 			id: key,
-			boundary_id: self.current_boundary_id(),
+			boundary_ids: current_boundary_id.into_iter().collect(),
 			future,
 			subscribers: vec![subscriber],
 		});
@@ -140,8 +149,13 @@ impl SsrResourceContext {
 		}
 
 		for pending in &mut self.pending {
-			if pending.boundary_id.is_none() && ids.iter().any(|id| id == &pending.id) {
-				pending.boundary_id = Some(boundary_id.to_string());
+			if ids.iter().any(|id| id == &pending.id)
+				&& !pending
+					.boundary_ids
+					.iter()
+					.any(|candidate| candidate == boundary_id)
+			{
+				pending.boundary_ids.push(boundary_id.to_string());
 			}
 		}
 	}
@@ -168,14 +182,36 @@ impl SsrResourceContext {
 	pub(crate) fn has_pending_for_boundary(&self, boundary_id: &str) -> bool {
 		self.pending
 			.iter()
-			.any(|pending| pending.boundary_id.as_deref() == Some(boundary_id))
+			.any(|pending| pending.boundary_ids.iter().any(|id| id == boundary_id))
+	}
+
+	/// Returns whether any resource is still pending.
+	pub(crate) fn has_pending(&self) -> bool {
+		!self.pending.is_empty()
+	}
+
+	/// Returns pending resource IDs currently assigned to a Suspense boundary.
+	pub(crate) fn pending_ids_for_boundary(&self, boundary_id: &str) -> Vec<String> {
+		self.pending
+			.iter()
+			.filter(|pending| pending.boundary_ids.iter().any(|id| id == boundary_id))
+			.map(|pending| pending.id.clone())
+			.collect()
 	}
 
 	fn take_matching(&mut self, matches: impl Fn(Option<&str>) -> bool) -> Vec<PendingResource> {
 		let mut selected = Vec::new();
 		let mut remaining = Vec::new();
 		for pending in std::mem::take(&mut self.pending) {
-			if matches(pending.boundary_id.as_deref()) {
+			let is_match = if pending.boundary_ids.is_empty() {
+				matches(None)
+			} else {
+				pending
+					.boundary_ids
+					.iter()
+					.any(|boundary_id| matches(Some(boundary_id)))
+			};
+			if is_match {
 				selected.push(pending);
 			} else {
 				remaining.push(pending);
