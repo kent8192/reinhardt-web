@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0...reinhardt-web@v0.3.1) - 2026-07-04
+
+### Added
+
+- add frontend framework benchmark suite
+
+### Fixed
+
+- *(benchmarks)* correct frontend benchmark measurements
+- *(ci)* pin standalone examples time resolution
+- *(ci)* unblock quick-xml security audit
+- *(ci)* adapt XML parser to quick-xml 0.41
+- *(formatter)* normalize admin feature page closures
+- *(ci)* format basis tutorial page closures
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0...reinhardt-web@v0.3.0) - 2026-06-28
 
 Stable 0.3.0 is the first stable release of the Reinhardt 0.3 line. It
