@@ -136,12 +136,12 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 	let value_field_defs = fields.iter().map(|field| {
 		let name = &field.name;
 		let value_ty = field.value_ty();
-		quote! { #name: #value_ty }
+		quote! { #dto_vis #name: #value_ty }
 	});
 	let skipped_value_field_defs = skipped_fields.iter().map(|field| {
 		let name = &field.name;
 		let ty = &field.ty;
-		quote! { #name: #ty }
+		quote! { #dto_vis #name: #ty }
 	});
 	let form_field_defs = fields.iter().map(|field| {
 		let name = &field.name;
@@ -471,6 +471,11 @@ fn generate_submit_method(
 				::core::fmt::Display
 				+ ::core::convert::From<#pages_crate::server_fn::ServerFnError>,
 		{
+		}
+
+		#[allow(dead_code)]
+		fn __assert_server_fn_accepts_request(__request: #dto_ident) {
+			let _future = #server_fn(__request);
 		}
 
 		#[cfg(all(target_family = "wasm", target_os = "unknown"))]

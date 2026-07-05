@@ -1,0 +1,14 @@
+error[E0308]: mismatched types
+  --> tests/ui/client_form/fail/server_fn_submit_request_signature.rs:6:52
+   |
+ 6 | #[derive(Clone, PartialEq, Serialize, Deserialize, ClientForm)]
+   |                                                    ^^^^^^^^^^ expected `OtherRequest`, found `SettingsRequest`
+ 7 | #[client_form(server_fn = submit_settings)]
+   |                           --------------- arguments to this function are incorrect
+   |
+note: function defined here
+  --> tests/ui/client_form/fail/server_fn_submit_request_signature.rs:23:10
+   |
+23 | async fn submit_settings(request: crate::OtherRequest) -> Result<SettingsResponse, ServerFnError> {
+   |          ^^^^^^^^^^^^^^^ ----------------------------
+   = note: this error originates in the derive macro `ClientForm` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -166,11 +166,22 @@ fn serde_rename_all(attrs: &[syn::Attribute]) -> syn::Result<RenameRule> {
 				return Err(meta.error(
 					"ClientFormChoices requires externally tagged string enum representation",
 				));
+			} else {
+				consume_ignored_serde_meta(meta)?;
 			}
 			Ok(())
 		})?;
 	}
 	Ok(rename_rule)
+}
+
+fn consume_ignored_serde_meta(meta: ParseNestedMeta<'_>) -> syn::Result<()> {
+	if meta.input.peek(Token![=]) {
+		let _value = meta.value()?.parse::<syn::Expr>()?;
+	} else if meta.input.peek(syn::token::Paren) {
+		meta.parse_nested_meta(consume_ignored_serde_meta)?;
+	}
+	Ok(())
 }
 
 fn rename_rule_from_value(value: &LitStr) -> syn::Result<RenameRule> {
