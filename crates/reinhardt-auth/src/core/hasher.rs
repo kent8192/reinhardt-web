@@ -204,11 +204,7 @@ impl PasswordHashPolicy {
 				}
 
 				return Ok(self.verified_legacy_result(password));
-			}
-		}
-
-		for legacy in &self.legacy {
-			if legacy.algorithm().is_none() {
+			} else if legacy.algorithm().is_none() {
 				match legacy.verify(password, hash) {
 					Ok(true) => return Ok(self.verified_legacy_result(password)),
 					Ok(false) => checked_default_identifier = true,

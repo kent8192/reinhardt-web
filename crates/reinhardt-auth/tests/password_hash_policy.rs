@@ -259,6 +259,24 @@ fn policy_uses_first_matching_legacy_hasher() {
 }
 
 #[test]
+fn policy_checks_legacy_hashers_in_registration_order_across_identifier_styles() {
+	let policy = PasswordHashPolicy::new(PrefixHasher::new("new"))
+		.with_legacy(DefaultIdentifierHasher)
+		.with_legacy(PrefixHasher::new("legacy").with_accepted_password("different"));
+
+	let result = policy
+		.verify_with_update("secret", "legacy$secret")
+		.expect("default identifier legacy hasher should run first");
+
+	assert_eq!(
+		result,
+		PasswordVerification::ValidNeedsRehash {
+			updated_hash: "new$secret".to_string(),
+		}
+	);
+}
+
+#[test]
 fn policy_rejects_unknown_algorithm_without_rehashing() {
 	let policy =
 		PasswordHashPolicy::new(PrefixHasher::new("new")).with_legacy(PrefixHasher::new("old"));
