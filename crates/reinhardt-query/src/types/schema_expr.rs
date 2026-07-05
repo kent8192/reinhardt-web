@@ -188,9 +188,14 @@ impl SchemaExpr {
 	where
 		I: IntoIterator<Item = SchemaExpr>,
 	{
+		let args = items.into_iter().collect::<Vec<_>>();
+		assert!(
+			!args.is_empty(),
+			"SchemaExpr::coalesce requires at least one argument"
+		);
 		Self::Function {
 			func: SchemaFunc::Coalesce,
-			args: items.into_iter().collect(),
+			args,
 		}
 	}
 
@@ -256,6 +261,12 @@ mod tests {
 			}
 			other => panic!("expected concat function, got {other:?}"),
 		}
+	}
+
+	#[test]
+	#[should_panic(expected = "SchemaExpr::coalesce requires at least one argument")]
+	fn coalesce_rejects_empty_arguments() {
+		let _ = SchemaExpr::coalesce(std::iter::empty::<SchemaExpr>());
 	}
 
 	#[test]

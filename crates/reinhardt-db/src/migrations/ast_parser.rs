@@ -241,7 +241,7 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 					new_name,
 				});
 			}
-			"CreateIndex" => {
+			"CreateIndex" | "CreateIndexRepair" | "RestoreIndexOnRollback" => {
 				let table = extract_string_field(&expr_struct.fields, "table")?;
 				let columns = extract_string_vec_field(&expr_struct.fields, "columns");
 				let unique = extract_bool_field(&expr_struct.fields, "unique").unwrap_or(false);
@@ -250,16 +250,40 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 				let concurrently =
 					extract_bool_field(&expr_struct.fields, "concurrently").unwrap_or(false);
 
-				return Some(super::Operation::CreateIndex {
-					table,
-					columns,
-					unique,
-					index_type,
-					where_clause,
-					concurrently,
-					expressions: None,
-					mysql_options: None,
-					operator_class: None,
+				return Some(match variant_name.as_str() {
+					"CreateIndex" => super::Operation::CreateIndex {
+						table,
+						columns,
+						unique,
+						index_type,
+						where_clause,
+						concurrently,
+						expressions: None,
+						mysql_options: None,
+						operator_class: None,
+					},
+					"CreateIndexRepair" => super::Operation::CreateIndexRepair {
+						table,
+						columns,
+						unique,
+						index_type,
+						where_clause,
+						concurrently,
+						expressions: None,
+						mysql_options: None,
+						operator_class: None,
+					},
+					_ => super::Operation::RestoreIndexOnRollback {
+						table,
+						columns,
+						unique,
+						index_type,
+						where_clause,
+						concurrently,
+						expressions: None,
+						mysql_options: None,
+						operator_class: None,
+					},
 				});
 			}
 			"DropIndex" => {
@@ -271,6 +295,22 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 				let table = extract_string_field(&expr_struct.fields, "table")?;
 				let constraint_sql = extract_string_field(&expr_struct.fields, "constraint_sql")?;
 				return Some(super::Operation::AddConstraint {
+					table,
+					constraint_sql,
+				});
+			}
+			"AddConstraintRepair" => {
+				let table = extract_string_field(&expr_struct.fields, "table")?;
+				let constraint_sql = extract_string_field(&expr_struct.fields, "constraint_sql")?;
+				return Some(super::Operation::AddConstraintRepair {
+					table,
+					constraint_sql,
+				});
+			}
+			"RestoreConstraintOnRollback" => {
+				let table = extract_string_field(&expr_struct.fields, "table")?;
+				let constraint_sql = extract_string_field(&expr_struct.fields, "constraint_sql")?;
+				return Some(super::Operation::RestoreConstraintOnRollback {
 					table,
 					constraint_sql,
 				});
@@ -885,6 +925,37 @@ fn parse_generated_column_definition(expr: &Expr) -> Option<super::GeneratedColu
 		});
 	}
 
+	if let Expr::Call(expr_call) = expr {
+		let Expr::Path(func_path) = &*expr_call.func else {
+			return None;
+		};
+		let constructor = func_path.path.segments.last()?.ident.to_string();
+		return match constructor.as_str() {
+			"typed" if expr_call.args.len() == 3 => {
+				let expr = parse_schema_expr(&expr_call.args[0])?;
+				let expr_tokens = extract_string_literal(&expr_call.args[1])?;
+				let storage = parse_generated_storage_expr(&expr_call.args[2])?;
+				Some(super::GeneratedColumnDefinition {
+					expr: Some(Box::new(expr)),
+					expr_tokens: Some(expr_tokens),
+					raw_sql: None,
+					storage,
+				})
+			}
+			"raw_sql" if expr_call.args.len() == 2 => {
+				let raw_sql = extract_string_literal(&expr_call.args[0])?;
+				let storage = parse_generated_storage_expr(&expr_call.args[1])?;
+				Some(super::GeneratedColumnDefinition {
+					expr: None,
+					expr_tokens: None,
+					raw_sql: Some(raw_sql),
+					storage,
+				})
+			}
+			_ => None,
+		};
+	}
+
 	None
 }
 
@@ -966,6 +1037,9 @@ fn parse_schema_expr(expr: &Expr) -> Option<super::SchemaExpr> {
 				}
 				"coalesce" if expr_call.args.len() == 1 => {
 					let args = parse_schema_expr_items(&expr_call.args[0])?;
+					if args.is_empty() {
+						return None;
+					}
 					Some(super::SchemaExpr::coalesce(args))
 				}
 				_ => None,
@@ -1262,15 +1336,22 @@ fn extract_generated_storage_field(
 	for field in fields {
 		if let syn::Member::Named(ident) = &field.member
 			&& ident == "storage"
-			&& let Expr::Path(expr_path) = &field.expr
-			&& let Some(last_segment) = expr_path.path.segments.last()
 		{
-			return match last_segment.ident.to_string().as_str() {
-				"Stored" => Some(super::GeneratedStorage::Stored),
-				"Virtual" => Some(super::GeneratedStorage::Virtual),
-				_ => None,
-			};
+			return parse_generated_storage_expr(&field.expr);
 		}
+	}
+	None
+}
+
+fn parse_generated_storage_expr(expr: &Expr) -> Option<super::GeneratedStorage> {
+	if let Expr::Path(expr_path) = expr
+		&& let Some(last_segment) = expr_path.path.segments.last()
+	{
+		return match last_segment.ident.to_string().as_str() {
+			"Stored" => Some(super::GeneratedStorage::Stored),
+			"Virtual" => Some(super::GeneratedStorage::Virtual),
+			_ => None,
+		};
 	}
 	None
 }
@@ -1434,6 +1515,97 @@ pub(super) fn migration() -> Migration {
 				SchemaExpr::col("last_name"),
 			]))
 		);
+	}
+
+	#[test]
+	fn extract_migration_metadata_restores_generated_constructor_calls() {
+		let source = r#"
+use reinhardt_db::migrations::prelude::*;
+
+pub(super) fn migration() -> Migration {
+	Migration {
+		app_label: "accounts".to_string(),
+		name: "0002_full_name".to_string(),
+		operations: vec![
+			Operation::AddColumn {
+				table: "users".to_string(),
+				column: ColumnDefinition {
+					name: "full_name".to_string(),
+					type_definition: FieldType::VarChar(201),
+					not_null: false,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+					generated: Some(GeneratedColumnDefinition::typed(
+						SchemaExpr::concat([
+							SchemaExpr::col("first_name"),
+							SchemaExpr::val(" "),
+							SchemaExpr::col("last_name"),
+						]),
+						"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+						GeneratedStorage::Stored,
+					)),
+				},
+				mysql_options: None,
+			},
+			Operation::AddColumn {
+				table: "users".to_string(),
+				column: ColumnDefinition {
+					name: "search_name".to_string(),
+					type_definition: FieldType::VarChar(201),
+					not_null: false,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+					generated: Some(GeneratedColumnDefinition::raw_sql("LOWER(full_name)", GeneratedStorage::Virtual)),
+				},
+				mysql_options: None,
+			},
+		],
+		dependencies: vec![],
+		atomic: true,
+		replaces: vec![],
+		initial: None,
+		state_only: false,
+		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
+	}
+}
+"#;
+		let ast = syn::parse_file(source).expect("migration source must parse");
+
+		let migration = extract_migration_metadata(&ast, "accounts", "0002_full_name")
+			.expect("migration metadata must parse");
+
+		let Operation::AddColumn { column, .. } = &migration.operations[0] else {
+			panic!("expected AddColumn operation");
+		};
+		let generated = column
+			.generated
+			.as_ref()
+			.expect("typed generated metadata must be restored");
+		assert_eq!(generated.storage, GeneratedStorage::Stored);
+		assert_eq!(
+			generated.expr.as_deref(),
+			Some(&SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]))
+		);
+
+		let Operation::AddColumn { column, .. } = &migration.operations[1] else {
+			panic!("expected AddColumn operation");
+		};
+		let generated = column
+			.generated
+			.as_ref()
+			.expect("raw generated metadata must be restored");
+		assert_eq!(generated.storage, GeneratedStorage::Virtual);
+		assert_eq!(generated.raw_sql.as_deref(), Some("LOWER(full_name)"));
 	}
 }
 

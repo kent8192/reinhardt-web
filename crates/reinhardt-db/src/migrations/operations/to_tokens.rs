@@ -7,7 +7,7 @@ use crate::migrations::{
 	GeneratedColumnDefinition, IndexType, Operation,
 };
 use proc_macro2::TokenStream;
-use quote::{ToTokens, quote};
+use quote::{ToTokens, format_ident, quote};
 use reinhardt_query::prelude::{
 	ColumnType as QueryColumnType, GeneratedStorage, SchemaBinOper, SchemaExpr, SchemaFunc, Value,
 };
@@ -508,7 +508,29 @@ impl ToTokens for Operation {
 				constraint_sql,
 			} => {
 				tokens.extend(quote! {
-					Operation::AddConstraint {
+				Operation::AddConstraint {
+					table: #table.to_string(),
+					constraint_sql: #constraint_sql.to_string(),
+					}
+				});
+			}
+			Operation::AddConstraintRepair {
+				table,
+				constraint_sql,
+			} => {
+				tokens.extend(quote! {
+					Operation::AddConstraintRepair {
+						table: #table.to_string(),
+						constraint_sql: #constraint_sql.to_string(),
+					}
+				});
+			}
+			Operation::RestoreConstraintOnRollback {
+				table,
+				constraint_sql,
+			} => {
+				tokens.extend(quote! {
+					Operation::RestoreConstraintOnRollback {
 						table: #table.to_string(),
 						constraint_sql: #constraint_sql.to_string(),
 					}
@@ -535,7 +557,37 @@ impl ToTokens for Operation {
 				expressions,
 				mysql_options,
 				operator_class,
+			}
+			| Operation::CreateIndexRepair {
+				table,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			}
+			| Operation::RestoreIndexOnRollback {
+				table,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
 			} => {
+				let variant = match self {
+					Operation::CreateIndex { .. } => format_ident!("CreateIndex"),
+					Operation::CreateIndexRepair { .. } => format_ident!("CreateIndexRepair"),
+					Operation::RestoreIndexOnRollback { .. } => {
+						format_ident!("RestoreIndexOnRollback")
+					}
+					_ => unreachable!(),
+				};
 				let columns_iter = columns.iter();
 				let index_type_token = match index_type {
 					Some(it) => {
@@ -572,9 +624,9 @@ impl ToTokens for Operation {
 					None => quote! { None },
 				};
 				tokens.extend(quote! {
-					Operation::CreateIndex {
-						table: #table.to_string(),
-						columns: vec![#(#columns_iter.to_string()),*],
+						Operation::#variant {
+							table: #table.to_string(),
+							columns: vec![#(#columns_iter.to_string()),*],
 						unique: #unique,
 						index_type: #index_type_token,
 						where_clause: #where_clause_token,

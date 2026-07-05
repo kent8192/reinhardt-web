@@ -4337,7 +4337,7 @@ impl MigrationAutodetector {
 					.iter()
 					.any(|from_index| from_index == *index)
 		}) {
-			operations.push(super::Operation::CreateIndex {
+			operations.push(super::Operation::CreateIndexRepair {
 				table: to_model.table_name.clone(),
 				columns: index.fields.clone(),
 				unique: index.unique,
@@ -4360,8 +4360,51 @@ impl MigrationAutodetector {
 					.iter()
 					.any(|from_constraint| from_constraint == *constraint)
 		}) {
-			operations.push(super::Operation::AddConstraint {
+			operations.push(super::Operation::AddConstraintRepair {
 				table: to_model.table_name.clone(),
+				constraint_sql: constraint.to_constraint().to_string(),
+			});
+		}
+	}
+
+	fn emit_generated_column_replacement_dependency_rollbacks(
+		operations: &mut Vec<super::Operation>,
+		from_model: &ModelState,
+		to_model: &ModelState,
+		affected_columns: &BTreeSet<String>,
+	) {
+		for index in from_model.indexes.iter().filter(|index| {
+			index
+				.fields
+				.iter()
+				.any(|field| affected_columns.contains(field))
+				&& to_model.indexes.iter().any(|to_index| to_index == *index)
+		}) {
+			operations.push(super::Operation::RestoreIndexOnRollback {
+				table: from_model.table_name.clone(),
+				columns: index.fields.clone(),
+				unique: index.unique,
+				index_type: None,
+				where_clause: None,
+				concurrently: false,
+				expressions: None,
+				mysql_options: None,
+				operator_class: None,
+			});
+		}
+
+		for constraint in from_model.constraints.iter().filter(|constraint| {
+			constraint
+				.fields
+				.iter()
+				.any(|field| affected_columns.contains(field))
+				&& to_model
+					.constraints
+					.iter()
+					.any(|to_constraint| to_constraint == *constraint)
+		}) {
+			operations.push(super::Operation::RestoreConstraintOnRollback {
+				table: from_model.table_name.clone(),
 				constraint_sql: constraint.to_constraint().to_string(),
 			});
 		}
@@ -5744,8 +5787,12 @@ impl MigrationAutodetector {
 			| super::Operation::DropColumn { table, .. }
 			| super::Operation::RenameColumn { table, .. }
 			| super::Operation::AddConstraint { table, .. }
+			| super::Operation::AddConstraintRepair { table, .. }
+			| super::Operation::RestoreConstraintOnRollback { table, .. }
 			| super::Operation::DropConstraint { table, .. }
 			| super::Operation::CreateIndex { table, .. }
+			| super::Operation::CreateIndexRepair { table, .. }
+			| super::Operation::RestoreIndexOnRollback { table, .. }
 			| super::Operation::DropIndex { table, .. }
 			| super::Operation::CreateCompositePrimaryKey { table, .. }
 			| super::Operation::SetAutoIncrementValue { table, .. } => table == table_name,
@@ -5820,7 +5867,9 @@ impl MigrationAutodetector {
 			super::Operation::CreateTable { constraints, .. } => constraints
 				.iter()
 				.any(|constraint| Self::constraint_references_table(constraint, table_name)),
-			super::Operation::AddConstraint { constraint_sql, .. } => {
+			super::Operation::AddConstraint { constraint_sql, .. }
+			| super::Operation::AddConstraintRepair { constraint_sql, .. }
+			| super::Operation::RestoreConstraintOnRollback { constraint_sql, .. } => {
 				Self::constraint_sql_references_table(constraint_sql, table_name)
 			}
 			_ => false,
@@ -6091,6 +6140,14 @@ impl MigrationAutodetector {
 								.map(|(dependent_name, _, _)| dependent_name.clone()),
 						)
 						.collect();
+					if let Some(from_model) = from_model {
+						Self::emit_generated_column_replacement_dependency_rollbacks(
+							operations,
+							from_model,
+							model,
+							&affected_columns,
+						);
+					}
 					for (dependent_name, old_dependent_definition, _) in
 						&dependent_generated_columns
 					{
@@ -8815,15 +8872,27 @@ mod tests {
 		// Assert
 		assert!(operations.iter().any(|operation| matches!(
 			operation,
-			super::super::Operation::CreateIndex { table, columns, unique, .. }
+			super::super::Operation::RestoreIndexOnRollback { table, columns, unique, .. }
 				if table == "accounts_user" && columns == &vec!["full_name".to_string()] && !unique
 		)));
 		assert!(operations.iter().any(|operation| matches!(
 			operation,
-			super::super::Operation::AddConstraint { table, constraint_sql }
+			super::super::Operation::RestoreConstraintOnRollback { table, constraint_sql }
 				if table == "accounts_user"
 					&& constraint_sql.contains("uq_accounts_user_full_name")
 					&& constraint_sql.contains("full_name")
+		)));
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			super::super::Operation::CreateIndexRepair { table, columns, unique, .. }
+				if table == "accounts_user" && columns == &vec!["full_name".to_string()] && !unique
+		)));
+		assert!(operations.iter().any(|operation| matches!(
+				operation,
+				super::super::Operation::AddConstraintRepair { table, constraint_sql }
+					if table == "accounts_user"
+						&& constraint_sql.contains("uq_accounts_user_full_name")
+						&& constraint_sql.contains("full_name")
 		)));
 	}
 
