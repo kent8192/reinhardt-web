@@ -1028,6 +1028,13 @@ impl DatabaseMigrationExecutor {
 				continue;
 			}
 			let idx_name: String = row.get("name").unwrap_or_default();
+			let idx_sql = editor
+				.fetch_optional(
+					"SELECT sql FROM sqlite_master WHERE type='index' AND name=?",
+					vec![idx_name.clone().into()],
+				)
+				.await?
+				.and_then(|r| r.get("sql").ok());
 			// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
 			let info_sql = format!(
 				"PRAGMA index_info({})",
@@ -1048,6 +1055,7 @@ impl DatabaseMigrationExecutor {
 					name: idx_name,
 					columns: cols,
 					unique: unique == 1,
+					sql: idx_sql,
 				});
 			}
 		}
@@ -1121,6 +1129,7 @@ impl DatabaseMigrationExecutor {
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_column(table, columns, column, constraints)
 					.with_indexes(indexes)
+					.without_indexes_referencing(column)
 			}
 			Operation::AlterColumn {
 				table,

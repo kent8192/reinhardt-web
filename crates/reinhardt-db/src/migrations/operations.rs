@@ -878,6 +878,20 @@ pub enum Operation {
 		/// The constraint sql.
 		constraint_sql: String,
 	},
+	/// Generated-column dependency constraint repair applied only when migrating forward.
+	AddConstraintRepair {
+		/// The table.
+		table: String,
+		/// The constraint sql.
+		constraint_sql: String,
+	},
+	/// Generated-column dependency constraint restore applied only when rolling back.
+	RestoreConstraintOnRollback {
+		/// The table.
+		table: String,
+		/// The constraint sql.
+		constraint_sql: String,
+	},
 	/// DropConstraint variant.
 	DropConstraint {
 		/// The table.
@@ -946,6 +960,60 @@ pub enum Operation {
 		///     ...
 		/// }
 		/// ```
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		operator_class: Option<String>,
+	},
+	/// Generated-column dependency index repair applied only when migrating forward.
+	CreateIndexRepair {
+		/// The table.
+		table: String,
+		/// The columns.
+		columns: Vec<String>,
+		/// The unique.
+		unique: bool,
+		/// Index type.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		index_type: Option<IndexType>,
+		/// Partial index condition.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		where_clause: Option<String>,
+		/// Create index concurrently.
+		#[serde(default)]
+		concurrently: bool,
+		/// Expression index values.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		expressions: Option<Vec<String>>,
+		/// MySQL ALTER TABLE options.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		mysql_options: Option<AlterTableOptions>,
+		/// Operator class for index columns.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		operator_class: Option<String>,
+	},
+	/// Generated-column dependency index restore applied only when rolling back.
+	RestoreIndexOnRollback {
+		/// The table.
+		table: String,
+		/// The columns.
+		columns: Vec<String>,
+		/// The unique.
+		unique: bool,
+		/// Index type.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		index_type: Option<IndexType>,
+		/// Partial index condition.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		where_clause: Option<String>,
+		/// Create index concurrently.
+		#[serde(default)]
+		concurrently: bool,
+		/// Expression index values.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		expressions: Option<Vec<String>>,
+		/// MySQL ALTER TABLE options.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		mysql_options: Option<AlterTableOptions>,
+		/// Operator class for index columns.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		operator_class: Option<String>,
 	},
@@ -1279,8 +1347,12 @@ impl Operation {
 				}
 			}
 			Operation::AddConstraint { .. }
+			| Operation::AddConstraintRepair { .. }
+			| Operation::RestoreConstraintOnRollback { .. }
 			| Operation::DropConstraint { .. }
 			| Operation::CreateIndex { .. }
+			| Operation::CreateIndexRepair { .. }
+			| Operation::RestoreIndexOnRollback { .. }
 			| Operation::DropIndex { .. }
 			| Operation::RunSQL { .. }
 			| Operation::RunRust { .. }
@@ -1457,6 +1529,7 @@ impl Operation {
 				Self::schema_expr_to_sql(right, dialect)
 			),
 			SchemaExpr::Function { func, args } => match func {
+				SchemaFunc::Concat if args.is_empty() => "''".to_string(),
 				SchemaFunc::Concat if matches!(dialect, SqlDialect::Mysql) => format!(
 					"CONCAT({})",
 					args.iter()
@@ -1464,16 +1537,11 @@ impl Operation {
 						.collect::<Vec<_>>()
 						.join(", ")
 				),
-				SchemaFunc::Concat => {
-					if args.is_empty() {
-						"''".to_string()
-					} else {
-						args.iter()
-							.map(|arg| Self::schema_expr_to_sql(arg, dialect))
-							.collect::<Vec<_>>()
-							.join(" || ")
-					}
-				}
+				SchemaFunc::Concat => args
+					.iter()
+					.map(|arg| Self::schema_expr_to_sql(arg, dialect))
+					.collect::<Vec<_>>()
+					.join(" || "),
 				SchemaFunc::Coalesce => format!(
 					"COALESCE({})",
 					args.iter()
@@ -2023,12 +2091,19 @@ impl Operation {
 			Operation::AddConstraint {
 				table,
 				constraint_sql,
+			}
+			| Operation::AddConstraintRepair {
+				table,
+				constraint_sql,
 			} => {
 				format!(
 					"ALTER TABLE {} ADD {};",
 					quote_identifier(table),
 					constraint_sql
 				)
+			}
+			Operation::RestoreConstraintOnRollback { .. } => {
+				"-- rollback-only generated-column constraint restore".to_string()
 			}
 			Operation::DropConstraint {
 				table,
@@ -2041,6 +2116,17 @@ impl Operation {
 				)
 			}
 			Operation::CreateIndex {
+				table,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			}
+			| Operation::CreateIndexRepair {
 				table,
 				columns,
 				unique,
@@ -2180,6 +2266,9 @@ impl Operation {
 
 				sql.push(';');
 				sql
+			}
+			Operation::RestoreIndexOnRollback { .. } => {
+				"-- rollback-only generated-column index restore".to_string()
 			}
 			Operation::DropIndex { table, columns } => {
 				let idx_name = format!("idx_{}_{}", table, columns.join("_"));
@@ -2767,6 +2856,31 @@ impl Operation {
 				};
 				Ok(Some(vec![sql]))
 			}
+			Operation::CreateIndexRepair { .. } => Ok(None),
+			Operation::RestoreIndexOnRollback {
+				table,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			} => Ok(Some(vec![
+				Operation::CreateIndex {
+					table: table.clone(),
+					columns: columns.clone(),
+					unique: *unique,
+					index_type: index_type.clone(),
+					where_clause: where_clause.clone(),
+					concurrently: *concurrently,
+					expressions: expressions.clone(),
+					mysql_options: mysql_options.clone(),
+					operator_class: operator_class.clone(),
+				}
+				.to_sql(dialect),
+			])),
 			Operation::AddConstraint {
 				table,
 				constraint_sql,
@@ -2786,6 +2900,17 @@ impl Operation {
 					quote_identifier(&constraint_name)
 				)]))
 			}
+			Operation::AddConstraintRepair { .. } => Ok(None),
+			Operation::RestoreConstraintOnRollback {
+				table,
+				constraint_sql,
+			} => Ok(Some(vec![
+				Operation::AddConstraint {
+					table: table.clone(),
+					constraint_sql: constraint_sql.clone(),
+				}
+				.to_sql(dialect),
+			])),
 			// Phase 2: Complex reverse operations using ProjectState
 			Operation::DropColumn {
 				table,
@@ -3636,6 +3761,37 @@ pub struct SqliteRecreatedIndex {
 	pub columns: Vec<String>,
 	/// Whether the index is unique
 	pub unique: bool,
+	/// Original CREATE INDEX SQL from sqlite_master.
+	pub sql: Option<String>,
+}
+
+impl SqliteRecreatedIndex {
+	fn normalized_sql(&self) -> Option<String> {
+		let mut sql = self.sql.as_ref()?.trim().trim_end_matches(';').to_string();
+		sql.push(';');
+		Some(sql)
+	}
+
+	fn references_column(&self, column_name: &str) -> bool {
+		self.columns.iter().any(|column| column == column_name)
+			|| self
+				.sql
+				.as_deref()
+				.is_some_and(|sql| sqlite_sql_references_identifier(sql, column_name))
+	}
+}
+
+fn sqlite_sql_references_identifier(sql: &str, identifier: &str) -> bool {
+	let unquoted = identifier.to_ascii_lowercase();
+	let double_quoted = format!("\"{}\"", identifier).to_ascii_lowercase();
+	let bracket_quoted = format!("[{}]", identifier).to_ascii_lowercase();
+	let backtick_quoted = format!("`{}`", identifier).to_ascii_lowercase();
+	let sql = sql.to_ascii_lowercase();
+	sql.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+		.any(|token| token == unquoted)
+		|| sql.contains(&double_quoted)
+		|| sql.contains(&bracket_quoted)
+		|| sql.contains(&backtick_quoted)
 }
 
 impl SqliteTableRecreation {
@@ -3793,6 +3949,13 @@ impl SqliteTableRecreation {
 		self
 	}
 
+	/// Removes indexes that reference a column no longer present in the replacement table.
+	pub fn without_indexes_referencing(mut self, column_name: &str) -> Self {
+		self.indexes
+			.retain(|index| !index.references_column(column_name));
+		self
+	}
+
 	/// Generate the 4-step SQL statements for table recreation
 	pub fn to_sql_statements(&self) -> Vec<String> {
 		let temp_table = format!("{}_new", self.table_name);
@@ -3844,6 +4007,10 @@ impl SqliteTableRecreation {
 
 		let mut statements = vec![create_sql, insert_sql, drop_sql, rename_sql];
 		for index in &self.indexes {
+			if let Some(sql) = index.normalized_sql() {
+				statements.push(sql);
+				continue;
+			}
 			let unique = if index.unique { "UNIQUE " } else { "" };
 			let columns = index
 				.columns
@@ -3896,6 +4063,7 @@ impl Operation {
 			Operation::DropColumn { .. }
 				| Operation::AlterColumn { .. }
 				| Operation::AddConstraint { .. }
+				| Operation::AddConstraintRepair { .. }
 				| Operation::DropConstraint { .. }
 		) || matches!(
 			self,
@@ -3924,11 +4092,22 @@ impl Operation {
 			// AddColumn → Reverse DropColumn (requires recreation)
 			Operation::AddColumn { .. }
 				// AlterColumn → Reverse AlterColumn (requires recreation)
-				| Operation::AlterColumn { .. }
-				// AddConstraint → Reverse DropConstraint (requires recreation)
-				| Operation::AddConstraint { .. }
-				// DropConstraint → Reverse AddConstraint (requires recreation)
-				| Operation::DropConstraint { .. }
+					| Operation::AlterColumn { .. }
+					// AddConstraint → Reverse DropConstraint (requires recreation)
+					| Operation::AddConstraint { .. }
+					// DropConstraint → Reverse AddConstraint (requires recreation)
+					| Operation::DropConstraint { .. }
+					// RestoreConstraintOnRollback → Reverse AddConstraint (requires recreation)
+					| Operation::RestoreConstraintOnRollback { .. }
+		) || matches!(
+			self,
+			Operation::DropColumn {
+				old_definition: Some(old_definition),
+				..
+			} if old_definition
+				.generated
+				.as_ref()
+				.is_some_and(|generated| generated.storage == GeneratedStorage::Stored)
 		)
 	}
 
@@ -4053,6 +4232,14 @@ impl Operation {
 					constraint_sql
 				)))
 			}
+			Operation::AddConstraintRepair { .. } => Ok(None),
+			Operation::RestoreConstraintOnRollback {
+				table,
+				constraint_sql,
+			} => Ok(Some(Operation::AddConstraint {
+				table: table.clone(),
+				constraint_sql: constraint_sql.clone(),
+			})),
 			Operation::DropConstraint {
 				table,
 				constraint_name,
@@ -4089,6 +4276,9 @@ impl Operation {
 				table: table.clone(),
 				columns: columns.clone(),
 			})),
+			Operation::CreateIndexRepair { .. } | Operation::RestoreIndexOnRollback { .. } => {
+				Ok(None)
+			}
 			Operation::DropIndex { table, columns } => {
 				// Basic index recreation (without advanced properties)
 				// Note: Cannot determine if the original index was unique from DropIndex alone
@@ -4257,6 +4447,10 @@ impl Operation {
 			Operation::AddConstraint {
 				table,
 				constraint_sql,
+			}
+			| Operation::AddConstraintRepair {
+				table,
+				constraint_sql,
 			} => {
 				// NOTE: constraint_sql validation is the caller's responsibility
 				OperationStatement::RawSql(format!(
@@ -4265,6 +4459,9 @@ impl Operation {
 					constraint_sql
 				))
 			}
+			Operation::RestoreConstraintOnRollback { .. } => OperationStatement::RawSql(
+				"-- rollback-only generated-column constraint restore".to_string(),
+			),
 			Operation::DropConstraint {
 				table,
 				constraint_name,
@@ -4278,12 +4475,21 @@ impl Operation {
 				columns,
 				unique,
 				..
+			}
+			| Operation::CreateIndexRepair {
+				table,
+				columns,
+				unique,
+				..
 			} => {
 				let idx_name = format!("idx_{}_{}", table, columns.join("_"));
 				OperationStatement::IndexCreate(
 					self.build_create_index(&idx_name, table, columns, *unique),
 				)
 			}
+			Operation::RestoreIndexOnRollback { .. } => OperationStatement::RawSql(
+				"-- rollback-only generated-column index restore".to_string(),
+			),
 			Operation::DropIndex { table, columns } => {
 				let idx_name = format!("idx_{}_{}", table, columns.join("_"));
 				OperationStatement::IndexDrop(self.build_drop_index(&idx_name))
@@ -4921,7 +5127,9 @@ impl MigrationOperation for Operation {
 				table.to_lowercase(),
 				new_name.to_lowercase()
 			)),
-			Operation::AddConstraint { table, .. } => {
+			Operation::AddConstraint { table, .. }
+			| Operation::AddConstraintRepair { table, .. }
+			| Operation::RestoreConstraintOnRollback { table, .. } => {
 				Some(format!("add_constraint_{}", table.to_lowercase()))
 			}
 			Operation::DropConstraint {
@@ -4931,7 +5139,9 @@ impl MigrationOperation for Operation {
 				"drop_constraint_{}",
 				constraint_name.to_lowercase()
 			)),
-			Operation::CreateIndex { table, unique, .. } => {
+			Operation::CreateIndex { table, unique, .. }
+			| Operation::CreateIndexRepair { table, unique, .. }
+			| Operation::RestoreIndexOnRollback { table, unique, .. } => {
 				if *unique {
 					Some(format!("create_unique_index_{}", table.to_lowercase()))
 				} else {
@@ -5014,12 +5224,18 @@ impl MigrationOperation for Operation {
 				old_name,
 				new_name,
 			} => format!("Rename column {} to {} on {}", old_name, new_name, table),
-			Operation::AddConstraint { table, .. } => format!("Add constraint on {}", table),
+			Operation::AddConstraint { table, .. }
+			| Operation::AddConstraintRepair { table, .. }
+			| Operation::RestoreConstraintOnRollback { table, .. } => {
+				format!("Add constraint on {}", table)
+			}
 			Operation::DropConstraint {
 				table,
 				constraint_name,
 			} => format!("Drop constraint {} from {}", constraint_name, table),
-			Operation::CreateIndex { table, unique, .. } => {
+			Operation::CreateIndex { table, unique, .. }
+			| Operation::CreateIndexRepair { table, unique, .. }
+			| Operation::RestoreIndexOnRollback { table, unique, .. } => {
 				if *unique {
 					format!("Create unique index on {}", table)
 				} else {
@@ -6506,6 +6722,97 @@ mod tests {
 	}
 
 	#[test]
+	fn generated_dependency_repair_operations_are_rollback_neutral() {
+		let state = ProjectState::default();
+		let create_repair = Operation::CreateIndexRepair {
+			table: "users".to_string(),
+			columns: vec!["full_name".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+		let restore_index = Operation::RestoreIndexOnRollback {
+			table: "users".to_string(),
+			columns: vec!["full_name".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+		let add_repair = Operation::AddConstraintRepair {
+			table: "users".to_string(),
+			constraint_sql: "CONSTRAINT uq_users_full_name UNIQUE (full_name)".to_string(),
+		};
+		let restore_constraint = Operation::RestoreConstraintOnRollback {
+			table: "users".to_string(),
+			constraint_sql: "CONSTRAINT uq_users_full_name UNIQUE (full_name)".to_string(),
+		};
+
+		assert_eq!(
+			create_repair
+				.to_reverse_sql(&SqlDialect::Postgres, &state)
+				.expect("repair reverse should not fail"),
+			None
+		);
+		assert_eq!(
+			add_repair
+				.to_reverse_sql(&SqlDialect::Postgres, &state)
+				.expect("repair reverse should not fail"),
+			None
+		);
+		assert_eq!(
+			restore_index
+				.to_reverse_sql(&SqlDialect::Postgres, &state)
+				.expect("restore reverse should render"),
+			Some(vec![
+				"CREATE INDEX idx_users_full_name ON users (full_name);".to_string()
+			])
+		);
+		assert_eq!(
+			restore_constraint
+				.to_reverse_sql(&SqlDialect::Postgres, &state)
+				.expect("restore reverse should render"),
+			Some(vec![
+				"ALTER TABLE users ADD CONSTRAINT uq_users_full_name UNIQUE (full_name);"
+					.to_string()
+			])
+		);
+		assert!(restore_constraint.reverse_requires_sqlite_recreation());
+	}
+
+	#[test]
+	fn stored_generated_drop_column_reverse_uses_sqlite_recreation() {
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("name"),
+			"SchemaExpr::col(\"name\")",
+			GeneratedStorage::Stored,
+		);
+		let op = Operation::DropColumn {
+			table: "users".to_string(),
+			column: "full_name".to_string(),
+			old_definition: Some(ColumnDefinition {
+				name: "full_name".to_string(),
+				type_definition: FieldType::VarChar(201),
+				not_null: true,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+				generated: Some(generated),
+			}),
+		};
+
+		assert!(op.reverse_requires_sqlite_recreation());
+	}
+
+	#[test]
 	fn test_to_reverse_sql_run_sql_with_reverse() {
 		let op = Operation::RunSQL {
 			sql: "CREATE INDEX idx_name ON users(name)".to_string(),
@@ -7768,6 +8075,23 @@ mod tests {
 	}
 
 	#[test]
+	fn test_column_to_sql_mysql_empty_concat_generated_column() {
+		let mut col = ColumnDefinition::new("empty_name", FieldType::VarChar(201));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([]),
+			"SchemaExpr::concat([])",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Mysql);
+
+		assert_eq!(
+			sql,
+			"empty_name VARCHAR(201) GENERATED ALWAYS AS ('') STORED"
+		);
+	}
+
+	#[test]
 	fn test_column_to_sql_sqlite_virtual_generated_column() {
 		let mut col = ColumnDefinition::new("full_name", FieldType::VarChar(201));
 		col.generated = Some(GeneratedColumnDefinition::typed(
@@ -7931,12 +8255,92 @@ mod tests {
 					name: "idx_users_title".to_string(),
 					columns: vec!["title".to_string()],
 					unique: false,
+					sql: None,
 				}]);
 		let sql = recreation.to_sql_statements();
 
 		assert_eq!(
 			sql.last().map(String::as_str),
 			Some("CREATE INDEX \"idx_users_title\" ON \"users\" (\"title\");")
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_preserves_partial_index_predicates() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let title = ColumnDefinition::new("title", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+
+		let recreation =
+			SqliteTableRecreation::for_add_column("users", vec![id, title], full_name, vec![])
+				.with_indexes(vec![SqliteRecreatedIndex {
+					name: "idx_users_active_title".to_string(),
+					columns: vec!["title".to_string()],
+					unique: false,
+					sql: Some(
+						"CREATE INDEX \"idx_users_active_title\" ON \"users\" (\"title\") WHERE deleted_at IS NULL"
+							.to_string(),
+					),
+				}]);
+		let sql = recreation.to_sql_statements();
+
+		assert_eq!(
+			sql.last().map(String::as_str),
+			Some(
+				"CREATE INDEX \"idx_users_active_title\" ON \"users\" (\"title\") WHERE deleted_at IS NULL;"
+			)
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_filters_indexes_referencing_dropped_column() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let title = ColumnDefinition::new("title", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+
+		let recreation = SqliteTableRecreation::for_drop_column(
+			"users",
+			vec![id, title, full_name],
+			"full_name",
+			vec![],
+		)
+		.with_indexes(vec![
+			SqliteRecreatedIndex {
+				name: "idx_users_title".to_string(),
+				columns: vec!["title".to_string()],
+				unique: false,
+				sql: None,
+			},
+			SqliteRecreatedIndex {
+				name: "idx_users_full_name".to_string(),
+				columns: vec!["full_name".to_string()],
+				unique: false,
+				sql: None,
+			},
+			SqliteRecreatedIndex {
+				name: "idx_users_title_partial".to_string(),
+				columns: vec!["title".to_string()],
+				unique: false,
+				sql: Some(
+					"CREATE INDEX \"idx_users_title_partial\" ON \"users\" (\"title\") WHERE \"full_name\" IS NOT NULL"
+						.to_string(),
+				),
+			},
+		])
+		.without_indexes_referencing("full_name");
+		let sql = recreation.to_sql_statements();
+
+		assert!(
+			sql.iter()
+				.any(|statement| statement.contains("idx_users_title"))
+		);
+		assert!(
+			sql.iter()
+				.all(|statement| !statement.contains("idx_users_full_name"))
+		);
+		assert!(
+			sql.iter()
+				.all(|statement| !statement.contains("idx_users_title_partial"))
 		);
 	}
 

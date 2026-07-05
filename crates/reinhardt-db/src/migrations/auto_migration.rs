@@ -246,12 +246,42 @@ impl AutoMigrationGenerator {
 
 				// Constraint operations
 				Operation::AddConstraint { .. } => None, // Cannot rollback without constraint name
+				Operation::AddConstraintRepair { .. } => None,
+				Operation::RestoreConstraintOnRollback {
+					table,
+					constraint_sql,
+				} => Some(Operation::AddConstraint {
+					table: table.clone(),
+					constraint_sql: constraint_sql.clone(),
+				}),
 				Operation::DropConstraint { .. } => None, // Cannot rollback without constraint SQL
 
 				// Index operations
 				Operation::CreateIndex { table, columns, .. } => Some(Operation::DropIndex {
 					table: table.clone(),
 					columns: columns.clone(),
+				}),
+				Operation::CreateIndexRepair { .. } => None,
+				Operation::RestoreIndexOnRollback {
+					table,
+					columns,
+					unique,
+					index_type,
+					where_clause,
+					concurrently,
+					expressions,
+					mysql_options,
+					operator_class,
+				} => Some(Operation::CreateIndex {
+					table: table.clone(),
+					columns: columns.clone(),
+					unique: *unique,
+					index_type: index_type.clone(),
+					where_clause: where_clause.clone(),
+					concurrently: *concurrently,
+					expressions: expressions.clone(),
+					mysql_options: mysql_options.clone(),
+					operator_class: operator_class.clone(),
 				}),
 				Operation::DropIndex { .. } => None, // Cannot rollback without index definition
 
