@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.3.0...reinhardt-urls@v0.4.0) - 2026-07-05
+
+### Fixed
+
+- preserve route body and path param semantics
+- address 0.4 fast-path review comments
+- preserve custom method router dispatch
+- *(pages)* migrate tutorial component examples
+
+### Performance
+
+- [**breaking**] inline path parameter dispatch values
+- freeze compiled route tables
+- skip empty router dispatch work
+- borrow matched route handlers
+- add concrete router dispatch fast path
+- bypass router handler arc wrapper
+- add synchronous handler fast path
+- flatten server router backend dispatch
+- add static server route fast path
+- expose synchronous router dispatch
+- use compact exact route tables
+- revert compact exact route table experiment
+- add requestless sync route path
+- bypass exact route match materialization
+
+### Testing
+
+- tighten review regression assertions
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.2.0...reinhardt-urls@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-urls` for the Reinhardt 0.3.0 line. This

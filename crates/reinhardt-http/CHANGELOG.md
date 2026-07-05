@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.3.0...reinhardt-http@v0.4.0) - 2026-07-05
+
+### Documentation
+
+- disambiguate async-trait rustdoc link
+
+### Fixed
+
+- address 0.4 fast-path review comments
+
+### Performance
+
+- [**breaking**] lazy-initialize request extensions
+- [**breaking**] inline path parameter dispatch values
+- [**breaking**] borrow query parameter lookups
+- bypass request builder in server adapters
+- cache raw query parameter ranges
+- add static response body fast path
+- bypass handler arc wrappers internally
+- add synchronous handler fast path
+- trim query and response fixed costs
+- flatten server router backend dispatch
+- add requestless sync route path
+- borrow server fn request bodies
+- streamline server fn responses
+- [**breaking**] specialize json server fn hot path
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.2.0...reinhardt-http@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-http` for the Reinhardt 0.3.0 line. This

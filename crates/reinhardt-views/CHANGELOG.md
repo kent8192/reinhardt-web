@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.3.0...reinhardt-views@v0.4.0) - 2026-07-05
+
+### Fixed
+
+- address 0.4 fast-path review comments
+- *(ci)* unblock quick-xml security audit
+
+### Performance
+
+- [**breaking**] inline path parameter dispatch values
+- [**breaking**] borrow query parameter lookups
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.2.0...reinhardt-views@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-views` for the Reinhardt 0.3.0 line. This

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.3.0...reinhardt-server@v0.4.0) - 2026-07-05
+
+### Fixed
+
+- preserve route body and path param semantics
+- address 0.4 fast-path review comments
+
+### Performance
+
+- skip empty http1 body collection
+- avoid warning-path uri allocation
+- bypass request builder in server adapters
+- remove boxed server request futures
+- add concrete router dispatch fast path
+- reuse request body planning
+- bypass handler arc wrappers internally
+- trim query and response fixed costs
+- add static server route fast path
+- add synchronous HTTP connection adapter
+- add requestless sync route path
+
+### Testing
+
+- tighten review regression assertions
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.2.0...reinhardt-server@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-server` for the Reinhardt 0.3.0 line. This

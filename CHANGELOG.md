@@ -7,6 +7,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0...reinhardt-web@v0.4.0) - 2026-07-05
+
+### Added
+
+- *(db)* add scoped n+1 query detection
+
+### Documentation
+
+- document 0.4 performance migration
+- record disposable benchmark workflow
+- record backend benchmark procedure
+- refresh runtime scorecard measurements
+- record sync http follow-up measurements
+- refresh requestless perf measurements
+- record final backend measurements
+- record 2026-06-30 backend measurements
+- record local runtime floor measurement
+- set realistic 0.4 performance gates
+- record 0.4 promotion gate status
+- disambiguate async-trait rustdoc link
+- *(rest)* remove inactive prefetch guidance
+
+### Fixed
+
+- preserve route body and path param semantics
+- address 0.4 fast-path review comments
+- [**breaking**] preserve server_fn codec metadata invariants
+- preserve custom method router dispatch
+- *(db)* avoid listener map guards across awaits
+- *(rest)* keep validator doctests feature neutral
+- *(db)* address n+1 detector review gaps
+- *(db)* harden n+1 detector diagnostics
+- *(db)* address n plus one review feedback
+- *(db)* satisfy n plus one hash clippy
+- *(db)* address n plus one review feedback
+- *(db)* address orm review feedback
+- *(ci)* unblock quick-xml security audit
+- *(ci)* adapt XML parser to quick-xml 0.41
+- *(db)* remove inactive n plus one prefetch guidance
+- *(pages)* use keyword type in page fixtures
+- *(ci)* allow release-plz examples lockfile updates
+
+### Maintenance
+
+- refresh benchmark lockfile
+- merge develop/0.4.0 into component route branch
+- merge develop/0.4.0 into accessibility pr
+
+### Performance
+
+- [**breaking**] lazy-parse request query params
+- [**breaking**] inline path parameter dispatch values
+- avoid warning-path uri allocation
+- freeze compiled route tables
+- [**breaking**] borrow query parameter lookups
+- skip empty router dispatch work
+- bypass request builder in server adapters
+- remove boxed server request futures
+- cache raw query parameter ranges
+- borrow matched route handlers
+- add concrete router dispatch fast path
+- bypass router handler arc wrapper
+- add static response body fast path
+- reuse request body planning
+- bypass handler arc wrappers internally
+- add synchronous handler fast path
+- trim query and response fixed costs
+- flatten server router backend dispatch
+- add static server route fast path
+- expose synchronous router dispatch
+- use compact exact route tables
+- revert compact exact route table experiment
+- add synchronous HTTP connection adapter
+- add requestless sync route path
+- return server fn bytes directly
+- borrow server fn request bodies
+- avoid boxed server fn futures
+- shrink server fn endpoint futures
+- fast path json server fn content type
+- bypass exact route match materialization
+- streamline server fn responses
+- [**breaking**] specialize json server fn hot path
+- specialize server fn codec response path
+
+### Testing
+
+- simplify request config construction
+- update path parameter assertions
+- tighten review regression assertions
+
 ### Breaking Changes
 
 - *(pages)* Route-backed `#[component]` declarations now require explicit

@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.0...reinhardt-pages@v0.4.0) - 2026-07-05
+
+### Added
+
+- *(pages)* compose resource values with action results
+- *(pages)* parse page body form
+- *(pages)* collect and generate implicit body captures
+
+### Documentation
+
+- docs!(pages): clarify direct body migration
+
+### Fixed
+
+- address 0.4 fast-path review comments
+- [**breaking**] preserve server_fn codec metadata invariants
+- *(pages)* complete implicit body capture analysis
+- *(pages)* validate page body capture scopes
+- *(pages)* use keyword type in page fixtures
+
+### Maintenance
+
+- merge develop/0.4.0 into component route branch
+- merge develop/0.4.0 into accessibility pr
+
+### Performance
+
+- use compact exact route tables
+- revert compact exact route table experiment
+- return server fn bytes directly
+- borrow server fn request bodies
+- avoid boxed server fn futures
+- shrink server fn endpoint futures
+- fast path json server fn content type
+- streamline server fn responses
+- [**breaking**] specialize json server fn hot path
+- specialize server fn codec response path
+
+### Testing
+
+- update path parameter assertions
+- *(pages)* cover ast page body reexports
+- *(pages)* cover implicit page body captures
+
 ### Changed
 
 - **BREAKING**: Route-backed component macros now require the route name as
