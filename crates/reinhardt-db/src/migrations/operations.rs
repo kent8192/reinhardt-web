@@ -3217,10 +3217,14 @@ pub struct GeneratedColumnDefinition {
 
 impl PartialEq for GeneratedColumnDefinition {
 	fn eq(&self, other: &Self) -> bool {
-		self.expr_tokens == other.expr_tokens
-			&& self.raw_sql == other.raw_sql
-			&& self.storage == other.storage
-			&& (self.expr_tokens.is_some() || self.expr == other.expr)
+		if self.raw_sql != other.raw_sql || self.storage != other.storage {
+			return false;
+		}
+
+		match (self.typed_expr(), other.typed_expr()) {
+			(Some(left), Some(right)) => left == right,
+			_ => self.expr_tokens == other.expr_tokens && self.expr == other.expr,
+		}
 	}
 }
 
@@ -7726,6 +7730,22 @@ mod tests {
 
 		assert!(tokens.contains("SchemaExpr :: col"));
 		assert!(!tokens.contains("S :: col"));
+	}
+
+	#[test]
+	fn generated_column_equality_prefers_typed_expr_over_token_spelling() {
+		let alias_spelled = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("full_name"),
+			"S::col(\"full_name\")",
+			GeneratedStorage::Stored,
+		);
+		let canonical_spelled = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("full_name"),
+			"SchemaExpr::col(\"full_name\")",
+			GeneratedStorage::Stored,
+		);
+
+		assert_eq!(alias_spelled, canonical_spelled);
 	}
 
 	#[test]

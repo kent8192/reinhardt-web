@@ -964,6 +964,7 @@ fn parse_schema_bin_oper(expr: &Expr) -> Option<super::SchemaBinOper> {
 
 fn parse_schema_value(expr: &Expr) -> Option<QueryValue> {
 	match expr {
+		Expr::Path(expr_path) => parse_option_none_schema_value(&expr_path.path),
 		Expr::Lit(expr_lit) => match &expr_lit.lit {
 			syn::Lit::Str(lit_str) => Some(QueryValue::String(Some(Box::new(lit_str.value())))),
 			syn::Lit::Bool(lit_bool) => Some(QueryValue::Bool(Some(lit_bool.value))),
@@ -995,6 +996,44 @@ fn parse_schema_value(expr: &Expr) -> Option<QueryValue> {
 				_ => None,
 			}
 		}
+		_ => None,
+	}
+}
+
+fn parse_option_none_schema_value(path: &syn::Path) -> Option<QueryValue> {
+	let mut segments = path.segments.iter();
+	let option_segment = segments.next()?;
+	let none_segment = segments.next()?;
+	if segments.next().is_some() || option_segment.ident != "Option" || none_segment.ident != "None"
+	{
+		return None;
+	}
+
+	let syn::PathArguments::AngleBracketed(arguments) = &option_segment.arguments else {
+		return None;
+	};
+	if arguments.args.len() != 1 {
+		return None;
+	}
+	let Some(syn::GenericArgument::Type(syn::Type::Path(type_path))) = arguments.args.first()
+	else {
+		return None;
+	};
+	let ident = type_path.path.segments.last()?.ident.to_string();
+	match ident.as_str() {
+		"bool" => Some(QueryValue::Bool(None)),
+		"i8" => Some(QueryValue::TinyInt(None)),
+		"i16" => Some(QueryValue::SmallInt(None)),
+		"i32" => Some(QueryValue::Int(None)),
+		"i64" => Some(QueryValue::BigInt(None)),
+		"u8" => Some(QueryValue::TinyUnsigned(None)),
+		"u16" => Some(QueryValue::SmallUnsigned(None)),
+		"u32" => Some(QueryValue::Unsigned(None)),
+		"u64" => Some(QueryValue::BigUnsigned(None)),
+		"f32" => Some(QueryValue::Float(None)),
+		"f64" => Some(QueryValue::Double(None)),
+		"char" => Some(QueryValue::Char(None)),
+		"String" => Some(QueryValue::String(None)),
 		_ => None,
 	}
 }
