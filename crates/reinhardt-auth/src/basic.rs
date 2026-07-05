@@ -307,6 +307,28 @@ impl BasicAuthentication {
 		)
 	}
 
+	fn hash_is_current_or_current_matches(
+		&self,
+		username: &str,
+		password: &str,
+		expected_hash: &str,
+	) -> bool {
+		{
+			let users = self
+				.users
+				.read()
+				.expect("basic auth users lock should not be poisoned");
+			let Some(current_hash) = users.get(username) else {
+				return false;
+			};
+			if current_hash == expected_hash {
+				return true;
+			}
+		}
+
+		self.current_hash_matches_password(username, password)
+	}
+
 	fn replace_hash_if_current_or_current_matches(
 		&self,
 		username: &str,
@@ -354,7 +376,13 @@ impl AuthBackend for BasicAuthentication {
 
 				match verification {
 					PasswordVerification::Valid => {
-						return Ok(Some(Box::new(Self::internal_user(&username))));
+						if self.hash_is_current_or_current_matches(
+							&username,
+							&password,
+							&stored_hash,
+						) {
+							return Ok(Some(Box::new(Self::internal_user(&username))));
+						}
 					}
 					PasswordVerification::ValidNeedsRehash { updated_hash } => {
 						if self.replace_hash_if_current_or_current_matches(
@@ -726,6 +754,64 @@ mod tests {
 			&stale_hash,
 			stale_update,
 		);
+
+		// Assert
+		assert!(!accepted);
+		let users = backend
+			.users
+			.read()
+			.expect("basic auth users lock should not be poisoned");
+		assert_eq!(users.get("alice"), Some(&current_hash));
+	}
+
+	#[cfg(feature = "bcrypt-hasher")]
+	#[test]
+	fn test_valid_race_accepts_already_updated_current_password() {
+		use crate::{BcryptHasher, PasswordHashPolicy};
+
+		// Arrange
+		let bcrypt = BcryptHasher::with_cost(4);
+		let backend = BasicAuthentication::with_policy(PasswordHashPolicy::new(bcrypt.clone()));
+		let password = sample_password();
+		let current_hash = bcrypt.hash(&password).unwrap();
+		let stale_hash = bcrypt.hash(&password).unwrap();
+		backend
+			.users
+			.write()
+			.expect("basic auth users lock should not be poisoned")
+			.insert("alice".to_string(), current_hash.clone());
+
+		// Act
+		let accepted = backend.hash_is_current_or_current_matches("alice", &password, &stale_hash);
+
+		// Assert
+		assert!(accepted);
+		let users = backend
+			.users
+			.read()
+			.expect("basic auth users lock should not be poisoned");
+		assert_eq!(users.get("alice"), Some(&current_hash));
+	}
+
+	#[cfg(feature = "bcrypt-hasher")]
+	#[test]
+	fn test_valid_race_rejects_changed_current_password() {
+		use crate::{BcryptHasher, PasswordHashPolicy};
+
+		// Arrange
+		let bcrypt = BcryptHasher::with_cost(4);
+		let backend = BasicAuthentication::with_policy(PasswordHashPolicy::new(bcrypt.clone()));
+		let password = sample_password();
+		let current_hash = bcrypt.hash("changed").unwrap();
+		let stale_hash = bcrypt.hash(&password).unwrap();
+		backend
+			.users
+			.write()
+			.expect("basic auth users lock should not be poisoned")
+			.insert("alice".to_string(), current_hash.clone());
+
+		// Act
+		let accepted = backend.hash_is_current_or_current_matches("alice", &password, &stale_hash);
 
 		// Assert
 		assert!(!accepted);
