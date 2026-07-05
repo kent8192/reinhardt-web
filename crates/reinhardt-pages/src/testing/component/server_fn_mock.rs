@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use crate::server_fn::{MockableServerFn, ServerFnError};
 
-type ErasedHandler = Box<dyn Fn(Box<dyn Any>) -> Result<Box<dyn Any>, ServerFnError>>;
+type ErasedHandler = Rc<dyn Fn(Box<dyn Any>) -> Result<Box<dyn Any>, ServerFnError>>;
 
 #[derive(Default)]
 pub(crate) struct ServerFnMockRegistry {
@@ -51,6 +51,11 @@ pub(crate) fn activate(mocks: SharedServerFnMocks) -> ServerFnMockScope {
 	ServerFnMockScope { previous }
 }
 
+pub(crate) fn with_active<R>(mocks: SharedServerFnMocks, f: impl FnOnce() -> R) -> R {
+	let _scope = activate(mocks);
+	f()
+}
+
 /// Calls the active native test mock for `S`, recording the typed arguments.
 pub fn try_call_active_mock<S>(args: S::Args) -> Option<Result<S::Response, ServerFnError>>
 where
@@ -60,14 +65,16 @@ where
 {
 	ACTIVE_MOCKS.with(|slot| {
 		let mocks = slot.borrow().clone()?;
-		let mut registry = mocks.inner.borrow_mut();
 		let type_id = TypeId::of::<S>();
-		registry
-			.calls
-			.entry(type_id)
-			.or_default()
-			.push(Box::new(args.clone()));
-		let handler = registry.handlers.get(&type_id)?;
+		let handler = {
+			let mut registry = mocks.inner.borrow_mut();
+			registry
+				.calls
+				.entry(type_id)
+				.or_default()
+				.push(Box::new(args.clone()));
+			registry.handlers.get(&type_id).cloned()
+		}?;
 		let response = handler(Box::new(args));
 		Some(response.and_then(|value| {
 			value
@@ -89,7 +96,7 @@ impl SharedServerFnMocks {
 	{
 		self.inner.borrow_mut().handlers.insert(
 			TypeId::of::<S>(),
-			Box::new(move |args| {
+			Rc::new(move |args| {
 				let args = args
 					.downcast::<S::Args>()
 					.map_err(|_| ServerFnError::application("mock args type mismatch"))?;
