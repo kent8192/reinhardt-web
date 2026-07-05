@@ -259,7 +259,7 @@ where
 		})(text)
 	} else {
 		let handler: Arc<dyn Fn(Signal<u64>)> = Arc::new(handler);
-		page!(|text: String, _signal: Signal<u64>, _handler: Arc<dyn Fn(Signal<u64>) >| {
+		page!(|text: String, _signal: Signal<u64>, _handler: Arc<dyn Fn(Signal<u64>)>| {
 			a {
 				class: "admin-page-link",
 				href: "#",
@@ -303,6 +303,7 @@ pub fn search_bar(value: Signal<String>, placeholder: &str) -> Page {
 			input {
 				class: "admin-input rounded-l-none border-l-0",
 				type: "text",
+				aria_label: "Search",
 				placeholder: placeholder,
 				value: current_value,
 			}

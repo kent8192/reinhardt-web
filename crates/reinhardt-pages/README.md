@@ -181,6 +181,25 @@ let runtime = use_form(&login_form).build();
 runtime.set_value(login_form.username_field(), "ada".to_string());
 ```
 
+Use `use_form_action` when a validated form should dispatch a typed async
+mutation:
+
+```rust,ignore
+use reinhardt_pages::{form, use_form, use_form_action};
+
+let runtime = use_form(&login_form).build();
+let save = use_form_action(&runtime, |values: LoginFormValues| async move {
+    submit_login(values).await
+})
+.on_success(|runtime, _result| {
+    runtime.reset_default_values();
+});
+
+if !save.is_pending() {
+    save.submit();
+}
+```
+
 `FileField` and `ImageField` also participate in the generated runtime
 contract as `Option<web_sys::File>` values. File values are browser-owned and
 are tracked for dirty/touched state without treating the file payload as a

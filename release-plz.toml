@@ -33,6 +33,10 @@ git_release_type = "auto"
 semver_check = true
 publish_timeout = "10m"
 dependencies_update = true
+# The examples workspace has a tracked Cargo.lock. Release PR version and
+# dependency updates can refresh that lockfile before release-plz creates the
+# branch, so include the generated lockfile diff instead of aborting.
+allow_dirty = true
 
 # Two-stage release workflow (native release-plz control):
 # - Stage 1: Push to main -> `release-plz release-pr` creates Release PR (branch: release-plz-*)

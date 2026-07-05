@@ -131,6 +131,16 @@ pub mod model_info {
 		}
 	}
 
+	impl<T> Default for RelationInfo<T>
+	where
+		T: InfoModel,
+		T::PrimaryKey: Default,
+	{
+		fn default() -> Self {
+			Self::new(T::PrimaryKey::default())
+		}
+	}
+
 	impl<T> std::fmt::Debug for RelationInfo<T>
 	where
 		T: InfoModel,

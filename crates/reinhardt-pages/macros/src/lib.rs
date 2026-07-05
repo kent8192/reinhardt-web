@@ -361,7 +361,7 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 /// |------|--------|---------|
 /// | String literal | `attr: "value"` | `class: "container"` |
 /// | Expression | `attr: expr` | `class: css_class` |
-/// | Integer literal | `attr: number` | `tabindex: 1` |
+/// | Integer literal | `attr: number` | `tabindex: 0` |
 /// | Boolean expression | `attr: expr` | `disabled: is_disabled` |
 ///
 /// ### Boolean Attributes
@@ -673,7 +673,17 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 /// | Element | Requirement |
 /// |---------|-------------|
 /// | `img` | Must have `src` (string literal) and `alt` attributes |
-/// | `button` | Must have text content or `aria-label`/`aria-labelledby` |
+/// | `input`, `select`, `textarea` | Must have a non-empty `aria-label`, `aria-labelledby`, wrapping `label`, or matching `label for="id"` |
+/// | `button`, `a` | Must have text content, `aria-label`, `aria-labelledby`, or an `img` child with non-empty `alt` |
+/// | `iframe` | Must have a non-empty `title` |
+///
+/// Static `role` values must use a concrete WAI-ARIA 1.3 role. Static
+/// `tabindex` values are limited to `0` and `-1` so generated markup does not
+/// create positive keyboard tab order.
+///
+/// Add `a11y: off` to a specific element to opt out of accessibility checks for
+/// that element when the markup intentionally relies on runtime behavior or
+/// external labeling.
 ///
 /// ### Security Validation
 ///

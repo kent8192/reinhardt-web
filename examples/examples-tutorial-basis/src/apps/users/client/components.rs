@@ -45,7 +45,11 @@ pub fn login_form() -> Page {
 	let polls_index_href = polls_routes::reverse("index", &[]);
 	let signup_href = users_routes::reverse("signup", &[]);
 
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, signup_href: String| {
+	page!(|loading_signal: Signal<bool>,
+	 error_signal: Signal<Option<String>>,
+	 form_view: Page,
+	 polls_index_href: String,
+	 signup_href: String| {
 		div {
 			class: "max-w-md mx-auto px-4 mt-12",
 			div {
@@ -207,7 +211,11 @@ pub fn signup_form() -> Page {
 	let polls_index_href = polls_routes::reverse("index", &[]);
 	let login_href = users_routes::reverse("login", &[]);
 
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, polls_index_href: String, login_href: String| {
+	page!(|loading_signal: Signal<bool>,
+	 error_signal: Signal<Option<String>>,
+	 form_view: Page,
+	 polls_index_href: String,
+	 login_href: String| {
 		div {
 			class: "max-w-md mx-auto px-4 mt-12",
 			div {

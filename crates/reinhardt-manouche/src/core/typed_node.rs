@@ -133,6 +133,8 @@ pub struct TypedPageElement {
 	pub events: Vec<PageEvent>,
 	/// Validated child nodes
 	pub children: Vec<TypedPageNode>,
+	/// Whether compile-time accessibility validation is disabled for this element.
+	pub a11y_disabled: bool,
 	/// Span for error reporting
 	pub span: Span,
 }
@@ -145,6 +147,7 @@ impl TypedPageElement {
 			attrs: Vec::new(),
 			events: Vec::new(),
 			children: Vec::new(),
+			a11y_disabled: false,
 			span,
 		}
 	}
