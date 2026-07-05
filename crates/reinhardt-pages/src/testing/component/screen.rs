@@ -188,12 +188,22 @@ impl Screen {
 		#[cfg(feature = "msw")]
 		let _mock_scope = server_fn_mock::activate(mocks);
 
-		let result = scheduler.settle(|| self.pretty()).await;
-		scheduler.with_current(|| {
-			self.inner.borrow_mut().dom.rerender_reactive_anchors();
-		});
-		result?;
-		Ok(())
+		for _ in 0..100 {
+			let result = scheduler.settle(|| self.pretty()).await;
+			scheduler.with_current(|| {
+				self.inner.borrow_mut().dom.rerender_reactive_anchors();
+			});
+			match result {
+				Ok(()) if scheduler.pending_task_count() == 0 => return Ok(()),
+				Ok(()) => {}
+				Err(err) => return Err(err),
+			}
+		}
+		Err(SettleError::DidNotQuiesce {
+			iterations: 100,
+			pending_tasks: scheduler.pending_task_count(),
+			dom: self.pretty(),
+		})
 	}
 
 	/// Finds an element by text after settling scheduled work.
