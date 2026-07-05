@@ -162,10 +162,10 @@ Backend-specific rendering rules:
 
 | Backend | Stored | Virtual | `SchemaExpr::concat` |
 |---|---|---|---|
-| PostgreSQL | `STORED` | Validation error initially | `a || b || c` |
-| CockroachDB | `STORED` through PostgreSQL renderer | Validation error initially | `a || b || c` |
+| PostgreSQL | `STORED` | Validation error initially | `a \|\| b \|\| c` |
+| CockroachDB | `STORED` through PostgreSQL renderer | Validation error initially | `a \|\| b \|\| c` |
 | MySQL | `STORED` | `VIRTUAL` | `CONCAT(a, b, c)` |
-| SQLite | `STORED` | `VIRTUAL` | `a || b || c` |
+| SQLite | `STORED` | `VIRTUAL` | `a \|\| b \|\| c` |
 
 SQLite requires extra validation for `ALTER TABLE ADD COLUMN`: adding stored
 generated columns is not portable across SQLite versions and should be rejected

@@ -3239,6 +3239,20 @@ impl GeneratedColumnDefinition {
 		}
 	}
 
+	pub(crate) fn typed_expr(&self) -> Option<SchemaExpr> {
+		self.expr.as_deref().cloned().or_else(|| {
+			self.expr_tokens
+				.as_deref()
+				.and_then(super::ast_parser::parse_schema_expr_tokens)
+		})
+	}
+
+	fn rehydrate_expr_from_tokens(&mut self) {
+		if self.expr.is_none() {
+			self.expr = self.typed_expr().map(Box::new);
+		}
+	}
+
 	/// Create an explicit raw-SQL generated-column definition.
 	pub fn raw_sql(sql: impl Into<String>, storage: GeneratedStorage) -> Self {
 		Self {
@@ -3251,8 +3265,8 @@ impl GeneratedColumnDefinition {
 
 	/// Convert to the query-layer generated-column metadata.
 	pub fn to_query_generated(&self) -> Option<GeneratedColumn> {
-		if let Some(expr) = &self.expr {
-			Some(GeneratedColumn::typed(expr.as_ref().clone(), self.storage))
+		if let Some(expr) = self.typed_expr() {
+			Some(GeneratedColumn::typed(expr, self.storage))
 		} else {
 			self.raw_sql
 				.as_ref()
@@ -3266,7 +3280,7 @@ impl Serialize for GeneratedColumnDefinition {
 	where
 		S: serde::Serializer,
 	{
-		let mut state = serializer.serialize_struct("GeneratedColumnDefinition", 4)?;
+		let mut state = serializer.serialize_struct("GeneratedColumnDefinition", 3)?;
 		state.serialize_field("expr_tokens", &self.expr_tokens)?;
 		state.serialize_field("raw_sql", &self.raw_sql)?;
 		let storage = match self.storage {
@@ -3300,12 +3314,14 @@ impl<'de> Deserialize<'de> for GeneratedColumnDefinition {
 			_ => GeneratedStorage::Stored,
 		};
 
-		Ok(Self {
+		let mut definition = Self {
 			expr: None,
 			expr_tokens: helper.expr_tokens,
 			raw_sql: helper.raw_sql,
 			storage,
-		})
+		};
+		definition.rehydrate_expr_from_tokens();
+		Ok(definition)
 	}
 }
 
@@ -7674,6 +7690,42 @@ mod tests {
 			sql,
 			"amount_text VARCHAR(64) GENERATED ALWAYS AS (CAST(amount AS NUMERIC(10, 2))) STORED"
 		);
+	}
+
+	#[test]
+	fn generated_column_serde_rehydrates_typed_expr() {
+		let source = r#"{
+			"expr_tokens": "SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			"raw_sql": null,
+			"storage": "stored"
+		}"#;
+
+		let generated: GeneratedColumnDefinition =
+			serde_json::from_str(source).expect("generated column metadata should deserialize");
+
+		assert_eq!(
+			generated.expr.as_deref(),
+			Some(&SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]))
+		);
+		assert!(generated.to_query_generated().is_some());
+	}
+
+	#[test]
+	fn generated_column_tokens_canonicalize_schema_expr_aliases() {
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("full_name"),
+			"S::col(\"full_name\")",
+			GeneratedStorage::Stored,
+		);
+
+		let tokens = quote::quote! { #generated }.to_string();
+
+		assert!(tokens.contains("SchemaExpr :: col"));
+		assert!(!tokens.contains("S :: col"));
 	}
 
 	#[test]
