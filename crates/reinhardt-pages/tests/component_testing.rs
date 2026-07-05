@@ -33,6 +33,15 @@ fn ready_component() -> Page {
 	Page::reactive(move || string_resource_page(resource.get()))
 }
 
+fn mixed_resource_component() -> Page {
+	let pending = use_resource(|| std::future::pending::<Result<String, String>>(), ());
+	let ready = use_resource(|| async { Ok::<String, String>("Ready".to_string()) }, ());
+	Page::reactive(move || {
+		let _ = pending.get();
+		string_resource_page(ready.get())
+	})
+}
+
 fn save_component() -> Page {
 	let action = use_action(|_: ()| async { Ok::<String, String>("Saved".to_string()) });
 	let button_action = action.clone();
@@ -103,6 +112,15 @@ async fn click_action_uses_own_screen_scheduler() {
 #[tokio::test]
 async fn find_by_text_waits_for_resource() {
 	let screen = render(ready_component);
+
+	let element = screen.find_by_text("Ready").await;
+
+	assert_eq!(element.text(), "Ready");
+}
+
+#[tokio::test]
+async fn find_by_text_rerenders_completed_work_with_pending_tasks() {
+	let screen = render(mixed_resource_component);
 
 	let element = screen.find_by_text("Ready").await;
 
