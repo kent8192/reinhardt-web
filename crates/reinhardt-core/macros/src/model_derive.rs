@@ -4812,6 +4812,10 @@ fn relation_info_serde_meta_is_safe(meta: &syn::Meta) -> bool {
 	)
 }
 
+fn relation_info_serde_meta_name(meta: &syn::Meta) -> Option<String> {
+	meta.path().get_ident().map(ToString::to_string)
+}
+
 fn relation_info_serde_attr(
 	attr: &syn::Attribute,
 	injected_relation_serde_skip: bool,
@@ -4827,14 +4831,31 @@ fn relation_info_serde_attr(
 	let nested = meta_list
 		.parse_args_with(Punctuated::<syn::Meta, Token![,]>::parse_terminated)
 		.ok()?;
-	let kept = nested
-		.into_iter()
-		.filter(|meta| {
-			!(injected_relation_serde_skip
-				&& matches!(meta, syn::Meta::Path(path) if path.is_ident("skip")))
-		})
-		.filter(relation_info_serde_meta_is_safe)
-		.collect::<Vec<_>>();
+	let mut keeps_skip_serializing = false;
+	let mut needs_info_default = false;
+	let mut kept = Vec::new();
+	for meta in nested {
+		if injected_relation_serde_skip
+			&& matches!(&meta, syn::Meta::Path(path) if path.is_ident("skip"))
+		{
+			continue;
+		}
+
+		let name = relation_info_serde_meta_name(&meta);
+		if matches!(name.as_deref(), Some("skip_deserializing" | "default")) {
+			needs_info_default = true;
+			continue;
+		}
+
+		if relation_info_serde_meta_is_safe(&meta) {
+			keeps_skip_serializing |= matches!(name.as_deref(), Some("skip_serializing"));
+			kept.push(meta);
+		}
+	}
+
+	if keeps_skip_serializing && needs_info_default {
+		kept.push(parse_quote!(default));
+	}
 
 	if kept.is_empty() {
 		return None;

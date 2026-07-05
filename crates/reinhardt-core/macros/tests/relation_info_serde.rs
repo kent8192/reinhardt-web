@@ -87,4 +87,9 @@ fn relation_info_preserves_explicit_serde_round_trip() {
 		serde_json::from_str(r#"{"id":1,"title":"private","tenant":{"id":999}}"#).unwrap();
 	let model: Document = decoded.into();
 	assert_eq!(model.tenant_id, 999);
+
+	let decoded_without_relation: DocumentInfo =
+		serde_json::from_str(r#"{"id":1,"title":"private"}"#).unwrap();
+	let model_without_relation: Document = decoded_without_relation.into();
+	assert_eq!(model_without_relation.tenant_id, 0);
 }

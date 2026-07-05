@@ -63,6 +63,16 @@ pub mod model_info {
 		}
 	}
 
+	impl<T> Default for RelationInfo<T>
+	where
+		T: InfoModel,
+		T::PrimaryKey: Default,
+	{
+		fn default() -> Self {
+			Self::new(T::PrimaryKey::default())
+		}
+	}
+
 	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 	#[serde(bound(
 		serialize = "Target::PrimaryKey: serde::Serialize",

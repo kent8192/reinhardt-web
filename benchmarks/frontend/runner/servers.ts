@@ -82,14 +82,16 @@ export async function stopServer(server: ManagedServer): Promise<void> {
       : new Promise<void>((resolve) => {
           child.once("close", () => resolve());
         });
-    terminateProcessTree(child, "SIGTERM");
-    const closedGracefully = await Promise.race([
-      closed.then(() => true),
-      delay(2_000).then(() => false)
-    ]);
-    if (!closedGracefully) {
-      terminateProcessTree(child, "SIGKILL");
-      await Promise.race([closed, delay(500)]);
+    if (!alreadyClosed) {
+      terminateProcessTree(child, "SIGTERM");
+      const closedGracefully = await Promise.race([
+        closed.then(() => true),
+        delay(2_000).then(() => false)
+      ]);
+      if (!closedGracefully) {
+        terminateProcessTree(child, "SIGKILL");
+        await Promise.race([closed, delay(500)]);
+      }
     }
     child.stdout?.destroy();
     child.stderr?.destroy();
