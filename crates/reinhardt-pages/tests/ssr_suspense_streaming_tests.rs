@@ -77,6 +77,40 @@ async fn buffered_suspense_emits_resolved_content_directly() {
 }
 
 #[tokio::test]
+async fn buffered_suspense_rechecks_custom_pending_after_resource_resolution() {
+	let view = Page::reactive(|| {
+		let resource = use_resource(|| async { Ok::<_, String>("resolved".to_string()) }, ());
+		let tracked_key = resource.ssr_key().unwrap().to_string();
+		let content_resource = resource.clone();
+
+		Page::Suspense(SuspenseNode::new_with_tracked_resources(
+			Some("custom-pending".to_string()),
+			vec![tracked_key],
+			|| true,
+			|| {
+				PageElement::new("span")
+					.child("custom-fallback")
+					.into_page()
+			},
+			move || match content_resource.get() {
+				ResourceState::Success(value) => {
+					PageElement::new("strong").child(value).into_page()
+				}
+				ResourceState::Loading => PageElement::new("em").child("loading").into_page(),
+				ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+			},
+		))
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	assert!(html.contains("custom-fallback"));
+	assert!(html.contains(r#"data-rh-suspense="pending""#));
+	assert!(!html.contains("<strong"));
+}
+
+#[tokio::test]
 async fn suspense_stream_emits_shell_replacement_and_closing_chunks() {
 	let mut renderer = SsrRenderer::new();
 	let mut stream = renderer
@@ -91,6 +125,42 @@ async fn suspense_stream_emits_shell_replacement_and_closing_chunks() {
 	assert!(replacement.contains(r#"data-rh-suspense-chunk="rh-suspense-0""#));
 	assert!(replacement.contains("resolved"));
 	assert!(closing.contains(r#"<script id="ssr-state" type="application/json">"#));
+	assert!(stream.next().await.is_none());
+}
+
+#[tokio::test]
+async fn streaming_shell_drains_external_resources_discovered_during_replay() {
+	let view = Page::reactive(|| {
+		let first = use_resource(|| async { Ok::<_, String>("first-ready".to_string()) }, ());
+		let first_state = first.clone();
+
+		match first_state.get() {
+			ResourceState::Success(_) => Page::reactive(|| {
+				let second =
+					use_resource(|| async { Ok::<_, String>("second-ready".to_string()) }, ());
+				match second.get() {
+					ResourceState::Success(value) => {
+						PageElement::new("strong").child(value).into_page()
+					}
+					ResourceState::Loading => {
+						PageElement::new("em").child("second-loading").into_page()
+					}
+					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				}
+			}),
+			ResourceState::Loading => PageElement::new("em").child("first-loading").into_page(),
+			ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+		}
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let mut stream = renderer.render_page_with_view_head(view).await;
+	let shell = stream.next().await.unwrap().into_string();
+	let closing = stream.next().await.unwrap().into_string();
+
+	assert!(shell.contains("second-ready"));
+	assert!(!shell.contains("second-loading"));
+	assert!(closing.contains("rh-res-1"));
 	assert!(stream.next().await.is_none());
 }
 
@@ -243,6 +313,79 @@ async fn streaming_shared_resource_replaces_every_tracking_boundary() {
 	assert!(combined_replacements.contains(r#"data-rh-suspense-chunk="second""#));
 	assert!(combined_replacements.contains("first-shared"));
 	assert!(combined_replacements.contains("second-shared"));
+}
+
+#[tokio::test]
+async fn streaming_shared_group_preserves_resolved_boundary_when_peer_times_out() {
+	let view = Page::reactive(|| {
+		let shared = use_resource(|| async { Ok::<_, String>("shared".to_string()) }, ());
+		let slow = use_resource(
+			|| async {
+				tokio::time::sleep(Duration::from_secs(60)).await;
+				Ok::<_, String>("slow".to_string())
+			},
+			(),
+		);
+		let shared_key = shared.ssr_key().unwrap().to_string();
+		let slow_key = slow.ssr_key().unwrap().to_string();
+		let first_pending = shared.clone();
+		let first_content = shared.clone();
+		let second_shared_pending = shared.clone();
+		let second_slow_pending = slow.clone();
+		let second_content = shared.clone();
+
+		Page::fragment([
+			Page::Suspense(SuspenseNode::new_with_tracked_resources(
+				Some("first".to_string()),
+				vec![shared_key.clone()],
+				move || first_pending.is_loading(),
+				|| PageElement::new("span").child("first-fallback").into_page(),
+				move || match first_content.get() {
+					ResourceState::Success(value) => PageElement::new("strong")
+						.child(format!("first-{value}"))
+						.into_page(),
+					ResourceState::Loading => {
+						PageElement::new("em").child("first-loading").into_page()
+					}
+					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				},
+			)),
+			Page::Suspense(SuspenseNode::new_with_tracked_resources(
+				Some("second".to_string()),
+				vec![shared_key, slow_key],
+				move || second_shared_pending.is_loading() || second_slow_pending.is_loading(),
+				|| {
+					PageElement::new("span")
+						.child("second-fallback")
+						.into_page()
+				},
+				move || match second_content.get() {
+					ResourceState::Success(value) => PageElement::new("strong")
+						.child(format!("second-{value}"))
+						.into_page(),
+					ResourceState::Loading => {
+						PageElement::new("em").child("second-loading").into_page()
+					}
+					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				},
+			)),
+		])
+	});
+
+	let mut renderer =
+		SsrRenderer::with_options(SsrOptions::new().resource_timeout(Duration::from_millis(1)));
+	let mut stream = renderer.render_page_with_view_head(view).await;
+	let shell = stream.next().await.unwrap().into_string();
+	let first_replacement = stream.next().await.unwrap().into_string();
+	let closing = stream.next().await.unwrap().into_string();
+
+	assert!(shell.contains("first-fallback"));
+	assert!(shell.contains("second-fallback"));
+	assert!(first_replacement.contains(r#"data-rh-suspense-chunk="first""#));
+	assert!(first_replacement.contains("first-shared"));
+	assert!(!first_replacement.contains(r#"data-rh-suspense-chunk="second""#));
+	assert!(closing.contains("ssr-state"));
+	assert!(stream.next().await.is_none());
 }
 
 #[tokio::test]

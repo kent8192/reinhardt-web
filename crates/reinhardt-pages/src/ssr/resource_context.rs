@@ -190,6 +190,13 @@ impl SsrResourceContext {
 		!self.pending.is_empty()
 	}
 
+	/// Returns whether any pending resource is not assigned to a Suspense boundary.
+	pub(crate) fn has_pending_external(&self) -> bool {
+		self.pending
+			.iter()
+			.any(|pending| pending.boundary_ids.is_empty())
+	}
+
 	/// Returns pending resource IDs currently assigned to a Suspense boundary.
 	pub(crate) fn pending_ids_for_boundary(&self, boundary_id: &str) -> Vec<String> {
 		self.pending

@@ -30,6 +30,18 @@ pub(crate) fn reset_client_resource_counter() {
 	CLIENT_RESOURCE_COUNTER.with(|counter| counter.set(0));
 }
 
+/// Returns the current client call-order resource ID offset.
+#[cfg(wasm)]
+pub(crate) fn current_client_resource_counter() -> usize {
+	CLIENT_RESOURCE_COUNTER.with(Cell::get)
+}
+
+/// Restores the client call-order resource ID offset.
+#[cfg(wasm)]
+pub(crate) fn set_client_resource_counter(value: usize) {
+	CLIENT_RESOURCE_COUNTER.with(|counter| counter.set(value));
+}
+
 #[cfg(wasm)]
 fn next_client_resource_key() -> String {
 	CLIENT_RESOURCE_COUNTER.with(|counter| {

@@ -228,23 +228,14 @@ fn suspense_boundary_futures(
 			let context = Rc::clone(context);
 			async move {
 				let mut results = Vec::new();
-				let mut group_resolved = true;
 
 				for boundary in boundaries {
 					let boundary_resolved =
 						resolve_boundary_resources(&context, &boundary.boundary_id).await;
-					group_resolved &= boundary_resolved;
 					results.push((boundary, boundary_resolved));
 				}
 
-				if group_resolved {
-					results
-				} else {
-					results
-						.into_iter()
-						.map(|(boundary, _)| (boundary, false))
-						.collect()
-				}
+				results
 			}
 			.boxed_local()
 		})
@@ -494,12 +485,21 @@ impl SsrRenderer {
 			drop(discovery_view);
 
 			resolve_external_resources(&context).await;
-			context.borrow_mut().reset_call_order_keys();
-			self.reset_deterministic_render_counters();
+			let (view, content, boundaries) = loop {
+				context.borrow_mut().reset_call_order_keys();
+				self.reset_deterministic_render_counters();
 
-			let view = view_factory();
-			let mut boundaries = Vec::new();
-			let content = self.render_stream_shell_page(&view, &mut boundaries).await;
+				let view = view_factory();
+				let mut boundaries = Vec::new();
+				let content = self.render_stream_shell_page(&view, &mut boundaries).await;
+
+				if !context.borrow().has_pending_external() {
+					break (view, content, boundaries);
+				}
+
+				drop(view);
+				resolve_external_resources(&context).await;
+			};
 			let view_head = view.find_topmost_head().cloned();
 			self.add_resolved_resources_to_state(&context);
 
@@ -910,6 +910,9 @@ impl SsrRenderer {
 							}
 							if let Some(index) = boundary_start_index {
 								context.borrow_mut().set_call_order_index(index);
+							}
+							if node.is_pending() {
+								return self.render_suspense_fallback(&boundary_id, fallback);
 							}
 						} else {
 							return self.render_suspense_fallback(&boundary_id, fallback);
