@@ -471,6 +471,7 @@ impl SchemaDiff {
 			operations.push(Operation::DropColumn {
 				table: table_name.clone(),
 				column: col_name.clone(),
+				old_definition: None,
 			});
 		}
 
@@ -1021,7 +1022,7 @@ mod tests {
 		// Assert
 		assert_eq!(ops.len(), 1);
 		assert!(
-			matches!(&ops[0], Operation::DropColumn { table, column }
+			matches!(&ops[0], Operation::DropColumn { table, column, .. }
 				if table == "users" && column == "bio"),
 			"Should generate DropColumn for 'bio' on 'users'"
 		);

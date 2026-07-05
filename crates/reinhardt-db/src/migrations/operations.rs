@@ -832,6 +832,11 @@ pub enum Operation {
 		table: String,
 		/// The column.
 		column: String,
+		/// Original column definition before dropping.
+		/// This is required for generating accurate rollback SQL when the
+		/// column is replaced by a drop/add pair.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		old_definition: Option<ColumnDefinition>,
 	},
 	/// AlterColumn variant.
 	AlterColumn {
@@ -1197,7 +1202,7 @@ impl Operation {
 					model.add_field(field);
 				}
 			}
-			Operation::DropColumn { table, column } => {
+			Operation::DropColumn { table, column, .. } => {
 				if let Some(model) = state.get_model_mut(app_label, table) {
 					model.remove_field(column);
 				}
@@ -1926,7 +1931,7 @@ impl Operation {
 
 				format!("{};", base_sql)
 			}
-			Operation::DropColumn { table, column } => {
+			Operation::DropColumn { table, column, .. } => {
 				format!(
 					"ALTER TABLE {} DROP COLUMN {};",
 					quote_identifier(table),
@@ -2782,21 +2787,31 @@ impl Operation {
 				)]))
 			}
 			// Phase 2: Complex reverse operations using ProjectState
-			Operation::DropColumn { table, column } => {
-				// Retrieve original column definition from ProjectState
-				if let Some(model) = project_state.find_model_by_table(table)
-					&& let Some(field) = model.get_field(column)
-				{
-					let col_def = ColumnDefinition::from_field_state(column.clone(), field);
-					let col_sql = Self::column_to_sql(&col_def, dialect);
-					return Ok(Some(vec![format!(
-						"ALTER TABLE {} ADD COLUMN {};",
-						quote_identifier(table),
-						col_sql
-					)]));
-				}
-				// Cannot reconstruct without state
-				Ok(None)
+			Operation::DropColumn {
+				table,
+				column,
+				old_definition,
+			} => {
+				// Prefer the explicit definition carried by replacement-style
+				// migrations; fall back to ProjectState for legacy migrations.
+				let resolved_old_def = old_definition.clone().or_else(|| {
+					project_state
+						.find_model_by_table(table)
+						.and_then(|model| model.get_field(column))
+						.map(|field| ColumnDefinition::from_field_state(column.clone(), field))
+				});
+
+				let Some(old_def) = resolved_old_def else {
+					// Cannot reconstruct without state
+					return Ok(None);
+				};
+
+				let col_sql = Self::column_to_sql(&old_def, dialect);
+				Ok(Some(vec![format!(
+					"ALTER TABLE {} ADD COLUMN {};",
+					quote_identifier(table),
+					col_sql
+				)]))
 			}
 			Operation::AlterColumn {
 				table,
@@ -3007,6 +3022,7 @@ impl Operation {
 			Operation::DropColumn {
 				table: _,
 				column: _,
+				..
 			} => {
 				// Cannot reconstruct column definition without snapshot.
 				// For proper rollback, use to_reverse_sql with pre-operation ProjectState.
@@ -3605,8 +3621,21 @@ pub struct SqliteTableRecreation {
 	pub constraints: Vec<Constraint>,
 	/// Raw constraint SQL strings (for AddConstraint operations)
 	pub raw_constraint_sqls: Vec<String>,
+	/// Indexes to recreate after the table rename
+	pub indexes: Vec<SqliteRecreatedIndex>,
 	/// WITHOUT ROWID option
 	pub without_rowid: bool,
+}
+
+/// SQLite index metadata preserved across table recreation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SqliteRecreatedIndex {
+	/// Index name
+	pub name: String,
+	/// Indexed columns
+	pub columns: Vec<String>,
+	/// Whether the index is unique
+	pub unique: bool,
 }
 
 impl SqliteTableRecreation {
@@ -3636,6 +3665,7 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints: current_constraints,
 			raw_constraint_sqls: Vec::new(),
+			indexes: Vec::new(),
 			without_rowid: false,
 		}
 	}
@@ -3666,6 +3696,7 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints,
 			raw_constraint_sqls: Vec::new(),
+			indexes: Vec::new(),
 			without_rowid: false,
 		}
 	}
@@ -3697,6 +3728,7 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints: current_constraints,
 			raw_constraint_sqls: Vec::new(),
+			indexes: Vec::new(),
 			without_rowid: false,
 		}
 	}
@@ -3720,6 +3752,7 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints: current_constraints,
 			raw_constraint_sqls: vec![constraint_sql],
+			indexes: Vec::new(),
 			without_rowid: false,
 		}
 	}
@@ -3749,8 +3782,15 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints,
 			raw_constraint_sqls: Vec::new(),
+			indexes: Vec::new(),
 			without_rowid: false,
 		}
+	}
+
+	/// Adds indexes that should be recreated after the replacement table is renamed.
+	pub fn with_indexes(mut self, indexes: Vec<SqliteRecreatedIndex>) -> Self {
+		self.indexes = indexes;
+		self
 	}
 
 	/// Generate the 4-step SQL statements for table recreation
@@ -3802,7 +3842,21 @@ impl SqliteTableRecreation {
 			temp_table, self.table_name
 		);
 
-		vec![create_sql, insert_sql, drop_sql, rename_sql]
+		let mut statements = vec![create_sql, insert_sql, drop_sql, rename_sql];
+		for index in &self.indexes {
+			let unique = if index.unique { "UNIQUE " } else { "" };
+			let columns = index
+				.columns
+				.iter()
+				.map(|column| format!("\"{}\"", column))
+				.collect::<Vec<_>>()
+				.join(", ");
+			statements.push(format!(
+				"CREATE {unique}INDEX \"{}\" ON \"{}\" ({});",
+				index.name, self.table_name, columns
+			));
+		}
+		statements
 	}
 
 	/// Check if a constraint references a specific column
@@ -3930,13 +3984,23 @@ impl Operation {
 			Operation::AddColumn { table, column, .. } => Ok(Some(Operation::DropColumn {
 				table: table.clone(),
 				column: column.name.clone(),
+				old_definition: None,
 			})),
-			Operation::DropColumn { table, column } => {
-				// Reconstruct AddColumn from ProjectState
-				if let Some(model) = project_state.find_model_by_table(table)
-					&& let Some(field) = model.get_field(column)
-				{
-					let col_def = ColumnDefinition::from_field_state(column.clone(), field);
+			Operation::DropColumn {
+				table,
+				column,
+				old_definition,
+			} => {
+				// Prefer the explicit definition carried by replacement-style
+				// migrations; fall back to ProjectState for legacy migrations.
+				let resolved_old_def = old_definition.clone().or_else(|| {
+					project_state
+						.find_model_by_table(table)
+						.and_then(|model| model.get_field(column))
+						.map(|field| ColumnDefinition::from_field_state(column.clone(), field))
+				});
+
+				if let Some(col_def) = resolved_old_def {
 					return Ok(Some(Operation::AddColumn {
 						table: table.clone(),
 						column: col_def,
@@ -4163,7 +4227,7 @@ impl Operation {
 			Operation::AddColumn { table, column, .. } => {
 				OperationStatement::TableAlter(self.build_add_column(table, column))
 			}
-			Operation::DropColumn { table, column } => {
+			Operation::DropColumn { table, column, .. } => {
 				OperationStatement::TableAlter(self.build_drop_column(table, column))
 			}
 			Operation::AlterColumn {
@@ -4835,7 +4899,7 @@ impl MigrationOperation for Operation {
 				table.to_lowercase(),
 				column.name.to_lowercase()
 			)),
-			Operation::DropColumn { table, column } => Some(format!(
+			Operation::DropColumn { table, column, .. } => Some(format!(
 				"remove_{}_{}",
 				table.to_lowercase(),
 				column.to_lowercase()
@@ -4936,7 +5000,7 @@ impl MigrationOperation for Operation {
 			Operation::AddColumn { table, column, .. } => {
 				format!("Add column {} to {}", column.name, table)
 			}
-			Operation::DropColumn { table, column } => {
+			Operation::DropColumn { table, column, .. } => {
 				format!("Drop column {} from {}", column, table)
 			}
 			Operation::AlterColumn { table, column, .. } => {
@@ -5259,6 +5323,7 @@ mod tests {
 		let op = Operation::DropColumn {
 			table: "users".to_string(),
 			column: "email".to_string(),
+			old_definition: None,
 		};
 
 		let stmt = op.to_statement();
@@ -5860,6 +5925,7 @@ mod tests {
 		let op = Operation::DropColumn {
 			table: "users".to_string(),
 			column: "email".to_string(),
+			old_definition: None,
 		};
 
 		op.state_forwards("myapp", &mut state);
@@ -6393,6 +6459,49 @@ mod tests {
 				);
 			}
 			other => panic!("reverse operation should be AlterColumn, got: {:?}", other),
+		}
+	}
+
+	/// `DropColumn` operations emitted for generated-column replacements carry
+	/// the dropped definition so rollback can recreate the original generated
+	/// column without relying on an external ProjectState snapshot.
+	#[test]
+	fn test_to_reverse_operation_drop_column_uses_old_definition() {
+		// Arrange
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("name"),
+			"SchemaExpr::col(\"name\")",
+			GeneratedStorage::Stored,
+		);
+		let op = Operation::DropColumn {
+			table: "users".to_string(),
+			column: "full_name".to_string(),
+			old_definition: Some(ColumnDefinition {
+				name: "full_name".to_string(),
+				type_definition: FieldType::VarChar(201),
+				not_null: true,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+				generated: Some(generated.clone()),
+			}),
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let reverse = op
+			.to_reverse_operation(&state)
+			.expect("reverse operation should succeed")
+			.expect("reverse operation should be present (old_definition is supplied)");
+
+		// Assert
+		match reverse {
+			Operation::AddColumn { column, .. } => {
+				assert_eq!(column.name, "full_name");
+				assert_eq!(column.generated, Some(generated));
+			}
+			other => panic!("reverse operation should be AddColumn, got: {:?}", other),
 		}
 	}
 
@@ -7807,6 +7916,27 @@ mod tests {
 		assert_eq!(
 			sql[1],
 			"INSERT INTO \"users_new\" (\"id\", \"first_name\", \"last_name\") SELECT \"id\", \"first_name\", \"last_name\" FROM \"users\";"
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_recreates_indexes_after_rename() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let title = ColumnDefinition::new("title", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+
+		let recreation =
+			SqliteTableRecreation::for_add_column("users", vec![id, title], full_name, vec![])
+				.with_indexes(vec![SqliteRecreatedIndex {
+					name: "idx_users_title".to_string(),
+					columns: vec!["title".to_string()],
+					unique: false,
+				}]);
+		let sql = recreation.to_sql_statements();
+
+		assert_eq!(
+			sql.last().map(String::as_str),
+			Some("CREATE INDEX \"idx_users_title\" ON \"users\" (\"title\");")
 		);
 	}
 

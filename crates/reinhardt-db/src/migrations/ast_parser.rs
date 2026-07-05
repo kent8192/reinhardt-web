@@ -205,7 +205,13 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 			"DropColumn" => {
 				let table = extract_string_field(&expr_struct.fields, "table")?;
 				let column = extract_string_field(&expr_struct.fields, "column")?;
-				return Some(super::Operation::DropColumn { table, column });
+				let old_definition =
+					extract_optional_column_definition_field(&expr_struct.fields, "old_definition");
+				return Some(super::Operation::DropColumn {
+					table,
+					column,
+					old_definition,
+				});
 			}
 			"AlterColumn" => {
 				let table = extract_string_field(&expr_struct.fields, "table")?;
@@ -728,6 +734,38 @@ fn extract_column_definition_field(
 	None
 }
 
+/// Extract an `Option<ColumnDefinition>` field.
+fn extract_optional_column_definition_field(
+	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
+	field_name: &str,
+) -> Option<super::ColumnDefinition> {
+	for field in fields {
+		if let syn::Member::Named(ident) = &field.member
+			&& ident == field_name
+		{
+			return parse_optional_column_definition(&field.expr);
+		}
+	}
+	None
+}
+
+fn parse_optional_column_definition(expr: &Expr) -> Option<super::ColumnDefinition> {
+	if let Expr::Path(expr_path) = expr
+		&& expr_path.path.is_ident("None")
+	{
+		return None;
+	}
+
+	if let Expr::Call(expr_call) = expr
+		&& let Expr::Path(func_path) = &*expr_call.func
+		&& func_path.path.is_ident("Some")
+	{
+		return parse_column_definition(expr_call.args.first()?);
+	}
+
+	parse_column_definition(expr)
+}
+
 /// Parse `Vec<ColumnDefinition>` from expression
 fn parse_columns_vec(expr: &Expr) -> Vec<super::ColumnDefinition> {
 	let mut columns = Vec::new();
@@ -969,19 +1007,8 @@ fn parse_schema_value(expr: &Expr) -> Option<QueryValue> {
 			syn::Lit::Str(lit_str) => Some(QueryValue::String(Some(Box::new(lit_str.value())))),
 			syn::Lit::Bool(lit_bool) => Some(QueryValue::Bool(Some(lit_bool.value))),
 			syn::Lit::Char(lit_char) => Some(QueryValue::Char(Some(lit_char.value()))),
-			syn::Lit::Int(lit_int) => lit_int
-				.base10_parse::<i32>()
-				.map(|value| QueryValue::Int(Some(value)))
-				.or_else(|_| {
-					lit_int
-						.base10_parse::<i64>()
-						.map(|value| QueryValue::BigInt(Some(value)))
-				})
-				.ok(),
-			syn::Lit::Float(lit_float) => lit_float
-				.base10_parse::<f64>()
-				.map(|value| QueryValue::Double(Some(value)))
-				.ok(),
+			syn::Lit::Int(lit_int) => parse_integer_schema_value(lit_int),
+			syn::Lit::Float(lit_float) => parse_float_schema_value(lit_float),
 			_ => None,
 		},
 		Expr::Unary(expr_unary) => {
@@ -996,6 +1023,67 @@ fn parse_schema_value(expr: &Expr) -> Option<QueryValue> {
 				_ => None,
 			}
 		}
+		_ => None,
+	}
+}
+
+fn parse_integer_schema_value(lit_int: &syn::LitInt) -> Option<QueryValue> {
+	match lit_int.suffix() {
+		"i8" => lit_int
+			.base10_parse::<i8>()
+			.map(|value| QueryValue::TinyInt(Some(value)))
+			.ok(),
+		"i16" => lit_int
+			.base10_parse::<i16>()
+			.map(|value| QueryValue::SmallInt(Some(value)))
+			.ok(),
+		"i32" => lit_int
+			.base10_parse::<i32>()
+			.map(|value| QueryValue::Int(Some(value)))
+			.ok(),
+		"i64" => lit_int
+			.base10_parse::<i64>()
+			.map(|value| QueryValue::BigInt(Some(value)))
+			.ok(),
+		"u8" => lit_int
+			.base10_parse::<u8>()
+			.map(|value| QueryValue::TinyUnsigned(Some(value)))
+			.ok(),
+		"u16" => lit_int
+			.base10_parse::<u16>()
+			.map(|value| QueryValue::SmallUnsigned(Some(value)))
+			.ok(),
+		"u32" => lit_int
+			.base10_parse::<u32>()
+			.map(|value| QueryValue::Unsigned(Some(value)))
+			.ok(),
+		"u64" => lit_int
+			.base10_parse::<u64>()
+			.map(|value| QueryValue::BigUnsigned(Some(value)))
+			.ok(),
+		"" => lit_int
+			.base10_parse::<i32>()
+			.map(|value| QueryValue::Int(Some(value)))
+			.or_else(|_| {
+				lit_int
+					.base10_parse::<i64>()
+					.map(|value| QueryValue::BigInt(Some(value)))
+			})
+			.ok(),
+		_ => None,
+	}
+}
+
+fn parse_float_schema_value(lit_float: &syn::LitFloat) -> Option<QueryValue> {
+	match lit_float.suffix() {
+		"f32" => lit_float
+			.base10_parse::<f32>()
+			.map(|value| QueryValue::Float(Some(value)))
+			.ok(),
+		"f64" | "" => lit_float
+			.base10_parse::<f64>()
+			.map(|value| QueryValue::Double(Some(value)))
+			.ok(),
 		_ => None,
 	}
 }

@@ -309,6 +309,7 @@ mod tests {
 		let ops = vec![Operation::DropColumn {
 			table: "Users".to_string(),
 			column: "Email".to_string(),
+			old_definition: None,
 		}];
 		let name = MigrationNamer::generate_name(&ops, false);
 		assert_eq!(name, "remove_users_email");
