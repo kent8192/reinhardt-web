@@ -333,6 +333,9 @@ impl TestDom {
 			.collect::<Vec<_>>();
 
 		for (anchor, render) in anchors {
+			if !self.contains(anchor) {
+				continue;
+			}
 			self.clear_children(anchor);
 			self.append_page(anchor, render());
 		}

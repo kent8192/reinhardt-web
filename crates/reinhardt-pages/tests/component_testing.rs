@@ -1,5 +1,9 @@
 #![cfg(all(native, feature = "testing"))]
 
+use std::cell::Cell;
+use std::rc::Rc;
+use std::time::Duration;
+
 use reinhardt_core::types::page::{EventType, IntoPage, Page, PageElement};
 use reinhardt_pages::callback::async_handler;
 use reinhardt_pages::page;
@@ -80,6 +84,28 @@ fn async_click_component() -> Page {
 		.into_page()
 }
 
+fn delayed_async_click_component() -> Page {
+	let message = Signal::new("Idle".to_string());
+	let click_message = message.clone();
+	PageElement::new("div")
+		.child(
+			PageElement::new("button")
+				.on(
+					EventType::Click,
+					async_handler(move |_| {
+						let click_message = click_message.clone();
+						async move {
+							tokio::time::sleep(Duration::from_millis(1)).await;
+							click_message.set("Delayed".to_string());
+						}
+					}),
+				)
+				.child("Run"),
+		)
+		.child(Page::reactive(move || text_page(message.get())))
+		.into_page()
+}
+
 #[test]
 fn native_component_testing_public_surface_is_available() {
 	let screen = render(
@@ -97,6 +123,26 @@ fn native_component_testing_public_surface_is_available() {
 		screen.get_by_role(Role::Button, "Refresh").text(),
 		"Refresh"
 	);
+}
+
+#[test]
+fn label_query_does_not_match_placeholder_only_inputs() {
+	let screen = render(PageElement::new("input").attr("placeholder", "Email"));
+
+	assert!(screen.try_get_by_label("Email").is_err());
+	assert_eq!(screen.get_by_placeholder("Email").tag_name(), "input");
+}
+
+#[test]
+fn presentation_role_suppresses_implicit_role_queries() {
+	let screen = render(
+		PageElement::new("button")
+			.attr("role", "presentation")
+			.child("Save"),
+	);
+
+	assert!(screen.try_get_by_role(Role::Button, "Save").is_err());
+	assert!(screen.query_by_text("Save").is_some());
 }
 
 #[tokio::test]
@@ -139,6 +185,49 @@ async fn async_click_handler_settles_to_updated_ui() {
 	screen.settle().await;
 
 	assert!(screen.query_by_text("Clicked").is_some());
+}
+
+#[tokio::test]
+async fn settle_waits_for_timer_backed_tasks() {
+	let screen = render(delayed_async_click_component);
+
+	screen.get_by_role(Role::Button, "Run").click();
+	screen.settle().await;
+
+	assert!(screen.query_by_text("Delayed").is_some());
+}
+
+#[tokio::test]
+async fn parent_rerender_skips_removed_child_anchors() {
+	let show_child = Signal::new(true);
+	let child_renders = Rc::new(Cell::new(0));
+	let screen = {
+		let show_child = show_child.clone();
+		let child_renders = Rc::clone(&child_renders);
+		render(move || {
+			let show_child = show_child.clone();
+			let child_renders = Rc::clone(&child_renders);
+			Page::reactive(move || {
+				if show_child.get() {
+					let child_renders = Rc::clone(&child_renders);
+					Page::reactive(move || {
+						child_renders.set(child_renders.get() + 1);
+						text_page("Child")
+					})
+				} else {
+					text_page("Gone")
+				}
+			})
+		})
+	};
+
+	assert_eq!(child_renders.get(), 1);
+	show_child.set(false);
+	screen.settle().await;
+
+	assert_eq!(child_renders.get(), 1);
+	assert!(screen.query_by_text("Gone").is_some());
+	assert!(screen.query_by_text("Child").is_none());
 }
 
 #[tokio::test]
