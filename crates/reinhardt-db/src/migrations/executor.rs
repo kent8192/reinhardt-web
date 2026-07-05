@@ -829,7 +829,11 @@ impl DatabaseMigrationExecutor {
 	async fn read_sqlite_table_via_editor(
 		editor: &mut SchemaEditor,
 		table_name: &str,
-	) -> Result<(Vec<super::ColumnDefinition>, Vec<super::Constraint>)> {
+	) -> Result<(
+		Vec<super::ColumnDefinition>,
+		Vec<super::Constraint>,
+		Vec<super::operations::SqliteRecreatedIndex>,
+	)> {
 		// 1. PRAGMA table_xinfo(<table>) → columns. Identifier interpolation
 		//    via the shared `sqlite_pragma` helper. See issue #4454.
 		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
@@ -1016,10 +1020,11 @@ impl DatabaseMigrationExecutor {
 			super::sqlite_pragma::quote_pragma_identifier(table_name)
 		);
 		let idx_rows = editor.fetch_all(&idx_list_sql, vec![]).await?;
+		let mut indexes = Vec::new();
 		for row in &idx_rows {
 			let origin: String = row.get("origin").unwrap_or_default();
 			let unique: i64 = row.get("unique").unwrap_or(0);
-			if origin != "u" || unique != 1 {
+			if origin != "u" && origin != "c" {
 				continue;
 			}
 			let idx_name: String = row.get("name").unwrap_or_default();
@@ -1033,10 +1038,18 @@ impl DatabaseMigrationExecutor {
 				.iter()
 				.filter_map(|r| r.get::<String>("name").ok())
 				.collect();
-			constraints.push(super::Constraint::Unique {
-				name: idx_name,
-				columns: cols,
-			});
+			if origin == "u" && unique == 1 {
+				constraints.push(super::Constraint::Unique {
+					name: idx_name,
+					columns: cols,
+				});
+			} else if origin == "c" && !cols.is_empty() {
+				indexes.push(super::operations::SqliteRecreatedIndex {
+					name: idx_name,
+					columns: cols,
+					unique: unique == 1,
+				});
+			}
 		}
 
 		// 6. CHECK constraints parsed from CREATE TABLE SQL (SQLite has no
@@ -1053,7 +1066,7 @@ impl DatabaseMigrationExecutor {
 			}
 		}
 
-		Ok((columns, constraints))
+		Ok((columns, constraints, indexes))
 	}
 
 	/// Handle SQLite table recreation for operations that require it
@@ -1093,19 +1106,21 @@ impl DatabaseMigrationExecutor {
 					table,
 					column.name
 				);
-				let (columns, constraints) =
+				let (columns, constraints, indexes) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_column(table, columns, column.clone(), constraints)
+					.with_indexes(indexes)
 			}
-			Operation::DropColumn { table, column } => {
+			Operation::DropColumn { table, column, .. } => {
 				tracing::debug!(
 					"Handling SQLite table recreation for DropColumn: table={}, column={}",
 					table,
 					column
 				);
-				let (columns, constraints) =
+				let (columns, constraints, indexes) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_column(table, columns, column, constraints)
+					.with_indexes(indexes)
 			}
 			Operation::AlterColumn {
 				table,
@@ -1118,7 +1133,7 @@ impl DatabaseMigrationExecutor {
 					table,
 					column
 				);
-				let (columns, constraints) =
+				let (columns, constraints, indexes) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_alter_column(
 					table,
@@ -1127,6 +1142,7 @@ impl DatabaseMigrationExecutor {
 					new_definition.clone(),
 					constraints,
 				)
+				.with_indexes(indexes)
 			}
 			Operation::AddConstraint {
 				table,
@@ -1136,7 +1152,7 @@ impl DatabaseMigrationExecutor {
 					"Handling SQLite table recreation for AddConstraint: table={}",
 					table
 				);
-				let (columns, constraints) =
+				let (columns, constraints, indexes) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_constraint(
 					table,
@@ -1144,6 +1160,7 @@ impl DatabaseMigrationExecutor {
 					constraints,
 					constraint_sql.clone(),
 				)
+				.with_indexes(indexes)
 			}
 			Operation::DropConstraint {
 				table,
@@ -1154,7 +1171,7 @@ impl DatabaseMigrationExecutor {
 					table,
 					constraint_name
 				);
-				let (columns, constraints) =
+				let (columns, constraints, indexes) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_constraint(
 					table,
@@ -1162,6 +1179,7 @@ impl DatabaseMigrationExecutor {
 					constraints,
 					constraint_name,
 				)
+				.with_indexes(indexes)
 			}
 			_ => {
 				// This branch should not be reached if requires_sqlite_recreation() is correct
@@ -1547,6 +1565,7 @@ impl OperationOptimizer {
 						Operation::DropColumn {
 							table: t2,
 							column: col2,
+							..
 						},
 					) if t1 == t2 && col1.name == *col2 => true,
 					// CreateIndex + DropIndex

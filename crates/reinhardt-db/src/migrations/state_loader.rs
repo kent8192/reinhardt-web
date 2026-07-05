@@ -697,6 +697,7 @@ mod tests {
 			let drop_ops = vec![Operation::DropColumn {
 				table: "users".to_string(),
 				column: "email".to_string(),
+				old_definition: None,
 			}];
 			state.apply_migration_operations(&drop_ops, "testapp");
 
@@ -1163,6 +1164,7 @@ mod build_state_from_files_tests {
 					vec![Operation::DropColumn {
 						table: "auth_users".to_string(),
 						column: "legacy_field".to_string(),
+						old_definition: None,
 					}],
 					vec![("auth", "0001_initial")],
 				),

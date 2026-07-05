@@ -230,6 +230,7 @@ impl AutoMigrationGenerator {
 				Operation::AddColumn { table, column, .. } => Some(Operation::DropColumn {
 					table: table.clone(),
 					column: column.name.clone(),
+					old_definition: None,
 				}),
 				Operation::DropColumn { .. } => None, // Cannot rollback - data is lost
 				Operation::RenameColumn {

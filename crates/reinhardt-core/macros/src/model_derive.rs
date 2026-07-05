@@ -1215,11 +1215,8 @@ impl FieldConfig {
 			}
 		}
 
-		#[cfg(feature = "db-mysql")]
-		{
-			if self.auto_increment.is_some() {
-				auto_increment_count += 1;
-			}
+		if self.auto_increment.is_some() {
+			auto_increment_count += 1;
 		}
 
 		#[cfg(feature = "db-sqlite")]
@@ -1237,6 +1234,20 @@ impl FieldConfig {
 		}
 
 		let has_generated = self.generated.is_some() || self.generated_sql.is_some();
+		#[cfg(feature = "db-postgres")]
+		let has_postgres_auto_increment_attribute =
+			self.identity_always.is_some() || self.identity_by_default.is_some();
+		#[cfg(not(feature = "db-postgres"))]
+		let has_postgres_auto_increment_attribute = false;
+
+		#[cfg(feature = "db-sqlite")]
+		let has_sqlite_auto_increment_attribute = self.autoincrement.is_some();
+		#[cfg(not(feature = "db-sqlite"))]
+		let has_sqlite_auto_increment_attribute = false;
+
+		let has_auto_increment_attribute = self.auto_increment.is_some()
+			|| has_postgres_auto_increment_attribute
+			|| has_sqlite_auto_increment_attribute;
 
 		if self.generated.is_some() && self.generated_sql.is_some() {
 			return Err(syn::Error::new(
@@ -1250,6 +1261,13 @@ impl FieldConfig {
 			return Err(syn::Error::new(
 				proc_macro2::Span::call_site(),
 				"Generated columns cannot have default values",
+			));
+		}
+
+		if has_generated && has_auto_increment_attribute {
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"Generated columns cannot be auto-incrementing",
 			));
 		}
 
@@ -5597,6 +5615,24 @@ mod tests {
 				.to_string()
 				.contains("generated expects a reconstructable SchemaExpr expression")
 		);
+	}
+
+	#[test]
+	fn test_generated_field_validation_rejects_auto_increment() {
+		let attrs = vec![parse_quote! {
+			#[field(
+				generated = SchemaExpr::col("name"),
+				generated_stored = true,
+				auto_increment = true
+			)]
+		}];
+
+		let config = FieldConfig::from_attrs(&attrs).expect("field config should parse");
+		let error = config
+			.validate()
+			.expect_err("generated auto-increment must be rejected");
+
+		assert!(error.to_string().contains("auto-incrementing"));
 	}
 
 	#[test]

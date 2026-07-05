@@ -440,11 +440,20 @@ impl ToTokens for Operation {
 					}
 				});
 			}
-			Operation::DropColumn { table, column } => {
+			Operation::DropColumn {
+				table,
+				column,
+				old_definition,
+			} => {
+				let old_def_token = match old_definition {
+					Some(def) => quote! { Some(#def) },
+					None => quote! { None },
+				};
 				tokens.extend(quote! {
 					Operation::DropColumn {
 						table: #table.to_string(),
 						column: #column.to_string(),
+						old_definition: #old_def_token,
 					}
 				});
 			}
@@ -1302,6 +1311,27 @@ mod tests {
 				crate::migrations::ast_parser::parse_schema_expr_tokens(&tokens),
 				Some(expr),
 				"tokens must reparse: {tokens}"
+			);
+		}
+	}
+
+	#[test]
+	fn generated_schema_expr_tokens_reparse_suffixed_literals() {
+		let expressions = [
+			SchemaExpr::Value(Value::TinyInt(Some(1))),
+			SchemaExpr::Value(Value::SmallInt(Some(1))),
+			SchemaExpr::Value(Value::Unsigned(Some(1))),
+			SchemaExpr::Value(Value::BigUnsigned(Some(1))),
+			SchemaExpr::Value(Value::Float(Some(1.5))),
+			SchemaExpr::Value(Value::Double(Some(1.5))),
+		];
+
+		for expr in expressions {
+			let tokens = schema_expr_to_tokens(&expr).to_string();
+			assert_eq!(
+				crate::migrations::ast_parser::parse_schema_expr_tokens(&tokens),
+				Some(expr),
+				"tokens must preserve suffixed literal types: {tokens}"
 			);
 		}
 	}
