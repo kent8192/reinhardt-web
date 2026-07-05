@@ -198,16 +198,27 @@ impl PasswordHashPolicy {
 			}
 		}
 
-		if self.preferred.algorithm().is_none()
-			&& self.preferred.verify(password, hash).unwrap_or(false)
-		{
-			return self.verify_preferred(password, hash);
+		let mut checked_default_identifier = false;
+		if self.preferred.algorithm().is_none() {
+			match self.preferred.verify(password, hash) {
+				Ok(true) => return self.verified_preferred_result(password, hash),
+				Ok(false) => checked_default_identifier = true,
+				Err(_) => {}
+			}
 		}
 
 		for legacy in &self.legacy {
-			if legacy.algorithm().is_none() && legacy.verify(password, hash).unwrap_or(false) {
-				return Ok(self.verified_legacy_result(password));
+			if legacy.algorithm().is_none() {
+				match legacy.verify(password, hash) {
+					Ok(true) => return Ok(self.verified_legacy_result(password)),
+					Ok(false) => checked_default_identifier = true,
+					Err(_) => {}
+				}
 			}
+		}
+
+		if checked_default_identifier {
+			return Ok(PasswordVerification::Invalid);
 		}
 
 		Err(Error::Authentication(
@@ -220,13 +231,22 @@ impl PasswordHashPolicy {
 			return Ok(PasswordVerification::Invalid);
 		}
 
-		if self.preferred.must_update(hash)? {
-			return Ok(PasswordVerification::ValidNeedsRehash {
-				updated_hash: self.preferred.hash(password)?,
-			});
+		self.verified_preferred_result(password, hash)
+	}
+
+	fn verified_preferred_result(
+		&self,
+		password: &str,
+		hash: &str,
+	) -> Result<PasswordVerification, Error> {
+		if !self.preferred.must_update(hash)? {
+			return Ok(PasswordVerification::Valid);
 		}
 
-		Ok(PasswordVerification::Valid)
+		Ok(match self.preferred.hash(password) {
+			Ok(updated_hash) => PasswordVerification::ValidNeedsRehash { updated_hash },
+			Err(_) => PasswordVerification::Valid,
+		})
 	}
 
 	fn verified_legacy_result(&self, password: &str) -> PasswordVerification {

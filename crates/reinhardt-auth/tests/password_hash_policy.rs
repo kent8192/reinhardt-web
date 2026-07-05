@@ -154,6 +154,10 @@ impl PasswordHasher for ErroringHashPreferredHasher {
 		hash.strip_prefix("new")
 			.is_some_and(|remaining| remaining.starts_with('$'))
 	}
+
+	fn must_update(&self, hash: &str) -> Result<bool, Error> {
+		Ok(self.identify(hash))
+	}
 }
 
 #[cfg(feature = "bcrypt-hasher")]
@@ -262,6 +266,28 @@ fn policy_rejects_unknown_algorithm_without_rehashing() {
 	let result = policy.verify_with_update("secret", "unknown$secret");
 
 	assert!(result.is_err(), "unknown algorithms should not be accepted");
+}
+
+#[test]
+fn policy_rejects_wrong_password_for_default_identifier_preferred_hasher() {
+	let policy = PasswordHashPolicy::new(DefaultIdentifierPreferredHasher::accepting(false));
+
+	let result = policy
+		.verify_with_update("wrong", "new$secret")
+		.expect("wrong passwords should not be unknown algorithm errors");
+
+	assert_eq!(result, PasswordVerification::Invalid);
+}
+
+#[test]
+fn policy_accepts_stale_preferred_password_when_rehash_fails() {
+	let policy = PasswordHashPolicy::new(ErroringHashPreferredHasher);
+
+	let result = policy
+		.verify_with_update("secret", "new$secret")
+		.expect("valid preferred password should not fail when rehashing fails");
+
+	assert_eq!(result, PasswordVerification::Valid);
 }
 
 #[test]

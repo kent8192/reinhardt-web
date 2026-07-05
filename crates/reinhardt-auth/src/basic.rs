@@ -11,6 +11,7 @@ use crate::internal_user::InternalUser;
 use crate::rest_authentication::RestAuthentication;
 use crate::{AuthBackend, AuthenticationError};
 use base64::{Engine, engine::general_purpose::STANDARD};
+use reinhardt_core::exception::Error;
 use reinhardt_http::Request;
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -143,9 +144,8 @@ impl BasicAuthentication {
 	///
 	/// The password is hashed with the configured policy before storage.
 	///
-	/// # Panics
-	///
-	/// Panics if password hashing fails (should not happen in practice).
+	/// Hashing failures leave the user store unchanged. Use
+	/// [`Self::try_add_user`] when custom policies can reject password input.
 	///
 	/// # Examples
 	///
@@ -180,14 +180,62 @@ impl BasicAuthentication {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub fn add_user(&self, username: impl Into<String>, password: impl Into<String>) {
-		let hash = self
-			.policy
-			.hash(&password.into())
-			.expect("password hashing should not fail");
+		let _result = self.try_add_user(username, password);
+	}
+
+	/// Adds a user and returns password hashing failures to the caller.
+	///
+	/// The password is hashed with the configured policy before storage. If the
+	/// policy rejects the password, the user store is left unchanged.
+	///
+	/// # Errors
+	///
+	/// Returns an authentication error when the configured password policy cannot
+	/// hash the supplied password.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_auth::{HttpBasicAuth, AuthBackend};
+	/// use bytes::Bytes;
+	/// use hyper::{HeaderMap, Method, Uri, Version};
+	/// use reinhardt_http::Request;
+	///
+	/// # async fn example() {
+	/// let auth = HttpBasicAuth::new();
+	/// auth.try_add_user("alice", "secret123").unwrap();
+	/// auth.try_add_user("bob", "password456").unwrap();
+	///
+	/// // Create a request with valid Basic auth credentials
+	/// // "alice:secret123" in base64 is "YWxpY2U6c2VjcmV0MTIz"
+	/// let mut headers = HeaderMap::new();
+	/// headers.insert("Authorization", "Basic YWxpY2U6c2VjcmV0MTIz".parse().unwrap());
+	/// let request = Request::builder()
+	///     .method(Method::GET)
+	///     .uri("/")
+	///     .headers(headers)
+	///     .body(Bytes::new())
+	///     .build()
+	///     .unwrap();
+	///
+	/// // Authentication should succeed
+	/// let result = auth.authenticate(&request).await.unwrap();
+	/// assert!(result.is_some());
+	/// assert!(result.unwrap().is_authenticated());
+	/// # }
+	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
+	/// ```
+	pub fn try_add_user(
+		&self,
+		username: impl Into<String>,
+		password: impl Into<String>,
+	) -> Result<(), Error> {
+		let hash = self.policy.hash(&password.into())?;
 		self.users
 			.write()
 			.expect("basic auth users lock should not be poisoned")
 			.insert(username.into(), hash);
+		Ok(())
 	}
 
 	/// Parse Authorization header
@@ -508,6 +556,49 @@ mod tests {
 			stored
 		);
 		assert_ne!(stored, "plaintext_password");
+	}
+
+	#[cfg(feature = "bcrypt-hasher")]
+	#[test]
+	fn test_try_add_user_returns_policy_hashing_errors() {
+		use crate::{BcryptHasher, PasswordHashPolicy};
+
+		// Arrange
+		let backend =
+			BasicAuthentication::with_policy(PasswordHashPolicy::new(BcryptHasher::with_cost(4)));
+		let overlong_password = "x".repeat(73);
+
+		// Act
+		let result = backend.try_add_user("alice", overlong_password);
+
+		// Assert
+		assert!(result.is_err());
+		let users = backend
+			.users
+			.read()
+			.expect("basic auth users lock should not be poisoned");
+		assert!(!users.contains_key("alice"));
+	}
+
+	#[cfg(feature = "bcrypt-hasher")]
+	#[test]
+	fn test_add_user_leaves_store_unchanged_when_policy_rejects_password() {
+		use crate::{BcryptHasher, PasswordHashPolicy};
+
+		// Arrange
+		let backend =
+			BasicAuthentication::with_policy(PasswordHashPolicy::new(BcryptHasher::with_cost(4)));
+		let overlong_password = "x".repeat(73);
+
+		// Act
+		backend.add_user("alice", overlong_password);
+
+		// Assert
+		let users = backend
+			.users
+			.read()
+			.expect("basic auth users lock should not be poisoned");
+		assert!(!users.contains_key("alice"));
 	}
 
 	#[cfg(all(feature = "argon2-hasher", feature = "bcrypt-hasher"))]
