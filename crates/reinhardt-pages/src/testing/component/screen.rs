@@ -188,10 +188,11 @@ impl Screen {
 		#[cfg(feature = "msw")]
 		let _mock_scope = server_fn_mock::activate(mocks);
 
-		scheduler.settle(|| self.pretty()).await?;
+		let result = scheduler.settle(|| self.pretty()).await;
 		scheduler.with_current(|| {
 			self.inner.borrow_mut().dom.rerender_reactive_anchors();
 		});
+		result?;
 		Ok(())
 	}
 
@@ -212,7 +213,7 @@ impl Screen {
 			match self.try_get_by_text(text.clone()) {
 				Ok(handle) => return Ok(handle),
 				Err(QueryError::NotFound) => {
-					self.try_settle().await.map_err(|_| QueryError::NotFound)?;
+					let _ = self.try_settle().await;
 				}
 				Err(err) => return Err(err),
 			}
@@ -239,7 +240,7 @@ impl Screen {
 			match self.try_get_by_role(role, name.clone()) {
 				Ok(handle) => return Ok(handle),
 				Err(QueryError::NotFound) => {
-					self.try_settle().await.map_err(|_| QueryError::NotFound)?;
+					let _ = self.try_settle().await;
 				}
 				Err(err) => return Err(err),
 			}
