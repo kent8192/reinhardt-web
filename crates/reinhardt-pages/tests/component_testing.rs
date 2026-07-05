@@ -1,9 +1,10 @@
 #![cfg(all(native, feature = "testing"))]
 
-use reinhardt_core::types::page::{IntoPage, Page, PageElement};
+use reinhardt_core::types::page::{EventType, IntoPage, Page, PageElement};
+use reinhardt_pages::callback::async_handler;
 use reinhardt_pages::page;
 use reinhardt_pages::reactive::hooks::use_action;
-use reinhardt_pages::reactive::{ResourceState, use_resource};
+use reinhardt_pages::reactive::{ResourceState, Signal, use_resource};
 #[cfg(feature = "msw")]
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 use reinhardt_pages::testing::component::{Role, render};
@@ -58,6 +59,27 @@ fn save_component() -> Page {
 		.into_page()
 }
 
+fn async_click_component() -> Page {
+	let message = Signal::new("Idle".to_string());
+	let click_message = message.clone();
+	PageElement::new("div")
+		.child(
+			PageElement::new("button")
+				.on(
+					EventType::Click,
+					async_handler(move |_| {
+						let click_message = click_message.clone();
+						async move {
+							click_message.set("Clicked".to_string());
+						}
+					}),
+				)
+				.child("Run"),
+		)
+		.child(Page::reactive(move || text_page(message.get())))
+		.into_page()
+}
+
 #[test]
 fn native_component_testing_public_surface_is_available() {
 	let screen = render(
@@ -107,6 +129,16 @@ async fn click_action_uses_own_screen_scheduler() {
 	assert!(first.query_by_text("Saved").is_some());
 	assert!(second.query_by_text("Saved").is_none());
 	assert!(second.query_by_text("Idle").is_some());
+}
+
+#[tokio::test]
+async fn async_click_handler_settles_to_updated_ui() {
+	let screen = render(async_click_component);
+
+	screen.get_by_role(Role::Button, "Run").click();
+	screen.settle().await;
+
+	assert!(screen.query_by_text("Clicked").is_some());
 }
 
 #[tokio::test]

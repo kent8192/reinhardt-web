@@ -570,23 +570,28 @@ fn add_native_mock_probe(
 	let pages_crate = &pages_crate_info.ident;
 	let name = info.name();
 	let original_block = func.block;
-	func.block = Box::new(syn::parse_quote!({
-		#pages_use_statement
-		#[cfg(all(any(test, feature = "testing"), feature = "msw"))]
-		#[allow(unexpected_cfgs)]
-		{
-			let __args = #name::Args {
-				#(#param_idents: #param_idents.clone()),*
-			};
-			if let Some(__mock_result) =
-				#pages_crate::server_fn::try_call_active_mock::<#name::marker>(__args)
+	let native_mock_probe = if cfg!(feature = "msw") {
+		quote! {
 			{
-				match __mock_result {
-					Ok(__mock_value) => return Ok(__mock_value),
-					Err(__mock_error) => return Err(__mock_error),
+				let __args = #name::Args {
+					#(#param_idents: #param_idents.clone()),*
+				};
+				if let Some(__mock_result) =
+					#pages_crate::server_fn::try_call_active_mock::<#name::marker>(__args)
+				{
+					match __mock_result {
+						Ok(__mock_value) => return Ok(__mock_value),
+						Err(__mock_error) => return Err(__mock_error),
+					}
 				}
 			}
 		}
+	} else {
+		quote! {}
+	};
+	func.block = Box::new(syn::parse_quote!({
+		#pages_use_statement
+		#native_mock_probe
 		#original_block
 	}));
 	Ok(func)
