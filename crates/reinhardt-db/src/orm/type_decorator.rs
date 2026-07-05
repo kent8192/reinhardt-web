@@ -284,16 +284,17 @@ impl PhoneNumberType {
 	}
 
 	fn normalized_digits(&self, number: &str) -> Option<String> {
-		let digits = Self::digits(number);
+		let digits = Self::digits(Self::main_number_part(number));
 		if digits.is_empty() {
 			return None;
 		}
 		let calling_code = self.default_country.calling_code();
+		let dialed_digits = digits.strip_prefix("00").unwrap_or(&digits);
 
-		let national = if let Some(national) = digits.strip_prefix(calling_code) {
+		let national = if let Some(national) = dialed_digits.strip_prefix(calling_code) {
 			self.normalize_national_digits(national)?
 		} else {
-			self.normalize_national_digits(&digits)?
+			self.normalize_national_digits(dialed_digits)?
 		};
 		let normalized = format!("{calling_code}{national}");
 		(normalized.len() <= 15).then_some(normalized)
@@ -325,6 +326,19 @@ impl PhoneNumberType {
 
 	fn unformat(&self, formatted: &str) -> String {
 		Self::digits(formatted)
+	}
+
+	fn main_number_part(value: &str) -> &str {
+		let lowercase = value.to_ascii_lowercase();
+		for marker in [" extension", " ext.", " ext", " x"] {
+			if let Some(index) = lowercase.find(marker) {
+				let extension = &value[index + marker.len()..];
+				if extension.chars().any(|c| c.is_ascii_digit()) {
+					return value[..index].trim_end();
+				}
+			}
+		}
+		value
 	}
 
 	fn digits(value: &str) -> String {
@@ -673,9 +687,27 @@ mod tests {
 			("GB", "020 7123 4567", "442071234567"),
 			("GB", "0800 111111", "44800111111"),
 			("GB", "+44 800 111111", "44800111111"),
+			("GB", "0044 20 7123 4567", "442071234567"),
 			("JP", "03-1234-5678", "81312345678"),
 			("DE", "030 123456", "4930123456"),
+			("DE", "0049 30 123456", "4930123456"),
 			("FR", "01 42 68 53 00", "33142685300"),
+			("FR", "0033 1 42 68 53 00", "33142685300"),
+		] {
+			let decorator = PhoneNumberType::new(country);
+			let stored = decorator.process_bind_param(&number.to_string()).unwrap();
+			let retrieved = decorator.process_result_value(&stored).unwrap();
+
+			assert_eq!(retrieved, expected);
+		}
+	}
+
+	#[test]
+	fn test_phone_number_formatting_strips_extensions() {
+		for (country, number, expected) in [
+			("US", "555-123-4567 x89", "15551234567"),
+			("US", "555-123-4567 ext. 89", "15551234567"),
+			("GB", "020 7123 4567 x89", "442071234567"),
 		] {
 			let decorator = PhoneNumberType::new(country);
 			let stored = decorator.process_bind_param(&number.to_string()).unwrap();
