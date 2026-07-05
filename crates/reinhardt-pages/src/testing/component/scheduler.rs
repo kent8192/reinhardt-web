@@ -6,10 +6,13 @@ use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
+use std::time::Duration;
 
 use crate::platform;
 
 type BoxedTask = Pin<Box<dyn Future<Output = ()> + 'static>>;
+const SETTLE_BACKOFF_AFTER_YIELDS: usize = 4;
+const SETTLE_BACKOFF: Duration = Duration::from_millis(1);
 
 /// Error returned when the native component scheduler cannot settle.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +86,11 @@ impl SchedulerScope {
 			if pending_tasks == 0 {
 				return Ok(());
 			}
-			tokio::task::yield_now().await;
+			if iteration < SETTLE_BACKOFF_AFTER_YIELDS {
+				tokio::task::yield_now().await;
+			} else {
+				tokio::time::sleep(SETTLE_BACKOFF).await;
+			}
 			if iteration == 99 {
 				return Err(SettleError::DidNotQuiesce {
 					iterations: 100,

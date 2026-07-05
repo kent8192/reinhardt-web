@@ -101,8 +101,15 @@ impl std::fmt::Display for Role {
 
 pub(crate) fn role_for(dom: &TestDom, node_id: NodeId) -> Option<Role> {
 	let node = dom.element(node_id)?;
-	if let Some(role) = node.attr("role").and_then(Role::from_role_attr) {
-		return Some(role);
+	if let Some(role_attr) = node.attr("role")
+		&& let Some(first_role) = role_attr.split_whitespace().next()
+	{
+		if matches!(first_role, "presentation" | "none") {
+			return None;
+		}
+		if let Some(role) = Role::from_role_attr(role_attr) {
+			return Some(role);
+		}
 	}
 
 	match node.tag.as_str() {
@@ -161,7 +168,7 @@ pub(crate) fn accessible_name(dom: &TestDom, node_id: NodeId) -> Option<String> 
 		return non_empty(&dom.text_content(node_id));
 	}
 
-	node.attr("placeholder").and_then(non_empty)
+	None
 }
 
 fn input_role(input_type: &str) -> Option<Role> {
