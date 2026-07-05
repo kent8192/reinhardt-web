@@ -7,6 +7,7 @@ use std::time::Duration;
 use reinhardt_core::types::page::{EventType, IntoPage, Page, PageElement};
 use reinhardt_pages::callback::async_handler;
 use reinhardt_pages::page;
+use reinhardt_pages::prelude::spawn_task;
 use reinhardt_pages::reactive::hooks::use_action;
 use reinhardt_pages::reactive::{ResourceState, Signal, use_resource};
 #[cfg(feature = "msw")]
@@ -145,6 +146,51 @@ fn presentation_role_suppresses_implicit_role_queries() {
 	assert!(screen.query_by_text("Save").is_some());
 }
 
+#[test]
+fn text_queries_ignore_hidden_descendant_text() {
+	let screen = render(
+		PageElement::new("div").child(PageElement::new("span").attr("hidden", "").child("Secret")),
+	);
+
+	assert!(screen.try_get_by_text("Secret").is_err());
+}
+
+#[test]
+fn role_queries_follow_fallback_tokens_and_input_rules() {
+	let screen = render(Page::fragment([
+		PageElement::new("div")
+			.attr("role", "foo button")
+			.child("Fallback button")
+			.into_page(),
+		PageElement::new("div")
+			.attr("role", "switch checkbox")
+			.attr("aria-label", "Power")
+			.into_page(),
+		PageElement::new("label")
+			.child("Password")
+			.child(PageElement::new("input").attr("type", "password"))
+			.into_page(),
+		PageElement::new("input")
+			.attr("type", "submit")
+			.attr("value", "Save")
+			.into_page(),
+	]));
+
+	assert_eq!(
+		screen
+			.get_by_role(Role::Button, "Fallback button")
+			.tag_name(),
+		"div"
+	);
+	assert_eq!(
+		screen.get_by_role(Role::Checkbox, "Power").tag_name(),
+		"div"
+	);
+	assert!(screen.try_get_by_role(Role::Textbox, "Password").is_err());
+	assert_eq!(screen.get_by_label("Password").tag_name(), "input");
+	assert_eq!(screen.get_by_role(Role::Button, "Save").tag_name(), "input");
+}
+
 #[tokio::test]
 async fn settle_runs_use_resource_on_native() {
 	let screen = render(index_job_component);
@@ -195,6 +241,119 @@ async fn settle_waits_for_timer_backed_tasks() {
 	screen.settle().await;
 
 	assert!(screen.query_by_text("Delayed").is_some());
+}
+
+#[tokio::test]
+async fn settle_continues_when_rerender_mounts_async_work() {
+	let show_child = Signal::new(false);
+	let message = Signal::new("Idle".to_string());
+	let spawned = Rc::new(Cell::new(false));
+	let screen = render({
+		let show_child = show_child.clone();
+		let message = message.clone();
+		let spawned = Rc::clone(&spawned);
+		move || {
+			let show_child = show_child.clone();
+			let message = message.clone();
+			let spawned = Rc::clone(&spawned);
+			Page::reactive(move || {
+				if show_child.get() && !spawned.replace(true) {
+					let spawned_message = message.clone();
+					spawn_task(async move {
+						spawned_message.set("Mounted work".to_string());
+					});
+				}
+				text_page(message.get())
+			})
+		}
+	});
+
+	show_child.set(true);
+	screen.settle().await;
+
+	assert!(screen.query_by_text("Mounted work").is_some());
+}
+
+#[tokio::test]
+async fn settle_preserves_tasks_spawned_by_polled_tasks() {
+	let message = Signal::new("Idle".to_string());
+	let click_message = message.clone();
+	let screen = render(move || {
+		let message = message.clone();
+		let click_message = click_message.clone();
+		PageElement::new("div")
+			.child(
+				PageElement::new("button")
+					.on(
+						EventType::Click,
+						async_handler(move |_| {
+							let click_message = click_message.clone();
+							async move {
+								tokio::task::yield_now().await;
+								spawn_task(async move {
+									click_message.set("Nested".to_string());
+								});
+							}
+						}),
+					)
+					.child("Run nested"),
+			)
+			.child(Page::reactive(move || text_page(message.get())))
+			.into_page()
+	});
+
+	screen.get_by_role(Role::Button, "Run nested").click();
+	screen.settle().await;
+
+	assert!(screen.query_by_text("Nested").is_some());
+}
+
+#[tokio::test]
+async fn disabled_controls_suppress_click_handlers() {
+	let message = Signal::new("Idle".to_string());
+	let click_message = message.clone();
+	let screen = render(move || {
+		let message = message.clone();
+		let click_message = click_message.clone();
+		PageElement::new("div")
+			.child(
+				PageElement::new("button")
+					.attr("disabled", "")
+					.listener("click", move |_| click_message.set("Clicked".to_string()))
+					.child("Save"),
+			)
+			.child(Page::reactive(move || text_page(message.get())))
+			.into_page()
+	});
+
+	screen.get_by_role(Role::Button, "Save").click();
+	screen.settle().await;
+
+	assert!(screen.query_by_text("Idle").is_some());
+	assert!(screen.query_by_text("Clicked").is_none());
+}
+
+#[tokio::test]
+async fn click_events_bubble_from_descendant_handles() {
+	let message = Signal::new("Idle".to_string());
+	let click_message = message.clone();
+	let screen = render(move || {
+		let message = message.clone();
+		let click_message = click_message.clone();
+		PageElement::new("div")
+			.child(
+				PageElement::new("button")
+					.listener("click", move |_| click_message.set("Clicked".to_string()))
+					.child(PageElement::new("span").child("Nested label")),
+			)
+			.child(Page::reactive(move || text_page(message.get())))
+			.into_page()
+	});
+
+	screen.get_by_text("Nested label").click();
+	screen.settle().await;
+
+	assert!(screen.query_by_text("Clicked").is_some());
 }
 
 #[tokio::test]

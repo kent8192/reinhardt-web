@@ -118,12 +118,12 @@ fn element_has_exact_text_without_duplicate_child(
 	node_id: NodeId,
 	text: &TextMatch,
 ) -> bool {
-	if !text.matches(&inner.dom.text_content(node_id)) {
+	if !text.matches(&inner.dom.visible_text_content(node_id)) {
 		return false;
 	}
 	!inner.dom.children(node_id).iter().any(|child| {
 		inner.dom.element(*child).is_some()
 			&& !inner.dom.is_hidden(*child)
-			&& text.matches(&inner.dom.text_content(*child))
+			&& text.matches(&inner.dom.visible_text_content(*child))
 	})
 }

@@ -81,6 +81,9 @@ impl ElementHandle {
 			if borrowed.dom.element(self.node_id).is_none() {
 				return Err(EventError::UnsupportedElement);
 			}
+			if borrowed.dom.suppresses_events(self.node_id) {
+				return Ok(());
+			}
 			(
 				borrowed.dom.event_handler(self.node_id, event_type),
 				Rc::clone(&borrowed.scheduler),
@@ -105,6 +108,9 @@ impl ElementHandle {
 			let mut borrowed = self.inner.borrow_mut();
 			if !borrowed.dom.contains(self.node_id) {
 				return Err(EventError::DetachedElement);
+			}
+			if borrowed.dom.suppresses_events(self.node_id) {
+				return Ok(());
 			}
 			if !borrowed.dom.set_value(self.node_id, value) {
 				return Err(EventError::UnsupportedElement);

@@ -68,8 +68,8 @@ impl Role {
 		}
 	}
 
-	pub(crate) fn from_role_attr(value: &str) -> Option<Self> {
-		match value.split_whitespace().next()? {
+	fn from_role_token(value: &str) -> Option<Self> {
+		match value {
 			"alert" => Some(Self::Alert),
 			"button" => Some(Self::Button),
 			"checkbox" => Some(Self::Checkbox),
@@ -101,14 +101,14 @@ impl std::fmt::Display for Role {
 
 pub(crate) fn role_for(dom: &TestDom, node_id: NodeId) -> Option<Role> {
 	let node = dom.element(node_id)?;
-	if let Some(role_attr) = node.attr("role")
-		&& let Some(first_role) = role_attr.split_whitespace().next()
-	{
-		if matches!(first_role, "presentation" | "none") {
-			return None;
-		}
-		if let Some(role) = Role::from_role_attr(role_attr) {
-			return Some(role);
+	if let Some(role_attr) = node.attr("role") {
+		for token in role_attr.split_whitespace() {
+			if matches!(token, "presentation" | "none") {
+				return None;
+			}
+			if let Some(role) = Role::from_role_token(token) {
+				return Some(role);
+			}
 		}
 	}
 
@@ -154,30 +154,53 @@ pub(crate) fn accessible_name(dom: &TestDom, node_id: NodeId) -> Option<String> 
 	if let Some(id) = node.attr("id")
 		&& let Some(label) = dom.label_for(id)
 	{
-		return non_empty(&dom.text_content(label));
+		return non_empty(&dom.visible_text_content(label));
 	}
 
 	if let Some(label) = dom.closest_label(node_id) {
-		return non_empty(&dom.text_content(label));
+		return non_empty(&dom.visible_text_content(label));
+	}
+
+	if let Some(name) = input_button_name(node) {
+		return Some(name);
 	}
 
 	if matches!(
 		role_for(dom, node_id),
 		Some(Role::Button | Role::Link | Role::Heading)
 	) {
-		return non_empty(&dom.text_content(node_id));
+		return non_empty(&dom.visible_text_content(node_id));
 	}
 
 	None
 }
 
 fn input_role(input_type: &str) -> Option<Role> {
-	match input_type {
+	match input_type.to_ascii_lowercase().as_str() {
 		"button" | "image" | "reset" | "submit" => Some(Role::Button),
 		"checkbox" => Some(Role::Checkbox),
 		"radio" => Some(Role::Radio),
-		"hidden" => None,
-		_ => Some(Role::Textbox),
+		"" | "email" | "search" | "tel" | "text" | "url" => Some(Role::Textbox),
+		_ => None,
+	}
+}
+
+fn input_button_name(node: &super::tree::ElementNode) -> Option<String> {
+	if node.tag != "input" {
+		return None;
+	}
+	match node
+		.attr("type")
+		.unwrap_or("text")
+		.to_ascii_lowercase()
+		.as_str()
+	{
+		"button" | "reset" | "submit" => node.attr("value").and_then(non_empty),
+		"image" => node
+			.attr("alt")
+			.or_else(|| node.attr("value"))
+			.and_then(non_empty),
+		_ => None,
 	}
 }
 

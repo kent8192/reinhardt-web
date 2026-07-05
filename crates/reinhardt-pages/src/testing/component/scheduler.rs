@@ -73,14 +73,19 @@ impl SchedulerScope {
 		for iteration in 0..100 {
 			let mut pending = VecDeque::new();
 			let pending_tasks = self.with_current(|| {
-				while let Some(mut task) = self.scheduler.borrow_mut().tasks.pop_front() {
+				loop {
+					let Some(mut task) = self.scheduler.borrow_mut().tasks.pop_front() else {
+						break;
+					};
 					match task.as_mut().poll(&mut cx) {
 						Poll::Ready(()) => {}
 						Poll::Pending => pending.push_back(task),
 					}
 				}
+				let mut scheduler = self.scheduler.borrow_mut();
+				pending.extend(std::mem::take(&mut scheduler.tasks));
 				let pending_tasks = pending.len();
-				self.scheduler.borrow_mut().tasks = pending;
+				scheduler.tasks = pending;
 				pending_tasks
 			});
 			if pending_tasks == 0 {
@@ -100,5 +105,9 @@ impl SchedulerScope {
 			}
 		}
 		unreachable!("settle loop returns inside fixed iteration range")
+	}
+
+	pub(crate) fn pending_task_count(&self) -> usize {
+		self.scheduler.borrow().tasks.len()
 	}
 }

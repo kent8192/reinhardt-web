@@ -97,6 +97,18 @@ impl TestDom {
 		}
 	}
 
+	pub(crate) fn visible_text_content(&self, node_id: NodeId) -> String {
+		match self.nodes.get(node_id) {
+			Some(TestNode::Removed) => String::new(),
+			Some(TestNode::Root { children }) => self.children_visible_text(children),
+			Some(TestNode::Element(node)) if self.is_hidden(node_id) => String::new(),
+			Some(TestNode::Element(node)) => self.children_visible_text(&node.children),
+			Some(TestNode::Text { text, .. }) => text.clone(),
+			Some(TestNode::ReactiveAnchor { children, .. }) => self.children_visible_text(children),
+			None => String::new(),
+		}
+	}
+
 	pub(crate) fn all_elements(&self) -> Vec<NodeId> {
 		let mut nodes = Vec::new();
 		self.collect_elements(self.root, &mut nodes);
@@ -155,12 +167,33 @@ impl TestDom {
 		node_id: NodeId,
 		event_type: EventType,
 	) -> Option<PageEventHandler> {
-		self.element(node_id).and_then(|node| {
-			node.event_handlers
-				.iter()
-				.find(|(candidate, _)| *candidate == event_type)
-				.map(|(_, handler)| handler.clone())
-		})
+		let mut current = Some(node_id);
+		while let Some(id) = current {
+			if let Some(node) = self.element(id)
+				&& let Some((_, handler)) = node
+					.event_handlers
+					.iter()
+					.find(|(candidate, _)| *candidate == event_type)
+			{
+				return Some(handler.clone());
+			}
+			current = self.parent(id);
+		}
+		None
+	}
+
+	pub(crate) fn suppresses_events(&self, node_id: NodeId) -> bool {
+		let mut current = Some(node_id);
+		while let Some(id) = current {
+			if self
+				.element(id)
+				.is_some_and(ElementNode::is_disabled_form_control)
+			{
+				return true;
+			}
+			current = self.parent(id);
+		}
+		false
 	}
 
 	pub(crate) fn set_value(&mut self, node_id: NodeId, value: String) -> bool {
@@ -302,6 +335,13 @@ impl TestDom {
 			.collect::<String>()
 	}
 
+	fn children_visible_text(&self, children: &[NodeId]) -> String {
+		children
+			.iter()
+			.map(|child| self.visible_text_content(*child))
+			.collect::<String>()
+	}
+
 	fn collect_elements(&self, node_id: NodeId, output: &mut Vec<NodeId>) {
 		if self.element(node_id).is_some() {
 			output.push(node_id);
@@ -382,6 +422,14 @@ impl ElementNode {
 
 	pub(crate) fn supports_value(&self) -> bool {
 		matches!(self.tag.as_str(), "input" | "textarea" | "select")
+	}
+
+	pub(crate) fn is_disabled_form_control(&self) -> bool {
+		self.has_attr("disabled")
+			&& matches!(
+				self.tag.as_str(),
+				"button" | "fieldset" | "input" | "optgroup" | "option" | "select" | "textarea"
+			)
 	}
 }
 
