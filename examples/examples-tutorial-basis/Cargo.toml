@@ -23,8 +23,7 @@ required-features = ["with-reinhardt"]
 # Common dependencies (both WASM and server)
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
-# Constrains standalone example dependency resolution to the examples
-# workspace cap for transitive cookie/time compatibility.
+# Participates in the standalone examples resolver constraint from examples/Cargo.toml.
 time = { workspace = true }
 
 # WASM-specific dependencies

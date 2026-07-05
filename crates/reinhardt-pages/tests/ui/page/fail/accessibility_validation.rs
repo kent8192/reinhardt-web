@@ -19,7 +19,7 @@ fn wrapper(_p: WrapperProps) -> Page {
 fn main() {
 	let _unlabelled_input = page!(|| {
 		input {
-			r#type: "text",
+			type: "text",
 			name: "query",
 		}
 	});
@@ -27,7 +27,7 @@ fn main() {
 	let _empty_wrapping_label = page!(|| {
 		label {
 			input {
-				r#type: "text",
+				type: "text",
 				name: "email",
 			}
 		}
@@ -39,7 +39,7 @@ fn main() {
 		}
 		input {
 			id: "email-empty",
-			r#type: "text",
+			type: "text",
 			name: "email",
 		}
 	});
@@ -53,7 +53,7 @@ fn main() {
 		}
 		input {
 			id: "component-email",
-			r#type: "text",
+			type: "text",
 			name: "email",
 		}
 	});
@@ -68,14 +68,14 @@ fn main() {
 		}
 		input {
 			id: "hidden-label-email",
-			r#type: "text",
+			type: "text",
 			name: "email",
 		}
 	});
 
 	let _missing_aria_labelledby_target = page!(|| {
 		input {
-			r#type: "text",
+			type: "text",
 			name: "search",
 			aria_labelledby: "missing-label",
 		}
@@ -87,7 +87,7 @@ fn main() {
 
 	let _input_button_without_value = page!(|| {
 		input {
-			r#type: "button",
+			type: "button",
 		}
 	});
 
@@ -115,7 +115,7 @@ fn main() {
 
 	let _invalid_opt_out = page!(|| {
 		input {
-			r#type: "range",
+			type: "range",
 			name: "decorative",
 			a11y: true,
 		}

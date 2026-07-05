@@ -8,7 +8,7 @@ fn main() {
 	let labelled_by_for_after_control = page!(|| {
 		input {
 			id: "search",
-			r#type: "search",
+			type: "search",
 			name: "search",
 		}
 		label {
@@ -21,7 +21,7 @@ fn main() {
 		label {
 			"Volume"
 			input {
-				r#type: "range",
+				type: "range",
 				name: "volume",
 			}
 		}
@@ -59,17 +59,17 @@ fn main() {
 
 	let input_button_names = page!(|| {
 		input {
-			r#type: "submit",
+			type: "submit",
 			value: "Save",
 		}
 		input {
-			r#type: "submit",
+			type: "submit",
 		}
 		input {
-			r#type: "reset",
+			type: "reset",
 		}
 		input {
-			r#type: "image",
+			type: "image",
 			src: "/icons/save.svg",
 			alt: "Save",
 		}
@@ -86,7 +86,7 @@ fn main() {
 		div {
 			hidden: true,
 			input {
-				r#type: "text",
+				type: "text",
 				name: "hidden-query",
 			}
 			select {
@@ -121,7 +121,7 @@ fn main() {
 
 	let opt_out = page!(|| {
 		input {
-			r#type: "range",
+			type: "range",
 			name: "decorative",
 			a11y: off,
 		}

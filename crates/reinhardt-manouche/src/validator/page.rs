@@ -2975,7 +2975,7 @@ mod tests {
 		// Arrange
 		let ast: PageMacro = syn::parse2(quote::quote! {
 			|| {
-				input { id: "email", r#type: "email", name: "email" }
+				input { id: "email", type: "email", name: "email" }
 				label { r#for: "email", "Email" }
 			}
 		})
@@ -2993,7 +2993,7 @@ mod tests {
 		// Arrange
 		let ast: PageMacro = syn::parse2(quote::quote! {
 			|| {
-				input { r#type: "text", name: "q" }
+				input { type: "text", name: "q" }
 			}
 		})
 		.unwrap();
@@ -3016,7 +3016,7 @@ mod tests {
 		let ast: PageMacro = syn::parse2(quote::quote! {
 			|show_input: bool| {
 				if show_input {
-					input { id: "query", r#type: "text", name: "query" }
+					input { id: "query", type: "text", name: "query" }
 				} else {
 					label { r#for: "query", "Query" }
 				}
@@ -3041,7 +3041,7 @@ mod tests {
 		// Arrange
 		let ast: PageMacro = syn::parse2(quote::quote! {
 			|| {
-				input { r#type: "range", name: "decorative", a11y: off }
+				input { type: "range", name: "decorative", a11y: off }
 			}
 		})
 		.unwrap();
