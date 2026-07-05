@@ -131,3 +131,23 @@ async fn explicit_resource_key_is_serialized() {
 	assert!(html.contains("polls.detail.42"));
 	assert!(html.contains("question"));
 }
+
+#[tokio::test]
+async fn reused_renderer_does_not_emit_previous_resource_state() {
+	let mut renderer = SsrRenderer::new();
+	let first_html = renderer
+		.render_page_with_view_head_to_string(resource_view())
+		.await;
+	assert!(first_html.contains("server-value"));
+	assert_eq!(renderer.state().resource_count(), 1);
+
+	let second_view = PageElement::new("p").child("plain").into_page();
+	let second_html = renderer
+		.render_page_with_view_head_to_string(second_view)
+		.await;
+
+	assert!(second_html.contains("plain"));
+	assert!(!second_html.contains("server-value"));
+	assert!(!second_html.contains(r#""resources""#));
+	assert_eq!(renderer.state().resource_count(), 0);
+}

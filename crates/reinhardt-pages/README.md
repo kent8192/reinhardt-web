@@ -371,14 +371,34 @@ The prelude includes:
 SSR rendering APIs are async. Use `render_page(...).await` for streamed output
 or `render_page_to_string(...).await` when a buffered string is needed:
 
-```rust,ignore
-let mut renderer = SsrRenderer::new();
-let stream = renderer.render_page(&app).await;
+```rust,no_run
+use reinhardt_pages::component::{Component, Page};
+use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
+use std::time::Duration;
 
-let mut renderer = SsrRenderer::with_options(
-    SsrOptions::new().resource_timeout(std::time::Duration::from_secs(1)),
-);
-let html = renderer.render_page_to_string(&app).await;
+struct App;
+
+impl Component for App {
+    fn render(&self) -> Page {
+        Page::text("Hello")
+    }
+
+    fn name() -> &'static str {
+        "App"
+    }
+}
+
+async fn render_app() {
+    let app = App;
+    let mut renderer = SsrRenderer::new();
+    let stream = renderer.render_page(&app).await;
+
+    let mut renderer = SsrRenderer::with_options(
+        SsrOptions::new().resource_timeout(Duration::from_secs(1)),
+    );
+    let html = renderer.render_page_to_string(&app).await;
+    let _ = (stream, html);
+}
 ```
 
 Resources created with `use_resource` during SSR are keyed deterministically,

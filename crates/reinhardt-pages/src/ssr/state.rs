@@ -67,6 +67,11 @@ impl SsrState {
 		}
 	}
 
+	/// Clears resource states from the hydration payload.
+	pub fn clear_resource_states(&mut self) {
+		self.resources.clear();
+	}
+
 	/// Gets a signal value by ID.
 	pub fn get_signal(&self, id: &str) -> Option<&serde_json::Value> {
 		self.signals.get(id)
@@ -283,7 +288,7 @@ mod tests {
 		let mut state = SsrState::new();
 		state.add_resource_state("rh-res-xss", serde_json::json!({"Error": "</script><"}));
 		let script = state.to_script_tag();
-		assert!(script.contains("\\u003c/script\\u003e\\u003c"));
+		assert_eq!(script.matches("\\u003c/script\\u003e\\u003c").count(), 1);
 		assert_eq!(script.matches("</script>").count(), 1);
 	}
 

@@ -502,6 +502,7 @@ fn render_welcome_page_stream()
 			.enable_all()
 			.build()
 		else {
+			eprintln!("Error: failed to build SSR render runtime for welcome page");
 			return;
 		};
 		let component = WelcomePage::new(env!("CARGO_PKG_VERSION"));

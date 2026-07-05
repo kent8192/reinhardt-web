@@ -176,11 +176,13 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	web_sys::console::log_1(&"[Hydration] View rendered".into());
 
 	// 3. Reconcile DOM structure
+	crate::reactive::resource::reset_client_resource_counter();
 	reconcile(root, &view)
 		.map_err(|e| HydrationError::StateParseError(format!("Reconciliation failed: {}", e)))?;
 	web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
 
 	// 4. Attach event handlers
+	crate::reactive::resource::reset_client_resource_counter();
 	let mut registry = EventRegistry::new();
 	attach_events_recursive(root, &view, &mut registry)?;
 	web_sys::console::log_1(&"[Hydration] Events attached".into());

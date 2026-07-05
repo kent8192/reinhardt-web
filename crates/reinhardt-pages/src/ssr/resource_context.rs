@@ -12,8 +12,8 @@ use std::rc::Rc;
 use std::time::Duration;
 use tokio::time::timeout;
 
-thread_local! {
-	static ACTIVE_CONTEXT: RefCell<Option<Rc<RefCell<SsrResourceContext>>>> = const { RefCell::new(None) };
+tokio::task_local! {
+	static ACTIVE_CONTEXT: Rc<RefCell<SsrResourceContext>>;
 }
 
 type PendingResourceFuture = Pin<Box<dyn Future<Output = (String, Value)> + 'static>>;
@@ -71,13 +71,11 @@ impl SsrResourceContext {
 		format!("rh-res-{id}")
 	}
 
-	/// Pushes the active Suspense boundary.
-	pub(crate) fn push_boundary(&mut self, boundary_id: String) {
+	fn push_boundary(&mut self, boundary_id: String) {
 		self.boundary_stack.push(boundary_id);
 	}
 
-	/// Pops the active Suspense boundary.
-	pub(crate) fn pop_boundary(&mut self) {
+	fn pop_boundary(&mut self) {
 		self.boundary_stack.pop();
 	}
 
@@ -204,31 +202,45 @@ impl SsrResourceContext {
 	}
 }
 
-/// Guard that restores the previously active SSR resource context.
-pub(crate) struct SsrResourceGuard {
-	previous: Option<Rc<RefCell<SsrResourceContext>>>,
+/// Guard that restores the active Suspense boundary stack on early exit.
+pub(crate) struct SsrBoundaryGuard {
+	context: Rc<RefCell<SsrResourceContext>>,
+	active: bool,
 }
 
-impl Drop for SsrResourceGuard {
+impl Drop for SsrBoundaryGuard {
 	fn drop(&mut self) {
-		let previous = self.previous.take();
-		ACTIVE_CONTEXT.with(|slot| {
-			*slot.borrow_mut() = previous;
-		});
+		if self.active {
+			self.context.borrow_mut().pop_boundary();
+		}
 	}
 }
 
-/// Installs an SSR resource context for the current thread.
-pub(crate) fn install_context(context: Rc<RefCell<SsrResourceContext>>) -> SsrResourceGuard {
-	let previous = ACTIVE_CONTEXT.with(|slot| slot.borrow_mut().replace(context));
-	SsrResourceGuard { previous }
+/// Runs an async render operation with a request-scoped SSR resource context.
+pub(crate) async fn scope_context<R>(
+	context: Rc<RefCell<SsrResourceContext>>,
+	future: impl Future<Output = R>,
+) -> R {
+	ACTIVE_CONTEXT.scope(context, future).await
+}
+
+/// Pushes an active Suspense boundary and restores it on drop.
+pub(crate) fn enter_boundary(
+	context: &Rc<RefCell<SsrResourceContext>>,
+	boundary_id: String,
+) -> SsrBoundaryGuard {
+	context.borrow_mut().push_boundary(boundary_id);
+	SsrBoundaryGuard {
+		context: Rc::clone(context),
+		active: true,
+	}
 }
 
 /// Executes a closure with the active SSR resource context.
 pub(crate) fn with_active_context<R>(
 	f: impl FnOnce(&Rc<RefCell<SsrResourceContext>>) -> R,
 ) -> Option<R> {
-	ACTIVE_CONTEXT.with(|slot| slot.borrow().as_ref().map(f))
+	ACTIVE_CONTEXT.try_with(f).ok()
 }
 
 /// Resolves resources outside Suspense boundaries.
@@ -242,6 +254,11 @@ pub(crate) async fn resolve_boundary_resources(
 	boundary_id: &str,
 ) -> bool {
 	resolve_matching(context, |candidate| candidate == Some(boundary_id)).await
+}
+
+/// Resolves every still-pending resource for buffered SSR.
+pub(crate) async fn resolve_pending_resources(context: &Rc<RefCell<SsrResourceContext>>) -> bool {
+	resolve_matching(context, |_| true).await
 }
 
 async fn resolve_matching(

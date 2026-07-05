@@ -7,7 +7,8 @@ use std::time::Duration;
 
 use super::markers::{HydrationMarker, HydrationStrategy};
 use super::resource_context::{
-	SsrResourceContext, install_context, resolve_boundary_resources, resolve_external_resources,
+	SsrResourceContext, enter_boundary, resolve_boundary_resources, resolve_external_resources,
+	resolve_pending_resources, scope_context,
 };
 use super::state::SsrState;
 use super::stream::{SsrChunk, SsrStream};
@@ -175,11 +176,18 @@ impl SsrOptions {
 }
 
 /// The main SSR renderer.
+#[derive(Clone)]
 pub struct SsrRenderer {
 	options: SsrOptions,
 	state: SsrState,
 	hydration_marker_counter: u64,
 	suspense_boundary_counter: u64,
+}
+
+#[derive(Clone, Copy)]
+enum AsyncRenderMode {
+	Discovery,
+	Buffered,
 }
 
 struct PendingSuspenseBoundary {
@@ -202,6 +210,24 @@ enum SuspenseStreamState {
 	},
 	Boundaries(SuspenseStreamRuntime),
 	Done,
+}
+
+fn suspense_boundary_futures(
+	context: &Rc<RefCell<SsrResourceContext>>,
+	boundaries: Vec<PendingSuspenseBoundary>,
+) -> FuturesUnordered<LocalBoxFuture<'static, (PendingSuspenseBoundary, bool)>> {
+	boundaries
+		.into_iter()
+		.map(|boundary| {
+			let context = Rc::clone(context);
+			async move {
+				let boundary_resolved =
+					resolve_boundary_resources(&context, &boundary.boundary_id).await;
+				(boundary, boundary_resolved)
+			}
+			.boxed_local()
+		})
+		.collect()
 }
 
 impl Default for SsrRenderer {
@@ -232,6 +258,10 @@ impl SsrRenderer {
 	}
 
 	/// Returns a reference to the SSR state.
+	///
+	/// For streamed pages, resources resolved by later Suspense replacement
+	/// chunks are serialized into the emitted stream and may not appear in this
+	/// renderer snapshot after the stream has been returned.
 	pub fn state(&self) -> &SsrState {
 		&self.state
 	}
@@ -267,6 +297,11 @@ impl SsrRenderer {
 		let id = self.suspense_boundary_counter;
 		self.suspense_boundary_counter += 1;
 		format!("rh-suspense-{id}")
+	}
+
+	fn begin_render(&mut self) {
+		self.state.clear_resource_states();
+		self.suspense_boundary_counter = 0;
 	}
 
 	/// Renders a component to a full HTML page.
@@ -375,108 +410,108 @@ impl SsrRenderer {
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(
 			self.options.resource_timeout,
 		)));
-		let guard = install_context(Rc::clone(&context));
-		let discovery_view = view_factory();
+		scope_context(Rc::clone(&context), async move {
+			self.begin_render();
+			let discovery_view = view_factory();
 
-		let mut discovery_replacements = Vec::new();
-		let _ = self
-			.render_async_page(&discovery_view, &mut discovery_replacements, false)
-			.await;
-		drop(discovery_view);
+			let _ = self
+				.render_async_page(&discovery_view, AsyncRenderMode::Discovery)
+				.await;
+			drop(discovery_view);
 
-		resolve_external_resources(&context).await;
-		context.borrow_mut().reset_call_order_keys();
-		self.suspense_boundary_counter = 0;
+			resolve_external_resources(&context).await;
+			context.borrow_mut().reset_call_order_keys();
+			self.suspense_boundary_counter = 0;
 
-		let view = view_factory();
-		let mut boundaries = Vec::new();
-		let content = self.render_stream_shell_page(&view, &mut boundaries).await;
-		let view_head = view.find_topmost_head().cloned();
-		self.add_resolved_resources_to_state(&context);
-		drop(guard);
+			let view = view_factory();
+			let mut boundaries = Vec::new();
+			let content = self.render_stream_shell_page(&view, &mut boundaries).await;
+			let view_head = view.find_topmost_head().cloned();
+			self.add_resolved_resources_to_state(&context);
 
-		let shell = self.wrap_in_html_shell(&content, view_head.as_ref());
-		let boundary_futures = boundaries
-			.into_iter()
-			.map(|boundary| {
-				let context = Rc::clone(&context);
-				async move {
-					let boundary_resolved =
-						resolve_boundary_resources(&context, &boundary.boundary_id).await;
-					(boundary, boundary_resolved)
-				}
-				.boxed_local()
-			})
-			.collect::<FuturesUnordered<_>>();
+			let shell = self.wrap_in_html_shell(&content, view_head.as_ref());
+			let boundary_futures = suspense_boundary_futures(&context, boundaries);
 
-		let runtime = SuspenseStreamRuntime {
-			renderer: SsrRenderer {
-				options: self.options.clone(),
-				state: self.state.clone(),
-				hydration_marker_counter: self.hydration_marker_counter,
-				suspense_boundary_counter: self.suspense_boundary_counter,
-			},
-			context,
-			boundaries: boundary_futures,
-		};
+			let runtime = SuspenseStreamRuntime {
+				renderer: self.clone(),
+				context,
+				boundaries: boundary_futures,
+			};
 
-		SsrStream::from_stream(stream::unfold(
-			SuspenseStreamState::Shell { shell, runtime },
-			|state| async move {
-				match state {
-					SuspenseStreamState::Shell { shell, runtime } => Some((
-						SsrChunk::Html(shell),
-						SuspenseStreamState::Boundaries(runtime),
-					)),
-					SuspenseStreamState::Boundaries(mut runtime) => {
-						while let Some((boundary, resolved)) = runtime.boundaries.next().await {
-							if !resolved {
-								continue;
+			SsrStream::from_stream(stream::unfold(
+				SuspenseStreamState::Shell { shell, runtime },
+				|state| async move {
+					match state {
+						SuspenseStreamState::Shell { shell, runtime } => Some((
+							SsrChunk::Html(shell),
+							SuspenseStreamState::Boundaries(runtime),
+						)),
+						SuspenseStreamState::Boundaries(mut runtime) => {
+							while let Some((boundary, resolved)) = runtime.boundaries.next().await {
+								if !resolved {
+									continue;
+								}
+
+								let replacement =
+									scope_context(Rc::clone(&runtime.context), async {
+										if let Some(index) = boundary.boundary_start_index {
+											runtime
+												.context
+												.borrow_mut()
+												.set_call_order_index(index);
+										}
+										let replacement_page = boundary.node.render_content();
+										let mut nested_boundaries = Vec::new();
+										let replacement = runtime
+											.renderer
+											.render_stream_shell_page(
+												&replacement_page,
+												&mut nested_boundaries,
+											)
+											.await;
+										if let Some(index) = boundary.boundary_end_index {
+											runtime
+												.context
+												.borrow_mut()
+												.set_call_order_index(index);
+										}
+										runtime
+											.renderer
+											.add_resolved_resources_to_state(&runtime.context);
+										for future in suspense_boundary_futures(
+											&runtime.context,
+											nested_boundaries,
+										) {
+											runtime.boundaries.push(future);
+										}
+										replacement
+									})
+									.await;
+
+								let chunk = runtime.renderer.render_suspense_replacement(
+									&boundary.boundary_id,
+									replacement,
+								);
+								return Some((
+									SsrChunk::Html(chunk),
+									SuspenseStreamState::Boundaries(runtime),
+								));
 							}
 
-							let guard = install_context(Rc::clone(&runtime.context));
-							if let Some(index) = boundary.boundary_start_index {
-								runtime.context.borrow_mut().set_call_order_index(index);
-							}
-							let replacement_page = boundary.node.render_content();
-							let mut nested_replacements = Vec::new();
-							let replacement = runtime
-								.renderer
-								.render_async_page(
-									&replacement_page,
-									&mut nested_replacements,
-									false,
-								)
-								.await;
-							if let Some(index) = boundary.boundary_end_index {
-								runtime.context.borrow_mut().set_call_order_index(index);
-							}
 							runtime
 								.renderer
 								.add_resolved_resources_to_state(&runtime.context);
-							drop(guard);
-
-							let chunk = runtime
-								.renderer
-								.render_suspense_replacement(&boundary.boundary_id, replacement);
-							return Some((
-								SsrChunk::Html(chunk),
-								SuspenseStreamState::Boundaries(runtime),
-							));
+							Some((
+								SsrChunk::Html(runtime.renderer.wrap_in_html_suffix()),
+								SuspenseStreamState::Done,
+							))
 						}
-
-						runtime
-							.renderer
-							.add_resolved_resources_to_state(&runtime.context);
-						Some((
-							SsrChunk::Html(runtime.renderer.wrap_in_html_suffix()),
-							SuspenseStreamState::Done,
-						))
+						SuspenseStreamState::Done => None,
 					}
-					SuspenseStreamState::Done => None,
-				}
-			},
-		))
+				},
+			))
+		})
+		.await
 	}
 
 	async fn render_view_factory<F>(&mut self, view_factory: F) -> String
@@ -497,30 +532,30 @@ impl SsrRenderer {
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(
 			self.options.resource_timeout,
 		)));
-		let guard = install_context(Rc::clone(&context));
-		let discovery_view = view_factory();
+		scope_context(Rc::clone(&context), async move {
+			self.begin_render();
+			let discovery_view = view_factory();
 
-		let mut discovery_replacements = Vec::new();
-		let _ = self
-			.render_async_page(&discovery_view, &mut discovery_replacements, false)
-			.await;
-		drop(discovery_view);
+			let _ = self
+				.render_async_page(&discovery_view, AsyncRenderMode::Discovery)
+				.await;
+			drop(discovery_view);
 
-		resolve_external_resources(&context).await;
-		context.borrow_mut().reset_call_order_keys();
-		self.suspense_boundary_counter = 0;
+			resolve_external_resources(&context).await;
+			resolve_pending_resources(&context).await;
+			context.borrow_mut().reset_call_order_keys();
+			self.suspense_boundary_counter = 0;
 
-		let view = view_factory();
-		let mut replacements = Vec::new();
-		let content = self.render_async_page(&view, &mut replacements, true).await;
+			let view = view_factory();
+			let content = self
+				.render_async_page(&view, AsyncRenderMode::Buffered)
+				.await;
 
-		for (id, value) in context.borrow().resolved_resources() {
-			self.state.add_resource_state(id, value.clone());
-		}
+			self.add_resolved_resources_to_state(&context);
 
-		drop(guard);
-
-		(view, content, replacements.join(""))
+			(view, content, String::new())
+		})
+		.await
 	}
 
 	fn add_resolved_resources_to_state(&mut self, context: &Rc<RefCell<SsrResourceContext>>) {
@@ -608,10 +643,8 @@ impl SsrRenderer {
 					let boundary_start_index = if let Some(context) =
 						super::resource_context::with_active_context(Rc::clone)
 					{
-						let mut context = context.borrow_mut();
-						let index = context.call_order_index();
-						context.push_boundary(boundary_id.clone());
-						context.assign_resources_to_boundary(
+						let index = context.borrow().call_order_index();
+						context.borrow_mut().assign_resources_to_boundary(
 							node.tracked_resource_ids(),
 							&boundary_id,
 						);
@@ -620,6 +653,9 @@ impl SsrRenderer {
 						None
 					};
 
+					let boundary_guard = super::resource_context::with_active_context(|context| {
+						enter_boundary(context, boundary_id.clone())
+					});
 					let content_page = node.render_content();
 					let content = self
 						.render_stream_shell_page(&content_page, boundaries)
@@ -629,27 +665,26 @@ impl SsrRenderer {
 							context.borrow().call_order_index()
 						});
 
-					if let Some(context) = super::resource_context::with_active_context(Rc::clone) {
-						context.borrow_mut().pop_boundary();
-					}
+					drop(boundary_guard);
 
 					let has_pending = super::resource_context::with_active_context(|context| {
 						context.borrow().has_pending_for_boundary(&boundary_id)
 					})
 					.unwrap_or(false);
 
-					if has_pending && !node.tracked_resource_ids().is_empty() {
+					if has_pending || node.is_pending() {
 						let fallback_page = node.render_fallback();
-						let mut ignored_replacements = Vec::new();
 						let fallback = self
-							.render_async_page(&fallback_page, &mut ignored_replacements, false)
+							.render_async_page(&fallback_page, AsyncRenderMode::Discovery)
 							.await;
-						boundaries.push(PendingSuspenseBoundary {
-							boundary_id: boundary_id.clone(),
-							node: node.clone(),
-							boundary_start_index,
-							boundary_end_index,
-						});
+						if has_pending {
+							boundaries.push(PendingSuspenseBoundary {
+								boundary_id: boundary_id.clone(),
+								node: node.clone(),
+								boundary_start_index,
+								boundary_end_index,
+							});
+						}
 						self.render_suspense_fallback(&boundary_id, fallback)
 					} else {
 						content
@@ -666,8 +701,7 @@ impl SsrRenderer {
 	fn render_async_page<'a>(
 		&'a mut self,
 		view: &'a Page,
-		replacements: &'a mut Vec<String>,
-		emit_replacements: bool,
+		mode: AsyncRenderMode,
 	) -> LocalBoxFuture<'a, String> {
 		Box::pin(async move {
 			match view {
@@ -694,11 +728,7 @@ impl SsrRenderer {
 					} else {
 						html.push('>');
 						for child in el.child_views() {
-							html.push_str(
-								&self
-									.render_async_page(child, replacements, emit_replacements)
-									.await,
-							);
+							html.push_str(&self.render_async_page(child, mode).await);
 						}
 						html.push_str("</");
 						html.push_str(el.tag_name());
@@ -711,43 +741,30 @@ impl SsrRenderer {
 				Page::Fragment(children) => {
 					let mut html = String::new();
 					for child in children {
-						html.push_str(
-							&self
-								.render_async_page(child, replacements, emit_replacements)
-								.await,
-						);
+						html.push_str(&self.render_async_page(child, mode).await);
 					}
 					html
 				}
 				Page::KeyedFragment(children) => {
 					let mut html = String::new();
 					for (_, child) in children {
-						html.push_str(
-							&self
-								.render_async_page(child, replacements, emit_replacements)
-								.await,
-						);
+						html.push_str(&self.render_async_page(child, mode).await);
 					}
 					html
 				}
 				Page::Empty => String::new(),
-				Page::WithHead { view, .. } => {
-					self.render_async_page(view, replacements, emit_replacements)
-						.await
-				}
+				Page::WithHead { view, .. } => self.render_async_page(view, mode).await,
 				Page::ReactiveIf(reactive_if) => {
 					let branch = if reactive_if.condition() {
 						reactive_if.then_view()
 					} else {
 						reactive_if.else_view()
 					};
-					self.render_async_page(&branch, replacements, emit_replacements)
-						.await
+					self.render_async_page(&branch, mode).await
 				}
 				Page::Reactive(reactive) => {
 					let rendered = reactive.render();
-					self.render_async_page(&rendered, replacements, emit_replacements)
-						.await
+					self.render_async_page(&rendered, mode).await
 				}
 				Page::Suspense(node) => {
 					let boundary_id = node
@@ -758,10 +775,8 @@ impl SsrRenderer {
 					let boundary_start_index = if let Some(context) =
 						super::resource_context::with_active_context(Rc::clone)
 					{
-						let mut context = context.borrow_mut();
-						let index = context.call_order_index();
-						context.push_boundary(boundary_id.clone());
-						context.assign_resources_to_boundary(
+						let index = context.borrow().call_order_index();
+						context.borrow_mut().assign_resources_to_boundary(
 							node.tracked_resource_ids(),
 							&boundary_id,
 						);
@@ -770,50 +785,52 @@ impl SsrRenderer {
 						None
 					};
 
+					let boundary_guard = super::resource_context::with_active_context(|context| {
+						enter_boundary(context, boundary_id.clone())
+					});
 					let content_page = node.render_content();
-					let content = self
-						.render_async_page(&content_page, replacements, emit_replacements)
-						.await;
+					let content = self.render_async_page(&content_page, mode).await;
 					let boundary_end_index =
 						super::resource_context::with_active_context(|context| {
 							context.borrow().call_order_index()
 						});
 
-					if let Some(context) = super::resource_context::with_active_context(Rc::clone) {
-						context.borrow_mut().pop_boundary();
-					}
+					drop(boundary_guard);
 
 					let has_pending = super::resource_context::with_active_context(|context| {
 						context.borrow().has_pending_for_boundary(&boundary_id)
 					})
 					.unwrap_or(false);
 
-					if emit_replacements && has_pending {
+					if matches!(mode, AsyncRenderMode::Discovery) {
+						return content;
+					}
+
+					if has_pending || node.is_pending() {
 						let fallback_page = node.render_fallback();
 						let fallback = self
-							.render_async_page(&fallback_page, replacements, false)
+							.render_async_page(&fallback_page, AsyncRenderMode::Discovery)
 							.await;
 
-						if let Some(context) =
-							super::resource_context::with_active_context(|context| {
-								Rc::clone(context)
-							}) {
+						if has_pending
+							&& let Some(context) =
+								super::resource_context::with_active_context(Rc::clone)
+						{
 							let boundary_resolved =
 								resolve_boundary_resources(&context, &boundary_id).await;
 							if !boundary_resolved {
-								if node.tracked_resource_ids().is_empty() {
-									return content;
-								}
 								return self.render_suspense_fallback(&boundary_id, fallback);
 							}
 							if let Some(index) = boundary_start_index {
 								context.borrow_mut().set_call_order_index(index);
 							}
+						} else {
+							return self.render_suspense_fallback(&boundary_id, fallback);
 						}
 
 						let replacement_page = node.render_content();
 						let replacement = self
-							.render_async_page(&replacement_page, replacements, false)
+							.render_async_page(&replacement_page, AsyncRenderMode::Buffered)
 							.await;
 						if let Some(index) = boundary_end_index
 							&& let Some(context) =
@@ -822,21 +839,14 @@ impl SsrRenderer {
 							context.borrow_mut().set_call_order_index(index);
 						}
 
-						if self.options.suspense_streaming {
-							replacements
-								.push(self.render_suspense_replacement(&boundary_id, replacement));
-							self.render_suspense_fallback(&boundary_id, fallback)
-						} else {
-							replacement
-						}
+						replacement
 					} else {
 						content
 					}
 				}
 				Page::Deferred(node) => {
 					let content = node.render_content();
-					self.render_async_page(&content, replacements, emit_replacements)
-						.await
+					self.render_async_page(&content, mode).await
 				}
 			}
 		})
@@ -857,59 +867,62 @@ impl SsrRenderer {
 			.map(|value| format!(" nonce=\"{}\"", html_escape(value)))
 			.unwrap_or_default();
 		let id_json = serde_json::to_string(id).unwrap_or_else(|_| "\"\"".to_string());
+		let safe_id_json = escape_json_for_script(&id_json);
 		format!(
-			"<template data-rh-suspense-chunk=\"{escaped_id}\">{content}</template><script{nonce}>(function(id){{var template=document.querySelector('template[data-rh-suspense-chunk=\"'+id+'\"]');if(!template)return;var start=document.createComment('');var walker=document.createTreeWalker(document.body,128);while(start=walker.nextNode()){{if(start.nodeValue==='rh-suspense-start:'+id)break;}}if(!start)return;var end=start;while(end=end.nextSibling){{if(end.nodeType===8&&end.nodeValue==='rh-suspense-end:'+id)break;}}if(!end)return;var fragment=template.content.cloneNode(true);var parent=start.parentNode;var node=start.nextSibling;while(node&&node!==end){{var next=node.nextSibling;parent.removeChild(node);node=next;}}parent.insertBefore(fragment,end);template.remove();}})({id_json});</script>"
+			"<template data-rh-suspense-chunk=\"{escaped_id}\">{content}</template><script{nonce}>(function(id){{var template=document.querySelector('template[data-rh-suspense-chunk=\"'+id+'\"]');if(!template)return;var start=document.createComment('');var walker=document.createTreeWalker(document.body,128);while(start=walker.nextNode()){{if(start.nodeValue==='rh-suspense-start:'+id)break;}}if(!start)return;var end=start;while(end=end.nextSibling){{if(end.nodeType===8&&end.nodeValue==='rh-suspense-end:'+id)break;}}if(!end)return;var fragment=template.content.cloneNode(true);var parent=start.parentNode;var node=start.nextSibling;while(node&&node!==end){{var next=node.nextSibling;parent.removeChild(node);node=next;}}parent.insertBefore(fragment,end);template.remove();}})({safe_id_json});</script>"
 		)
 	}
 
-	fn wrap_in_html_shell(&self, content: &str, view_head: Option<&Head>) -> String {
+	fn write_html_head(&self, html: &mut String, view_head: Option<&Head>) {
 		let view_head = view_head.map(Head::deduplicated);
 		let mut seen_head_entries = BTreeSet::new();
-		let mut shell = String::with_capacity(content.len() + 1024);
 
-		shell.push_str("<!DOCTYPE html>\n");
-		shell.push_str(&format!(
+		html.push_str("<!DOCTYPE html>\n");
+		html.push_str(&format!(
 			"<html lang=\"{}\">\n",
 			html_escape(&self.options.lang)
 		));
-		shell.push_str("<head>\n");
+		html.push_str("<head>\n");
+		push_unique_head_entry(html, &mut seen_head_entries, "<meta charset=\"UTF-8\">");
 		push_unique_head_entry(
-			&mut shell,
-			&mut seen_head_entries,
-			"<meta charset=\"UTF-8\">",
-		);
-		push_unique_head_entry(
-			&mut shell,
+			html,
 			&mut seen_head_entries,
 			"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
 		);
 
 		if let Some(head) = view_head.as_ref() {
 			if let Some(ref title) = head.title {
-				shell.push_str(&format!("<title>{}</title>\n", html_escape(title)));
+				html.push_str(&format!("<title>{}</title>\n", html_escape(title)));
 			}
 			for meta in &head.meta_tags {
-				push_unique_head_entry(&mut shell, &mut seen_head_entries, meta.to_html());
+				push_unique_head_entry(html, &mut seen_head_entries, meta.to_html());
 			}
 			for link in &head.links {
-				push_unique_head_entry(&mut shell, &mut seen_head_entries, link.to_html());
+				push_unique_head_entry(html, &mut seen_head_entries, link.to_html());
 			}
 			for style in &head.styles {
-				push_unique_head_entry(&mut shell, &mut seen_head_entries, style.to_html());
+				push_unique_head_entry(html, &mut seen_head_entries, style.to_html());
 			}
 			for script in &head.scripts {
-				push_unique_head_entry(&mut shell, &mut seen_head_entries, script.to_html());
+				push_unique_head_entry(html, &mut seen_head_entries, script.to_html());
 			}
 		}
 
 		if let Some(ref token) = self.options.csrf_token {
-			shell.push_str(&format!(
+			html.push_str(&format!(
 				"<meta name=\"csrf-token\" content=\"{}\">\n",
 				html_escape(token)
 			));
 		}
 
-		shell.push_str("</head>\n<body>\n<div id=\"app\">");
+		html.push_str("</head>\n");
+	}
+
+	fn wrap_in_html_shell(&self, content: &str, view_head: Option<&Head>) -> String {
+		let mut shell = String::with_capacity(content.len() + 1024);
+
+		self.write_html_head(&mut shell, view_head);
+		shell.push_str("<body>\n<div id=\"app\">");
 		shell.push_str(content);
 		shell.push_str("</div>\n");
 		shell
@@ -957,54 +970,10 @@ impl SsrRenderer {
 			))];
 		}
 
-		let view_head = view_head.map(Head::deduplicated);
-		let mut seen_head_entries = BTreeSet::new();
 		let mut shell = String::with_capacity(content.len() + 1024);
 
-		shell.push_str("<!DOCTYPE html>\n");
-		shell.push_str(&format!(
-			"<html lang=\"{}\">\n",
-			html_escape(&self.options.lang)
-		));
-		shell.push_str("<head>\n");
-		push_unique_head_entry(
-			&mut shell,
-			&mut seen_head_entries,
-			"<meta charset=\"UTF-8\">",
-		);
-		push_unique_head_entry(
-			&mut shell,
-			&mut seen_head_entries,
-			"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
-		);
-
-		if let Some(head) = view_head.as_ref() {
-			if let Some(ref title) = head.title {
-				shell.push_str(&format!("<title>{}</title>\n", html_escape(title)));
-			}
-
-			for meta in &head.meta_tags {
-				push_unique_head_entry(&mut shell, &mut seen_head_entries, meta.to_html());
-			}
-			for link in &head.links {
-				push_unique_head_entry(&mut shell, &mut seen_head_entries, link.to_html());
-			}
-			for style in &head.styles {
-				push_unique_head_entry(&mut shell, &mut seen_head_entries, style.to_html());
-			}
-			for script in &head.scripts {
-				push_unique_head_entry(&mut shell, &mut seen_head_entries, script.to_html());
-			}
-		}
-
-		if let Some(ref token) = self.options.csrf_token {
-			shell.push_str(&format!(
-				"<meta name=\"csrf-token\" content=\"{}\">\n",
-				html_escape(token)
-			));
-		}
-
-		shell.push_str("</head>\n<body>\n<div id=\"app\">");
+		self.write_html_head(&mut shell, view_head);
+		shell.push_str("<body>\n<div id=\"app\">");
 		shell.push_str(content);
 		shell.push_str("</div>\n");
 
@@ -1039,67 +1008,9 @@ impl SsrRenderer {
 		body_tail: &str,
 		view_head: Option<&Head>,
 	) -> String {
-		let view_head = view_head.map(Head::deduplicated);
-		let mut seen_head_entries = BTreeSet::new();
 		let mut html = String::with_capacity(content.len() + 1024);
 
-		// DOCTYPE and html opening
-		html.push_str("<!DOCTYPE html>\n");
-		html.push_str(&format!(
-			"<html lang=\"{}\">\n",
-			html_escape(&self.options.lang)
-		));
-
-		// Head section
-		html.push_str("<head>\n");
-		push_unique_head_entry(
-			&mut html,
-			&mut seen_head_entries,
-			"<meta charset=\"UTF-8\">",
-		);
-		push_unique_head_entry(
-			&mut html,
-			&mut seen_head_entries,
-			"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
-		);
-
-		// Add View's head elements
-		if let Some(head) = view_head.as_ref() {
-			// Title from View's head
-			if let Some(ref title) = head.title {
-				html.push_str(&format!("<title>{}</title>\n", html_escape(title)));
-			}
-
-			// View's meta tags
-			for meta in &head.meta_tags {
-				push_unique_head_entry(&mut html, &mut seen_head_entries, meta.to_html());
-			}
-
-			// View's links
-			for link in &head.links {
-				push_unique_head_entry(&mut html, &mut seen_head_entries, link.to_html());
-			}
-
-			// View's styles
-			for style in &head.styles {
-				push_unique_head_entry(&mut html, &mut seen_head_entries, style.to_html());
-			}
-
-			// View's scripts (in head)
-			for script in &head.scripts {
-				push_unique_head_entry(&mut html, &mut seen_head_entries, script.to_html());
-			}
-		}
-
-		// CSRF token meta tag (always from options)
-		if let Some(ref token) = self.options.csrf_token {
-			html.push_str(&format!(
-				"<meta name=\"csrf-token\" content=\"{}\">\n",
-				html_escape(token)
-			));
-		}
-
-		html.push_str("</head>\n");
+		self.write_html_head(&mut html, view_head);
 
 		// Body section
 		html.push_str("<body>\n");
@@ -1145,29 +1056,7 @@ impl SsrRenderer {
 	pub fn wrap_in_html(&self, content: &str) -> String {
 		let mut html = String::with_capacity(content.len() + 1024);
 
-		// DOCTYPE and html opening
-		html.push_str("<!DOCTYPE html>\n");
-		html.push_str(&format!(
-			"<html lang=\"{}\">\n",
-			html_escape(&self.options.lang)
-		));
-
-		// Head section
-		html.push_str("<head>\n");
-		html.push_str("<meta charset=\"UTF-8\">\n");
-		html.push_str(
-			"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n",
-		);
-
-		// CSRF token meta tag
-		if let Some(ref token) = self.options.csrf_token {
-			html.push_str(&format!(
-				"<meta name=\"csrf-token\" content=\"{}\">\n",
-				html_escape(token)
-			));
-		}
-
-		html.push_str("</head>\n");
+		self.write_html_head(&mut html, None);
 
 		// Body section
 		html.push_str("<body>\n");
