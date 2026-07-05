@@ -280,6 +280,18 @@ fn policy_rejects_wrong_password_for_default_identifier_preferred_hasher() {
 }
 
 #[test]
+fn policy_checks_default_identifier_preferred_before_matching_legacy_hasher() {
+	let policy = PasswordHashPolicy::new(DefaultIdentifierPreferredHasher::accepting(false))
+		.with_legacy(PrefixHasher::new("new").with_accepted_password("different"));
+
+	let result = policy
+		.verify_with_update("secret", "new$secret")
+		.expect("default identifier preferred hasher should be checked first");
+
+	assert_eq!(result, PasswordVerification::Valid);
+}
+
+#[test]
 fn policy_accepts_stale_preferred_password_when_rehash_fails() {
 	let policy = PasswordHashPolicy::new(ErroringHashPreferredHasher);
 

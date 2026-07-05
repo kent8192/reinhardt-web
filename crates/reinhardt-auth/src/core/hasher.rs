@@ -188,6 +188,15 @@ impl PasswordHashPolicy {
 			return self.verify_preferred(password, hash);
 		}
 
+		let mut checked_default_identifier = false;
+		if self.preferred.algorithm().is_none() {
+			match self.preferred.verify(password, hash) {
+				Ok(true) => return self.verified_preferred_result(password, hash),
+				Ok(false) => checked_default_identifier = true,
+				Err(_) => {}
+			}
+		}
+
 		for legacy in &self.legacy {
 			if legacy.identify(hash) {
 				if !legacy.verify(password, hash)? {
@@ -195,15 +204,6 @@ impl PasswordHashPolicy {
 				}
 
 				return Ok(self.verified_legacy_result(password));
-			}
-		}
-
-		let mut checked_default_identifier = false;
-		if self.preferred.algorithm().is_none() {
-			match self.preferred.verify(password, hash) {
-				Ok(true) => return self.verified_preferred_result(password, hash),
-				Ok(false) => checked_default_identifier = true,
-				Err(_) => {}
 			}
 		}
 
