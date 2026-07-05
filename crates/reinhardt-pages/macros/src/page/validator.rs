@@ -8,8 +8,9 @@
 //! 1. **Event Handlers**: Must be closure expressions with 0 or 1 arguments
 //! 2. **Attributes**: data-* and aria-* attributes must follow naming conventions
 //! 3. **Element Nesting**: Void elements cannot have children, interactive elements cannot nest
-//! 4. **Required Attributes**: img elements must have alt attributes (accessibility)
+//! 4. **Required Attributes**: img elements must have required media attributes
 //! 5. **Attribute Types**: Certain attributes must be specific types (e.g., img src must be string literal)
+//! 6. **Accessibility**: Controls, interactive elements, roles, tabindex, and iframes are validated
 //!
 //! ## Component invocation (spec §3.5.1)
 //!
@@ -82,15 +83,21 @@ pub(super) fn validate(ast: &PageMacro) -> Result<TypedPageMacro> {
 	let form = match &ast.form {
 		PageMacroForm::StrictClosure { params, body } => {
 			enforce_strict_captures(ast.head.as_ref(), body, params)?;
+			let typed_body = transform_body(body, &[])?;
+			reinhardt_manouche::validator::validate_page_accessibility(&typed_body)?;
 			TypedPageMacroForm::StrictClosure {
 				params: params.clone(),
-				body: transform_body(body, &[])?,
+				body: typed_body,
 			}
 		}
-		PageMacroForm::ImplicitBody { body } => TypedPageMacroForm::ImplicitBody {
-			captures: collect_free_idents(ast.head.as_ref(), body, &[]),
-			body: transform_body(body, &[])?,
-		},
+		PageMacroForm::ImplicitBody { body } => {
+			let typed_body = transform_body(body, &[])?;
+			reinhardt_manouche::validator::validate_page_accessibility(&typed_body)?;
+			TypedPageMacroForm::ImplicitBody {
+				captures: collect_free_idents(ast.head.as_ref(), body, &[]),
+				body: typed_body,
+			}
+		}
 	};
 
 	Ok(TypedPageMacro {
@@ -184,6 +191,9 @@ impl CaptureChecker {
 
 	fn visit_element(&mut self, el: &PageElement) {
 		for a in &el.attrs {
+			if a.html_name() == "a11y" {
+				continue;
+			}
 			self.visit_expr(&a.value);
 		}
 		for e in &el.events {
@@ -659,7 +669,8 @@ fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<Typed
 	}
 
 	// 2. Transform and validate attributes
-	let typed_attrs = transform_attrs(&elem.attrs, &tag)?;
+	let transformed_attrs = transform_attrs(&elem.attrs, &tag)?;
+	let typed_attrs = transformed_attrs.attrs;
 
 	// 3. Validate element nesting
 	validate_element_nesting(elem, parent_tags)?;
@@ -675,31 +686,36 @@ fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<Typed
 		attrs: typed_attrs,
 		events: elem.events.clone(),
 		children: typed_children,
+		a11y_disabled: transformed_attrs.a11y_disabled,
 		span: elem.span,
 	};
 
 	// 6. Validate against HTML specification (Phase 2)
 	super::html_spec::validate_against_spec(&typed_element)?;
 
-	// 7. Validate accessibility requirements (Phase 5)
-	validate_accessibility(
-		&tag,
-		&typed_element.attrs,
-		&typed_element.children,
-		elem.span,
-	)?;
-
 	Ok(typed_element)
+}
+
+struct TransformedPageAttrs {
+	attrs: Vec<TypedPageAttr>,
+	a11y_disabled: bool,
 }
 
 /// Transforms attributes from untyped to typed, with validation.
 ///
 /// This function converts `Expr` attribute values into `AttrValue`,
 /// enabling type-specific validation.
-fn transform_attrs(attrs: &[PageAttr], element_tag: &str) -> Result<Vec<TypedPageAttr>> {
+fn transform_attrs(attrs: &[PageAttr], element_tag: &str) -> Result<TransformedPageAttrs> {
 	let mut typed_attrs = Vec::new();
+	let mut a11y_disabled = false;
 
 	for attr in attrs {
+		if attr.html_name() == "a11y" {
+			validate_a11y_opt_out_attr(attr)?;
+			a11y_disabled = true;
+			continue;
+		}
+
 		// Validate attribute naming conventions (data-*, aria-*)
 		validate_attribute(attr, element_tag)?;
 
@@ -716,7 +732,24 @@ fn transform_attrs(attrs: &[PageAttr], element_tag: &str) -> Result<Vec<TypedPag
 		});
 	}
 
-	Ok(typed_attrs)
+	Ok(TransformedPageAttrs {
+		attrs: typed_attrs,
+		a11y_disabled,
+	})
+}
+
+fn validate_a11y_opt_out_attr(attr: &PageAttr) -> Result<()> {
+	if let Expr::Path(path) = &attr.value
+		&& path.qself.is_none()
+		&& path.path.is_ident("off")
+	{
+		return Ok(());
+	}
+
+	Err(syn::Error::new_spanned(
+		&attr.value,
+		"`a11y` accepts only `off` as an opt-out marker: `a11y: off`",
+	))
 }
 
 /// Checks if an attribute is a URL attribute for the given element.
@@ -798,6 +831,7 @@ fn validate_enum_attr(
 /// Checks if children nodes contain meaningful content.
 ///
 /// Returns true if any child contains non-whitespace text or is a dynamic expression.
+#[cfg(test)]
 fn has_meaningful_content(children: &[TypedPageNode]) -> bool {
 	for child in children {
 		match child {
@@ -830,6 +864,7 @@ fn has_meaningful_content(children: &[TypedPageNode]) -> bool {
 /// - Text content (direct or nested)
 /// - aria-label attribute
 /// - aria-labelledby attribute
+#[cfg(test)]
 fn validate_button_accessibility(
 	attrs: &[TypedPageAttr],
 	children: &[TypedPageNode],
@@ -862,22 +897,6 @@ fn validate_button_accessibility(
 	Ok(())
 }
 
-/// Validates accessibility requirements for elements.
-///
-/// Currently validates:
-/// - button elements: Must have text content or aria-label
-fn validate_accessibility(
-	tag: &str,
-	attrs: &[TypedPageAttr],
-	children: &[TypedPageNode],
-	span: Span,
-) -> Result<()> {
-	if tag == "button" {
-		validate_button_accessibility(attrs, children, span)?
-	}
-	Ok(())
-}
-
 /// Validates attribute type for specific elements and attributes.
 ///
 /// # Validation Rules
@@ -890,7 +909,6 @@ fn validate_accessibility(
 ///   and use a safe URL scheme; dynamic expressions (e.g. `resolve_static(...)`) are
 ///   accepted and deferred to runtime
 ///
-/// Future phases will add accessibility checks.
 fn validate_attr_type(
 	attr_name: &str,
 	value: &AttrValue,
@@ -1393,7 +1411,7 @@ mod tests {
 
 		let result = transform_attrs(&attrs, "img");
 		assert!(result.is_ok());
-		let typed_attrs = result.unwrap();
+		let typed_attrs = result.unwrap().attrs;
 		assert_eq!(typed_attrs.len(), 1);
 		assert!(typed_attrs[0].value.is_string_literal());
 	}
@@ -1408,7 +1426,7 @@ mod tests {
 
 		let result = transform_attrs(&attrs, "div");
 		assert!(result.is_ok());
-		let typed_attrs = result.unwrap();
+		let typed_attrs = result.unwrap().attrs;
 		assert_eq!(typed_attrs.len(), 1);
 		assert!(typed_attrs[0].value.is_dynamic());
 	}
@@ -1844,6 +1862,7 @@ mod tests {
 				content: "Submit".to_string(),
 				span: proc_macro2::Span::call_site(),
 			})],
+			a11y_disabled: false,
 			span: proc_macro2::Span::call_site(),
 		})];
 		let result =
