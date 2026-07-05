@@ -14,7 +14,7 @@ pub use form::{
 	validate_form, validate_form_with_ambient_arguments_source, validate_redirect_on_success,
 };
 pub use head::validate_head;
-pub use page::validate_page;
+pub use page::{validate_page, validate_page_accessibility};
 
 // Re-export typed AST types from core
 pub use crate::core::TypedHeadMacro;
