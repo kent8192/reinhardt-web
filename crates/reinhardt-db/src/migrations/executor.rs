@@ -755,6 +755,17 @@ impl DatabaseMigrationExecutor {
 					}
 				}
 
+				#[cfg(feature = "sqlite")]
+				if matches!(dialect, SqlDialect::Sqlite) && operation.requires_sqlite_recreation() {
+					let mut editor =
+						SchemaEditor::new(self.connection.clone(), migration.atomic, self.db_type)
+							.await?;
+					self.handle_sqlite_recreation(operation, &mut editor)
+						.await?;
+					editor.finish().await?;
+					continue;
+				}
+
 				let sql = operation.to_sql(&dialect);
 
 				// Split SQL into individual statements to handle PostgreSQL's

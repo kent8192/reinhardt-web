@@ -850,7 +850,7 @@ fn parse_generated_column_definition(expr: &Expr) -> Option<super::GeneratedColu
 	None
 }
 
-fn parse_schema_expr_tokens(tokens: &str) -> Option<super::SchemaExpr> {
+pub(crate) fn parse_schema_expr_tokens(tokens: &str) -> Option<super::SchemaExpr> {
 	syn::parse_str::<Expr>(tokens)
 		.ok()
 		.and_then(|expr| parse_schema_expr(&expr))

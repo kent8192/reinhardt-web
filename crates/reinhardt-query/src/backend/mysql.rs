@@ -225,18 +225,21 @@ impl MySqlQueryBuilder {
 				self.write_schema_expr(writer, right);
 				writer.push(")");
 			}
-			SchemaExpr::Function { func, args } => {
-				let func_name = match func {
-					SchemaFunc::Concat => "CONCAT",
-					SchemaFunc::Coalesce => "COALESCE",
-				};
-				writer.push(func_name);
-				writer.push("(");
-				writer.push_list(args, ", ", |w, arg| {
-					self.write_schema_expr(w, arg);
-				});
-				writer.push(")");
-			}
+			SchemaExpr::Function { func, args } => match func {
+				SchemaFunc::Concat if args.is_empty() => writer.push("''"),
+				SchemaFunc::Concat | SchemaFunc::Coalesce => {
+					let func_name = match func {
+						SchemaFunc::Concat => "CONCAT",
+						SchemaFunc::Coalesce => "COALESCE",
+					};
+					writer.push(func_name);
+					writer.push("(");
+					writer.push_list(args, ", ", |w, arg| {
+						self.write_schema_expr(w, arg);
+					});
+					writer.push(")");
+				}
+			},
 			SchemaExpr::Cast { expr, ty } => {
 				writer.push("CAST(");
 				self.write_schema_expr(writer, expr);
@@ -5763,6 +5766,25 @@ mod tests {
 		assert!(sql.contains(
 			"`full_name` VARCHAR(201) GENERATED ALWAYS AS (CONCAT(`first_name`, ' ', `last_name`)) STORED"
 		));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_empty_concat_generated_column() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.col(
+			ColumnDef::new("empty_name")
+				.string_len(1)
+				.generated_stored(SchemaExpr::concat([])),
+		);
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("`empty_name` VARCHAR(1) GENERATED ALWAYS AS ('') STORED"));
+		assert!(!sql.contains("CONCAT()"));
 		assert_eq!(values.len(), 0);
 	}
 
