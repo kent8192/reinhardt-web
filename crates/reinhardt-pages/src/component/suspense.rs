@@ -46,7 +46,6 @@
 
 use crate::component::{IntoPage, Page, PageElement};
 use crate::reactive::Resource;
-#[cfg(native)]
 use reinhardt_core::types::page::SuspenseNode;
 
 /// Trait for checking whether a resource is in the loading state.
@@ -238,36 +237,36 @@ impl Default for SuspenseBoundary {
 
 impl IntoPage for SuspenseBoundary {
 	fn into_page(self) -> Page {
-		#[cfg(wasm)]
-		{
-			self.render()
-		}
+		let Self {
+			fallback_fn,
+			trackers,
+			content_fn,
+		} = self;
+		let tracked_resource_ids = trackers
+			.iter()
+			.filter_map(|tracker| tracker.ssr_resource_key().map(str::to_owned))
+			.collect();
 
-		#[cfg(native)]
-		{
-			let Self {
-				fallback_fn,
-				trackers,
-				content_fn,
-			} = self;
-			let tracked_resource_ids = trackers
-				.iter()
-				.filter_map(|tracker| tracker.ssr_resource_key().map(str::to_owned))
-				.collect();
-
-			Page::Suspense(SuspenseNode::new_with_tracked_resources(
-				None,
-				tracked_resource_ids,
-				move || trackers.iter().any(|tracker| tracker.is_loading()),
-				fallback_fn,
-				move || {
-					PageElement::new("div")
-						.attr("data-rh-suspense", "resolved")
-						.child(content_fn())
-						.into_page()
-				},
-			))
-		}
+		Page::Suspense(SuspenseNode::new_with_tracked_resources(
+			None,
+			tracked_resource_ids,
+			move || trackers.iter().any(|tracker| tracker.is_loading()),
+			#[cfg(native)]
+			fallback_fn,
+			#[cfg(wasm)]
+			move || {
+				PageElement::new("div")
+					.attr("data-rh-suspense", "pending")
+					.child(fallback_fn())
+					.into_page()
+			},
+			move || {
+				PageElement::new("div")
+					.attr("data-rh-suspense", "resolved")
+					.child(content_fn())
+					.into_page()
+			},
+		))
 	}
 }
 

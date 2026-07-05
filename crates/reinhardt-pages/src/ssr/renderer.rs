@@ -555,6 +555,7 @@ impl SsrRenderer {
 												&mut nested_boundaries,
 											)
 											.await;
+										boundary.node.cache_content_head_from(&replacement_page);
 										if let Some(index) = boundary.boundary_end_index {
 											runtime
 												.context
@@ -777,12 +778,15 @@ impl SsrRenderer {
 						}
 						self.render_suspense_fallback(&boundary_id, fallback)
 					} else {
+						node.cache_content_head_from(&content_page);
 						content
 					}
 				}
 				Page::Deferred(node) => {
 					let content = node.render_content();
-					self.render_stream_shell_page(&content, boundaries).await
+					let rendered = self.render_stream_shell_page(&content, boundaries).await;
+					node.cache_content_head_from(&content);
+					rendered
 				}
 			}
 		})
@@ -922,6 +926,7 @@ impl SsrRenderer {
 						let replacement = self
 							.render_async_page(&replacement_page, AsyncRenderMode::Buffered)
 							.await;
+						node.cache_content_head_from(&replacement_page);
 						if let Some(index) = boundary_end_index
 							&& let Some(context) =
 								super::resource_context::with_active_context(Rc::clone)
@@ -931,12 +936,17 @@ impl SsrRenderer {
 
 						replacement
 					} else {
+						node.cache_content_head_from(&content_page);
 						content
 					}
 				}
 				Page::Deferred(node) => {
 					let content = node.render_content();
-					self.render_async_page(&content, mode).await
+					let rendered = self.render_async_page(&content, mode).await;
+					if !matches!(mode, AsyncRenderMode::Discovery) {
+						node.cache_content_head_from(&content);
+					}
+					rendered
 				}
 			}
 		})

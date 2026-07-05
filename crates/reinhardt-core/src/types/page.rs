@@ -268,6 +268,11 @@ impl SuspenseNode {
 		}
 	}
 
+	/// Caches the topmost head discovered while rendering the content branch.
+	pub fn cache_content_head_from(&self, content: &Page) {
+		let _ = self.content_head.set(content.find_topmost_head().cloned());
+	}
+
 	fn find_topmost_content_head(&self) -> Option<&Head> {
 		self.content_head
 			.get_or_init(|| self.content().find_topmost_head().cloned())
@@ -323,6 +328,11 @@ impl DeferredNode {
 	/// Renders the content branch.
 	pub fn render_content(&self) -> Page {
 		self.content()
+	}
+
+	/// Caches the topmost head discovered while rendering the content branch.
+	pub fn cache_content_head_from(&self, content: &Page) {
+		let _ = self.content_head.set(content.find_topmost_head().cloned());
 	}
 
 	fn find_topmost_content_head(&self) -> Option<&Head> {

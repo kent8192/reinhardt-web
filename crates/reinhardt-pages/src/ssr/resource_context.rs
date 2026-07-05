@@ -5,7 +5,7 @@ use futures_util::future::join_all;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -21,9 +21,16 @@ type PendingResourceSubscriber = Box<dyn Fn(Value) + 'static>;
 
 struct PendingResource {
 	id: String,
+	external: bool,
 	boundary_ids: Vec<String>,
 	future: PendingResourceFuture,
 	subscribers: Vec<PendingResourceSubscriber>,
+}
+
+struct TimedOutResource {
+	id: String,
+	external: bool,
+	boundary_ids: Vec<String>,
 }
 
 /// Request-scoped SSR resource registry.
@@ -31,7 +38,7 @@ pub(crate) struct SsrResourceContext {
 	next_resource_index: usize,
 	pending: Vec<PendingResource>,
 	resolved: HashMap<String, Value>,
-	timed_out: HashSet<String>,
+	timed_out: Vec<TimedOutResource>,
 	boundary_stack: Vec<String>,
 	timeout: Duration,
 }
@@ -43,7 +50,7 @@ impl SsrResourceContext {
 			next_resource_index: 0,
 			pending: Vec::new(),
 			resolved: HashMap::new(),
-			timed_out: HashSet::new(),
+			timed_out: Vec::new(),
 			boundary_stack: Vec::new(),
 			timeout,
 		}
@@ -100,7 +107,7 @@ impl SsrResourceContext {
 			}
 			return;
 		}
-		if self.timed_out.contains(&key) {
+		if self.timed_out.iter().any(|resource| resource.id == key) {
 			return;
 		}
 
@@ -112,13 +119,17 @@ impl SsrResourceContext {
 
 		let current_boundary_id = self.current_boundary_id();
 		if let Some(pending) = self.pending.iter_mut().find(|pending| pending.id == key) {
-			if let Some(boundary_id) = current_boundary_id
-				&& !pending
-					.boundary_ids
-					.iter()
-					.any(|candidate| candidate == &boundary_id)
-			{
-				pending.boundary_ids.push(boundary_id);
+			match current_boundary_id {
+				Some(boundary_id) => {
+					if !pending
+						.boundary_ids
+						.iter()
+						.any(|candidate| candidate == &boundary_id)
+					{
+						pending.boundary_ids.push(boundary_id);
+					}
+				}
+				None => {}
 			}
 			pending.subscribers.push(subscriber);
 			return;
@@ -136,10 +147,20 @@ impl SsrResourceContext {
 
 		self.pending.push(PendingResource {
 			id: key,
+			external: false,
 			boundary_ids: current_boundary_id.into_iter().collect(),
 			future,
 			subscribers: vec![subscriber],
 		});
+	}
+
+	pub(crate) fn mark_resource_read(&mut self, key: &str) {
+		if self.current_boundary_id().is_some() {
+			return;
+		}
+		if let Some(pending) = self.pending.iter_mut().find(|pending| pending.id == key) {
+			pending.external = true;
+		}
 	}
 
 	/// Assigns already registered resource IDs to a Suspense boundary.
@@ -192,9 +213,7 @@ impl SsrResourceContext {
 
 	/// Returns whether any pending resource is not assigned to a Suspense boundary.
 	pub(crate) fn has_pending_external(&self) -> bool {
-		self.pending
-			.iter()
-			.any(|pending| pending.boundary_ids.is_empty())
+		self.pending.iter().any(|pending| pending.external)
 	}
 
 	/// Returns pending resource IDs currently assigned to a Suspense boundary.
@@ -206,18 +225,18 @@ impl SsrResourceContext {
 			.collect()
 	}
 
-	fn take_matching(&mut self, matches: impl Fn(Option<&str>) -> bool) -> Vec<PendingResource> {
+	fn take_matching<F>(&mut self, matches: &F) -> Vec<PendingResource>
+	where
+		F: Fn(Option<&str>) -> bool,
+	{
 		let mut selected = Vec::new();
 		let mut remaining = Vec::new();
 		for pending in std::mem::take(&mut self.pending) {
-			let is_match = if pending.boundary_ids.is_empty() {
-				matches(None)
-			} else {
-				pending
+			let is_match = (pending.external && matches(None))
+				|| pending
 					.boundary_ids
 					.iter()
-					.any(|boundary_id| matches(Some(boundary_id)))
-			};
+					.any(|boundary_id| matches(Some(boundary_id)));
 			if is_match {
 				selected.push(pending);
 			} else {
@@ -226,6 +245,19 @@ impl SsrResourceContext {
 		}
 		self.pending = remaining;
 		selected
+	}
+
+	fn has_timed_out_matching<F>(&self, matches: &F) -> bool
+	where
+		F: Fn(Option<&str>) -> bool,
+	{
+		self.timed_out.iter().any(|resource| {
+			(resource.external && matches(None))
+				|| resource
+					.boundary_ids
+					.iter()
+					.any(|boundary_id| matches(Some(boundary_id)))
+		})
 	}
 
 	fn record_resolved(
@@ -240,8 +272,25 @@ impl SsrResourceContext {
 		self.resolved.insert(id, value);
 	}
 
-	fn record_timeout(&mut self, id: String) {
-		self.timed_out.insert(id);
+	fn record_timeout(&mut self, timed_out: TimedOutResource) {
+		if let Some(existing) = self
+			.timed_out
+			.iter_mut()
+			.find(|resource| resource.id == timed_out.id)
+		{
+			existing.external |= timed_out.external;
+			for boundary_id in timed_out.boundary_ids {
+				if !existing
+					.boundary_ids
+					.iter()
+					.any(|candidate| candidate == &boundary_id)
+				{
+					existing.boundary_ids.push(boundary_id);
+				}
+			}
+		} else {
+			self.timed_out.push(timed_out);
+		}
 	}
 }
 
@@ -286,6 +335,11 @@ pub(crate) fn with_active_context<R>(
 	ACTIVE_CONTEXT.try_with(f).ok()
 }
 
+/// Marks a pending resource as used outside any Suspense boundary.
+pub(crate) fn mark_resource_read(key: &str) {
+	let _ = with_active_context(|context| context.borrow_mut().mark_resource_read(key));
+}
+
 /// Resolves resources outside Suspense boundaries.
 pub(crate) async fn resolve_external_resources(context: &Rc<RefCell<SsrResourceContext>>) -> bool {
 	resolve_matching(context, |boundary_id| boundary_id.is_none()).await
@@ -308,35 +362,41 @@ async fn resolve_matching(
 	context: &Rc<RefCell<SsrResourceContext>>,
 	matches: impl Fn(Option<&str>) -> bool,
 ) -> bool {
-	let (timeout_duration, pending) = {
+	let (timeout_duration, already_timed_out, pending) = {
 		let mut context = context.borrow_mut();
 		let timeout_duration = context.timeout;
-		let pending = context.take_matching(matches);
-		(timeout_duration, pending)
+		let already_timed_out = context.has_timed_out_matching(&matches);
+		let pending = context.take_matching(&matches);
+		(timeout_duration, already_timed_out, pending)
 	};
 
 	let results = join_all(pending.into_iter().map(|pending| async move {
 		let PendingResource {
 			id,
+			external,
+			boundary_ids,
 			future,
 			subscribers,
-			..
 		} = pending;
 		match timeout(timeout_duration, future).await {
 			Ok((_id, value)) => Ok((id, subscribers, value)),
-			Err(_) => Err(id),
+			Err(_) => Err(TimedOutResource {
+				id,
+				external,
+				boundary_ids,
+			}),
 		}
 	}))
 	.await;
 
-	let mut all_resolved = true;
+	let mut all_resolved = !already_timed_out;
 	for result in results {
 		match result {
 			Ok((id, subscribers, value)) => {
 				context.borrow_mut().record_resolved(id, subscribers, value)
 			}
-			Err(id) => {
-				context.borrow_mut().record_timeout(id);
+			Err(timed_out) => {
+				context.borrow_mut().record_timeout(timed_out);
 				all_resolved = false;
 			}
 		}

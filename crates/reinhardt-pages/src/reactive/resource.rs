@@ -161,7 +161,13 @@ impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
 	///
 	/// This method tracks the access for reactivity - any Effect or Memo
 	/// that calls this will automatically re-run when the state changes.
+	/// During SSR, a read outside an active Suspense boundary also keeps
+	/// the resource in the external resolution set for the shell render.
 	pub fn get(&self) -> ResourceState<T, E> {
+		#[cfg(native)]
+		if let Some(key) = &self.ssr_key {
+			crate::ssr::resource_context::mark_resource_read(key);
+		}
 		self.state.get()
 	}
 
