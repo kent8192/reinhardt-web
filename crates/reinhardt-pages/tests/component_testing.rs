@@ -88,6 +88,19 @@ async fn click_action_settles_to_success() {
 }
 
 #[tokio::test]
+async fn click_action_uses_own_screen_scheduler() {
+	let first = render(save_component);
+	let second = render(save_component);
+
+	first.get_by_role(Role::Button, "Save").click();
+	first.settle().await;
+
+	assert!(first.query_by_text("Saved").is_some());
+	assert!(second.query_by_text("Saved").is_none());
+	assert!(second.query_by_text("Idle").is_some());
+}
+
+#[tokio::test]
 async fn find_by_text_waits_for_resource() {
 	let screen = render(ready_component);
 
@@ -139,4 +152,59 @@ async fn server_fn_mock_feeds_resource() {
 
 	assert!(screen.query_by_text("Index job").is_some());
 	assert_eq!(screen.calls_to_server_fn::<load_jobs::marker>().len(), 1);
+}
+
+#[cfg(feature = "msw")]
+#[tokio::test]
+async fn server_fn_mocks_are_scoped_per_screen() {
+	let first = render(jobs_component);
+	first.mock_server_fn::<load_jobs::marker>(|_args| Ok(vec!["First job".to_string()]));
+	let second = render(jobs_component);
+	second.mock_server_fn::<load_jobs::marker>(|_args| Ok(vec!["Second job".to_string()]));
+
+	first.settle().await;
+	second.settle().await;
+
+	assert!(first.query_by_text("First job").is_some());
+	assert!(first.query_by_text("Second job").is_none());
+	assert!(second.query_by_text("Second job").is_some());
+	assert!(second.query_by_text("First job").is_none());
+}
+
+#[cfg(feature = "msw")]
+#[tokio::test]
+async fn server_fn_mock_errors_render_resource_errors() {
+	let screen = render(jobs_component);
+	screen.mock_server_fn::<load_jobs::marker>(|_args| {
+		Err(ServerFnError::application("mock failed"))
+	});
+
+	screen.settle().await;
+
+	assert!(
+		screen
+			.query_by_text("Application error: mock failed")
+			.is_some()
+	);
+	assert_eq!(screen.calls_to_server_fn::<load_jobs::marker>().len(), 1);
+}
+
+#[cfg(feature = "msw")]
+#[tokio::test]
+async fn server_fn_mock_handler_can_inspect_recorded_calls() {
+	let screen = render(jobs_component);
+	let screen_for_handler = screen.clone();
+	screen.mock_server_fn::<load_jobs::marker>(move |_args| {
+		assert_eq!(
+			screen_for_handler
+				.calls_to_server_fn::<load_jobs::marker>()
+				.len(),
+			1
+		);
+		Ok(vec!["Inspectable job".to_string()])
+	});
+
+	screen.settle().await;
+
+	assert!(screen.query_by_text("Inspectable job").is_some());
 }

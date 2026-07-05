@@ -62,18 +62,18 @@ impl Screen {
 		#[cfg(feature = "msw")]
 		{
 			let mocks = SharedServerFnMocks::default();
-			let mock_scope = server_fn_mock::activate(mocks.clone());
-			let page = view.render_page();
-			let dom = TestDom::render(page);
+			let dom = scheduler.with_current(|| {
+				server_fn_mock::with_active(mocks.clone(), || TestDom::render(view.render_page()))
+			});
 			Self {
-				inner: shared_screen_inner(dom, scheduler, mocks, mock_scope),
+				inner: shared_screen_inner(dom, scheduler, mocks),
 			}
 		}
 		#[cfg(not(feature = "msw"))]
 		{
-			let page = view.render_page();
+			let dom = scheduler.with_current(|| TestDom::render(view.render_page()));
 			Self {
-				inner: shared_screen_inner(TestDom::render(page), scheduler),
+				inner: shared_screen_inner(dom, scheduler),
 			}
 		}
 	}
@@ -177,9 +177,21 @@ impl Screen {
 
 	/// Tries to settle scheduled native component work.
 	pub async fn try_settle(&self) -> Result<(), SettleError> {
+		#[cfg(feature = "msw")]
+		let (scheduler, mocks) = {
+			let inner = self.inner.borrow();
+			(Rc::clone(&inner.scheduler), inner.mocks.clone())
+		};
+		#[cfg(not(feature = "msw"))]
 		let scheduler = Rc::clone(&self.inner.borrow().scheduler);
+
+		#[cfg(feature = "msw")]
+		let _mock_scope = server_fn_mock::activate(mocks);
+
 		scheduler.settle(|| self.pretty()).await?;
-		self.inner.borrow_mut().dom.rerender_reactive_anchors();
+		scheduler.with_current(|| {
+			self.inner.borrow_mut().dom.rerender_reactive_anchors();
+		});
 		Ok(())
 	}
 
@@ -206,7 +218,7 @@ impl Screen {
 			}
 			tokio::task::yield_now().await;
 		}
-		Err(QueryError::NotFound)
+		self.try_get_by_text(text)
 	}
 
 	/// Finds an element by role and accessible name after settling scheduled work.
@@ -233,7 +245,7 @@ impl Screen {
 			}
 			tokio::task::yield_now().await;
 		}
-		Err(QueryError::NotFound)
+		self.try_get_by_role(role, name)
 	}
 
 	/// Registers a typed server function mock for this screen.

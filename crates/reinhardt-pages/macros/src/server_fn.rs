@@ -583,7 +583,7 @@ fn add_native_mock_probe(
 			{
 				match __mock_result {
 					Ok(__mock_value) => return Ok(__mock_value),
-					Err(__mock_error) => panic!("server function mock failed: {}", __mock_error),
+					Err(__mock_error) => return Err(__mock_error),
 				}
 			}
 		}

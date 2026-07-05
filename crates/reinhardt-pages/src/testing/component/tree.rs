@@ -7,7 +7,7 @@ use reinhardt_core::types::page::{EventType, Page, PageEventHandler};
 
 use super::scheduler::SchedulerScope;
 #[cfg(feature = "msw")]
-use super::server_fn_mock::{ServerFnMockScope, SharedServerFnMocks};
+use super::server_fn_mock::SharedServerFnMocks;
 
 /// Stable identifier for a node in the native test DOM.
 pub(crate) type NodeId = usize;
@@ -21,8 +21,6 @@ pub(crate) struct ScreenInner {
 	/// Server function mocks registered for this screen.
 	#[cfg(feature = "msw")]
 	pub mocks: SharedServerFnMocks,
-	#[cfg(feature = "msw")]
-	_mock_scope: ServerFnMockScope,
 }
 
 pub(crate) struct TestDom {
@@ -389,13 +387,11 @@ pub(crate) fn shared_screen_inner(
 	dom: TestDom,
 	scheduler: Rc<SchedulerScope>,
 	mocks: SharedServerFnMocks,
-	mock_scope: ServerFnMockScope,
 ) -> Rc<RefCell<ScreenInner>> {
 	Rc::new(RefCell::new(ScreenInner {
 		dom,
 		scheduler,
 		mocks,
-		_mock_scope: mock_scope,
 	}))
 }
 

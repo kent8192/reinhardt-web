@@ -6,6 +6,8 @@ use std::rc::Rc;
 use reinhardt_core::types::page::{DummyEvent, EventType};
 
 use super::error::EventError;
+#[cfg(feature = "msw")]
+use super::server_fn_mock;
 use super::tree::{NodeId, ScreenInner};
 
 /// Stable handle to an element in a rendered native test screen.
@@ -71,7 +73,7 @@ impl ElementHandle {
 	}
 
 	fn dispatch(&self, event_type: EventType) -> Result<(), EventError> {
-		let handler = {
+		let (handler, scheduler) = {
 			let borrowed = self.inner.borrow();
 			if !borrowed.dom.contains(self.node_id) {
 				return Err(EventError::DetachedElement);
@@ -79,16 +81,27 @@ impl ElementHandle {
 			if borrowed.dom.element(self.node_id).is_none() {
 				return Err(EventError::UnsupportedElement);
 			}
-			borrowed.dom.event_handler(self.node_id, event_type)
+			(
+				borrowed.dom.event_handler(self.node_id, event_type),
+				Rc::clone(&borrowed.scheduler),
+			)
 		};
+		#[cfg(feature = "msw")]
+		let mocks = self.inner.borrow().mocks.clone();
 
 		let handler = handler.ok_or(EventError::MissingHandler)?;
-		handler(DummyEvent);
+		#[cfg(feature = "msw")]
+		{
+			let _mock_scope = server_fn_mock::activate(mocks);
+			scheduler.with_current(|| handler(DummyEvent));
+		}
+		#[cfg(not(feature = "msw"))]
+		scheduler.with_current(|| handler(DummyEvent));
 		Ok(())
 	}
 
 	fn dispatch_value(&self, event_type: EventType, value: String) -> Result<(), EventError> {
-		let handler = {
+		let (handler, scheduler) = {
 			let mut borrowed = self.inner.borrow_mut();
 			if !borrowed.dom.contains(self.node_id) {
 				return Err(EventError::DetachedElement);
@@ -96,11 +109,22 @@ impl ElementHandle {
 			if !borrowed.dom.set_value(self.node_id, value) {
 				return Err(EventError::UnsupportedElement);
 			}
-			borrowed.dom.event_handler(self.node_id, event_type)
+			(
+				borrowed.dom.event_handler(self.node_id, event_type),
+				Rc::clone(&borrowed.scheduler),
+			)
 		};
+		#[cfg(feature = "msw")]
+		let mocks = self.inner.borrow().mocks.clone();
 
 		let handler = handler.ok_or(EventError::MissingHandler)?;
-		handler(DummyEvent);
+		#[cfg(feature = "msw")]
+		{
+			let _mock_scope = server_fn_mock::activate(mocks);
+			scheduler.with_current(|| handler(DummyEvent));
+		}
+		#[cfg(not(feature = "msw"))]
+		scheduler.with_current(|| handler(DummyEvent));
 		Ok(())
 	}
 }

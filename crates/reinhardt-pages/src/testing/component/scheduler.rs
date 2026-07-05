@@ -49,34 +49,37 @@ pub(crate) struct TestScheduler {
 
 pub(crate) struct SchedulerScope {
 	scheduler: Rc<RefCell<TestScheduler>>,
-	_guard: platform::NativeTaskSinkGuard,
 }
 
 impl SchedulerScope {
 	pub(crate) fn new() -> Self {
 		let scheduler = Rc::new(RefCell::new(TestScheduler::default()));
-		let scheduler_for_sink = Rc::clone(&scheduler);
-		let guard = platform::install_task_sink(move |task| {
-			scheduler_for_sink.borrow_mut().tasks.push_back(task);
+		Self { scheduler }
+	}
+
+	pub(crate) fn with_current<R>(&self, f: impl FnOnce() -> R) -> R {
+		let scheduler = Rc::clone(&self.scheduler);
+		let _guard = platform::install_task_sink(move |task| {
+			scheduler.borrow_mut().tasks.push_back(task);
 		});
-		Self {
-			scheduler,
-			_guard: guard,
-		}
+		f()
 	}
 
 	pub(crate) async fn settle(&self, dom: impl Fn() -> String) -> Result<(), SettleError> {
 		let mut cx = Context::from_waker(Waker::noop());
 		for iteration in 0..100 {
 			let mut pending = VecDeque::new();
-			while let Some(mut task) = self.scheduler.borrow_mut().tasks.pop_front() {
-				match task.as_mut().poll(&mut cx) {
-					Poll::Ready(()) => {}
-					Poll::Pending => pending.push_back(task),
+			let pending_tasks = self.with_current(|| {
+				while let Some(mut task) = self.scheduler.borrow_mut().tasks.pop_front() {
+					match task.as_mut().poll(&mut cx) {
+						Poll::Ready(()) => {}
+						Poll::Pending => pending.push_back(task),
+					}
 				}
-			}
-			let pending_tasks = pending.len();
-			self.scheduler.borrow_mut().tasks = pending;
+				let pending_tasks = pending.len();
+				self.scheduler.borrow_mut().tasks = pending;
+				pending_tasks
+			});
 			if pending_tasks == 0 {
 				return Ok(());
 			}
