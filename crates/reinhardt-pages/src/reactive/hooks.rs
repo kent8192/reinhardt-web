@@ -47,7 +47,7 @@
 //! - [`use_deferred_value`] - Defer low-priority updates
 //!
 //! ### Async Hooks
-//! - [`use_action`] - Async mutation with pending/success/error tracking
+//! - [`use_action`] / [`use_action_state`] - Async mutations with pending/success/error tracking
 //!
 //! ### Other Hooks
 //! - [`use_id`] - Generate unique IDs
@@ -108,7 +108,7 @@ pub mod websocket;
 pub use reinhardt_core::reactive::batch;
 
 pub use action::{OptimisticState, use_optimistic};
-pub use async_action::{Action, ActionPhase, use_action};
+pub use async_action::{Action, ActionPhase, ActionStateBuilder, use_action, use_action_state};
 pub use context::use_context;
 pub use debug::use_debug_value;
 pub use effect::{use_effect, use_layout_effect};

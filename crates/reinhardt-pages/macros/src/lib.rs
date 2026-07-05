@@ -28,12 +28,22 @@
 //! ```ignore
 //! use reinhardt_pages::page;
 //!
-//! // Define an anonymous component with closure-style props
+//! // Build a Page directly from surrounding Rust values.
+//! let initial = 42;
+//! let view = page!({
+//!     div {
+//!         class: "counter",
+//!         h1 { "Counter" }
+//!         span { { format!("Count: {}", initial) } }
+//!     }
+//! });
+//!
+//! // Define a reusable factory with closure-style props.
 //! let counter = page!(|initial: i32| {
 //!     div {
 //!         class: "counter",
 //!         h1 { "Counter" }
-//!         span { format!("Count: {}", initial) }
+//!         span { { format!("Count: {}", initial) } }
 //!         button {
 //!             @click: |_| { /* handler */ },
 //!             "+"
@@ -41,7 +51,6 @@
 //!     }
 //! });
 //!
-//! // Use like a function
 //! let view = counter(42);
 //! ```
 //!
@@ -164,13 +173,30 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 /// Derives typed field signals and form traits for a form values struct.
 /// Page component macro
 ///
-/// Creates an anonymous component with a closure-style DSL for defining views.
-/// The component is returned as a callable function that takes props and returns a View.
+/// Creates a `Page` directly or a reusable page factory with a closure-style DSL.
+///
+/// `page!({ ... })` returns a `Page` immediately and implicitly captures free
+/// value identifiers from the surrounding Rust scope. Captured values are cloned
+/// into generated reactive and event closures, so they must implement `Clone`.
+///
+/// `page!(|| { ... })` and `page!(|props: Props| { ... })` return callable
+/// factories. Closure forms keep strict capture discipline: values used in the
+/// body must be declared in the closure parameter list.
 ///
 /// ## Syntax
 ///
 /// ```text
-/// // Basic syntax
+/// // Direct Page form
+/// page!({
+///     element {
+///         attr: "value",
+///         @event: |e| { handler(e) },
+///         child_element { ... }
+///         "text content"
+///     }
+/// })
+///
+/// // Factory syntax
 /// page!(|prop1: Type1, prop2: Type2| {
 ///     element {
 ///         attr: "value",
@@ -183,22 +209,24 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 /// // With head directive (for SSR)
 /// page! {
 ///     #head: my_head,
-///     |prop1: Type1| {
+///     {
 ///         element { ... }
 ///     }
 /// }
 /// ```
 ///
-/// ## Closure Parameters
+/// ## Body Forms
 ///
-/// Define props using closure syntax:
+/// Choose direct pages for app screens and ordinary functions that return
+/// `Page`. Choose closure forms for factories that are called later:
 ///
 /// | Pattern | Example | Description |
 /// |---------|---------|-------------|
-/// | No parameters | `page!(\|\| { ... })` | Static view |
-/// | Single parameter | `page!(\|name: String\| { ... })` | One prop |
-/// | Multiple parameters | `page!(\|a: T1, b: T2\| { ... })` | Multiple props |
-/// | Signal parameter | `page!(\|sig: Signal<T>\| { ... })` | Reactive signal |
+/// | Direct body | `page!({ ... })` | Immediate `Page` with implicit `Clone` captures |
+/// | No-arg factory | `page!(\|\| { ... })` | Callable factory with no params |
+/// | Single parameter | `page!(\|name: String\| { ... })` | Callable factory with one prop |
+/// | Multiple parameters | `page!(\|a: T1, b: T2\| { ... })` | Callable factory with multiple props |
+/// | Signal parameter | `page!(\|sig: Signal<T>\| { ... })` | Callable factory with reactive signal prop |
 ///
 /// ## HTML Elements
 ///
@@ -573,44 +601,32 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ## Reactive Features
 ///
-/// ### watch Blocks
+/// ### Auto-wrapped expressions and control flow
 ///
-/// Use `watch` for Signal-dependent reactive rendering:
+/// Expression, `if`, and `for` nodes are wrapped in `Page::reactive(move || ...)`.
+/// Read signals inside those nodes when the rendered output should update as
+/// the signals change:
 ///
 /// ```ignore
-/// page!(|error: Signal<Option<String>>| {
+/// page!({
 ///     div {
-///         watch {
-///             if error.get().is_some() {
-///                 div {
-///                     class: "alert",
-///                     { error.get().unwrap_or_default() }
-///                 }
+///         if error.get().is_some() {
+///             div {
+///                 class: "alert",
+///                 { error.get().unwrap_or_default() }
 ///             }
 ///         }
 ///     }
-/// })(error.clone())
+/// })
 /// ```
 ///
-/// ### When to Use watch
+/// ### Reactive vs static values
 ///
 /// | Scenario | Solution |
 /// |----------|----------|
-/// | Static condition on Copy type | Plain `if` |
-/// | Dynamic Signal-dependent condition | `watch { if signal.get() { ... } }` |
-/// | Multiple reactive branches | `watch { match state.get() { ... } }` |
-///
-/// ### watch with match
-///
-/// ```ignore
-/// watch {
-///     match state.get() {
-///         State::Loading => div { "Loading..." },
-///         State::Ready(data) => div { { data } },
-///         State::Error(msg) => div { class: "error", { msg } },
-///     }
-/// }
-/// ```
+/// | Signal-dependent condition | Read the signal inside `if` |
+/// | Signal-dependent list | Read the signal inside `for` |
+/// | Static snapshot | Extract the value before calling `page!` |
 ///
 /// ## Components
 ///
@@ -691,7 +707,21 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ## Generated Code Structure
 ///
-/// The `page!` macro generates a closure returning a `View`:
+/// The direct `page!({ ... })` form generates a `Page` expression:
+///
+/// ```ignore
+/// // page!({ div { class: "greeting", { name.clone() } } })
+/// // Generates approximately:
+/// {
+///     let name = reinhardt_pages::__private::capture(&name);
+///     ElementView::new("div")
+///         .attr("class", "greeting")
+///         .child(name.clone())
+///         .into_view()
+/// }
+/// ```
+///
+/// Closure forms generate callable factories:
 ///
 /// ```ignore
 /// // page!(|name: String| { div { class: "greeting", { name } } })
@@ -726,7 +756,7 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use reinhardt_pages::prelude::*;
 ///
 /// fn todo_app(todos: Signal<Vec<String>>, filter: Signal<String>) -> View {
-///     page!(|todos: Signal<Vec<String>>, filter: Signal<String>| {
+///     page!({
 ///         div {
 ///             class: "todo-app",
 ///
@@ -750,10 +780,8 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 ///             ul {
 ///                 class: "todo-list",
-///                 watch {
-///                     if todos.get().is_empty() {
-///                         li { class: "empty", "No todos yet" }
-///                     }
+///                 if todos.get().is_empty() {
+///                     li { class: "empty", "No todos yet" }
 ///                 }
 ///             }
 ///
@@ -763,7 +791,7 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 ///                 { format!("{} items", todos.get().len()) }
 ///             }
 ///         }
-///     })(todos, filter)
+///     })
 /// }
 /// ```
 #[proc_macro]

@@ -736,6 +736,12 @@ let users = slug_field.get_instances(vec!["alice", "bob", "charlie"]).await?;
 - **`BatchValidator`**: Combine multiple database checks into single queries
 - **`PerformanceMetrics`**: Track serialization and validation performance
 
+Serializer performance helpers are local diagnostics for REST serialization
+work. For cross-layer N+1 query detection, wrap the ORM workload in
+`reinhardt_db::orm::NPlusOneScope`; it observes repeated ORM query shapes and
+points single-object relationship fixes to `select_related()` and collection
+relationship fixes to explicit batch queries.
+
 ```rust
 use reinhardt::rest::serializers::{IntrospectionCache, QueryCache, BatchValidator, PerformanceMetrics};
 use std::time::Duration;

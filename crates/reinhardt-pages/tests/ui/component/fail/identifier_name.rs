@@ -2,11 +2,11 @@
 
 use reinhardt_pages::{Page, Path, component, page};
 
-#[component("/users/{id}/posts/{post_id}/", name = "user-post")]
-fn user_post(Path(id): Path<i64>, Path(id): Path<i64>) -> Page {
-	page!(|| {
+#[component("/users/{id}/", user_detail)]
+fn user_page(Path(id): Path<i64>) -> Page {
+	page!(|id: i64| {
 		div { { id.to_string() } }
-	})()
+	})(id)
 }
 
 fn main() {}

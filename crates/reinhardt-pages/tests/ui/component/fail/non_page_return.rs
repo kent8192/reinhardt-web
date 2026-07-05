@@ -2,7 +2,7 @@
 
 use reinhardt_pages::{Path, component};
 
-#[component("/users/{id}/", "user-name")]
+#[component("/users/{id}/", name = "user-name")]
 fn user_name(Path(id): Path<i64>) -> String {
 	id.to_string()
 }

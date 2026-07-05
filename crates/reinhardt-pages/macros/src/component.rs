@@ -18,21 +18,38 @@ struct ComponentArgs {
 	name: LitStr,
 }
 
+const COMPONENT_ARGS_EXPECTED: &str = "expected #[component(\"/path/\", name = \"name\")]";
+
 impl Parse for ComponentArgs {
 	fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
 		let path: LitStr = input.parse()?;
 		if input.is_empty() {
-			return Err(input.error("expected #[component(\"/path/\", \"name\")]"));
+			return Err(input.error(COMPONENT_ARGS_EXPECTED));
 		}
 		input.parse::<Token![,]>()?;
-		let name = if input.peek(LitStr) {
-			input.parse()?
-		} else {
-			let ident: Ident = input.parse()?;
-			LitStr::new(&ident.to_string(), ident.span())
-		};
+		if input.peek(LitStr) {
+			let name: LitStr = input.parse()?;
+			return Err(syn::Error::new(
+				name.span(),
+				"expected named route argument `name = \"...\"`; positional route names are no longer supported",
+			));
+		}
+		let key: Ident = input.parse()?;
+		if key != "name" {
+			return Err(syn::Error::new(
+				key.span(),
+				"expected route name argument `name = \"...\"`",
+			));
+		}
+		input.parse::<Token![=]>()?;
+		if !input.peek(LitStr) {
+			return Err(input.error(
+				"expected string literal route name in #[component(\"/path/\", name = \"name\")]",
+			));
+		}
+		let name: LitStr = input.parse()?;
 		if !input.is_empty() {
-			return Err(input.error("expected #[component(\"/path/\", \"name\")]"));
+			return Err(input.error(COMPONENT_ARGS_EXPECTED));
 		}
 		Ok(Self { path, name })
 	}
