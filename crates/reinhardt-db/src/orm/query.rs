@@ -4547,7 +4547,7 @@ where
 
 		// Convert to SQL and extract parameter values
 		let (sql, values) = PostgresQueryBuilder.build_select(&stmt);
-		let value_samples = values
+		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
@@ -4559,11 +4559,10 @@ where
 		let started_at = Instant::now();
 		let query_result = conn.query(&sql, params).await;
 		let duration = started_at.elapsed();
-
 		let rows = match query_result {
 			Ok(rows) => {
 				super::instrumentation::instrumentation()
-					.orm_query_end_with_params(&sql, &value_samples, duration)
+					.orm_query_end_with_params(&sql, &param_samples, duration)
 					.await;
 				rows
 			}
@@ -5132,24 +5131,21 @@ where
 			}
 		}
 
-		// Build SQL with bind placeholders and captured values
 		let conn = super::manager::get_connection().await?;
 		let (sql, values) = Self::build_select_for_backend(&query, conn.backend());
-		let value_samples = values
+		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
 		let params = super::execution::convert_values(values);
 
-		// Execute the SELECT query
 		let started_at = Instant::now();
 		let query_result = conn.query(&sql, params).await;
 		let duration = started_at.elapsed();
-
 		let rows = match query_result {
 			Ok(rows) => {
 				super::instrumentation::instrumentation()
-					.orm_query_end_with_params(&sql, &value_samples, duration)
+					.orm_query_end_with_params(&sql, &param_samples, duration)
 					.await;
 				rows
 			}

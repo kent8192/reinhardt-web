@@ -53,7 +53,7 @@ pub struct NPlusOneFinding {
 	pub execution_count: usize,
 	/// Number of distinct bind or inline literal signatures.
 	pub distinct_bind_signature_count: usize,
-	/// Redacted representative SQL fingerprint.
+	/// Normalized SQL statement for this fingerprint with literal values redacted.
 	pub representative_sql: String,
 	/// Bounded, masked bind or literal samples.
 	pub representative_bind_samples: Vec<String>,
@@ -113,9 +113,13 @@ impl QueryFingerprint {
 					consume_identifier(&mut chars);
 				}
 				'?' => normalized.push('?'),
-				c if c.is_ascii_alphabetic() || c == '_' => {
+				'"' | '`' => {
+					normalized.push(ch);
+					consume_quoted_identifier(ch, &mut chars, &mut normalized);
+				}
+				c if is_identifier_start(c) => {
 					normalized.push(c);
-					consume_identifier_into(&mut normalized, &mut chars);
+					consume_identifier_text(&mut chars, &mut normalized);
 				}
 				c if c.is_ascii_digit() => {
 					let literal = consume_number_literal(c, &mut chars);
@@ -151,9 +155,9 @@ struct QueryAggregate {
 }
 
 impl QueryAggregate {
-	fn new(representative_sql: &str) -> Self {
+	fn new(representative_sql: String) -> Self {
 		Self {
-			representative_sql: representative_sql.to_string(),
+			representative_sql,
 			bind_signatures: BTreeSet::new(),
 			representative_bind_samples: Vec::new(),
 			execution_count: 0,
@@ -184,9 +188,11 @@ impl ScopeState {
 
 	fn record_query(&mut self, query: &str, params: &[String], duration: Duration) {
 		let fingerprint = QueryFingerprint::from_sql(query);
-		let fingerprint_key = fingerprint.normalized.clone();
-
-		if self.config.ignored_fingerprints.contains(&fingerprint_key) {
+		if self
+			.config
+			.ignored_fingerprints
+			.contains(&fingerprint.normalized)
+		{
 			return;
 		}
 
@@ -199,11 +205,12 @@ impl ScopeState {
 
 		let bind_signature = bind_signature(params, &fingerprint);
 		let bind_samples = bind_samples(params, &fingerprint);
+		let normalized = fingerprint.normalized;
 
 		let aggregate = self
 			.aggregates
-			.entry(fingerprint_key.clone())
-			.or_insert_with(|| QueryAggregate::new(&fingerprint_key));
+			.entry(normalized.clone())
+			.or_insert_with(|| QueryAggregate::new(normalized));
 
 		aggregate.execution_count += 1;
 		aggregate.cumulative_duration += duration;
@@ -258,6 +265,8 @@ impl ScopeState {
 tokio::task_local! {
 	static CURRENT_N_PLUS_ONE_SCOPE: Arc<Mutex<ScopeState>>;
 }
+
+static MASK_HASH_STATE: OnceLock<RandomState> = OnceLock::new();
 
 /// Scoped N+1 query detector.
 #[derive(Debug, Clone)]
@@ -361,8 +370,6 @@ fn mask_value(value: &str) -> String {
 	format!("{class}#{hash:016x}")
 }
 
-static MASK_HASH_STATE: OnceLock<RandomState> = OnceLock::new();
-
 fn classify_value(value: &str) -> &'static str {
 	if value.parse::<i128>().is_ok() {
 		"integer"
@@ -423,7 +430,7 @@ where
 	}
 }
 
-fn consume_identifier_into<I>(target: &mut String, chars: &mut std::iter::Peekable<I>)
+fn consume_identifier_text<I>(chars: &mut std::iter::Peekable<I>, output: &mut String)
 where
 	I: Iterator<Item = char>,
 {
@@ -432,9 +439,34 @@ where
 		.is_some_and(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
 	{
 		if let Some(ch) = chars.next() {
-			target.push(ch);
+			output.push(ch);
 		}
 	}
+}
+
+fn consume_quoted_identifier<I>(
+	quote: char,
+	chars: &mut std::iter::Peekable<I>,
+	output: &mut String,
+) where
+	I: Iterator<Item = char>,
+{
+	while let Some(ch) = chars.next() {
+		output.push(ch);
+		if ch == quote {
+			if chars.peek().is_some_and(|next| *next == quote) {
+				if let Some(escaped) = chars.next() {
+					output.push(escaped);
+				}
+				continue;
+			}
+			break;
+		}
+	}
+}
+
+fn is_identifier_start(ch: char) -> bool {
+	ch.is_ascii_alphabetic() || ch == '_'
 }
 
 fn consume_number_literal<I>(first: char, chars: &mut std::iter::Peekable<I>) -> String
@@ -470,7 +502,7 @@ fn collapse_whitespace(input: &str) -> String {
 }
 
 fn suggested_action() -> String {
-	"Repeated query shape detected. If this is a single-object relationship, consider select_related(). If this is a collection relationship, use an explicit batch query.".to_string()
+	"Repeated query shape detected. If this is a single-object relationship, consider select_related(). For collection relationships, use an explicit batch query until automatic prefetch execution is available.".to_string()
 }
 
 fn warn_for_findings(report: &NPlusOneReport) {
@@ -557,6 +589,31 @@ mod tests {
 	}
 
 	#[test]
+	fn preserves_digits_inside_identifiers() {
+		let line1 =
+			QueryFingerprint::from_sql("SELECT address_line1 FROM events_2025 WHERE tenant_id = 1");
+		let line2 =
+			QueryFingerprint::from_sql("SELECT address_line2 FROM events_2026 WHERE tenant_id = 2");
+		let quoted = QueryFingerprint::from_sql(
+			r#"SELECT "address_line1" FROM "events_2025" WHERE "tenant_id" = 1"#,
+		);
+
+		assert_eq!(
+			line1.normalized,
+			"SELECT address_line1 FROM events_2025 WHERE tenant_id = ?"
+		);
+		assert_eq!(
+			line2.normalized,
+			"SELECT address_line2 FROM events_2026 WHERE tenant_id = ?"
+		);
+		assert_eq!(
+			quoted.normalized,
+			r#"SELECT "address_line1" FROM "events_2025" WHERE "tenant_id" = ?"#
+		);
+		assert_ne!(line1.normalized, line2.normalized);
+	}
+
+	#[test]
 	fn normalizes_bind_placeholders() {
 		let fingerprint = QueryFingerprint::from_sql(
 			"SELECT * FROM posts WHERE author_id = $1 AND category_id = :category_id",
@@ -571,23 +628,13 @@ mod tests {
 	#[test]
 	fn preserves_postgres_cast_operators() {
 		let fingerprint = QueryFingerprint::from_sql(
-			"SELECT payload::jsonb FROM posts WHERE id = $1 AND status = 'published'::text",
+			"SELECT * FROM events WHERE payload @> $1::jsonb AND kind = :kind",
 		);
 
 		assert_eq!(
 			fingerprint.normalized,
-			"SELECT payload::jsonb FROM posts WHERE id = ? AND status = ?::text"
+			"SELECT * FROM events WHERE payload @> ?::jsonb AND kind = ?"
 		);
-	}
-
-	#[test]
-	fn preserves_digits_inside_identifiers() {
-		let field1 = QueryFingerprint::from_sql("SELECT field1 FROM posts WHERE id = 1");
-		let field2 = QueryFingerprint::from_sql("SELECT field2 FROM posts WHERE id = 2");
-
-		assert_eq!(field1.normalized, "SELECT field1 FROM posts WHERE id = ?");
-		assert_eq!(field2.normalized, "SELECT field2 FROM posts WHERE id = ?");
-		assert_ne!(field1.normalized, field2.normalized);
 	}
 
 	#[test]
@@ -608,6 +655,23 @@ mod tests {
 	}
 
 	#[test]
+	fn suggested_action_does_not_recommend_inactive_prefetch_related() {
+		let mut state = ScopeState::new("posts.index".to_string(), low_threshold_config());
+		for author_id in ["1", "2", "3"] {
+			state.record_query(
+				"SELECT * FROM posts WHERE author_id = $1",
+				&[author_id.to_string()],
+				Duration::from_millis(1),
+			);
+		}
+
+		let report = state.finish_report();
+		let action = &report.findings[0].suggested_action;
+		assert!(!action.contains("prefetch_related()"));
+		assert!(action.contains("explicit batch query"));
+	}
+
+	#[test]
 	fn detects_inline_literals_when_params_are_empty() {
 		let mut state = ScopeState::new("posts.index".to_string(), low_threshold_config());
 		for author_id in ["1", "2", "3"] {
@@ -625,6 +689,34 @@ mod tests {
 			"SELECT * FROM posts WHERE author_id = ?"
 		);
 		assert_eq!(report.findings[0].distinct_bind_signature_count, 3);
+	}
+
+	#[test]
+	fn representative_sql_uses_normalized_fingerprint() {
+		let mut state = ScopeState::new("users.index".to_string(), low_threshold_config());
+		for email in [
+			"a@example.com",
+			"b@example.com",
+			"private-token@example.com",
+		] {
+			state.record_query(
+				&format!("SELECT * FROM users WHERE email = '{email}'"),
+				&[],
+				Duration::from_millis(1),
+			);
+		}
+
+		let report = state.finish_report();
+		assert_eq!(report.findings.len(), 1);
+		assert_eq!(
+			report.findings[0].representative_sql,
+			"SELECT * FROM users WHERE email = ?"
+		);
+		assert!(
+			!report.findings[0]
+				.representative_sql
+				.contains("private-token")
+		);
 	}
 
 	#[test]
@@ -664,6 +756,42 @@ mod tests {
 
 		let report = state.finish_report();
 		assert!(report.findings.is_empty());
+		assert_eq!(report.total_recorded_queries, 0);
+		assert_eq!(report.dropped_sample_count, 0);
+	}
+
+	#[test]
+	fn ignored_fingerprints_do_not_consume_record_cap() {
+		let mut config = low_threshold_config();
+		config.max_records_per_scope = 3;
+		config
+			.ignored_fingerprints
+			.insert("SELECT * FROM posts WHERE author_id = ?".to_string());
+
+		let mut state = ScopeState::new("posts.index".to_string(), config);
+		for author_id in ["1", "2", "3"] {
+			state.record_query(
+				"SELECT * FROM posts WHERE author_id = $1",
+				&[author_id.to_string()],
+				Duration::from_millis(1),
+			);
+		}
+		for post_id in ["1", "2", "3"] {
+			state.record_query(
+				"SELECT * FROM comments WHERE post_id = $1",
+				&[post_id.to_string()],
+				Duration::from_millis(1),
+			);
+		}
+
+		let report = state.finish_report();
+		assert_eq!(report.total_recorded_queries, 3);
+		assert_eq!(report.dropped_sample_count, 0);
+		assert_eq!(report.findings.len(), 1);
+		assert_eq!(
+			report.findings[0].fingerprint,
+			"SELECT * FROM comments WHERE post_id = ?"
+		);
 	}
 
 	#[test]
@@ -683,36 +811,6 @@ mod tests {
 		let report = state.finish_report();
 		assert_eq!(report.total_recorded_queries, 2);
 		assert_eq!(report.dropped_sample_count, 1);
-		assert!(report.findings.is_empty());
-	}
-
-	#[test]
-	fn ignored_fingerprints_do_not_consume_record_cap() {
-		let mut config = low_threshold_config();
-		config.max_records_per_scope = 2;
-		config
-			.ignored_fingerprints
-			.insert("SELECT * FROM health_checks WHERE id = ?".to_string());
-
-		let mut state = ScopeState::new("posts.index".to_string(), config);
-		for id in ["1", "2", "3"] {
-			state.record_query(
-				"SELECT * FROM health_checks WHERE id = $1",
-				&[id.to_string()],
-				Duration::from_millis(1),
-			);
-		}
-		for author_id in ["1", "2"] {
-			state.record_query(
-				"SELECT * FROM posts WHERE author_id = $1",
-				&[author_id.to_string()],
-				Duration::from_millis(1),
-			);
-		}
-
-		let report = state.finish_report();
-		assert_eq!(report.total_recorded_queries, 2);
-		assert_eq!(report.dropped_sample_count, 0);
 		assert!(report.findings.is_empty());
 	}
 
@@ -772,35 +870,6 @@ mod tests {
 				.representative_bind_samples
 				.iter()
 				.all(|sample| !sample.contains('@') && !sample.contains("private-token"))
-		);
-	}
-
-	#[test]
-	fn does_not_expose_raw_inline_sql_in_representative_sql() {
-		let mut state = ScopeState::new("users.index".to_string(), low_threshold_config());
-		for email in [
-			"a@example.com",
-			"b@example.com",
-			"private-token@example.com",
-		] {
-			state.record_query(
-				&format!("SELECT * FROM users WHERE email = '{email}'"),
-				&[],
-				Duration::from_millis(1),
-			);
-		}
-
-		let report = state.finish_report();
-		assert_eq!(report.findings.len(), 1);
-		assert_eq!(
-			report.findings[0].representative_sql,
-			"SELECT * FROM users WHERE email = ?"
-		);
-		assert!(!report.findings[0].representative_sql.contains('@'));
-		assert!(
-			!report.findings[0]
-				.representative_sql
-				.contains("private-token")
 		);
 	}
 

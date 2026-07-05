@@ -352,7 +352,7 @@ use reinhardt::pages::component::Page;
 
 use crate::client::components::nav::with_nav;
 
-#[component("/login/", "login")]
+#[component("/login/", name = "login")]
 pub fn login_page() -> Page {
     with_nav(super::login_form())
 }
@@ -450,17 +450,17 @@ use reinhardt::pages::component::Page;
 
 use crate::client::components::nav::with_nav;
 
-#[component("/login/", "login")]
+#[component("/login/", name = "login")]
 pub fn login_page() -> Page {
     with_nav(super::login_form())
 }
 
-#[component("/logout/", "logout")]
+#[component("/logout/", name = "logout")]
 pub fn logout_page() -> Page {
     with_nav(super::logout_form())
 }
 
-#[component("/signup/", "signup")]
+#[component("/signup/", name = "signup")]
 pub fn signup_page() -> Page {
     with_nav(super::signup_form())
 }

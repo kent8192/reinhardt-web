@@ -248,7 +248,7 @@ use reinhardt::pages::component::Page;
 
 use crate::client::components::nav::with_nav;
 
-#[component("/polls/{question_id}/", "detail")]
+#[component("/polls/{question_id}/", name = "detail")]
 pub fn polls_detail(question_id: Path<i64>) -> Page {
     with_nav(super::polls_detail(question_id.into_inner()))
 }

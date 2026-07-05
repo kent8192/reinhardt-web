@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- *(pages)* Route-backed `#[component]` declarations now require explicit
+  `name = "..."` route-name arguments.
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.2.0...reinhardt-web@v0.3.0) - 2026-06-28
 
 Stable 0.3.0 is the first stable release of the Reinhardt 0.3 line. It

@@ -31,14 +31,16 @@
 
 use proc_macro2::Span;
 use std::collections::HashSet;
+use syn::punctuated::Punctuated;
 use syn::visit::{self, Visit};
-use syn::{Expr, Result};
+use syn::{Expr, Result, Token};
 
 use reinhardt_manouche::core::{
 	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageExpression, PageFor,
-	PageIf, PageMacro, PageNode, PageWatch, TypedNamedSlot, TypedPageAttr, TypedPageBody,
-	TypedPageComponent, TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro,
-	TypedPageNode, TypedPageWatch, types::AttrValue,
+	PageIf, PageMacro, PageMacroForm, PageNode, PageParam, PageWatch, TypedNamedSlot,
+	TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse,
+	TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageMacroForm, TypedPageNode, TypedPageWatch,
+	types::AttrValue,
 };
 
 use super::scope_utils::collect_pat_idents;
@@ -77,38 +79,62 @@ fn is_safe_url(url: &str) -> bool {
 ///
 /// A `TypedPageMacro` with validated and type-safe attribute values.
 pub(super) fn validate(ast: &PageMacro) -> Result<TypedPageMacro> {
-	enforce_capture_discipline(ast)?;
-	let typed_body = transform_body(&ast.body, &[])?;
+	let form = match &ast.form {
+		PageMacroForm::StrictClosure { params, body } => {
+			enforce_strict_captures(ast.head.as_ref(), body, params)?;
+			TypedPageMacroForm::StrictClosure {
+				params: params.clone(),
+				body: transform_body(body, &[])?,
+			}
+		}
+		PageMacroForm::ImplicitBody { body } => TypedPageMacroForm::ImplicitBody {
+			captures: collect_free_idents(ast.head.as_ref(), body, &[]),
+			body: transform_body(body, &[])?,
+		},
+	};
 
 	Ok(TypedPageMacro {
 		head: ast.head.clone(),
-		params: ast.params.clone(),
-		body: typed_body,
+		form,
 		span: ast.span,
 	})
+}
+
+/// Collects value identifiers used in `body` that are not params or locals.
+fn collect_free_idents(
+	head: Option<&Expr>,
+	body: &PageBody,
+	params: &[PageParam],
+) -> Vec<reinhardt_manouche::core::ImplicitPageCapture> {
+	let allowed: HashSet<String> = params.iter().map(|p| p.name.to_string()).collect();
+
+	let mut checker = CaptureChecker {
+		allowed,
+		locals_stack: Vec::new(),
+		seen: HashSet::new(),
+		captures: Vec::new(),
+	};
+	if let Some(head_expr) = head {
+		checker.visit_expr(head_expr);
+	}
+	checker.visit_body(body);
+	checker.captures
 }
 
 /// Verifies that no body identifier is an implicit capture.
 ///
 /// Per spec §3.7, every value identifier inside the body must appear in the
 /// `params` list. Item paths (`crate::util::fmt`), type identifiers
-/// (`Vec`, `Option`), constants (`MAX_LEN`), and macro invocations
-/// (`format!`) are exempt.
-fn enforce_capture_discipline(ast: &PageMacro) -> Result<()> {
-	let params: HashSet<String> = ast.params.iter().map(|p| p.name.to_string()).collect();
-
-	let mut checker = CaptureChecker {
-		allowed: params,
-		// `for x in iter { ... }` and `|x| ...` introduce locals for the
-		// duration of their body. Track a layered stack so nested scopes
-		// shadow correctly.
-		locals_stack: Vec::new(),
-		errors: Vec::new(),
-	};
-	checker.visit_body(&ast.body);
-
-	if let Some(err) = checker.errors.into_iter().next() {
-		return Err(err);
+/// (`Vec`, `Option`), and constants (`MAX_LEN`) are exempt. Macro invocation
+/// names (`format!`) are exempt, but macro arguments are scanned for free
+/// identifiers when they parse as Rust expressions.
+fn enforce_strict_captures(
+	head: Option<&Expr>,
+	body: &PageBody,
+	params: &[PageParam],
+) -> Result<()> {
+	if let Some(capture) = collect_free_idents(head, body, params).into_iter().next() {
+		return Err(missing_param_error(&capture.ident));
 	}
 	Ok(())
 }
@@ -118,12 +144,24 @@ fn enforce_capture_discipline(ast: &PageMacro) -> Result<()> {
 struct CaptureChecker {
 	allowed: HashSet<String>,
 	locals_stack: Vec<HashSet<String>>,
-	errors: Vec<syn::Error>,
+	seen: HashSet<String>,
+	captures: Vec<reinhardt_manouche::core::ImplicitPageCapture>,
 }
 
 impl CaptureChecker {
 	fn is_known(&self, name: &str) -> bool {
 		self.allowed.contains(name) || self.locals_stack.iter().any(|s| s.contains(name))
+	}
+
+	fn record_capture(&mut self, ident: &syn::Ident) {
+		let name = ident.to_string();
+		if self.seen.insert(name) {
+			self.captures
+				.push(reinhardt_manouche::core::ImplicitPageCapture {
+					ident: ident.clone(),
+					span: ident.span(),
+				});
+		}
 	}
 
 	fn visit_body(&mut self, body: &PageBody) {
@@ -165,9 +203,24 @@ impl CaptureChecker {
 	}
 
 	fn visit_if(&mut self, p: &PageIf) {
-		self.visit_expr(&p.condition);
+		let mut then_locals = None;
+		if let Expr::Let(let_expr) = &p.condition {
+			let mut locals = HashSet::new();
+			collect_pat_idents(&let_expr.pat, &mut locals);
+			self.visit_expr(&let_expr.expr);
+			then_locals = Some(locals);
+		} else {
+			self.visit_expr(&p.condition);
+		}
+		let pushed_then_locals = then_locals.is_some();
+		if let Some(locals) = then_locals {
+			self.locals_stack.push(locals);
+		}
 		for n in &p.then_branch {
 			self.visit_node(n);
+		}
+		if pushed_then_locals {
+			self.locals_stack.pop();
 		}
 		if let Some(els) = &p.else_branch {
 			match els {
@@ -186,6 +239,9 @@ impl CaptureChecker {
 		let mut locals = HashSet::new();
 		collect_pat_idents(&p.pat, &mut locals);
 		self.locals_stack.push(locals);
+		if let Some(key) = &p.key {
+			self.visit_expr(key);
+		}
 		for n in &p.body {
 			self.visit_node(n);
 		}
@@ -234,7 +290,7 @@ impl<'ast> Visit<'ast> for ExprIdentVisitor<'_> {
 			let seg = &ep.path.segments[0];
 			let name = seg.ident.to_string();
 			if is_value_ident(&name) && !self.checker.is_known(&name) {
-				self.checker.errors.push(missing_param_error(&seg.ident));
+				self.checker.record_capture(&seg.ident);
 			}
 		}
 		visit::visit_expr_path(self, ep);
@@ -305,6 +361,17 @@ impl<'ast> Visit<'ast> for ExprIdentVisitor<'_> {
 		self.checker.locals_stack.push(locals);
 		self.visit_block(&f.body);
 		self.checker.locals_stack.pop();
+	}
+
+	fn visit_expr_macro(&mut self, expr_macro: &'ast syn::ExprMacro) {
+		if let Ok(args) = expr_macro
+			.mac
+			.parse_body_with(Punctuated::<Expr, Token![,]>::parse_terminated)
+		{
+			for arg in args {
+				self.visit_expr(&arg);
+			}
+		}
 	}
 
 	fn visit_block(&mut self, b: &'ast syn::Block) {
@@ -1880,7 +1947,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_capture_discipline(&ast);
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
 		let err = result.unwrap_err();
@@ -1897,7 +1964,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_capture_discipline(&ast);
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
@@ -1911,7 +1978,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_capture_discipline(&ast);
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
@@ -1925,10 +1992,25 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_capture_discipline(&ast);
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn strict_form_rejects_macro_argument_capture() {
+		// Arrange
+		let ast = parse(quote! {
+			|| { p { {format!("value={}", outer_value)} } }
+		});
+
+		// Act
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
+
+		// Assert
+		let err = result.expect_err("macro arguments should still be scanned");
+		assert!(err.to_string().contains("outer_value"));
 	}
 
 	#[rstest]
@@ -1939,7 +2021,7 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_capture_discipline(&ast);
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
@@ -1957,9 +2039,153 @@ mod capture_tests {
 		});
 
 		// Act
-		let result = enforce_capture_discipline(&ast);
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
 		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn accepts_page_for_key_loop_local_binding() {
+		// Arrange
+		let ast = parse(quote! {
+			|items: Vec<String>| {
+				ul {
+					for item in items @key(item.clone()) {
+						li { {item.clone()} }
+					}
+				}
+			}
+		});
+
+		// Act
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn strict_form_rejects_page_for_key_outer_capture() {
+		// Arrange
+		let ast = parse(quote! {
+			|items: Vec<String>| {
+				ul {
+					for item in items @key(route_id.to_string()) {
+						li { {item.clone()} }
+					}
+				}
+			}
+		});
+
+		// Act
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(err.to_string().contains("route_id"));
+	}
+
+	#[rstest]
+	fn strict_form_records_page_for_iter_and_key_captures() {
+		// Arrange
+		let ast = parse(quote! {
+			|| {
+				ul {
+					for item in items @key(route_id.to_string()) {
+						li { {item.clone()} }
+					}
+				}
+			}
+		});
+
+		// Act
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
+		let captures: Vec<String> =
+			collect_free_idents(ast.head.as_ref(), ast.body(), ast.params())
+				.into_iter()
+				.map(|capture| capture.ident.to_string())
+				.collect();
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(err.to_string().contains("items"));
+		assert_eq!(captures, vec!["items", "route_id"]);
+	}
+
+	#[rstest]
+	fn body_only_form_records_implicit_captures() {
+		// Arrange
+		let ast = parse(quote! {
+			{ div { {outer_count.get()} } }
+		});
+
+		// Act
+		let result = validate(&ast).unwrap();
+
+		// Assert
+		let captures = result.implicit_captures();
+		assert_eq!(captures.len(), 1);
+		assert_eq!(captures[0].ident.to_string(), "outer_count");
+	}
+
+	#[rstest]
+	fn body_only_form_records_page_for_key_outer_capture() {
+		// Arrange
+		let ast = parse(quote! {
+			{
+				ul {
+					for item in items @key(route_id.to_string()) {
+						li { {item.clone()} }
+					}
+				}
+			}
+		});
+
+		// Act
+		let result = validate(&ast).unwrap();
+
+		// Assert
+		let captures: Vec<String> = result
+			.implicit_captures()
+			.iter()
+			.map(|capture| capture.ident.to_string())
+			.collect();
+		assert_eq!(captures, vec!["items", "route_id"]);
+		assert!(!captures.iter().any(|capture| capture == "item"));
+	}
+
+	#[rstest]
+	fn body_only_form_records_macro_argument_capture() {
+		// Arrange
+		let ast = parse(quote! {
+			{ p { {format!("value={}", outer_value)} } }
+		});
+
+		// Act
+		let result = validate(&ast).expect("implicit body should validate");
+		let captures: Vec<String> = result
+			.implicit_captures()
+			.iter()
+			.map(|capture| capture.ident.to_string())
+			.collect();
+
+		// Assert
+		assert_eq!(captures, vec!["outer_value"]);
+	}
+
+	#[rstest]
+	fn strict_form_still_rejects_implicit_captures() {
+		// Arrange
+		let ast = parse(quote! {
+			|| { div { {outer_count.get()} } }
+		});
+
+		// Act
+		let result = validate(&ast);
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(err.to_string().contains("outer_count"));
 	}
 }

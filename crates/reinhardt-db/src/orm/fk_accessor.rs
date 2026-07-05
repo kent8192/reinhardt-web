@@ -70,6 +70,7 @@ impl<Source, Target> ForeignKeyAccessor<Source, Target>
 where
 	Source: Model + Serialize + DeserializeOwned,
 	Target: Model,
+	Target::PrimaryKey: reinhardt_query::IntoValue,
 {
 	/// Create a new ForeignKeyAccessor.
 	///

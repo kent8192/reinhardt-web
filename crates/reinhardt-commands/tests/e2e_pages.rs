@@ -491,7 +491,7 @@ async fn app_pages_layout_matches_tutorial() {
 	.expect("read client/components/placeholder.rs");
 	assert!(
 		placeholder_component
-			.contains("#[reinhardt::pages::component(\"/polls/\", \"placeholder\")]")
+			.contains("#[reinhardt::pages::component(\"/polls/\", name = \"placeholder\")]")
 			&& placeholder_component.contains("pub fn placeholder")
 			&& placeholder_component.contains("use crate::client::components::nav::with_nav;")
 			&& !placeholder_component.contains("super::"),
@@ -895,7 +895,8 @@ async fn workspace_app_pages_uses_unified_template() {
 		"workspace placeholder component must import with_nav from project crate:\n{placeholder_rs}"
 	);
 	assert!(
-		placeholder_rs.contains("#[reinhardt::pages::component(\"/bar/\", \"placeholder\")]")
+		placeholder_rs
+			.contains("#[reinhardt::pages::component(\"/bar/\", name = \"placeholder\")]")
 			&& !placeholder_rs.contains("super::"),
 		"workspace placeholder component must be route-backed without super:: paths:\n{placeholder_rs}"
 	);
@@ -1003,7 +1004,8 @@ async fn module_app_pages_does_not_generate_workspace_files() {
 		"module placeholder component must use crate:: for with_nav import:\n{placeholder_rs}"
 	);
 	assert!(
-		placeholder_rs.contains("#[reinhardt::pages::component(\"/baz/\", \"placeholder\")]")
+		placeholder_rs
+			.contains("#[reinhardt::pages::component(\"/baz/\", name = \"placeholder\")]")
 			&& !placeholder_rs.contains("super::"),
 		"module placeholder component must be route-backed without super:: paths:\n{placeholder_rs}"
 	);

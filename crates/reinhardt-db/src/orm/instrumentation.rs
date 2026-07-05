@@ -341,6 +341,13 @@ impl Instrumentation {
 		}
 	}
 
+	async fn notify_query_error_listeners(&self, query: &str, error: &str) {
+		let listeners = self.listener_snapshot();
+		for listener in listeners {
+			listener.on_query_error(query, error).await;
+		}
+	}
+
 	/// Notifies all listeners that a query has started
 	///
 	/// # Examples
@@ -455,10 +462,7 @@ impl Instrumentation {
 			.or_default()
 			.push(metrics);
 
-		let listeners = self.listener_snapshot();
-		for listener in listeners {
-			listener.on_query_error(query, error).await;
-		}
+		self.notify_query_error_listeners(query, error).await;
 	}
 
 	/// Notifies all listeners that a transaction has started
@@ -750,23 +754,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_orm_query_end_with_params_does_not_retain_metrics() {
 		let instrumentation = Instrumentation::new();
+		let query_end = Arc::new(AtomicUsize::new(0));
 		let query = "SELECT * FROM posts WHERE author_id = $1";
 
-		instrumentation
-			.orm_query_end_with_params(query, &["1".to_string()], Duration::from_millis(1))
-			.await;
-
-		assert!(instrumentation.query_metrics(query).is_empty());
-		assert_eq!(instrumentation.statistics().total_queries, 0);
-	}
-
-	#[tokio::test]
-	async fn test_orm_query_end_with_params_does_not_emit_unpaired_listener_end() {
-		let instrumentation = Instrumentation::new();
-		let query_start = Arc::new(AtomicUsize::new(0));
-		let query_end = Arc::new(AtomicUsize::new(0));
 		let listener = Arc::new(TestListener {
-			query_start_count: query_start.clone(),
+			query_start_count: Arc::new(AtomicUsize::new(0)),
 			query_end_count: query_end.clone(),
 			query_error_count: Arc::new(AtomicUsize::new(0)),
 			transaction_start_count: Arc::new(AtomicUsize::new(0)),
@@ -775,41 +767,12 @@ mod tests {
 
 		instrumentation.add_listener("test".to_string(), listener);
 		instrumentation
-			.orm_query_end_with_params(
-				"SELECT * FROM posts WHERE author_id = $1",
-				&["1".to_string()],
-				Duration::from_millis(1),
-			)
+			.orm_query_end_with_params(query, &["1".to_string()], Duration::from_millis(1))
 			.await;
 
-		assert_eq!(query_start.load(Ordering::SeqCst), 0);
 		assert_eq!(query_end.load(Ordering::SeqCst), 0);
-	}
-
-	#[tokio::test]
-	async fn test_orm_query_error_does_not_retain_metrics_or_emit_listener_error() {
-		let instrumentation = Instrumentation::new();
-		let query_error = Arc::new(AtomicUsize::new(0));
-		let listener = Arc::new(TestListener {
-			query_start_count: Arc::new(AtomicUsize::new(0)),
-			query_end_count: Arc::new(AtomicUsize::new(0)),
-			query_error_count: query_error.clone(),
-			transaction_start_count: Arc::new(AtomicUsize::new(0)),
-			transaction_end_count: Arc::new(AtomicUsize::new(0)),
-		});
-
-		instrumentation.add_listener("test".to_string(), listener);
-		instrumentation
-			.orm_query_error("SELECT * FROM invalid", "table not found")
-			.await;
-
-		assert!(
-			instrumentation
-				.query_metrics("SELECT * FROM invalid")
-				.is_empty()
-		);
+		assert!(instrumentation.query_metrics(query).is_empty());
 		assert_eq!(instrumentation.statistics().total_queries, 0);
-		assert_eq!(query_error.load(Ordering::SeqCst), 0);
 	}
 
 	#[tokio::test]
@@ -831,6 +794,28 @@ mod tests {
 			.await;
 
 		assert_eq!(report.findings.len(), 1);
+	}
+
+	#[tokio::test]
+	async fn test_orm_query_error_does_not_retain_metrics() {
+		let instr = Instrumentation::new();
+		let query_error = Arc::new(AtomicUsize::new(0));
+		let query = "SELECT * FROM posts WHERE author_id = 1";
+
+		let listener = Arc::new(TestListener {
+			query_start_count: Arc::new(AtomicUsize::new(0)),
+			query_end_count: Arc::new(AtomicUsize::new(0)),
+			query_error_count: query_error.clone(),
+			transaction_start_count: Arc::new(AtomicUsize::new(0)),
+			transaction_end_count: Arc::new(AtomicUsize::new(0)),
+		});
+
+		instr.add_listener("test".to_string(), listener);
+		instr.orm_query_error(query, "table not found").await;
+
+		assert_eq!(query_error.load(Ordering::SeqCst), 0);
+		assert!(instr.query_metrics(query).is_empty());
+		assert_eq!(instr.statistics().total_queries, 0);
 	}
 
 	#[tokio::test]
