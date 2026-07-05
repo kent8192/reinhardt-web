@@ -7,6 +7,7 @@ enum ProviderMode {
 	Fake,
 	#[serde(rename = "live_api")]
 	LiveApi,
+	#[serde(alias = "legacy_http_status")]
 	HTTPStatus,
 	#[serde(rename(serialize = "wire_api", deserialize = "legacy_api"))]
 	DirectionalRename,

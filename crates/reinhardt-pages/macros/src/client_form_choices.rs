@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 
 use proc_macro::TokenStream;
 use quote::quote;
+use syn::meta::ParseNestedMeta;
 use syn::{Data, DeriveInput, Fields, LitStr, Token, parse_macro_input};
 
 use crate::crate_paths::get_reinhardt_pages_crate;
@@ -236,11 +237,28 @@ fn serde_variant_options(attrs: &[syn::Attribute]) -> syn::Result<SerdeVariantOp
 				|| meta.path.is_ident("skip_deserializing")
 			{
 				options.skip = true;
+			} else if meta.path.is_ident("alias")
+				|| meta.path.is_ident("other")
+				|| meta.path.is_ident("borrow")
+				|| meta.path.is_ident("deserialize_with")
+			{
+				consume_ignored_serde_variant_option(meta)?;
+			} else {
+				return Err(meta.error("unsupported serde option for ClientFormChoices variant"));
 			}
 			Ok(())
 		})?;
 	}
 	Ok(options)
+}
+
+fn consume_ignored_serde_variant_option(meta: ParseNestedMeta<'_>) -> syn::Result<()> {
+	if meta.input.peek(Token![=]) {
+		let _value = meta.value()?.parse::<syn::Expr>()?;
+	} else if meta.input.peek(syn::token::Paren) {
+		meta.parse_nested_meta(consume_ignored_serde_variant_option)?;
+	}
+	Ok(())
 }
 
 fn apply_rename_rule(name: &str, rename_rule: RenameRule) -> String {

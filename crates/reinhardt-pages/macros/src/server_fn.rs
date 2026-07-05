@@ -449,6 +449,10 @@ impl ServerFnInfo {
 			.any(attribute_allows_private_interfaces)
 	}
 
+	fn emits_typed_response_metadata(&self) -> bool {
+		!self.allows_private_interfaces() && !matches!(self.vis(), syn::Visibility::Restricted(_))
+	}
+
 	/// Get the endpoint path
 	///
 	/// Returns the custom endpoint if specified, otherwise generates default.
@@ -1332,7 +1336,7 @@ fn generate_server_handler(
 		Ok(types) => types,
 		Err(error) => return error.to_compile_error(),
 	};
-	let emits_typed_response_metadata = !info.allows_private_interfaces();
+	let emits_typed_response_metadata = info.emits_typed_response_metadata();
 	let response_metadata_impl = if emits_typed_response_metadata {
 		quote! {
 			impl #pages_crate::server_fn::ServerFnResponseMetadata for marker {

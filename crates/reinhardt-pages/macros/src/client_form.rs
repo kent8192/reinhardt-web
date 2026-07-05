@@ -468,7 +468,8 @@ fn generate_submit_method(
 			<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Response:
 				::serde::de::DeserializeOwned,
 			<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Error:
-				::core::fmt::Display,
+				::core::fmt::Display
+				+ ::core::convert::From<#pages_crate::server_fn::ServerFnError>,
 		{
 		}
 
@@ -485,7 +486,8 @@ fn generate_submit_method(
 			where
 				Deps: ::core::clone::Clone + ::core::cmp::PartialEq + 'static,
 				<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Error:
-					::core::fmt::Display,
+					::core::fmt::Display
+					+ ::core::convert::From<#pages_crate::server_fn::ServerFnError>,
 			{
 			let _ = self;
 			runtime
