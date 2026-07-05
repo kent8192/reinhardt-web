@@ -1132,8 +1132,14 @@ fn schema_value_to_tokens(value: &Value) -> TokenStream {
 
 fn query_column_type_to_tokens(ty: &QueryColumnType) -> TokenStream {
 	match ty {
-		QueryColumnType::Char(len) => quote! { ColumnType::Char(#len) },
-		QueryColumnType::String(len) => quote! { ColumnType::String(#len) },
+		QueryColumnType::Char(len) => {
+			let len = optional_u32_to_tokens(*len);
+			quote! { ColumnType::Char(#len) }
+		}
+		QueryColumnType::String(len) => {
+			let len = optional_u32_to_tokens(*len);
+			quote! { ColumnType::String(#len) }
+		}
 		QueryColumnType::Text => quote! { ColumnType::Text },
 		QueryColumnType::TinyInteger => quote! { ColumnType::TinyInteger },
 		QueryColumnType::SmallInteger => quote! { ColumnType::SmallInteger },
@@ -1151,7 +1157,10 @@ fn query_column_type_to_tokens(ty: &QueryColumnType) -> TokenStream {
 		QueryColumnType::DateTime => quote! { ColumnType::DateTime },
 		QueryColumnType::Timestamp => quote! { ColumnType::Timestamp },
 		QueryColumnType::TimestampWithTimeZone => quote! { ColumnType::TimestampWithTimeZone },
-		QueryColumnType::Binary(len) => quote! { ColumnType::Binary(#len) },
+		QueryColumnType::Binary(len) => {
+			let len = optional_u32_to_tokens(*len);
+			quote! { ColumnType::Binary(#len) }
+		}
 		QueryColumnType::VarBinary(len) => quote! { ColumnType::VarBinary(#len) },
 		QueryColumnType::Blob => quote! { ColumnType::Blob },
 		QueryColumnType::Uuid => quote! { ColumnType::Uuid },
@@ -1163,6 +1172,13 @@ fn query_column_type_to_tokens(ty: &QueryColumnType) -> TokenStream {
 		}
 		QueryColumnType::Custom(name) => quote! { ColumnType::Custom(#name.to_string()) },
 		_ => panic!("unsupported generated-column cast type: {:?}", ty),
+	}
+}
+
+fn optional_u32_to_tokens(value: Option<u32>) -> TokenStream {
+	match value {
+		Some(value) => quote! { Some(#value) },
+		None => quote! { None },
 	}
 }
 
@@ -1248,5 +1264,45 @@ impl ToTokens for super::BulkLoadOptions {
 				encoding: #encoding,
 			}
 		});
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn generated_schema_expr_tokens_emit_option_cast_lengths() {
+		let expr = SchemaExpr::col("name").cast(QueryColumnType::String(Some(64)));
+		let tokens = schema_expr_to_tokens(&expr).to_string();
+
+		assert!(
+			tokens.contains("ColumnType :: String (Some (64u32))"),
+			"tokens must preserve optional cast length: {tokens}"
+		);
+		assert_eq!(
+			crate::migrations::ast_parser::parse_schema_expr_tokens(&tokens),
+			Some(expr)
+		);
+	}
+
+	#[test]
+	fn generated_schema_expr_tokens_reparse_null_literals() {
+		let expressions = [
+			SchemaExpr::Value(Value::Bool(None)),
+			SchemaExpr::Value(Value::Int(None)),
+			SchemaExpr::Value(Value::Unsigned(None)),
+			SchemaExpr::Value(Value::Double(None)),
+			SchemaExpr::Value(Value::String(None)),
+		];
+
+		for expr in expressions {
+			let tokens = schema_expr_to_tokens(&expr).to_string();
+			assert_eq!(
+				crate::migrations::ast_parser::parse_schema_expr_tokens(&tokens),
+				Some(expr),
+				"tokens must reparse: {tokens}"
+			);
+		}
 	}
 }
