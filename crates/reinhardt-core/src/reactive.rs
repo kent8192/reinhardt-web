@@ -58,6 +58,7 @@ pub mod deps;
 pub mod effect;
 pub mod memo;
 pub mod runtime;
+pub mod scope;
 pub mod signal;
 
 // Re-export main types
@@ -68,4 +69,5 @@ pub use deps::{Deps, IntoDeps, Trackable};
 pub use effect::Effect;
 pub use memo::Memo;
 pub use runtime::{EffectTiming, NodeId, NodeType, Observer, Runtime, batch, with_runtime};
+pub use scope::{NodeKey, ReactiveScope, ReactiveScopeError, ScopeId, on_scope_dispose};
 pub use signal::Signal;
