@@ -30,6 +30,16 @@ struct RegistrationState {
 	flat_routes: Vec<ClientRoute>,
 }
 
+struct LeafRegistration<'a> {
+	kind: RouteNodeKind,
+	name: &'a str,
+	own_path: &'a str,
+	full_pattern: String,
+	own_params: Vec<String>,
+	route: ClientRoute,
+	metadata: ResolvedRouteMetadata,
+}
+
 /// Registered routes collected from a `RouteScope`.
 #[derive(Debug)]
 pub(crate) struct RegisteredRouteScope {
@@ -122,15 +132,15 @@ impl RouteScope {
 			Some(P::props_type_name().to_string()),
 			RouteMetadata::default(),
 		);
-		self.register_leaf(
-			RouteNodeKind::Leaf,
-			P::name(),
+		self.register_leaf(LeafRegistration {
+			kind: RouteNodeKind::Leaf,
+			name: P::name(),
 			own_path,
 			full_pattern,
 			own_params,
 			route,
 			metadata,
-		)
+		})
 	}
 
 	/// Registers a layout route and its child scope.
@@ -228,15 +238,15 @@ impl RouteScope {
 			Some(P::props_type_name().to_string()),
 			RouteMetadata::default(),
 		);
-		self.register_leaf(
-			RouteNodeKind::Index,
-			P::name(),
-			"",
+		self.register_leaf(LeafRegistration {
+			kind: RouteNodeKind::Index,
+			name: P::name(),
+			own_path: "",
 			full_pattern,
-			Vec::new(),
+			own_params: Vec::new(),
 			route,
 			metadata,
-		)
+		})
 	}
 
 	/// Registers a closure-backed leaf route.
@@ -276,15 +286,15 @@ impl RouteScope {
 			None,
 			RouteMetadata::default(),
 		);
-		self.register_leaf(
-			RouteNodeKind::Leaf,
+		self.register_leaf(LeafRegistration {
+			kind: RouteNodeKind::Leaf,
 			name,
-			path,
+			own_path: path,
 			full_pattern,
 			own_params,
 			route,
 			metadata,
-		)
+		})
 	}
 
 	/// Registers a closure-backed layout route.
@@ -383,15 +393,15 @@ impl RouteScope {
 			None,
 			RouteMetadata::default(),
 		);
-		self.register_leaf(
-			RouteNodeKind::Index,
+		self.register_leaf(LeafRegistration {
+			kind: RouteNodeKind::Index,
 			name,
-			"",
+			own_path: "",
 			full_pattern,
-			Vec::new(),
+			own_params: Vec::new(),
 			route,
 			metadata,
-		)
+		})
 	}
 
 	fn child_scope(&self, prefix: String, own_params: Vec<String>) -> Self {
@@ -461,14 +471,17 @@ impl RouteScope {
 
 	fn register_leaf(
 		&mut self,
-		kind: RouteNodeKind,
-		name: &str,
-		own_path: &str,
-		full_pattern: String,
-		own_params: Vec<String>,
-		route: ClientRoute,
-		metadata: ResolvedRouteMetadata,
+		registration: LeafRegistration<'_>,
 	) -> Result<(), RouteRegistrationError> {
+		let LeafRegistration {
+			kind,
+			name,
+			own_path,
+			full_pattern,
+			own_params,
+			route,
+			metadata,
+		} = registration;
 		self.reserve_name(name)?;
 		let mut state = self.state.borrow_mut();
 		if !state.leaf_paths.insert(full_pattern.clone()) {
