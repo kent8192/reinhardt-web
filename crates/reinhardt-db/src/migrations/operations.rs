@@ -1622,8 +1622,6 @@ impl Operation {
 			QueryColumnType::Binary(Some(len)) => {
 				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
 					"BYTEA".to_string()
-				} else if matches!(dialect, SqlDialect::Sqlite) {
-					format!("BLOB({len})")
 				} else {
 					format!("BLOB({len})")
 				}
