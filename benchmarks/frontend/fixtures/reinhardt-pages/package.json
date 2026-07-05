@@ -1,0 +1,13 @@
+{
+  "name": "frontend-benchmark-reinhardt-pages",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/reinhardt-dev.mjs --host 127.0.0.1",
+    "build": "CARGO_BUILD_JOBS=1 wasm-pack build --target web --out-dir pkg && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vite": "8.0.10"
+  }
+}

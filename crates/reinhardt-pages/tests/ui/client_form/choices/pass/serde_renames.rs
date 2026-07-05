@@ -14,6 +14,14 @@ enum ProviderMode {
 	Archived,
 }
 
+#[derive(Clone, Default, PartialEq, ClientFormChoices)]
+#[serde(rename_all(serialize = "kebab-case", deserialize = "snake_case"))]
+enum DirectionalRenameAllMode {
+	#[default]
+	FakeMode,
+	LiveApi,
+}
+
 fn main() {
 	let choices = ProviderMode::client_form_choices();
 	assert_eq!(choices.len(), 4);
@@ -32,5 +40,14 @@ fn main() {
 	assert!(matches!(
 		ProviderMode::client_form_default(),
 		ProviderMode::Fake
+	));
+
+	let choices = DirectionalRenameAllMode::client_form_choices();
+	assert_eq!(choices.len(), 2);
+	assert_eq!(choices[0].serialized_value, "fake-mode");
+	assert_eq!(choices[1].serialized_value, "live-api");
+	assert!(matches!(
+		DirectionalRenameAllMode::client_form_default(),
+		DirectionalRenameAllMode::FakeMode
 	));
 }

@@ -38,7 +38,7 @@
 //! - [`use_ref`], [`use_reducer`], [`use_transition`], [`use_deferred_value`]
 //! - [`use_id`], [`use_layout_effect`], [`use_debug_value`]
 //! - [`use_optimistic`], [`use_shared_state`]
-//! - [`use_action`], [`use_sync_external_store`]
+//! - [`use_action`], [`use_action_state`], [`use_sync_external_store`]
 //!
 //! ## Component System
 //! - [`Component`], [`PageElement`], [`IntoPage`], [`Page`], [`Props`]
@@ -67,7 +67,7 @@
 //! - [`is_initialized`] - Check if static resolver is initialized
 //!
 //! ## Typed Forms
-//! - [`use_form`], [`UseFormReturn`], [`UseFormBuilder`]
+//! - [`use_form`], [`use_form_action`], [`UseFormReturn`], [`UseFormBuilder`], [`FormAction`]
 //!
 //! ## Task Spawning
 //! - [`spawn_task`], [`defer_yield`] - cross-target async task spawning
@@ -88,7 +88,7 @@ pub use crate::reactive::{
 };
 
 // Hooks API
-pub use crate::reactive::{Action, ActionPhase, use_action};
+pub use crate::reactive::{Action, ActionPhase, ActionStateBuilder, use_action, use_action_state};
 pub use crate::reactive::{
 	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
 	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_id,
@@ -178,10 +178,11 @@ pub use crate::static_resolver::{init_static_resolver, is_initialized, resolve_s
 pub use crate::client_form::{ClientFormChoice, ClientFormChoiceSource};
 pub use crate::form_state::{
 	CollectionItem, CollectionItemKey, CollectionState, CustomWidgetContext, CustomWidgetRawValue,
-	FieldError, FieldPathState, FieldState, FocusError, FormCollectionRuntimeSource, FormEvent,
-	FormRuntimeSource, FormState, FormSubscription, FormValidationError, FormWidgetAdapter,
-	FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn,
+	FieldError, FieldPathState, FieldState, FocusError, FormAction, FormCollectionRuntimeSource,
+	FormEvent, FormRuntimeSource, FormState, FormSubscription, FormValidationError,
+	FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn,
 	UseFormAsyncSubmitOutcome, UseFormBuilder, UseFormReturn, UseFormSubmitOutcome, use_form,
+	use_form_action,
 };
 
 #[cfg(native)]

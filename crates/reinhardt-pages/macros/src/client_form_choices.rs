@@ -37,14 +37,28 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 	let pages_crate = get_reinhardt_pages_crate();
 	let rename_rule = serde_rename_all(&attrs)?;
 	let mut choice_values = Vec::new();
+	let mut default_variant = None;
+	let mut has_skipped_variant = false;
 
 	for variant in data_enum.variants {
 		let variant_options = serde_variant_options(&variant.attrs)?;
+		let variant_ident = variant.ident.clone();
+		if variant_options.skip {
+			has_skipped_variant = true;
+		}
 		if variant_options.skip && variant_options.default {
 			return Err(syn::Error::new_spanned(
 				variant,
 				"ClientFormChoices default variant cannot be skipped by serde",
 			));
+		}
+		if variant_options.default {
+			if default_variant.replace(variant_ident.clone()).is_some() {
+				return Err(syn::Error::new_spanned(
+					variant,
+					"ClientFormChoices supports only one default variant",
+				));
+			}
 		}
 		if variant_options.skip {
 			continue;
@@ -56,7 +70,6 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 			));
 		}
 
-		let variant_ident = variant.ident;
 		let serialized = variant_options
 			.rename
 			.unwrap_or_else(|| apply_rename_rule(&variant_ident.to_string(), rename_rule));
@@ -69,6 +82,19 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 		});
 	}
 
+	if has_skipped_variant && default_variant.is_none() {
+		return Err(syn::Error::new_spanned(
+			&enum_ident,
+			"ClientFormChoices enums with serde-skipped variants must mark a non-skipped #[default] variant",
+		));
+	}
+
+	let default_expr = if let Some(default_variant) = default_variant {
+		quote! { #enum_ident::#default_variant }
+	} else {
+		quote! { ::core::default::Default::default() }
+	};
+
 	Ok(quote! {
 		impl #pages_crate::ClientFormChoiceSource for #enum_ident {
 			fn client_form_choices() -> &'static [#pages_crate::ClientFormChoice<Self>] {
@@ -79,7 +105,7 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 			}
 
 			fn client_form_default() -> Self {
-				::core::default::Default::default()
+				#default_expr
 			}
 		}
 	})
@@ -101,22 +127,28 @@ fn serde_rename_all(attrs: &[syn::Attribute]) -> syn::Result<RenameRule> {
 		}
 		attr.parse_nested_meta(|meta| {
 			if meta.path.is_ident("rename_all") {
-				let value = meta.value()?.parse::<LitStr>()?;
-				rename_rule = match value.value().as_str() {
-					"snake_case" => RenameRule::SnakeCase,
-					"kebab-case" => RenameRule::KebabCase,
-					"camelCase" => RenameRule::CamelCase,
-					"PascalCase" | "SCREAMING_SNAKE_CASE" | "lowercase" | "UPPERCASE" => {
-						return Err(meta.error(
-							"ClientFormChoices supports snake_case, kebab-case, and camelCase rename_all rules",
-						));
+				if meta.input.peek(Token![=]) {
+					let value = meta.value()?.parse::<LitStr>()?;
+					rename_rule = rename_rule_from_value(&value)?;
+				} else {
+					let mut serialize_rule = None;
+					meta.parse_nested_meta(|rename_meta| {
+						if rename_meta.path.is_ident("serialize") {
+							let value = rename_meta.value()?.parse::<LitStr>()?;
+							serialize_rule = Some(rename_rule_from_value(&value)?);
+						} else if rename_meta.path.is_ident("deserialize") {
+							let _value = rename_meta.value()?.parse::<LitStr>()?;
+						} else {
+							return Err(rename_meta.error(
+								"unsupported serde rename_all option for ClientFormChoices",
+							));
+						}
+						Ok(())
+					})?;
+					if let Some(rule) = serialize_rule {
+						rename_rule = rule;
 					}
-					_ => {
-						return Err(
-							meta.error("unsupported serde rename_all rule for ClientFormChoices")
-						);
-					}
-				};
+				}
 			} else if meta.path.is_ident("tag")
 				|| meta.path.is_ident("content")
 				|| meta.path.is_ident("untagged")
@@ -129,6 +161,22 @@ fn serde_rename_all(attrs: &[syn::Attribute]) -> syn::Result<RenameRule> {
 		})?;
 	}
 	Ok(rename_rule)
+}
+
+fn rename_rule_from_value(value: &LitStr) -> syn::Result<RenameRule> {
+	match value.value().as_str() {
+		"snake_case" => Ok(RenameRule::SnakeCase),
+		"kebab-case" => Ok(RenameRule::KebabCase),
+		"camelCase" => Ok(RenameRule::CamelCase),
+		"PascalCase" | "SCREAMING_SNAKE_CASE" | "lowercase" | "UPPERCASE" => Err(syn::Error::new(
+			value.span(),
+			"ClientFormChoices supports snake_case, kebab-case, and camelCase rename_all rules",
+		)),
+		_ => Err(syn::Error::new(
+			value.span(),
+			"unsupported serde rename_all rule for ClientFormChoices",
+		)),
+	}
 }
 
 struct SerdeVariantOptions {

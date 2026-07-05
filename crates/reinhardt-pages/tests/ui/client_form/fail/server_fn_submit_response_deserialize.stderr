@@ -1,0 +1,53 @@
+error[E0277]: the trait bound `SettingsResponse: serde::Deserialize<'de>` is not satisfied
+  --> tests/ui/client_form/fail/server_fn_submit_response_deserialize.rs:20:13
+   |
+20 | ) -> Result<SettingsResponse, ServerFnError> {
+   |             ^^^^^^^^^^^^^^^^ unsatisfied trait bound
+   |
+help: the trait `for<'de> Deserialize<'de>` is not implemented for `SettingsResponse`
+  --> tests/ui/client_form/fail/server_fn_submit_response_deserialize.rs:13:1
+   |
+13 | pub struct SettingsResponse {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `SettingsResponse` type
+   = note: for types from other crates check whether the crate offers a `serde` feature flag
+   = help: the following other types implement trait `Deserialize<'de>`:
+             `&'a RawValue` implements `Deserialize<'de>`
+             `&'a [u8]` implements `Deserialize<'de>`
+             `&'a std::path::Path` implements `Deserialize<'de>`
+             `&'a str` implements `Deserialize<'de>`
+             `()` implements `Deserialize<'de>`
+             `(T,)` implements `Deserialize<'de>`
+             `(T0, T1)` implements `Deserialize<'de>`
+             `(T0, T1, T2)` implements `Deserialize<'de>`
+           and $N others
+   = note: required for `<submit_settings::marker as MockableServerFn>::Response` to implement `DeserializeOwned`
+note: required by a bound in `reinhardt_pages::server_fn::MockableServerFn::Response`
+  --> src/server_fn/mockable.rs
+   |
+   |     type Response: Serialize + DeserializeOwned + 'static;
+   |                                ^^^^^^^^^^^^^^^^ required by this bound in `MockableServerFn::Response`
+
+error[E0277]: the trait bound `SettingsResponse: serde::de::DeserializeOwned` is not satisfied
+  --> tests/ui/client_form/fail/server_fn_submit_response_deserialize.rs:6:52
+   |
+ 6 | #[derive(Clone, PartialEq, Serialize, Deserialize, ClientForm)]
+   |                                                    ^^^^^^^^^^ unsatisfied trait bound
+   |
+help: the trait `for<'de> Deserialize<'de>` is not implemented for `SettingsResponse`
+  --> tests/ui/client_form/fail/server_fn_submit_response_deserialize.rs:13:1
+   |
+13 | pub struct SettingsResponse {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: the following other types implement trait `Deserialize<'de>`:
+             `&'a RawValue` implements `Deserialize<'de>`
+             `&'a [u8]` implements `Deserialize<'de>`
+             `&'a std::path::Path` implements `Deserialize<'de>`
+             `&'a str` implements `Deserialize<'de>`
+             `()` implements `Deserialize<'de>`
+             `(T,)` implements `Deserialize<'de>`
+             `(T0, T1)` implements `Deserialize<'de>`
+             `(T0, T1, T2)` implements `Deserialize<'de>`
+           and $N others
+   = note: required for `SettingsResponse` to implement `DeserializeOwned`
+   = note: this error originates in the derive macro `ClientForm` (in Nightly builds, run with -Z macro-backtrace for more info)

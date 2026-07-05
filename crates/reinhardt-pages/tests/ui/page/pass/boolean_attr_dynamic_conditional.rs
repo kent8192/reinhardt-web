@@ -17,10 +17,12 @@ fn main() {
 			}
 			input {
 				r#type: "checkbox",
+				aria_label: "Checked condition",
 				checked: count > 3,
 			}
 			input {
 				r#type: "text",
+				aria_label: "Required condition",
 				required: count < 10 && condition,
 			}
 		}

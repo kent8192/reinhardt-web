@@ -62,7 +62,7 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 			));
 		};
 		let field_options = ClientFormFieldOptions::parse(&field.attrs)?;
-		if field_options.skip {
+		if field_options.skip || field_options.serde_skip {
 			ensure_skippable(&field.ty)?;
 			skipped_fields.push(SkippedField {
 				name: field_ident,
@@ -463,6 +463,10 @@ fn generate_submit_method(
 		fn __assert_server_fn_response_metadata()
 		where
 			#server_fn::marker: #pages_crate::server_fn::ServerFnResponseMetadata,
+			<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Response:
+				::serde::de::DeserializeOwned,
+			<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Error:
+				::core::fmt::Display,
 		{
 		}
 
@@ -530,23 +534,36 @@ impl ClientFormOptions {
 
 struct ClientFormFieldOptions {
 	skip: bool,
+	serde_skip: bool,
 }
 
 impl ClientFormFieldOptions {
 	fn parse(attrs: &[syn::Attribute]) -> syn::Result<Self> {
-		let mut options = Self { skip: false };
+		let mut options = Self {
+			skip: false,
+			serde_skip: false,
+		};
 		for attr in attrs {
-			if !attr.path().is_ident("client_form") {
-				continue;
+			if attr.path().is_ident("client_form") {
+				attr.parse_nested_meta(|meta| {
+					if meta.path.is_ident("skip") {
+						options.skip = true;
+					} else {
+						return Err(meta.error("unsupported client_form field attribute"));
+					}
+					Ok(())
+				})?;
+			} else if attr.path().is_ident("serde") {
+				attr.parse_nested_meta(|meta| {
+					if meta.path.is_ident("skip")
+						|| meta.path.is_ident("skip_serializing")
+						|| meta.path.is_ident("skip_deserializing")
+					{
+						options.serde_skip = true;
+					}
+					Ok(())
+				})?;
 			}
-			attr.parse_nested_meta(|meta| {
-				if meta.path.is_ident("skip") {
-					options.skip = true;
-				} else {
-					return Err(meta.error("unsupported client_form field attribute"));
-				}
-				Ok(())
-			})?;
 		}
 		Ok(options)
 	}

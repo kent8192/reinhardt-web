@@ -37,6 +37,8 @@ struct ProjectRequest {
 	tenant_id: Option<String>,
 	#[client_form(skip)]
 	revision: u32,
+	#[serde(skip)]
+	server_token: String,
 }
 
 impl Validate for ProjectRequest {
@@ -66,6 +68,7 @@ fn client_form_defaults_and_request_conversion() {
 		optional_mode: Some(ProviderMode::Fake),
 		tenant_id: Some("tenant-a".to_string()),
 		revision: 7,
+		server_token: "token-a".to_string(),
 	});
 	let runtime = use_form(&form).build();
 
@@ -91,6 +94,7 @@ fn client_form_defaults_and_request_conversion() {
 	assert_eq!(request.optional_mode, Some(ProviderMode::Fake));
 	assert_eq!(request.tenant_id.as_deref(), Some("tenant-a"));
 	assert_eq!(request.revision, 7);
+	assert_eq!(request.server_token, "token-a");
 }
 
 #[test]
@@ -122,6 +126,7 @@ fn client_form_reconcile_refreshes_skipped_defaults() {
 		optional_mode: Some(ProviderMode::Fake),
 		tenant_id: Some("tenant-a".to_string()),
 		revision: 7,
+		server_token: "token-a".to_string(),
 	});
 	let runtime = use_form(&form)
 		.deps(0_u8)
@@ -140,6 +145,7 @@ fn client_form_reconcile_refreshes_skipped_defaults() {
 		optional_mode: None,
 		tenant_id: Some("tenant-b".to_string()),
 		revision: 8,
+		server_token: "token-b".to_string(),
 	});
 	runtime.reconcile_from(&refreshed, 1_u8);
 	let request = ProjectRequestClientForm::to_request(&runtime);
@@ -148,6 +154,7 @@ fn client_form_reconcile_refreshes_skipped_defaults() {
 	assert_eq!(request.title.as_deref(), Some("Server"));
 	assert_eq!(request.tenant_id.as_deref(), Some("tenant-b"));
 	assert_eq!(request.revision, 8);
+	assert_eq!(request.server_token, "token-b");
 }
 
 #[test]

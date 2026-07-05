@@ -1,0 +1,12 @@
+error[E0277]: `SubmitError` doesn't implement `std::fmt::Display`
+  --> tests/ui/client_form/fail/server_fn_submit_error_display.rs:5:52
+   |
+ 5 | #[derive(Clone, PartialEq, Serialize, Deserialize, ClientForm)]
+   |                                                    ^^^^^^^^^^ unsatisfied trait bound
+   |
+help: the trait `std::fmt::Display` is not implemented for `SubmitError`
+  --> tests/ui/client_form/fail/server_fn_submit_error_display.rs:17:1
+   |
+17 | pub struct SubmitError {
+   | ^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the derive macro `ClientForm` (in Nightly builds, run with -Z macro-backtrace for more info)

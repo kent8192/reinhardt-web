@@ -16,7 +16,7 @@ fn main() {
 	});
 
 	// For loop with nested if
-	let _for_if = page!(|items: Vec<(i32, bool) >| {
+	let _for_if = page!(|items: Vec<(i32, bool)>| {
 		ul {
 			for(num, active)in items.clone() {
 				li {

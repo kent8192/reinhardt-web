@@ -4,13 +4,12 @@ use std::any::{Any, type_name};
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt::Debug;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::future::Future;
 use std::hash::Hash;
 use std::rc::{Rc, Weak};
 
-use crate::reactive::{Effect, EffectTiming, Signal};
+use crate::reactive::{Action, ActionPhase, Effect, EffectTiming, Signal, use_action};
 
 /// Default reset behavior when runtime dependencies change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -463,6 +462,25 @@ pub enum UseFormAsyncSubmitOutcome<T> {
 	AlreadyPending,
 	/// Submit was rejected by validation.
 	ValidationFailed,
+}
+
+/// Typed action handle returned by [`use_form_action`].
+///
+/// `FormAction` validates a [`UseFormReturn`] before dispatching the current
+/// generated value struct through `use_action`. On WASM, the action result
+/// completes the form submit lifecycle and updates pending, error, and success
+/// state. On native targets, `use_action` intentionally does not poll async
+/// mutations, so the helper validates and dispatches the payload, then clears
+/// the pending flag without manufacturing a success result.
+pub struct FormAction<Form, Deps, T, E>
+where
+	Form: FormRuntimeSource,
+	Deps: Clone + PartialEq + 'static,
+	T: Clone + 'static,
+	E: Clone + Display + 'static,
+{
+	form: UseFormReturn<Form, Deps>,
+	action: Action<T, E>,
 }
 
 /// Error returned by focus operations.
@@ -1393,6 +1411,14 @@ where
 
 	/// Runs validation and submit lifecycle callbacks.
 	pub fn handle_submit(&self) -> UseFormSubmitOutcome {
+		let outcome = self.begin_submit_lifecycle();
+		if outcome == UseFormSubmitOutcome::Submitted {
+			self.complete_submit_success();
+		}
+		outcome
+	}
+
+	fn begin_submit_lifecycle(&self) -> UseFormSubmitOutcome {
 		if self.state.is_submitting.get() {
 			return UseFormSubmitOutcome::AlreadyPending;
 		}
@@ -1414,13 +1440,34 @@ where
 			return UseFormSubmitOutcome::ValidationFailed;
 		}
 
+		UseFormSubmitOutcome::Submitted
+	}
+
+	fn complete_submit_success(&self) {
 		self.state.is_submitting.set(false);
 		self.state.is_submit_successful.set(true);
+		self.state.submit_error.set(None);
+		self.sync_first_error();
 		if let Some(callback) = &self.on_submit_success {
 			callback(self);
 		}
 		self.notify(FormEvent::Submitted);
-		UseFormSubmitOutcome::Submitted
+	}
+
+	fn complete_submit_error(&self, error: impl Into<String>) {
+		self.state.is_submitting.set(false);
+		self.state.is_submit_successful.set(false);
+		self.state.submit_error.set(Some(error.into()));
+		self.sync_first_error();
+		if let Some(callback) = &self.on_submit_error {
+			callback(self);
+		}
+		self.notify(FormEvent::SubmitFailed);
+	}
+
+	#[cfg(native)]
+	fn complete_native_action_submit(&self) {
+		self.state.is_submitting.set(false);
 	}
 
 	/// Runs validation and async submit lifecycle callbacks.
@@ -1644,6 +1691,117 @@ where
 		self.path_default_values
 			.borrow_mut()
 			.retain(|path_key, _| current_paths.contains_key(path_key));
+	}
+}
+
+impl<Form, Deps, T, E> Clone for FormAction<Form, Deps, T, E>
+where
+	Form: FormRuntimeSource,
+	Deps: Clone + PartialEq + 'static,
+	T: Clone + 'static,
+	E: Clone + Display + 'static,
+{
+	fn clone(&self) -> Self {
+		Self {
+			form: self.form.clone(),
+			action: self.action.clone(),
+		}
+	}
+}
+
+impl<Form, Deps, T, E> FormAction<Form, Deps, T, E>
+where
+	Form: FormRuntimeSource,
+	Deps: Clone + PartialEq + 'static,
+	T: Clone + 'static,
+	E: Clone + Display + 'static,
+{
+	/// Returns the underlying form runtime handle.
+	pub fn form(&self) -> UseFormReturn<Form, Deps> {
+		self.form.clone()
+	}
+
+	/// Returns the current action phase.
+	pub fn phase(&self) -> ActionPhase<T, E> {
+		self.action.phase()
+	}
+
+	/// Returns `true` while form validation or the async action is pending.
+	pub fn is_pending(&self) -> bool {
+		self.form.state.is_submitting.get() || self.action.is_pending()
+	}
+
+	/// Returns `true` when the action completed successfully.
+	pub fn is_success(&self) -> bool {
+		self.form.state.is_submit_successful.get()
+	}
+
+	/// Returns the latest successful action result.
+	pub fn result(&self) -> Option<T> {
+		self.action.result()
+	}
+
+	/// Returns the latest action error.
+	pub fn error(&self) -> Option<E> {
+		self.action.error()
+	}
+
+	/// Returns the first visible validation or submit error message.
+	pub fn error_message(&self) -> Option<String> {
+		self.form
+			.state
+			.error
+			.get()
+			.or_else(|| self.action.error().map(|error| error.to_string()))
+	}
+
+	/// Runs generated validation and dispatches the current values on success.
+	pub fn submit(&self) -> UseFormSubmitOutcome {
+		let outcome = self.form.begin_submit_lifecycle();
+		if outcome != UseFormSubmitOutcome::Submitted {
+			return outcome;
+		}
+
+		self.action.dispatch(self.form.get_values());
+
+		#[cfg(native)]
+		self.form.complete_native_action_submit();
+
+		outcome
+	}
+
+	/// Registers a callback that runs after a successful WASM action.
+	///
+	/// The form submit lifecycle is completed before this callback runs.
+	pub fn on_success<Callback>(self, callback: Callback) -> Self
+	where
+		Callback: Fn(&UseFormReturn<Form, Deps>, &T) + 'static,
+	{
+		let form_for_callback = self.form.clone();
+		let action = self.action.on_success(move |value| {
+			callback(&form_for_callback, value);
+		});
+		Self {
+			form: self.form,
+			action,
+		}
+	}
+
+	/// Registers a callback that runs after a failed WASM action.
+	///
+	/// The form submit lifecycle is completed before this callback runs.
+	pub fn on_error<Callback>(self, callback: Callback) -> Self
+	where
+		Callback: Fn(&UseFormReturn<Form, Deps>, &E) + 'static,
+	{
+		let form_for_callback = self.form.clone();
+		let action = self.action.on_error(move |error| {
+			callback(&form_for_callback, error);
+		});
+		Self {
+			form: self.form,
+			action,
+		}
 	}
 }
 
@@ -1927,6 +2085,40 @@ where
 		on_submit_start: None,
 		on_submit_success: None,
 		on_submit_error: None,
+	}
+}
+
+/// Creates a typed submit action for a generated form runtime.
+///
+/// The helper composes [`use_form`] runtime state with [`use_action`] server
+/// calls: validation runs first, valid current values are dispatched as the
+/// action payload, and the action result updates submit pending/error/success
+/// state.
+pub fn use_form_action<Form, Deps, T, E, F, Fut>(
+	form: &UseFormReturn<Form, Deps>,
+	action_fn: F,
+) -> FormAction<Form, Deps, T, E>
+where
+	Form: FormRuntimeSource,
+	Deps: Clone + PartialEq + 'static,
+	T: Clone + 'static,
+	E: Clone + Display + 'static,
+	F: Fn(Form::Values) -> Fut + 'static,
+	Fut: Future<Output = Result<T, E>> + 'static,
+{
+	let form_for_success = form.clone();
+	let form_for_error = form.clone();
+	let action = use_action::<Form::Values, T, E, F, Fut>(action_fn)
+		.on_success(move |_| {
+			form_for_success.complete_submit_success();
+		})
+		.on_error(move |error| {
+			form_for_error.complete_submit_error(error.to_string());
+		});
+
+	FormAction {
+		form: form.clone(),
+		action,
 	}
 }
 
