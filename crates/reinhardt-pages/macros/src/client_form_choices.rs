@@ -1,5 +1,7 @@
 //! `ClientFormChoices` derive implementation.
 
+use std::collections::BTreeSet;
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, LitStr, Token, parse_macro_input};
@@ -39,6 +41,7 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 	let mut choice_values = Vec::new();
 	let mut default_variant = None;
 	let mut has_skipped_variant = false;
+	let mut seen_serialized_values = BTreeSet::new();
 
 	for variant in data_enum.variants {
 		let variant_options = serde_variant_options(&variant.attrs)?;
@@ -73,6 +76,12 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 		let serialized = variant_options
 			.rename
 			.unwrap_or_else(|| apply_rename_rule(&variant_ident.to_string(), rename_rule));
+		if !seen_serialized_values.insert(serialized.clone()) {
+			return Err(syn::Error::new_spanned(
+				&variant_ident,
+				format!("duplicate ClientFormChoices serialized value `{serialized}`"),
+			));
+		}
 		choice_values.push(quote! {
 			#pages_crate::ClientFormChoice {
 				value: #enum_ident::#variant_ident,

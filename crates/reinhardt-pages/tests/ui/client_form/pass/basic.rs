@@ -12,7 +12,9 @@ enum ProviderMode {
 
 #[derive(Clone, PartialEq, ClientForm)]
 struct ProfileRequest {
+	#[serde(rename = "displayName")]
 	name: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
 	title: Option<String>,
 	count: i32,
 	optional_count: Option<i32>,

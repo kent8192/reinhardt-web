@@ -3,7 +3,7 @@
 use convert_case::{Case, Casing};
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Data, DeriveInput, Fields, Ident, Path, Type, Visibility, parse_macro_input};
+use syn::{Data, DeriveInput, Fields, Ident, Path, Token, Type, Visibility, parse_macro_input};
 
 use crate::crate_paths::get_reinhardt_pages_crate;
 
@@ -96,7 +96,7 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 	let submit_method = options
 		.server_fn
 		.as_ref()
-		.map(|server_fn| generate_submit_method(&form_ident, server_fn, &pages_crate))
+		.map(|server_fn| generate_submit_method(&dto_ident, &form_ident, server_fn, &pages_crate))
 		.unwrap_or_default();
 
 	Ok(quote! {
@@ -451,6 +451,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 }
 
 fn generate_submit_method(
+	dto_ident: &Ident,
 	form_ident: &Ident,
 	server_fn: &Path,
 	pages_crate: &proc_macro2::TokenStream,
@@ -462,6 +463,7 @@ fn generate_submit_method(
 		#[allow(dead_code)]
 		fn __assert_server_fn_response_metadata()
 		where
+			#dto_ident: ::serde::Serialize,
 			#server_fn::marker: #pages_crate::server_fn::ServerFnResponseMetadata,
 			<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Response:
 				::serde::de::DeserializeOwned,
@@ -560,6 +562,8 @@ impl ClientFormFieldOptions {
 						|| meta.path.is_ident("skip_deserializing")
 					{
 						options.serde_skip = true;
+					} else {
+						consume_serde_field_meta(meta)?;
 					}
 					Ok(())
 				})?;
@@ -567,6 +571,15 @@ impl ClientFormFieldOptions {
 		}
 		Ok(options)
 	}
+}
+
+fn consume_serde_field_meta(meta: syn::meta::ParseNestedMeta<'_>) -> syn::Result<()> {
+	if meta.input.peek(Token![=]) {
+		let _value = meta.value()?.parse::<syn::Expr>()?;
+	} else if meta.input.peek(syn::token::Paren) {
+		meta.parse_nested_meta(consume_serde_field_meta)?;
+	}
+	Ok(())
 }
 
 struct EditableField {
