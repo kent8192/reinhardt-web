@@ -721,7 +721,7 @@ fn report_admin_error(message: &str) {
 fn form_group(field: &FormField) -> Page {
 	let input_id = format!("field-{}", field.name);
 	let label = field.label.clone();
-	let input = form_element(field, &input_id);
+	let input = form_element(field, &input_id, &label);
 
 	page!(|input_id: String, label: String, input: Page| {
 		div {
@@ -780,93 +780,102 @@ fn parse_multi_value(raw: &str) -> Vec<&str> {
 }
 
 /// Generates an input element for a form field
-fn form_element(field: &FormField, input_id: &str) -> Page {
+fn form_element(field: &FormField, input_id: &str, label: &str) -> Page {
 	use crate::types::FormFieldSpec;
 
 	let input_id = input_id.to_string();
 	let name = field.name.clone();
+	let label = label.to_string();
 	let value = field.value.clone();
 	let required = field.required;
 
 	match &field.spec {
 		FormFieldSpec::Input { html_type } => {
-			render_input(html_type.clone(), input_id, name, value, required)
+			render_input(html_type.clone(), input_id, name, label, value, required)
 		}
-		FormFieldSpec::File => render_input("file".to_string(), input_id, name, value, required),
+		FormFieldSpec::File => {
+			render_input("file".to_string(), input_id, name, label, value, required)
+		}
 		FormFieldSpec::Hidden => {
-			render_input("hidden".to_string(), input_id, name, value, required)
+			render_input("hidden".to_string(), input_id, name, label, value, required)
 		}
 		FormFieldSpec::TextArea => {
 			if required {
-				page!(|input_id: String, name: String, value: String| {
+				page!(|input_id: String, name: String, label: String, value: String| {
 					textarea {
 						class: "admin-input",
 						id: input_id,
 						name: name,
+						aria_label: label,
 						required: true,
 						autocomplete: "off",
 						{ value }
 					}
-				})(input_id, name, value)
+				})(input_id, name, label, value)
 			} else {
-				page!(|input_id: String, name: String, value: String| {
+				page!(|input_id: String, name: String, label: String, value: String| {
 					textarea {
 						class: "admin-input",
 						id: input_id,
 						name: name,
+						aria_label: label,
 						autocomplete: "off",
 						{ value }
 					}
-				})(input_id, name, value)
+				})(input_id, name, label, value)
 			}
 		}
 		FormFieldSpec::Select { choices } => {
 			let options = render_option_elements(choices, &[value.as_str()]);
 			if required {
-				page!(|input_id: String, name: String, options: Vec<Page>| {
+				page!(|input_id: String, name: String, label: String, options: Vec<Page>| {
 					select {
 						class: "admin-select",
 						id: input_id,
 						name: name,
+						aria_label: label,
 						required: true,
 						{ options }
 					}
-				})(input_id, name, options)
+				})(input_id, name, label, options)
 			} else {
-				page!(|input_id: String, name: String, options: Vec<Page>| {
+				page!(|input_id: String, name: String, label: String, options: Vec<Page>| {
 					select {
 						class: "admin-select",
 						id: input_id,
 						name: name,
+						aria_label: label,
 						{ options }
 					}
-				})(input_id, name, options)
+				})(input_id, name, label, options)
 			}
 		}
 		FormFieldSpec::MultiSelect { choices } => {
 			let selected = parse_multi_value(&value);
 			let options = render_option_elements(choices, &selected);
 			if required {
-				page!(|input_id: String, name: String, options: Vec<Page>| {
+				page!(|input_id: String, name: String, label: String, options: Vec<Page>| {
 					select {
 						class: "admin-select",
 						id: input_id,
 						name: name,
+						aria_label: label,
 						multiple: true,
 						required: true,
 						{ options }
 					}
-				})(input_id, name, options)
+				})(input_id, name, label, options)
 			} else {
-				page!(|input_id: String, name: String, options: Vec<Page>| {
+				page!(|input_id: String, name: String, label: String, options: Vec<Page>| {
 					select {
 						class: "admin-select",
 						id: input_id,
 						name: name,
+						aria_label: label,
 						multiple: true,
 						{ options }
 					}
-				})(input_id, name, options)
+				})(input_id, name, label, options)
 			}
 		}
 	}
@@ -877,32 +886,35 @@ fn render_input(
 	html_type: String,
 	input_id: String,
 	name: String,
+	label: String,
 	value: String,
 	required: bool,
 ) -> Page {
 	if required {
-		page!(|html_type: String, input_id: String, name: String, value: String| {
+		page!(|html_type: String, input_id: String, name: String, label: String, value: String| {
 			input {
 				class: "admin-input",
 				type: html_type,
 				id: input_id,
 				name: name,
+				aria_label: label,
 				value: value,
 				required: true,
 				autocomplete: "off",
 			}
-		})(html_type, input_id, name, value)
+		})(html_type, input_id, name, label, value)
 	} else {
-		page!(|html_type: String, input_id: String, name: String, value: String| {
+		page!(|html_type: String, input_id: String, name: String, label: String, value: String| {
 			input {
 				class: "admin-input",
 				type: html_type,
 				id: input_id,
 				name: name,
+				aria_label: label,
 				value: value,
 				autocomplete: "off",
 			}
-		})(html_type, input_id, name, value)
+		})(html_type, input_id, name, label, value)
 	}
 }
 
@@ -945,6 +957,7 @@ fn filter_type_to_choices(filter_type: &FilterType) -> Vec<(String, String)> {
 /// Generates a <select> element for a filter field.
 fn create_filter_select(
 	field: &str,
+	label: &str,
 	filter_type: &FilterType,
 	current_value: Option<&str>,
 	filters_signal: Signal<HashMap<String, String>>,
@@ -980,10 +993,12 @@ fn create_filter_select(
 		span { { options } }
 	})(options);
 	let field_str = field.to_string();
+	let label = label.to_string();
 
-	page!(|field_str: String, _filters_signal: Signal<HashMap<String, String>>, options_container: Page| {
+	page!(|field_str: String, label: String, _filters_signal: Signal<HashMap<String, String>>, options_container: Page| {
 		select {
 			class: "admin-select",
+			aria_label: label,
 			data_filter_field: field_str.clone(),
 			@change: move |event| {
 				use wasm_bindgen::JsCast;
@@ -1003,7 +1018,7 @@ fn create_filter_select(
 			},
 			{ options_container }
 		}
-	})(field_str, filters_signal, options_container)
+	})(field_str, label, filters_signal, options_container)
 }
 
 /// Create filter control (label + select)
@@ -1017,6 +1032,7 @@ fn create_filter_control(
 	let label = filter_info.title.clone();
 	let select = create_filter_select(
 		&filter_info.field,
+		&label,
 		&filter_info.filter_type,
 		current_value,
 		filters_signal,
