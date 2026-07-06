@@ -1156,6 +1156,10 @@ impl DatabaseMigrationExecutor {
 			Operation::AddConstraint {
 				table,
 				constraint_sql,
+			}
+			| Operation::AddConstraintRepair {
+				table,
+				constraint_sql,
 			} => {
 				tracing::debug!(
 					"Handling SQLite table recreation for AddConstraint: table={}",
