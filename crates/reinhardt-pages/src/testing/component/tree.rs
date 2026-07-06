@@ -101,7 +101,7 @@ impl TestDom {
 		match self.nodes.get(node_id) {
 			Some(TestNode::Removed) => String::new(),
 			Some(TestNode::Root { children }) => self.children_visible_text(children),
-			Some(TestNode::Element(node)) if self.is_hidden(node_id) => String::new(),
+			Some(TestNode::Element(_node)) if self.is_hidden(node_id) => String::new(),
 			Some(TestNode::Element(node)) => self.children_visible_text(&node.children),
 			Some(TestNode::Text { text, .. }) => text.clone(),
 			Some(TestNode::ReactiveAnchor { children, .. }) => self.children_visible_text(children),
@@ -334,11 +334,6 @@ impl TestDom {
 				);
 				self.append_page(anchor, render());
 			}
-			Page::Outlet(outlet) => {
-				if let Some(child) = outlet.into_child() {
-					self.append_page(parent, child);
-				}
-			}
 		}
 	}
 
@@ -449,6 +444,7 @@ impl ElementNode {
 
 	pub(crate) fn supports_value(&self) -> bool {
 		matches!(self.tag.as_str(), "input" | "textarea" | "select")
+			&& !(self.tag == "input" && self.attr("type") == Some("hidden"))
 	}
 
 	pub(crate) fn is_disabled_form_control(&self) -> bool {

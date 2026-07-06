@@ -12,7 +12,7 @@
 pub use reinhardt_test::*;
 
 /// Pages component testing utilities.
-#[cfg(all(feature = "test", feature = "pages"))]
+#[cfg(all(native, feature = "test", feature = "pages"))]
 pub mod pages {
 	pub use reinhardt_pages::testing::component::*;
 }

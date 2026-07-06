@@ -107,7 +107,7 @@ fn input_updates_internal_value_before_dispatch() {
 			.attr("placeholder", "Job name")
 			.listener("input", move |_| called_for_handler.set(true)),
 	);
-	let input = screen.get_by_role(Role::Textbox, "Job name");
+	let input = screen.get_by_placeholder("Job name");
 
 	input.input("new");
 
