@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use futures_util::StreamExt;
-use reinhardt_core::types::page::{Head, SuspenseNode};
+use reinhardt_core::types::page::{DeferredNode, Head, SuspenseNode};
 use reinhardt_pages::component::suspense::SuspenseBoundary;
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
 use reinhardt_pages::reactive::{ResourceState, use_id, use_resource};
@@ -160,6 +160,145 @@ async fn buffered_suspense_caches_head_from_resolved_content_render() {
 	assert!(html.contains("<title>Resolved Suspense Head</title>"));
 	assert!(html.contains("resolved"));
 	assert_eq!(content_calls.get(), 2);
+}
+
+#[tokio::test]
+async fn buffered_resolved_suspense_replay_restores_deterministic_counters() {
+	let view = Page::reactive(|| {
+		let gate = use_resource(|| async { Ok::<_, String>("gate".to_string()) }, ());
+
+		resource_to_page(gate.get(), "em", "gate-loading", |_| {
+			Page::Suspense(SuspenseNode::new(
+				Some("buffered-replay".to_string()),
+				|| false,
+				|| {
+					let id = use_id();
+					Page::fragment([
+						pending_nested_boundary("fallback-nested"),
+						PageElement::new("span")
+							.attr("id", id)
+							.child("fallback")
+							.into_page(),
+					])
+				},
+				|| {
+					Page::reactive(|| {
+						let content =
+							use_resource(|| async { Ok::<_, String>("content".to_string()) }, ());
+						let id = use_id();
+						resource_to_page(content.get(), "em", "content-loading", |value| {
+							Page::fragment([
+								pending_nested_boundary("content-nested"),
+								PageElement::new("strong")
+									.attr("id", id)
+									.child(value)
+									.into_page(),
+							])
+						})
+					})
+				},
+			))
+		})
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	assert!(html.contains("content"));
+	assert!(html.contains(r#"id="reinhardt-id-0""#));
+	assert!(!html.contains("reinhardt-id-1"));
+	assert!(html.contains("rh-suspense-start:rh-suspense-0"));
+	assert!(!html.contains("rh-suspense-start:rh-suspense-1"));
+}
+
+#[tokio::test]
+async fn buffered_suspense_replays_external_resource_tracked_by_boundary() {
+	let view = Page::reactive(|| {
+		let gate = use_resource(|| async { Ok::<_, String>("gate".to_string()) }, ());
+
+		resource_to_page(gate.get(), "p", "gate-loading", |_| {
+			Page::reactive(|| {
+				let shared = use_resource(|| async { Ok::<_, String>("shared".to_string()) }, ());
+				let tracked_key = shared.ssr_key().unwrap().to_string();
+				let outside_resource = shared.clone();
+				let boundary_pending = shared.clone();
+				let boundary_content = shared.clone();
+
+				let outside =
+					resource_to_page(outside_resource.get(), "p", "outside-loading", |value| {
+						PageElement::new("p")
+							.child(format!("outside-{value}"))
+							.into_page()
+					});
+
+				Page::fragment([
+					outside,
+					Page::Suspense(SuspenseNode::new_with_tracked_resources(
+						Some("buffered-shared".to_string()),
+						vec![tracked_key],
+						move || boundary_pending.is_loading(),
+						|| {
+							PageElement::new("span")
+								.child("boundary-fallback")
+								.into_page()
+						},
+						move || {
+							resource_to_page(
+								boundary_content.get(),
+								"em",
+								"boundary-loading",
+								|value| {
+									PageElement::new("strong")
+										.child(format!("boundary-{value}"))
+										.into_page()
+								},
+							)
+						},
+					)),
+				])
+			})
+		})
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	assert!(html.contains("outside-shared"));
+	assert!(html.contains("boundary-shared"));
+	assert!(!html.contains("outside-loading"));
+	assert!(!html.contains("boundary-fallback"));
+}
+
+#[tokio::test]
+async fn buffered_deferred_head_updates_after_replay_settles() {
+	let view = Page::Deferred(DeferredNode::new(
+		"deferred-head",
+		|| PageElement::new("span").child("fallback").into_page(),
+		|| {
+			let first = use_resource(|| async { Ok::<_, String>("first".to_string()) }, ());
+			resource_to_page(first.get(), "em", "first-loading", |_| {
+				let second = use_resource(|| async { Ok::<_, String>("second".to_string()) }, ());
+				match second.get() {
+					ResourceState::Success(_) => PageElement::new("strong")
+						.child("deferred-ready")
+						.into_page()
+						.with_head(Head::new().title("Resolved Deferred Head")),
+					ResourceState::Loading => PageElement::new("em")
+						.child("second-loading")
+						.into_page()
+						.with_head(Head::new().title("Loading Deferred Head")),
+					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				}
+			})
+		},
+	));
+
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	assert!(html.contains("deferred-ready"));
+	assert!(html.contains("<title>Resolved Deferred Head</title>"));
+	assert!(!html.contains("<title>Loading Deferred Head</title>"));
 }
 
 #[tokio::test]

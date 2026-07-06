@@ -394,6 +394,11 @@ impl SsrRenderer {
 		restore_id_counter(snapshot.id_counter);
 	}
 
+	fn active_context_has_pending_resources() -> bool {
+		super::resource_context::with_active_context(|context| context.borrow().has_pending())
+			.unwrap_or(false)
+	}
+
 	fn begin_render(&mut self) {
 		self.state.clear_resource_states();
 		self.reset_deterministic_render_counters();
@@ -853,9 +858,15 @@ impl SsrRenderer {
 					}
 				}
 				Page::Deferred(node) => {
+					let content_start = self.deterministic_render_snapshot();
 					let content = node.render_content();
 					let rendered = self.render_stream_shell_page(&content, boundaries).await;
-					node.cache_content_head_from(&content);
+					let content_end = self.deterministic_render_snapshot();
+					if !Self::active_context_has_pending_resources() {
+						self.restore_deterministic_render_snapshot(content_start);
+						node.cache_content_head_from(&content);
+						self.restore_deterministic_render_snapshot(content_end);
+					}
 					rendered
 				}
 				Page::Outlet(outlet) => {
@@ -982,6 +993,9 @@ impl SsrRenderer {
 							&& let Some(context) =
 								super::resource_context::with_active_context(Rc::clone)
 						{
+							if context.borrow().has_pending_external() {
+								return self.render_suspense_fallback(&boundary_id, fallback);
+							}
 							let boundary_resolved =
 								resolve_boundary_resources(&context, &boundary_id).await;
 							if !boundary_resolved {
@@ -1013,10 +1027,16 @@ impl SsrRenderer {
 					}
 				}
 				Page::Deferred(node) => {
+					let content_start = self.deterministic_render_snapshot();
 					let content = node.render_content();
 					let rendered = self.render_async_page(&content, mode).await;
-					if !matches!(mode, AsyncRenderMode::Discovery) {
+					let content_end = self.deterministic_render_snapshot();
+					if !matches!(mode, AsyncRenderMode::Discovery)
+						&& !Self::active_context_has_pending_resources()
+					{
+						self.restore_deterministic_render_snapshot(content_start);
 						node.cache_content_head_from(&content);
+						self.restore_deterministic_render_snapshot(content_end);
 					}
 					rendered
 				}
@@ -1334,7 +1354,7 @@ fn is_comment_safe_suspense_id(id: &str) -> bool {
 }
 
 fn normalize_suspense_boundary_id(id: &str) -> String {
-	if is_comment_safe_suspense_id(id) {
+	if is_comment_safe_suspense_id(id) && !id.starts_with("rh-suspense-id-") {
 		return id.to_string();
 	}
 
@@ -1518,6 +1538,16 @@ mod tests {
 		fn name() -> &'static str {
 			"TestComponent"
 		}
+	}
+
+	#[test]
+	fn normalize_suspense_boundary_id_reserves_generated_namespace() {
+		let unsafe_id = normalize_suspense_boundary_id("--");
+		let safe_generated_prefix_id = normalize_suspense_boundary_id("rh-suspense-id-2d2d");
+
+		assert_eq!(unsafe_id, "rh-suspense-id-2d2d");
+		assert_ne!(unsafe_id, safe_generated_prefix_id);
+		assert!(safe_generated_prefix_id.starts_with("rh-suspense-id-"));
 	}
 
 	#[test]
