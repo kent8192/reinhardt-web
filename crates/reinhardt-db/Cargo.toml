@@ -231,6 +231,11 @@ trybuild = "1.0"
 ctor = "0.6.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+[[test]]
+name = "contenttypes_registry"
+path = "tests/contenttypes_registry.rs"
+required-features = ["contenttypes"]
+
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
 tokio-test = "0.4"
 sqlx = { workspace = true, features = ["runtime-tokio", "postgres"] }
