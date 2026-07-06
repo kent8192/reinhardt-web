@@ -337,6 +337,7 @@ git_release_type = "auto"
 semver_check = true
 publish_timeout = "10m"
 dependencies_update = true
+allow_dirty = true
 release_always = true
 publish_no_verify = true
 
@@ -423,6 +424,10 @@ During `cargo publish`, Cargo attempts to build the crate including dev-dependen
 
 Enables release-plz to automatically update explicit `version` fields in workspace dependency declarations when a dependent crate's version is bumped. Without this, workspace members that pin explicit versions would become out-of-sync after a release, causing the next Release PR to carry stale dependency versions. (Ref: [#223](https://github.com/kent8192/reinhardt-web/pull/223))
 
+**`allow_dirty = true`**
+
+Allows release-plz to include generated working-tree changes in the Release PR update. Reinhardt tracks `examples/Cargo.lock` for the independent examples workspace; when release-plz bumps package versions and dependency versions, that lockfile can refresh before the Release PR branch is created. Without `allow_dirty`, `release-plz release-pr` aborts with a dirty tree instead of carrying the lockfile update into the generated Release PR.
+
 **`release_always = true`**
 
 Ensures `release-plz release` publishes ALL crates whose local version differs from crates.io, not just those with actual code changes. This prevents the phantom version issue described in [KI-5](#ki-5-phantom-version-bumps-from-dependencies_update): when `dependencies_update = true` bumps versions for dependency-only changes, `release_always = false` would skip publishing those crates, creating versions in git that don't exist on crates.io. Normal code pushes are unaffected since local versions match crates.io; only after a Release PR merge will version differences trigger publishing. (Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#186](https://github.com/kent8192/reinhardt-web/pull/186), [#246](https://github.com/kent8192/reinhardt-web/issues/246))
@@ -446,6 +451,7 @@ flowchart TD
     B -->|gix cache panic| F["RP-3: Re-run release-plz<br/>(transient error)"]
     B -->|Phantom version bump| G["KI-5: Set release_always = true"]
     B -->|Yanked prerelease| H["KI-7: Advance to fresh prerelease<br/>do not reuse yanked version"]
+    B -->|examples/Cargo.lock dirty| I["KI-8: Keep allow_dirty = true<br/>include generated lockfile diff"]
 ```
 
 ### KI-1: Circular Publish Dependencies
@@ -594,6 +600,25 @@ release-plz step succeeded, so the root release-plz failure is not hidden by a
 secondary expression error.
 
 (Ref: [#4828](https://github.com/kent8192/reinhardt-web/issues/4828))
+
+### KI-8: Examples Lockfile Dirty During `release-pr`
+
+**Problem**: `release-plz release-pr` updates package versions and versioned
+workspace dependencies before opening or updating the generated Release PR.
+The independent examples workspace tracks `examples/Cargo.lock`, and its path
+dependency on the root `reinhardt-web` package can cause that lockfile to
+refresh during the release-pr update.
+
+**Symptoms**:
+- The Release-plz workflow fails in the `release-plz release-pr` step
+- The error reports a dirty working tree with `["examples/Cargo.lock"]`
+- No Release PR update is created for the pushed commit
+
+**Resolution**: Keep `allow_dirty = true` in `release-plz.toml` so release-plz
+includes the generated `examples/Cargo.lock` change in the Release PR instead
+of aborting. Do not edit generated `release-plz-*` or
+`develop-release-plz-*` branches directly; fix the base branch configuration and
+let release-plz regenerate the Release PR.
 
 ---
 
@@ -765,7 +790,8 @@ cargo publish --dry-run -p reinhardt-web  # root crate depends on reinhardt-test
 - **Partial Failure**: See [KI-3: Partial Release Failure Deadlock](#ki-3-partial-release-failure-deadlock) and [RP-1](#rp-1-partial-release-failure-recovery)
 - **gix Panic**: See [KI-4: gix/gitoxide Slotmap Overflow](#ki-4-gixgitoxide-slotmap-overflow) and [RP-3](#rp-3-gix-cache-failure-recovery)
 - **Phantom Version (dependency not found)**: See [KI-5: Phantom Version Bumps from `dependencies_update`](#ki-5-phantom-version-bumps-from-dependencies_update)
-    - **Rate Limit (429)**: See [KI-6: crates.io Rate Limit](#ki-6-cratesio-rate-limit-429-too-many-requests)
+- **Rate Limit (429)**: See [KI-6: crates.io Rate Limit](#ki-6-cratesio-rate-limit-429-too-many-requests)
+- **Examples lockfile dirty**: See [KI-8: Examples Lockfile Dirty During `release-pr`](#ki-8-examples-lockfile-dirty-during-release-pr)
 
 **CHANGELOG Not Updated:**
 - Ensure `changelog_update = true` in config

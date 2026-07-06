@@ -44,7 +44,8 @@
 //! | `sessions` | disabled | Session-based authentication |
 //! | `oauth` | disabled | OAuth2 authorization code flow |
 //! | `token` | disabled | Token-based authentication |
-//! | `argon2-hasher` | disabled | Argon2 password hashing (alternative to bcrypt) |
+//! | `argon2-hasher` | disabled | Argon2 password hashing |
+//! | `bcrypt-hasher` | disabled | bcrypt password hashing for compatibility |
 //! | `social` | disabled | Social authentication (OAuth2/OIDC providers) |
 //! | `database` | disabled | Database-backed user/group storage via ORM |
 //!
@@ -97,14 +98,18 @@ pub(crate) mod internal_user;
 // `FullUser` + `PermissionsMixin` instead.
 pub use core::{
 	AllowAny, AuthBackend, AuthIdentity, BaseUser, CompositeAuthBackend, FullUser, IsActiveUser,
-	IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, PasswordHasher, Permission,
-	PermissionContext, PermissionsMixin, SuperuserCreator, SuperuserCreatorRegistration,
-	SuperuserInit, TypedSuperuserCreator, auto_register_superuser_creator, get_superuser_creator,
-	register_superuser_creator, superuser_creator_for,
+	IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, PasswordCheck, PasswordHashPolicy,
+	PasswordHasher, PasswordVerification, Permission, PermissionContext, PermissionsMixin,
+	SuperuserCreator, SuperuserCreatorRegistration, SuperuserInit, TypedSuperuserCreator,
+	auto_register_superuser_creator, get_superuser_creator, register_superuser_creator,
+	superuser_creator_for,
 };
 
 #[cfg(feature = "argon2-hasher")]
 pub use core::Argon2Hasher;
+
+#[cfg(feature = "bcrypt-hasher")]
+pub use core::BcryptHasher;
 
 // Re-export permission operators from core
 pub use core::permission_operators;
