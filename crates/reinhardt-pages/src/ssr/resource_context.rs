@@ -77,6 +77,15 @@ impl SsrResourceContext {
 		self.next_resource_index = index;
 	}
 
+	/// Reserves an internal call-order key for explicit-key resource hooks.
+	pub(crate) fn reserve_call_order_key(&mut self, key: &str) {
+		if let Some(id) = key.strip_prefix("rh-res-")
+			&& let Ok(index) = id.parse::<usize>()
+		{
+			self.next_resource_index = self.next_resource_index.max(index.saturating_add(1));
+		}
+	}
+
 	/// Allocates the next call-order resource key.
 	pub(crate) fn next_call_order_key(&mut self) -> String {
 		loop {
@@ -91,26 +100,61 @@ impl SsrResourceContext {
 
 	fn can_use_resource_key(&self, key: &str) -> bool {
 		let active_boundary = self.current_boundary_id();
-		let matches_active = |external: bool, boundary_ids: &[String]| {
-			if let Some(boundary_id) = active_boundary.as_deref() {
-				boundary_ids
-					.iter()
-					.any(|candidate| candidate == boundary_id)
-			} else {
-				external
-			}
-		};
+		let active_boundary = active_boundary.as_deref();
 
-		if let Some(resolved) = self.resolved.get(key) {
-			return matches_active(resolved.external, &resolved.boundary_ids);
+		let key_matches_active_scope = self.resolved.get(key).is_some_and(|resolved| {
+			Self::matches_active_scope(active_boundary, resolved.external, &resolved.boundary_ids)
+		}) || self.pending.iter().any(|pending| {
+			pending.id == key
+				&& Self::matches_active_scope(
+					active_boundary,
+					pending.external,
+					&pending.boundary_ids,
+				)
+		}) || self.timed_out.iter().any(|resource| {
+			resource.id == key
+				&& Self::matches_active_scope(
+					active_boundary,
+					resource.external,
+					&resource.boundary_ids,
+				)
+		});
+		if key_matches_active_scope {
+			return true;
 		}
-		if let Some(pending) = self.pending.iter().find(|pending| pending.id == key) {
-			return matches_active(pending.external, &pending.boundary_ids);
+
+		if active_boundary.is_none() {
+			!self
+				.resolved
+				.get(key)
+				.is_some_and(|resolved| resolved.external)
+				&& !self
+					.pending
+					.iter()
+					.any(|pending| pending.id == key && pending.external)
+				&& !self
+					.timed_out
+					.iter()
+					.any(|resource| resource.id == key && resource.external)
+		} else {
+			!self.resolved.contains_key(key)
+				&& !self.pending.iter().any(|pending| pending.id == key)
+				&& !self.timed_out.iter().any(|resource| resource.id == key)
 		}
-		if let Some(timed_out) = self.timed_out.iter().find(|resource| resource.id == key) {
-			return matches_active(timed_out.external, &timed_out.boundary_ids);
+	}
+
+	fn matches_active_scope(
+		active_boundary: Option<&str>,
+		external: bool,
+		boundary_ids: &[String],
+	) -> bool {
+		if let Some(boundary_id) = active_boundary {
+			boundary_ids
+				.iter()
+				.any(|candidate| candidate == boundary_id)
+		} else {
+			external || boundary_ids.is_empty()
 		}
-		true
 	}
 
 	fn push_boundary(&mut self, boundary_id: String) {
@@ -126,23 +170,35 @@ impl SsrResourceContext {
 	}
 
 	/// Registers a resource future unless the key is already known.
-	pub(crate) fn register_resource<T, E, Fut>(
+	pub(crate) fn register_resource<T, E, F, Fut>(
 		&mut self,
 		key: String,
-		future: Fut,
+		fetcher: F,
 		state: Signal<ResourceState<T, E>>,
 	) where
 		T: Clone + Serialize + DeserializeOwned + 'static,
 		E: Clone + Serialize + DeserializeOwned + 'static,
+		F: FnOnce() -> Fut,
 		Fut: Future<Output = Result<T, E>> + 'static,
 	{
-		if let Some(value) = self.resolved.get(&key) {
+		let current_boundary_id = self.current_boundary_id();
+		let active_boundary = current_boundary_id.as_deref();
+		if let Some(value) = self.resolved.get(&key).filter(|resource| {
+			Self::matches_active_scope(active_boundary, resource.external, &resource.boundary_ids)
+		}) {
 			if let Ok(resource_state) = serde_json::from_value(value.value.clone()) {
 				state.set(resource_state);
 			}
 			return;
 		}
-		if self.timed_out.iter().any(|resource| resource.id == key) {
+		if self.timed_out.iter().any(|resource| {
+			resource.id == key
+				&& Self::matches_active_scope(
+					active_boundary,
+					resource.external,
+					&resource.boundary_ids,
+				)
+		}) {
 			return;
 		}
 
@@ -152,8 +208,14 @@ impl SsrResourceContext {
 			}
 		});
 
-		let current_boundary_id = self.current_boundary_id();
-		if let Some(pending) = self.pending.iter_mut().find(|pending| pending.id == key) {
+		if let Some(pending) = self.pending.iter_mut().find(|pending| {
+			pending.id == key
+				&& Self::matches_active_scope(
+					active_boundary,
+					pending.external,
+					&pending.boundary_ids,
+				)
+		}) {
 			if let Some(boundary_id) = current_boundary_id
 				&& !pending
 					.boundary_ids
@@ -167,6 +229,7 @@ impl SsrResourceContext {
 		}
 
 		let id = key.clone();
+		let future = fetcher();
 		let future = Box::pin(async move {
 			let resource_state = match future.await {
 				Ok(value) => ResourceState::Success(value),
@@ -189,7 +252,9 @@ impl SsrResourceContext {
 		if self.current_boundary_id().is_some() {
 			return;
 		}
-		if let Some(pending) = self.pending.iter_mut().find(|pending| pending.id == key) {
+		if let Some(pending) = self.pending.iter_mut().find(|pending| {
+			pending.id == key && (pending.external || pending.boundary_ids.is_empty())
+		}) {
 			pending.external = true;
 		}
 	}
@@ -200,7 +265,16 @@ impl SsrResourceContext {
 			return;
 		}
 
+		let current_boundary_id = self.current_boundary_id();
 		for pending in &mut self.pending {
+			if let Some(current_boundary_id) = current_boundary_id.as_deref()
+				&& current_boundary_id != boundary_id
+				&& ids.iter().any(|id| id == &pending.id)
+			{
+				pending
+					.boundary_ids
+					.retain(|candidate| candidate != current_boundary_id);
+			}
 			if ids.iter().any(|id| id == &pending.id)
 				&& !pending
 					.boundary_ids
@@ -218,8 +292,16 @@ impl SsrResourceContext {
 		T: Clone + DeserializeOwned + 'static,
 		E: Clone + DeserializeOwned + 'static,
 	{
+		let active_boundary = self.current_boundary_id();
 		self.resolved
 			.get(key)
+			.filter(|resource| {
+				Self::matches_active_scope(
+					active_boundary.as_deref(),
+					resource.external,
+					&resource.boundary_ids,
+				)
+			})
 			.and_then(|resource| serde_json::from_value(resource.value.clone()).ok())
 	}
 
@@ -313,11 +395,11 @@ impl SsrResourceContext {
 	}
 
 	fn record_timeout(&mut self, timed_out: TimedOutResource) {
-		if let Some(existing) = self
-			.timed_out
-			.iter_mut()
-			.find(|resource| resource.id == timed_out.id)
-		{
+		if let Some(existing) = self.timed_out.iter_mut().find(|resource| {
+			resource.id == timed_out.id
+				&& resource.external == timed_out.external
+				&& resource.boundary_ids == timed_out.boundary_ids
+		}) {
 			existing.external |= timed_out.external;
 			for boundary_id in timed_out.boundary_ids {
 				if !existing

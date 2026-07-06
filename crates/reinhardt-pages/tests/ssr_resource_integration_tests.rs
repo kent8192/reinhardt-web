@@ -3,6 +3,8 @@
 use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
 use reinhardt_pages::reactive::{ResourceState, use_id, use_resource, use_resource_with_key};
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
+use std::cell::Cell;
+use std::rc::Rc;
 use std::time::Duration;
 
 fn resource_view() -> Page {
@@ -192,6 +194,97 @@ async fn explicit_resource_key_is_serialized() {
 
 	assert!(html.contains("polls.detail.42"));
 	assert!(html.contains("question"));
+}
+
+#[tokio::test]
+async fn explicit_internal_resource_key_advances_implicit_allocator() {
+	let view = Page::reactive(|| {
+		let explicit = use_resource_with_key(
+			"rh-res-0",
+			|| async { Ok::<_, String>("explicit".to_string()) },
+			(),
+		);
+		let implicit = use_resource(|| async { Ok::<_, String>("implicit".to_string()) }, ());
+
+		Page::fragment([
+			match explicit.get() {
+				ResourceState::Success(value) => PageElement::new("p").child(value).into_page(),
+				ResourceState::Loading => {
+					PageElement::new("p").child("explicit-loading").into_page()
+				}
+				ResourceState::Error(error) => PageElement::new("p").child(error).into_page(),
+			},
+			match implicit.get() {
+				ResourceState::Success(value) => PageElement::new("p").child(value).into_page(),
+				ResourceState::Loading => {
+					PageElement::new("p").child("implicit-loading").into_page()
+				}
+				ResourceState::Error(error) => PageElement::new("p").child(error).into_page(),
+			},
+		])
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	assert!(html.contains(">explicit<"));
+	assert!(html.contains(">implicit<"));
+	assert!(renderer.state().get_resource_state("rh-res-0").is_some());
+	assert!(renderer.state().get_resource_state("rh-res-1").is_some());
+	assert_eq!(renderer.state().resource_count(), 2);
+}
+
+#[tokio::test]
+async fn pending_ssr_resource_reuse_does_not_create_duplicate_fetcher() {
+	let fetcher_calls = Rc::new(Cell::new(0));
+	let first_calls = Rc::clone(&fetcher_calls);
+	let second_calls = Rc::clone(&fetcher_calls);
+	let view = Page::reactive(move || {
+		let first_calls = Rc::clone(&first_calls);
+		let first = use_resource_with_key(
+			"shared-resource",
+			move || {
+				first_calls.set(first_calls.get() + 1);
+				async { Ok::<_, String>("shared".to_string()) }
+			},
+			(),
+		);
+
+		let second_calls = Rc::clone(&second_calls);
+		let second = use_resource_with_key(
+			"shared-resource",
+			move || {
+				second_calls.set(second_calls.get() + 1);
+				async { Ok::<_, String>("shared".to_string()) }
+			},
+			(),
+		);
+
+		Page::fragment([
+			match first.get() {
+				ResourceState::Success(value) => PageElement::new("p")
+					.child(format!("first-{value}"))
+					.into_page(),
+				ResourceState::Loading => PageElement::new("p").child("first-loading").into_page(),
+				ResourceState::Error(error) => PageElement::new("p").child(error).into_page(),
+			},
+			match second.get() {
+				ResourceState::Success(value) => PageElement::new("p")
+					.child(format!("second-{value}"))
+					.into_page(),
+				ResourceState::Loading => PageElement::new("p").child("second-loading").into_page(),
+				ResourceState::Error(error) => PageElement::new("p").child(error).into_page(),
+			},
+		])
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	assert!(html.contains("first-shared"));
+	assert!(html.contains("second-shared"));
+	assert_eq!(fetcher_calls.get(), 1);
+	assert_eq!(renderer.state().resource_count(), 1);
 }
 
 #[tokio::test]

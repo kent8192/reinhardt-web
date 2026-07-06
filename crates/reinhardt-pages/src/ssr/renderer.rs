@@ -198,7 +198,14 @@ enum AsyncRenderMode {
 struct PendingSuspenseBoundary {
 	boundary_id: String,
 	node: SuspenseNode,
-	boundary_start_index: Option<usize>,
+	boundary_start: DeterministicRenderSnapshot,
+}
+
+#[derive(Clone, Copy)]
+struct DeterministicRenderSnapshot {
+	resource_call_order_index: Option<usize>,
+	suspense_boundary_counter: u64,
+	id_counter: usize,
 }
 
 type SuspenseBoundaryResult = (PendingSuspenseBoundary, bool);
@@ -365,6 +372,26 @@ impl SsrRenderer {
 	fn reset_deterministic_render_counters(&mut self) {
 		self.suspense_boundary_counter = 0;
 		reset_id_counter();
+	}
+
+	fn deterministic_render_snapshot(&self) -> DeterministicRenderSnapshot {
+		DeterministicRenderSnapshot {
+			resource_call_order_index: super::resource_context::with_active_context(|context| {
+				context.borrow().call_order_index()
+			}),
+			suspense_boundary_counter: self.suspense_boundary_counter,
+			id_counter: id_counter_snapshot(),
+		}
+	}
+
+	fn restore_deterministic_render_snapshot(&mut self, snapshot: DeterministicRenderSnapshot) {
+		if let Some(index) = snapshot.resource_call_order_index
+			&& let Some(context) = super::resource_context::with_active_context(Rc::clone)
+		{
+			context.borrow_mut().set_call_order_index(index);
+		}
+		self.suspense_boundary_counter = snapshot.suspense_boundary_counter;
+		restore_id_counter(snapshot.id_counter);
 	}
 
 	fn begin_render(&mut self) {
@@ -553,12 +580,11 @@ impl SsrRenderer {
 												return None;
 											}
 											let (replacement_page, replacement, nested_boundaries) = loop {
-												if let Some(index) = boundary.boundary_start_index {
-													runtime
-														.context
-														.borrow_mut()
-														.set_call_order_index(index);
-												}
+												runtime
+													.renderer
+													.restore_deterministic_render_snapshot(
+														boundary.boundary_start,
+													);
 												let boundary_guard = enter_boundary(
 													&runtime.context,
 													boundary.boundary_id.clone(),
@@ -784,20 +810,14 @@ impl SsrRenderer {
 				Page::Suspense(node) => {
 					let boundary_id = self.suspense_boundary_id(node);
 
-					let boundary_start_index = if let Some(context) =
-						super::resource_context::with_active_context(Rc::clone)
-					{
-						let index = context.borrow().call_order_index();
+					if let Some(context) = super::resource_context::with_active_context(Rc::clone) {
 						context.borrow_mut().assign_resources_to_boundary(
 							node.tracked_resource_ids(),
 							&boundary_id,
 						);
-						Some(index)
-					} else {
-						None
-					};
+					}
 
-					let id_counter_before_content = id_counter_snapshot();
+					let boundary_start = self.deterministic_render_snapshot();
 					let boundary_guard = super::resource_context::with_active_context(|context| {
 						enter_boundary(context, boundary_id.clone())
 					});
@@ -807,6 +827,7 @@ impl SsrRenderer {
 						.await;
 
 					drop(boundary_guard);
+					node.cache_content_head_from(&content_page);
 
 					let has_pending = super::resource_context::with_active_context(|context| {
 						context.borrow().has_pending_for_boundary(&boundary_id)
@@ -814,7 +835,7 @@ impl SsrRenderer {
 					.unwrap_or(false);
 
 					if has_pending || node.is_pending() {
-						restore_id_counter(id_counter_before_content);
+						self.restore_deterministic_render_snapshot(boundary_start);
 						let fallback_page = node.render_fallback();
 						let fallback = self
 							.render_stream_shell_page(&fallback_page, boundaries)
@@ -823,12 +844,11 @@ impl SsrRenderer {
 							boundaries.push(PendingSuspenseBoundary {
 								boundary_id: boundary_id.clone(),
 								node: node.clone(),
-								boundary_start_index,
+								boundary_start,
 							});
 						}
 						self.render_suspense_fallback(&boundary_id, fallback)
 					} else {
-						node.cache_content_head_from(&content_page);
 						content
 					}
 				}
@@ -920,20 +940,14 @@ impl SsrRenderer {
 				Page::Suspense(node) => {
 					let boundary_id = self.suspense_boundary_id(node);
 
-					let boundary_start_index = if let Some(context) =
-						super::resource_context::with_active_context(Rc::clone)
-					{
-						let index = context.borrow().call_order_index();
+					if let Some(context) = super::resource_context::with_active_context(Rc::clone) {
 						context.borrow_mut().assign_resources_to_boundary(
 							node.tracked_resource_ids(),
 							&boundary_id,
 						);
-						Some(index)
-					} else {
-						None
-					};
+					}
 
-					let id_counter_before_content = id_counter_snapshot();
+					let boundary_start = self.deterministic_render_snapshot();
 					let boundary_guard = super::resource_context::with_active_context(|context| {
 						enter_boundary(context, boundary_id.clone())
 					});
@@ -955,8 +969,10 @@ impl SsrRenderer {
 						return content;
 					}
 
+					node.cache_content_head_from(&content_page);
+
 					if has_pending || node.is_pending() {
-						restore_id_counter(id_counter_before_content);
+						self.restore_deterministic_render_snapshot(boundary_start);
 						let fallback_page = node.render_fallback();
 						let fallback = self
 							.render_async_page(&fallback_page, AsyncRenderMode::Buffered)
@@ -971,9 +987,7 @@ impl SsrRenderer {
 							if !boundary_resolved {
 								return self.render_suspense_fallback(&boundary_id, fallback);
 							}
-							if let Some(index) = boundary_start_index {
-								context.borrow_mut().set_call_order_index(index);
-							}
+							self.restore_deterministic_render_snapshot(boundary_start);
 							if node.is_pending() {
 								return self.render_suspense_fallback(&boundary_id, fallback);
 							}
@@ -995,7 +1009,6 @@ impl SsrRenderer {
 
 						replacement
 					} else {
-						node.cache_content_head_from(&content_page);
 						content
 					}
 				}
@@ -1019,6 +1032,11 @@ impl SsrRenderer {
 	}
 
 	fn render_suspense_fallback(&self, id: &str, fallback: String) -> String {
+		let fallback = if fallback.contains("data-rh-suspense=\"pending\"") {
+			fallback
+		} else {
+			format!(r#"<div data-rh-suspense="pending">{fallback}</div>"#)
+		};
 		format!("<!--rh-suspense-start:{id}-->{fallback}<!--rh-suspense-end:{id}-->")
 	}
 

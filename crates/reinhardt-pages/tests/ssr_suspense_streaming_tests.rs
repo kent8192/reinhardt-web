@@ -4,7 +4,7 @@ use futures_util::StreamExt;
 use reinhardt_core::types::page::{Head, SuspenseNode};
 use reinhardt_pages::component::suspense::SuspenseBoundary;
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
-use reinhardt_pages::reactive::{ResourceState, use_resource};
+use reinhardt_pages::reactive::{ResourceState, use_id, use_resource};
 use reinhardt_pages::ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
 use std::cell::Cell;
 use std::rc::Rc;
@@ -24,12 +24,10 @@ fn suspense_resource_view() -> Page {
 		SuspenseBoundary::new()
 			.fallback(|| PageElement::new("span").child("fallback").into_page())
 			.track(resource)
-			.content(move || match content_resource.get() {
-				ResourceState::Success(value) => {
+			.content(move || {
+				resource_to_page(content_resource.get(), "em", "loading", |value| {
 					PageElement::new("strong").child(value).into_page()
-				}
-				ResourceState::Loading => PageElement::new("em").child("loading").into_page(),
-				ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				})
 			})
 			.into_page()
 	})
@@ -53,15 +51,41 @@ fn delayed_suspense_resource_view(delay: Duration, value: &'static str) -> Page 
 		SuspenseBoundary::new()
 			.fallback(|| PageElement::new("span").child("fallback").into_page())
 			.track(resource)
-			.content(move || match content_resource.get() {
-				ResourceState::Success(value) => {
+			.content(move || {
+				resource_to_page(content_resource.get(), "em", "loading", |value| {
 					PageElement::new("strong").child(value).into_page()
-				}
-				ResourceState::Loading => PageElement::new("em").child("loading").into_page(),
-				ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				})
 			})
 			.into_page()
 	})
+}
+
+fn pending_nested_boundary(label: &'static str) -> Page {
+	Page::Suspense(SuspenseNode::new(
+		None,
+		|| true,
+		move || PageElement::new("span").child(label).into_page(),
+		|| {
+			PageElement::new("strong")
+				.child("nested-content")
+				.into_page()
+		},
+	))
+}
+
+fn resource_to_page(
+	state: ResourceState<String, String>,
+	loading_tag: &'static str,
+	loading_text: &'static str,
+	success: impl FnOnce(String) -> Page,
+) -> Page {
+	match state {
+		ResourceState::Success(value) => success(value),
+		ResourceState::Loading => PageElement::new(loading_tag)
+			.child(loading_text)
+			.into_page(),
+		ResourceState::Error(error) => PageElement::new(loading_tag).child(error).into_page(),
+	}
 }
 
 #[tokio::test]
@@ -94,12 +118,10 @@ async fn buffered_suspense_rechecks_custom_pending_after_resource_resolution() {
 					.child("custom-fallback")
 					.into_page()
 			},
-			move || match content_resource.get() {
-				ResourceState::Success(value) => {
+			move || {
+				resource_to_page(content_resource.get(), "em", "loading", |value| {
 					PageElement::new("strong").child(value).into_page()
-				}
-				ResourceState::Loading => PageElement::new("em").child("loading").into_page(),
-				ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				})
 			},
 		))
 	});
@@ -164,23 +186,15 @@ async fn streaming_shell_drains_external_resources_discovered_during_replay() {
 		let first = use_resource(|| async { Ok::<_, String>("first-ready".to_string()) }, ());
 		let first_state = first.clone();
 
-		match first_state.get() {
-			ResourceState::Success(_) => Page::reactive(|| {
+		resource_to_page(first_state.get(), "em", "first-loading", |_| {
+			Page::reactive(|| {
 				let second =
 					use_resource(|| async { Ok::<_, String>("second-ready".to_string()) }, ());
-				match second.get() {
-					ResourceState::Success(value) => {
-						PageElement::new("strong").child(value).into_page()
-					}
-					ResourceState::Loading => {
-						PageElement::new("em").child("second-loading").into_page()
-					}
-					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
-				}
-			}),
-			ResourceState::Loading => PageElement::new("em").child("first-loading").into_page(),
-			ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
-		}
+				resource_to_page(second.get(), "em", "second-loading", |value| {
+					PageElement::new("strong").child(value).into_page()
+				})
+			})
+		})
 	});
 
 	let mut renderer = SsrRenderer::new();
@@ -203,13 +217,11 @@ async fn streaming_shell_resolves_resource_used_outside_and_tracked_boundary() {
 		let boundary_pending = resource.clone();
 		let boundary_content = resource.clone();
 
-		let outside = match outside_resource.get() {
-			ResourceState::Success(value) => PageElement::new("p")
+		let outside = resource_to_page(outside_resource.get(), "p", "outside-loading", |value| {
+			PageElement::new("p")
 				.child(format!("outside-{value}"))
-				.into_page(),
-			ResourceState::Loading => PageElement::new("p").child("outside-loading").into_page(),
-			ResourceState::Error(error) => PageElement::new("p").child(error).into_page(),
-		};
+				.into_page()
+		});
 
 		Page::fragment([
 			outside,
@@ -222,14 +234,12 @@ async fn streaming_shell_resolves_resource_used_outside_and_tracked_boundary() {
 						.child("boundary-fallback")
 						.into_page()
 				},
-				move || match boundary_content.get() {
-					ResourceState::Success(value) => PageElement::new("strong")
-						.child(format!("boundary-{value}"))
-						.into_page(),
-					ResourceState::Loading => {
-						PageElement::new("em").child("boundary-loading").into_page()
-					}
-					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				move || {
+					resource_to_page(boundary_content.get(), "em", "boundary-loading", |value| {
+						PageElement::new("strong")
+							.child(format!("boundary-{value}"))
+							.into_page()
+					})
 				},
 			)),
 		])
@@ -352,14 +362,12 @@ async fn streaming_shared_resource_replaces_every_tracking_boundary() {
 				vec![tracked_key.clone()],
 				move || first_pending.is_loading(),
 				|| PageElement::new("span").child("first-fallback").into_page(),
-				move || match first_content.get() {
-					ResourceState::Success(value) => PageElement::new("strong")
-						.child(format!("first-{value}"))
-						.into_page(),
-					ResourceState::Loading => {
-						PageElement::new("em").child("first-loading").into_page()
-					}
-					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				move || {
+					resource_to_page(first_content.get(), "em", "first-loading", |value| {
+						PageElement::new("strong")
+							.child(format!("first-{value}"))
+							.into_page()
+					})
 				},
 			)),
 			Page::Suspense(SuspenseNode::new_with_tracked_resources(
@@ -371,14 +379,12 @@ async fn streaming_shared_resource_replaces_every_tracking_boundary() {
 						.child("second-fallback")
 						.into_page()
 				},
-				move || match second_content.get() {
-					ResourceState::Success(value) => PageElement::new("strong")
-						.child(format!("second-{value}"))
-						.into_page(),
-					ResourceState::Loading => {
-						PageElement::new("em").child("second-loading").into_page()
-					}
-					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				move || {
+					resource_to_page(second_content.get(), "em", "second-loading", |value| {
+						PageElement::new("strong")
+							.child(format!("second-{value}"))
+							.into_page()
+					})
 				},
 			)),
 		])
@@ -424,14 +430,12 @@ async fn streaming_shared_group_preserves_resolved_boundary_when_peer_times_out(
 				vec![shared_key.clone()],
 				move || first_pending.is_loading(),
 				|| PageElement::new("span").child("first-fallback").into_page(),
-				move || match first_content.get() {
-					ResourceState::Success(value) => PageElement::new("strong")
-						.child(format!("first-{value}"))
-						.into_page(),
-					ResourceState::Loading => {
-						PageElement::new("em").child("first-loading").into_page()
-					}
-					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				move || {
+					resource_to_page(first_content.get(), "em", "first-loading", |value| {
+						PageElement::new("strong")
+							.child(format!("first-{value}"))
+							.into_page()
+					})
 				},
 			)),
 			Page::Suspense(SuspenseNode::new_with_tracked_resources(
@@ -443,14 +447,12 @@ async fn streaming_shared_group_preserves_resolved_boundary_when_peer_times_out(
 						.child("second-fallback")
 						.into_page()
 				},
-				move || match second_content.get() {
-					ResourceState::Success(value) => PageElement::new("strong")
-						.child(format!("second-{value}"))
-						.into_page(),
-					ResourceState::Loading => {
-						PageElement::new("em").child("second-loading").into_page()
-					}
-					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				move || {
+					resource_to_page(second_content.get(), "em", "second-loading", |value| {
+						PageElement::new("strong")
+							.child(format!("second-{value}"))
+							.into_page()
+					})
 				},
 			)),
 		])
@@ -614,6 +616,168 @@ async fn streamed_replacement_preserves_nested_suspense_markers() {
 	assert!(outer_replacement.contains("rh-suspense-start:rh-suspense-1"));
 	assert!(inner_replacement.contains(r#"data-rh-suspense-chunk="rh-suspense-1""#));
 	assert!(inner_replacement.contains("inner-resolved"));
+}
+
+#[tokio::test]
+async fn streaming_suspense_restores_deterministic_counters_after_hidden_content() {
+	let view = Page::reactive(|| {
+		let resource = use_resource(
+			|| async {
+				tokio::time::sleep(Duration::from_millis(5)).await;
+				Ok::<_, String>("ready".to_string())
+			},
+			(),
+		);
+		let content_resource = resource.clone();
+
+		SuspenseBoundary::new()
+			.fallback(|| {
+				let id = use_id();
+				Page::fragment([
+					pending_nested_boundary("fallback-nested"),
+					PageElement::new("span")
+						.attr("id", id)
+						.child("fallback")
+						.into_page(),
+				])
+			})
+			.track(resource)
+			.content(move || {
+				let id = use_id();
+				match content_resource.get() {
+					ResourceState::Success(value) => Page::fragment([
+						pending_nested_boundary("content-nested"),
+						PageElement::new("strong")
+							.attr("id", id)
+							.child(value)
+							.into_page(),
+					]),
+					ResourceState::Loading => Page::fragment([
+						pending_nested_boundary("loading-nested"),
+						PageElement::new("em")
+							.attr("id", id)
+							.child("loading")
+							.into_page(),
+					]),
+					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				}
+			})
+			.into_page()
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let mut stream = renderer.render_page_with_view_head(view).await;
+	let shell = stream.next().await.unwrap().into_string();
+	let replacement = stream.next().await.unwrap().into_string();
+
+	assert!(shell.contains(r#"id="reinhardt-id-0""#));
+	assert!(!shell.contains("reinhardt-id-1"));
+	assert!(shell.contains("rh-suspense-start:rh-suspense-1"));
+	assert!(!shell.contains("rh-suspense-start:rh-suspense-2"));
+	assert!(replacement.contains(r#"id="reinhardt-id-0""#));
+	assert!(!replacement.contains("reinhardt-id-1"));
+	assert!(replacement.contains("rh-suspense-start:rh-suspense-1"));
+	assert!(!replacement.contains("rh-suspense-start:rh-suspense-2"));
+}
+
+#[tokio::test]
+async fn streaming_suspense_restores_resource_keys_before_fallback() {
+	let view = Page::Suspense(SuspenseNode::new(
+		Some("resource-key-boundary".to_string()),
+		|| false,
+		|| {
+			Page::reactive(|| {
+				let resource = use_resource(
+					|| async { Ok::<_, String>("fallback-ready".to_string()) },
+					(),
+				);
+				let key = resource.ssr_key().unwrap().to_string();
+				match resource.get() {
+					ResourceState::Success(value) => PageElement::new("span")
+						.attr("data-resource-key", key)
+						.child(value)
+						.into_page(),
+					ResourceState::Loading => PageElement::new("span")
+						.attr("data-resource-key", key)
+						.child("fallback-loading")
+						.into_page(),
+					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				}
+			})
+		},
+		|| {
+			Page::reactive(|| {
+				let resource = use_resource(
+					|| async {
+						tokio::time::sleep(Duration::from_millis(5)).await;
+						Ok::<_, String>("content-ready".to_string())
+					},
+					(),
+				);
+				let key = resource.ssr_key().unwrap().to_string();
+				match resource.get() {
+					ResourceState::Success(value) => PageElement::new("strong")
+						.attr("data-resource-key", key)
+						.child(value)
+						.into_page(),
+					ResourceState::Loading => PageElement::new("em")
+						.attr("data-resource-key", key)
+						.child("content-loading")
+						.into_page(),
+					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				}
+			})
+		},
+	));
+
+	let mut renderer = SsrRenderer::new();
+	let mut stream = renderer.render_page_with_view_head(view).await;
+	let shell = stream.next().await.unwrap().into_string();
+	let replacement = stream.next().await.unwrap().into_string();
+
+	assert!(shell.contains("fallback-ready"));
+	assert!(shell.contains(r#"data-resource-key="rh-res-0""#));
+	assert!(!shell.contains(r#"data-resource-key="rh-res-1""#));
+	assert!(replacement.contains("content-ready"));
+	assert!(replacement.contains(r#"data-resource-key="rh-res-0""#));
+}
+
+#[tokio::test]
+async fn streaming_shell_caches_pending_suspense_content_head() {
+	let content_calls = Rc::new(Cell::new(0));
+	let render_calls = Rc::clone(&content_calls);
+	let view = Page::Suspense(SuspenseNode::new(
+		Some("pending-head".to_string()),
+		|| false,
+		|| PageElement::new("span").child("fallback").into_page(),
+		move || {
+			render_calls.set(render_calls.get() + 1);
+			Page::reactive(|| {
+				let resource = use_resource(
+					|| async {
+						tokio::time::sleep(Duration::from_millis(5)).await;
+						Ok::<_, String>("ready".to_string())
+					},
+					(),
+				);
+				match resource.get() {
+					ResourceState::Success(value) => {
+						PageElement::new("strong").child(value).into_page()
+					}
+					ResourceState::Loading => PageElement::new("em").child("loading").into_page(),
+					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				}
+			})
+			.with_head(Head::new().title("Pending Suspense Head"))
+		},
+	));
+
+	let mut renderer = SsrRenderer::new();
+	let mut stream = renderer.render_page_with_view_head(view).await;
+	let shell = stream.next().await.unwrap().into_string();
+
+	assert!(shell.contains("<title>Pending Suspense Head</title>"));
+	assert_eq!(content_calls.get(), 2);
 }
 
 #[tokio::test]
