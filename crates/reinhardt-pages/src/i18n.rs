@@ -74,7 +74,7 @@ impl I18nContext {
 
 	/// Returns the current locale and tracks it reactively.
 	pub fn locale(&self) -> String {
-		self.locale.get()
+		normalize_locale(&self.locale.get()).to_string()
 	}
 
 	/// Returns the locale signal.
@@ -90,17 +90,21 @@ impl I18nContext {
 	pub fn set_locale(&self, locale: impl Into<String>) -> Result<(), I18nError> {
 		let locale = locale.into();
 		TranslationContext::validate_locale_tag(&locale)?;
-		self.locale.set(locale);
+		self.locale.set(normalize_locale(&locale).to_string());
 		Ok(())
 	}
 
-	/// Returns the read-only translation context backing this page context.
-	pub fn translation_context(&self) -> &TranslationContext {
-		self.translations.as_ref()
+	/// Returns the translation context with the current page locale applied.
+	pub fn translation_context(&self) -> TranslationContext {
+		let mut translations = self.translations.as_ref().clone();
+		translations
+			.set_locale(self.locale_untracked())
+			.expect("stored page locale should be valid");
+		translations
 	}
 
 	fn locale_untracked(&self) -> String {
-		self.locale.get_untracked()
+		normalize_locale(&self.locale.get_untracked()).to_string()
 	}
 
 	/// Translates a simple message.
@@ -402,6 +406,10 @@ fn interpolate_named(mut rendered: String, args: &[TranslationArg]) -> String {
 	rendered
 }
 
+fn normalize_locale(locale: &str) -> &str {
+	if locale.is_empty() { "en-US" } else { locale }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct I18nSsrSnapshot {
 	current_locale: String,
@@ -411,7 +419,7 @@ struct I18nSsrSnapshot {
 
 impl I18nSsrSnapshot {
 	fn from_i18n_context(context: &I18nContext) -> Self {
-		Self::from_translation_context(context.translation_context(), &context.locale_untracked())
+		Self::from_translation_context(context.translations.as_ref(), &context.locale_untracked())
 	}
 
 	fn from_translation_context(context: &TranslationContext, current_locale: &str) -> Self {

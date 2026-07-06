@@ -11,6 +11,8 @@
 //! - Token structure (always has 3 parts separated by dots)
 //! - Expiration is always in the future when generated
 
+#![cfg(feature = "jwt")]
+
 use proptest::prelude::*;
 use reinhardt_auth::jwt::{Claims, JwtAuth};
 

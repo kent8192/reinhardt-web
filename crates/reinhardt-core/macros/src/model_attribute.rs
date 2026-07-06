@@ -189,6 +189,9 @@ pub(crate) fn model_attribute_impl(
 				if !has_serde_skip {
 					let serde_skip_attr: Attribute = syn::parse_quote! { #[serde(skip)] };
 					field.attrs.push(serde_skip_attr);
+					let injected_skip_marker: Attribute =
+						syn::parse_quote! { #[reinhardt_internal_relation_serde_skip] };
+					field.attrs.push(injected_skip_marker);
 				}
 			}
 		}

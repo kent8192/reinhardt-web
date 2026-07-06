@@ -177,3 +177,36 @@ fn renderer_html_lang_tracks_current_i18n_locale() {
 		"SSR content should use the current i18n locale, got: {html}",
 	);
 }
+
+#[test]
+#[serial(i18n)]
+fn empty_page_locale_resets_to_default_locale_for_public_reads_and_ssr() {
+	let context = sample_i18n_context();
+	context.set_locale("").unwrap();
+
+	let mut state = SsrState::new();
+	write_i18n_ssr_state(&mut state, &context);
+	let metadata = state
+		.get_metadata("pages.i18n")
+		.expect("SSR state should include i18n metadata");
+
+	assert_eq!(context.locale(), "en-US");
+	assert_eq!(
+		metadata
+			.get("current_locale")
+			.and_then(|value| value.as_str()),
+		Some("en-US"),
+	);
+}
+
+#[test]
+#[serial(i18n)]
+fn translation_context_accessor_tracks_current_page_locale() {
+	let context = sample_i18n_context();
+	context.set_locale("fr").unwrap();
+
+	let translations = context.translation_context();
+
+	assert_eq!(translations.get_locale(), "fr");
+	assert_eq!(translations.translate("Hello"), "Bonjour");
+}

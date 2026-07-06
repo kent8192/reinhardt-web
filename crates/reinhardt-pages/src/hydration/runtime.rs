@@ -11,6 +11,9 @@ use std::collections::HashMap;
 use crate::dom::{Element, document};
 
 #[cfg(wasm)]
+use crate::component::{Page, store_reactive_node};
+
+#[cfg(wasm)]
 use crate::ssr::HYDRATION_ATTR_ID;
 
 /// Errors that can occur during hydration.
@@ -191,12 +194,155 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	attach_events_recursive(root, &view, &mut registry)?;
 	web_sys::console::log_1(&"[Hydration] Events attached".into());
 
-	// 5. Mark hydration complete
+	// 5. Install reactive DOM owners for hydrated reactive views
+	install_hydrated_reactive_nodes(root, &view);
+	web_sys::console::log_1(&"[Hydration] Reactive nodes installed".into());
+
+	// 6. Mark hydration complete
 	context.mark_hydrated();
 	mark_hydration_complete_internal();
 	web_sys::console::log_1(&"[Hydration] Complete!".into());
 
 	Ok(())
+}
+
+#[cfg(wasm)]
+fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
+	match view {
+		Page::Element(element_view) => {
+			let actual_nodes = relevant_child_nodes(element);
+			let mut index = 0;
+			for child in element_view.child_views() {
+				let node_count = hydrated_node_count(child);
+				if node_count == 0 {
+					continue;
+				}
+
+				let end = (index + node_count).min(actual_nodes.len());
+				let child_nodes = actual_nodes[index..end].to_vec();
+				install_hydrated_child_reactive_nodes(&child_nodes, child);
+				index = end;
+			}
+		}
+		Page::WithHead { view, .. } => install_hydrated_reactive_nodes(element, view),
+		Page::Reactive(reactive) => {
+			let nodes = vec![element.as_web_sys().clone().into()];
+			if let Some(node) =
+				crate::component::ReactiveNode::hydrate(nodes, reactive.clone().into_render())
+			{
+				store_reactive_node(node);
+			}
+		}
+		_ => {}
+	}
+}
+
+#[cfg(wasm)]
+fn install_hydrated_child_reactive_nodes(nodes: &[web_sys::Node], view: &Page) {
+	match view {
+		Page::Reactive(reactive) => {
+			if let Some(node) = crate::component::ReactiveNode::hydrate(
+				nodes.to_vec(),
+				reactive.clone().into_render(),
+			) {
+				store_reactive_node(node);
+			}
+		}
+		Page::Element(_) | Page::WithHead { .. } => {
+			if let Some(element) = nodes
+				.first()
+				.and_then(|node| wasm_bindgen::JsCast::dyn_ref::<web_sys::Element>(node))
+			{
+				install_hydrated_reactive_nodes(&Element::new(element.clone()), view);
+			}
+		}
+		Page::Fragment(children) => install_hydrated_fragment_reactive_nodes(nodes, children),
+		Page::KeyedFragment(children) => {
+			let child_views = children
+				.iter()
+				.map(|(_, child)| child.clone())
+				.collect::<Vec<_>>();
+			install_hydrated_fragment_reactive_nodes(nodes, &child_views);
+		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				install_hydrated_child_reactive_nodes(nodes, child);
+			}
+		}
+		Page::ReactiveIf(reactive_if) => {
+			let branch_view = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			install_hydrated_child_reactive_nodes(nodes, &branch_view);
+		}
+		Page::Text(_) | Page::Empty => {}
+	}
+}
+
+#[cfg(wasm)]
+fn install_hydrated_fragment_reactive_nodes(nodes: &[web_sys::Node], children: &[Page]) {
+	let mut index = 0;
+	for child in children {
+		let node_count = hydrated_node_count(child);
+		if node_count == 0 {
+			continue;
+		}
+
+		let end = (index + node_count).min(nodes.len());
+		install_hydrated_child_reactive_nodes(&nodes[index..end], child);
+		index = end;
+	}
+}
+
+#[cfg(wasm)]
+fn hydrated_node_count(view: &Page) -> usize {
+	match view {
+		Page::Text(_) | Page::Element(_) => 1,
+		Page::Fragment(children) => children.iter().map(hydrated_node_count).sum(),
+		Page::KeyedFragment(children) => children
+			.iter()
+			.map(|(_, child)| hydrated_node_count(child))
+			.sum(),
+		Page::Outlet(outlet) => outlet.child().map(hydrated_node_count).unwrap_or(0),
+		Page::WithHead { view, .. } => hydrated_node_count(view),
+		Page::ReactiveIf(reactive_if) => {
+			let branch_view = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			hydrated_node_count(&branch_view)
+		}
+		Page::Reactive(reactive) => hydrated_node_count(&reactive.render()),
+		Page::Empty => 0,
+	}
+}
+
+#[cfg(wasm)]
+fn relevant_child_nodes(element: &Element) -> Vec<web_sys::Node> {
+	let child_nodes = element.as_web_sys().child_nodes();
+	(0..child_nodes.length())
+		.filter_map(|index| child_nodes.item(index))
+		.filter(is_relevant_child_node)
+		.collect()
+}
+
+#[cfg(wasm)]
+fn is_relevant_child_node(node: &web_sys::Node) -> bool {
+	match node.node_type() {
+		web_sys::Node::ELEMENT_NODE => true,
+		web_sys::Node::TEXT_NODE => {
+			!normalize_whitespace(&node.text_content().unwrap_or_default()).is_empty()
+		}
+		_ => false,
+	}
+}
+
+#[cfg(wasm)]
+fn normalize_whitespace(text: &str) -> String {
+	text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Non-WASM version for testing.
@@ -318,6 +464,11 @@ pub(crate) fn attach_events_recursive(
 				if i < children.len() {
 					attach_events_recursive(&children[i], child_view, registry)?;
 				}
+			}
+		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				attach_events_recursive(element, child, registry)?;
 			}
 		}
 		Page::Text(_) | Page::Empty => {

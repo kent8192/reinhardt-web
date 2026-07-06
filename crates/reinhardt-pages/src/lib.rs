@@ -93,6 +93,21 @@
 //! runtime.set_value(login_form.username_field(), "ada".to_string());
 //! ```
 //!
+//! Compose validated submit flows with [`use_form_action`]:
+//!
+//! ```ignore
+//! use reinhardt_pages::{form, use_form, use_form_action};
+//!
+//! let runtime = use_form(&login_form).build();
+//! let save = use_form_action(&runtime, |values: LoginFormValues| async move {
+//!     submit_login(values).await
+//! });
+//!
+//! if !save.is_pending() {
+//!     save.submit();
+//! }
+//! ```
+//!
 //! `FileField` and `ImageField` participate in this runtime contract as
 //! `Option<web_sys::File>` values. File values are browser-owned and are
 //! tracked for dirty/touched state without treating the file payload as a
@@ -152,6 +167,8 @@
 //! - [`form!`]: Type-safe form component macro
 //! - [`t!`]: Reactive page translation macro (with the `i18n` feature)
 //! - [`client_page`]: Client page function macro with native route-table stubs
+//! - `#[component]`: Route-backed page component macro
+//! - `#[layout]`: Route-backed layout component macro for nested SPA shells
 //! - [`wasm_server_api`]: WASM/server API parity macro
 //!
 //! See `docs/wasm_server_api.md` for the target-specific API parity contract.
@@ -367,9 +384,9 @@ pub use component::DummyEvent;
 pub use component::cleanup_reactive_nodes;
 pub use component::{
 	ActivityBoundary, ActivityMode, BoundaryError, Component, ErrorBoundary, ErrorTracker, Head,
-	IntoPage, LinkTag, MetaTag, Page, PageElement, PageExt, Props, ResourceTracker, ScriptTag,
-	StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle, ViewTransitionStatus,
-	start_view_transition,
+	IntoPage, LinkTag, MetaTag, Outlet, Page, PageElement, PageExt, Props, ResourceTracker,
+	ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle,
+	ViewTransitionStatus, start_view_transition,
 };
 pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
@@ -379,10 +396,10 @@ pub use form::{FormBinding, FormComponent};
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use form_state::{
 	CollectionItem, CollectionItemKey, CollectionState, CustomWidgetContext, CustomWidgetRawValue,
-	FieldError, FieldPathState, FieldState, FocusError, FormCollectionRuntimeSource, FormEvent,
-	FormRuntimeSource, FormState, FormSubscription, FormValidationError, FormWidgetAdapter,
-	FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder,
-	UseFormReturn, UseFormSubmitOutcome, use_form,
+	FieldError, FieldPathState, FieldState, FocusError, FormAction, FormCollectionRuntimeSource,
+	FormEvent, FormRuntimeSource, FormState, FormSubscription, FormValidationError,
+	FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn,
+	UseFormBuilder, UseFormReturn, UseFormSubmitOutcome, use_form, use_form_action,
 };
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
@@ -430,6 +447,7 @@ pub use i18n::{
 // Re-export procedural macros
 pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
+pub use reinhardt_pages_macros::layout;
 pub use reinhardt_pages_macros::page;
 pub use reinhardt_pages_macros::wasm_server_api;
 pub use reinhardt_pages_macros::{FromRequest, client_page, component, page_props};

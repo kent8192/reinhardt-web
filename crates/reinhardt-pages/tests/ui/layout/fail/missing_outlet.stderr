@@ -1,0 +1,13 @@
+error: #[layout] functions must accept exactly one Outlet parameter
+ --> tests/ui/layout/fail/missing_outlet.rs:4:20
+  |
+4 | fn workspace_shell(Path(workspace_id): Path<i64>) -> Page {
+  |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Page`, `Path`, and `page`
+ --> tests/ui/layout/fail/missing_outlet.rs:1:23
+  |
+1 | use reinhardt_pages::{Page, Path, layout, page};
+  |                       ^^^^  ^^^^          ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

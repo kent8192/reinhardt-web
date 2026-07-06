@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-auth"
-version = "0.3.0"
+version = "0.3.1"
 description = "Authentication and authorization system"
 keywords = ["auth", "jwt", "authentication", "django", "web"]
 categories = ["authentication", "web-programming"]
@@ -30,6 +30,7 @@ oauth = []
 token = []
 basic = ["dep:argon2", "dep:password-hash"]
 argon2-hasher = ["basic"]
+bcrypt-hasher = ["basic", "dep:bcrypt"]
 social = ["dep:jsonwebtoken", "p256"]
 
 # Database and session storage (ORM model support)
@@ -47,6 +48,7 @@ auth-full = [
   "oauth",
   "token",
   "argon2-hasher",
+  "bcrypt-hasher",
   "database",
   "redis-sessions",
   "middleware",
@@ -81,6 +83,7 @@ reinhardt-http = { workspace = true }
 hyper = { workspace = true }
 argon2 = { workspace = true, optional = true }
 password-hash = { workspace = true, optional = true }
+bcrypt = { workspace = true, optional = true }
 rand = { workspace = true }
 jsonwebtoken = { workspace = true, optional = true }
 p256 = { version = "0.13", optional = true }
