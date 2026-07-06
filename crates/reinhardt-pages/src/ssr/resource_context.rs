@@ -33,11 +33,17 @@ struct TimedOutResource {
 	boundary_ids: Vec<String>,
 }
 
+struct ResolvedResource {
+	value: Value,
+	external: bool,
+	boundary_ids: Vec<String>,
+}
+
 /// Request-scoped SSR resource registry.
 pub(crate) struct SsrResourceContext {
 	next_resource_index: usize,
 	pending: Vec<PendingResource>,
-	resolved: HashMap<String, Value>,
+	resolved: HashMap<String, ResolvedResource>,
 	timed_out: Vec<TimedOutResource>,
 	boundary_stack: Vec<String>,
 	timeout: Duration,
@@ -73,9 +79,38 @@ impl SsrResourceContext {
 
 	/// Allocates the next call-order resource key.
 	pub(crate) fn next_call_order_key(&mut self) -> String {
-		let id = self.next_resource_index;
-		self.next_resource_index += 1;
-		format!("rh-res-{id}")
+		loop {
+			let id = self.next_resource_index;
+			self.next_resource_index += 1;
+			let key = format!("rh-res-{id}");
+			if self.can_use_resource_key(&key) {
+				return key;
+			}
+		}
+	}
+
+	fn can_use_resource_key(&self, key: &str) -> bool {
+		let active_boundary = self.current_boundary_id();
+		let matches_active = |external: bool, boundary_ids: &[String]| {
+			if let Some(boundary_id) = active_boundary.as_deref() {
+				boundary_ids
+					.iter()
+					.any(|candidate| candidate == boundary_id)
+			} else {
+				external
+			}
+		};
+
+		if let Some(resolved) = self.resolved.get(key) {
+			return matches_active(resolved.external, &resolved.boundary_ids);
+		}
+		if let Some(pending) = self.pending.iter().find(|pending| pending.id == key) {
+			return matches_active(pending.external, &pending.boundary_ids);
+		}
+		if let Some(timed_out) = self.timed_out.iter().find(|resource| resource.id == key) {
+			return matches_active(timed_out.external, &timed_out.boundary_ids);
+		}
+		true
 	}
 
 	fn push_boundary(&mut self, boundary_id: String) {
@@ -185,14 +220,14 @@ impl SsrResourceContext {
 	{
 		self.resolved
 			.get(key)
-			.and_then(|value| serde_json::from_value(value.clone()).ok())
+			.and_then(|resource| serde_json::from_value(resource.value.clone()).ok())
 	}
 
 	/// Returns resolved resource payloads.
 	pub(crate) fn resolved_resources(&self) -> impl Iterator<Item = (&str, &Value)> {
 		self.resolved
 			.iter()
-			.map(|(key, value)| (key.as_str(), value))
+			.map(|(key, resource)| (key.as_str(), &resource.value))
 	}
 
 	/// Returns whether any resource is pending for a Suspense boundary.
@@ -259,13 +294,22 @@ impl SsrResourceContext {
 	fn record_resolved(
 		&mut self,
 		id: String,
+		external: bool,
+		boundary_ids: Vec<String>,
 		subscribers: Vec<PendingResourceSubscriber>,
 		value: Value,
 	) {
 		for subscriber in subscribers {
 			subscriber(value.clone());
 		}
-		self.resolved.insert(id, value);
+		self.resolved.insert(
+			id,
+			ResolvedResource {
+				value,
+				external,
+				boundary_ids,
+			},
+		);
 	}
 
 	fn record_timeout(&mut self, timed_out: TimedOutResource) {
@@ -375,7 +419,7 @@ async fn resolve_matching(
 			subscribers,
 		} = pending;
 		match timeout(timeout_duration, future).await {
-			Ok((_id, value)) => Ok((id, subscribers, value)),
+			Ok((_id, value)) => Ok((id, external, boundary_ids, subscribers, value)),
 			Err(_) => Err(TimedOutResource {
 				id,
 				external,
@@ -388,9 +432,9 @@ async fn resolve_matching(
 	let mut all_resolved = !already_timed_out;
 	for result in results {
 		match result {
-			Ok((id, subscribers, value)) => {
-				context.borrow_mut().record_resolved(id, subscribers, value)
-			}
+			Ok((id, external, boundary_ids, subscribers, value)) => context
+				.borrow_mut()
+				.record_resolved(id, external, boundary_ids, subscribers, value),
 			Err(timed_out) => {
 				context.borrow_mut().record_timeout(timed_out);
 				all_resolved = false;

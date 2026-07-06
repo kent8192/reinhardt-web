@@ -1,6 +1,6 @@
 //! SSR Renderer for Component-based server-side rendering.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, VecDeque};
 use std::fmt::Write as _;
 use std::rc::Rc;
@@ -15,7 +15,10 @@ use super::state::SsrState;
 use super::stream::{SsrChunk, SsrStream};
 use crate::auth::AuthData;
 use crate::component::{Component, Head, IntoPage, Page};
-use crate::reactive::hooks::id::reset_id_counter;
+use crate::reactive::hooks::id::{
+	id_counter_snapshot, reset_id_counter, restore_id_counter, scope_id_counter,
+	scope_id_counter_with,
+};
 use futures_util::StreamExt;
 use futures_util::future::{FutureExt, LocalBoxFuture};
 use futures_util::stream::{self, FuturesUnordered};
@@ -196,7 +199,6 @@ struct PendingSuspenseBoundary {
 	boundary_id: String,
 	node: SuspenseNode,
 	boundary_start_index: Option<usize>,
-	boundary_end_index: Option<usize>,
 }
 
 type SuspenseBoundaryResult = (PendingSuspenseBoundary, bool);
@@ -205,6 +207,7 @@ type SuspenseBoundaryFuture = LocalBoxFuture<'static, Vec<SuspenseBoundaryResult
 struct SuspenseStreamRuntime {
 	renderer: SsrRenderer,
 	context: Rc<RefCell<SsrResourceContext>>,
+	id_counter: Rc<Cell<usize>>,
 	boundaries: FuturesUnordered<SuspenseBoundaryFuture>,
 	ready_boundaries: VecDeque<SuspenseBoundaryResult>,
 }
@@ -475,129 +478,179 @@ impl SsrRenderer {
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(
 			self.options.resource_timeout,
 		)));
-		scope_context(Rc::clone(&context), async move {
-			self.begin_render();
-			let discovery_view = view_factory();
+		let id_counter = Rc::new(Cell::new(0));
+		scope_id_counter_with(
+			Rc::clone(&id_counter),
+			scope_context(Rc::clone(&context), async move {
+				self.begin_render();
+				let discovery_view = view_factory();
 
-			let _ = self
-				.render_async_page(&discovery_view, AsyncRenderMode::Discovery)
-				.await;
-			drop(discovery_view);
+				let _ = self
+					.render_async_page(&discovery_view, AsyncRenderMode::Discovery)
+					.await;
+				drop(discovery_view);
 
-			resolve_external_resources(&context).await;
-			let (view, content, boundaries) = loop {
-				context.borrow_mut().reset_call_order_keys();
-				self.reset_deterministic_render_counters();
-
-				let view = view_factory();
-				let mut boundaries = Vec::new();
-				let content = self.render_stream_shell_page(&view, &mut boundaries).await;
-
-				if !context.borrow().has_pending_external() {
-					break (view, content, boundaries);
-				}
-
-				drop(view);
 				resolve_external_resources(&context).await;
-			};
-			let view_head = view.find_topmost_head().cloned();
-			self.add_resolved_resources_to_state(&context);
+				let (view, content, boundaries) = loop {
+					context.borrow_mut().reset_call_order_keys();
+					self.reset_deterministic_render_counters();
 
-			let shell = self.wrap_in_html_shell(&content, view_head.as_ref());
-			let boundary_futures = suspense_boundary_futures(&context, boundaries);
+					let view = view_factory();
+					let mut boundaries = Vec::new();
+					let content = self.render_stream_shell_page(&view, &mut boundaries).await;
 
-			let runtime = SuspenseStreamRuntime {
-				renderer: self.clone(),
-				context,
-				boundaries: boundary_futures,
-				ready_boundaries: VecDeque::new(),
-			};
+					if !context.borrow().has_pending_external() {
+						break (view, content, boundaries);
+					}
 
-			SsrStream::from_stream(stream::unfold(
-				SuspenseStreamState::Shell { shell, runtime },
-				|state| async move {
-					match state {
-						SuspenseStreamState::Shell { shell, runtime } => Some((
-							SsrChunk::Html(shell),
-							SuspenseStreamState::Boundaries(runtime),
-						)),
-						SuspenseStreamState::Boundaries(mut runtime) => {
-							loop {
-								let Some((boundary, resolved)) =
-									runtime.ready_boundaries.pop_front()
-								else {
-									let Some(resolved_boundaries) = runtime.boundaries.next().await
+					drop(view);
+					resolve_external_resources(&context).await;
+				};
+				let view_head = view.find_topmost_head().cloned();
+				self.add_resolved_resources_to_state(&context);
+
+				let shell = self.wrap_in_html_shell(&content, view_head.as_ref());
+				let boundary_futures = suspense_boundary_futures(&context, boundaries);
+
+				let runtime = SuspenseStreamRuntime {
+					renderer: self.clone(),
+					context,
+					id_counter,
+					boundaries: boundary_futures,
+					ready_boundaries: VecDeque::new(),
+				};
+
+				SsrStream::from_stream(stream::unfold(
+					SuspenseStreamState::Shell { shell, runtime },
+					|state| async move {
+						match state {
+							SuspenseStreamState::Shell { shell, runtime } => Some((
+								SsrChunk::Html(shell),
+								SuspenseStreamState::Boundaries(runtime),
+							)),
+							SuspenseStreamState::Boundaries(mut runtime) => {
+								loop {
+									let Some((boundary, resolved)) =
+										runtime.ready_boundaries.pop_front()
 									else {
-										break;
+										let Some(resolved_boundaries) =
+											runtime.boundaries.next().await
+										else {
+											break;
+										};
+										runtime.ready_boundaries.extend(resolved_boundaries);
+										continue;
 									};
-									runtime.ready_boundaries.extend(resolved_boundaries);
-									continue;
-								};
 
-								if !resolved {
-									continue;
-								}
+									if !resolved {
+										continue;
+									}
 
-								let replacement =
-									scope_context(Rc::clone(&runtime.context), async {
-										if let Some(index) = boundary.boundary_start_index {
+									let replacement = scope_id_counter_with(
+										Rc::clone(&runtime.id_counter),
+										scope_context(Rc::clone(&runtime.context), async {
+											if boundary.node.is_pending() {
+												return None;
+											}
+											let (replacement_page, replacement, nested_boundaries) = loop {
+												if let Some(index) = boundary.boundary_start_index {
+													runtime
+														.context
+														.borrow_mut()
+														.set_call_order_index(index);
+												}
+												let boundary_guard = enter_boundary(
+													&runtime.context,
+													boundary.boundary_id.clone(),
+												);
+												let replacement_page =
+													boundary.node.render_content();
+												let mut nested_boundaries = Vec::new();
+												let replacement = runtime
+													.renderer
+													.render_stream_shell_page(
+														&replacement_page,
+														&mut nested_boundaries,
+													)
+													.await;
+												drop(boundary_guard);
+
+												let has_pending_boundary_resource = runtime
+													.context
+													.borrow()
+													.has_pending_for_boundary(
+														&boundary.boundary_id,
+													);
+												let has_pending_external_resource =
+													runtime.context.borrow().has_pending_external();
+												if !has_pending_boundary_resource
+													&& !has_pending_external_resource
+												{
+													break (
+														replacement_page,
+														replacement,
+														nested_boundaries,
+													);
+												}
+
+												drop(replacement_page);
+												if has_pending_boundary_resource {
+													resolve_boundary_resources(
+														&runtime.context,
+														&boundary.boundary_id,
+													)
+													.await;
+												}
+												if has_pending_external_resource {
+													resolve_external_resources(&runtime.context)
+														.await;
+												}
+											};
+											boundary
+												.node
+												.cache_content_head_from(&replacement_page);
 											runtime
-												.context
-												.borrow_mut()
-												.set_call_order_index(index);
-										}
-										let replacement_page = boundary.node.render_content();
-										let mut nested_boundaries = Vec::new();
-										let replacement = runtime
-											.renderer
-											.render_stream_shell_page(
-												&replacement_page,
-												&mut nested_boundaries,
-											)
-											.await;
-										boundary.node.cache_content_head_from(&replacement_page);
-										if let Some(index) = boundary.boundary_end_index {
-											runtime
-												.context
-												.borrow_mut()
-												.set_call_order_index(index);
-										}
-										runtime
-											.renderer
-											.add_resolved_resources_to_state(&runtime.context);
-										for future in suspense_boundary_futures(
-											&runtime.context,
-											nested_boundaries,
-										) {
-											runtime.boundaries.push(future);
-										}
-										replacement
-									})
+												.renderer
+												.add_resolved_resources_to_state(&runtime.context);
+											for future in suspense_boundary_futures(
+												&runtime.context,
+												nested_boundaries,
+											) {
+												runtime.boundaries.push(future);
+											}
+											Some(replacement)
+										}),
+									)
 									.await;
 
-								let chunk = runtime.renderer.render_suspense_replacement(
-									&boundary.boundary_id,
-									replacement,
-								);
-								return Some((
-									SsrChunk::Html(chunk),
-									SuspenseStreamState::Boundaries(runtime),
-								));
-							}
+									let Some(replacement) = replacement else {
+										continue;
+									};
 
-							runtime
-								.renderer
-								.add_resolved_resources_to_state(&runtime.context);
-							Some((
-								SsrChunk::Html(runtime.renderer.wrap_in_html_suffix()),
-								SuspenseStreamState::Done,
-							))
+									let chunk = runtime.renderer.render_suspense_replacement(
+										&boundary.boundary_id,
+										replacement,
+									);
+									return Some((
+										SsrChunk::Html(chunk),
+										SuspenseStreamState::Boundaries(runtime),
+									));
+								}
+
+								runtime
+									.renderer
+									.add_resolved_resources_to_state(&runtime.context);
+								Some((
+									SsrChunk::Html(runtime.renderer.wrap_in_html_suffix()),
+									SuspenseStreamState::Done,
+								))
+							}
+							SuspenseStreamState::Done => None,
 						}
-						SuspenseStreamState::Done => None,
-					}
-				},
-			))
-		})
+					},
+				))
+			}),
+		)
 		.await
 	}
 
@@ -619,7 +672,7 @@ impl SsrRenderer {
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(
 			self.options.resource_timeout,
 		)));
-		scope_context(Rc::clone(&context), async move {
+		scope_id_counter(scope_context(Rc::clone(&context), async move {
 			self.begin_render();
 			let discovery_view = view_factory();
 
@@ -648,7 +701,7 @@ impl SsrRenderer {
 				drop(view);
 				resolve_pending_resources(&context).await;
 			}
-		})
+		}))
 		.await
 	}
 
@@ -744,6 +797,7 @@ impl SsrRenderer {
 						None
 					};
 
+					let id_counter_before_content = id_counter_snapshot();
 					let boundary_guard = super::resource_context::with_active_context(|context| {
 						enter_boundary(context, boundary_id.clone())
 					});
@@ -751,10 +805,6 @@ impl SsrRenderer {
 					let content = self
 						.render_stream_shell_page(&content_page, boundaries)
 						.await;
-					let boundary_end_index =
-						super::resource_context::with_active_context(|context| {
-							context.borrow().call_order_index()
-						});
 
 					drop(boundary_guard);
 
@@ -764,16 +814,16 @@ impl SsrRenderer {
 					.unwrap_or(false);
 
 					if has_pending || node.is_pending() {
+						restore_id_counter(id_counter_before_content);
 						let fallback_page = node.render_fallback();
 						let fallback = self
-							.render_async_page(&fallback_page, AsyncRenderMode::Discovery)
+							.render_stream_shell_page(&fallback_page, boundaries)
 							.await;
 						if has_pending {
 							boundaries.push(PendingSuspenseBoundary {
 								boundary_id: boundary_id.clone(),
 								node: node.clone(),
 								boundary_start_index,
-								boundary_end_index,
 							});
 						}
 						self.render_suspense_fallback(&boundary_id, fallback)
@@ -876,6 +926,7 @@ impl SsrRenderer {
 						None
 					};
 
+					let id_counter_before_content = id_counter_snapshot();
 					let boundary_guard = super::resource_context::with_active_context(|context| {
 						enter_boundary(context, boundary_id.clone())
 					});
@@ -898,9 +949,10 @@ impl SsrRenderer {
 					}
 
 					if has_pending || node.is_pending() {
+						restore_id_counter(id_counter_before_content);
 						let fallback_page = node.render_fallback();
 						let fallback = self
-							.render_async_page(&fallback_page, AsyncRenderMode::Discovery)
+							.render_async_page(&fallback_page, AsyncRenderMode::Buffered)
 							.await;
 
 						if has_pending
@@ -953,9 +1005,7 @@ impl SsrRenderer {
 	}
 
 	fn render_suspense_fallback(&self, id: &str, fallback: String) -> String {
-		format!(
-			"<!--rh-suspense-start:{id}--><div data-rh-suspense=\"pending\">{fallback}</div><!--rh-suspense-end:{id}-->"
-		)
+		format!("<!--rh-suspense-start:{id}-->{fallback}<!--rh-suspense-end:{id}-->")
 	}
 
 	fn render_suspense_replacement(&self, id: &str, content: String) -> String {
