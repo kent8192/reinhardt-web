@@ -28,6 +28,8 @@ use std::collections::HashMap;
 
 use proc_macro2::TokenStream;
 use quote::quote;
+use syn::Token;
+use syn::punctuated::Punctuated;
 use syn::{Data, DeriveInput, Fields, GenericArgument, PathArguments, Result, Type, parse_quote};
 use syn::{Ident, LitBool, LitStr, bracketed, parenthesized};
 
@@ -1307,6 +1309,8 @@ struct FieldInfo {
 	config: FieldConfig,
 	/// Field-level `#[serde(...)]` attributes copied to generated companion fields.
 	serde_attrs: Vec<syn::Attribute>,
+	/// Whether `#[model]` injected the relation-model `#[serde(skip)]` attribute.
+	injected_relation_serde_skip: bool,
 	/// Optional relationship attribute from `#[rel(...)]`
 	///
 	/// This field is reserved for future accessor generation support.
@@ -2177,6 +2181,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		let ty = field.ty.clone();
 		let config = FieldConfig::from_attrs(&field.attrs)?;
 		config.validate()?;
+		let injected_relation_serde_skip = field.attrs.iter().any(|attr| {
+			attr.path()
+				.is_ident("reinhardt_internal_relation_serde_skip")
+		});
 		let serde_attrs: Vec<syn::Attribute> = field
 			.attrs
 			.iter()
@@ -2202,6 +2210,7 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			ty,
 			config,
 			serde_attrs,
+			injected_relation_serde_skip,
 			rel,
 			is_fk_id_field,
 		});
@@ -5114,6 +5123,79 @@ struct InfoFieldSpec {
 	from_model: TokenStream,
 }
 
+fn relation_info_serde_meta_is_safe(meta: &syn::Meta) -> bool {
+	let Some(name) = meta.path().get_ident().map(ToString::to_string) else {
+		return false;
+	};
+
+	matches!(
+		name.as_str(),
+		"skip_serializing" | "rename" | "alias" | "flatten"
+	)
+}
+
+fn relation_info_serde_meta_name(meta: &syn::Meta) -> Option<String> {
+	meta.path().get_ident().map(ToString::to_string)
+}
+
+fn relation_info_serde_attr(
+	attr: &syn::Attribute,
+	injected_relation_serde_skip: bool,
+) -> Option<syn::Attribute> {
+	if !attr.path().is_ident("serde") {
+		return Some(attr.clone());
+	}
+
+	let syn::Meta::List(meta_list) = &attr.meta else {
+		return Some(attr.clone());
+	};
+
+	let nested = meta_list
+		.parse_args_with(Punctuated::<syn::Meta, Token![,]>::parse_terminated)
+		.ok()?;
+	let mut keeps_skip_serializing = false;
+	let mut needs_info_default = false;
+	let mut kept = Vec::new();
+	for meta in nested {
+		if injected_relation_serde_skip
+			&& matches!(&meta, syn::Meta::Path(path) if path.is_ident("skip"))
+		{
+			continue;
+		}
+
+		let name = relation_info_serde_meta_name(&meta);
+		if matches!(name.as_deref(), Some("skip_deserializing" | "default")) {
+			needs_info_default = true;
+			continue;
+		}
+
+		if relation_info_serde_meta_is_safe(&meta) {
+			keeps_skip_serializing |= matches!(name.as_deref(), Some("skip_serializing"));
+			kept.push(meta);
+		}
+	}
+
+	if keeps_skip_serializing && needs_info_default {
+		kept.push(parse_quote!(default));
+	}
+
+	if kept.is_empty() {
+		return None;
+	}
+
+	Some(parse_quote! {
+		#[serde(#(#kept),*)]
+	})
+}
+
+fn relation_info_serde_attrs(field: &FieldInfo) -> Vec<syn::Attribute> {
+	field
+		.serde_attrs
+		.iter()
+		.filter_map(|attr| relation_info_serde_attr(attr, field.injected_relation_serde_skip))
+		.collect()
+}
+
 /// Generate the `{Model}Info` companion struct with `From` conversions (Issues #4194, #5272).
 ///
 /// Relationship marker fields are represented with target-neutral lightweight
@@ -5163,14 +5245,7 @@ fn generate_info_struct(
 			info_fields.push(InfoFieldSpec {
 				name: name.clone(),
 				ty,
-				// Relation payloads (`RelationInfo`/`ManyToManyInfo`) are lightweight,
-				// serializable DTOs (Issue #5272). They must NOT inherit the model
-				// field's serde attrs: the `#[model]` attribute macro injects
-				// `#[serde(skip)]` onto relation model fields (only the `*_id` column
-				// serializes for the model), and propagating it here would both demand
-				// an unimplemented `Default` for `RelationInfo` and wrongly drop the
-				// payload during `{Model}Info` (de)serialization.
-				serde_attrs: Vec::new(),
+				serde_attrs: relation_info_serde_attrs(f),
 				validate_attrs: Vec::new(),
 				setter_kind: InfoSetterKind::Relation { target_ty },
 				from_model: quote! {
@@ -5193,8 +5268,7 @@ fn generate_info_struct(
 			info_fields.push(InfoFieldSpec {
 				name: name.clone(),
 				ty,
-				// Relation payloads do not inherit model serde attrs (see FK branch above).
-				serde_attrs: Vec::new(),
+				serde_attrs: relation_info_serde_attrs(f),
 				validate_attrs: Vec::new(),
 				setter_kind: InfoSetterKind::ManyToMany { target_ty },
 				from_model: quote! {

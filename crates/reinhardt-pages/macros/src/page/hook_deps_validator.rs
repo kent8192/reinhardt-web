@@ -71,7 +71,7 @@ pub(crate) fn verify_hook_deps(input: &PageMacro) -> TokenStream {
 	if let Some(head) = &input.head {
 		scan_expr(head, &mut diagnostics);
 	}
-	for node in &input.body.nodes {
+	for node in &input.body().nodes {
 		scan_node(node, &mut diagnostics);
 	}
 

@@ -188,6 +188,46 @@ impl ReactiveIf {
 	}
 }
 
+/// Router-managed outlet content used by layout routes.
+#[derive(Debug, Clone)]
+pub struct Outlet {
+	id: Option<String>,
+	child: Option<Box<Page>>,
+}
+
+impl Outlet {
+	/// Creates an inline outlet for stateless native and SSR rendering.
+	pub fn inline(child: impl IntoPage) -> Self {
+		Self {
+			id: None,
+			child: Some(Box::new(child.into_page())),
+		}
+	}
+
+	/// Creates a placeholder outlet for browser mount managers.
+	pub fn placeholder(id: impl Into<String>) -> Self {
+		Self {
+			id: Some(id.into()),
+			child: None,
+		}
+	}
+
+	/// Returns the placeholder id, if this outlet is a browser placeholder.
+	pub fn id(&self) -> Option<&str> {
+		self.id.as_deref()
+	}
+
+	/// Returns the inline child page, if present.
+	pub fn child(&self) -> Option<&Page> {
+		self.child.as_deref()
+	}
+
+	/// Consumes the outlet and returns the inline child page.
+	pub fn into_child(self) -> Option<Page> {
+		self.child.map(|child| *child)
+	}
+}
+
 /// A unified representation of renderable content.
 ///
 /// Page is the core abstraction for all UI elements in the component system.
@@ -208,6 +248,8 @@ pub enum Page {
 	Fragment(Vec<Page>),
 	/// A fragment whose children have stable identity keys.
 	KeyedFragment(Vec<(String, Page)>),
+	/// A router-managed outlet used by layout routes.
+	Outlet(Outlet),
 	/// An empty view (renders nothing).
 	Empty,
 	/// A view with associated head section.
@@ -532,6 +574,11 @@ impl Page {
 		Self::Empty
 	}
 
+	/// Creates an outlet page node.
+	pub fn outlet(outlet: Outlet) -> Self {
+		Page::Outlet(outlet)
+	}
+
 	/// Attaches a head section to this view.
 	///
 	/// The head section contains metadata like title, meta tags, stylesheets,
@@ -671,8 +718,10 @@ impl Page {
 	/// # Search Order
 	///
 	/// 1. If this view is a `WithHead`, returns its head
-	/// 2. For `Fragment` views, searches children in order and returns the first found
-	/// 3. For other variants, returns `None`
+	/// 2. For `Fragment` and `KeyedFragment` views, searches children in order
+	///    and returns the first found
+	/// 3. For inline `Outlet` views, searches the child page
+	/// 4. For other variants, returns `None`
 	pub fn find_topmost_head(&self) -> Option<&Head> {
 		match self {
 			Page::WithHead { head, .. } => Some(head),
@@ -680,6 +729,7 @@ impl Page {
 			Page::KeyedFragment(children) => {
 				children.iter().find_map(|(_, v)| v.find_topmost_head())
 			}
+			Page::Outlet(outlet) => outlet.child().and_then(Page::find_topmost_head),
 			_ => None,
 		}
 	}
@@ -738,6 +788,11 @@ impl Page {
 					child.render_to_string_inner(output);
 				}
 			}
+			Page::Outlet(outlet) => {
+				if let Some(child) = outlet.child() {
+					child.render_to_string_inner(output);
+				}
+			}
 			Page::Empty => {}
 			Page::WithHead { view, .. } => {
 				// The head is extracted separately during SSR; here we just render the content
@@ -782,6 +837,12 @@ impl IntoPage for Page {
 impl IntoPage for PageElement {
 	fn into_page(self) -> Page {
 		Page::Element(self)
+	}
+}
+
+impl IntoPage for Outlet {
+	fn into_page(self) -> Page {
+		Page::Outlet(self)
 	}
 }
 
@@ -974,6 +1035,33 @@ mod tests {
 	fn test_render_empty() {
 		let view = Page::empty();
 		assert_eq!(view.render_to_string(), "");
+	}
+
+	#[test]
+	fn outlet_inline_renders_child_page() {
+		let view = Page::outlet(Outlet::inline(Page::text("Child")));
+
+		assert_eq!(view.render_to_string(), "Child");
+	}
+
+	#[test]
+	fn outlet_placeholder_renders_empty_on_string_render() {
+		let view = Page::outlet(Outlet::placeholder("layout-0"));
+
+		assert_eq!(view.render_to_string(), "");
+	}
+
+	#[test]
+	fn outlet_inline_participates_in_head_lookup() {
+		let view = Page::outlet(Outlet::inline(
+			Page::text("Child").with_head(Head::new().title("Child")),
+		));
+
+		assert_eq!(
+			view.find_topmost_head()
+				.and_then(|head| head.title.as_deref()),
+			Some("Child")
+		);
 	}
 
 	#[test]

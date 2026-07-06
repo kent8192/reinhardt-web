@@ -1612,6 +1612,9 @@ fn validate_required_attributes(element: &TypedPageElement, spec: &ElementSpec) 
 		if !required_attr.required {
 			continue;
 		}
+		if element.a11y_disabled && spec.tag == "img" && required_attr.name == "alt" {
+			continue;
+		}
 
 		let attr_found = element.attrs.iter().any(|attr| {
 			let attr_name = attr.name.to_string();

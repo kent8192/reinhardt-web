@@ -92,6 +92,21 @@
 //! runtime.set_value(login_form.username_field(), "ada".to_string());
 //! ```
 //!
+//! Compose validated submit flows with [`use_form_action`]:
+//!
+//! ```ignore
+//! use reinhardt_pages::{form, use_form, use_form_action};
+//!
+//! let runtime = use_form(&login_form).build();
+//! let save = use_form_action(&runtime, |values: LoginFormValues| async move {
+//!     submit_login(values).await
+//! });
+//!
+//! if !save.is_pending() {
+//!     save.submit();
+//! }
+//! ```
+//!
 //! `FileField` and `ImageField` participate in this runtime contract as
 //! `Option<web_sys::File>` values. File values are browser-owned and are
 //! tracked for dirty/touched state without treating the file payload as a
@@ -150,6 +165,8 @@
 //! - [`head!`]: JSX-like macro for defining HTML head sections
 //! - [`form!`]: Type-safe form component macro
 //! - [`client_page`]: Client page function macro with native route-table stubs
+//! - `#[component]`: Route-backed page component macro
+//! - `#[layout]`: Route-backed layout component macro for nested SPA shells
 //! - [`wasm_server_api`]: WASM/server API parity macro
 //!
 //! See `docs/wasm_server_api.md` for the target-specific API parity contract.
@@ -363,9 +380,9 @@ pub use component::DummyEvent;
 pub use component::cleanup_reactive_nodes;
 pub use component::{
 	ActivityBoundary, ActivityMode, BoundaryError, Component, ErrorBoundary, ErrorTracker, Head,
-	IntoPage, LinkTag, MetaTag, Page, PageElement, PageExt, Props, ResourceTracker, ScriptTag,
-	StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle, ViewTransitionStatus,
-	start_view_transition,
+	IntoPage, LinkTag, MetaTag, Outlet, Page, PageElement, PageExt, Props, ResourceTracker,
+	ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle,
+	ViewTransitionStatus, start_view_transition,
 };
 pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
@@ -375,10 +392,10 @@ pub use form::{FormBinding, FormComponent};
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use form_state::{
 	CollectionItem, CollectionItemKey, CollectionState, CustomWidgetContext, CustomWidgetRawValue,
-	FieldError, FieldPathState, FieldState, FocusError, FormCollectionRuntimeSource, FormEvent,
-	FormRuntimeSource, FormState, FormSubscription, FormValidationError, FormWidgetAdapter,
-	FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder,
-	UseFormReturn, UseFormSubmitOutcome, use_form,
+	FieldError, FieldPathState, FieldState, FocusError, FormAction, FormCollectionRuntimeSource,
+	FormEvent, FormRuntimeSource, FormState, FormSubscription, FormValidationError,
+	FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn,
+	UseFormBuilder, UseFormReturn, UseFormSubmitOutcome, use_form, use_form_action,
 };
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
@@ -392,7 +409,7 @@ pub use reactive::{
 };
 // Re-export Hooks API
 pub use app::{ClientLauncher, LaunchCtx, PathCtx, PathParams};
-pub use reactive::{Action, ActionPhase, use_action};
+pub use reactive::{Action, ActionPhase, ActionStateBuilder, use_action, use_action_state};
 pub use reactive::{
 	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
 	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_id,
@@ -420,6 +437,7 @@ pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
 // Re-export procedural macros
 pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
+pub use reinhardt_pages_macros::layout;
 pub use reinhardt_pages_macros::page;
 pub use reinhardt_pages_macros::wasm_server_api;
 pub use reinhardt_pages_macros::{FromRequest, client_page, component, page_props};
@@ -427,6 +445,10 @@ pub use reinhardt_pages_macros::{FromRequest, client_page, component, page_props
 // Private re-exports used by macro-generated code. Not part of the public API.
 #[doc(hidden)]
 pub mod __private {
+	pub fn capture<T: Clone>(value: &T) -> T {
+		value.clone()
+	}
+
 	pub mod fetch {
 		pub use crate::fetch::{
 			FetchCredentials, FetchResponse, request, request_with_credentials,

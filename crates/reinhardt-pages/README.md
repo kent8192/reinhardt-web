@@ -10,6 +10,7 @@ WASM-based reactive frontend framework for Reinhardt with Django-like API.
 - **Low-level Only**: Built on wasm-bindgen, web-sys, and js-sys (no high-level framework dependencies)
 - **Security First**: Built-in CSRF protection, XSS prevention, and session management
 - **Simplified Conditional Compilation**: `cfg_aliases` integration and automatic event handler handling
+- **Action State Helpers**: `use_action_state` and `Action::dispatching*` reduce async mutation boilerplate
 
 For a React concept mapping, see
 [Reinhardt Pages for React developers](docs/react_to_reinhardt.md).
@@ -98,7 +99,7 @@ use reinhardt_pages::prelude::*;
 // On WASM: Event handlers are bound to DOM events
 // On native: Event handlers are automatically ignored
 fn my_button(on_click: Signal<bool>) -> View {
-    page!(|| {
+    page!({
         button {
             @click: move |_| { on_click.set(true); },
             "Click me"
@@ -111,7 +112,7 @@ fn my_button(on_click: Signal<bool>) -> View {
 ```rust
 #[cfg(target_arch = "wasm32")]
 {
-    page!(|| {
+    page!({
         button {
             @click: move |_| { on_click.set(true); },
             "Click me"
@@ -121,7 +122,7 @@ fn my_button(on_click: Signal<bool>) -> View {
 #[cfg(not(target_arch = "wasm32"))]
 {
     let _ = on_click; // suppress warning
-    page!(|| {
+    page!({
         button { "Click me" }
     })
 }
@@ -130,13 +131,29 @@ fn my_button(on_click: Signal<bool>) -> View {
 **After** (automatic handling):
 ```rust
 // Just write once - the macro handles everything!
-page!(|| {
+page!({
     button {
         @click: move |_| { on_click.set(true); },
         "Click me"
     }
 })
 ```
+
+### `page!` Body Forms
+
+Use `page!({ ... })` for app screens and ordinary functions that return a
+`Page`. Free value identifiers from the surrounding Rust scope are treated as
+implicit captures and cloned into generated reactive/event closures. Captured
+values must implement `Clone`; `Signal<T>`, `Callback`, `Page`, `String`, and
+most application handles are intended to be cheap to clone.
+
+Use `page!(|| { ... })` or `page!(|props: Props| { ... })` when you want a
+reusable factory that is called later. Closure-form pages keep strict capture
+discipline: every value used in the body must be listed as a closure parameter.
+Existing body-only pages that relied on surrounding values should migrate to
+`page!({ ... })`. Use `page!(|| { ... })` for no-argument factories that must
+remain callable, and use `page!(|value: Value| { ... })` when a factory needs
+caller-supplied state.
 
 ### Forms: Static Definition and Dynamic Behavior
 
@@ -162,6 +179,25 @@ let login_form = form! {
 
 let runtime = use_form(&login_form).build();
 runtime.set_value(login_form.username_field(), "ada".to_string());
+```
+
+Use `use_form_action` when a validated form should dispatch a typed async
+mutation:
+
+```rust,ignore
+use reinhardt_pages::{form, use_form, use_form_action};
+
+let runtime = use_form(&login_form).build();
+let save = use_form_action(&runtime, |values: LoginFormValues| async move {
+    submit_login(values).await
+})
+.on_success(|runtime, _result| {
+    runtime.reset_default_values();
+});
+
+if !save.is_pending() {
+    save.submit();
+}
 ```
 
 `FileField` and `ImageField` also participate in the generated runtime
@@ -215,35 +251,33 @@ Arguments supplied from ambient context use `ambient_arguments`. The old
 transport layer: `#[server_fn]` client stubs attach `X-CSRFToken`, while
 non-WASM forms still render the hidden CSRF input for traditional posts.
 
-### Reactive Conditional Rendering with `watch`
+### Reactive Conditional Rendering
 
-The `watch { expr }` syntax enables reactive re-rendering when Signal dependencies change. Unlike static `if` conditions that are evaluated only at render time, `watch` blocks automatically re-evaluate and update the DOM when their Signal dependencies change.
+`page!` wraps expression, `if`, and `for` nodes in reactive render scopes. When
+those nodes read `Signal` values, they re-evaluate as the signals change.
 
-#### Why `watch` is Needed
+#### Why Signal Reads Belong Inside `page!`
 
 When you extract Signal values before the `page!` macro, they become static:
 
 ```rust
 // Problem: Static values don't update when Signal changes
-let has_error = error.get().is_some();  // Static bool captured at render time
-page!(|has_error: bool| {
-    if has_error {  // This never re-evaluates!
+let has_error = error.get().is_some(); // Static bool captured at render time
+page!({
+    if has_error {
         div { "Error occurred" }
     }
-})(has_error)
+})
 ```
 
-The `watch` syntax solves this by creating a reactive context:
+Read the signal inside the page body instead:
 
 ```rust
-// Solution: Pass Signal directly and use watch
-page!(|error: Signal<Option<String>>| {
-    watch {
-        if error.get().is_some() {  // Re-evaluates when error changes!
-            div { { error.get().unwrap_or_default() } }
-        }
+page!({
+    if error.get().is_some() {
+        div { { error.get().unwrap_or_default() } }
     }
-})(error.clone())
+})
 ```
 
 #### Signal-first Pattern
@@ -256,52 +290,34 @@ use reinhardt_pages::prelude::*;
 fn error_display() -> View {
     let (error, set_error) = use_state(None::<String>);
 
-    // Pass the Signal directly (not the extracted value)
+    // Read the Signal inside page! (not before it)
     let error_signal = error.clone();
 
-    page!(|error_signal: Signal<Option<String>>| {
-        watch {
-            if error_signal.get().is_some() {
-                div {
-                    class: "alert-danger",
-                    { error_signal.get().unwrap_or_default() }
-                }
+    page!({
+        if error_signal.get().is_some() {
+            div {
+                class: "alert-danger",
+                { error_signal.get().unwrap_or_default() }
             }
         }
-    })(error_signal)
+    })
 }
 ```
 
-#### `watch` vs Static `if`
+#### Reactive vs Static Values
 
 | Syntax | Use Case | Behavior |
 |--------|----------|----------|
-| `if condition { ... }` | Static conditions, Copy types | Evaluated once at render time |
-| `watch { if signal.get() { ... } }` | Signal-dependent conditions | Re-evaluates when Signal changes |
-| `watch { match signal.get() { ... } }` | Multiple reactive branches | Re-evaluates when Signal changes |
-
-#### Using `watch` with `match`
-
-The `watch` block also supports `match` expressions:
-
-```rust
-page!(|state: Signal<AppState>| {
-    watch {
-        match state.get() {
-            AppState::Loading => div { "Loading..." },
-            AppState::Ready(data) => div { { data } },
-            AppState::Error(msg) => div { class: "error", { msg } },
-        }
-    }
-})(state.clone())
-```
+| `if signal.get().is_some() { ... }` | Signal-dependent branches | Re-evaluates when the signal changes |
+| `for item in items.get() { ... }` | Signal-dependent lists | Rebuilds the list when the signal changes |
+| `if precomputed_bool { ... }` | Static values | Uses the value captured when the page is built |
 
 #### Best Practices
 
 1. **Pass Signals directly**: Use `Signal<T>` parameters instead of extracting values
 2. **Clone Signals**: `Signal::clone()` is cheap (Rc-based), so clone freely
-3. **Single expression**: `watch` blocks must contain exactly one expression
-4. **Avoid nesting**: Don't nest `watch` blocks (performance concern)
+3. **Clone captured handles**: direct `page!({ ... })` clones captured values into generated closures
+4. **Use closure form for factories**: keep `page!(|props: Props| { ... })` when the page must be called later
 
 ## Architecture
 
@@ -396,9 +412,9 @@ use reinhardt_pages::prelude::*;
 fn counter() -> View {
     let (count, set_count) = use_state(|| 0);
 
-    page!(|| {
+    page!({
         div {
-            p { format!("Count: {}", count.get()) }
+            p { { format!("Count: {}", count.get()) } }
             button {
                 @click: move |_| set_count.update(|n| *n + 1),
                 "Increment"

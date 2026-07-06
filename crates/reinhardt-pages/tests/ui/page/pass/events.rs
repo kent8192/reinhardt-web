@@ -14,6 +14,7 @@ fn main() {
 	// Multiple events
 	let _with_events = page!(|| {
 		input {
+			aria_label: "Event input",
 			@input: |_| {},
 			@change: |_| {},
 			@focus: |_| {},

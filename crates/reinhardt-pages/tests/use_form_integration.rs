@@ -6,7 +6,7 @@ use std::rc::Rc;
 use reinhardt_pages::{
 	CollectionItem, CollectionItemKey, CustomWidgetContext, CustomWidgetRawValue, FieldError,
 	FormEvent, FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, Page, ResetOnDeps,
-	RevalidateOn, UseFormSubmitOutcome, form, use_form,
+	RevalidateOn, UseFormSubmitOutcome, form, use_form, use_form_action,
 };
 
 thread_local! {
@@ -1736,4 +1736,67 @@ fn submit_callbacks_survive_deps_configured_after_callback_registration() {
 
 	assert_eq!(runtime.handle_submit(), UseFormSubmitOutcome::Submitted);
 	assert_eq!(success_count.get(), 1);
+}
+
+#[test]
+fn use_form_action_validates_before_dispatching() {
+	let signup = form! {
+		name: SignupForm,
+		action: "/signup",
+		fields: {
+			email: CharField {
+				initial: "",
+				required,
+			}
+		}
+	};
+	let runtime = use_form(&signup).build();
+	let dispatch_count = Rc::new(Cell::new(0));
+	let dispatch_count_for_action = Rc::clone(&dispatch_count);
+	let save = use_form_action(&runtime, move |_values| {
+		dispatch_count_for_action.set(dispatch_count_for_action.get() + 1);
+		async { Ok::<(), String>(()) }
+	});
+
+	assert_eq!(save.submit(), UseFormSubmitOutcome::ValidationFailed);
+	assert_eq!(dispatch_count.get(), 0);
+	assert!(!save.is_pending());
+	assert!(!runtime.form_state().is_submit_successful.get());
+	assert_eq!(save.error_message().as_deref(), Some("email is required"));
+	assert_eq!(
+		runtime
+			.get_field_state(signup.email_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("email is required")
+	);
+}
+
+#[test]
+fn use_form_action_dispatches_current_values_after_validation() {
+	let profile = form! {
+		name: ProfileForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada",
+				required,
+			}
+		}
+	};
+	let runtime = use_form(&profile).build();
+	runtime.set_value(profile.display_name_field(), "Grace".to_string());
+
+	let captured_name = Rc::new(RefCell::new(None));
+	let captured_name_for_action = Rc::clone(&captured_name);
+	let save = use_form_action(&runtime, move |values| {
+		*captured_name_for_action.borrow_mut() = Some(values.display_name);
+		async { Ok::<(), String>(()) }
+	});
+
+	assert_eq!(save.submit(), UseFormSubmitOutcome::Submitted);
+	assert_eq!(captured_name.borrow().as_deref(), Some("Grace"));
+	assert!(!save.is_pending());
+	assert!(save.error_message().is_none());
 }

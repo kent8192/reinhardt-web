@@ -13,9 +13,11 @@ fn main() {
 		div {
 			input {
 				r#type: "text",
+				aria_label: "Maximum length input",
 				maxlength: max_len,
 			}
 			textarea {
+				aria_label: "Sized textarea",
 				rows: num_rows,
 				cols: 80,
 			}

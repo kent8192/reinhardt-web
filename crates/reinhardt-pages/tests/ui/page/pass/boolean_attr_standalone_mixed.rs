@@ -12,6 +12,7 @@ fn main() {
 		div {
 			input {
 				r#type: "text",
+				aria_label: "Required field",
 				required: true,
 				class: "form-input",
 				readonly: is_readonly,

@@ -15,11 +15,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.0", features = ["auth"] }
+reinhardt = { version = "0.3.1", features = ["auth"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.3.0", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.0", features = ["full"] }      # All features
+# reinhardt = { version = "0.3.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.3.1", features = ["full"] }      # All features
 ```
 
 Then import authentication features:
@@ -57,7 +57,8 @@ let claims = jwt_auth.verify_token(&token).unwrap();
 
 - **BasicAuthentication**: HTTP Basic auth backend with user management
 - **Base64 Encoding/Decoding**: Standard HTTP Basic auth header parsing
-- **User Registration**: Add users with username/password pairs
+- **User Registration**: Add users with username/password pairs, with a
+  fallible path for custom password policies that can reject input
 - **Request Authentication**: Extract and verify credentials from Authorization
   headers
 
@@ -66,6 +67,7 @@ use reinhardt::auth::{HttpBasicAuth, AuthenticationBackend};
 
 let mut auth = HttpBasicAuth::new();
 auth.add_user("alice", "secret123");
+auth.try_add_user("bob", "password456").unwrap();
 
 // Request with Basic auth header will be authenticated
 let result = auth.authenticate(&request).unwrap();
@@ -442,7 +444,12 @@ pub struct User {
 #### Password Hashing
 
 - **PasswordHasher Trait**: Composable password hashing interface
+- **PasswordHashPolicy**: Ordered preferred and legacy hasher policy for login-time upgrades
+- **PasswordVerification / PasswordCheck**: Status values that report invalid,
+  valid, and rehash-required password checks
 - **Argon2Hasher**: Production-ready Argon2id implementation (recommended)
+- **BcryptHasher**: Optional compatibility hasher behind the `bcrypt-hasher`
+  feature for migrations and interoperability
 - **Hash Generation**: Secure salt generation using OS random number generator
 - **Password Verification**: Constant-time comparison for security
 
@@ -453,6 +460,31 @@ let hasher = Argon2Hasher::new();
 let hash = hasher.hash("my_password").unwrap();
 assert!(hasher.verify("my_password", &hash).unwrap());
 ```
+
+#### Password hash policy upgrades
+
+`PasswordHashPolicy` defines one preferred hasher for new passwords and optional
+legacy hashers for stored hashes from older deployments. During a successful
+password check, legacy matches and outdated preferred hashes can be rewritten
+with the preferred algorithm or cost parameters. `PasswordVerification` reports
+whether a replacement hash is needed, and `BaseUser` helpers return
+`PasswordCheck::ValidUpdated` after updating the in-memory user value.
+
+```rust
+use reinhardt::auth::{Argon2Hasher, PasswordHashPolicy, PasswordVerification};
+
+let policy = PasswordHashPolicy::new(Argon2Hasher::default());
+let hash = policy.hash("my_password").unwrap();
+let verification = policy
+    .verify_with_update("my_password", &hash)
+    .unwrap();
+
+assert!(matches!(verification, PasswordVerification::Valid));
+```
+
+`BcryptHasher` is useful when migrating from bcrypt-backed systems or
+interoperating with existing bcrypt hashes, but bcrypt still retains its
+72-byte input limit.
 
 ### Authentication Backends
 

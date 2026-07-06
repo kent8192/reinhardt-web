@@ -308,6 +308,11 @@ pub(crate) fn attach_events_recursive(
 				}
 			}
 		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				attach_events_recursive(element, child, registry)?;
+			}
+		}
 		Page::Text(_) | Page::Empty => {
 			// No events to attach
 		}
