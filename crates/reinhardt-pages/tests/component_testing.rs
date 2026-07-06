@@ -4,7 +4,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
 
-use reinhardt_core::types::page::{EventType, IntoPage, Page, PageElement};
+use reinhardt_core::types::page::{EventType, IntoPage, Outlet, Page, PageElement};
 use reinhardt_pages::callback::async_handler;
 use reinhardt_pages::page;
 use reinhardt_pages::prelude::spawn_task;
@@ -153,6 +153,17 @@ fn text_queries_ignore_hidden_descendant_text() {
 	);
 
 	assert!(screen.try_get_by_text("Secret").is_err());
+}
+
+#[test]
+fn outlet_pages_render_inline_children_and_placeholders() {
+	let inline = render(Page::outlet(Outlet::inline(text_page("Nested"))));
+	assert!(inline.query_by_text("Nested").is_some());
+
+	let placeholder = render(Page::outlet(Outlet::placeholder("main")));
+	let pretty = placeholder.pretty();
+	assert!(pretty.contains("<reinhardt-outlet"));
+	assert!(pretty.contains("data-rh-outlet-id=\"main\""));
 }
 
 #[test]
