@@ -119,17 +119,13 @@ impl SsrResourceContext {
 
 		let current_boundary_id = self.current_boundary_id();
 		if let Some(pending) = self.pending.iter_mut().find(|pending| pending.id == key) {
-			match current_boundary_id {
-				Some(boundary_id) => {
-					if !pending
-						.boundary_ids
-						.iter()
-						.any(|candidate| candidate == &boundary_id)
-					{
-						pending.boundary_ids.push(boundary_id);
-					}
-				}
-				None => {}
+			if let Some(boundary_id) = current_boundary_id
+				&& !pending
+					.boundary_ids
+					.iter()
+					.any(|candidate| candidate == &boundary_id)
+			{
+				pending.boundary_ids.push(boundary_id);
 			}
 			pending.subscribers.push(subscriber);
 			return;
