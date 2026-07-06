@@ -312,6 +312,11 @@ impl TestDom {
 				);
 				self.append_page(anchor, render());
 			}
+			Page::Outlet(outlet) => {
+				if let Some(child) = outlet.into_child() {
+					self.append_page(parent, child);
+				}
+			}
 		}
 	}
 
