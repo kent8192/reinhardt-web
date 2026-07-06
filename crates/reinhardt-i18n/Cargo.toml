@@ -12,7 +12,6 @@ authors.workspace = true
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
-reinhardt-utils = { workspace = true }
 
 # DI integration (optional)
 reinhardt-di = { workspace = true, optional = true }

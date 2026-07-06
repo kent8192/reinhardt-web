@@ -50,9 +50,8 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
-
-use reinhardt_utils::safe_path_join;
 
 /// Error types for i18n operations.
 #[derive(Debug, thiserror::Error)]
@@ -92,6 +91,75 @@ pub use locale::get_locale as get_language;
 // New scoped translation API
 // TranslationContext, TranslationGuard, set_active_translation, get_active_translation
 // are defined below and exported at module level
+
+fn safe_path_join(base: &Path, user_input: &str) -> Result<PathBuf, String> {
+	if user_input.contains('\0') {
+		return Err("Path contains null byte".to_string());
+	}
+	if user_input.starts_with('/') || user_input.starts_with('\\') {
+		return Err("Absolute path not allowed in user input".to_string());
+	}
+	if user_input.len() >= 2
+		&& user_input.as_bytes()[0].is_ascii_alphabetic()
+		&& user_input.as_bytes()[1] == b':'
+	{
+		return Err("Absolute path not allowed in user input".to_string());
+	}
+
+	let input_path = Path::new(user_input);
+	for component in input_path.components() {
+		if matches!(component, Component::ParentDir) {
+			return Err(
+				"Path traversal detected: input contains parent directory reference".to_string(),
+			);
+		}
+	}
+	if user_input.contains("..") {
+		return Err(
+			"Path traversal detected: input contains parent directory reference".to_string(),
+		);
+	}
+
+	let joined = base.join(user_input);
+	let canonical_base = safe_canonicalize(base)?;
+	let canonical_joined = safe_canonicalize(&joined)?;
+	if !canonical_joined.starts_with(&canonical_base) {
+		return Err("Path escapes base directory".to_string());
+	}
+
+	Ok(canonical_joined)
+}
+
+fn safe_canonicalize(path: &Path) -> Result<PathBuf, String> {
+	if let Ok(canonical) = path.canonicalize() {
+		return Ok(canonical);
+	}
+
+	let mut remaining = Vec::new();
+	let mut current = path.to_path_buf();
+	let resolved = loop {
+		if current.exists() {
+			break current.canonicalize().map_err(|e| e.to_string())?;
+		}
+		if let Some(file_name) = current.file_name() {
+			remaining.push(file_name.to_os_string());
+			if let Some(parent) = current.parent() {
+				current = parent.to_path_buf();
+			} else {
+				break current;
+			}
+		} else {
+			break current;
+		}
+	};
+
+	let mut result = resolved;
+	for component in remaining.into_iter().rev() {
+		result.push(component);
+	}
+
+	Ok(result)
+}
 
 /// Catalog loader for loading message catalogs from files or other sources
 pub struct CatalogLoader {
