@@ -278,6 +278,28 @@ impl TestDom {
 					self.append_page(parent, child);
 				}
 			}
+			Page::Outlet(outlet) => {
+				let id = outlet.id().map(str::to_string);
+				if let Some(child) = outlet.into_child() {
+					self.append_page(parent, child);
+				} else if let Some(id) = id {
+					self.push_node(
+						parent,
+						TestNode::Element(ElementNode {
+							tag: "reinhardt-outlet".to_string(),
+							attrs: vec![
+								("data-rh-outlet-id".to_string(), id),
+								("style".to_string(), "display: contents;".to_string()),
+							],
+							children: Vec::new(),
+							parent: Some(parent),
+							is_void: false,
+							event_handlers: Default::default(),
+							value: None,
+						}),
+					);
+				}
+			}
 			Page::Empty => {}
 			Page::WithHead { view, .. } => self.append_page(parent, *view),
 			Page::ReactiveIf(reactive_if) => {
