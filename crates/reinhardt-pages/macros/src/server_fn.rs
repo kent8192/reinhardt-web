@@ -1332,11 +1332,15 @@ fn generate_server_handler(
 	// `reinhardt-web/msw`) so that `MockableServerFn` is in scope.
 	let msw_enabled = cfg!(feature = "msw");
 
-	let (response_type, error_type) = match extract_result_types(return_type) {
-		Ok(types) => types,
-		Err(error) => return error.to_compile_error(),
-	};
 	let emits_typed_response_metadata = info.emits_typed_response_metadata();
+	let (response_type, error_type) = if emits_typed_response_metadata {
+		match extract_result_types(return_type) {
+			Ok(types) => types,
+			Err(error) => return error.to_compile_error(),
+		}
+	} else {
+		(quote! {}, quote! {})
+	};
 	let response_metadata_impl = if emits_typed_response_metadata {
 		quote! {
 			impl #pages_crate::server_fn::ServerFnResponseMetadata for marker {
