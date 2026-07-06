@@ -59,6 +59,44 @@
 //! deprecated — they are rendering primitives with no migration target.
 //!
 //! See `kent8192/reinhardt-web#4234` for the full design.
+//!
+//! # Layout Routes
+//!
+//! `ClientRouter::routes` supports nested layout routes for SPA shells. A
+//! `#[layout]` function receives normal `Path` / `Query` extractors plus one
+//! [`Outlet`](crate::component::Outlet) parameter, and child `#[component]`
+//! paths are relative to that layout scope:
+//!
+//! ```ignore
+//! use reinhardt_pages::{Outlet, Page, Path, component, layout, page};
+//! use reinhardt_urls::routers::ClientRouter;
+//!
+//! #[layout("/workspaces/{workspace_id}/", name = "workspace-shell")]
+//! fn workspace_shell(Path(workspace_id): Path<i64>, outlet: Outlet) -> Page {
+//!     page!(|workspace_id: i64, outlet: Outlet| {
+//!         section {
+//!             h1 { { format!("Workspace {workspace_id}") } }
+//!             { outlet }
+//!         }
+//!     })(workspace_id, outlet)
+//! }
+//!
+//! #[component("jobs", name = "workspace-jobs")]
+//! fn workspace_jobs(Path(workspace_id): Path<i64>) -> Page {
+//!     page!(|workspace_id: i64| {
+//!         p { { format!("Jobs for {workspace_id}") } }
+//!     })(workspace_id)
+//! }
+//!
+//! let router = ClientRouter::new().routes(|routes| {
+//!     routes.layout(workspace_shell, |children| {
+//!         children.component(workspace_jobs)
+//!     })
+//! });
+//! ```
+//!
+//! On browser WASM, navigating between sibling children with the same layout
+//! key preserves the layout shell and remounts only the outlet subtree.
 
 mod components;
 mod history;

@@ -60,6 +60,7 @@
 //! ## Macros
 //! - [`page`] - Component DSL for defining views
 //! - [`head`] - HTML head section DSL
+//! - `#[component]` / `#[layout]` - Route-backed SPA component declarations
 //!
 //! ## Static Files
 //! - [`resolve_static`] - Resolve static file URLs
@@ -67,7 +68,7 @@
 //! - [`is_initialized`] - Check if static resolver is initialized
 //!
 //! ## Typed Forms
-//! - [`use_form`], [`UseFormReturn`], [`UseFormBuilder`]
+//! - [`use_form`], [`use_form_action`], [`UseFormReturn`], [`UseFormBuilder`], [`FormAction`]
 //!
 //! ## Task Spawning
 //! - [`spawn_task`], [`defer_yield`] - cross-target async task spawning
@@ -105,7 +106,7 @@ pub use crate::reactive::{use_resource, use_resource_with_key};
 
 pub use crate::component::{
 	ActivityBoundary, ActivityMode, BoundaryError, Component, ErrorBoundary, ErrorTracker, Head,
-	IntoPage, LinkTag, MetaTag, Page, PageElement, PageEventHandler, PageExt, Props,
+	IntoPage, LinkTag, MetaTag, Outlet, Page, PageElement, PageEventHandler, PageExt, Props,
 	ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary,
 	ViewTransitionHandle, ViewTransitionStatus, start_view_transition,
 };
@@ -177,10 +178,10 @@ pub use crate::static_resolver::{init_static_resolver, is_initialized, resolve_s
 
 pub use crate::form_state::{
 	CollectionItem, CollectionItemKey, CollectionState, CustomWidgetContext, CustomWidgetRawValue,
-	FieldError, FieldPathState, FieldState, FocusError, FormCollectionRuntimeSource, FormEvent,
-	FormRuntimeSource, FormState, FormSubscription, FormValidationError, FormWidgetAdapter,
-	FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder,
-	UseFormReturn, UseFormSubmitOutcome, use_form,
+	FieldError, FieldPathState, FieldState, FocusError, FormAction, FormCollectionRuntimeSource,
+	FormEvent, FormRuntimeSource, FormState, FormSubscription, FormValidationError,
+	FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn,
+	UseFormBuilder, UseFormReturn, UseFormSubmitOutcome, use_form, use_form_action,
 };
 
 #[cfg(native)]
@@ -197,9 +198,12 @@ pub use reinhardt_forms::{
 // ============================================================================
 
 pub use crate::client_page;
+pub use crate::component;
 pub use crate::form;
 pub use crate::head;
+pub use crate::layout;
 pub use crate::page;
+pub use crate::page_props;
 pub use crate::wasm_server_api;
 
 // ============================================================================

@@ -8,8 +8,9 @@
 //! 1. **Event Handlers**: Must be closure expressions with 0 or 1 arguments
 //! 2. **Attributes**: data-* and aria-* attributes must follow naming conventions
 //! 3. **Element Nesting**: Void elements cannot have children, interactive elements cannot nest
-//! 4. **Required Attributes**: img elements must have alt attributes (accessibility)
+//! 4. **Required Attributes**: img elements must have required media attributes
 //! 5. **Attribute Types**: Certain attributes must be specific types (e.g., img src must be string literal)
+//! 6. **Accessibility**: Controls, interactive elements, roles, tabindex, and iframes are validated
 
 use proc_macro2::Span;
 use std::collections::HashSet;
@@ -41,15 +42,21 @@ pub fn validate_page(ast: &PageMacro) -> Result<TypedPageMacro> {
 	let form = match &ast.form {
 		PageMacroForm::StrictClosure { params, body } => {
 			enforce_strict_captures(ast.head.as_ref(), body, params)?;
+			let typed_body = transform_body(body, &[])?;
+			validate_page_accessibility(&typed_body)?;
 			TypedPageMacroForm::StrictClosure {
 				params: params.clone(),
-				body: transform_body(body, &[])?,
+				body: typed_body,
 			}
 		}
-		PageMacroForm::ImplicitBody { body } => TypedPageMacroForm::ImplicitBody {
-			captures: collect_free_idents(ast.head.as_ref(), body, &[]),
-			body: transform_body(body, &[])?,
-		},
+		PageMacroForm::ImplicitBody { body } => {
+			let typed_body = transform_body(body, &[])?;
+			validate_page_accessibility(&typed_body)?;
+			TypedPageMacroForm::ImplicitBody {
+				captures: collect_free_idents(ast.head.as_ref(), body, &[]),
+				body: typed_body,
+			}
+		}
 	};
 
 	Ok(TypedPageMacro {
@@ -132,6 +139,9 @@ impl CaptureCollector {
 
 	fn visit_element(&mut self, el: &PageElement) {
 		for attr in &el.attrs {
+			if attr.html_name() == "a11y" {
+				continue;
+			}
 			self.visit_expr(&attr.value);
 		}
 		for event in &el.events {
@@ -557,13 +567,19 @@ fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<Typed
 	}
 
 	// 2. Transform and validate attributes
-	let typed_attrs = transform_attrs(&elem.attrs, &tag)?;
+	let transformed_attrs = transform_attrs(&elem.attrs, &tag)?;
+	let typed_attrs = transformed_attrs.attrs;
 
 	// 3. Validate element nesting
 	validate_element_nesting(elem, parent_tags)?;
 
 	// 4. Validate required attributes (using typed attrs)
-	validate_required_attributes(&tag, &typed_attrs, elem.span)?;
+	validate_required_attributes(
+		&tag,
+		&typed_attrs,
+		elem.span,
+		transformed_attrs.a11y_disabled,
+	)?;
 
 	// 5. Recursively transform children
 	let mut child_tags = parent_tags.to_vec();
@@ -576,31 +592,37 @@ fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<Typed
 		attrs: typed_attrs,
 		events: elem.events.clone(),
 		children: typed_children,
+		a11y_disabled: transformed_attrs.a11y_disabled,
 		span: elem.span,
 	};
 
 	// 6. Validate against HTML specification (Phase 2)
 	super::html_spec::validate_against_spec(&typed_element)?;
 
-	// 7. Validate accessibility requirements (Phase 5)
-	validate_accessibility(
-		&tag,
-		&typed_element.attrs,
-		&typed_element.children,
-		elem.span,
-	)?;
-
 	Ok(typed_element)
+}
+
+#[derive(Debug)]
+struct TransformedPageAttrs {
+	attrs: Vec<TypedPageAttr>,
+	a11y_disabled: bool,
 }
 
 /// Transforms attributes from untyped to typed, with validation.
 ///
 /// This function converts `Expr` attribute values into `AttrValue`,
 /// enabling type-specific validation.
-fn transform_attrs(attrs: &[PageAttr], element_tag: &str) -> Result<Vec<TypedPageAttr>> {
+fn transform_attrs(attrs: &[PageAttr], element_tag: &str) -> Result<TransformedPageAttrs> {
 	let mut typed_attrs = Vec::new();
+	let mut a11y_disabled = false;
 
 	for attr in attrs {
+		if attr.html_name() == "a11y" {
+			validate_a11y_opt_out_attr(attr)?;
+			a11y_disabled = true;
+			continue;
+		}
+
 		// Validate attribute naming conventions (data-*, aria-*)
 		validate_attribute(attr, element_tag)?;
 
@@ -617,7 +639,24 @@ fn transform_attrs(attrs: &[PageAttr], element_tag: &str) -> Result<Vec<TypedPag
 		});
 	}
 
-	Ok(typed_attrs)
+	Ok(TransformedPageAttrs {
+		attrs: typed_attrs,
+		a11y_disabled,
+	})
+}
+
+fn validate_a11y_opt_out_attr(attr: &PageAttr) -> Result<()> {
+	if let Expr::Path(path) = &attr.value
+		&& path.qself.is_none()
+		&& path.path.is_ident("off")
+	{
+		return Ok(());
+	}
+
+	Err(syn::Error::new_spanned(
+		&attr.value,
+		"`a11y` accepts only `off` as an opt-out marker: `a11y: off`",
+	))
 }
 
 /// Checks if an attribute is a URL attribute for the given element.
@@ -690,7 +729,7 @@ fn validate_enum_attr(
 /// Checks if children nodes contain meaningful content.
 ///
 /// Returns true if any child contains non-whitespace text or is a dynamic expression.
-fn has_meaningful_content(children: &[TypedPageNode]) -> bool {
+fn has_accessible_content(children: &[TypedPageNode]) -> bool {
 	for child in children {
 		match child {
 			TypedPageNode::Text(text) => {
@@ -699,7 +738,10 @@ fn has_meaningful_content(children: &[TypedPageNode]) -> bool {
 				}
 			}
 			TypedPageNode::Element(elem) => {
-				if has_meaningful_content(&elem.children) {
+				if elem.tag == "img" && has_non_empty_or_dynamic_attr(&elem.attrs, "alt") {
+					return true;
+				}
+				if has_accessible_content(&elem.children) {
 					return true;
 				}
 			}
@@ -716,59 +758,631 @@ fn has_meaningful_content(children: &[TypedPageNode]) -> bool {
 	false
 }
 
-/// Validates button element accessibility requirements.
+/// Validates interactive element accessibility requirements.
 ///
-/// Button elements must have either:
+/// Interactive elements must have either:
 /// - Text content (direct or nested)
+/// - An image child with non-empty alt text
 /// - aria-label attribute
 /// - aria-labelledby attribute
-fn validate_button_accessibility(
+fn validate_interactive_accessibility(
+	tag: &str,
 	attrs: &[TypedPageAttr],
 	children: &[TypedPageNode],
+	labels: &A11yLabels,
 	span: Span,
 ) -> Result<()> {
-	// Check for aria-label or aria-labelledby attributes
-	let has_aria_label = attrs.iter().any(|attr| {
-		let name = attr.name.to_string();
-		name == "aria_label" || name == "aria_labelledby"
-	});
-
-	if has_aria_label {
+	if has_accessible_name_attr(attrs, labels) {
 		return Ok(());
 	}
 
-	// Check for text content
-	if !has_meaningful_content(children) {
+	if !has_accessible_content(children) {
 		return Err(syn::Error::new(
 			span,
-			"Element <button> requires accessible text.\n\
-			Either provide text content or use 'aria_label' attribute.\n\n\
-			Examples:\n\
-			  Correct:   button { \"Click me\" }\n\
-			  Correct:   button { aria_label: \"Close\" }\n\
-			  Correct:   button { span { \"Submit\" } }\n\
-			  Incorrect: button {}",
+			format!(
+				"Element <{}> requires an accessible name.\n\
+				Either provide text content, an img child with non-empty alt text, or use 'aria_label'/'aria_labelledby'.\n\n\
+				Examples:\n\
+				  Correct:   {0} {{ \"Click me\" }}\n\
+				  Correct:   {0} {{ aria_label: \"Close\" }}\n\
+				  Correct:   {0} {{ span {{ \"Submit\" }} }}\n\
+				  Incorrect: {0} {{ }}",
+				tag
+			),
 		));
 	}
 
 	Ok(())
 }
 
-/// Validates accessibility requirements for elements.
-///
-/// Currently validates:
-/// - button elements: Must have text content or aria-label
-fn validate_accessibility(
-	tag: &str,
+#[cfg(test)]
+fn validate_button_accessibility(
 	attrs: &[TypedPageAttr],
 	children: &[TypedPageNode],
 	span: Span,
 ) -> Result<()> {
-	if tag == "button" {
-		validate_button_accessibility(attrs, children, span)?
+	validate_interactive_accessibility("button", attrs, children, &A11yLabels::default(), span)
+}
+
+/// Validates accessibility requirements for a fully typed page tree.
+///
+/// This pass runs after the tree is typed so label associations can be
+/// collected across sibling order within one macro invocation.
+pub fn validate_page_accessibility(body: &TypedPageBody) -> Result<()> {
+	validate_accessibility_nodes(&body.nodes, &A11yLabels::default(), false, false)
+}
+
+#[derive(Clone, Default)]
+struct A11yLabels {
+	static_for: HashSet<String>,
+	has_dynamic_for: bool,
+	static_labelledby: HashSet<String>,
+}
+
+fn collect_static_scope_labelledby_sources(nodes: &[TypedPageNode], labels: &mut A11yLabels) {
+	for node in nodes {
+		match node {
+			TypedPageNode::Element(elem) => {
+				collect_labelledby_source_from_element(elem, labels);
+				if !element_is_statically_hidden(&elem.attrs) {
+					collect_static_scope_labelledby_sources(&elem.children, labels);
+				}
+			}
+			TypedPageNode::Component(_) => {}
+			TypedPageNode::Watch(watch_node) => {
+				collect_static_scope_labelledby_source_in_node(&watch_node.expr, labels);
+			}
+			TypedPageNode::If(_)
+			| TypedPageNode::For(_)
+			| TypedPageNode::Text(_)
+			| TypedPageNode::Expression(_) => {}
+		}
+	}
+}
+
+fn collect_labelledby_source_from_element(elem: &TypedPageElement, labels: &mut A11yLabels) {
+	if element_is_statically_hidden(&elem.attrs) {
+		return;
+	}
+
+	if let Some(attr) = find_attr(&elem.attrs, "id")
+		&& let Some(value) = attr.value.as_string()
+		&& !value.trim().is_empty()
+		&& element_has_accessible_content(elem)
+	{
+		labels.static_labelledby.insert(value);
+	}
+}
+
+fn collect_static_scope_label_targets(nodes: &[TypedPageNode], labels: &mut A11yLabels) {
+	for node in nodes {
+		match node {
+			TypedPageNode::Element(elem) => {
+				collect_label_target_from_element(elem, labels);
+				if !element_is_statically_hidden(&elem.attrs) {
+					collect_static_scope_label_targets(&elem.children, labels);
+				}
+			}
+			TypedPageNode::Component(_) => {}
+			TypedPageNode::Watch(watch_node) => {
+				collect_static_scope_label_target_in_node(&watch_node.expr, labels);
+			}
+			TypedPageNode::If(_)
+			| TypedPageNode::For(_)
+			| TypedPageNode::Text(_)
+			| TypedPageNode::Expression(_) => {}
+		}
+	}
+}
+
+fn collect_label_target_from_element(elem: &TypedPageElement, labels: &mut A11yLabels) {
+	if element_is_statically_hidden(&elem.attrs) {
+		return;
+	}
+
+	if elem.tag == "label"
+		&& label_has_accessible_content(elem, labels)
+		&& let Some(attr) = find_attr(&elem.attrs, "for")
+	{
+		if let Some(value) = attr.value.as_string() {
+			if !value.trim().is_empty() {
+				labels.static_for.insert(value);
+			}
+		} else {
+			labels.has_dynamic_for = true;
+		}
+	}
+}
+
+fn collect_static_scope_labelledby_source_in_node(node: &TypedPageNode, labels: &mut A11yLabels) {
+	match node {
+		TypedPageNode::Element(elem) => {
+			collect_labelledby_source_from_element(elem, labels);
+			if !element_is_statically_hidden(&elem.attrs) {
+				collect_static_scope_labelledby_sources(&elem.children, labels);
+			}
+		}
+		TypedPageNode::Component(_) => {}
+		TypedPageNode::Watch(watch_node) => {
+			collect_static_scope_labelledby_source_in_node(&watch_node.expr, labels);
+		}
+		TypedPageNode::If(_)
+		| TypedPageNode::For(_)
+		| TypedPageNode::Text(_)
+		| TypedPageNode::Expression(_) => {}
+	}
+}
+
+fn collect_static_scope_label_target_in_node(node: &TypedPageNode, labels: &mut A11yLabels) {
+	match node {
+		TypedPageNode::Element(elem) => {
+			collect_label_target_from_element(elem, labels);
+			if !element_is_statically_hidden(&elem.attrs) {
+				collect_static_scope_label_targets(&elem.children, labels);
+			}
+		}
+		TypedPageNode::Component(_) => {}
+		TypedPageNode::Watch(watch_node) => {
+			collect_static_scope_label_target_in_node(&watch_node.expr, labels);
+		}
+		TypedPageNode::If(_)
+		| TypedPageNode::For(_)
+		| TypedPageNode::Text(_)
+		| TypedPageNode::Expression(_) => {}
+	}
+}
+
+fn validate_accessibility_nodes(
+	nodes: &[TypedPageNode],
+	labels: &A11yLabels,
+	inside_label: bool,
+	hidden_ancestor: bool,
+) -> Result<()> {
+	let mut labels = labels.clone();
+	if !hidden_ancestor {
+		collect_static_scope_labelledby_sources(nodes, &mut labels);
+		collect_static_scope_label_targets(nodes, &mut labels);
+	}
+
+	for node in nodes {
+		validate_accessibility_node(node, &labels, inside_label, hidden_ancestor)?;
 	}
 	Ok(())
 }
+
+fn validate_accessibility_node(
+	node: &TypedPageNode,
+	labels: &A11yLabels,
+	inside_label: bool,
+	hidden_ancestor: bool,
+) -> Result<()> {
+	match node {
+		TypedPageNode::Element(elem) => {
+			validate_element_accessibility(elem, labels, inside_label, hidden_ancestor)
+		}
+		TypedPageNode::If(if_node) => {
+			validate_accessibility_nodes(
+				&if_node.then_branch,
+				labels,
+				inside_label,
+				hidden_ancestor,
+			)?;
+			if let Some(else_branch) = &if_node.else_branch {
+				validate_accessibility_else(else_branch, labels, inside_label, hidden_ancestor)?;
+			}
+			Ok(())
+		}
+		TypedPageNode::For(for_node) => {
+			validate_accessibility_nodes(&for_node.body, labels, inside_label, hidden_ancestor)
+		}
+		TypedPageNode::Component(component) => {
+			if let Some(children) = &component.children {
+				validate_accessibility_nodes(children, labels, inside_label, hidden_ancestor)?;
+			}
+			for slot in &component.named_slots {
+				validate_accessibility_nodes(
+					&slot.children,
+					labels,
+					inside_label,
+					hidden_ancestor,
+				)?;
+			}
+			Ok(())
+		}
+		TypedPageNode::Watch(watch_node) => {
+			validate_accessibility_node(&watch_node.expr, labels, inside_label, hidden_ancestor)
+		}
+		TypedPageNode::Text(_) | TypedPageNode::Expression(_) => Ok(()),
+	}
+}
+
+fn validate_accessibility_else(
+	else_branch: &TypedPageElse,
+	labels: &A11yLabels,
+	inside_label: bool,
+	hidden_ancestor: bool,
+) -> Result<()> {
+	match else_branch {
+		TypedPageElse::Block(nodes) => {
+			validate_accessibility_nodes(nodes, labels, inside_label, hidden_ancestor)
+		}
+		TypedPageElse::If(if_node) => {
+			validate_accessibility_nodes(
+				&if_node.then_branch,
+				labels,
+				inside_label,
+				hidden_ancestor,
+			)?;
+			if let Some(else_branch) = &if_node.else_branch {
+				validate_accessibility_else(else_branch, labels, inside_label, hidden_ancestor)?;
+			}
+			Ok(())
+		}
+	}
+}
+
+fn validate_element_accessibility(
+	elem: &TypedPageElement,
+	labels: &A11yLabels,
+	inside_label: bool,
+	hidden_ancestor: bool,
+) -> Result<()> {
+	let tag = elem.tag.to_string();
+	let statically_hidden = element_is_statically_hidden(&elem.attrs);
+	if hidden_ancestor || statically_hidden {
+		return Ok(());
+	}
+
+	let nested_inside_label =
+		inside_label || (tag == "label" && label_has_accessible_content(elem, labels));
+
+	if !elem.a11y_disabled {
+		validate_role_value(&elem.attrs)?;
+		validate_tabindex(&elem.attrs)?;
+		validate_iframe_title(&tag, &elem.attrs, elem.span)?;
+
+		match tag.as_str() {
+			"button" => {
+				validate_interactive_accessibility(
+					&tag,
+					&elem.attrs,
+					&elem.children,
+					labels,
+					elem.span,
+				)?;
+			}
+			"a" if anchor_is_interactive(elem) => {
+				validate_interactive_accessibility(
+					&tag,
+					&elem.attrs,
+					&elem.children,
+					labels,
+					elem.span,
+				)?;
+			}
+			"input" if input_is_button_style(&elem.attrs) => {
+				validate_input_button_accessibility(&elem.attrs, labels, elem.span)?;
+			}
+			"input" if !input_is_hidden_or_dynamic_type(&elem.attrs) => {
+				validate_form_control_accessibility(
+					&tag,
+					&elem.attrs,
+					labels,
+					inside_label,
+					elem.span,
+				)?;
+			}
+			"select" | "textarea" => {
+				validate_form_control_accessibility(
+					&tag,
+					&elem.attrs,
+					labels,
+					inside_label,
+					elem.span,
+				)?;
+			}
+			_ => {}
+		}
+	}
+
+	validate_accessibility_nodes(&elem.children, labels, nested_inside_label, false)
+}
+
+fn find_attr<'a>(attrs: &'a [TypedPageAttr], html_name: &str) -> Option<&'a TypedPageAttr> {
+	attrs.iter().find(|attr| attr.html_name() == html_name)
+}
+
+fn has_non_empty_or_dynamic_attr(attrs: &[TypedPageAttr], html_name: &str) -> bool {
+	find_attr(attrs, html_name).is_some_and(|attr| match attr.value.as_string() {
+		Some(value) => !value.trim().is_empty(),
+		None => true,
+	})
+}
+
+fn has_accessible_name_attr(attrs: &[TypedPageAttr], labels: &A11yLabels) -> bool {
+	has_non_empty_or_dynamic_attr(attrs, "aria-label") || has_valid_aria_labelledby(attrs, labels)
+}
+
+fn has_valid_aria_labelledby(attrs: &[TypedPageAttr], labels: &A11yLabels) -> bool {
+	let Some(attr) = find_attr(attrs, "aria-labelledby") else {
+		return false;
+	};
+
+	let Some(value) = attr.value.as_string() else {
+		return true;
+	};
+
+	let ids: Vec<&str> = value.split_whitespace().collect();
+	!ids.is_empty() && ids.iter().all(|id| labels.static_labelledby.contains(*id))
+}
+
+fn element_has_accessible_content(elem: &TypedPageElement) -> bool {
+	has_non_empty_or_dynamic_attr(&elem.attrs, "aria-label")
+		|| has_accessible_content(&elem.children)
+}
+
+fn label_has_accessible_content(elem: &TypedPageElement, labels: &A11yLabels) -> bool {
+	has_accessible_name_attr(&elem.attrs, labels) || has_accessible_content(&elem.children)
+}
+
+fn element_is_statically_hidden(attrs: &[TypedPageAttr]) -> bool {
+	find_attr(attrs, "hidden").is_some_and(|attr| match &attr.value {
+		AttrValue::BoolLit(value) => value.value(),
+		_ => false,
+	})
+}
+
+fn input_is_hidden_or_dynamic_type(attrs: &[TypedPageAttr]) -> bool {
+	let Some(attr) = find_attr(attrs, "type") else {
+		return false;
+	};
+
+	match attr.value.as_string() {
+		Some(value) => value.eq_ignore_ascii_case("hidden"),
+		None => true,
+	}
+}
+
+fn input_static_type(attrs: &[TypedPageAttr]) -> Option<String> {
+	find_attr(attrs, "type")
+		.and_then(|attr| attr.value.as_string())
+		.map(|value| value.to_ascii_lowercase())
+}
+
+fn input_is_button_style(attrs: &[TypedPageAttr]) -> bool {
+	matches!(
+		input_static_type(attrs).as_deref(),
+		Some("submit" | "button" | "reset" | "image")
+	)
+}
+
+fn validate_input_button_accessibility(
+	attrs: &[TypedPageAttr],
+	labels: &A11yLabels,
+	span: Span,
+) -> Result<()> {
+	if has_accessible_name_attr(attrs, labels) {
+		return Ok(());
+	}
+
+	let input_type = input_static_type(attrs);
+	if matches!(input_type.as_deref(), Some("submit" | "reset")) {
+		return Ok(());
+	}
+
+	let names_from_alt = matches!(input_type.as_deref(), Some("image"));
+	let label_attr = if names_from_alt { "alt" } else { "value" };
+	if has_non_empty_or_dynamic_attr(attrs, label_attr) {
+		return Ok(());
+	}
+
+	Err(syn::Error::new(
+		span,
+		format!(
+			"Element <input type=\"{}\"> requires an accessible name. Provide a non-empty `{}` or use `aria_label`/`aria_labelledby`.",
+			input_type.as_deref().unwrap_or("button"),
+			label_attr
+		),
+	))
+}
+
+fn anchor_is_interactive(elem: &TypedPageElement) -> bool {
+	find_attr(&elem.attrs, "href").is_some() || !elem.events.is_empty()
+}
+
+fn validate_form_control_accessibility(
+	tag: &str,
+	attrs: &[TypedPageAttr],
+	labels: &A11yLabels,
+	inside_label: bool,
+	span: Span,
+) -> Result<()> {
+	if has_accessible_name_attr(attrs, labels) || inside_label {
+		return Ok(());
+	}
+
+	if let Some(id_attr) = find_attr(attrs, "id") {
+		if let Some(id) = id_attr.value.as_string() {
+			if labels.static_for.contains(&id) {
+				return Ok(());
+			}
+		} else if labels.has_dynamic_for {
+			return Ok(());
+		}
+	}
+
+	Err(syn::Error::new(
+		span,
+		format!(
+			"Element <{}> requires an accessible label.\n\
+			Provide a wrapping label, a label with matching `for`/`id`, or use `aria_label`/`aria_labelledby`.",
+			tag
+		),
+	))
+}
+
+fn validate_iframe_title(tag: &str, attrs: &[TypedPageAttr], span: Span) -> Result<()> {
+	if tag == "iframe" && !has_non_empty_or_dynamic_attr(attrs, "title") {
+		return Err(syn::Error::new(
+			span,
+			"Element <iframe> requires a non-empty `title` attribute for accessibility",
+		));
+	}
+
+	Ok(())
+}
+
+fn validate_tabindex(attrs: &[TypedPageAttr]) -> Result<()> {
+	let Some(attr) = find_attr(attrs, "tabindex") else {
+		return Ok(());
+	};
+
+	if let Some(value) = static_i64_value(&attr.value)?
+		&& value != 0
+		&& value != -1
+	{
+		return Err(syn::Error::new(
+			attr.span,
+			"Attribute `tabindex` only allows static values `0` and `-1`; positive values hijack keyboard tab order",
+		));
+	}
+
+	Ok(())
+}
+
+fn validate_role_value(attrs: &[TypedPageAttr]) -> Result<()> {
+	let Some(attr) = find_attr(attrs, "role") else {
+		return Ok(());
+	};
+
+	let Some(value) = attr.value.as_string() else {
+		return Ok(());
+	};
+
+	let tokens: Vec<&str> = value.split_ascii_whitespace().collect();
+	if tokens.is_empty() || !tokens.iter().any(|role| is_valid_aria_role(role)) {
+		return Err(syn::Error::new(
+			attr.span,
+			format!("Invalid ARIA role value `{}`", value),
+		));
+	}
+
+	Ok(())
+}
+
+fn static_i64_value(value: &AttrValue) -> Result<Option<i64>> {
+	match value {
+		AttrValue::IntLit(lit) => lit.base10_parse::<i64>().map(Some),
+		AttrValue::Dynamic(expr) => match expr.as_ref() {
+			Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Neg(_)) => {
+				if let Expr::Lit(lit) = unary.expr.as_ref()
+					&& let syn::Lit::Int(int) = &lit.lit
+				{
+					return int.base10_parse::<i64>().map(|value| Some(-value));
+				}
+				Ok(None)
+			}
+			_ => Ok(None),
+		},
+		_ => Ok(None),
+	}
+}
+
+fn is_valid_aria_role(role: &str) -> bool {
+	VALID_ARIA_ROLES.contains(&role)
+}
+
+// Concrete author-usable roles from WAI-ARIA 1.3. Abstract roles are excluded.
+const VALID_ARIA_ROLES: &[&str] = &[
+	"alert",
+	"alertdialog",
+	"application",
+	"article",
+	"banner",
+	"blockquote",
+	"button",
+	"caption",
+	"cell",
+	"checkbox",
+	"code",
+	"columnheader",
+	"combobox",
+	"comment",
+	"complementary",
+	"contentinfo",
+	"definition",
+	"deletion",
+	"dialog",
+	"directory",
+	"document",
+	"emphasis",
+	"feed",
+	"figure",
+	"form",
+	"generic",
+	"grid",
+	"gridcell",
+	"group",
+	"heading",
+	"image",
+	"img",
+	"insertion",
+	"link",
+	"list",
+	"listbox",
+	"listitem",
+	"log",
+	"main",
+	"mark",
+	"marquee",
+	"math",
+	"menu",
+	"menubar",
+	"menuitem",
+	"menuitemcheckbox",
+	"menuitemradio",
+	"meter",
+	"navigation",
+	"none",
+	"note",
+	"option",
+	"paragraph",
+	"presentation",
+	"progressbar",
+	"radio",
+	"radiogroup",
+	"region",
+	"row",
+	"rowgroup",
+	"rowheader",
+	"scrollbar",
+	"search",
+	"searchbox",
+	"sectionfooter",
+	"sectionheader",
+	"separator",
+	"slider",
+	"spinbutton",
+	"status",
+	"strong",
+	"subscript",
+	"suggestion",
+	"superscript",
+	"switch",
+	"tab",
+	"table",
+	"tablist",
+	"tabpanel",
+	"term",
+	"textbox",
+	"time",
+	"timer",
+	"toolbar",
+	"tooltip",
+	"tree",
+	"treegrid",
+	"treeitem",
+];
 
 /// Validates attribute type for specific elements and attributes.
 ///
@@ -781,7 +1395,6 @@ fn validate_accessibility(
 /// - `img` element `src` attribute: when given as a string literal it must be non-empty;
 ///   dynamic expressions (e.g. `resolve_static(...)`) are allowed and deferred to runtime
 ///
-/// Future phases will add accessibility checks.
 fn validate_attr_type(
 	attr_name: &str,
 	value: &AttrValue,
@@ -1175,12 +1788,17 @@ fn validate_element_nesting(elem: &PageElement, parent_tags: &[String]) -> Resul
 /// # Errors
 ///
 /// Returns a compilation error if required attributes are missing or invalid.
-fn validate_required_attributes(tag: &str, attrs: &[TypedPageAttr], span: Span) -> Result<()> {
+fn validate_required_attributes(
+	tag: &str,
+	attrs: &[TypedPageAttr],
+	span: Span,
+	a11y_disabled: bool,
+) -> Result<()> {
 	// img requires alt and src attributes
 	if tag == "img" {
 		// Check alt attribute (accessibility)
 		let has_alt = attrs.iter().any(|attr| attr.name == "alt");
-		if !has_alt {
+		if !has_alt && !a11y_disabled {
 			return Err(syn::Error::new(
 				span,
 				"Element <img> requires 'alt' attribute for accessibility",
@@ -1540,7 +2158,7 @@ mod tests {
 		);
 
 		// Act
-		let result = validate_required_attributes("img", &[], elem.span);
+		let result = validate_required_attributes("img", &[], elem.span, false);
 
 		// Assert
 		assert!(result.is_err());
@@ -1566,7 +2184,7 @@ mod tests {
 
 		// Assert
 		assert!(result.is_ok());
-		let typed_attrs = result.unwrap();
+		let typed_attrs = result.unwrap().attrs;
 		assert_eq!(typed_attrs.len(), 1);
 		assert!(typed_attrs[0].value.is_string_literal());
 	}
@@ -1585,7 +2203,7 @@ mod tests {
 
 		// Assert
 		assert!(result.is_ok());
-		let typed_attrs = result.unwrap();
+		let typed_attrs = result.unwrap().attrs;
 		assert_eq!(typed_attrs.len(), 1);
 		assert!(typed_attrs[0].value.is_dynamic());
 	}
@@ -2220,7 +2838,7 @@ mod tests {
 		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
-		assert!(err_msg.contains("requires accessible text"));
+		assert!(err_msg.contains("requires an accessible name"));
 		assert!(err_msg.contains("aria_label"));
 	}
 
@@ -2270,6 +2888,7 @@ mod tests {
 				content: "Submit".to_string(),
 				span: proc_macro2::Span::call_site(),
 			})],
+			a11y_disabled: false,
 			span: proc_macro2::Span::call_site(),
 		})];
 
@@ -2315,5 +2934,183 @@ mod tests {
 
 		// Assert
 		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn test_transform_attrs_consumes_a11y_opt_out_marker() {
+		// Arrange
+		let attrs = vec![PageAttr {
+			name: syn::Ident::new("a11y", proc_macro2::Span::call_site()),
+			value: parse_quote!(off),
+			span: proc_macro2::Span::call_site(),
+		}];
+
+		// Act
+		let result = transform_attrs(&attrs, "input");
+
+		// Assert
+		let transformed = result.unwrap();
+		assert!(transformed.attrs.is_empty());
+		assert!(transformed.a11y_disabled);
+	}
+
+	#[rstest]
+	fn test_transform_attrs_rejects_invalid_a11y_marker() {
+		// Arrange
+		let attrs = vec![PageAttr {
+			name: syn::Ident::new("a11y", proc_macro2::Span::call_site()),
+			value: parse_quote!(true),
+			span: proc_macro2::Span::call_site(),
+		}];
+
+		// Act
+		let result = transform_attrs(&attrs, "input");
+
+		// Assert
+		assert!(result.unwrap_err().to_string().contains("a11y"));
+	}
+
+	#[rstest]
+	fn test_validate_page_accessibility_accepts_later_matching_label() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote::quote! {
+			|| {
+				input { id: "email", type: "email", name: "email" }
+				label { r#for: "email", "Email" }
+			}
+		})
+		.unwrap();
+
+		// Act
+		let result = validate_page(&ast);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn test_validate_page_accessibility_rejects_unlabelled_control() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote::quote! {
+			|| {
+				input { type: "text", name: "q" }
+			}
+		})
+		.unwrap();
+
+		// Act
+		let result = validate_page(&ast);
+
+		// Assert
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("requires an accessible label")
+		);
+	}
+
+	#[rstest]
+	fn test_validate_page_accessibility_rejects_cross_branch_label() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote::quote! {
+			|show_input: bool| {
+				if show_input {
+					input { id: "query", type: "text", name: "query" }
+				} else {
+					label { r#for: "query", "Query" }
+				}
+			}
+		})
+		.unwrap();
+
+		// Act
+		let result = validate_page(&ast);
+
+		// Assert
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("requires an accessible label")
+		);
+	}
+
+	#[rstest]
+	fn test_validate_page_accessibility_accepts_opted_out_control() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote::quote! {
+			|| {
+				input { type: "range", name: "decorative", a11y: off }
+			}
+		})
+		.unwrap();
+
+		// Act
+		let result = validate_page(&ast);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn test_validate_page_accessibility_rejects_invalid_role() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote::quote! {
+			|| {
+				div { role: "not-a-role", "Content" }
+			}
+		})
+		.unwrap();
+
+		// Act
+		let result = validate_page(&ast);
+
+		// Assert
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("Invalid ARIA role")
+		);
+	}
+
+	#[rstest]
+	fn test_validate_page_accessibility_rejects_positive_tabindex() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote::quote! {
+			|| {
+				div { tabindex: 1, "Content" }
+			}
+		})
+		.unwrap();
+
+		// Act
+		let result = validate_page(&ast);
+
+		// Assert
+		assert!(result.unwrap_err().to_string().contains("tabindex"));
+	}
+
+	#[rstest]
+	fn test_validate_page_accessibility_requires_iframe_title() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote::quote! {
+			|| {
+				iframe { src: "/frame" }
+			}
+		})
+		.unwrap();
+
+		// Act
+		let result = validate_page(&ast);
+
+		// Assert
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("requires a non-empty `title`")
+		);
 	}
 }

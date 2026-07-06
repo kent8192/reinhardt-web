@@ -430,6 +430,20 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 				nodes.extend(mount_before_marker(marker, child));
 			}
 		}
+		Page::Outlet(outlet) => {
+			let id = outlet.id().map(str::to_string);
+			if let Some(child) = outlet.into_child() {
+				nodes.extend(mount_before_marker(marker, child));
+			} else if let Some(id) = id {
+				let element = document
+					.create_element("reinhardt-outlet")
+					.expect("should create outlet host");
+				let _ = element.set_attribute("data-rh-outlet-id", &id);
+				let _ = element.set_attribute("style", "display: contents;");
+				let _ = parent.insert_before(&element, Some(marker));
+				nodes.push(element.unchecked_into());
+			}
+		}
 		Page::Empty => {}
 		Page::WithHead { view, .. } => {
 			// Head is handled separately; just mount the content

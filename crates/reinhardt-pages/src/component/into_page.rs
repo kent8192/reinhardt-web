@@ -5,8 +5,8 @@
 
 // Re-export core types from reinhardt-types
 pub use reinhardt_core::types::page::{
-	Head, IntoPage, LinkTag, MetaTag, MountError, Page, PageElement, PageEventHandler, Reactive,
-	ReactiveIf, ScriptTag, StyleTag,
+	Head, IntoPage, LinkTag, MetaTag, MountError, Outlet, Page, PageElement, PageEventHandler,
+	Reactive, ReactiveIf, ScriptTag, StyleTag,
 };
 
 // DummyEvent is only available on non-WASM targets
@@ -132,6 +132,24 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 		Page::KeyedFragment(children) => {
 			for (_, child) in children {
 				mount_inner(child, parent)?;
+			}
+		}
+		Page::Outlet(outlet) => {
+			let id = outlet.id().map(str::to_string);
+			if let Some(child) = outlet.into_child() {
+				mount_inner(child, parent)?;
+			} else if let Some(id) = id {
+				let doc = document();
+				let host = doc
+					.create_element("reinhardt-outlet")
+					.map_err(|_| MountError::CreateElementFailed)?;
+				host.set_attribute("data-rh-outlet-id", &id)
+					.map_err(|_| MountError::SetAttributeFailed)?;
+				host.set_attribute("style", "display: contents;")
+					.map_err(|_| MountError::SetAttributeFailed)?;
+				parent
+					.append_child(host)
+					.map_err(|_| MountError::AppendChildFailed)?;
 			}
 		}
 		Page::Empty => {}
