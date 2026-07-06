@@ -56,13 +56,11 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 				"ClientFormChoices default variant cannot be skipped by serde",
 			));
 		}
-		if variant_options.default {
-			if default_variant.replace(variant_ident.clone()).is_some() {
-				return Err(syn::Error::new_spanned(
-					variant,
-					"ClientFormChoices supports only one default variant",
-				));
-			}
+		if variant_options.default && default_variant.replace(variant_ident.clone()).is_some() {
+			return Err(syn::Error::new_spanned(
+				variant,
+				"ClientFormChoices supports only one default variant",
+			));
 		}
 		if variant_options.skip {
 			continue;
