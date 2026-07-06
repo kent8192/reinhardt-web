@@ -838,6 +838,13 @@ impl SsrRenderer {
 					node.cache_content_head_from(&content);
 					rendered
 				}
+				Page::Outlet(outlet) => {
+					if let Some(child) = outlet.child() {
+						self.render_stream_shell_page(child, boundaries).await
+					} else {
+						String::new()
+					}
+				}
 			}
 		})
 	}
@@ -999,6 +1006,13 @@ impl SsrRenderer {
 						node.cache_content_head_from(&content);
 					}
 					rendered
+				}
+				Page::Outlet(outlet) => {
+					if let Some(child) = outlet.child() {
+						self.render_async_page(child, mode).await
+					} else {
+						String::new()
+					}
 				}
 			}
 		})

@@ -137,7 +137,7 @@ impl SsrResourceContext {
 		Fut: Future<Output = Result<T, E>> + 'static,
 	{
 		if let Some(value) = self.resolved.get(&key) {
-			if let Ok(resource_state) = serde_json::from_value(value.clone()) {
+			if let Ok(resource_state) = serde_json::from_value(value.value.clone()) {
 				state.set(resource_state);
 			}
 			return;
