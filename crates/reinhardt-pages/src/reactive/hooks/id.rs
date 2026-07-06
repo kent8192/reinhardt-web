@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// Global counter for generating unique IDs.
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+#[cfg(native)]
 tokio::task_local! {
 	static SSR_ID_COUNTER: Rc<Cell<usize>>;
 }
@@ -101,6 +102,7 @@ pub fn use_id_with_prefix(prefix: &str) -> String {
 /// Calling this in production code may cause ID collisions and hydration mismatches.
 #[doc(hidden)]
 pub fn reset_id_counter() {
+	#[cfg(native)]
 	if let Ok(()) = SSR_ID_COUNTER.try_with(|counter| counter.set(0)) {
 		return;
 	}
@@ -117,18 +119,29 @@ pub async fn scope_id_counter_with<R>(
 	counter: Rc<Cell<usize>>,
 	future: impl Future<Output = R>,
 ) -> R {
-	SSR_ID_COUNTER.scope(counter, future).await
+	#[cfg(native)]
+	{
+		SSR_ID_COUNTER.scope(counter, future).await
+	}
+	#[cfg(not(native))]
+	{
+		let _ = counter;
+		future.await
+	}
 }
 
 #[doc(hidden)]
 pub fn id_counter_snapshot() -> usize {
-	SSR_ID_COUNTER
-		.try_with(|counter| counter.get())
-		.unwrap_or_else(|_| ID_COUNTER.load(Ordering::Relaxed))
+	#[cfg(native)]
+	if let Ok(snapshot) = SSR_ID_COUNTER.try_with(|counter| counter.get()) {
+		return snapshot;
+	}
+	ID_COUNTER.load(Ordering::Relaxed)
 }
 
 #[doc(hidden)]
 pub fn restore_id_counter(snapshot: usize) {
+	#[cfg(native)]
 	if let Ok(()) = SSR_ID_COUNTER.try_with(|counter| counter.set(snapshot)) {
 		return;
 	}
@@ -136,6 +149,7 @@ pub fn restore_id_counter(snapshot: usize) {
 }
 
 fn next_id() -> usize {
+	#[cfg(native)]
 	if let Ok(id) = SSR_ID_COUNTER.try_with(|counter| {
 		let id = counter.get();
 		counter.set(id + 1);
