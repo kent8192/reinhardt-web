@@ -474,7 +474,7 @@ framework for discovery via the `inventory` crate.
 - **`routing` feature**: `Router`, `DefaultRouter`, `ServerRouter`
 - **`api`, `standard`, or `api-only` features**: `View`, `ListView`, `DetailView`, `ViewSet`, `ModelViewSet`, `ReadOnlyModelViewSet`
 - **`database` feature**: `Model`, `DatabaseConnection`, `F`, `Q`, `Transaction`, `atomic`, Database functions (`Concat`, `Upper`, `Lower`, `Now`, `CurrentDate`), Window functions (`Window`, `RowNumber`, `Rank`, `DenseRank`), Constraints (`UniqueConstraint`, `CheckConstraint`, `ForeignKeyConstraint`)
-- **`auth` feature**: `BaseUser`, `FullUser`, `PermissionsMixin`, `BaseUserManager`, `Argon2Hasher`, `GroupManager`, `CreateGroupData`, `Permission`, `ObjectPermission`, `ObjectPermissionManager`
+- **`auth` feature**: `BaseUser`, `FullUser`, `PermissionsMixin`, `BaseUserManager`, `Argon2Hasher`, `PasswordHasher`, `PasswordHashPolicy`, `PasswordVerification`, `PasswordCheck`, optional `BcryptHasher`, `GroupManager`, `CreateGroupData`, `Permission`, `ObjectPermission`, `ObjectPermissionManager`
 - **`minimal`, `standard`, or `di` features**: `Body`, `Cookie`, `Header`, `Json`, `Path`, `Query`
 - **`rest` feature**: Serializers, Parsers, Pagination, Throttling, Versioning
 - **`admin` feature**: Admin panel components
@@ -726,6 +726,9 @@ Reinhardt provides Django-style user models and permission primitives. You
 bring your own user struct (defined with `#[user(...)]` + `#[model(...)]` as
 shown in the previous section); the framework layers auth traits, a
 password-management workflow, groups, and object-level permissions on top.
+
+**Password Hash Policy Upgrades:** verify legacy hashes and rehash successful
+logins with the preferred algorithm or cost parameters.
 
 **Two entry points for user data:**
 

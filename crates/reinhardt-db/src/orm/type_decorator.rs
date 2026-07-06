@@ -193,9 +193,57 @@ impl<T: Serialize + for<'de> Deserialize<'de>> Default for JsonType<T> {
 	}
 }
 
-/// Phone number type with validation and formatting using phonenumber crate
+/// Phone number type with validation and formatting.
 pub struct PhoneNumberType {
-	default_country: phonenumber::country::Id,
+	default_country: PhoneCountry,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PhoneCountry {
+	Us,
+	Gb,
+	Jp,
+	De,
+	Fr,
+}
+
+impl PhoneCountry {
+	fn from_code(code: &str) -> Self {
+		match code {
+			"GB" => Self::Gb,
+			"JP" => Self::Jp,
+			"DE" => Self::De,
+			"FR" => Self::Fr,
+			_ => Self::Us,
+		}
+	}
+
+	fn calling_code(self) -> &'static str {
+		match self {
+			Self::Us => "1",
+			Self::Gb => "44",
+			Self::Jp => "81",
+			Self::De => "49",
+			Self::Fr => "33",
+		}
+	}
+
+	fn national_lengths(self) -> &'static [usize] {
+		match self {
+			Self::Us => &[10],
+			Self::Gb => &[9, 10],
+			Self::Jp => &[9, 10],
+			Self::De => &[5, 6, 7, 8, 9, 10, 11, 12, 13],
+			Self::Fr => &[9],
+		}
+	}
+
+	fn national_trunk_prefix(self) -> Option<&'static str> {
+		match self {
+			Self::Us => None,
+			Self::Gb | Self::Jp | Self::De | Self::Fr => Some("0"),
+		}
+	}
 }
 
 impl PhoneNumberType {
@@ -214,14 +262,7 @@ impl PhoneNumberType {
 	/// ```
 	pub fn new(country_code: impl Into<String>) -> Self {
 		let code = country_code.into();
-		let country = match code.as_str() {
-			"US" => phonenumber::country::Id::US,
-			"GB" => phonenumber::country::Id::GB,
-			"JP" => phonenumber::country::Id::JP,
-			"DE" => phonenumber::country::Id::DE,
-			"FR" => phonenumber::country::Id::FR,
-			_ => phonenumber::country::Id::US, // Default to US
-		};
+		let country = PhoneCountry::from_code(code.as_str());
 
 		Self {
 			default_country: country,
@@ -229,26 +270,79 @@ impl PhoneNumberType {
 	}
 
 	fn validate(&self, number: &str) -> Result<(), TypeError> {
-		phonenumber::parse(Some(self.default_country), number)
-			.map_err(|e| TypeError::ValidationError(format!("Invalid phone number: {}", e)))?;
+		if self.normalized_digits(number).is_none() {
+			return Err(TypeError::ValidationError(
+				"Invalid phone number".to_string(),
+			));
+		}
 		Ok(())
 	}
 
 	fn format(&self, number: &str) -> String {
-		match phonenumber::parse(Some(self.default_country), number) {
-			Ok(parsed) => {
-				// Format as E.164 (international format)
-				parsed.format().mode(phonenumber::Mode::E164).to_string()
-			}
-			Err(_) => {
-				// Fallback: Remove non-numeric characters
-				number.chars().filter(|c| c.is_numeric()).collect()
-			}
+		self.normalized_digits(number)
+			.expect("validated phone number should normalize")
+	}
+
+	fn normalized_digits(&self, number: &str) -> Option<String> {
+		let digits = Self::digits(Self::main_number_part(number));
+		if digits.is_empty() {
+			return None;
 		}
+		let calling_code = self.default_country.calling_code();
+		let dialed_digits = digits.strip_prefix("00").unwrap_or(&digits);
+
+		let national = if let Some(national) = dialed_digits.strip_prefix(calling_code) {
+			self.normalize_national_digits(national)?
+		} else {
+			self.normalize_national_digits(dialed_digits)?
+		};
+		let normalized = format!("{calling_code}{national}");
+		(normalized.len() <= 15).then_some(normalized)
+	}
+
+	fn normalize_national_digits<'a>(&self, digits: &'a str) -> Option<&'a str> {
+		if let Some(stripped) = self
+			.default_country
+			.national_trunk_prefix()
+			.and_then(|prefix| digits.strip_prefix(prefix))
+			.filter(|stripped| {
+				self.default_country
+					.national_lengths()
+					.contains(&stripped.len())
+			}) {
+			return Some(stripped);
+		}
+
+		if self
+			.default_country
+			.national_lengths()
+			.contains(&digits.len())
+		{
+			return Some(digits);
+		}
+
+		None
 	}
 
 	fn unformat(&self, formatted: &str) -> String {
-		formatted.chars().filter(|c| c.is_numeric()).collect()
+		Self::digits(formatted)
+	}
+
+	fn main_number_part(value: &str) -> &str {
+		let lowercase = value.to_ascii_lowercase();
+		for marker in [" extension", " ext.", " ext", " x"] {
+			if let Some(index) = lowercase.find(marker) {
+				let extension = &value[index + marker.len()..];
+				if extension.chars().any(|c| c.is_ascii_digit()) {
+					return value[..index].trim_end();
+				}
+			}
+		}
+		value
+	}
+
+	fn digits(value: &str) -> String {
+		value.chars().filter(|c| c.is_ascii_digit()).collect()
 	}
 }
 
@@ -562,9 +656,18 @@ mod tests {
 		let valid = "555-123-4567".to_string();
 		assert!(decorator.process_bind_param(&valid).is_ok());
 
-		// Test empty string
-		let invalid = "".to_string();
-		assert!(decorator.process_bind_param(&invalid).is_err());
+		for invalid in ["", "123"] {
+			assert!(decorator.process_bind_param(&invalid.to_string()).is_err());
+		}
+	}
+
+	#[test]
+	fn test_phone_number_validation_uses_configured_country() {
+		let decorator = PhoneNumberType::new("US");
+
+		let gb_number = "+44 20 7123 4567".to_string();
+
+		assert!(decorator.process_bind_param(&gb_number).is_err());
 	}
 
 	#[test]
@@ -576,6 +679,42 @@ mod tests {
 		let retrieved = decorator.process_result_value(&stored).unwrap();
 
 		assert_eq!(retrieved, "15551234567");
+	}
+
+	#[test]
+	fn test_phone_number_formatting_strips_national_trunk_prefix() {
+		for (country, number, expected) in [
+			("GB", "020 7123 4567", "442071234567"),
+			("GB", "0800 111111", "44800111111"),
+			("GB", "+44 800 111111", "44800111111"),
+			("GB", "0044 20 7123 4567", "442071234567"),
+			("JP", "03-1234-5678", "81312345678"),
+			("DE", "030 123456", "4930123456"),
+			("DE", "0049 30 123456", "4930123456"),
+			("FR", "01 42 68 53 00", "33142685300"),
+			("FR", "0033 1 42 68 53 00", "33142685300"),
+		] {
+			let decorator = PhoneNumberType::new(country);
+			let stored = decorator.process_bind_param(&number.to_string()).unwrap();
+			let retrieved = decorator.process_result_value(&stored).unwrap();
+
+			assert_eq!(retrieved, expected);
+		}
+	}
+
+	#[test]
+	fn test_phone_number_formatting_strips_extensions() {
+		for (country, number, expected) in [
+			("US", "555-123-4567 x89", "15551234567"),
+			("US", "555-123-4567 ext. 89", "15551234567"),
+			("GB", "020 7123 4567 x89", "442071234567"),
+		] {
+			let decorator = PhoneNumberType::new(country);
+			let stored = decorator.process_bind_param(&number.to_string()).unwrap();
+			let retrieved = decorator.process_result_value(&stored).unwrap();
+
+			assert_eq!(retrieved, expected);
+		}
 	}
 
 	#[test]
