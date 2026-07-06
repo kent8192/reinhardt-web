@@ -310,7 +310,9 @@ The resolution rules are:
   closure (forward), skipping anything already applied.
 
 `--plan` never mutates the database, including the migration bookkeeping table:
-on a fresh database a dry-run leaves it uncreated.
+on a fresh database a dry-run leaves it uncreated. Apply plans are displayed in
+the same dependency-resolved order used by real migration execution, including
+cross-app dependencies.
 
 ### `collect_migrations!` Macro and `linkme` Dependency
 
