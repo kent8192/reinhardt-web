@@ -70,19 +70,20 @@ async fn keyed_depends_resolves_multiple_bindings_for_same_value_type() {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ConfigError(&'static str);
 
+type CheckedAppConfig = Result<AppConfig, ConfigError>;
+
 #[serial(di_registry)]
 #[tokio::test]
 async fn depends_resolves_self_keyed_result_values_literally() {
 	let registry = global_registry();
-	let _guard = registry.register_override::<KeyedFactoryOutput<
-		SelfKey<Result<AppConfig, ConfigError>>,
-		Result<AppConfig, ConfigError>,
-	>, _, _>(DependencyScope::Transient, |_ctx| async {
-		Ok(KeyedFactoryOutput::new(Ok(AppConfig { host: "checked" })))
-	});
+	let _guard = registry
+		.register_override::<KeyedFactoryOutput<SelfKey<CheckedAppConfig>, CheckedAppConfig>, _, _>(
+			DependencyScope::Transient,
+			|_ctx| async { Ok(KeyedFactoryOutput::new(Ok(AppConfig { host: "checked" }))) },
+		);
 	let ctx = InjectionContext::builder(Arc::new(SingletonScope::new())).build();
 
-	let checked = Depends::<Result<AppConfig, ConfigError>>::resolve_from_registry(&ctx, true)
+	let checked = Depends::<CheckedAppConfig>::resolve_from_registry(&ctx, true)
 		.await
 		.expect("result dependency must resolve");
 

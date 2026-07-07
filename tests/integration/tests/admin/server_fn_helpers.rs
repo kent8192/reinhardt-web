@@ -10,7 +10,7 @@ use reinhardt_admin::server::{AdminAuthenticatedUser, AdminDefaultUser};
 use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 use reinhardt_db::backends::dialect::PostgresBackend;
 use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
-use reinhardt_di::{Depends, InjectionContext, SingletonScope};
+use reinhardt_di::{InjectionContext, KeyedDepends, SingletonScope};
 use reinhardt_http::AuthState;
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_query::prelude::{
@@ -23,8 +23,8 @@ use sqlx::Executor;
 use std::sync::Arc;
 use uuid::Uuid;
 
-pub(super) type AdminSiteDepends = Depends<AdminSiteKey, AdminSite>;
-pub(super) type AdminDatabaseDepends = Depends<AdminDatabaseKey, AdminDatabase>;
+pub(super) type AdminSiteDepends = KeyedDepends<AdminSiteKey, AdminSite>;
+pub(super) type AdminDatabaseDepends = KeyedDepends<AdminDatabaseKey, AdminDatabase>;
 pub(super) type ServerFnContext = (AdminSiteDepends, AdminDatabaseDepends);
 pub(super) type UuidPkContext = (AdminSiteDepends, AdminDatabaseDepends, sqlx::PgPool);
 
@@ -101,11 +101,11 @@ pub fn make_auth_user() -> AdminAuthenticatedUser {
 }
 
 fn admin_site_dep(site: AdminSite) -> AdminSiteDepends {
-	Depends::from_value(site)
+	KeyedDepends::from_value(site)
 }
 
 fn admin_database_dep(db: AdminDatabase) -> AdminDatabaseDepends {
-	Depends::from_value(db)
+	KeyedDepends::from_value(db)
 }
 
 /// A ModelAdmin implementation that denies all permissions.

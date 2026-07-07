@@ -1,6 +1,7 @@
+use reinhardt::get;
+use reinhardt::http::Response;
+use reinhardt::views::ViewResult;
 use reinhardt_di::{KeyedDepends, KeyedFactoryOutput, injectable, injectable_key};
-use reinhardt_http::{Response, ViewResult};
-use reinhardt_macros::get;
 
 #[injectable_key]
 struct ConfigKey;
@@ -16,9 +17,7 @@ async fn app_config() -> KeyedFactoryOutput<ConfigKey, AppConfig> {
 }
 
 #[get("/hello", name = "hello")]
-async fn hello(
-	#[inject] config: KeyedDepends<ConfigKey, AppConfig>,
-) -> ViewResult<Response> {
+async fn hello(#[inject] config: KeyedDepends<ConfigKey, AppConfig>) -> ViewResult<Response> {
 	Ok(Response::ok().with_body(config.value.to_string()))
 }
 

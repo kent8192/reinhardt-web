@@ -5,8 +5,12 @@
 
 #![cfg(feature = "di")]
 
-use reinhardt_di::{DiError, Injectable, InjectionContext, SingletonScope};
+use reinhardt_di::{
+	DependencyScope, Depends, DiError, Injectable, InjectionContext, KeyedFactoryOutput, SelfKey,
+	SingletonScope, global_registry,
+};
 use reinhardt_grpc::grpc_handler;
+use serial_test::serial;
 use std::sync::{Arc, Mutex};
 use tonic::{Request, Response, Status};
 
@@ -71,6 +75,11 @@ struct GetUserRequest {
 	id: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ProviderConfig {
+	prefix: &'static str,
+}
+
 /// Test service implementation
 struct TestService {}
 
@@ -114,6 +123,16 @@ impl TestService {
 		let user_id = &request.into_inner().id;
 		let user = db.fetch_user(user_id).await.map_err(Status::not_found)?;
 		Ok(Response::new(user))
+	}
+
+	#[grpc_handler]
+	async fn get_provider_config(
+		&self,
+		request: Request<GetUserRequest>,
+		#[inject] config: Depends<ProviderConfig>,
+	) -> Result<Response<String>, Status> {
+		let user_id = request.into_inner().id;
+		Ok(Response::new(format!("{}:{}", config.prefix, user_id)))
 	}
 }
 
@@ -210,4 +229,33 @@ async fn test_grpc_handler_cache_control() {
 	// Call handler second time
 	let response2 = service.get_user_uncached(request2).await;
 	assert!(response2.is_ok());
+}
+
+#[serial(di_registry)]
+#[tokio::test]
+async fn test_grpc_handler_self_keyed_depends() {
+	let registry = global_registry();
+	registry.register_async::<KeyedFactoryOutput<SelfKey<ProviderConfig>, ProviderConfig>, _, _>(
+		DependencyScope::Request,
+		|_ctx| async {
+			Ok(KeyedFactoryOutput::new(ProviderConfig {
+				prefix: "provider",
+			}))
+		},
+	);
+	let singleton_scope = Arc::new(SingletonScope::new());
+	let ctx = Arc::new(InjectionContext::builder(singleton_scope).build());
+	let service = TestService {};
+
+	let mut request = Request::new(GetUserRequest {
+		id: "123".to_string(),
+	});
+	request.extensions_mut().insert(ctx);
+
+	let response = service
+		.get_provider_config(request)
+		.await
+		.expect("self-keyed Depends<T> should resolve in grpc_handler");
+
+	assert_eq!(response.into_inner(), "provider:123");
 }

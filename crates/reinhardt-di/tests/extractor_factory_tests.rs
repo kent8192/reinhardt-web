@@ -12,8 +12,8 @@ use bytes::Bytes;
 use hyper::{HeaderMap, Method, Version, header};
 use reinhardt_di::params::{Json, ParamContext, Path, Query};
 use reinhardt_di::{
-	DiError, FactoryOutput, Injectable, InjectableKey, InjectionContext, Request, SingletonScope,
-	global_registry, injectable,
+	DiError, Injectable, InjectableKey, InjectionContext, KeyedFactoryOutput, Request,
+	SingletonScope, global_registry, injectable,
 };
 use reinhardt_http::PathParams;
 use rstest::rstest;
@@ -213,8 +213,10 @@ struct AuthoredItemKey;
 impl InjectableKey for AuthoredItemKey {}
 
 #[injectable(scope = "request")]
-async fn authored_item(#[inject] path: Path<i64>) -> FactoryOutput<AuthoredItemKey, AuthoredItem> {
-	FactoryOutput::new(AuthoredItem { id: path.0 })
+async fn authored_item(
+	#[inject] path: Path<i64>,
+) -> KeyedFactoryOutput<AuthoredItemKey, AuthoredItem> {
+	KeyedFactoryOutput::new(AuthoredItem { id: path.0 })
 }
 
 #[rstest]
@@ -230,14 +232,14 @@ async fn injectable_factory_can_consume_path_extractor() {
 	// Act — resolving the keyed factory output triggers the provider, which itself
 	// resolves `Path<i64>` through the new Injectable impl.
 	let resolved = ctx
-		.resolve::<FactoryOutput<AuthoredItemKey, AuthoredItem>>()
+		.resolve::<KeyedFactoryOutput<AuthoredItemKey, AuthoredItem>>()
 		.await;
 
 	// Assert
 	let item = resolved.expect("factory resolution must succeed end-to-end");
 	assert_eq!(item.as_ref().as_ref(), &AuthoredItem { id: 7 });
 	assert!(
-		global_registry().is_registered::<FactoryOutput<AuthoredItemKey, AuthoredItem>>(),
+		global_registry().is_registered::<KeyedFactoryOutput<AuthoredItemKey, AuthoredItem>>(),
 		"the factory registration submitted via inventory must be live"
 	);
 }
@@ -281,8 +283,8 @@ impl InjectableKey for AuthoredItemWithCtxKey {}
 async fn authored_item_with_ctx(
 	#[inject] path: Path<i64>,
 	#[inject] app: AppContext,
-) -> FactoryOutput<AuthoredItemWithCtxKey, AuthoredItemWithCtx> {
-	FactoryOutput::new(AuthoredItemWithCtx {
+) -> KeyedFactoryOutput<AuthoredItemWithCtxKey, AuthoredItemWithCtx> {
+	KeyedFactoryOutput::new(AuthoredItemWithCtx {
 		id: path.0,
 		tag: app.tag,
 	})
@@ -300,7 +302,7 @@ async fn injectable_factory_mixes_path_extractor_and_depends() {
 
 	// Act
 	let resolved = ctx
-		.resolve::<FactoryOutput<AuthoredItemWithCtxKey, AuthoredItemWithCtx>>()
+		.resolve::<KeyedFactoryOutput<AuthoredItemWithCtxKey, AuthoredItemWithCtx>>()
 		.await;
 
 	// Assert

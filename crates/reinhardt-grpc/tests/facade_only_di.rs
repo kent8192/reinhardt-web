@@ -41,7 +41,7 @@ tonic = "0.14.2"
 	fs::write(
 		crate_dir.path().join("src/main.rs"),
 		format!(
-			r#"use {crate_ident}::di::{{Depends, InjectableKey, InjectionContext}};
+			r#"use {crate_ident}::di::{{KeyedDepends, InjectableKey, InjectionContext}};
 use {crate_ident}::grpc::{{GrpcRequestExt, grpc_handler}};
 use std::sync::Arc;
 use tonic::{{Request, Response, Status}};
@@ -57,7 +57,7 @@ struct MyResponse;
 #[grpc_handler]
 async fn handler(
 	request: Request<MyRequest>,
-	#[inject] _service: Depends<ConfigKey, ConfigService>,
+	#[inject] _service: KeyedDepends<ConfigKey, ConfigService>,
 ) -> Result<Response<MyResponse>, Status> {{
 	let _ = request.into_inner();
 	Ok(Response::new(MyResponse))

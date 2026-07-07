@@ -54,7 +54,7 @@ impl Injectable for MyConfig {
     }
 }
 
-// Case 1: #[inject] with non-Depends type (requires Clone)
+// Case 1: #[inject] with non-wrapper type (requires Clone)
 #[injectable(scope = "transient")]
 async fn make_handler(#[inject] service: MyService) -> KeyedFactoryOutput<HandlerKey, String> {
 	KeyedFactoryOutput::new(service.value)

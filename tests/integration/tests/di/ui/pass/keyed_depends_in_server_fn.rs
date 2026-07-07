@@ -1,5 +1,5 @@
+use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use reinhardt_di::{KeyedDepends, KeyedFactoryOutput, injectable, injectable_key};
-use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 
 #[injectable_key]
 pub struct ConfigKey;

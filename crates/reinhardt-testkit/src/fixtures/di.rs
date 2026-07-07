@@ -39,11 +39,11 @@
 //!
 //! ## FastAPI-Style Pattern
 //!
-//! Similar to FastAPI's `Depends()`, these fixtures enable clean dependency injection
+//! Similar to FastAPI's `KeyedDepends()`, these fixtures enable clean dependency injection
 //! in tests without boilerplate setup code:
 //!
 //! ```rust,no_run
-//! use reinhardt_di::{Depends, FactoryOutput, InjectableKey};
+//! use reinhardt_di::{KeyedDepends, KeyedFactoryOutput, InjectableKey};
 //! use reinhardt_testkit::fixtures::injection_context;
 //! use rstest::*;
 //!
@@ -60,12 +60,12 @@
 //! async fn test_depends_pattern(injection_context: reinhardt_di::InjectionContext) {
 //!     injection_context
 //!         .singleton_scope()
-//!         .set(FactoryOutput::<ConfigKey, Config>::new(Config {
+//!         .set(KeyedFactoryOutput::<ConfigKey, Config>::new(Config {
 //!             api_key: "test_key".to_string(),
 //!         }));
 //!
-//!     // Use Depends<K, T> for keyed provider output resolution.
-//!     let config = Depends::<ConfigKey, Config>::builder()
+//!     // Use KeyedDepends<K, T> for keyed provider output resolution.
+//!     let config = KeyedDepends::<ConfigKey, Config>::builder()
 //!         .resolve(&injection_context)
 //!         .await
 //!         .unwrap();
@@ -197,10 +197,10 @@ pub fn singleton_scope() -> Arc<SingletonScope> {
 /// }
 /// ```
 ///
-/// ## With `Depends<K, T>`
+/// ## With `KeyedDepends<K, T>`
 ///
 /// ```rust,no_run
-/// use reinhardt_di::{Depends, FactoryOutput, InjectableKey, InjectionContext};
+/// use reinhardt_di::{KeyedDepends, KeyedFactoryOutput, InjectableKey, InjectionContext};
 /// use reinhardt_testkit::fixtures::injection_context;
 /// use rstest::*;
 ///
@@ -217,12 +217,12 @@ pub fn singleton_scope() -> Arc<SingletonScope> {
 /// async fn test_with_depends(injection_context: InjectionContext) {
 ///     injection_context
 ///         .singleton_scope()
-///         .set(FactoryOutput::<DatabaseKey, Database>::new(Database {
+///         .set(KeyedFactoryOutput::<DatabaseKey, Database>::new(Database {
 ///             url: "postgres://localhost/db".to_string(),
 ///         }));
 ///
 ///     // FastAPI-style dependency resolution
-///     let db = Depends::<DatabaseKey, Database>::builder()
+///     let db = KeyedDepends::<DatabaseKey, Database>::builder()
 ///         .resolve(&injection_context)
 ///         .await
 ///         .unwrap();
@@ -519,7 +519,7 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_di::{Depends, DiResult, FactoryOutput, Injectable, InjectableKey};
+	use reinhardt_di::{DiResult, Injectable, InjectableKey, KeyedDepends, KeyedFactoryOutput};
 
 	// Test structures
 	#[derive(Clone, Debug, PartialEq)]
@@ -592,16 +592,14 @@ mod tests {
 	#[tokio::test]
 	async fn test_depends_with_fixtures(injection_context: InjectionContext) {
 		// Register keyed TestConfig output in this test's isolated singleton scope.
-		injection_context
-			.singleton_scope()
-			.set(FactoryOutput::<TestConfigKey, TestConfig>::new(
-				TestConfig {
-					value: "test_config".to_string(),
-				},
-			));
+		injection_context.singleton_scope().set(
+			KeyedFactoryOutput::<TestConfigKey, TestConfig>::new(TestConfig {
+				value: "test_config".to_string(),
+			}),
+		);
 
-		// Test Depends<K, T> integration with fixtures.
-		let config = Depends::<TestConfigKey, TestConfig>::builder()
+		// Test KeyedDepends<K, T> integration with fixtures.
+		let config = KeyedDepends::<TestConfigKey, TestConfig>::builder()
 			.resolve(&injection_context)
 			.await
 			.unwrap();
@@ -743,15 +741,15 @@ mod tests {
 	) {
 		// Create context with keyed override.
 		let ctx = injection_context_with_overrides(singleton_scope, |scope| {
-			scope.set(FactoryOutput::<MockDatabaseKey, MockDatabase>::new(
+			scope.set(KeyedFactoryOutput::<MockDatabaseKey, MockDatabase>::new(
 				MockDatabase {
 					url: "test://database".to_string(),
 				},
 			));
 		});
 
-		// Use Depends<K, T> - should also get the overridden value.
-		let db = Depends::<MockDatabaseKey, MockDatabase>::builder()
+		// Use KeyedDepends<K, T> - should also get the overridden value.
+		let db = KeyedDepends::<MockDatabaseKey, MockDatabase>::builder()
 			.resolve(&ctx)
 			.await
 			.unwrap();

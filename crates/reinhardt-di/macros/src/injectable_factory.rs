@@ -44,30 +44,6 @@ fn direct_provider_return(di_crate: &TokenStream, value_ty: Type) -> ProviderRet
 	}
 }
 
-fn keyed_depends_key_value_types(ty: &Type) -> Option<(&Type, &Type)> {
-	let Type::Path(type_path) = ty else {
-		return None;
-	};
-	let segment = type_path.path.segments.last()?;
-	if segment.ident != "KeyedDepends" {
-		return None;
-	}
-	let PathArguments::AngleBracketed(args) = &segment.arguments else {
-		return None;
-	};
-	if args.args.len() != 2 {
-		return None;
-	}
-	let mut generic_args = args.args.iter();
-	let GenericArgument::Type(key_ty) = generic_args.next()? else {
-		return None;
-	};
-	let GenericArgument::Type(value_ty) = generic_args.next()? else {
-		return None;
-	};
-	Some((key_ty, value_ty))
-}
-
 fn provider_return_shape(di_crate: &TokenStream, ty: &Type) -> ProviderReturn {
 	let Type::Path(type_path) = ty else {
 		return direct_provider_return(di_crate, ty.clone());
@@ -103,24 +79,15 @@ fn generate_inject_resolver_expr(
 	ctx: TokenStream,
 	use_cache: bool,
 ) -> TokenStream {
-	if let Some((key_ty, value_ty)) = keyed_depends_key_value_types(ty) {
-		quote! {
-			{
-				#di_crate::KeyedDepends::<#key_ty, #value_ty>::resolve_from_registry(#ctx, #use_cache)
-					.await
-			}
-		}
-	} else {
-		quote! {
-			{
-				use #di_crate::{
-					__InjectFallbackResolver as _,
-					__InjectWrapperResolver as _,
-				};
-				#di_crate::__InjectResolver::<#ty>::new()
-					.__resolve_inject_parameter(#ctx, #use_cache)
-					.await
-			}
+	quote! {
+		{
+			use #di_crate::{
+				__InjectFallbackResolver as _,
+				__InjectWrapperResolver as _,
+			};
+			#di_crate::__InjectResolver::<#ty>::new()
+				.__resolve_inject_parameter(#ctx, #use_cache)
+				.await
 		}
 	}
 }

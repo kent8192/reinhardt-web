@@ -1,19 +1,19 @@
 //! Regression tests for kent8192/reinhardt-web#4685.
 //!
-//! `#[injectable]` previously resolved non-`KeyedDepends` `#[inject]`
+//! `#[injectable]` previously resolved non-wrapper `#[inject]`
 //! parameters with `ctx.resolve::<T>()` only — no fallback to
 //! `Injectable::inject(ctx)` — so types whose only DI surface is a
 //! manual `impl Injectable` (and that are not pre-registered) failed at
 //! runtime with `DependencyNotRegistered`, surfacing as a generic 500 to
-//! HTTP callers. The fix routes the non-`KeyedDepends` branch through
-//! the runtime trait dispatcher, which performs registry-first +
-//! `T::inject` fallback for non-wrapper parameters.
+//! HTTP callers. The fix routes injected parameters through the runtime
+//! trait dispatcher, which performs registry-first + `T::inject` fallback
+//! for non-wrapper parameters.
 //!
 //! The tests cover both `#[inject] x: T` and `#[inject] x: KeyedDepends<K, T>`:
 //!
 //! - **Variant 1** uses a manually-Injectable type that is *not* registered,
 //!   so the only way it can resolve is through the new `Injectable::inject`
-//!   fallback baked into the macro's non-`KeyedDepends` branch.
+//!   fallback baked into the runtime resolver.
 //! - **Variant 2** uses a keyed *factory-only* type with **no** `impl
 //!   Injectable`, registered via the global registry. This is both a runtime
 //!   guard (only `resolve_from_registry` can satisfy it) and a compile-time
@@ -29,8 +29,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use reinhardt_di::{
-	DiResult, FactoryOutput, Injectable, InjectableKey, InjectableType, InjectionContext,
-	KeyedDepends, KeyedFactoryOutput, SingletonScope, global_registry, injectable,
+	DiResult, Injectable, InjectableKey, InjectableType, InjectionContext, KeyedDepends,
+	KeyedFactoryOutput, SingletonScope, global_registry, injectable,
 };
 
 static FRESH_WRAPPER_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -78,7 +78,7 @@ impl InjectableKey for DerivedDependsUserKey {}
 #[injectable(scope = "transient")]
 async fn derived_user_factory(
 	#[inject] session: ManualSession,
-) -> FactoryOutput<DerivedUserKey, DerivedUser> {
+) -> KeyedFactoryOutput<DerivedUserKey, DerivedUser> {
 	KeyedFactoryOutput::new(DerivedUser {
 		user_id: session.user_id,
 	})
@@ -87,7 +87,7 @@ async fn derived_user_factory(
 #[injectable(scope = "transient")]
 async fn derived_depends_user_factory(
 	#[inject] session: KeyedDepends<ManualSessionKey, ManualSession>,
-) -> FactoryOutput<DerivedDependsUserKey, DerivedDependsUser> {
+) -> KeyedFactoryOutput<DerivedDependsUserKey, DerivedDependsUser> {
 	KeyedFactoryOutput::new(DerivedDependsUser {
 		user_id: session.user_id,
 	})
@@ -149,8 +149,8 @@ async fn factory_resolves_keyed_depends_manual_injectable_via_registry_output() 
 /// Variant 2: `KeyedDepends<K, T>` form against a *factory-only* type — i.e. one
 /// that deliberately has **no** `impl Injectable`. This is the regression
 /// guard the previous revision lacked: if the macro ever switches the
-/// direct `KeyedDepends<K, T>` branch back to a fallback path that requires
-/// `T: Injectable`, `paged_request_factory` below stops compiling.
+/// `KeyedDepends<K, T>` resolver path back to a fallback that requires `T:
+/// Injectable`, `paged_request_factory` below stops compiling.
 ///
 /// At the same time, the only DI surface available for `FactoryOnlyConfig`
 /// is the registry, so the runtime path exercised here is unambiguously
@@ -180,7 +180,7 @@ impl InjectableKey for PagedRequestKey {}
 #[injectable(scope = "transient")]
 async fn paged_request_factory(
 	#[inject] config: KeyedDepends<FactoryOnlyConfigKey, FactoryOnlyConfig>,
-) -> FactoryOutput<PagedRequestKey, PagedRequest> {
+) -> KeyedFactoryOutput<PagedRequestKey, PagedRequest> {
 	KeyedFactoryOutput::new(PagedRequest {
 		page_size: config.page_size,
 	})
@@ -279,7 +279,7 @@ impl InjectableKey for FreshLazyReportKey {}
 #[injectable(scope = "transient")]
 async fn fresh_lazy_report_factory(
 	#[inject(cache = false)] config: FreshFactoryOnlyConfig,
-) -> FactoryOutput<FreshLazyReportKey, FreshLazyReport> {
+) -> KeyedFactoryOutput<FreshLazyReportKey, FreshLazyReport> {
 	KeyedFactoryOutput::new(FreshLazyReport {
 		page_size: config.page_size,
 	})
@@ -331,7 +331,7 @@ impl InjectableKey for LazyRequestKey {}
 #[injectable(scope = "transient")]
 async fn lazy_request_factory(
 	#[inject] config: Lazy<FactoryOnlyConfig>,
-) -> FactoryOutput<LazyRequestKey, LazyRequest> {
+) -> KeyedFactoryOutput<LazyRequestKey, LazyRequest> {
 	KeyedFactoryOutput::new(LazyRequest {
 		page_size: config.page_size,
 	})
@@ -410,7 +410,7 @@ impl InjectableKey for DualModeReportKey {}
 #[injectable(scope = "transient")]
 async fn dual_mode_report_factory(
 	#[inject] mode: DualMode,
-) -> FactoryOutput<DualModeReportKey, DualModeReport> {
+) -> KeyedFactoryOutput<DualModeReportKey, DualModeReport> {
 	KeyedFactoryOutput::new(DualModeReport {
 		source: mode.source,
 	})
