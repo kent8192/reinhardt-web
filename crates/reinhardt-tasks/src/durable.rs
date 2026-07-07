@@ -15,6 +15,7 @@ use sqlx::{
 };
 use std::{fmt, str::FromStr, sync::Arc, time::Duration};
 use thiserror::Error;
+use uuid::Uuid;
 
 /// Durable job identifier.
 pub type JobId = TaskId;
@@ -596,6 +597,16 @@ pub trait DurableJobStore: Send + Sync {
 		expected_cancellation_requested: bool,
 	) -> Result<bool, DurableQueueError>;
 
+	/// Updates a job and appends the transition event atomically when the CAS matches.
+	async fn update_job_with_event_if_current(
+		&self,
+		record: DurableJobRecord,
+		expected_state: JobState,
+		expected_attempt_count: u32,
+		expected_cancellation_requested: bool,
+		event: JobEventDraft,
+	) -> Result<bool, DurableQueueError>;
+
 	/// Atomically claims the next queued job for the named queue.
 	async fn claim_next(
 		&self,
@@ -650,6 +661,25 @@ where
 				expected_state,
 				expected_attempt_count,
 				expected_cancellation_requested,
+			)
+			.await
+	}
+
+	async fn update_job_with_event_if_current(
+		&self,
+		record: DurableJobRecord,
+		expected_state: JobState,
+		expected_attempt_count: u32,
+		expected_cancellation_requested: bool,
+		event: JobEventDraft,
+	) -> Result<bool, DurableQueueError> {
+		(**self)
+			.update_job_with_event_if_current(
+				record,
+				expected_state,
+				expected_attempt_count,
+				expected_cancellation_requested,
+				event,
 			)
 			.await
 	}
@@ -744,7 +774,6 @@ where
 pub struct DurableQueue<S> {
 	store: S,
 	lifecycle: JobLifecycleService,
-	publisher: JobEventPublisher<S>,
 	retry_strategy: RetryStrategy,
 	default_queue: String,
 	claim_lease: Duration,
@@ -757,7 +786,6 @@ where
 	/// Creates a durable queue backed by the given store.
 	pub fn new(store: S) -> Self {
 		Self {
-			publisher: JobEventPublisher::new(store.clone()),
 			store,
 			lifecycle: JobLifecycleService,
 			retry_strategy: RetryStrategy::exponential_backoff(),
@@ -872,16 +900,16 @@ where
 		record.failure_kind = None;
 		record.failure_message = None;
 		record.retry_after = None;
-		self.update_job_if_current(
+		self.update_job_transition_if_current(
 			record.clone(),
 			from,
 			expected_attempt_count,
 			expected_cancellation_requested,
+			event_kind,
+			None,
+			now,
 		)
 		.await?;
-		self.publisher
-			.publish_transition(&record, event_kind, from, None, now)
-			.await?;
 		Ok(record.snapshot())
 	}
 
@@ -915,22 +943,16 @@ where
 		} else {
 			None
 		};
-		self.update_job_if_current(
+		self.update_job_transition_if_current(
 			record.clone(),
 			from,
 			expected_attempt_count,
 			expected_cancellation_requested,
+			event_kind,
+			Some(failure.message.clone()),
+			now,
 		)
 		.await?;
-		self.publisher
-			.publish_transition(
-				&record,
-				event_kind,
-				from,
-				Some(failure.message.clone()),
-				now,
-			)
-			.await?;
 		Ok(record.snapshot())
 	}
 
@@ -952,22 +974,16 @@ where
 		record.failure_message = Some(failure.message.clone());
 		record.result = None;
 		record.retry_after = None;
-		self.update_job_if_current(
+		self.update_job_transition_if_current(
 			record.clone(),
 			from,
 			expected_attempt_count,
 			expected_cancellation_requested,
+			event_kind,
+			Some(failure.message.clone()),
+			now,
 		)
 		.await?;
-		self.publisher
-			.publish_transition(
-				&record,
-				event_kind,
-				from,
-				Some(failure.message.clone()),
-				now,
-			)
-			.await?;
 		Ok(record.snapshot())
 	}
 
@@ -995,33 +1011,27 @@ where
 			let event_kind = self
 				.lifecycle
 				.transition(&mut record, JobState::Canceled, now)?;
-			self.update_job_if_current(
+			self.update_job_transition_if_current(
 				record.clone(),
 				from,
 				expected_attempt_count,
 				expected_cancellation_requested,
+				event_kind,
+				None,
+				now,
 			)
 			.await?;
-			self.publisher
-				.publish_transition(&record, event_kind, from, None, now)
-				.await?;
 		} else {
-			self.update_job_if_current(
+			self.update_job_transition_if_current(
 				record.clone(),
 				from,
 				expected_attempt_count,
 				expected_cancellation_requested,
+				JobEventKind::CancellationRequested,
+				None,
+				now,
 			)
 			.await?;
-			self.publisher
-				.publish_transition(
-					&record,
-					JobEventKind::CancellationRequested,
-					from,
-					None,
-					now,
-				)
-				.await?;
 		}
 
 		Ok(record.snapshot())
@@ -1039,16 +1049,16 @@ where
 			.transition(&mut record, JobState::Canceled, now)?;
 		record.cancellation_requested = true;
 		record.retry_after = None;
-		self.update_job_if_current(
+		self.update_job_transition_if_current(
 			record.clone(),
 			from,
 			expected_attempt_count,
 			expected_cancellation_requested,
+			event_kind,
+			None,
+			now,
 		)
 		.await?;
-		self.publisher
-			.publish_transition(&record, event_kind, from, None, now)
-			.await?;
 		Ok(record.snapshot())
 	}
 
@@ -1062,16 +1072,16 @@ where
 		let event_kind = self
 			.lifecycle
 			.transition(&mut record, JobState::Queued, now)?;
-		self.update_job_if_current(
+		self.update_job_transition_if_current(
 			record.clone(),
 			from,
 			expected_attempt_count,
 			expected_cancellation_requested,
+			event_kind,
+			None,
+			now,
 		)
 		.await?;
-		self.publisher
-			.publish_transition(&record, event_kind, from, None, now)
-			.await?;
 		Ok(record.snapshot())
 	}
 
@@ -1138,6 +1148,46 @@ where
 			}))
 		}
 	}
+
+	async fn update_job_transition_if_current(
+		&self,
+		record: DurableJobRecord,
+		expected_state: JobState,
+		expected_attempt_count: u32,
+		expected_cancellation_requested: bool,
+		event_kind: JobEventKind,
+		message: Option<String>,
+		created_at: DateTime<Utc>,
+	) -> Result<(), DurableQueueError> {
+		let event = JobEventDraft {
+			job_id: record.id,
+			kind: event_kind,
+			from_state: Some(expected_state),
+			to_state: record.state,
+			message,
+			created_at,
+		};
+		if self
+			.store
+			.update_job_with_event_if_current(
+				record.clone(),
+				expected_state,
+				expected_attempt_count,
+				expected_cancellation_requested,
+				event,
+			)
+			.await?
+		{
+			Ok(())
+		} else {
+			Err(DurableQueueError::Conflict(JobTransitionConflict {
+				job_id: record.id,
+				from: expected_state,
+				to: record.state,
+				reason: "job changed before the lifecycle update could be committed".to_string(),
+			}))
+		}
+	}
 }
 
 /// SQLite durable job store.
@@ -1183,6 +1233,12 @@ impl SqliteDurableJobStore {
 		});
 
 		if is_in_memory {
+			if self.pool.options().get_max_connections() <= 1
+				|| self.in_memory_schema_is_shared().await?
+			{
+				return Ok(());
+			}
+
 			return Err(DurableQueueError::Store(
 				"SqliteDurableJobStore::from_pool cannot safely use private in-memory SQLite pools; use SqliteDurableJobStore::new(\"sqlite::memory:\") or a shared/file-backed database"
 					.to_string(),
@@ -1190,6 +1246,26 @@ impl SqliteDurableJobStore {
 		}
 
 		Ok(())
+	}
+
+	async fn in_memory_schema_is_shared(&self) -> Result<bool, DurableQueueError> {
+		let probe_table = format!("__reinhardt_durable_pool_probe_{}", Uuid::new_v4().simple());
+		let create_probe = format!("CREATE TABLE {probe_table} (id INTEGER PRIMARY KEY)");
+		let drop_probe = format!("DROP TABLE IF EXISTS {probe_table}");
+		let mut first = self.pool.acquire().await?;
+		sqlx::query(&create_probe).execute(&mut *first).await?;
+
+		let mut second = self.pool.acquire().await?;
+		let visible_from_second: i64 = sqlx::query_scalar(
+			"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
+		)
+		.bind(&probe_table)
+		.fetch_one(&mut *second)
+		.await?;
+		drop(second);
+
+		sqlx::query(&drop_probe).execute(&mut *first).await?;
+		Ok(visible_from_second > 0)
 	}
 
 	async fn create_tables(&self) -> Result<(), DurableQueueError> {
@@ -1495,6 +1571,85 @@ impl DurableJobStore for SqliteDurableJobStore {
 		Ok(result.rows_affected() > 0)
 	}
 
+	async fn update_job_with_event_if_current(
+		&self,
+		record: DurableJobRecord,
+		expected_state: JobState,
+		expected_attempt_count: u32,
+		expected_cancellation_requested: bool,
+		event: JobEventDraft,
+	) -> Result<bool, DurableQueueError> {
+		let mut tx = self.pool.begin().await?;
+		let result = sqlx::query(
+			r#"
+			UPDATE durable_jobs SET
+				queue = ?,
+				kind = ?,
+				target = ?,
+				state = ?,
+				attempt_count = ?,
+				max_attempts = ?,
+				priority = ?,
+				payload = ?,
+				result = ?,
+				failure_kind = ?,
+				failure_message = ?,
+				retry_after = ?,
+				cancellation_requested = ?,
+				created_at = ?,
+				updated_at = ?,
+				started_at = ?,
+				lease_expires_at = ?,
+				finished_at = ?
+			WHERE id = ? AND state = ? AND attempt_count = ? AND cancellation_requested = ?
+			"#,
+		)
+		.bind(record.queue)
+		.bind(record.kind)
+		.bind(record.target)
+		.bind(record.state.as_str())
+		.bind(i64::from(record.attempt_count))
+		.bind(i64::from(record.max_attempts))
+		.bind(i64::from(record.priority))
+		.bind(serde_json::to_string(&record.payload)?)
+		.bind(
+			record
+				.result
+				.map(|result| serde_json::to_string(&result))
+				.transpose()?,
+		)
+		.bind(record.failure_kind)
+		.bind(record.failure_message)
+		.bind(record.retry_after.map(timestamp_millis))
+		.bind(if record.cancellation_requested {
+			1_i64
+		} else {
+			0_i64
+		})
+		.bind(timestamp_millis(record.created_at))
+		.bind(timestamp_millis(record.updated_at))
+		.bind(record.started_at.map(timestamp_millis))
+		.bind(record.lease_expires_at.map(timestamp_millis))
+		.bind(record.finished_at.map(timestamp_millis))
+		.bind(record.id.to_string())
+		.bind(expected_state.as_str())
+		.bind(i64::from(expected_attempt_count))
+		.bind(if expected_cancellation_requested {
+			1_i64
+		} else {
+			0_i64
+		})
+		.execute(&mut *tx)
+		.await?;
+
+		let updated = result.rows_affected() > 0;
+		if updated {
+			insert_event_in_tx(&mut tx, event).await?;
+		}
+		tx.commit().await?;
+		Ok(updated)
+	}
+
 	async fn claim_next(
 		&self,
 		queue: &str,
@@ -1502,12 +1657,14 @@ impl DurableJobStore for SqliteDurableJobStore {
 		lease_expires_at: DateTime<Utc>,
 		retry_max_retries: u32,
 	) -> Result<Option<ClaimedJobRecord>, DurableQueueError> {
-		let mut tx = self.pool.begin().await?;
 		let now_millis = timestamp_millis(now);
 		let lease_expires_millis = timestamp_millis(lease_expires_at);
 
-		let expired_cancel_candidate: Option<String> = sqlx::query_scalar(
-			r#"
+		loop {
+			let mut tx = self.pool.begin().await?;
+
+			let expired_cancel_candidate: Option<String> = sqlx::query_scalar(
+				r#"
 			SELECT id
 			FROM durable_jobs
 			WHERE queue = ?
@@ -1518,16 +1675,16 @@ impl DurableJobStore for SqliteDurableJobStore {
 			ORDER BY priority DESC, created_at ASC
 			LIMIT 1
 			"#,
-		)
-		.bind(queue)
-		.bind(JobState::Running.as_str())
-		.bind(now_millis)
-		.fetch_optional(&mut *tx)
-		.await?;
+			)
+			.bind(queue)
+			.bind(JobState::Running.as_str())
+			.bind(now_millis)
+			.fetch_optional(&mut *tx)
+			.await?;
 
-		if let Some(expired_job_id) = expired_cancel_candidate {
-			let result = sqlx::query(
-				r#"
+			if let Some(expired_job_id) = expired_cancel_candidate {
+				let result = sqlx::query(
+					r#"
 				UPDATE durable_jobs
 				SET state = ?,
 					retry_after = NULL,
@@ -1541,40 +1698,40 @@ impl DurableJobStore for SqliteDurableJobStore {
 				  AND lease_expires_at IS NOT NULL
 				  AND lease_expires_at <= ?
 				"#,
-			)
-			.bind(JobState::Canceled.as_str())
-			.bind(now_millis)
-			.bind(now_millis)
-			.bind(&expired_job_id)
-			.bind(queue)
-			.bind(JobState::Running.as_str())
-			.bind(now_millis)
-			.execute(&mut *tx)
-			.await?;
-
-			if result.rows_affected() > 0 {
-				let job_id = expired_job_id
-					.parse()
-					.map_err(|error: uuid::Error| DurableQueueError::Store(error.to_string()))?;
-				insert_event_in_tx(
-					&mut tx,
-					JobEventDraft {
-						job_id,
-						kind: JobEventKind::Canceled,
-						from_state: Some(JobState::Running),
-						to_state: JobState::Canceled,
-						message: Some(
-							"job claim lease expired after cancellation request".to_string(),
-						),
-						created_at: now,
-					},
 				)
+				.bind(JobState::Canceled.as_str())
+				.bind(now_millis)
+				.bind(now_millis)
+				.bind(&expired_job_id)
+				.bind(queue)
+				.bind(JobState::Running.as_str())
+				.bind(now_millis)
+				.execute(&mut *tx)
 				.await?;
-			}
-		}
 
-		let expired_final_candidate: Option<String> = sqlx::query_scalar(
-			r#"
+				if result.rows_affected() > 0 {
+					let job_id = expired_job_id.parse().map_err(|error: uuid::Error| {
+						DurableQueueError::Store(error.to_string())
+					})?;
+					insert_event_in_tx(
+						&mut tx,
+						JobEventDraft {
+							job_id,
+							kind: JobEventKind::Canceled,
+							from_state: Some(JobState::Running),
+							to_state: JobState::Canceled,
+							message: Some(
+								"job claim lease expired after cancellation request".to_string(),
+							),
+							created_at: now,
+						},
+					)
+					.await?;
+				}
+			}
+
+			let expired_final_candidate: Option<String> = sqlx::query_scalar(
+				r#"
 			SELECT id
 			FROM durable_jobs
 			WHERE queue = ?
@@ -1589,18 +1746,18 @@ impl DurableJobStore for SqliteDurableJobStore {
 			ORDER BY priority DESC, created_at ASC
 			LIMIT 1
 			"#,
-		)
-		.bind(queue)
-		.bind(JobState::Running.as_str())
-		.bind(now_millis)
-		.bind(i64::from(retry_max_retries))
-		.fetch_optional(&mut *tx)
-		.await?;
+			)
+			.bind(queue)
+			.bind(JobState::Running.as_str())
+			.bind(now_millis)
+			.bind(i64::from(retry_max_retries))
+			.fetch_optional(&mut *tx)
+			.await?;
 
-		if let Some(expired_job_id) = expired_final_candidate {
-			let final_message = "job claim lease expired after maximum attempts";
-			let result = sqlx::query(
-				r#"
+			if let Some(expired_job_id) = expired_final_candidate {
+				let final_message = "job claim lease expired after maximum attempts";
+				let result = sqlx::query(
+					r#"
 				UPDATE durable_jobs
 				SET state = ?,
 					failure_kind = ?,
@@ -1620,41 +1777,41 @@ impl DurableJobStore for SqliteDurableJobStore {
 					OR (attempt_count - 1) >= ?
 				  )
 				"#,
-			)
-			.bind(JobState::FailedFinal.as_str())
-			.bind("claim_lease_expired")
-			.bind(final_message)
-			.bind(now_millis)
-			.bind(now_millis)
-			.bind(&expired_job_id)
-			.bind(queue)
-			.bind(JobState::Running.as_str())
-			.bind(now_millis)
-			.bind(i64::from(retry_max_retries))
-			.execute(&mut *tx)
-			.await?;
-
-			if result.rows_affected() > 0 {
-				let job_id = expired_job_id
-					.parse()
-					.map_err(|error: uuid::Error| DurableQueueError::Store(error.to_string()))?;
-				insert_event_in_tx(
-					&mut tx,
-					JobEventDraft {
-						job_id,
-						kind: JobEventKind::FailedFinal,
-						from_state: Some(JobState::Running),
-						to_state: JobState::FailedFinal,
-						message: Some(final_message.to_string()),
-						created_at: now,
-					},
 				)
+				.bind(JobState::FailedFinal.as_str())
+				.bind("claim_lease_expired")
+				.bind(final_message)
+				.bind(now_millis)
+				.bind(now_millis)
+				.bind(&expired_job_id)
+				.bind(queue)
+				.bind(JobState::Running.as_str())
+				.bind(now_millis)
+				.bind(i64::from(retry_max_retries))
+				.execute(&mut *tx)
 				.await?;
-			}
-		}
 
-		let candidate: Option<(String, String, i64, Option<i64>)> = sqlx::query_as(
-			r#"
+				if result.rows_affected() > 0 {
+					let job_id = expired_job_id.parse().map_err(|error: uuid::Error| {
+						DurableQueueError::Store(error.to_string())
+					})?;
+					insert_event_in_tx(
+						&mut tx,
+						JobEventDraft {
+							job_id,
+							kind: JobEventKind::FailedFinal,
+							from_state: Some(JobState::Running),
+							to_state: JobState::FailedFinal,
+							message: Some(final_message.to_string()),
+							created_at: now,
+						},
+					)
+					.await?;
+				}
+			}
+
+			let candidate: Option<(String, String, i64, Option<i64>)> = sqlx::query_as(
+				r#"
 			SELECT id, state, attempt_count, lease_expires_at
 			FROM durable_jobs
 			WHERE queue = ?
@@ -1673,28 +1830,28 @@ impl DurableJobStore for SqliteDurableJobStore {
 			ORDER BY priority DESC, created_at ASC
 			LIMIT 1
 			"#,
-		)
-		.bind(queue)
-		.bind(JobState::Queued.as_str())
-		.bind(now_millis)
-		.bind(JobState::FailedRetryable.as_str())
-		.bind(now_millis)
-		.bind(JobState::Running.as_str())
-		.bind(now_millis)
-		.bind(i64::from(retry_max_retries))
-		.fetch_optional(&mut *tx)
-		.await?;
+			)
+			.bind(queue)
+			.bind(JobState::Queued.as_str())
+			.bind(now_millis)
+			.bind(JobState::FailedRetryable.as_str())
+			.bind(now_millis)
+			.bind(JobState::Running.as_str())
+			.bind(now_millis)
+			.bind(i64::from(retry_max_retries))
+			.fetch_optional(&mut *tx)
+			.await?;
 
-		let Some((job_id, previous_state, expected_attempt_count, expected_lease_expires_at)) =
-			candidate
-		else {
-			tx.commit().await?;
-			return Ok(None);
-		};
-		let previous_state = JobState::from_str(&previous_state)?;
+			let Some((job_id, previous_state, expected_attempt_count, expected_lease_expires_at)) =
+				candidate
+			else {
+				tx.commit().await?;
+				return Ok(None);
+			};
+			let previous_state = JobState::from_str(&previous_state)?;
 
-		let result = sqlx::query(
-			r#"
+			let result = sqlx::query(
+				r#"
 			UPDATE durable_jobs
 			SET state = ?,
 				attempt_count = attempt_count + 1,
@@ -1714,49 +1871,50 @@ impl DurableJobStore for SqliteDurableJobStore {
 				)
 			  )
 			"#,
-		)
-		.bind(JobState::Running.as_str())
-		.bind(lease_expires_millis)
-		.bind(now_millis)
-		.bind(now_millis)
-		.bind(&job_id)
-		.bind(previous_state.as_str())
-		.bind(expected_attempt_count)
-		.bind(JobState::Running.as_str())
-		.bind(expected_lease_expires_at)
-		.bind(now_millis)
-		.execute(&mut *tx)
-		.await?;
-
-		if result.rows_affected() == 0 {
-			tx.commit().await?;
-			return Ok(None);
-		}
-
-		let row = sqlx::query("SELECT * FROM durable_jobs WHERE id = ?")
+			)
+			.bind(JobState::Running.as_str())
+			.bind(lease_expires_millis)
+			.bind(now_millis)
+			.bind(now_millis)
 			.bind(&job_id)
-			.fetch_one(&mut *tx)
+			.bind(previous_state.as_str())
+			.bind(expected_attempt_count)
+			.bind(JobState::Running.as_str())
+			.bind(expected_lease_expires_at)
+			.bind(now_millis)
+			.execute(&mut *tx)
 			.await?;
-		let claimed_job_id = job_id
-			.parse()
-			.map_err(|error: uuid::Error| DurableQueueError::Store(error.to_string()))?;
-		insert_event_in_tx(
-			&mut tx,
-			JobEventDraft {
-				job_id: claimed_job_id,
-				kind: JobEventKind::Claimed,
-				from_state: Some(previous_state),
-				to_state: JobState::Running,
-				message: None,
-				created_at: now,
-			},
-		)
-		.await?;
-		tx.commit().await?;
-		Ok(Some(ClaimedJobRecord {
-			previous_state,
-			record: row_to_record(row)?,
-		}))
+
+			if result.rows_affected() == 0 {
+				tx.commit().await?;
+				continue;
+			}
+
+			let row = sqlx::query("SELECT * FROM durable_jobs WHERE id = ?")
+				.bind(&job_id)
+				.fetch_one(&mut *tx)
+				.await?;
+			let claimed_job_id = job_id
+				.parse()
+				.map_err(|error: uuid::Error| DurableQueueError::Store(error.to_string()))?;
+			insert_event_in_tx(
+				&mut tx,
+				JobEventDraft {
+					job_id: claimed_job_id,
+					kind: JobEventKind::Claimed,
+					from_state: Some(previous_state),
+					to_state: JobState::Running,
+					message: None,
+					created_at: now,
+				},
+			)
+			.await?;
+			tx.commit().await?;
+			return Ok(Some(ClaimedJobRecord {
+				previous_state,
+				record: row_to_record(row)?,
+			}));
+		}
 	}
 
 	async fn append_event(&self, event: JobEventDraft) -> Result<JobEvent, DurableQueueError> {
@@ -2166,7 +2324,7 @@ mod tests {
 	async fn from_pool_rejects_private_in_memory_sqlite_pool() {
 		let pool = SqlitePoolOptions::new()
 			.max_connections(2)
-			.connect("sqlite::memory:")
+			.connect("sqlite://?mode=memory&cache=private")
 			.await
 			.unwrap();
 
@@ -2175,6 +2333,36 @@ mod tests {
 		assert!(
 			matches!(error, DurableQueueError::Store(message) if message.contains("private in-memory SQLite pools"))
 		);
+	}
+
+	#[tokio::test]
+	async fn from_pool_allows_shared_in_memory_sqlite_pool() {
+		let pool = SqlitePoolOptions::new()
+			.max_connections(2)
+			.connect("sqlite::memory:")
+			.await
+			.unwrap();
+
+		let store = SqliteDurableJobStore::from_pool(pool).await.unwrap();
+		let queue = DurableQueue::new(store);
+		let enqueued = queue.enqueue(JobSpec::new("send_email")).await.unwrap();
+
+		assert_eq!(enqueued.state, JobState::Queued);
+	}
+
+	#[tokio::test]
+	async fn from_pool_allows_single_connection_private_in_memory_sqlite_pool() {
+		let pool = SqlitePoolOptions::new()
+			.max_connections(1)
+			.connect("sqlite://?mode=memory&cache=private")
+			.await
+			.unwrap();
+
+		let store = SqliteDurableJobStore::from_pool(pool).await.unwrap();
+		let queue = DurableQueue::new(store);
+		let enqueued = queue.enqueue(JobSpec::new("send_email")).await.unwrap();
+
+		assert_eq!(enqueued.state, JobState::Queued);
 	}
 
 	#[tokio::test]
