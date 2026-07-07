@@ -325,8 +325,8 @@ impl SsrResourceContext {
 		}
 
 		by_id
-			.into_iter()
-			.filter_map(|(_, resources)| resolved_resource_for_hydration(resources))
+			.into_values()
+			.filter_map(resolved_resource_for_hydration)
 			.map(|resource| (resource.id.as_str(), &resource.value))
 			.collect()
 	}
