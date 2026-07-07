@@ -232,6 +232,33 @@ pub struct User {
 - `#[field(default = value)]` - Default value
 - `#[field(foreign_key = "ModelType")]` - Foreign key relationship
 
+Typed JSON fields use `Json<T>` to keep the Rust field type explicit while
+storing JSON in the database. Migrations emit JSONB for PostgreSQL/CockroachDB,
+JSON for MySQL, and TEXT for SQLite.
+
+```rust
+use reinhardt_db::Json;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+pub struct StyleSettings {
+    pub indent_width: u8,
+}
+
+#[derive(Serialize, Deserialize)]
+#[model(app_label = "myapp", table_name = "projects")]
+pub struct Project {
+    #[field(primary_key = true)]
+    pub id: i64,
+
+    #[field]
+    pub style_settings: Json<StyleSettings>,
+
+    #[field(null = true)]
+    pub metadata: Option<Json<serde_json::Value>>,
+}
+```
+
 For a complete list of field attributes, see the `#[field(...)]` macro documentation in `reinhardt-db-macros`.
 
 **Note**: The `#[model(...)]` attribute macro automatically generates:

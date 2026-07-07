@@ -464,6 +464,7 @@ pub mod query;
 pub mod db {
 	pub use reinhardt_db::DatabaseConnection;
 	pub use reinhardt_db::DatabaseError as Error;
+	pub use reinhardt_db::Json;
 
 	/// Database migration types and utilities.
 	pub mod migrations {
@@ -493,6 +494,70 @@ pub mod db {
 /// not expose ORM, connection, query, or migration APIs.
 #[cfg(not(native))]
 pub mod db {
+	use serde::{Deserialize, Deserializer, Serialize, Serializer};
+	use std::ops::{Deref, DerefMut};
+
+	/// WASM-compatible typed JSON field wrapper.
+	#[repr(transparent)]
+	#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+	pub struct Json<T>(pub T);
+
+	impl<T> Json<T> {
+		/// Creates a typed JSON wrapper.
+		pub const fn new(value: T) -> Self {
+			Self(value)
+		}
+
+		/// Returns the wrapped value.
+		pub fn into_inner(self) -> T {
+			self.0
+		}
+	}
+
+	impl<T> Deref for Json<T> {
+		type Target = T;
+
+		fn deref(&self) -> &Self::Target {
+			&self.0
+		}
+	}
+
+	impl<T> DerefMut for Json<T> {
+		fn deref_mut(&mut self) -> &mut Self::Target {
+			&mut self.0
+		}
+	}
+
+	impl<T> From<T> for Json<T> {
+		fn from(value: T) -> Self {
+			Self(value)
+		}
+	}
+
+	impl<T> Serialize for Json<T>
+	where
+		T: Serialize,
+	{
+		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: Serializer,
+		{
+			self.0.serialize(serializer)
+		}
+	}
+
+	impl<'de, T> Deserialize<'de> for Json<T>
+	where
+		T: Deserialize<'de>,
+	{
+		fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+		where
+			D: Deserializer<'de>,
+		{
+			T::deserialize(deserializer).map(Self)
+		}
+	}
+
 	/// Relationship marker types accepted by `#[model]` on WASM.
 	pub mod associations {
 		use std::marker::PhantomData;

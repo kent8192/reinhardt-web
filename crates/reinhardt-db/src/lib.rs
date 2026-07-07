@@ -216,6 +216,8 @@ pub use backends::{DatabaseBackend, DatabaseError};
 // This is the type used by Manager and other ORM components
 #[cfg(feature = "orm")]
 pub use orm::DatabaseConnection;
+#[cfg(feature = "orm")]
+pub use orm::Json;
 
 #[cfg(feature = "pool")]
 pub use pool::{ConnectionPool, PoolConfig, PoolError};

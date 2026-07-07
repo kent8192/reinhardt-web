@@ -329,6 +329,7 @@ reinhardt-urls = { workspace = true, default-features = false, optional = true }
 reinhardt-test = { workspace = true, optional = true }
 
 reinhardt-core = {workspace = true, default-features = false, features = ["types"]}
+serde = { workspace = true }
 
 # Proc-macro crate: runs host-side at compile time, safe on every target
 # (re-exported as `reinhardt::routes` / `reinhardt::url_patterns` for cross-target consumers)

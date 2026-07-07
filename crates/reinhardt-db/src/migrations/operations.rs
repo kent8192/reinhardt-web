@@ -3108,6 +3108,7 @@ pub fn field_type_string_to_field_type(
 
 		// JSON types
 		"JSONField" => Ok(FieldType::Json),
+		"JsonField" => Ok(FieldType::JsonBinary),
 
 		// File fields (stored as path strings)
 		"FileField" | "ImageField" => {

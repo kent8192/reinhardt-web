@@ -104,6 +104,57 @@ pub mod model_info {
 }
 
 pub mod db {
+	use serde::{Deserialize, Deserializer, Serialize, Serializer};
+	use std::ops::{Deref, DerefMut};
+
+	#[repr(transparent)]
+	#[derive(Debug, Clone, PartialEq, Eq, Default)]
+	pub struct Json<T>(pub T);
+
+	impl<T> Json<T> {
+		pub const fn new(value: T) -> Self {
+			Self(value)
+		}
+	}
+
+	impl<T> Deref for Json<T> {
+		type Target = T;
+
+		fn deref(&self) -> &Self::Target {
+			&self.0
+		}
+	}
+
+	impl<T> DerefMut for Json<T> {
+		fn deref_mut(&mut self) -> &mut Self::Target {
+			&mut self.0
+		}
+	}
+
+	impl<T> Serialize for Json<T>
+	where
+		T: Serialize,
+	{
+		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: Serializer,
+		{
+			self.0.serialize(serializer)
+		}
+	}
+
+	impl<'de, T> Deserialize<'de> for Json<T>
+	where
+		T: Deserialize<'de>,
+	{
+		fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+		where
+			D: Deserializer<'de>,
+		{
+			T::deserialize(deserializer).map(Self)
+		}
+	}
+
 	pub mod associations {
 		#[derive(Debug, Clone, Copy)]
 		pub struct ForeignKeyField<T>(core::marker::PhantomData<T>);
@@ -367,6 +418,8 @@ pub mod db {
 			Float,
 			Double,
 			Uuid,
+			Json,
+			JsonBinary,
 		}
 
 		#[derive(Debug, Clone, PartialEq)]

@@ -345,6 +345,14 @@ impl Session {
 
 			// Extract value from row based on field type
 			let value: serde_json::Value = match field.field_type.as_str() {
+				typ if typ.contains("JsonField") => decode_json_field_value(
+					&row,
+					T::table_name(),
+					&key,
+					&field.name,
+					column_name,
+					field.nullable,
+				)?,
 				typ if typ.contains("IntegerField") => {
 					if field.nullable {
 						row.try_get::<Option<i32>, _>(column_name)
@@ -557,6 +565,8 @@ impl Session {
 		let mut results = Vec::with_capacity(rows.len());
 
 		for row in rows {
+			let row_context = describe_row_context(&row, table_name, T::primary_key_field());
+
 			// Build JSON object from row data
 			let mut json_map = serde_json::Map::new();
 			for field in &field_metadata {
@@ -564,6 +574,14 @@ impl Session {
 
 				// Extract value from row based on field type
 				let value: serde_json::Value = match field.field_type.as_str() {
+					typ if typ.contains("JsonField") => decode_json_field_value(
+						&row,
+						table_name,
+						&row_context,
+						&field.name,
+						column_name,
+						field.nullable,
+					)?,
 					typ if typ.contains("IntegerField") => {
 						if field.nullable {
 							row.try_get::<Option<i32>, _>(column_name)
@@ -1341,6 +1359,93 @@ impl Session {
 	}
 }
 
+fn describe_row_context(
+	row: &sqlx::any::AnyRow,
+	table_name: &str,
+	primary_key_field: &str,
+) -> String {
+	if let Ok(value) = row.try_get::<i64, _>(primary_key_field) {
+		return format!("{}:{}={}", table_name, primary_key_field, value);
+	}
+	if let Ok(value) = row.try_get::<i32, _>(primary_key_field) {
+		return format!("{}:{}={}", table_name, primary_key_field, value);
+	}
+	if let Ok(value) = row.try_get::<String, _>(primary_key_field) {
+		return format!("{}:{}={}", table_name, primary_key_field, value);
+	}
+
+	table_name.to_string()
+}
+
+fn decode_json_field_value(
+	row: &sqlx::any::AnyRow,
+	table_name: &str,
+	row_context: &str,
+	field_name: &str,
+	column_name: &str,
+	nullable: bool,
+) -> Result<Value, SessionError> {
+	if nullable {
+		if let Ok(value) = row.try_get::<Option<String>, _>(column_name) {
+			return value
+				.map(|value| {
+					parse_json_field_text(&value, table_name, row_context, field_name, column_name)
+				})
+				.unwrap_or(Ok(Value::Null));
+		}
+		if let Ok(value) = row.try_get::<Option<Vec<u8>>, _>(column_name) {
+			return value
+				.map(|value| {
+					parse_json_field_bytes(&value, table_name, row_context, field_name, column_name)
+				})
+				.unwrap_or(Ok(Value::Null));
+		}
+		return Ok(Value::Null);
+	}
+
+	if let Ok(value) = row.try_get::<String, _>(column_name) {
+		return parse_json_field_text(&value, table_name, row_context, field_name, column_name);
+	}
+	if let Ok(value) = row.try_get::<Vec<u8>, _>(column_name) {
+		return parse_json_field_bytes(&value, table_name, row_context, field_name, column_name);
+	}
+
+	Err(SessionError::SerializationError(format!(
+		"Failed to hydrate JSON field {}.{} for row {} from column '{}': value could not be decoded as JSON",
+		table_name, field_name, row_context, column_name
+	)))
+}
+
+fn parse_json_field_text(
+	value: &str,
+	table_name: &str,
+	row_context: &str,
+	field_name: &str,
+	column_name: &str,
+) -> Result<Value, SessionError> {
+	serde_json::from_str(value).map_err(|e| {
+		SessionError::SerializationError(format!(
+			"Failed to hydrate JSON field {}.{} for row {} from column '{}': {}",
+			table_name, field_name, row_context, column_name, e
+		))
+	})
+}
+
+fn parse_json_field_bytes(
+	value: &[u8],
+	table_name: &str,
+	row_context: &str,
+	field_name: &str,
+	column_name: &str,
+) -> Result<Value, SessionError> {
+	serde_json::from_slice(value).map_err(|e| {
+		SessionError::SerializationError(format!(
+			"Failed to hydrate JSON field {}.{} for row {} from column '{}': {}",
+			table_name, field_name, row_context, column_name, e
+		))
+	})
+}
+
 /// Convert JSON value to reinhardt_query Value
 fn json_to_reinhardt_query_value(value: &Value) -> RValue {
 	match value {
@@ -1362,10 +1467,7 @@ fn json_to_reinhardt_query_value(value: &Value) -> RValue {
 			}
 			RValue::String(Some(Box::new(s.clone())))
 		}
-		Value::Array(_) | Value::Object(_) => {
-			// For complex types, serialize as JSON string
-			RValue::String(Some(Box::new(value.to_string())))
-		}
+		Value::Array(_) | Value::Object(_) => RValue::Json(Some(Box::new(value.clone()))),
 	}
 }
 
@@ -1811,6 +1913,27 @@ mod tests {
 		assert!(err.to_string().contains("Database error"));
 	}
 
+	#[test]
+	fn test_parse_json_field_text_error_includes_context() {
+		let err = super::parse_json_field_text(
+			"{invalid",
+			"writing_projects",
+			"writing_projects:id=7",
+			"style_settings",
+			"style_settings",
+		)
+		.unwrap_err();
+
+		match err {
+			SessionError::SerializationError(message) => {
+				assert!(message.contains("writing_projects.style_settings"));
+				assert!(message.contains("writing_projects:id=7"));
+				assert!(message.contains("style_settings"));
+			}
+			other => panic!("expected serialization error, got {other:?}"),
+		}
+	}
+
 	// ──────────────────────────────────────────────────────────────
 	// json_to_reinhardt_query_value tests
 	// ──────────────────────────────────────────────────────────────
@@ -1882,9 +2005,8 @@ mod tests {
 		let value = json!([1, 2, 3]);
 		let rq_value = super::json_to_reinhardt_query_value(&value);
 
-		// Array should be serialized as JSON string
 		let debug_str = format!("{:?}", rq_value);
-		assert!(!debug_str.is_empty());
+		assert!(debug_str.contains("Json"));
 	}
 
 	#[test]
@@ -1893,9 +2015,8 @@ mod tests {
 		let value = json!({"name": "test", "count": 42});
 		let rq_value = super::json_to_reinhardt_query_value(&value);
 
-		// Object should be serialized as JSON string
 		let debug_str = format!("{:?}", rq_value);
-		assert!(!debug_str.is_empty());
+		assert!(debug_str.contains("Json"));
 	}
 
 	#[test]
