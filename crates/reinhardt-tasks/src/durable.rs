@@ -85,7 +85,7 @@ impl JobState {
 						| JobState::Canceled,
 				) | (
 				JobState::FailedRetryable,
-				JobState::Queued | JobState::Canceled
+				JobState::Queued | JobState::Running | JobState::Canceled
 			)
 		)
 	}
@@ -925,7 +925,9 @@ where
 		let retry_attempts_so_far = record.attempt_count.saturating_sub(1);
 		let should_retry = record.attempt_count < record.max_attempts
 			&& self.retry_strategy.should_retry(retry_attempts_so_far);
-		let next_state = if should_retry {
+		let next_state = if record.cancellation_requested {
+			JobState::Canceled
+		} else if should_retry {
 			JobState::FailedRetryable
 		} else {
 			JobState::FailedFinal
@@ -2101,6 +2103,46 @@ mod tests {
 		assert_eq!(final_failure.state, JobState::FailedFinal);
 		assert_eq!(final_failure.attempt_count, 2);
 		assert_eq!(queue.claim_next().await.unwrap(), None);
+	}
+
+	#[test]
+	fn lifecycle_allows_automatic_retry_claims() {
+		assert!(JobState::FailedRetryable.can_transition_to(JobState::Running));
+	}
+
+	#[tokio::test]
+	async fn retryable_failure_after_cancellation_request_cancels_job() {
+		let queue = queue().await;
+		let enqueued = queue
+			.enqueue(JobSpec::new("index_document").max_attempts(3))
+			.await
+			.unwrap();
+
+		let claim = queue.claim_next().await.unwrap().unwrap();
+		let flagged = queue.request_cancel(enqueued.id).await.unwrap();
+		assert!(flagged.cancellation_requested);
+
+		let canceled = queue
+			.fail_retryable(claim, &JobFailure::new("provider_timeout", "try again"))
+			.await
+			.unwrap();
+
+		assert_eq!(canceled.state, JobState::Canceled);
+		assert!(canceled.cancellation_requested);
+		assert_eq!(canceled.retry_after, None);
+		assert_eq!(queue.claim_next().await.unwrap(), None);
+
+		let events = queue.events(enqueued.id).await.unwrap();
+		let kinds: Vec<_> = events.iter().map(|event| event.kind).collect();
+		assert_eq!(
+			kinds,
+			vec![
+				JobEventKind::Enqueued,
+				JobEventKind::Claimed,
+				JobEventKind::CancellationRequested,
+				JobEventKind::Canceled
+			]
+		);
 	}
 
 	#[tokio::test]
