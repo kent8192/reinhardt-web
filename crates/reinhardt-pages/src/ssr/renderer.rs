@@ -212,8 +212,13 @@ impl SsrRenderer {
 	}
 
 	/// Renders a View to an HTML string.
-	pub fn render_view(&mut self, view: &Page) -> String {
-		let html = self.with_i18n_context(|| view.render_to_string());
+	pub fn render_view(&self, view: &Page) -> String {
+		self.with_i18n_context(|| view.render_to_string())
+	}
+
+	/// Renders a View and syncs renderer-owned SSR state.
+	pub fn render_view_with_state(&mut self, view: &Page) -> String {
+		let html = self.render_view(view);
 		self.sync_i18n_state();
 		html
 	}

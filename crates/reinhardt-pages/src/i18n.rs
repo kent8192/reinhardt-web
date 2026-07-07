@@ -110,19 +110,19 @@ impl I18nContext {
 	/// Translates a simple message.
 	pub fn translate(&self, message: &str) -> String {
 		self.translations
-			.translate_for_locale(&self.locale.get(), message)
+			.translate_for_locale(&self.locale(), message)
 	}
 
 	/// Translates a plural message.
 	pub fn translate_plural(&self, singular: &str, plural: &str, count: usize) -> String {
 		self.translations
-			.translate_plural_for_locale(&self.locale.get(), singular, plural, count)
+			.translate_plural_for_locale(&self.locale(), singular, plural, count)
 	}
 
 	/// Translates a contextual message.
 	pub fn translate_context(&self, context: &str, message: &str) -> String {
 		self.translations
-			.translate_context_for_locale(&self.locale.get(), context, message)
+			.translate_context_for_locale(&self.locale(), context, message)
 	}
 
 	/// Translates a contextual plural message.
@@ -134,7 +134,7 @@ impl I18nContext {
 		count: usize,
 	) -> String {
 		self.translations.translate_context_plural_for_locale(
-			&self.locale.get(),
+			&self.locale(),
 			context,
 			singular,
 			plural,
@@ -407,7 +407,11 @@ fn interpolate_named(mut rendered: String, args: &[TranslationArg]) -> String {
 }
 
 fn normalize_locale(locale: &str) -> &str {
-	if locale.is_empty() { "en-US" } else { locale }
+	if locale.is_empty() || TranslationContext::validate_locale_tag(locale).is_err() {
+		"en-US"
+	} else {
+		locale
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

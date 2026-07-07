@@ -210,43 +210,123 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 	match view {
 		Page::Element(element_view) => {
-			let actual_nodes = relevant_child_nodes(element);
-			let mut index = 0;
-			for child in element_view.child_views() {
-				let node_count = hydrated_node_count(child);
-				if node_count == 0 {
-					continue;
-				}
-
-				let end = (index + node_count).min(actual_nodes.len());
-				let child_nodes = actual_nodes[index..end].to_vec();
-				install_hydrated_child_reactive_nodes(&child_nodes, child);
-				index = end;
-			}
+			install_hydrated_element_children(element, element_view.child_views());
 		}
 		Page::WithHead { view, .. } => install_hydrated_reactive_nodes(element, view),
+		Page::Fragment(children) => install_hydrated_element_children(element, children),
+		Page::KeyedFragment(children) => {
+			let child_views = children
+				.iter()
+				.map(|(_, child)| child.clone())
+				.collect::<Vec<_>>();
+			install_hydrated_element_children(element, &child_views);
+		}
 		Page::Reactive(reactive) => {
-			let nodes = vec![element.as_web_sys().clone().into()];
-			if let Some(node) =
-				crate::component::ReactiveNode::hydrate(nodes, reactive.clone().into_render())
-			{
+			let rendered = reactive.render();
+			split_coalesced_text_children(element, std::slice::from_ref(&rendered));
+			let nodes = relevant_child_nodes(element);
+			if let Some(node) = crate::component::ReactiveNode::hydrate_at(
+				element.as_web_sys().clone().into(),
+				None,
+				nodes,
+				reactive.clone().into_render(),
+			) {
 				store_reactive_node(node);
 			}
+		}
+		Page::ReactiveIf(reactive_if) => {
+			let branch_view = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			split_coalesced_text_children(element, std::slice::from_ref(&branch_view));
+			let nodes = relevant_child_nodes(element);
+			let (condition, then_view, else_view) = reactive_if.clone().into_parts();
+			if let Some(node) = crate::component::ReactiveIfNode::hydrate_at(
+				element.as_web_sys().clone().into(),
+				None,
+				nodes.clone(),
+				condition,
+				then_view,
+				else_view,
+			) {
+				store_reactive_node(node);
+			}
+			install_hydrated_child_reactive_nodes(
+				&element.as_web_sys().clone().into(),
+				&nodes,
+				None,
+				&branch_view,
+			);
 		}
 		_ => {}
 	}
 }
 
 #[cfg(wasm)]
-fn install_hydrated_child_reactive_nodes(nodes: &[web_sys::Node], view: &Page) {
+fn install_hydrated_element_children(element: &Element, children: &[Page]) {
+	split_coalesced_text_children(element, children);
+	let actual_nodes = relevant_child_nodes(element);
+	install_hydrated_children_reactive_nodes(
+		&element.as_web_sys().clone().into(),
+		&actual_nodes,
+		children,
+	);
+}
+
+#[cfg(wasm)]
+fn install_hydrated_children_reactive_nodes(
+	parent: &web_sys::Node,
+	nodes: &[web_sys::Node],
+	children: &[Page],
+) {
+	let mut index = 0;
+	for child in children {
+		let node_count = hydrated_node_count(child);
+		let end = (index + node_count).min(nodes.len());
+		let next_sibling = nodes.get(end).cloned();
+		install_hydrated_child_reactive_nodes(parent, &nodes[index..end], next_sibling, child);
+		index = end;
+	}
+}
+
+#[cfg(wasm)]
+fn install_hydrated_child_reactive_nodes(
+	parent: &web_sys::Node,
+	nodes: &[web_sys::Node],
+	next_sibling: Option<web_sys::Node>,
+	view: &Page,
+) {
 	match view {
 		Page::Reactive(reactive) => {
-			if let Some(node) = crate::component::ReactiveNode::hydrate(
+			if let Some(node) = crate::component::ReactiveNode::hydrate_at(
+				parent.clone(),
+				next_sibling,
 				nodes.to_vec(),
 				reactive.clone().into_render(),
 			) {
 				store_reactive_node(node);
 			}
+		}
+		Page::ReactiveIf(reactive_if) => {
+			let branch_view = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			let (condition, then_view, else_view) = reactive_if.clone().into_parts();
+			if let Some(node) = crate::component::ReactiveIfNode::hydrate_at(
+				parent.clone(),
+				next_sibling.clone(),
+				nodes.to_vec(),
+				condition,
+				then_view,
+				else_view,
+			) {
+				store_reactive_node(node);
+			}
+			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, &branch_view);
 		}
 		Page::Element(_) | Page::WithHead { .. } => {
 			if let Some(element) = nodes
@@ -256,44 +336,30 @@ fn install_hydrated_child_reactive_nodes(nodes: &[web_sys::Node], view: &Page) {
 				install_hydrated_reactive_nodes(&Element::new(element.clone()), view);
 			}
 		}
-		Page::Fragment(children) => install_hydrated_fragment_reactive_nodes(nodes, children),
+		Page::Fragment(children) => {
+			install_hydrated_children_reactive_nodes(parent, nodes, children)
+		}
 		Page::KeyedFragment(children) => {
 			let child_views = children
 				.iter()
 				.map(|(_, child)| child.clone())
 				.collect::<Vec<_>>();
-			install_hydrated_fragment_reactive_nodes(nodes, &child_views);
+			install_hydrated_children_reactive_nodes(parent, nodes, &child_views);
 		}
 		Page::Outlet(outlet) => {
 			if let Some(child) = outlet.child() {
-				install_hydrated_child_reactive_nodes(nodes, child);
+				install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, child);
 			}
-		}
-		Page::ReactiveIf(reactive_if) => {
-			let branch_view = if reactive_if.condition() {
-				reactive_if.then_view()
-			} else {
-				reactive_if.else_view()
-			};
-			install_hydrated_child_reactive_nodes(nodes, &branch_view);
 		}
 		Page::Text(_) | Page::Empty => {}
 	}
 }
 
 #[cfg(wasm)]
-fn install_hydrated_fragment_reactive_nodes(nodes: &[web_sys::Node], children: &[Page]) {
-	let mut index = 0;
-	for child in children {
-		let node_count = hydrated_node_count(child);
-		if node_count == 0 {
-			continue;
-		}
-
-		let end = (index + node_count).min(nodes.len());
-		install_hydrated_child_reactive_nodes(&nodes[index..end], child);
-		index = end;
-	}
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ExpectedDomChild {
+	Text(String),
+	Node,
 }
 
 #[cfg(wasm)]
@@ -317,6 +383,101 @@ fn hydrated_node_count(view: &Page) -> usize {
 		}
 		Page::Reactive(reactive) => hydrated_node_count(&reactive.render()),
 		Page::Empty => 0,
+	}
+}
+
+#[cfg(wasm)]
+fn split_coalesced_text_children(element: &Element, children: &[Page]) {
+	use wasm_bindgen::JsCast;
+
+	let mut expected = Vec::new();
+	for child in children {
+		collect_expected_dom_children(child, &mut expected);
+	}
+
+	let mut actual_nodes = relevant_child_nodes(element);
+	let document = web_sys::window()
+		.and_then(|window| window.document())
+		.expect("document should be available");
+	let mut actual_index = 0;
+
+	for expected_child in expected {
+		match expected_child {
+			ExpectedDomChild::Node => {
+				actual_index += 1;
+			}
+			ExpectedDomChild::Text(expected_text) => {
+				if expected_text.is_empty() {
+					continue;
+				}
+				let Some(node) = actual_nodes.get(actual_index).cloned() else {
+					return;
+				};
+				if node.node_type() != web_sys::Node::TEXT_NODE {
+					actual_index += 1;
+					continue;
+				}
+
+				let actual_text = node.text_content().unwrap_or_default();
+				if actual_text == expected_text {
+					actual_index += 1;
+					continue;
+				}
+				if !actual_text.starts_with(&expected_text) {
+					actual_index += 1;
+					continue;
+				}
+
+				let remainder = actual_text[expected_text.len()..].to_string();
+				node.set_text_content(Some(&expected_text));
+				if !remainder.is_empty() {
+					let remainder_node = document.create_text_node(&remainder);
+					if let Some(parent) = node.parent_node() {
+						let next = node.next_sibling();
+						let _ = parent.insert_before(&remainder_node, next.as_ref());
+						actual_nodes.insert(actual_index + 1, remainder_node.unchecked_into());
+					}
+				}
+				actual_index += 1;
+			}
+		}
+	}
+}
+
+#[cfg(wasm)]
+fn collect_expected_dom_children(view: &Page, children: &mut Vec<ExpectedDomChild>) {
+	match view {
+		Page::Empty => {}
+		Page::Text(text) => children.push(ExpectedDomChild::Text(text.to_string())),
+		Page::Fragment(fragment_children) => {
+			for child in fragment_children {
+				collect_expected_dom_children(child, children);
+			}
+		}
+		Page::KeyedFragment(keyed_children) => {
+			for (_, child) in keyed_children {
+				collect_expected_dom_children(child, children);
+			}
+		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				collect_expected_dom_children(child, children);
+			}
+		}
+		Page::WithHead { view, .. } => collect_expected_dom_children(view, children),
+		Page::ReactiveIf(reactive_if) => {
+			let branch_view = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			collect_expected_dom_children(&branch_view, children);
+		}
+		Page::Reactive(reactive) => {
+			let rendered_view = reactive.render();
+			collect_expected_dom_children(&rendered_view, children);
+		}
+		Page::Element(_) => children.push(ExpectedDomChild::Node),
 	}
 }
 

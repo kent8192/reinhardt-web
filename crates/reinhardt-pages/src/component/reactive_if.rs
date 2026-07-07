@@ -12,7 +12,7 @@ use crate::reactive::runtime::EffectTiming;
 #[cfg(wasm)]
 use reinhardt_core::types::page::{BOOLEAN_ATTRS, Page, is_boolean_attr_truthy};
 #[cfg(wasm)]
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 #[cfg(wasm)]
 use std::rc::Rc;
 
@@ -200,6 +200,77 @@ impl ReactiveIfNode {
 			effect,
 		}
 	}
+
+	pub(crate) fn hydrate_at(
+		parent: web_sys::Node,
+		next_sibling: Option<web_sys::Node>,
+		existing_nodes: Vec<web_sys::Node>,
+		condition: std::sync::Arc<dyn Fn() -> bool + 'static>,
+		then_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+		else_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+	) -> Option<Self> {
+		let document = web_sys::window()
+			.expect("window should be available")
+			.document()
+			.expect("document should be available");
+		let marker = document.create_comment("reactive-if");
+		let _ = parent.insert_before(&marker, next_sibling.as_ref());
+
+		let current_nodes: Rc<RefCell<Vec<web_sys::Node>>> = Rc::new(RefCell::new(existing_nodes));
+		let last_condition: Rc<RefCell<Option<bool>>> = Rc::new(RefCell::new(None));
+		let current_nodes_clone = current_nodes.clone();
+		let last_condition_clone = last_condition.clone();
+		let marker_clone = marker.clone();
+		let effect_reactive_node_store = current_reactive_node_store();
+		let first_run = Rc::new(Cell::new(true));
+		let first_run_clone = first_run.clone();
+
+		let effect = Effect::new_with_timing(
+			move || {
+				with_reactive_node_store(&effect_reactive_node_store, || {
+					let new_condition = condition();
+
+					if first_run_clone.replace(false) {
+						*last_condition_clone.borrow_mut() = Some(new_condition);
+						return;
+					}
+
+					let mut last = last_condition_clone.borrow_mut();
+					if *last == Some(new_condition) {
+						return;
+					}
+					*last = Some(new_condition);
+					drop(last);
+
+					let old_nodes = {
+						let mut nodes = current_nodes_clone.borrow_mut();
+						nodes.drain(..).collect::<Vec<_>>()
+					};
+					for node in old_nodes {
+						if let Some(parent_node) = node.parent_node() {
+							let _ = parent_node.remove_child(&node);
+						}
+					}
+
+					let view = if new_condition {
+						then_view()
+					} else {
+						else_view()
+					};
+					let new_nodes = mount_before_marker(&marker_clone, view);
+					*current_nodes_clone.borrow_mut() = new_nodes;
+				});
+			},
+			EffectTiming::Layout,
+		);
+
+		Some(Self {
+			marker,
+			current_nodes,
+			last_condition,
+			effect,
+		})
+	}
 }
 
 /// Manages DOM updates for reactive view rendering.
@@ -292,29 +363,34 @@ impl ReactiveNode {
 		}
 	}
 
-	pub(crate) fn hydrate(
+	pub(crate) fn hydrate_at(
+		parent: web_sys::Node,
+		next_sibling: Option<web_sys::Node>,
 		existing_nodes: Vec<web_sys::Node>,
 		render: std::sync::Arc<dyn Fn() -> Page + 'static>,
 	) -> Option<Self> {
-		let last_node = existing_nodes.last()?;
-		let parent = last_node.parent_node()?;
 		let document = web_sys::window()
 			.expect("window should be available")
 			.document()
 			.expect("document should be available");
 		let marker = document.create_comment("reactive");
-		let next_sibling = last_node.next_sibling();
 		let _ = parent.insert_before(&marker, next_sibling.as_ref());
 
 		let current_nodes: Rc<RefCell<Vec<web_sys::Node>>> = Rc::new(RefCell::new(existing_nodes));
 		let current_nodes_clone = current_nodes.clone();
 		let marker_clone = marker.clone();
 		let effect_reactive_node_store = current_reactive_node_store();
+		let first_run = Rc::new(Cell::new(true));
+		let first_run_clone = first_run.clone();
 
 		let effect = Effect::new_with_timing(
 			move || {
 				with_reactive_node_store(&effect_reactive_node_store, || {
 					let view = render();
+
+					if first_run_clone.replace(false) {
+						return;
+					}
 
 					if update_activity_boundary_attrs(&current_nodes_clone, &view) {
 						return;

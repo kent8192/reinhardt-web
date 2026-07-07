@@ -147,13 +147,28 @@ fn renderer_state_contains_i18n_metadata_after_low_level_render() {
 		p { { t!("Hello") } }
 	})();
 
-	let html = renderer.render_view(&view);
+	let html = renderer.render_view_with_state(&view);
 
 	assert_eq!(html, "<p>こんにちは</p>");
 	assert!(
 		renderer.state().get_metadata("pages.i18n").is_some(),
 		"low-level renderer state should include i18n metadata",
 	);
+}
+
+#[test]
+#[serial(i18n)]
+fn render_view_accepts_shared_renderer_reference() {
+	let context = sample_i18n_context();
+	let renderer = SsrRenderer::with_options(SsrOptions::new().i18n_context(context));
+	let view = page!(|| {
+		p { { t!("Hello") } }
+	})();
+	let shared_renderer = &renderer;
+
+	let html = shared_renderer.render_view(&view);
+
+	assert_eq!(html, "<p>こんにちは</p>");
 }
 
 #[test]
@@ -191,6 +206,29 @@ fn empty_page_locale_resets_to_default_locale_for_public_reads_and_ssr() {
 		.expect("SSR state should include i18n metadata");
 
 	assert_eq!(context.locale(), "en-US");
+	assert_eq!(
+		metadata
+			.get("current_locale")
+			.and_then(|value| value.as_str()),
+		Some("en-US"),
+	);
+}
+
+#[test]
+#[serial(i18n)]
+fn invalid_locale_signal_write_uses_default_locale_for_public_reads_and_ssr() {
+	let context = sample_i18n_context();
+	context.locale_signal().set("en/US".to_string());
+
+	let translations = context.translation_context();
+	let mut state = SsrState::new();
+	write_i18n_ssr_state(&mut state, &context);
+	let metadata = state
+		.get_metadata("pages.i18n")
+		.expect("SSR state should include i18n metadata");
+
+	assert_eq!(context.locale(), "en-US");
+	assert_eq!(translations.get_locale(), "en-US");
 	assert_eq!(
 		metadata
 			.get("current_locale")
