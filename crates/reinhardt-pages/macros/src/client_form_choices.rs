@@ -164,6 +164,15 @@ fn serde_rename_all(attrs: &[syn::Attribute]) -> syn::Result<RenameRule> {
 				return Err(meta.error(
 					"ClientFormChoices requires externally tagged string enum representation",
 				));
+			} else if meta.path.is_ident("into")
+				|| meta.path.is_ident("from")
+				|| meta.path.is_ident("try_from")
+				|| meta.path.is_ident("remote")
+				|| meta.path.is_ident("transparent")
+			{
+				return Err(meta.error(
+					"ClientFormChoices does not support serde container options that change enum serialization",
+				));
 			} else {
 				consume_ignored_serde_meta(meta)?;
 			}

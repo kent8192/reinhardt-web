@@ -450,7 +450,7 @@ impl ServerFnInfo {
 	}
 
 	fn emits_typed_response_metadata(&self) -> bool {
-		!self.allows_private_interfaces() && !matches!(self.vis(), syn::Visibility::Restricted(_))
+		!self.allows_private_interfaces()
 	}
 
 	/// Get the endpoint path

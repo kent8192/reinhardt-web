@@ -150,7 +150,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 	});
 	let field_variants = fields.iter().map(|field| &field.variant);
 	let field_accessor_methods = fields.iter().map(|field| {
-		let method = format_ident!("{}_field", field.name);
+		let method = format_ident!("{}_field", ident_name_without_raw_prefix(&field.name));
 		let variant = &field.variant;
 		quote! {
 			pub fn #method(&self) -> #field_ident {
@@ -160,7 +160,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 	});
 	let choice_methods = fields.iter().filter_map(|field| {
 		let choice_ty = field.choice_ty()?;
-		let method = format_ident!("{}_choices", field.name);
+		let method = format_ident!("{}_choices", ident_name_without_raw_prefix(&field.name));
 		Some(quote! {
 			pub fn #method(&self) -> &'static [#pages_crate::ClientFormChoice<#choice_ty>] {
 				<#choice_ty as #pages_crate::ClientFormChoiceSource>::client_form_choices()
@@ -272,7 +272,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 		quote! { #name: values.#name.clone() }
 	});
 	let field_name_arms = fields.iter().map(|field| {
-		let name = field.name.to_string();
+		let name = ident_name_without_raw_prefix(&field.name);
 		let variant = &field.variant;
 		quote! { #name => ::core::option::Option::Some(#field_ident::#variant) }
 	});
@@ -598,7 +598,10 @@ struct EditableField {
 
 impl EditableField {
 	fn new(name: Ident, ty: Type, kind: FieldKind) -> Self {
-		let variant = format_ident!("{}", name.to_string().to_case(Case::Pascal));
+		let variant = format_ident!(
+			"{}",
+			ident_name_without_raw_prefix(&name).to_case(Case::Pascal)
+		);
 		Self {
 			name,
 			variant,
@@ -674,6 +677,11 @@ impl EditableField {
 			_ => quote! { values.#name.clone() },
 		}
 	}
+}
+
+fn ident_name_without_raw_prefix(ident: &Ident) -> String {
+	let name = ident.to_string();
+	name.strip_prefix("r#").unwrap_or(&name).to_string()
 }
 
 struct SkippedField {
