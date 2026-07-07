@@ -1,7 +1,7 @@
 use reinhardt_pages::ClientForm;
 
 #[derive(Clone, ClientForm)]
-pub struct SettingsRequest {
+pub(crate) struct SettingsRequest {
 	pub name: String,
 	secret: String,
 }

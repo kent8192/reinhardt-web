@@ -22,6 +22,19 @@ enum ProviderMode {
 	Archived,
 }
 
+#[derive(Clone, Default, Debug, PartialEq, ClientFormChoices)]
+#[serde(
+	rename_all = "snake_case",
+	crate = "serde",
+	bound = "",
+	deny_unknown_fields
+)]
+enum IgnoredContainerProviderMode {
+	#[default]
+	LiveApi,
+	TestHarness,
+}
+
 #[derive(Clone, Debug, PartialEq, ClientForm)]
 #[client_form(validate)]
 struct ProjectRequest {
@@ -114,6 +127,15 @@ fn client_form_enum_choice_metadata_uses_serialized_values() {
 }
 
 #[test]
+fn client_form_choices_ignore_non_serialization_container_options() {
+	let choices = IgnoredContainerProviderMode::client_form_choices();
+
+	assert_eq!(choices.len(), 2);
+	assert_eq!(choices[0].serialized_value, "live_api");
+	assert_eq!(choices[1].serialized_value, "test_harness");
+}
+
+#[test]
 fn client_form_reconcile_refreshes_skipped_defaults() {
 	let form = ProjectRequestClientForm::new().with_defaults(ProjectRequest {
 		name: "demo".to_string(),
@@ -155,6 +177,55 @@ fn client_form_reconcile_refreshes_skipped_defaults() {
 	assert_eq!(request.tenant_id.as_deref(), Some("tenant-b"));
 	assert_eq!(request.revision, 8);
 	assert_eq!(request.server_token, "token-b");
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct TenantId(&'static str);
+
+fn tenant_default() -> TenantId {
+	TenantId("default-tenant")
+}
+
+#[derive(Clone, Debug, PartialEq, ClientForm)]
+struct CustomTenantDefaultRequest {
+	name: String,
+	#[serde(skip_serializing, default = "tenant_default")]
+	tenant: TenantId,
+}
+
+#[test]
+fn client_form_preserves_custom_hidden_default_values_from_defaults() {
+	let form =
+		CustomTenantDefaultRequestClientForm::new().with_defaults(CustomTenantDefaultRequest {
+			name: "demo".to_string(),
+			tenant: TenantId("custom-tenant"),
+		});
+	let runtime = use_form(&form).build();
+	let request = CustomTenantDefaultRequestClientForm::to_request(&runtime);
+
+	assert_eq!(request.tenant.0, "custom-tenant");
+}
+
+#[derive(Clone, Debug, PartialEq, ClientForm)]
+struct SelfTenantDefaultRequest {
+	name: String,
+	#[serde(skip_serializing, default = "Self::tenant_default")]
+	tenant: TenantId,
+}
+
+impl SelfTenantDefaultRequest {
+	fn tenant_default() -> TenantId {
+		TenantId("default-tenant")
+	}
+}
+
+#[test]
+fn client_form_resolves_self_hidden_default_against_dto() {
+	let form = SelfTenantDefaultRequestClientForm::new();
+	let runtime = use_form(&form).build();
+	let request = SelfTenantDefaultRequestClientForm::to_request(&runtime);
+
+	assert_eq!(request.tenant.0, "default-tenant");
 }
 
 #[test]

@@ -80,6 +80,12 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 			});
 			continue;
 		}
+		if !matches!(dto_vis, Visibility::Inherited) && matches!(field.vis, Visibility::Inherited) {
+			return Err(syn::Error::new_spanned(
+				&field_ident,
+				"ClientForm exported DTOs cannot expose private editable fields; mark the field public or skip it explicitly",
+			));
+		}
 
 		let kind = FieldKind::classify(&field.ty)?;
 		editable_fields.push(EditableField::new(field_ident, field.vis, field.ty, kind));
@@ -731,7 +737,7 @@ impl EditableField {
 	}
 
 	fn exposes_field_token(&self, dto_vis: &Visibility) -> bool {
-		!matches!(dto_vis, Visibility::Public(_)) || matches!(self.vis, Visibility::Public(_))
+		matches!(dto_vis, Visibility::Inherited) || !matches!(self.vis, Visibility::Inherited)
 	}
 
 	fn default_expr(&self, pages_crate: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {

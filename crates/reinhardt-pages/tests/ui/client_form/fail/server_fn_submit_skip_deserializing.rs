@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, PartialEq, Serialize, Deserialize, ClientForm)]
 #[client_form(server_fn = submit_settings)]
 pub struct SettingsRequest {
-	name: String,
+	pub name: String,
 	#[serde(skip_deserializing)]
 	tenant: String,
 }

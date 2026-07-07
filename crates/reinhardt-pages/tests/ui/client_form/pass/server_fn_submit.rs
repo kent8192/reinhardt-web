@@ -7,13 +7,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, PartialEq, Serialize, Deserialize, ClientForm)]
 #[client_form(server_fn = submit_settings, validate)]
 pub struct SettingsRequest {
-	name: String,
+	pub name: String,
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, ClientForm)]
 #[client_form(server_fn = submit_settings_with_inject)]
 pub struct InjectedSettingsRequest {
-	name: String,
+	pub name: String,
 }
 
 impl Validate for SettingsRequest {

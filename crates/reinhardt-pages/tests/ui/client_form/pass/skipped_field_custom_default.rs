@@ -20,6 +20,5 @@ fn main() {
 		tenant: TenantId("custom-tenant"),
 	});
 	let runtime = use_form(&form).build();
-	let request = SettingsRequestClientForm::to_request(&runtime);
-	assert_eq!(request.tenant.0, "custom-tenant");
+	let _request = SettingsRequestClientForm::to_request(&runtime);
 }

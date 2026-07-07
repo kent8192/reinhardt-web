@@ -142,7 +142,11 @@ Enum choices use the serialized enum value as both `value` and `label`. The
 derive recognizes `serde(rename_all = "...")` and variant-level
 `serde(rename = "...")` for supported serde rename cases through
 `ClientFormChoices`, but serialize and deserialize names must match so the
-submitted choice value can round-trip through server deserialization. If an enum
+submitted choice value can round-trip through server deserialization.
+`skip_serializing` variants are not emitted as form choices, but their
+deserialize names and aliases still participate in collision checks because
+serde can accept those values on submit. Variant-level custom deserializers are
+rejected because form choices submit bare externally tagged strings. If an enum
 field does not implement
 `ClientFormChoiceSource`, compilation fails with a message pointing at the
 field.
@@ -176,6 +180,11 @@ pub csrf_token: String,
 defaultable request value path. The first implementation supports skip for
 `Option<T>` and fields with a `Default` value. Required skipped fields produce a
 compile error.
+
+Exported DTOs (`pub`, `pub(crate)`, or `pub(super)`) must not contain private
+editable fields because generated request conversion is visible wherever the
+companion form is visible. Mark the field public, `#[client_form(skip)]`, or use
+a serde skip attribute to make the hidden-field contract explicit.
 
 ## Validation
 

@@ -132,9 +132,11 @@
 //! untagged, or directionally renamed enum representations are rejected because
 //! form choices submit bare strings. DTO fields marked with serde skip
 //! attributes are kept out of editable form fields and preserved through
-//! generated request values. Forms with generated `server_fn` submit helpers
-//! reject serde-skipped request fields because the browser payload must match
-//! native request deserialization exactly.
+//! generated request values. Exported DTOs cannot use private editable fields;
+//! mark the field public or make it an explicit hidden field with
+//! `#[client_form(skip)]` or a serde skip attribute. Forms with generated
+//! `server_fn` submit helpers reject serde-skipped request fields because the
+//! browser payload must match native request deserialization exactly.
 //!
 //! Compose validated submit flows with [`use_form_action`]:
 //!

@@ -48,10 +48,10 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 	for variant in data_enum.variants {
 		let mut variant_options = serde_variant_options(&variant.attrs)?;
 		let variant_ident = variant.ident.clone();
-		if variant_options.skip {
+		if variant_options.is_skipped() {
 			has_skipped_variant = true;
 		}
-		if variant_options.skip && variant_options.default {
+		if variant_options.is_skipped() && variant_options.default {
 			return Err(syn::Error::new_spanned(
 				variant,
 				"ClientFormChoices default variant cannot be skipped by serde",
@@ -63,7 +63,7 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 				"ClientFormChoices supports only one default variant",
 			));
 		}
-		if variant_options.skip {
+		if variant_options.skip_deserializing {
 			continue;
 		}
 		if !matches!(variant.fields, Fields::Unit) {
@@ -80,13 +80,21 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 		let deserialize_name = variant_options
 			.deserialize_rename
 			.unwrap_or_else(|| apply_rename_rule(&variant_name, rename_rules.deserialize));
+		variant_options.aliases.push(deserialize_name.clone());
+		if variant_options.skip_serializing {
+			accepted_variants.push(ChoiceVariant {
+				ident: variant_ident.clone(),
+				emitted_serialized: None,
+				aliases: variant_options.aliases,
+			});
+			continue;
+		}
 		if serialized != deserialize_name {
 			return Err(syn::Error::new_spanned(
 				&variant_ident,
 				"ClientFormChoices requires matching serde serialize and deserialize names for each choice",
 			));
 		}
-		variant_options.aliases.push(deserialize_name);
 		if !seen_serialized_values.insert(serialized.clone()) {
 			return Err(syn::Error::new_spanned(
 				&variant_ident,
@@ -95,7 +103,7 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 		}
 		accepted_variants.push(ChoiceVariant {
 			ident: variant_ident.clone(),
-			serialized: serialized.clone(),
+			emitted_serialized: Some(serialized.clone()),
 			aliases: variant_options.aliases,
 		});
 		choice_values.push(quote! {
@@ -244,8 +252,15 @@ struct SerdeVariantOptions {
 	rename: Option<String>,
 	deserialize_rename: Option<String>,
 	aliases: Vec<String>,
-	skip: bool,
+	skip_serializing: bool,
+	skip_deserializing: bool,
 	default: bool,
+}
+
+impl SerdeVariantOptions {
+	fn is_skipped(&self) -> bool {
+		self.skip_serializing || self.skip_deserializing
+	}
 }
 
 fn serde_variant_options(attrs: &[syn::Attribute]) -> syn::Result<SerdeVariantOptions> {
@@ -253,7 +268,8 @@ fn serde_variant_options(attrs: &[syn::Attribute]) -> syn::Result<SerdeVariantOp
 		rename: None,
 		deserialize_rename: None,
 		aliases: Vec::new(),
-		skip: false,
+		skip_serializing: false,
+		skip_deserializing: false,
 		default: false,
 	};
 	for attr in attrs {
@@ -294,18 +310,21 @@ fn serde_variant_options(attrs: &[syn::Attribute]) -> syn::Result<SerdeVariantOp
 						options.deserialize_rename = Some(value);
 					}
 				}
-			} else if meta.path.is_ident("skip")
-				|| meta.path.is_ident("skip_serializing")
-				|| meta.path.is_ident("skip_deserializing")
-			{
-				options.skip = true;
+			} else if meta.path.is_ident("skip") {
+				options.skip_serializing = true;
+				options.skip_deserializing = true;
+			} else if meta.path.is_ident("skip_serializing") {
+				options.skip_serializing = true;
+			} else if meta.path.is_ident("skip_deserializing") {
+				options.skip_deserializing = true;
 			} else if meta.path.is_ident("alias") {
 				let value = meta.value()?.parse::<LitStr>()?;
 				options.aliases.push(value.value());
-			} else if meta.path.is_ident("other")
-				|| meta.path.is_ident("borrow")
-				|| meta.path.is_ident("deserialize_with")
-			{
+			} else if meta.path.is_ident("deserialize_with") {
+				return Err(meta.error(
+					"ClientFormChoices does not support serde deserialize_with on variants",
+				));
+			} else if meta.path.is_ident("other") || meta.path.is_ident("borrow") {
 				consume_ignored_serde_variant_option(meta)?;
 			} else {
 				return Err(meta.error("unsupported serde option for ClientFormChoices variant"));
@@ -318,19 +337,24 @@ fn serde_variant_options(attrs: &[syn::Attribute]) -> syn::Result<SerdeVariantOp
 
 struct ChoiceVariant {
 	ident: Ident,
-	serialized: String,
+	emitted_serialized: Option<String>,
 	aliases: Vec<String>,
 }
 
 fn reject_alias_collisions_with_choices(variants: &[ChoiceVariant]) -> syn::Result<()> {
 	let serialized_values = variants
 		.iter()
-		.map(|variant| (variant.serialized.as_str(), &variant.ident))
+		.filter_map(|variant| {
+			variant
+				.emitted_serialized
+				.as_ref()
+				.map(|serialized| (serialized.as_str(), &variant.ident))
+		})
 		.collect::<BTreeMap<_, _>>();
 
 	for variant in variants {
 		for alias in &variant.aliases {
-			if alias == &variant.serialized {
+			if variant.emitted_serialized.as_ref() == Some(alias) {
 				continue;
 			}
 			if serialized_values.contains_key(alias.as_str()) {

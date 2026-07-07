@@ -19,6 +19,5 @@ impl SettingsRequest {
 fn main() {
 	let form = SettingsRequestClientForm::new();
 	let runtime = use_form(&form).build();
-	let request = SettingsRequestClientForm::to_request(&runtime);
-	assert_eq!(request.tenant.0, "default-tenant");
+	let _request = SettingsRequestClientForm::to_request(&runtime);
 }
