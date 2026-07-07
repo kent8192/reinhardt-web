@@ -254,6 +254,7 @@ impl ReactiveIfNode {
 
 						clear_reactive_node_store(&effect_reactive_node_store);
 
+						refresh_current_nodes_before_marker(&marker_clone, &current_nodes_clone);
 						let old_nodes = {
 							let mut nodes = current_nodes_clone.borrow_mut();
 							nodes.drain(..).collect::<Vec<_>>()
@@ -446,6 +447,7 @@ impl ReactiveNode {
 
 						clear_reactive_node_store(&effect_reactive_node_store);
 
+						refresh_current_nodes_before_marker(&marker_clone, &current_nodes_clone);
 						let old_nodes = {
 							let mut nodes = current_nodes_clone.borrow_mut();
 							nodes.drain(..).collect::<Vec<_>>()
