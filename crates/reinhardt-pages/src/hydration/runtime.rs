@@ -173,12 +173,9 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	// 1. Restore SSR state
 	let mut context = HydrationContext::from_window()?;
 	#[cfg(feature = "i18n")]
-	if let Some(i18n_guard) =
-		crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
-			HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
-		})? {
-		crate::i18n::retain_hydrated_i18n_context(i18n_guard);
-	}
+	let i18n_guard = crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
+		HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
+	})?;
 
 	// 2. Render the component to get expected structure
 	let view = component.render();
@@ -199,6 +196,10 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	web_sys::console::log_1(&"[Hydration] Reactive nodes installed".into());
 
 	// 6. Mark hydration complete
+	#[cfg(feature = "i18n")]
+	if let Some(i18n_guard) = i18n_guard {
+		crate::i18n::retain_hydrated_i18n_context(i18n_guard);
+	}
 	context.mark_hydrated();
 	mark_hydration_complete_internal();
 	web_sys::console::log_1(&"[Hydration] Complete!".into());
@@ -228,11 +229,17 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 			if let Some(node) = crate::component::ReactiveNode::hydrate_at(
 				element.as_web_sys().clone().into(),
 				None,
-				nodes,
+				nodes.clone(),
 				reactive.clone().into_render(),
 			) {
 				store_reactive_node(node);
 			}
+			install_hydrated_child_reactive_nodes(
+				&element.as_web_sys().clone().into(),
+				&nodes,
+				None,
+				&rendered,
+			);
 		}
 		Page::ReactiveIf(reactive_if) => {
 			let branch_view = if reactive_if.condition() {
@@ -300,6 +307,8 @@ fn install_hydrated_child_reactive_nodes(
 ) {
 	match view {
 		Page::Reactive(reactive) => {
+			let rendered = reactive.render();
+			let boundary_sibling = next_sibling.clone();
 			if let Some(node) = crate::component::ReactiveNode::hydrate_at(
 				parent.clone(),
 				next_sibling,
@@ -308,6 +317,7 @@ fn install_hydrated_child_reactive_nodes(
 			) {
 				store_reactive_node(node);
 			}
+			install_hydrated_child_reactive_nodes(parent, nodes, boundary_sibling, &rendered);
 		}
 		Page::ReactiveIf(reactive_if) => {
 			let branch_view = if reactive_if.condition() {
