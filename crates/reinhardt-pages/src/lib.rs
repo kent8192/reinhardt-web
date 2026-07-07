@@ -64,7 +64,7 @@
 //! - [`hydration`]: Client-side hydration
 //! - [`router`]: Client-side routing (reinhardt-urls compatible)
 //! - [`portal`]: Explicit portal mounting into existing DOM targets
-//! - [`i18n`](mod@i18n): Reactive page translations with SSR-resolved catalogs
+//! - `i18n`: Reactive page translations with SSR-resolved catalogs (requires the `i18n` feature)
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
 //!
 //! ## Forms
@@ -165,7 +165,7 @@
 //! - [`page!`]: JSX-like macro for defining view components
 //! - [`head!`]: JSX-like macro for defining HTML head sections
 //! - [`form!`]: Type-safe form component macro
-//! - [`t!`]: Reactive page translation macro (with the `i18n` feature)
+//! - `t!`: Reactive page translation macro (requires the `i18n` feature)
 //! - [`client_page`]: Client page function macro with native route-table stubs
 //! - `#[component]`: Route-backed page component macro
 //! - `#[layout]`: Route-backed layout component macro for nested SPA shells

@@ -42,5 +42,5 @@ pub use markers::{
 	HydrationStrategy,
 };
 #[cfg(native)]
-pub use renderer::{SsrOptions, SsrRenderer};
+pub use renderer::{IntoSsrRendererConfig, SsrOptions, SsrRenderConfig, SsrRenderer};
 pub use state::{SsrState, StateEntry};

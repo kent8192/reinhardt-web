@@ -15,7 +15,7 @@
 use reinhardt_pages::component::{
 	Component, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, ScriptTag,
 };
-use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
+use reinhardt_pages::ssr::{HydrationStrategy, SsrOptions, SsrRenderer};
 
 // ============================================================================
 // Test Components
@@ -581,6 +581,25 @@ fn test_full_page_combined_options() {
 	assert!(html.contains("name=\"author\""));
 	assert!(html.contains("csrf-token"));
 	assert!(html.contains("Count: 99"));
+}
+
+#[test]
+fn test_ssr_options_struct_literal_remains_exhaustive() {
+	let options = SsrOptions {
+		include_hydration_markers: true,
+		minify: false,
+		include_state_script: true,
+		lang: "en".to_string(),
+		csrf_token: None,
+		auth_data: None,
+		enable_partial_hydration: false,
+		default_hydration_strategy: HydrationStrategy::Full,
+	};
+
+	let mut renderer = SsrRenderer::with_options(options);
+	let html = renderer.render_page(&Counter::new(3));
+
+	assert!(html.contains("Count: 3"));
 }
 
 // ============================================================================

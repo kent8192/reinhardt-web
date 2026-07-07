@@ -18,9 +18,6 @@ pub struct SsrOptions {
 	pub include_state_script: bool,
 	/// Language attribute for HTML element.
 	pub lang: String,
-	/// Reactive i18n context to use while rendering.
-	#[cfg(feature = "i18n")]
-	pub i18n_context: Option<crate::i18n::I18nContext>,
 	/// CSRF token to embed.
 	pub csrf_token: Option<String>,
 	/// Authentication data to embed.
@@ -46,8 +43,6 @@ impl Default for SsrOptions {
 			minify: false,
 			include_state_script: true,
 			lang: "en".to_string(),
-			#[cfg(feature = "i18n")]
-			i18n_context: None,
 			csrf_token: None,
 			auth_data: None,
 			enable_partial_hydration: false,
@@ -70,10 +65,12 @@ impl SsrOptions {
 
 	/// Sets the reactive i18n context for SSR and hydration.
 	#[cfg(feature = "i18n")]
-	pub fn i18n_context(mut self, context: crate::i18n::I18nContext) -> Self {
+	pub fn i18n_context(mut self, context: crate::i18n::I18nContext) -> SsrRenderConfig {
 		self.lang = context.locale_untracked();
-		self.i18n_context = Some(context);
-		self
+		SsrRenderConfig {
+			options: self,
+			i18n_context: Some(context),
+		}
 	}
 
 	/// Disables hydration markers.
@@ -149,9 +146,41 @@ impl SsrOptions {
 	}
 }
 
+/// Builder-owned SSR renderer configuration.
+#[derive(Debug, Clone)]
+pub struct SsrRenderConfig {
+	options: SsrOptions,
+	#[cfg(feature = "i18n")]
+	i18n_context: Option<crate::i18n::I18nContext>,
+}
+
+/// Converts public renderer option builders into the renderer's internal config.
+pub trait IntoSsrRendererConfig {
+	/// Convert into a renderer configuration.
+	fn into_ssr_renderer_config(self) -> SsrRenderConfig;
+}
+
+impl IntoSsrRendererConfig for SsrOptions {
+	fn into_ssr_renderer_config(self) -> SsrRenderConfig {
+		SsrRenderConfig {
+			options: self,
+			#[cfg(feature = "i18n")]
+			i18n_context: None,
+		}
+	}
+}
+
+impl IntoSsrRendererConfig for SsrRenderConfig {
+	fn into_ssr_renderer_config(self) -> SsrRenderConfig {
+		self
+	}
+}
+
 /// The main SSR renderer.
 pub struct SsrRenderer {
 	options: SsrOptions,
+	#[cfg(feature = "i18n")]
+	i18n_context: Option<crate::i18n::I18nContext>,
 	state: SsrState,
 	hydration_marker_counter: u64,
 }
@@ -167,15 +196,20 @@ impl SsrRenderer {
 	pub fn new() -> Self {
 		Self {
 			options: SsrOptions::default(),
+			#[cfg(feature = "i18n")]
+			i18n_context: None,
 			state: SsrState::new(),
 			hydration_marker_counter: 0,
 		}
 	}
 
 	/// Creates a renderer with custom options.
-	pub fn with_options(options: SsrOptions) -> Self {
+	pub fn with_options(options: impl IntoSsrRendererConfig) -> Self {
+		let config = options.into_ssr_renderer_config();
 		Self {
-			options,
+			options: config.options,
+			#[cfg(feature = "i18n")]
+			i18n_context: config.i18n_context,
 			state: SsrState::new(),
 			hydration_marker_counter: 0,
 		}
@@ -226,7 +260,7 @@ impl SsrRenderer {
 	fn with_i18n_context<R>(&self, f: impl FnOnce() -> R) -> R {
 		#[cfg(feature = "i18n")]
 		{
-			if let Some(context) = self.options.i18n_context.as_ref() {
+			if let Some(context) = self.i18n_context.as_ref() {
 				return crate::i18n::with_i18n_context(context, f);
 			}
 		}
@@ -235,14 +269,14 @@ impl SsrRenderer {
 
 	fn sync_i18n_state(&mut self) {
 		#[cfg(feature = "i18n")]
-		if let Some(context) = self.options.i18n_context.as_ref() {
+		if let Some(context) = self.i18n_context.as_ref() {
 			crate::i18n::write_i18n_ssr_state(&mut self.state, context);
 		}
 	}
 
 	fn html_lang(&self) -> String {
 		#[cfg(feature = "i18n")]
-		if let Some(context) = self.options.i18n_context.as_ref() {
+		if let Some(context) = self.i18n_context.as_ref() {
 			return context.locale();
 		}
 		self.options.lang.clone()
@@ -255,7 +289,7 @@ impl SsrRenderer {
 
 		let mut state = self.state.clone();
 		#[cfg(feature = "i18n")]
-		if let Some(context) = self.options.i18n_context.as_ref() {
+		if let Some(context) = self.i18n_context.as_ref() {
 			crate::i18n::write_i18n_ssr_state(&mut state, context);
 		}
 

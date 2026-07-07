@@ -20,6 +20,7 @@ reinhardt-di = { workspace = true, optional = true }
 default = []
 full = ["di"]
 di = ["dep:reinhardt-di"]
+test-utils = []
 
 [dev-dependencies]
 insta = { workspace = true }
