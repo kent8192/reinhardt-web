@@ -450,7 +450,7 @@ impl ServerFnInfo {
 	}
 
 	fn emits_typed_response_metadata(&self) -> bool {
-		!self.allows_private_interfaces()
+		!self.allows_private_interfaces() && !matches!(self.vis(), syn::Visibility::Restricted(_))
 	}
 
 	/// Get the endpoint path
@@ -1336,15 +1336,10 @@ fn generate_server_handler(
 	// `reinhardt-web/msw`) so that `MockableServerFn` is in scope.
 	let msw_enabled = cfg!(feature = "msw");
 
-	let emits_typed_response_metadata = info.emits_typed_response_metadata();
-	let (response_type, error_type) = if emits_typed_response_metadata {
-		match extract_result_types(return_type) {
-			Ok(types) => types,
-			Err(error) => return error.to_compile_error(),
-		}
-	} else {
-		(quote! {}, quote! {})
-	};
+	let result_types = extract_result_types(return_type);
+	let emits_typed_response_metadata =
+		info.emits_typed_response_metadata() && result_types.is_some();
+	let (response_type, error_type) = result_types.unwrap_or_else(|| (quote! {}, quote! {}));
 	let response_metadata_type_aliases = if emits_typed_response_metadata {
 		quote! {
 			#[doc(hidden)]
@@ -1658,7 +1653,7 @@ fn generate_server_handler(
 
 fn extract_result_types(
 	return_type: &syn::Type,
-) -> syn::Result<(proc_macro2::TokenStream, proc_macro2::TokenStream)> {
+) -> Option<(proc_macro2::TokenStream, proc_macro2::TokenStream)> {
 	if let syn::Type::Path(type_path) = return_type
 		&& let Some(segment) = type_path.path.segments.last()
 		&& segment.ident == "Result"
@@ -1667,12 +1662,9 @@ fn extract_result_types(
 		&& args.args.len() >= 2
 		&& let Some(syn::GenericArgument::Type(err_type)) = args.args.iter().nth(1)
 	{
-		return Ok((quote! { #ok_type }, quote! { #err_type }));
+		return Some((quote! { #ok_type }, quote! { #err_type }));
 	}
-	Err(syn::Error::new_spanned(
-		return_type,
-		"server_fn return type must be a direct Result<T, E>; type aliases are not supported for response metadata",
-	))
+	None
 }
 
 #[cfg(test)]

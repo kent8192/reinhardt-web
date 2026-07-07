@@ -3,7 +3,9 @@
 use convert_case::{Case, Casing};
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Data, DeriveInput, Fields, Ident, Path, Token, Type, Visibility, parse_macro_input};
+use syn::{
+	Data, DeriveInput, Fields, Ident, LitStr, Path, Token, Type, Visibility, parse_macro_input,
+};
 
 use crate::crate_paths::get_reinhardt_pages_crate;
 
@@ -74,13 +76,15 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 			ensure_skippable(&field.ty)?;
 			skipped_fields.push(SkippedField {
 				name: field_ident,
+				vis: field.vis,
 				ty: field.ty,
+				default_expr: field_options.skipped_default_expr(),
 			});
 			continue;
 		}
 
 		let kind = FieldKind::classify(&field.ty)?;
-		editable_fields.push(EditableField::new(field_ident, field.ty, kind));
+		editable_fields.push(EditableField::new(field_ident, field.vis, field.ty, kind));
 	}
 
 	if editable_fields.is_empty() {
@@ -143,13 +147,15 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 
 	let value_field_defs = fields.iter().map(|field| {
 		let name = &field.name;
+		let vis = &field.vis;
 		let value_ty = field.value_ty();
-		quote! { #dto_vis #name: #value_ty }
+		quote! { #vis #name: #value_ty }
 	});
 	let skipped_value_field_defs = skipped_fields.iter().map(|field| {
 		let name = &field.name;
+		let vis = &field.vis;
 		let ty = &field.ty;
-		quote! { #dto_vis #name: #ty }
+		quote! { #vis #name: #ty }
 	});
 	let form_field_defs = fields.iter().map(|field| {
 		let name = &field.name;
@@ -183,7 +189,8 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 	});
 	let skipped_default_value_fields = skipped_fields.iter().map(|field| {
 		let name = &field.name;
-		quote! { #name: ::core::default::Default::default() }
+		let default_expr = &field.default_expr;
+		quote! { #name: #default_expr }
 	});
 	let signal_initializers = fields.iter().map(|field| {
 		let name = &field.name;
@@ -554,8 +561,9 @@ struct ClientFormFieldOptions {
 	skip: bool,
 	serde_skip: bool,
 	serde_skip_serializing: bool,
+	serde_skip_serializing_if: bool,
 	serde_skip_deserializing: bool,
-	serde_default: bool,
+	serde_default: Option<proc_macro2::TokenStream>,
 }
 
 impl ClientFormFieldOptions {
@@ -564,8 +572,9 @@ impl ClientFormFieldOptions {
 			skip: false,
 			serde_skip: false,
 			serde_skip_serializing: false,
+			serde_skip_serializing_if: false,
 			serde_skip_deserializing: false,
-			serde_default: false,
+			serde_default: None,
 		};
 		for attr in attrs {
 			if attr.path().is_ident("client_form") {
@@ -585,11 +594,13 @@ impl ClientFormFieldOptions {
 						options.serde_skip_deserializing = true;
 					} else if meta.path.is_ident("skip_serializing") {
 						options.serde_skip_serializing = true;
+					} else if meta.path.is_ident("skip_serializing_if") {
+						options.serde_skip_serializing_if = true;
+						consume_serde_field_meta(meta)?;
 					} else if meta.path.is_ident("skip_deserializing") {
 						options.serde_skip_deserializing = true;
 					} else if meta.path.is_ident("default") {
-						options.serde_default = true;
-						consume_serde_field_meta(meta)?;
+						options.serde_default = Some(parse_serde_default_expr(meta)?);
 					} else {
 						consume_serde_field_meta(meta)?;
 					}
@@ -605,10 +616,28 @@ impl ClientFormFieldOptions {
 	}
 
 	fn omits_server_submit_without_default(&self, ty: &Type) -> bool {
-		self.serde_skip_serializing
+		(self.serde_skip_serializing || self.serde_skip_serializing_if)
 			&& !self.serde_skip_deserializing
-			&& !self.serde_default
+			&& self.serde_default.is_none()
 			&& option_inner_type(ty).is_none()
+	}
+
+	fn skipped_default_expr(&self) -> proc_macro2::TokenStream {
+		self.serde_default
+			.clone()
+			.unwrap_or_else(|| quote! { ::core::default::Default::default() })
+	}
+}
+
+fn parse_serde_default_expr(
+	meta: syn::meta::ParseNestedMeta<'_>,
+) -> syn::Result<proc_macro2::TokenStream> {
+	if meta.input.peek(Token![=]) {
+		let value = meta.value()?;
+		let path = value.parse::<LitStr>()?.parse::<Path>()?;
+		Ok(quote! { #path() })
+	} else {
+		Ok(quote! { ::core::default::Default::default() })
 	}
 }
 
@@ -624,12 +653,13 @@ fn consume_serde_field_meta(meta: syn::meta::ParseNestedMeta<'_>) -> syn::Result
 struct EditableField {
 	name: Ident,
 	variant: Ident,
+	vis: Visibility,
 	ty: Type,
 	kind: FieldKind,
 }
 
 impl EditableField {
-	fn new(name: Ident, ty: Type, kind: FieldKind) -> Self {
+	fn new(name: Ident, vis: Visibility, ty: Type, kind: FieldKind) -> Self {
 		let variant = format_ident!(
 			"{}",
 			ident_name_without_raw_prefix(&name).to_case(Case::Pascal)
@@ -637,6 +667,7 @@ impl EditableField {
 		Self {
 			name,
 			variant,
+			vis,
 			ty,
 			kind,
 		}
@@ -718,7 +749,9 @@ fn ident_name_without_raw_prefix(ident: &Ident) -> String {
 
 struct SkippedField {
 	name: Ident,
+	vis: Visibility,
 	ty: Type,
+	default_expr: proc_macro2::TokenStream,
 }
 
 enum FieldKind {

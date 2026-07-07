@@ -100,19 +100,10 @@ mod scoped {
 			Ok(ScopedPrivateResponse { value })
 		}
 
-		fn assert_scoped_visible_response_metadata<T>()
-		where
-			T: ServerFnResponseMetadata<Response = ScopedVisibleResponse, Error = ServerFnError>,
-		{
-		}
-
 		pub(super) fn assert_scoped_visible_marker_is_nameable() {
 			let _marker = scoped_visible_response_metadata_sample::marker;
 			let _handler =
 				<scoped_visible_response_metadata_sample::marker as ServerFnRegistration>::handler();
-			assert_scoped_visible_response_metadata::<
-				scoped_visible_response_metadata_sample::marker,
-			>();
 		}
 
 		pub(super) fn assert_scoped_private_marker_is_nameable() {
