@@ -24,12 +24,6 @@ thread_local! {
 	static CLIENT_RESOURCE_COUNTER: Cell<usize> = const { Cell::new(0) };
 }
 
-/// Resets client call-order resource IDs before hydration rendering.
-#[cfg(wasm)]
-pub(crate) fn reset_client_resource_counter() {
-	CLIENT_RESOURCE_COUNTER.with(|counter| counter.set(0));
-}
-
 /// Returns the current client call-order resource ID offset.
 #[cfg(wasm)]
 pub(crate) fn current_client_resource_counter() -> usize {

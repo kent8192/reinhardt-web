@@ -423,7 +423,10 @@ async fn render_app() {
 Resources created with `use_resource` during SSR are keyed deterministically,
 resolved on the server, and embedded in the hydration payload. Use
 `use_resource_with_key` when a resource hook is conditionally rendered and needs
-a stable explicit hydration key.
+a stable explicit hydration key. Implicit resource keys are allocated at the
+document level so marker-rendered islands and their hydration replays preserve
+the same key order. Suspense boundaries keep fallback and content roots
+transparent; streaming metadata is emitted outside the branch DOM.
 
 ### Forms (native only)
 - `FormBinding`, `FormComponent`

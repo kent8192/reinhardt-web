@@ -251,18 +251,8 @@ impl IntoPage for SuspenseBoundary {
 			None,
 			tracked_resource_ids,
 			move || trackers.iter().any(|tracker| tracker.is_loading()),
-			move || {
-				PageElement::new("div")
-					.attr("data-rh-suspense", "pending")
-					.child(fallback_fn())
-					.into_page()
-			},
-			move || {
-				PageElement::new("div")
-					.attr("data-rh-suspense", "resolved")
-					.child(content_fn())
-					.into_page()
-			},
+			fallback_fn,
+			content_fn,
 		))
 	}
 }

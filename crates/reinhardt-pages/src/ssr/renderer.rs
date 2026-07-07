@@ -181,7 +181,6 @@ impl SsrOptions {
 }
 
 /// The main SSR renderer.
-#[derive(Clone)]
 pub struct SsrRenderer {
 	options: SsrOptions,
 	state: SsrState,
@@ -190,6 +189,22 @@ pub struct SsrRenderer {
 	suspense_boundary_counter: u64,
 	marker_resource_context: Rc<RefCell<SsrResourceContext>>,
 	marker_id_counter: Rc<Cell<usize>>,
+}
+
+impl Clone for SsrRenderer {
+	fn clone(&self) -> Self {
+		Self {
+			options: self.options.clone(),
+			state: self.state.clone(),
+			rendered_head: self.rendered_head.clone(),
+			hydration_marker_counter: self.hydration_marker_counter,
+			suspense_boundary_counter: self.suspense_boundary_counter,
+			marker_resource_context: Rc::new(RefCell::new(SsrResourceContext::new(
+				self.options.resource_timeout,
+			))),
+			marker_id_counter: Rc::new(Cell::new(0)),
+		}
+	}
 }
 
 #[derive(Clone, Copy)]
@@ -411,6 +426,10 @@ impl SsrRenderer {
 	fn begin_render(&mut self, clear_resource_states: bool) {
 		if clear_resource_states {
 			self.state.clear_resource_states();
+			self.marker_resource_context = Rc::new(RefCell::new(SsrResourceContext::new(
+				self.options.resource_timeout,
+			)));
+			self.marker_id_counter = Rc::new(Cell::new(0));
 			self.reset_deterministic_render_counters();
 		}
 		self.rendered_head = None;
@@ -558,6 +577,7 @@ impl SsrRenderer {
 				let view = view_factory();
 				let mut boundaries = Vec::new();
 				self.restore_deterministic_render_snapshot(render_start);
+				self.begin_buffered_render_pass();
 				let content = self.render_stream_shell_page(&view, &mut boundaries).await;
 				let view_head = self.current_buffered_rendered_head_or_view_head(&view);
 				SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
@@ -588,6 +608,7 @@ impl SsrRenderer {
 				resolve_external_resources(&context).await;
 				let (view, content, boundaries) = loop {
 					self.restore_deterministic_render_snapshot(render_start);
+					self.begin_buffered_render_pass();
 
 					let view = view_factory();
 					let mut boundaries = Vec::new();
@@ -1440,7 +1461,10 @@ fn is_comment_safe_suspense_id(id: &str) -> bool {
 }
 
 fn normalize_suspense_boundary_id(id: &str) -> String {
-	if is_comment_safe_suspense_id(id) && !id.starts_with("rh-suspense-id-") {
+	if is_comment_safe_suspense_id(id)
+		&& !id.starts_with("rh-suspense-id-")
+		&& !is_generated_suspense_boundary_id(id)
+	{
 		return id.to_string();
 	}
 
@@ -1449,6 +1473,12 @@ fn normalize_suspense_boundary_id(id: &str) -> String {
 		let _ = write!(&mut normalized, "{byte:02x}");
 	}
 	normalized
+}
+
+fn is_generated_suspense_boundary_id(id: &str) -> bool {
+	id.strip_prefix("rh-suspense-").is_some_and(|suffix| {
+		!suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
+	})
 }
 
 fn push_unique_head_entry(
@@ -1629,9 +1659,11 @@ mod tests {
 	#[test]
 	fn normalize_suspense_boundary_id_reserves_generated_namespace() {
 		let unsafe_id = normalize_suspense_boundary_id("--");
+		let generated_id = normalize_suspense_boundary_id("rh-suspense-0");
 		let safe_generated_prefix_id = normalize_suspense_boundary_id("rh-suspense-id-2d2d");
 
 		assert_eq!(unsafe_id, "rh-suspense-id-2d2d");
+		assert_eq!(generated_id, "rh-suspense-id-72682d73757370656e73652d30");
 		assert_ne!(unsafe_id, safe_generated_prefix_id);
 		assert!(safe_generated_prefix_id.starts_with("rh-suspense-id-"));
 	}

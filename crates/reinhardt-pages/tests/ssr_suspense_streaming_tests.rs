@@ -247,6 +247,57 @@ async fn marker_renders_preserve_unique_implicit_resource_keys() {
 }
 
 #[tokio::test]
+async fn marker_resource_state_resets_after_full_document_render() {
+	let mut renderer = SsrRenderer::new();
+	let first_html = renderer
+		.render_with_marker(&ImplicitResourceComponent {
+			value: "first-ready",
+		})
+		.await;
+
+	let full_page = renderer
+		.render_page_with_view_head_to_string(
+			PageElement::new("main").child("new-document").into_page(),
+		)
+		.await;
+	let second_html = renderer
+		.render_with_marker(&ImplicitResourceComponent {
+			value: "second-ready",
+		})
+		.await;
+
+	assert!(first_html.contains(r#"data-resource-key="rh-res-0""#));
+	assert!(full_page.contains("new-document"));
+	assert!(second_html.contains(r#"data-resource-key="rh-res-0""#));
+	assert!(!second_html.contains(r#"data-resource-key="rh-res-1""#));
+	assert!(second_html.contains("second-ready"));
+	assert_eq!(renderer.state().resource_count(), 1);
+}
+
+#[tokio::test]
+async fn cloned_renderers_do_not_share_marker_resource_state() {
+	let mut first_renderer = SsrRenderer::new();
+	let mut second_renderer = first_renderer.clone();
+
+	let first_html = first_renderer
+		.render_with_marker(&ImplicitResourceComponent {
+			value: "first-ready",
+		})
+		.await;
+	let second_html = second_renderer
+		.render_with_marker(&ImplicitResourceComponent {
+			value: "second-ready",
+		})
+		.await;
+
+	assert!(first_html.contains(r#"data-resource-key="rh-res-0""#));
+	assert!(second_html.contains(r#"data-resource-key="rh-res-0""#));
+	assert!(!second_html.contains(r#"data-resource-key="rh-res-1""#));
+	assert_eq!(first_renderer.state().resource_count(), 1);
+	assert_eq!(second_renderer.state().resource_count(), 1);
+}
+
+#[tokio::test]
 async fn buffered_suspense_emits_resolved_content_directly() {
 	let mut renderer = SsrRenderer::new();
 	let html = renderer
@@ -254,8 +305,8 @@ async fn buffered_suspense_emits_resolved_content_directly() {
 		.await;
 
 	assert!(html.contains("resolved"));
-	assert!(html.contains(r#"data-rh-suspense="resolved""#));
 	assert!(!html.contains("rh-suspense-start:rh-suspense-0"));
+	assert!(!html.contains(r#"data-rh-suspense="resolved""#));
 	assert!(!html.contains(r#"data-rh-suspense="pending""#));
 	assert!(!html.contains(r#"data-rh-suspense-chunk="rh-suspense-0""#));
 }
@@ -599,9 +650,17 @@ async fn streaming_shell_drains_external_resources_discovered_during_replay() {
 			Page::reactive(|| {
 				let second =
 					use_resource(|| async { Ok::<_, String>("second-ready".to_string()) }, ());
-				resource_to_page(second.get(), "em", "second-loading", |value| {
-					PageElement::new("strong").child(value).into_page()
-				})
+				match second.get() {
+					ResourceState::Success(value) => PageElement::new("strong")
+						.child(value)
+						.into_page()
+						.with_head(Head::new().title("Second Ready Head")),
+					ResourceState::Loading => PageElement::new("em")
+						.child("second-loading")
+						.into_page()
+						.with_head(Head::new().title("Second Loading Head")),
+					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+				}
 			})
 		})
 	});
@@ -613,6 +672,8 @@ async fn streaming_shell_drains_external_resources_discovered_during_replay() {
 
 	assert!(shell.contains("second-ready"));
 	assert!(!shell.contains("second-loading"));
+	assert!(shell.contains("<title>Second Ready Head</title>"));
+	assert!(!shell.contains("<title>Second Loading Head</title>"));
 	assert!(closing.contains("rh-res-1"));
 	assert!(stream.next().await.is_none());
 }
@@ -1412,6 +1473,59 @@ async fn custom_pending_suspense_renders_fallback_on_ssr() {
 
 	assert!(html.contains("custom-fallback"));
 	assert!(!html.contains("custom-content"));
+}
+
+#[test]
+fn suspense_page_render_to_string_uses_active_branch() {
+	let view = Page::Suspense(SuspenseNode::new(
+		Some("string-pending".to_string()),
+		|| true,
+		|| {
+			PageElement::new("span")
+				.child("string-fallback")
+				.into_page()
+		},
+		|| {
+			PageElement::new("strong")
+				.child("string-content")
+				.into_page()
+		},
+	));
+
+	let html = view.render_to_string();
+
+	assert!(html.contains("string-fallback"));
+	assert!(!html.contains("string-content"));
+}
+
+#[tokio::test]
+async fn suspense_boundary_into_page_preserves_table_row_root() {
+	let view = PageElement::new("table")
+		.child(
+			PageElement::new("tbody")
+				.child(
+					SuspenseBoundary::new()
+						.fallback(|| {
+							PageElement::new("tr")
+								.child(PageElement::new("td").child("fallback"))
+								.into_page()
+						})
+						.content(|| {
+							PageElement::new("tr")
+								.child(PageElement::new("td").child("resolved"))
+								.into_page()
+						})
+						.into_page(),
+				)
+				.into_page(),
+		)
+		.into_page();
+
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	assert!(html.contains("<tbody><tr><td>resolved</td></tr></tbody>"));
+	assert!(!html.contains("<tbody><div"));
 }
 
 #[tokio::test]

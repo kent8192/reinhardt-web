@@ -171,21 +171,25 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	let mut context = HydrationContext::from_window()?;
 
 	// 2. Render the component to get expected structure
-	crate::reactive::resource::reset_client_resource_counter();
 	let view = component.render();
 	let resource_counter_offset = crate::reactive::resource::current_client_resource_counter();
+	let id_counter_offset = crate::reactive::hooks::id::id_counter_snapshot();
 	web_sys::console::log_1(&"[Hydration] View rendered".into());
 
 	// 3. Reconcile DOM structure
 	crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+	crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 	reconcile(root, &view)
 		.map_err(|e| HydrationError::StateParseError(format!("Reconciliation failed: {}", e)))?;
 	web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
 
 	// 4. Attach event handlers
 	crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+	crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 	let mut registry = EventRegistry::new();
 	attach_events_recursive(root, &view, &mut registry)?;
+	crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+	crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 	web_sys::console::log_1(&"[Hydration] Events attached".into());
 
 	// 5. Mark hydration complete

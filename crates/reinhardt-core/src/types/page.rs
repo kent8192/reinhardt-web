@@ -1032,7 +1032,7 @@ impl Page {
 				view.render_to_string_inner(output);
 			}
 			Page::Suspense(node) => {
-				let view = node.content();
+				let view = node.render_branch();
 				view.render_to_string_inner(output);
 			}
 			Page::Deferred(node) => {
