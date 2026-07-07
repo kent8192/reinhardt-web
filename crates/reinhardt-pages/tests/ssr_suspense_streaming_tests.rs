@@ -3,8 +3,8 @@
 use futures_util::StreamExt;
 use reinhardt_core::types::page::{DeferredNode, Head, SuspenseNode};
 use reinhardt_pages::component::suspense::SuspenseBoundary;
-use reinhardt_pages::component::{IntoPage, Page, PageElement};
-use reinhardt_pages::reactive::{ResourceState, use_id, use_resource};
+use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
+use reinhardt_pages::reactive::{ResourceState, use_id, use_resource, use_resource_with_key};
 use reinhardt_pages::ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
 use std::cell::Cell;
 use std::rc::Rc;
@@ -86,6 +86,68 @@ fn resource_to_page(
 			.into_page(),
 		ResourceState::Error(error) => PageElement::new(loading_tag).child(error).into_page(),
 	}
+}
+
+struct KeyedResourceComponent {
+	key: &'static str,
+	value: &'static str,
+}
+
+impl Component for KeyedResourceComponent {
+	fn render(&self) -> Page {
+		let key = self.key.to_string();
+		let value = self.value.to_string();
+		Page::reactive(move || {
+			let fetch_value = value.clone();
+			let resource = use_resource_with_key(
+				key.clone(),
+				move || {
+					let value = fetch_value.clone();
+					async move { Ok::<_, String>(value) }
+				},
+				(),
+			);
+			resource_to_page(resource.get(), "em", "loading", |value| {
+				PageElement::new("strong").child(value).into_page()
+			})
+		})
+	}
+
+	fn name() -> &'static str {
+		"KeyedResourceComponent"
+	}
+}
+
+#[tokio::test]
+async fn marker_renders_accumulate_explicit_resource_state() {
+	let mut renderer = SsrRenderer::new();
+	let first = KeyedResourceComponent {
+		key: "first-island",
+		value: "first-ready",
+	};
+	let second = KeyedResourceComponent {
+		key: "second-island",
+		value: "second-ready",
+	};
+
+	let first_html = renderer.render_with_marker(&first).await;
+	let second_html = renderer.render_with_marker(&second).await;
+
+	assert!(first_html.contains("first-ready"));
+	assert!(second_html.contains("second-ready"));
+	assert_eq!(renderer.state().resource_count(), 2);
+	assert!(
+		renderer
+			.state()
+			.get_resource_state("first-island")
+			.is_some()
+	);
+	assert!(
+		renderer
+			.state()
+			.get_resource_state("second-island")
+			.is_some()
+	);
 }
 
 #[tokio::test]
@@ -200,6 +262,42 @@ async fn buffered_suspense_caches_head_after_replay_resources_settle() {
 	assert!(html.contains("<title>Inner Ready Head</title>"));
 	assert!(html.contains("inner-ready"));
 	assert!(!html.contains("inner-loading"));
+}
+
+#[tokio::test]
+async fn buffered_suspense_replays_resolved_content_inside_boundary() {
+	let outer_fetches = Rc::new(Cell::new(0));
+	let content_fetches = Rc::clone(&outer_fetches);
+	let view = Page::Suspense(SuspenseNode::new(
+		Some("boundary-replay".to_string()),
+		|| false,
+		|| PageElement::new("span").child("fallback").into_page(),
+		move || {
+			let fetches = Rc::clone(&content_fetches);
+			let outer = use_resource(
+				move || {
+					let fetches = Rc::clone(&fetches);
+					async move {
+						fetches.set(fetches.get() + 1);
+						Ok::<_, String>("outer".to_string())
+					}
+				},
+				(),
+			);
+			resource_to_page(outer.get(), "em", "outer-loading", |_| {
+				let inner = use_resource(|| async { Ok::<_, String>("inner".to_string()) }, ());
+				resource_to_page(inner.get(), "em", "inner-loading", |value| {
+					PageElement::new("strong").child(value).into_page()
+				})
+			})
+		},
+	));
+
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	assert!(html.contains("inner"));
+	assert_eq!(outer_fetches.get(), 1);
 }
 
 #[tokio::test]
@@ -339,6 +437,42 @@ async fn buffered_deferred_head_updates_after_replay_settles() {
 	assert!(html.contains("deferred-ready"));
 	assert!(html.contains("<title>Resolved Deferred Head</title>"));
 	assert!(!html.contains("<title>Loading Deferred Head</title>"));
+}
+
+#[tokio::test]
+async fn buffered_page_without_state_script_keeps_resource_dom_pending() {
+	let mut options = SsrOptions::new();
+	options.include_state_script = false;
+	let mut renderer = SsrRenderer::with_options(options);
+	let html = renderer
+		.render_page_with_view_head_to_string(suspense_resource_view())
+		.await;
+
+	assert!(html.contains("fallback"));
+	assert!(html.contains(r#"data-rh-suspense="pending""#));
+	assert!(!html.contains("resolved"));
+	assert!(!html.contains("ssr-state"));
+	assert_eq!(renderer.state().resource_count(), 0);
+}
+
+#[tokio::test]
+async fn streaming_page_without_state_script_skips_resource_replacements() {
+	let mut options = SsrOptions::new();
+	options.include_state_script = false;
+	let mut renderer = SsrRenderer::with_options(options);
+	let mut stream = renderer
+		.render_page_with_view_head(suspense_resource_view())
+		.await;
+	let mut html = String::new();
+	while let Some(chunk) = stream.next().await {
+		html.push_str(&chunk.into_string());
+	}
+
+	assert!(html.contains("fallback"));
+	assert!(html.contains(r#"data-rh-suspense="pending""#));
+	assert!(!html.contains("resolved"));
+	assert!(!html.contains(r#"data-rh-suspense-chunk="rh-suspense-0""#));
+	assert!(!html.contains("ssr-state"));
 }
 
 #[tokio::test]
