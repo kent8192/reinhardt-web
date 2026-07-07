@@ -141,7 +141,9 @@ DTO trims and maps empty strings to `None`.
 Enum choices use the serialized enum value as both `value` and `label`. The
 derive recognizes `serde(rename_all = "...")` and variant-level
 `serde(rename = "...")` for supported serde rename cases through
-`ClientFormChoices`. If an enum field does not implement
+`ClientFormChoices`, but serialize and deserialize names must match so the
+submitted choice value can round-trip through server deserialization. If an enum
+field does not implement
 `ClientFormChoiceSource`, compilation fails with a message pointing at the
 field.
 
@@ -157,7 +159,11 @@ The derive accepts a struct-level `#[client_form(...)]` helper attribute:
 ```
 
 `name` overrides the generated form type stem. `server_fn` enables the generated
-async submit helper. Neither attribute is required.
+async submit helper. Server-function forms reject request fields using
+`serde(skip)`, `serde(skip_serializing)`, `serde(skip_serializing_if)`, or
+`serde(skip_deserializing)` because the generated browser payload and native
+handler deserialization must use the same request field values. Neither
+attribute is required.
 
 Field-level attributes are intentionally small:
 

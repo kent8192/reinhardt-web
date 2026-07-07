@@ -128,10 +128,13 @@
 //! ```
 //!
 //! [`ClientFormChoices`] mirrors serde's externally tagged string names for
-//! unit variants, including serialize-side `rename_all` and variant `rename`;
-//! tagged and untagged enum representations are rejected because form choices
-//! submit bare strings. DTO fields marked with serde skip attributes are kept
-//! out of editable form fields and preserved through generated request values.
+//! unit variants, including matching `rename_all` and variant `rename`; tagged,
+//! untagged, or directionally renamed enum representations are rejected because
+//! form choices submit bare strings. DTO fields marked with serde skip
+//! attributes are kept out of editable form fields and preserved through
+//! generated request values. Forms with generated `server_fn` submit helpers
+//! reject serde-skipped request fields because the browser payload must match
+//! native request deserialization exactly.
 //!
 //! Compose validated submit flows with [`use_form_action`]:
 //!

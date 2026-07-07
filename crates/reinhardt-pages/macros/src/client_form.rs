@@ -64,12 +64,10 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 			));
 		};
 		let field_options = ClientFormFieldOptions::parse(&field.attrs)?;
-		if options.server_fn.is_some()
-			&& field_options.omits_server_submit_without_default(&field.ty)
-		{
+		if options.server_fn.is_some() && field_options.omits_or_ignores_server_submit() {
 			return Err(syn::Error::new_spanned(
 				&field_ident,
-				"ClientForm server_fn fields with serde(skip_serializing) must also use serde(default) or serde(skip_deserializing)",
+				"ClientForm server_fn fields must not use serde(skip), serde(skip_serializing), serde(skip_serializing_if), or serde(skip_deserializing)",
 			));
 		}
 		if field_options.is_skipped() {
@@ -78,7 +76,7 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 				name: field_ident,
 				vis: field.vis,
 				ty: field.ty,
-				default_expr: field_options.skipped_default_expr(),
+				default_expr: field_options.skipped_default_expr(&dto_ident),
 			});
 			continue;
 		}
@@ -144,6 +142,10 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 		pages_crate,
 		validate,
 	} = context;
+	let field_token_fields = fields
+		.iter()
+		.filter(|field| field.exposes_field_token(dto_vis))
+		.collect::<Vec<_>>();
 
 	let value_field_defs = fields.iter().map(|field| {
 		let name = &field.name;
@@ -162,8 +164,8 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 		let value_ty = field.value_ty();
 		quote! { #name: #pages_crate::reactive::Signal<#value_ty> }
 	});
-	let field_variants = fields.iter().map(|field| &field.variant);
-	let field_accessor_methods = fields.iter().map(|field| {
+	let field_variants = field_token_fields.iter().map(|field| &field.variant);
+	let field_accessor_methods = field_token_fields.iter().map(|field| {
 		let method = format_ident!("{}_field", ident_name_without_raw_prefix(&field.name));
 		let variant = &field.variant;
 		quote! {
@@ -172,7 +174,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 			}
 		}
 	});
-	let choice_methods = fields.iter().filter_map(|field| {
+	let choice_methods = field_token_fields.iter().filter_map(|field| {
 		let choice_ty = field.choice_ty()?;
 		let method = format_ident!("{}_choices", ident_name_without_raw_prefix(&field.name));
 		Some(quote! {
@@ -216,11 +218,18 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 		let name = &field.name;
 		quote! { __initial_values.#name = new_defaults.#name.clone(); }
 	});
+	let apply_pristine_private_values = fields
+		.iter()
+		.filter(|field| !field.exposes_field_token(dto_vis))
+		.map(|field| {
+			let name = &field.name;
+			quote! { self.#name.set(new_defaults.#name.clone()); }
+		});
 	let value_eq_fields = fields.iter().map(|field| {
 		let name = &field.name;
 		quote! { self.#name == other.#name }
 	});
-	let set_field_arms = fields.iter().map(|field| {
+	let set_field_arms = field_token_fields.iter().map(|field| {
 		let name = &field.name;
 		let variant = &field.variant;
 		let value_ty = field.value_ty();
@@ -240,17 +249,17 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 			}
 		}
 	});
-	let apply_field_arms = fields.iter().map(|field| {
+	let apply_field_arms = field_token_fields.iter().map(|field| {
 		let name = &field.name;
 		let variant = &field.variant;
 		quote! { #field_ident::#variant => self.#name.set(values.#name.clone()) }
 	});
-	let dirty_arms = fields.iter().map(|field| {
+	let dirty_arms = field_token_fields.iter().map(|field| {
 		let name = &field.name;
 		let variant = &field.variant;
 		quote! { #field_ident::#variant => current.#name != defaults.#name }
 	});
-	let watch_arms = fields.iter().map(|field| {
+	let watch_arms = field_token_fields.iter().map(|field| {
 		let name = &field.name;
 		let variant = &field.variant;
 		quote! {
@@ -264,7 +273,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 			}
 		}
 	});
-	let fields_slice = fields.iter().map(|field| {
+	let fields_slice = field_token_fields.iter().map(|field| {
 		let variant = &field.variant;
 		quote! { #field_ident::#variant }
 	});
@@ -286,7 +295,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 		let name = &field.name;
 		quote! { #name: values.#name.clone() }
 	});
-	let field_name_arms = fields.iter().map(|field| {
+	let field_name_arms = field_token_fields.iter().map(|field| {
 		let raw_name = field.name.to_string();
 		let name = ident_name_without_raw_prefix(&field.name);
 		let variant = &field.variant;
@@ -415,6 +424,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 					let mut __initial_values = self.__initial_values.borrow_mut();
 					#(#apply_pristine_skipped_values)*
 				}
+				#(#apply_pristine_private_values)*
 				for field in self.runtime_fields() {
 					let field = *field;
 					if !self.runtime_field_is_dirty(field, current, old_defaults) {
@@ -563,7 +573,7 @@ struct ClientFormFieldOptions {
 	serde_skip_serializing: bool,
 	serde_skip_serializing_if: bool,
 	serde_skip_deserializing: bool,
-	serde_default: Option<proc_macro2::TokenStream>,
+	serde_default: Option<SerdeDefaultExpr>,
 }
 
 impl ClientFormFieldOptions {
@@ -615,29 +625,49 @@ impl ClientFormFieldOptions {
 		self.skip || self.serde_skip || self.serde_skip_serializing || self.serde_skip_deserializing
 	}
 
-	fn omits_server_submit_without_default(&self, ty: &Type) -> bool {
-		(self.serde_skip_serializing || self.serde_skip_serializing_if)
-			&& !self.serde_skip_deserializing
-			&& self.serde_default.is_none()
-			&& option_inner_type(ty).is_none()
+	fn omits_or_ignores_server_submit(&self) -> bool {
+		self.serde_skip_serializing
+			|| self.serde_skip_serializing_if
+			|| self.serde_skip_deserializing
 	}
 
-	fn skipped_default_expr(&self) -> proc_macro2::TokenStream {
+	fn skipped_default_expr(&self, dto_ident: &Ident) -> proc_macro2::TokenStream {
 		self.serde_default
-			.clone()
-			.unwrap_or_else(|| quote! { ::core::default::Default::default() })
+			.as_ref()
+			.unwrap_or(&SerdeDefaultExpr::Default)
+			.to_tokens(dto_ident)
 	}
 }
 
-fn parse_serde_default_expr(
-	meta: syn::meta::ParseNestedMeta<'_>,
-) -> syn::Result<proc_macro2::TokenStream> {
+enum SerdeDefaultExpr {
+	Default,
+	Path(Path),
+}
+
+impl SerdeDefaultExpr {
+	fn to_tokens(&self, dto_ident: &Ident) -> proc_macro2::TokenStream {
+		match self {
+			Self::Default => quote! { ::core::default::Default::default() },
+			Self::Path(path) => {
+				let mut path = path.clone();
+				if let Some(first_segment) = path.segments.first_mut() {
+					if first_segment.ident == "Self" {
+						first_segment.ident = dto_ident.clone();
+					}
+				}
+				quote! { #path() }
+			}
+		}
+	}
+}
+
+fn parse_serde_default_expr(meta: syn::meta::ParseNestedMeta<'_>) -> syn::Result<SerdeDefaultExpr> {
 	if meta.input.peek(Token![=]) {
 		let value = meta.value()?;
 		let path = value.parse::<LitStr>()?.parse::<Path>()?;
-		Ok(quote! { #path() })
+		Ok(SerdeDefaultExpr::Path(path))
 	} else {
-		Ok(quote! { ::core::default::Default::default() })
+		Ok(SerdeDefaultExpr::Default)
 	}
 }
 
@@ -698,6 +728,10 @@ impl EditableField {
 			FieldKind::OptionEnum => option_inner_type(&self.ty).map(|ty| quote! { #ty }),
 			_ => None,
 		}
+	}
+
+	fn exposes_field_token(&self, dto_vis: &Visibility) -> bool {
+		!matches!(dto_vis, Visibility::Public(_)) || matches!(self.vis, Visibility::Public(_))
 	}
 
 	fn default_expr(&self, pages_crate: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {

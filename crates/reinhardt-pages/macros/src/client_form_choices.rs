@@ -80,6 +80,12 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 		let deserialize_name = variant_options
 			.deserialize_rename
 			.unwrap_or_else(|| apply_rename_rule(&variant_name, rename_rules.deserialize));
+		if serialized != deserialize_name {
+			return Err(syn::Error::new_spanned(
+				&variant_ident,
+				"ClientFormChoices requires matching serde serialize and deserialize names for each choice",
+			));
+		}
 		variant_options.aliases.push(deserialize_name);
 		if !seen_serialized_values.insert(serialized.clone()) {
 			return Err(syn::Error::new_spanned(

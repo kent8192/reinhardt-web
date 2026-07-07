@@ -1,0 +1,8 @@
+error[E0599]: no variant, associated function, or constant named `Secret` found for enum `SettingsRequestClientFormField` in the current scope
+  --> tests/ui/client_form/fail/private_editable_field_token.rs:12:52
+   |
+ 3 | #[derive(Clone, ClientForm)]
+   |                 ---------- variant, associated function, or constant `Secret` not found for this enum
+...
+12 |     runtime.set_value(SettingsRequestClientFormField::Secret, "leak".to_string());
+   |                                                       ^^^^^^ variant, associated function, or constant not found in `SettingsRequestClientFormField`
