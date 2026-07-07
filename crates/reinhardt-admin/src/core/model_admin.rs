@@ -624,7 +624,7 @@ mod tests {
 		let result = admin.has_view_permission(&user as &dyn AdminUser).await;
 
 		// Assert
-		assert_eq!(result, false);
+		assert!(!result);
 	}
 
 	#[rstest]
@@ -638,7 +638,7 @@ mod tests {
 		let result = admin.has_add_permission(&user as &dyn AdminUser).await;
 
 		// Assert
-		assert_eq!(result, false);
+		assert!(!result);
 	}
 
 	#[rstest]
@@ -652,7 +652,7 @@ mod tests {
 		let result = admin.has_change_permission(&user as &dyn AdminUser).await;
 
 		// Assert
-		assert_eq!(result, false);
+		assert!(!result);
 	}
 
 	#[rstest]
@@ -666,7 +666,7 @@ mod tests {
 		let result = admin.has_delete_permission(&user as &dyn AdminUser).await;
 
 		// Assert
-		assert_eq!(result, false);
+		assert!(!result);
 	}
 
 	#[rstest]
@@ -683,10 +683,10 @@ mod tests {
 		let delete = admin.has_delete_permission(&user as &dyn AdminUser).await;
 
 		// Assert
-		assert_eq!(view, true);
-		assert_eq!(add, true);
-		assert_eq!(change, true);
-		assert_eq!(delete, true);
+		assert!(view);
+		assert!(add);
+		assert!(change);
+		assert!(delete);
 	}
 
 	#[rstest]
@@ -703,10 +703,10 @@ mod tests {
 		let delete = admin.has_delete_permission(&user as &dyn AdminUser).await;
 
 		// Assert
-		assert_eq!(view, false);
-		assert_eq!(add, false);
-		assert_eq!(change, false);
-		assert_eq!(delete, false);
+		assert!(!view);
+		assert!(!add);
+		assert!(!change);
+		assert!(!delete);
 	}
 
 	// ==================== ModelAdminConfig field tests ====================
@@ -789,8 +789,8 @@ mod tests {
 		let add = admin.has_add_permission(&user as &dyn AdminUser).await;
 
 		// Assert
-		assert_eq!(view, false);
-		assert_eq!(add, false);
+		assert!(!view);
+		assert!(!add);
 	}
 
 	#[rstest]
@@ -809,8 +809,8 @@ mod tests {
 		let add = admin.has_add_permission(&user as &dyn AdminUser).await;
 
 		// Assert
-		assert_eq!(view, true);
-		assert_eq!(add, false);
+		assert!(view);
+		assert!(!add);
 	}
 
 	#[rstest]
@@ -831,10 +831,10 @@ mod tests {
 		let delete = admin.has_delete_permission(&user as &dyn AdminUser).await;
 
 		// Assert
-		assert_eq!(view, true);
-		assert_eq!(add, true);
-		assert_eq!(change, true);
-		assert_eq!(delete, true);
+		assert!(view);
+		assert!(add);
+		assert!(change);
+		assert!(delete);
 	}
 
 	#[rstest]
@@ -853,8 +853,8 @@ mod tests {
 		let add = admin.has_add_permission(&user as &dyn AdminUser).await;
 
 		// Assert
-		assert_eq!(view, false);
-		assert_eq!(add, false);
+		assert!(!view);
+		assert!(!add);
 	}
 
 	#[rstest]
@@ -878,10 +878,10 @@ mod tests {
 		let delete = admin.has_delete_permission(&user as &dyn AdminUser).await;
 
 		// Assert
-		assert_eq!(view, true);
-		assert_eq!(add, true);
-		assert_eq!(change, false);
-		assert_eq!(delete, false);
+		assert!(view);
+		assert!(add);
+		assert!(!change);
+		assert!(!delete);
 	}
 
 	// ==================== Decision table: allow_all controls permissions ====================
