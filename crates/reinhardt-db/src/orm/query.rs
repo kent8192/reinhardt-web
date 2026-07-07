@@ -4691,11 +4691,18 @@ where
 		stmt.table(Alias::new(T::table_name()));
 
 		// Add SET clauses
+		let mut has_values = false;
 		for (field, value) in updates {
 			if T::generated_field_names().contains(&field.as_str()) {
 				continue;
 			}
 			stmt.value_expr(Alias::new(field), Self::update_value_to_query_expr(value));
+			has_values = true;
+		}
+
+		if !has_values {
+			let primary_key = T::primary_key_field();
+			stmt.value_expr(Alias::new(primary_key), Expr::col(Alias::new(primary_key)));
 		}
 
 		// Add WHERE conditions
@@ -6679,6 +6686,24 @@ mod tests {
 			"UPDATE \"test_users\" SET \"username\" = $1 WHERE \"id\" = $2"
 		);
 		assert_eq!(params.len(), 2);
+	}
+
+	#[test]
+	fn test_update_sql_generated_only_fields_builds_noop_set() {
+		let queryset = QuerySet::<TestUser>::new().filter(TestUser::field_id().eq(7));
+		let mut updates = HashMap::new();
+		updates.insert(
+			"full_name".to_string(),
+			UpdateValue::String("Alice Doe".to_string()),
+		);
+
+		let (sql, params) = queryset.update_sql(&updates);
+
+		assert_eq!(
+			sql,
+			"UPDATE \"test_users\" SET \"id\" = \"id\" WHERE \"id\" = $1"
+		);
+		assert_eq!(params, vec!["7"]);
 	}
 
 	#[test]

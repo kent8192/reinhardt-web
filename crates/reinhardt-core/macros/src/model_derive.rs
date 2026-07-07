@@ -285,13 +285,26 @@ fn generated_column_type_is_supported(expr: &syn::Expr) -> bool {
 				"Array" if expr_call.args.len() == 1 => generated_box_new_expr(&expr_call.args[0])
 					.is_some_and(generated_column_type_is_supported),
 				"Custom" if expr_call.args.len() == 1 => {
-					matches!(&expr_call.args[0], syn::Expr::Lit(expr_lit) if matches!(&expr_lit.lit, syn::Lit::Str(_)))
+					generated_custom_column_type_arg_is_supported(&expr_call.args[0])
 				}
 				_ => false,
 			}
 		}
 		_ => false,
 	}
+}
+
+fn generated_custom_column_type_arg_is_supported(expr: &syn::Expr) -> bool {
+	if matches!(expr, syn::Expr::Lit(expr_lit) if matches!(&expr_lit.lit, syn::Lit::Str(_))) {
+		return true;
+	}
+
+	let syn::Expr::MethodCall(method_call) = expr else {
+		return false;
+	};
+	method_call.method == "to_string"
+		&& method_call.args.is_empty()
+		&& matches!(&*method_call.receiver, syn::Expr::Lit(expr_lit) if matches!(&expr_lit.lit, syn::Lit::Str(_)))
 }
 
 fn generated_box_new_expr(expr: &syn::Expr) -> Option<&syn::Expr> {
@@ -5697,12 +5710,17 @@ mod tests {
 	#[test]
 	fn test_generated_schema_expr_validation_accepts_reconstructable_expr() {
 		let expr: syn::Expr = parse_quote! {
-			SchemaExpr::concat([
-				SchemaExpr::col("first_name"),
-				SchemaExpr::val(" "),
-				SchemaExpr::col("last_name"),
-			])
-			.cast(ColumnType::String(Some(201)))
+			SchemaExpr::concat([SchemaExpr::col("first_name"), SchemaExpr::val(" "), SchemaExpr::col("last_name")])
+				.cast(ColumnType::String(Some(201)))
+		};
+
+		assert!(validate_generated_schema_expr(&expr).is_ok());
+	}
+
+	#[test]
+	fn test_generated_schema_expr_validation_accepts_custom_cast_type_string() {
+		let expr: syn::Expr = parse_quote! {
+			SchemaExpr::col("email").cast(ColumnType::Custom("CITEXT".to_string()))
 		};
 
 		assert!(validate_generated_schema_expr(&expr).is_ok());

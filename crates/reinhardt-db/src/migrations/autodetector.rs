@@ -4658,6 +4658,7 @@ impl MigrationAutodetector {
 	fn added_generated_field_references_altered_source(
 		&self,
 		altered_fields: &[(String, String, String)],
+		renamed_fields: &[(String, String, String, String)],
 		app_label: &str,
 		model_name: &str,
 		field_name: &str,
@@ -4672,14 +4673,25 @@ impl MigrationAutodetector {
 			return false;
 		};
 
-		altered_fields
-			.iter()
-			.any(|(other_app_label, other_model_name, other_field_name)| {
+		let references_altered_source =
+			altered_fields
+				.iter()
+				.any(|(other_app_label, other_model_name, other_field_name)| {
+					other_app_label == app_label
+						&& other_model_name == model_name
+						&& other_field_name != field_name
+						&& Self::generated_column_references_column(generated, other_field_name)
+				});
+		let references_renamed_source = renamed_fields.iter().any(
+			|(other_app_label, other_model_name, _old_name, new_name)| {
 				other_app_label == app_label
 					&& other_model_name == model_name
-					&& other_field_name != field_name
-					&& Self::generated_column_references_column(generated, other_field_name)
-			})
+					&& new_name != field_name
+					&& Self::generated_column_references_column(generated, new_name)
+			},
+		);
+
+		references_altered_source || references_renamed_source
 	}
 
 	fn push_add_column_operation(
@@ -6276,6 +6288,7 @@ impl MigrationAutodetector {
 		for (app_label, model_name, field_name) in ordered_added_fields {
 			if self.added_generated_field_references_altered_source(
 				&changes.altered_fields,
+				&changes.renamed_fields,
 				&app_label,
 				&model_name,
 				&field_name,
@@ -9849,17 +9862,82 @@ mod tests {
 				&& new_name == "given_name"
 		));
 		assert!(matches!(
-			&operations[1],
-			super::super::Operation::DropColumn {
-				table,
-				column,
-				old_definition: Some(old_definition)
-			} if table == "accounts_user"
-				&& column == "full_name"
-				&& old_definition.generated == Some(from_full_name_generated.clone())
+		&operations[1],
+		super::super::Operation::DropColumn {
+			table,
+			column,
+			old_definition: Some(old_definition)
+		} if table == "accounts_user"
+			&& column == "full_name"
+			&& old_definition.generated == Some(from_full_name_generated.clone())
 		));
 		assert!(matches!(
 			&operations[2],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user"
+					&& column.name == "full_name"
+					&& column.generated == Some(to_full_name_generated.clone())
+		));
+	}
+
+	#[rstest]
+	fn generated_column_addition_stays_after_source_column_rename() {
+		// Arrange
+		let from_first_name =
+			FieldState::new("first_name", super::super::FieldType::VarChar(100), false);
+		let to_given_name =
+			FieldState::new("given_name", super::super::FieldType::VarChar(100), false);
+		let mut to_full_name =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let to_full_name_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("given_name"),
+			"SchemaExpr::col(\"given_name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		to_full_name.generated = Some(to_full_name_generated.clone());
+
+		let from_model = build_model_state(
+			"accounts",
+			"User",
+			vec![from_first_name],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"accounts",
+			"User",
+			vec![to_given_name, to_full_name],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 2, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::RenameColumn {
+				table,
+				old_name,
+				new_name,
+			} if table == "accounts_user"
+				&& old_name == "first_name"
+				&& new_name == "given_name"
+		));
+		assert!(matches!(
+			&operations[1],
 			super::super::Operation::AddColumn { table, column, .. }
 				if table == "accounts_user"
 					&& column.name == "full_name"

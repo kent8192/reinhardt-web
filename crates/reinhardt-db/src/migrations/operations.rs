@@ -1652,7 +1652,13 @@ impl Operation {
 	fn query_column_type_to_sql(ty: &QueryColumnType, dialect: &SqlDialect) -> String {
 		match ty {
 			QueryColumnType::Char(len) => format!("CHAR({})", len.unwrap_or(1)),
+			QueryColumnType::String(Some(len)) if matches!(dialect, SqlDialect::Mysql) => {
+				format!("CHAR({len})")
+			}
 			QueryColumnType::String(Some(len)) => format!("VARCHAR({len})"),
+			QueryColumnType::String(None) if matches!(dialect, SqlDialect::Mysql) => {
+				"CHAR".to_string()
+			}
 			QueryColumnType::String(None) => {
 				if matches!(dialect, SqlDialect::Sqlite) {
 					"TEXT".to_string()
@@ -8375,6 +8381,23 @@ mod tests {
 		assert_eq!(
 			sql,
 			"amount_text VARCHAR(64) GENERATED ALWAYS AS (CAST(amount AS NUMERIC(10, 2))) STORED"
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_mysql_cast_generated_string_uses_char_type() {
+		let mut col = ColumnDefinition::new("amount_text", FieldType::VarChar(64));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("amount").cast(QueryColumnType::String(Some(64))),
+			"SchemaExpr::col(\"amount\").cast(ColumnType::String(Some(64)))",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Mysql);
+
+		assert_eq!(
+			sql,
+			"amount_text VARCHAR(64) GENERATED ALWAYS AS (CAST(`amount` AS CHAR(64))) STORED"
 		);
 	}
 
