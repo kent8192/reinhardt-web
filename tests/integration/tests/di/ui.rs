@@ -55,6 +55,7 @@ fn test_injectable_factory_compile_fail_cases() {
 fn test_keyed_provider_compile_pass_cases() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/di/ui/pass/keyed_provider_macro.rs");
+	t.pass("tests/di/ui/pass/deprecated_factory_output_provider.rs");
 }
 
 #[test]
@@ -67,7 +68,6 @@ fn test_self_keyed_provider_compile_pass_cases() {
 fn test_keyed_provider_compile_fail_cases() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/di/ui/fail/injectable_key_on_function.rs");
-	t.compile_fail("tests/di/ui/fail/provider_returns_factory_output.rs");
 }
 
 #[test]

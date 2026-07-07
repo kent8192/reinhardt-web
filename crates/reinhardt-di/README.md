@@ -77,6 +77,10 @@ consuming explicitly keyed provider output.
 
 `FactoryOutput<K, T>` remains available as a deprecated compatibility alias for
 `KeyedFactoryOutput<K, T>`. New code should use `KeyedFactoryOutput`.
+Explicit-key provider return types must be written as `KeyedFactoryOutput<K, T>`
+or the deprecated `FactoryOutput<K, T>` compatibility name. User-defined aliases
+for those wrappers are treated as ordinary direct provider return types by the
+attribute macro.
 
 - ✓ **Injectable Trait**: Define types that can be injected directly
   - Manual implementation: When the type itself is the dependency identity

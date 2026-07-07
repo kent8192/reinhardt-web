@@ -19,7 +19,9 @@ mod utils;
 ///
 /// Provider functions must be async and return the produced value directly for
 /// self-keyed injection. Return `KeyedFactoryOutput<K, T>` only when the value
-/// type has multiple explicit bindings.
+/// type has multiple explicit bindings. The deprecated `FactoryOutput<K, T>`
+/// compatibility name is also accepted. User-defined explicit-key aliases are
+/// treated as ordinary self-keyed return values.
 ///
 /// On `wasm32-unknown-unknown` the generated provider becomes an inert
 /// same-name async stub and skips DI registration. This lets downstream crates

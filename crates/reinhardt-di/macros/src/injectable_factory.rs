@@ -9,13 +9,14 @@ use syn::{FnArg, GenericArgument, ItemFn, Pat, PatType, PathArguments, Result, T
 enum ProviderReturn {
 	Direct {
 		registered_ty: TokenStream,
+		validation_ty: Type,
 		wrap_expr: TokenStream,
 	},
 	Keyed {
 		registered_ty: Type,
+		validation_ty: Type,
 		wrap_expr: TokenStream,
 	},
-	OldFactoryOutput,
 }
 
 impl ProviderReturn {
@@ -23,14 +24,20 @@ impl ProviderReturn {
 		match self {
 			Self::Direct { registered_ty, .. } => quote! { #registered_ty },
 			Self::Keyed { registered_ty, .. } => quote! { #registered_ty },
-			Self::OldFactoryOutput => unreachable!("old FactoryOutput returns are rejected"),
+		}
+	}
+
+	fn validation_type_tokens(&self) -> TokenStream {
+		match self {
+			Self::Direct { validation_ty, .. } | Self::Keyed { validation_ty, .. } => {
+				quote! { #validation_ty }
+			}
 		}
 	}
 
 	fn wrap_expr_tokens(&self) -> TokenStream {
 		match self {
 			Self::Direct { wrap_expr, .. } | Self::Keyed { wrap_expr, .. } => wrap_expr.clone(),
-			Self::OldFactoryOutput => unreachable!("old FactoryOutput returns are rejected"),
 		}
 	}
 }
@@ -40,7 +47,23 @@ fn direct_provider_return(di_crate: &TokenStream, value_ty: Type) -> ProviderRet
 		quote! { #di_crate::KeyedFactoryOutput<#di_crate::SelfKey<#value_ty>, #value_ty> };
 	ProviderReturn::Direct {
 		registered_ty,
+		validation_ty: value_ty,
 		wrap_expr: quote! { #di_crate::KeyedFactoryOutput::new(__provider_value) },
+	}
+}
+
+fn keyed_provider_return(ty: &Type, args: &syn::AngleBracketedGenericArguments) -> ProviderReturn {
+	let Some(GenericArgument::Type(value_ty)) = args.args.iter().nth(1) else {
+		return ProviderReturn::Keyed {
+			registered_ty: ty.clone(),
+			validation_ty: ty.clone(),
+			wrap_expr: quote! { __provider_value },
+		};
+	};
+	ProviderReturn::Keyed {
+		registered_ty: ty.clone(),
+		validation_ty: value_ty.clone(),
+		wrap_expr: quote! { __provider_value },
 	}
 }
 
@@ -51,10 +74,7 @@ fn provider_return_shape(di_crate: &TokenStream, ty: &Type) -> ProviderReturn {
 	let Some(segment) = type_path.path.segments.last() else {
 		return direct_provider_return(di_crate, ty.clone());
 	};
-	if segment.ident == "FactoryOutput" {
-		return ProviderReturn::OldFactoryOutput;
-	}
-	if segment.ident == "KeyedFactoryOutput" {
+	if segment.ident == "KeyedFactoryOutput" || segment.ident == "FactoryOutput" {
 		let PathArguments::AngleBracketed(args) = &segment.arguments else {
 			return direct_provider_return(di_crate, ty.clone());
 		};
@@ -64,10 +84,7 @@ fn provider_return_shape(di_crate: &TokenStream, ty: &Type) -> ProviderReturn {
 				.iter()
 				.all(|arg| matches!(arg, GenericArgument::Type(_)))
 		{
-			return ProviderReturn::Keyed {
-				registered_ty: ty.clone(),
-				wrap_expr: quote! { __provider_value },
-			};
+			return keyed_provider_return(ty, args);
 		}
 	}
 	direct_provider_return(di_crate, ty.clone())
@@ -129,14 +146,8 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 	};
 	let di_crate = get_reinhardt_di_crate();
 	let provider_return = provider_return_shape(&di_crate, &return_type);
-	if matches!(provider_return, ProviderReturn::OldFactoryOutput) {
-		return Err(syn::Error::new_spanned(
-			&return_type,
-			"#[injectable] providers should return the produced value directly, or \
-			 KeyedFactoryOutput<K, T> for explicit multi-binding keys",
-		));
-	}
 	let registered_type = provider_return.registered_type_tokens();
+	let validation_type = provider_return.validation_type_tokens();
 	let wrapper_output_expr = provider_return.wrap_expr_tokens();
 
 	// Analyze function parameters
@@ -280,7 +291,7 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 			);
 			registry.register_qualified_type_name(
 				::std::any::TypeId::of::<#registered_type>(),
-				::std::any::type_name::<#registered_type>(),
+				::std::any::type_name::<#validation_type>(),
 			);
 		}
 

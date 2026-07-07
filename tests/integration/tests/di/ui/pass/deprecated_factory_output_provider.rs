@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use reinhardt_di::{FactoryOutput, injectable, injectable_key};
 
 #[derive(Clone)]

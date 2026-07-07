@@ -24,7 +24,7 @@ async fn get_config(
 	let config = config
 		.as_ref()
 		.as_ref()
-		.map_err(|_| ServerFnError::ServerError("config".into()))?;
+		.map_err(|_| ServerFnError::application("config"))?;
 	Ok(config.value.to_string())
 }
 

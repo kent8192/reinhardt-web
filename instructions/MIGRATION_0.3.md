@@ -177,6 +177,10 @@ provider functions. New code should use `#[injectable]`.
 `FactoryOutput<K, T>` is retained only as a deprecated alias for
 `KeyedFactoryOutput<K, T>`. New code should use `KeyedFactoryOutput` for
 explicit keys, or return `T` directly for self-keyed providers.
+Explicit-key provider return types must be written as `KeyedFactoryOutput<K, T>`
+or the deprecated `FactoryOutput<K, T>` compatibility name. User-defined aliases
+for those wrappers are treated as ordinary direct provider return types by
+`#[injectable]`.
 
 ## Server route registration
 

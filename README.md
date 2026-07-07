@@ -968,6 +968,10 @@ provider functions. New code should use `#[injectable]`.
 `KeyedFactoryOutput<K, T>`. New code should return `T` directly for self-keyed
 providers, or use `KeyedFactoryOutput<K, T>` only when an explicit key is
 needed.
+Explicit-key provider return types must be written as `KeyedFactoryOutput<K, T>`
+or the deprecated `FactoryOutput<K, T>` compatibility name. User-defined aliases
+for those wrappers are treated as ordinary direct provider return types by the
+attribute macro.
 
 **The pseudo orphan rule.** To prevent user factories from silently shadowing
 framework-owned types (e.g., `reinhardt_di::InjectionContext`, routers,
