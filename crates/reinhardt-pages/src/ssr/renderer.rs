@@ -980,6 +980,9 @@ impl SsrRenderer {
 					.unwrap_or(false);
 
 					if matches!(mode, AsyncRenderMode::Discovery) {
+						if has_pending || node.is_pending() {
+							self.restore_deterministic_render_snapshot(boundary_start);
+						}
 						return content;
 					}
 

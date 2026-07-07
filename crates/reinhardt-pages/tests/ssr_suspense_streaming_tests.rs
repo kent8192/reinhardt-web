@@ -798,6 +798,78 @@ async fn streamed_replacement_preserves_nested_suspense_markers() {
 }
 
 #[tokio::test]
+async fn streamed_replacement_waits_for_nested_resource_read_by_outer_content() {
+	let view = Page::reactive(|| {
+		let outer = use_resource(
+			|| async {
+				tokio::time::sleep(Duration::from_millis(5)).await;
+				Ok::<_, String>("outer".to_string())
+			},
+			(),
+		);
+		let outer_content = outer.clone();
+
+		SuspenseBoundary::new()
+			.fallback(|| PageElement::new("span").child("outer-fallback").into_page())
+			.track(outer)
+			.content(move || match outer_content.get() {
+				ResourceState::Success(_) => Page::reactive(|| {
+					let shared = use_resource(
+						|| async {
+							tokio::time::sleep(Duration::from_millis(5)).await;
+							Ok::<_, String>("shared".to_string())
+						},
+						(),
+					);
+					let outer_status = if shared.is_loading() {
+						"outer-loading"
+					} else if shared.is_success() {
+						"outer-success"
+					} else {
+						"outer-error"
+					};
+					let inner_content = shared.clone();
+
+					Page::fragment([
+						PageElement::new("p").child(outer_status).into_page(),
+						SuspenseBoundary::new()
+							.fallback(|| {
+								PageElement::new("span").child("inner-fallback").into_page()
+							})
+							.track(shared)
+							.content(move || match inner_content.get() {
+								ResourceState::Success(value) => {
+									PageElement::new("strong").child(value).into_page()
+								}
+								ResourceState::Loading => {
+									PageElement::new("em").child("inner-loading").into_page()
+								}
+								ResourceState::Error(error) => {
+									PageElement::new("em").child(error).into_page()
+								}
+							})
+							.into_page(),
+					])
+				}),
+				ResourceState::Loading => PageElement::new("em").child("outer-loading").into_page(),
+				ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+			})
+			.into_page()
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let mut stream = renderer.render_page_with_view_head(view).await;
+	let shell = stream.next().await.unwrap().into_string();
+	let outer_replacement = stream.next().await.unwrap().into_string();
+
+	assert!(shell.contains("outer-fallback"));
+	assert!(outer_replacement.contains("outer-success"));
+	assert!(outer_replacement.contains("shared"));
+	assert!(!outer_replacement.contains("outer-loading"));
+	assert!(!outer_replacement.contains("inner-fallback"));
+}
+
+#[tokio::test]
 async fn streaming_suspense_restores_deterministic_counters_after_hidden_content() {
 	let view = Page::reactive(|| {
 		let resource = use_resource(
@@ -919,6 +991,93 @@ async fn streaming_suspense_restores_resource_keys_before_fallback() {
 	assert!(!shell.contains(r#"data-resource-key="rh-res-1""#));
 	assert!(replacement.contains("content-ready"));
 	assert!(replacement.contains(r#"data-resource-key="rh-res-0""#));
+}
+
+#[tokio::test]
+async fn streaming_discovery_restores_resource_keys_after_pending_suspense_content() {
+	let sibling_calls = Rc::new(Cell::new(0));
+	let render_calls = Rc::clone(&sibling_calls);
+	let view = Page::reactive(move || {
+		let sibling_calls = Rc::clone(&render_calls);
+		Page::fragment([
+			Page::Suspense(SuspenseNode::new(
+				Some("discovery-key-boundary".to_string()),
+				|| false,
+				|| PageElement::new("span").child("fallback").into_page(),
+				|| {
+					Page::reactive(|| {
+						let resource = use_resource(
+							|| async {
+								tokio::time::sleep(Duration::from_millis(5)).await;
+								Ok::<_, String>("boundary-ready".to_string())
+							},
+							(),
+						);
+						match resource.get() {
+							ResourceState::Success(value) => {
+								PageElement::new("strong").child(value).into_page()
+							}
+							ResourceState::Loading => {
+								PageElement::new("em").child("boundary-loading").into_page()
+							}
+							ResourceState::Error(error) => {
+								PageElement::new("em").child(error).into_page()
+							}
+						}
+					})
+				},
+			)),
+			Page::reactive(move || {
+				let calls = Rc::clone(&sibling_calls);
+				let resource = use_resource(
+					move || {
+						calls.set(calls.get() + 1);
+						async { Ok::<_, String>("sibling-ready".to_string()) }
+					},
+					(),
+				);
+				match resource.get() {
+					ResourceState::Success(value) => PageElement::new("p").child(value).into_page(),
+					ResourceState::Loading => {
+						PageElement::new("p").child("sibling-loading").into_page()
+					}
+					ResourceState::Error(error) => PageElement::new("p").child(error).into_page(),
+				}
+			}),
+		])
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let mut stream = renderer.render_page_with_view_head(view).await;
+	let shell = stream.next().await.unwrap().into_string();
+
+	assert!(shell.contains("sibling-ready"));
+	assert!(!shell.contains("sibling-loading"));
+	assert_eq!(sibling_calls.get(), 1);
+}
+
+#[tokio::test]
+async fn streaming_resource_state_helpers_mark_external_reads() {
+	let view = Page::reactive(|| {
+		let resource = use_resource(|| async { Ok::<_, String>("ready".to_string()) }, ());
+		if resource.is_loading() {
+			PageElement::new("p").child("loading").into_page()
+		} else if resource.is_success() {
+			PageElement::new("p").child("success").into_page()
+		} else if resource.is_error() {
+			PageElement::new("p").child("error").into_page()
+		} else {
+			PageElement::new("p").child("unknown").into_page()
+		}
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let mut stream = renderer.render_page_with_view_head(view).await;
+	let shell = stream.next().await.unwrap().into_string();
+
+	assert!(shell.contains(">success<"));
+	assert!(!shell.contains(">loading<"));
+	assert_eq!(renderer.state().resource_count(), 1);
 }
 
 #[tokio::test]

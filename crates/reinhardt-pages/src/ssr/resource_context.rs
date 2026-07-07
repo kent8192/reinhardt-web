@@ -23,6 +23,7 @@ struct PendingResource {
 	id: String,
 	external: bool,
 	boundary_ids: Vec<String>,
+	read_boundary_ids: Vec<String>,
 	future: PendingResourceFuture,
 	subscribers: Vec<PendingResourceSubscriber>,
 }
@@ -237,21 +238,28 @@ impl SsrResourceContext {
 			id: key,
 			external: false,
 			boundary_ids: current_boundary_id.into_iter().collect(),
+			read_boundary_ids: Vec::new(),
 			future,
 			subscribers: vec![subscriber],
 		});
 	}
 
 	pub(crate) fn mark_resource_read(&mut self, key: &str) {
-		if self.current_boundary_id().is_some() {
-			return;
-		}
-		if let Some(pending) = self
-			.pending
-			.iter_mut()
-			.find(|pending| pending_matches_registration_scope(pending, key, None))
-		{
-			pending.external = true;
+		let current_boundary_id = self.current_boundary_id();
+		if let Some(pending) = self.pending.iter_mut().find(|pending| {
+			pending_matches_registration_scope(pending, key, current_boundary_id.as_deref())
+		}) {
+			if let Some(boundary_id) = current_boundary_id {
+				if !pending
+					.read_boundary_ids
+					.iter()
+					.any(|candidate| candidate == &boundary_id)
+				{
+					pending.read_boundary_ids.push(boundary_id);
+				}
+			} else {
+				pending.external = true;
+			}
 		}
 	}
 
@@ -266,6 +274,10 @@ impl SsrResourceContext {
 			if let Some(current_boundary_id) = current_boundary_id.as_deref()
 				&& current_boundary_id != boundary_id
 				&& ids.iter().any(|id| id == &pending.id)
+				&& !pending
+					.read_boundary_ids
+					.iter()
+					.any(|candidate| candidate == current_boundary_id)
 			{
 				pending
 					.boundary_ids
@@ -516,7 +528,7 @@ pub(crate) fn with_active_context<R>(
 	ACTIVE_CONTEXT.try_with(f).ok()
 }
 
-/// Marks a pending resource as used outside any Suspense boundary.
+/// Marks a pending resource as read by the active render scope.
 pub(crate) fn mark_resource_read(key: &str) {
 	let _ = with_active_context(|context| context.borrow_mut().mark_resource_read(key));
 }
@@ -556,6 +568,7 @@ async fn resolve_matching(
 			id,
 			external,
 			boundary_ids,
+			read_boundary_ids: _,
 			future,
 			subscribers,
 		} = pending;
@@ -766,5 +779,32 @@ mod tests {
 			ResourceState::Success("tracked".to_string())
 		);
 		assert!(!context.borrow().has_pending());
+	}
+
+	#[tokio::test]
+	async fn nested_assignment_keeps_outer_boundary_scope_after_read() {
+		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
+			1,
+		))));
+		let _outer = enter_boundary(&context, "outer".to_string());
+		context.borrow_mut().register_resource(
+			"rh-res-0".to_string(),
+			|| async { Ok::<_, String>("shared".to_string()) },
+			resource_signal(),
+		);
+		context.borrow_mut().mark_resource_read("rh-res-0");
+
+		context
+			.borrow_mut()
+			.assign_resources_to_boundary(&["rh-res-0".to_string()], "inner");
+
+		assert_eq!(
+			context.borrow().pending_ids_for_boundary("outer"),
+			vec!["rh-res-0".to_string()]
+		);
+		assert_eq!(
+			context.borrow().pending_ids_for_boundary("inner"),
+			vec!["rh-res-0".to_string()]
+		);
 	}
 }

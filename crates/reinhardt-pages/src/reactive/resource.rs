@@ -167,6 +167,13 @@ impl<T: Clone + 'static, E: Clone + 'static> Clone for Resource<T, E> {
 }
 
 impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
+	fn mark_ssr_read(&self) {
+		#[cfg(native)]
+		if let Some(key) = &self.ssr_key {
+			crate::ssr::resource_context::mark_resource_read(key);
+		}
+	}
+
 	/// Get the current state of the resource
 	///
 	/// This method tracks the access for reactivity - any Effect or Memo
@@ -174,10 +181,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
 	/// During SSR, a read outside an active Suspense boundary also keeps
 	/// the resource in the external resolution set for the shell render.
 	pub fn get(&self) -> ResourceState<T, E> {
-		#[cfg(native)]
-		if let Some(key) = &self.ssr_key {
-			crate::ssr::resource_context::mark_resource_read(key);
-		}
+		self.mark_ssr_read();
 		self.state.get()
 	}
 
@@ -199,16 +203,19 @@ impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
 
 	/// Returns `true` if the resource is currently loading
 	pub fn is_loading(&self) -> bool {
+		self.mark_ssr_read();
 		self.state.with_untracked(|s| s.is_loading())
 	}
 
 	/// Returns `true` if the resource has successfully loaded
 	pub fn is_success(&self) -> bool {
+		self.mark_ssr_read();
 		self.state.with_untracked(|s| s.is_success())
 	}
 
 	/// Returns `true` if the resource failed to load
 	pub fn is_error(&self) -> bool {
+		self.mark_ssr_read();
 		self.state.with_untracked(|s| s.is_error())
 	}
 
