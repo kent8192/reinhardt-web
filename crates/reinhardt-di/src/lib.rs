@@ -109,11 +109,11 @@
 //! let ctx = InjectionContext::builder(singleton).build();
 //! ```
 //!
-//! Optional request and param context can be added:
+//! When the `params` feature is enabled, optional request and param context can
+//! be added:
 //!
-//! ```no_run
-//! use reinhardt_di::{InjectionContext, SingletonScope};
-//! use reinhardt_http::Request;
+//! ```rust,ignore
+//! use reinhardt_di::{InjectionContext, Request, SingletonScope};
 //! use std::sync::Arc;
 //!
 //! let singleton = Arc::new(SingletonScope::new());
