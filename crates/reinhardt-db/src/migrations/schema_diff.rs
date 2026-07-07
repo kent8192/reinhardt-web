@@ -8,7 +8,7 @@
 
 use super::ColumnDefinition;
 use super::introspection;
-use super::operations::Operation;
+use super::operations::{Operation, SqlDialect};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Schema difference detector
@@ -17,6 +17,8 @@ pub struct SchemaDiff {
 	current_schema: DatabaseSchema,
 	/// Target schema from models
 	target_schema: DatabaseSchema,
+	/// SQL dialect used when comparing introspected raw generated SQL.
+	dialect: Option<SqlDialect>,
 }
 
 /// Database schema representation
@@ -270,7 +272,40 @@ impl SchemaDiff {
 		Self {
 			current_schema,
 			target_schema,
+			dialect: None,
 		}
+	}
+
+	/// Create a schema diff detector that compares generated SQL for one dialect.
+	pub fn with_dialect(
+		current_schema: DatabaseSchema,
+		target_schema: DatabaseSchema,
+		dialect: SqlDialect,
+	) -> Self {
+		Self {
+			current_schema,
+			target_schema,
+			dialect: Some(dialect),
+		}
+	}
+
+	fn columns_equal(&self, current_col: &ColumnSchema, target_col: &ColumnSchema) -> bool {
+		current_col.name == target_col.name
+			&& current_col.data_type == target_col.data_type
+			&& current_col.nullable == target_col.nullable
+			&& current_col.default == target_col.default
+			&& current_col.primary_key == target_col.primary_key
+			&& current_col.auto_increment == target_col.auto_increment
+			&& match (
+				current_col.generated.as_ref(),
+				target_col.generated.as_ref(),
+				self.dialect.as_ref(),
+			) {
+				(Some(current), Some(target), Some(dialect)) => {
+					current.eq_for_dialect(target, dialect)
+				}
+				_ => current_col.generated == target_col.generated,
+			}
 	}
 
 	fn column_definition_from_schema(
@@ -569,6 +604,34 @@ impl SchemaDiff {
 			})
 	}
 
+	fn modified_generated_dependents_for_removed_source(
+		columns_to_modify: &[(String, String, ColumnSchema, ColumnSchema)],
+		table_name: &str,
+		removed_column_name: &str,
+	) -> Vec<(String, ColumnSchema, ColumnSchema)> {
+		columns_to_modify
+			.iter()
+			.filter_map(
+				|(other_table_name, other_column_name, old_column, new_column)| {
+					if other_table_name == table_name
+						&& other_column_name != removed_column_name
+						&& old_column.generated != new_column.generated
+						&& old_column.generated.as_ref().is_some_and(|generated| {
+							Self::generated_column_references_column(generated, removed_column_name)
+						}) {
+						Some((
+							other_column_name.clone(),
+							old_column.clone(),
+							new_column.clone(),
+						))
+					} else {
+						None
+					}
+				},
+			)
+			.collect()
+	}
+
 	fn push_add_column_operation(
 		&self,
 		operations: &mut Vec<Operation>,
@@ -745,7 +808,7 @@ impl SchemaDiff {
 				// Column modifications
 				for (col_name, target_col) in &target_table.columns {
 					if let Some(current_col) = current_table.columns.get(col_name)
-						&& current_col != target_col
+						&& !self.columns_equal(current_col, target_col)
 					{
 						result.columns_to_modify.push((
 							table_name_owned.clone(),
@@ -871,10 +934,56 @@ impl SchemaDiff {
 			}
 		}
 
+		let removed_columns: BTreeSet<(String, String)> =
+			diff.columns_to_remove.iter().cloned().collect();
+		let mut recreated_generated_columns: BTreeSet<(String, String)> = BTreeSet::new();
+
 		// Remove columns
 		let ordered_columns_to_remove =
 			self.order_removed_columns_by_generated_dependencies(&diff.columns_to_remove);
 		for (table_name, col_name) in &ordered_columns_to_remove {
+			for (dependent_name, old_column, new_column) in
+				Self::modified_generated_dependents_for_removed_source(
+					&diff.columns_to_modify,
+					table_name,
+					col_name,
+				) {
+				let dependent_key = (table_name.clone(), dependent_name.clone());
+				if recreated_generated_columns.insert(dependent_key) {
+					let affected_columns = BTreeSet::from([dependent_name.clone()]);
+					self.emit_generated_column_replacement_dependency_rollbacks(
+						&mut operations,
+						table_name,
+						&affected_columns,
+					);
+					operations.push(Operation::DropColumn {
+						table: table_name.clone(),
+						column: dependent_name.clone(),
+						old_definition: Some(Self::column_definition_from_schema(
+							&self.current_schema,
+							table_name,
+							&dependent_name,
+							&old_column,
+						)),
+					});
+					operations.push(Operation::AddColumn {
+						table: table_name.clone(),
+						column: Self::column_definition_from_schema(
+							&self.target_schema,
+							table_name,
+							&dependent_name,
+							&new_column,
+						),
+						mysql_options: None,
+					});
+					self.emit_generated_column_replacement_dependencies(
+						&mut operations,
+						table_name,
+						&affected_columns,
+					);
+				}
+			}
+
 			operations.push(Operation::DropColumn {
 				table: table_name.clone(),
 				column: col_name.clone(),
@@ -883,7 +992,6 @@ impl SchemaDiff {
 		}
 
 		// Alter columns (type changes, nullability changes, etc.)
-		let mut recreated_generated_columns: BTreeSet<(String, String)> = BTreeSet::new();
 		for (table_name, col_name, old_col, new_col) in &diff.columns_to_modify {
 			let recreation_key = (table_name.clone(), col_name.clone());
 			if recreated_generated_columns.contains(&recreation_key) {
@@ -913,8 +1021,13 @@ impl SchemaDiff {
 				) {
 				continue;
 			}
-			let dependent_generated_columns =
-				self.generated_column_dependents(table_name, col_name);
+			let dependent_generated_columns = self
+				.generated_column_dependents(table_name, col_name)
+				.into_iter()
+				.filter(|dependent| {
+					!removed_columns.contains(&(table_name.clone(), dependent.name.clone()))
+				})
+				.collect::<Vec<_>>();
 			let source_change_requires_dependent_recreation =
 				!generated_change && !dependent_generated_columns.is_empty();
 
@@ -1284,6 +1397,7 @@ impl SchemaDiff {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::migrations::operations::SqlDialect;
 	use crate::migrations::{FieldType, GeneratedColumnDefinition, GeneratedStorage, SchemaExpr};
 
 	#[test]
@@ -1784,6 +1898,101 @@ mod tests {
 		));
 		assert!(matches!(
 			&ops[1],
+			Operation::DropColumn { table, column, .. }
+				if table == "metrics" && column == "a"
+		));
+	}
+
+	#[test]
+	fn test_generate_operations_drops_removed_generated_dependents_once_before_source_alter() {
+		let mut dependent = col("z", FieldType::Integer, false);
+		dependent.generated = Some(GeneratedColumnDefinition::raw_sql(
+			"a + 1",
+			GeneratedStorage::Stored,
+		));
+		let mut current = DatabaseSchema::default();
+		current.tables.insert(
+			"metrics".to_string(),
+			table_with_cols(
+				"metrics",
+				vec![("a", col("a", FieldType::Integer, false)), ("z", dependent)],
+			),
+		);
+
+		let mut target = DatabaseSchema::default();
+		target.tables.insert(
+			"metrics".to_string(),
+			table_with_cols(
+				"metrics",
+				vec![("a", col("a", FieldType::BigInteger, false))],
+			),
+		);
+
+		let diff = SchemaDiff::new(current, target);
+		let ops = diff.generate_operations();
+
+		assert_eq!(ops.len(), 2, "unexpected operations: {ops:?}");
+		assert!(matches!(
+			&ops[0],
+			Operation::DropColumn { table, column, .. }
+				if table == "metrics" && column == "z"
+		));
+		assert!(matches!(
+			&ops[1],
+			Operation::AlterColumn { table, column, .. }
+				if table == "metrics" && column == "a"
+		));
+	}
+
+	#[test]
+	fn test_generate_operations_replaces_modified_generated_dependent_before_source_removal() {
+		let mut current_dependent = col("b", FieldType::Integer, false);
+		let old_generated = GeneratedColumnDefinition::raw_sql("a + 1", GeneratedStorage::Stored);
+		current_dependent.generated = Some(old_generated.clone());
+		let mut current = DatabaseSchema::default();
+		current.tables.insert(
+			"metrics".to_string(),
+			table_with_cols(
+				"metrics",
+				vec![
+					("a", col("a", FieldType::Integer, false)),
+					("b", current_dependent),
+				],
+			),
+		);
+
+		let mut target_dependent = col("b", FieldType::Integer, false);
+		let new_generated = GeneratedColumnDefinition::raw_sql("1", GeneratedStorage::Stored);
+		target_dependent.generated = Some(new_generated.clone());
+		let mut target = DatabaseSchema::default();
+		target.tables.insert(
+			"metrics".to_string(),
+			table_with_cols("metrics", vec![("b", target_dependent)]),
+		);
+
+		let diff = SchemaDiff::new(current, target);
+		let ops = diff.generate_operations();
+
+		assert_eq!(ops.len(), 3, "unexpected operations: {ops:?}");
+		assert!(matches!(
+			&ops[0],
+			Operation::DropColumn {
+				table,
+				column,
+				old_definition: Some(old_definition),
+			} if table == "metrics"
+				&& column == "b"
+				&& old_definition.generated == Some(old_generated)
+		));
+		assert!(matches!(
+			&ops[1],
+			Operation::AddColumn { table, column, .. }
+				if table == "metrics"
+					&& column.name == "b"
+					&& column.generated == Some(new_generated)
+		));
+		assert!(matches!(
+			&ops[2],
 			Operation::DropColumn { table, column, .. }
 				if table == "metrics" && column == "a"
 		));
@@ -2319,6 +2528,73 @@ mod tests {
 		assert!(
 			ops.is_empty(),
 			"Identical schemas should produce no operations"
+		);
+	}
+
+	#[test]
+	fn test_detect_generated_sql_uses_configured_dialect() {
+		let mut current_full_name = col("full_name", FieldType::VarChar(255), false);
+		current_full_name.generated = Some(GeneratedColumnDefinition::raw_sql(
+			r#"CONCAT(`first_name`, `last_name`)"#,
+			GeneratedStorage::Stored,
+		));
+		let mut current = DatabaseSchema::default();
+		current.tables.insert(
+			"users".to_string(),
+			table_with_cols(
+				"users",
+				vec![
+					(
+						"first_name",
+						col("first_name", FieldType::VarChar(255), false),
+					),
+					("full_name", current_full_name),
+					(
+						"last_name",
+						col("last_name", FieldType::VarChar(255), false),
+					),
+				],
+			),
+		);
+
+		let mut target_full_name = col("full_name", FieldType::VarChar(255), false);
+		target_full_name.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([SchemaExpr::col("first_name"), SchemaExpr::col("last_name")]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Stored,
+		));
+		let mut target = DatabaseSchema::default();
+		target.tables.insert(
+			"users".to_string(),
+			table_with_cols(
+				"users",
+				vec![
+					(
+						"first_name",
+						col("first_name", FieldType::VarChar(255), false),
+					),
+					("full_name", target_full_name),
+					(
+						"last_name",
+						col("last_name", FieldType::VarChar(255), false),
+					),
+				],
+			),
+		);
+
+		let broad_diff = SchemaDiff::new(current.clone(), target.clone());
+		assert!(broad_diff.detect().columns_to_modify.is_empty());
+
+		let postgres_diff = SchemaDiff::with_dialect(current, target, SqlDialect::Postgres);
+		let result = postgres_diff.detect();
+
+		assert_eq!(result.columns_to_modify.len(), 1);
+		assert_eq!(
+			(
+				result.columns_to_modify[0].0.as_str(),
+				result.columns_to_modify[0].1.as_str()
+			),
+			("users", "full_name")
 		);
 	}
 

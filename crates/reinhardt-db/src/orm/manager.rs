@@ -196,6 +196,46 @@ impl<M: Model> Manager<M> {
 		M::generated_field_names().contains(&field)
 	}
 
+	fn build_update_statement_from_object(
+		pk: &M::PrimaryKey,
+		obj: &serde_json::Map<String, serde_json::Value>,
+	) -> reinhardt_query::prelude::UpdateStatement {
+		let mut stmt = Query::update();
+		stmt.table(Alias::new(M::table_name()));
+
+		let mut has_values = false;
+		for (k, v) in obj.iter().filter(|(k, _)| {
+			let key = k.as_str();
+			key != M::primary_key_field() && !Self::is_generated_field(key)
+		}) {
+			if v.is_null() {
+				stmt.value_expr(Alias::new(k.as_str()), Expr::cust("NULL"));
+			} else {
+				stmt.value(Alias::new(k.as_str()), Self::json_to_sea_value(v));
+			}
+			has_values = true;
+		}
+
+		if !has_values {
+			let primary_key = M::primary_key_field();
+			stmt.value_expr(Alias::new(primary_key), Expr::col(Alias::new(primary_key)));
+		}
+
+		let pk_str = pk.to_string();
+		let pk_value = if let Ok(int_value) = pk_str.parse::<i64>() {
+			reinhardt_query::value::Value::BigInt(Some(int_value))
+		} else if let Ok(uuid) = Uuid::parse_str(&pk_str) {
+			reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
+		} else {
+			reinhardt_query::value::Value::String(Some(Box::new(pk_str)))
+		};
+		stmt.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
+
+		let all_columns: Vec<_> = obj.keys().map(|k| Alias::new(k.as_str())).collect();
+		stmt.returning(all_columns);
+		stmt
+	}
+
 	/// Get all records
 	pub fn all(&self) -> QuerySet<M> {
 		QuerySet::new()
@@ -976,40 +1016,7 @@ impl<M: Model> Manager<M> {
 			reinhardt_core::exception::Error::Database("Model must serialize to object".to_string())
 		})?;
 
-		// Build reinhardt-query UPDATE statement
-		let mut stmt = Query::update();
-		stmt.table(Alias::new(M::table_name()));
-
-		// Add SET clauses for all fields except primary key
-		for (k, v) in obj.iter().filter(|(k, _)| {
-			let key = k.as_str();
-			key != M::primary_key_field() && !Self::is_generated_field(key)
-		}) {
-			if v.is_null() {
-				// Use untyped NULL to avoid PostgreSQL type mismatch errors
-				// (e.g., setting timestamp column to NULL would fail with Int(None))
-				stmt.value_expr(Alias::new(k.as_str()), Expr::cust("NULL"));
-			} else {
-				stmt.value(Alias::new(k.as_str()), Self::json_to_sea_value(v));
-			}
-		}
-
-		// Add WHERE clause for primary key
-		// Try to parse as i64 first (common for primary keys), fallback to string
-		let pk_str = pk.to_string();
-		let pk_value = if let Ok(int_value) = pk_str.parse::<i64>() {
-			reinhardt_query::value::Value::BigInt(Some(int_value))
-		} else if let Ok(uuid) = Uuid::parse_str(&pk_str) {
-			reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
-		} else {
-			reinhardt_query::value::Value::String(Some(Box::new(pk_str)))
-		};
-		stmt.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
-
-		// Add RETURNING clause with explicit column names from JSON object
-		// Note: Using Asterisk in columns() may not work correctly with reinhardt-query
-		let all_columns: Vec<_> = obj.keys().map(|k| Alias::new(k.as_str())).collect();
-		stmt.returning(all_columns);
+		let stmt = Self::build_update_statement_from_object(&pk, obj);
 
 		let (sql, values) = build_update_sql(&stmt, conn.backend());
 		let values: Vec<_> = values
@@ -1761,6 +1768,51 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone, Serialize, Deserialize)]
+	struct GeneratedOnlyUser {
+		id: Option<i64>,
+		full_name: String,
+	}
+
+	#[derive(Debug, Clone)]
+	struct GeneratedOnlyUserFields;
+
+	impl FieldSelector for GeneratedOnlyUserFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for GeneratedOnlyUser {
+		type PrimaryKey = i64;
+		type Fields = GeneratedOnlyUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"generated_only_user"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn generated_field_names() -> &'static [&'static str] {
+			&["full_name"]
+		}
+
+		fn new_fields() -> Self::Fields {
+			GeneratedOnlyUserFields
+		}
+	}
+
 	#[test]
 	fn test_get_or_create_sql() {
 		let manager = TestUser::objects();
@@ -1920,6 +1972,25 @@ mod tests {
 		let sql = manager.bulk_update_sql_detailed(&updates, &fields, DatabaseBackend::Postgres);
 
 		assert!(sql.is_empty());
+	}
+
+	#[test]
+	fn test_update_statement_uses_noop_set_for_generated_only_models() {
+		let model = GeneratedOnlyUser {
+			id: Some(7),
+			full_name: "Alice Smith".to_string(),
+		};
+		let json = serde_json::to_value(&model).expect("model should serialize");
+		let obj = json.as_object().expect("model should serialize to object");
+		let stmt = Manager::<GeneratedOnlyUser>::build_update_statement_from_object(&7_i64, obj);
+
+		let (sql, params) = super::build_update_sql(&stmt, DatabaseBackend::Postgres);
+
+		assert_eq!(
+			sql,
+			"UPDATE \"generated_only_user\" SET \"id\" = \"id\" WHERE \"id\" = $1 RETURNING \"full_name\", \"id\""
+		);
+		assert_eq!(params.len(), 1);
 	}
 
 	#[test]

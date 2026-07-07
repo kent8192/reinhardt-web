@@ -3455,6 +3455,16 @@ pub struct GeneratedColumnDefinition {
 
 impl PartialEq for GeneratedColumnDefinition {
 	fn eq(&self, other: &Self) -> bool {
+		self.eq_with_dialect(other, None)
+	}
+}
+
+impl GeneratedColumnDefinition {
+	pub(crate) fn eq_for_dialect(&self, other: &Self, dialect: &SqlDialect) -> bool {
+		self.eq_with_dialect(other, Some(dialect))
+	}
+
+	fn eq_with_dialect(&self, other: &Self, dialect: Option<&SqlDialect>) -> bool {
 		if self.storage != other.storage {
 			return false;
 		}
@@ -3464,20 +3474,18 @@ impl PartialEq for GeneratedColumnDefinition {
 			(Some(left), None) => other
 				.raw_sql
 				.as_deref()
-				.is_some_and(|raw_sql| Self::typed_expr_matches_raw_sql(&left, raw_sql)),
+				.is_some_and(|raw_sql| Self::typed_expr_matches_raw_sql(&left, raw_sql, dialect)),
 			(None, Some(right)) => self
 				.raw_sql
 				.as_deref()
-				.is_some_and(|raw_sql| Self::typed_expr_matches_raw_sql(&right, raw_sql)),
+				.is_some_and(|raw_sql| Self::typed_expr_matches_raw_sql(&right, raw_sql, dialect)),
 			(None, None) => match (self.raw_sql.as_deref(), other.raw_sql.as_deref()) {
 				(Some(left), Some(right)) => Self::raw_sql_matches(left, right),
 				_ => self.expr_tokens == other.expr_tokens && self.expr == other.expr,
 			},
 		}
 	}
-}
 
-impl GeneratedColumnDefinition {
 	/// Create a typed generated-column definition.
 	pub fn typed(
 		expr: SchemaExpr,
@@ -3504,8 +3512,18 @@ impl GeneratedColumnDefinition {
 		normalize_generated_expression_sql(left) == normalize_generated_expression_sql(right)
 	}
 
-	fn typed_expr_matches_raw_sql(expr: &SchemaExpr, raw_sql: &str) -> bool {
+	fn typed_expr_matches_raw_sql(
+		expr: &SchemaExpr,
+		raw_sql: &str,
+		dialect: Option<&SqlDialect>,
+	) -> bool {
 		let normalized_raw_sql = normalize_generated_expression_sql(raw_sql);
+		if let Some(dialect) = dialect {
+			return normalize_generated_expression_sql(&Operation::schema_expr_to_sql(
+				expr, dialect,
+			)) == normalized_raw_sql;
+		}
+
 		[
 			SqlDialect::Postgres,
 			SqlDialect::Sqlite,
