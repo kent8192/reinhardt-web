@@ -465,6 +465,23 @@ pub struct JobEventDraft {
 	pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct JobUpdateExpectation {
+	state: JobState,
+	attempt_count: u32,
+	cancellation_requested: bool,
+}
+
+impl JobUpdateExpectation {
+	fn from_record(record: &DurableJobRecord) -> Self {
+		Self {
+			state: record.state,
+			attempt_count: record.attempt_count,
+			cancellation_requested: record.cancellation_requested,
+		}
+	}
+}
+
 /// Conflict returned for illegal lifecycle transitions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JobTransitionConflict {
@@ -868,17 +885,10 @@ where
 	pub async fn renew_claim(&self, claim: &JobClaim) -> Result<JobSnapshot, DurableQueueError> {
 		let mut record = self.load_running_claim(claim).await?;
 		let now = Utc::now();
-		let expected_attempt_count = record.attempt_count;
-		let expected_cancellation_requested = record.cancellation_requested;
+		let expected = JobUpdateExpectation::from_record(&record);
 		record.lease_expires_at = Some(now + duration_to_chrono(self.claim_lease));
 		record.updated_at = now;
-		self.update_job_if_current(
-			record.clone(),
-			JobState::Running,
-			expected_attempt_count,
-			expected_cancellation_requested,
-		)
-		.await?;
+		self.update_job_if_current(record.clone(), expected).await?;
 		Ok(record.snapshot())
 	}
 
@@ -890,9 +900,7 @@ where
 	) -> Result<JobSnapshot, DurableQueueError> {
 		let mut record = self.load_running_claim(&claim).await?;
 		let now = Utc::now();
-		let from = record.state;
-		let expected_attempt_count = record.attempt_count;
-		let expected_cancellation_requested = record.cancellation_requested;
+		let expected = JobUpdateExpectation::from_record(&record);
 		let event_kind = self
 			.lifecycle
 			.transition(&mut record, JobState::Succeeded, now)?;
@@ -900,16 +908,8 @@ where
 		record.failure_kind = None;
 		record.failure_message = None;
 		record.retry_after = None;
-		self.update_job_transition_if_current(
-			record.clone(),
-			from,
-			expected_attempt_count,
-			expected_cancellation_requested,
-			event_kind,
-			None,
-			now,
-		)
-		.await?;
+		self.update_job_transition_if_current(record.clone(), expected, event_kind, None, now)
+			.await?;
 		Ok(record.snapshot())
 	}
 
@@ -921,9 +921,7 @@ where
 	) -> Result<JobSnapshot, DurableQueueError> {
 		let mut record = self.load_running_claim(&claim).await?;
 		let now = Utc::now();
-		let from = record.state;
-		let expected_attempt_count = record.attempt_count;
-		let expected_cancellation_requested = record.cancellation_requested;
+		let expected = JobUpdateExpectation::from_record(&record);
 		let retry_attempts_so_far = record.attempt_count.saturating_sub(1);
 		let should_retry = record.attempt_count < record.max_attempts
 			&& self.retry_strategy.should_retry(retry_attempts_so_far);
@@ -945,9 +943,7 @@ where
 		};
 		self.update_job_transition_if_current(
 			record.clone(),
-			from,
-			expected_attempt_count,
-			expected_cancellation_requested,
+			expected,
 			event_kind,
 			Some(failure.message.clone()),
 			now,
@@ -964,9 +960,7 @@ where
 	) -> Result<JobSnapshot, DurableQueueError> {
 		let mut record = self.load_running_claim(&claim).await?;
 		let now = Utc::now();
-		let from = record.state;
-		let expected_attempt_count = record.attempt_count;
-		let expected_cancellation_requested = record.cancellation_requested;
+		let expected = JobUpdateExpectation::from_record(&record);
 		let event_kind = self
 			.lifecycle
 			.transition(&mut record, JobState::FailedFinal, now)?;
@@ -976,9 +970,7 @@ where
 		record.retry_after = None;
 		self.update_job_transition_if_current(
 			record.clone(),
-			from,
-			expected_attempt_count,
-			expected_cancellation_requested,
+			expected,
 			event_kind,
 			Some(failure.message.clone()),
 			now,
@@ -1001,9 +993,7 @@ where
 			}));
 		}
 
-		let from = record.state;
-		let expected_attempt_count = record.attempt_count;
-		let expected_cancellation_requested = record.cancellation_requested;
+		let expected = JobUpdateExpectation::from_record(&record);
 		record.cancellation_requested = true;
 		record.updated_at = now;
 
@@ -1011,22 +1001,12 @@ where
 			let event_kind = self
 				.lifecycle
 				.transition(&mut record, JobState::Canceled, now)?;
-			self.update_job_transition_if_current(
-				record.clone(),
-				from,
-				expected_attempt_count,
-				expected_cancellation_requested,
-				event_kind,
-				None,
-				now,
-			)
-			.await?;
+			self.update_job_transition_if_current(record.clone(), expected, event_kind, None, now)
+				.await?;
 		} else {
 			self.update_job_transition_if_current(
 				record.clone(),
-				from,
-				expected_attempt_count,
-				expected_cancellation_requested,
+				expected,
 				JobEventKind::CancellationRequested,
 				None,
 				now,
@@ -1041,24 +1021,14 @@ where
 	pub async fn cancel(&self, claim: JobClaim) -> Result<JobSnapshot, DurableQueueError> {
 		let mut record = self.load_running_claim(&claim).await?;
 		let now = Utc::now();
-		let from = record.state;
-		let expected_attempt_count = record.attempt_count;
-		let expected_cancellation_requested = record.cancellation_requested;
+		let expected = JobUpdateExpectation::from_record(&record);
 		let event_kind = self
 			.lifecycle
 			.transition(&mut record, JobState::Canceled, now)?;
 		record.cancellation_requested = true;
 		record.retry_after = None;
-		self.update_job_transition_if_current(
-			record.clone(),
-			from,
-			expected_attempt_count,
-			expected_cancellation_requested,
-			event_kind,
-			None,
-			now,
-		)
-		.await?;
+		self.update_job_transition_if_current(record.clone(), expected, event_kind, None, now)
+			.await?;
 		Ok(record.snapshot())
 	}
 
@@ -1066,22 +1036,12 @@ where
 	pub async fn retry(&self, job_id: JobId) -> Result<JobSnapshot, DurableQueueError> {
 		let mut record = self.load_job(job_id).await?;
 		let now = Utc::now();
-		let from = record.state;
-		let expected_attempt_count = record.attempt_count;
-		let expected_cancellation_requested = record.cancellation_requested;
+		let expected = JobUpdateExpectation::from_record(&record);
 		let event_kind = self
 			.lifecycle
 			.transition(&mut record, JobState::Queued, now)?;
-		self.update_job_transition_if_current(
-			record.clone(),
-			from,
-			expected_attempt_count,
-			expected_cancellation_requested,
-			event_kind,
-			None,
-			now,
-		)
-		.await?;
+		self.update_job_transition_if_current(record.clone(), expected, event_kind, None, now)
+			.await?;
 		Ok(record.snapshot())
 	}
 
@@ -1124,17 +1084,15 @@ where
 	async fn update_job_if_current(
 		&self,
 		record: DurableJobRecord,
-		expected_state: JobState,
-		expected_attempt_count: u32,
-		expected_cancellation_requested: bool,
+		expected: JobUpdateExpectation,
 	) -> Result<(), DurableQueueError> {
 		if self
 			.store
 			.update_job_if_current(
 				record.clone(),
-				expected_state,
-				expected_attempt_count,
-				expected_cancellation_requested,
+				expected.state,
+				expected.attempt_count,
+				expected.cancellation_requested,
 			)
 			.await?
 		{
@@ -1142,7 +1100,7 @@ where
 		} else {
 			Err(DurableQueueError::Conflict(JobTransitionConflict {
 				job_id: record.id,
-				from: expected_state,
+				from: expected.state,
 				to: record.state,
 				reason: "job changed before the lifecycle update could be committed".to_string(),
 			}))
@@ -1152,9 +1110,7 @@ where
 	async fn update_job_transition_if_current(
 		&self,
 		record: DurableJobRecord,
-		expected_state: JobState,
-		expected_attempt_count: u32,
-		expected_cancellation_requested: bool,
+		expected: JobUpdateExpectation,
 		event_kind: JobEventKind,
 		message: Option<String>,
 		created_at: DateTime<Utc>,
@@ -1162,7 +1118,7 @@ where
 		let event = JobEventDraft {
 			job_id: record.id,
 			kind: event_kind,
-			from_state: Some(expected_state),
+			from_state: Some(expected.state),
 			to_state: record.state,
 			message,
 			created_at,
@@ -1171,9 +1127,9 @@ where
 			.store
 			.update_job_with_event_if_current(
 				record.clone(),
-				expected_state,
-				expected_attempt_count,
-				expected_cancellation_requested,
+				expected.state,
+				expected.attempt_count,
+				expected.cancellation_requested,
 				event,
 			)
 			.await?
@@ -1182,7 +1138,7 @@ where
 		} else {
 			Err(DurableQueueError::Conflict(JobTransitionConflict {
 				job_id: record.id,
-				from: expected_state,
+				from: expected.state,
 				to: record.state,
 				reason: "job changed before the lifecycle update could be committed".to_string(),
 			}))
