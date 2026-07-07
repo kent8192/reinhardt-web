@@ -323,35 +323,43 @@ impl ReactiveNode {
 		let current_nodes_clone = current_nodes.clone();
 		let marker_clone = marker.clone();
 		let effect_reactive_node_store = current_reactive_node_store();
+		#[cfg(feature = "i18n")]
+		let i18n_context = crate::i18n::current_i18n_callback_context();
 
 		// Create the Effect that will re-run when dependencies change
 		let effect = Effect::new_with_timing(
 			move || {
-				with_reactive_node_store(&effect_reactive_node_store, || {
-					// Render the view (this tracks Signal dependencies)
-					let view = render();
+				let update = || {
+					with_reactive_node_store(&effect_reactive_node_store, || {
+						// Render the view (this tracks Signal dependencies)
+						let view = render();
 
-					if update_activity_boundary_attrs(&current_nodes_clone, &view) {
-						return;
-					}
-
-					// Refs #5100: remove old nodes before mounting the replacement view. The
-					// mount path may synchronously run layout effects, so do not
-					// hold this RefCell borrow across `mount_before_marker`.
-					let old_nodes = {
-						let mut nodes = current_nodes_clone.borrow_mut();
-						nodes.drain(..).collect::<Vec<_>>()
-					};
-					for node in old_nodes {
-						if let Some(parent_node) = node.parent_node() {
-							let _ = parent_node.remove_child(&node);
+						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
+							return;
 						}
-					}
 
-					// Mount new nodes before the marker
-					let new_nodes = mount_before_marker(&marker_clone, view);
-					*current_nodes_clone.borrow_mut() = new_nodes;
-				});
+						// Refs #5100: remove old nodes before mounting the replacement view. The
+						// mount path may synchronously run layout effects, so do not
+						// hold this RefCell borrow across `mount_before_marker`.
+						let old_nodes = {
+							let mut nodes = current_nodes_clone.borrow_mut();
+							nodes.drain(..).collect::<Vec<_>>()
+						};
+						for node in old_nodes {
+							if let Some(parent_node) = node.parent_node() {
+								let _ = parent_node.remove_child(&node);
+							}
+						}
+
+						// Mount new nodes before the marker
+						let new_nodes = mount_before_marker(&marker_clone, view);
+						*current_nodes_clone.borrow_mut() = new_nodes;
+					});
+				};
+				#[cfg(feature = "i18n")]
+				crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), update);
+				#[cfg(not(feature = "i18n"))]
+				update();
 			},
 			EffectTiming::Layout, // Use Layout timing for synchronous DOM updates
 		);
@@ -382,33 +390,41 @@ impl ReactiveNode {
 		let effect_reactive_node_store = current_reactive_node_store();
 		let first_run = Rc::new(Cell::new(true));
 		let first_run_clone = first_run.clone();
+		#[cfg(feature = "i18n")]
+		let i18n_context = crate::i18n::current_i18n_callback_context();
 
 		let effect = Effect::new_with_timing(
 			move || {
-				with_reactive_node_store(&effect_reactive_node_store, || {
-					let view = render();
+				let update = || {
+					with_reactive_node_store(&effect_reactive_node_store, || {
+						let view = render();
 
-					if first_run_clone.replace(false) {
-						return;
-					}
-
-					if update_activity_boundary_attrs(&current_nodes_clone, &view) {
-						return;
-					}
-
-					let old_nodes = {
-						let mut nodes = current_nodes_clone.borrow_mut();
-						nodes.drain(..).collect::<Vec<_>>()
-					};
-					for node in old_nodes {
-						if let Some(parent_node) = node.parent_node() {
-							let _ = parent_node.remove_child(&node);
+						if first_run_clone.replace(false) {
+							return;
 						}
-					}
 
-					let new_nodes = mount_before_marker(&marker_clone, view);
-					*current_nodes_clone.borrow_mut() = new_nodes;
-				});
+						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
+							return;
+						}
+
+						let old_nodes = {
+							let mut nodes = current_nodes_clone.borrow_mut();
+							nodes.drain(..).collect::<Vec<_>>()
+						};
+						for node in old_nodes {
+							if let Some(parent_node) = node.parent_node() {
+								let _ = parent_node.remove_child(&node);
+							}
+						}
+
+						let new_nodes = mount_before_marker(&marker_clone, view);
+						*current_nodes_clone.borrow_mut() = new_nodes;
+					});
+				};
+				#[cfg(feature = "i18n")]
+				crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), update);
+				#[cfg(not(feature = "i18n"))]
+				update();
 			},
 			EffectTiming::Layout,
 		);
@@ -528,7 +544,16 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 				use wasm_bindgen::closure::Closure;
 
 				let handler_clone = handler.clone();
+				#[cfg(feature = "i18n")]
+				let i18n_context = crate::i18n::current_i18n_callback_context();
 				let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
+					#[cfg(feature = "i18n")]
+					{
+						crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || {
+							handler_clone(event);
+						});
+					}
+					#[cfg(not(feature = "i18n"))]
 					handler_clone(event);
 				}) as Box<dyn FnMut(web_sys::Event)>);
 

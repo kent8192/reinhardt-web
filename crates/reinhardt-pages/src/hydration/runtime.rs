@@ -173,7 +173,7 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	// 1. Restore SSR state
 	let mut context = HydrationContext::from_window()?;
 	#[cfg(feature = "i18n")]
-	let i18n_guard = crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
+	let _i18n_guard = crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
 		HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
 	})?;
 
@@ -196,10 +196,6 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	web_sys::console::log_1(&"[Hydration] Reactive nodes installed".into());
 
 	// 6. Mark hydration complete
-	#[cfg(feature = "i18n")]
-	if let Some(i18n_guard) = i18n_guard {
-		crate::i18n::retain_hydrated_i18n_context(i18n_guard);
-	}
 	context.mark_hydrated();
 	mark_hydration_complete_internal();
 	web_sys::console::log_1(&"[Hydration] Complete!".into());
@@ -375,7 +371,8 @@ enum ExpectedDomChild {
 #[cfg(wasm)]
 fn hydrated_node_count(view: &Page) -> usize {
 	match view {
-		Page::Text(_) | Page::Element(_) => 1,
+		Page::Text(text) => usize::from(!normalize_whitespace(text.as_ref()).is_empty()),
+		Page::Element(_) => 1,
 		Page::Fragment(children) => children.iter().map(hydrated_node_count).sum(),
 		Page::KeyedFragment(children) => children
 			.iter()
@@ -458,7 +455,11 @@ fn split_coalesced_text_children(element: &Element, children: &[Page]) {
 fn collect_expected_dom_children(view: &Page, children: &mut Vec<ExpectedDomChild>) {
 	match view {
 		Page::Empty => {}
-		Page::Text(text) => children.push(ExpectedDomChild::Text(text.to_string())),
+		Page::Text(text) => {
+			if !normalize_whitespace(text.as_ref()).is_empty() {
+				children.push(ExpectedDomChild::Text(text.to_string()));
+			}
+		}
 		Page::Fragment(fragment_children) => {
 			for child in fragment_children {
 				collect_expected_dom_children(child, children);

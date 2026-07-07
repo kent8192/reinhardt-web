@@ -4,8 +4,6 @@
 //! and client hydration.
 
 use std::borrow::Cow;
-#[cfg(wasm)]
-use std::cell::RefCell;
 use std::fmt;
 use std::sync::Arc;
 
@@ -22,12 +20,6 @@ pub const SSR_I18N_METADATA_KEY: &str = "pages.i18n";
 
 thread_local! {
 	static I18N_CONTEXT: Context<I18nContext> = Context::new();
-}
-
-#[cfg(wasm)]
-thread_local! {
-	static HYDRATED_I18N_GUARDS: RefCell<Vec<ContextGuard<I18nContext>>> =
-		const { RefCell::new(Vec::new()) };
 }
 
 /// Errors raised while reading or writing i18n state.
@@ -154,6 +146,23 @@ pub fn use_i18n_context() -> Option<I18nContext> {
 pub fn with_i18n_context<R>(context: &I18nContext, f: impl FnOnce() -> R) -> R {
 	let _guard = provide_i18n_context(context.clone());
 	f()
+}
+
+#[cfg(wasm)]
+pub(crate) fn current_i18n_callback_context() -> Option<I18nContext> {
+	use_i18n_context()
+}
+
+#[cfg(wasm)]
+pub(crate) fn with_optional_i18n_context<R>(
+	context: Option<&I18nContext>,
+	f: impl FnOnce() -> R,
+) -> R {
+	if let Some(context) = context {
+		with_i18n_context(context, f)
+	} else {
+		f()
+	}
 }
 
 /// Returns the current locale.
@@ -386,11 +395,6 @@ pub fn provide_i18n_from_hydration_context(
 			Ok(provide_i18n_context(I18nContext::new(translations)))
 		})
 		.transpose()
-}
-
-#[cfg(wasm)]
-pub(crate) fn retain_hydrated_i18n_context(guard: ContextGuard<I18nContext>) {
-	HYDRATED_I18N_GUARDS.with(|guards| guards.borrow_mut().push(guard));
 }
 
 fn interpolate_named(mut rendered: String, args: &[TranslationArg]) -> String {
