@@ -2,7 +2,7 @@
 
 #![allow(unused_imports)] // Broad imports keep compile-fail diagnostics focused.
 
-use reinhardt_di::{Depends, FactoryOutput, injectable};
+use reinhardt_di::{KeyedDepends, injectable};
 
 struct ConfigKey;
 
@@ -23,10 +23,10 @@ struct Config;
 // This should fail: cannot mix inject and non-inject params
 #[injectable(scope = "transient")]
 async fn make_service(
-	#[inject] _config: Depends<ConfigKey, Config>,
+	#[inject] _config: KeyedDepends<ConfigKey, Config>,
 	extra: String,
-) -> FactoryOutput<MyServiceKey, MyService> {
-	FactoryOutput::new(MyService { name: extra })
+) -> MyService {
+	MyService { name: extra }
 }
 
 fn main() {}

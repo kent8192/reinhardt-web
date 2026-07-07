@@ -1,5 +1,5 @@
 use reinhardt_di::{
-	Depends, DiResult, FactoryOutput, Injectable, InjectableKey, InjectionContext,
+	DiResult, Injectable, InjectableKey, InjectionContext, KeyedDepends, KeyedFactoryOutput,
 	injectable,
 };
 
@@ -39,8 +39,8 @@ struct AppKey;
 impl InjectableKey for AppKey {}
 
 #[injectable(scope = "transient")]
-async fn make_config() -> FactoryOutput<MyConfigKey, MyConfig> {
-	FactoryOutput::new(MyConfig {
+async fn make_config() -> KeyedFactoryOutput<MyConfigKey, MyConfig> {
+	KeyedFactoryOutput::new(MyConfig {
 		host: "localhost".to_string(),
 	})
 }
@@ -56,25 +56,25 @@ impl Injectable for MyConfig {
 
 // Case 1: #[inject] with non-Depends type (requires Clone)
 #[injectable(scope = "transient")]
-async fn make_handler(#[inject] service: MyService) -> FactoryOutput<HandlerKey, String> {
-	FactoryOutput::new(service.value)
+async fn make_handler(#[inject] service: MyService) -> KeyedFactoryOutput<HandlerKey, String> {
+	KeyedFactoryOutput::new(service.value)
 }
 
-// Case 2: #[inject] with Depends<K, T> type
+// Case 2: #[inject] with KeyedDepends<K, T> type
 #[injectable(scope = "transient")]
 async fn make_router(
-	#[inject] config: Depends<MyConfigKey, MyConfig>,
-) -> FactoryOutput<RouterKey, String> {
-	FactoryOutput::new(config.host.clone())
+	#[inject] config: KeyedDepends<MyConfigKey, MyConfig>,
+) -> KeyedFactoryOutput<RouterKey, String> {
+	KeyedFactoryOutput::new(config.host.clone())
 }
 
 // Case 3: Multiple #[inject] parameters mixing both patterns
 #[injectable(scope = "transient")]
 async fn make_app(
 	#[inject] service: MyService,
-	#[inject] config: Depends<MyConfigKey, MyConfig>,
-) -> FactoryOutput<AppKey, String> {
-	FactoryOutput::new(format!("{}:{}", config.host, service.value))
+	#[inject] config: KeyedDepends<MyConfigKey, MyConfig>,
+) -> KeyedFactoryOutput<AppKey, String> {
+	KeyedFactoryOutput::new(format!("{}:{}", config.host, service.value))
 }
 
 fn main() {}

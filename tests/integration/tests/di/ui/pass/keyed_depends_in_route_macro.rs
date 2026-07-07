@@ -1,4 +1,4 @@
-use reinhardt_di::{Depends, FactoryOutput, injectable, injectable_key};
+use reinhardt_di::{KeyedDepends, KeyedFactoryOutput, injectable, injectable_key};
 use reinhardt_http::{Response, ViewResult};
 use reinhardt_macros::get;
 
@@ -11,13 +11,13 @@ struct AppConfig {
 }
 
 #[injectable(scope = "transient")]
-async fn app_config() -> FactoryOutput<ConfigKey, AppConfig> {
-	FactoryOutput::new(AppConfig { value: "route" })
+async fn app_config() -> KeyedFactoryOutput<ConfigKey, AppConfig> {
+	KeyedFactoryOutput::new(AppConfig { value: "route" })
 }
 
 #[get("/hello", name = "hello")]
 async fn hello(
-	#[inject] config: Depends<ConfigKey, AppConfig>,
+	#[inject] config: KeyedDepends<ConfigKey, AppConfig>,
 ) -> ViewResult<Response> {
 	Ok(Response::ok().with_body(config.value.to_string()))
 }

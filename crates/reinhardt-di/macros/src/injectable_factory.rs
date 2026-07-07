@@ -6,12 +6,50 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{FnArg, GenericArgument, ItemFn, Pat, PatType, PathArguments, Result, Type};
 
-fn depends_key_value_types(ty: &Type) -> Option<(&Type, &Type)> {
+enum ProviderReturn {
+	Direct {
+		registered_ty: TokenStream,
+		wrap_expr: TokenStream,
+	},
+	Keyed {
+		registered_ty: Type,
+		wrap_expr: TokenStream,
+	},
+	OldFactoryOutput,
+}
+
+impl ProviderReturn {
+	fn registered_type_tokens(&self) -> TokenStream {
+		match self {
+			Self::Direct { registered_ty, .. } => quote! { #registered_ty },
+			Self::Keyed { registered_ty, .. } => quote! { #registered_ty },
+			Self::OldFactoryOutput => unreachable!("old FactoryOutput returns are rejected"),
+		}
+	}
+
+	fn wrap_expr_tokens(&self) -> TokenStream {
+		match self {
+			Self::Direct { wrap_expr, .. } | Self::Keyed { wrap_expr, .. } => wrap_expr.clone(),
+			Self::OldFactoryOutput => unreachable!("old FactoryOutput returns are rejected"),
+		}
+	}
+}
+
+fn direct_provider_return(di_crate: &TokenStream, value_ty: Type) -> ProviderReturn {
+	let registered_ty =
+		quote! { #di_crate::KeyedFactoryOutput<#di_crate::SelfKey<#value_ty>, #value_ty> };
+	ProviderReturn::Direct {
+		registered_ty,
+		wrap_expr: quote! { #di_crate::KeyedFactoryOutput::new(__provider_value) },
+	}
+}
+
+fn keyed_depends_key_value_types(ty: &Type) -> Option<(&Type, &Type)> {
 	let Type::Path(type_path) = ty else {
 		return None;
 	};
 	let segment = type_path.path.segments.last()?;
-	if segment.ident != "Depends" {
+	if segment.ident != "KeyedDepends" {
 		return None;
 	}
 	let PathArguments::AngleBracketed(args) = &segment.arguments else {
@@ -30,25 +68,33 @@ fn depends_key_value_types(ty: &Type) -> Option<(&Type, &Type)> {
 	Some((key_ty, value_ty))
 }
 
-fn is_factory_output_type(ty: &Type) -> bool {
+fn provider_return_shape(di_crate: &TokenStream, ty: &Type) -> ProviderReturn {
 	let Type::Path(type_path) = ty else {
-		return false;
+		return direct_provider_return(di_crate, ty.clone());
 	};
 	let Some(segment) = type_path.path.segments.last() else {
-		return false;
+		return direct_provider_return(di_crate, ty.clone());
 	};
-	if segment.ident != "FactoryOutput" {
-		return false;
+	if segment.ident == "FactoryOutput" {
+		return ProviderReturn::OldFactoryOutput;
 	}
-	let PathArguments::AngleBracketed(args) = &segment.arguments else {
-		return false;
-	};
-	if args.args.len() != 2 {
-		return false;
+	if segment.ident == "KeyedFactoryOutput" {
+		let PathArguments::AngleBracketed(args) = &segment.arguments else {
+			return direct_provider_return(di_crate, ty.clone());
+		};
+		if args.args.len() == 2
+			&& args
+				.args
+				.iter()
+				.all(|arg| matches!(arg, GenericArgument::Type(_)))
+		{
+			return ProviderReturn::Keyed {
+				registered_ty: ty.clone(),
+				wrap_expr: quote! { __provider_value },
+			};
+		}
 	}
-	args.args
-		.iter()
-		.all(|arg| matches!(arg, GenericArgument::Type(_)))
+	direct_provider_return(di_crate, ty.clone())
 }
 
 fn generate_inject_resolver_expr(
@@ -57,10 +103,10 @@ fn generate_inject_resolver_expr(
 	ctx: TokenStream,
 	use_cache: bool,
 ) -> TokenStream {
-	if let Some((key_ty, value_ty)) = depends_key_value_types(ty) {
+	if let Some((key_ty, value_ty)) = keyed_depends_key_value_types(ty) {
 		quote! {
 			{
-				#di_crate::Depends::<#key_ty, #value_ty>::resolve_from_registry(#ctx, #use_cache)
+				#di_crate::KeyedDepends::<#key_ty, #value_ty>::resolve_from_registry(#ctx, #use_cache)
 					.await
 			}
 		}
@@ -114,12 +160,17 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 			));
 		}
 	};
-	if !is_factory_output_type(&return_type) {
+	let di_crate = get_reinhardt_di_crate();
+	let provider_return = provider_return_shape(&di_crate, &return_type);
+	if matches!(provider_return, ProviderReturn::OldFactoryOutput) {
 		return Err(syn::Error::new_spanned(
 			&return_type,
-			"#[injectable] provider functions must return FactoryOutput<K, T>",
+			"#[injectable] providers should return the produced value directly, or \
+			 KeyedFactoryOutput<K, T> for explicit multi-binding keys",
 		));
 	}
+	let registered_type = provider_return.registered_type_tokens();
+	let wrapper_output_expr = provider_return.wrap_expr_tokens();
 
 	// Analyze function parameters
 	let mut inject_params = Vec::new();
@@ -148,9 +199,6 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 			 only receives an InjectionContext.",
 		));
 	}
-
-	// Get dynamic crate path (needed by inject_resolutions below)
-	let di_crate = get_reinhardt_di_crate();
 
 	// Generate dependency resolution code (kent8192/reinhardt-web#4938).
 	// The runtime resolver lets the compiler choose the `InjectableType`
@@ -203,7 +251,7 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 		.collect();
 
 	// Generate type name for registration
-	let type_name = quote! { #return_type }.to_string();
+	let type_name = quote! { #registered_type }.to_string();
 
 	// Generate registration function name for const-safe inventory submission
 	let register_fn_name = format_ident!("__reinhardt_register_{}", fn_name);
@@ -221,7 +269,7 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 		#(#fn_attrs)*
 		#fn_vis async fn #fn_name(
 			ctx: ::std::sync::Arc<#di_crate::InjectionContext>,
-		) -> #di_crate::DiResult<#return_type> {
+		) -> #di_crate::DiResult<#registered_type> {
 			#di_crate::with_cycle_detection_scope(async {
 				// Set task-local resolve context before resolving dependencies.
 				// Inherit root from outer scope (for nested factory calls),
@@ -240,7 +288,11 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 						// Resolve #[inject] dependencies
 						#(#inject_resolutions)*
 
-						Ok(#original_fn_name(#(#inject_param_names,)* #(#regular_param_names),*).await)
+						let __provider_value = #original_fn_name(
+							#(#inject_param_names,)*
+							#(#regular_param_names),*
+						).await;
+						Ok(#wrapper_output_expr)
 					})
 					.await?;
 				Ok(result)
@@ -254,20 +306,20 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 		// Registration function for const-safe inventory::submit
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		fn #register_fn_name(registry: &#di_crate::DependencyRegistry) {
-			registry.register_async::<#return_type, _, _>(#scope_tokens, #fn_name);
+			registry.register_async::<#registered_type, _, _>(#scope_tokens, #fn_name);
 			registry.register_type_name(
-				::std::any::TypeId::of::<#return_type>(),
+				::std::any::TypeId::of::<#registered_type>(),
 				#type_name,
 			);
 			registry.register_qualified_type_name(
-				::std::any::TypeId::of::<#return_type>(),
-				::std::any::type_name::<#return_type>(),
+				::std::any::TypeId::of::<#registered_type>(),
+				::std::any::type_name::<#registered_type>(),
 			);
 		}
 
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#di_crate::inventory::submit! {
-			#di_crate::DependencyRegistration::new::<#return_type>(
+			#di_crate::DependencyRegistration::new::<#registered_type>(
 				#type_name,
 				#scope_tokens,
 				#register_fn_name

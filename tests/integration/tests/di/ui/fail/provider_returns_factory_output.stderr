@@ -1,0 +1,5 @@
+error: #[injectable] providers should return the produced value directly, or KeyedFactoryOutput<K, T> for explicit multi-binding keys
+  --> tests/di/ui/fail/provider_returns_factory_output.rs:10:26
+   |
+10 | async fn app_config() -> FactoryOutput<AppConfigKey, AppConfig> {
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
