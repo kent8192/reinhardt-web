@@ -43,6 +43,7 @@ impl From<introspection::DatabaseSchema> for DatabaseSchema {
 						default: intro_col.default,
 						primary_key: intro_table.primary_key.contains(&col_name), // Check if column is in primary_key list
 						auto_increment: intro_col.auto_increment,
+						generated: None,
 					},
 				);
 			}
@@ -187,6 +188,8 @@ pub struct ColumnSchema {
 	pub primary_key: bool,
 	/// Auto increment
 	pub auto_increment: bool,
+	/// Generated-column metadata
+	pub generated: Option<super::GeneratedColumnDefinition>,
 }
 
 /// Index schema
@@ -399,7 +402,7 @@ impl SchemaDiff {
 							unique,
 							primary_key: col.primary_key,
 							auto_increment,
-							generated: None,
+							generated: col.generated.clone(),
 						}
 					})
 					.collect();
@@ -459,7 +462,7 @@ impl SchemaDiff {
 						unique,
 						primary_key: col_schema.primary_key,
 						auto_increment,
-						generated: None,
+						generated: col_schema.generated.clone(),
 					},
 					mysql_options: None,
 				});
@@ -491,7 +494,7 @@ impl SchemaDiff {
 					unique: old_unique,
 					primary_key: old_col.primary_key,
 					auto_increment: Self::is_auto_increment(old_col),
-					generated: None,
+					generated: old_col.generated.clone(),
 				}),
 				new_definition: ColumnDefinition {
 					name: col_name.clone(),
@@ -501,7 +504,7 @@ impl SchemaDiff {
 					unique: new_unique,
 					primary_key: new_col.primary_key,
 					auto_increment: Self::is_auto_increment(new_col),
-					generated: None,
+					generated: new_col.generated.clone(),
 				},
 				mysql_options: None,
 			});
@@ -785,7 +788,7 @@ impl SchemaDiff {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::migrations::FieldType;
+	use crate::migrations::{FieldType, GeneratedColumnDefinition, GeneratedStorage};
 
 	#[test]
 	fn test_detect_table_addition() {
@@ -837,6 +840,7 @@ mod tests {
 				default: None,
 				primary_key: false,
 				auto_increment: false,
+				generated: None,
 			},
 		);
 		target.tables.insert("users".to_string(), target_table);
@@ -883,6 +887,7 @@ mod tests {
 			default: None,
 			primary_key: false,
 			auto_increment: false,
+			generated: None,
 		}
 	}
 
@@ -895,6 +900,7 @@ mod tests {
 			default: None,
 			primary_key: true,
 			auto_increment: true,
+			generated: None,
 		}
 	}
 
@@ -996,6 +1002,45 @@ mod tests {
 	}
 
 	#[test]
+	fn test_generate_operations_add_column_preserves_generated_metadata() {
+		// Arrange
+		let mut current = DatabaseSchema::default();
+		current.tables.insert(
+			"users".to_string(),
+			table_with_cols("users", vec![("id", pk_col("id"))]),
+		);
+		let mut full_name = col("full_name", FieldType::VarChar(255), false);
+		let generated = GeneratedColumnDefinition::raw_sql(
+			"first_name || ' ' || last_name",
+			GeneratedStorage::Stored,
+		);
+		full_name.generated = Some(generated.clone());
+
+		let mut target = DatabaseSchema::default();
+		target.tables.insert(
+			"users".to_string(),
+			table_with_cols(
+				"users",
+				vec![("id", pk_col("id")), ("full_name", full_name)],
+			),
+		);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let ops = diff.generate_operations();
+
+		// Assert
+		assert_eq!(ops.len(), 1);
+		assert!(matches!(
+			&ops[0],
+			Operation::AddColumn { table, column, .. }
+				if table == "users"
+					&& column.name == "full_name"
+					&& column.generated == Some(generated)
+		));
+	}
+
+	#[test]
 	fn test_generate_operations_drop_column() {
 		// Arrange
 		let mut current = DatabaseSchema::default();
@@ -1083,6 +1128,58 @@ mod tests {
 			}
 			other => panic!("Expected AlterColumn, got {:?}", other),
 		}
+	}
+
+	#[test]
+	fn test_generate_operations_alter_column_preserves_generated_metadata() {
+		// Arrange
+		let mut current_generated = col("slug", FieldType::VarChar(255), false);
+		let old_generated =
+			GeneratedColumnDefinition::raw_sql("lower(title)", GeneratedStorage::Stored);
+		current_generated.generated = Some(old_generated.clone());
+		let mut current = DatabaseSchema::default();
+		current.tables.insert(
+			"posts".to_string(),
+			table_with_cols(
+				"posts",
+				vec![("id", pk_col("id")), ("slug", current_generated)],
+			),
+		);
+
+		let mut target_generated = col("slug", FieldType::VarChar(255), false);
+		let new_generated =
+			GeneratedColumnDefinition::raw_sql("lower(display_title)", GeneratedStorage::Stored);
+		target_generated.generated = Some(new_generated.clone());
+		let mut target = DatabaseSchema::default();
+		target.tables.insert(
+			"posts".to_string(),
+			table_with_cols(
+				"posts",
+				vec![("id", pk_col("id")), ("slug", target_generated)],
+			),
+		);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let ops = diff.generate_operations();
+
+		// Assert
+		assert_eq!(ops.len(), 1);
+		let Operation::AlterColumn {
+			old_definition,
+			new_definition,
+			..
+		} = &ops[0]
+		else {
+			panic!("expected AlterColumn, got {:?}", ops[0]);
+		};
+		assert_eq!(
+			old_definition
+				.as_ref()
+				.and_then(|column| column.generated.as_ref()),
+			Some(&old_generated)
+		);
+		assert_eq!(new_definition.generated, Some(new_generated));
 	}
 
 	#[test]

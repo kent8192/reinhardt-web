@@ -1315,6 +1315,14 @@ impl FieldConfig {
 			));
 		}
 
+		#[cfg(feature = "db-sqlite")]
+		if has_generated && self.primary_key {
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"SQLite generated columns cannot be primary keys",
+			));
+		}
+
 		Ok(())
 	}
 }
@@ -5748,6 +5756,29 @@ mod tests {
 		assert_eq!(
 			error.to_string(),
 			"Generated columns cannot be auto-incrementing"
+		);
+	}
+
+	#[cfg(feature = "db-sqlite")]
+	#[test]
+	fn test_generated_non_integer_primary_key_rejects_on_sqlite() {
+		let attrs = vec![parse_quote! {
+			#[field(
+				primary_key = true,
+				generated_sql = "lower(name)",
+				generated_stored = true
+			)]
+		}];
+		let ty: Type = parse_quote! { String };
+
+		let config = FieldConfig::from_attrs(&attrs).expect("field config should parse");
+		let error = config
+			.validate_for_field_type(&ty)
+			.expect_err("SQLite generated primary keys must be rejected");
+
+		assert_eq!(
+			error.to_string(),
+			"SQLite generated columns cannot be primary keys"
 		);
 	}
 

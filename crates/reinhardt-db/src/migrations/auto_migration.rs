@@ -513,6 +513,7 @@ mod tests {
 				default: None,
 				primary_key: false,
 				auto_increment: false,
+				generated: None,
 			},
 		);
 		current.tables.insert("users".to_string(), current_table);
@@ -533,6 +534,7 @@ mod tests {
 				default: None,
 				primary_key: false,
 				auto_increment: false,
+				generated: None,
 			},
 		);
 		target.tables.insert("users".to_string(), target_table);

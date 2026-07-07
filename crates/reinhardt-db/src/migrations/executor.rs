@@ -1846,10 +1846,59 @@ fn sqlite_column_name(definition: &str) -> Option<String> {
 #[cfg(feature = "sqlite")]
 fn extract_sqlite_generated_expr(column_sql: &str) -> Option<String> {
 	let upper = column_sql.to_ascii_uppercase();
-	let generated_index = upper.find("GENERATED ALWAYS AS")?;
+	let generated_index = upper
+		.find("GENERATED ALWAYS AS")
+		.or_else(|| find_sqlite_keyword(column_sql, "AS"))?;
 	let expr_start = column_sql[generated_index..].find('(')? + generated_index;
 	let expr_end = find_matching_sqlite_paren(column_sql, expr_start)?;
 	Some(column_sql[expr_start + 1..expr_end].trim().to_string())
+}
+
+#[cfg(feature = "sqlite")]
+fn find_sqlite_keyword(sql: &str, keyword: &str) -> Option<usize> {
+	let upper = sql.to_ascii_uppercase();
+	let mut quote: Option<char> = None;
+
+	for (index, ch) in sql.char_indices() {
+		if let Some(quote_ch) = quote {
+			if ch == quote_ch {
+				quote = None;
+			}
+			continue;
+		}
+
+		match ch {
+			'\'' | '"' | '`' => {
+				quote = Some(ch);
+				continue;
+			}
+			'[' => {
+				quote = Some(']');
+				continue;
+			}
+			_ => {}
+		}
+
+		let Some(candidate) = upper.get(index..) else {
+			continue;
+		};
+		if !candidate.starts_with(keyword) {
+			continue;
+		}
+
+		let before = upper[..index].chars().next_back();
+		let after = upper[index + keyword.len()..].chars().next();
+		if before.is_none_or(sqlite_keyword_boundary) && after.is_none_or(sqlite_keyword_boundary) {
+			return Some(index);
+		}
+	}
+
+	None
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_keyword_boundary(ch: char) -> bool {
+	!ch.is_ascii_alphanumeric() && ch != '_'
 }
 
 #[cfg(feature = "sqlite")]
@@ -1916,6 +1965,20 @@ mod sqlite_generated_column_tests {
 			.expect("stored generated column should be parsed");
 
 		assert_eq!(generated.raw_sql.as_deref(), Some("(subtotal + tax)"));
+		assert_eq!(generated.storage, super::super::GeneratedStorage::Stored);
+	}
+
+	#[test]
+	fn parse_sqlite_generated_column_restores_shorthand_column() {
+		let create_sql = r#"CREATE TABLE users (
+			id integer primary key,
+			normalized_name text AS (lower(name)) STORED
+		)"#;
+
+		let generated = parse_sqlite_generated_column(Some(create_sql), "normalized_name", 3)
+			.expect("shorthand generated column should be parsed");
+
+		assert_eq!(generated.raw_sql.as_deref(), Some("lower(name)"));
 		assert_eq!(generated.storage, super::super::GeneratedStorage::Stored);
 	}
 
