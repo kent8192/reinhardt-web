@@ -105,6 +105,8 @@ pub struct ReactiveIfNode {
 	/// Last evaluated condition value (for change detection)
 	#[allow(dead_code)] // Kept for potential future use
 	last_condition: Rc<RefCell<Option<bool>>>,
+	/// Nested reactive nodes owned by the current branch.
+	reactive_nodes: ReactiveNodeStore,
 	/// Effect handle (kept alive to maintain reactivity)
 	#[allow(dead_code)] // Effect is kept alive for its side effects
 	effect: Effect,
@@ -147,7 +149,8 @@ impl ReactiveIfNode {
 		let current_nodes_clone = current_nodes.clone();
 		let last_condition_clone = last_condition.clone();
 		let marker_clone = marker.clone();
-		let effect_reactive_node_store = current_reactive_node_store();
+		let reactive_nodes = new_reactive_node_store();
+		let effect_reactive_node_store = reactive_nodes.clone();
 
 		// Create the Effect that will re-run when condition dependencies change
 		let effect = Effect::new_with_timing(
@@ -164,6 +167,8 @@ impl ReactiveIfNode {
 					}
 					*last = Some(new_condition);
 					drop(last);
+
+					clear_reactive_node_store(&effect_reactive_node_store);
 
 					// Refs #5100: remove old nodes before mounting the replacement view. The
 					// mount path may synchronously run layout effects, so do not
@@ -197,6 +202,7 @@ impl ReactiveIfNode {
 			marker,
 			current_nodes,
 			last_condition,
+			reactive_nodes,
 			effect,
 		}
 	}
@@ -221,7 +227,8 @@ impl ReactiveIfNode {
 		let current_nodes_clone = current_nodes.clone();
 		let last_condition_clone = last_condition.clone();
 		let marker_clone = marker.clone();
-		let effect_reactive_node_store = current_reactive_node_store();
+		let reactive_nodes = new_reactive_node_store();
+		let effect_reactive_node_store = reactive_nodes.clone();
 		let first_run = Rc::new(Cell::new(true));
 		let first_run_clone = first_run.clone();
 		#[cfg(feature = "i18n")]
@@ -244,6 +251,8 @@ impl ReactiveIfNode {
 						}
 						*last = Some(new_condition);
 						drop(last);
+
+						clear_reactive_node_store(&effect_reactive_node_store);
 
 						let old_nodes = {
 							let mut nodes = current_nodes_clone.borrow_mut();
@@ -276,12 +285,21 @@ impl ReactiveIfNode {
 			marker,
 			current_nodes,
 			last_condition,
+			reactive_nodes,
 			effect,
 		})
 	}
 
 	pub(crate) fn marker_node(&self) -> web_sys::Node {
 		self.marker.clone().into()
+	}
+
+	pub(crate) fn reactive_node_store(&self) -> ReactiveNodeStore {
+		self.reactive_nodes.clone()
+	}
+
+	pub(crate) fn refresh_hydrated_current_nodes(&self) {
+		refresh_current_nodes_before_marker(&self.marker, &self.current_nodes);
 	}
 }
 
@@ -298,6 +316,8 @@ pub struct ReactiveNode {
 	/// Currently mounted DOM nodes
 	#[allow(dead_code)] // Kept for potential future use
 	current_nodes: Rc<RefCell<Vec<web_sys::Node>>>,
+	/// Nested reactive nodes owned by the current render.
+	reactive_nodes: ReactiveNodeStore,
 	/// Effect handle (kept alive to maintain reactivity)
 	#[allow(dead_code)] // Effect is kept alive for its side effects
 	effect: Effect,
@@ -334,7 +354,8 @@ impl ReactiveNode {
 		// Clone references for the Effect closure
 		let current_nodes_clone = current_nodes.clone();
 		let marker_clone = marker.clone();
-		let effect_reactive_node_store = current_reactive_node_store();
+		let reactive_nodes = new_reactive_node_store();
+		let effect_reactive_node_store = reactive_nodes.clone();
 		#[cfg(feature = "i18n")]
 		let i18n_context = crate::i18n::current_i18n_callback_context();
 
@@ -349,6 +370,8 @@ impl ReactiveNode {
 						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
 							return;
 						}
+
+						clear_reactive_node_store(&effect_reactive_node_store);
 
 						// Refs #5100: remove old nodes before mounting the replacement view. The
 						// mount path may synchronously run layout effects, so do not
@@ -379,6 +402,7 @@ impl ReactiveNode {
 		Self {
 			marker,
 			current_nodes,
+			reactive_nodes,
 			effect,
 		}
 	}
@@ -399,7 +423,8 @@ impl ReactiveNode {
 		let current_nodes: Rc<RefCell<Vec<web_sys::Node>>> = Rc::new(RefCell::new(existing_nodes));
 		let current_nodes_clone = current_nodes.clone();
 		let marker_clone = marker.clone();
-		let effect_reactive_node_store = current_reactive_node_store();
+		let reactive_nodes = new_reactive_node_store();
+		let effect_reactive_node_store = reactive_nodes.clone();
 		let first_run = Rc::new(Cell::new(true));
 		let first_run_clone = first_run.clone();
 		#[cfg(feature = "i18n")]
@@ -418,6 +443,8 @@ impl ReactiveNode {
 						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
 							return;
 						}
+
+						clear_reactive_node_store(&effect_reactive_node_store);
 
 						let old_nodes = {
 							let mut nodes = current_nodes_clone.borrow_mut();
@@ -444,6 +471,7 @@ impl ReactiveNode {
 		Some(Self {
 			marker,
 			current_nodes,
+			reactive_nodes,
 			effect,
 		})
 	}
@@ -451,6 +479,36 @@ impl ReactiveNode {
 	pub(crate) fn marker_node(&self) -> web_sys::Node {
 		self.marker.clone().into()
 	}
+
+	pub(crate) fn reactive_node_store(&self) -> ReactiveNodeStore {
+		self.reactive_nodes.clone()
+	}
+
+	pub(crate) fn refresh_hydrated_current_nodes(&self) {
+		refresh_current_nodes_before_marker(&self.marker, &self.current_nodes);
+	}
+}
+
+#[cfg(wasm)]
+fn refresh_current_nodes_before_marker(
+	marker: &web_sys::Comment,
+	current_nodes: &Rc<RefCell<Vec<web_sys::Node>>>,
+) {
+	let Some(first_node) = current_nodes.borrow().first().cloned() else {
+		return;
+	};
+
+	let marker_node: web_sys::Node = marker.clone().into();
+	let mut nodes = Vec::new();
+	let mut next = Some(first_node);
+	while let Some(node) = next {
+		if node.is_same_node(Some(&marker_node)) {
+			break;
+		}
+		next = node.next_sibling();
+		nodes.push(node);
+	}
+	*current_nodes.borrow_mut() = nodes;
 }
 
 #[cfg(wasm)]

@@ -5,6 +5,8 @@
 
 use std::borrow::Cow;
 use std::fmt;
+#[cfg(wasm)]
+use std::future::Future;
 use std::sync::Arc;
 
 use reinhardt_i18n::{I18nError, MessageCatalog, TranslationContext};
@@ -162,6 +164,22 @@ pub(crate) fn with_optional_i18n_context<R>(
 		with_i18n_context(context, f)
 	} else {
 		f()
+	}
+}
+
+#[cfg(wasm)]
+pub(crate) async fn with_optional_i18n_context_async<R, Fut>(
+	context: Option<I18nContext>,
+	future: Fut,
+) -> R
+where
+	Fut: Future<Output = R>,
+{
+	if let Some(context) = context {
+		let _guard = provide_i18n_context(context);
+		future.await
+	} else {
+		future.await
 	}
 }
 

@@ -943,9 +943,26 @@ fn generate_text(text: &PageText, pages_crate: &TokenStream) -> TokenStream {
 /// on the owned result is a no-op.
 fn generate_expression(expr: &PageExpression, pages_crate: &TokenStream) -> TokenStream {
 	let e = &expr.expr;
+	if is_i18n_t_macro_expr(e) {
+		return quote! {
+			#pages_crate::component::Page::text((#e).render_string())
+		};
+	}
 	quote! {
 		#pages_crate::component::IntoPage::into_page((#e).clone())
 	}
+}
+
+fn is_i18n_t_macro_expr(expr: &syn::Expr) -> bool {
+	let syn::Expr::Macro(expr_macro) = expr else {
+		return false;
+	};
+	expr_macro
+		.mac
+		.path
+		.segments
+		.last()
+		.is_some_and(|segment| segment.ident == "t")
 }
 
 /// Generates code for an if node.
