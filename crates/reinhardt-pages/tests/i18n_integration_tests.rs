@@ -17,11 +17,13 @@ fn sample_i18n_context() -> I18nContext {
 
 	let mut ja = MessageCatalog::new("ja");
 	ja.add_translation("Hello", "こんにちは");
+	ja.add_translation("Hello {name}", "こんにちは {name}");
 	ja.add_translation("{count} items", "{count} 件");
 	translations.add_catalog("ja", ja).unwrap();
 
 	let mut fr = MessageCatalog::new("fr");
 	fr.add_translation("Hello", "Bonjour");
+	fr.add_translation("Hello {name}", "Bonjour {name}");
 	fr.add_translation("{count} items", "{count} articles");
 	translations.add_catalog("fr", fr).unwrap();
 
@@ -64,6 +66,66 @@ fn t_macro_interpolates_named_values() {
 		.into_page();
 
 	assert_eq!(view.render_to_string(), "<span>3 件</span>");
+}
+
+#[test]
+fn t_macro_borrows_named_interpolation_values() {
+	let name = String::from("Alice");
+
+	let text = t!("Hello {name}", name = name);
+
+	assert_eq!(name, "Alice");
+	assert_eq!(text.render_string(), "Hello Alice");
+}
+
+#[test]
+fn qualified_t_macro_inside_page_uses_regular_expression_codegen() {
+	mod external {
+		macro_rules! t {
+			() => {
+				"external"
+			};
+		}
+
+		pub(crate) use t;
+	}
+
+	let view = page!(|| {
+		span { { external::t!() } }
+	})();
+
+	assert_eq!(view.render_to_string(), "<span>external</span>");
+}
+
+#[test]
+#[serial(i18n)]
+fn t_macro_interpolation_borrows_non_copy_page_captures() {
+	let context = sample_i18n_context();
+	let _guard = provide_i18n_context(context);
+	let name = "Ada".to_string();
+
+	let view = page!(|| {
+		p { { t!("Hello {name}", name = name) } }
+	})();
+
+	assert_eq!(view.render_to_string(), "<p>こんにちは Ada</p>");
+	assert_eq!(view.render_to_string(), "<p>こんにちは Ada</p>");
+}
+
+#[test]
+#[serial(i18n)]
+fn page_macro_does_not_special_case_local_t_macro() {
+	macro_rules! t {
+		($message:literal) => {
+			String::from($message)
+		};
+	}
+
+	let view = page!(|| {
+		p { { t!("local text") } }
+	})();
+
+	assert_eq!(view.render_to_string(), "<p>local text</p>");
 }
 
 #[test]

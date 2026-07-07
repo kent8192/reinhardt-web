@@ -168,18 +168,24 @@ pub(crate) fn with_optional_i18n_context<R>(
 }
 
 #[cfg(wasm)]
-pub(crate) async fn with_optional_i18n_context_async<R, Fut>(
+pub(crate) fn with_optional_i18n_context_async<R, Fut>(
 	context: Option<I18nContext>,
 	future: Fut,
-) -> R
+) -> impl Future<Output = R>
 where
 	Fut: Future<Output = R>,
 {
-	if let Some(context) = context {
-		let _guard = provide_i18n_context(context);
-		future.await
-	} else {
-		future.await
+	async move {
+		let mut future = std::pin::pin!(future);
+		std::future::poll_fn(move |cx| {
+			if let Some(context) = context.as_ref() {
+				let _guard = provide_i18n_context(context.clone());
+				future.as_mut().poll(cx)
+			} else {
+				future.as_mut().poll(cx)
+			}
+		})
+		.await
 	}
 }
 
@@ -577,7 +583,7 @@ macro_rules! t {
 		let mut __reinhardt_translation = $crate::i18n::tr($message);
 		$(
 			__reinhardt_translation =
-				__reinhardt_translation.arg(stringify!($name), $value);
+				__reinhardt_translation.arg(stringify!($name), &$value);
 		)+
 		__reinhardt_translation
 	}};

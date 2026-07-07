@@ -957,12 +957,21 @@ fn is_i18n_t_macro_expr(expr: &syn::Expr) -> bool {
 	let syn::Expr::Macro(expr_macro) = expr else {
 		return false;
 	};
-	expr_macro
+	let segments: Vec<_> = expr_macro
 		.mac
 		.path
 		.segments
-		.last()
-		.is_some_and(|segment| segment.ident == "t")
+		.iter()
+		.map(|segment| segment.ident.to_string())
+		.collect();
+	matches!(
+		segments.as_slice(),
+		[crate_name, macro_name] if crate_name == "reinhardt_pages" && macro_name == "t"
+	) || matches!(
+		segments.as_slice(),
+		[crate_name, module_name, macro_name]
+			if crate_name == "reinhardt_pages" && module_name == "prelude" && macro_name == "t"
+	)
 }
 
 /// Generates code for an if node.
