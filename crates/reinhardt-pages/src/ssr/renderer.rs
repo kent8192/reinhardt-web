@@ -185,6 +185,7 @@ impl SsrOptions {
 pub struct SsrRenderer {
 	options: SsrOptions,
 	state: SsrState,
+	rendered_head: Option<Head>,
 	hydration_marker_counter: u64,
 	suspense_boundary_counter: u64,
 }
@@ -306,6 +307,7 @@ impl SsrRenderer {
 		Self {
 			options: SsrOptions::default(),
 			state: SsrState::new(),
+			rendered_head: None,
 			hydration_marker_counter: 0,
 			suspense_boundary_counter: 0,
 		}
@@ -316,6 +318,7 @@ impl SsrRenderer {
 		Self {
 			options,
 			state: SsrState::new(),
+			rendered_head: None,
 			hydration_marker_counter: 0,
 			suspense_boundary_counter: 0,
 		}
@@ -398,11 +401,28 @@ impl SsrRenderer {
 		if clear_resource_states {
 			self.state.clear_resource_states();
 		}
+		self.rendered_head = None;
 		self.reset_deterministic_render_counters();
 	}
 
 	fn should_resolve_resources(&self) -> bool {
 		self.options.include_state_script
+	}
+
+	fn begin_buffered_render_pass(&mut self) {
+		self.rendered_head = None;
+	}
+
+	fn record_buffered_rendered_head(&mut self, head: &Head) {
+		if self.rendered_head.is_none() {
+			self.rendered_head = Some(head.clone());
+		}
+	}
+
+	fn current_buffered_rendered_head_or_view_head(&self, view: &Page) -> Option<Head> {
+		self.rendered_head
+			.clone()
+			.or_else(|| view.find_topmost_head_owned())
 	}
 
 	/// Renders a component to a full HTML page.
@@ -416,7 +436,7 @@ impl SsrRenderer {
 		let (view, content, body_tail) = self
 			.render_view_parts_from_factory(|| component.render(), true)
 			.await;
-		let view_head = self.current_rendered_head_or_view_head(&view);
+		let view_head = self.current_buffered_rendered_head_or_view_head(&view);
 		SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
 			&content,
 			&body_tail,
@@ -434,7 +454,7 @@ impl SsrRenderer {
 		let (view, content, body_tail) = self
 			.render_view_parts_from_factory(|| view.clone(), true)
 			.await;
-		let view_head = self.current_rendered_head_or_view_head(&view);
+		let view_head = self.current_buffered_rendered_head_or_view_head(&view);
 		SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
 			&content,
 			&body_tail,
@@ -477,7 +497,7 @@ impl SsrRenderer {
 		let (view, content, body_tail) = self
 			.render_view_parts_from_factory(|| view.clone(), true)
 			.await;
-		let view_head = self.current_rendered_head_or_view_head(&view);
+		let view_head = self.current_buffered_rendered_head_or_view_head(&view);
 		SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
 			&content,
 			&body_tail,
@@ -490,7 +510,7 @@ impl SsrRenderer {
 		let (view, content, body_tail) = self
 			.render_view_parts_from_factory(|| component.render(), true)
 			.await;
-		let view_head = self.current_rendered_head_or_view_head(&view);
+		let view_head = self.current_buffered_rendered_head_or_view_head(&view);
 		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())
 	}
 
@@ -500,7 +520,7 @@ impl SsrRenderer {
 		let (view, content, body_tail) = self
 			.render_view_parts_from_factory(|| view.clone(), true)
 			.await;
-		let view_head = self.current_rendered_head_or_view_head(&view);
+		let view_head = self.current_buffered_rendered_head_or_view_head(&view);
 		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())
 	}
 
@@ -509,7 +529,7 @@ impl SsrRenderer {
 		let (view, content, body_tail) = self
 			.render_view_parts_from_factory(|| view.clone(), true)
 			.await;
-		let view_head = self.current_rendered_head_or_view_head(&view);
+		let view_head = self.current_buffered_rendered_head_or_view_head(&view);
 		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())
 	}
 
@@ -525,7 +545,6 @@ impl SsrRenderer {
 				self.begin_render(true);
 				let view = view_factory();
 				let mut boundaries = Vec::new();
-				self.begin_render_pass();
 				let content = self.render_stream_shell_page(&view, &mut boundaries).await;
 				let view_head = view.find_topmost_head_owned();
 				SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
@@ -556,7 +575,6 @@ impl SsrRenderer {
 				let (view, content, boundaries) = loop {
 					context.borrow_mut().reset_call_order_keys();
 					self.reset_deterministic_render_counters();
-					self.begin_render_pass();
 
 					let view = view_factory();
 					let mut boundaries = Vec::new();
@@ -744,7 +762,7 @@ impl SsrRenderer {
 			self.begin_render(clear_resource_states);
 			if !self.should_resolve_resources() {
 				let view = view_factory();
-				self.begin_render_pass();
+				self.begin_buffered_render_pass();
 				let content = self
 					.render_async_page(&view, AsyncRenderMode::Buffered)
 					.await;
@@ -764,7 +782,7 @@ impl SsrRenderer {
 			loop {
 				context.borrow_mut().reset_call_order_keys();
 				self.reset_deterministic_render_counters();
-				self.begin_render_pass();
+				self.begin_buffered_render_pass();
 
 				let view = view_factory();
 				let content = self
@@ -844,8 +862,7 @@ impl SsrRenderer {
 					html
 				}
 				Page::Empty => String::new(),
-				Page::WithHead { view, head } => {
-					self.record_rendered_head(head);
+				Page::WithHead { view, .. } => {
 					self.render_stream_shell_page(view, boundaries).await
 				}
 				Page::ReactiveIf(reactive_if) => {
@@ -976,7 +993,7 @@ impl SsrRenderer {
 				Page::Empty => String::new(),
 				Page::WithHead { view, head } => {
 					if !matches!(mode, AsyncRenderMode::Discovery) {
-						self.record_rendered_head(head);
+						self.record_buffered_rendered_head(head);
 					}
 					self.render_async_page(view, mode).await
 				}
