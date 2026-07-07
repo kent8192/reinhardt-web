@@ -437,6 +437,7 @@ mod tests {
 				nullable: false,
 				default: None,
 				auto_increment: true,
+				generated: None,
 			},
 		);
 
@@ -448,6 +449,7 @@ mod tests {
 				nullable: false,
 				default: None,
 				auto_increment: false,
+				generated: None,
 			},
 		);
 
@@ -459,6 +461,7 @@ mod tests {
 				nullable: true,
 				default: None,
 				auto_increment: false,
+				generated: None,
 			},
 		);
 

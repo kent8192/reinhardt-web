@@ -9,7 +9,7 @@
 use super::ColumnDefinition;
 use super::introspection;
 use super::operations::Operation;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Schema difference detector
 pub struct SchemaDiff {
@@ -43,7 +43,7 @@ impl From<introspection::DatabaseSchema> for DatabaseSchema {
 						default: intro_col.default,
 						primary_key: intro_table.primary_key.contains(&col_name), // Check if column is in primary_key list
 						auto_increment: intro_col.auto_increment,
-						generated: None,
+						generated: intro_col.generated,
 					},
 				);
 			}
@@ -266,6 +266,199 @@ impl SchemaDiff {
 		}
 	}
 
+	fn column_definition_from_schema(
+		schema: &DatabaseSchema,
+		table_name: &str,
+		column_name: &str,
+		col: &ColumnSchema,
+	) -> ColumnDefinition {
+		ColumnDefinition {
+			name: column_name.to_string(),
+			type_definition: col.data_type.clone(),
+			not_null: !col.nullable,
+			default: col.default.as_ref().cloned(),
+			unique: Self::column_has_unique(schema, table_name, column_name),
+			primary_key: col.primary_key,
+			auto_increment: Self::is_auto_increment(col),
+			generated: col.generated.clone(),
+		}
+	}
+
+	fn generated_column_references_column(
+		generated: &super::GeneratedColumnDefinition,
+		column: &str,
+	) -> bool {
+		generated
+			.typed_expr()
+			.as_ref()
+			.is_some_and(|expr| Self::schema_expr_references_column(expr, column))
+			|| generated
+				.raw_sql
+				.as_deref()
+				.is_some_and(|sql| Self::expression_text_references_column(sql, column))
+			|| generated
+				.expr_tokens
+				.as_deref()
+				.is_some_and(|tokens| Self::expression_text_references_column(tokens, column))
+	}
+
+	fn schema_expr_references_column(expr: &super::SchemaExpr, column: &str) -> bool {
+		match expr {
+			super::SchemaExpr::Column(identifier) => identifier.to_string() == column,
+			super::SchemaExpr::Value(_) => false,
+			super::SchemaExpr::Binary { left, right, .. } => {
+				Self::schema_expr_references_column(left, column)
+					|| Self::schema_expr_references_column(right, column)
+			}
+			super::SchemaExpr::Function { args, .. } => args
+				.iter()
+				.any(|arg| Self::schema_expr_references_column(arg, column)),
+			super::SchemaExpr::Cast { expr, .. } => {
+				Self::schema_expr_references_column(expr, column)
+			}
+			_ => false,
+		}
+	}
+
+	fn expression_text_references_column(text: &str, column: &str) -> bool {
+		text.split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+			.any(|token| token.eq_ignore_ascii_case(column))
+	}
+
+	fn order_added_columns_by_generated_dependencies(
+		&self,
+		columns_to_add: &[(String, String)],
+	) -> Vec<(String, String)> {
+		let mut remaining = columns_to_add.to_vec();
+		let mut ordered = Vec::with_capacity(remaining.len());
+
+		while !remaining.is_empty() {
+			let next_index = remaining
+				.iter()
+				.enumerate()
+				.find(|(_, (table_name, column_name))| {
+					let Some(table) = self.target_schema.tables.get(table_name) else {
+						return true;
+					};
+					let Some(column) = table.columns.get(column_name) else {
+						return true;
+					};
+					let Some(generated) = column.generated.as_ref() else {
+						return true;
+					};
+
+					!remaining.iter().any(|(other_table, other_column)| {
+						other_table == table_name
+							&& other_column != column_name
+							&& Self::generated_column_references_column(generated, other_column)
+					})
+				})
+				.map(|(index, _)| index);
+
+			if let Some(index) = next_index {
+				ordered.push(remaining.remove(index));
+			} else {
+				ordered.extend(remaining);
+				break;
+			}
+		}
+
+		ordered
+	}
+
+	fn order_removed_columns_by_generated_dependencies(
+		&self,
+		columns_to_remove: &[(String, String)],
+	) -> Vec<(String, String)> {
+		let mut remaining = columns_to_remove.to_vec();
+		let mut ordered = Vec::with_capacity(remaining.len());
+
+		while !remaining.is_empty() {
+			let next_index = remaining
+				.iter()
+				.enumerate()
+				.find(|(_, (table_name, column_name))| {
+					!remaining.iter().any(|(other_table, other_column)| {
+						if other_table != table_name || other_column == column_name {
+							return false;
+						}
+						self.current_schema
+							.tables
+							.get(other_table)
+							.and_then(|table| table.columns.get(other_column))
+							.and_then(|column| column.generated.as_ref())
+							.is_some_and(|generated| {
+								Self::generated_column_references_column(generated, column_name)
+							})
+					})
+				})
+				.map(|(index, _)| index);
+
+			if let Some(index) = next_index {
+				ordered.push(remaining.remove(index));
+			} else {
+				ordered.extend(remaining);
+				break;
+			}
+		}
+
+		ordered
+	}
+
+	fn generated_column_dependents(
+		&self,
+		table_name: &str,
+		column_name: &str,
+	) -> Vec<(String, ColumnSchema, ColumnSchema)> {
+		let Some(current_table) = self.current_schema.tables.get(table_name) else {
+			return Vec::new();
+		};
+		let Some(target_table) = self.target_schema.tables.get(table_name) else {
+			return Vec::new();
+		};
+
+		let mut affected_columns = BTreeSet::from([column_name.to_string()]);
+		let mut dependents = Vec::new();
+
+		loop {
+			let mut added = false;
+			for (dependent_name, current_column) in &current_table.columns {
+				if affected_columns.contains(dependent_name) {
+					continue;
+				}
+				let Some(target_column) = target_table.columns.get(dependent_name) else {
+					continue;
+				};
+				let references_affected_column =
+					current_column.generated.as_ref().is_some_and(|generated| {
+						affected_columns.iter().any(|column| {
+							Self::generated_column_references_column(generated, column)
+						})
+					}) || target_column.generated.as_ref().is_some_and(|generated| {
+						affected_columns.iter().any(|column| {
+							Self::generated_column_references_column(generated, column)
+						})
+					});
+
+				if references_affected_column {
+					affected_columns.insert(dependent_name.clone());
+					dependents.push((
+						dependent_name.clone(),
+						current_column.clone(),
+						target_column.clone(),
+					));
+					added = true;
+				}
+			}
+
+			if !added {
+				break;
+			}
+		}
+
+		dependents
+	}
+
 	/// Detect differences between schemas
 	pub fn detect(&self) -> SchemaDiffResult {
 		let mut result = SchemaDiffResult {
@@ -391,19 +584,12 @@ impl SchemaDiff {
 					.columns
 					.iter()
 					.map(|(name, col)| {
-						let unique = self.extract_column_constraints(table_name, name);
-						let auto_increment = Self::is_auto_increment(col);
-
-						ColumnDefinition {
-							name: name.clone(),
-							type_definition: col.data_type.clone(),
-							not_null: !col.nullable,
-							default: col.default.as_ref().cloned(),
-							unique,
-							primary_key: col.primary_key,
-							auto_increment,
-							generated: col.generated.clone(),
-						}
+						Self::column_definition_from_schema(
+							&self.target_schema,
+							table_name,
+							name,
+							col,
+						)
 					})
 					.collect();
 
@@ -445,32 +631,29 @@ impl SchemaDiff {
 		}
 
 		// Add columns
-		for (table_name, col_name) in &diff.columns_to_add {
+		let ordered_columns_to_add =
+			self.order_added_columns_by_generated_dependencies(&diff.columns_to_add);
+		for (table_name, col_name) in &ordered_columns_to_add {
 			if let Some(table_schema) = self.target_schema.tables.get(table_name)
 				&& let Some(col_schema) = table_schema.columns.get(col_name)
 			{
-				let unique = self.extract_column_constraints(table_name, col_name);
-				let auto_increment = Self::is_auto_increment(col_schema);
-
 				operations.push(Operation::AddColumn {
 					table: table_name.clone(),
-					column: ColumnDefinition {
-						name: col_name.clone(),
-						type_definition: col_schema.data_type.clone(),
-						not_null: !col_schema.nullable,
-						default: col_schema.default.as_ref().cloned(),
-						unique,
-						primary_key: col_schema.primary_key,
-						auto_increment,
-						generated: col_schema.generated.clone(),
-					},
+					column: Self::column_definition_from_schema(
+						&self.target_schema,
+						table_name,
+						col_name,
+						col_schema,
+					),
 					mysql_options: None,
 				});
 			}
 		}
 
 		// Remove columns
-		for (table_name, col_name) in &diff.columns_to_remove {
+		let ordered_columns_to_remove =
+			self.order_removed_columns_by_generated_dependencies(&diff.columns_to_remove);
+		for (table_name, col_name) in &ordered_columns_to_remove {
 			operations.push(Operation::DropColumn {
 				table: table_name.clone(),
 				column: col_name.clone(),
@@ -479,35 +662,95 @@ impl SchemaDiff {
 		}
 
 		// Alter columns (type changes, nullability changes, etc.)
+		let mut recreated_generated_columns: BTreeSet<(String, String)> = BTreeSet::new();
 		for (table_name, col_name, old_col, new_col) in &diff.columns_to_modify {
-			let old_unique = Self::column_has_unique(&self.current_schema, table_name, col_name);
-			let new_unique = Self::column_has_unique(&self.target_schema, table_name, col_name);
+			let recreation_key = (table_name.clone(), col_name.clone());
+			if recreated_generated_columns.contains(&recreation_key) {
+				continue;
+			}
 
-			operations.push(Operation::AlterColumn {
-				table: table_name.clone(),
-				column: col_name.clone(),
-				old_definition: Some(ColumnDefinition {
-					name: col_name.clone(),
-					type_definition: old_col.data_type.clone(),
-					not_null: !old_col.nullable,
-					default: old_col.default.as_ref().cloned(),
-					unique: old_unique,
-					primary_key: old_col.primary_key,
-					auto_increment: Self::is_auto_increment(old_col),
-					generated: old_col.generated.clone(),
-				}),
-				new_definition: ColumnDefinition {
-					name: col_name.clone(),
-					type_definition: new_col.data_type.clone(),
-					not_null: !new_col.nullable,
-					default: new_col.default.as_ref().cloned(),
-					unique: new_unique,
-					primary_key: new_col.primary_key,
-					auto_increment: Self::is_auto_increment(new_col),
-					generated: new_col.generated.clone(),
-				},
-				mysql_options: None,
-			});
+			let old_definition = Self::column_definition_from_schema(
+				&self.current_schema,
+				table_name,
+				col_name,
+				old_col,
+			);
+			let new_definition = Self::column_definition_from_schema(
+				&self.target_schema,
+				table_name,
+				col_name,
+				new_col,
+			);
+			let generated_change = old_col.generated != new_col.generated;
+			let dependent_generated_columns =
+				self.generated_column_dependents(table_name, col_name);
+			let source_change_requires_dependent_recreation =
+				!generated_change && !dependent_generated_columns.is_empty();
+
+			if generated_change || source_change_requires_dependent_recreation {
+				recreated_generated_columns.insert(recreation_key);
+				for (dependent_name, _, _) in &dependent_generated_columns {
+					recreated_generated_columns
+						.insert((table_name.clone(), dependent_name.clone()));
+				}
+
+				for (dependent_name, old_dependent_column, _) in
+					dependent_generated_columns.iter().rev()
+				{
+					operations.push(Operation::DropColumn {
+						table: table_name.clone(),
+						column: dependent_name.clone(),
+						old_definition: Some(Self::column_definition_from_schema(
+							&self.current_schema,
+							table_name,
+							dependent_name,
+							old_dependent_column,
+						)),
+					});
+				}
+
+				if generated_change {
+					operations.push(Operation::DropColumn {
+						table: table_name.clone(),
+						column: col_name.clone(),
+						old_definition: Some(old_definition),
+					});
+					operations.push(Operation::AddColumn {
+						table: table_name.clone(),
+						column: new_definition,
+						mysql_options: None,
+					});
+				} else {
+					operations.push(Operation::AlterColumn {
+						table: table_name.clone(),
+						column: col_name.clone(),
+						old_definition: Some(old_definition),
+						new_definition,
+						mysql_options: None,
+					});
+				}
+
+				for (dependent_name, _, new_dependent_column) in dependent_generated_columns {
+					operations.push(Operation::AddColumn {
+						table: table_name.clone(),
+						column: Self::column_definition_from_schema(
+							&self.target_schema,
+							table_name,
+							&dependent_name,
+							&new_dependent_column,
+						),
+						mysql_options: None,
+					});
+				}
+			} else {
+				operations.push(Operation::AlterColumn {
+					table: table_name.clone(),
+					column: col_name.clone(),
+					old_definition: Some(old_definition),
+					new_definition,
+					mysql_options: None,
+				});
+			}
 		}
 
 		// Add indexes
@@ -640,11 +883,6 @@ impl SchemaDiff {
 				)
 			}
 		}
-	}
-
-	/// Extract column-level constraints from table constraints and indexes
-	fn extract_column_constraints(&self, table_name: &str, column_name: &str) -> bool {
-		Self::column_has_unique(&self.target_schema, table_name, column_name)
 	}
 
 	/// Detect if column is auto-increment based on column properties and data type
@@ -809,6 +1047,52 @@ mod tests {
 
 		assert_eq!(result.tables_to_add.len(), 1);
 		assert_eq!(result.tables_to_add[0], "users");
+	}
+
+	#[test]
+	fn test_introspection_conversion_preserves_generated_metadata() {
+		// Arrange
+		let generated = GeneratedColumnDefinition::raw_sql("lower(name)", GeneratedStorage::Stored);
+		let mut intro_columns = std::collections::HashMap::new();
+		intro_columns.insert(
+			"normalized_name".to_string(),
+			introspection::ColumnInfo {
+				name: "normalized_name".to_string(),
+				column_type: FieldType::VarChar(255),
+				nullable: false,
+				default: None,
+				auto_increment: false,
+				generated: Some(generated.clone()),
+			},
+		);
+		let mut intro_tables = std::collections::HashMap::new();
+		intro_tables.insert(
+			"users".to_string(),
+			introspection::TableInfo {
+				name: "users".to_string(),
+				columns: intro_columns,
+				indexes: std::collections::HashMap::new(),
+				primary_key: Vec::new(),
+				foreign_keys: Vec::new(),
+				unique_constraints: Vec::new(),
+				check_constraints: Vec::new(),
+			},
+		);
+
+		// Act
+		let schema = DatabaseSchema::from(introspection::DatabaseSchema {
+			tables: intro_tables,
+		});
+
+		// Assert
+		assert_eq!(
+			schema
+				.tables
+				.get("users")
+				.and_then(|table| table.columns.get("normalized_name"))
+				.and_then(|column| column.generated.as_ref()),
+			Some(&generated)
+		);
 	}
 
 	#[test]
@@ -1036,6 +1320,53 @@ mod tests {
 			Operation::AddColumn { table, column, .. }
 				if table == "users"
 					&& column.name == "full_name"
+			&& column.generated == Some(generated)
+		));
+	}
+
+	#[test]
+	fn test_generate_operations_adds_generated_columns_after_new_sources() {
+		// Arrange
+		let mut current = DatabaseSchema::default();
+		current.tables.insert(
+			"users".to_string(),
+			table_with_cols("users", vec![("id", pk_col("id"))]),
+		);
+		let last_name = col("last_name", FieldType::VarChar(100), false);
+		let mut full_name = col("full_name", FieldType::VarChar(255), false);
+		let generated =
+			GeneratedColumnDefinition::raw_sql("last_name || ''", GeneratedStorage::Stored);
+		full_name.generated = Some(generated.clone());
+
+		let mut target = DatabaseSchema::default();
+		target.tables.insert(
+			"users".to_string(),
+			table_with_cols(
+				"users",
+				vec![
+					("id", pk_col("id")),
+					("full_name", full_name),
+					("last_name", last_name),
+				],
+			),
+		);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let ops = diff.generate_operations();
+
+		// Assert
+		assert_eq!(ops.len(), 2, "unexpected operations: {ops:?}");
+		assert!(matches!(
+			&ops[0],
+			Operation::AddColumn { table, column, .. }
+				if table == "users" && column.name == "last_name"
+		));
+		assert!(matches!(
+			&ops[1],
+			Operation::AddColumn { table, column, .. }
+				if table == "users"
+					&& column.name == "full_name"
 					&& column.generated == Some(generated)
 		));
 	}
@@ -1071,6 +1402,48 @@ mod tests {
 				if table == "users" && column == "bio"),
 			"Should generate DropColumn for 'bio' on 'users'"
 		);
+	}
+
+	#[test]
+	fn test_generate_operations_drops_generated_dependents_before_sources() {
+		// Arrange
+		let mut dependent = col("z", FieldType::Integer, false);
+		let generated = GeneratedColumnDefinition::raw_sql("a + 1", GeneratedStorage::Stored);
+		dependent.generated = Some(generated.clone());
+		let mut current = DatabaseSchema::default();
+		current.tables.insert(
+			"metrics".to_string(),
+			table_with_cols(
+				"metrics",
+				vec![
+					("id", pk_col("id")),
+					("a", col("a", FieldType::Integer, false)),
+					("z", dependent),
+				],
+			),
+		);
+		let mut target = DatabaseSchema::default();
+		target.tables.insert(
+			"metrics".to_string(),
+			table_with_cols("metrics", vec![("id", pk_col("id"))]),
+		);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let ops = diff.generate_operations();
+
+		// Assert
+		assert_eq!(ops.len(), 2, "unexpected operations: {ops:?}");
+		assert!(matches!(
+			&ops[0],
+			Operation::DropColumn { table, column, .. }
+				if table == "metrics" && column == "z"
+		));
+		assert!(matches!(
+			&ops[1],
+			Operation::DropColumn { table, column, .. }
+				if table == "metrics" && column == "a"
+		));
 	}
 
 	#[test]
@@ -1131,7 +1504,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_generate_operations_alter_column_preserves_generated_metadata() {
+	fn test_generate_operations_replaces_generated_metadata_changes() {
 		// Arrange
 		let mut current_generated = col("slug", FieldType::VarChar(255), false);
 		let old_generated =
@@ -1164,22 +1537,89 @@ mod tests {
 		let ops = diff.generate_operations();
 
 		// Assert
-		assert_eq!(ops.len(), 1);
-		let Operation::AlterColumn {
-			old_definition,
-			new_definition,
-			..
-		} = &ops[0]
-		else {
-			panic!("expected AlterColumn, got {:?}", ops[0]);
-		};
-		assert_eq!(
-			old_definition
-				.as_ref()
-				.and_then(|column| column.generated.as_ref()),
-			Some(&old_generated)
+		assert_eq!(ops.len(), 2, "unexpected operations: {ops:?}");
+		assert!(matches!(
+			&ops[0],
+			Operation::DropColumn {
+				table,
+				column,
+				old_definition: Some(old_definition),
+			} if table == "posts"
+				&& column == "slug"
+				&& old_definition.generated == Some(old_generated)
+		));
+		assert!(matches!(
+			&ops[1],
+			Operation::AddColumn { table, column, .. }
+				if table == "posts"
+					&& column.name == "slug"
+					&& column.generated == Some(new_generated)
+		));
+	}
+
+	#[test]
+	fn test_generate_operations_recreates_generated_dependents_for_source_alters() {
+		// Arrange
+		let mut current_dependent = col("amount_text", FieldType::VarChar(20), false);
+		let generated = GeneratedColumnDefinition::raw_sql("amount", GeneratedStorage::Stored);
+		current_dependent.generated = Some(generated.clone());
+		let mut current = DatabaseSchema::default();
+		current.tables.insert(
+			"invoices".to_string(),
+			table_with_cols(
+				"invoices",
+				vec![
+					("id", pk_col("id")),
+					("amount", col("amount", FieldType::Integer, false)),
+					("amount_text", current_dependent),
+				],
+			),
 		);
-		assert_eq!(new_definition.generated, Some(new_generated));
+
+		let mut target_dependent = col("amount_text", FieldType::VarChar(20), false);
+		target_dependent.generated = Some(generated.clone());
+		let mut target = DatabaseSchema::default();
+		target.tables.insert(
+			"invoices".to_string(),
+			table_with_cols(
+				"invoices",
+				vec![
+					("id", pk_col("id")),
+					("amount", col("amount", FieldType::BigInteger, false)),
+					("amount_text", target_dependent),
+				],
+			),
+		);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let ops = diff.generate_operations();
+
+		// Assert
+		assert_eq!(ops.len(), 3, "unexpected operations: {ops:?}");
+		assert!(matches!(
+			&ops[0],
+			Operation::DropColumn { table, column, .. }
+				if table == "invoices" && column == "amount_text"
+		));
+		assert!(matches!(
+			&ops[1],
+			Operation::AlterColumn {
+				table,
+				column,
+				new_definition,
+				..
+			} if table == "invoices"
+				&& column == "amount"
+				&& matches!(new_definition.type_definition, FieldType::BigInteger)
+		));
+		assert!(matches!(
+			&ops[2],
+			Operation::AddColumn { table, column, .. }
+				if table == "invoices"
+					&& column.name == "amount_text"
+					&& column.generated == Some(generated)
+		));
 	}
 
 	#[test]

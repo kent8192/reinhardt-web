@@ -1735,7 +1735,7 @@ impl OperationOptimizer {
 }
 
 #[cfg(feature = "sqlite")]
-fn parse_sqlite_generated_column(
+pub(crate) fn parse_sqlite_generated_column(
 	create_sql: Option<&str>,
 	column_name: &str,
 	hidden: i64,

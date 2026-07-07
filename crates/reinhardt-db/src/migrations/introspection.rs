@@ -49,6 +49,8 @@ pub struct ColumnInfo {
 	pub default: Option<String>,
 	/// Whether this is an auto-increment column
 	pub auto_increment: bool,
+	/// Generated-column metadata, when the backend exposes it.
+	pub generated: Option<super::GeneratedColumnDefinition>,
 }
 
 /// Index metadata
@@ -278,7 +280,8 @@ impl PostgresIntrospector {
 		let col_query = r#"
 			SELECT column_name, udt_name, data_type, is_nullable, column_default,
 			       character_maximum_length, numeric_precision, numeric_scale,
-			       is_identity, identity_generation
+			       is_identity, identity_generation, is_generated,
+			       generation_expression
 			FROM information_schema.columns
 			WHERE table_schema = 'public' AND table_name = $1
 			ORDER BY ordinal_position
@@ -330,6 +333,16 @@ impl PostgresIntrospector {
 			let is_identity: String = row.try_get("is_identity").map_err(|e| {
 				MigrationError::IntrospectionError(format!("Failed to get is_identity: {}", e))
 			})?;
+			let is_generated: String = row.try_get("is_generated").map_err(|e| {
+				MigrationError::IntrospectionError(format!("Failed to get is_generated: {}", e))
+			})?;
+			let generation_expression: Option<String> =
+				row.try_get("generation_expression").map_err(|e| {
+					MigrationError::IntrospectionError(format!(
+						"Failed to get generation_expression: {}",
+						e
+					))
+				})?;
 
 			// Detect auto-increment: nextval() in default or identity column
 			let is_auto = column_default
@@ -372,6 +385,14 @@ impl PostgresIntrospector {
 					nullable: is_nullable == "YES",
 					default: column_default,
 					auto_increment: is_auto || is_serial,
+					generated: generation_expression
+						.filter(|expression| is_generated == "ALWAYS" && !expression.is_empty())
+						.map(|expression| {
+							super::GeneratedColumnDefinition::raw_sql(
+								expression,
+								super::GeneratedStorage::Stored,
+							)
+						}),
 				},
 			);
 		}
@@ -750,7 +771,8 @@ impl MySQLIntrospector {
 		// Fetch columns from information_schema
 		let col_query = r#"
 			SELECT column_name, data_type, column_type, is_nullable, column_default,
-			       column_key, extra, character_maximum_length, numeric_precision, numeric_scale
+			       column_key, extra, generation_expression, character_maximum_length,
+			       numeric_precision, numeric_scale
 			FROM information_schema.columns
 			WHERE table_schema = DATABASE() AND table_name = ?
 			ORDER BY ordinal_position
@@ -791,6 +813,13 @@ impl MySQLIntrospector {
 			let extra: String = row.try_get("extra").map_err(|e| {
 				MigrationError::IntrospectionError(format!("Failed to get extra: {}", e))
 			})?;
+			let generation_expression: Option<String> =
+				row.try_get("generation_expression").map_err(|e| {
+					MigrationError::IntrospectionError(format!(
+						"Failed to get generation_expression: {}",
+						e
+					))
+				})?;
 			let char_max_length: Option<i64> =
 				row.try_get("character_maximum_length").map_err(|e| {
 					MigrationError::IntrospectionError(format!(
@@ -832,6 +861,16 @@ impl MySQLIntrospector {
 					nullable: is_nullable == "YES",
 					default: column_default,
 					auto_increment: is_auto,
+					generated: generation_expression
+						.filter(|expression| !expression.is_empty())
+						.map(|expression| {
+							let storage = if extra.to_ascii_lowercase().contains("stored") {
+								super::GeneratedStorage::Stored
+							} else {
+								super::GeneratedStorage::Virtual
+							};
+							super::GeneratedColumnDefinition::raw_sql(expression, storage)
+						}),
 				},
 			);
 		}
@@ -1554,13 +1593,14 @@ impl SQLiteIntrospector {
 			notnull: i64,
 			dflt_value: Option<String>,
 			pk: i64,
+			hidden: i64,
 		}
 
 		// SQLite PRAGMA: identifier interpolation via shared helper. Inputs
 		// originate from internal migration operations; see issue #4454.
 		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
 		let query = format!(
-			"PRAGMA table_info({})",
+			"PRAGMA table_xinfo({})",
 			super::sqlite_pragma::quote_pragma_identifier(table_name)
 		);
 		let rows: Vec<TableInfoRow> = sqlx::query_as(&query)
@@ -1618,6 +1658,11 @@ impl SQLiteIntrospector {
 					nullable,
 					default,
 					auto_increment: is_auto,
+					generated: super::executor::parse_sqlite_generated_column(
+						create_sql.as_deref(),
+						&row.name,
+						row.hidden,
+					),
 				},
 			);
 		}
