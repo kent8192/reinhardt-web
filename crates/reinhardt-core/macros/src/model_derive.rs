@@ -180,8 +180,11 @@ fn generated_schema_expr_is_supported(expr: &syn::Expr) -> bool {
 				"val" if expr_call.args.len() == 1 => {
 					generated_schema_value_is_supported(&expr_call.args[0])
 				}
-				"concat" | "coalesce" if expr_call.args.len() == 1 => {
-					generated_schema_expr_list_is_supported(&expr_call.args[0])
+				"concat" if expr_call.args.len() == 1 => {
+					generated_schema_expr_list_is_supported(&expr_call.args[0], true)
+				}
+				"coalesce" if expr_call.args.len() == 1 => {
+					generated_schema_expr_list_is_supported(&expr_call.args[0], false)
 				}
 				_ => false,
 			}
@@ -190,18 +193,22 @@ fn generated_schema_expr_is_supported(expr: &syn::Expr) -> bool {
 	}
 }
 
-fn generated_schema_expr_list_is_supported(expr: &syn::Expr) -> bool {
+fn generated_schema_expr_list_is_supported(expr: &syn::Expr, allow_empty: bool) -> bool {
 	match expr {
-		syn::Expr::Array(expr_array) => expr_array
-			.elems
-			.iter()
-			.all(generated_schema_expr_is_supported),
+		syn::Expr::Array(expr_array) => {
+			(allow_empty || !expr_array.elems.is_empty())
+				&& expr_array
+					.elems
+					.iter()
+					.all(generated_schema_expr_is_supported)
+		}
 		syn::Expr::Macro(expr_macro) if expr_macro.mac.path.is_ident("vec") => {
 			let tokens = &expr_macro.mac.tokens;
 			let Ok(parsed) = syn::parse2::<syn::ExprArray>(quote! { [#tokens] }) else {
 				return false;
 			};
-			parsed.elems.iter().all(generated_schema_expr_is_supported)
+			(allow_empty || !parsed.elems.is_empty())
+				&& parsed.elems.iter().all(generated_schema_expr_is_supported)
 		}
 		_ => false,
 	}
@@ -5699,6 +5706,19 @@ mod tests {
 		};
 
 		assert!(validate_generated_schema_expr(&expr).is_ok());
+	}
+
+	#[test]
+	fn test_generated_schema_expr_validation_rejects_empty_coalesce() {
+		let array_expr: syn::Expr = parse_quote! {
+			SchemaExpr::coalesce([])
+		};
+		let vec_expr: syn::Expr = parse_quote! {
+			SchemaExpr::coalesce(vec![])
+		};
+
+		assert!(validate_generated_schema_expr(&array_expr).is_err());
+		assert!(validate_generated_schema_expr(&vec_expr).is_err());
 	}
 
 	#[test]

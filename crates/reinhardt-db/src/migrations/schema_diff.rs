@@ -325,6 +325,121 @@ impl SchemaDiff {
 			.any(|token| token.eq_ignore_ascii_case(column))
 	}
 
+	fn constraint_schema_references_any_column(
+		constraint: &ConstraintSchema,
+		columns: &BTreeSet<String>,
+	) -> bool {
+		constraint
+			.foreign_key_info
+			.as_ref()
+			.is_some_and(|fk| fk.columns.iter().any(|column| columns.contains(column)))
+			|| columns.iter().any(|column| {
+				Self::expression_text_references_column(&constraint.definition, column)
+			})
+	}
+
+	fn emit_generated_column_replacement_dependencies(
+		&self,
+		operations: &mut Vec<Operation>,
+		table_name: &str,
+		affected_columns: &BTreeSet<String>,
+	) {
+		let Some(current_table) = self.current_schema.tables.get(table_name) else {
+			return;
+		};
+		let Some(target_table) = self.target_schema.tables.get(table_name) else {
+			return;
+		};
+
+		for index in target_table.indexes.iter().filter(|index| {
+			index
+				.columns
+				.iter()
+				.any(|column| affected_columns.contains(column))
+				&& current_table
+					.indexes
+					.iter()
+					.any(|current_index| current_index == *index)
+		}) {
+			operations.push(Operation::CreateIndexRepair {
+				table: table_name.to_string(),
+				name: Some(index.name.clone()),
+				columns: index.columns.clone(),
+				unique: index.unique,
+				index_type: None,
+				where_clause: None,
+				concurrently: false,
+				expressions: None,
+				mysql_options: None,
+				operator_class: None,
+			});
+		}
+
+		for constraint in target_table.constraints.iter().filter(|constraint| {
+			Self::constraint_schema_references_any_column(constraint, affected_columns)
+				&& current_table
+					.constraints
+					.iter()
+					.any(|current_constraint| current_constraint == *constraint)
+		}) {
+			operations.push(Operation::AddConstraintRepair {
+				table: table_name.to_string(),
+				constraint_sql: Self::constraint_schema_to_sql(constraint),
+			});
+		}
+	}
+
+	fn emit_generated_column_replacement_dependency_rollbacks(
+		&self,
+		operations: &mut Vec<Operation>,
+		table_name: &str,
+		affected_columns: &BTreeSet<String>,
+	) {
+		let Some(current_table) = self.current_schema.tables.get(table_name) else {
+			return;
+		};
+		let Some(target_table) = self.target_schema.tables.get(table_name) else {
+			return;
+		};
+
+		for index in current_table.indexes.iter().filter(|index| {
+			index
+				.columns
+				.iter()
+				.any(|column| affected_columns.contains(column))
+				&& target_table
+					.indexes
+					.iter()
+					.any(|target_index| target_index == *index)
+		}) {
+			operations.push(Operation::RestoreIndexOnRollback {
+				table: table_name.to_string(),
+				name: Some(index.name.clone()),
+				columns: index.columns.clone(),
+				unique: index.unique,
+				index_type: None,
+				where_clause: None,
+				concurrently: false,
+				expressions: None,
+				mysql_options: None,
+				operator_class: None,
+			});
+		}
+
+		for constraint in current_table.constraints.iter().filter(|constraint| {
+			Self::constraint_schema_references_any_column(constraint, affected_columns)
+				&& target_table
+					.constraints
+					.iter()
+					.any(|target_constraint| target_constraint == *constraint)
+		}) {
+			operations.push(Operation::RestoreConstraintOnRollback {
+				table: table_name.to_string(),
+				constraint_sql: Self::constraint_schema_to_sql(constraint),
+			});
+		}
+	}
+
 	fn order_added_columns_by_generated_dependencies(
 		&self,
 		columns_to_add: &[(String, String)],
@@ -688,11 +803,28 @@ impl SchemaDiff {
 				!generated_change && !dependent_generated_columns.is_empty();
 
 			if generated_change || source_change_requires_dependent_recreation {
+				let dependent_column_names: BTreeSet<String> = dependent_generated_columns
+					.iter()
+					.map(|(dependent_name, _, _)| dependent_name.clone())
+					.collect();
+				let affected_columns: BTreeSet<String> = if generated_change {
+					std::iter::once(col_name.clone())
+						.chain(dependent_column_names.iter().cloned())
+						.collect()
+				} else {
+					dependent_column_names.clone()
+				};
 				recreated_generated_columns.insert(recreation_key);
-				for (dependent_name, _, _) in &dependent_generated_columns {
+				for dependent_name in &dependent_column_names {
 					recreated_generated_columns
 						.insert((table_name.clone(), dependent_name.clone()));
 				}
+
+				self.emit_generated_column_replacement_dependency_rollbacks(
+					&mut operations,
+					table_name,
+					&affected_columns,
+				);
 
 				for (dependent_name, old_dependent_column, _) in
 					dependent_generated_columns.iter().rev()
@@ -742,6 +874,12 @@ impl SchemaDiff {
 						mysql_options: None,
 					});
 				}
+
+				self.emit_generated_column_replacement_dependencies(
+					&mut operations,
+					table_name,
+					&affected_columns,
+				);
 			} else {
 				operations.push(Operation::AlterColumn {
 					table: table_name.clone(),
@@ -1026,7 +1164,7 @@ impl SchemaDiff {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::migrations::{FieldType, GeneratedColumnDefinition, GeneratedStorage};
+	use crate::migrations::{FieldType, GeneratedColumnDefinition, GeneratedStorage, SchemaExpr};
 
 	#[test]
 	fn test_detect_table_addition() {
@@ -1619,6 +1757,123 @@ mod tests {
 				if table == "invoices"
 					&& column.name == "amount_text"
 					&& column.generated == Some(generated)
+		));
+	}
+
+	#[test]
+	fn test_generate_operations_repairs_generated_column_dependencies() {
+		// Arrange
+		let mut current_generated = col("full_name", FieldType::VarChar(201), false);
+		let old_generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("name"),
+			"SchemaExpr::col(\"name\")",
+			GeneratedStorage::Stored,
+		);
+		current_generated.generated = Some(old_generated);
+		let mut current_table = table_with_cols(
+			"accounts_user",
+			vec![("id", pk_col("id")), ("full_name", current_generated)],
+		);
+		current_table.indexes.push(IndexSchema {
+			name: "idx_accounts_user_full_name".to_string(),
+			columns: vec!["full_name".to_string()],
+			unique: false,
+		});
+		current_table.constraints.push(ConstraintSchema {
+			name: "uq_accounts_user_full_name".to_string(),
+			constraint_type: "UNIQUE".to_string(),
+			definition: "full_name".to_string(),
+			foreign_key_info: None,
+		});
+		let mut current = DatabaseSchema::default();
+		current
+			.tables
+			.insert("accounts_user".to_string(), current_table);
+
+		let mut target_generated = col("full_name", FieldType::VarChar(201), false);
+		let new_generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("display_name"),
+			"SchemaExpr::col(\"display_name\")",
+			GeneratedStorage::Stored,
+		);
+		target_generated.generated = Some(new_generated);
+		let mut target_table = table_with_cols(
+			"accounts_user",
+			vec![("id", pk_col("id")), ("full_name", target_generated)],
+		);
+		target_table.indexes.push(IndexSchema {
+			name: "idx_accounts_user_full_name".to_string(),
+			columns: vec!["full_name".to_string()],
+			unique: false,
+		});
+		target_table.constraints.push(ConstraintSchema {
+			name: "uq_accounts_user_full_name".to_string(),
+			constraint_type: "UNIQUE".to_string(),
+			definition: "full_name".to_string(),
+			foreign_key_info: None,
+		});
+		let mut target = DatabaseSchema::default();
+		target
+			.tables
+			.insert("accounts_user".to_string(), target_table);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let ops = diff.generate_operations();
+
+		// Assert
+		assert_eq!(ops.len(), 6, "unexpected operations: {ops:?}");
+		assert!(matches!(
+			&ops[0],
+			Operation::RestoreIndexOnRollback {
+				table,
+				name: Some(name),
+				columns,
+				unique,
+				..
+			} if table == "accounts_user"
+				&& name == "idx_accounts_user_full_name"
+				&& columns == &vec!["full_name".to_string()]
+				&& !unique
+		));
+		assert!(matches!(
+			&ops[1],
+			Operation::RestoreConstraintOnRollback {
+				table,
+				constraint_sql,
+			} if table == "accounts_user"
+				&& constraint_sql == "CONSTRAINT uq_accounts_user_full_name UNIQUE (full_name)"
+		));
+		assert!(matches!(
+			&ops[2],
+			Operation::DropColumn { table, column, .. }
+				if table == "accounts_user" && column == "full_name"
+		));
+		assert!(matches!(
+			&ops[3],
+			Operation::AddColumn { table, column, .. }
+				if table == "accounts_user" && column.name == "full_name"
+		));
+		assert!(matches!(
+			&ops[4],
+			Operation::CreateIndexRepair {
+				table,
+				name: Some(name),
+				columns,
+				unique,
+				..
+			} if table == "accounts_user"
+				&& name == "idx_accounts_user_full_name"
+				&& columns == &vec!["full_name".to_string()]
+				&& !unique
+		));
+		assert!(matches!(
+			&ops[5],
+			Operation::AddConstraintRepair {
+				table,
+				constraint_sql,
+			} if table == "accounts_user"
+				&& constraint_sql == "CONSTRAINT uq_accounts_user_full_name UNIQUE (full_name)"
 		));
 	}
 

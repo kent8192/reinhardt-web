@@ -3372,13 +3372,24 @@ pub struct GeneratedColumnDefinition {
 
 impl PartialEq for GeneratedColumnDefinition {
 	fn eq(&self, other: &Self) -> bool {
-		if self.raw_sql != other.raw_sql || self.storage != other.storage {
+		if self.storage != other.storage {
 			return false;
 		}
 
 		match (self.typed_expr(), other.typed_expr()) {
 			(Some(left), Some(right)) => left == right,
-			_ => self.expr_tokens == other.expr_tokens && self.expr == other.expr,
+			(Some(left), None) => other
+				.raw_sql
+				.as_deref()
+				.is_some_and(|raw_sql| Self::typed_expr_matches_raw_sql(&left, raw_sql)),
+			(None, Some(right)) => self
+				.raw_sql
+				.as_deref()
+				.is_some_and(|raw_sql| Self::typed_expr_matches_raw_sql(&right, raw_sql)),
+			(None, None) => match (self.raw_sql.as_deref(), other.raw_sql.as_deref()) {
+				(Some(left), Some(right)) => Self::raw_sql_matches(left, right),
+				_ => self.expr_tokens == other.expr_tokens && self.expr == other.expr,
+			},
 		}
 	}
 }
@@ -3403,6 +3414,25 @@ impl GeneratedColumnDefinition {
 			self.expr_tokens
 				.as_deref()
 				.and_then(super::ast_parser::parse_schema_expr_tokens)
+		})
+	}
+
+	fn raw_sql_matches(left: &str, right: &str) -> bool {
+		normalize_generated_expression_sql(left) == normalize_generated_expression_sql(right)
+	}
+
+	fn typed_expr_matches_raw_sql(expr: &SchemaExpr, raw_sql: &str) -> bool {
+		let normalized_raw_sql = normalize_generated_expression_sql(raw_sql);
+		[
+			SqlDialect::Postgres,
+			SqlDialect::Sqlite,
+			SqlDialect::Mysql,
+			SqlDialect::Cockroachdb,
+		]
+		.iter()
+		.any(|dialect| {
+			normalize_generated_expression_sql(&Operation::schema_expr_to_sql(expr, dialect))
+				== normalized_raw_sql
 		})
 	}
 
@@ -3432,6 +3462,90 @@ impl GeneratedColumnDefinition {
 				.map(|sql| GeneratedColumn::raw_sql(sql.clone(), self.storage))
 		}
 	}
+}
+
+fn normalize_generated_expression_sql(sql: &str) -> String {
+	let sql = strip_balanced_outer_parens(sql.trim());
+	let mut normalized = String::new();
+	let mut chars = sql.chars().peekable();
+	let mut in_string = false;
+
+	while let Some(ch) = chars.next() {
+		if in_string {
+			normalized.push(ch);
+			if ch == '\'' {
+				if matches!(chars.peek().copied(), Some('\'')) {
+					if let Some(escaped_quote) = chars.next() {
+						normalized.push(escaped_quote);
+					}
+				} else {
+					in_string = false;
+				}
+			}
+			continue;
+		}
+
+		match ch {
+			'\'' => {
+				in_string = true;
+				normalized.push(ch);
+			}
+			'"' | '`' | '[' | ']' => {}
+			character if character.is_ascii_whitespace() => {}
+			character => normalized.push(character.to_ascii_lowercase()),
+		}
+	}
+
+	normalized
+}
+
+fn strip_balanced_outer_parens(mut sql: &str) -> &str {
+	loop {
+		let trimmed = sql.trim();
+		if trimmed.len() < 2 || !trimmed.starts_with('(') || !trimmed.ends_with(')') {
+			return trimmed;
+		}
+		if !outer_parens_wrap_expression(trimmed) {
+			return trimmed;
+		}
+		sql = &trimmed[1..trimmed.len() - 1];
+	}
+}
+
+fn outer_parens_wrap_expression(sql: &str) -> bool {
+	let mut depth = 0usize;
+	let mut in_string = false;
+	let mut chars = sql.char_indices().peekable();
+
+	while let Some((index, ch)) = chars.next() {
+		if in_string {
+			if ch == '\'' {
+				if chars
+					.peek()
+					.is_some_and(|(_, escaped_quote)| *escaped_quote == '\'')
+				{
+					chars.next();
+				} else {
+					in_string = false;
+				}
+			}
+			continue;
+		}
+
+		match ch {
+			'\'' => in_string = true,
+			'(' => depth += 1,
+			')' => {
+				depth = depth.saturating_sub(1);
+				if depth == 0 && index < sql.len() - 1 {
+					return false;
+				}
+			}
+			_ => {}
+		}
+	}
+
+	depth == 0
 }
 
 impl Serialize for GeneratedColumnDefinition {
@@ -5429,6 +5543,7 @@ impl MigrationOperation for Operation {
 mod tests {
 	use super::*;
 	use FieldType;
+	use reinhardt_query::prelude::SchemaBinOper;
 	use rstest::rstest;
 
 	#[test]
@@ -8195,6 +8310,38 @@ mod tests {
 		);
 
 		assert_eq!(alias_spelled, canonical_spelled);
+	}
+
+	#[test]
+	fn generated_column_equality_matches_typed_expr_to_sqlite_raw_sql() {
+		let typed = GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Virtual,
+		);
+		let introspected = GeneratedColumnDefinition::raw_sql(
+			r#""first_name" || ' ' || "last_name""#,
+			GeneratedStorage::Virtual,
+		);
+
+		assert_eq!(typed, introspected);
+	}
+
+	#[test]
+	fn generated_column_equality_matches_typed_binary_expr_to_parenthesized_raw_sql() {
+		let typed = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("subtotal").binary(SchemaBinOper::Add, SchemaExpr::col("tax")),
+			"SchemaExpr::col(\"subtotal\").binary(SchemaBinOper::Add, SchemaExpr::col(\"tax\"))",
+			GeneratedStorage::Stored,
+		);
+		let introspected =
+			GeneratedColumnDefinition::raw_sql("(subtotal + tax)", GeneratedStorage::Stored);
+
+		assert_eq!(typed, introspected);
 	}
 
 	#[test]
