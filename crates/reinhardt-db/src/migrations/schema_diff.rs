@@ -326,6 +326,18 @@ impl SchemaDiff {
 		}
 	}
 
+	fn generated_replacement_column_definition_from_schema(
+		schema: &DatabaseSchema,
+		table_name: &str,
+		column_name: &str,
+		col: &ColumnSchema,
+	) -> ColumnDefinition {
+		let mut definition =
+			Self::column_definition_from_schema(schema, table_name, column_name, col);
+		definition.unique = false;
+		definition
+	}
+
 	fn generated_column_references_column(
 		generated: &super::GeneratedColumnDefinition,
 		column: &str,
@@ -968,7 +980,7 @@ impl SchemaDiff {
 					});
 					operations.push(Operation::AddColumn {
 						table: table_name.clone(),
-						column: Self::column_definition_from_schema(
+						column: Self::generated_replacement_column_definition_from_schema(
 							&self.target_schema,
 							table_name,
 							&dependent_name,
@@ -1076,7 +1088,12 @@ impl SchemaDiff {
 					});
 					operations.push(Operation::AddColumn {
 						table: table_name.clone(),
-						column: new_definition,
+						column: Self::generated_replacement_column_definition_from_schema(
+							&self.target_schema,
+							table_name,
+							col_name,
+							new_col,
+						),
 						mysql_options: None,
 					});
 				} else {
@@ -1093,7 +1110,7 @@ impl SchemaDiff {
 					if let Some(new_column) = dependent.new_column {
 						operations.push(Operation::AddColumn {
 							table: table_name.clone(),
-							column: Self::column_definition_from_schema(
+							column: Self::generated_replacement_column_definition_from_schema(
 								&self.target_schema,
 								table_name,
 								&dependent.name,
@@ -2358,6 +2375,79 @@ mod tests {
 				constraint_sql,
 			} if table == "accounts_user"
 				&& constraint_sql == "CONSTRAINT uq_accounts_user_full_name UNIQUE (full_name)"
+		));
+	}
+
+	#[test]
+	fn test_generate_operations_replacement_avoids_inline_unique_for_composite_unique() {
+		// Arrange
+		let mut current_generated = col("slug", FieldType::VarChar(201), false);
+		current_generated.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("old_name"),
+			"SchemaExpr::col(\"old_name\")",
+			GeneratedStorage::Stored,
+		));
+		let mut current_table = table_with_cols(
+			"accounts_user",
+			vec![
+				("id", pk_col("id")),
+				("scope", col("scope", FieldType::VarChar(64), false)),
+				("slug", current_generated),
+			],
+		);
+		current_table.constraints.push(ConstraintSchema {
+			name: "uq_accounts_user_scope_slug".to_string(),
+			constraint_type: "UNIQUE".to_string(),
+			definition: "scope, slug".to_string(),
+			foreign_key_info: None,
+		});
+		let mut current = DatabaseSchema::default();
+		current
+			.tables
+			.insert("accounts_user".to_string(), current_table);
+
+		let mut target_generated = col("slug", FieldType::VarChar(201), false);
+		target_generated.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("display_name"),
+			"SchemaExpr::col(\"display_name\")",
+			GeneratedStorage::Stored,
+		));
+		let mut target_table = table_with_cols(
+			"accounts_user",
+			vec![
+				("id", pk_col("id")),
+				("scope", col("scope", FieldType::VarChar(64), false)),
+				("slug", target_generated),
+			],
+		);
+		target_table.constraints.push(ConstraintSchema {
+			name: "uq_accounts_user_scope_slug".to_string(),
+			constraint_type: "UNIQUE".to_string(),
+			definition: "scope, slug".to_string(),
+			foreign_key_info: None,
+		});
+		let mut target = DatabaseSchema::default();
+		target
+			.tables
+			.insert("accounts_user".to_string(), target_table);
+
+		// Act
+		let diff = SchemaDiff::new(current, target);
+		let ops = diff.generate_operations();
+
+		// Assert
+		let Operation::AddColumn { column, .. } = &ops[2] else {
+			panic!("expected replacement AddColumn at index 2, got {ops:?}");
+		};
+		assert_eq!(column.name, "slug");
+		assert!(
+			!column.unique,
+			"replacement AddColumn must not create a transient single-column UNIQUE"
+		);
+		assert!(matches!(
+			ops.last(),
+			Some(Operation::AddConstraintRepair { constraint_sql, .. })
+				if constraint_sql == "CONSTRAINT uq_accounts_user_scope_slug UNIQUE (scope, slug)"
 		));
 	}
 

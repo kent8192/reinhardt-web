@@ -1321,6 +1321,37 @@ impl Operation {
 			.any(|token| token.eq_ignore_ascii_case(column))
 	}
 
+	fn validate_postgres_generated_column_dependencies(
+		columns: &[ColumnDefinition],
+		dialect: &SqlDialect,
+	) {
+		if !matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+			return;
+		}
+
+		let generated_column_names: Vec<&str> = columns
+			.iter()
+			.filter(|column| column.generated.is_some())
+			.map(|column| column.name.as_str())
+			.collect();
+
+		for column in columns {
+			let Some(generated) = column.generated.as_ref() else {
+				continue;
+			};
+
+			if let Some(referenced_column) = generated_column_names.iter().find(|name| {
+				**name != column.name.as_str()
+					&& Self::generated_column_references_column(generated, name)
+			}) {
+				panic!(
+					"PostgreSQL-compatible generated column `{}` cannot reference generated column `{}`",
+					column.name, referenced_column
+				);
+			}
+		}
+	}
+
 	/// Apply this operation to the project state (forward)
 	pub fn state_forwards(&self, app_label: &str, state: &mut ProjectState) {
 		match self {
@@ -1972,6 +2003,8 @@ impl Operation {
 				interleave_in_parent,
 				partition,
 			} => {
+				Self::validate_postgres_generated_column_dependencies(columns, dialect);
+
 				// Detect composite primary key
 				let pk_columns: Vec<&String> = columns
 					.iter()
@@ -8400,6 +8433,35 @@ mod tests {
 			sql,
 			"amount_text VARCHAR(64) GENERATED ALWAYS AS (CAST(amount AS NUMERIC(10, 2))) STORED"
 		);
+	}
+
+	#[test]
+	#[should_panic(
+		expected = "PostgreSQL-compatible generated column `search_name` cannot reference generated column `full_name`"
+	)]
+	fn test_create_table_postgres_rejects_generated_column_chain() {
+		let mut full_name = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		full_name.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("first_name"),
+			"SchemaExpr::col(\"first_name\")",
+			GeneratedStorage::Stored,
+		));
+		let mut search_name = ColumnDefinition::new("search_name", FieldType::VarChar(201));
+		search_name.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("full_name"),
+			"SchemaExpr::col(\"full_name\")",
+			GeneratedStorage::Stored,
+		));
+		let op = Operation::CreateTable {
+			name: "users".to_string(),
+			columns: vec![full_name, search_name],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+
+		let _ = op.to_sql(&SqlDialect::Postgres);
 	}
 
 	#[test]

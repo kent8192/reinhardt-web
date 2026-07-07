@@ -236,6 +236,62 @@ impl<M: Model> Manager<M> {
 		stmt
 	}
 
+	fn build_insert_statement_from_object(
+		obj: &serde_json::Map<String, serde_json::Value>,
+	) -> reinhardt_core::exception::Result<InsertStatement> {
+		let mut stmt = Query::insert();
+		stmt.into_table(Alias::new(M::table_name()));
+
+		let pk_field = M::primary_key_field();
+		let (fields, values): (Vec<_>, Vec<_>) = obj
+			.iter()
+			.filter(|(k, v)| {
+				let key = k.as_str();
+				if Self::is_generated_field(key) {
+					return false;
+				}
+				if key == pk_field {
+					if v.is_null() {
+						return false;
+					}
+					if let Some(n) = v.as_i64() {
+						return n != 0;
+					}
+				}
+				if v.is_null()
+					&& (key == "created_at"
+						|| key == "updated_at"
+						|| key.ends_with("_date")
+						|| key.ends_with("_time")
+						|| key.ends_with("_at"))
+				{
+					return false;
+				}
+				true
+			})
+			.map(|(k, v)| {
+				let value = if v.is_null() {
+					reinhardt_query::value::Value::Int(None)
+				} else {
+					Self::json_to_sea_value(v)
+				};
+				(Alias::new(k.as_str()), value)
+			})
+			.unzip();
+
+		if fields.is_empty() {
+			return Err(reinhardt_core::exception::Error::Database(format!(
+				"Cannot create {} because no writable fields remain after filtering generated and defaulted columns",
+				M::table_name()
+			)));
+		}
+
+		stmt.columns(fields);
+		stmt.values_panic(values);
+
+		Ok(stmt)
+	}
+
 	/// Get all records
 	pub fn all(&self) -> QuerySet<M> {
 		QuerySet::new()
@@ -743,57 +799,7 @@ impl<M: Model> Manager<M> {
 			reinhardt_core::exception::Error::Database("Model must serialize to object".to_string())
 		})?;
 
-		// Build reinhardt-query INSERT statement
-		let mut stmt = Query::insert();
-		stmt.into_table(Alias::new(M::table_name()));
-
-		// Get the primary key field name to filter out auto-increment fields
-		let pk_field = M::primary_key_field();
-
-		// Filter out primary key fields and null datetime fields.
-		// Null datetime fields are skipped to let database DEFAULT apply
-		// (e.g., created_at, updated_at with DEFAULT CURRENT_TIMESTAMP).
-		let (fields, values): (Vec<_>, Vec<_>) = obj
-			.iter()
-			.filter(|(k, v)| {
-				let key = k.as_str();
-				if Self::is_generated_field(key) {
-					return false;
-				}
-				// Exclude primary key field if it's null or 0 (auto-increment)
-				if key == pk_field {
-					if v.is_null() {
-						return false;
-					}
-					if let Some(n) = v.as_i64() {
-						return n != 0;
-					}
-				}
-				// Skip null datetime fields to let database DEFAULT apply
-				if v.is_null()
-					&& (key == "created_at"
-						|| key == "updated_at"
-						|| key.ends_with("_date")
-						|| key.ends_with("_time")
-						|| key.ends_with("_at"))
-				{
-					return false;
-				}
-				true
-			})
-			.map(|(k, v)| {
-				// Convert null values to SQL NULL for proper insertion
-				let value = if v.is_null() {
-					reinhardt_query::value::Value::Int(None)
-				} else {
-					Self::json_to_sea_value(v)
-				};
-				(Alias::new(k.as_str()), value)
-			})
-			.unzip();
-
-		stmt.columns(fields);
-		stmt.values_panic(values);
+		let mut stmt = Self::build_insert_statement_from_object(obj)?;
 
 		// Add RETURNING clause with explicit column names from JSON object
 		// Note: Using Asterisk in columns() may not work correctly with reinhardt-query
@@ -1991,6 +1997,24 @@ mod tests {
 			"UPDATE \"generated_only_user\" SET \"id\" = \"id\" WHERE \"id\" = $1 RETURNING \"full_name\", \"id\""
 		);
 		assert_eq!(params.len(), 1);
+	}
+
+	#[test]
+	fn test_create_statement_rejects_generated_only_models() {
+		let model = GeneratedOnlyUser {
+			id: None,
+			full_name: "Alice Smith".to_string(),
+		};
+		let json = serde_json::to_value(&model).expect("model should serialize");
+		let obj = json.as_object().expect("model should serialize to object");
+
+		let err = Manager::<GeneratedOnlyUser>::build_insert_statement_from_object(obj)
+			.expect_err("generated-only create should fail before rendering empty INSERT");
+
+		assert!(
+			err.to_string().contains("no writable fields remain"),
+			"unexpected error: {err}"
+		);
 	}
 
 	#[test]
