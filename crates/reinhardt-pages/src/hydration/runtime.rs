@@ -222,18 +222,22 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 			let rendered = reactive.render();
 			split_coalesced_text_children(element, std::slice::from_ref(&rendered));
 			let nodes = relevant_child_nodes(element);
-			if let Some(node) = crate::component::ReactiveNode::hydrate_at(
+			let boundary_sibling = if let Some(node) = crate::component::ReactiveNode::hydrate_at(
 				element.as_web_sys().clone().into(),
 				None,
 				nodes.clone(),
 				reactive.clone().into_render(),
 			) {
+				let marker = Some(node.marker_node());
 				store_reactive_node(node);
-			}
+				marker
+			} else {
+				None
+			};
 			install_hydrated_child_reactive_nodes(
 				&element.as_web_sys().clone().into(),
 				&nodes,
-				None,
+				boundary_sibling,
 				&rendered,
 			);
 		}
@@ -246,7 +250,7 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 			split_coalesced_text_children(element, std::slice::from_ref(&branch_view));
 			let nodes = relevant_child_nodes(element);
 			let (condition, then_view, else_view) = reactive_if.clone().into_parts();
-			if let Some(node) = crate::component::ReactiveIfNode::hydrate_at(
+			let boundary_sibling = if let Some(node) = crate::component::ReactiveIfNode::hydrate_at(
 				element.as_web_sys().clone().into(),
 				None,
 				nodes.clone(),
@@ -254,12 +258,16 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 				then_view,
 				else_view,
 			) {
+				let marker = Some(node.marker_node());
 				store_reactive_node(node);
-			}
+				marker
+			} else {
+				None
+			};
 			install_hydrated_child_reactive_nodes(
 				&element.as_web_sys().clone().into(),
 				&nodes,
-				None,
+				boundary_sibling,
 				&branch_view,
 			);
 		}
@@ -304,13 +312,14 @@ fn install_hydrated_child_reactive_nodes(
 	match view {
 		Page::Reactive(reactive) => {
 			let rendered = reactive.render();
-			let boundary_sibling = next_sibling.clone();
+			let mut boundary_sibling = next_sibling.clone();
 			if let Some(node) = crate::component::ReactiveNode::hydrate_at(
 				parent.clone(),
-				next_sibling,
+				next_sibling.clone(),
 				nodes.to_vec(),
 				reactive.clone().into_render(),
 			) {
+				boundary_sibling = Some(node.marker_node());
 				store_reactive_node(node);
 			}
 			install_hydrated_child_reactive_nodes(parent, nodes, boundary_sibling, &rendered);
@@ -322,6 +331,7 @@ fn install_hydrated_child_reactive_nodes(
 				reactive_if.else_view()
 			};
 			let (condition, then_view, else_view) = reactive_if.clone().into_parts();
+			let mut boundary_sibling = next_sibling.clone();
 			if let Some(node) = crate::component::ReactiveIfNode::hydrate_at(
 				parent.clone(),
 				next_sibling.clone(),
@@ -330,9 +340,10 @@ fn install_hydrated_child_reactive_nodes(
 				then_view,
 				else_view,
 			) {
+				boundary_sibling = Some(node.marker_node());
 				store_reactive_node(node);
 			}
-			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, &branch_view);
+			install_hydrated_child_reactive_nodes(parent, nodes, boundary_sibling, &branch_view);
 		}
 		Page::Element(_) | Page::WithHead { .. } => {
 			if let Some(element) = nodes

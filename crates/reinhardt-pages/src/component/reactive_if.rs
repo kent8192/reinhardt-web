@@ -224,42 +224,50 @@ impl ReactiveIfNode {
 		let effect_reactive_node_store = current_reactive_node_store();
 		let first_run = Rc::new(Cell::new(true));
 		let first_run_clone = first_run.clone();
+		#[cfg(feature = "i18n")]
+		let i18n_context = crate::i18n::current_i18n_callback_context();
 
 		let effect = Effect::new_with_timing(
 			move || {
-				with_reactive_node_store(&effect_reactive_node_store, || {
-					let new_condition = condition();
+				let update = || {
+					with_reactive_node_store(&effect_reactive_node_store, || {
+						let new_condition = condition();
 
-					if first_run_clone.replace(false) {
-						*last_condition_clone.borrow_mut() = Some(new_condition);
-						return;
-					}
-
-					let mut last = last_condition_clone.borrow_mut();
-					if *last == Some(new_condition) {
-						return;
-					}
-					*last = Some(new_condition);
-					drop(last);
-
-					let old_nodes = {
-						let mut nodes = current_nodes_clone.borrow_mut();
-						nodes.drain(..).collect::<Vec<_>>()
-					};
-					for node in old_nodes {
-						if let Some(parent_node) = node.parent_node() {
-							let _ = parent_node.remove_child(&node);
+						if first_run_clone.replace(false) {
+							*last_condition_clone.borrow_mut() = Some(new_condition);
+							return;
 						}
-					}
 
-					let view = if new_condition {
-						then_view()
-					} else {
-						else_view()
-					};
-					let new_nodes = mount_before_marker(&marker_clone, view);
-					*current_nodes_clone.borrow_mut() = new_nodes;
-				});
+						let mut last = last_condition_clone.borrow_mut();
+						if *last == Some(new_condition) {
+							return;
+						}
+						*last = Some(new_condition);
+						drop(last);
+
+						let old_nodes = {
+							let mut nodes = current_nodes_clone.borrow_mut();
+							nodes.drain(..).collect::<Vec<_>>()
+						};
+						for node in old_nodes {
+							if let Some(parent_node) = node.parent_node() {
+								let _ = parent_node.remove_child(&node);
+							}
+						}
+
+						let view = if new_condition {
+							then_view()
+						} else {
+							else_view()
+						};
+						let new_nodes = mount_before_marker(&marker_clone, view);
+						*current_nodes_clone.borrow_mut() = new_nodes;
+					});
+				};
+				#[cfg(feature = "i18n")]
+				crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), update);
+				#[cfg(not(feature = "i18n"))]
+				update();
 			},
 			EffectTiming::Layout,
 		);
@@ -270,6 +278,10 @@ impl ReactiveIfNode {
 			last_condition,
 			effect,
 		})
+	}
+
+	pub(crate) fn marker_node(&self) -> web_sys::Node {
+		self.marker.clone().into()
 	}
 }
 
@@ -434,6 +446,10 @@ impl ReactiveNode {
 			current_nodes,
 			effect,
 		})
+	}
+
+	pub(crate) fn marker_node(&self) -> web_sys::Node {
+		self.marker.clone().into()
 	}
 }
 
