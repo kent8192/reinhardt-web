@@ -22,6 +22,7 @@ type PendingResourceSubscriber = Box<dyn Fn(Value) + 'static>;
 struct PendingResource {
 	id: String,
 	external: bool,
+	registered_at_top_level: bool,
 	boundary_ids: Vec<String>,
 	read_boundary_ids: Vec<String>,
 	future: PendingResourceFuture,
@@ -205,6 +206,7 @@ impl SsrResourceContext {
 				state.set(resource_state);
 			}
 		});
+		let registered_at_top_level = current_boundary_id.is_none();
 
 		if let Some(pending) = self
 			.pending
@@ -237,6 +239,7 @@ impl SsrResourceContext {
 		self.pending.push(PendingResource {
 			id: key,
 			external: false,
+			registered_at_top_level,
 			boundary_ids: current_boundary_id.into_iter().collect(),
 			read_boundary_ids: Vec::new(),
 			future,
@@ -567,6 +570,7 @@ async fn resolve_matching(
 		let PendingResource {
 			id,
 			external,
+			registered_at_top_level: _,
 			boundary_ids,
 			read_boundary_ids: _,
 			future,
@@ -617,7 +621,9 @@ fn pending_matches_registration_scope(
 	}
 	match current_boundary_id {
 		Some(boundary_id) => pending.boundary_ids.iter().any(|id| id == boundary_id),
-		None => pending.external || pending.boundary_ids.is_empty(),
+		None => {
+			pending.external || pending.registered_at_top_level || pending.boundary_ids.is_empty()
+		}
 	}
 }
 
@@ -774,6 +780,54 @@ mod tests {
 			replay_state.clone(),
 		);
 
+		assert_eq!(
+			replay_state.get(),
+			ResourceState::Success("tracked".to_string())
+		);
+		assert!(!context.borrow().has_pending());
+	}
+
+	#[tokio::test]
+	async fn top_level_replay_reuses_pending_tracked_resource() {
+		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
+			1,
+		))));
+		let fetch_count = Rc::new(std::cell::Cell::new(0));
+		let discovery_fetch_count = Rc::clone(&fetch_count);
+		let discovery_state = resource_signal();
+
+		context.borrow_mut().register_resource(
+			"rh-res-0".to_string(),
+			move || {
+				discovery_fetch_count.set(discovery_fetch_count.get() + 1);
+				async { Ok::<_, String>("tracked".to_string()) }
+			},
+			discovery_state.clone(),
+		);
+		context
+			.borrow_mut()
+			.assign_resources_to_boundary(&["rh-res-0".to_string()], "boundary");
+
+		context.borrow_mut().reset_call_order_keys();
+		let replay_state = resource_signal();
+		context.borrow_mut().register_resource(
+			"rh-res-0".to_string(),
+			|| async {
+				panic!("pending tracked resources should be reused during replay");
+			},
+			replay_state.clone(),
+		);
+
+		assert_eq!(fetch_count.get(), 1);
+		assert_eq!(context.borrow().pending.len(), 1);
+		assert_eq!(discovery_state.get(), ResourceState::Loading);
+		assert_eq!(replay_state.get(), ResourceState::Loading);
+
+		assert!(resolve_boundary_resources(&context, "boundary").await);
+		assert_eq!(
+			discovery_state.get(),
+			ResourceState::Success("tracked".to_string())
+		);
 		assert_eq!(
 			replay_state.get(),
 			ResourceState::Success("tracked".to_string())
