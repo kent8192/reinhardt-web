@@ -190,7 +190,7 @@ fn test_context_use_case_auth_state() {
 	assert!(auth_state.is_some());
 	if let Some((email, is_authenticated)) = auth_state {
 		assert_eq!(email, "user@example.com");
-		assert_eq!(is_authenticated, true);
+		assert!(is_authenticated);
 	}
 }
 
