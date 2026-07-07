@@ -188,6 +188,8 @@ pub struct SsrRenderer {
 	rendered_head: Option<Head>,
 	hydration_marker_counter: u64,
 	suspense_boundary_counter: u64,
+	marker_resource_context: Rc<RefCell<SsrResourceContext>>,
+	marker_id_counter: Rc<Cell<usize>>,
 }
 
 #[derive(Clone, Copy)]
@@ -310,17 +312,26 @@ impl SsrRenderer {
 			rendered_head: None,
 			hydration_marker_counter: 0,
 			suspense_boundary_counter: 0,
+			marker_resource_context: Rc::new(RefCell::new(SsrResourceContext::new(
+				SsrOptions::default().resource_timeout,
+			))),
+			marker_id_counter: Rc::new(Cell::new(0)),
 		}
 	}
 
 	/// Creates a renderer with custom options.
 	pub fn with_options(options: SsrOptions) -> Self {
+		let resource_timeout = options.resource_timeout;
 		Self {
 			options,
 			state: SsrState::new(),
 			rendered_head: None,
 			hydration_marker_counter: 0,
 			suspense_boundary_counter: 0,
+			marker_resource_context: Rc::new(RefCell::new(SsrResourceContext::new(
+				resource_timeout,
+			))),
+			marker_id_counter: Rc::new(Cell::new(0)),
 		}
 	}
 
@@ -400,9 +411,9 @@ impl SsrRenderer {
 	fn begin_render(&mut self, clear_resource_states: bool) {
 		if clear_resource_states {
 			self.state.clear_resource_states();
+			self.reset_deterministic_render_counters();
 		}
 		self.rendered_head = None;
-		self.reset_deterministic_render_counters();
 	}
 
 	fn should_resolve_resources(&self) -> bool {
@@ -543,10 +554,12 @@ impl SsrRenderer {
 			)));
 			return scope_id_counter(scope_context(Rc::clone(&context), async move {
 				self.begin_render(true);
+				let render_start = self.deterministic_render_snapshot();
 				let view = view_factory();
 				let mut boundaries = Vec::new();
+				self.restore_deterministic_render_snapshot(render_start);
 				let content = self.render_stream_shell_page(&view, &mut boundaries).await;
-				let view_head = view.find_topmost_head_owned();
+				let view_head = self.current_buffered_rendered_head_or_view_head(&view);
 				SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
 					&content,
 					"",
@@ -564,6 +577,7 @@ impl SsrRenderer {
 			Rc::clone(&id_counter),
 			scope_context(Rc::clone(&context), async move {
 				self.begin_render(true);
+				let render_start = self.deterministic_render_snapshot();
 				let discovery_view = view_factory();
 
 				let _ = self
@@ -573,8 +587,7 @@ impl SsrRenderer {
 
 				resolve_external_resources(&context).await;
 				let (view, content, boundaries) = loop {
-					context.borrow_mut().reset_call_order_keys();
-					self.reset_deterministic_render_counters();
+					self.restore_deterministic_render_snapshot(render_start);
 
 					let view = view_factory();
 					let mut boundaries = Vec::new();
@@ -587,7 +600,7 @@ impl SsrRenderer {
 					drop(view);
 					resolve_external_resources(&context).await;
 				};
-				let view_head = view.find_topmost_head_owned();
+				let view_head = self.current_buffered_rendered_head_or_view_head(&view);
 				self.add_resolved_resources_to_state(&context);
 
 				let shell = self.wrap_in_html_shell(&content, view_head.as_ref());
@@ -755,12 +768,20 @@ impl SsrRenderer {
 	where
 		F: FnMut() -> Page,
 	{
-		let context = Rc::new(RefCell::new(SsrResourceContext::new(
-			self.options.resource_timeout,
-		)));
-		scope_id_counter(scope_context(Rc::clone(&context), async move {
+		let context = if clear_resource_states {
+			Rc::new(RefCell::new(SsrResourceContext::new(
+				self.options.resource_timeout,
+			)))
+		} else {
+			Rc::clone(&self.marker_resource_context)
+		};
+		let marker_id_counter =
+			(!clear_resource_states).then(|| Rc::clone(&self.marker_id_counter));
+		let render = scope_context(Rc::clone(&context), async move {
 			self.begin_render(clear_resource_states);
+			let render_start = self.deterministic_render_snapshot();
 			if !self.should_resolve_resources() {
+				self.restore_deterministic_render_snapshot(render_start);
 				let view = view_factory();
 				self.begin_buffered_render_pass();
 				let content = self
@@ -780,8 +801,7 @@ impl SsrRenderer {
 			resolve_pending_resources(&context).await;
 
 			loop {
-				context.borrow_mut().reset_call_order_keys();
-				self.reset_deterministic_render_counters();
+				self.restore_deterministic_render_snapshot(render_start);
 				self.begin_buffered_render_pass();
 
 				let view = view_factory();
@@ -797,8 +817,12 @@ impl SsrRenderer {
 				drop(view);
 				resolve_pending_resources(&context).await;
 			}
-		}))
-		.await
+		});
+		if let Some(marker_id_counter) = marker_id_counter {
+			scope_id_counter_with(marker_id_counter, render).await
+		} else {
+			scope_id_counter(render).await
+		}
 	}
 
 	fn add_resolved_resources_to_state(&mut self, context: &Rc<RefCell<SsrResourceContext>>) {
@@ -862,7 +886,8 @@ impl SsrRenderer {
 					html
 				}
 				Page::Empty => String::new(),
-				Page::WithHead { view, .. } => {
+				Page::WithHead { view, head } => {
+					self.record_buffered_rendered_head(head);
 					self.render_stream_shell_page(view, boundaries).await
 				}
 				Page::ReactiveIf(reactive_if) => {

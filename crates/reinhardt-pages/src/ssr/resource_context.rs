@@ -67,7 +67,8 @@ impl SsrResourceContext {
 		}
 	}
 
-	/// Resets deterministic call-order resource IDs before a replay render.
+	/// Resets deterministic call-order resource IDs in resource-context tests.
+	#[cfg(test)]
 	pub(crate) fn reset_call_order_keys(&mut self) {
 		self.next_resource_index = 0;
 	}

@@ -118,6 +118,63 @@ impl Component for KeyedResourceComponent {
 	}
 }
 
+struct ImplicitResourceComponent {
+	value: &'static str,
+}
+
+impl Component for ImplicitResourceComponent {
+	fn render(&self) -> Page {
+		let value = self.value.to_string();
+		Page::reactive(move || {
+			let fetch_value = value.clone();
+			let resource = use_resource(
+				move || {
+					let value = fetch_value.clone();
+					async move { Ok::<_, String>(value) }
+				},
+				(),
+			);
+			let key = resource
+				.ssr_key()
+				.expect("SSR resources should expose their hydration key")
+				.to_string();
+			resource_to_page(resource.get(), "em", "loading", |value| {
+				PageElement::new("strong")
+					.attr("data-resource-key", key)
+					.child(value)
+					.into_page()
+			})
+		})
+	}
+
+	fn name() -> &'static str {
+		"ImplicitResourceComponent"
+	}
+}
+
+struct IdComponent {
+	label: &'static str,
+}
+
+impl Component for IdComponent {
+	fn render(&self) -> Page {
+		let label = self.label;
+		Page::reactive(move || {
+			let input_id = use_id();
+			Page::fragment([
+				PageElement::new("label")
+					.attr("for", input_id.clone())
+					.child(label),
+				PageElement::new("input").attr("id", input_id),
+			])
+		})
+	}
+
+	fn name() -> &'static str {
+		"IdComponent"
+	}
+}
+
 #[tokio::test]
 async fn marker_renders_accumulate_explicit_resource_state() {
 	let mut renderer = SsrRenderer::new();
@@ -148,6 +205,45 @@ async fn marker_renders_accumulate_explicit_resource_state() {
 			.get_resource_state("second-island")
 			.is_some()
 	);
+}
+
+#[tokio::test]
+async fn marker_renders_preserve_unique_use_id_values() {
+	let mut renderer = SsrRenderer::new();
+	let first_html = renderer
+		.render_with_marker(&IdComponent { label: "first" })
+		.await;
+	let second_html = renderer
+		.render_with_marker(&IdComponent { label: "second" })
+		.await;
+
+	assert!(first_html.contains(r#"for="reinhardt-id-0""#));
+	assert!(first_html.contains(r#"id="reinhardt-id-0""#));
+	assert!(second_html.contains(r#"for="reinhardt-id-1""#));
+	assert!(second_html.contains(r#"id="reinhardt-id-1""#));
+}
+
+#[tokio::test]
+async fn marker_renders_preserve_unique_implicit_resource_keys() {
+	let mut renderer = SsrRenderer::new();
+	let first_html = renderer
+		.render_with_marker(&ImplicitResourceComponent {
+			value: "first-ready",
+		})
+		.await;
+	let second_html = renderer
+		.render_with_marker(&ImplicitResourceComponent {
+			value: "second-ready",
+		})
+		.await;
+
+	assert!(first_html.contains(r#"data-resource-key="rh-res-0""#));
+	assert!(first_html.contains("first-ready"));
+	assert!(second_html.contains(r#"data-resource-key="rh-res-1""#));
+	assert!(second_html.contains("second-ready"));
+	assert!(renderer.state().get_resource_state("rh-res-0").is_some());
+	assert!(renderer.state().get_resource_state("rh-res-1").is_some());
+	assert_eq!(renderer.state().resource_count(), 2);
 }
 
 #[tokio::test]
@@ -1215,7 +1311,24 @@ async fn streaming_resource_state_helpers_mark_external_reads() {
 }
 
 #[tokio::test]
-async fn streaming_shell_uses_pending_suspense_content_head_without_cache() {
+async fn streaming_shell_preserves_head_discovered_in_reactive_render() {
+	let view = Page::reactive(|| {
+		PageElement::new("main")
+			.child("reactive body")
+			.into_page()
+			.with_head(Head::new().title("Reactive Shell Head"))
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let mut stream = renderer.render_page_with_view_head(view).await;
+	let shell = stream.next().await.unwrap().into_string();
+
+	assert!(shell.contains("<title>Reactive Shell Head</title>"));
+	assert!(shell.contains("reactive body"));
+}
+
+#[tokio::test]
+async fn streaming_shell_uses_pending_suspense_content_head_from_shell_render() {
 	let content_calls = Rc::new(Cell::new(0));
 	let render_calls = Rc::clone(&content_calls);
 	let view = Page::Suspense(SuspenseNode::new(
@@ -1249,7 +1362,7 @@ async fn streaming_shell_uses_pending_suspense_content_head_without_cache() {
 	let shell = stream.next().await.unwrap().into_string();
 
 	assert!(shell.contains("<title>Pending Suspense Head</title>"));
-	assert_eq!(content_calls.get(), 3);
+	assert_eq!(content_calls.get(), 2);
 }
 
 #[tokio::test]
