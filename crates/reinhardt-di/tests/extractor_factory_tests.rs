@@ -251,7 +251,7 @@ async fn injectable_factory_can_consume_path_extractor() {
 // `#[injectable]` provider contract (kent8192/reinhardt-web#4685), a
 // manually-Injectable, unregistered type MUST be requested via the
 // non-`Depends` `#[inject] T` form, which resolves through the registry-first
-// `T::inject` fallback. The `Depends<K, T>` form is reserved for
+// `T::inject` fallback. The `KeyedDepends<K, T>` form is reserved for
 // factory-produced types that resolve via keyed factory output — see
 // `injectable_factory_inject_fallback_tests.rs`.
 
