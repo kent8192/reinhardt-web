@@ -102,11 +102,9 @@ fn qualified_t_macro_inside_page_uses_regular_expression_codegen() {
 fn t_macro_interpolation_borrows_non_copy_page_captures() {
 	let context = sample_i18n_context();
 	let _guard = provide_i18n_context(context);
-	let name = "Ada".to_string();
-
-	let view = page!(|| {
+	let view = page!(|name: String| {
 		p { { t!("Hello {name}", name = name) } }
-	})();
+	})("Ada".to_string());
 
 	assert_eq!(view.render_to_string(), "<p>こんにちは Ada</p>");
 	assert_eq!(view.render_to_string(), "<p>こんにちは Ada</p>");
