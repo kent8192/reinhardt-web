@@ -173,9 +173,12 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	// 1. Restore SSR state
 	let mut context = HydrationContext::from_window()?;
 	#[cfg(feature = "i18n")]
-	let _i18n_guard = crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
-		HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
-	})?;
+	if let Some(i18n_guard) =
+		crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
+			HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
+		})? {
+		crate::i18n::retain_hydrated_i18n_context(i18n_guard);
+	}
 
 	// 2. Render the component to get expected structure
 	let view = component.render();
@@ -400,13 +403,16 @@ fn install_hydrated_child_reactive_nodes(
 				store_reactive_node(node);
 			}
 		}
-		Page::Element(_) | Page::WithHead { .. } => {
+		Page::Element(_) => {
 			if let Some(element) = nodes
 				.first()
 				.and_then(|node| wasm_bindgen::JsCast::dyn_ref::<web_sys::Element>(node))
 			{
 				install_hydrated_reactive_nodes(&Element::new(element.clone()), view);
 			}
+		}
+		Page::WithHead { view, .. } => {
+			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, view);
 		}
 		Page::Fragment(children) => {
 			install_hydrated_children_reactive_nodes(parent, nodes, children)

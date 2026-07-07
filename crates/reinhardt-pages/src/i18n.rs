@@ -4,6 +4,8 @@
 //! and client hydration.
 
 use std::borrow::Cow;
+#[cfg(wasm)]
+use std::cell::RefCell;
 use std::fmt;
 #[cfg(wasm)]
 use std::future::Future;
@@ -22,6 +24,8 @@ pub const SSR_I18N_METADATA_KEY: &str = "pages.i18n";
 
 thread_local! {
 	static I18N_CONTEXT: Context<I18nContext> = Context::new();
+	#[cfg(wasm)]
+	static HYDRATED_I18N_GUARDS: RefCell<Vec<ContextGuard<I18nContext>>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Errors raised while reading or writing i18n state.
@@ -187,6 +191,11 @@ where
 		})
 		.await
 	}
+}
+
+#[cfg(wasm)]
+pub(crate) fn retain_hydrated_i18n_context(guard: ContextGuard<I18nContext>) {
+	HYDRATED_I18N_GUARDS.with(|guards| guards.borrow_mut().push(guard));
 }
 
 /// Returns the current locale.

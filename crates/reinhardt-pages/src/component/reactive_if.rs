@@ -99,6 +99,8 @@ pub struct ReactiveIfNode {
 	/// Marker comment node in DOM (used as insertion point reference)
 	#[allow(dead_code)] // Kept for potential future use
 	marker: web_sys::Comment,
+	/// Stable start marker for hydrated DOM ranges.
+	start_marker: Option<web_sys::Comment>,
 	/// Currently mounted DOM nodes
 	#[allow(dead_code)] // Kept for potential future use
 	current_nodes: Rc<RefCell<Vec<web_sys::Node>>>,
@@ -200,6 +202,7 @@ impl ReactiveIfNode {
 
 		Self {
 			marker,
+			start_marker: None,
 			current_nodes,
 			last_condition,
 			reactive_nodes,
@@ -219,13 +222,17 @@ impl ReactiveIfNode {
 			.expect("window should be available")
 			.document()
 			.expect("document should be available");
+		let start_marker = document.create_comment("reactive-if-start");
 		let marker = document.create_comment("reactive-if");
+		let start_anchor = existing_nodes.first().or(next_sibling.as_ref());
+		let _ = parent.insert_before(&start_marker, start_anchor);
 		let _ = parent.insert_before(&marker, next_sibling.as_ref());
 
 		let current_nodes: Rc<RefCell<Vec<web_sys::Node>>> = Rc::new(RefCell::new(existing_nodes));
 		let last_condition: Rc<RefCell<Option<bool>>> = Rc::new(RefCell::new(None));
 		let current_nodes_clone = current_nodes.clone();
 		let last_condition_clone = last_condition.clone();
+		let start_marker_clone = Some(start_marker.clone());
 		let marker_clone = marker.clone();
 		let reactive_nodes = new_reactive_node_store();
 		let effect_reactive_node_store = reactive_nodes.clone();
@@ -254,7 +261,11 @@ impl ReactiveIfNode {
 
 						clear_reactive_node_store(&effect_reactive_node_store);
 
-						refresh_current_nodes_before_marker(&marker_clone, &current_nodes_clone);
+						refresh_current_nodes_before_marker(
+							start_marker_clone.as_ref(),
+							&marker_clone,
+							&current_nodes_clone,
+						);
 						let old_nodes = {
 							let mut nodes = current_nodes_clone.borrow_mut();
 							nodes.drain(..).collect::<Vec<_>>()
@@ -284,6 +295,7 @@ impl ReactiveIfNode {
 
 		Some(Self {
 			marker,
+			start_marker: Some(start_marker),
 			current_nodes,
 			last_condition,
 			reactive_nodes,
@@ -300,7 +312,11 @@ impl ReactiveIfNode {
 	}
 
 	pub(crate) fn refresh_hydrated_current_nodes(&self) {
-		refresh_current_nodes_before_marker(&self.marker, &self.current_nodes);
+		refresh_current_nodes_before_marker(
+			self.start_marker.as_ref(),
+			&self.marker,
+			&self.current_nodes,
+		);
 	}
 }
 
@@ -314,6 +330,8 @@ pub struct ReactiveNode {
 	/// Marker comment node in DOM (used as insertion point reference)
 	#[allow(dead_code)] // Kept for potential future use
 	marker: web_sys::Comment,
+	/// Stable start marker for hydrated DOM ranges.
+	start_marker: Option<web_sys::Comment>,
 	/// Currently mounted DOM nodes
 	#[allow(dead_code)] // Kept for potential future use
 	current_nodes: Rc<RefCell<Vec<web_sys::Node>>>,
@@ -402,6 +420,7 @@ impl ReactiveNode {
 
 		Self {
 			marker,
+			start_marker: None,
 			current_nodes,
 			reactive_nodes,
 			effect,
@@ -418,11 +437,15 @@ impl ReactiveNode {
 			.expect("window should be available")
 			.document()
 			.expect("document should be available");
+		let start_marker = document.create_comment("reactive-start");
 		let marker = document.create_comment("reactive");
+		let start_anchor = existing_nodes.first().or(next_sibling.as_ref());
+		let _ = parent.insert_before(&start_marker, start_anchor);
 		let _ = parent.insert_before(&marker, next_sibling.as_ref());
 
 		let current_nodes: Rc<RefCell<Vec<web_sys::Node>>> = Rc::new(RefCell::new(existing_nodes));
 		let current_nodes_clone = current_nodes.clone();
+		let start_marker_clone = Some(start_marker.clone());
 		let marker_clone = marker.clone();
 		let reactive_nodes = new_reactive_node_store();
 		let effect_reactive_node_store = reactive_nodes.clone();
@@ -447,7 +470,11 @@ impl ReactiveNode {
 
 						clear_reactive_node_store(&effect_reactive_node_store);
 
-						refresh_current_nodes_before_marker(&marker_clone, &current_nodes_clone);
+						refresh_current_nodes_before_marker(
+							start_marker_clone.as_ref(),
+							&marker_clone,
+							&current_nodes_clone,
+						);
 						let old_nodes = {
 							let mut nodes = current_nodes_clone.borrow_mut();
 							nodes.drain(..).collect::<Vec<_>>()
@@ -472,6 +499,7 @@ impl ReactiveNode {
 
 		Some(Self {
 			marker,
+			start_marker: Some(start_marker),
 			current_nodes,
 			reactive_nodes,
 			effect,
@@ -487,19 +515,28 @@ impl ReactiveNode {
 	}
 
 	pub(crate) fn refresh_hydrated_current_nodes(&self) {
-		refresh_current_nodes_before_marker(&self.marker, &self.current_nodes);
+		refresh_current_nodes_before_marker(
+			self.start_marker.as_ref(),
+			&self.marker,
+			&self.current_nodes,
+		);
 	}
 }
 
 #[cfg(wasm)]
 fn refresh_current_nodes_before_marker(
+	start_marker: Option<&web_sys::Comment>,
 	marker: &web_sys::Comment,
 	current_nodes: &Rc<RefCell<Vec<web_sys::Node>>>,
 ) {
-	let Some(first_node) = current_nodes.borrow().first().cloned() else {
-		return;
-	};
+	let first_node = start_marker
+		.and_then(|marker| {
+			let marker_node: web_sys::Node = marker.clone().into();
+			marker_node.next_sibling()
+		})
+		.or_else(|| current_nodes.borrow().first().cloned());
 
+	let Some(first_node) = first_node else { return };
 	let marker_node: web_sys::Node = marker.clone().into();
 	let mut nodes = Vec::new();
 	let mut next = Some(first_node);
