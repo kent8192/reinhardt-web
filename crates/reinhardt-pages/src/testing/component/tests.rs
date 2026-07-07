@@ -1,6 +1,8 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
+use reinhardt_core::page::IntoPage;
+use reinhardt_core::reactive::Signal;
 use reinhardt_core::types::page::{Page, PageElement};
 
 use super::{EventError, QueryError, Role, render};
@@ -49,6 +51,58 @@ fn queries_by_text_role_label_and_placeholder() {
 	assert_eq!(screen.get_by_label("Email").tag_name(), "input");
 	assert_eq!(
 		screen.get_by_placeholder("name@example.com").tag_name(),
+		"input"
+	);
+}
+
+#[tokio::test]
+async fn optional_and_async_queries_cover_role_label_and_placeholder() {
+	let screen = render(
+		PageElement::new("form")
+			.child(
+				PageElement::new("label")
+					.attr("for", "email")
+					.child("Email"),
+			)
+			.child(
+				PageElement::new("input")
+					.attr("id", "email")
+					.attr("placeholder", "name@example.com"),
+			)
+			.child(PageElement::new("button").child("Submit")),
+	);
+
+	assert_eq!(
+		screen
+			.query_by_role(Role::Button, "Submit")
+			.expect("button should be found")
+			.tag_name(),
+		"button"
+	);
+	assert!(screen.query_by_role(Role::Button, "Missing").is_none());
+	assert_eq!(
+		screen
+			.query_by_label("Email")
+			.expect("label should be found")
+			.tag_name(),
+		"input"
+	);
+	assert!(screen.query_by_label("Missing").is_none());
+	assert_eq!(
+		screen
+			.query_by_placeholder("name@example.com")
+			.expect("placeholder should be found")
+			.tag_name(),
+		"input"
+	);
+	assert!(screen.query_by_placeholder("Missing").is_none());
+	assert_eq!(screen.find_by_label("Email").await.tag_name(), "input");
+	assert_eq!(
+		screen
+			.try_find_by_placeholder("name@example.com")
+			.await
+			.unwrap()
+			.tag_name(),
 		"input"
 	);
 }
@@ -113,6 +167,27 @@ fn input_updates_internal_value_before_dispatch() {
 
 	assert!(called.get());
 	assert_eq!(input.value().as_deref(), Some("new"));
+}
+
+#[tokio::test]
+async fn detached_element_reads_return_error() {
+	let show = Signal::new(true);
+	let show_for_render = show.clone();
+	let screen = render(Page::reactive(move || {
+		if show_for_render.get() {
+			PageElement::new("button").child("Save").into_page()
+		} else {
+			Page::Empty
+		}
+	}));
+	let button = screen.get_by_role(Role::Button, "Save");
+
+	show.set(false);
+	screen.settle().await;
+
+	assert_eq!(button.try_text(), Err(EventError::DetachedElement));
+	assert_eq!(button.try_tag_name(), Err(EventError::DetachedElement));
+	assert_eq!(button.try_value(), Err(EventError::DetachedElement));
 }
 
 #[test]

@@ -19,10 +19,12 @@ thread_local! {
 	static TASK_SINK: RefCell<Option<TaskSink>> = const { RefCell::new(None) };
 }
 
+#[cfg(feature = "testing")]
 pub(crate) struct NativeTaskSinkGuard {
 	previous: Option<TaskSink>,
 }
 
+#[cfg(feature = "testing")]
 impl Drop for NativeTaskSinkGuard {
 	fn drop(&mut self) {
 		let previous = self.previous.take();
@@ -32,6 +34,7 @@ impl Drop for NativeTaskSinkGuard {
 	}
 }
 
+#[cfg(feature = "testing")]
 pub(crate) fn install_task_sink(sink: impl Fn(BoxedTask) + 'static) -> NativeTaskSinkGuard {
 	let previous = TASK_SINK.with(|slot| slot.borrow_mut().replace(Box::new(sink)));
 	NativeTaskSinkGuard { previous }

@@ -132,6 +132,24 @@ impl Screen {
 		self.get_by_role(role, name)
 	}
 
+	/// Returns zero or one element by accessible role and name.
+	pub fn query_by_role(&self, role: Role, name: impl Into<TextMatch>) -> Option<ElementHandle> {
+		match query::query_by_role_named(&self.inner, role, name.into()) {
+			Ok(handle) => handle,
+			Err(QueryError::NotFound) => None,
+			Err(err) => panic!("{err}"),
+		}
+	}
+
+	/// Returns zero or one element by accessible role and name.
+	pub fn query_by_role_named(
+		&self,
+		role: Role,
+		name: impl Into<TextMatch>,
+	) -> Option<ElementHandle> {
+		self.query_by_role(role, name)
+	}
+
 	/// Tries to return exactly one element by accessible role and name.
 	pub fn try_get_by_role_named(
 		&self,
@@ -154,6 +172,15 @@ impl Screen {
 		query::by_label(&self.inner, label.into())
 	}
 
+	/// Returns zero or one element by accessible label.
+	pub fn query_by_label(&self, label: impl Into<TextMatch>) -> Option<ElementHandle> {
+		match query::query_by_label(&self.inner, label.into()) {
+			Ok(handle) => handle,
+			Err(QueryError::NotFound) => None,
+			Err(err) => panic!("{err}"),
+		}
+	}
+
 	/// Returns exactly one element by placeholder text.
 	pub fn get_by_placeholder(&self, placeholder: impl Into<TextMatch>) -> ElementHandle {
 		self.try_get_by_placeholder(placeholder)
@@ -166,6 +193,15 @@ impl Screen {
 		placeholder: impl Into<TextMatch>,
 	) -> Result<ElementHandle, QueryError> {
 		query::by_placeholder(&self.inner, placeholder.into())
+	}
+
+	/// Returns zero or one element by placeholder text.
+	pub fn query_by_placeholder(&self, placeholder: impl Into<TextMatch>) -> Option<ElementHandle> {
+		match query::query_by_placeholder(&self.inner, placeholder.into()) {
+			Ok(handle) => handle,
+			Err(QueryError::NotFound) => None,
+			Err(err) => panic!("{err}"),
+		}
 	}
 
 	/// Waits for scheduled native component work and rerenders reactive anchors.
@@ -273,6 +309,76 @@ impl Screen {
 			tokio::task::yield_now().await;
 		}
 		self.try_get_by_role(role, name)
+	}
+
+	/// Finds an element by role and accessible name after settling scheduled work.
+	pub async fn find_by_role_named(
+		&self,
+		role: Role,
+		name: impl Into<TextMatch>,
+	) -> ElementHandle {
+		self.find_by_role(role, name).await
+	}
+
+	/// Tries to find an element by role and accessible name after settling scheduled work.
+	pub async fn try_find_by_role_named(
+		&self,
+		role: Role,
+		name: impl Into<TextMatch>,
+	) -> Result<ElementHandle, QueryError> {
+		self.try_find_by_role(role, name).await
+	}
+
+	/// Finds an element by label after settling scheduled work.
+	pub async fn find_by_label(&self, label: impl Into<TextMatch>) -> ElementHandle {
+		self.try_find_by_label(label)
+			.await
+			.unwrap_or_else(|err| panic!("{err}"))
+	}
+
+	/// Tries to find an element by label after settling scheduled work.
+	pub async fn try_find_by_label(
+		&self,
+		label: impl Into<TextMatch>,
+	) -> Result<ElementHandle, QueryError> {
+		let label = label.into();
+		for _ in 0..50 {
+			match self.try_get_by_label(label.clone()) {
+				Ok(handle) => return Ok(handle),
+				Err(QueryError::NotFound) => {
+					let _ = self.try_settle().await;
+				}
+				Err(err) => return Err(err),
+			}
+			tokio::task::yield_now().await;
+		}
+		self.try_get_by_label(label)
+	}
+
+	/// Finds an element by placeholder after settling scheduled work.
+	pub async fn find_by_placeholder(&self, placeholder: impl Into<TextMatch>) -> ElementHandle {
+		self.try_find_by_placeholder(placeholder)
+			.await
+			.unwrap_or_else(|err| panic!("{err}"))
+	}
+
+	/// Tries to find an element by placeholder after settling scheduled work.
+	pub async fn try_find_by_placeholder(
+		&self,
+		placeholder: impl Into<TextMatch>,
+	) -> Result<ElementHandle, QueryError> {
+		let placeholder = placeholder.into();
+		for _ in 0..50 {
+			match self.try_get_by_placeholder(placeholder.clone()) {
+				Ok(handle) => return Ok(handle),
+				Err(QueryError::NotFound) => {
+					let _ = self.try_settle().await;
+				}
+				Err(err) => return Err(err),
+			}
+			tokio::task::yield_now().await;
+		}
+		self.try_get_by_placeholder(placeholder)
 	}
 
 	/// Registers a typed server function mock for this screen.

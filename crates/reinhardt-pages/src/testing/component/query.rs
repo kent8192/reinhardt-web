@@ -20,11 +20,7 @@ pub(crate) fn query_by_text(
 	text: TextMatch,
 ) -> Result<Option<ElementHandle>, QueryError> {
 	let matches = find_by_text(&inner.borrow(), &text);
-	match matches.len() {
-		0 => Ok(None),
-		1 => Ok(Some(ElementHandle::new(inner.clone(), matches[0]))),
-		_ => Err(QueryError::MultipleMatches),
-	}
+	optional_one(inner, matches)
 }
 
 pub(crate) fn by_role_named(
@@ -33,6 +29,14 @@ pub(crate) fn by_role_named(
 	name: TextMatch,
 ) -> Result<ElementHandle, QueryError> {
 	one(inner, find_by_role(&inner.borrow(), role, Some(&name)))
+}
+
+pub(crate) fn query_by_role_named(
+	inner: &Rc<RefCell<ScreenInner>>,
+	role: Role,
+	name: TextMatch,
+) -> Result<Option<ElementHandle>, QueryError> {
+	optional_one(inner, find_by_role(&inner.borrow(), role, Some(&name)))
 }
 
 pub(crate) fn by_label(
@@ -56,6 +60,27 @@ pub(crate) fn by_label(
 	one(inner, matches)
 }
 
+pub(crate) fn query_by_label(
+	inner: &Rc<RefCell<ScreenInner>>,
+	label: TextMatch,
+) -> Result<Option<ElementHandle>, QueryError> {
+	let borrowed = inner.borrow();
+	let matches = borrowed
+		.dom
+		.visible_elements()
+		.into_iter()
+		.filter(|node_id| {
+			borrowed.dom.element(*node_id).is_some_and(|node| {
+				node.supports_value()
+					&& accessible_name(&borrowed.dom, *node_id)
+						.as_deref()
+						.is_some_and(|name| label.matches(name))
+			})
+		})
+		.collect();
+	optional_one(inner, matches)
+}
+
 pub(crate) fn by_placeholder(
 	inner: &Rc<RefCell<ScreenInner>>,
 	placeholder: TextMatch,
@@ -77,6 +102,27 @@ pub(crate) fn by_placeholder(
 	one(inner, matches)
 }
 
+pub(crate) fn query_by_placeholder(
+	inner: &Rc<RefCell<ScreenInner>>,
+	placeholder: TextMatch,
+) -> Result<Option<ElementHandle>, QueryError> {
+	let borrowed = inner.borrow();
+	let matches = borrowed
+		.dom
+		.visible_elements()
+		.into_iter()
+		.filter(|node_id| {
+			borrowed.dom.element(*node_id).is_some_and(|node| {
+				node.supports_value()
+					&& node
+						.attr("placeholder")
+						.is_some_and(|value| placeholder.matches(value))
+			})
+		})
+		.collect();
+	optional_one(inner, matches)
+}
+
 fn one(
 	inner: &Rc<RefCell<ScreenInner>>,
 	matches: Vec<NodeId>,
@@ -84,6 +130,17 @@ fn one(
 	match matches.len() {
 		0 => Err(QueryError::NotFound),
 		1 => Ok(ElementHandle::new(inner.clone(), matches[0])),
+		_ => Err(QueryError::MultipleMatches),
+	}
+}
+
+fn optional_one(
+	inner: &Rc<RefCell<ScreenInner>>,
+	matches: Vec<NodeId>,
+) -> Result<Option<ElementHandle>, QueryError> {
+	match matches.len() {
+		0 => Ok(None),
+		1 => Ok(Some(ElementHandle::new(inner.clone(), matches[0]))),
 		_ => Err(QueryError::MultipleMatches),
 	}
 }

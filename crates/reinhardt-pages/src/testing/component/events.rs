@@ -64,22 +64,48 @@ impl ElementHandle {
 
 	/// Returns the element text content.
 	pub fn text(&self) -> String {
-		self.inner.borrow().dom.text_content(self.node_id)
+		self.try_text().expect("element text read failed")
+	}
+
+	/// Tries to return the element text content.
+	pub fn try_text(&self) -> Result<String, EventError> {
+		let borrowed = self.inner.borrow();
+		if !borrowed.dom.contains(self.node_id) {
+			return Err(EventError::DetachedElement);
+		}
+		Ok(borrowed.dom.text_content(self.node_id))
 	}
 
 	/// Returns the element tag name.
 	pub fn tag_name(&self) -> String {
-		self.inner
-			.borrow()
+		self.try_tag_name().expect("element tag read failed")
+	}
+
+	/// Tries to return the element tag name.
+	pub fn try_tag_name(&self) -> Result<String, EventError> {
+		let borrowed = self.inner.borrow();
+		if !borrowed.dom.contains(self.node_id) {
+			return Err(EventError::DetachedElement);
+		}
+		borrowed
 			.dom
 			.element(self.node_id)
 			.map(|node| node.tag.clone())
-			.unwrap_or_default()
+			.ok_or(EventError::UnsupportedElement)
 	}
 
 	/// Returns the current internal form value for value-bearing elements.
 	pub fn value(&self) -> Option<String> {
-		self.inner.borrow().dom.value(self.node_id)
+		self.try_value().expect("element value read failed")
+	}
+
+	/// Tries to return the current internal form value for value-bearing elements.
+	pub fn try_value(&self) -> Result<Option<String>, EventError> {
+		let borrowed = self.inner.borrow();
+		if !borrowed.dom.contains(self.node_id) {
+			return Err(EventError::DetachedElement);
+		}
+		Ok(borrowed.dom.value(self.node_id))
 	}
 
 	fn dispatch(&self, event_type: EventType) -> Result<(), EventError> {
