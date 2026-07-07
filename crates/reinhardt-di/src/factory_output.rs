@@ -61,6 +61,6 @@ where
 /// Deprecated compatibility alias for the old explicitly keyed provider output.
 #[deprecated(
 	since = "0.4.0",
-	note = "use KeyedFactoryOutput<K, T> for explicit keys, or return T directly from #[injectable] for self-keyed providers"
+	note = "use KeyedFactoryOutput<K, T> for explicit keys, or return T directly from injectable providers for self-keyed providers"
 )]
 pub type FactoryOutput<K, T> = KeyedFactoryOutput<K, T>;
