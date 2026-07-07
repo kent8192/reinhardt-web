@@ -1,6 +1,6 @@
 //! `ClientFormChoices` derive implementation.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use proc_macro::TokenStream;
 use quote::quote;
@@ -40,6 +40,7 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 	let pages_crate = get_reinhardt_pages_crate();
 	let rename_rule = serde_rename_all(&attrs)?;
 	let mut choice_values = Vec::new();
+	let mut accepted_variants = Vec::new();
 	let mut default_variant = None;
 	let mut has_skipped_variant = false;
 	let mut seen_serialized_values = BTreeSet::new();
@@ -82,6 +83,11 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 				format!("duplicate ClientFormChoices serialized value `{serialized}`"),
 			));
 		}
+		accepted_variants.push(ChoiceVariant {
+			ident: variant_ident.clone(),
+			serialized: serialized.clone(),
+			aliases: variant_options.aliases,
+		});
 		choice_values.push(quote! {
 			#pages_crate::ClientFormChoice {
 				value: #enum_ident::#variant_ident,
@@ -90,6 +96,7 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 			}
 		});
 	}
+	reject_alias_collisions_with_choices(&accepted_variants)?;
 
 	if has_skipped_variant && default_variant.is_none() {
 		return Err(syn::Error::new_spanned(
@@ -210,6 +217,7 @@ fn rename_rule_from_value(value: &LitStr) -> syn::Result<RenameRule> {
 
 struct SerdeVariantOptions {
 	rename: Option<String>,
+	aliases: Vec<String>,
 	skip: bool,
 	default: bool,
 }
@@ -217,6 +225,7 @@ struct SerdeVariantOptions {
 fn serde_variant_options(attrs: &[syn::Attribute]) -> syn::Result<SerdeVariantOptions> {
 	let mut options = SerdeVariantOptions {
 		rename: None,
+		aliases: Vec::new(),
 		skip: false,
 		default: false,
 	};
@@ -256,8 +265,10 @@ fn serde_variant_options(attrs: &[syn::Attribute]) -> syn::Result<SerdeVariantOp
 				|| meta.path.is_ident("skip_deserializing")
 			{
 				options.skip = true;
-			} else if meta.path.is_ident("alias")
-				|| meta.path.is_ident("other")
+			} else if meta.path.is_ident("alias") {
+				let value = meta.value()?.parse::<LitStr>()?;
+				options.aliases.push(value.value());
+			} else if meta.path.is_ident("other")
 				|| meta.path.is_ident("borrow")
 				|| meta.path.is_ident("deserialize_with")
 			{
@@ -269,6 +280,37 @@ fn serde_variant_options(attrs: &[syn::Attribute]) -> syn::Result<SerdeVariantOp
 		})?;
 	}
 	Ok(options)
+}
+
+struct ChoiceVariant {
+	ident: Ident,
+	serialized: String,
+	aliases: Vec<String>,
+}
+
+fn reject_alias_collisions_with_choices(variants: &[ChoiceVariant]) -> syn::Result<()> {
+	let serialized_values = variants
+		.iter()
+		.map(|variant| (variant.serialized.as_str(), &variant.ident))
+		.collect::<BTreeMap<_, _>>();
+
+	for variant in variants {
+		for alias in &variant.aliases {
+			if alias == &variant.serialized {
+				continue;
+			}
+			if serialized_values.contains_key(alias.as_str()) {
+				return Err(syn::Error::new_spanned(
+					&variant.ident,
+					format!(
+						"ClientFormChoices serde alias `{alias}` collides with an emitted choice value"
+					),
+				));
+			}
+		}
+	}
+
+	Ok(())
 }
 
 fn consume_ignored_serde_variant_option(meta: ParseNestedMeta<'_>) -> syn::Result<()> {

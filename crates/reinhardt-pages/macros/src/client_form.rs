@@ -272,9 +272,14 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 		quote! { #name: values.#name.clone() }
 	});
 	let field_name_arms = fields.iter().map(|field| {
+		let raw_name = field.name.to_string();
 		let name = ident_name_without_raw_prefix(&field.name);
 		let variant = &field.variant;
-		quote! { #name => ::core::option::Option::Some(#field_ident::#variant) }
+		if raw_name == name {
+			quote! { #name => ::core::option::Option::Some(#field_ident::#variant) }
+		} else {
+			quote! { #name | #raw_name => ::core::option::Option::Some(#field_ident::#variant) }
+		}
 	});
 	let runtime_validate_method = if validate {
 		quote! {

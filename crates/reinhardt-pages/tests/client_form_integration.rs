@@ -175,6 +175,41 @@ fn client_form_validation_maps_dto_field_errors() {
 	);
 }
 
+#[derive(Clone, Default, Debug, PartialEq, ClientForm)]
+#[client_form(validate)]
+struct RawValidationRequest {
+	r#type: String,
+}
+
+impl Validate for RawValidationRequest {
+	fn validate(&self) -> Result<(), ValidationErrors> {
+		let mut errors = ValidationErrors::new();
+		errors.add(
+			"r#type",
+			ValidationError::PatternMismatch("expected raw field value".to_string()),
+		);
+		Err(errors)
+	}
+}
+
+#[test]
+fn client_form_validation_maps_raw_dto_field_errors() {
+	let form = RawValidationRequestClientForm::new();
+	let runtime = use_form(&form).build();
+
+	let result = runtime.trigger();
+
+	assert!(result.is_err());
+	assert_eq!(
+		runtime
+			.get_field_state(RawValidationRequestClientFormField::Type)
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("Pattern mismatch: expected raw field value")
+	);
+}
+
 thread_local! {
 	static SUBMIT_CALL_COUNT: Cell<usize> = const { Cell::new(0) };
 }

@@ -1365,20 +1365,17 @@ fn generate_server_handler(
 	} else {
 		quote! {}
 	};
-	let request_metadata_type_aliases = if emits_typed_response_metadata
-		&& regular_param_types.len() == 1
-	{
-		let request_type = regular_param_types[0];
-		quote! {
-			#[doc(hidden)]
-			#vis type #request_alias = #request_type;
-		}
-	} else {
-		quote! {}
-	};
-	let request_metadata_impl = if emits_typed_response_metadata
-		&& regular_param_types.len() == 1
-	{
+	let request_metadata_type_aliases =
+		if emits_typed_response_metadata && regular_param_types.len() == 1 {
+			let request_type = regular_param_types[0];
+			quote! {
+				#[doc(hidden)]
+				#vis type #request_alias = #request_type;
+			}
+		} else {
+			quote! {}
+		};
+	let request_metadata_impl = if emits_typed_response_metadata && regular_param_types.len() == 1 {
 		quote! {
 			impl #pages_crate::server_fn::ServerFnRequestMetadata for marker {
 				type Request = super::#request_alias;
