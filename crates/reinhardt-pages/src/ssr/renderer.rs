@@ -394,11 +394,6 @@ impl SsrRenderer {
 		restore_id_counter(snapshot.id_counter);
 	}
 
-	fn active_context_has_pending_resources() -> bool {
-		super::resource_context::with_active_context(|context| context.borrow().has_pending())
-			.unwrap_or(false)
-	}
-
 	fn begin_render(&mut self) {
 		self.state.clear_resource_states();
 		self.reset_deterministic_render_counters();
@@ -415,7 +410,7 @@ impl SsrRenderer {
 		let (view, content, body_tail) = self
 			.render_view_parts_from_factory(|| component.render())
 			.await;
-		let view_head = view.find_topmost_head().cloned();
+		let view_head = view.find_topmost_head_owned();
 		SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
 			&content,
 			&body_tail,
@@ -431,7 +426,7 @@ impl SsrRenderer {
 		}
 
 		let (view, content, body_tail) = self.render_view_parts_from_factory(|| view.clone()).await;
-		let view_head = view.find_topmost_head().cloned();
+		let view_head = view.find_topmost_head_owned();
 		SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
 			&content,
 			&body_tail,
@@ -441,9 +436,10 @@ impl SsrRenderer {
 
 	/// Renders a View to a full HTML page, using the View's attached head if present.
 	///
-	/// This method extracts any `Head` attached to the View using `find_topmost_head()`,
-	/// and uses it to render the HTML `<head>` section. If no head is attached,
-	/// it falls back to the head settings from `SsrOptions`.
+	/// This method extracts any `Head` attached to the View using
+	/// `find_topmost_head_owned()` and uses it to render the HTML `<head>`
+	/// section. If no head is attached, it falls back to the head settings from
+	/// `SsrOptions`.
 	///
 	/// # Arguments
 	///
@@ -471,7 +467,7 @@ impl SsrRenderer {
 		}
 
 		let (view, content, body_tail) = self.render_view_parts_from_factory(|| view.clone()).await;
-		let view_head = view.find_topmost_head().cloned();
+		let view_head = view.find_topmost_head_owned();
 		SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
 			&content,
 			&body_tail,
@@ -484,7 +480,7 @@ impl SsrRenderer {
 		let (view, content, body_tail) = self
 			.render_view_parts_from_factory(|| component.render())
 			.await;
-		let view_head = view.find_topmost_head().cloned();
+		let view_head = view.find_topmost_head_owned();
 		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())
 	}
 
@@ -492,14 +488,14 @@ impl SsrRenderer {
 	pub async fn render_page_into_page_to_string<V: IntoPage>(&mut self, view: V) -> String {
 		let view = view.into_page();
 		let (view, content, body_tail) = self.render_view_parts_from_factory(|| view.clone()).await;
-		let view_head = view.find_topmost_head().cloned();
+		let view_head = view.find_topmost_head_owned();
 		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())
 	}
 
 	/// Renders a View to a buffered full HTML page, using attached head data.
 	pub async fn render_page_with_view_head_to_string(&mut self, view: Page) -> String {
 		let (view, content, body_tail) = self.render_view_parts_from_factory(|| view.clone()).await;
-		let view_head = view.find_topmost_head().cloned();
+		let view_head = view.find_topmost_head_owned();
 		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())
 	}
 
@@ -538,7 +534,7 @@ impl SsrRenderer {
 					drop(view);
 					resolve_external_resources(&context).await;
 				};
-				let view_head = view.find_topmost_head().cloned();
+				let view_head = view.find_topmost_head_owned();
 				self.add_resolved_resources_to_state(&context);
 
 				let shell = self.wrap_in_html_shell(&content, view_head.as_ref());
@@ -584,7 +580,7 @@ impl SsrRenderer {
 											if boundary.node.is_pending() {
 												return None;
 											}
-											let (replacement_page, replacement, nested_boundaries) = loop {
+											let (replacement, nested_boundaries) = loop {
 												runtime
 													.renderer
 													.restore_deterministic_render_snapshot(
@@ -617,11 +613,7 @@ impl SsrRenderer {
 												if !has_pending_boundary_resource
 													&& !has_pending_external_resource
 												{
-													break (
-														replacement_page,
-														replacement,
-														nested_boundaries,
-													);
+													break (replacement, nested_boundaries);
 												}
 
 												drop(replacement_page);
@@ -637,9 +629,6 @@ impl SsrRenderer {
 														.await;
 												}
 											};
-											boundary
-												.node
-												.cache_content_head_from(&replacement_page);
 											runtime
 												.renderer
 												.add_resolved_resources_to_state(&runtime.context);
@@ -838,10 +827,6 @@ impl SsrRenderer {
 					})
 					.unwrap_or(false);
 
-					if !has_pending && !node.is_pending() {
-						node.cache_content_head_from(&content_page);
-					}
-
 					if has_pending || node.is_pending() {
 						self.restore_deterministic_render_snapshot(boundary_start);
 						let fallback_page = node.render_fallback();
@@ -861,16 +846,8 @@ impl SsrRenderer {
 					}
 				}
 				Page::Deferred(node) => {
-					let content_start = self.deterministic_render_snapshot();
 					let content = node.render_content();
-					let rendered = self.render_stream_shell_page(&content, boundaries).await;
-					let content_end = self.deterministic_render_snapshot();
-					if !Self::active_context_has_pending_resources() {
-						self.restore_deterministic_render_snapshot(content_start);
-						node.cache_content_head_from(&content);
-						self.restore_deterministic_render_snapshot(content_end);
-					}
-					rendered
+					self.render_stream_shell_page(&content, boundaries).await
 				}
 				Page::Outlet(outlet) => {
 					if let Some(child) = outlet.child() {
@@ -1017,14 +994,6 @@ impl SsrRenderer {
 						let replacement = self
 							.render_async_page(&replacement_page, AsyncRenderMode::Buffered)
 							.await;
-						let replacement_settled =
-							super::resource_context::with_active_context(|context| {
-								!context.borrow().has_pending()
-							})
-							.unwrap_or(true);
-						if replacement_settled {
-							node.cache_content_head_from(&replacement_page);
-						}
 						if let Some(index) = boundary_end_index
 							&& let Some(context) =
 								super::resource_context::with_active_context(Rc::clone)
@@ -1034,23 +1003,12 @@ impl SsrRenderer {
 
 						replacement
 					} else {
-						node.cache_content_head_from(&content_page);
 						content
 					}
 				}
 				Page::Deferred(node) => {
-					let content_start = self.deterministic_render_snapshot();
 					let content = node.render_content();
-					let rendered = self.render_async_page(&content, mode).await;
-					let content_end = self.deterministic_render_snapshot();
-					if !matches!(mode, AsyncRenderMode::Discovery)
-						&& !Self::active_context_has_pending_resources()
-					{
-						self.restore_deterministic_render_snapshot(content_start);
-						node.cache_content_head_from(&content);
-						self.restore_deterministic_render_snapshot(content_end);
-					}
-					rendered
+					self.render_async_page(&content, mode).await
 				}
 				Page::Outlet(outlet) => {
 					if let Some(child) = outlet.child() {

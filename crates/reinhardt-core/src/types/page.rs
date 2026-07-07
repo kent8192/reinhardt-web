@@ -198,7 +198,6 @@ impl Clone for SuspenseNode {
 			is_pending: Arc::clone(&self.is_pending),
 			fallback: Arc::clone(&self.fallback),
 			content: Arc::clone(&self.content),
-			content_head: Arc::new(OnceLock::new()),
 		}
 	}
 }
@@ -943,9 +942,9 @@ impl Page {
 				.iter()
 				.find_map(Page::find_topmost_head_owned),
 			Page::Fragment(children) => children.iter().find_map(Page::find_topmost_head_owned),
-			Page::KeyedFragment(children) => {
-				children.iter().find_map(|(_, v)| v.find_topmost_head_owned())
-			}
+			Page::KeyedFragment(children) => children
+				.iter()
+				.find_map(|(_, v)| v.find_topmost_head_owned()),
 			Page::Outlet(outlet) => outlet.child().and_then(Page::find_topmost_head_owned),
 			Page::Suspense(node) => node.find_topmost_content_head_owned(),
 			Page::Deferred(node) => node.find_topmost_content_head_owned(),
