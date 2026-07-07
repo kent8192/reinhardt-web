@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::meta::ParseNestedMeta;
-use syn::{Data, DeriveInput, Fields, LitStr, Token, parse_macro_input};
+use syn::{Data, DeriveInput, Fields, Ident, LitStr, Token, parse_macro_input};
 
 use crate::crate_paths::get_reinhardt_pages_crate;
 
@@ -72,9 +72,10 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 			));
 		}
 
+		let variant_name = ident_name_without_raw_prefix(&variant_ident);
 		let serialized = variant_options
 			.rename
-			.unwrap_or_else(|| apply_rename_rule(&variant_ident.to_string(), rename_rule));
+			.unwrap_or_else(|| apply_rename_rule(&variant_name, rename_rule));
 		if !seen_serialized_values.insert(serialized.clone()) {
 			return Err(syn::Error::new_spanned(
 				&variant_ident,
@@ -286,6 +287,11 @@ fn apply_rename_rule(name: &str, rename_rule: RenameRule) -> String {
 		RenameRule::KebabCase => serde_snake_case_variant(name).replace('_', "-"),
 		RenameRule::CamelCase => serde_camel_case_variant(name),
 	}
+}
+
+fn ident_name_without_raw_prefix(ident: &Ident) -> String {
+	let name = ident.to_string();
+	name.strip_prefix("r#").unwrap_or(&name).to_string()
 }
 
 fn serde_snake_case_variant(name: &str) -> String {

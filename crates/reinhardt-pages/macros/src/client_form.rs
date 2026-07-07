@@ -464,18 +464,14 @@ fn generate_submit_method(
 		fn __assert_server_fn_response_metadata()
 		where
 			#dto_ident: ::serde::Serialize,
-			#server_fn::marker: #pages_crate::server_fn::ServerFnResponseMetadata,
+			#server_fn::marker: #pages_crate::server_fn::ServerFnResponseMetadata
+				+ #pages_crate::server_fn::ServerFnRequestMetadata<Request = #dto_ident>,
 			<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Response:
 				::serde::de::DeserializeOwned,
 			<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Error:
 				::core::fmt::Display
 				+ ::core::convert::From<#pages_crate::server_fn::ServerFnError>,
 		{
-		}
-
-		#[allow(dead_code)]
-		fn __assert_server_fn_accepts_request(__request: #dto_ident) {
-			let _future = #server_fn(__request);
 		}
 
 		#[cfg(all(target_family = "wasm", target_os = "unknown"))]

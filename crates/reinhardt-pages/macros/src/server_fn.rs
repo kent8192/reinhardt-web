@@ -1312,6 +1312,10 @@ fn generate_server_handler(
 	// the function because Rust's value namespace doesn't allow both a function
 	// and a `use` item with the same name in the same module.
 	let marker_module_name = name.clone();
+	let metadata_alias_prefix = name.to_string().to_case(Case::Pascal);
+	let response_alias = quote::format_ident!("__ServerFn{}Response", metadata_alias_prefix);
+	let error_alias = quote::format_ident!("__ServerFn{}Error", metadata_alias_prefix);
+	let request_alias = quote::format_ident!("__ServerFn{}Request", metadata_alias_prefix);
 
 	// MSW: Generate MockableServerFn impl when the macro crate was compiled
 	// with `msw` feature.
@@ -1341,11 +1345,43 @@ fn generate_server_handler(
 	} else {
 		(quote! {}, quote! {})
 	};
+	let response_metadata_type_aliases = if emits_typed_response_metadata {
+		quote! {
+			#[doc(hidden)]
+			#vis type #response_alias = #response_type;
+			#[doc(hidden)]
+			#vis type #error_alias = #error_type;
+		}
+	} else {
+		quote! {}
+	};
 	let response_metadata_impl = if emits_typed_response_metadata {
 		quote! {
 			impl #pages_crate::server_fn::ServerFnResponseMetadata for marker {
-				type Response = #response_type;
-				type Error = #error_type;
+				type Response = super::#response_alias;
+				type Error = super::#error_alias;
+			}
+		}
+	} else {
+		quote! {}
+	};
+	let request_metadata_type_aliases = if emits_typed_response_metadata
+		&& regular_param_types.len() == 1
+	{
+		let request_type = regular_param_types[0];
+		quote! {
+			#[doc(hidden)]
+			#vis type #request_alias = #request_type;
+		}
+	} else {
+		quote! {}
+	};
+	let request_metadata_impl = if emits_typed_response_metadata
+		&& regular_param_types.len() == 1
+	{
+		quote! {
+			impl #pages_crate::server_fn::ServerFnRequestMetadata for marker {
+				type Request = super::#request_alias;
 			}
 		}
 	} else {
@@ -1382,7 +1418,7 @@ fn generate_server_handler(
 
 			impl #pages_crate::server_fn::MockableServerFn for marker {
 				type Args = Args;
-				type Response = #response_type;
+				type Response = super::#response_alias;
 			}
 		}
 	} else {
@@ -1422,7 +1458,7 @@ fn generate_server_handler(
 			#[allow(unexpected_cfgs)]
 			impl #pages_crate::server_fn::MockableServerFn for marker {
 				type Args = Args;
-				type Response = #response_type;
+				type Response = super::#response_alias;
 			}
 		}
 	} else {
@@ -1470,6 +1506,7 @@ fn generate_server_handler(
 			}
 
 			#response_metadata_impl
+			#request_metadata_impl
 
 			#msw_wasm_inner_tokens
 		}
@@ -1545,6 +1582,9 @@ fn generate_server_handler(
 			#endpoint
 		}
 
+		#response_metadata_type_aliases
+		#request_metadata_type_aliases
+
 		// Static wrapper function for explicit registration
 		// This is used by ServerFnRegistration::handler() to provide a function pointer.
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -1594,6 +1634,7 @@ fn generate_server_handler(
 			}
 
 			#response_metadata_impl
+			#request_metadata_impl
 
 			// Native-only handler entry point for explicit router registration.
 			impl #pages_crate::server_fn::ServerFnRegistration for marker {

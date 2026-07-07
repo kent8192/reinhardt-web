@@ -133,7 +133,7 @@ pub fn derive_from_request(input: TokenStream) -> TokenStream {
 }
 
 /// Derives client-form choice metadata for fieldless enums.
-#[proc_macro_derive(ClientFormChoices, attributes(serde))]
+#[proc_macro_derive(ClientFormChoices, attributes(serde, default))]
 pub fn derive_client_form_choices(input: TokenStream) -> TokenStream {
 	client_form_choices::derive_client_form_choices_impl(input)
 }

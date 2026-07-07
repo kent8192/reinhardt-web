@@ -86,3 +86,14 @@ pub trait ServerFnResponseMetadata: ServerFnMetadata {
 	/// Error type returned by the public server function stub.
 	type Error: 'static;
 }
+
+/// Exposes the client-visible request argument type of a `#[server_fn]` marker.
+///
+/// This is implemented by the `#[server_fn]` macro when the public client call
+/// shape has exactly one body-deserialized request argument. Parameters resolved
+/// by `#[inject]` or `FromRequest` extractors are intentionally excluded because
+/// clients and form submit helpers cannot provide them directly.
+pub trait ServerFnRequestMetadata: ServerFnMetadata {
+	/// Request type accepted by the client-visible server function call.
+	type Request: 'static;
+}

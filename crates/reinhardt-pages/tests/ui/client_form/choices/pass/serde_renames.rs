@@ -23,6 +23,16 @@ enum DirectionalRenameAllMode {
 	LiveApi,
 }
 
+#[derive(Clone, Default, PartialEq, ClientFormChoices)]
+#[serde(rename_all = "snake_case")]
+enum RawVariantMode {
+	#[default]
+	Fake,
+	// Raw keyword variants are intentionally lower-case to verify serialized values omit `r#`.
+	#[allow(non_camel_case_types)]
+	r#type,
+}
+
 fn main() {
 	let choices = ProviderMode::client_form_choices();
 	assert_eq!(choices.len(), 4);
@@ -51,4 +61,9 @@ fn main() {
 		DirectionalRenameAllMode::client_form_default(),
 		DirectionalRenameAllMode::FakeMode
 	));
+
+	let choices = RawVariantMode::client_form_choices();
+	assert_eq!(choices.len(), 2);
+	assert_eq!(choices[0].serialized_value, "fake");
+	assert_eq!(choices[1].serialized_value, "type");
 }
