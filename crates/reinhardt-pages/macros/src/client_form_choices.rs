@@ -38,7 +38,7 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 	};
 
 	let pages_crate = get_reinhardt_pages_crate();
-	let rename_rule = serde_rename_all(&attrs)?;
+	let rename_rules = serde_rename_all(&attrs)?;
 	let mut choice_values = Vec::new();
 	let mut accepted_variants = Vec::new();
 	let mut default_variant = None;
@@ -46,7 +46,7 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 	let mut seen_serialized_values = BTreeSet::new();
 
 	for variant in data_enum.variants {
-		let variant_options = serde_variant_options(&variant.attrs)?;
+		let mut variant_options = serde_variant_options(&variant.attrs)?;
 		let variant_ident = variant.ident.clone();
 		if variant_options.skip {
 			has_skipped_variant = true;
@@ -76,7 +76,11 @@ fn expand_client_form_choices(input: DeriveInput) -> syn::Result<proc_macro2::To
 		let variant_name = ident_name_without_raw_prefix(&variant_ident);
 		let serialized = variant_options
 			.rename
-			.unwrap_or_else(|| apply_rename_rule(&variant_name, rename_rule));
+			.unwrap_or_else(|| apply_rename_rule(&variant_name, rename_rules.serialize));
+		let deserialize_name = variant_options
+			.deserialize_rename
+			.unwrap_or_else(|| apply_rename_rule(&variant_name, rename_rules.deserialize));
+		variant_options.aliases.push(deserialize_name);
 		if !seen_serialized_values.insert(serialized.clone()) {
 			return Err(syn::Error::new_spanned(
 				&variant_ident,
@@ -135,8 +139,16 @@ enum RenameRule {
 	CamelCase,
 }
 
-fn serde_rename_all(attrs: &[syn::Attribute]) -> syn::Result<RenameRule> {
-	let mut rename_rule = RenameRule::Verbatim;
+struct SerdeRenameRules {
+	serialize: RenameRule,
+	deserialize: RenameRule,
+}
+
+fn serde_rename_all(attrs: &[syn::Attribute]) -> syn::Result<SerdeRenameRules> {
+	let mut rename_rules = SerdeRenameRules {
+		serialize: RenameRule::Verbatim,
+		deserialize: RenameRule::Verbatim,
+	};
 	for attr in attrs {
 		if !attr.path().is_ident("serde") {
 			continue;
@@ -145,15 +157,19 @@ fn serde_rename_all(attrs: &[syn::Attribute]) -> syn::Result<RenameRule> {
 			if meta.path.is_ident("rename_all") {
 				if meta.input.peek(Token![=]) {
 					let value = meta.value()?.parse::<LitStr>()?;
-					rename_rule = rename_rule_from_value(&value)?;
+					let rule = rename_rule_from_value(&value)?;
+					rename_rules.serialize = rule;
+					rename_rules.deserialize = rule;
 				} else {
 					let mut serialize_rule = None;
+					let mut deserialize_rule = None;
 					meta.parse_nested_meta(|rename_meta| {
 						if rename_meta.path.is_ident("serialize") {
 							let value = rename_meta.value()?.parse::<LitStr>()?;
 							serialize_rule = Some(rename_rule_from_value(&value)?);
 						} else if rename_meta.path.is_ident("deserialize") {
-							let _value = rename_meta.value()?.parse::<LitStr>()?;
+							let value = rename_meta.value()?.parse::<LitStr>()?;
+							deserialize_rule = Some(rename_rule_from_value(&value)?);
 						} else {
 							return Err(rename_meta.error(
 								"unsupported serde rename_all option for ClientFormChoices",
@@ -162,7 +178,10 @@ fn serde_rename_all(attrs: &[syn::Attribute]) -> syn::Result<RenameRule> {
 						Ok(())
 					})?;
 					if let Some(rule) = serialize_rule {
-						rename_rule = rule;
+						rename_rules.serialize = rule;
+					}
+					if let Some(rule) = deserialize_rule {
+						rename_rules.deserialize = rule;
 					}
 				}
 			} else if meta.path.is_ident("tag")
@@ -187,7 +206,7 @@ fn serde_rename_all(attrs: &[syn::Attribute]) -> syn::Result<RenameRule> {
 			Ok(())
 		})?;
 	}
-	Ok(rename_rule)
+	Ok(rename_rules)
 }
 
 fn consume_ignored_serde_meta(meta: ParseNestedMeta<'_>) -> syn::Result<()> {
@@ -217,6 +236,7 @@ fn rename_rule_from_value(value: &LitStr) -> syn::Result<RenameRule> {
 
 struct SerdeVariantOptions {
 	rename: Option<String>,
+	deserialize_rename: Option<String>,
 	aliases: Vec<String>,
 	skip: bool,
 	default: bool,
@@ -225,6 +245,7 @@ struct SerdeVariantOptions {
 fn serde_variant_options(attrs: &[syn::Attribute]) -> syn::Result<SerdeVariantOptions> {
 	let mut options = SerdeVariantOptions {
 		rename: None,
+		deserialize_rename: None,
 		aliases: Vec::new(),
 		skip: false,
 		default: false,
@@ -241,15 +262,19 @@ fn serde_variant_options(attrs: &[syn::Attribute]) -> syn::Result<SerdeVariantOp
 			if meta.path.is_ident("rename") {
 				if meta.input.peek(Token![=]) {
 					let value = meta.value()?.parse::<LitStr>()?;
-					options.rename = Some(value.value());
+					let value = value.value();
+					options.rename = Some(value.clone());
+					options.deserialize_rename = Some(value);
 				} else {
 					let mut serialize_rename = None;
+					let mut deserialize_rename = None;
 					meta.parse_nested_meta(|rename_meta| {
 						if rename_meta.path.is_ident("serialize") {
 							let value = rename_meta.value()?.parse::<LitStr>()?;
 							serialize_rename = Some(value.value());
 						} else if rename_meta.path.is_ident("deserialize") {
-							let _value = rename_meta.value()?.parse::<LitStr>()?;
+							let value = rename_meta.value()?.parse::<LitStr>()?;
+							deserialize_rename = Some(value.value());
 						} else {
 							return Err(rename_meta
 								.error("unsupported serde rename option for ClientFormChoices"));
@@ -258,6 +283,9 @@ fn serde_variant_options(attrs: &[syn::Attribute]) -> syn::Result<SerdeVariantOp
 					})?;
 					if let Some(value) = serialize_rename {
 						options.rename = Some(value);
+					}
+					if let Some(value) = deserialize_rename {
+						options.deserialize_rename = Some(value);
 					}
 				}
 			} else if meta.path.is_ident("skip")

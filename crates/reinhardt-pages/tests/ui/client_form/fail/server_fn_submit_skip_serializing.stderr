@@ -1,0 +1,5 @@
+error: ClientForm server_fn fields with serde(skip_serializing) must also use serde(default) or serde(skip_deserializing)
+  --> tests/ui/client_form/fail/server_fn_submit_skip_serializing.rs:11:2
+   |
+11 |     token: String,
+   |     ^^^^^

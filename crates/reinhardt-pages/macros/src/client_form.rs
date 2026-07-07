@@ -62,7 +62,15 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 			));
 		};
 		let field_options = ClientFormFieldOptions::parse(&field.attrs)?;
-		if field_options.skip || field_options.serde_skip {
+		if options.server_fn.is_some()
+			&& field_options.omits_server_submit_without_default(&field.ty)
+		{
+			return Err(syn::Error::new_spanned(
+				&field_ident,
+				"ClientForm server_fn fields with serde(skip_serializing) must also use serde(default) or serde(skip_deserializing)",
+			));
+		}
+		if field_options.is_skipped() {
 			ensure_skippable(&field.ty)?;
 			skipped_fields.push(SkippedField {
 				name: field_ident,
@@ -545,6 +553,9 @@ impl ClientFormOptions {
 struct ClientFormFieldOptions {
 	skip: bool,
 	serde_skip: bool,
+	serde_skip_serializing: bool,
+	serde_skip_deserializing: bool,
+	serde_default: bool,
 }
 
 impl ClientFormFieldOptions {
@@ -552,6 +563,9 @@ impl ClientFormFieldOptions {
 		let mut options = Self {
 			skip: false,
 			serde_skip: false,
+			serde_skip_serializing: false,
+			serde_skip_deserializing: false,
+			serde_default: false,
 		};
 		for attr in attrs {
 			if attr.path().is_ident("client_form") {
@@ -565,11 +579,17 @@ impl ClientFormFieldOptions {
 				})?;
 			} else if attr.path().is_ident("serde") {
 				attr.parse_nested_meta(|meta| {
-					if meta.path.is_ident("skip")
-						|| meta.path.is_ident("skip_serializing")
-						|| meta.path.is_ident("skip_deserializing")
-					{
+					if meta.path.is_ident("skip") {
 						options.serde_skip = true;
+						options.serde_skip_serializing = true;
+						options.serde_skip_deserializing = true;
+					} else if meta.path.is_ident("skip_serializing") {
+						options.serde_skip_serializing = true;
+					} else if meta.path.is_ident("skip_deserializing") {
+						options.serde_skip_deserializing = true;
+					} else if meta.path.is_ident("default") {
+						options.serde_default = true;
+						consume_serde_field_meta(meta)?;
 					} else {
 						consume_serde_field_meta(meta)?;
 					}
@@ -578,6 +598,17 @@ impl ClientFormFieldOptions {
 			}
 		}
 		Ok(options)
+	}
+
+	fn is_skipped(&self) -> bool {
+		self.skip || self.serde_skip || self.serde_skip_serializing || self.serde_skip_deserializing
+	}
+
+	fn omits_server_submit_without_default(&self, ty: &Type) -> bool {
+		self.serde_skip_serializing
+			&& !self.serde_skip_deserializing
+			&& !self.serde_default
+			&& option_inner_type(ty).is_none()
 	}
 }
 

@@ -1,0 +1,5 @@
+error: ClientFormChoices serde alias `live` collides with an emitted choice value
+ --> tests/ui/client_form/choices/fail/deserialize_rename_collision.rs:7:2
+  |
+7 |     Fake,
+  |     ^^^^
