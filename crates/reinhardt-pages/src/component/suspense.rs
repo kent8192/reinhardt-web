@@ -251,9 +251,6 @@ impl IntoPage for SuspenseBoundary {
 			None,
 			tracked_resource_ids,
 			move || trackers.iter().any(|tracker| tracker.is_loading()),
-			#[cfg(native)]
-			fallback_fn,
-			#[cfg(wasm)]
 			move || {
 				PageElement::new("div")
 					.attr("data-rh-suspense", "pending")

@@ -1,6 +1,6 @@
 //! SSR Renderer for Component-based server-side rendering.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, VecDeque};
 use std::fmt::Write as _;
 use std::rc::Rc;
@@ -15,7 +15,10 @@ use super::state::SsrState;
 use super::stream::{SsrChunk, SsrStream};
 use crate::auth::AuthData;
 use crate::component::{Component, Head, IntoPage, Page};
-use crate::reactive::hooks::id::reset_id_counter;
+use crate::reactive::hooks::id::{
+	id_counter_snapshot, reset_id_counter, restore_id_counter, scope_id_counter,
+	scope_id_counter_with,
+};
 use futures_util::StreamExt;
 use futures_util::future::{FutureExt, LocalBoxFuture};
 use futures_util::stream::{self, FuturesUnordered};
@@ -195,8 +198,14 @@ enum AsyncRenderMode {
 struct PendingSuspenseBoundary {
 	boundary_id: String,
 	node: SuspenseNode,
-	boundary_start_index: Option<usize>,
-	boundary_end_index: Option<usize>,
+	boundary_start: DeterministicRenderSnapshot,
+}
+
+#[derive(Clone, Copy)]
+struct DeterministicRenderSnapshot {
+	resource_call_order_index: Option<usize>,
+	suspense_boundary_counter: u64,
+	id_counter: usize,
 }
 
 type SuspenseBoundaryResult = (PendingSuspenseBoundary, bool);
@@ -205,6 +214,7 @@ type SuspenseBoundaryFuture = LocalBoxFuture<'static, Vec<SuspenseBoundaryResult
 struct SuspenseStreamRuntime {
 	renderer: SsrRenderer,
 	context: Rc<RefCell<SsrResourceContext>>,
+	id_counter: Rc<Cell<usize>>,
 	boundaries: FuturesUnordered<SuspenseBoundaryFuture>,
 	ready_boundaries: VecDeque<SuspenseBoundaryResult>,
 }
@@ -364,6 +374,31 @@ impl SsrRenderer {
 		reset_id_counter();
 	}
 
+	fn deterministic_render_snapshot(&self) -> DeterministicRenderSnapshot {
+		DeterministicRenderSnapshot {
+			resource_call_order_index: super::resource_context::with_active_context(|context| {
+				context.borrow().call_order_index()
+			}),
+			suspense_boundary_counter: self.suspense_boundary_counter,
+			id_counter: id_counter_snapshot(),
+		}
+	}
+
+	fn restore_deterministic_render_snapshot(&mut self, snapshot: DeterministicRenderSnapshot) {
+		if let Some(index) = snapshot.resource_call_order_index
+			&& let Some(context) = super::resource_context::with_active_context(Rc::clone)
+		{
+			context.borrow_mut().set_call_order_index(index);
+		}
+		self.suspense_boundary_counter = snapshot.suspense_boundary_counter;
+		restore_id_counter(snapshot.id_counter);
+	}
+
+	fn active_context_has_pending_resources() -> bool {
+		super::resource_context::with_active_context(|context| context.borrow().has_pending())
+			.unwrap_or(false)
+	}
+
 	fn begin_render(&mut self) {
 		self.state.clear_resource_states();
 		self.reset_deterministic_render_counters();
@@ -475,129 +510,178 @@ impl SsrRenderer {
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(
 			self.options.resource_timeout,
 		)));
-		scope_context(Rc::clone(&context), async move {
-			self.begin_render();
-			let discovery_view = view_factory();
+		let id_counter = Rc::new(Cell::new(0));
+		scope_id_counter_with(
+			Rc::clone(&id_counter),
+			scope_context(Rc::clone(&context), async move {
+				self.begin_render();
+				let discovery_view = view_factory();
 
-			let _ = self
-				.render_async_page(&discovery_view, AsyncRenderMode::Discovery)
-				.await;
-			drop(discovery_view);
+				let _ = self
+					.render_async_page(&discovery_view, AsyncRenderMode::Discovery)
+					.await;
+				drop(discovery_view);
 
-			resolve_external_resources(&context).await;
-			let (view, content, boundaries) = loop {
-				context.borrow_mut().reset_call_order_keys();
-				self.reset_deterministic_render_counters();
-
-				let view = view_factory();
-				let mut boundaries = Vec::new();
-				let content = self.render_stream_shell_page(&view, &mut boundaries).await;
-
-				if !context.borrow().has_pending_external() {
-					break (view, content, boundaries);
-				}
-
-				drop(view);
 				resolve_external_resources(&context).await;
-			};
-			let view_head = view.find_topmost_head().cloned();
-			self.add_resolved_resources_to_state(&context);
+				let (view, content, boundaries) = loop {
+					context.borrow_mut().reset_call_order_keys();
+					self.reset_deterministic_render_counters();
 
-			let shell = self.wrap_in_html_shell(&content, view_head.as_ref());
-			let boundary_futures = suspense_boundary_futures(&context, boundaries);
+					let view = view_factory();
+					let mut boundaries = Vec::new();
+					let content = self.render_stream_shell_page(&view, &mut boundaries).await;
 
-			let runtime = SuspenseStreamRuntime {
-				renderer: self.clone(),
-				context,
-				boundaries: boundary_futures,
-				ready_boundaries: VecDeque::new(),
-			};
+					if !context.borrow().has_pending_external() {
+						break (view, content, boundaries);
+					}
 
-			SsrStream::from_stream(stream::unfold(
-				SuspenseStreamState::Shell { shell, runtime },
-				|state| async move {
-					match state {
-						SuspenseStreamState::Shell { shell, runtime } => Some((
-							SsrChunk::Html(shell),
-							SuspenseStreamState::Boundaries(runtime),
-						)),
-						SuspenseStreamState::Boundaries(mut runtime) => {
-							loop {
-								let Some((boundary, resolved)) =
-									runtime.ready_boundaries.pop_front()
-								else {
-									let Some(resolved_boundaries) = runtime.boundaries.next().await
+					drop(view);
+					resolve_external_resources(&context).await;
+				};
+				let view_head = view.find_topmost_head().cloned();
+				self.add_resolved_resources_to_state(&context);
+
+				let shell = self.wrap_in_html_shell(&content, view_head.as_ref());
+				let boundary_futures = suspense_boundary_futures(&context, boundaries);
+
+				let runtime = SuspenseStreamRuntime {
+					renderer: self.clone(),
+					context,
+					id_counter,
+					boundaries: boundary_futures,
+					ready_boundaries: VecDeque::new(),
+				};
+
+				SsrStream::from_stream(stream::unfold(
+					SuspenseStreamState::Shell { shell, runtime },
+					|state| async move {
+						match state {
+							SuspenseStreamState::Shell { shell, runtime } => Some((
+								SsrChunk::Html(shell),
+								SuspenseStreamState::Boundaries(runtime),
+							)),
+							SuspenseStreamState::Boundaries(mut runtime) => {
+								loop {
+									let Some((boundary, resolved)) =
+										runtime.ready_boundaries.pop_front()
 									else {
-										break;
+										let Some(resolved_boundaries) =
+											runtime.boundaries.next().await
+										else {
+											break;
+										};
+										runtime.ready_boundaries.extend(resolved_boundaries);
+										continue;
 									};
-									runtime.ready_boundaries.extend(resolved_boundaries);
-									continue;
-								};
 
-								if !resolved {
-									continue;
-								}
+									if !resolved {
+										continue;
+									}
 
-								let replacement =
-									scope_context(Rc::clone(&runtime.context), async {
-										if let Some(index) = boundary.boundary_start_index {
+									let replacement = scope_id_counter_with(
+										Rc::clone(&runtime.id_counter),
+										scope_context(Rc::clone(&runtime.context), async {
+											if boundary.node.is_pending() {
+												return None;
+											}
+											let (replacement_page, replacement, nested_boundaries) = loop {
+												runtime
+													.renderer
+													.restore_deterministic_render_snapshot(
+														boundary.boundary_start,
+													);
+												let boundary_guard = enter_boundary(
+													&runtime.context,
+													boundary.boundary_id.clone(),
+												);
+												let replacement_page =
+													boundary.node.render_content();
+												let mut nested_boundaries = Vec::new();
+												let replacement = runtime
+													.renderer
+													.render_stream_shell_page(
+														&replacement_page,
+														&mut nested_boundaries,
+													)
+													.await;
+												drop(boundary_guard);
+
+												let has_pending_boundary_resource = runtime
+													.context
+													.borrow()
+													.has_pending_for_boundary(
+														&boundary.boundary_id,
+													);
+												let has_pending_external_resource =
+													runtime.context.borrow().has_pending_external();
+												if !has_pending_boundary_resource
+													&& !has_pending_external_resource
+												{
+													break (
+														replacement_page,
+														replacement,
+														nested_boundaries,
+													);
+												}
+
+												drop(replacement_page);
+												if has_pending_boundary_resource {
+													resolve_boundary_resources(
+														&runtime.context,
+														&boundary.boundary_id,
+													)
+													.await;
+												}
+												if has_pending_external_resource {
+													resolve_external_resources(&runtime.context)
+														.await;
+												}
+											};
+											boundary
+												.node
+												.cache_content_head_from(&replacement_page);
 											runtime
-												.context
-												.borrow_mut()
-												.set_call_order_index(index);
-										}
-										let replacement_page = boundary.node.render_content();
-										let mut nested_boundaries = Vec::new();
-										let replacement = runtime
-											.renderer
-											.render_stream_shell_page(
-												&replacement_page,
-												&mut nested_boundaries,
-											)
-											.await;
-										boundary.node.cache_content_head_from(&replacement_page);
-										if let Some(index) = boundary.boundary_end_index {
-											runtime
-												.context
-												.borrow_mut()
-												.set_call_order_index(index);
-										}
-										runtime
-											.renderer
-											.add_resolved_resources_to_state(&runtime.context);
-										for future in suspense_boundary_futures(
-											&runtime.context,
-											nested_boundaries,
-										) {
-											runtime.boundaries.push(future);
-										}
-										replacement
-									})
+												.renderer
+												.add_resolved_resources_to_state(&runtime.context);
+											for future in suspense_boundary_futures(
+												&runtime.context,
+												nested_boundaries,
+											) {
+												runtime.boundaries.push(future);
+											}
+											Some(replacement)
+										}),
+									)
 									.await;
 
-								let chunk = runtime.renderer.render_suspense_replacement(
-									&boundary.boundary_id,
-									replacement,
-								);
-								return Some((
-									SsrChunk::Html(chunk),
-									SuspenseStreamState::Boundaries(runtime),
-								));
-							}
+									let Some(replacement) = replacement else {
+										continue;
+									};
 
-							runtime
-								.renderer
-								.add_resolved_resources_to_state(&runtime.context);
-							Some((
-								SsrChunk::Html(runtime.renderer.wrap_in_html_suffix()),
-								SuspenseStreamState::Done,
-							))
+									let chunk = runtime.renderer.render_suspense_replacement(
+										&boundary.boundary_id,
+										replacement,
+									);
+									return Some((
+										SsrChunk::Html(chunk),
+										SuspenseStreamState::Boundaries(runtime),
+									));
+								}
+
+								runtime
+									.renderer
+									.add_resolved_resources_to_state(&runtime.context);
+								Some((
+									SsrChunk::Html(runtime.renderer.wrap_in_html_suffix()),
+									SuspenseStreamState::Done,
+								))
+							}
+							SuspenseStreamState::Done => None,
 						}
-						SuspenseStreamState::Done => None,
-					}
-				},
-			))
-		})
+					},
+				))
+			}),
+		)
 		.await
 	}
 
@@ -619,7 +703,7 @@ impl SsrRenderer {
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(
 			self.options.resource_timeout,
 		)));
-		scope_context(Rc::clone(&context), async move {
+		scope_id_counter(scope_context(Rc::clone(&context), async move {
 			self.begin_render();
 			let discovery_view = view_factory();
 
@@ -648,7 +732,7 @@ impl SsrRenderer {
 				drop(view);
 				resolve_pending_resources(&context).await;
 			}
-		})
+		}))
 		.await
 	}
 
@@ -731,19 +815,14 @@ impl SsrRenderer {
 				Page::Suspense(node) => {
 					let boundary_id = self.suspense_boundary_id(node);
 
-					let boundary_start_index = if let Some(context) =
-						super::resource_context::with_active_context(Rc::clone)
-					{
-						let index = context.borrow().call_order_index();
+					if let Some(context) = super::resource_context::with_active_context(Rc::clone) {
 						context.borrow_mut().assign_resources_to_boundary(
 							node.tracked_resource_ids(),
 							&boundary_id,
 						);
-						Some(index)
-					} else {
-						None
-					};
+					}
 
+					let boundary_start = self.deterministic_render_snapshot();
 					let boundary_guard = super::resource_context::with_active_context(|context| {
 						enter_boundary(context, boundary_id.clone())
 					});
@@ -751,10 +830,6 @@ impl SsrRenderer {
 					let content = self
 						.render_stream_shell_page(&content_page, boundaries)
 						.await;
-					let boundary_end_index =
-						super::resource_context::with_active_context(|context| {
-							context.borrow().call_order_index()
-						});
 
 					drop(boundary_guard);
 
@@ -763,30 +838,46 @@ impl SsrRenderer {
 					})
 					.unwrap_or(false);
 
+					if !has_pending && !node.is_pending() {
+						node.cache_content_head_from(&content_page);
+					}
+
 					if has_pending || node.is_pending() {
+						self.restore_deterministic_render_snapshot(boundary_start);
 						let fallback_page = node.render_fallback();
 						let fallback = self
-							.render_async_page(&fallback_page, AsyncRenderMode::Discovery)
+							.render_stream_shell_page(&fallback_page, boundaries)
 							.await;
 						if has_pending {
 							boundaries.push(PendingSuspenseBoundary {
 								boundary_id: boundary_id.clone(),
 								node: node.clone(),
-								boundary_start_index,
-								boundary_end_index,
+								boundary_start,
 							});
 						}
 						self.render_suspense_fallback(&boundary_id, fallback)
 					} else {
-						node.cache_content_head_from(&content_page);
 						content
 					}
 				}
 				Page::Deferred(node) => {
+					let content_start = self.deterministic_render_snapshot();
 					let content = node.render_content();
 					let rendered = self.render_stream_shell_page(&content, boundaries).await;
-					node.cache_content_head_from(&content);
+					let content_end = self.deterministic_render_snapshot();
+					if !Self::active_context_has_pending_resources() {
+						self.restore_deterministic_render_snapshot(content_start);
+						node.cache_content_head_from(&content);
+						self.restore_deterministic_render_snapshot(content_end);
+					}
 					rendered
+				}
+				Page::Outlet(outlet) => {
+					if let Some(child) = outlet.child() {
+						self.render_stream_shell_page(child, boundaries).await
+					} else {
+						String::new()
+					}
 				}
 			}
 		})
@@ -863,19 +954,14 @@ impl SsrRenderer {
 				Page::Suspense(node) => {
 					let boundary_id = self.suspense_boundary_id(node);
 
-					let boundary_start_index = if let Some(context) =
-						super::resource_context::with_active_context(Rc::clone)
-					{
-						let index = context.borrow().call_order_index();
+					if let Some(context) = super::resource_context::with_active_context(Rc::clone) {
 						context.borrow_mut().assign_resources_to_boundary(
 							node.tracked_resource_ids(),
 							&boundary_id,
 						);
-						Some(index)
-					} else {
-						None
-					};
+					}
 
+					let boundary_start = self.deterministic_render_snapshot();
 					let boundary_guard = super::resource_context::with_active_context(|context| {
 						enter_boundary(context, boundary_id.clone())
 					});
@@ -898,23 +984,25 @@ impl SsrRenderer {
 					}
 
 					if has_pending || node.is_pending() {
+						self.restore_deterministic_render_snapshot(boundary_start);
 						let fallback_page = node.render_fallback();
 						let fallback = self
-							.render_async_page(&fallback_page, AsyncRenderMode::Discovery)
+							.render_async_page(&fallback_page, AsyncRenderMode::Buffered)
 							.await;
 
 						if has_pending
 							&& let Some(context) =
 								super::resource_context::with_active_context(Rc::clone)
 						{
+							if context.borrow().has_pending_external() {
+								return self.render_suspense_fallback(&boundary_id, fallback);
+							}
 							let boundary_resolved =
 								resolve_boundary_resources(&context, &boundary_id).await;
 							if !boundary_resolved {
 								return self.render_suspense_fallback(&boundary_id, fallback);
 							}
-							if let Some(index) = boundary_start_index {
-								context.borrow_mut().set_call_order_index(index);
-							}
+							self.restore_deterministic_render_snapshot(boundary_start);
 							if node.is_pending() {
 								return self.render_suspense_fallback(&boundary_id, fallback);
 							}
@@ -948,21 +1036,37 @@ impl SsrRenderer {
 					}
 				}
 				Page::Deferred(node) => {
+					let content_start = self.deterministic_render_snapshot();
 					let content = node.render_content();
 					let rendered = self.render_async_page(&content, mode).await;
-					if !matches!(mode, AsyncRenderMode::Discovery) {
+					let content_end = self.deterministic_render_snapshot();
+					if !matches!(mode, AsyncRenderMode::Discovery)
+						&& !Self::active_context_has_pending_resources()
+					{
+						self.restore_deterministic_render_snapshot(content_start);
 						node.cache_content_head_from(&content);
+						self.restore_deterministic_render_snapshot(content_end);
 					}
 					rendered
+				}
+				Page::Outlet(outlet) => {
+					if let Some(child) = outlet.child() {
+						self.render_async_page(child, mode).await
+					} else {
+						String::new()
+					}
 				}
 			}
 		})
 	}
 
 	fn render_suspense_fallback(&self, id: &str, fallback: String) -> String {
-		format!(
-			"<!--rh-suspense-start:{id}--><div data-rh-suspense=\"pending\">{fallback}</div><!--rh-suspense-end:{id}-->"
-		)
+		let fallback = if fallback.contains("data-rh-suspense=\"pending\"") {
+			fallback
+		} else {
+			format!(r#"<div data-rh-suspense="pending">{fallback}</div>"#)
+		};
+		format!("<!--rh-suspense-start:{id}-->{fallback}<!--rh-suspense-end:{id}-->")
 	}
 
 	fn render_suspense_replacement(&self, id: &str, content: String) -> String {
@@ -1259,7 +1363,7 @@ fn is_comment_safe_suspense_id(id: &str) -> bool {
 }
 
 fn normalize_suspense_boundary_id(id: &str) -> String {
-	if is_comment_safe_suspense_id(id) {
+	if is_comment_safe_suspense_id(id) && !id.starts_with("rh-suspense-id-") {
 		return id.to_string();
 	}
 
@@ -1443,6 +1547,16 @@ mod tests {
 		fn name() -> &'static str {
 			"TestComponent"
 		}
+	}
+
+	#[test]
+	fn normalize_suspense_boundary_id_reserves_generated_namespace() {
+		let unsafe_id = normalize_suspense_boundary_id("--");
+		let safe_generated_prefix_id = normalize_suspense_boundary_id("rh-suspense-id-2d2d");
+
+		assert_eq!(unsafe_id, "rh-suspense-id-2d2d");
+		assert_ne!(unsafe_id, safe_generated_prefix_id);
+		assert!(safe_generated_prefix_id.starts_with("rh-suspense-id-"));
 	}
 
 	#[test]

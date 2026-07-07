@@ -51,6 +51,16 @@ fn next_client_resource_key() -> String {
 	})
 }
 
+#[cfg(wasm)]
+fn reserve_client_resource_key(key: &str) {
+	if let Some(id) = key.strip_prefix("rh-res-")
+		&& let Ok(index) = id.parse::<usize>()
+	{
+		CLIENT_RESOURCE_COUNTER
+			.with(|counter| counter.set(counter.get().max(index.saturating_add(1))));
+	}
+}
+
 /// State of a Resource
 ///
 /// A Resource can be in one of three states:
@@ -341,7 +351,12 @@ where
 
 	#[cfg(wasm)]
 	let initial_state = {
-		let key = resource_key.unwrap_or_else(next_client_resource_key);
+		let key = if let Some(key) = resource_key.clone() {
+			reserve_client_resource_key(&key);
+			key
+		} else {
+			next_client_resource_key()
+		};
 		hydrated_resource_state(&key)
 	};
 
@@ -436,7 +451,12 @@ where
 {
 	crate::ssr::resource_context::with_active_context(|context| {
 		let mut context = context.borrow_mut();
-		let key = explicit_key.unwrap_or_else(|| context.next_call_order_key());
+		let key = if let Some(key) = explicit_key {
+			context.reserve_call_order_key(&key);
+			key
+		} else {
+			context.next_call_order_key()
+		};
 		if let Some(resolved_state) = context.resolved_resource_state::<T, E>(&key) {
 			let state = Signal::new(resolved_state);
 			let run: Rc<dyn Fn()> = Rc::new({
@@ -446,7 +466,14 @@ where
 			build_resource_from_run(state, run, (), false, Some(key))
 		} else {
 			let state = Signal::new(ResourceState::Loading);
-			context.register_resource::<T, E, Fut>(key.clone(), fetcher(), state.clone());
+			context.register_resource::<T, E, _, Fut>(
+				key.clone(),
+				{
+					let fetcher = Rc::clone(&fetcher);
+					move || fetcher()
+				},
+				state.clone(),
+			);
 
 			let run: Rc<dyn Fn()> = Rc::new({
 				let state = state.clone();

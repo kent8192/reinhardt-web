@@ -45,8 +45,8 @@ pub use error_boundary::{BoundaryError, ErrorBoundary, ErrorTracker};
 pub use into_page::DummyEvent;
 pub use into_page::PageExt;
 pub use into_page::{
-	Head, IntoPage, LinkTag, MetaTag, MountError, Page, PageElement, PageEventHandler, Reactive,
-	ReactiveIf, ScriptTag, StyleTag,
+	Head, IntoPage, LinkTag, MetaTag, MountError, Outlet, Page, PageElement, PageEventHandler,
+	Reactive, ReactiveIf, ScriptTag, StyleTag,
 };
 pub use props::Props;
 #[cfg(wasm)]

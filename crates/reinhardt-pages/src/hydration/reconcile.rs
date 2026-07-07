@@ -258,6 +258,13 @@ fn reconcile_at_path(
 			let child_views: Vec<Page> = views.iter().map(|(_, view)| view.clone()).collect();
 			reconcile_children_at_path(element, &child_views, path)
 		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				reconcile_at_path(element, child, path)
+			} else {
+				Ok(())
+			}
+		}
 		Page::Empty => Ok(()),
 		Page::WithHead { view, .. } => {
 			// Head section is handled separately during SSR
@@ -375,6 +382,13 @@ fn reconcile_dom_node_at_path(
 						actual: 1,
 					})
 				}
+			}
+		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				reconcile_dom_node_at_path(node, child, path)
+			} else {
+				Ok(())
 			}
 		}
 		Page::Empty => Ok(()),
@@ -701,6 +715,12 @@ fn reconcile_options_children_at_path(
 			let content_view = node.content();
 			return reconcile_options_children_at_path(element, &content_view, options, path);
 		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				return reconcile_options_children_at_path(element, child, options, path);
+			}
+			return Ok(());
+		}
 		Page::Text(_) | Page::Empty => return Ok(()),
 	};
 
@@ -906,6 +926,11 @@ fn compare_recursive(element: &Element, view: &Page, path: &str, differences: &m
 				if i < children.len() {
 					compare_recursive(&children[i], child_view, &child_path, differences);
 				}
+			}
+		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				compare_recursive(element, child, path, differences);
 			}
 		}
 		Page::WithHead { view, .. } => {
