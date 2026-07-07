@@ -162,24 +162,25 @@ impl TestDom {
 		None
 	}
 
-	pub(crate) fn event_handler(
+	pub(crate) fn event_handlers(
 		&self,
 		node_id: NodeId,
 		event_type: EventType,
-	) -> Option<PageEventHandler> {
+	) -> Vec<PageEventHandler> {
+		let mut handlers = Vec::new();
 		let mut current = Some(node_id);
 		while let Some(id) = current {
-			if let Some(node) = self.element(id)
-				&& let Some((_, handler)) = node
-					.event_handlers
-					.iter()
-					.find(|(candidate, _)| *candidate == event_type)
-			{
-				return Some(handler.clone());
+			if let Some(node) = self.element(id) {
+				handlers.extend(
+					node.event_handlers
+						.iter()
+						.filter(|(candidate, _)| *candidate == event_type)
+						.map(|(_, handler)| handler.clone()),
+				);
 			}
 			current = self.parent(id);
 		}
-		None
+		handlers
 	}
 
 	pub(crate) fn suppresses_events(&self, node_id: NodeId) -> bool {

@@ -68,26 +68,33 @@ impl SchedulerScope {
 		f()
 	}
 
-	pub(crate) async fn settle(&self, dom: impl Fn() -> String) -> Result<(), SettleError> {
+	pub(crate) async fn settle_with_context(
+		&self,
+		dom: impl Fn() -> String,
+		mut with_context: impl FnMut(&mut dyn FnMut() -> usize) -> usize,
+	) -> Result<(), SettleError> {
 		let mut cx = Context::from_waker(Waker::noop());
 		for iteration in 0..100 {
-			let mut pending = VecDeque::new();
-			let pending_tasks = self.with_current(|| {
-				loop {
-					let Some(mut task) = self.scheduler.borrow_mut().tasks.pop_front() else {
-						break;
-					};
-					match task.as_mut().poll(&mut cx) {
-						Poll::Ready(()) => {}
-						Poll::Pending => pending.push_back(task),
+			let mut poll_tasks = || {
+				self.with_current(|| {
+					let mut pending = VecDeque::new();
+					loop {
+						let Some(mut task) = self.scheduler.borrow_mut().tasks.pop_front() else {
+							break;
+						};
+						match task.as_mut().poll(&mut cx) {
+							Poll::Ready(()) => {}
+							Poll::Pending => pending.push_back(task),
+						}
 					}
-				}
-				let mut scheduler = self.scheduler.borrow_mut();
-				pending.extend(std::mem::take(&mut scheduler.tasks));
-				let pending_tasks = pending.len();
-				scheduler.tasks = pending;
-				pending_tasks
-			});
+					let mut scheduler = self.scheduler.borrow_mut();
+					pending.extend(std::mem::take(&mut scheduler.tasks));
+					let pending_tasks = pending.len();
+					scheduler.tasks = pending;
+					pending_tasks
+				})
+			};
+			let pending_tasks = with_context(&mut poll_tasks);
 			if pending_tasks == 0 {
 				return Ok(());
 			}

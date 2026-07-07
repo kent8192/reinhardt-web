@@ -572,6 +572,9 @@ fn add_native_mock_probe(
 	let original_block = func.block;
 	let native_mock_probe = if cfg!(feature = "msw") {
 		quote! {
+			#[cfg(all(native, feature = "msw", feature = "testing"))]
+			// The consumer crate may not declare the testing feature outside component-test builds.
+			#[allow(unexpected_cfgs)]
 			{
 				let __args = #name::Args {
 					#(#param_idents: #param_idents.clone()),*
@@ -1366,7 +1369,10 @@ fn generate_server_handler(
 				use ::serde::{Serialize, Deserialize};
 
 				/// Public Args struct for MSW type-safe mocking.
-				#[derive(Serialize, Deserialize, Clone)]
+				#[derive(Serialize, Deserialize)]
+				#[cfg_attr(all(native, feature = "testing"), derive(Clone))]
+				// The generated Args type only derives Clone for native component-test builds.
+				#[allow(unexpected_cfgs)]
 				pub struct Args {
 					#(pub #regular_param_names: #regular_param_types),*
 				}
@@ -1402,7 +1408,10 @@ fn generate_server_handler(
 				use ::serde::{Serialize, Deserialize};
 
 				/// Public Args struct for MSW type-safe mocking.
-				#[derive(Serialize, Deserialize, Clone)]
+				#[derive(Serialize, Deserialize)]
+				#[cfg_attr(all(native, feature = "testing"), derive(Clone))]
+				// The generated Args type only derives Clone for native component-test builds.
+				#[allow(unexpected_cfgs)]
 				pub struct Args {
 					#(pub #regular_param_names: #regular_param_types),*
 				}

@@ -1,6 +1,6 @@
 #![cfg(all(native, feature = "testing"))]
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -367,6 +367,47 @@ async fn click_events_bubble_from_descendant_handles() {
 	assert!(screen.query_by_text("Clicked").is_some());
 }
 
+#[test]
+fn click_events_invoke_each_handler_in_bubbling_path() {
+	let calls = Rc::new(RefCell::new(Vec::new()));
+	let outer_calls = Rc::clone(&calls);
+	let button_calls = Rc::clone(&calls);
+	let screen = render(
+		PageElement::new("div")
+			.listener("click", move |_| outer_calls.borrow_mut().push("outer"))
+			.child(
+				PageElement::new("button")
+					.listener("click", move |_| button_calls.borrow_mut().push("button"))
+					.child(
+						PageElement::new("span")
+							.attr("role", "status")
+							.attr("aria-label", "Nested status")
+							.child("Nested label"),
+					),
+			),
+	);
+
+	screen.get_by_role(Role::Status, "Nested status").click();
+
+	assert_eq!(calls.borrow().as_slice(), ["button", "outer"]);
+}
+
+#[test]
+fn submit_helper_dispatches_submit_event() {
+	let submitted = Rc::new(Cell::new(false));
+	let submitted_for_handler = Rc::clone(&submitted);
+	let screen = render(
+		PageElement::new("form")
+			.attr("aria-label", "Job form")
+			.listener("submit", move |_| submitted_for_handler.set(true))
+			.child(PageElement::new("input").attr("name", "job")),
+	);
+
+	screen.get_by_role(Role::Form, "Job form").submit();
+
+	assert!(submitted.get());
+}
+
 #[tokio::test]
 async fn parent_rerender_skips_removed_child_anchors() {
 	let show_child = Signal::new(true);
@@ -493,6 +534,21 @@ async fn server_fn_mock_errors_render_resource_errors() {
 	assert!(
 		screen
 			.query_by_text("Application error: mock failed")
+			.is_some()
+	);
+	assert_eq!(screen.calls_to_server_fn::<load_jobs::marker>().len(), 1);
+}
+
+#[cfg(feature = "msw")]
+#[tokio::test]
+async fn active_server_fn_mock_scope_requires_registered_handler() {
+	let screen = render(jobs_component);
+
+	screen.settle().await;
+
+	assert!(
+		screen
+			.query_by_text("Application error: no mock registered for active server function")
 			.is_some()
 	);
 	assert_eq!(screen.calls_to_server_fn::<load_jobs::marker>().len(), 1);

@@ -185,14 +185,30 @@ impl Screen {
 		#[cfg(not(feature = "msw"))]
 		let scheduler = Rc::clone(&self.inner.borrow().scheduler);
 
-		#[cfg(feature = "msw")]
-		let _mock_scope = server_fn_mock::activate(mocks);
-
 		for _ in 0..100 {
-			let result = scheduler.settle(|| self.pretty()).await;
-			scheduler.with_current(|| {
-				self.inner.borrow_mut().dom.rerender_reactive_anchors();
+			#[cfg(feature = "msw")]
+			let result = scheduler
+				.settle_with_context(
+					|| self.pretty(),
+					|poll_tasks| server_fn_mock::with_active(mocks.clone(), poll_tasks),
+				)
+				.await;
+			#[cfg(not(feature = "msw"))]
+			let result = scheduler
+				.settle_with_context(|| self.pretty(), |poll_tasks| poll_tasks())
+				.await;
+			#[cfg(feature = "msw")]
+			server_fn_mock::with_active(mocks.clone(), || {
+				scheduler.with_current(|| {
+					self.inner.borrow_mut().dom.rerender_reactive_anchors();
+				});
 			});
+			#[cfg(not(feature = "msw"))]
+			{
+				scheduler.with_current(|| {
+					self.inner.borrow_mut().dom.rerender_reactive_anchors();
+				});
+			}
 			match result {
 				Ok(()) if scheduler.pending_task_count() == 0 => return Ok(()),
 				Ok(()) => {}

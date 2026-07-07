@@ -32,6 +32,16 @@ impl ElementHandle {
 		self.dispatch(EventType::Click)
 	}
 
+	/// Dispatches a submit event and panics when dispatch fails.
+	pub fn submit(&self) {
+		self.try_submit().expect("submit dispatch failed");
+	}
+
+	/// Dispatches a submit event.
+	pub fn try_submit(&self) -> Result<(), EventError> {
+		self.dispatch(EventType::Submit)
+	}
+
 	/// Updates the element value and dispatches an input event.
 	pub fn input(&self, value: impl Into<String>) {
 		self.try_input(value).expect("input dispatch failed");
@@ -73,7 +83,7 @@ impl ElementHandle {
 	}
 
 	fn dispatch(&self, event_type: EventType) -> Result<(), EventError> {
-		let (handler, scheduler) = {
+		let (handlers, scheduler) = {
 			let borrowed = self.inner.borrow();
 			if !borrowed.dom.contains(self.node_id) {
 				return Err(EventError::DetachedElement);
@@ -85,26 +95,37 @@ impl ElementHandle {
 				return Ok(());
 			}
 			(
-				borrowed.dom.event_handler(self.node_id, event_type),
+				borrowed.dom.event_handlers(self.node_id, event_type),
 				Rc::clone(&borrowed.scheduler),
 			)
 		};
 		#[cfg(feature = "msw")]
 		let mocks = self.inner.borrow().mocks.clone();
 
-		let handler = handler.ok_or(EventError::MissingHandler)?;
+		if handlers.is_empty() {
+			return Err(EventError::MissingHandler);
+		}
 		#[cfg(feature = "msw")]
 		{
-			let _mock_scope = server_fn_mock::activate(mocks);
-			scheduler.with_current(|| handler(DummyEvent));
+			server_fn_mock::with_active(mocks, || {
+				scheduler.with_current(|| {
+					for handler in handlers {
+						handler(DummyEvent);
+					}
+				});
+			});
 		}
 		#[cfg(not(feature = "msw"))]
-		scheduler.with_current(|| handler(DummyEvent));
+		scheduler.with_current(|| {
+			for handler in handlers {
+				handler(DummyEvent);
+			}
+		});
 		Ok(())
 	}
 
 	fn dispatch_value(&self, event_type: EventType, value: String) -> Result<(), EventError> {
-		let (handler, scheduler) = {
+		let (handlers, scheduler) = {
 			let mut borrowed = self.inner.borrow_mut();
 			if !borrowed.dom.contains(self.node_id) {
 				return Err(EventError::DetachedElement);
@@ -116,21 +137,32 @@ impl ElementHandle {
 				return Err(EventError::UnsupportedElement);
 			}
 			(
-				borrowed.dom.event_handler(self.node_id, event_type),
+				borrowed.dom.event_handlers(self.node_id, event_type),
 				Rc::clone(&borrowed.scheduler),
 			)
 		};
 		#[cfg(feature = "msw")]
 		let mocks = self.inner.borrow().mocks.clone();
 
-		let handler = handler.ok_or(EventError::MissingHandler)?;
+		if handlers.is_empty() {
+			return Err(EventError::MissingHandler);
+		}
 		#[cfg(feature = "msw")]
 		{
-			let _mock_scope = server_fn_mock::activate(mocks);
-			scheduler.with_current(|| handler(DummyEvent));
+			server_fn_mock::with_active(mocks, || {
+				scheduler.with_current(|| {
+					for handler in handlers {
+						handler(DummyEvent);
+					}
+				});
+			});
 		}
 		#[cfg(not(feature = "msw"))]
-		scheduler.with_current(|| handler(DummyEvent));
+		scheduler.with_current(|| {
+			for handler in handlers {
+				handler(DummyEvent);
+			}
+		});
 		Ok(())
 	}
 }

@@ -74,7 +74,12 @@ where
 				.or_default()
 				.push(Box::new(args.clone()));
 			registry.handlers.get(&type_id).cloned()
-		}?;
+		};
+		let Some(handler) = handler else {
+			return Some(Err(ServerFnError::application(
+				"no mock registered for active server function",
+			)));
+		};
 		let response = handler(Box::new(args));
 		Some(response.and_then(|value| {
 			value
