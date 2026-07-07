@@ -4619,9 +4619,9 @@ impl MigrationAutodetector {
 		ordered
 	}
 
-	fn order_model_fields_by_generated_dependencies<'a>(
-		model: &'a ModelState,
-	) -> Vec<(&'a String, &'a FieldState)> {
+	fn order_model_fields_by_generated_dependencies(
+		model: &ModelState,
+	) -> Vec<(&String, &FieldState)> {
 		let mut remaining: Vec<_> = model.fields.iter().collect();
 		let mut ordered = Vec::with_capacity(remaining.len());
 

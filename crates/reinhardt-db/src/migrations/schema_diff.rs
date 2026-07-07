@@ -488,9 +488,9 @@ impl SchemaDiff {
 		ordered
 	}
 
-	fn order_table_columns_by_generated_dependencies<'a>(
-		table_schema: &'a TableSchema,
-	) -> Vec<(&'a String, &'a ColumnSchema)> {
+	fn order_table_columns_by_generated_dependencies(
+		table_schema: &TableSchema,
+	) -> Vec<(&String, &ColumnSchema)> {
 		let mut remaining: Vec<_> = table_schema.columns.iter().collect();
 		let mut ordered = Vec::with_capacity(remaining.len());
 
