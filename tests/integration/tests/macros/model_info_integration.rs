@@ -341,7 +341,7 @@ fn test_info_one_to_one_relation_field_generated() {
 	// Assert
 	assert_eq!(info.id, Some(1));
 	assert_eq!(info.user.id, 9);
-	assert_eq!(*model.user_id(), 9);
+	assert_eq!(model.user_id(), 9);
 }
 
 #[test]
@@ -407,5 +407,5 @@ fn test_info_skip_relation_fields() {
 
 	// Assert
 	assert_eq!(*model.id(), Some(1));
-	assert_eq!(*model.author_id(), 0);
+	assert_eq!(model.author_id(), 0);
 }
