@@ -1246,6 +1246,81 @@ const fn default_true() -> bool {
 }
 
 impl Operation {
+	fn order_model_fields_by_generated_dependencies<'a>(
+		model: &'a ModelState,
+	) -> Vec<(&'a String, &'a FieldState)> {
+		let mut remaining: Vec<_> = model.fields.iter().collect();
+		let mut ordered = Vec::with_capacity(remaining.len());
+
+		while !remaining.is_empty() {
+			let next_index = remaining
+				.iter()
+				.enumerate()
+				.find(|(_, (field_name, field))| {
+					let Some(generated) = field.generated.as_ref() else {
+						return true;
+					};
+
+					!remaining.iter().any(|(other_field_name, _)| {
+						other_field_name.as_str() != field_name.as_str()
+							&& Self::generated_column_references_column(
+								generated,
+								other_field_name.as_str(),
+							)
+					})
+				})
+				.map(|(index, _)| index);
+
+			if let Some(index) = next_index {
+				ordered.push(remaining.remove(index));
+			} else {
+				ordered.extend(remaining);
+				break;
+			}
+		}
+
+		ordered
+	}
+
+	fn generated_column_references_column(
+		generated: &GeneratedColumnDefinition,
+		column: &str,
+	) -> bool {
+		generated
+			.typed_expr()
+			.as_ref()
+			.is_some_and(|expr| Self::schema_expr_references_column(expr, column))
+			|| generated
+				.raw_sql
+				.as_deref()
+				.is_some_and(|sql| Self::expression_text_references_column(sql, column))
+			|| generated
+				.expr_tokens
+				.as_deref()
+				.is_some_and(|tokens| Self::expression_text_references_column(tokens, column))
+	}
+
+	fn schema_expr_references_column(expr: &SchemaExpr, column: &str) -> bool {
+		match expr {
+			SchemaExpr::Column(identifier) => identifier.to_string() == column,
+			SchemaExpr::Value(_) => false,
+			SchemaExpr::Binary { left, right, .. } => {
+				Self::schema_expr_references_column(left, column)
+					|| Self::schema_expr_references_column(right, column)
+			}
+			SchemaExpr::Function { args, .. } => args
+				.iter()
+				.any(|arg| Self::schema_expr_references_column(arg, column)),
+			SchemaExpr::Cast { expr, .. } => Self::schema_expr_references_column(expr, column),
+			_ => false,
+		}
+	}
+
+	fn expression_text_references_column(text: &str, column: &str) -> bool {
+		text.split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+			.any(|token| token.eq_ignore_ascii_case(column))
+	}
+
 	/// Apply this operation to the project state (forward)
 	pub fn state_forwards(&self, app_label: &str, state: &mut ProjectState) {
 		match self {
@@ -3077,7 +3152,9 @@ impl Operation {
 					let mut parts = Vec::new();
 
 					// Convert fields to column definitions
-					for (field_name, field) in &model.fields {
+					for (field_name, field) in
+						Self::order_model_fields_by_generated_dependencies(model)
+					{
 						let col_def = ColumnDefinition::from_field_state(field_name.clone(), field);
 						parts.push(format!("  {}", Self::column_to_sql(&col_def, dialect)));
 					}
@@ -4265,13 +4342,13 @@ impl Operation {
 			Operation::DropTable { name } => {
 				// Reconstruct CreateTable from ProjectState
 				if let Some(model) = project_state.find_model_by_table(name) {
-					let columns: Vec<ColumnDefinition> = model
-						.fields
-						.iter()
-						.map(|(field_name, field)| {
-							ColumnDefinition::from_field_state(field_name.clone(), field)
-						})
-						.collect();
+					let columns: Vec<ColumnDefinition> =
+						Self::order_model_fields_by_generated_dependencies(model)
+							.into_iter()
+							.map(|(field_name, field)| {
+								ColumnDefinition::from_field_state(field_name.clone(), field)
+							})
+							.collect();
 					let constraints: Vec<Constraint> = model
 						.constraints
 						.iter()
@@ -6848,6 +6925,47 @@ mod tests {
 			}
 			other => panic!("reverse operation should be AddColumn, got: {:?}", other),
 		}
+	}
+
+	#[test]
+	fn test_to_reverse_operation_drop_table_orders_generated_dependencies() {
+		// Arrange
+		let mut source = FieldState::new("source", FieldType::Integer, false);
+		source.generated = None;
+		let mut z = FieldState::new("z", FieldType::Integer, false);
+		z.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("source"),
+			"SchemaExpr::col(\"source\")",
+			GeneratedStorage::Stored,
+		));
+		let mut a = FieldState::new("a", FieldType::Integer, false);
+		a.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("z"),
+			"SchemaExpr::col(\"z\")",
+			GeneratedStorage::Stored,
+		));
+		let mut model = ModelState::new("metrics", "Metric");
+		model.add_field(a);
+		model.add_field(source);
+		model.add_field(z);
+		let mut state = ProjectState::new();
+		state.add_model(model);
+		let op = Operation::DropTable {
+			name: "metric".to_string(),
+		};
+
+		// Act
+		let reverse = op
+			.to_reverse_operation(&state)
+			.expect("reverse operation should succeed")
+			.expect("reverse operation should be present");
+
+		// Assert
+		let Operation::CreateTable { columns, .. } = reverse else {
+			panic!("reverse operation should be CreateTable, got: {reverse:?}");
+		};
+		let column_names: Vec<_> = columns.iter().map(|column| column.name.as_str()).collect();
+		assert_eq!(column_names, vec!["source", "z", "a"]);
 	}
 
 	#[test]

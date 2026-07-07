@@ -196,7 +196,7 @@ pub struct ColumnSchema {
 struct GeneratedColumnDependent {
 	name: String,
 	old_column: ColumnSchema,
-	new_column: ColumnSchema,
+	new_column: Option<ColumnSchema>,
 }
 
 /// Index schema
@@ -651,17 +651,17 @@ impl SchemaDiff {
 				if affected_columns.contains(dependent_name) {
 					continue;
 				}
-				let Some(target_column) = target_table.columns.get(dependent_name) else {
-					continue;
-				};
+				let target_column = target_table.columns.get(dependent_name);
 				let references_affected_column =
 					current_column.generated.as_ref().is_some_and(|generated| {
 						affected_columns.iter().any(|column| {
 							Self::generated_column_references_column(generated, column)
 						})
-					}) || target_column.generated.as_ref().is_some_and(|generated| {
-						affected_columns.iter().any(|column| {
-							Self::generated_column_references_column(generated, column)
+					}) || target_column.is_some_and(|target_column| {
+						target_column.generated.as_ref().is_some_and(|generated| {
+							affected_columns.iter().any(|column| {
+								Self::generated_column_references_column(generated, column)
+							})
 						})
 					});
 
@@ -670,7 +670,7 @@ impl SchemaDiff {
 					dependents.push(GeneratedColumnDependent {
 						name: dependent_name.clone(),
 						old_column: current_column.clone(),
-						new_column: target_column.clone(),
+						new_column: target_column.cloned(),
 					});
 					added = true;
 				}
@@ -977,16 +977,18 @@ impl SchemaDiff {
 				}
 
 				for dependent in dependent_generated_columns {
-					operations.push(Operation::AddColumn {
-						table: table_name.clone(),
-						column: Self::column_definition_from_schema(
-							&self.target_schema,
-							table_name,
-							&dependent.name,
-							&dependent.new_column,
-						),
-						mysql_options: None,
-					});
+					if let Some(new_column) = dependent.new_column {
+						operations.push(Operation::AddColumn {
+							table: table_name.clone(),
+							column: Self::column_definition_from_schema(
+								&self.target_schema,
+								table_name,
+								&dependent.name,
+								&new_column,
+							),
+							mysql_options: None,
+						});
+					}
 				}
 
 				self.emit_generated_column_replacement_dependencies(
