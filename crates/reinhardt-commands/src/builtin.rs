@@ -461,6 +461,7 @@ impl BaseCommand for MigrateCommand {
 					.iter()
 					.filter(|m| !applied_names.contains(m.name.as_str()))
 					.collect();
+				let pending = dependency_ordered_migrations(pending)?;
 
 				if pending.is_empty() {
 					ctx.info(&format!(
@@ -571,6 +572,7 @@ impl BaseCommand for MigrateCommand {
 							.any(|r| r.app == m.app_label && r.name == m.name)
 					})
 					.collect();
+				let pending = dependency_ordered_migrations(pending)?;
 				if pending.is_empty() {
 					ctx.info("[plan] No unapplied migrations.");
 					return Ok(());
@@ -594,9 +596,10 @@ impl BaseCommand for MigrateCommand {
 
 				// Create migration executor for fake migrations
 				let mut executor = DatabaseMigrationExecutor::new(connection);
+				let migrations_to_fake = dependency_ordered_migrations(migrations_to_apply.iter())?;
 
 				// Record each migration as applied without executing
-				for migration in &migrations_to_apply {
+				for migration in migrations_to_fake {
 					executor
 						.record_migration(&migration.app_label, &migration.name)
 						.await
@@ -649,6 +652,50 @@ impl BaseCommand for MigrateCommand {
 			Ok(())
 		}
 	}
+}
+
+/// Sort migrations with the same dependency rules used by the migration executor.
+#[cfg(feature = "migrations")]
+fn dependency_ordered_migrations<'a>(
+	migrations: impl IntoIterator<Item = &'a reinhardt_db::migrations::Migration>,
+) -> CommandResult<Vec<&'a reinhardt_db::migrations::Migration>> {
+	use reinhardt_db::migrations::{MigrationGraph, MigrationKey};
+	use std::collections::HashMap;
+
+	let migrations: Vec<_> = migrations.into_iter().collect();
+	let mut by_key = HashMap::with_capacity(migrations.len());
+	let mut graph = MigrationGraph::new();
+
+	for migration in &migrations {
+		let key = MigrationKey::new(migration.app_label.as_str(), migration.name.as_str());
+		let dependencies = migration
+			.dependencies
+			.iter()
+			.map(|(app, name)| MigrationKey::new(app.as_str(), name.as_str()))
+			.collect();
+
+		by_key.insert(key.clone(), *migration);
+		graph.add_migration(key, dependencies);
+	}
+
+	graph
+		.topological_sort()
+		.map_err(|e| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to sort migration plan by dependencies: {}",
+				e
+			))
+		})?
+		.into_iter()
+		.map(|key| {
+			by_key.get(&key).copied().ok_or_else(|| {
+				crate::CommandError::ExecutionError(format!(
+					"Dependency-sorted migration not found: {}",
+					key.id()
+				))
+			})
+		})
+		.collect()
 }
 
 /// Resolve the applied-migration set for a `--plan` preview without creating the
@@ -3884,9 +3931,9 @@ async fn connect_database(url: &str) -> CommandResult<(DatabaseType, DatabaseCon
 			}
 			#[cfg(not(feature = "postgres"))]
 			{
-				return Err(crate::CommandError::ExecutionError(
+				Err(crate::CommandError::ExecutionError(
 					"PostgreSQL support not enabled. Enable 'postgres' feature.".to_string(),
-				));
+				))
 			}
 		}
 		DatabaseType::Sqlite => {
@@ -4334,6 +4381,32 @@ mod tests {
 		fn drop(&mut self) {
 			let _ = std::env::set_current_dir(&self.original);
 		}
+	}
+
+	#[test]
+	#[cfg(feature = "migrations")]
+	fn test_dependency_ordered_migrations_sorts_cross_app_plan() {
+		// Arrange
+		let users = reinhardt_db::migrations::Migration::new("0001_initial", "users");
+		let profiles = reinhardt_db::migrations::Migration::new("0001_initial", "profiles")
+			.add_dependency("users", "0001_initial");
+		let articles = reinhardt_db::migrations::Migration::new("0001_initial", "articles")
+			.add_dependency("profiles", "0001_initial");
+		let unordered = vec![profiles, users, articles];
+
+		// Act
+		let ordered = dependency_ordered_migrations(unordered.iter()).expect("sort migration plan");
+
+		// Assert
+		let ids: Vec<_> = ordered.iter().map(|migration| migration.id()).collect();
+		assert_eq!(
+			ids,
+			vec![
+				"users.0001_initial",
+				"profiles.0001_initial",
+				"articles.0001_initial"
+			]
+		);
 	}
 
 	#[tokio::test]
