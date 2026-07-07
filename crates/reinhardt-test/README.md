@@ -8,6 +8,19 @@ Comprehensive testing utilities inspired by Django REST Framework's test utiliti
 
 Supports both unit testing and integration testing with real or test databases.
 
+## Test Databases
+
+`reinhardt-test` re-exports `reinhardt-testkit`'s model-derived database
+fixture:
+
+```rust
+use reinhardt_test::fixtures::{TestDatabase, test_database};
+```
+
+Use `test_database!(ModelA, ModelB)` for schemas derived from `Model`
+metadata, or `TestDatabase::builder().migrations::<AppMigrations>()` when a
+test should run against application migrations.
+
 ## Installation
 
 Add `reinhardt` to your `Cargo.toml`:

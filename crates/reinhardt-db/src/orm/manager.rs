@@ -104,7 +104,16 @@ pub async fn init_database_with_pool_size(
 	pool_size: Option<u32>,
 ) -> reinhardt_core::exception::Result<()> {
 	let conn = DatabaseConnection::connect_with_pool_size(url, pool_size).await?;
-	DB.get_or_init(|| Arc::new(RwLock::new(Some(conn))));
+
+	if let Some(db_cell) = DB.get() {
+		let mut guard = db_cell.write().await;
+		if guard.is_none() {
+			*guard = Some(conn);
+		}
+	} else {
+		DB.get_or_init(|| Arc::new(RwLock::new(Some(conn))));
+	}
+
 	Ok(())
 }
 
@@ -165,6 +174,19 @@ pub async fn reinitialize_database_with_pool_size(
 	}
 
 	Ok(())
+}
+
+/// Replace the global ORM database connection and return the previous value.
+///
+/// This is intended for test fixtures that need to mutate global ORM state while
+/// preserving RAII cleanup semantics. Passing `None` clears the global connection.
+#[doc(hidden)]
+pub async fn replace_database_connection_for_testing(
+	connection: Option<DatabaseConnection>,
+) -> Option<DatabaseConnection> {
+	let db = DB.get_or_init(|| Arc::new(RwLock::new(None)));
+	let mut guard = db.write().await;
+	std::mem::replace(&mut *guard, connection)
 }
 
 /// Get a reference to the global database connection
