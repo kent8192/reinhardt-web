@@ -926,7 +926,14 @@ impl SsrRenderer {
 						let replacement = self
 							.render_async_page(&replacement_page, AsyncRenderMode::Buffered)
 							.await;
-						node.cache_content_head_from(&replacement_page);
+						let replacement_settled =
+							super::resource_context::with_active_context(|context| {
+								!context.borrow().has_pending()
+							})
+							.unwrap_or(true);
+						if replacement_settled {
+							node.cache_content_head_from(&replacement_page);
+						}
 						if let Some(index) = boundary_end_index
 							&& let Some(context) =
 								super::resource_context::with_active_context(Rc::clone)

@@ -141,6 +141,46 @@ async fn buffered_suspense_caches_head_from_resolved_content_render() {
 }
 
 #[tokio::test]
+async fn buffered_suspense_caches_head_after_replay_resources_settle() {
+	let view = Page::Suspense(SuspenseNode::new(
+		Some("replay-head".to_string()),
+		|| false,
+		|| PageElement::new("span").child("outer-fallback").into_page(),
+		|| {
+			let outer = use_resource(|| async { Ok::<_, String>("outer".to_string()) }, ());
+			match outer.get() {
+				ResourceState::Success(_) => {
+					let inner =
+						use_resource(|| async { Ok::<_, String>("inner-ready".to_string()) }, ());
+
+					match inner.get() {
+						ResourceState::Success(value) => PageElement::new("main")
+							.child(value)
+							.into_page()
+							.with_head(Head::new().title("Inner Ready Head")),
+						ResourceState::Loading => {
+							PageElement::new("main").child("inner-loading").into_page()
+						}
+						ResourceState::Error(error) => {
+							PageElement::new("main").child(error).into_page()
+						}
+					}
+				}
+				ResourceState::Loading => PageElement::new("em").child("outer-loading").into_page(),
+				ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
+			}
+		},
+	));
+
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	assert!(html.contains("<title>Inner Ready Head</title>"));
+	assert!(html.contains("inner-ready"));
+	assert!(!html.contains("inner-loading"));
+}
+
+#[tokio::test]
 async fn suspense_stream_emits_shell_replacement_and_closing_chunks() {
 	let mut renderer = SsrRenderer::new();
 	let mut stream = renderer

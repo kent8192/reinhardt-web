@@ -5,7 +5,7 @@ use futures_util::future::join_all;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -33,11 +33,18 @@ struct TimedOutResource {
 	boundary_ids: Vec<String>,
 }
 
+struct ResolvedResource {
+	id: String,
+	external: bool,
+	boundary_ids: Vec<String>,
+	value: Value,
+}
+
 /// Request-scoped SSR resource registry.
 pub(crate) struct SsrResourceContext {
 	next_resource_index: usize,
 	pending: Vec<PendingResource>,
-	resolved: HashMap<String, Value>,
+	resolved: Vec<ResolvedResource>,
 	timed_out: Vec<TimedOutResource>,
 	boundary_stack: Vec<String>,
 	timeout: Duration,
@@ -49,7 +56,7 @@ impl SsrResourceContext {
 		Self {
 			next_resource_index: 0,
 			pending: Vec::new(),
-			resolved: HashMap::new(),
+			resolved: Vec::new(),
 			timed_out: Vec::new(),
 			boundary_stack: Vec::new(),
 			timeout,
@@ -101,13 +108,13 @@ impl SsrResourceContext {
 		E: Clone + Serialize + DeserializeOwned + 'static,
 		Fut: Future<Output = Result<T, E>> + 'static,
 	{
-		if let Some(value) = self.resolved.get(&key) {
+		if let Some(value) = self.resolved_value_for_scope(&key) {
 			if let Ok(resource_state) = serde_json::from_value(value.clone()) {
 				state.set(resource_state);
 			}
 			return;
 		}
-		if self.timed_out.iter().any(|resource| resource.id == key) {
+		if self.timed_out_for_scope(&key) {
 			return;
 		}
 
@@ -118,7 +125,9 @@ impl SsrResourceContext {
 		});
 
 		let current_boundary_id = self.current_boundary_id();
-		if let Some(pending) = self.pending.iter_mut().find(|pending| pending.id == key) {
+		if let Some(pending) = self.pending.iter_mut().find(|pending| {
+			pending_matches_registration_scope(pending, &key, current_boundary_id.as_deref())
+		}) {
 			match current_boundary_id {
 				Some(boundary_id) => {
 					if !pending
@@ -158,7 +167,11 @@ impl SsrResourceContext {
 		if self.current_boundary_id().is_some() {
 			return;
 		}
-		if let Some(pending) = self.pending.iter_mut().find(|pending| pending.id == key) {
+		if let Some(pending) = self
+			.pending
+			.iter_mut()
+			.find(|pending| pending_matches_registration_scope(pending, key, None))
+		{
 			pending.external = true;
 		}
 	}
@@ -187,16 +200,25 @@ impl SsrResourceContext {
 		T: Clone + DeserializeOwned + 'static,
 		E: Clone + DeserializeOwned + 'static,
 	{
-		self.resolved
-			.get(key)
+		self.resolved_value_for_scope(key)
 			.and_then(|value| serde_json::from_value(value.clone()).ok())
 	}
 
 	/// Returns resolved resource payloads.
-	pub(crate) fn resolved_resources(&self) -> impl Iterator<Item = (&str, &Value)> {
-		self.resolved
-			.iter()
-			.map(|(key, value)| (key.as_str(), value))
+	pub(crate) fn resolved_resources(&self) -> Vec<(&str, &Value)> {
+		let mut by_id: BTreeMap<&str, Vec<&ResolvedResource>> = BTreeMap::new();
+		for resource in &self.resolved {
+			by_id
+				.entry(resource.id.as_str())
+				.or_default()
+				.push(resource);
+		}
+
+		by_id
+			.into_iter()
+			.filter_map(|(_, resources)| resolved_resource_for_hydration(resources))
+			.map(|resource| (resource.id.as_str(), &resource.value))
+			.collect()
 	}
 
 	/// Returns whether any resource is pending for a Suspense boundary.
@@ -263,21 +285,60 @@ impl SsrResourceContext {
 	fn record_resolved(
 		&mut self,
 		id: String,
+		external: bool,
+		boundary_ids: Vec<String>,
 		subscribers: Vec<PendingResourceSubscriber>,
 		value: Value,
 	) {
 		for subscriber in subscribers {
 			subscriber(value.clone());
 		}
-		self.resolved.insert(id, value);
+		if let Some(existing) = self.resolved.iter_mut().find(|resource| {
+			resource.id == id
+				&& resource.external == external
+				&& resource.boundary_ids == boundary_ids
+		}) {
+			existing.value = value;
+		} else {
+			self.resolved.push(ResolvedResource {
+				id,
+				external,
+				boundary_ids,
+				value,
+			});
+		}
+	}
+
+	fn resolved_value_for_scope(&self, key: &str) -> Option<&Value> {
+		let current_boundary_id = self.current_boundary_id();
+		self.resolved
+			.iter()
+			.rev()
+			.find(|resource| {
+				resource.id == key
+					&& resolved_resource_matches_scope(
+						resource,
+						key,
+						current_boundary_id.as_deref(),
+					)
+			})
+			.map(|resource| &resource.value)
+	}
+
+	fn timed_out_for_scope(&self, key: &str) -> bool {
+		let current_boundary_id = self.current_boundary_id();
+		self.timed_out.iter().any(|resource| {
+			resource.id == key
+				&& timed_out_resource_matches_scope(resource, key, current_boundary_id.as_deref())
+		})
 	}
 
 	fn record_timeout(&mut self, timed_out: TimedOutResource) {
-		if let Some(existing) = self
-			.timed_out
-			.iter_mut()
-			.find(|resource| resource.id == timed_out.id)
-		{
+		if let Some(existing) = self.timed_out.iter_mut().find(|resource| {
+			resource.id == timed_out.id
+				&& resource.external == timed_out.external
+				&& resource.boundary_ids == timed_out.boundary_ids
+		}) {
 			existing.external |= timed_out.external;
 			for boundary_id in timed_out.boundary_ids {
 				if !existing
@@ -379,7 +440,7 @@ async fn resolve_matching(
 			subscribers,
 		} = pending;
 		match timeout(timeout_duration, future).await {
-			Ok((_id, value)) => Ok((id, subscribers, value)),
+			Ok((_id, value)) => Ok((id, external, boundary_ids, subscribers, value)),
 			Err(_) => Err(TimedOutResource {
 				id,
 				external,
@@ -392,9 +453,9 @@ async fn resolve_matching(
 	let mut all_resolved = !already_timed_out;
 	for result in results {
 		match result {
-			Ok((id, subscribers, value)) => {
-				context.borrow_mut().record_resolved(id, subscribers, value)
-			}
+			Ok((id, external, boundary_ids, subscribers, value)) => context
+				.borrow_mut()
+				.record_resolved(id, external, boundary_ids, subscribers, value),
 			Err(timed_out) => {
 				context.borrow_mut().record_timeout(timed_out);
 				all_resolved = false;
@@ -402,4 +463,154 @@ async fn resolve_matching(
 		}
 	}
 	all_resolved
+}
+
+fn is_internal_call_order_key(key: &str) -> bool {
+	key.strip_prefix("rh-res-").is_some_and(|suffix| {
+		!suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
+	})
+}
+
+fn pending_matches_registration_scope(
+	pending: &PendingResource,
+	key: &str,
+	current_boundary_id: Option<&str>,
+) -> bool {
+	if pending.id != key {
+		return false;
+	}
+	if !is_internal_call_order_key(key) {
+		return true;
+	}
+	match current_boundary_id {
+		Some(boundary_id) => pending.boundary_ids.iter().any(|id| id == boundary_id),
+		None => pending.external || pending.boundary_ids.is_empty(),
+	}
+}
+
+fn resolved_resource_matches_scope(
+	resource: &ResolvedResource,
+	key: &str,
+	current_boundary_id: Option<&str>,
+) -> bool {
+	if !is_internal_call_order_key(key) {
+		return true;
+	}
+	match current_boundary_id {
+		Some(boundary_id) => resource.boundary_ids.iter().any(|id| id == boundary_id),
+		None => resource.external,
+	}
+}
+
+fn timed_out_resource_matches_scope(
+	resource: &TimedOutResource,
+	key: &str,
+	current_boundary_id: Option<&str>,
+) -> bool {
+	if !is_internal_call_order_key(key) {
+		return true;
+	}
+	match current_boundary_id {
+		Some(boundary_id) => resource.boundary_ids.iter().any(|id| id == boundary_id),
+		None => resource.external,
+	}
+}
+
+fn resolved_resource_for_hydration(resources: Vec<&ResolvedResource>) -> Option<&ResolvedResource> {
+	let mut external = resources
+		.iter()
+		.copied()
+		.filter(|resource| resource.external);
+	if let Some(resource) = external.next() {
+		return Some(resource);
+	}
+	if resources.len() == 1 {
+		return resources.first().copied();
+	}
+	None
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn resource_signal() -> Signal<ResourceState<String, String>> {
+		Signal::new(ResourceState::Loading)
+	}
+
+	fn resource_value(value: &Value) -> ResourceState<String, String> {
+		serde_json::from_value(value.clone()).expect("resource state should deserialize")
+	}
+
+	#[tokio::test]
+	async fn internal_call_order_resources_keep_boundary_scopes_separate() {
+		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
+			1,
+		))));
+		let boundary_state = resource_signal();
+		let outside_state = resource_signal();
+
+		{
+			let _guard = enter_boundary(&context, "boundary".to_string());
+			context.borrow_mut().register_resource(
+				"rh-res-0".to_string(),
+				async { Ok::<_, String>("boundary".to_string()) },
+				boundary_state.clone(),
+			);
+		}
+		context.borrow_mut().register_resource(
+			"rh-res-0".to_string(),
+			async { Ok::<_, String>("outside".to_string()) },
+			outside_state.clone(),
+		);
+		context.borrow_mut().mark_resource_read("rh-res-0");
+
+		assert_eq!(context.borrow().pending.len(), 2);
+
+		assert!(resolve_external_resources(&context).await);
+		assert_eq!(
+			outside_state.get(),
+			ResourceState::Success("outside".to_string())
+		);
+		assert_eq!(boundary_state.get(), ResourceState::Loading);
+		{
+			let context_ref = context.borrow();
+			let resources = context_ref.resolved_resources();
+			assert_eq!(resources.len(), 1);
+			assert_eq!(
+				resource_value(resources[0].1),
+				ResourceState::Success("outside".to_string())
+			);
+		}
+
+		assert!(resolve_boundary_resources(&context, "boundary").await);
+		assert_eq!(
+			boundary_state.get(),
+			ResourceState::Success("boundary".to_string())
+		);
+		assert_eq!(
+			context
+				.borrow()
+				.resolved_resource_state::<String, String>("rh-res-0"),
+			Some(ResourceState::Success("outside".to_string()))
+		);
+		{
+			let _guard = enter_boundary(&context, "boundary".to_string());
+			assert_eq!(
+				context
+					.borrow()
+					.resolved_resource_state::<String, String>("rh-res-0"),
+				Some(ResourceState::Success("boundary".to_string()))
+			);
+		}
+		{
+			let context_ref = context.borrow();
+			let resources = context_ref.resolved_resources();
+			assert_eq!(resources.len(), 1);
+			assert_eq!(
+				resource_value(resources[0].1),
+				ResourceState::Success("outside".to_string())
+			);
+		}
+	}
 }
