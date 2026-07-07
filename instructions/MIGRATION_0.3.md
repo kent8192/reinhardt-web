@@ -39,7 +39,7 @@ This guide is grouped by migration surface rather than merge order.
 | Area | PRs | Migration action |
 |---|---|---|
 | Removed 0.2 compatibility APIs | #5362 | Follow "Removed API"; replace `AuthUser`, `create_resource*`, and `use_effect_event*`. |
-| Dependency injection identity and WASM stubs | #5349, #5358, #5341 | Follow "Keyed dependency providers"; use `#[injectable]`, `FactoryOutput<K, T>`, `#[injectable_key]`, and `Depends<K, T>` when a provider output needs an explicit key. |
+| Dependency injection identity and WASM stubs | #5349, #5358, #5341 | Follow "Keyed dependency providers"; use `#[injectable]`, `KeyedFactoryOutput<K, T>`, `#[injectable_key]`, and `KeyedDepends<K, T>` when a provider output needs an explicit key. |
 | WASM/native public API parity | #5338, #5324, #5342, #5417 | Follow "WASM/native parity"; keep shared app modules cfg-clean and rely on inert WASM stubs for `#[user]`, client pages, and provider symbols where documented. |
 | URL routing | #5317 | Follow "Server route registration"; remove raw `function`, `route`, and method-specific handler registration calls. |
 | Pages components, resources, portals, assets, activity boundaries, widgets | #5330, #5327, #5329, #5332, #5318, #5344, #5348 | Follow "Pages and components"; move route wrappers to `#[component]` modules and keep `use_resource(fetcher, deps)`. |
@@ -61,15 +61,15 @@ changes.
 | `reinhardt-pages` | `use_effect_event_with(f, deps)` | `use_callback_with(f, deps)` or `.get_untracked()` inside the effect |
 | `reinhardt-urls` | `ServerRouter::function`, `ServerRouter::route`, `ServerRouter::handler_with_method`, and named variants | `#[get]` / `#[post]` / endpoint macros plus `.endpoint(factory)` |
 | `reinhardt-urls` | `FunctionHandler` public re-export | endpoint-generated handler types or a custom `Handler` type registered with `.view(...)` |
-| `reinhardt-di` | value-type-only provider identity for provider functions | `FactoryOutput<K, T>` with `Depends<K, T>` |
-| `reinhardt-di` | `DependsResult` / `DependsOption` sugar aliases | `Depends<K, Result<T, E>>` / `Depends<K, Option<T>>` |
+| `reinhardt-di` | value-type-only provider identity for provider functions | Direct provider returns with `Depends<T>`, or `KeyedFactoryOutput<K, T>` with `KeyedDepends<K, T>` |
+| `reinhardt-di` | `DependsResult` / `DependsOption` sugar aliases | `Depends<Result<T, E>>` / `Depends<Option<T>>` for self-keyed values, or `KeyedDepends<K, Result<T, E>>` / `KeyedDepends<K, Option<T>>` for explicit keys |
 
 Quick scan:
 
 ```bash
 rg -n "AuthUser|create_resource|create_resource_with_deps|use_effect_event|use_effect_event_with" src crates examples
 rg -n "\\.(function|route|handler_with_method)(_named)?\\(|FunctionHandler|Depends(Result|Option)" src crates examples
-rg -n "FactoryOutput<|Depends<[^,>]+>|injectable_factory|InjectableKey" src crates examples
+rg -n "FactoryOutput<|Depends<[^,>]+,[^>]+>|injectable_factory|InjectableKey" src crates examples
 rg -n "pages\\.rs|server_urls|client/pages|src/shared/(forms|types)\\.rs" src examples
 ```
 
@@ -108,9 +108,10 @@ custom `AsyncSessionBackend` directly.
 ## Keyed dependency providers
 
 0.3 makes provider identity explicit. Use direct `Injectable` values when the
-type itself is the unique dependency identity. Use `FactoryOutput<K, T>` when a
-provider function returns a value type that might have multiple meanings in one
-application.
+type itself is the unique dependency identity. Provider functions can return
+the value type directly for self-keyed injection. Use
+`KeyedFactoryOutput<K, T>` when a provider function returns a value type that
+might have multiple meanings in one application.
 
 ```rust
 // Before: provider identity was the value type.
@@ -130,7 +131,7 @@ async fn health(
 
 ```rust
 // After: provider identity is the explicit key.
-use reinhardt::di::{Depends, FactoryOutput, injectable, injectable_key};
+use reinhardt::di::{KeyedDepends, KeyedFactoryOutput, injectable, injectable_key};
 
 #[injectable_key]
 struct PrimaryDatabase;
@@ -138,8 +139,8 @@ struct PrimaryDatabase;
 #[injectable(scope = "singleton")]
 async fn database(
     #[inject] settings: ProjectSettings,
-) -> FactoryOutput<PrimaryDatabase, DatabaseConnection> {
-    FactoryOutput::new(
+) -> KeyedFactoryOutput<PrimaryDatabase, DatabaseConnection> {
+    KeyedFactoryOutput::new(
         DatabaseConnection::connect(&settings.database_url)
             .await
             .unwrap(),
@@ -147,7 +148,7 @@ async fn database(
 }
 
 async fn health(
-    #[inject] db: Depends<PrimaryDatabase, DatabaseConnection>,
+    #[inject] db: KeyedDepends<PrimaryDatabase, DatabaseConnection>,
 ) -> Response {
     Response::ok()
 }
@@ -160,12 +161,12 @@ If initialization can fail, keep the key in the first position and put
 #[injectable(scope = "singleton")]
 async fn database(
     #[inject] settings: ProjectSettings,
-) -> FactoryOutput<PrimaryDatabase, Result<DatabaseConnection, DbError>> {
-    FactoryOutput::new(DatabaseConnection::connect(&settings.database_url).await)
+) -> KeyedFactoryOutput<PrimaryDatabase, Result<DatabaseConnection, DbError>> {
+    KeyedFactoryOutput::new(DatabaseConnection::connect(&settings.database_url).await)
 }
 
 async fn health(
-    #[inject] db: Depends<PrimaryDatabase, Result<DatabaseConnection, DbError>>,
+    #[inject] db: KeyedDepends<PrimaryDatabase, Result<DatabaseConnection, DbError>>,
 ) -> Response {
     Response::ok()
 }
@@ -173,6 +174,9 @@ async fn health(
 
 `#[injectable_factory]` is retained only as a deprecated compatibility alias for
 provider functions. New code should use `#[injectable]`.
+`FactoryOutput<K, T>` is retained only as a deprecated alias for
+`KeyedFactoryOutput<K, T>`. New code should use `KeyedFactoryOutput` for
+explicit keys, or return `T` directly for self-keyed providers.
 
 ## Server route registration
 
