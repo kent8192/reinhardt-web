@@ -1296,6 +1296,10 @@ impl ProjectState {
 				Operation::AddConstraint {
 					table,
 					constraint_sql,
+				}
+				| Operation::AddConstraintRepair {
+					table,
+					constraint_sql,
 				} => {
 					if let Some(model) = self.find_model_by_table_mut(table)
 						&& let Some(constraint) =
@@ -4339,6 +4343,7 @@ impl MigrationAutodetector {
 		}) {
 			operations.push(super::Operation::CreateIndexRepair {
 				table: to_model.table_name.clone(),
+				name: Some(index.name.clone()),
 				columns: index.fields.clone(),
 				unique: index.unique,
 				index_type: None,
@@ -4382,6 +4387,7 @@ impl MigrationAutodetector {
 		}) {
 			operations.push(super::Operation::RestoreIndexOnRollback {
 				table: from_model.table_name.clone(),
+				name: Some(index.name.clone()),
 				columns: index.fields.clone(),
 				unique: index.unique,
 				index_type: None,
@@ -4415,17 +4421,29 @@ impl MigrationAutodetector {
 		to_model: &ModelState,
 		field_name: &str,
 	) -> Vec<(String, super::ColumnDefinition, super::ColumnDefinition)> {
-		from_model
-			.fields
-			.iter()
-			.filter(|(dependent_name, from_field)| {
-				dependent_name.as_str() != field_name
-					&& from_field.generated.as_ref().is_some_and(|generated| {
-						Self::generated_column_references_column(generated, field_name)
-					})
-			})
-			.filter_map(|(dependent_name, from_field)| {
-				let to_field = to_model.get_field(dependent_name)?;
+		let mut affected_columns = BTreeSet::from([field_name.to_string()]);
+		let mut dependents = Vec::new();
+
+		loop {
+			let mut added = false;
+			for (dependent_name, from_field) in &from_model.fields {
+				if affected_columns.contains(dependent_name) {
+					continue;
+				}
+
+				let references_affected_column =
+					from_field.generated.as_ref().is_some_and(|generated| {
+						affected_columns.iter().any(|column| {
+							Self::generated_column_references_column(generated, column)
+						})
+					});
+				if !references_affected_column {
+					continue;
+				}
+
+				let Some(to_field) = to_model.get_field(dependent_name) else {
+					continue;
+				};
 				let from_unique =
 					Self::single_field_unique_column_already_present(from_model, dependent_name);
 				let to_unique =
@@ -4437,16 +4455,24 @@ impl MigrationAutodetector {
 					Some(from_unique),
 					Some(to_unique),
 				) {
-					return None;
+					continue;
 				}
 
-				Some((
+				affected_columns.insert(dependent_name.clone());
+				dependents.push((
 					dependent_name.clone(),
 					super::ColumnDefinition::from_field_state(dependent_name.clone(), from_field),
 					super::ColumnDefinition::from_field_state(dependent_name.clone(), to_field),
-				))
-			})
-			.collect()
+				));
+				added = true;
+			}
+
+			if !added {
+				break;
+			}
+		}
+
+		dependents
 	}
 
 	fn generated_column_references_column(
@@ -5730,12 +5756,12 @@ impl MigrationAutodetector {
 	///
 	/// assert!(!operations.is_empty());
 	/// ```rust,ignore
-	/// Sort operations by their dependencies to ensure correct execution order
+	/// Sort operations by their dependencies to ensure correct execution order.
 	///
-	/// This method reorders operations to prevent execution errors:
-	/// 1. CreateTable operations first (tables must exist before modification)
-	/// 2. AddColumn/AlterColumn/DropColumn operations next (field modifications)
-	/// 3. Other operations last (indexes, constraints, etc.)
+	/// CreateTable operations must run before table modifications, but the
+	/// remaining emission order carries dependency information. In
+	/// particular, generated-column repair and rollback marker operations
+	/// must stay around the drop/add replacement pair that they protect.
 	fn sort_operations_by_dependency(
 		&self,
 		mut operations: Vec<super::Operation>,
@@ -5750,32 +5776,9 @@ impl MigrationAutodetector {
 			.collect();
 		operations.retain(|op| !matches!(op, super::Operation::CreateTable { .. }));
 
-		// Extract field operations (must be after CreateTable)
-		let field_ops: Vec<_> = operations
-			.iter()
-			.filter(|op| {
-				matches!(
-					op,
-					super::Operation::AddColumn { .. }
-						| super::Operation::AlterColumn { .. }
-						| super::Operation::DropColumn { .. }
-				)
-			})
-			.cloned()
-			.collect();
-		operations.retain(|op| {
-			!matches!(
-				op,
-				super::Operation::AddColumn { .. }
-					| super::Operation::AlterColumn { .. }
-					| super::Operation::DropColumn { .. }
-			)
-		});
-
 		// Assemble in correct order
 		sorted.extend(create_tables);
-		sorted.extend(field_ops);
-		sorted.extend(operations); // Remaining operations
+		sorted.extend(operations);
 
 		sorted
 	}
@@ -6149,7 +6152,7 @@ impl MigrationAutodetector {
 						);
 					}
 					for (dependent_name, old_dependent_definition, _) in
-						&dependent_generated_columns
+						dependent_generated_columns.iter().rev()
 					{
 						operations.push(super::Operation::DropColumn {
 							table: model.table_name.clone(),
@@ -8750,18 +8753,29 @@ mod tests {
 		let mut to_search_name =
 			FieldState::new("search_name", super::super::FieldType::VarChar(201), false);
 		to_search_name.generated = Some(search_name_generated.clone());
+		let mut from_search_key =
+			FieldState::new("search_key", super::super::FieldType::VarChar(201), false);
+		let search_key_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("search_name"),
+			"SchemaExpr::col(\"search_name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		from_search_key.generated = Some(search_key_generated.clone());
+		let mut to_search_key =
+			FieldState::new("search_key", super::super::FieldType::VarChar(201), false);
+		to_search_key.generated = Some(search_key_generated.clone());
 
 		let from_model = build_model_state(
 			"accounts",
 			"User",
-			vec![from_full_name, from_search_name],
+			vec![from_full_name, from_search_name, from_search_key],
 			Vec::new(),
 			Vec::new(),
 		);
 		let to_model = build_model_state(
 			"accounts",
 			"User",
-			vec![to_full_name, to_search_name],
+			vec![to_full_name, to_search_name, to_search_key],
 			Vec::new(),
 			Vec::new(),
 		);
@@ -8780,9 +8794,19 @@ mod tests {
 		let operations = detector.generate_operations();
 
 		// Assert
-		assert_eq!(operations.len(), 4, "unexpected operations: {operations:?}");
+		assert_eq!(operations.len(), 6, "unexpected operations: {operations:?}");
 		assert!(matches!(
 			&operations[0],
+			super::super::Operation::DropColumn {
+				table,
+				column,
+				old_definition: Some(old_definition)
+			} if table == "accounts_user"
+				&& column == "search_key"
+				&& old_definition.generated == Some(search_key_generated.clone())
+		));
+		assert!(matches!(
+			&operations[1],
 			super::super::Operation::DropColumn {
 				table,
 				column,
@@ -8792,23 +8816,30 @@ mod tests {
 				&& old_definition.generated == Some(search_name_generated.clone())
 		));
 		assert!(matches!(
-			&operations[1],
+			&operations[2],
 			super::super::Operation::DropColumn { table, column, .. }
 				if table == "accounts_user" && column == "full_name"
 		));
 		assert!(matches!(
-			&operations[2],
+			&operations[3],
 			super::super::Operation::AddColumn { table, column, .. }
 				if table == "accounts_user"
 					&& column.name == "full_name"
 					&& column.generated == Some(to_full_name_generated.clone())
 		));
 		assert!(matches!(
-			&operations[3],
+			&operations[4],
 			super::super::Operation::AddColumn { table, column, .. }
 				if table == "accounts_user"
 					&& column.name == "search_name"
 					&& column.generated == Some(search_name_generated.clone())
+		));
+		assert!(matches!(
+			&operations[5],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user"
+					&& column.name == "search_key"
+					&& column.generated == Some(search_key_generated.clone())
 		));
 	}
 
@@ -8870,10 +8901,49 @@ mod tests {
 		let operations = detector.generate_operations();
 
 		// Assert
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::RestoreIndexOnRollback {
+				table,
+				name: Some(name),
+				columns,
+				unique,
+				..
+			} if table == "accounts_user"
+				&& name == "idx_accounts_user_full_name"
+				&& columns == &vec!["full_name".to_string()]
+				&& !unique
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::RestoreConstraintOnRollback { table, constraint_sql }
+				if table == "accounts_user"
+					&& constraint_sql.contains("uq_accounts_user_full_name")
+					&& constraint_sql.contains("full_name")
+		));
+		assert!(matches!(
+			&operations[2],
+			super::super::Operation::DropColumn { table, column, .. }
+				if table == "accounts_user" && column == "full_name"
+		));
+		assert!(matches!(
+			&operations[3],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user" && column.name == "full_name"
+		));
 		assert!(operations.iter().any(|operation| matches!(
 			operation,
-			super::super::Operation::RestoreIndexOnRollback { table, columns, unique, .. }
-				if table == "accounts_user" && columns == &vec!["full_name".to_string()] && !unique
+			super::super::Operation::RestoreIndexOnRollback {
+				table,
+				name: Some(name),
+				columns,
+				unique,
+				..
+			}
+				if table == "accounts_user"
+					&& name == "idx_accounts_user_full_name"
+					&& columns == &vec!["full_name".to_string()]
+					&& !unique
 		)));
 		assert!(operations.iter().any(|operation| matches!(
 			operation,
@@ -8884,8 +8954,17 @@ mod tests {
 		)));
 		assert!(operations.iter().any(|operation| matches!(
 			operation,
-			super::super::Operation::CreateIndexRepair { table, columns, unique, .. }
-				if table == "accounts_user" && columns == &vec!["full_name".to_string()] && !unique
+			super::super::Operation::CreateIndexRepair {
+				table,
+				name: Some(name),
+				columns,
+				unique,
+				..
+			}
+				if table == "accounts_user"
+					&& name == "idx_accounts_user_full_name"
+					&& columns == &vec!["full_name".to_string()]
+					&& !unique
 		)));
 		assert!(operations.iter().any(|operation| matches!(
 				operation,

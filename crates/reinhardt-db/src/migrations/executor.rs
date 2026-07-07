@@ -1050,7 +1050,7 @@ impl DatabaseMigrationExecutor {
 					name: idx_name,
 					columns: cols,
 				});
-			} else if origin == "c" && !cols.is_empty() {
+			} else if origin == "c" && (!cols.is_empty() || idx_sql.is_some()) {
 				indexes.push(super::operations::SqliteRecreatedIndex {
 					name: idx_name,
 					columns: cols,

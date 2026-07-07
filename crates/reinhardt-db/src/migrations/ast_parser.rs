@@ -243,6 +243,7 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 			}
 			"CreateIndex" | "CreateIndexRepair" | "RestoreIndexOnRollback" => {
 				let table = extract_string_field(&expr_struct.fields, "table")?;
+				let name = extract_optional_str_field(&expr_struct.fields, "name");
 				let columns = extract_string_vec_field(&expr_struct.fields, "columns");
 				let unique = extract_bool_field(&expr_struct.fields, "unique").unwrap_or(false);
 				let index_type = extract_index_type_field(&expr_struct.fields, "index_type");
@@ -264,6 +265,7 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 					},
 					"CreateIndexRepair" => super::Operation::CreateIndexRepair {
 						table,
+						name,
 						columns,
 						unique,
 						index_type,
@@ -275,6 +277,7 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 					},
 					_ => super::Operation::RestoreIndexOnRollback {
 						table,
+						name,
 						columns,
 						unique,
 						index_type,

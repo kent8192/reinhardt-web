@@ -389,6 +389,7 @@ async fn test_alter_table_drop_column_syntax(#[case] dialect: SqlDialect) {
 	let operation = Operation::DropColumn {
 		table: leak_str("users").to_string(),
 		column: leak_str("middle_name").to_string(),
+		old_definition: None,
 	};
 
 	let sql = operation.to_sql(&dialect);

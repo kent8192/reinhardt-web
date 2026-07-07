@@ -967,6 +967,9 @@ pub enum Operation {
 	CreateIndexRepair {
 		/// The table.
 		table: String,
+		/// Explicit index name.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		name: Option<String>,
 		/// The columns.
 		columns: Vec<String>,
 		/// The unique.
@@ -994,6 +997,9 @@ pub enum Operation {
 	RestoreIndexOnRollback {
 		/// The table.
 		table: String,
+		/// Explicit index name.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		name: Option<String>,
 		/// The columns.
 		columns: Vec<String>,
 		/// The unique.
@@ -2128,6 +2134,7 @@ impl Operation {
 			}
 			| Operation::CreateIndexRepair {
 				table,
+				name: _,
 				columns,
 				unique,
 				index_type,
@@ -2190,7 +2197,12 @@ impl Operation {
 						(content, columns.join("_"))
 					};
 
-				let idx_name = format!("idx_{}_{}", table, name_suffix);
+				let idx_name = match self {
+					Operation::CreateIndexRepair {
+						name: Some(name), ..
+					} => name.clone(),
+					_ => format!("idx_{}_{}", table, name_suffix),
+				};
 
 				// Index type clause (USING type) - PostgreSQL, CockroachDB
 				let using_clause = match (index_type, dialect) {
@@ -2859,6 +2871,7 @@ impl Operation {
 			Operation::CreateIndexRepair { .. } => Ok(None),
 			Operation::RestoreIndexOnRollback {
 				table,
+				name,
 				columns,
 				unique,
 				index_type,
@@ -2868,15 +2881,16 @@ impl Operation {
 				mysql_options,
 				operator_class,
 			} => Ok(Some(vec![
-				Operation::CreateIndex {
+				Operation::CreateIndexRepair {
 					table: table.clone(),
+					name: name.clone(),
 					columns: columns.clone(),
 					unique: *unique,
-					index_type: index_type.clone(),
+					index_type: *index_type,
 					where_clause: where_clause.clone(),
 					concurrently: *concurrently,
 					expressions: expressions.clone(),
-					mysql_options: mysql_options.clone(),
+					mysql_options: *mysql_options,
 					operator_class: operator_class.clone(),
 				}
 				.to_sql(dialect),
@@ -6726,6 +6740,7 @@ mod tests {
 		let state = ProjectState::default();
 		let create_repair = Operation::CreateIndexRepair {
 			table: "users".to_string(),
+			name: None,
 			columns: vec!["full_name".to_string()],
 			unique: false,
 			index_type: None,
@@ -6737,6 +6752,7 @@ mod tests {
 		};
 		let restore_index = Operation::RestoreIndexOnRollback {
 			table: "users".to_string(),
+			name: None,
 			columns: vec!["full_name".to_string()],
 			unique: false,
 			index_type: None,
@@ -8262,6 +8278,30 @@ mod tests {
 		assert_eq!(
 			sql.last().map(String::as_str),
 			Some("CREATE INDEX \"idx_users_title\" ON \"users\" (\"title\");")
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_preserves_expression_index_sql() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let title = ColumnDefinition::new("title", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+
+		let recreation =
+			SqliteTableRecreation::for_add_column("users", vec![id, title], full_name, vec![])
+				.with_indexes(vec![SqliteRecreatedIndex {
+					name: "idx_users_lower_title".to_string(),
+					columns: Vec::new(),
+					unique: false,
+					sql: Some(
+						"CREATE INDEX idx_users_lower_title ON users(lower(title))".to_string(),
+					),
+				}]);
+		let sql = recreation.to_sql_statements();
+
+		assert_eq!(
+			sql.last().map(String::as_str),
+			Some("CREATE INDEX idx_users_lower_title ON users(lower(title));")
 		);
 	}
 

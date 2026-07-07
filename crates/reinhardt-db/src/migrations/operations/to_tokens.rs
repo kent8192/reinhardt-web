@@ -560,6 +560,7 @@ impl ToTokens for Operation {
 			}
 			| Operation::CreateIndexRepair {
 				table,
+				name: _,
 				columns,
 				unique,
 				index_type,
@@ -571,6 +572,7 @@ impl ToTokens for Operation {
 			}
 			| Operation::RestoreIndexOnRollback {
 				table,
+				name: _,
 				columns,
 				unique,
 				index_type,
@@ -589,6 +591,15 @@ impl ToTokens for Operation {
 					_ => unreachable!(),
 				};
 				let columns_iter = columns.iter();
+				let name_field = match self {
+					Operation::CreateIndex { .. } => quote! {},
+					Operation::CreateIndexRepair { name, .. }
+					| Operation::RestoreIndexOnRollback { name, .. } => match name {
+						Some(name) => quote! { name: Some(#name.to_string()), },
+						None => quote! { name: None, },
+					},
+					_ => unreachable!(),
+				};
 				let index_type_token = match index_type {
 					Some(it) => {
 						let variant = match it {
@@ -626,8 +637,9 @@ impl ToTokens for Operation {
 				tokens.extend(quote! {
 						Operation::#variant {
 							table: #table.to_string(),
+							#name_field
 							columns: vec![#(#columns_iter.to_string()),*],
-						unique: #unique,
+							unique: #unique,
 						index_type: #index_type_token,
 						where_clause: #where_clause_token,
 						concurrently: #concurrently,

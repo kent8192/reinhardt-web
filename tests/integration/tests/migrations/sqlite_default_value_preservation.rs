@@ -147,6 +147,7 @@ async fn issue_4454_string_default_survives_drop_column_recreation() {
 		vec![Operation::DropColumn {
 			table: "orders".to_string(),
 			column: "note".to_string(),
+			old_definition: None,
 		}],
 	);
 

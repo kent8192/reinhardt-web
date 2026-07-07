@@ -264,6 +264,7 @@ impl AutoMigrationGenerator {
 				Operation::CreateIndexRepair { .. } => None,
 				Operation::RestoreIndexOnRollback {
 					table,
+					name,
 					columns,
 					unique,
 					index_type,
@@ -272,15 +273,16 @@ impl AutoMigrationGenerator {
 					expressions,
 					mysql_options,
 					operator_class,
-				} => Some(Operation::CreateIndex {
+				} => Some(Operation::CreateIndexRepair {
 					table: table.clone(),
+					name: name.clone(),
 					columns: columns.clone(),
 					unique: *unique,
-					index_type: index_type.clone(),
+					index_type: *index_type,
 					where_clause: where_clause.clone(),
 					concurrently: *concurrently,
 					expressions: expressions.clone(),
-					mysql_options: mysql_options.clone(),
+					mysql_options: *mysql_options,
 					operator_class: operator_class.clone(),
 				}),
 				Operation::DropIndex { .. } => None, // Cannot rollback without index definition

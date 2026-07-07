@@ -4692,6 +4692,9 @@ where
 
 		// Add SET clauses
 		for (field, value) in updates {
+			if T::generated_field_names().contains(&field.as_str()) {
+				continue;
+			}
 			stmt.value_expr(Alias::new(field), Self::update_value_to_query_expr(value));
 		}
 
@@ -4832,6 +4835,16 @@ where
 			return Err(reinhardt_core::exception::Error::Validation(
 				"QuerySet::update_fields field names must not be empty".to_string(),
 			));
+		}
+
+		if let Some(assignment) = assignments
+			.iter()
+			.find(|assignment| T::generated_field_names().contains(&assignment.field()))
+		{
+			return Err(reinhardt_core::exception::Error::Validation(format!(
+				"QuerySet::update_fields cannot assign generated field `{}`",
+				assignment.field()
+			)));
 		}
 
 		Ok(())
@@ -6475,6 +6488,7 @@ mod tests {
 	use super::{FilterCondition, MAX_FILTER_CONDITION_DEPTH};
 	use crate::orm::query::{FieldAssignment, UpdateValue};
 	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
+	use reinhardt_query::QueryBuilder;
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
@@ -6507,6 +6521,10 @@ mod tests {
 
 		const fn field_email() -> crate::orm::expressions::FieldRef<TestUser, String> {
 			crate::orm::expressions::FieldRef::new("email")
+		}
+
+		const fn field_full_name() -> crate::orm::expressions::FieldRef<TestUser, String> {
+			crate::orm::expressions::FieldRef::new("full_name")
 		}
 
 		const fn field_created_at() -> crate::orm::expressions::FieldRef<TestUser, String> {
@@ -6558,6 +6576,10 @@ mod tests {
 
 		fn new_fields() -> Self::Fields {
 			TestUserFields
+		}
+
+		fn generated_field_names() -> &'static [&'static str] {
+			&["full_name"]
 		}
 	}
 
@@ -6630,9 +6652,47 @@ mod tests {
 			.expect_err("missing predicate should fail");
 
 		assert!(matches!(
+		error,
+		reinhardt_core::exception::Error::Validation(message)
+			if message.contains("filter predicate")
+		));
+	}
+
+	#[test]
+	fn test_update_query_omits_generated_fields() {
+		let queryset = QuerySet::<TestUser>::new().filter(TestUser::field_id().eq(7));
+		let mut updates = HashMap::new();
+		updates.insert(
+			"username".to_string(),
+			UpdateValue::String("alice".to_string()),
+		);
+		updates.insert(
+			"full_name".to_string(),
+			UpdateValue::String("Alice Doe".to_string()),
+		);
+
+		let stmt = queryset.update_query(&updates);
+		let (sql, params) = super::PostgresQueryBuilder.build_update(&stmt);
+
+		assert_eq!(
+			sql,
+			"UPDATE \"test_users\" SET \"username\" = $1 WHERE \"id\" = $2"
+		);
+		assert_eq!(params.len(), 2);
+	}
+
+	#[test]
+	fn test_update_fields_sql_rejects_generated_fields() {
+		let queryset = QuerySet::<TestUser>::new().filter(TestUser::field_id().eq(7));
+
+		let error = queryset
+			.update_fields_sql([(TestUser::field_full_name(), "Alice Doe")])
+			.expect_err("generated fields should be rejected");
+
+		assert!(matches!(
 			error,
 			reinhardt_core::exception::Error::Validation(message)
-				if message.contains("filter predicate")
+				if message == "QuerySet::update_fields cannot assign generated field `full_name`"
 		));
 	}
 

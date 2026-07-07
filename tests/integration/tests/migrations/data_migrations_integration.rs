@@ -394,6 +394,7 @@ async fn test_data_type_conversion(
 			Operation::DropColumn {
 				table: leak_str("users").to_string(),
 				column: leak_str("age").to_string(),
+				old_definition: None,
 			},
 			// Rename age_int to age
 			Operation::RenameColumn {

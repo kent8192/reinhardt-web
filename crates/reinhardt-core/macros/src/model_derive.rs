@@ -1299,6 +1299,24 @@ impl FieldConfig {
 
 		Ok(())
 	}
+
+	/// Validate field configuration that depends on the Rust field type.
+	fn validate_for_field_type(&self, ty: &Type) -> Result<()> {
+		self.validate()?;
+
+		let has_generated = self.generated.is_some() || self.generated_sql.is_some();
+		let implicit_integer_pk_auto_increment = self.primary_key
+			&& is_integer_primary_key_type(ty)
+			&& self.auto_increment.unwrap_or(true);
+		if has_generated && implicit_integer_pk_auto_increment {
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"Generated columns cannot be auto-incrementing",
+			));
+		}
+
+		Ok(())
+	}
 }
 
 /// Field information for processing
@@ -2180,7 +2198,7 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			.ok_or_else(|| syn::Error::new_spanned(field, "Field must have a name"))?;
 		let ty = field.ty.clone();
 		let config = FieldConfig::from_attrs(&field.attrs)?;
-		config.validate()?;
+		config.validate_for_field_type(&ty)?;
 		let injected_relation_serde_skip = field.attrs.iter().any(|attr| {
 			attr.path()
 				.is_ident("reinhardt_internal_relation_serde_skip")
@@ -5684,10 +5702,9 @@ mod tests {
 		let error = validate_generated_schema_expr(&expr)
 			.expect_err("unsupported builders must be rejected");
 
-		assert!(
-			error
-				.to_string()
-				.contains("generated expects a reconstructable SchemaExpr expression")
+		assert_eq!(
+			error.to_string(),
+			"generated expects a reconstructable SchemaExpr expression; supported forms are SchemaExpr::col(...), SchemaExpr::val(...), SchemaExpr::concat([...]), SchemaExpr::coalesce([...]), and chained .binary(...) or .cast(...) calls. Use generated_sql = \"...\" for raw SQL or unsupported expression builders."
 		);
 	}
 
@@ -5706,7 +5723,32 @@ mod tests {
 			.validate()
 			.expect_err("generated auto-increment must be rejected");
 
-		assert!(error.to_string().contains("auto-incrementing"));
+		assert_eq!(
+			error.to_string(),
+			"Generated columns cannot be auto-incrementing"
+		);
+	}
+
+	#[test]
+	fn test_generated_integer_primary_key_rejects_implicit_auto_increment() {
+		let attrs = vec![parse_quote! {
+			#[field(
+				primary_key = true,
+				generated = SchemaExpr::col("name"),
+				generated_stored = true
+			)]
+		}];
+		let ty: Type = parse_quote! { i64 };
+
+		let config = FieldConfig::from_attrs(&attrs).expect("field config should parse");
+		let error = config
+			.validate_for_field_type(&ty)
+			.expect_err("generated integer primary keys imply auto-increment by default");
+
+		assert_eq!(
+			error.to_string(),
+			"Generated columns cannot be auto-incrementing"
+		);
 	}
 
 	#[test]
