@@ -173,12 +173,9 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	// 1. Restore SSR state
 	let mut context = HydrationContext::from_window()?;
 	#[cfg(feature = "i18n")]
-	if let Some(i18n_guard) =
-		crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
-			HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
-		})? {
-		crate::i18n::retain_hydrated_i18n_context(i18n_guard);
-	}
+	let i18n_guard = crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
+		HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
+	})?;
 
 	// 2. Render the component to get expected structure
 	let view = component.render();
@@ -199,6 +196,10 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	web_sys::console::log_1(&"[Hydration] Reactive nodes installed".into());
 
 	// 6. Mark hydration complete
+	#[cfg(feature = "i18n")]
+	if let Some(i18n_guard) = i18n_guard {
+		crate::i18n::retain_hydrated_i18n_context(i18n_guard);
+	}
 	context.mark_hydrated();
 	mark_hydration_complete_internal();
 	web_sys::console::log_1(&"[Hydration] Complete!".into());
