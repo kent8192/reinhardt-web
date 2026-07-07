@@ -650,10 +650,10 @@ impl SerdeDefaultExpr {
 			Self::Default => quote! { ::core::default::Default::default() },
 			Self::Path(path) => {
 				let mut path = path.clone();
-				if let Some(first_segment) = path.segments.first_mut() {
-					if first_segment.ident == "Self" {
-						first_segment.ident = dto_ident.clone();
-					}
+				if let Some(first_segment) = path.segments.first_mut()
+					&& first_segment.ident == "Self"
+				{
+					first_segment.ident = dto_ident.clone();
 				}
 				quote! { #path() }
 			}
