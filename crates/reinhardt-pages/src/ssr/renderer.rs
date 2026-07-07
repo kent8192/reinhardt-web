@@ -71,7 +71,7 @@ impl SsrOptions {
 	/// Sets the reactive i18n context for SSR and hydration.
 	#[cfg(feature = "i18n")]
 	pub fn i18n_context(mut self, context: crate::i18n::I18nContext) -> Self {
-		self.lang = context.locale_signal().get_untracked();
+		self.lang = context.locale_untracked();
 		self.i18n_context = Some(context);
 		self
 	}

@@ -216,24 +216,25 @@ fn empty_page_locale_resets_to_default_locale_for_public_reads_and_ssr() {
 
 #[test]
 #[serial(i18n)]
-fn invalid_locale_signal_write_uses_default_locale_for_public_reads_and_ssr() {
+fn invalid_locale_write_is_rejected_without_changing_context() {
 	let context = sample_i18n_context();
-	context.locale_signal().set("en/US".to_string());
 
-	let translations = context.translation_context();
+	assert!(context.set_locale("fr").is_ok());
+	assert!(context.set_locale("en/US").is_err());
+
 	let mut state = SsrState::new();
 	write_i18n_ssr_state(&mut state, &context);
 	let metadata = state
 		.get_metadata("pages.i18n")
 		.expect("SSR state should include i18n metadata");
 
-	assert_eq!(context.locale(), "en-US");
-	assert_eq!(translations.get_locale(), "en-US");
+	assert_eq!(context.locale(), "fr");
+	assert_eq!(context.translation_context().get_locale(), "fr");
 	assert_eq!(
 		metadata
 			.get("current_locale")
 			.and_then(|value| value.as_str()),
-		Some("en-US"),
+		Some("fr"),
 	);
 }
 

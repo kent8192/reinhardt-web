@@ -77,11 +77,6 @@ impl I18nContext {
 		normalize_locale(&self.locale.get()).to_string()
 	}
 
-	/// Returns the locale signal.
-	pub fn locale_signal(&self) -> Signal<String> {
-		self.locale.clone()
-	}
-
 	/// Switches the active locale.
 	///
 	/// # Errors
@@ -103,7 +98,7 @@ impl I18nContext {
 		translations
 	}
 
-	fn locale_untracked(&self) -> String {
+	pub(crate) fn locale_untracked(&self) -> String {
 		normalize_locale(&self.locale.get_untracked()).to_string()
 	}
 
