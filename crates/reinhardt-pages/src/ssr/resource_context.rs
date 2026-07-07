@@ -399,6 +399,12 @@ impl SsrResourceContext {
 
 	fn resolved_value_for_scope(&self, key: &str) -> Option<&Value> {
 		let current_boundary_id = self.current_boundary_id();
+		if current_boundary_id.is_none()
+			&& let Some(value) = self.resolved_value_for_top_level_replay(key)
+		{
+			return Some(value);
+		}
+
 		self.resolved
 			.iter()
 			.rev()
@@ -411,6 +417,32 @@ impl SsrResourceContext {
 					)
 			})
 			.map(|resource| &resource.value)
+	}
+
+	fn resolved_value_for_top_level_replay(&self, key: &str) -> Option<&Value> {
+		if !is_internal_call_order_key(key) {
+			return None;
+		}
+
+		let mut scoped_match = None;
+		for resource in self
+			.resolved
+			.iter()
+			.rev()
+			.filter(|resource| resource.id == key)
+		{
+			if resource.external {
+				return Some(&resource.value);
+			}
+			if resource.boundary_ids.is_empty() {
+				continue;
+			}
+			if scoped_match.is_some() {
+				return None;
+			}
+			scoped_match = Some(&resource.value);
+		}
+		scoped_match
 	}
 
 	fn timed_out_for_scope(&self, key: &str) -> bool {
@@ -700,5 +732,39 @@ mod tests {
 				ResourceState::Success("outside".to_string())
 			);
 		}
+	}
+
+	#[tokio::test]
+	async fn top_level_replay_reuses_single_resolved_tracked_resource() {
+		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
+			1,
+		))));
+		let discovery_state = resource_signal();
+
+		context.borrow_mut().register_resource(
+			"rh-res-0".to_string(),
+			|| async { Ok::<_, String>("tracked".to_string()) },
+			discovery_state,
+		);
+		context
+			.borrow_mut()
+			.assign_resources_to_boundary(&["rh-res-0".to_string()], "boundary");
+		assert!(resolve_boundary_resources(&context, "boundary").await);
+
+		context.borrow_mut().reset_call_order_keys();
+		let replay_state = resource_signal();
+		context.borrow_mut().register_resource(
+			"rh-res-0".to_string(),
+			|| async {
+				panic!("resolved tracked resources should be reused during replay");
+			},
+			replay_state.clone(),
+		);
+
+		assert_eq!(
+			replay_state.get(),
+			ResourceState::Success("tracked".to_string())
+		);
+		assert!(!context.borrow().has_pending());
 	}
 }
