@@ -32,6 +32,7 @@ struct PendingResource {
 struct TimedOutResource {
 	id: String,
 	external: bool,
+	registered_at_top_level: bool,
 	boundary_ids: Vec<String>,
 }
 
@@ -39,6 +40,7 @@ struct ResolvedResource {
 	id: String,
 	value: Value,
 	external: bool,
+	registered_at_top_level: bool,
 	boundary_ids: Vec<String>,
 }
 
@@ -110,6 +112,7 @@ impl SsrResourceContext {
 				&& Self::matches_active_scope(
 					active_boundary,
 					resolved.external,
+					resolved.registered_at_top_level,
 					&resolved.boundary_ids,
 				)
 		}) || self.pending.iter().any(|pending| {
@@ -117,6 +120,7 @@ impl SsrResourceContext {
 				&& Self::matches_active_scope(
 					active_boundary,
 					pending.external,
+					pending.registered_at_top_level,
 					&pending.boundary_ids,
 				)
 		}) || self.timed_out.iter().any(|resource| {
@@ -124,6 +128,7 @@ impl SsrResourceContext {
 				&& Self::matches_active_scope(
 					active_boundary,
 					resource.external,
+					resource.registered_at_top_level,
 					&resource.boundary_ids,
 				)
 		});
@@ -154,6 +159,7 @@ impl SsrResourceContext {
 	fn matches_active_scope(
 		active_boundary: Option<&str>,
 		external: bool,
+		registered_at_top_level: bool,
 		boundary_ids: &[String],
 	) -> bool {
 		if let Some(boundary_id) = active_boundary {
@@ -161,7 +167,7 @@ impl SsrResourceContext {
 				.iter()
 				.any(|candidate| candidate == boundary_id)
 		} else {
-			external || boundary_ids.is_empty()
+			external || registered_at_top_level || boundary_ids.is_empty()
 		}
 	}
 
@@ -389,6 +395,7 @@ impl SsrResourceContext {
 		&mut self,
 		id: String,
 		external: bool,
+		registered_at_top_level: bool,
 		boundary_ids: Vec<String>,
 		subscribers: Vec<PendingResourceSubscriber>,
 		value: Value,
@@ -399,6 +406,7 @@ impl SsrResourceContext {
 		if let Some(existing) = self.resolved.iter_mut().find(|resource| {
 			resource.id == id
 				&& resource.external == external
+				&& resource.registered_at_top_level == registered_at_top_level
 				&& resource.boundary_ids == boundary_ids
 		}) {
 			existing.value = value;
@@ -406,6 +414,7 @@ impl SsrResourceContext {
 			self.resolved.push(ResolvedResource {
 				id,
 				external,
+				registered_at_top_level,
 				boundary_ids,
 				value,
 			});
@@ -450,6 +459,9 @@ impl SsrResourceContext {
 				return Some(&resource.value);
 			}
 			if resource.boundary_ids.is_empty() {
+				return Some(&resource.value);
+			}
+			if !resource.registered_at_top_level {
 				continue;
 			}
 			if scoped_match.is_some() {
@@ -472,6 +484,7 @@ impl SsrResourceContext {
 		if let Some(existing) = self.timed_out.iter_mut().find(|resource| {
 			resource.id == timed_out.id
 				&& resource.external == timed_out.external
+				&& resource.registered_at_top_level == timed_out.registered_at_top_level
 				&& resource.boundary_ids == timed_out.boundary_ids
 		}) {
 			existing.external |= timed_out.external;
@@ -570,17 +583,25 @@ async fn resolve_matching(
 		let PendingResource {
 			id,
 			external,
-			registered_at_top_level: _,
+			registered_at_top_level,
 			boundary_ids,
 			read_boundary_ids: _,
 			future,
 			subscribers,
 		} = pending;
 		match timeout(timeout_duration, future).await {
-			Ok((_id, value)) => Ok((id, external, boundary_ids, subscribers, value)),
+			Ok((_id, value)) => Ok((
+				id,
+				external,
+				registered_at_top_level,
+				boundary_ids,
+				subscribers,
+				value,
+			)),
 			Err(_) => Err(TimedOutResource {
 				id,
 				external,
+				registered_at_top_level,
 				boundary_ids,
 			}),
 		}
@@ -590,9 +611,16 @@ async fn resolve_matching(
 	let mut all_resolved = !already_timed_out;
 	for result in results {
 		match result {
-			Ok((id, external, boundary_ids, subscribers, value)) => context
-				.borrow_mut()
-				.record_resolved(id, external, boundary_ids, subscribers, value),
+			Ok((id, external, registered_at_top_level, boundary_ids, subscribers, value)) => {
+				context.borrow_mut().record_resolved(
+					id,
+					external,
+					registered_at_top_level,
+					boundary_ids,
+					subscribers,
+					value,
+				)
+			}
 			Err(timed_out) => {
 				context.borrow_mut().record_timeout(timed_out);
 				all_resolved = false;
@@ -651,7 +679,11 @@ fn timed_out_resource_matches_scope(
 	}
 	match current_boundary_id {
 		Some(boundary_id) => resource.boundary_ids.iter().any(|id| id == boundary_id),
-		None => resource.external,
+		None => {
+			resource.external
+				|| resource.registered_at_top_level
+				|| resource.boundary_ids.is_empty()
+		}
 	}
 }
 
@@ -788,6 +820,51 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn top_level_replay_does_not_reuse_boundary_local_resolved_resource() {
+		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
+			1,
+		))));
+		let boundary_state = resource_signal();
+
+		{
+			let _guard = enter_boundary(&context, "boundary".to_string());
+			context.borrow_mut().register_resource(
+				"rh-res-0".to_string(),
+				|| async { Ok::<_, String>("boundary".to_string()) },
+				boundary_state.clone(),
+			);
+			context.borrow_mut().mark_resource_read("rh-res-0");
+		}
+		assert!(resolve_boundary_resources(&context, "boundary").await);
+		assert_eq!(
+			boundary_state.get(),
+			ResourceState::Success("boundary".to_string())
+		);
+
+		context.borrow_mut().reset_call_order_keys();
+		let fetch_count = Rc::new(std::cell::Cell::new(0));
+		let replay_fetch_count = Rc::clone(&fetch_count);
+		let replay_state = resource_signal();
+		context.borrow_mut().register_resource(
+			"rh-res-0".to_string(),
+			move || {
+				replay_fetch_count.set(replay_fetch_count.get() + 1);
+				async { Ok::<_, String>("top-level".to_string()) }
+			},
+			replay_state.clone(),
+		);
+		context.borrow_mut().mark_resource_read("rh-res-0");
+
+		assert_eq!(fetch_count.get(), 1);
+		assert_eq!(replay_state.get(), ResourceState::Loading);
+		assert!(resolve_external_resources(&context).await);
+		assert_eq!(
+			replay_state.get(),
+			ResourceState::Success("top-level".to_string())
+		);
+	}
+
+	#[tokio::test]
 	async fn top_level_replay_reuses_pending_tracked_resource() {
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
 			1,
@@ -832,6 +909,53 @@ mod tests {
 			replay_state.get(),
 			ResourceState::Success("tracked".to_string())
 		);
+		assert!(!context.borrow().has_pending());
+	}
+
+	#[tokio::test]
+	async fn top_level_replay_remembers_timed_out_tracked_resource() {
+		let context = Rc::new(RefCell::new(SsrResourceContext::new(
+			Duration::from_millis(1),
+		)));
+		let fetch_count = Rc::new(std::cell::Cell::new(0));
+		let discovery_fetch_count = Rc::clone(&fetch_count);
+		let discovery_state = resource_signal();
+
+		context.borrow_mut().register_resource(
+			"rh-res-0".to_string(),
+			move || {
+				discovery_fetch_count.set(discovery_fetch_count.get() + 1);
+				async {
+					tokio::time::sleep(Duration::from_millis(50)).await;
+					Ok::<_, String>("tracked".to_string())
+				}
+			},
+			discovery_state,
+		);
+		context
+			.borrow_mut()
+			.assign_resources_to_boundary(&["rh-res-0".to_string()], "boundary");
+
+		assert!(!resolve_boundary_resources(&context, "boundary").await);
+		assert_eq!(fetch_count.get(), 1);
+
+		context.borrow_mut().reset_call_order_keys();
+		let replay_key = context.borrow_mut().next_call_order_key();
+		assert_eq!(replay_key, "rh-res-0");
+
+		let replay_fetch_count = Rc::clone(&fetch_count);
+		let replay_state = resource_signal();
+		context.borrow_mut().register_resource(
+			replay_key,
+			move || {
+				replay_fetch_count.set(replay_fetch_count.get() + 1);
+				async { Ok::<_, String>("replayed".to_string()) }
+			},
+			replay_state.clone(),
+		);
+
+		assert_eq!(fetch_count.get(), 1);
+		assert_eq!(replay_state.get(), ResourceState::Loading);
 		assert!(!context.borrow().has_pending());
 	}
 

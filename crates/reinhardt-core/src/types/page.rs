@@ -31,7 +31,7 @@ pub(crate) use util::html_escape;
 pub use util::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
 
 use std::borrow::Cow;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 /// Type alias for event handler functions.
 #[cfg(wasm)]
@@ -131,7 +131,6 @@ pub struct Reactive {
 ///
 /// The branch factories are stored as `Arc<dyn Fn>` so the enclosing `Page`
 /// remains cloneable while each traversal can render a fresh branch.
-#[derive(Clone)]
 pub struct SuspenseNode {
 	/// Optional boundary identifier for matching SSR and hydration boundaries.
 	boundary_id: Option<String>,
@@ -143,8 +142,6 @@ pub struct SuspenseNode {
 	fallback: Arc<dyn Fn() -> Page + 'static>,
 	/// Content view factory invoked after the boundary has resolved.
 	content: Arc<dyn Fn() -> Page + 'static>,
-	/// Cached topmost head extracted from the content branch.
-	content_head: Arc<OnceLock<Option<Head>>>,
 }
 
 /// Deferred view node with lazy fallback and content factories.
@@ -159,8 +156,6 @@ pub struct DeferredNode {
 	fallback: Arc<dyn Fn() -> Page + 'static>,
 	/// Content view factory rendered by normal traversal.
 	content: Arc<dyn Fn() -> Page + 'static>,
-	/// Cached topmost head extracted from the content branch.
-	content_head: Arc<OnceLock<Option<Head>>>,
 }
 
 impl std::fmt::Debug for Reactive {
@@ -195,6 +190,19 @@ impl std::fmt::Debug for SuspenseNode {
 	}
 }
 
+impl Clone for SuspenseNode {
+	fn clone(&self) -> Self {
+		Self {
+			boundary_id: self.boundary_id.clone(),
+			tracked_resource_ids: self.tracked_resource_ids.clone(),
+			is_pending: Arc::clone(&self.is_pending),
+			fallback: Arc::clone(&self.fallback),
+			content: Arc::clone(&self.content),
+			content_head: Arc::new(OnceLock::new()),
+		}
+	}
+}
+
 impl SuspenseNode {
 	/// Creates a new suspense node.
 	pub fn new(
@@ -220,7 +228,6 @@ impl SuspenseNode {
 			is_pending: Arc::new(is_pending),
 			fallback: Arc::new(fallback),
 			content: Arc::new(content),
-			content_head: Arc::new(OnceLock::new()),
 		}
 	}
 
@@ -268,15 +275,8 @@ impl SuspenseNode {
 		}
 	}
 
-	/// Caches the topmost head discovered while rendering the content branch.
-	pub fn cache_content_head_from(&self, content: &Page) {
-		let _ = self.content_head.set(content.find_topmost_head().cloned());
-	}
-
-	fn find_topmost_content_head(&self) -> Option<&Head> {
-		self.content_head
-			.get_or_init(|| self.content().find_topmost_head().cloned())
-			.as_ref()
+	fn find_topmost_content_head_owned(&self) -> Option<Head> {
+		self.content().find_topmost_head_owned()
 	}
 }
 
@@ -301,7 +301,6 @@ impl DeferredNode {
 			node_id: node_id.into(),
 			fallback: Arc::new(fallback),
 			content: Arc::new(content),
-			content_head: Arc::new(OnceLock::new()),
 		}
 	}
 
@@ -330,15 +329,8 @@ impl DeferredNode {
 		self.content()
 	}
 
-	/// Caches the topmost head discovered while rendering the content branch.
-	pub fn cache_content_head_from(&self, content: &Page) {
-		let _ = self.content_head.set(content.find_topmost_head().cloned());
-	}
-
-	fn find_topmost_content_head(&self) -> Option<&Head> {
-		self.content_head
-			.get_or_init(|| self.content().find_topmost_head().cloned())
-			.as_ref()
+	fn find_topmost_content_head_owned(&self) -> Option<Head> {
+		self.content().find_topmost_head_owned()
 	}
 }
 
@@ -919,8 +911,10 @@ impl Page {
 	/// 1. If this view is a `WithHead`, returns its head
 	/// 2. For element and fragment views, searches children in order and returns the first found
 	/// 3. For inline `Outlet` views, searches the child page
-	/// 4. For Suspense/Deferred views, searches the content branch
-	/// 5. For other variants, returns `None`
+	/// 4. For other variants, returns `None`
+	///
+	/// Use [`Page::find_topmost_head_owned`] when lazy Suspense/Deferred content
+	/// should participate in the lookup.
 	pub fn find_topmost_head(&self) -> Option<&Head> {
 		match self {
 			Page::WithHead { head, .. } => Some(head),
@@ -933,8 +927,28 @@ impl Page {
 				children.iter().find_map(|(_, v)| v.find_topmost_head())
 			}
 			Page::Outlet(outlet) => outlet.child().and_then(Page::find_topmost_head),
-			Page::Suspense(node) => node.find_topmost_content_head(),
-			Page::Deferred(node) => node.find_topmost_content_head(),
+			_ => None,
+		}
+	}
+
+	/// Finds the topmost head section and returns an owned copy.
+	///
+	/// Unlike [`Page::find_topmost_head`], this method can evaluate lazy
+	/// Suspense/Deferred content without storing request state on the `Page`.
+	pub fn find_topmost_head_owned(&self) -> Option<Head> {
+		match self {
+			Page::WithHead { head, .. } => Some(head.clone()),
+			Page::Element(element) => element
+				.child_views()
+				.iter()
+				.find_map(Page::find_topmost_head_owned),
+			Page::Fragment(children) => children.iter().find_map(Page::find_topmost_head_owned),
+			Page::KeyedFragment(children) => {
+				children.iter().find_map(|(_, v)| v.find_topmost_head_owned())
+			}
+			Page::Outlet(outlet) => outlet.child().and_then(Page::find_topmost_head_owned),
+			Page::Suspense(node) => node.find_topmost_content_head_owned(),
+			Page::Deferred(node) => node.find_topmost_content_head_owned(),
 			_ => None,
 		}
 	}
@@ -1274,6 +1288,34 @@ mod tests {
 			view.find_topmost_head()
 				.and_then(|head| head.title.as_deref()),
 			Some("Child")
+		);
+	}
+
+	#[test]
+	fn suspense_head_lookup_uses_fresh_content_per_call() {
+		let title = std::rc::Rc::new(std::cell::RefCell::new("first".to_string()));
+		let content_title = std::rc::Rc::clone(&title);
+		let node = SuspenseNode::new(
+			Some("head-boundary".to_string()),
+			|| false,
+			|| Page::text("loading"),
+			move || {
+				Page::text("content").with_head(Head::new().title(content_title.borrow().clone()))
+			},
+		);
+
+		let view = Page::Suspense(node);
+		assert_eq!(
+			view.find_topmost_head_owned()
+				.and_then(|head| head.title.map(|title| title.into_owned())),
+			Some("first".to_string())
+		);
+
+		*title.borrow_mut() = "second".to_string();
+		assert_eq!(
+			view.find_topmost_head_owned()
+				.and_then(|head| head.title.map(|title| title.into_owned())),
+			Some("second".to_string())
 		);
 	}
 
