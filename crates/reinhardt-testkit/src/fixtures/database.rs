@@ -481,18 +481,61 @@ async fn create_postgres_database() -> Result<
 	};
 
 	let url = format!("postgres://postgres@localhost:{port}/postgres?sslmode=disable");
-	let connection = reinhardt_db::backends::DatabaseConnection::connect_postgres(&url)
-		.await
-		.map_err(|source| TestDatabaseError::BackendStartup {
-			backend: TestDatabaseBackend::Postgres,
-			source: Box::new(source),
-		})?;
+	let connection = connect_postgres_when_ready(&url).await?;
 
 	Ok((
 		connection,
 		url,
 		TestDatabaseResource::Postgres(Box::new(container)),
 	))
+}
+
+#[cfg(feature = "testcontainers")]
+async fn connect_postgres_when_ready(
+	url: &str,
+) -> Result<reinhardt_db::backends::DatabaseConnection, TestDatabaseError> {
+	let mut retry_count = 0;
+	let max_retries = 7;
+
+	loop {
+		let connection =
+			match reinhardt_db::backends::DatabaseConnection::connect_postgres(url).await {
+				Ok(connection) => connection,
+				Err(source) if retry_count < max_retries => {
+					retry_count += 1;
+					let delay = tokio::time::Duration::from_millis(200 * 2_u64.pow(retry_count));
+					eprintln!(
+						"PostgreSQL connection attempt {retry_count} of {max_retries} failed: {source}"
+					);
+					tokio::time::sleep(delay).await;
+					continue;
+				}
+				Err(source) => {
+					return Err(TestDatabaseError::BackendStartup {
+						backend: TestDatabaseBackend::Postgres,
+						source: Box::new(source),
+					});
+				}
+			};
+
+		match connection.fetch_one("SELECT 1", Vec::new()).await {
+			Ok(_) => return Ok(connection),
+			Err(source) if retry_count < max_retries => {
+				retry_count += 1;
+				let delay = tokio::time::Duration::from_millis(200 * 2_u64.pow(retry_count));
+				eprintln!(
+					"PostgreSQL health check attempt {retry_count} of {max_retries} failed: {source}"
+				);
+				tokio::time::sleep(delay).await;
+			}
+			Err(source) => {
+				return Err(TestDatabaseError::BackendStartup {
+					backend: TestDatabaseBackend::Postgres,
+					source: Box::new(source),
+				});
+			}
+		}
+	}
 }
 
 async fn apply_migrations(
