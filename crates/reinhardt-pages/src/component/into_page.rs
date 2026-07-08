@@ -188,6 +188,12 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 			// Store the node to keep it alive for the lifetime of the DOM element
 			store_reactive_node(node);
 		}
+		Page::Suspense(node) => {
+			mount_inner(node.render_branch(), parent)?;
+		}
+		Page::Deferred(node) => {
+			mount_inner(node.content(), parent)?;
+		}
 	}
 
 	Ok(())

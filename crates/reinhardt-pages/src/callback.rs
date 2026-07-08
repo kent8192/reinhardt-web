@@ -31,7 +31,6 @@ use std::future::Future;
 use std::sync::Arc;
 
 use crate::component::PageEventHandler;
-#[cfg(wasm)]
 use crate::platform::spawn_task;
 
 #[cfg(wasm)]
@@ -476,8 +475,7 @@ where
 	Fut: Future<Output = ()> + Send + 'static,
 {
 	Arc::new(move |event| {
-		// Non-WASM stub: drop the future without awaiting
-		std::mem::drop(f(event));
+		spawn_task(f(event));
 	})
 }
 
@@ -550,7 +548,7 @@ mod tests {
 
 		let handler: PageEventHandler = into_event_handler(|_: DummyEvent| {});
 		// Verify it's callable
-		handler(DummyEvent::default());
+		handler(DummyEvent);
 	}
 }
 

@@ -7,8 +7,9 @@
 
 use clap::Parser;
 use colored::Colorize;
-use http_body_util::Full;
-use hyper::body::Bytes;
+use futures_util::StreamExt;
+use http_body_util::{BodyExt, Full, StreamBody};
+use hyper::body::{Bytes, Frame};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode, body::Incoming};
@@ -19,7 +20,6 @@ use reinhardt_commands::{CollectStaticCommand, CollectStaticOptions};
 use reinhardt_commands::{
 	WasmBuildConfig, WasmBuilder, detect_cdylib_in_cargo_toml, is_wasm_stale,
 };
-use reinhardt_pages::component::Component;
 use reinhardt_pages::ssr::SsrRenderer;
 use reinhardt_utils::safe_path_join;
 use reinhardt_utils::staticfiles::StaticFilesConfig;
@@ -42,11 +42,22 @@ use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, Tom
 
 #[cfg(feature = "routers")]
 use {
-	http_body_util::{BodyExt, Limited},
-	reinhardt_commands::auto_register_router,
-	reinhardt_http::Handler,
+	http_body_util::Limited, reinhardt_commands::auto_register_router, reinhardt_http::Handler,
 	reinhardt_urls::routers::get_router,
 };
+
+type BoxBody = http_body_util::combinators::UnsyncBoxBody<Bytes, Infallible>;
+
+fn full_body(body: impl Into<Bytes>) -> BoxBody {
+	Full::new(body.into()).boxed_unsync()
+}
+
+fn ssr_stream_body(
+	stream: impl futures_util::Stream<Item = reinhardt_pages::ssr::SsrChunk> + Send + 'static,
+) -> BoxBody {
+	let frames = stream.map(|chunk| Ok::<_, Infallible>(Frame::data(chunk.into_bytes())));
+	StreamBody::new(frames).boxed_unsync()
+}
 
 /// Settings bundle needed by the runserver command.
 struct RunServerSettings {
@@ -157,7 +168,7 @@ fn get_mime_type(path: &Path) -> &'static str {
 }
 
 /// Serve a static file
-async fn serve_static_file(file_path: &Path) -> Result<Response<Full<Bytes>>, Infallible> {
+async fn serve_static_file(file_path: &Path) -> Result<Response<BoxBody>, Infallible> {
 	// Read file content
 	match tokio::fs::read(file_path).await {
 		Ok(content) => {
@@ -167,13 +178,13 @@ async fn serve_static_file(file_path: &Path) -> Result<Response<Full<Bytes>>, In
 				.status(StatusCode::OK)
 				.header("Content-Type", mime_type)
 				.header("Cache-Control", "no-cache")
-				.body(Full::new(Bytes::from(content)))
+				.body(full_body(content))
 				.unwrap())
 		}
 		Err(_) => Ok(Response::builder()
 			.status(StatusCode::NOT_FOUND)
 			.header("Content-Type", "text/plain")
-			.body(Full::new(Bytes::from("File not found")))
+			.body(full_body("File not found"))
 			.unwrap()),
 	}
 }
@@ -309,7 +320,7 @@ fn load_settings() -> RunServerSettings {
 async fn dispatch_through_router(
 	req: hyper::Request<hyper::body::Incoming>,
 	remote_addr: std::net::SocketAddr,
-) -> Option<hyper::Response<Full<Bytes>>> {
+) -> Option<hyper::Response<BoxBody>> {
 	const MAX_BODY: usize = 10 * 1024 * 1024; // 10 MiB
 	let router = get_router()?;
 
@@ -321,7 +332,7 @@ async fn dispatch_through_router(
 				hyper::Response::builder()
 					.status(StatusCode::PAYLOAD_TOO_LARGE)
 					.header("Content-Type", "text/plain; charset=utf-8")
-					.body(Full::new(Bytes::from("Request body exceeds 10 MiB")))
+					.body(full_body("Request body exceeds 10 MiB"))
 					.expect("failed to build 413 response"),
 			);
 		}
@@ -354,7 +365,7 @@ async fn dispatch_through_router(
 #[cfg(feature = "routers")]
 fn convert_to_hyper_response(
 	response: reinhardt_http::Response,
-) -> Option<hyper::Response<Full<Bytes>>> {
+) -> Option<hyper::Response<BoxBody>> {
 	if response.status == hyper::StatusCode::NOT_FOUND {
 		return None;
 	}
@@ -362,7 +373,7 @@ fn convert_to_hyper_response(
 	for (key, value) in response.headers.iter() {
 		hyper_resp = hyper_resp.header(key, value);
 	}
-	hyper_resp.body(Full::new(response.body)).ok()
+	hyper_resp.body(full_body(response.body)).ok()
 }
 
 async fn handle_request(
@@ -370,7 +381,7 @@ async fn handle_request(
 	settings: Arc<RunServerSettings>,
 	spa_index: Option<Arc<PathBuf>>,
 	remote_addr: SocketAddr,
-) -> Result<Response<Full<Bytes>>, Infallible> {
+) -> Result<Response<BoxBody>, Infallible> {
 	let path = req.uri().path().to_string();
 
 	// Route dispatch through registered ServerRouter
@@ -392,7 +403,7 @@ async fn handle_request(
 
 		// If relative path is empty, serve the welcome page
 		if relative_path.is_empty() {
-			return serve_welcome_page();
+			return serve_welcome_page().await;
 		}
 
 		// Find file in all staticfiles_dirs (in reverse order for override behavior)
@@ -422,10 +433,10 @@ async fn handle_request(
 			return Ok(Response::builder()
 				.status(StatusCode::INTERNAL_SERVER_ERROR)
 				.header("Content-Type", "text/plain")
-				.body(Full::new(Bytes::from(format!(
+				.body(full_body(format!(
 					"Internal Server Error: Static file conflict for '{}'. Check server logs.",
 					relative_path
-				))))
+				)))
 				.unwrap());
 		}
 
@@ -458,10 +469,10 @@ async fn handle_request(
 		return Ok(Response::builder()
 			.status(StatusCode::NOT_FOUND)
 			.header("Content-Type", "text/plain")
-			.body(Full::new(Bytes::from(format!(
+			.body(full_body(format!(
 				"Static file not found: {}",
 				relative_path
-			))))
+			)))
 			.unwrap());
 	}
 
@@ -469,20 +480,45 @@ async fn handle_request(
 	if let Some(ref index_path) = spa_index {
 		return serve_static_file(index_path).await;
 	}
-	serve_welcome_page()
+	serve_welcome_page().await
 }
 
 /// Serve the welcome page
-fn serve_welcome_page() -> Result<Response<Full<Bytes>>, Infallible> {
-	let component = WelcomePage::new(env!("CARGO_PKG_VERSION"));
-	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page_with_view_head(component.render());
+async fn serve_welcome_page() -> Result<Response<BoxBody>, Infallible> {
+	let stream = render_welcome_page_stream();
 
 	Ok(Response::builder()
 		.status(StatusCode::OK)
 		.header("Content-Type", "text/html; charset=utf-8")
-		.body(Full::new(Bytes::from(html)))
+		.body(ssr_stream_body(stream))
 		.unwrap())
+}
+
+fn render_welcome_page_stream()
+-> impl futures_util::Stream<Item = reinhardt_pages::ssr::SsrChunk> + Send + 'static {
+	let (sender, receiver) = tokio::sync::mpsc::channel(8);
+	tokio::task::spawn_blocking(|| {
+		let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+			.enable_all()
+			.build()
+		else {
+			eprintln!("Error: failed to build SSR render runtime for welcome page");
+			return;
+		};
+		let component = WelcomePage::new(env!("CARGO_PKG_VERSION"));
+		let mut renderer = SsrRenderer::new();
+		runtime.block_on(async move {
+			let mut stream = renderer.render_page(&component).await;
+			while let Some(chunk) = stream.next().await {
+				if sender.send(chunk).await.is_err() {
+					break;
+				}
+			}
+		});
+	});
+	futures_util::stream::unfold(receiver, |mut receiver| async move {
+		receiver.recv().await.map(|chunk| (chunk, receiver))
+	})
 }
 
 /// Load TLS configuration from certificate and key files

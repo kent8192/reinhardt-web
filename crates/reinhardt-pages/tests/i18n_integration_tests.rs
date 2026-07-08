@@ -30,9 +30,9 @@ fn sample_i18n_context() -> I18nContext {
 	I18nContext::new(translations)
 }
 
-#[test]
+#[tokio::test]
 #[serial(i18n)]
-fn t_macro_renders_translated_text_during_ssr_and_serializes_catalogs() {
+async fn t_macro_renders_translated_text_during_ssr_and_serializes_catalogs() {
 	let context = sample_i18n_context();
 	let options = SsrOptions::new().i18n_context(context);
 	let mut renderer = SsrRenderer::with_options(options);
@@ -43,7 +43,11 @@ fn t_macro_renders_translated_text_during_ssr_and_serializes_catalogs() {
 		}
 	})();
 
-	let html = renderer.render_page_with_view_head(view);
+	let html = renderer
+		.render_page_with_view_head(view)
+		.await
+		.collect_string()
+		.await;
 
 	assert!(
 		html.contains("<p>こんにちは</p>"),
@@ -198,16 +202,16 @@ fn translated_text_builder_defers_rendering_to_page_render() {
 	assert_eq!(fr_html, "<p>Bonjour</p>");
 }
 
-#[test]
+#[tokio::test]
 #[serial(i18n)]
-fn renderer_state_contains_i18n_metadata_after_low_level_render() {
+async fn renderer_state_contains_i18n_metadata_after_low_level_render() {
 	let context = sample_i18n_context();
 	let mut renderer = SsrRenderer::with_options(SsrOptions::new().i18n_context(context));
 	let view = page!(|| {
 		p { { t!("Hello") } }
 	})();
 
-	let html = renderer.render_view_with_state(&view);
+	let html = renderer.render_view_with_state(&view).await;
 
 	assert_eq!(html, "<p>こんにちは</p>");
 	assert!(
@@ -216,24 +220,24 @@ fn renderer_state_contains_i18n_metadata_after_low_level_render() {
 	);
 }
 
-#[test]
+#[tokio::test]
 #[serial(i18n)]
-fn render_view_accepts_shared_renderer_reference() {
+async fn render_view_accepts_mutable_renderer_reference() {
 	let context = sample_i18n_context();
-	let renderer = SsrRenderer::with_options(SsrOptions::new().i18n_context(context));
+	let mut renderer = SsrRenderer::with_options(SsrOptions::new().i18n_context(context));
 	let view = page!(|| {
 		p { { t!("Hello") } }
 	})();
-	let shared_renderer = &renderer;
+	let shared_renderer = &mut renderer;
 
-	let html = shared_renderer.render_view(&view);
+	let html = shared_renderer.render_view(&view).await;
 
 	assert_eq!(html, "<p>こんにちは</p>");
 }
 
-#[test]
+#[tokio::test]
 #[serial(i18n)]
-fn renderer_html_lang_tracks_current_i18n_locale() {
+async fn renderer_html_lang_tracks_current_i18n_locale() {
 	let context = sample_i18n_context();
 	let mut renderer = SsrRenderer::with_options(SsrOptions::new().i18n_context(context.clone()));
 	context.set_locale("fr").unwrap();
@@ -241,7 +245,11 @@ fn renderer_html_lang_tracks_current_i18n_locale() {
 	let view = page!(|| {
 		p { { t!("Hello") } }
 	})();
-	let html = renderer.render_page_with_view_head(view);
+	let html = renderer
+		.render_page_with_view_head(view)
+		.await
+		.collect_string()
+		.await;
 
 	assert!(
 		html.contains("<html lang=\"fr\">"),

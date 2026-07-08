@@ -405,7 +405,7 @@ pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
 pub use reactive::{
 	Effect, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, Memo, Resource,
-	ResourceState, Signal, use_latest_resource_value, use_resource,
+	ResourceState, Signal, use_latest_resource_value, use_resource, use_resource_with_key,
 };
 // Re-export Context system
 pub use reactive::{
@@ -435,7 +435,7 @@ pub use router::{Path, Query};
 pub use server_fn::{ServerFn, ServerFnError, parse_server_error_message};
 pub use ssr::SsrState;
 #[cfg(native)]
-pub use ssr::{SsrOptions, SsrRenderer};
+pub use ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
 pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
 
 #[cfg(feature = "i18n")]

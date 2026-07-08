@@ -134,6 +134,7 @@ static-files = ["dep:reinhardt-utils", "reinhardt-utils/staticfiles"]
 storage = ["dep:reinhardt-utils", "reinhardt-utils/storage"]
 shortcuts = ["reinhardt-shortcuts"]
 tasks = ["reinhardt-tasks"]
+tasks-durable = ["tasks", "reinhardt-tasks/durable"]
 streaming = ["dep:reinhardt-streaming", "reinhardt-streaming/kafka"]
 server = ["reinhardt-server"]
 commands = ["reinhardt-commands", "reinhardt-commands/migrations"]
@@ -162,9 +163,10 @@ di = [
   "reinhardt-di/params",
   "reinhardt-di/macros",
   "reinhardt-db?/di",
+  "reinhardt-tasks?/di",
   "reinhardt-grpc?/di",
 ]
-test = ["reinhardt-test"]
+test = ["reinhardt-test", "reinhardt-pages?/testing"]
 testcontainers = ["test", "reinhardt-test/testcontainers"]
 server-fn-test = ["test", "reinhardt-test/server-fn-test"]
 # MSW (Mock Service Worker) for WASM testing — exposes

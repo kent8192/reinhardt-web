@@ -251,7 +251,7 @@ mod tests {
 		use crate::component::DummyEvent;
 
 		let callback = use_callback(|_: DummyEvent| {}, ());
-		callback.call(DummyEvent::default());
+		callback.call(DummyEvent);
 	}
 
 	#[cfg(native)]

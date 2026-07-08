@@ -347,6 +347,32 @@ fn error_display() -> View {
 3. **Clone captured handles**: direct `page!({ ... })` clones captured values into generated closures
 4. **Use closure form for factories**: keep `page!(|props: Props| { ... })` when the page must be called later
 
+## Testing
+
+### Native Component Tests
+
+Use `reinhardt_pages::testing::component::render` for fast interaction tests
+that do not need a browser:
+
+```rust
+use reinhardt_pages::testing::component::{Role, render};
+
+#[tokio::test]
+async fn refresh_loads_jobs() {
+    let screen = render(jobs_page);
+    screen.mock_server_fn::<load_jobs::marker>(|_args| Ok(vec!["Index job".to_string()]));
+
+    screen.get_by_role(Role::Button, "Refresh").click();
+    screen.settle().await;
+
+    assert!(screen.query_by_text("Index job").is_some());
+}
+```
+
+The mock API uses `MockableServerFn` markers and therefore requires the
+`msw` feature. Use direct `server_fn` calls for business logic tests and
+WASM/browser tests for hydration or browser API coverage.
+
 ## Architecture
 
 This framework consists of several key modules:
@@ -381,7 +407,7 @@ The prelude includes:
 - `use_ref`, `use_reducer`, `use_transition`, `use_deferred_value`
 - `use_id`, `use_layout_effect`, `use_debug_value`
 - `use_optimistic`, `use_action`, `Action::with_optimistic`, `use_shared_state`, `use_sync_external_store`
-- `use_resource` (async data fetching; `use_resource(fetcher, deps)` with `()` fetches once on WASM, while non-WASM targets drop the `fetcher` future, ignore `deps`, and stay `Loading` until hydration/client execution)
+- `use_resource` (async data fetching; `use_resource(fetcher, deps)` with `()` fetches once on WASM, while SSR registers the fetcher in the request context, awaits it up to `SsrOptions::resource_timeout`, and serializes resolved state for hydration)
 
 `Resource::latest_after(&action)` and `use_latest_resource_value(resource)` compose loaded resource state with one or more `Action` success values. Later actions have higher priority, and `refetch_on_success()` can automatically refresh the resource after a mutation succeeds.
 
@@ -413,7 +439,48 @@ The prelude includes:
 
 ### SSR and Hydration
 - `HydrationContext`, `HydrationError`, `hydrate`
-- `SsrOptions`, `SsrRenderer`, `SsrState`
+- `SsrOptions`, `SsrRenderer`, `SsrStream`, `SsrState`
+
+SSR rendering APIs are async. Use `render_page(...).await` for streamed output
+or `render_page_to_string(...).await` when a buffered string is needed:
+
+```rust,no_run
+use reinhardt_pages::component::{Component, Page};
+use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
+use std::time::Duration;
+
+struct App;
+
+impl Component for App {
+    fn render(&self) -> Page {
+        Page::text("Hello")
+    }
+
+    fn name() -> &'static str {
+        "App"
+    }
+}
+
+async fn render_app() {
+    let app = App;
+    let mut renderer = SsrRenderer::new();
+    let stream = renderer.render_page(&app).await;
+
+    let mut renderer = SsrRenderer::with_options(
+        SsrOptions::new().resource_timeout(Duration::from_secs(1)),
+    );
+    let html = renderer.render_page_to_string(&app).await;
+    let _ = (stream, html);
+}
+```
+
+Resources created with `use_resource` during SSR are keyed deterministically,
+resolved on the server, and embedded in the hydration payload. Use
+`use_resource_with_key` when a resource hook is conditionally rendered and needs
+a stable explicit hydration key. Implicit resource keys are allocated at the
+document level so marker-rendered islands and their hydration replays preserve
+the same key order. Suspense boundaries keep fallback and content roots
+transparent; streaming metadata is emitted outside the branch DOM.
 
 ### I18n
 - `I18nContext`, `I18nStateError`, `TranslatedText`, `tr`, `tn`, `tp`, `tnp`
