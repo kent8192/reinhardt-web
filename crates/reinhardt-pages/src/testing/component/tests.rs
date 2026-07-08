@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use reinhardt_core::page::IntoPage;
 use reinhardt_core::reactive::Signal;
-use reinhardt_core::types::page::{Page, PageElement};
+use reinhardt_core::types::page::{DeferredNode, Page, PageElement, SuspenseNode};
 
 use super::{EventError, QueryError, Role, render};
 
@@ -120,6 +120,39 @@ fn hidden_elements_are_excluded_from_queries() {
 	);
 
 	assert_eq!(screen.get_by_text("Save").tag_name(), "button");
+}
+
+#[test]
+fn suspense_nodes_render_the_active_branch() {
+	let pending = render(Page::Suspense(SuspenseNode::new(
+		None,
+		|| true,
+		|| PageElement::new("span").child("Loading").into_page(),
+		|| PageElement::new("span").child("Loaded").into_page(),
+	)));
+	let resolved = render(Page::Suspense(SuspenseNode::new(
+		None,
+		|| false,
+		|| PageElement::new("span").child("Loading").into_page(),
+		|| PageElement::new("span").child("Loaded").into_page(),
+	)));
+
+	assert_eq!(pending.get_by_text("Loading").tag_name(), "span");
+	assert!(pending.query_by_text("Loaded").is_none());
+	assert_eq!(resolved.get_by_text("Loaded").tag_name(), "span");
+	assert!(resolved.query_by_text("Loading").is_none());
+}
+
+#[test]
+fn deferred_nodes_render_content_branch() {
+	let screen = render(Page::Deferred(DeferredNode::new(
+		"test-deferred",
+		|| PageElement::new("span").child("Fallback").into_page(),
+		|| PageElement::new("span").child("Content").into_page(),
+	)));
+
+	assert_eq!(screen.get_by_text("Content").tag_name(), "span");
+	assert!(screen.query_by_text("Fallback").is_none());
 }
 
 #[test]

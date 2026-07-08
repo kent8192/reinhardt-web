@@ -352,6 +352,20 @@ pub mod db {
 				Registry
 			}
 		}
+
+		pub mod fixtures {
+			pub struct FixtureRegistry;
+
+			impl FixtureRegistry {
+				pub fn register_model<T>(&self) {
+					let _ = core::any::type_name::<T>();
+				}
+			}
+
+			pub fn global_fixture_registry() -> FixtureRegistry {
+				FixtureRegistry
+			}
+		}
 	}
 
 	pub mod migrations {

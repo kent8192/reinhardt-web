@@ -26,12 +26,14 @@ impl SeedContext {
 
 	/// Convert to a management command context.
 	pub fn command_context(&self) -> CommandContext {
-		let mut ctx = CommandContext::default();
-		ctx.verbosity = self.verbosity;
-		if let Some(settings) = self.settings.clone() {
-			ctx = ctx.with_settings(settings);
+		let ctx = CommandContext {
+			verbosity: self.verbosity,
+			..CommandContext::default()
+		};
+		match self.settings.clone() {
+			Some(settings) => ctx.with_settings(settings),
+			None => ctx,
 		}
-		ctx
 	}
 }
 
