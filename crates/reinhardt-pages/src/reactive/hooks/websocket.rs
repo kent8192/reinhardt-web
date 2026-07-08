@@ -187,40 +187,49 @@ use {
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::hooks::{use_websocket, UseWebSocketOptions, use_effect};
-/// use reinhardt_pages::reactive::hooks::ConnectionState;
+/// use reinhardt_pages::reactive::hooks::{
+///     use_retained_effect, use_websocket, ConnectionState, UseWebSocketOptions, WebSocketMessage,
+/// };
 ///
 /// let ws = use_websocket("ws://localhost:8000/ws/chat", UseWebSocketOptions::default());
 ///
 /// // Monitor connection state
-/// use_effect({
-///     let ws = ws.clone();
-///     move || {
-///         match ws.connection_state().get() {
-///             ConnectionState::Open => log!("Connected"),
-///             ConnectionState::Closed => log!("Disconnected"),
-///             _ => {}
+/// let connection_state = ws.connection_state().clone();
+/// use_retained_effect(
+///     {
+///         let connection_state = connection_state.clone();
+///         move || {
+///             match connection_state.get() {
+///                 ConnectionState::Open => log!("Connected"),
+///                 ConnectionState::Closed => log!("Disconnected"),
+///                 _ => {}
+///             }
+///             None::<fn()>
 ///         }
-///         None::<fn()>
-///     }
-/// });
+///     },
+///     (connection_state.clone(),),
+/// );
 ///
 /// // Send a message
 /// ws.send_text("Hello, server!".to_string()).ok();
 ///
 /// // Receive messages
-/// use_effect({
-///     let ws = ws.clone();
-///     move || {
-///         if let Some(msg) = ws.latest_message().get() {
-///             match msg {
-///                 WebSocketMessage::Text(text) => log!("Received: {}", text),
-///                 _ => {}
+/// let latest_message = ws.latest_message().clone();
+/// use_retained_effect(
+///     {
+///         let latest_message = latest_message.clone();
+///         move || {
+///             if let Some(msg) = latest_message.get() {
+///                 match msg {
+///                     WebSocketMessage::Text(text) => log!("Received: {}", text),
+///                     _ => {}
+///                 }
 ///             }
+///             None::<fn()>
 ///         }
-///         None::<fn()>
-///     }
-/// });
+///     },
+///     (latest_message.clone(),),
+/// );
 /// ```
 ///
 /// # Reactivity semantics

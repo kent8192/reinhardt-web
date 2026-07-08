@@ -19,16 +19,17 @@
 //!
 //! ## React-aligned hook signatures (v0.2, Refs #4195)
 //!
-//! `use_effect`, `use_layout_effect`, `use_memo`, `use_callback`, and
+//! `use_effect`, `use_retained_effect`, `use_layout_effect`,
+//! `use_retained_layout_effect`, `use_memo`, `use_callback`, and
 //! `use_callback_with` take an explicit dependency tuple as the second
-//! argument:
+//! argument. Prefer retained effect hooks for component-scope registration:
 //!
 //! ```ignore
 //! use reinhardt_pages::prelude::*;
 //!
 //! let count = Signal::new(0_i32);
 //! let count_for_effect = count.clone();
-//! let _eff = use_effect(
+//! use_retained_effect(
 //!     move || {
 //!         println!("count = {}", count_for_effect.get());
 //!         None::<fn()>
@@ -217,19 +218,21 @@
 //! The `use_websocket` hook provides reactive WebSocket connections:
 //!
 //! ```ignore
-//! use reinhardt_pages::reactive::hooks::{use_websocket, use_effect, UseWebSocketOptions};
-//! use reinhardt_pages::reactive::hooks::{ConnectionState, WebSocketMessage};
+//! use reinhardt_pages::reactive::hooks::{
+//!     use_retained_effect, use_websocket, ConnectionState, WebSocketMessage, UseWebSocketOptions,
+//! };
 //!
 //! fn chat_component() -> Page {
 //!     // Establish WebSocket connection
 //!     let ws = use_websocket("ws://localhost:8000/ws/chat", UseWebSocketOptions::default());
 //!
 //!     // Monitor connection state reactively
-//!     use_effect(
+//!     let connection_state = ws.connection_state().clone();
+//!     use_retained_effect(
 //!         {
-//!             let ws = ws.clone();
+//!             let connection_state = connection_state.clone();
 //!             move || {
-//!                 match ws.connection_state().get() {
+//!                 match connection_state.get() {
 //!                     ConnectionState::Open => log!("Connected to chat"),
 //!                     ConnectionState::Closed => log!("Disconnected from chat"),
 //!                     ConnectionState::Error(e) => log!("Connection error: {}", e),
@@ -238,21 +241,22 @@
 //!                 None::<fn()>
 //!             }
 //!         },
-//!         (),
+//!         (connection_state.clone(),),
 //!     );
 //!
 //!     // Handle incoming messages
-//!     use_effect(
+//!     let latest_message = ws.latest_message().clone();
+//!     use_retained_effect(
 //!         {
-//!             let ws = ws.clone();
+//!             let latest_message = latest_message.clone();
 //!             move || {
-//!                 if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
+//!                 if let Some(WebSocketMessage::Text(text)) = latest_message.get() {
 //!                     log!("Received: {}", text);
 //!                 }
 //!                 None::<fn()>
 //!             }
 //!         },
-//!         (),
+//!         (latest_message.clone(),),
 //!     );
 //!
 //!     page!(|| {
@@ -376,7 +380,6 @@ pub use builder::{
 pub use callback::{Callback, IntoEventHandler, event_handler, into_event_handler};
 #[cfg(native)]
 pub use component::DummyEvent;
-#[cfg(wasm)]
 pub use component::cleanup_reactive_nodes;
 pub use component::{
 	ActivityBoundary, ActivityMode, BoundaryError, Component, ErrorBoundary, ErrorTracker, Head,
@@ -413,8 +416,9 @@ pub use reactive::{Action, ActionPhase, ActionStateBuilder, use_action, use_acti
 pub use reactive::{
 	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
 	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_id,
-	use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state, use_state,
-	use_sync_external_store, use_transition,
+	use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_retained_effect,
+	use_retained_layout_effect, use_shared_state, use_state, use_sync_external_store,
+	use_transition,
 };
 #[cfg(native)]
 pub use reinhardt_forms::{

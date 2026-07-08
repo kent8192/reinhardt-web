@@ -3,6 +3,8 @@
 //! React-aligned side effect hooks. Both take an explicit dependency tuple
 //! as the second argument; the closure runs with no active reactive Observer
 //! so only the listed deps subscribe (Option A semantics, Refs #4195).
+//! Use [`use_retained_effect`] or [`use_retained_layout_effect`] when the
+//! effect should be registered without manually keeping the returned guard.
 
 use reinhardt_core::reactive::deps::IntoDeps;
 
@@ -13,6 +15,9 @@ use crate::reactive::{Effect, runtime::EffectTiming};
 /// React-aligned equivalent of `useEffect(f, deps)`. The effect function
 /// runs immediately, and re-runs whenever any of the dependencies listed
 /// in `deps` changes. Signal reads inside `f` do **not** auto-subscribe.
+/// The returned [`Effect`] is an RAII guard and must be retained by the
+/// caller. Use [`use_retained_effect`] for registration-style hook calls
+/// whose guard is owned by the mounted view scope.
 ///
 /// # Reactivity Semantics
 ///
@@ -38,12 +43,12 @@ use crate::reactive::{Effect, runtime::EffectTiming};
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::hooks::{use_state, use_effect};
+/// use reinhardt_pages::reactive::hooks::{use_effect, use_state};
 ///
 /// let (count, _set_count) = use_state(0);
 ///
 /// // Effect without cleanup; re-runs only when `count` changes.
-/// use_effect(
+/// let _effect = use_effect(
 ///     {
 ///         let count = count.clone();
 ///         move || {
@@ -55,7 +60,7 @@ use crate::reactive::{Effect, runtime::EffectTiming};
 /// );
 ///
 /// // Effect with cleanup, mount-only deps `()`.
-/// use_effect(
+/// let _interval_effect = use_effect(
 ///     move || {
 ///         let interval_id = set_interval(|| log!("tick"), 1000);
 ///         Some(move || clear_interval(interval_id))
@@ -73,6 +78,48 @@ where
 	D: IntoDeps,
 {
 	Effect::new_with_deps(f, deps.into_deps())
+}
+
+/// Registers a side effect in the current mounted view scope.
+///
+/// This is the registration-style companion to [`use_effect`]. It creates
+/// the same RAII-managed [`Effect`] guard, then stores that guard in the
+/// active reactive node store so dropping the local return value cannot
+/// dispose the effect immediately. When the mounted view, route segment,
+/// or portal scope is torn down, the stored guard is dropped and cleanup
+/// runs through the normal [`Effect`] RAII path.
+///
+/// On native targets there is no DOM mount scope, so retained effects are
+/// held in the root reactive store until [`cleanup_reactive_nodes`] is
+/// called by tests or host code.
+///
+/// # Example
+///
+/// ```ignore
+/// use reinhardt_pages::reactive::hooks::{use_retained_effect, use_state};
+///
+/// let (count, _set_count) = use_state(0);
+///
+/// use_retained_effect(
+///     {
+///         let count = count.clone();
+///         move || {
+///             document().set_title(&format!("Count: {}", count.get()));
+///             None::<fn()>
+///         }
+///     },
+///     (count.clone(),),
+/// );
+/// ```
+///
+/// [`cleanup_reactive_nodes`]: crate::component::cleanup_reactive_nodes
+pub fn use_retained_effect<F, C, D>(f: F, deps: D)
+where
+	F: FnMut() -> Option<C> + 'static,
+	C: FnOnce() + 'static,
+	D: IntoDeps,
+{
+	retain_effect(use_effect(f, deps));
 }
 
 /// Runs a side effect synchronously before browser paint when any listed
@@ -106,7 +153,7 @@ where
 /// let element_ref = use_ref(None::<Element>);
 /// let (_width, set_width) = use_state(0);
 ///
-/// use_layout_effect(
+/// let _layout_effect = use_layout_effect(
 ///     {
 ///         let element_ref = element_ref.clone();
 ///         let set_width = set_width.clone();
@@ -129,10 +176,30 @@ where
 	Effect::new_with_deps_and_timing(f, deps.into_deps(), EffectTiming::Layout)
 }
 
+/// Registers a layout-timing side effect in the current mounted view scope.
+///
+/// This is the retained companion to [`use_layout_effect`]. It keeps the
+/// underlying [`Effect`] alive in the active mounted view store and disposes
+/// it automatically when that store is cleared.
+pub fn use_retained_layout_effect<F, C, D>(f: F, deps: D)
+where
+	F: FnMut() -> Option<C> + 'static,
+	C: FnOnce() + 'static,
+	D: IntoDeps,
+{
+	retain_effect(use_layout_effect(f, deps));
+}
+
+fn retain_effect(effect: Effect) {
+	crate::component::reactive_if::store_reactive_node(effect);
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::component::reactive_if::cleanup_reactive_nodes;
 	use crate::reactive::Signal;
+	use crate::reactive::runtime::with_runtime;
 	use serial_test::serial;
 	use std::cell::RefCell;
 	use std::rc::Rc;
@@ -309,5 +376,105 @@ mod tests {
 		assert_eq!(order.len(), 2);
 		assert_eq!(order[0], ("layout", 0));
 		assert_eq!(order[1], ("passive", 0));
+	}
+
+	#[rstest::rstest]
+	#[serial]
+	fn test_use_retained_effect_survives_ignored_guard() {
+		cleanup_reactive_nodes();
+		let signal = Signal::new(0);
+		let run_count = Rc::new(RefCell::new(0));
+
+		use_retained_effect(
+			{
+				let signal = signal.clone();
+				let run_count = Rc::clone(&run_count);
+				move || {
+					let _ = signal.get();
+					*run_count.borrow_mut() += 1;
+					None::<fn()>
+				}
+			},
+			(signal.clone(),),
+		);
+
+		assert_eq!(*run_count.borrow(), 1);
+
+		signal.set(1);
+		with_runtime(|rt| rt.flush_updates());
+		assert_eq!(
+			*run_count.borrow(),
+			2,
+			"retained effect must rerun even when the call result is ignored"
+		);
+
+		cleanup_reactive_nodes();
+		signal.set(2);
+		with_runtime(|rt| rt.flush_updates());
+		assert_eq!(
+			*run_count.borrow(),
+			2,
+			"clearing the retained scope must dispose the effect"
+		);
+	}
+
+	#[rstest::rstest]
+	#[serial]
+	fn test_use_retained_effect_runs_cleanup_on_scope_clear() {
+		cleanup_reactive_nodes();
+		let log = Rc::new(RefCell::new(Vec::new()));
+
+		use_retained_effect(
+			{
+				let log = Rc::clone(&log);
+				move || {
+					log.borrow_mut().push("run");
+					let log_for_cleanup = Rc::clone(&log);
+					Some(move || log_for_cleanup.borrow_mut().push("cleanup"))
+				}
+			},
+			(),
+		);
+
+		assert_eq!(*log.borrow(), vec!["run"]);
+
+		cleanup_reactive_nodes();
+		assert_eq!(
+			*log.borrow(),
+			vec!["run", "cleanup"],
+			"scope clear must drop the stored Effect guard and run cleanup"
+		);
+	}
+
+	#[rstest::rstest]
+	#[serial]
+	fn test_use_retained_layout_effect_runs_synchronously() {
+		cleanup_reactive_nodes();
+		let signal = Signal::new(0);
+		let execution_order = Rc::new(RefCell::new(Vec::new()));
+
+		use_retained_layout_effect(
+			{
+				let signal = signal.clone();
+				let execution_order = Rc::clone(&execution_order);
+				move || {
+					execution_order.borrow_mut().push(signal.get());
+					None::<fn()>
+				}
+			},
+			(signal.clone(),),
+		);
+
+		assert_eq!(*execution_order.borrow(), vec![0]);
+
+		signal.set(1);
+		execution_order.borrow_mut().push(100);
+		assert_eq!(
+			*execution_order.borrow(),
+			vec![0, 1, 100],
+			"retained layout effect must run before subsequent synchronous work"
+		);
+
+		cleanup_reactive_nodes();
 	}
 }

@@ -335,6 +335,12 @@ impl TestDom {
 				);
 				self.append_page(anchor, render());
 			}
+			Page::Suspense(suspense) => {
+				self.append_page(parent, suspense.render_branch());
+			}
+			Page::Deferred(deferred) => {
+				self.append_page(parent, deferred.render_content());
+			}
 		}
 	}
 

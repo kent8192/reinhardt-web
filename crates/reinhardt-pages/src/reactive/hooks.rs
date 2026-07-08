@@ -31,6 +31,8 @@
 //! ### Effect Hooks
 //! - [`use_effect`] - Side effects with automatic dependency tracking
 //! - [`use_layout_effect`] - Effects that run before paint
+//! - [`use_retained_effect`] - Side effects retained by the mounted view scope
+//! - [`use_retained_layout_effect`] - Layout effects retained by the mounted view scope
 //!
 //! ### Memoization Hooks
 //! - [`use_memo`] - Memoize expensive calculations
@@ -65,17 +67,21 @@
 //!     let (count, set_count) = use_state(0);
 //!
 //!     let increment = use_callback({
+//!         let count = count.clone();
 //!         let set_count = set_count.clone();
 //!         move |_| set_count(count.get() + 1)
-//!     });
+//!     }, (count.clone(),));
 //!
-//!     use_effect({
-//!         let count = count.clone();
-//!         move || {
-//!             log!("Count changed to: {}", count.get());
-//!             None::<fn()>
-//!         }
-//!     });
+//!     use_retained_effect(
+//!         {
+//!             let count = count.clone();
+//!             move || {
+//!                 log!("Count changed to: {}", count.get());
+//!                 None::<fn()>
+//!             }
+//!         },
+//!         (count.clone(),),
+//!     );
 //!
 //!     page!(|| {
 //!         div {
@@ -111,7 +117,7 @@ pub use action::{OptimisticState, use_optimistic};
 pub use async_action::{Action, ActionPhase, ActionStateBuilder, use_action, use_action_state};
 pub use context::use_context;
 pub use debug::use_debug_value;
-pub use effect::{use_effect, use_layout_effect};
+pub use effect::{use_effect, use_layout_effect, use_retained_effect, use_retained_layout_effect};
 pub use id::use_id;
 pub use memo::{use_callback, use_callback_with, use_memo};
 pub use refs::{Ref, use_ref};

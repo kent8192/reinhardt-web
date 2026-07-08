@@ -135,19 +135,23 @@ impl RouterHandle {
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::hooks::{use_effect, use_router, use_state};
+/// use reinhardt_pages::reactive::hooks::{use_retained_effect, use_router, use_state};
 ///
 /// // Navigate to `/welcome` once `should_redirect` flips to `true`.
 /// let (should_redirect, _set) = use_state(false);
 /// let router = use_router();
-/// use_effect({
-///     let should_redirect = should_redirect.clone();
-///     move || {
-///         if should_redirect.get() {
-///             let _ = router.push("/welcome");
+/// use_retained_effect(
+///     {
+///         let should_redirect = should_redirect.clone();
+///         move || {
+///             if should_redirect.get() {
+///                 let _ = router.push("/welcome");
+///             }
+///             None::<fn()>
 ///         }
-///     }
-/// });
+///     },
+///     (should_redirect.clone(),),
+/// );
 /// ```
 pub fn use_router() -> RouterHandle {
 	RouterHandle

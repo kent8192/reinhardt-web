@@ -49,8 +49,9 @@ pub use into_page::{
 	Reactive, ReactiveIf, ScriptTag, StyleTag,
 };
 pub use props::Props;
+pub use reactive_if::cleanup_reactive_nodes;
 #[cfg(wasm)]
-pub use reactive_if::{ReactiveIfNode, ReactiveNode, cleanup_reactive_nodes, store_reactive_node};
+pub use reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};
 pub use suspense::{ResourceTracker, SuspenseBoundary};
 pub use r#trait::Component;
 pub use view_transition::{

@@ -11,21 +11,20 @@ use crate::reactive::effect::Effect;
 use crate::reactive::runtime::EffectTiming;
 #[cfg(wasm)]
 use reinhardt_core::types::page::{BOOLEAN_ATTRS, Page, is_boolean_attr_truthy};
-#[cfg(wasm)]
 use std::cell::RefCell;
-#[cfg(wasm)]
 use std::rc::Rc;
 
-#[cfg(wasm)]
 pub(crate) type ReactiveNodeStore = Rc<RefCell<Vec<Box<dyn std::any::Any>>>>;
 
 // Thread-local storage for reactive nodes to prevent them from being dropped.
 //
-// When a ReactiveIfNode is created during view mounting, it must be kept alive
-// for the lifetime of the DOM element. This storage prevents premature cleanup.
-#[cfg(wasm)]
+// When a reactive node or retained hook effect is created during view mounting,
+// it must be kept alive for the lifetime of the current mounted view. This
+// storage prevents premature cleanup while still allowing route and portal
+// teardown to drop stored values through RAII.
 thread_local! {
 	static ROOT_REACTIVE_NODES: ReactiveNodeStore = Rc::new(RefCell::new(Vec::new()));
+	#[cfg(wasm)]
 	static ACTIVE_REACTIVE_NODE_STORE: RefCell<Option<ReactiveNodeStore>> = RefCell::new(None);
 }
 
@@ -43,7 +42,6 @@ impl Drop for ActiveReactiveNodeStoreGuard {
 	}
 }
 
-#[cfg(wasm)]
 fn root_reactive_node_store() -> ReactiveNodeStore {
 	ROOT_REACTIVE_NODES.with(Clone::clone)
 }
@@ -55,12 +53,16 @@ fn current_reactive_node_store() -> ReactiveNodeStore {
 		.unwrap_or_else(root_reactive_node_store)
 }
 
+#[cfg(native)]
+fn current_reactive_node_store() -> ReactiveNodeStore {
+	root_reactive_node_store()
+}
+
 #[cfg(wasm)]
 pub(crate) fn new_reactive_node_store() -> ReactiveNodeStore {
 	Rc::new(RefCell::new(Vec::new()))
 }
 
-#[cfg(wasm)]
 pub(crate) fn clear_reactive_node_store(store: &ReactiveNodeStore) {
 	store.borrow_mut().clear();
 }
@@ -80,11 +82,18 @@ pub fn store_reactive_node<T: 'static>(node: T) {
 		.push(Box::new(node));
 }
 
+/// Stores a reactive node to keep it alive.
+#[cfg(native)]
+pub(crate) fn store_reactive_node<T: 'static>(node: T) {
+	current_reactive_node_store()
+		.borrow_mut()
+		.push(Box::new(node));
+}
+
 /// Cleanup function to release all reactive nodes.
 ///
 /// This should be called when the application is being torn down or
 /// when a complete re-render is needed.
-#[cfg(wasm)]
 pub fn cleanup_reactive_nodes() {
 	clear_reactive_node_store(&root_reactive_node_store());
 }
