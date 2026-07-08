@@ -1,6 +1,6 @@
 use reinhardt::get;
 use reinhardt::http::Response;
-use reinhardt::views::ViewResult;
+use reinhardt::ViewResult;
 use reinhardt_di::{KeyedDepends, KeyedFactoryOutput, injectable, injectable_key};
 
 #[injectable_key]
