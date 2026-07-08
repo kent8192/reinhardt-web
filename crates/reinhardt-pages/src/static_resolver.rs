@@ -92,7 +92,9 @@
 //! });
 //!
 //! let mut renderer = SsrRenderer::new();
-//! let html = renderer.render_page_with_head(view, page_head);
+//! let html = renderer
+//!     .render_page_with_view_head_to_string(view.with_head(page_head))
+//!     .await;
 //! ```
 //!
 //! ## Best Practices
