@@ -532,6 +532,78 @@ pub(crate) fn server_fn_impl(args: TokenStream, input: TokenStream) -> TokenStre
 	generate_server_fn(&info).into()
 }
 
+fn regular_server_fn_params(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<&syn::PatType> {
+	inputs
+		.iter()
+		.filter_map(|arg| {
+			if let syn::FnArg::Typed(pat_type) = arg {
+				let has_inject = pat_type.attrs.iter().any(is_inject_attr);
+				if has_inject || is_extractor_type(&pat_type.ty) {
+					return None;
+				}
+				Some(pat_type)
+			} else {
+				None
+			}
+		})
+		.collect()
+}
+
+fn add_native_mock_probe(
+	info: &ServerFnInfo,
+	clean_func: &ItemFn,
+	regular_params: &[&syn::PatType],
+	pages_crate_info: &CratePathInfo,
+) -> Result<ItemFn, proc_macro2::TokenStream> {
+	let mut param_idents = Vec::new();
+	for param in regular_params {
+		let syn::Pat::Ident(pat_ident) = &*param.pat else {
+			return Err(quote! {
+				compile_error!("server_fn component-test mocks require identifier parameters");
+			});
+		};
+		param_idents.push(pat_ident.ident.clone());
+	}
+
+	let mut func = clean_func.clone();
+	let pages_use_statement = &pages_crate_info.use_statement;
+	let pages_crate = &pages_crate_info.ident;
+	let name = info.name();
+	let original_block = func.block;
+	let native_mock_probe = if cfg!(feature = "msw") {
+		quote! {
+			{
+				// Generated server functions may expand into consumer crates that do not
+				// declare an `msw` feature, even when the dependency feature is active.
+				#![allow(unexpected_cfgs)]
+
+				#[cfg(all(native, feature = "msw"))]
+				{
+					let __args = #name::Args {
+						#(#param_idents: #param_idents.clone()),*
+					};
+					if let Some(__mock_result) =
+						#pages_crate::server_fn::try_call_active_mock::<#name::marker>(__args)
+					{
+						match __mock_result {
+							Ok(__mock_value) => return Ok(__mock_value),
+							Err(__mock_error) => return Err(__mock_error),
+						}
+					}
+				}
+			}
+		}
+	} else {
+		quote! {}
+	};
+	func.block = Box::new(syn::parse_quote!({
+		#pages_use_statement
+		#native_mock_probe
+		#original_block
+	}));
+	Ok(func)
+}
+
 /// Generate server function code
 ///
 /// This generates both client and server code with conditional compilation.
@@ -575,6 +647,12 @@ fn generate_server_fn(info: &ServerFnInfo) -> proc_macro2::TokenStream {
 
 	// Dynamically resolve reinhardt_pages crate path for client stub
 	let pages_crate_info = get_reinhardt_pages_crate_info();
+	let regular_params = regular_server_fn_params(&func.sig.inputs);
+	let native_clean_func =
+		match add_native_mock_probe(info, &clean_func, &regular_params, &pages_crate_info) {
+			Ok(func) => quote! { #func },
+			Err(err) => err,
+		};
 
 	// Generate client stub (with DI and extractor parameter filtering)
 	let client_stub =
@@ -589,7 +667,7 @@ fn generate_server_fn(info: &ServerFnInfo) -> proc_macro2::TokenStream {
 
 		// Server-side: Original function (with #[inject] attributes removed)
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-		#clean_func
+		#native_clean_func
 
 		// Client-side: HTTP request stub
 		#client_stub
@@ -1292,10 +1370,14 @@ fn generate_server_handler(
 	let msw_server_tokens = if msw_enabled {
 		quote! {
 			mod __msw {
+				// Generated MSW support may expand in crates that do not declare every
+				// optional cfg name used by this framework.
+				#![allow(unexpected_cfgs)]
+
 				use ::serde::{Serialize, Deserialize};
 
 				/// Public Args struct for MSW type-safe mocking.
-				#[derive(Serialize, Deserialize)]
+				#[derive(Serialize, Deserialize, Clone)]
 				pub struct Args {
 					#(pub #regular_param_names: #regular_param_types),*
 				}
@@ -1323,30 +1405,37 @@ fn generate_server_handler(
 	// that don't themselves declare an `msw` feature.
 	let msw_wasm_inner_tokens = if msw_enabled {
 		quote! {
-			#[cfg(feature = "msw")]
-			#[allow(unexpected_cfgs)]
-			mod __msw_args {
-				#[allow(unused_imports)]
-				use super::*;
-				use ::serde::{Serialize, Deserialize};
+			mod __msw {
+				// Generated MSW support may expand in crates that do not declare every
+				// optional cfg name used by this framework.
+				#![allow(unexpected_cfgs)]
 
-				/// Public Args struct for MSW type-safe mocking.
-				#[derive(Serialize, Deserialize)]
-				pub struct Args {
-					#(pub #regular_param_names: #regular_param_types),*
+				#[cfg(feature = "msw")]
+				mod args {
+					// The generated args module reuses caller-local type paths from the
+					// original server function signature.
+					#[allow(unused_imports)]
+					use super::super::*;
+					use ::serde::{Serialize, Deserialize};
+
+					/// Public Args struct for MSW type-safe mocking.
+					#[derive(Serialize, Deserialize, Clone)]
+					pub struct Args {
+						#(pub #regular_param_names: #regular_param_types),*
+					}
+				}
+
+				#[cfg(feature = "msw")]
+				pub use args::Args;
+
+				#[cfg(feature = "msw")]
+				impl #pages_crate::server_fn::MockableServerFn for super::marker {
+					type Args = Args;
+					type Response = #response_type;
 				}
 			}
 
-			#[cfg(feature = "msw")]
-			#[allow(unexpected_cfgs)]
-			pub use __msw_args::Args;
-
-			#[cfg(feature = "msw")]
-			#[allow(unexpected_cfgs)]
-			impl #pages_crate::server_fn::MockableServerFn for marker {
-				type Args = Args;
-				type Response = #response_type;
-			}
+			pub use __msw::*;
 		}
 	} else {
 		quote! {}

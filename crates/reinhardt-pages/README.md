@@ -319,6 +319,32 @@ fn error_display() -> View {
 3. **Clone captured handles**: direct `page!({ ... })` clones captured values into generated closures
 4. **Use closure form for factories**: keep `page!(|props: Props| { ... })` when the page must be called later
 
+## Testing
+
+### Native Component Tests
+
+Use `reinhardt_pages::testing::component::render` for fast interaction tests
+that do not need a browser:
+
+```rust
+use reinhardt_pages::testing::component::{Role, render};
+
+#[tokio::test]
+async fn refresh_loads_jobs() {
+    let screen = render(jobs_page);
+    screen.mock_server_fn::<load_jobs::marker>(|_args| Ok(vec!["Index job".to_string()]));
+
+    screen.get_by_role(Role::Button, "Refresh").click();
+    screen.settle().await;
+
+    assert!(screen.query_by_text("Index job").is_some());
+}
+```
+
+The mock API uses `MockableServerFn` markers and therefore requires the
+`msw` feature. Use direct `server_fn` calls for business logic tests and
+WASM/browser tests for hydration or browser API coverage.
+
 ## Architecture
 
 This framework consists of several key modules:

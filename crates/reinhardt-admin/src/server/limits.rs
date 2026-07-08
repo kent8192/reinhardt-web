@@ -89,8 +89,10 @@ mod tests {
 	#[rstest]
 	fn default_page_size_does_not_exceed_max() {
 		// Act & Assert
-		assert!(DEFAULT_PAGE_SIZE > 0);
-		assert!(DEFAULT_PAGE_SIZE <= MAX_PAGE_SIZE);
+		const {
+			assert!(DEFAULT_PAGE_SIZE > 0);
+			assert!(DEFAULT_PAGE_SIZE <= MAX_PAGE_SIZE);
+		}
 	}
 
 	#[rstest]

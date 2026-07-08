@@ -532,6 +532,12 @@ where
 	let on_success_for_dispatch = Rc::clone(&on_success);
 	#[cfg(wasm)]
 	let reset_on_success_for_dispatch = Rc::clone(&reset_on_success);
+	#[cfg(native)]
+	let on_error_for_dispatch = Rc::clone(&on_error);
+	#[cfg(native)]
+	let on_success_for_dispatch = Rc::clone(&on_success);
+	#[cfg(native)]
+	let reset_on_success_for_dispatch = Rc::clone(&reset_on_success);
 
 	let dispatch_fn: Rc<dyn Fn()> = {
 		let state = state.clone();
@@ -580,9 +586,35 @@ where
 
 			#[cfg(native)]
 			{
-				// Non-WASM: drop the future, reset to Idle
-				let _fut = action_fn(*payload);
-				state.set(ActionPhase::Idle);
+				let task_state = state.clone();
+				let on_error = Rc::clone(&on_error_for_dispatch);
+				let on_success = Rc::clone(&on_success_for_dispatch);
+				let reset_on_success = Rc::clone(&reset_on_success_for_dispatch);
+				let fut = action_fn(*payload);
+				let spawned = crate::platform::try_spawn_task(async move {
+					match fut.await {
+						Ok(val) => {
+							let on_success = on_success.borrow().clone();
+							crate::reactive::batch(|| {
+								task_state.set(ActionPhase::Success(val.clone()));
+								on_success(&val);
+								if reset_on_success.get() {
+									task_state.set(ActionPhase::Idle);
+								}
+							});
+						}
+						Err(err) => {
+							let on_error = on_error.borrow().clone();
+							crate::reactive::batch(|| {
+								task_state.set(ActionPhase::Error(err.clone()));
+								on_error(&err);
+							});
+						}
+					}
+				});
+				if !spawned {
+					state.set(ActionPhase::Idle);
+				}
 			}
 		})
 	};

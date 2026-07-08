@@ -50,7 +50,9 @@ export async function startServer(command: string, cwd: string, url: string, tim
       throw new Error(`server failed to start: ${spawnError.message}`);
     }
     if (child.exitCode !== null) {
-      throw new Error(`server exited before readiness: ${logExcerpt(server.stdout, server.stderr)}`);
+      const output = logExcerpt(server.stdout, server.stderr);
+      await stopServer(server);
+      throw new Error(`server exited before readiness: ${output}`);
     }
     try {
       const response = await fetch(url);
