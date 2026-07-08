@@ -494,7 +494,7 @@ pub mod db {
 /// not expose ORM, connection, query, or migration APIs.
 #[cfg(not(native))]
 pub mod db {
-	use serde::{Deserialize, Deserializer, Serialize, Serializer};
+	use serde::{Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
 	use std::ops::{Deref, DerefMut};
 
 	/// WASM-compatible typed JSON field wrapper.
@@ -511,6 +511,32 @@ pub mod db {
 		/// Returns the wrapped value.
 		pub fn into_inner(self) -> T {
 			self.0
+		}
+
+		/// Borrows the wrapped value.
+		pub const fn as_inner(&self) -> &T {
+			&self.0
+		}
+
+		/// Mutably borrows the wrapped value.
+		pub fn as_inner_mut(&mut self) -> &mut T {
+			&mut self.0
+		}
+
+		/// Converts the wrapped value into a JSON value.
+		pub fn to_json_value(&self) -> Result<serde_json::Value, serde_json::Error>
+		where
+			T: Serialize,
+		{
+			serde_json::to_value(&self.0)
+		}
+
+		/// Builds a typed JSON wrapper from a JSON value.
+		pub fn from_json_value(value: serde_json::Value) -> Result<Self, serde_json::Error>
+		where
+			T: DeserializeOwned,
+		{
+			serde_json::from_value(value).map(Self)
 		}
 	}
 

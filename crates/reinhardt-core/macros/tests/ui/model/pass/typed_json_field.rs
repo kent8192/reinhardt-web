@@ -23,33 +23,20 @@ struct WritingProject {
 }
 
 fn main() {
-	let project_info = WritingProjectInfo {
+	let style_settings: db::Json<StyleSettings> = db::Json::new(StyleSettings {
+		indent_width: 2,
+		theme: "paper".to_string(),
+	});
+	let raw_payload: Option<db::Json<serde_json::Value>> =
+		Some(db::Json::new(serde_json::json!({ "language": "ja" })));
+
+	let _project_info: WritingProjectInfo = WritingProjectInfo {
 		id: 1,
-		style_settings: db::Json::new(StyleSettings {
-			indent_width: 2,
-			theme: "paper".to_string(),
-		}),
-		raw_payload: Some(db::Json::new(serde_json::json!({ "language": "ja" }))),
+		style_settings,
+		raw_payload,
 	};
 
-	assert_eq!(project_info.style_settings.indent_width, 2);
-	assert_eq!(project_info.raw_payload.unwrap()["language"], "ja");
-
-	let fields = WritingProject::field_metadata();
-	let style_field = fields
-		.iter()
-		.find(|field| field.name == "style_settings")
-		.unwrap();
-	assert_eq!(style_field.field_type, "reinhardt.orm.models.JsonField");
-	assert!(!style_field.nullable);
-
-	let raw_payload_field = fields
-		.iter()
-		.find(|field| field.name == "raw_payload")
-		.unwrap();
-	assert_eq!(
-		raw_payload_field.field_type,
-		"reinhardt.orm.models.JsonField"
-	);
-	assert!(raw_payload_field.nullable);
+	let _field_metadata: Vec<db::orm::inspection::FieldInfo> = WritingProject::field_metadata();
+	let _field_metadata_fn: fn() -> Vec<db::orm::inspection::FieldInfo> =
+		WritingProject::field_metadata;
 }

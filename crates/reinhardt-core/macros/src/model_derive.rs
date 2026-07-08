@@ -2760,6 +2760,10 @@ fn generate_field_metadata(
 						#orm_crate::fields::FieldKwarg::Bool(true)
 					);
 				}
+				attributes.insert(
+					"relation_managed".to_string(),
+					#orm_crate::fields::FieldKwarg::Bool(true)
+				);
 
 				#orm_crate::inspection::FieldInfo {
 					name: #name.to_string(),
