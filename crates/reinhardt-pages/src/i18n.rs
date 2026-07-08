@@ -172,25 +172,23 @@ pub(crate) fn with_optional_i18n_context<R>(
 }
 
 #[cfg(wasm)]
-pub(crate) fn with_optional_i18n_context_async<R, Fut>(
+pub(crate) async fn with_optional_i18n_context_async<R, Fut>(
 	context: Option<I18nContext>,
 	future: Fut,
-) -> impl Future<Output = R>
+) -> R
 where
 	Fut: Future<Output = R>,
 {
-	async move {
-		let mut future = std::pin::pin!(future);
-		std::future::poll_fn(move |cx| {
-			if let Some(context) = context.as_ref() {
-				let _guard = provide_i18n_context(context.clone());
-				future.as_mut().poll(cx)
-			} else {
-				future.as_mut().poll(cx)
-			}
-		})
-		.await
-	}
+	let mut future = std::pin::pin!(future);
+	std::future::poll_fn(move |cx| {
+		if let Some(context) = context.as_ref() {
+			let _guard = provide_i18n_context(context.clone());
+			future.as_mut().poll(cx)
+		} else {
+			future.as_mut().poll(cx)
+		}
+	})
+	.await
 }
 
 #[cfg(wasm)]
