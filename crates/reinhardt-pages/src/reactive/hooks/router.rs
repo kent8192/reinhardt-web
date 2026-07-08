@@ -147,7 +147,7 @@ impl RouterHandle {
 ///             let _ = router.push("/welcome");
 ///         }
 ///     }
-/// });
+/// }, (should_redirect.clone(),));
 /// ```
 pub fn use_router() -> RouterHandle {
 	RouterHandle
