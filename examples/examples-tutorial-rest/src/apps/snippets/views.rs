@@ -45,7 +45,10 @@ use super::serializers::{SnippetResponse, SnippetSerializer};
 /// Error response: 503 Service Unavailable with `{ "error": <message> }`
 #[get("/snippets/config/", name = "snippets-config")]
 pub async fn config(
-	#[inject] cfg: KeyedDepends<CheckedSnippetListConfigKey, Result<SnippetListConfig, ConfigError>>,
+	#[inject] cfg: KeyedDepends<
+		CheckedSnippetListConfigKey,
+		Result<SnippetListConfig, ConfigError>,
+	>,
 ) -> ViewResult<Response> {
 	// `KeyedDepends<K, Result<T, E>>` derefs to `Result<T, E>`. `.as_ref()` matches
 	// on `Result<&SnippetListConfig, &ConfigError>` without consuming `cfg`.
