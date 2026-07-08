@@ -1343,6 +1343,14 @@ impl FieldConfig {
 			));
 		}
 
+		#[cfg(feature = "db-mysql")]
+		if has_generated && self.primary_key && self.generated_virtual.unwrap_or(false) {
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"MySQL virtual generated columns cannot be primary keys",
+			));
+		}
+
 		Ok(())
 	}
 }
@@ -5817,6 +5825,29 @@ mod tests {
 		assert_eq!(
 			error.to_string(),
 			"SQLite generated columns cannot be primary keys"
+		);
+	}
+
+	#[cfg(feature = "db-mysql")]
+	#[test]
+	fn test_generated_virtual_primary_key_rejects_on_mysql() {
+		let attrs = vec![parse_quote! {
+			#[field(
+				primary_key = true,
+				generated_sql = "lower(name)",
+				generated_virtual = true
+			)]
+		}];
+		let ty: Type = parse_quote! { String };
+
+		let config = FieldConfig::from_attrs(&attrs).expect("field config should parse");
+		let error = config
+			.validate_for_field_type(&ty)
+			.expect_err("MySQL virtual generated primary keys must be rejected");
+
+		assert_eq!(
+			error.to_string(),
+			"MySQL virtual generated columns cannot be primary keys"
 		);
 	}
 

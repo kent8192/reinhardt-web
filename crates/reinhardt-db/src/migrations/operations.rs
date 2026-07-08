@@ -1321,6 +1321,16 @@ impl Operation {
 			.any(|token| token.eq_ignore_ascii_case(column))
 	}
 
+	pub(crate) fn postgres_generated_column_dependency_violation<'a>(
+		column_name: &str,
+		generated: &GeneratedColumnDefinition,
+		generated_column_names: impl IntoIterator<Item = &'a str>,
+	) -> Option<&'a str> {
+		generated_column_names.into_iter().find(|name| {
+			*name != column_name && Self::generated_column_references_column(generated, name)
+		})
+	}
+
 	fn validate_postgres_generated_column_dependencies(
 		columns: &[ColumnDefinition],
 		dialect: &SqlDialect,
@@ -1340,10 +1350,11 @@ impl Operation {
 				continue;
 			};
 
-			if let Some(referenced_column) = generated_column_names.iter().find(|name| {
-				**name != column.name.as_str()
-					&& Self::generated_column_references_column(generated, name)
-			}) {
+			if let Some(referenced_column) = Self::postgres_generated_column_dependency_violation(
+				column.name.as_str(),
+				generated,
+				generated_column_names.iter().copied(),
+			) {
 				panic!(
 					"PostgreSQL-compatible generated column `{}` cannot reference generated column `{}`",
 					column.name, referenced_column

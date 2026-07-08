@@ -666,6 +666,44 @@ impl SchemaDiff {
 		}
 	}
 
+	fn validate_postgres_generated_add_column_dependencies(&self, operations: &[Operation]) {
+		let Some(dialect) = self.dialect.as_ref() else {
+			return;
+		};
+		if !matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+			return;
+		}
+
+		for operation in operations {
+			let Operation::AddColumn { table, column, .. } = operation else {
+				continue;
+			};
+			let Some(generated) = column.generated.as_ref() else {
+				continue;
+			};
+			let Some(table_schema) = self.target_schema.tables.get(table) else {
+				continue;
+			};
+
+			let generated_column_names = table_schema
+				.columns
+				.iter()
+				.filter(|(name, schema)| name.as_str() != column.name && schema.generated.is_some())
+				.map(|(name, _)| name.as_str());
+			if let Some(referenced_column) =
+				Operation::postgres_generated_column_dependency_violation(
+					column.name.as_str(),
+					generated,
+					generated_column_names,
+				) {
+				panic!(
+					"PostgreSQL-compatible generated column `{}` cannot reference generated column `{}`",
+					column.name, referenced_column
+				);
+			}
+		}
+	}
+
 	fn order_removed_columns_by_generated_dependencies(
 		&self,
 		columns_to_remove: &[(String, String)],
@@ -1180,6 +1218,8 @@ impl SchemaDiff {
 				constraint_name: constraint.name.clone(),
 			});
 		}
+
+		self.validate_postgres_generated_add_column_dependencies(&operations);
 
 		operations
 	}
@@ -1744,6 +1784,51 @@ mod tests {
 					&& column.name == "full_name"
 			&& column.generated == Some(generated)
 		));
+	}
+
+	#[test]
+	#[should_panic(
+		expected = "PostgreSQL-compatible generated column `search_name` cannot reference generated column `full_name`"
+	)]
+	fn test_generate_operations_postgres_rejects_added_generated_column_chain() {
+		// Arrange
+		let mut current = DatabaseSchema::default();
+		let mut full_name = col("full_name", FieldType::VarChar(255), false);
+		full_name.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("first_name"),
+			"SchemaExpr::col(\"first_name\")",
+			GeneratedStorage::Stored,
+		));
+		current.tables.insert(
+			"users".to_string(),
+			table_with_cols(
+				"users",
+				vec![("id", pk_col("id")), ("full_name", full_name.clone())],
+			),
+		);
+
+		let mut search_name = col("search_name", FieldType::VarChar(255), false);
+		search_name.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("full_name"),
+			"SchemaExpr::col(\"full_name\")",
+			GeneratedStorage::Stored,
+		));
+		let mut target = DatabaseSchema::default();
+		target.tables.insert(
+			"users".to_string(),
+			table_with_cols(
+				"users",
+				vec![
+					("id", pk_col("id")),
+					("full_name", full_name),
+					("search_name", search_name),
+				],
+			),
+		);
+
+		// Act
+		let diff = SchemaDiff::with_dialect(current, target, SqlDialect::Postgres);
+		let _ = diff.generate_operations();
 	}
 
 	#[test]
