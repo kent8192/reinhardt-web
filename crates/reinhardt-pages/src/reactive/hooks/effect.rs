@@ -15,30 +15,53 @@ use crate::reactive::{Effect, runtime::EffectTiming};
 /// `()` means the effect has no cleanup. `Option<C>` preserves the existing
 /// cleanup-capable form, where `Some(cleanup)` runs before the next re-run and
 /// on dispose.
-pub trait EffectReturn {
-	/// Cleanup function type produced by the effect.
-	type Cleanup: FnOnce() + 'static;
-
+pub trait EffectReturn<C>
+where
+	C: FnOnce() + 'static,
+{
 	/// Converts the closure return value into an optional cleanup function.
-	fn into_cleanup(self) -> Option<Self::Cleanup>;
+	fn into_cleanup(self) -> Option<C>;
 }
 
-impl EffectReturn for () {
-	type Cleanup = fn();
-
-	fn into_cleanup(self) -> Option<Self::Cleanup> {
+impl EffectReturn<fn()> for () {
+	fn into_cleanup(self) -> Option<fn()> {
 		None
 	}
 }
 
-impl<C> EffectReturn for Option<C>
+impl<C> EffectReturn<C> for Option<C>
 where
 	C: FnOnce() + 'static,
 {
-	type Cleanup = C;
-
-	fn into_cleanup(self) -> Option<Self::Cleanup> {
+	fn into_cleanup(self) -> Option<C> {
 		self
+	}
+}
+
+/// Internal adapter from effect closures to accepted effect return values.
+///
+/// This keeps the public cleanup type as the second generic parameter while
+/// still allowing closures to return either `()` or `Option<C>`.
+#[doc(hidden)]
+pub trait EffectCallback<C>
+where
+	C: FnOnce() + 'static,
+{
+	type Return: EffectReturn<C>;
+
+	fn call_effect(&mut self) -> Self::Return;
+}
+
+impl<F, R, C> EffectCallback<C> for F
+where
+	F: FnMut() -> R,
+	R: EffectReturn<C>,
+	C: FnOnce() + 'static,
+{
+	type Return = R;
+
+	fn call_effect(&mut self) -> Self::Return {
+		self()
 	}
 }
 
@@ -58,7 +81,7 @@ where
 /// # Type Parameters
 ///
 /// * `F` - The effect function type.
-/// * `R` - The effect return type (`()` or `Option<C>`).
+/// * `C` - The cleanup function type.
 /// * `D` - Any tuple of [`Trackable`]s (or `()`) that implements
 ///   [`IntoDeps`].
 ///
@@ -99,13 +122,14 @@ where
 ///
 /// [`Trackable`]: reinhardt_core::reactive::deps::Trackable
 /// [`IntoDeps`]: reinhardt_core::reactive::deps::IntoDeps
-pub fn use_effect<F, R, D>(mut f: F, deps: D) -> Effect
+pub fn use_effect<F, C, D>(f: F, deps: D) -> Effect
 where
-	F: FnMut() -> R + 'static,
-	R: EffectReturn,
+	F: EffectCallback<C> + 'static,
+	C: FnOnce() + 'static,
 	D: IntoDeps,
 {
-	Effect::new_with_deps(move || f().into_cleanup(), deps.into_deps())
+	let mut f = f;
+	Effect::new_with_deps(move || f.call_effect().into_cleanup(), deps.into_deps())
 }
 
 /// Runs a side effect synchronously before browser paint when any listed
@@ -152,14 +176,15 @@ where
 ///     (element_ref,),
 /// );
 /// ```
-pub fn use_layout_effect<F, R, D>(mut f: F, deps: D) -> Effect
+pub fn use_layout_effect<F, C, D>(f: F, deps: D) -> Effect
 where
-	F: FnMut() -> R + 'static,
-	R: EffectReturn,
+	F: EffectCallback<C> + 'static,
+	C: FnOnce() + 'static,
 	D: IntoDeps,
 {
+	let mut f = f;
 	Effect::new_with_deps_and_timing(
-		move || f().into_cleanup(),
+		move || f.call_effect().into_cleanup(),
 		deps.into_deps(),
 		EffectTiming::Layout,
 	)
