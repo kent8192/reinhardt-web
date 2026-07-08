@@ -3181,6 +3181,9 @@ fn generate_registration_code(
 					table_name: #table_name.to_string(),
 				}
 			);
+
+			// Register type-erased fixture handlers for dumpdata/loaddata.
+			#orm_crate::fixtures::global_fixture_registry().register_model::<#struct_name>();
 		}
 	};
 

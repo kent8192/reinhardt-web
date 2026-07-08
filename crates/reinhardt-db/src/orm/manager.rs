@@ -691,6 +691,20 @@ impl<M: Model> Manager<M> {
 		conn: &DatabaseConnection,
 		model: &M,
 	) -> reinhardt_core::exception::Result<M> {
+		let (sql, values) = self.create_insert_sql_values(conn, model)?;
+		let row = conn.query_one(&sql, values).await?;
+
+		// row.data is already serde_json::Value::Object so deserialize directly
+		serde_json::from_value(row.data.clone())
+			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
+	}
+
+	/// Build the INSERT statement and bound values used by `create`.
+	pub(crate) fn create_insert_sql_values(
+		&self,
+		conn: &DatabaseConnection,
+		model: &M,
+	) -> reinhardt_core::exception::Result<(String, Vec<super::connection::QueryValue>)> {
 		let json = serde_json::to_value(model)
 			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 
@@ -760,11 +774,7 @@ impl<M: Model> Manager<M> {
 			.map(Self::sea_value_to_query_value)
 			.collect();
 
-		let row = conn.query_one(&sql, values).await?;
-
-		// row.data is already serde_json::Value::Object so deserialize directly
-		serde_json::from_value(row.data.clone())
-			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
+		Ok((sql, values))
 	}
 
 	/// Convert serde_json::Value to reinhardt_query::value::Value for parameter binding

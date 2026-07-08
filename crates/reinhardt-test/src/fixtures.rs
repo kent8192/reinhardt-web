@@ -28,6 +28,17 @@ pub use reinhardt_testkit::fixtures::server_fn;
 #[cfg(native)]
 pub use reinhardt_testkit::fixtures::*;
 
+/// Load a Django-compatible model fixture file into the active test database.
+#[cfg(native)]
+pub async fn load_model_fixture_file(
+	path: impl AsRef<std::path::Path>,
+) -> reinhardt_db::orm::fixtures::FixtureResult<usize> {
+	let content = std::fs::read_to_string(path)
+		.map_err(|error| reinhardt_db::orm::fixtures::FixtureError::Database(error.to_string()))?;
+	let records: Vec<reinhardt_db::orm::fixtures::FixtureRecord> = serde_json::from_str(&content)?;
+	reinhardt_db::orm::fixtures::load_fixture_records(&records).await
+}
+
 // ============================================================================
 // Modules specific to reinhardt-test (depend on functional crates)
 // ============================================================================

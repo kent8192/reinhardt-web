@@ -26,7 +26,7 @@ Then import testing features:
 
 ```rust
 use reinhardt::test::{APIClient, APITestCase, TestResponse};
-use reinhardt::test::{FixtureLoader, Factory, MockFunction};
+use reinhardt::test::{FixtureLoader, Factory, MockFunction, load_model_fixture_file};
 ```
 
 **Note:** Testing features are included in the `standard` and `full` feature presets.
@@ -73,6 +73,8 @@ use reinhardt::test::{FixtureLoader, Factory, MockFunction};
   - Load fixtures from JSON strings
   - Type-safe deserialization
   - Fixture existence checking and listing
+- **load_model_fixture_file**: Load Django-compatible model fixture files
+  into the active test database
 - **Factory trait**: Test data generation
   - `Factory<T>` trait for creating test objects
   - `FactoryBuilder`: Simple factory implementation

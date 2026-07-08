@@ -35,6 +35,7 @@
 //! - **QuerySet API**: Chainable query builder with conditional partial updates
 //! - **Field Types**: Rich set of field types with validation
 //! - **Relationships**: ForeignKey, ManyToMany, OneToOne
+//! - **Fixtures**: Django-compatible model fixture dump and load runtime
 //! - **Scoped N+1 Detection**: Opt-in query shape detection for focused diagnostics and tests
 //!
 //! ### Migrations (`migrations` module)
@@ -119,6 +120,7 @@
 //! - [`backends_pool`]: Connection pool management with lifecycle hooks
 //! - [`pool`]: High-level pool abstraction for `ConnectionPool`
 //! - [`orm`]: Django-style model definitions, QuerySet, and field types
+//!   including model-level fixture support when `migrations` is enabled
 //! - [`migrations`]: Schema migration system with auto-detection and rollback
 //! - [`hybrid`]: Cross-database compatible type system
 //! - [`associations`]: Relationship management (ForeignKey, ManyToMany)

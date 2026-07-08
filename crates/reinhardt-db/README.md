@@ -21,6 +21,7 @@ This crate provides the following modules:
   - Timestamped and SoftDeletable traits
   - Relationship management
   - Validators and choices
+  - Django-compatible model fixture dump/load support
 
 - **Migrations**: Schema migration system
   - Automatic migration generation from model changes
@@ -238,6 +239,7 @@ For a complete list of field attributes, see the `#[field(...)]` macro documenta
 - `Model` trait implementation
 - Type-safe field accessors (`User::field_username()`, `User::field_email()`, etc.)
 - Global model registry registration
+- Model fixture handler registration for `dumpdata` and `loaddata`
 - Support for composite primary keys
 
 ### Query with QuerySet

@@ -11,6 +11,7 @@
 //! - **Command Registry**: Automatic command discovery
 //! - **Interactive Mode**: Support for interactive prompts
 //! - **Colored Output**: Rich terminal output
+//! - **Data Fixtures**: Django-compatible `dumpdata`, `loaddata`, and seed hooks
 //! - **AST-Based Code Generation**: Robust code generation using Abstract Syntax Trees
 //! - **Auto-Reload**: Built-in hot-reload for the development server (server + wasm)
 //! - **Tera Template Engine**: Powerful template rendering for project/app generation
@@ -133,6 +134,9 @@ pub mod context;
 /// Superuser creation command.
 #[cfg(feature = "auth")]
 pub(crate) mod createsuperuser;
+/// Data fixture and development seeding commands.
+#[cfg(feature = "reinhardt-db")]
+pub mod data_commands;
 /// Debounced file-system watcher for hot-reload (replaces inline watcher).
 #[cfg(feature = "autoreload")]
 #[doc(hidden)]
@@ -236,6 +240,11 @@ pub use cli::{
 };
 pub use collectstatic::{CollectStaticCommand, CollectStaticOptions, CollectStaticStats};
 pub use context::CommandContext;
+#[cfg(feature = "reinhardt-db")]
+pub use data_commands::{
+	SeedContext, SeedHook, SeedHookRegistration, collect_seed_hooks, execute_dumpdata,
+	execute_loaddata, execute_seed,
+};
 pub use i18n_commands::{CompileMessagesCommand, MakeMessagesCommand};
 #[cfg(feature = "introspect")]
 pub use introspect::IntrospectCommand;

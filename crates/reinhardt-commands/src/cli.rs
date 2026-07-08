@@ -127,6 +127,34 @@ pub enum Commands {
 		migrations_dir: Option<PathBuf>,
 	},
 
+	/// Export model data as Django-compatible JSON fixtures
+	#[cfg(feature = "reinhardt-db")]
+	Dumpdata {
+		/// App labels or app_label.ModelName selectors to export
+		#[arg(value_name = "APP_OR_MODEL")]
+		selectors: Vec<String>,
+
+		/// App labels or app_label.ModelName selectors to exclude
+		#[arg(long, value_name = "APP_OR_MODEL")]
+		exclude: Vec<String>,
+	},
+
+	/// Load Django-compatible JSON model fixtures
+	#[cfg(feature = "reinhardt-db")]
+	Loaddata {
+		/// Fixture JSON files to load
+		#[arg(value_name = "FIXTURE")]
+		fixtures: Vec<PathBuf>,
+	},
+
+	/// Run idempotent application seed hooks
+	#[cfg(feature = "reinhardt-db")]
+	Seed {
+		/// App labels to seed; runs all registered hooks when omitted
+		#[arg(value_name = "APP_LABEL")]
+		app_labels: Vec<String>,
+	},
+
 	/// Manage local development infrastructure containers
 	Infra {
 		/// Infrastructure subcommand to execute
@@ -564,6 +592,9 @@ fn requires_database(command: &Commands) -> bool {
 	match command {
 		Commands::Runserver { .. } => true,
 		Commands::Migrate { .. } => true,
+		Commands::Dumpdata { .. } => true,
+		Commands::Loaddata { .. } => true,
+		Commands::Seed { .. } => true,
 		#[cfg(feature = "auth")]
 		Commands::Createsuperuser { .. } => true,
 		_ => false,
@@ -698,6 +729,16 @@ async fn run_command_core(
 				verbosity,
 			})
 			.await
+		}
+		#[cfg(feature = "reinhardt-db")]
+		Commands::Dumpdata { selectors, exclude } => {
+			crate::data_commands::execute_dumpdata(selectors, exclude).await
+		}
+		#[cfg(feature = "reinhardt-db")]
+		Commands::Loaddata { fixtures } => crate::data_commands::execute_loaddata(fixtures).await,
+		#[cfg(feature = "reinhardt-db")]
+		Commands::Seed { app_labels } => {
+			crate::data_commands::execute_seed(app_labels, verbosity, settings.clone()).await
 		}
 		Commands::Infra { command } => {
 			crate::local_infra::InfraCommand::execute(
@@ -2045,6 +2086,80 @@ mod tests {
 		}
 	}
 
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_dumpdata_clap_accepts_model_selectors_and_excludes() {
+		use clap::Parser;
+
+		// Arrange & Act
+		let cli = Cli::parse_from([
+			"manage",
+			"dumpdata",
+			"writing_sources.WritingProject",
+			"auth",
+			"--exclude",
+			"sessions.Session",
+		]);
+
+		// Assert
+		match cli.command {
+			Commands::Dumpdata { selectors, exclude } => {
+				assert_eq!(
+					selectors,
+					vec![
+						"writing_sources.WritingProject".to_string(),
+						"auth".to_string()
+					]
+				);
+				assert_eq!(exclude, vec!["sessions.Session".to_string()]);
+			}
+			#[allow(unreachable_patterns)]
+			_ => panic!("Expected Commands::Dumpdata"),
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_loaddata_clap_accepts_fixture_paths() {
+		use clap::Parser;
+
+		// Arrange & Act
+		let cli = Cli::parse_from(["manage", "loaddata", "fixtures/dev.json"]);
+
+		// Assert
+		match cli.command {
+			Commands::Loaddata { fixtures } => {
+				assert_eq!(
+					fixtures,
+					vec![std::path::PathBuf::from("fixtures/dev.json")]
+				);
+			}
+			#[allow(unreachable_patterns)]
+			_ => panic!("Expected Commands::Loaddata"),
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_seed_clap_accepts_app_labels() {
+		use clap::Parser;
+
+		// Arrange & Act
+		let cli = Cli::parse_from(["manage", "seed", "writing_sources", "auth"]);
+
+		// Assert
+		match cli.command {
+			Commands::Seed { app_labels } => {
+				assert_eq!(
+					app_labels,
+					vec!["writing_sources".to_string(), "auth".to_string()]
+				);
+			}
+			#[allow(unreachable_patterns)]
+			_ => panic!("Expected Commands::Seed"),
+		}
+	}
+
 	#[rstest]
 	fn test_collectstatic_with_index_option() {
 		// Arrange & Act
@@ -2131,6 +2246,27 @@ mod tests {
 
 		// Assert
 		assert!(result);
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_requires_database_for_model_fixture_commands() {
+		// Arrange
+		let commands = [
+			Commands::Dumpdata {
+				selectors: vec![],
+				exclude: vec![],
+			},
+			Commands::Loaddata {
+				fixtures: vec![std::path::PathBuf::from("fixtures/dev.json")],
+			},
+			Commands::Seed { app_labels: vec![] },
+		];
+
+		// Act & Assert
+		for command in commands {
+			assert!(requires_database(&command));
+		}
 	}
 
 	#[cfg(feature = "reinhardt-db")]
