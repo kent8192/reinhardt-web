@@ -4,7 +4,9 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
-use reinhardt_core::types::page::{EventType, IntoPage, Outlet, Page, PageElement};
+use reinhardt_core::types::page::{
+	DeferredNode, EventType, IntoPage, Outlet, Page, PageElement, SuspenseNode,
+};
 use reinhardt_pages::callback::async_handler;
 use reinhardt_pages::page;
 use reinhardt_pages::prelude::spawn_task;
@@ -164,6 +166,35 @@ fn outlet_pages_render_inline_children_and_placeholders() {
 	let pretty = placeholder.pretty();
 	assert!(pretty.contains("<reinhardt-outlet"));
 	assert!(pretty.contains("data-rh-outlet-id=\"main\""));
+}
+
+#[test]
+fn suspense_pages_render_active_branch() {
+	let pending = Rc::new(Cell::new(true));
+	let screen = {
+		let pending = Rc::clone(&pending);
+		render(Page::Suspense(SuspenseNode::new(
+			None,
+			move || pending.get(),
+			|| text_page("Loading"),
+			|| text_page("Ready"),
+		)))
+	};
+
+	assert!(screen.query_by_text("Loading").is_some());
+	assert!(screen.query_by_text("Ready").is_none());
+}
+
+#[test]
+fn deferred_pages_render_content_branch() {
+	let screen = render(Page::Deferred(DeferredNode::new(
+		"component-test",
+		|| text_page("Loading"),
+		|| text_page("Ready"),
+	)));
+
+	assert!(screen.query_by_text("Ready").is_some());
+	assert!(screen.query_by_text("Loading").is_none());
 }
 
 #[test]
