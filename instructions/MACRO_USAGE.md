@@ -184,6 +184,7 @@ struct Post {
 - `ForeignKeyField<T>` and `OneToOneField<T>`: included as `RelationInfo<T>`
 - `ManyToManyField<Source, Target>`: included as `ManyToManyInfo<Source, Target>`
 - FK `_id` fields (auto-generated): not exposed directly; use `info.author.id`
+- Generated FK/OneToOne `*_id()` accessors return the related primary-key value, so shared native/WASM model code can use the same method call.
 - Relationship marker types are not exposed directly because they do not carry values
 - `#[field(skip = true)]` or `#[field(skip_info = true)]` fields: excluded
 
