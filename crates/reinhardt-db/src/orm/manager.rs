@@ -1994,7 +1994,7 @@ mod tests {
 
 		assert_eq!(
 			sql,
-			"UPDATE \"generated_only_user\" SET \"id\" = \"id\" WHERE \"id\" = $1 RETURNING \"full_name\", \"id\""
+			"UPDATE \"generated_only_user\" SET \"id\" = \"id\" WHERE \"id\" = $1 RETURNING \"id\", \"full_name\""
 		);
 		assert_eq!(params.len(), 1);
 	}
