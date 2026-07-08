@@ -9,6 +9,7 @@
 //! - `form!` - Type-safe form component macro with reactive bindings
 //! - `#[server_fn]` - Server Functions (RPC) macro
 //! - `#[client_page]` - Client page function macro with native route-table stubs
+//! - `#[layout]` - Route-backed layout component macro for `ClientRouter`
 //! - `#[wasm_server_api]` - API parity guard for matching WASM/server surfaces
 //!
 //! ## Form Design
@@ -154,6 +155,12 @@ pub fn page_props(args: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn component(args: TokenStream, input: TokenStream) -> TokenStream {
 	component::component_impl(args, input)
+}
+
+/// Declares a route-backed layout component.
+#[proc_macro_attribute]
+pub fn layout(args: TokenStream, input: TokenStream) -> TokenStream {
+	component::layout_impl(args, input)
 }
 
 /// Declares public APIs with matching WASM and server-side surfaces.

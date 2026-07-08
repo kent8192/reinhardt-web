@@ -222,7 +222,7 @@ mod decision_table_tests {
 
 		let result = resolve_static(filename);
 
-		assert!(result.ends_with(filename.split('.').last().unwrap()));
+		assert!(result.ends_with(filename.split('.').next_back().unwrap()));
 	}
 
 	/// Decision table: Base URL Types

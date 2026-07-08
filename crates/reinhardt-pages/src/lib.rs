@@ -211,6 +211,8 @@
 //! - [`head!`]: JSX-like macro for defining HTML head sections
 //! - [`form!`]: Type-safe form component macro
 //! - [`client_page`]: Client page function macro with native route-table stubs
+//! - `#[component]`: Route-backed page component macro
+//! - `#[layout]`: Route-backed layout component macro for nested SPA shells
 //! - [`wasm_server_api`]: WASM/server API parity macro
 //!
 //! See `docs/wasm_server_api.md` for the target-specific API parity contract.
@@ -427,9 +429,9 @@ pub use component::DummyEvent;
 pub use component::cleanup_reactive_nodes;
 pub use component::{
 	ActivityBoundary, ActivityMode, BoundaryError, Component, ErrorBoundary, ErrorTracker, Head,
-	IntoPage, LinkTag, MetaTag, Page, PageElement, PageExt, Props, ResourceTracker, ScriptTag,
-	StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle, ViewTransitionStatus,
-	start_view_transition,
+	IntoPage, LinkTag, MetaTag, Outlet, Page, PageElement, PageExt, Props, ResourceTracker,
+	ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle,
+	ViewTransitionStatus, start_view_transition,
 };
 pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
@@ -449,7 +451,7 @@ pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
 pub use reactive::{
 	Effect, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, Memo, Resource,
-	ResourceState, Signal, use_latest_resource_value, use_resource,
+	ResourceState, Signal, use_latest_resource_value, use_resource, use_resource_with_key,
 };
 // Re-export Context system
 pub use reactive::{
@@ -479,12 +481,13 @@ pub use router::{Path, Query};
 pub use server_fn::{ServerFn, ServerFnError, parse_server_error_message};
 pub use ssr::SsrState;
 #[cfg(native)]
-pub use ssr::{SsrOptions, SsrRenderer};
+pub use ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
 pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
 
 // Re-export procedural macros
 pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
+pub use reinhardt_pages_macros::layout;
 pub use reinhardt_pages_macros::page;
 pub use reinhardt_pages_macros::wasm_server_api;
 pub use reinhardt_pages_macros::{

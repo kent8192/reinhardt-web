@@ -1599,7 +1599,7 @@ fn generate_fk_accessor_methods(
 				) -> #core_crate::exception::Result<Option<#target_ty>> {
 					use #orm_crate::Model;
 
-					// Get FK _id value (getter returns &PrimaryKey)
+					// Get FK _id value.
 					let fk_id = self.#fk_id_field_name();
 
 					// Query the target model using the FK _id via the typed
@@ -1735,8 +1735,15 @@ fn is_copy_type(ty: &Type) -> bool {
 	)
 }
 
-/// Generate getter methods for all fields
-fn generate_getter_methods(struct_name: &syn::Ident, field_infos: &[FieldInfo]) -> TokenStream {
+/// Generate getter methods for selected fields.
+fn generate_getter_methods<F>(
+	struct_name: &syn::Ident,
+	field_infos: &[FieldInfo],
+	include_field: F,
+) -> TokenStream
+where
+	F: Fn(&FieldInfo) -> bool,
+{
 	let getter_methods: Vec<_> = field_infos
 		.iter()
 		// Exclude ForeignKey, OneToOne, and skip_getter fields
@@ -1744,14 +1751,23 @@ fn generate_getter_methods(struct_name: &syn::Ident, field_infos: &[FieldInfo]) 
 			!is_foreign_key_field_type(&field.ty)
 				&& !is_one_to_one_field_type(&field.ty)
 				&& !field.config.skip_getter
+				&& include_field(field)
 		})
 		.map(|field| {
 			let field_name = &field.name;
 			let field_type = &field.ty;
 			let method_name = field_name;
 
-			// Copy types return value, others return reference
-			if is_copy_type(field_type) {
+			// FK id fields use target-model primary-key projections. Return
+			// them by value so native and WASM callers share the same API.
+			if field.is_fk_id_field {
+				quote! {
+					#[doc = concat!("Get ", stringify!(#field_name))]
+					pub fn #method_name(&self) -> #field_type {
+						self.#field_name.clone()
+					}
+				}
+			} else if is_copy_type(field_type) {
 				quote! {
 					#[doc = concat!("Get ", stringify!(#field_name))]
 					pub fn #method_name(&self) -> #field_type {
@@ -2217,7 +2233,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	let build_fn_impl = generate_build_function(struct_name, &field_infos, &fk_id_field_names);
 
 	// Generate getter/setter methods
-	let getters = generate_getter_methods(struct_name, &field_infos);
+	let shared_fk_id_getters =
+		generate_getter_methods(struct_name, &field_infos, |field| field.is_fk_id_field);
+	let native_getters =
+		generate_getter_methods(struct_name, &field_infos, |field| !field.is_fk_id_field);
 	let setters = generate_setter_methods(struct_name, &field_infos);
 
 	// Generate static FK accessor methods for type-safe reverse relationship access
@@ -2288,9 +2307,12 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			// Generate typestate build() builder (see #4400)
 			#build_fn_impl
 
-			// Generate getter methods for all fields
+			// Generate FK id getter methods for shared native/WASM code.
+			#shared_fk_id_getters
+
+			// Generate getter methods for native-only ORM model fields.
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-			#getters
+			#native_getters
 
 			// Generate setter methods for user-defined fields
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]

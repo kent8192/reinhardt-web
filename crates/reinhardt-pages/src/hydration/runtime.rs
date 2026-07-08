@@ -143,6 +143,11 @@ impl HydrationContext {
 		self.props.get(id).or_else(|| self.state.get_props(id))
 	}
 
+	/// Gets resource state by deterministic resource ID.
+	pub fn get_resource_state(&self, id: &str) -> Option<&serde_json::Value> {
+		self.state.get_resource_state(id)
+	}
+
 	/// Marks hydration as complete.
 	pub fn mark_hydrated(&mut self) {
 		self.hydrated = true;
@@ -167,16 +172,24 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 
 	// 2. Render the component to get expected structure
 	let view = component.render();
+	let resource_counter_offset = crate::reactive::resource::current_client_resource_counter();
+	let id_counter_offset = crate::reactive::hooks::id::id_counter_snapshot();
 	web_sys::console::log_1(&"[Hydration] View rendered".into());
 
 	// 3. Reconcile DOM structure
+	crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+	crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 	reconcile(root, &view)
 		.map_err(|e| HydrationError::StateParseError(format!("Reconciliation failed: {}", e)))?;
 	web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
 
 	// 4. Attach event handlers
+	crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+	crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 	let mut registry = EventRegistry::new();
 	attach_events_recursive(root, &view, &mut registry)?;
+	crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+	crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 	web_sys::console::log_1(&"[Hydration] Events attached".into());
 
 	// 5. Mark hydration complete
@@ -308,6 +321,11 @@ pub(crate) fn attach_events_recursive(
 				}
 			}
 		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				attach_events_recursive(element, child, registry)?;
+			}
+		}
 		Page::Text(_) | Page::Empty => {
 			// No events to attach
 		}
@@ -329,6 +347,14 @@ pub(crate) fn attach_events_recursive(
 			// For hydration, evaluate the render closure and attach events to the resulting view
 			let rendered_view = reactive.render();
 			attach_events_recursive(element, &rendered_view, registry)?;
+		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			attach_events_recursive(element, &branch_view, registry)?;
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			attach_events_recursive(element, &content_view, registry)?;
 		}
 	}
 
@@ -443,6 +469,17 @@ mod tests {
 		state.add_signal("count", 42);
 		let ctx = HydrationContext::from_state(state);
 		assert_eq!(ctx.get_signal("count"), Some(&serde_json::json!(42)));
+	}
+
+	#[test]
+	fn test_hydration_context_get_resource_state() {
+		let mut state = SsrState::new();
+		state.add_resource_state("rh-res-0", serde_json::json!({"Success": {"name": "Ada"}}));
+		let ctx = HydrationContext::from_state(state);
+		assert_eq!(
+			ctx.get_resource_state("rh-res-0"),
+			Some(&serde_json::json!({"Success": {"name": "Ada"}}))
+		);
 	}
 
 	#[test]

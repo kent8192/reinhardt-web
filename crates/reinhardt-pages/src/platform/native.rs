@@ -6,9 +6,53 @@
 //! and task spawning degrades to a no-op since there is no browser event
 //! loop.
 
+use std::cell::RefCell;
 use std::future::Future;
+use std::pin::Pin;
 
 pub use crate::component::DummyEvent as Event;
+
+type BoxedTask = Pin<Box<dyn Future<Output = ()> + 'static>>;
+type TaskSink = Box<dyn Fn(BoxedTask) + 'static>;
+
+thread_local! {
+	static TASK_SINK: RefCell<Option<TaskSink>> = const { RefCell::new(None) };
+}
+
+#[cfg(feature = "testing")]
+pub(crate) struct NativeTaskSinkGuard {
+	previous: Option<TaskSink>,
+}
+
+#[cfg(feature = "testing")]
+impl Drop for NativeTaskSinkGuard {
+	fn drop(&mut self) {
+		let previous = self.previous.take();
+		TASK_SINK.with(|slot| {
+			*slot.borrow_mut() = previous;
+		});
+	}
+}
+
+#[cfg(feature = "testing")]
+pub(crate) fn install_task_sink(sink: impl Fn(BoxedTask) + 'static) -> NativeTaskSinkGuard {
+	let previous = TASK_SINK.with(|slot| slot.borrow_mut().replace(Box::new(sink)));
+	NativeTaskSinkGuard { previous }
+}
+
+pub(crate) fn try_spawn_task<F>(fut: F) -> bool
+where
+	F: Future<Output = ()> + 'static,
+{
+	TASK_SINK.with(|slot| {
+		if let Some(sink) = slot.borrow().as_ref() {
+			sink(Box::pin(fut));
+			true
+		} else {
+			false
+		}
+	})
+}
 
 /// Stub Window type for SSR compatibility.
 #[derive(Debug, Clone, Default)]
@@ -82,11 +126,11 @@ pub struct HtmlButtonElement;
 /// is dropped. Keeping `spawn_task` cross-target lets `form!`-generated
 /// submission handlers and reactive hooks compile identically on both
 /// targets.
-pub fn spawn_task<F>(_fut: F)
+pub fn spawn_task<F>(fut: F)
 where
 	F: Future<Output = ()> + 'static,
 {
-	// Non-WASM: no browser event loop; drop the future.
+	let _ = try_spawn_task(fut);
 }
 
 /// No-op microtask yield for native targets.
