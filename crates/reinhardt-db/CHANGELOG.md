@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.1...reinhardt-db@v0.4.0) - 2026-07-08
+
+### Fixed
+
+- *(db)* normalize gb freephone numbers
+- *(db)* normalize phone dialing variants
+
+### Maintenance
+
+- merge latest main into develop forward-merge
+- *(auth)* merge develop into password policy branch
+
 ## [0.3.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.0...reinhardt-db@v0.3.1) - 2026-07-04
 
 ### Added

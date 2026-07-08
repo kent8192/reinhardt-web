@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.3.1...reinhardt-pages-macros@v0.4.0) - 2026-07-08
+
+### Added
+
+- *(pages)* collect and generate implicit body captures
+- *(pages)* add native component testing harness
+
+### Fixed
+
+- [**breaking**] preserve server_fn codec metadata invariants
+- *(pages)* complete implicit body capture analysis
+- *(pages)* validate page body capture scopes
+- *(pages)* scope native component harness state
+- *(pages)* complete native component harness review
+- *(pages)* address component testing review feedback
+- *(pages)* complete native component harness review fixes
+
+### Maintenance
+
+- merge develop/0.4.0 into component route branch
+- merge develop/0.4.0 into accessibility pr
+- merge latest main into develop forward-merge
+
+### Performance
+
+- return server fn bytes directly
+- borrow server fn request bodies
+- avoid boxed server fn futures
+- fast path json server fn content type
+- [**breaking**] specialize json server fn hot path
+- specialize server fn codec response path
+
+### Testing
+
+- *(pages)* cover implicit page body captures
+
 ### Changed
 
 - **BREAKING**: `#[component]` now requires `name = "..."` for route names and

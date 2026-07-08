@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.3.1...reinhardt-auth@v0.4.0) - 2026-07-08
+
+### Added
+
+- *(auth)* add ordered password hash policy
+- *(auth)* detect stale argon2 password hashes
+- *(auth)* add password rehash helpers to base users
+- *(auth)* add bcrypt password hasher
+
+### Changed
+
+- *(auth)* align basic auth with password hash policy
+
+### Documentation
+
+- *(auth)* document password hash policy upgrades
+
+### Fixed
+
+- *(auth)* keep argon2 hasher behind its public feature
+- *(auth)* validate bcrypt hash policy metadata
+- *(auth)* guard basic auth rehash writes
+- *(auth)* harden password hash upgrade races
+- *(auth)* gate jwt property tests by feature
+- *(auth)* avoid CodeQL test password alert
+- *(auth)* address password hash policy review feedback
+- *(auth)* satisfy bcrypt password length clippy
+- *(auth)* harden password hash policy edges
+- *(ci)* avoid CodeQL test password false positive
+- address password policy review feedback
+- *(auth)* keep legacy logins valid on rehash failure
+- *(auth)* handle password policy fallback errors
+- *(auth)* prefer identifier-less policy hasher
+- *(auth)* recheck basic auth current hash
+- *(auth)* preserve legacy hasher order
+
+### Maintenance
+
+- *(auth)* merge develop into password policy branch
+
+### Testing
+
+- *(auth)* cover password hash policy upgrades
+- *(auth)* cover legacy password hasher ordering
+- *(auth)* avoid unit struct defaults in hasher tests
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.2.0...reinhardt-auth@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-auth` for the Reinhardt 0.3.0 line. This

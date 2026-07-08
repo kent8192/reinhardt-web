@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.1...reinhardt-core@v0.4.0) - 2026-07-08
+
+### Fixed
+
+- *(benchmark,macros)* address develop merge review feedback
+- *(pages)* scope suspense resource replay caches
+- *(pages)* remove shared suspense head cache
+- *(pages)* harden suspense hydration state
+
+### Maintenance
+
+- merge latest main into develop forward-merge
+
 ## [0.3.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.0...reinhardt-core@v0.3.1) - 2026-07-04
 
 ### Fixed
