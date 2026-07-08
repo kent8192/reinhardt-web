@@ -23,8 +23,8 @@ use std::collections::HashMap;
 // ============================================================================
 
 /// Test: Basic static URL in SSR render options
-#[test]
-fn test_ssr_with_basic_static_url() {
+#[tokio::test]
+async fn test_ssr_with_basic_static_url() {
 	let static_config = TemplateStaticConfig::new("/static/".to_string());
 
 	let page_head = Head::new().title("Test Page").link(LinkTag::stylesheet(
@@ -37,7 +37,7 @@ fn test_ssr_with_basic_static_url() {
 		.with_head(page_head);
 
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page_with_view_head(view);
+	let html = renderer.render_page_with_view_head_to_string(view).await;
 
 	// Debug: Print generated HTML
 	eprintln!("Generated HTML:\n{}", html);
@@ -56,8 +56,8 @@ fn test_ssr_with_basic_static_url() {
 }
 
 /// Test: Multiple CSS and JS static URLs
-#[test]
-fn test_ssr_with_multiple_static_urls() {
+#[tokio::test]
+async fn test_ssr_with_multiple_static_urls() {
 	let static_config = TemplateStaticConfig::new("/static/".to_string());
 
 	let page_head = Head::new()
@@ -79,7 +79,7 @@ fn test_ssr_with_multiple_static_urls() {
 		.with_head(page_head);
 
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page_with_view_head(view);
+	let html = renderer.render_page_with_view_head_to_string(view).await;
 
 	// Verify all CSS links
 	assert!(
@@ -111,8 +111,8 @@ fn test_ssr_with_multiple_static_urls() {
 }
 
 /// Test: Manifest-based hashed URLs in SSR
-#[test]
-fn test_ssr_with_manifest_urls() {
+#[tokio::test]
+async fn test_ssr_with_manifest_urls() {
 	let mut manifest = HashMap::new();
 	manifest.insert(
 		"css/app.css".to_string(),
@@ -140,7 +140,7 @@ fn test_ssr_with_manifest_urls() {
 		.with_head(page_head);
 
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page_with_view_head(view);
+	let html = renderer.render_page_with_view_head_to_string(view).await;
 
 	// Verify hashed filenames are used
 	assert!(
@@ -164,8 +164,8 @@ fn test_ssr_with_manifest_urls() {
 }
 
 /// Test: CDN URLs in SSR
-#[test]
-fn test_ssr_with_cdn_urls() {
+#[tokio::test]
+async fn test_ssr_with_cdn_urls() {
 	let static_config = TemplateStaticConfig::new("https://cdn.example.com/static/".to_string());
 
 	let page_head = Head::new()
@@ -181,7 +181,7 @@ fn test_ssr_with_cdn_urls() {
 		.with_head(page_head);
 
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page_with_view_head(view);
+	let html = renderer.render_page_with_view_head_to_string(view).await;
 
 	// Verify CDN URLs are used
 	assert!(
@@ -195,8 +195,8 @@ fn test_ssr_with_cdn_urls() {
 }
 
 /// Test: Query strings and fragments in static URLs
-#[test]
-fn test_ssr_with_query_and_fragment_urls() {
+#[tokio::test]
+async fn test_ssr_with_query_and_fragment_urls() {
 	let static_config = TemplateStaticConfig::new("/static/".to_string());
 
 	let page_head = Head::new()
@@ -214,7 +214,7 @@ fn test_ssr_with_query_and_fragment_urls() {
 		.with_head(page_head);
 
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page_with_view_head(view);
+	let html = renderer.render_page_with_view_head_to_string(view).await;
 
 	// Verify query strings and fragments are preserved
 	assert!(
@@ -228,8 +228,8 @@ fn test_ssr_with_query_and_fragment_urls() {
 }
 
 /// Test: Empty static config (no CSS/JS)
-#[test]
-fn test_ssr_without_static_files() {
+#[tokio::test]
+async fn test_ssr_without_static_files() {
 	let page_head = Head::new().title("No Static Files");
 
 	let view = Page::element("div")
@@ -238,7 +238,7 @@ fn test_ssr_without_static_files() {
 		.with_head(page_head);
 
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page_with_view_head(view);
+	let html = renderer.render_page_with_view_head_to_string(view).await;
 
 	// Verify no CSS or JS tags
 	assert!(
@@ -256,8 +256,8 @@ fn test_ssr_without_static_files() {
 }
 
 /// Test: Relative path normalization
-#[test]
-fn test_ssr_with_relative_paths() {
+#[tokio::test]
+async fn test_ssr_with_relative_paths() {
 	// Test various base URL formats
 	let configs = vec![
 		("/static/", "/static/css/app.css"),
@@ -278,7 +278,7 @@ fn test_ssr_with_relative_paths() {
 			.with_head(page_head);
 
 		let mut renderer = SsrRenderer::new();
-		let html = renderer.render_page_with_view_head(view);
+		let html = renderer.render_page_with_view_head_to_string(view).await;
 
 		assert!(
 			html.contains(&format!("href=\"{}\"", expected_url)),
@@ -290,8 +290,8 @@ fn test_ssr_with_relative_paths() {
 }
 
 /// Test: Manifest fallback to original path
-#[test]
-fn test_ssr_manifest_fallback() {
+#[tokio::test]
+async fn test_ssr_manifest_fallback() {
 	let mut manifest = HashMap::new();
 	manifest.insert(
 		"css/known.css".to_string(),
@@ -310,7 +310,7 @@ fn test_ssr_manifest_fallback() {
 		.with_head(page_head);
 
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page_with_view_head(view);
+	let html = renderer.render_page_with_view_head_to_string(view).await;
 
 	// Known file should use hashed name
 	assert!(

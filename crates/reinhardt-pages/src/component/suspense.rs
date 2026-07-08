@@ -10,8 +10,8 @@
 //! - **Multiple resources**: Track one or more resources simultaneously
 //! - **Nesting**: SuspenseBoundary components can be nested; each boundary
 //!   manages its own set of resources independently
-//! - **SSR support**: During server-side rendering, the actual content is rendered
-//!   (not the fallback), since the server can pre-fetch data synchronously
+//! - **SSR support**: `into_page()` preserves the boundary so async SSR can
+//!   emit fallback HTML and resolved content replacement chunks.
 //!
 //! ## Example
 //!
@@ -46,6 +46,7 @@
 
 use crate::component::{IntoPage, Page, PageElement};
 use crate::reactive::Resource;
+use reinhardt_core::types::page::SuspenseNode;
 
 /// Trait for checking whether a resource is in the loading state.
 ///
@@ -55,11 +56,20 @@ use crate::reactive::Resource;
 pub trait ResourceTracker {
 	/// Returns `true` if the tracked resource is currently loading.
 	fn is_loading(&self) -> bool;
+
+	/// Returns the tracked resource's SSR hydration key, if available.
+	fn ssr_resource_key(&self) -> Option<&str> {
+		None
+	}
 }
 
 impl<T: Clone + 'static, E: Clone + 'static> ResourceTracker for Resource<T, E> {
 	fn is_loading(&self) -> bool {
 		self.is_loading()
+	}
+
+	fn ssr_resource_key(&self) -> Option<&str> {
+		self.ssr_key()
 	}
 }
 
@@ -86,9 +96,10 @@ type BoxedTracker = Box<dyn ResourceTracker>;
 ///
 /// # SSR Behavior
 ///
-/// During server-side rendering (non-WASM target), `render()` always returns
-/// the content (never the fallback), since the server can resolve data
-/// synchronously before sending the response.
+/// `render()` returns the currently active branch on WASM and the resolved
+/// content branch on native targets. Use `into_page()` for SSR output so
+/// [`SsrRenderer`](crate::ssr::SsrRenderer) can preserve the boundary and stream
+/// fallback/replacement chunks around unresolved resources.
 pub struct SuspenseBoundary {
 	/// Fallback UI factory invoked while resources are loading.
 	fallback_fn: Box<dyn Fn() -> Page>,
@@ -179,8 +190,8 @@ impl SuspenseBoundary {
 	/// On WASM targets, this checks the loading state of tracked resources
 	/// and returns either the fallback or the content.
 	///
-	/// On non-WASM targets (SSR), this always returns the content,
-	/// since the server can pre-fetch data before rendering.
+	/// On non-WASM targets this returns the content branch for direct rendering.
+	/// `IntoPage` preserves the boundary for async SSR streaming.
 	pub fn render(&self) -> Page {
 		#[cfg(wasm)]
 		{
@@ -192,7 +203,8 @@ impl SuspenseBoundary {
 
 		#[cfg(native)]
 		{
-			// SSR: always render the actual content (server pre-fetches data)
+			// Direct native rendering uses the resolved branch; IntoPage keeps
+			// the boundary available for async SSR streaming.
 			self.render_content()
 		}
 	}
@@ -225,7 +237,23 @@ impl Default for SuspenseBoundary {
 
 impl IntoPage for SuspenseBoundary {
 	fn into_page(self) -> Page {
-		self.render()
+		let Self {
+			fallback_fn,
+			trackers,
+			content_fn,
+		} = self;
+		let tracked_resource_ids = trackers
+			.iter()
+			.filter_map(|tracker| tracker.ssr_resource_key().map(str::to_owned))
+			.collect();
+
+		Page::Suspense(SuspenseNode::new_with_tracked_resources(
+			None,
+			tracked_resource_ids,
+			move || trackers.iter().any(|tracker| tracker.is_loading()),
+			fallback_fn,
+			content_fn,
+		))
 	}
 }
 
