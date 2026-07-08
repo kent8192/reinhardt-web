@@ -489,6 +489,12 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 			// Store the nested node to keep it alive
 			store_reactive_node(nested_node);
 		}
+		Page::Suspense(node) => {
+			nodes.extend(mount_before_marker(marker, node.render_branch()));
+		}
+		Page::Deferred(node) => {
+			nodes.extend(mount_before_marker(marker, node.content()));
+		}
 	}
 
 	nodes

@@ -417,7 +417,7 @@ fn test_hydration_context_signal_count_boundary(#[case] count: usize) {
 	let mut state = SsrState::new();
 
 	for i in 0..count {
-		state.add_signal(&format!("signal-{}", i), json!(i));
+		state.add_signal(format!("signal-{}", i), json!(i));
 	}
 
 	let context = HydrationContext::from_state(state);
@@ -441,7 +441,7 @@ fn test_hydration_context_nesting_depth_boundary(#[case] depth: usize) {
 	let mut state = SsrState::new();
 
 	for i in 0..depth {
-		state.add_props(&format!("comp-level-{}", i), json!({"depth": i}));
+		state.add_props(format!("comp-level-{}", i), json!({"depth": i}));
 	}
 
 	let context = HydrationContext::from_state(state);

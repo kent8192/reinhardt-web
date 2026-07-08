@@ -248,7 +248,7 @@ fn test_component_state_transitions() {
 /// Tests list rendering use case
 #[rstest]
 fn test_component_use_case_list() {
-	let items = vec!["Apple", "Banana", "Cherry"];
+	let items = ["Apple", "Banana", "Cherry"];
 	let view = PageElement::new("ul")
 		.children(items.iter().map(|item| {
 			PageElement::new("li")
@@ -440,7 +440,7 @@ fn test_component_equivalence_int_props(#[case] value: i32) {
 
 /// Tests with float props
 #[rstest]
-#[case::float_props(3.14)]
+#[case::float_props(std::f64::consts::PI)]
 fn test_component_equivalence_float_props(#[case] value: f64) {
 	let comp = PropsComponent { value };
 	let html = comp.render().render_to_string();

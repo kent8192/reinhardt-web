@@ -166,7 +166,7 @@ di = [
   "reinhardt-tasks?/di",
   "reinhardt-grpc?/di",
 ]
-test = ["reinhardt-test"]
+test = ["reinhardt-test", "reinhardt-pages?/testing"]
 testcontainers = ["test", "reinhardt-test/testcontainers"]
 server-fn-test = ["test", "reinhardt-test/server-fn-test"]
 # MSW (Mock Service Worker) for WASM testing — exposes
