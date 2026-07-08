@@ -234,7 +234,8 @@ pub struct User {
 
 Typed JSON fields use `Json<T>` to keep the Rust field type explicit while
 storing JSON in the database. Migrations emit JSONB for PostgreSQL/CockroachDB,
-JSON for MySQL, and TEXT for SQLite.
+JSON for MySQL, and TEXT for SQLite. Scalar wrappers such as `Json<String>` and
+`Json<bool>` are still stored and hydrated as JSON values.
 
 ```rust
 use reinhardt_db::Json;

@@ -15,6 +15,7 @@
 //! object tracking, identity mapping, and transaction management.
 
 use super::transaction::Transaction;
+use crate::orm::inspection::FieldInfo;
 use crate::orm::model::Model;
 use crate::orm::query::OrmQuery;
 use crate::orm::query_types::DbBackend;
@@ -69,6 +70,8 @@ struct IdentityEntry {
 	data: Value,
 	/// Type ID for runtime type checking
 	type_id: TypeId,
+	/// Model field metadata used by type-erased flush processing
+	field_metadata: Vec<FieldInfo>,
 	/// Whether the object has been modified
 	// Allow dead_code: dirty tracking flag set internally, read by future flush/commit logic
 	#[allow(dead_code)]
@@ -223,6 +226,7 @@ impl Session {
 			IdentityEntry {
 				data,
 				type_id: TypeId::of::<T>(),
+				field_metadata: T::field_metadata(),
 				is_dirty: true,
 			},
 		);
@@ -313,7 +317,14 @@ impl Session {
 		// Add all fields to SELECT
 		for field in &field_metadata {
 			let column_name = field.db_column.as_deref().unwrap_or(&field.name);
-			select_query.column(Alias::new(column_name));
+			if is_json_field_type(&field.field_type) {
+				select_query.expr_as(
+					Expr::cust(json_select_column_sql(self.db_backend, column_name)),
+					Alias::new(column_name),
+				);
+			} else {
+				select_query.column(Alias::new(column_name));
+			}
 		}
 
 		// Add WHERE clause for primary key
@@ -444,6 +455,7 @@ impl Session {
 			IdentityEntry {
 				data: obj_data,
 				type_id: TypeId::of::<T>(),
+				field_metadata: field_metadata.clone(),
 				is_dirty: false,
 			},
 		);
@@ -509,10 +521,13 @@ impl Session {
 		let mut column_exprs: Vec<String> = Vec::new();
 		for field in &field_metadata {
 			let column_name = field.db_column.as_deref().unwrap_or(&field.name);
+			let is_json = is_json_field_type(&field.field_type);
 			let is_datetime = field.field_type.contains("DateTimeField")
 				|| field.field_type.contains("DateField");
 
-			let expr = if is_datetime {
+			let expr = if is_json {
+				json_select_column_alias_sql(self.db_backend, column_name)
+			} else if is_datetime {
 				// Cast datetime fields to ISO8601 text format
 				match self.db_backend {
 					DbBackend::Postgres => {
@@ -788,7 +803,9 @@ impl Session {
 
 						// Set all columns except primary key and auto-managed datetime fields
 						for (col_name, col_value) in obj {
-							if col_name == "id" || col_name.ends_with("_id") {
+							let field_info = find_field_info(&entry.field_metadata, col_name);
+							let column_name = flush_column_name(col_name, field_info);
+							if should_skip_flush_column(col_name, column_name, field_info) {
 								continue; // Skip primary key columns
 							}
 							// Skip null values to avoid type inference issues
@@ -799,17 +816,12 @@ impl Session {
 							// Skip datetime fields that are typically auto-managed
 							// These fields are returned as ISO8601 strings from list_all() and
 							// cannot be directly inserted into TIMESTAMP columns
-							if col_name == "created_at"
-								|| col_name == "updated_at"
-								|| col_name.ends_with("_date")
-								|| col_name.ends_with("_time")
-								|| col_name.ends_with("_at")
-							{
+							if is_auto_managed_datetime_column(col_name, column_name) {
 								continue;
 							}
 							update_stmt.value(
-								Alias::new(col_name),
-								json_to_reinhardt_query_value(col_value),
+								Alias::new(column_name),
+								json_to_reinhardt_query_value_for_field(col_value, field_info),
 							);
 						}
 
@@ -839,27 +851,23 @@ impl Session {
 						let mut values_vec: Vec<RValue> = Vec::new();
 
 						for (col_name, col_value) in obj {
+							let field_info = find_field_info(&entry.field_metadata, col_name);
+							let column_name = flush_column_name(col_name, field_info);
 							// Skip id/primary key column - auto-generated
-							if col_name == "id" || col_name.ends_with("_id") {
+							if should_skip_flush_column(col_name, column_name, field_info) {
 								continue;
 							}
 							// Skip null datetime fields to let database DEFAULT apply
 							// (e.g., created_at, updated_at with DEFAULT CURRENT_TIMESTAMP)
 							if col_value.is_null()
-								&& (col_name == "created_at"
-									|| col_name == "updated_at" || col_name.ends_with("_date")
-									|| col_name.ends_with("_time")
-									|| col_name.ends_with("_at"))
+								&& is_auto_managed_datetime_column(col_name, column_name)
 							{
 								continue;
 							}
-							columns.push(Alias::new(col_name));
-							// For NULL values, use RValue::Int(None) to represent SQL NULL
-							if col_value.is_null() {
-								values_vec.push(RValue::Int(None));
-							} else {
-								values_vec.push(json_to_reinhardt_query_value(col_value));
-							}
+							columns.push(Alias::new(column_name));
+							values_vec.push(json_to_reinhardt_query_value_for_field(
+								col_value, field_info,
+							));
 						}
 
 						// If there are columns to insert, add them
@@ -1377,6 +1385,72 @@ fn describe_row_context(
 	table_name.to_string()
 }
 
+fn find_field_info<'a>(field_metadata: &'a [FieldInfo], field_name: &str) -> Option<&'a FieldInfo> {
+	field_metadata.iter().find(|field| field.name == field_name)
+}
+
+fn flush_column_name<'a>(field_name: &'a str, field_info: Option<&'a FieldInfo>) -> &'a str {
+	field_info
+		.and_then(|field| field.db_column.as_deref())
+		.unwrap_or(field_name)
+}
+
+fn should_skip_flush_column(
+	field_name: &str,
+	column_name: &str,
+	field_info: Option<&FieldInfo>,
+) -> bool {
+	field_info.map(|field| field.primary_key).unwrap_or(false)
+		|| field_name == "id"
+		|| column_name == "id"
+		|| field_name.ends_with("_id")
+		|| column_name.ends_with("_id")
+}
+
+fn is_auto_managed_datetime_column(field_name: &str, column_name: &str) -> bool {
+	field_name == "created_at"
+		|| field_name == "updated_at"
+		|| field_name.ends_with("_date")
+		|| field_name.ends_with("_time")
+		|| field_name.ends_with("_at")
+		|| column_name == "created_at"
+		|| column_name == "updated_at"
+		|| column_name.ends_with("_date")
+		|| column_name.ends_with("_time")
+		|| column_name.ends_with("_at")
+}
+
+fn is_json_field_type(field_type: &str) -> bool {
+	field_type.contains("JsonField")
+}
+
+fn json_select_column_sql(db_backend: DbBackend, column_name: &str) -> String {
+	match db_backend {
+		DbBackend::Postgres => format!("\"{}\"::text", column_name),
+		DbBackend::Mysql => format!("CAST(`{}` AS CHAR)", column_name),
+		DbBackend::Sqlite => format!("\"{}\"", column_name),
+	}
+}
+
+fn json_select_column_alias_sql(db_backend: DbBackend, column_name: &str) -> String {
+	match db_backend {
+		DbBackend::Postgres | DbBackend::Sqlite => {
+			format!(
+				"{} AS \"{}\"",
+				json_select_column_sql(db_backend, column_name),
+				column_name
+			)
+		}
+		DbBackend::Mysql => {
+			format!(
+				"{} AS `{}`",
+				json_select_column_sql(db_backend, column_name),
+				column_name
+			)
+		}
+	}
+}
+
 fn decode_json_field_value(
 	row: &sqlx::any::AnyRow,
 	table_name: &str,
@@ -1424,9 +1498,11 @@ fn parse_json_field_text(
 	column_name: &str,
 ) -> Result<Value, SessionError> {
 	serde_json::from_str(value).map_err(|e| {
+		let field_path = [table_name, field_name].join(".");
+		let row_context = row_context.to_owned();
+		let column_name = column_name.to_owned();
 		SessionError::SerializationError(format!(
-			"Failed to hydrate JSON field {}.{} for row {} from column '{}': {}",
-			table_name, field_name, row_context, column_name, e
+			"Failed to hydrate JSON field {field_path} for row {row_context} from column '{column_name}': {e}"
 		))
 	})
 }
@@ -1439,9 +1515,11 @@ fn parse_json_field_bytes(
 	column_name: &str,
 ) -> Result<Value, SessionError> {
 	serde_json::from_slice(value).map_err(|e| {
+		let field_path = [table_name, field_name].join(".");
+		let row_context = row_context.to_owned();
+		let column_name = column_name.to_owned();
 		SessionError::SerializationError(format!(
-			"Failed to hydrate JSON field {}.{} for row {} from column '{}': {}",
-			table_name, field_name, row_context, column_name, e
+			"Failed to hydrate JSON field {field_path} for row {row_context} from column '{column_name}': {e}"
 		))
 	})
 }
@@ -1468,6 +1546,24 @@ fn json_to_reinhardt_query_value(value: &Value) -> RValue {
 			RValue::String(Some(Box::new(s.clone())))
 		}
 		Value::Array(_) | Value::Object(_) => RValue::Json(Some(Box::new(value.clone()))),
+	}
+}
+
+fn json_to_reinhardt_query_value_for_field(
+	value: &Value,
+	field_info: Option<&FieldInfo>,
+) -> RValue {
+	if field_info
+		.map(|field| is_json_field_type(&field.field_type))
+		.unwrap_or(false)
+	{
+		if value.is_null() && field_info.map(|field| field.nullable).unwrap_or(false) {
+			RValue::Int(None)
+		} else {
+			RValue::Json(Some(Box::new(value.clone())))
+		}
+	} else {
+		json_to_reinhardt_query_value(value)
 	}
 }
 
@@ -1513,10 +1609,12 @@ fn bind_reinhardt_query_value<'a>(
 mod tests {
 	use super::*;
 	use crate::orm::Manager;
+	use crate::orm::json::Json;
 	use rstest::*;
 	use serde::{Deserialize, Serialize};
 	use serial_test::serial;
 	use sqlx::Any;
+	use std::collections::HashMap;
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 	struct TestUser {
@@ -1560,6 +1658,78 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct JsonScalarModel {
+		id: Option<i64>,
+		name_json: Json<String>,
+		flag_json: Json<bool>,
+	}
+
+	#[derive(Debug, Clone)]
+	struct JsonScalarModelFields;
+
+	impl crate::orm::model::FieldSelector for JsonScalarModelFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for JsonScalarModel {
+		type PrimaryKey = i64;
+		type Fields = JsonScalarModelFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"json_scalar_models"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			JsonScalarModelFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			vec![
+				test_field_info("id", "reinhardt.orm.models.BigIntegerField", false, true),
+				test_field_info("name_json", "reinhardt.orm.models.JsonField", false, false),
+				test_field_info("flag_json", "reinhardt.orm.models.JsonField", false, false),
+			]
+		}
+	}
+
+	fn test_field_info(
+		name: &str,
+		field_type: &str,
+		nullable: bool,
+		primary_key: bool,
+	) -> FieldInfo {
+		FieldInfo {
+			name: name.to_string(),
+			field_type: field_type.to_string(),
+			nullable,
+			primary_key,
+			unique: false,
+			blank: false,
+			editable: true,
+			default: None,
+			db_default: None,
+			db_column: None,
+			choices: None,
+			attributes: HashMap::new(),
+		}
+	}
+
 	// Create test pool using SQLite in-memory database
 	async fn create_test_pool() -> Arc<AnyPool> {
 		use sqlx::pool::PoolOptions;
@@ -1587,6 +1757,32 @@ mod tests {
 		.execute(&pool)
 		.await
 		.expect("Failed to create users table");
+
+		Arc::new(pool)
+	}
+
+	async fn create_json_scalar_test_pool() -> Arc<AnyPool> {
+		use sqlx::pool::PoolOptions;
+
+		sqlx::any::install_default_drivers();
+
+		let pool = PoolOptions::<Any>::new()
+			.min_connections(1)
+			.max_connections(5)
+			.connect("sqlite:file:test_session_json_scalar_db?mode=memory&cache=shared")
+			.await
+			.expect("Failed to create JSON scalar test pool");
+
+		sqlx::query(
+			"CREATE TABLE IF NOT EXISTS json_scalar_models (
+				id INTEGER PRIMARY KEY,
+				name_json TEXT NOT NULL,
+				flag_json TEXT NOT NULL
+			)",
+		)
+		.execute(&pool)
+		.await
+		.expect("Failed to create json_scalar_models table");
 
 		Arc::new(pool)
 	}
@@ -2020,6 +2216,39 @@ mod tests {
 	}
 
 	#[test]
+	fn test_json_field_scalar_values_bind_as_json() {
+		use serde_json::json;
+
+		let field = test_field_info("name_json", "reinhardt.orm.models.JsonField", false, false);
+		let value = json!("draft");
+		let rq_value = super::json_to_reinhardt_query_value_for_field(&value, Some(&field));
+
+		assert!(matches!(rq_value, RValue::Json(Some(json)) if *json == value));
+	}
+
+	#[test]
+	fn test_non_json_scalar_values_keep_primitive_binding() {
+		use serde_json::json;
+
+		let field = test_field_info("name", "reinhardt.orm.models.CharField", false, false);
+		let value = json!("draft");
+		let rq_value = super::json_to_reinhardt_query_value_for_field(&value, Some(&field));
+
+		assert!(matches!(rq_value, RValue::String(Some(text)) if text.as_ref() == "draft"));
+	}
+
+	#[test]
+	fn test_non_nullable_json_null_binds_as_json_null() {
+		use serde_json::json;
+
+		let field = test_field_info("payload", "reinhardt.orm.models.JsonField", false, false);
+		let value = json!(null);
+		let rq_value = super::json_to_reinhardt_query_value_for_field(&value, Some(&field));
+
+		assert!(matches!(rq_value, RValue::Json(Some(json)) if json.is_null()));
+	}
+
+	#[test]
 	fn test_json_to_reinhardt_query_value_negative_integer() {
 		use serde_json::json;
 		let value = json!(-100);
@@ -2146,5 +2375,37 @@ mod tests {
 		// Assert
 		assert!(flush_result.is_ok());
 		assert_eq!(session.dirty_count(), 0);
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_session_flush_roundtrips_scalar_json_fields(_init_drivers: ()) {
+		// Arrange
+		let pool = create_json_scalar_test_pool().await;
+		let mut session = Session::new(pool.clone(), DbBackend::Sqlite).await.unwrap();
+		let model = JsonScalarModel {
+			id: None,
+			name_json: Json::new("draft".to_string()),
+			flag_json: Json::new(true),
+		};
+
+		// Act
+		session.add(model).await.unwrap();
+		session.flush().await.unwrap();
+
+		// Assert
+		let row = sqlx::query("SELECT name_json, flag_json FROM json_scalar_models WHERE id = 1")
+			.fetch_one(&*pool)
+			.await
+			.unwrap();
+		let stored_name: String = row.try_get("name_json").unwrap();
+		let stored_flag: String = row.try_get("flag_json").unwrap();
+		assert_eq!(stored_name, "\"draft\"");
+		assert_eq!(stored_flag, "true");
+
+		let loaded: JsonScalarModel = session.get(1).await.unwrap().unwrap();
+		assert_eq!(loaded.name_json.as_inner(), "draft");
+		assert_eq!(*loaded.flag_json.as_inner(), true);
 	}
 }
