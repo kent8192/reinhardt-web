@@ -18,7 +18,7 @@
 //! use reinhardt::pages::prelude::*;
 //!
 //! fn my_component() -> Page {
-//!     let (count, set_count) = use_state(|| 0);
+//!     let (count, set_count) = use_state(0);
 //!     // Component logic...
 //!     Page::empty()
 //! }

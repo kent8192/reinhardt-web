@@ -101,12 +101,11 @@ where
 ///
 /// // Memoized callback - reference won't change between renders
 /// let increment = use_callback({
-///     let count = count.clone();
 ///     let set_count = set_count.clone();
 ///     move |_event| {
-///         set_count(count.get() + 1);
+///         set_count.update(|current| current + 1);
 ///     }
-/// });
+/// }, ());
 ///
 /// page!(|| {
 ///     button {

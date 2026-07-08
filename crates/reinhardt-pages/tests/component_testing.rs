@@ -4,7 +4,9 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
-use reinhardt_core::types::page::{EventType, IntoPage, Outlet, Page, PageElement};
+use reinhardt_core::types::page::{
+	DeferredNode, EventType, IntoPage, Outlet, Page, PageElement, SuspenseNode,
+};
 use reinhardt_pages::callback::async_handler;
 use reinhardt_pages::page;
 use reinhardt_pages::prelude::spawn_task;
@@ -40,7 +42,7 @@ fn ready_component() -> Page {
 }
 
 fn mixed_resource_component() -> Page {
-	let pending = use_resource(|| std::future::pending::<Result<String, String>>(), ());
+	let pending = use_resource(std::future::pending::<Result<String, String>>, ());
 	let ready = use_resource(|| async { Ok::<String, String>("Ready".to_string()) }, ());
 	Page::reactive(move || {
 		let _ = pending.get();
@@ -164,6 +166,35 @@ fn outlet_pages_render_inline_children_and_placeholders() {
 	let pretty = placeholder.pretty();
 	assert!(pretty.contains("<reinhardt-outlet"));
 	assert!(pretty.contains("data-rh-outlet-id=\"main\""));
+}
+
+#[test]
+fn suspense_and_deferred_pages_render_native_test_dom_branches() {
+	let resolved_suspense = render(Page::Suspense(SuspenseNode::new(
+		None,
+		|| false,
+		|| text_page("Loading"),
+		|| text_page("Resolved"),
+	)));
+	assert!(resolved_suspense.query_by_text("Resolved").is_some());
+	assert!(resolved_suspense.query_by_text("Loading").is_none());
+
+	let pending_suspense = render(Page::Suspense(SuspenseNode::new(
+		None,
+		|| true,
+		|| text_page("Pending"),
+		|| text_page("Hidden"),
+	)));
+	assert!(pending_suspense.query_by_text("Pending").is_some());
+	assert!(pending_suspense.query_by_text("Hidden").is_none());
+
+	let deferred = render(Page::Deferred(DeferredNode::new(
+		"test-deferred",
+		|| text_page("Deferred loading"),
+		|| text_page("Deferred content"),
+	)));
+	assert!(deferred.query_by_text("Deferred content").is_some());
+	assert!(deferred.query_by_text("Deferred loading").is_none());
 }
 
 #[test]

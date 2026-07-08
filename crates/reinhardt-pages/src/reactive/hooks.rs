@@ -66,8 +66,8 @@
 //!
 //!     let increment = use_callback({
 //!         let set_count = set_count.clone();
-//!         move |_| set_count(count.get() + 1)
-//!     });
+//!         move |_| set_count.update(|current| current + 1)
+//!     }, ());
 //!
 //!     use_effect({
 //!         let count = count.clone();
@@ -75,7 +75,7 @@
 //!             log!("Count changed to: {}", count.get());
 //!             None::<fn()>
 //!         }
-//!     });
+//!     }, (count.clone(),));
 //!
 //!     page!(|| {
 //!         div {

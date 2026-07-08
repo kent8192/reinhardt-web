@@ -15,6 +15,7 @@
 //!   - Required for server-side event handlers
 //!   - Slightly higher overhead due to mutex locking
 
+use std::ops::Deref;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -23,8 +24,61 @@ use crate::reactive::runtime::{NodeId, with_runtime};
 
 /// A setter function for updating state.
 ///
-/// This is a cloneable function wrapper that updates the associated Signal.
-pub type SetState<T> = Rc<dyn Fn(T)>;
+/// This is a cloneable function-like handle that updates the associated
+/// `Signal`. Call it directly to replace the value, or use [`SetState::update`]
+/// to derive the next value from the current one.
+#[derive(Clone)]
+pub struct SetState<T: Clone + 'static> {
+	signal: Signal<T>,
+	setter: Rc<dyn Fn(T)>,
+}
+
+impl<T: Clone + 'static> SetState<T> {
+	fn new(signal: Signal<T>) -> Self {
+		let setter_signal = signal.clone();
+		Self {
+			signal,
+			setter: Rc::new(move |value: T| setter_signal.set(value)),
+		}
+	}
+
+	/// Replace the state value.
+	///
+	/// This is equivalent to calling the setter as a function.
+	pub fn set(&self, value: T) {
+		(self.setter)(value);
+	}
+
+	/// Derive and store the next state value from the current value.
+	///
+	/// The updater receives the current value by shared reference and returns
+	/// the replacement value. The underlying signal notifies dependents once.
+	///
+	/// # Example
+	///
+	/// ```no_run
+	/// use reinhardt_pages::reactive::hooks::use_state;
+	///
+	/// let (count, set_count) = use_state(0);
+	/// set_count.update(|current| current + 1);
+	/// ```
+	pub fn update<F>(&self, f: F)
+	where
+		F: FnOnce(&T) -> T,
+	{
+		self.signal.update(|current| {
+			*current = f(current);
+		});
+	}
+}
+
+impl<T: Clone + 'static> Deref for SetState<T> {
+	type Target = dyn Fn(T);
+
+	fn deref(&self) -> &Self::Target {
+		&*self.setter
+	}
+}
 
 /// A dispatch function for reducer actions.
 ///
@@ -44,7 +98,7 @@ pub type Dispatch<A> = Rc<dyn Fn(A)>;
 ///
 /// A tuple of `(Signal<T>, SetState<T>)` where:
 /// - `Signal<T>` - The reactive state that can be read with `.get()`
-/// - `SetState<T>` - A function to update the state
+/// - `SetState<T>` - A function-like handle to update the state
 ///
 /// # Example
 ///
@@ -58,13 +112,13 @@ pub type Dispatch<A> = Rc<dyn Fn(A)>;
 ///
 /// // Update the value
 /// set_count(current + 1);
+///
+/// // Or derive the next value from the current one
+/// set_count.update(|current| current + 1);
 /// ```
 pub fn use_state<T: Clone + 'static>(initial: T) -> (Signal<T>, SetState<T>) {
 	let signal = Signal::new(initial);
-	let setter: SetState<T> = {
-		let signal = signal.clone();
-		Rc::new(move |value: T| signal.set(value))
-	};
+	let setter = SetState::new(signal.clone());
 	(signal, setter)
 }
 
@@ -405,6 +459,36 @@ mod tests {
 
 		set_count2(2);
 		assert_eq!(count.get(), 2);
+	}
+
+	#[test]
+	fn test_use_state_setter_set_method() {
+		let (count, set_count) = use_state(0);
+
+		set_count.set(7);
+
+		assert_eq!(count.get(), 7);
+	}
+
+	#[test]
+	fn test_use_state_setter_functional_update() {
+		let (count, set_count) = use_state(0);
+
+		set_count.update(|current| current + 1);
+		set_count.update(|current| current * 2);
+
+		assert_eq!(count.get(), 2);
+	}
+
+	#[test]
+	fn test_use_state_setter_functional_update_uses_latest_value() {
+		let (name, set_name) = use_state("Alice".to_string());
+		let set_name2 = set_name.clone();
+
+		set_name("Bob".to_string());
+		set_name2.update(|current| format!("{current} Smith"));
+
+		assert_eq!(name.get(), "Bob Smith");
 	}
 
 	#[test]

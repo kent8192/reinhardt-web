@@ -477,13 +477,13 @@ transparent; streaming metadata is emitted outside the branch DOM.
 use reinhardt_pages::prelude::*;
 
 fn counter() -> View {
-    let (count, set_count) = use_state(|| 0);
+    let (count, set_count) = use_state(0);
 
     page!({
         div {
             p { { format!("Count: {}", count.get()) } }
             button {
-                @click: move |_| set_count.update(|n| *n + 1),
+                @click: move |_| set_count.update(|current| current + 1),
                 "Increment"
             }
         }

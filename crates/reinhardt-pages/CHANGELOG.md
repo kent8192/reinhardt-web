@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- *(pages)* add `SetState::update` for previous-value state updates from
+  `use_state` setters.
 - Add native component testing utilities under
   `reinhardt_pages::testing::component`, including in-memory `Page` rendering,
   role/text/label queries, event helpers, async settling, pretty DOM output,

@@ -12,7 +12,7 @@ application.
 | JSX | `page!` macro | Rust expressions and typed parameters are used inside the macro. |
 | Function component | Rust function returning `Page` | Props are normal typed Rust arguments or structs. |
 | Fragment | Multiple top-level `page!` nodes or `Page::fragment` | The output is a `Page::Fragment`, not a virtual DOM fragment. |
-| `useState` | `use_state` returning `(Signal<T>, SetState<T>)` | Reads use `signal.get()`, writes use `set(value)` or `signal.update(...)`. |
+| `useState` | `use_state` returning `(Signal<T>, SetState<T>)` | Reads use `signal.get()`, writes use `set(value)` or `set.update(...)`. |
 | `useEffect` | `use_effect(f, deps)` | Dependencies are explicit Rust tuples, for example `(count.clone(),)`. |
 | `useLayoutEffect` | `use_layout_effect(f, deps)` | Same dependency model, layout timing. |
 | `useMemo` | `use_memo(f, deps)` | Returns `Memo<T>`; read it with `.get()`. |
@@ -155,9 +155,8 @@ fn counter_button(count: Signal<i32>, set_count: SetState<i32>) -> Page {
         button {
             class: "counter",
             @click: {
-                let count = count.clone();
                 let set_count = set_count.clone();
-                move |_event| set_count(count.get() + 1)
+                move |_event| set_count.update(|current| current + 1)
             },
             "Count: "
             { count.get().to_string() }
@@ -182,7 +181,9 @@ The syntax is intentionally Rust-first:
 
 React state is component-local and re-rendered through the virtual DOM.
 Reinhardt state is fine-grained: `Signal<T>` tracks readers and notifies only
-the dependent reactive work.
+the dependent reactive work. Use `SetState<T>` as a callable setter for direct
+replacement, or `SetState::update` when the next value depends on the previous
+one.
 
 ```rust,ignore
 use reinhardt::pages::prelude::*;
