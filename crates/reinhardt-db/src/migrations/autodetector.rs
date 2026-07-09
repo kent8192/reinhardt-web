@@ -4434,6 +4434,18 @@ impl MigrationAutodetector {
 			})
 	}
 
+	fn generated_replacement_fields_for_model(
+		generated_replacement_columns: &BTreeSet<(String, String, String)>,
+		app_label: &str,
+		model_name: &str,
+	) -> BTreeSet<String> {
+		generated_replacement_columns
+			.iter()
+			.filter(|(app, model, _)| app == app_label && model == model_name)
+			.map(|(_, _, field)| field.clone())
+			.collect()
+	}
+
 	fn generated_column_replacement_dependents(
 		from_model: &ModelState,
 		to_model: &ModelState,
@@ -6554,6 +6566,21 @@ impl MigrationAutodetector {
 				.find(|c| &c.name == constraint_name)
 				.is_some_and(|c| c.constraint_type == "primary_key" && c.fields.len() >= 2);
 			if is_composite_pk {
+				continue;
+			}
+			let replaced_fields = Self::generated_replacement_fields_for_model(
+				&generated_replacement_columns,
+				app_label,
+				model_name,
+			);
+			if !replaced_fields.is_empty()
+				&& from_model
+					.constraints
+					.iter()
+					.find(|constraint| &constraint.name == constraint_name)
+					.is_some_and(|constraint| {
+						Self::constraint_references_any_column(constraint, &replaced_fields)
+					}) {
 				continue;
 			}
 			by_app
@@ -10073,8 +10100,84 @@ mod tests {
 				super::super::Operation::AddConstraintRepair { table, constraint_sql }
 					if table == "accounts_user"
 						&& constraint_sql.contains("uq_accounts_user_full_name")
-				&& constraint_sql.contains("full_name")
+						&& constraint_sql.contains("full_name")
 		)));
+	}
+
+	#[rstest]
+	fn generated_column_replacement_suppresses_stale_removed_constraints() {
+		// Arrange
+		let first_name =
+			FieldState::new("first_name", super::super::FieldType::VarChar(100), false);
+		let display_name =
+			FieldState::new("display_name", super::super::FieldType::VarChar(100), false);
+		let mut from_field =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		from_field.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("first_name"),
+			"SchemaExpr::col(\"first_name\")",
+			super::super::GeneratedStorage::Stored,
+		));
+		let mut to_field =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		to_field.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("display_name"),
+			"SchemaExpr::col(\"display_name\")",
+			super::super::GeneratedStorage::Stored,
+		));
+		let constraint = ConstraintDefinition {
+			name: "ck_accounts_user_full_name".to_string(),
+			constraint_type: "check".to_string(),
+			fields: Vec::new(),
+			expression: Some("length(full_name) > 0".to_string()),
+			foreign_key_info: None,
+		};
+		let from_model = build_model_state(
+			"accounts",
+			"User",
+			vec![first_name.clone(), from_field],
+			Vec::new(),
+			vec![constraint],
+		);
+		let to_model = build_model_state(
+			"accounts",
+			"User",
+			vec![first_name, display_name, to_field],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			super::super::Operation::DropColumn { table, column, .. }
+				if table == "accounts_user" && column == "full_name"
+		)));
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user" && column.name == "full_name"
+		)));
+		assert!(
+			operations.iter().all(|operation| !matches!(
+				operation,
+				super::super::Operation::DropConstraint { .. }
+			)),
+			"generated replacement should not emit stale DropConstraint: {operations:?}"
+		);
 	}
 
 	#[rstest]

@@ -53,8 +53,8 @@ use crate::{
 		RepairTableStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
 	types::{
-		BinOper, ColumnRef, GeneratedColumn, GeneratedStorage, SchemaBinOper, SchemaExpr,
-		SchemaFunc, TableRef, TriggerBody,
+		BinOper, ColumnDef, ColumnRef, GeneratedColumn, GeneratedStorage, SchemaBinOper,
+		SchemaExpr, SchemaFunc, TableRef, TriggerBody,
 	},
 	value::Values,
 };
@@ -413,6 +413,62 @@ impl PostgresQueryBuilder {
 		}
 		writer.push(") ");
 		writer.push(generated.storage.as_str());
+	}
+
+	fn validate_generated_column_dependencies(&self, columns: &[ColumnDef]) {
+		let generated_columns = columns
+			.iter()
+			.filter(|column| column.generated.is_some())
+			.map(|column| column.name.to_string())
+			.collect::<Vec<_>>();
+
+		for column in columns {
+			let Some(generated) = column.generated.as_ref() else {
+				continue;
+			};
+			let column_name = column.name.to_string();
+			for generated_column in &generated_columns {
+				if generated_column == &column_name {
+					continue;
+				}
+				if Self::generated_column_references_column(generated, generated_column) {
+					panic!(
+						"PostgreSQL generated column `{}` cannot reference generated column `{}`",
+						column_name, generated_column
+					);
+				}
+			}
+		}
+	}
+
+	fn generated_column_references_column(generated: &GeneratedColumn, column: &str) -> bool {
+		if let Some(expr) = &generated.expr {
+			return Self::schema_expr_references_column(expr, column);
+		}
+		generated
+			.raw_sql
+			.as_deref()
+			.is_some_and(|raw_sql| Self::expression_text_references_column(raw_sql, column))
+	}
+
+	fn schema_expr_references_column(expr: &SchemaExpr, column: &str) -> bool {
+		match expr {
+			SchemaExpr::Column(identifier) => identifier.to_string() == column,
+			SchemaExpr::Value(_) => false,
+			SchemaExpr::Binary { left, right, .. } => {
+				Self::schema_expr_references_column(left, column)
+					|| Self::schema_expr_references_column(right, column)
+			}
+			SchemaExpr::Function { args, .. } => args
+				.iter()
+				.any(|arg| Self::schema_expr_references_column(arg, column)),
+			SchemaExpr::Cast { expr, .. } => Self::schema_expr_references_column(expr, column),
+		}
+	}
+
+	fn expression_text_references_column(text: &str, column: &str) -> bool {
+		text.split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+			.any(|token| token.eq_ignore_ascii_case(column))
 	}
 
 	/// Write a simple expression
@@ -1498,6 +1554,8 @@ impl QueryBuilder for PostgresQueryBuilder {
 	}
 
 	fn build_create_table(&self, stmt: &CreateTableStatement) -> (String, Values) {
+		self.validate_generated_column_dependencies(&stmt.columns);
+
 		let mut writer = SqlWriter::new();
 
 		writer.push("CREATE TABLE");
@@ -7391,6 +7449,34 @@ mod tests {
 			r#""full_name" VARCHAR(201) GENERATED ALWAYS AS ("first_name" || ' ' || "last_name") STORED"#
 		));
 		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(
+		expected = "PostgreSQL generated column `search_name` cannot reference generated column `full_name`"
+	)]
+	fn test_create_table_rejects_generated_column_chains() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.col(
+			ColumnDef::new("full_name")
+				.string_len(201)
+				.generated_stored(SchemaExpr::concat([
+					SchemaExpr::col("first_name"),
+					SchemaExpr::val(" "),
+					SchemaExpr::col("last_name"),
+				])),
+		);
+		stmt.col(
+			ColumnDef::new("search_name")
+				.string_len(201)
+				.generated_stored(SchemaExpr::col("full_name")),
+		);
+
+		let _ = builder.build_create_table(&stmt);
 	}
 
 	#[test]

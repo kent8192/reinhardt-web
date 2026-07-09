@@ -866,16 +866,19 @@ impl Session {
 							}
 						}
 
-						// If there are columns to insert, add them
-						if !columns.is_empty() {
-							insert_stmt.columns(columns);
-							insert_stmt.values(values_vec).map_err(|e| {
-								SessionError::FlushError(format!(
-									"Failed to build INSERT values: {}",
-									e
-								))
-							})?;
+						if columns.is_empty() {
+							return Err(SessionError::FlushError(format!(
+								"Cannot insert {table_name} because no writable fields remain after filtering generated and defaulted columns"
+							)));
 						}
+
+						insert_stmt.columns(columns);
+						insert_stmt.values(values_vec).map_err(|e| {
+							SessionError::FlushError(format!(
+								"Failed to build INSERT values: {}",
+								e
+							))
+						})?;
 
 						// Add RETURNING clause for PostgreSQL to get generated ID
 						if backend == DbBackend::Postgres {
@@ -1651,6 +1654,32 @@ mod tests {
 		session.flush().await.unwrap();
 
 		assert_eq!(session.dirty_count(), 0);
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_session_flush_generated_only_insert_errors(_init_drivers: ()) {
+		let pool = create_test_pool().await;
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		session
+			.add(GeneratedOnlyUser {
+				id: None,
+				full_name: "Computed".to_string(),
+			})
+			.await
+			.unwrap();
+
+		let error = session
+			.flush()
+			.await
+			.expect_err("generated-only insert should fail before rendering empty SQL");
+
+		assert_eq!(
+			error.to_string(),
+			"Flush error: Cannot insert generated_only_users because no writable fields remain after filtering generated and defaulted columns"
+		);
 	}
 
 	#[rstest]

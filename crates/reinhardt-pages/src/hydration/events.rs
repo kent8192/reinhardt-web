@@ -188,7 +188,14 @@ pub fn attach_event(
 	handler: EventHandler,
 	registry: &mut EventRegistry,
 ) -> Result<(), EventAttachError> {
+	#[cfg(feature = "i18n")]
+	let i18n_context = crate::i18n::current_i18n_callback_context();
 	let handle = element.add_event_listener_with_event(event_type.as_str(), move |event| {
+		#[cfg(feature = "i18n")]
+		{
+			crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || handler(event));
+		}
+		#[cfg(not(feature = "i18n"))]
 		handler(event);
 	});
 

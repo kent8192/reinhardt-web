@@ -306,8 +306,25 @@ impl SchemaDiff {
 	) -> bool {
 		match (current.as_ref(), target.as_ref(), self.dialect.as_ref()) {
 			(Some(current), Some(target), Some(dialect)) => current.eq_for_dialect(target, dialect),
+			(Some(current), Some(target), None)
+				if Self::is_typed_to_raw_generated_comparison(current, target) =>
+			{
+				false
+			}
 			_ => current == target,
 		}
+	}
+
+	fn is_typed_to_raw_generated_comparison(
+		current: &super::GeneratedColumnDefinition,
+		target: &super::GeneratedColumnDefinition,
+	) -> bool {
+		let current_is_typed = current.typed_expr().is_some() && current.raw_sql.is_none();
+		let target_is_typed = target.typed_expr().is_some() && target.raw_sql.is_none();
+		let current_is_raw = current.raw_sql.is_some() && current.typed_expr().is_none();
+		let target_is_raw = target.raw_sql.is_some() && target.typed_expr().is_none();
+
+		(current_is_typed && target_is_raw) || (current_is_raw && target_is_typed)
 	}
 
 	fn column_definition_from_schema(
@@ -390,6 +407,17 @@ impl SchemaDiff {
 			|| columns.iter().any(|column| {
 				Self::expression_text_references_column(&constraint.definition, column)
 			})
+	}
+
+	fn recreated_columns_for_table(
+		recreated_generated_columns: &BTreeSet<(String, String)>,
+		table_name: &str,
+	) -> BTreeSet<String> {
+		recreated_generated_columns
+			.iter()
+			.filter(|(table, _)| table == table_name)
+			.map(|(_, column)| column.clone())
+			.collect()
 	}
 
 	fn emit_generated_column_replacement_dependencies(
@@ -1205,6 +1233,15 @@ impl SchemaDiff {
 
 		// Remove indexes
 		for (table_name, index) in &diff.indexes_to_remove {
+			let recreated_columns =
+				Self::recreated_columns_for_table(&recreated_generated_columns, table_name);
+			if index
+				.columns
+				.iter()
+				.any(|column| recreated_columns.contains(column))
+			{
+				continue;
+			}
 			operations.push(Operation::DropIndex {
 				table: table_name.clone(),
 				columns: index.columns.clone(),
@@ -1222,6 +1259,13 @@ impl SchemaDiff {
 
 		// Remove constraints
 		for (table_name, constraint) in &diff.constraints_to_remove {
+			let recreated_columns =
+				Self::recreated_columns_for_table(&recreated_generated_columns, table_name);
+			if !recreated_columns.is_empty()
+				&& Self::constraint_schema_references_any_column(constraint, &recreated_columns)
+			{
+				continue;
+			}
 			operations.push(Operation::DropConstraint {
 				table: table_name.clone(),
 				constraint_name: constraint.name.clone(),
@@ -2790,7 +2834,11 @@ mod tests {
 		);
 
 		let broad_diff = SchemaDiff::new(current.clone(), target.clone());
-		assert!(broad_diff.detect().columns_to_modify.is_empty());
+		assert_eq!(broad_diff.detect().columns_to_modify.len(), 1);
+
+		let mysql_diff =
+			SchemaDiff::with_dialect(current.clone(), target.clone(), SqlDialect::Mysql);
+		assert!(mysql_diff.detect().columns_to_modify.is_empty());
 
 		let postgres_diff =
 			SchemaDiff::with_dialect(current.clone(), target.clone(), SqlDialect::Postgres);
@@ -2822,6 +2870,89 @@ mod tests {
 			Operation::AlterColumn { table, column, .. }
 				if table == "users" && column == "full_name"
 		)));
+	}
+
+	#[test]
+	fn test_generate_operations_suppresses_stale_dependency_drops_after_generated_replacement() {
+		let mut current_full_name = col("full_name", FieldType::VarChar(201), false);
+		current_full_name.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("first_name"),
+			"SchemaExpr::col(\"first_name\")",
+			GeneratedStorage::Stored,
+		));
+		let mut current_table = table_with_cols(
+			"users",
+			vec![
+				("id", pk_col("id")),
+				(
+					"first_name",
+					col("first_name", FieldType::VarChar(100), false),
+				),
+				("full_name", current_full_name),
+			],
+		);
+		current_table.indexes.push(IndexSchema {
+			name: "idx_users_full_name".to_string(),
+			columns: vec!["full_name".to_string()],
+			unique: false,
+		});
+		current_table.constraints.push(check_constraint(
+			"ck_users_full_name",
+			"length(full_name) > 0",
+		));
+		let mut current = DatabaseSchema::default();
+		current.tables.insert("users".to_string(), current_table);
+
+		let mut target_full_name = col("full_name", FieldType::VarChar(201), false);
+		target_full_name.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("display_name"),
+			"SchemaExpr::col(\"display_name\")",
+			GeneratedStorage::Stored,
+		));
+		let mut target = DatabaseSchema::default();
+		target.tables.insert(
+			"users".to_string(),
+			table_with_cols(
+				"users",
+				vec![
+					("id", pk_col("id")),
+					(
+						"display_name",
+						col("display_name", FieldType::VarChar(100), false),
+					),
+					(
+						"first_name",
+						col("first_name", FieldType::VarChar(100), false),
+					),
+					("full_name", target_full_name),
+				],
+			),
+		);
+
+		let operations = SchemaDiff::new(current, target).generate_operations();
+
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			Operation::DropColumn { table, column, .. }
+				if table == "users" && column == "full_name"
+		)));
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			Operation::AddColumn { table, column, .. }
+				if table == "users" && column.name == "full_name"
+		)));
+		assert!(
+			operations
+				.iter()
+				.all(|operation| !matches!(operation, Operation::DropIndex { .. })),
+			"generated replacement should not emit stale DropIndex: {operations:?}"
+		);
+		assert!(
+			operations
+				.iter()
+				.all(|operation| !matches!(operation, Operation::DropConstraint { .. })),
+			"generated replacement should not emit stale DropConstraint: {operations:?}"
+		);
 	}
 
 	#[test]
