@@ -109,6 +109,49 @@ impl MessageCatalog {
 		);
 	}
 
+	/// Add a contextual plural translation with owned forms.
+	pub fn add_context_plural_forms(
+		&mut self,
+		context: impl Into<String>,
+		singular: impl Into<String>,
+		forms: Vec<String>,
+	) {
+		self.context_plurals
+			.insert((context.into(), singular.into()), forms);
+	}
+
+	/// Iterate over simple translations.
+	pub fn translations(&self) -> impl Iterator<Item = (&str, &str)> {
+		self.messages
+			.iter()
+			.map(|(message, translation)| (message.as_str(), translation.as_str()))
+	}
+
+	/// Iterate over plural translations.
+	pub fn plural_translations(&self) -> impl Iterator<Item = (&str, &[String])> {
+		self.plurals
+			.iter()
+			.map(|(singular, forms)| (singular.as_str(), forms.as_slice()))
+	}
+
+	/// Iterate over contextual translations.
+	pub fn context_translations(&self) -> impl Iterator<Item = (&str, &str, &str)> {
+		self.contexts
+			.iter()
+			.map(|((context, message), translation)| {
+				(context.as_str(), message.as_str(), translation.as_str())
+			})
+	}
+
+	/// Iterate over contextual plural translations.
+	pub fn context_plural_translations(&self) -> impl Iterator<Item = (&str, &str, &[String])> {
+		self.context_plurals
+			.iter()
+			.map(|((context, singular), forms)| {
+				(context.as_str(), singular.as_str(), forms.as_slice())
+			})
+	}
+
 	/// Get a translation
 	pub fn get(&self, message: &str) -> Option<&String> {
 		self.messages.get(message)
