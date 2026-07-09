@@ -182,8 +182,8 @@ The syntax is intentionally Rust-first:
 React state is component-local and re-rendered through the virtual DOM.
 Reinhardt state is fine-grained: `Signal<T>` tracks readers and notifies only
 the dependent reactive work. Use `SetState<T>` as a callable setter for direct
-replacement, or `SetState::update` when the next value depends on the previous
-one.
+replacement, or the `SetStateExt::update` method when the next value depends on
+the previous one.
 
 ```rust,ignore
 use reinhardt::pages::prelude::*;

@@ -15,7 +15,9 @@
 //!   - Required for server-side event handlers
 //!   - Slightly higher overhead due to mutex locking
 
-use std::ops::Deref;
+use std::any::Any;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -24,30 +26,43 @@ use crate::reactive::runtime::{NodeId, with_runtime};
 
 /// A setter function for updating state.
 ///
-/// This is a cloneable function-like handle that updates the associated
-/// `Signal`. Call it directly to replace the value, or use [`SetState::update`]
-/// to derive the next value from the current one.
-#[derive(Clone)]
-pub struct SetState<T: Clone + 'static> {
-	signal: Signal<T>,
-	setter: Rc<dyn Fn(T)>,
+/// This is a cloneable function wrapper that updates the associated Signal.
+/// Import [`SetStateExt`] to use previous-value updates with `set.update(...)`.
+pub type SetState<T> = Rc<dyn Fn(T)>;
+
+thread_local! {
+	static SET_STATE_SIGNALS: RefCell<HashMap<usize, Box<dyn Any>>> = RefCell::new(HashMap::new());
 }
 
-impl<T: Clone + 'static> SetState<T> {
-	fn new(signal: Signal<T>) -> Self {
-		let setter_signal = signal.clone();
-		Self {
-			signal,
-			setter: Rc::new(move |value: T| setter_signal.set(value)),
-		}
-	}
+struct SetStateRegistration {
+	key: usize,
+}
 
+impl Drop for SetStateRegistration {
+	fn drop(&mut self) {
+		let _ = SET_STATE_SIGNALS.try_with(|signals| {
+			signals.borrow_mut().remove(&self.key);
+		});
+	}
+}
+
+struct RegisteredSetState<T: 'static> {
+	signal: Signal<T>,
+	_registration: Rc<RefCell<Option<SetStateRegistration>>>,
+}
+
+impl<T: 'static> RegisteredSetState<T> {
+	fn set(&self, value: T) {
+		self.signal.set(value);
+	}
+}
+
+/// Extension methods for setters returned by [`use_state`].
+pub trait SetStateExt<T: Clone + 'static> {
 	/// Replace the state value.
 	///
 	/// This is equivalent to calling the setter as a function.
-	pub fn set(&self, value: T) {
-		(self.setter)(value);
-	}
+	fn set(&self, value: T);
 
 	/// Derive and store the next state value from the current value.
 	///
@@ -57,27 +72,57 @@ impl<T: Clone + 'static> SetState<T> {
 	/// # Example
 	///
 	/// ```no_run
-	/// use reinhardt_pages::reactive::hooks::use_state;
+	/// use reinhardt_pages::reactive::hooks::{SetStateExt, use_state};
 	///
 	/// let (count, set_count) = use_state(0);
 	/// set_count.update(|current| current + 1);
 	/// ```
-	pub fn update<F>(&self, f: F)
+	fn update<F>(&self, f: F)
+	where
+		F: FnOnce(&T) -> T;
+}
+
+impl<T: Clone + 'static> SetStateExt<T> for SetState<T> {
+	fn set(&self, value: T) {
+		self.as_ref()(value);
+	}
+
+	fn update<F>(&self, f: F)
 	where
 		F: FnOnce(&T) -> T,
 	{
-		self.signal.update(|current| {
+		let signal = registered_set_state_signal(self).unwrap_or_else(|| {
+			panic!("SetStateExt::update is only available on setters returned by use_state")
+		});
+		signal.update(|current| {
 			*current = f(current);
 		});
 	}
 }
 
-impl<T: Clone + 'static> Deref for SetState<T> {
-	type Target = dyn Fn(T);
+fn set_state_key<T>(setter: &SetState<T>) -> usize {
+	Rc::as_ptr(setter) as *const () as usize
+}
 
-	fn deref(&self) -> &Self::Target {
-		&*self.setter
-	}
+fn register_set_state_signal<T: Clone + 'static>(
+	setter: &SetState<T>,
+	signal: Signal<T>,
+) -> SetStateRegistration {
+	let key = set_state_key(setter);
+	SET_STATE_SIGNALS.with(|signals| {
+		signals.borrow_mut().insert(key, Box::new(signal));
+	});
+	SetStateRegistration { key }
+}
+
+fn registered_set_state_signal<T: Clone + 'static>(setter: &SetState<T>) -> Option<Signal<T>> {
+	SET_STATE_SIGNALS.with(|signals| {
+		signals
+			.borrow()
+			.get(&set_state_key(setter))
+			.and_then(|signal| signal.downcast_ref::<Signal<T>>())
+			.cloned()
+	})
 }
 
 /// A dispatch function for reducer actions.
@@ -98,12 +143,12 @@ pub type Dispatch<A> = Rc<dyn Fn(A)>;
 ///
 /// A tuple of `(Signal<T>, SetState<T>)` where:
 /// - `Signal<T>` - The reactive state that can be read with `.get()`
-/// - `SetState<T>` - A function-like handle to update the state
+/// - `SetState<T>` - A function to update the state
 ///
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_pages::reactive::hooks::use_state;
+/// use reinhardt_pages::reactive::hooks::{SetStateExt, use_state};
 ///
 /// let (count, set_count) = use_state(0);
 ///
@@ -118,7 +163,15 @@ pub type Dispatch<A> = Rc<dyn Fn(A)>;
 /// ```
 pub fn use_state<T: Clone + 'static>(initial: T) -> (Signal<T>, SetState<T>) {
 	let signal = Signal::new(initial);
-	let setter = SetState::new(signal.clone());
+	let registration = Rc::new(RefCell::new(None));
+	let setter: SetState<T> = {
+		let state = RegisteredSetState {
+			signal: signal.clone(),
+			_registration: Rc::clone(&registration),
+		};
+		Rc::new(move |value| state.set(value))
+	};
+	*registration.borrow_mut() = Some(register_set_state_signal(&setter, signal.clone()));
 	(signal, setter)
 }
 

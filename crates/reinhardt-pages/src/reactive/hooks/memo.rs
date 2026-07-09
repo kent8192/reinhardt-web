@@ -94,7 +94,7 @@ where
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::hooks::{use_state, use_callback};
+/// use reinhardt_pages::reactive::hooks::{SetStateExt, use_callback, use_state};
 /// use reinhardt_pages::page;
 ///
 /// let (count, set_count) = use_state(0);

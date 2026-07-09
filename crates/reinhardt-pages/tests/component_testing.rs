@@ -8,6 +8,7 @@ use reinhardt_core::types::page::{
 	DeferredNode, EventType, IntoPage, Outlet, Page, PageElement, SuspenseNode,
 };
 use reinhardt_pages::callback::async_handler;
+use reinhardt_pages::component::SuspenseBoundary;
 use reinhardt_pages::page;
 use reinhardt_pages::prelude::spawn_task;
 use reinhardt_pages::reactive::hooks::use_action;
@@ -39,6 +40,19 @@ fn index_job_component() -> Page {
 fn ready_component() -> Page {
 	let resource = use_resource(|| async { Ok::<String, String>("Ready".to_string()) }, ());
 	Page::reactive(move || string_resource_page(resource.get()))
+}
+
+fn suspense_resource_component() -> Page {
+	let resource = use_resource(
+		|| async { Ok::<String, String>("Resolved suspense".to_string()) },
+		(),
+	);
+	let content_resource = resource.clone();
+	SuspenseBoundary::new()
+		.fallback(|| text_page("Suspense loading"))
+		.track(resource)
+		.content(move || string_resource_page(content_resource.get()))
+		.into_page()
 }
 
 fn mixed_resource_component() -> Page {
@@ -195,6 +209,19 @@ fn suspense_and_deferred_pages_render_native_test_dom_branches() {
 	)));
 	assert!(deferred.query_by_text("Deferred content").is_some());
 	assert!(deferred.query_by_text("Deferred loading").is_none());
+}
+
+#[tokio::test]
+async fn suspense_pages_rerender_after_settle() {
+	let screen = render(suspense_resource_component);
+
+	assert!(screen.query_by_text("Suspense loading").is_some());
+	assert!(screen.query_by_text("Resolved suspense").is_none());
+
+	screen.settle().await;
+
+	assert!(screen.query_by_text("Resolved suspense").is_some());
+	assert!(screen.query_by_text("Suspense loading").is_none());
 }
 
 #[test]
