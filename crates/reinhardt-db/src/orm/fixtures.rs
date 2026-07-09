@@ -116,6 +116,16 @@ pub trait FixtureModelHandler: Send + Sync {
 		tx: &mut TransactionScope,
 	) -> FixtureResult<()>;
 
+	/// Load deferred many-to-many assignments for one fixture record.
+	async fn load_many_to_many_assignments(
+		&self,
+		_record: &FixtureRecord,
+		_conn: &DatabaseConnection,
+		_tx: &mut TransactionScope,
+	) -> FixtureResult<()> {
+		Ok(())
+	}
+
 	/// Dump records for this model.
 	async fn dump_records(&self) -> FixtureResult<Vec<FixtureRecord>>;
 }
@@ -240,9 +250,10 @@ where
 				actual: record.model.clone(),
 			});
 		}
+		ensure_single_column_primary_key::<M>()?;
 
 		let mut object = record.fields.clone();
-		let m2m_assignments = extract_many_to_many_assignments::<M>(&mut object)?;
+		remove_many_to_many_fixture_fields::<M>(&mut object)?;
 		normalize_foreign_key_fixture_fields::<M>(&mut object)?;
 		if let Some(pk) = &record.pk {
 			object.insert(M::primary_key_field().to_string(), pk.clone());
@@ -250,11 +261,23 @@ where
 		let _model: M = serde_json::from_value(Value::Object(object.clone()))?;
 		let (sql, values) = build_fixture_upsert_sql_values::<M>(conn, &object)?;
 		tx.execute(&sql, values).await?;
-		load_many_to_many_assignments::<M>(tx, conn, record.pk.as_ref(), &m2m_assignments).await?;
+		Ok(())
+	}
+
+	async fn load_many_to_many_assignments(
+		&self,
+		record: &FixtureRecord,
+		conn: &DatabaseConnection,
+		tx: &mut TransactionScope,
+	) -> FixtureResult<()> {
+		let mut object = record.fields.clone();
+		let assignments = extract_many_to_many_assignments::<M>(&mut object)?;
+		load_many_to_many_assignments::<M>(tx, conn, record.pk.as_ref(), &assignments).await?;
 		Ok(())
 	}
 
 	async fn dump_records(&self) -> FixtureResult<Vec<FixtureRecord>> {
+		ensure_single_column_primary_key::<M>()?;
 		let manager = Manager::<M>::new();
 		let rows = manager.order_by(&[M::primary_key_field()]).all().await?;
 		let conn = get_connection().await?;
@@ -266,6 +289,7 @@ where
 				FixtureError::Database("model must serialize to a JSON object".to_string())
 			})?;
 			let pk = object.remove(M::primary_key_field());
+			denormalize_foreign_key_fixture_fields::<M>(&mut object)?;
 			append_many_to_many_fixture_fields::<M>(&conn, pk.as_ref(), &mut object).await?;
 			records.push(FixtureRecord::new(model_label.clone(), pk, object));
 		}
@@ -297,6 +321,14 @@ pub async fn load_fixture_records(records: &[FixtureRecord]) -> FixtureResult<us
 			.get(&record.model)
 			.ok_or_else(|| FixtureError::ModelNotRegistered(record.model.clone()))?;
 		handler.load_record(record, &conn, &mut tx).await?;
+	}
+	for record in &ordered_records {
+		let handler = global_fixture_registry()
+			.get(&record.model)
+			.ok_or_else(|| FixtureError::ModelNotRegistered(record.model.clone()))?;
+		handler
+			.load_many_to_many_assignments(record, &conn, &mut tx)
+			.await?;
 	}
 	reset_sequences_after_explicit_pks(&conn, &mut tx, &ordered_records).await?;
 
@@ -349,6 +381,7 @@ fn build_fixture_upsert_sql_values<M>(
 where
 	M: Model,
 {
+	ensure_single_column_primary_key::<M>()?;
 	if object.is_empty() {
 		return Err(FixtureError::Database(
 			"fixture record must contain at least one database column".to_string(),
@@ -390,6 +423,21 @@ where
 	Ok((sql, super::execution::convert_values(values)))
 }
 
+fn ensure_single_column_primary_key<M>() -> FixtureResult<()>
+where
+	M: Model,
+{
+	if let Some(primary_key) = M::composite_primary_key() {
+		return Err(FixtureError::Database(format!(
+			"fixture loading does not support composite primary keys for '{}.{}' ({})",
+			M::app_label(),
+			rust_model_name::<M>(),
+			primary_key.fields().join(", ")
+		)));
+	}
+	Ok(())
+}
+
 #[cfg(feature = "migrations")]
 fn normalize_foreign_key_fixture_fields<M>(object: &mut Map<String, Value>) -> FixtureResult<()>
 where
@@ -412,6 +460,43 @@ where
 			object.insert(field_name.clone(), value);
 		}
 	}
+	Ok(())
+}
+
+#[cfg(feature = "migrations")]
+fn denormalize_foreign_key_fixture_fields<M>(object: &mut Map<String, Value>) -> FixtureResult<()>
+where
+	M: Model,
+{
+	let Some(metadata) = metadata_for_model::<M>() else {
+		return Ok(());
+	};
+	let mut renames = Vec::new();
+	for field_name in metadata.fields.keys() {
+		if !is_foreign_key_field(&metadata, field_name) {
+			continue;
+		}
+		let Some(relation_name) = field_name.strip_suffix("_id") else {
+			continue;
+		};
+		if !object.contains_key(field_name) || object.contains_key(relation_name) {
+			continue;
+		}
+		renames.push((field_name.clone(), relation_name.to_string()));
+	}
+	for (field_name, relation_name) in renames {
+		if let Some(value) = object.remove(&field_name) {
+			object.insert(relation_name, value);
+		}
+	}
+	Ok(())
+}
+
+#[cfg(not(feature = "migrations"))]
+fn denormalize_foreign_key_fixture_fields<M>(_object: &mut Map<String, Value>) -> FixtureResult<()>
+where
+	M: Model,
+{
 	Ok(())
 }
 
@@ -444,6 +529,23 @@ where
 		assignments.push(FixtureManyToManyAssignment { spec, values });
 	}
 	Ok(assignments)
+}
+
+#[cfg(feature = "migrations")]
+fn remove_many_to_many_fixture_fields<M>(object: &mut Map<String, Value>) -> FixtureResult<()>
+where
+	M: Model,
+{
+	let _ = extract_many_to_many_assignments::<M>(object)?;
+	Ok(())
+}
+
+#[cfg(not(feature = "migrations"))]
+fn remove_many_to_many_fixture_fields<M>(_object: &mut Map<String, Value>) -> FixtureResult<()>
+where
+	M: Model,
+{
+	Ok(())
 }
 
 #[cfg(not(feature = "migrations"))]
@@ -801,28 +903,7 @@ fn order_records_by_dependencies(records: &[FixtureRecord]) -> FixtureResult<Vec
 		.iter()
 		.map(|record| canonical_record_label(&record.model))
 		.collect::<FixtureResult<_>>()?;
-	let mut dependencies = HashMap::<String, HashSet<String>>::new();
-
-	for model_key in &present_models {
-		let (app_label, model_name) = parse_model_label(model_key)?;
-		let mut model_dependencies = HashSet::new();
-		if let Some(metadata) = find_model_metadata(&app_label, &model_name) {
-			for field in metadata.fields.values() {
-				if let Some(target_model) = field.params.get("fk_target") {
-					let target_app = field
-						.params
-						.get("fk_target_app")
-						.map(String::as_str)
-						.unwrap_or(&app_label);
-					let target_key = canonical_model_key(target_app, target_model);
-					if target_key != *model_key && present_models.contains(&target_key) {
-						model_dependencies.insert(target_key);
-					}
-				}
-			}
-		}
-		dependencies.insert(model_key.clone(), model_dependencies);
-	}
+	let dependencies = fixture_model_dependencies(records, &present_models)?;
 
 	let model_order = topological_model_order(&present_models, dependencies)?;
 	let rank: HashMap<String, usize> = model_order
@@ -858,6 +939,50 @@ fn canonical_model_key(app_label: &str, model_name: &str) -> String {
 		return canonical_label(&metadata.app_label, &metadata.model_name);
 	}
 	canonical_record_label(&label).unwrap_or(label)
+}
+
+#[cfg(feature = "migrations")]
+fn fixture_model_dependencies(
+	records: &[FixtureRecord],
+	present_models: &HashSet<String>,
+) -> FixtureResult<HashMap<String, HashSet<String>>> {
+	let mut dependencies = present_models
+		.iter()
+		.map(|model| (model.clone(), HashSet::new()))
+		.collect::<HashMap<_, _>>();
+
+	for record in records {
+		let source_key = canonical_record_label(&record.model)?;
+		let (app_label, model_name) = parse_model_label(&source_key)?;
+		let Some(metadata) = find_model_metadata(&app_label, &model_name) else {
+			continue;
+		};
+		for (field_name, field) in &metadata.fields {
+			let Some(target_model) = field.params.get("fk_target") else {
+				continue;
+			};
+			let Some(value) = fixture_field_value(record, field_name) else {
+				continue;
+			};
+			if json_dependency_key(value).is_none() {
+				continue;
+			}
+			let target_app = field
+				.params
+				.get("fk_target_app")
+				.map(String::as_str)
+				.unwrap_or(&metadata.app_label);
+			let target_key = canonical_model_key(target_app, target_model);
+			if target_key != source_key && present_models.contains(&target_key) {
+				dependencies
+					.entry(source_key.clone())
+					.or_default()
+					.insert(target_key);
+			}
+		}
+	}
+
+	Ok(dependencies)
 }
 
 #[cfg(feature = "migrations")]
@@ -1131,6 +1256,93 @@ mod tests {
 		}
 	}
 
+	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureM2mPost {
+		id: Option<i64>,
+		title: String,
+	}
+
+	#[cfg(feature = "migrations")]
+	impl Model for FixtureM2mPost {
+		type PrimaryKey = i64;
+		type Fields = FixturePostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_m2m_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixturePostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_m2m"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct CompositeFixture {
+		left_id: i64,
+		right_id: i64,
+		label: String,
+	}
+
+	#[cfg(feature = "migrations")]
+	impl Model for CompositeFixture {
+		type PrimaryKey = String;
+		type Fields = FixturePostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_composite"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixturePostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_composite"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"left_id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(format!("{}:{}", self.left_id, self.right_id))
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			let mut parts = value.split(':');
+			self.left_id = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
+			self.right_id = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
+		}
+
+		fn composite_primary_key() -> Option<crate::orm::composite_pk::CompositePrimaryKey> {
+			crate::orm::composite_pk::CompositePrimaryKey::new(vec![
+				"left_id".to_string(),
+				"right_id".to_string(),
+			])
+			.ok()
+		}
+	}
+
 	#[test]
 	fn fixture_record_uses_django_shape() {
 		let json = r#"[{"model":"blog.Post","pk":1,"fields":{"title":"Hello"}}]"#;
@@ -1206,6 +1418,57 @@ mod tests {
 
 	#[cfg(feature = "migrations")]
 	#[test]
+	fn dumped_foreign_key_fields_use_django_relation_names() {
+		let mut post =
+			crate::migrations::ModelMetadata::new("fixture_tests", "FixturePost", "fixture_post");
+		post.add_field(
+			"author_id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("fk_target", "Author")
+				.with_param("fk_target_app", "fixture_tests"),
+		);
+		crate::migrations::model_registry::global_registry().register_model(post);
+		let mut object = Map::new();
+		object.insert("author_id".to_string(), Value::from(7));
+		object.insert("title".to_string(), Value::from("Fixture"));
+
+		denormalize_foreign_key_fixture_fields::<FixturePost>(&mut object).unwrap();
+
+		assert_eq!(object.get("author"), Some(&Value::from(7)));
+		assert_eq!(object.get("title"), Some(&Value::from("Fixture")));
+		assert!(object.get("author_id").is_none());
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn many_to_many_fixture_fields_are_removed_before_model_deserialize() {
+		let mut post = crate::migrations::ModelMetadata::new(
+			"fixture_m2m",
+			"FixtureM2mPost",
+			"fixture_m2m_post",
+		);
+		post.add_many_to_many(
+			crate::migrations::ManyToManyMetadata::new("tags", "Tag")
+				.with_through("fixture_m2m_post_tags")
+				.with_source_field("post_id")
+				.with_target_field("tag_id"),
+		);
+		crate::migrations::model_registry::global_registry().register_model(post);
+		let mut object = Map::new();
+		object.insert("title".to_string(), Value::from("Fixture"));
+		object.insert(
+			"tags".to_string(),
+			Value::Array(vec![Value::from(1), Value::from(2)]),
+		);
+
+		remove_many_to_many_fixture_fields::<FixtureM2mPost>(&mut object).unwrap();
+
+		assert_eq!(object.get("title"), Some(&Value::from("Fixture")));
+		assert!(object.get("tags").is_none());
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
 	fn dependency_order_places_self_referential_targets_first() {
 		let mut post = crate::migrations::ModelMetadata::new(
 			"fixture_self",
@@ -1264,5 +1527,52 @@ mod tests {
 
 		assert_eq!(ordered[0].model, "fixture_case.author");
 		assert_eq!(ordered[1].model, "fixture_case.post");
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn dependency_order_uses_non_null_fixture_fk_values() {
+		let mut left =
+			crate::migrations::ModelMetadata::new("fixture_cycle", "Left", "fixture_cycle_left");
+		left.add_field(
+			"right_id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_nullable(true)
+				.with_param("fk_target", "Right")
+				.with_param("fk_target_app", "fixture_cycle"),
+		);
+		let mut right =
+			crate::migrations::ModelMetadata::new("fixture_cycle", "Right", "fixture_cycle_right");
+		right.add_field(
+			"left_id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_nullable(true)
+				.with_param("fk_target", "Left")
+				.with_param("fk_target_app", "fixture_cycle"),
+		);
+		crate::migrations::model_registry::global_registry().register_model(left);
+		crate::migrations::model_registry::global_registry().register_model(right);
+		let mut left_fields = Map::new();
+		left_fields.insert("right".to_string(), Value::from(1));
+		let mut right_fields = Map::new();
+		right_fields.insert("left".to_string(), Value::Null);
+		let records = vec![
+			FixtureRecord::new("fixture_cycle.Left", Some(Value::from(1)), left_fields),
+			FixtureRecord::new("fixture_cycle.Right", Some(Value::from(1)), right_fields),
+		];
+
+		let ordered = order_records_by_dependencies(&records).unwrap();
+
+		assert_eq!(ordered[0].model, "fixture_cycle.Right");
+		assert_eq!(ordered[1].model, "fixture_cycle.Left");
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn composite_primary_key_models_are_rejected_for_fixtures() {
+		let error = ensure_single_column_primary_key::<CompositeFixture>().unwrap_err();
+
+		assert!(matches!(error, FixtureError::Database(_)));
+		assert!(error.to_string().contains("composite primary keys"));
 	}
 }
