@@ -1497,10 +1497,13 @@ fn generate_relation_traversal_accessors(
 		.filter(|field| !is_many_to_many_field_type(&field.ty))
 		.map(|field| {
 			let field_name = &field.name;
+			let field_name_str = field_name.to_string();
 			let field_type = &field.ty;
 			let method_name = syn::Ident::new(&format!("field_{}", field_name), field_name.span());
+			let doc_comment = format!("Reference the `{field_name_str}` field through this relation path.");
 
 			quote! {
+				#[doc = #doc_comment]
 				pub fn #method_name(self) -> #orm_crate::relations::RelatedFieldRef<Root, #struct_name, #field_type> {
 					self.field(#struct_name::#method_name())
 				}
@@ -1663,9 +1666,11 @@ fn generate_relation_traversal_accessors(
 		.iter()
 		.map(|info| {
 			let method_name = &info.method_name;
+			let relation_name = method_name.to_string();
 			let descriptor_name = &info.descriptor_name;
 			let target_ty = &info.target_ty;
 			let steps = &info.steps;
+			let doc_comment = format!("Build a typed relation path for `{relation_name}`.");
 
 			quote! {
 				struct #descriptor_name;
@@ -1680,6 +1685,7 @@ fn generate_relation_traversal_accessors(
 				}
 
 				impl #struct_name {
+					#[doc = #doc_comment]
 					#struct_vis fn #method_name() -> <#target_ty as #orm_crate::relations::RelationTarget>::Path<#struct_name> {
 						<#target_ty as #orm_crate::relations::RelationTarget>::wrap_relation_path(
 							#orm_crate::relations::RelationPath::<#struct_name, #target_ty>::from_descriptor::<#descriptor_name>()
@@ -1694,10 +1700,13 @@ fn generate_relation_traversal_accessors(
 		.iter()
 		.map(|info| {
 			let method_name = &info.method_name;
+			let relation_name = method_name.to_string();
 			let descriptor_name = &info.descriptor_name;
 			let target_ty = &info.target_ty;
+			let doc_comment = format!("Extend this relation path through `{relation_name}`.");
 
 			quote! {
+				#[doc = #doc_comment]
 				#struct_vis fn #method_name(self) -> <#target_ty as #orm_crate::relations::RelationTarget>::Path<Root> {
 					<#target_ty as #orm_crate::relations::RelationTarget>::wrap_relation_path(
 						self.inner.then::<#descriptor_name, #target_ty>()
@@ -1706,23 +1715,32 @@ fn generate_relation_traversal_accessors(
 			}
 		})
 		.collect();
+	let wrapper_doc = format!("Typed relation path wrapper for [`{struct_name}`].");
+	let wrapper_new_doc = format!("Wrap a raw relation path targeting [`{struct_name}`].");
+	let wrapper_optional_doc = "Treat this relation path as optional and prefer left joins.";
+	let wrapper_field_doc =
+		format!("Reference a [`{struct_name}`] field through this relation path.");
 
 	quote! {
+		#[doc = #wrapper_doc]
 		#struct_vis struct #wrapper_name<Root: #orm_crate::Model> {
 			inner: #orm_crate::relations::RelationPath<Root, #struct_name>,
 		}
 
 		impl<Root: #orm_crate::Model> #wrapper_name<Root> {
+			#[doc = #wrapper_new_doc]
 			pub fn new(inner: #orm_crate::relations::RelationPath<Root, #struct_name>) -> Self {
 				Self { inner }
 			}
 
+			#[doc = #wrapper_optional_doc]
 			pub fn optional(self) -> Self {
 				Self {
 					inner: self.inner.optional(),
 				}
 			}
 
+			#[doc = #wrapper_field_doc]
 			pub fn field<Value>(
 				self,
 				field: #orm_crate::expressions::FieldRef<#struct_name, Value>,

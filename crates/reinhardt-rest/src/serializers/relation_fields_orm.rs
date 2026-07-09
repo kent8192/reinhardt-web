@@ -613,12 +613,12 @@ impl QueryOptimizer {
 	{
 		if !self.select_related.is_empty() {
 			let fields: Vec<&str> = self.select_related.iter().map(|s| s.as_str()).collect();
-			queryset = queryset.select_related(&fields);
+			queryset = queryset.select_related(fields.as_slice());
 		}
 
 		if !self.prefetch_related.is_empty() {
 			let fields: Vec<&str> = self.prefetch_related.iter().map(|s| s.as_str()).collect();
-			queryset = queryset.prefetch_related(&fields);
+			queryset = queryset.prefetch_related(fields.as_slice());
 		}
 
 		queryset
