@@ -496,6 +496,64 @@ fn todo_form() -> Page {
 }
 ```
 
+## Keyed queries and invalidating mutations
+
+React Query and SWR patterns map to `use_query` and `use_mutation` when the
+read operation is a `#[server_fn]`. The server-function macro emits a typed key
+helper whose cache ID is derived from the generated marker metadata and
+serialized arguments, so the fetcher and key cannot drift into unrelated
+strings.
+
+```rust,ignore
+use std::time::Duration;
+
+use reinhardt::pages::prelude::*;
+use reinhardt::pages::server_fn::{ServerFnError, server_fn};
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct JobSnapshot {
+    id: i64,
+    status: String,
+}
+
+#[server_fn]
+pub async fn list_project_jobs(project_id: i64) -> Result<Vec<JobSnapshot>, ServerFnError> {
+    Ok(Vec::new())
+}
+
+#[server_fn]
+pub async fn retry_job(project_id: i64, job_id: i64) -> Result<(), ServerFnError> {
+    Ok(())
+}
+
+fn jobs_panel(project_id: i64, failed_job_id: i64) -> Page {
+    let jobs = use_query(list_project_jobs::key(project_id)).poll(Duration::from_secs(5));
+    let retry = use_mutation(move |job_id: i64| async move {
+        retry_job(project_id, job_id).await
+    })
+    .invalidates(list_project_jobs::key(project_id));
+
+    page!({
+        button {
+            disabled: retry.is_pending(),
+            @click: retry.dispatching(failed_job_id),
+            "Retry"
+        }
+        if let Some(items) = jobs.data() {
+            p { { format!("{} jobs", items.len()) } }
+        }
+        if jobs.is_pending() {
+            p { role: "status", "Refreshing" }
+        }
+    })
+}
+```
+
+`server_fn_module::key(args...)` always works. The macro also emits an
+extension trait for `server_fn.key(args...)`; import the defining module with a
+glob, or import the generated `*QueryKeyExt` trait, when that method spelling is
+preferred.
+
 For generated forms, read submit state from the runtime returned by `use_form`:
 
 ```rust,ignore

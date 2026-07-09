@@ -1365,6 +1365,114 @@ fn generate_server_handler(
 		})
 		.collect();
 	let uses_response_cookie_jar = !inject_params.is_empty() || !extractor_params.is_empty();
+	let regular_param_idents: Vec<_> = regular_params
+		.iter()
+		.filter_map(|p| {
+			if let syn::Pat::Ident(pat_ident) = &*p.pat {
+				Some(pat_ident.ident.clone())
+			} else {
+				None
+			}
+		})
+		.collect();
+	let query_key_ext_trait = {
+		let pascal_name = to_pascal_case_ident(name);
+		quote::format_ident!("{}QueryKeyExt", pascal_name)
+	};
+	let query_param_bounds: Vec<_> = regular_param_types
+		.iter()
+		.map(|ty| quote! { #ty: ::std::clone::Clone + ::serde::Serialize + 'static })
+		.collect();
+	let query_response_bound = quote! { #response_type: ::std::clone::Clone + 'static };
+	let key_where_clause = quote! {
+		where
+			#query_response_bound,
+			#(#query_param_bounds,)*
+	};
+	let native_query_call = if has_inject_or_extractor {
+		quote! {
+			::std::result::Result::Err(
+				#pages_crate::server_fn::ServerFnError::network(
+					concat!(
+						"server function `",
+						#name_str,
+						"` query cannot run natively because it has injected or extractor parameters",
+					),
+				),
+			)
+		}
+	} else {
+		quote! {
+			super::#name(#(#regular_param_idents),*).await
+		}
+	};
+	let query_key_tokens = quote! {
+		/// Builds a typed cache key for this server function and argument set.
+		pub fn key(
+			#(#regular_param_idents: #regular_param_types),*
+		) -> #pages_crate::reactive::QueryKey<
+			#response_type,
+			#pages_crate::server_fn::ServerFnError,
+		>
+		#key_where_clause
+		{
+			let __query_args = (#(#regular_param_idents.clone(),)*);
+			#pages_crate::reactive::QueryKey::from_server_fn::<marker, _, _, _>(
+				__query_args,
+				move || {
+					#(let #regular_param_idents = #regular_param_idents.clone();)*
+					async move {
+						#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+						{
+							super::#name(#(#regular_param_idents),*).await
+						}
+
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						{
+							#native_query_call
+						}
+					}
+				},
+			)
+		}
+
+		/// Extension trait that enables `server_fn.key(args...)` when imported.
+		pub trait #query_key_ext_trait {
+			/// Builds a typed cache key for this server function and argument set.
+			fn key(
+				self,
+				#(#regular_param_idents: #regular_param_types),*
+			) -> #pages_crate::reactive::QueryKey<
+				#response_type,
+				#pages_crate::server_fn::ServerFnError,
+			>
+			#key_where_clause;
+		}
+
+		impl<F, Fut> #query_key_ext_trait for F
+		where
+			F: ::std::ops::Fn(#(#regular_param_types),*) -> Fut + 'static,
+			Fut: ::std::future::Future<
+					Output = ::std::result::Result<
+						#response_type,
+						#pages_crate::server_fn::ServerFnError,
+					>,
+				> + 'static,
+			#query_response_bound,
+			#(#query_param_bounds,)*
+		{
+			fn key(
+				self,
+				#(#regular_param_idents: #regular_param_types),*
+			) -> #pages_crate::reactive::QueryKey<
+				#response_type,
+				#pages_crate::server_fn::ServerFnError,
+			> {
+				let _ = self;
+				key(#(#regular_param_idents),*)
+			}
+		}
+	};
 
 	// MSW: Generate server-side MockableServerFn tokens only when msw feature is enabled
 	let msw_server_tokens = if msw_enabled {
@@ -1480,6 +1588,8 @@ fn generate_server_handler(
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
 				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
+
+			#query_key_tokens
 
 			#msw_wasm_inner_tokens
 		}
@@ -1616,6 +1726,8 @@ fn generate_server_handler(
 				}
 			}
 
+			#query_key_tokens
+
 			// MSW: server-side MockableServerFn (conditionally generated; Issue #3673)
 			#msw_server_tokens
 		}
@@ -1623,6 +1735,9 @@ fn generate_server_handler(
 		// WASM-side marker module — always emitted on wasm (#4711); the
 		// optional MSW Args / MockableServerFn impl is gated inside.
 		#wasm_marker_tokens
+
+		#[allow(unused_imports)]
+		#vis use #marker_module_name::#query_key_ext_trait;
 	}
 }
 

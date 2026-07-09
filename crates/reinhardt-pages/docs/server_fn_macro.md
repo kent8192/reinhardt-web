@@ -22,7 +22,7 @@ The macro automatically generates client-side code that:
 
 Use `#[inject]` attribute to inject dependencies on the server side:
 
-```rust
+```rust,ignore
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use reinhardt::DatabaseConnection;
 
@@ -176,6 +176,52 @@ pub async fn get_questions(
 - Generates server-side code with `#[inject]` parameters
 - Generates client-side stub **without** `#[inject]` parameters
 - Handles conditional compilation for both targets
+- Generates typed query-key helpers for `use_query` / `use_mutation`
+
+## Query Key Helpers
+
+Every `#[server_fn]` emits a marker module with a `key(...)` helper that returns
+a typed `QueryKey<T, ServerFnError>` for `use_query`:
+
+```rust
+use reinhardt::pages::prelude::*;
+use reinhardt::pages::server_fn::{ServerFnError, server_fn};
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct JobSnapshot {
+    pub id: i64,
+}
+
+#[server_fn]
+pub async fn list_project_jobs(project_id: i64) -> Result<Vec<JobSnapshot>, ServerFnError> {
+    Ok(Vec::new())
+}
+
+#[server_fn]
+pub async fn retry_job(project_id: i64, job_id: i64) -> Result<(), ServerFnError> {
+    Ok(())
+}
+
+let jobs = use_query(list_project_jobs::key(42));
+let retry = use_mutation(|job_id: i64| async move { retry_job(42, job_id).await })
+    .invalidates(list_project_jobs::key(42));
+```
+
+The key ID is derived from the server function endpoint, codec, and serialized
+arguments. Mounted queries with the same key share one cache entry and
+in-flight request, `refetch()` refreshes manually, and `poll(duration)` keeps a
+query current while the handle is alive.
+
+The macro also emits an extension trait for method-style keys:
+
+```rust,ignore
+use crate::server_fns::*;
+
+let jobs = use_query(list_project_jobs.key(42));
+```
+
+Use `server_fn_module::key(...)` when importing a single function directly; it
+does not require importing the generated extension trait.
 
 ## Macro Attributes
 

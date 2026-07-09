@@ -5,6 +5,7 @@ use bytes::Bytes;
 use hyper::{Method, header};
 use reinhardt_http::Request;
 use reinhardt_pages::server_fn::{ServerFnError, ServerFnRegistration, server_fn};
+use rstest::rstest;
 
 #[server_fn]
 async fn echo_name(name: String) -> Result<String, ServerFnError> {
@@ -30,4 +31,18 @@ async fn json_server_fn_accepts_form_content_type_without_extractors() {
 
 	// Assert
 	assert_eq!(name, "Alice");
+}
+
+#[rstest]
+fn generated_query_key_helper_encodes_server_fn_identity_and_args() {
+	// Arrange & Act
+	let module_key = echo_name::key("Alice".to_string());
+	let method_key = echo_name.key("Alice".to_string());
+
+	// Assert
+	assert_eq!(
+		module_key.id(),
+		r#"server_fn:/api/server_fn/echo_name:json:["Alice"]"#
+	);
+	assert_eq!(method_key.id(), module_key.id());
 }

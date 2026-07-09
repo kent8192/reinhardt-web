@@ -40,7 +40,7 @@ fn ready_component() -> Page {
 }
 
 fn mixed_resource_component() -> Page {
-	let pending = use_resource(|| std::future::pending::<Result<String, String>>(), ());
+	let pending = use_resource(std::future::pending::<Result<String, String>>, ());
 	let ready = use_resource(|| async { Ok::<String, String>("Ready".to_string()) }, ());
 	Page::reactive(move || {
 		let _ = pending.get();
