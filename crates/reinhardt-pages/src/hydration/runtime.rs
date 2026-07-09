@@ -235,6 +235,11 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 				.collect::<Vec<_>>();
 			install_hydrated_element_children(element, &child_views);
 		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				install_hydrated_reactive_nodes(element, child);
+			}
+		}
 		Page::Reactive(reactive) => {
 			let rendered = reactive.render();
 			split_coalesced_text_children(element, std::slice::from_ref(&rendered));
@@ -319,6 +324,7 @@ fn install_hydrated_element_children(element: &Element, children: &[Page]) {
 	install_hydrated_children_reactive_nodes(
 		&element.as_web_sys().clone().into(),
 		&actual_nodes,
+		None,
 		children,
 	);
 }
@@ -327,14 +333,20 @@ fn install_hydrated_element_children(element: &Element, children: &[Page]) {
 fn install_hydrated_children_reactive_nodes(
 	parent: &web_sys::Node,
 	nodes: &[web_sys::Node],
+	next_sibling: Option<web_sys::Node>,
 	children: &[Page],
 ) {
 	let mut index = 0;
 	for child in children {
 		let node_count = hydrated_node_count(child);
 		let end = (index + node_count).min(nodes.len());
-		let next_sibling = nodes.get(end).cloned();
-		install_hydrated_child_reactive_nodes(parent, &nodes[index..end], next_sibling, child);
+		let child_next_sibling = nodes.get(end).cloned().or_else(|| next_sibling.clone());
+		install_hydrated_child_reactive_nodes(
+			parent,
+			&nodes[index..end],
+			child_next_sibling,
+			child,
+		);
 		index = end;
 	}
 }
@@ -429,14 +441,14 @@ fn install_hydrated_child_reactive_nodes(
 			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, view);
 		}
 		Page::Fragment(children) => {
-			install_hydrated_children_reactive_nodes(parent, nodes, children)
+			install_hydrated_children_reactive_nodes(parent, nodes, next_sibling, children)
 		}
 		Page::KeyedFragment(children) => {
 			let child_views = children
 				.iter()
 				.map(|(_, child)| child.clone())
 				.collect::<Vec<_>>();
-			install_hydrated_children_reactive_nodes(parent, nodes, &child_views);
+			install_hydrated_children_reactive_nodes(parent, nodes, next_sibling, &child_views);
 		}
 		Page::Outlet(outlet) => {
 			if let Some(child) = outlet.child() {
@@ -552,7 +564,7 @@ fn collect_expected_dom_children(view: &Page, children: &mut Vec<ExpectedDomChil
 	match view {
 		Page::Empty => {}
 		Page::Text(text) => {
-			if !normalize_whitespace(text.as_ref()).is_empty() {
+			if !text.is_empty() {
 				children.push(ExpectedDomChild::Text(text.to_string()));
 			}
 		}

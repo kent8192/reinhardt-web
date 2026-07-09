@@ -293,12 +293,15 @@ enum SuspenseStreamState {
 fn suspense_boundary_futures(
 	context: &Rc<RefCell<SsrResourceContext>>,
 	boundaries: Vec<PendingSuspenseBoundary>,
+	#[cfg(feature = "i18n")] i18n_context: Option<crate::i18n::I18nContext>,
 ) -> FuturesUnordered<SuspenseBoundaryFuture> {
 	suspense_boundary_groups(context, boundaries)
 		.into_iter()
 		.map(|boundaries| {
 			let context = Rc::clone(context);
-			async move {
+			#[cfg(feature = "i18n")]
+			let i18n_context = i18n_context.clone();
+			let future = async move {
 				let mut results = Vec::new();
 
 				for boundary in boundaries {
@@ -308,8 +311,10 @@ fn suspense_boundary_futures(
 				}
 
 				results
-			}
-			.boxed_local()
+			};
+			#[cfg(feature = "i18n")]
+			let future = with_i18n_context_future(i18n_context, future);
+			future.boxed_local()
 		})
 		.collect()
 }
@@ -467,7 +472,10 @@ impl SsrRenderer {
 			return None;
 		}
 
+		#[cfg(feature = "i18n")]
 		let mut state = self.state.clone();
+		#[cfg(not(feature = "i18n"))]
+		let state = self.state.clone();
 		#[cfg(feature = "i18n")]
 		if let Some(context) = self.i18n_context.as_ref() {
 			crate::i18n::write_i18n_ssr_state(&mut state, context);
@@ -739,7 +747,12 @@ impl SsrRenderer {
 			self.sync_i18n_state();
 
 			let shell = self.wrap_in_html_shell(&content, view_head.as_ref());
-			let boundary_futures = suspense_boundary_futures(&context, boundaries);
+			let boundary_futures = suspense_boundary_futures(
+				&context,
+				boundaries,
+				#[cfg(feature = "i18n")]
+				self.i18n_context.clone(),
+			);
 
 			let runtime = SuspenseStreamRuntime {
 				renderer: self.clone(),
@@ -832,6 +845,8 @@ impl SsrRenderer {
 										for future in suspense_boundary_futures(
 											&runtime.context,
 											nested_boundaries,
+											#[cfg(feature = "i18n")]
+											runtime.renderer.i18n_context.clone(),
 										) {
 											runtime.boundaries.push(future);
 										}

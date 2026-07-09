@@ -458,9 +458,17 @@ impl ReactiveNode {
 			move || {
 				let update = || {
 					with_reactive_node_store(&effect_reactive_node_store, || {
+						let first_run_resource_counter =
+							crate::reactive::resource::current_client_resource_counter();
+						let first_run_id_counter =
+							crate::reactive::hooks::id::id_counter_snapshot();
 						let view = render();
 
 						if first_run_clone.replace(false) {
+							crate::reactive::resource::set_client_resource_counter(
+								first_run_resource_counter,
+							);
+							crate::reactive::hooks::id::restore_id_counter(first_run_id_counter);
 							return;
 						}
 
