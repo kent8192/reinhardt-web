@@ -19,6 +19,7 @@ use reinhardt_query::types::PgBinOper;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -138,7 +139,7 @@ enum FilterField {
 #[derive(Debug, Clone)]
 struct FilterRelation {
 	steps: SmallVec<[RelationStep; 4]>,
-	join_kind: RelationJoinKind,
+	join_kind_override: Option<RelationJoinKind>,
 	leaf_alias: String,
 }
 
@@ -148,16 +149,16 @@ impl FilterRelation {
 		P: RelationPathLike,
 	{
 		let mut steps = SmallVec::new();
-		steps.extend_from_slice(path.steps());
+		steps.extend(path.steps().iter().cloned());
 		Self {
 			steps,
-			join_kind: path.join_kind(),
+			join_kind_override: path.join_kind_override(),
 			leaf_alias: path.leaf_alias().to_string(),
 		}
 	}
 
 	fn add_to_graph(&self, graph: &mut RelationJoinGraph) {
-		graph.add_steps(&self.steps, self.join_kind);
+		graph.add_steps_with_override(&self.steps, self.join_kind_override);
 	}
 }
 
@@ -258,6 +259,80 @@ impl Filter {
 	fn add_relation_joins(&self, graph: &mut RelationJoinGraph) {
 		if let Some(relation) = &self.relation {
 			relation.add_to_graph(graph);
+		}
+	}
+
+	fn has_relation(&self) -> bool {
+		self.relation.is_some()
+	}
+}
+
+#[derive(Debug, Clone)]
+/// Filter whose relation path is tied to a concrete root model.
+pub struct TypedFilter<Root>
+where
+	Root: super::Model,
+{
+	filter: Filter,
+	_phantom: PhantomData<Root>,
+}
+
+impl<Root> TypedFilter<Root>
+where
+	Root: super::Model,
+{
+	/// Create a typed filter from the untyped internal representation.
+	pub(crate) fn new(filter: Filter) -> Self {
+		Self {
+			filter,
+			_phantom: PhantomData,
+		}
+	}
+
+	/// Combine this filter with another root-compatible filter using AND.
+	pub fn and(self, other: impl QueryFilterInput<Root>) -> TypedFilterCondition<Root> {
+		TypedFilterCondition::new(FilterCondition::And(vec![
+			FilterCondition::Single(self.filter),
+			other.into_filter_condition(),
+		]))
+	}
+
+	/// Combine this filter with another root-compatible filter using OR.
+	pub fn or(self, other: impl QueryFilterInput<Root>) -> TypedFilterCondition<Root> {
+		TypedFilterCondition::new(FilterCondition::Or(vec![
+			FilterCondition::Single(self.filter),
+			other.into_filter_condition(),
+		]))
+	}
+
+	/// Negate this filter.
+	// This method mirrors Django-style query combinators and returns a typed condition.
+	#[allow(clippy::should_implement_trait)]
+	pub fn not(self) -> TypedFilterCondition<Root> {
+		TypedFilterCondition::new(FilterCondition::Not(Box::new(FilterCondition::Single(
+			self.filter,
+		))))
+	}
+}
+
+#[derive(Debug, Clone)]
+/// Composite filter condition whose typed relation paths share one root model.
+pub struct TypedFilterCondition<Root>
+where
+	Root: super::Model,
+{
+	condition: FilterCondition,
+	_phantom: PhantomData<Root>,
+}
+
+impl<Root> TypedFilterCondition<Root>
+where
+	Root: super::Model,
+{
+	fn new(condition: FilterCondition) -> Self {
+		Self {
+			condition,
+			_phantom: PhantomData,
 		}
 	}
 }
@@ -539,11 +614,66 @@ impl FilterCondition {
 			FilterCondition::Not(condition) => condition.is_empty(),
 		}
 	}
+
+	fn has_relation(&self) -> bool {
+		match self {
+			FilterCondition::Single(filter) => filter.has_relation(),
+			FilterCondition::And(conditions) | FilterCondition::Or(conditions) => {
+				conditions.iter().any(Self::has_relation)
+			}
+			FilterCondition::Not(condition) => condition.has_relation(),
+		}
+	}
 }
 
 impl From<Filter> for FilterCondition {
 	fn from(filter: Filter) -> Self {
 		Self::Single(filter)
+	}
+}
+
+/// Input accepted by `QuerySet::filter`.
+pub trait QueryFilterInput<T>
+where
+	T: super::Model,
+{
+	/// Convert this input into the internal filter condition.
+	fn into_filter_condition(self) -> FilterCondition;
+}
+
+impl<T> QueryFilterInput<T> for Filter
+where
+	T: super::Model,
+{
+	fn into_filter_condition(self) -> FilterCondition {
+		FilterCondition::Single(self)
+	}
+}
+
+impl<T> QueryFilterInput<T> for FilterCondition
+where
+	T: super::Model,
+{
+	fn into_filter_condition(self) -> FilterCondition {
+		self
+	}
+}
+
+impl<T> QueryFilterInput<T> for TypedFilter<T>
+where
+	T: super::Model,
+{
+	fn into_filter_condition(self) -> FilterCondition {
+		FilterCondition::Single(self.filter)
+	}
+}
+
+impl<T> QueryFilterInput<T> for TypedFilterCondition<T>
+where
+	T: super::Model,
+{
+	fn into_filter_condition(self) -> FilterCondition {
+		self.condition
 	}
 }
 
@@ -714,14 +844,18 @@ where
 {
 	fn apply_select_related(self, queryset: &mut QuerySet<T>) {
 		for field in self {
-			let _ = queryset.validate_relation_path(field);
+			queryset
+				.validate_relation_path(field)
+				.expect("invalid relation path passed to select_related");
 		}
 		queryset.select_related_fields = self.iter().map(|field| (*field).to_string()).collect();
 	}
 
 	fn apply_prefetch_related(self, queryset: &mut QuerySet<T>) {
 		for field in self {
-			let _ = queryset.validate_relation_path(field);
+			queryset
+				.validate_relation_path(field)
+				.expect("invalid relation path passed to prefetch_related");
 		}
 		queryset.prefetch_related_fields = self.iter().map(|field| (*field).to_string()).collect();
 	}
@@ -759,10 +893,18 @@ where
 	P: RelationPathLike<Root = T>,
 {
 	fn apply_select_related(self, queryset: &mut QuerySet<T>) {
+		let alias = self.leaf_alias().to_string();
 		queryset.relation_joins.add_path(&self);
+		if !queryset.typed_select_related_aliases.contains(&alias) {
+			queryset.typed_select_related_aliases.push(alias);
+		}
 	}
 
 	fn apply_prefetch_related(self, queryset: &mut QuerySet<T>) {
+		assert!(
+			self.steps().len() == 1,
+			"typed prefetch_related currently supports only single-hop relation paths"
+		);
 		queryset
 			.prefetch_related_fields
 			.push(self.leaf_alias().to_string());
@@ -779,6 +921,7 @@ where
 	filters: SmallVec<[Filter; 10]>,
 	filter_conditions: SmallVec<[FilterCondition; 4]>,
 	select_related_fields: Vec<String>,
+	typed_select_related_aliases: Vec<String>,
 	prefetch_related_fields: Vec<String>,
 	relation_joins: RelationJoinGraph,
 	order_by_fields: Vec<String>,
@@ -812,6 +955,7 @@ where
 			filters: SmallVec::new(),
 			filter_conditions: SmallVec::new(),
 			select_related_fields: Vec::new(),
+			typed_select_related_aliases: Vec::new(),
 			prefetch_related_fields: Vec::new(),
 			relation_joins: RelationJoinGraph::new(T::table_name()),
 			order_by_fields: Vec::new(),
@@ -840,6 +984,7 @@ where
 			filters: SmallVec::new(),
 			filter_conditions: SmallVec::new(),
 			select_related_fields: Vec::new(),
+			typed_select_related_aliases: Vec::new(),
 			prefetch_related_fields: Vec::new(),
 			relation_joins: RelationJoinGraph::new(T::table_name()),
 			order_by_fields: Vec::new(),
@@ -863,11 +1008,10 @@ where
 
 	/// Appends a filter expression to this `QuerySet`.
 	///
-	/// Accepts any value convertible into [`FilterCondition`] — typically a
-	/// [`Filter`] from `FieldRef::eq()` / `.gt()` / ... or a composite condition
-	/// built with [`Filter::and`], [`Filter::or`], and [`Filter::not`].
-	pub fn filter(mut self, filter: impl Into<FilterCondition>) -> Self {
-		match filter.into() {
+	/// Accepts typed and untyped inputs through [`QueryFilterInput`]. Typed
+	/// relation filters must be rooted at this `QuerySet` model.
+	pub fn filter(mut self, filter: impl QueryFilterInput<T>) -> Self {
+		match filter.into_filter_condition() {
 			FilterCondition::Single(filter) => {
 				filter.add_relation_joins(&mut self.relation_joins);
 				self.filters.push(filter);
@@ -913,6 +1057,30 @@ where
 		!(self.filters.is_empty()
 			&& self.filter_conditions.is_empty()
 			&& self.subquery_conditions.is_empty())
+	}
+
+	fn has_select_related(&self) -> bool {
+		!(self.select_related_fields.is_empty() && self.typed_select_related_aliases.is_empty())
+	}
+
+	fn has_related_filters(&self) -> bool {
+		self.filters.iter().any(Filter::has_relation)
+			|| self
+				.filter_conditions
+				.iter()
+				.any(FilterCondition::has_relation)
+	}
+
+	fn validate_no_related_filters_for_write(
+		&self,
+		operation: &str,
+	) -> reinhardt_core::exception::Result<()> {
+		if self.has_related_filters() {
+			return Err(reinhardt_core::exception::Error::Validation(format!(
+				"{operation} does not support typed related filters; use a subquery or select query first"
+			)));
+		}
+		Ok(())
 	}
 
 	/// Create a QuerySet from a subquery (FROM clause subquery / derived table)
@@ -985,6 +1153,7 @@ where
 			filters: SmallVec::new(),
 			filter_conditions: SmallVec::new(),
 			select_related_fields: Vec::new(),
+			typed_select_related_aliases: Vec::new(),
 			prefetch_related_fields: Vec::new(),
 			relation_joins: RelationJoinGraph::new(alias),
 			order_by_fields: Vec::new(),
@@ -2897,18 +3066,29 @@ where
 	fn apply_relation_joins(&self, stmt: &mut SelectStatement) {
 		let graph = self.relation_join_graph_for_query();
 		for join in graph.joins() {
+			if self
+				.select_related_fields
+				.iter()
+				.any(|field| field == &join.alias)
+			{
+				continue;
+			}
+
 			let sea_join_type = match join.join_kind {
 				RelationJoinKind::Inner => SeaJoinType::InnerJoin,
 				RelationJoinKind::Left => SeaJoinType::LeftJoin,
 			};
 			stmt.join(
 				sea_join_type,
-				TableRef::table_alias(join.target_table, join.alias.clone()),
+				TableRef::table_alias(
+					Alias::new(join.target_table.clone()),
+					Alias::new(&join.alias),
+				),
 				Expr::col((
 					Alias::new(&join.source_alias),
-					Alias::new(join.source_column),
+					Alias::new(&join.source_column),
 				))
-				.equals((Alias::new(&join.alias), Alias::new(join.target_column))),
+				.equals((Alias::new(&join.alias), Alias::new(&join.target_column))),
 			);
 		}
 	}
@@ -3756,6 +3936,7 @@ where
 	/// ```
 	pub fn select_related_query(&self) -> SelectStatement {
 		let table_name = T::table_name();
+		let root_alias = self.from_alias.as_deref().unwrap_or(table_name);
 		let mut stmt = Query::select();
 
 		// Apply FROM clause with optional alias
@@ -3771,7 +3952,7 @@ where
 		}
 
 		// Add main table columns
-		stmt.column(ColumnRef::table_asterisk(Alias::new(table_name)));
+		stmt.column(ColumnRef::table_asterisk(Alias::new(root_alias)));
 
 		// Add LEFT JOIN for each related field
 		for related_field in &self.select_related_fields {
@@ -3784,7 +3965,7 @@ where
 			// LEFT JOIN related_table AS related_field ON table.fk_field = related_field.id
 			stmt.left_join(
 				related_table,
-				Expr::col((Alias::new(table_name), fk_field))
+				Expr::col((Alias::new(root_alias), fk_field))
 					.equals((related_alias.clone(), Alias::new("id"))),
 			);
 
@@ -3793,6 +3974,16 @@ where
 		}
 
 		self.apply_relation_joins(&mut stmt);
+
+		for alias in &self.typed_select_related_aliases {
+			if !self
+				.select_related_fields
+				.iter()
+				.any(|field| field == alias)
+			{
+				stmt.column(ColumnRef::table_asterisk(Alias::new(alias)));
+			}
+		}
 
 		// Apply manual JOINs
 		for join in &self.joins {
@@ -4246,7 +4437,7 @@ where
 	{
 		let conn = super::manager::get_connection().await?;
 
-		let stmt = if self.select_related_fields.is_empty() {
+		let stmt = if !self.has_select_related() {
 			// Simple SELECT without JOINs
 			let mut stmt = Query::select();
 			stmt.from(Alias::new(T::table_name()));
@@ -4507,7 +4698,7 @@ where
 	where
 		T: serde::de::DeserializeOwned,
 	{
-		let stmt = if self.select_related_fields.is_empty() {
+		let stmt = if !self.has_select_related() {
 			let mut stmt = Query::select();
 			stmt.from(Alias::new(T::table_name()));
 
@@ -4906,6 +5097,9 @@ where
 		&self,
 		updates: &HashMap<String, UpdateValue>,
 	) -> reinhardt_query::prelude::UpdateStatement {
+		self.validate_no_related_filters_for_write("QuerySet::update_query")
+			.expect("typed related filters are not supported in update queries");
+
 		let mut stmt = Query::update();
 		stmt.table(Alias::new(T::table_name()));
 
@@ -5006,6 +5200,7 @@ where
 		assignments: &[FieldAssignment],
 	) -> reinhardt_core::exception::Result<UpdateStatement> {
 		Self::validate_update_fields(assignments)?;
+		self.validate_no_related_filters_for_write("QuerySet::update_fields")?;
 
 		if !self.has_where_predicates() {
 			return Err(reinhardt_core::exception::Error::Validation(
@@ -5208,6 +5403,9 @@ where
 	/// ```
 	/// Generate DELETE statement using reinhardt-query
 	pub fn delete_query(&self) -> reinhardt_query::prelude::DeleteStatement {
+		self.validate_no_related_filters_for_write("QuerySet::delete_query")
+			.expect("typed related filters are not supported in delete queries");
+
 		if !self.has_where_predicates() {
 			panic!(
 				"DELETE without WHERE clause is not allowed. Use .filter() to specify which rows to delete."
@@ -5614,7 +5812,7 @@ where
 
 	/// Converts to sql.
 	pub fn to_sql(&self) -> String {
-		let mut stmt = if self.select_related_fields.is_empty() {
+		let mut stmt = if !self.has_select_related() {
 			// Simple SELECT without JOINs
 			let mut stmt = Query::select();
 
@@ -6788,6 +6986,24 @@ mod tests {
 		fn new_fields() -> Self::Fields {
 			TestUserFields
 		}
+
+		fn relationship_metadata() -> Vec<crate::orm::inspection::RelationInfo> {
+			use crate::orm::inspection::RelationInfo;
+			use crate::orm::relationship::RelationshipType;
+
+			vec![
+				RelationInfo::new("profile", RelationshipType::OneToOne, "Profile")
+					.with_foreign_key("profile_id"),
+				RelationInfo::new("department", RelationshipType::ManyToOne, "Department")
+					.with_foreign_key("department_id"),
+				RelationInfo::new("posts", RelationshipType::OneToMany, "Post")
+					.with_foreign_key("test_user_id"),
+				RelationInfo::new("comments", RelationshipType::OneToMany, "Comment")
+					.with_foreign_key("test_user_id"),
+				RelationInfo::new("likes", RelationshipType::OneToMany, "Like")
+					.with_foreign_key("test_user_id"),
+			]
+		}
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -6838,6 +7054,47 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct TestProject {
+		id: Option<i64>,
+		name: String,
+	}
+
+	#[derive(Debug, Clone)]
+	struct TestProjectFields;
+
+	impl crate::orm::model::FieldSelector for TestProjectFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for TestProject {
+		type PrimaryKey = i64;
+		type Fields = TestProjectFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"test_projects"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestProjectFields
+		}
+	}
+
 	struct TestUserCorpusFile;
 
 	impl crate::orm::relations::RelationDescriptor for TestUserCorpusFile {
@@ -6846,12 +7103,30 @@ mod tests {
 
 		fn steps() -> Vec<crate::orm::relations::RelationStep> {
 			vec![crate::orm::relations::RelationStep {
-				name: "corpus_file",
-				source_table: "test_users",
-				target_table: "test_corpus_files",
-				source_column: "corpus_file_id",
-				target_column: "id",
+				name: "corpus_file".into(),
+				source_table: "test_users".into(),
+				target_table: "test_corpus_files".into(),
+				source_column: "corpus_file_id".into(),
+				target_column: "id".into(),
 				default_join_kind: crate::orm::relations::RelationJoinKind::Inner,
+			}]
+		}
+	}
+
+	struct TestCorpusFileProject;
+
+	impl crate::orm::relations::RelationDescriptor for TestCorpusFileProject {
+		type Source = TestCorpusFile;
+		type Target = TestProject;
+
+		fn steps() -> Vec<crate::orm::relations::RelationStep> {
+			vec![crate::orm::relations::RelationStep {
+				name: "project".into(),
+				source_table: "test_corpus_files".into(),
+				target_table: "test_projects".into(),
+				source_column: "project_id".into(),
+				target_column: "id".into(),
+				default_join_kind: crate::orm::relations::RelationJoinKind::Left,
 			}]
 		}
 	}
@@ -7022,6 +7297,12 @@ mod tests {
 			.expect_err("invalid relation path should fail validation");
 
 		assert!(error.to_string().contains("missing__field"));
+	}
+
+	#[test]
+	#[should_panic(expected = "invalid relation path passed to select_related")]
+	fn test_string_select_related_rejects_invalid_path() {
+		let _ = QuerySet::<TestUser>::new().select_related(&["missing__field"]);
 	}
 
 	#[test]
@@ -7265,6 +7546,24 @@ mod tests {
 	}
 
 	#[test]
+	fn test_relation_filter_uses_from_alias_as_join_root() {
+		let filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+
+		let sql = QuerySet::<TestUser>::new()
+			.from_as("u")
+			.filter(filter)
+			.to_sql();
+
+		assert!(sql.contains(r#""u"."corpus_file_id" = "corpus_file"."id""#));
+		assert!(!sql.contains(r#""test_users"."corpus_file_id" = "corpus_file"."id""#));
+	}
+
+	#[test]
 	fn test_optional_relation_filter_promotes_left_join() {
 		let filter =
 			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
@@ -7292,7 +7591,7 @@ mod tests {
 
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" INNER JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id""#
+			r#"SELECT "test_users".*, "corpus_file".* FROM "test_users" INNER JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id""#
 		);
 	}
 
@@ -7305,6 +7604,54 @@ mod tests {
 		let queryset = QuerySet::<TestUser>::new().prefetch_related(path);
 
 		assert_eq!(queryset.prefetch_related_fields, vec!["corpus_file"]);
+	}
+
+	#[test]
+	#[should_panic(
+		expected = "typed prefetch_related currently supports only single-hop relation paths"
+	)]
+	fn test_typed_prefetch_related_rejects_multi_hop_path() {
+		let path =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.then::<TestCorpusFileProject, TestProject>();
+
+		let _ = QuerySet::<TestUser>::new().prefetch_related(path);
+	}
+
+	#[test]
+	fn test_update_fields_rejects_related_filters() {
+		let filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+
+		let error = QuerySet::<TestUser>::new()
+			.filter(filter)
+			.update_fields_sql([("username", "alice")])
+			.expect_err("related filters should not render unsupported update aliases");
+
+		assert!(matches!(
+			error,
+			reinhardt_core::exception::Error::Validation(message)
+				if message.contains("typed related filters")
+		));
+	}
+
+	#[test]
+	#[should_panic(expected = "typed related filters are not supported in delete queries")]
+	fn test_delete_rejects_related_filters() {
+		let filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+
+		let _ = QuerySet::<TestUser>::new().filter(filter).delete_sql();
 	}
 
 	#[test]

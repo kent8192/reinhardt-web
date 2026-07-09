@@ -4,13 +4,14 @@
 //! macro. `QuerySet` consumes those paths to add deterministic SQL joins for
 //! typed filters, `select_related`, and `prefetch_related` planning.
 
+use std::borrow::Cow;
 use std::marker::PhantomData;
 
 use smallvec::SmallVec;
 
 use crate::orm::Model;
 use crate::orm::expressions::FieldRef;
-use crate::orm::query::{Filter, FilterOperator, FilterValue};
+use crate::orm::query::{Filter, FilterOperator, FilterValue, TypedFilter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// SQL join kind requested by a relation path.
@@ -31,19 +32,19 @@ impl RelationJoinKind {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 /// One hop in a typed relation path.
 pub struct RelationStep {
-	/// Stable alias for the joined table.
-	pub name: &'static str,
+	/// Local relation name used to derive stable joined-table aliases.
+	pub name: Cow<'static, str>,
 	/// Source table for this hop.
-	pub source_table: &'static str,
+	pub source_table: Cow<'static, str>,
 	/// Target table for this hop.
-	pub target_table: &'static str,
+	pub target_table: Cow<'static, str>,
 	/// Source column used in the join predicate.
-	pub source_column: &'static str,
+	pub source_column: Cow<'static, str>,
 	/// Target column used in the join predicate.
-	pub target_column: &'static str,
+	pub target_column: Cow<'static, str>,
 	/// Default join kind for this hop.
 	pub default_join_kind: RelationJoinKind,
 }
@@ -81,6 +82,10 @@ pub trait RelationPathLike {
 	fn steps(&self) -> &[RelationStep];
 	/// Join kind requested by this path.
 	fn join_kind(&self) -> RelationJoinKind;
+	/// Whole-path join kind override, if the path explicitly requested one.
+	fn join_kind_override(&self) -> Option<RelationJoinKind> {
+		None
+	}
 	/// Alias of the final joined relation.
 	fn leaf_alias(&self) -> &str;
 }
@@ -89,7 +94,8 @@ pub trait RelationPathLike {
 /// Typed path from one model to a related model.
 pub struct RelationPath<Root: Model, Target: Model> {
 	steps: SmallVec<[RelationStep; 4]>,
-	join_kind: RelationJoinKind,
+	step_aliases: SmallVec<[String; 4]>,
+	join_kind_override: Option<RelationJoinKind>,
 	_phantom: PhantomData<(Root, Target)>,
 }
 
@@ -97,7 +103,7 @@ impl<Root: Model, Target: Model> RelationPath<Root, Target> {
 	/// Create a relation path from static relation steps.
 	pub fn new(steps: &'static [RelationStep]) -> Self {
 		let mut path_steps: SmallVec<[RelationStep; 4]> = SmallVec::new();
-		path_steps.extend_from_slice(steps);
+		path_steps.extend(steps.iter().cloned());
 		Self::from_smallvec(path_steps)
 	}
 
@@ -108,13 +114,11 @@ impl<Root: Model, Target: Model> RelationPath<Root, Target> {
 	}
 
 	fn from_smallvec(path_steps: SmallVec<[RelationStep; 4]>) -> Self {
-		let join_kind = path_steps
-			.iter()
-			.map(|step| step.default_join_kind)
-			.fold(RelationJoinKind::Inner, RelationJoinKind::merge);
+		let step_aliases = step_aliases(&path_steps);
 		Self {
 			steps: path_steps,
-			join_kind,
+			step_aliases,
+			join_kind_override: None,
 			_phantom: PhantomData,
 		}
 	}
@@ -135,20 +139,17 @@ impl<Root: Model, Target: Model> RelationPath<Root, Target> {
 	{
 		let mut steps = self.steps;
 		steps.extend(D::steps());
-		let next_join_kind = steps
-			.iter()
-			.map(|step| step.default_join_kind)
-			.fold(RelationJoinKind::Inner, RelationJoinKind::merge);
 		RelationPath {
+			step_aliases: step_aliases(&steps),
 			steps,
-			join_kind: self.join_kind.merge(next_join_kind),
+			join_kind_override: self.join_kind_override,
 			_phantom: PhantomData,
 		}
 	}
 
 	/// Force the path to use left joins.
 	pub fn optional(mut self) -> Self {
-		self.join_kind = RelationJoinKind::Left;
+		self.join_kind_override = Some(RelationJoinKind::Left);
 		self
 	}
 
@@ -170,13 +171,18 @@ impl<Root: Model, Target: Model> RelationPathLike for RelationPath<Root, Target>
 	}
 
 	fn join_kind(&self) -> RelationJoinKind {
-		self.join_kind
+		self.join_kind_override
+			.unwrap_or_else(|| default_join_kind(&self.steps))
+	}
+
+	fn join_kind_override(&self) -> Option<RelationJoinKind> {
+		self.join_kind_override
 	}
 
 	fn leaf_alias(&self) -> &str {
-		self.steps
+		self.step_aliases
 			.last()
-			.map(|step| step.name)
+			.map(String::as_str)
 			.unwrap_or(Target::table_name())
 	}
 }
@@ -186,14 +192,16 @@ impl<Root: Model, Target: Model> RelationPathLike for RelationPath<Root, Target>
 pub struct PlannedRelationJoin {
 	/// Alias assigned to the joined table.
 	pub alias: String,
+	/// Local relation name for this hop.
+	pub relation_name: String,
 	/// Alias or table name of the previous relation hop.
 	pub source_alias: String,
 	/// Physical target table for the join.
-	pub target_table: &'static str,
+	pub target_table: String,
 	/// Source column used by the join predicate.
-	pub source_column: &'static str,
+	pub source_column: String,
 	/// Target column used by the join predicate.
-	pub target_column: &'static str,
+	pub target_column: String,
 	/// SQL join kind for this planned join.
 	pub join_kind: RelationJoinKind,
 }
@@ -216,7 +224,12 @@ impl RelationJoinGraph {
 
 	/// Return a copy of this graph with a different root alias.
 	pub fn with_root_alias(mut self, root_alias: impl Into<String>) -> Self {
-		self.root_alias = root_alias.into();
+		let previous_root_alias = std::mem::replace(&mut self.root_alias, root_alias.into());
+		for join in &mut self.joins {
+			if join.source_alias == previous_root_alias {
+				join.source_alias.clone_from(&self.root_alias);
+			}
+		}
 		self
 	}
 
@@ -225,16 +238,27 @@ impl RelationJoinGraph {
 	where
 		P: RelationPathLike,
 	{
-		self.add_steps(path.steps(), path.join_kind());
+		self.add_steps_with_override(path.steps(), path.join_kind_override());
 	}
 
 	/// Add relation steps with an explicit join kind.
 	pub fn add_steps(&mut self, steps: &[RelationStep], join_kind: RelationJoinKind) {
+		self.add_steps_with_override(steps, Some(join_kind));
+	}
+
+	/// Add relation steps using per-hop defaults unless a whole-path override is supplied.
+	pub fn add_steps_with_override(
+		&mut self,
+		steps: &[RelationStep],
+		join_kind_override: Option<RelationJoinKind>,
+	) {
 		let mut source_alias = self.root_alias.clone();
 		for step in steps {
-			let alias = step.name.to_string();
-			let requested_join_kind = join_kind.merge(step.default_join_kind);
-			if let Some(existing) = self.joins.iter_mut().find(|join| join.alias == alias) {
+			let alias = step_alias(&source_alias, step.name.as_ref(), &self.root_alias);
+			let requested_join_kind = join_kind_override.unwrap_or(step.default_join_kind);
+			if let Some(existing) = self.joins.iter_mut().find(|join| {
+				join.source_alias == source_alias && join.relation_name == step.name.as_ref()
+			}) {
 				existing.join_kind = existing.join_kind.merge(requested_join_kind);
 				source_alias = existing.alias.clone();
 				continue;
@@ -242,10 +266,11 @@ impl RelationJoinGraph {
 
 			self.joins.push(PlannedRelationJoin {
 				alias: alias.clone(),
+				relation_name: step.name.to_string(),
 				source_alias,
-				target_table: step.target_table,
-				source_column: step.source_column,
-				target_column: step.target_column,
+				target_table: step.target_table.to_string(),
+				source_column: step.source_column.to_string(),
+				target_column: step.target_column.to_string(),
 				join_kind: requested_join_kind,
 			});
 			source_alias = alias;
@@ -267,6 +292,36 @@ impl Default for RelationJoinGraph {
 	fn default() -> Self {
 		Self::new("")
 	}
+}
+
+fn default_join_kind(steps: &[RelationStep]) -> RelationJoinKind {
+	steps
+		.iter()
+		.map(|step| step.default_join_kind)
+		.fold(RelationJoinKind::Inner, RelationJoinKind::merge)
+}
+
+fn step_alias(source_alias: &str, step_name: &str, root_alias: &str) -> String {
+	if source_alias == root_alias {
+		step_name.to_string()
+	} else {
+		format!("{}__{}", source_alias, step_name)
+	}
+}
+
+fn step_aliases(steps: &[RelationStep]) -> SmallVec<[String; 4]> {
+	let mut aliases = SmallVec::new();
+	let mut source_alias = String::new();
+	for (index, step) in steps.iter().enumerate() {
+		let alias = if index == 0 {
+			step.name.to_string()
+		} else {
+			step_alias(&source_alias, step.name.as_ref(), "")
+		};
+		source_alias = alias.clone();
+		aliases.push(alias);
+	}
+	aliases
 }
 
 #[derive(Debug, Clone)]
@@ -297,87 +352,87 @@ impl<Root: Model, Target: Model, Value> RelatedFieldRef<Root, Target, Value> {
 		&self.path
 	}
 
-	fn filter(&self, operator: FilterOperator, value: FilterValue) -> Filter {
-		Filter::related(self.field, operator, value, &self.path)
+	fn filter(&self, operator: FilterOperator, value: FilterValue) -> TypedFilter<Root> {
+		TypedFilter::new(Filter::related(self.field, operator, value, &self.path))
 	}
 
 	/// Build an equality filter for this related field.
-	pub fn eq<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn eq<V: Into<FilterValue>>(&self, value: V) -> TypedFilter<Root> {
 		self.filter(FilterOperator::Eq, value.into())
 	}
 
 	/// Build an exact-match filter for this related field.
-	pub fn exact<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn exact<V: Into<FilterValue>>(&self, value: V) -> TypedFilter<Root> {
 		self.eq(value)
 	}
 
 	/// Build a case-insensitive exact-match filter for this related field.
-	pub fn iexact<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn iexact<V: Into<FilterValue>>(&self, value: V) -> TypedFilter<Root> {
 		self.filter(FilterOperator::IExact, value.into())
 	}
 
 	/// Build a not-equal filter for this related field.
-	pub fn ne<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn ne<V: Into<FilterValue>>(&self, value: V) -> TypedFilter<Root> {
 		self.filter(FilterOperator::Ne, value.into())
 	}
 
 	/// Build a greater-than filter for this related field.
-	pub fn gt<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn gt<V: Into<FilterValue>>(&self, value: V) -> TypedFilter<Root> {
 		self.filter(FilterOperator::Gt, value.into())
 	}
 
 	/// Build a greater-than-or-equal filter for this related field.
-	pub fn gte<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn gte<V: Into<FilterValue>>(&self, value: V) -> TypedFilter<Root> {
 		self.filter(FilterOperator::Gte, value.into())
 	}
 
 	/// Build a less-than filter for this related field.
-	pub fn lt<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn lt<V: Into<FilterValue>>(&self, value: V) -> TypedFilter<Root> {
 		self.filter(FilterOperator::Lt, value.into())
 	}
 
 	/// Build a less-than-or-equal filter for this related field.
-	pub fn lte<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn lte<V: Into<FilterValue>>(&self, value: V) -> TypedFilter<Root> {
 		self.filter(FilterOperator::Lte, value.into())
 	}
 
 	/// Build a contains filter for this related field.
-	pub fn contains<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn contains<V: Into<FilterValue>>(&self, value: V) -> TypedFilter<Root> {
 		self.filter(FilterOperator::Contains, value.into())
 	}
 
 	/// Build a case-insensitive contains filter for this related field.
-	pub fn icontains<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn icontains<V: Into<FilterValue>>(&self, value: V) -> TypedFilter<Root> {
 		self.filter(FilterOperator::IContains, value.into())
 	}
 
 	/// Build a starts-with filter for this related field.
-	pub fn startswith<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn startswith<V: Into<FilterValue>>(&self, value: V) -> TypedFilter<Root> {
 		self.filter(FilterOperator::StartsWith, value.into())
 	}
 
 	/// Build a case-insensitive starts-with filter for this related field.
-	pub fn istartswith<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn istartswith<V: Into<FilterValue>>(&self, value: V) -> TypedFilter<Root> {
 		self.filter(FilterOperator::IStartsWith, value.into())
 	}
 
 	/// Build an ends-with filter for this related field.
-	pub fn endswith<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn endswith<V: Into<FilterValue>>(&self, value: V) -> TypedFilter<Root> {
 		self.filter(FilterOperator::EndsWith, value.into())
 	}
 
 	/// Build a case-insensitive ends-with filter for this related field.
-	pub fn iendswith<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn iendswith<V: Into<FilterValue>>(&self, value: V) -> TypedFilter<Root> {
 		self.filter(FilterOperator::IEndsWith, value.into())
 	}
 
 	/// Build an `IS NULL` filter for this related field.
-	pub fn is_null(&self) -> Filter {
+	pub fn is_null(&self) -> TypedFilter<Root> {
 		self.filter(FilterOperator::IsNull, FilterValue::Null)
 	}
 
 	/// Build an `IS NOT NULL` filter for this related field.
-	pub fn is_not_null(&self) -> Filter {
+	pub fn is_not_null(&self) -> TypedFilter<Root> {
 		self.filter(FilterOperator::IsNotNull, FilterValue::Null)
 	}
 }
@@ -486,11 +541,11 @@ mod tests {
 
 		fn steps() -> Vec<RelationStep> {
 			vec![RelationStep {
-				name: "corpus_file",
-				source_table: "documents",
-				target_table: "corpus_files",
-				source_column: "corpus_file_id",
-				target_column: "id",
+				name: "corpus_file".into(),
+				source_table: "documents".into(),
+				target_table: "corpus_files".into(),
+				source_column: "corpus_file_id".into(),
+				target_column: "id".into(),
 				default_join_kind: RelationJoinKind::Inner,
 			}]
 		}
@@ -504,12 +559,28 @@ mod tests {
 
 		fn steps() -> Vec<RelationStep> {
 			vec![RelationStep {
-				name: "project",
-				source_table: "corpus_files",
-				target_table: "projects",
-				source_column: "project_id",
-				target_column: "id",
+				name: "project".into(),
+				source_table: "corpus_files".into(),
+				target_table: "projects".into(),
+				source_column: "project_id".into(),
+				target_column: "id".into(),
 				default_join_kind: RelationJoinKind::Left,
+			}]
+		}
+	}
+
+	impl RelationDescriptor for Project {
+		type Source = Project;
+		type Target = Project;
+
+		fn steps() -> Vec<RelationStep> {
+			vec![RelationStep {
+				name: "parent".into(),
+				source_table: "projects".into(),
+				target_table: "projects".into(),
+				source_column: "parent_id".into(),
+				target_column: "id".into(),
+				default_join_kind: RelationJoinKind::Inner,
 			}]
 		}
 	}
@@ -556,12 +627,29 @@ mod tests {
 		graph.add_path(&path);
 
 		let joins = graph.joins();
-		assert_eq!(path.leaf_alias(), "project");
+		assert_eq!(path.leaf_alias(), "corpus_file__project");
 		assert_eq!(path.steps().len(), 2);
 		assert_eq!(joins.len(), 2);
 		assert_eq!(joins[0].alias, "corpus_file");
-		assert_eq!(joins[1].alias, "project");
+		assert_eq!(joins[0].join_kind, RelationJoinKind::Inner);
+		assert_eq!(joins[1].alias, "corpus_file__project");
 		assert_eq!(joins[1].source_alias, "corpus_file");
 		assert_eq!(joins[1].join_kind, RelationJoinKind::Left);
+	}
+
+	#[test]
+	fn join_graph_keeps_repeated_relation_hops_distinct() {
+		let path = RelationPath::<Project, Project>::from_descriptor::<Project>()
+			.then::<Project, Project>();
+		let mut graph = RelationJoinGraph::new("projects");
+
+		graph.add_path(&path);
+
+		let joins = graph.joins();
+		assert_eq!(path.leaf_alias(), "parent__parent");
+		assert_eq!(joins.len(), 2);
+		assert_eq!(joins[0].alias, "parent");
+		assert_eq!(joins[1].alias, "parent__parent");
+		assert_eq!(joins[1].source_alias, "parent");
 	}
 }

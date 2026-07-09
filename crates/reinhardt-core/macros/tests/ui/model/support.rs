@@ -104,6 +104,22 @@ pub mod model_info {
 }
 
 pub mod db {
+	pub mod m2m_naming {
+		pub fn default_through_table(source_table: &str, field_name: &str) -> String {
+			format!("{}_{}", source_table.to_lowercase(), field_name.to_lowercase())
+		}
+
+		pub fn default_m2m_columns(source_table: &str, target_table: &str) -> (String, String) {
+			let source = source_table.to_lowercase();
+			let target = target_table.to_lowercase();
+			if source == target {
+				(format!("from_{}_id", source), format!("to_{}_id", target))
+			} else {
+				(format!("{}_id", source), format!("{}_id", target))
+			}
+		}
+	}
+
 	pub mod associations {
 		#[derive(Debug, Clone, Copy)]
 		pub struct ForeignKeyField<T>(core::marker::PhantomData<T>);
@@ -294,6 +310,8 @@ pub mod db {
 		}
 
 		pub mod relations {
+			use std::borrow::Cow;
+
 			use super::Model;
 
 			#[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -302,13 +320,13 @@ pub mod db {
 				Left,
 			}
 
-			#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+			#[derive(Debug, Clone, PartialEq, Eq)]
 			pub struct RelationStep {
-				pub name: &'static str,
-				pub source_table: &'static str,
-				pub target_table: &'static str,
-				pub source_column: &'static str,
-				pub target_column: &'static str,
+				pub name: Cow<'static, str>,
+				pub source_table: Cow<'static, str>,
+				pub target_table: Cow<'static, str>,
+				pub source_column: Cow<'static, str>,
+				pub target_column: Cow<'static, str>,
 				pub default_join_kind: RelationJoinKind,
 			}
 
@@ -325,12 +343,16 @@ pub mod db {
 
 				fn steps(&self) -> &[RelationStep];
 				fn join_kind(&self) -> RelationJoinKind;
+				fn join_kind_override(&self) -> Option<RelationJoinKind> {
+					None
+				}
 				fn leaf_alias(&self) -> &str;
 			}
 
 			pub struct RelationPath<Root: Model, Target: Model> {
 				steps: Vec<RelationStep>,
-				join_kind: RelationJoinKind,
+				step_aliases: Vec<String>,
+				join_kind_override: Option<RelationJoinKind>,
 				_marker: core::marker::PhantomData<(Root, Target)>,
 			}
 
@@ -339,15 +361,18 @@ pub mod db {
 				where
 					D: RelationDescriptor<Source = Root, Target = Target>,
 				{
+					let steps = D::steps();
+					let step_aliases = step_aliases(&steps);
 					Self {
-						steps: D::steps(),
-						join_kind: RelationJoinKind::Inner,
+						steps,
+						step_aliases,
+						join_kind_override: None,
 						_marker: core::marker::PhantomData,
 					}
 				}
 
 				pub fn optional(mut self) -> Self {
-					self.join_kind = RelationJoinKind::Left;
+					self.join_kind_override = Some(RelationJoinKind::Left);
 					self
 				}
 
@@ -356,9 +381,13 @@ pub mod db {
 					D: RelationDescriptor<Source = Target, Target = Next>,
 					Next: Model,
 				{
+					let mut steps = self.steps;
+					steps.extend(D::steps());
+					let step_aliases = step_aliases(&steps);
 					RelationPath {
-						steps: D::steps(),
-						join_kind: self.join_kind,
+						steps,
+						step_aliases,
+						join_kind_override: self.join_kind_override,
 						_marker: core::marker::PhantomData,
 					}
 				}
@@ -384,15 +413,34 @@ pub mod db {
 				}
 
 				fn join_kind(&self) -> RelationJoinKind {
-					self.join_kind
+					self.join_kind_override.unwrap_or(RelationJoinKind::Inner)
+				}
+
+				fn join_kind_override(&self) -> Option<RelationJoinKind> {
+					self.join_kind_override
 				}
 
 				fn leaf_alias(&self) -> &str {
-					self.steps
+					self.step_aliases
 						.last()
-						.map(|step| step.name)
+						.map(String::as_str)
 						.unwrap_or(Target::table_name())
 				}
+			}
+
+			fn step_aliases(steps: &[RelationStep]) -> Vec<String> {
+				let mut aliases = Vec::new();
+				let mut source_alias = String::new();
+				for (index, step) in steps.iter().enumerate() {
+					let alias = if index == 0 {
+						step.name.to_string()
+					} else {
+						format!("{}__{}", source_alias, step.name)
+					};
+					source_alias = alias.clone();
+					aliases.push(alias);
+				}
+				aliases
 			}
 
 			pub struct RelatedFieldRef<Root: Model, Target: Model, Value> {

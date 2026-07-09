@@ -35,7 +35,7 @@
 //! - **QuerySet API**: Chainable query builder with conditional partial updates
 //! - **Field Types**: Rich set of field types with validation
 //! - **Relationships**: ForeignKey, ManyToMany, OneToOne
-//! - **Typed Relation Traversal**: Compile-time checked relation paths for filters and eager loading
+//! - **Typed Relation Traversal**: Compile-time checked relation paths for SELECT filters and eager loading
 //! - **Scoped N+1 Detection**: Opt-in query shape detection for focused diagnostics and tests
 //!
 //! ### Migrations (`migrations` module)
