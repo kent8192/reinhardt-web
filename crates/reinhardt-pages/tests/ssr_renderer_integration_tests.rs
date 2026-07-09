@@ -159,7 +159,7 @@ fn test_conditional_rendering() {
 
 #[test]
 fn test_list_rendering() {
-	let items = vec!["Apple", "Banana", "Cherry"];
+	let items = ["Apple", "Banana", "Cherry"];
 	let list = PageElement::new("ul");
 
 	let list_with_items = items.iter().fold(list, |acc, item| {
@@ -348,56 +348,56 @@ fn test_mixed_escape_content() {
 // Category 3: Hydration Marker Tests (10-12 tests)
 // ============================================================================
 
-#[test]
-fn test_hydration_marker_enabled() {
+#[tokio::test]
+async fn test_hydration_marker_enabled() {
 	let counter = Counter::new(10);
 	let options = SsrOptions::new();
 	let mut renderer = SsrRenderer::with_options(options);
-	let html = renderer.render_with_marker(&counter);
+	let html = renderer.render_with_marker(&counter).await;
 
 	assert!(html.contains("data-rh-id"));
 	assert!(html.contains("data-rh-component=\"Counter\""));
 }
 
-#[test]
-fn test_hydration_marker_disabled() {
+#[tokio::test]
+async fn test_hydration_marker_disabled() {
 	let counter = Counter::new(5);
 	let options = SsrOptions::new().no_hydration();
 	let mut renderer = SsrRenderer::with_options(options);
-	let html = renderer.render_with_marker(&counter);
+	let html = renderer.render_with_marker(&counter).await;
 
 	assert!(!html.contains("data-rh-id"));
 	assert!(html.contains("Count: 5"));
 }
 
-#[test]
-fn test_hydration_marker_component_name() {
+#[tokio::test]
+async fn test_hydration_marker_component_name() {
 	let card = UserCard::new("Test", "test@example.com");
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_with_marker(&card);
+	let html = renderer.render_with_marker(&card).await;
 
 	assert!(html.contains("data-rh-component=\"UserCard\""));
 }
 
-#[test]
-fn test_hydration_marker_wraps_content() {
+#[tokio::test]
+async fn test_hydration_marker_wraps_content() {
 	let counter = Counter::new(42);
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_with_marker(&counter);
+	let html = renderer.render_with_marker(&counter).await;
 
 	assert!(html.starts_with("<div"));
 	assert!(html.ends_with("</div>"));
 	assert!(html.contains("Count: 42"));
 }
 
-#[test]
-fn test_multiple_components_different_markers() {
+#[tokio::test]
+async fn test_multiple_components_different_markers() {
 	let counter1 = Counter::new(1);
 	let counter2 = Counter::new(2);
 
 	let mut renderer = SsrRenderer::new();
-	let html1 = renderer.render_with_marker(&counter1);
-	let html2 = renderer.render_with_marker(&counter2);
+	let html1 = renderer.render_with_marker(&counter1).await;
+	let html2 = renderer.render_with_marker(&counter2).await;
 
 	// Both should have markers but with different IDs
 	assert_eq!(html1.matches(r#"data-rh-id="rh-0""#).count(), 1);
@@ -408,20 +408,20 @@ fn test_multiple_components_different_markers() {
 // Category 4: Full Page Rendering Tests (15-20 tests)
 // ============================================================================
 
-#[test]
-fn test_full_page_doctype() {
+#[tokio::test]
+async fn test_full_page_doctype() {
 	let counter = Counter::new(0);
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page(&counter);
+	let html = renderer.render_page_to_string(&counter).await;
 
 	assert!(html.starts_with("<!DOCTYPE html>"));
 }
 
-#[test]
-fn test_full_page_html_structure() {
+#[tokio::test]
+async fn test_full_page_html_structure() {
 	let counter = Counter::new(0);
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page(&counter);
+	let html = renderer.render_page_to_string(&counter).await;
 
 	assert!(html.contains("<html lang=\"en\">"));
 	assert!(html.contains("<head>"));
@@ -431,135 +431,135 @@ fn test_full_page_html_structure() {
 	assert!(html.ends_with("</html>"));
 }
 
-#[test]
-fn test_full_page_meta_charset() {
+#[tokio::test]
+async fn test_full_page_meta_charset() {
 	let counter = Counter::new(0);
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page(&counter);
+	let html = renderer.render_page_to_string(&counter).await;
 
 	assert!(html.contains("<meta charset=\"UTF-8\">"));
 }
 
-#[test]
-fn test_full_page_meta_viewport() {
+#[tokio::test]
+async fn test_full_page_meta_viewport() {
 	let counter = Counter::new(0);
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page(&counter);
+	let html = renderer.render_page_to_string(&counter).await;
 
 	assert!(
 		html.contains("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">")
 	);
 }
 
-#[test]
-fn test_full_page_custom_title() {
+#[tokio::test]
+async fn test_full_page_custom_title() {
 	let counter = Counter::new(0);
 	let page_head = Head::new().title("Test Page");
 	let view = counter.render().with_head(page_head);
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page_with_view_head(view);
+	let html = renderer.render_page_with_view_head_to_string(view).await;
 
 	assert!(html.contains("<title>Test Page</title>"));
 }
 
-#[test]
-fn test_full_page_custom_lang() {
+#[tokio::test]
+async fn test_full_page_custom_lang() {
 	let counter = Counter::new(0);
 	let options = SsrOptions::new().lang("ja");
 	let mut renderer = SsrRenderer::with_options(options);
-	let html = renderer.render_page(&counter);
+	let html = renderer.render_page_to_string(&counter).await;
 
 	assert!(html.contains("<html lang=\"ja\">"));
 }
 
-#[test]
-fn test_full_page_css_link() {
+#[tokio::test]
+async fn test_full_page_css_link() {
 	let counter = Counter::new(0);
 	let page_head = Head::new().link(LinkTag::stylesheet("/styles.css"));
 	let view = counter.render().with_head(page_head);
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page_with_view_head(view);
+	let html = renderer.render_page_with_view_head_to_string(view).await;
 
 	assert!(html.contains("<link rel=\"stylesheet\" href=\"/styles.css\">"));
 }
 
-#[test]
-fn test_full_page_multiple_css_links() {
+#[tokio::test]
+async fn test_full_page_multiple_css_links() {
 	let counter = Counter::new(0);
 	let page_head = Head::new()
 		.link(LinkTag::stylesheet("/reset.css"))
 		.link(LinkTag::stylesheet("/main.css"));
 	let view = counter.render().with_head(page_head);
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page_with_view_head(view);
+	let html = renderer.render_page_with_view_head_to_string(view).await;
 
 	assert!(html.contains("<link rel=\"stylesheet\" href=\"/reset.css\">"));
 	assert!(html.contains("<link rel=\"stylesheet\" href=\"/main.css\">"));
 }
 
-#[test]
-fn test_full_page_js_script() {
+#[tokio::test]
+async fn test_full_page_js_script() {
 	let counter = Counter::new(0);
 	let page_head = Head::new().script(ScriptTag::external("/app.js"));
 	let view = counter.render().with_head(page_head);
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page_with_view_head(view);
+	let html = renderer.render_page_with_view_head_to_string(view).await;
 
 	assert!(html.contains("<script src=\"/app.js\"></script>"));
 }
 
-#[test]
-fn test_full_page_custom_meta_tags() {
+#[tokio::test]
+async fn test_full_page_custom_meta_tags() {
 	let counter = Counter::new(0);
 	let page_head = Head::new()
 		.meta(MetaTag::new("description", "Test page"))
 		.meta(MetaTag::new("keywords", "test, rust, ssr"));
 	let view = counter.render().with_head(page_head);
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page_with_view_head(view);
+	let html = renderer.render_page_with_view_head_to_string(view).await;
 
 	assert!(html.contains("<meta name=\"description\" content=\"Test page\">"));
 	assert!(html.contains("<meta name=\"keywords\" content=\"test, rust, ssr\">"));
 }
 
-#[test]
-fn test_full_page_csrf_token() {
+#[tokio::test]
+async fn test_full_page_csrf_token() {
 	let counter = Counter::new(0);
 	let options = SsrOptions::new().csrf("test-token-123");
 	let mut renderer = SsrRenderer::with_options(options);
-	let html = renderer.render_page(&counter);
+	let html = renderer.render_page_to_string(&counter).await;
 
 	assert!(html.contains("<meta name=\"csrf-token\" content=\"test-token-123\">"));
 }
 
-#[test]
-fn test_full_page_app_container() {
+#[tokio::test]
+async fn test_full_page_app_container() {
 	let counter = Counter::new(42);
 	let mut renderer = SsrRenderer::new();
-	let html = renderer.render_page(&counter);
+	let html = renderer.render_page_to_string(&counter).await;
 
 	assert!(html.contains("<div id=\"app\">"));
 	assert!(html.contains("Count: 42"));
 	assert!(html.contains("</div>"));
 }
 
-#[test]
-fn test_full_page_with_auth_data() {
+#[tokio::test]
+async fn test_full_page_with_auth_data() {
 	use reinhardt_pages::auth::AuthData;
 
 	let counter = Counter::new(0);
 	let auth = AuthData::authenticated("1", "testuser");
 	let options = SsrOptions::new().auth(auth);
 	let mut renderer = SsrRenderer::with_options(options);
-	let html = renderer.render_page(&counter);
+	let html = renderer.render_page_to_string(&counter).await;
 
 	assert!(html.contains("<script id=\"auth-data\""));
 	assert!(html.contains("type=\"application/json\""));
 	assert!(html.contains("testuser"));
 }
 
-#[test]
-fn test_full_page_combined_options() {
+#[tokio::test]
+async fn test_full_page_combined_options() {
 	let counter = Counter::new(99);
 	let page_head = Head::new()
 		.title("Combined Test")
@@ -572,7 +572,7 @@ fn test_full_page_combined_options() {
 	let options = SsrOptions::new().lang("fr").csrf("csrf-token");
 
 	let mut renderer = SsrRenderer::with_options(options);
-	let html = renderer.render_page_with_view_head(view);
+	let html = renderer.render_page_with_view_head_to_string(view).await;
 
 	assert!(html.contains("<title>Combined Test</title>"));
 	assert!(html.contains("<html lang=\"fr\">"));

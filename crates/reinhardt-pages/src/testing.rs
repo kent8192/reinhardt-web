@@ -20,7 +20,17 @@
 //! }
 //! ```
 //!
-//! ## Layer 2: WASM Component Tests with Mocked HTTP
+//! ## Layer 2: Native Component Tests
+//!
+//! Native component tests use `component::render` to render component
+//! functions or `Page` values into an in-memory DOM and interact with them
+//! through role/text/label queries, event helpers, `settle()`, and in-process
+//! `server_fn` mocks.
+//!
+//! These tests run without a browser and are intended for component logic,
+//! query behavior, async hook settling, and typed server function mock flows.
+//!
+//! ## Layer 3: WASM Component Tests with Mocked HTTP
 //!
 //! Tests WASM components with mocked server function responses.
 //! Uses the mock HTTP infrastructure for predictable testing.
@@ -37,7 +47,7 @@
 //! }
 //! ```
 //!
-//! ## Layer 3: End-to-End Tests
+//! ## Layer 4: End-to-End Tests
 //!
 //! Full integration tests with real server and WASM frontend.
 //! Uses E2E test infrastructure for complete flow testing.
@@ -73,6 +83,10 @@ pub mod server_fn_test;
 
 #[cfg(native)]
 pub use server_fn_test::*;
+
+// Native component testing utilities.
+#[cfg(all(native, feature = "testing"))]
+pub mod component;
 
 // WASM DOM testing utilities (Layer 2 and 3)
 #[cfg(wasm)]
