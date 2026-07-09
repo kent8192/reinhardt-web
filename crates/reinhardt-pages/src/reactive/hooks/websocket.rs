@@ -187,40 +187,40 @@ use {
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::hooks::{use_websocket, UseWebSocketOptions, use_effect};
+/// use reinhardt_pages::reactive::hooks::{use_effect, use_websocket, UseWebSocketOptions};
 /// use reinhardt_pages::reactive::hooks::ConnectionState;
 ///
 /// let ws = use_websocket("ws://localhost:8000/ws/chat", UseWebSocketOptions::default());
 ///
 /// // Monitor connection state
+/// let connection_state = ws.connection_state().clone();
 /// use_effect({
-///     let ws = ws.clone();
+///     let connection_state = connection_state.clone();
 ///     move || {
-///         match ws.connection_state().get() {
+///         match connection_state.get() {
 ///             ConnectionState::Open => log!("Connected"),
 ///             ConnectionState::Closed => log!("Disconnected"),
 ///             _ => {}
 ///         }
-///         None::<fn()>
 ///     }
-/// });
+/// }, (connection_state,));
 ///
 /// // Send a message
 /// ws.send_text("Hello, server!".to_string()).ok();
 ///
 /// // Receive messages
+/// let latest_message = ws.latest_message().clone();
 /// use_effect({
-///     let ws = ws.clone();
+///     let latest_message = latest_message.clone();
 ///     move || {
-///         if let Some(msg) = ws.latest_message().get() {
+///         if let Some(msg) = latest_message.get() {
 ///             match msg {
 ///                 WebSocketMessage::Text(text) => log!("Received: {}", text),
 ///                 _ => {}
 ///             }
 ///         }
-///         None::<fn()>
 ///     }
-/// });
+/// }, (latest_message,));
 /// ```
 ///
 /// # Reactivity semantics

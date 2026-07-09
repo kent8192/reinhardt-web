@@ -4,8 +4,11 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
-use reinhardt_core::types::page::{EventType, IntoPage, Outlet, Page, PageElement};
+use reinhardt_core::types::page::{
+	DeferredNode, EventType, IntoPage, Outlet, Page, PageElement, SuspenseNode,
+};
 use reinhardt_pages::callback::async_handler;
+use reinhardt_pages::component::suspense::SuspenseBoundary;
 use reinhardt_pages::page;
 use reinhardt_pages::prelude::spawn_task;
 use reinhardt_pages::reactive::hooks::use_action;
@@ -37,6 +40,16 @@ fn index_job_component() -> Page {
 fn ready_component() -> Page {
 	let resource = use_resource(|| async { Ok::<String, String>("Ready".to_string()) }, ());
 	Page::reactive(move || string_resource_page(resource.get()))
+}
+
+fn suspense_resource_component() -> Page {
+	let resource = use_resource(|| async { Ok::<String, String>("Ready".to_string()) }, ());
+	let content_resource = resource.clone();
+	SuspenseBoundary::new()
+		.fallback(|| text_page("Loading"))
+		.track(resource)
+		.content(move || string_resource_page(content_resource.get()))
+		.into_page()
 }
 
 fn mixed_resource_component() -> Page {
@@ -164,6 +177,48 @@ fn outlet_pages_render_inline_children_and_placeholders() {
 	let pretty = placeholder.pretty();
 	assert!(pretty.contains("<reinhardt-outlet"));
 	assert!(pretty.contains("data-rh-outlet-id=\"main\""));
+}
+
+#[test]
+fn suspense_pages_render_active_branch() {
+	let pending = Rc::new(Cell::new(true));
+	let screen = {
+		let pending = Rc::clone(&pending);
+		render(Page::Suspense(SuspenseNode::new(
+			None,
+			move || pending.get(),
+			|| text_page("Loading"),
+			|| text_page("Ready"),
+		)))
+	};
+
+	assert!(screen.query_by_text("Loading").is_some());
+	assert!(screen.query_by_text("Ready").is_none());
+}
+
+#[tokio::test]
+async fn suspense_pages_rerender_resolved_resource_after_settle() {
+	let screen = render(suspense_resource_component);
+
+	assert!(screen.query_by_text("Loading").is_some());
+	assert!(screen.query_by_text("Ready").is_none());
+
+	screen.settle().await;
+
+	assert!(screen.query_by_text("Ready").is_some());
+	assert!(screen.query_by_text("Loading").is_none());
+}
+
+#[test]
+fn deferred_pages_render_content_branch() {
+	let screen = render(Page::Deferred(DeferredNode::new(
+		"component-test",
+		|| text_page("Loading"),
+		|| text_page("Ready"),
+	)));
+
+	assert!(screen.query_by_text("Ready").is_some());
+	assert!(screen.query_by_text("Loading").is_none());
 }
 
 #[test]

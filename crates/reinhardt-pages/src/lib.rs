@@ -21,7 +21,8 @@
 //!
 //! `use_effect`, `use_layout_effect`, `use_memo`, `use_callback`, and
 //! `use_callback_with` take an explicit dependency tuple as the second
-//! argument:
+//! argument. Effect closures return `()` when no cleanup is needed, or
+//! `Option<C>` when they register cleanup:
 //!
 //! ```ignore
 //! use reinhardt_pages::prelude::*;
@@ -31,7 +32,6 @@
 //! let _eff = use_effect(
 //!     move || {
 //!         println!("count = {}", count_for_effect.get());
-//!         None::<fn()>
 //!     },
 //!     (count.clone(),),
 //! );
@@ -219,7 +219,7 @@
 //! The `use_websocket` hook provides reactive WebSocket connections:
 //!
 //! ```ignore
-//! use reinhardt_pages::reactive::hooks::{use_websocket, use_effect, UseWebSocketOptions};
+//! use reinhardt_pages::reactive::hooks::{use_effect, use_websocket, UseWebSocketOptions};
 //! use reinhardt_pages::reactive::hooks::{ConnectionState, WebSocketMessage};
 //!
 //! fn chat_component() -> Page {
@@ -227,34 +227,34 @@
 //!     let ws = use_websocket("ws://localhost:8000/ws/chat", UseWebSocketOptions::default());
 //!
 //!     // Monitor connection state reactively
+//!     let connection_state = ws.connection_state().clone();
 //!     use_effect(
 //!         {
-//!             let ws = ws.clone();
+//!             let connection_state = connection_state.clone();
 //!             move || {
-//!                 match ws.connection_state().get() {
+//!                 match connection_state.get() {
 //!                     ConnectionState::Open => log!("Connected to chat"),
 //!                     ConnectionState::Closed => log!("Disconnected from chat"),
 //!                     ConnectionState::Error(e) => log!("Connection error: {}", e),
 //!                     _ => {}
 //!                 }
-//!                 None::<fn()>
 //!             }
 //!         },
-//!         (),
+//!         (connection_state,),
 //!     );
 //!
 //!     // Handle incoming messages
+//!     let latest_message = ws.latest_message().clone();
 //!     use_effect(
 //!         {
-//!             let ws = ws.clone();
+//!             let latest_message = latest_message.clone();
 //!             move || {
-//!                 if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
+//!                 if let Some(WebSocketMessage::Text(text)) = latest_message.get() {
 //!                     log!("Received: {}", text);
 //!                 }
-//!                 None::<fn()>
 //!             }
 //!         },
-//!         (),
+//!         (latest_message,),
 //!     );
 //!
 //!     page!(|| {
@@ -415,10 +415,10 @@ pub use reactive::{
 pub use app::{ClientLauncher, LaunchCtx, PathCtx, PathParams};
 pub use reactive::{Action, ActionPhase, ActionStateBuilder, use_action, use_action_state};
 pub use reactive::{
-	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
-	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_id,
-	use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state, use_state,
-	use_sync_external_store, use_transition,
+	Dispatch, EffectReturn, OptimisticState, Ref, SetState, SharedSetState, SharedSignal,
+	TransitionState, use_callback, use_context, use_debug_value, use_deferred_value, use_effect,
+	use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state,
+	use_state, use_sync_external_store, use_transition,
 };
 #[cfg(native)]
 pub use reinhardt_forms::{
