@@ -209,6 +209,51 @@ let runtime = use_form(&login_form).build();
 runtime.set_value(login_form.username_field(), "ada".to_string());
 ```
 
+DTO request types can opt in to generated client-form companions with
+`ClientForm`. This keeps request field names, enum choices, and typed request
+assembly tied to the DTO while still using the same `use_form` runtime. Add
+`#[client_form(validate)]` when the DTO implements `Validate` and should feed
+those errors into the generated form runtime:
+
+```rust,ignore
+use reinhardt_pages::{ClientForm, ClientFormChoices, use_form};
+
+#[derive(Clone, Default, PartialEq, ClientFormChoices)]
+#[serde(rename_all = "snake_case")]
+enum ProviderMode {
+    #[default]
+    Fake,
+    LiveApi,
+}
+
+#[reinhardt::dto]
+#[derive(Clone, serde::Serialize, serde::Deserialize, ClientForm)]
+#[client_form(server_fn = crate::server::submit_project, validate)]
+struct ProjectRequest {
+    name: String,
+    title: Option<String>,
+    provider_mode: ProviderMode,
+}
+
+let form = ProjectRequestClientForm::new();
+let runtime = use_form(&form).build();
+runtime.set_value(ProjectRequestClientFormField::Title, "  ".to_string());
+let request = ProjectRequestClientForm::to_request(&runtime);
+assert_eq!(request.title, None);
+let outcome = form.submit(&runtime).await?;
+```
+
+`ClientFormChoices` mirrors serde's externally tagged string names for unit
+variants, including matching `rename_all` and variant `rename`; tagged,
+untagged, or directionally renamed enum representations are rejected because
+form choices submit bare strings. DTO fields marked with serde skip attributes
+are kept out of editable form fields and preserved through generated request
+values. Exported DTOs cannot use private editable fields; mark the field public
+or make it an explicit hidden field with `#[client_form(skip)]` or a serde skip
+attribute. Forms with generated `server_fn` submit helpers reject serde-skipped
+request fields because the browser payload must match native request
+deserialization exactly.
+
 Use `use_form_action` when a validated form should dispatch a typed async
 mutation:
 

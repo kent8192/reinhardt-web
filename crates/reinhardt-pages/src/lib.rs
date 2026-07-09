@@ -56,6 +56,7 @@
 //! - [`component`](mod@component): Component system with IntoPage trait, Head management
 //! - [`form`](mod@form): Django Form integration
 //! - [`form_state`]: Typed `use_form` runtime state
+//! - [`client_form`]: Runtime support for DTO-derived client forms
 //! - [`csrf`]: CSRF protection
 //! - [`auth`]: Authentication integration
 //! - [`api`]: API client with Django QuerySet-like interface
@@ -92,6 +93,51 @@
 //! let runtime = use_form(&login_form).build();
 //! runtime.set_value(login_form.username_field(), "ada".to_string());
 //! ```
+//!
+//! DTO request types can opt in to generated client-form companions with
+//! [`ClientForm`]. The generated form keeps enum choices and typed request
+//! assembly tied to the request type while using the same [`use_form`] runtime.
+//! Add `#[client_form(validate)]` when the DTO implements `Validate` and should
+//! feed those errors into the generated form runtime:
+//!
+//! ```ignore
+//! use reinhardt_pages::{ClientForm, ClientFormChoices, use_form};
+//!
+//! #[derive(Clone, Default, PartialEq, ClientFormChoices)]
+//! #[serde(rename_all = "snake_case")]
+//! enum ProviderMode {
+//!     #[default]
+//!     Fake,
+//!     LiveApi,
+//! }
+//!
+//! #[reinhardt::dto]
+//! #[derive(Clone, serde::Serialize, serde::Deserialize, ClientForm)]
+//! #[client_form(server_fn = crate::server::submit_project, validate)]
+//! struct ProjectRequest {
+//!     name: String,
+//!     title: Option<String>,
+//!     provider_mode: ProviderMode,
+//! }
+//!
+//! let form = ProjectRequestClientForm::new();
+//! let runtime = use_form(&form).build();
+//! runtime.set_value(ProjectRequestClientFormField::Title, "  ".to_string());
+//! let request = ProjectRequestClientForm::to_request(&runtime);
+//! assert_eq!(request.title, None);
+//! let outcome = form.submit(&runtime).await?;
+//! ```
+//!
+//! [`ClientFormChoices`] mirrors serde's externally tagged string names for
+//! unit variants, including matching `rename_all` and variant `rename`; tagged,
+//! untagged, or directionally renamed enum representations are rejected because
+//! form choices submit bare strings. DTO fields marked with serde skip
+//! attributes are kept out of editable form fields and preserved through
+//! generated request values. Exported DTOs cannot use private editable fields;
+//! mark the field public or make it an explicit hidden field with
+//! `#[client_form(skip)]` or a serde skip attribute. Forms with generated
+//! `server_fn` submit helpers reject serde-skipped request fields because the
+//! browser payload must match native request deserialization exactly.
 //!
 //! Compose validated submit flows with [`use_form_action`]:
 //!
@@ -327,6 +373,8 @@ mod fetch;
 pub mod form_generated;
 // Typed form runtime state (WASM-compatible)
 pub mod form_state;
+// Runtime support for DTO-derived client forms.
+pub mod client_form;
 // FormComponent requires reinhardt-forms which is not WASM-compatible yet.
 // Client-side forms use PageElement.
 #[cfg(native)]
@@ -378,6 +426,7 @@ pub use builder::{
 	},
 };
 pub use callback::{Callback, IntoEventHandler, event_handler, into_event_handler};
+pub use client_form::{ClientFormChoice, ClientFormChoiceSource};
 #[cfg(native)]
 pub use component::DummyEvent;
 #[cfg(wasm)]
@@ -399,7 +448,8 @@ pub use form_state::{
 	FieldError, FieldPathState, FieldState, FocusError, FormAction, FormCollectionRuntimeSource,
 	FormEvent, FormRuntimeSource, FormState, FormSubscription, FormValidationError,
 	FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn,
-	UseFormBuilder, UseFormReturn, UseFormSubmitOutcome, use_form, use_form_action,
+	UseFormAsyncSubmitOutcome, UseFormBuilder, UseFormReturn, UseFormSubmitOutcome, use_form,
+	use_form_action,
 };
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
@@ -450,11 +500,17 @@ pub use reinhardt_pages_macros::head;
 pub use reinhardt_pages_macros::layout;
 pub use reinhardt_pages_macros::page;
 pub use reinhardt_pages_macros::wasm_server_api;
-pub use reinhardt_pages_macros::{FromRequest, client_page, component, page_props};
+pub use reinhardt_pages_macros::{
+	ClientForm, ClientFormChoices, FromRequest, client_page, component, page_props,
+};
 
 // Private re-exports used by macro-generated code. Not part of the public API.
 #[doc(hidden)]
 pub mod __private {
+	pub mod client_form {
+		pub use crate::client_form::__private::*;
+	}
+
 	pub fn capture<T: Clone>(value: &T) -> T {
 		value.clone()
 	}
