@@ -442,6 +442,17 @@ impl ServerFnInfo {
 		&self.func.vis
 	}
 
+	fn allows_private_interfaces(&self) -> bool {
+		self.func
+			.attrs
+			.iter()
+			.any(attribute_allows_private_interfaces)
+	}
+
+	fn emits_typed_response_metadata(&self) -> bool {
+		!self.allows_private_interfaces() && !matches!(self.vis(), syn::Visibility::Restricted(_))
+	}
+
 	/// Get the endpoint path
 	///
 	/// Returns the custom endpoint if specified, otherwise generates default.
@@ -461,6 +472,54 @@ impl ServerFnInfo {
 	fn use_inject_enabled(&self) -> bool {
 		self.options.use_inject
 	}
+}
+
+fn attribute_allows_private_interfaces(attr: &syn::Attribute) -> bool {
+	if !attr.path().is_ident("allow") {
+		return false;
+	}
+	let mut found = false;
+	let _ = attr.parse_nested_meta(|meta| {
+		if meta.path.is_ident("private_interfaces") {
+			found = true;
+		}
+		Ok(())
+	});
+	found
+}
+
+fn marker_struct_visibility(vis: &syn::Visibility) -> proc_macro2::TokenStream {
+	match vis {
+		syn::Visibility::Public(_) => quote! { pub },
+		syn::Visibility::Restricted(restricted) => {
+			let path = marker_struct_restricted_visibility_path(&restricted.path);
+			if path.is_ident("crate") {
+				quote! { pub(crate) }
+			} else {
+				quote! { pub(in #path) }
+			}
+		}
+		syn::Visibility::Inherited => quote! { pub(super) },
+	}
+}
+
+fn marker_struct_restricted_visibility_path(path: &syn::Path) -> syn::Path {
+	let mut marker_path = path.clone();
+	if marker_path.leading_colon.is_none()
+		&& let Some(first_segment) = marker_path.segments.first_mut()
+	{
+		if first_segment.ident == "crate" {
+			return marker_path;
+		}
+		if first_segment.ident == "self" {
+			first_segment.ident = quote::format_ident!("super");
+			return marker_path;
+		}
+		if first_segment.ident == "super" {
+			return syn::parse_quote!(super::#marker_path);
+		}
+	}
+	marker_path
 }
 
 /// Validate server_fn endpoint path.
@@ -1318,6 +1377,7 @@ fn generate_server_handler(
 
 	// Get visibility for marker struct (same as original function)
 	let vis = info.vis();
+	let marker_struct_vis = marker_struct_visibility(vis);
 
 	// Generate marker module name for `.server_fn(login::marker)` pattern
 	// Example: login -> pub mod login { pub struct marker; }
@@ -1330,6 +1390,10 @@ fn generate_server_handler(
 	// the function because Rust's value namespace doesn't allow both a function
 	// and a `use` item with the same name in the same module.
 	let marker_module_name = name.clone();
+	let metadata_alias_prefix = name.to_string().to_case(Case::Pascal);
+	let response_alias = quote::format_ident!("__ServerFn{}Response", metadata_alias_prefix);
+	let error_alias = quote::format_ident!("__ServerFn{}Error", metadata_alias_prefix);
+	let request_alias = quote::format_ident!("__ServerFn{}Request", metadata_alias_prefix);
 
 	// MSW: Generate MockableServerFn impl when the macro crate was compiled
 	// with `msw` feature.
@@ -1350,8 +1414,49 @@ fn generate_server_handler(
 	// `reinhardt-web/msw`) so that `MockableServerFn` is in scope.
 	let msw_enabled = cfg!(feature = "msw");
 
-	// MSW: Extract the Ok type from Result<T, ServerFnError> for MockableServerFn::Response
-	let response_type = extract_result_ok_type(return_type);
+	let result_types = extract_result_types(return_type);
+	let emits_typed_response_metadata =
+		info.emits_typed_response_metadata() && result_types.is_some();
+	let (response_type, error_type) = result_types.unwrap_or_else(|| (quote! {}, quote! {}));
+	let response_metadata_type_aliases = if emits_typed_response_metadata {
+		quote! {
+			#[doc(hidden)]
+			#vis type #response_alias = #response_type;
+			#[doc(hidden)]
+			#vis type #error_alias = #error_type;
+		}
+	} else {
+		quote! {}
+	};
+	let response_metadata_impl = if emits_typed_response_metadata {
+		quote! {
+			impl #pages_crate::server_fn::ServerFnResponseMetadata for marker {
+				type Response = super::#response_alias;
+				type Error = super::#error_alias;
+			}
+		}
+	} else {
+		quote! {}
+	};
+	let request_metadata_type_aliases =
+		if emits_typed_response_metadata && regular_param_types.len() == 1 {
+			let request_type = regular_param_types[0];
+			quote! {
+				#[doc(hidden)]
+				#vis type #request_alias = #request_type;
+			}
+		} else {
+			quote! {}
+		};
+	let request_metadata_impl = if emits_typed_response_metadata && regular_param_types.len() == 1 {
+		quote! {
+			impl #pages_crate::server_fn::ServerFnRequestMetadata for marker {
+				type Request = super::#request_alias;
+			}
+		}
+	} else {
+		quote! {}
+	};
 
 	// Convert inject param names to string literals for INJECTED_PARAMS const
 	let inject_param_name_strs: Vec<String> = inject_params
@@ -1367,7 +1472,7 @@ fn generate_server_handler(
 	let uses_response_cookie_jar = !inject_params.is_empty() || !extractor_params.is_empty();
 
 	// MSW: Generate server-side MockableServerFn tokens only when msw feature is enabled
-	let msw_server_tokens = if msw_enabled {
+	let msw_server_tokens = if msw_enabled && emits_typed_response_metadata {
 		quote! {
 			mod __msw {
 				// Generated MSW support may expand in crates that do not declare every
@@ -1387,7 +1492,7 @@ fn generate_server_handler(
 
 			impl #pages_crate::server_fn::MockableServerFn for marker {
 				type Args = Args;
-				type Response = #response_type;
+				type Response = super::#response_alias;
 			}
 		}
 	} else {
@@ -1403,7 +1508,7 @@ fn generate_server_handler(
 	// the `MockableServerFn` impl whose trait isn't in scope for them.
 	// `#[allow(unexpected_cfgs)]` keeps the cfg quiet in consumer crates
 	// that don't themselves declare an `msw` feature.
-	let msw_wasm_inner_tokens = if msw_enabled {
+	let msw_wasm_inner_tokens = if msw_enabled && emits_typed_response_metadata {
 		quote! {
 			mod __msw {
 				// Generated MSW support may expand in crates that do not declare every
@@ -1431,7 +1536,7 @@ fn generate_server_handler(
 				#[cfg(feature = "msw")]
 				impl #pages_crate::server_fn::MockableServerFn for super::marker {
 					type Args = Args;
-					type Response = #response_type;
+					type Response = super::super::#response_alias;
 				}
 			}
 
@@ -1470,7 +1575,7 @@ fn generate_server_handler(
 			#[doc = "Parity: P1."]
 			#[doc = ""]
 			#[doc = "The marker is emitted on WASM so shared route declarations can name it, but server route registration is native-only behavior."]
-			pub struct marker;
+			#marker_struct_vis struct marker;
 
 			impl #pages_crate::server_fn::ServerFnMetadata for marker {
 				const PATH: &'static str = #endpoint;
@@ -1480,6 +1585,9 @@ fn generate_server_handler(
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
 				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
+
+			#response_metadata_impl
+			#request_metadata_impl
 
 			#msw_wasm_inner_tokens
 		}
@@ -1555,6 +1663,9 @@ fn generate_server_handler(
 			#endpoint
 		}
 
+		#response_metadata_type_aliases
+		#request_metadata_type_aliases
+
 		// Static wrapper function for explicit registration
 		// This is used by ServerFnRegistration::handler() to provide a function pointer.
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -1587,7 +1698,7 @@ fn generate_server_handler(
 			#[doc = "Parity: P1."]
 			#[doc = ""]
 			#[doc = "The marker is emitted on both native and WASM so shared route declarations can name it. Native builds register the server handler; WASM builds keep the marker metadata inert."]
-			pub struct marker;
+			#marker_struct_vis struct marker;
 
 			// Cross-target metadata. ServerFnMetadata lives in reinhardt-pages
 			// and is available on both native and wasm — the constants below
@@ -1602,6 +1713,9 @@ fn generate_server_handler(
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
 				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
+
+			#response_metadata_impl
+			#request_metadata_impl
 
 			// Native-only handler entry point for explicit router registration.
 			impl #pages_crate::server_fn::ServerFnRegistration for marker {
@@ -1626,26 +1740,60 @@ fn generate_server_handler(
 	}
 }
 
-/// Extracts the first generic argument `T` from `Result<T, E>`.
-///
-/// Given `Result<User, ServerFnError>`, returns the token stream for `User`.
-/// Falls back to the full return type if it cannot be parsed as `Result<T, E>`.
-fn extract_result_ok_type(return_type: &syn::Type) -> proc_macro2::TokenStream {
+fn extract_result_types(
+	return_type: &syn::Type,
+) -> Option<(proc_macro2::TokenStream, proc_macro2::TokenStream)> {
 	if let syn::Type::Path(type_path) = return_type
 		&& let Some(segment) = type_path.path.segments.last()
 		&& segment.ident == "Result"
 		&& let syn::PathArguments::AngleBracketed(args) = &segment.arguments
 		&& let Some(syn::GenericArgument::Type(ok_type)) = args.args.first()
+		&& args.args.len() >= 2
+		&& let Some(syn::GenericArgument::Type(err_type)) = args.args.iter().nth(1)
 	{
-		return quote! { #ok_type };
+		return Some((quote! { #ok_type }, quote! { #err_type }));
 	}
-	// Fallback: use the full type
-	quote! { #return_type }
+	None
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn test_marker_struct_visibility_rewrites_relative_restrictions_for_marker_module() {
+		use syn::parse_quote;
+
+		let crate_vis: syn::Visibility = parse_quote!(pub(crate));
+		assert_eq!(
+			marker_struct_visibility(&crate_vis).to_string(),
+			quote! { pub(crate) }.to_string()
+		);
+
+		let super_vis: syn::Visibility = parse_quote!(pub(super));
+		assert_eq!(
+			marker_struct_visibility(&super_vis).to_string(),
+			quote! { pub(in super::super) }.to_string()
+		);
+
+		let super_nested_vis: syn::Visibility = parse_quote!(pub(in super::endpoints));
+		assert_eq!(
+			marker_struct_visibility(&super_nested_vis).to_string(),
+			quote! { pub(in super::super::endpoints) }.to_string()
+		);
+
+		let self_vis: syn::Visibility = parse_quote!(pub(self));
+		assert_eq!(
+			marker_struct_visibility(&self_vis).to_string(),
+			quote! { pub(in super) }.to_string()
+		);
+
+		let self_nested_vis: syn::Visibility = parse_quote!(pub(in self::endpoints));
+		assert_eq!(
+			marker_struct_visibility(&self_nested_vis).to_string(),
+			quote! { pub(in super::endpoints) }.to_string()
+		);
+	}
 
 	#[test]
 	fn test_server_fn_options_default() {
