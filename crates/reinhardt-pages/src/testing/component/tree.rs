@@ -303,8 +303,6 @@ impl TestDom {
 			}
 			Page::Empty => {}
 			Page::WithHead { view, .. } => self.append_page(parent, *view),
-			Page::Suspense(node) => self.append_page(parent, node.render_branch()),
-			Page::Deferred(node) => self.append_page(parent, node.render_content()),
 			Page::ReactiveIf(reactive_if) => {
 				let (condition, then_view, else_view) = reactive_if.into_parts();
 				let render: Rc<dyn Fn() -> Page + 'static> = Rc::new(move || {
