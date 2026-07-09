@@ -183,7 +183,7 @@ impl<Root: Model, Target: Model> RelationPathLike for RelationPath<Root, Target>
 		self.step_aliases
 			.last()
 			.map(String::as_str)
-			.unwrap_or(Target::table_name())
+			.unwrap_or_else(|| Target::table_name())
 	}
 }
 
