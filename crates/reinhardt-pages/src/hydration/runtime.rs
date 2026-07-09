@@ -443,6 +443,14 @@ fn install_hydrated_child_reactive_nodes(
 				install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, child);
 			}
 		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, &branch_view);
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, &content_view);
+		}
 		Page::Text(_) | Page::Empty => {}
 	}
 }
@@ -475,6 +483,8 @@ fn hydrated_node_count(view: &Page) -> usize {
 			hydrated_node_count(&branch_view)
 		}
 		Page::Reactive(reactive) => hydrated_node_count(&reactive.render()),
+		Page::Suspense(node) => hydrated_node_count(&node.render_branch()),
+		Page::Deferred(node) => hydrated_node_count(&node.content()),
 		Page::Empty => 0,
 	}
 }
@@ -573,6 +583,14 @@ fn collect_expected_dom_children(view: &Page, children: &mut Vec<ExpectedDomChil
 		Page::Reactive(reactive) => {
 			let rendered_view = reactive.render();
 			collect_expected_dom_children(&rendered_view, children);
+		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			collect_expected_dom_children(&branch_view, children);
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			collect_expected_dom_children(&content_view, children);
 		}
 		Page::Element(_) => children.push(ExpectedDomChild::Node),
 	}
