@@ -253,13 +253,19 @@ impl RelationJoinGraph {
 		join_kind_override: Option<RelationJoinKind>,
 	) {
 		let mut source_alias = self.root_alias.clone();
+		let mut force_downstream_left = false;
 		for step in steps {
 			let alias = step_alias(&source_alias, step.name.as_ref(), &self.root_alias);
-			let requested_join_kind = join_kind_override.unwrap_or(step.default_join_kind);
+			let requested_join_kind = if force_downstream_left {
+				RelationJoinKind::Left
+			} else {
+				join_kind_override.unwrap_or(step.default_join_kind)
+			};
 			if let Some(existing) = self.joins.iter_mut().find(|join| {
 				join.source_alias == source_alias && join.relation_name == step.name.as_ref()
 			}) {
 				existing.join_kind = existing.join_kind.merge(requested_join_kind);
+				force_downstream_left |= existing.join_kind == RelationJoinKind::Left;
 				source_alias = existing.alias.clone();
 				continue;
 			}
@@ -273,6 +279,7 @@ impl RelationJoinGraph {
 				target_column: step.target_column.to_string(),
 				join_kind: requested_join_kind,
 			});
+			force_downstream_left |= requested_join_kind == RelationJoinKind::Left;
 			source_alias = alias;
 		}
 	}
@@ -551,6 +558,24 @@ mod tests {
 		}
 	}
 
+	struct DocumentOptionalCorpusFile;
+
+	impl RelationDescriptor for DocumentOptionalCorpusFile {
+		type Source = Document;
+		type Target = CorpusFile;
+
+		fn steps() -> Vec<RelationStep> {
+			vec![RelationStep {
+				name: "optional_corpus_file".into(),
+				source_table: "documents".into(),
+				target_table: "corpus_files".into(),
+				source_column: "corpus_file_id".into(),
+				target_column: "id".into(),
+				default_join_kind: RelationJoinKind::Left,
+			}]
+		}
+	}
+
 	struct CorpusFileProject;
 
 	impl RelationDescriptor for CorpusFileProject {
@@ -565,6 +590,24 @@ mod tests {
 				source_column: "project_id".into(),
 				target_column: "id".into(),
 				default_join_kind: RelationJoinKind::Left,
+			}]
+		}
+	}
+
+	struct CorpusFileRequiredProject;
+
+	impl RelationDescriptor for CorpusFileRequiredProject {
+		type Source = CorpusFile;
+		type Target = Project;
+
+		fn steps() -> Vec<RelationStep> {
+			vec![RelationStep {
+				name: "required_project".into(),
+				source_table: "corpus_files".into(),
+				target_table: "projects".into(),
+				source_column: "project_id".into(),
+				target_column: "id".into(),
+				default_join_kind: RelationJoinKind::Inner,
 			}]
 		}
 	}
@@ -634,6 +677,23 @@ mod tests {
 		assert_eq!(joins[0].join_kind, RelationJoinKind::Inner);
 		assert_eq!(joins[1].alias, "corpus_file__project");
 		assert_eq!(joins[1].source_alias, "corpus_file");
+		assert_eq!(joins[1].join_kind, RelationJoinKind::Left);
+	}
+
+	#[test]
+	fn join_graph_propagates_left_join_to_downstream_hops() {
+		let path =
+			RelationPath::<Document, CorpusFile>::from_descriptor::<DocumentOptionalCorpusFile>()
+				.then::<CorpusFileRequiredProject, Project>();
+		let mut graph = RelationJoinGraph::new("documents");
+
+		graph.add_path(&path);
+
+		let joins = graph.joins();
+		assert_eq!(joins.len(), 2);
+		assert_eq!(joins[0].join_kind, RelationJoinKind::Left);
+		assert_eq!(joins[1].alias, "optional_corpus_file__required_project");
+		assert_eq!(joins[1].source_alias, "optional_corpus_file");
 		assert_eq!(joins[1].join_kind, RelationJoinKind::Left);
 	}
 

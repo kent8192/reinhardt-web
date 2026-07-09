@@ -5105,21 +5105,11 @@ where
 	/// # }
 	/// ```
 	pub async fn count(&self) -> reinhardt_core::exception::Result<usize> {
-		use reinhardt_query::prelude::{Func, PostgresQueryBuilder, QueryBuilder};
+		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryBuilder};
 
 		let conn = super::manager::get_connection().await?;
 
-		// Build COUNT query using reinhardt-query
-		let mut stmt = Query::select();
-		stmt.from(Alias::new(T::table_name()))
-			.expr(Func::count(Expr::asterisk().into_simple_expr()));
-
-		self.apply_relation_joins(&mut stmt);
-
-		// Add WHERE conditions
-		if let Some(cond) = self.build_where_condition()? {
-			stmt.cond_where(cond);
-		}
+		let stmt = self.count_select_query()?;
 
 		// Convert to SQL and extract parameter values
 		let (sql, values) = PostgresQueryBuilder.build_select(&stmt);
@@ -5159,6 +5149,20 @@ where
 		}
 
 		Ok(0)
+	}
+
+	fn count_select_query(&self) -> reinhardt_core::exception::Result<SelectStatement> {
+		let mut stmt = Query::select();
+		self.apply_model_from(&mut stmt);
+		stmt.expr(Func::count(Expr::asterisk().into_simple_expr()));
+
+		self.apply_relation_joins(&mut stmt);
+
+		if let Some(cond) = self.build_where_condition()? {
+			stmt.cond_where(cond);
+		}
+
+		Ok(stmt.to_owned())
 	}
 
 	/// Check if any records match the queryset
@@ -7807,6 +7811,27 @@ mod tests {
 			.to_sql();
 
 		assert!(sql.starts_with(r#"SELECT "u".* FROM "test_users" AS "u""#));
+		assert!(sql.contains(r#""u"."corpus_file_id" = "corpus_file"."id""#));
+		assert!(!sql.contains(r#""test_users"."corpus_file_id" = "corpus_file"."id""#));
+	}
+
+	#[test]
+	fn test_relation_filter_count_uses_from_alias_as_join_root() {
+		let filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+
+		let stmt = QuerySet::<TestUser>::new()
+			.from_as("u")
+			.filter(filter)
+			.count_select_query()
+			.expect("count select query");
+		let sql = stmt.to_string(PostgresQueryBuilder);
+
+		assert!(sql.starts_with(r#"SELECT COUNT(*) FROM "test_users" AS "u""#));
 		assert!(sql.contains(r#""u"."corpus_file_id" = "corpus_file"."id""#));
 		assert!(!sql.contains(r#""test_users"."corpus_file_id" = "corpus_file"."id""#));
 	}
