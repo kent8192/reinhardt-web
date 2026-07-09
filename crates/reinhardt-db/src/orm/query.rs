@@ -148,7 +148,7 @@ impl FilterRelation {
 	where
 		P: RelationPathLike,
 	{
-		let mut steps = SmallVec::new();
+		let mut steps: SmallVec<[RelationStep; 4]> = SmallVec::new();
 		steps.extend(path.steps().iter().cloned());
 		Self {
 			steps,
@@ -189,7 +189,7 @@ impl Filter {
 	}
 
 	/// Creates a filter for a field reached through a typed relation path.
-	pub fn related<P>(
+	pub(crate) fn related<P>(
 		field: impl Into<String>,
 		operator: FilterOperator,
 		value: FilterValue,
@@ -858,6 +858,7 @@ where
 				.expect("invalid relation path passed to prefetch_related");
 		}
 		queryset.prefetch_related_fields = self.iter().map(|field| (*field).to_string()).collect();
+		queryset.typed_prefetch_related.clear();
 	}
 }
 
@@ -901,13 +902,56 @@ where
 	}
 
 	fn apply_prefetch_related(self, queryset: &mut QuerySet<T>) {
+		let typed = TypedPrefetchRelation::from_path(&self);
 		assert!(
-			self.steps().len() == 1,
-			"typed prefetch_related currently supports only single-hop relation paths"
+			typed.is_direct_relation(),
+			"typed prefetch_related currently supports only direct relation paths"
 		);
-		queryset
-			.prefetch_related_fields
-			.push(self.leaf_alias().to_string());
+		if !queryset.prefetch_related_fields.contains(&typed.field) {
+			queryset.prefetch_related_fields.push(typed.field.clone());
+		}
+		if !queryset
+			.typed_prefetch_related
+			.iter()
+			.any(|relation| relation.field == typed.field)
+		{
+			queryset.typed_prefetch_related.push(typed);
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+struct TypedPrefetchRelation {
+	field: String,
+	steps: SmallVec<[RelationStep; 4]>,
+}
+
+impl TypedPrefetchRelation {
+	fn from_path<P>(path: &P) -> Self
+	where
+		P: RelationPathLike,
+	{
+		let mut steps: SmallVec<[RelationStep; 4]> = SmallVec::new();
+		steps.extend(path.steps().iter().cloned());
+		let field = match steps.as_slice() {
+			[through_step, target_step] if through_step.name.to_string().ends_with("__through") => {
+				target_step.name.to_string()
+			}
+			_ => path.leaf_alias().to_string(),
+		};
+		Self { field, steps }
+	}
+
+	fn is_direct_relation(&self) -> bool {
+		match self.steps.as_slice() {
+			[_] => true,
+			[through_step, target_step] => {
+				through_step.name.to_string().ends_with("__through")
+					&& target_step.name.as_ref() == self.field
+					&& target_step.source_table == through_step.target_table
+			}
+			_ => false,
+		}
 	}
 }
 
@@ -923,6 +967,7 @@ where
 	select_related_fields: Vec<String>,
 	typed_select_related_aliases: Vec<String>,
 	prefetch_related_fields: Vec<String>,
+	typed_prefetch_related: Vec<TypedPrefetchRelation>,
 	relation_joins: RelationJoinGraph,
 	order_by_fields: Vec<String>,
 	distinct_enabled: bool,
@@ -957,6 +1002,7 @@ where
 			select_related_fields: Vec::new(),
 			typed_select_related_aliases: Vec::new(),
 			prefetch_related_fields: Vec::new(),
+			typed_prefetch_related: Vec::new(),
 			relation_joins: RelationJoinGraph::new(T::table_name()),
 			order_by_fields: Vec::new(),
 			distinct_enabled: false,
@@ -986,6 +1032,7 @@ where
 			select_related_fields: Vec::new(),
 			typed_select_related_aliases: Vec::new(),
 			prefetch_related_fields: Vec::new(),
+			typed_prefetch_related: Vec::new(),
 			relation_joins: RelationJoinGraph::new(T::table_name()),
 			order_by_fields: Vec::new(),
 			distinct_enabled: false,
@@ -1155,6 +1202,7 @@ where
 			select_related_fields: Vec::new(),
 			typed_select_related_aliases: Vec::new(),
 			prefetch_related_fields: Vec::new(),
+			typed_prefetch_related: Vec::new(),
 			relation_joins: RelationJoinGraph::new(alias),
 			order_by_fields: Vec::new(),
 			distinct_enabled: false,
@@ -3043,7 +3091,35 @@ where
 			.with_root_alias(self.from_alias.as_deref().unwrap_or(T::table_name()))
 	}
 
+	fn root_alias(&self) -> &str {
+		self.from_alias.as_deref().unwrap_or(T::table_name())
+	}
+
+	fn apply_model_from(&self, stmt: &mut SelectStatement) {
+		if let Some(ref alias) = self.from_alias {
+			stmt.from_as(Alias::new(T::table_name()), Alias::new(alias));
+		} else {
+			stmt.from(Alias::new(T::table_name()));
+		}
+	}
+
+	fn add_default_select_columns(&self, stmt: &mut SelectStatement) {
+		if self.relation_joins.is_empty() {
+			stmt.column(ColumnRef::Asterisk);
+		} else {
+			stmt.column(ColumnRef::table_asterisk(Alias::new(self.root_alias())));
+		}
+	}
+
 	fn validate_relation_path(&self, path: &str) -> reinhardt_core::exception::Result<()> {
+		if path.contains("__") {
+			return Err(reinhardt_core::exception::Error::Validation(format!(
+				"Nested string relation path `{}` is not supported for {}; use typed relation paths instead",
+				path,
+				std::any::type_name::<T>()
+			)));
+		}
+
 		let first = path.split("__").next().unwrap_or(path);
 		let relations = T::relationship_metadata();
 
@@ -3066,14 +3142,6 @@ where
 	fn apply_relation_joins(&self, stmt: &mut SelectStatement) {
 		let graph = self.relation_join_graph_for_query();
 		for join in graph.joins() {
-			if self
-				.select_related_fields
-				.iter()
-				.any(|field| field == &join.alias)
-			{
-				continue;
-			}
-
 			let sea_join_type = match join.join_kind {
 				RelationJoinKind::Inner => SeaJoinType::InnerJoin,
 				RelationJoinKind::Left => SeaJoinType::LeftJoin,
@@ -4234,7 +4302,20 @@ where
 
 		let mut queries = Vec::new();
 
+		for relation in &self.typed_prefetch_related {
+			let stmt = self.typed_prefetch_query(relation, pk_values);
+			queries.push((relation.field.clone(), stmt));
+		}
+
 		for related_field in &self.prefetch_related_fields {
+			if self
+				.typed_prefetch_related
+				.iter()
+				.any(|relation| relation.field == *related_field)
+			{
+				continue;
+			}
+
 			// Determine if this is a many-to-many relation or one-to-many
 			// by querying the model's relationship metadata
 			let is_m2m = self.is_many_to_many_relation(related_field);
@@ -4249,6 +4330,91 @@ where
 		}
 
 		queries
+	}
+
+	fn typed_prefetch_query(
+		&self,
+		relation: &TypedPrefetchRelation,
+		pk_values: &[i64],
+	) -> SelectStatement {
+		match relation.steps.as_slice() {
+			[step] => self.typed_prefetch_single_hop_query(relation, step, pk_values),
+			[through_step, target_step] => self.typed_prefetch_many_to_many_query(
+				relation,
+				through_step,
+				target_step,
+				pk_values,
+			),
+			_ => unreachable!("typed prefetch paths are validated when they are registered"),
+		}
+	}
+
+	fn typed_prefetch_single_hop_query(
+		&self,
+		relation: &TypedPrefetchRelation,
+		step: &RelationStep,
+		pk_values: &[i64],
+	) -> SelectStatement {
+		let related_alias = Alias::new(&relation.field);
+		let mut stmt = Query::select();
+		stmt.from_as(
+			Alias::new(step.target_table.as_ref()),
+			related_alias.clone(),
+		)
+		.column(ColumnRef::table_asterisk(related_alias.clone()));
+
+		let values: Vec<reinhardt_query::value::Value> =
+			pk_values.iter().map(|&id| id.into()).collect();
+		stmt.and_where(
+			Expr::col((related_alias, Alias::new(step.target_column.as_ref()))).is_in(values),
+		);
+
+		stmt.to_owned()
+	}
+
+	fn typed_prefetch_many_to_many_query(
+		&self,
+		relation: &TypedPrefetchRelation,
+		through_step: &RelationStep,
+		target_step: &RelationStep,
+		pk_values: &[i64],
+	) -> SelectStatement {
+		let target_alias = Alias::new(&relation.field);
+		let through_alias = Alias::new(through_step.name.as_ref());
+
+		let mut stmt = Query::select();
+		stmt.from_as(
+			Alias::new(target_step.target_table.as_ref()),
+			target_alias.clone(),
+		)
+		.column(ColumnRef::table_asterisk(target_alias.clone()))
+		.column((
+			through_alias.clone(),
+			Alias::new(through_step.target_column.as_ref()),
+		))
+		.join(
+			SeaJoinType::InnerJoin,
+			TableRef::table_alias(
+				Alias::new(through_step.target_table.as_ref()),
+				through_alias.clone(),
+			),
+			Expr::col((target_alias, Alias::new(target_step.target_column.as_ref()))).equals((
+				through_alias.clone(),
+				Alias::new(target_step.source_column.as_ref()),
+			)),
+		);
+
+		let values: Vec<reinhardt_query::value::Value> =
+			pk_values.iter().map(|&id| id.into()).collect();
+		stmt.and_where(
+			Expr::col((
+				through_alias,
+				Alias::new(through_step.target_column.as_ref()),
+			))
+			.is_in(values),
+		);
+
+		stmt.to_owned()
 	}
 
 	/// Check if a related field is a many-to-many relation
@@ -4440,7 +4606,7 @@ where
 		let stmt = if !self.has_select_related() {
 			// Simple SELECT without JOINs
 			let mut stmt = Query::select();
-			stmt.from(Alias::new(T::table_name()));
+			self.apply_model_from(&mut stmt);
 
 			// Column selection considering selected_fields and deferred_fields
 			if let Some(ref fields) = self.selected_fields {
@@ -4464,7 +4630,7 @@ where
 					}
 				}
 			} else {
-				stmt.column(ColumnRef::Asterisk);
+				self.add_default_select_columns(&mut stmt);
 			}
 
 			self.apply_relation_joins(&mut stmt);
@@ -4700,7 +4866,7 @@ where
 	{
 		let stmt = if !self.has_select_related() {
 			let mut stmt = Query::select();
-			stmt.from(Alias::new(T::table_name()));
+			self.apply_model_from(&mut stmt);
 
 			// Column selection considering selected_fields and deferred_fields
 			if let Some(ref fields) = self.selected_fields {
@@ -4724,7 +4890,7 @@ where
 					}
 				}
 			} else {
-				stmt.column(ColumnRef::Asterisk);
+				self.add_default_select_columns(&mut stmt);
 			}
 
 			self.apply_relation_joins(&mut stmt);
@@ -5816,12 +5982,7 @@ where
 			// Simple SELECT without JOINs
 			let mut stmt = Query::select();
 
-			// Apply FROM clause with optional alias
-			if let Some(ref alias) = self.from_alias {
-				stmt.from_as(Alias::new(T::table_name()), Alias::new(alias));
-			} else {
-				stmt.from(Alias::new(T::table_name()));
-			}
+			self.apply_model_from(&mut stmt);
 
 			// Apply DISTINCT if enabled
 			if self.distinct_enabled {
@@ -5850,7 +6011,7 @@ where
 					}
 				}
 			} else {
-				stmt.column(ColumnRef::Asterisk);
+				self.add_default_select_columns(&mut stmt);
 			}
 
 			self.apply_relation_joins(&mut stmt);
@@ -6902,6 +7063,7 @@ mod tests {
 	use super::{FilterCondition, MAX_FILTER_CONDITION_DEPTH};
 	use crate::orm::query::{FieldAssignment, UpdateValue};
 	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
+	use reinhardt_query::prelude::{PostgresQueryBuilder, QueryStatementBuilder};
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
@@ -7002,6 +7164,12 @@ mod tests {
 					.with_foreign_key("test_user_id"),
 				RelationInfo::new("likes", RelationshipType::OneToMany, "Like")
 					.with_foreign_key("test_user_id"),
+				RelationInfo::new("corpus_file", RelationshipType::ManyToOne, "TestCorpusFile")
+					.with_foreign_key("corpus_file_id"),
+				RelationInfo::new("tags", RelationshipType::ManyToMany, "TestTag")
+					.with_through_table("test_user_tags")
+					.with_source_field("test_user_id")
+					.with_target_field("tag_id"),
 			]
 		}
 	}
@@ -7095,6 +7263,47 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct TestTag {
+		id: Option<i64>,
+		name: String,
+	}
+
+	#[derive(Debug, Clone)]
+	struct TestTagFields;
+
+	impl crate::orm::model::FieldSelector for TestTagFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for TestTag {
+		type PrimaryKey = i64;
+		type Fields = TestTagFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"test_tags"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestTagFields
+		}
+	}
+
 	struct TestUserCorpusFile;
 
 	impl crate::orm::relations::RelationDescriptor for TestUserCorpusFile {
@@ -7128,6 +7337,34 @@ mod tests {
 				target_column: "id".into(),
 				default_join_kind: crate::orm::relations::RelationJoinKind::Left,
 			}]
+		}
+	}
+
+	struct TestUserTags;
+
+	impl crate::orm::relations::RelationDescriptor for TestUserTags {
+		type Source = TestUser;
+		type Target = TestTag;
+
+		fn steps() -> Vec<crate::orm::relations::RelationStep> {
+			vec![
+				crate::orm::relations::RelationStep {
+					name: "tags__through".into(),
+					source_table: "test_users".into(),
+					target_table: "test_user_tags".into(),
+					source_column: "id".into(),
+					target_column: "test_user_id".into(),
+					default_join_kind: crate::orm::relations::RelationJoinKind::Left,
+				},
+				crate::orm::relations::RelationStep {
+					name: "tags".into(),
+					source_table: "test_user_tags".into(),
+					target_table: "test_tags".into(),
+					source_column: "tag_id".into(),
+					target_column: "id".into(),
+					default_join_kind: crate::orm::relations::RelationJoinKind::Left,
+				},
+			]
 		}
 	}
 
@@ -7297,6 +7534,16 @@ mod tests {
 			.expect_err("invalid relation path should fail validation");
 
 		assert!(error.to_string().contains("missing__field"));
+	}
+
+	#[test]
+	fn test_nested_string_relation_validation_is_rejected() {
+		let error = QuerySet::<TestUser>::new()
+			.validate_relation_path_for_test("profile__missing")
+			.expect_err("nested string relation path should fail validation");
+
+		assert!(error.to_string().contains("profile__missing"));
+		assert!(error.to_string().contains("typed relation paths"));
 	}
 
 	#[test]
@@ -7541,7 +7788,7 @@ mod tests {
 
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" INNER JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id" WHERE "corpus_file"."normalized_path" = '/docs/index.md'"#
+			r#"SELECT "test_users".* FROM "test_users" INNER JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id" WHERE "corpus_file"."normalized_path" = '/docs/index.md'"#
 		);
 	}
 
@@ -7559,6 +7806,7 @@ mod tests {
 			.filter(filter)
 			.to_sql();
 
+		assert!(sql.starts_with(r#"SELECT "u".* FROM "test_users" AS "u""#));
 		assert!(sql.contains(r#""u"."corpus_file_id" = "corpus_file"."id""#));
 		assert!(!sql.contains(r#""test_users"."corpus_file_id" = "corpus_file"."id""#));
 	}
@@ -7577,8 +7825,24 @@ mod tests {
 
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" LEFT JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id" WHERE "corpus_file"."normalized_path" IS NULL"#
+			r#"SELECT "test_users".* FROM "test_users" LEFT JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id" WHERE "corpus_file"."normalized_path" IS NULL"#
 		);
+	}
+
+	#[test]
+	fn test_typed_join_is_kept_when_legacy_select_related_uses_same_field() {
+		let path = crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+			TestUserCorpusFile,
+		>();
+
+		let sql = QuerySet::<TestUser>::new()
+			.select_related(&["corpus_file"])
+			.select_related(path)
+			.to_sql();
+
+		assert!(sql.contains(
+			r#"INNER JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id""#
+		));
 	}
 
 	#[test]
@@ -7604,11 +7868,46 @@ mod tests {
 		let queryset = QuerySet::<TestUser>::new().prefetch_related(path);
 
 		assert_eq!(queryset.prefetch_related_fields, vec!["corpus_file"]);
+		assert_eq!(queryset.typed_prefetch_related.len(), 1);
+	}
+
+	#[test]
+	fn test_typed_prefetch_related_query_uses_relation_step_metadata() {
+		let path = crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+			TestUserCorpusFile,
+		>();
+		let queryset = QuerySet::<TestUser>::new().prefetch_related(path);
+
+		let queries = queryset.prefetch_related_queries(&[1, 2]);
+		let sql = queries[0].1.to_string(PostgresQueryBuilder);
+
+		assert_eq!(queries[0].0, "corpus_file");
+		assert_eq!(
+			sql,
+			r#"SELECT "corpus_file".* FROM "test_corpus_files" AS "corpus_file" WHERE "corpus_file"."id" IN (1, 2)"#
+		);
+	}
+
+	#[test]
+	fn test_typed_prefetch_related_allows_direct_many_to_many_path() {
+		let path = crate::orm::relations::RelationPath::<TestUser, TestTag>::from_descriptor::<
+			TestUserTags,
+		>();
+		let queryset = QuerySet::<TestUser>::new().prefetch_related(path);
+
+		let queries = queryset.prefetch_related_queries(&[1, 2]);
+		let sql = queries[0].1.to_string(PostgresQueryBuilder);
+
+		assert_eq!(queries[0].0, "tags");
+		assert_eq!(
+			sql,
+			r#"SELECT "tags".*, "tags__through"."test_user_id" FROM "test_tags" AS "tags" INNER JOIN "test_user_tags" AS "tags__through" ON "tags"."id" = "tags__through"."tag_id" WHERE "tags__through"."test_user_id" IN (1, 2)"#
+		);
 	}
 
 	#[test]
 	#[should_panic(
-		expected = "typed prefetch_related currently supports only single-hop relation paths"
+		expected = "typed prefetch_related currently supports only direct relation paths"
 	)]
 	fn test_typed_prefetch_related_rejects_multi_hop_path() {
 		let path =

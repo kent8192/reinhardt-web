@@ -1,4 +1,5 @@
 use super::connection::{DatabaseBackend, DatabaseConnection};
+use super::query::RelationLoadInput;
 use super::{Model, QuerySet};
 use reinhardt_query::prelude::{
 	Alias, ColumnRef, DeleteStatement, Expr, ExprTrait, Func, InsertStatement, MySqlQueryBuilder,
@@ -355,7 +356,10 @@ impl<M: Model> Manager<M> {
 	/// ```ignore
 	/// let posts = Post::objects().select_related(&["author", "category"]).all().await?;
 	/// ```
-	pub fn select_related(&self, fields: &[&str]) -> QuerySet<M> {
+	pub fn select_related<I>(&self, fields: I) -> QuerySet<M>
+	where
+		I: RelationLoadInput<M>,
+	{
 		QuerySet::new().select_related(fields)
 	}
 
@@ -397,7 +401,10 @@ impl<M: Model> Manager<M> {
 	/// ```ignore
 	/// let posts = Post::objects().prefetch_related(&["comments", "tags"]).all().await?;
 	/// ```
-	pub fn prefetch_related(&self, fields: &[&str]) -> QuerySet<M> {
+	pub fn prefetch_related<I>(&self, fields: I) -> QuerySet<M>
+	where
+		I: RelationLoadInput<M>,
+	{
 		QuerySet::new().prefetch_related(fields)
 	}
 
