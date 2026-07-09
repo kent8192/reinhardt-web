@@ -60,6 +60,7 @@ This crate provides the following modules:
   - Cursor-based pagination (more efficient than OFFSET)
   - Bulk operations (bulk create, bulk update)
   - N+1 query prevention with select_related and prefetch_related
+  - Typed relation traversal for compile-time checked related filters and eager loading
   - Lazy query evaluation
   - Only/Defer field optimization for reduced data transfer
   - Aggregate pushdown optimization
@@ -306,6 +307,16 @@ For tests that should fail on suspicious repeated query shapes, use
 patterns by using `select_related()` for single-object relationships and
 explicit batch queries for collection relationships. Use
 `NPlusOneScope::spawn(...)` for spawned tasks that should inherit the active scope.
+
+### Typed Relation Traversal
+
+Model derives generate typed relation path accessors such as
+`Post::rel_author().field_email()`. Use these paths in `filter()`,
+`select_related()`, and `prefetch_related()` to replace string traversal like
+`"author__email"` with compile-time checked relation and field names.
+
+String relation APIs remain available in 0.4.0 for incremental migration. New
+code should prefer typed paths.
 
 ### Create Migrations
 

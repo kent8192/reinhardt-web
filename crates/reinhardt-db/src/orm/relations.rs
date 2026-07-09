@@ -32,6 +32,14 @@ use std::marker::PhantomData;
 use crate::orm::Model;
 use crate::orm::custom_manager::CustomManager;
 
+/// Typed relation traversal descriptors and join planning.
+pub mod traversal;
+
+pub use traversal::{
+	PlannedRelationJoin, RelatedFieldRef, RelationDescriptor, RelationJoinGraph, RelationJoinKind,
+	RelationPath, RelationPathLike, RelationStep, RelationTarget,
+};
+
 /// A set of objects that have a GenericForeignKey pointing to the owner model
 ///
 /// This struct represents a reverse relation for GenericForeignKey relationships.

@@ -1478,6 +1478,257 @@ fn generate_field_accessors(struct_name: &syn::Ident, field_infos: &[FieldInfo])
 	}
 }
 
+fn generate_relation_traversal_accessors(
+	struct_name: &syn::Ident,
+	struct_vis: &syn::Visibility,
+	field_infos: &[FieldInfo],
+) -> TokenStream {
+	use crate::rel::RelationType;
+
+	let orm_crate = get_reinhardt_orm_crate();
+	let wrapper_name = syn::Ident::new(&format!("{}RelationPath", struct_name), struct_name.span());
+
+	let wrapper_field_methods: Vec<_> = field_infos
+		.iter()
+		.filter(|field| !field.config.skip)
+		.filter(|field| field.rel.is_none())
+		.filter(|field| !is_relationship_field_type(&field.ty))
+		.filter(|field| !is_many_to_many_field_type(&field.ty))
+		.map(|field| {
+			let field_name = &field.name;
+			let field_type = &field.ty;
+			let method_name = syn::Ident::new(&format!("field_{}", field_name), field_name.span());
+
+			quote! {
+				pub fn #method_name(self) -> #orm_crate::relations::RelatedFieldRef<Root, #struct_name, #field_type> {
+					self.field(#struct_name::#method_name())
+				}
+			}
+		})
+		.collect();
+
+	let relation_methods: Vec<_> = field_infos
+		.iter()
+		.filter_map(|field| {
+			let rel = field.rel.as_ref()?;
+			let field_name = &field.name;
+			let field_name_str = field_name.to_string();
+			let method_name = syn::Ident::new(&format!("rel_{}", field_name), field_name.span());
+			let relation_type_name =
+				crate::pascal_case::to_pascal_case_with_suffix(&field_name_str, "RelationDescriptor");
+			let descriptor_name = syn::Ident::new(
+				&format!("{}{}", struct_name, relation_type_name),
+				field_name.span(),
+			);
+
+			let source_table = quote! { <#struct_name as #orm_crate::Model>::table_name() };
+			let (target_ty, steps) = match rel.rel_type {
+				RelationType::ForeignKey | RelationType::OneToOne => {
+					let target_ty = extract_fk_target_type(&field.ty)?;
+					let source_column = rel
+						.db_column
+						.clone()
+						.unwrap_or_else(|| format!("{}_id", field_name_str));
+					let target_column = rel.to_field.clone().unwrap_or_else(|| "id".to_string());
+					let join_kind = if rel.null == Some(true) {
+						quote! { #orm_crate::relations::RelationJoinKind::Left }
+					} else {
+						quote! { #orm_crate::relations::RelationJoinKind::Inner }
+					};
+					(
+						quote! { #target_ty },
+						quote! {
+							vec![
+								#orm_crate::relations::RelationStep {
+									name: #field_name_str,
+									source_table: #source_table,
+									target_table: <#target_ty as #orm_crate::Model>::table_name(),
+									source_column: #source_column,
+									target_column: #target_column,
+									default_join_kind: #join_kind,
+								}
+							]
+						},
+					)
+				}
+				RelationType::OneToMany => {
+					let target_path = rel.to.as_ref()?;
+					let foreign_key = rel.foreign_key.as_ref()?;
+					(
+						quote! { #target_path },
+						quote! {
+							vec![
+								#orm_crate::relations::RelationStep {
+									name: #field_name_str,
+									source_table: #source_table,
+									target_table: <#target_path as #orm_crate::Model>::table_name(),
+									source_column: "id",
+									target_column: #foreign_key,
+									default_join_kind: #orm_crate::relations::RelationJoinKind::Left,
+								}
+							]
+						},
+					)
+				}
+				RelationType::ManyToMany => {
+					let target_ty = extract_m2m_target_type(&field.ty)?;
+					let through = rel.through.clone().unwrap_or_else(|| {
+						format!("{}_{}", struct_name.to_string().to_lowercase(), field_name_str)
+					});
+					let source_field = rel
+						.source_field
+						.clone()
+						.unwrap_or_else(|| "source_id".to_string());
+					let target_field = rel
+						.target_field
+						.clone()
+						.unwrap_or_else(|| "target_id".to_string());
+					let through_name = format!("{}__through", field_name_str);
+					(
+						quote! { #target_ty },
+						quote! {
+							vec![
+								#orm_crate::relations::RelationStep {
+									name: #through_name,
+									source_table: #source_table,
+									target_table: #through,
+									source_column: "id",
+									target_column: #source_field,
+									default_join_kind: #orm_crate::relations::RelationJoinKind::Left,
+								},
+								#orm_crate::relations::RelationStep {
+									name: #field_name_str,
+									source_table: #through,
+									target_table: <#target_ty as #orm_crate::Model>::table_name(),
+									source_column: #target_field,
+									target_column: "id",
+									default_join_kind: #orm_crate::relations::RelationJoinKind::Left,
+								}
+							]
+						},
+					)
+				}
+				_ => return None,
+			};
+
+			Some(quote! {
+				struct #descriptor_name;
+
+				impl #orm_crate::relations::RelationDescriptor for #descriptor_name {
+					type Source = #struct_name;
+					type Target = #target_ty;
+
+					fn steps() -> Vec<#orm_crate::relations::RelationStep> {
+						#steps
+					}
+				}
+
+				impl #struct_name {
+					#struct_vis fn #method_name() -> <#target_ty as #orm_crate::relations::RelationTarget>::Path<#struct_name> {
+						<#target_ty as #orm_crate::relations::RelationTarget>::wrap_relation_path(
+							#orm_crate::relations::RelationPath::<#struct_name, #target_ty>::from_descriptor::<#descriptor_name>()
+						)
+					}
+				}
+			})
+		})
+		.collect();
+
+	let wrapper_relation_methods: Vec<_> = field_infos
+		.iter()
+		.filter_map(|field| {
+			let rel = field.rel.as_ref()?;
+			let field_name = &field.name;
+			let field_name_str = field_name.to_string();
+			let method_name = syn::Ident::new(&format!("rel_{}", field_name), field_name.span());
+			let relation_type_name =
+				crate::pascal_case::to_pascal_case_with_suffix(&field_name_str, "RelationDescriptor");
+			let descriptor_name = syn::Ident::new(
+				&format!("{}{}", struct_name, relation_type_name),
+				field_name.span(),
+			);
+
+			let target_ty = match rel.rel_type {
+				RelationType::ForeignKey | RelationType::OneToOne => {
+					let target = extract_fk_target_type(&field.ty)?;
+					quote! { #target }
+				}
+				RelationType::OneToMany => rel.to.as_ref().map(|target| quote! { #target })?,
+				RelationType::ManyToMany => {
+					let target = extract_m2m_target_type(&field.ty)?;
+					quote! { #target }
+				}
+				_ => return None,
+			};
+
+			Some(quote! {
+				#struct_vis fn #method_name(self) -> <#target_ty as #orm_crate::relations::RelationTarget>::Path<Root> {
+					<#target_ty as #orm_crate::relations::RelationTarget>::wrap_relation_path(
+						self.inner.then::<#descriptor_name, #target_ty>()
+					)
+				}
+			})
+		})
+		.collect();
+
+	quote! {
+		#struct_vis struct #wrapper_name<Root: #orm_crate::Model> {
+			inner: #orm_crate::relations::RelationPath<Root, #struct_name>,
+		}
+
+		impl<Root: #orm_crate::Model> #wrapper_name<Root> {
+			pub fn new(inner: #orm_crate::relations::RelationPath<Root, #struct_name>) -> Self {
+				Self { inner }
+			}
+
+			pub fn optional(self) -> Self {
+				Self {
+					inner: self.inner.optional(),
+				}
+			}
+
+			pub fn field<Value>(
+				self,
+				field: #orm_crate::expressions::FieldRef<#struct_name, Value>,
+			) -> #orm_crate::relations::RelatedFieldRef<Root, #struct_name, Value> {
+				self.inner.field(field)
+			}
+
+			#(#wrapper_field_methods)*
+			#(#wrapper_relation_methods)*
+		}
+
+		impl<Root: #orm_crate::Model> #orm_crate::relations::RelationPathLike for #wrapper_name<Root> {
+			type Root = Root;
+			type Target = #struct_name;
+
+			fn steps(&self) -> &[#orm_crate::relations::RelationStep] {
+				self.inner.steps()
+			}
+
+			fn join_kind(&self) -> #orm_crate::relations::RelationJoinKind {
+				self.inner.join_kind()
+			}
+
+			fn leaf_alias(&self) -> &str {
+				self.inner.leaf_alias()
+			}
+		}
+
+		impl #orm_crate::relations::RelationTarget for #struct_name {
+			type Path<Root: #orm_crate::Model> = #wrapper_name<Root>;
+
+			fn wrap_relation_path<Root: #orm_crate::Model>(
+				path: #orm_crate::relations::RelationPath<Root, Self>,
+			) -> Self::Path<Root> {
+				#wrapper_name::new(path)
+			}
+		}
+
+		#(#relation_methods)*
+	}
+}
+
 /// Generate accessor methods for ManyToMany relationships.
 ///
 /// The generated accessor method internally calls `ManyToManyAccessor::new()`
@@ -1828,6 +2079,7 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	make_fields_private(&mut input);
 
 	let struct_name = &input.ident;
+	let struct_vis = &input.vis;
 
 	let generics = &input.generics;
 	let where_clause = &generics.where_clause;
@@ -2216,6 +2468,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	// Generate field accessor methods
 	let field_accessors = generate_field_accessors(struct_name, &field_infos);
 
+	// Generate typed relation traversal methods
+	let relation_traversal_accessors =
+		generate_relation_traversal_accessors(struct_name, struct_vis, &field_infos);
+
 	// Generate ManyToMany accessor methods
 	let m2m_accessor_methods = generate_m2m_accessor_methods(struct_name, &field_infos);
 
@@ -2321,6 +2577,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			// Generate field accessor methods for type-safe field references
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			#field_accessors
+
+			// Generate typed relation traversal accessors
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+			#relation_traversal_accessors
 
 			// Generate ManyToMany accessor methods
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]

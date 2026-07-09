@@ -120,6 +120,18 @@ pub mod db {
 			}
 		}
 
+		impl<T> Default for OneToOneField<T> {
+			fn default() -> Self {
+				Self(core::marker::PhantomData)
+			}
+		}
+
+		impl<Source, Target> Default for ManyToManyField<Source, Target> {
+			fn default() -> Self {
+				Self(core::marker::PhantomData)
+			}
+		}
+
 		impl<T> PartialEq for ForeignKeyField<T> {
 			fn eq(&self, _other: &Self) -> bool {
 				true
@@ -127,6 +139,22 @@ pub mod db {
 		}
 
 		impl<T> Eq for ForeignKeyField<T> {}
+
+		impl<T> PartialEq for OneToOneField<T> {
+			fn eq(&self, _other: &Self) -> bool {
+				true
+			}
+		}
+
+		impl<T> Eq for OneToOneField<T> {}
+
+		impl<Source, Target> PartialEq for ManyToManyField<Source, Target> {
+			fn eq(&self, _other: &Self) -> bool {
+				true
+			}
+		}
+
+		impl<Source, Target> Eq for ManyToManyField<Source, Target> {}
 	}
 
 	pub mod orm {
@@ -214,6 +242,22 @@ pub mod db {
 			}
 		}
 
+		pub struct ManyToManyAccessor<Source, Target> {
+			_marker: core::marker::PhantomData<(Source, Target)>,
+		}
+
+		impl<Source, Target> ManyToManyAccessor<Source, Target> {
+			pub const fn new(
+				_source: &Source,
+				_field_name: &'static str,
+				_db: connection::DatabaseConnection,
+			) -> Self {
+				Self {
+					_marker: core::marker::PhantomData,
+				}
+			}
+		}
+
 		pub mod relationship {
 			#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 			pub enum RelationshipType {
@@ -239,9 +283,148 @@ pub mod db {
 					}
 				}
 
+				pub const fn name(&self) -> &'static str {
+					self.name
+				}
+
 				pub fn eq(self, _value: impl Into<String>) -> bool {
 					true
 				}
+			}
+		}
+
+		pub mod relations {
+			use super::Model;
+
+			#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+			pub enum RelationJoinKind {
+				Inner,
+				Left,
+			}
+
+			#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+			pub struct RelationStep {
+				pub name: &'static str,
+				pub source_table: &'static str,
+				pub target_table: &'static str,
+				pub source_column: &'static str,
+				pub target_column: &'static str,
+				pub default_join_kind: RelationJoinKind,
+			}
+
+			pub trait RelationDescriptor {
+				type Source: Model;
+				type Target: Model;
+
+				fn steps() -> Vec<RelationStep>;
+			}
+
+			pub trait RelationPathLike {
+				type Root: Model;
+				type Target: Model;
+
+				fn steps(&self) -> &[RelationStep];
+				fn join_kind(&self) -> RelationJoinKind;
+				fn leaf_alias(&self) -> &str;
+			}
+
+			pub struct RelationPath<Root: Model, Target: Model> {
+				steps: Vec<RelationStep>,
+				join_kind: RelationJoinKind,
+				_marker: core::marker::PhantomData<(Root, Target)>,
+			}
+
+			impl<Root: Model, Target: Model> RelationPath<Root, Target> {
+				pub fn from_descriptor<D>() -> Self
+				where
+					D: RelationDescriptor<Source = Root, Target = Target>,
+				{
+					Self {
+						steps: D::steps(),
+						join_kind: RelationJoinKind::Inner,
+						_marker: core::marker::PhantomData,
+					}
+				}
+
+				pub fn optional(mut self) -> Self {
+					self.join_kind = RelationJoinKind::Left;
+					self
+				}
+
+				pub fn then<D, Next>(self) -> RelationPath<Root, Next>
+				where
+					D: RelationDescriptor<Source = Target, Target = Next>,
+					Next: Model,
+				{
+					RelationPath {
+						steps: D::steps(),
+						join_kind: self.join_kind,
+						_marker: core::marker::PhantomData,
+					}
+				}
+
+				pub fn field<Value>(
+					self,
+					field: super::expressions::FieldRef<Target, Value>,
+				) -> RelatedFieldRef<Root, Target, Value> {
+					RelatedFieldRef {
+						field: field.name(),
+						_path: self,
+						_marker: core::marker::PhantomData,
+					}
+				}
+			}
+
+			impl<Root: Model, Target: Model> RelationPathLike for RelationPath<Root, Target> {
+				type Root = Root;
+				type Target = Target;
+
+				fn steps(&self) -> &[RelationStep] {
+					&self.steps
+				}
+
+				fn join_kind(&self) -> RelationJoinKind {
+					self.join_kind
+				}
+
+				fn leaf_alias(&self) -> &str {
+					self.steps
+						.last()
+						.map(|step| step.name)
+						.unwrap_or(Target::table_name())
+				}
+			}
+
+			pub struct RelatedFieldRef<Root: Model, Target: Model, Value> {
+				field: &'static str,
+				_path: RelationPath<Root, Target>,
+				_marker: core::marker::PhantomData<Value>,
+			}
+
+			impl<Root: Model, Target: Model, Value> RelatedFieldRef<Root, Target, Value> {
+				pub fn name(&self) -> &'static str {
+					self.field
+				}
+
+				pub fn eq(self, _value: impl Into<String>) -> bool {
+					true
+				}
+
+				pub fn icontains(self, _value: impl Into<String>) -> bool {
+					true
+				}
+
+				pub fn is_null(self) -> bool {
+					true
+				}
+			}
+
+			pub trait RelationTarget: Model {
+				type Path<Root: Model>: RelationPathLike<Root = Root, Target = Self>;
+
+				fn wrap_relation_path<Root: Model>(path: RelationPath<Root, Self>) -> Self::Path<Root>
+				where
+					Self: Sized;
 			}
 		}
 
