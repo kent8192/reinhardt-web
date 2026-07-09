@@ -20,6 +20,8 @@ pub struct CommandContext {
 	pub options: HashMap<String, Vec<String>>,
 	/// Verbosity level (0 = quiet, higher = more output).
 	pub verbosity: u8,
+	/// Suppress stdout-oriented command status output.
+	pub suppress_output: bool,
 	/// Optional reference to the already-composed application settings.
 	pub settings: Option<Arc<dyn HasCommonSettings>>,
 }
@@ -31,6 +33,7 @@ impl std::fmt::Debug for CommandContext {
 			.field("args", &self.args)
 			.field("options", &self.options)
 			.field("verbosity", &self.verbosity)
+			.field("suppress_output", &self.suppress_output)
 			.field("settings", &self.settings.as_ref().map(|_| "<settings>"))
 			.finish()
 	}
@@ -43,6 +46,7 @@ impl CommandContext {
 			args,
 			options: HashMap::new(),
 			verbosity: 0,
+			suppress_output: false,
 			settings: None,
 		}
 	}
@@ -91,12 +95,16 @@ impl CommandContext {
 
 	/// Prints an informational message to stdout.
 	pub fn info(&self, message: &str) {
-		println!("[INFO] {}", message);
+		if !self.suppress_output {
+			println!("[INFO] {}", message);
+		}
 	}
 
 	/// Prints a success message to stdout.
 	pub fn success(&self, message: &str) {
-		println!("[SUCCESS] {}", message);
+		if !self.suppress_output {
+			println!("[SUCCESS] {}", message);
+		}
 	}
 
 	/// Prints a warning message to stderr.
@@ -106,7 +114,9 @@ impl CommandContext {
 
 	/// Prints a verbose message to stdout.
 	pub fn verbose(&self, message: &str) {
-		println!("[VERBOSE] {}", message);
+		if !self.suppress_output {
+			println!("[VERBOSE] {}", message);
+		}
 	}
 
 	/// Prints an error message to stderr.
@@ -254,6 +264,7 @@ mod tests {
 		assert_eq!(ctx.args[1], "arg2");
 		assert!(ctx.options.is_empty());
 		assert_eq!(ctx.verbosity, 0);
+		assert!(!ctx.suppress_output);
 		assert!(ctx.settings.is_none());
 	}
 

@@ -106,7 +106,6 @@ pub mod expressions;
 /// Fields module.
 pub mod fields;
 /// Fixture loading and dumping module.
-#[cfg(feature = "migrations")]
 pub mod fixtures;
 /// Functions module.
 pub mod functions;

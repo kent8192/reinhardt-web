@@ -336,7 +336,16 @@ impl TestDom {
 				self.append_page(anchor, render());
 			}
 			Page::Suspense(node) => {
-				self.append_page(parent, node.render_branch());
+				let render: Rc<dyn Fn() -> Page + 'static> = Rc::new(move || node.render_branch());
+				let anchor = self.push_node(
+					parent,
+					TestNode::ReactiveAnchor {
+						children: Vec::new(),
+						parent: Some(parent),
+						render: Rc::clone(&render),
+					},
+				);
+				self.append_page(anchor, render());
 			}
 			Page::Deferred(node) => {
 				self.append_page(parent, node.content());

@@ -778,7 +778,7 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Convert serde_json::Value to reinhardt_query::value::Value for parameter binding
-	fn json_to_sea_value(v: &serde_json::Value) -> reinhardt_query::value::Value {
+	pub(crate) fn json_to_sea_value(v: &serde_json::Value) -> reinhardt_query::value::Value {
 		match v {
 			serde_json::Value::Null => reinhardt_query::value::Value::Int(None),
 			serde_json::Value::Bool(b) => reinhardt_query::value::Value::Bool(Some(*b)),
@@ -844,7 +844,9 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Convert reinhardt_query::value::Value to QueryValue for database parameter binding
-	fn sea_value_to_query_value(v: reinhardt_query::value::Value) -> super::connection::QueryValue {
+	pub(crate) fn sea_value_to_query_value(
+		v: reinhardt_query::value::Value,
+	) -> super::connection::QueryValue {
 		use super::connection::QueryValue;
 
 		match v {

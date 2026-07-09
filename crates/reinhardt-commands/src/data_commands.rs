@@ -115,17 +115,27 @@ pub async fn execute_seed(
 	let requested = app_labels
 		.into_iter()
 		.collect::<std::collections::HashSet<_>>();
-	let hooks = collect_seed_hooks()
+	let registrations = collect_seed_hooks();
+	let registered = registrations
+		.iter()
+		.map(|registration| registration.app_label)
+		.collect::<std::collections::HashSet<_>>();
+	let mut unknown = requested
+		.iter()
+		.filter(|label| !registered.contains(label.as_str()))
+		.cloned()
+		.collect::<Vec<_>>();
+	unknown.sort();
+	if !unknown.is_empty() {
+		return Err(Box::new(CommandError::InvalidArguments(format!(
+			"no seed hooks registered for {}",
+			unknown.join(", ")
+		))));
+	}
+	let hooks = registrations
 		.into_iter()
 		.filter(|registration| requested.is_empty() || requested.contains(registration.app_label))
 		.collect::<Vec<_>>();
-
-	if hooks.is_empty() && !requested.is_empty() {
-		return Err(Box::new(CommandError::InvalidArguments(format!(
-			"no seed hooks registered for {}",
-			requested.into_iter().collect::<Vec<_>>().join(", ")
-		))));
-	}
 
 	for registration in hooks {
 		let hook = (registration.hook)();
@@ -159,5 +169,24 @@ mod tests {
 		let ctx = SeedContext::new(2, None);
 
 		hook.seed(&ctx).await.unwrap();
+	}
+
+	inventory::submit! {
+		SeedHookRegistration {
+			app_label: "example",
+			hook: || Box::new(ExampleSeedHook),
+		}
+	}
+
+	#[tokio::test]
+	async fn seed_rejects_unknown_labels_even_when_other_labels_match() {
+		let error = execute_seed(vec!["example".to_string(), "missing".to_string()], 0, None)
+			.await
+			.unwrap_err();
+
+		assert_eq!(
+			error.to_string(),
+			"Invalid arguments: no seed hooks registered for missing"
+		);
 	}
 }

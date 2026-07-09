@@ -194,6 +194,11 @@ cargo run --bin manage runserver
 `dumpdata` and `loaddata` use Django-compatible JSON records with
 `model`, `pk`, and `fields` keys. Model labels use the
 `app_label.ModelName` form registered by `#[model(...)]`.
+`dumpdata` keeps stdout as machine-readable JSON. `loaddata` loads fixtures
+inside one transaction, upserts rows by explicit primary key, preserves
+explicit `null` values, accepts Django-style foreign key field names, includes
+many-to-many fixture arrays, and resets PostgreSQL sequences after explicit
+integer primary keys.
 
 ```bash
 # Export all registered fixture models.
@@ -208,7 +213,8 @@ cargo run --bin manage loaddata fixtures/dev.json
 ```
 
 The `seed` command runs registered idempotent seed hooks. Omit app labels to
-run every registered hook, or pass app labels to seed a subset.
+run every registered hook, or pass app labels to seed a subset. Every requested
+app label must have a registered hook.
 
 ```bash
 cargo run --bin manage seed

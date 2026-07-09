@@ -240,6 +240,8 @@ For a complete list of field attributes, see the `#[field(...)]` macro documenta
 - Type-safe field accessors (`User::field_username()`, `User::field_email()`, etc.)
 - Global model registry registration
 - Model fixture handler registration for `dumpdata` and `loaddata`
+- Django-compatible fixture upserts with explicit null, foreign key, many-to-many,
+  and PostgreSQL sequence handling
 - Support for composite primary keys
 
 ### Query with QuerySet

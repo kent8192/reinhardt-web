@@ -11,7 +11,7 @@
 //! - **Command Registry**: Automatic command discovery
 //! - **Interactive Mode**: Support for interactive prompts
 //! - **Colored Output**: Rich terminal output
-//! - **Data Fixtures**: Django-compatible `dumpdata`, `loaddata`, and seed hooks
+//! - **Data Fixtures**: Django-compatible `dumpdata`, transaction-safe `loaddata`, and seed hooks
 //! - **AST-Based Code Generation**: Robust code generation using Abstract Syntax Trees
 //! - **Auto-Reload**: Built-in hot-reload for the development server (server + wasm)
 //! - **Tera Template Engine**: Powerful template rendering for project/app generation

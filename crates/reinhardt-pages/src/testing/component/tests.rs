@@ -143,6 +143,26 @@ fn suspense_nodes_render_the_active_branch() {
 	assert!(resolved.query_by_text("Loading").is_none());
 }
 
+#[tokio::test]
+async fn suspense_nodes_rerender_the_active_branch_after_settle() {
+	let pending = Signal::new(true);
+	let pending_for_check = pending.clone();
+	let screen = render(Page::Suspense(SuspenseNode::new(
+		None,
+		move || pending_for_check.get(),
+		|| PageElement::new("span").child("Loading").into_page(),
+		|| PageElement::new("span").child("Loaded").into_page(),
+	)));
+
+	assert_eq!(screen.get_by_text("Loading").tag_name(), "span");
+
+	pending.set(false);
+	screen.settle().await;
+
+	assert!(screen.query_by_text("Loading").is_none());
+	assert_eq!(screen.get_by_text("Loaded").tag_name(), "span");
+}
+
 #[test]
 fn deferred_nodes_render_content_branch() {
 	let screen = render(Page::Deferred(DeferredNode::new(
