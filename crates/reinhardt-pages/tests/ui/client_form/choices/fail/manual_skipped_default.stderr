@@ -1,0 +1,5 @@
+error: ClientFormChoices enums with serde-skipped variants must mark a non-skipped #[default] variant
+ --> tests/ui/client_form/choices/fail/manual_skipped_default.rs:4:6
+  |
+4 | enum ProviderMode {
+  |      ^^^^^^^^^^^^

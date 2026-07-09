@@ -1,0 +1,5 @@
+error: ClientForm server_fn fields must not use serde(skip), serde(skip_serializing), serde(skip_serializing_if), or serde(skip_deserializing)
+  --> tests/ui/client_form/fail/server_fn_submit_skip.rs:11:2
+   |
+11 |     tenant: String,
+   |     ^^^^^^

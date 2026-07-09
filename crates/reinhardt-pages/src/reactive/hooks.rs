@@ -73,9 +73,8 @@
 //!         let count = count.clone();
 //!         move || {
 //!             log!("Count changed to: {}", count.get());
-//!             None::<fn()>
 //!         }
-//!     });
+//!     }, (count.clone(),));
 //!
 //!     page!(|| {
 //!         div {
@@ -111,7 +110,7 @@ pub use action::{OptimisticState, use_optimistic};
 pub use async_action::{Action, ActionPhase, ActionStateBuilder, use_action, use_action_state};
 pub use context::use_context;
 pub use debug::use_debug_value;
-pub use effect::{use_effect, use_layout_effect};
+pub use effect::{EffectReturn, use_effect, use_layout_effect};
 pub use id::use_id;
 pub use memo::{use_callback, use_callback_with, use_memo};
 pub use refs::{Ref, use_ref};
