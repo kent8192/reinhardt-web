@@ -14,15 +14,14 @@ use std::rc::Rc;
 /// ## Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::hooks::{use_ref, use_effect};
+/// use reinhardt_pages::reactive::hooks::{use_effect, use_ref};
 ///
 /// let render_count = use_ref(0);
 ///
 /// use_effect(move || {
 ///     // Increment without triggering reactivity
 ///     *render_count.current_mut() += 1;
-///     None::<fn()>
-/// });
+/// }, ());
 /// ```
 pub struct Ref<T: 'static> {
 	inner: Rc<RefCell<T>>,
