@@ -157,6 +157,7 @@ impl ReactiveIfNode {
 		let last_condition_clone = last_condition.clone();
 		let marker_clone = marker.clone();
 		let effect_reactive_node_store = current_reactive_node_store();
+		let branch_reactive_node_store = new_reactive_node_store();
 
 		// Create the Effect that will re-run when condition dependencies change
 		let effect = Effect::new_with_timing(
@@ -174,6 +175,8 @@ impl ReactiveIfNode {
 					*last = Some(new_condition);
 					drop(last);
 
+					clear_reactive_node_store(&branch_reactive_node_store);
+
 					// Refs #5100: remove old nodes before mounting the replacement view. The
 					// mount path may synchronously run layout effects, so do not
 					// hold this RefCell borrow across `mount_before_marker`.
@@ -187,15 +190,17 @@ impl ReactiveIfNode {
 						}
 					}
 
-					// Generate the appropriate view
-					let view = if new_condition {
-						then_view()
-					} else {
-						else_view()
-					};
+					let new_nodes = with_reactive_node_store(&branch_reactive_node_store, || {
+						// Generate the appropriate view
+						let view = if new_condition {
+							then_view()
+						} else {
+							else_view()
+						};
 
-					// Mount new nodes before the marker
-					let new_nodes = mount_before_marker(&marker_clone, view);
+						// Mount new nodes before the marker
+						mount_before_marker(&marker_clone, view)
+					});
 					*current_nodes_clone.borrow_mut() = new_nodes;
 				});
 			},
@@ -261,13 +266,19 @@ impl ReactiveNode {
 		let current_nodes_clone = current_nodes.clone();
 		let marker_clone = marker.clone();
 		let effect_reactive_node_store = current_reactive_node_store();
+		let render_reactive_node_store = new_reactive_node_store();
+		let mount_reactive_node_store = new_reactive_node_store();
 
 		// Create the Effect that will re-run when dependencies change
 		let effect = Effect::new_with_timing(
 			move || {
 				with_reactive_node_store(&effect_reactive_node_store, || {
-					// Render the view (this tracks Signal dependencies)
-					let view = render();
+					clear_reactive_node_store(&render_reactive_node_store);
+
+					let view = with_reactive_node_store(&render_reactive_node_store, || {
+						// Render the view (this tracks Signal dependencies)
+						render()
+					});
 
 					if update_activity_boundary_attrs(&current_nodes_clone, &view) {
 						return;
@@ -286,8 +297,12 @@ impl ReactiveNode {
 						}
 					}
 
+					clear_reactive_node_store(&mount_reactive_node_store);
+
 					// Mount new nodes before the marker
-					let new_nodes = mount_before_marker(&marker_clone, view);
+					let new_nodes = with_reactive_node_store(&mount_reactive_node_store, || {
+						mount_before_marker(&marker_clone, view)
+					});
 					*current_nodes_clone.borrow_mut() = new_nodes;
 				});
 			},

@@ -7,6 +7,8 @@
 //! effect should be registered without manually keeping the returned guard.
 
 use reinhardt_core::reactive::deps::IntoDeps;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use crate::reactive::{Effect, runtime::EffectTiming};
 
@@ -119,7 +121,7 @@ where
 	C: FnOnce() + 'static,
 	D: IntoDeps,
 {
-	retain_effect(use_effect(f, deps));
+	retain_effect(|| use_effect(f, deps));
 }
 
 /// Runs a side effect synchronously before browser paint when any listed
@@ -181,17 +183,64 @@ where
 /// This is the retained companion to [`use_layout_effect`]. It keeps the
 /// underlying [`Effect`] alive in the active mounted view store and disposes
 /// it automatically when that store is cleared.
+///
+/// On native targets there is no DOM mount scope, so retained layout effects
+/// are held in the root reactive store until [`cleanup_reactive_nodes`] is
+/// called by tests or host code.
+///
+/// # Example
+///
+/// ```ignore
+/// use reinhardt_pages::reactive::{
+///     Signal,
+///     hooks::{use_ref, use_retained_layout_effect},
+/// };
+///
+/// let element_ref = use_ref(None::<Element>);
+/// let width = Signal::new(0);
+///
+/// use_retained_layout_effect(
+///     {
+///         let element_ref = element_ref.clone();
+///         let width = width.clone();
+///         move || {
+///             if let Some(el) = element_ref.current().as_ref() {
+///                 width.set(el.offset_width());
+///             }
+///             None::<fn()>
+///         }
+///     },
+///     (element_ref.clone(),),
+/// );
+/// ```
+///
+/// [`cleanup_reactive_nodes`]: crate::component::cleanup_reactive_nodes
 pub fn use_retained_layout_effect<F, C, D>(f: F, deps: D)
 where
 	F: FnMut() -> Option<C> + 'static,
 	C: FnOnce() + 'static,
 	D: IntoDeps,
 {
-	retain_effect(use_layout_effect(f, deps));
+	retain_effect(|| use_layout_effect(f, deps));
 }
 
-fn retain_effect(effect: Effect) {
-	crate::component::reactive_if::store_reactive_node(effect);
+struct RetainedEffect {
+	effect: Rc<RefCell<Option<Effect>>>,
+}
+
+impl Drop for RetainedEffect {
+	fn drop(&mut self) {
+		self.effect.borrow_mut().take();
+	}
+}
+
+fn retain_effect(create_effect: impl FnOnce() -> Effect) {
+	let effect = Rc::new(RefCell::new(None));
+	crate::component::reactive_if::store_reactive_node(RetainedEffect {
+		effect: Rc::clone(&effect),
+	});
+	let created = create_effect();
+	*effect.borrow_mut() = Some(created);
 }
 
 #[cfg(test)]
@@ -443,6 +492,32 @@ mod tests {
 			*log.borrow(),
 			vec!["run", "cleanup"],
 			"scope clear must drop the stored Effect guard and run cleanup"
+		);
+	}
+
+	#[rstest::rstest]
+	#[serial]
+	fn test_use_retained_effect_runs_cleanup_when_scope_clears_during_initial_run() {
+		cleanup_reactive_nodes();
+		let log = Rc::new(RefCell::new(Vec::new()));
+
+		use_retained_effect(
+			{
+				let log = Rc::clone(&log);
+				move || {
+					log.borrow_mut().push("run");
+					cleanup_reactive_nodes();
+					let log_for_cleanup = Rc::clone(&log);
+					Some(move || log_for_cleanup.borrow_mut().push("cleanup"))
+				}
+			},
+			(),
+		);
+
+		assert_eq!(
+			*log.borrow(),
+			vec!["run", "cleanup"],
+			"retained effect cleanup must run when the owning scope clears during initial execution"
 		);
 	}
 
