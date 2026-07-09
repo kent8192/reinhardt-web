@@ -39,7 +39,7 @@
 //!
 //! ## FastAPI-Style Pattern
 //!
-//! Similar to FastAPI's `KeyedDepends()`, these fixtures enable clean dependency injection
+//! Similar to FastAPI's `Depends()`, these fixtures enable clean dependency injection
 //! in tests without boilerplate setup code:
 //!
 //! ```rust,no_run

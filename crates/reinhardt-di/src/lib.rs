@@ -112,7 +112,9 @@
 //! When the `params` feature is enabled, optional request and param context can
 //! be added:
 //!
-//! ```rust,ignore
+//! ```rust,no_run
+//! # #[cfg(feature = "params")]
+//! # fn main() {
 //! use reinhardt_di::{InjectionContext, Request, SingletonScope};
 //! use std::sync::Arc;
 //!
@@ -131,6 +133,9 @@
 //! let ctx = InjectionContext::builder(singleton)
 //!     .with_request(request)
 //!     .build();
+//! # }
+//! # #[cfg(not(feature = "params"))]
+//! # fn main() {}
 //! ```
 //!
 //! ## Resolve Context
@@ -142,24 +147,11 @@
 //! This enables factories to access the DI context for purposes like
 //! passing it to downstream consumers:
 //!
-//! ```rust,ignore
-//! use reinhardt_di::{
-//!     ContextLevel, InjectableKey, KeyedDepends, KeyedFactoryOutput, get_di_context,
-//! };
-//!
-//! struct AppConfigKey;
-//! impl InjectableKey for AppConfigKey {}
-//! struct RouterKey;
-//! impl InjectableKey for RouterKey {}
-//!
-//! #[injectable(scope = "transient")]
-//! async fn make_router(
-//!     #[inject] config: KeyedDepends<AppConfigKey, AppConfig>,
-//! ) -> KeyedFactoryOutput<RouterKey, Router> {
-//!     let di_ctx = get_di_context(ContextLevel::Current);
-//!     KeyedFactoryOutput::new(Router::new().with_di_context(di_ctx))
-//! }
-//! ```
+//! For example, an `#[injectable]` provider can accept
+//! `KeyedDepends<AppConfigKey, AppConfig>`, call
+//! `get_di_context(ContextLevel::Current)`, and return
+//! `KeyedFactoryOutput<RouterKey, Router>` after attaching the context to the
+//! constructed router.
 //!
 //! [`ContextLevel::Root`] returns the application-level context, while
 //! [`ContextLevel::Current`] returns the currently active context
@@ -324,6 +316,8 @@ pub use cycle_detection::{
 	current_dependent_scope, register_type_name, with_cycle_detection_scope,
 };
 // FactoryOutput remains re-exported as deprecated compatibility API.
+// Keep the deprecated re-export available while migration code moves to
+// KeyedFactoryOutput.
 #[allow(deprecated)]
 pub use factory_output::{FactoryOutput, KeyedFactoryOutput};
 pub use function_handle::FunctionHandle;

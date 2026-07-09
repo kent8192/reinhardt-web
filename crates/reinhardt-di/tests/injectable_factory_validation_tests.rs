@@ -1,4 +1,6 @@
 #![cfg(feature = "macros")]
+// Exercises the deprecated `FactoryOutput` alias to verify it still resolves
+// to the same registry entry as `KeyedFactoryOutput`.
 #![allow(deprecated)]
 
 use reinhardt_di::{
@@ -35,7 +37,6 @@ struct MacroAliasConfigKey;
 
 impl InjectableKey for MacroAliasConfigKey {}
 
-#[allow(deprecated)]
 #[injectable(scope = "singleton")]
 async fn macro_alias_config() -> FactoryOutput<MacroAliasConfigKey, MacroAliasConfig> {
 	FactoryOutput::new(MacroAliasConfig)

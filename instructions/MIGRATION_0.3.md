@@ -61,8 +61,8 @@ changes.
 | `reinhardt-pages` | `use_effect_event_with(f, deps)` | `use_callback_with(f, deps)` or `.get_untracked()` inside the effect |
 | `reinhardt-urls` | `ServerRouter::function`, `ServerRouter::route`, `ServerRouter::handler_with_method`, and named variants | `#[get]` / `#[post]` / endpoint macros plus `.endpoint(factory)` |
 | `reinhardt-urls` | `FunctionHandler` public re-export | endpoint-generated handler types or a custom `Handler` type registered with `.view(...)` |
-| `reinhardt-di` | value-type-only provider identity for provider functions | Direct provider returns with `Depends<T>`, or `KeyedFactoryOutput<K, T>` with `KeyedDepends<K, T>` |
-| `reinhardt-di` | `DependsResult` / `DependsOption` sugar aliases | `Depends<Result<T, E>>` / `Depends<Option<T>>` for self-keyed values, or `KeyedDepends<K, Result<T, E>>` / `KeyedDepends<K, Option<T>>` for explicit keys |
+| `reinhardt-di` | value-type-only provider identity for provider functions | Direct provider returns `T` with `Depends<T>` at injection sites, or `KeyedFactoryOutput<K, T>` with `KeyedDepends<K, T>` for explicit keys |
+| `reinhardt-di` | `DependsResult` / `DependsOption` sugar aliases | `Depends<Result<T, E>>` / `Depends<Option<T>>` at injection sites for self-keyed provider values, or `KeyedDepends<K, Result<T, E>>` / `KeyedDepends<K, Option<T>>` for explicit keys |
 
 Quick scan:
 

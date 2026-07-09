@@ -104,21 +104,20 @@ where
 
 /// Blanket implementation of Injectable for `KeyedDepends<K, T>`
 ///
-/// This allows using `KeyedDepends<K, T>` directly in endpoint handlers with `#[inject]`:
+/// Endpoint macros can resolve `KeyedDepends<K, T>` parameters marked with
+/// `#[inject]`. The parameter type itself can be documented directly:
 ///
-/// ```ignore
-/// # use reinhardt_di::{Injectable, InjectableKey, KeyedDepends};
+/// ```rust,no_run
+/// # use reinhardt_di::{InjectableKey, KeyedDepends};
 /// # struct DatabaseConnectionKey;
 /// # impl InjectableKey for DatabaseConnectionKey {}
 /// # struct DatabaseConnection;
 /// # struct Response;
 /// # type ViewResult<T> = Result<T, Box<dyn std::error::Error>>;
-/// # use reinhardt_core::endpoint;
-/// #[endpoint]
 /// async fn handler(
-///     #[inject] db: KeyedDepends<DatabaseConnectionKey, DatabaseConnection>,
+///     db: KeyedDepends<DatabaseConnectionKey, DatabaseConnection>,
 /// ) -> ViewResult<Response> {
-///     // ...
+///     let _ = db;
 /// #   Ok(Response)
 /// }
 /// ```
