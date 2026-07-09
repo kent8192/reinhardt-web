@@ -64,11 +64,7 @@ impl<T, E> Clone for QueryKey<T, E> {
 	}
 }
 
-impl<T, E> QueryKey<T, E>
-where
-	T: Clone + 'static,
-	E: Clone + 'static,
-{
+impl<T, E> QueryKey<T, E> {
 	/// Creates a typed query key from an explicit cache ID and fetcher.
 	pub fn new<Id, F, Fut>(id: Id, fetcher: F) -> Self
 	where

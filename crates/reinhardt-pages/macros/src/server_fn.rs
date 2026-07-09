@@ -1350,8 +1350,9 @@ fn generate_server_handler(
 	// `reinhardt-web/msw`) so that `MockableServerFn` is in scope.
 	let msw_enabled = cfg!(feature = "msw");
 
-	// MSW: Extract the Ok type from Result<T, ServerFnError> for MockableServerFn::Response
+	// MSW/query helpers need the Ok and Err types from Result<T, E>.
 	let response_type = extract_result_ok_type(return_type);
+	let error_type = extract_result_err_type(return_type);
 
 	// Convert inject param names to string literals for INJECTED_PARAMS const
 	let inject_param_name_strs: Vec<String> = inject_params
@@ -1383,21 +1384,21 @@ fn generate_server_handler(
 		.iter()
 		.map(|ty| quote! { #ty: ::std::clone::Clone + ::serde::Serialize + 'static })
 		.collect();
-	let query_response_bound = quote! { #response_type: ::std::clone::Clone + 'static };
-	let key_where_clause = quote! {
-		where
-			#query_response_bound,
-			#(#query_param_bounds,)*
+	let key_where_clause = if query_param_bounds.is_empty() {
+		quote! {}
+	} else {
+		quote! {
+			where
+				#(#query_param_bounds,)*
+		}
 	};
 	let native_query_call = if has_inject_or_extractor {
 		quote! {
-			::std::result::Result::Err(
-				#pages_crate::server_fn::ServerFnError::network(
-					concat!(
-						"server function `",
-						#name_str,
-						"` query cannot run natively because it has injected or extractor parameters",
-					),
+			::std::panic!(
+				concat!(
+					"server function `",
+					#name_str,
+					"` query cannot run natively because it has injected or extractor parameters",
 				),
 			)
 		}
@@ -1406,33 +1407,58 @@ fn generate_server_handler(
 			super::#name(#(#regular_param_idents),*).await
 		}
 	};
+	let query_fetcher = if has_inject_or_extractor {
+		quote! {
+			move || {
+				#(
+					#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+					let #regular_param_idents = #regular_param_idents.clone();
+				)*
+				async move {
+					#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+					{
+						super::#name(#(#regular_param_idents),*).await
+					}
+
+					#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+					{
+						#native_query_call
+					}
+				}
+			}
+		}
+	} else {
+		quote! {
+			move || {
+				#(let #regular_param_idents = #regular_param_idents.clone();)*
+				async move {
+					#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+					{
+						super::#name(#(#regular_param_idents),*).await
+					}
+
+					#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+					{
+						#native_query_call
+					}
+				}
+			}
+		}
+	};
 	let query_key_tokens = quote! {
 		/// Builds a typed cache key for this server function and argument set.
 		pub fn key(
 			#(#regular_param_idents: #regular_param_types),*
 		) -> #pages_crate::reactive::QueryKey<
 			#response_type,
-			#pages_crate::server_fn::ServerFnError,
+			#error_type,
 		>
 		#key_where_clause
 		{
 			let __query_args = (#(#regular_param_idents.clone(),)*);
 			#pages_crate::reactive::QueryKey::from_server_fn::<marker, _, _, _>(
 				__query_args,
-				move || {
-					#(let #regular_param_idents = #regular_param_idents.clone();)*
-					async move {
-						#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-						{
-							super::#name(#(#regular_param_idents),*).await
-						}
-
-						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-						{
-							#native_query_call
-						}
-					}
-				},
+				#query_fetcher,
 			)
 		}
 
@@ -1444,7 +1470,7 @@ fn generate_server_handler(
 				#(#regular_param_idents: #regular_param_types),*
 			) -> #pages_crate::reactive::QueryKey<
 				#response_type,
-				#pages_crate::server_fn::ServerFnError,
+				#error_type,
 			>
 			#key_where_clause;
 		}
@@ -1455,10 +1481,9 @@ fn generate_server_handler(
 			Fut: ::std::future::Future<
 					Output = ::std::result::Result<
 						#response_type,
-						#pages_crate::server_fn::ServerFnError,
+						#error_type,
 					>,
 				> + 'static,
-			#query_response_bound,
 			#(#query_param_bounds,)*
 		{
 			fn key(
@@ -1466,7 +1491,7 @@ fn generate_server_handler(
 				#(#regular_param_idents: #regular_param_types),*
 			) -> #pages_crate::reactive::QueryKey<
 				#response_type,
-				#pages_crate::server_fn::ServerFnError,
+				#error_type,
 			> {
 				let _ = self;
 				key(#(#regular_param_idents),*)
@@ -1756,6 +1781,23 @@ fn extract_result_ok_type(return_type: &syn::Type) -> proc_macro2::TokenStream {
 	}
 	// Fallback: use the full type
 	quote! { #return_type }
+}
+
+/// Extracts the second generic argument `E` from `Result<T, E>`.
+///
+/// Given `Result<User, ServerFnError>`, returns the token stream for `ServerFnError`.
+/// Falls back to the framework error type if it cannot be parsed as `Result<T, E>`.
+fn extract_result_err_type(return_type: &syn::Type) -> proc_macro2::TokenStream {
+	if let syn::Type::Path(type_path) = return_type
+		&& let Some(segment) = type_path.path.segments.last()
+		&& segment.ident == "Result"
+		&& let syn::PathArguments::AngleBracketed(args) = &segment.arguments
+		&& let Some(syn::GenericArgument::Type(err_type)) = args.args.iter().nth(1)
+	{
+		return quote! { #err_type };
+	}
+	let pages_crate = get_reinhardt_pages_crate();
+	quote! { #pages_crate::server_fn::ServerFnError }
 }
 
 #[cfg(test)]
