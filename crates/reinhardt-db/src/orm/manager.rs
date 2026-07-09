@@ -196,6 +196,19 @@ impl<M: Model> Manager<M> {
 		M::generated_field_names().contains(&field)
 	}
 
+	fn returning_columns_from_object(
+		obj: &serde_json::Map<String, serde_json::Value>,
+	) -> Vec<Alias> {
+		let primary_key = M::primary_key_field();
+		let mut columns: Vec<&str> = obj.keys().map(String::as_str).collect();
+		columns.sort_unstable();
+		if let Some(index) = columns.iter().position(|column| *column == primary_key) {
+			let pk = columns.remove(index);
+			columns.insert(0, pk);
+		}
+		columns.into_iter().map(Alias::new).collect()
+	}
+
 	fn build_update_statement_from_object(
 		pk: &M::PrimaryKey,
 		obj: &serde_json::Map<String, serde_json::Value>,
@@ -231,8 +244,7 @@ impl<M: Model> Manager<M> {
 		};
 		stmt.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
 
-		let all_columns: Vec<_> = obj.keys().map(|k| Alias::new(k.as_str())).collect();
-		stmt.returning(all_columns);
+		stmt.returning(Self::returning_columns_from_object(obj));
 		stmt
 	}
 
@@ -803,8 +815,7 @@ impl<M: Model> Manager<M> {
 
 		// Add RETURNING clause with explicit column names from JSON object
 		// Note: Using Asterisk in columns() may not work correctly with reinhardt-query
-		let all_columns: Vec<_> = obj.keys().map(|k| Alias::new(k.as_str())).collect();
-		stmt.returning(all_columns);
+		stmt.returning(Self::returning_columns_from_object(obj));
 
 		let (sql, values) = build_insert_sql(&stmt, conn.backend());
 		let values: Vec<_> = values

@@ -777,6 +777,7 @@ impl Session {
 						// UPDATE existing record
 						let mut update_stmt =
 							RQuery::update().table(Alias::new(table_name)).to_owned();
+						let mut has_update_values = false;
 
 						// Set all columns except primary key and auto-managed datetime fields
 						for (col_name, col_value) in obj {
@@ -806,6 +807,11 @@ impl Session {
 								Alias::new(col_name),
 								json_to_reinhardt_query_value(col_value),
 							);
+							has_update_values = true;
+						}
+
+						if !has_update_values {
+							continue;
 						}
 
 						// Add WHERE clause for primary key
@@ -1474,6 +1480,51 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct GeneratedOnlyUser {
+		id: Option<i64>,
+		full_name: String,
+	}
+
+	#[derive(Debug, Clone)]
+	struct GeneratedOnlyUserFields;
+
+	impl crate::orm::model::FieldSelector for GeneratedOnlyUserFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for GeneratedOnlyUser {
+		type PrimaryKey = i64;
+		type Fields = GeneratedOnlyUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"generated_only_users"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			GeneratedOnlyUserFields
+		}
+
+		fn generated_field_names() -> &'static [&'static str] {
+			&["full_name"]
+		}
+	}
+
 	// Create test pool using SQLite in-memory database
 	async fn create_test_pool() -> Arc<AnyPool> {
 		use sqlx::pool::PoolOptions;
@@ -1579,6 +1630,27 @@ mod tests {
 		session.flush().await.unwrap();
 		assert_eq!(session.dirty_count(), 0);
 		assert_eq!(session.identity_count(), 1);
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_session_flush_generated_only_update_is_noop(_init_drivers: ()) {
+		let pool = create_test_pool().await;
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		session
+			.add(GeneratedOnlyUser {
+				id: Some(7),
+				full_name: "Computed".to_string(),
+			})
+			.await
+			.unwrap();
+		assert_eq!(session.dirty_count(), 1);
+
+		session.flush().await.unwrap();
+
+		assert_eq!(session.dirty_count(), 0);
 	}
 
 	#[rstest]

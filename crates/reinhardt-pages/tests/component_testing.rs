@@ -197,6 +197,27 @@ fn suspense_and_deferred_pages_render_component_test_branches() {
 	assert!(deferred.query_by_text("Deferred fallback").is_none());
 }
 
+#[tokio::test]
+async fn settle_rerenders_suspense_branch_changes() {
+	let pending = Rc::new(Cell::new(true));
+	let pending_for_boundary = Rc::clone(&pending);
+	let screen = render(Page::Suspense(SuspenseNode::new(
+		Some("async-boundary".to_string()),
+		move || pending_for_boundary.get(),
+		|| text_page("Loading"),
+		|| text_page("Ready"),
+	)));
+
+	assert!(screen.query_by_text("Loading").is_some());
+	assert!(screen.query_by_text("Ready").is_none());
+
+	pending.set(false);
+	screen.settle().await;
+
+	assert!(screen.query_by_text("Ready").is_some());
+	assert!(screen.query_by_text("Loading").is_none());
+}
+
 #[test]
 fn role_queries_follow_fallback_tokens_and_input_rules() {
 	let screen = render(Page::fragment([

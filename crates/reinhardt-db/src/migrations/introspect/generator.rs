@@ -6,7 +6,7 @@ use super::config::IntrospectConfig;
 use super::naming::{column_to_field_name, sanitize_identifier, table_to_struct_name};
 use super::type_mapping::TypeMapper;
 use crate::migrations::introspection::{ColumnInfo, DatabaseSchema, TableInfo};
-use crate::migrations::{MigrationError, Result};
+use crate::migrations::{GeneratedColumnDefinition, GeneratedStorage, MigrationError, Result};
 use chrono::Utc;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -364,6 +364,10 @@ impl SchemaCodeGenerator {
 			}
 		}
 
+		if let Some(generated) = column.generated.as_ref() {
+			attrs.push(Self::generated_field_attr(generated)?);
+		}
+
 		// Generate doc comment if enabled
 		let doc = if self.config.generation.include_column_comments {
 			let comment = format!("Column: `{}`", column.name);
@@ -377,6 +381,36 @@ impl SchemaCodeGenerator {
 			#(#attrs)*
 			pub #field_ident: #rust_type,
 		})
+	}
+
+	fn generated_field_attr(generated: &GeneratedColumnDefinition) -> Result<TokenStream> {
+		let storage_attr = match generated.storage {
+			GeneratedStorage::Stored => quote! { generated_stored = true },
+			GeneratedStorage::Virtual => quote! { generated_virtual = true },
+			_ => {
+				return Err(MigrationError::IntrospectionError(
+					"Unsupported generated column storage mode".to_string(),
+				));
+			}
+		};
+
+		if let Some(expr_tokens) = generated.expr_tokens.as_deref() {
+			let expr = expr_tokens.parse::<TokenStream>().map_err(|e| {
+				MigrationError::IntrospectionError(format!(
+					"Failed to parse generated expression tokens: {}",
+					e
+				))
+			})?;
+			return Ok(quote! { #[field(generated = #expr, #storage_attr)] });
+		}
+
+		if let Some(raw_sql) = generated.raw_sql.as_deref() {
+			return Ok(quote! { #[field(generated_sql = #raw_sql, #storage_attr)] });
+		}
+
+		Err(MigrationError::IntrospectionError(
+			"Generated column metadata is missing both expression tokens and raw SQL".to_string(),
+		))
 	}
 
 	/// Format TokenStream to pretty Rust code.
@@ -424,6 +458,7 @@ mod tests {
 	use super::*;
 	use crate::migrations::fields::FieldType;
 	use crate::migrations::introspection::{ColumnInfo, TableInfo, UniqueConstraintInfo};
+	use crate::migrations::{GeneratedColumnDefinition, GeneratedStorage, SchemaExpr};
 	use std::collections::HashMap;
 
 	fn create_test_table() -> TableInfo {
@@ -503,6 +538,60 @@ mod tests {
 		assert!(code.contains("pub id: i64"));
 		assert!(code.contains("pub name: String"));
 		assert!(code.contains("pub email: Option<String>"));
+	}
+
+	#[test]
+	fn test_generate_model_emits_generated_field_attributes() {
+		let config = IntrospectConfig::default().with_app_label("test");
+		let generator = SchemaCodeGenerator::new(config);
+		let mut table = create_test_table();
+		table.columns.insert(
+			"normalized_name".to_string(),
+			ColumnInfo {
+				name: "normalized_name".to_string(),
+				column_type: FieldType::VarChar(255),
+				nullable: false,
+				default: None,
+				auto_increment: false,
+				generated: Some(GeneratedColumnDefinition::raw_sql(
+					"lower(name)",
+					GeneratedStorage::Stored,
+				)),
+			},
+		);
+		table.columns.insert(
+			"name_copy".to_string(),
+			ColumnInfo {
+				name: "name_copy".to_string(),
+				column_type: FieldType::VarChar(255),
+				nullable: false,
+				default: None,
+				auto_increment: false,
+				generated: Some(GeneratedColumnDefinition::typed(
+					SchemaExpr::col("name"),
+					"SchemaExpr::col(\"name\")",
+					GeneratedStorage::Virtual,
+				)),
+			},
+		);
+		let table_to_struct: HashMap<String, String> =
+			[("users".to_string(), "Users".to_string())].into();
+		let mut schema = DatabaseSchema {
+			tables: HashMap::new(),
+		};
+		schema.tables.insert("users".to_string(), table.clone());
+
+		let tokens = generator
+			.generate_model(&table, &table_to_struct, &schema)
+			.expect("model generation should succeed");
+		let code = generator
+			.format_tokens(tokens)
+			.expect("generated model should format");
+
+		assert!(code.contains(r#"generated_sql = "lower(name)""#));
+		assert!(code.contains("generated_stored = true"));
+		assert!(code.contains(r#"generated = SchemaExpr::col("name")"#));
+		assert!(code.contains("generated_virtual = true"));
 	}
 
 	#[test]

@@ -244,7 +244,7 @@ impl MySqlQueryBuilder {
 				writer.push("CAST(");
 				self.write_schema_expr(writer, expr);
 				writer.push(" AS ");
-				writer.push(&self.column_type_to_sql(ty));
+				writer.push(&self.column_type_to_cast_sql(ty));
 				writer.push(")");
 			}
 		}
@@ -3252,6 +3252,32 @@ impl MySqlQueryBuilder {
 		}
 	}
 
+	fn column_type_to_cast_sql(&self, col_type: &crate::types::ColumnType) -> String {
+		use crate::types::ColumnType;
+		use ColumnType::*;
+
+		match col_type {
+			Char(len) => format!("CHAR({})", len.unwrap_or(1)),
+			String(Some(len)) => format!("CHAR({len})"),
+			String(None) | Text => "CHAR".to_string(),
+			TinyInteger | SmallInteger | Integer | BigInteger => "SIGNED".to_string(),
+			Float => "FLOAT".to_string(),
+			Double => "DOUBLE".to_string(),
+			Decimal(Some((precision, scale))) => format!("DECIMAL({precision}, {scale})"),
+			Decimal(None) => "DECIMAL".to_string(),
+			Boolean => "UNSIGNED".to_string(),
+			Date => "DATE".to_string(),
+			Time => "TIME".to_string(),
+			DateTime | Timestamp | TimestampWithTimeZone => "DATETIME".to_string(),
+			Binary(Some(len)) => format!("BINARY({len})"),
+			Binary(None) | Blob => "BINARY".to_string(),
+			VarBinary(len) => format!("BINARY({len})"),
+			Uuid => "CHAR(36)".to_string(),
+			Json | JsonBinary | Array(_) => "JSON".to_string(),
+			Custom(name) => name.clone(),
+		}
+	}
+
 	/// Write table constraint to SQL writer
 	fn write_table_constraint(
 		&self,
@@ -5766,6 +5792,33 @@ mod tests {
 		assert!(sql.contains(
 			"`full_name` VARCHAR(201) GENERATED ALWAYS AS (CONCAT(`first_name`, ' ', `last_name`)) STORED"
 		));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_mysql_cast_targets_in_generated_column() {
+		use crate::types::{ColumnDef, ColumnType, SchemaExpr};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.col(
+			ColumnDef::new("age_text")
+				.string_len(64)
+				.generated_stored(SchemaExpr::col("age").cast(ColumnType::String(Some(64)))),
+		);
+		stmt.col(
+			ColumnDef::new("age_int")
+				.integer()
+				.generated_stored(SchemaExpr::col("age").cast(ColumnType::Integer)),
+		);
+
+		let (sql, values) = builder.build_create_table(&stmt);
+
+		assert!(sql.contains(
+			"`age_text` VARCHAR(64) GENERATED ALWAYS AS (CAST(`age` AS CHAR(64))) STORED"
+		));
+		assert!(sql.contains("`age_int` INT GENERATED ALWAYS AS (CAST(`age` AS SIGNED)) STORED"));
 		assert_eq!(values.len(), 0);
 	}
 

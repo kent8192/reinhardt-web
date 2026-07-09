@@ -1274,8 +1274,12 @@ impl Operation {
 			if let Some(index) = next_index {
 				ordered.push(remaining.remove(index));
 			} else {
-				ordered.extend(remaining);
-				break;
+				let cycle = remaining
+					.iter()
+					.map(|(name, _)| name.as_str())
+					.collect::<Vec<_>>()
+					.join(", ");
+				panic!("generated-column dependency cycle detected among columns: {cycle}");
 			}
 		}
 
@@ -1286,18 +1290,16 @@ impl Operation {
 		generated: &GeneratedColumnDefinition,
 		column: &str,
 	) -> bool {
+		if let Some(expr) = generated.typed_expr() {
+			return Self::schema_expr_references_column(&expr, column);
+		}
+		if let Some(raw_sql) = generated.raw_sql.as_deref() {
+			return Self::expression_text_references_column(raw_sql, column);
+		}
 		generated
-			.typed_expr()
-			.as_ref()
-			.is_some_and(|expr| Self::schema_expr_references_column(expr, column))
-			|| generated
-				.raw_sql
-				.as_deref()
-				.is_some_and(|sql| Self::expression_text_references_column(sql, column))
-			|| generated
-				.expr_tokens
-				.as_deref()
-				.is_some_and(|tokens| Self::expression_text_references_column(tokens, column))
+			.expr_tokens
+			.as_deref()
+			.is_some_and(|tokens| Self::expression_text_references_column(tokens, column))
 	}
 
 	fn schema_expr_references_column(expr: &SchemaExpr, column: &str) -> bool {
@@ -1677,7 +1679,7 @@ impl Operation {
 			SchemaExpr::Cast { expr, ty } => format!(
 				"CAST({} AS {})",
 				Self::schema_expr_to_sql(expr, dialect),
-				Self::query_column_type_to_sql(ty, dialect)
+				Self::query_column_type_to_cast_sql(ty, dialect)
 			),
 			_ => panic!("unsupported generated-column schema expression"),
 		}
@@ -1884,6 +1886,43 @@ impl Operation {
 				} else {
 					"TEXT".to_string()
 				}
+			}
+			QueryColumnType::Custom(custom) => custom.clone(),
+			_ => panic!("unsupported generated-column cast column type"),
+		}
+	}
+
+	fn query_column_type_to_cast_sql(ty: &QueryColumnType, dialect: &SqlDialect) -> String {
+		if !matches!(dialect, SqlDialect::Mysql) {
+			return Self::query_column_type_to_sql(ty, dialect);
+		}
+
+		match ty {
+			QueryColumnType::Char(len) => format!("CHAR({})", len.unwrap_or(1)),
+			QueryColumnType::String(Some(len)) => format!("CHAR({len})"),
+			QueryColumnType::String(None) | QueryColumnType::Text => "CHAR".to_string(),
+			QueryColumnType::TinyInteger
+			| QueryColumnType::SmallInteger
+			| QueryColumnType::Integer
+			| QueryColumnType::BigInteger => "SIGNED".to_string(),
+			QueryColumnType::Float => "FLOAT".to_string(),
+			QueryColumnType::Double => "DOUBLE".to_string(),
+			QueryColumnType::Decimal(Some((precision, scale))) => {
+				format!("DECIMAL({precision}, {scale})")
+			}
+			QueryColumnType::Decimal(None) => "DECIMAL".to_string(),
+			QueryColumnType::Boolean => "UNSIGNED".to_string(),
+			QueryColumnType::Date => "DATE".to_string(),
+			QueryColumnType::Time => "TIME".to_string(),
+			QueryColumnType::DateTime
+			| QueryColumnType::Timestamp
+			| QueryColumnType::TimestampWithTimeZone => "DATETIME".to_string(),
+			QueryColumnType::Binary(Some(len)) => format!("BINARY({len})"),
+			QueryColumnType::Binary(None) | QueryColumnType::Blob => "BINARY".to_string(),
+			QueryColumnType::VarBinary(len) => format!("BINARY({len})"),
+			QueryColumnType::Uuid => "CHAR(36)".to_string(),
+			QueryColumnType::Json | QueryColumnType::JsonBinary | QueryColumnType::Array(_) => {
+				"JSON".to_string()
 			}
 			QueryColumnType::Custom(custom) => custom.clone(),
 			_ => panic!("unsupported generated-column cast column type"),
@@ -3635,7 +3674,7 @@ fn normalize_generated_expression_sql(sql: &str) -> String {
 				in_string = true;
 				normalized.push(ch);
 			}
-			'"' | '`' | '[' | ']' => {}
+			'"' | '`' => {}
 			character if character.is_ascii_whitespace() => {}
 			character => normalized.push(character.to_ascii_lowercase()),
 		}
@@ -7037,6 +7076,33 @@ mod tests {
 	}
 
 	#[test]
+	#[should_panic(expected = "generated-column dependency cycle detected among columns")]
+	fn test_to_reverse_operation_drop_table_rejects_generated_dependency_cycles() {
+		let mut a = FieldState::new("a", FieldType::Integer, false);
+		a.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("b"),
+			"SchemaExpr::col(\"b\")",
+			GeneratedStorage::Stored,
+		));
+		let mut b = FieldState::new("b", FieldType::Integer, false);
+		b.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("a"),
+			"SchemaExpr::col(\"a\")",
+			GeneratedStorage::Stored,
+		));
+		let mut model = ModelState::new("metrics", "Metric");
+		model.add_field(a);
+		model.add_field(b);
+		let mut state = ProjectState::new();
+		state.add_model(model);
+		let op = Operation::DropTable {
+			name: "metric".to_string(),
+		};
+
+		let _ = op.to_reverse_operation(&state);
+	}
+
+	#[test]
 	fn generated_dependency_repair_operations_are_rollback_neutral() {
 		let state = ProjectState::default();
 		let create_repair = Operation::CreateIndexRepair {
@@ -8493,6 +8559,23 @@ mod tests {
 	}
 
 	#[test]
+	fn test_column_to_sql_mysql_cast_generated_integer_uses_signed_type() {
+		let mut col = ColumnDefinition::new("age_int", FieldType::Integer);
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("age").cast(QueryColumnType::Integer),
+			"SchemaExpr::col(\"age\").cast(ColumnType::Integer)",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Mysql);
+
+		assert_eq!(
+			sql,
+			"age_int INTEGER GENERATED ALWAYS AS (CAST(`age` AS SIGNED)) STORED"
+		);
+	}
+
+	#[test]
 	fn generated_column_serde_rehydrates_typed_expr() {
 		let source = r#"{
 			"expr_tokens": "SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
@@ -8574,6 +8657,28 @@ mod tests {
 			GeneratedColumnDefinition::raw_sql("(subtotal + tax)", GeneratedStorage::Stored);
 
 		assert_eq!(typed, introspected);
+	}
+
+	#[test]
+	fn generated_column_raw_sql_equality_preserves_bracket_operators() {
+		let array_access = GeneratedColumnDefinition::raw_sql("items[1]", GeneratedStorage::Stored);
+		let flattened = GeneratedColumnDefinition::raw_sql("items1", GeneratedStorage::Stored);
+
+		assert_ne!(array_access, flattened);
+	}
+
+	#[test]
+	fn generated_column_dependency_uses_rehydrated_expr_before_tokens() {
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::val("full_name"),
+			"SchemaExpr::val(\"full_name\")",
+			GeneratedStorage::Stored,
+		);
+
+		assert!(!Operation::generated_column_references_column(
+			&generated,
+			"full_name"
+		));
 	}
 
 	#[test]

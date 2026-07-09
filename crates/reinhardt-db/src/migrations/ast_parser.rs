@@ -1450,7 +1450,7 @@ fn parse_bool_return(func: &ItemFn) -> Option<bool> {
 #[cfg(test)]
 mod tests {
 	use super::extract_migration_metadata;
-	use crate::migrations::{GeneratedStorage, Operation, SchemaExpr};
+	use crate::migrations::{ColumnType, GeneratedStorage, Operation, SchemaExpr};
 
 	#[test]
 	fn extract_migration_metadata_restores_typed_generated_expression() {
@@ -1609,6 +1609,19 @@ pub(super) fn migration() -> Migration {
 			.expect("raw generated metadata must be restored");
 		assert_eq!(generated.storage, GeneratedStorage::Virtual);
 		assert_eq!(generated.raw_sql.as_deref(), Some("LOWER(full_name)"));
+	}
+
+	#[test]
+	fn parse_schema_expr_tokens_accepts_custom_cast_to_string_tokens() {
+		let parsed = super::parse_schema_expr_tokens(
+			r#"SchemaExpr::col("name").cast(ColumnType::Custom("CITEXT".to_string()))"#,
+		)
+		.expect("custom cast tokens should parse");
+
+		assert_eq!(
+			parsed,
+			SchemaExpr::col("name").cast(ColumnType::Custom("CITEXT".to_string()))
+		);
 	}
 }
 

@@ -296,16 +296,18 @@ impl SchemaDiff {
 			&& current_col.default == target_col.default
 			&& current_col.primary_key == target_col.primary_key
 			&& current_col.auto_increment == target_col.auto_increment
-			&& match (
-				current_col.generated.as_ref(),
-				target_col.generated.as_ref(),
-				self.dialect.as_ref(),
-			) {
-				(Some(current), Some(target), Some(dialect)) => {
-					current.eq_for_dialect(target, dialect)
-				}
-				_ => current_col.generated == target_col.generated,
-			}
+			&& self.generated_columns_equal(&current_col.generated, &target_col.generated)
+	}
+
+	fn generated_columns_equal(
+		&self,
+		current: &Option<super::GeneratedColumnDefinition>,
+		target: &Option<super::GeneratedColumnDefinition>,
+	) -> bool {
+		match (current.as_ref(), target.as_ref(), self.dialect.as_ref()) {
+			(Some(current), Some(target), Some(dialect)) => current.eq_for_dialect(target, dialect),
+			_ => current == target,
+		}
 	}
 
 	fn column_definition_from_schema(
@@ -342,18 +344,16 @@ impl SchemaDiff {
 		generated: &super::GeneratedColumnDefinition,
 		column: &str,
 	) -> bool {
+		if let Some(expr) = generated.typed_expr() {
+			return Self::schema_expr_references_column(&expr, column);
+		}
+		if let Some(raw_sql) = generated.raw_sql.as_deref() {
+			return Self::expression_text_references_column(raw_sql, column);
+		}
 		generated
-			.typed_expr()
-			.as_ref()
-			.is_some_and(|expr| Self::schema_expr_references_column(expr, column))
-			|| generated
-				.raw_sql
-				.as_deref()
-				.is_some_and(|sql| Self::expression_text_references_column(sql, column))
-			|| generated
-				.expr_tokens
-				.as_deref()
-				.is_some_and(|tokens| Self::expression_text_references_column(tokens, column))
+			.expr_tokens
+			.as_deref()
+			.is_some_and(|tokens| Self::expression_text_references_column(tokens, column))
 	}
 
 	fn schema_expr_references_column(expr: &super::SchemaExpr, column: &str) -> bool {
@@ -527,8 +527,12 @@ impl SchemaDiff {
 			if let Some(index) = next_index {
 				ordered.push(remaining.remove(index));
 			} else {
-				ordered.extend(remaining);
-				break;
+				let cycle = remaining
+					.iter()
+					.map(|(_, column)| column.as_str())
+					.collect::<Vec<_>>()
+					.join(", ");
+				panic!("generated-column dependency cycle detected among columns: {cycle}");
 			}
 		}
 
@@ -563,8 +567,12 @@ impl SchemaDiff {
 			if let Some(index) = next_index {
 				ordered.push(remaining.remove(index));
 			} else {
-				ordered.extend(remaining);
-				break;
+				let cycle = remaining
+					.iter()
+					.map(|(name, _)| name.as_str())
+					.collect::<Vec<_>>()
+					.join(", ");
+				panic!("generated-column dependency cycle detected among columns: {cycle}");
 			}
 		}
 
@@ -1060,7 +1068,8 @@ impl SchemaDiff {
 				col_name,
 				new_col,
 			);
-			let generated_change = old_col.generated != new_col.generated;
+			let generated_change =
+				!self.generated_columns_equal(&old_col.generated, &new_col.generated);
 			if generated_change
 				&& Self::modified_generated_column_references_other_modified_column(
 					&diff.columns_to_modify,
@@ -1690,6 +1699,29 @@ mod tests {
 		};
 		let column_names: Vec<_> = columns.iter().map(|column| column.name.as_str()).collect();
 		assert_eq!(column_names, vec!["source", "z", "a"]);
+	}
+
+	#[test]
+	#[should_panic(expected = "generated-column dependency cycle detected among columns")]
+	fn test_generate_operations_create_table_rejects_generated_dependency_cycles() {
+		let current = DatabaseSchema::default();
+		let mut a = col("a", FieldType::Integer, false);
+		a.generated = Some(GeneratedColumnDefinition::raw_sql(
+			"b + 1",
+			GeneratedStorage::Stored,
+		));
+		let mut b = col("b", FieldType::Integer, false);
+		b.generated = Some(GeneratedColumnDefinition::raw_sql(
+			"a + 1",
+			GeneratedStorage::Stored,
+		));
+		let mut target = DatabaseSchema::default();
+		target.tables.insert(
+			"metrics".to_string(),
+			table_with_cols("metrics", vec![("a", a), ("b", b)]),
+		);
+
+		let _ = SchemaDiff::new(current, target).generate_operations();
 	}
 
 	#[test]
@@ -2760,7 +2792,8 @@ mod tests {
 		let broad_diff = SchemaDiff::new(current.clone(), target.clone());
 		assert!(broad_diff.detect().columns_to_modify.is_empty());
 
-		let postgres_diff = SchemaDiff::with_dialect(current, target, SqlDialect::Postgres);
+		let postgres_diff =
+			SchemaDiff::with_dialect(current.clone(), target.clone(), SqlDialect::Postgres);
 		let result = postgres_diff.detect();
 
 		assert_eq!(result.columns_to_modify.len(), 1);
@@ -2771,6 +2804,24 @@ mod tests {
 			),
 			("users", "full_name")
 		);
+
+		let postgres_ops =
+			SchemaDiff::with_dialect(current, target, SqlDialect::Postgres).generate_operations();
+		assert!(postgres_ops.iter().any(|operation| matches!(
+			operation,
+			Operation::DropColumn { table, column, .. }
+				if table == "users" && column == "full_name"
+		)));
+		assert!(postgres_ops.iter().any(|operation| matches!(
+			operation,
+			Operation::AddColumn { table, column, .. }
+				if table == "users" && column.name == "full_name"
+		)));
+		assert!(!postgres_ops.iter().any(|operation| matches!(
+			operation,
+			Operation::AlterColumn { table, column, .. }
+				if table == "users" && column == "full_name"
+		)));
 	}
 
 	#[test]
