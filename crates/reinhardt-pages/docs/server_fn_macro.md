@@ -212,6 +212,12 @@ arguments. Mounted queries with the same key share one cache entry and
 in-flight request, `refetch()` refreshes manually, and `poll(duration)` keeps a
 query current while the handle is alive.
 
+Generated keys support direct `Result<T, E>` returns and common result aliases
+such as `AppResult<T> = Result<T, ServerFnError>`. Server functions with
+request extractors or `#[inject]` parameters do not run their fetcher during
+native SSR prefetch; the key remains usable for browser fetches and native
+component-test server-function mocks.
+
 The macro also emits an extension trait for method-style keys:
 
 ```rust,ignore

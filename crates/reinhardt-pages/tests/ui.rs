@@ -42,6 +42,7 @@ fn test_server_fn_macro_ui() {
 	t.pass("tests/ui/server_fn/no_msw_feature.rs");
 	// Verify injected server_fn params do not leave regular args unused in generated helpers.
 	t.pass("tests/ui/server_fn/inject_query_key_no_unused.rs");
+	t.pass("tests/ui/server_fn/result_alias_query_key.rs");
 	// Issue #3858: verify FromRequest extractor params work in #[server_fn]
 	t.pass("tests/ui/server_fn/with_extractors.rs");
 }

@@ -6,9 +6,12 @@ use std::time::Duration;
 
 use reinhardt_core::types::page::{EventType, IntoPage, Outlet, Page, PageElement};
 use reinhardt_pages::callback::async_handler;
+use reinhardt_pages::component::SuspenseBoundary;
 use reinhardt_pages::page;
 use reinhardt_pages::prelude::spawn_task;
 use reinhardt_pages::reactive::hooks::use_action;
+#[cfg(feature = "msw")]
+use reinhardt_pages::reactive::use_query;
 use reinhardt_pages::reactive::{ResourceState, Signal, use_resource};
 #[cfg(feature = "msw")]
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
@@ -37,6 +40,16 @@ fn index_job_component() -> Page {
 fn ready_component() -> Page {
 	let resource = use_resource(|| async { Ok::<String, String>("Ready".to_string()) }, ());
 	Page::reactive(move || string_resource_page(resource.get()))
+}
+
+fn suspense_ready_component() -> Page {
+	let resource = use_resource(|| async { Ok::<String, String>("Ready".to_string()) }, ());
+	let content_resource = resource.clone();
+	SuspenseBoundary::new()
+		.fallback(|| text_page("Loading"))
+		.track(resource)
+		.content(move || string_resource_page(content_resource.get()))
+		.into_page()
 }
 
 fn mixed_resource_component() -> Page {
@@ -209,6 +222,16 @@ async fn settle_runs_use_resource_on_native() {
 	screen.settle().await;
 
 	assert!(screen.query_by_text("Index job").is_some());
+}
+
+#[tokio::test]
+async fn settle_rerenders_suspense_boundary_after_resource_resolution() {
+	let screen = render(suspense_ready_component);
+
+	screen.settle().await;
+
+	assert!(screen.query_by_text("Ready").is_some());
+	assert!(screen.query_by_text("Loading").is_none());
 }
 
 #[tokio::test]
@@ -493,6 +516,20 @@ fn jobs_component() -> Page {
 }
 
 #[cfg(feature = "msw")]
+fn jobs_query_component() -> Page {
+	let jobs = use_query(load_jobs::key());
+	let refetch_jobs = jobs.clone();
+	PageElement::new("div")
+		.child(
+			PageElement::new("button")
+				.listener("click", move |_| refetch_jobs.refetch())
+				.child("Refresh"),
+		)
+		.child(Page::reactive(move || jobs_resource_page(jobs.get())))
+		.into_page()
+}
+
+#[cfg(feature = "msw")]
 #[tokio::test]
 async fn server_fn_mock_feeds_resource() {
 	let screen = render(jobs_component);
@@ -512,6 +549,25 @@ async fn server_fn_mocks_are_scoped_per_screen() {
 	let second = render(jobs_component);
 	second.mock_server_fn::<load_jobs::marker>(|_args| Ok(vec!["Second job".to_string()]));
 
+	first.settle().await;
+	second.settle().await;
+
+	assert!(first.query_by_text("First job").is_some());
+	assert!(first.query_by_text("Second job").is_none());
+	assert!(second.query_by_text("Second job").is_some());
+	assert!(second.query_by_text("First job").is_none());
+}
+
+#[cfg(feature = "msw")]
+#[tokio::test]
+async fn server_fn_query_cache_is_scoped_per_screen() {
+	let first = render(jobs_query_component);
+	first.mock_server_fn::<load_jobs::marker>(|_args| Ok(vec!["First job".to_string()]));
+	let second = render(jobs_query_component);
+	second.mock_server_fn::<load_jobs::marker>(|_args| Ok(vec!["Second job".to_string()]));
+
+	first.get_by_role(Role::Button, "Refresh").click();
+	second.get_by_role(Role::Button, "Refresh").click();
 	first.settle().await;
 	second.settle().await;
 

@@ -1411,7 +1411,10 @@ fn generate_server_handler(
 		quote! {
 			move || {
 				#(
-					#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+					#[cfg(any(
+						all(target_family = "wasm", target_os = "unknown"),
+						all(not(all(target_family = "wasm", target_os = "unknown")), feature = "msw"),
+					))]
 					let #regular_param_idents = #regular_param_idents.clone();
 				)*
 				async move {
@@ -1420,7 +1423,26 @@ fn generate_server_handler(
 						super::#name(#(#regular_param_idents),*).await
 					}
 
-					#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+					#[cfg(all(not(all(target_family = "wasm", target_os = "unknown")), feature = "msw"))]
+					{
+						let __args = Args {
+							#(#regular_param_idents: #regular_param_idents.clone()),*
+						};
+						if let Some(__mock_result) =
+							#pages_crate::server_fn::try_call_active_mock::<marker>(__args)
+						{
+							match __mock_result {
+								Ok(__mock_value) => return Ok(__mock_value),
+								Err(__mock_error) => ::std::panic!(
+									"server function query mock failed: {}",
+									__mock_error,
+								),
+							}
+						}
+						#native_query_call
+					}
+
+					#[cfg(all(not(all(target_family = "wasm", target_os = "unknown")), not(feature = "msw")))]
 					{
 						#native_query_call
 					}
@@ -1445,6 +1467,11 @@ fn generate_server_handler(
 			}
 		}
 	};
+	let query_ssr_policy = if has_inject_or_extractor {
+		quote! { __query_key.with_ssr_prefetch(false) }
+	} else {
+		quote! { __query_key }
+	};
 	let query_key_tokens = quote! {
 		/// Builds a typed cache key for this server function and argument set.
 		pub fn key(
@@ -1456,10 +1483,11 @@ fn generate_server_handler(
 		#key_where_clause
 		{
 			let __query_args = (#(#regular_param_idents.clone(),)*);
-			#pages_crate::reactive::QueryKey::from_server_fn::<marker, _, _, _>(
+			let __query_key = #pages_crate::reactive::QueryKey::from_server_fn::<marker, _, _, _>(
 				__query_args,
 				#query_fetcher,
-			)
+			);
+			#query_ssr_policy
 		}
 
 		/// Extension trait that enables `server_fn.key(args...)` when imported.
@@ -1766,14 +1794,14 @@ fn generate_server_handler(
 	}
 }
 
-/// Extracts the first generic argument `T` from `Result<T, E>`.
+/// Extracts the first generic argument `T` from `Result<T, E>` or a result alias.
 ///
-/// Given `Result<User, ServerFnError>`, returns the token stream for `User`.
-/// Falls back to the full return type if it cannot be parsed as `Result<T, E>`.
+/// Given `Result<User, ServerFnError>` or `AppResult<User>`, returns the token
+/// stream for `User`. Falls back to the full return type when no generic
+/// success payload is visible.
 fn extract_result_ok_type(return_type: &syn::Type) -> proc_macro2::TokenStream {
 	if let syn::Type::Path(type_path) = return_type
 		&& let Some(segment) = type_path.path.segments.last()
-		&& segment.ident == "Result"
 		&& let syn::PathArguments::AngleBracketed(args) = &segment.arguments
 		&& let Some(syn::GenericArgument::Type(ok_type)) = args.args.first()
 	{
@@ -1783,14 +1811,14 @@ fn extract_result_ok_type(return_type: &syn::Type) -> proc_macro2::TokenStream {
 	quote! { #return_type }
 }
 
-/// Extracts the second generic argument `E` from `Result<T, E>`.
+/// Extracts the second generic argument `E` from `Result<T, E>` or a result alias.
 ///
-/// Given `Result<User, ServerFnError>`, returns the token stream for `ServerFnError`.
-/// Falls back to the framework error type if it cannot be parsed as `Result<T, E>`.
+/// Given `Result<User, ServerFnError>` or `AppResult<User, AppError>`, returns
+/// the token stream for the visible error type. Single-parameter aliases fall
+/// back to the framework error type.
 fn extract_result_err_type(return_type: &syn::Type) -> proc_macro2::TokenStream {
 	if let syn::Type::Path(type_path) = return_type
 		&& let Some(segment) = type_path.path.segments.last()
-		&& segment.ident == "Result"
 		&& let syn::PathArguments::AngleBracketed(args) = &segment.arguments
 		&& let Some(syn::GenericArgument::Type(err_type)) = args.args.iter().nth(1)
 	{
@@ -1810,6 +1838,33 @@ mod tests {
 		assert!(!options.use_inject);
 		assert_eq!(options.endpoint, None);
 		assert_eq!(options.codec, "json");
+	}
+
+	#[test]
+	fn extract_result_types_from_result_alias() {
+		use syn::parse_quote;
+
+		let return_type: syn::Type = parse_quote!(AppResult<User>);
+
+		assert_eq!(extract_result_ok_type(&return_type).to_string(), "User");
+		assert!(
+			extract_result_err_type(&return_type)
+				.to_string()
+				.contains("ServerFnError")
+		);
+	}
+
+	#[test]
+	fn extract_result_types_from_two_parameter_result_alias() {
+		use syn::parse_quote;
+
+		let return_type: syn::Type = parse_quote!(AppResult<User, AppError>);
+
+		assert_eq!(extract_result_ok_type(&return_type).to_string(), "User");
+		assert_eq!(
+			extract_result_err_type(&return_type).to_string(),
+			"AppError"
+		);
 	}
 
 	#[test]

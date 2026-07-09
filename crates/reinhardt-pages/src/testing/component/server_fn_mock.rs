@@ -56,6 +56,13 @@ pub(crate) fn with_active<R>(mocks: SharedServerFnMocks, f: impl FnOnce() -> R) 
 	f()
 }
 
+pub(crate) fn active_scope_id() -> Option<usize> {
+	ACTIVE_MOCKS.with(|slot| {
+		let mocks = slot.borrow().clone()?;
+		Some(Rc::as_ptr(&mocks.inner) as usize)
+	})
+}
+
 /// Calls the active native test mock for `S`, recording the typed arguments.
 pub fn try_call_active_mock<S>(args: S::Args) -> Option<Result<S::Response, ServerFnError>>
 where

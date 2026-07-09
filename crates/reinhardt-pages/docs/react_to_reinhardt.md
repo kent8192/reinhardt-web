@@ -554,6 +554,12 @@ extension trait for `server_fn.key(args...)`; import the defining module with a
 glob, or import the generated `*QueryKeyExt` trait, when that method spelling is
 preferred.
 
+`QueryHandle` implements the same Suspense tracking interface as `Resource`, so
+`SuspenseBoundary::track(jobs.clone())` can associate a keyed query with the
+boundary for SSR streaming and native component tests. Queries keep prior
+successful data visible during background refetches; use `is_fetching()` when a
+UI needs to distinguish refresh work from the initial pending state.
+
 For generated forms, read submit state from the runtime returned by `use_form`:
 
 ```rust,ignore

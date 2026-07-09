@@ -49,6 +49,7 @@ pub struct QueryKey<T, E> {
 	fetcher: Rc<QueryFetcher<T, E>>,
 	stale_time: Duration,
 	gc_time: Duration,
+	ssr_prefetch: bool,
 	_type: PhantomData<fn() -> Result<T, E>>,
 }
 
@@ -59,6 +60,7 @@ impl<T, E> Clone for QueryKey<T, E> {
 			fetcher: Rc::clone(&self.fetcher),
 			stale_time: self.stale_time,
 			gc_time: self.gc_time,
+			ssr_prefetch: self.ssr_prefetch,
 			_type: PhantomData,
 		}
 	}
@@ -77,6 +79,7 @@ impl<T, E> QueryKey<T, E> {
 			fetcher: Rc::new(move || Box::pin(fetcher())),
 			stale_time: DEFAULT_STALE_TIME,
 			gc_time: DEFAULT_GC_TIME,
+			ssr_prefetch: true,
 			_type: PhantomData,
 		}
 	}
@@ -117,6 +120,12 @@ impl<T, E> QueryKey<T, E> {
 		self.gc_time = gc_time;
 		self
 	}
+
+	/// Configures whether SSR may prefetch this query in the native resource context.
+	pub fn with_ssr_prefetch(mut self, enabled: bool) -> Self {
+		self.ssr_prefetch = enabled;
+		self
+	}
 }
 
 struct QueryEntry<T: Clone + 'static, E: Clone + 'static> {
@@ -125,6 +134,7 @@ struct QueryEntry<T: Clone + 'static, E: Clone + 'static> {
 	is_fetching: Signal<bool>,
 	fetcher: RefCell<Rc<QueryFetcher<T, E>>>,
 	in_flight: Cell<bool>,
+	refetch_after_in_flight: Cell<bool>,
 	last_fetched_ms: Cell<Option<u64>>,
 	stale_time: Cell<Duration>,
 	gc_time: Cell<Duration>,
@@ -150,6 +160,7 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 			is_fetching: Signal::new(false),
 			fetcher: RefCell::new(key.fetcher),
 			in_flight: Cell::new(false),
+			refetch_after_in_flight: Cell::new(false),
 			last_fetched_ms: Cell::new(last_fetched_ms),
 			stale_time: Cell::new(key.stale_time),
 			gc_time: Cell::new(key.gc_time),
@@ -175,8 +186,21 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 		})
 	}
 
+	#[cfg(native)]
+	fn mark_success_fetched(&self) {
+		if self
+			.state
+			.with_untracked(|state| matches!(state, ResourceState::Success(_)))
+		{
+			self.last_fetched_ms.set(Some(now_ms()));
+		}
+	}
+
 	fn start_fetch(self: &Rc<Self>, force: bool) {
 		if self.in_flight.replace(true) {
+			if force {
+				self.refetch_after_in_flight.set(true);
+			}
 			return;
 		}
 
@@ -193,20 +217,32 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 		}
 
 		let entry = Rc::clone(self);
-		let fetcher = self.fetcher.borrow().clone();
 		spawn_query_task(async move {
-			let result = fetcher().await;
-			match result {
-				Ok(value) => {
-					entry.last_fetched_ms.set(Some(now_ms()));
-					entry.state.set(ResourceState::Success(value));
+			loop {
+				let fetcher = entry.fetcher.borrow().clone();
+				let result = fetcher().await;
+				match result {
+					Ok(value) => {
+						entry.last_fetched_ms.set(Some(now_ms()));
+						entry.state.set(ResourceState::Success(value));
+					}
+					Err(error) => {
+						entry.state.set(ResourceState::Error(error));
+					}
 				}
-				Err(error) => {
-					entry.state.set(ResourceState::Error(error));
+				if entry.refetch_after_in_flight.replace(false) {
+					let has_success = entry
+						.state
+						.with_untracked(|state| matches!(state, ResourceState::Success(_)));
+					if !has_success {
+						entry.state.set(ResourceState::Loading);
+					}
+					continue;
 				}
+				entry.is_fetching.set(false);
+				entry.in_flight.set(false);
+				break;
 			}
-			entry.is_fetching.set(false);
-			entry.in_flight.set(false);
 		});
 	}
 }
@@ -274,6 +310,11 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryHandle<T, E> {
 	fn mark_ssr_read(&self) {
 		#[cfg(native)]
 		crate::ssr::resource_context::mark_resource_read(&self.entry.id);
+	}
+
+	/// Returns this query's deterministic SSR hydration key.
+	pub fn ssr_key(&self) -> &str {
+		&self.entry.id
 	}
 
 	/// Returns the underlying resource-style state.
@@ -430,9 +471,10 @@ where
 	E: Clone + Serialize + DeserializeOwned + 'static,
 {
 	let id = key.id.clone();
+	let cache_id = scoped_query_cache_id(&id);
 	QUERY_CACHE.with(|cache| {
 		let mut cache = cache.borrow_mut();
-		if let Some(cached) = cache.get(&id) {
+		if let Some(cached) = cache.get(&cache_id) {
 			let entry = Rc::clone(&cached.typed)
 				.downcast::<QueryEntry<T, E>>()
 				.unwrap_or_else(|_| {
@@ -444,7 +486,7 @@ where
 
 		let entry = Rc::new(QueryEntry::new(key));
 		cache.insert(
-			id,
+			cache_id,
 			CachedQueryEntry {
 				typed: entry.clone(),
 				refetch: Rc::new({
@@ -464,13 +506,18 @@ where
 	E: Clone + Serialize + DeserializeOwned + 'static,
 {
 	crate::ssr::resource_context::with_active_context(|context| {
+		context.borrow_mut().reserve_call_order_key(key.id());
+		let ssr_prefetch = key.ssr_prefetch;
 		let entry = Rc::new(QueryEntry::new(key));
-		let fetcher = entry.fetcher.borrow().clone();
-		context.borrow_mut().register_resource(
-			entry.id.clone(),
-			move || fetcher(),
-			entry.state.clone(),
-		);
+		if ssr_prefetch {
+			let fetcher = entry.fetcher.borrow().clone();
+			context.borrow_mut().register_resource(
+				entry.id.clone(),
+				move || fetcher(),
+				entry.state.clone(),
+			);
+			entry.mark_success_fetched();
+		}
 		QueryHandle {
 			entry,
 			guards: Rc::new(RefCell::new(Vec::new())),
@@ -479,11 +526,21 @@ where
 }
 
 fn invalidate_query_id(id: &str) {
+	let cache_id = scoped_query_cache_id(id);
 	QUERY_CACHE.with(|cache| {
-		if let Some(cached) = cache.borrow().get(id) {
+		if let Some(cached) = cache.borrow().get(&cache_id) {
 			(cached.refetch)();
 		}
 	});
+}
+
+fn scoped_query_cache_id(id: &str) -> String {
+	#[cfg(all(native, feature = "testing", feature = "msw"))]
+	if let Some(scope_id) = crate::testing::component::server_fn_mock::active_scope_id() {
+		return format!("test-screen:{scope_id}:{id}");
+	}
+
+	id.to_string()
 }
 
 #[cfg(wasm)]
@@ -506,7 +563,7 @@ where
 	None
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(wasm)))]
 fn spawn_query_task<F>(fut: F)
 where
 	F: Future<Output = ()> + 'static,
@@ -514,12 +571,15 @@ where
 	tokio_test::block_on(fut);
 }
 
-#[cfg(not(test))]
+#[cfg(any(not(test), wasm))]
 fn spawn_query_task<F>(fut: F)
 where
 	F: Future<Output = ()> + 'static,
 {
-	crate::platform::spawn_task(fut);
+	crate::platform::spawn_task(async move {
+		crate::platform::defer_yield().await;
+		fut.await;
+	});
 }
 
 #[cfg(wasm)]
@@ -602,12 +662,12 @@ fn now_ms() -> u64 {
 	js_sys::Date::now() as u64
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(wasm)))]
 pub(crate) fn clear_query_cache_for_test() {
 	QUERY_CACHE.with(|cache| cache.borrow_mut().clear());
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(wasm)))]
 mod tests {
 	use std::cell::Cell;
 
@@ -688,6 +748,34 @@ mod tests {
 
 		// Act
 		mutation.force_success_for_test("done".to_string());
+
+		// Assert
+		assert_eq!(calls.get(), 2);
+		assert_eq!(query.data(), Some(2));
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn invalidation_during_in_flight_fetch_runs_after_completion() {
+		// Arrange
+		clear_query_cache_for_test();
+		let calls = Rc::new(Cell::new(0));
+
+		// Act
+		let query = use_query(QueryKey::new("queued-invalidation", {
+			let calls = Rc::clone(&calls);
+			move || {
+				let calls = Rc::clone(&calls);
+				async move {
+					let value = calls.get() + 1;
+					calls.set(value);
+					if value == 1 {
+						invalidate_query_id("queued-invalidation");
+					}
+					Ok::<_, String>(value)
+				}
+			}
+		}));
 
 		// Assert
 		assert_eq!(calls.get(), 2);
