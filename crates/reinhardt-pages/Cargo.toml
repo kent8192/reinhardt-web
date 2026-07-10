@@ -24,6 +24,7 @@ debug-hooks = []
 uuid = ["dep:uuid"]
 chrono = ["dep:chrono"]
 ast = []
+i18n = ["dep:reinhardt-i18n"]
 # Enables the `tests/integration/spa_navigation_e2e_test.rs` integration
 # test (Refs #4088). This is a marker feature: the actual test deps
 # (`reinhardt-test`, `axum`, `tower-http`) live as native-only path
@@ -122,6 +123,9 @@ reinhardt-pages-ast = { workspace = true }
 # Procedural macros
 reinhardt-pages-macros = { workspace = true }
 
+# Optional first-class page translation support.
+reinhardt-i18n = { workspace = true, optional = true }
+
 # Core WASM bindings (low-level APIs only)
 wasm-bindgen = "0.2.106"
 js-sys = "0.3.83"
@@ -214,7 +218,7 @@ web-sys = { version = "0.3.83", features = [
 ] }
 
 # Async support for WASM
-reinhardt-core = {workspace = true, default-features = false, features = ["reactive", "page", "security"]}
+reinhardt-core = {workspace = true, default-features = false, features = ["reactive", "page", "security", "validators"]}
 smallvec = { workspace = true }
 bytes = { workspace = true }
 futures-util = { workspace = true }

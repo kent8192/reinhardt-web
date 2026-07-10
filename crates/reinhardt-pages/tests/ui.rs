@@ -43,8 +43,40 @@ fn test_server_fn_macro_ui() {
 	// Verify injected server_fn params do not leave regular args unused in generated helpers.
 	t.pass("tests/ui/server_fn/inject_query_key_no_unused.rs");
 	t.pass("tests/ui/server_fn/result_alias_query_key.rs");
+	t.pass("tests/ui/server_fn/response_metadata.rs");
+	t.pass("tests/ui/server_fn/result_alias.rs");
 	// Issue #3858: verify FromRequest extractor params work in #[server_fn]
 	t.pass("tests/ui/server_fn/with_extractors.rs");
+}
+
+#[test]
+fn test_server_fn_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/server_fn/fail/*.rs");
+}
+
+#[test]
+fn test_client_form_choices_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/client_form/choices/pass/*.rs");
+}
+
+#[test]
+fn test_client_form_choices_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/client_form/choices/fail/*.rs");
+}
+
+#[test]
+fn test_client_form_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/client_form/pass/*.rs");
+}
+
+#[test]
+fn test_client_form_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/client_form/fail/*.rs");
 }
 
 #[test]

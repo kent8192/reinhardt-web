@@ -49,7 +49,7 @@ The project router mounts per-app server routers on native and merges per-app cl
 
 ### Prerequisites
 
-- Rust 1.96 or later (2024 edition, matches the workspace MSRV)
+- Rust 1.96.0 or later (2024 edition, matches the workspace MSRV)
 - `cargo-make` (`cargo install cargo-make`)
 - `wasm-pack` for the WASM client build
 - Docker (optional, for TestContainers in integration tests)
