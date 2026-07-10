@@ -458,7 +458,11 @@ where
 	Fut: Future<Output = ()> + 'static,
 {
 	Arc::new(move |event| {
+		#[cfg(feature = "i18n")]
+		let i18n_context = crate::i18n::current_i18n_callback_context();
 		let fut = f(event);
+		#[cfg(feature = "i18n")]
+		let fut = crate::i18n::with_optional_i18n_context_async(i18n_context, fut);
 		spawn_task(fut);
 	})
 }
