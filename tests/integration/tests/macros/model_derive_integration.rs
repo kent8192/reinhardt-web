@@ -10,6 +10,7 @@ use reinhardt_db::migrations::FieldType;
 use reinhardt_db::migrations::model_registry::global_registry;
 use reinhardt_db::orm::Model as ModelTrait;
 use reinhardt_macros::model;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -208,6 +209,33 @@ fn test_typed_json_field_serde_roundtrip() {
 		serde_json::from_value(value).expect("Json<T> should deserialize transparently");
 	assert_eq!(hydrated.settings.indent_width, 2);
 	assert_eq!(hydrated.raw.unwrap()["draft"], true);
+}
+
+#[rstest]
+fn test_typed_json_field_option_state_distinguishes_none_from_json_null() {
+	// Arrange
+	let settings = JsonSettings {
+		indent_width: 2,
+		theme: "paper".to_string(),
+	};
+	let absent = JsonModel {
+		id: Some(1),
+		settings: Json::new(settings.clone()),
+		raw: None,
+	};
+	let json_null = JsonModel {
+		id: Some(2),
+		settings: Json::new(settings),
+		raw: Some(Json::new(serde_json::Value::Null)),
+	};
+
+	// Act
+	let absent_is_none = absent.field_is_none("raw");
+	let json_null_is_none = json_null.field_is_none("raw");
+
+	// Assert
+	assert!(absent_is_none);
+	assert!(!json_null_is_none);
 }
 
 #[test]

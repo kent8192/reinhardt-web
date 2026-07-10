@@ -73,6 +73,8 @@ struct IdentityEntry {
 	type_id: TypeId,
 	/// Model field metadata used by type-erased flush processing
 	field_metadata: Vec<FieldInfo>,
+	/// Nullable JSON fields whose model value is `None` and must be written as SQL NULL.
+	sql_null_json_fields: HashSet<String>,
 	/// Whether the object has been modified
 	// Allow dead_code: dirty tracking flag set internally, read by future flush/commit logic
 	#[allow(dead_code)]
@@ -221,13 +223,24 @@ impl Session {
 
 		let data = serde_json::to_value(&obj)
 			.map_err(|e| SessionError::SerializationError(e.to_string()))?;
+		let field_metadata = T::field_metadata();
+		let sql_null_json_fields = field_metadata
+			.iter()
+			.filter(|field| {
+				field.nullable
+					&& is_json_field_type(&field.field_type)
+					&& obj.field_is_none(&field.name)
+			})
+			.map(|field| field.name.clone())
+			.collect();
 
 		self.identity_map.insert(
 			key.clone(),
 			IdentityEntry {
 				data,
 				type_id: TypeId::of::<T>(),
-				field_metadata: T::field_metadata(),
+				field_metadata,
+				sql_null_json_fields,
 				is_dirty: true,
 			},
 		);
@@ -295,8 +308,14 @@ impl Session {
 				));
 			}
 
-			let obj: T = serde_json::from_value(entry.data.clone())
-				.map_err(|e| SessionError::SerializationError(e.to_string()))?;
+			let json_null_fields = json_null_fields_for_data(
+				&entry.data,
+				&entry.field_metadata,
+				&entry.sql_null_json_fields,
+			);
+			let obj: T =
+				super::json::deserialize_model_value(entry.data.clone(), &json_null_fields)
+					.map_err(|e| SessionError::SerializationError(e.to_string()))?;
 
 			return Ok(Some(obj));
 		}
@@ -352,19 +371,26 @@ impl Session {
 
 		// Build JSON object from row data
 		let mut json_map = serde_json::Map::new();
+		let mut sql_null_json_fields = HashSet::new();
 		for field in &field_metadata {
 			let column_name = field.db_column.as_deref().unwrap_or(&field.name);
 
 			// Extract value from row based on field type
 			let value: serde_json::Value = match field.field_type.as_str() {
-				typ if typ.contains("JsonField") => decode_json_field_value(
+				typ if typ.contains("JsonField") => match decode_json_field_value(
 					&row,
 					T::table_name(),
 					&key,
 					&field.name,
 					column_name,
 					field.nullable,
-				)?,
+				)? {
+					DecodedJsonFieldValue::SqlNull => {
+						sql_null_json_fields.insert(field.name.clone());
+						serde_json::Value::Null
+					}
+					DecodedJsonFieldValue::Json(value) => value,
+				},
 				typ if typ.contains("IntegerField") => {
 					if field.nullable {
 						row.try_get::<Option<i32>, _>(column_name)
@@ -443,9 +469,16 @@ impl Session {
 		}
 
 		// Deserialize JSON to model object
-		let obj: T = serde_json::from_value(serde_json::Value::Object(json_map)).map_err(|e| {
-			SessionError::SerializationError(format!("Failed to deserialize query result: {}", e))
-		})?;
+		let data = serde_json::Value::Object(json_map);
+		let json_null_fields =
+			json_null_fields_for_data(&data, &field_metadata, &sql_null_json_fields);
+		let obj: T =
+			super::json::deserialize_model_value(data, &json_null_fields).map_err(|e| {
+				SessionError::SerializationError(format!(
+					"Failed to deserialize query result: {}",
+					e
+				))
+			})?;
 
 		// Add to identity map
 		let obj_data = serde_json::to_value(&obj)
@@ -457,6 +490,7 @@ impl Session {
 				data: obj_data,
 				type_id: TypeId::of::<T>(),
 				field_metadata: field_metadata.clone(),
+				sql_null_json_fields,
 				is_dirty: false,
 			},
 		);
@@ -585,19 +619,26 @@ impl Session {
 
 			// Build JSON object from row data
 			let mut json_map = serde_json::Map::new();
+			let mut sql_null_json_fields = HashSet::new();
 			for field in &field_metadata {
 				let column_name = field.db_column.as_deref().unwrap_or(&field.name);
 
 				// Extract value from row based on field type
 				let value: serde_json::Value = match field.field_type.as_str() {
-					typ if typ.contains("JsonField") => decode_json_field_value(
+					typ if typ.contains("JsonField") => match decode_json_field_value(
 						&row,
 						table_name,
 						&row_context,
 						&field.name,
 						column_name,
 						field.nullable,
-					)?,
+					)? {
+						DecodedJsonFieldValue::SqlNull => {
+							sql_null_json_fields.insert(field.name.clone());
+							serde_json::Value::Null
+						}
+						DecodedJsonFieldValue::Json(value) => value,
+					},
 					typ if typ.contains("IntegerField") => {
 						if field.nullable {
 							row.try_get::<Option<i32>, _>(column_name)
@@ -693,8 +734,11 @@ impl Session {
 			}
 
 			// Deserialize JSON to model object
+			let data = serde_json::Value::Object(json_map);
+			let json_null_fields =
+				json_null_fields_for_data(&data, &field_metadata, &sql_null_json_fields);
 			let obj: T =
-				serde_json::from_value(serde_json::Value::Object(json_map)).map_err(|e| {
+				super::json::deserialize_model_value(data, &json_null_fields).map_err(|e| {
 					SessionError::SerializationError(format!(
 						"Failed to deserialize query result: {}",
 						e
@@ -817,7 +861,11 @@ impl Session {
 							}
 							update_stmt.value(
 								Alias::new(column_name),
-								json_to_reinhardt_query_value_for_field(col_value, field_info),
+								json_to_reinhardt_query_value_for_field(
+									col_value,
+									field_info,
+									entry.sql_null_json_fields.contains(col_name),
+								),
 							);
 						}
 
@@ -862,7 +910,9 @@ impl Session {
 							}
 							columns.push(Alias::new(column_name));
 							values_vec.push(json_to_reinhardt_query_value_for_field(
-								col_value, field_info,
+								col_value,
+								field_info,
+								entry.sql_null_json_fields.contains(col_name),
 							));
 						}
 
@@ -1420,7 +1470,27 @@ fn is_auto_managed_datetime_column(field_name: &str, column_name: &str) -> bool 
 }
 
 fn is_json_field_type(field_type: &str) -> bool {
-	field_type.contains("JsonField")
+	super::json::is_json_field_type(field_type)
+}
+
+fn json_null_fields_for_data(
+	data: &Value,
+	field_metadata: &[FieldInfo],
+	sql_null_json_fields: &HashSet<String>,
+) -> HashSet<String> {
+	let Some(values) = data.as_object() else {
+		return HashSet::new();
+	};
+	field_metadata
+		.iter()
+		.filter(|field| {
+			field.nullable
+				&& is_json_field_type(&field.field_type)
+				&& values.get(&field.name).map(Value::is_null).unwrap_or(false)
+				&& !sql_null_json_fields.contains(&field.name)
+		})
+		.map(|field| field.name.clone())
+		.collect()
 }
 
 fn json_select_column_sql(db_backend: DbBackend, column_name: &str) -> String {
@@ -1450,6 +1520,11 @@ fn json_select_column_alias_sql(db_backend: DbBackend, column_name: &str) -> Str
 	}
 }
 
+enum DecodedJsonFieldValue {
+	SqlNull,
+	Json(Value),
+}
+
 fn decode_json_field_value(
 	row: &sqlx::any::AnyRow,
 	table_name: &str,
@@ -1457,30 +1532,34 @@ fn decode_json_field_value(
 	field_name: &str,
 	column_name: &str,
 	nullable: bool,
-) -> Result<Value, SessionError> {
+) -> Result<DecodedJsonFieldValue, SessionError> {
 	if nullable {
 		if let Ok(value) = row.try_get::<Option<String>, _>(column_name) {
 			return value
 				.map(|value| {
 					parse_json_field_text(&value, table_name, row_context, field_name, column_name)
+						.map(DecodedJsonFieldValue::Json)
 				})
-				.unwrap_or(Ok(Value::Null));
+				.unwrap_or(Ok(DecodedJsonFieldValue::SqlNull));
 		}
 		if let Ok(value) = row.try_get::<Option<Vec<u8>>, _>(column_name) {
 			return value
 				.map(|value| {
 					parse_json_field_bytes(&value, table_name, row_context, field_name, column_name)
+						.map(DecodedJsonFieldValue::Json)
 				})
-				.unwrap_or(Ok(Value::Null));
+				.unwrap_or(Ok(DecodedJsonFieldValue::SqlNull));
 		}
-		return Ok(Value::Null);
+		return Ok(DecodedJsonFieldValue::SqlNull);
 	}
 
 	if let Ok(value) = row.try_get::<String, _>(column_name) {
-		return parse_json_field_text(&value, table_name, row_context, field_name, column_name);
+		return parse_json_field_text(&value, table_name, row_context, field_name, column_name)
+			.map(DecodedJsonFieldValue::Json);
 	}
 	if let Ok(value) = row.try_get::<Vec<u8>, _>(column_name) {
-		return parse_json_field_bytes(&value, table_name, row_context, field_name, column_name);
+		return parse_json_field_bytes(&value, table_name, row_context, field_name, column_name)
+			.map(DecodedJsonFieldValue::Json);
 	}
 
 	Err(SessionError::SerializationError(format!(
@@ -1547,18 +1626,42 @@ fn json_to_reinhardt_query_value(value: &Value) -> RValue {
 fn json_to_reinhardt_query_value_for_field(
 	value: &Value,
 	field_info: Option<&FieldInfo>,
+	field_is_none: bool,
 ) -> RValue {
 	if field_info
 		.map(|field| is_json_field_type(&field.field_type))
 		.unwrap_or(false)
 	{
-		if value.is_null() && field_info.map(|field| field.nullable).unwrap_or(false) {
+		if field_is_none {
 			RValue::Json(None)
 		} else {
 			RValue::Json(Some(Box::new(value.clone())))
 		}
+	} else if value.is_null() {
+		null_reinhardt_query_value_for_field(field_info)
 	} else {
 		json_to_reinhardt_query_value(value)
+	}
+}
+
+fn null_reinhardt_query_value_for_field(field_info: Option<&FieldInfo>) -> RValue {
+	let Some(field_type) = field_info.map(|field| field.field_type.as_str()) else {
+		return RValue::Int(None);
+	};
+	if field_type.contains("BooleanField") {
+		RValue::Bool(None)
+	} else if field_type.contains("BigIntegerField") {
+		RValue::BigInt(None)
+	} else if field_type.contains("IntegerField") {
+		RValue::Int(None)
+	} else if field_type.contains("FloatField") || field_type.contains("DecimalField") {
+		RValue::Double(None)
+	} else if field_type.contains("BinaryField") {
+		RValue::Bytes(None)
+	} else if field_type.contains("UuidField") || field_type.contains("UUIDField") {
+		RValue::Uuid(None)
+	} else {
+		RValue::String(None)
 	}
 }
 
@@ -1576,7 +1679,7 @@ fn sql_with_json_parameter_casts<'a>(
 		.iter()
 		.enumerate()
 		.filter_map(|(index, value)| {
-			if matches!(value, RValue::Json(Some(_))) {
+			if matches!(value, RValue::Json(_)) {
 				Some(index + 1)
 			} else {
 				None
@@ -1680,7 +1783,16 @@ fn bind_reinhardt_query_value<'a>(
 			// Serialize JSON to string for sqlx::Any which doesn't support direct JSON binding
 			query.bind(j.to_string())
 		}
-		// All None/null variants bind as null
+		RValue::Json(None) => query.bind(None::<String>),
+		RValue::Bool(None) => query.bind(None::<bool>),
+		RValue::TinyInt(None) | RValue::SmallInt(None) | RValue::Int(None) => {
+			query.bind(None::<i32>)
+		}
+		RValue::BigInt(None) => query.bind(None::<i64>),
+		RValue::Float(None) => query.bind(None::<f32>),
+		RValue::Double(None) => query.bind(None::<f64>),
+		RValue::String(None) | RValue::Uuid(None) => query.bind(None::<String>),
+		RValue::Bytes(None) => query.bind(None::<Vec<u8>>),
 		_ => query.bind(None::<i32>),
 	}
 }
@@ -1806,6 +1918,15 @@ mod tests {
 					false,
 				),
 			]
+		}
+
+		fn field_is_none(&self, field_name: &str) -> bool {
+			match field_name {
+				"id" => self.id.is_none(),
+				"optional_json" => self.optional_json.is_none(),
+				"publish_date" => self.publish_date.is_none(),
+				_ => false,
+			}
 		}
 	}
 
@@ -2371,7 +2492,7 @@ mod tests {
 
 		let field = test_field_info("name_json", "reinhardt.orm.models.JsonField", false, false);
 		let value = json!("draft");
-		let rq_value = super::json_to_reinhardt_query_value_for_field(&value, Some(&field));
+		let rq_value = super::json_to_reinhardt_query_value_for_field(&value, Some(&field), false);
 
 		assert!(matches!(rq_value, RValue::Json(Some(json)) if *json == value));
 	}
@@ -2382,7 +2503,7 @@ mod tests {
 
 		let field = test_field_info("name", "reinhardt.orm.models.CharField", false, false);
 		let value = json!("draft");
-		let rq_value = super::json_to_reinhardt_query_value_for_field(&value, Some(&field));
+		let rq_value = super::json_to_reinhardt_query_value_for_field(&value, Some(&field), false);
 
 		assert!(matches!(rq_value, RValue::String(Some(text)) if text.as_ref() == "draft"));
 	}
@@ -2393,20 +2514,57 @@ mod tests {
 
 		let field = test_field_info("payload", "reinhardt.orm.models.JsonField", false, false);
 		let value = json!(null);
-		let rq_value = super::json_to_reinhardt_query_value_for_field(&value, Some(&field));
+		let rq_value = super::json_to_reinhardt_query_value_for_field(&value, Some(&field), false);
 
 		assert!(matches!(rq_value, RValue::Json(Some(json)) if json.is_null()));
 	}
 
 	#[test]
-	fn test_nullable_json_null_binds_as_sql_null() {
+	fn test_nullable_json_none_binds_as_sql_null() {
 		use serde_json::json;
 
 		let field = test_field_info("payload", "reinhardt.orm.models.JsonField", true, false);
 		let value = json!(null);
-		let rq_value = super::json_to_reinhardt_query_value_for_field(&value, Some(&field));
+		let rq_value = super::json_to_reinhardt_query_value_for_field(&value, Some(&field), true);
 
 		assert!(matches!(rq_value, RValue::Json(None)));
+	}
+
+	#[test]
+	fn test_nullable_non_json_null_uses_field_specific_rvalue() {
+		use serde_json::json;
+
+		let char_field = test_field_info("nickname", "reinhardt.orm.models.CharField", true, false);
+		let bool_field =
+			test_field_info("enabled", "reinhardt.orm.models.BooleanField", true, false);
+		let bigint_field = test_field_info(
+			"counter",
+			"reinhardt.orm.models.BigIntegerField",
+			true,
+			false,
+		);
+		let float_field = test_field_info("ratio", "reinhardt.orm.models.FloatField", true, false);
+
+		assert!(matches!(
+			super::json_to_reinhardt_query_value_for_field(&json!(null), Some(&char_field), false,),
+			RValue::String(None)
+		));
+		assert!(matches!(
+			super::json_to_reinhardt_query_value_for_field(&json!(null), Some(&bool_field), false,),
+			RValue::Bool(None)
+		));
+		assert!(matches!(
+			super::json_to_reinhardt_query_value_for_field(
+				&json!(null),
+				Some(&bigint_field),
+				false,
+			),
+			RValue::BigInt(None)
+		));
+		assert!(matches!(
+			super::json_to_reinhardt_query_value_for_field(&json!(null), Some(&float_field), false,),
+			RValue::Double(None)
+		));
 	}
 
 	#[test]
@@ -2433,6 +2591,20 @@ mod tests {
 		assert_eq!(
 			cast_sql.as_ref(),
 			"UPDATE items SET payload = $1::jsonb, flag = $10::jsonb WHERE id = $2"
+		);
+	}
+
+	#[test]
+	fn test_postgres_nullable_json_parameter_placeholder_is_cast() {
+		use reinhardt_query::value::Values;
+
+		let values = Values(vec![RValue::Json(None)]);
+		let sql = "UPDATE items SET payload = $1 WHERE id = 1";
+		let cast_sql = super::sql_with_json_parameter_casts(DbBackend::Postgres, sql, &values);
+
+		assert_eq!(
+			cast_sql.as_ref(),
+			"UPDATE items SET payload = $1::jsonb WHERE id = 1"
 		);
 	}
 
@@ -2663,5 +2835,69 @@ mod tests {
 		assert_eq!(stored_flag, "false");
 		assert_eq!(stored_optional, None);
 		assert_eq!(stored_publish_date, "2026-07-08");
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_session_preserves_json_null_distinct_from_sql_null(_init_drivers: ()) {
+		let pool = create_json_scalar_test_pool().await;
+		let mut session = Session::new(pool.clone(), DbBackend::Sqlite).await.unwrap();
+		let json_null = JsonScalarModel {
+			id: None,
+			external_id: "json-null".to_string(),
+			name_json: Json::new("draft".to_string()),
+			flag_json: Json::new(true),
+			optional_json: Some(Json::new(serde_json::Value::Null)),
+			publish_date: None,
+		};
+		let sql_null = JsonScalarModel {
+			id: None,
+			external_id: "sql-null".to_string(),
+			name_json: Json::new("draft".to_string()),
+			flag_json: Json::new(true),
+			optional_json: None,
+			publish_date: None,
+		};
+
+		session.add(json_null).await.unwrap();
+		session.add(sql_null).await.unwrap();
+		session.flush().await.unwrap();
+
+		let rows =
+			sqlx::query("SELECT external_id, optional_json FROM json_scalar_models ORDER BY id")
+				.fetch_all(&*pool)
+				.await
+				.unwrap();
+		let stored_json_null: Option<String> = rows
+			.iter()
+			.find(|row| row.try_get::<String, _>("external_id").unwrap() == "json-null")
+			.unwrap()
+			.try_get("optional_json")
+			.unwrap();
+		let stored_sql_null: Option<String> = rows
+			.iter()
+			.find(|row| row.try_get::<String, _>("external_id").unwrap() == "sql-null")
+			.unwrap()
+			.try_get("optional_json")
+			.unwrap();
+		assert_eq!(stored_json_null.as_deref(), Some("null"));
+		assert_eq!(stored_sql_null, None);
+
+		let reader = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+		let loaded = reader.list_all::<JsonScalarModel>().await.unwrap();
+		let loaded_json_null = loaded
+			.iter()
+			.find(|model| model.external_id == "json-null")
+			.unwrap();
+		let loaded_sql_null = loaded
+			.iter()
+			.find(|model| model.external_id == "sql-null")
+			.unwrap();
+		assert_eq!(
+			loaded_json_null.optional_json.as_ref().unwrap().as_inner(),
+			&serde_json::Value::Null
+		);
+		assert_eq!(loaded_sql_null.optional_json, None);
 	}
 }

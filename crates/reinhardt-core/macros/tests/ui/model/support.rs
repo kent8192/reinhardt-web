@@ -224,6 +224,7 @@ pub mod db {
 			fn primary_key_field() -> &'static str;
 			fn primary_key(&self) -> Option<Self::PrimaryKey>;
 			fn set_primary_key(&mut self, value: Self::PrimaryKey);
+			fn field_is_none(&self, field_name: &str) -> bool;
 			fn field_metadata() -> Vec<inspection::FieldInfo>;
 			fn index_metadata() -> Vec<inspection::IndexInfo>;
 			fn constraint_metadata() -> Vec<inspection::ConstraintInfo>;

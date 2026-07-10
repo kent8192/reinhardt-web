@@ -60,6 +60,8 @@ pub enum QueryValue {
 	Timestamp(chrono::DateTime<chrono::Utc>),
 	/// UUID value for PostgreSQL uuid columns
 	Uuid(Uuid),
+	/// JSON value, preserving the distinction between JSON null and SQL NULL.
+	Json(Option<Box<serde_json::Value>>),
 	/// Represents SQL NOW() function
 	Now,
 }

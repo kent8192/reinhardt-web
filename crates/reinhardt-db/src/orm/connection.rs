@@ -25,6 +25,8 @@ pub enum DatabaseBackend {
 pub struct QueryRow {
 	/// The data.
 	pub data: serde_json::Value,
+	#[serde(skip)]
+	json_null_fields: std::collections::HashSet<String>,
 	// Allow dead_code: field reserved for future connection metadata tracking
 	#[allow(dead_code)]
 	#[serde(skip)]
@@ -34,13 +36,18 @@ pub struct QueryRow {
 impl QueryRow {
 	/// Creates a new instance.
 	pub fn new(data: serde_json::Value) -> Self {
-		Self { data, inner: None }
+		Self {
+			data,
+			json_null_fields: std::collections::HashSet::new(),
+			inner: None,
+		}
 	}
 
 	/// Creates an instance from backend row.
 	pub fn from_backend_row(row: Row) -> Self {
 		// Convert Row to JSON for backward compatibility
 		let mut map = serde_json::Map::new();
+		let mut json_null_fields = std::collections::HashSet::new();
 		for (key, value) in row.data.iter() {
 			let json_value = match value.clone() {
 				QueryValue::Null => serde_json::Value::Null,
@@ -57,6 +64,13 @@ impl QueryRow {
 				}
 				QueryValue::Timestamp(dt) => serde_json::Value::String(dt.to_rfc3339()),
 				QueryValue::Uuid(u) => serde_json::Value::String(u.to_string()),
+				QueryValue::Json(Some(value)) => {
+					if value.is_null() {
+						json_null_fields.insert(key.clone());
+					}
+					value.as_ref().clone()
+				}
+				QueryValue::Json(None) => serde_json::Value::Null,
 				// NOW() should never appear in Row data (it's resolved to actual timestamp in database)
 				QueryValue::Now => panic!("QueryValue::Now should not appear in Row data"),
 			};
@@ -65,8 +79,13 @@ impl QueryRow {
 
 		Self {
 			data: serde_json::Value::Object(map),
+			json_null_fields,
 			inner: Some(row),
 		}
+	}
+
+	pub(crate) fn deserialize_model<M: super::Model>(&self) -> Result<M, serde_json::Error> {
+		super::json::deserialize_model_row::<M>(self.data.clone(), self.json_null_fields.clone())
 	}
 
 	/// Get a value from the row by column name

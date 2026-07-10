@@ -1,7 +1,7 @@
 //! MySQL dialect implementation
 
 use async_trait::async_trait;
-use sqlx::{Column, MySql, MySqlPool, Row as SqlxRow, Transaction, mysql::MySqlRow};
+use sqlx::{Column, MySql, MySqlPool, Row as SqlxRow, Transaction, TypeInfo, mysql::MySqlRow};
 use std::sync::Arc;
 
 use crate::backends::{
@@ -44,6 +44,7 @@ impl MySqlBackend {
 			QueryValue::Timestamp(dt) => query.bind(dt),
 			// MySQL stores UUIDs as BINARY(16) or CHAR(36); we bind as string
 			QueryValue::Uuid(u) => query.bind(u.to_string()),
+			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
 			QueryValue::Now => {
 				// MySQL uses NOW() function, which should be part of SQL string
 				// For binding, we use current UTC time
@@ -56,6 +57,18 @@ impl MySqlBackend {
 		let mut row = Row::new();
 		for column in mysql_row.columns() {
 			let column_name = column.name();
+			let type_name = column.type_info().name().to_uppercase();
+			if type_name == "JSON" {
+				match mysql_row.try_get::<Option<serde_json::Value>, _>(column_name) {
+					Ok(Some(value)) => row.insert(
+						column_name.to_string(),
+						QueryValue::Json(Some(Box::new(value))),
+					),
+					Ok(None) => row.insert(column_name.to_string(), QueryValue::Null),
+					Err(error) => return Err(error.into()),
+				};
+				continue;
+			}
 			if let Ok(value) = mysql_row.try_get::<bool, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Bool(value));
 			} else if let Ok(value) = mysql_row.try_get::<i64, _>(column_name) {
@@ -208,6 +221,7 @@ impl MySqlTransactionExecutor {
 			QueryValue::Timestamp(dt) => query.bind(dt),
 			// MySQL stores UUIDs as BINARY(16) or CHAR(36); we bind as string
 			QueryValue::Uuid(u) => query.bind(u.to_string()),
+			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
 			QueryValue::Now => query.bind(chrono::Utc::now()),
 		}
 	}

@@ -2294,6 +2294,17 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		Some(path) => quote! { #path },
 		None => quote! { #orm_crate::Manager<Self> },
 	};
+	let field_is_none_arms = field_infos.iter().filter_map(|field| {
+		let (is_option, _) = extract_option_type(&field.ty);
+		if !is_option {
+			return None;
+		}
+
+		let field_name = &field.name;
+		Some(quote! {
+			stringify!(#field_name) => self.#field_name.is_none(),
+		})
+	});
 
 	// Generate the Model implementation
 	let expanded = quote! {
@@ -2356,6 +2367,13 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 			fn primary_key_field() -> &'static str {
 				stringify!(#pk_name)
+			}
+
+			fn field_is_none(&self, field_name: &str) -> bool {
+				match field_name {
+					#(#field_is_none_arms)*
+					_ => false,
+				}
 			}
 
 			#pk_impl

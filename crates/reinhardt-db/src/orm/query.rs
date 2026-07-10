@@ -4122,13 +4122,7 @@ where
 		};
 		rows.into_iter()
 			.map(|row| {
-				serde_json::from_value(serde_json::to_value(&row.data).map_err(|e| {
-					reinhardt_core::exception::Error::Database(format!(
-						"Serialization error: {}",
-						e
-					))
-				})?)
-				.map_err(|e| {
+				row.deserialize_model::<T>().map_err(|e| {
 					reinhardt_core::exception::Error::Database(format!(
 						"Deserialization error: {}",
 						e
@@ -4377,13 +4371,7 @@ where
 		};
 		rows.into_iter()
 			.map(|row| {
-				serde_json::from_value(serde_json::to_value(&row.data).map_err(|e| {
-					reinhardt_core::exception::Error::Database(format!(
-						"Serialization error: {}",
-						e
-					))
-				})?)
-				.map_err(|e| {
+				row.deserialize_model::<T>().map_err(|e| {
 					reinhardt_core::exception::Error::Database(format!(
 						"Deserialization error: {}",
 						e

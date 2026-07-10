@@ -29,7 +29,7 @@
 //! assert!(state.get_model("myapp", "User").is_none());
 //! ```
 
-use super::{FieldState, ModelState, ProjectState};
+use super::{FieldState, ModelState, ProjectState, SqlDialect};
 use crate::backends::schema::BaseDatabaseSchemaEditor;
 use crate::backends::types::DatabaseType;
 use serde::{Deserialize, Serialize};
@@ -125,6 +125,14 @@ pub fn quote_identifier(identifier: &str, database_type: DatabaseType) -> String
 			// Escape existing backticks by doubling them
 			format!("`{}`", identifier.replace('`', "``"))
 		}
+	}
+}
+
+fn sql_dialect_for_database_type(database_type: DatabaseType) -> SqlDialect {
+	match database_type {
+		DatabaseType::Postgres => SqlDialect::Postgres,
+		DatabaseType::Mysql => SqlDialect::Mysql,
+		DatabaseType::Sqlite => SqlDialect::Sqlite,
 	}
 }
 
@@ -316,7 +324,15 @@ impl FieldDefinition {
 	/// assert!(sql.contains("DEFAULT ''"));
 	/// ```
 	pub fn to_sql_definition(&self) -> String {
-		let mut parts = vec![self.field_type.to_sql_string()];
+		self.to_sql_definition_with_type(self.field_type.to_sql_string())
+	}
+
+	fn to_sql_definition_for_dialect(&self, dialect: &SqlDialect) -> String {
+		self.to_sql_definition_with_type(self.field_type.to_sql_for_dialect(dialect))
+	}
+
+	fn to_sql_definition_with_type(&self, type_sql: String) -> String {
+		let mut parts = vec![type_sql];
 
 		// Generated Columns (GENERATED ALWAYS AS ... STORED/VIRTUAL)
 		if let Some(ref generated_expr) = self.generated {
@@ -586,6 +602,7 @@ impl CreateModel {
 	/// ```
 	pub fn database_forwards(&self, schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
 		let mut sql_statements = Vec::new();
+		let dialect = sql_dialect_for_database_type(schema_editor.database_type());
 
 		// If composite primary key is defined, don't mark individual fields as primary keys
 		let has_composite_pk = self.composite_primary_key.is_some();
@@ -598,7 +615,7 @@ impl CreateModel {
 				// For composite PKs, don't add PRIMARY KEY to individual field definitions
 				if has_composite_pk && f.primary_key {
 					// Build field definition without PRIMARY KEY keyword
-					let mut parts = vec![f.field_type.to_sql_string()];
+					let mut parts = vec![f.field_type.to_sql_for_dialect(&dialect)];
 
 					// Primary key fields are always NOT NULL
 					parts.push("NOT NULL".to_string());
@@ -611,7 +628,7 @@ impl CreateModel {
 					}
 					parts.join(" ")
 				} else {
-					f.to_sql_definition()
+					f.to_sql_definition_for_dialect(&dialect)
 				}
 			})
 			.collect();
@@ -1130,6 +1147,59 @@ mod tests {
 		assert_eq!(model.fields.len(), 2);
 		assert_eq!(model.fields.get("id").unwrap().name, "id");
 		assert_eq!(model.fields.get("name").unwrap().name, "name");
+	}
+
+	#[test]
+	fn test_create_model_json_binary_uses_schema_editor_dialect() {
+		use crate::backends::schema::test_utils::MockSchemaEditor;
+
+		let create = CreateModel::new(
+			"documents",
+			vec![FieldDefinition::new(
+				"payload",
+				FieldType::JsonBinary,
+				false,
+				false,
+				None::<String>,
+			)],
+		);
+
+		let sql = create.database_forwards(&MockSchemaEditor::new());
+
+		assert_eq!(
+			sql,
+			vec!["CREATE TABLE IF NOT EXISTS \"documents\" (\"payload\" TEXT NOT NULL)"]
+		);
+	}
+
+	#[test]
+	fn test_create_model_composite_primary_key_uses_schema_editor_dialect() {
+		use crate::backends::schema::test_utils::MockSchemaEditor;
+
+		let create = CreateModel::new(
+			"documents",
+			vec![
+				FieldDefinition::new(
+					"payload",
+					FieldType::JsonBinary,
+					true,
+					false,
+					None::<String>,
+				),
+				FieldDefinition::new("version", FieldType::Integer, true, false, None::<String>),
+			],
+		)
+		.with_composite_primary_key(vec!["payload".to_string(), "version".to_string()])
+		.unwrap();
+
+		let sql = create.database_forwards(&MockSchemaEditor::new());
+
+		assert_eq!(
+			sql,
+			vec![
+				"CREATE TABLE IF NOT EXISTS \"documents\" (\"payload\" TEXT NOT NULL, \"version\" INTEGER NOT NULL, CONSTRAINT \"documents_pkey\" PRIMARY KEY (\"payload\", \"version\"))"
+			]
+		);
 	}
 
 	#[test]
