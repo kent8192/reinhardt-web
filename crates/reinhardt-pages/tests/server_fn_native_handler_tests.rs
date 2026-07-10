@@ -12,6 +12,11 @@ async fn echo_name(name: String) -> Result<String, ServerFnError> {
 	Ok(name)
 }
 
+#[server_fn]
+async fn echo_alias(name: String) -> Result<String, ServerFnError> {
+	Ok(name)
+}
+
 #[tokio::test]
 async fn json_server_fn_accepts_form_content_type_without_extractors() {
 	// Arrange
@@ -35,14 +40,18 @@ async fn json_server_fn_accepts_form_content_type_without_extractors() {
 
 #[rstest]
 fn generated_query_key_helper_encodes_server_fn_identity_and_args() {
-	// Arrange & Act
-	let module_key = echo_name::key("Alice".to_string());
-	let method_key = echo_name.key("Alice".to_string());
+	// Act
+	let echo_key = echo_name::key("Alice".to_string());
+	let alias_key = echo_alias::key("Alice".to_string());
 
 	// Assert
 	assert_eq!(
-		module_key.id(),
+		echo_key.id(),
 		r#"server_fn:/api/server_fn/echo_name:json:["Alice"]"#
 	);
-	assert_eq!(method_key.id(), module_key.id());
+	assert_eq!(
+		alias_key.id(),
+		r#"server_fn:/api/server_fn/echo_alias:json:["Alice"]"#
+	);
+	assert_ne!(echo_key.id(), alias_key.id());
 }

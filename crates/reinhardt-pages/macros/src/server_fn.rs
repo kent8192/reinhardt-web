@@ -585,10 +585,12 @@ fn add_native_mock_probe(
 					if let Some(__mock_result) =
 						#pages_crate::server_fn::try_call_active_mock::<#name::marker>(__args)
 					{
-						match __mock_result {
-							Ok(__mock_value) => return Ok(__mock_value),
-							Err(__mock_error) => return Err(__mock_error),
-						}
+							match __mock_result {
+								Ok(__mock_value) => return Ok(__mock_value),
+								Err(__mock_error) => {
+									return Err(::std::convert::Into::into(__mock_error));
+								}
+							}
 					}
 				}
 			}
@@ -1376,10 +1378,6 @@ fn generate_server_handler(
 			}
 		})
 		.collect();
-	let query_key_ext_trait = {
-		let pascal_name = to_pascal_case_ident(name);
-		quote::format_ident!("{}QueryKeyExt", pascal_name)
-	};
 	let query_param_bounds: Vec<_> = regular_param_types
 		.iter()
 		.map(|ty| quote! { #ty: ::std::clone::Clone + ::serde::Serialize + 'static })
@@ -1433,10 +1431,9 @@ fn generate_server_handler(
 						{
 							match __mock_result {
 								Ok(__mock_value) => return Ok(__mock_value),
-								Err(__mock_error) => ::std::panic!(
-									"server function query mock failed: {}",
-									__mock_error,
-								),
+								Err(__mock_error) => {
+									return Err(::std::convert::Into::into(__mock_error));
+								}
 							}
 						}
 						#native_query_call
@@ -1488,42 +1485,6 @@ fn generate_server_handler(
 				#query_fetcher,
 			);
 			#query_ssr_policy
-		}
-
-		/// Extension trait that enables `server_fn.key(args...)` when imported.
-		pub trait #query_key_ext_trait {
-			/// Builds a typed cache key for this server function and argument set.
-			fn key(
-				self,
-				#(#regular_param_idents: #regular_param_types),*
-			) -> #pages_crate::reactive::QueryKey<
-				#response_type,
-				#error_type,
-			>
-			#key_where_clause;
-		}
-
-		impl<F, Fut> #query_key_ext_trait for F
-		where
-			F: ::std::ops::Fn(#(#regular_param_types),*) -> Fut + 'static,
-			Fut: ::std::future::Future<
-					Output = ::std::result::Result<
-						#response_type,
-						#error_type,
-					>,
-				> + 'static,
-			#(#query_param_bounds,)*
-		{
-			fn key(
-				self,
-				#(#regular_param_idents: #regular_param_types),*
-			) -> #pages_crate::reactive::QueryKey<
-				#response_type,
-				#error_type,
-			> {
-				let _ = self;
-				key(#(#regular_param_idents),*)
-			}
 		}
 	};
 
@@ -1788,9 +1749,6 @@ fn generate_server_handler(
 		// WASM-side marker module — always emitted on wasm (#4711); the
 		// optional MSW Args / MockableServerFn impl is gated inside.
 		#wasm_marker_tokens
-
-		#[allow(unused_imports)]
-		#vis use #marker_module_name::#query_key_ext_trait;
 	}
 }
 

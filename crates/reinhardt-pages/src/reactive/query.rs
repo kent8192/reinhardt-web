@@ -3,7 +3,7 @@
 //! `use_query` adds an app-wide cache layer for async reads while preserving
 //! the existing `ResourceState` loading/success/error model. Query keys are
 //! typed by their result and error payloads, and `#[server_fn]` generates
-//! key helpers that include the server function identity plus serialized
+//! key helpers that include the server function identity plus canonical JSON
 //! arguments.
 
 use std::any::Any;
@@ -85,6 +85,9 @@ impl<T, E> QueryKey<T, E> {
 	}
 
 	/// Creates a typed key for a generated `#[server_fn]` marker.
+	///
+	/// JSON object keys are sorted recursively so logically equivalent argument
+	/// maps produce the same cache and hydration ID.
 	pub fn from_server_fn<M, Args, F, Fut>(args: Args, fetcher: F) -> Self
 	where
 		M: crate::server_fn::ServerFnMetadata,
@@ -92,7 +95,9 @@ impl<T, E> QueryKey<T, E> {
 		F: Fn() -> Fut + 'static,
 		Fut: Future<Output = Result<T, E>> + 'static,
 	{
-		let encoded_args = serde_json::to_string(&args)
+		let encoded_args = serde_json::to_value(&args)
+			.map(canonicalize_json)
+			.and_then(|value| serde_json::to_string(&value))
 			.expect("server function query arguments must serialize into a cache key");
 		Self::new(
 			format!("server_fn:{}:{}:{}", M::PATH, M::CODEC, encoded_args),
@@ -250,7 +255,7 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 /// Current phase of a query.
 #[derive(Clone, Debug, PartialEq)]
 pub enum QueryPhase<T, E> {
-	/// The query has no successful value yet, or is currently fetching.
+	/// The query has no successful value or error yet.
 	Pending,
 	/// The query has loaded successfully.
 	Success(T),
@@ -341,7 +346,7 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryHandle<T, E> {
 
 	/// Returns `true` until the query has a successful value or error.
 	pub fn is_pending(&self) -> bool {
-		self.phase().is_pending() || self.is_fetching()
+		self.phase().is_pending()
 	}
 
 	/// Returns `true` if the query has a successful value.
@@ -543,6 +548,23 @@ fn scoped_query_cache_id(id: &str) -> String {
 	id.to_string()
 }
 
+fn canonicalize_json(value: serde_json::Value) -> serde_json::Value {
+	match value {
+		serde_json::Value::Array(values) => {
+			serde_json::Value::Array(values.into_iter().map(canonicalize_json).collect())
+		}
+		serde_json::Value::Object(entries) => {
+			let mut entries: Vec<_> = entries
+				.into_iter()
+				.map(|(key, value)| (key, canonicalize_json(value)))
+				.collect();
+			entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+			serde_json::Value::Object(entries.into_iter().collect())
+		}
+		value => value,
+	}
+}
+
 #[cfg(wasm)]
 fn hydrated_query_state<T, E>(key: &str) -> Option<ResourceState<T, E>>
 where
@@ -672,9 +694,26 @@ mod tests {
 	use std::cell::Cell;
 
 	use rstest::rstest;
+	use serde::Serializer;
+	use serde::ser::SerializeMap;
 	use serial_test::serial;
 
 	use super::*;
+
+	struct OrderedMapArgs(&'static [(&'static str, i64)]);
+
+	impl Serialize for OrderedMapArgs {
+		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: Serializer,
+		{
+			let mut map = serializer.serialize_map(Some(self.0.len()))?;
+			for (key, value) in self.0 {
+				map.serialize_entry(key, value)?;
+			}
+			map.end()
+		}
+	}
 
 	#[rstest]
 	#[serial(query_cache)]
@@ -726,6 +765,35 @@ mod tests {
 		// Assert
 		assert_eq!(calls.get(), 2);
 		assert_eq!(query.data(), Some(2));
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn successful_query_is_not_pending_during_background_fetch() {
+		// Arrange
+		clear_query_cache_for_test();
+		let entry = Rc::new(QueryEntry::new(QueryKey::new(
+			"background-refetch",
+			|| async { Ok::<_, String>("fresh".to_string()) },
+		)));
+		entry
+			.state
+			.set(ResourceState::Success("cached".to_string()));
+		entry.is_fetching.set(true);
+		let query = QueryHandle {
+			entry,
+			guards: Rc::new(RefCell::new(Vec::new())),
+		};
+
+		// Act
+		let data = query.data();
+		let is_fetching = query.is_fetching();
+		let is_pending = query.is_pending();
+
+		// Assert
+		assert_eq!(data, Some("cached".to_string()));
+		assert!(is_fetching);
+		assert!(!is_pending);
 	}
 
 	#[rstest]
@@ -803,5 +871,66 @@ mod tests {
 
 		// Assert
 		assert_eq!(key.id(), r#"server_fn:/api/server_fn/list_jobs:json:[42]"#);
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn server_fn_key_preserves_large_integer_arguments() {
+		// Arrange
+		clear_query_cache_for_test();
+
+		struct Marker;
+
+		impl crate::server_fn::ServerFnMetadata for Marker {
+			const PATH: &'static str = "/api/server_fn/load_job";
+			const NAME: &'static str = "load_job";
+			const CODEC: &'static str = "json";
+			const IS_JSON_CODEC: bool = true;
+		}
+
+		// Act
+		let key: QueryKey<(), crate::server_fn::ServerFnError> =
+			QueryKey::from_server_fn::<Marker, _, _, _>((u128::MAX,), || async { Ok(()) });
+
+		// Assert
+		assert_eq!(
+			key.id(),
+			format!("server_fn:/api/server_fn/load_job:json:[{}]", u128::MAX)
+		);
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn server_fn_key_canonicalizes_object_arguments() {
+		// Arrange
+		clear_query_cache_for_test();
+
+		struct Marker;
+
+		impl crate::server_fn::ServerFnMetadata for Marker {
+			const PATH: &'static str = "/api/server_fn/filter_jobs";
+			const NAME: &'static str = "filter_jobs";
+			const CODEC: &'static str = "json";
+			const IS_JSON_CODEC: bool = true;
+		}
+
+		// Act
+		let first: QueryKey<(), crate::server_fn::ServerFnError> =
+			QueryKey::from_server_fn::<Marker, _, _, _>(
+				(OrderedMapArgs(&[("status", 1), ("owner", 2)]),),
+				|| async { Ok(()) },
+			);
+		let second: QueryKey<(), crate::server_fn::ServerFnError> =
+			QueryKey::from_server_fn::<Marker, _, _, _>(
+				(OrderedMapArgs(&[("owner", 2), ("status", 1)]),),
+				|| async { Ok(()) },
+			);
+
+		// Assert
+		assert_eq!(first.id(), second.id());
+		assert_eq!(
+			first.id(),
+			r#"server_fn:/api/server_fn/filter_jobs:json:[{"owner":2,"status":1}]"#
+		);
 	}
 }

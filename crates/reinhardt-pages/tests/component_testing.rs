@@ -16,6 +16,8 @@ use reinhardt_pages::reactive::{ResourceState, Signal, use_resource};
 #[cfg(feature = "msw")]
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 use reinhardt_pages::testing::component::{Role, render};
+#[cfg(feature = "msw")]
+use rstest::rstest;
 
 fn text_page(text: impl Into<String>) -> Page {
 	PageElement::new("div").child(text.into()).into_page()
@@ -501,6 +503,24 @@ async fn load_jobs() -> Result<Vec<String>, ServerFnError> {
 }
 
 #[cfg(feature = "msw")]
+#[derive(Clone)]
+struct JobsDatabase;
+
+#[cfg(feature = "msw")]
+struct JobsDatabaseKey;
+
+#[cfg(feature = "msw")]
+impl reinhardt_di::InjectableKey for JobsDatabaseKey {}
+
+#[cfg(feature = "msw")]
+#[server_fn]
+async fn load_injected_jobs(
+	#[inject] _database: reinhardt_di::Depends<JobsDatabaseKey, JobsDatabase>,
+) -> Result<Vec<String>, ServerFnError> {
+	Ok(vec!["real injected job".to_string()])
+}
+
+#[cfg(feature = "msw")]
 fn jobs_resource_page(state: ResourceState<Vec<String>, ServerFnError>) -> Page {
 	match state {
 		ResourceState::Loading => text_page("Loading"),
@@ -527,6 +547,12 @@ fn jobs_query_component() -> Page {
 		)
 		.child(Page::reactive(move || jobs_resource_page(jobs.get())))
 		.into_page()
+}
+
+#[cfg(feature = "msw")]
+fn injected_jobs_query_component() -> Page {
+	let jobs = use_query(load_injected_jobs::key());
+	Page::reactive(move || jobs_resource_page(jobs.get()))
 }
 
 #[cfg(feature = "msw")]
@@ -575,6 +601,57 @@ async fn server_fn_query_cache_is_scoped_per_screen() {
 	assert!(first.query_by_text("Second job").is_none());
 	assert!(second.query_by_text("Second job").is_some());
 	assert!(second.query_by_text("First job").is_none());
+}
+
+#[cfg(feature = "msw")]
+#[rstest]
+#[tokio::test]
+async fn injected_server_fn_query_mock_errors_render_query_errors() {
+	// Arrange
+	let screen = render(injected_jobs_query_component);
+	screen.mock_server_fn::<load_injected_jobs::marker>(|_args| {
+		Err(ServerFnError::application("injected query failed"))
+	});
+
+	// Act
+	screen.settle().await;
+
+	// Assert
+	assert!(
+		screen
+			.query_by_text("Application error: injected query failed")
+			.is_some()
+	);
+	assert_eq!(
+		screen
+			.calls_to_server_fn::<load_injected_jobs::marker>()
+			.len(),
+		1
+	);
+}
+
+#[cfg(feature = "msw")]
+#[rstest]
+#[tokio::test]
+async fn injected_server_fn_query_without_mock_renders_query_error() {
+	// Arrange
+	let screen = render(injected_jobs_query_component);
+
+	// Act
+	screen.settle().await;
+
+	// Assert
+	assert!(
+		screen
+			.query_by_text("Application error: no mock registered for active server function")
+			.is_some()
+	);
+	assert_eq!(
+		screen
+			.calls_to_server_fn::<load_injected_jobs::marker>()
+			.len(),
+		1
+	);
 }
 
 #[cfg(feature = "msw")]

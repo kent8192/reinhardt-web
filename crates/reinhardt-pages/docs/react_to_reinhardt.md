@@ -501,8 +501,8 @@ fn todo_form() -> Page {
 React Query and SWR patterns map to `use_query` and `use_mutation` when the
 read operation is a `#[server_fn]`. The server-function macro emits a typed key
 helper whose cache ID is derived from the generated marker metadata and
-serialized arguments, so the fetcher and key cannot drift into unrelated
-strings.
+canonical JSON arguments, so the fetcher and key cannot drift into unrelated
+strings and logically equivalent object arguments share the same cache entry.
 
 ```rust,ignore
 use std::time::Duration;
@@ -543,16 +543,18 @@ fn jobs_panel(project_id: i64, failed_job_id: i64) -> Page {
             p { { format!("{} jobs", items.len()) } }
         }
         if jobs.is_pending() {
+            p { role: "status", "Loading" }
+        }
+        if jobs.is_fetching() && !jobs.is_pending() {
             p { role: "status", "Refreshing" }
         }
     })
 }
 ```
 
-`server_fn_module::key(args...)` always works. The macro also emits an
-extension trait for `server_fn.key(args...)`; import the defining module with a
-glob, or import the generated `*QueryKeyExt` trait, when that method spelling is
-preferred.
+Use `server_fn_module::key(args...)` to build generated query keys. Keeping the
+helper in the marker module binds every key to exactly one server function,
+including when multiple functions have identical signatures.
 
 `QueryHandle` implements the same Suspense tracking interface as `Resource`, so
 `SuspenseBoundary::track(jobs.clone())` can associate a keyed query with the
