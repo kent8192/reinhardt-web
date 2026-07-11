@@ -304,8 +304,8 @@ mod fetch;
 pub mod form_generated;
 // Typed form runtime state (WASM-compatible)
 pub mod form_state;
-// FormComponent requires reinhardt-forms which is not WASM-compatible yet
-// For now, client-side forms should use PageElement
+// FormComponent requires reinhardt-forms which is not WASM-compatible yet.
+// Client-side forms use PageElement.
 #[cfg(native)]
 pub mod form;
 

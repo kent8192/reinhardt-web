@@ -1002,7 +1002,7 @@ fn generate_server_handler(
 						.await
 						.map_err(|e| {
 							#pages_crate_for_ext::__private::tracing::error!(
-								error = ?e,
+								error = %e,
 								param = stringify!(#ty),
 								"FromRequest extractor failed",
 							);
@@ -1441,21 +1441,9 @@ fn generate_server_handler(
 		// function name. The module has the same name as the function and contains
 		// a `marker` struct that implements `ServerFnRegistration`.
 		//
-		// Example:
-		// ```ignore
-		// use reinhardt::pages::server_fn::ServerFnRouterExt;
-		// use crate::server_fn::auth::{login, logout};  // Import marker modules
-		//
-		// let router = UnifiedRouter::new()
-		//     .server_fn(login::marker)   // Use snake_case name + ::marker
-		//     .server_fn(logout::marker);
-		// ```
-		//
-		// Note: On WASM (client side), import and call the function directly:
-		// ```ignore
-		// use crate::server_fn::auth::login;  // Function (snake_case)
-		// login(email, password).await;
-		// ```
+		// Server-side explicit registration uses marker modules such as
+		// `login::marker` and `logout::marker`. WASM callers import and invoke
+		// the generated function directly.
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#vis mod #marker_module_name {
 			use super::*;
@@ -1615,6 +1603,34 @@ mod tests {
 		assert!(result.is_err());
 		let err = result.unwrap_err().to_string();
 		assert!(err.contains("fragment identifiers"));
+	}
+
+	/// Tests that generated extractor failure logs use Display formatting so raw
+	/// request data stored for debugging is not emitted through Debug output.
+	#[test]
+	fn test_extractor_error_logging_uses_display_formatting() {
+		use syn::parse_quote;
+
+		let func: syn::ItemFn = parse_quote! {
+			pub async fn login(form: Form<LoginRequest>) -> Result<(), ServerFnError> {
+				Ok(())
+			}
+		};
+		let info = ServerFnInfo {
+			func,
+			options: ServerFnOptions::default(),
+		};
+
+		let generated = generate_server_fn(&info).to_string();
+
+		assert!(
+			generated.contains("error = % e"),
+			"extractor errors should be logged with Display formatting: {generated}"
+		);
+		assert!(
+			!generated.contains("error = ? e"),
+			"extractor errors must not be logged with Debug formatting: {generated}"
+		);
 	}
 
 	/// Tests for `is_extractor_type` — verifies known extractor type detection.

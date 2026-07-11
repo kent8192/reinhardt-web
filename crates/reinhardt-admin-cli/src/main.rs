@@ -7,15 +7,14 @@
 //!
 //! ## Installation
 //!
-//! While Reinhardt is on a pre-release (`-rc.*` / `-alpha.*`),
-//! `cargo install` requires an explicit `--version` because pre-releases
-//! are not selected by default. Once `0.1.0` stable ships, `--version`
-//! becomes optional. The literal below is auto-bumped by release-plz on
-//! each release.
+//! Install the current stable CLI with Cargo. The command below pins this
+//! guide to the documented release for reproducibility; omit `--version` to
+//! let Cargo choose the latest stable release. The literal below is
+//! release-managed.
 //!
 //! <!-- reinhardt-version-sync -->
 //! ```bash
-//! cargo install reinhardt-admin-cli --version "0.3.0-rc.5"
+//! cargo install reinhardt-admin-cli --version "0.3.0-rc.6"
 //! ```
 //!
 //! ## Usage

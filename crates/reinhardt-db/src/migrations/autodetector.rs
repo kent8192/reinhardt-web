@@ -1451,6 +1451,53 @@ impl ProjectState {
 		}
 	}
 
+	fn trim_sql_identifier(identifier: &str) -> String {
+		let trimmed = identifier.trim();
+		if let Some(stripped) = trimmed
+			.strip_prefix('"')
+			.and_then(|value| value.strip_suffix('"'))
+			.or_else(|| {
+				trimmed
+					.strip_prefix('`')
+					.and_then(|value| value.strip_suffix('`'))
+			})
+			.or_else(|| {
+				trimmed
+					.strip_prefix('\'')
+					.and_then(|value| value.strip_suffix('\''))
+			}) {
+			stripped.to_string()
+		} else {
+			trimmed.to_string()
+		}
+	}
+
+	fn parse_constraint_identifier_list(identifier_list: &str) -> Vec<String> {
+		identifier_list
+			.split(',')
+			.map(Self::trim_sql_identifier)
+			.filter(|identifier| !identifier.is_empty())
+			.collect()
+	}
+
+	fn foreign_key_action_from_clause(clauses: &str, clause: &str) -> Option<ForeignKeyAction> {
+		let upper_clauses = clauses.to_ascii_uppercase();
+		let tail = upper_clauses.split_once(clause)?.1.trim_start();
+		if tail.starts_with("SET NULL") {
+			Some(ForeignKeyAction::SetNull)
+		} else if tail.starts_with("SET DEFAULT") {
+			Some(ForeignKeyAction::SetDefault)
+		} else if tail.starts_with("NO ACTION") {
+			Some(ForeignKeyAction::NoAction)
+		} else if tail.starts_with("CASCADE") {
+			Some(ForeignKeyAction::Cascade)
+		} else if tail.starts_with("RESTRICT") {
+			Some(ForeignKeyAction::Restrict)
+		} else {
+			None
+		}
+	}
+
 	fn constraint_definition_from_sql(constraint_sql: &str) -> Option<ConstraintDefinition> {
 		let rest = constraint_sql.trim().strip_prefix("CONSTRAINT ")?;
 		let (name, body) = rest.split_once(' ')?;
@@ -1484,6 +1531,50 @@ impl ProjectState {
 				fields: Vec::new(),
 				expression: Some(body[open + 1..close].trim().to_string()),
 				foreign_key_info: None,
+			});
+		}
+		if upper_body.starts_with("FOREIGN KEY") {
+			let open = body.find('(')?;
+			let close = body[open + 1..].find(')')? + open + 1;
+			let fields = Self::parse_constraint_identifier_list(&body[open + 1..close]);
+			if fields.is_empty() {
+				return None;
+			}
+
+			let after_fields = body[close + 1..].trim_start();
+			if !after_fields.to_ascii_uppercase().starts_with("REFERENCES") {
+				return None;
+			}
+			let after_references = after_fields["REFERENCES".len()..].trim_start();
+			let referenced_open = after_references.find('(')?;
+			let referenced_table = Self::trim_sql_identifier(&after_references[..referenced_open]);
+			if referenced_table.is_empty() {
+				return None;
+			}
+
+			let referenced_close =
+				after_references[referenced_open + 1..].find(')')? + referenced_open + 1;
+			let referenced_columns = Self::parse_constraint_identifier_list(
+				&after_references[referenced_open + 1..referenced_close],
+			);
+			if referenced_columns.is_empty() {
+				return None;
+			}
+
+			let clauses = &after_references[referenced_close + 1..];
+			return Some(ConstraintDefinition {
+				name: name.trim_matches('"').to_string(),
+				constraint_type: "foreign_key".to_string(),
+				fields,
+				expression: None,
+				foreign_key_info: Some(ForeignKeyConstraintInfo {
+					referenced_table,
+					referenced_columns,
+					on_delete: Self::foreign_key_action_from_clause(clauses, "ON DELETE")
+						.unwrap_or(ForeignKeyAction::NoAction),
+					on_update: Self::foreign_key_action_from_clause(clauses, "ON UPDATE")
+						.unwrap_or(ForeignKeyAction::NoAction),
+				}),
 			});
 		}
 		None
@@ -4219,6 +4310,7 @@ impl MigrationAutodetector {
 			|| from_def.primary_key != to_def.primary_key
 			|| from_def.auto_increment != to_def.auto_increment
 			|| from_def.unique != to_def.unique
+			|| from_def.default != to_def.default
 	}
 
 	fn canonical_auto_increment(field_type: &super::FieldType, auto_increment: bool) -> bool {
@@ -5798,12 +5890,19 @@ impl MigrationAutodetector {
 			if let Some(model) = self.to_state.get_model(app_label, model_name)
 				&& let Some(field) = model.get_field(field_name)
 			{
+				let old_definition = self
+					.from_state
+					.get_model(app_label, model_name)
+					.and_then(|from_model| from_model.get_field(field_name))
+					.map(|from_field| {
+						super::ColumnDefinition::from_field_state(field_name.clone(), from_field)
+					});
 				by_app
 					.entry(app_label.clone())
 					.or_default()
 					.push(super::Operation::AlterColumn {
 						table: model.table_name.clone(),
-						old_definition: None,
+						old_definition,
 						column: field_name.clone(),
 						new_definition: super::ColumnDefinition::from_field_state(
 							field_name.clone(),
@@ -6691,6 +6790,121 @@ mod tests {
 			constraints,
 			many_to_many_fields: Vec::new(),
 		}
+	}
+
+	#[rstest]
+	fn apply_migration_operations_replays_foreign_key_add_constraint() {
+		// Arrange
+		let create_posts = super::super::Operation::CreateTable {
+			name: "blog_posts".to_string(),
+			columns: vec![
+				super::super::ColumnDefinition {
+					name: "id".to_string(),
+					type_definition: super::super::FieldType::BigInteger,
+					not_null: true,
+					unique: false,
+					primary_key: true,
+					auto_increment: true,
+					default: None,
+				},
+				super::super::ColumnDefinition {
+					name: "user_id".to_string(),
+					type_definition: super::super::FieldType::BigInteger,
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+			],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let add_user_fk = super::super::Operation::AddConstraint {
+				table: "blog_posts".to_string(),
+				constraint_sql: "CONSTRAINT blog_posts_user_id_fk FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE ON UPDATE NO ACTION".to_string(),
+			};
+		let mut state = ProjectState::new();
+
+		// Act
+		state.apply_migration_operations(&[create_posts, add_user_fk], "blog");
+
+		// Assert
+		let model = state
+			.find_model_by_table("blog_posts")
+			.expect("blog_posts model should be reconstructed");
+		let constraint = model
+			.constraints
+			.iter()
+			.find(|constraint| constraint.name == "blog_posts_user_id_fk")
+			.expect("foreign key constraint should be reconstructed");
+		assert_eq!(constraint.constraint_type, "foreign_key");
+		assert_eq!(constraint.fields, vec!["user_id".to_string()]);
+		let fk_info = constraint
+			.foreign_key_info
+			.as_ref()
+			.expect("foreign key metadata should be reconstructed");
+		assert_eq!(fk_info.referenced_table, "auth_users");
+		assert_eq!(fk_info.referenced_columns, vec!["id".to_string()]);
+		assert_eq!(fk_info.on_delete, ForeignKeyAction::Cascade);
+		assert_eq!(fk_info.on_update, ForeignKeyAction::NoAction);
+	}
+
+	#[rstest]
+	fn apply_migration_operations_replays_omitted_foreign_key_actions_as_no_action() {
+		// Arrange
+		let create_posts = super::super::Operation::CreateTable {
+			name: "blog_posts".to_string(),
+			columns: vec![
+				super::super::ColumnDefinition {
+					name: "id".to_string(),
+					type_definition: super::super::FieldType::BigInteger,
+					not_null: true,
+					unique: false,
+					primary_key: true,
+					auto_increment: true,
+					default: None,
+				},
+				super::super::ColumnDefinition {
+					name: "user_id".to_string(),
+					type_definition: super::super::FieldType::BigInteger,
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+				},
+			],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let add_user_fk = super::super::Operation::AddConstraint {
+			table: "blog_posts".to_string(),
+			constraint_sql:
+				"CONSTRAINT blog_posts_user_id_fk FOREIGN KEY (user_id) REFERENCES auth_users(id)"
+					.to_string(),
+		};
+		let mut state = ProjectState::new();
+
+		// Act
+		state.apply_migration_operations(&[create_posts, add_user_fk], "blog");
+
+		// Assert
+		let model = state
+			.find_model_by_table("blog_posts")
+			.expect("blog_posts model should be reconstructed");
+		let fk_info = model
+			.constraints
+			.iter()
+			.find(|constraint| constraint.name == "blog_posts_user_id_fk")
+			.and_then(|constraint| constraint.foreign_key_info.as_ref())
+			.expect("foreign key metadata should be reconstructed");
+		assert_eq!(fk_info.on_delete, ForeignKeyAction::NoAction);
+		assert_eq!(fk_info.on_update, ForeignKeyAction::NoAction);
 	}
 
 	#[rstest]
@@ -8038,6 +8252,80 @@ mod tests {
 	}
 
 	#[rstest]
+	fn has_field_changed_detects_database_default_changes() {
+		// Arrange
+		let from_field = FieldState::new("is_active", super::super::FieldType::Boolean, false);
+		let mut to_field = FieldState::new("is_active", super::super::FieldType::Boolean, false);
+		to_field
+			.params
+			.insert("default".to_string(), "true".to_string());
+		let detector = MigrationAutodetector::new(ProjectState::new(), ProjectState::new());
+
+		// Act
+		let changed =
+			detector.has_field_changed_with_unique("is_active", &from_field, &to_field, None, None);
+
+		// Assert
+		assert!(
+			changed,
+			"database default changes must be detected as schema-affecting field changes"
+		);
+	}
+
+	#[rstest]
+	fn generate_operations_carries_old_definition_for_database_default_changes() {
+		// Arrange
+		let mut from_field = FieldState::new("is_active", super::super::FieldType::Boolean, false);
+		from_field
+			.params
+			.insert("default".to_string(), "true".to_string());
+		let to_field = FieldState::new("is_active", super::super::FieldType::Boolean, false);
+		let from_model =
+			build_model_state("accounts", "User", vec![from_field], Vec::new(), Vec::new());
+		let to_model =
+			build_model_state("accounts", "User", vec![to_field], Vec::new(), Vec::new());
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		let operation = operations
+			.iter()
+			.find(|operation| {
+				matches!(
+					operation,
+					super::super::Operation::AlterColumn { column, .. } if column == "is_active"
+				)
+			})
+			.expect("default removal should emit AlterColumn");
+		let super::super::Operation::AlterColumn {
+			old_definition,
+			new_definition,
+			..
+		} = operation
+		else {
+			unreachable!("matched AlterColumn above");
+		};
+		assert_eq!(
+			old_definition
+				.as_ref()
+				.and_then(|definition| definition.default.as_deref()),
+			Some("true")
+		);
+		assert_eq!(new_definition.default, None);
+	}
+
+	#[rstest]
 	fn generate_operations_empty_for_struct_only_rename() {
 		// Arrange: struct name changed but table name and fields are the same
 		let from_model =
@@ -9043,9 +9331,8 @@ mod tests {
 		// registry state even when the applied schema is equivalent:
 		// - old UUID PK migrations may carry `auto_increment = true`;
 		// - field-level UNIQUE may have been added through `AddConstraint`;
-		// - Rust-side field defaults can be present in registry metadata even
-		//   when no DB-level default migration should be generated for an
-		//   existing column.
+		// - DB defaults must round-trip through both replayed migrations and
+		//   registry metadata.
 		let create_auth_users = super::super::Operation::CreateTable {
 			name: "auth_users".to_string(),
 			columns: vec![
@@ -9083,7 +9370,7 @@ mod tests {
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
-					default: None,
+					default: Some("''".to_string()),
 				},
 				super::super::ColumnDefinition {
 					name: "last_name".to_string(),
@@ -9092,7 +9379,7 @@ mod tests {
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
-					default: None,
+					default: Some("''".to_string()),
 				},
 				super::super::ColumnDefinition {
 					name: "is_active".to_string(),
@@ -9101,7 +9388,7 @@ mod tests {
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
-					default: None,
+					default: Some("true".to_string()),
 				},
 				super::super::ColumnDefinition {
 					name: "is_staff".to_string(),
@@ -9110,7 +9397,7 @@ mod tests {
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
-					default: None,
+					default: Some("false".to_string()),
 				},
 				super::super::ColumnDefinition {
 					name: "is_superuser".to_string(),
@@ -9119,7 +9406,7 @@ mod tests {
 					unique: false,
 					primary_key: false,
 					auto_increment: false,
-					default: None,
+					default: Some("false".to_string()),
 				},
 			],
 			constraints: vec![super::super::operations::Constraint::Unique {

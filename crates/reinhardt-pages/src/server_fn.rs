@@ -109,14 +109,77 @@ pub use server_fn_trait::{ServerFn, ServerFnError, parse_server_error_message};
 // Re-export the macro for convenience
 pub use reinhardt_pages_macros::server_fn;
 
-/// Resolves a server function endpoint path by prepending the mount prefix.
+#[cfg(any(wasm, test))]
+fn prefixed_same_origin_path(prefix: &str, path: &str) -> String {
+	let prefix = prefix.trim();
+	if prefix.is_empty()
+		|| !prefix.starts_with('/')
+		|| prefix.starts_with("//")
+		|| prefix_contains_url_parser_redirects(prefix)
+	{
+		return path.to_string();
+	}
+
+	let prefix = prefix.trim_end_matches('/');
+	format!("{}{}", prefix, path)
+}
+
+#[cfg(any(wasm, test))]
+fn prefix_contains_url_parser_redirects(prefix: &str) -> bool {
+	prefix
+		.chars()
+		.any(|character| matches!(character, '\\' | '?' | '#') || character.is_ascii_whitespace())
+		|| prefix.split('/').any(is_dot_path_segment)
+}
+
+#[cfg(any(wasm, test))]
+fn is_dot_path_segment(segment: &str) -> bool {
+	let mut dot_count = 0;
+	let mut bytes = segment.as_bytes();
+
+	while let Some((&byte, rest)) = bytes.split_first() {
+		if byte == b'.' {
+			dot_count += 1;
+			bytes = rest;
+			continue;
+		}
+
+		if byte == b'%' && rest.len() >= 2 && percent_encoded_byte(rest[0], rest[1]) == Some(b'.') {
+			dot_count += 1;
+			bytes = &rest[2..];
+			continue;
+		}
+
+		return false;
+	}
+
+	matches!(dot_count, 1 | 2)
+}
+
+#[cfg(any(wasm, test))]
+fn percent_encoded_byte(high: u8, low: u8) -> Option<u8> {
+	Some(hex_value(high)? * 16 + hex_value(low)?)
+}
+
+#[cfg(any(wasm, test))]
+fn hex_value(byte: u8) -> Option<u8> {
+	match byte {
+		b'0'..=b'9' => Some(byte - b'0'),
+		b'a'..=b'f' => Some(byte - b'a' + 10),
+		b'A'..=b'F' => Some(byte - b'A' + 10),
+		_ => None,
+	}
+}
+
+/// Resolves a server function endpoint path by prepending the client mount prefix.
 ///
-/// On WASM targets, reads the `<meta name="server-fn-prefix">` tag from the
-/// document to determine the mount prefix. The prefix is cached after the first
-/// DOM lookup for performance.
-///
-/// On non-WASM targets, returns the path unchanged (server-side routing handles
-/// prefix resolution via router mounting).
+/// Reads the `<meta name="server-fn-prefix">` tag from the document to
+/// determine the mount prefix. The prefix is cached after the first DOM lookup
+/// for performance. Only same-origin absolute path prefixes are honored;
+/// absolute URLs, scheme-relative URLs, relative prefixes, parser slash
+/// equivalents, query or fragment delimiters, and dot-segment prefixes are
+/// ignored so credentialed server function requests cannot be redirected by
+/// DOM-controlled metadata.
 ///
 /// # Examples
 ///
@@ -125,6 +188,9 @@ pub use reinhardt_pages_macros::server_fn;
 /// assert_eq!(resolve_endpoint("/api/server_fn/get_list"), "/admin/api/server_fn/get_list");
 ///
 /// // Without the meta tag:
+/// assert_eq!(resolve_endpoint("/api/server_fn/get_list"), "/api/server_fn/get_list");
+///
+/// // Cross-origin prefixes are ignored:
 /// assert_eq!(resolve_endpoint("/api/server_fn/get_list"), "/api/server_fn/get_list");
 /// ```
 #[cfg(wasm)]
@@ -150,12 +216,7 @@ pub fn resolve_endpoint(path: &str) -> String {
 			*cache = Some(prefix);
 		}
 		let prefix = cache.as_deref().unwrap_or("");
-		let relative = if prefix.is_empty() {
-			path.to_string()
-		} else {
-			let prefix = prefix.trim_end_matches('/');
-			format!("{}{}", prefix, path)
-		};
+		let relative = prefixed_same_origin_path(prefix, path);
 
 		web_sys::window()
 			.and_then(|w| w.location().href().ok())
@@ -175,6 +236,59 @@ pub fn resolve_endpoint(path: &str) -> String {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+
+	#[rstest]
+	#[case("", "/api/server_fn/get_list", "/api/server_fn/get_list")]
+	#[case("/admin", "/api/server_fn/get_list", "/admin/api/server_fn/get_list")]
+	#[case("/admin/", "/api/server_fn/get_list", "/admin/api/server_fn/get_list")]
+	#[case(
+		"/admin/v1",
+		"/api/server_fn/get_list",
+		"/admin/v1/api/server_fn/get_list"
+	)]
+	#[case(
+		"//attacker.example",
+		"/api/server_fn/get_list",
+		"/api/server_fn/get_list"
+	)]
+	#[case(
+		"https://attacker.example",
+		"/api/server_fn/get_list",
+		"/api/server_fn/get_list"
+	)]
+	#[case("admin", "/api/server_fn/get_list", "/api/server_fn/get_list")]
+	#[case(
+		"/\\attacker.example",
+		"/api/server_fn/get_list",
+		"/api/server_fn/get_list"
+	)]
+	#[case(
+		"/\n/attacker.example",
+		"/api/server_fn/get_list",
+		"/api/server_fn/get_list"
+	)]
+	#[case("/admin?x=", "/api/server_fn/get_list", "/api/server_fn/get_list")]
+	#[case("/admin#x", "/api/server_fn/get_list", "/api/server_fn/get_list")]
+	#[case("/admin/../evil", "/api/server_fn/get_list", "/api/server_fn/get_list")]
+	#[case(
+		"/admin/%2e%2e/evil",
+		"/api/server_fn/get_list",
+		"/api/server_fn/get_list"
+	)]
+	#[case(
+		"/admin/%2E/evil",
+		"/api/server_fn/get_list",
+		"/api/server_fn/get_list"
+	)]
+	fn test_prefixed_same_origin_path_rejects_cross_origin_prefixes(
+		#[case] prefix: &str,
+		#[case] path: &str,
+		#[case] expected: &str,
+	) {
+		let result = prefixed_same_origin_path(prefix, path);
+
+		assert_eq!(result, expected);
+	}
 
 	#[rstest]
 	#[case("/api/server_fn/get_list", "/api/server_fn/get_list")]

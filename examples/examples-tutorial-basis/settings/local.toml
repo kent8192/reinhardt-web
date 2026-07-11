@@ -9,9 +9,3 @@
 [core]
 debug = true
 secret_key = "local-development-secret-key"
-
-# Overrides deep-merge onto base.toml's `[core.databases.default]`, so only the
-# changed keys need to appear here.
-[core.databases.default]
-port = 5433
-redis_url = "redis://localhost:6380/0"

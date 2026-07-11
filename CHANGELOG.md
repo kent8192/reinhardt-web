@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.5...reinhardt-web@v0.3.0-rc.6) - 2026-06-27
+
+### Documentation
+
+- add release announcement(s)
+- *(release)* expose 0.3 migration guide
+- *(pages)* document WASM server fn resolver
+
+### Fixed
+
+- *(commands)* align pages tutorial scaffold
+- *(commands)* address scaffold review feedback
+- *(commands)* include auth tutorial scaffold features
+- *(migrations)* handle field changes on renamed models
+- *(migrations)* address autodetector review gaps
+- *(macros)* stop propagating serde skip to Info relation fields
+
+### Maintenance
+
+- merge main into develop/0.3.0
+
+### Testing
+
+- *(migrations)* tighten autodetector assertions
+- *(examples)* guard polls question FK migration type
+
 ## [0.3.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.0-rc.4...reinhardt-web@v0.3.0-rc.5) - 2026-06-26
 
 ### Changed

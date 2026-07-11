@@ -1039,6 +1039,8 @@ struct FieldInfo {
 	name: syn::Ident,
 	ty: Type,
 	config: FieldConfig,
+	/// Field-level `#[serde(...)]` attributes copied to generated companion fields.
+	serde_attrs: Vec<syn::Attribute>,
 	/// Optional relationship attribute from `#[rel(...)]`
 	///
 	/// This field is reserved for future accessor generation support.
@@ -1874,6 +1876,12 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		let ty = field.ty.clone();
 		let config = FieldConfig::from_attrs(&field.attrs)?;
 		config.validate()?;
+		let serde_attrs: Vec<syn::Attribute> = field
+			.attrs
+			.iter()
+			.filter(|attr| attr.path().is_ident("serde"))
+			.cloned()
+			.collect();
 
 		// Parse #[rel(...)] attribute if present
 		let rel = field
@@ -1892,6 +1900,7 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			name,
 			ty,
 			config,
+			serde_attrs,
 			rel,
 			is_fk_id_field,
 		});
@@ -4777,6 +4786,7 @@ enum InfoSetterKind {
 struct InfoFieldSpec {
 	name: Ident,
 	ty: TokenStream,
+	serde_attrs: Vec<syn::Attribute>,
 	validate_attrs: Vec<TokenStream>,
 	setter_kind: InfoSetterKind,
 	from_model: TokenStream,
@@ -4831,6 +4841,14 @@ fn generate_info_struct(
 			info_fields.push(InfoFieldSpec {
 				name: name.clone(),
 				ty,
+				// Relation payloads (`RelationInfo`/`ManyToManyInfo`) are lightweight,
+				// serializable DTOs (Issue #5272). They must NOT inherit the model
+				// field's serde attrs: the `#[model]` attribute macro injects
+				// `#[serde(skip)]` onto relation model fields (only the `*_id` column
+				// serializes for the model), and propagating it here would both demand
+				// an unimplemented `Default` for `RelationInfo` and wrongly drop the
+				// payload during `{Model}Info` (de)serialization.
+				serde_attrs: Vec::new(),
 				validate_attrs: Vec::new(),
 				setter_kind: InfoSetterKind::Relation { target_ty },
 				from_model: quote! {
@@ -4853,6 +4871,8 @@ fn generate_info_struct(
 			info_fields.push(InfoFieldSpec {
 				name: name.clone(),
 				ty,
+				// Relation payloads do not inherit model serde attrs (see FK branch above).
+				serde_attrs: Vec::new(),
 				validate_attrs: Vec::new(),
 				setter_kind: InfoSetterKind::ManyToMany { target_ty },
 				from_model: quote! {
@@ -4877,6 +4897,7 @@ fn generate_info_struct(
 		info_fields.push(InfoFieldSpec {
 			name: name.clone(),
 			ty: quote! { #ty },
+			serde_attrs: f.serde_attrs.clone(),
 			validate_attrs,
 			setter_kind,
 			from_model: quote! { #name: model.#name, },
@@ -4889,8 +4910,10 @@ fn generate_info_struct(
 		.map(|f| {
 			let name = &f.name;
 			let ty = &f.ty;
+			let serde_attrs = &f.serde_attrs;
 			let validate_attrs = &f.validate_attrs;
 			quote! {
+				#(#serde_attrs)*
 				#(#validate_attrs)*
 				pub #name: #ty,
 			}

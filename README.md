@@ -48,7 +48,7 @@ If you have written `ModelSerializer` or `Depends()` before, Reinhardt will feel
 ```bash
 # Pin the documented Reinhardt release for reproducibility.
 # Omit --version to let Cargo choose the latest stable release.
-cargo install reinhardt-admin-cli --version "0.3.0-rc.5"
+cargo install reinhardt-admin-cli --version "0.3.0-rc.6"
 
 reinhardt-admin startproject my-api && cd my-api
 cargo run --bin manage runserver  # Visit http://127.0.0.1:8000
@@ -103,12 +103,14 @@ Reinhardt follows a **three-phase lifecycle** for every crate:
 | **Stable** (`0.x.0`) | Full SemVer 2.0 guarantees. |
 
 <!-- reinhardt-version-sync -->
-**Current release line:** Reinhardt documentation tracks `0.3.0-rc.5`. From
+**Current release line:** Reinhardt documentation tracks `0.3.0-rc.6`. From
 `0.1.0` onward, all public APIs follow SemVer 2.0; future breaking changes
 move through the documented alpha and RC lifecycle before stable publication.
 
 For per-release detail (changelog summary, upgrade notes, known issues),
 see the [Release category in GitHub Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+For 0.2.x applications moving to 0.3.0, use the
+[0.3 migration guide](instructions/MIGRATION_0.3.md).
 The full lifecycle policy lives in
 [Stability Policy](instructions/STABILITY_POLICY.md).
 
@@ -129,7 +131,7 @@ Get a well-balanced feature set with zero configuration:
 [dependencies]
 # Import as 'reinhardt', published as 'reinhardt-web'
 # Default enables the "standard" preset (balanced feature set)
-reinhardt = { version = "0.3.0-rc.5", package = "reinhardt-web" }
+reinhardt = { version = "0.3.0-rc.6", package = "reinhardt-web" }
 ```
 
 **Includes:** Core, Database (PostgreSQL), REST API (serializers, parsers, pagination, filters, throttling, versioning, metadata, content negotiation), Auth, Middleware (sessions), Pages (WASM Frontend with SSR), Signals
@@ -151,7 +153,7 @@ For compatibility checks, framework development, and projects that intentionally
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.0-rc.5", package = "reinhardt-web", default-features = false, features = ["full"] }
+reinhardt = { version = "0.3.0-rc.6", package = "reinhardt-web", default-features = false, features = ["full"] }
 ```
 
 **Includes:** Everything in Standard, plus Admin, GraphQL, WebSockets, Cache, i18n, Mail, Static Files, Storage, and more
@@ -165,7 +167,7 @@ Lightweight and fast, perfect for simple APIs:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.0-rc.5", package = "reinhardt-web", default-features = false, features = ["minimal"] }
+reinhardt = { version = "0.3.0-rc.6", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 ```
 
 **Includes:** HTTP, routing, DI, parameter extraction, server
@@ -180,24 +182,24 @@ Install only the components you need:
 ```toml
 [dependencies]
 # Core components
-reinhardt-http = "0.3.0-rc.5"
-reinhardt-urls = "0.3.0-rc.5"
+reinhardt-http = "0.3.0-rc.6"
+reinhardt-urls = "0.3.0-rc.6"
 
 # Optional: Database
-reinhardt-db = "0.3.0-rc.5"
+reinhardt-db = "0.3.0-rc.6"
 
 # Optional: Authentication
-reinhardt-auth = "0.3.0-rc.5"
+reinhardt-auth = "0.3.0-rc.6"
 
 # Optional: REST API features
-reinhardt-rest = "0.3.0-rc.5"
+reinhardt-rest = "0.3.0-rc.6"
 
 # Optional: Admin panel
-reinhardt-admin = "0.3.0-rc.5"
+reinhardt-admin = "0.3.0-rc.6"
 
 # Optional: Advanced features
-reinhardt-graphql = "0.3.0-rc.5"
-reinhardt-websockets = "0.3.0-rc.5"
+reinhardt-graphql = "0.3.0-rc.6"
+reinhardt-websockets = "0.3.0-rc.6"
 ```
 
 **Note on Crate Naming:**
@@ -215,7 +217,7 @@ the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.3.0-rc.5"
+cargo install reinhardt-admin-cli --version "0.3.0-rc.6"
 ```
 
 ### 2. Create a New Project
@@ -232,7 +234,7 @@ during project creation. Scripts can pass them explicitly:
 <!-- reinhardt-version-sync -->
 ```bash
 reinhardt-admin startproject my-api \
-  --reinhardt-version "0.3.0-rc.5" \
+  --reinhardt-version "0.3.0-rc.6" \
   --features standard,admin \
   --no-interactive
 ```
@@ -1331,16 +1333,16 @@ Reinhardt offers modular components you can mix and match:
 
 - 📚 [Getting Started Guide](https://reinhardt-web.dev/quickstart/getting-started/) - Step-by-step tutorial for beginners
 - 🎛️ [Feature Flags Guide](https://reinhardt-web.dev/docs/feature-flags/) - Optimize your build with granular feature control
-- 📖 [API Reference](https://docs.rs/reinhardt-web) (Coming soon)
+- 📖 [API Reference](https://docs.rs/reinhardt-web)
 - 📝 [Tutorials](https://reinhardt-web.dev/quickstart/tutorials/) - Learn by building real applications
 
-**For AI Assistants**: See [CLAUDE.md](CLAUDE.md) for project-specific coding standards, testing guidelines, and development conventions.
+For contributor automation and repository-specific development conventions,
+see [CLAUDE.md](CLAUDE.md).
 
 ## 💬 Getting Help
 
 Reinhardt is a community-driven project. Here's where you can get help:
 
-- 💬 **Discord**: Join our Discord server for real-time chat (coming soon)
 - 💭 **GitHub Discussions**: [Ask questions and share ideas](https://github.com/kent8192/reinhardt-web/discussions)
 - 🐛 **Issues**: [Report bugs](https://github.com/kent8192/reinhardt-web/issues)
 - 📖 **Documentation**: [Read the guides](docs/)

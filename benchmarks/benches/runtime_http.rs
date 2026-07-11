@@ -613,8 +613,8 @@ async fn spawn_axum_router_server(
 		let server = axum::serve(listener, router).with_graceful_shutdown(async {
 			let _ = shutdown_rx.await;
 		});
-		if let Err(err) = server.await {
-			eprintln!("{} benchmark server failed: {}", name, err);
+		if server.await.is_err() {
+			eprintln!("{} benchmark server failed", name);
 		}
 	});
 
@@ -650,8 +650,8 @@ async fn spawn_actix_server(client: &Client) -> LoopbackServer {
 	.run();
 	let actix_handle = server.handle();
 	let join_handle = tokio::spawn(async move {
-		if let Err(err) = server.await {
-			eprintln!("Actix benchmark server failed: {}", err);
+		if server.await.is_err() {
+			eprintln!("Actix benchmark server failed");
 		}
 	});
 
