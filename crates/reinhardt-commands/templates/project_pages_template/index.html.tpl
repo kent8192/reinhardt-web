@@ -6,7 +6,7 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>{{ project_name }} - Reinhardt Pages</title>
-	<link rel="stylesheet" href='{{ static_url("__reinhardt__/components.css") }}'>
+	<link rel="stylesheet" href='{% raw %}{{ static_url("__reinhardt__/components.css") }}{% endraw %}'>
 	<link
 		href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
 		rel="stylesheet"
