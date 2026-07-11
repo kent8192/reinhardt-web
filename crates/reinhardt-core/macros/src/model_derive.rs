@@ -5850,7 +5850,7 @@ mod tests {
 		);
 	}
 
-	#[cfg(feature = "db-mysql")]
+	#[cfg(all(feature = "db-mysql", not(feature = "db-sqlite")))]
 	#[test]
 	fn test_generated_virtual_primary_key_rejects_on_mysql() {
 		let attrs = vec![parse_quote! {
