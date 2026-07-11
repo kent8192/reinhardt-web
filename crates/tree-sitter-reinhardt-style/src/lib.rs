@@ -24,7 +24,9 @@ mod tests {
 		parser
 			.set_language(&super::LANGUAGE.into())
 			.expect("load style DSL grammar");
-		parser.parse(source, None).expect("parser should produce a tree")
+		parser
+			.parse(source, None)
+			.expect("parser should produce a tree")
 	}
 
 	fn count_kind(node: Node<'_>, kind: &str) -> usize {
@@ -90,7 +92,11 @@ mod tests {
 		let tree = parse(source);
 
 		// Assert
-		assert!(!tree.root_node().has_error(), "parse tree: {}", tree.root_node().to_sexp());
+		assert!(
+			!tree.root_node().has_error(),
+			"parse tree: {}",
+			tree.root_node().to_sexp()
+		);
 	}
 
 	#[rstest]
@@ -112,6 +118,10 @@ mod tests {
 		let tree = parse(&source);
 
 		// Assert
-		assert!(!tree.root_node().has_error(), "parse tree: {}", tree.root_node().to_sexp());
+		assert!(
+			!tree.root_node().has_error(),
+			"parse tree: {}",
+			tree.root_node().to_sexp()
+		);
 	}
 }

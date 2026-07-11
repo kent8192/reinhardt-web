@@ -147,12 +147,11 @@ fn every_registered_length_unit_has_a_fixed_constructor() {
 		CssLength::cqmax(1.0).to_string(),
 	];
 	let expected = [
-		"1px", "1cm", "1mm", "1q", "1in", "1pc", "1pt", "1em", "1rem", "1ex", "1rex",
-		"1cap", "1rcap", "1ch", "1rch", "1ic", "1ric", "1lh", "1rlh", "1vw", "1vh",
-		"1vi", "1vb", "1vmin", "1vmax", "1svw", "1svh", "1svi", "1svb", "1svmin",
-		"1svmax", "1lvw", "1lvh", "1lvi", "1lvb", "1lvmin", "1lvmax", "1dvw", "1dvh",
-		"1dvi", "1dvb", "1dvmin", "1dvmax", "1cqw", "1cqh", "1cqi", "1cqb", "1cqmin",
-		"1cqmax",
+		"1px", "1cm", "1mm", "1q", "1in", "1pc", "1pt", "1em", "1rem", "1ex", "1rex", "1cap",
+		"1rcap", "1ch", "1rch", "1ic", "1ric", "1lh", "1rlh", "1vw", "1vh", "1vi", "1vb", "1vmin",
+		"1vmax", "1svw", "1svh", "1svi", "1svb", "1svmin", "1svmax", "1lvw", "1lvh", "1lvi",
+		"1lvb", "1lvmin", "1lvmax", "1dvw", "1dvh", "1dvi", "1dvb", "1dvmin", "1dvmax", "1cqw",
+		"1cqh", "1cqi", "1cqb", "1cqmin", "1cqmax",
 	];
 
 	// Act
