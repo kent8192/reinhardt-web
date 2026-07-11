@@ -187,49 +187,41 @@ use {
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::hooks::{
-///     use_retained_effect, use_websocket, ConnectionState, UseWebSocketOptions, WebSocketMessage,
-/// };
+/// use reinhardt_pages::reactive::hooks::{use_effect, use_websocket, UseWebSocketOptions};
+/// use reinhardt_pages::reactive::hooks::ConnectionState;
 ///
 /// let ws = use_websocket("ws://localhost:8000/ws/chat", UseWebSocketOptions::default());
 ///
 /// // Monitor connection state
 /// let connection_state = ws.connection_state().clone();
-/// use_retained_effect(
-///     {
-///         let connection_state = connection_state.clone();
-///         move || {
-///             match connection_state.get() {
-///                 ConnectionState::Open => log!("Connected"),
-///                 ConnectionState::Closed => log!("Disconnected"),
-///                 _ => {}
-///             }
-///             None::<fn()>
+/// use_effect({
+///     let connection_state = connection_state.clone();
+///     move || {
+///         match connection_state.get() {
+///             ConnectionState::Open => log!("Connected"),
+///             ConnectionState::Closed => log!("Disconnected"),
+///             _ => {}
 ///         }
-///     },
-///     (connection_state.clone(),),
-/// );
+///     }
+/// }, (connection_state,));
 ///
 /// // Send a message
 /// ws.send_text("Hello, server!".to_string()).ok();
 ///
 /// // Receive messages
 /// let latest_message = ws.latest_message().clone();
-/// use_retained_effect(
-///     {
-///         let latest_message = latest_message.clone();
-///         move || {
-///             if let Some(msg) = latest_message.get() {
-///                 match msg {
-///                     WebSocketMessage::Text(text) => log!("Received: {}", text),
-///                     _ => {}
-///                 }
+/// use_effect({
+///     let latest_message = latest_message.clone();
+///     move || {
+///         if let Some(msg) = latest_message.get() {
+///             match msg {
+///                 WebSocketMessage::Text(text) => log!("Received: {}", text),
+///                 _ => {}
 ///             }
 ///             None::<fn()>
 ///         }
-///     },
-///     (latest_message.clone(),),
-/// );
+///     }
+/// }, (latest_message,));
 /// ```
 ///
 /// # Reactivity semantics

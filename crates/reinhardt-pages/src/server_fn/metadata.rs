@@ -70,3 +70,30 @@ pub trait ServerFnMetadata: 'static {
 	/// response-cookie jar on that hot path.
 	const USES_RESPONSE_COOKIE_JAR: bool = false;
 }
+
+/// Exposes the success response type of a `#[server_fn]` marker.
+///
+/// This is implemented by the `#[server_fn]` macro for public server function
+/// markers whose return type is a direct `Result<T, E>`. Generated code can
+/// use it to name the declared `Ok(T)` response type without changing the
+/// public server function call signature. Scoped or private server functions
+/// keep their basic [`ServerFnMetadata`] and native registration metadata, but
+/// do not expose typed response metadata because the associated types may be
+/// private to the defining module.
+pub trait ServerFnResponseMetadata: ServerFnMetadata {
+	/// Success response type (the `Ok` variant of the function's return type).
+	type Response: 'static;
+	/// Error type returned by the public server function stub.
+	type Error: 'static;
+}
+
+/// Exposes the client-visible request argument type of a `#[server_fn]` marker.
+///
+/// This is implemented by the `#[server_fn]` macro when the public client call
+/// shape has exactly one body-deserialized request argument. Parameters resolved
+/// by `#[inject]` or `FromRequest` extractors are intentionally excluded because
+/// clients and form submit helpers cannot provide them directly.
+pub trait ServerFnRequestMetadata: ServerFnMetadata {
+	/// Request type accepted by the client-visible server function call.
+	type Request: 'static;
+}

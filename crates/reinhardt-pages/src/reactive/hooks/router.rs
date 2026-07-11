@@ -149,9 +149,8 @@ impl RouterHandle {
 ///             }
 ///             None::<fn()>
 ///         }
-///     },
-///     (should_redirect.clone(),),
-/// );
+///     }
+/// }, (should_redirect.clone(),));
 /// ```
 pub fn use_router() -> RouterHandle {
 	RouterHandle

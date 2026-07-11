@@ -791,7 +791,6 @@ pub fn question_edit(question_id: i64) -> Page {
 						.question_text()
 						.set(question.question_text.clone());
 				}
-				None::<fn()>
 			},
 			(load_detail_for_deps,),
 		);

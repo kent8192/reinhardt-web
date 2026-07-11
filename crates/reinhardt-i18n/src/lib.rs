@@ -34,20 +34,24 @@
 //! When the `di` feature is enabled, `TranslationContext` implements `Injectable`:
 //!
 //! ```no_run
+//! #[cfg(feature = "di")]
 //! use reinhardt_di::{InjectionContext, SingletonScope, Injectable};
+//! #[cfg(feature = "di")]
 //! use reinhardt_i18n::TranslationContext;
 //!
+//! #[cfg(feature = "di")]
 //! async fn handler(ctx: &InjectionContext) {
 //!     let translation = TranslationContext::inject(ctx).await.unwrap();
 //!     // Use translation...
 //! }
+//!
+//! fn main() {}
 //! ```
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
-
-use reinhardt_utils::safe_path_join;
 
 /// Error types for i18n operations.
 #[derive(Debug, thiserror::Error)]
@@ -87,6 +91,75 @@ pub use locale::get_locale as get_language;
 // New scoped translation API
 // TranslationContext, TranslationGuard, set_active_translation, get_active_translation
 // are defined below and exported at module level
+
+fn safe_path_join(base: &Path, user_input: &str) -> Result<PathBuf, String> {
+	if user_input.contains('\0') {
+		return Err("Path contains null byte".to_string());
+	}
+	if user_input.starts_with('/') || user_input.starts_with('\\') {
+		return Err("Absolute path not allowed in user input".to_string());
+	}
+	if user_input.len() >= 2
+		&& user_input.as_bytes()[0].is_ascii_alphabetic()
+		&& user_input.as_bytes()[1] == b':'
+	{
+		return Err("Absolute path not allowed in user input".to_string());
+	}
+
+	let input_path = Path::new(user_input);
+	for component in input_path.components() {
+		if matches!(component, Component::ParentDir) {
+			return Err(
+				"Path traversal detected: input contains parent directory reference".to_string(),
+			);
+		}
+	}
+	if user_input.contains("..") {
+		return Err(
+			"Path traversal detected: input contains parent directory reference".to_string(),
+		);
+	}
+
+	let joined = base.join(user_input);
+	let canonical_base = safe_canonicalize(base)?;
+	let canonical_joined = safe_canonicalize(&joined)?;
+	if !canonical_joined.starts_with(&canonical_base) {
+		return Err("Path escapes base directory".to_string());
+	}
+
+	Ok(canonical_joined)
+}
+
+fn safe_canonicalize(path: &Path) -> Result<PathBuf, String> {
+	if let Ok(canonical) = path.canonicalize() {
+		return Ok(canonical);
+	}
+
+	let mut remaining = Vec::new();
+	let mut current = path.to_path_buf();
+	let resolved = loop {
+		if current.exists() {
+			break current.canonicalize().map_err(|e| e.to_string())?;
+		}
+		if let Some(file_name) = current.file_name() {
+			remaining.push(file_name.to_os_string());
+			if let Some(parent) = current.parent() {
+				current = parent.to_path_buf();
+			} else {
+				break current;
+			}
+		} else {
+			break current;
+		}
+	};
+
+	let mut result = resolved;
+	for component in remaining.into_iter().rev() {
+		result.push(component);
+	}
+
+	Ok(result)
+}
 
 /// Catalog loader for loading message catalogs from files or other sources
 pub struct CatalogLoader {
@@ -291,6 +364,13 @@ impl TranslationContext {
 		self.catalogs.get(locale)
 	}
 
+	/// Iterates over all registered catalogs.
+	pub fn catalogs(&self) -> impl Iterator<Item = (&str, &MessageCatalog)> {
+		self.catalogs
+			.iter()
+			.map(|(locale, catalog)| (locale.as_str(), catalog))
+	}
+
 	/// Sets the current locale.
 	///
 	/// # Errors
@@ -298,11 +378,22 @@ impl TranslationContext {
 	/// Returns `I18nError::InvalidLocale` if the locale string format is invalid.
 	pub fn set_locale(&mut self, locale: impl Into<String>) -> Result<(), I18nError> {
 		let locale = locale.into();
-		// Allow empty string for deactivation (reset to default)
-		if !locale.is_empty() {
-			validate_locale(&locale)?;
-		}
+		Self::validate_locale_tag(&locale)?;
 		self.current_locale = locale;
+		Ok(())
+	}
+
+	/// Validates a locale tag accepted by translation contexts.
+	///
+	/// Empty locale strings are accepted and resolve to the default locale.
+	///
+	/// # Errors
+	///
+	/// Returns `I18nError::InvalidLocale` if the locale string format is invalid.
+	pub fn validate_locale_tag(locale: &str) -> Result<(), I18nError> {
+		if !locale.is_empty() {
+			validate_locale(locale)?;
+		}
 		Ok(())
 	}
 
@@ -340,7 +431,14 @@ impl TranslationContext {
 	///
 	/// Falls back to the fallback locale if translation is not found.
 	pub fn translate(&self, message: &str) -> String {
-		let locale = self.get_locale();
+		self.translate_for_locale(self.get_locale(), message)
+	}
+
+	/// Translates a message using the provided locale.
+	///
+	/// Falls back to the fallback locale if translation is not found.
+	pub fn translate_for_locale(&self, locale: &str, message: &str) -> String {
+		let locale = normalize_locale(locale);
 
 		if let Some(translation) = self.get_catalog(locale).and_then(|c| c.get(message)) {
 			return translation.clone();
@@ -360,7 +458,18 @@ impl TranslationContext {
 
 	/// Translates a message with plural support.
 	pub fn translate_plural(&self, singular: &str, plural: &str, count: usize) -> String {
-		let locale = self.get_locale();
+		self.translate_plural_for_locale(self.get_locale(), singular, plural, count)
+	}
+
+	/// Translates a plural message using the provided locale.
+	pub fn translate_plural_for_locale(
+		&self,
+		locale: &str,
+		singular: &str,
+		plural: &str,
+		count: usize,
+	) -> String {
+		let locale = normalize_locale(locale);
 
 		if let Some(translation) = self
 			.get_catalog(locale)
@@ -385,7 +494,17 @@ impl TranslationContext {
 
 	/// Translates a message with context.
 	pub fn translate_context(&self, context: &str, message: &str) -> String {
-		let locale = self.get_locale();
+		self.translate_context_for_locale(self.get_locale(), context, message)
+	}
+
+	/// Translates a contextual message using the provided locale.
+	pub fn translate_context_for_locale(
+		&self,
+		locale: &str,
+		context: &str,
+		message: &str,
+	) -> String {
+		let locale = normalize_locale(locale);
 
 		if let Some(translation) = self
 			.get_catalog(locale)
@@ -416,7 +535,25 @@ impl TranslationContext {
 		plural: &str,
 		count: usize,
 	) -> String {
-		let locale = self.get_locale();
+		self.translate_context_plural_for_locale(
+			self.get_locale(),
+			context,
+			singular,
+			plural,
+			count,
+		)
+	}
+
+	/// Translates a contextual plural message using the provided locale.
+	pub fn translate_context_plural_for_locale(
+		&self,
+		locale: &str,
+		context: &str,
+		singular: &str,
+		plural: &str,
+		count: usize,
+	) -> String {
+		let locale = normalize_locale(locale);
 
 		if let Some(translation) = self
 			.get_catalog(locale)
@@ -438,6 +575,10 @@ impl TranslationContext {
 		// Use default English plural rules
 		if count == 1 { singular } else { plural }.to_string()
 	}
+}
+
+fn normalize_locale(locale: &str) -> &str {
+	if locale.is_empty() { "en-US" } else { locale }
 }
 
 /// RAII guard for active TranslationContext scope.

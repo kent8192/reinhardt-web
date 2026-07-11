@@ -40,8 +40,40 @@ fn test_server_fn_macro_ui() {
 	t.pass("tests/ui/server_fn/codec_url.rs");
 	// Fixes #3666: verify server_fn compiles without msw feature (no check-cfg errors)
 	t.pass("tests/ui/server_fn/no_msw_feature.rs");
+	t.pass("tests/ui/server_fn/response_metadata.rs");
+	t.pass("tests/ui/server_fn/result_alias.rs");
 	// Issue #3858: verify FromRequest extractor params work in #[server_fn]
 	t.pass("tests/ui/server_fn/with_extractors.rs");
+}
+
+#[test]
+fn test_server_fn_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/server_fn/fail/*.rs");
+}
+
+#[test]
+fn test_client_form_choices_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/client_form/choices/pass/*.rs");
+}
+
+#[test]
+fn test_client_form_choices_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/client_form/choices/fail/*.rs");
+}
+
+#[test]
+fn test_client_form_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/client_form/pass/*.rs");
+}
+
+#[test]
+fn test_client_form_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/client_form/fail/*.rs");
 }
 
 #[test]

@@ -3,14 +3,69 @@
 //! React-aligned side effect hooks. Both take an explicit dependency tuple
 //! as the second argument; the closure runs with no active reactive Observer
 //! so only the listed deps subscribe (Option A semantics, Refs #4195).
-//! Use [`use_retained_effect`] or [`use_retained_layout_effect`] when the
-//! effect should be registered without manually keeping the returned guard.
+//! Effect closures can return either `()` for no cleanup or `Option<C>` when
+//! they need to register teardown.
 
 use reinhardt_core::reactive::deps::IntoDeps;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::reactive::{Effect, runtime::EffectTiming};
+
+/// Return value accepted from effect closures.
+///
+/// `()` means the effect has no cleanup. `Option<C>` preserves the existing
+/// cleanup-capable form, where `Some(cleanup)` runs before the next re-run and
+/// on dispose.
+pub trait EffectReturn<C>
+where
+	C: FnOnce() + 'static,
+{
+	/// Converts the closure return value into an optional cleanup function.
+	fn into_cleanup(self) -> Option<C>;
+}
+
+impl EffectReturn<fn()> for () {
+	fn into_cleanup(self) -> Option<fn()> {
+		None
+	}
+}
+
+impl<C> EffectReturn<C> for Option<C>
+where
+	C: FnOnce() + 'static,
+{
+	fn into_cleanup(self) -> Option<C> {
+		self
+	}
+}
+
+/// Internal adapter from effect closures to accepted effect return values.
+///
+/// This keeps the public cleanup type as the second generic parameter while
+/// still allowing closures to return either `()` or `Option<C>`.
+#[doc(hidden)]
+pub trait EffectCallback<C>
+where
+	C: FnOnce() + 'static,
+{
+	type Return: EffectReturn<C>;
+
+	fn call_effect(&mut self) -> Self::Return;
+}
+
+impl<F, R, C> EffectCallback<C> for F
+where
+	F: FnMut() -> R,
+	R: EffectReturn<C>,
+	C: FnOnce() + 'static,
+{
+	type Return = R;
+
+	fn call_effect(&mut self) -> Self::Return {
+		self()
+	}
+}
 
 /// Runs a side effect when one of the listed `deps` changes.
 ///
@@ -30,8 +85,8 @@ use crate::reactive::{Effect, runtime::EffectTiming};
 ///
 /// # Type Parameters
 ///
-/// * `F` - The effect function type (returns `Option<C>`).
-/// * `C` - The optional cleanup function type.
+/// * `F` - The effect function type.
+/// * `C` - The cleanup function type.
 /// * `D` - Any tuple of [`Trackable`]s (or `()`) that implements
 ///   [`IntoDeps`].
 ///
@@ -55,7 +110,6 @@ use crate::reactive::{Effect, runtime::EffectTiming};
 ///         let count = count.clone();
 ///         move || {
 ///             log!("Count is now: {}", count.get());
-///             None::<fn()>
 ///         }
 ///     },
 ///     (count.clone(),),
@@ -75,11 +129,12 @@ use crate::reactive::{Effect, runtime::EffectTiming};
 /// [`IntoDeps`]: reinhardt_core::reactive::deps::IntoDeps
 pub fn use_effect<F, C, D>(f: F, deps: D) -> Effect
 where
-	F: FnMut() -> Option<C> + 'static,
+	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
 	D: IntoDeps,
 {
-	Effect::new_with_deps(f, deps.into_deps())
+	let mut f = f;
+	Effect::new_with_deps(move || f.call_effect().into_cleanup(), deps.into_deps())
 }
 
 /// Registers a side effect in the current mounted view scope.
@@ -150,7 +205,7 @@ where
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::hooks::{use_ref, use_state, use_layout_effect};
+/// use reinhardt_pages::reactive::hooks::{use_layout_effect, use_ref, use_state};
 ///
 /// let element_ref = use_ref(None::<Element>);
 /// let (_width, set_width) = use_state(0);
@@ -163,7 +218,6 @@ where
 ///             if let Some(el) = element_ref.current().as_ref() {
 ///                 set_width(el.offset_width());
 ///             }
-///             None::<fn()>
 ///         }
 ///     },
 ///     (element_ref,),
@@ -171,11 +225,16 @@ where
 /// ```
 pub fn use_layout_effect<F, C, D>(f: F, deps: D) -> Effect
 where
-	F: FnMut() -> Option<C> + 'static,
+	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
 	D: IntoDeps,
 {
-	Effect::new_with_deps_and_timing(f, deps.into_deps(), EffectTiming::Layout)
+	let mut f = f;
+	Effect::new_with_deps_and_timing(
+		move || f.call_effect().into_cleanup(),
+		deps.into_deps(),
+		EffectTiming::Layout,
+	)
 }
 
 /// Registers a layout-timing side effect in the current mounted view scope.
@@ -249,6 +308,7 @@ mod tests {
 	use crate::component::reactive_if::cleanup_reactive_nodes;
 	use crate::reactive::Signal;
 	use crate::reactive::runtime::with_runtime;
+	use rstest::rstest;
 	use serial_test::serial;
 	use std::cell::RefCell;
 	use std::rc::Rc;
@@ -293,6 +353,24 @@ mod tests {
 
 		// Initial run
 		assert_eq!(*effect_count.borrow(), 1);
+	}
+
+	#[rstest]
+	#[serial(hooks_effect)]
+	fn test_use_effect_accepts_unit_return() {
+		let called = Rc::new(RefCell::new(false));
+
+		let _effect = use_effect(
+			{
+				let called = Rc::clone(&called);
+				move || {
+					*called.borrow_mut() = true;
+				}
+			},
+			(),
+		);
+
+		assert!(*called.borrow());
 	}
 
 	#[test]
@@ -341,6 +419,31 @@ mod tests {
 		execution_order.borrow_mut().push(100);
 
 		// Layout effect ran synchronously before the push(100)
+		assert_eq!(*execution_order.borrow(), vec![0, 1, 100]);
+	}
+
+	#[rstest]
+	#[serial(hooks_effect)]
+	fn test_use_layout_effect_accepts_unit_return_and_tracks_synchronously() {
+		let signal = Signal::new(0);
+		let execution_order = Rc::new(RefCell::new(Vec::new()));
+
+		let _effect = use_layout_effect(
+			{
+				let signal = signal.clone();
+				let execution_order = Rc::clone(&execution_order);
+				move || {
+					execution_order.borrow_mut().push(signal.get());
+				}
+			},
+			(signal.clone(),),
+		);
+
+		assert_eq!(*execution_order.borrow(), vec![0]);
+
+		signal.set(1);
+		execution_order.borrow_mut().push(100);
+
 		assert_eq!(*execution_order.borrow(), vec![0, 1, 100]);
 	}
 

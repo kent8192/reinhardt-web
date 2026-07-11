@@ -1,0 +1,5 @@
+error: ClientFormChoices requires matching serde serialize and deserialize names for each choice
+ --> tests/ui/client_form/choices/fail/directional_rename_all.rs:8:2
+  |
+8 |     LiveApi,
+  |     ^^^^^^^

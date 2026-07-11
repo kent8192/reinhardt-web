@@ -508,8 +508,8 @@ async fn retained_effects_in_reactive_body_are_replaced_on_rerender() {
 		log.iter()
 			.filter(|entry| entry.as_str() == "cleanup")
 			.count(),
-		1,
-		"previous retained effect should be cleaned up on reactive rerender: {log:?}"
+		2,
+		"retained effects should clean up on reactive rerender and before the dependency-driven rerun: {log:?}"
 	);
 	replace_history_path("/");
 }
