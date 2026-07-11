@@ -295,6 +295,9 @@ The prelude includes:
 ### Component System
 - `Component`, `ElementView`, `IntoView`, `View`, `Props`, `ViewEventHandler`
 - `SuspenseBoundary`, `ErrorBoundary`, `BoundaryError`, `ErrorTracker`
+  - `ErrorBoundary::new()` uses a generic default error message so tracked resource
+    errors do not expose internal diagnostics. Provide a custom fallback only for
+    messages that are safe to show to clients.
 
 ### Events and Callbacks
 - `Callback`, `IntoEventHandler`, `into_event_handler`
