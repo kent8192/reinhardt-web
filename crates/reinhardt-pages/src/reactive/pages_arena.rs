@@ -7,8 +7,6 @@ use std::collections::BTreeMap;
 use reinhardt_core::reactive::{ReactiveScopeError, ScopeId, on_scope_dispose};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-// Action and Resource slots are consumed by the next migration layer.
-#[allow(dead_code)]
 pub(crate) enum PageNodeKind {
 	Callback,
 	Action,
@@ -94,33 +92,6 @@ pub(crate) fn with_page_node<T: 'static, R>(
 			.value
 			.as_ref()
 			.and_then(|value| value.downcast_ref::<T>())
-			.ok_or_else(|| format!("pages reactive node type mismatch: kind={:?}", slot.kind))?;
-		Ok(f(value))
-	})
-}
-
-// Mutation becomes live when Action and Resource move into the arena.
-#[allow(dead_code)]
-pub(crate) fn with_page_node_mut<T: 'static, R>(
-	key: PageNodeKey,
-	f: impl FnOnce(&mut T) -> R,
-) -> Result<R, String> {
-	PAGES_ARENAS.with(|arenas| {
-		let mut arenas = arenas.borrow_mut();
-		let arena = arenas
-			.get_mut(&key.scope)
-			.ok_or_else(|| stale_error(key, None))?;
-		let slot = arena
-			.slots
-			.get_mut(key.index)
-			.ok_or_else(|| stale_error(key, None))?;
-		if slot.generation != key.generation {
-			return Err(stale_error(key, Some(slot.generation)));
-		}
-		let value = slot
-			.value
-			.as_mut()
-			.and_then(|value| value.downcast_mut::<T>())
 			.ok_or_else(|| format!("pages reactive node type mismatch: kind={:?}", slot.kind))?;
 		Ok(f(value))
 	})

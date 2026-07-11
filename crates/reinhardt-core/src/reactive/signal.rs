@@ -321,6 +321,16 @@ mod tests {
 
 	#[rstest]
 	#[serial(reactive_runtime)]
+	fn signal_try_set_discards_completion_after_scope_dispose() {
+		let signal = crate::reactive::ReactiveScope::run(|| Signal::new(1_i32));
+
+		let result = signal.try_set(2);
+
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
 	fn signal_tracks_and_updates_inside_scope() {
 		crate::reactive::ReactiveScope::run(|| {
 			let signal = Signal::new(1_i32);

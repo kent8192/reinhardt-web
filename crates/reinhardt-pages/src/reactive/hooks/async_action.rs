@@ -12,6 +12,7 @@ use std::rc::Rc;
 use super::action::OptimisticState;
 use crate::callback::Callback;
 use crate::reactive::Signal;
+use crate::reactive::pages_arena::{PageNodeKey, PageNodeKind, allocate_page_node, with_page_node};
 use reinhardt_core::reactive::deps::Trackable;
 
 #[cfg(wasm)]
@@ -24,6 +25,14 @@ type ErrorCallback<E> = Rc<dyn Fn(&E)>;
 type SuccessCallback<T> = Rc<dyn Fn(&T)>;
 type SharedErrorCallback<E> = Rc<RefCell<ErrorCallback<E>>>;
 type SharedSuccessCallback<T> = Rc<RefCell<SuccessCallback<T>>>;
+
+struct ActionSlot<T: Clone + 'static, E: Clone + 'static> {
+	state: Signal<ActionPhase<T, E>>,
+	dispatch_fn: Rc<dyn Fn(Box<dyn std::any::Any>)>,
+	on_error: SharedErrorCallback<E>,
+	on_success: SharedSuccessCallback<T>,
+	reset_on_success: Rc<Cell<bool>>,
+}
 
 /// Represents the current phase of an async action.
 ///
@@ -122,19 +131,22 @@ impl<T, E> ActionPhase<T, E> {
 /// }
 /// ```
 pub struct Action<T: Clone + 'static, E: Clone + 'static> {
-	state: Signal<ActionPhase<T, E>>,
-	dispatch_fn: Rc<dyn Fn()>,
-	/// Stores the payload setter so dispatch can pass payload before triggering.
-	payload_setter: Rc<dyn Fn(Box<dyn std::any::Any>)>,
-	on_error: SharedErrorCallback<E>,
-	on_success: SharedSuccessCallback<T>,
-	reset_on_success: Rc<Cell<bool>>,
+	key: PageNodeKey,
+	_marker: PhantomData<fn() -> (T, E)>,
 }
 
 impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
+	fn with_slot<R>(&self, f: impl FnOnce(&ActionSlot<T, E>) -> R) -> R {
+		with_page_node::<ActionSlot<T, E>, _>(self.key, f).unwrap_or_else(|err| panic!("{err}"))
+	}
+
+	fn state(&self) -> Signal<ActionPhase<T, E>> {
+		self.with_slot(|slot| slot.state)
+	}
+
 	/// Returns the current phase of the action, tracking the dependency.
 	pub fn phase(&self) -> ActionPhase<T, E> {
-		self.state.get()
+		self.state().get()
 	}
 
 	/// Returns `true` if the action is idle.
@@ -159,7 +171,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 
 	/// Returns the success value if available.
 	pub fn result(&self) -> Option<T> {
-		match self.state.get() {
+		match self.state().get() {
 			ActionPhase::Success(val) => Some(val),
 			_ => None,
 		}
@@ -175,7 +187,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 
 	/// Returns the error value if available.
 	pub fn error(&self) -> Option<E> {
-		match self.state.get() {
+		match self.state().get() {
 			ActionPhase::Error(err) => Some(err),
 			_ => None,
 		}
@@ -191,7 +203,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 
 	/// Renders the current successful result with the provided closure.
 	pub fn render_result<R>(&self, render: impl FnOnce(&T) -> R) -> Option<R> {
-		match self.state.get() {
+		match self.state().get() {
 			ActionPhase::Success(val) => Some(render(&val)),
 			_ => None,
 		}
@@ -199,7 +211,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 
 	/// Renders the current error with the provided closure.
 	pub fn render_error<R>(&self, render: impl FnOnce(&E) -> R) -> Option<R> {
-		match self.state.get() {
+		match self.state().get() {
 			ActionPhase::Error(err) => Some(render(&err)),
 			_ => None,
 		}
@@ -207,7 +219,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 
 	/// Resets the action back to `Idle` phase.
 	pub fn reset(&self) {
-		self.state.set(ActionPhase::Idle);
+		self.state().set(ActionPhase::Idle);
 	}
 
 	/// Returns an event callback that dispatches this action with `payload`.
@@ -216,7 +228,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	/// time, or when the payload type is not cheaply cloneable.
 	#[cfg(wasm)]
 	pub fn dispatching<P: Clone + 'static>(&self, payload: P) -> Callback<EventArg, ()> {
-		let action = self.clone();
+		let action = *self;
 		Callback::new(move |_| {
 			action.dispatch(payload.clone());
 		})
@@ -237,7 +249,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	where
 		F: Fn() -> P + 'static,
 	{
-		let action = self.clone();
+		let action = *self;
 		Callback::new(move |_| {
 			action.dispatch(payload());
 		})
@@ -256,23 +268,25 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	}
 
 	fn append_success_callback(&self, callback: SuccessCallback<T>) {
-		let previous = self.on_success.borrow().clone();
-		*self.on_success.borrow_mut() = Rc::new(move |value: &T| {
+		let on_success = self.with_slot(|slot| Rc::clone(&slot.on_success));
+		let previous = on_success.borrow().clone();
+		*on_success.borrow_mut() = Rc::new(move |value: &T| {
 			previous(value);
 			callback(value);
 		});
 	}
 
 	fn append_error_callback(&self, callback: ErrorCallback<E>) {
-		let previous = self.on_error.borrow().clone();
-		*self.on_error.borrow_mut() = Rc::new(move |error: &E| {
+		let on_error = self.with_slot(|slot| Rc::clone(&slot.on_error));
+		let previous = on_error.borrow().clone();
+		*on_error.borrow_mut() = Rc::new(move |error: &E| {
 			previous(error);
 			callback(error);
 		});
 	}
 
 	fn enable_reset_on_success(&self) {
-		self.reset_on_success.set(true);
+		self.with_slot(|slot| slot.reset_on_success.set(true));
 	}
 
 	/// Connects this action to an optimistic state.
@@ -294,21 +308,24 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 
 	#[cfg(test)]
 	pub(crate) fn force_error_for_test(&self, err: E) {
-		let on_error = self.on_error.borrow().clone();
+		let on_error = self.with_slot(|slot| slot.on_error.borrow().clone());
+		let state = self.state();
 		crate::reactive::batch(|| {
-			self.state.set(ActionPhase::Error(err.clone()));
+			state.set(ActionPhase::Error(err.clone()));
 			on_error(&err);
 		});
 	}
 
 	#[cfg(test)]
 	pub(crate) fn force_success_for_test(&self, value: T) {
-		let on_success = self.on_success.borrow().clone();
+		let on_success = self.with_slot(|slot| slot.on_success.borrow().clone());
+		let reset_on_success = self.with_slot(|slot| slot.reset_on_success.get());
+		let state = self.state();
 		crate::reactive::batch(|| {
-			self.state.set(ActionPhase::Success(value.clone()));
+			state.set(ActionPhase::Success(value.clone()));
 			on_success(&value);
-			if self.reset_on_success.get() {
-				self.reset();
+			if reset_on_success {
+				state.set(ActionPhase::Idle);
 			}
 		});
 	}
@@ -316,20 +333,15 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 
 impl<T: Clone + 'static, E: Clone + 'static> Clone for Action<T, E> {
 	fn clone(&self) -> Self {
-		Self {
-			state: self.state.clone(),
-			dispatch_fn: Rc::clone(&self.dispatch_fn),
-			payload_setter: Rc::clone(&self.payload_setter),
-			on_error: Rc::clone(&self.on_error),
-			on_success: Rc::clone(&self.on_success),
-			reset_on_success: Rc::clone(&self.reset_on_success),
-		}
+		*self
 	}
 }
 
+impl<T: Clone + 'static, E: Clone + 'static> Copy for Action<T, E> {}
+
 impl<T: Clone + 'static, E: Clone + 'static> Trackable for Action<T, E> {
 	fn node_id(&self) -> reinhardt_core::reactive::runtime::NodeId {
-		self.state.id()
+		self.state().id()
 	}
 }
 
@@ -494,16 +506,6 @@ where
 	let on_success: SharedSuccessCallback<T> = Rc::new(RefCell::new(Rc::new(|_: &T| {})));
 	let reset_on_success = Rc::new(Cell::new(false));
 
-	// Store the payload in a shared cell so dispatch_fn can access it
-	let payload_cell: Rc<RefCell<Option<Box<dyn std::any::Any>>>> = Rc::new(RefCell::new(None));
-
-	let payload_setter: Rc<dyn Fn(Box<dyn std::any::Any>)> = {
-		let payload_cell = Rc::clone(&payload_cell);
-		Rc::new(move |payload: Box<dyn std::any::Any>| {
-			*payload_cell.borrow_mut() = Some(payload);
-		})
-	};
-
 	#[cfg(wasm)]
 	let on_error_for_dispatch = Rc::clone(&on_error);
 	#[cfg(wasm)]
@@ -511,17 +513,13 @@ where
 	#[cfg(wasm)]
 	let reset_on_success_for_dispatch = Rc::clone(&reset_on_success);
 
-	let dispatch_fn: Rc<dyn Fn()> = {
-		let state = state.clone();
+	let dispatch_fn: Rc<dyn Fn(Box<dyn std::any::Any>)> = {
 		let action_fn = Rc::new(action_fn);
-		let payload_cell = Rc::clone(&payload_cell);
 
-		Rc::new(move || {
-			let payload = payload_cell
-				.borrow_mut()
-				.take()
-				.and_then(|p| p.downcast::<P>().ok())
-				.expect("dispatch called without payload");
+		Rc::new(move |payload: Box<dyn std::any::Any>| {
+			let payload = payload
+				.downcast::<P>()
+				.expect("dispatch payload type must match use_action");
 
 			state.set(ActionPhase::Pending);
 
@@ -531,25 +529,26 @@ where
 				let on_error = Rc::clone(&on_error_for_dispatch);
 				let on_success = Rc::clone(&on_success_for_dispatch);
 				let reset_on_success = Rc::clone(&reset_on_success_for_dispatch);
-				let state = state.clone();
 				let fut = action_fn(*payload);
 				spawn_task(async move {
 					match fut.await {
 						Ok(val) => {
 							let on_success = on_success.borrow().clone();
 							crate::reactive::batch(|| {
-								state.set(ActionPhase::Success(val.clone()));
-								on_success(&val);
-								if reset_on_success.get() {
-									state.set(ActionPhase::Idle);
+								if state.try_set(ActionPhase::Success(val.clone())).is_ok() {
+									on_success(&val);
+									if reset_on_success.get() {
+										let _ = state.try_set(ActionPhase::Idle);
+									}
 								}
 							});
 						}
 						Err(err) => {
 							let on_error = on_error.borrow().clone();
 							crate::reactive::batch(|| {
-								state.set(ActionPhase::Error(err.clone()));
-								on_error(&err);
+								if state.try_set(ActionPhase::Error(err.clone())).is_ok() {
+									on_error(&err);
+								}
 							});
 						}
 					}
@@ -566,12 +565,18 @@ where
 	};
 
 	Action {
-		state,
-		dispatch_fn,
-		payload_setter,
-		on_error,
-		on_success,
-		reset_on_success,
+		key: allocate_page_node(
+			"use_action",
+			PageNodeKind::Action,
+			ActionSlot {
+				state,
+				dispatch_fn,
+				on_error,
+				on_success,
+				reset_on_success,
+			},
+		),
+		_marker: PhantomData,
 	}
 }
 
@@ -581,8 +586,8 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	/// This sets the phase to `Pending` and begins executing the async action.
 	/// On WASM, the future runs asynchronously. On non-WASM, the phase resets to `Idle`.
 	pub fn dispatch<P: 'static>(&self, payload: P) {
-		(self.payload_setter)(Box::new(payload));
-		(self.dispatch_fn)();
+		let dispatch = self.with_slot(|slot| Rc::clone(&slot.dispatch_fn));
+		dispatch(Box::new(payload));
 	}
 }
 
@@ -593,6 +598,23 @@ mod tests {
 	use rstest::rstest;
 
 	use super::*;
+
+	#[rstest]
+	fn action_is_copy() {
+		fn assert_copy<T: Copy>() {}
+
+		assert_copy::<Action<i32, String>>();
+	}
+
+	#[rstest]
+	fn action_dispatch_works_without_clones() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let action = use_action(|value: i32| async move { Ok::<i32, String>(value + 1) });
+			let copied = action;
+			copied.dispatch(1);
+			assert_eq!(action.phase(), ActionPhase::Idle);
+		});
+	}
 
 	#[rstest]
 	fn test_action_phase_methods() {
@@ -632,161 +654,170 @@ mod tests {
 
 	#[rstest]
 	fn test_use_action_initial_idle() {
-		// Arrange & Act
-		let action = use_action(|_: ()| async { Ok::<String, String>("done".to_string()) });
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let action = use_action(|_: ()| async { Ok::<String, String>("done".to_string()) });
 
-		// Assert
-		assert!(action.is_idle());
-		assert_eq!(action.phase(), ActionPhase::Idle);
-		assert_eq!(action.result(), None);
-		assert_eq!(action.error(), None);
+			// Assert
+			assert!(action.is_idle());
+			assert_eq!(action.phase(), ActionPhase::Idle);
+			assert_eq!(action.result(), None);
+			assert_eq!(action.error(), None);
+		});
 	}
 
 	#[rstest]
 	fn test_use_action_dispatch_native() {
-		// Arrange
-		let action = use_action(|x: i32| async move {
-			if x > 0 {
-				Ok::<i32, String>(x * 2)
-			} else {
-				Err("negative".to_string())
-			}
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let action = use_action(|x: i32| async move {
+				if x > 0 {
+					Ok::<i32, String>(x * 2)
+				} else {
+					Err("negative".to_string())
+				}
+			});
+
+			// Act
+			action.dispatch(5);
+
+			// Assert
+			// On non-WASM, dispatch sets Pending then immediately resets to Idle
+			assert!(action.is_idle());
 		});
-
-		// Act
-		action.dispatch(5);
-
-		// Assert
-		// On non-WASM, dispatch sets Pending then immediately resets to Idle
-		assert!(action.is_idle());
 	}
 
 	#[rstest]
 	fn test_action_clone() {
-		// Arrange
-		let action1 = use_action(|_: ()| async { Ok::<(), String>(()) });
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let action1 = use_action(|_: ()| async { Ok::<(), String>(()) });
 
-		// Act
-		let action2 = action1.clone();
+			// Act
+			let action2 = action1;
 
-		// Assert - both share the same Signal
-		assert!(action1.is_idle());
-		assert!(action2.is_idle());
+			// Assert - both share the same Signal
+			assert!(action1.is_idle());
+			assert!(action2.is_idle());
 
-		// Dispatching via one affects the other
-		action1.dispatch(());
-		assert_eq!(action1.phase(), action2.phase());
+			// Dispatching via one affects the other
+			action1.dispatch(());
+			assert_eq!(action1.phase(), action2.phase());
+		});
 	}
 
 	#[rstest]
 	fn test_action_reset() {
-		// Arrange
-		let action = use_action(|_: ()| async { Ok::<String, String>("done".to_string()) });
-		action.dispatch(());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let action = use_action(|_: ()| async { Ok::<String, String>("done".to_string()) });
+			action.dispatch(());
 
-		// Act
-		action.reset();
+			// Act
+			action.reset();
 
-		// Assert
-		assert!(action.is_idle());
-		assert_eq!(action.phase(), ActionPhase::Idle);
+			// Assert
+			assert!(action.is_idle());
+			assert_eq!(action.phase(), ActionPhase::Idle);
+		});
 	}
 
 	#[rstest]
 	fn test_action_last_result_error_and_render_helpers() {
-		// Arrange
-		let action = use_action(|_: ()| async { Ok::<i32, String>(1) });
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let action = use_action(|_: ()| async { Ok::<i32, String>(1) });
 
-		// Act
-		action.force_success_for_test(7);
+			// Act
+			action.force_success_for_test(7);
 
-		// Assert
-		assert_eq!(action.last_result(), Some(7));
-		assert_eq!(action.last_error(), None);
-		assert_eq!(action.render_result(|value| value * 2), Some(14));
-		assert_eq!(action.render_error(|error| error.len()), None);
+			// Assert
+			assert_eq!(action.last_result(), Some(7));
+			assert_eq!(action.last_error(), None);
+			assert_eq!(action.render_result(|value| value * 2), Some(14));
+			assert_eq!(action.render_error(|error| error.len()), None);
 
-		// Act
-		action.force_error_for_test("failed".to_string());
+			// Act
+			action.force_error_for_test("failed".to_string());
 
-		// Assert
-		assert_eq!(action.last_result(), None);
-		assert_eq!(action.last_error(), Some("failed".to_string()));
-		assert_eq!(action.render_result(|value| value * 2), None);
-		assert_eq!(action.render_error(|error| error.len()), Some(6));
+			// Assert
+			assert_eq!(action.last_result(), None);
+			assert_eq!(action.last_error(), Some("failed".to_string()));
+			assert_eq!(action.render_result(|value| value * 2), None);
+			assert_eq!(action.render_error(|error| error.len()), Some(6));
+		});
 	}
 
 	#[rstest]
 	fn test_use_action_state_builder_runs_lifecycle_callbacks() {
-		// Arrange
-		let success_values = Rc::new(RefCell::new(Vec::new()));
-		let error_values = Rc::new(RefCell::new(Vec::new()));
-		let action = use_action_state(|_: ()| async { Ok::<i32, String>(1) })
-			.on_success({
-				let success_values = Rc::clone(&success_values);
-				move |value| success_values.borrow_mut().push(*value)
-			})
-			.on_error({
-				let error_values = Rc::clone(&error_values);
-				move |error| error_values.borrow_mut().push(error.clone())
-			})
-			.build();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let success_values = Rc::new(RefCell::new(Vec::new()));
+			let error_values = Rc::new(RefCell::new(Vec::new()));
+			let action = use_action_state(|_: ()| async { Ok::<i32, String>(1) })
+				.on_success({
+					let success_values = Rc::clone(&success_values);
+					move |value| success_values.borrow_mut().push(*value)
+				})
+				.on_error({
+					let error_values = Rc::clone(&error_values);
+					move |error| error_values.borrow_mut().push(error.clone())
+				})
+				.build();
 
-		// Act
-		action.force_success_for_test(11);
-		action.force_error_for_test("network".to_string());
+			// Act
+			action.force_success_for_test(11);
+			action.force_error_for_test("network".to_string());
 
-		// Assert
-		assert_eq!(*success_values.borrow(), vec![11]);
-		assert_eq!(*error_values.borrow(), vec!["network".to_string()]);
+			// Assert
+			assert_eq!(*success_values.borrow(), vec![11]);
+			assert_eq!(*error_values.borrow(), vec!["network".to_string()]);
+		});
 	}
 
 	#[rstest]
 	fn test_use_action_state_builder_resets_on_success() {
-		// Arrange
-		let action = use_action_state(|_: ()| async { Ok::<i32, String>(1) })
-			.reset_on_success()
-			.build();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let action = use_action_state(|_: ()| async { Ok::<i32, String>(1) })
+				.reset_on_success()
+				.build();
 
-		// Act
-		action.force_success_for_test(11);
+			// Act
+			action.force_success_for_test(11);
 
-		// Assert
-		assert_eq!(action.phase(), ActionPhase::Idle);
-		assert_eq!(action.last_result(), None);
+			// Assert
+			assert_eq!(action.phase(), ActionPhase::Idle);
+			assert_eq!(action.last_result(), None);
+		});
 	}
 
 	#[rstest]
 	fn test_action_with_optimistic_reverts_on_error() {
-		// Arrange
-		let optimistic = super::super::action::use_optimistic(10);
-		optimistic.update_optimistic(20);
-		let action = use_action(|_: ()| async { Err::<i32, String>("fail".to_string()) })
-			.with_optimistic(optimistic.clone());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let optimistic = super::super::action::use_optimistic(10);
+			optimistic.update_optimistic(20);
+			let action = use_action(|_: ()| async { Err::<i32, String>("fail".to_string()) })
+				.with_optimistic(optimistic.clone());
 
-		// Act
-		action.force_error_for_test("fail".to_string());
+			// Act
+			action.force_error_for_test("fail".to_string());
 
-		// Assert
-		assert_eq!(optimistic.get(), 10);
-		assert!(!optimistic.is_optimistic());
-		assert_eq!(action.phase(), ActionPhase::Error("fail".to_string()));
+			// Assert
+			assert_eq!(optimistic.get(), 10);
+			assert!(!optimistic.is_optimistic());
+			assert_eq!(action.phase(), ActionPhase::Error("fail".to_string()));
+		});
 	}
 
 	#[rstest]
 	fn test_action_with_optimistic_confirms_on_success() {
-		// Arrange
-		let optimistic = super::super::action::use_optimistic(10);
-		optimistic.update_optimistic(20);
-		let action =
-			use_action(|_: ()| async { Ok::<i32, String>(25) }).with_optimistic(optimistic.clone());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let optimistic = super::super::action::use_optimistic(10);
+			optimistic.update_optimistic(20);
+			let action = use_action(|_: ()| async { Ok::<i32, String>(25) })
+				.with_optimistic(optimistic.clone());
 
-		// Act
-		action.force_success_for_test(25);
+			// Act
+			action.force_success_for_test(25);
 
-		// Assert
-		assert_eq!(optimistic.get(), 25);
-		assert!(!optimistic.is_optimistic());
-		assert_eq!(action.phase(), ActionPhase::Success(25));
+			// Assert
+			assert_eq!(optimistic.get(), 25);
+			assert!(!optimistic.is_optimistic());
+			assert_eq!(action.phase(), ActionPhase::Success(25));
+		});
 	}
 }

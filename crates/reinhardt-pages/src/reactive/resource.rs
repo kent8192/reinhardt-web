@@ -6,17 +6,21 @@
 
 use super::{Effect, Signal};
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 use std::fmt;
+use std::marker::PhantomData;
 use std::rc::Rc;
 
 use crate::platform::{defer_yield, spawn_task};
+use crate::reactive::pages_arena::{PageNodeKey, PageNodeKind, allocate_page_node, with_page_node};
 use reinhardt_core::reactive::deps::IntoDeps;
 
-/// Type alias for the refetch callback function
-///
-/// This reduces type complexity for the `Resource` struct's `refetch_fn` field.
-type RefetchCallback = Rc<RefCell<Option<Box<dyn Fn()>>>>;
+type RefetchCallback = Rc<dyn Fn()>;
+
+struct ResourceSlot<T: Clone + 'static, E: Clone + 'static> {
+	state: Signal<ResourceState<T, E>>,
+	refetch_fn: RefetchCallback,
+	_effect_guard: Effect,
+}
 
 /// State of a Resource
 ///
@@ -101,64 +105,63 @@ impl<T: fmt::Display, E: fmt::Display> fmt::Display for ResourceState<T, E> {
 /// }
 /// ```
 pub struct Resource<T: Clone + 'static, E: Clone + 'static = String> {
-	state: Signal<ResourceState<T, E>>,
-	refetch_fn: RefetchCallback,
-	/// RAII anchor that keeps the dependency-tracking `Effect` alive for the
-	/// lifetime of the `Resource`. An `Effect` disposes itself on drop (removing
-	/// its node from the runtime graph), so without holding the handle here the
-	/// effect would be torn down immediately after creation and dependency-change
-	/// refetch would never fire.
-	effect_guard: Rc<Effect>,
+	key: PageNodeKey,
+	_marker: PhantomData<fn() -> (T, E)>,
 }
 
 impl<T: Clone + 'static, E: Clone + 'static> Clone for Resource<T, E> {
 	fn clone(&self) -> Self {
-		Resource {
-			state: self.state.clone(),
-			refetch_fn: Rc::clone(&self.refetch_fn),
-			effect_guard: Rc::clone(&self.effect_guard),
-		}
+		*self
 	}
 }
 
+impl<T: Clone + 'static, E: Clone + 'static> Copy for Resource<T, E> {}
+
 impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
+	fn with_slot<R>(&self, f: impl FnOnce(&ResourceSlot<T, E>) -> R) -> R {
+		with_page_node::<ResourceSlot<T, E>, _>(self.key, f).unwrap_or_else(|err| panic!("{err}"))
+	}
+
+	fn state(&self) -> Signal<ResourceState<T, E>> {
+		self.with_slot(|slot| slot.state)
+	}
+
 	/// Get the current state of the resource
 	///
 	/// This method tracks the access for reactivity - any Effect or Memo
 	/// that calls this will automatically re-run when the state changes.
 	pub fn get(&self) -> ResourceState<T, E> {
-		self.state.get()
+		self.state().get()
 	}
 
 	/// Update the resource state
 	///
 	/// This is typically used internally by the fetcher function.
 	pub fn set(&self, new_state: ResourceState<T, E>) {
-		self.state.set(new_state);
+		self.state().set(new_state);
 	}
 
 	/// Trigger a refetch of the resource
 	///
 	/// This sets the state to Loading and re-executes the fetcher function.
 	pub fn refetch(&self) {
-		if let Some(ref refetch) = *self.refetch_fn.borrow() {
-			refetch();
-		}
+		let refetch = self.with_slot(|slot| Rc::clone(&slot.refetch_fn));
+		refetch();
 	}
 
 	/// Returns `true` if the resource is currently loading
 	pub fn is_loading(&self) -> bool {
-		self.state.with_untracked(|s| s.is_loading())
+		self.state().with_untracked(|s| s.is_loading())
 	}
 
 	/// Returns `true` if the resource has successfully loaded
 	pub fn is_success(&self) -> bool {
-		self.state.with_untracked(|s| s.is_success())
+		self.state().with_untracked(|s| s.is_success())
 	}
 
 	/// Returns `true` if the resource failed to load
 	pub fn is_error(&self) -> bool {
-		self.state.with_untracked(|s| s.is_error())
+		self.state().with_untracked(|s| s.is_error())
 	}
 }
 
@@ -169,7 +172,7 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 	/// `Resource` to participate in hook deps tuples alongside `Signal`
 	/// and `Memo` (Refs #4195).
 	fn node_id(&self) -> reinhardt_core::reactive::runtime::NodeId {
-		self.state.id()
+		self.state().id()
 	}
 }
 
@@ -242,17 +245,19 @@ where
 	// manual refetch) so the fetch cannot hang when spawned during WASM
 	// initialization before the event loop ticks (#3316).
 	let run: Rc<dyn Fn()> = {
-		let state = state.clone();
 		let fetcher = Rc::clone(&fetcher);
 		Rc::new(move || {
 			state.set(ResourceState::Loading);
-			let state = state.clone();
 			let fetcher = Rc::clone(&fetcher);
 			spawn_task(async move {
 				defer_yield().await;
 				match fetcher().await {
-					Ok(data) => state.set(ResourceState::Success(data)),
-					Err(err) => state.set(ResourceState::Error(err)),
+					Ok(data) => {
+						let _ = state.try_set(ResourceState::Success(data));
+					}
+					Err(err) => {
+						let _ = state.try_set(ResourceState::Error(err));
+					}
 				}
 			});
 		})
@@ -273,21 +278,46 @@ where
 		)
 	};
 
-	let refetch_fn: RefetchCallback = Rc::new(RefCell::new(Some(Box::new({
+	let refetch_fn: RefetchCallback = Rc::new({
 		let run = Rc::clone(&run);
 		move || run()
-	}))));
+	});
 
 	Resource {
-		state,
-		refetch_fn,
-		effect_guard: Rc::new(effect),
+		key: allocate_page_node(
+			"use_resource",
+			PageNodeKind::Resource,
+			ResourceSlot {
+				state,
+				refetch_fn,
+				_effect_guard: effect,
+			},
+		),
+		_marker: PhantomData,
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	fn resource_is_copy() {
+		fn assert_copy<T: Copy>() {}
+
+		assert_copy::<Resource<i32, String>>();
+	}
+
+	#[rstest]
+	fn resource_state_reads_without_clone_handle() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let resource: Resource<i32, String> = use_resource(|| async { Ok(1) }, ());
+			let copied = resource;
+			assert!(resource.is_loading());
+			assert!(copied.is_loading());
+		});
+	}
 
 	#[test]
 	fn test_resource_state_constructors() {

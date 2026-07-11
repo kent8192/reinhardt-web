@@ -13,7 +13,7 @@
 - Task 2: complete
 - Task 3: complete
 - Task 4: complete
-- Task 5: pending
+- Task 5: complete
 - Task 6: pending
 - Task 7: pending
 - Task 8: pending
@@ -75,3 +75,22 @@ GREEN:
 
 - `cargo test -j1 -p reinhardt-pages --lib callback::tests -- --test-threads=1`
   - Result: PASS, 12 passed, 0 failed.
+
+### Task 5: `Action<T, E>` and `Resource<T, E>`
+
+RED:
+
+- `cargo test -j1 -p reinhardt-pages --lib action_is_copy`
+  - Result: compile failure because `Action` and `Resource` were not `Copy`; move-after-use checks also failed.
+- Existing Action and resource composition tests initially failed because hooks now require an active scope.
+
+GREEN:
+
+- `cargo test -j1 -p reinhardt-core --features reactive --lib signal_try_set_discards_completion_after_scope_dispose`
+  - Result: PASS, 1 passed, 0 failed.
+- `cargo test -j1 -p reinhardt-pages --lib reactive::hooks::async_action::tests -- --test-threads=1`
+  - Result: PASS, 12 passed, 0 failed.
+- `cargo test -j1 -p reinhardt-pages --lib reactive::resource::tests -- --test-threads=1`
+  - Result: PASS, 4 passed, 0 failed.
+- `cargo test -j1 -p reinhardt-pages --lib reactive::resource_value::tests -- --test-threads=1`
+  - Result: PASS, 4 passed, 0 failed.
