@@ -12,7 +12,7 @@ use crate::{
 		DropViewStatement, InsertStatement, OptimizeTableStatement, ReindexStatement,
 		RepairTableStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
-	types::{BinOper, ColumnRef, TableRef},
+	types::{BinOper, ColumnRef, GeneratedColumn, SchemaBinOper, SchemaExpr, SchemaFunc, TableRef},
 	value::Values,
 };
 
@@ -200,6 +200,69 @@ impl MySqlQueryBuilder {
 				writer.push(".*");
 			}
 		}
+	}
+
+	/// Write a DDL-safe schema expression with inline literals.
+	fn write_schema_expr(&self, writer: &mut SqlWriter, expr: &SchemaExpr) {
+		match expr {
+			SchemaExpr::Column(iden) => {
+				writer.push_identifier(&iden.to_string(), |s| self.escape_iden(s));
+			}
+			SchemaExpr::Value(value) => {
+				writer.push(&value.to_sql_literal());
+			}
+			SchemaExpr::Binary { left, op, right } => {
+				writer.push("(");
+				self.write_schema_expr(writer, left);
+				writer.push_space();
+				writer.push(match op {
+					SchemaBinOper::Add => "+",
+					SchemaBinOper::Sub => "-",
+					SchemaBinOper::Mul => "*",
+					SchemaBinOper::Div => "/",
+				});
+				writer.push_space();
+				self.write_schema_expr(writer, right);
+				writer.push(")");
+			}
+			SchemaExpr::Function { func, args } => match func {
+				SchemaFunc::Concat if args.is_empty() => writer.push("''"),
+				SchemaFunc::Concat | SchemaFunc::Coalesce => {
+					let func_name = match func {
+						SchemaFunc::Concat => "CONCAT",
+						SchemaFunc::Coalesce => "COALESCE",
+					};
+					writer.push(func_name);
+					writer.push("(");
+					writer.push_list(args, ", ", |w, arg| {
+						self.write_schema_expr(w, arg);
+					});
+					writer.push(")");
+				}
+			},
+			SchemaExpr::Cast { expr, ty } => {
+				writer.push("CAST(");
+				self.write_schema_expr(writer, expr);
+				writer.push(" AS ");
+				writer.push(&self.column_type_to_cast_sql(ty));
+				writer.push(")");
+			}
+		}
+	}
+
+	/// Write generated-column DDL.
+	fn write_generated_column(&self, writer: &mut SqlWriter, generated: &GeneratedColumn) {
+		generated
+			.validate()
+			.expect("invalid generated-column metadata");
+		writer.push(" GENERATED ALWAYS AS (");
+		if let Some(expr) = &generated.expr {
+			self.write_schema_expr(writer, expr);
+		} else if let Some(raw_sql) = &generated.raw_sql {
+			writer.push(raw_sql);
+		}
+		writer.push(") ");
+		writer.push(generated.storage.as_str());
 	}
 
 	/// Write a simple expression
@@ -1096,6 +1159,10 @@ impl QueryBuilder for MySqlQueryBuilder {
 				writer.push(&self.column_type_to_sql(col_type));
 			}
 
+			if let Some(generated) = &column.generated {
+				self.write_generated_column(&mut writer, generated);
+			}
+
 			// NOT NULL
 			if column.not_null {
 				writer.push(" NOT NULL");
@@ -1174,6 +1241,9 @@ impl QueryBuilder for MySqlQueryBuilder {
 					writer.push_space();
 					if let Some(col_type) = &column_def.column_type {
 						writer.push(&self.column_type_to_sql(col_type));
+					}
+					if let Some(generated) = &column_def.generated {
+						self.write_generated_column(&mut writer, generated);
 					}
 					if column_def.not_null {
 						writer.push(" NOT NULL");
@@ -3178,6 +3248,32 @@ impl MySqlQueryBuilder {
 			Json => "JSON".to_string(),
 			JsonBinary => "JSON".to_string(), // MySQL JSON is binary
 			Array(_) => "JSON".to_string(),   // MySQL doesn't have ARRAY, use JSON
+			Custom(name) => name.clone(),
+		}
+	}
+
+	fn column_type_to_cast_sql(&self, col_type: &crate::types::ColumnType) -> String {
+		use crate::types::ColumnType;
+		use ColumnType::*;
+
+		match col_type {
+			Char(len) => format!("CHAR({})", len.unwrap_or(1)),
+			String(Some(len)) => format!("CHAR({len})"),
+			String(None) | Text => "CHAR".to_string(),
+			TinyInteger | SmallInteger | Integer | BigInteger => "SIGNED".to_string(),
+			Float => "FLOAT".to_string(),
+			Double => "DOUBLE".to_string(),
+			Decimal(Some((precision, scale))) => format!("DECIMAL({precision}, {scale})"),
+			Decimal(None) => "DECIMAL".to_string(),
+			Boolean => "UNSIGNED".to_string(),
+			Date => "DATE".to_string(),
+			Time => "TIME".to_string(),
+			DateTime | Timestamp | TimestampWithTimeZone => "DATETIME".to_string(),
+			Binary(Some(len)) => format!("BINARY({len})"),
+			Binary(None) | Blob => "BINARY".to_string(),
+			VarBinary(len) => format!("BINARY({len})"),
+			Uuid => "CHAR(36)".to_string(),
+			Json | JsonBinary | Array(_) => "JSON".to_string(),
 			Custom(name) => name.clone(),
 		}
 	}
@@ -5627,6 +5723,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -5638,6 +5735,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -5664,11 +5762,82 @@ mod tests {
 			auto_increment: true,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
 		let (sql, values) = builder.build_create_table(&stmt);
 		assert!(sql.contains("`id` INT AUTO_INCREMENT PRIMARY KEY"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_stored_generated_column() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.col(
+			ColumnDef::new("full_name")
+				.string_len(201)
+				.generated_stored(SchemaExpr::concat([
+					SchemaExpr::col("first_name"),
+					SchemaExpr::val(" "),
+					SchemaExpr::col("last_name"),
+				])),
+		);
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains(
+			"`full_name` VARCHAR(201) GENERATED ALWAYS AS (CONCAT(`first_name`, ' ', `last_name`)) STORED"
+		));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_mysql_cast_targets_in_generated_column() {
+		use crate::types::{ColumnDef, ColumnType, SchemaExpr};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.col(
+			ColumnDef::new("age_text")
+				.string_len(64)
+				.generated_stored(SchemaExpr::col("age").cast(ColumnType::String(Some(64)))),
+		);
+		stmt.col(
+			ColumnDef::new("age_int")
+				.integer()
+				.generated_stored(SchemaExpr::col("age").cast(ColumnType::Integer)),
+		);
+
+		let (sql, values) = builder.build_create_table(&stmt);
+
+		assert!(sql.contains(
+			"`age_text` VARCHAR(64) GENERATED ALWAYS AS (CAST(`age` AS CHAR(64))) STORED"
+		));
+		assert!(sql.contains("`age_int` INT GENERATED ALWAYS AS (CAST(`age` AS SIGNED)) STORED"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_empty_concat_generated_column() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.col(
+			ColumnDef::new("empty_name")
+				.string_len(1)
+				.generated_stored(SchemaExpr::concat([])),
+		);
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("`empty_name` VARCHAR(1) GENERATED ALWAYS AS ('') STORED"));
+		assert!(!sql.contains("CONCAT()"));
 		assert_eq!(values.len(), 0);
 	}
 
@@ -5690,6 +5859,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -5701,6 +5871,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.constraints.push(TableConstraint::ForeignKey {
@@ -5890,11 +6061,37 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				check: None,
+				generated: None,
 				comment: None,
 			}));
 
 		let (sql, values) = builder.build_alter_table(&stmt);
 		assert_eq!(sql, "ALTER TABLE `users` ADD COLUMN `age` INT");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_add_stored_generated_column() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.add_column(
+			ColumnDef::new("full_name")
+				.string_len(201)
+				.generated_stored(SchemaExpr::concat([
+					SchemaExpr::col("first_name"),
+					SchemaExpr::val(" "),
+					SchemaExpr::col("last_name"),
+				])),
+		);
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(
+			sql,
+			"ALTER TABLE `users` ADD COLUMN `full_name` VARCHAR(201) GENERATED ALWAYS AS (CONCAT(`first_name`, ' ', `last_name`)) STORED"
+		);
 		assert_eq!(values.len(), 0);
 	}
 
@@ -5953,6 +6150,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				check: None,
+				generated: None,
 				comment: None,
 			}));
 

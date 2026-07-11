@@ -44,6 +44,7 @@
 //! - **Auto-detection**: Automatically detect model changes
 //! - **Migration Files**: Generate migration files from model changes
 //! - **Rollback Support**: Reverse migrations when needed
+//! - **Typed Generated Columns**: Preserve `SchemaExpr` generated-column metadata in migrations
 //! - **CockroachDB Migration Locking**: Serialize concurrent migrators with a
 //!   sentinel-row lock instead of PostgreSQL advisory locks
 //! - **MigrationStateLoader**: Django-style approach for building `ProjectState`

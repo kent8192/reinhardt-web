@@ -221,6 +221,7 @@ pub mod db {
 			fn index_metadata() -> Vec<inspection::IndexInfo>;
 			fn constraint_metadata() -> Vec<inspection::ConstraintInfo>;
 			fn relationship_metadata() -> Vec<inspection::RelationInfo>;
+			fn generated_field_names() -> &'static [&'static str];
 
 			fn objects() -> Self::Objects
 			where

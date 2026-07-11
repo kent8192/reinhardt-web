@@ -348,7 +348,8 @@ impl TestDom {
 				self.append_page(anchor, render());
 			}
 			Page::Deferred(node) => {
-				self.append_page(parent, node.content());
+				let content = node.render_content();
+				self.append_page(parent, content);
 			}
 		}
 	}
