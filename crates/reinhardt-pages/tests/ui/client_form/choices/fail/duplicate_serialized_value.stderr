@@ -1,0 +1,5 @@
+error: duplicate ClientFormChoices serialized value `same`
+ --> tests/ui/client_form/choices/fail/duplicate_serialized_value.rs:9:2
+  |
+9 |     Live,
+  |     ^^^^

@@ -73,6 +73,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		primary_key: false,
 		auto_increment: false,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -86,6 +87,7 @@ fn create_not_null_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		primary_key: false,
 		auto_increment: false,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -99,6 +101,7 @@ fn create_auto_pk_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		primary_key: true,
 		auto_increment: true,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -391,6 +394,7 @@ async fn test_data_type_conversion(
 			Operation::DropColumn {
 				table: leak_str("users").to_string(),
 				column: leak_str("age").to_string(),
+				old_definition: None,
 			},
 			// Rename age_int to age
 			Operation::RenameColumn {

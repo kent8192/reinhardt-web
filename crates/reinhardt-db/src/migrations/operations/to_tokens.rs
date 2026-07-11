@@ -3,11 +3,14 @@ use super::{
 	PartitionType, PartitionValues,
 };
 use crate::migrations::{
-	ColumnDefinition, Constraint, DeferrableOption, FieldType, ForeignKeyAction, IndexType,
-	Operation,
+	ColumnDefinition, Constraint, DeferrableOption, FieldType, ForeignKeyAction,
+	GeneratedColumnDefinition, IndexType, Operation,
 };
 use proc_macro2::TokenStream;
-use quote::{ToTokens, quote};
+use quote::{ToTokens, format_ident, quote};
+use reinhardt_query::prelude::{
+	ColumnType as QueryColumnType, GeneratedStorage, SchemaBinOper, SchemaExpr, SchemaFunc, Value,
+};
 
 /// Helper function to convert FieldType to TokenStream (for recursive Array handling)
 fn field_type_to_tokens(field_type: &FieldType) -> TokenStream {
@@ -437,11 +440,20 @@ impl ToTokens for Operation {
 					}
 				});
 			}
-			Operation::DropColumn { table, column } => {
+			Operation::DropColumn {
+				table,
+				column,
+				old_definition,
+			} => {
+				let old_def_token = match old_definition {
+					Some(def) => quote! { Some(#def) },
+					None => quote! { None },
+				};
 				tokens.extend(quote! {
 					Operation::DropColumn {
 						table: #table.to_string(),
 						column: #column.to_string(),
+						old_definition: #old_def_token,
 					}
 				});
 			}
@@ -496,7 +508,29 @@ impl ToTokens for Operation {
 				constraint_sql,
 			} => {
 				tokens.extend(quote! {
-					Operation::AddConstraint {
+				Operation::AddConstraint {
+					table: #table.to_string(),
+					constraint_sql: #constraint_sql.to_string(),
+					}
+				});
+			}
+			Operation::AddConstraintRepair {
+				table,
+				constraint_sql,
+			} => {
+				tokens.extend(quote! {
+					Operation::AddConstraintRepair {
+						table: #table.to_string(),
+						constraint_sql: #constraint_sql.to_string(),
+					}
+				});
+			}
+			Operation::RestoreConstraintOnRollback {
+				table,
+				constraint_sql,
+			} => {
+				tokens.extend(quote! {
+					Operation::RestoreConstraintOnRollback {
 						table: #table.to_string(),
 						constraint_sql: #constraint_sql.to_string(),
 					}
@@ -523,8 +557,49 @@ impl ToTokens for Operation {
 				expressions,
 				mysql_options,
 				operator_class,
+			}
+			| Operation::CreateIndexRepair {
+				table,
+				name: _,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			}
+			| Operation::RestoreIndexOnRollback {
+				table,
+				name: _,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
 			} => {
+				let variant = match self {
+					Operation::CreateIndex { .. } => format_ident!("CreateIndex"),
+					Operation::CreateIndexRepair { .. } => format_ident!("CreateIndexRepair"),
+					Operation::RestoreIndexOnRollback { .. } => {
+						format_ident!("RestoreIndexOnRollback")
+					}
+					_ => unreachable!(),
+				};
 				let columns_iter = columns.iter();
+				let name_field = match self {
+					Operation::CreateIndex { .. } => quote! {},
+					Operation::CreateIndexRepair { name, .. }
+					| Operation::RestoreIndexOnRollback { name, .. } => match name {
+						Some(name) => quote! { name: Some(#name.to_string()), },
+						None => quote! { name: None, },
+					},
+					_ => unreachable!(),
+				};
 				let index_type_token = match index_type {
 					Some(it) => {
 						let variant = match it {
@@ -560,10 +635,11 @@ impl ToTokens for Operation {
 					None => quote! { None },
 				};
 				tokens.extend(quote! {
-					Operation::CreateIndex {
-						table: #table.to_string(),
-						columns: vec![#(#columns_iter.to_string()),*],
-						unique: #unique,
+						Operation::#variant {
+							table: #table.to_string(),
+							#name_field
+							columns: vec![#(#columns_iter.to_string()),*],
+							unique: #unique,
 						index_type: #index_type_token,
 						where_clause: #where_clause_token,
 						concurrently: #concurrently,
@@ -871,6 +947,10 @@ impl ToTokens for ColumnDefinition {
 			Some(s) => quote! { Some(#s.to_string()) },
 			None => quote! { None },
 		};
+		let generated_token = match &self.generated {
+			Some(generated) => quote! { Some(#generated) },
+			None => quote! { None },
+		};
 
 		// Generate FieldType token based on the actual type
 		let field_type_token = match &self.type_definition {
@@ -1002,8 +1082,176 @@ impl ToTokens for ColumnDefinition {
 				primary_key: #primary_key,
 				auto_increment: #auto_increment,
 				default: #default_token,
+				generated: #generated_token,
 			}
 		});
+	}
+}
+
+impl ToTokens for GeneratedColumnDefinition {
+	fn to_tokens(&self, tokens: &mut TokenStream) {
+		let storage_token = match self.storage {
+			GeneratedStorage::Stored => quote! { GeneratedStorage::Stored },
+			GeneratedStorage::Virtual => quote! { GeneratedStorage::Virtual },
+			_ => quote! { GeneratedStorage::Stored },
+		};
+
+		let canonical_expr = self.typed_expr();
+		let canonical_expr_tokens = canonical_expr.as_ref().map(schema_expr_to_tokens);
+		let expr_token = match &canonical_expr_tokens {
+			Some(expr_stream) => quote! { Some(Box::new(#expr_stream)) },
+			None => quote! { None },
+		};
+		let expr_tokens_token = match &canonical_expr_tokens {
+			Some(expr_stream) => {
+				let expr_tokens = expr_stream.to_string();
+				quote! { Some(#expr_tokens.to_string()) }
+			}
+			None => quote! { None },
+		};
+		let raw_sql_token = match &self.raw_sql {
+			Some(raw_sql) => quote! { Some(#raw_sql.to_string()) },
+			None => quote! { None },
+		};
+
+		tokens.extend(quote! {
+			GeneratedColumnDefinition {
+				expr: #expr_token,
+				expr_tokens: #expr_tokens_token,
+				raw_sql: #raw_sql_token,
+				storage: #storage_token,
+			}
+		});
+	}
+}
+
+fn schema_expr_to_tokens(expr: &SchemaExpr) -> TokenStream {
+	match expr {
+		SchemaExpr::Column(iden) => {
+			let name = iden.to_string();
+			quote! { SchemaExpr::col(#name) }
+		}
+		SchemaExpr::Value(value) => {
+			let value = schema_value_to_tokens(value);
+			quote! { SchemaExpr::val(#value) }
+		}
+		SchemaExpr::Binary { left, op, right } => {
+			let left = schema_expr_to_tokens(left);
+			let op = schema_bin_oper_to_tokens(*op);
+			let right = schema_expr_to_tokens(right);
+			quote! { #left.binary(#op, #right) }
+		}
+		SchemaExpr::Function { func, args } => {
+			let args = args.iter().map(schema_expr_to_tokens);
+			match func {
+				SchemaFunc::Concat => quote! { SchemaExpr::concat([#(#args),*]) },
+				SchemaFunc::Coalesce => quote! { SchemaExpr::coalesce([#(#args),*]) },
+				_ => panic!("unsupported generated-column schema function: {:?}", func),
+			}
+		}
+		SchemaExpr::Cast { expr, ty } => {
+			let expr = schema_expr_to_tokens(expr);
+			let ty = query_column_type_to_tokens(ty);
+			quote! { #expr.cast(#ty) }
+		}
+		_ => panic!("unsupported generated-column schema expression: {:?}", expr),
+	}
+}
+
+fn schema_bin_oper_to_tokens(op: SchemaBinOper) -> TokenStream {
+	match op {
+		SchemaBinOper::Add => quote! { SchemaBinOper::Add },
+		SchemaBinOper::Sub => quote! { SchemaBinOper::Sub },
+		SchemaBinOper::Mul => quote! { SchemaBinOper::Mul },
+		SchemaBinOper::Div => quote! { SchemaBinOper::Div },
+		_ => panic!("unsupported generated-column binary operator: {:?}", op),
+	}
+}
+
+fn schema_value_to_tokens(value: &Value) -> TokenStream {
+	match value {
+		Value::Bool(Some(value)) => quote! { #value },
+		Value::Bool(None) => quote! { Option::<bool>::None },
+		Value::TinyInt(Some(value)) => quote! { #value },
+		Value::TinyInt(None) => quote! { Option::<i8>::None },
+		Value::SmallInt(Some(value)) => quote! { #value },
+		Value::SmallInt(None) => quote! { Option::<i16>::None },
+		Value::Int(Some(value)) => quote! { #value },
+		Value::Int(None) => quote! { Option::<i32>::None },
+		Value::BigInt(Some(value)) => quote! { #value },
+		Value::BigInt(None) => quote! { Option::<i64>::None },
+		Value::TinyUnsigned(Some(value)) => quote! { #value },
+		Value::TinyUnsigned(None) => quote! { Option::<u8>::None },
+		Value::SmallUnsigned(Some(value)) => quote! { #value },
+		Value::SmallUnsigned(None) => quote! { Option::<u16>::None },
+		Value::Unsigned(Some(value)) => quote! { #value },
+		Value::Unsigned(None) => quote! { Option::<u32>::None },
+		Value::BigUnsigned(Some(value)) => quote! { #value },
+		Value::BigUnsigned(None) => quote! { Option::<u64>::None },
+		Value::Float(Some(value)) => quote! { #value },
+		Value::Float(None) => quote! { Option::<f32>::None },
+		Value::Double(Some(value)) => quote! { #value },
+		Value::Double(None) => quote! { Option::<f64>::None },
+		Value::Char(Some(value)) => quote! { #value },
+		Value::Char(None) => quote! { Option::<char>::None },
+		Value::String(Some(value)) => {
+			let value = value.as_str();
+			quote! { #value }
+		}
+		Value::String(None) => quote! { Option::<String>::None },
+		_ => panic!("unsupported generated-column literal value: {:?}", value),
+	}
+}
+
+fn query_column_type_to_tokens(ty: &QueryColumnType) -> TokenStream {
+	match ty {
+		QueryColumnType::Char(len) => {
+			let len = optional_u32_to_tokens(*len);
+			quote! { ColumnType::Char(#len) }
+		}
+		QueryColumnType::String(len) => {
+			let len = optional_u32_to_tokens(*len);
+			quote! { ColumnType::String(#len) }
+		}
+		QueryColumnType::Text => quote! { ColumnType::Text },
+		QueryColumnType::TinyInteger => quote! { ColumnType::TinyInteger },
+		QueryColumnType::SmallInteger => quote! { ColumnType::SmallInteger },
+		QueryColumnType::Integer => quote! { ColumnType::Integer },
+		QueryColumnType::BigInteger => quote! { ColumnType::BigInteger },
+		QueryColumnType::Float => quote! { ColumnType::Float },
+		QueryColumnType::Double => quote! { ColumnType::Double },
+		QueryColumnType::Decimal(Some((precision, scale))) => {
+			quote! { ColumnType::Decimal(Some((#precision, #scale))) }
+		}
+		QueryColumnType::Decimal(None) => quote! { ColumnType::Decimal(None) },
+		QueryColumnType::Boolean => quote! { ColumnType::Boolean },
+		QueryColumnType::Date => quote! { ColumnType::Date },
+		QueryColumnType::Time => quote! { ColumnType::Time },
+		QueryColumnType::DateTime => quote! { ColumnType::DateTime },
+		QueryColumnType::Timestamp => quote! { ColumnType::Timestamp },
+		QueryColumnType::TimestampWithTimeZone => quote! { ColumnType::TimestampWithTimeZone },
+		QueryColumnType::Binary(len) => {
+			let len = optional_u32_to_tokens(*len);
+			quote! { ColumnType::Binary(#len) }
+		}
+		QueryColumnType::VarBinary(len) => quote! { ColumnType::VarBinary(#len) },
+		QueryColumnType::Blob => quote! { ColumnType::Blob },
+		QueryColumnType::Uuid => quote! { ColumnType::Uuid },
+		QueryColumnType::Json => quote! { ColumnType::Json },
+		QueryColumnType::JsonBinary => quote! { ColumnType::JsonBinary },
+		QueryColumnType::Array(inner) => {
+			let inner = query_column_type_to_tokens(inner);
+			quote! { ColumnType::Array(Box::new(#inner)) }
+		}
+		QueryColumnType::Custom(name) => quote! { ColumnType::Custom(#name.to_string()) },
+		_ => panic!("unsupported generated-column cast type: {:?}", ty),
+	}
+}
+
+fn optional_u32_to_tokens(value: Option<u32>) -> TokenStream {
+	match value {
+		Some(value) => quote! { Some(#value) },
+		None => quote! { None },
 	}
 }
 
@@ -1089,5 +1337,66 @@ impl ToTokens for super::BulkLoadOptions {
 				encoding: #encoding,
 			}
 		});
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn generated_schema_expr_tokens_emit_option_cast_lengths() {
+		let expr = SchemaExpr::col("name").cast(QueryColumnType::String(Some(64)));
+		let tokens = schema_expr_to_tokens(&expr).to_string();
+
+		assert!(
+			tokens.contains("ColumnType :: String (Some (64u32))"),
+			"tokens must preserve optional cast length: {tokens}"
+		);
+		assert_eq!(
+			crate::migrations::ast_parser::parse_schema_expr_tokens(&tokens),
+			Some(expr)
+		);
+	}
+
+	#[test]
+	fn generated_schema_expr_tokens_reparse_null_literals() {
+		let expressions = [
+			SchemaExpr::Value(Value::Bool(None)),
+			SchemaExpr::Value(Value::Int(None)),
+			SchemaExpr::Value(Value::Unsigned(None)),
+			SchemaExpr::Value(Value::Double(None)),
+			SchemaExpr::Value(Value::String(None)),
+		];
+
+		for expr in expressions {
+			let tokens = schema_expr_to_tokens(&expr).to_string();
+			assert_eq!(
+				crate::migrations::ast_parser::parse_schema_expr_tokens(&tokens),
+				Some(expr),
+				"tokens must reparse: {tokens}"
+			);
+		}
+	}
+
+	#[test]
+	fn generated_schema_expr_tokens_reparse_suffixed_literals() {
+		let expressions = [
+			SchemaExpr::Value(Value::TinyInt(Some(1))),
+			SchemaExpr::Value(Value::SmallInt(Some(1))),
+			SchemaExpr::Value(Value::Unsigned(Some(1))),
+			SchemaExpr::Value(Value::BigUnsigned(Some(1))),
+			SchemaExpr::Value(Value::Float(Some(1.5))),
+			SchemaExpr::Value(Value::Double(Some(1.5))),
+		];
+
+		for expr in expressions {
+			let tokens = schema_expr_to_tokens(&expr).to_string();
+			assert_eq!(
+				crate::migrations::ast_parser::parse_schema_expr_tokens(&tokens),
+				Some(expr),
+				"tokens must preserve suffixed literal types: {tokens}"
+			);
+		}
 	}
 }
