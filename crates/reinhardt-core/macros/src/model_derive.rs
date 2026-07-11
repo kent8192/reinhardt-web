@@ -1431,6 +1431,7 @@ fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<Str
 				"Uuid" => "UuidField",
 				// Extended types (SQL generation is gated per-DB in map_type_to_field_type)
 				"Vec" => "ArrayField",
+				"Json" => "JsonField",
 				"Value" => "JsonField",
 				"HashMap" => "HStoreField",
 				other => {
@@ -1589,11 +1590,12 @@ fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream
 				"Vec" => {
 					return map_vec_to_array_type(ty, last_segment, config, &migrations_crate);
 				}
-				// PostgreSQL: serde_json::Value -> JSONB
-				#[cfg(feature = "db-postgres")]
+				// Json<T> and serde_json::Value -> JSONB on PostgreSQL, JSON/TEXT elsewhere.
+				"Json" => {
+					quote! { #migrations_crate::FieldType::JsonBinary }
+				}
 				"Value" => {
-					// Assume serde_json::Value for JSONB
-					quote! { #migrations_crate::FieldType::Jsonb }
+					quote! { #migrations_crate::FieldType::JsonBinary }
 				}
 				// PostgreSQL: HashMap<String, String> -> HStore
 				#[cfg(feature = "db-postgres")]
@@ -1623,7 +1625,7 @@ fn map_explicit_field_type(
 	migrations_crate: &proc_macro2::TokenStream,
 ) -> Result<TokenStream> {
 	let field_type = match field_type_str.to_lowercase().as_str() {
-		"jsonb" => quote! { #migrations_crate::FieldType::Jsonb },
+		"jsonb" => quote! { #migrations_crate::FieldType::JsonBinary },
 		"json" => quote! { #migrations_crate::FieldType::Json },
 		"hstore" => quote! { #migrations_crate::FieldType::HStore },
 		"citext" => quote! { #migrations_crate::FieldType::CIText },
@@ -1752,7 +1754,7 @@ fn parse_base_type_string(
 		"DATE" => quote! { #migrations_crate::FieldType::Date },
 		"TIME" => quote! { #migrations_crate::FieldType::Time },
 		"TIMESTAMP" => quote! { #migrations_crate::FieldType::DateTime },
-		"JSONB" => quote! { #migrations_crate::FieldType::Jsonb },
+		"JSONB" => quote! { #migrations_crate::FieldType::JsonBinary },
 		"JSON" => quote! { #migrations_crate::FieldType::Json },
 		_ => {
 			return Err(syn::Error::new(
@@ -2647,6 +2649,17 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		Some(path) => quote! { #path },
 		None => quote! { #orm_crate::Manager<Self> },
 	};
+	let field_is_none_arms = field_infos.iter().filter_map(|field| {
+		let (is_option, _) = extract_option_type(&field.ty);
+		if !is_option {
+			return None;
+		}
+
+		let field_name = &field.name;
+		Some(quote! {
+			stringify!(#field_name) => self.#field_name.is_none(),
+		})
+	});
 	let generated_field_names: Vec<_> = field_infos
 		.iter()
 		.filter(|field| field.config.generated.is_some() || field.config.generated_sql.is_some())
@@ -2714,6 +2727,13 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 			fn primary_key_field() -> &'static str {
 				stringify!(#pk_name)
+			}
+
+			fn field_is_none(&self, field_name: &str) -> bool {
+				match field_name {
+					#(#field_is_none_arms)*
+					_ => false,
+				}
 			}
 
 			#pk_impl
@@ -3131,6 +3151,10 @@ fn generate_field_metadata(
 						#orm_crate::fields::FieldKwarg::Bool(true)
 					);
 				}
+				attributes.insert(
+					"relation_managed".to_string(),
+					#orm_crate::fields::FieldKwarg::Bool(true)
+				);
 
 				#orm_crate::inspection::FieldInfo {
 					name: #name.to_string(),
