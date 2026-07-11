@@ -15,11 +15,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.0", features = ["commands"] }
+reinhardt = { version = "0.3.1", features = ["commands"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.3.0", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.0", features = ["full"] }      # All features
+# reinhardt = { version = "0.3.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.3.1", features = ["full"] }      # All features
 ```
 
 Then import command features:
@@ -39,7 +39,7 @@ package:
 ```bash
 # Pin the documented Reinhardt release for reproducibility.
 # Omit --version to let Cargo choose the latest stable release.
-cargo install reinhardt-admin-cli --version "0.3.0"
+cargo install reinhardt-admin-cli --version "0.3.1"
 ```
 
 This installs the `reinhardt-admin` command:
@@ -129,7 +129,7 @@ use reinhardt::commands::TemplateContext;
 
 let mut context = TemplateContext::new();
 context.insert("project_name", "my_project");
-context.insert("version", "0.3.0");
+context.insert("version", "0.3.1");
 context.insert("features", vec!["auth", "admin"]);  // Any Serialize type
 ```
 
@@ -310,7 +310,9 @@ The resolution rules are:
   closure (forward), skipping anything already applied.
 
 `--plan` never mutates the database, including the migration bookkeeping table:
-on a fresh database a dry-run leaves it uncreated.
+on a fresh database a dry-run leaves it uncreated. Apply plans are displayed in
+the same dependency-resolved order used by real migration execution, including
+cross-app dependencies.
 
 ### `collect_migrations!` Macro and `linkme` Dependency
 
@@ -323,7 +325,7 @@ Projects using `collect_migrations!` must add `linkme` as a dependency:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.0", features = ["standard"] }
+reinhardt = { version = "0.3.1", features = ["standard"] }
 linkme = "0.3"
 ```
 

@@ -16,7 +16,7 @@ fn main() {
 	});
 
 	// For with tuple destructuring
-	let _for_enumerate = page!(|items: Vec<(usize, String) >| {
+	let _for_enumerate = page!(|items: Vec<(usize, String)>| {
 		ul {
 			for(index, item)in items.clone() {
 				li {

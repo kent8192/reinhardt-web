@@ -844,8 +844,11 @@ where
 	/// # }
 	/// # use reinhardt_db::backends::DatabaseConnection;
 	/// #
+	/// # fn configured_database_connection() -> DatabaseConnection {
+	/// #     panic!("provide a configured database connection")
+	/// # }
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// # let connection = DatabaseConnection::connect_postgres("postgres://localhost/test").await?;
+	/// # let connection = configured_database_connection();
 	/// let serializer = ModelSerializer::<User>::new();
 	/// let user = User {
 	///     id: Uuid::now_v7(),

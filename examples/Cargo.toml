@@ -17,7 +17,17 @@ members = [
 [workspace.dependencies]
 # Reinhardt framework from this repository.
 # reinhardt-version-sync
-reinhardt = { path = "..", version = "0.3.0", package = "reinhardt-web" }
+reinhardt = { path = "..", version = "0.3.1", package = "reinhardt-web" }
+
+# The examples workspace is resolved independently in standalone CI, so it must
+# carry the same resolver workaround as the root workspace.
+#
+# Workaround for time-rs/time#783 (tracked in reinhardt-web#5541).
+# Remove when time 0.3.48+ no longer causes downstream compatibility failures.
+#
+# Ideal implementation:
+#   time = { version = "0.3" }
+time = { version = ">=0.3, <0.3.48" }
 
 # Testing
 testcontainers = { version = "0.27.2", features = ["blocking"] }

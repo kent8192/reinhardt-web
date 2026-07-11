@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-views"
-version = "0.3.0"
+version = "0.3.1"
 description = "View layer aggregator for viewsets and views-core"
 edition.workspace = true
 rust-version.workspace = true
@@ -16,7 +16,7 @@ reinhardt-http = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-quick-xml = { version = "0.38.3", features = ["serialize"] }
+quick-xml = { version = "0.41.0", features = ["serialize"] }
 serde_yaml = "0.9.33"
 thiserror = { workspace = true }
 http-body-util = "0.1"
