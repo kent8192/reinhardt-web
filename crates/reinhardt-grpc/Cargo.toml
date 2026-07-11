@@ -9,9 +9,9 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-tonic = "0.14.2"
-tonic-prost = "0.14.2"
-prost = "0.14.1"
+tonic = { workspace = true }
+tonic-prost = { workspace = true }
+prost = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["sync"] }
 async-trait = { workspace = true }
@@ -35,7 +35,7 @@ full = ["di"]
 di = ["reinhardt-di", "reinhardt-grpc-macros"]
 
 [build-dependencies]
-tonic-prost-build = "0.14.2"
+tonic-prost-build = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

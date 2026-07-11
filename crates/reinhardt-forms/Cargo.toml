@@ -10,7 +10,7 @@ authors.workspace = true
 
 [dependencies]
 # Documentation
-aquamarine = "0.5"
+aquamarine = { workspace = true }
 
 # Internal dependencies
 reinhardt-core = { workspace = true, features = ["validators"] }

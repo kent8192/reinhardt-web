@@ -11,11 +11,11 @@ authors.workspace = true
 [dependencies]
 # Async runtime
 tokio = { workspace = true }
-tokio-tungstenite = "0.28.0"
+tokio-tungstenite = { workspace = true }
 async-trait = { workspace = true }
 
 # WebSocket
-tungstenite = "0.28.0"
+tungstenite = { workspace = true }
 futures-util = "0.3"
 
 # Serialization
