@@ -1108,7 +1108,7 @@ pub fn filters(
 		.iter()
 		.map(|info| {
 			let current_value = current_filters.get(&info.field).map(|s| s.as_str());
-			create_filter_control(info, current_value, filters_signal.clone())
+			create_filter_control(info, current_value, filters_signal)
 		})
 		.collect();
 
