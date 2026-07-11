@@ -489,10 +489,17 @@ impl ClientLauncher {
 		// stale route effects are still alive, those signal notifications can
 		// re-enter the runtime and abort the navigation before DOM remount.
 		crate::component::cleanup_reactive_nodes();
-		let view = with_spa_router(|r| r.render_current());
-		root_el.set_inner_html("");
-		let wrapper = crate::dom::Element::new(root_el.clone());
-		view.mount(&wrapper)
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let result = scope.enter(|| {
+			let view = with_spa_router(|r| r.render_current());
+			root_el.set_inner_html("");
+			let wrapper = crate::dom::Element::new(root_el.clone());
+			view.mount(&wrapper)
+		});
+		if result.is_ok() {
+			crate::component::store_reactive_scope(scope);
+		}
+		result
 	}
 
 	/// Diagnostic counter: cumulative count of `render_and_mount`

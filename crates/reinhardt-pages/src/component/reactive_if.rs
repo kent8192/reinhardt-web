@@ -10,6 +10,8 @@ use crate::reactive::effect::Effect;
 #[cfg(wasm)]
 use crate::reactive::runtime::EffectTiming;
 #[cfg(wasm)]
+use reinhardt_core::reactive::ReactiveScope;
+#[cfg(wasm)]
 use reinhardt_core::types::page::{BOOLEAN_ATTRS, Page, is_boolean_attr_truthy};
 #[cfg(wasm)]
 use std::cell::RefCell;
@@ -78,6 +80,12 @@ pub fn store_reactive_node<T: 'static>(node: T) {
 	current_reactive_node_store()
 		.borrow_mut()
 		.push(Box::new(node));
+}
+
+/// Stores a reactive scope to keep its arena alive for the mounted view.
+#[cfg(wasm)]
+pub(crate) fn store_reactive_scope(scope: ReactiveScope) {
+	store_reactive_node(scope);
 }
 
 /// Cleanup function to release all reactive nodes.

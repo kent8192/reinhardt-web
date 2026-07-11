@@ -164,20 +164,26 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 
 	// 1. Restore SSR state
 	let mut context = HydrationContext::from_window()?;
+	let scope = reinhardt_core::reactive::ReactiveScope::new();
+	scope.enter(|| {
+		// 2. Render the component to get expected structure
+		let view = component.render();
+		web_sys::console::log_1(&"[Hydration] View rendered".into());
 
-	// 2. Render the component to get expected structure
-	let view = component.render();
-	web_sys::console::log_1(&"[Hydration] View rendered".into());
+		// 3. Reconcile DOM structure
+		reconcile(root, &view).map_err(|e| {
+			HydrationError::StateParseError(format!("Reconciliation failed: {}", e))
+		})?;
+		web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
 
-	// 3. Reconcile DOM structure
-	reconcile(root, &view)
-		.map_err(|e| HydrationError::StateParseError(format!("Reconciliation failed: {}", e)))?;
-	web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
+		// 4. Attach event handlers
+		let mut registry = EventRegistry::new();
+		attach_events_recursive(root, &view, &mut registry)?;
+		web_sys::console::log_1(&"[Hydration] Events attached".into());
 
-	// 4. Attach event handlers
-	let mut registry = EventRegistry::new();
-	attach_events_recursive(root, &view, &mut registry)?;
-	web_sys::console::log_1(&"[Hydration] Events attached".into());
+		Ok(())
+	})?;
+	crate::component::store_reactive_scope(scope);
 
 	// 5. Mark hydration complete
 	context.mark_hydrated();

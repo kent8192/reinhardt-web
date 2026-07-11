@@ -14,7 +14,7 @@
 - Task 3: complete
 - Task 4: complete
 - Task 5: complete
-- Task 6: pending
+- Task 6: complete
 - Task 7: pending
 - Task 8: pending
 
@@ -94,3 +94,19 @@ GREEN:
   - Result: PASS, 4 passed, 0 failed.
 - `cargo test -j1 -p reinhardt-pages --lib reactive::resource_value::tests -- --test-threads=1`
   - Result: PASS, 4 passed, 0 failed.
+
+### Task 6: scope boundaries
+
+RED:
+
+- `cargo test -j1 -p reinhardt-pages --lib ssr_render_creates_isolated_reactive_scopes`
+  - Result: failed because `Signal::new` had no active `ReactiveScope` during SSR component rendering.
+
+GREEN:
+
+- `cargo test -j1 -p reinhardt-pages --lib ssr_render_creates_isolated_reactive_scopes`
+  - Result: PASS, 1 passed, 0 failed.
+- `cargo check -j1 -p reinhardt-pages --all-features`
+  - Result: PASS.
+- `cargo check -j1 --target wasm32-unknown-unknown -p reinhardt-pages --all-features`
+  - Result: PASS.

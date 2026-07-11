@@ -50,6 +50,8 @@ pub use into_page::{
 };
 pub use props::Props;
 #[cfg(wasm)]
+pub(crate) use reactive_if::store_reactive_scope;
+#[cfg(wasm)]
 pub use reactive_if::{ReactiveIfNode, ReactiveNode, cleanup_reactive_nodes, store_reactive_node};
 pub use suspense::{ResourceTracker, SuspenseBoundary};
 pub use r#trait::Component;

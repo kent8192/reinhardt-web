@@ -6,6 +6,7 @@ use super::markers::{HydrationMarker, HydrationStrategy};
 use super::state::SsrState;
 use crate::auth::AuthData;
 use crate::component::{Component, Head, IntoPage, Page};
+use reinhardt_core::reactive::ReactiveScope;
 
 /// Options for SSR rendering.
 #[derive(Debug, Clone)]
@@ -180,17 +181,24 @@ impl SsrRenderer {
 
 	/// Renders a component to an HTML string.
 	pub fn render<C: Component>(&mut self, component: &C) -> String {
-		let view = component.render();
-		self.render_view(&view)
+		ReactiveScope::run(|| {
+			let view = component.render();
+			self.render_view(&view)
+		})
 	}
 
 	/// Renders an IntoPage to an HTML string.
 	pub fn render_into_page<V: IntoPage>(&mut self, view: V) -> String {
-		let view = view.into_page();
-		self.render_view(&view)
+		ReactiveScope::run(|| {
+			let view = view.into_page();
+			self.render_view(&view)
+		})
 	}
 
-	/// Renders a View to an HTML string.
+	/// Renders a pre-built View to an HTML string.
+	///
+	/// This is a low-level entrypoint. Callers that construct reactive nodes
+	/// while rendering the view must provide an active [`ReactiveScope`].
 	pub fn render_view(&self, view: &Page) -> String {
 		view.render_to_string()
 	}
@@ -429,8 +437,10 @@ impl SsrRenderer {
 
 	/// Renders a component with hydration marker.
 	pub fn render_with_marker<C: Component>(&mut self, component: &C) -> String {
-		let view = component.render();
-		let content = view.render_to_string();
+		let content = ReactiveScope::run(|| {
+			let view = component.render();
+			view.render_to_string()
+		});
 
 		if self.options.include_hydration_markers {
 			let marker = HydrationMarker {
@@ -660,6 +670,29 @@ mod tests {
 		let mut renderer = SsrRenderer::new();
 		let html = renderer.render(&component);
 		assert_eq!(html, "<div class=\"test\">Hello</div>");
+	}
+
+	#[rstest]
+	fn ssr_render_creates_isolated_reactive_scopes() {
+		use crate::reactive::Signal;
+
+		struct ScopedCounter;
+
+		impl Component for ScopedCounter {
+			fn render(&self) -> Page {
+				let count = Signal::new(1);
+				Page::text(count.get().to_string())
+			}
+
+			fn name() -> &'static str {
+				"ScopedCounter"
+			}
+		}
+
+		let mut renderer = SsrRenderer::new();
+
+		assert_eq!(renderer.render(&ScopedCounter), "1");
+		assert_eq!(renderer.render(&ScopedCounter), "1");
 	}
 
 	#[test]
