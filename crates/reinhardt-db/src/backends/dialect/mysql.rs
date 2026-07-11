@@ -227,43 +227,7 @@ impl MySqlTransactionExecutor {
 	}
 
 	fn convert_row(mysql_row: MySqlRow) -> Result<Row> {
-		let mut row = Row::new();
-		for column in mysql_row.columns() {
-			let column_name = column.name();
-			if let Ok(value) = mysql_row.try_get::<bool, _>(column_name) {
-				row.insert(column_name.to_string(), QueryValue::Bool(value));
-			} else if let Ok(value) = mysql_row.try_get::<i64, _>(column_name) {
-				row.insert(column_name.to_string(), QueryValue::Int(value));
-			} else if let Ok(value) = mysql_row.try_get::<i32, _>(column_name) {
-				row.insert(column_name.to_string(), QueryValue::Int(value as i64));
-			} else if let Ok(value) = mysql_row.try_get::<f64, _>(column_name) {
-				row.insert(column_name.to_string(), QueryValue::Float(value));
-			} else if let Ok(value) = mysql_row.try_get::<String, _>(column_name) {
-				row.insert(column_name.to_string(), QueryValue::String(value));
-			} else if let Ok(value) = mysql_row.try_get::<Vec<u8>, _>(column_name) {
-				// MySQL 8.0 information_schema returns binary collation columns that
-				// sqlx reports as LONGBLOB. Attempt UTF-8 conversion to recover string data.
-				match String::from_utf8(value.clone()) {
-					Ok(s) => row.insert(column_name.to_string(), QueryValue::String(s)),
-					Err(_) => row.insert(column_name.to_string(), QueryValue::Bytes(value)),
-				};
-			} else if let Ok(value) = mysql_row.try_get::<chrono::NaiveDateTime, _>(column_name) {
-				row.insert(
-					column_name.to_string(),
-					QueryValue::Timestamp(chrono::DateTime::from_naive_utc_and_offset(
-						value,
-						chrono::Utc,
-					)),
-				);
-			} else if let Ok(value) =
-				mysql_row.try_get::<chrono::DateTime<chrono::Utc>, _>(column_name)
-			{
-				row.insert(column_name.to_string(), QueryValue::Timestamp(value));
-			} else if mysql_row.try_get::<Option<i32>, _>(column_name).is_ok() {
-				row.insert(column_name.to_string(), QueryValue::Null);
-			}
-		}
-		Ok(row)
+		MySqlBackend::convert_row(mysql_row)
 	}
 }
 

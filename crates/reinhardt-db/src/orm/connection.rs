@@ -27,6 +27,8 @@ pub struct QueryRow {
 	pub data: serde_json::Value,
 	#[serde(skip)]
 	json_null_fields: std::collections::HashSet<String>,
+	#[serde(skip)]
+	native_json_fields: std::collections::HashSet<String>,
 	// Allow dead_code: field reserved for future connection metadata tracking
 	#[allow(dead_code)]
 	#[serde(skip)]
@@ -39,6 +41,7 @@ impl QueryRow {
 		Self {
 			data,
 			json_null_fields: std::collections::HashSet::new(),
+			native_json_fields: std::collections::HashSet::new(),
 			inner: None,
 		}
 	}
@@ -48,6 +51,7 @@ impl QueryRow {
 		// Convert Row to JSON for backward compatibility
 		let mut map = serde_json::Map::new();
 		let mut json_null_fields = std::collections::HashSet::new();
+		let mut native_json_fields = std::collections::HashSet::new();
 		for (key, value) in row.data.iter() {
 			let json_value = match value.clone() {
 				QueryValue::Null => serde_json::Value::Null,
@@ -65,12 +69,16 @@ impl QueryRow {
 				QueryValue::Timestamp(dt) => serde_json::Value::String(dt.to_rfc3339()),
 				QueryValue::Uuid(u) => serde_json::Value::String(u.to_string()),
 				QueryValue::Json(Some(value)) => {
+					native_json_fields.insert(key.clone());
 					if value.is_null() {
 						json_null_fields.insert(key.clone());
 					}
 					value.as_ref().clone()
 				}
-				QueryValue::Json(None) => serde_json::Value::Null,
+				QueryValue::Json(None) => {
+					native_json_fields.insert(key.clone());
+					serde_json::Value::Null
+				}
 				// NOW() should never appear in Row data (it's resolved to actual timestamp in database)
 				QueryValue::Now => panic!("QueryValue::Now should not appear in Row data"),
 			};
@@ -80,12 +88,17 @@ impl QueryRow {
 		Self {
 			data: serde_json::Value::Object(map),
 			json_null_fields,
+			native_json_fields,
 			inner: Some(row),
 		}
 	}
 
 	pub(crate) fn deserialize_model<M: super::Model>(&self) -> Result<M, serde_json::Error> {
-		super::json::deserialize_model_row::<M>(self.data.clone(), self.json_null_fields.clone())
+		super::json::deserialize_model_row::<M>(
+			self.data.clone(),
+			self.json_null_fields.clone(),
+			self.native_json_fields.clone(),
+		)
 	}
 
 	/// Get a value from the row by column name

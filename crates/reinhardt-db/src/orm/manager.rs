@@ -1866,6 +1866,45 @@ mod tests {
 		assert_eq!(json_value_count, 3);
 	}
 
+	#[rstest::rstest]
+	fn test_backend_json_string_scalar_preserves_native_json_provenance() {
+		// Arrange
+		let expected = JsonManagerModel {
+			id: Some(1),
+			scalar_json: Json::new("draft".to_string()),
+			settings: Json::new(TestSettings {
+				theme: "paper".to_string(),
+			}),
+			optional_json: None,
+		};
+		let mut backend_row = crate::backends::types::Row::new();
+		backend_row.insert("id".to_string(), crate::backends::types::QueryValue::Int(1));
+		backend_row.insert(
+			"scalar_json".to_string(),
+			crate::backends::types::QueryValue::Json(Some(Box::new(serde_json::Value::String(
+				"draft".to_string(),
+			)))),
+		);
+		backend_row.insert(
+			"settings".to_string(),
+			crate::backends::types::QueryValue::Json(Some(Box::new(serde_json::json!({
+				"theme": "paper"
+			})))),
+		);
+		backend_row.insert(
+			"optional_json".to_string(),
+			crate::backends::types::QueryValue::Json(None),
+		);
+
+		// Act
+		let model = crate::orm::connection::QueryRow::from_backend_row(backend_row)
+			.deserialize_model::<JsonManagerModel>()
+			.unwrap();
+
+		// Assert
+		assert_eq!(model, expected);
+	}
+
 	#[serial_test::serial(sqlx_drivers)]
 	#[tokio::test]
 	async fn test_manager_create_roundtrips_typed_json_fields_on_sqlite() {

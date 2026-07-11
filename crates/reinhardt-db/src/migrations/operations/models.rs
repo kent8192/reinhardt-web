@@ -128,7 +128,7 @@ pub fn quote_identifier(identifier: &str, database_type: DatabaseType) -> String
 	}
 }
 
-fn sql_dialect_for_database_type(database_type: DatabaseType) -> SqlDialect {
+pub(super) fn sql_dialect_for_database_type(database_type: DatabaseType) -> SqlDialect {
 	match database_type {
 		DatabaseType::Postgres => SqlDialect::Postgres,
 		DatabaseType::Mysql => SqlDialect::Mysql,
@@ -327,7 +327,7 @@ impl FieldDefinition {
 		self.to_sql_definition_with_type(self.field_type.to_sql_string())
 	}
 
-	fn to_sql_definition_for_dialect(&self, dialect: &SqlDialect) -> String {
+	pub(super) fn to_sql_definition_for_dialect(&self, dialect: &SqlDialect) -> String {
 		self.to_sql_definition_with_type(self.field_type.to_sql_for_dialect(dialect))
 	}
 

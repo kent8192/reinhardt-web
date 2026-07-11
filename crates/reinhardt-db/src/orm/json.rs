@@ -105,6 +105,7 @@ pub(crate) fn is_json_field_type(field_type: &str) -> bool {
 pub(crate) fn deserialize_model_row<M: Model>(
 	data: serde_json::Value,
 	mut json_null_fields: HashSet<String>,
+	mut native_json_fields: HashSet<String>,
 ) -> Result<M, serde_json::Error> {
 	let serde_json::Value::Object(mut fields) = data else {
 		return serde_json::from_value(data);
@@ -125,17 +126,19 @@ pub(crate) fn deserialize_model_row<M: Model>(
 		};
 
 		let was_native_json_null = json_null_fields.remove(&source_name);
-		let was_json_text = stored_value.is_string();
+		let was_native_json = native_json_fields.remove(&source_name);
+		let was_json_text = stored_value.is_string() && !was_native_json;
 		let parsed_value = match stored_value {
-			serde_json::Value::String(text) => serde_json::from_str(&text).map_err(|error| {
-				<serde_json::Error as serde::de::Error>::custom(format!(
-					"Failed to hydrate JSON field {}.{} from column '{}': {}",
-					M::table_name(),
-					field.name,
-					field.db_column_name(),
-					error
-				))
-			})?,
+			serde_json::Value::String(text) if !was_native_json => serde_json::from_str(&text)
+				.map_err(|error| {
+					<serde_json::Error as serde::de::Error>::custom(format!(
+						"Failed to hydrate JSON field {}.{} from column '{}': {}",
+						M::table_name(),
+						field.name,
+						field.db_column_name(),
+						error
+					))
+				})?,
 			value => value,
 		};
 
