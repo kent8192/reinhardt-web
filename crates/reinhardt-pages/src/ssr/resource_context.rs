@@ -706,8 +706,10 @@ fn resolved_resource_for_hydration(resources: Vec<&ResolvedResource>) -> Option<
 mod tests {
 	use super::*;
 
-	fn resource_signal() -> Signal<ResourceState<String, String>> {
-		Signal::new(ResourceState::Loading)
+	fn resource_signal(
+		scope: &reinhardt_core::reactive::ReactiveScope,
+	) -> Signal<ResourceState<String, String>> {
+		scope.enter(|| Signal::new(ResourceState::Loading))
 	}
 
 	fn resource_value(value: &Value) -> ResourceState<String, String> {
@@ -716,11 +718,12 @@ mod tests {
 
 	#[tokio::test]
 	async fn internal_call_order_resources_keep_boundary_scopes_separate() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
 			1,
 		))));
-		let boundary_state = resource_signal();
-		let outside_state = resource_signal();
+		let boundary_state = resource_signal(&scope);
+		let outside_state = resource_signal(&scope);
 
 		{
 			let _guard = enter_boundary(&context, "boundary".to_string());
@@ -788,10 +791,11 @@ mod tests {
 
 	#[tokio::test]
 	async fn top_level_replay_reuses_single_resolved_tracked_resource() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
 			1,
 		))));
-		let discovery_state = resource_signal();
+		let discovery_state = resource_signal(&scope);
 
 		context.borrow_mut().register_resource(
 			"rh-res-0".to_string(),
@@ -804,7 +808,7 @@ mod tests {
 		assert!(resolve_boundary_resources(&context, "boundary").await);
 
 		context.borrow_mut().reset_call_order_keys();
-		let replay_state = resource_signal();
+		let replay_state = resource_signal(&scope);
 		context.borrow_mut().register_resource(
 			"rh-res-0".to_string(),
 			|| async {
@@ -822,10 +826,11 @@ mod tests {
 
 	#[tokio::test]
 	async fn top_level_replay_does_not_reuse_boundary_local_resolved_resource() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
 			1,
 		))));
-		let boundary_state = resource_signal();
+		let boundary_state = resource_signal(&scope);
 
 		{
 			let _guard = enter_boundary(&context, "boundary".to_string());
@@ -845,7 +850,7 @@ mod tests {
 		context.borrow_mut().reset_call_order_keys();
 		let fetch_count = Rc::new(std::cell::Cell::new(0));
 		let replay_fetch_count = Rc::clone(&fetch_count);
-		let replay_state = resource_signal();
+		let replay_state = resource_signal(&scope);
 		context.borrow_mut().register_resource(
 			"rh-res-0".to_string(),
 			move || {
@@ -867,12 +872,13 @@ mod tests {
 
 	#[tokio::test]
 	async fn top_level_replay_reuses_pending_tracked_resource() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
 			1,
 		))));
 		let fetch_count = Rc::new(std::cell::Cell::new(0));
 		let discovery_fetch_count = Rc::clone(&fetch_count);
-		let discovery_state = resource_signal();
+		let discovery_state = resource_signal(&scope);
 
 		context.borrow_mut().register_resource(
 			"rh-res-0".to_string(),
@@ -887,7 +893,7 @@ mod tests {
 			.assign_resources_to_boundary(&["rh-res-0".to_string()], "boundary");
 
 		context.borrow_mut().reset_call_order_keys();
-		let replay_state = resource_signal();
+		let replay_state = resource_signal(&scope);
 		context.borrow_mut().register_resource(
 			"rh-res-0".to_string(),
 			|| async {
@@ -915,12 +921,13 @@ mod tests {
 
 	#[tokio::test]
 	async fn top_level_replay_remembers_timed_out_tracked_resource() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(
 			Duration::from_millis(1),
 		)));
 		let fetch_count = Rc::new(std::cell::Cell::new(0));
 		let discovery_fetch_count = Rc::clone(&fetch_count);
-		let discovery_state = resource_signal();
+		let discovery_state = resource_signal(&scope);
 
 		context.borrow_mut().register_resource(
 			"rh-res-0".to_string(),
@@ -945,7 +952,7 @@ mod tests {
 		assert_eq!(replay_key, "rh-res-0");
 
 		let replay_fetch_count = Rc::clone(&fetch_count);
-		let replay_state = resource_signal();
+		let replay_state = resource_signal(&scope);
 		context.borrow_mut().register_resource(
 			replay_key,
 			move || {
@@ -962,6 +969,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn nested_assignment_keeps_outer_boundary_scope_after_read() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
 			1,
 		))));
@@ -969,7 +977,7 @@ mod tests {
 		context.borrow_mut().register_resource(
 			"rh-res-0".to_string(),
 			|| async { Ok::<_, String>("shared".to_string()) },
-			resource_signal(),
+			resource_signal(&scope),
 		);
 		context.borrow_mut().mark_resource_read("rh-res-0");
 

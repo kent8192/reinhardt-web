@@ -877,42 +877,45 @@ mod tests {
 
 	#[rstest]
 	fn test_action_success_callbacks_are_additive() {
-		// Arrange
-		let callback_count = Rc::new(RefCell::new(0));
-		let first_count = Rc::clone(&callback_count);
-		let second_count = Rc::clone(&callback_count);
-		let action = use_action(|_: ()| async { Ok::<i32, String>(25) })
-			.on_success(move |value| {
-				assert_eq!(*value, 25);
-				*first_count.borrow_mut() += 1;
-			})
-			.on_success(move |value| {
-				assert_eq!(*value, 25);
-				*second_count.borrow_mut() += 1;
-			});
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let callback_count = Rc::new(RefCell::new(0));
+			let first_count = Rc::clone(&callback_count);
+			let second_count = Rc::clone(&callback_count);
+			let action = use_action(|_: ()| async { Ok::<i32, String>(25) })
+				.on_success(move |value| {
+					assert_eq!(*value, 25);
+					*first_count.borrow_mut() += 1;
+				})
+				.on_success(move |value| {
+					assert_eq!(*value, 25);
+					*second_count.borrow_mut() += 1;
+				});
 
-		// Act
-		action.force_success_for_test(25);
+			// Act
+			action.force_success_for_test(25);
 
-		// Assert
-		assert_eq!(*callback_count.borrow(), 2);
+			// Assert
+			assert_eq!(*callback_count.borrow(), 2);
+		});
 	}
 
 	#[rstest]
 	fn test_action_error_callbacks_receive_error() {
-		// Arrange
-		let captured_error = Rc::new(RefCell::new(None));
-		let captured_error_for_callback = Rc::clone(&captured_error);
-		let action = use_action(|_: ()| async { Err::<i32, String>("fail".to_string()) }).on_error(
-			move |error| {
-				*captured_error_for_callback.borrow_mut() = Some(error.clone());
-			},
-		);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let captured_error = Rc::new(RefCell::new(None));
+			let captured_error_for_callback = Rc::clone(&captured_error);
+			let action = use_action(|_: ()| async { Err::<i32, String>("fail".to_string()) })
+				.on_error(move |error| {
+					*captured_error_for_callback.borrow_mut() = Some(error.clone());
+				});
 
-		// Act
-		action.force_error_for_test("fail".to_string());
+			// Act
+			action.force_error_for_test("fail".to_string());
 
-		// Assert
-		assert_eq!(captured_error.borrow().as_deref(), Some("fail"));
+			// Assert
+			assert_eq!(captured_error.borrow().as_deref(), Some("fail"));
+		});
 	}
 }

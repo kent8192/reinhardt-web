@@ -245,19 +245,21 @@ mod tests {
 	#[rstest]
 	#[serial(hooks_effect)]
 	fn test_use_effect_accepts_unit_return() {
-		let called = Rc::new(RefCell::new(false));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let called = Rc::new(RefCell::new(false));
 
-		let _effect = use_effect(
-			{
-				let called = Rc::clone(&called);
-				move || {
-					*called.borrow_mut() = true;
-				}
-			},
-			(),
-		);
+			let _effect = use_effect(
+				{
+					let called = Rc::clone(&called);
+					move || {
+						*called.borrow_mut() = true;
+					}
+				},
+				(),
+			);
 
-		assert!(*called.borrow());
+			assert!(*called.borrow());
+		});
 	}
 
 	#[test]
@@ -316,26 +318,26 @@ mod tests {
 	#[rstest]
 	#[serial(hooks_effect)]
 	fn test_use_layout_effect_accepts_unit_return_and_tracks_synchronously() {
-		let signal = Signal::new(0);
-		let execution_order = Rc::new(RefCell::new(Vec::new()));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let execution_order = Rc::new(RefCell::new(Vec::new()));
 
-		let _effect = use_layout_effect(
-			{
-				let signal = signal.clone();
-				let execution_order = Rc::clone(&execution_order);
-				move || {
-					execution_order.borrow_mut().push(signal.get());
-				}
-			},
-			(signal.clone(),),
-		);
+			let _effect = use_layout_effect(
+				{
+					let execution_order = Rc::clone(&execution_order);
+					move || {
+						execution_order.borrow_mut().push(signal.get());
+					}
+				},
+				(signal,),
+			);
 
-		assert_eq!(*execution_order.borrow(), vec![0]);
+			assert_eq!(*execution_order.borrow(), vec![0]);
 
-		signal.set(1);
-		execution_order.borrow_mut().push(100);
-
-		assert_eq!(*execution_order.borrow(), vec![0, 1, 100]);
+			signal.set(1);
+			execution_order.borrow_mut().push(100);
+			assert_eq!(*execution_order.borrow(), vec![0, 1, 100]);
+		});
 	}
 
 	#[test]
