@@ -210,9 +210,9 @@ enum Commands {
 		no_interactive: bool,
 	},
 
-	/// Format Rust code and page!/form!/head! macro DSL in source files
+	/// Format Rust code and page!/form!/head!/style! macro DSL in source files
 	///
-	/// By default, formats page!/form!/head! DSL macros with Topiary and then runs rustfmt.
+	/// By default, formats page!/form!/head!/style! DSL macros with Topiary and then runs rustfmt.
 	/// Use --with-rustfmt=false to only format Reinhardt DSL macros.
 	Fmt {
 		/// Path to file or directory to format
@@ -255,7 +255,7 @@ enum Commands {
 
 	/// Format all code: Reinhardt DSL macros via Topiary + Rust via rustfmt
 	///
-	/// This command formats page!/form!/head! macros first, then runs
+	/// This command formats page!/form!/head!/style! macros first, then runs
 	/// `cargo fmt --all` on the root workspace.
 	///
 	/// Files that belong to a separate (nested) cargo workspace, such as
@@ -843,6 +843,34 @@ fn run_fmt(
 	backup: bool,
 	verbosity: u8,
 ) -> CommandResult<()> {
+	let command = build_fmt_command(
+		path,
+		check,
+		with_rustfmt,
+		config_path,
+		edition,
+		style_edition,
+		config,
+		color,
+		backup,
+		verbosity,
+	);
+	run_formatter_delegate(command)
+}
+
+#[allow(clippy::too_many_arguments)] // Pure command builder mirrors the CLI options.
+fn build_fmt_command(
+	path: PathBuf,
+	check: bool,
+	with_rustfmt: bool,
+	config_path: Option<PathBuf>,
+	edition: Option<String>,
+	style_edition: Option<String>,
+	config: Option<String>,
+	color: String,
+	backup: bool,
+	verbosity: u8,
+) -> process::Command {
 	let mut command = formatter_delegate_command(verbosity);
 	command.arg("fmt").arg(path);
 	push_flag(&mut command, "--check", check);
@@ -855,7 +883,7 @@ fn run_fmt(
 	push_optional_str(&mut command, "--config", config.as_deref());
 	push_optional_str(&mut command, "--color", Some(&color));
 	push_flag(&mut command, "--backup", backup);
-	run_formatter_delegate(command)
+	command
 }
 
 /// Format all code: DSL macros via Topiary, then Rust via `cargo fmt --all`.
@@ -870,6 +898,30 @@ fn run_fmt_all(
 	backup: bool,
 	verbosity: u8,
 ) -> CommandResult<()> {
+	let command = build_fmt_all_command(
+		check,
+		config_path,
+		edition,
+		style_edition,
+		config,
+		color,
+		backup,
+		verbosity,
+	);
+	run_formatter_delegate(command)
+}
+
+#[allow(clippy::too_many_arguments)] // Pure command builder mirrors the CLI options.
+fn build_fmt_all_command(
+	check: bool,
+	config_path: Option<PathBuf>,
+	edition: Option<String>,
+	style_edition: Option<String>,
+	config: Option<String>,
+	color: String,
+	backup: bool,
+	verbosity: u8,
+) -> process::Command {
 	let mut command = formatter_delegate_command(verbosity);
 	command.arg("fmt-all");
 	push_flag(&mut command, "--check", check);
@@ -879,7 +931,7 @@ fn run_fmt_all(
 	push_optional_str(&mut command, "--config", config.as_deref());
 	push_optional_str(&mut command, "--color", Some(&color));
 	push_flag(&mut command, "--backup", backup);
-	run_formatter_delegate(command)
+	command
 }
 
 fn formatter_delegate_command(verbosity: u8) -> process::Command {
@@ -1125,5 +1177,70 @@ mod arg_group_tests {
 			.is_ok(),
 			"configure dependency flags should parse"
 		);
+	}
+
+	#[test]
+	fn formatter_delegate_builds_exact_style_fmt_command() {
+		let directory = tempfile::tempdir().expect("create temporary directory");
+		let source = directory.path().join("styles.rs");
+		std::fs::write(
+			&source,
+			"#[style_def] static STYLES: TestStyles = style! { .card { color: red; } };",
+		)
+		.expect("write temporary source");
+
+		let command = build_fmt_command(
+			source.clone(),
+			true,
+			false,
+			Some(PathBuf::from("rustfmt.toml")),
+			Some("2024".to_string()),
+			Some("2024".to_string()),
+			Some("hard_tabs=true".to_string()),
+			"never".to_string(),
+			true,
+			2,
+		);
+
+		assert_eq!(command.get_program(), "reinhardt-formatter");
+		let args: Vec<String> = command
+			.get_args()
+			.map(|argument| argument.to_string_lossy().into_owned())
+			.collect();
+		assert_eq!(
+			args,
+			vec![
+				"-v".to_string(),
+				"-v".to_string(),
+				"fmt".to_string(),
+				source.to_string_lossy().into_owned(),
+				"--check".to_string(),
+				"--with-rustfmt=false".to_string(),
+				"--config-path".to_string(),
+				"rustfmt.toml".to_string(),
+				"--edition".to_string(),
+				"2024".to_string(),
+				"--style-edition".to_string(),
+				"2024".to_string(),
+				"--config".to_string(),
+				"hard_tabs=true".to_string(),
+				"--color".to_string(),
+				"never".to_string(),
+				"--backup".to_string(),
+			]
+		);
+	}
+
+	#[test]
+	fn formatter_delegate_builds_exact_fmt_all_command() {
+		let command =
+			build_fmt_all_command(true, None, None, None, None, "auto".to_string(), false, 1);
+
+		assert_eq!(command.get_program(), "reinhardt-formatter");
+		let args: Vec<String> = command
+			.get_args()
+			.map(|argument| argument.to_string_lossy().into_owned())
+			.collect();
+		assert_eq!(args, ["-v", "fmt-all", "--check", "--color", "auto"]);
 	}
 }

@@ -1,0 +1,19 @@
+fn styles(){let _=style! {
+	globals {
+		border: Color;
+	}
+	vars {
+		accent: Color = red;
+		padding: Length = 1rem;
+	}
+	.card {
+		color: vars.accent;
+		padding: vars.padding;
+		&:hover {
+			color: blue;
+		}
+		@media (max-width: 640px) {
+			padding: 0.75rem;
+		}
+	}
+};}

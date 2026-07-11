@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(formatter)* delegate component-scoped `style!` formatting to `reinhardt-formatter`
+
 ## [0.3.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.3.0...reinhardt-admin-cli@v0.3.1) - 2026-07-04
 
 ### Fixed
