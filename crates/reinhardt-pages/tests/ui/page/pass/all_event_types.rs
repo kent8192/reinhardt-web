@@ -1,101 +1,125 @@
-//! page! macro with all common DOM event types
-//!
-//! This test verifies that the page! macro supports all common DOM event handlers
-//! with proper closure syntax.
+//! Catalog coverage for intrinsic page events.
 
 use reinhardt_pages::page;
 
 fn main() {
-	// Mouse events
-	let _mouse_events = page!(|| {
+	let _all_catalog_events = page!(|| {
 		div {
-			@click: |_| {},
-			@dblclick: |_| {},
-			@mousedown: |_| {},
-			@mouseup: |_| {},
-			@mousemove: |_| {},
-			@mouseover: |_| {},
-			@mouseout: |_| {},
-			@mouseenter: |_| {},
-			@mouseleave: |_| {},
-			"Mouse events"
-		}
-	});
-
-	// Keyboard events
-	let _keyboard_events = page!(|| {
-		input {
-			r#type: "text",
-			aria_label: "Keyboard event field",
-			@keydown: |_| {},
-			@keyup: |_| {},
-			@keypress: |_| {},
-		}
-	});
-
-	// Form events
-	let _form_events = page!(|| {
-		form {
-			@submit: |_| {},
-			input {
-				r#type: "text",
-				aria_label: "Form event field",
-				@change: |_| {},
-				@input: |_| {},
-				@focus: |_| {},
-				@blur: |_| {},
-			}
-			button {
-				r#type: "reset",
-				"Reset"
-			}
-		}
-	});
-
-	// Touch events
-	let _touch_events = page!(|| {
-		div {
-			@touchstart: |_| {},
-			@touchend: |_| {},
-			@touchmove: |_| {},
-			@touchcancel: |_| {},
-			"Touch area"
-		}
-	});
-
-	// Drag events
-	let _drag_events = page!(|| {
-		div {
-			@drag: |_| {},
-			@dragstart: |_| {},
-			@dragend: |_| {},
-			@dragover: |_| {},
-			@drop: |_| {},
-			@dragenter: |_| {},
-			@dragleave: |_| {},
-			"Drag and drop"
-		}
-	});
-
-	// Scroll, load, and resize events
-	let _misc_events = page!(|| {
-		div {
-			@scroll: |_| {},
-			@load: |_| {},
-			@error: |_| {},
-			@resize: |_| {},
-			"Content"
-		}
-	});
-
-	// Multiple events on same element
-	let _mixed = page!(|| {
-		button {
-			@click: |_| {},
-			@mouseenter: |e| {
-				let _ = e;
-			},
-			"Click me"
+			@abort: |event| event.prevent_default(),
+			@auxclick: |event| event.prevent_default(),
+			@beforeinput: |event| event.prevent_default(),
+			@beforematch: |event| event.prevent_default(),
+			@beforetoggle: |event| event.prevent_default(),
+			@blur: |event| event.prevent_default(),
+			@cancel: |event| event.prevent_default(),
+			@canplay: |event| event.prevent_default(),
+			@canplaythrough: |event| event.prevent_default(),
+			@change: |event| event.prevent_default(),
+			@click: |event| event.prevent_default(),
+			@close: |event| event.prevent_default(),
+			@command: |event| event.prevent_default(),
+			@contextlost: |event| event.prevent_default(),
+			@contextmenu: |event| event.prevent_default(),
+			@contextrestored: |event| event.prevent_default(),
+			@copy: |event| event.prevent_default(),
+			@cuechange: |event| event.prevent_default(),
+			@cut: |event| event.prevent_default(),
+			@dblclick: |event| event.prevent_default(),
+			@drag: |event| event.prevent_default(),
+			@dragend: |event| event.prevent_default(),
+			@dragenter: |event| event.prevent_default(),
+			@dragleave: |event| event.prevent_default(),
+			@dragover: |event| event.prevent_default(),
+			@dragstart: |event| event.prevent_default(),
+			@drop: |event| event.prevent_default(),
+			@durationchange: |event| event.prevent_default(),
+			@emptied: |event| event.prevent_default(),
+			@ended: |event| event.prevent_default(),
+			@error: |event| event.prevent_default(),
+			@focus: |event| event.prevent_default(),
+			@formdata: |event| event.prevent_default(),
+			@input: |event| event.prevent_default(),
+			@invalid: |event| event.prevent_default(),
+			@keydown: |event| event.prevent_default(),
+			@keypress: |event| event.prevent_default(),
+			@keyup: |event| event.prevent_default(),
+			@load: |event| event.prevent_default(),
+			@loadeddata: |event| event.prevent_default(),
+			@loadedmetadata: |event| event.prevent_default(),
+			@loadstart: |event| event.prevent_default(),
+			@mousedown: |event| event.prevent_default(),
+			@mouseenter: |event| event.prevent_default(),
+			@mouseleave: |event| event.prevent_default(),
+			@mousemove: |event| event.prevent_default(),
+			@mouseout: |event| event.prevent_default(),
+			@mouseover: |event| event.prevent_default(),
+			@mouseup: |event| event.prevent_default(),
+			@paste: |event| event.prevent_default(),
+			@pause: |event| event.prevent_default(),
+			@play: |event| event.prevent_default(),
+			@playing: |event| event.prevent_default(),
+			@progress: |event| event.prevent_default(),
+			@ratechange: |event| event.prevent_default(),
+			@reset: |event| event.prevent_default(),
+			@resize: |event| event.prevent_default(),
+			@scroll: |event| event.prevent_default(),
+			@scrollend: |event| event.prevent_default(),
+			@securitypolicyviolation: |event| event.prevent_default(),
+			@seeked: |event| event.prevent_default(),
+			@seeking: |event| event.prevent_default(),
+			@select: |event| event.prevent_default(),
+			@slotchange: |event| event.prevent_default(),
+			@stalled: |event| event.prevent_default(),
+			@submit: |event| event.prevent_default(),
+			@suspend: |event| event.prevent_default(),
+			@timeupdate: |event| event.prevent_default(),
+			@toggle: |event| event.prevent_default(),
+			@volumechange: |event| event.prevent_default(),
+			@waiting: |event| event.prevent_default(),
+			@wheel: |event| event.prevent_default(),
+			@compositionstart: |event| event.prevent_default(),
+			@compositionupdate: |event| event.prevent_default(),
+			@compositionend: |event| event.prevent_default(),
+			@focusin: |event| event.prevent_default(),
+			@focusout: |event| event.prevent_default(),
+			@pointerdown: |event| event.prevent_default(),
+			@pointerup: |event| event.prevent_default(),
+			@pointermove: |event| event.prevent_default(),
+			@pointerover: |event| event.prevent_default(),
+			@pointerenter: |event| event.prevent_default(),
+			@pointerout: |event| event.prevent_default(),
+			@pointerleave: |event| event.prevent_default(),
+			@pointercancel: |event| event.prevent_default(),
+			@gotpointercapture: |event| event.prevent_default(),
+			@lostpointercapture: |event| event.prevent_default(),
+			@pointerrawupdate: |event| event.prevent_default(),
+			@touchstart: |event| event.prevent_default(),
+			@touchend: |event| event.prevent_default(),
+			@touchmove: |event| event.prevent_default(),
+			@touchcancel: |event| event.prevent_default(),
+			@animationstart: |event| event.prevent_default(),
+			@animationend: |event| event.prevent_default(),
+			@animationiteration: |event| event.prevent_default(),
+			@animationcancel: |event| event.prevent_default(),
+			@transitionrun: |event| event.prevent_default(),
+			@transitionstart: |event| event.prevent_default(),
+			@transitionend: |event| event.prevent_default(),
+			@transitioncancel: |event| event.prevent_default(),
+			@fullscreenchange: |event| event.prevent_default(),
+			@fullscreenerror: |event| event.prevent_default(),
+			@selectionchange: |event| event.prevent_default(),
+			@selectstart: |event| event.prevent_default(),
+			@scrollsnapchange: |event| event.prevent_default(),
+			@scrollsnapchanging: |event| event.prevent_default(),
+			@contentvisibilityautostatechange: |event| event.prevent_default(),
+			@encrypted: |event| event.prevent_default(),
+			@waitingforkey: |event| event.prevent_default(),
+			@enterpictureinpicture: |event| event.prevent_default(),
+			@leavepictureinpicture: |event| event.prevent_default(),
+			@beforexrselect: |event| event.prevent_default(),
+			@beginEvent: |event| event.prevent_default(),
+			@endEvent: |event| event.prevent_default(),
+			@repeatEvent: |event| event.prevent_default(),
 		}
 	});
 }
