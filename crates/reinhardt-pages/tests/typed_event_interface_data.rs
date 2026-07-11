@@ -1,4 +1,4 @@
-#![cfg(feature = "testing")]
+#![cfg(all(native, feature = "testing"))]
 
 use reinhardt_pages::event::{
 	AnimationStartEvent, BeforeXrSelectEvent, BeginEvent, CommandEvent, CompositionStartEvent,

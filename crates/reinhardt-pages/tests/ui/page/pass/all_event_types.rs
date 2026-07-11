@@ -2,6 +2,8 @@
 
 use reinhardt_pages::page;
 
+// KeyPressEvent remains covered here to verify the deprecated compatibility surface.
+#[allow(deprecated)]
 fn main() {
 	let _all_catalog_events = page!(|| {
 		div {
