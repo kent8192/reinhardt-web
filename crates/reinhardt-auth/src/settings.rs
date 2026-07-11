@@ -144,6 +144,7 @@ mod jwt_session_settings {
 	use super::*;
 	use crate::sessions::backends::jwt::{JwtConfig, JwtSessionBackend, JwtSessionError};
 	use jsonwebtoken::Algorithm;
+	use reinhardt_conf::settings::secret_types::SecretString;
 	use reinhardt_core::macros::settings;
 
 	fn default_algorithm() -> String {
@@ -152,6 +153,10 @@ mod jwt_session_settings {
 
 	fn default_expiration() -> u64 {
 		3600 // 1 hour
+	}
+
+	fn default_secret() -> SecretString {
+		SecretString::new("")
 	}
 
 	/// Parse a JWT algorithm string into the [`Algorithm`] enum.
@@ -183,8 +188,8 @@ mod jwt_session_settings {
 	#[derive(Clone, Debug, Serialize, Deserialize)]
 	pub struct JwtSessionSettings {
 		/// Secret key used for HMAC signing.
-		#[serde(default)]
-		pub secret: String,
+		#[serde(default = "default_secret")]
+		pub secret: SecretString,
 		/// JWT signing algorithm: `"HS256"`, `"HS384"`, or `"HS512"`.
 		#[serde(default = "default_algorithm")]
 		pub algorithm: String,
@@ -202,7 +207,7 @@ mod jwt_session_settings {
 	impl Default for JwtSessionSettings {
 		fn default() -> Self {
 			Self {
-				secret: String::new(),
+				secret: default_secret(),
 				algorithm: default_algorithm(),
 				expiration: default_expiration(),
 				issuer: None,
@@ -215,7 +220,7 @@ mod jwt_session_settings {
 		/// Convert these settings into the deprecated compatibility config.
 		pub fn to_config(&self) -> JwtConfig {
 			JwtConfig {
-				secret: self.secret.clone(),
+				secret: self.secret.expose_secret().to_owned(),
 				algorithm: parse_algorithm(&self.algorithm),
 				expiration: self.expiration,
 				issuer: self.issuer.clone(),
@@ -389,12 +394,34 @@ mod tests {
 		// expiration, and empty optional fields.
 		let legacy = JwtConfig::new(String::new());
 
-		assert_eq!(config.secret, settings.secret);
+		assert_eq!(config.secret, settings.secret.expose_secret());
 		assert_eq!(config.algorithm, Algorithm::HS256);
 		assert_eq!(config.algorithm, legacy.algorithm);
 		assert_eq!(config.expiration, legacy.expiration);
 		assert_eq!(config.issuer, legacy.issuer);
 		assert_eq!(config.audience, legacy.audience);
+	}
+
+	#[cfg(feature = "jwt")]
+	#[test]
+	fn jwt_session_settings_redacts_secret_in_debug_and_json() {
+		use super::JwtSessionSettings;
+		use reinhardt_conf::settings::secret_types::SecretString;
+
+		let raw_secret = "super-secret-signing-key";
+		let settings = JwtSessionSettings {
+			secret: SecretString::new(raw_secret),
+			..JwtSessionSettings::default()
+		};
+
+		let debug = format!("{settings:?}");
+		let json = serde_json::to_string(&settings).expect("settings should serialize");
+
+		assert_eq!(settings.to_config().secret, raw_secret);
+		assert!(!debug.contains(raw_secret));
+		assert!(debug.contains("[REDACTED]"));
+		assert!(!json.contains(raw_secret));
+		assert!(json.contains("[REDACTED]"));
 	}
 
 	#[cfg(feature = "token")]
