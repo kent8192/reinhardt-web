@@ -1,0 +1,5 @@
+error: message and message_fn are mutually exclusive
+ --> tests/macros/ui/http_error/fail/duplicate_message_source.rs:8:3
+  |
+8 |         message_fn = invalid_message
+  |         ^^^^^^^^^^
