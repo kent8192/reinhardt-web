@@ -63,6 +63,7 @@ impl MigrationNamer {
 	///             primary_key: false,
 	///             auto_increment: false,
 	///             default: None,
+	///             generated: None,
 	///         },
 	///         mysql_options: None,
 	///     },
@@ -76,6 +77,7 @@ impl MigrationNamer {
 	///             primary_key: false,
 	///             auto_increment: false,
 	///             default: None,
+	///             generated: None,
 	///         },
 	///         mysql_options: None,
 	///     },
@@ -223,6 +225,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 				mysql_options: None,
 			},
@@ -236,6 +239,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 				mysql_options: None,
 			},
@@ -307,6 +311,7 @@ mod tests {
 		let ops = vec![Operation::DropColumn {
 			table: "Users".to_string(),
 			column: "Email".to_string(),
+			old_definition: None,
 		}];
 		let name = MigrationNamer::generate_name(&ops, false);
 		assert_eq!(name, "remove_users_email");
@@ -326,6 +331,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			mysql_options: None,
 		}];
@@ -562,6 +568,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 				mysql_options: None,
 			},
@@ -611,6 +618,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 				mysql_options: None,
 			},

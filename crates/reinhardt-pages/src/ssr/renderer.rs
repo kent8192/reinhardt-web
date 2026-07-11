@@ -89,6 +89,16 @@ impl SsrOptions {
 		self
 	}
 
+	/// Sets the reactive i18n context for SSR and hydration.
+	#[cfg(feature = "i18n")]
+	pub fn i18n_context(mut self, context: crate::i18n::I18nContext) -> SsrRenderConfig {
+		self.lang = context.locale_untracked();
+		SsrRenderConfig {
+			options: self,
+			i18n_context: Some(context),
+		}
+	}
+
 	/// Disables hydration markers.
 	pub fn no_hydration(mut self) -> Self {
 		self.include_hydration_markers = false;
@@ -180,9 +190,41 @@ impl SsrOptions {
 	}
 }
 
+/// Builder-owned SSR renderer configuration.
+#[derive(Debug, Clone)]
+pub struct SsrRenderConfig {
+	options: SsrOptions,
+	#[cfg(feature = "i18n")]
+	i18n_context: Option<crate::i18n::I18nContext>,
+}
+
+/// Converts public renderer option builders into the renderer's internal config.
+pub trait IntoSsrRendererConfig {
+	/// Convert into a renderer configuration.
+	fn into_ssr_renderer_config(self) -> SsrRenderConfig;
+}
+
+impl IntoSsrRendererConfig for SsrOptions {
+	fn into_ssr_renderer_config(self) -> SsrRenderConfig {
+		SsrRenderConfig {
+			options: self,
+			#[cfg(feature = "i18n")]
+			i18n_context: None,
+		}
+	}
+}
+
+impl IntoSsrRendererConfig for SsrRenderConfig {
+	fn into_ssr_renderer_config(self) -> SsrRenderConfig {
+		self
+	}
+}
+
 /// The main SSR renderer.
 pub struct SsrRenderer {
 	options: SsrOptions,
+	#[cfg(feature = "i18n")]
+	i18n_context: Option<crate::i18n::I18nContext>,
 	state: SsrState,
 	rendered_head: Option<Head>,
 	hydration_marker_counter: u64,
@@ -195,6 +237,8 @@ impl Clone for SsrRenderer {
 	fn clone(&self) -> Self {
 		Self {
 			options: self.options.clone(),
+			#[cfg(feature = "i18n")]
+			i18n_context: self.i18n_context.clone(),
 			state: self.state.clone(),
 			rendered_head: self.rendered_head.clone(),
 			hydration_marker_counter: self.hydration_marker_counter,
@@ -249,12 +293,15 @@ enum SuspenseStreamState {
 fn suspense_boundary_futures(
 	context: &Rc<RefCell<SsrResourceContext>>,
 	boundaries: Vec<PendingSuspenseBoundary>,
+	#[cfg(feature = "i18n")] i18n_context: Option<crate::i18n::I18nContext>,
 ) -> FuturesUnordered<SuspenseBoundaryFuture> {
 	suspense_boundary_groups(context, boundaries)
 		.into_iter()
 		.map(|boundaries| {
 			let context = Rc::clone(context);
-			async move {
+			#[cfg(feature = "i18n")]
+			let i18n_context = i18n_context.clone();
+			let future = async move {
 				let mut results = Vec::new();
 
 				for boundary in boundaries {
@@ -264,8 +311,10 @@ fn suspense_boundary_futures(
 				}
 
 				results
-			}
-			.boxed_local()
+			};
+			#[cfg(feature = "i18n")]
+			let future = with_i18n_context_future(i18n_context, future);
+			future.boxed_local()
 		})
 		.collect()
 }
@@ -312,6 +361,26 @@ fn suspense_boundary_groups(
 		.collect()
 }
 
+#[cfg(feature = "i18n")]
+async fn with_i18n_context_future<R, Fut>(
+	context: Option<crate::i18n::I18nContext>,
+	future: Fut,
+) -> R
+where
+	Fut: std::future::Future<Output = R>,
+{
+	let mut future = std::pin::pin!(future);
+	std::future::poll_fn(move |cx| {
+		if let Some(context) = context.as_ref() {
+			let _guard = crate::i18n::provide_i18n_context(context.clone());
+			future.as_mut().poll(cx)
+		} else {
+			future.as_mut().poll(cx)
+		}
+	})
+	.await
+}
+
 impl Default for SsrRenderer {
 	fn default() -> Self {
 		Self::new()
@@ -323,6 +392,8 @@ impl SsrRenderer {
 	pub fn new() -> Self {
 		Self {
 			options: SsrOptions::default(),
+			#[cfg(feature = "i18n")]
+			i18n_context: None,
 			state: SsrState::new(),
 			rendered_head: None,
 			hydration_marker_counter: 0,
@@ -335,10 +406,13 @@ impl SsrRenderer {
 	}
 
 	/// Creates a renderer with custom options.
-	pub fn with_options(options: SsrOptions) -> Self {
-		let resource_timeout = options.resource_timeout;
+	pub fn with_options(options: impl IntoSsrRendererConfig) -> Self {
+		let config = options.into_ssr_renderer_config();
+		let resource_timeout = config.options.resource_timeout;
 		Self {
-			options,
+			options: config.options,
+			#[cfg(feature = "i18n")]
+			i18n_context: config.i18n_context,
 			state: SsrState::new(),
 			rendered_head: None,
 			hydration_marker_counter: 0,
@@ -378,6 +452,47 @@ impl SsrRenderer {
 	/// Renders a View to an HTML string.
 	pub async fn render_view(&mut self, view: &Page) -> String {
 		self.render_view_factory(|| view.clone()).await
+	}
+
+	/// Renders a View and syncs renderer-owned SSR state.
+	pub async fn render_view_with_state(&mut self, view: &Page) -> String {
+		self.render_view(view).await
+	}
+
+	fn html_lang(&self) -> String {
+		#[cfg(feature = "i18n")]
+		if let Some(context) = self.i18n_context.as_ref() {
+			return context.locale();
+		}
+		self.options.lang.clone()
+	}
+
+	fn state_script_tag(&self) -> Option<String> {
+		if !self.options.include_state_script {
+			return None;
+		}
+
+		#[cfg(feature = "i18n")]
+		let mut state = self.state.clone();
+		#[cfg(not(feature = "i18n"))]
+		let state = self.state.clone();
+		#[cfg(feature = "i18n")]
+		if let Some(context) = self.i18n_context.as_ref() {
+			crate::i18n::write_i18n_ssr_state(&mut state, context);
+		}
+
+		if state.is_empty() {
+			None
+		} else {
+			Some(state.to_script_tag())
+		}
+	}
+
+	fn sync_i18n_state(&mut self) {
+		#[cfg(feature = "i18n")]
+		if let Some(context) = self.i18n_context.as_ref() {
+			crate::i18n::write_i18n_ssr_state(&mut self.state, context);
+		}
 	}
 
 	fn next_hydration_marker_id(&mut self) -> String {
@@ -571,7 +686,9 @@ impl SsrRenderer {
 			let context = Rc::new(RefCell::new(SsrResourceContext::new(
 				self.options.resource_timeout,
 			)));
-			return scope_id_counter(scope_context(Rc::clone(&context), async move {
+			#[cfg(feature = "i18n")]
+			let i18n_context = self.i18n_context.clone();
+			let render = scope_context(Rc::clone(&context), async move {
 				self.begin_render(true);
 				let render_start = self.deterministic_render_snapshot();
 				let view = view_factory();
@@ -580,185 +697,197 @@ impl SsrRenderer {
 				self.begin_buffered_render_pass();
 				let content = self.render_stream_shell_page(&view, &mut boundaries).await;
 				let view_head = self.current_buffered_rendered_head_or_view_head(&view);
+				self.sync_i18n_state();
 				SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
 					&content,
 					"",
 					view_head.as_ref(),
 				))
-			}))
-			.await;
+			});
+			#[cfg(feature = "i18n")]
+			let render = with_i18n_context_future(i18n_context, render);
+			return scope_id_counter(render).await;
 		}
 
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(
 			self.options.resource_timeout,
 		)));
 		let id_counter = Rc::new(Cell::new(0));
-		scope_id_counter_with(
-			Rc::clone(&id_counter),
-			scope_context(Rc::clone(&context), async move {
-				self.begin_render(true);
-				let render_start = self.deterministic_render_snapshot();
-				let discovery_view = view_factory();
+		let scoped_id_counter = Rc::clone(&id_counter);
+		#[cfg(feature = "i18n")]
+		let i18n_context = self.i18n_context.clone();
+		let render = scope_context(Rc::clone(&context), async move {
+			self.begin_render(true);
+			let render_start = self.deterministic_render_snapshot();
+			let discovery_view = view_factory();
 
-				let _ = self
-					.render_async_page(&discovery_view, AsyncRenderMode::Discovery)
-					.await;
-				drop(discovery_view);
+			let _ = self
+				.render_async_page(&discovery_view, AsyncRenderMode::Discovery)
+				.await;
+			drop(discovery_view);
 
+			resolve_external_resources(&context).await;
+			let (view, content, boundaries) = loop {
+				self.restore_deterministic_render_snapshot(render_start);
+				self.begin_buffered_render_pass();
+
+				let view = view_factory();
+				let mut boundaries = Vec::new();
+				let content = self.render_stream_shell_page(&view, &mut boundaries).await;
+
+				if !context.borrow().has_pending_external() {
+					break (view, content, boundaries);
+				}
+
+				drop(view);
 				resolve_external_resources(&context).await;
-				let (view, content, boundaries) = loop {
-					self.restore_deterministic_render_snapshot(render_start);
-					self.begin_buffered_render_pass();
+			};
+			let view_head = self.current_buffered_rendered_head_or_view_head(&view);
+			self.add_resolved_resources_to_state(&context);
+			self.sync_i18n_state();
 
-					let view = view_factory();
-					let mut boundaries = Vec::new();
-					let content = self.render_stream_shell_page(&view, &mut boundaries).await;
+			let shell = self.wrap_in_html_shell(&content, view_head.as_ref());
+			let boundary_futures = suspense_boundary_futures(
+				&context,
+				boundaries,
+				#[cfg(feature = "i18n")]
+				self.i18n_context.clone(),
+			);
 
-					if !context.borrow().has_pending_external() {
-						break (view, content, boundaries);
-					}
+			let runtime = SuspenseStreamRuntime {
+				renderer: self.clone(),
+				context,
+				id_counter,
+				boundaries: boundary_futures,
+				ready_boundaries: VecDeque::new(),
+			};
 
-					drop(view);
-					resolve_external_resources(&context).await;
-				};
-				let view_head = self.current_buffered_rendered_head_or_view_head(&view);
-				self.add_resolved_resources_to_state(&context);
-
-				let shell = self.wrap_in_html_shell(&content, view_head.as_ref());
-				let boundary_futures = suspense_boundary_futures(&context, boundaries);
-
-				let runtime = SuspenseStreamRuntime {
-					renderer: self.clone(),
-					context,
-					id_counter,
-					boundaries: boundary_futures,
-					ready_boundaries: VecDeque::new(),
-				};
-
-				SsrStream::from_stream(stream::unfold(
-					SuspenseStreamState::Shell { shell, runtime },
-					|state| async move {
-						match state {
-							SuspenseStreamState::Shell { shell, runtime } => Some((
-								SsrChunk::Html(shell),
-								SuspenseStreamState::Boundaries(runtime),
-							)),
-							SuspenseStreamState::Boundaries(mut runtime) => {
-								loop {
-									let Some((boundary, resolved)) =
-										runtime.ready_boundaries.pop_front()
+			SsrStream::from_stream(stream::unfold(
+				SuspenseStreamState::Shell { shell, runtime },
+				|state| async move {
+					match state {
+						SuspenseStreamState::Shell { shell, runtime } => Some((
+							SsrChunk::Html(shell),
+							SuspenseStreamState::Boundaries(runtime),
+						)),
+						SuspenseStreamState::Boundaries(mut runtime) => {
+							loop {
+								let Some((boundary, resolved)) =
+									runtime.ready_boundaries.pop_front()
+								else {
+									let Some(resolved_boundaries) = runtime.boundaries.next().await
 									else {
-										let Some(resolved_boundaries) =
-											runtime.boundaries.next().await
-										else {
-											break;
-										};
-										runtime.ready_boundaries.extend(resolved_boundaries);
-										continue;
+										break;
 									};
+									runtime.ready_boundaries.extend(resolved_boundaries);
+									continue;
+								};
 
-									if !resolved {
-										continue;
-									}
-
-									let replacement = scope_id_counter_with(
-										Rc::clone(&runtime.id_counter),
-										scope_context(Rc::clone(&runtime.context), async {
-											if boundary.node.is_pending() {
-												return None;
-											}
-											let (replacement, nested_boundaries) = loop {
-												runtime
-													.renderer
-													.restore_deterministic_render_snapshot(
-														boundary.boundary_start,
-													);
-												let boundary_guard = enter_boundary(
-													&runtime.context,
-													boundary.boundary_id.clone(),
-												);
-												let replacement_page =
-													boundary.node.render_content();
-												let mut nested_boundaries = Vec::new();
-												let replacement = runtime
-													.renderer
-													.render_stream_shell_page(
-														&replacement_page,
-														&mut nested_boundaries,
-													)
-													.await;
-												drop(boundary_guard);
-
-												let has_pending_boundary_resource = runtime
-													.context
-													.borrow()
-													.has_pending_for_boundary(
-														&boundary.boundary_id,
-													);
-												let has_pending_external_resource =
-													runtime.context.borrow().has_pending_external();
-												if !has_pending_boundary_resource
-													&& !has_pending_external_resource
-												{
-													break (replacement, nested_boundaries);
-												}
-
-												drop(replacement_page);
-												if has_pending_boundary_resource {
-													resolve_boundary_resources(
-														&runtime.context,
-														&boundary.boundary_id,
-													)
-													.await;
-												}
-												if has_pending_external_resource {
-													resolve_external_resources(&runtime.context)
-														.await;
-												}
-											};
-											runtime
-												.renderer
-												.add_resolved_resources_to_state(&runtime.context);
-											for future in suspense_boundary_futures(
-												&runtime.context,
-												nested_boundaries,
-											) {
-												runtime.boundaries.push(future);
-											}
-											Some(replacement)
-										}),
-									)
-									.await;
-
-									let Some(replacement) = replacement else {
-										continue;
-									};
-
-									let chunk = runtime.renderer.render_suspense_replacement(
-										&boundary.boundary_id,
-										replacement,
-									);
-									return Some((
-										SsrChunk::Html(chunk),
-										SuspenseStreamState::Boundaries(runtime),
-									));
+								if !resolved {
+									continue;
 								}
 
-								runtime
-									.renderer
-									.add_resolved_resources_to_state(&runtime.context);
-								Some((
-									SsrChunk::Html(runtime.renderer.wrap_in_html_suffix()),
-									SuspenseStreamState::Done,
-								))
+								#[cfg(feature = "i18n")]
+								let i18n_context = runtime.renderer.i18n_context.clone();
+								let replacement = scope_id_counter_with(
+									Rc::clone(&runtime.id_counter),
+									scope_context(Rc::clone(&runtime.context), async {
+										if boundary.node.is_pending() {
+											return None;
+										}
+										let (replacement, nested_boundaries) = loop {
+											runtime.renderer.restore_deterministic_render_snapshot(
+												boundary.boundary_start,
+											);
+											let boundary_guard = enter_boundary(
+												&runtime.context,
+												boundary.boundary_id.clone(),
+											);
+											let replacement_page = boundary.node.render_content();
+											let mut nested_boundaries = Vec::new();
+											let replacement = runtime
+												.renderer
+												.render_stream_shell_page(
+													&replacement_page,
+													&mut nested_boundaries,
+												)
+												.await;
+											drop(boundary_guard);
+
+											let has_pending_boundary_resource = runtime
+												.context
+												.borrow()
+												.has_pending_for_boundary(&boundary.boundary_id);
+											let has_pending_external_resource =
+												runtime.context.borrow().has_pending_external();
+											if !has_pending_boundary_resource
+												&& !has_pending_external_resource
+											{
+												break (replacement, nested_boundaries);
+											}
+
+											drop(replacement_page);
+											if has_pending_boundary_resource {
+												resolve_boundary_resources(
+													&runtime.context,
+													&boundary.boundary_id,
+												)
+												.await;
+											}
+											if has_pending_external_resource {
+												resolve_external_resources(&runtime.context).await;
+											}
+										};
+										runtime
+											.renderer
+											.add_resolved_resources_to_state(&runtime.context);
+										runtime.renderer.sync_i18n_state();
+										for future in suspense_boundary_futures(
+											&runtime.context,
+											nested_boundaries,
+											#[cfg(feature = "i18n")]
+											runtime.renderer.i18n_context.clone(),
+										) {
+											runtime.boundaries.push(future);
+										}
+										Some(replacement)
+									}),
+								);
+								#[cfg(feature = "i18n")]
+								let replacement = with_i18n_context_future(i18n_context, replacement);
+								let replacement = replacement.await;
+
+								let Some(replacement) = replacement else {
+									continue;
+								};
+
+								let chunk = runtime.renderer.render_suspense_replacement(
+									&boundary.boundary_id,
+									replacement,
+								);
+								return Some((
+									SsrChunk::Html(chunk),
+									SuspenseStreamState::Boundaries(runtime),
+								));
 							}
-							SuspenseStreamState::Done => None,
+
+							runtime
+								.renderer
+								.add_resolved_resources_to_state(&runtime.context);
+							runtime.renderer.sync_i18n_state();
+							Some((
+								SsrChunk::Html(runtime.renderer.wrap_in_html_suffix()),
+								SuspenseStreamState::Done,
+							))
 						}
-					},
-				))
-			}),
-		)
-		.await
+						SuspenseStreamState::Done => None,
+					}
+				},
+			))
+		});
+		#[cfg(feature = "i18n")]
+		let render = with_i18n_context_future(i18n_context, render);
+		scope_id_counter_with(scoped_id_counter, render).await
 	}
 
 	async fn render_view_factory<F>(&mut self, view_factory: F) -> String
@@ -798,6 +927,8 @@ impl SsrRenderer {
 		};
 		let marker_id_counter =
 			(!clear_resource_states).then(|| Rc::clone(&self.marker_id_counter));
+		#[cfg(feature = "i18n")]
+		let i18n_context = self.i18n_context.clone();
 		let render = scope_context(Rc::clone(&context), async move {
 			self.begin_render(clear_resource_states);
 			let render_start = self.deterministic_render_snapshot();
@@ -808,6 +939,7 @@ impl SsrRenderer {
 				let content = self
 					.render_async_page(&view, AsyncRenderMode::Buffered)
 					.await;
+				self.sync_i18n_state();
 				return (view, content, String::new());
 			}
 
@@ -832,6 +964,7 @@ impl SsrRenderer {
 
 				if !context.borrow().has_pending() {
 					self.add_resolved_resources_to_state(&context);
+					self.sync_i18n_state();
 					return (view, content, String::new());
 				}
 
@@ -839,6 +972,8 @@ impl SsrRenderer {
 				resolve_pending_resources(&context).await;
 			}
 		});
+		#[cfg(feature = "i18n")]
+		let render = with_i18n_context_future(i18n_context, render);
 		if let Some(marker_id_counter) = marker_id_counter {
 			scope_id_counter_with(marker_id_counter, render).await
 		} else {
@@ -1187,7 +1322,7 @@ impl SsrRenderer {
 		html.push_str("<!DOCTYPE html>\n");
 		html.push_str(&format!(
 			"<html lang=\"{}\">\n",
-			html_escape(&self.options.lang)
+			html_escape(&self.html_lang())
 		));
 		html.push_str("<head>\n");
 		push_unique_head_entry(html, &mut seen_head_entries, "<meta charset=\"UTF-8\">");
@@ -1247,8 +1382,8 @@ impl SsrRenderer {
 			));
 		}
 
-		if self.options.include_state_script && !self.state.is_empty() {
-			suffix.push_str(&self.state.to_script_tag());
+		if let Some(state_script) = self.state_script_tag() {
+			suffix.push_str(&state_script);
 			suffix.push('\n');
 		}
 		suffix.push_str("</body>\n</html>");
@@ -1295,8 +1430,8 @@ impl SsrRenderer {
 			));
 		}
 
-		if self.options.include_state_script && !self.state.is_empty() {
-			suffix.push_str(&self.state.to_script_tag());
+		if let Some(state_script) = self.state_script_tag() {
+			suffix.push_str(&state_script);
 			suffix.push('\n');
 		}
 		suffix.push_str("</body>\n</html>");
@@ -1340,8 +1475,8 @@ impl SsrRenderer {
 		}
 
 		// SSR state script (if enabled)
-		if self.options.include_state_script && !self.state.is_empty() {
-			html.push_str(&self.state.to_script_tag());
+		if let Some(state_script) = self.state_script_tag() {
+			html.push_str(&state_script);
 			html.push('\n');
 		}
 
@@ -1362,7 +1497,6 @@ impl SsrRenderer {
 	/// that require title, meta tags, CSS, or JS.
 	pub fn wrap_in_html(&self, content: &str) -> String {
 		let mut html = String::with_capacity(content.len() + 1024);
-
 		self.write_html_head(&mut html, None);
 
 		// Body section
@@ -1387,8 +1521,8 @@ impl SsrRenderer {
 		}
 
 		// SSR state script (if enabled)
-		if self.options.include_state_script && !self.state.is_empty() {
-			html.push_str(&self.state.to_script_tag());
+		if let Some(state_script) = self.state_script_tag() {
+			html.push_str(&state_script);
 			html.push('\n');
 		}
 

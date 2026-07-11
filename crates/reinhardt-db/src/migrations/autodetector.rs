@@ -139,6 +139,8 @@ pub struct FieldState {
 	pub nullable: bool,
 	/// The params.
 	pub params: std::collections::HashMap<String, String>,
+	/// Generated-column metadata.
+	pub generated: Option<super::GeneratedColumnDefinition>,
 	/// ForeignKey information if this field is a foreign key
 	pub foreign_key: Option<ForeignKeyInfo>,
 }
@@ -151,6 +153,7 @@ impl FieldState {
 			field_type,
 			nullable,
 			params: std::collections::HashMap::new(),
+			generated: None,
 			foreign_key: None,
 		}
 	}
@@ -167,6 +170,7 @@ impl FieldState {
 			field_type,
 			nullable,
 			params: std::collections::HashMap::new(),
+			generated: None,
 			foreign_key: Some(foreign_key),
 		}
 	}
@@ -199,6 +203,13 @@ pub struct ModelState {
 	pub constraints: Vec<ConstraintDefinition>,
 	/// ManyToMany relationships
 	pub many_to_many_fields: Vec<ManyToManyMetadata>,
+}
+
+#[derive(Debug, Clone)]
+struct GeneratedColumnReplacementDependent {
+	name: String,
+	old_definition: super::ColumnDefinition,
+	new_definition: Option<super::ColumnDefinition>,
 }
 
 /// Index definition for a model
@@ -561,6 +572,7 @@ impl ProjectState {
 						default,
 						primary_key,
 						auto_increment,
+						generated: field_state.generated.clone(),
 					},
 				);
 			}
@@ -650,6 +662,7 @@ impl ProjectState {
 							default,
 							primary_key,
 							auto_increment,
+							generated: field_state.generated.clone(),
 						},
 					);
 				}
@@ -1231,7 +1244,7 @@ impl ProjectState {
 						model.add_field(field);
 					}
 				}
-				Operation::DropColumn { table, column } => {
+				Operation::DropColumn { table, column, .. } => {
 					// Find the model and remove the field
 					if let Some(model) = self.find_model_by_table_mut(table) {
 						model.fields.remove(column);
@@ -1290,6 +1303,10 @@ impl ProjectState {
 					}
 				}
 				Operation::AddConstraint {
+					table,
+					constraint_sql,
+				}
+				| Operation::AddConstraintRepair {
 					table,
 					constraint_sql,
 				} => {
@@ -1602,6 +1619,7 @@ impl ProjectState {
 			field_type: col.type_definition.clone(),
 			nullable: !col.not_null,
 			params,
+			generated: col.generated.clone(),
 			foreign_key: None,
 		}
 	}
@@ -4293,24 +4311,265 @@ impl MigrationAutodetector {
 	) -> bool {
 		// Schema-affecting bits are compared via the canonical
 		// `ColumnDefinition` form to absorb asymmetric param populations.
-		let mut from_def = super::ColumnDefinition::from_field_state(field_name, from_field);
-		let mut to_def = super::ColumnDefinition::from_field_state(field_name, to_field);
-		from_def.auto_increment =
-			Self::canonical_auto_increment(&from_def.type_definition, from_def.auto_increment);
-		to_def.auto_increment =
-			Self::canonical_auto_increment(&to_def.type_definition, to_def.auto_increment);
-		if let Some(unique) = from_unique {
-			from_def.unique = unique;
-		}
-		if let Some(unique) = to_unique {
-			to_def.unique = unique;
-		}
+		let from_def = Self::normalized_column_definition(field_name, from_field, from_unique);
+		let to_def = Self::normalized_column_definition(field_name, to_field, to_unique);
 		from_def.type_definition != to_def.type_definition
 			|| from_def.not_null != to_def.not_null
 			|| from_def.primary_key != to_def.primary_key
 			|| from_def.auto_increment != to_def.auto_increment
 			|| from_def.unique != to_def.unique
 			|| from_def.default != to_def.default
+			|| from_def.generated != to_def.generated
+	}
+
+	fn field_change_touches_generated(
+		field_name: &str,
+		from_field: &FieldState,
+		to_field: &FieldState,
+		from_unique: Option<bool>,
+		to_unique: Option<bool>,
+	) -> bool {
+		let from_def = Self::normalized_column_definition(field_name, from_field, from_unique);
+		let to_def = Self::normalized_column_definition(field_name, to_field, to_unique);
+		from_def.generated != to_def.generated
+	}
+
+	fn emit_generated_column_replacement_dependencies(
+		operations: &mut Vec<super::Operation>,
+		from_model: &ModelState,
+		to_model: &ModelState,
+		affected_columns: &BTreeSet<String>,
+	) {
+		for index in to_model.indexes.iter().filter(|index| {
+			index
+				.fields
+				.iter()
+				.any(|field| affected_columns.contains(field))
+				&& from_model
+					.indexes
+					.iter()
+					.any(|from_index| from_index == *index)
+		}) {
+			operations.push(super::Operation::CreateIndexRepair {
+				table: to_model.table_name.clone(),
+				name: Some(index.name.clone()),
+				columns: index.fields.clone(),
+				unique: index.unique,
+				index_type: None,
+				where_clause: None,
+				concurrently: false,
+				expressions: None,
+				mysql_options: None,
+				operator_class: None,
+			});
+		}
+
+		for constraint in to_model.constraints.iter().filter(|constraint| {
+			Self::constraint_references_any_column(constraint, affected_columns)
+				&& from_model
+					.constraints
+					.iter()
+					.any(|from_constraint| from_constraint == *constraint)
+		}) {
+			operations.push(super::Operation::AddConstraintRepair {
+				table: to_model.table_name.clone(),
+				constraint_sql: constraint.to_constraint().to_string(),
+			});
+		}
+	}
+
+	fn emit_generated_column_replacement_dependency_rollbacks(
+		operations: &mut Vec<super::Operation>,
+		from_model: &ModelState,
+		to_model: &ModelState,
+		affected_columns: &BTreeSet<String>,
+	) {
+		for index in from_model.indexes.iter().filter(|index| {
+			index
+				.fields
+				.iter()
+				.any(|field| affected_columns.contains(field))
+				&& to_model.indexes.iter().any(|to_index| to_index == *index)
+		}) {
+			operations.push(super::Operation::RestoreIndexOnRollback {
+				table: from_model.table_name.clone(),
+				name: Some(index.name.clone()),
+				columns: index.fields.clone(),
+				unique: index.unique,
+				index_type: None,
+				where_clause: None,
+				concurrently: false,
+				expressions: None,
+				mysql_options: None,
+				operator_class: None,
+			});
+		}
+
+		for constraint in from_model.constraints.iter().filter(|constraint| {
+			Self::constraint_references_any_column(constraint, affected_columns)
+				&& to_model
+					.constraints
+					.iter()
+					.any(|to_constraint| to_constraint == *constraint)
+		}) {
+			operations.push(super::Operation::RestoreConstraintOnRollback {
+				table: from_model.table_name.clone(),
+				constraint_sql: constraint.to_constraint().to_string(),
+			});
+		}
+	}
+
+	fn constraint_references_any_column(
+		constraint: &ConstraintDefinition,
+		columns: &BTreeSet<String>,
+	) -> bool {
+		constraint
+			.fields
+			.iter()
+			.any(|field| columns.contains(field))
+			|| constraint.expression.as_ref().is_some_and(|expression| {
+				columns
+					.iter()
+					.any(|column| Self::expression_text_references_column(expression, column))
+			})
+	}
+
+	fn generated_replacement_fields_for_model(
+		generated_replacement_columns: &BTreeSet<(String, String, String)>,
+		app_label: &str,
+		model_name: &str,
+	) -> BTreeSet<String> {
+		generated_replacement_columns
+			.iter()
+			.filter(|(app, model, _)| app == app_label && model == model_name)
+			.map(|(_, _, field)| field.clone())
+			.collect()
+	}
+
+	fn generated_column_replacement_dependents(
+		from_model: &ModelState,
+		to_model: &ModelState,
+		field_name: &str,
+	) -> Vec<GeneratedColumnReplacementDependent> {
+		let mut affected_columns = BTreeSet::from([field_name.to_string()]);
+		let mut dependents = Vec::new();
+
+		loop {
+			let mut added = false;
+			for (dependent_name, from_field) in &from_model.fields {
+				if affected_columns.contains(dependent_name) {
+					continue;
+				}
+
+				let references_affected_column =
+					from_field.generated.as_ref().is_some_and(|generated| {
+						affected_columns.iter().any(|column| {
+							Self::generated_column_references_column(generated, column)
+						})
+					});
+				let to_field = to_model.get_field(dependent_name);
+				let to_references_affected_column = to_field.is_some_and(|to_field| {
+					to_field.generated.as_ref().is_some_and(|generated| {
+						affected_columns.iter().any(|column| {
+							Self::generated_column_references_column(generated, column)
+						})
+					})
+				});
+
+				if references_affected_column || to_references_affected_column {
+					affected_columns.insert(dependent_name.clone());
+					dependents.push(GeneratedColumnReplacementDependent {
+						name: dependent_name.clone(),
+						old_definition: super::ColumnDefinition::from_field_state(
+							dependent_name.clone(),
+							from_field,
+						),
+						new_definition: to_field.map(|to_field| {
+							super::ColumnDefinition::from_field_state(
+								dependent_name.clone(),
+								to_field,
+							)
+						}),
+					});
+					added = true;
+				}
+			}
+
+			if !added {
+				break;
+			}
+		}
+
+		dependents
+	}
+
+	fn generated_field_references_column(
+		from_field: &FieldState,
+		to_field: &FieldState,
+		column: &str,
+	) -> bool {
+		from_field
+			.generated
+			.as_ref()
+			.is_some_and(|generated| Self::generated_column_references_column(generated, column))
+			|| to_field.generated.as_ref().is_some_and(|generated| {
+				Self::generated_column_references_column(generated, column)
+			})
+	}
+
+	fn generated_column_references_column(
+		generated: &super::GeneratedColumnDefinition,
+		column: &str,
+	) -> bool {
+		generated
+			.typed_expr()
+			.as_ref()
+			.is_some_and(|expr| Self::schema_expr_references_column(expr, column))
+			|| generated
+				.raw_sql
+				.as_deref()
+				.is_some_and(|sql| Self::expression_text_references_column(sql, column))
+			|| generated
+				.expr_tokens
+				.as_deref()
+				.is_some_and(|tokens| Self::expression_text_references_column(tokens, column))
+	}
+
+	fn schema_expr_references_column(expr: &super::SchemaExpr, column: &str) -> bool {
+		match expr {
+			super::SchemaExpr::Column(identifier) => identifier.to_string() == column,
+			super::SchemaExpr::Value(_) => false,
+			super::SchemaExpr::Binary { left, right, .. } => {
+				Self::schema_expr_references_column(left, column)
+					|| Self::schema_expr_references_column(right, column)
+			}
+			super::SchemaExpr::Function { args, .. } => args
+				.iter()
+				.any(|arg| Self::schema_expr_references_column(arg, column)),
+			super::SchemaExpr::Cast { expr, .. } => {
+				Self::schema_expr_references_column(expr, column)
+			}
+			_ => false,
+		}
+	}
+
+	fn expression_text_references_column(text: &str, column: &str) -> bool {
+		text.split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+			.any(|token| token.eq_ignore_ascii_case(column))
+	}
+
+	fn normalized_column_definition(
+		field_name: &str,
+		field: &FieldState,
+		unique: Option<bool>,
+	) -> super::ColumnDefinition {
+		let mut def = super::ColumnDefinition::from_field_state(field_name, field);
+		def.auto_increment =
+			Self::canonical_auto_increment(&def.type_definition, def.auto_increment);
+		if let Some(unique) = unique {
+			def.unique = unique;
+		}
+		def
 	}
 
 	fn canonical_auto_increment(field_type: &super::FieldType, auto_increment: bool) -> bool {
@@ -4323,6 +4582,195 @@ impl MigrationAutodetector {
 					| super::FieldType::TinyInt
 					| super::FieldType::MediumInt
 			)
+	}
+
+	fn order_added_fields_by_generated_dependencies(
+		&self,
+		added_fields: &[(String, String, String)],
+	) -> Vec<(String, String, String)> {
+		let mut remaining = added_fields.to_vec();
+		let mut ordered = Vec::with_capacity(remaining.len());
+
+		while !remaining.is_empty() {
+			let next_index = remaining
+				.iter()
+				.enumerate()
+				.find(|(_, (app_label, model_name, field_name))| {
+					let Some(model) = self.to_state.get_model(app_label, model_name) else {
+						return true;
+					};
+					let Some(field) = model.get_field(field_name) else {
+						return true;
+					};
+					let Some(generated) = field.generated.as_ref() else {
+						return true;
+					};
+
+					!remaining.iter().any(
+						|(other_app_label, other_model_name, other_field_name)| {
+							other_app_label == app_label
+								&& other_model_name == model_name
+								&& other_field_name != field_name
+								&& Self::generated_column_references_column(
+									generated,
+									other_field_name,
+								)
+						},
+					)
+				})
+				.map(|(index, _)| index);
+
+			if let Some(index) = next_index {
+				ordered.push(remaining.remove(index));
+			} else {
+				ordered.extend(remaining);
+				break;
+			}
+		}
+
+		ordered
+	}
+
+	fn order_model_fields_by_generated_dependencies(
+		model: &ModelState,
+	) -> Vec<(&String, &FieldState)> {
+		let mut remaining: Vec<_> = model.fields.iter().collect();
+		let mut ordered = Vec::with_capacity(remaining.len());
+
+		while !remaining.is_empty() {
+			let next_index = remaining
+				.iter()
+				.enumerate()
+				.find(|(_, (field_name, field))| {
+					let Some(generated) = field.generated.as_ref() else {
+						return true;
+					};
+
+					!remaining.iter().any(|(other_field_name, _)| {
+						other_field_name.as_str() != field_name.as_str()
+							&& Self::generated_column_references_column(
+								generated,
+								other_field_name.as_str(),
+							)
+					})
+				})
+				.map(|(index, _)| index);
+
+			if let Some(index) = next_index {
+				ordered.push(remaining.remove(index));
+			} else {
+				ordered.extend(remaining);
+				break;
+			}
+		}
+
+		ordered
+	}
+
+	fn added_generated_field_references_altered_source(
+		&self,
+		altered_fields: &[(String, String, String)],
+		renamed_fields: &[(String, String, String, String)],
+		app_label: &str,
+		model_name: &str,
+		field_name: &str,
+	) -> bool {
+		let Some(model) = self.to_state.get_model(app_label, model_name) else {
+			return false;
+		};
+		let Some(field) = model.get_field(field_name) else {
+			return false;
+		};
+		let Some(generated) = field.generated.as_ref() else {
+			return false;
+		};
+
+		let references_altered_source =
+			altered_fields
+				.iter()
+				.any(|(other_app_label, other_model_name, other_field_name)| {
+					other_app_label == app_label
+						&& other_model_name == model_name
+						&& other_field_name != field_name
+						&& Self::generated_column_references_column(generated, other_field_name)
+				});
+		let references_renamed_source = renamed_fields.iter().any(
+			|(other_app_label, other_model_name, _old_name, new_name)| {
+				other_app_label == app_label
+					&& other_model_name == model_name
+					&& new_name != field_name
+					&& Self::generated_column_references_column(generated, new_name)
+			},
+		);
+
+		references_altered_source || references_renamed_source
+	}
+
+	fn push_add_column_operation(
+		&self,
+		by_app: &mut std::collections::BTreeMap<String, Vec<super::Operation>>,
+		app_label: &str,
+		model_name: &str,
+		field_name: &str,
+	) {
+		if let Some(model) = self.to_state.get_model(app_label, model_name)
+			&& let Some(field) = model.get_field(field_name)
+		{
+			by_app
+				.entry(app_label.to_string())
+				.or_default()
+				.push(super::Operation::AddColumn {
+					table: model.table_name.clone(),
+					column: super::ColumnDefinition::from_field_state(
+						field_name.to_string(),
+						field,
+					),
+					mysql_options: None,
+				});
+		}
+	}
+
+	fn order_removed_fields_by_generated_dependencies(
+		&self,
+		removed_fields: &[(String, String, String)],
+	) -> Vec<(String, String, String)> {
+		let mut remaining = removed_fields.to_vec();
+		let mut ordered = Vec::with_capacity(remaining.len());
+
+		while !remaining.is_empty() {
+			let next_index = remaining
+				.iter()
+				.enumerate()
+				.find(|(_, (app_label, model_name, field_name))| {
+					!remaining.iter().any(
+						|(other_app_label, other_model_name, other_field_name)| {
+							if other_app_label != app_label
+								|| other_model_name != model_name
+								|| other_field_name == field_name
+							{
+								return false;
+							}
+							self.from_state
+								.get_model(other_app_label, other_model_name)
+								.and_then(|model| model.get_field(other_field_name))
+								.and_then(|field| field.generated.as_ref())
+								.is_some_and(|generated| {
+									Self::generated_column_references_column(generated, field_name)
+								})
+						},
+					)
+				})
+				.map(|(index, _)| index);
+
+			if let Some(index) = next_index {
+				ordered.push(remaining.remove(index));
+			} else {
+				ordered.extend(remaining);
+				break;
+			}
+		}
+
+		ordered
 	}
 
 	/// Detect renamed models
@@ -5429,6 +5877,7 @@ impl MigrationAutodetector {
 				primary_key: true,
 				auto_increment: true,
 				default: None,
+				generated: None,
 			},
 			// source_id column
 			super::ColumnDefinition {
@@ -5439,6 +5888,7 @@ impl MigrationAutodetector {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			// target_id column
 			super::ColumnDefinition {
@@ -5449,6 +5899,7 @@ impl MigrationAutodetector {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 		];
 
@@ -5536,12 +5987,12 @@ impl MigrationAutodetector {
 	///
 	/// assert!(!operations.is_empty());
 	/// ```rust,ignore
-	/// Sort operations by their dependencies to ensure correct execution order
+	/// Sort operations by their dependencies to ensure correct execution order.
 	///
-	/// This method reorders operations to prevent execution errors:
-	/// 1. CreateTable operations first (tables must exist before modification)
-	/// 2. AddColumn/AlterColumn operations next (field modifications)
-	/// 3. Other operations last (indexes, constraints, etc.)
+	/// CreateTable operations must run before table modifications, but the
+	/// remaining emission order carries dependency information. In
+	/// particular, generated-column repair and rollback marker operations
+	/// must stay around the drop/add replacement pair that they protect.
 	fn sort_operations_by_dependency(
 		&self,
 		mut operations: Vec<super::Operation>,
@@ -5556,28 +6007,9 @@ impl MigrationAutodetector {
 			.collect();
 		operations.retain(|op| !matches!(op, super::Operation::CreateTable { .. }));
 
-		// Extract field operations (must be after CreateTable)
-		let field_ops: Vec<_> = operations
-			.iter()
-			.filter(|op| {
-				matches!(
-					op,
-					super::Operation::AddColumn { .. } | super::Operation::AlterColumn { .. }
-				)
-			})
-			.cloned()
-			.collect();
-		operations.retain(|op| {
-			!matches!(
-				op,
-				super::Operation::AddColumn { .. } | super::Operation::AlterColumn { .. }
-			)
-		});
-
 		// Assemble in correct order
 		sorted.extend(create_tables);
-		sorted.extend(field_ops);
-		sorted.extend(operations); // Remaining operations
+		sorted.extend(operations);
 
 		sorted
 	}
@@ -5586,10 +6018,15 @@ impl MigrationAutodetector {
 		match operation {
 			super::Operation::AddColumn { table, .. }
 			| super::Operation::AlterColumn { table, .. }
+			| super::Operation::DropColumn { table, .. }
 			| super::Operation::RenameColumn { table, .. }
 			| super::Operation::AddConstraint { table, .. }
+			| super::Operation::AddConstraintRepair { table, .. }
+			| super::Operation::RestoreConstraintOnRollback { table, .. }
 			| super::Operation::DropConstraint { table, .. }
 			| super::Operation::CreateIndex { table, .. }
+			| super::Operation::CreateIndexRepair { table, .. }
+			| super::Operation::RestoreIndexOnRollback { table, .. }
 			| super::Operation::DropIndex { table, .. }
 			| super::Operation::CreateCompositePrimaryKey { table, .. }
 			| super::Operation::SetAutoIncrementValue { table, .. } => table == table_name,
@@ -5664,7 +6101,9 @@ impl MigrationAutodetector {
 			super::Operation::CreateTable { constraints, .. } => constraints
 				.iter()
 				.any(|constraint| Self::constraint_references_table(constraint, table_name)),
-			super::Operation::AddConstraint { constraint_sql, .. } => {
+			super::Operation::AddConstraint { constraint_sql, .. }
+			| super::Operation::AddConstraintRepair { constraint_sql, .. }
+			| super::Operation::RestoreConstraintOnRollback { constraint_sql, .. } => {
 				Self::constraint_sql_references_table(constraint_sql, table_name)
 			}
 			_ => false,
@@ -5819,7 +6258,9 @@ impl MigrationAutodetector {
 		for (app_label, model_name) in &changes.created_models {
 			if let Some(model) = self.to_state.get_model(app_label, model_name) {
 				let mut columns = Vec::new();
-				for (field_name, field_state) in &model.fields {
+				for (field_name, field_state) in
+					Self::order_model_fields_by_generated_dependencies(model)
+				{
 					columns.push(super::ColumnDefinition::from_field_state(
 						field_name.clone(),
 						field_state,
@@ -5853,21 +6294,20 @@ impl MigrationAutodetector {
 		// previous `generate_operations()` body used `model.name` here, which
 		// was a latent bug that did not surface because that path was rarely
 		// exercised against table-name-keyed state.
-		for (app_label, model_name, field_name) in &changes.added_fields {
-			if let Some(model) = self.to_state.get_model(app_label, model_name)
-				&& let Some(field) = model.get_field(field_name)
-			{
-				by_app
-					.entry(app_label.clone())
-					.or_default()
-					.push(super::Operation::AddColumn {
-						table: model.table_name.clone(),
-						column: super::ColumnDefinition::from_field_state(
-							field_name.clone(),
-							field,
-						),
-						mysql_options: None,
-					});
+		let ordered_added_fields =
+			self.order_added_fields_by_generated_dependencies(&changes.added_fields);
+		let mut deferred_added_fields = Vec::new();
+		for (app_label, model_name, field_name) in ordered_added_fields {
+			if self.added_generated_field_references_altered_source(
+				&changes.altered_fields,
+				&changes.renamed_fields,
+				&app_label,
+				&model_name,
+				&field_name,
+			) {
+				deferred_added_fields.push((app_label, model_name, field_name));
+			} else {
+				self.push_add_column_operation(by_app, &app_label, &model_name, &field_name);
 			}
 		}
 
@@ -5886,35 +6326,180 @@ impl MigrationAutodetector {
 		}
 
 		// AlterColumn for changed fields.
+		let mut generated_replacement_columns: BTreeSet<(String, String, String)> = BTreeSet::new();
 		for (app_label, model_name, field_name) in &changes.altered_fields {
+			let replacement_key = (app_label.clone(), model_name.clone(), field_name.clone());
+			if generated_replacement_columns.contains(&replacement_key) {
+				continue;
+			}
 			if let Some(model) = self.to_state.get_model(app_label, model_name)
 				&& let Some(field) = model.get_field(field_name)
 			{
-				let old_definition = self
-					.from_state
-					.get_model(app_label, model_name)
+				let from_model = self.from_state.get_model(app_label, model_name);
+				let old_definition = from_model
 					.and_then(|from_model| from_model.get_field(field_name))
 					.map(|from_field| {
 						super::ColumnDefinition::from_field_state(field_name.clone(), from_field)
 					});
-				by_app
-					.entry(app_label.clone())
-					.or_default()
-					.push(super::Operation::AlterColumn {
+				let new_definition =
+					super::ColumnDefinition::from_field_state(field_name.clone(), field);
+				let generated_change = from_model
+					.and_then(|from_model| {
+						from_model
+							.get_field(field_name)
+							.map(|from_field| (from_model, from_field))
+					})
+					.is_some_and(|(from_model, from_field)| {
+						let from_unique = Self::single_field_unique_column_already_present(
+							from_model, field_name,
+						);
+						let to_unique =
+							Self::single_field_unique_column_already_present(model, field_name);
+						Self::field_change_touches_generated(
+							field_name,
+							from_field,
+							field,
+							Some(from_unique),
+							Some(to_unique),
+						)
+					});
+
+				if generated_change {
+					let is_dependent_of_other_altered_field = from_model
+						.and_then(|from_model| {
+							from_model
+								.get_field(field_name)
+								.map(|from_field| (from_model, from_field))
+						})
+						.is_some_and(|(from_model, from_field)| {
+							changes.altered_fields.iter().any(
+								|(other_app_label, other_model_name, other_field_name)| {
+									if other_app_label != app_label
+										|| other_model_name != model_name
+										|| other_field_name == field_name
+									{
+										return false;
+									}
+
+									from_model.get_field(other_field_name).is_some()
+										&& model.get_field(other_field_name).is_some()
+										&& Self::generated_field_references_column(
+											from_field,
+											field,
+											other_field_name,
+										)
+								},
+							)
+						});
+					if is_dependent_of_other_altered_field {
+						continue;
+					}
+				}
+
+				let operations = by_app.entry(app_label.clone()).or_default();
+				let dependent_generated_columns = from_model
+					.map(|from_model| {
+						Self::generated_column_replacement_dependents(from_model, model, field_name)
+					})
+					.unwrap_or_default();
+				let source_change_requires_dependent_recreation =
+					!generated_change && !dependent_generated_columns.is_empty();
+				if generated_change || source_change_requires_dependent_recreation {
+					let dependent_column_names: BTreeSet<String> = dependent_generated_columns
+						.iter()
+						.map(|dependent| dependent.name.clone())
+						.collect();
+					let affected_columns: BTreeSet<String> = if generated_change {
+						std::iter::once(field_name.clone())
+							.chain(dependent_column_names.iter().cloned())
+							.collect()
+					} else {
+						dependent_column_names.clone()
+					};
+					generated_replacement_columns.insert(replacement_key);
+					for dependent_name in &dependent_column_names {
+						generated_replacement_columns.insert((
+							app_label.clone(),
+							model_name.clone(),
+							dependent_name.clone(),
+						));
+					}
+					if let Some(from_model) = from_model {
+						Self::emit_generated_column_replacement_dependency_rollbacks(
+							operations,
+							from_model,
+							model,
+							&affected_columns,
+						);
+					}
+					for dependent in dependent_generated_columns.iter().rev() {
+						operations.push(super::Operation::DropColumn {
+							table: model.table_name.clone(),
+							column: dependent.name.clone(),
+							old_definition: Some(dependent.old_definition.clone()),
+						});
+					}
+					if generated_change {
+						operations.push(super::Operation::DropColumn {
+							table: model.table_name.clone(),
+							column: field_name.clone(),
+							old_definition: old_definition.clone(),
+						});
+						operations.push(super::Operation::AddColumn {
+							table: model.table_name.clone(),
+							column: new_definition,
+							mysql_options: None,
+						});
+					} else {
+						operations.push(super::Operation::AlterColumn {
+							table: model.table_name.clone(),
+							old_definition,
+							column: field_name.clone(),
+							new_definition,
+							mysql_options: None,
+						});
+					}
+					for dependent in dependent_generated_columns {
+						if let Some(new_dependent_definition) = dependent.new_definition {
+							operations.push(super::Operation::AddColumn {
+								table: model.table_name.clone(),
+								column: new_dependent_definition,
+								mysql_options: None,
+							});
+						}
+					}
+					if let Some(from_model) = from_model {
+						Self::emit_generated_column_replacement_dependencies(
+							operations,
+							from_model,
+							model,
+							&affected_columns,
+						);
+					}
+				} else {
+					operations.push(super::Operation::AlterColumn {
 						table: model.table_name.clone(),
 						old_definition,
 						column: field_name.clone(),
-						new_definition: super::ColumnDefinition::from_field_state(
-							field_name.clone(),
-							field,
-						),
+						new_definition,
 						mysql_options: None,
 					});
+				}
 			}
 		}
 
+		for (app_label, model_name, field_name) in &deferred_added_fields {
+			self.push_add_column_operation(by_app, app_label, model_name, field_name);
+		}
+
 		// DropColumn for removed fields.
-		for (app_label, model_name, field_name) in &changes.removed_fields {
+		let ordered_removed_fields =
+			self.order_removed_fields_by_generated_dependencies(&changes.removed_fields);
+		for (app_label, model_name, field_name) in &ordered_removed_fields {
+			let replacement_key = (app_label.clone(), model_name.clone(), field_name.clone());
+			if generated_replacement_columns.contains(&replacement_key) {
+				continue;
+			}
 			if let Some(model) = self.from_state.get_model(app_label, model_name) {
 				by_app
 					.entry(app_label.clone())
@@ -5922,6 +6507,9 @@ impl MigrationAutodetector {
 					.push(super::Operation::DropColumn {
 						table: model.table_name.clone(),
 						column: field_name.clone(),
+						old_definition: model.get_field(field_name).map(|field| {
+							super::ColumnDefinition::from_field_state(field_name.clone(), field)
+						}),
 					});
 			}
 		}
@@ -5978,6 +6566,21 @@ impl MigrationAutodetector {
 				.find(|c| &c.name == constraint_name)
 				.is_some_and(|c| c.constraint_type == "primary_key" && c.fields.len() >= 2);
 			if is_composite_pk {
+				continue;
+			}
+			let replaced_fields = Self::generated_replacement_fields_for_model(
+				&generated_replacement_columns,
+				app_label,
+				model_name,
+			);
+			if !replaced_fields.is_empty()
+				&& from_model
+					.constraints
+					.iter()
+					.find(|constraint| &constraint.name == constraint_name)
+					.is_some_and(|constraint| {
+						Self::constraint_references_any_column(constraint, &replaced_fields)
+					}) {
 				continue;
 			}
 			by_app
@@ -6174,6 +6777,7 @@ impl MigrationAutodetector {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				super::ColumnDefinition {
 					name: source_column.clone(),
@@ -6183,6 +6787,7 @@ impl MigrationAutodetector {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 				super::ColumnDefinition {
 					name: target_column.clone(),
@@ -6192,6 +6797,7 @@ impl MigrationAutodetector {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			];
 
@@ -6806,6 +7412,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -6815,6 +7422,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			],
 			constraints: vec![],
@@ -6853,6 +7461,60 @@ mod tests {
 	}
 
 	#[rstest]
+	fn apply_migration_operations_replays_foreign_key_add_constraint_repair() {
+		// Arrange
+		let create_posts = super::super::Operation::CreateTable {
+			name: "blog_posts".to_string(),
+			columns: vec![
+				super::super::ColumnDefinition {
+					name: "id".to_string(),
+					type_definition: super::super::FieldType::BigInteger,
+					not_null: true,
+					unique: false,
+					primary_key: true,
+					auto_increment: true,
+					default: None,
+					generated: None,
+				},
+				super::super::ColumnDefinition {
+					name: "user_id".to_string(),
+					type_definition: super::super::FieldType::BigInteger,
+					not_null: true,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: None,
+					generated: None,
+				},
+			],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let repair_user_fk = super::super::Operation::AddConstraintRepair {
+				table: "blog_posts".to_string(),
+				constraint_sql: "CONSTRAINT blog_posts_user_id_fk FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE ON UPDATE NO ACTION".to_string(),
+			};
+		let mut state = ProjectState::new();
+
+		// Act
+		state.apply_migration_operations(&[create_posts, repair_user_fk], "blog");
+
+		// Assert
+		let model = state
+			.find_model_by_table("blog_posts")
+			.expect("blog_posts model should be reconstructed");
+		let constraint = model
+			.constraints
+			.iter()
+			.find(|constraint| constraint.name == "blog_posts_user_id_fk")
+			.expect("foreign key repair constraint should be reconstructed");
+		assert_eq!(constraint.constraint_type, "foreign_key");
+		assert_eq!(constraint.fields, vec!["user_id".to_string()]);
+	}
+
+	#[rstest]
 	fn apply_migration_operations_replays_omitted_foreign_key_actions_as_no_action() {
 		// Arrange
 		let create_posts = super::super::Operation::CreateTable {
@@ -6866,6 +7528,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -6875,6 +7538,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			],
 			constraints: vec![],
@@ -7265,7 +7929,7 @@ mod tests {
 		assert_eq!(operations.len(), 3, "unexpected operations: {operations:?}");
 		assert!(matches!(
 			&operations[0],
-			super::super::Operation::DropColumn { table, column }
+			super::super::Operation::DropColumn { table, column, .. }
 				if table == "deployments_deployment" && column == "legacy_payload"
 		));
 		assert!(matches!(
@@ -8224,6 +8888,7 @@ mod tests {
 			field_type: super::super::FieldType::VarChar(255),
 			nullable: false,
 			params: std::collections::HashMap::new(),
+			generated: None,
 			foreign_key: None,
 		};
 		let mut to_params = std::collections::HashMap::new();
@@ -8235,6 +8900,7 @@ mod tests {
 			field_type: super::super::FieldType::VarChar(255),
 			nullable: false,
 			params: to_params,
+			generated: None,
 			foreign_key: None,
 		};
 
@@ -8270,6 +8936,1317 @@ mod tests {
 			changed,
 			"database default changes must be detected as schema-affecting field changes"
 		);
+	}
+
+	#[rstest]
+	fn has_field_changed_detects_generated_column_changes() {
+		// Arrange
+		let from_field = FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let mut to_field =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		to_field.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::concat([
+				super::super::SchemaExpr::col("first_name"),
+				super::super::SchemaExpr::val(" "),
+				super::super::SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			super::super::GeneratedStorage::Stored,
+		));
+		let detector = MigrationAutodetector::new(ProjectState::new(), ProjectState::new());
+
+		// Act
+		let changed =
+			detector.has_field_changed_with_unique("full_name", &from_field, &to_field, None, None);
+
+		// Assert
+		assert!(
+			changed,
+			"generated column metadata changes must be detected as schema-affecting field changes"
+		);
+	}
+
+	#[rstest]
+	fn generated_column_changes_emit_drop_and_add_not_alter() {
+		// Arrange
+		let mut from_field =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let from_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::concat([
+				super::super::SchemaExpr::col("first_name"),
+				super::super::SchemaExpr::val(" "),
+				super::super::SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			super::super::GeneratedStorage::Stored,
+		);
+		from_field.generated = Some(from_generated.clone());
+		let mut to_field =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let to_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("display_name"),
+			"SchemaExpr::col(\"display_name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		to_field.generated = Some(to_generated.clone());
+		let from_model =
+			build_model_state("accounts", "User", vec![from_field], Vec::new(), Vec::new());
+		let to_model =
+			build_model_state("accounts", "User", vec![to_field], Vec::new(), Vec::new());
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 2, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::DropColumn {
+				table,
+				column,
+				old_definition: Some(old_definition)
+			} if table == "accounts_user"
+				&& column == "full_name"
+				&& old_definition.generated == Some(from_generated.clone())
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user"
+					&& column.name == "full_name"
+					&& column.generated == Some(to_generated.clone())
+		));
+		assert!(
+			!operations
+				.iter()
+				.any(|operation| matches!(operation, super::super::Operation::AlterColumn { .. })),
+			"generated column changes must not emit no-op AlterColumn: {operations:?}"
+		);
+	}
+
+	#[rstest]
+	fn mixed_generated_and_type_changes_emit_drop_and_add_not_alter() {
+		// Arrange
+		let mut from_field =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		from_field.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::concat([
+				super::super::SchemaExpr::col("first_name"),
+				super::super::SchemaExpr::val(" "),
+				super::super::SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			super::super::GeneratedStorage::Stored,
+		));
+		let mut to_field = FieldState::new("full_name", super::super::FieldType::Text, false);
+		to_field.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("display_name"),
+			"SchemaExpr::col(\"display_name\")",
+			super::super::GeneratedStorage::Stored,
+		));
+		let from_model =
+			build_model_state("accounts", "User", vec![from_field], Vec::new(), Vec::new());
+		let to_model =
+			build_model_state("accounts", "User", vec![to_field], Vec::new(), Vec::new());
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::DropColumn { table, column, .. }
+				if table == "accounts_user" && column == "full_name"
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user"
+					&& column.name == "full_name"
+					&& matches!(column.type_definition, super::super::FieldType::Text)
+		));
+		assert!(
+			!operations
+				.iter()
+				.any(|operation| matches!(operation, super::super::Operation::AlterColumn { .. })),
+			"mixed generated column changes must not emit no-op AlterColumn: {operations:?}"
+		);
+	}
+
+	#[rstest]
+	fn generated_column_replacement_recreates_dependent_generated_columns() {
+		// Arrange
+		let mut from_full_name =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		from_full_name.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("name"),
+			"SchemaExpr::col(\"name\")",
+			super::super::GeneratedStorage::Stored,
+		));
+		let mut to_full_name =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let to_full_name_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("display_name"),
+			"SchemaExpr::col(\"display_name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		to_full_name.generated = Some(to_full_name_generated.clone());
+
+		let mut from_search_name =
+			FieldState::new("search_name", super::super::FieldType::VarChar(201), false);
+		let search_name_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("full_name"),
+			"SchemaExpr::col(\"full_name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		from_search_name.generated = Some(search_name_generated.clone());
+		let mut to_search_name =
+			FieldState::new("search_name", super::super::FieldType::VarChar(201), false);
+		to_search_name.generated = Some(search_name_generated.clone());
+		let mut from_search_key =
+			FieldState::new("search_key", super::super::FieldType::VarChar(201), false);
+		let search_key_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("search_name"),
+			"SchemaExpr::col(\"search_name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		from_search_key.generated = Some(search_key_generated.clone());
+		let mut to_search_key =
+			FieldState::new("search_key", super::super::FieldType::VarChar(201), false);
+		to_search_key.generated = Some(search_key_generated.clone());
+
+		let from_model = build_model_state(
+			"accounts",
+			"User",
+			vec![from_full_name, from_search_name, from_search_key],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"accounts",
+			"User",
+			vec![to_full_name, to_search_name, to_search_key],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 6, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::DropColumn {
+				table,
+				column,
+				old_definition: Some(old_definition)
+			} if table == "accounts_user"
+				&& column == "search_key"
+				&& old_definition.generated == Some(search_key_generated.clone())
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::DropColumn {
+				table,
+				column,
+				old_definition: Some(old_definition)
+			} if table == "accounts_user"
+				&& column == "search_name"
+				&& old_definition.generated == Some(search_name_generated.clone())
+		));
+		assert!(matches!(
+			&operations[2],
+			super::super::Operation::DropColumn { table, column, .. }
+				if table == "accounts_user" && column == "full_name"
+		));
+		assert!(matches!(
+			&operations[3],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user"
+					&& column.name == "full_name"
+					&& column.generated == Some(to_full_name_generated.clone())
+		));
+		assert!(matches!(
+			&operations[4],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user"
+					&& column.name == "search_name"
+					&& column.generated == Some(search_name_generated.clone())
+		));
+		assert!(matches!(
+			&operations[5],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user"
+					&& column.name == "search_key"
+			&& column.generated == Some(search_key_generated.clone())
+		));
+	}
+
+	#[rstest]
+	fn added_generated_columns_follow_new_source_columns() {
+		// Arrange
+		let from_model = build_model_state("accounts", "User", Vec::new(), Vec::new(), Vec::new());
+		let last_name = FieldState::new("last_name", super::super::FieldType::VarChar(100), false);
+		let mut full_name =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let full_name_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("last_name"),
+			"SchemaExpr::col(\"last_name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		full_name.generated = Some(full_name_generated.clone());
+		let to_model = build_model_state(
+			"accounts",
+			"User",
+			vec![full_name, last_name],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 2, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user" && column.name == "last_name"
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user"
+					&& column.name == "full_name"
+					&& column.generated == Some(full_name_generated)
+		));
+	}
+
+	#[rstest]
+	fn added_generated_columns_wait_for_source_alters() {
+		// Arrange
+		let from_name = FieldState::new("name", super::super::FieldType::Integer, false);
+		let to_name = FieldState::new("name", super::super::FieldType::BigInteger, false);
+		let mut full_name =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let full_name_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("name"),
+			"SchemaExpr::col(\"name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		full_name.generated = Some(full_name_generated.clone());
+		let from_model =
+			build_model_state("accounts", "User", vec![from_name], Vec::new(), Vec::new());
+		let to_model = build_model_state(
+			"accounts",
+			"User",
+			vec![full_name, to_name],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 2, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::AlterColumn {
+				table,
+				column,
+				new_definition,
+				..
+			} if table == "accounts_user"
+				&& column == "name"
+				&& matches!(new_definition.type_definition, super::super::FieldType::BigInteger)
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user"
+					&& column.name == "full_name"
+					&& column.generated == Some(full_name_generated)
+		));
+	}
+
+	#[rstest]
+	fn removed_generated_dependents_drop_before_sources() {
+		// Arrange
+		let source = FieldState::new("a", super::super::FieldType::Integer, false);
+		let mut dependent = FieldState::new("z", super::super::FieldType::Integer, false);
+		let dependent_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("a"),
+			"SchemaExpr::col(\"a\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		dependent.generated = Some(dependent_generated.clone());
+		let from_model = build_model_state(
+			"accounts",
+			"Metric",
+			vec![source, dependent],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state("accounts", "Metric", Vec::new(), Vec::new(), Vec::new());
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "Metric".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "Metric".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 2, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::DropColumn {
+				table,
+				column,
+				old_definition: Some(old_definition),
+			} if table == "accounts_metric"
+				&& column == "z"
+				&& old_definition.generated == Some(dependent_generated)
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::DropColumn { table, column, .. }
+				if table == "accounts_metric" && column == "a"
+		));
+	}
+
+	#[rstest]
+	fn removed_generated_dependent_drops_before_source_alter() {
+		// Arrange
+		let from_source = FieldState::new("a", super::super::FieldType::Integer, false);
+		let to_source = FieldState::new("a", super::super::FieldType::BigInteger, false);
+		let mut dependent = FieldState::new("z", super::super::FieldType::Integer, false);
+		let dependent_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("a"),
+			"SchemaExpr::col(\"a\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		dependent.generated = Some(dependent_generated.clone());
+		let from_model = build_model_state(
+			"accounts",
+			"Metric",
+			vec![from_source, dependent],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"accounts",
+			"Metric",
+			vec![to_source],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "Metric".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "Metric".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 2, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::DropColumn {
+				table,
+				column,
+				old_definition: Some(old_definition),
+			} if table == "accounts_metric"
+				&& column == "z"
+				&& old_definition.generated == Some(dependent_generated)
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::AlterColumn {
+				table,
+				column,
+				new_definition,
+				..
+			} if table == "accounts_metric"
+				&& column == "a"
+				&& matches!(new_definition.type_definition, super::super::FieldType::BigInteger)
+		));
+	}
+
+	#[rstest]
+	fn source_column_alter_recreates_generated_dependents() {
+		// Arrange
+		let from_amount = FieldState::new("amount", super::super::FieldType::Integer, false);
+		let mut from_amount_text =
+			FieldState::new("amount_text", super::super::FieldType::VarChar(20), false);
+		let amount_text_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("amount"),
+			"SchemaExpr::col(\"amount\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		from_amount_text.generated = Some(amount_text_generated.clone());
+
+		let to_amount = FieldState::new("amount", super::super::FieldType::BigInteger, false);
+		let mut to_amount_text =
+			FieldState::new("amount_text", super::super::FieldType::VarChar(20), false);
+		to_amount_text.generated = Some(amount_text_generated.clone());
+
+		let from_model = build_model_state(
+			"billing",
+			"Invoice",
+			vec![from_amount, from_amount_text],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"billing",
+			"Invoice",
+			vec![to_amount, to_amount_text],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("billing".to_string(), "Invoice".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("billing".to_string(), "Invoice".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 3, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::DropColumn {
+				table,
+				column,
+				old_definition: Some(old_definition),
+			} if table == "billing_invoice"
+				&& column == "amount_text"
+				&& old_definition.generated == Some(amount_text_generated.clone())
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::AlterColumn {
+				table,
+				column,
+				new_definition,
+				..
+			} if table == "billing_invoice"
+				&& column == "amount"
+				&& matches!(new_definition.type_definition, super::super::FieldType::BigInteger)
+		));
+		assert!(matches!(
+			&operations[2],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "billing_invoice"
+					&& column.name == "amount_text"
+					&& column.generated == Some(amount_text_generated)
+		));
+	}
+
+	#[rstest]
+	fn changed_generated_dependent_waits_for_source_alter() {
+		// Arrange
+		let from_name = FieldState::new("name", super::super::FieldType::Integer, false);
+		let to_name = FieldState::new("name", super::super::FieldType::BigInteger, false);
+		let mut from_full_name =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let from_full_name_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("name"),
+			"SchemaExpr::col(\"name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		from_full_name.generated = Some(from_full_name_generated.clone());
+		let mut to_full_name =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let to_full_name_generated = super::super::GeneratedColumnDefinition::raw_sql(
+			"lower(name)",
+			super::super::GeneratedStorage::Stored,
+		);
+		to_full_name.generated = Some(to_full_name_generated.clone());
+		let from_model = build_model_state(
+			"accounts",
+			"User",
+			vec![from_full_name, from_name],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"accounts",
+			"User",
+			vec![to_full_name, to_name],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 3, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::DropColumn {
+				table,
+				column,
+				old_definition: Some(old_definition),
+			} if table == "accounts_user"
+				&& column == "full_name"
+				&& old_definition.generated == Some(from_full_name_generated)
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::AlterColumn {
+				table,
+				column,
+				new_definition,
+				..
+			} if table == "accounts_user"
+				&& column == "name"
+				&& matches!(new_definition.type_definition, super::super::FieldType::BigInteger)
+		));
+		assert!(matches!(
+			&operations[2],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user"
+					&& column.name == "full_name"
+					&& column.generated == Some(to_full_name_generated)
+		));
+	}
+
+	#[rstest]
+	fn created_model_orders_generated_columns_by_dependencies() {
+		// Arrange
+		let source = FieldState::new("source", super::super::FieldType::Integer, false);
+		let mut z = FieldState::new("z", super::super::FieldType::Integer, false);
+		z.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("source"),
+			"SchemaExpr::col(\"source\")",
+			super::super::GeneratedStorage::Stored,
+		));
+		let mut a = FieldState::new("a", super::super::FieldType::Integer, false);
+		a.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("z"),
+			"SchemaExpr::col(\"z\")",
+			super::super::GeneratedStorage::Stored,
+		));
+		let to_model = build_model_state(
+			"metrics",
+			"Metric",
+			vec![a, source, z],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			ProjectState::new(),
+			build_project_state(vec![(
+				("metrics".to_string(), "Metric".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		let super::super::Operation::CreateTable { columns, .. } = &operations[0] else {
+			panic!("expected CreateTable operation, got: {operations:?}");
+		};
+		let column_names: Vec<_> = columns.iter().map(|column| column.name.as_str()).collect();
+		assert_eq!(column_names, vec!["source", "z", "a"]);
+	}
+
+	#[rstest]
+	fn raw_generated_dependency_matching_is_case_insensitive() {
+		// Arrange
+		let mut from_name = FieldState::new("name", super::super::FieldType::VarChar(100), false);
+		let from_name_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("raw_name"),
+			"SchemaExpr::col(\"raw_name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		from_name.generated = Some(from_name_generated.clone());
+		let mut to_name = FieldState::new("name", super::super::FieldType::VarChar(100), false);
+		let to_name_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("display_name"),
+			"SchemaExpr::col(\"display_name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		to_name.generated = Some(to_name_generated);
+		let mut from_search_name =
+			FieldState::new("search_name", super::super::FieldType::VarChar(100), false);
+		let search_name_generated = super::super::GeneratedColumnDefinition::raw_sql(
+			"LOWER(NAME)",
+			super::super::GeneratedStorage::Stored,
+		);
+		from_search_name.generated = Some(search_name_generated.clone());
+		let mut to_search_name =
+			FieldState::new("search_name", super::super::FieldType::VarChar(100), false);
+		to_search_name.generated = Some(search_name_generated.clone());
+
+		let from_model = build_model_state(
+			"accounts",
+			"User",
+			vec![from_name, from_search_name],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"accounts",
+			"User",
+			vec![to_name, to_search_name],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::DropColumn {
+				table,
+				column,
+				old_definition: Some(old_definition),
+			} if table == "accounts_user"
+				&& column == "search_name"
+				&& old_definition.generated == Some(search_name_generated)
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::DropColumn {
+				table,
+				column,
+				old_definition: Some(old_definition),
+			} if table == "accounts_user"
+				&& column == "name"
+				&& old_definition.generated == Some(from_name_generated)
+		));
+	}
+
+	#[rstest]
+	fn generated_column_replacement_keeps_changed_dependent_in_replacement_order() {
+		// Arrange
+		let mut from_full_name =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let from_full_name_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("name"),
+			"SchemaExpr::col(\"name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		from_full_name.generated = Some(from_full_name_generated.clone());
+		let mut to_full_name =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let to_full_name_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("display_name"),
+			"SchemaExpr::col(\"display_name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		to_full_name.generated = Some(to_full_name_generated.clone());
+
+		let mut from_search_name =
+			FieldState::new("search_name", super::super::FieldType::VarChar(201), false);
+		let from_search_name_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("full_name"),
+			"SchemaExpr::col(\"full_name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		from_search_name.generated = Some(from_search_name_generated.clone());
+		let mut to_search_name =
+			FieldState::new("search_name", super::super::FieldType::VarChar(201), false);
+		let to_search_name_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::concat([
+				super::super::SchemaExpr::col("full_name"),
+				super::super::SchemaExpr::val("!"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"full_name\"), SchemaExpr::val(\"!\")])",
+			super::super::GeneratedStorage::Stored,
+		);
+		to_search_name.generated = Some(to_search_name_generated.clone());
+
+		let from_model = build_model_state(
+			"accounts",
+			"User",
+			vec![from_full_name, from_search_name],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"accounts",
+			"User",
+			vec![to_full_name, to_search_name],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 4, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::DropColumn {
+				table,
+				column,
+				old_definition: Some(old_definition)
+			} if table == "accounts_user"
+				&& column == "search_name"
+				&& old_definition.generated == Some(from_search_name_generated.clone())
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::DropColumn {
+				table,
+				column,
+				old_definition: Some(old_definition)
+			} if table == "accounts_user"
+				&& column == "full_name"
+				&& old_definition.generated == Some(from_full_name_generated.clone())
+		));
+		assert!(matches!(
+			&operations[2],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user"
+					&& column.name == "full_name"
+					&& column.generated == Some(to_full_name_generated.clone())
+		));
+		assert!(matches!(
+			&operations[3],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user"
+					&& column.name == "search_name"
+					&& column.generated == Some(to_search_name_generated.clone())
+		));
+	}
+
+	#[rstest]
+	fn generated_column_replacement_stays_after_source_column_rename() {
+		// Arrange
+		let from_first_name =
+			FieldState::new("first_name", super::super::FieldType::VarChar(100), false);
+		let mut from_full_name =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let from_full_name_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("first_name"),
+			"SchemaExpr::col(\"first_name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		from_full_name.generated = Some(from_full_name_generated.clone());
+
+		let to_given_name =
+			FieldState::new("given_name", super::super::FieldType::VarChar(100), false);
+		let mut to_full_name =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let to_full_name_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("given_name"),
+			"SchemaExpr::col(\"given_name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		to_full_name.generated = Some(to_full_name_generated.clone());
+
+		let from_model = build_model_state(
+			"accounts",
+			"User",
+			vec![from_first_name, from_full_name],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"accounts",
+			"User",
+			vec![to_given_name, to_full_name],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 3, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::RenameColumn {
+				table,
+				old_name,
+				new_name,
+			} if table == "accounts_user"
+				&& old_name == "first_name"
+				&& new_name == "given_name"
+		));
+		assert!(matches!(
+		&operations[1],
+		super::super::Operation::DropColumn {
+			table,
+			column,
+			old_definition: Some(old_definition)
+		} if table == "accounts_user"
+			&& column == "full_name"
+			&& old_definition.generated == Some(from_full_name_generated.clone())
+		));
+		assert!(matches!(
+			&operations[2],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user"
+					&& column.name == "full_name"
+					&& column.generated == Some(to_full_name_generated.clone())
+		));
+	}
+
+	#[rstest]
+	fn generated_column_addition_stays_after_source_column_rename() {
+		// Arrange
+		let from_first_name =
+			FieldState::new("first_name", super::super::FieldType::VarChar(100), false);
+		let to_given_name =
+			FieldState::new("given_name", super::super::FieldType::VarChar(100), false);
+		let mut to_full_name =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		let to_full_name_generated = super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("given_name"),
+			"SchemaExpr::col(\"given_name\")",
+			super::super::GeneratedStorage::Stored,
+		);
+		to_full_name.generated = Some(to_full_name_generated.clone());
+
+		let from_model = build_model_state(
+			"accounts",
+			"User",
+			vec![from_first_name],
+			Vec::new(),
+			Vec::new(),
+		);
+		let to_model = build_model_state(
+			"accounts",
+			"User",
+			vec![to_given_name, to_full_name],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 2, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::RenameColumn {
+				table,
+				old_name,
+				new_name,
+			} if table == "accounts_user"
+				&& old_name == "first_name"
+				&& new_name == "given_name"
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user"
+					&& column.name == "full_name"
+					&& column.generated == Some(to_full_name_generated.clone())
+		));
+	}
+
+	#[rstest]
+	fn generated_column_replacement_recreates_dependent_indexes_and_constraints() {
+		// Arrange
+		let mut from_field =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		from_field.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("name"),
+			"SchemaExpr::col(\"name\")",
+			super::super::GeneratedStorage::Stored,
+		));
+		let mut to_field =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		to_field.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("display_name"),
+			"SchemaExpr::col(\"display_name\")",
+			super::super::GeneratedStorage::Stored,
+		));
+		let index = IndexDefinition {
+			name: "idx_accounts_user_full_name".to_string(),
+			fields: vec!["full_name".to_string()],
+			unique: false,
+		};
+		let constraint = ConstraintDefinition {
+			name: "uq_accounts_user_full_name".to_string(),
+			constraint_type: "unique".to_string(),
+			fields: vec!["full_name".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let from_model = build_model_state(
+			"accounts",
+			"User",
+			vec![from_field],
+			vec![index.clone()],
+			vec![constraint.clone()],
+		);
+		let to_model = build_model_state(
+			"accounts",
+			"User",
+			vec![to_field],
+			vec![index],
+			vec![constraint],
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::RestoreIndexOnRollback {
+				table,
+				name: Some(name),
+				columns,
+				unique,
+				..
+			} if table == "accounts_user"
+				&& name == "idx_accounts_user_full_name"
+				&& columns == &vec!["full_name".to_string()]
+				&& !unique
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::RestoreConstraintOnRollback { table, constraint_sql }
+				if table == "accounts_user"
+					&& constraint_sql.contains("uq_accounts_user_full_name")
+					&& constraint_sql.contains("full_name")
+		));
+		assert!(matches!(
+			&operations[2],
+			super::super::Operation::DropColumn { table, column, .. }
+				if table == "accounts_user" && column == "full_name"
+		));
+		assert!(matches!(
+			&operations[3],
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user" && column.name == "full_name"
+		));
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			super::super::Operation::RestoreIndexOnRollback {
+				table,
+				name: Some(name),
+				columns,
+				unique,
+				..
+			}
+				if table == "accounts_user"
+					&& name == "idx_accounts_user_full_name"
+					&& columns == &vec!["full_name".to_string()]
+					&& !unique
+		)));
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			super::super::Operation::RestoreConstraintOnRollback { table, constraint_sql }
+				if table == "accounts_user"
+					&& constraint_sql.contains("uq_accounts_user_full_name")
+					&& constraint_sql.contains("full_name")
+		)));
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			super::super::Operation::CreateIndexRepair {
+				table,
+				name: Some(name),
+				columns,
+				unique,
+				..
+			}
+				if table == "accounts_user"
+					&& name == "idx_accounts_user_full_name"
+					&& columns == &vec!["full_name".to_string()]
+					&& !unique
+		)));
+		assert!(operations.iter().any(|operation| matches!(
+				operation,
+				super::super::Operation::AddConstraintRepair { table, constraint_sql }
+					if table == "accounts_user"
+						&& constraint_sql.contains("uq_accounts_user_full_name")
+						&& constraint_sql.contains("full_name")
+		)));
+	}
+
+	#[rstest]
+	fn generated_column_replacement_suppresses_stale_removed_constraints() {
+		// Arrange
+		let first_name =
+			FieldState::new("first_name", super::super::FieldType::VarChar(100), false);
+		let display_name =
+			FieldState::new("display_name", super::super::FieldType::VarChar(100), false);
+		let mut from_field =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		from_field.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("first_name"),
+			"SchemaExpr::col(\"first_name\")",
+			super::super::GeneratedStorage::Stored,
+		));
+		let mut to_field =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		to_field.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("display_name"),
+			"SchemaExpr::col(\"display_name\")",
+			super::super::GeneratedStorage::Stored,
+		));
+		let constraint = ConstraintDefinition {
+			name: "ck_accounts_user_full_name".to_string(),
+			constraint_type: "check".to_string(),
+			fields: Vec::new(),
+			expression: Some("length(full_name) > 0".to_string()),
+			foreign_key_info: None,
+		};
+		let from_model = build_model_state(
+			"accounts",
+			"User",
+			vec![first_name.clone(), from_field],
+			Vec::new(),
+			vec![constraint],
+		);
+		let to_model = build_model_state(
+			"accounts",
+			"User",
+			vec![first_name, display_name, to_field],
+			Vec::new(),
+			Vec::new(),
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			super::super::Operation::DropColumn { table, column, .. }
+				if table == "accounts_user" && column == "full_name"
+		)));
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			super::super::Operation::AddColumn { table, column, .. }
+				if table == "accounts_user" && column.name == "full_name"
+		)));
+		assert!(
+			operations.iter().all(|operation| !matches!(
+				operation,
+				super::super::Operation::DropConstraint { .. }
+			)),
+			"generated replacement should not emit stale DropConstraint: {operations:?}"
+		);
+	}
+
+	#[rstest]
+	fn generated_column_replacement_recreates_expression_constraints() {
+		// Arrange
+		let mut from_field =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		from_field.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("name"),
+			"SchemaExpr::col(\"name\")",
+			super::super::GeneratedStorage::Stored,
+		));
+		let mut to_field =
+			FieldState::new("full_name", super::super::FieldType::VarChar(201), false);
+		to_field.generated = Some(super::super::GeneratedColumnDefinition::typed(
+			super::super::SchemaExpr::col("display_name"),
+			"SchemaExpr::col(\"display_name\")",
+			super::super::GeneratedStorage::Stored,
+		));
+		let constraint = ConstraintDefinition {
+			name: "ck_accounts_user_full_name_not_empty".to_string(),
+			constraint_type: "check".to_string(),
+			fields: Vec::new(),
+			expression: Some("full_name <> ''".to_string()),
+			foreign_key_info: None,
+		};
+		let from_model = build_model_state(
+			"accounts",
+			"User",
+			vec![from_field],
+			Vec::new(),
+			vec![constraint.clone()],
+		);
+		let to_model = build_model_state(
+			"accounts",
+			"User",
+			vec![to_field],
+			Vec::new(),
+			vec![constraint],
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			super::super::Operation::RestoreConstraintOnRollback { table, constraint_sql }
+				if table == "accounts_user"
+					&& constraint_sql
+						== "CONSTRAINT ck_accounts_user_full_name_not_empty CHECK (full_name <> '')"
+		)));
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			super::super::Operation::AddConstraintRepair { table, constraint_sql }
+				if table == "accounts_user"
+					&& constraint_sql
+						== "CONSTRAINT ck_accounts_user_full_name_not_empty CHECK (full_name <> '')"
+		)));
 	}
 
 	#[rstest]
@@ -8915,6 +10892,7 @@ mod tests {
 			field_type: super::super::FieldType::BigInteger,
 			nullable: false,
 			params: from_params,
+			generated: None,
 			foreign_key: None,
 		};
 
@@ -8936,6 +10914,7 @@ mod tests {
 			field_type: super::super::FieldType::BigInteger,
 			nullable: false,
 			params: to_params,
+			generated: None,
 			foreign_key: None,
 		};
 
@@ -8976,6 +10955,7 @@ mod tests {
 			field_type: super::super::FieldType::BigInteger,
 			nullable: false,
 			params: from_id_params,
+			generated: None,
 			foreign_key: None,
 		};
 		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
@@ -9009,6 +10989,7 @@ mod tests {
 			field_type: super::super::FieldType::BigInteger,
 			nullable: false,
 			params: to_id_params,
+			generated: None,
 			foreign_key: None,
 		};
 		let unique_constraint = ConstraintDefinition {
@@ -9149,6 +11130,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "name".to_string(),
@@ -9158,6 +11140,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			],
 			constraints: vec![],
@@ -9254,6 +11237,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "target_id".to_string(),
@@ -9263,6 +11247,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			],
 			constraints: vec![],
@@ -9344,6 +11329,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "username".to_string(),
@@ -9353,6 +11339,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "email".to_string(),
@@ -9362,6 +11349,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "first_name".to_string(),
@@ -9371,6 +11359,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: Some("''".to_string()),
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "last_name".to_string(),
@@ -9380,6 +11369,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: Some("''".to_string()),
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_active".to_string(),
@@ -9389,6 +11379,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: Some("true".to_string()),
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_staff".to_string(),
@@ -9398,6 +11389,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: Some("false".to_string()),
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_superuser".to_string(),
@@ -9407,6 +11399,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: Some("false".to_string()),
+					generated: None,
 				},
 			],
 			constraints: vec![super::super::operations::Constraint::Unique {
@@ -9432,6 +11425,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				super::super::ColumnDefinition {
 					name: "name".to_string(),
@@ -9441,6 +11435,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			],
 			constraints: vec![],
@@ -10112,6 +12107,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 				mysql_options: None,
 			},

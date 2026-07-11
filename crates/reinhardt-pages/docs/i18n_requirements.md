@@ -11,6 +11,44 @@ Integrate internationalization (i18n) functionality into the `reinhardt-pages` f
 
 ---
 
+## Current Implemented Surface
+
+The first supported pages i18n surface is feature-gated behind
+`reinhardt-pages/i18n` and integrates with `reinhardt-i18n`:
+
+- `I18nContext` stores a `TranslationContext` plus a reactive locale signal.
+- `t!("msgid")` returns lazy `TranslatedText` that implements `IntoPage`.
+- `tr`, `tn`, `tp`, and `tnp` provide function-style lazy translations.
+- `provide_i18n_context` installs the current context for direct rendering.
+- `SsrOptions::i18n_context` installs the context for SSR and writes the
+  resolved catalogs into the SSR state metadata key `pages.i18n`.
+- Hydration reads `pages.i18n` from `HydrationContext` before rendering the
+  component, avoiding a client-side catalog refetch for SSR-resolved catalogs.
+- `set_locale` updates the current page context, and existing `t!` output
+  changes when the page snapshot is rendered again.
+
+```rust,ignore
+use reinhardt_i18n::{MessageCatalog, TranslationContext};
+use reinhardt_pages::prelude::*;
+
+let mut translations = TranslationContext::new("ja", "en-US");
+let mut ja = MessageCatalog::new("ja");
+ja.add_translation("title", "Title in Japanese");
+translations.add_catalog("ja", ja)?;
+
+let i18n = I18nContext::new(translations);
+let _guard = provide_i18n_context(i18n);
+
+let view = page!(|| {
+	h1 { { t!("title") } }
+})();
+```
+
+The remaining sections describe broader requirements that can be implemented
+incrementally on top of this surface.
+
+---
+
 ## Core Requirements
 
 ### 1. Basic Translation Features

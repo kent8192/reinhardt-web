@@ -99,7 +99,8 @@ jobs:
         run: |
           cat > /tmp/clang-mold-wrapper << 'WRAPPER'
           #!/bin/sh
-          exec clang -fuse-ld=mold "$@"
+          # rustc may append -fuse-ld=lld for host links; keep mold last.
+          exec clang "$@" -fuse-ld=mold
           WRAPPER
           chmod +x /tmp/clang-mold-wrapper
           ARCH=$(uname -m)

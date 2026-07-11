@@ -73,6 +73,31 @@ fn pretty_text_only_screen_has_trailing_newline() {
 }
 
 #[test]
+fn renders_pending_suspense_branch() {
+	let screen = render(Page::Suspense(SuspenseNode::new(
+		None,
+		|| true,
+		|| PageElement::new("p").child("Loading").into_page(),
+		|| PageElement::new("main").child("Ready").into_page(),
+	)));
+
+	assert_eq!(screen.get_by_text("Loading").tag_name(), "p");
+	assert!(screen.query_by_text("Ready").is_none());
+}
+
+#[test]
+fn renders_deferred_content_branch() {
+	let screen = render(Page::Deferred(DeferredNode::new(
+		"deferred-content",
+		|| PageElement::new("p").child("Deferred loading").into_page(),
+		|| PageElement::new("main").child("Deferred ready").into_page(),
+	)));
+
+	assert_eq!(screen.get_by_text("Deferred ready").tag_name(), "main");
+	assert!(screen.query_by_text("Deferred loading").is_none());
+}
+
+#[test]
 fn queries_by_text_role_label_and_placeholder() {
 	let screen = render(
 		PageElement::new("form")

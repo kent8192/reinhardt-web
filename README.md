@@ -616,6 +616,13 @@ as it is automatically applied by the `#[model(...)]` attribute.
 - `#[field(auto_now = true)]` - Auto-update timestamp on save
 - `#[field(null = true)]` - Allow NULL values
 - `#[field(unique = true)]` - Enforce uniqueness constraint
+- `#[field(generated = SchemaExpr::..., generated_stored = true)]` - Define a typed generated column
+- `#[field(generated_sql = "...", generated_stored = true)]` - Use backend-specific raw SQL for a generated column
+
+Typed generated columns accept the portable `SchemaExpr::col`, `SchemaExpr::val`,
+`SchemaExpr::concat`, and `SchemaExpr::coalesce` constructors, plus chained
+`binary` and `cast` calls. Use `generated_sql` for backend-specific functions or
+other expression forms.
 
 For a complete list of field attributes, see the [Field Attributes Guide](https://reinhardt-web.dev/docs/field-attributes/).
 

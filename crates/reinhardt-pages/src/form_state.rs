@@ -453,6 +453,17 @@ pub enum UseFormSubmitOutcome {
 	ValidationFailed,
 }
 
+/// Result of `UseFormReturn::submit_async`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum UseFormAsyncSubmitOutcome<T> {
+	/// Submit was accepted and completed with the async output.
+	Submitted(T),
+	/// Submit was rejected because another submit is pending.
+	AlreadyPending,
+	/// Submit was rejected by validation.
+	ValidationFailed,
+}
+
 /// Typed action handle returned by [`use_form_action`].
 ///
 /// `FormAction` validates a [`UseFormReturn`] before dispatching the current
@@ -1459,6 +1470,66 @@ where
 		self.state.is_submitting.set(false);
 	}
 
+	/// Runs validation and async submit lifecycle callbacks.
+	pub async fn submit_async<Submit, Fut, Output, Error>(
+		&self,
+		submit: Submit,
+	) -> Result<UseFormAsyncSubmitOutcome<Output>, Error>
+	where
+		Submit: FnOnce() -> Fut,
+		Fut: Future<Output = Result<Output, Error>>,
+		Error: Display,
+	{
+		if self.state.is_submitting.get() {
+			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
+		}
+
+		self.state.is_submitting.set(true);
+		let mut pending_guard = SubmitPendingGuard::new(self.state.is_submitting.clone());
+		self.state.is_submit_successful.set(false);
+		self.state.submit_error.set(None);
+		self.sync_first_error();
+		self.notify(FormEvent::SubmitStarted);
+		if let Some(callback) = &self.on_submit_start {
+			callback(self);
+		}
+
+		if self.trigger().is_err() {
+			self.state.is_submitting.set(false);
+			pending_guard.disarm();
+			if let Some(callback) = &self.on_submit_error {
+				callback(self);
+			}
+			self.notify(FormEvent::SubmitFailed);
+			return Ok(UseFormAsyncSubmitOutcome::ValidationFailed);
+		}
+
+		match submit().await {
+			Ok(output) => {
+				self.state.is_submitting.set(false);
+				pending_guard.disarm();
+				self.state.is_submit_successful.set(true);
+				if let Some(callback) = &self.on_submit_success {
+					callback(self);
+				}
+				self.notify(FormEvent::Submitted);
+				Ok(UseFormAsyncSubmitOutcome::Submitted(output))
+			}
+			Err(error) => {
+				self.state.is_submitting.set(false);
+				pending_guard.disarm();
+				self.state.is_submit_successful.set(false);
+				self.state.submit_error.set(Some(error.to_string()));
+				self.sync_first_error();
+				if let Some(callback) = &self.on_submit_error {
+					callback(self);
+				}
+				self.notify(FormEvent::SubmitFailed);
+				Err(error)
+			}
+		}
+	}
+
 	/// Reconciles values and defaults from a newly generated form instance.
 	pub fn reconcile_from(&self, form: &Form, deps: Deps) {
 		self.reconcile_defaults(form.runtime_initial_values(), deps);
@@ -1949,6 +2020,32 @@ struct SignalSyncGuard {
 impl Drop for SignalSyncGuard {
 	fn drop(&mut self) {
 		self.suppressed.set(false);
+	}
+}
+
+struct SubmitPendingGuard {
+	is_submitting: Signal<bool>,
+	active: bool,
+}
+
+impl SubmitPendingGuard {
+	fn new(is_submitting: Signal<bool>) -> Self {
+		Self {
+			is_submitting,
+			active: true,
+		}
+	}
+
+	fn disarm(&mut self) {
+		self.active = false;
+	}
+}
+
+impl Drop for SubmitPendingGuard {
+	fn drop(&mut self) {
+		if self.active {
+			self.is_submitting.set(false);
+		}
 	}
 }
 

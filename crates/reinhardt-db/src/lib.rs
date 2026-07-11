@@ -43,6 +43,7 @@
 //! - **Auto-detection**: Automatically detect model changes
 //! - **Migration Files**: Generate migration files from model changes
 //! - **Rollback Support**: Reverse migrations when needed
+//! - **Typed Generated Columns**: Preserve `SchemaExpr` generated-column metadata in migrations
 //! - **CockroachDB Migration Locking**: Serialize concurrent migrators with a
 //!   sentinel-row lock instead of PostgreSQL advisory locks
 //! - **MigrationStateLoader**: Django-style approach for building `ProjectState`
@@ -216,6 +217,8 @@ pub use backends::{DatabaseBackend, DatabaseError};
 // This is the type used by Manager and other ORM components
 #[cfg(feature = "orm")]
 pub use orm::DatabaseConnection;
+#[cfg(feature = "orm")]
+pub use orm::Json;
 
 #[cfg(feature = "pool")]
 pub use pool::{ConnectionPool, PoolConfig, PoolError};

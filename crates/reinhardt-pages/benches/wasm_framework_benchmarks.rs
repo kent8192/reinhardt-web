@@ -6,9 +6,12 @@
 //! 1. Reactive System (7 benchmarks)
 //! 2. SSR Rendering (7 benchmarks)
 //! 3. Routing (4 benchmarks)
+//!
 //! Total: 18 benchmarks
 
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use std::hint::black_box;
+
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
 use reinhardt_pages::reactive::{Effect, Memo, Signal};
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
@@ -72,7 +75,7 @@ fn bench_reactive_graph_scale(c: &mut Criterion) {
 	for size in [10, 100, 1000] {
 		group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
 			b.iter(|| {
-				let signals: Vec<Signal<i32>> = (0..size).map(|i| Signal::new(i as i32)).collect();
+				let signals: Vec<Signal<i32>> = (0..size).map(Signal::new).collect();
 
 				// Create effects that depend on signals
 				let _effects: Vec<Effect> = signals

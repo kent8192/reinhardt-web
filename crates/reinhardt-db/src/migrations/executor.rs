@@ -755,6 +755,17 @@ impl DatabaseMigrationExecutor {
 					}
 				}
 
+				#[cfg(feature = "sqlite")]
+				if matches!(dialect, SqlDialect::Sqlite) && operation.requires_sqlite_recreation() {
+					let mut editor =
+						SchemaEditor::new(self.connection.clone(), migration.atomic, self.db_type)
+							.await?;
+					self.handle_sqlite_recreation(operation, &mut editor)
+						.await?;
+					editor.finish().await?;
+					continue;
+				}
+
 				let sql = operation.to_sql(&dialect);
 
 				// Split SQL into individual statements to handle PostgreSQL's
@@ -818,12 +829,16 @@ impl DatabaseMigrationExecutor {
 	async fn read_sqlite_table_via_editor(
 		editor: &mut SchemaEditor,
 		table_name: &str,
-	) -> Result<(Vec<super::ColumnDefinition>, Vec<super::Constraint>)> {
-		// 1. PRAGMA table_info(<table>) → columns. Identifier interpolation
+	) -> Result<(
+		Vec<super::ColumnDefinition>,
+		Vec<super::Constraint>,
+		Vec<super::operations::SqliteRecreatedIndex>,
+	)> {
+		// 1. PRAGMA table_xinfo(<table>) → columns. Identifier interpolation
 		//    via the shared `sqlite_pragma` helper. See issue #4454.
 		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
 		let table_info_sql = format!(
-			"PRAGMA table_info({})",
+			"PRAGMA table_xinfo({})",
 			super::sqlite_pragma::quote_pragma_identifier(table_name)
 		);
 		let info_rows = editor.fetch_all(&table_info_sql, vec![]).await?;
@@ -835,6 +850,7 @@ impl DatabaseMigrationExecutor {
 			notnull: i64,
 			default: Option<String>,
 			pk: i64,
+			hidden: i64,
 		}
 		let mut col_rows: Vec<ColRow> = Vec::with_capacity(info_rows.len());
 		for row in &info_rows {
@@ -845,12 +861,14 @@ impl DatabaseMigrationExecutor {
 			let notnull: i64 = row.get("notnull").unwrap_or(0);
 			let default: Option<String> = row.get("dflt_value").ok();
 			let pk: i64 = row.get("pk").unwrap_or(0);
+			let hidden: i64 = row.get("hidden").unwrap_or(0);
 			col_rows.push(ColRow {
 				name,
 				type_str,
 				notnull,
 				default,
 				pk,
+				hidden,
 			});
 		}
 
@@ -895,6 +913,11 @@ impl DatabaseMigrationExecutor {
 					primary_key: is_pk,
 					auto_increment: is_auto,
 					default,
+					generated: parse_sqlite_generated_column(
+						create_sql.as_deref(),
+						&c.name,
+						c.hidden,
+					),
 				}
 			})
 			.collect();
@@ -997,13 +1020,21 @@ impl DatabaseMigrationExecutor {
 			super::sqlite_pragma::quote_pragma_identifier(table_name)
 		);
 		let idx_rows = editor.fetch_all(&idx_list_sql, vec![]).await?;
+		let mut indexes = Vec::new();
 		for row in &idx_rows {
 			let origin: String = row.get("origin").unwrap_or_default();
 			let unique: i64 = row.get("unique").unwrap_or(0);
-			if origin != "u" || unique != 1 {
+			if origin != "u" && origin != "c" {
 				continue;
 			}
 			let idx_name: String = row.get("name").unwrap_or_default();
+			let idx_sql = editor
+				.fetch_optional(
+					"SELECT sql FROM sqlite_master WHERE type='index' AND name=?",
+					vec![idx_name.clone().into()],
+				)
+				.await?
+				.and_then(|r| r.get("sql").ok());
 			// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
 			let info_sql = format!(
 				"PRAGMA index_info({})",
@@ -1014,10 +1045,19 @@ impl DatabaseMigrationExecutor {
 				.iter()
 				.filter_map(|r| r.get::<String>("name").ok())
 				.collect();
-			constraints.push(super::Constraint::Unique {
-				name: idx_name,
-				columns: cols,
-			});
+			if origin == "u" && unique == 1 {
+				constraints.push(super::Constraint::Unique {
+					name: idx_name,
+					columns: cols,
+				});
+			} else if origin == "c" && (!cols.is_empty() || idx_sql.is_some()) {
+				indexes.push(super::operations::SqliteRecreatedIndex {
+					name: idx_name,
+					columns: cols,
+					unique: unique == 1,
+					sql: idx_sql,
+				});
+			}
 		}
 
 		// 6. CHECK constraints parsed from CREATE TABLE SQL (SQLite has no
@@ -1034,7 +1074,7 @@ impl DatabaseMigrationExecutor {
 			}
 		}
 
-		Ok((columns, constraints))
+		Ok((columns, constraints, indexes))
 	}
 
 	/// Handle SQLite table recreation for operations that require it
@@ -1068,15 +1108,28 @@ impl DatabaseMigrationExecutor {
 		// would silently rebuild the table from a stale column set — the
 		// root cause of reinhardt-web#4447.
 		let recreation = match operation {
-			Operation::DropColumn { table, column } => {
+			Operation::AddColumn { table, column, .. } => {
+				tracing::debug!(
+					"Handling SQLite table recreation for AddColumn: table={}, column={}",
+					table,
+					column.name
+				);
+				let (columns, constraints, indexes) =
+					Self::read_sqlite_table_via_editor(editor, table).await?;
+				SqliteTableRecreation::for_add_column(table, columns, column.clone(), constraints)
+					.with_indexes(indexes)
+			}
+			Operation::DropColumn { table, column, .. } => {
 				tracing::debug!(
 					"Handling SQLite table recreation for DropColumn: table={}, column={}",
 					table,
 					column
 				);
-				let (columns, constraints) =
+				let (columns, constraints, indexes) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_column(table, columns, column, constraints)
+					.with_indexes(indexes)
+					.without_indexes_referencing(column)
 			}
 			Operation::AlterColumn {
 				table,
@@ -1089,7 +1142,7 @@ impl DatabaseMigrationExecutor {
 					table,
 					column
 				);
-				let (columns, constraints) =
+				let (columns, constraints, indexes) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_alter_column(
 					table,
@@ -1098,8 +1151,13 @@ impl DatabaseMigrationExecutor {
 					new_definition.clone(),
 					constraints,
 				)
+				.with_indexes(indexes)
 			}
 			Operation::AddConstraint {
+				table,
+				constraint_sql,
+			}
+			| Operation::AddConstraintRepair {
 				table,
 				constraint_sql,
 			} => {
@@ -1107,7 +1165,7 @@ impl DatabaseMigrationExecutor {
 					"Handling SQLite table recreation for AddConstraint: table={}",
 					table
 				);
-				let (columns, constraints) =
+				let (columns, constraints, indexes) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_constraint(
 					table,
@@ -1115,6 +1173,7 @@ impl DatabaseMigrationExecutor {
 					constraints,
 					constraint_sql.clone(),
 				)
+				.with_indexes(indexes)
 			}
 			Operation::DropConstraint {
 				table,
@@ -1125,7 +1184,7 @@ impl DatabaseMigrationExecutor {
 					table,
 					constraint_name
 				);
-				let (columns, constraints) =
+				let (columns, constraints, indexes) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_constraint(
 					table,
@@ -1133,6 +1192,7 @@ impl DatabaseMigrationExecutor {
 					constraints,
 					constraint_name,
 				)
+				.with_indexes(indexes)
 			}
 			_ => {
 				// This branch should not be reached if requires_sqlite_recreation() is correct
@@ -1518,6 +1578,7 @@ impl OperationOptimizer {
 						Operation::DropColumn {
 							table: t2,
 							column: col2,
+							..
 						},
 					) if t1 == t2 && col1.name == *col2 => true,
 					// CreateIndex + DropIndex
@@ -1670,6 +1731,262 @@ impl OperationOptimizer {
 		}
 
 		chained
+	}
+}
+
+#[cfg(feature = "sqlite")]
+pub(crate) fn parse_sqlite_generated_column(
+	create_sql: Option<&str>,
+	column_name: &str,
+	hidden: i64,
+) -> Option<super::GeneratedColumnDefinition> {
+	if !matches!(hidden, 2 | 3) {
+		return None;
+	}
+
+	let column_sql = find_sqlite_column_definition(create_sql?, column_name)?;
+	let raw_sql = extract_sqlite_generated_expr(&column_sql)?;
+	let storage = if hidden == 3 || column_sql.to_ascii_uppercase().contains(" STORED") {
+		super::GeneratedStorage::Stored
+	} else {
+		super::GeneratedStorage::Virtual
+	};
+	Some(super::GeneratedColumnDefinition::raw_sql(raw_sql, storage))
+}
+
+#[cfg(feature = "sqlite")]
+fn find_sqlite_column_definition(create_sql: &str, column_name: &str) -> Option<String> {
+	let body = sqlite_create_table_body(create_sql)?;
+	split_sqlite_top_level_list(body)
+		.into_iter()
+		.find(|definition| {
+			sqlite_column_name(definition)
+				.as_deref()
+				.is_some_and(|name| name.eq_ignore_ascii_case(column_name))
+		})
+		.map(str::to_string)
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_create_table_body(create_sql: &str) -> Option<&str> {
+	let start = create_sql.find('(')?;
+	let end = find_matching_sqlite_paren(create_sql, start)?;
+	create_sql.get(start + 1..end)
+}
+
+#[cfg(feature = "sqlite")]
+fn split_sqlite_top_level_list(sql: &str) -> Vec<&str> {
+	let mut parts = Vec::new();
+	let mut start = 0;
+	let mut depth = 0usize;
+	let mut quote: Option<char> = None;
+
+	for (index, ch) in sql.char_indices() {
+		if let Some(quote_ch) = quote {
+			if ch == quote_ch {
+				quote = None;
+			}
+			continue;
+		}
+
+		match ch {
+			'\'' | '"' | '`' => quote = Some(ch),
+			'[' => quote = Some(']'),
+			'(' => depth += 1,
+			')' => depth = depth.saturating_sub(1),
+			',' if depth == 0 => {
+				parts.push(sql[start..index].trim());
+				start = index + ch.len_utf8();
+			}
+			_ => {}
+		}
+	}
+
+	let tail = sql[start..].trim();
+	if !tail.is_empty() {
+		parts.push(tail);
+	}
+	parts
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_column_name(definition: &str) -> Option<String> {
+	let trimmed = definition.trim_start();
+	let first_word = trimmed
+		.split_whitespace()
+		.next()
+		.unwrap_or("")
+		.to_ascii_uppercase();
+	if matches!(
+		first_word.as_str(),
+		"CONSTRAINT" | "PRIMARY" | "FOREIGN" | "UNIQUE" | "CHECK"
+	) {
+		return None;
+	}
+
+	if let Some(rest) = trimmed.strip_prefix('"') {
+		let end = rest.find('"')?;
+		return Some(rest[..end].to_string());
+	}
+	if let Some(rest) = trimmed.strip_prefix('`') {
+		let end = rest.find('`')?;
+		return Some(rest[..end].to_string());
+	}
+	if let Some(rest) = trimmed.strip_prefix('[') {
+		let end = rest.find(']')?;
+		return Some(rest[..end].to_string());
+	}
+
+	trimmed
+		.split_whitespace()
+		.next()
+		.map(|name| name.trim_matches(',').to_string())
+}
+
+#[cfg(feature = "sqlite")]
+fn extract_sqlite_generated_expr(column_sql: &str) -> Option<String> {
+	let upper = column_sql.to_ascii_uppercase();
+	let generated_index = upper
+		.find("GENERATED ALWAYS AS")
+		.or_else(|| find_sqlite_keyword(column_sql, "AS"))?;
+	let expr_start = column_sql[generated_index..].find('(')? + generated_index;
+	let expr_end = find_matching_sqlite_paren(column_sql, expr_start)?;
+	Some(column_sql[expr_start + 1..expr_end].trim().to_string())
+}
+
+#[cfg(feature = "sqlite")]
+fn find_sqlite_keyword(sql: &str, keyword: &str) -> Option<usize> {
+	let upper = sql.to_ascii_uppercase();
+	let mut quote: Option<char> = None;
+
+	for (index, ch) in sql.char_indices() {
+		if let Some(quote_ch) = quote {
+			if ch == quote_ch {
+				quote = None;
+			}
+			continue;
+		}
+
+		match ch {
+			'\'' | '"' | '`' => {
+				quote = Some(ch);
+				continue;
+			}
+			'[' => {
+				quote = Some(']');
+				continue;
+			}
+			_ => {}
+		}
+
+		let Some(candidate) = upper.get(index..) else {
+			continue;
+		};
+		if !candidate.starts_with(keyword) {
+			continue;
+		}
+
+		let before = upper[..index].chars().next_back();
+		let after = upper[index + keyword.len()..].chars().next();
+		if before.is_none_or(sqlite_keyword_boundary) && after.is_none_or(sqlite_keyword_boundary) {
+			return Some(index);
+		}
+	}
+
+	None
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_keyword_boundary(ch: char) -> bool {
+	!ch.is_ascii_alphanumeric() && ch != '_'
+}
+
+#[cfg(feature = "sqlite")]
+fn find_matching_sqlite_paren(sql: &str, open_index: usize) -> Option<usize> {
+	let mut depth = 0usize;
+	let mut quote: Option<char> = None;
+
+	for (index, ch) in sql.char_indices().filter(|(index, _)| *index >= open_index) {
+		if let Some(quote_ch) = quote {
+			if ch == quote_ch {
+				quote = None;
+			}
+			continue;
+		}
+
+		match ch {
+			'\'' | '"' | '`' => quote = Some(ch),
+			'[' => quote = Some(']'),
+			'(' => depth += 1,
+			')' => {
+				depth = depth.checked_sub(1)?;
+				if depth == 0 {
+					return Some(index);
+				}
+			}
+			_ => {}
+		}
+	}
+
+	None
+}
+
+#[cfg(all(test, feature = "sqlite"))]
+mod sqlite_generated_column_tests {
+	use super::*;
+
+	#[test]
+	fn parse_sqlite_generated_column_restores_virtual_column() {
+		let create_sql = r#"CREATE TABLE "users" (
+			"id" integer primary key,
+			"first_name" text not null,
+			"last_name" text not null,
+			"full_name" text GENERATED ALWAYS AS ("first_name" || ' ' || "last_name") VIRTUAL
+		)"#;
+
+		let generated = parse_sqlite_generated_column(Some(create_sql), "full_name", 2)
+			.expect("generated column should be parsed");
+
+		assert_eq!(
+			generated.raw_sql.as_deref(),
+			Some(r#""first_name" || ' ' || "last_name""#)
+		);
+		assert_eq!(generated.storage, super::super::GeneratedStorage::Virtual);
+	}
+
+	#[test]
+	fn parse_sqlite_generated_column_restores_stored_column() {
+		let create_sql = r#"CREATE TABLE users (
+			id integer primary key,
+			total integer GENERATED ALWAYS AS ((subtotal + tax)) STORED
+		)"#;
+
+		let generated = parse_sqlite_generated_column(Some(create_sql), "total", 3)
+			.expect("stored generated column should be parsed");
+
+		assert_eq!(generated.raw_sql.as_deref(), Some("(subtotal + tax)"));
+		assert_eq!(generated.storage, super::super::GeneratedStorage::Stored);
+	}
+
+	#[test]
+	fn parse_sqlite_generated_column_restores_shorthand_column() {
+		let create_sql = r#"CREATE TABLE users (
+			id integer primary key,
+			normalized_name text AS (lower(name)) STORED
+		)"#;
+
+		let generated = parse_sqlite_generated_column(Some(create_sql), "normalized_name", 3)
+			.expect("shorthand generated column should be parsed");
+
+		assert_eq!(generated.raw_sql.as_deref(), Some("lower(name)"));
+		assert_eq!(generated.storage, super::super::GeneratedStorage::Stored);
+	}
+
+	#[test]
+	fn parse_sqlite_generated_column_ignores_regular_columns() {
+		let create_sql = r#"CREATE TABLE users (id integer primary key, name text)"#;
+
+		assert!(parse_sqlite_generated_column(Some(create_sql), "name", 0).is_none());
 	}
 }
 
