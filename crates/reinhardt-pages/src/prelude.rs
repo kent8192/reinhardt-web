@@ -187,7 +187,9 @@ pub use crate::i18n::{
 // Static File URL Resolver
 // ============================================================================
 
-pub use crate::static_resolver::{init_static_resolver, is_initialized, resolve_static};
+pub use crate::static_resolver::{
+	component_stylesheet_url, init_static_resolver, is_initialized, resolve_static,
+};
 pub use crate::style::{
 	ClassList, ClassToken, CssAngle, CssColor, CssInteger, CssLength, CssLengthPercentage,
 	CssNumber, CssPercentage, CssTime, CssValueError, StyleVars,

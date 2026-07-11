@@ -192,6 +192,10 @@ pub enum Commands {
 		/// Path to index.html for SPA fallback (auto-detected from project root)
 		#[arg(long)]
 		index: Option<String>,
+
+		/// Cargo package containing component style definitions
+		#[arg(long, value_name = "NAME")]
+		package: Option<String>,
 	},
 
 	/// Run an interactive Rust shell (REPL)
@@ -238,6 +242,10 @@ pub enum Commands {
 		/// Path to index.html source file (auto-detected from project root)
 		#[arg(long)]
 		index: Option<String>,
+
+		/// Cargo package containing component style definitions
+		#[arg(long, value_name = "NAME")]
+		package: Option<String>,
 	},
 
 	/// Display all registered server URL patterns
@@ -722,6 +730,7 @@ async fn run_command_core(
 			static_dir,
 			no_spa,
 			index,
+			package,
 		} => {
 			execute_runserver(RunServerOptions {
 				address,
@@ -738,6 +747,7 @@ async fn run_command_core(
 				static_dir,
 				no_spa,
 				index,
+				package,
 				verbosity,
 			})
 			.await
@@ -751,7 +761,13 @@ async fn run_command_core(
 			link,
 			ignore,
 			index,
-		} => execute_collectstatic(clear, no_input, dry_run, link, ignore, index, verbosity).await,
+			package,
+		} => {
+			execute_collectstatic(
+				clear, no_input, dry_run, link, ignore, index, package, verbosity,
+			)
+			.await
+		}
 		Commands::Showurls { names } => execute_showurls(names, verbosity).await,
 		#[cfg(feature = "introspect")]
 		Commands::Introspect { format, section } => execute_introspect(format, section, verbosity).await,
@@ -989,6 +1005,7 @@ struct RunServerOptions {
 	static_dir: String,
 	no_spa: bool,
 	index: Option<String>,
+	package: Option<String>,
 	verbosity: u8,
 }
 
@@ -1031,6 +1048,9 @@ fn runserver_context_from_options(options: &RunServerOptions) -> CommandContext 
 	}
 	if let Some(ref index) = options.index {
 		ctx.set_option("index".to_string(), index.clone());
+	}
+	if let Some(ref package) = options.package {
+		ctx.set_option("package".to_string(), package.clone());
 	}
 
 	ctx
@@ -1081,6 +1101,7 @@ async fn execute_check(
 }
 
 /// Execute the collectstatic command
+#[allow(clippy::too_many_arguments)] // The handler mirrors collectstatic's independent CLI options.
 async fn execute_collectstatic(
 	clear: bool,
 	no_input: bool,
@@ -1088,6 +1109,7 @@ async fn execute_collectstatic(
 	link: bool,
 	ignore: Vec<String>,
 	index: Option<String>,
+	package: Option<String>,
 	verbosity: u8,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	// Load settings from TOML files
@@ -1161,16 +1183,11 @@ async fn execute_collectstatic(
 		))
 		.build()?;
 
-	// Construct StaticFilesConfig directly from merged settings
-	let static_root = merged
-		.get::<String>("static_root")
-		.ok()
-		.map(PathBuf::from)
-		.unwrap_or_else(|| base_dir.join("staticfiles"));
+	let static_settings = crate::StaticAssetSettings::from_merged(&merged, &base_dir);
 	let config = StaticFilesConfig {
-		static_root,
-		static_url: merged.get_or("static_url", "/static/".to_string()),
-		staticfiles_dirs: merged.get_or("staticfiles_dirs", Vec::new()),
+		static_root: static_settings.static_root,
+		static_url: static_settings.static_url,
+		staticfiles_dirs: static_settings.staticfiles_dirs,
 		media_url: None,
 	};
 
@@ -1205,6 +1222,10 @@ async fn execute_collectstatic(
 	// Create and execute command in blocking context
 	let mut cmd = CollectStaticCommand::new(config, options);
 	cmd.set_index_source(index_source);
+	let style_context =
+		crate::StylePackageContext::resolve(base_dir.join("Cargo.toml"), package.as_deref())
+			.map_err(|error| format!("failed to select component style package: {error}"))?;
+	cmd.set_style_context(Some(style_context));
 	let result = tokio::task::spawn_blocking(move || {
 		// Call the sync execute() method directly (not the BaseCommand trait method)
 		CollectStaticCommand::execute(&mut cmd)
@@ -1576,6 +1597,7 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
 		};
 
 		// Act
@@ -1672,6 +1694,7 @@ mod tests {
 			link: false,
 			ignore: vec![],
 			index: None,
+			package: None,
 		};
 
 		// Act
@@ -1765,6 +1788,7 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: Some("./index.html".to_string()),
+			package: None,
 		};
 
 		// Act & Assert
@@ -1793,6 +1817,7 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
 		};
 
 		// Act & Assert
@@ -1821,6 +1846,7 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: true,
 			index: Some("./index.html".to_string()),
+			package: None,
 		};
 
 		// Assert
@@ -1850,6 +1876,7 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: Some("./index.html".to_string()),
+			package: None,
 		};
 
 		// Assert
@@ -1882,6 +1909,7 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
 			verbosity: 0,
 		};
 
@@ -1911,6 +1939,7 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
 			verbosity: 0,
 		};
 
@@ -1942,6 +1971,7 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
 			verbosity: 0,
 		};
 
@@ -1970,6 +2000,7 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
 			verbosity: 0,
 		};
 
@@ -2055,6 +2086,7 @@ mod tests {
 			link: false,
 			ignore: vec![],
 			index: Some("./index.html".to_string()),
+			package: None,
 		};
 
 		// Assert
@@ -2063,6 +2095,30 @@ mod tests {
 		} else {
 			panic!("Expected Collectstatic command");
 		}
+	}
+
+	#[rstest]
+	fn collectstatic_package_option_parses() {
+		let cli = Cli::try_parse_from(["manage", "collectstatic", "--package", "poll-app"])
+			.expect("collectstatic package option should parse");
+
+		match cli.command {
+			Commands::Collectstatic { package, .. } => {
+				assert_eq!(package.as_deref(), Some("poll-app"));
+			}
+			_ => panic!("expected collectstatic command"),
+		}
+	}
+
+	#[rstest]
+	fn runserver_package_option_parses_and_forwards() {
+		let cli = Cli::try_parse_from(["manage", "runserver", "--package", "poll-app"])
+			.expect("runserver package option should parse");
+
+		let Commands::Runserver { package, .. } = cli.command else {
+			panic!("expected runserver command");
+		};
+		assert_eq!(package.as_deref(), Some("poll-app"));
 	}
 
 	#[cfg(feature = "reinhardt-db")]
@@ -2084,6 +2140,7 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
 		};
 
 		// Act
@@ -2173,6 +2230,7 @@ mod tests {
 			link: false,
 			ignore: vec![],
 			index: None,
+			package: None,
 		};
 
 		// Act

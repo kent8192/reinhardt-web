@@ -4,6 +4,7 @@
 
 use crate::{BaseCommand, CommandArgument, CommandContext, CommandOption, CommandResult};
 use async_trait::async_trait;
+use std::path::PathBuf;
 
 #[cfg(feature = "migrations")]
 use reinhardt_db::migrations::DatabaseMigrationExecutor;
@@ -1730,6 +1731,9 @@ impl ShellCommand {
 /// Development server command
 pub struct RunServerCommand;
 
+#[cfg(feature = "pages")]
+const GENERATED_STYLE_ROOT_ENV: &str = "REINHARDT_GENERATED_STYLE_ROOT";
+
 #[cfg(all(feature = "server", feature = "autoreload"))]
 struct AutoreloadChildOptions<'a> {
 	address: &'a str,
@@ -1745,6 +1749,8 @@ struct AutoreloadChildOptions<'a> {
 	no_override_wasm: bool,
 	force_wasm: bool,
 	wasm_optional: bool,
+	package: Option<&'a str>,
+	generated_style_root: Option<&'a std::path::Path>,
 }
 
 impl RunServerCommand {
@@ -1929,6 +1935,11 @@ impl BaseCommand for RunServerCommand {
 				"wasm-optional",
 				"Allow server to start even if WASM build fails",
 			),
+			CommandOption::option(
+				None,
+				"package",
+				"Cargo package containing component style definitions",
+			),
 		]
 	}
 
@@ -1992,6 +2003,46 @@ impl BaseCommand for RunServerCommand {
 		let force_wasm_legacy = ctx.has_option("force-wasm");
 		#[cfg_attr(not(feature = "pages"), allow(unused_variables))]
 		let wasm_optional = ctx.has_option("wasm-optional");
+		#[cfg(feature = "pages")]
+		let requested_package = ctx.option("package").cloned();
+		#[cfg(not(feature = "pages"))]
+		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
+		let requested_package: Option<String> = None;
+		#[cfg(feature = "pages")]
+		let inherited_style_root = std::env::var_os(GENERATED_STYLE_ROOT_ENV).map(PathBuf::from);
+		#[cfg(feature = "pages")]
+		let component_style_state = if with_pages && inherited_style_root.is_none() {
+			let manifest = std::env::current_dir()
+				.map_err(crate::CommandError::IoError)?
+				.join("Cargo.toml");
+			Some(std::sync::Arc::new(std::sync::Mutex::new(
+				crate::ComponentStyleState::initialize(manifest, requested_package.clone())
+					.map_err(crate::CommandError::ExecutionError)?,
+			)))
+		} else {
+			None
+		};
+		#[cfg(feature = "pages")]
+		let generated_style_root = if let Some(root) = inherited_style_root {
+			Some(root)
+		} else if let Some(state) = &component_style_state {
+			Some(
+				state
+					.lock()
+					.map_err(|_| {
+						crate::CommandError::ExecutionError(
+							"component style state lock was poisoned".to_string(),
+						)
+					})?
+					.generated_root()
+					.to_path_buf(),
+			)
+		} else {
+			None
+		};
+		#[cfg(not(feature = "pages"))]
+		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
+		let generated_style_root: Option<PathBuf> = None;
 		// Build WASM frontend if --with-pages and not --no-wasm
 		#[cfg(feature = "pages")]
 		{
@@ -2197,6 +2248,9 @@ impl BaseCommand for RunServerCommand {
 					no_override_wasm,
 					force_wasm_legacy,
 					wasm_optional,
+					requested_package.as_deref(),
+					generated_style_root.as_deref(),
+					component_style_state.clone(),
 					watch_delay,
 				)
 				.await;
@@ -2219,6 +2273,7 @@ impl BaseCommand for RunServerCommand {
 				no_override_wasm,
 				force_wasm_legacy,
 				wasm_optional,
+				generated_style_root.as_deref(),
 			)
 			.await
 		}
@@ -2308,6 +2363,7 @@ impl RunServerCommand {
 		no_override_wasm: bool,
 		force_wasm: bool,
 		wasm_optional: bool,
+		generated_style_root: Option<&std::path::Path>,
 	) -> CommandResult<()> {
 		use reinhardt_server::{HttpServer, ShutdownCoordinator};
 
@@ -2452,6 +2508,19 @@ impl RunServerCommand {
 				StaticFilesConfig, StaticFilesMiddleware,
 			};
 
+			if let Some(generated_root) = generated_style_root {
+				let mut generated_config = StaticFilesConfig::new(generated_root.to_path_buf())
+					.url_prefix("/static/")
+					.spa_mode(false)
+					.auto_inject_wasm(false);
+				#[cfg(debug_assertions)]
+				{
+					generated_config =
+						generated_config.cache_config(CacheControlConfig::disabled());
+				}
+				server = server.with_middleware(StaticFilesMiddleware::new(generated_config));
+			}
+
 			// Auto-mount <project-root>/static/ at /static/ unless opted out.
 			// This is registered BEFORE the dist/ middleware so that, when
 			// MiddlewareChain::handle reverses registration order at request
@@ -2575,6 +2644,9 @@ impl RunServerCommand {
 					no_override_wasm,
 					force_wasm,
 					wasm_optional,
+					ctx.option("package").map(String::as_str),
+					generated_style_root,
+					None,
 					crate::debounced_watcher::DEBOUNCE_WINDOW,
 				)
 				.await
@@ -2686,6 +2758,9 @@ impl RunServerCommand {
 		no_override_wasm: bool,
 		force_wasm: bool,
 		wasm_optional: bool,
+		package: Option<&str>,
+		generated_style_root: Option<&std::path::Path>,
+		component_style_state: Option<std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>>,
 		debounce_window: std::time::Duration,
 	) -> CommandResult<()> {
 		// Resolve the cargo metadata for the current working directory.
@@ -2767,6 +2842,8 @@ impl RunServerCommand {
 		let address_owned = address.to_string();
 		let static_dir_owned = static_dir.to_string();
 		let index_owned = index.map(|s| s.to_string());
+		let package_owned = package.map(str::to_string);
+		let generated_style_root_owned = generated_style_root.map(std::path::Path::to_path_buf);
 		#[cfg(feature = "pages")]
 		let hmr = Self::start_autoreload_hmr(ctx, with_pages).await?;
 		#[cfg(feature = "pages")]
@@ -2791,6 +2868,8 @@ impl RunServerCommand {
 				no_override_wasm,
 				force_wasm,
 				wasm_optional,
+				package_owned.as_deref(),
+				generated_style_root_owned.as_deref(),
 			)
 			.map_err(|e| std::io::Error::other(e.to_string()))
 		};
@@ -2812,6 +2891,8 @@ impl RunServerCommand {
 			pages_enabled: with_pages,
 			#[cfg(feature = "pages")]
 			hmr_tx,
+			#[cfg(feature = "pages")]
+			component_styles: component_style_state,
 		};
 
 		crate::debounced_watcher::run_watcher(ctx, &cfg, shutdown_rx, child, respawn)
@@ -2998,6 +3079,8 @@ impl RunServerCommand {
 		no_override_wasm: bool,
 		force_wasm: bool,
 		wasm_optional: bool,
+		package: Option<&str>,
+		generated_style_root: Option<&std::path::Path>,
 	) -> CommandResult<tokio::process::Child> {
 		let current_exe = std::env::current_exe().map_err(|e| {
 			crate::CommandError::ExecutionError(format!("Failed to get current executable: {}", e))
@@ -3035,10 +3118,15 @@ impl RunServerCommand {
 			no_override_wasm,
 			force_wasm,
 			wasm_optional,
+			package,
+			generated_style_root,
 		};
 		cmd.args(Self::build_autoreload_child_args(&child_options));
 		if let Some(port) = child_options.hmr_port {
 			cmd.env("REINHARDT_HMR_PORT", port.to_string());
+		}
+		if let Some(root) = child_options.generated_style_root {
+			cmd.env(GENERATED_STYLE_ROOT_ENV, root);
 		}
 
 		// Set environment variable to indicate this is a child process (prevent log duplication, etc.)
@@ -3109,6 +3197,10 @@ impl RunServerCommand {
 		}
 		if options.wasm_optional {
 			args.push("--wasm-optional".to_string());
+		}
+		if let Some(package) = options.package {
+			args.push("--package".to_string());
+			args.push(package.to_string());
 		}
 
 		args
@@ -4727,6 +4819,8 @@ name = "db.sqlite3"
 			no_override_wasm: true,
 			force_wasm: true,
 			wasm_optional: true,
+			package: Some("poll-app"),
+			generated_style_root: None,
 		});
 
 		assert_eq!(
@@ -4748,6 +4842,8 @@ name = "db.sqlite3"
 				"--no-override-wasm",
 				"--force-wasm",
 				"--wasm-optional",
+				"--package",
+				"poll-app",
 			]
 		);
 	}
@@ -4769,6 +4865,8 @@ name = "db.sqlite3"
 			no_override_wasm: false,
 			force_wasm: false,
 			wasm_optional: false,
+			package: None,
+			generated_style_root: None,
 		});
 
 		assert_eq!(args, vec!["runserver", "127.0.0.1:8000", "--noreload"]);

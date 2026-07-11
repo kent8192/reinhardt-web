@@ -136,6 +136,9 @@ pub struct WatcherConfig {
 	/// successful rebuild. `None` keeps the watcher in compile-only mode.
 	#[cfg(feature = "pages")]
 	pub hmr_tx: Option<broadcast::Sender<String>>,
+	/// Last-good component style compiler state processed before rebuild classification.
+	#[cfg(feature = "pages")]
+	pub component_styles: Option<std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>>,
 }
 
 /// Select rebuild pipelines for a debounced path batch.
@@ -310,13 +313,41 @@ pub async fn run_rebuild_for_paths(
 		"[hot-reload] change detected ({} path(s))",
 		paths.len()
 	));
+	#[cfg(feature = "pages")]
+	let style_stage = if let Some(state) = &config.component_styles {
+		let metadata_changed = paths.iter().any(|path| {
+			path.file_name()
+				.is_some_and(|name| name == "Cargo.toml" || name == "Cargo.lock")
+		});
+		match state.lock() {
+			Ok(mut state) => state.refresh(metadata_changed),
+			Err(_) => crate::ComponentStyleStageResult::Failed,
+		}
+	} else {
+		crate::ComponentStyleStageResult::Unchanged
+	};
+	#[cfg(feature = "pages")]
+	if style_stage == crate::ComponentStyleStageResult::CssOnly {
+		if let Some(tx) = &config.hmr_tx {
+			let message = reinhardt_pages::hmr::HmrMessage::CssUpdate {
+				path: crate::COMPONENT_STYLES_PATH.to_string(),
+			};
+			if let Ok(json) = message.to_json() {
+				let _ = tx.send(json);
+			}
+		}
+		ctx.info("[hot-reload] component stylesheet updated without rebuilding");
+		return;
+	}
 	let targets = rebuild_targets_for_paths(&paths, config);
 	if !targets.has_work() {
 		ctx.info("[hot-reload] no rebuild target matched; waiting for next change");
 		return;
 	}
 	#[cfg(feature = "pages")]
-	if notify_static_page_patch(config.hmr_tx.as_ref(), &paths, targets) {
+	if style_stage != crate::ComponentStyleStageResult::Failed
+		&& notify_static_page_patch(config.hmr_tx.as_ref(), &paths, targets)
+	{
 		ctx.info("[hot-reload] static page patch sent without rebuilding WASM");
 		return;
 	}
@@ -651,6 +682,7 @@ mod tests {
 			no_wasm_rebuild,
 			pages_enabled: true,
 			hmr_tx: None,
+			component_styles: None,
 		}
 	}
 

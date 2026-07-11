@@ -67,7 +67,7 @@
 //! - [`portal`]: Explicit portal mounting into existing DOM targets
 //! - `i18n`: Reactive page translations with SSR-resolved catalogs (requires the `i18n` feature)
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
-//! - [`style`]: Scoped class composition and typed runtime CSS values
+//! - [`mod@style`]: Scoped class composition and typed runtime CSS values
 //!
 //! ## Forms
 //!
@@ -491,7 +491,9 @@ pub use server_fn::{ServerFn, ServerFnError, parse_server_error_message};
 pub use ssr::SsrState;
 #[cfg(native)]
 pub use ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
-pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
+pub use static_resolver::{
+	component_stylesheet_url, init_static_resolver, is_initialized, resolve_static,
+};
 pub use style::{
 	ClassList, ClassToken, CssAngle, CssColor, CssInteger, CssLength, CssLengthPercentage,
 	CssNumber, CssPercentage, CssTime, CssValueError, StyleValue, StyleVars,

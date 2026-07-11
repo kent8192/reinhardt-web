@@ -65,6 +65,7 @@ struct RunServerSettings {
 	static_url: String,
 	static_root: Option<PathBuf>,
 	staticfiles_dirs: Vec<PathBuf>,
+	generated_style_root: Option<PathBuf>,
 }
 
 impl Default for RunServerSettings {
@@ -74,6 +75,7 @@ impl Default for RunServerSettings {
 			static_url: "/static/".to_string(),
 			static_root: None,
 			staticfiles_dirs: Vec::new(),
+			generated_style_root: None,
 		}
 	}
 }
@@ -131,6 +133,10 @@ struct Args {
 	/// Skip collectstatic at startup
 	#[arg(long)]
 	no_collectstatic: bool,
+
+	/// Cargo package containing component style definitions
+	#[arg(long, value_name = "NAME")]
+	package: Option<String>,
 }
 
 /// Get MIME type based on file extension
@@ -275,10 +281,8 @@ fn load_settings() -> RunServerSettings {
 
 	match merged {
 		Ok(merged_settings) => {
-			let static_url: String = merged_settings.get_or("static_url", "/static/".to_string());
-			let static_root: Option<PathBuf> = merged_settings.get("static_root").ok().flatten();
-			let staticfiles_dirs: Vec<PathBuf> =
-				merged_settings.get_or("staticfiles_dirs", Vec::new());
+			let static_settings =
+				reinhardt_commands::StaticAssetSettings::from_merged(&merged_settings, &base_dir);
 			match merged_settings.into_typed::<CoreSettings>() {
 				Ok(core) => {
 					println!(
@@ -291,9 +295,10 @@ fn load_settings() -> RunServerSettings {
 					);
 					RunServerSettings {
 						debug: core.debug,
-						static_url,
-						static_root,
-						staticfiles_dirs,
+						static_url: static_settings.static_url,
+						static_root: Some(static_settings.static_root),
+						staticfiles_dirs: static_settings.staticfiles_dirs,
+						generated_style_root: None,
 					}
 				}
 				Err(e) => {
@@ -380,7 +385,7 @@ async fn handle_request(
 	req: Request<Incoming>,
 	settings: Arc<RunServerSettings>,
 	spa_index: Option<Arc<PathBuf>>,
-	remote_addr: SocketAddr,
+	#[cfg_attr(not(feature = "routers"), allow(unused_variables))] remote_addr: SocketAddr,
 ) -> Result<Response<BoxBody>, Infallible> {
 	let path = req.uri().path().to_string();
 
@@ -408,6 +413,12 @@ async fn handle_request(
 
 		// Find file in all staticfiles_dirs (in reverse order for override behavior)
 		let mut found_files: Vec<PathBuf> = Vec::new();
+		if let Some(root) = &settings.generated_style_root
+			&& let Ok(file_path) = safe_path_join(root, relative_path)
+			&& file_path.is_file()
+		{
+			return serve_static_file(&file_path).await;
+		}
 
 		for dir in settings.staticfiles_dirs.iter().rev() {
 			// Use safe_path_join to prevent path traversal attacks
@@ -796,7 +807,10 @@ fn build_wasm_targets(no_wasm: bool, no_override_wasm: bool, force_wasm_legacy: 
 /// Run collectstatic to copy all static files into STATIC_ROOT.
 ///
 /// Returns `true` on success, `false` on failure.
-fn run_collectstatic(settings: &RunServerSettings) -> bool {
+fn run_collectstatic(
+	settings: &RunServerSettings,
+	style_context: reinhardt_commands::StylePackageContext,
+) -> bool {
 	let cwd = match env::current_dir() {
 		Ok(d) => d,
 		Err(e) => {
@@ -840,6 +854,7 @@ fn run_collectstatic(settings: &RunServerSettings) -> bool {
 	};
 
 	let mut cmd = CollectStaticCommand::new(config, options);
+	cmd.set_style_context(Some(style_context));
 
 	// If dist/index.html exists in cwd, set it as the index source
 	let index_path = cwd.join("dist").join("index.html");
@@ -905,15 +920,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		return Err("Cannot use both --cert/--key and --self-signed".into());
 	}
 
+	let manifest = env::current_dir()?.join("Cargo.toml");
+	let component_style_state =
+		reinhardt_commands::ComponentStyleState::initialize(manifest, args.package.clone())?;
+
 	// Phase 1: Build WASM targets
 	build_wasm_targets(args.no_wasm, args.no_override_wasm, args.force_wasm);
 
 	// Load settings at startup
-	let settings = Arc::new(load_settings());
+	let mut loaded_settings = load_settings();
+	loaded_settings.generated_style_root =
+		Some(component_style_state.generated_root().to_path_buf());
+	let settings = Arc::new(loaded_settings);
 
 	// Phase 2: Run collectstatic
 	if !args.no_collectstatic {
-		run_collectstatic(&settings);
+		run_collectstatic(&settings, component_style_state.package_context().clone());
 	} else {
 		println!("{}", "collectstatic skipped (--no-collectstatic)".dimmed());
 	}

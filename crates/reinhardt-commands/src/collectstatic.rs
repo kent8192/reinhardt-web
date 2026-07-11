@@ -3,10 +3,12 @@
 //! Django-style static file collection for production deployment
 
 use crate::CommandResult;
-use crate::{BaseCommand, CommandContext};
+use crate::{
+	BaseCommand, COMPONENT_STYLES_PATH, CommandContext, StyleExtractor, StylePackageContext,
+};
 use async_trait::async_trait;
 use reinhardt_utils::staticfiles::{StaticFilesConfig, StaticFilesFinder};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -85,14 +87,26 @@ impl Default for CollectStaticStats {
 ///
 /// Discovers static files from configured directories and installed apps,
 /// then copies them to the `STATIC_ROOT` directory for production serving.
+/// Generated in-memory static file collected through the normal hashing pipeline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VirtualStaticAsset {
+	/// Stable logical path used by templates and manifests.
+	pub logical_path: String,
+	/// Complete asset bytes.
+	pub bytes: Vec<u8>,
+}
+
+/// Collects physical and generated static assets into one production directory.
 #[derive(Default)]
 pub struct CollectStaticCommand {
 	config: StaticFilesConfig,
 	options: CollectStaticOptions,
-	manifest: HashMap<String, String>,
+	manifest: BTreeMap<String, String>,
 	/// Source path for index.html (copies to static_root with template processing).
 	/// Refs #2869
 	index_source: Option<PathBuf>,
+	style_context: Option<StylePackageContext>,
+	virtual_assets: Vec<VirtualStaticAsset>,
 }
 
 impl CollectStaticCommand {
@@ -101,8 +115,10 @@ impl CollectStaticCommand {
 		Self {
 			config,
 			options,
-			manifest: HashMap::new(),
+			manifest: BTreeMap::new(),
 			index_source: None,
+			style_context: None,
+			virtual_assets: Vec::new(),
 		}
 	}
 
@@ -114,12 +130,35 @@ impl CollectStaticCommand {
 		self.index_source = path;
 	}
 
+	/// Use one resolved package context to compile component styles before mutation.
+	pub fn set_style_context(&mut self, context: Option<StylePackageContext>) {
+		self.style_context = context;
+	}
+
+	/// Add an in-memory framework asset to the collection pipeline.
+	pub fn add_virtual_asset(&mut self, asset: VirtualStaticAsset) {
+		self.virtual_assets.push(asset);
+	}
+
 	/// Execute the collectstatic command
 	pub fn execute(&mut self) -> Result<CollectStaticStats, io::Error> {
 		let mut stats = CollectStaticStats::new();
+		self.manifest.clear();
 
 		// Validate configuration
 		self.validate_config()?;
+		let mut virtual_assets = self.virtual_assets.clone();
+		if let Some(context) = &self.style_context {
+			let bundle = StyleExtractor::new(context.clone())
+				.extract()
+				.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+			virtual_assets.retain(|asset| asset.logical_path != COMPONENT_STYLES_PATH);
+			virtual_assets.push(VirtualStaticAsset {
+				logical_path: COMPONENT_STYLES_PATH.to_string(),
+				bytes: bundle.css,
+			});
+		}
+		self.validate_reserved_sources()?;
 
 		// Clear destination if requested
 		if self.options.clear {
@@ -235,6 +274,12 @@ impl CollectStaticCommand {
 
 		// Process each file (reversed so later sources are processed first)
 		for file_path in &files_to_process {
+			if file_path.starts_with("__reinhardt__/") {
+				return Err(io::Error::new(
+					io::ErrorKind::AlreadyExists,
+					format!("static source claims reserved framework path `{file_path}`"),
+				));
+			}
 			// Skip if already processed (handles duplicates from multiple source dirs)
 			if !processed_files.insert(file_path.clone()) {
 				continue;
@@ -254,6 +299,13 @@ impl CollectStaticCommand {
 			}
 		}
 
+		for asset in &virtual_assets {
+			match self.write_virtual_asset(asset)? {
+				CopyResult::Copied => stats.copied += 1,
+				CopyResult::Unmodified => stats.unmodified += 1,
+			}
+		}
+
 		// Save manifest if hashing is enabled
 		if self.options.enable_hashing && !self.options.dry_run {
 			self.save_manifest()?;
@@ -268,7 +320,9 @@ impl CollectStaticCommand {
 					if let Some(parent) = dest_path.parent() {
 						fs::create_dir_all(parent)?;
 					}
-					if self.options.link {
+					let requires_rendering = fs::read_to_string(index_source)
+						.is_ok_and(|content| content.contains("{{ static_url("));
+					if self.options.link && !requires_rendering {
 						self.create_symlink(index_source, &dest_path)?;
 					} else {
 						self.process_html_template(index_source, &dest_path)?;
@@ -306,6 +360,84 @@ impl CollectStaticCommand {
 			));
 		}
 
+		Ok(())
+	}
+
+	fn validate_reserved_sources(&self) -> Result<(), io::Error> {
+		for source in &self.config.staticfiles_dirs {
+			let reserved = source.join("__reinhardt__");
+			if reserved.exists() {
+				return Err(io::Error::new(
+					io::ErrorKind::AlreadyExists,
+					format!(
+						"static source `{}` claims the reserved `__reinhardt__/` namespace",
+						reserved.display()
+					),
+				));
+			}
+		}
+		Ok(())
+	}
+
+	fn write_virtual_asset(&mut self, asset: &VirtualStaticAsset) -> Result<CopyResult, io::Error> {
+		if !asset.logical_path.starts_with("__reinhardt__/") {
+			return Err(io::Error::new(
+				io::ErrorKind::InvalidInput,
+				format!(
+					"virtual framework asset must use the reserved namespace: {}",
+					asset.logical_path
+				),
+			));
+		}
+		let output_path = if self.options.enable_hashing {
+			let hash = Self::calculate_bytes_hash(&asset.bytes);
+			let hashed = self.get_hashed_filename(&asset.logical_path, &hash);
+			self.manifest
+				.insert(asset.logical_path.clone(), hashed.clone());
+			hashed
+		} else {
+			asset.logical_path.clone()
+		};
+		let destination = self.config.static_root.join(&output_path);
+		if destination.exists() && !self.options.clear && fs::read(&destination)? == asset.bytes {
+			return Ok(CopyResult::Unmodified);
+		}
+		if self.options.dry_run {
+			return Ok(CopyResult::Copied);
+		}
+		if let Some(parent) = destination.parent() {
+			fs::create_dir_all(parent)?;
+		}
+		fs::write(&destination, &asset.bytes)?;
+		if asset.logical_path == COMPONENT_STYLES_PATH {
+			self.prune_obsolete_component_styles(&destination)?;
+		}
+		Ok(CopyResult::Copied)
+	}
+
+	fn calculate_bytes_hash(bytes: &[u8]) -> String {
+		use sha2::{Digest, Sha256};
+		let hash = format!("{:x}", Sha256::digest(bytes));
+		hash[..8].to_string()
+	}
+
+	fn prune_obsolete_component_styles(&self, retained: &Path) -> Result<(), io::Error> {
+		let Some(parent) = retained.parent() else {
+			return Ok(());
+		};
+		for entry in fs::read_dir(parent)? {
+			let path = entry?.path();
+			let is_component_css =
+				path.file_name()
+					.and_then(|name| name.to_str())
+					.is_some_and(|name| {
+						name == "components.css"
+							|| (name.starts_with("components.") && name.ends_with(".css"))
+					});
+			if is_component_css && path != retained {
+				fs::remove_file(path)?;
+			}
+		}
 		Ok(())
 	}
 
@@ -646,8 +778,10 @@ impl Clone for CollectStaticCommand {
 		Self {
 			config: self.config.clone(),
 			options: self.options.clone(),
-			manifest: HashMap::new(),
+			manifest: BTreeMap::new(),
 			index_source: self.index_source.clone(),
+			style_context: self.style_context.clone(),
+			virtual_assets: self.virtual_assets.clone(),
 		}
 	}
 }

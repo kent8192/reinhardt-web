@@ -88,6 +88,7 @@ impl SourceRoots {
 				}
 			}
 		}
+		manifest_files.insert(PathBuf::from(metadata.workspace_root.as_str()).join("Cargo.toml"));
 
 		SourceRoots {
 			src_dirs: src_dirs.into_iter().collect(),
@@ -157,6 +158,7 @@ mod tests {
 		assert_eq!(
 			roots.manifest_files,
 			vec![
+				PathBuf::from("/fixtures/ws/Cargo.toml"),
 				PathBuf::from("/fixtures/ws/app/Cargo.toml"),
 				PathBuf::from("/fixtures/ws/shared/Cargo.toml"),
 			]

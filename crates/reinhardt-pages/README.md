@@ -624,3 +624,7 @@ fn counter() -> View {
 ## License
 
 Licensed under the BSD 3-Clause License.
+For SSR documents, include generated component styles explicitly with
+`component_stylesheet_url()`. The helper resolves the stable
+`__reinhardt__/components.css` logical path through the active development URL
+or production manifest; it does not inject a `<link>` element automatically.
