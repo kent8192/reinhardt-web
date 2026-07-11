@@ -149,69 +149,64 @@ mod tests {
 	#[rstest]
 	#[serial(reactive_runtime)]
 	fn into_deps_single_signal() {
-		// Arrange
-		let s = Signal::new(42_i32);
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let s = Signal::new(42_i32);
 
-		// Act
-		let deps = (s.clone(),).into_deps();
+			// Act
+			let deps = (s,).into_deps();
 
-		// Assert
-		assert_eq!(deps.as_slice(), &[s.id()]);
+			// Assert
+			assert_eq!(deps.as_slice(), &[s.id()]);
+		});
 	}
 
 	#[rstest]
 	#[serial(reactive_runtime)]
 	fn into_deps_three_signals_preserves_order() {
-		// Arrange
-		let a = Signal::new(1_i32);
-		let b = Signal::new("two");
-		let c = Signal::new(3.0_f64);
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let a = Signal::new(1_i32);
+			let b = Signal::new("two");
+			let c = Signal::new(3.0_f64);
 
-		// Act
-		let deps = (a.clone(), b.clone(), c.clone()).into_deps();
+			// Act
+			let deps = (a, b, c).into_deps();
 
-		// Assert
-		assert_eq!(deps.as_slice(), &[a.id(), b.id(), c.id()]);
+			// Assert
+			assert_eq!(deps.as_slice(), &[a.id(), b.id(), c.id()]);
+		});
 	}
 
 	#[rstest]
 	#[serial(reactive_runtime)]
 	fn into_deps_arity_12_compiles_and_collects() {
-		// Arrange
-		let s = [
-			Signal::new(0_i32),
-			Signal::new(1_i32),
-			Signal::new(2_i32),
-			Signal::new(3_i32),
-			Signal::new(4_i32),
-			Signal::new(5_i32),
-			Signal::new(6_i32),
-			Signal::new(7_i32),
-			Signal::new(8_i32),
-			Signal::new(9_i32),
-			Signal::new(10_i32),
-			Signal::new(11_i32),
-		];
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let s = [
+				Signal::new(0_i32),
+				Signal::new(1_i32),
+				Signal::new(2_i32),
+				Signal::new(3_i32),
+				Signal::new(4_i32),
+				Signal::new(5_i32),
+				Signal::new(6_i32),
+				Signal::new(7_i32),
+				Signal::new(8_i32),
+				Signal::new(9_i32),
+				Signal::new(10_i32),
+				Signal::new(11_i32),
+			];
 
-		// Act
-		let deps = (
-			s[0].clone(),
-			s[1].clone(),
-			s[2].clone(),
-			s[3].clone(),
-			s[4].clone(),
-			s[5].clone(),
-			s[6].clone(),
-			s[7].clone(),
-			s[8].clone(),
-			s[9].clone(),
-			s[10].clone(),
-			s[11].clone(),
-		)
-			.into_deps();
+			// Act
+			let deps = (
+				s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7], s[8], s[9], s[10], s[11],
+			)
+				.into_deps();
 
-		// Assert
-		assert_eq!(deps.as_slice().len(), 12);
+			// Assert
+			assert_eq!(deps.as_slice().len(), 12);
+		});
 	}
 
 	#[rstest]
