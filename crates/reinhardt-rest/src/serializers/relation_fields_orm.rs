@@ -670,6 +670,18 @@ mod tests {
 			TestUserFields
 		}
 
+		fn relationship_metadata() -> Vec<reinhardt_db::orm::inspection::RelationInfo> {
+			use reinhardt_db::orm::inspection::RelationInfo;
+			use reinhardt_db::orm::relationship::RelationshipType;
+
+			vec![
+				RelationInfo::new("author", RelationshipType::ManyToOne, "Author")
+					.with_foreign_key("author_id"),
+				RelationInfo::new("comments", RelationshipType::OneToMany, "Comment")
+					.with_foreign_key("test_user_id"),
+			]
+		}
+
 		fn primary_key(&self) -> Option<Self::PrimaryKey> {
 			self.id
 		}

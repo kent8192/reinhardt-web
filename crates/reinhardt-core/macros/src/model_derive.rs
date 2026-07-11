@@ -1487,6 +1487,9 @@ fn generate_relation_traversal_accessors(
 
 	let db_crate = get_reinhardt_db_crate();
 	let orm_crate = get_reinhardt_orm_crate();
+	let native_cfg = quote! {
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+	};
 	let wrapper_name = syn::Ident::new(&format!("{}RelationPath", struct_name), struct_name.span());
 
 	let wrapper_field_methods: Vec<_> = field_infos
@@ -1673,8 +1676,10 @@ fn generate_relation_traversal_accessors(
 			let doc_comment = format!("Build a typed relation path for `{relation_name}`.");
 
 			quote! {
+				#native_cfg
 				struct #descriptor_name;
 
+				#native_cfg
 				impl #orm_crate::relations::RelationDescriptor for #descriptor_name {
 					type Source = #struct_name;
 					type Target = #target_ty;
@@ -1684,6 +1689,7 @@ fn generate_relation_traversal_accessors(
 					}
 				}
 
+				#native_cfg
 				impl #struct_name {
 					#[doc = #doc_comment]
 					#struct_vis fn #method_name() -> <#target_ty as #orm_crate::relations::RelationTarget>::Path<#struct_name> {
@@ -1722,11 +1728,13 @@ fn generate_relation_traversal_accessors(
 		format!("Reference a [`{struct_name}`] field through this relation path.");
 
 	quote! {
+		#native_cfg
 		#[doc = #wrapper_doc]
 		#struct_vis struct #wrapper_name<Root: #orm_crate::Model> {
 			inner: #orm_crate::relations::RelationPath<Root, #struct_name>,
 		}
 
+		#native_cfg
 		impl<Root: #orm_crate::Model> #wrapper_name<Root> {
 			#[doc = #wrapper_new_doc]
 			pub fn new(inner: #orm_crate::relations::RelationPath<Root, #struct_name>) -> Self {
@@ -1752,6 +1760,7 @@ fn generate_relation_traversal_accessors(
 			#(#wrapper_relation_methods)*
 		}
 
+		#native_cfg
 		impl<Root: #orm_crate::Model> #orm_crate::relations::RelationPathLike for #wrapper_name<Root> {
 			type Root = Root;
 			type Target = #struct_name;
@@ -1773,6 +1782,7 @@ fn generate_relation_traversal_accessors(
 			}
 		}
 
+		#native_cfg
 		impl #orm_crate::relations::RelationTarget for #struct_name {
 			type Path<Root: #orm_crate::Model> = #wrapper_name<Root>;
 
@@ -2637,7 +2647,6 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			#field_accessors
 
 			// Generate typed relation traversal accessors
-			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			#relation_traversal_accessors
 
 			// Generate ManyToMany accessor methods
