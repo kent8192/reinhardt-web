@@ -116,11 +116,15 @@ pub use crate::m2m_naming::{default_m2m_columns, default_through_table};
 pub use operation_trait::MigrationOperation;
 pub use operations::{
 	AddColumn, AlterColumn, AlterTableOptions, BulkLoadFormat, BulkLoadOptions, BulkLoadSource,
-	ColumnDefinition, Constraint, CreateTable, DeferrableOption, DropColumn, IndexType,
-	InterleaveSpec, MySqlAlgorithm, MySqlLock, Operation, PartitionDef, PartitionOptions,
-	PartitionType, PartitionValues, SqlDialect, field_type_string_to_field_type,
+	ColumnDefinition, Constraint, CreateTable, DeferrableOption, DropColumn,
+	GeneratedColumnDefinition, IndexType, InterleaveSpec, MySqlAlgorithm, MySqlLock, Operation,
+	PartitionDef, PartitionOptions, PartitionType, PartitionValues, SqlDialect,
+	field_type_string_to_field_type,
 };
 pub use plan::{MigrationPlan, TransactionMode};
+pub use reinhardt_query::prelude::{
+	ColumnType, GeneratedStorage, SchemaBinOper, SchemaExpr, SchemaFunc,
+};
 
 // New operations from refactored modules
 pub use auto_migration::{
@@ -294,5 +298,8 @@ pub type Result<T> = std::result::Result<T, MigrationError>;
 /// Prelude module.
 pub mod prelude {
 	pub use super::fields::prelude::*;
-	pub use super::{ColumnDefinition, Constraint, ForeignKeyAction, Migration, Operation};
+	pub use super::{
+		ColumnDefinition, ColumnType, Constraint, ForeignKeyAction, GeneratedColumnDefinition,
+		GeneratedStorage, Migration, Operation, SchemaBinOper, SchemaExpr, SchemaFunc,
+	};
 }

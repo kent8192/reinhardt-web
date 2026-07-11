@@ -324,7 +324,8 @@ impl TestDom {
 				self.append_reactive_anchor(parent, render);
 			}
 			Page::Deferred(node) => {
-				self.append_page(parent, node.content());
+				let content = node.render_content();
+				self.append_page(parent, content);
 			}
 		}
 	}

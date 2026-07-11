@@ -55,10 +55,11 @@ pub use special::{RunCode, RunSQL, StateOperation};
 use super::{FieldState, FieldType, ModelState, ProjectState};
 use pg_escape::{quote_identifier, quote_literal};
 use reinhardt_query::prelude::{
-	Alias, AlterTableStatement, ColumnDef, CreateIndexStatement, CreateTableStatement,
-	DropIndexStatement, DropTableStatement, Query, SimpleExpr, Value,
+	Alias, AlterTableStatement, ColumnDef, ColumnType as QueryColumnType, CreateIndexStatement,
+	CreateTableStatement, DropIndexStatement, DropTableStatement, GeneratedColumn,
+	GeneratedStorage, Query, SchemaExpr, SchemaFunc, SimpleExpr, Value,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, ser::SerializeStruct};
 
 /// Index type for database indexes
 ///
@@ -831,6 +832,11 @@ pub enum Operation {
 		table: String,
 		/// The column.
 		column: String,
+		/// Original column definition before dropping.
+		/// This is required for generating accurate rollback SQL when the
+		/// column is replaced by a drop/add pair.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		old_definition: Option<ColumnDefinition>,
 	},
 	/// AlterColumn variant.
 	AlterColumn {
@@ -867,6 +873,20 @@ pub enum Operation {
 	},
 	/// AddConstraint variant.
 	AddConstraint {
+		/// The table.
+		table: String,
+		/// The constraint sql.
+		constraint_sql: String,
+	},
+	/// Generated-column dependency constraint repair applied only when migrating forward.
+	AddConstraintRepair {
+		/// The table.
+		table: String,
+		/// The constraint sql.
+		constraint_sql: String,
+	},
+	/// Generated-column dependency constraint restore applied only when rolling back.
+	RestoreConstraintOnRollback {
 		/// The table.
 		table: String,
 		/// The constraint sql.
@@ -940,6 +960,66 @@ pub enum Operation {
 		///     ...
 		/// }
 		/// ```
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		operator_class: Option<String>,
+	},
+	/// Generated-column dependency index repair applied only when migrating forward.
+	CreateIndexRepair {
+		/// The table.
+		table: String,
+		/// Explicit index name.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		name: Option<String>,
+		/// The columns.
+		columns: Vec<String>,
+		/// The unique.
+		unique: bool,
+		/// Index type.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		index_type: Option<IndexType>,
+		/// Partial index condition.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		where_clause: Option<String>,
+		/// Create index concurrently.
+		#[serde(default)]
+		concurrently: bool,
+		/// Expression index values.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		expressions: Option<Vec<String>>,
+		/// MySQL ALTER TABLE options.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		mysql_options: Option<AlterTableOptions>,
+		/// Operator class for index columns.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		operator_class: Option<String>,
+	},
+	/// Generated-column dependency index restore applied only when rolling back.
+	RestoreIndexOnRollback {
+		/// The table.
+		table: String,
+		/// Explicit index name.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		name: Option<String>,
+		/// The columns.
+		columns: Vec<String>,
+		/// The unique.
+		unique: bool,
+		/// Index type.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		index_type: Option<IndexType>,
+		/// Partial index condition.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		where_clause: Option<String>,
+		/// Create index concurrently.
+		#[serde(default)]
+		concurrently: bool,
+		/// Expression index values.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		expressions: Option<Vec<String>>,
+		/// MySQL ALTER TABLE options.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		mysql_options: Option<AlterTableOptions>,
+		/// Operator class for index columns.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		operator_class: Option<String>,
 	},
@@ -1166,17 +1246,137 @@ const fn default_true() -> bool {
 }
 
 impl Operation {
+	fn order_model_fields_by_generated_dependencies(
+		model: &ModelState,
+	) -> Vec<(&String, &FieldState)> {
+		let mut remaining: Vec<_> = model.fields.iter().collect();
+		let mut ordered = Vec::with_capacity(remaining.len());
+
+		while !remaining.is_empty() {
+			let next_index = remaining
+				.iter()
+				.enumerate()
+				.find(|(_, (field_name, field))| {
+					let Some(generated) = field.generated.as_ref() else {
+						return true;
+					};
+
+					!remaining.iter().any(|(other_field_name, _)| {
+						other_field_name.as_str() != field_name.as_str()
+							&& Self::generated_column_references_column(
+								generated,
+								other_field_name.as_str(),
+							)
+					})
+				})
+				.map(|(index, _)| index);
+
+			if let Some(index) = next_index {
+				ordered.push(remaining.remove(index));
+			} else {
+				let cycle = remaining
+					.iter()
+					.map(|(name, _)| name.as_str())
+					.collect::<Vec<_>>()
+					.join(", ");
+				panic!("generated-column dependency cycle detected among columns: {cycle}");
+			}
+		}
+
+		ordered
+	}
+
+	fn generated_column_references_column(
+		generated: &GeneratedColumnDefinition,
+		column: &str,
+	) -> bool {
+		if let Some(expr) = generated.typed_expr() {
+			return Self::schema_expr_references_column(&expr, column);
+		}
+		if let Some(raw_sql) = generated.raw_sql.as_deref() {
+			return Self::expression_text_references_column(raw_sql, column);
+		}
+		generated
+			.expr_tokens
+			.as_deref()
+			.is_some_and(|tokens| Self::expression_text_references_column(tokens, column))
+	}
+
+	fn schema_expr_references_column(expr: &SchemaExpr, column: &str) -> bool {
+		match expr {
+			SchemaExpr::Column(identifier) => identifier.to_string() == column,
+			SchemaExpr::Value(_) => false,
+			SchemaExpr::Binary { left, right, .. } => {
+				Self::schema_expr_references_column(left, column)
+					|| Self::schema_expr_references_column(right, column)
+			}
+			SchemaExpr::Function { args, .. } => args
+				.iter()
+				.any(|arg| Self::schema_expr_references_column(arg, column)),
+			SchemaExpr::Cast { expr, .. } => Self::schema_expr_references_column(expr, column),
+			_ => false,
+		}
+	}
+
+	fn expression_text_references_column(text: &str, column: &str) -> bool {
+		text.split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+			.any(|token| token.eq_ignore_ascii_case(column))
+	}
+
+	pub(crate) fn postgres_generated_column_dependency_violation<'a>(
+		column_name: &str,
+		generated: &GeneratedColumnDefinition,
+		generated_column_names: impl IntoIterator<Item = &'a str>,
+	) -> Option<&'a str> {
+		generated_column_names.into_iter().find(|name| {
+			*name != column_name && Self::generated_column_references_column(generated, name)
+		})
+	}
+
+	fn validate_postgres_generated_column_dependencies(
+		columns: &[ColumnDefinition],
+		dialect: &SqlDialect,
+	) {
+		if !matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+			return;
+		}
+
+		let generated_column_names: Vec<&str> = columns
+			.iter()
+			.filter(|column| column.generated.is_some())
+			.map(|column| column.name.as_str())
+			.collect();
+
+		for column in columns {
+			let Some(generated) = column.generated.as_ref() else {
+				continue;
+			};
+
+			if let Some(referenced_column) = Self::postgres_generated_column_dependency_violation(
+				column.name.as_str(),
+				generated,
+				generated_column_names.iter().copied(),
+			) {
+				panic!(
+					"PostgreSQL-compatible generated column `{}` cannot reference generated column `{}`",
+					column.name, referenced_column
+				);
+			}
+		}
+	}
+
 	/// Apply this operation to the project state (forward)
 	pub fn state_forwards(&self, app_label: &str, state: &mut ProjectState) {
 		match self {
 			Operation::CreateTable { name, columns, .. } => {
 				let mut model = ModelState::new(app_label, name.clone());
 				for column in columns {
-					let field = FieldState::new(
+					let mut field = FieldState::new(
 						column.name.to_string(),
 						column.type_definition.clone(),
 						false,
 					);
+					field.generated = column.generated.clone();
 					model.add_field(field);
 				}
 				state.add_model(model);
@@ -1186,15 +1386,16 @@ impl Operation {
 			}
 			Operation::AddColumn { table, column, .. } => {
 				if let Some(model) = state.get_model_mut(app_label, table) {
-					let field = FieldState::new(
+					let mut field = FieldState::new(
 						column.name.to_string(),
 						column.type_definition.clone(),
 						false,
 					);
+					field.generated = column.generated.clone();
 					model.add_field(field);
 				}
 			}
-			Operation::DropColumn { table, column } => {
+			Operation::DropColumn { table, column, .. } => {
 				if let Some(model) = state.get_model_mut(app_label, table) {
 					model.remove_field(column);
 				}
@@ -1206,11 +1407,12 @@ impl Operation {
 				..
 			} => {
 				if let Some(model) = state.get_model_mut(app_label, table) {
-					let field = FieldState::new(
+					let mut field = FieldState::new(
 						column.to_string(),
 						new_definition.type_definition.clone(),
 						false,
 					);
+					field.generated = new_definition.generated.clone();
 					model.alter_field(column, field);
 				}
 			}
@@ -1270,8 +1472,12 @@ impl Operation {
 				}
 			}
 			Operation::AddConstraint { .. }
+			| Operation::AddConstraintRepair { .. }
+			| Operation::RestoreConstraintOnRollback { .. }
 			| Operation::DropConstraint { .. }
 			| Operation::CreateIndex { .. }
+			| Operation::CreateIndexRepair { .. }
+			| Operation::RestoreIndexOnRollback { .. }
 			| Operation::DropIndex { .. }
 			| Operation::RunSQL { .. }
 			| Operation::RunRust { .. }
@@ -1390,6 +1596,10 @@ impl Operation {
 			parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
 		}
 
+		if let Some(generated) = &col.generated {
+			parts.push(Self::generated_column_to_sql(generated, dialect).into());
+		}
+
 		// NOT NULL constraint
 		if col.not_null {
 			parts.push("NOT NULL".to_string().into());
@@ -1406,6 +1616,317 @@ impl Operation {
 		}
 
 		parts.join(" ")
+	}
+
+	fn generated_column_to_sql(
+		generated: &GeneratedColumnDefinition,
+		dialect: &SqlDialect,
+	) -> String {
+		if generated.storage == GeneratedStorage::Virtual
+			&& matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb)
+		{
+			panic!("PostgreSQL-compatible generated columns require STORED storage");
+		}
+
+		let expr_sql = if let Some(expr) = &generated.expr {
+			Self::schema_expr_to_sql(expr, dialect)
+		} else if let Some(raw_sql) = &generated.raw_sql {
+			raw_sql.clone()
+		} else {
+			panic!("generated columns require a typed expression or raw SQL body");
+		};
+
+		format!(
+			"GENERATED ALWAYS AS ({}) {}",
+			expr_sql,
+			generated.storage.as_str()
+		)
+	}
+
+	fn schema_expr_to_sql(expr: &SchemaExpr, dialect: &SqlDialect) -> String {
+		match expr {
+			SchemaExpr::Column(iden) => Self::quote_schema_identifier(&iden.to_string(), dialect),
+			SchemaExpr::Value(value) => value.to_sql_literal(),
+			SchemaExpr::Binary { left, op, right } => format!(
+				"({} {} {})",
+				Self::schema_expr_to_sql(left, dialect),
+				op.as_str(),
+				Self::schema_expr_to_sql(right, dialect)
+			),
+			SchemaExpr::Function { func, args } => match func {
+				SchemaFunc::Concat if args.is_empty() => "''".to_string(),
+				SchemaFunc::Concat if matches!(dialect, SqlDialect::Mysql) => format!(
+					"CONCAT({})",
+					args.iter()
+						.map(|arg| Self::schema_expr_to_sql(arg, dialect))
+						.collect::<Vec<_>>()
+						.join(", ")
+				),
+				SchemaFunc::Concat => args
+					.iter()
+					.map(|arg| Self::schema_expr_to_sql(arg, dialect))
+					.collect::<Vec<_>>()
+					.join(" || "),
+				SchemaFunc::Coalesce => format!(
+					"COALESCE({})",
+					args.iter()
+						.map(|arg| Self::schema_expr_to_sql(arg, dialect))
+						.collect::<Vec<_>>()
+						.join(", ")
+				),
+				_ => panic!("unsupported generated-column schema function"),
+			},
+			SchemaExpr::Cast { expr, ty } => format!(
+				"CAST({} AS {})",
+				Self::schema_expr_to_sql(expr, dialect),
+				Self::query_column_type_to_cast_sql(ty, dialect)
+			),
+			_ => panic!("unsupported generated-column schema expression"),
+		}
+	}
+
+	fn quote_schema_identifier(ident: &str, dialect: &SqlDialect) -> String {
+		if matches!(dialect, SqlDialect::Mysql) {
+			format!("`{}`", ident.replace('`', "``"))
+		} else {
+			quote_identifier(ident).to_string()
+		}
+	}
+
+	fn query_column_type_to_sql(ty: &QueryColumnType, dialect: &SqlDialect) -> String {
+		match ty {
+			QueryColumnType::Char(len) => format!("CHAR({})", len.unwrap_or(1)),
+			QueryColumnType::String(Some(len)) if matches!(dialect, SqlDialect::Mysql) => {
+				format!("CHAR({len})")
+			}
+			QueryColumnType::String(Some(len)) => format!("VARCHAR({len})"),
+			QueryColumnType::String(None) if matches!(dialect, SqlDialect::Mysql) => {
+				"CHAR".to_string()
+			}
+			QueryColumnType::String(None) => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"VARCHAR".to_string()
+				}
+			}
+			QueryColumnType::Text => "TEXT".to_string(),
+			QueryColumnType::Integer => {
+				if matches!(dialect, SqlDialect::Mysql) {
+					"INT".to_string()
+				} else {
+					"INTEGER".to_string()
+				}
+			}
+			QueryColumnType::BigInteger => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"INTEGER".to_string()
+				} else {
+					"BIGINT".to_string()
+				}
+			}
+			QueryColumnType::SmallInteger => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"INTEGER".to_string()
+				} else {
+					"SMALLINT".to_string()
+				}
+			}
+			QueryColumnType::TinyInteger => {
+				if matches!(dialect, SqlDialect::Mysql) {
+					"TINYINT".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"INTEGER".to_string()
+				} else {
+					"SMALLINT".to_string()
+				}
+			}
+			QueryColumnType::Float => {
+				if matches!(dialect, SqlDialect::Mysql) {
+					"FLOAT".to_string()
+				} else {
+					"REAL".to_string()
+				}
+			}
+			QueryColumnType::Double => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"DOUBLE PRECISION".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"REAL".to_string()
+				} else {
+					"DOUBLE".to_string()
+				}
+			}
+			QueryColumnType::Decimal(Some((precision, scale))) => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					format!("NUMERIC({precision}, {scale})")
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"REAL".to_string()
+				} else {
+					format!("DECIMAL({precision}, {scale})")
+				}
+			}
+			QueryColumnType::Decimal(None) => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"NUMERIC".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"REAL".to_string()
+				} else {
+					"DECIMAL".to_string()
+				}
+			}
+			QueryColumnType::Boolean => {
+				if matches!(dialect, SqlDialect::Mysql) {
+					"TINYINT(1)".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"INTEGER".to_string()
+				} else {
+					"BOOLEAN".to_string()
+				}
+			}
+			QueryColumnType::Date => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"DATE".to_string()
+				}
+			}
+			QueryColumnType::Time => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"TIME".to_string()
+				}
+			}
+			QueryColumnType::DateTime => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"TIMESTAMP".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"DATETIME".to_string()
+				}
+			}
+			QueryColumnType::Timestamp => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"INTEGER".to_string()
+				} else {
+					"TIMESTAMP".to_string()
+				}
+			}
+			QueryColumnType::TimestampWithTimeZone => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"TIMESTAMP WITH TIME ZONE".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"TIMESTAMP".to_string()
+				}
+			}
+			QueryColumnType::Binary(Some(len)) => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"BYTEA".to_string()
+				} else {
+					format!("BLOB({len})")
+				}
+			}
+			QueryColumnType::Binary(None) => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"BYTEA".to_string()
+				} else {
+					"BLOB".to_string()
+				}
+			}
+			QueryColumnType::VarBinary(len) => {
+				if matches!(dialect, SqlDialect::Mysql) {
+					format!("VARBINARY({len})")
+				} else if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"BYTEA".to_string()
+				} else {
+					format!("BLOB({len})")
+				}
+			}
+			QueryColumnType::Blob => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"BYTEA".to_string()
+				} else {
+					"BLOB".to_string()
+				}
+			}
+			QueryColumnType::Uuid => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"UUID".to_string()
+				} else if matches!(dialect, SqlDialect::Mysql) {
+					"CHAR(36)".to_string()
+				} else {
+					"TEXT".to_string()
+				}
+			}
+			QueryColumnType::Json => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"JSON".to_string()
+				}
+			}
+			QueryColumnType::JsonBinary => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"JSONB".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"JSON".to_string()
+				}
+			}
+			QueryColumnType::Array(inner) => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					format!("{}[]", Self::query_column_type_to_sql(inner, dialect))
+				} else if matches!(dialect, SqlDialect::Mysql) {
+					"JSON".to_string()
+				} else {
+					"TEXT".to_string()
+				}
+			}
+			QueryColumnType::Custom(custom) => custom.clone(),
+			_ => panic!("unsupported generated-column cast column type"),
+		}
+	}
+
+	fn query_column_type_to_cast_sql(ty: &QueryColumnType, dialect: &SqlDialect) -> String {
+		if !matches!(dialect, SqlDialect::Mysql) {
+			return Self::query_column_type_to_sql(ty, dialect);
+		}
+
+		match ty {
+			QueryColumnType::Char(len) => format!("CHAR({})", len.unwrap_or(1)),
+			QueryColumnType::String(Some(len)) => format!("CHAR({len})"),
+			QueryColumnType::String(None) | QueryColumnType::Text => "CHAR".to_string(),
+			QueryColumnType::TinyInteger
+			| QueryColumnType::SmallInteger
+			| QueryColumnType::Integer
+			| QueryColumnType::BigInteger => "SIGNED".to_string(),
+			QueryColumnType::Float => "FLOAT".to_string(),
+			QueryColumnType::Double => "DOUBLE".to_string(),
+			QueryColumnType::Decimal(Some((precision, scale))) => {
+				format!("DECIMAL({precision}, {scale})")
+			}
+			QueryColumnType::Decimal(None) => "DECIMAL".to_string(),
+			QueryColumnType::Boolean => "UNSIGNED".to_string(),
+			QueryColumnType::Date => "DATE".to_string(),
+			QueryColumnType::Time => "TIME".to_string(),
+			QueryColumnType::DateTime
+			| QueryColumnType::Timestamp
+			| QueryColumnType::TimestampWithTimeZone => "DATETIME".to_string(),
+			QueryColumnType::Binary(Some(len)) => format!("BINARY({len})"),
+			QueryColumnType::Binary(None) | QueryColumnType::Blob => "BINARY".to_string(),
+			QueryColumnType::VarBinary(len) => format!("BINARY({len})"),
+			QueryColumnType::Uuid => "CHAR(36)".to_string(),
+			QueryColumnType::Json | QueryColumnType::JsonBinary | QueryColumnType::Array(_) => {
+				"JSON".to_string()
+			}
+			QueryColumnType::Custom(custom) => custom.clone(),
+			_ => panic!("unsupported generated-column cast column type"),
+		}
 	}
 
 	/// Generate column SQL with all constraints
@@ -1494,6 +2015,10 @@ impl Operation {
 			parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
 		}
 
+		if let Some(generated) = &col.generated {
+			parts.push(Self::generated_column_to_sql(generated, dialect).into());
+		}
+
 		// NOT NULL constraint
 		if col.not_null {
 			parts.push("NOT NULL".to_string().into());
@@ -1528,6 +2053,8 @@ impl Operation {
 				interleave_in_parent,
 				partition,
 			} => {
+				Self::validate_postgres_generated_column_dependencies(columns, dialect);
+
 				// Detect composite primary key
 				let pk_columns: Vec<&String> = columns
 					.iter()
@@ -1615,6 +2142,15 @@ impl Operation {
 				column,
 				mysql_options,
 			} => {
+				if matches!(dialect, SqlDialect::Sqlite)
+					&& column
+						.generated
+						.as_ref()
+						.is_some_and(|generated| generated.storage == GeneratedStorage::Stored)
+				{
+					panic!("SQLite ADD COLUMN does not support stored generated columns");
+				}
+
 				let base_sql = format!(
 					"ALTER TABLE {} ADD COLUMN {}",
 					quote_identifier(table),
@@ -1633,7 +2169,7 @@ impl Operation {
 
 				format!("{};", base_sql)
 			}
-			Operation::DropColumn { table, column } => {
+			Operation::DropColumn { table, column, .. } => {
 				format!(
 					"ALTER TABLE {} DROP COLUMN {};",
 					quote_identifier(table),
@@ -1725,12 +2261,19 @@ impl Operation {
 			Operation::AddConstraint {
 				table,
 				constraint_sql,
+			}
+			| Operation::AddConstraintRepair {
+				table,
+				constraint_sql,
 			} => {
 				format!(
 					"ALTER TABLE {} ADD {};",
 					quote_identifier(table),
 					constraint_sql
 				)
+			}
+			Operation::RestoreConstraintOnRollback { .. } => {
+				"-- rollback-only generated-column constraint restore".to_string()
 			}
 			Operation::DropConstraint {
 				table,
@@ -1744,6 +2287,18 @@ impl Operation {
 			}
 			Operation::CreateIndex {
 				table,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			}
+			| Operation::CreateIndexRepair {
+				table,
+				name: _,
 				columns,
 				unique,
 				index_type,
@@ -1806,7 +2361,12 @@ impl Operation {
 						(content, columns.join("_"))
 					};
 
-				let idx_name = format!("idx_{}_{}", table, name_suffix);
+				let idx_name = match self {
+					Operation::CreateIndexRepair {
+						name: Some(name), ..
+					} => name.clone(),
+					_ => format!("idx_{}_{}", table, name_suffix),
+				};
 
 				// Index type clause (USING type) - PostgreSQL, CockroachDB
 				let using_clause = match (index_type, dialect) {
@@ -1882,6 +2442,9 @@ impl Operation {
 
 				sql.push(';');
 				sql
+			}
+			Operation::RestoreIndexOnRollback { .. } => {
+				"-- rollback-only generated-column index restore".to_string()
 			}
 			Operation::DropIndex { table, columns } => {
 				let idx_name = format!("idx_{}_{}", table, columns.join("_"));
@@ -2469,6 +3032,33 @@ impl Operation {
 				};
 				Ok(Some(vec![sql]))
 			}
+			Operation::CreateIndexRepair { .. } => Ok(None),
+			Operation::RestoreIndexOnRollback {
+				table,
+				name,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			} => Ok(Some(vec![
+				Operation::CreateIndexRepair {
+					table: table.clone(),
+					name: name.clone(),
+					columns: columns.clone(),
+					unique: *unique,
+					index_type: *index_type,
+					where_clause: where_clause.clone(),
+					concurrently: *concurrently,
+					expressions: expressions.clone(),
+					mysql_options: *mysql_options,
+					operator_class: operator_class.clone(),
+				}
+				.to_sql(dialect),
+			])),
 			Operation::AddConstraint {
 				table,
 				constraint_sql,
@@ -2488,22 +3078,43 @@ impl Operation {
 					quote_identifier(&constraint_name)
 				)]))
 			}
-			// Phase 2: Complex reverse operations using ProjectState
-			Operation::DropColumn { table, column } => {
-				// Retrieve original column definition from ProjectState
-				if let Some(model) = project_state.find_model_by_table(table)
-					&& let Some(field) = model.get_field(column)
-				{
-					let col_def = ColumnDefinition::from_field_state(column.clone(), field);
-					let col_sql = Self::column_to_sql(&col_def, dialect);
-					return Ok(Some(vec![format!(
-						"ALTER TABLE {} ADD COLUMN {};",
-						quote_identifier(table),
-						col_sql
-					)]));
+			Operation::AddConstraintRepair { .. } => Ok(None),
+			Operation::RestoreConstraintOnRollback {
+				table,
+				constraint_sql,
+			} => Ok(Some(vec![
+				Operation::AddConstraint {
+					table: table.clone(),
+					constraint_sql: constraint_sql.clone(),
 				}
-				// Cannot reconstruct without state
-				Ok(None)
+				.to_sql(dialect),
+			])),
+			// Phase 2: Complex reverse operations using ProjectState
+			Operation::DropColumn {
+				table,
+				column,
+				old_definition,
+			} => {
+				// Prefer the explicit definition carried by replacement-style
+				// migrations; fall back to ProjectState for legacy migrations.
+				let resolved_old_def = old_definition.clone().or_else(|| {
+					project_state
+						.find_model_by_table(table)
+						.and_then(|model| model.get_field(column))
+						.map(|field| ColumnDefinition::from_field_state(column.clone(), field))
+				});
+
+				let Some(old_def) = resolved_old_def else {
+					// Cannot reconstruct without state
+					return Ok(None);
+				};
+
+				let col_sql = Self::column_to_sql(&old_def, dialect);
+				Ok(Some(vec![format!(
+					"ALTER TABLE {} ADD COLUMN {};",
+					quote_identifier(table),
+					col_sql
+				)]))
 			}
 			Operation::AlterColumn {
 				table,
@@ -2630,7 +3241,9 @@ impl Operation {
 					let mut parts = Vec::new();
 
 					// Convert fields to column definitions
-					for (field_name, field) in &model.fields {
+					for (field_name, field) in
+						Self::order_model_fields_by_generated_dependencies(model)
+					{
 						let col_def = ColumnDefinition::from_field_state(field_name.clone(), field);
 						parts.push(format!("  {}", Self::column_to_sql(&col_def, dialect)));
 					}
@@ -2714,6 +3327,7 @@ impl Operation {
 			Operation::DropColumn {
 				table: _,
 				column: _,
+				..
 			} => {
 				// Cannot reconstruct column definition without snapshot.
 				// For proper rollback, use to_reverse_sql with pre-operation ProjectState.
@@ -2802,6 +3416,9 @@ pub struct ColumnDefinition {
 	#[serde(default)]
 	/// The default.
 	pub default: Option<String>,
+	#[serde(default)]
+	/// Generated-column metadata.
+	pub generated: Option<GeneratedColumnDefinition>,
 }
 
 impl ColumnDefinition {
@@ -2815,6 +3432,7 @@ impl ColumnDefinition {
 			primary_key: false,
 			auto_increment: false,
 			default: None,
+			generated: None,
 		}
 	}
 
@@ -2875,6 +3493,7 @@ impl ColumnDefinition {
 			.unwrap_or(false);
 
 		let default = params.get("default").cloned();
+		let generated = field_state.generated.clone();
 
 		// Resolve ForeignKey column type from the referenced model's primary
 		// key in the global `ModelRegistry`. This addresses the macro-level
@@ -2899,7 +3518,267 @@ impl ColumnDefinition {
 			primary_key,
 			auto_increment,
 			default,
+			generated,
 		}
+	}
+}
+
+/// Generated-column metadata for migration operations.
+#[derive(Debug, Clone)]
+pub struct GeneratedColumnDefinition {
+	/// Runtime typed generated expression.
+	pub expr: Option<Box<SchemaExpr>>,
+	/// Canonical Rust tokens used when writing migration files.
+	pub expr_tokens: Option<String>,
+	/// Explicit backend-specific raw SQL body.
+	pub raw_sql: Option<String>,
+	/// Generated-column storage mode.
+	pub storage: GeneratedStorage,
+}
+
+impl PartialEq for GeneratedColumnDefinition {
+	fn eq(&self, other: &Self) -> bool {
+		self.eq_with_dialect(other, None)
+	}
+}
+
+impl GeneratedColumnDefinition {
+	pub(crate) fn eq_for_dialect(&self, other: &Self, dialect: &SqlDialect) -> bool {
+		self.eq_with_dialect(other, Some(dialect))
+	}
+
+	fn eq_with_dialect(&self, other: &Self, dialect: Option<&SqlDialect>) -> bool {
+		if self.storage != other.storage {
+			return false;
+		}
+
+		match (self.typed_expr(), other.typed_expr()) {
+			(Some(left), Some(right)) => left == right,
+			(Some(left), None) => other
+				.raw_sql
+				.as_deref()
+				.is_some_and(|raw_sql| Self::typed_expr_matches_raw_sql(&left, raw_sql, dialect)),
+			(None, Some(right)) => self
+				.raw_sql
+				.as_deref()
+				.is_some_and(|raw_sql| Self::typed_expr_matches_raw_sql(&right, raw_sql, dialect)),
+			(None, None) => match (self.raw_sql.as_deref(), other.raw_sql.as_deref()) {
+				(Some(left), Some(right)) => Self::raw_sql_matches(left, right),
+				_ => self.expr_tokens == other.expr_tokens && self.expr == other.expr,
+			},
+		}
+	}
+
+	/// Create a typed generated-column definition.
+	pub fn typed(
+		expr: SchemaExpr,
+		expr_tokens: impl Into<String>,
+		storage: GeneratedStorage,
+	) -> Self {
+		Self {
+			expr: Some(Box::new(expr)),
+			expr_tokens: Some(expr_tokens.into()),
+			raw_sql: None,
+			storage,
+		}
+	}
+
+	pub(crate) fn typed_expr(&self) -> Option<SchemaExpr> {
+		self.expr.as_deref().cloned().or_else(|| {
+			self.expr_tokens
+				.as_deref()
+				.and_then(super::ast_parser::parse_schema_expr_tokens)
+		})
+	}
+
+	fn raw_sql_matches(left: &str, right: &str) -> bool {
+		normalize_generated_expression_sql(left) == normalize_generated_expression_sql(right)
+	}
+
+	fn typed_expr_matches_raw_sql(
+		expr: &SchemaExpr,
+		raw_sql: &str,
+		dialect: Option<&SqlDialect>,
+	) -> bool {
+		let normalized_raw_sql = normalize_generated_expression_sql(raw_sql);
+		if let Some(dialect) = dialect {
+			return normalize_generated_expression_sql(&Operation::schema_expr_to_sql(
+				expr, dialect,
+			)) == normalized_raw_sql;
+		}
+
+		[
+			SqlDialect::Postgres,
+			SqlDialect::Sqlite,
+			SqlDialect::Mysql,
+			SqlDialect::Cockroachdb,
+		]
+		.iter()
+		.any(|dialect| {
+			normalize_generated_expression_sql(&Operation::schema_expr_to_sql(expr, dialect))
+				== normalized_raw_sql
+		})
+	}
+
+	fn rehydrate_expr_from_tokens(&mut self) {
+		if self.expr.is_none() {
+			self.expr = self.typed_expr().map(Box::new);
+		}
+	}
+
+	/// Create an explicit raw-SQL generated-column definition.
+	pub fn raw_sql(sql: impl Into<String>, storage: GeneratedStorage) -> Self {
+		Self {
+			expr: None,
+			expr_tokens: None,
+			raw_sql: Some(sql.into()),
+			storage,
+		}
+	}
+
+	/// Convert to the query-layer generated-column metadata.
+	pub fn to_query_generated(&self) -> Option<GeneratedColumn> {
+		if let Some(expr) = self.typed_expr() {
+			Some(GeneratedColumn::typed(expr, self.storage))
+		} else {
+			self.raw_sql
+				.as_ref()
+				.map(|sql| GeneratedColumn::raw_sql(sql.clone(), self.storage))
+		}
+	}
+}
+
+fn normalize_generated_expression_sql(sql: &str) -> String {
+	let sql = strip_balanced_outer_parens(sql.trim());
+	let mut normalized = String::new();
+	let mut chars = sql.chars().peekable();
+	let mut in_string = false;
+
+	while let Some(ch) = chars.next() {
+		if in_string {
+			normalized.push(ch);
+			if ch == '\'' {
+				if matches!(chars.peek().copied(), Some('\'')) {
+					if let Some(escaped_quote) = chars.next() {
+						normalized.push(escaped_quote);
+					}
+				} else {
+					in_string = false;
+				}
+			}
+			continue;
+		}
+
+		match ch {
+			'\'' => {
+				in_string = true;
+				normalized.push(ch);
+			}
+			'"' | '`' => {}
+			character if character.is_ascii_whitespace() => {}
+			character => normalized.push(character.to_ascii_lowercase()),
+		}
+	}
+
+	normalized
+}
+
+fn strip_balanced_outer_parens(mut sql: &str) -> &str {
+	loop {
+		let trimmed = sql.trim();
+		if trimmed.len() < 2 || !trimmed.starts_with('(') || !trimmed.ends_with(')') {
+			return trimmed;
+		}
+		if !outer_parens_wrap_expression(trimmed) {
+			return trimmed;
+		}
+		sql = &trimmed[1..trimmed.len() - 1];
+	}
+}
+
+fn outer_parens_wrap_expression(sql: &str) -> bool {
+	let mut depth = 0usize;
+	let mut in_string = false;
+	let mut chars = sql.char_indices().peekable();
+
+	while let Some((index, ch)) = chars.next() {
+		if in_string {
+			if ch == '\'' {
+				if chars
+					.peek()
+					.is_some_and(|(_, escaped_quote)| *escaped_quote == '\'')
+				{
+					chars.next();
+				} else {
+					in_string = false;
+				}
+			}
+			continue;
+		}
+
+		match ch {
+			'\'' => in_string = true,
+			'(' => depth += 1,
+			')' => {
+				depth = depth.saturating_sub(1);
+				if depth == 0 && index < sql.len() - 1 {
+					return false;
+				}
+			}
+			_ => {}
+		}
+	}
+
+	depth == 0
+}
+
+impl Serialize for GeneratedColumnDefinition {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		let mut state = serializer.serialize_struct("GeneratedColumnDefinition", 3)?;
+		state.serialize_field("expr_tokens", &self.expr_tokens)?;
+		state.serialize_field("raw_sql", &self.raw_sql)?;
+		let storage = match self.storage {
+			GeneratedStorage::Stored => "stored",
+			GeneratedStorage::Virtual => "virtual",
+			_ => "stored",
+		};
+		state.serialize_field("storage", storage)?;
+		state.end()
+	}
+}
+
+impl<'de> Deserialize<'de> for GeneratedColumnDefinition {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		struct Helper {
+			#[serde(default)]
+			expr_tokens: Option<String>,
+			#[serde(default)]
+			raw_sql: Option<String>,
+			storage: String,
+		}
+
+		let helper = Helper::deserialize(deserializer)?;
+		let storage = match helper.storage.as_str() {
+			"stored" | "Stored" | "STORED" => GeneratedStorage::Stored,
+			"virtual" | "Virtual" | "VIRTUAL" => GeneratedStorage::Virtual,
+			_ => GeneratedStorage::Stored,
+		};
+
+		let mut definition = Self {
+			expr: None,
+			expr_tokens: helper.expr_tokens,
+			raw_sql: helper.raw_sql,
+			storage,
+		};
+		definition.rehydrate_expr_from_tokens();
+		Ok(definition)
 	}
 }
 
@@ -3179,11 +4058,86 @@ pub struct SqliteTableRecreation {
 	pub constraints: Vec<Constraint>,
 	/// Raw constraint SQL strings (for AddConstraint operations)
 	pub raw_constraint_sqls: Vec<String>,
+	/// Indexes to recreate after the table rename
+	pub indexes: Vec<SqliteRecreatedIndex>,
 	/// WITHOUT ROWID option
 	pub without_rowid: bool,
 }
 
+/// SQLite index metadata preserved across table recreation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SqliteRecreatedIndex {
+	/// Index name
+	pub name: String,
+	/// Indexed columns
+	pub columns: Vec<String>,
+	/// Whether the index is unique
+	pub unique: bool,
+	/// Original CREATE INDEX SQL from sqlite_master.
+	pub sql: Option<String>,
+}
+
+impl SqliteRecreatedIndex {
+	fn normalized_sql(&self) -> Option<String> {
+		let mut sql = self.sql.as_ref()?.trim().trim_end_matches(';').to_string();
+		sql.push(';');
+		Some(sql)
+	}
+
+	fn references_column(&self, column_name: &str) -> bool {
+		self.columns.iter().any(|column| column == column_name)
+			|| self
+				.sql
+				.as_deref()
+				.is_some_and(|sql| sqlite_sql_references_identifier(sql, column_name))
+	}
+}
+
+fn sqlite_sql_references_identifier(sql: &str, identifier: &str) -> bool {
+	let unquoted = identifier.to_ascii_lowercase();
+	let double_quoted = format!("\"{}\"", identifier).to_ascii_lowercase();
+	let bracket_quoted = format!("[{}]", identifier).to_ascii_lowercase();
+	let backtick_quoted = format!("`{}`", identifier).to_ascii_lowercase();
+	let sql = sql.to_ascii_lowercase();
+	sql.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+		.any(|token| token == unquoted)
+		|| sql.contains(&double_quoted)
+		|| sql.contains(&bracket_quoted)
+		|| sql.contains(&backtick_quoted)
+}
+
 impl SqliteTableRecreation {
+	fn columns_to_copy(columns: &[ColumnDefinition]) -> Vec<String> {
+		columns
+			.iter()
+			.filter(|column| column.generated.is_none())
+			.map(|column| column.name.to_string())
+			.collect()
+	}
+
+	/// Create a new table recreation for adding a column.
+	pub fn for_add_column(
+		table_name: impl Into<String>,
+		current_columns: Vec<ColumnDefinition>,
+		column_to_add: ColumnDefinition,
+		current_constraints: Vec<Constraint>,
+	) -> Self {
+		let table_name = table_name.into();
+		let columns_to_copy = Self::columns_to_copy(&current_columns);
+		let mut new_columns = current_columns;
+		new_columns.push(column_to_add);
+
+		Self {
+			table_name,
+			new_columns,
+			columns_to_copy,
+			constraints: current_constraints,
+			raw_constraint_sqls: Vec::new(),
+			indexes: Vec::new(),
+			without_rowid: false,
+		}
+	}
+
 	/// Create a new table recreation for dropping a column
 	pub fn for_drop_column(
 		table_name: impl Into<String>,
@@ -3196,7 +4150,7 @@ impl SqliteTableRecreation {
 			.into_iter()
 			.filter(|c| c.name != column_to_drop)
 			.collect();
-		let columns_to_copy: Vec<_> = new_columns.iter().map(|c| c.name.to_string()).collect();
+		let columns_to_copy = Self::columns_to_copy(&new_columns);
 
 		// Filter out constraints that reference the dropped column
 		let constraints: Vec<_> = current_constraints
@@ -3210,6 +4164,7 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints,
 			raw_constraint_sqls: Vec::new(),
+			indexes: Vec::new(),
 			without_rowid: false,
 		}
 	}
@@ -3233,7 +4188,7 @@ impl SqliteTableRecreation {
 				}
 			})
 			.collect();
-		let columns_to_copy: Vec<_> = new_columns.iter().map(|c| c.name.to_string()).collect();
+		let columns_to_copy = Self::columns_to_copy(&new_columns);
 
 		Self {
 			table_name,
@@ -3241,6 +4196,7 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints: current_constraints,
 			raw_constraint_sqls: Vec::new(),
+			indexes: Vec::new(),
 			without_rowid: false,
 		}
 	}
@@ -3256,7 +4212,7 @@ impl SqliteTableRecreation {
 		constraint_sql: String,
 	) -> Self {
 		let table_name = table_name.into();
-		let columns_to_copy: Vec<_> = current_columns.iter().map(|c| c.name.to_string()).collect();
+		let columns_to_copy = Self::columns_to_copy(&current_columns);
 
 		Self {
 			table_name,
@@ -3264,6 +4220,7 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints: current_constraints,
 			raw_constraint_sqls: vec![constraint_sql],
+			indexes: Vec::new(),
 			without_rowid: false,
 		}
 	}
@@ -3279,7 +4236,7 @@ impl SqliteTableRecreation {
 		constraint_name: &str,
 	) -> Self {
 		let table_name = table_name.into();
-		let columns_to_copy: Vec<_> = current_columns.iter().map(|c| c.name.to_string()).collect();
+		let columns_to_copy = Self::columns_to_copy(&current_columns);
 
 		// Filter out the constraint by name
 		let constraints: Vec<_> = current_constraints
@@ -3293,8 +4250,22 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints,
 			raw_constraint_sqls: Vec::new(),
+			indexes: Vec::new(),
 			without_rowid: false,
 		}
+	}
+
+	/// Adds indexes that should be recreated after the replacement table is renamed.
+	pub fn with_indexes(mut self, indexes: Vec<SqliteRecreatedIndex>) -> Self {
+		self.indexes = indexes;
+		self
+	}
+
+	/// Removes indexes that reference a column no longer present in the replacement table.
+	pub fn without_indexes_referencing(mut self, column_name: &str) -> Self {
+		self.indexes
+			.retain(|index| !index.references_column(column_name));
+		self
 	}
 
 	/// Generate the 4-step SQL statements for table recreation
@@ -3333,8 +4304,8 @@ impl SqliteTableRecreation {
 			.collect::<Vec<_>>()
 			.join(", ");
 		let insert_sql = format!(
-			"INSERT INTO \"{}\" SELECT {} FROM \"{}\";",
-			temp_table, columns_list, self.table_name
+			"INSERT INTO \"{}\" ({}) SELECT {} FROM \"{}\";",
+			temp_table, columns_list, columns_list, self.table_name
 		);
 
 		// Step 3: Drop old table
@@ -3346,7 +4317,25 @@ impl SqliteTableRecreation {
 			temp_table, self.table_name
 		);
 
-		vec![create_sql, insert_sql, drop_sql, rename_sql]
+		let mut statements = vec![create_sql, insert_sql, drop_sql, rename_sql];
+		for index in &self.indexes {
+			if let Some(sql) = index.normalized_sql() {
+				statements.push(sql);
+				continue;
+			}
+			let unique = if index.unique { "UNIQUE " } else { "" };
+			let columns = index
+				.columns
+				.iter()
+				.map(|column| format!("\"{}\"", column))
+				.collect::<Vec<_>>()
+				.join(", ");
+			statements.push(format!(
+				"CREATE {unique}INDEX \"{}\" ON \"{}\" ({});",
+				index.name, self.table_name, columns
+			));
+		}
+		statements
 	}
 
 	/// Check if a constraint references a specific column
@@ -3386,7 +4375,15 @@ impl Operation {
 			Operation::DropColumn { .. }
 				| Operation::AlterColumn { .. }
 				| Operation::AddConstraint { .. }
+				| Operation::AddConstraintRepair { .. }
 				| Operation::DropConstraint { .. }
+		) || matches!(
+			self,
+			Operation::AddColumn { column, .. }
+				if column
+					.generated
+					.as_ref()
+					.is_some_and(|generated| generated.storage == GeneratedStorage::Stored)
 		)
 	}
 
@@ -3407,11 +4404,22 @@ impl Operation {
 			// AddColumn → Reverse DropColumn (requires recreation)
 			Operation::AddColumn { .. }
 				// AlterColumn → Reverse AlterColumn (requires recreation)
-				| Operation::AlterColumn { .. }
-				// AddConstraint → Reverse DropConstraint (requires recreation)
-				| Operation::AddConstraint { .. }
-				// DropConstraint → Reverse AddConstraint (requires recreation)
-				| Operation::DropConstraint { .. }
+					| Operation::AlterColumn { .. }
+					// AddConstraint → Reverse DropConstraint (requires recreation)
+					| Operation::AddConstraint { .. }
+					// DropConstraint → Reverse AddConstraint (requires recreation)
+					| Operation::DropConstraint { .. }
+					// RestoreConstraintOnRollback → Reverse AddConstraint (requires recreation)
+					| Operation::RestoreConstraintOnRollback { .. }
+		) || matches!(
+			self,
+			Operation::DropColumn {
+				old_definition: Some(old_definition),
+				..
+			} if old_definition
+				.generated
+				.as_ref()
+				.is_some_and(|generated| generated.storage == GeneratedStorage::Stored)
 		)
 	}
 
@@ -3441,13 +4449,13 @@ impl Operation {
 			Operation::DropTable { name } => {
 				// Reconstruct CreateTable from ProjectState
 				if let Some(model) = project_state.find_model_by_table(name) {
-					let columns: Vec<ColumnDefinition> = model
-						.fields
-						.iter()
-						.map(|(field_name, field)| {
-							ColumnDefinition::from_field_state(field_name.clone(), field)
-						})
-						.collect();
+					let columns: Vec<ColumnDefinition> =
+						Self::order_model_fields_by_generated_dependencies(model)
+							.into_iter()
+							.map(|(field_name, field)| {
+								ColumnDefinition::from_field_state(field_name.clone(), field)
+							})
+							.collect();
 					let constraints: Vec<Constraint> = model
 						.constraints
 						.iter()
@@ -3467,13 +4475,23 @@ impl Operation {
 			Operation::AddColumn { table, column, .. } => Ok(Some(Operation::DropColumn {
 				table: table.clone(),
 				column: column.name.clone(),
+				old_definition: None,
 			})),
-			Operation::DropColumn { table, column } => {
-				// Reconstruct AddColumn from ProjectState
-				if let Some(model) = project_state.find_model_by_table(table)
-					&& let Some(field) = model.get_field(column)
-				{
-					let col_def = ColumnDefinition::from_field_state(column.clone(), field);
+			Operation::DropColumn {
+				table,
+				column,
+				old_definition,
+			} => {
+				// Prefer the explicit definition carried by replacement-style
+				// migrations; fall back to ProjectState for legacy migrations.
+				let resolved_old_def = old_definition.clone().or_else(|| {
+					project_state
+						.find_model_by_table(table)
+						.and_then(|model| model.get_field(column))
+						.map(|field| ColumnDefinition::from_field_state(column.clone(), field))
+				});
+
+				if let Some(col_def) = resolved_old_def {
 					return Ok(Some(Operation::AddColumn {
 						table: table.clone(),
 						column: col_def,
@@ -3526,6 +4544,14 @@ impl Operation {
 					constraint_sql
 				)))
 			}
+			Operation::AddConstraintRepair { .. } => Ok(None),
+			Operation::RestoreConstraintOnRollback {
+				table,
+				constraint_sql,
+			} => Ok(Some(Operation::AddConstraint {
+				table: table.clone(),
+				constraint_sql: constraint_sql.clone(),
+			})),
 			Operation::DropConstraint {
 				table,
 				constraint_name,
@@ -3562,6 +4588,9 @@ impl Operation {
 				table: table.clone(),
 				columns: columns.clone(),
 			})),
+			Operation::CreateIndexRepair { .. } | Operation::RestoreIndexOnRollback { .. } => {
+				Ok(None)
+			}
 			Operation::DropIndex { table, columns } => {
 				// Basic index recreation (without advanced properties)
 				// Note: Cannot determine if the original index was unique from DropIndex alone
@@ -3700,7 +4729,7 @@ impl Operation {
 			Operation::AddColumn { table, column, .. } => {
 				OperationStatement::TableAlter(self.build_add_column(table, column))
 			}
-			Operation::DropColumn { table, column } => {
+			Operation::DropColumn { table, column, .. } => {
 				OperationStatement::TableAlter(self.build_drop_column(table, column))
 			}
 			Operation::AlterColumn {
@@ -3730,6 +4759,10 @@ impl Operation {
 			Operation::AddConstraint {
 				table,
 				constraint_sql,
+			}
+			| Operation::AddConstraintRepair {
+				table,
+				constraint_sql,
 			} => {
 				// NOTE: constraint_sql validation is the caller's responsibility
 				OperationStatement::RawSql(format!(
@@ -3738,6 +4771,9 @@ impl Operation {
 					constraint_sql
 				))
 			}
+			Operation::RestoreConstraintOnRollback { .. } => OperationStatement::RawSql(
+				"-- rollback-only generated-column constraint restore".to_string(),
+			),
 			Operation::DropConstraint {
 				table,
 				constraint_name,
@@ -3751,12 +4787,21 @@ impl Operation {
 				columns,
 				unique,
 				..
+			}
+			| Operation::CreateIndexRepair {
+				table,
+				columns,
+				unique,
+				..
 			} => {
 				let idx_name = format!("idx_{}_{}", table, columns.join("_"));
 				OperationStatement::IndexCreate(
 					self.build_create_index(&idx_name, table, columns, *unique),
 				)
 			}
+			Operation::RestoreIndexOnRollback { .. } => OperationStatement::RawSql(
+				"-- rollback-only generated-column index restore".to_string(),
+			),
 			Operation::DropIndex { table, columns } => {
 				let idx_name = format!("idx_{}_{}", table, columns.join("_"));
 				OperationStatement::IndexDrop(self.build_drop_index(&idx_name))
@@ -3986,6 +5031,9 @@ impl Operation {
 			if let Some(default) = &col.default {
 				column = column.default(SimpleExpr::from(self.convert_default_value(default)));
 			}
+			if let Some(generated) = &col.generated {
+				column = self.apply_generated_column(column, generated);
+			}
 
 			stmt.col(column);
 		}
@@ -4095,6 +5143,9 @@ impl Operation {
 		if let Some(default) = &column.default {
 			col_def = col_def.default(SimpleExpr::from(self.convert_default_value(default)));
 		}
+		if let Some(generated) = &column.generated {
+			col_def = self.apply_generated_column(col_def, generated);
+		}
 
 		stmt.add_column(col_def);
 		stmt.to_owned()
@@ -4123,6 +5174,9 @@ impl Operation {
 
 		if new_definition.not_null {
 			col_def = col_def.not_null(true);
+		}
+		if let Some(generated) = &new_definition.generated {
+			col_def = self.apply_generated_column(col_def, generated);
 		}
 
 		stmt.modify_column(col_def);
@@ -4239,6 +5293,23 @@ impl Operation {
 		}
 	}
 
+	/// Apply generated-column metadata to a query column definition.
+	fn apply_generated_column(
+		&self,
+		col_def: ColumnDef,
+		generated: &GeneratedColumnDefinition,
+	) -> ColumnDef {
+		if let Some(query_generated) = generated.to_query_generated() {
+			match (query_generated.expr, query_generated.raw_sql) {
+				(Some(expr), None) => col_def.generated(expr, query_generated.storage),
+				(None, Some(raw_sql)) => col_def.generated_sql(raw_sql, query_generated.storage),
+				_ => col_def,
+			}
+		} else {
+			col_def
+		}
+	}
+
 	/// Convert default value string to `reinhardt_query::prelude::Value`
 	fn convert_default_value(&self, default: &str) -> Value {
 		let trimmed = default.trim();
@@ -4346,7 +5417,7 @@ impl MigrationOperation for Operation {
 				table.to_lowercase(),
 				column.name.to_lowercase()
 			)),
-			Operation::DropColumn { table, column } => Some(format!(
+			Operation::DropColumn { table, column, .. } => Some(format!(
 				"remove_{}_{}",
 				table.to_lowercase(),
 				column.to_lowercase()
@@ -4368,7 +5439,9 @@ impl MigrationOperation for Operation {
 				table.to_lowercase(),
 				new_name.to_lowercase()
 			)),
-			Operation::AddConstraint { table, .. } => {
+			Operation::AddConstraint { table, .. }
+			| Operation::AddConstraintRepair { table, .. }
+			| Operation::RestoreConstraintOnRollback { table, .. } => {
 				Some(format!("add_constraint_{}", table.to_lowercase()))
 			}
 			Operation::DropConstraint {
@@ -4378,7 +5451,9 @@ impl MigrationOperation for Operation {
 				"drop_constraint_{}",
 				constraint_name.to_lowercase()
 			)),
-			Operation::CreateIndex { table, unique, .. } => {
+			Operation::CreateIndex { table, unique, .. }
+			| Operation::CreateIndexRepair { table, unique, .. }
+			| Operation::RestoreIndexOnRollback { table, unique, .. } => {
 				if *unique {
 					Some(format!("create_unique_index_{}", table.to_lowercase()))
 				} else {
@@ -4447,7 +5522,7 @@ impl MigrationOperation for Operation {
 			Operation::AddColumn { table, column, .. } => {
 				format!("Add column {} to {}", column.name, table)
 			}
-			Operation::DropColumn { table, column } => {
+			Operation::DropColumn { table, column, .. } => {
 				format!("Drop column {} from {}", column, table)
 			}
 			Operation::AlterColumn { table, column, .. } => {
@@ -4461,12 +5536,18 @@ impl MigrationOperation for Operation {
 				old_name,
 				new_name,
 			} => format!("Rename column {} to {} on {}", old_name, new_name, table),
-			Operation::AddConstraint { table, .. } => format!("Add constraint on {}", table),
+			Operation::AddConstraint { table, .. }
+			| Operation::AddConstraintRepair { table, .. }
+			| Operation::RestoreConstraintOnRollback { table, .. } => {
+				format!("Add constraint on {}", table)
+			}
 			Operation::DropConstraint {
 				table,
 				constraint_name,
 			} => format!("Drop constraint {} from {}", constraint_name, table),
-			Operation::CreateIndex { table, unique, .. } => {
+			Operation::CreateIndex { table, unique, .. }
+			| Operation::CreateIndexRepair { table, unique, .. }
+			| Operation::RestoreIndexOnRollback { table, unique, .. } => {
 				if *unique {
 					format!("Create unique index on {}", table)
 				} else {
@@ -4646,6 +5727,7 @@ impl MigrationOperation for Operation {
 mod tests {
 	use super::*;
 	use FieldType;
+	use reinhardt_query::prelude::SchemaBinOper;
 	use rstest::rstest;
 
 	#[test]
@@ -4661,6 +5743,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "name".to_string(),
@@ -4670,6 +5753,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			],
 			constraints: vec![],
@@ -4734,6 +5818,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: Some("''".to_string()),
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -4767,6 +5852,7 @@ mod tests {
 		let op = Operation::DropColumn {
 			table: "users".to_string(),
 			column: "email".to_string(),
+			old_definition: None,
 		};
 
 		let stmt = op.to_statement();
@@ -4807,6 +5893,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -5188,6 +6275,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: Some("1".to_string()),
+				generated: None,
 			}],
 			base_table: "users".to_string(),
 			join_column: "user_id".to_string(),
@@ -5258,6 +6346,7 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "name".to_string(),
@@ -5267,6 +6356,7 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
 				},
 			],
 			constraints: vec![],
@@ -5330,6 +6420,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -5363,6 +6454,7 @@ mod tests {
 		let op = Operation::DropColumn {
 			table: "users".to_string(),
 			column: "email".to_string(),
+			old_definition: None,
 		};
 
 		op.state_forwards("myapp", &mut state);
@@ -5487,6 +6579,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -5526,6 +6619,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			}),
 			new_definition: ColumnDefinition {
 				name: "name".to_string(),
@@ -5535,6 +6629,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			mysql_options: None,
 		}
@@ -5648,6 +6743,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			}),
 			new_definition: ColumnDefinition {
 				name: "is_active".to_string(),
@@ -5657,6 +6753,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: Some("true".to_string()),
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -5688,6 +6785,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: Some("true".to_string()),
+				generated: None,
 			}),
 			new_definition: ColumnDefinition {
 				name: "is_active".to_string(),
@@ -5697,6 +6795,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -5727,6 +6826,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: Some("true".to_string()),
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -5889,6 +6989,210 @@ mod tests {
 			}
 			other => panic!("reverse operation should be AlterColumn, got: {:?}", other),
 		}
+	}
+
+	/// `DropColumn` operations emitted for generated-column replacements carry
+	/// the dropped definition so rollback can recreate the original generated
+	/// column without relying on an external ProjectState snapshot.
+	#[test]
+	fn test_to_reverse_operation_drop_column_uses_old_definition() {
+		// Arrange
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("name"),
+			"SchemaExpr::col(\"name\")",
+			GeneratedStorage::Stored,
+		);
+		let op = Operation::DropColumn {
+			table: "users".to_string(),
+			column: "full_name".to_string(),
+			old_definition: Some(ColumnDefinition {
+				name: "full_name".to_string(),
+				type_definition: FieldType::VarChar(201),
+				not_null: true,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+				generated: Some(generated.clone()),
+			}),
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let reverse = op
+			.to_reverse_operation(&state)
+			.expect("reverse operation should succeed")
+			.expect("reverse operation should be present (old_definition is supplied)");
+
+		// Assert
+		match reverse {
+			Operation::AddColumn { column, .. } => {
+				assert_eq!(column.name, "full_name");
+				assert_eq!(column.generated, Some(generated));
+			}
+			other => panic!("reverse operation should be AddColumn, got: {:?}", other),
+		}
+	}
+
+	#[test]
+	fn test_to_reverse_operation_drop_table_orders_generated_dependencies() {
+		// Arrange
+		let mut source = FieldState::new("source", FieldType::Integer, false);
+		source.generated = None;
+		let mut z = FieldState::new("z", FieldType::Integer, false);
+		z.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("source"),
+			"SchemaExpr::col(\"source\")",
+			GeneratedStorage::Stored,
+		));
+		let mut a = FieldState::new("a", FieldType::Integer, false);
+		a.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("z"),
+			"SchemaExpr::col(\"z\")",
+			GeneratedStorage::Stored,
+		));
+		let mut model = ModelState::new("metrics", "Metric");
+		model.add_field(a);
+		model.add_field(source);
+		model.add_field(z);
+		let mut state = ProjectState::new();
+		state.add_model(model);
+		let op = Operation::DropTable {
+			name: "metric".to_string(),
+		};
+
+		// Act
+		let reverse = op
+			.to_reverse_operation(&state)
+			.expect("reverse operation should succeed")
+			.expect("reverse operation should be present");
+
+		// Assert
+		let Operation::CreateTable { columns, .. } = reverse else {
+			panic!("reverse operation should be CreateTable, got: {reverse:?}");
+		};
+		let column_names: Vec<_> = columns.iter().map(|column| column.name.as_str()).collect();
+		assert_eq!(column_names, vec!["source", "z", "a"]);
+	}
+
+	#[test]
+	#[should_panic(expected = "generated-column dependency cycle detected among columns")]
+	fn test_to_reverse_operation_drop_table_rejects_generated_dependency_cycles() {
+		let mut a = FieldState::new("a", FieldType::Integer, false);
+		a.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("b"),
+			"SchemaExpr::col(\"b\")",
+			GeneratedStorage::Stored,
+		));
+		let mut b = FieldState::new("b", FieldType::Integer, false);
+		b.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("a"),
+			"SchemaExpr::col(\"a\")",
+			GeneratedStorage::Stored,
+		));
+		let mut model = ModelState::new("metrics", "Metric");
+		model.add_field(a);
+		model.add_field(b);
+		let mut state = ProjectState::new();
+		state.add_model(model);
+		let op = Operation::DropTable {
+			name: "metric".to_string(),
+		};
+
+		let _ = op.to_reverse_operation(&state);
+	}
+
+	#[test]
+	fn generated_dependency_repair_operations_are_rollback_neutral() {
+		let state = ProjectState::default();
+		let create_repair = Operation::CreateIndexRepair {
+			table: "users".to_string(),
+			name: None,
+			columns: vec!["full_name".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+		let restore_index = Operation::RestoreIndexOnRollback {
+			table: "users".to_string(),
+			name: None,
+			columns: vec!["full_name".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+		let add_repair = Operation::AddConstraintRepair {
+			table: "users".to_string(),
+			constraint_sql: "CONSTRAINT uq_users_full_name UNIQUE (full_name)".to_string(),
+		};
+		let restore_constraint = Operation::RestoreConstraintOnRollback {
+			table: "users".to_string(),
+			constraint_sql: "CONSTRAINT uq_users_full_name UNIQUE (full_name)".to_string(),
+		};
+
+		assert_eq!(
+			create_repair
+				.to_reverse_sql(&SqlDialect::Postgres, &state)
+				.expect("repair reverse should not fail"),
+			None
+		);
+		assert_eq!(
+			add_repair
+				.to_reverse_sql(&SqlDialect::Postgres, &state)
+				.expect("repair reverse should not fail"),
+			None
+		);
+		assert_eq!(
+			restore_index
+				.to_reverse_sql(&SqlDialect::Postgres, &state)
+				.expect("restore reverse should render"),
+			Some(vec![
+				"CREATE INDEX idx_users_full_name ON users (full_name);".to_string()
+			])
+		);
+		assert_eq!(
+			restore_constraint
+				.to_reverse_sql(&SqlDialect::Postgres, &state)
+				.expect("restore reverse should render"),
+			Some(vec![
+				"ALTER TABLE users ADD CONSTRAINT uq_users_full_name UNIQUE (full_name);"
+					.to_string()
+			])
+		);
+		assert!(restore_constraint.reverse_requires_sqlite_recreation());
+	}
+
+	#[test]
+	fn stored_generated_drop_column_reverse_uses_sqlite_recreation() {
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("name"),
+			"SchemaExpr::col(\"name\")",
+			GeneratedStorage::Stored,
+		);
+		let op = Operation::DropColumn {
+			table: "users".to_string(),
+			column: "full_name".to_string(),
+			old_definition: Some(ColumnDefinition {
+				name: "full_name".to_string(),
+				type_definition: FieldType::VarChar(201),
+				not_null: true,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+				generated: Some(generated),
+			}),
+		};
+
+		assert!(op.reverse_requires_sqlite_recreation());
 	}
 
 	#[test]
@@ -6422,6 +7726,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -6450,6 +7755,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			}],
 			base_table: "users".to_string(),
 			join_column: "user_id".to_string(),
@@ -6541,6 +7847,7 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
 			},
 			mysql_options: None,
 		};
@@ -7106,6 +8413,521 @@ mod tests {
 			"SQLite auto_increment must not emit BIGINT in composite PK path: {}",
 			sql
 		);
+	}
+
+	#[test]
+	fn test_column_to_sql_postgres_typed_generated_column() {
+		let mut col = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Postgres);
+
+		assert_eq!(
+			sql,
+			"full_name VARCHAR(201) GENERATED ALWAYS AS (first_name || ' ' || last_name) STORED"
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_mysql_typed_generated_column() {
+		let mut col = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Mysql);
+
+		assert_eq!(
+			sql,
+			"full_name VARCHAR(201) GENERATED ALWAYS AS (CONCAT(`first_name`, ' ', `last_name`)) STORED"
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_mysql_empty_concat_generated_column() {
+		let mut col = ColumnDefinition::new("empty_name", FieldType::VarChar(201));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([]),
+			"SchemaExpr::concat([])",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Mysql);
+
+		assert_eq!(
+			sql,
+			"empty_name VARCHAR(201) GENERATED ALWAYS AS ('') STORED"
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_sqlite_virtual_generated_column() {
+		let mut col = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Virtual,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Sqlite);
+
+		assert_eq!(
+			sql,
+			"full_name VARCHAR(201) GENERATED ALWAYS AS (first_name || ' ' || last_name) VIRTUAL"
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_postgres_cast_generated_column_uses_sql_type() {
+		let mut col = ColumnDefinition::new("amount_text", FieldType::VarChar(64));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("amount").cast(QueryColumnType::Decimal(Some((10, 2)))),
+			"SchemaExpr::col(\"amount\").cast(ColumnType::Decimal(Some((10, 2))))",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Postgres);
+
+		assert_eq!(
+			sql,
+			"amount_text VARCHAR(64) GENERATED ALWAYS AS (CAST(amount AS NUMERIC(10, 2))) STORED"
+		);
+	}
+
+	#[test]
+	#[should_panic(
+		expected = "PostgreSQL-compatible generated column `search_name` cannot reference generated column `full_name`"
+	)]
+	fn test_create_table_postgres_rejects_generated_column_chain() {
+		let mut full_name = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		full_name.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("first_name"),
+			"SchemaExpr::col(\"first_name\")",
+			GeneratedStorage::Stored,
+		));
+		let mut search_name = ColumnDefinition::new("search_name", FieldType::VarChar(201));
+		search_name.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("full_name"),
+			"SchemaExpr::col(\"full_name\")",
+			GeneratedStorage::Stored,
+		));
+		let op = Operation::CreateTable {
+			name: "users".to_string(),
+			columns: vec![full_name, search_name],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+
+		let _ = op.to_sql(&SqlDialect::Postgres);
+	}
+
+	#[test]
+	fn test_column_to_sql_mysql_cast_generated_string_uses_char_type() {
+		let mut col = ColumnDefinition::new("amount_text", FieldType::VarChar(64));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("amount").cast(QueryColumnType::String(Some(64))),
+			"SchemaExpr::col(\"amount\").cast(ColumnType::String(Some(64)))",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Mysql);
+
+		assert_eq!(
+			sql,
+			"amount_text VARCHAR(64) GENERATED ALWAYS AS (CAST(`amount` AS CHAR(64))) STORED"
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_mysql_cast_generated_integer_uses_signed_type() {
+		let mut col = ColumnDefinition::new("age_int", FieldType::Integer);
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("age").cast(QueryColumnType::Integer),
+			"SchemaExpr::col(\"age\").cast(ColumnType::Integer)",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Mysql);
+
+		assert_eq!(
+			sql,
+			"age_int INTEGER GENERATED ALWAYS AS (CAST(`age` AS SIGNED)) STORED"
+		);
+	}
+
+	#[test]
+	fn generated_column_serde_rehydrates_typed_expr() {
+		let source = r#"{
+			"expr_tokens": "SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			"raw_sql": null,
+			"storage": "stored"
+		}"#;
+
+		let generated: GeneratedColumnDefinition =
+			serde_json::from_str(source).expect("generated column metadata should deserialize");
+
+		assert_eq!(
+			generated.expr.as_deref(),
+			Some(&SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]))
+		);
+		assert!(generated.to_query_generated().is_some());
+	}
+
+	#[test]
+	fn generated_column_tokens_canonicalize_schema_expr_aliases() {
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("full_name"),
+			"S::col(\"full_name\")",
+			GeneratedStorage::Stored,
+		);
+
+		let tokens = quote::quote! { #generated }.to_string();
+
+		assert!(tokens.contains("SchemaExpr :: col"));
+		assert!(!tokens.contains("S :: col"));
+	}
+
+	#[test]
+	fn generated_column_equality_prefers_typed_expr_over_token_spelling() {
+		let alias_spelled = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("full_name"),
+			"S::col(\"full_name\")",
+			GeneratedStorage::Stored,
+		);
+		let canonical_spelled = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("full_name"),
+			"SchemaExpr::col(\"full_name\")",
+			GeneratedStorage::Stored,
+		);
+
+		assert_eq!(alias_spelled, canonical_spelled);
+	}
+
+	#[test]
+	fn generated_column_equality_matches_typed_expr_to_sqlite_raw_sql() {
+		let typed = GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Virtual,
+		);
+		let introspected = GeneratedColumnDefinition::raw_sql(
+			r#""first_name" || ' ' || "last_name""#,
+			GeneratedStorage::Virtual,
+		);
+
+		assert_eq!(typed, introspected);
+	}
+
+	#[test]
+	fn generated_column_equality_matches_typed_binary_expr_to_parenthesized_raw_sql() {
+		let typed = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("subtotal").binary(SchemaBinOper::Add, SchemaExpr::col("tax")),
+			"SchemaExpr::col(\"subtotal\").binary(SchemaBinOper::Add, SchemaExpr::col(\"tax\"))",
+			GeneratedStorage::Stored,
+		);
+		let introspected =
+			GeneratedColumnDefinition::raw_sql("(subtotal + tax)", GeneratedStorage::Stored);
+
+		assert_eq!(typed, introspected);
+	}
+
+	#[test]
+	fn generated_column_raw_sql_equality_preserves_bracket_operators() {
+		let array_access = GeneratedColumnDefinition::raw_sql("items[1]", GeneratedStorage::Stored);
+		let flattened = GeneratedColumnDefinition::raw_sql("items1", GeneratedStorage::Stored);
+
+		assert_ne!(array_access, flattened);
+	}
+
+	#[test]
+	fn generated_column_dependency_uses_rehydrated_expr_before_tokens() {
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::val("full_name"),
+			"SchemaExpr::val(\"full_name\")",
+			GeneratedStorage::Stored,
+		);
+
+		assert!(!Operation::generated_column_references_column(
+			&generated,
+			"full_name"
+		));
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite ADD COLUMN does not support stored generated columns")]
+	fn test_add_column_sqlite_rejects_stored_generated_column() {
+		let mut column = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		column.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Stored,
+		));
+		let op = Operation::AddColumn {
+			table: "users".to_string(),
+			column,
+			mysql_options: None,
+		};
+
+		let _ = op.to_sql(&SqlDialect::Sqlite);
+	}
+
+	fn generated_full_name_column() -> ColumnDefinition {
+		let mut full_name = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		full_name.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Stored,
+		));
+		full_name
+	}
+
+	#[test]
+	fn test_sqlite_recreation_for_stored_generated_add_column_omits_generated_copy() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let first_name = ColumnDefinition::new("first_name", FieldType::VarChar(100));
+		let last_name = ColumnDefinition::new("last_name", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+
+		let recreation = SqliteTableRecreation::for_add_column(
+			"users",
+			vec![id, first_name, last_name],
+			full_name,
+			vec![],
+		);
+		let sql = recreation.to_sql_statements();
+
+		assert!(
+			sql[0].contains("full_name VARCHAR(201) GENERATED ALWAYS AS"),
+			"new schema must include the stored generated column: {}",
+			sql[0]
+		);
+		assert_eq!(
+			sql[1],
+			"INSERT INTO \"users_new\" (\"id\", \"first_name\", \"last_name\") SELECT \"id\", \"first_name\", \"last_name\" FROM \"users\";"
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_recreates_indexes_after_rename() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let title = ColumnDefinition::new("title", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+
+		let recreation =
+			SqliteTableRecreation::for_add_column("users", vec![id, title], full_name, vec![])
+				.with_indexes(vec![SqliteRecreatedIndex {
+					name: "idx_users_title".to_string(),
+					columns: vec!["title".to_string()],
+					unique: false,
+					sql: None,
+				}]);
+		let sql = recreation.to_sql_statements();
+
+		assert_eq!(
+			sql.last().map(String::as_str),
+			Some("CREATE INDEX \"idx_users_title\" ON \"users\" (\"title\");")
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_preserves_expression_index_sql() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let title = ColumnDefinition::new("title", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+
+		let recreation =
+			SqliteTableRecreation::for_add_column("users", vec![id, title], full_name, vec![])
+				.with_indexes(vec![SqliteRecreatedIndex {
+					name: "idx_users_lower_title".to_string(),
+					columns: Vec::new(),
+					unique: false,
+					sql: Some(
+						"CREATE INDEX idx_users_lower_title ON users(lower(title))".to_string(),
+					),
+				}]);
+		let sql = recreation.to_sql_statements();
+
+		assert_eq!(
+			sql.last().map(String::as_str),
+			Some("CREATE INDEX idx_users_lower_title ON users(lower(title));")
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_preserves_partial_index_predicates() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let title = ColumnDefinition::new("title", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+
+		let recreation =
+			SqliteTableRecreation::for_add_column("users", vec![id, title], full_name, vec![])
+				.with_indexes(vec![SqliteRecreatedIndex {
+					name: "idx_users_active_title".to_string(),
+					columns: vec!["title".to_string()],
+					unique: false,
+					sql: Some(
+						"CREATE INDEX \"idx_users_active_title\" ON \"users\" (\"title\") WHERE deleted_at IS NULL"
+							.to_string(),
+					),
+				}]);
+		let sql = recreation.to_sql_statements();
+
+		assert_eq!(
+			sql.last().map(String::as_str),
+			Some(
+				"CREATE INDEX \"idx_users_active_title\" ON \"users\" (\"title\") WHERE deleted_at IS NULL;"
+			)
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_filters_indexes_referencing_dropped_column() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let title = ColumnDefinition::new("title", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+
+		let recreation = SqliteTableRecreation::for_drop_column(
+			"users",
+			vec![id, title, full_name],
+			"full_name",
+			vec![],
+		)
+		.with_indexes(vec![
+			SqliteRecreatedIndex {
+				name: "idx_users_title".to_string(),
+				columns: vec!["title".to_string()],
+				unique: false,
+				sql: None,
+			},
+			SqliteRecreatedIndex {
+				name: "idx_users_full_name".to_string(),
+				columns: vec!["full_name".to_string()],
+				unique: false,
+				sql: None,
+			},
+			SqliteRecreatedIndex {
+				name: "idx_users_title_partial".to_string(),
+				columns: vec!["title".to_string()],
+				unique: false,
+				sql: Some(
+					"CREATE INDEX \"idx_users_title_partial\" ON \"users\" (\"title\") WHERE \"full_name\" IS NOT NULL"
+						.to_string(),
+				),
+			},
+		])
+		.without_indexes_referencing("full_name");
+		let sql = recreation.to_sql_statements();
+
+		assert!(
+			sql.iter()
+				.any(|statement| statement.contains("idx_users_title"))
+		);
+		assert!(
+			sql.iter()
+				.all(|statement| !statement.contains("idx_users_full_name"))
+		);
+		assert!(
+			sql.iter()
+				.all(|statement| !statement.contains("idx_users_title_partial"))
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_copy_lists_omit_existing_generated_columns() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let first_name = ColumnDefinition::new("first_name", FieldType::VarChar(100));
+		let last_name = ColumnDefinition::new("last_name", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+		let current_columns = vec![id, first_name, last_name, full_name];
+
+		let drop_column = SqliteTableRecreation::for_drop_column(
+			"users",
+			current_columns.clone(),
+			"last_name",
+			vec![],
+		);
+		assert_eq!(drop_column.columns_to_copy, vec!["id", "first_name"]);
+
+		let alter_column = SqliteTableRecreation::for_alter_column(
+			"users",
+			current_columns.clone(),
+			"first_name",
+			ColumnDefinition::new("first_name", FieldType::VarChar(150)),
+			vec![],
+		);
+		assert_eq!(
+			alter_column.columns_to_copy,
+			vec!["id", "first_name", "last_name"]
+		);
+
+		let add_constraint = SqliteTableRecreation::for_add_constraint(
+			"users",
+			current_columns.clone(),
+			vec![],
+			"CONSTRAINT users_name_unique UNIQUE (first_name, last_name)".to_string(),
+		);
+		assert_eq!(
+			add_constraint.columns_to_copy,
+			vec!["id", "first_name", "last_name"]
+		);
+
+		let drop_constraint =
+			SqliteTableRecreation::for_drop_constraint("users", current_columns, vec![], "old");
+		assert_eq!(
+			drop_constraint.columns_to_copy,
+			vec!["id", "first_name", "last_name"]
+		);
+	}
+
+	#[test]
+	fn test_from_field_state_preserves_generated_metadata() {
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("source_name"),
+			"SchemaExpr::col(\"source_name\")",
+			GeneratedStorage::Stored,
+		);
+		let mut field_state = FieldState::new("display_name", FieldType::VarChar(255), false);
+		field_state.generated = Some(generated.clone());
+
+		let col = ColumnDefinition::from_field_state("display_name", &field_state);
+
+		assert_eq!(col.generated, Some(generated));
 	}
 
 	mod resolve_foreign_key_column_type_tests {

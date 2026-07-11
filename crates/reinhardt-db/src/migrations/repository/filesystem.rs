@@ -18,7 +18,7 @@ use syn::parse_quote;
 /// // use reinhardt::db::migrations::prelude::*;
 /// // use reinhardt::db::migrations::FieldType;
 ///
-/// pub(super) fn migration() -> Migration {
+/// fn migration() -> Migration {
 ///     Migration::new("0001_initial", "app")
 /// }
 /// ```

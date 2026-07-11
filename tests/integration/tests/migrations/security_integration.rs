@@ -66,6 +66,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		primary_key: false,
 		auto_increment: false,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -145,6 +146,8 @@ async fn test_least_privilege_principle_adherence(
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+
+					generated: None,
 				},
 				create_basic_column("username", FieldType::VarChar(Some(100))),
 				create_basic_column("email", FieldType::VarChar(Some(255))),
@@ -334,6 +337,8 @@ async fn test_sensitive_data_handling(
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+
+					generated: None,
 				},
 				create_basic_column("username", FieldType::VarChar(Some(100))),
 				create_basic_column("password_hash", FieldType::VarChar(Some(255))),
@@ -565,6 +570,8 @@ async fn test_audit_logging_completeness(
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+
+					generated: None,
 				},
 				create_basic_column("migration_app", FieldType::VarChar(Some(100))),
 				create_basic_column("migration_name", FieldType::VarChar(Some(255))),
@@ -580,6 +587,8 @@ async fn test_audit_logging_completeness(
 					primary_key: false,
 					auto_increment: false,
 					default: Some("CURRENT_TIMESTAMP".to_string()),
+
+					generated: None,
 				},
 				create_basic_column("executed_by", FieldType::VarChar(Some(100))),
 			],
@@ -610,6 +619,8 @@ async fn test_audit_logging_completeness(
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+
+					generated: None,
 				},
 				create_basic_column("name", FieldType::VarChar(Some(200))),
 				create_basic_column("price", FieldType::Custom("DECIMAL(10, 2)".to_string())),
@@ -1031,6 +1042,8 @@ async fn test_sql_injection_prevention(
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+
+					generated: None,
 				},
 				create_basic_column("username", FieldType::VarChar(Some(100))),
 				create_basic_column("email", FieldType::VarChar(Some(255))),

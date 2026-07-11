@@ -90,6 +90,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		primary_key: false,
 		auto_increment: false,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -127,6 +128,8 @@ async fn test_simultaneous_migrate(
 				primary_key: true,
 				auto_increment: false,
 				default: None,
+
+				generated: None,
 			}],
 			constraints: vec![],
 			without_rowid: None,
@@ -453,6 +456,8 @@ async fn test_migration_timeout(
 					primary_key: true,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				}],
 				constraints: vec![],
 				without_rowid: None,
@@ -526,6 +531,8 @@ async fn test_crash_recovery(
 					primary_key: true,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 				create_basic_column("data", FieldType::Text),
 			],

@@ -15,6 +15,8 @@ pub(super) fn migration() -> Migration {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+
+				generated: None,
 			},
 			mysql_options: None,
 		}],

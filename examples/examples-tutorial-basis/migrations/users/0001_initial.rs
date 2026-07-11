@@ -15,6 +15,8 @@ pub(super) fn migration() -> Migration {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "id".to_string(),
@@ -24,6 +26,8 @@ pub(super) fn migration() -> Migration {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "is_active".to_string(),
@@ -33,6 +37,8 @@ pub(super) fn migration() -> Migration {
 					primary_key: false,
 					auto_increment: false,
 					default: Some("true".to_string()),
+
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "is_superuser".to_string(),
@@ -42,6 +48,8 @@ pub(super) fn migration() -> Migration {
 					primary_key: false,
 					auto_increment: false,
 					default: Some("false".to_string()),
+
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "last_login".to_string(),
@@ -51,6 +59,8 @@ pub(super) fn migration() -> Migration {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "password_hash".to_string(),
@@ -60,6 +70,8 @@ pub(super) fn migration() -> Migration {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "username".to_string(),
@@ -69,6 +81,8 @@ pub(super) fn migration() -> Migration {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 			],
 			constraints: vec![Constraint::Unique {

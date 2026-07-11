@@ -141,6 +141,11 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		Vec::new()
 	}
 
+	/// Get database-generated column names that must be omitted from ORM writes.
+	fn generated_field_names() -> &'static [&'static str] {
+		&[]
+	}
+
 	/// Django-style objects manager accessor
 	///
 	/// Returns the configured manager for this model type. When a custom manager
