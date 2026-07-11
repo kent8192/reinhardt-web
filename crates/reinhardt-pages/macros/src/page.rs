@@ -230,8 +230,8 @@ mod tests {
 		let output = codegen::generate(&typed_ast);
 
 		let output_str = output.to_string();
-		assert!(output_str.contains("EventType"));
-		assert!(output_str.contains("Click"));
+		assert!(output_str.contains("event :: ClickEvent"));
+		assert!(output_str.contains("event :: InputEvent"));
 	}
 
 	#[test]

@@ -19,7 +19,9 @@
 
 use proc_macro2::{Span, TokenStream};
 use syn::spanned::Spanned;
-use syn::{Expr, FnArg, Ident, Pat, Type};
+use syn::{Expr, FnArg, Ident, LitStr, Pat, Type};
+
+use reinhardt_event_catalog::KnownEvent;
 
 /// The top-level AST node representing an entire page! macro invocation.
 ///
@@ -195,7 +197,7 @@ pub struct PageElement {
 	/// Regular attributes (e.g., `class: "x"`)
 	pub attrs: Vec<PageAttr>,
 	/// Event handlers (e.g., `@click: |e| { ... }`)
-	pub events: Vec<PageEvent>,
+	pub events: Vec<IntrinsicEvent>,
 	/// Child nodes
 	pub children: Vec<PageNode>,
 	/// Span for error reporting
@@ -258,7 +260,7 @@ impl PageAttr {
 	}
 }
 
-/// An event handler on an element (prefixed with `@`).
+/// An intrinsic element event handler (prefixed with `@`).
 ///
 /// # Example
 ///
@@ -268,20 +270,40 @@ impl PageAttr {
 /// @submit: |e| { e.prevent_default(); submit() }
 /// ```
 #[derive(Debug, Clone)]
-pub struct PageEvent {
-	/// Event type name (e.g., "click", "input", "submit")
-	pub event_type: Ident,
-	/// Handler expression (closure)
-	pub handler: Expr,
-	/// Span for error reporting
-	pub span: Span,
+pub enum IntrinsicEvent {
+	/// A standardized element event resolved through the event catalog.
+	Standard {
+		/// Closed catalog event identifier.
+		event: KnownEvent,
+		/// Handler expression.
+		handler: Expr,
+	},
+	/// An explicitly named raw custom DOM event.
+	Custom {
+		/// Exact custom DOM event name.
+		name: LitStr,
+		/// Handler expression.
+		handler: Expr,
+	},
 }
 
-impl PageEvent {
-	/// Returns the DOM event type string.
-	pub fn dom_event_type(&self) -> String {
-		self.event_type.to_string()
+impl IntrinsicEvent {
+	/// Returns the event handler expression.
+	#[must_use]
+	pub const fn handler(&self) -> &Expr {
+		match self {
+			Self::Standard { handler, .. } | Self::Custom { handler, .. } => handler,
+		}
 	}
+}
+
+/// A component event prop whose type is declared by the component's props.
+#[derive(Debug, Clone)]
+pub struct ComponentEventProp {
+	/// Event prop identifier without the `@` prefix.
+	pub name: Ident,
+	/// Handler expression passed to the component builder.
+	pub handler: Expr,
 }
 
 /// A text literal node.
@@ -504,7 +526,7 @@ pub struct PageComponent {
 	pub args: Vec<PageComponentArg>,
 	/// Event props (`@event: handler`). Only populated for `Brace` form;
 	/// always empty for `Paren` form to preserve backward compatibility.
-	pub events: Vec<PageEvent>,
+	pub events: Vec<ComponentEventProp>,
 	/// Optional children (content inside `{ }` after arguments)
 	pub children: Option<Vec<PageNode>>,
 	/// Named children slots (e.g., `$header { ... }`)
@@ -584,19 +606,21 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_page_event_dom_event_type() {
+	fn test_intrinsic_event_preserves_catalog_identity() {
 		// Arrange
-		let event = PageEvent {
-			event_type: Ident::new("click", Span::call_site()),
+		let event = IntrinsicEvent::Standard {
+			event: KnownEvent::Click,
 			handler: syn::parse_quote!(|_| {}),
-			span: Span::call_site(),
 		};
 
 		// Act
-		let result = event.dom_event_type();
+		let result = match event {
+			IntrinsicEvent::Standard { event, .. } => event,
+			IntrinsicEvent::Custom { .. } => panic!("expected standard event"),
+		};
 
 		// Assert
-		assert_eq!(result, "click");
+		assert_eq!(result, KnownEvent::Click);
 	}
 
 	#[rstest]
