@@ -306,6 +306,28 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 		self
 	}
 
+	/// Registers a callback to run after a successful WASM action.
+	///
+	/// Native actions do not poll the future, so callbacks only run on WASM.
+	pub fn on_success<Callback>(self, callback: Callback) -> Self
+	where
+		Callback: Fn(&T) + 'static,
+	{
+		self.append_success_callback(Rc::new(callback));
+		self
+	}
+
+	/// Registers a callback to run after a failed WASM action.
+	///
+	/// Native actions do not poll the future, so callbacks only run on WASM.
+	pub fn on_error<Callback>(self, callback: Callback) -> Self
+	where
+		Callback: Fn(&E) + 'static,
+	{
+		self.append_error_callback(Rc::new(callback));
+		self
+	}
+
 	#[cfg(test)]
 	pub(crate) fn force_error_for_test(&self, err: E) {
 		let on_error = self.with_slot(|slot| slot.on_error.borrow().clone());
@@ -512,6 +534,12 @@ where
 	let on_success_for_dispatch = Rc::clone(&on_success);
 	#[cfg(wasm)]
 	let reset_on_success_for_dispatch = Rc::clone(&reset_on_success);
+	#[cfg(native)]
+	let on_error_for_dispatch = Rc::clone(&on_error);
+	#[cfg(native)]
+	let on_success_for_dispatch = Rc::clone(&on_success);
+	#[cfg(native)]
+	let reset_on_success_for_dispatch = Rc::clone(&reset_on_success);
 
 	let dispatch_fn: Rc<dyn Fn(Box<dyn std::any::Any>)> = {
 		let action_fn = Rc::new(action_fn);
@@ -557,9 +585,35 @@ where
 
 			#[cfg(native)]
 			{
-				// Non-WASM: drop the future, reset to Idle
-				let _fut = action_fn(*payload);
-				state.set(ActionPhase::Idle);
+				let task_state = state;
+				let on_error = Rc::clone(&on_error_for_dispatch);
+				let on_success = Rc::clone(&on_success_for_dispatch);
+				let reset_on_success = Rc::clone(&reset_on_success_for_dispatch);
+				let fut = action_fn(*payload);
+				let spawned = crate::platform::try_spawn_task(async move {
+					match fut.await {
+						Ok(val) => {
+							let on_success = on_success.borrow().clone();
+							crate::reactive::batch(|| {
+								task_state.set(ActionPhase::Success(val.clone()));
+								on_success(&val);
+								if reset_on_success.get() {
+									task_state.set(ActionPhase::Idle);
+								}
+							});
+						}
+						Err(err) => {
+							let on_error = on_error.borrow().clone();
+							crate::reactive::batch(|| {
+								task_state.set(ActionPhase::Error(err.clone()));
+								on_error(&err);
+							});
+						}
+					}
+				});
+				if !spawned {
+					state.set(ActionPhase::Idle);
+				}
 			}
 		})
 	};
@@ -819,5 +873,46 @@ mod tests {
 			assert!(!optimistic.is_optimistic());
 			assert_eq!(action.phase(), ActionPhase::Success(25));
 		});
+	}
+
+	#[rstest]
+	fn test_action_success_callbacks_are_additive() {
+		// Arrange
+		let callback_count = Rc::new(RefCell::new(0));
+		let first_count = Rc::clone(&callback_count);
+		let second_count = Rc::clone(&callback_count);
+		let action = use_action(|_: ()| async { Ok::<i32, String>(25) })
+			.on_success(move |value| {
+				assert_eq!(*value, 25);
+				*first_count.borrow_mut() += 1;
+			})
+			.on_success(move |value| {
+				assert_eq!(*value, 25);
+				*second_count.borrow_mut() += 1;
+			});
+
+		// Act
+		action.force_success_for_test(25);
+
+		// Assert
+		assert_eq!(*callback_count.borrow(), 2);
+	}
+
+	#[rstest]
+	fn test_action_error_callbacks_receive_error() {
+		// Arrange
+		let captured_error = Rc::new(RefCell::new(None));
+		let captured_error_for_callback = Rc::clone(&captured_error);
+		let action = use_action(|_: ()| async { Err::<i32, String>("fail".to_string()) }).on_error(
+			move |error| {
+				*captured_error_for_callback.borrow_mut() = Some(error.clone());
+			},
+		);
+
+		// Act
+		action.force_error_for_test("fail".to_string());
+
+		// Assert
+		assert_eq!(captured_error.borrow().as_deref(), Some("fail"));
 	}
 }

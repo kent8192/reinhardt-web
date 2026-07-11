@@ -88,6 +88,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		primary_key: false,
 		auto_increment: false,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -101,6 +102,7 @@ fn create_auto_pk_column(name: &str) -> ColumnDefinition {
 		primary_key: true,
 		auto_increment: true,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -209,6 +211,8 @@ async fn test_json_jsonb_types(
 					primary_key: true,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 				create_basic_column("json_data", FieldType::Custom("JSON".to_string())),
 				create_basic_column("jsonb_data", FieldType::Custom("JSONB".to_string())),
@@ -284,6 +288,8 @@ async fn test_postgres_array_type(
 					primary_key: true,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 				create_basic_column("tags", FieldType::Custom("TEXT[]".to_string())),
 				create_basic_column("scores", FieldType::Custom("INTEGER[]".to_string())),
@@ -358,6 +364,8 @@ async fn test_transaction_isolation_levels(
 					primary_key: true,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 				create_basic_column("value", FieldType::Integer),
 			],
@@ -447,6 +455,8 @@ async fn test_cascade_delete(
 					primary_key: true,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 				create_basic_column("name", FieldType::VarChar(100)),
 			],
@@ -473,6 +483,8 @@ async fn test_cascade_delete(
 					primary_key: true,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "parent_id".to_string(),
@@ -482,6 +494,8 @@ async fn test_cascade_delete(
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 				create_basic_column("data", FieldType::Text),
 			],
@@ -639,6 +653,8 @@ async fn test_lock_contention(
 					primary_key: true,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 				create_basic_column("value", FieldType::Integer),
 			],
@@ -722,6 +738,8 @@ async fn test_common_type_compatibility(
 					primary_key: true,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 				create_basic_column("int_col", FieldType::Integer),
 				create_basic_column("bigint_col", FieldType::BigInteger),

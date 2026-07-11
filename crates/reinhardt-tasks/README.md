@@ -15,11 +15,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.0", features = ["tasks"] }
+reinhardt = { version = "0.3.1", features = ["tasks"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.3.0", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.0", features = ["full"] }      # All features
+# reinhardt = { version = "0.3.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.3.1", features = ["full"] }      # All features
 ```
 
 Then import task features:
@@ -81,6 +81,15 @@ use reinhardt::tasks::backend::{TaskBackend, RedisTaskBackend};
   - Stateless delegator that enqueues tasks through a backend
 - **QueueSettings**: `[tasks_queue]` settings fragment
   - Defines the queue name and max-retries fields
+
+#### Durable Jobs
+
+- **DurableQueue** (feature: `durable`): Database-backed job queue for long-running work
+  - Persists job records and lifecycle events in SQLite through `SqliteDurableJobStore`
+  - Tracks typed states: `Queued`, `Running`, `Succeeded`, `FailedRetryable`, `FailedFinal`, `Canceled`
+  - Supports attempt counting, retry scheduling, cancellation requests, and queryable snapshots
+  - Emits sequenced lifecycle events for status polling or streaming adapters
+  - Provides `SharedDurableQueue` and `DurableQueueKey` (feature: `di`) for server-function injection
 
 #### Task Scheduling
 

@@ -513,7 +513,7 @@ async fn nc_05_field_rename_creates_rename_column_migration() {
 	});
 
 	let has_drop_and_add = result.operations.iter().any(|op| {
-		matches!(op, Operation::DropColumn { table, column } if table == &"todos" && column == "completed")
+		matches!(op, Operation::DropColumn { table, column, .. } if table == &"todos" && column == "completed")
 	}) && result.operations.iter().any(|op| {
 		matches!(op, Operation::AddColumn { table, column } if table == &"todos" && column.name == "is_done")
 	});

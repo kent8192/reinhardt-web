@@ -9,6 +9,7 @@
 //! - `form!` - Type-safe form component macro with reactive bindings
 //! - `#[server_fn]` - Server Functions (RPC) macro
 //! - `#[client_page]` - Client page function macro with native route-table stubs
+//! - `#[layout]` - Route-backed layout component macro for `ClientRouter`
 //! - `#[wasm_server_api]` - API parity guard for matching WASM/server surfaces
 //!
 //! ## Form Design
@@ -74,6 +75,8 @@
 
 use proc_macro::TokenStream;
 
+mod client_form;
+mod client_form_choices;
 mod client_page;
 mod component;
 mod crate_paths;
@@ -130,6 +133,18 @@ pub fn derive_from_request(input: TokenStream) -> TokenStream {
 	from_request::derive_from_request_impl(input)
 }
 
+/// Derives client-form choice metadata for fieldless enums.
+#[proc_macro_derive(ClientFormChoices, attributes(serde, default))]
+pub fn derive_client_form_choices(input: TokenStream) -> TokenStream {
+	client_form_choices::derive_client_form_choices_impl(input)
+}
+
+/// Derives a `use_form` compatible companion form for a DTO request type.
+#[proc_macro_derive(ClientForm, attributes(client_form, serde))]
+pub fn derive_client_form(input: TokenStream) -> TokenStream {
+	client_form::derive_client_form_impl(input)
+}
+
 /// Adds builder support and `FromRequest` extraction to a named props struct.
 #[proc_macro_attribute]
 pub fn page_props(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -140,6 +155,12 @@ pub fn page_props(args: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn component(args: TokenStream, input: TokenStream) -> TokenStream {
 	component::component_impl(args, input)
+}
+
+/// Declares a route-backed layout component.
+#[proc_macro_attribute]
+pub fn layout(args: TokenStream, input: TokenStream) -> TokenStream {
+	component::layout_impl(args, input)
 }
 
 /// Declares public APIs with matching WASM and server-side surfaces.
@@ -361,7 +382,7 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 /// |------|--------|---------|
 /// | String literal | `attr: "value"` | `class: "container"` |
 /// | Expression | `attr: expr` | `class: css_class` |
-/// | Integer literal | `attr: number` | `tabindex: 1` |
+/// | Integer literal | `attr: number` | `tabindex: 0` |
 /// | Boolean expression | `attr: expr` | `disabled: is_disabled` |
 ///
 /// ### Boolean Attributes
@@ -673,7 +694,17 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 /// | Element | Requirement |
 /// |---------|-------------|
 /// | `img` | Must have `src` (string literal) and `alt` attributes |
-/// | `button` | Must have text content or `aria-label`/`aria-labelledby` |
+/// | `input`, `select`, `textarea` | Must have a non-empty `aria-label`, `aria-labelledby`, wrapping `label`, or matching `label for="id"` |
+/// | `button`, `a` | Must have text content, `aria-label`, `aria-labelledby`, or an `img` child with non-empty `alt` |
+/// | `iframe` | Must have a non-empty `title` |
+///
+/// Static `role` values must use a concrete WAI-ARIA 1.3 role. Static
+/// `tabindex` values are limited to `0` and `-1` so generated markup does not
+/// create positive keyboard tab order.
+///
+/// Add `a11y: off` to a specific element to opt out of accessibility checks for
+/// that element when the markup intentionally relies on runtime behavior or
+/// external labeling.
 ///
 /// ### Security Validation
 ///

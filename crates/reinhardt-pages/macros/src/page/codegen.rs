@@ -711,6 +711,9 @@ fn generate_regular_attr_pair(
 			// Generate: lit.to_string()
 			quote! { #lit.to_string() }
 		}
+		AttrValue::Dynamic(expr) if is_negative_integer_literal(expr) => {
+			quote! { (#expr).to_string() }
+		}
 		_ => {
 			// For StringLit, BoolLit, Dynamic: use as-is
 			let expr = attr.value.to_expr();
@@ -726,6 +729,17 @@ fn generate_regular_attr_pair(
 			::std::borrow::Cow::from(#value_expr)
 		)
 	}
+}
+
+fn is_negative_integer_literal(expr: &syn::Expr) -> bool {
+	if let syn::Expr::Unary(unary) = expr
+		&& matches!(unary.op, syn::UnOp::Neg(_))
+		&& let syn::Expr::Lit(lit) = unary.expr.as_ref()
+	{
+		return matches!(lit.lit, syn::Lit::Int(_));
+	}
+
+	false
 }
 
 /// Generates code for a boolean attribute pair.
@@ -929,9 +943,35 @@ fn generate_text(text: &PageText, pages_crate: &TokenStream) -> TokenStream {
 /// on the owned result is a no-op.
 fn generate_expression(expr: &PageExpression, pages_crate: &TokenStream) -> TokenStream {
 	let e = &expr.expr;
+	if is_i18n_t_macro_expr(e) {
+		return quote! {
+			#pages_crate::component::Page::text((#e).render_string())
+		};
+	}
 	quote! {
 		#pages_crate::component::IntoPage::into_page((#e).clone())
 	}
+}
+
+fn is_i18n_t_macro_expr(expr: &syn::Expr) -> bool {
+	let syn::Expr::Macro(expr_macro) = expr else {
+		return false;
+	};
+	let segments: Vec<_> = expr_macro
+		.mac
+		.path
+		.segments
+		.iter()
+		.map(|segment| segment.ident.to_string())
+		.collect();
+	matches!(
+		segments.as_slice(),
+		[crate_name, macro_name] if crate_name == "reinhardt_pages" && macro_name == "t"
+	) || matches!(
+		segments.as_slice(),
+		[crate_name, module_name, macro_name]
+			if crate_name == "reinhardt_pages" && module_name == "prelude" && macro_name == "t"
+	)
 }
 
 /// Generates code for an if node.

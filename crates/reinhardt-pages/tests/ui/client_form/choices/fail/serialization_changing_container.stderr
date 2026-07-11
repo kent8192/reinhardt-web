@@ -1,0 +1,5 @@
+error: ClientFormChoices does not support serde container options that change enum serialization
+  --> tests/ui/client_form/choices/fail/serialization_changing_container.rs:14:9
+   |
+14 | #[serde(into = "WireMode")]
+   |         ^^^^

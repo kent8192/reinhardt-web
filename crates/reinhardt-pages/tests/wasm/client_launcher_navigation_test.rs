@@ -20,6 +20,7 @@
 
 #![cfg(wasm)]
 
+use reinhardt_core::page::Outlet;
 use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
 use reinhardt_pages::reactive::{Signal, with_runtime};
@@ -66,6 +67,14 @@ fn page_b() -> Page {
 		.into_page()
 }
 
+fn layout_shell(outlet: Outlet) -> Page {
+	PageElement::new("div")
+		.attr("id", "layout-shell")
+		.child("LAYOUT-SHELL")
+		.child(outlet)
+		.into_page()
+}
+
 fn page_with_reentrant_nested_reactive() -> Page {
 	let trigger = Signal::new(0_i32);
 	let trigger_for_outer = trigger.clone();
@@ -89,6 +98,7 @@ fn page_with_reentrant_nested_reactive() -> Page {
 
 fn install_app_root() -> web_sys::Element {
 	let document = web_sys::window().unwrap().document().unwrap();
+	replace_history_path("/");
 	if let Some(prev) = document.get_element_by_id("app") {
 		prev.remove();
 	}
@@ -96,6 +106,13 @@ fn install_app_root() -> web_sys::Element {
 	root.set_id("app");
 	document.body().unwrap().append_child(&root).unwrap();
 	root
+}
+
+fn replace_history_path(path: &str) {
+	let history = web_sys::window().unwrap().history().unwrap();
+	history
+		.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(path))
+		.expect("replace history path");
 }
 
 /// Yields control so the reactive scheduler (which uses
@@ -209,6 +226,61 @@ async fn client_launcher_re_renders_after_intercepted_anchor_click() {
 		!html_after_click.contains("ROUTE-A-CONTENT"),
 		"Refs #5104: previous /a view should be gone after anchor navigation, got: {html_after_click}"
 	);
+}
+
+#[wasm_bindgen_test]
+async fn client_launcher_preserves_layout_shell_between_sibling_routes() {
+	let root = install_app_root();
+	replace_history_path("/a");
+
+	ClientLauncher::new("#app")
+		.router_client(|| {
+			ClientRouter::new().routes(|routes| {
+				routes.layout_route("shell", "/", layout_shell, |children| {
+					children.route("a", "a", page_a).route("b", "b", page_b)
+				})
+			})
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+
+	let document = web_sys::window().unwrap().document().unwrap();
+	let shell = document
+		.get_element_by_id("layout-shell")
+		.expect("layout shell should mount");
+	shell
+		.set_attribute("data-preserved", "yes")
+		.expect("mark shell");
+	assert!(
+		root.inner_html().contains("ROUTE-A-CONTENT"),
+		"setup precondition: expected /a outlet content, got: {}",
+		root.inner_html()
+	);
+
+	with_spa_router(|r| r.push("/b")).expect("push /b");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+
+	let shell_after = document
+		.get_element_by_id("layout-shell")
+		.expect("layout shell should persist");
+	assert_eq!(
+		shell_after.get_attribute("data-preserved").as_deref(),
+		Some("yes"),
+		"layout shell DOM was remounted instead of being preserved"
+	);
+	let html = root.inner_html();
+	assert!(
+		html.contains("ROUTE-B-CONTENT"),
+		"expected /b content, got: {html}"
+	);
+	assert!(
+		!html.contains("ROUTE-A-CONTENT"),
+		"/a outlet content should be replaced, got: {html}"
+	);
+	replace_history_path("/");
 }
 
 /// Direct reproduction of Issue #4088: simulates the reinhardt-cloud dashboard

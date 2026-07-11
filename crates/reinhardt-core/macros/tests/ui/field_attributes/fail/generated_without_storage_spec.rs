@@ -6,7 +6,7 @@ struct User {
 	id: Option<i32>,
 
 	// ERROR: generated_stored or generated_virtual is required
-	#[field(generated = "id * 2")]
+	#[field(generated_sql = "id * 2")]
 	computed: i32,
 }
 

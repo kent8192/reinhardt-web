@@ -14,7 +14,7 @@ use reinhardt_core::reactive::ReactiveScope;
 #[cfg(wasm)]
 use reinhardt_core::types::page::{BOOLEAN_ATTRS, Page, is_boolean_attr_truthy};
 #[cfg(wasm)]
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 #[cfg(wasm)]
 use std::rc::Rc;
 
@@ -107,12 +107,16 @@ pub struct ReactiveIfNode {
 	/// Marker comment node in DOM (used as insertion point reference)
 	#[allow(dead_code)] // Kept for potential future use
 	marker: web_sys::Comment,
+	/// Stable start marker for hydrated DOM ranges.
+	start_marker: Option<web_sys::Comment>,
 	/// Currently mounted DOM nodes
 	#[allow(dead_code)] // Kept for potential future use
 	current_nodes: Rc<RefCell<Vec<web_sys::Node>>>,
 	/// Last evaluated condition value (for change detection)
 	#[allow(dead_code)] // Kept for potential future use
 	last_condition: Rc<RefCell<Option<bool>>>,
+	/// Nested reactive nodes owned by the current branch.
+	reactive_nodes: ReactiveNodeStore,
 	/// Effect handle (kept alive to maintain reactivity)
 	#[allow(dead_code)] // Effect is kept alive for its side effects
 	effect: Effect,
@@ -155,7 +159,8 @@ impl ReactiveIfNode {
 		let current_nodes_clone = current_nodes.clone();
 		let last_condition_clone = last_condition.clone();
 		let marker_clone = marker.clone();
-		let effect_reactive_node_store = current_reactive_node_store();
+		let reactive_nodes = new_reactive_node_store();
+		let effect_reactive_node_store = reactive_nodes.clone();
 
 		// Create the Effect that will re-run when condition dependencies change
 		let effect = Effect::new_with_timing(
@@ -172,6 +177,8 @@ impl ReactiveIfNode {
 					}
 					*last = Some(new_condition);
 					drop(last);
+
+					clear_reactive_node_store(&effect_reactive_node_store);
 
 					// Refs #5100: remove old nodes before mounting the replacement view. The
 					// mount path may synchronously run layout effects, so do not
@@ -203,10 +210,121 @@ impl ReactiveIfNode {
 
 		Self {
 			marker,
+			start_marker: None,
 			current_nodes,
 			last_condition,
+			reactive_nodes,
 			effect,
 		}
+	}
+
+	pub(crate) fn hydrate_at(
+		parent: web_sys::Node,
+		next_sibling: Option<web_sys::Node>,
+		existing_nodes: Vec<web_sys::Node>,
+		condition: std::sync::Arc<dyn Fn() -> bool + 'static>,
+		then_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+		else_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+	) -> Option<Self> {
+		let document = web_sys::window()
+			.expect("window should be available")
+			.document()
+			.expect("document should be available");
+		let start_marker = document.create_comment("reactive-if-start");
+		let marker = document.create_comment("reactive-if");
+		let start_anchor = existing_nodes.first().or(next_sibling.as_ref());
+		let _ = parent.insert_before(&start_marker, start_anchor);
+		let _ = parent.insert_before(&marker, next_sibling.as_ref());
+
+		let current_nodes: Rc<RefCell<Vec<web_sys::Node>>> = Rc::new(RefCell::new(existing_nodes));
+		let last_condition: Rc<RefCell<Option<bool>>> = Rc::new(RefCell::new(None));
+		let current_nodes_clone = current_nodes.clone();
+		let last_condition_clone = last_condition.clone();
+		let start_marker_clone = Some(start_marker.clone());
+		let marker_clone = marker.clone();
+		let reactive_nodes = new_reactive_node_store();
+		let effect_reactive_node_store = reactive_nodes.clone();
+		let first_run = Rc::new(Cell::new(true));
+		let first_run_clone = first_run.clone();
+		#[cfg(feature = "i18n")]
+		let i18n_context = crate::i18n::current_i18n_callback_context();
+
+		let effect = Effect::new_with_timing(
+			move || {
+				let update = || {
+					with_reactive_node_store(&effect_reactive_node_store, || {
+						let new_condition = condition();
+
+						if first_run_clone.replace(false) {
+							*last_condition_clone.borrow_mut() = Some(new_condition);
+							return;
+						}
+
+						let mut last = last_condition_clone.borrow_mut();
+						if *last == Some(new_condition) {
+							return;
+						}
+						*last = Some(new_condition);
+						drop(last);
+
+						clear_reactive_node_store(&effect_reactive_node_store);
+
+						refresh_current_nodes_before_marker(
+							start_marker_clone.as_ref(),
+							&marker_clone,
+							&current_nodes_clone,
+						);
+						let old_nodes = {
+							let mut nodes = current_nodes_clone.borrow_mut();
+							nodes.drain(..).collect::<Vec<_>>()
+						};
+						for node in old_nodes {
+							if let Some(parent_node) = node.parent_node() {
+								let _ = parent_node.remove_child(&node);
+							}
+						}
+
+						let view = if new_condition {
+							then_view()
+						} else {
+							else_view()
+						};
+						let new_nodes = mount_before_marker(&marker_clone, view);
+						*current_nodes_clone.borrow_mut() = new_nodes;
+					});
+				};
+				#[cfg(feature = "i18n")]
+				crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), update);
+				#[cfg(not(feature = "i18n"))]
+				update();
+			},
+			EffectTiming::Layout,
+		);
+
+		Some(Self {
+			marker,
+			start_marker: Some(start_marker),
+			current_nodes,
+			last_condition,
+			reactive_nodes,
+			effect,
+		})
+	}
+
+	pub(crate) fn marker_node(&self) -> web_sys::Node {
+		self.marker.clone().into()
+	}
+
+	pub(crate) fn reactive_node_store(&self) -> ReactiveNodeStore {
+		self.reactive_nodes.clone()
+	}
+
+	pub(crate) fn refresh_hydrated_current_nodes(&self) {
+		refresh_current_nodes_before_marker(
+			self.start_marker.as_ref(),
+			&self.marker,
+			&self.current_nodes,
+		);
 	}
 }
 
@@ -220,9 +338,13 @@ pub struct ReactiveNode {
 	/// Marker comment node in DOM (used as insertion point reference)
 	#[allow(dead_code)] // Kept for potential future use
 	marker: web_sys::Comment,
+	/// Stable start marker for hydrated DOM ranges.
+	start_marker: Option<web_sys::Comment>,
 	/// Currently mounted DOM nodes
 	#[allow(dead_code)] // Kept for potential future use
 	current_nodes: Rc<RefCell<Vec<web_sys::Node>>>,
+	/// Nested reactive nodes owned by the current render.
+	reactive_nodes: ReactiveNodeStore,
 	/// Effect handle (kept alive to maintain reactivity)
 	#[allow(dead_code)] // Effect is kept alive for its side effects
 	effect: Effect,
@@ -259,46 +381,189 @@ impl ReactiveNode {
 		// Clone references for the Effect closure
 		let current_nodes_clone = current_nodes.clone();
 		let marker_clone = marker.clone();
-		let effect_reactive_node_store = current_reactive_node_store();
+		let reactive_nodes = new_reactive_node_store();
+		let effect_reactive_node_store = reactive_nodes.clone();
+		#[cfg(feature = "i18n")]
+		let i18n_context = crate::i18n::current_i18n_callback_context();
 
 		// Create the Effect that will re-run when dependencies change
 		let effect = Effect::new_with_timing(
 			move || {
-				with_reactive_node_store(&effect_reactive_node_store, || {
-					// Render the view (this tracks Signal dependencies)
-					let view = render();
+				let update = || {
+					with_reactive_node_store(&effect_reactive_node_store, || {
+						// Render the view (this tracks Signal dependencies)
+						let view = render();
 
-					if update_activity_boundary_attrs(&current_nodes_clone, &view) {
-						return;
-					}
-
-					// Refs #5100: remove old nodes before mounting the replacement view. The
-					// mount path may synchronously run layout effects, so do not
-					// hold this RefCell borrow across `mount_before_marker`.
-					let old_nodes = {
-						let mut nodes = current_nodes_clone.borrow_mut();
-						nodes.drain(..).collect::<Vec<_>>()
-					};
-					for node in old_nodes {
-						if let Some(parent_node) = node.parent_node() {
-							let _ = parent_node.remove_child(&node);
+						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
+							return;
 						}
-					}
 
-					// Mount new nodes before the marker
-					let new_nodes = mount_before_marker(&marker_clone, view);
-					*current_nodes_clone.borrow_mut() = new_nodes;
-				});
+						clear_reactive_node_store(&effect_reactive_node_store);
+
+						// Refs #5100: remove old nodes before mounting the replacement view. The
+						// mount path may synchronously run layout effects, so do not
+						// hold this RefCell borrow across `mount_before_marker`.
+						let old_nodes = {
+							let mut nodes = current_nodes_clone.borrow_mut();
+							nodes.drain(..).collect::<Vec<_>>()
+						};
+						for node in old_nodes {
+							if let Some(parent_node) = node.parent_node() {
+								let _ = parent_node.remove_child(&node);
+							}
+						}
+
+						// Mount new nodes before the marker
+						let new_nodes = mount_before_marker(&marker_clone, view);
+						*current_nodes_clone.borrow_mut() = new_nodes;
+					});
+				};
+				#[cfg(feature = "i18n")]
+				crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), update);
+				#[cfg(not(feature = "i18n"))]
+				update();
 			},
 			EffectTiming::Layout, // Use Layout timing for synchronous DOM updates
 		);
 
 		Self {
 			marker,
+			start_marker: None,
 			current_nodes,
+			reactive_nodes,
 			effect,
 		}
 	}
+
+	pub(crate) fn hydrate_at(
+		parent: web_sys::Node,
+		next_sibling: Option<web_sys::Node>,
+		existing_nodes: Vec<web_sys::Node>,
+		render: std::sync::Arc<dyn Fn() -> Page + 'static>,
+	) -> Option<Self> {
+		let document = web_sys::window()
+			.expect("window should be available")
+			.document()
+			.expect("document should be available");
+		let start_marker = document.create_comment("reactive-start");
+		let marker = document.create_comment("reactive");
+		let start_anchor = existing_nodes.first().or(next_sibling.as_ref());
+		let _ = parent.insert_before(&start_marker, start_anchor);
+		let _ = parent.insert_before(&marker, next_sibling.as_ref());
+
+		let current_nodes: Rc<RefCell<Vec<web_sys::Node>>> = Rc::new(RefCell::new(existing_nodes));
+		let current_nodes_clone = current_nodes.clone();
+		let start_marker_clone = Some(start_marker.clone());
+		let marker_clone = marker.clone();
+		let reactive_nodes = new_reactive_node_store();
+		let effect_reactive_node_store = reactive_nodes.clone();
+		let first_run = Rc::new(Cell::new(true));
+		let first_run_clone = first_run.clone();
+		#[cfg(feature = "i18n")]
+		let i18n_context = crate::i18n::current_i18n_callback_context();
+
+		let effect = Effect::new_with_timing(
+			move || {
+				let update = || {
+					with_reactive_node_store(&effect_reactive_node_store, || {
+						let first_run_resource_counter =
+							crate::reactive::resource::current_client_resource_counter();
+						let first_run_id_counter =
+							crate::reactive::hooks::id::id_counter_snapshot();
+						let view = render();
+
+						if first_run_clone.replace(false) {
+							crate::reactive::resource::set_client_resource_counter(
+								first_run_resource_counter,
+							);
+							crate::reactive::hooks::id::restore_id_counter(first_run_id_counter);
+							return;
+						}
+
+						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
+							return;
+						}
+
+						clear_reactive_node_store(&effect_reactive_node_store);
+
+						refresh_current_nodes_before_marker(
+							start_marker_clone.as_ref(),
+							&marker_clone,
+							&current_nodes_clone,
+						);
+						let old_nodes = {
+							let mut nodes = current_nodes_clone.borrow_mut();
+							nodes.drain(..).collect::<Vec<_>>()
+						};
+						for node in old_nodes {
+							if let Some(parent_node) = node.parent_node() {
+								let _ = parent_node.remove_child(&node);
+							}
+						}
+
+						let new_nodes = mount_before_marker(&marker_clone, view);
+						*current_nodes_clone.borrow_mut() = new_nodes;
+					});
+				};
+				#[cfg(feature = "i18n")]
+				crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), update);
+				#[cfg(not(feature = "i18n"))]
+				update();
+			},
+			EffectTiming::Layout,
+		);
+
+		Some(Self {
+			marker,
+			start_marker: Some(start_marker),
+			current_nodes,
+			reactive_nodes,
+			effect,
+		})
+	}
+
+	pub(crate) fn marker_node(&self) -> web_sys::Node {
+		self.marker.clone().into()
+	}
+
+	pub(crate) fn reactive_node_store(&self) -> ReactiveNodeStore {
+		self.reactive_nodes.clone()
+	}
+
+	pub(crate) fn refresh_hydrated_current_nodes(&self) {
+		refresh_current_nodes_before_marker(
+			self.start_marker.as_ref(),
+			&self.marker,
+			&self.current_nodes,
+		);
+	}
+}
+
+#[cfg(wasm)]
+fn refresh_current_nodes_before_marker(
+	start_marker: Option<&web_sys::Comment>,
+	marker: &web_sys::Comment,
+	current_nodes: &Rc<RefCell<Vec<web_sys::Node>>>,
+) {
+	let first_node = start_marker
+		.and_then(|marker| {
+			let marker_node: web_sys::Node = marker.clone().into();
+			marker_node.next_sibling()
+		})
+		.or_else(|| current_nodes.borrow().first().cloned());
+
+	let Some(first_node) = first_node else { return };
+	let marker_node: web_sys::Node = marker.clone().into();
+	let mut nodes = Vec::new();
+	let mut next = Some(first_node);
+	while let Some(node) = next {
+		if node.is_same_node(Some(&marker_node)) {
+			break;
+		}
+		next = node.next_sibling();
+		nodes.push(node);
+	}
+	*current_nodes.borrow_mut() = nodes;
 }
 
 #[cfg(wasm)]
@@ -408,7 +673,16 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 				use wasm_bindgen::closure::Closure;
 
 				let handler_clone = handler.clone();
+				#[cfg(feature = "i18n")]
+				let i18n_context = crate::i18n::current_i18n_callback_context();
 				let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
+					#[cfg(feature = "i18n")]
+					{
+						crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || {
+							handler_clone(event);
+						});
+					}
+					#[cfg(not(feature = "i18n"))]
 					handler_clone(event);
 				}) as Box<dyn FnMut(web_sys::Event)>);
 
@@ -436,6 +710,20 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 		Page::KeyedFragment(children) => {
 			for (_, child) in children {
 				nodes.extend(mount_before_marker(marker, child));
+			}
+		}
+		Page::Outlet(outlet) => {
+			let id = outlet.id().map(str::to_string);
+			if let Some(child) = outlet.into_child() {
+				nodes.extend(mount_before_marker(marker, child));
+			} else if let Some(id) = id {
+				let element = document
+					.create_element("reinhardt-outlet")
+					.expect("should create outlet host");
+				let _ = element.set_attribute("data-rh-outlet-id", &id);
+				let _ = element.set_attribute("style", "display: contents;");
+				let _ = parent.insert_before(&element, Some(marker));
+				nodes.push(element.unchecked_into());
 			}
 		}
 		Page::Empty => {}
@@ -482,6 +770,12 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 
 			// Store the nested node to keep it alive
 			store_reactive_node(nested_node);
+		}
+		Page::Suspense(node) => {
+			nodes.extend(mount_before_marker(marker, node.render_branch()));
+		}
+		Page::Deferred(node) => {
+			nodes.extend(mount_before_marker(marker, node.content()));
 		}
 	}
 

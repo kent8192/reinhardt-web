@@ -26,6 +26,7 @@ fn main() {
 	let _keyboard_events = page!(|| {
 		input {
 			r#type: "text",
+			aria_label: "Keyboard event field",
 			@keydown: |_| {},
 			@keyup: |_| {},
 			@keypress: |_| {},
@@ -38,6 +39,7 @@ fn main() {
 			@submit: |_| {},
 			input {
 				r#type: "text",
+				aria_label: "Form event field",
 				@change: |_| {},
 				@input: |_| {},
 				@focus: |_| {},

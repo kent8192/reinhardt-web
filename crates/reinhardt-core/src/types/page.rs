@@ -127,6 +127,37 @@ pub struct Reactive {
 	render: std::sync::Arc<dyn Fn() -> Page + 'static>,
 }
 
+/// Suspense view node with lazy branch factories.
+///
+/// The branch factories are stored as `Arc<dyn Fn>` so the enclosing `Page`
+/// remains cloneable while each traversal can render a fresh branch.
+pub struct SuspenseNode {
+	/// Optional boundary identifier for matching SSR and hydration boundaries.
+	boundary_id: Option<String>,
+	/// Resource hydration keys explicitly tracked by this boundary.
+	tracked_resource_ids: Vec<String>,
+	/// Pending-state closure used to choose the active branch on the client.
+	is_pending: Arc<dyn Fn() -> bool + 'static>,
+	/// Fallback view factory invoked while the boundary is pending.
+	fallback: Arc<dyn Fn() -> Page + 'static>,
+	/// Content view factory invoked after the boundary has resolved.
+	content: Arc<dyn Fn() -> Page + 'static>,
+}
+
+/// Deferred view node with lazy fallback and content factories.
+///
+/// Deferred nodes preserve both branches for async SSR orchestration while
+/// normal page traversal renders the content branch.
+#[derive(Clone)]
+pub struct DeferredNode {
+	/// Stable node identifier for SSR and hydration coordination.
+	node_id: String,
+	/// Fallback view factory reserved for deferred streaming boundaries.
+	fallback: Arc<dyn Fn() -> Page + 'static>,
+	/// Content view factory rendered by normal traversal.
+	content: Arc<dyn Fn() -> Page + 'static>,
+}
+
 impl std::fmt::Debug for Reactive {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("Reactive")
@@ -144,6 +175,161 @@ impl Reactive {
 	/// Consumes the Reactive and returns the render closure.
 	pub fn into_render(self) -> std::sync::Arc<dyn Fn() -> Page + 'static> {
 		self.render
+	}
+}
+
+impl std::fmt::Debug for SuspenseNode {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("SuspenseNode")
+			.field("boundary_id", &self.boundary_id)
+			.field("tracked_resource_ids", &self.tracked_resource_ids)
+			.field("is_pending", &"<closure>")
+			.field("fallback", &"<closure>")
+			.field("content", &"<closure>")
+			.finish()
+	}
+}
+
+impl Clone for SuspenseNode {
+	fn clone(&self) -> Self {
+		Self {
+			boundary_id: self.boundary_id.clone(),
+			tracked_resource_ids: self.tracked_resource_ids.clone(),
+			is_pending: Arc::clone(&self.is_pending),
+			fallback: Arc::clone(&self.fallback),
+			content: Arc::clone(&self.content),
+		}
+	}
+}
+
+impl SuspenseNode {
+	/// Creates a new suspense node.
+	pub fn new(
+		boundary_id: Option<String>,
+		is_pending: impl Fn() -> bool + 'static,
+		fallback: impl Fn() -> Page + 'static,
+		content: impl Fn() -> Page + 'static,
+	) -> Self {
+		Self::new_with_tracked_resources(boundary_id, Vec::new(), is_pending, fallback, content)
+	}
+
+	/// Creates a new suspense node with tracked SSR resource keys.
+	pub fn new_with_tracked_resources(
+		boundary_id: Option<String>,
+		tracked_resource_ids: Vec<String>,
+		is_pending: impl Fn() -> bool + 'static,
+		fallback: impl Fn() -> Page + 'static,
+		content: impl Fn() -> Page + 'static,
+	) -> Self {
+		Self {
+			boundary_id,
+			tracked_resource_ids,
+			is_pending: Arc::new(is_pending),
+			fallback: Arc::new(fallback),
+			content: Arc::new(content),
+		}
+	}
+
+	/// Returns the optional boundary identifier.
+	pub fn boundary_id(&self) -> Option<&str> {
+		self.boundary_id.as_deref()
+	}
+
+	/// Returns resource hydration keys explicitly tracked by this boundary.
+	pub fn tracked_resource_ids(&self) -> &[String] {
+		&self.tracked_resource_ids
+	}
+
+	/// Returns `true` when the fallback branch should render.
+	pub fn is_pending(&self) -> bool {
+		(self.is_pending)()
+	}
+
+	/// Renders the fallback branch.
+	pub fn fallback(&self) -> Page {
+		(self.fallback)()
+	}
+
+	/// Renders the fallback branch.
+	pub fn render_fallback(&self) -> Page {
+		self.fallback()
+	}
+
+	/// Renders the content branch.
+	pub fn content(&self) -> Page {
+		(self.content)()
+	}
+
+	/// Renders the content branch.
+	pub fn render_content(&self) -> Page {
+		self.content()
+	}
+
+	/// Renders the currently active branch.
+	pub fn render_branch(&self) -> Page {
+		if self.is_pending() {
+			self.fallback()
+		} else {
+			self.content()
+		}
+	}
+
+	fn find_topmost_content_head_owned(&self) -> Option<Head> {
+		self.content().find_topmost_head_owned()
+	}
+}
+
+impl std::fmt::Debug for DeferredNode {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("DeferredNode")
+			.field("node_id", &self.node_id)
+			.field("fallback", &"<closure>")
+			.field("content", &"<closure>")
+			.finish()
+	}
+}
+
+impl DeferredNode {
+	/// Creates a new deferred node.
+	pub fn new(
+		node_id: impl Into<String>,
+		fallback: impl Fn() -> Page + 'static,
+		content: impl Fn() -> Page + 'static,
+	) -> Self {
+		Self {
+			node_id: node_id.into(),
+			fallback: Arc::new(fallback),
+			content: Arc::new(content),
+		}
+	}
+
+	/// Returns the stable node identifier.
+	pub fn node_id(&self) -> &str {
+		&self.node_id
+	}
+
+	/// Renders the fallback branch.
+	pub fn fallback(&self) -> Page {
+		(self.fallback)()
+	}
+
+	/// Renders the fallback branch.
+	pub fn render_fallback(&self) -> Page {
+		self.fallback()
+	}
+
+	/// Renders the content branch.
+	pub fn content(&self) -> Page {
+		(self.content)()
+	}
+
+	/// Renders the content branch.
+	pub fn render_content(&self) -> Page {
+		self.content()
+	}
+
+	fn find_topmost_content_head_owned(&self) -> Option<Head> {
+		self.content().find_topmost_head_owned()
 	}
 }
 
@@ -188,6 +374,46 @@ impl ReactiveIf {
 	}
 }
 
+/// Router-managed outlet content used by layout routes.
+#[derive(Debug, Clone)]
+pub struct Outlet {
+	id: Option<String>,
+	child: Option<Box<Page>>,
+}
+
+impl Outlet {
+	/// Creates an inline outlet for stateless native and SSR rendering.
+	pub fn inline(child: impl IntoPage) -> Self {
+		Self {
+			id: None,
+			child: Some(Box::new(child.into_page())),
+		}
+	}
+
+	/// Creates a placeholder outlet for browser mount managers.
+	pub fn placeholder(id: impl Into<String>) -> Self {
+		Self {
+			id: Some(id.into()),
+			child: None,
+		}
+	}
+
+	/// Returns the placeholder id, if this outlet is a browser placeholder.
+	pub fn id(&self) -> Option<&str> {
+		self.id.as_deref()
+	}
+
+	/// Returns the inline child page, if present.
+	pub fn child(&self) -> Option<&Page> {
+		self.child.as_deref()
+	}
+
+	/// Consumes the outlet and returns the inline child page.
+	pub fn into_child(self) -> Option<Page> {
+		self.child.map(|child| *child)
+	}
+}
+
 /// A unified representation of renderable content.
 ///
 /// Page is the core abstraction for all UI elements in the component system.
@@ -208,6 +434,8 @@ pub enum Page {
 	Fragment(Vec<Page>),
 	/// A fragment whose children have stable identity keys.
 	KeyedFragment(Vec<(String, Page)>),
+	/// A router-managed outlet used by layout routes.
+	Outlet(Outlet),
 	/// An empty view (renders nothing).
 	Empty,
 	/// A view with associated head section.
@@ -232,6 +460,10 @@ pub enum Page {
 	/// automatic DOM updates when Signal values accessed within the
 	/// closure change.
 	Reactive(Reactive),
+	/// A suspense boundary with pending and resolved branch factories.
+	Suspense(SuspenseNode),
+	/// A deferred node with fallback and content branch factories.
+	Deferred(DeferredNode),
 }
 
 /// Represents a DOM element in the view tree.
@@ -532,6 +764,11 @@ impl Page {
 		Self::Empty
 	}
 
+	/// Creates an outlet page node.
+	pub fn outlet(outlet: Outlet) -> Self {
+		Page::Outlet(outlet)
+	}
+
 	/// Attaches a head section to this view.
 	///
 	/// The head section contains metadata like title, meta tags, stylesheets,
@@ -671,15 +908,46 @@ impl Page {
 	/// # Search Order
 	///
 	/// 1. If this view is a `WithHead`, returns its head
-	/// 2. For `Fragment` views, searches children in order and returns the first found
-	/// 3. For other variants, returns `None`
+	/// 2. For element and fragment views, searches children in order and returns the first found
+	/// 3. For inline `Outlet` views, searches the child page
+	/// 4. For other variants, returns `None`
+	///
+	/// Use [`Page::find_topmost_head_owned`] when lazy Suspense/Deferred content
+	/// should participate in the lookup.
 	pub fn find_topmost_head(&self) -> Option<&Head> {
 		match self {
 			Page::WithHead { head, .. } => Some(head),
+			Page::Element(element) => element
+				.child_views()
+				.iter()
+				.find_map(|view| view.find_topmost_head()),
 			Page::Fragment(children) => children.iter().find_map(|v| v.find_topmost_head()),
 			Page::KeyedFragment(children) => {
 				children.iter().find_map(|(_, v)| v.find_topmost_head())
 			}
+			Page::Outlet(outlet) => outlet.child().and_then(Page::find_topmost_head),
+			_ => None,
+		}
+	}
+
+	/// Finds the topmost head section and returns an owned copy.
+	///
+	/// Unlike [`Page::find_topmost_head`], this method can evaluate lazy
+	/// Suspense/Deferred content without storing request state on the `Page`.
+	pub fn find_topmost_head_owned(&self) -> Option<Head> {
+		match self {
+			Page::WithHead { head, .. } => Some(head.clone()),
+			Page::Element(element) => element
+				.child_views()
+				.iter()
+				.find_map(Page::find_topmost_head_owned),
+			Page::Fragment(children) => children.iter().find_map(Page::find_topmost_head_owned),
+			Page::KeyedFragment(children) => children
+				.iter()
+				.find_map(|(_, v)| v.find_topmost_head_owned()),
+			Page::Outlet(outlet) => outlet.child().and_then(Page::find_topmost_head_owned),
+			Page::Suspense(node) => node.find_topmost_content_head_owned(),
+			Page::Deferred(node) => node.find_topmost_content_head_owned(),
 			_ => None,
 		}
 	}
@@ -738,6 +1006,11 @@ impl Page {
 					child.render_to_string_inner(output);
 				}
 			}
+			Page::Outlet(outlet) => {
+				if let Some(child) = outlet.child() {
+					child.render_to_string_inner(output);
+				}
+			}
 			Page::Empty => {}
 			Page::WithHead { view, .. } => {
 				// The head is extracted separately during SSR; here we just render the content
@@ -756,6 +1029,14 @@ impl Page {
 			Page::Reactive(reactive) => {
 				// For SSR, evaluate render once and render the result
 				let view = reactive.render();
+				view.render_to_string_inner(output);
+			}
+			Page::Suspense(node) => {
+				let view = node.render_branch();
+				view.render_to_string_inner(output);
+			}
+			Page::Deferred(node) => {
+				let view = node.content();
 				view.render_to_string_inner(output);
 			}
 		}
@@ -782,6 +1063,12 @@ impl IntoPage for Page {
 impl IntoPage for PageElement {
 	fn into_page(self) -> Page {
 		Page::Element(self)
+	}
+}
+
+impl IntoPage for Outlet {
+	fn into_page(self) -> Page {
+		Page::Outlet(self)
 	}
 }
 
@@ -974,6 +1261,61 @@ mod tests {
 	fn test_render_empty() {
 		let view = Page::empty();
 		assert_eq!(view.render_to_string(), "");
+	}
+
+	#[test]
+	fn outlet_inline_renders_child_page() {
+		let view = Page::outlet(Outlet::inline(Page::text("Child")));
+
+		assert_eq!(view.render_to_string(), "Child");
+	}
+
+	#[test]
+	fn outlet_placeholder_renders_empty_on_string_render() {
+		let view = Page::outlet(Outlet::placeholder("layout-0"));
+
+		assert_eq!(view.render_to_string(), "");
+	}
+
+	#[test]
+	fn outlet_inline_participates_in_head_lookup() {
+		let view = Page::outlet(Outlet::inline(
+			Page::text("Child").with_head(Head::new().title("Child")),
+		));
+
+		assert_eq!(
+			view.find_topmost_head()
+				.and_then(|head| head.title.as_deref()),
+			Some("Child")
+		);
+	}
+
+	#[test]
+	fn suspense_head_lookup_uses_fresh_content_per_call() {
+		let title = std::rc::Rc::new(std::cell::RefCell::new("first".to_string()));
+		let content_title = std::rc::Rc::clone(&title);
+		let node = SuspenseNode::new(
+			Some("head-boundary".to_string()),
+			|| false,
+			|| Page::text("loading"),
+			move || {
+				Page::text("content").with_head(Head::new().title(content_title.borrow().clone()))
+			},
+		);
+
+		let view = Page::Suspense(node);
+		assert_eq!(
+			view.find_topmost_head_owned()
+				.and_then(|head| head.title.map(|title| title.into_owned())),
+			Some("first".to_string())
+		);
+
+		*title.borrow_mut() = "second".to_string();
+		assert_eq!(
+			view.find_topmost_head_owned()
+				.and_then(|head| head.title.map(|title| title.into_owned())),
+			Some("second".to_string())
+		);
 	}
 
 	#[test]

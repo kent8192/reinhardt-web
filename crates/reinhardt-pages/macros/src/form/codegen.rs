@@ -3645,6 +3645,7 @@ fn generate_image_input_view(input: &TypedImageInputDef) -> TokenStream {
 			.attr("name", #name)
 			.attr("src", #src)
 			.attr("alt", #alt)
+			.attr("aria-label", #alt)
 			#class_attr
 			#id_attr
 			.bool_attr("disabled", #disabled)
@@ -7373,6 +7374,10 @@ mod tests {
 					value: 3,
 					max: 10,
 				}
+				image_submit: ImageInput {
+					src: "/submit.png",
+					alt: "Submit image",
+				}
 			},
 		};
 
@@ -7384,6 +7389,8 @@ mod tests {
 		assert!(output_str.contains(". attr (\"type\" , \"button\")"));
 		assert!(output_str.contains("PageElement :: new (\"progress\")"));
 		assert!(output_str.contains(". attr (\"name\" , \"progress\")"));
+		assert!(output_str.contains(". attr (\"type\" , \"image\")"));
+		assert!(output_str.contains(". attr (\"aria-label\" , \"Submit image\")"));
 		assert!(output_str.contains("pub fn title"));
 		assert!(output_str.contains("title :"));
 		assert!(output_str.contains("& self . title"));

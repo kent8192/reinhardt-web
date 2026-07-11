@@ -704,9 +704,11 @@ pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
 /// bidirectional `From` conversions, and a typestate builder. Relationship
 /// fields use lightweight `RelationInfo<T>` and `ManyToManyInfo<Source, Target>`
 /// payloads instead of ORM marker fields or flattened `*_id` fields. FK and
-/// OneToOne builder setters accept `impl IntoPrimaryKey<T>`. Validation
-/// attributes are derived from `#[field(...)]` config. Opt out with
-/// `#[model(info = false)]`. Exclude individual fields with
+/// OneToOne builder setters accept `impl IntoPrimaryKey<T>`, and generated
+/// `*_id()` accessors return the related primary-key value rather than a
+/// reference so shared native/WASM model code can call the same method.
+/// Validation attributes are derived from `#[field(...)]` config. Opt out
+/// with `#[model(info = false)]`. Exclude individual fields with
 /// `#[field(skip_info = true)]`.
 ///
 /// # Model Attributes
@@ -798,7 +800,17 @@ pub fn user(args: TokenStream, input: TokenStream) -> TokenStream {
 /// - Exactly one field must be marked with `primary_key = true`
 /// - String fields must specify `max_length`
 ///
-#[proc_macro_derive(Model, attributes(model, model_config, field, rel, fk_id_field))]
+#[proc_macro_derive(
+	Model,
+	attributes(
+		model,
+		model_config,
+		field,
+		rel,
+		fk_id_field,
+		reinhardt_internal_relation_serde_skip
+	)
+)]
 pub fn derive_model(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as syn::DeriveInput);
 

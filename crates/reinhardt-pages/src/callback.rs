@@ -32,7 +32,6 @@ use std::future::Future;
 use std::sync::Arc;
 
 use crate::component::PageEventHandler;
-#[cfg(wasm)]
 use crate::platform::spawn_task;
 use crate::reactive::pages_arena::{PageNodeKey, PageNodeKind, allocate_page_node, with_page_node};
 
@@ -490,7 +489,11 @@ where
 	Fut: Future<Output = ()> + 'static,
 {
 	Arc::new(move |event| {
+		#[cfg(feature = "i18n")]
+		let i18n_context = crate::i18n::current_i18n_callback_context();
 		let fut = f(event);
+		#[cfg(feature = "i18n")]
+		let fut = crate::i18n::with_optional_i18n_context_async(i18n_context, fut);
 		spawn_task(fut);
 	})
 }
@@ -503,8 +506,7 @@ where
 	Fut: Future<Output = ()> + Send + 'static,
 {
 	Arc::new(move |event| {
-		// Non-WASM stub: drop the future without awaiting
-		std::mem::drop(f(event));
+		spawn_task(f(event));
 	})
 }
 
@@ -610,7 +612,7 @@ mod tests {
 
 		let handler: PageEventHandler = into_event_handler(|_: DummyEvent| {});
 		// Verify it's callable
-		handler(DummyEvent::default());
+		handler(DummyEvent);
 	}
 }
 

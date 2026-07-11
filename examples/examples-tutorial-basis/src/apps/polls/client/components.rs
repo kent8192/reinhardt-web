@@ -699,7 +699,10 @@ pub fn question_new() -> Page {
 	let form_view = new_form.into_page();
 	let cancel_href = polls_routes::reverse("index", &[]);
 
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, cancel_href: String| {
+	page!(|loading_signal: Signal<bool>,
+	 error_signal: Signal<Option<String>>,
+	 form_view: Page,
+	 cancel_href: String| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			h1 {
@@ -788,7 +791,6 @@ pub fn question_edit(question_id: i64) -> Page {
 						.question_text()
 						.set(question.question_text.clone());
 				}
-				None::<fn()>
 			},
 			(load_detail_for_deps,),
 		);
@@ -799,7 +801,10 @@ pub fn question_edit(question_id: i64) -> Page {
 	let edit_form_error = edit_form.error().clone();
 	let edit_form_loading = edit_form.loading().clone();
 	let edit_form_page = edit_form.into_page();
-	let edit_form_view = page!(|edit_form_error: Signal<Option<String>>, edit_form_loading: Signal<bool>, edit_form_page: Page, question_id: i64| {
+	let edit_form_view = page!(|edit_form_error: Signal<Option<String>>,
+	 edit_form_loading: Signal<bool>,
+	 edit_form_page: Page,
+	 question_id: i64| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			h1 {
@@ -850,7 +855,9 @@ pub fn question_edit(question_id: i64) -> Page {
 		question_id,
 	);
 
-	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>, edit_form_view: Page, question_id: i64| {
+	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>,
+	 edit_form_view: Page,
+	 question_id: i64| {
 		div { {
 			match load_detail.get() {
 				ResourceState::Loading => page!(|| {
@@ -914,7 +921,11 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 		&[("question_id", question_id.to_string().as_str())],
 	);
 
-	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>, error_signal: Signal<Option<String>>, loading_signal: Signal<bool>, form_view: Page, cancel_href: String| {
+	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>,
+	 error_signal: Signal<Option<String>>,
+	 loading_signal: Signal<bool>,
+	 form_view: Page,
+	 cancel_href: String| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			h1 {
@@ -1045,7 +1056,10 @@ pub fn choice_new(question_id: i64) -> Page {
 	let form_view = new_form.into_page();
 	let back_href = polls_routes::reverse("detail", &[("question_id", qid.to_string().as_str())]);
 
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, back_href: String| {
+	page!(|loading_signal: Signal<bool>,
+	 error_signal: Signal<Option<String>>,
+	 form_view: Page,
+	 back_href: String| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			h1 {
@@ -1124,7 +1138,10 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 	let error_signal = edit_form.error().clone();
 	let form_view = edit_form.into_page();
 
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, cancel_href: String| {
+	page!(|loading_signal: Signal<bool>,
+	 error_signal: Signal<Option<String>>,
+	 form_view: Page,
+	 cancel_href: String| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			h1 {
@@ -1197,7 +1214,10 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 	let error_signal = delete_form.error().clone();
 	let form_view = delete_form.into_page();
 
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, cancel_href: String| {
+	page!(|loading_signal: Signal<bool>,
+	 error_signal: Signal<Option<String>>,
+	 form_view: Page,
+	 cancel_href: String| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			h1 {

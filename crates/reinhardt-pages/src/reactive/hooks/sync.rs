@@ -299,7 +299,8 @@ mod tests {
 	fn test_use_sync_external_store_with_update() {
 		reinhardt_core::reactive::ReactiveScope::run(|| {
 			let store_value = Rc::new(RefCell::new(0));
-			let on_change_fn: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(None));
+			type OnChangeSlot = Rc<RefCell<Option<Rc<dyn Fn()>>>>;
+			let on_change_fn: OnChangeSlot = Rc::new(RefCell::new(None));
 
 			let signal_with_sub = use_sync_external_store(
 				{

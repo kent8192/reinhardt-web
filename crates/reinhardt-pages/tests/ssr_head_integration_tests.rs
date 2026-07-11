@@ -22,15 +22,14 @@ mod ssr_tests {
 	use reinhardt_pages::component::{Head, IntoPage, LinkTag, MetaTag, PageElement};
 	use reinhardt_pages::head;
 	use reinhardt_pages::ssr::SsrRenderer;
-	use rstest::*;
 
 	// ============================================================================
 	// View Head Only Tests
 	// ============================================================================
 
 	/// Tests that render_page_with_view_head uses View's title.
-	#[rstest]
-	fn test_render_page_with_view_head_uses_view_title() {
+	#[tokio::test]
+	async fn test_render_page_with_view_head_uses_view_title() {
 		let view_head = Head::new().title("View Title");
 		let view = PageElement::new("div")
 			.child("Content")
@@ -38,14 +37,14 @@ mod ssr_tests {
 			.with_head(view_head);
 
 		let mut renderer = SsrRenderer::new();
-		let html = renderer.render_page_with_view_head(view);
+		let html = renderer.render_page_with_view_head_to_string(view).await;
 
 		assert!(html.contains("<title>View Title</title>"));
 	}
 
 	/// Tests that render_page_with_view_head includes View's meta tags.
-	#[rstest]
-	fn test_render_page_with_view_head_includes_view_meta() {
+	#[tokio::test]
+	async fn test_render_page_with_view_head_includes_view_meta() {
 		let view_head = Head::new().meta(MetaTag::new("description", "View description"));
 		let view = PageElement::new("div")
 			.child("Content")
@@ -53,7 +52,7 @@ mod ssr_tests {
 			.with_head(view_head);
 
 		let mut renderer = SsrRenderer::new();
-		let html = renderer.render_page_with_view_head(view);
+		let html = renderer.render_page_with_view_head_to_string(view).await;
 
 		assert!(html.contains("<meta name=\"description\" content=\"View description\""));
 	}
@@ -63,12 +62,12 @@ mod ssr_tests {
 	// ============================================================================
 
 	/// Tests rendering without any head elements produces no title.
-	#[rstest]
-	fn test_render_without_head_has_no_title() {
+	#[tokio::test]
+	async fn test_render_without_head_has_no_title() {
 		let view = PageElement::new("div").child("Content").into_page();
 
 		let mut renderer = SsrRenderer::new();
-		let html = renderer.render_page_with_view_head(view);
+		let html = renderer.render_page_with_view_head_to_string(view).await;
 
 		// No <title> tag when no head provided
 		assert!(!html.contains("<title>"));
@@ -83,8 +82,8 @@ mod ssr_tests {
 	// ============================================================================
 
 	/// Tests multiple meta tags via Head.
-	#[rstest]
-	fn test_multiple_meta_tags_via_head() {
+	#[tokio::test]
+	async fn test_multiple_meta_tags_via_head() {
 		let view_head = Head::new()
 			.meta(MetaTag::new("description", "Page desc"))
 			.meta(MetaTag::new("author", "Test Author"));
@@ -94,15 +93,15 @@ mod ssr_tests {
 			.with_head(view_head);
 
 		let mut renderer = SsrRenderer::new();
-		let html = renderer.render_page_with_view_head(view);
+		let html = renderer.render_page_with_view_head_to_string(view).await;
 
 		assert!(html.contains("<meta name=\"description\" content=\"Page desc\""));
 		assert!(html.contains("<meta name=\"author\" content=\"Test Author\""));
 	}
 
 	/// Tests multiple CSS links via Head.
-	#[rstest]
-	fn test_multiple_css_links_via_head() {
+	#[tokio::test]
+	async fn test_multiple_css_links_via_head() {
 		let view_head = Head::new()
 			.link(LinkTag::new("stylesheet", "/style1.css"))
 			.link(LinkTag::new("stylesheet", "/style2.css"));
@@ -112,15 +111,15 @@ mod ssr_tests {
 			.with_head(view_head);
 
 		let mut renderer = SsrRenderer::new();
-		let html = renderer.render_page_with_view_head(view);
+		let html = renderer.render_page_with_view_head_to_string(view).await;
 
 		assert!(html.contains("href=\"/style1.css\""));
 		assert!(html.contains("href=\"/style2.css\""));
 	}
 
 	/// Tests title combined with meta tags.
-	#[rstest]
-	fn test_title_with_meta_tags() {
+	#[tokio::test]
+	async fn test_title_with_meta_tags() {
 		let view_head = Head::new()
 			.title("My Page")
 			.meta(MetaTag::new("description", "Page description"));
@@ -130,15 +129,15 @@ mod ssr_tests {
 			.with_head(view_head);
 
 		let mut renderer = SsrRenderer::new();
-		let html = renderer.render_page_with_view_head(view);
+		let html = renderer.render_page_with_view_head_to_string(view).await;
 
 		assert!(html.contains("<title>My Page</title>"));
 		assert!(html.contains("<meta name=\"description\" content=\"Page description\""));
 	}
 
 	/// Tests exact duplicate asset hints are deduplicated during SSR.
-	#[rstest]
-	fn test_duplicate_asset_hints_are_deduplicated_during_ssr() {
+	#[tokio::test]
+	async fn test_duplicate_asset_hints_are_deduplicated_during_ssr() {
 		let view_head = Head::new()
 			.preconnect("https://cdn.example.com")
 			.preconnect("https://cdn.example.com")
@@ -150,7 +149,7 @@ mod ssr_tests {
 			.with_head(view_head);
 
 		let mut renderer = SsrRenderer::new();
-		let html = renderer.render_page_with_view_head(view);
+		let html = renderer.render_page_with_view_head_to_string(view).await;
 
 		assert_eq!(
 			html.matches("<link rel=\"preconnect\" href=\"https://cdn.example.com\">")
@@ -165,8 +164,8 @@ mod ssr_tests {
 	}
 
 	/// Tests exact duplicate default meta tags are deduplicated during SSR.
-	#[rstest]
-	fn test_default_meta_tags_are_deduplicated_during_ssr() {
+	#[tokio::test]
+	async fn test_default_meta_tags_are_deduplicated_during_ssr() {
 		let view_head = Head::with_defaults();
 		let view = PageElement::new("div")
 			.child("Content")
@@ -174,7 +173,7 @@ mod ssr_tests {
 			.with_head(view_head);
 
 		let mut renderer = SsrRenderer::new();
-		let html = renderer.render_page_with_view_head(view);
+		let html = renderer.render_page_with_view_head_to_string(view).await;
 
 		assert_eq!(html.matches("<meta charset=\"UTF-8\">").count(), 1);
 		assert_eq!(
@@ -191,8 +190,8 @@ mod ssr_tests {
 	// ============================================================================
 
 	/// Tests that empty View head doesn't break rendering.
-	#[rstest]
-	fn test_empty_view_head_renders_correctly() {
+	#[tokio::test]
+	async fn test_empty_view_head_renders_correctly() {
 		let view_head = Head::new(); // Empty head
 		let view = PageElement::new("div")
 			.child("Content")
@@ -200,7 +199,7 @@ mod ssr_tests {
 			.with_head(view_head);
 
 		let mut renderer = SsrRenderer::new();
-		let html = renderer.render_page_with_view_head(view);
+		let html = renderer.render_page_with_view_head_to_string(view).await;
 
 		// Should still render basic HTML structure
 		assert!(html.contains("<!DOCTYPE html>"));
@@ -210,8 +209,8 @@ mod ssr_tests {
 	}
 
 	/// Tests rendering with head! macro generated Head.
-	#[rstest]
-	fn test_render_with_head_macro() {
+	#[tokio::test]
+	async fn test_render_with_head_macro() {
 		let page_head = head!(|| {
 			title { "Macro Title" }
 			meta {
@@ -226,7 +225,7 @@ mod ssr_tests {
 			.with_head(page_head);
 
 		let mut renderer = SsrRenderer::new();
-		let html = renderer.render_page_with_view_head(view);
+		let html = renderer.render_page_with_view_head_to_string(view).await;
 
 		assert!(html.contains("<title>Macro Title</title>"));
 		assert!(html.contains("<meta name=\"description\" content=\"Macro description\""));

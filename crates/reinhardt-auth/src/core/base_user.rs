@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use unicode_normalization::UnicodeNormalization;
 
-use crate::core::hasher::PasswordHasher;
+use crate::core::hasher::{
+	PasswordCheck, PasswordHashPolicy, PasswordHasher, PasswordVerification,
+};
 
 /// BaseUser trait - Django-style authentication
 ///
@@ -243,6 +245,54 @@ pub trait BaseUser: Send + Sync + Serialize + for<'de> Deserialize<'de> {
 				hasher.verify(password, hash)
 			}
 			None => Ok(false),
+		}
+	}
+
+	/// Checks the password and updates the stored hash when the default hasher requires it.
+	///
+	/// This helper preserves the existing single-hasher behavior while returning
+	/// whether the stored hash changed in memory.
+	fn check_password_with_update(
+		&mut self,
+		password: &str,
+	) -> Result<PasswordCheck, reinhardt_core::exception::Error>
+	where
+		Self::Hasher: 'static,
+	{
+		let policy = PasswordHashPolicy::new(Self::Hasher::default());
+		self.check_password_with_policy_update(password, &policy)
+	}
+
+	/// Checks the password against an ordered hash policy and stores a refreshed hash when needed.
+	///
+	/// The policy verifies the preferred hasher first, then each legacy hasher in
+	/// registration order. When a legacy hash matches, or when the preferred
+	/// hasher reports that its cost parameters need an upgrade, the password is
+	/// rehashed with the preferred hasher.
+	///
+	/// This method updates only the in-memory user value by replacing the stored
+	/// password hash. Callers must save or persist the user through their manager
+	/// or repository after [`PasswordCheck::ValidUpdated`] is returned.
+	fn check_password_with_policy_update(
+		&mut self,
+		password: &str,
+		policy: &PasswordHashPolicy,
+	) -> Result<PasswordCheck, reinhardt_core::exception::Error> {
+		if !self.has_usable_password() {
+			return Ok(PasswordCheck::Invalid);
+		}
+
+		let Some(hash) = self.password_hash() else {
+			return Ok(PasswordCheck::Invalid);
+		};
+
+		match policy.verify_with_update(password, hash)? {
+			PasswordVerification::Invalid => Ok(PasswordCheck::Invalid),
+			PasswordVerification::Valid => Ok(PasswordCheck::Valid),
+			PasswordVerification::ValidNeedsRehash { updated_hash } => {
+				self.set_password_hash(updated_hash);
+				Ok(PasswordCheck::ValidUpdated)
+			}
 		}
 	}
 

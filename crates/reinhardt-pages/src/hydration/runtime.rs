@@ -11,6 +11,9 @@ use std::collections::HashMap;
 use crate::dom::{Element, document};
 
 #[cfg(wasm)]
+use crate::component::{Page, store_reactive_node, with_reactive_node_store};
+
+#[cfg(wasm)]
 use crate::ssr::HYDRATION_ATTR_ID;
 
 /// Errors that can occur during hydration.
@@ -143,6 +146,16 @@ impl HydrationContext {
 		self.props.get(id).or_else(|| self.state.get_props(id))
 	}
 
+	/// Gets SSR metadata by key.
+	pub fn get_metadata(&self, key: &str) -> Option<&serde_json::Value> {
+		self.state.get_metadata(key)
+	}
+
+	/// Gets resource state by deterministic resource ID.
+	pub fn get_resource_state(&self, id: &str) -> Option<&serde_json::Value> {
+		self.state.get_resource_state(id)
+	}
+
 	/// Marks hydration as complete.
 	pub fn mark_hydrated(&mut self) {
 		self.hydrated = true;
@@ -166,31 +179,466 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	let mut context = HydrationContext::from_window()?;
 	let scope = reinhardt_core::reactive::ReactiveScope::new();
 	scope.enter(|| {
+		#[cfg(feature = "i18n")]
+		let i18n_guard = crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
+			HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
+		})?;
+
 		// 2. Render the component to get expected structure
 		let view = component.render();
+		let resource_counter_offset = crate::reactive::resource::current_client_resource_counter();
+		let id_counter_offset = crate::reactive::hooks::id::id_counter_snapshot();
 		web_sys::console::log_1(&"[Hydration] View rendered".into());
 
 		// 3. Reconcile DOM structure
+		crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+		crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 		reconcile(root, &view).map_err(|e| {
 			HydrationError::StateParseError(format!("Reconciliation failed: {}", e))
 		})?;
 		web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
 
 		// 4. Attach event handlers
+		crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+		crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 		let mut registry = EventRegistry::new();
 		attach_events_recursive(root, &view, &mut registry)?;
+		crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+		crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 		web_sys::console::log_1(&"[Hydration] Events attached".into());
+
+		// 5. Install reactive DOM owners for hydrated reactive views
+		install_hydrated_reactive_nodes(root, &view);
+		web_sys::console::log_1(&"[Hydration] Reactive nodes installed".into());
+
+		#[cfg(feature = "i18n")]
+		if let Some(i18n_guard) = i18n_guard {
+			crate::i18n::retain_hydrated_i18n_context(i18n_guard);
+		}
 
 		Ok(())
 	})?;
 	crate::component::store_reactive_scope(scope);
 
-	// 5. Mark hydration complete
+	// 6. Mark hydration complete
 	context.mark_hydrated();
 	mark_hydration_complete_internal();
 	web_sys::console::log_1(&"[Hydration] Complete!".into());
 
 	Ok(())
+}
+
+#[cfg(wasm)]
+fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
+	match view {
+		Page::Element(element_view) => {
+			install_hydrated_element_children(element, element_view.child_views());
+		}
+		Page::WithHead { view, .. } => install_hydrated_reactive_nodes(element, view),
+		Page::Fragment(children) => install_hydrated_element_children(element, children),
+		Page::KeyedFragment(children) => {
+			let child_views = children
+				.iter()
+				.map(|(_, child)| child.clone())
+				.collect::<Vec<_>>();
+			install_hydrated_element_children(element, &child_views);
+		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				install_hydrated_reactive_nodes(element, child);
+			}
+		}
+		Page::Reactive(reactive) => {
+			let rendered = reactive.render();
+			split_coalesced_text_children(element, std::slice::from_ref(&rendered));
+			let nodes = relevant_child_nodes(element);
+			let hydrated_node = crate::component::ReactiveNode::hydrate_at(
+				element.as_web_sys().clone().into(),
+				None,
+				nodes.clone(),
+				reactive.clone().into_render(),
+			);
+			let boundary_sibling = hydrated_node.as_ref().map(|node| node.marker_node());
+			if let Some(node) = hydrated_node.as_ref() {
+				with_reactive_node_store(&node.reactive_node_store(), || {
+					install_hydrated_child_reactive_nodes(
+						&element.as_web_sys().clone().into(),
+						&nodes,
+						boundary_sibling,
+						&rendered,
+					);
+				});
+			} else {
+				install_hydrated_child_reactive_nodes(
+					&element.as_web_sys().clone().into(),
+					&nodes,
+					boundary_sibling,
+					&rendered,
+				);
+			}
+			if let Some(node) = hydrated_node {
+				node.refresh_hydrated_current_nodes();
+				store_reactive_node(node);
+			}
+		}
+		Page::ReactiveIf(reactive_if) => {
+			let branch_view = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			split_coalesced_text_children(element, std::slice::from_ref(&branch_view));
+			let nodes = relevant_child_nodes(element);
+			let (condition, then_view, else_view) = reactive_if.clone().into_parts();
+			let hydrated_node = crate::component::ReactiveIfNode::hydrate_at(
+				element.as_web_sys().clone().into(),
+				None,
+				nodes.clone(),
+				condition,
+				then_view,
+				else_view,
+			);
+			let boundary_sibling = hydrated_node.as_ref().map(|node| node.marker_node());
+			if let Some(node) = hydrated_node.as_ref() {
+				with_reactive_node_store(&node.reactive_node_store(), || {
+					install_hydrated_child_reactive_nodes(
+						&element.as_web_sys().clone().into(),
+						&nodes,
+						boundary_sibling,
+						&branch_view,
+					);
+				});
+			} else {
+				install_hydrated_child_reactive_nodes(
+					&element.as_web_sys().clone().into(),
+					&nodes,
+					boundary_sibling,
+					&branch_view,
+				);
+			}
+			if let Some(node) = hydrated_node {
+				node.refresh_hydrated_current_nodes();
+				store_reactive_node(node);
+			}
+		}
+		_ => {}
+	}
+}
+
+#[cfg(wasm)]
+fn install_hydrated_element_children(element: &Element, children: &[Page]) {
+	split_coalesced_text_children(element, children);
+	let actual_nodes = relevant_child_nodes(element);
+	install_hydrated_children_reactive_nodes(
+		&element.as_web_sys().clone().into(),
+		&actual_nodes,
+		None,
+		children,
+	);
+}
+
+#[cfg(wasm)]
+fn install_hydrated_children_reactive_nodes(
+	parent: &web_sys::Node,
+	nodes: &[web_sys::Node],
+	next_sibling: Option<web_sys::Node>,
+	children: &[Page],
+) {
+	let mut index = 0;
+	for child in children {
+		let node_count = hydrated_node_count(child);
+		let end = (index + node_count).min(nodes.len());
+		let child_next_sibling = nodes.get(end).cloned().or_else(|| next_sibling.clone());
+		install_hydrated_child_reactive_nodes(
+			parent,
+			&nodes[index..end],
+			child_next_sibling,
+			child,
+		);
+		index = end;
+	}
+}
+
+#[cfg(wasm)]
+fn install_hydrated_child_reactive_nodes(
+	parent: &web_sys::Node,
+	nodes: &[web_sys::Node],
+	next_sibling: Option<web_sys::Node>,
+	view: &Page,
+) {
+	match view {
+		Page::Reactive(reactive) => {
+			let rendered = reactive.render();
+			let mut boundary_sibling = next_sibling.clone();
+			let hydrated_node = crate::component::ReactiveNode::hydrate_at(
+				parent.clone(),
+				next_sibling.clone(),
+				nodes.to_vec(),
+				reactive.clone().into_render(),
+			);
+			if let Some(node) = hydrated_node.as_ref() {
+				boundary_sibling = Some(node.marker_node());
+			}
+			if let Some(node) = hydrated_node.as_ref() {
+				with_reactive_node_store(&node.reactive_node_store(), || {
+					install_hydrated_child_reactive_nodes(
+						parent,
+						nodes,
+						boundary_sibling,
+						&rendered,
+					);
+				});
+			} else {
+				install_hydrated_child_reactive_nodes(parent, nodes, boundary_sibling, &rendered);
+			}
+			if let Some(node) = hydrated_node {
+				node.refresh_hydrated_current_nodes();
+				store_reactive_node(node);
+			}
+		}
+		Page::ReactiveIf(reactive_if) => {
+			let branch_view = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			let (condition, then_view, else_view) = reactive_if.clone().into_parts();
+			let mut boundary_sibling = next_sibling.clone();
+			let hydrated_node = crate::component::ReactiveIfNode::hydrate_at(
+				parent.clone(),
+				next_sibling.clone(),
+				nodes.to_vec(),
+				condition,
+				then_view,
+				else_view,
+			);
+			if let Some(node) = hydrated_node.as_ref() {
+				boundary_sibling = Some(node.marker_node());
+			}
+			if let Some(node) = hydrated_node.as_ref() {
+				with_reactive_node_store(&node.reactive_node_store(), || {
+					install_hydrated_child_reactive_nodes(
+						parent,
+						nodes,
+						boundary_sibling,
+						&branch_view,
+					);
+				});
+			} else {
+				install_hydrated_child_reactive_nodes(
+					parent,
+					nodes,
+					boundary_sibling,
+					&branch_view,
+				);
+			}
+			if let Some(node) = hydrated_node {
+				node.refresh_hydrated_current_nodes();
+				store_reactive_node(node);
+			}
+		}
+		Page::Element(_) => {
+			if let Some(element) = nodes
+				.first()
+				.and_then(|node| wasm_bindgen::JsCast::dyn_ref::<web_sys::Element>(node))
+			{
+				install_hydrated_reactive_nodes(&Element::new(element.clone()), view);
+			}
+		}
+		Page::WithHead { view, .. } => {
+			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, view);
+		}
+		Page::Fragment(children) => {
+			install_hydrated_children_reactive_nodes(parent, nodes, next_sibling, children)
+		}
+		Page::KeyedFragment(children) => {
+			let child_views = children
+				.iter()
+				.map(|(_, child)| child.clone())
+				.collect::<Vec<_>>();
+			install_hydrated_children_reactive_nodes(parent, nodes, next_sibling, &child_views);
+		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, child);
+			}
+		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, &branch_view);
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, &content_view);
+		}
+		Page::Text(_) | Page::Empty => {}
+	}
+}
+
+#[cfg(wasm)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ExpectedDomChild {
+	Text(String),
+	Node,
+}
+
+#[cfg(wasm)]
+fn hydrated_node_count(view: &Page) -> usize {
+	match view {
+		Page::Text(text) => usize::from(!normalize_whitespace(text.as_ref()).is_empty()),
+		Page::Element(_) => 1,
+		Page::Fragment(children) => children.iter().map(hydrated_node_count).sum(),
+		Page::KeyedFragment(children) => children
+			.iter()
+			.map(|(_, child)| hydrated_node_count(child))
+			.sum(),
+		Page::Outlet(outlet) => outlet.child().map(hydrated_node_count).unwrap_or(0),
+		Page::WithHead { view, .. } => hydrated_node_count(view),
+		Page::ReactiveIf(reactive_if) => {
+			let branch_view = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			hydrated_node_count(&branch_view)
+		}
+		Page::Reactive(reactive) => hydrated_node_count(&reactive.render()),
+		Page::Suspense(node) => hydrated_node_count(&node.render_branch()),
+		Page::Deferred(node) => hydrated_node_count(&node.content()),
+		Page::Empty => 0,
+	}
+}
+
+#[cfg(wasm)]
+fn split_coalesced_text_children(element: &Element, children: &[Page]) {
+	use wasm_bindgen::JsCast;
+
+	let mut expected = Vec::new();
+	for child in children {
+		collect_expected_dom_children(child, &mut expected);
+	}
+
+	let mut actual_nodes = relevant_child_nodes(element);
+	let document = web_sys::window()
+		.and_then(|window| window.document())
+		.expect("document should be available");
+	let mut actual_index = 0;
+
+	for expected_child in expected {
+		match expected_child {
+			ExpectedDomChild::Node => {
+				actual_index += 1;
+			}
+			ExpectedDomChild::Text(expected_text) => {
+				if expected_text.is_empty() {
+					continue;
+				}
+				let Some(node) = actual_nodes.get(actual_index).cloned() else {
+					return;
+				};
+				if node.node_type() != web_sys::Node::TEXT_NODE {
+					actual_index += 1;
+					continue;
+				}
+
+				let actual_text = node.text_content().unwrap_or_default();
+				if actual_text == expected_text {
+					actual_index += 1;
+					continue;
+				}
+				if !actual_text.starts_with(&expected_text) {
+					actual_index += 1;
+					continue;
+				}
+
+				let remainder = actual_text[expected_text.len()..].to_string();
+				node.set_text_content(Some(&expected_text));
+				if !remainder.is_empty() {
+					let remainder_node = document.create_text_node(&remainder);
+					if let Some(parent) = node.parent_node() {
+						let next = node.next_sibling();
+						let _ = parent.insert_before(&remainder_node, next.as_ref());
+						actual_nodes.insert(actual_index + 1, remainder_node.unchecked_into());
+					}
+				}
+				actual_index += 1;
+			}
+		}
+	}
+}
+
+#[cfg(wasm)]
+fn collect_expected_dom_children(view: &Page, children: &mut Vec<ExpectedDomChild>) {
+	match view {
+		Page::Empty => {}
+		Page::Text(text) => {
+			if !text.is_empty() {
+				children.push(ExpectedDomChild::Text(text.to_string()));
+			}
+		}
+		Page::Fragment(fragment_children) => {
+			for child in fragment_children {
+				collect_expected_dom_children(child, children);
+			}
+		}
+		Page::KeyedFragment(keyed_children) => {
+			for (_, child) in keyed_children {
+				collect_expected_dom_children(child, children);
+			}
+		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				collect_expected_dom_children(child, children);
+			}
+		}
+		Page::WithHead { view, .. } => collect_expected_dom_children(view, children),
+		Page::ReactiveIf(reactive_if) => {
+			let branch_view = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			collect_expected_dom_children(&branch_view, children);
+		}
+		Page::Reactive(reactive) => {
+			let rendered_view = reactive.render();
+			collect_expected_dom_children(&rendered_view, children);
+		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			collect_expected_dom_children(&branch_view, children);
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			collect_expected_dom_children(&content_view, children);
+		}
+		Page::Element(_) => children.push(ExpectedDomChild::Node),
+	}
+}
+
+#[cfg(wasm)]
+fn relevant_child_nodes(element: &Element) -> Vec<web_sys::Node> {
+	let child_nodes = element.as_web_sys().child_nodes();
+	(0..child_nodes.length())
+		.filter_map(|index| child_nodes.item(index))
+		.filter(is_relevant_child_node)
+		.collect()
+}
+
+#[cfg(wasm)]
+fn is_relevant_child_node(node: &web_sys::Node) -> bool {
+	match node.node_type() {
+		web_sys::Node::ELEMENT_NODE => true,
+		web_sys::Node::TEXT_NODE => {
+			!normalize_whitespace(&node.text_content().unwrap_or_default()).is_empty()
+		}
+		_ => false,
+	}
+}
+
+#[cfg(wasm)]
+fn normalize_whitespace(text: &str) -> String {
+	text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Non-WASM version for testing.
@@ -314,6 +762,11 @@ pub(crate) fn attach_events_recursive(
 				}
 			}
 		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				attach_events_recursive(element, child, registry)?;
+			}
+		}
 		Page::Text(_) | Page::Empty => {
 			// No events to attach
 		}
@@ -335,6 +788,14 @@ pub(crate) fn attach_events_recursive(
 			// For hydration, evaluate the render closure and attach events to the resulting view
 			let rendered_view = reactive.render();
 			attach_events_recursive(element, &rendered_view, registry)?;
+		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			attach_events_recursive(element, &branch_view, registry)?;
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			attach_events_recursive(element, &content_view, registry)?;
 		}
 	}
 
@@ -449,6 +910,17 @@ mod tests {
 		state.add_signal("count", 42);
 		let ctx = HydrationContext::from_state(state);
 		assert_eq!(ctx.get_signal("count"), Some(&serde_json::json!(42)));
+	}
+
+	#[test]
+	fn test_hydration_context_get_resource_state() {
+		let mut state = SsrState::new();
+		state.add_resource_state("rh-res-0", serde_json::json!({"Success": {"name": "Ada"}}));
+		let ctx = HydrationContext::from_state(state);
+		assert_eq!(
+			ctx.get_resource_state("rh-res-0"),
+			Some(&serde_json::json!({"Success": {"name": "Ada"}}))
+		);
 	}
 
 	#[test]

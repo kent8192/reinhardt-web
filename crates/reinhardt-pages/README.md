@@ -155,6 +155,34 @@ Existing body-only pages that relied on surrounding values should migrate to
 remain callable, and use `page!(|value: Value| { ... })` when a factory needs
 caller-supplied state.
 
+### Reactive I18n
+
+Enable the `i18n` feature to use `reinhardt-i18n` catalogs directly from
+`page!`. `t!` returns lazily translated page text, so SSR renders the current
+locale and later locale switches update reactive snapshots without explicitly
+threading a resource through each component.
+
+```rust,ignore
+use reinhardt_i18n::{MessageCatalog, TranslationContext};
+use reinhardt_pages::prelude::*;
+
+let mut translations = TranslationContext::new("ja", "en-US");
+let mut ja = MessageCatalog::new("ja");
+ja.add_translation("dashboard.title", "ダッシュボード");
+translations.add_catalog("ja", ja)?;
+
+let i18n = I18nContext::new(translations);
+let mut renderer = SsrRenderer::with_options(SsrOptions::new().i18n_context(i18n));
+
+let html = renderer.render_page_with_view_head(page!(|| {
+    h1 { { t!("dashboard.title") } }
+})());
+```
+
+The SSR renderer serializes resolved catalogs into the hydration state under
+`pages.i18n`, so client hydration can restore translations without refetching
+the catalog.
+
 ### Forms: Static Definition and Dynamic Behavior
 
 `form!` defines static form structure: field names, widgets, labels,
@@ -179,6 +207,70 @@ let login_form = form! {
 
 let runtime = use_form(&login_form).build();
 runtime.set_value(login_form.username_field(), "ada".to_string());
+```
+
+DTO request types can opt in to generated client-form companions with
+`ClientForm`. This keeps request field names, enum choices, and typed request
+assembly tied to the DTO while still using the same `use_form` runtime. Add
+`#[client_form(validate)]` when the DTO implements `Validate` and should feed
+those errors into the generated form runtime:
+
+```rust,ignore
+use reinhardt_pages::{ClientForm, ClientFormChoices, use_form};
+
+#[derive(Clone, Default, PartialEq, ClientFormChoices)]
+#[serde(rename_all = "snake_case")]
+enum ProviderMode {
+    #[default]
+    Fake,
+    LiveApi,
+}
+
+#[reinhardt::dto]
+#[derive(Clone, serde::Serialize, serde::Deserialize, ClientForm)]
+#[client_form(server_fn = crate::server::submit_project, validate)]
+struct ProjectRequest {
+    name: String,
+    title: Option<String>,
+    provider_mode: ProviderMode,
+}
+
+let form = ProjectRequestClientForm::new();
+let runtime = use_form(&form).build();
+runtime.set_value(ProjectRequestClientFormField::Title, "  ".to_string());
+let request = ProjectRequestClientForm::to_request(&runtime);
+assert_eq!(request.title, None);
+let outcome = form.submit(&runtime).await?;
+```
+
+`ClientFormChoices` mirrors serde's externally tagged string names for unit
+variants, including matching `rename_all` and variant `rename`; tagged,
+untagged, or directionally renamed enum representations are rejected because
+form choices submit bare strings. DTO fields marked with serde skip attributes
+are kept out of editable form fields and preserved through generated request
+values. Exported DTOs cannot use private editable fields; mark the field public
+or make it an explicit hidden field with `#[client_form(skip)]` or a serde skip
+attribute. Forms with generated `server_fn` submit helpers reject serde-skipped
+request fields because the browser payload must match native request
+deserialization exactly.
+
+Use `use_form_action` when a validated form should dispatch a typed async
+mutation:
+
+```rust,ignore
+use reinhardt_pages::{form, use_form, use_form_action};
+
+let runtime = use_form(&login_form).build();
+let save = use_form_action(&runtime, |values: LoginFormValues| async move {
+    submit_login(values).await
+})
+.on_success(|runtime, _result| {
+    runtime.reset_default_values();
+});
+
+if !save.is_pending() {
+    save.submit();
+}
 ```
 
 `FileField` and `ImageField` also participate in the generated runtime
@@ -300,6 +392,32 @@ fn error_display() -> View {
 3. **Clone captured handles**: direct `page!({ ... })` clones captured values into generated closures
 4. **Use closure form for factories**: keep `page!(|props: Props| { ... })` when the page must be called later
 
+## Testing
+
+### Native Component Tests
+
+Use `reinhardt_pages::testing::component::render` for fast interaction tests
+that do not need a browser:
+
+```rust
+use reinhardt_pages::testing::component::{Role, render};
+
+#[tokio::test]
+async fn refresh_loads_jobs() {
+    let screen = render(jobs_page);
+    screen.mock_server_fn::<load_jobs::marker>(|_args| Ok(vec!["Index job".to_string()]));
+
+    screen.get_by_role(Role::Button, "Refresh").click();
+    screen.settle().await;
+
+    assert!(screen.query_by_text("Index job").is_some());
+}
+```
+
+The mock API uses `MockableServerFn` markers and therefore requires the
+`msw` feature. Use direct `server_fn` calls for business logic tests and
+WASM/browser tests for hydration or browser API coverage.
+
 ## Architecture
 
 This framework consists of several key modules:
@@ -334,7 +452,7 @@ The prelude includes:
 - `use_ref`, `use_reducer`, `use_transition`, `use_deferred_value`
 - `use_id`, `use_layout_effect`, `use_debug_value`
 - `use_optimistic`, `use_action`, `Action::with_optimistic`, `use_shared_state`, `use_sync_external_store`
-- `use_resource` (async data fetching; `use_resource(fetcher, deps)` with `()` fetches once on WASM, while non-WASM targets drop the `fetcher` future, ignore `deps`, and stay `Loading` until hydration/client execution)
+- `use_resource` (async data fetching; `use_resource(fetcher, deps)` with `()` fetches once on WASM, while SSR registers the fetcher in the request context, awaits it up to `SsrOptions::resource_timeout`, and serializes resolved state for hydration)
 
 `Resource::latest_after(&action)` and `use_latest_resource_value(resource)` compose loaded resource state with one or more `Action` success values. Later actions have higher priority, and `refetch_on_success()` can automatically refresh the resource after a mutation succeeds.
 
@@ -366,7 +484,53 @@ The prelude includes:
 
 ### SSR and Hydration
 - `HydrationContext`, `HydrationError`, `hydrate`
-- `SsrOptions`, `SsrRenderer`, `SsrState`
+- `SsrOptions`, `SsrRenderer`, `SsrStream`, `SsrState`
+
+SSR rendering APIs are async. Use `render_page(...).await` for streamed output
+or `render_page_to_string(...).await` when a buffered string is needed:
+
+```rust,no_run
+use reinhardt_pages::component::{Component, Page};
+use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
+use std::time::Duration;
+
+struct App;
+
+impl Component for App {
+    fn render(&self) -> Page {
+        Page::text("Hello")
+    }
+
+    fn name() -> &'static str {
+        "App"
+    }
+}
+
+async fn render_app() {
+    let app = App;
+    let mut renderer = SsrRenderer::new();
+    let stream = renderer.render_page(&app).await;
+
+    let mut renderer = SsrRenderer::with_options(
+        SsrOptions::new().resource_timeout(Duration::from_secs(1)),
+    );
+    let html = renderer.render_page_to_string(&app).await;
+    let _ = (stream, html);
+}
+```
+
+Resources created with `use_resource` during SSR are keyed deterministically,
+resolved on the server, and embedded in the hydration payload. Use
+`use_resource_with_key` when a resource hook is conditionally rendered and needs
+a stable explicit hydration key. Implicit resource keys are allocated at the
+document level so marker-rendered islands and their hydration replays preserve
+the same key order. Suspense boundaries keep fallback and content roots
+transparent; streaming metadata is emitted outside the branch DOM.
+
+### I18n
+- `I18nContext`, `I18nStateError`, `TranslatedText`, `tr`, `tn`, `tp`, `tnp`
+- `provide_i18n_context`, `use_i18n_context`, `set_locale`, `locale`
+- `with_i18n_context`
 
 ### Forms (native only)
 - `FormBinding`, `FormComponent`
@@ -376,6 +540,7 @@ The prelude includes:
 - `page!`
 - `head!`
 - `form!`
+- `t!` (with the `i18n` feature)
 - `client_page`
 - `wasm_server_api`
 

@@ -1,0 +1,12 @@
+error[E0271]: type mismatch resolving `<marker as ServerFnRequestMetadata>::Request == SettingsRequest`
+  --> tests/ui/client_form/fail/server_fn_submit_request_signature.rs:6:52
+   |
+ 6 | #[derive(Clone, PartialEq, Serialize, Deserialize, ClientForm)]
+   |                                                    ^^^^^^^^^^ type mismatch resolving `<marker as ServerFnRequestMetadata>::Request == SettingsRequest`
+   |
+note: expected this to be `SettingsRequest`
+  --> tests/ui/client_form/fail/server_fn_submit_request_signature.rs:22:1
+   |
+22 | #[server_fn]
+   | ^^^^^^^^^^^^
+   = note: this error originates in the derive macro `ClientForm` which comes from the expansion of the attribute macro `server_fn` (in Nightly builds, run with -Z macro-backtrace for more info)

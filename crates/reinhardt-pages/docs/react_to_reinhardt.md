@@ -13,7 +13,7 @@ application.
 | Function component | Rust function returning `Page` | Props are normal typed Rust arguments or structs. |
 | Fragment | Multiple top-level `page!` nodes or `Page::fragment` | The output is a `Page::Fragment`, not a virtual DOM fragment. |
 | `useState` | `use_state` returning `(Signal<T>, SetState<T>)` | Reads use `signal.get()`, writes use `set(value)` or `signal.update(...)`. |
-| `useEffect` | `use_effect(f, deps)` | Dependencies are explicit Rust tuples, for example `(count,)`. |
+| `useEffect` | `use_effect(f, deps)` | Return `()` for no cleanup or `Option<C>` for cleanup; dependencies are explicit Rust tuples, for example `(count,)`. |
 | `useLayoutEffect` | `use_layout_effect(f, deps)` | Same dependency model, layout timing. |
 | `useMemo` | `use_memo(f, deps)` | Returns `Memo<T>`; read it with `.get()`. |
 | `useCallback` | `use_callback(f, deps)` / `use_callback_with(f, deps)` | Returns a typed `Callback`, usually for event handlers. |
@@ -228,7 +228,6 @@ let (count, _set_count) = use_state(0);
 use_effect(
     move || {
         log::info!("count = {}", count.get());
-        None::<fn()>
     },
     (count,),
 );

@@ -5,12 +5,50 @@ pub mod macros {
 	pub use reinhardt_macros::Model;
 }
 
+pub mod apps {
+	pub mod registry {
+		#[derive(Debug, Clone, PartialEq, Eq)]
+		pub struct RelationshipMetadata {
+			pub from_model: &'static str,
+			pub to_model: &'static str,
+			pub relationship_type: RelationshipType,
+			pub field_name: &'static str,
+			pub related_name: Option<&'static str>,
+			pub db_column: Option<&'static str>,
+			pub through_table: Option<&'static str>,
+		}
+
+		#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+		pub enum RelationshipType {
+			ForeignKey,
+			ManyToMany,
+			OneToOne,
+		}
+
+		#[linkme::distributed_slice]
+		pub static RELATIONSHIPS: [RelationshipMetadata];
+	}
+}
+
+pub mod exception {
+	#[derive(Debug)]
+	pub enum Error {
+		Internal(String),
+	}
+
+	pub type Result<T> = core::result::Result<T, Error>;
+}
+
 pub mod model_info {
 	pub trait InfoModel {
 		type PrimaryKey;
 	}
 
-	#[derive(Debug, Clone, PartialEq)]
+	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+	#[serde(bound(
+		serialize = "T::PrimaryKey: serde::Serialize",
+		deserialize = "T::PrimaryKey: serde::Deserialize<'de>"
+	))]
 	pub struct RelationInfo<T: InfoModel> {
 		pub id: T::PrimaryKey,
 	}
@@ -25,7 +63,21 @@ pub mod model_info {
 		}
 	}
 
-	#[derive(Debug, Clone, PartialEq)]
+	impl<T> Default for RelationInfo<T>
+	where
+		T: InfoModel,
+		T::PrimaryKey: Default,
+	{
+		fn default() -> Self {
+			Self::new(T::PrimaryKey::default())
+		}
+	}
+
+	#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+	#[serde(bound(
+		serialize = "Target::PrimaryKey: serde::Serialize",
+		deserialize = "Target::PrimaryKey: serde::Deserialize<'de>"
+	))]
 	pub struct ManyToManyInfo<Source, Target: InfoModel> {
 		pub target_ids: Vec<Target::PrimaryKey>,
 		_source: core::marker::PhantomData<Source>,
@@ -52,8 +104,57 @@ pub mod model_info {
 }
 
 pub mod db {
+	pub mod associations {
+		#[derive(Debug, Clone, Copy)]
+		pub struct ForeignKeyField<T>(core::marker::PhantomData<T>);
+
+		#[derive(Debug, Clone, Copy)]
+		pub struct OneToOneField<T>(core::marker::PhantomData<T>);
+
+		#[derive(Debug, Clone, Copy)]
+		pub struct ManyToManyField<Source, Target>(core::marker::PhantomData<(Source, Target)>);
+
+		impl<T> Default for ForeignKeyField<T> {
+			fn default() -> Self {
+				Self(core::marker::PhantomData)
+			}
+		}
+
+		impl<T> PartialEq for ForeignKeyField<T> {
+			fn eq(&self, _other: &Self) -> bool {
+				true
+			}
+		}
+
+		impl<T> Eq for ForeignKeyField<T> {}
+	}
+
 	pub mod orm {
 		pub struct Manager<T>(core::marker::PhantomData<T>);
+
+		impl<T> Default for Manager<T> {
+			fn default() -> Self {
+				Self(core::marker::PhantomData)
+			}
+		}
+
+		impl<T> Manager<T> {
+			pub fn filter(self, _condition: impl Sized) -> Self {
+				self
+			}
+
+			pub async fn first_with_db(
+				self,
+				_db: &connection::DatabaseConnection,
+			) -> crate::exception::Result<Option<T>> {
+				Ok(None)
+			}
+		}
+
+		pub mod connection {
+			#[derive(Debug, Clone)]
+			pub struct DatabaseConnection;
+		}
 
 		pub trait FieldSelector: Sized {
 			fn with_alias(self, _alias: &str) -> Self {
@@ -64,7 +165,7 @@ pub mod db {
 		pub trait Model {
 			type PrimaryKey;
 			type Fields;
-			type Objects;
+			type Objects: Default;
 
 			fn table_name() -> &'static str;
 			fn new_fields() -> Self::Fields;
@@ -76,6 +177,52 @@ pub mod db {
 			fn index_metadata() -> Vec<inspection::IndexInfo>;
 			fn constraint_metadata() -> Vec<inspection::ConstraintInfo>;
 			fn relationship_metadata() -> Vec<inspection::RelationInfo>;
+			fn generated_field_names() -> &'static [&'static str];
+
+			fn objects() -> Self::Objects
+			where
+				Self: Sized,
+			{
+				Self::Objects::default()
+			}
+		}
+
+		pub trait IntoPrimaryKey<T: Model> {
+			fn into_primary_key(self) -> T::PrimaryKey;
+		}
+
+		impl<T: Model> IntoPrimaryKey<T> for &T {
+			fn into_primary_key(self) -> T::PrimaryKey {
+				self.primary_key().unwrap()
+			}
+		}
+
+		impl<T: Model<PrimaryKey = i64>> IntoPrimaryKey<T> for i64 {
+			fn into_primary_key(self) -> T::PrimaryKey {
+				self
+			}
+		}
+
+		pub struct ForeignKeyAccessor<Source, Target> {
+			_marker: core::marker::PhantomData<(Source, Target)>,
+		}
+
+		impl<Source, Target> ForeignKeyAccessor<Source, Target> {
+			pub const fn new(_db_column: &'static str) -> Self {
+				Self {
+					_marker: core::marker::PhantomData,
+				}
+			}
+		}
+
+		pub mod relationship {
+			#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+			pub enum RelationshipType {
+				OneToOne,
+				OneToMany,
+				ManyToOne,
+				ManyToMany,
+			}
 		}
 
 		pub mod expressions {
@@ -91,6 +238,10 @@ pub mod db {
 						name,
 						_marker: core::marker::PhantomData,
 					}
+				}
+
+				pub fn eq(self, _value: impl Into<String>) -> bool {
+					true
 				}
 			}
 		}
@@ -171,7 +322,16 @@ pub mod db {
 			}
 
 			#[derive(Debug, Clone, PartialEq)]
-			pub struct RelationInfo;
+			pub struct RelationInfo {
+				pub name: String,
+				pub relationship_type: super::relationship::RelationshipType,
+				pub foreign_key: Option<String>,
+				pub related_model: String,
+				pub back_populates: Option<String>,
+				pub through_table: Option<String>,
+				pub source_field: Option<String>,
+				pub target_field: Option<String>,
+			}
 		}
 
 		pub mod registry {

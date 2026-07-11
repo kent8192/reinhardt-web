@@ -93,7 +93,7 @@ pub use codec::MessagePackCodec;
 pub use codec::{Codec, JsonCodec, UrlCodec};
 #[cfg(native)]
 pub use injectable::{ServerFnBody, ServerFnRequest};
-pub use metadata::ServerFnMetadata;
+pub use metadata::{ServerFnMetadata, ServerFnRequestMetadata, ServerFnResponseMetadata};
 #[cfg(feature = "msw")]
 pub use mockable::MockableServerFn;
 #[cfg(native)]
@@ -105,6 +105,20 @@ pub use registry::{ServerFnHandler, ServerFnRoute};
 #[cfg(native)]
 pub use router_ext::ServerFnRouterExt;
 pub use server_fn_trait::{ServerFn, ServerFnError, parse_server_error_message};
+
+#[cfg(all(native, feature = "testing", feature = "msw"))]
+pub use crate::testing::component::server_fn_mock::try_call_active_mock;
+
+#[cfg(all(native, feature = "msw", not(feature = "testing")))]
+/// No-op native server-function mock probe outside component-test builds.
+pub fn try_call_active_mock<S>(_: S::Args) -> Option<Result<S::Response, ServerFnError>>
+where
+	S: MockableServerFn + 'static,
+	S::Args: 'static,
+	S::Response: 'static,
+{
+	None
+}
 
 // Re-export the macro for convenience
 pub use reinhardt_pages_macros::server_fn;

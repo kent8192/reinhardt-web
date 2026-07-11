@@ -1,0 +1,5 @@
+error: ClientFormChoices does not support serde deserialize_with on variants
+ --> tests/ui/client_form/choices/fail/variant_deserialize_with.rs:7:10
+  |
+7 |     #[serde(deserialize_with = "deserialize_live")]
+  |             ^^^^^^^^^^^^^^^^

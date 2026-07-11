@@ -4,20 +4,23 @@
 //! The router uses `Page` type for all view rendering.
 
 use super::component::ComponentInfo;
-use super::error::{MergeError, RouterError};
+use super::error::{MergeError, RouteRegistrationError, RouterError};
 use super::from_request::FromRequest;
 use super::handler::{
-	Handler, RouteHandler, from_request_handler, no_params_handler, result_handler,
-	with_params_handler,
+	Handler, LayoutRouteHandler, RouteHandler, from_request_handler, no_params_handler,
+	result_handler, with_params_handler,
 };
 #[cfg(wasm)]
 use super::history::setup_popstate_listener;
 use super::history::{HistoryState, NavigationType, current_path, push_state, replace_state};
 use super::params::{FromPath, ParamContext, Path};
 use super::pattern::ClientPathPattern;
+use super::scope::{RegisteredRouteScope, RouteScope};
+use super::tree::{ClientRouteTreeMatch, ResolvedRouteMetadata, RouteNode};
+use reinhardt_core::page::Outlet;
 use reinhardt_core::page::Page;
 use reinhardt_core::reactive::Signal;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// Type alias for route guard functions.
@@ -164,9 +167,23 @@ pub struct ClientRoute {
 	/// Route-level metadata.
 	metadata: RouteMetadata,
 	/// The route handler.
-	handler: Arc<dyn RouteHandler>,
+	handler: ClientRouteHandler,
 	/// Optional guard function.
 	guard: Option<RouteGuard>,
+}
+
+enum ClientRouteHandler {
+	Leaf(Arc<dyn RouteHandler>),
+	Layout(Arc<dyn LayoutRouteHandler>),
+}
+
+impl Clone for ClientRouteHandler {
+	fn clone(&self) -> Self {
+		match self {
+			Self::Leaf(handler) => Self::Leaf(Arc::clone(handler)),
+			Self::Layout(handler) => Self::Layout(Arc::clone(handler)),
+		}
+	}
 }
 
 impl Clone for ClientRoute {
@@ -175,7 +192,7 @@ impl Clone for ClientRoute {
 			pattern: self.pattern.clone(),
 			name: self.name.clone(),
 			metadata: self.metadata.clone(),
-			handler: Arc::clone(&self.handler),
+			handler: self.handler.clone(),
 			guard: self.guard.clone(),
 		}
 	}
@@ -203,14 +220,12 @@ impl ClientRoute {
 	where
 		F: Fn() -> Page + Send + Sync + 'static,
 	{
-		Self {
-			pattern: ClientPathPattern::new(pattern)
+		Self::from_route_handler(
+			None,
+			ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: None,
-			metadata: RouteMetadata::default(),
-			handler: no_params_handler(component),
-			guard: None,
-		}
+			no_params_handler(component),
+		)
 	}
 
 	/// Creates a named route.
@@ -223,12 +238,38 @@ impl ClientRoute {
 	where
 		F: Fn() -> Page + Send + Sync + 'static,
 	{
-		Self {
-			pattern: ClientPathPattern::new(pattern)
+		Self::from_route_handler(
+			Some(name.into()),
+			ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: Some(name.into()),
+			no_params_handler(component),
+		)
+	}
+
+	pub(crate) fn from_route_handler(
+		name: Option<String>,
+		pattern: ClientPathPattern,
+		handler: Arc<dyn RouteHandler>,
+	) -> Self {
+		Self {
+			pattern,
+			name,
 			metadata: RouteMetadata::default(),
-			handler: no_params_handler(component),
+			handler: ClientRouteHandler::Leaf(handler),
+			guard: None,
+		}
+	}
+
+	pub(crate) fn from_layout_handler(
+		name: Option<String>,
+		pattern: ClientPathPattern,
+		handler: Arc<dyn LayoutRouteHandler>,
+	) -> Self {
+		Self {
+			pattern,
+			name,
+			metadata: RouteMetadata::default(),
+			handler: ClientRouteHandler::Layout(handler),
 			guard: None,
 		}
 	}
@@ -246,6 +287,20 @@ impl ClientRoute {
 	pub fn with_metadata(mut self, metadata: RouteMetadata) -> Self {
 		self.metadata = metadata;
 		self
+	}
+
+	pub(crate) fn set_metadata(&mut self, metadata: RouteMetadata) {
+		self.metadata = metadata;
+	}
+
+	pub(crate) fn set_guard(&mut self, guard: RouteGuard) {
+		self.guard = Some(guard);
+	}
+
+	pub(crate) fn prefix_name(&mut self, namespace: &str) {
+		if let Some(name) = &mut self.name {
+			*name = format!("{namespace}:{name}");
+		}
 	}
 
 	/// Returns the route name.
@@ -266,6 +321,32 @@ impl ClientRoute {
 	/// Checks if the guard allows access.
 	pub fn check_guard(&self, route_match: &ClientRouteMatch) -> bool {
 		self.guard.as_ref().map(|g| g(route_match)).unwrap_or(true)
+	}
+
+	pub(crate) fn handle_leaf(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
+		match &self.handler {
+			ClientRouteHandler::Leaf(handler) => handler.handle(ctx),
+			ClientRouteHandler::Layout(_) => Err(RouterError::NotFound(
+				self.name()
+					.map(str::to_string)
+					.unwrap_or_else(|| self.pattern().pattern().to_string()),
+			)),
+		}
+	}
+
+	pub(crate) fn handle_layout(
+		&self,
+		ctx: &ParamContext,
+		outlet: Outlet,
+	) -> Result<Page, RouterError> {
+		match &self.handler {
+			ClientRouteHandler::Layout(handler) => handler.handle(ctx, outlet),
+			ClientRouteHandler::Leaf(_) => Err(RouterError::NotFound(
+				self.name()
+					.map(str::to_string)
+					.unwrap_or_else(|| self.pattern().pattern().to_string()),
+			)),
+		}
 	}
 }
 
@@ -294,6 +375,10 @@ impl ClientRoute {
 pub struct ClientRouter {
 	/// Registered routes.
 	routes: Vec<ClientRoute>,
+	/// Route table indices registered through the nested route tree API.
+	tree_route_indices: HashSet<usize>,
+	/// Nested route tree for layout-aware rendering.
+	route_tree: RouteNode,
 	/// Named routes for reverse lookups.
 	named_routes: HashMap<String, usize>,
 	/// Current path signal.
@@ -357,6 +442,8 @@ impl ClientRouter {
 
 		Self {
 			routes: Vec::new(),
+			tree_route_indices: HashSet::new(),
+			route_tree: RouteNode::root(),
 			named_routes: HashMap::new(),
 			current_path: Signal::new(initial_path),
 			current_params: Signal::new(HashMap::new()),
@@ -371,6 +458,57 @@ impl ClientRouter {
 			#[cfg(native)]
 			diag_router_identity: Arc::new(()),
 		}
+	}
+
+	/// Registers a nested route tree.
+	///
+	/// # Errors
+	///
+	/// Returns [`RouteRegistrationError`] when a route name, path, or scoped
+	/// path pattern is invalid.
+	pub fn try_routes<F>(mut self, configure: F) -> Result<Self, RouteRegistrationError>
+	where
+		F: FnOnce(RouteScope) -> RouteScope,
+	{
+		let mut scope =
+			RouteScope::root(self.registered_route_names(), self.registered_leaf_paths());
+		scope = configure(scope);
+		self.append_registered_scope(scope.finish()?);
+		Ok(self)
+	}
+
+	/// Registers a nested route tree and panics if registration fails.
+	pub fn routes<F>(self, configure: F) -> Self
+	where
+		F: FnOnce(RouteScope) -> RouteScope,
+	{
+		self.try_routes(configure)
+			.unwrap_or_else(|err| panic!("Invalid client route tree: {err}"))
+	}
+
+	fn append_registered_scope(&mut self, registered: RegisteredRouteScope) {
+		let offset = self.routes.len();
+		for (idx, route) in registered.routes.iter().enumerate() {
+			if let Some(name) = route.name() {
+				self.insert_named_route(name, offset + idx);
+			}
+			self.tree_route_indices.insert(offset + idx);
+		}
+		self.routes.extend(registered.routes);
+		self.route_tree.extend_children(registered.nodes);
+	}
+
+	fn registered_route_names(&self) -> Vec<String> {
+		let mut names = self.named_routes.keys().cloned().collect::<Vec<_>>();
+		self.route_tree.collect_route_names(&mut names);
+		names
+	}
+
+	fn registered_leaf_paths(&self) -> Vec<String> {
+		self.routes
+			.iter()
+			.map(|route| route.pattern().pattern().to_string())
+			.collect()
 	}
 
 	/// Combine another `ClientRouter` into this one.
@@ -401,10 +539,15 @@ impl ClientRouter {
 	/// ```
 	pub fn merge(mut self, other: ClientRouter) -> Self {
 		let offset = self.routes.len();
+		let other_tree_children = other.route_tree.children().to_vec();
+		for index in other.tree_route_indices {
+			self.tree_route_indices.insert(index + offset);
+		}
 		for (name, idx) in other.named_routes {
 			self.named_routes.insert(name, idx + offset);
 		}
 		self.routes.extend(other.routes);
+		self.route_tree.extend_children(other_tree_children);
 		self
 	}
 
@@ -455,10 +598,9 @@ impl ClientRouter {
 		}
 		// Also update route names stored inside ClientRoute
 		for route in &mut self.routes {
-			if let Some(ref old_name) = route.name {
-				route.name = Some(format!("{namespace}:{old_name}"));
-			}
+			route.prefix_name(namespace);
 		}
+		self.route_tree.prefix_names(namespace);
 		self
 	}
 
@@ -485,19 +627,50 @@ impl ClientRouter {
 		}
 	}
 
-	/// Adds metadata to an already-registered named route.
+	/// Adds metadata to an already-registered named route or layout.
 	///
 	/// # Panics
 	///
 	/// Panics if `name` is not registered.
 	pub fn with_route_metadata(mut self, name: &str, metadata: RouteMetadata) -> Self {
-		let index = *self.named_routes.get(name).unwrap_or_else(|| {
+		let mut updated = false;
+		if let Some(index) = self.named_routes.get(name).copied() {
+			self.routes[index].set_metadata(metadata.clone());
+			updated = true;
+		}
+		updated |= self
+			.route_tree
+			.update_metadata_for_name(name, metadata.clone());
+		if !updated {
 			panic!(
 				"Unknown client route name '{}': cannot attach metadata",
 				name
 			)
-		});
-		self.routes[index] = self.routes[index].clone().with_metadata(metadata);
+		}
+		self
+	}
+
+	/// Adds a guard to an already-registered named route or layout.
+	///
+	/// Layout guards are evaluated for every matched descendant route.
+	///
+	/// # Panics
+	///
+	/// Panics if `name` is not registered.
+	pub fn with_route_guard<G>(mut self, name: &str, guard: G) -> Self
+	where
+		G: Fn(&ClientRouteMatch) -> bool + Send + Sync + 'static,
+	{
+		let guard: RouteGuard = Arc::new(guard);
+		let mut updated = false;
+		if let Some(index) = self.named_routes.get(name).copied() {
+			self.routes[index].set_guard(Arc::clone(&guard));
+			updated = true;
+		}
+		updated |= self.route_tree.update_guard_for_name(name, guard);
+		if !updated {
+			panic!("Unknown client route name '{}': cannot attach guard", name)
+		}
 		self
 	}
 
@@ -530,14 +703,12 @@ impl ClientRouter {
 		T: FromPath + Send + Sync + 'static,
 	{
 		let index = self.routes.len();
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
+		self.routes.push(ClientRoute::from_route_handler(
+			Some(name.to_string()),
+			ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: Some(name.to_string()),
-			metadata: RouteMetadata::default(),
-			handler: with_params_handler(handler),
-			guard: None,
-		});
+			with_params_handler(handler),
+		));
 		self.insert_named_route(name, index);
 		self
 	}
@@ -554,14 +725,12 @@ impl ClientRouter {
 		E: Into<RouterError> + Send + Sync + 'static,
 	{
 		let index = self.routes.len();
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
+		self.routes.push(ClientRoute::from_route_handler(
+			Some(name.to_string()),
+			ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: Some(name.to_string()),
-			metadata: RouteMetadata::default(),
-			handler: result_handler(handler),
-			guard: None,
-		});
+			result_handler(handler),
+		));
 		self.insert_named_route(name, index);
 		self
 	}
@@ -612,14 +781,12 @@ impl ClientRouter {
 		P: FromRequest + Send + Sync + 'static,
 	{
 		let index = self.routes.len();
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
+		self.routes.push(ClientRoute::from_route_handler(
+			Some(name.to_string()),
+			ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: Some(name.to_string()),
-			metadata: RouteMetadata::default(),
-			handler: from_request_handler(handler, pattern.to_string()),
-			guard: None,
-		});
+			from_request_handler(handler, pattern.to_string()),
+		));
 		self.insert_named_route(name, index);
 		self
 	}
@@ -705,14 +872,12 @@ impl ClientRouter {
 		H: Handler<Args>,
 	{
 		let index = self.routes.len();
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
+		self.routes.push(ClientRoute::from_route_handler(
+			Some(name.to_string()),
+			ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: Some(name.to_string()),
-			metadata: RouteMetadata::default(),
-			handler: handler.into_route_handler(),
-			guard: None,
-		});
+			handler.into_route_handler(),
+		));
 		self.insert_named_route(name, index);
 		self
 	}
@@ -762,11 +927,26 @@ impl ClientRouter {
 	///
 	/// [`QueryParam`]: super::from_request::QueryParam
 	pub fn match_path(&self, path: &str) -> Option<ClientRouteMatch> {
+		self.match_tree(path)
+			.map(|matched| matched.leaf_match().clone())
+	}
+
+	fn match_legacy_path(&self, path: &str) -> Option<ClientRouteMatch> {
+		self.match_path_filtered(path, |index, _| !self.tree_route_indices.contains(&index))
+	}
+
+	fn match_path_filtered<F>(&self, path: &str, route_filter: F) -> Option<ClientRouteMatch>
+	where
+		F: Fn(usize, &ClientRoute) -> bool,
+	{
 		let (path_only, query) = match path.split_once('?') {
 			Some((p, q)) => (p, Some(q.to_string())),
 			None => (path, None),
 		};
-		for route in &self.routes {
+		for (index, route) in self.routes.iter().enumerate() {
+			if !route_filter(index, route) {
+				continue;
+			}
 			if let Some((params, param_values)) = route.pattern.matches(path_only) {
 				let route_match = ClientRouteMatch {
 					route: route.clone(),
@@ -783,6 +963,81 @@ impl ClientRouter {
 			}
 		}
 		None
+	}
+
+	/// Matches a path against the nested route tree.
+	pub fn match_tree(&self, path: &str) -> Option<ClientRouteTreeMatch> {
+		let (path_only, query) = match path.split_once('?') {
+			Some((p, q)) => (p, Some(q.to_string())),
+			None => (path, None),
+		};
+		if let Some(route_match) = self.route_tree.match_path(path_only, query.clone()) {
+			return Some(route_match);
+		}
+		self.match_legacy_path(path).map(|leaf| {
+			let leaf_metadata = ResolvedRouteMetadata::new(
+				leaf.route.name().map(str::to_string),
+				leaf.route.pattern().pattern().to_string(),
+				leaf.route.pattern().pattern().to_string(),
+				None,
+				None,
+				None,
+				leaf.route.metadata().clone(),
+			);
+			ClientRouteTreeMatch::new(leaf, Vec::new(), leaf_metadata)
+		})
+	}
+
+	fn param_context_from_match(route_match: &ClientRouteMatch) -> ParamContext {
+		ParamContext::new(route_match.params.clone(), route_match.param_values.clone())
+			.with_path(route_match.path.clone())
+			.with_query(route_match.query.clone())
+	}
+
+	fn render_tree_match(&self, route_match: &ClientRouteTreeMatch) -> Option<Page> {
+		let mut page = self.__render_tree_leaf(route_match)?;
+		for index in (0..route_match.layouts().len()).rev() {
+			page = self.__render_tree_layout(route_match, index, Outlet::inline(page))?;
+		}
+		Some(page)
+	}
+
+	/// Renders only the leaf route for a tree match.
+	///
+	/// Hidden cross-crate hook for the WASM layout persistence mount path.
+	#[doc(hidden)]
+	pub fn __render_tree_leaf(&self, route_match: &ClientRouteTreeMatch) -> Option<Page> {
+		let ctx = Self::param_context_from_match(route_match.leaf_match());
+		route_match.leaf().handle_leaf(&ctx).ok()
+	}
+
+	/// Renders one matched layout using the provided outlet.
+	///
+	/// Hidden cross-crate hook for the WASM layout persistence mount path.
+	#[doc(hidden)]
+	pub fn __render_tree_layout(
+		&self,
+		route_match: &ClientRouteTreeMatch,
+		layout_index: usize,
+		outlet: Outlet,
+	) -> Option<Page> {
+		let ctx = Self::param_context_from_match(route_match.leaf_match());
+		route_match
+			.layouts()
+			.get(layout_index)?
+			.route()
+			.handle_layout(&ctx, outlet)
+			.ok()
+	}
+
+	/// Renders a path without mutating router navigation state.
+	pub fn render_path(&self, path: &str) -> Page {
+		if let Some(route_match) = self.match_tree(path) {
+			return self
+				.render_tree_match(&route_match)
+				.unwrap_or_else(|| self.not_found.as_ref().map(|f| f()).unwrap_or(Page::Empty));
+		}
+		self.not_found.as_ref().map(|f| f()).unwrap_or(Page::Empty)
 	}
 
 	/// Navigates to a path using pushState.
@@ -1027,20 +1282,7 @@ impl ClientRouter {
 	/// default 404 page if no `not_found` handler has been set.
 	pub fn render_current(&self) -> Page {
 		let path = self.current_path.get();
-
-		if let Some(route_match) = self.match_path(&path) {
-			let ctx =
-				ParamContext::new(route_match.params.clone(), route_match.param_values.clone())
-					.with_path(route_match.path.clone())
-					.with_query(route_match.query.clone());
-
-			match route_match.route.handler.handle(&ctx) {
-				Ok(view) => view,
-				Err(_err) => self.not_found.as_ref().map(|f| f()).unwrap_or(Page::Empty),
-			}
-		} else {
-			self.not_found.as_ref().map(|f| f()).unwrap_or(Page::Empty)
-		}
+		self.render_path(&path)
 	}
 
 	/// Returns the number of registered routes.
@@ -1243,6 +1485,18 @@ mod tests {
 	}
 
 	#[test]
+	fn match_tree_does_not_fall_back_to_flat_copy_for_tree_routes() {
+		let mut router = ClientRouter::new()
+			.routes(|routes| routes.route("tree", "/tree/", || page_with_text("Tree")));
+		assert!(router.match_tree("/tree/").is_some());
+
+		router.route_tree = RouteNode::root();
+
+		assert!(router.match_tree("/tree/").is_none());
+		assert!(router.match_path("/tree/").is_none());
+	}
+
+	#[test]
 	fn test_router_match_params() {
 		let router = ClientRouter::new().route("user_detail", "/users/{id}/", user_page);
 
@@ -1304,6 +1558,15 @@ mod tests {
 		assert!(router.match_path("/admin/").is_none());
 		// No guard
 		assert!(router.match_path("/public/").is_some());
+	}
+
+	#[test]
+	fn named_route_guard_rejects_flat_route() {
+		let router = ClientRouter::new()
+			.route("admin", "/admin/", test_page)
+			.with_route_guard("admin", |_| false);
+
+		assert!(router.match_path("/admin/").is_none());
 	}
 
 	#[test]

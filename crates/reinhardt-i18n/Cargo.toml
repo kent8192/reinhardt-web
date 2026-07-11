@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-i18n"
-version = "0.3.0"
+version = "0.3.1"
 description = "Internationalization and localization support"
 edition.workspace = true
 rust-version.workspace = true
@@ -12,17 +12,15 @@ authors.workspace = true
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
-reinhardt-utils = { workspace = true }
 
 # DI integration (optional)
 reinhardt-di = { workspace = true, optional = true }
-reinhardt-test = { workspace = true, optional = true }
 
 [features]
 default = []
 full = ["di"]
 di = ["dep:reinhardt-di"]
-test-utils = ["dep:reinhardt-test"]
+test-utils = []
 
 [dev-dependencies]
 insta = { workspace = true }

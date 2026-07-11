@@ -1,16 +1,25 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use std::cell::{Cell, RefCell};
+use std::future::Future;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::task::{Context, Poll, Wake, Waker};
 
 use reinhardt_pages::{
 	CollectionItem, CollectionItemKey, CustomWidgetContext, CustomWidgetRawValue, FieldError,
 	FormEvent, FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, Page, ResetOnDeps,
-	RevalidateOn, UseFormSubmitOutcome, form, use_form,
+	RevalidateOn, UseFormAsyncSubmitOutcome, UseFormSubmitOutcome, form, use_form, use_form_action,
 };
 
 thread_local! {
 	static LAST_CUSTOM_WIDGET_PROPS: RefCell<Option<DateRangeProps>> = const { RefCell::new(None) };
+}
+
+struct NoopWake;
+
+impl Wake for NoopWake {
+	fn wake(self: Arc<Self>) {}
 }
 
 #[derive(Clone)]
@@ -1638,6 +1647,197 @@ fn validation_failure_sets_form_error_and_submit_failure_state() {
 	assert!(runtime.form_state().error.get().is_none());
 }
 
+#[tokio::test]
+async fn submit_async_success_updates_state_and_runs_callbacks() {
+	let profile = form! {
+		name: AsyncSuccessForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada",
+				required,
+			}
+		}
+	};
+	let order = Rc::new(Cell::new(0));
+	let start_order = Rc::clone(&order);
+	let success_order = Rc::clone(&order);
+	let runtime = use_form(&profile)
+		.on_submit_start(move |handle| {
+			assert!(handle.form_state().is_submitting.get());
+			assert_eq!(start_order.get(), 0);
+			start_order.set(1);
+		})
+		.on_submit_success(move |handle| {
+			assert!(!handle.form_state().is_submitting.get());
+			assert!(handle.form_state().is_submit_successful.get());
+			assert_eq!(success_order.get(), 1);
+			success_order.set(2);
+		})
+		.build();
+
+	let outcome = runtime
+		.submit_async(|| async { Ok::<_, String>("saved".to_string()) })
+		.await
+		.expect("async submit should succeed");
+
+	assert_eq!(
+		outcome,
+		UseFormAsyncSubmitOutcome::Submitted("saved".to_string())
+	);
+	assert!(!runtime.form_state().is_submitting.get());
+	assert!(runtime.form_state().is_submit_successful.get());
+	assert!(runtime.form_state().submit_error.get().is_none());
+	assert!(runtime.form_state().error.get().is_none());
+	assert_eq!(order.get(), 2);
+}
+
+#[tokio::test]
+async fn submit_async_validation_failure_blocks_submit_closure() {
+	let signup = form! {
+		name: AsyncValidationForm,
+		action: "/signup",
+		fields: {
+			email: CharField {
+				initial: "",
+				required,
+			}
+		}
+	};
+	let submit_calls = Rc::new(Cell::new(0));
+	let submit_calls_for_closure = Rc::clone(&submit_calls);
+	let runtime = use_form(&signup).build();
+
+	let outcome = runtime
+		.submit_async(move || {
+			submit_calls_for_closure.set(submit_calls_for_closure.get() + 1);
+			async { Ok::<_, String>(()) }
+		})
+		.await
+		.expect("validation failure is reported as an outcome");
+
+	assert_eq!(outcome, UseFormAsyncSubmitOutcome::ValidationFailed);
+	assert_eq!(submit_calls.get(), 0);
+	assert!(!runtime.form_state().is_submitting.get());
+	assert!(!runtime.form_state().is_submit_successful.get());
+	assert_eq!(
+		runtime
+			.get_field_state(signup.email_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("email is required")
+	);
+}
+
+#[tokio::test]
+async fn submit_async_submit_error_records_error_text() {
+	let profile = form! {
+		name: AsyncSubmitErrorForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada",
+				required,
+			}
+		}
+	};
+	let error_count = Rc::new(Cell::new(0));
+	let error_count_for_callback = Rc::clone(&error_count);
+	let runtime = use_form(&profile)
+		.on_submit_error(move |handle| {
+			assert!(!handle.form_state().is_submitting.get());
+			assert!(!handle.form_state().is_submit_successful.get());
+			assert_eq!(
+				handle.form_state().submit_error.get().as_deref(),
+				Some("network unavailable")
+			);
+			error_count_for_callback.set(error_count_for_callback.get() + 1);
+		})
+		.build();
+
+	let result = runtime
+		.submit_async(|| async { Err::<(), _>("network unavailable".to_string()) })
+		.await;
+
+	assert_eq!(result, Err("network unavailable".to_string()));
+	assert_eq!(
+		runtime.form_state().submit_error.get().as_deref(),
+		Some("network unavailable")
+	);
+	assert_eq!(
+		runtime.form_state().error.get().as_deref(),
+		Some("network unavailable")
+	);
+	assert!(!runtime.form_state().is_submitting.get());
+	assert!(!runtime.form_state().is_submit_successful.get());
+	assert_eq!(error_count.get(), 1);
+}
+
+#[tokio::test]
+async fn submit_async_returns_already_pending_for_reentrant_submit() {
+	let profile = form! {
+		name: AsyncPendingForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada",
+				required,
+			}
+		}
+	};
+	let runtime = use_form(&profile).build();
+	let runtime_for_inner = runtime.clone();
+
+	let outcome = runtime
+		.submit_async(move || {
+			let runtime_for_inner = runtime_for_inner.clone();
+			async move {
+				runtime_for_inner
+					.submit_async(|| async { Ok::<_, String>("inner".to_string()) })
+					.await
+			}
+		})
+		.await
+		.expect("outer async submit should succeed");
+
+	assert_eq!(
+		outcome,
+		UseFormAsyncSubmitOutcome::Submitted(UseFormAsyncSubmitOutcome::AlreadyPending)
+	);
+	assert!(!runtime.form_state().is_submitting.get());
+	assert!(runtime.form_state().is_submit_successful.get());
+}
+
+#[test]
+fn submit_async_cancellation_clears_submitting_state() {
+	let profile = form! {
+		name: AsyncCancelledForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada",
+				required,
+			}
+		}
+	};
+	let runtime = use_form(&profile).build();
+
+	let mut submit = Box::pin(
+		runtime.submit_async(|| async { std::future::pending::<Result<(), String>>().await }),
+	);
+	let waker = Waker::from(Arc::new(NoopWake));
+	let mut context = Context::from_waker(&waker);
+
+	assert!(matches!(submit.as_mut().poll(&mut context), Poll::Pending));
+	assert!(runtime.form_state().is_submitting.get());
+
+	drop(submit);
+
+	assert!(!runtime.form_state().is_submitting.get());
+	assert!(!runtime.form_state().is_submit_successful.get());
+}
+
 #[test]
 fn use_form_accepts_file_field_runtime_contracts() {
 	let upload = form! {
@@ -1736,4 +1936,67 @@ fn submit_callbacks_survive_deps_configured_after_callback_registration() {
 
 	assert_eq!(runtime.handle_submit(), UseFormSubmitOutcome::Submitted);
 	assert_eq!(success_count.get(), 1);
+}
+
+#[test]
+fn use_form_action_validates_before_dispatching() {
+	let signup = form! {
+		name: SignupForm,
+		action: "/signup",
+		fields: {
+			email: CharField {
+				initial: "",
+				required,
+			}
+		}
+	};
+	let runtime = use_form(&signup).build();
+	let dispatch_count = Rc::new(Cell::new(0));
+	let dispatch_count_for_action = Rc::clone(&dispatch_count);
+	let save = use_form_action(&runtime, move |_values| {
+		dispatch_count_for_action.set(dispatch_count_for_action.get() + 1);
+		async { Ok::<(), String>(()) }
+	});
+
+	assert_eq!(save.submit(), UseFormSubmitOutcome::ValidationFailed);
+	assert_eq!(dispatch_count.get(), 0);
+	assert!(!save.is_pending());
+	assert!(!runtime.form_state().is_submit_successful.get());
+	assert_eq!(save.error_message().as_deref(), Some("email is required"));
+	assert_eq!(
+		runtime
+			.get_field_state(signup.email_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("email is required")
+	);
+}
+
+#[test]
+fn use_form_action_dispatches_current_values_after_validation() {
+	let profile = form! {
+		name: ProfileForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada",
+				required,
+			}
+		}
+	};
+	let runtime = use_form(&profile).build();
+	runtime.set_value(profile.display_name_field(), "Grace".to_string());
+
+	let captured_name = Rc::new(RefCell::new(None));
+	let captured_name_for_action = Rc::clone(&captured_name);
+	let save = use_form_action(&runtime, move |values| {
+		*captured_name_for_action.borrow_mut() = Some(values.display_name);
+		async { Ok::<(), String>(()) }
+	});
+
+	assert_eq!(save.submit(), UseFormSubmitOutcome::Submitted);
+	assert_eq!(captured_name.borrow().as_deref(), Some("Grace"));
+	assert!(!save.is_pending());
+	assert!(save.error_message().is_none());
 }

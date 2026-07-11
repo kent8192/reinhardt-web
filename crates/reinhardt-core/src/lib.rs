@@ -131,6 +131,16 @@ pub mod model_info {
 		}
 	}
 
+	impl<T> Default for RelationInfo<T>
+	where
+		T: InfoModel,
+		T::PrimaryKey: Default,
+	{
+		fn default() -> Self {
+			Self::new(T::PrimaryKey::default())
+		}
+	}
+
 	impl<T> std::fmt::Debug for RelationInfo<T>
 	where
 		T: InfoModel,
@@ -319,6 +329,8 @@ pub use crate::types::page;
 
 #[cfg(feature = "macros")]
 pub use reinhardt_macros as macros;
+#[cfg(feature = "macros")]
+pub use reinhardt_macros::Validate;
 
 // Re-export rate limiting types
 pub use crate::rate_limit::RateLimitStrategy;
