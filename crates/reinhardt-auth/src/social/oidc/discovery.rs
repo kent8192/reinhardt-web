@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use crate::social::core::{OAuth2Client, SocialAuthError};
-use crate::social::url_validation::validate_endpoint_url;
+use crate::social::url_validation::{sanitize_url, validate_endpoint_url};
+use url::Url;
 
 /// OpenID Connect Discovery document
 ///
@@ -103,6 +104,27 @@ impl DiscoveryClient {
 	///
 	/// The discovery document, either from cache or freshly fetched.
 	pub async fn discover(&self, issuer_url: &str) -> Result<OIDCDiscovery, SocialAuthError> {
+		self.discover_with_policy(issuer_url, false).await
+	}
+
+	/// Fetches a discovery document and requires all endpoints to stay on the issuer origin.
+	///
+	/// This stricter policy is intended for arbitrary IdP configurations where
+	/// discovery metadata might be tenant-controlled. Built-in providers may use
+	/// [`DiscoveryClient::discover`] because well-known providers can legitimately
+	/// publish endpoints on dedicated OAuth or API hosts.
+	pub async fn discover_same_origin(
+		&self,
+		issuer_url: &str,
+	) -> Result<OIDCDiscovery, SocialAuthError> {
+		self.discover_with_policy(issuer_url, true).await
+	}
+
+	async fn discover_with_policy(
+		&self,
+		issuer_url: &str,
+		require_same_origin: bool,
+	) -> Result<OIDCDiscovery, SocialAuthError> {
 		// Check cache first
 		{
 			let cache = self.cache.read().await;
@@ -135,12 +157,23 @@ impl DiscoveryClient {
 			.await
 			.map_err(|e| SocialAuthError::Discovery(e.to_string()))?;
 
-		// Validate all endpoint URLs once at discovery time
-		validate_endpoint_url(&document.authorization_endpoint)?;
-		validate_endpoint_url(&document.token_endpoint)?;
-		validate_endpoint_url(&document.jwks_uri)?;
+		// Validate all endpoint URLs once at discovery time. Arbitrary Generic
+		// OIDC metadata uses the stricter same-origin policy to prevent a
+		// discovery document from pivoting later server-side requests to an
+		// unrelated host.
+		validate_discovered_endpoint_url(
+			issuer_url,
+			&document.authorization_endpoint,
+			require_same_origin,
+		)?;
+		validate_discovered_endpoint_url(
+			issuer_url,
+			&document.token_endpoint,
+			require_same_origin,
+		)?;
+		validate_discovered_endpoint_url(issuer_url, &document.jwks_uri, require_same_origin)?;
 		if let Some(ref userinfo_url) = document.userinfo_endpoint {
-			validate_endpoint_url(userinfo_url)?;
+			validate_discovered_endpoint_url(issuer_url, userinfo_url, require_same_origin)?;
 		}
 
 		// Update cache keyed by issuer_url
@@ -160,6 +193,39 @@ impl DiscoveryClient {
 		let mut cache = self.cache.write().await;
 		cache.clear();
 	}
+}
+
+/// Validates that a discovery-provided endpoint stays on the issuer origin.
+///
+/// This prevents a malicious discovery document from turning later token,
+/// JWKS, or UserInfo requests into server-side requests to unrelated hosts.
+fn validate_discovered_endpoint_url(
+	issuer_url: &str,
+	endpoint_url: &str,
+	require_same_origin: bool,
+) -> Result<(), SocialAuthError> {
+	validate_endpoint_url(endpoint_url)?;
+	if !require_same_origin {
+		return Ok(());
+	}
+
+	let issuer = Url::parse(issuer_url)
+		.map_err(|e| SocialAuthError::Configuration(format!("invalid issuer URL: {}", e)))?;
+	let endpoint = Url::parse(endpoint_url)
+		.map_err(|e| SocialAuthError::Configuration(format!("invalid endpoint URL: {}", e)))?;
+
+	if issuer.scheme() == endpoint.scheme()
+		&& issuer.host_str() == endpoint.host_str()
+		&& issuer.port_or_known_default() == endpoint.port_or_known_default()
+	{
+		return Ok(());
+	}
+
+	Err(SocialAuthError::InsecureEndpoint(format!(
+		"discovered endpoint '{}' is outside issuer origin '{}'",
+		sanitize_url(&endpoint),
+		sanitize_url(&issuer)
+	)))
 }
 
 #[cfg(test)]
@@ -187,6 +253,60 @@ mod tests {
 
 		let expired = CachedDiscovery::new(cached.document.clone(), Duration::seconds(-1));
 		assert!(expired.is_expired());
+	}
+
+	#[test]
+	fn test_discovered_endpoint_allows_same_origin() {
+		// Arrange
+		let issuer = "https://issuer.example.com/auth";
+		let endpoint = "https://issuer.example.com/token";
+
+		// Act
+		let result = validate_discovered_endpoint_url(issuer, endpoint, true);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[test]
+	fn test_discovered_endpoint_rejects_different_host() {
+		// Arrange
+		let issuer = "https://issuer.example.com";
+		let endpoint = "https://127.0.0.1/token";
+
+		// Act
+		let result = validate_discovered_endpoint_url(issuer, endpoint, true);
+
+		// Assert
+		let err = result.expect_err("different host must be rejected");
+		assert!(matches!(err, SocialAuthError::InsecureEndpoint(_)));
+	}
+
+	#[test]
+	fn test_discovered_endpoint_rejects_different_port() {
+		// Arrange
+		let issuer = "https://issuer.example.com";
+		let endpoint = "https://issuer.example.com:8443/token";
+
+		// Act
+		let result = validate_discovered_endpoint_url(issuer, endpoint, true);
+
+		// Assert
+		let err = result.expect_err("different port must be rejected");
+		assert!(matches!(err, SocialAuthError::InsecureEndpoint(_)));
+	}
+
+	#[test]
+	fn test_discovered_endpoint_allows_same_loopback_http_origin_for_dev() {
+		// Arrange
+		let issuer = "http://127.0.0.1:8080";
+		let endpoint = "http://127.0.0.1:8080/token";
+
+		// Act
+		let result = validate_discovered_endpoint_url(issuer, endpoint, true);
+
+		// Assert
+		assert!(result.is_ok());
 	}
 
 	#[tokio::test]
