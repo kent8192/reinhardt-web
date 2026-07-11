@@ -1,3 +1,4 @@
+// Exercises the deprecated `FactoryOutput` alias for compatibility coverage.
 #![allow(deprecated)]
 
 use reinhardt_di::{FactoryOutput, injectable, injectable_key};
