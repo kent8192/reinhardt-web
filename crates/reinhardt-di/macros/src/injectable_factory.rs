@@ -40,6 +40,10 @@ impl ProviderReturn {
 			Self::Direct { wrap_expr, .. } | Self::Keyed { wrap_expr, .. } => wrap_expr.clone(),
 		}
 	}
+
+	fn is_direct(&self) -> bool {
+		matches!(self, Self::Direct { .. })
+	}
 }
 
 fn direct_provider_return(di_crate: &TokenStream, value_ty: Type) -> ProviderReturn {
@@ -230,6 +234,13 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 
 	// Generate type name for registration
 	let type_name = quote! { #registered_type }.to_string();
+	let direct_provider_registration = if provider_return.is_direct() {
+		quote! {
+			registry.register_direct_provider_type(::std::any::TypeId::of::<#registered_type>());
+		}
+	} else {
+		TokenStream::new()
+	};
 
 	// Generate registration function name for const-safe inventory submission
 	let register_fn_name = format_ident!("__reinhardt_register_{}", fn_name);
@@ -293,6 +304,7 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 				::std::any::TypeId::of::<#registered_type>(),
 				::std::any::type_name::<#validation_type>(),
 			);
+			#direct_provider_registration
 		}
 
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]

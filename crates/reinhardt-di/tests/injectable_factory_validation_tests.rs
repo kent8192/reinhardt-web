@@ -42,6 +42,33 @@ async fn macro_alias_config() -> FactoryOutput<MacroAliasConfigKey, MacroAliasCo
 	FactoryOutput::new(MacroAliasConfig)
 }
 
+#[derive(Clone)]
+struct MacroAliasedOutputConfig;
+
+#[injectable_key]
+struct MacroAliasedOutputConfigKey;
+
+type MacroAliasedOutput = KeyedFactoryOutput<MacroAliasedOutputConfigKey, MacroAliasedOutputConfig>;
+
+#[injectable(scope = "singleton")]
+async fn macro_aliased_output_config() -> MacroAliasedOutput {
+	KeyedFactoryOutput::new(MacroAliasedOutputConfig)
+}
+
+#[derive(Clone)]
+struct MacroAliasedFactoryOutputConfig;
+
+#[injectable_key]
+struct MacroAliasedFactoryOutputConfigKey;
+
+type MacroAliasedFactoryOutput =
+	FactoryOutput<MacroAliasedFactoryOutputConfigKey, MacroAliasedFactoryOutputConfig>;
+
+#[injectable(scope = "singleton")]
+async fn macro_aliased_factory_output_config() -> MacroAliasedFactoryOutput {
+	FactoryOutput::new(MacroAliasedFactoryOutputConfig)
+}
+
 #[serial(di_registry)]
 #[test]
 fn injectable_providers_register_value_qualified_names_for_validation() {
@@ -69,6 +96,28 @@ fn injectable_providers_register_value_qualified_names_for_validation() {
 	assert_eq!(
 		registry.get_qualified_type_name(&alias_type),
 		Some(type_name::<MacroAliasConfig>())
+	);
+
+	let aliased_output_type =
+		TypeId::of::<KeyedFactoryOutput<SelfKey<MacroAliasedOutput>, MacroAliasedOutput>>();
+	assert!(
+		registry
+			.is_registered::<KeyedFactoryOutput<SelfKey<MacroAliasedOutput>, MacroAliasedOutput>>()
+	);
+	assert_eq!(
+		registry.get_qualified_type_name(&aliased_output_type),
+		Some(type_name::<MacroAliasedOutput>())
+	);
+
+	let aliased_factory_output_type = TypeId::of::<
+		KeyedFactoryOutput<SelfKey<MacroAliasedFactoryOutput>, MacroAliasedFactoryOutput>,
+	>();
+	assert!(registry.is_registered::<
+		KeyedFactoryOutput<SelfKey<MacroAliasedFactoryOutput>, MacroAliasedFactoryOutput>,
+	>());
+	assert_eq!(
+		registry.get_qualified_type_name(&aliased_factory_output_type),
+		Some(type_name::<MacroAliasedFactoryOutput>())
 	);
 
 	let result = RegistryValidator::new(registry).validate();
