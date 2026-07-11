@@ -406,6 +406,7 @@ members = [
   "crates/reinhardt-urls/routers-macros",
   "crates/reinhardt-router",                            # Shared router trait (issue #4321)
   "crates/reinhardt-middleware",
+  "crates/reinhardt-event-catalog",                   # Authoritative DOM event metadata
   "crates/reinhardt-pages",                             # WASM frontend framework
   "crates/reinhardt-pages/macros",              # WASM frontend macros
   "crates/reinhardt-pages/ast",                        # WASM frontend AST
@@ -503,6 +504,7 @@ reinhardt-views = { path = "crates/reinhardt-views", version = "0.3.1", default-
 reinhardt-urls = { path = "crates/reinhardt-urls", version = "0.3.1", default-features = false }
 reinhardt-router = { path = "crates/reinhardt-router", version = "0.3.1" }
 reinhardt-middleware = { path = "crates/reinhardt-middleware", version = "0.3.1", default-features = false }
+reinhardt-event-catalog = { path = "crates/reinhardt-event-catalog", version = "0.3.1" }
 reinhardt-pages = { path = "crates/reinhardt-pages", version = "0.3.1" }
 reinhardt-pages-macros = { path = "crates/reinhardt-pages/macros", version = "0.3.1" }
 reinhardt-pages-ast = { path = "crates/reinhardt-pages/ast", version = "0.3.1" }
