@@ -1731,7 +1731,7 @@ impl ShellCommand {
 /// Development server command
 pub struct RunServerCommand;
 
-#[cfg(feature = "pages")]
+#[cfg(any(feature = "pages", all(feature = "server", feature = "autoreload")))]
 const GENERATED_STYLE_ROOT_ENV: &str = "REINHARDT_GENERATED_STYLE_ROOT";
 
 #[cfg(all(feature = "server", feature = "autoreload"))]
@@ -2022,6 +2022,10 @@ impl BaseCommand for RunServerCommand {
 		} else {
 			None
 		};
+		#[cfg(all(not(feature = "pages"), feature = "server"))]
+		let component_style_state: Option<
+			std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>,
+		> = None;
 		#[cfg(feature = "pages")]
 		let generated_style_root = if let Some(root) = inherited_style_root {
 			Some(root)
@@ -2763,6 +2767,9 @@ impl RunServerCommand {
 		component_style_state: Option<std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>>,
 		debounce_window: std::time::Duration,
 	) -> CommandResult<()> {
+		#[cfg(not(feature = "pages"))]
+		let _ = &component_style_state;
+
 		// Resolve the cargo metadata for the current working directory.
 		let metadata = cargo_metadata::MetadataCommand::new().exec().map_err(|e| {
 			crate::CommandError::ExecutionError(format!("cargo metadata failed: {}", e))
