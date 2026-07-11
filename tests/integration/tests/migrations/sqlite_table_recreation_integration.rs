@@ -66,6 +66,7 @@ fn create_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		primary_key: false,
 		auto_increment: false,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -79,6 +80,7 @@ fn create_pk_column(name: &str) -> ColumnDefinition {
 		primary_key: true,
 		auto_increment: true,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -92,6 +94,7 @@ fn create_required_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		primary_key: false,
 		auto_increment: false,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -105,6 +108,7 @@ fn create_unique_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		primary_key: false,
 		auto_increment: false,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -284,6 +288,7 @@ async fn test_drop_column_preserves_data(
 		vec![Operation::DropColumn {
 			table: "recreation_test".to_string(),
 			column: "age".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -559,6 +564,7 @@ async fn test_multiple_operations_single_migration(
 			Operation::DropColumn {
 				table: "recreation_test".to_string(),
 				column: "age".to_string(),
+				old_definition: None,
 			},
 			Operation::AlterColumn {
 				table: "recreation_test".to_string(),
@@ -631,6 +637,7 @@ async fn test_drop_nonexistent_column_error(
 		vec![Operation::DropColumn {
 			table: "recreation_test".to_string(),
 			column: "nonexistent_column".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -716,6 +723,7 @@ async fn test_recreation_empty_table(
 		vec![Operation::DropColumn {
 			table: "recreation_test".to_string(),
 			column: "age".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -782,6 +790,7 @@ async fn test_autoincrement_preservation(
 		vec![Operation::DropColumn {
 			table: "recreation_test".to_string(),
 			column: "age".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -855,6 +864,7 @@ async fn test_fk_disable_enable_cycle(
 		vec![Operation::DropColumn {
 			table: "recreation_child".to_string(),
 			column: "value".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -936,6 +946,7 @@ async fn test_sequential_recreations() {
 			vec![Operation::DropColumn {
 				table: "seq_test".to_string(),
 				column: (*col).to_string(),
+				old_definition: None,
 			}],
 		);
 
@@ -1033,6 +1044,7 @@ async fn test_postgres_does_not_use_recreation(
 		vec![Operation::DropColumn {
 			table: "pg_test".to_string(),
 			column: "age".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -1194,6 +1206,7 @@ async fn test_drop_pk_column_error(
 		vec![Operation::DropColumn {
 			table: "recreation_test".to_string(),
 			column: "id".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -1257,6 +1270,7 @@ async fn test_fk_violation_after_recreation(
 		vec![Operation::DropColumn {
 			table: "recreation_child".to_string(),
 			column: "value".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -1312,6 +1326,7 @@ async fn test_recreation_transaction_rollback(
 		vec![Operation::DropColumn {
 			table: "recreation_test".to_string(),
 			column: "nonexistent".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -1411,6 +1426,7 @@ async fn test_recreation_large_table() {
 		vec![Operation::DropColumn {
 			table: "large_table".to_string(),
 			column: "extra".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -1502,6 +1518,7 @@ async fn test_table_with_many_constraints() {
 		vec![Operation::DropColumn {
 			table: "constrained_table".to_string(),
 			column: "extra".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -1712,6 +1729,7 @@ async fn test_usecase_self_referencing_table() {
 		vec![Operation::DropColumn {
 			table: "tree_node".to_string(),
 			column: "extra".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -1776,6 +1794,7 @@ async fn test_drop_column_with_fk_reference(
 		vec![Operation::DropColumn {
 			table: "recreation_test".to_string(),
 			column: "id".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -1934,6 +1953,7 @@ async fn test_recreation_with_check_constraint() {
 		vec![Operation::DropColumn {
 			table: "checked_table".to_string(),
 			column: "extra".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -2012,6 +2032,7 @@ async fn test_drop_integer_column() {
 		vec![Operation::DropColumn {
 			table: "int_test".to_string(),
 			column: "int_col".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -2076,6 +2097,7 @@ async fn test_drop_text_column() {
 		vec![Operation::DropColumn {
 			table: "text_test".to_string(),
 			column: "text_col".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -2140,6 +2162,7 @@ async fn test_drop_real_column() {
 		vec![Operation::DropColumn {
 			table: "real_test".to_string(),
 			column: "real_col".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -2204,6 +2227,7 @@ async fn test_drop_blob_column() {
 		vec![Operation::DropColumn {
 			table: "blob_test".to_string(),
 			column: "blob_col".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -2270,6 +2294,7 @@ async fn test_boundary_minimum_columns() {
 		vec![Operation::DropColumn {
 			table: "min_table".to_string(),
 			column: "only_col".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -2338,6 +2363,7 @@ async fn test_boundary_single_row() {
 		vec![Operation::DropColumn {
 			table: "single_row".to_string(),
 			column: "extra".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -2417,6 +2443,7 @@ async fn test_boundary_long_column_name() {
 		vec![Operation::DropColumn {
 			table: "long_name_test".to_string(),
 			column: long_name.clone(),
+			old_definition: None,
 		}],
 	);
 
@@ -2480,6 +2507,7 @@ async fn test_decision_c1_no_pk_no_fk_no_data() {
 		vec![Operation::DropColumn {
 			table: "decision_c1".to_string(),
 			column: "col_b".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -2545,6 +2573,7 @@ async fn test_decision_c2_no_pk_no_fk_has_data() {
 		vec![Operation::DropColumn {
 			table: "decision_c2".to_string(),
 			column: "col_b".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -2630,6 +2659,7 @@ async fn test_decision_c3_no_pk_has_fk_no_data() {
 		vec![Operation::DropColumn {
 			table: "decision_c3".to_string(),
 			column: "extra".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -2739,6 +2769,7 @@ async fn test_decision_c4_no_pk_has_fk_has_valid_data() {
 		vec![Operation::DropColumn {
 			table: "decision_c4".to_string(),
 			column: "extra".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -2803,6 +2834,7 @@ async fn test_decision_c5_pk_drop_error() {
 		vec![Operation::DropColumn {
 			table: "decision_c5".to_string(),
 			column: "id".to_string(),
+			old_definition: None,
 		}],
 	);
 

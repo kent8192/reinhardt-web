@@ -239,6 +239,7 @@ mod tests {
 				data_type: FieldType::Integer,
 				nullable: false,
 				default: None,
+				generated: None,
 				primary_key: true,
 				auto_increment: true,
 			},
