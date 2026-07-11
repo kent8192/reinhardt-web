@@ -1,5 +1,9 @@
 use reinhardt_pages::{style_def};
 
 #[style_def]
-static STYLES: CardStyles = style! { .card.label { color: red; } };
+static STYLES: CardStyles = style! {
+	.card.label {
+		color: red;
+	}
+};
 fn main() {}

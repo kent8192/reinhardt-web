@@ -9,7 +9,10 @@ pub(crate) static STYLES: RuntimeStyles = style! {
 		accent: Color = red;
 		padding: Length = 1rem;
 	}
-	.card { color: vars.accent; padding: vars.padding; }
+	.card {
+		color: vars.accent;
+		padding: vars.padding;
+	}
 };
 
 #[rstest]

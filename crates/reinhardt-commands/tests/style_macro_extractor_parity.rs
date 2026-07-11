@@ -6,7 +6,9 @@ use rstest::rstest;
 
 #[style_def]
 static PARITY_STYLES: ParityStyles = style! {
-	.card { color: red; }
+	.card {
+		color: red;
+	}
 };
 
 #[rstest]

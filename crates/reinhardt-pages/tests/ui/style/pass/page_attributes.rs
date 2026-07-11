@@ -6,8 +6,13 @@ static STYLES: PageStyles = style! {
 		accent: Color = red;
 		padding: Length = 1rem;
 	}
-	.card { color: vars.accent; padding: vars.padding; }
-	.featured { font-weight: bold; }
+	.card {
+		color: vars.accent;
+		padding: vars.padding;
+	}
+	.featured {
+		font-weight: bold;
+	}
 };
 
 fn main() {

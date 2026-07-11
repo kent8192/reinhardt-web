@@ -4,7 +4,11 @@ use reinhardt::pages::{ClassToken, CssColor, style_def};
 use rstest::rstest;
 
 #[style_def]
-pub(crate) static STYLES: FacadeStyles = style! { .card { color: red; } };
+pub(crate) static STYLES: FacadeStyles = style! {
+	.card {
+		color: red;
+	}
+};
 
 #[rstest]
 fn style_api_resolves_through_the_root_pages_facade() {

@@ -8,8 +8,12 @@ static STYLES: CardStyles = style! {
 		accent: Color = red;
 		padding: Length = 1rem;
 	}
-	.card { color: vars.accent; }
-	.featured { color: vars.accent; }
+	.card {
+		color: vars.accent;
+	}
+	.featured {
+		color: vars.accent;
+	}
 };
 
 fn main() {

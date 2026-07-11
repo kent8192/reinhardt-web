@@ -1,2 +1,9 @@
-fn styles(){let _=style!{/* block stays */.card{// line stays
-color:red;.label{color:blue;}}};}
+fn styles(){let _=style! {
+	/* block stays */.card {
+		// line stays
+		color: red;
+		.label {
+			color: blue;
+		}
+	}
+};}
