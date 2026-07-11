@@ -11,7 +11,7 @@
 
 - Task 1: complete in `567e32805a` (`feat(core): add reactive scope arena foundation`)
 - Task 2: complete
-- Task 3: pending
+- Task 3: complete
 - Task 4: pending
 - Task 5: pending
 - Task 6: pending
@@ -45,3 +45,20 @@ GREEN:
   - Result: PASS, 12 passed, 0 failed.
 - `cargo test -j1 -p reinhardt-core --features reactive --lib into_deps_single_signal`
   - Result: PASS, 1 passed, 0 failed.
+
+### Task 3: `Memo<T>` and `Effect`
+
+RED:
+
+- `cargo test -j1 -p reinhardt-core --features reactive --lib memo_is_copy`
+  - Result: compile failure because `Memo<i32>: Copy` and `Effect: Copy` were not implemented.
+- Existing focused tests initially failed after the `Signal` migration because they created nodes without a scope.
+- `new_with_deps_cleanup_can_dispose_same_effect_without_reentrant_borrow`
+  - Result: failed with `RefCell already borrowed`, proving cleanup had to release its borrow before self-disposal.
+
+GREEN:
+
+- `cargo test -j1 -p reinhardt-core --features reactive --lib reactive::memo::tests -- --test-threads=1`
+  - Result: PASS, 11 passed, 0 failed.
+- `cargo test -j1 -p reinhardt-core --features reactive --lib reactive::effect::tests -- --test-threads=1`
+  - Result: PASS, 19 passed, 0 failed.

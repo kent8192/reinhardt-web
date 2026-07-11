@@ -107,6 +107,8 @@ struct CoreSlot {
 	generation: u32,
 	kind: NodeKind,
 	node_id: NodeId,
+	dirty: bool,
+	disposed: bool,
 	value: Option<Box<dyn Any>>,
 }
 
@@ -225,6 +227,8 @@ pub(crate) fn allocate_node<T: 'static>(kind: NodeKind, value: T) -> NodeKey {
 			generation,
 			kind,
 			node_id,
+			dirty: false,
+			disposed: false,
 			value: Some(Box::new(value)),
 		});
 		NodeKey {
@@ -281,6 +285,15 @@ pub(crate) fn with_node<T: 'static, R>(
 				actual_generation: Some(slot.generation),
 			});
 		}
+		if slot.disposed {
+			return Err(ReactiveScopeError::DisposedNode {
+				kind: slot.kind,
+				scope: key.scope,
+				index: key.index,
+				expected_generation: key.generation,
+				actual_generation: Some(slot.generation),
+			});
+		}
 		let value = slot
 			.value
 			.as_ref()
@@ -327,6 +340,15 @@ pub(crate) fn with_node_mut<T: 'static, R>(
 				actual_generation: Some(slot.generation),
 			});
 		}
+		if slot.disposed {
+			return Err(ReactiveScopeError::DisposedNode {
+				kind: slot.kind,
+				scope: key.scope,
+				index: key.index,
+				expected_generation: key.generation,
+				actual_generation: Some(slot.generation),
+			});
+		}
 		let value = slot
 			.value
 			.as_mut()
@@ -336,6 +358,131 @@ pub(crate) fn with_node_mut<T: 'static, R>(
 				type_name: core::any::type_name::<T>(),
 			})?;
 		Ok(f(value))
+	})
+}
+
+pub(crate) fn find_node_key(node_id: NodeId, kind: NodeKind) -> Option<NodeKey> {
+	SCOPES.with(|scopes| {
+		let scopes = scopes.borrow();
+		for (&scope, state) in scopes.iter() {
+			for (index, slot) in state.slots.iter().enumerate() {
+				if slot.node_id == node_id
+					&& slot.kind == kind
+					&& !slot.disposed
+					&& slot.value.is_some()
+				{
+					return Some(NodeKey {
+						scope,
+						index,
+						generation: slot.generation,
+						node_id,
+						kind,
+					});
+				}
+			}
+		}
+		None
+	})
+}
+
+pub(crate) fn node_is_dirty(key: NodeKey) -> Result<bool, ReactiveScopeError> {
+	SCOPES.with(|scopes| {
+		let scopes = scopes.borrow();
+		let state = scopes
+			.get(&key.scope)
+			.ok_or(ReactiveScopeError::DisposedNode {
+				kind: key.kind,
+				scope: key.scope,
+				index: key.index,
+				expected_generation: key.generation,
+				actual_generation: None,
+			})?;
+		let slot = state
+			.slots
+			.get(key.index)
+			.ok_or(ReactiveScopeError::DisposedNode {
+				kind: key.kind,
+				scope: key.scope,
+				index: key.index,
+				expected_generation: key.generation,
+				actual_generation: None,
+			})?;
+		if slot.generation != key.generation || slot.disposed {
+			return Err(ReactiveScopeError::DisposedNode {
+				kind: slot.kind,
+				scope: key.scope,
+				index: key.index,
+				expected_generation: key.generation,
+				actual_generation: Some(slot.generation),
+			});
+		}
+		Ok(slot.dirty)
+	})
+}
+
+pub(crate) fn set_node_dirty(key: NodeKey, dirty: bool) -> Result<(), ReactiveScopeError> {
+	SCOPES.with(|scopes| {
+		let mut scopes = scopes.borrow_mut();
+		let state = scopes
+			.get_mut(&key.scope)
+			.ok_or(ReactiveScopeError::DisposedNode {
+				kind: key.kind,
+				scope: key.scope,
+				index: key.index,
+				expected_generation: key.generation,
+				actual_generation: None,
+			})?;
+		let slot = state
+			.slots
+			.get_mut(key.index)
+			.ok_or(ReactiveScopeError::DisposedNode {
+				kind: key.kind,
+				scope: key.scope,
+				index: key.index,
+				expected_generation: key.generation,
+				actual_generation: None,
+			})?;
+		if slot.generation != key.generation || slot.disposed {
+			return Err(ReactiveScopeError::DisposedNode {
+				kind: slot.kind,
+				scope: key.scope,
+				index: key.index,
+				expected_generation: key.generation,
+				actual_generation: Some(slot.generation),
+			});
+		}
+		slot.dirty = dirty;
+		Ok(())
+	})
+}
+
+pub(crate) fn mark_node_disposed(key: NodeKey) -> Result<(), ReactiveScopeError> {
+	SCOPES.with(|scopes| {
+		let mut scopes = scopes.borrow_mut();
+		let state = scopes
+			.get_mut(&key.scope)
+			.ok_or(ReactiveScopeError::DisposedScope { scope: key.scope })?;
+		let slot = state
+			.slots
+			.get_mut(key.index)
+			.ok_or(ReactiveScopeError::DisposedNode {
+				kind: key.kind,
+				scope: key.scope,
+				index: key.index,
+				expected_generation: key.generation,
+				actual_generation: None,
+			})?;
+		if slot.generation != key.generation {
+			return Err(ReactiveScopeError::DisposedNode {
+				kind: slot.kind,
+				scope: key.scope,
+				index: key.index,
+				expected_generation: key.generation,
+				actual_generation: Some(slot.generation),
+			});
+		}
+		slot.disposed = true;
+		Ok(())
 	})
 }
 
