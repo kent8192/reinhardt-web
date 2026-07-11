@@ -75,6 +75,8 @@ struct IdentityEntry {
 	field_metadata: Vec<FieldInfo>,
 	/// Nullable JSON fields whose model value is `None` and must be written as SQL NULL.
 	sql_null_json_fields: HashSet<String>,
+	/// Database-generated columns that must be omitted from INSERT/UPDATE writes.
+	generated_fields: HashSet<String>,
 	/// Whether the object has been modified
 	// Allow dead_code: dirty tracking flag set internally, read by future flush/commit logic
 	#[allow(dead_code)]
@@ -241,6 +243,10 @@ impl Session {
 				type_id: TypeId::of::<T>(),
 				field_metadata,
 				sql_null_json_fields,
+				generated_fields: T::generated_field_names()
+					.iter()
+					.map(|field| (*field).to_string())
+					.collect(),
 				is_dirty: true,
 			},
 		);
@@ -491,6 +497,10 @@ impl Session {
 				type_id: TypeId::of::<T>(),
 				field_metadata: field_metadata.clone(),
 				sql_null_json_fields,
+				generated_fields: T::generated_field_names()
+					.iter()
+					.map(|field| (*field).to_string())
+					.collect(),
 				is_dirty: false,
 			},
 		);
@@ -845,12 +855,16 @@ impl Session {
 						// UPDATE existing record
 						let mut update_stmt =
 							RQuery::update().table(Alias::new(table_name)).to_owned();
+						let mut has_update_values = false;
 
 						// Set all columns except primary key and auto-managed datetime fields
 						for (col_name, col_value) in obj {
 							let field_info = find_field_info(&entry.field_metadata, col_name);
 							let column_name = flush_column_name(col_name, field_info);
 							if should_skip_flush_column(col_name, column_name, field_info) {
+								continue;
+							}
+							if entry.generated_fields.contains(col_name) {
 								continue;
 							}
 							// Skip null auto-managed datetime fields to let database defaults remain.
@@ -867,6 +881,11 @@ impl Session {
 									entry.sql_null_json_fields.contains(col_name),
 								),
 							);
+							has_update_values = true;
+						}
+
+						if !has_update_values {
+							continue;
 						}
 
 						// Add WHERE clause for primary key
@@ -901,6 +920,9 @@ impl Session {
 							if should_skip_flush_column(col_name, column_name, field_info) {
 								continue;
 							}
+							if entry.generated_fields.contains(col_name) {
+								continue;
+							}
 							// Skip null datetime fields to let database DEFAULT apply
 							// (e.g., created_at, updated_at with DEFAULT CURRENT_TIMESTAMP)
 							if col_value.is_null()
@@ -916,16 +938,19 @@ impl Session {
 							));
 						}
 
-						// If there are columns to insert, add them
-						if !columns.is_empty() {
-							insert_stmt.columns(columns);
-							insert_stmt.values(values_vec).map_err(|e| {
-								SessionError::FlushError(format!(
-									"Failed to build INSERT values: {}",
-									e
-								))
-							})?;
+						if columns.is_empty() {
+							return Err(SessionError::FlushError(format!(
+								"Cannot insert {table_name} because no writable fields remain after filtering generated and defaulted columns"
+							)));
 						}
+
+						insert_stmt.columns(columns);
+						insert_stmt.values(values_vec).map_err(|e| {
+							SessionError::FlushError(format!(
+								"Failed to build INSERT values: {}",
+								e
+							))
+						})?;
 
 						// Add RETURNING clause for PostgreSQL to get generated ID
 						if backend == DbBackend::Postgres {
@@ -1952,6 +1977,51 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct GeneratedOnlyUser {
+		id: Option<i64>,
+		full_name: String,
+	}
+
+	#[derive(Debug, Clone)]
+	struct GeneratedOnlyUserFields;
+
+	impl crate::orm::model::FieldSelector for GeneratedOnlyUserFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for GeneratedOnlyUser {
+		type PrimaryKey = i64;
+		type Fields = GeneratedOnlyUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"generated_only_users"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			GeneratedOnlyUserFields
+		}
+
+		fn generated_field_names() -> &'static [&'static str] {
+			&["full_name"]
+		}
+	}
+
 	// Create test pool using SQLite in-memory database
 	async fn create_test_pool() -> Arc<AnyPool> {
 		use sqlx::pool::PoolOptions;
@@ -2091,6 +2161,53 @@ mod tests {
 		session.flush().await.unwrap();
 		assert_eq!(session.dirty_count(), 0);
 		assert_eq!(session.identity_count(), 1);
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_session_flush_generated_only_update_is_noop(_init_drivers: ()) {
+		let pool = create_test_pool().await;
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		session
+			.add(GeneratedOnlyUser {
+				id: Some(7),
+				full_name: "Computed".to_string(),
+			})
+			.await
+			.unwrap();
+		assert_eq!(session.dirty_count(), 1);
+
+		session.flush().await.unwrap();
+
+		assert_eq!(session.dirty_count(), 0);
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_session_flush_generated_only_insert_errors(_init_drivers: ()) {
+		let pool = create_test_pool().await;
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		session
+			.add(GeneratedOnlyUser {
+				id: None,
+				full_name: "Computed".to_string(),
+			})
+			.await
+			.unwrap();
+
+		let error = session
+			.flush()
+			.await
+			.expect_err("generated-only insert should fail before rendering empty SQL");
+
+		assert_eq!(
+			error.to_string(),
+			"Flush error: Cannot insert generated_only_users because no writable fields remain after filtering generated and defaulted columns"
+		);
 	}
 
 	#[rstest]

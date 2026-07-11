@@ -241,7 +241,7 @@ impl MigrationSquasher {
 					// Skip if table was dropped
 					!dropped_tables.contains(table)
 				}
-				Operation::DropColumn { table, column } => {
+				Operation::DropColumn { table, column, .. } => {
 					// Remove corresponding AddColumn if exists
 					let had_add = optimized.iter().any(|op| {
 						matches!(op, Operation::AddColumn { table: t, column: c, .. } if t == table && c.name == *column)
@@ -365,6 +365,7 @@ mod tests {
 			Operation::DropColumn {
 				table: "users".to_string(),
 				column: "temp_field".to_string(),
+				old_definition: None,
 			},
 		];
 

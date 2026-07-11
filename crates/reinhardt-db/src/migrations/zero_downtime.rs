@@ -572,6 +572,7 @@ mod tests {
 			.add_operation(Operation::DropColumn {
 				table: "users".to_string(),
 				column: "old_field".to_string(),
+				old_definition: None,
 			});
 
 		let zd = ZeroDowntimeMigration::new(migration, Strategy::ExpandContractPattern);
@@ -591,6 +592,7 @@ mod tests {
 			.add_operation(Operation::DropColumn {
 				table: "users".to_string(),
 				column: "old_field".to_string(),
+				old_definition: None,
 			})
 			.add_operation(Operation::DropTable {
 				name: "old_table".to_string(),

@@ -15,6 +15,8 @@ pub(super) fn migration() -> Migration {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "created_at".to_string(),
@@ -24,6 +26,8 @@ pub(super) fn migration() -> Migration {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "id".to_string(),
@@ -33,6 +37,8 @@ pub(super) fn migration() -> Migration {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "language".to_string(),
@@ -42,6 +48,8 @@ pub(super) fn migration() -> Migration {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "title".to_string(),
@@ -51,6 +59,8 @@ pub(super) fn migration() -> Migration {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 			],
 			constraints: vec![],

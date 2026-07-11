@@ -8,6 +8,7 @@
 use reinhardt_db::Json;
 use reinhardt_db::migrations::FieldType;
 use reinhardt_db::migrations::model_registry::global_registry;
+use reinhardt_db::migrations::{GeneratedStorage, SchemaExpr, SchemaFunc};
 use reinhardt_db::orm::Model as ModelTrait;
 use reinhardt_macros::model;
 use rstest::rstest;
@@ -49,6 +50,30 @@ struct JsonModel {
 
 	#[field(null = true)]
 	raw: Option<Json<serde_json::Value>>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[model(app_label = "generated_app", table_name = "generated_users")]
+struct GeneratedUser {
+	#[field(primary_key = true)]
+	id: Option<i32>,
+
+	#[field(max_length = 100)]
+	first_name: String,
+
+	#[field(max_length = 100)]
+	last_name: String,
+
+	#[field(
+		max_length = 201,
+		generated = SchemaExpr::concat([
+			SchemaExpr::col("first_name"),
+			SchemaExpr::val(" "),
+			SchemaExpr::col("last_name")
+		]),
+		generated_stored = true
+	)]
+	full_name: String,
 }
 
 #[test]
@@ -111,6 +136,51 @@ fn test_field_metadata_generation() {
 		is_active_field.field_type,
 		"reinhardt.orm.models.BooleanField"
 	);
+}
+
+#[test]
+fn test_typed_generated_column_registration() {
+	let _sample = GeneratedUser {
+		id: None,
+		first_name: "Ada".to_string(),
+		last_name: "Lovelace".to_string(),
+		full_name: "Ada Lovelace".to_string(),
+	};
+	let registry = global_registry();
+	let model = registry
+		.get_model("generated_app", "GeneratedUser")
+		.expect("GeneratedUser should be registered in global registry");
+	let field = model
+		.fields
+		.get("full_name")
+		.expect("full_name field should be registered");
+	let generated = field
+		.generated
+		.as_ref()
+		.expect("full_name should carry generated-column metadata");
+
+	assert_eq!(generated.storage, GeneratedStorage::Stored);
+	assert!(generated.raw_sql.is_none());
+	let expr_tokens = generated.expr_tokens.as_deref().unwrap_or_default();
+	let compact_expr_tokens = expr_tokens
+		.chars()
+		.filter(|ch| !ch.is_whitespace())
+		.collect::<String>();
+	assert!(
+		compact_expr_tokens.contains("SchemaExpr::concat"),
+		"expr_tokens should retain the Rust SchemaExpr builder expression: {:?}",
+		generated.expr_tokens
+	);
+	match generated.expr.as_deref() {
+		Some(SchemaExpr::Function { func, args }) => {
+			assert_eq!(*func, SchemaFunc::Concat);
+			assert_eq!(args.len(), 3);
+			assert_eq!(args[0], SchemaExpr::col("first_name"));
+			assert_eq!(args[1], SchemaExpr::val(" "));
+			assert_eq!(args[2], SchemaExpr::col("last_name"));
+		}
+		other => panic!("expected concat SchemaExpr, got {other:?}"),
+	}
 }
 
 #[test]

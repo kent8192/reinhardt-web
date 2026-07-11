@@ -231,6 +231,8 @@ pub struct User {
 - `#[field(null = true)]` - Allow NULL values
 - `#[field(default = value)]` - Default value
 - `#[field(foreign_key = "ModelType")]` - Foreign key relationship
+- `#[field(generated = SchemaExpr::..., generated_stored = true)]` - Typed generated column expression
+- `#[field(generated_sql = "...", generated_stored = true)]` - Backend-specific raw SQL generated column expression
 
 Typed JSON fields use `Json<T>` to keep the Rust field type explicit while
 storing JSON in the database. Migrations emit JSONB for PostgreSQL/CockroachDB,
@@ -264,6 +266,29 @@ pub struct Project {
 ```
 
 For a complete list of field attributes, see the `#[field(...)]` macro documentation in `reinhardt-db-macros`.
+
+Generated columns should use `reinhardt_db::migrations::SchemaExpr` when the
+expression can be represented with the portable DDL-safe subset:
+
+The typed `generated` form accepts `SchemaExpr::col`, `SchemaExpr::val`,
+`SchemaExpr::concat`, and `SchemaExpr::coalesce`, plus chained `binary` and
+`cast` calls. Use `generated_sql` for backend-specific functions or expression
+forms that cannot be reconstructed from migration files.
+
+```rust
+use reinhardt_db::migrations::SchemaExpr;
+
+#[field(
+    max_length = 201,
+    generated = SchemaExpr::concat([
+        SchemaExpr::col("first_name"),
+        SchemaExpr::val(" "),
+        SchemaExpr::col("last_name"),
+    ]),
+    generated_stored = true
+)]
+pub full_name: String,
+```
 
 **Note**: The `#[model(...)]` attribute macro automatically generates:
 - `Model` trait implementation
