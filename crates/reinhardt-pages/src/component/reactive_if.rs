@@ -238,6 +238,22 @@ impl ReactiveNode {
 	}
 }
 
+#[cfg(wasm)]
+fn create_nested_reactive_parent(
+	document: &web_sys::Document,
+	parent: &web_sys::Node,
+	marker: &web_sys::Comment,
+) -> web_sys::Element {
+	let nested_parent = document
+		.create_element("span")
+		.expect("should create nested reactive parent");
+	let _ = nested_parent.set_attribute("style", "display: contents");
+	parent
+		.insert_before(&nested_parent, Some(marker))
+		.expect("should insert nested reactive parent");
+	nested_parent
+}
+
 /// Mounts a Page before a marker node and returns the created DOM nodes.
 ///
 /// This function recursively mounts the view tree and inserts all created
@@ -324,40 +340,25 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 			// Decompose the ReactiveIf to get the closures
 			let (condition, then_view, else_view) = reactive_if.into_parts();
 
-			// Create a nested ReactiveIfNode
-			// First, create a new marker for this nested reactive if
-			let nested_marker = document.create_comment("reactive-if-nested");
-			let _ = parent.insert_before(&nested_marker, Some(marker));
-			nodes.push(nested_marker.clone().unchecked_into());
+			let nested_parent = create_nested_reactive_parent(&document, &parent, marker);
+			let nested_parent_wrapper = crate::dom::Element::new(nested_parent.clone());
+			let nested_node =
+				ReactiveIfNode::new(&nested_parent_wrapper, condition, then_view, else_view);
 
-			// Create a temporary parent wrapper to use ReactiveIfNode
-			let temp_parent =
-				crate::dom::Element::new(parent.clone().unchecked_into::<web_sys::Element>());
-
-			// Use the nested marker as the anchor point
-			let nested_node = ReactiveIfNode::new(&temp_parent, condition, then_view, else_view);
-
-			// Store the nested node to keep it alive
+			// Track the wrapper so the outer reactive owner removes the complete
+			// nested DOM subtree, including the nested marker and rendered content.
+			nodes.push(nested_parent.unchecked_into());
 			store_reactive_node(nested_node);
 		}
 		Page::Reactive(reactive) => {
-			// Create a nested ReactiveNode
-			// First, create a new marker for this nested reactive
-			let nested_marker = document.create_comment("reactive-nested");
-			let _ = parent.insert_before(&nested_marker, Some(marker));
-			nodes.push(nested_marker.clone().unchecked_into());
-
-			// Create a temporary parent wrapper to use ReactiveNode
-			let temp_parent =
-				crate::dom::Element::new(parent.clone().unchecked_into::<web_sys::Element>());
-
-			// Get the render closure
+			let nested_parent = create_nested_reactive_parent(&document, &parent, marker);
+			let nested_parent_wrapper = crate::dom::Element::new(nested_parent.clone());
 			let render = reactive.into_render();
+			let nested_node = ReactiveNode::new(&nested_parent_wrapper, render);
 
-			// Create the nested ReactiveNode
-			let nested_node = ReactiveNode::new(&temp_parent, render);
-
-			// Store the nested node to keep it alive
+			// Track the wrapper so the outer reactive owner removes the complete
+			// nested DOM subtree, including the nested marker and rendered content.
+			nodes.push(nested_parent.unchecked_into());
 			store_reactive_node(nested_node);
 		}
 	}
