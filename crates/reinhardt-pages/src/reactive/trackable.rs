@@ -34,20 +34,24 @@ mod tests {
 	#[rstest]
 	#[serial]
 	fn signal_implements_trackable() {
-		// Arrange
-		let s = Signal::new(0_i32);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let s = Signal::new(0_i32);
 
-		// Act + Assert (compile-time check via fn bound)
-		assert_trackable(&s);
+			// Act + Assert (compile-time check via fn bound)
+			assert_trackable(&s);
+		});
 	}
 
 	#[rstest]
 	#[serial]
 	fn memo_implements_trackable() {
-		// Arrange
-		let m = Memo::new(|| 0_i32);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let m = Memo::new(|| 0_i32);
 
-		// Act + Assert
-		assert_trackable(&m);
+			// Act + Assert
+			assert_trackable(&m);
+		});
 	}
 }

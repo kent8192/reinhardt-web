@@ -16,7 +16,7 @@
 - Task 5: complete
 - Task 6: complete
 - Task 7: complete
-- Task 8: pending
+- Task 8: complete
 
 ## Verification ledger
 
@@ -118,4 +118,21 @@ GREEN:
 - `cargo test -j1 -p reinhardt-pages --test hooks_deps_integration callback_accepts_copy_handles_without_clone_ceremony`
   - Result: PASS, 1 passed, 0 failed.
 - `RUSTDOCFLAGS="-D warnings" cargo doc -j1 -p reinhardt-pages --all-features --no-deps`
+  - Result: PASS.
+
+### Task 8: final validation
+
+- `cargo test -j1 -p reinhardt-core --features reactive --lib`
+  - Result: PASS, 829 passed, 0 failed.
+- `cargo test -j1 -p reinhardt-pages --lib`
+  - Result: PASS, 493 passed, 0 failed.
+- `cargo test -j1 -p reinhardt-pages --test hooks_deps_integration callback_accepts_copy_handles_without_clone_ceremony`
+  - Result: PASS, 1 passed, 0 failed.
+- `cargo check -j1 -p reinhardt-pages --all-features`
+  - Result: PASS.
+- `RUSTDOCFLAGS="-D warnings" cargo doc -j1 -p reinhardt-pages --all-features --no-deps`
+  - Result: PASS.
+- `cargo make fmt-check`
+  - Result: PASS, 0 files would be formatted.
+- `cargo clippy -j1 -p reinhardt-pages --all-features --lib -- -D warnings`
   - Result: PASS.

@@ -137,174 +137,186 @@ mod tests {
 	#[test]
 	#[serial]
 	fn test_use_effect_runs_immediately() {
-		let called = Rc::new(RefCell::new(false));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let called = Rc::new(RefCell::new(false));
 
-		let _effect = use_effect(
-			{
-				let called = Rc::clone(&called);
-				move || {
-					*called.borrow_mut() = true;
-					None::<fn()>
-				}
-			},
-			(),
-		);
+			let _effect = use_effect(
+				{
+					let called = Rc::clone(&called);
+					move || {
+						*called.borrow_mut() = true;
+						None::<fn()>
+					}
+				},
+				(),
+			);
 
-		assert!(*called.borrow());
+			assert!(*called.borrow());
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_use_effect_tracks_dependencies() {
-		let count = Signal::new(0);
-		let effect_count = Rc::new(RefCell::new(0));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let count = Signal::new(0);
+			let effect_count = Rc::new(RefCell::new(0));
 
-		let _effect = use_effect(
-			{
-				let count = count.clone();
-				let effect_count = Rc::clone(&effect_count);
-				move || {
-					let _ = count.get();
-					*effect_count.borrow_mut() += 1;
-					None::<fn()>
-				}
-			},
-			(count.clone(),),
-		);
+			let _effect = use_effect(
+				{
+					let count = count.clone();
+					let effect_count = Rc::clone(&effect_count);
+					move || {
+						let _ = count.get();
+						*effect_count.borrow_mut() += 1;
+						None::<fn()>
+					}
+				},
+				(count.clone(),),
+			);
 
-		// Initial run
-		assert_eq!(*effect_count.borrow(), 1);
+			// Initial run
+			assert_eq!(*effect_count.borrow(), 1);
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_use_layout_effect() {
-		let called = Rc::new(RefCell::new(false));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let called = Rc::new(RefCell::new(false));
 
-		let _effect = use_layout_effect(
-			{
-				let called = Rc::clone(&called);
-				move || {
-					*called.borrow_mut() = true;
-					None::<fn()>
-				}
-			},
-			(),
-		);
+			let _effect = use_layout_effect(
+				{
+					let called = Rc::clone(&called);
+					move || {
+						*called.borrow_mut() = true;
+						None::<fn()>
+					}
+				},
+				(),
+			);
 
-		assert!(*called.borrow());
+			assert!(*called.borrow());
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_layout_effect_synchronous_execution() {
-		let signal = Signal::new(0);
-		let execution_order = Rc::new(RefCell::new(Vec::new()));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let execution_order = Rc::new(RefCell::new(Vec::new()));
 
-		let _effect = use_layout_effect(
-			{
-				let signal = signal.clone();
-				let execution_order = Rc::clone(&execution_order);
-				move || {
-					let value = signal.get();
-					execution_order.borrow_mut().push(value);
-					None::<fn()>
-				}
-			},
-			(signal.clone(),),
-		);
+			let _effect = use_layout_effect(
+				{
+					let signal = signal.clone();
+					let execution_order = Rc::clone(&execution_order);
+					move || {
+						let value = signal.get();
+						execution_order.borrow_mut().push(value);
+						None::<fn()>
+					}
+				},
+				(signal.clone(),),
+			);
 
-		// Initial execution
-		assert_eq!(*execution_order.borrow(), vec![0]);
+			// Initial execution
+			assert_eq!(*execution_order.borrow(), vec![0]);
 
-		// Change signal - layout effect should execute synchronously
-		signal.set(1);
-		execution_order.borrow_mut().push(100);
+			// Change signal - layout effect should execute synchronously
+			signal.set(1);
+			execution_order.borrow_mut().push(100);
 
-		// Layout effect ran synchronously before the push(100)
-		assert_eq!(*execution_order.borrow(), vec![0, 1, 100]);
+			// Layout effect ran synchronously before the push(100)
+			assert_eq!(*execution_order.borrow(), vec![0, 1, 100]);
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_layout_vs_passive_timing() {
-		let signal = Signal::new(0);
-		let layout_count = Rc::new(RefCell::new(0));
-		let passive_count = Rc::new(RefCell::new(0));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let layout_count = Rc::new(RefCell::new(0));
+			let passive_count = Rc::new(RefCell::new(0));
 
-		let _layout_effect = use_layout_effect(
-			{
-				let signal = signal.clone();
-				let layout_count = Rc::clone(&layout_count);
-				move || {
-					let _ = signal.get();
-					*layout_count.borrow_mut() += 1;
-					None::<fn()>
-				}
-			},
-			(signal.clone(),),
-		);
+			let _layout_effect = use_layout_effect(
+				{
+					let signal = signal.clone();
+					let layout_count = Rc::clone(&layout_count);
+					move || {
+						let _ = signal.get();
+						*layout_count.borrow_mut() += 1;
+						None::<fn()>
+					}
+				},
+				(signal.clone(),),
+			);
 
-		let _passive_effect = use_effect(
-			{
-				let signal = signal.clone();
-				let passive_count = Rc::clone(&passive_count);
-				move || {
-					let _ = signal.get();
-					*passive_count.borrow_mut() += 1;
-					None::<fn()>
-				}
-			},
-			(signal.clone(),),
-		);
+			let _passive_effect = use_effect(
+				{
+					let signal = signal.clone();
+					let passive_count = Rc::clone(&passive_count);
+					move || {
+						let _ = signal.get();
+						*passive_count.borrow_mut() += 1;
+						None::<fn()>
+					}
+				},
+				(signal.clone(),),
+			);
 
-		// Both should have run initially
-		assert_eq!(*layout_count.borrow(), 1);
-		assert_eq!(*passive_count.borrow(), 1);
+			// Both should have run initially
+			assert_eq!(*layout_count.borrow(), 1);
+			assert_eq!(*passive_count.borrow(), 1);
 
-		// Change signal
-		signal.set(1);
+			// Change signal
+			signal.set(1);
 
-		// Layout effect executes synchronously
-		assert_eq!(*layout_count.borrow(), 2);
+			// Layout effect executes synchronously
+			assert_eq!(*layout_count.borrow(), 2);
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_mixed_layout_and_passive_effects() {
-		let signal = Signal::new(0);
-		let execution_order = Rc::new(RefCell::new(Vec::new()));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let execution_order = Rc::new(RefCell::new(Vec::new()));
 
-		let _layout_effect = use_layout_effect(
-			{
-				let signal = signal.clone();
-				let execution_order = Rc::clone(&execution_order);
-				move || {
-					let value = signal.get();
-					execution_order.borrow_mut().push(("layout", value));
-					None::<fn()>
-				}
-			},
-			(signal.clone(),),
-		);
+			let _layout_effect = use_layout_effect(
+				{
+					let signal = signal.clone();
+					let execution_order = Rc::clone(&execution_order);
+					move || {
+						let value = signal.get();
+						execution_order.borrow_mut().push(("layout", value));
+						None::<fn()>
+					}
+				},
+				(signal.clone(),),
+			);
 
-		let _passive_effect = use_effect(
-			{
-				let signal = signal.clone();
-				let execution_order = Rc::clone(&execution_order);
-				move || {
-					let value = signal.get();
-					execution_order.borrow_mut().push(("passive", value));
-					None::<fn()>
-				}
-			},
-			(signal.clone(),),
-		);
+			let _passive_effect = use_effect(
+				{
+					let signal = signal.clone();
+					let execution_order = Rc::clone(&execution_order);
+					move || {
+						let value = signal.get();
+						execution_order.borrow_mut().push(("passive", value));
+						None::<fn()>
+					}
+				},
+				(signal.clone(),),
+			);
 
-		// Both execute initially
-		let order = execution_order.borrow();
-		assert_eq!(order.len(), 2);
-		assert_eq!(order[0], ("layout", 0));
-		assert_eq!(order[1], ("passive", 0));
+			// Both execute initially
+			let order = execution_order.borrow();
+			assert_eq!(order.len(), 2);
+			assert_eq!(order[0], ("layout", 0));
+			assert_eq!(order[1], ("passive", 0));
+		});
 	}
 }

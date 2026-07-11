@@ -153,7 +153,7 @@ impl CsrfManager {
 	///
 	/// This can be used for reactive UI updates when the token changes.
 	pub fn token_signal(&self) -> Signal<Option<String>> {
-		self.token.clone()
+		self.token
 	}
 }
 
@@ -465,29 +465,37 @@ mod tests {
 
 	#[test]
 	fn test_csrf_manager_creation() {
-		let manager = CsrfManager::new();
-		assert!(manager.cached_token().is_none());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let manager = CsrfManager::new();
+			assert!(manager.cached_token().is_none());
+		});
 	}
 
 	#[test]
 	fn test_csrf_manager_set_token() {
-		let manager = CsrfManager::new();
-		manager.set_token("test-token");
-		assert_eq!(manager.cached_token(), Some("test-token".to_string()));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let manager = CsrfManager::new();
+			manager.set_token("test-token");
+			assert_eq!(manager.cached_token(), Some("test-token".to_string()));
+		});
 	}
 
 	#[test]
 	fn test_csrf_manager_clear() {
-		let manager = CsrfManager::new();
-		manager.set_token("test-token");
-		manager.clear();
-		assert!(manager.cached_token().is_none());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let manager = CsrfManager::new();
+			manager.set_token("test-token");
+			manager.clear();
+			assert!(manager.cached_token().is_none());
+		});
 	}
 
 	#[test]
 	fn test_csrf_manager_default() {
-		let manager = CsrfManager::default();
-		assert!(manager.cached_token().is_none());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let manager = CsrfManager::default();
+			assert!(manager.cached_token().is_none());
+		});
 	}
 
 	#[test]

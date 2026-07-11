@@ -1223,121 +1223,129 @@ mod tests {
 
 	#[rstest]
 	fn test_form_component_creation() {
-		// Arrange
-		let metadata = FormMetadata {
-			fields: vec![FieldMetadata {
-				name: "username".to_string(),
-				label: Some("Username".to_string()),
-				required: true,
-				help_text: None,
-				widget: Widget::TextInput,
-				initial: None,
-			}],
-			initial: HashMap::new(),
-			prefix: String::new(),
-			is_bound: false,
-			errors: HashMap::new(),
-			validation_rules: Vec::new(),
-			non_field_errors: Vec::new(),
-		};
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let metadata = FormMetadata {
+				fields: vec![FieldMetadata {
+					name: "username".to_string(),
+					label: Some("Username".to_string()),
+					required: true,
+					help_text: None,
+					widget: Widget::TextInput,
+					initial: None,
+				}],
+				initial: HashMap::new(),
+				prefix: String::new(),
+				is_bound: false,
+				errors: HashMap::new(),
+				validation_rules: Vec::new(),
+				non_field_errors: Vec::new(),
+			};
 
-		// Act
-		let component = FormComponent::new(metadata, "/api/submit");
+			// Act
+			let component = FormComponent::new(metadata, "/api/submit");
 
-		// Assert
-		assert_eq!(component.action, "/api/submit");
-		assert_eq!(component.method, "POST");
-		assert_eq!(component.values.len(), 1);
-		assert!(component.values.contains_key("username"));
+			// Assert
+			assert_eq!(component.action, "/api/submit");
+			assert_eq!(component.method, "POST");
+			assert_eq!(component.values.len(), 1);
+			assert!(component.values.contains_key("username"));
+		});
 	}
 
 	#[rstest]
 	fn test_form_component_validation_required_field() {
-		let metadata = FormMetadata {
-			fields: vec![FieldMetadata {
-				name: "email".to_string(),
-				label: Some("Email".to_string()),
-				required: true,
-				help_text: None,
-				widget: Widget::EmailInput,
-				initial: None,
-			}],
-			initial: HashMap::new(),
-			prefix: String::new(),
-			is_bound: false,
-			errors: HashMap::new(),
-			validation_rules: Vec::new(),
-			non_field_errors: Vec::new(),
-		};
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let metadata = FormMetadata {
+				fields: vec![FieldMetadata {
+					name: "email".to_string(),
+					label: Some("Email".to_string()),
+					required: true,
+					help_text: None,
+					widget: Widget::EmailInput,
+					initial: None,
+				}],
+				initial: HashMap::new(),
+				prefix: String::new(),
+				is_bound: false,
+				errors: HashMap::new(),
+				validation_rules: Vec::new(),
+				non_field_errors: Vec::new(),
+			};
 
-		let component = FormComponent::new(metadata, "/api/submit");
+			let component = FormComponent::new(metadata, "/api/submit");
 
-		// Empty value should fail validation
-		assert!(!component.validate());
+			// Empty value should fail validation
+			assert!(!component.validate());
 
-		let errors = component.errors();
-		assert!(errors.contains_key("email"));
-		assert_eq!(errors.get("email").unwrap()[0], "This field is required.");
+			let errors = component.errors();
+			assert!(errors.contains_key("email"));
+			assert_eq!(errors.get("email").unwrap()[0], "This field is required.");
 
-		// Set value and validate again
-		component.set_value("email", "test@example.com");
-		assert!(component.validate());
+			// Set value and validate again
+			component.set_value("email", "test@example.com");
+			assert!(component.validate());
 
-		let errors = component.errors();
-		assert!(errors.is_empty());
+			let errors = component.errors();
+			assert!(errors.is_empty());
+		});
 	}
 
 	#[rstest]
 	fn test_form_component_get_set_value() {
-		let metadata = FormMetadata {
-			fields: vec![FieldMetadata {
-				name: "name".to_string(),
-				label: Some("Name".to_string()),
-				required: false,
-				help_text: None,
-				widget: Widget::TextInput,
-				initial: None,
-			}],
-			initial: HashMap::new(),
-			prefix: String::new(),
-			is_bound: false,
-			errors: HashMap::new(),
-			validation_rules: Vec::new(),
-			non_field_errors: Vec::new(),
-		};
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let metadata = FormMetadata {
+				fields: vec![FieldMetadata {
+					name: "name".to_string(),
+					label: Some("Name".to_string()),
+					required: false,
+					help_text: None,
+					widget: Widget::TextInput,
+					initial: None,
+				}],
+				initial: HashMap::new(),
+				prefix: String::new(),
+				is_bound: false,
+				errors: HashMap::new(),
+				validation_rules: Vec::new(),
+				non_field_errors: Vec::new(),
+			};
 
-		let component = FormComponent::new(metadata, "/api/submit");
+			let component = FormComponent::new(metadata, "/api/submit");
 
-		assert_eq!(component.get_value("name"), "");
+			assert_eq!(component.get_value("name"), "");
 
-		component.set_value("name", "John Doe");
-		assert_eq!(component.get_value("name"), "John Doe");
+			component.set_value("name", "John Doe");
+			assert_eq!(component.get_value("name"), "John Doe");
+		});
 	}
 
 	#[rstest]
 	fn test_form_component_with_initial_values() {
-		let mut initial = HashMap::new();
-		initial.insert("username".to_string(), serde_json::json!("john_doe"));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let mut initial = HashMap::new();
+			initial.insert("username".to_string(), serde_json::json!("john_doe"));
 
-		let metadata = FormMetadata {
-			fields: vec![FieldMetadata {
-				name: "username".to_string(),
-				label: Some("Username".to_string()),
-				required: false,
-				help_text: None,
-				widget: Widget::TextInput,
-				initial: None,
-			}],
-			initial,
-			prefix: String::new(),
-			is_bound: false,
-			errors: HashMap::new(),
-			validation_rules: Vec::new(),
-			non_field_errors: Vec::new(),
-		};
+			let metadata = FormMetadata {
+				fields: vec![FieldMetadata {
+					name: "username".to_string(),
+					label: Some("Username".to_string()),
+					required: false,
+					help_text: None,
+					widget: Widget::TextInput,
+					initial: None,
+				}],
+				initial,
+				prefix: String::new(),
+				is_bound: false,
+				errors: HashMap::new(),
+				validation_rules: Vec::new(),
+				non_field_errors: Vec::new(),
+			};
 
-		let component = FormComponent::new(metadata, "/api/submit");
+			let component = FormComponent::new(metadata, "/api/submit");
 
-		assert_eq!(component.get_value("username"), "john_doe");
+			assert_eq!(component.get_value("username"), "john_doe");
+		});
 	}
 }

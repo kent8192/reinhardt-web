@@ -212,22 +212,23 @@ mod tests {
 	#[rstest]
 	#[serial(reactive_runtime)]
 	fn into_deps_with_memo_collects_memo_node_id() {
-		// Arrange
-		let signal = Signal::new(2_i32);
-		let signal_clone = signal.clone();
-		let memo = Memo::new(move || signal_clone.get() * 10);
-		let memo_id = memo.id();
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let signal = Signal::new(2_i32);
+			let memo = Memo::new(move || signal.get() * 10);
+			let memo_id = memo.id();
 
-		// Act
-		let deps = (memo,).into_deps();
+			// Act
+			let deps = (memo,).into_deps();
 
-		// Assert
-		let slice = deps.as_slice();
-		assert_eq!(
-			slice.len(),
-			1,
-			"single-element tuple of Memo must yield one NodeId"
-		);
-		assert_eq!(slice[0], memo_id, "deps element must be Memo::id()");
+			// Assert
+			let slice = deps.as_slice();
+			assert_eq!(
+				slice.len(),
+				1,
+				"single-element tuple of Memo must yield one NodeId"
+			);
+			assert_eq!(slice[0], memo_id, "deps element must be Memo::id()");
+		});
 	}
 }

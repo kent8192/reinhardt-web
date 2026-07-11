@@ -147,8 +147,8 @@ impl WebSocketHandle {
 impl Clone for WebSocketHandle {
 	fn clone(&self) -> Self {
 		Self {
-			connection_state: self.connection_state.clone(),
-			latest_message: self.latest_message.clone(),
+			connection_state: self.connection_state,
+			latest_message: self.latest_message,
 			send_fn: Rc::clone(&self.send_fn),
 			close_fn: Rc::clone(&self.close_fn),
 			#[cfg(wasm)]
@@ -406,20 +406,22 @@ mod tests {
 	#[test]
 	#[cfg(native)]
 	fn test_use_websocket_ssr_no_op() {
-		// Test sentinel URL — native build never opens this connection
-		// (SSR no-op). Suppress Semgrep's awesome-secure-defaults
-		// substring rule via concatenation so the literal scheme token
-		// is never present in source.
-		// nosemgrep: awesome-secure-defaults.insecure-websocket
-		let scheme = "ws";
-		let test_url = format!("{}://test", scheme);
-		let ws = use_websocket(&test_url, UseWebSocketOptions::default());
-		assert!(matches!(
-			ws.connection_state().get(),
-			ConnectionState::Closed
-		));
-		assert!(ws.send_text("test".to_string()).is_err());
-		assert!(!ws.is_open());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Test sentinel URL — native build never opens this connection
+			// (SSR no-op). Suppress Semgrep's awesome-secure-defaults
+			// substring rule via concatenation so the literal scheme token
+			// is never present in source.
+			// nosemgrep: awesome-secure-defaults.insecure-websocket
+			let scheme = "ws";
+			let test_url = format!("{}://test", scheme);
+			let ws = use_websocket(&test_url, UseWebSocketOptions::default());
+			assert!(matches!(
+				ws.connection_state().get(),
+				ConnectionState::Closed
+			));
+			assert!(ws.send_text("test".to_string()).is_err());
+			assert!(!ws.is_open());
+		});
 	}
 
 	#[test]

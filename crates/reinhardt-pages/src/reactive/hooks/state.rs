@@ -61,10 +61,7 @@ pub type Dispatch<A> = Rc<dyn Fn(A)>;
 /// ```
 pub fn use_state<T: Clone + 'static>(initial: T) -> (Signal<T>, SetState<T>) {
 	let signal = Signal::new(initial);
-	let setter: SetState<T> = {
-		let signal = signal.clone();
-		Rc::new(move |value: T| signal.set(value))
-	};
+	let setter: SetState<T> = { Rc::new(move |value: T| signal.set(value)) };
 	(signal, setter)
 }
 
@@ -132,7 +129,6 @@ where
 {
 	let state = Signal::new(initial);
 	let dispatch: Dispatch<A> = {
-		let state = state.clone();
 		let reducer = Rc::new(reducer);
 		Rc::new(move |action: A| {
 			let current = state.get();
@@ -376,132 +372,142 @@ mod tests {
 
 	#[test]
 	fn test_use_state_basic() {
-		let (count, set_count) = use_state(0);
-		assert_eq!(count.get(), 0);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let (count, set_count) = use_state(0);
+			assert_eq!(count.get(), 0);
 
-		set_count(5);
-		assert_eq!(count.get(), 5);
+			set_count(5);
+			assert_eq!(count.get(), 5);
 
-		set_count(10);
-		assert_eq!(count.get(), 10);
+			set_count(10);
+			assert_eq!(count.get(), 10);
+		});
 	}
 
 	#[test]
 	fn test_use_state_with_string() {
-		let (name, set_name) = use_state("Alice".to_string());
-		assert_eq!(name.get(), "Alice");
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let (name, set_name) = use_state("Alice".to_string());
+			assert_eq!(name.get(), "Alice");
 
-		set_name("Bob".to_string());
-		assert_eq!(name.get(), "Bob");
+			set_name("Bob".to_string());
+			assert_eq!(name.get(), "Bob");
+		});
 	}
 
 	#[test]
 	fn test_use_state_setter_cloneable() {
-		let (count, set_count) = use_state(0);
-		let set_count2 = set_count.clone();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let (count, set_count) = use_state(0);
+			let set_count2 = set_count.clone();
 
-		set_count(1);
-		assert_eq!(count.get(), 1);
+			set_count(1);
+			assert_eq!(count.get(), 1);
 
-		set_count2(2);
-		assert_eq!(count.get(), 2);
+			set_count2(2);
+			assert_eq!(count.get(), 2);
+		});
 	}
 
 	#[test]
 	fn test_use_reducer_basic() {
-		#[derive(Clone, Debug, PartialEq)]
-		struct State {
-			count: i32,
-		}
-
-		enum Action {
-			Increment,
-			Decrement,
-		}
-
-		fn reducer(state: &State, action: Action) -> State {
-			match action {
-				Action::Increment => State {
-					count: state.count + 1,
-				},
-				Action::Decrement => State {
-					count: state.count - 1,
-				},
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			#[derive(Clone, Debug, PartialEq)]
+			struct State {
+				count: i32,
 			}
-		}
 
-		let (state, dispatch) = use_reducer(reducer, State { count: 0 });
-		assert_eq!(state.get().count, 0);
+			enum Action {
+				Increment,
+				Decrement,
+			}
 
-		dispatch(Action::Increment);
-		assert_eq!(state.get().count, 1);
+			fn reducer(state: &State, action: Action) -> State {
+				match action {
+					Action::Increment => State {
+						count: state.count + 1,
+					},
+					Action::Decrement => State {
+						count: state.count - 1,
+					},
+				}
+			}
 
-		dispatch(Action::Increment);
-		assert_eq!(state.get().count, 2);
+			let (state, dispatch) = use_reducer(reducer, State { count: 0 });
+			assert_eq!(state.get().count, 0);
 
-		dispatch(Action::Decrement);
-		assert_eq!(state.get().count, 1);
+			dispatch(Action::Increment);
+			assert_eq!(state.get().count, 1);
+
+			dispatch(Action::Increment);
+			assert_eq!(state.get().count, 2);
+
+			dispatch(Action::Decrement);
+			assert_eq!(state.get().count, 1);
+		});
 	}
 
 	#[test]
 	fn test_use_reducer_complex_state() {
-		#[derive(Clone, Debug, PartialEq)]
-		struct TodoState {
-			items: Vec<String>,
-			filter: String,
-		}
-
-		enum TodoAction {
-			Add(String),
-			Remove(usize),
-			SetFilter(String),
-		}
-
-		fn reducer(state: &TodoState, action: TodoAction) -> TodoState {
-			match action {
-				TodoAction::Add(item) => {
-					let mut items = state.items.clone();
-					items.push(item);
-					TodoState {
-						items,
-						filter: state.filter.clone(),
-					}
-				}
-				TodoAction::Remove(index) => {
-					let mut items = state.items.clone();
-					if index < items.len() {
-						items.remove(index);
-					}
-					TodoState {
-						items,
-						filter: state.filter.clone(),
-					}
-				}
-				TodoAction::SetFilter(filter) => TodoState {
-					items: state.items.clone(),
-					filter,
-				},
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			#[derive(Clone, Debug, PartialEq)]
+			struct TodoState {
+				items: Vec<String>,
+				filter: String,
 			}
-		}
 
-		let (state, dispatch) = use_reducer(
-			reducer,
-			TodoState {
-				items: vec![],
-				filter: "all".to_string(),
-			},
-		);
+			enum TodoAction {
+				Add(String),
+				Remove(usize),
+				SetFilter(String),
+			}
 
-		dispatch(TodoAction::Add("Task 1".to_string()));
-		dispatch(TodoAction::Add("Task 2".to_string()));
-		assert_eq!(state.get().items.len(), 2);
+			fn reducer(state: &TodoState, action: TodoAction) -> TodoState {
+				match action {
+					TodoAction::Add(item) => {
+						let mut items = state.items.clone();
+						items.push(item);
+						TodoState {
+							items,
+							filter: state.filter.clone(),
+						}
+					}
+					TodoAction::Remove(index) => {
+						let mut items = state.items.clone();
+						if index < items.len() {
+							items.remove(index);
+						}
+						TodoState {
+							items,
+							filter: state.filter.clone(),
+						}
+					}
+					TodoAction::SetFilter(filter) => TodoState {
+						items: state.items.clone(),
+						filter,
+					},
+				}
+			}
 
-		dispatch(TodoAction::Remove(0));
-		assert_eq!(state.get().items.len(), 1);
-		assert_eq!(state.get().items[0], "Task 2");
+			let (state, dispatch) = use_reducer(
+				reducer,
+				TodoState {
+					items: vec![],
+					filter: "all".to_string(),
+				},
+			);
 
-		dispatch(TodoAction::SetFilter("completed".to_string()));
-		assert_eq!(state.get().filter, "completed");
+			dispatch(TodoAction::Add("Task 1".to_string()));
+			dispatch(TodoAction::Add("Task 2".to_string()));
+			assert_eq!(state.get().items.len(), 2);
+
+			dispatch(TodoAction::Remove(0));
+			assert_eq!(state.get().items.len(), 1);
+			assert_eq!(state.get().items[0], "Task 2");
+
+			dispatch(TodoAction::SetFilter("completed".to_string()));
+			assert_eq!(state.get().filter, "completed");
+		});
 	}
 
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

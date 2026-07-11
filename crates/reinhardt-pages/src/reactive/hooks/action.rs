@@ -48,9 +48,9 @@ impl<T: Clone + 'static> OptimisticState<T> {
 impl<T: Clone + 'static> Clone for OptimisticState<T> {
 	fn clone(&self) -> Self {
 		Self {
-			value: self.value.clone(),
-			confirmed: self.confirmed.clone(),
-			is_optimistic: self.is_optimistic.clone(),
+			value: self.value,
+			confirmed: self.confirmed,
+			is_optimistic: self.is_optimistic,
 		}
 	}
 }
@@ -124,42 +124,48 @@ mod tests {
 
 	#[test]
 	fn test_use_optimistic_basic() {
-		let state = use_optimistic(10);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = use_optimistic(10);
 
-		assert_eq!(state.get(), 10);
-		assert!(!state.is_optimistic());
+			assert_eq!(state.get(), 10);
+			assert!(!state.is_optimistic());
 
-		// Apply optimistic update
-		state.update_optimistic(20);
-		assert_eq!(state.get(), 20);
-		assert!(state.is_optimistic());
+			// Apply optimistic update
+			state.update_optimistic(20);
+			assert_eq!(state.get(), 20);
+			assert!(state.is_optimistic());
 
-		// Confirm the update
-		state.confirm(20);
-		assert_eq!(state.get(), 20);
-		assert!(!state.is_optimistic());
+			// Confirm the update
+			state.confirm(20);
+			assert_eq!(state.get(), 20);
+			assert!(!state.is_optimistic());
+		});
 	}
 
 	#[test]
 	fn test_use_optimistic_revert() {
-		let state = use_optimistic(10);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = use_optimistic(10);
 
-		// Apply optimistic update
-		state.update_optimistic(20);
-		assert_eq!(state.get(), 20);
+			// Apply optimistic update
+			state.update_optimistic(20);
+			assert_eq!(state.get(), 20);
 
-		// Revert on error
-		state.revert();
-		assert_eq!(state.get(), 10);
-		assert!(!state.is_optimistic());
+			// Revert on error
+			state.revert();
+			assert_eq!(state.get(), 10);
+			assert!(!state.is_optimistic());
+		});
 	}
 
 	#[test]
 	fn test_optimistic_state_clone() {
-		let state1 = use_optimistic(42);
-		let state2 = state1.clone();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state1 = use_optimistic(42);
+			let state2 = state1.clone();
 
-		state1.update_optimistic(100);
-		assert_eq!(state2.get(), 100);
+			state1.update_optimistic(100);
+			assert_eq!(state2.get(), 100);
+		});
 	}
 }

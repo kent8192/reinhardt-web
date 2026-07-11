@@ -121,12 +121,12 @@ impl FormBinding {
 		let field_name = field_name.into();
 
 		// Store binding
-		self.bindings.insert(field_name.clone(), signal.clone());
+		self.bindings.insert(field_name.clone(), signal);
 
 		// Setup Effect: Signal → FormComponent
 		let form_component = self.form_component.clone();
 		let field_name_clone = field_name.clone();
-		let signal_for_effect = signal.clone(); // Clone for Effect
+		let signal_for_effect = signal;
 
 		let effect = Effect::new(move || {
 			let value = signal_for_effect.get();
@@ -419,203 +419,225 @@ mod tests {
 	#[test]
 	#[serial]
 	fn test_form_binding_creation() {
-		let form = create_test_form();
-		let binding = FormBinding::new(form);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let form = create_test_form();
+			let binding = FormBinding::new(form);
 
-		assert_eq!(binding.bindings.len(), 0);
-		assert_eq!(binding.effects.len(), 0);
+			assert_eq!(binding.bindings.len(), 0);
+			assert_eq!(binding.effects.len(), 0);
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_bind_field() {
-		let form = create_test_form();
-		let mut binding = FormBinding::new(form);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let form = create_test_form();
+			let mut binding = FormBinding::new(form);
 
-		let username_signal = Signal::new("".to_string());
-		binding.bind_field("username", username_signal.clone());
+			let username_signal = Signal::new("".to_string());
+			binding.bind_field("username", username_signal.clone());
 
-		assert!(binding.is_bound("username"));
-		assert_eq!(binding.bindings.len(), 1);
-		assert_eq!(binding.effects.len(), 1);
+			assert!(binding.is_bound("username"));
+			assert_eq!(binding.bindings.len(), 1);
+			assert_eq!(binding.effects.len(), 1);
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_two_way_binding_signal_to_form() {
-		let form = create_test_form();
-		let mut binding = FormBinding::new(form);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let form = create_test_form();
+			let mut binding = FormBinding::new(form);
 
-		let username_signal = Signal::new("".to_string());
-		binding.bind_field("username", username_signal.clone());
+			let username_signal = Signal::new("".to_string());
+			binding.bind_field("username", username_signal.clone());
 
-		// Update Signal → should update Form
-		username_signal.set("john_doe".to_string());
+			// Update Signal → should update Form
+			username_signal.set("john_doe".to_string());
 
-		// Flush pending Effect updates
-		with_runtime(|rt| rt.flush_updates());
+			// Flush pending Effect updates
+			with_runtime(|rt| rt.flush_updates());
 
-		// Verify Form was updated
-		assert_eq!(binding.get_field_value("username"), "john_doe");
+			// Verify Form was updated
+			assert_eq!(binding.get_field_value("username"), "john_doe");
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_two_way_binding_form_to_signal() {
-		let form = create_test_form();
-		let mut binding = FormBinding::new(form);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let form = create_test_form();
+			let mut binding = FormBinding::new(form);
 
-		let username_signal = Signal::new("".to_string());
-		binding.bind_field("username", username_signal.clone());
+			let username_signal = Signal::new("".to_string());
+			binding.bind_field("username", username_signal.clone());
 
-		// Update Form → should update Signal
-		binding.set_field_value("username", "jane_doe");
+			// Update Form → should update Signal
+			binding.set_field_value("username", "jane_doe");
 
-		// Verify Signal was updated
-		assert_eq!(username_signal.get(), "jane_doe");
+			// Verify Signal was updated
+			assert_eq!(username_signal.get(), "jane_doe");
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_unbind_field() {
-		let form = create_test_form();
-		let mut binding = FormBinding::new(form);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let form = create_test_form();
+			let mut binding = FormBinding::new(form);
 
-		let username_signal = Signal::new("".to_string());
-		binding.bind_field("username", username_signal.clone());
+			let username_signal = Signal::new("".to_string());
+			binding.bind_field("username", username_signal.clone());
 
-		assert!(binding.is_bound("username"));
+			assert!(binding.is_bound("username"));
 
-		binding.unbind_field("username");
+			binding.unbind_field("username");
 
-		assert!(!binding.is_bound("username"));
+			assert!(!binding.is_bound("username"));
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_get_binding() {
-		let form = create_test_form();
-		let mut binding = FormBinding::new(form);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let form = create_test_form();
+			let mut binding = FormBinding::new(form);
 
-		let username_signal = Signal::new("test_value".to_string());
-		binding.bind_field("username", username_signal.clone());
+			let username_signal = Signal::new("test_value".to_string());
+			binding.bind_field("username", username_signal.clone());
 
-		let retrieved_signal = binding.get_binding("username").unwrap();
-		assert_eq!(retrieved_signal.get(), "test_value");
+			let retrieved_signal = binding.get_binding("username").unwrap();
+			assert_eq!(retrieved_signal.get(), "test_value");
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_sync_from_form() {
-		let form = create_test_form();
-		let mut binding = FormBinding::new(form);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let form = create_test_form();
+			let mut binding = FormBinding::new(form);
 
-		let username_signal = Signal::new("".to_string());
-		binding.bind_field("username", username_signal.clone());
+			let username_signal = Signal::new("".to_string());
+			binding.bind_field("username", username_signal.clone());
 
-		// Direct FormComponent update
-		binding
-			.form_component_mut()
-			.set_value("username", "direct_update");
+			// Direct FormComponent update
+			binding
+				.form_component_mut()
+				.set_value("username", "direct_update");
 
-		// Sync from form to signal
-		binding.sync_from_form();
+			// Sync from form to signal
+			binding.sync_from_form();
 
-		assert_eq!(username_signal.get(), "direct_update");
+			assert_eq!(username_signal.get(), "direct_update");
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_sync_to_form() {
-		let form = create_test_form();
-		let mut binding = FormBinding::new(form);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let form = create_test_form();
+			let mut binding = FormBinding::new(form);
 
-		let username_signal = Signal::new("".to_string());
-		binding.bind_field("username", username_signal.clone());
+			let username_signal = Signal::new("".to_string());
+			binding.bind_field("username", username_signal.clone());
 
-		// Update signal directly
-		username_signal.set("signal_update".to_string());
+			// Update signal directly
+			username_signal.set("signal_update".to_string());
 
-		// Flush pending Effect updates
-		with_runtime(|rt| rt.flush_updates());
+			// Flush pending Effect updates
+			with_runtime(|rt| rt.flush_updates());
 
-		// Sync to form (redundant due to Effect, but test explicit sync)
-		binding.sync_to_form();
+			// Sync to form (redundant due to Effect, but test explicit sync)
+			binding.sync_to_form();
 
-		assert_eq!(binding.get_field_value("username"), "signal_update");
+			assert_eq!(binding.get_field_value("username"), "signal_update");
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_validation_integration() {
-		let form = create_test_form();
-		let mut binding = FormBinding::new(form);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let form = create_test_form();
+			let mut binding = FormBinding::new(form);
 
-		let username_signal = Signal::new("".to_string());
-		let email_signal = Signal::new("".to_string());
-		binding.bind_field("username", username_signal.clone());
-		binding.bind_field("email", email_signal.clone());
+			let username_signal = Signal::new("".to_string());
+			let email_signal = Signal::new("".to_string());
+			binding.bind_field("username", username_signal.clone());
+			binding.bind_field("email", email_signal.clone());
 
-		// Empty required fields should fail validation
-		assert!(!binding.validate());
+			// Empty required fields should fail validation
+			assert!(!binding.validate());
 
-		let errors = binding.errors();
-		assert!(errors.contains_key("username"));
-		assert!(errors.contains_key("email"));
+			let errors = binding.errors();
+			assert!(errors.contains_key("username"));
+			assert!(errors.contains_key("email"));
 
-		// Set values via Signals
-		username_signal.set("valid_username".to_string());
-		email_signal.set("valid@example.com".to_string());
+			// Set values via Signals
+			username_signal.set("valid_username".to_string());
+			email_signal.set("valid@example.com".to_string());
 
-		// Flush pending Effect updates
-		with_runtime(|rt| rt.flush_updates());
+			// Flush pending Effect updates
+			with_runtime(|rt| rt.flush_updates());
 
-		// Note: Effects update the form automatically, so validation should pass
-		assert!(binding.validate());
+			// Note: Effects update the form automatically, so validation should pass
+			assert!(binding.validate());
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_multiple_field_bindings() {
-		let form = create_test_form();
-		let mut binding = FormBinding::new(form);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let form = create_test_form();
+			let mut binding = FormBinding::new(form);
 
-		let username_signal = Signal::new("".to_string());
-		let email_signal = Signal::new("".to_string());
+			let username_signal = Signal::new("".to_string());
+			let email_signal = Signal::new("".to_string());
 
-		binding.bind_field("username", username_signal.clone());
-		binding.bind_field("email", email_signal.clone());
+			binding.bind_field("username", username_signal.clone());
+			binding.bind_field("email", email_signal.clone());
 
-		assert_eq!(binding.bindings.len(), 2);
-		assert!(binding.is_bound("username"));
-		assert!(binding.is_bound("email"));
+			assert_eq!(binding.bindings.len(), 2);
+			assert!(binding.is_bound("username"));
+			assert!(binding.is_bound("email"));
 
-		username_signal.set("john".to_string());
-		email_signal.set("john@example.com".to_string());
+			username_signal.set("john".to_string());
+			email_signal.set("john@example.com".to_string());
 
-		// Flush pending Effect updates
-		with_runtime(|rt| rt.flush_updates());
+			// Flush pending Effect updates
+			with_runtime(|rt| rt.flush_updates());
 
-		assert_eq!(binding.get_field_value("username"), "john");
-		assert_eq!(binding.get_field_value("email"), "john@example.com");
+			assert_eq!(binding.get_field_value("username"), "john");
+			assert_eq!(binding.get_field_value("email"), "john@example.com");
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_bound_fields_iterator() {
-		let form = create_test_form();
-		let mut binding = FormBinding::new(form);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let form = create_test_form();
+			let mut binding = FormBinding::new(form);
 
-		let username_signal = Signal::new("".to_string());
-		let email_signal = Signal::new("".to_string());
+			let username_signal = Signal::new("".to_string());
+			let email_signal = Signal::new("".to_string());
 
-		binding.bind_field("username", username_signal);
-		binding.bind_field("email", email_signal);
+			binding.bind_field("username", username_signal);
+			binding.bind_field("email", email_signal);
 
-		let bound_field_names: Vec<_> = binding.bound_fields().cloned().collect();
+			let bound_field_names: Vec<_> = binding.bound_fields().cloned().collect();
 
-		assert!(bound_field_names.contains(&"username".to_string()));
-		assert!(bound_field_names.contains(&"email".to_string()));
-		assert_eq!(bound_field_names.len(), 2);
+			assert!(bound_field_names.contains(&"username".to_string()));
+			assert!(bound_field_names.contains(&"email".to_string()));
+			assert_eq!(bound_field_names.len(), 2);
+		});
 	}
 }

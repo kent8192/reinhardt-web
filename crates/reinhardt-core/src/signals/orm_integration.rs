@@ -292,7 +292,11 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial_test::serial]
 	async fn test_dispatch_post_save() {
+		// Clean up before test
+		post_save::<TestModel>().disconnect_all();
+
 		let counter = Arc::new(AtomicUsize::new(0));
 		let counter_clone = Arc::clone(&counter);
 
@@ -311,6 +315,9 @@ mod tests {
 
 		dispatch_post_save(model, true).await.unwrap();
 		assert_eq!(counter.load(Ordering::SeqCst), 1);
+
+		// Clean up after test
+		post_save::<TestModel>().disconnect_all();
 	}
 
 	#[tokio::test]

@@ -866,10 +866,10 @@ where
 			touched_fields: Rc::clone(&handle.touched_fields),
 			touched_collections: Rc::clone(&handle.touched_collections),
 			touched_paths: Rc::clone(&handle.touched_paths),
-			collection_errors: handle.collection_errors.clone(),
-			path_errors: handle.path_errors.clone(),
+			collection_errors: handle.collection_errors,
+			path_errors: handle.path_errors,
 			path_default_values: Rc::clone(&handle.path_default_values),
-			values_signal: handle.values_signal.clone(),
+			values_signal: handle.values_signal,
 			subscribers: Rc::clone(&handle.subscribers),
 			observed_values: Rc::clone(&handle.observed_values),
 			custom_widget_error_fields: Rc::clone(&handle.custom_widget_error_fields),
@@ -1062,9 +1062,9 @@ where
 			Rc::clone(&touched_fields),
 			Rc::clone(&touched_collections),
 			Rc::clone(&touched_paths),
-			collection_errors.clone(),
-			path_errors.clone(),
-			values_signal.clone(),
+			collection_errors,
+			path_errors,
+			values_signal,
 			Rc::clone(&subscribers),
 			Rc::clone(&observed_values),
 			Rc::clone(&custom_widget_error_fields),
@@ -1147,10 +1147,10 @@ where
 			touched_fields: Rc::clone(&self.touched_fields),
 			touched_collections: Rc::clone(&self.touched_collections),
 			touched_paths: Rc::clone(&self.touched_paths),
-			collection_errors: self.collection_errors.clone(),
-			path_errors: self.path_errors.clone(),
+			collection_errors: self.collection_errors,
+			path_errors: self.path_errors,
 			path_default_values: Rc::clone(&self.path_default_values),
-			values_signal: self.values_signal.clone(),
+			values_signal: self.values_signal,
 			subscribers: Rc::clone(&self.subscribers),
 			observed_values: Rc::clone(&self.observed_values),
 			custom_widget_error_fields: Rc::clone(&self.custom_widget_error_fields),
@@ -1171,7 +1171,7 @@ where
 {
 	/// Returns a signal containing the current value struct.
 	pub fn watch(&self) -> Signal<Form::Values> {
-		self.values_signal.clone()
+		self.values_signal
 	}
 
 	/// Returns a typed field signal.

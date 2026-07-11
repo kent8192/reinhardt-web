@@ -92,7 +92,6 @@ pub fn use_transition() -> TransitionState {
 	let is_pending = Signal::new(false);
 
 	let start_transition: StartTransitionFn = {
-		let is_pending = is_pending.clone();
 		Rc::new(RefCell::new(Box::new(move |f: Box<dyn FnOnce()>| {
 			is_pending.set(true);
 
@@ -165,7 +164,7 @@ pub fn use_transition() -> TransitionState {
 pub fn use_deferred_value<T: Clone + 'static>(value: Signal<T>) -> Signal<T> {
 	let deferred = Signal::new(value.get());
 
-	let deferred_clone = deferred.clone();
+	let deferred_clone = deferred;
 	crate::reactive::Effect::new({
 		move || {
 			let new_value = value.get();
@@ -199,31 +198,35 @@ mod tests {
 	#[test]
 	#[serial]
 	fn test_use_transition_pending_state() {
-		let transition = use_transition();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let transition = use_transition();
 
-		assert!(!transition.is_pending.get());
+			assert!(!transition.is_pending.get());
 
-		// Note: On native (non-WASM), transitions execute synchronously,
-		// so pending state changes instantly. This is intentional behavior.
-		// On WASM, transitions use spawn_local for true async execution.
-		let ran = Rc::new(RefCell::new(false));
-		transition.start_transition({
-			let ran = Rc::clone(&ran);
-			move || {
-				*ran.borrow_mut() = true;
-			}
+			// Note: On native (non-WASM), transitions execute synchronously,
+			// so pending state changes instantly. This is intentional behavior.
+			// On WASM, transitions use spawn_local for true async execution.
+			let ran = Rc::new(RefCell::new(false));
+			transition.start_transition({
+				let ran = Rc::clone(&ran);
+				move || {
+					*ran.borrow_mut() = true;
+				}
+			});
+
+			assert!(*ran.borrow());
+			assert!(!transition.is_pending.get()); // Back to false after sync execution
 		});
-
-		assert!(*ran.borrow());
-		assert!(!transition.is_pending.get()); // Back to false after sync execution
 	}
 
 	#[test]
 	#[serial]
 	fn test_use_deferred_value() {
-		let value = Signal::new(42);
-		let deferred = use_deferred_value(value.clone());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let value = Signal::new(42);
+			let deferred = use_deferred_value(value.clone());
 
-		assert_eq!(deferred.get(), 42);
+			assert_eq!(deferred.get(), 42);
+		});
 	}
 }

@@ -102,7 +102,7 @@ impl<T: Clone + 'static> Clone for SignalWithSubscription<T> {
 		// This is intentional - only the original instance manages the subscription.
 		// The cloned instance shares the same signal but won't unsubscribe on drop.
 		Self {
-			signal: self.signal.clone(),
+			signal: self.signal,
 			_handle: SubscriptionHandle { unsubscribe: None },
 		}
 	}
@@ -191,12 +191,12 @@ where
 	let state = Signal::new(get_snapshot());
 
 	// Set up the subscription
-	let state_clone = state.clone();
+	let state_clone = state;
 	let get_snapshot = Rc::new(get_snapshot);
 	let get_snapshot_clone = Rc::clone(&get_snapshot);
 
 	let on_change: Rc<dyn Fn()> = Rc::new({
-		let state = state_clone.clone();
+		let state = state_clone;
 		move || {
 			let new_value = get_snapshot_clone();
 			if state.get() != new_value {
@@ -277,92 +277,100 @@ mod tests {
 
 	#[test]
 	fn test_use_sync_external_store_basic() {
-		let store_value = Rc::new(RefCell::new(42));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let store_value = Rc::new(RefCell::new(42));
 
-		let signal_with_sub = use_sync_external_store(
-			|_on_change| {
-				// No-op subscribe for test
-				Box::new(|| {})
-			},
-			{
-				let store_value = Rc::clone(&store_value);
-				move || *store_value.borrow()
-			},
-		);
+			let signal_with_sub = use_sync_external_store(
+				|_on_change| {
+					// No-op subscribe for test
+					Box::new(|| {})
+				},
+				{
+					let store_value = Rc::clone(&store_value);
+					move || *store_value.borrow()
+				},
+			);
 
-		assert_eq!(signal_with_sub.get(), 42);
+			assert_eq!(signal_with_sub.get(), 42);
+		});
 	}
 
 	#[test]
 	fn test_use_sync_external_store_with_update() {
-		let store_value = Rc::new(RefCell::new(0));
-		let on_change_fn: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(None));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let store_value = Rc::new(RefCell::new(0));
+			let on_change_fn: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(None));
 
-		let signal_with_sub = use_sync_external_store(
-			{
-				let on_change_fn = Rc::clone(&on_change_fn);
-				move |on_change| {
-					*on_change_fn.borrow_mut() = Some(on_change);
-					Box::new(|| {})
-				}
-			},
-			{
-				let store_value = Rc::clone(&store_value);
-				move || *store_value.borrow()
-			},
-		);
+			let signal_with_sub = use_sync_external_store(
+				{
+					let on_change_fn = Rc::clone(&on_change_fn);
+					move |on_change| {
+						*on_change_fn.borrow_mut() = Some(on_change);
+						Box::new(|| {})
+					}
+				},
+				{
+					let store_value = Rc::clone(&store_value);
+					move || *store_value.borrow()
+				},
+			);
 
-		assert_eq!(signal_with_sub.get(), 0);
+			assert_eq!(signal_with_sub.get(), 0);
 
-		// Simulate store update
-		*store_value.borrow_mut() = 100;
+			// Simulate store update
+			*store_value.borrow_mut() = 100;
 
-		// Trigger the on_change callback
-		if let Some(on_change) = on_change_fn.borrow().as_ref() {
-			on_change();
-		}
+			// Trigger the on_change callback
+			if let Some(on_change) = on_change_fn.borrow().as_ref() {
+				on_change();
+			}
 
-		assert_eq!(signal_with_sub.get(), 100);
+			assert_eq!(signal_with_sub.get(), 100);
+		});
 	}
 
 	#[cfg(native)]
 	#[test]
 	fn test_use_sync_external_store_with_server() {
-		let signal_with_sub = use_sync_external_store_with_server(
-			|_| Box::new(|| {}),
-			|| 42, // Client snapshot
-			|| 0,  // Server snapshot
-		);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let signal_with_sub = use_sync_external_store_with_server(
+				|_| Box::new(|| {}),
+				|| 42, // Client snapshot
+				|| 0,  // Server snapshot
+			);
 
-		// Should use server snapshot in non-WASM environment
-		assert_eq!(signal_with_sub.get(), 0);
+			// Should use server snapshot in non-WASM environment
+			assert_eq!(signal_with_sub.get(), 0);
+		});
 	}
 
 	#[test]
 	fn test_subscription_cleanup() {
-		let unsubscribed = Rc::new(RefCell::new(false));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let unsubscribed = Rc::new(RefCell::new(false));
 
-		{
-			let signal_with_sub = use_sync_external_store(
-				{
-					let unsubscribed = Rc::clone(&unsubscribed);
-					move |_on_change| {
-						Box::new(move || {
-							*unsubscribed.borrow_mut() = true;
-						})
-					}
-				},
-				|| 42,
-			);
+			{
+				let signal_with_sub = use_sync_external_store(
+					{
+						let unsubscribed = Rc::clone(&unsubscribed);
+						move |_on_change| {
+							Box::new(move || {
+								*unsubscribed.borrow_mut() = true;
+							})
+						}
+					},
+					|| 42,
+				);
 
-			assert_eq!(signal_with_sub.get(), 42);
-			assert!(
-				!*unsubscribed.borrow(),
-				"Should not unsubscribe while in scope"
-			);
-		}
+				assert_eq!(signal_with_sub.get(), 42);
+				assert!(
+					!*unsubscribed.borrow(),
+					"Should not unsubscribe while in scope"
+				);
+			}
 
-		// SignalWithSubscription dropped, unsubscribe should be called
-		assert!(*unsubscribed.borrow(), "Should unsubscribe when dropped");
+			// SignalWithSubscription dropped, unsubscribe should be called
+			assert!(*unsubscribed.borrow(), "Should unsubscribe when dropped");
+		});
 	}
 }

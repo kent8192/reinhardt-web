@@ -208,59 +208,69 @@ mod tests {
 	#[test]
 	#[serial]
 	fn test_use_memo_basic() {
-		let memo = use_memo(|| 42, ());
-		assert_eq!(memo.get(), 42);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let memo = use_memo(|| 42, ());
+			assert_eq!(memo.get(), 42);
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_use_memo_with_signal() {
-		let count = Signal::new(5);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let count = Signal::new(5);
 
-		let doubled = use_memo(
-			{
-				let count = count.clone();
-				move || count.get() * 2
-			},
-			(count.clone(),),
-		);
+			let doubled = use_memo(
+				{
+					let count = count.clone();
+					move || count.get() * 2
+				},
+				(count.clone(),),
+			);
 
-		assert_eq!(doubled.get(), 10);
+			assert_eq!(doubled.get(), 10);
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_use_memo_complex() {
-		let items = Signal::new(vec![1, 2, 3, 4, 5]);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let items = Signal::new(vec![1, 2, 3, 4, 5]);
 
-		let sum = use_memo(
-			{
-				let items = items.clone();
-				move || items.get().iter().sum::<i32>()
-			},
-			(items.clone(),),
-		);
+			let sum = use_memo(
+				{
+					let items = items.clone();
+					move || items.get().iter().sum::<i32>()
+				},
+				(items.clone(),),
+			);
 
-		assert_eq!(sum.get(), 15);
+			assert_eq!(sum.get(), 15);
+		});
 	}
 
 	#[cfg(native)]
 	#[test]
 	fn test_use_callback() {
-		use crate::component::DummyEvent;
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			use crate::component::DummyEvent;
 
-		let callback = use_callback(|_: DummyEvent| {}, ());
-		callback.call(DummyEvent::default());
+			let callback = use_callback(|_: DummyEvent| {}, ());
+			callback.call(DummyEvent::default());
+		});
 	}
 
 	#[cfg(native)]
 	#[test]
 	fn test_use_callback_with() {
-		let add_one = use_callback_with::<i32, i32, _, _>(|x: i32| x + 1, ());
-		assert_eq!(add_one.call(5), 6);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let add_one = use_callback_with::<i32, i32, _, _>(|x: i32| x + 1, ());
+			assert_eq!(add_one.call(5), 6);
 
-		let concat =
-			use_callback_with::<String, String, _, _>(|s: String| format!("Hello, {}", s), ());
-		assert_eq!(concat.call("World".to_string()), "Hello, World");
+			let concat =
+				use_callback_with::<String, String, _, _>(|s: String| format!("Hello, {}", s), ());
+			assert_eq!(concat.call("World".to_string()), "Hello, World");
+		});
 	}
 }

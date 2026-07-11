@@ -190,6 +190,12 @@ impl ReactiveScope {
 	}
 }
 
+impl Default for ReactiveScope {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Drop for ReactiveScope {
 	fn drop(&mut self) {
 		self.dispose();

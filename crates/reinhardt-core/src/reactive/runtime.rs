@@ -795,33 +795,33 @@ mod tests {
 	#[test]
 	#[serial]
 	fn run_without_observer_isolates_inner_signal_reads() {
-		// Arrange
-		let outer = crate::reactive::signal::Signal::new(0_i32);
-		let inner = crate::reactive::signal::Signal::new(0_i32);
-		let counter = std::rc::Rc::new(std::cell::Cell::new(0));
-		let counter_for_effect = counter.clone();
-		let outer_for_effect = outer.clone();
-		let inner_for_effect = inner.clone();
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let outer = crate::reactive::signal::Signal::new(0_i32);
+			let inner = crate::reactive::signal::Signal::new(0_i32);
+			let counter = std::rc::Rc::new(std::cell::Cell::new(0));
+			let counter_for_effect = counter.clone();
 
-		// Act
-		let _eff = crate::reactive::effect::Effect::new(move || {
-			let _ = outer_for_effect.get();
-			super::run_without_observer(|| {
-				let _ = inner_for_effect.get();
+			// Act
+			let _eff = crate::reactive::effect::Effect::new(move || {
+				let _ = outer.get();
+				super::run_without_observer(|| {
+					let _ = inner.get();
+				});
+				counter_for_effect.set(counter_for_effect.get() + 1);
 			});
-			counter_for_effect.set(counter_for_effect.get() + 1);
+
+			let initial = counter.get();
+			inner.set(99);
+			super::with_runtime(|rt| rt.flush_updates());
+
+			// Assert
+			assert_eq!(
+				counter.get(),
+				initial,
+				"run_without_observer must isolate Signal reads from outer Observer"
+			);
 		});
-
-		let initial = counter.get();
-		inner.set(99);
-		super::with_runtime(|rt| rt.flush_updates());
-
-		// Assert
-		assert_eq!(
-			counter.get(),
-			initial,
-			"run_without_observer must isolate Signal reads from outer Observer"
-		);
 	}
 
 	#[test]

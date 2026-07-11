@@ -172,32 +172,32 @@ impl AuthState {
 	///
 	/// Use this for reactive UI updates.
 	pub fn is_authenticated_signal(&self) -> Signal<bool> {
-		self.is_authenticated.clone()
+		self.is_authenticated
 	}
 
 	/// Returns the Signal for user ID.
 	pub fn user_id_signal(&self) -> Signal<Option<String>> {
-		self.user_id.clone()
+		self.user_id
 	}
 
 	/// Returns the Signal for username.
 	pub fn username_signal(&self) -> Signal<Option<String>> {
-		self.username.clone()
+		self.username
 	}
 
 	/// Returns the Signal for email.
 	pub fn email_signal(&self) -> Signal<Option<String>> {
-		self.email.clone()
+		self.email
 	}
 
 	/// Returns the Signal for staff status.
 	pub fn is_staff_signal(&self) -> Signal<bool> {
-		self.is_staff.clone()
+		self.is_staff
 	}
 
 	/// Returns the Signal for superuser status.
 	pub fn is_superuser_signal(&self) -> Signal<bool> {
-		self.is_superuser.clone()
+		self.is_superuser
 	}
 
 	/// Updates the authentication state with new data.
@@ -301,7 +301,7 @@ impl AuthState {
 
 	/// Returns the Signal for permissions (for reactive updates).
 	pub fn permissions_signal(&self) -> Signal<HashSet<String>> {
-		self.permissions.clone()
+		self.permissions
 	}
 
 	/// Fetches permissions from the server and updates the cache.
@@ -610,50 +610,58 @@ mod tests {
 
 	#[test]
 	fn test_auth_state_creation() {
-		let state = AuthState::new();
-		assert!(!state.is_authenticated());
-		assert!(state.user_id().is_none());
-		assert!(state.username().is_none());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			assert!(!state.is_authenticated());
+			assert!(state.user_id().is_none());
+			assert!(state.username().is_none());
+		});
 	}
 
 	#[test]
 	fn test_auth_state_login() {
-		let state = AuthState::new();
-		state.login("42", "testuser");
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			state.login("42", "testuser");
 
-		assert!(state.is_authenticated());
-		assert_eq!(state.user_id(), Some("42".to_string()));
-		assert_eq!(state.username(), Some("testuser".to_string()));
+			assert!(state.is_authenticated());
+			assert_eq!(state.user_id(), Some("42".to_string()));
+			assert_eq!(state.username(), Some("testuser".to_string()));
+		});
 	}
 
 	#[test]
 	fn test_auth_state_logout() {
-		let state = AuthState::new();
-		state.login("42", "testuser");
-		state.logout();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			state.login("42", "testuser");
+			state.logout();
 
-		assert!(!state.is_authenticated());
-		assert!(state.user_id().is_none());
-		assert!(state.username().is_none());
+			assert!(!state.is_authenticated());
+			assert!(state.user_id().is_none());
+			assert!(state.username().is_none());
+		});
 	}
 
 	#[test]
 	fn test_auth_state_from_server_data() {
-		let data = AuthData::full(
-			"1",
-			"admin",
-			Some("admin@example.com".to_string()),
-			true,
-			true,
-		);
-		let state = AuthState::from_server_data(data);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let data = AuthData::full(
+				"1",
+				"admin",
+				Some("admin@example.com".to_string()),
+				true,
+				true,
+			);
+			let state = AuthState::from_server_data(data);
 
-		assert!(state.is_authenticated());
-		assert_eq!(state.user_id(), Some("1".to_string()));
-		assert_eq!(state.username(), Some("admin".to_string()));
-		assert_eq!(state.email(), Some("admin@example.com".to_string()));
-		assert!(state.is_staff());
-		assert!(state.is_superuser());
+			assert!(state.is_authenticated());
+			assert_eq!(state.user_id(), Some("1".to_string()));
+			assert_eq!(state.username(), Some("admin".to_string()));
+			assert_eq!(state.email(), Some("admin@example.com".to_string()));
+			assert!(state.is_staff());
+			assert!(state.is_superuser());
+		});
 	}
 
 	#[test]
@@ -673,22 +681,26 @@ mod tests {
 
 	#[test]
 	fn test_auth_state_update() {
-		let state = AuthState::new();
-		let data = AuthData::authenticated("99", "updated");
-		state.update(data);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			let data = AuthData::authenticated("99", "updated");
+			state.update(data);
 
-		assert!(state.is_authenticated());
-		assert_eq!(state.user_id(), Some("99".to_string()));
-		assert_eq!(state.username(), Some("updated".to_string()));
+			assert!(state.is_authenticated());
+			assert_eq!(state.user_id(), Some("99".to_string()));
+			assert_eq!(state.username(), Some("updated".to_string()));
+		});
 	}
 
 	#[test]
 	fn test_global_auth_state() {
-		let state1 = auth_state();
-		let state2 = auth_state();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state1 = auth_state();
+			let state2 = auth_state();
 
-		state1.login("1", "test");
-		assert!(state2.is_authenticated());
+			state1.login("1", "test");
+			assert!(state2.is_authenticated());
+		});
 	}
 
 	#[test]
@@ -708,98 +720,112 @@ mod tests {
 
 	#[test]
 	fn test_has_permission_with_cache() {
-		let state = AuthState::new();
-		let mut perms = HashSet::new();
-		perms.insert("blog.add_post".to_string());
-		perms.insert("blog.edit_post".to_string());
-		state.set_permissions(perms);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			let mut perms = HashSet::new();
+			perms.insert("blog.add_post".to_string());
+			perms.insert("blog.edit_post".to_string());
+			state.set_permissions(perms);
 
-		assert!(state.has_permission("blog.add_post"));
-		assert!(!state.has_permission("blog.delete_post"));
+			assert!(state.has_permission("blog.add_post"));
+			assert!(!state.has_permission("blog.delete_post"));
+		});
 	}
 
 	#[test]
 	fn test_superuser_has_all_permissions() {
-		let state = AuthState::new();
-		state.login_full("1", "admin", None, true, true);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			state.login_full("1", "admin", None, true, true);
 
-		assert!(state.has_permission("any.permission"));
-		assert!(state.has_permission("another.permission"));
+			assert!(state.has_permission("any.permission"));
+			assert!(state.has_permission("another.permission"));
+		});
 	}
 
 	#[test]
 	fn test_has_any_permission() {
-		let state = AuthState::new();
-		let mut perms = HashSet::new();
-		perms.insert("blog.view".to_string());
-		state.set_permissions(perms);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			let mut perms = HashSet::new();
+			perms.insert("blog.view".to_string());
+			state.set_permissions(perms);
 
-		assert!(state.has_any_permission(&["blog.view", "blog.edit"]));
-		assert!(!state.has_any_permission(&["blog.delete", "blog.edit"]));
+			assert!(state.has_any_permission(&["blog.view", "blog.edit"]));
+			assert!(!state.has_any_permission(&["blog.delete", "blog.edit"]));
+		});
 	}
 
 	#[test]
 	fn test_has_all_permissions() {
-		let state = AuthState::new();
-		let mut perms = HashSet::new();
-		perms.insert("blog.view".to_string());
-		perms.insert("blog.edit".to_string());
-		state.set_permissions(perms);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			let mut perms = HashSet::new();
+			perms.insert("blog.view".to_string());
+			perms.insert("blog.edit".to_string());
+			state.set_permissions(perms);
 
-		assert!(state.has_all_permissions(&["blog.view", "blog.edit"]));
-		assert!(!state.has_all_permissions(&["blog.view", "blog.delete"]));
+			assert!(state.has_all_permissions(&["blog.view", "blog.edit"]));
+			assert!(!state.has_all_permissions(&["blog.view", "blog.delete"]));
+		});
 	}
 
 	#[test]
 	fn test_permissions_cleared_on_logout() {
-		let state = AuthState::new();
-		let mut perms = HashSet::new();
-		perms.insert("blog.add_post".to_string());
-		state.set_permissions(perms);
-		state.login("1", "user");
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			let mut perms = HashSet::new();
+			perms.insert("blog.add_post".to_string());
+			state.set_permissions(perms);
+			state.login("1", "user");
 
-		state.logout();
+			state.logout();
 
-		assert!(!state.has_permission("blog.add_post"));
-		assert_eq!(state.permissions.get().len(), 0);
+			assert!(!state.has_permission("blog.add_post"));
+			assert_eq!(state.permissions.get().len(), 0);
+		});
 	}
 
 	#[test]
 	fn test_permissions_from_auth_data() {
-		let data = AuthData {
-			is_authenticated: true,
-			user_id: Some("1".to_string()),
-			username: Some("user".to_string()),
-			email: None,
-			is_staff: false,
-			is_superuser: false,
-			permissions: vec!["blog.view".to_string(), "blog.edit".to_string()],
-		};
-		let state = AuthState::from_server_data(data);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let data = AuthData {
+				is_authenticated: true,
+				user_id: Some("1".to_string()),
+				username: Some("user".to_string()),
+				email: None,
+				is_staff: false,
+				is_superuser: false,
+				permissions: vec!["blog.view".to_string(), "blog.edit".to_string()],
+			};
+			let state = AuthState::from_server_data(data);
 
-		assert!(state.has_permission("blog.view"));
-		assert!(state.has_permission("blog.edit"));
-		assert!(!state.has_permission("blog.delete"));
+			assert!(state.has_permission("blog.view"));
+			assert!(state.has_permission("blog.edit"));
+			assert!(!state.has_permission("blog.delete"));
+		});
 	}
 
 	#[test]
 	fn test_permissions_update() {
-		let state = AuthState::new();
-		state.login("1", "user");
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			state.login("1", "user");
 
-		let data = AuthData {
-			is_authenticated: true,
-			user_id: Some("1".to_string()),
-			username: Some("user".to_string()),
-			email: None,
-			is_staff: false,
-			is_superuser: false,
-			permissions: vec!["blog.view".to_string()],
-		};
-		state.update(data);
+			let data = AuthData {
+				is_authenticated: true,
+				user_id: Some("1".to_string()),
+				username: Some("user".to_string()),
+				email: None,
+				is_staff: false,
+				is_superuser: false,
+				permissions: vec!["blog.view".to_string()],
+			};
+			state.update(data);
 
-		assert!(state.has_permission("blog.view"));
-		assert!(!state.has_permission("blog.edit"));
+			assert!(state.has_permission("blog.view"));
+			assert!(!state.has_permission("blog.edit"));
+		});
 	}
 
 	#[test]
