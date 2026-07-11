@@ -86,7 +86,7 @@ async-graphql = { workspace = true, optional = true }
 
 
 # WebSocket and messaging
-tokio-tungstenite = "0.28.0"
+tokio-tungstenite = { workspace = true }
 lapin = "3.7.2"
 reinhardt-core = { workspace = true, features = [
   "types",

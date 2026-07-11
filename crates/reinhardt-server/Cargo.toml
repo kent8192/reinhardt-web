@@ -24,7 +24,7 @@ tokio = { workspace = true, features = ["signal"] }
 async-trait = { workspace = true }
 ipnet = "2.10"
 async-graphql = { version = "7.0", optional = true }
-tokio-tungstenite = { version = "0.28.0", optional = true }
+tokio-tungstenite = { workspace = true, optional = true }
 futures-util = { version = "0.3", optional = true }
 
 [features]
@@ -44,6 +44,6 @@ tokio-test = "0.4"
 anyhow = { workspace = true }
 reqwest = { workspace = true }
 async-graphql = "7.0"
-tokio-tungstenite = "0.28.0"
+tokio-tungstenite = { workspace = true }
 futures-util = "0.3"
 serde_json = { workspace = true }
