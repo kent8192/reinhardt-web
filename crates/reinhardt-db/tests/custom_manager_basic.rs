@@ -120,6 +120,36 @@ impl CustomManager for GuardedArticleManager {
 	}
 }
 
+/// Manager that vetoes every write operation through the default CRUD methods.
+#[derive(Default)]
+struct DenyAllArticleManager;
+
+impl CustomManager for DenyAllArticleManager {
+	type Model = Article;
+
+	fn new() -> Self {
+		Self
+	}
+
+	fn before_save(&self, _model: &mut Article) -> reinhardt_core::exception::Result<()> {
+		Err(reinhardt_core::exception::Error::Database(
+			"save vetoed by custom manager".into(),
+		))
+	}
+
+	fn before_delete(&self, _model: &Article) -> reinhardt_core::exception::Result<()> {
+		Err(reinhardt_core::exception::Error::Database(
+			"delete vetoed by custom manager".into(),
+		))
+	}
+
+	fn before_bulk_update(&self, _models: &mut [Article]) -> reinhardt_core::exception::Result<()> {
+		Err(reinhardt_core::exception::Error::Database(
+			"bulk update vetoed by custom manager".into(),
+		))
+	}
+}
+
 // -----------------------------------------------------------------------------
 // Tests: blanket impl on Manager<M>
 // -----------------------------------------------------------------------------
@@ -327,6 +357,68 @@ fn before_bulk_update_default_is_a_noop_and_keeps_models_unchanged() {
 	// Assert
 	assert!(result.is_ok());
 	assert_eq!(models, snapshot);
+}
+
+#[tokio::test]
+async fn default_create_invokes_before_save_veto_before_database_access() {
+	// Arrange
+	let manager = DenyAllArticleManager;
+	let article = Article {
+		id: None,
+		title: "blocked".into(),
+		is_archived: false,
+	};
+
+	// Act
+	let result = manager.create(&article).await;
+
+	// Assert
+	assert_eq!(
+		format!("{}", result.unwrap_err()),
+		"Database error: save vetoed by custom manager"
+	);
+}
+
+#[tokio::test]
+async fn default_update_invokes_before_save_veto_before_database_access() {
+	// Arrange
+	let manager = DenyAllArticleManager;
+	let article = Article {
+		id: Some(1),
+		title: "blocked".into(),
+		is_archived: false,
+	};
+
+	// Act
+	let result = manager.update(&article).await;
+
+	// Assert
+	assert_eq!(
+		format!("{}", result.unwrap_err()),
+		"Database error: save vetoed by custom manager"
+	);
+}
+
+#[tokio::test]
+async fn default_bulk_update_invokes_before_bulk_update_veto_before_database_access() {
+	// Arrange
+	let manager = DenyAllArticleManager;
+	let articles = vec![Article {
+		id: Some(1),
+		title: "blocked".into(),
+		is_archived: false,
+	}];
+
+	// Act
+	let result = manager
+		.bulk_update(articles, vec!["title".to_string()], None)
+		.await;
+
+	// Assert
+	assert_eq!(
+		format!("{}", result.unwrap_err()),
+		"Database error: bulk update vetoed by custom manager"
+	);
 }
 
 // -----------------------------------------------------------------------------
