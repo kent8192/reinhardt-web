@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add `style!` and `#[style_def]` code generation backed by the shared Manouche
+  style compiler.
+
 ### Changed
 
 - **BREAKING**: `#[component]` now requires `name = "..."` for route names and

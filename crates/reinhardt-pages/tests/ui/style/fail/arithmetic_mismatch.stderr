@@ -1,0 +1,5 @@
+error: invalid dimensions for `+`: `Length` and `Time` cannot be combined
+ --> tests/ui/style/fail/arithmetic_mismatch.rs:4:57
+  |
+4 | static STYLES: CardStyles = style! { .card { width: 1px + 1s; } };
+  |                                                         ^

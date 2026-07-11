@@ -188,6 +188,10 @@ pub use crate::i18n::{
 // ============================================================================
 
 pub use crate::static_resolver::{init_static_resolver, is_initialized, resolve_static};
+pub use crate::style::{
+	ClassList, ClassToken, CssAngle, CssColor, CssInteger, CssLength, CssLengthPercentage,
+	CssNumber, CssPercentage, CssTime, CssValueError, StyleVars,
+};
 
 // ============================================================================
 // Forms (native only)
@@ -225,6 +229,8 @@ pub use crate::head;
 pub use crate::layout;
 pub use crate::page;
 pub use crate::page_props;
+pub use crate::style;
+pub use crate::style_def;
 #[cfg(feature = "i18n")]
 pub use crate::t;
 pub use crate::wasm_server_api;

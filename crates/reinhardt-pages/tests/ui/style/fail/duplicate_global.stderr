@@ -1,0 +1,11 @@
+error: duplicate global `accent`; global names must be unique
+ --> tests/ui/style/fail/duplicate_global.rs:4:63
+  |
+4 | static STYLES: CardStyles = style! { globals { accent: Color; accent: Color; } .card { color: red; } };
+  |                                                               ^^^^^^
+
+error: global `accent` was first declared here
+ --> tests/ui/style/fail/duplicate_global.rs:4:48
+  |
+4 | static STYLES: CardStyles = style! { globals { accent: Color; accent: Color; } .card { color: red; } };
+  |                                                ^^^^^^

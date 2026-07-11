@@ -2,6 +2,43 @@
 
 WASM-based reactive frontend framework for Reinhardt with Django-like API.
 
+## Component-scoped styles
+
+Component styles use the canonical `#[style_def] static ... = style! { ... };`
+envelope. Selectors and properties remain CSS-shaped, while `globals` and
+defaulted `vars` provide checked references and typed runtime overrides:
+
+```rust,ignore
+use reinhardt_pages::{CssColor, page, style, style_def};
+
+#[style_def]
+static STYLES: CardStyles = style! {
+	globals { border: Color; }
+	vars { accent: Color = red; }
+
+	.card {
+		border-color: globals.border;
+		color: vars.accent;
+		.label { color: vars.accent; }
+	}
+};
+
+let accent = CssColor::parse("blue")?;
+let card = page!({
+	article {
+		class: STYLES.card() + "legacy-card",
+		style: STYLES.vars().accent(accent),
+		"Card"
+	}
+});
+# Ok::<_, reinhardt_pages::CssValueError>(card)
+```
+
+The generated stylesheet is a static asset; applications must link it once per
+document. Plain string `class:` and `style:` values remain supported for gradual
+migration. Descendants use nested rules because Rust token streams do not retain
+selector whitespace.
+
 ## Features
 
 - **Fine-grained Reactivity**: Leptos/Solid.js-style Signal system with automatic dependency tracking

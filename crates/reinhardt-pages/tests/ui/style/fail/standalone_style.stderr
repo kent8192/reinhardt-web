@@ -1,0 +1,5 @@
+error: style! must be the initializer of an immutable static annotated with #[style_def]
+ --> tests/ui/style/fail/standalone_style.rs:4:19
+  |
+4 |     let _ = style! { .card { color: red; } };
+  |                      ^

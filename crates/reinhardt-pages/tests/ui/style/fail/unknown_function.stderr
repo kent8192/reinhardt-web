@@ -1,0 +1,5 @@
+error: unknown style function `paint`; use a registered function or wrap one balanced call in `unchecked_fn!(...)`
+ --> tests/ui/style/fail/unknown_function.rs:4:53
+  |
+4 | static STYLES: CardStyles = style! { .card { color: paint(red); } };
+  |                                                     ^^^^^

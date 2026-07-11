@@ -1,0 +1,5 @@
+error: component variable `accent` is missing a default; add `= <typed value>`
+ --> tests/ui/style/fail/missing_default.rs:4:45
+  |
+4 | static STYLES: CardStyles = style! { vars { accent: Color; } .card { color: red; } };
+  |                                             ^^^^^^

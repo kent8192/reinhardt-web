@@ -1,0 +1,5 @@
+error: value for property `width` has type `Color`; expected OR(LENGTH_PERCENTAGE,KW(size))
+ --> tests/ui/style/fail/property_mismatch.rs:4:53
+  |
+4 | static STYLES: CardStyles = style! { .card { width: red; } };
+  |                                                     ^^^

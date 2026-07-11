@@ -1,0 +1,5 @@
+error: undeclared component variable reference `vars.missing`; declare it in the `vars` block
+ --> tests/ui/style/fail/undeclared_reference.rs:4:53
+  |
+4 | static STYLES: CardStyles = style! { .card { color: vars.missing; } };
+  |                                                     ^^^^

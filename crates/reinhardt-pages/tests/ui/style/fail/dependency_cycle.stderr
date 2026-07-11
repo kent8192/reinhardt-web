@@ -1,0 +1,29 @@
+error: component-variable dependency cycle: first -> second -> first; break the cycle with an independent typed default
+ --> tests/ui/style/fail/dependency_cycle.rs:4:89
+  |
+4 | static STYLES: CardStyles = style! { vars { first: Color = vars.second; second: Color = vars.first; } .card { color: vars.first; } };
+  |                                                                                         ^^^^
+
+error: component variable `first` is declared here
+ --> tests/ui/style/fail/dependency_cycle.rs:4:45
+  |
+4 | static STYLES: CardStyles = style! { vars { first: Color = vars.second; second: Color = vars.first; } .card { color: vars.first; } };
+  |                                             ^^^^^
+
+error: `first` depends on `second` here
+ --> tests/ui/style/fail/dependency_cycle.rs:4:60
+  |
+4 | static STYLES: CardStyles = style! { vars { first: Color = vars.second; second: Color = vars.first; } .card { color: vars.first; } };
+  |                                                            ^^^^
+
+error: component variable `second` is declared here
+ --> tests/ui/style/fail/dependency_cycle.rs:4:73
+  |
+4 | static STYLES: CardStyles = style! { vars { first: Color = vars.second; second: Color = vars.first; } .card { color: vars.first; } };
+  |                                                                         ^^^^^^
+
+error: `second` depends on `first` here
+ --> tests/ui/style/fail/dependency_cycle.rs:4:89
+  |
+4 | static STYLES: CardStyles = style! { vars { first: Color = vars.second; second: Color = vars.first; } .card { color: vars.first; } };
+  |                                                                                         ^^^^

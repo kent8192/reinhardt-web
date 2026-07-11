@@ -1,0 +1,11 @@
+error: duplicate component variable `accent`; variable names must be unique
+ --> tests/ui/style/fail/duplicate_variable.rs:4:66
+  |
+4 | static STYLES: CardStyles = style! { vars { accent: Color = red; accent: Color = blue; } .card { color: red; } };
+  |                                                                  ^^^^^^
+
+error: component variable `accent` was first declared here
+ --> tests/ui/style/fail/duplicate_variable.rs:4:45
+  |
+4 | static STYLES: CardStyles = style! { vars { accent: Color = red; accent: Color = blue; } .card { color: red; } };
+  |                                             ^^^^^^

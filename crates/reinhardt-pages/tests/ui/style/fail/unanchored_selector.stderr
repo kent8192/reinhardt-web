@@ -1,0 +1,5 @@
+error: top-level selector `button` is not anchored to a local class; start every branch with `.local-class`
+ --> tests/ui/style/fail/unanchored_selector.rs:4:38
+  |
+4 | static STYLES: CardStyles = style! { button { color: red; } };
+  |                                      ^^^^^^
