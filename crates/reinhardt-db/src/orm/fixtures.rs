@@ -899,28 +899,11 @@ fn handlers_for_selector(selector: &str) -> FixtureResult<Vec<Arc<dyn FixtureMod
 
 #[cfg(feature = "migrations")]
 fn order_records_by_dependencies(records: &[FixtureRecord]) -> FixtureResult<Vec<FixtureRecord>> {
-	let present_models: HashSet<String> = records
-		.iter()
-		.map(|record| canonical_record_label(&record.model))
-		.collect::<FixtureResult<_>>()?;
-	let dependencies = fixture_model_dependencies(records, &present_models)?;
-
-	let model_order = topological_model_order(&present_models, dependencies)?;
-	let rank: HashMap<String, usize> = model_order
+	let dependencies = fixture_record_dependencies(records)?;
+	let order = topological_record_order(records, dependencies)?;
+	Ok(order
 		.into_iter()
-		.enumerate()
-		.map(|(index, model)| (model, index))
-		.collect();
-	let mut indexed_records = records.iter().cloned().enumerate().collect::<Vec<_>>();
-	indexed_records.sort_by_key(|(index, record)| {
-		let model_key =
-			canonical_record_label(&record.model).unwrap_or_else(|_| record.model.clone());
-		(rank.get(&model_key).copied().unwrap_or(usize::MAX), *index)
-	});
-	let ordered_records = order_self_referential_record_groups(indexed_records)?;
-	Ok(ordered_records
-		.into_iter()
-		.map(|(_, record)| record)
+		.map(|index| records[index].clone())
 		.collect())
 }
 
@@ -942,16 +925,23 @@ fn canonical_model_key(app_label: &str, model_name: &str) -> String {
 }
 
 #[cfg(feature = "migrations")]
-fn fixture_model_dependencies(
+fn fixture_record_dependencies(
 	records: &[FixtureRecord],
-	present_models: &HashSet<String>,
-) -> FixtureResult<HashMap<String, HashSet<String>>> {
-	let mut dependencies = present_models
-		.iter()
-		.map(|model| (model.clone(), HashSet::new()))
+) -> FixtureResult<HashMap<usize, HashSet<usize>>> {
+	let mut record_indices = HashMap::new();
+	for (index, record) in records.iter().enumerate() {
+		let Some(pk_key) = record.pk.as_ref().and_then(json_dependency_key) else {
+			continue;
+		};
+		let model_key = canonical_record_label(&record.model)?;
+		record_indices.entry((model_key, pk_key)).or_insert(index);
+	}
+
+	let mut dependencies = (0..records.len())
+		.map(|index| (index, HashSet::new()))
 		.collect::<HashMap<_, _>>();
 
-	for record in records {
+	for (source_index, record) in records.iter().enumerate() {
 		let source_key = canonical_record_label(&record.model)?;
 		let (app_label, model_name) = parse_model_label(&source_key)?;
 		let Some(metadata) = find_model_metadata(&app_label, &model_name) else {
@@ -964,126 +954,28 @@ fn fixture_model_dependencies(
 			let Some(value) = fixture_field_value(record, field_name) else {
 				continue;
 			};
-			if json_dependency_key(value).is_none() {
+			let Some(target_pk) = json_dependency_key(value) else {
 				continue;
-			}
+			};
 			let target_app = field
 				.params
 				.get("fk_target_app")
 				.map(String::as_str)
 				.unwrap_or(&metadata.app_label);
 			let target_key = canonical_model_key(target_app, target_model);
-			if target_key != source_key && present_models.contains(&target_key) {
+			let Some(target_index) = record_indices.get(&(target_key, target_pk)).copied() else {
+				continue;
+			};
+			if target_index != source_index {
 				dependencies
-					.entry(source_key.clone())
+					.entry(source_index)
 					.or_default()
-					.insert(target_key);
+					.insert(target_index);
 			}
 		}
 	}
 
 	Ok(dependencies)
-}
-
-#[cfg(feature = "migrations")]
-fn order_self_referential_record_groups(
-	indexed_records: Vec<(usize, FixtureRecord)>,
-) -> FixtureResult<Vec<(usize, FixtureRecord)>> {
-	let mut ordered = Vec::with_capacity(indexed_records.len());
-	let mut start = 0;
-	while start < indexed_records.len() {
-		let model_key = canonical_record_label(&indexed_records[start].1.model)?;
-		let mut end = start + 1;
-		while end < indexed_records.len()
-			&& canonical_record_label(&indexed_records[end].1.model)? == model_key
-		{
-			end += 1;
-		}
-		ordered.extend(order_self_referential_record_group(
-			&model_key,
-			&indexed_records[start..end],
-		)?);
-		start = end;
-	}
-	Ok(ordered)
-}
-
-#[cfg(feature = "migrations")]
-fn order_self_referential_record_group(
-	model_key: &str,
-	records: &[(usize, FixtureRecord)],
-) -> FixtureResult<Vec<(usize, FixtureRecord)>> {
-	let (app_label, model_name) = parse_model_label(model_key)?;
-	let Some(metadata) = find_model_metadata(&app_label, &model_name) else {
-		return Ok(records.to_vec());
-	};
-	let self_fk_fields = metadata
-		.fields
-		.iter()
-		.filter_map(|(field_name, field)| {
-			let target_model = field.params.get("fk_target")?;
-			let target_app = field
-				.params
-				.get("fk_target_app")
-				.map(String::as_str)
-				.unwrap_or(&app_label);
-			(canonical_model_key(target_app, target_model) == model_key).then(|| field_name.clone())
-		})
-		.collect::<Vec<_>>();
-	if self_fk_fields.is_empty() {
-		return Ok(records.to_vec());
-	}
-
-	let mut pk_to_local_index = HashMap::new();
-	for (local_index, (_, record)) in records.iter().enumerate() {
-		if let Some(pk_key) = record.pk.as_ref().and_then(json_dependency_key) {
-			pk_to_local_index.insert(pk_key, local_index);
-		}
-	}
-
-	let mut dependencies = HashMap::<usize, HashSet<usize>>::new();
-	for (local_index, (_, record)) in records.iter().enumerate() {
-		let mut deps = HashSet::new();
-		for field_name in &self_fk_fields {
-			let Some(value) = fixture_field_value(record, field_name) else {
-				continue;
-			};
-			let Some(target_key) = json_dependency_key(value) else {
-				continue;
-			};
-			let Some(target_index) = pk_to_local_index.get(&target_key).copied() else {
-				continue;
-			};
-			if target_index != local_index {
-				deps.insert(target_index);
-			}
-		}
-		dependencies.insert(local_index, deps);
-	}
-
-	let mut remaining = (0..records.len()).collect::<HashSet<_>>();
-	let mut ordered = Vec::with_capacity(records.len());
-	while !remaining.is_empty() {
-		let mut ready = remaining
-			.iter()
-			.filter(|index| {
-				dependencies
-					.get(index)
-					.map(|deps| deps.is_disjoint(&remaining))
-					.unwrap_or(true)
-			})
-			.copied()
-			.collect::<Vec<_>>();
-		ready.sort_by_key(|index| records[*index].0);
-		if ready.is_empty() {
-			return Err(FixtureError::DependencyCycle(model_key.to_string()));
-		}
-		for index in ready {
-			remaining.remove(&index);
-			ordered.push(records[index].clone());
-		}
-	}
-	Ok(ordered)
 }
 
 #[cfg(feature = "migrations")]
@@ -1105,37 +997,38 @@ fn json_dependency_key(value: &Value) -> Option<String> {
 }
 
 #[cfg(feature = "migrations")]
-fn topological_model_order(
-	models: &HashSet<String>,
-	mut dependencies: HashMap<String, HashSet<String>>,
-) -> FixtureResult<Vec<String>> {
-	let mut remaining = models.clone();
-	let mut ordered = Vec::with_capacity(models.len());
+fn topological_record_order(
+	records: &[FixtureRecord],
+	mut dependencies: HashMap<usize, HashSet<usize>>,
+) -> FixtureResult<Vec<usize>> {
+	let mut remaining = (0..records.len()).collect::<HashSet<_>>();
+	let mut ordered = Vec::with_capacity(records.len());
 
 	while !remaining.is_empty() {
-		let mut ready: Vec<_> = remaining
+		let next = remaining
 			.iter()
-			.filter(|model| {
+			.filter(|index| {
 				dependencies
-					.get(*model)
+					.get(index)
 					.map(|deps| deps.is_disjoint(&remaining))
 					.unwrap_or(true)
 			})
-			.cloned()
-			.collect();
-		ready.sort();
+			.copied()
+			.min();
 
-		if ready.is_empty() {
-			let mut cycle = remaining.into_iter().collect::<Vec<_>>();
+		let Some(next) = next else {
+			let mut cycle = remaining
+				.iter()
+				.map(|index| canonical_record_label(&records[*index].model))
+				.collect::<FixtureResult<Vec<_>>>()?;
 			cycle.sort();
+			cycle.dedup();
 			return Err(FixtureError::DependencyCycle(cycle.join(", ")));
-		}
+		};
 
-		for model in ready {
-			remaining.remove(&model);
-			dependencies.remove(&model);
-			ordered.push(model);
-		}
+		remaining.remove(&next);
+		dependencies.remove(&next);
+		ordered.push(next);
 	}
 
 	Ok(ordered)
@@ -1384,8 +1277,10 @@ mod tests {
 		);
 		crate::migrations::model_registry::global_registry().register_model(author);
 		crate::migrations::model_registry::global_registry().register_model(post);
+		let mut post_fields = Map::new();
+		post_fields.insert("author".to_string(), Value::from(1));
 		let records = vec![
-			FixtureRecord::new("blog.Post", Some(Value::from(1)), Map::new()),
+			FixtureRecord::new("blog.Post", Some(Value::from(1)), post_fields),
 			FixtureRecord::new("blog.Author", Some(Value::from(1)), Map::new()),
 		];
 
@@ -1518,8 +1413,10 @@ mod tests {
 		);
 		crate::migrations::model_registry::global_registry().register_model(author);
 		crate::migrations::model_registry::global_registry().register_model(post);
+		let mut post_fields = Map::new();
+		post_fields.insert("author".to_string(), Value::from(1));
 		let records = vec![
-			FixtureRecord::new("fixture_case.post", Some(Value::from(1)), Map::new()),
+			FixtureRecord::new("fixture_case.post", Some(Value::from(1)), post_fields),
 			FixtureRecord::new("fixture_case.author", Some(Value::from(1)), Map::new()),
 		];
 
@@ -1565,6 +1462,75 @@ mod tests {
 
 		assert_eq!(ordered[0].model, "fixture_cycle.Right");
 		assert_eq!(ordered[1].model, "fixture_cycle.Left");
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn dependency_order_tracks_cross_model_fixture_records() {
+		let mut left = crate::migrations::ModelMetadata::new(
+			"fixture_record_order",
+			"Left",
+			"fixture_record_order_left",
+		);
+		left.add_field(
+			"right_id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_nullable(true)
+				.with_param("fk_target", "Right")
+				.with_param("fk_target_app", "fixture_record_order"),
+		);
+		let mut right = crate::migrations::ModelMetadata::new(
+			"fixture_record_order",
+			"Right",
+			"fixture_record_order_right",
+		);
+		right.add_field(
+			"left_id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_nullable(true)
+				.with_param("fk_target", "Left")
+				.with_param("fk_target_app", "fixture_record_order"),
+		);
+		crate::migrations::model_registry::global_registry().register_model(left);
+		crate::migrations::model_registry::global_registry().register_model(right);
+
+		let mut left_first_fields = Map::new();
+		left_first_fields.insert("right".to_string(), Value::from(1));
+		let mut right_second_fields = Map::new();
+		right_second_fields.insert("left".to_string(), Value::from(2));
+		let records = vec![
+			FixtureRecord::new(
+				"fixture_record_order.Left",
+				Some(Value::from(1)),
+				left_first_fields,
+			),
+			FixtureRecord::new(
+				"fixture_record_order.Right",
+				Some(Value::from(1)),
+				Map::new(),
+			),
+			FixtureRecord::new(
+				"fixture_record_order.Left",
+				Some(Value::from(2)),
+				Map::new(),
+			),
+			FixtureRecord::new(
+				"fixture_record_order.Right",
+				Some(Value::from(2)),
+				right_second_fields,
+			),
+		];
+
+		let ordered = order_records_by_dependencies(&records).unwrap();
+
+		assert_eq!(ordered[0].model, "fixture_record_order.Right");
+		assert_eq!(ordered[0].pk, Some(Value::from(1)));
+		assert_eq!(ordered[1].model, "fixture_record_order.Left");
+		assert_eq!(ordered[1].pk, Some(Value::from(1)));
+		assert_eq!(ordered[2].model, "fixture_record_order.Left");
+		assert_eq!(ordered[2].pk, Some(Value::from(2)));
+		assert_eq!(ordered[3].model, "fixture_record_order.Right");
+		assert_eq!(ordered[3].pk, Some(Value::from(2)));
 	}
 
 	#[cfg(feature = "migrations")]
