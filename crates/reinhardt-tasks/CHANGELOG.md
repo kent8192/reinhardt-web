@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.3.1...reinhardt-tasks@v0.4.0) - 2026-07-11
+
+### Added
+
+- *(tasks)* add durable job queue
+
+### Fixed
+
+- *(tasks)* address durable queue review feedback
+- *(tasks)* harden durable claim leasing
+- *(tasks)* commit durable lifecycle transitions atomically
+- *(tasks)* satisfy durable transition clippy lint
+- *(tasks)* harden durable retry cancellation
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.2.2...reinhardt-tasks@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-tasks` for the Reinhardt 0.3.0 line. This

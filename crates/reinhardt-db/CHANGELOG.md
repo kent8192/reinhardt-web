@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.1...reinhardt-db@v0.4.0) - 2026-07-11
+
+### Added
+
+- *(query,migrations)* [**breaking**] support typed generated column expressions
+
+### Fixed
+
+- *(db)* normalize gb freephone numbers
+- *(db)* normalize phone dialing variants
+- *(migrations)* address generated column review feedback
+- *(migrations)* handle generated column followups
+- *(migrations)* simplify binary SQL type branch
+- *(query,migrations)* address generated column review feedback
+- *(db)* stabilize generated column migration tokens
+- *(db)* preserve generated-column replacement metadata
+- *(migrations)* preserve generated column dependency repairs
+- *(db)* handle constraint repairs during SQLite recreation
+- *(db)* address generated column review feedback
+- *(db)* address generated column review follow-up
+- *(db)* harden generated column dependency ordering
+- *(db)* complete generated column review repairs
+- *(db)* order generated column migration dependencies
+- *(db)* complete generated column ordering repairs
+- *(db)* harden generated column edge cases
+- *(db)* update generated column CI fixtures
+- *(db)* harden generated column diffs
+- *(db)* reject invalid generated column writes
+- *(db)* reject invalid generated column definitions
+- resolve PR 5615 review feedback
+- resolve PR 5615 conflicts and feedback
+
+### Maintenance
+
+- merge latest main into develop forward-merge
+- *(auth)* merge develop into password policy branch
+- merge remote pr branch
+
 ## [0.3.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.0...reinhardt-db@v0.3.1) - 2026-07-04
 
 ### Added

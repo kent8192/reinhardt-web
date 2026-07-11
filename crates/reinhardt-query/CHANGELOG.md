@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.3.1...reinhardt-query@v0.4.0) - 2026-07-11
+
+### Added
+
+- *(query,migrations)* [**breaking**] support typed generated column expressions
+
+### Fixed
+
+- *(query,migrations)* address generated column review feedback
+- *(migrations)* preserve generated column dependency repairs
+- resolve PR 5615 review feedback
+- resolve PR 5615 conflicts and feedback
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.2.0...reinhardt-query@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-query` for the Reinhardt 0.3.0 line. This

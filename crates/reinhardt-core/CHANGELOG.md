@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.1...reinhardt-core@v0.4.0) - 2026-07-11
+
+### Added
+
+- *(query,migrations)* [**breaking**] support typed generated column expressions
+
+### Fixed
+
+- *(benchmark,macros)* address develop merge review feedback
+- *(migrations)* address generated column review feedback
+- *(migrations)* handle generated column followups
+- *(db)* preserve generated-column replacement metadata
+- *(db)* address generated column review feedback
+- *(db)* address generated column review follow-up
+- *(db)* complete generated column review repairs
+- *(db)* harden generated column edge cases
+- *(db)* reject invalid generated column definitions
+- *(macros)* gate MySQL generated-column test
+
+### Maintenance
+
+- merge latest main into develop forward-merge
+
 ## [0.3.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.0...reinhardt-core@v0.3.1) - 2026-07-04
 
 ### Fixed

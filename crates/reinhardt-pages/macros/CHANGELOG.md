@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.3.1...reinhardt-pages-macros@v0.4.0) - 2026-07-11
+
+### Added
+
+- *(pages)* collect and generate implicit body captures
+
+### Fixed
+
+- [**breaking**] preserve server_fn codec metadata invariants
+- *(pages)* complete implicit body capture analysis
+- *(pages)* validate page body capture scopes
+- *(pages)* resolve client form review feedback
+- *(pages)* tighten client form serde checks
+- *(pages)* tighten client form review bounds
+- *(pages)* tighten client form generated contracts
+- *(pages)* collapse client form default check
+- *(pages)* skip response metadata type parsing when disabled
+- *(pages)* address client form review feedback
+- *(pages)* address client form server fn review feedback
+- *(pages)* harden client form review edge cases
+- *(pages)* validate client form submit serde skips
+- *(pages)* harden client form metadata generation
+- *(pages)* harden client form wire compatibility
+- *(pages)* satisfy client form clippy
+- *(pages)* harden client form privacy
+
+### Maintenance
+
+- merge develop/0.4.0 into component route branch
+- merge develop/0.4.0 into accessibility pr
+- merge latest main into develop forward-merge
+- merge develop/0.4.0 into client form bindings
+
+### Performance
+
+- return server fn bytes directly
+- borrow server fn request bodies
+- avoid boxed server fn futures
+- fast path json server fn content type
+- [**breaking**] specialize json server fn hot path
+- specialize server fn codec response path
+
+### Testing
+
+- *(pages)* cover implicit page body captures
+
 ### Changed
 
 - **BREAKING**: `#[component]` now requires `name = "..."` for route names and

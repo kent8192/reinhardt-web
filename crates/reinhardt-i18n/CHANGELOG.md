@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-i18n@v0.3.1...reinhardt-i18n@v0.4.0) - 2026-07-11
+
+### Added
+
+- *(pages)* add reactive i18n translations
+
+### Fixed
+
+- *(pages)* harden reactive i18n state
+- *(i18n)* keep utility deps out of wasm pages
+- *(pages)* [**breaking**] address i18n review feedback
+- *(pages)* preserve i18n compatibility surfaces
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-i18n@v0.2.2...reinhardt-i18n@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-i18n` for the Reinhardt 0.3.0 line. This

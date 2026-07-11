@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.1...reinhardt-pages@v0.4.0) - 2026-07-11
+
+### Added
+
+- *(pages)* compose resource values with action results
+- *(pages)* parse page body form
+- *(pages)* collect and generate implicit body captures
+- feat!(pages): resolve SSR resources asynchronously
+
+### Documentation
+
+- docs!(pages): clarify direct body migration
+
+### Fixed
+
+- address 0.4 fast-path review comments
+- [**breaking**] preserve server_fn codec metadata invariants
+- *(pages)* complete implicit body capture analysis
+- *(pages)* validate page body capture scopes
+- *(pages)* harden async SSR resource rendering
+- *(pages)* complete ssr suspense resource replay
+- *(pages)* drain streamed ssr resource replays
+- *(pages)* stabilize suspense resource replay
+- *(pages)* address SSR resource review feedback
+- *(pages)* reuse tracked SSR resources during replay
+- *(pages)* harden streaming suspense resource scopes
+- *(pages)* reuse pending tracked SSR resources
+- *(pages)* scope suspense resource replay caches
+- *(pages)* remove shared suspense head cache
+- *(pages)* preserve SSR resource replay consistency
+- *(pages)* keep buffered suspense head capture request scoped
+- *(pages)* preserve marker render allocators
+- *(pages)* satisfy resource hydration clippy
+- *(pages)* harden suspense hydration state
+- *(pages)* stabilize client form submit UI fixtures
+- *(pages)* drop duplicate component tree arms
+- resolve PR 5615 conflicts and feedback
+
+### Maintenance
+
+- merge develop/0.4.0 into component route branch
+- merge remote async SSR resource branch
+- merge develop/0.4.0 into client form bindings
+- merge develop/0.4.0 into client form bindings
+
+### Performance
+
+- use compact exact route tables
+- revert compact exact route table experiment
+- return server fn bytes directly
+- borrow server fn request bodies
+- avoid boxed server fn futures
+- shrink server fn endpoint futures
+- fast path json server fn content type
+- streamline server fn responses
+- [**breaking**] specialize json server fn hot path
+- specialize server fn codec response path
+
+### Testing
+
+- update path parameter assertions
+- *(pages)* cover ast page body reexports
+- *(pages)* cover implicit page body captures
+
 ### Added
 
 - Add native component testing utilities under

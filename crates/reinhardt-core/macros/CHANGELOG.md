@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.3.1...reinhardt-macros@v0.4.0) - 2026-07-11
+
+### Added
+
+- *(dto)* support shared client validation
+- *(query,migrations)* [**breaking**] support typed generated column expressions
+
+### Fixed
+
+- address develop merge review feedback
+- *(benchmark,macros)* address develop merge review feedback
+- *(migrations)* address generated column review feedback
+- *(migrations)* handle generated column followups
+- *(db)* preserve generated-column replacement metadata
+- *(db)* address generated column review feedback
+- *(db)* address generated column review follow-up
+- *(db)* complete generated column review repairs
+- *(db)* harden generated column edge cases
+- *(db)* reject invalid generated column definitions
+- *(macros)* gate MySQL generated-column test
+
+### Maintenance
+
+- merge develop/0.4.0 into forward-merge branch
+- merge latest main into develop forward-merge
+
 ## [0.3.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.3.0...reinhardt-macros@v0.3.1) - 2026-07-04
 
 ### Fixed
