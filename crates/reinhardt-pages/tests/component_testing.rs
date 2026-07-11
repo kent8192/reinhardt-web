@@ -8,7 +8,7 @@ use reinhardt_core::types::page::{
 	DeferredNode, EventType, IntoPage, Outlet, Page, PageElement, SuspenseNode,
 };
 use reinhardt_pages::callback::async_handler;
-use reinhardt_pages::component::SuspenseBoundary;
+use reinhardt_pages::component::suspense::SuspenseBoundary;
 use reinhardt_pages::page;
 use reinhardt_pages::prelude::spawn_task;
 use reinhardt_pages::reactive::hooks::use_action;
@@ -43,13 +43,10 @@ fn ready_component() -> Page {
 }
 
 fn suspense_resource_component() -> Page {
-	let resource = use_resource(
-		|| async { Ok::<String, String>("Resolved suspense".to_string()) },
-		(),
-	);
+	let resource = use_resource(|| async { Ok::<String, String>("Ready".to_string()) }, ());
 	let content_resource = resource.clone();
 	SuspenseBoundary::new()
-		.fallback(|| text_page("Suspense loading"))
+		.fallback(|| text_page("Loading"))
 		.track(resource)
 		.content(move || string_resource_page(content_resource.get()))
 		.into_page()
@@ -183,45 +180,45 @@ fn outlet_pages_render_inline_children_and_placeholders() {
 }
 
 #[test]
-fn suspense_and_deferred_pages_render_native_test_dom_branches() {
-	let resolved_suspense = render(Page::Suspense(SuspenseNode::new(
-		None,
-		|| false,
-		|| text_page("Loading"),
-		|| text_page("Resolved"),
-	)));
-	assert!(resolved_suspense.query_by_text("Resolved").is_some());
-	assert!(resolved_suspense.query_by_text("Loading").is_none());
+fn suspense_pages_render_active_branch() {
+	let pending = Rc::new(Cell::new(true));
+	let screen = {
+		let pending = Rc::clone(&pending);
+		render(Page::Suspense(SuspenseNode::new(
+			None,
+			move || pending.get(),
+			|| text_page("Loading"),
+			|| text_page("Ready"),
+		)))
+	};
 
-	let pending_suspense = render(Page::Suspense(SuspenseNode::new(
-		None,
-		|| true,
-		|| text_page("Pending"),
-		|| text_page("Hidden"),
-	)));
-	assert!(pending_suspense.query_by_text("Pending").is_some());
-	assert!(pending_suspense.query_by_text("Hidden").is_none());
-
-	let deferred = render(Page::Deferred(DeferredNode::new(
-		"test-deferred",
-		|| text_page("Deferred loading"),
-		|| text_page("Deferred content"),
-	)));
-	assert!(deferred.query_by_text("Deferred content").is_some());
-	assert!(deferred.query_by_text("Deferred loading").is_none());
+	assert!(screen.query_by_text("Loading").is_some());
+	assert!(screen.query_by_text("Ready").is_none());
 }
 
 #[tokio::test]
-async fn suspense_pages_rerender_after_settle() {
+async fn suspense_pages_rerender_resolved_resource_after_settle() {
 	let screen = render(suspense_resource_component);
 
-	assert!(screen.query_by_text("Suspense loading").is_some());
-	assert!(screen.query_by_text("Resolved suspense").is_none());
+	assert!(screen.query_by_text("Loading").is_some());
+	assert!(screen.query_by_text("Ready").is_none());
 
 	screen.settle().await;
 
-	assert!(screen.query_by_text("Resolved suspense").is_some());
-	assert!(screen.query_by_text("Suspense loading").is_none());
+	assert!(screen.query_by_text("Ready").is_some());
+	assert!(screen.query_by_text("Loading").is_none());
+}
+
+#[test]
+fn deferred_pages_render_content_branch() {
+	let screen = render(Page::Deferred(DeferredNode::new(
+		"component-test",
+		|| text_page("Loading"),
+		|| text_page("Ready"),
+	)));
+
+	assert!(screen.query_by_text("Ready").is_some());
+	assert!(screen.query_by_text("Loading").is_none());
 }
 
 #[test]
