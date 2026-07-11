@@ -3,8 +3,11 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use reinhardt_core::types::page::{EventType, Page, PageEventHandler};
+use reinhardt_core::types::page::{
+	EventName, NativeEventFile, NativeEventTarget, Page, PageEventHandler,
+};
 
+use super::fixture::{EventFixtureError, TargetStatePatch};
 use super::scheduler::SchedulerScope;
 #[cfg(feature = "msw")]
 use super::server_fn_mock::SharedServerFnMocks;
@@ -35,8 +38,12 @@ pub(crate) struct ElementNode {
 	pub children: Vec<NodeId>,
 	parent: Option<NodeId>,
 	is_void: bool,
-	event_handlers: Vec<(EventType, PageEventHandler)>,
+	event_handlers: Vec<(EventName, PageEventHandler)>,
 	value: Option<String>,
+	checked: bool,
+	selected_values: Vec<String>,
+	files: Vec<NativeEventFile>,
+	content_editable: bool,
 }
 
 enum TestNode {
@@ -165,8 +172,9 @@ impl TestDom {
 	pub(crate) fn event_handlers(
 		&self,
 		node_id: NodeId,
-		event_type: EventType,
-	) -> Vec<PageEventHandler> {
+		event_name: &EventName,
+		bubbles: bool,
+	) -> Vec<(NodeId, PageEventHandler)> {
 		let mut handlers = Vec::new();
 		let mut current = Some(node_id);
 		while let Some(id) = current {
@@ -174,13 +182,42 @@ impl TestDom {
 				handlers.extend(
 					node.event_handlers
 						.iter()
-						.filter(|(candidate, _)| *candidate == event_type)
-						.map(|(_, handler)| handler.clone()),
+						.filter(|(candidate, _)| candidate.as_str() == event_name.as_str())
+						.map(|(_, handler)| (id, handler.clone())),
 				);
+			}
+			if !bubbles {
+				break;
 			}
 			current = self.parent(id);
 		}
 		handlers
+	}
+
+	pub(crate) fn event_target(&self, node_id: NodeId) -> Option<NativeEventTarget> {
+		let node = self.element(node_id)?;
+		let mut target = node
+			.attrs
+			.iter()
+			.fold(
+				NativeEventTarget::new(&node.tag),
+				|target, (name, value)| target.with_attribute(name, value),
+			)
+			.with_text_content(self.text_content(node_id));
+
+		if let Some(value) = &node.value {
+			target = target.with_value(value);
+		} else if node.content_editable {
+			target = target.with_value(self.text_content(node_id));
+		}
+
+		if node.tag == "input" && matches!(node.attr("type"), Some("checkbox" | "radio")) {
+			target = target.with_checked(node.checked);
+		}
+
+		target = target.with_selected_values(node.selected_values.clone());
+		target = target.with_files(node.files.clone());
+		Some(target.with_content_editable(node.content_editable))
 	}
 
 	pub(crate) fn suppresses_events(&self, node_id: NodeId) -> bool {
@@ -197,18 +234,62 @@ impl TestDom {
 		false
 	}
 
-	pub(crate) fn set_value(&mut self, node_id: NodeId, value: String) -> bool {
-		match self.nodes.get_mut(node_id) {
-			Some(TestNode::Element(node)) if node.supports_value() => {
-				node.value = Some(value);
-				true
-			}
-			_ => false,
+	pub(crate) fn apply_target_state(
+		&mut self,
+		node_id: NodeId,
+		patch: &TargetStatePatch,
+	) -> Result<(), EventFixtureError> {
+		let node = match self.nodes.get_mut(node_id) {
+			Some(TestNode::Element(node)) => node,
+			_ => return Ok(()),
+		};
+		let final_content_editable = patch.content_editable.unwrap_or(node.content_editable);
+		let supports_final_value =
+			node.supports_value_with_content_editable(final_content_editable);
+		let unsupported_property = if patch.value.is_some() && !supports_final_value {
+			Some("value")
+		} else if patch.checked.is_some()
+			&& !(node.tag == "input" && matches!(node.attr("type"), Some("checkbox" | "radio")))
+		{
+			Some("checked")
+		} else if patch.selected_values.is_some() && node.tag != "select" {
+			Some("selected_values")
+		} else if patch.files.is_some()
+			&& !(node.tag == "input" && node.attr("type") == Some("file"))
+		{
+			Some("files")
+		} else {
+			None
+		};
+		if let Some(property) = unsupported_property {
+			return Err(EventFixtureError::UnsupportedTargetState {
+				property,
+				actual_tag: node.tag.clone(),
+			});
 		}
+
+		node.content_editable = final_content_editable;
+		if let Some(selected_values) = &patch.selected_values {
+			node.value = selected_values.first().cloned();
+			node.selected_values.clone_from(selected_values);
+		} else if let Some(value) = &patch.value {
+			node.value = Some(value.clone());
+		}
+		if let Some(checked) = patch.checked {
+			node.checked = checked;
+		}
+		if let Some(files) = &patch.files {
+			node.files.clone_from(files);
+		}
+		Ok(())
 	}
 
 	pub(crate) fn value(&self, node_id: NodeId) -> Option<String> {
-		self.element(node_id).and_then(|node| node.value.clone())
+		self.element(node_id).and_then(|node| {
+			node.value
+				.clone()
+				.or_else(|| node.content_editable.then(|| self.text_content(node_id)))
+		})
 	}
 
 	pub(crate) fn children(&self, node_id: NodeId) -> &[NodeId] {
@@ -244,6 +325,12 @@ impl TestDom {
 					.iter()
 					.find(|(name, _)| name == "value")
 					.map(|(_, value)| value.clone());
+				let checked = attrs.iter().any(|(name, _)| name == "checked");
+				let selected_values = value.clone().into_iter().collect();
+				let content_editable = attrs
+					.iter()
+					.find(|(name, _)| name == "contenteditable")
+					.is_some_and(|(_, value)| value != "false");
 				let node_id = self.push_node(
 					parent,
 					TestNode::Element(ElementNode {
@@ -254,6 +341,10 @@ impl TestDom {
 						is_void,
 						event_handlers,
 						value,
+						checked,
+						selected_values,
+						files: Vec::new(),
+						content_editable,
 					}),
 				);
 				for child in children {
@@ -297,6 +388,10 @@ impl TestDom {
 							is_void: false,
 							event_handlers: Default::default(),
 							value: None,
+							checked: false,
+							selected_values: Vec::new(),
+							files: Vec::new(),
+							content_editable: false,
 						}),
 					);
 				}
@@ -460,8 +555,13 @@ impl ElementNode {
 	}
 
 	pub(crate) fn supports_value(&self) -> bool {
-		matches!(self.tag.as_str(), "input" | "textarea" | "select")
-			&& !(self.tag == "input" && self.attr("type") == Some("hidden"))
+		self.supports_value_with_content_editable(self.content_editable)
+	}
+
+	fn supports_value_with_content_editable(&self, content_editable: bool) -> bool {
+		content_editable
+			|| (matches!(self.tag.as_str(), "input" | "textarea" | "select")
+				&& !(self.tag == "input" && self.attr("type") == Some("hidden")))
 	}
 
 	pub(crate) fn is_disabled_form_control(&self) -> bool {

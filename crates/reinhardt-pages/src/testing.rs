@@ -29,6 +29,28 @@
 //!
 //! These tests run without a browser and are intended for component logic,
 //! query behavior, async hook settling, and typed server function mock flows.
+//! Standard event helpers dispatch the same catalog-selected payload types used
+//! in the browser. Use [`component::EventFixture`] for exact family data and
+//! target-state patches, then call [`component::Screen::settle`] after handlers
+//! schedule async or reactive work.
+//!
+//! ```rust,ignore
+//! use reinhardt_pages::event::InputEvent;
+//! use reinhardt_pages::page;
+//! use reinhardt_pages::testing::component::{EventFixture, render};
+//!
+//! let screen = render(page!({
+//!     input { aria_label: "Name", @input: |event: InputEvent| {
+//!         let value = event.value().expect("input target");
+//!         assert_eq!(value, "Ada");
+//!     } }
+//! }));
+//! screen
+//!     .get_by_label("Name")
+//!     .dispatch(EventFixture::input().value("Ada"))?;
+//! screen.settle();
+//! # Ok::<(), reinhardt_pages::testing::component::EventError>(())
+//! ```
 //!
 //! ## Layer 3: WASM Component Tests with Mocked HTTP
 //!

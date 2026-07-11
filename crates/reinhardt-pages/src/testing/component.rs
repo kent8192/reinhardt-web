@@ -2,6 +2,7 @@
 
 mod error;
 mod events;
+mod fixture;
 mod pretty;
 mod query;
 mod role;
@@ -17,6 +18,7 @@ mod tests;
 
 pub use error::{EventError, QueryError};
 pub use events::ElementHandle;
+pub use fixture::{EventFixture, EventFixtureError};
 pub use role::Role;
 pub use scheduler::SettleError;
 pub use screen::{Screen, TestRender, render};
