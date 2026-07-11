@@ -27,12 +27,14 @@
 //! })
 //! ```
 
+use core::marker::PhantomData;
 use std::future::Future;
 use std::sync::Arc;
 
 use crate::component::PageEventHandler;
 #[cfg(wasm)]
 use crate::platform::spawn_task;
+use crate::reactive::pages_arena::{PageNodeKey, PageNodeKind, allocate_page_node, with_page_node};
 
 #[cfg(wasm)]
 type EventArg = web_sys::Event;
@@ -67,9 +69,8 @@ type EventArg = crate::component::DummyEvent;
 ///     move |_| count.update(|n| *n += 1)
 /// });
 /// ```
-// Callback struct with conditional Send + Sync bounds for non-WASM targets
 #[cfg(wasm)]
-pub struct Callback<Args = EventArg, Ret = ()> {
+struct CallbackSlot<Args, Ret> {
 	inner: Arc<dyn Fn(Args) -> Ret + 'static>,
 }
 
@@ -78,13 +79,19 @@ pub struct Callback<Args = EventArg, Ret = ()> {
 /// See the WASM version for full documentation.
 /// This version requires `Send + Sync` bounds for thread-safe server-side usage.
 #[cfg(native)]
-pub struct Callback<Args = EventArg, Ret = ()> {
+struct CallbackSlot<Args, Ret> {
 	inner: Arc<dyn Fn(Args) -> Ret + Send + Sync + 'static>,
+}
+
+/// A copied key to a callback stored in the current reactive scope.
+pub struct Callback<Args = EventArg, Ret = ()> {
+	key: PageNodeKey,
+	_marker: PhantomData<fn(Args) -> Ret>,
 }
 
 // WASM implementation without Send + Sync bounds
 #[cfg(wasm)]
-impl<Args, Ret> Callback<Args, Ret> {
+impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 	/// Creates a new Callback from a function or closure.
 	///
 	/// # Arguments
@@ -102,22 +109,20 @@ impl<Args, Ret> Callback<Args, Ret> {
 	where
 		F: Fn(Args) -> Ret + 'static,
 	{
-		Self { inner: Arc::new(f) }
-	}
-
-	/// Calls the callback with the given arguments.
-	///
-	/// # Arguments
-	///
-	/// * `args` - The arguments to pass to the callback
-	pub fn call(&self, args: Args) -> Ret {
-		(self.inner)(args)
+		Self {
+			key: allocate_page_node(
+				"Callback::new",
+				PageNodeKind::Callback,
+				CallbackSlot { inner: Arc::new(f) },
+			),
+			_marker: PhantomData,
+		}
 	}
 }
 
 // Non-WASM implementation with Send + Sync bounds
 #[cfg(native)]
-impl<Args, Ret> Callback<Args, Ret> {
+impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 	/// Creates a new Callback from a function or closure.
 	///
 	/// # Arguments
@@ -135,24 +140,32 @@ impl<Args, Ret> Callback<Args, Ret> {
 	where
 		F: Fn(Args) -> Ret + Send + Sync + 'static,
 	{
-		Self { inner: Arc::new(f) }
-	}
-
-	/// Calls the callback with the given arguments.
-	///
-	/// # Arguments
-	///
-	/// * `args` - The arguments to pass to the callback
-	pub fn call(&self, args: Args) -> Ret {
-		(self.inner)(args)
+		Self {
+			key: allocate_page_node(
+				"Callback::new",
+				PageNodeKind::Callback,
+				CallbackSlot { inner: Arc::new(f) },
+			),
+			_marker: PhantomData,
+		}
 	}
 }
 
 impl<Args, Ret> Clone for Callback<Args, Ret> {
 	fn clone(&self) -> Self {
-		Self {
-			inner: Arc::clone(&self.inner),
-		}
+		*self
+	}
+}
+
+impl<Args, Ret> Copy for Callback<Args, Ret> {}
+
+impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
+	/// Call this callback with the supplied arguments.
+	pub fn call(&self, args: Args) -> Ret {
+		let inner =
+			with_page_node::<CallbackSlot<Args, Ret>, _>(self.key, |slot| Arc::clone(&slot.inner))
+				.unwrap_or_else(|err| panic!("{err}"));
+		inner(args)
 	}
 }
 
@@ -171,15 +184,16 @@ impl<Args, Ret> Clone for Callback<Args, Ret> {
 /// most recent deps tuple together with a type-erased `Arc<dyn Fn>`. The
 /// inner Arc is downcast and cloned into the returned `Callback`.
 #[allow(dead_code)]
-struct CallbackSlot {
+struct CallbackSlotEntry {
 	deps: smallvec::SmallVec<[reinhardt_core::reactive::runtime::NodeId; 8]>,
-	f_any: Arc<dyn std::any::Any>,
+	scope: reinhardt_core::reactive::ScopeId,
+	key_any: Arc<dyn std::any::Any>,
 }
 
 thread_local! {
 	#[allow(clippy::type_complexity)]
 	static CALLBACK_REGISTRY: std::cell::RefCell<
-		std::collections::HashMap<&'static str, CallbackSlot>,
+		std::collections::HashMap<&'static str, CallbackSlotEntry>,
 	> = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -203,8 +217,6 @@ where
 	Args: 'static,
 	Ret: 'static,
 {
-	type InnerArc<A, R> = Arc<dyn Fn(A) -> R + 'static>;
-
 	let loc = std::panic::Location::caller();
 	let key: &'static str = {
 		let s = format!("{}:{}:{}", loc.file(), loc.line(), loc.column());
@@ -213,30 +225,42 @@ where
 
 	CALLBACK_REGISTRY.with(|reg| {
 		let mut reg = reg.borrow_mut();
+		let scope = reinhardt_core::reactive::scope::current_scope_id().unwrap_or_else(|| {
+			panic!(
+				"{}",
+				reinhardt_core::reactive::ReactiveScopeError::NoActiveScope {
+					operation: "use_callback"
+				}
+			);
+		});
 		let new_ids: smallvec::SmallVec<[reinhardt_core::reactive::runtime::NodeId; 8]> =
 			deps.as_slice().iter().copied().collect();
 
-		let slot = reg.entry(key).or_insert_with(|| CallbackSlot {
+		let slot = reg.entry(key).or_insert_with(|| CallbackSlotEntry {
 			deps: smallvec::SmallVec::new(),
-			f_any: Arc::new(()) as Arc<dyn std::any::Any>,
+			scope,
+			key_any: Arc::new(()) as Arc<dyn std::any::Any>,
 		});
 
-		let needs_replace =
-			slot.deps.as_slice() != new_ids.as_slice() || !slot.f_any.is::<InnerArc<Args, Ret>>();
+		let needs_replace = slot.scope != scope
+			|| slot.deps.as_slice() != new_ids.as_slice()
+			|| !slot.key_any.is::<PageNodeKey>();
 
 		if needs_replace {
-			let new_fn: InnerArc<Args, Ret> = Arc::new(f);
+			let callback = Callback::new(f);
 			slot.deps = new_ids;
-			slot.f_any = Arc::new(new_fn) as Arc<dyn std::any::Any>;
+			slot.scope = scope;
+			slot.key_any = Arc::new(callback.key) as Arc<dyn std::any::Any>;
 		}
 
-		let typed: &InnerArc<Args, Ret> = slot
-			.f_any
-			.downcast_ref::<InnerArc<Args, Ret>>()
+		let saved_key = slot
+			.key_any
+			.downcast_ref::<PageNodeKey>()
 			.expect("CallbackSlot type mismatch — call site changed signature");
 
 		Callback {
-			inner: typed.clone(),
+			key: *saved_key,
+			_marker: PhantomData,
 		}
 	})
 }
@@ -257,8 +281,6 @@ where
 	Args: 'static,
 	Ret: 'static,
 {
-	type InnerArc<A, R> = Arc<dyn Fn(A) -> R + Send + Sync + 'static>;
-
 	let loc = std::panic::Location::caller();
 	let key: &'static str = {
 		let s = format!("{}:{}:{}", loc.file(), loc.line(), loc.column());
@@ -267,55 +289,64 @@ where
 
 	CALLBACK_REGISTRY.with(|reg| {
 		let mut reg = reg.borrow_mut();
+		let scope = reinhardt_core::reactive::scope::current_scope_id().unwrap_or_else(|| {
+			panic!(
+				"{}",
+				reinhardt_core::reactive::ReactiveScopeError::NoActiveScope {
+					operation: "use_callback"
+				}
+			);
+		});
 		let new_ids: smallvec::SmallVec<[reinhardt_core::reactive::runtime::NodeId; 8]> =
 			deps.as_slice().iter().copied().collect();
 
-		let slot = reg.entry(key).or_insert_with(|| CallbackSlot {
+		let slot = reg.entry(key).or_insert_with(|| CallbackSlotEntry {
 			deps: smallvec::SmallVec::new(),
-			f_any: Arc::new(()) as Arc<dyn std::any::Any>,
+			scope,
+			key_any: Arc::new(()) as Arc<dyn std::any::Any>,
 		});
 
-		let needs_replace =
-			slot.deps.as_slice() != new_ids.as_slice() || !slot.f_any.is::<InnerArc<Args, Ret>>();
+		let needs_replace = slot.scope != scope
+			|| slot.deps.as_slice() != new_ids.as_slice()
+			|| !slot.key_any.is::<PageNodeKey>();
 
 		if needs_replace {
-			let new_fn: InnerArc<Args, Ret> = Arc::new(f);
+			let callback = Callback::new(f);
 			slot.deps = new_ids;
-			slot.f_any = Arc::new(new_fn) as Arc<dyn std::any::Any>;
+			slot.scope = scope;
+			slot.key_any = Arc::new(callback.key) as Arc<dyn std::any::Any>;
 		}
 
-		let typed: &InnerArc<Args, Ret> = slot
-			.f_any
-			.downcast_ref::<InnerArc<Args, Ret>>()
+		let saved_key = slot
+			.key_any
+			.downcast_ref::<PageNodeKey>()
 			.expect("CallbackSlot type mismatch — call site changed signature");
 
 		Callback {
-			inner: typed.clone(),
+			key: *saved_key,
+			_marker: PhantomData,
 		}
 	})
 }
 
 #[cfg(test)]
-impl<Args, Ret> Callback<Args, Ret> {
+impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 	/// Test-only accessor for raw inner-Arc pointer identity.
 	///
 	/// Used by `callback_with_deps` tests to assert `Arc::ptr_eq` semantics.
 	/// Named `_rc_ptr` for historical alignment with the plan template
 	/// despite the inner being `Arc` not `Rc`.
 	pub(crate) fn inner_rc_ptr(&self) -> *const () {
-		// Take the address of the trait-object data pointer; using
-		// `Arc::as_ptr` yields a fat pointer (`*const dyn Fn(...)`) which
-		// is not directly comparable. We cast to a thin `*const u8` via
-		// `*const ()` for the equality assertion in tests.
-		Arc::as_ptr(&self.inner) as *const u8 as *const ()
+		with_page_node::<CallbackSlot<Args, Ret>, _>(self.key, |slot| {
+			Arc::as_ptr(&slot.inner) as *const u8 as *const ()
+		})
+		.unwrap_or_else(|err| panic!("{err}"))
 	}
 }
 
 impl<Args, Ret> std::fmt::Debug for Callback<Args, Ret> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("Callback")
-			.field("inner", &"<function>")
-			.finish()
+		f.debug_struct("Callback").field("key", &self.key).finish()
 	}
 }
 
@@ -377,7 +408,7 @@ where
 /// Implementation for Callback type.
 impl IntoEventHandler for Callback<EventArg, ()> {
 	fn into_event_handler(self) -> PageEventHandler {
-		self.inner
+		Arc::new(move |event| self.call(event))
 	}
 }
 
@@ -480,47 +511,78 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	fn callback_is_copy() {
+		fn assert_copy<T: Copy>() {}
+
+		assert_copy::<Callback<i32, i32>>();
+	}
+
+	#[rstest]
+	#[should_panic(expected = "Callback::new requires an active ReactiveScope")]
+	fn callback_new_requires_scope() {
+		let _ = Callback::new(|value: i32| value + 1);
+	}
+
+	#[rstest]
+	fn callback_call_works_inside_scope() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let callback = Callback::new(|value: i32| value + 1);
+			let copied = callback;
+			assert_eq!(callback.call(1), 2);
+			assert_eq!(copied.call(2), 3);
+		});
+	}
 
 	#[test]
 	fn test_callback_creation() {
-		let callback = Callback::new(|_: i32| 42);
-		assert_eq!(callback.call(0), 42);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let callback = Callback::new(|_: i32| 42);
+			assert_eq!(callback.call(0), 42);
+		});
 	}
 
 	#[test]
 	fn test_callback_clone() {
-		let callback1 = Callback::new(|x: i32| x * 2);
-		let callback2 = callback1.clone();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let callback1 = Callback::new(|x: i32| x * 2);
+			let callback2 = callback1;
 
-		assert_eq!(callback1.call(5), 10);
-		assert_eq!(callback2.call(5), 10);
+			assert_eq!(callback1.call(5), 10);
+			assert_eq!(callback2.call(5), 10);
+		});
 	}
 
 	#[test]
 	fn test_callback_with_captured_state() {
 		use std::sync::{Arc, Mutex};
 
-		// Use Arc<Mutex<T>> for thread-safe state (required for Send + Sync on non-WASM)
-		let counter = Arc::new(Mutex::new(0));
-		let callback = Callback::new({
-			let counter = Arc::clone(&counter);
-			move |increment: i32| {
-				*counter.lock().unwrap() += increment;
-			}
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let counter = Arc::new(Mutex::new(0));
+			let callback = Callback::new({
+				let counter = Arc::clone(&counter);
+				move |increment: i32| {
+					*counter.lock().unwrap() += increment;
+				}
+			});
+
+			callback.call(1);
+			callback.call(2);
+			callback.call(3);
+
+			assert_eq!(*counter.lock().unwrap(), 6);
 		});
-
-		callback.call(1);
-		callback.call(2);
-		callback.call(3);
-
-		assert_eq!(*counter.lock().unwrap(), 6);
 	}
 
 	#[test]
 	fn test_callback_debug() {
-		let callback = Callback::new(|_: ()| {});
-		let debug_str = format!("{:?}", callback);
-		assert!(debug_str.contains("Callback"));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let callback = Callback::new(|_: ()| {});
+			let debug_str = format!("{:?}", callback);
+			assert!(debug_str.contains("Callback"));
+		});
 	}
 
 	#[cfg(native)]
@@ -535,8 +597,10 @@ mod tests {
 	#[cfg(native)]
 	#[test]
 	fn test_into_event_handler_callback() {
-		let callback = Callback::new(|_: crate::component::DummyEvent| {});
-		let _handler: PageEventHandler = callback.into_event_handler();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let callback = Callback::new(|_: crate::component::DummyEvent| {});
+			let _handler: PageEventHandler = callback.into_event_handler();
+		});
 	}
 
 	#[cfg(native)]
@@ -566,56 +630,60 @@ mod tests_with_deps {
 	#[test]
 	#[serial]
 	fn callback_stable_when_deps_unchanged() {
-		// Arrange
-		let s = Signal::new(0_i32);
-		let mut prev: Option<*const ()> = None;
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let s = Signal::new(0_i32);
+			let mut prev: Option<*const ()> = None;
 
-		// Act — same call site (loop body) re-entered with same deps.
-		for _ in 0..3 {
-			let cb = callback_with_deps::<i32, ()>(
-				{
-					let s = s.clone();
-					move |x: i32| {
-						let _ = (x, s.get());
-					}
-				},
-				(s.clone(),).into_deps(),
-			);
-			let rc = cb.inner_rc_ptr();
-
-			// Assert
-			if let Some(prev_rc) = prev {
-				assert_eq!(
-					rc, prev_rc,
-					"Arc<Fn> identity must be stable when deps unchanged"
+			// Act — same call site (loop body) re-entered with same deps.
+			for _ in 0..3 {
+				let cb = callback_with_deps::<i32, ()>(
+					{
+						let s = s.clone();
+						move |x: i32| {
+							let _ = (x, s.get());
+						}
+					},
+					(s.clone(),).into_deps(),
 				);
+				let rc = cb.inner_rc_ptr();
+
+				// Assert
+				if let Some(prev_rc) = prev {
+					assert_eq!(
+						rc, prev_rc,
+						"Arc<Fn> identity must be stable when deps unchanged"
+					);
+				}
+				prev = Some(rc);
 			}
-			prev = Some(rc);
-		}
+		});
 	}
 
 	#[cfg(native)]
 	#[test]
 	#[serial]
 	fn callback_swaps_on_deps_change() {
-		// Arrange
-		let signals: Vec<Signal<i32>> = (0..3).map(Signal::new).collect();
-		let mut prev: Option<*const ()> = None;
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let signals: Vec<Signal<i32>> = (0..3).map(Signal::new).collect();
+			let mut prev: Option<*const ()> = None;
 
-		// Act — same call site (loop body) re-entered with different
-		// deps each iteration.
-		for s in &signals {
-			let cb = callback_with_deps::<i32, ()>(|_: i32| {}, (s.clone(),).into_deps());
-			let rc = cb.inner_rc_ptr();
+			// Act — same call site (loop body) re-entered with different
+			// deps each iteration.
+			for s in &signals {
+				let cb = callback_with_deps::<i32, ()>(|_: i32| {}, (s.clone(),).into_deps());
+				let rc = cb.inner_rc_ptr();
 
-			// Assert
-			if let Some(prev_rc) = prev {
-				assert_ne!(
-					rc, prev_rc,
-					"Arc<Fn> identity must change when deps NodeIds differ"
-				);
+				// Assert
+				if let Some(prev_rc) = prev {
+					assert_ne!(
+						rc, prev_rc,
+						"Arc<Fn> identity must change when deps NodeIds differ"
+					);
+				}
+				prev = Some(rc);
 			}
-			prev = Some(rc);
-		}
+		});
 	}
 }

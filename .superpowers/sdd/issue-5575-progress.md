@@ -12,7 +12,7 @@
 - Task 1: complete in `567e32805a` (`feat(core): add reactive scope arena foundation`)
 - Task 2: complete
 - Task 3: complete
-- Task 4: pending
+- Task 4: complete
 - Task 5: pending
 - Task 6: pending
 - Task 7: pending
@@ -62,3 +62,16 @@ GREEN:
   - Result: PASS, 11 passed, 0 failed.
 - `cargo test -j1 -p reinhardt-core --features reactive --lib reactive::effect::tests -- --test-threads=1`
   - Result: PASS, 19 passed, 0 failed.
+
+### Task 4: Pages arena and `Callback`
+
+RED:
+
+- `cargo test -j1 -p reinhardt-pages --lib callback_is_copy`
+  - Result: compile failure because `Callback<i32, i32>: Copy` was not implemented and moving the handle consumed it.
+- Existing callback tests initially failed because callback creation now requires an active scope.
+
+GREEN:
+
+- `cargo test -j1 -p reinhardt-pages --lib callback::tests -- --test-threads=1`
+  - Result: PASS, 12 passed, 0 failed.
