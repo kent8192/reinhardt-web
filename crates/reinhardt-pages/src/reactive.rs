@@ -7,6 +7,11 @@
 //! - [`Effect`]: A side effect that automatically reruns when dependencies change
 //! - [`Memo<T>`]: A cached computation that automatically updates when dependencies change
 //!
+//! Normal Pages entrypoints, including SSR rendering, hydration, and
+//! [`ClientLauncher`](crate::app::ClientLauncher), install and own reactive scopes
+//! automatically. Low-level code that creates nodes directly must use
+//! [`ReactiveScope::run`](reinhardt_core::reactive::ReactiveScope::run).
+//!
 //! ## Architecture
 //!
 //! The reactivity system is built on a pull-based model:
@@ -88,9 +93,8 @@
 //!
 //! ## Memory Management
 //!
-//! All reactive nodes (Signals, Effects, Memos) automatically clean up their dependencies
-//! when dropped, preventing memory leaks. However, Effects that capture references to
-//! Signals will keep those Signals alive - be mindful of circular dependencies.
+//! Reactive nodes are owned by the active scope and clean up together when that scope is
+//! dropped. Reactive handles are copied keys and do not extend the scope lifetime.
 
 // Re-export core reactive primitives from reinhardt-reactive
 pub use reinhardt_core::reactive::{

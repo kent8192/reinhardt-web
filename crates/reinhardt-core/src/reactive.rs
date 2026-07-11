@@ -23,27 +23,21 @@
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_core::reactive::{Signal, Effect, Memo};
+//! use reinhardt_core::reactive::{Signal, Effect, Memo, ReactiveScope};
 //!
-//! // Create signals
-//! let count = Signal::new(0);
-//! let name = Signal::new("Alice".to_string());
+//! ReactiveScope::run(|| {
+//!     // Low-level node creation requires an active scope.
+//!     let count = Signal::new(0);
+//!     let name = Signal::new("Alice".to_string());
+//!     let doubled = Memo::new(move || count.get() * 2);
 //!
-//! // Create a memo (derived value)
-//! let count_for_memo = count.clone();
-//! let doubled = Memo::new(move || count_for_memo.get() * 2);
+//!     Effect::new(move || {
+//!         println!("{}: count = {}, doubled = {}",
+//!             name.get(), count.get(), doubled.get());
+//!     });
 //!
-//! // Create an effect (side effect)
-//! let count_for_effect = count.clone();
-//! let name_for_effect = name.clone();
-//! let doubled_for_effect = doubled.clone();
-//! Effect::new(move || {
-//!     println!("{}: count = {}, doubled = {}",
-//!         name_for_effect.get(), count_for_effect.get(), doubled_for_effect.get());
+//!     count.set(5);
 //! });
-//!
-//! // Update signals - effect automatically reruns
-//! count.set(5);
 //! ```
 //!
 //! ## no_std Compatibility

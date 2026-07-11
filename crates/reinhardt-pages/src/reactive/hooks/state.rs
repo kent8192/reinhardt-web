@@ -23,7 +23,7 @@ use crate::reactive::runtime::{NodeId, with_runtime};
 
 /// A setter function for updating state.
 ///
-/// This is a cloneable function wrapper that updates the associated Signal.
+/// This is a reference-counted, cloneable function wrapper that updates the associated Signal.
 pub type SetState<T> = Rc<dyn Fn(T)>;
 
 /// A dispatch function for reducer actions.
@@ -352,7 +352,7 @@ impl<T: 'static> SharedSignal<T> {
 /// // Update the value
 /// set_count(current + 1);
 ///
-/// // Clone and use in event handler
+/// // The setter is reference-counted rather than Copy, so clone it for the handler.
 /// let handler = {
 ///     let set_count = set_count.clone();
 ///     move |_: ()| set_count(42)

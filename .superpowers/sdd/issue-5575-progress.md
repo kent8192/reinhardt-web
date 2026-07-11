@@ -15,7 +15,7 @@
 - Task 4: complete
 - Task 5: complete
 - Task 6: complete
-- Task 7: pending
+- Task 7: complete
 - Task 8: pending
 
 ## Verification ledger
@@ -109,4 +109,13 @@ GREEN:
 - `cargo check -j1 -p reinhardt-pages --all-features`
   - Result: PASS.
 - `cargo check -j1 --target wasm32-unknown-unknown -p reinhardt-pages --all-features`
+  - Result: PASS.
+
+### Task 7: clone-free hook acceptance and docs
+
+GREEN:
+
+- `cargo test -j1 -p reinhardt-pages --test hooks_deps_integration callback_accepts_copy_handles_without_clone_ceremony`
+  - Result: PASS, 1 passed, 0 failed.
+- `RUSTDOCFLAGS="-D warnings" cargo doc -j1 -p reinhardt-pages --all-features --no-deps`
   - Result: PASS.

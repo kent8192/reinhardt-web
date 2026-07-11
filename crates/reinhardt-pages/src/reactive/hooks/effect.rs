@@ -44,14 +44,11 @@ use crate::reactive::{Effect, runtime::EffectTiming};
 ///
 /// // Effect without cleanup; re-runs only when `count` changes.
 /// use_effect(
-///     {
-///         let count = count.clone();
-///         move || {
-///             log!("Count is now: {}", count.get());
-///             None::<fn()>
-///         }
+///     move || {
+///         log!("Count is now: {}", count.get());
+///         None::<fn()>
 ///     },
-///     (count.clone(),),
+///     (count,),
 /// );
 ///
 /// // Effect with cleanup, mount-only deps `()`.

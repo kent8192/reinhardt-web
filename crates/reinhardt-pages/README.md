@@ -272,7 +272,7 @@ fn error_display() -> View {
     let (error, set_error) = use_state(None::<String>);
 
     // Read the Signal inside page! (not before it)
-    let error_signal = error.clone();
+    let error_signal = error;
 
     page!({
         if error_signal.get().is_some() {
@@ -296,7 +296,7 @@ fn error_display() -> View {
 #### Best Practices
 
 1. **Pass Signals directly**: Use `Signal<T>` parameters instead of extracting values
-2. **Clone Signals**: `Signal::clone()` is cheap (Rc-based), so clone freely
+2. **Copy reactive handles**: Pass `Signal`, `Memo`, `Action`, `Resource`, and `Callback` handles directly
 3. **Clone captured handles**: direct `page!({ ... })` clones captured values into generated closures
 4. **Use closure form for factories**: keep `page!(|props: Props| { ... })` when the page must be called later
 

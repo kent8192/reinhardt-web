@@ -43,22 +43,18 @@ type EventArg = crate::component::DummyEvent;
 /// ```no_run
 /// use reinhardt_pages::reactive::hooks::{use_state, use_memo};
 ///
-/// let (items, set_items) = use_state(vec![1, 2, 3, 4, 5]);
-/// let (filter, set_filter) = use_state(2);
+/// let (items, _set_items) = use_state(vec![1, 2, 3, 4, 5]);
+/// let (filter, _set_filter) = use_state(2);
 ///
 /// // Expensive filtering operation - only re-runs when items or filter change
 /// let filtered = use_memo(
-///     {
-///         let items = items.clone();
-///         let filter = filter.clone();
-///         move || {
-///             items.get()
-///                 .into_iter()
-///                 .filter(|&x| x > filter.get())
-///                 .collect::<Vec<_>>()
-///         }
+///     move || {
+///         items.get()
+///             .into_iter()
+///             .filter(|&x| x > filter.get())
+///             .collect::<Vec<_>>()
 ///     },
-///     (items.clone(), filter.clone()),
+///     (items, filter),
 /// );
 ///
 /// // Reading the memoized value
@@ -100,13 +96,15 @@ where
 /// let (count, set_count) = use_state(0);
 ///
 /// // Memoized callback - reference won't change between renders
-/// let increment = use_callback({
-///     let count = count.clone();
-///     let set_count = set_count.clone();
-///     move |_event| {
-///         set_count(count.get() + 1);
-///     }
-/// });
+/// let increment = use_callback(
+///     {
+///         let set_count = set_count.clone();
+///         move |_event| {
+///             set_count(count.get() + 1);
+///         }
+///     },
+///     (count,),
+/// );
 ///
 /// page!(|| {
 ///     button {
@@ -118,9 +116,10 @@ where
 ///
 /// # Note
 ///
-/// Unlike React's useCallback, this doesn't require a dependency array.
-/// The callback captures values at creation time. To use the latest values,
-/// capture Signals (which are cheap to clone) rather than their values.
+/// Reinhardt uses an explicit dependency tuple rather than a JavaScript array.
+/// To use the latest values, capture reactive handles directly because they are
+/// `Copy`, rather than capturing value snapshots. Reference-counted setters may
+/// still need cloning.
 #[cfg(wasm)]
 #[track_caller]
 pub fn use_callback<F, D>(f: F, deps: D) -> Callback<EventArg, ()>

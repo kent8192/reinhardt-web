@@ -14,8 +14,36 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use reinhardt_core::reactive::Signal;
-use reinhardt_pages::reactive::hooks::{use_effect, use_memo};
+use reinhardt_pages::component::DummyEvent;
+use reinhardt_pages::reactive::hooks::{use_action, use_callback, use_effect, use_memo};
 use serial_test::serial;
+
+#[test]
+#[serial(reactive_runtime)]
+fn callback_accepts_copy_handles_without_clone_ceremony() {
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let route_project_id = Signal::new(7_i32);
+		let index_action = use_action(|_: i32| async { Ok::<(), String>(()) });
+		let search_action = use_action(|_: i32| async { Ok::<(), String>(()) });
+		let upload_action = use_action(|project_id: i32| async move {
+			assert_eq!(project_id, 7);
+			Ok::<(), String>(())
+		});
+
+		let upload_click = use_callback(
+			move |_| {
+				index_action.reset();
+				search_action.reset();
+				upload_action.dispatch(route_project_id.get());
+			},
+			(route_project_id,),
+		);
+
+		upload_click.call(DummyEvent::default());
+		assert!(index_action.is_idle());
+		assert!(search_action.is_idle());
+	});
+}
 
 /// Verifies that a Memo wired into an Effect's deps tuple re-runs the
 /// Effect when the Memo's listed deps change.
