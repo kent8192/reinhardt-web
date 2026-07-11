@@ -43,6 +43,10 @@ impl AuthIdentity for ManagedUser {
 	fn is_admin(&self) -> bool {
 		self.is_admin
 	}
+
+	fn is_active(&self) -> bool {
+		self.is_active
+	}
 }
 
 /// User management error

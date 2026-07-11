@@ -37,4 +37,7 @@ pub trait AuthIdentity: Send + Sync {
 
 	/// Returns whether this user is an administrator.
 	fn is_admin(&self) -> bool;
+
+	/// Returns whether this user account is active.
+	fn is_active(&self) -> bool;
 }
