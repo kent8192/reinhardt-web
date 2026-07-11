@@ -920,7 +920,7 @@ impl BaseCommand for MakeMigrationsCommand {
 				Operation::AddColumn { table, column, .. } => {
 					format!("Add field {} to {}", column.name, table)
 				}
-				Operation::DropColumn { table, column } => {
+				Operation::DropColumn { table, column, .. } => {
 					format!("Remove field {} from {}", column, table)
 				}
 				Operation::AlterColumn { table, column, .. } => {

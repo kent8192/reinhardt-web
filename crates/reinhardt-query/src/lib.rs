@@ -17,6 +17,7 @@
 //! - **Advanced SQL features** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
 //!
 //! ### DDL (Data Definition Language)
+//! - **Typed generated columns** - DDL-safe [`types::SchemaExpr`] builders for generated column bodies
 //! - **Schema management** - CREATE/ALTER/DROP SCHEMA (PostgreSQL, CockroachDB)
 //! - **Sequence operations** - CREATE/ALTER/DROP SEQUENCE (PostgreSQL, CockroachDB)
 //! - **Database operations** - CREATE/ALTER/DROP DATABASE (all backends)
@@ -394,7 +395,10 @@ pub mod prelude {
 	};
 	// DDL types
 	pub use crate::types::{BinOper, JoinType};
-	pub use crate::types::{ColumnDef, ColumnType, ForeignKeyAction, IndexDef, TableConstraint};
+	pub use crate::types::{
+		ColumnDef, ColumnType, ForeignKeyAction, GeneratedColumn, GeneratedStorage, IndexDef,
+		SchemaBinOper, SchemaExpr, SchemaFunc, TableConstraint,
+	};
 	// Value system
 	pub use crate::value::{ArrayType, IntoValue, Value, ValueTuple, Values};
 	// Iden derive macro (feature-gated)

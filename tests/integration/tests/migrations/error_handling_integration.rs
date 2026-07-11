@@ -59,6 +59,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		primary_key: false,
 		auto_increment: false,
 		default: None,
+		generated: None,
 	}
 }
 
@@ -631,6 +632,7 @@ async fn test_schema_drift_detection(
 		vec![Operation::DropColumn {
 			table: "drift_table".to_string(),
 			column: leak_str("expected_column").to_string(), // Column doesn't exist
+			old_definition: None,
 		}],
 	);
 

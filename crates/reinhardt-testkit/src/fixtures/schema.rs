@@ -144,6 +144,7 @@ pub fn field_info_to_column_definition(
 		primary_key: field_info.primary_key,
 		auto_increment,
 		default,
+		generated: None,
 	})
 }
 
