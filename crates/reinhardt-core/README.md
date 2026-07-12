@@ -162,6 +162,33 @@ fn validate_user(authenticated: bool, authorized: bool) -> Result<()> {
 }
 ```
 
+### Application HTTP Errors
+
+Application error enums can implement `HttpError` with `#[derive(HttpError)]`.
+Each variant declares the HTTP status and a client-facing message. When paired
+with `#[http_error(response)]`, Reinhardt also generates `From<ErrorEnum> for
+Response`.
+
+```rust
+use reinhardt::{HttpError, Response};
+
+#[derive(Debug, HttpError)]
+#[http_error(response)]
+enum AppError {
+    #[http_error(status = NOT_FOUND, message = "User not found")]
+    UserNotFound,
+    #[http_error(status = INTERNAL_SERVER_ERROR, message = "Database unavailable")]
+    Database,
+}
+
+fn render_error(error: AppError) -> Response {
+    Response::from(error)
+}
+```
+
+The default response body is safe for public APIs: 4xx responses include the
+client message as `detail`, while 5xx responses omit the detail.
+
 ### Signals
 
 ```rust

@@ -1,0 +1,6 @@
+error: missing `message = "..."` or `message_fn = ...`
+ --> tests/macros/ui/http_error/fail/missing_message.rs:5:2
+  |
+5 | /     #[http_error(status = BAD_REQUEST)]
+6 | |     Invalid,
+  | |___________^
