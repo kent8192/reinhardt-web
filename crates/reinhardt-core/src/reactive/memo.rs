@@ -13,25 +13,27 @@
 //! ## Example
 //!
 //! ```no_run
-//! use reinhardt_core::reactive::{Signal, Memo};
+//! use reinhardt_core::reactive::{Memo, ReactiveScope, Signal};
 //!
-//! let count = Signal::new(5);
+//! ReactiveScope::run(|| {
+//!     let count = Signal::new(5);
 //!
-//! // Create a memo that computes count * 2
-//! let count_for_memo = count.clone();
-//! let doubled = Memo::new(move || count_for_memo.get() * 2);
+//!     // Create a memo that computes count * 2
+//!     let count_for_memo = count;
+//!     let doubled = Memo::new(move || count_for_memo.get() * 2);
 //!
-//! // First access computes the value
-//! assert_eq!(doubled.get(), 10);
+//!     // First access computes the value
+//!     assert_eq!(doubled.get(), 10);
 //!
-//! // Second access uses cached value (no recomputation)
-//! assert_eq!(doubled.get(), 10);
+//!     // Second access uses cached value (no recomputation)
+//!     assert_eq!(doubled.get(), 10);
 //!
-//! // When dependency changes, memo is marked dirty
-//! count.set(10);
+//!     // When dependency changes, memo is marked dirty
+//!     count.set(10);
 //!
-//! // Next access recomputes
-//! assert_eq!(doubled.get(), 20);
+//!     // Next access recomputes
+//!     assert_eq!(doubled.get(), 20);
+//! });
 //! ```
 
 extern crate alloc;
@@ -75,22 +77,21 @@ pub(crate) fn mark_memo_dirty_by_id(memo_id: NodeId) {
 /// ## Example
 ///
 /// ```rust
-/// use reinhardt_core::reactive::{Signal, Memo, Effect};
+/// use reinhardt_core::reactive::{Effect, Memo, ReactiveScope, Signal};
 ///
-/// let first_name = Signal::new("John".to_string());
-/// let last_name = Signal::new("Doe".to_string());
+/// ReactiveScope::run(|| {
+///     let first_name = Signal::new("John".to_string());
+///     let last_name = Signal::new("Doe".to_string());
 ///
-/// // Memo caches the full name computation
-/// let first_clone = first_name.clone();
-/// let last_clone = last_name.clone();
-/// let full_name = Memo::new(move || {
-///     format!("{} {}", first_clone.get(), last_clone.get())
-/// });
+///     // Memo caches the full name computation
+///     let full_name = Memo::new(move || {
+///         format!("{} {}", first_name.get(), last_name.get())
+///     });
 ///
-/// // Effect uses the memo
-/// let full_name_clone = full_name.clone();
-/// Effect::new(move || {
-///     println!("Full name: {}", full_name_clone.get());
+///     // Effect uses the memo
+///     Effect::new(move || {
+///         println!("Full name: {}", full_name.get());
+///     });
 /// });
 /// ```
 pub struct Memo<T: Clone + 'static> {

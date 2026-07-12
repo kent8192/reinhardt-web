@@ -9,24 +9,26 @@
 //! - **Automatic Dependency Tracking**: Signal::get() calls inside the effect are automatically tracked
 //! - **Automatic Re-execution**: When a dependent Signal changes, the effect is scheduled for re-run
 //! - **Cleanup Support**: Optional cleanup function that runs before re-execution
-//! - **Memory Safe**: Automatically removes itself from the dependency graph when dropped
+//! - **Scope-owned**: Automatically removes itself from the dependency graph when its scope is disposed
 //!
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_core::reactive::{Signal, Effect};
+//! use reinhardt_core::reactive::{Effect, ReactiveScope, Signal};
 //!
-//! let count = Signal::new(0);
+//! ReactiveScope::run(|| {
+//!     let count = Signal::new(0);
 //!
-//! // Create an effect that logs the count
-//! let count_for_effect = count.clone();
-//! let _effect = Effect::new(move || {
-//!     // This get() call automatically creates a dependency
-//!     println!("Count is: {}", count_for_effect.get());
+//!     // Create an effect that logs the count
+//!     let count_for_effect = count;
+//!     let _effect = Effect::new(move || {
+//!         // This get() call automatically creates a dependency
+//!         println!("Count is: {}", count_for_effect.get());
+//!     });
+//!
+//!     // This will trigger the effect to re-run
+//!     count.set(42); // Prints: "Count is: 42"
 //! });
-//!
-//! // This will trigger the effect to re-run
-//! count.set(42); // Prints: "Count is: 42"
 //! ```
 
 use core::cell::RefCell;
@@ -68,26 +70,28 @@ pub(crate) fn get_effect_timing(effect_id: NodeId) -> Option<EffectTiming> {
 ///
 /// ## Cleanup
 ///
-/// Effects can optionally provide a cleanup function that runs before the effect is re-executed or dropped.
+/// Effects can optionally provide a cleanup function that runs before the effect is re-executed or its owning scope is disposed.
 /// This is useful for cleaning up event listeners, timers, etc.
 ///
 /// ## Example
 ///
 /// ```no_run
-/// use reinhardt_core::reactive::{Signal, Effect};
+/// use reinhardt_core::reactive::{Effect, ReactiveScope, Signal};
 ///
-/// let count = Signal::new(0);
-/// let doubled = Signal::new(0);
+/// ReactiveScope::run(|| {
+///     let count = Signal::new(0);
+///     let doubled = Signal::new(0);
 ///
-/// // Effect that keeps doubled in sync with count
-/// let count_clone = count.clone();
-/// let doubled_clone = doubled.clone();
-/// Effect::new(move || {
-///     doubled_clone.set(count_clone.get() * 2);
+///     // Effect that keeps doubled in sync with count
+///     let count_for_effect = count;
+///     let doubled_for_effect = doubled;
+///     Effect::new(move || {
+///         doubled_for_effect.set(count_for_effect.get() * 2);
+///     });
+///
+///     // After async update, doubled would be 10
+///     count.set(5);
 /// });
-///
-/// // After async update, doubled would be 10
-/// count.set(5);
 /// ```
 pub struct Effect {
 	key: NodeKey,

@@ -9,27 +9,29 @@
 //!   the dependency is automatically recorded.
 //! - **Change Notification**: When `set()` or `update()` is called, all dependent Effects
 //!   are automatically scheduled for re-execution.
-//! - **Lightweight**: `Signal<T>` is just a NodeId wrapper, making it cheap to clone and pass around.
+//! - **Lightweight**: `Signal<T>` is a copied key, so it can be passed around directly.
 //! - **Type-safe**: The value type is enforced at compile time.
 //!
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_core::reactive::Signal;
+//! use reinhardt_core::reactive::{ReactiveScope, Signal};
 //!
-//! // Create a signal
-//! let count = Signal::new(0);
+//! ReactiveScope::run(|| {
+//!     // Create a signal
+//!     let count = Signal::new(0);
 //!
-//! // Read the value
-//! assert_eq!(count.get(), 0);
+//!     // Read the value
+//!     assert_eq!(count.get(), 0);
 //!
-//! // Update the value
-//! count.set(42);
-//! assert_eq!(count.get(), 42);
+//!     // Update the value
+//!     count.set(42);
+//!     assert_eq!(count.get(), 42);
 //!
-//! // Update with a function
-//! count.update(|n| *n += 1);
-//! assert_eq!(count.get(), 43);
+//!     // Update with a function
+//!     count.update(|n| *n += 1);
+//!     assert_eq!(count.get(), 43);
+//! });
 //! ```
 
 use core::fmt;
@@ -101,10 +103,12 @@ impl<T: 'static> Signal<T> {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_core::reactive::Signal;
+	/// use reinhardt_core::reactive::{ReactiveScope, Signal};
 	///
-	/// let count = Signal::new(0);
-	/// assert_eq!(count.get(), 0);
+	/// ReactiveScope::run(|| {
+	///     let count = Signal::new(0);
+	///     assert_eq!(count.get(), 0);
+	/// });
 	/// ```
 	pub fn new(value: T) -> Self {
 		require_active_scope("Signal::new");
@@ -121,10 +125,12 @@ impl<T: 'static> Signal<T> {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_core::reactive::Signal;
+	/// use reinhardt_core::reactive::{ReactiveScope, Signal};
 	///
-	/// let count = Signal::new(42);
-	/// assert_eq!(count.get(), 42);
+	/// ReactiveScope::run(|| {
+	///     let count = Signal::new(42);
+	///     assert_eq!(count.get(), 42);
+	/// });
 	/// ```
 	pub fn get(&self) -> T
 	where
@@ -145,11 +151,14 @@ impl<T: 'static> Signal<T> {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_core::reactive::Signal;
+	/// use reinhardt_core::reactive::{ReactiveScope, Signal};
 	///
-	/// let count = Signal::new(42);
-	/// // This won't create a dependency
-	/// let value = count.get_untracked();
+	/// ReactiveScope::run(|| {
+	///     let count = Signal::new(42);
+	///     // This won't create a dependency
+	///     let value = count.get_untracked();
+	///     assert_eq!(value, 42);
+	/// });
 	/// ```
 	pub fn get_untracked(&self) -> T
 	where
@@ -176,11 +185,13 @@ impl<T: 'static> Signal<T> {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_core::reactive::Signal;
+	/// use reinhardt_core::reactive::{ReactiveScope, Signal};
 	///
-	/// let count = Signal::new(42);
-	/// let is_positive = count.with_untracked(|n| *n > 0);
-	/// assert!(is_positive);
+	/// ReactiveScope::run(|| {
+	///     let count = Signal::new(42);
+	///     let is_positive = count.with_untracked(|n| *n > 0);
+	///     assert!(is_positive);
+	/// });
 	/// ```
 	pub fn with_untracked<R>(&self, f: impl FnOnce(&T) -> R) -> R {
 		with_node::<SignalSlot<T>, _>(self.key, |slot| {
@@ -207,11 +218,13 @@ impl<T: 'static> Signal<T> {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_core::reactive::Signal;
+	/// use reinhardt_core::reactive::{ReactiveScope, Signal};
 	///
-	/// let count = Signal::new(0);
-	/// count.set(42);
-	/// assert_eq!(count.get(), 42);
+	/// ReactiveScope::run(|| {
+	///     let count = Signal::new(0);
+	///     count.set(42);
+	///     assert_eq!(count.get(), 42);
+	/// });
 	/// ```
 	pub fn set(&self, value: T) {
 		self.try_set(value).unwrap_or_else(|err| panic!("{err}"));
@@ -248,11 +261,13 @@ impl<T: 'static> Signal<T> {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_core::reactive::Signal;
+	/// use reinhardt_core::reactive::{ReactiveScope, Signal};
 	///
-	/// let count = Signal::new(0);
-	/// count.update(|n| *n += 1);
-	/// assert_eq!(count.get(), 1);
+	/// ReactiveScope::run(|| {
+	///     let count = Signal::new(0);
+	///     count.update(|n| *n += 1);
+	///     assert_eq!(count.get(), 1);
+	/// });
 	/// ```
 	pub fn update<F>(&self, f: F)
 	where
