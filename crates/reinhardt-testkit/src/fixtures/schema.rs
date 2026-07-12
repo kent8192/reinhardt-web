@@ -95,6 +95,8 @@ fn convert_attributes(attributes: &HashMap<String, FieldKwarg>) -> HashMap<Strin
 ///
 /// This function transforms the metadata extracted from a Model's field_metadata()
 /// into a ColumnDefinition that can be used in migration operations.
+/// String defaults are emitted as SQL string literals with embedded single quotes
+/// escaped by doubling them.
 ///
 /// # Arguments
 ///
@@ -115,7 +117,7 @@ pub fn field_info_to_column_definition(
 
 	// Handle default value
 	let default: Option<String> = field_info.default.as_ref().map(|d| match d {
-		FieldKwarg::String(s) => format!("'{}'", s),
+		FieldKwarg::String(s) => format!("'{}'", s.replace('\'', "''")),
 		FieldKwarg::Int(n) => n.to_string(),
 		FieldKwarg::Uint(n) => n.to_string(),
 		FieldKwarg::Bool(b) => b.to_string(),
@@ -976,6 +978,32 @@ mod tests {
 
 		assert_eq!(column.name, "usr_name");
 		assert_eq!(column.default.as_deref(), Some("'guest'"));
+	}
+
+	#[test]
+	fn test_field_info_to_column_definition_escapes_quotes_in_string_default() {
+		// Arrange
+		let field_info = FieldInfo {
+			name: "publisher".to_string(),
+			field_type: "CharField".to_string(),
+			nullable: false,
+			primary_key: false,
+			unique: false,
+			blank: false,
+			editable: true,
+			default: Some(FieldKwarg::String("O'Reilly".to_string())),
+			db_default: None,
+			db_column: None,
+			choices: None,
+			attributes: HashMap::from([("max_length".to_string(), FieldKwarg::Uint(80))]),
+		};
+
+		// Act
+		let column = field_info_to_column_definition(&field_info)
+			.expect("string default metadata should produce a column definition");
+
+		// Assert
+		assert_eq!(column.default.as_deref(), Some("'O''Reilly'"));
 	}
 
 	#[rstest]
