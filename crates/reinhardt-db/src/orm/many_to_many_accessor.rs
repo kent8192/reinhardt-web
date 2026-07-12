@@ -443,7 +443,7 @@ where
 		};
 
 		rows.into_iter()
-			.map(|row| serde_json::from_value(row.data).map_err(|e| e.to_string()))
+			.map(|row| row.deserialize_model::<T>().map_err(|e| e.to_string()))
 			.collect()
 	}
 
@@ -680,7 +680,7 @@ where
 		};
 
 		rows.into_iter()
-			.map(|row| serde_json::from_value(row.data).map_err(|e| e.to_string()))
+			.map(|row| row.deserialize_model::<S>().map_err(|e| e.to_string()))
 			.collect()
 	}
 }

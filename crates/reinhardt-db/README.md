@@ -234,6 +234,37 @@ pub struct User {
 - `#[field(generated = SchemaExpr::..., generated_stored = true)]` - Typed generated column expression
 - `#[field(generated_sql = "...", generated_stored = true)]` - Backend-specific raw SQL generated column expression
 
+Typed JSON fields use `Json<T>` to keep the Rust field type explicit while
+storing JSON in the database. Migrations emit JSONB for PostgreSQL/CockroachDB,
+JSON for MySQL, and TEXT for SQLite. Scalar wrappers such as `Json<String>` and
+`Json<bool>` are still stored and hydrated as JSON values. Manager, QuerySet,
+relationship accessor, and session operations preserve the typed value during
+writes and hydration. For nullable fields, `None` maps to SQL `NULL`, while
+`Some(Json::new(serde_json::Value::Null))` maps to a present JSON `null` value.
+
+```rust
+use reinhardt_db::Json;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+pub struct StyleSettings {
+    pub indent_width: u8,
+}
+
+#[derive(Serialize, Deserialize)]
+#[model(app_label = "myapp", table_name = "projects")]
+pub struct Project {
+    #[field(primary_key = true)]
+    pub id: i64,
+
+    #[field]
+    pub style_settings: Json<StyleSettings>,
+
+    #[field(null = true)]
+    pub metadata: Option<Json<serde_json::Value>>,
+}
+```
+
 For a complete list of field attributes, see the `#[field(...)]` macro documentation in `reinhardt-db-macros`.
 
 Generated columns should use `reinhardt_db::migrations::SchemaExpr` when the

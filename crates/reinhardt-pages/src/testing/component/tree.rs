@@ -312,46 +312,34 @@ impl TestDom {
 						else_view()
 					}
 				});
-				let anchor = self.push_node(
-					parent,
-					TestNode::ReactiveAnchor {
-						children: Vec::new(),
-						parent: Some(parent),
-						render: Rc::clone(&render),
-					},
-				);
-				self.append_page(anchor, render());
+				self.append_reactive_anchor(parent, render);
 			}
 			Page::Reactive(reactive) => {
 				let render_arc = reactive.into_render();
 				let render: Rc<dyn Fn() -> Page + 'static> = Rc::new(move || render_arc());
-				let anchor = self.push_node(
-					parent,
-					TestNode::ReactiveAnchor {
-						children: Vec::new(),
-						parent: Some(parent),
-						render: Rc::clone(&render),
-					},
-				);
-				self.append_page(anchor, render());
+				self.append_reactive_anchor(parent, render);
 			}
 			Page::Suspense(node) => {
 				let render: Rc<dyn Fn() -> Page + 'static> = Rc::new(move || node.render_branch());
-				let anchor = self.push_node(
-					parent,
-					TestNode::ReactiveAnchor {
-						children: Vec::new(),
-						parent: Some(parent),
-						render: Rc::clone(&render),
-					},
-				);
-				self.append_page(anchor, render());
+				self.append_reactive_anchor(parent, render);
 			}
 			Page::Deferred(node) => {
 				let content = node.render_content();
 				self.append_page(parent, content);
 			}
 		}
+	}
+
+	fn append_reactive_anchor(&mut self, parent: NodeId, render: Rc<dyn Fn() -> Page + 'static>) {
+		let anchor = self.push_node(
+			parent,
+			TestNode::ReactiveAnchor {
+				children: Vec::new(),
+				parent: Some(parent),
+				render: Rc::clone(&render),
+			},
+		);
+		self.append_page(anchor, render());
 	}
 
 	fn push_node(&mut self, parent: NodeId, node: TestNode) -> NodeId {

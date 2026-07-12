@@ -92,6 +92,8 @@ const FRAMEWORK_CRATE_PREFIXES: &[&str] = &[
 	"reinhardt_websockets::",
 ];
 
+const KEYED_FACTORY_OUTPUT_TYPE_PREFIX: &str = "reinhardt_di::factory_output::KeyedFactoryOutput<";
+
 /// Check if a type belongs to the reinhardt framework based on its
 /// fully-qualified name from `std::any::type_name`.
 ///
@@ -102,6 +104,24 @@ fn is_framework_type(qualified_name: &str) -> bool {
 	FRAMEWORK_CRATE_PREFIXES
 		.iter()
 		.any(|prefix| qualified_name.starts_with(prefix))
+}
+
+fn keyed_factory_output_value_type(qualified_name: &str) -> Option<&str> {
+	let arguments = qualified_name
+		.strip_prefix(KEYED_FACTORY_OUTPUT_TYPE_PREFIX)?
+		.strip_suffix('>')?;
+	let mut depth: usize = 0;
+
+	for (index, character) in arguments.char_indices() {
+		match character {
+			'<' => depth += 1,
+			'>' => depth = depth.checked_sub(1)?,
+			',' if depth == 0 => return Some(arguments[index + 1..].trim_start()),
+			_ => {}
+		}
+	}
+
+	None
 }
 
 /// Validates a [`DependencyRegistry`] for integrity at startup.
@@ -249,7 +269,10 @@ impl RegistryValidator {
 	/// if the registered type belongs to the reinhardt framework (pseudo orphan rule).
 	fn check_framework_type_override(&self, errors: &mut Vec<ValidationError>) {
 		for (type_id, qualified_name) in self.registry.iter_qualified_type_names() {
-			if is_framework_type(qualified_name) {
+			let is_direct_alias_of_user_output = self.registry.is_direct_provider_type(type_id)
+				&& keyed_factory_output_value_type(qualified_name)
+					.is_some_and(|value_type| !is_framework_type(value_type));
+			if is_framework_type(qualified_name) && !is_direct_alias_of_user_output {
 				let display_name = self.resolve_type_name(type_id);
 				errors.push(ValidationError {
 					kind: ValidationErrorKind::FrameworkTypeOverride,
@@ -795,7 +818,7 @@ mod tests {
 	#[case("reinhardt_rest::serializers::Serializer", "rest sub-crate")]
 	#[case("reinhardt_middleware::Middleware", "middleware sub-crate")]
 	#[case(
-		"reinhardt_di::depends::Depends<my_app::MyKey, my_app::MyType>",
+		"reinhardt_di::depends::KeyedDepends<my_app::MyKey, my_app::MyType>",
 		"generic framework type"
 	)]
 	fn test_framework_type_detected(#[case] type_name: &str, #[case] description: &str) {
@@ -825,6 +848,23 @@ mod tests {
 		assert!(!is_framework_type(type_name), "should allow: {description}");
 	}
 
+	#[rstest]
+	#[case(
+		"reinhardt_di::factory_output::KeyedFactoryOutput<my_app::ConfigKey, my_app::Config>",
+		Some("my_app::Config")
+	)]
+	#[case(
+		"reinhardt_di::factory_output::KeyedFactoryOutput<reinhardt_di::SelfKey<my_app::Config>, my_app::Result<my_app::Config, my_app::Error>>",
+		Some("my_app::Result<my_app::Config, my_app::Error>")
+	)]
+	#[case("reinhardt_di::context::InjectionContext", None)]
+	fn keyed_factory_output_value_type_extracts_the_top_level_value_type(
+		#[case] qualified_name: &str,
+		#[case] expected: Option<&str>,
+	) {
+		assert_eq!(keyed_factory_output_value_type(qualified_name), expected);
+	}
+
 	// === is_framework_type: edge cases ===
 
 	#[rstest]
@@ -847,7 +887,7 @@ mod tests {
 		"generic wrapping framework"
 	)]
 	#[case(
-		"core::option::Option<reinhardt_di::Depends<FooKey, Foo>>",
+		"core::option::Option<reinhardt_di::KeyedDepends<FooKey, Foo>>",
 		false,
 		"option wrapping framework"
 	)]

@@ -94,19 +94,18 @@ where
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::hooks::{use_state, use_callback};
+/// use reinhardt_pages::reactive::hooks::{SetStateExt, use_callback, use_state};
 /// use reinhardt_pages::page;
 ///
 /// let (count, set_count) = use_state(0);
 ///
 /// // Memoized callback - reference won't change between renders
 /// let increment = use_callback({
-///     let count = count.clone();
 ///     let set_count = set_count.clone();
 ///     move |_event| {
-///         set_count(count.get() + 1);
+///         set_count.update(|current| current + 1);
 ///     }
-/// }, (count.clone(),));
+/// }, ());
 ///
 /// page!(|| {
 ///     button {
