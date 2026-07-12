@@ -69,10 +69,8 @@ async fn boot_test_server(fixture_dir: &Path) -> (String, ServerGuard) {
 	// `index.html` for directory requests like `/`. This is the documented
 	// default in tower-http but is set explicitly so the test does not rely
 	// on version-specific behavior.
-	let app = Router::new().nest_service(
-		"/",
-		ServeDir::new(fixture_dir).append_index_html_on_directories(true),
-	);
+	let app = Router::new()
+		.fallback_service(ServeDir::new(fixture_dir).append_index_html_on_directories(true));
 
 	// Bind to 0.0.0.0 so the chromedp container can reach the listener via
 	// `host.docker.internal` on Linux CI. With `--add-host=...:host-gateway`
