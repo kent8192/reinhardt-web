@@ -186,6 +186,7 @@ impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 struct CallbackSlotEntry {
 	deps: smallvec::SmallVec<[reinhardt_core::reactive::runtime::NodeId; 8]>,
 	scope: reinhardt_core::reactive::ScopeId,
+	callback_type: std::any::TypeId,
 	key_any: Arc<dyn std::any::Any>,
 }
 
@@ -238,17 +239,20 @@ where
 		let slot = reg.entry(key).or_insert_with(|| CallbackSlotEntry {
 			deps: smallvec::SmallVec::new(),
 			scope,
+			callback_type: std::any::TypeId::of::<()>(),
 			key_any: Arc::new(()) as Arc<dyn std::any::Any>,
 		});
 
 		let needs_replace = slot.scope != scope
 			|| slot.deps.as_slice() != new_ids.as_slice()
+			|| slot.callback_type != std::any::TypeId::of::<(Args, Ret)>()
 			|| !slot.key_any.is::<PageNodeKey>();
 
 		if needs_replace {
 			let callback = Callback::new(f);
 			slot.deps = new_ids;
 			slot.scope = scope;
+			slot.callback_type = std::any::TypeId::of::<(Args, Ret)>();
 			slot.key_any = Arc::new(callback.key) as Arc<dyn std::any::Any>;
 		}
 
@@ -302,17 +306,20 @@ where
 		let slot = reg.entry(key).or_insert_with(|| CallbackSlotEntry {
 			deps: smallvec::SmallVec::new(),
 			scope,
+			callback_type: std::any::TypeId::of::<()>(),
 			key_any: Arc::new(()) as Arc<dyn std::any::Any>,
 		});
 
 		let needs_replace = slot.scope != scope
 			|| slot.deps.as_slice() != new_ids.as_slice()
+			|| slot.callback_type != std::any::TypeId::of::<(Args, Ret)>()
 			|| !slot.key_any.is::<PageNodeKey>();
 
 		if needs_replace {
 			let callback = Callback::new(f);
 			slot.deps = new_ids;
 			slot.scope = scope;
+			slot.callback_type = std::any::TypeId::of::<(Args, Ret)>();
 			slot.key_any = Arc::new(callback.key) as Arc<dyn std::any::Any>;
 		}
 
@@ -623,6 +630,15 @@ mod tests_with_deps {
 	use reinhardt_core::reactive::signal::Signal;
 	use serial_test::serial;
 
+	#[cfg(native)]
+	fn callback_from_shared_call_site<Args, Ret>() -> Callback<Args, Ret>
+	where
+		Args: 'static,
+		Ret: Default + 'static,
+	{
+		callback_with_deps(|_: Args| Ret::default(), ().into_deps())
+	}
+
 	// `callback_with_deps` keys its registry slot by the caller's
 	// `(file, line, column)` via `#[track_caller]`. To exercise the slot
 	// reuse path, both invocations MUST originate from the SAME source
@@ -686,6 +702,19 @@ mod tests_with_deps {
 				}
 				prev = Some(rc);
 			}
+		});
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial]
+	fn callback_replaces_slot_when_call_site_signature_changes() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let integer_callback = callback_from_shared_call_site::<i32, i32>();
+			assert_eq!(integer_callback.call(1), 0);
+
+			let string_callback = callback_from_shared_call_site::<String, String>();
+			assert_eq!(string_callback.call(String::from("input")), "");
 		});
 	}
 }

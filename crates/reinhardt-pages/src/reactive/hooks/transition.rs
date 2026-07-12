@@ -174,7 +174,7 @@ pub fn use_deferred_value<T: Clone + 'static>(value: Signal<T>) -> Signal<T> {
 				use crate::platform::spawn_task;
 				let deferred_clone = deferred_clone;
 				spawn_task(async move {
-					deferred_clone.set(new_value);
+					let _ = deferred_clone.try_set(new_value);
 				});
 			}
 
