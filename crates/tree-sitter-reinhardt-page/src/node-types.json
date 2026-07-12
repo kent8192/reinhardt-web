@@ -1,5 +1,28 @@
 [
   {
+    "type": "attribute",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "comma",
+          "named": true
+        },
+        {
+          "type": "fragment",
+          "named": true
+        },
+        {
+          "type": "rustfmt_island",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "block",
     "named": true,
     "fields": {},
@@ -7,6 +30,10 @@
       "multiple": true,
       "required": false,
       "types": [
+        {
+          "type": "attribute",
+          "named": true
+        },
         {
           "type": "block",
           "named": true
@@ -24,11 +51,35 @@
           "named": true
         },
         {
+          "type": "closure_args",
+          "named": true
+        },
+        {
           "type": "comma",
           "named": true
         },
         {
+          "type": "component_call",
+          "named": true
+        },
+        {
+          "type": "control_flow",
+          "named": true
+        },
+        {
+          "type": "element",
+          "named": true
+        },
+        {
+          "type": "event_attribute",
+          "named": true
+        },
+        {
           "type": "fragment",
+          "named": true
+        },
+        {
+          "type": "interpolation",
           "named": true
         },
         {
@@ -63,6 +114,10 @@
       "required": false,
       "types": [
         {
+          "type": "attribute",
+          "named": true
+        },
+        {
           "type": "block",
           "named": true
         },
@@ -83,7 +138,27 @@
           "named": true
         },
         {
+          "type": "component_call",
+          "named": true
+        },
+        {
+          "type": "control_flow",
+          "named": true
+        },
+        {
+          "type": "element",
+          "named": true
+        },
+        {
+          "type": "event_attribute",
+          "named": true
+        },
+        {
           "type": "fragment",
+          "named": true
+        },
+        {
+          "type": "interpolation",
           "named": true
         },
         {
@@ -110,6 +185,217 @@
     }
   },
   {
+    "type": "closure_args",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "component_call",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "block",
+          "named": true
+        },
+        {
+          "type": "component_identifier",
+          "named": true
+        },
+        {
+          "type": "paren",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "control_flow",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "for_control_flow",
+          "named": true
+        },
+        {
+          "type": "if_control_flow",
+          "named": true
+        },
+        {
+          "type": "match_control_flow",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "element",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "block",
+          "named": true
+        },
+        {
+          "type": "fragment",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "else_clause",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "block",
+          "named": true
+        },
+        {
+          "type": "control_flow",
+          "named": true
+        },
+        {
+          "type": "fragment",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "event_attribute",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "comma",
+          "named": true
+        },
+        {
+          "type": "fragment",
+          "named": true
+        },
+        {
+          "type": "rustfmt_island",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "for_control_flow",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "block",
+          "named": true
+        },
+        {
+          "type": "fragment",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "if_control_flow",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "block",
+          "named": true
+        },
+        {
+          "type": "else_clause",
+          "named": true
+        },
+        {
+          "type": "fragment",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "interpolation",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "rustfmt_island",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "match_control_flow",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "block",
+          "named": true
+        },
+        {
+          "type": "fragment",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "page_closure",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "block",
+          "named": true
+        },
+        {
+          "type": "closure_args",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "paren",
     "named": true,
     "fields": {},
@@ -117,6 +403,10 @@
       "multiple": true,
       "required": false,
       "types": [
+        {
+          "type": "attribute",
+          "named": true
+        },
         {
           "type": "block",
           "named": true
@@ -135,6 +425,81 @@
         },
         {
           "type": "comma",
+          "named": true
+        },
+        {
+          "type": "component_call",
+          "named": true
+        },
+        {
+          "type": "control_flow",
+          "named": true
+        },
+        {
+          "type": "element",
+          "named": true
+        },
+        {
+          "type": "event_attribute",
+          "named": true
+        },
+        {
+          "type": "fragment",
+          "named": true
+        },
+        {
+          "type": "interpolation",
+          "named": true
+        },
+        {
+          "type": "line_comment",
+          "named": true
+        },
+        {
+          "type": "paren",
+          "named": true
+        },
+        {
+          "type": "raw_string",
+          "named": true
+        },
+        {
+          "type": "semicolon",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "rustfmt_island",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "block",
+          "named": true
+        },
+        {
+          "type": "block_comment",
+          "named": true
+        },
+        {
+          "type": "bracket",
+          "named": true
+        },
+        {
+          "type": "char",
+          "named": true
+        },
+        {
+          "type": "closure_args",
           "named": true
         },
         {
@@ -174,6 +539,10 @@
       "required": false,
       "types": [
         {
+          "type": "attribute",
+          "named": true
+        },
+        {
           "type": "block",
           "named": true
         },
@@ -194,11 +563,35 @@
           "named": true
         },
         {
+          "type": "component_call",
+          "named": true
+        },
+        {
+          "type": "control_flow",
+          "named": true
+        },
+        {
+          "type": "element",
+          "named": true
+        },
+        {
+          "type": "event_attribute",
+          "named": true
+        },
+        {
           "type": "fragment",
           "named": true
         },
         {
+          "type": "interpolation",
+          "named": true
+        },
+        {
           "type": "line_comment",
+          "named": true
+        },
+        {
+          "type": "page_closure",
           "named": true
         },
         {
@@ -246,6 +639,10 @@
   },
   {
     "type": "comma",
+    "named": true
+  },
+  {
+    "type": "component_identifier",
     "named": true
   },
   {

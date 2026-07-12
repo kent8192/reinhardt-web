@@ -1,0 +1,72 @@
+[suite]
+name = "reinhardt-framework-comparison"
+description = "Framework comparison benchmark matrix for Reinhardt, Axum, Actix Web, and Loco."
+
+[targets.reinhardt]
+label = "Reinhardt"
+adapter = "reinhardt-native"
+
+[targets.axum]
+label = "Axum"
+adapter = "axum-native"
+
+[targets.actix-web]
+label = "Actix Web"
+adapter = "actix-web-native"
+
+[targets.loco]
+label = "Loco"
+adapter = "loco-native"
+
+[categories.runtime]
+runner = "criterion"
+scenarios = [
+  "hello_world",
+  "json_echo",
+  "path_params",
+  "query_params",
+  "middleware_chain",
+  "dependency_injection",
+  "settings_access",
+]
+
+[categories.database]
+runner = "criterion"
+scenarios = [
+  "single_select",
+  "list_100_rows",
+  "insert_one",
+  "update_one",
+  "transaction",
+  "n_plus_one_detection",
+]
+
+[categories.compile_time]
+runner = "hyperfine"
+scenarios = [
+  "clean_build_minimal",
+  "clean_build_full",
+  "incremental_model_change",
+  "incremental_route_change",
+  "cargo_check",
+]
+
+[categories.contract]
+runner = "criterion"
+scenarios = [
+  "introspect_small_app",
+  "introspect_medium_app",
+  "validate_contract",
+  "generate_cloud_plan",
+  "dry_run_deploy",
+]
+
+[categories.admin]
+runner = "criterion"
+scenarios = [
+  "list_view_1k",
+  "list_view_100k",
+  "detail_view",
+  "create_form",
+  "search_filter",
+]

@@ -4,7 +4,7 @@ error[E0308]: mismatched types
 9 |     let _ = use_effect(|| {});
   |                           ^^ expected `Option<_>`, found `()`
   |
-  = note:   expected enum `Option<_>`
+  = note:   expected enum `std::option::Option<_>`
           found unit type `()`
 
 error[E0061]: this function takes 2 arguments but 1 argument was supplied

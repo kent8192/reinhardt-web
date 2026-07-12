@@ -5,27 +5,33 @@
 //! ## Aggregating app routers
 //!
 //! Each app owns its server-function marker registrations in
-//! `src/apps/<app>/urls/server_urls.rs` and exposes them through
-//! `src/apps/<app>/urls.rs`. After running
+//! `src/apps/<app>/urls/server_router.rs` and exposes them through the
+//! target-gated aggregate in `src/apps/<app>/urls.rs`. After running
 //! `reinhardt-admin startapp <name> --with-pages`, aggregate the app-level
 //! router functions here:
 //!
 //! ```rust,ignore
-//! let router = UnifiedRouter::new()
-//!     .server(|s| s.mount("/", crate::apps::<name>::urls::server_url_patterns()))
-//!     .mount_unified(
-//!         "/",
-//!         UnifiedRouter::new()
-//!             .client(|_| crate::apps::<name>::urls::client_url_patterns()),
-//!     );
+//! let router = UnifiedRouter::new();
+//!
+//! #[cfg(server)]
+//! let router = router.mount_unified(
+//!     "/",
+//!     UnifiedRouter::new().server(|s| s.mount("/", crate::apps::<name>::urls::server_url_patterns())),
+//! );
+//!
+//! #[cfg(client)]
+//! let router = router.mount_unified(
+//!     "/",
+//!     UnifiedRouter::new().client(|_| crate::apps::<name>::urls::client_url_patterns()),
+//! );
 //! ```
 //!
 //! ## Registering client routers
 //!
-//! Client routers for each app are declared in
-//! `src/apps/<app>/urls/client_router.rs` and exposed from
-//! `src/apps/<app>/urls.rs`. Aggregate them here with `mount_unified`; the
-//! WASM launcher collects the route table from the `#[routes]` registration.
+//! Client route tables for each app are declared in
+//! `src/apps/<app>/urls/client_router.rs`. Aggregate them here through each
+//! app's `urls.rs`; the WASM launcher collects the route table from the
+//! `#[routes]` registration.
 
 use reinhardt::prelude::*;
 use reinhardt::routes;
@@ -37,7 +43,7 @@ pub fn routes() -> UnifiedRouter {
     // Add your API endpoint patterns here
     // Example:
     // router.include_router("/api/v1/", api_v1_router, Some("api_v1".to_string()));
-    // router.function("/health", Method::GET, health_check);
+    // router.endpoint(health_check);
     //
     // Or register ViewSets:
     // router.register_viewset("users", user_viewset);
@@ -46,15 +52,16 @@ pub fn routes() -> UnifiedRouter {
     // in this project-level file; each app's `urls` module owns that list.
     //
     // #[cfg(server)]
-    // let router = router.server(|s| {
-    //     s.mount("/", crate::apps::<your_app>::urls::server_url_patterns())
-    // });
+    // let router = router.mount_unified(
+    //     "/",
+    //     UnifiedRouter::new()
+    //         .server(|s| s.mount("/", crate::apps::<your_app>::urls::server_url_patterns())),
+    // );
     //
     // #[cfg(client)]
     // let router = router.mount_unified(
     //     "/",
-    //     UnifiedRouter::new()
-    //         .client(|_| crate::apps::<your_app>::urls::client_url_patterns()),
+    //     UnifiedRouter::new().client(|_| crate::apps::<your_app>::urls::client_url_patterns()),
     // );
 
     router

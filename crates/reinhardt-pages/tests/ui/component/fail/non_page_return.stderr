@@ -1,0 +1,5 @@
+error: #[component] functions must return Page
+ --> tests/ui/component/fail/non_page_return.rs:6:1
+  |
+6 | fn user_name(Path(id): Path<i64>) -> String {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

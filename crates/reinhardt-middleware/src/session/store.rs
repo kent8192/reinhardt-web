@@ -6,6 +6,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::data::SessionData;
 
+/// DI key for resolving the middleware-owned session store through
+/// `Depends<SessionStoreKey, Arc<SessionStore>>`.
+#[derive(Debug, Clone, Copy)]
+pub struct SessionStoreKey;
+
+impl reinhardt_di::InjectableKey for SessionStoreKey {}
+
 /// Session store with automatic lazy eviction of expired sessions
 ///
 /// Performs threshold-based lazy cleanup of expired sessions to prevent

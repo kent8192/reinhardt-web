@@ -7,7 +7,7 @@
 
 use hyper::Method;
 use reinhardt_di::InjectionContext;
-use reinhardt_http::Handler;
+use reinhardt_http::{Handler, PathParams};
 use reinhardt_middleware::Middleware;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -104,9 +104,9 @@ pub(crate) struct RouteMatch {
 
 	/// Extracted path parameters in URL pattern declaration order.
 	///
-	/// Stored as an ordered `Vec<(name, value)>` so downstream extractors such
+	/// Stored as ordered [`PathParams`] so downstream extractors such
 	/// as `Path<(T1, T2)>` can rely on URL declaration order. See issue #4013.
-	pub params: Vec<(String, String)>,
+	pub params: PathParams,
 
 	/// Middleware stack to apply (parent → child order)
 	pub middleware_stack: Vec<Arc<dyn Middleware>>,
@@ -118,7 +118,7 @@ pub(crate) struct RouteMatch {
 impl RouteMatch {
 	/// Look up a path parameter by name.
 	///
-	/// `params` is stored as an ordered `Vec` (see issue #4013) so this helper
+	/// `params` is stored in declaration order (see issue #4013) so this helper
 	/// performs a linear scan. Path parameter sets are tiny in practice
 	/// (typically 1–3 entries), so the cost is negligible compared to a
 	/// `HashMap` lookup.

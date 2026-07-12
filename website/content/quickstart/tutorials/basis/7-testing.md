@@ -23,10 +23,6 @@ name = "integration"
 required-features = ["with-reinhardt"]
 ```
 
-Keep this gate. The WASM test task runs Cargo with `--no-default-features` so
-browser tests do not compile native-only test dependencies such as `sqlx`,
-`tokio`, and `tempfile`.
-
 The WASM tests live under `tests/wasm/`, so Cargo needs explicit `[[test]]` entries:
 
 ```toml
@@ -77,6 +73,10 @@ Gate native tests so `wasm-pack test` does not try to link `sqlx` for `wasm32-un
 ```rust
 #![cfg(server)]
 ```
+
+Keep those dependencies native-only. If `tokio`, `sqlx`, or `tempfile` are
+placed in the shared `[dev-dependencies]` table, `wasm-pack test` will try to
+compile their native transitive dependencies for `wasm32-unknown-unknown`.
 
 ## Build an Isolated SQLite Fixture
 
@@ -154,28 +154,35 @@ Use `#[serial(server_fn_tests)]` for tests that share global ORM state.
 
 ## Test Auth Gates
 
-The current auth CUD tests focus on the authentication gate. They construct the same shape that the request-scoped factory would return for an anonymous session:
+Anonymous rejection is handled by the `CurrentUser<User>` injector before a server-function body runs. The direct-call CUD tests therefore focus on the handler-local inactive-user guard:
 
 ```rust
-fn anonymous_session_user() -> Depends<Result<User, SessionError>> {
-    Depends::from_value(Err(SessionError::Anonymous))
+fn inactive_current_user() -> CurrentUser<User> {
+    CurrentUser(
+        User::build()
+            .username("inactive-user".to_string())
+            .password_hash(None)
+            .is_active(false)
+            .is_superuser(false)
+            .finish(),
+    )
 }
 ```
 
-Then they call CUD functions and assert 401 before any database mutation path runs:
+Then they call CUD functions and assert a 403 before any database mutation path runs:
 
 ```rust
 let result = create_question(
-    "Anonymous question".to_string(),
+    "Inactive attempt".to_string(),
     db_conn,
-    anonymous_session_user(),
+    inactive_current_user(),
 )
 .await;
 
 assert!(result.is_err());
 ```
 
-Do not claim this fixture covers every ownership path. Author success and non-author 403 cases require a fixture with `users` plus the `Question.author` foreign key.
+Do not claim this fixture covers every ownership path. Author success, non-author 403 cases, and anonymous-injector 401 cases require a request/DI fixture with `users` plus `questions.author_id`.
 
 ## Test Createsuperuser Wiring
 
@@ -202,6 +209,14 @@ The same file checks password hashing and `SuperuserCreatorRegistration` invento
 
 ## Add WASM Poll Tests
 
+Add the browser test dependencies:
+
+```toml
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+gloo-timers = { version = "0.3", features = ["futures"] }
+wasm-bindgen-test = "0.3"
+```
+
 WASM tests run in a browser:
 
 ```rust
@@ -215,10 +230,10 @@ wasm_bindgen_test_configure!(run_in_browser);
 The polls test imports real components and server-function markers:
 
 ```rust
-use examples_tutorial_basis::apps::polls::client::components::{
+use tutorial::apps::polls::client::components::{
     polls_detail, polls_index, polls_results,
 };
-use examples_tutorial_basis::apps::polls::server_fn::{
+use tutorial::apps::polls::server_fn::{
     get_question_detail, get_question_results, get_questions, vote,
 };
 use reinhardt::test::msw::MockServiceWorker;
@@ -244,17 +259,17 @@ async fn test_get_questions_returns_mocked_list() {
 }
 ```
 
-The rest of `polls_mock_test.rs` covers rendering, detail/results round trips, vote success/error paths, radio checked-state behavior, and serialization of shared DTOs.
+The rest of `polls_mock_test.rs` covers rendering, detail/results round trips, vote success/error paths, radio checked-state behavior, and serialization of the generated model info DTOs.
 
 ## Add WASM Users Tests
 
 `tests/wasm/users_mock_test.rs` mirrors the polls test for auth:
 
 ```rust
-use examples_tutorial_basis::apps::users::client::components::{
+use tutorial::apps::users::client::components::{
     login_form, logout_form, signup_form,
 };
-use examples_tutorial_basis::apps::users::server_fn::{current_user, login, logout, register};
+use tutorial::apps::users::server_fn::{current_user, login, logout, register};
 use reinhardt::test::msw::MockServiceWorker;
 ```
 
@@ -283,9 +298,18 @@ command = "wasm-pack"
 args = ["test", "--headless", "--chrome", "--", "--no-default-features", "--features", "client-router,msw"]
 ```
 
-From the repository root, the focused package command is:
+Inside the standalone tutorial project, the focused native test command is:
 
 ```bash
+cargo nextest run --all-features
+```
+
+The reference example lives in the repository's `examples` workspace. From a
+repository checkout, enter that workspace before running the equivalent package
+command:
+
+```bash
+cd examples
 cargo nextest run -p examples-tutorial-basis --all-features
 ```
 

@@ -132,22 +132,43 @@ pub enum FormAction {
 
 /// An entry in the form fields list.
 ///
-/// Can be either a regular field definition or a field group
-/// containing multiple related fields.
+/// Can be a regular field definition, a layout group, a repeatable collection,
+/// or a submit button.
 #[derive(Debug, Clone)]
 pub enum FormFieldEntry {
 	/// A single field definition
 	Field(FormFieldDef),
 	/// A group of related fields
 	Group(FormFieldGroup),
+	/// A repeatable collection of field entries
+	Collection(Box<FormFieldCollection>),
 	/// A submit button (not a data field — generates no Signal)
 	SubmitButton(FormSubmitButtonDef),
+	/// A reset button (not a data field).
+	ResetButton(FormControlEntryDef),
+	/// A generic button (not a data field).
+	Button(FormControlEntryDef),
+	/// An image submit control (not a generated form value).
+	ImageInput(FormControlEntryDef),
+	/// An output element (not a generated form value).
+	Output(FormControlEntryDef),
+	/// A meter element (not a generated form value).
+	Meter(FormControlEntryDef),
+	/// A progress element (not a generated form value).
+	Progress(FormControlEntryDef),
+	/// A datalist element (not a generated form value).
+	Datalist(FormDatalistDef),
 }
 
 impl FormFieldEntry {
 	/// Returns true if this is a field group.
 	pub fn is_group(&self) -> bool {
 		matches!(self, FormFieldEntry::Group(_))
+	}
+
+	/// Returns true if this is a field collection.
+	pub fn is_collection(&self) -> bool {
+		matches!(self, FormFieldEntry::Collection(_))
 	}
 
 	/// Returns true if this is a regular field.
@@ -160,12 +181,25 @@ impl FormFieldEntry {
 		matches!(self, FormFieldEntry::SubmitButton(_))
 	}
 
+	/// Returns true if this is a non-value control entry.
+	pub fn is_control_entry(&self) -> bool {
+		self.as_control_entry().is_some()
+	}
+
 	/// Returns the name of the entry (field name or group name).
 	pub fn name(&self) -> &Ident {
 		match self {
 			FormFieldEntry::Field(f) => &f.name,
 			FormFieldEntry::Group(g) => &g.name,
+			FormFieldEntry::Collection(collection) => &collection.name,
 			FormFieldEntry::SubmitButton(b) => &b.name,
+			FormFieldEntry::ResetButton(c)
+			| FormFieldEntry::Button(c)
+			| FormFieldEntry::ImageInput(c)
+			| FormFieldEntry::Output(c)
+			| FormFieldEntry::Meter(c)
+			| FormFieldEntry::Progress(c) => &c.name,
+			FormFieldEntry::Datalist(d) => &d.name,
 		}
 	}
 
@@ -174,7 +208,15 @@ impl FormFieldEntry {
 		match self {
 			FormFieldEntry::Field(f) => f.span,
 			FormFieldEntry::Group(g) => g.span,
+			FormFieldEntry::Collection(collection) => collection.span,
 			FormFieldEntry::SubmitButton(b) => b.span,
+			FormFieldEntry::ResetButton(c)
+			| FormFieldEntry::Button(c)
+			| FormFieldEntry::ImageInput(c)
+			| FormFieldEntry::Output(c)
+			| FormFieldEntry::Meter(c)
+			| FormFieldEntry::Progress(c) => c.span,
+			FormFieldEntry::Datalist(d) => d.span,
 		}
 	}
 
@@ -194,10 +236,39 @@ impl FormFieldEntry {
 		}
 	}
 
+	/// Returns a reference to the inner collection if this is a Collection variant.
+	pub fn as_collection(&self) -> Option<&FormFieldCollection> {
+		match self {
+			FormFieldEntry::Collection(collection) => Some(collection.as_ref()),
+			_ => None,
+		}
+	}
+
 	/// Returns a reference to the inner submit button if this is a SubmitButton variant.
 	pub fn as_submit_button(&self) -> Option<&FormSubmitButtonDef> {
 		match self {
 			FormFieldEntry::SubmitButton(b) => Some(b),
+			_ => None,
+		}
+	}
+
+	/// Returns a reference to the inner control entry if this is a non-value entry.
+	pub fn as_control_entry(&self) -> Option<&FormControlEntryDef> {
+		match self {
+			FormFieldEntry::ResetButton(c)
+			| FormFieldEntry::Button(c)
+			| FormFieldEntry::ImageInput(c)
+			| FormFieldEntry::Output(c)
+			| FormFieldEntry::Meter(c)
+			| FormFieldEntry::Progress(c) => Some(c),
+			_ => None,
+		}
+	}
+
+	/// Returns a reference to the inner datalist if this is a Datalist variant.
+	pub fn as_datalist(&self) -> Option<&FormDatalistDef> {
+		match self {
+			FormFieldEntry::Datalist(d) => Some(d),
 			_ => None,
 		}
 	}
@@ -249,6 +320,82 @@ pub struct FormSubmitButtonDef {
 	pub span: Span,
 }
 
+/// Non-value form control entry kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FormControlEntryKind {
+	/// `<button type="reset">`.
+	ResetButton,
+	/// `<button type="button">`.
+	Button,
+	/// `<input type="image">`.
+	ImageInput,
+	/// `<output>`.
+	Output,
+	/// `<meter>`.
+	Meter,
+	/// `<progress>`.
+	Progress,
+}
+
+/// A non-value form control entry definition in the form macro.
+#[derive(Debug, Clone)]
+pub struct FormControlEntryDef {
+	/// Entry name identifier.
+	pub name: Ident,
+	/// Control entry kind.
+	pub kind: FormControlEntryKind,
+	/// Control properties.
+	pub properties: Vec<FormFieldProperty>,
+	/// Span for error reporting.
+	pub span: Span,
+}
+
+/// A datalist entry definition in the form macro.
+#[derive(Debug, Clone)]
+pub struct FormDatalistDef {
+	/// Datalist identifier. Referenced by field `list: name`.
+	pub name: Ident,
+	/// Datalist option properties.
+	pub properties: Vec<FormFieldProperty>,
+	/// Span for error reporting.
+	pub span: Span,
+}
+
+/// A static choice item.
+#[derive(Debug, Clone)]
+pub enum FormChoiceItem {
+	/// A single `<option>`.
+	Option(Box<FormChoiceOption>),
+	/// An `<optgroup>` containing options.
+	Group(FormChoiceGroup),
+}
+
+/// A static option definition.
+#[derive(Debug, Clone)]
+pub struct FormChoiceOption {
+	/// Option value expression.
+	pub value: Expr,
+	/// Optional label expression. Defaults to `value`.
+	pub label: Option<Expr>,
+	/// Whether the option is disabled.
+	pub disabled: bool,
+	/// Span for error reporting.
+	pub span: Span,
+}
+
+/// A static optgroup definition.
+#[derive(Debug, Clone)]
+pub struct FormChoiceGroup {
+	/// Group label.
+	pub label: LitStr,
+	/// Whether the entire group is disabled.
+	pub disabled: bool,
+	/// Grouped options.
+	pub options: Vec<FormChoiceItem>,
+	/// Span for error reporting.
+	pub span: Span,
+}
+
 /// A group of related fields in the form macro.
 ///
 /// Field groups allow organizing multiple fields under a common container
@@ -277,7 +424,7 @@ pub struct FormFieldGroup {
 	/// Group-level CSS class
 	pub class: Option<LitStr>,
 	/// Fields within the group
-	pub fields: Vec<FormFieldDef>,
+	pub fields: Vec<FormFieldEntry>,
 	/// Span for error reporting
 	pub span: Span,
 }
@@ -293,10 +440,58 @@ impl FormFieldGroup {
 		self.class.as_ref().map(|c| c.value())
 	}
 
-	/// Returns the number of fields in this group.
+	/// Returns the number of value fields in this group.
 	pub fn field_count(&self) -> usize {
-		self.fields.len()
+		self.fields
+			.iter()
+			.filter(|entry| matches!(entry, FormFieldEntry::Field(_)))
+			.count()
 	}
+}
+
+/// A repeatable collection of fields in the form macro.
+#[derive(Debug, Clone)]
+pub struct FormFieldCollection {
+	/// Collection name identifier
+	pub name: Ident,
+	/// Collection-level label text
+	pub label: Option<LitStr>,
+	/// Collection-level CSS class
+	pub class: Option<LitStr>,
+	/// Minimum number of items to render or accept
+	pub min_items: Option<syn::LitInt>,
+	/// Maximum number of items to render or accept
+	pub max_items: Option<syn::LitInt>,
+	/// Initial data source path
+	pub initial_from: Option<LitStr>,
+	/// Field entries within each collection item
+	pub fields: Vec<FormFieldEntry>,
+	/// Custom item renderer closure
+	pub render_item: Option<ExprClosure>,
+	/// Span for error reporting
+	pub span: Span,
+}
+
+/// A widget specification before semantic validation.
+#[derive(Debug, Clone)]
+pub enum FormWidgetSpec {
+	/// Built-in widget identifier, e.g. `TextInput`.
+	Builtin(Ident),
+	/// Experimental custom widget adapter specification.
+	Custom(FormCustomWidgetSpec),
+}
+
+/// Experimental custom widget metadata before semantic validation.
+#[derive(Debug, Clone)]
+pub struct FormCustomWidgetSpec {
+	/// Component function or constructor path.
+	pub component: Path,
+	/// Whether the `experimental` marker was present.
+	pub experimental: bool,
+	/// Adapter type path.
+	pub adapter: Option<Path>,
+	/// Source location span.
+	pub span: Span,
 }
 
 /// A property within a field definition.
@@ -318,10 +513,10 @@ pub enum FormFieldProperty {
 		/// Source location span.
 		span: Span,
 	},
-	/// Widget specification: `widget: PasswordInput`
+	/// Widget specification: `widget: PasswordInput` or experimental `CustomWidget(...)`.
 	Widget {
-		/// Widget type identifier.
-		widget_type: Ident,
+		/// Widget specification.
+		widget: FormWidgetSpec,
 		/// Source location span.
 		span: Span,
 	},
@@ -385,6 +580,13 @@ pub enum FormFieldProperty {
 		/// Source location span.
 		span: Span,
 	},
+	/// Static select/datalist choices: `choices: [("a", "A")]`
+	Choices {
+		/// Static choice items.
+		choices: Vec<FormChoiceItem>,
+		/// Source location span.
+		span: Span,
+	},
 	/// Choice value path: `choice_value: "id"`
 	///
 	/// Specifies which property of each choice item to use as the form value.
@@ -401,6 +603,27 @@ pub enum FormFieldProperty {
 	/// The default is "label" if not specified.
 	ChoiceLabel {
 		/// Property path for the choice display label.
+		path: LitStr,
+		/// Source location span.
+		span: Span,
+	},
+	/// Choice disabled path: `choice_disabled: "disabled"`
+	ChoiceDisabled {
+		/// Property path for the disabled flag.
+		path: LitStr,
+		/// Source location span.
+		span: Span,
+	},
+	/// Choice group path: `choice_group: "group"`
+	ChoiceGroup {
+		/// Property path for the choice group label.
+		path: LitStr,
+		/// Source location span.
+		span: Span,
+	},
+	/// Choice group disabled path: `choice_group_disabled: "group_disabled"`
+	ChoiceGroupDisabled {
+		/// Property path for the group disabled flag.
 		path: LitStr,
 		/// Source location span.
 		span: Span,
@@ -625,8 +848,12 @@ impl FormFieldProperty {
 			FormFieldProperty::Bind { span, .. } => *span,
 			FormFieldProperty::InitialFrom { span, .. } => *span,
 			FormFieldProperty::ChoicesFrom { span, .. } => *span,
+			FormFieldProperty::Choices { span, .. } => *span,
 			FormFieldProperty::ChoiceValue { span, .. } => *span,
 			FormFieldProperty::ChoiceLabel { span, .. } => *span,
+			FormFieldProperty::ChoiceDisabled { span, .. } => *span,
+			FormFieldProperty::ChoiceGroup { span, .. } => *span,
+			FormFieldProperty::ChoiceGroupDisabled { span, .. } => *span,
 		}
 	}
 
@@ -1144,11 +1371,11 @@ impl FormFieldDef {
 		})
 	}
 
-	/// Gets the widget type if specified.
-	pub fn get_widget(&self) -> Option<&Ident> {
+	/// Gets the widget specification if specified.
+	pub fn get_widget(&self) -> Option<&FormWidgetSpec> {
 		self.properties.iter().find_map(|p| {
-			if let FormFieldProperty::Widget { widget_type, .. } = p {
-				Some(widget_type)
+			if let FormFieldProperty::Widget { widget, .. } = p {
+				Some(widget)
 			} else {
 				None
 			}
@@ -1340,6 +1567,39 @@ impl FormFieldDef {
 		})
 	}
 
+	/// Gets the choice_disabled path if specified.
+	pub fn get_choice_disabled(&self) -> Option<&LitStr> {
+		self.properties.iter().find_map(|p| {
+			if let FormFieldProperty::ChoiceDisabled { path, .. } = p {
+				Some(path)
+			} else {
+				None
+			}
+		})
+	}
+
+	/// Gets the choice_group path if specified.
+	pub fn get_choice_group(&self) -> Option<&LitStr> {
+		self.properties.iter().find_map(|p| {
+			if let FormFieldProperty::ChoiceGroup { path, .. } = p {
+				Some(path)
+			} else {
+				None
+			}
+		})
+	}
+
+	/// Gets the choice_group_disabled path if specified.
+	pub fn get_choice_group_disabled(&self) -> Option<&LitStr> {
+		self.properties.iter().find_map(|p| {
+			if let FormFieldProperty::ChoiceGroupDisabled { path, .. } = p {
+				Some(path)
+			} else {
+				None
+			}
+		})
+	}
+
 	/// Returns true if this is a dynamic choice field (has choices_from configured).
 	pub fn is_dynamic_choice_field(&self) -> bool {
 		self.has_choices_from()
@@ -1441,7 +1701,7 @@ mod tests {
 	fn test_form_field_property_name_returns_none_for_structural_variants() {
 		// Arrange
 		let widget = FormFieldProperty::Widget {
-			widget_type: Ident::new("PasswordInput", Span::call_site()),
+			widget: FormWidgetSpec::Builtin(Ident::new("PasswordInput", Span::call_site())),
 			span: Span::call_site(),
 		};
 		let wrapper = FormFieldProperty::Wrapper {
@@ -1476,12 +1736,28 @@ mod tests {
 			field_name: LitStr::new("choices", Span::call_site()),
 			span: Span::call_site(),
 		};
+		let choices = FormFieldProperty::Choices {
+			choices: Vec::new(),
+			span: Span::call_site(),
+		};
 		let choice_value = FormFieldProperty::ChoiceValue {
 			path: LitStr::new("id", Span::call_site()),
 			span: Span::call_site(),
 		};
 		let choice_label = FormFieldProperty::ChoiceLabel {
 			path: LitStr::new("label", Span::call_site()),
+			span: Span::call_site(),
+		};
+		let choice_disabled = FormFieldProperty::ChoiceDisabled {
+			path: LitStr::new("disabled", Span::call_site()),
+			span: Span::call_site(),
+		};
+		let choice_group = FormFieldProperty::ChoiceGroup {
+			path: LitStr::new("group", Span::call_site()),
+			span: Span::call_site(),
+		};
+		let choice_group_disabled = FormFieldProperty::ChoiceGroupDisabled {
+			path: LitStr::new("group_disabled", Span::call_site()),
 			span: Span::call_site(),
 		};
 
@@ -1494,8 +1770,12 @@ mod tests {
 		assert!(bind.name().is_none());
 		assert!(initial_from.name().is_none());
 		assert!(choices_from.name().is_none());
+		assert!(choices.name().is_none());
 		assert!(choice_value.name().is_none());
 		assert!(choice_label.name().is_none());
+		assert!(choice_disabled.name().is_none());
+		assert!(choice_group.name().is_none());
+		assert!(choice_group_disabled.name().is_none());
 	}
 
 	#[rstest]

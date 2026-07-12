@@ -1643,6 +1643,7 @@ impl Operation {
 			Operation::AlterColumn {
 				table,
 				column,
+				old_definition,
 				new_definition,
 				mysql_options,
 				..
@@ -1650,19 +1651,38 @@ impl Operation {
 				let sql_type = new_definition.type_definition.to_sql_for_dialect(dialect);
 				match dialect {
 					SqlDialect::Postgres | SqlDialect::Cockroachdb => {
-						format!(
+						let mut statements = Vec::new();
+						if old_definition
+							.as_ref()
+							.is_some_and(|old_definition| old_definition.default.is_some())
+						{
+							statements.push(format!(
+								"ALTER TABLE {} ALTER COLUMN {} DROP DEFAULT;",
+								quote_identifier(table),
+								quote_identifier(column)
+							));
+						}
+						statements.push(format!(
 							"ALTER TABLE {} ALTER COLUMN {} TYPE {};",
 							quote_identifier(table),
 							quote_identifier(column),
 							sql_type
-						)
+						));
+						if let Some(default) = &new_definition.default {
+							statements.push(format!(
+								"ALTER TABLE {} ALTER COLUMN {} SET DEFAULT {};",
+								quote_identifier(table),
+								quote_identifier(column),
+								default
+							));
+						}
+						statements.join(" ")
 					}
 					SqlDialect::Mysql => {
 						let base_sql = format!(
-							"ALTER TABLE {} MODIFY COLUMN {} {}",
+							"ALTER TABLE {} MODIFY COLUMN {}",
 							quote_identifier(table),
-							quote_identifier(column),
-							sql_type
+							Self::column_to_sql(new_definition, dialect)
 						);
 
 						// MySQL: Add ALGORITHM/LOCK options
@@ -5608,6 +5628,116 @@ mod tests {
 		assert!(
 			sql.contains("VARCHAR(50)"),
 			"MySQL reverse SQL should restore VARCHAR(50), got: {}",
+			sql
+		);
+	}
+
+	#[rstest]
+	#[case::postgres(SqlDialect::Postgres)]
+	#[case::cockroachdb(SqlDialect::Cockroachdb)]
+	fn test_to_sql_alter_column_sets_default_for_postgres_family(#[case] dialect: SqlDialect) {
+		// Arrange
+		let op = Operation::AlterColumn {
+			table: "users".to_string(),
+			column: "is_active".to_string(),
+			old_definition: Some(ColumnDefinition {
+				name: "is_active".to_string(),
+				type_definition: FieldType::Boolean,
+				not_null: true,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			}),
+			new_definition: ColumnDefinition {
+				name: "is_active".to_string(),
+				type_definition: FieldType::Boolean,
+				not_null: true,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: Some("true".to_string()),
+			},
+			mysql_options: None,
+		};
+
+		// Act
+		let sql = op.to_sql(&dialect);
+
+		// Assert
+		assert!(
+			sql.contains("ALTER COLUMN is_active SET DEFAULT true"),
+			"AlterColumn must apply new database defaults, got: {}",
+			sql
+		);
+	}
+
+	#[rstest]
+	#[case::postgres(SqlDialect::Postgres)]
+	#[case::cockroachdb(SqlDialect::Cockroachdb)]
+	fn test_to_sql_alter_column_drops_default_for_postgres_family(#[case] dialect: SqlDialect) {
+		// Arrange
+		let op = Operation::AlterColumn {
+			table: "users".to_string(),
+			column: "is_active".to_string(),
+			old_definition: Some(ColumnDefinition {
+				name: "is_active".to_string(),
+				type_definition: FieldType::Boolean,
+				not_null: true,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: Some("true".to_string()),
+			}),
+			new_definition: ColumnDefinition {
+				name: "is_active".to_string(),
+				type_definition: FieldType::Boolean,
+				not_null: true,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			mysql_options: None,
+		};
+
+		// Act
+		let sql = op.to_sql(&dialect);
+
+		// Assert
+		assert!(
+			sql.contains("ALTER COLUMN is_active DROP DEFAULT"),
+			"AlterColumn must remove dropped database defaults, got: {}",
+			sql
+		);
+	}
+
+	#[test]
+	fn test_to_sql_alter_column_mysql_preserves_full_column_definition() {
+		// Arrange
+		let op = Operation::AlterColumn {
+			table: "users".to_string(),
+			column: "is_active".to_string(),
+			old_definition: None,
+			new_definition: ColumnDefinition {
+				name: "is_active".to_string(),
+				type_definition: FieldType::Boolean,
+				not_null: true,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: Some("true".to_string()),
+			},
+			mysql_options: None,
+		};
+
+		// Act
+		let sql = op.to_sql(&SqlDialect::Mysql);
+
+		// Assert
+		assert!(
+			sql.contains("MODIFY COLUMN is_active TINYINT(1) NOT NULL DEFAULT true"),
+			"MySQL AlterColumn must include type, nullability, and default, got: {}",
 			sql
 		);
 	}

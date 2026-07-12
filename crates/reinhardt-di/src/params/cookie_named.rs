@@ -121,7 +121,10 @@ impl<N: CookieName, T: Debug> Debug for CookieNamed<N, T> {
 use super::cookie_util::parse_cookies;
 
 #[async_trait]
-impl FromRequest for CookieNamed<SessionId, String> {
+impl<N> FromRequest for CookieNamed<N, String>
+where
+	N: CookieName + Send,
+{
 	async fn from_request(req: &Request, _ctx: &ParamContext) -> ParamResult<Self> {
 		let cookie_header = req
 			.headers
@@ -131,15 +134,18 @@ impl FromRequest for CookieNamed<SessionId, String> {
 
 		let cookies_map = parse_cookies(cookie_header);
 		let value = cookies_map
-			.get("sessionid")
-			.ok_or_else(|| ParamError::MissingParameter("sessionid".to_string()))?;
+			.get(N::NAME)
+			.ok_or_else(|| ParamError::MissingParameter(N::NAME.to_owned()))?;
 
-		Ok(CookieNamed::new(value.to_string()))
+		Ok(CookieNamed::new(value.clone()))
 	}
 }
 
 #[async_trait]
-impl FromRequest for CookieNamed<CsrfToken, String> {
+impl<N> FromRequest for CookieNamed<N, Option<String>>
+where
+	N: CookieName + Send,
+{
 	async fn from_request(req: &Request, _ctx: &ParamContext) -> ParamResult<Self> {
 		let cookie_header = req
 			.headers
@@ -148,43 +154,7 @@ impl FromRequest for CookieNamed<CsrfToken, String> {
 			.unwrap_or("");
 
 		let cookies_map = parse_cookies(cookie_header);
-		let value = cookies_map
-			.get("csrftoken")
-			.ok_or_else(|| ParamError::MissingParameter("csrftoken".to_string()))?;
-
-		Ok(CookieNamed::new(value.to_string()))
-	}
-}
-
-#[async_trait]
-impl FromRequest for CookieNamed<SessionId, Option<String>> {
-	async fn from_request(req: &Request, _ctx: &ParamContext) -> ParamResult<Self> {
-		let cookie_header = req
-			.headers
-			.get(http::header::COOKIE)
-			.and_then(|h| h.to_str().ok())
-			.unwrap_or("");
-
-		let cookies_map = parse_cookies(cookie_header);
-		let maybe = cookies_map.get("sessionid").map(|s| s.to_string());
-
-		Ok(CookieNamed::new(maybe))
-	}
-}
-
-#[async_trait]
-impl FromRequest for CookieNamed<CsrfToken, Option<String>> {
-	async fn from_request(req: &Request, _ctx: &ParamContext) -> ParamResult<Self> {
-		let cookie_header = req
-			.headers
-			.get(http::header::COOKIE)
-			.and_then(|h| h.to_str().ok())
-			.unwrap_or("");
-
-		let cookies_map = parse_cookies(cookie_header);
-		let maybe = cookies_map.get("csrftoken").map(|s| s.to_string());
-
-		Ok(CookieNamed::new(maybe))
+		Ok(CookieNamed::new(cookies_map.get(N::NAME).cloned()))
 	}
 }
 
@@ -195,6 +165,13 @@ impl<N: CookieName, T> super::validation::WithValidation for CookieNamed<N, T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::params::extract::FromRequest;
+
+	struct OAuthState;
+
+	impl CookieName for OAuthState {
+		const NAME: &'static str = "oauth_state";
+	}
 
 	#[test]
 	fn test_cookie_named_new() {
@@ -237,5 +214,72 @@ mod tests {
 	fn test_parse_cookies_with_encoding() {
 		let cookies = parse_cookies("name=value%20with%20spaces");
 		assert_eq!(cookies.get("name"), Some(&"value with spaces".to_string()));
+	}
+
+	#[tokio::test]
+	async fn test_cookie_named_extracts_custom_required_cookie() {
+		let request = Request::builder()
+			.uri("/")
+			.header("Cookie", "sessionid=abc123; oauth_state=state-456")
+			.build()
+			.expect("request should build");
+		let ctx = ParamContext::new();
+
+		let cookie = CookieNamed::<OAuthState, String>::from_request(&request, &ctx)
+			.await
+			.expect("custom named cookie should be extracted");
+
+		assert_eq!(cookie.into_inner(), "state-456");
+	}
+
+	#[tokio::test]
+	async fn test_cookie_named_reports_custom_required_cookie_name_when_missing() {
+		let request = Request::builder()
+			.uri("/")
+			.header("Cookie", "sessionid=abc123")
+			.build()
+			.expect("request should build");
+		let ctx = ParamContext::new();
+
+		let error = CookieNamed::<OAuthState, String>::from_request(&request, &ctx)
+			.await
+			.expect_err("missing custom named cookie should fail");
+
+		assert!(matches!(
+			error,
+			ParamError::MissingParameter(name) if name == "oauth_state"
+		));
+	}
+
+	#[tokio::test]
+	async fn test_cookie_named_extracts_custom_optional_cookie() {
+		let request = Request::builder()
+			.uri("/")
+			.header("Cookie", "oauth_state=value%20with%20spaces")
+			.build()
+			.expect("request should build");
+		let ctx = ParamContext::new();
+
+		let cookie = CookieNamed::<OAuthState, Option<String>>::from_request(&request, &ctx)
+			.await
+			.expect("optional custom named cookie should extract");
+
+		assert_eq!(cookie.into_inner(), Some("value with spaces".to_string()));
+	}
+
+	#[tokio::test]
+	async fn test_cookie_named_custom_optional_cookie_is_none_when_missing() {
+		let request = Request::builder()
+			.uri("/")
+			.header("Cookie", "sessionid=abc123")
+			.build()
+			.expect("request should build");
+		let ctx = ParamContext::new();
+
+		let cookie = CookieNamed::<OAuthState, Option<String>>::from_request(&request, &ctx)
+			.await
+			.expect("missing optional custom named cookie should not fail");
+
+		assert_eq!(cookie.into_inner(), None);
 	}
 }

@@ -180,10 +180,14 @@
 //!
 //! ## Thread Safety
 //!
-//! The static resolver uses `OnceLock` for thread-safe lazy initialization.
-//! It can only be initialized once per application lifecycle.
+//! The static resolver uses `OnceLock` for thread-safe lazy initialization in
+//! production builds. It can only be initialized once per application lifecycle.
 
+#[cfg(any(wasm, all(native, not(feature = "testing"))))]
 use std::sync::OnceLock;
+
+#[cfg(all(native, feature = "testing"))]
+use std::{cell::RefCell, sync::RwLock};
 
 #[cfg(native)]
 use reinhardt_utils::staticfiles::TemplateStaticConfig;
@@ -192,8 +196,22 @@ use reinhardt_utils::staticfiles::TemplateStaticConfig;
 ///
 /// This is initialized once at application startup and provides
 /// thread-safe access to the static URL resolver.
-#[cfg(native)]
+#[cfg(all(native, not(feature = "testing")))]
 static STATIC_CONFIG: OnceLock<TemplateStaticConfig> = OnceLock::new();
+
+/// Test-only static configuration storage.
+///
+/// Integration tests exercise many resolver configurations in one process, so
+/// the testing feature uses replaceable storage while production builds keep
+/// one-time initialization.
+#[cfg(all(native, feature = "testing"))]
+static STATIC_CONFIG: RwLock<Option<TemplateStaticConfig>> = RwLock::new(None);
+
+#[cfg(all(native, feature = "testing"))]
+thread_local! {
+	static THREAD_STATIC_CONFIG: RefCell<Option<TemplateStaticConfig>> =
+		const { RefCell::new(None) };
+}
 
 /// WASM-specific static URL prefix.
 ///
@@ -221,11 +239,28 @@ static STATIC_URL_PREFIX: OnceLock<String> = OnceLock::new();
 ///
 /// This function does not panic if called multiple times; subsequent
 /// calls are silently ignored.
-#[cfg(native)]
+#[cfg(all(native, not(feature = "testing")))]
 pub fn init_static_resolver(config: TemplateStaticConfig) {
 	// OnceLock::set returns Err if already set, but we ignore this
 	// to allow for idempotent initialization
 	let _ = STATIC_CONFIG.set(config);
+}
+
+/// Initializes or replaces the static resolver configuration in testing builds.
+///
+/// The production resolver is intentionally one-shot. The `testing` feature
+/// allows replacement so integration tests can cover many independent static
+/// URL configurations in the same process.
+#[cfg(all(native, feature = "testing"))]
+pub fn init_static_resolver(config: TemplateStaticConfig) {
+	THREAD_STATIC_CONFIG.with(|slot| {
+		*slot.borrow_mut() = Some(config.clone());
+	});
+
+	let mut slot = STATIC_CONFIG
+		.write()
+		.expect("static resolver testing lock should not be poisoned");
+	*slot = Some(config);
 }
 
 /// Initializes the static resolver with a URL prefix (WASM version).
@@ -281,23 +316,44 @@ pub fn init_static_resolver(static_url: String) {
 /// was missed, though cache busting won't be available.
 #[cfg(native)]
 pub fn resolve_static(path: &str) -> String {
-	STATIC_CONFIG
-		.get()
-		.map(|config| config.resolve_url(path))
-		.unwrap_or_else(|| {
-			// Only warn once to avoid log spam
-			static WARNED: std::sync::atomic::AtomicBool =
-				std::sync::atomic::AtomicBool::new(false);
-			if !WARNED.swap(true, std::sync::atomic::Ordering::SeqCst) {
-				eprintln!(
-					"WARNING: Static resolver not initialized. Call init_static_resolver() at startup."
-				);
-			}
+	resolve_static_from_config(path).unwrap_or_else(|| fallback_static_url(path))
+}
 
-			// Fallback: use simple concatenation
-			let path = path.trim_start_matches('/');
-			format!("/static/{}", path)
-		})
+#[cfg(all(native, not(feature = "testing")))]
+fn resolve_static_from_config(path: &str) -> Option<String> {
+	STATIC_CONFIG.get().map(|config| config.resolve_url(path))
+}
+
+#[cfg(all(native, feature = "testing"))]
+fn resolve_static_from_config(path: &str) -> Option<String> {
+	let thread_config = THREAD_STATIC_CONFIG.with(|slot| {
+		slot.borrow()
+			.as_ref()
+			.map(|config| config.resolve_url(path))
+	});
+
+	thread_config.or_else(|| {
+		STATIC_CONFIG
+			.read()
+			.expect("static resolver testing lock should not be poisoned")
+			.as_ref()
+			.map(|config| config.resolve_url(path))
+	})
+}
+
+#[cfg(native)]
+fn fallback_static_url(path: &str) -> String {
+	// Only warn once to avoid log spam
+	static WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+	if !WARNED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+		eprintln!(
+			"WARNING: Static resolver not initialized. Call init_static_resolver() at startup."
+		);
+	}
+
+	// Fallback: use simple concatenation
+	let path = path.trim_start_matches('/');
+	format!("/static/{}", path)
 }
 
 /// Resolves a static file path to its URL (WASM version).
@@ -329,9 +385,24 @@ pub fn resolve_static(path: &str) -> String {
 ///     init_static_resolver(config);
 /// }
 /// ```
-#[cfg(native)]
+#[cfg(all(native, not(feature = "testing")))]
 pub fn is_initialized() -> bool {
 	STATIC_CONFIG.get().is_some()
+}
+
+/// Checks if the testing static resolver has been initialized.
+///
+/// This testing-feature variant reports whether the replaceable test storage
+/// currently contains a static resolver configuration.
+#[cfg(all(native, feature = "testing"))]
+pub fn is_initialized() -> bool {
+	let thread_initialized = THREAD_STATIC_CONFIG.with(|slot| slot.borrow().is_some());
+
+	thread_initialized
+		|| STATIC_CONFIG
+			.read()
+			.expect("static resolver testing lock should not be poisoned")
+			.is_some()
 }
 
 /// Checks if the static resolver has been initialized (WASM version).

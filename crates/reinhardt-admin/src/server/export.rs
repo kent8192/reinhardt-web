@@ -6,6 +6,8 @@
 use super::admin_auth::AdminAuthenticatedUser;
 use crate::adapters::{AdminDatabase, AdminRecord, AdminSite, ExportFormat, ExportResponse};
 #[cfg(server)]
+use crate::core::{AdminDatabaseKey, AdminSiteKey};
+#[cfg(server)]
 use reinhardt_di::Depends;
 #[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
@@ -101,8 +103,8 @@ fn serialize_delimited(
 pub async fn export_data(
 	model_name: String,
 	format: crate::adapters::ExportFormat,
-	#[inject] site: Depends<AdminSite>,
-	#[inject] db: Depends<AdminDatabase>,
+	#[inject] site: Depends<AdminSiteKey, AdminSite>,
+	#[inject] db: Depends<AdminDatabaseKey, AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<crate::adapters::ExportResponse, ServerFnError> {

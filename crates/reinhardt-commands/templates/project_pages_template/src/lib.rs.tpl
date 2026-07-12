@@ -5,7 +5,6 @@
 //! - `apps`         — application code (each app has server-side routes and client-side pages)
 //! - `client`       — WASM-only frontend (mounted by `bin/manage.rs`)
 //! - `config`       — project configuration (settings, urls, apps, wasm)
-//! - `shared`       — types shared between WASM and server
 
 // Server-only re-exports for macro-generated code.
 //
@@ -31,9 +30,6 @@ pub mod config;
 // Client-only modules (WASM)
 #[cfg(client)]
 pub mod client;
-
-// Modules shared between WASM and server
-pub mod shared;
 
 // Re-export commonly used items
 #[cfg(server)]

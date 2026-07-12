@@ -1,0 +1,9 @@
+[scenario]
+category = "admin"
+name = "detail_view"
+runner = "criterion"
+metric = "render_latency"
+unit = "us/render"
+workload = "Render one admin detail page with scalar fields and one relation summary."
+success = "The response includes the requested record and relation summary."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

@@ -1,0 +1,5 @@
+error: unknown field property: 'captrue'. Use typed field properties for native form behavior (min, max, step, accept, capture, list, size), and use attrs only for aria_* or data_* custom attributes
+ --> tests/ui/form/fail/unknown_native_attr_rejected.rs:9:5
+  |
+9 |                 captrue: "environment",
+  |                 ^^^^^^^

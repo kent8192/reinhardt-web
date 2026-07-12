@@ -1,0 +1,5 @@
+error: Datalist options cannot contain OptGroup
+ --> tests/ui/form/fail/optgroup_rejects_datalist.rs:9:15
+  |
+9 |                 options: [OptGroup("Grouped") {
+  |                           ^^^^^^^^

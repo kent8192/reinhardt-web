@@ -9,13 +9,13 @@ sidebar_weight = 60
 
 # Part 6: The Admin and Static Files
 
-The application now has user-owned polls. In this part you will add the Reinhardt admin at `/admin/` and wire the static-file pipeline that serves the WASM bundle, CSS, images, and admin assets.
+The application now has user-owned polls. In this part you will add the Reinhardt admin route at `/admin/` and wire the static-file pipeline that serves the WASM bundle, CSS, images, and admin assets.
 
-The admin is useful for seeding and inspecting tutorial data. It is not a replacement for the owner-checked server functions from Part 5; it is an operator interface.
+The admin registration is useful for exercising model metadata, route wiring, and the admin API surface. It is not a replacement for the owner-checked server functions from Part 5.
 
 ## Register Poll Models with the Admin
 
-Create `src/apps/polls/admin.rs`. The example registers `Question` first:
+Create `src/apps/polls/server/admin.rs`. The example registers `Question` first:
 
 ```rust
 use crate::apps::polls::models::{Choice, Question};
@@ -24,8 +24,8 @@ use reinhardt::admin;
 #[admin(model,
     for = Question,
     name = "Question",
-    list_display = [id, question_text, pub_date, author],
-    fields = [question_text, author],
+    list_display = [id, question_text, pub_date, author_id],
+    fields = [question_text, author_id],
     list_filter = [pub_date],
     search_fields = [question_text],
     ordering = [(pub_date, desc)],
@@ -54,7 +54,7 @@ Then register choices:
 pub struct ChoiceAdmin;
 ```
 
-`QuestionAdmin` includes `author` because Part 5 made question ownership part of the model.
+`QuestionAdmin` includes `author_id` because Part 5 made question ownership part of the schema.
 
 Part 2 already exposed the polls app from `src/apps.rs`:
 
@@ -62,11 +62,16 @@ Part 2 already exposed the polls app from `src/apps.rs`:
 pub mod polls;
 ```
 
-Now expose the admin module from the polls app parent so the site configuration can import it:
+Now expose the server module from the polls app parent, and expose admin from `src/apps/polls/server.rs` so the site configuration can import it:
 
 ```rust
 #[cfg(server)]
+pub mod server;
+```
+
+```rust
 pub mod admin;
+pub mod serializers;
 ```
 
 ## Configure the Admin Site
@@ -74,7 +79,7 @@ pub mod admin;
 Create `src/config/admin.rs` and register the app admins:
 
 ```rust
-use crate::apps::polls::admin::{ChoiceAdmin, QuestionAdmin};
+use crate::apps::polls::server::admin::{ChoiceAdmin, QuestionAdmin};
 use crate::config::settings::get_settings;
 use reinhardt::HasCoreSettings;
 use reinhardt::admin::AdminSite;
@@ -115,6 +120,8 @@ In `src/config/urls.rs`, import the admin helpers and your site configuration:
 ```rust
 #[cfg(server)]
 use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
+#[cfg(server)]
+use std::sync::Arc;
 
 #[cfg(server)]
 use crate::config::admin::configure_admin;
@@ -125,7 +132,7 @@ Mount `/admin/` and `/static/admin/`:
 ```rust
 #[cfg(server)]
 let router = {
-    let admin_site = std::sync::Arc::new(configure_admin());
+    let admin_site = Arc::new(configure_admin());
     let (admin_router, admin_di) = admin_routes_with_di(admin_site);
     router
         .mount("/admin/", admin_router)
@@ -145,14 +152,16 @@ use reinhardt::reinhardt_apps::AppStaticFilesConfig;
 
 inventory::submit! {
     AppStaticFilesConfig {
-        app_label: "examples-tutorial-basis-wasm",
+        app_label: "tutorial-wasm",
         static_dir: "dist-wasm",
         url_prefix: "",
     }
 }
 ```
 
-This tells `collectstatic` that the generated WASM artifacts are application static files.
+The generated Pages template uses `<crate-name>-wasm` here, so a project named
+`tutorial` registers `tutorial-wasm`. This tells `collectstatic` that the
+generated WASM artifacts are application static files.
 
 ## Understand the Static Directories
 
@@ -195,8 +204,8 @@ args = [
 
 ```toml
 [tasks.dev]
-description = "Build WASM, apply migrations, and start the pages development server"
-dependencies = ["wasm-build-dev", "migrate", "run-dev-server"]
+description = "Start development environment (checks, builds WASM, runs server with auto-reload)"
+dependencies = ["clean-cache", "quality", "wasm-build-dev", "runserver"]
 ```
 
 ## Follow the Dev Build Path
@@ -214,7 +223,7 @@ echo "WASM build and collectstatic completed"
 The final `cargo make dev` step starts the server with pages enabled and avoids rebuilding over the just-created bundle:
 
 ```bash
-cargo run --bin manage -- runserver --with-pages --noreload --no-override-wasm
+cargo run --bin manage -- runserver --with-pages --no-override-wasm
 ```
 
 Release-mode local testing uses:
@@ -233,7 +242,7 @@ Run the admin-enabled app:
 cargo make dev
 ```
 
-Open `http://127.0.0.1:8000/admin/`. You should be able to manage `Question` and `Choice` records through the admin UI.
+Open `http://127.0.0.1:8000/admin/`. The route should load the embedded admin shell and `/static/admin/` assets. If the admin WASM SPA has not been built, the shell intentionally shows a placeholder message; the tutorial checkpoint is route/static wiring plus admin registration, not browser-based model editing.
 
 Before continuing:
 

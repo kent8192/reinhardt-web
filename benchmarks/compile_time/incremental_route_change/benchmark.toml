@@ -1,0 +1,9 @@
+[scenario]
+category = "compile_time"
+name = "incremental_route_change"
+runner = "hyperfine"
+metric = "wall_clock_time"
+unit = "s/build"
+workload = "Apply one route-handler edit and rebuild the warmed app fixture."
+success = "The rebuild succeeds and the changed route is compiled."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

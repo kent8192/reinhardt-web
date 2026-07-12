@@ -1,0 +1,9 @@
+[scenario]
+category = "database"
+name = "insert_one"
+runner = "criterion"
+metric = "mutation_latency"
+unit = "us/mutation"
+workload = "Insert one row with indexed text, integer, and timestamp fields."
+success = "One row is inserted and visible to a follow-up primary-key lookup."
+targets = ["reinhardt", "axum", "actix-web", "loco"]
