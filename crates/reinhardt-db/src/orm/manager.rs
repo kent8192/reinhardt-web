@@ -1,4 +1,5 @@
 use super::connection::{DatabaseBackend, DatabaseConnection};
+use super::inspection::FieldInfo;
 use super::{Model, QuerySet};
 use reinhardt_query::prelude::{
 	Alias, ColumnRef, DeleteStatement, Expr, ExprTrait, Func, InsertStatement, MySqlQueryBuilder,
@@ -10,6 +11,10 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
+
+fn find_field_info<'a>(field_metadata: &'a [FieldInfo], field_name: &str) -> Option<&'a FieldInfo> {
+	field_metadata.iter().find(|field| field.name == field_name)
+}
 
 /// Build SQL with values from an INSERT statement based on database backend
 fn build_insert_sql(stmt: &InsertStatement, backend: DatabaseBackend) -> (String, Values) {
@@ -234,16 +239,27 @@ impl<M: Model> Manager<M> {
 	fn build_update_statement_from_object(
 		pk: &M::PrimaryKey,
 		obj: &serde_json::Map<String, serde_json::Value>,
+		field_is_none: impl Fn(&str) -> bool,
 	) -> reinhardt_query::prelude::UpdateStatement {
 		let mut stmt = Query::update();
 		stmt.table(Alias::new(M::table_name()));
+		let field_metadata = M::field_metadata();
 
 		let mut has_values = false;
 		for (k, v) in obj.iter().filter(|(k, _)| {
 			let key = k.as_str();
 			key != M::primary_key_field() && !Self::is_generated_field(key)
 		}) {
-			if v.is_null() {
+			let field_info = find_field_info(&field_metadata, k);
+			if field_info
+				.map(|field| super::json::is_json_field_type(&field.field_type))
+				.unwrap_or(false)
+			{
+				stmt.value(
+					Alias::new(k.as_str()),
+					Self::json_to_sea_value_for_field(v, field_info, field_is_none(k)),
+				);
+			} else if v.is_null() {
 				stmt.value_expr(Alias::new(k.as_str()), Expr::cust("NULL"));
 			} else {
 				stmt.value(Alias::new(k.as_str()), Self::json_to_sea_value(v));
@@ -272,11 +288,13 @@ impl<M: Model> Manager<M> {
 
 	fn build_insert_statement_from_object(
 		obj: &serde_json::Map<String, serde_json::Value>,
+		field_is_none: impl Fn(&str) -> bool,
 	) -> reinhardt_core::exception::Result<InsertStatement> {
 		let mut stmt = Query::insert();
 		stmt.into_table(Alias::new(M::table_name()));
 
 		let pk_field = M::primary_key_field();
+		let field_metadata = M::field_metadata();
 		let (fields, values): (Vec<_>, Vec<_>) = obj
 			.iter()
 			.filter(|(k, v)| {
@@ -304,11 +322,8 @@ impl<M: Model> Manager<M> {
 				true
 			})
 			.map(|(k, v)| {
-				let value = if v.is_null() {
-					reinhardt_query::value::Value::Int(None)
-				} else {
-					Self::json_to_sea_value(v)
-				};
+				let field_info = find_field_info(&field_metadata, k);
+				let value = Self::json_to_sea_value_for_field(v, field_info, field_is_none(k));
 				(Alias::new(k.as_str()), value)
 			})
 			.unzip();
@@ -833,7 +848,8 @@ impl<M: Model> Manager<M> {
 			reinhardt_core::exception::Error::Database("Model must serialize to object".to_string())
 		})?;
 
-		let mut stmt = Self::build_insert_statement_from_object(obj)?;
+		let mut stmt =
+			Self::build_insert_statement_from_object(obj, |field| model.field_is_none(field))?;
 
 		// Add RETURNING clause with explicit column names from JSON object
 		// Note: Using Asterisk in columns() may not work correctly with reinhardt-query
@@ -849,8 +865,27 @@ impl<M: Model> Manager<M> {
 		let row = conn.query_one(&sql, values).await?;
 
 		// row.data is already serde_json::Value::Object so deserialize directly
-		serde_json::from_value(row.data.clone())
+		row.deserialize_model::<M>()
 			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
+	}
+
+	fn json_to_sea_value_for_field(
+		value: &serde_json::Value,
+		field_info: Option<&FieldInfo>,
+		field_is_none: bool,
+	) -> reinhardt_query::value::Value {
+		if field_info
+			.map(|field| super::json::is_json_field_type(&field.field_type))
+			.unwrap_or(false)
+		{
+			if field_is_none {
+				reinhardt_query::value::Value::Json(None)
+			} else {
+				reinhardt_query::value::Value::Json(Some(Box::new(value.clone())))
+			}
+		} else {
+			Self::json_to_sea_value(value)
+		}
 	}
 
 	/// Convert serde_json::Value to reinhardt_query::value::Value for parameter binding
@@ -972,8 +1007,7 @@ impl<M: Model> Manager<M> {
 			reinhardt_query::value::Value::Uuid(None) => QueryValue::Null,
 
 			// JSON types - serialize to string
-			reinhardt_query::value::Value::Json(Some(json)) => QueryValue::String(json.to_string()),
-			reinhardt_query::value::Value::Json(None) => QueryValue::Null,
+			reinhardt_query::value::Value::Json(json) => QueryValue::Json(json),
 
 			// For complex types or unsupported types, convert to null
 			// This is a safe fallback that won't cause runtime errors
@@ -1055,7 +1089,8 @@ impl<M: Model> Manager<M> {
 			reinhardt_core::exception::Error::Database("Model must serialize to object".to_string())
 		})?;
 
-		let stmt = Self::build_update_statement_from_object(&pk, obj);
+		let stmt =
+			Self::build_update_statement_from_object(&pk, obj, |field| model.field_is_none(field));
 
 		let (sql, values) = build_update_sql(&stmt, conn.backend());
 		let values: Vec<_> = values
@@ -1066,7 +1101,7 @@ impl<M: Model> Manager<M> {
 
 		let row = conn.query_one(&sql, values).await?;
 		// row.data is already serde_json::Value::Object so deserialize directly
-		serde_json::from_value(row.data.clone())
+		row.deserialize_model::<M>()
 			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
 	}
 
@@ -1199,8 +1234,9 @@ impl<M: Model> Manager<M> {
 		// Convert all models to JSON and extract field names from first model
 		let json_values: Vec<serde_json::Value> = models
 			.iter()
-			.filter_map(|m| serde_json::to_value(m).ok())
-			.collect();
+			.map(serde_json::to_value)
+			.collect::<Result<_, _>>()
+			.ok()?;
 
 		if json_values.is_empty() {
 			return None;
@@ -1209,14 +1245,22 @@ impl<M: Model> Manager<M> {
 		// Get field names from first model
 		let first_obj = json_values[0].as_object()?;
 
-		let field_names: Vec<_> = first_obj
-			.keys()
-			.filter(|field| !Self::is_generated_field(field.as_str()))
-			.cloned()
+		let primary_key = M::primary_key_field();
+		let field_names: Vec<String> = first_obj
+			.iter()
+			.filter_map(|(name, value)| {
+				if Self::is_generated_field(name.as_str())
+					|| (name == primary_key && value.is_null())
+				{
+					None
+				} else {
+					Some(name.clone())
+				}
+			})
 			.collect();
 		let fields: Vec<_> = field_names
 			.iter()
-			.map(|field| Alias::new(field.as_str()))
+			.map(|name| Alias::new(name.as_str()))
 			.collect();
 		if fields.is_empty() {
 			return None;
@@ -1227,19 +1271,19 @@ impl<M: Model> Manager<M> {
 		stmt.into_table(Alias::new(M::table_name())).columns(fields);
 
 		// Add value rows for each model
-		for val in &json_values {
+		let field_metadata = M::field_metadata();
+		for (model, val) in models.iter().zip(&json_values) {
 			if let Some(obj) = val.as_object() {
 				let values: Vec<reinhardt_query::value::Value> = field_names
 					.iter()
 					.map(|field| {
-						obj.get(field)
-							.map(|v| {
-								if v.is_null() {
-									// Use untyped NULL to avoid PostgreSQL type mismatch errors
-									reinhardt_query::value::Value::Int(None)
-								} else {
-									Self::json_to_sea_value(v)
-								}
+						obj.get(field.as_str())
+							.map(|value| {
+								Self::json_to_sea_value_for_field(
+									value,
+									find_field_info(&field_metadata, field),
+									model.field_is_none(field),
+								)
 							})
 							// Use untyped NULL for missing fields
 							.unwrap_or(reinhardt_query::value::Value::Int(None))
@@ -1315,7 +1359,8 @@ impl<M: Model> Manager<M> {
 
 		if let Ok(Some(row)) = conn.query_optional(&select_sql, vec![]).await {
 			// row.data is already serde_json::Value::Object so deserialize directly
-			let model: M = serde_json::from_value(row.data.clone())
+			let model: M = row
+				.deserialize_model()
 				.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 			return Ok((model, false));
 		}
@@ -1338,7 +1383,8 @@ impl<M: Model> Manager<M> {
 
 		let row = conn.query_one(&insert_sql, vec![]).await?;
 		// row.data is already serde_json::Value::Object so deserialize directly
-		let model: M = serde_json::from_value(row.data.clone())
+		let model: M = row
+			.deserialize_model()
 			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 
 		Ok((model, true))
@@ -1375,53 +1421,39 @@ impl<M: Model> Manager<M> {
 		let mut results = Vec::new();
 
 		for chunk in models.chunks(batch_size) {
-			// Extract fields from first model
-			let json = serde_json::to_value(&chunk[0])
-				.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
-			let obj = json.as_object().ok_or_else(|| {
-				reinhardt_core::exception::Error::Database(
-					"Model must serialize to object".to_string(),
-				)
-			})?;
-			// Exclude primary key field if it's Null (for auto-increment)
-			let pk_field = M::primary_key_field();
-			let field_names: Vec<String> = obj
-				.iter()
-				.filter_map(|(k, v)| {
-					if Self::is_generated_field(k.as_str()) || (k == pk_field && v.is_null()) {
-						None
-					} else {
-						Some(k.clone())
-					}
-				})
-				.collect();
-
-			// Extract values for all models in chunk
-			let value_rows: Vec<Vec<serde_json::Value>> = chunk
-				.iter()
-				.map(|model| {
-					let json = serde_json::to_value(model).unwrap();
-					let obj = json.as_object().unwrap();
-					field_names.iter().map(|field| obj[field].clone()).collect()
-				})
-				.collect();
-
-			let sql = self.bulk_create_sql_detailed(&field_names, &value_rows, ignore_conflicts);
-			if sql.is_empty() {
+			let Some(mut statement) = self.bulk_create_query(chunk) else {
 				continue;
+			};
+			if !ignore_conflicts {
+				statement.returning_all();
 			}
+			let (sql, values) = build_insert_sql(&statement, conn.backend());
+			let sql = if ignore_conflicts {
+				match conn.backend() {
+					DatabaseBackend::Postgres => format!("{sql} ON CONFLICT DO NOTHING"),
+					DatabaseBackend::MySql => sql.replacen("INSERT INTO", "INSERT IGNORE INTO", 1),
+					DatabaseBackend::Sqlite => {
+						sql.replacen("INSERT INTO", "INSERT OR IGNORE INTO", 1)
+					}
+				}
+			} else {
+				sql
+			};
+			let values = values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
+				.collect();
 
-			// Execute and get results
 			if ignore_conflicts {
-				conn.execute(&sql, vec![]).await?;
+				conn.execute(&sql, values).await?;
 				// Note: Can't get RETURNING with DO NOTHING, skip results
 				// Return empty vec for ignored conflicts
 			} else {
-				let sql_with_returning = sql + " RETURNING *";
-				let rows = conn.query(&sql_with_returning, vec![]).await?;
+				let rows = conn.query(&sql, values).await?;
 				for row in rows {
-					// row.data is already serde_json::Value::Object so deserialize directly
-					let model: M = serde_json::from_value(row.data.clone())
+					let model: M = row
+						.deserialize_model()
 						.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 					results.push(model);
 				}
@@ -1701,8 +1733,10 @@ impl<M: Model> Default for Manager<M> {
 mod tests {
 	use super::Manager;
 	use crate::orm::FieldSelector;
+	use crate::orm::Json;
 	use crate::orm::Model;
 	use crate::orm::connection::DatabaseBackend;
+	use crate::orm::inspection::FieldInfo;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
 
@@ -1757,6 +1791,89 @@ mod tests {
 
 		fn new_fields() -> Self::Fields {
 			TestUserFields
+		}
+	}
+
+	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+	struct TestSettings {
+		theme: String,
+	}
+
+	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+	struct JsonManagerModel {
+		id: Option<i64>,
+		scalar_json: Json<String>,
+		settings: Json<TestSettings>,
+		optional_json: Option<Json<serde_json::Value>>,
+	}
+
+	#[derive(Debug, Clone)]
+	struct JsonManagerModelFields;
+
+	impl FieldSelector for JsonManagerModelFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for JsonManagerModel {
+		type PrimaryKey = i64;
+		type Fields = JsonManagerModelFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"json_manager_models"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn new_fields() -> Self::Fields {
+			JsonManagerModelFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			vec![
+				test_manager_field_info("id", "BigIntegerField", false, true),
+				test_manager_field_info("scalar_json", "JsonField", false, false),
+				test_manager_field_info("settings", "JsonField", false, false),
+				test_manager_field_info("optional_json", "JsonField", true, false),
+			]
+		}
+
+		fn field_is_none(&self, field_name: &str) -> bool {
+			match field_name {
+				"id" => self.id.is_none(),
+				"optional_json" => self.optional_json.is_none(),
+				_ => false,
+			}
+		}
+	}
+
+	fn test_manager_field_info(
+		name: &str,
+		field_type: &str,
+		nullable: bool,
+		primary_key: bool,
+	) -> FieldInfo {
+		FieldInfo {
+			name: name.to_string(),
+			field_type: field_type.to_string(),
+			nullable,
+			primary_key,
+			unique: false,
+			blank: false,
+			editable: true,
+			default: None,
+			db_default: None,
+			db_column: None,
+			choices: None,
+			attributes: HashMap::new(),
 		}
 	}
 
@@ -1912,6 +2029,109 @@ mod tests {
 	}
 
 	#[test]
+	fn test_bulk_create_query_preserves_json_field_tags() {
+		let manager = JsonManagerModel::objects();
+		let model = JsonManagerModel {
+			id: Some(1),
+			scalar_json: Json::new("draft".to_string()),
+			settings: Json::new(TestSettings {
+				theme: "paper".to_string(),
+			}),
+			optional_json: Some(Json::new(serde_json::Value::Null)),
+		};
+
+		let stmt = manager.bulk_create_query(&[model]).unwrap();
+		let (_, values) = super::build_insert_sql(&stmt, DatabaseBackend::Postgres);
+		let json_value_count = values
+			.0
+			.iter()
+			.filter(|value| matches!(value, reinhardt_query::value::Value::Json(_)))
+			.count();
+
+		assert_eq!(json_value_count, 3);
+	}
+
+	#[rstest::rstest]
+	fn test_backend_json_string_scalar_preserves_native_json_provenance() {
+		// Arrange
+		let expected = JsonManagerModel {
+			id: Some(1),
+			scalar_json: Json::new("draft".to_string()),
+			settings: Json::new(TestSettings {
+				theme: "paper".to_string(),
+			}),
+			optional_json: None,
+		};
+		let mut backend_row = crate::backends::types::Row::new();
+		backend_row.insert("id".to_string(), crate::backends::types::QueryValue::Int(1));
+		backend_row.insert(
+			"scalar_json".to_string(),
+			crate::backends::types::QueryValue::Json(Some(Box::new(serde_json::Value::String(
+				"draft".to_string(),
+			)))),
+		);
+		backend_row.insert(
+			"settings".to_string(),
+			crate::backends::types::QueryValue::Json(Some(Box::new(serde_json::json!({
+				"theme": "paper"
+			})))),
+		);
+		backend_row.insert(
+			"optional_json".to_string(),
+			crate::backends::types::QueryValue::Json(None),
+		);
+
+		// Act
+		let model = crate::orm::connection::QueryRow::from_backend_row(backend_row)
+			.deserialize_model::<JsonManagerModel>()
+			.unwrap();
+
+		// Assert
+		assert_eq!(model, expected);
+	}
+
+	#[serial_test::serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_manager_create_roundtrips_typed_json_fields_on_sqlite() {
+		let database_file = tempfile::NamedTempFile::new().unwrap();
+		let database_url = format!("sqlite://{}", database_file.path().display());
+		let connection = crate::orm::connection::DatabaseConnection::connect(&database_url)
+			.await
+			.unwrap();
+		connection
+			.execute(
+				"CREATE TABLE json_manager_models (\
+				 id INTEGER PRIMARY KEY AUTOINCREMENT, \
+				 scalar_json TEXT NOT NULL, \
+				 settings TEXT NOT NULL, \
+				 optional_json TEXT NULL)",
+				vec![],
+			)
+			.await
+			.unwrap();
+		let model = JsonManagerModel {
+			id: None,
+			scalar_json: Json::new("draft".to_string()),
+			settings: Json::new(TestSettings {
+				theme: "paper".to_string(),
+			}),
+			optional_json: Some(Json::new(serde_json::Value::Null)),
+		};
+
+		let created = JsonManagerModel::objects()
+			.create_with_conn(&connection, &model)
+			.await
+			.unwrap();
+
+		assert_eq!(created.scalar_json.as_inner(), "draft");
+		assert_eq!(created.settings.theme, "paper");
+		assert_eq!(
+			created.optional_json.unwrap().into_inner(),
+			serde_json::Value::Null
+		);
+	}
+
+	#[test]
 	fn test_bulk_create_sql_detailed_omits_generated_fields() {
 		use serde_json::json;
 		let manager = GeneratedUser::objects();
@@ -2021,7 +2241,10 @@ mod tests {
 		};
 		let json = serde_json::to_value(&model).expect("model should serialize");
 		let obj = json.as_object().expect("model should serialize to object");
-		let stmt = Manager::<GeneratedOnlyUser>::build_update_statement_from_object(&7_i64, obj);
+		let stmt =
+			Manager::<GeneratedOnlyUser>::build_update_statement_from_object(&7_i64, obj, |_| {
+				false
+			});
 
 		let (sql, params) = super::build_update_sql(&stmt, DatabaseBackend::Postgres);
 
@@ -2041,7 +2264,7 @@ mod tests {
 		let json = serde_json::to_value(&model).expect("model should serialize");
 		let obj = json.as_object().expect("model should serialize to object");
 
-		let err = Manager::<GeneratedOnlyUser>::build_insert_statement_from_object(obj)
+		let err = Manager::<GeneratedOnlyUser>::build_insert_statement_from_object(obj, |_| false)
 			.expect_err("generated-only create should fail before rendering empty INSERT");
 
 		assert!(

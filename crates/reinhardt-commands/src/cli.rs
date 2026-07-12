@@ -536,7 +536,7 @@ async fn execute_with_registry_and_optional_settings(
 ///
 /// `Runserver` is intentionally **not** in this list (Refs #4453): the
 /// HTTP-route inventory pull is now performed explicitly inside
-/// [`RunServerCommand::execute`](crate::RunServerCommand) so that the
+/// [`RunServerCommand::execute`] so that the
 /// registration step is visible at the command's call site rather than
 /// hidden in this dispatch loop. `Showurls` / `Introspect` /
 /// `Generateopenapi` still receive the pre-dispatch
@@ -557,7 +557,7 @@ fn requires_router(command: &Commands) -> bool {
 /// Returns `true` for commands that require ORM database initialization.
 ///
 /// Database-requiring commands get automatic ORM initialization
-/// before execution via [`initialize_orm_database()`](crate::builtin::initialize_orm_database).
+/// before execution via [`initialize_orm_database()`].
 /// This is symmetric with [`requires_router()`] which controls HTTP route registration.
 #[cfg(feature = "reinhardt-db")]
 fn requires_database(command: &Commands) -> bool {
@@ -622,7 +622,7 @@ pub async fn run_command_with_registry(
 /// ([`run_command`], [`run_command_with_registry`]) and the settings-aware ones
 /// ([`execute_from_command_line_with_settings`]). When `settings` is `Some`, the
 /// database-init context receives the composed `ProjectSettings`, so
-/// [`initialize_orm_database`](crate::builtin::initialize_orm_database) can
+/// [`initialize_orm_database`] can
 /// resolve the URL from `[core.databases.default]` even when `DATABASE_URL` is
 /// unset (#5042).
 async fn run_command_core(
@@ -1408,7 +1408,7 @@ async fn execute_generateopenapi(
 /// subcommands, so most applications never need to invoke it directly. It is
 /// exposed as a public building block for **non-CLI server entrypoints** —
 /// for example, a container entrypoint binary that calls
-/// [`RunServerCommand::execute`](crate::RunServerCommand) directly without
+/// [`RunServerCommand::execute`] directly without
 /// going through clap argument parsing.
 ///
 /// For the common "just start the HTTP server" case, prefer the higher-level
