@@ -39,8 +39,8 @@ use alloc::rc::Rc;
 
 use super::runtime::{EffectTiming, NodeId, NodeType, Observer, try_with_runtime, with_runtime};
 use super::scope::{
-	NodeKey, NodeKind, allocate_node, find_node_key, mark_node_disposed, require_active_scope,
-	with_node, with_node_mut,
+	NodeKey, NodeKind, allocate_node, enter_scope, find_node_key, mark_node_disposed,
+	require_active_scope, with_node, with_node_mut,
 };
 
 /// Type alias for effect functions
@@ -251,7 +251,7 @@ impl Effect {
 				.unwrap_or_else(|err| panic!("{err}")),
 		};
 		if let Some(f) = guard.f.as_mut() {
-			f();
+			enter_scope(key.scope(), f).unwrap_or_else(|err| panic!("{err}"));
 		}
 	}
 
@@ -312,6 +312,7 @@ mod tests {
 	use crate::reactive::Signal;
 	use rstest::rstest;
 	use serial_test::serial;
+	use std::cell::Cell;
 
 	#[rstest]
 	#[serial(reactive_runtime)]
@@ -646,6 +647,30 @@ mod tests {
 			// Effect should have re-executed with the new value
 			assert_eq!(*values.borrow(), alloc::vec![0, 42]);
 		});
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn scheduled_effect_reenters_its_owning_scope() {
+		let scope = crate::reactive::ReactiveScope::new();
+		let trigger = scope.enter(|| Signal::new(false));
+		let nested_value = Rc::new(Cell::new(0_i32));
+		let nested_value_for_effect = Rc::clone(&nested_value);
+		let trigger_for_effect = trigger;
+
+		let _effect = scope.enter(|| {
+			Effect::new(move || {
+				if trigger_for_effect.get() {
+					let nested = Signal::new(42_i32);
+					nested_value_for_effect.set(nested.get());
+				}
+			})
+		});
+
+		trigger.set(true);
+		with_runtime(|runtime| runtime.flush_updates());
+
+		assert_eq!(nested_value.get(), 42);
 	}
 
 	#[test]

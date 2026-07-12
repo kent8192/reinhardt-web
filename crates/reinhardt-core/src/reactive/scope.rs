@@ -23,6 +23,7 @@ pub struct NodeKey {
 	generation: u32,
 	node_id: NodeId,
 	kind: NodeKind,
+	owner_thread: std::thread::ThreadId,
 }
 
 /// Kind of reactive node stored in a scope arena.
@@ -69,6 +70,15 @@ pub enum ReactiveScopeError {
 		/// Requested Rust type name.
 		type_name: &'static str,
 	},
+	/// A key was accessed from a thread other than the one that owns its scope.
+	WrongThread {
+		/// Scope that owns the key.
+		scope: ScopeId,
+		/// Thread that created the key.
+		owner_thread: std::thread::ThreadId,
+		/// Thread that attempted to access the key.
+		current_thread: std::thread::ThreadId,
+	},
 }
 
 impl fmt::Display for ReactiveScopeError {
@@ -97,6 +107,14 @@ impl fmt::Display for ReactiveScopeError {
 					"reactive node type mismatch: kind={kind:?}, requested={type_name}"
 				)
 			}
+			Self::WrongThread {
+				scope,
+				owner_thread,
+				current_thread,
+			} => write!(
+				f,
+				"reactive scope accessed from a different thread: scope={scope:?}, owner_thread={owner_thread:?}, current_thread={current_thread:?}"
+			),
 		}
 	}
 }
@@ -115,6 +133,19 @@ struct CoreSlot {
 struct ScopeState {
 	slots: Vec<CoreSlot>,
 	cleanup: Vec<Box<dyn FnOnce()>>,
+}
+
+struct TakenNodeValue<T: 'static> {
+	key: NodeKey,
+	value: Option<Box<T>>,
+}
+
+impl<T: 'static> Drop for TakenNodeValue<T> {
+	fn drop(&mut self) {
+		if let Some(value) = self.value.take() {
+			restore_node_value(self.key, value);
+		}
+	}
 }
 
 impl ScopeState {
@@ -168,17 +199,7 @@ impl ReactiveScope {
 
 	/// Run a closure with this scope as the current active scope.
 	pub fn enter<R>(&self, f: impl FnOnce() -> R) -> R {
-		ACTIVE_SCOPES.with(|active| active.borrow_mut().push(self.id));
-		struct PopScope;
-		impl Drop for PopScope {
-			fn drop(&mut self) {
-				ACTIVE_SCOPES.with(|active| {
-					active.borrow_mut().pop();
-				});
-			}
-		}
-		let _guard = PopScope;
-		f()
+		enter_scope(self.id, f).unwrap_or_else(|err| panic!("{err}"))
 	}
 
 	/// Dispose this scope and run registered cleanup callbacks.
@@ -205,6 +226,28 @@ impl Drop for ReactiveScope {
 /// Return the current active scope identifier, if any.
 pub fn current_scope_id() -> Option<ScopeId> {
 	ACTIVE_SCOPES.with(|active| active.borrow().last().copied())
+}
+
+pub(crate) fn enter_scope<R>(
+	scope: ScopeId,
+	f: impl FnOnce() -> R,
+) -> Result<R, ReactiveScopeError> {
+	let exists = SCOPES.with(|scopes| scopes.borrow().contains_key(&scope));
+	if !exists {
+		return Err(ReactiveScopeError::DisposedScope { scope });
+	}
+
+	ACTIVE_SCOPES.with(|active| active.borrow_mut().push(scope));
+	struct PopScope;
+	impl Drop for PopScope {
+		fn drop(&mut self) {
+			ACTIVE_SCOPES.with(|active| {
+				active.borrow_mut().pop();
+			});
+		}
+	}
+	let _guard = PopScope;
+	Ok(f())
 }
 
 /// Return the current active scope identifier or panic with diagnostics.
@@ -243,6 +286,7 @@ pub(crate) fn allocate_node<T: 'static>(kind: NodeKind, value: T) -> NodeKey {
 			generation,
 			node_id,
 			kind,
+			owner_thread: std::thread::current().id(),
 		}
 	})
 }
@@ -261,6 +305,7 @@ pub(crate) fn with_node<T: 'static, R>(
 	key: NodeKey,
 	f: impl FnOnce(&T) -> R,
 ) -> Result<R, ReactiveScopeError> {
+	ensure_owner_thread(key)?;
 	SCOPES.with(|scopes| {
 		let scopes = scopes.borrow();
 		let state = scopes
@@ -316,7 +361,8 @@ pub(crate) fn with_node_mut<T: 'static, R>(
 	key: NodeKey,
 	f: impl FnOnce(&mut T) -> R,
 ) -> Result<R, ReactiveScopeError> {
-	SCOPES.with(|scopes| {
+	ensure_owner_thread(key)?;
+	let value = SCOPES.with(|scopes| {
 		let mut scopes = scopes.borrow_mut();
 		let state = scopes
 			.get_mut(&key.scope)
@@ -355,16 +401,49 @@ pub(crate) fn with_node_mut<T: 'static, R>(
 				actual_generation: Some(slot.generation),
 			});
 		}
-		let value = slot
-			.value
-			.as_mut()
-			.and_then(|value| value.downcast_mut::<T>())
-			.ok_or(ReactiveScopeError::TypeMismatch {
-				kind: slot.kind,
+		slot.value.take().ok_or(ReactiveScopeError::TypeMismatch {
+			kind: slot.kind,
+			type_name: core::any::type_name::<T>(),
+		})
+	})?;
+
+	let value = match value.downcast::<T>() {
+		Ok(value) => value,
+		Err(value) => {
+			restore_node_value(key, value);
+			return Err(ReactiveScopeError::TypeMismatch {
+				kind: key.kind,
 				type_name: core::any::type_name::<T>(),
-			})?;
-		Ok(f(value))
-	})
+			});
+		}
+	};
+	let mut value = TakenNodeValue {
+		key,
+		value: Some(value),
+	};
+	Ok(f(value.value.as_deref_mut().expect(
+		"taken node value must remain available during mutation",
+	)))
+}
+
+fn restore_node_value(key: NodeKey, value: Box<dyn Any>) {
+	if ensure_owner_thread(key).is_err() {
+		return;
+	}
+	SCOPES.with(|scopes| {
+		let Ok(mut scopes) = scopes.try_borrow_mut() else {
+			return;
+		};
+		let Some(state) = scopes.get_mut(&key.scope) else {
+			return;
+		};
+		let Some(slot) = state.slots.get_mut(key.index) else {
+			return;
+		};
+		if slot.generation == key.generation && !slot.disposed && slot.value.is_none() {
+			slot.value = Some(value);
+		}
+	});
 }
 
 pub(crate) fn find_node_key(node_id: NodeId, kind: NodeKind) -> Option<NodeKey> {
@@ -383,6 +462,7 @@ pub(crate) fn find_node_key(node_id: NodeId, kind: NodeKind) -> Option<NodeKey> 
 						generation: slot.generation,
 						node_id,
 						kind,
+						owner_thread: std::thread::current().id(),
 					});
 				}
 			}
@@ -392,6 +472,7 @@ pub(crate) fn find_node_key(node_id: NodeId, kind: NodeKind) -> Option<NodeKey> 
 }
 
 pub(crate) fn node_is_dirty(key: NodeKey) -> Result<bool, ReactiveScopeError> {
+	ensure_owner_thread(key)?;
 	SCOPES.with(|scopes| {
 		let scopes = scopes.borrow();
 		let state = scopes
@@ -427,6 +508,7 @@ pub(crate) fn node_is_dirty(key: NodeKey) -> Result<bool, ReactiveScopeError> {
 }
 
 pub(crate) fn set_node_dirty(key: NodeKey, dirty: bool) -> Result<(), ReactiveScopeError> {
+	ensure_owner_thread(key)?;
 	SCOPES.with(|scopes| {
 		let mut scopes = scopes.borrow_mut();
 		let state = scopes
@@ -463,6 +545,7 @@ pub(crate) fn set_node_dirty(key: NodeKey, dirty: bool) -> Result<(), ReactiveSc
 }
 
 pub(crate) fn mark_node_disposed(key: NodeKey) -> Result<(), ReactiveScopeError> {
+	ensure_owner_thread(key)?;
 	SCOPES.with(|scopes| {
 		let mut scopes = scopes.borrow_mut();
 		let state = scopes
@@ -492,6 +575,19 @@ pub(crate) fn mark_node_disposed(key: NodeKey) -> Result<(), ReactiveScopeError>
 	})
 }
 
+fn ensure_owner_thread(key: NodeKey) -> Result<(), ReactiveScopeError> {
+	let current_thread = std::thread::current().id();
+	if key.owner_thread == current_thread {
+		Ok(())
+	} else {
+		Err(ReactiveScopeError::WrongThread {
+			scope: key.scope,
+			owner_thread: key.owner_thread,
+			current_thread,
+		})
+	}
+}
+
 /// Register a callback to run when the given scope is disposed.
 pub fn on_scope_dispose(
 	scope: ScopeId,
@@ -508,17 +604,57 @@ pub fn on_scope_dispose(
 }
 
 pub(crate) fn dispose_scope(scope: ScopeId) {
-	let state = SCOPES.with(|scopes| scopes.borrow_mut().remove(&scope));
-	if let Some(mut state) = state {
-		for cleanup in state.cleanup.drain(..).rev() {
+	loop {
+		let cleanup = SCOPES.with(|scopes| {
+			scopes
+				.borrow_mut()
+				.get_mut(&scope)
+				.map(|state| core::mem::take(&mut state.cleanup))
+		});
+		let Some(cleanup) = cleanup else {
+			return;
+		};
+		if cleanup.is_empty() {
+			break;
+		}
+		for cleanup in cleanup.into_iter().rev() {
 			cleanup();
 		}
-		let slots = core::mem::take(&mut state.slots);
-		for slot in slots {
-			let _ = try_with_runtime(|runtime| runtime.remove_node(slot.node_id));
-			drop(slot.value);
-		}
 	}
+
+	let node_ids = SCOPES.with(|scopes| {
+		scopes
+			.borrow()
+			.get(&scope)
+			.map(|state| {
+				state
+					.slots
+					.iter()
+					.map(|slot| slot.node_id)
+					.collect::<Vec<_>>()
+			})
+			.unwrap_or_default()
+	});
+	for node_id in node_ids {
+		let _ = try_with_runtime(|runtime| runtime.remove_node(node_id));
+	}
+
+	loop {
+		let value = SCOPES.with(|scopes| {
+			scopes
+				.borrow_mut()
+				.get_mut(&scope)
+				.and_then(|state| state.slots.iter_mut().find_map(|slot| slot.value.take()))
+		});
+		let Some(value) = value else {
+			break;
+		};
+		drop(value);
+	}
+
+	SCOPES.with(|scopes| {
+		scopes.borrow_mut().remove(&scope);
+	});
 }
 
 impl NodeKey {
@@ -584,5 +720,26 @@ mod tests {
 			*cleaned.borrow(),
 			"scope disposal must run cleanup callbacks"
 		);
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn scope_cleanup_can_read_live_nodes() {
+		let scope = ReactiveScope::new();
+		let observed = alloc::rc::Rc::new(Cell::new(None));
+		let observed_for_cleanup = alloc::rc::Rc::clone(&observed);
+		let scope_id = scope.id();
+
+		scope.enter(|| {
+			let signal = super::super::signal::Signal::new(42_i32);
+			on_scope_dispose(scope_id, move || {
+				observed_for_cleanup.set(Some(signal.get()));
+			})
+			.expect("live scope should accept cleanup callbacks");
+		});
+
+		scope.dispose();
+
+		assert_eq!(observed.get(), Some(42));
 	}
 }

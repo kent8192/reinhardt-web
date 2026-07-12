@@ -80,6 +80,12 @@ impl<T> SignalSlot<T> {
 ///
 /// `Signal<T>` is a copied key into the current [`super::ReactiveScope`]. The
 /// owning scope stores the value and controls its lifetime.
+///
+/// ## Thread affinity
+///
+/// A signal key records the thread that owns its reactive scope. Access from a
+/// different thread is rejected rather than resolving a same-numbered scope
+/// from that thread's local arena.
 pub struct Signal<T: 'static> {
 	key: NodeKey,
 	_marker: PhantomData<fn() -> T>,
@@ -342,6 +348,41 @@ mod tests {
 		let result = signal.try_set(2);
 
 		assert!(result.is_err());
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn signal_update_can_read_a_different_signal() {
+		crate::reactive::ReactiveScope::run(|| {
+			let source = Signal::new(41_i32);
+			let target = Signal::new(0_i32);
+
+			target.update(|value| *value = source.get() + 1);
+
+			assert_eq!(target.get(), 42);
+		});
+	}
+
+	#[cfg(not(target_arch = "wasm32"))]
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn signal_rejects_access_from_a_different_thread() {
+		let scope = crate::reactive::ReactiveScope::new();
+		let signal = scope.enter(|| Signal::new(1_i32));
+
+		let result = std::thread::spawn(move || {
+			crate::reactive::ReactiveScope::run(|| {
+				let _same_slot_on_this_thread = Signal::new(2_i32);
+				signal.try_set(3)
+			})
+		})
+		.join()
+		.expect("worker thread should finish without panicking");
+
+		assert!(matches!(
+			result,
+			Err(ReactiveScopeError::WrongThread { .. })
+		));
 	}
 
 	#[rstest]
