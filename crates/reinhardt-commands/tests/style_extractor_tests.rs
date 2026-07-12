@@ -187,6 +187,31 @@ static CLIENT: ClientStyles = style! { .client { color: blue; } };
 }
 
 #[rstest]
+fn scanner_uses_the_wasm_definition_when_targets_share_a_style_scope() {
+	let directory = tempfile::tempdir().expect("create temporary package");
+	let manifest = write_package(
+		directory.path(),
+		r#"
+#[cfg(target_family = "wasm")]
+#[style_def]
+static CLIENT: CardStyles = style! { .card { color: blue; } };
+
+#[cfg(not(target_family = "wasm"))]
+#[style_def]
+static SERVER: CardStyles = style! { .card { color: red; } };
+"#,
+	);
+	let context = StylePackageContext::resolve(&manifest, None).expect("select root package");
+
+	let bundle = StyleExtractor::new(context)
+		.extract()
+		.expect("extract only the frontend target style definition");
+
+	assert_eq!(bundle.definitions.len(), 1);
+	assert_eq!(bundle.definitions[0].style_type_name, "CardStyles");
+}
+
+#[rstest]
 fn scanner_follows_compiled_modules_and_ignores_unreferenced_source_files() {
 	let directory = tempfile::tempdir().expect("create temporary package");
 	let manifest = write_package(directory.path(), "mod styles;\n");
@@ -236,6 +261,64 @@ mod ui {
 
 	assert_eq!(bundle.definitions.len(), 1);
 	assert_eq!(bundle.definitions[0].style_type_name, "NestedStyles");
+}
+
+#[rstest]
+fn scanner_resolves_active_cfg_attr_path_modules() {
+	let directory = tempfile::tempdir().expect("create temporary package");
+	let manifest = write_package(
+		directory.path(),
+		r#"
+#[cfg_attr(feature = "alt", path = "alt.rs")]
+mod styles;
+"#,
+	);
+	fs::write(
+		&manifest,
+		"[package]\nname = \"poll-app\"\nversion = \"0.4.0\"\nedition = \"2024\"\n\n[features]\ndefault = [\"alt\"]\nalt = []\n",
+	)
+	.expect("enable the alternate module feature");
+	fs::write(
+		directory.path().join("src/alt.rs"),
+		"#[style_def] static STYLES: AlternateStyles = style! { .card { color: red; } };\n",
+	)
+	.expect("write cfg_attr-selected module");
+	let context = StylePackageContext::resolve(&manifest, None).expect("select root package");
+
+	let bundle = StyleExtractor::new(context)
+		.extract()
+		.expect("extract the cfg_attr-selected module");
+
+	assert_eq!(bundle.definitions.len(), 1);
+	assert_eq!(bundle.definitions[0].style_type_name, "AlternateStyles");
+}
+
+#[rstest]
+fn scanner_resolves_submodules_of_path_modules_from_their_parent_directory() {
+	let directory = tempfile::tempdir().expect("create temporary package");
+	let manifest = write_package(
+		directory.path(),
+		r#"
+#[path = "foo/bar.rs"]
+mod styles;
+"#,
+	);
+	fs::create_dir_all(directory.path().join("src/foo")).expect("create path module directory");
+	fs::write(directory.path().join("src/foo/bar.rs"), "mod child;\n")
+		.expect("write path module source");
+	fs::write(
+		directory.path().join("src/foo/child.rs"),
+		"#[style_def] static STYLES: ChildStyles = style! { .card { color: red; } };\n",
+	)
+	.expect("write child module source");
+	let context = StylePackageContext::resolve(&manifest, None).expect("select root package");
+
+	let bundle = StyleExtractor::new(context)
+		.extract()
+		.expect("extract the child module of a path-attributed source");
+
+	assert_eq!(bundle.definitions.len(), 1);
+	assert_eq!(bundle.definitions[0].style_type_name, "ChildStyles");
 }
 
 #[rstest]

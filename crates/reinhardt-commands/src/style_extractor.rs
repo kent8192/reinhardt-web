@@ -312,18 +312,32 @@ fn collect_module_items(
 			continue;
 		}
 
-		let module_source = external_module_source_path(module_dir, module)?;
-		let nested_module_dir = module_directory(&module_source)?;
-		collect_source_file(&module_source, &nested_module_dir, cfg, files)?;
+		let module_source = external_module_source_path(module_dir, module, cfg)?;
+		let nested_module_dir =
+			module_directory(&module_source.path, module_source.has_path_attribute)?;
+		collect_source_file(&module_source.path, &nested_module_dir, cfg, files)?;
 	}
 	Ok(())
 }
 
-fn external_module_source_path(module_dir: &Path, module: &ItemMod) -> Result<PathBuf, String> {
-	if let Some(path) = module_path_attribute(module)? {
+/// One resolved external module source and its child-module resolution mode.
+struct ModuleSource {
+	path: PathBuf,
+	has_path_attribute: bool,
+}
+
+fn external_module_source_path(
+	module_dir: &Path,
+	module: &ItemMod,
+	cfg: &CfgEvaluator,
+) -> Result<ModuleSource, String> {
+	if let Some(path) = module_path_attribute(module, cfg)? {
 		let resolved = module_dir.join(path);
 		if resolved.is_file() {
-			return Ok(resolved);
+			return Ok(ModuleSource {
+				path: resolved,
+				has_path_attribute: true,
+			});
 		}
 		return Err(format!(
 			"module `{}` references missing source file {}",
@@ -335,8 +349,14 @@ fn external_module_source_path(module_dir: &Path, module: &ItemMod) -> Result<Pa
 	let flat = module_dir.join(format!("{}.rs", module.ident));
 	let legacy = module_dir.join(module.ident.to_string()).join("mod.rs");
 	match (flat.is_file(), legacy.is_file()) {
-		(true, false) => Ok(flat),
-		(false, true) => Ok(legacy),
+		(true, false) => Ok(ModuleSource {
+			path: flat,
+			has_path_attribute: false,
+		}),
+		(false, true) => Ok(ModuleSource {
+			path: legacy,
+			has_path_attribute: false,
+		}),
 		(false, false) => Err(format!(
 			"module `{}` has no source file at {} or {}",
 			module.ident,
@@ -352,12 +372,29 @@ fn external_module_source_path(module_dir: &Path, module: &ItemMod) -> Result<Pa
 	}
 }
 
-fn module_path_attribute(module: &ItemMod) -> Result<Option<PathBuf>, String> {
+fn module_path_attribute(module: &ItemMod, cfg: &CfgEvaluator) -> Result<Option<PathBuf>, String> {
+	let mut selected = None;
 	for attribute in &module.attrs {
-		if !attribute.path().is_ident("path") {
+		let Some(path) = active_path_attribute(&attribute.meta, cfg, module)? else {
 			continue;
+		};
+		if selected.replace(path).is_some() {
+			return Err(format!(
+				"module `{}` has multiple active path attributes",
+				module.ident
+			));
 		}
-		let Meta::NameValue(name_value) = &attribute.meta else {
+	}
+	Ok(selected)
+}
+
+fn active_path_attribute(
+	meta: &Meta,
+	cfg: &CfgEvaluator,
+	module: &ItemMod,
+) -> Result<Option<PathBuf>, String> {
+	if meta.path().is_ident("path") {
+		let Meta::NameValue(name_value) = meta else {
 			return Err(format!(
 				"module `{}` has an invalid path attribute",
 				module.ident
@@ -377,17 +414,57 @@ fn module_path_attribute(module: &ItemMod) -> Result<Option<PathBuf>, String> {
 		};
 		return Ok(Some(PathBuf::from(path.value())));
 	}
-	Ok(None)
+	if !meta.path().is_ident("cfg_attr") {
+		return Ok(None);
+	}
+
+	let Meta::List(list) = meta else {
+		return Err(format!(
+			"module `{}` has an invalid cfg_attr path attribute",
+			module.ident
+		));
+	};
+	let arguments = list
+		.parse_args_with(syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated)
+		.map_err(|_| {
+			format!(
+				"module `{}` has an invalid cfg_attr path attribute",
+				module.ident
+			)
+		})?;
+	let Some(condition) = arguments.first() else {
+		return Err(format!(
+			"module `{}` has an invalid cfg_attr path attribute",
+			module.ident
+		));
+	};
+	if !cfg.predicate_is_enabled(condition) {
+		return Ok(None);
+	}
+
+	let mut selected = None;
+	for nested in arguments.iter().skip(1) {
+		let Some(path) = active_path_attribute(nested, cfg, module)? else {
+			continue;
+		};
+		if selected.replace(path).is_some() {
+			return Err(format!(
+				"module `{}` has multiple active path attributes",
+				module.ident
+			));
+		}
+	}
+	Ok(selected)
 }
 
-fn module_directory(source_path: &Path) -> Result<PathBuf, String> {
+fn module_directory(source_path: &Path, has_path_attribute: bool) -> Result<PathBuf, String> {
 	let parent = source_path.parent().ok_or_else(|| {
 		format!(
 			"module source has no parent directory: {}",
 			source_path.display()
 		)
 	})?;
-	if source_path.file_name().is_some_and(|name| name == "mod.rs") {
+	if has_path_attribute || source_path.file_name().is_some_and(|name| name == "mod.rs") {
 		return Ok(parent.to_path_buf());
 	}
 	let stem = source_path
@@ -396,10 +473,10 @@ fn module_directory(source_path: &Path) -> Result<PathBuf, String> {
 	Ok(parent.join(stem))
 }
 
-/// Evaluates the `cfg` predicates that determine which authored declarations Cargo compiles.
+/// Evaluates the `cfg` predicates for authored declarations compiled into the Pages WASM target.
 #[derive(Debug, Clone)]
 struct CfgEvaluator {
-	targets: Vec<CfgTarget>,
+	target: CfgTarget,
 	features: BTreeSet<String>,
 }
 
@@ -413,34 +490,29 @@ struct CfgTarget {
 impl CfgEvaluator {
 	fn new(features: BTreeSet<String>) -> Result<Self, String> {
 		let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
-		let targets = [None, Some("wasm32-unknown-unknown")]
-			.into_iter()
-			.map(|target| CfgTarget::from_rustc(&rustc, target))
-			.collect::<Result<_, _>>()?;
-		Ok(Self { targets, features })
+		let target = CfgTarget::from_rustc(&rustc, "wasm32-unknown-unknown")?;
+		Ok(Self { target, features })
 	}
 
 	fn items_are_enabled(&self, attributes: &[Attribute]) -> bool {
-		self.targets
-			.iter()
-			.any(|target| target.items_are_enabled(attributes, &self.features))
+		self.target.items_are_enabled(attributes, &self.features)
+	}
+
+	fn predicate_is_enabled(&self, predicate: &Meta) -> bool {
+		self.target.predicate_is_enabled(predicate, &self.features)
 	}
 }
 
 impl CfgTarget {
-	fn from_rustc(rustc: &std::ffi::OsStr, target: Option<&str>) -> Result<Self, String> {
-		let target_name = target.unwrap_or("the host target");
+	fn from_rustc(rustc: &std::ffi::OsStr, target: &str) -> Result<Self, String> {
 		let mut command = Command::new(rustc);
-		command.args(["--print", "cfg"]);
-		if let Some(target) = target {
-			command.args(["--target", target]);
-		}
+		command.args(["--print", "cfg", "--target", target]);
 		let output = command.output().map_err(|error| {
-			format!("failed to query Rust compiler configuration for {target_name}: {error}")
+			format!("failed to query Rust compiler configuration for {target}: {error}")
 		})?;
 		if !output.status.success() {
 			return Err(format!(
-				"failed to query Rust compiler configuration for {target_name}: {}",
+				"failed to query Rust compiler configuration for {target}: {}",
 				String::from_utf8_lossy(&output.stderr).trim()
 			));
 		}
