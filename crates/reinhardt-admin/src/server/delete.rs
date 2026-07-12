@@ -9,7 +9,7 @@ use crate::adapters::{AdminDatabase, AdminRecord, AdminSite, BulkDeleteResponse}
 use crate::core::{AdminDatabaseKey, AdminSiteKey};
 use crate::types::MutationResponse;
 #[cfg(server)]
-use reinhardt_di::Depends;
+use reinhardt_di::KeyedDepends;
 #[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
@@ -51,8 +51,8 @@ pub async fn delete_record(
 	model_name: String,
 	id: String,
 	csrf_token: String,
-	#[inject] site: Depends<AdminSiteKey, AdminSite>,
-	#[inject] db: Depends<AdminDatabaseKey, AdminDatabase>,
+	#[inject] site: KeyedDepends<AdminSiteKey, AdminSite>,
+	#[inject] db: KeyedDepends<AdminDatabaseKey, AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<crate::types::MutationResponse, ServerFnError> {
@@ -136,8 +136,8 @@ pub async fn delete_record(
 pub async fn bulk_delete_records(
 	model_name: String,
 	request: crate::adapters::BulkDeleteRequest,
-	#[inject] site: Depends<AdminSiteKey, AdminSite>,
-	#[inject] db: Depends<AdminDatabaseKey, AdminDatabase>,
+	#[inject] site: KeyedDepends<AdminSiteKey, AdminSite>,
+	#[inject] db: KeyedDepends<AdminDatabaseKey, AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<crate::adapters::BulkDeleteResponse, ServerFnError> {

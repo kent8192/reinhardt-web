@@ -29,48 +29,15 @@ fn generate_inject_resolver_expr(
 	ctx: proc_macro2::TokenStream,
 	use_cache: bool,
 ) -> proc_macro2::TokenStream {
-	fn depends_key_value_types(ty: &syn::Type) -> Option<(&syn::Type, &syn::Type)> {
-		let syn::Type::Path(type_path) = ty else {
-			return None;
-		};
-		let segment = type_path.path.segments.last()?;
-		if segment.ident != "Depends" {
-			return None;
-		}
-		let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
-			return None;
-		};
-		if args.args.len() != 2 {
-			return None;
-		}
-		let mut generic_args = args.args.iter();
-		let syn::GenericArgument::Type(key_ty) = generic_args.next()? else {
-			return None;
-		};
-		let syn::GenericArgument::Type(value_ty) = generic_args.next()? else {
-			return None;
-		};
-		Some((key_ty, value_ty))
-	}
-
-	if let Some((key_ty, value_ty)) = depends_key_value_types(ty) {
-		quote! {
-			{
-				#di_crate::Depends::<#key_ty, #value_ty>::resolve_from_registry(#ctx, #use_cache)
-					.await
-			}
-		}
-	} else {
-		quote! {
-			{
-				use #di_crate::{
-					__InjectFallbackResolver as _,
-					__InjectWrapperResolver as _,
-				};
-				#di_crate::__InjectResolver::<#ty>::new()
-					.__resolve_inject_parameter(#ctx, #use_cache)
-					.await
-			}
+	quote! {
+		{
+			use #di_crate::{
+				__InjectFallbackResolver as _,
+				__InjectWrapperResolver as _,
+			};
+			#di_crate::__InjectResolver::<#ty>::new()
+				.__resolve_inject_parameter(#ctx, #use_cache)
+				.await
 		}
 	}
 }
