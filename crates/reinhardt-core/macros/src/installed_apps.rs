@@ -550,7 +550,7 @@ pub(crate) fn installed_apps_impl(input: TokenStream) -> Result<TokenStream> {
 
 	// Write app labels to state file for cross-macro communication with #[routes].
 	// This replaces the __reinhardt_for_each_app #[macro_export] callback pattern
-	// that triggers macro_expanded_macro_exports_accessed_by_absolute_paths on Rust 1.94+.
+	// that triggers macro_expanded_macro_exports_accessed_by_absolute_paths on Rust 1.96+.
 	let label_strings: Vec<String> = labels.iter().map(|l| l.to_string()).collect();
 	if let Err(err) = crate::macro_state::write_installed_apps(&label_strings) {
 		return Err(syn::Error::new(

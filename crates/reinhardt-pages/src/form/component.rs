@@ -999,6 +999,7 @@ impl FormComponent {
 	/// ```
 	#[cfg(wasm)]
 	pub async fn submit(&self) -> Result<(), String> {
+		use crate::fetch;
 		use serde_json::json;
 
 		// Collect form data
@@ -1014,22 +1015,22 @@ impl FormComponent {
 			data.insert("csrfmiddlewaretoken".to_string(), json!(csrf_token));
 		}
 
-		// Send POST request
-		let response = reqwest::Client::new()
-			.post(&self.action)
-			.header("Content-Type", "application/json")
-			.json(&data)
-			.send()
-			.await
-			.map_err(|e| format!("Failed to send request: {:?}", e))?;
+		let body = serde_json::to_string(&data)
+			.map_err(|e| format!("Failed to serialize form data: {e}"))?;
 
-		if response.status().is_success() {
+		let response = fetch::request(
+			"POST",
+			&self.action,
+			Some(&body),
+			vec![("Content-Type".to_string(), "application/json".to_string())],
+		)
+		.await
+		.map_err(|e| format!("Failed to send request: {e}"))?;
+
+		if response.is_success() {
 			Ok(())
 		} else {
-			Err(format!(
-				"Submit failed with status: {}",
-				response.status().as_u16()
-			))
+			Err(format!("Submit failed with status: {}", response.status()))
 		}
 	}
 

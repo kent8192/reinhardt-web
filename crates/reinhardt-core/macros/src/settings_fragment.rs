@@ -48,11 +48,6 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 
 	let parsed_fields = settings_schema::parse_fields(&input)?;
 
-	let section = section.unwrap_or_else(|| {
-		settings_schema::infer_type_key(&input.ident.to_string())
-			.unwrap_or_else(|_| settings_schema::camel_to_snake(&input.ident.to_string()))
-	});
-
 	// Default policy: "optional" for backward compatibility
 	let default_policy_is_required = default_policy.as_deref() == Some("required");
 
@@ -61,15 +56,6 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 
 	let struct_name = &input.ident;
 	let vis = &input.vis;
-	let trait_name = format_ident!("Has{}", struct_name);
-	let method_name: syn::Ident = syn::parse_str(&section).map_err(|_| {
-		syn::Error::new(
-			struct_name.span(),
-			format!(
-				"`section` must be a valid Rust method identifier for the generated settings accessor; got `{section}`"
-			),
-		)
-	})?;
 
 	// Check if derives are already present
 	let has_derive = input.attrs.iter().any(|a| a.path().is_ident("derive"));
@@ -120,7 +106,8 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 			Some(SettingAttr::Default(expr)) => {
 				// Include struct name in generated function to avoid collisions
 				// between multiple fragment structs in the same module
-				let fn_name = format_ident!("__default_{}_{}", struct_name, field_name);
+				let struct_fn_prefix = settings_schema::camel_to_snake(&struct_name.to_string());
+				let fn_name = format_ident!("__default_{}_{}", struct_fn_prefix, field_name);
 				let field_ty = &field.ty;
 				let expr_tokens: TokenStream = expr.parse().map_err(|e| {
 					syn::Error::new(
@@ -267,6 +254,57 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 		quote! {}
 	};
 
+	let root_fragment_impl = if let Some(section) = section {
+		let trait_name = format_ident!("Has{}", struct_name);
+		let method_name: syn::Ident = syn::parse_str(&section).map_err(|_| {
+			syn::Error::new(
+				struct_name.span(),
+				format!(
+					"`section` must be a valid Rust method identifier for the generated settings accessor; got `{section}`"
+				),
+			)
+		})?;
+
+		quote! {
+			impl #conf_crate::settings::fragment::SettingsFragment for #struct_name {
+				type Accessor = dyn #trait_name;
+
+				fn section() -> &'static str {
+					#section
+				}
+
+				#validate_override
+
+				fn field_policies() -> &'static [#conf_crate::settings::policy::FieldPolicy] {
+					static POLICIES: &[#conf_crate::settings::policy::FieldPolicy] = &[
+						#(#field_policy_entries),*
+					];
+					POLICIES
+				}
+			}
+
+			impl #conf_crate::settings::fragment::HasSettings<#struct_name> for #struct_name {
+				fn get_settings(&self) -> &#struct_name {
+					self
+				}
+			}
+
+			/// Trait for accessing the settings fragment from a composed settings type.
+			#vis trait #trait_name {
+				/// Get a reference to the settings fragment.
+				fn #method_name(&self) -> &#struct_name;
+			}
+
+			impl<T: #conf_crate::settings::fragment::HasSettings<#struct_name>> #trait_name for T {
+				fn #method_name(&self) -> &#struct_name {
+					self.get_settings()
+				}
+			}
+		}
+	} else {
+		quote! {}
+	};
+
 	Ok(quote! {
 		#derive_attr
 		#(#attrs)*
@@ -323,39 +361,6 @@ pub(crate) fn settings_fragment_impl(args: TokenStream, input: ItemStruct) -> Re
 			}
 		}
 
-		impl #conf_crate::settings::fragment::SettingsFragment for #struct_name {
-			type Accessor = dyn #trait_name;
-
-			fn section() -> &'static str {
-				#section
-			}
-
-			#validate_override
-
-			fn field_policies() -> &'static [#conf_crate::settings::policy::FieldPolicy] {
-				static POLICIES: &[#conf_crate::settings::policy::FieldPolicy] = &[
-					#(#field_policy_entries),*
-				];
-				POLICIES
-			}
-		}
-
-		impl #conf_crate::settings::fragment::HasSettings<#struct_name> for #struct_name {
-			fn get_settings(&self) -> &#struct_name {
-				self
-			}
-		}
-
-		/// Trait for accessing the settings fragment from a composed settings type.
-		#vis trait #trait_name {
-			/// Get a reference to the settings fragment.
-			fn #method_name(&self) -> &#struct_name;
-		}
-
-		impl<T: #conf_crate::settings::fragment::HasSettings<#struct_name>> #trait_name for T {
-			fn #method_name(&self) -> &#struct_name {
-				self.get_settings()
-			}
-		}
+		#root_fragment_impl
 	})
 }

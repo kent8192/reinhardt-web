@@ -3,7 +3,7 @@ use chrono::Local;
 use colored::Colorize;
 use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Configuration for logging middleware
 ///
@@ -45,7 +45,7 @@ impl LoggingConfig {
 /// Django-style request logging middleware with colored output
 ///
 /// Outputs request logs in Django's runserver format with latency:
-/// `[DD/Mon/YYYY HH:MM:SS] "METHOD /path HTTP/1.1" STATUS SIZE LATENCYms`
+/// `[DD/Mon/YYYY HH:MM:SS] "METHOD /path HTTP/1.1" STATUS SIZE LATENCY`
 ///
 /// Status codes are color-coded:
 /// - 2xx: Green (success)
@@ -85,7 +85,7 @@ impl LoggingConfig {
 ///
 /// let response = middleware.process(request, handler).await.unwrap();
 /// assert_eq!(response.status, StatusCode::OK);
-/// // Logs: [15/Dec/2024 10:30:45] "GET /api/users HTTP/1.1" 200 2 0ms
+/// // Logs: [15/Dec/2024 10:30:45] "GET /api/users HTTP/1.1" 200 2 250us
 /// # });
 /// ```
 pub struct LoggingMiddleware {
@@ -148,7 +148,7 @@ impl Middleware for LoggingMiddleware {
 						request_line.white(),
 						status_colored,
 						response.body.len().to_string().cyan(),
-						format!("{}ms", duration.as_millis()).dimmed(),
+						format_request_duration(duration).dimmed(),
 					);
 				} else {
 					println!(
@@ -157,7 +157,7 @@ impl Middleware for LoggingMiddleware {
 						request_line.white(),
 						status_colored,
 						response.body.len().to_string().cyan(),
-						format!("{}ms", duration.as_millis()).dimmed(),
+						format_request_duration(duration).dimmed(),
 					);
 				}
 			}
@@ -176,7 +176,7 @@ impl Middleware for LoggingMiddleware {
 					format!("[{timestamp}]").dimmed(),
 					request_line.white(),
 					status_colored,
-					format!("{}ms", duration.as_millis()).dimmed(),
+					format_request_duration(duration).dimmed(),
 				);
 
 				// Output error details based on configuration
@@ -195,6 +195,23 @@ impl Middleware for LoggingMiddleware {
 
 		result
 	}
+}
+
+fn format_request_duration(duration: Duration) -> String {
+	if duration.is_zero() {
+		return "0ms".to_string();
+	}
+
+	if duration < Duration::from_millis(1) {
+		let micros = duration.as_nanos().div_ceil(1_000);
+		return format!("{micros}us");
+	}
+
+	if duration < Duration::from_secs(1) {
+		return format!("{}ms", duration.as_millis());
+	}
+
+	format!("{:.3}s", duration.as_secs_f64())
 }
 
 fn format_http_version(version: hyper::Version) -> &'static str {
@@ -236,5 +253,39 @@ fn format_error_multiline(
 
 		// All other errors: Simple indented format
 		_ => format!("  {}", err),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::format_request_duration;
+	use std::time::Duration;
+
+	#[test]
+	fn format_request_duration_zero_duration() {
+		assert_eq!(format_request_duration(Duration::ZERO), "0ms");
+	}
+
+	#[test]
+	fn format_request_duration_sub_microsecond_rounds_up() {
+		assert_eq!(format_request_duration(Duration::from_nanos(1)), "1us");
+	}
+
+	#[test]
+	fn format_request_duration_sub_millisecond_uses_microseconds() {
+		assert_eq!(format_request_duration(Duration::from_micros(250)), "250us");
+	}
+
+	#[test]
+	fn format_request_duration_millisecond_scale_uses_milliseconds() {
+		assert_eq!(format_request_duration(Duration::from_millis(15)), "15ms");
+	}
+
+	#[test]
+	fn format_request_duration_second_scale_uses_seconds() {
+		assert_eq!(
+			format_request_duration(Duration::from_millis(1_234)),
+			"1.234s"
+		);
 	}
 }

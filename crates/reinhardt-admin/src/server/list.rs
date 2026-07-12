@@ -9,6 +9,8 @@ use crate::adapters::{
 	ModelAdmin,
 };
 #[cfg(server)]
+use crate::core::{AdminDatabaseKey, AdminSiteKey};
+#[cfg(server)]
 use reinhardt_db::orm::{Filter, FilterCondition, FilterOperator, FilterValue};
 #[cfg(server)]
 use reinhardt_di::Depends;
@@ -101,8 +103,8 @@ fn build_columns(model_admin: &Arc<dyn ModelAdmin>) -> Vec<ColumnInfo> {
 pub async fn get_list(
 	model_name: String,
 	params: crate::adapters::ListQueryParams,
-	#[inject] site: Depends<AdminSite>,
-	#[inject] db: Depends<AdminDatabase>,
+	#[inject] site: Depends<AdminSiteKey, AdminSite>,
+	#[inject] db: Depends<AdminDatabaseKey, AdminDatabase>,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<crate::adapters::ListResponse, ServerFnError> {
 	// Get model admin and check permission
@@ -188,25 +190,15 @@ pub async fn get_list(
 		.min(MAX_PAGE_SIZE); // Enforce maximum page size to prevent memory exhaustion
 	let offset = (page - 1) * page_size;
 
-	// Fetch data
-	let results = db
-		.list_with_condition::<AdminRecord>(
-			model_admin.table_name(),
-			filter_condition.as_ref(),
-			additional_filters.clone(),
-			sort_by,
-			offset,
-			page_size,
-		)
-		.await
-		.map_server_fn_error()?;
-
-	// Count total records
-	let count = db
-		.count_with_condition::<AdminRecord>(
+	// Fetch page data and total count in one query for the common non-empty page path.
+	let (results, count) = db
+		.list_with_condition_and_count::<AdminRecord>(
 			model_admin.table_name(),
 			filter_condition.as_ref(),
 			additional_filters,
+			sort_by,
+			offset,
+			page_size,
 		)
 		.await
 		.map_server_fn_error()?;

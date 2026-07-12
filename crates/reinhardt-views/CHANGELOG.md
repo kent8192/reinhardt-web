@@ -7,32 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.2.1...reinhardt-views@v0.2.2) - 2026-06-25
-
-### Documentation
-
-- *(views)* align viewset doctest serializers
-- update version references to v0.2.1
+## [0.3.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.3.0...reinhardt-views@v0.3.1) - 2026-07-04
 
 ### Fixed
 
-- *(tests)* align viewset serializer fixtures
+- *(ci)* unblock quick-xml security audit
 
-## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.2.0...reinhardt-views@v0.2.1) - 2026-06-23
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.2.0...reinhardt-views@v0.3.0) - 2026-06-28
 
-### Documentation
+Stable release of `reinhardt-views` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
 
-- *(views)* align viewset doctest serializers
+### Migration Notes
+
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
+
+### Added
+
+- feat!(di): introduce keyed injectable provider outputs
 
 ### Fixed
 
+- *(views)* wire declared viewset serializers
 - *(tests)* align viewset serializer fixtures
+- *(views)* align viewset serializer examples
+
+### Maintenance
+
+- merge main into develop/0.3.0
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.3...reinhardt-views@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-views` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -49,61 +58,30 @@ RC entries remain below as detailed history.
 - *(orm)* support composite filter combinators
 - *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
 
-### Fixed
-
-- *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
-- *(db)* qualify Manager in rustdoc examples and add missing Objects type
-- *(views)* route generic queryset fallback through objects
-
-### Performance
-
-- atomize facade dependency feature gates
-- trim standard facade feature dependencies
-
-### Testing
-
-- *(views)* assert filter operator and value with matches! instead of Debug substring
-- *(views)* cover explicit queryset override on retrieve-update and retrieve-destroy views
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.2.0-rc.4...reinhardt-views@v0.2.0-rc.5) - 2026-06-11
-
-### Added
-
-- *(orm)* support composite filter combinators
-
-## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.2.0-rc.2...reinhardt-views@v0.2.0-rc.3) - 2026-06-05
-
-### Performance
-
-- atomize facade dependency feature gates
-- trim standard facade feature dependencies
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.3...reinhardt-views@v0.2.0-rc.2) - 2026-06-03
-
-### Added
-
-- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
-
 ### Changed
 
 - [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Fixed
 
-- *(ci)* recover develop release-plz prerelease
 - *(auth)* [**breaking**] migrate internal consumers from removed User/SimpleUser types
 - *(db)* qualify Manager in rustdoc examples and add missing Objects type
 - *(views)* route generic queryset fallback through objects
+- *(ci)* recover develop release-plz prerelease
 
-### Styling
+### Performance
 
-- apply formatter fixes across workspace
+- atomize facade dependency feature gates
+- trim standard facade feature dependencies
 
 ### Testing
 
 - *(views)* assert filter operator and value with matches! instead of Debug substring
 - *(views)* cover explicit queryset override on retrieve-update and retrieve-destroy views
+
+### Styling
+
+- apply formatter fixes across workspace
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-rc.30...reinhardt-views@v0.1.0) - 2026-05-22
 

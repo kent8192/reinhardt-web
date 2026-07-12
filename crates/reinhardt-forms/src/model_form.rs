@@ -449,8 +449,8 @@ impl<T: FormModel> ModelForm<T> {
 		}
 
 		// Keep this path non-panicking even though presence was checked above:
-		// if a future refactor breaks the invariant, surface a typed error
-		// rather than aborting the process.
+		// future invariant drift should surface a typed error rather than aborting
+		// the process.
 		let mut instance = self.instance.take().ok_or(FormError::NoInstance)?;
 
 		// Set field values from form's cleaned_data

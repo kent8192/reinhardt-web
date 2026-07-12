@@ -23,12 +23,8 @@ struct CardProps {
 fn card(props: CardProps) -> Page {
 	page!(|p: CardProps| {
 		article {
-			h2 { {
-				p.item.clone()
-			} }
-			{
-				p.children.clone().unwrap_or_else(Page::empty)
-			}
+			h2 { { p.item.clone() } }
+			{ p.children.clone().unwrap_or_else(Page::empty) }
 		}
 	})(props)
 }
@@ -113,9 +109,7 @@ fn nested_component_inside_for_loop() {
 	fn item_card(p: ItemCardProps) -> Page {
 		page!(|p: ItemCardProps| {
 			article {
-				h2 { {
-					p.title.clone()
-				} }
+				h2 { { p.title.clone() } }
 			}
 		})(p)
 	}
@@ -135,4 +129,24 @@ fn nested_component_inside_for_loop() {
 	for t in ["a", "b", "c"] {
 		assert!(s.contains(t), "missing {t} in render output: {s}");
 	}
+}
+
+#[test]
+fn component_macro_props_render_like_page_brace_invocation() {
+	use reinhardt_pages::router::ClientRouter;
+	use reinhardt_pages::{Path, component};
+
+	#[component("/users/{id}/", "user-detail")]
+	fn user_page(Path(id): Path<i64>) -> Page {
+		page!(|id: i64| {
+			div { { format!("user {id}") } }
+		})(id)
+	}
+
+	let direct = user_page(UserPageProps::builder().id(7).build());
+	let router = ClientRouter::new().component(user_page);
+	router.current_path().set("/users/7/".to_string());
+	let routed = router.render_current();
+
+	assert_eq!(direct.render_to_string(), routed.render_to_string());
 }

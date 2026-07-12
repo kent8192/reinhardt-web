@@ -201,6 +201,17 @@ impl MiddlewareChain {
 		}
 	}
 
+	/// Creates a middleware chain from an existing middleware stack.
+	pub fn with_middlewares(
+		handler: Arc<dyn Handler>,
+		middlewares: Vec<Arc<dyn Middleware>>,
+	) -> Self {
+		Self {
+			middlewares,
+			handler,
+		}
+	}
+
 	/// Adds a middleware to the chain using builder pattern.
 	///
 	/// # Examples
@@ -272,6 +283,25 @@ impl Handler for MiddlewareChain {
 			return self.handler.handle(request).await;
 		}
 
+		if self.middlewares.len() == 1 {
+			let middleware = &self.middlewares[0];
+			if !middleware.should_continue(&request) {
+				return match self.handler.handle(request).await {
+					Ok(response) => Ok(response),
+					Err(e) => Ok(Response::from(e)),
+				};
+			}
+
+			let next: Arc<dyn Handler> = Arc::new(ErrorToResponseHandler {
+				inner: self.handler.clone(),
+			});
+			let response = match middleware.process(request, next).await {
+				Ok(response) => response,
+				Err(e) => Response::from(e),
+			};
+			return Ok(response);
+		}
+
 		// Build nested handler chain using composition with optimizations:
 		// 1. Conditional execution (skip middleware based on should_continue)
 		// 2. Short-circuiting (early return if response.should_stop_chain() is true)
@@ -286,16 +316,12 @@ impl Handler for MiddlewareChain {
 			inner: self.handler.clone(),
 		});
 
-		// Filter middleware based on should_continue condition
-		// This achieves the O(k) optimization where k is the number of middleware that should run
-		let active_middlewares: Vec<_> = self
+		for middleware in self
 			.middlewares
 			.iter()
 			.rev()
 			.filter(|mw| mw.should_continue(&request))
-			.collect();
-
-		for middleware in active_middlewares {
+		{
 			let mw = middleware.clone();
 			let handler = current_handler.clone();
 

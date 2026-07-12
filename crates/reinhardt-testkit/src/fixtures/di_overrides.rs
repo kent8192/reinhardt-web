@@ -1,5 +1,4 @@
-//! Fixtures for overriding `#[injectable]` / `#[injectable_factory]`-managed
-//! dependencies in tests.
+//! Fixtures for overriding `#[injectable]` provider-managed dependencies in tests.
 //!
 //! See `docs/superpowers/specs/2026-05-11-di-mock-fixtures-design.md` for the
 //! design rationale.

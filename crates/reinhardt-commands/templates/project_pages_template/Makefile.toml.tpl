@@ -53,7 +53,7 @@ dependencies = ["wasm-build-dev"]
 description = "Check wasm-pack installation"
 script = '''
 if ! command -v wasm-pack >/dev/null 2>&1; then
-	echo "wasm-pack not installed"
+	echo "❌ wasm-pack not installed"
 	echo "Run: cargo install wasm-pack --locked"
 	exit 1
 fi
@@ -222,6 +222,11 @@ description = "Run integration tests only"
 command = "cargo"
 args = ["nextest", "run", "--test", "*", "--all-features"]
 
+[tasks.wasm-test]
+description = "Run WASM tests in headless Chrome"
+command = "wasm-pack"
+args = ["test", "--headless", "--chrome", "--", "--no-default-features", "--features", "client-router,msw"]
+
 # ============================================================================
 # Code Quality
 # ============================================================================
@@ -317,6 +322,7 @@ description = "Show available tasks"
 script = '''
 echo "Available tasks:"
 echo "  Development:"
+echo "    install-tools      - Install WASM and watcher development tools"
 echo "    runserver          - Start the development server (with WASM); auto-reloads on changes"
 echo "    dev                - Run checks + build WASM + start server (auto-reloads)"
 echo ""
@@ -343,6 +349,7 @@ echo "  Testing:"
 echo "    test               - Run all tests"
 echo "    test-unit          - Run unit tests"
 echo "    test-integration   - Run integration tests"
+echo "    wasm-test          - Run browser/WASM tests"
 echo ""
 echo "  Code Quality:"
 echo "    fmt-check          - Check formatting"

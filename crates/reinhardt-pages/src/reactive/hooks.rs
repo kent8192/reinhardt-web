@@ -55,7 +55,6 @@
 //! - [`use_websocket`] - WebSocket connections (WASM only)
 //! - [`use_optimistic`] - Optimistic UI updates
 //! - [`use_debug_value`] - DevTools labels
-//! - [`use_effect_event`] - Non-reactive event handlers
 //!
 //! ## Example
 //!
@@ -111,14 +110,10 @@ pub use reinhardt_core::reactive::batch;
 pub use action::{OptimisticState, use_optimistic};
 pub use async_action::{Action, ActionPhase, use_action};
 pub use context::use_context;
-#[allow(
-	deprecated,
-	reason = "re-export kept until removal in v0.3.0 (Refs #4195)"
-)]
-pub use debug::{use_debug_value, use_effect_event};
+pub use debug::use_debug_value;
 pub use effect::{use_effect, use_layout_effect};
 pub use id::use_id;
-pub use memo::{use_callback, use_memo};
+pub use memo::{use_callback, use_callback_with, use_memo};
 pub use refs::{Ref, use_ref};
 pub use router::{NavigateError, RouterHandle, use_router};
 pub use state::{

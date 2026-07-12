@@ -8,6 +8,11 @@ use super::types::{MiddlewareInfo, RouteInfo, join_path};
 #[cfg(feature = "viewsets")]
 use hyper::Method;
 
+fn introspection_route_name(name: &Option<String>) -> Option<String> {
+	name.as_deref()
+		.map(|name| name.strip_prefix('!').unwrap_or(name).to_string())
+}
+
 impl ServerRouter {
 	/// Get the prefix of this router
 	pub fn prefix(&self) -> &str {
@@ -52,10 +57,10 @@ impl ServerRouter {
 	/// ```ignore
 	/// let router = ServerRouter::new()
 	///     .with_prefix("/api/v1")
-	///     .function("/users", Method::GET, handler);
+	///     .endpoint(users);
 	///
 	/// let routes = router.get_all_routes();
-	/// // Returns: [("/api/v1/users", None, None, vec![Method::GET])]
+	/// // Returns: [("/api/v1/users", Some("users"), None, vec![Method::GET])]
 	/// ```
 	pub fn get_all_routes(&self) -> RouteInfo {
 		let mut routes = Vec::new();
@@ -70,13 +75,13 @@ impl ServerRouter {
 
 			routes.push((
 				full_path,
-				route.name.clone(),
+				introspection_route_name(&route.name),
 				route.namespace.clone().or_else(|| self.namespace.clone()),
 				vec![], // Method-agnostic handlers accept all HTTP methods (shown as "ALL" in showurls)
 			));
 		}
 
-		// Collect function-based routes
+		// Collect endpoint routes
 		for func_route in &self.functions {
 			let full_path = if self.prefix.is_empty() {
 				func_route.path.clone()
@@ -86,7 +91,7 @@ impl ServerRouter {
 
 			routes.push((
 				full_path,
-				None,                   // Function routes don't have names
+				introspection_route_name(&func_route.name),
 				self.namespace.clone(), // Use router's namespace
 				vec![func_route.method.clone()],
 			));
@@ -287,7 +292,7 @@ impl ServerRouter {
 			}
 		}
 
-		// Collect function routes
+		// Collect endpoint routes
 		for func_route in &self.functions {
 			if let Some(ref name) = func_route.name {
 				let qualified_name = if let Some(ref ns) = full_namespace {

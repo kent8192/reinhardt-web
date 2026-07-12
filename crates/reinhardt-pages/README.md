@@ -164,6 +164,52 @@ let runtime = use_form(&login_form).build();
 runtime.set_value(login_form.username_field(), "ada".to_string());
 ```
 
+`FileField` and `ImageField` also participate in the generated runtime
+contract as `Option<web_sys::File>` values. File values are browser-owned and
+are tracked for dirty/touched state without treating the file payload as a
+serializable scalar.
+
+Stable native widget coverage includes the following `form!` DSL items:
+
+| DSL item | HTML output | Value state |
+|---|---|---|
+| `MonthInput` | `<input type="month">` | string field |
+| `WeekInput` | `<input type="week">` | string field |
+| `ResetButton` | `<button type="reset">` | none |
+| `Button` | `<button type="button">` | none |
+| `ImageInput` | `<input type="image">` | none |
+| `Datalist` | `<datalist>` | option source only |
+| `OptGroup` | `<optgroup>` | choice grouping only |
+| `Output` | `<output>` | none |
+| `Meter` | `<meter>` | none |
+| `Progress` | `<progress>` | none |
+
+Typed native attributes are accepted for the controls that support them:
+
+| Attribute | Compatible controls |
+|---|---|
+| `min` / `max` / `step` | number, range, date, time, datetime-local, month, week |
+| `size` | text-like inputs |
+| `accept` / `capture` | file-like inputs |
+| `multiple` | file-like inputs and multi-select |
+| `list` | datalist-compatible text-like inputs |
+
+`FieldGroup` renders as semantic `<fieldset>` output. When `label` is
+present, the label is rendered as a `<legend>` inside the fieldset.
+
+`CustomWidget` is experimental and must opt in explicitly:
+
+```rust,ignore
+date_range: CharField {
+    widget: CustomWidget(crate::widgets::DateRangePicker) {
+        experimental,
+        adapter: crate::widgets::DateRangeAdapter,
+    },
+}
+```
+
+The adapter API may change in a minor release with a documented migration path.
+
 Arguments supplied from ambient context use `ambient_arguments`. The old
 `strip_arguments` name remains as a deprecated alias. CSRF should stay at the
 transport layer: `#[server_fn]` client stubs attach `X-CSRFToken`, while
@@ -288,7 +334,7 @@ The prelude includes:
 ### Hooks
 - `use_state`, `use_effect`, `use_memo`, `use_callback`, `use_context`
 - `use_ref`, `use_reducer`, `use_transition`, `use_deferred_value`
-- `use_id`, `use_layout_effect`, `use_effect_event`, `use_debug_value`
+- `use_id`, `use_layout_effect`, `use_debug_value`
 - `use_optimistic`, `use_action`, `Action::with_optimistic`, `use_shared_state`, `use_sync_external_store`
 - `use_resource` (async data fetching; `use_resource(fetcher, deps)` with `()` fetches once on WASM, while non-WASM targets drop the `fetcher` future, ignore `deps`, and stay `Loading` until hydration/client execution)
 
@@ -310,6 +356,8 @@ The prelude includes:
 - `ApiModel`, `ApiQuerySet`, `Filter`, `FilterOp`
 - `ServerFn`, `ServerFnError`
 - See [Server Function Macro Guide](docs/server_fn_macro.md) for detailed usage and migration information
+- Use `#[client_page]` for client page functions that must also compile as native route-table stubs
+- See [WASM/server API Parity Macro](docs/wasm_server_api.md) for APIs that need matching public surfaces with target-specific implementations
 - See [React-to-Reinhardt Guide](docs/react_to_reinhardt.md) for React hooks, JSX, actions, routing, SSR, and hydration mappings
 
 ### Authentication and Security
@@ -326,13 +374,16 @@ The prelude includes:
 
 ### Macros
 - `page!`
+- `head!`
+- `form!`
+- `client_page`
+- `wasm_server_api`
 
 ### Task spawning (cross-target)
 - `spawn_task`, `defer_yield` (no-op on native)
 
 ### WASM-specific
 - `spawn_local` (re-exported from wasm_bindgen_futures; **deprecated** — use `spawn_task`)
-- `create_resource`, `create_resource_with_deps` (**deprecated** — use the cross-target `use_resource`)
 
 ## Example
 

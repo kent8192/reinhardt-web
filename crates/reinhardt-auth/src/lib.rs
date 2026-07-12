@@ -77,8 +77,7 @@ pub use reinhardt_auth_macros::guard;
 
 // Authenticated user extractors
 pub mod auth_user;
-#[allow(deprecated)]
-pub use auth_user::{AuthUser, CurrentUser};
+pub use auth_user::CurrentUser;
 
 // Startup validation for auth extractors
 pub mod auth_extractors;

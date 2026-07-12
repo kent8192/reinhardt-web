@@ -308,9 +308,11 @@ impl MigrationGraph {
 	pub fn topological_sort(&self) -> Result<Vec<MigrationKey>> {
 		// Calculate in-degree for each node
 		let mut in_degree: HashMap<MigrationKey, usize> = HashMap::new();
+		let mut dependents: HashMap<MigrationKey, Vec<MigrationKey>> = HashMap::new();
 
 		for key in self.nodes.keys() {
-			in_degree.entry(key.clone()).or_insert(0);
+			in_degree.insert(key.clone(), 0);
+			dependents.insert(key.clone(), Vec::new());
 		}
 
 		for node in self.nodes.values() {
@@ -318,9 +320,23 @@ impl MigrationGraph {
 				// Only count dependencies that are within the graph.
 				// Dependencies outside the graph are assumed to be already applied.
 				if self.nodes.contains_key(dep) {
-					*in_degree.entry(node.key.clone()).or_insert(0) += 1;
+					*in_degree
+						.get_mut(&node.key)
+						.expect("node key must be initialized") += 1;
+					dependents
+						.get_mut(dep)
+						.expect("internal dependency key must be initialized")
+						.push(node.key.clone());
 				}
 			}
+		}
+
+		for dependent_keys in dependents.values_mut() {
+			dependent_keys.sort_by(|a, b| {
+				a.app_label
+					.cmp(&b.app_label)
+					.then_with(|| a.name.cmp(&b.name))
+			});
 		}
 
 		// Find all nodes with in-degree 0 (no dependencies within the graph)
@@ -337,29 +353,23 @@ impl MigrationGraph {
 		});
 		let mut queue: VecDeque<MigrationKey> = zero_degree.into_iter().collect();
 
-		let mut result = Vec::new();
+		let mut result = Vec::with_capacity(self.nodes.len());
 
 		while let Some(key) = queue.pop_front() {
 			result.push(key.clone());
 
 			// Reduce in-degree for all dependents and collect newly freed nodes
 			let mut newly_freed = Vec::new();
-			for (other_key, node) in &self.nodes {
-				if node.dependencies.contains(&key)
-					&& let Some(degree) = in_degree.get_mut(other_key)
-				{
-					*degree -= 1;
-					if *degree == 0 {
-						newly_freed.push(other_key.clone());
+			if let Some(dependent_keys) = dependents.get(&key) {
+				for other_key in dependent_keys {
+					if let Some(degree) = in_degree.get_mut(other_key) {
+						*degree -= 1;
+						if *degree == 0 {
+							newly_freed.push(other_key.clone());
+						}
 					}
 				}
 			}
-			// Sort newly freed nodes for deterministic BFS order
-			newly_freed.sort_by(|a, b| {
-				a.app_label
-					.cmp(&b.app_label)
-					.then_with(|| a.name.cmp(&b.name))
-			});
 			queue.extend(newly_freed);
 		}
 

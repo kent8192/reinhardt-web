@@ -164,6 +164,7 @@ fn derive_impl(input: DeriveInput) -> Result<TokenStream> {
 		let target = &entry.target;
 		let sha256 = entry.sha256.clone().unwrap_or_default();
 		quote! {
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			#apps_crate::inventory::submit! {
 				#apps_crate::AppVendorAsset {
 					app_label: #label,

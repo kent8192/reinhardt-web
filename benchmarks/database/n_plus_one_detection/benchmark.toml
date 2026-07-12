@@ -1,0 +1,9 @@
+[scenario]
+category = "database"
+name = "n_plus_one_detection"
+runner = "criterion"
+metric = "analysis_latency"
+unit = "us/check"
+workload = "Load 100 parent rows with child relations and record query-count diagnostics."
+success = "The adapter reports query count and relation-load strategy."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

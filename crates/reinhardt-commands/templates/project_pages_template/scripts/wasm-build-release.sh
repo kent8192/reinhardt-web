@@ -12,10 +12,10 @@ if command -v wasm-opt >/dev/null 2>&1; then
 	if [ -n "$WASM_BG" ]; then
 		wasm-opt -O3 "$WASM_BG" -o "$WASM_BG.opt"
 		mv "$WASM_BG.opt" "$WASM_BG"
-		echo "WASM optimized"
+		echo "✓ WASM optimized"
 	fi
 else
-	echo "wasm-opt not found, skipping optimization"
+	echo "⚠️  wasm-opt not found, skipping optimization"
 fi
 
-echo "WASM release build and collectstatic completed"
+echo "✓ WASM release build and collectstatic completed"

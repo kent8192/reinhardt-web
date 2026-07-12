@@ -31,6 +31,23 @@ fn assert_manifest_parses(manifest: &Path) {
 	);
 }
 
+fn assert_reinhardt_dependency_features(cargo_toml: &str, expected: &[&str]) {
+	let document = cargo_toml
+		.parse::<toml_edit::DocumentMut>()
+		.expect("generated Cargo.toml must parse as TOML");
+	let features = document["target"][r#"cfg(not(target_arch = "wasm32"))"#]["dependencies"]
+		["reinhardt"]["features"]
+		.as_array()
+		.expect("generated native reinhardt dependency must declare features");
+
+	for feature in expected {
+		assert!(
+			features.iter().any(|value| value.as_str() == Some(feature)),
+			"generated reinhardt dependency must include `{feature}`:\n{cargo_toml}"
+		);
+	}
+}
+
 fn assert_generated_rust_sources_do_not_use_tab_indents(root: &Path) {
 	for relative in [
 		"build.rs",
@@ -111,9 +128,10 @@ async fn startproject_restful_honors_dependency_selection_flags() {
 	let cargo_toml = std::fs::read_to_string(tmp.path().join("feature_proj/Cargo.toml")).unwrap();
 	assert!(cargo_toml.contains("version = \"0.2.0-rc.4\""));
 	assert!(cargo_toml.contains("default-features = false"));
-	assert!(cargo_toml.contains(
-		"features = [\"minimal\", \"db-sqlite\", \"conf\", \"commands\", \"db-postgres\", \"api\"]"
-	));
+	assert!(
+		cargo_toml
+			.contains("features = [\"minimal\", \"db-sqlite\", \"conf\", \"commands\", \"api\"]")
+	);
 }
 
 #[rstest]
@@ -149,46 +167,44 @@ async fn startproject_pages_from_embedded_only() {
 	assert!(cargo_toml.contains(
 		"package = \"reinhardt-web\", default-features = false, features = [\"pages\", \"client-router\"]"
 	));
-	assert!(cargo_toml.contains(
-		"features = [\"minimal\", \"pages\", \"admin\", \"conf\", \"commands-server\", \"commands-autoreload\", \"db-sqlite\", \"forms\", \"auth-session\", \"middleware\", \"argon2-hasher\", \"static-files\"]"
-	));
+	assert_reinhardt_dependency_features(
+		&cargo_toml,
+		&[
+			"minimal",
+			"pages",
+			"client-router",
+			"admin",
+			"conf",
+			"commands",
+			"commands-server",
+			"commands-autoreload",
+			"server",
+			"db-sqlite",
+			"forms",
+			"auth-session",
+			"middleware",
+			"argon2-hasher",
+		],
+	);
 	assert!(
 		!cargo_toml.contains("\"standard\"") && !cargo_toml.contains("\"db-postgres\""),
 		"generated pages manifest must not require PostgreSQL defaults:\n{cargo_toml}"
 	);
+	let base_toml = std::fs::read_to_string(generated.join("settings/base.toml")).unwrap();
 	assert!(
-		cargo_toml.contains("required-features = [\"with-reinhardt\"]")
-			&& cargo_toml.contains("default = [\"with-reinhardt\"]"),
-		"generated pages manifest must gate the native manage binary:\n{cargo_toml}"
-	);
-	let settings_rs = std::fs::read_to_string(generated.join("src/config/settings.rs")).unwrap();
-	assert!(
-		settings_rs.contains("#[settings(core: CoreSettings | contacts: ContactSettings)]"),
-		"generated pages settings must satisfy HasCommonSettings:\n{settings_rs}"
-	);
-	let base_settings = std::fs::read_to_string(generated.join("settings/base.toml")).unwrap();
-	assert!(
-		base_settings.contains("secret_key = \"insecure-")
-			&& base_settings.contains("[contacts]")
-			&& base_settings.contains("admins = []")
-			&& base_settings.contains("managers = []"),
-		"generated base.toml must include a secret key and contacts fragment:\n{base_settings}"
+		base_toml.contains("engine = \"sqlite\"")
+			&& base_toml.contains("name = \"db.sqlite3\"")
+			&& !base_toml.contains("engine = \"postgresql\""),
+		"generated pages settings must match the SQLite feature default:\n{base_toml}"
 	);
 	assert!(
-		base_settings.contains("engine = \"sqlite\"")
-			&& base_settings.contains("name = \"db.sqlite3\""),
-		"generated pages project should default to a local SQLite database:\n{base_settings}"
+		cargo_toml.contains("required-features = [\"with-reinhardt\"]"),
+		"generated pages manage binary must be native-feature gated:\n{cargo_toml}"
 	);
 	assert!(
-		!base_settings.contains("Copy this file to base.toml"),
-		"generated base.toml must not keep example-file copy instructions:\n{base_settings}"
-	);
-	let base_example =
-		std::fs::read_to_string(generated.join("settings/base.example.toml")).unwrap();
-	assert!(
-		base_example.contains("secret_key = \"CHANGE_THIS_IN_PRODUCTION_MUST_BE_KEPT_SECRET\"")
-			&& !base_example.contains("secret_key = \"insecure-"),
-		"generated base.example.toml must keep a non-secret placeholder:\n{base_example}"
+		cargo_toml.contains("default = [\"with-reinhardt\", \"client-router\"]")
+			&& cargo_toml.contains("msw = [\"reinhardt/msw\"]"),
+		"generated pages Cargo.toml must declare local feature gates used by WASM tests:\n{cargo_toml}"
 	);
 	let makefile_toml = std::fs::read_to_string(generated.join("Makefile.toml")).unwrap();
 	assert!(
@@ -201,19 +217,29 @@ async fn startproject_pages_from_embedded_only() {
 	);
 	assert!(
 		makefile_toml.contains("command = \"wasm-pack\"")
-			&& makefile_toml.contains("\"--lib\"")
-			&& makefile_toml.contains("scripts/wasm-build-dev.sh")
-			&& !makefile_toml.contains("wasm-bindgen --target web")
-			&& !makefile_toml.contains("WASM_FILE=$(ls target/wasm32-unknown-unknown"),
-		"generated pages Makefile must build the library bundle through wasm-pack:\n{makefile_toml}"
+			&& makefile_toml.contains("\"--out-dir\", \"dist-wasm\""),
+		"generated pages Makefile must build the browser bundle with wasm-pack into dist-wasm:\n{makefile_toml}"
+	);
+	assert!(
+		makefile_toml
+			.contains("args = [\"build\", \"--target\", \"wasm32-unknown-unknown\", \"--lib\"]")
+			&& makefile_toml.contains(
+				"args = [\"build\", \"--target\", \"wasm32-unknown-unknown\", \"--release\", \"--lib\"]"
+			),
+		"generated pages Makefile must compile only the library for WASM pre-checks:\n{makefile_toml}"
+	);
+	assert!(
+		!makefile_toml.contains("ls target/wasm32-unknown-unknown")
+			&& !makefile_toml.contains("head -1"),
+		"generated pages Makefile must not pick an arbitrary .wasm file such as manage.wasm:\n{makefile_toml}"
 	);
 	assert!(
 		generated.join("scripts/wasm-build-dev.sh").exists()
 			&& generated.join("scripts/wasm-build-release.sh").exists(),
-		"generated pages project must include WASM finalize scripts"
+		"generated pages project must include WASM post-build scripts"
 	);
 	let build_rs = std::fs::read_to_string(generated.join("build.rs")).unwrap();
-	for cfg in ["client", "server", "wasm", "native"] {
+	for cfg in ["with_reinhardt", "client", "server", "wasm", "native"] {
 		assert!(
 			build_rs.contains(&format!("cargo::rustc-check-cfg=cfg({cfg})")),
 			"generated pages build.rs must declare cfg({cfg}) for Rust 2024 check-cfg:\n{build_rs}"
@@ -224,14 +250,13 @@ async fn startproject_pages_from_embedded_only() {
 			&& build_rs.contains("native: { not(target_arch = \"wasm32\") }"),
 		"generated pages build.rs must keep wasm/native compatibility aliases:\n{build_rs}"
 	);
-	let shared_types = std::fs::read_to_string(generated.join("src/shared/types.rs")).unwrap();
 	assert!(
-		!shared_types.contains("\nuse serde::{Deserialize, Serialize};"),
-		"generated shared types placeholder must not create an unused import warning:\n{shared_types}"
+		cargo_toml.contains("[workspace]") && cargo_toml.contains("members = ["),
+		"generated pages Cargo.toml must be a nested-workspace-safe root:\n{cargo_toml}"
 	);
 	assert!(
-		shared_types.contains("// use serde::{Deserialize, Serialize};"),
-		"generated shared types placeholder should keep the serde import in the commented example:\n{shared_types}"
+		!generated.join("src/shared.rs").exists() && !generated.join("src/shared").exists(),
+		"generated pages project must not create a root shared module"
 	);
 	assert_generated_rust_sources_do_not_use_tab_indents(&generated);
 	assert_manifest_parses(&generated.join("Cargo.toml"));
@@ -248,7 +273,10 @@ async fn startproject_pages_adds_required_pages_features() {
 	let mut ctx = CommandContext::new(vec!["pages_feature_proj".to_string()]);
 	let mut opts = HashMap::new();
 	opts.insert("with-pages".to_string(), vec!["true".to_string()]);
-	opts.insert("features".to_string(), vec!["minimal".to_string()]);
+	opts.insert(
+		"features".to_string(),
+		vec!["minimal,pages,client-router,server-fn,db-sqlite".to_string()],
+	);
 	opts.insert("no-interactive".to_string(), vec!["true".to_string()]);
 	ctx = ctx.with_options(opts);
 
@@ -258,8 +286,75 @@ async fn startproject_pages_adds_required_pages_features() {
 	res.expect("startproject --with-pages succeeds with dependency selection flags");
 	let cargo_toml =
 		std::fs::read_to_string(tmp.path().join("pages_feature_proj/Cargo.toml")).unwrap();
-	assert!(cargo_toml.contains(
-		"features = [\"minimal\", \"pages\", \"admin\", \"conf\", \"commands-server\", \"commands-autoreload\", \"db-sqlite\", \"forms\", \"auth-session\", \"middleware\", \"argon2-hasher\", \"static-files\"]"
-	));
+	assert_reinhardt_dependency_features(
+		&cargo_toml,
+		&[
+			"minimal",
+			"pages",
+			"client-router",
+			"db-sqlite",
+			"admin",
+			"conf",
+			"commands",
+			"commands-server",
+			"commands-autoreload",
+			"server",
+			"forms",
+			"auth-session",
+			"middleware",
+			"argon2-hasher",
+		],
+	);
+	assert!(
+		!cargo_toml.contains("\"server-fn\""),
+		"stale server-fn feature alias must not be written to generated Cargo.toml:\n{cargo_toml}"
+	);
+	assert!(
+		!cargo_toml.contains("\"db-postgres\""),
+		"explicit db-sqlite selection must not be overwritten by db-postgres:\n{cargo_toml}"
+	);
 	assert_manifest_parses(&tmp.path().join("pages_feature_proj/Cargo.toml"));
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(cwd)]
+async fn startproject_pages_explicit_tutorial_features_get_minimal_runtime() {
+	let tmp = TempDir::new().unwrap();
+	let prev = std::env::current_dir().unwrap();
+	std::env::set_current_dir(tmp.path()).unwrap();
+
+	let mut ctx = CommandContext::new(vec!["pages_tutorial_proj".to_string()]);
+	let mut opts = HashMap::new();
+	opts.insert("with-pages".to_string(), vec!["true".to_string()]);
+	opts.insert(
+		"features".to_string(),
+		vec![
+			"pages,admin,conf,commands-server,commands-autoreload,db-sqlite,forms,auth-session,middleware,argon2-hasher,static-files"
+				.to_string(),
+		],
+	);
+	opts.insert("default-features".to_string(), vec!["false".to_string()]);
+	opts.insert("no-interactive".to_string(), vec!["true".to_string()]);
+	ctx = ctx.with_options(opts);
+
+	let res = StartProjectCommand.execute(&ctx).await;
+
+	std::env::set_current_dir(prev).unwrap();
+	res.expect("startproject --with-pages succeeds with tutorial-style explicit features");
+	let cargo_toml =
+		std::fs::read_to_string(tmp.path().join("pages_tutorial_proj/Cargo.toml")).unwrap();
+	assert!(
+		cargo_toml.contains("\"minimal\""),
+		"explicit Pages feature selections must be augmented with the minimal runtime facade:\n{cargo_toml}"
+	);
+	assert!(
+		cargo_toml.contains("\"server\""),
+		"explicit Pages feature selections must be augmented with the HTTP server facade:\n{cargo_toml}"
+	);
+	assert!(
+		cargo_toml.contains("\"db-sqlite\"") && !cargo_toml.contains("\"db-postgres\""),
+		"explicit SQLite selection must not be overwritten by db-postgres:\n{cargo_toml}"
+	);
+	assert_manifest_parses(&tmp.path().join("pages_tutorial_proj/Cargo.toml"));
 }

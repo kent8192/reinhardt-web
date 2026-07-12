@@ -1,0 +1,5 @@
+error: nested OptGroup is not supported
+  --> tests/ui/form/fail/optgroup_rejects_nested_group.rs:11:6
+   |
+11 |                     OptGroup("Inner") {
+   |                     ^^^^^^^^

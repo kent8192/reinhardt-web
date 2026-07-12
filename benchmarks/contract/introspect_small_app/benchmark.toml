@@ -1,0 +1,9 @@
+[scenario]
+category = "contract"
+name = "introspect_small_app"
+runner = "criterion"
+metric = "introspection_latency"
+unit = "us/run"
+workload = "Introspect a small app with two models, three routes, and one settings fragment."
+success = "The generated contract contains all declared models, routes, and settings."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

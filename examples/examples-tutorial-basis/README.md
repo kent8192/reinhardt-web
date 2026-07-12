@@ -11,7 +11,7 @@ This example corresponds to the basis tutorial parts 1-7:
 - **Part 3: Detail Pages and Voting** - Detail/results server functions, `form!` voting, reactive errors, and vote persistence
 - **Part 4: Users and Authentication** - `users` app, minimal `User`, injectable `AuthUserManager`, session middleware, and auth pages
 - **Part 5: Ownership and Poll CRUD** - `Question.author` migration `0002`, ownership-checked question and choice CUD server functions, and owner-only controls
-- **Part 6: The Admin and Static Files** - `QuestionAdmin`/`ChoiceAdmin`, `/admin/`, WASM artifact registration, and static collection
+- **Part 6: The Admin and Static Files** - `QuestionAdmin`/`ChoiceAdmin`, `/admin/` route/static registration, WASM artifact registration, and static collection
 - **Part 7: Testing** - Native integration tests, `createsuperuser` coverage, and WASM MSW mock tests
 
 ## Features
@@ -20,14 +20,15 @@ This example corresponds to the basis tutorial parts 1-7:
 
 - **`Question`** (`src/apps/polls/models.rs`) — poll question with `question_text`, `pub_date` (`auto_now_add`), and an `author` foreign key to `User` (`#[rel(foreign_key, related_name = "questions")]`).
 - **`Choice`** (`src/apps/polls/models.rs`) — answer option with a `question` foreign key (`#[rel(foreign_key, related_name = "choices")]`), `choice_text`, and a `votes` counter.
-- **`User`** (`src/apps/users/models.rs`) — minimal authentication model defined with `#[user(hasher = reinhardt::Argon2Hasher, username_field = "username", manager = false)]` on top of `#[model(app_label = "users", table_name = "users")]`. `manager = false` opts out of the auto-generated user manager so the example can register a project-local `AuthUserManager` via `#[injectable_factory(scope = "transient")]`.
+- **`User`** (`src/apps/users/models.rs`) — minimal authentication model defined with `#[user(hasher = Argon2Hasher, username_field = "username", manager = false)]` on top of `#[model(app_label = "users", table_name = "users")]`. `manager = false` opts out of the auto-generated user manager so the example can register a project-local `AuthUserManager` via a keyed `#[injectable(scope = "transient")]` provider.
 
 ### Server Functions and Pages
 
 The example exposes its dynamic business logic through the pages stack:
 
-- **Typed RPC server functions** in `src/apps/<app>/server_fn.rs` — `#[server_fn]` functions (`get_questions`, `get_question_detail`, `vote`, `create_question`, …, plus `login` / `logout` / `register` / `current_user` for the `users` app). The macro generates a typed client stub for WASM and a server-side handler for native; dependencies are resolved positionally with `#[inject]` (`DatabaseConnection`, `SessionData`, …).
-- **Per-app URL modules** in `src/apps/<app>/urls.rs` — each app exposes `server_url_patterns()` and `client_url_patterns()`; server-function markers stay in `urls/server_urls.rs`, while `src/config/urls.rs` only aggregates the app-level router functions.
+- **Typed RPC server functions** in `src/apps/<app>/server_fn.rs` — `#[server_fn]` functions (`get_questions`, `get_question_detail`, `vote`, `create_question`, …, plus `login` / `logout` / `register` / `current_user` for the `users` app). The macro generates a typed client stub for WASM and a server-side handler for native; dependencies are resolved positionally with `#[inject]` (`DatabaseConnection`, `SessionData`, `CurrentUser<User>`, …).
+- **Per-app URL modules** in `src/apps/<app>/urls.rs` — each app exposes target-specific router functions from one aggregate; server-function markers stay in `src/apps/<app>/urls/server_router.rs`, client component route tables stay in `src/apps/<app>/urls/client_router.rs`, and `src/config/urls.rs` only aggregates the app-level router functions for the active target.
+- **Route-backed components** in `src/apps/<app>/client/components/` — component macros own route metadata for pages such as login/logout/signup.
 - **Dynamic WASM forms** in `src/apps/polls/client/components.rs` — the poll detail route builds its `RadioSelect` voting form from the choices returned by `get_question_detail`, so each loaded choice becomes a submitted `choice_id` option.
 
 ### URL Structure
@@ -36,22 +37,22 @@ The project router mounts per-app server routers on native and merges per-app cl
 
 | Path | Layer | Where it is defined |
 |------|-------|---------------------|
-| `/` | SPA home (`polls:index`) backed by `get_questions` | `apps/polls/urls/client_router.rs` + `apps/polls/server_fn.rs` |
-| `/polls/{question_id}/` | SPA detail route (`polls:detail`) backed by `get_question_detail` | `client_router.rs` + `server_fn.rs` |
-| `/polls/{question_id}/results/` | SPA results route (`polls:results`) backed by `get_question_results` | `client_router.rs` + `server_fn.rs` |
-| `/polls/new/`, `/polls/{question_id}/edit/`, `/polls/{question_id}/delete/` | Author-only CUD client routes backed by `#[server_fn]`s | `apps/polls/urls/client_router.rs` + `apps/polls/server_fn.rs` |
-| `/polls/{question_id}/choices/new/`, `…/edit/`, `…/delete/` | Choice CUD client routes backed by `#[server_fn]`s | `client_router.rs` + `server_fn.rs` |
-| `/login/`, `/logout/`, `/signup/` | Auth client routes; server functions registered in `apps/users/urls/server_urls.rs` | `apps/users/urls/client_router.rs` + `apps/users/server_fn.rs` |
-| `/admin/` | Auto-generated admin panel | `src/config/admin.rs` mounted in `src/config/urls.rs` |
+| `/` | SPA home (`polls:index`) backed by `get_questions` | `apps/polls/urls.rs` + `apps/polls/server_fn.rs` |
+| `/polls/{question_id}/` | SPA detail route (`polls:detail`) backed by `get_question_detail` | `apps/polls/urls.rs` + `server_fn.rs` |
+| `/polls/{question_id}/results/` | SPA results route (`polls:results`) backed by `get_question_results` | `apps/polls/urls.rs` + `server_fn.rs` |
+| `/polls/new/`, `/polls/{question_id}/edit/`, `/polls/{question_id}/delete/` | Author-only CUD client routes backed by `#[server_fn]`s | `apps/polls/urls.rs` + `apps/polls/server_fn.rs` |
+| `/polls/{question_id}/choices/new/`, `…/edit/`, `…/delete/` | Choice CUD client routes backed by `#[server_fn]`s | `apps/polls/urls.rs` + `server_fn.rs` |
+| `/login/`, `/logout/`, `/signup/` | Auth client routes; server functions registered in `apps/users/urls/server_router.rs` | `apps/users/urls.rs` + `apps/users/server_fn.rs` |
+| `/admin/` | Admin shell and admin route/static wiring. The embedded shell falls back to a placeholder unless the admin WASM SPA is built. | `src/config/admin.rs` mounted in `src/config/urls.rs` |
 
 ## Setup
 
 ### Prerequisites
 
-- Rust 1.94 or later (2024 edition, matches the workspace MSRV)
+- Rust 1.96 or later (2024 edition, matches the workspace MSRV)
 - `cargo-make` (`cargo install cargo-make`)
 - `wasm-pack` for the WASM client build
-- SQLite, used through the `db-sqlite` Reinhardt feature
+- Docker (optional, for TestContainers in integration tests)
 
 ### Installation
 
@@ -87,8 +88,17 @@ The server listens at `http://127.0.0.1:8000/`.
 ### Inspect Registered Routes
 
 ```bash
-# Server functions, client routes, admin routes, and static mounts
+# Server URL patterns: server functions, admin routes, and static mounts
 cargo make showurls
+```
+
+### Verify Migration State
+
+```bash
+# Auto-starts the disposable PostgreSQL container, resolves DATABASE_URL from settings/local.toml,
+# fills a local DOCKER_HOST fallback when needed, and fails if the committed
+# migrations do not match the current models.
+cargo make makemigrations-check
 ```
 
 ## Project Structure
@@ -115,6 +125,9 @@ examples-tutorial-basis/
 ├── scripts/
 │   ├── clean-cache.sh
 │   ├── db_url.sh
+│   ├── docker_host.sh
+│   ├── infra_down.sh
+│   ├── infra_up.sh
 │   ├── parse_local_toml.py
 │   ├── run-dev-release-server.sh
 │   ├── run-dev-server.sh
@@ -128,30 +141,48 @@ examples-tutorial-basis/
 ├── src/
 │   ├── apps/
 │   │   ├── polls/
-│   │   │   ├── admin.rs
 │   │   │   ├── client/
-│   │   │   │   └── components.rs
+│   │   │   │   ├── components.rs
+│   │   │   │   └── components/
+│   │   │   │       ├── choice_delete.rs
+│   │   │   │       ├── choice_edit.rs
+│   │   │   │       ├── choice_new.rs
+│   │   │   │       ├── polls_detail.rs
+│   │   │   │       ├── polls_index.rs
+│   │   │   │       ├── polls_results.rs
+│   │   │   │       ├── question_delete.rs
+│   │   │   │       ├── question_edit.rs
+│   │   │   │       └── question_new.rs
 │   │   │   ├── client.rs
 │   │   │   ├── models.rs
-│   │   │   ├── serializers.rs
-│   │   │   ├── services.rs
+│   │   │   ├── server/
+│   │   │   │   ├── admin.rs
+│   │   │   │   └── serializers.rs
+│   │   │   ├── server.rs
 │   │   │   ├── server_fn.rs
-│   │   │   ├── urls/
-│   │   │   │   ├── client_router.rs
-│   │   │   │   └── server_urls.rs
-│   │   │   └── urls.rs
+│   │   │   ├── services.rs
+│   │   │   ├── services/
+│   │   │   │   └── server.rs
+│   │   │   ├── urls.rs
+│   │   │   └── urls/
+│   │   │       ├── client_router.rs
+│   │   │       └── server_router.rs
 │   │   ├── polls.rs
 │   │   └── users/
 │   │       ├── client/
-│   │       │   └── components.rs
+│   │       │   ├── components.rs
+│   │       │   └── components/
+│   │       │       ├── login_page.rs
+│   │       │       ├── logout_page.rs
+│   │       │       └── signup_page.rs
 │   │       ├── client.rs
 │   │       ├── models.rs
-│   │       ├── services.rs
+│   │       ├── server.rs
 │   │       ├── server_fn.rs
-│   │       ├── urls/
-│   │       │   ├── client_router.rs
-│   │       │   └── server_urls.rs
-│   │       └── urls.rs
+│   │       ├── urls.rs
+│   │       └── urls/
+│   │           ├── client_router.rs
+│   │           └── server_router.rs
 │   ├── apps.rs
 │   ├── bin/
 │   │   └── manage.rs
@@ -159,8 +190,7 @@ examples-tutorial-basis/
 │   │   ├── components/
 │   │   │   └── nav.rs
 │   │   ├── components.rs
-│   │   ├── lib.rs
-│   │   └── pages.rs
+│   │   └── lib.rs
 │   ├── client.rs
 │   ├── config/
 │   │   ├── admin.rs
@@ -201,13 +231,12 @@ This example is designed to be studied alongside the basis tutorial:
 
 - `src/apps/polls/models.rs` defines the `Question` and `Choice` models with `#[model]`, `#[field]`, and `#[rel(foreign_key)]`.
 - `src/apps/users/models.rs` defines the tutorial `User` model with `#[user]` and the injectable `AuthUserManager`.
-- `src/apps/polls/services.rs` and `src/apps/users/services.rs` are server-only homes for shared business operations when handlers grow beyond request/response glue.
 - `src/apps/polls/server_fn.rs` and `src/apps/users/server_fn.rs` expose typed `#[server_fn]` RPC handlers for the WASM client.
 - `src/apps/polls/urls.rs` and `src/apps/users/urls.rs` expose the app-level server and client router functions that `src/config/urls.rs` aggregates.
-- `src/apps/polls/urls/server_urls.rs` and `src/apps/users/urls/server_urls.rs` provide native `ServerRouter` registrations.
-- `src/apps/polls/urls/client_router.rs` and `src/apps/users/urls/client_router.rs` provide WASM `ClientRouter` registrations.
+- `src/apps/polls/urls/server_router.rs` and `src/apps/users/urls/server_router.rs` provide native `ServerRouter` registrations.
 - `src/client/lib.rs` starts the browser app with `ClientLauncher::new("#root").register_routes_from_inventory().launch()`.
-- `src/apps/polls/client/components.rs`, `src/apps/users/client/components.rs`, and `src/client/components/nav.rs` define the page components used by the SPA.
+- `src/apps/polls/client/components.rs`, `src/apps/polls/client/components/*.rs`, `src/apps/users/client/components.rs`, `src/apps/users/client/components/*.rs`, and `src/client/components/nav.rs` define the page bodies and route-backed components used by the SPA.
+- `src/apps/users/client/components/{login_page,logout_page,signup_page}.rs` define route-backed auth components with the component macro.
 - `src/config/settings.rs`, `src/config/apps.rs`, `src/config/urls.rs`, `src/config/admin.rs`, and `src/config/wasm.rs` wire settings, app labels, routing, admin, and WASM static files.
 - `tests/integration.rs`, `tests/createsuperuser.rs`, `tests/wasm/polls_mock_test.rs`, and `tests/wasm/users_mock_test.rs` cover native and WASM behavior.
 
@@ -236,9 +265,9 @@ The `msw` feature is forwarded to the `reinhardt` facade so `#[server_fn]` gener
 After understanding this example:
 
 1. **Add richer poll features**: comments, tags, scheduled publication, or poll closing times
-2. **Strengthen authorization tests**: extend the native fixture with users plus `Question.author` rows and assert author success vs non-author 403 cases
+2. **Strengthen authorization tests**: extend the native fixture with users plus `author_id` rows and assert author success vs non-author 403 cases
 3. **Improve production deployment**: add environment-specific settings, TLS/static hosting strategy, and persistent database configuration
-4. **Customize the admin**: add project-specific filters, read-only computed columns, or stricter permissions
+4. **Customize the admin**: add project-specific filters, read-only computed columns, stricter permissions, or a project-specific admin SPA build
 5. **Expand WASM coverage**: add browser tests for the create/edit/delete flows beyond the current MSW smoke tests
 
 ## Related Documentation

@@ -7,23 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.2.1...reinhardt-di@v0.2.2) - 2026-06-25
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.2.0...reinhardt-di@v0.3.0) - 2026-06-28
 
-### Maintenance
+Stable release of `reinhardt-di` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
 
-- update Cargo.toml dependencies
+### Migration Notes
 
-## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.2.0...reinhardt-di@v0.2.1) - 2026-06-23
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
 
-### Maintenance
+### Added
 
-- update Cargo.toml dependencies
+- *(params)* generalize cookie extractors
+- feat!(di): introduce keyed injectable provider outputs
+- *(di)* add wasm parity stubs for injectable macros
+
+### Changed
+
+- [**breaking**] remove 0.3 deprecated public APIs
+
+### Fixed
+
+- *(di)* support trait-based inject wrapper resolution
+- *(di)* preserve Depends inject fallback
+- *(di)* honor cache false for keyed wrappers
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.3...reinhardt-di@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-di` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -47,6 +61,7 @@ RC entries remain below as detailed history.
 
 - *(auth)* make CurrentUser canonical extractor
 - *(di)* delete deprecated Injected<T> and OptionalInjected<T> types
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Removed
 
@@ -56,80 +71,6 @@ RC entries remain below as detailed history.
   through `Depends<T>` exclusively.
 - **`OptionalInjected<T>` type alias** (`src/injected.rs`, deprecated
   since `0.1.0-rc.16`) — use `Option<Depends<T>>` instead.
-
-### Fixed
-
-- *(di)* enforce scope check on cache-hit path
-- *(di)* enforce scope check on pre-seeded request cache and bypass path
-- *(di)* collapse nested if-let into let-chain
-- *(di)* resolve DependsResult/DependsOption field injection from registry
-
-### Documentation
-
-- *(release)* enforce public API doc coverage
-- recommend Result return types for injectable factories
-- *(di)* document Injected removal in CHANGELOG and migration guide (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-- *(di)* update public docs to reflect per-context registry isolation
-- *(di,auth)* fix rustdoc link warnings on nightly
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.2.0-rc.4...reinhardt-di@v0.2.0-rc.5) - 2026-06-11
-
-### Documentation
-
-- *(release)* enforce public API doc coverage
-
-## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.2.0-rc.3...reinhardt-di@v0.2.0-rc.4) - 2026-06-06
-
-### Changed
-
-- *(auth)* make CurrentUser canonical extractor
-
-## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.2.0-rc.2...reinhardt-di@v0.2.0-rc.3) - 2026-06-05
-
-### Documentation
-
-- recommend Result return types for injectable factories
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.3...reinhardt-di@v0.2.0-rc.2) - 2026-06-03
-
-### Added
-
-- *(di)* [**breaking**] remove Injected and OptionalInjected (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-- *(di)* [**breaking**] enforce scope hierarchy at resolution time
-- *(di)* [**breaking**] make InjectionContext registry-aware for per-test isolation
-- *(di)* add DependsResult and DependsOption sugar type aliases
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-- *(di)* delete deprecated Injected<T> and OptionalInjected<T> types
-
-### Documentation
-
-- *(di)* document Injected removal in CHANGELOG and migration guide (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-- *(di)* update public docs to reflect per-context registry isolation
-- *(di,auth)* fix rustdoc link warnings on nightly
-
-### Fixed
-
-- *(ci)* recover develop release-plz prerelease
-- *(di)* enforce scope check on cache-hit path
-- *(di)* enforce scope check on pre-seeded request cache and bypass path
-- *(di)* address Copilot review feedback on scope hierarchy tests
-- *(di)* collapse nested if-let into let-chain
-- *(di)* resolve DependsResult/DependsOption field injection from registry
-- apply CodeRabbit auto-fixes
-
-### Other
-
-- resolve conflicts with develop/0.2.0
-
-### Styling
-
-- format files from merge resolution
-
-### Removed
 
 #### BREAKING CHANGES
 
@@ -165,6 +106,32 @@ is a candidate for a follow-up PR.
 
 See [`instructions/MIGRATION_0.2.md`](../../instructions/MIGRATION_0.2.md#reinhardt-di)
 for the migration guide.
+
+### Fixed
+
+- *(di)* enforce scope check on cache-hit path
+- *(di)* enforce scope check on pre-seeded request cache and bypass path
+- *(di)* collapse nested if-let into let-chain
+- *(di)* resolve DependsResult/DependsOption field injection from registry
+- *(ci)* recover develop release-plz prerelease
+- *(di)* address Copilot review feedback on scope hierarchy tests
+- apply CodeRabbit auto-fixes
+
+### Documentation
+
+- *(release)* enforce public API doc coverage
+- recommend Result return types for injectable factories
+- *(di)* document Injected removal in CHANGELOG and migration guide (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
+- *(di)* update public docs to reflect per-context registry isolation
+- *(di,auth)* fix rustdoc link warnings on nightly
+
+### Styling
+
+- format files from merge resolution
+
+### Other
+
+- resolve conflicts with develop/0.2.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-rc.30...reinhardt-di@v0.1.0) - 2026-05-22
 
