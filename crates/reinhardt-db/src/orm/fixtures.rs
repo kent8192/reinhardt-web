@@ -403,8 +403,9 @@ async fn execute_fixture_upsert<M>(
 where
 	M: Model,
 {
-	let primary_key = M::primary_key_field();
-	if conn.backend() == DatabaseBackend::MySql && object.contains_key(primary_key) {
+	let database_object = fixture_database_object::<M>(object)?;
+	let primary_key = fixture_primary_key_column::<M>();
+	if conn.backend() == DatabaseBackend::MySql && database_object.contains_key(&primary_key) {
 		let (lookup_sql, lookup_values) =
 			build_fixture_primary_key_lookup_sql_values::<M>(conn.backend(), object)?;
 		if tx
@@ -426,17 +427,55 @@ where
 	Ok(())
 }
 
-fn fixture_writable_columns<M>(object: &Map<String, Value>) -> FixtureResult<Vec<String>>
+fn fixture_database_object<M>(object: &Map<String, Value>) -> FixtureResult<Map<String, Value>>
+where
+	M: Model,
+{
+	let generated_fields = M::generated_field_names();
+	let field_metadata = M::field_metadata();
+	let mut database_object = Map::new();
+	for (field_name, value) in object {
+		if generated_fields.contains(&field_name.as_str()) {
+			continue;
+		}
+		let database_column = field_metadata
+			.iter()
+			.find(|field| field.name == *field_name)
+			.map(crate::orm::inspection::FieldInfo::db_column_name)
+			.unwrap_or(field_name)
+			.to_string();
+		if database_object
+			.insert(database_column.clone(), value.clone())
+			.is_some()
+		{
+			return Err(FixtureError::Database(format!(
+				"fixture fields for '{}.{}' map to the same database column '{}'",
+				M::app_label(),
+				rust_model_name::<M>(),
+				database_column
+			)));
+		}
+	}
+	Ok(database_object)
+}
+
+fn fixture_primary_key_column<M>() -> String
 where
 	M: Model,
 {
 	let primary_key = M::primary_key_field();
-	let generated_fields = M::generated_field_names();
-	let mut columns = object
-		.keys()
-		.filter(|column| !generated_fields.contains(&column.as_str()))
-		.cloned()
-		.collect::<Vec<_>>();
+	M::field_metadata()
+		.into_iter()
+		.find(|field| field.name == primary_key)
+		.map(|field| field.db_column.unwrap_or(field.name))
+		.unwrap_or_else(|| primary_key.to_string())
+}
+
+fn fixture_writable_columns(
+	object: &Map<String, Value>,
+	primary_key: &str,
+) -> FixtureResult<Vec<String>> {
+	let mut columns = object.keys().cloned().collect::<Vec<_>>();
 	if columns.is_empty() {
 		return Err(FixtureError::Database(
 			"fixture record must contain at least one writable database column".to_string(),
@@ -449,15 +488,14 @@ where
 	Ok(columns)
 }
 
-fn fixture_primary_key_is_identity_always<M>(object: &Map<String, Value>) -> bool
+fn fixture_primary_key_is_identity_always<M>(object: &Map<String, Value>, primary_key: &str) -> bool
 where
 	M: Model,
 {
-	let primary_key = M::primary_key_field();
 	object.contains_key(primary_key)
 		&& M::field_metadata().into_iter().any(|field| {
 			field.primary_key
-				&& (field.name == primary_key || field.db_column.as_deref() == Some(primary_key))
+				&& field.db_column_name() == primary_key
 				&& matches!(
 					field.attributes.get("identity_always"),
 					Some(crate::orm::fields::FieldKwarg::Bool(true))
@@ -473,8 +511,9 @@ where
 	M: Model,
 {
 	ensure_single_column_primary_key::<M>()?;
-	let pk_field = M::primary_key_field();
-	let columns = fixture_writable_columns::<M>(object)?;
+	let object = fixture_database_object::<M>(object)?;
+	let pk_field = fixture_primary_key_column::<M>();
+	let columns = fixture_writable_columns(&object, &pk_field)?;
 
 	let mut stmt = Query::insert();
 	stmt.into_table(Alias::new(M::table_name()));
@@ -497,20 +536,22 @@ where
 			})
 			.collect::<Vec<_>>(),
 	);
-	if backend == DatabaseBackend::Postgres && fixture_primary_key_is_identity_always::<M>(object) {
+	if backend == DatabaseBackend::Postgres
+		&& fixture_primary_key_is_identity_always::<M>(&object, &pk_field)
+	{
 		stmt.overriding_system_value();
 	}
 
-	if object.contains_key(pk_field) && backend != DatabaseBackend::MySql {
+	if object.contains_key(&pk_field) && backend != DatabaseBackend::MySql {
 		let update_columns = columns
 			.iter()
-			.filter(|column| column.as_str() != pk_field)
+			.filter(|column| column.as_str() != pk_field.as_str())
 			.map(|column| Alias::new(column.as_str()))
 			.collect::<Vec<_>>();
 		let conflict = if update_columns.is_empty() {
-			OnConflict::column(Alias::new(pk_field)).do_nothing()
+			OnConflict::column(Alias::new(pk_field.as_str())).do_nothing()
 		} else {
-			OnConflict::column(Alias::new(pk_field)).update_columns(update_columns)
+			OnConflict::column(Alias::new(pk_field.as_str())).update_columns(update_columns)
 		};
 		stmt.on_conflict(conflict.to_owned());
 	}
@@ -527,8 +568,9 @@ where
 	M: Model,
 {
 	ensure_single_column_primary_key::<M>()?;
-	let primary_key = M::primary_key_field();
-	let primary_key_value = object.get(primary_key).ok_or_else(|| {
+	let object = fixture_database_object::<M>(object)?;
+	let primary_key = fixture_primary_key_column::<M>();
+	let primary_key_value = object.get(&primary_key).ok_or_else(|| {
 		FixtureError::Database(format!(
 			"fixture record for '{}.{}' must include primary key '{}'",
 			M::app_label(),
@@ -537,18 +579,18 @@ where
 		))
 	})?;
 	let field_metadata = M::field_metadata();
-	let field_info = field_metadata
-		.iter()
-		.find(|field| field.name == primary_key || field.db_column.as_deref() == Some(primary_key));
+	let field_info = field_metadata.iter().find(|field| {
+		field.name == primary_key || field.db_column.as_deref() == Some(primary_key.as_str())
+	});
 	let field_is_none =
 		field_info.is_some_and(|field| field.nullable && primary_key_value.is_null());
 	let primary_key_value =
 		Manager::<M>::json_to_sea_value_for_field(primary_key_value, field_info, field_is_none);
 
 	let mut stmt = Query::select();
-	stmt.column(Alias::new(primary_key))
+	stmt.column(Alias::new(primary_key.as_str()))
 		.from(Alias::new(M::table_name()))
-		.and_where(Expr::col(Alias::new(primary_key)).eq(primary_key_value));
+		.and_where(Expr::col(Alias::new(primary_key.as_str())).eq(primary_key_value));
 	let (sql, values) = build_select_sql(&stmt, backend);
 	Ok((sql, super::execution::convert_values(values)))
 }
@@ -561,8 +603,9 @@ where
 	M: Model,
 {
 	ensure_single_column_primary_key::<M>()?;
-	let primary_key = M::primary_key_field();
-	let primary_key_value = object.get(primary_key).ok_or_else(|| {
+	let object = fixture_database_object::<M>(object)?;
+	let primary_key = fixture_primary_key_column::<M>();
+	let primary_key_value = object.get(&primary_key).ok_or_else(|| {
 		FixtureError::Database(format!(
 			"fixture record for '{}.{}' must include primary key '{}'",
 			M::app_label(),
@@ -570,9 +613,9 @@ where
 			primary_key
 		))
 	})?;
-	let update_columns = fixture_writable_columns::<M>(object)?
+	let update_columns = fixture_writable_columns(&object, &primary_key)?
 		.into_iter()
-		.filter(|column| column != primary_key)
+		.filter(|column| column != &primary_key)
 		.collect::<Vec<_>>();
 	if update_columns.is_empty() {
 		return Ok(None);
@@ -592,12 +635,12 @@ where
 			Manager::<M>::json_to_sea_value_for_field(&object[column], field_info, field_is_none),
 		)
 	}));
-	let primary_key_field = field_metadata
-		.iter()
-		.find(|field| field.name == primary_key || field.db_column.as_deref() == Some(primary_key));
+	let primary_key_field = field_metadata.iter().find(|field| {
+		field.name == primary_key || field.db_column.as_deref() == Some(primary_key.as_str())
+	});
 	let primary_key_is_none =
 		primary_key_field.is_some_and(|field| field.nullable && primary_key_value.is_null());
-	stmt.and_where(Expr::col(Alias::new(primary_key)).eq(
+	stmt.and_where(Expr::col(Alias::new(primary_key.as_str())).eq(
 		Manager::<M>::json_to_sea_value_for_field(
 			primary_key_value,
 			primary_key_field,
@@ -1535,6 +1578,53 @@ mod tests {
 	}
 
 	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureDatabaseColumnPost {
+		id: Option<i64>,
+		title: String,
+	}
+
+	#[cfg(feature = "migrations")]
+	impl Model for FixtureDatabaseColumnPost {
+		type PrimaryKey = i64;
+		type Fields = FixturePostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_database_column_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixturePostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_database_column"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "BigIntegerField", false);
+			id.primary_key = true;
+			id.db_column = Some("fixture_id".to_string());
+			let mut title = fixture_field_info("title", "CharField", false);
+			title.db_column = Some("fixture_title".to_string());
+			vec![id, title]
+		}
+	}
+
+	#[cfg(feature = "migrations")]
 	fn fixture_field_info(
 		name: &str,
 		field_type: &str,
@@ -1899,6 +1989,40 @@ mod tests {
 		assert!(sql.contains("OVERRIDING SYSTEM VALUE"));
 		assert!(sql.contains("ON CONFLICT"));
 		assert_eq!(values.len(), 2);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_upserts_use_database_column_names() {
+		let mut object = Map::new();
+		object.insert("id".to_string(), Value::from(1));
+		object.insert("title".to_string(), Value::from("fixture title"));
+
+		let (sql, values) = build_fixture_upsert_sql_values::<FixtureDatabaseColumnPost>(
+			DatabaseBackend::Sqlite,
+			&object,
+		)
+		.unwrap();
+
+		assert!(sql.contains("\"fixture_id\""));
+		assert!(sql.contains("\"fixture_title\""));
+		assert!(sql.contains("ON CONFLICT (\"fixture_id\")"));
+		assert_eq!(values.len(), 2);
+
+		let (lookup_sql, _) = build_fixture_primary_key_lookup_sql_values::<
+			FixtureDatabaseColumnPost,
+		>(DatabaseBackend::MySql, &object)
+		.unwrap();
+		assert!(lookup_sql.contains("`fixture_id`"));
+
+		let (update_sql, _) = build_fixture_update_sql_values::<FixtureDatabaseColumnPost>(
+			DatabaseBackend::MySql,
+			&object,
+		)
+		.unwrap()
+		.expect("fixture with writable fields should produce an update");
+		assert!(update_sql.contains("`fixture_title`"));
+		assert!(update_sql.contains("`fixture_id`"));
 	}
 
 	#[cfg(feature = "migrations")]
