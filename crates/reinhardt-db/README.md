@@ -298,6 +298,10 @@ pub full_name: String,
 - Model fixture handler registration for `dumpdata` and `loaddata`
 - Django-compatible fixture upserts with explicit null, foreign key, many-to-many,
   and PostgreSQL sequence handling
+- Fixture field names derived from model metadata, independent of API-facing serde renames
+  and omission rules
+- Writable fixture validation that omits database-generated columns while preserving
+  required-field and Rust-type checks
 - Support for composite primary keys
 
 ### Query with QuerySet

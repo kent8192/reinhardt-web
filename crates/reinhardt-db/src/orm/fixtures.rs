@@ -2,7 +2,7 @@
 //!
 //! The fixture runtime is type-erased at the registry boundary, while each
 //! registered model still loads through its generated `Model` implementation
-//! and `serde` validation.
+//! and canonical fixture-field validation.
 
 use super::connection::{DatabaseBackend, QueryValue};
 use super::manager::get_connection;
@@ -92,6 +92,16 @@ impl FixtureRecord {
 	}
 }
 
+/// Deserialize a macro-generated fixture projection without requiring callers
+/// to depend on `serde_json` directly.
+#[doc(hidden)]
+pub fn __deserialize_fixture_projection<T>(fields: &super::FixtureFields) -> Result<T, String>
+where
+	T: serde::de::DeserializeOwned,
+{
+	serde_json::from_value(Value::Object(fields.clone())).map_err(|error| error.to_string())
+}
+
 /// Type-erased fixture handler for one model type.
 #[async_trait]
 pub trait FixtureModelHandler: Send + Sync {
@@ -166,7 +176,7 @@ impl FixtureRegistry {
 	/// Register a model using the default typed handler.
 	pub fn register_model<M>(&self)
 	where
-		M: Model + serde::de::DeserializeOwned + Serialize + 'static,
+		M: Model + 'static,
 	{
 		self.register(Arc::new(TypedFixtureModel::<M>::new()));
 	}
@@ -227,7 +237,7 @@ impl<M> TypedFixtureModel<M> {
 #[async_trait]
 impl<M> FixtureModelHandler for TypedFixtureModel<M>
 where
-	M: Model + serde::de::DeserializeOwned + Serialize + 'static,
+	M: Model + 'static,
 {
 	fn app_label(&self) -> &'static str {
 		M::app_label()
@@ -280,7 +290,7 @@ where
 		if let Some(pk) = &record.pk {
 			object.insert(M::primary_key_field().to_string(), pk.clone());
 		}
-		let _model: M = serde_json::from_value(Value::Object(object.clone()))?;
+		validate_fixture_writable_projection::<M>(&object)?;
 		execute_fixture_upsert::<M>(conn, tx, &object).await?;
 		Ok(())
 	}
@@ -299,20 +309,16 @@ where
 
 	async fn dump_records(&self) -> FixtureResult<Vec<FixtureRecord>> {
 		ensure_single_column_primary_key::<M>()?;
-		let manager = Manager::<M>::new();
-		let primary_key_column = fixture_primary_key_column::<M>();
-		let rows = manager
-			.order_by(&[primary_key_column.as_str()])
-			.all()
-			.await?;
 		let conn = get_connection().await?;
+		let select = build_fixture_dump_select::<M>()?;
+		let (sql, values) = build_select_sql(&select, conn.backend());
+		let rows = conn
+			.query(&sql, super::execution::convert_values(values))
+			.await?;
 		let mut records = Vec::with_capacity(rows.len());
 		let model_label = self.label();
 		for row in rows {
-			let value = serde_json::to_value(row)?;
-			let mut object = value.as_object().cloned().ok_or_else(|| {
-				FixtureError::Database("model must serialize to a JSON object".to_string())
-			})?;
+			let mut object = fixture_fields_from_query_row::<M>(&row)?;
 			let pk = object.remove(M::primary_key_field());
 			denormalize_foreign_key_fixture_fields::<M>(&mut object)?;
 			append_many_to_many_fixture_fields::<M>(&conn, pk.as_ref(), &mut object).await?;
@@ -470,6 +476,204 @@ where
 		}
 	}
 	Ok(database_object)
+}
+
+fn validate_fixture_writable_projection<M>(object: &Map<String, Value>) -> FixtureResult<()>
+where
+	M: Model,
+{
+	M::validate_fixture_fields(object).map_err(|error| {
+		FixtureError::Database(format!(
+			"fixture validation failed for '{}.{}': {error}",
+			M::app_label(),
+			rust_model_name::<M>()
+		))
+	})?;
+	let database_object = fixture_database_object::<M>(object)?;
+	let primary_key = fixture_primary_key_column::<M>();
+	fixture_writable_columns(&database_object, &primary_key)?;
+	Ok(())
+}
+
+fn fixture_database_fields<M>() -> FixtureResult<Vec<(String, String)>>
+where
+	M: Model,
+{
+	let mut fields = Vec::new();
+	let mut add_field = |field_name: String, database_column: String| -> FixtureResult<()> {
+		if fields.iter().any(|(existing_name, existing_column)| {
+			existing_name == &field_name && existing_column == &database_column
+		}) {
+			return Ok(());
+		}
+		if fields
+			.iter()
+			.any(|(existing_name, _)| existing_name == &field_name)
+		{
+			return Err(FixtureError::Database(format!(
+				"fixture field '{}' for '{}.{}' maps to multiple database columns",
+				field_name,
+				M::app_label(),
+				rust_model_name::<M>()
+			)));
+		}
+		if fields
+			.iter()
+			.any(|(_, existing_column)| existing_column == &database_column)
+		{
+			return Err(FixtureError::Database(format!(
+				"database column '{}' for '{}.{}' maps to multiple fixture fields",
+				database_column,
+				M::app_label(),
+				rust_model_name::<M>()
+			)));
+		}
+		fields.push((field_name, database_column));
+		Ok(())
+	};
+
+	add_field(
+		M::primary_key_field().to_string(),
+		fixture_primary_key_column::<M>(),
+	)?;
+	let field_metadata = M::field_metadata();
+	for field in &field_metadata {
+		let database_column = field.db_column_name().to_string();
+		add_field(field.name.clone(), database_column)?;
+	}
+	for relationship in M::relationship_metadata() {
+		if !matches!(
+			relationship.relationship_type,
+			crate::orm::relationship::RelationshipType::ManyToOne
+				| crate::orm::relationship::RelationshipType::OneToOne
+		) {
+			continue;
+		}
+		let Some(foreign_key) = relationship.foreign_key else {
+			continue;
+		};
+		let database_column = field_metadata
+			.iter()
+			.find(|field| field.name == foreign_key)
+			.map(crate::orm::inspection::FieldInfo::db_column_name)
+			.unwrap_or(&foreign_key)
+			.to_string();
+		add_field(foreign_key, database_column)?;
+	}
+
+	Ok(fields)
+}
+
+fn build_fixture_dump_select<M>() -> FixtureResult<SelectStatement>
+where
+	M: Model,
+{
+	let database_fields = fixture_database_fields::<M>()?;
+	let primary_key_column = fixture_primary_key_column::<M>();
+	let mut select = Query::select();
+	select.from(Alias::new(M::table_name()));
+	for (_, database_column) in database_fields {
+		select.column(Alias::new(database_column));
+	}
+	select.order_by(
+		Alias::new(primary_key_column.as_str()),
+		reinhardt_query::prelude::Order::Asc,
+	);
+	Ok(select)
+}
+
+fn fixture_fields_from_query_row<M>(
+	row: &super::connection::QueryRow,
+) -> FixtureResult<Map<String, Value>>
+where
+	M: Model,
+{
+	let database_row = row.data.as_object().ok_or_else(|| {
+		FixtureError::Database("fixture query must return object rows".to_string())
+	})?;
+	fixture_fields_from_database_row_with_json_provenance::<M>(
+		database_row,
+		row.native_json_fields(),
+	)
+}
+
+#[cfg(test)]
+fn fixture_fields_from_database_row<M>(
+	row: &Map<String, Value>,
+) -> FixtureResult<Map<String, Value>>
+where
+	M: Model,
+{
+	fixture_fields_from_database_row_with_json_provenance::<M>(row, &HashSet::new())
+}
+
+fn fixture_fields_from_database_row_with_json_provenance<M>(
+	row: &Map<String, Value>,
+	native_json_fields: &HashSet<String>,
+) -> FixtureResult<Map<String, Value>>
+where
+	M: Model,
+{
+	let field_metadata = M::field_metadata();
+	let mut fixture_fields = Map::new();
+	for (field_name, database_column) in fixture_database_fields::<M>()? {
+		let value = row.get(&database_column).cloned().ok_or_else(|| {
+			FixtureError::Database(format!(
+				"fixture dump row for '{}.{}' is missing database column '{}'",
+				M::app_label(),
+				rust_model_name::<M>(),
+				database_column
+			))
+		})?;
+		let field_info = field_metadata
+			.iter()
+			.find(|field| field.name == field_name || field.db_column_name() == database_column);
+		let value = hydrate_fixture_json_value::<M>(
+			value,
+			field_info,
+			&field_name,
+			&database_column,
+			native_json_fields.contains(&database_column),
+		)?;
+		if fixture_fields.insert(field_name.clone(), value).is_some() {
+			return Err(FixtureError::Database(format!(
+				"fixture fields for '{}.{}' map multiple database columns to '{}'",
+				M::app_label(),
+				rust_model_name::<M>(),
+				field_name
+			)));
+		}
+	}
+	Ok(fixture_fields)
+}
+
+fn hydrate_fixture_json_value<M>(
+	value: Value,
+	field_info: Option<&crate::orm::inspection::FieldInfo>,
+	field_name: &str,
+	database_column: &str,
+	is_native_json: bool,
+) -> FixtureResult<Value>
+where
+	M: Model,
+{
+	if is_native_json
+		|| !field_info.is_some_and(|field| crate::orm::json::is_json_field_type(&field.field_type))
+	{
+		return Ok(value);
+	}
+
+	match value {
+		Value::String(text) => serde_json::from_str(&text).map_err(|error| {
+			FixtureError::Database(format!(
+				"failed to hydrate JSON fixture field '{}.{}' from database column '{}': {error}",
+				M::app_label(),
+				field_name,
+				database_column
+			))
+		}),
+		value => Ok(value),
+	}
 }
 
 fn fixture_primary_key_column<M>() -> String
@@ -1300,7 +1504,7 @@ fn fixture_field_value<'a>(
 				.strip_suffix("_id")
 				.and_then(|name| record.fields.get(name))
 		})
-		.or_else(|| {
+		.or({
 			if is_primary_key_foreign_key {
 				record.pk.as_ref()
 			} else {
@@ -1548,6 +1752,25 @@ mod tests {
 			self.id = Some(value);
 		}
 
+		fn validate_fixture_fields(fields: &crate::orm::FixtureFields) -> Result<(), String> {
+			// The projection is deserialized only to validate fixture input.
+			#[allow(dead_code)]
+			#[derive(Deserialize)]
+			struct FixtureProjection {
+				id: Option<i64>,
+				#[serde(default)]
+				writer_id: Option<i64>,
+				payload: Value,
+			}
+
+			let FixtureProjection {
+				id: _,
+				writer_id: _,
+				payload: _,
+			} = __deserialize_fixture_projection::<FixtureProjection>(fields)?;
+			Ok(())
+		}
+
 		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
 			vec![fixture_field_info("payload", "JsonField", false)]
 		}
@@ -1624,6 +1847,31 @@ mod tests {
 	}
 
 	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureSerdeMappedPost {
+		id: Option<i64>,
+		#[serde(rename = "displayName")]
+		title: String,
+		#[serde(skip_serializing_if = "Option::is_none")]
+		note: Option<String>,
+	}
+
+	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureCustomForeignKeyPost {
+		id: Option<i64>,
+		author_id: i64,
+	}
+
+	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureJsonPost {
+		id: Option<i64>,
+		payload: Value,
+		optional_payload: Option<Value>,
+	}
+
+	#[cfg(feature = "migrations")]
 	impl Model for FixtureDatabaseColumnPost {
 		type PrimaryKey = i64;
 		type Fields = FixturePostFields;
@@ -1660,6 +1908,151 @@ mod tests {
 			let mut title = fixture_field_info("title", "CharField", false);
 			title.db_column = Some("fixture_title".to_string());
 			vec![id, title]
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	impl Model for FixtureSerdeMappedPost {
+		type PrimaryKey = i64;
+		type Fields = FixturePostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_serde_mapped_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixturePostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_serde_mapped"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "BigIntegerField", false);
+			id.primary_key = true;
+			id.db_column = Some("fixture_id".to_string());
+			let mut title = fixture_field_info("title", "CharField", false);
+			title.db_column = Some("fixture_title".to_string());
+			let mut note = fixture_field_info("note", "CharField", true);
+			note.db_column = Some("fixture_note".to_string());
+			vec![id, title, note]
+		}
+
+		fn relationship_metadata() -> Vec<crate::orm::inspection::RelationInfo> {
+			vec![
+				crate::orm::inspection::RelationInfo::new(
+					"owner",
+					crate::orm::relationship::RelationshipType::ManyToOne,
+					"Owner",
+				)
+				.with_foreign_key("fixture_owner_id"),
+			]
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	impl Model for FixtureCustomForeignKeyPost {
+		type PrimaryKey = i64;
+		type Fields = FixturePostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_custom_foreign_key_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixturePostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_custom_foreign_key"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "BigIntegerField", false);
+			id.primary_key = true;
+			id.db_column = Some("fixture_id".to_string());
+			let mut author_id = fixture_field_info("author_id", "BigIntegerField", false);
+			author_id.db_column = Some("author_fk".to_string());
+			vec![id, author_id]
+		}
+
+		fn relationship_metadata() -> Vec<crate::orm::inspection::RelationInfo> {
+			vec![
+				crate::orm::inspection::RelationInfo::new(
+					"author",
+					crate::orm::relationship::RelationshipType::ManyToOne,
+					"Author",
+				)
+				.with_foreign_key("author_id"),
+			]
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	impl Model for FixtureJsonPost {
+		type PrimaryKey = i64;
+		type Fields = FixturePostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_json_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixturePostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_json"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "BigIntegerField", false);
+			id.primary_key = true;
+			vec![
+				id,
+				fixture_field_info("payload", "JsonField", false),
+				fixture_field_info("optional_payload", "JsonField", true),
+			]
 		}
 	}
 
@@ -1975,6 +2368,206 @@ mod tests {
 			values.get(1),
 			Some(QueryValue::Json(Some(value))) if **value == payload
 		));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_validation_uses_writable_projection_for_generated_fields() {
+		let mut object = Map::new();
+		object.insert("id".to_string(), Value::from(1));
+		object.insert("payload".to_string(), serde_json::json!({"theme": "paper"}));
+
+		validate_fixture_writable_projection::<FixtureFieldAwarePost>(&object)
+			.expect("generated fields must not be required by fixture validation");
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_validation_rejects_missing_non_generated_fields() {
+		let mut object = Map::new();
+		object.insert("id".to_string(), Value::from(1));
+
+		assert!(
+			validate_fixture_writable_projection::<FixtureFieldAwarePost>(&object).is_err(),
+			"fixture validation must still reject missing writable fields"
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_dump_fields_ignore_serde_names_and_omissions() {
+		let mut row = Map::new();
+		row.insert("fixture_id".to_string(), Value::from(1));
+		row.insert("fixture_title".to_string(), Value::from("Fixture title"));
+		row.insert("fixture_note".to_string(), Value::Null);
+		row.insert("fixture_owner_id".to_string(), Value::from(7));
+
+		let fields = fixture_fields_from_database_row::<FixtureSerdeMappedPost>(&row).unwrap();
+
+		assert_eq!(fields.get("id"), Some(&Value::from(1)));
+		assert_eq!(fields.get("title"), Some(&Value::from("Fixture title")));
+		assert_eq!(fields.get("note"), Some(&Value::Null));
+		assert_eq!(fields.get("fixture_owner_id"), Some(&Value::from(7)));
+		assert!(fields.get("displayName").is_none());
+
+		let serialized = serde_json::to_value(FixtureSerdeMappedPost {
+			id: Some(1),
+			title: "Fixture title".to_string(),
+			note: None,
+		})
+		.unwrap();
+		assert!(serialized.get("displayName").is_some());
+		assert!(serialized.get("note").is_none());
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_dump_selects_database_columns_and_forward_foreign_keys() {
+		let select = build_fixture_dump_select::<FixtureSerdeMappedPost>().unwrap();
+		let (sql, _) = build_select_sql(&select, DatabaseBackend::Sqlite);
+
+		assert!(sql.contains("\"fixture_id\""));
+		assert!(sql.contains("\"fixture_title\""));
+		assert!(sql.contains("\"fixture_note\""));
+		assert!(sql.contains("\"fixture_owner_id\""));
+		assert!(sql.contains("ORDER BY \"fixture_id\" ASC"));
+		assert!(!sql.contains("displayName"));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_dump_uses_physical_columns_for_custom_foreign_keys() {
+		let fields = fixture_database_fields::<FixtureCustomForeignKeyPost>().unwrap();
+
+		assert_eq!(
+			fields,
+			vec![
+				("id".to_string(), "fixture_id".to_string()),
+				("author_id".to_string(), "author_fk".to_string()),
+			]
+		);
+
+		let select = build_fixture_dump_select::<FixtureCustomForeignKeyPost>().unwrap();
+		let (sql, _) = build_select_sql(&select, DatabaseBackend::Sqlite);
+		assert!(sql.contains("\"author_fk\""));
+		assert!(!sql.contains("\"author_id\""));
+
+		let mut row = Map::new();
+		row.insert("fixture_id".to_string(), Value::from(1));
+		row.insert("author_fk".to_string(), Value::from(7));
+		let fields = fixture_fields_from_database_row::<FixtureCustomForeignKeyPost>(&row).unwrap();
+
+		assert_eq!(fields.get("author_id"), Some(&Value::from(7)));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_dump_hydrates_json_text_columns() {
+		let mut row = Map::new();
+		row.insert("id".to_string(), Value::from(1));
+		row.insert(
+			"payload".to_string(),
+			Value::String(r#"{"theme":"paper"}"#.to_string()),
+		);
+		row.insert("optional_payload".to_string(), Value::Null);
+
+		let fields = fixture_fields_from_database_row::<FixtureJsonPost>(&row).unwrap();
+
+		assert_eq!(
+			fields.get("payload"),
+			Some(&serde_json::json!({"theme": "paper"}))
+		);
+		assert_eq!(fields.get("optional_payload"), Some(&Value::Null));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_dump_preserves_native_json_scalar_values() {
+		let mut backend_row = crate::backends::types::Row::new();
+		backend_row.insert("id".to_string(), QueryValue::Int(1));
+		backend_row.insert(
+			"payload".to_string(),
+			QueryValue::Json(Some(Box::new(Value::String("draft".to_string())))),
+		);
+		backend_row.insert("optional_payload".to_string(), QueryValue::Json(None));
+		let row = crate::orm::connection::QueryRow::from_backend_row(backend_row);
+
+		let fields = fixture_fields_from_query_row::<FixtureJsonPost>(&row).unwrap();
+
+		assert_eq!(
+			fields.get("payload"),
+			Some(&Value::String("draft".to_string()))
+		);
+		assert_eq!(fields.get("optional_payload"), Some(&Value::Null));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[serial_test::serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn fixture_dump_and_load_hydrates_sqlite_json_text() {
+		let conn = DatabaseConnection::connect("sqlite::memory:")
+			.await
+			.unwrap();
+		conn.execute(
+			"CREATE TABLE fixture_json_post (\
+				id INTEGER PRIMARY KEY, \
+				payload TEXT NOT NULL, \
+				optional_payload TEXT NULL)",
+			vec![],
+		)
+		.await
+		.unwrap();
+		conn.execute(
+			"INSERT INTO fixture_json_post (id, payload, optional_payload) VALUES (?, ?, ?)",
+			vec![
+				QueryValue::Int(1),
+				QueryValue::String(r#"{"theme":"paper"}"#.to_string()),
+				QueryValue::Null,
+			],
+		)
+		.await
+		.unwrap();
+
+		let select = build_fixture_dump_select::<FixtureJsonPost>().unwrap();
+		let (select_sql, select_values) = build_select_sql(&select, conn.backend());
+		let rows = conn
+			.query(
+				&select_sql,
+				crate::orm::execution::convert_values(select_values),
+			)
+			.await
+			.unwrap();
+		let fields = fixture_fields_from_query_row::<FixtureJsonPost>(&rows[0]).unwrap();
+
+		assert_eq!(
+			fields.get("payload"),
+			Some(&serde_json::json!({"theme": "paper"}))
+		);
+		assert_eq!(fields.get("optional_payload"), Some(&Value::Null));
+
+		conn.execute("DELETE FROM fixture_json_post", vec![])
+			.await
+			.unwrap();
+		let (insert_sql, insert_values) =
+			build_fixture_upsert_sql_values::<FixtureJsonPost>(conn.backend(), &fields).unwrap();
+		conn.execute(&insert_sql, insert_values).await.unwrap();
+
+		let restored = conn
+			.query(
+				"SELECT payload, optional_payload FROM fixture_json_post WHERE id = ?",
+				vec![QueryValue::Int(1)],
+			)
+			.await
+			.unwrap();
+		let restored = restored[0]
+			.data
+			.as_object()
+			.expect("restored row must be an object");
+		assert_eq!(
+			restored.get("payload"),
+			Some(&Value::String(r#"{"theme":"paper"}"#.to_string()))
+		);
+		assert_eq!(restored.get("optional_payload"), Some(&Value::Null));
 	}
 
 	#[cfg(feature = "migrations")]

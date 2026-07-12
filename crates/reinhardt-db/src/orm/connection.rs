@@ -101,6 +101,11 @@ impl QueryRow {
 		)
 	}
 
+	/// Database columns returned as native JSON values.
+	pub(crate) fn native_json_fields(&self) -> &std::collections::HashSet<String> {
+		&self.native_json_fields
+	}
+
 	/// Get a value from the row by column name
 	///
 	/// This method extracts a value from the row's JSON data by key.
