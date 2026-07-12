@@ -1,4 +1,4 @@
-use reinhardt_di::{Depends, FactoryOutput, injectable, injectable_key};
+use reinhardt_di::{KeyedDepends, KeyedFactoryOutput, injectable, injectable_key};
 
 #[injectable_key]
 struct ConfigKey;
@@ -9,11 +9,11 @@ struct AppConfig {
 }
 
 #[injectable(scope = "transient")]
-async fn app_config() -> FactoryOutput<ConfigKey, AppConfig> {
-	FactoryOutput::new(AppConfig { value: "ok" })
+async fn app_config() -> KeyedFactoryOutput<ConfigKey, AppConfig> {
+	KeyedFactoryOutput::new(AppConfig { value: "ok" })
 }
 
-fn consume(config: Depends<ConfigKey, AppConfig>) -> &'static str {
+fn consume(config: KeyedDepends<ConfigKey, AppConfig>) -> &'static str {
 	config.value
 }
 

@@ -55,13 +55,19 @@ fn test_injectable_factory_compile_fail_cases() {
 fn test_keyed_provider_compile_pass_cases() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/di/ui/pass/keyed_provider_macro.rs");
+	t.pass("tests/di/ui/pass/deprecated_factory_output_provider.rs");
+}
+
+#[test]
+fn test_self_keyed_provider_compile_pass_cases() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/di/ui/pass/self_keyed_provider_macro.rs");
 }
 
 #[test]
 fn test_keyed_provider_compile_fail_cases() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/di/ui/fail/injectable_key_on_function.rs");
-	t.compile_fail("tests/di/ui/fail/provider_returns_plain_type.rs");
 }
 
 #[test]
@@ -90,20 +96,25 @@ fn test_injectable_compile_pass_cases() {
 	// Test: #[injectable] provider with #[inject] parameters (T and Arc<T>)
 	t.pass("tests/di/ui/pass/injectable_factory_inject_params.rs");
 
-	// Test: Depends<K, FactoryType> in #[get] route macro
+	// Test: KeyedDepends<K, FactoryType> in #[get] route macro
 	t.pass("tests/di/ui/pass/factory_depends_in_route_macro.rs");
 
-	// Test: Depends<K, FactoryType> in #[server_fn]
+	// Test: KeyedDepends<K, FactoryType> in #[server_fn]
 	t.pass("tests/di/ui/pass/factory_depends_in_server_fn.rs");
 
-	// Test: Depends<K, Result<T, E>> in #[get] route macro
+	// Test: KeyedDepends<K, Result<T, E>> in #[get] route macro
 	t.pass("tests/di/ui/pass/depends_result_in_route_macro.rs");
 
-	// Test: Depends<K, Result<T, E>> in #[server_fn]
+	// Test: KeyedDepends<K, Result<T, E>> in #[server_fn]
 	t.pass("tests/di/ui/pass/depends_result_in_server_fn.rs");
 
 	// Test: trait-based wrappers in route and server_fn macros (regression guard for #4938)
 	t.pass("tests/di/ui/pass/trait_based_inject_wrappers.rs");
+
+	// Test: self-keyed Depends<T> in route and server_fn macros
+	t.pass("tests/di/ui/pass/self_keyed_depends_in_route_macro.rs");
+	t.pass("tests/di/ui/pass/self_keyed_depends_in_server_fn.rs");
+	t.pass("tests/di/ui/pass/self_keyed_result_in_server_fn.rs");
 }
 
 // Note: full provider registration behavior is covered by integration tests

@@ -55,3 +55,25 @@ pub mod wasm;
 // Admin integration fixtures (conditional on admin + testcontainers features)
 #[cfg(all(native, feature = "admin", feature = "testcontainers"))]
 pub use admin_migrations::{AdminTableCreator, admin_table_creator};
+
+#[cfg(all(test, native))]
+mod database_reexport_tests {
+	use super::{TestDatabase, TestDatabaseBackend, test_database};
+
+	struct EmptyProvider;
+
+	impl reinhardt_db::migrations::MigrationProvider for EmptyProvider {
+		fn migrations() -> Vec<reinhardt_db::migrations::Migration> {
+			Vec::new()
+		}
+	}
+
+	#[test]
+	fn database_types_are_reexported() {
+		let builder = TestDatabase::builder();
+		let _macro_name_is_importable = stringify!(test_database);
+		let _database_future = test_database!(migrations = EmptyProvider);
+
+		assert_eq!(builder.backend(), TestDatabaseBackend::SqliteFile);
+	}
+}

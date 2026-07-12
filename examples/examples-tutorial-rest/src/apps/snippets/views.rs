@@ -3,7 +3,7 @@ use reinhardt::Validate;
 use reinhardt::core::serde::json;
 use reinhardt::db::DatabaseConnection;
 use reinhardt::db::orm::Manager;
-use reinhardt::di::Depends;
+use reinhardt::di::KeyedDepends;
 use reinhardt::http::ViewResult;
 use reinhardt::{Json, Path, Response, StatusCode};
 use reinhardt::{delete, get, post, put};
@@ -30,11 +30,12 @@ use super::serializers::{SnippetResponse, SnippetSerializer};
 
 /// Snippet listing configuration endpoint.
 ///
-/// Demonstrates keyed `Depends<K, T>` for a fallible provider. The
+/// Demonstrates keyed `KeyedDepends<K, T>` for a fallible provider. The
 /// `checked_list_config` provider in `di.rs` returns
-/// `FactoryOutput<CheckedSnippetListConfigKey, Result<SnippetListConfig,
+/// `KeyedFactoryOutput<CheckedSnippetListConfigKey, Result<SnippetListConfig,
 /// ConfigError>>`, so the key type distinguishes this provider from any other
-/// `SnippetListConfig` provider.
+/// fallible `SnippetListConfig` provider. The base `SnippetListConfig`
+/// singleton is self-keyed and consumed with `Depends<SnippetListConfig>`.
 ///
 /// Registered before `retrieve` (`/snippets/{id}/`) in `urls.rs` so this
 /// literal `/snippets/config/` path is matched first.
@@ -44,9 +45,12 @@ use super::serializers::{SnippetResponse, SnippetSerializer};
 /// Error response: 503 Service Unavailable with `{ "error": <message> }`
 #[get("/snippets/config/", name = "snippets-config")]
 pub async fn config(
-	#[inject] cfg: Depends<CheckedSnippetListConfigKey, Result<SnippetListConfig, ConfigError>>,
+	#[inject] cfg: KeyedDepends<
+		CheckedSnippetListConfigKey,
+		Result<SnippetListConfig, ConfigError>,
+	>,
 ) -> ViewResult<Response> {
-	// `Depends<K, Result<T, E>>` derefs to `Result<T, E>`. `.as_ref()` matches
+	// `KeyedDepends<K, Result<T, E>>` derefs to `Result<T, E>`. `.as_ref()` matches
 	// on `Result<&SnippetListConfig, &ConfigError>` without consuming `cfg`.
 	match (*cfg).as_ref() {
 		Ok(cfg) => {
