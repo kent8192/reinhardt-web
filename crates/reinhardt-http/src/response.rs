@@ -1,6 +1,7 @@
 use bytes::Bytes;
 use futures::stream::Stream;
 use hyper::{HeaderMap, StatusCode};
+use reinhardt_core::exception::HttpError;
 use serde::Serialize;
 use std::pin::Pin;
 
@@ -427,6 +428,41 @@ impl Response {
 	pub fn temporary_redirect_preserve_method(location: impl AsRef<str>) -> Self {
 		Self::new(StatusCode::TEMPORARY_REDIRECT).with_location(location.as_ref())
 	}
+
+	/// Builds a safe HTTP error response from an application-defined error.
+	///
+	/// Client errors include the error's client message as `detail`.
+	/// Server errors omit detail to avoid leaking internal state.
+	pub fn from_http_error<E>(error: E) -> Self
+	where
+		E: HttpError,
+	{
+		let status = error.status_code();
+		let mut response = SafeErrorResponse::new(status);
+		if status.is_client_error() {
+			response = response.with_detail(error.client_message().into_owned());
+		}
+		response.build()
+	}
+
+	/// Builds an application error response with `{"error": client_message}`.
+	///
+	/// Use this only when the error's client message is safe to expose for every
+	/// mapped status, including server errors.
+	pub fn from_http_error_body<E>(error: E) -> Self
+	where
+		E: HttpError,
+	{
+		let status = error.status_code();
+		let message = error.client_message();
+		let body = serde_json::json!({
+			"error": message.as_ref(),
+		});
+		Self::new(status)
+			.with_json(&body)
+			.unwrap_or_else(|_| Self::internal_server_error())
+	}
+
 	/// Set the response body
 	///
 	/// # Examples
@@ -957,6 +993,72 @@ impl<S> StreamingResponse<S> {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+
+	#[derive(Debug)]
+	enum SampleHttpError {
+		Validation,
+		Internal,
+	}
+
+	impl reinhardt_core::exception::HttpError for SampleHttpError {
+		fn status_code(&self) -> reinhardt_core::exception::StatusCode {
+			match self {
+				Self::Validation => reinhardt_core::exception::StatusCode::BAD_REQUEST,
+				Self::Internal => reinhardt_core::exception::StatusCode::INTERNAL_SERVER_ERROR,
+			}
+		}
+
+		fn client_message(&self) -> std::borrow::Cow<'static, str> {
+			match self {
+				Self::Validation => std::borrow::Cow::Borrowed("Invalid request"),
+				Self::Internal => std::borrow::Cow::Borrowed("Provider token expired"),
+			}
+		}
+	}
+
+	#[rstest]
+	fn test_http_error_safe_response_includes_4xx_detail() {
+		// Arrange
+		let error = SampleHttpError::Validation;
+
+		// Act
+		let response = Response::from_http_error(error);
+		let body: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::BAD_REQUEST);
+		assert_eq!(body["error"], "Bad Request");
+		assert_eq!(body["detail"], "Invalid request");
+	}
+
+	#[rstest]
+	fn test_http_error_safe_response_hides_5xx_detail() {
+		// Arrange
+		let error = SampleHttpError::Internal;
+
+		// Act
+		let response = Response::from_http_error(error);
+		let body: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+		assert_eq!(body["error"], "Internal Server Error");
+		assert_eq!(body.get("detail"), None);
+	}
+
+	#[rstest]
+	fn test_http_error_body_response_uses_client_message_envelope() {
+		// Arrange
+		let error = SampleHttpError::Internal;
+
+		// Act
+		let response = Response::from_http_error_body(error);
+		let body: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+		assert_eq!(body, serde_json::json!({"error": "Provider token expired"}));
+	}
 
 	#[rstest]
 	#[case(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")]
