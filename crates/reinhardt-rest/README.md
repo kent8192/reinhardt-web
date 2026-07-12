@@ -13,11 +13,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.2.2", features = ["rest"] }
+reinhardt = { version = "0.3.1", features = ["rest"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.2.2", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.2.2", features = ["full"] }      # All features
+# reinhardt = { version = "0.3.1", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.3.1", features = ["full"] }      # All features
 ```
 
 Then import REST features:
@@ -735,6 +735,12 @@ let users = slug_field.get_instances(vec!["alice", "bob", "charlie"]).await?;
 - **`QueryCache`**: TTL-based query result caching
 - **`BatchValidator`**: Combine multiple database checks into single queries
 - **`PerformanceMetrics`**: Track serialization and validation performance
+
+Serializer performance helpers are local diagnostics for REST serialization
+work. For cross-layer N+1 query detection, wrap the ORM workload in
+`reinhardt_db::orm::NPlusOneScope`; it observes repeated ORM query shapes and
+points fixes back to `select_related()`, `prefetch_related()`, or explicit batch
+queries.
 
 ```rust
 use reinhardt::rest::serializers::{IntrospectionCache, QueryCache, BatchValidator, PerformanceMetrics};

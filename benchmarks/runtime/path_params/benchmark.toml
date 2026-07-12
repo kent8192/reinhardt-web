@@ -1,0 +1,9 @@
+[scenario]
+category = "runtime"
+name = "path_params"
+runner = "criterion"
+metric = "request_latency"
+unit = "ns/request"
+workload = "GET /items/{id}/owners/{owner_id} extracts two path parameters."
+success = "HTTP 200 with both extracted parameters in the response."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

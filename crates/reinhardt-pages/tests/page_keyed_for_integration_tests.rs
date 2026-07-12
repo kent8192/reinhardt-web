@@ -13,9 +13,7 @@ fn keyed_for_lowers_to_keyed_fragment() {
 	let render = page!(|todos: Vec<Todo>| {
 		ul {
 			for todo in todos @key(todo.id.clone()) {
-				li { {
-					todo.title.clone()
-				} }
+				li { { todo.title.clone() } }
 			}
 		}
 	});

@@ -33,8 +33,12 @@
 //!     fn with_alias(self, _alias: &str) -> Self { self }
 //! }
 //!
+//! # fn configured_database_connection() -> DatabaseConnection {
+//! #     panic!("provide a configured database connection")
+//! # }
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let connection = DatabaseConnection::connect_postgres("postgres://localhost/test").await?;
+//! // Use the database connection configured for your application.
+//! # let connection = configured_database_connection();
 //!
 //! // Validate that username is unique
 //! let validator = UniqueValidator::<User>::new("username");
@@ -51,7 +55,7 @@
 //! # }
 //! ```
 
-use super::SerializerError;
+use super::{SerializerError, ValidatorError};
 use reinhardt_db::backends::DatabaseConnection;
 use reinhardt_db::orm::{CustomManager, Filter, FilterOperator, FilterValue, Model};
 use std::marker::PhantomData;
@@ -60,6 +64,13 @@ use thiserror::Error;
 /// Errors that can occur during database validation
 #[derive(Debug, Error, Clone, PartialEq)]
 pub enum DatabaseValidatorError {
+	/// Synchronous model validation failed before database-backed validation.
+	#[error("{source}")]
+	ValidationError {
+		/// The validator error that rejected the model instance
+		source: ValidatorError,
+	},
+
 	/// A unique constraint was violated for a single field
 	#[error("Unique constraint violated: {field} = '{value}' already exists in table {table}")]
 	UniqueConstraintViolation {
@@ -107,15 +118,29 @@ pub enum DatabaseValidatorError {
 
 impl From<DatabaseValidatorError> for SerializerError {
 	fn from(err: DatabaseValidatorError) -> Self {
-		SerializerError::Other {
-			message: err.to_string(),
+		match err {
+			DatabaseValidatorError::ValidationError { source } => {
+				SerializerError::Validation(source)
+			}
+			other => SerializerError::Other {
+				message: other.to_string(),
+			},
 		}
+	}
+}
+
+impl From<ValidatorError> for DatabaseValidatorError {
+	fn from(source: ValidatorError) -> Self {
+		Self::ValidationError { source }
 	}
 }
 
 impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 	fn from(err: DatabaseValidatorError) -> Self {
 		match err {
+			DatabaseValidatorError::ValidationError { source } => {
+				reinhardt_core::exception::Error::Validation(source.to_string())
+			}
 			DatabaseValidatorError::UniqueConstraintViolation {
 				field,
 				value,
@@ -192,8 +217,12 @@ impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// #
+/// # fn configured_database_connection() -> DatabaseConnection {
+/// #     panic!("provide a configured database connection")
+/// # }
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let connection = DatabaseConnection::connect_postgres("postgres://localhost/test").await?;
+/// // Use the database connection configured for your application.
+/// # let connection = configured_database_connection();
 /// let validator = UniqueValidator::<User>::new("username");
 ///
 /// // Check if "alice" is unique
@@ -380,8 +409,12 @@ impl<M: Model> UniqueValidator<M> {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// #
+/// # fn configured_database_connection() -> DatabaseConnection {
+/// #     panic!("provide a configured database connection")
+/// # }
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let connection = DatabaseConnection::connect_postgres("postgres://localhost/test").await?;
+/// // Use the database connection configured for your application.
+/// # let connection = configured_database_connection();
 /// let validator = UniqueTogetherValidator::<User>::new(vec!["username", "email"]);
 ///
 /// let mut values = HashMap::new();

@@ -9,13 +9,13 @@ use reinhardt_pages_macros::server_fn;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
-struct SearchResult {
+pub struct SearchResult {
 	title: String,
 	url: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ServerFnError(String);
+pub struct ServerFnError(String);
 
 impl std::fmt::Display for ServerFnError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -26,10 +26,10 @@ impl std::fmt::Display for ServerFnError {
 impl std::error::Error for ServerFnError {}
 
 // Required for client-side error conversion (WASM only)
-#[cfg(wasm)]
-impl From<reqwest::Error> for ServerFnError {
-	fn from(err: reqwest::Error) -> Self {
-		ServerFnError(format!("Network error: {:?}", err))
+#[cfg(target_family = "wasm")]
+impl From<reinhardt_pages::server_fn::ServerFnError> for ServerFnError {
+	fn from(err: reinhardt_pages::server_fn::ServerFnError) -> Self {
+		ServerFnError(format!("Client error: {}", err))
 	}
 }
 

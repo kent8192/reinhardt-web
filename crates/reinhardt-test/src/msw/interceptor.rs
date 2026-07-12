@@ -2,18 +2,16 @@
 
 #[cfg(wasm)]
 mod wasm_impl {
-	use std::cell::RefCell;
-	use std::rc::Rc;
-
 	use js_sys::{self, Promise, Reflect};
 	use wasm_bindgen::JsCast;
 	use wasm_bindgen::prelude::*;
 	use wasm_bindgen_futures::JsFuture;
 	use web_sys::{Headers, Request, Response, ResponseInit};
 
-	use crate::msw::handler::{ErasedHandler, InterceptedRequest};
-	use crate::msw::recorder::{RecordedRequest, RequestRecorder};
+	use crate::msw::handler::InterceptedRequest;
+	use crate::msw::recorder::RecordedRequest;
 	use crate::msw::response::MockResponse;
+	use crate::msw::state::{RecorderHandle, SharedHandlers};
 
 	/// Behavior when a request matches no handler.
 	#[derive(Debug, Clone)]
@@ -31,8 +29,8 @@ mod wasm_impl {
 
 	/// Install a Rust-backed fetch replacement on `window`.
 	pub(crate) fn install_fetch_override(
-		handlers: Rc<RefCell<Vec<Box<dyn ErasedHandler>>>>,
-		recorder: Rc<RefCell<RequestRecorder>>,
+		handlers: SharedHandlers,
+		recorder: RecorderHandle,
 		policy: UnhandledPolicy,
 		original_fetch: JsValue,
 	) -> Closure<dyn FnMut(JsValue, JsValue) -> Promise> {
@@ -47,8 +45,8 @@ mod wasm_impl {
 			wasm_bindgen_futures::future_to_promise(async move {
 				let intercepted = extract_request_info(&input, &init).await?;
 
-				// Record the request
-				recorder.borrow_mut().record(RecordedRequest {
+				// Record the request.
+				recorder.record(RecordedRequest {
 					url: intercepted.url.clone(),
 					method: intercepted.method.clone(),
 					headers: intercepted.headers.clone(),

@@ -1,0 +1,9 @@
+[scenario]
+category = "runtime"
+name = "middleware_chain"
+runner = "criterion"
+metric = "request_latency"
+unit = "ns/request"
+workload = "GET /middleware passes through five no-op middleware layers plus one header writer."
+success = "HTTP 200 with the final middleware header present."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

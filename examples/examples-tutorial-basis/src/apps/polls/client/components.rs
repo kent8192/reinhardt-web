@@ -25,18 +25,30 @@
 //!   that depend on the form's `error` / `loading` signals are rendered inline as
 //!   `{ .. }` blocks that read each signal exactly once.
 
-use crate::shared::types::{ChoiceInfo, QuestionInfo, UserInfo};
+pub mod choice_delete;
+pub mod choice_edit;
+pub mod choice_new;
+pub mod polls_detail;
+pub mod polls_index;
+pub mod polls_results;
+pub mod question_delete;
+pub mod question_edit;
+pub mod question_new;
+
+use crate::apps::polls::models::{ChoiceInfo, QuestionInfo};
+use crate::apps::users::models::UserInfo;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::use_effect;
 use reinhardt::pages::reactive::{Resource, ResourceState, Signal, use_resource};
+use reinhardt::pages::resolve_static;
 
 use crate::apps::polls::server_fn::{
 	create_choice, create_question, delete_choice, delete_question, get_question_detail,
 	get_question_results, get_questions, submit_vote, update_choice, update_question,
 };
-use crate::apps::polls::urls::client_router as polls_routes;
+use crate::apps::polls::urls as polls_routes;
 // Used by `polls_detail` to gate owner-only controls (Edit / Delete / Add
 // choice) on the viewer being the question's author (issue #4703). Server-
 // side `require_question_author` checks remain in place as defense in depth.
@@ -67,6 +79,29 @@ fn format_server_error(raw: &str) -> String {
 		}
 	}
 	raw.to_string()
+}
+
+fn static_url(path: &str) -> String {
+	resolve_static(path)
+}
+
+/// Error page used as the polls router's `not_found` fallback.
+pub fn error_page(message: &str) -> Page {
+	let message = message.to_string();
+	page!(|message: String| {
+		div {
+			class: "layout-page",
+			div {
+				class: "alert-danger mb-4",
+				{ message }
+			}
+			a {
+				href: "/",
+				class: "btn-primary",
+				"Back to Home"
+			}
+		}
+	})(message)
 }
 
 /// Polls index page - List all polls
@@ -305,7 +340,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 					// Owner-only controls (Edit / Delete / Add choice) are hidden for
 					// non-authors and unauthenticated viewers (issue #4703). Any
 					// non-`Success(Some(u))` shape leaves `is_author` as `false`.
-					let is_author = matches!(load_current_user.get(), ResourceState::Success(Some(ref u))if u.id == q.author_id);
+					let is_author = matches!(load_current_user.get(), ResourceState::Success(Some(ref u))if u.id == q.author.id);
 					// Render the voting form only when the question has choices;
 					// otherwise show an empty-state prompt (reinhardt-web#4686).
 					let choices_view = if choices.is_empty() {
@@ -434,7 +469,7 @@ pub fn polls_results(question_id: i64) -> Page {
 				ResourceState::Success((q, choices, total)) => {
 					// Owner-only controls (Edit / Delete) are hidden for non-authors
 					// and unauthenticated viewers (issue #4703).
-					let is_author = matches!(load_current_user.get(), ResourceState::Success(Some(ref u))if u.id == q.author_id);
+					let is_author = matches!(load_current_user.get(), ResourceState::Success(Some(ref u))if u.id == q.author.id);
 					page!(|q: QuestionInfo, choices: Vec<ChoiceInfo>, total: i32, is_author: bool, question_id: i64| {
 						div {
 							class: "max-w-4xl mx-auto px-4 mt-12",
@@ -557,7 +592,7 @@ pub fn polls_index_with_logo() -> Page {
 			div {
 				class: "text-center mb-6",
 				img {
-					src: reinhardt::pages::resolve_static("images/poll-icon.svg"),
+					src: self::static_url("images/poll-icon.svg"),
 					alt: "Polls App",
 					class: "mx-auto w-16 h-16",
 				}
@@ -605,7 +640,7 @@ pub fn polls_index_with_logo() -> Page {
 									div {
 										class: "flex w-full justify-between items-center",
 										img {
-											src: reinhardt::pages::resolve_static("images/poll-icon.svg"),
+											src: self::static_url("images/poll-icon.svg"),
 											alt: "Poll",
 											class: "w-8 h-8 mr-3",
 										}
@@ -664,25 +699,29 @@ pub fn question_new() -> Page {
 	let form_view = new_form.into_page();
 	let cancel_href = polls_routes::reverse("index", &[]);
 
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, cancel_href: String| {
+	page!(|loading_signal: Signal<bool>,
+	 error_signal: Signal<Option<String>>,
+	 form_view: Page,
+	 cancel_href: String| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			h1 {
 				class: "mb-4",
 				"New Question"
 			}
-			{
-				error_signal.get().map(|message| {
-					page!(|message: String| {
-						div {
-							class: "alert-danger mb-3",
-							{
-								self::format_server_error(&message)
-							}
+			{ error_signal
+			.get()
+			.map(|message| {
+				page!(|message: String| {
+					div {
+						class: "alert-danger mb-3",
+						{
+							self::format_server_error(&message)
 						}
-					})(message)
-				}).unwrap_or(Page::Empty)
-			}
+					}
+				})(message)
+			})
+			.unwrap_or(Page::Empty) }
 			{ form_view }
 			div {
 				class: "mt-3",
@@ -699,8 +738,7 @@ pub fn question_new() -> Page {
 							}
 						}
 					})(is_loading)
-				}
-				a {
+				}a {
 					href: cancel_href,
 					class: "btn-secondary ml-2",
 					"Cancel"
@@ -764,25 +802,29 @@ pub fn question_edit(question_id: i64) -> Page {
 	let edit_form_error = edit_form.error().clone();
 	let edit_form_loading = edit_form.loading().clone();
 	let edit_form_page = edit_form.into_page();
-	let edit_form_view = page!(|edit_form_error: Signal<Option<String>>, edit_form_loading: Signal<bool>, edit_form_page: Page, question_id: i64| {
+	let edit_form_view = page!(|edit_form_error: Signal<Option<String>>,
+	 edit_form_loading: Signal<bool>,
+	 edit_form_page: Page,
+	 question_id: i64| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			h1 {
 				class: "mb-4",
 				"Edit Question"
 			}
-			{
-				edit_form_error.get().map(|message| {
-					page!(|message: String| {
-						div {
-							class: "alert-danger mb-3",
-							{
-								self::format_server_error(&message)
-							}
+			{ edit_form_error
+			.get()
+			.map(|message| {
+				page!(|message: String| {
+					div {
+						class: "alert-danger mb-3",
+						{
+							self::format_server_error(&message)
 						}
-					})(message)
-				}).unwrap_or(Page::Empty)
-			}
+					}
+				})(message)
+			})
+			.unwrap_or(Page::Empty) }
 			{ edit_form_page }
 			div {
 				class: "mt-3",
@@ -814,7 +856,9 @@ pub fn question_edit(question_id: i64) -> Page {
 		question_id,
 	);
 
-	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>, edit_form_view: Page, question_id: i64| {
+	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>,
+	 edit_form_view: Page,
+	 question_id: i64| {
 		div { {
 			match load_detail.get() {
 				ResourceState::Loading => page!(|| {
@@ -835,9 +879,7 @@ pub fn question_edit(question_id: i64) -> Page {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "alert-danger",
-							{
-								self::format_server_error(&error)
-							}
+							{ self::format_server_error(&error) }
 						}
 						a {
 							href: polls_routes::reverse("index", &[]),
@@ -880,14 +922,17 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 		&[("question_id", question_id.to_string().as_str())],
 	);
 
-	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>, error_signal: Signal<Option<String>>, loading_signal: Signal<bool>, form_view: Page, cancel_href: String| {
+	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>,
+	 error_signal: Signal<Option<String>>,
+	 loading_signal: Signal<bool>,
+	 form_view: Page,
+	 cancel_href: String| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			h1 {
 				class: "mb-4",
 				"Delete Question?"
-			}
-			{
+			} {
 				match load_detail.get() {
 					ResourceState::Loading => page!(|| {
 						div {
@@ -906,9 +951,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 								}
 								blockquote {
 									class: "border-l-4 border-border-secondary pl-4 italic my-3",
-									{
-										q.question_text.clone()
-									}
+									{ q.question_text.clone() }
 								}
 							}
 						}
@@ -916,25 +959,24 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 					ResourceState::Error(error) => page!(|error: String| {
 						div {
 							class: "alert-danger",
-							{
-								self::format_server_error(&error)
-							}
+							{ self::format_server_error(&error) }
 						}
 					})(error),
 				}
 			}
-			{
-				error_signal.get().map(|message| {
-					page!(|message: String| {
-						div {
-							class: "alert-danger mt-3",
-							{
-								self::format_server_error(&message)
-							}
+			{ error_signal
+			.get()
+			.map(|message| {
+				page!(|message: String| {
+					div {
+						class: "alert-danger mt-3",
+						{
+							self::format_server_error(&message)
 						}
-					})(message)
-				}).unwrap_or(Page::Empty)
-			}
+					}
+				})(message)
+			})
+			.unwrap_or(Page::Empty) }
 			{ form_view }
 			div {
 				class: "mt-3",
@@ -1015,25 +1057,29 @@ pub fn choice_new(question_id: i64) -> Page {
 	let form_view = new_form.into_page();
 	let back_href = polls_routes::reverse("detail", &[("question_id", qid.to_string().as_str())]);
 
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, back_href: String| {
+	page!(|loading_signal: Signal<bool>,
+	 error_signal: Signal<Option<String>>,
+	 form_view: Page,
+	 back_href: String| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			h1 {
 				class: "mb-4",
 				"Add a Choice"
 			}
-			{
-				error_signal.get().map(|message| {
-					page!(|message: String| {
-						div {
-							class: "alert-danger mb-3",
-							{
-								self::format_server_error(&message)
-							}
+			{ error_signal
+			.get()
+			.map(|message| {
+				page!(|message: String| {
+					div {
+						class: "alert-danger mb-3",
+						{
+							self::format_server_error(&message)
 						}
-					})(message)
-				}).unwrap_or(Page::Empty)
-			}
+					}
+				})(message)
+			})
+			.unwrap_or(Page::Empty) }
 			{ form_view }
 			div {
 				class: "mt-3",
@@ -1050,8 +1096,7 @@ pub fn choice_new(question_id: i64) -> Page {
 							}
 						}
 					})(is_loading)
-				}
-				a {
+				}a {
 					href: back_href,
 					class: "btn-secondary ml-2",
 					"Back to poll"
@@ -1094,25 +1139,29 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 	let error_signal = edit_form.error().clone();
 	let form_view = edit_form.into_page();
 
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, cancel_href: String| {
+	page!(|loading_signal: Signal<bool>,
+	 error_signal: Signal<Option<String>>,
+	 form_view: Page,
+	 cancel_href: String| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			h1 {
 				class: "mb-4",
 				"Edit Choice"
 			}
-			{
-				error_signal.get().map(|message| {
-					page!(|message: String| {
-						div {
-							class: "alert-danger mb-3",
-							{
-								self::format_server_error(&message)
-							}
+			{ error_signal
+			.get()
+			.map(|message| {
+				page!(|message: String| {
+					div {
+						class: "alert-danger mb-3",
+						{
+							self::format_server_error(&message)
 						}
-					})(message)
-				}).unwrap_or(Page::Empty)
-			}
+					}
+				})(message)
+			})
+			.unwrap_or(Page::Empty) }
 			{ form_view }
 			div {
 				class: "mt-3",
@@ -1129,8 +1178,7 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 							}
 						}
 					})(is_loading)
-				}
-				a {
+				}a {
 					href: cancel_href,
 					class: "btn-secondary ml-2",
 					"Cancel"
@@ -1167,7 +1215,10 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 	let error_signal = delete_form.error().clone();
 	let form_view = delete_form.into_page();
 
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: Page, cancel_href: String| {
+	page!(|loading_signal: Signal<bool>,
+	 error_signal: Signal<Option<String>>,
+	 form_view: Page,
+	 cancel_href: String| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			h1 {
@@ -1178,18 +1229,19 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 				class: "mb-3",
 				"This action cannot be undone."
 			}
-			{
-				error_signal.get().map(|message| {
-					page!(|message: String| {
-						div {
-							class: "alert-danger mt-3",
-							{
-								self::format_server_error(&message)
-							}
+			{ error_signal
+			.get()
+			.map(|message| {
+				page!(|message: String| {
+					div {
+						class: "alert-danger mt-3",
+						{
+							self::format_server_error(&message)
 						}
-					})(message)
-				}).unwrap_or(Page::Empty)
-			}
+					}
+				})(message)
+			})
+			.unwrap_or(Page::Empty) }
 			{ form_view }
 			div {
 				class: "mt-3",
@@ -1206,8 +1258,7 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 							}
 						}
 					})(is_loading)
-				}
-				a {
+				}a {
 					href: cancel_href,
 					class: "btn-secondary ml-2",
 					"Cancel"

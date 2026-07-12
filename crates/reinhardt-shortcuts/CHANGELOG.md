@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.2.2...reinhardt-shortcuts@v0.3.0) - 2026-06-28
+
+Stable release of `reinhardt-shortcuts` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
+
+### Migration Notes
+
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
+
+### Maintenance
+
+- merge main into develop/0.3.0
+
 ## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.2.1...reinhardt-shortcuts@v0.2.2) - 2026-06-25
 
 ### Documentation
@@ -16,8 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.3...reinhardt-shortcuts@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-shortcuts` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -32,25 +46,13 @@ RC entries remain below as detailed history.
 
 - *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
 
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.2.0-rc.4...reinhardt-shortcuts@v0.2.0-rc.5) - 2026-06-11
-
-### Fixed
-
-- *(build)* port Codex review follow-ups
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.3...reinhardt-shortcuts@v0.2.0-rc.2) - 2026-06-03
-
-### Added
-
-- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
-
 ### Changed
 
 - [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Fixed
 
+- *(build)* port Codex review follow-ups
 - *(ci)* recover develop release-plz prerelease
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-rc.30...reinhardt-shortcuts@v0.1.0) - 2026-05-22

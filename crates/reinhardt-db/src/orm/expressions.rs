@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::marker::PhantomData;
 
-use crate::orm::query::{Filter, FilterOperator, FilterValue, quote_identifier};
+use crate::orm::query::{
+	FieldAssignment, Filter, FilterOperator, FilterValue, UpdateValue, quote_identifier,
+};
 
 /// F expression - represents a database field reference
 /// Similar to Django's F() objects for database-side operations
@@ -147,6 +149,20 @@ impl<M, T> FieldRef<M, T> {
 	/// ```
 	pub const fn name(&self) -> &'static str {
 		self.name
+	}
+
+	/// Create a partial-update assignment for this field.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// User::objects()
+	///     .filter(User::field_id().eq(1))
+	///     .update_fields([User::field_last_login().assign(chrono::Utc::now())])
+	///     .await?;
+	/// ```
+	pub fn assign<V: Into<UpdateValue>>(&self, value: V) -> FieldAssignment {
+		FieldAssignment::new(self.name, value)
 	}
 
 	/// Convert to SQL representation

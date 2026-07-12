@@ -19,6 +19,7 @@ use reinhardt_query::prelude::{
 };
 use serde::{Serialize, de::DeserializeOwned};
 use std::marker::PhantomData;
+use std::time::Instant;
 
 /// Build SELECT SQL using the appropriate QueryBuilder for the given backend.
 fn build_select_sql(stmt: &SelectStatement, backend: DatabaseBackend) -> (String, Values) {
@@ -27,6 +28,10 @@ fn build_select_sql(stmt: &SelectStatement, backend: DatabaseBackend) -> (String
 		DatabaseBackend::MySql => MySqlQueryBuilder.build_select(stmt),
 		DatabaseBackend::Sqlite => SqliteQueryBuilder.build_select(stmt),
 	}
+}
+
+fn value_samples(values: &Values) -> Vec<String> {
+	values.iter().map(|value| value.to_sql_literal()).collect()
 }
 
 /// Build INSERT SQL using the appropriate QueryBuilder for the given backend.
@@ -322,12 +327,20 @@ where
 			);
 
 		let query = query.to_owned();
-		let (sql, _) = build_select_sql(&query, self.db.backend());
-		let rows = self
-			.db
-			.query(&sql, vec![])
-			.await
-			.map_err(|e| e.to_string())?;
+		let (sql, values) = build_select_sql(&query, self.db.backend());
+		let params = value_samples(&values);
+		let started_at = Instant::now();
+		let query_result = self.db.query(&sql, vec![]).await;
+		let duration = started_at.elapsed();
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &params, duration)
+					.await;
+				rows
+			}
+			Err(error) => return Err(error.to_string()),
+		};
 
 		if let Some(row) = rows.first()
 			&& let Some(count_value) = row.data.get("count")
@@ -398,13 +411,20 @@ where
 		}
 
 		let query = query.to_owned();
-		let (sql, _values) = build_select_sql(&query, self.db.backend());
-
-		let rows = self
-			.db
-			.query(&sql, vec![])
-			.await
-			.map_err(|e| e.to_string())?;
+		let (sql, values) = build_select_sql(&query, self.db.backend());
+		let params = value_samples(&values);
+		let started_at = Instant::now();
+		let query_result = self.db.query(&sql, vec![]).await;
+		let duration = started_at.elapsed();
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &params, duration)
+					.await;
+				rows
+			}
+			Err(error) => return Err(error.to_string()),
+		};
 
 		rows.into_iter()
 			.map(|row| serde_json::from_value(row.data).map_err(|e| e.to_string()))
@@ -622,9 +642,20 @@ where
 			)
 			.to_owned();
 
-		let (sql, _values) = build_select_sql(&query, db.backend());
-
-		let rows = db.query(&sql, vec![]).await.map_err(|e| e.to_string())?;
+		let (sql, values) = build_select_sql(&query, db.backend());
+		let params = value_samples(&values);
+		let started_at = Instant::now();
+		let query_result = db.query(&sql, vec![]).await;
+		let duration = started_at.elapsed();
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &params, duration)
+					.await;
+				rows
+			}
+			Err(error) => return Err(error.to_string()),
+		};
 
 		rows.into_iter()
 			.map(|row| serde_json::from_value(row.data).map_err(|e| e.to_string()))

@@ -141,9 +141,9 @@ impl CachedResponse {
 ///
 /// ```
 /// use reinhardt_views::viewsets::{CachedViewSet, CacheConfig, ModelViewSet};
+/// use reinhardt_rest::serializers::JsonSerializer;
 /// use reinhardt_utils::cache::InMemoryCache;
 /// use reinhardt_db::orm::{FieldSelector, Model};
-/// use reinhardt_rest::serializers::JsonSerializer;
 /// use std::time::Duration;
 ///
 /// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

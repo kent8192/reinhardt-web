@@ -55,4 +55,11 @@ pub trait ServerFnMetadata: 'static {
 
 	/// Names of `#[inject]` parameters (for documentation / debugging).
 	const INJECTED_PARAMS: &'static [&'static str] = &[];
+
+	/// Whether the generated handler can access request extensions and set response cookies.
+	///
+	/// Plain server functions with only body-deserialized parameters cannot reach
+	/// the request extension map, so the router can skip creating the shared
+	/// response-cookie jar on that hot path.
+	const USES_RESPONSE_COOKIE_JAR: bool = false;
 }

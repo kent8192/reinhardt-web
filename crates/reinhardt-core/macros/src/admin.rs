@@ -454,10 +454,12 @@ pub(crate) fn admin_impl(args: TokenStream, input: ItemStruct) -> Result<TokenSt
 		#struct_vis struct #struct_name;
 
 		// Compile-time field validation
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		const _: () = {
 			#(#field_checks)*
 		};
 
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#[#async_trait::async_trait]
 		impl #admin_api::ModelAdmin for #struct_name {
 			fn model_name(&self) -> &str {

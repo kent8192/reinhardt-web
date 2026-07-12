@@ -32,9 +32,10 @@
 //! ### ORM (`orm` module)
 //!
 //! - **Django-style Models**: Define database models with structs
-//! - **QuerySet API**: Chainable query builder
+//! - **QuerySet API**: Chainable query builder with conditional partial updates
 //! - **Field Types**: Rich set of field types with validation
 //! - **Relationships**: ForeignKey, ManyToMany, OneToOne
+//! - **Scoped N+1 Detection**: Opt-in query shape detection for focused diagnostics and tests
 //!
 //! ### Migrations (`migrations` module)
 //!
@@ -42,6 +43,8 @@
 //! - **Auto-detection**: Automatically detect model changes
 //! - **Migration Files**: Generate migration files from model changes
 //! - **Rollback Support**: Reverse migrations when needed
+//! - **CockroachDB Migration Locking**: Serialize concurrent migrators with a
+//!   sentinel-row lock instead of PostgreSQL advisory locks
 //! - **MigrationStateLoader**: Django-style approach for building `ProjectState`
 //!   - Replays applied migrations to reconstruct schema state
 //!   - Enables accurate change detection without database introspection
@@ -64,6 +67,7 @@
 //! - **Connection Pool Optimization**: Idle timeout, dynamic sizing, health checks
 //! - **Query Caching**: LRU cache with TTL for prepared statements and results
 //! - **Batch Operations**: Efficient bulk insert, update, and delete operations
+//! - **N+1 Diagnostics**: Scoped warnings or test failures for repeated query shapes
 //!
 //! ## Enhanced Migration Tools ✅
 //!
@@ -139,6 +143,10 @@
 //! | `nosql` | disabled | NoSQL/BSON type support |
 //! | `di` | disabled | Dependency injection integration |
 //! | `database-full` | disabled | Enable all database features |
+//!
+//! The `model-info` feature is intentionally target-neutral. It exists for
+//! macro-generated metadata surfaces that need to compile on WASM without
+//! enabling ORM, migrations, connection pools, or database drivers.
 
 pub mod naming;
 
@@ -162,6 +170,9 @@ pub mod nosql;
 pub mod orm;
 #[cfg(feature = "pool")]
 pub mod pool;
+
+#[cfg(feature = "model-info")]
+pub use reinhardt_core::model_info;
 
 /// Prelude module for convenient imports
 ///
