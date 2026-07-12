@@ -31,8 +31,10 @@ struct Cli {
 enum Commands {
 	/// Format Rust code and page!/form!/head! macro DSL in source files
 	///
-	/// By default, formats page!/form!/head! DSL macros with Topiary and then runs rustfmt.
-	/// Use --with-rustfmt=false to only format Reinhardt DSL macros.
+	/// By default, formats page!/form!/head! DSL macros with Topiary, formats
+	/// supported page! Rust expression islands with rustfmt, and then runs
+	/// rustfmt for the surrounding Rust source.
+	/// Use --with-rustfmt=false to skip only the final surrounding-source rustfmt pass.
 	Fmt {
 		/// Path to file or directory to format
 		#[arg(value_name = "PATH")]
@@ -42,7 +44,7 @@ enum Commands {
 		#[arg(long)]
 		check: bool,
 
-		/// Also run rustfmt after DSL formatting
+		/// Also run rustfmt for surrounding Rust source after DSL formatting
 		#[arg(long, default_value = "true", action = clap::ArgAction::Set)]
 		with_rustfmt: bool,
 
@@ -74,8 +76,9 @@ enum Commands {
 
 	/// Format all code: Reinhardt DSL macros via Topiary + Rust via rustfmt
 	///
-	/// This command formats page!/form!/head! macros first, then runs
-	/// `cargo fmt --all` on the root workspace.
+	/// This command formats page!/form!/head! macros first, including supported
+	/// page! Rust expression islands, then runs `cargo fmt --all` on the root
+	/// workspace.
 	FmtAll {
 		/// Check if files are formatted without modifying them
 		#[arg(long)]
@@ -211,7 +214,7 @@ fn run_fmt(
 		println!("Using rustfmt config: {}", display_path(p));
 	}
 
-	let formatter = FormatEngine::new();
+	let formatter = FormatEngine::with_rustfmt_options(options.clone());
 	let mut formatted_count = 0;
 	let mut unchanged_count = 0;
 	let mut ignored_count = 0;
@@ -443,7 +446,24 @@ fn run_fmt_all(
 		return Ok(());
 	}
 
-	let formatter = FormatEngine::new();
+	let resolved_config_path = config_path
+		.clone()
+		.or_else(|| find_rustfmt_config(&project_root));
+	let options = format_engine::RustfmtOptions {
+		config_path: resolved_config_path.clone(),
+		edition: edition.clone(),
+		style_edition: style_edition.clone(),
+		config: config.clone(),
+		color: Some(color.clone()),
+	};
+
+	if verbosity > 0
+		&& let Some(ref p) = resolved_config_path
+	{
+		println!("Using rustfmt config: {}", display_path(p));
+	}
+
+	let formatter = FormatEngine::with_rustfmt_options(options);
 	let lock_path = project_root.join(".reinhardt-fmt.lock");
 	let _lock_file = acquire_format_lock(&lock_path).map_err(|e| {
 		format!("Failed to acquire format lock: {e}. Another format operation may be in progress.")

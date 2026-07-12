@@ -14,6 +14,7 @@
 
 use bytes::Bytes;
 use http::Method;
+use reinhardt_core::endpoint::EndpointInfo;
 use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
 use reinhardt_test::APIClient;
@@ -119,6 +120,24 @@ fn get_article_store() -> &'static ArticleStore {
 	ARTICLE_STORE.get().expect("ArticleStore not initialized")
 }
 
+macro_rules! impl_endpoint {
+	($handler:ty, $path:literal, $method:expr, $name:literal) => {
+		impl EndpointInfo for $handler {
+			fn path() -> &'static str {
+				$path
+			}
+
+			fn method() -> Method {
+				$method
+			}
+
+			fn name() -> &'static str {
+				$name
+			}
+		}
+	};
+}
+
 /// Create article handler
 #[derive(Clone)]
 struct CreateArticleHandler;
@@ -135,6 +154,13 @@ impl Handler for CreateArticleHandler {
 	}
 }
 
+impl_endpoint!(
+	CreateArticleHandler,
+	"/articles",
+	Method::POST,
+	"articles-create"
+);
+
 /// List articles handler
 #[derive(Clone)]
 struct ListArticlesHandler;
@@ -147,6 +173,13 @@ impl Handler for ListArticlesHandler {
 		Response::ok().with_json(&articles)
 	}
 }
+
+impl_endpoint!(
+	ListArticlesHandler,
+	"/articles",
+	Method::GET,
+	"articles-list"
+);
 
 /// Get article handler
 #[derive(Clone)]
@@ -169,6 +202,13 @@ impl Handler for GetArticleHandler {
 		}
 	}
 }
+
+impl_endpoint!(
+	GetArticleHandler,
+	"/articles/{id}",
+	Method::GET,
+	"articles-detail"
+);
 
 /// Update article handler
 #[derive(Clone)]
@@ -195,6 +235,13 @@ impl Handler for UpdateArticleHandler {
 	}
 }
 
+impl_endpoint!(
+	UpdateArticleHandler,
+	"/articles/{id}",
+	Method::PUT,
+	"articles-update"
+);
+
 /// Delete article handler
 #[derive(Clone)]
 struct DeleteArticleHandler;
@@ -218,6 +265,13 @@ impl Handler for DeleteArticleHandler {
 	}
 }
 
+impl_endpoint!(
+	DeleteArticleHandler,
+	"/articles/{id}",
+	Method::DELETE,
+	"articles-delete"
+);
+
 /// Test 1: RESTful API Full Workflow
 ///
 /// This test simulates a complete CRUD lifecycle:
@@ -235,11 +289,11 @@ async fn test_restful_api_full_workflow() {
 
 	// Register routes with Handler trait implementation
 	let router = Router::new()
-		.handler_with_method("/articles", Method::POST, CreateArticleHandler)
-		.handler_with_method("/articles", Method::GET, ListArticlesHandler)
-		.handler_with_method("/articles/{id}", Method::GET, GetArticleHandler)
-		.handler_with_method("/articles/{id}", Method::PUT, UpdateArticleHandler)
-		.handler_with_method("/articles/{id}", Method::DELETE, DeleteArticleHandler);
+		.endpoint(|| CreateArticleHandler)
+		.endpoint(|| ListArticlesHandler)
+		.endpoint(|| GetArticleHandler)
+		.endpoint(|| UpdateArticleHandler)
+		.endpoint(|| DeleteArticleHandler);
 
 	let server = test_server_guard(router).await;
 	let client = APIClient::with_base_url(&server.url);
@@ -389,6 +443,8 @@ impl Handler for UploadFileHandler {
 	}
 }
 
+impl_endpoint!(UploadFileHandler, "/upload", Method::POST, "upload-file");
+
 /// File download handler
 #[derive(Clone)]
 struct DownloadFileHandler;
@@ -414,6 +470,13 @@ impl Handler for DownloadFileHandler {
 	}
 }
 
+impl_endpoint!(
+	DownloadFileHandler,
+	"/download/{filename}",
+	Method::GET,
+	"download-file"
+);
+
 /// Test 2: File Upload/Download
 ///
 /// This test simulates file upload and download workflow:
@@ -429,8 +492,8 @@ async fn test_file_upload_download() {
 
 	// Register routes with Handler trait implementation
 	let router = Router::new()
-		.handler_with_method("/upload", Method::POST, UploadFileHandler)
-		.handler_with_method("/download/{filename}", Method::GET, DownloadFileHandler);
+		.endpoint(|| UploadFileHandler)
+		.endpoint(|| DownloadFileHandler);
 
 	let server = test_server_guard(router).await;
 	let client = APIClient::with_base_url(&server.url);
@@ -976,6 +1039,8 @@ impl Handler for LoginHandler {
 	}
 }
 
+impl_endpoint!(LoginHandler, "/login", Method::POST, "session-login");
+
 /// Protected resource handler (requires authentication)
 #[derive(Clone)]
 struct ProtectedHandler;
@@ -1010,6 +1075,13 @@ impl Handler for ProtectedHandler {
 	}
 }
 
+impl_endpoint!(
+	ProtectedHandler,
+	"/protected",
+	Method::GET,
+	"session-protected"
+);
+
 /// Logout handler
 #[derive(Clone)]
 struct LogoutHandler;
@@ -1041,6 +1113,8 @@ impl Handler for LogoutHandler {
 	}
 }
 
+impl_endpoint!(LogoutHandler, "/logout", Method::POST, "session-logout");
+
 /// Test 5: Session Management
 ///
 /// This test demonstrates cookie-based session management:
@@ -1057,9 +1131,9 @@ async fn test_session_management() {
 
 	// Register routes with Handler trait implementation
 	let router = Router::new()
-		.handler_with_method("/login", Method::POST, LoginHandler)
-		.handler_with_method("/protected", Method::GET, ProtectedHandler)
-		.handler_with_method("/logout", Method::POST, LogoutHandler);
+		.endpoint(|| LoginHandler)
+		.endpoint(|| ProtectedHandler)
+		.endpoint(|| LogoutHandler);
 
 	let server = test_server_guard(router).await;
 

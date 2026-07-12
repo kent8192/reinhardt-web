@@ -23,6 +23,8 @@ required-features = ["with-reinhardt"]
 # Common dependencies (both WASM and server)
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
+# Participates in the standalone examples resolver constraint from examples/Cargo.toml.
+time = { workspace = true }
 
 # WASM-specific dependencies
 [target.'cfg(target_arch = "wasm32")'.dependencies]

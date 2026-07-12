@@ -92,47 +92,6 @@ impl Parse for MacroArgs {
 	}
 }
 
-/// Extract the inner type from a Depends-family wrapper.
-///
-/// Recognises three shapes and returns the type that should be passed to
-/// `Depends::<...>::resolve_from_registry`:
-///
-/// - `Depends<T>` → `T`
-/// - `DependsResult<T, E>` → `Result<T, E>`
-/// - `DependsOption<T>` → `Option<T>`
-pub(crate) fn extract_depends_inner_type(ty: &syn::Type) -> Option<syn::Type> {
-	let syn::Type::Path(type_path) = ty else {
-		return None;
-	};
-	let last_segment = type_path.path.segments.last()?;
-	let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments else {
-		return None;
-	};
-
-	if last_segment.ident == "Depends"
-		&& args.args.len() == 1
-		&& let syn::GenericArgument::Type(inner) = args.args.first()?
-	{
-		return Some(inner.clone());
-	}
-
-	if last_segment.ident == "DependsResult" && args.args.len() == 2 {
-		let mut iter = args.args.iter();
-		let t = iter.next()?;
-		let e = iter.next()?;
-		return Some(syn::parse_quote! { ::core::result::Result<#t, #e> });
-	}
-
-	if last_segment.ident == "DependsOption"
-		&& args.args.len() == 1
-		&& let Some(t) = args.args.first()
-	{
-		return Some(syn::parse_quote! { ::core::option::Option<#t> });
-	}
-
-	None
-}
-
 /// Extract scope from macro arguments
 pub(crate) fn extract_scope_from_args(args: TokenStream) -> Result<Scope> {
 	if args.is_empty() {

@@ -27,7 +27,8 @@ vi.mock("@aws-sdk/client-ssm", () => ({
 	SSMClient: vi.fn().mockImplementation(() => ({
 		send: vi.fn().mockResolvedValue({
 			Parameter: {
-				Value: "-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+				Value:
+					"-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
 			},
 		}),
 	})),
@@ -67,7 +68,7 @@ const mkJob = (id: number, minutesAgo: number) => ({
 	run_id: 999,
 	status: "queued" as const,
 	created_at: new Date(Date.now() - minutesAgo * 60_000).toISOString(),
-	labels: ["self-hosted", "reinhardt-ci"],
+	labels: ["self-hosted", "linux", "arm64", "reinhardt-ci"],
 	workflow_name: "CI",
 	name: `Job ${id}`,
 });
@@ -112,12 +113,15 @@ describe("handler", () => {
 
 	it("trips circuit breaker when orphan count > threshold", async () => {
 		const manyJobs = Array.from({ length: 60 }, (_, i) => mkJob(i + 1, 90));
-		(listQueuedJobs as ReturnType<typeof vi.fn>).mockResolvedValueOnce(manyJobs);
+		(listQueuedJobs as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+			manyJobs,
+		);
 
 		await handler();
 
 		expect(publishAlert).toHaveBeenCalledTimes(1);
-		const alertBody = (publishAlert as ReturnType<typeof vi.fn>).mock.calls[0]?.[2];
+		const alertBody = (publishAlert as ReturnType<typeof vi.fn>).mock
+			.calls[0]?.[2];
 		expect(alertBody.orphanCount).toBe(60);
 		expect(alertBody.sampleJobIds.length).toBeLessThanOrEqual(10);
 		expect(postSignedWebhook).not.toHaveBeenCalled();
@@ -153,10 +157,8 @@ describe("handler", () => {
 
 		await handler();
 
-		const savedMap = (saveProcessedState as ReturnType<typeof vi.fn>).mock.calls[0]?.[2] as Map<
-			number,
-			number
-		>;
+		const savedMap = (saveProcessedState as ReturnType<typeof vi.fn>).mock
+			.calls[0]?.[2] as Map<number, number>;
 		expect(savedMap.has(1)).toBe(true);
 		expect(savedMap.has(2)).toBe(false);
 	});

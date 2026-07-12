@@ -1,13 +1,19 @@
-// Compile-fail test: injectable_factory on a non-async function
+// Compile-fail test: injectable on a non-async function
 
-use reinhardt_di::injectable_factory;
+#![allow(unused_imports)] // Broad imports keep compile-fail diagnostics focused.
+
+use reinhardt_di::{FactoryOutput, injectable};
+
+struct MyServiceKey;
+
+impl reinhardt_di::InjectableKey for MyServiceKey {}
 
 #[derive(Clone)]
 struct MyService;
 
-#[injectable_factory(scope = "singleton")]
-fn make_service() -> MyService {
-	MyService
+#[injectable(scope = "singleton")]
+fn make_service() -> FactoryOutput<MyServiceKey, MyService> {
+	FactoryOutput::new(MyService)
 }
 
 fn main() {}

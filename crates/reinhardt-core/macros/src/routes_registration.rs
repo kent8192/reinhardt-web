@@ -65,6 +65,7 @@
 //! which returns a `Pin<Box<dyn Future>>` wrapping the async call.
 
 use crate::crate_paths::{get_reinhardt_crate, get_reinhardt_di_crate};
+use crate::injectable_common::generate_inject_resolver_expr;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{FnArg, ItemFn, Pat, PatType, Result};
@@ -72,51 +73,6 @@ use syn::{FnArg, ItemFn, Pat, PatType, Result};
 /// Check if an attribute is `#[inject]`
 fn is_inject_attr(attr: &syn::Attribute) -> bool {
 	attr.path().is_ident("inject")
-}
-
-/// Extract the inner type from a Depends-family wrapper.
-///
-/// Recognises three shapes and returns the type that should be passed to
-/// `Depends::<...>::resolve_from_registry`:
-///
-/// - `Depends<T>` → `T`
-/// - `DependsResult<T, E>` → `Result<T, E>`
-/// - `DependsOption<T>` → `Option<T>`
-///
-/// A sibling copy lives in `crates/reinhardt-pages/macros/src/server_fn.rs`;
-/// the two proc-macro crates cannot share code directly, so keep both copies
-/// in sync.
-pub(crate) fn extract_depends_inner_type(ty: &syn::Type) -> Option<syn::Type> {
-	let syn::Type::Path(type_path) = ty else {
-		return None;
-	};
-	let last_segment = type_path.path.segments.last()?;
-	let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments else {
-		return None;
-	};
-
-	if last_segment.ident == "Depends"
-		&& args.args.len() == 1
-		&& let syn::GenericArgument::Type(inner) = args.args.first()?
-	{
-		return Some(inner.clone());
-	}
-
-	if last_segment.ident == "DependsResult" && args.args.len() == 2 {
-		let mut iter = args.args.iter();
-		let t = iter.next()?;
-		let e = iter.next()?;
-		return Some(syn::parse_quote! { ::core::result::Result<#t, #e> });
-	}
-
-	if last_segment.ident == "DependsOption"
-		&& args.args.len() == 1
-		&& let Some(t) = args.args.first()
-	{
-		return Some(syn::parse_quote! { ::core::option::Option<#t> });
-	}
-
-	None
 }
 
 /// Implementation of the `#[routes]` attribute macro
@@ -303,25 +259,13 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		let inject_resolutions: Vec<_> = inject_params
 			.iter()
 			.map(|(pat, ty)| {
-				if let Some(inner_ty) = extract_depends_inner_type(ty) {
-					// Parameter is Depends<T>: resolve via registry only.
-					quote! {
-						let #pat: #ty = #di_crate::Depends::<#inner_ty>::resolve_from_registry(&*__ctx, true).await
-							.map_err(|e| -> ::std::boxed::Box<dyn ::std::error::Error + Send + Sync> {
-								::std::boxed::Box::new(e)
-							})?;
-					}
-				} else {
-					// Parameter is T: resolve T, unwrap Arc<T> via clone
-					quote! {
-						let #pat: #ty = {
-							let __arc = __ctx.resolve::<#ty>().await
-								.map_err(|e| -> ::std::boxed::Box<dyn ::std::error::Error + Send + Sync> {
-									::std::boxed::Box::new(e)
-								})?;
-							(*__arc).clone()
-						};
-					}
+				let resolve_expr =
+					generate_inject_resolver_expr(&di_crate, ty, quote! { &*__ctx }, true);
+				quote! {
+					let #pat: #ty = #resolve_expr
+						.map_err(|e| -> ::std::boxed::Box<dyn ::std::error::Error + Send + Sync> {
+							::std::boxed::Box::new(e)
+						})?;
 				}
 			})
 			.collect();

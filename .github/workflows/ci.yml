@@ -117,25 +117,347 @@ jobs:
       runner: ${{ needs.determine-runner.outputs.runner }}
       cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
 
+  auto-fix-style-target:
+    name: Auto-Fix Style Target
+    needs: [check-branch-status, fmt, clippy]
+    if: >-
+      ${{ !cancelled()
+        && github.event_name == 'pull_request'
+        && needs.check-branch-status.outputs.has-conflicts != 'true'
+        && (needs.fmt.result == 'failure' || needs.clippy.result == 'failure') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      eligible: ${{ steps.target.outputs.eligible }}
+      reason: ${{ steps.target.outputs.reason }}
+    steps:
+      - name: Check auto-fix target branch
+        id: target
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const headRef = pr.head.ref;
+            const repository = `${context.repo.owner}/${context.repo.repo}`;
+
+            function finish(eligible, reason) {
+              core.setOutput('eligible', eligible ? 'true' : 'false');
+              core.setOutput('reason', reason);
+              core.notice(`Auto-fix style target: ${reason}`);
+            }
+
+            if (pr.head.repo.full_name !== repository) {
+              finish(false, 'fork-pull-request');
+              return;
+            }
+
+            const projectReadOnlyBranch =
+              headRef === 'main' ||
+              headRef === 'master' ||
+              headRef.startsWith('develop/') ||
+              headRef.startsWith('release/') ||
+              headRef.startsWith('release-plz-') ||
+              headRef.startsWith('develop-release-plz-');
+
+            if (projectReadOnlyBranch) {
+              finish(false, 'project-read-only-branch');
+              return;
+            }
+
+            let branch;
+            try {
+              const response = await github.rest.repos.getBranch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: headRef,
+              });
+              branch = response.data;
+            } catch (error) {
+              core.warning(`Failed to read branch protection for ${headRef}: ${error.message}`);
+              finish(false, 'branch-protection-check-failed');
+              return;
+            }
+
+            finish(!branch.protected, branch.protected ? 'protected-branch' : 'eligible');
+
+  auto-fix-style:
+    name: Auto-Fix Style
+    needs: [determine-runner, fmt, clippy, auto-fix-style-target]
+    if: >-
+      ${{ !cancelled()
+        && github.event_name == 'pull_request'
+        && needs.auto-fix-style-target.outputs.eligible == 'true' }}
+    runs-on: ${{ fromJSON(needs.determine-runner.outputs.runner) }}
+    timeout-minutes: 360
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        if: ${{ !contains(needs.determine-runner.outputs.runner, 'self-hosted') }}
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout pull request branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.repository }}
+          persist-credentials: false
+
+      - name: Setup Rust with style components
+        uses: ./.github/actions/setup-rust
+        with:
+          components: rustfmt, clippy
+
+      - name: Setup protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "28.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cargo-make
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-make
+
+      - name: Run style auto-fix
+        env:
+          FMT_RESULT: ${{ needs.fmt.result }}
+          CLIPPY_RESULT: ${{ needs.clippy.result }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$FMT_RESULT" == "failure" && "$CLIPPY_RESULT" == "failure" ]]; then
+            cargo make auto-fix
+          elif [[ "$FMT_RESULT" == "failure" ]]; then
+            cargo make fmt-fix
+          elif [[ "$CLIPPY_RESULT" == "failure" ]]; then
+            cargo make clippy-fix
+          else
+            echo "No style auto-fix command needed."
+          fi
+
+      - name: Detect auto-fix diff
+        id: diff
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$(git status --porcelain)" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No auto-fix diff produced."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git status --short
+            git diff --stat
+          fi
+
+      - name: Export auto-fix patch
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          git add -A
+          git diff --cached --binary > "$RUNNER_TEMP/style-auto-fix.patch"
+          if [[ ! -s "$RUNNER_TEMP/style-auto-fix.patch" ]]; then
+            echo "::error::Auto-fix changed files, but patch export was empty."
+            exit 1
+          fi
+          git diff --cached --stat
+
+      - name: Upload auto-fix patch
+        if: steps.diff.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: style-auto-fix-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/style-auto-fix.patch
+          if-no-files-found: error
+          retention-days: 1
+
+  commit-auto-fix-style:
+    name: Commit Auto-Fix Style
+    needs: [auto-fix-style-target, auto-fix-style]
+    if: >-
+      ${{ !cancelled()
+        && github.event_name == 'pull_request'
+        && needs.auto-fix-style-target.outputs.eligible == 'true'
+        && needs.auto-fix-style.outputs.changed == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pull request branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.repository }}
+          persist-credentials: false
+
+      - name: Download auto-fix patch
+        uses: actions/download-artifact@v4
+        with:
+          name: style-auto-fix-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/style-auto-fix
+
+      - name: Apply auto-fix patch
+        run: |
+          set -euo pipefail
+
+          PATCH_FILE="$RUNNER_TEMP/style-auto-fix/style-auto-fix.patch"
+          git apply --index --whitespace=nowarn "$PATCH_FILE"
+          if git diff --cached --quiet; then
+            echo "::error::Auto-fix patch applied without staged changes."
+            exit 1
+          fi
+          git diff --cached --stat
+
+      - name: Recheck auto-fix target branch
+        id: recheck-target
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const headRef = pr.head.ref;
+            const repository = `${context.repo.owner}/${context.repo.repo}`;
+
+            function finish(eligible, reason) {
+              core.setOutput('eligible', eligible ? 'true' : 'false');
+              core.setOutput('reason', reason);
+              core.notice(`Auto-fix style write target: ${reason}`);
+            }
+
+            if (pr.head.repo.full_name !== repository) {
+              finish(false, 'fork-pull-request');
+              return;
+            }
+
+            const projectReadOnlyBranch =
+              headRef === 'main' ||
+              headRef === 'master' ||
+              headRef.startsWith('develop/') ||
+              headRef.startsWith('release/') ||
+              headRef.startsWith('release-plz-') ||
+              headRef.startsWith('develop-release-plz-');
+
+            if (projectReadOnlyBranch) {
+              finish(false, 'project-read-only-branch');
+              return;
+            }
+
+            let branch;
+            try {
+              const response = await github.rest.repos.getBranch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: headRef,
+              });
+              branch = response.data;
+            } catch (error) {
+              core.warning(`Failed to read branch protection for ${headRef}: ${error.message}`);
+              finish(false, 'branch-protection-check-failed');
+              return;
+            }
+
+            finish(!branch.protected, branch.protected ? 'protected-branch' : 'eligible');
+
+      - name: Generate GitHub token
+        if: steps.recheck-target.outputs.eligible == 'true'
+        uses: actions/create-github-app-token@v3
+        id: generate-token
+        with:
+          app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Commit auto-fix via GraphQL
+        if: steps.recheck-target.outputs.eligible == 'true'
+        env:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          HEAD_OID="$(git rev-parse HEAD)"
+          TMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "$TMP_DIR"' EXIT
+          ADDITIONS_FILE="$TMP_DIR/additions.ndjson"
+          DELETIONS_FILE="$TMP_DIR/deletions.ndjson"
+          PAYLOAD_FILE="$TMP_DIR/payload.json"
+          : > "$ADDITIONS_FILE"
+          : > "$DELETIONS_FILE"
+
+          while IFS=$'\t' read -r status path extra; do
+            case "$status" in
+              M|A)
+                base64 -w0 < "$path" \
+                  | jq -ncR --arg p "$path" '{path: $p, contents: input}' \
+                  >> "$ADDITIONS_FILE"
+                ;;
+              D)
+                jq -nc --arg p "$path" '{path: $p}' >> "$DELETIONS_FILE"
+                ;;
+              *)
+                echo "::error::Unsupported auto-fix diff status '$status' for path '$path'."
+                exit 1
+                ;;
+            esac
+          done < <(git diff --cached --name-status HEAD)
+
+          jq -n \
+            --arg query 'mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { url oid } } }' \
+            --arg repo "$REPO" \
+            --arg branch "$HEAD_REF" \
+            --arg headline "ci: auto-fix fmt and clippy" \
+            --arg body "Generated by CI style auto-fix.\n\nWorkflow run: $RUN_URL" \
+            --arg oid "$HEAD_OID" \
+            --slurpfile adds "$ADDITIONS_FILE" \
+            --slurpfile dels "$DELETIONS_FILE" \
+            '{
+              query: $query,
+              variables: {
+                input: {
+                  branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+                  message: { headline: $headline, body: $body },
+                  expectedHeadOid: $oid,
+                  fileChanges: { additions: $adds, deletions: $dels }
+                }
+              }
+            }' > "$PAYLOAD_FILE"
+
+          RESPONSE="$(gh api graphql --input "$PAYLOAD_FILE")"
+          NEW_OID="$(jq -r '.data.createCommitOnBranch.commit.oid' <<< "$RESPONSE")"
+          NEW_URL="$(jq -r '.data.createCommitOnBranch.commit.url' <<< "$RESPONSE")"
+          if [ -z "$NEW_OID" ] || [ "$NEW_OID" = "null" ]; then
+            echo "::error::createCommitOnBranch did not return a commit oid"
+            echo "$RESPONSE"
+            exit 1
+          fi
+          echo "Created style auto-fix commit $NEW_OID via GraphQL: $NEW_URL"
+
   wasm-check:
     name: WASM Check
-    # Deferred to Phase 2b (Issue #4534): release self-hosted runner slots
-    # ~10 min earlier for jobs blocked on Spot vCPU quota. wasm-check only
-    # starts once unit-test and intra-crate-integration-test have completed.
+    # Run after the lightweight gates and overlap the long native test tail.
+    # This keeps WASM coverage on the critical path only when it is slower than
+    # the integration-test shards, instead of always adding a Phase 2b tail.
     #
-    # The if-condition uses !cancelled() + explicit success/skipped checks
-    # because unit-test / intra-crate-integration-test are gated on
-    # detect-affected (selectively skipped when no Rust packages are affected).
-    # Without these guards, the default success() semantics on `needs:` would
-    # cascade the skip to wasm-check, and ci-success (which lists wasm-check in
-    # always_required) would then fail on wasm-check.result == "skipped".
-    # CodeRabbit review feedback on PR #4574.
-    needs: [determine-runner, check-branch-status, unit-test, intra-crate-integration-test]
+    # The if-condition uses !cancelled() plus explicit lightweight-gate success
+    # checks because wasm-check is always required by ci-success. If we let the
+    # default success() semantics interact with any selectively skipped native
+    # test job, wasm-check could be skipped and fail aggregation.
+    needs: [determine-runner, check-branch-status, check, fmt, clippy]
     if: >-
       ${{ !cancelled()
         && needs.check-branch-status.outputs.has-conflicts != 'true'
-        && (needs.unit-test.result == 'success' || needs.unit-test.result == 'skipped')
-        && (needs.intra-crate-integration-test.result == 'success' || needs.intra-crate-integration-test.result == 'skipped') }}
+        && needs.check.result == 'success'
+        && needs.fmt.result == 'success'
+        && needs.clippy.result == 'success' }}
     uses: ./.github/workflows/wasm-check.yml
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
@@ -231,7 +553,8 @@ jobs:
       cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
 
   # Phase 2a: Core tests run after lightweight checks pass.
-  # These run in parallel (up to ~17 self-hosted runners).
+  # These run in parallel with dynamic sharding; broad/full runs use more
+  # smaller shards while small affected scopes keep the runner count low.
   # Note: Each job runs on its own runner (no shared disk), so parallel execution is safe.
   # Integration tests are split into intra-crate and cross-crate to reduce disk usage per job.
   unit-test:
@@ -275,6 +598,8 @@ jobs:
       cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
       nextest-filter: ${{ needs.detect-affected.outputs.nextest-filter }}
       run-all: ${{ needs.detect-affected.outputs.run-all }}
+      partitions-json: ${{ needs.detect-affected.outputs.partitions-json }}
+      partition-count: ${{ needs.detect-affected.outputs.partition-count }}
 
   doc-test:
     name: Documentation Tests
@@ -302,8 +627,7 @@ jobs:
     needs: [check, fmt, clippy]
 
   # Phase 2a (continued): UI tests run in parallel with unit/integration tests.
-  # Dynamic partitioning reduces runner count for small-scope PRs,
-  # mitigating vCPU quota pressure from parallel execution.
+  # Dynamic partitioning keeps small-scope PRs from paying the full shard count.
   ui-test:
     name: UI Tests
     uses: ./.github/workflows/ui-test.yml
@@ -318,15 +642,16 @@ jobs:
       partitions-json: ${{ needs.detect-affected.outputs.partitions-json }}
       partition-count: ${{ needs.detect-affected.outputs.partition-count }}
 
-  # Phase 2b: Additional tests run after core tests complete.
-  # This phased approach prevents exceeding the Spot vCPU quota by
-  # ensuring Phase 2a runners have terminated before Phase 2b starts.
+  # Additional runtime checks. MSRV does not depend on test artifacts, so it
+  # starts after lightweight gates and overlaps the long integration-test tail
+  # instead of extending the critical path after cross-crate tests finish.
   # Note: examples-test runs as a separate standalone workflow.
   # Coverage runs only on main branch pushes (not on PRs).
   msrv-test:
     name: MSRV Test
     uses: ./.github/workflows/msrv-test.yml
-    needs: [unit-test, intra-crate-integration-test, cross-crate-integration-test, determine-runner]
+    needs: [check, fmt, clippy, determine-runner, detect-affected]
+    if: needs.detect-affected.outputs.has-affected == 'true'
     with:
       runner: ${{ needs.determine-runner.outputs.runner }}
       cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}

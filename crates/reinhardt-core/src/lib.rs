@@ -83,6 +83,8 @@ pub mod exception;
 pub mod messages;
 /// Target-neutral metadata traits emitted by model macros.
 pub mod model_info {
+	use std::marker::PhantomData;
+
 	/// Minimal model identity needed by generated `{Model}Info` companion types.
 	///
 	/// Unlike the ORM `Model` trait, this trait is available on WASM and only
@@ -91,6 +93,190 @@ pub mod model_info {
 	pub trait InfoModel {
 		/// Primary-key type used by generated DTO companion fields.
 		type PrimaryKey;
+	}
+
+	/// Lightweight relationship reference used by generated `{Model}Info` fields (Issue #5272).
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(
+		feature = "serde",
+		serde(bound(
+			serialize = "T::PrimaryKey: serde::Serialize",
+			deserialize = "T::PrimaryKey: serde::Deserialize<'de>"
+		))
+	)]
+	pub struct RelationInfo<T: InfoModel> {
+		/// Primary key of the related model.
+		pub id: T::PrimaryKey,
+		#[cfg_attr(feature = "serde", serde(skip))]
+		_model: PhantomData<T>,
+	}
+
+	impl<T: InfoModel> RelationInfo<T> {
+		/// Creates a relationship reference from a related model primary key.
+		pub const fn new(id: T::PrimaryKey) -> Self {
+			Self {
+				id,
+				_model: PhantomData,
+			}
+		}
+
+		/// Returns the related model primary key.
+		pub const fn id(&self) -> &T::PrimaryKey {
+			&self.id
+		}
+
+		/// Converts this relationship reference into its primary key.
+		pub fn into_id(self) -> T::PrimaryKey {
+			self.id
+		}
+	}
+
+	impl<T> std::fmt::Debug for RelationInfo<T>
+	where
+		T: InfoModel,
+		T::PrimaryKey: std::fmt::Debug,
+	{
+		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+			f.debug_struct("RelationInfo")
+				.field("id", &self.id)
+				.finish()
+		}
+	}
+
+	impl<T> Clone for RelationInfo<T>
+	where
+		T: InfoModel,
+		T::PrimaryKey: Clone,
+	{
+		fn clone(&self) -> Self {
+			Self::new(self.id.clone())
+		}
+	}
+
+	impl<T> PartialEq for RelationInfo<T>
+	where
+		T: InfoModel,
+		T::PrimaryKey: PartialEq,
+	{
+		fn eq(&self, other: &Self) -> bool {
+			self.id == other.id
+		}
+	}
+
+	/// Lightweight many-to-many relationship payload for generated `{Model}Info` (Issue #5272).
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(
+		feature = "serde",
+		serde(bound(
+			serialize = "Target::PrimaryKey: serde::Serialize",
+			deserialize = "Target::PrimaryKey: serde::Deserialize<'de>"
+		))
+	)]
+	pub struct ManyToManyInfo<Source, Target: InfoModel> {
+		/// Primary keys of related target models.
+		pub target_ids: Vec<Target::PrimaryKey>,
+		#[cfg_attr(feature = "serde", serde(skip))]
+		_source: PhantomData<Source>,
+	}
+
+	impl<Source, Target> ManyToManyInfo<Source, Target>
+	where
+		Target: InfoModel,
+	{
+		/// Creates a many-to-many payload from target primary keys.
+		pub fn new<I>(target_ids: I) -> Self
+		where
+			I: IntoIterator<Item = Target::PrimaryKey>,
+		{
+			Self {
+				target_ids: target_ids.into_iter().collect(),
+				_source: PhantomData,
+			}
+		}
+
+		/// Creates an empty many-to-many payload.
+		pub const fn empty() -> Self {
+			Self {
+				target_ids: Vec::new(),
+				_source: PhantomData,
+			}
+		}
+
+		/// Returns the target model primary keys.
+		pub fn target_ids(&self) -> &[Target::PrimaryKey] {
+			&self.target_ids
+		}
+
+		/// Converts this payload into the target primary-key list.
+		pub fn into_target_ids(self) -> Vec<Target::PrimaryKey> {
+			self.target_ids
+		}
+	}
+
+	impl<Source, Target> Default for ManyToManyInfo<Source, Target>
+	where
+		Target: InfoModel,
+	{
+		fn default() -> Self {
+			Self::empty()
+		}
+	}
+
+	impl<Source, Target> std::fmt::Debug for ManyToManyInfo<Source, Target>
+	where
+		Target: InfoModel,
+		Target::PrimaryKey: std::fmt::Debug,
+	{
+		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+			f.debug_struct("ManyToManyInfo")
+				.field("target_ids", &self.target_ids)
+				.finish()
+		}
+	}
+
+	impl<Source, Target> Clone for ManyToManyInfo<Source, Target>
+	where
+		Target: InfoModel,
+		Target::PrimaryKey: Clone,
+	{
+		fn clone(&self) -> Self {
+			Self::new(self.target_ids.clone())
+		}
+	}
+
+	impl<Source, Target> PartialEq for ManyToManyInfo<Source, Target>
+	where
+		Target: InfoModel,
+		Target::PrimaryKey: PartialEq,
+	{
+		fn eq(&self, other: &Self) -> bool {
+			self.target_ids == other.target_ids
+		}
+	}
+
+	#[cfg(test)]
+	mod tests {
+		use super::{InfoModel, ManyToManyInfo, RelationInfo};
+
+		#[derive(Debug)]
+		struct Post;
+
+		impl InfoModel for Post {
+			type PrimaryKey = i64;
+		}
+
+		#[test]
+		fn relation_info_preserves_primary_key() {
+			let relation = RelationInfo::<Post>::new(7);
+			assert_eq!(*relation.id(), 7);
+			assert_eq!(relation.into_id(), 7);
+		}
+
+		#[test]
+		fn many_to_many_info_preserves_target_ids() {
+			let info = ManyToManyInfo::<(), Post>::new([1, 2, 3]);
+			assert_eq!(info.target_ids(), &[1, 2, 3]);
+		}
 	}
 }
 /// Content negotiation for request/response formats.

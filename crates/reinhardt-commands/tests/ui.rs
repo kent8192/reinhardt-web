@@ -139,7 +139,7 @@ fn test_command_decision_attribute_combinations(
 #[case(50, true)]
 #[case(100, true)]
 fn test_command_name_length_boundaries(#[case] length: usize, #[case] expected_valid: bool) {
-	let name: String = std::iter::repeat('a').take(length).collect();
+	let name = "a".repeat(length);
 	let is_valid = is_valid_command_name(&name);
 	assert_eq!(
 		is_valid, expected_valid,

@@ -1,0 +1,5 @@
+error: list is only supported on text-like inputs
+  --> tests/ui/form/fail/list_rejects_checkbox.rs:10:5
+   |
+10 |                 list: suggestions,
+   |                 ^^^^

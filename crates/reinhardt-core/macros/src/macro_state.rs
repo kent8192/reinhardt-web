@@ -8,7 +8,7 @@
 //! - Other macros may read the file for app discovery
 //!
 //! This eliminates the need for the `#[macro_export]` callback pattern that triggers
-//! `macro_expanded_macro_exports_accessed_by_absolute_paths` on Rust 1.94+.
+//! `macro_expanded_macro_exports_accessed_by_absolute_paths` on Rust 1.96+.
 //!
 //! ## Why `CARGO_MANIFEST_DIR/target/` instead of `OUT_DIR`?
 //!

@@ -68,9 +68,10 @@ jobs:
           token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.91.1
+        uses: ./.github/actions/setup-rust
         with:
           components: rustfmt, clippy
+          cache: 'false'
 
       - name: Setup protoc
         uses: arduino/setup-protoc@v3

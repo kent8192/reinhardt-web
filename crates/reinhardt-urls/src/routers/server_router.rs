@@ -5,7 +5,7 @@
 //! - Nested routers with automatic prefix inheritance
 //! - Namespace-based URL reversal
 //! - Middleware and DI context propagation
-//! - Integration with ViewSets, functions, and class-based views
+//! - Integration with ViewSets, HTTP macro endpoints, and class-based views
 //!
 //! # Performance Characteristics
 //!
@@ -34,14 +34,13 @@
 //!   (`new`, `with_prefix`, `with_namespace`, `with_di_context`,
 //!   `with_middleware`, `exclude`, `mount`, `group`)
 //! - `registration` — route registration entry points
-//!   (`function`, `handler`, `route`, `viewset`, `endpoint`, `view`,
-//!   `with_route_middleware`)
+//!   (`endpoint`, `handler`, `viewset`, `view`, `with_route_middleware`)
 //! - `compile` — matchit compilation and `validate_*` helpers
 //! - `introspection` — read-only accessors, `get_all_routes`,
 //!   `register_all_routes`, `reverse`
 //! - `dispatch` — `resolve`, `match_own_routes_*`, `path_exists_for_any_method`
 //! - `router_impls` — `Debug`, `Default`, `Handler`, `RegisterViewSet`
-//! - `handlers` — `FunctionHandler` and `ViewSetHandler` adapters
+//! - `handlers` — ViewSet handler adapters
 //! - `matching` — `path_matches` and `extract_params` utilities
 //! - `global`   — global router registry used by `showurls`
 
@@ -74,14 +73,13 @@ pub use self::global::{
 	clear_router, get_router, get_router_di_context, is_router_registered,
 	register_di_registrations, register_router, register_router_arc, take_di_registrations,
 };
-pub use self::handlers::FunctionHandler;
 pub use self::matching::{extract_params, path_matches};
 pub use self::types::{MiddlewareInfo, RouteInfo};
 
 /// Unified router with hierarchical routing support
 ///
 /// Supports multiple API styles:
-/// - FastAPI-style: Function-based routes
+/// - HTTP method macro endpoints
 /// - DRF-style: ViewSets with automatic CRUD
 /// - Django-style: Class-based views
 ///
@@ -89,14 +87,36 @@ pub use self::types::{MiddlewareInfo, RouteInfo};
 ///
 /// ```
 /// use reinhardt_urls::routers::ServerRouter;
-/// use hyper::Method;
-/// # use reinhardt_http::{Request, Response, Result};
+/// # use hyper::Method;
+/// # use reinhardt_core::endpoint::EndpointInfo;
+/// # use reinhardt_http::{Handler, Request, Response, Result};
+///
+/// # struct ExportUsers;
+/// # struct Health;
+/// # impl EndpointInfo for ExportUsers {
+/// #     fn path() -> &'static str { "/export/" }
+/// #     fn method() -> Method { Method::GET }
+/// #     fn name() -> &'static str { "users-export" }
+/// # }
+/// # impl EndpointInfo for Health {
+/// #     fn path() -> &'static str { "/health/" }
+/// #     fn method() -> Method { Method::GET }
+/// #     fn name() -> &'static str { "health" }
+/// # }
+/// # #[async_trait::async_trait]
+/// # impl Handler for ExportUsers {
+/// #     async fn handle(&self, _req: Request) -> Result<Response> { Ok(Response::ok()) }
+/// # }
+/// # #[async_trait::async_trait]
+/// # impl Handler for Health {
+/// #     async fn handle(&self, _req: Request) -> Result<Response> { Ok(Response::ok()) }
+/// # }
 ///
 /// # async fn example() -> Result<()> {
 /// // Create a users sub-router
 /// let users_router = ServerRouter::new()
 ///     .with_namespace("users")
-///     .function("/export/", Method::GET, |_req| async { Ok(Response::ok()) });
+///     .endpoint(|| ExportUsers);
 ///
 /// // Verify users router has namespace
 /// assert_eq!(users_router.namespace(), Some("users"));
@@ -105,7 +125,7 @@ pub use self::types::{MiddlewareInfo, RouteInfo};
 /// let router = ServerRouter::new()
 ///     .with_prefix("/api/v1/")
 ///     .with_namespace("v1")
-///     .function("/health/", Method::GET, |_req| async { Ok(Response::ok()) })
+///     .endpoint(|| Health)
 ///     .mount("/users/", users_router);
 ///
 /// // Verify root router configuration

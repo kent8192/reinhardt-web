@@ -876,7 +876,7 @@ fn test_collectstatic_decision_flag_combinations(
 /// Verifies that multiple ignore patterns are correctly handled.
 #[rstest]
 fn test_collectstatic_multiple_ignore_patterns() {
-	let patterns = vec![
+	let patterns = [
 		"*.map".to_string(),
 		"*.log".to_string(),
 		"*.tmp".to_string(),

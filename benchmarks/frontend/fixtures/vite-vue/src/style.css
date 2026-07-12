@@ -1,0 +1,27 @@
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+}
+
+.bench-shell {
+  display: grid;
+  gap: 16px;
+  margin: 24px;
+  max-width: 920px;
+}
+
+section {
+  border: 1px solid #d0d7de;
+  padding: 12px;
+}
+
+button,
+input {
+  font: inherit;
+  margin: 4px;
+}
+
+output {
+  display: block;
+  margin-top: 8px;
+}

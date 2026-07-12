@@ -7,11 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.2.0...reinhardt-testkit@v0.3.0) - 2026-06-28
+
+Stable release of `reinhardt-testkit` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
+
+### Migration Notes
+
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
+
+### Added
+
+- feat!(di): introduce keyed injectable provider outputs
+
+### Fixed
+
+- *(di)* honor cache false for keyed wrappers
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.3...reinhardt-testkit@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-testkit` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -32,6 +50,7 @@ RC entries remain below as detailed history.
 ### Changed
 
 - *(testkit)* remove residual doc references to deleted deprecated APIs
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Removed
 
@@ -39,46 +58,6 @@ RC entries remain below as detailed history.
 - **`APIClient::force_authenticate`** (`src/client.rs`, deprecated `0.1.0-rc.16`) — same migration.
 - **`ServerFnTestContext::with_authenticated_user`** (`src/server_fn/context.rs`, deprecated `0.1.0-rc.16`) — use `.auth().session(&user).done()`.
 - **6 testcontainers fixtures + helpers** (`src/fixtures/testcontainers.rs`, deprecated `0.1.0-rc.16`) — use `postgres_with_migrations_from_dir()` and the filesystem-based migration loader.
-
-### Fixed
-
-- delete gated items instead of cfg-gating, update callers
-- *(testkit)* shield server fixtures from deprecated RateLimitConfig
-
-### Maintenance
-
-- update Cargo.toml dependencies
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.2.0-rc.4...reinhardt-testkit@v0.2.0-rc.5) - 2026-06-11
-
-### Maintenance
-
-- update Cargo.toml dependencies
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.3...reinhardt-testkit@v0.2.0-rc.2) - 2026-06-03
-
-### Added
-
-- *(testkit)* [**breaking**] gate 9 RC-deprecated items behind cfg(any()) (refs [[#4520](https://github.com/kent8192/reinhardt-web/issues/4520)](https://github.com/kent8192/reinhardt-web/issues/4520))
-- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-- *(testkit)* remove residual doc references to deleted deprecated APIs
-
-### Fixed
-
-- delete gated items instead of cfg-gating, update callers
-- *(ci)* recover develop release-plz prerelease
-- *(testkit)* shield server fixtures from deprecated RateLimitConfig
-
-### Styling
-
-- apply rustfmt to non-DSL files on develop/0.2.0
-
-### Removed
 
 #### BREAKING CHANGES
 
@@ -94,6 +73,20 @@ STABILITY_POLICY § SP-4 (umbrella Issue
 All 9 items are gated with `#[cfg(any())]` so they no longer compile;
 this preserves git blame readability for one release. A subsequent
 cleanup PR can delete the gated code outright.
+
+### Fixed
+
+- delete gated items instead of cfg-gating, update callers
+- *(testkit)* shield server fixtures from deprecated RateLimitConfig
+- *(ci)* recover develop release-plz prerelease
+
+### Styling
+
+- apply rustfmt to non-DSL files on develop/0.2.0
+
+### Maintenance
+
+- update Cargo.toml dependencies
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.1.0-rc.30...reinhardt-testkit@v0.1.0) - 2026-05-22
 

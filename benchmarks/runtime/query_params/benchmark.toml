@@ -1,0 +1,9 @@
+[scenario]
+category = "runtime"
+name = "query_params"
+runner = "criterion"
+metric = "request_latency"
+unit = "ns/request"
+workload = "GET /search?q=rust&page=2&limit=25 deserializes query parameters."
+success = "HTTP 200 with normalized query fields."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

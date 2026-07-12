@@ -1,0 +1,5 @@
+error: multiple field property is not supported yet. Use SelectMultiple for multi-select fields; multi-file inputs require a future Vec<File> value contract
+ --> tests/ui/form/fail/file_multiple_rejected.rs:9:5
+  |
+9 |                 multiple,
+  |                 ^^^^^^^^

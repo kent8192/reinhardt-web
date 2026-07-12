@@ -28,6 +28,7 @@ This crate provides the following modules:
   - Schema versioning and dependency management
   - Migration operations (CreateModel, AddField, AlterField, etc.)
   - State management and autodetection
+  - CockroachDB concurrent migrator serialization with a sentinel-row lock
   - **State Loader** (`MigrationStateLoader`): Django-style state reconstruction
     - Build `ProjectState` by replaying migration history
     - Avoid direct database introspection for schema detection
@@ -155,7 +156,7 @@ Add this to your `Cargo.toml`:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = "0.2.2"
+reinhardt-db = "0.3.1"
 ```
 
 ### Optional Features
@@ -165,7 +166,7 @@ Enable specific features based on your needs:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = { version = "0.2.2", features = ["postgres", "orm", "migrations"] }
+reinhardt-db = { version = "0.3.1", features = ["postgres", "orm", "migrations"] }
 ```
 
 Available features:
@@ -272,7 +273,40 @@ let recent = User::objects()
     .filter(User::field_created_at().year().gte(2026))
     .all()
     .await?;
+
+// Atomic conditional partial update
+let updated = User::objects()
+    .filter(User::field_id().eq(user_id))
+    .filter(User::field_age().gte(18))
+    .update_fields([User::field_updated_at().assign(Utc::now())])
+    .await?;
 ```
+
+### Scoped N+1 Query Detection
+
+Use `NPlusOneScope` around development diagnostics or focused tests to detect
+repeated query shapes with different bind or inline literal values. The
+detector is opt-in and is disabled when no scope is active. QuerySet execution
+and relationship accessors are recorded by active scopes.
+
+```rust
+use reinhardt_db::orm::{NPlusOneConfig, NPlusOneScope};
+
+let (_, report) = NPlusOneScope::warn("admin.post.list", NPlusOneConfig::default())
+    .run_with_report(async {
+        // Execute ORM work here.
+    })
+    .await;
+
+assert!(report.findings.is_empty());
+```
+
+For tests that should fail on suspicious repeated query shapes, use
+`NPlusOneScope::fail(...).run(...)` around the focused code path. Fix reported
+patterns by using `select_related()` for single-object relationships and
+`prefetch_related()` or explicit batch queries for collection relationships.
+Use `NPlusOneScope::spawn(...)` for spawned tasks that should inherit the active
+scope.
 
 ### Create Migrations
 

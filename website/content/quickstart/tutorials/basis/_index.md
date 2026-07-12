@@ -10,9 +10,9 @@ sidebar_weight = 10
 
 # Reinhardt Basis Tutorial
 
-Build a polling application on the Reinhardt pages template: a Rust/WASM client, typed server functions, shared DTOs, session-cookie authentication, ownership-checked CRUD, static assets, tests, and the Reinhardt admin.
+Build a polling application on the Reinhardt pages template: a Rust/WASM client, typed server functions, generated model info DTOs, shared request DTOs, session-cookie authentication, ownership-checked CRUD, static assets, tests, and the Reinhardt admin.
 
-The reference implementation lives in [`examples/examples-tutorial-basis`](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-basis). Treat that crate as the answer key. The tutorial introduces the same architecture one working slice at a time, so every part ends with something you can run or click.
+The reference implementation lives in `examples/examples-tutorial-basis`. Use its app source and tests as the reference for completed slices. Its Cargo workspace and local infrastructure files are repository-specific; the standalone project created in Part 1 uses the generated SQLite-first settings. The tutorial introduces the same architecture one working slice at a time, so every part ends with something you can run or click.
 
 ## Who This Tutorial Is For
 
@@ -60,7 +60,6 @@ examples-tutorial-basis/
 |   +-- lib.rs
 |   +-- apps.rs
 |   +-- config.rs
-|   +-- shared.rs
 |   +-- client.rs
 |   +-- bin/
 |   |   +-- manage.rs
@@ -70,38 +69,51 @@ examples-tutorial-basis/
 |   |   +-- settings.rs
 |   |   +-- urls.rs
 |   |   +-- wasm.rs
-|   +-- shared/
-|   |   +-- forms.rs
-|   |   +-- types.rs
 |   +-- apps/
 |   |   +-- polls.rs
 |   |   +-- polls/
-|   |   |   +-- admin.rs
 |   |   |   +-- client.rs
 |   |   |   +-- models.rs
-|   |   |   +-- serializers.rs
-|   |   |   +-- services.rs
+|   |   |   +-- server.rs
 |   |   |   +-- server_fn.rs
+|   |   |   +-- services.rs
 |   |   |   +-- urls.rs
 |   |   |   +-- client/
 |   |   |   |   +-- components.rs
-|   |   |   |   +-- pages.rs
+|   |   |   |   +-- components/
+|   |   |   |       +-- polls_index.rs
+|   |   |   |       +-- polls_detail.rs
+|   |   |   |       +-- polls_results.rs
+|   |   |   |       +-- question_new.rs
+|   |   |   |       +-- question_edit.rs
+|   |   |   |       +-- question_delete.rs
+|   |   |   |       +-- choice_new.rs
+|   |   |   |       +-- choice_edit.rs
+|   |   |   |       +-- choice_delete.rs
+|   |   |   +-- server/
+|   |   |       +-- admin.rs
+|   |   |       +-- serializers.rs
+|   |   |   +-- services/
+|   |   |       +-- server.rs
 |   |   |   +-- urls/
 |   |   |       +-- client_router.rs
-|   |   |       +-- server_urls.rs
+|   |   |       +-- server_router.rs
 |   |   +-- users.rs
 |   |   +-- users/
 |   |       +-- client.rs
 |   |       +-- models.rs
-|   |       +-- services.rs
+|   |       +-- server.rs
 |   |       +-- server_fn.rs
 |   |       +-- urls.rs
 |   |       +-- client/
 |   |       |   +-- components.rs
-|   |       |   +-- pages.rs
+|   |       |   +-- components/
+|   |       |       +-- login_page.rs
+|   |       |       +-- logout_page.rs
+|   |       |       +-- signup_page.rs
 |   |       +-- urls/
 |   |           +-- client_router.rs
-|   |           +-- server_urls.rs
+|   |           +-- server_router.rs
 |   +-- client/
 |       +-- components.rs
 |       +-- components/
@@ -124,15 +136,15 @@ examples-tutorial-basis/
 
 Three rules keep this structure predictable:
 
-1. **Server and client are separate targets.** `#[cfg(server)]` code runs in the native server binary. `#[cfg(client)]` code runs in the browser as WASM. Model modules compile for both targets so generated `QuestionInfo`, `ChoiceInfo`, and `UserInfo` companions can be shared with the client.
-2. **Server functions are the bridge.** Anything the WASM client needs from the database goes through a `#[server_fn]` in `src/apps/<app>/server_fn.rs`. The client receives generated model-info companions or DTOs from `src/shared/types.rs`.
-3. **Routing belongs to each app.** Each app exposes `server_url_patterns()` and `client_url_patterns()` from `src/apps/<app>/urls.rs`. The project-level `src/config/urls.rs` aggregates those app routers, session middleware, admin routes, and static-file routes.
+1. **Server and client are separate targets.** `#[cfg(server)]` code runs in the native server binary. `#[cfg(client)]` code runs in the browser as WASM. Model definitions stay importable so `#[model]` can generate shared info DTOs, while admin definitions and service implementations stay behind server-only module gates.
+2. **Server functions are the bridge.** Anything the WASM client needs from the database goes through a `#[server_fn]` in `src/apps/<app>/server_fn.rs`. The client receives generated `*Info` DTOs from `#[model]` and explicit request DTOs from `src/shared/types.rs`.
+3. **Routing belongs to each app.** Each app exposes target-specific route functions from `src/apps/<app>/urls.rs`, which gates `urls/server_router.rs` for server-function markers and `urls/client_router.rs` for client component routes. Route-backed components use the `#[component]` macro under `src/apps/<app>/client/components/`. The project-level `src/config/urls.rs` aggregates the active target's app routers, session middleware, admin routes, and static-file routes.
 
 ## Tutorial Structure
 
 ### [Part 1: Project Setup and SPA Shell](1-project-setup/)
 
-Generate a pages project with explicit feature flags, inspect the `src/{apps,config,shared,client,bin}` layout, wire SQLite settings through `ProjectSettings`, install the WASM tools, and run the empty SPA shell.
+Generate a pages project, inspect the `src/{apps,config,client,bin}` layout, wire settings through `ProjectSettings`, install the WASM tools, and run the empty SPA shell.
 
 ### [Part 2: Your First Feature - the Poll Index](2-poll-index/)
 
@@ -160,10 +172,10 @@ Run native integration tests with isolated SQLite fixtures, test management comm
 
 ## Recommended Learning Path
 
-Work through the parts in order. Each part assumes the files from the previous one exist and compile. When your project differs from the text, compare it with `examples/examples-tutorial-basis` before inventing a local workaround.
+Work through the parts in order. Each part assumes the files from the previous one exist and compile. When your project differs from the text, compare the app source and tests with `examples/examples-tutorial-basis` before inventing a local workaround. Do not copy the reference example's repository-only Cargo workspace or local PostgreSQL/Redis infrastructure into the standalone SQLite project.
 
 ## REST Tutorial Comparison
 
-Use this tutorial when you want the full-stack pages architecture: WASM client, typed server functions, shared DTOs, session auth, admin, and static assets.
+Use this tutorial when you want the full-stack pages architecture: WASM client, typed server functions, generated model info DTOs, shared request DTOs, session auth, admin, and static assets.
 
 Use the [REST tutorial](../rest/) when you want classic JSON endpoints built with `#[get]`, `#[post]`, serializers, and viewsets. The model and migration APIs are shared between both tracks.

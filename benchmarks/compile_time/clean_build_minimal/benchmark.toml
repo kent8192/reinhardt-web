@@ -1,0 +1,9 @@
+[scenario]
+category = "compile_time"
+name = "clean_build_minimal"
+runner = "hyperfine"
+metric = "wall_clock_time"
+unit = "s/build"
+workload = "Clean build of a minimal hello-world app for each framework."
+success = "The app builds from a clean target directory."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

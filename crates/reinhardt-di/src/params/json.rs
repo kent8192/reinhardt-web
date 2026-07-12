@@ -151,8 +151,8 @@ impl<T> super::has_inner::HasInner for Json<T> {
 // Bridge `Json<T>` to the DI container. The first factory in a request that
 // resolves `Json<T>` will consume the body via `request.read_body()`; PR-2
 // (Issue #4645) adds a body cache to `ParamContext` so that subsequent
-// `Depends<Json<T>>` calls within the same request reuse the same bytes
-// without re-consuming the underlying stream.
+// request-scoped `Json<T>` injections within the same request reuse the same
+// bytes without re-consuming the underlying stream.
 #[async_trait]
 impl<T> crate::Injectable for Json<T>
 where

@@ -408,6 +408,7 @@ async fn hr_3_no_wasm_rebuild_flag_skips_wasm_pipeline() {
 			manifest_files: Vec::new(),
 			lockfile: None,
 		},
+		debounce_window: DEBOUNCE_WINDOW,
 		server_address: None,
 		no_wasm_rebuild: true,
 		pages_enabled: true,
@@ -453,7 +454,7 @@ async fn hr_3_no_wasm_rebuild_flag_skips_wasm_pipeline() {
 		},
 		"client-only edits must not force a native rebuild when WASM rebuild is disabled"
 	);
-	assert_eq!(DEBOUNCE_WINDOW, Duration::from_millis(300));
+	assert_eq!(DEBOUNCE_WINDOW, Duration::from_millis(120));
 }
 
 // ---------------------------------------------------------------------------
@@ -627,6 +628,7 @@ async fn hr_7_run_watcher_processes_events() {
 			manifest_files: vec![fixture.path().join("Cargo.toml")],
 			lockfile: None,
 		},
+		debounce_window: DEBOUNCE_WINDOW,
 		server_address: None,
 		no_wasm_rebuild: true,
 		pages_enabled: false,
@@ -751,6 +753,7 @@ async fn hr_9_run_watcher_broadcasts_reload_after_server_rebuild() {
 			manifest_files: vec![fixture.path().join("Cargo.toml")],
 			lockfile: None,
 		},
+		debounce_window: DEBOUNCE_WINDOW,
 		server_address: Some(addr),
 		no_wasm_rebuild: true,
 		pages_enabled: true,

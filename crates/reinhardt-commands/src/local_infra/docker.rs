@@ -5,9 +5,10 @@ use bollard::Docker;
 use bollard::errors::Error as BollardError;
 use bollard::models::{ContainerCreateBody, HostConfig, PortBinding};
 use bollard::query_parameters::{
-	CreateContainerOptionsBuilder, ListContainersOptionsBuilder, RemoveContainerOptionsBuilder,
-	StartContainerOptions,
+	CreateContainerOptionsBuilder, CreateImageOptionsBuilder, ListContainersOptionsBuilder,
+	RemoveContainerOptionsBuilder, StartContainerOptions,
 };
+use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -88,6 +89,76 @@ impl BollardDockerEngine {
 		let docker = Docker::connect_with_local_defaults()?;
 		Ok(Self { docker })
 	}
+
+	async fn ensure_image_available(&self, image: &str) -> DockerResult<()> {
+		match self.docker.inspect_image(image).await {
+			Ok(_) => Ok(()),
+			Err(err) if is_missing_image_error(&err) => self.pull_image(image).await,
+			Err(err) => Err(DockerError::Backend(format!(
+				"failed to inspect Docker image `{image}`: {err}"
+			))),
+		}
+	}
+
+	async fn pull_image(&self, image: &str) -> DockerResult<()> {
+		let image_ref = ImagePullReference::parse(image);
+		let mut options = CreateImageOptionsBuilder::default().from_image(image_ref.from_image);
+		if let Some(tag) = image_ref.tag {
+			options = options.tag(tag);
+		}
+		let mut pull = self.docker.create_image(Some(options.build()), None, None);
+
+		while let Some(result) = pull.next().await {
+			result.map_err(|err| {
+				DockerError::Backend(format!("failed to pull Docker image `{image}`: {err}"))
+			})?;
+		}
+
+		Ok(())
+	}
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ImagePullReference<'a> {
+	from_image: &'a str,
+	tag: Option<&'a str>,
+}
+
+impl<'a> ImagePullReference<'a> {
+	fn parse(image: &'a str) -> Self {
+		if image.contains('@') {
+			return Self {
+				from_image: image,
+				tag: None,
+			};
+		}
+
+		let slash_index = image.rfind('/');
+		let tag_separator = image
+			.rfind(':')
+			.filter(|colon_index| slash_index.is_none_or(|slash_index| *colon_index > slash_index));
+
+		match tag_separator {
+			Some(index) => Self {
+				from_image: &image[..index],
+				tag: Some(&image[index + 1..]),
+			},
+			None => Self {
+				from_image: image,
+				tag: Some("latest"),
+			},
+		}
+	}
+}
+
+fn is_missing_image_error(err: &BollardError) -> bool {
+	matches!(
+		err,
+		BollardError::DockerResponseServerError {
+			status_code: 404,
+			..
+		}
+	)
 }
 
 #[async_trait]
@@ -139,6 +210,8 @@ impl DockerEngine for BollardDockerEngine {
 	}
 
 	async fn run_detached(&self, spec: DockerRunSpec) -> DockerResult<()> {
+		self.ensure_image_available(&spec.image).await?;
+
 		let exposed_port = format!("{}/tcp", spec.container_port);
 		let mut port_bindings = HashMap::new();
 		port_bindings.insert(
@@ -178,6 +251,86 @@ impl DockerEngine for BollardDockerEngine {
 			.start_container(&container.id, None::<StartContainerOptions>)
 			.await
 			.map_err(DockerError::from)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn missing_image_error_is_pullable() {
+		let err = BollardError::DockerResponseServerError {
+			status_code: 404,
+			message: "No such image: postgres:17-alpine".to_string(),
+		};
+
+		assert!(is_missing_image_error(&err));
+	}
+
+	#[test]
+	fn non_missing_image_error_is_not_pullable() {
+		let err = BollardError::DockerResponseServerError {
+			status_code: 500,
+			message: "Docker daemon failed".to_string(),
+		};
+
+		assert!(!is_missing_image_error(&err));
+	}
+
+	#[test]
+	fn image_pull_reference_splits_tagged_image() {
+		assert_eq!(
+			ImagePullReference::parse("postgres:17-alpine"),
+			ImagePullReference {
+				from_image: "postgres",
+				tag: Some("17-alpine")
+			}
+		);
+	}
+
+	#[test]
+	fn image_pull_reference_defaults_untagged_image_to_latest() {
+		assert_eq!(
+			ImagePullReference::parse("redis"),
+			ImagePullReference {
+				from_image: "redis",
+				tag: Some("latest")
+			}
+		);
+	}
+
+	#[test]
+	fn image_pull_reference_defaults_namespaced_untagged_image_to_latest() {
+		assert_eq!(
+			ImagePullReference::parse("library/redis"),
+			ImagePullReference {
+				from_image: "library/redis",
+				tag: Some("latest")
+			}
+		);
+	}
+
+	#[test]
+	fn image_pull_reference_preserves_registry_port() {
+		assert_eq!(
+			ImagePullReference::parse("registry.example.com:5000/reinhardt/postgres:17-alpine"),
+			ImagePullReference {
+				from_image: "registry.example.com:5000/reinhardt/postgres",
+				tag: Some("17-alpine")
+			}
+		);
+	}
+
+	#[test]
+	fn image_pull_reference_keeps_digest_reference() {
+		assert_eq!(
+			ImagePullReference::parse("postgres@sha256:abcdef"),
+			ImagePullReference {
+				from_image: "postgres@sha256:abcdef",
+				tag: None
+			}
+		);
 	}
 }
 
