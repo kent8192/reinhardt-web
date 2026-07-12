@@ -113,6 +113,8 @@ impl AuthState {
 	///
 	/// Returns `Some(AuthState)` if an `AuthState` object is found or if both
 	/// a string or UUID user ID exists in the individual entries, `None` otherwise.
+	/// Legacy identity-only entries are treated as authenticated and active unless
+	/// an explicit status wrapper overrides either value.
 	pub fn from_extensions(extensions: &Extensions) -> Option<Self> {
 		// Primary: try to get AuthState object directly
 		if let Some(state) = extensions.get::<AuthState>() {
@@ -125,9 +127,12 @@ impl AuthState {
 		let is_authenticated = extensions
 			.get::<IsAuthenticated>()
 			.map(|v| v.0)
-			.unwrap_or(false);
+			.unwrap_or(true);
 		let is_admin = extensions.get::<IsAdmin>().map(|v| v.0).unwrap_or(false);
-		let is_active = extensions.get::<IsActive>().map(|v| v.0).unwrap_or(false);
+		let is_active = extensions
+			.get::<IsActive>()
+			.map(|v| v.0)
+			.unwrap_or(is_authenticated);
 		Some(Self {
 			user_id,
 			is_authenticated,
@@ -208,7 +213,7 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_from_extensions_with_individual_values() {
+	fn test_from_extensions_with_legacy_identity_defaults_to_authenticated_active() {
 		// Arrange
 		let extensions = Extensions::new();
 		extensions.insert("user-789".to_string());
@@ -223,6 +228,23 @@ mod tests {
 		assert_eq!(retrieved.user_id(), "user-789");
 		assert!(retrieved.is_authenticated());
 		assert!(!retrieved.is_admin());
+		assert!(retrieved.is_active());
+	}
+
+	#[rstest]
+	fn test_from_extensions_preserves_explicit_inactive_status() {
+		// Arrange
+		let extensions = Extensions::new();
+		extensions.insert("user-789".to_string());
+		extensions.insert(IsAuthenticated(true));
+		extensions.insert(IsActive(false));
+
+		// Act
+		let result = AuthState::from_extensions(&extensions);
+
+		// Assert
+		let retrieved = result.expect("legacy identity should produce an auth state");
+		assert!(retrieved.is_authenticated());
 		assert!(!retrieved.is_active());
 	}
 

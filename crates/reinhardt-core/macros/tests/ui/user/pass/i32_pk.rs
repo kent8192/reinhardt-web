@@ -27,5 +27,5 @@ fn main() {
 	};
 
 	assert_eq!(user.id(), "999");
-	assert!(!AuthIdentity::is_active(&user));
+	assert!(!AuthIdentity::is_account_active(&user));
 }

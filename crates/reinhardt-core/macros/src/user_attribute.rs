@@ -658,7 +658,7 @@ fn generate_auth_identity_impl(struct_name: &Ident, mapping: &FieldMapping) -> T
 				self.#is_superuser_field
 			}
 
-			fn is_active(&self) -> bool {
+			fn is_account_active(&self) -> bool {
 				self.#is_active_field
 			}
 		}

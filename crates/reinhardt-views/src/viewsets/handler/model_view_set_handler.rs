@@ -1041,6 +1041,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
+	use reinhardt_auth::{IsActiveUser, IsAuthenticated};
 	use reinhardt_http::Request;
 	use rstest::rstest;
 
@@ -1099,6 +1100,27 @@ mod tests {
 	/// Helper to build a ModelViewSetHandler with in-memory queryset
 	fn build_model_handler(items: Vec<TestItem>) -> ModelViewSetHandler<TestItem> {
 		ModelViewSetHandler::<TestItem>::new().with_queryset(items)
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_list_allows_legacy_user_id_extensions_for_active_permissions() {
+		// Arrange
+		let handler = build_model_handler(vec![TestItem {
+			id: Some(1),
+			name: "first".to_string(),
+		}])
+		.add_permission(Arc::new(IsAuthenticated))
+		.add_permission(Arc::new(IsActiveUser));
+		let request = build_request("/items/");
+		request.extensions.insert("legacy-user".to_string());
+
+		// Act
+		let result = handler.list(&request).await;
+
+		// Assert
+		let response = result.expect("legacy authenticated requests should remain authorized");
+		assert_eq!(response.status, hyper::StatusCode::OK);
 	}
 
 	#[rstest]

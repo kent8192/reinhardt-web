@@ -55,7 +55,7 @@ impl AuthIdentity for TestUser {
 		self.is_admin
 	}
 
-	fn is_active(&self) -> bool {
+	fn is_account_active(&self) -> bool {
 		true
 	}
 }

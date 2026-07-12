@@ -128,7 +128,7 @@ impl<A: AuthBackend> RemoteUserMiddleware<A> {
 	fn insert_user_extensions(request: &Request, user: &dyn AuthIdentity) {
 		let is_authenticated = user.is_authenticated();
 		let is_admin = user.is_admin();
-		let is_active = user.is_active();
+		let is_active = user.is_account_active();
 		let user_id = user.id();
 
 		// Insert individual values for backward compatibility
@@ -287,7 +287,7 @@ mod tests {
 			self.is_admin
 		}
 
-		fn is_active(&self) -> bool {
+		fn is_account_active(&self) -> bool {
 			self.is_active
 		}
 	}

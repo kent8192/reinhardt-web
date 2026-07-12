@@ -75,7 +75,7 @@ pub trait ObjectPermissionChecker: Send + Sync {
 ///     fn id(&self) -> String { self.id.clone() }
 ///     fn is_authenticated(&self) -> bool { true }
 ///     fn is_admin(&self) -> bool { false }
-///     fn is_active(&self) -> bool { true }
+///     fn is_account_active(&self) -> bool { true }
 /// }
 ///
 /// #[tokio::main]
@@ -247,7 +247,7 @@ impl ObjectPermissionChecker for ObjectPermissionManager {
 ///     fn id(&self) -> String { self.id.clone() }
 ///     fn is_authenticated(&self) -> bool { true }
 ///     fn is_admin(&self) -> bool { false }
-///     fn is_active(&self) -> bool { true }
+///     fn is_account_active(&self) -> bool { true }
 /// }
 ///
 /// #[tokio::main]

@@ -44,7 +44,7 @@ impl AuthIdentity for ManagedUser {
 		self.is_admin
 	}
 
-	fn is_active(&self) -> bool {
+	fn is_account_active(&self) -> bool {
 		self.is_active
 	}
 }
